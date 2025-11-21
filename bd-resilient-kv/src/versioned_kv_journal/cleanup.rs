@@ -57,7 +57,7 @@ pub async fn cleanup_old_snapshots(
   }
 
   if deleted_count > 0 {
-    log::info!("Snapshot cleanup complete: deleted {deleted_count}, kept {kept_count}");
+    log::debug!("Snapshot cleanup complete: deleted {deleted_count}, kept {kept_count}");
   }
 
   Ok(())

@@ -419,6 +419,9 @@ impl VersionedKVStore {
   /// If a retention registry is configured, this method checks if any subsystem requires
   /// snapshots. If no retention is needed, the journal is deleted without compression.
   /// After creating a snapshot, this method triggers cleanup of old snapshots.
+  ///
+  /// Snapshots are stored in a `snapshots/` subdirectory to keep them separate from
+  /// active journal files.
   async fn archive_journal(&self, old_journal_path: &Path, generation: u64) -> PathBuf {
     // Get the maximum timestamp from the current state to use for the snapshot filename
     let rotation_timestamp = self
@@ -444,7 +447,9 @@ impl VersionedKVStore {
       true
     };
 
-    let archived_path = self.dir_path.join(format!(
+    // Store snapshots in a separate subdirectory
+    let snapshots_dir = self.dir_path.join("snapshots");
+    let archived_path = snapshots_dir.join(format!(
       "{}.jrn.g{}.t{}.zz",
       self.journal_name, generation, rotation_timestamp
     ));
@@ -456,21 +461,31 @@ impl VersionedKVStore {
         archived_path.display()
       );
 
-      // Try to compress the old journal for longer-term storage.
-      if let Err(e) = compress_archived_journal(old_journal_path, &archived_path).await {
+      // Create snapshots directory if it doesn't exist
+      if let Err(e) = tokio::fs::create_dir_all(&snapshots_dir).await {
         log::warn!(
-          "Failed to compress archived journal {}: {}",
-          old_journal_path.display(),
+          "Failed to create snapshots directory {}: {}",
+          snapshots_dir.display(),
           e
         );
-      }
+      } else {
+        // Try to compress the old journal for longer-term storage.
+        if let Err(e) = compress_archived_journal(old_journal_path, &archived_path).await {
+          log::warn!(
+            "Failed to compress archived journal {}: {}",
+            old_journal_path.display(),
+            e
+          );
+        }
 
-      // After creating a snapshot, trigger cleanup of old snapshots
-      if let Some(registry) = &self.retention_registry
-        && let Err(e) =
-          super::cleanup::cleanup_old_snapshots(&self.dir_path, &self.journal_name, registry).await
-      {
-        log::warn!("Failed to cleanup old snapshots: {e}");
+        // After creating a snapshot, trigger cleanup of old snapshots
+        if let Some(registry) = &self.retention_registry
+          && let Err(e) =
+            super::cleanup::cleanup_old_snapshots(&snapshots_dir, &self.journal_name, registry)
+              .await
+        {
+          log::warn!("Failed to cleanup old snapshots: {e}");
+        }
       }
     } else {
       log::debug!(

@@ -14,6 +14,10 @@ use tempfile::TempDir;
 async fn create_test_snapshot(dir: &std::path::Path, name: &str, generation: u64, timestamp: u64) {
   let filename = format!("{name}.jrn.g{generation}.t{timestamp}.zz");
   let path = dir.join(filename);
+  // Create parent directory if it doesn't exist
+  if let Some(parent) = path.parent() {
+    tokio::fs::create_dir_all(parent).await.unwrap();
+  }
   tokio::fs::write(path, b"test snapshot data").await.unwrap();
 }
 

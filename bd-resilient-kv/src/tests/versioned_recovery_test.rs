@@ -18,9 +18,16 @@ use time::ext::NumericalDuration;
 use time::macros::datetime;
 
 /// Helper function to find archived journal files in a directory.
-/// Returns sorted paths to all `.zz` compressed journal archives.
+/// Returns sorted paths to all `.zz` compressed journal archives in the snapshots subdirectory.
 fn find_archived_journals(dir: &std::path::Path) -> anyhow::Result<Vec<std::path::PathBuf>> {
-  let mut archived_files = std::fs::read_dir(dir)?
+  let snapshots_dir = dir.join("snapshots");
+
+  // If snapshots directory doesn't exist, return empty vec
+  if !snapshots_dir.exists() {
+    return Ok(Vec::new());
+  }
+
+  let mut archived_files = std::fs::read_dir(snapshots_dir)?
     .filter_map(|entry| {
       let entry = entry.ok()?;
       let path = entry.path();
