@@ -1081,6 +1081,7 @@ dependencies = [
  "anyhow",
  "bd-bonjson",
  "bd-client-common",
+ "bd-error-reporter",
  "bd-log",
  "bd-proto",
  "bd-time",

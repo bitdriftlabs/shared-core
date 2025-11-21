@@ -10,7 +10,9 @@ use crate::versioned_kv_journal::TimestampedValue;
 use crate::versioned_kv_journal::file_manager::{self, compress_archived_journal};
 use crate::versioned_kv_journal::journal::PartialDataLoss;
 use crate::versioned_kv_journal::memmapped_journal::MemMappedVersionedJournal;
+use crate::versioned_kv_journal::retention::RetentionRegistry;
 use ahash::AHashMap;
+use bd_error_reporter::reporter::handle_unexpected;
 use bd_proto::protos::state::payload::StateValue;
 use bd_time::TimeProvider;
 use std::path::{Path, PathBuf};
@@ -137,6 +139,7 @@ struct PersistentStore {
   high_water_mark_ratio: Option<f32>,
   current_generation: u64,
   cached_map: ScopedMaps,
+  retention_registry: Arc<RetentionRegistry>,
 }
 
 impl PersistentStore {
@@ -146,6 +149,7 @@ impl PersistentStore {
     buffer_size: usize,
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
+    retention_registry: Arc<RetentionRegistry>,
   ) -> anyhow::Result<(Self, DataLoss)> {
     let dir = dir_path.as_ref();
     let (journal_path, generation) = file_manager::find_active_journal(dir, name).await;
@@ -205,6 +209,7 @@ impl PersistentStore {
         high_water_mark_ratio,
         current_generation: generation,
         cached_map: initial_state,
+        retention_registry,
       },
       data_loss,
     ))
@@ -216,6 +221,7 @@ impl PersistentStore {
     buffer_size: usize,
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
+    retention_registry: Arc<RetentionRegistry>,
   ) -> anyhow::Result<(Self, DataLoss)> {
     let dir = dir_path.as_ref();
     let (journal_path, generation) = file_manager::find_active_journal(dir, name).await;
@@ -236,6 +242,7 @@ impl PersistentStore {
         high_water_mark_ratio,
         current_generation: generation,
         cached_map: opened.initial_state,
+        retention_registry,
       },
       if matches!(opened.data_loss, PartialDataLoss::Yes) {
         DataLoss::Partial
@@ -379,31 +386,68 @@ impl PersistentStore {
       .map(|tv| tv.timestamp)
       .max()
       .unwrap_or(0);
-    let archived_path = self.dir_path.join(format!(
-      "{}.jrn.t{rotation_timestamp}.zz",
-      self.journal_name
+
+    // Check if we need to create a snapshot based on retention requirements
+    let min_retention = self.retention_registry.min_retention_timestamp().await;
+    // If min_retention is None (no handles), don't create snapshot
+    // If min_retention is Some(0), retain everything (at least one handle wants all data)
+    // If min_retention > rotation_timestamp, no one needs this snapshot
+    let should_create_snapshot = match min_retention {
+      None => false,
+      Some(0) => true,
+      Some(ts) => ts <= rotation_timestamp,
+    };
+
+    // Store snapshots in a separate subdirectory
+    let snapshots_dir = self.dir_path.join("snapshots");
+    let archived_path = snapshots_dir.join(format!(
+      "{}.jrn.g{}.t{}.zz",
+      self.journal_name, old_generation, rotation_timestamp
     ));
 
-    log::debug!(
-      "Archiving journal {} to {}",
-      old_journal_path.display(),
-      archived_path.display()
-    );
-
-    if let Err(e) = compress_archived_journal(&old_journal_path, &archived_path).await {
-      log::warn!(
-        "Failed to compress archived journal {}: {}",
+    if should_create_snapshot {
+      log::debug!(
+        "Archiving journal {} to {}",
         old_journal_path.display(),
-        e
+        archived_path.display()
+      );
+
+      // Create snapshots directory if it doesn't exist
+      if let Err(e) = tokio::fs::create_dir_all(&snapshots_dir).await {
+        log::debug!(
+          "Failed to create snapshots directory {}: {}",
+          snapshots_dir.display(),
+          e
+        );
+      } else {
+        // Try to compress the old journal for longer-term storage.
+        if let Err(e) = compress_archived_journal(&old_journal_path, &archived_path).await {
+          log::debug!(
+            "Failed to compress archived journal {}: {}",
+            old_journal_path.display(),
+            e
+          );
+        }
+
+        // After creating a snapshot, trigger cleanup of old snapshots
+        handle_unexpected(
+          super::cleanup::cleanup_old_snapshots(&snapshots_dir, &self.retention_registry).await,
+          "old snapshot cleanup",
+        );
+      }
+    } else {
+      log::debug!(
+        "Skipping snapshot creation for {} (no retention required)",
+        old_journal_path.display()
       );
     }
 
-    // Remove the uncompressed journal regardless of compression success. If we succeeded we no
+    // Remove the uncompressed journal regardless of compression success or skip. If we succeeded we no
     // longer need it, while if we failed we consider the snapshot lost.
     let _ignored = tokio::fs::remove_file(&old_journal_path)
       .await
       .inspect_err(|e| {
-        log::warn!(
+        log::debug!(
           "Failed to remove old journal {}: {}",
           old_journal_path.display(),
           e
@@ -508,6 +552,7 @@ impl VersionedKVStore {
     buffer_size: usize,
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
+    retention_registry: Arc<RetentionRegistry>,
   ) -> anyhow::Result<(Self, DataLoss)> {
     let (store, data_loss) = PersistentStore::new(
       dir_path,
@@ -515,6 +560,7 @@ impl VersionedKVStore {
       buffer_size,
       high_water_mark_ratio,
       time_provider,
+      retention_registry,
     )
     .await?;
 
@@ -560,6 +606,7 @@ impl VersionedKVStore {
     buffer_size: usize,
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
+    retention_registry: Arc<RetentionRegistry>,
   ) -> anyhow::Result<(Self, DataLoss)> {
     let (store, data_loss) = PersistentStore::open_existing(
       dir_path,
@@ -567,6 +614,7 @@ impl VersionedKVStore {
       buffer_size,
       high_water_mark_ratio,
       time_provider,
+      retention_registry,
     )
     .await?;
 
@@ -623,12 +671,12 @@ impl VersionedKVStore {
   pub async fn insert(
     &mut self,
     scope: Scope,
-    key: &str,
+    key: String,
     value: StateValue,
   ) -> anyhow::Result<u64> {
     match &mut self.backend {
-      StoreBackend::Persistent(store) => store.insert(scope, key, value).await,
-      StoreBackend::InMemory(store) => Ok(store.insert(scope, key, value)),
+      StoreBackend::Persistent(store) => store.insert(scope, &key, value).await,
+      StoreBackend::InMemory(store) => Ok(store.insert(scope, &key, value)),
     }
   }
 
@@ -675,6 +723,17 @@ impl VersionedKVStore {
   #[must_use]
   pub fn is_empty(&self) -> bool {
     self.len() == 0
+  }
+
+  /// Get a reference to the current state.
+  ///
+  /// This operation is O(1) as it returns a reference to the in-memory cache.
+  #[must_use]
+  pub fn as_hashmap(&self) -> &ScopedMaps {
+    match &self.backend {
+      StoreBackend::Persistent(store) => &store.cached_map,
+      StoreBackend::InMemory(store) => &store.cached_map,
+    }
   }
 
   /// Get a reference to the current state.
