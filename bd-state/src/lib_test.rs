@@ -5,10 +5,16 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+//! Test Organization:
+//! - Parameterized tests (dual backend): Tests that run against both persistent and in-memory
+//!   stores using the `#[apply(dual_backend)]` template
+//! - Persistence tests: Tests specific to persistent storage behavior (restart, fallback, etc.)
+
 #![allow(clippy::unwrap_used)]
 
 use crate::{Scope, StateReader, Store};
 use rstest::rstest;
+use rstest_reuse::{apply, template};
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::macros::datetime;
@@ -51,15 +57,20 @@ impl Setup {
   }
 }
 
-#[tokio::test]
+#[template]
 #[rstest]
 #[case(async { Setup::persistent().await })]
 #[case(async { Setup::in_memory() })]
-async fn basic_insert_and_get(
+fn dual_backend(
   #[future]
   #[case]
   setup: Setup,
 ) {
+}
+
+#[tokio::test]
+#[apply(dual_backend)]
+async fn basic_insert_and_get(setup: Setup) {
   let setup = setup.await;
 
   setup
@@ -74,14 +85,8 @@ async fn basic_insert_and_get(
 }
 
 #[tokio::test]
-#[rstest]
-#[case(async { Setup::persistent().await })]
-#[case(async { Setup::in_memory() })]
-async fn insert_multiple_values(
-  #[future]
-  #[case]
-  setup: Setup,
-) {
+#[apply(dual_backend)]
+async fn insert_multiple_values(setup: Setup) {
   let setup = setup.await;
 
   setup
@@ -107,14 +112,8 @@ async fn insert_multiple_values(
 }
 
 #[tokio::test]
-#[rstest]
-#[case(async { Setup::persistent().await })]
-#[case(async { Setup::in_memory() })]
-async fn update_existing_value(
-  #[future]
-  #[case]
-  setup: Setup,
-) {
+#[apply(dual_backend)]
+async fn update_existing_value(setup: Setup) {
   let setup = setup.await;
 
   setup
@@ -133,14 +132,8 @@ async fn update_existing_value(
 }
 
 #[tokio::test]
-#[rstest]
-#[case(async { Setup::persistent().await })]
-#[case(async { Setup::in_memory() })]
-async fn remove_value(
-  #[future]
-  #[case]
-  setup: Setup,
-) {
+#[apply(dual_backend)]
+async fn remove_value(setup: Setup) {
   let setup = setup.await;
 
   setup
@@ -159,14 +152,8 @@ async fn remove_value(
 }
 
 #[tokio::test]
-#[rstest]
-#[case(async { Setup::persistent().await })]
-#[case(async { Setup::in_memory() })]
-async fn remove_nonexistent_value(
-  #[future]
-  #[case]
-  setup: Setup,
-) {
+#[apply(dual_backend)]
+async fn remove_nonexistent_value(setup: Setup) {
   let setup = setup.await;
 
   setup
@@ -180,14 +167,8 @@ async fn remove_nonexistent_value(
 }
 
 #[tokio::test]
-#[rstest]
-#[case(async { Setup::persistent().await })]
-#[case(async { Setup::in_memory() })]
-async fn clear_scope(
-  #[future]
-  #[case]
-  setup: Setup,
-) {
+#[apply(dual_backend)]
+async fn clear_scope(setup: Setup) {
   let setup = setup.await;
 
   setup
@@ -215,14 +196,8 @@ async fn clear_scope(
 }
 
 #[tokio::test]
-#[rstest]
-#[case(async { Setup::persistent().await })]
-#[case(async { Setup::in_memory() })]
-async fn scope_isolation(
-  #[future]
-  #[case]
-  setup: Setup,
-) {
+#[apply(dual_backend)]
+async fn scope_isolation(setup: Setup) {
   let setup = setup.await;
 
   setup
@@ -242,14 +217,8 @@ async fn scope_isolation(
 }
 
 #[tokio::test]
-#[rstest]
-#[case(async { Setup::persistent().await })]
-#[case(async { Setup::in_memory() })]
-async fn iter_scope(
-  #[future]
-  #[case]
-  setup: Setup,
-) {
+#[apply(dual_backend)]
+async fn iter_scope(setup: Setup) {
   let setup = setup.await;
 
   setup
@@ -282,14 +251,8 @@ async fn iter_scope(
 }
 
 #[tokio::test]
-#[rstest]
-#[case(async { Setup::persistent().await })]
-#[case(async { Setup::in_memory() })]
-async fn iter_empty_scope(
-  #[future]
-  #[case]
-  setup: Setup,
-) {
+#[apply(dual_backend)]
+async fn iter_empty_scope(setup: Setup) {
   let setup = setup.await;
 
   let reader = setup.store.read().await;
@@ -302,14 +265,8 @@ async fn iter_empty_scope(
 }
 
 #[tokio::test]
-#[rstest]
-#[case(async { Setup::persistent().await })]
-#[case(async { Setup::in_memory() })]
-async fn to_snapshot(
-  #[future]
-  #[case]
-  setup: Setup,
-) {
+#[apply(dual_backend)]
+async fn to_snapshot(setup: Setup) {
   let setup = setup.await;
 
   setup
@@ -348,14 +305,8 @@ async fn to_snapshot(
 }
 
 #[tokio::test]
-#[rstest]
-#[case(async { Setup::persistent().await })]
-#[case(async { Setup::in_memory() })]
-async fn to_scoped_snapshot(
-  #[future]
-  #[case]
-  setup: Setup,
-) {
+#[apply(dual_backend)]
+async fn to_scoped_snapshot(setup: Setup) {
   let setup = setup.await;
 
   setup
@@ -381,14 +332,8 @@ async fn to_scoped_snapshot(
 }
 
 #[tokio::test]
-#[rstest]
-#[case(async { Setup::persistent().await })]
-#[case(async { Setup::in_memory() })]
-async fn empty_snapshot(
-  #[future]
-  #[case]
-  setup: Setup,
-) {
+#[apply(dual_backend)]
+async fn empty_snapshot(setup: Setup) {
   let setup = setup.await;
 
   let reader = setup.store.read().await;
@@ -399,47 +344,8 @@ async fn empty_snapshot(
 }
 
 #[tokio::test]
-async fn persistence_across_restart() {
-  let temp_dir = tempfile::tempdir().unwrap();
-  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
-    datetime!(2024-01-01 00:00:00 UTC),
-  ));
-
-  {
-    let store = Store::new(temp_dir.path(), time_provider.clone())
-      .await
-      .unwrap()
-      .store;
-    store
-      .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
-      .await
-      .unwrap();
-    store
-      .insert(Scope::GlobalState, "key1", "global_value".to_string())
-      .await
-      .unwrap();
-  }
-
-  let store = Store::new(temp_dir.path(), time_provider.clone())
-    .await
-    .unwrap()
-    .store;
-
-  // After restart, ephemeral scopes are cleared
-  let reader = store.read().await;
-  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
-  assert_eq!(reader.get(Scope::GlobalState, "key1"), None);
-}
-
-#[tokio::test]
-#[rstest]
-#[case(async { Setup::persistent().await })]
-#[case(async { Setup::in_memory() })]
-async fn large_value(
-  #[future]
-  #[case]
-  setup: Setup,
-) {
+#[apply(dual_backend)]
+async fn large_value(setup: Setup) {
   let setup = setup.await;
 
   let large_value = "x".repeat(10_000);
@@ -457,14 +363,8 @@ async fn large_value(
 }
 
 #[tokio::test]
-#[rstest]
-#[case(async { Setup::persistent().await })]
-#[case(async { Setup::in_memory() })]
-async fn many_keys(
-  #[future]
-  #[case]
-  setup: Setup,
-) {
+#[apply(dual_backend)]
+async fn many_keys(setup: Setup) {
   let setup = setup.await;
 
   for i in 0 .. 100 {
@@ -491,14 +391,8 @@ async fn many_keys(
 }
 
 #[tokio::test]
-#[rstest]
-#[case(async { Setup::persistent().await })]
-#[case(async { Setup::in_memory() })]
-async fn special_characters_in_keys(
-  #[future]
-  #[case]
-  setup: Setup,
-) {
+#[apply(dual_backend)]
+async fn special_characters_in_keys(setup: Setup) {
   let setup = setup.await;
 
   setup
@@ -533,14 +427,8 @@ async fn special_characters_in_keys(
 }
 
 #[tokio::test]
-#[rstest]
-#[case(async { Setup::persistent().await })]
-#[case(async { Setup::in_memory() })]
-async fn empty_key(
-  #[future]
-  #[case]
-  setup: Setup,
-) {
+#[apply(dual_backend)]
+async fn empty_key(setup: Setup) {
   let setup = setup.await;
 
   setup
@@ -554,14 +442,8 @@ async fn empty_key(
 }
 
 #[tokio::test]
-#[rstest]
-#[case(async { Setup::persistent().await })]
-#[case(async { Setup::in_memory() })]
-async fn empty_value(
-  #[future]
-  #[case]
-  setup: Setup,
-) {
+#[apply(dual_backend)]
+async fn empty_value(setup: Setup) {
   let setup = setup.await;
 
   setup
@@ -572,6 +454,39 @@ async fn empty_value(
 
   let reader = setup.store.read().await;
   assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some(""));
+}
+
+#[tokio::test]
+async fn persistence_across_restart() {
+  let temp_dir = tempfile::tempdir().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  {
+    let store = Store::new(temp_dir.path(), time_provider.clone())
+      .await
+      .unwrap()
+      .store;
+    store
+      .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+      .await
+      .unwrap();
+    store
+      .insert(Scope::GlobalState, "key1", "global_value".to_string())
+      .await
+      .unwrap();
+  }
+
+  let store = Store::new(temp_dir.path(), time_provider.clone())
+    .await
+    .unwrap()
+    .store;
+
+  // After restart, ephemeral scopes are cleared
+  let reader = store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
+  assert_eq!(reader.get(Scope::GlobalState, "key1"), None);
 }
 
 #[tokio::test]
