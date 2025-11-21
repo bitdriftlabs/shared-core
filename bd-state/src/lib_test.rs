@@ -1,0 +1,830 @@
+// shared-core - bitdrift's common client/server libraries
+// Copyright Bitdrift, Inc. All rights reserved.
+//
+// Use of this source code is governed by a source available license that can be found in the
+// LICENSE file or at:
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
+
+//! Test Organization:
+//! - Parameterized tests (dual backend): Tests that run against both persistent and in-memory
+//!   stores using the `#[apply(dual_backend)]` template
+//! - Persistence tests: Tests specific to persistent storage behavior (restart, fallback, etc.)
+
+#![allow(clippy::unwrap_used)]
+
+use crate::{Scope, StateReader, Store};
+use rstest::rstest;
+use rstest_reuse::{apply, template};
+use std::sync::Arc;
+use tempfile::TempDir;
+use time::macros::datetime;
+
+struct Setup {
+  _dir: Option<TempDir>,
+  _time_provider: Arc<bd_time::TestTimeProvider>,
+  store: Store,
+}
+
+impl Setup {
+  async fn persistent() -> Self {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+      datetime!(2024-01-01 00:00:00 UTC),
+    ));
+    let store = Store::new(temp_dir.path(), time_provider.clone())
+      .await
+      .unwrap()
+      .store;
+
+    Self {
+      _dir: Some(temp_dir),
+      _time_provider: time_provider,
+      store,
+    }
+  }
+
+  fn in_memory() -> Self {
+    let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+      datetime!(2024-01-01 00:00:00 UTC),
+    ));
+    let store = Store::new_in_memory();
+
+    Self {
+      _dir: None,
+      _time_provider: time_provider,
+      store,
+    }
+  }
+}
+
+#[template]
+#[rstest]
+#[case(async { Setup::persistent().await })]
+#[case(async { Setup::in_memory() })]
+fn dual_backend(
+  #[future]
+  #[case]
+  setup: Setup,
+) {
+}
+
+#[tokio::test]
+#[apply(dual_backend)]
+async fn basic_insert_and_get(setup: Setup) {
+  let setup = setup.await;
+
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .await
+    .unwrap();
+
+  let reader = setup.store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some("value1"));
+  assert_eq!(reader.get(Scope::GlobalState, "flag1"), None);
+}
+
+#[tokio::test]
+#[apply(dual_backend)]
+async fn insert_multiple_values(setup: Setup) {
+  let setup = setup.await;
+
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .await
+    .unwrap();
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "flag2", "value2".to_string())
+    .await
+    .unwrap();
+  setup
+    .store
+    .insert(Scope::GlobalState, "key1", "global_value".to_string())
+    .await
+    .unwrap();
+
+  let reader = setup.store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some("value1"));
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), Some("value2"));
+  assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global_value"));
+}
+
+#[tokio::test]
+#[apply(dual_backend)]
+async fn update_existing_value(setup: Setup) {
+  let setup = setup.await;
+
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .await
+    .unwrap();
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "flag1", "value2".to_string())
+    .await
+    .unwrap();
+
+  let reader = setup.store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some("value2"));
+}
+
+#[tokio::test]
+#[apply(dual_backend)]
+async fn remove_value(setup: Setup) {
+  let setup = setup.await;
+
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .await
+    .unwrap();
+  setup
+    .store
+    .remove(Scope::FeatureFlag, "flag1")
+    .await
+    .unwrap();
+
+  let reader = setup.store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
+}
+
+#[tokio::test]
+#[apply(dual_backend)]
+async fn remove_nonexistent_value(setup: Setup) {
+  let setup = setup.await;
+
+  setup
+    .store
+    .remove(Scope::FeatureFlag, "nonexistent")
+    .await
+    .unwrap();
+
+  let reader = setup.store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "nonexistent"), None);
+}
+
+#[tokio::test]
+#[apply(dual_backend)]
+async fn clear_scope(setup: Setup) {
+  let setup = setup.await;
+
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .await
+    .unwrap();
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "flag2", "value2".to_string())
+    .await
+    .unwrap();
+  setup
+    .store
+    .insert(Scope::GlobalState, "key1", "global_value".to_string())
+    .await
+    .unwrap();
+
+  setup.store.clear(Scope::FeatureFlag).await.unwrap();
+
+  let reader = setup.store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), None);
+  assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global_value"));
+}
+
+#[tokio::test]
+#[apply(dual_backend)]
+async fn scope_isolation(setup: Setup) {
+  let setup = setup.await;
+
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "key", "flag_value".to_string())
+    .await
+    .unwrap();
+  setup
+    .store
+    .insert(Scope::GlobalState, "key", "global_value".to_string())
+    .await
+    .unwrap();
+
+  let reader = setup.store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "key"), Some("flag_value"));
+  assert_eq!(reader.get(Scope::GlobalState, "key"), Some("global_value"));
+}
+
+#[tokio::test]
+#[apply(dual_backend)]
+async fn iter_scope(setup: Setup) {
+  let setup = setup.await;
+
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .await
+    .unwrap();
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "flag2", "value2".to_string())
+    .await
+    .unwrap();
+  setup
+    .store
+    .insert(Scope::GlobalState, "key1", "global_value".to_string())
+    .await
+    .unwrap();
+
+  let reader = setup.store.read().await;
+  let items: std::collections::HashMap<_, _> = reader
+    .iter()
+    .filter(|entry| entry.scope == Scope::FeatureFlag)
+    .map(|entry| (entry.key.to_string(), entry.value.to_string()))
+    .collect();
+
+  assert_eq!(items.len(), 2);
+  assert_eq!(items.get("flag1"), Some(&"value1".to_string()));
+  assert_eq!(items.get("flag2"), Some(&"value2".to_string()));
+  assert_eq!(items.get("key1"), None);
+}
+
+#[tokio::test]
+#[apply(dual_backend)]
+async fn iter_empty_scope(setup: Setup) {
+  let setup = setup.await;
+
+  let reader = setup.store.read().await;
+  let count = reader
+    .iter()
+    .filter(|entry| entry.scope == Scope::FeatureFlag)
+    .count();
+
+  assert_eq!(count, 0);
+}
+
+#[tokio::test]
+#[apply(dual_backend)]
+async fn to_snapshot(setup: Setup) {
+  let setup = setup.await;
+
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .await
+    .unwrap();
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "flag2", "value2".to_string())
+    .await
+    .unwrap();
+  setup
+    .store
+    .insert(Scope::GlobalState, "key1", "global_value".to_string())
+    .await
+    .unwrap();
+
+  let reader = setup.store.read().await;
+  let snapshot = reader.to_snapshot();
+
+  assert_eq!(snapshot.feature_flags.len(), 2);
+  assert_eq!(snapshot.global_state.len(), 1);
+  assert_eq!(
+    snapshot.feature_flags.get("flag1").map(|(v, _)| v.as_str()),
+    Some("value1")
+  );
+  assert_eq!(
+    snapshot.feature_flags.get("flag2").map(|(v, _)| v.as_str()),
+    Some("value2")
+  );
+  assert_eq!(
+    snapshot.global_state.get("key1").map(|(v, _)| v.as_str()),
+    Some("global_value")
+  );
+}
+
+#[tokio::test]
+#[apply(dual_backend)]
+async fn to_scoped_snapshot(setup: Setup) {
+  let setup = setup.await;
+
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .await
+    .unwrap();
+  setup
+    .store
+    .insert(Scope::GlobalState, "key1", "global_value".to_string())
+    .await
+    .unwrap();
+
+  let reader = setup.store.read().await;
+  let snapshot = reader.to_scoped_snapshot(Scope::FeatureFlag);
+
+  assert_eq!(snapshot.len(), 1);
+  assert_eq!(
+    snapshot.get("flag1").map(|(v, _)| v.as_str()),
+    Some("value1")
+  );
+  assert_eq!(snapshot.get("key1"), None);
+}
+
+#[tokio::test]
+#[apply(dual_backend)]
+async fn empty_snapshot(setup: Setup) {
+  let setup = setup.await;
+
+  let reader = setup.store.read().await;
+  let snapshot = reader.to_snapshot();
+
+  assert_eq!(snapshot.feature_flags.len(), 0);
+  assert_eq!(snapshot.global_state.len(), 0);
+}
+
+#[tokio::test]
+#[apply(dual_backend)]
+async fn large_value(setup: Setup) {
+  let setup = setup.await;
+
+  let large_value = "x".repeat(10_000);
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "large", large_value.clone())
+    .await
+    .unwrap();
+
+  let reader = setup.store.read().await;
+  assert_eq!(
+    reader.get(Scope::FeatureFlag, "large"),
+    Some(large_value.as_str())
+  );
+}
+
+#[tokio::test]
+#[apply(dual_backend)]
+async fn many_keys(setup: Setup) {
+  let setup = setup.await;
+
+  for i in 0 .. 100 {
+    setup
+      .store
+      .insert(Scope::FeatureFlag, &format!("flag{i}"), format!("value{i}"))
+      .await
+      .unwrap();
+  }
+
+  let reader = setup.store.read().await;
+  let snapshot = reader.to_snapshot();
+  assert_eq!(snapshot.feature_flags.len(), 100);
+
+  for i in 0 .. 100 {
+    assert_eq!(
+      snapshot
+        .feature_flags
+        .get(&format!("flag{i}"))
+        .map(|(v, _)| v.as_str()),
+      Some(format!("value{i}").as_str())
+    );
+  }
+}
+
+#[tokio::test]
+#[apply(dual_backend)]
+async fn special_characters_in_keys(setup: Setup) {
+  let setup = setup.await;
+
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "key:with:colons", "value1".to_string())
+    .await
+    .unwrap();
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "key/with/slashes", "value2".to_string())
+    .await
+    .unwrap();
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "key with spaces", "value3".to_string())
+    .await
+    .unwrap();
+
+  let reader = setup.store.read().await;
+  assert_eq!(
+    reader.get(Scope::FeatureFlag, "key:with:colons"),
+    Some("value1")
+  );
+  assert_eq!(
+    reader.get(Scope::FeatureFlag, "key/with/slashes"),
+    Some("value2")
+  );
+  assert_eq!(
+    reader.get(Scope::FeatureFlag, "key with spaces"),
+    Some("value3")
+  );
+}
+
+#[tokio::test]
+#[apply(dual_backend)]
+async fn empty_key(setup: Setup) {
+  let setup = setup.await;
+
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "", "value".to_string())
+    .await
+    .unwrap();
+
+  let reader = setup.store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, ""), Some("value"));
+}
+
+#[tokio::test]
+#[apply(dual_backend)]
+async fn empty_value(setup: Setup) {
+  let setup = setup.await;
+
+  setup
+    .store
+    .insert(Scope::FeatureFlag, "flag1", String::new())
+    .await
+    .unwrap();
+
+  let reader = setup.store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some(""));
+}
+
+#[tokio::test]
+async fn persistence_across_restart() {
+  let temp_dir = tempfile::tempdir().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  {
+    let store = Store::new(temp_dir.path(), time_provider.clone())
+      .await
+      .unwrap()
+      .store;
+    store
+      .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+      .await
+      .unwrap();
+    store
+      .insert(Scope::GlobalState, "key1", "global_value".to_string())
+      .await
+      .unwrap();
+  }
+
+  let store = Store::new(temp_dir.path(), time_provider.clone())
+    .await
+    .unwrap()
+    .store;
+
+  // After restart, ephemeral scopes are cleared
+  let reader = store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
+  assert_eq!(reader.get(Scope::GlobalState, "key1"), None);
+}
+
+#[tokio::test]
+async fn ephemeral_scopes_cleared_on_restart() {
+  let temp_dir = tempfile::tempdir().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  // First process: write state and verify snapshot on creation is empty
+  {
+    let result = Store::new(temp_dir.path(), time_provider.clone())
+      .await
+      .unwrap();
+    let store = result.store;
+    let prev_snapshot = result.previous_state;
+
+    // First run should have empty snapshot
+    assert!(prev_snapshot.feature_flags.is_empty());
+    assert!(prev_snapshot.global_state.is_empty());
+
+    // Insert some values
+    store
+      .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+      .await
+      .unwrap();
+    store
+      .insert(Scope::FeatureFlag, "flag2", "value2".to_string())
+      .await
+      .unwrap();
+    store
+      .insert(Scope::GlobalState, "key1", "global_value".to_string())
+      .await
+      .unwrap();
+
+    // Verify they're present
+    let reader = store.read().await;
+    assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some("value1"));
+    assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), Some("value2"));
+    assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global_value"));
+  }
+
+  // Second process: state should be cleared but snapshot should have previous data
+  {
+    let result = Store::new(temp_dir.path(), time_provider.clone())
+      .await
+      .unwrap();
+    let store = result.store;
+    let prev_snapshot = result.previous_state;
+
+    // Snapshot should contain previous process's data
+    assert_eq!(prev_snapshot.feature_flags.len(), 2);
+    assert_eq!(prev_snapshot.global_state.len(), 1);
+    assert_eq!(
+      prev_snapshot
+        .feature_flags
+        .get("flag1")
+        .map(|(v, _)| v.as_str()),
+      Some("value1")
+    );
+    assert_eq!(
+      prev_snapshot
+        .feature_flags
+        .get("flag2")
+        .map(|(v, _)| v.as_str()),
+      Some("value2")
+    );
+    assert_eq!(
+      prev_snapshot
+        .global_state
+        .get("key1")
+        .map(|(v, _)| v.as_str()),
+      Some("global_value")
+    );
+
+    // But current store should be empty (ephemeral scopes cleared)
+    let reader = store.read().await;
+    assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
+    assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), None);
+    assert_eq!(reader.get(Scope::GlobalState, "key1"), None);
+
+    // Verify snapshot is also empty
+    let reader = store.read().await;
+    let current_snapshot = reader.to_snapshot();
+    assert!(current_snapshot.feature_flags.is_empty());
+    assert!(current_snapshot.global_state.is_empty());
+  }
+}
+
+#[tokio::test]
+async fn fallback_to_in_memory_on_invalid_directory() {
+  // Try to create a store with an invalid path (e.g., a file instead of a directory)
+  let temp_file = tempfile::NamedTempFile::new().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  let store = result.store;
+
+  // Should have fallen back to in-memory
+  assert!(result.fallback_occurred);
+  assert!(result.data_loss.is_none());
+  assert!(result.previous_state.feature_flags.is_empty());
+  assert!(result.previous_state.global_state.is_empty());
+
+  // Verify in-memory store works correctly
+  store
+    .insert(Scope::FeatureFlag, "test_flag", "test_value".to_string())
+    .await
+    .unwrap();
+
+  let reader = store.read().await;
+  assert_eq!(
+    reader.get(Scope::FeatureFlag, "test_flag"),
+    Some("test_value")
+  );
+}
+
+#[tokio::test]
+async fn in_memory_store_supports_all_operations() {
+  let temp_file = tempfile::NamedTempFile::new().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  assert!(result.fallback_occurred);
+  let store = result.store;
+
+  // Test insert
+  store
+    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .await
+    .unwrap();
+  store
+    .insert(Scope::FeatureFlag, "flag2", "value2".to_string())
+    .await
+    .unwrap();
+  store
+    .insert(Scope::GlobalState, "key1", "global".to_string())
+    .await
+    .unwrap();
+
+  // Test get
+  let reader = store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some("value1"));
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), Some("value2"));
+  assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global"));
+
+  // Test iter
+  let entries: Vec<_> = reader.iter().collect();
+  assert_eq!(entries.len(), 3);
+
+  // Test to_snapshot
+  let snapshot = reader.to_snapshot();
+  assert_eq!(snapshot.feature_flags.len(), 2);
+  assert_eq!(snapshot.global_state.len(), 1);
+  drop(reader);
+
+  // Test remove
+  store.remove(Scope::FeatureFlag, "flag1").await.unwrap();
+  let reader = store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), Some("value2"));
+  drop(reader);
+
+  // Test clear
+  store.clear(Scope::FeatureFlag).await.unwrap();
+  let reader = store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), None);
+  assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global"));
+}
+
+#[tokio::test]
+async fn in_memory_store_does_not_persist() {
+  let temp_file = tempfile::NamedTempFile::new().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  // Create in-memory store and add data
+  {
+    let result = Store::new_or_fallback(temp_file.path(), time_provider.clone()).await;
+    assert!(result.fallback_occurred);
+    let store = result.store;
+
+    store
+      .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+      .await
+      .unwrap();
+
+    let reader = store.read().await;
+    assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some("value1"));
+  }
+
+  // Create a new in-memory store - data should not persist
+  {
+    let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+    assert!(result.fallback_occurred);
+    let store = result.store;
+
+    let reader = store.read().await;
+    assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
+  }
+}
+
+#[tokio::test]
+async fn in_memory_store_scoped_snapshot() {
+  let temp_file = tempfile::NamedTempFile::new().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  assert!(result.fallback_occurred);
+  let store = result.store;
+
+  // Add data to different scopes
+  store
+    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .await
+    .unwrap();
+  store
+    .insert(Scope::FeatureFlag, "flag2", "value2".to_string())
+    .await
+    .unwrap();
+  store
+    .insert(Scope::GlobalState, "key1", "global".to_string())
+    .await
+    .unwrap();
+
+  // Test scoped snapshot for FeatureFlag
+  let reader = store.read().await;
+  let ff_snapshot = reader.to_scoped_snapshot(Scope::FeatureFlag);
+  assert_eq!(ff_snapshot.len(), 2);
+  assert_eq!(
+    ff_snapshot.get("flag1").map(|(v, _)| v.as_str()),
+    Some("value1")
+  );
+  assert_eq!(
+    ff_snapshot.get("flag2").map(|(v, _)| v.as_str()),
+    Some("value2")
+  );
+  assert!(ff_snapshot.get("key1").is_none());
+
+  // Test scoped snapshot for GlobalState
+  let gs_snapshot = reader.to_scoped_snapshot(Scope::GlobalState);
+  assert_eq!(gs_snapshot.len(), 1);
+  assert_eq!(
+    gs_snapshot.get("key1").map(|(v, _)| v.as_str()),
+    Some("global")
+  );
+}
+
+#[tokio::test]
+async fn in_memory_store_clear_respects_scope() {
+  let temp_file = tempfile::NamedTempFile::new().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  assert!(result.fallback_occurred);
+  let store = result.store;
+
+  // Add data to both scopes
+  store
+    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .await
+    .unwrap();
+  store
+    .insert(Scope::GlobalState, "key1", "global".to_string())
+    .await
+    .unwrap();
+
+  // Clear only FeatureFlag scope
+  store.clear(Scope::FeatureFlag).await.unwrap();
+
+  // Verify FeatureFlag cleared but GlobalState remains
+  let reader = store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
+  assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global"));
+}
+
+#[tokio::test]
+async fn in_memory_store_concurrent_readers() {
+  let temp_file = tempfile::NamedTempFile::new().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  assert!(result.fallback_occurred);
+  let store = result.store;
+
+  store
+    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .await
+    .unwrap();
+
+  // Clone the store and verify both can read
+  let store2 = store.clone();
+
+  let reader1 = store.read().await;
+  let reader2 = store2.read().await;
+
+  assert_eq!(reader1.get(Scope::FeatureFlag, "flag1"), Some("value1"));
+  assert_eq!(reader2.get(Scope::FeatureFlag, "flag1"), Some("value1"));
+}
+
+#[tokio::test]
+async fn in_memory_store_empty_operations() {
+  let temp_file = tempfile::NamedTempFile::new().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  assert!(result.fallback_occurred);
+  let store = result.store;
+
+  // Operations on empty store should work
+  let reader = store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "nonexistent"), None);
+  assert_eq!(reader.iter().count(), 0);
+
+  let snapshot = reader.to_snapshot();
+  assert!(snapshot.feature_flags.is_empty());
+  assert!(snapshot.global_state.is_empty());
+  drop(reader);
+
+  // Remove on empty store should succeed
+  store
+    .remove(Scope::FeatureFlag, "nonexistent")
+    .await
+    .unwrap();
+
+  // Clear on empty store should succeed
+  store.clear(Scope::FeatureFlag).await.unwrap();
+}
