@@ -7,11 +7,13 @@
 
 use bd_proto::protos::state;
 
+pub mod cleanup;
 mod file_manager;
 mod framing;
 mod journal;
 mod memmapped_journal;
 pub mod recovery;
+pub mod retention;
 pub mod store;
 
 /// Represents a value with its associated timestamp.

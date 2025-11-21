@@ -8,6 +8,7 @@
 #![allow(clippy::unwrap_used)]
 
 use crate::tests::decompress_zlib;
+use crate::versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry};
 use crate::versioned_kv_journal::{TimestampedValue, make_string_value};
 use crate::{Scope, VersionedKVStore};
 use bd_proto::protos::state::payload::StateValue;
@@ -21,20 +22,31 @@ struct Setup {
   temp_dir: TempDir,
   store: VersionedKVStore,
   time_provider: Arc<TestTimeProvider>,
+  _retention_handle: RetentionHandle, // Keep handle alive to retain snapshots
 }
 
 impl Setup {
   async fn new() -> anyhow::Result<Self> {
     let temp_dir = TempDir::new()?;
     let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+    let registry = Arc::new(RetentionRegistry::new());
+    let retention_handle = registry.create_handle().await; // Retain all snapshots
 
-    let (store, _) =
-      VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone()).await?;
+    let (store, _) = VersionedKVStore::new(
+      temp_dir.path(),
+      "test",
+      4096,
+      None,
+      time_provider.clone(),
+      registry,
+    )
+    .await?;
 
     Ok(Self {
       temp_dir,
       store,
       time_provider,
+      _retention_handle: retention_handle,
     })
   }
 
@@ -51,12 +63,14 @@ impl Setup {
       decompressed_snapshot,
     )?;
 
+    let registry = Arc::new(RetentionRegistry::new());
     let (store, _) = VersionedKVStore::open_existing(
       self.temp_dir.path(),
       "snapshot",
       4096,
       None,
       self.time_provider.clone(),
+      registry,
     )
     .await?;
 
@@ -81,17 +95,25 @@ async fn empty_store() -> anyhow::Result<()> {
 async fn basic_crud() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
-
+  let registry = Arc::new(RetentionRegistry::new());
 
   let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider).await?;
+    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider, registry).await?;
 
   // Insert some values
   let ts1 = store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
   let ts2 = store
-    .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    )
     .await?;
 
   assert_eq!(store.len(), 2);
@@ -125,17 +147,32 @@ async fn basic_crud() -> anyhow::Result<()> {
 async fn test_persistence_and_reload() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
-
+  let registry = Arc::new(RetentionRegistry::new());
 
   // Create store and write some data
   let (ts1, ts2) = {
-    let (mut store, _) =
-      VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone()).await?;
+    let (mut store, _) = VersionedKVStore::new(
+      temp_dir.path(),
+      "test",
+      4096,
+      None,
+      time_provider.clone(),
+      registry.clone(),
+    )
+    .await?;
     let ts1 = store
-      .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+      .insert(
+        Scope::FeatureFlag,
+        "key1".to_string(),
+        make_string_value("value1"),
+      )
       .await?;
     let ts2 = store
-      .insert(Scope::FeatureFlag, "key2", make_string_value("foo"))
+      .insert(
+        Scope::FeatureFlag,
+        "key2".to_string(),
+        make_string_value("foo"),
+      )
       .await?;
     store.sync()?;
 
@@ -145,7 +182,8 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
   // Reopen and verify data persisted
   {
     let (store, _) =
-      VersionedKVStore::open_existing(temp_dir.path(), "test", 4096, None, time_provider).await?;
+      VersionedKVStore::open_existing(temp_dir.path(), "test", 4096, None, time_provider, registry)
+        .await?;
     assert_eq!(store.len(), 2);
     assert_eq!(
       store.get_with_timestamp(Scope::FeatureFlag, "key1"),
@@ -173,14 +211,22 @@ async fn test_null_value_is_deletion() -> anyhow::Result<()> {
   // Insert a value
   setup
     .store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
   assert!(setup.store.contains_key(Scope::FeatureFlag, "key1"));
 
   // Insert empty state to delete
   setup
     .store
-    .insert(Scope::FeatureFlag, "key1", StateValue::default())
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      StateValue::default(),
+    )
     .await?;
   assert!(!setup.store.contains_key(Scope::FeatureFlag, "key1"));
   assert_eq!(setup.store.len(), 0);
@@ -195,34 +241,41 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
   // Insert some data
   let _ts1 = setup
     .store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
   let ts2 = setup
     .store
-    .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    )
     .await?;
 
-  // Get max timestamp before rotation (this will be used in the archive name)
-  let rotation_timestamp = setup
+  setup
     .store
     .get_with_timestamp(Scope::FeatureFlag, "key2")
     .map(|tv| tv.timestamp)
     .unwrap();
 
   // Manually trigger rotation
-  setup.store.rotate_journal().await?;
+  let rotation = setup.store.rotate_journal().await?;
 
   // Verify archived file exists (compressed)
-  let archived_path = setup
-    .temp_dir
-    .path()
-    .join(format!("test.jrn.t{}.zz", rotation_timestamp));
-  assert!(archived_path.exists());
+  assert!(rotation.snapshot_path.exists());
 
   // Verify active journal still works
   let ts3 = setup
     .store
-    .insert(Scope::FeatureFlag, "key3", make_string_value("value3"))
+    .insert(
+      Scope::FeatureFlag,
+      "key3".to_string(),
+      make_string_value("value3"),
+    )
     .await?;
   assert!(ts3 >= ts2);
   assert_eq!(setup.store.len(), 3);
@@ -242,7 +295,9 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
   );
 
   // Decompress the archive and load it as a Store to verify that it contains the old state.
-  let snapshot_store = setup.make_store_from_snapshot_file(&archived_path).await?;
+  let snapshot_store = setup
+    .make_store_from_snapshot_file(&rotation.snapshot_path)
+    .await?;
   assert_eq!(
     snapshot_store.get(Scope::FeatureFlag, "key1"),
     Some(&make_string_value("value1"))
@@ -262,7 +317,11 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
 
   setup
     .store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
 
   let pre_rotation_state = setup.store.as_hashmap().clone();
@@ -283,7 +342,11 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
   // Verify we can continue writing
   let ts_new = setup
     .store
-    .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    )
     .await?;
   assert!(ts_new >= pre_rotation_ts);
   assert_eq!(setup.store.len(), 2);
@@ -318,7 +381,11 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
   // Insert some keys and capture their timestamps
   let ts1 = setup
     .store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
 
   // Advance time to ensure different timestamps.
@@ -326,7 +393,11 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
 
   let ts2 = setup
     .store
-    .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    )
     .await?;
 
   // Verify timestamps are different
@@ -339,7 +410,7 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
       .store
       .insert(
         Scope::FeatureFlag,
-        &format!("fill{i}"),
+        format!("fill{i}"),
         make_string_value("foo"),
       )
       .await?;
@@ -380,34 +451,190 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
 async fn test_multiple_rotations() -> anyhow::Result<()> {
   let mut setup = Setup::new().await?;
 
-  let mut rotation_timestamps = Vec::new();
+  let mut snapshot_paths = Vec::new();
 
   // Perform multiple rotations
   for i in 0 .. 3 {
     let key = format!("key{}", i);
     let value = make_string_value(&format!("value{}", i));
-    setup.store.insert(Scope::FeatureFlag, &key, value).await?;
-    let timestamp = setup
-      .store
-      .get_with_timestamp(Scope::FeatureFlag, &key)
-      .map(|tv| tv.timestamp)
-      .unwrap();
-    rotation_timestamps.push(timestamp);
-    setup.store.rotate_journal().await?;
+    setup.store.insert(Scope::FeatureFlag, key, value).await?;
+    let rotation = setup.store.rotate_journal().await?;
+    snapshot_paths.push(rotation.snapshot_path.clone());
   }
 
   // Verify all compressed archives exist
-  for timestamp in rotation_timestamps {
-    let archived_path = setup
-      .temp_dir
-      .path()
-      .join(format!("test.jrn.t{}.zz", timestamp));
+  for snapshot_path in snapshot_paths {
     assert!(
-      archived_path.exists(),
-      "Compressed archive for timestamp {} should exist",
-      timestamp
+      snapshot_path.exists(),
+      "Compressed archive {} should exist",
+      snapshot_path.display()
     );
   }
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
+  use crate::RetentionRegistry;
+  use std::sync::Arc;
+
+  let temp_dir = TempDir::new()?;
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+  let registry = Arc::new(RetentionRegistry::new());
+
+  // Create store with retention registry
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    4096,
+    None,
+    time_provider.clone(),
+    registry.clone(),
+  )
+  .await?;
+
+  // Insert some data
+  store
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
+    .await?;
+
+  // Advance time so each rotation has a different timestamp
+  time_provider.advance(1.seconds());
+
+  // Rotate WITHOUT any retention handles - snapshot should NOT be created
+  let rotation1 = store.rotate_journal().await?;
+  let snapshot_path1 = rotation1.snapshot_path;
+
+  // Snapshot file should NOT exist because no handles require it
+  assert!(
+    !snapshot_path1.exists(),
+    "Snapshot should not be created when no retention handles exist"
+  );
+
+  // Now create a handle that requires retention - use a timestamp far in the past
+  // so that any rotation will be newer than the retention requirement
+  let handle = registry.create_handle().await;
+  handle.update_retention_micros(0); // Retain all data from epoch
+
+  // Insert more data and rotate WITH retention handle - snapshot SHOULD be created
+  store
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    )
+    .await?;
+
+  // Advance time so each rotation has a different timestamp
+  time_provider.advance(1.seconds());
+
+  let rotation2 = store.rotate_journal().await?;
+  let snapshot_path2 = rotation2.snapshot_path;
+
+  // Snapshot file SHOULD exist because handle requires retention
+  assert!(
+    snapshot_path2.exists(),
+    "Snapshot should be created when retention handle exists"
+  );
+
+  // Drop the handle and rotate again - snapshot should NOT be created
+  drop(handle);
+
+  // Give the registry time to clean up the dropped handle
+  tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+  store
+    .insert(
+      Scope::FeatureFlag,
+      "key3".to_string(),
+      make_string_value("value3"),
+    )
+    .await?;
+
+  // Advance time so each rotation has a different timestamp
+  time_provider.advance(1.seconds());
+
+  let rotation3 = store.rotate_journal().await?;
+  let snapshot_path3 = rotation3.snapshot_path;
+
+  // After handle is dropped, snapshot should not be created
+  assert!(
+    !snapshot_path3.exists(),
+    "Snapshot should not be created after handle is dropped"
+  );
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn test_multiple_rotations_with_same_timestamp() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  // Use fixed time so all rotations have the same data timestamp
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+  let registry = Arc::new(RetentionRegistry::new());
+  let _handle = registry.create_handle().await; // Retain all snapshots
+
+  let (mut store, _) =
+    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider, registry).await?;
+
+  // Insert data once
+  store
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
+    .await?;
+
+  // Perform first rotation
+  let rotation1 = store.rotate_journal().await?;
+  assert!(
+    rotation1.snapshot_path.exists(),
+    "First rotation should create snapshot"
+  );
+
+  // Perform second rotation WITHOUT inserting new data
+  // This means both rotations will have the same max timestamp
+  let rotation2 = store.rotate_journal().await?;
+  assert!(
+    rotation2.snapshot_path.exists(),
+    "Second rotation should create snapshot"
+  );
+
+  // Verify both snapshots exist with different filenames (due to different generations)
+  assert!(
+    rotation1.snapshot_path.exists(),
+    "First snapshot should still exist"
+  );
+  assert!(
+    rotation2.snapshot_path.exists(),
+    "Second snapshot should exist"
+  );
+
+  // Verify the paths are different (different generations prevent collision)
+  assert_ne!(
+    rotation1.snapshot_path, rotation2.snapshot_path,
+    "Snapshots should have different paths despite same timestamp"
+  );
+
+  // Verify we can read both snapshots (they should be different files)
+  let snapshot1_data = std::fs::read(&rotation1.snapshot_path)?;
+  let snapshot2_data = std::fs::read(&rotation2.snapshot_path)?;
+
+  // The files should exist and be valid
+  assert!(
+    !snapshot1_data.is_empty(),
+    "First snapshot should have data"
+  );
+  assert!(
+    !snapshot2_data.is_empty(),
+    "Second snapshot should have data"
+  );
 
   Ok(())
 }

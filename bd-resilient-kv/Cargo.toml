@@ -9,24 +9,25 @@ version      = "1.0.0"
 doctest = false
 
 [dev-dependencies]
+ctor.workspace     = true
 tempfile.workspace = true
-ctor.workspace = true
-time.workspace        = true
+time.workspace     = true
 
 [dependencies]
-ahash.workspace             = true
-anyhow.workspace            = true
-bd-bonjson                  = { path = "../bd-bonjson" }
-bd-client-common            = { path = "../bd-client-common" }
+ahash.workspace        = true
+anyhow.workspace       = true
+bd-bonjson             = { path = "../bd-bonjson" }
+bd-client-common       = { path = "../bd-client-common" }
 bd-log                      = { path = "../bd-log" }
 bd-proto                    = { path = "../bd-proto" }
 bd-time                     = { path = "../bd-time" }
 bd-workspace-hack.workspace = true
-bytes.workspace             = true
-crc32fast.workspace         = true
 flate2                      = { workspace = true, features = ["zlib"] }
 log.workspace               = true
-memmap2.workspace           = true
-protobuf.workspace          = true
-strum.workspace             = true
+bytes.workspace        = true
+crc32fast.workspace    = true
+memmap2.workspace      = true
+strum.workspace        = true
+bd-error-reporter       = { path = "../bd-error-reporter" }
+protobuf.workspace        = true
 tokio.workspace             = true
