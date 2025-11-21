@@ -8,10 +8,10 @@
 #![allow(clippy::unwrap_used)]
 #![allow(clippy::case_sensitive_file_extension_comparisons)]
 
-use crate::VersionedKVStore;
 use crate::tests::decompress_zlib;
 use crate::versioned_kv_journal::make_string_value;
 use crate::versioned_kv_journal::recovery::VersionedRecovery;
+use crate::{Scope, VersionedKVStore};
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::ext::NumericalDuration;
@@ -84,28 +84,32 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   .await?;
 
   store
-    .insert("key1".to_string(), make_string_value("value1"))
+    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
     .await?;
   let ts1 = store
-    .get_with_timestamp("key1")
+    .get_with_timestamp(Scope::FeatureFlag, "key1")
     .map(|tv| tv.timestamp)
     .unwrap();
 
   time_provider.advance(10.milliseconds());
 
   store
-    .insert("key2".to_string(), make_string_value("value2"))
+    .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
     .await?;
 
   // Write more data to trigger rotation
   for i in 0 .. 20 {
     store
-      .insert(format!("key{i}"), make_string_value("foo"))
+      .insert(
+        Scope::FeatureFlag,
+        &format!("key{i}"),
+        make_string_value("foo"),
+      )
       .await?;
   }
 
   let ts_middle = store
-    .get_with_timestamp("key19")
+    .get_with_timestamp(Scope::FeatureFlag, "key19")
     .map(|tv| tv.timestamp)
     .unwrap();
 
@@ -113,10 +117,14 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
 
   // Write more after rotation
   store
-    .insert("final".to_string(), make_string_value("final_value"))
+    .insert(
+      Scope::FeatureFlag,
+      "final",
+      make_string_value("final_value"),
+    )
     .await?;
   let ts_final = store
-    .get_with_timestamp("final")
+    .get_with_timestamp(Scope::FeatureFlag, "final")
     .map(|tv| tv.timestamp)
     .unwrap();
   store.sync()?;
@@ -144,19 +152,21 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   // Verify we can recover at early timestamp
   let state_ts1 = recovery.recover_at_timestamp(ts1)?;
   assert_eq!(state_ts1.len(), 1);
-  assert!(state_ts1.contains_key("key1"));
+  assert!(state_ts1.contains_key(&(Scope::FeatureFlag, "key1".to_string())));
 
   // Verify we can recover at middle timestamp (after rotation)
   let state_middle = recovery.recover_at_timestamp(ts_middle)?;
   assert!(state_middle.len() > 2);
-  assert!(state_middle.contains_key("key1"));
-  assert!(state_middle.contains_key("key2"));
+  assert!(state_middle.contains_key(&(Scope::FeatureFlag, "key1".to_string())));
+  assert!(state_middle.contains_key(&(Scope::FeatureFlag, "key2".to_string())));
 
   // Verify we can recover at final timestamp
   let state_final = recovery.recover_at_timestamp(ts_final)?;
-  assert!(state_final.contains_key("final"));
+  assert!(state_final.contains_key(&(Scope::FeatureFlag, "final".to_string())));
   assert_eq!(
-    state_final.get("final").map(|tv| &tv.value),
+    state_final
+      .get(&(Scope::FeatureFlag, "final".to_string()))
+      .map(|tv| &tv.value),
     Some(&make_string_value("final_value"))
   );
 
@@ -213,30 +223,30 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   )
   .await?;
   store
-    .insert("key".to_string(), make_string_value("1"))
+    .insert(Scope::FeatureFlag, "key", make_string_value("1"))
     .await?;
   let ts1 = store
-    .get_with_timestamp("key")
+    .get_with_timestamp(Scope::FeatureFlag, "key")
     .map(|tv| tv.timestamp)
     .unwrap();
 
   time_provider.advance(10.milliseconds());
 
   store
-    .insert("key".to_string(), make_string_value("2"))
+    .insert(Scope::FeatureFlag, "key", make_string_value("2"))
     .await?;
   let ts2 = store
-    .get_with_timestamp("key")
+    .get_with_timestamp(Scope::FeatureFlag, "key")
     .map(|tv| tv.timestamp)
     .unwrap();
 
   time_provider.advance(10.milliseconds());
 
   store
-    .insert("key".to_string(), make_string_value("3"))
+    .insert(Scope::FeatureFlag, "key", make_string_value("3"))
     .await?;
   let ts3 = store
-    .get_with_timestamp("key")
+    .get_with_timestamp(Scope::FeatureFlag, "key")
     .map(|tv| tv.timestamp)
     .unwrap();
 
@@ -257,19 +267,25 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   // Each timestamp should show the value at that time
   let state_ts1 = recovery.recover_at_timestamp(ts1)?;
   assert_eq!(
-    state_ts1.get("key").map(|tv| &tv.value),
+    state_ts1
+      .get(&(Scope::FeatureFlag, "key".to_string()))
+      .map(|tv| &tv.value),
     Some(&make_string_value("1"))
   );
 
   let state_ts2 = recovery.recover_at_timestamp(ts2)?;
   assert_eq!(
-    state_ts2.get("key").map(|tv| &tv.value),
+    state_ts2
+      .get(&(Scope::FeatureFlag, "key".to_string()))
+      .map(|tv| &tv.value),
     Some(&make_string_value("2"))
   );
 
   let state_ts3 = recovery.recover_at_timestamp(ts3)?;
   assert_eq!(
-    state_ts3.get("key").map(|tv| &tv.value),
+    state_ts3
+      .get(&(Scope::FeatureFlag, "key".to_string()))
+      .map(|tv| &tv.value),
     Some(&make_string_value("3"))
   );
 
@@ -295,10 +311,10 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   .await?;
 
   store
-    .insert("key1".to_string(), make_string_value("value1"))
+    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
     .await?;
   let ts1 = store
-    .get_with_timestamp("key1")
+    .get_with_timestamp(Scope::FeatureFlag, "key1")
     .map(|tv| tv.timestamp)
     .unwrap();
 
@@ -306,10 +322,10 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   time_provider.advance(10.milliseconds());
 
   store
-    .insert("key2".to_string(), make_string_value("value2"))
+    .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
     .await?;
   let ts2 = store
-    .get_with_timestamp("key2")
+    .get_with_timestamp(Scope::FeatureFlag, "key2")
     .map(|tv| tv.timestamp)
     .unwrap();
 
@@ -317,10 +333,10 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   time_provider.advance(10.milliseconds());
 
   store
-    .insert("key1".to_string(), make_string_value("updated1"))
+    .insert(Scope::FeatureFlag, "key1", make_string_value("updated1"))
     .await?;
   let ts3 = store
-    .get_with_timestamp("key1")
+    .get_with_timestamp(Scope::FeatureFlag, "key1")
     .map(|tv| tv.timestamp)
     .unwrap();
 
@@ -343,7 +359,9 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   let state_ts1 = recovery.recover_at_timestamp(ts1)?;
   assert_eq!(state_ts1.len(), 1);
   assert_eq!(
-    state_ts1.get("key1").map(|tv| &tv.value),
+    state_ts1
+      .get(&(Scope::FeatureFlag, "key1".to_string()))
+      .map(|tv| &tv.value),
     Some(&make_string_value("value1"))
   );
 
@@ -351,11 +369,15 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   let state_ts2 = recovery.recover_at_timestamp(ts2)?;
   assert_eq!(state_ts2.len(), 2);
   assert_eq!(
-    state_ts2.get("key1").map(|tv| &tv.value),
+    state_ts2
+      .get(&(Scope::FeatureFlag, "key1".to_string()))
+      .map(|tv| &tv.value),
     Some(&make_string_value("value1"))
   );
   assert_eq!(
-    state_ts2.get("key2").map(|tv| &tv.value),
+    state_ts2
+      .get(&(Scope::FeatureFlag, "key2".to_string()))
+      .map(|tv| &tv.value),
     Some(&make_string_value("value2"))
   );
 
@@ -363,11 +385,15 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   let state_ts3 = recovery.recover_at_timestamp(ts3)?;
   assert_eq!(state_ts3.len(), 2);
   assert_eq!(
-    state_ts3.get("key1").map(|tv| &tv.value),
+    state_ts3
+      .get(&(Scope::FeatureFlag, "key1".to_string()))
+      .map(|tv| &tv.value),
     Some(&make_string_value("updated1"))
   );
   assert_eq!(
-    state_ts3.get("key2").map(|tv| &tv.value),
+    state_ts3
+      .get(&(Scope::FeatureFlag, "key2".to_string()))
+      .map(|tv| &tv.value),
     Some(&make_string_value("value2"))
   );
 
@@ -393,20 +419,20 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
 
   // Write some data before rotation
   store
-    .insert("key1".to_string(), make_string_value("value1"))
+    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
     .await?;
   let ts1 = store
-    .get_with_timestamp("key1")
+    .get_with_timestamp(Scope::FeatureFlag, "key1")
     .map(|tv| tv.timestamp)
     .unwrap();
 
   time_provider.advance(10.milliseconds());
 
   store
-    .insert("key2".to_string(), make_string_value("value2"))
+    .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
     .await?;
   let ts2 = store
-    .get_with_timestamp("key2")
+    .get_with_timestamp(Scope::FeatureFlag, "key2")
     .map(|tv| tv.timestamp)
     .unwrap();
 
@@ -417,10 +443,10 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
 
   // Write data after rotation
   store
-    .insert("key3".to_string(), make_string_value("value3"))
+    .insert(Scope::FeatureFlag, "key3", make_string_value("value3"))
     .await?;
   let ts3 = store
-    .get_with_timestamp("key3")
+    .get_with_timestamp(Scope::FeatureFlag, "key3")
     .map(|tv| tv.timestamp)
     .unwrap();
 
@@ -451,20 +477,20 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
   // Verify we can recover at any timestamp across all snapshots
   let state_ts1 = recovery.recover_at_timestamp(ts1)?;
   assert_eq!(state_ts1.len(), 1);
-  assert!(state_ts1.contains_key("key1"));
+  assert!(state_ts1.contains_key(&(Scope::FeatureFlag, "key1".to_string())));
 
   // Recover at ts2 (should be in first snapshot)
   let state_ts2 = recovery.recover_at_timestamp(ts2)?;
   assert_eq!(state_ts2.len(), 2);
-  assert!(state_ts2.contains_key("key1"));
-  assert!(state_ts2.contains_key("key2"));
+  assert!(state_ts2.contains_key(&(Scope::FeatureFlag, "key1".to_string())));
+  assert!(state_ts2.contains_key(&(Scope::FeatureFlag, "key2".to_string())));
 
   // Recover at ts3 (should include all data from both snapshots)
   let state_ts3 = recovery.recover_at_timestamp(ts3)?;
   assert_eq!(state_ts3.len(), 3);
-  assert!(state_ts3.contains_key("key1"));
-  assert!(state_ts3.contains_key("key2"));
-  assert!(state_ts3.contains_key("key3"));
+  assert!(state_ts3.contains_key(&(Scope::FeatureFlag, "key1".to_string())));
+  assert!(state_ts3.contains_key(&(Scope::FeatureFlag, "key2".to_string())));
+  assert!(state_ts3.contains_key(&(Scope::FeatureFlag, "key3".to_string())));
 
   Ok(())
 }

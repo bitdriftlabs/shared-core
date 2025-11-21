@@ -9,7 +9,7 @@ use ahash::AHashMap;
 use arbitrary::{Arbitrary, Unstructured};
 use bd_proto::protos::state::payload::state_value::Value_type;
 use bd_proto::protos::state::payload::{StateKeyValuePair, StateValue};
-use bd_resilient_kv::{DataLoss, TimestampedValue, VersionedKVStore};
+use bd_resilient_kv::{DataLoss, Scope, TimestampedValue, VersionedKVStore};
 use bd_time::{TestTimeProvider, TimeProvider as _};
 use protobuf::MessageDyn;
 use std::sync::Arc;
@@ -17,6 +17,21 @@ use tempfile::TempDir;
 use time::macros::datetime;
 
 const JOURNAL_NAME: &str = "fuzz_journal";
+
+// Wrapper for Scope to implement Arbitrary
+#[derive(Debug, Clone, Copy)]
+struct ArbitraryScope(Scope);
+
+impl<'a> Arbitrary<'a> for ArbitraryScope {
+  fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+    let variant: u8 = u.arbitrary()?;
+    Ok(Self(match variant % 2 {
+      0 => Scope::FeatureFlag,
+      1 => Scope::GlobalState,
+      _ => unreachable!(),
+    }))
+  }
+}
 
 // Wrapper for StateValue to implement Arbitrary
 #[derive(Debug, Clone)]
@@ -122,8 +137,8 @@ impl<'a> Arbitrary<'a> for ArbitraryStateValue {
 enum KeyStrategy {
   // Use an existing key from the key pool (by index)
   Existing(u8),
-  // Generate a new key
-  New(String),
+  // Generate a new key with a scope
+  New(ArbitraryScope, String),
 }
 
 // Types of corruption to apply to journal files
@@ -168,6 +183,7 @@ enum OperationType {
   // Insert multiple entries to stress buffer
   BulkInsert {
     count: u8, // 1-256 entries
+    scope: ArbitraryScope,
     key_prefix: String,
   },
   // Reopen without syncing first (test dirty state handling)
@@ -176,18 +192,18 @@ enum OperationType {
 
 /// Tracks keys created during the test to allow reuse between INSERT/GET/REMOVE operations.
 struct KeyPool {
-  keys: Vec<String>,
+  keys: Vec<(Scope, String)>,
 }
 
 impl KeyPool {
   /// Selects a key for writing based on the provided strategy. This either resuses an existing key
   /// or generates a new one, updating the key pool accordingly.
-  fn key_for_write(&mut self, strategy: &KeyStrategy) -> String {
+  fn key_for_write(&mut self, strategy: &KeyStrategy) -> (Scope, String) {
     match strategy {
       KeyStrategy::Existing(index) => {
         if self.keys.is_empty() {
           // No existing keys, create a new one.
-          let new_key = format!("key_{}", self.keys.len());
+          let new_key = (Scope::FeatureFlag, format!("key_{}", self.keys.len()));
           self.keys.push(new_key.clone());
           new_key
         } else {
@@ -196,8 +212,8 @@ impl KeyPool {
           self.keys[idx].clone()
         }
       },
-      KeyStrategy::New(key) => {
-        let new_key = format!("{}_{:x}", key, self.keys.len());
+      KeyStrategy::New(scope, key) => {
+        let new_key = (scope.0, format!("{}_{:x}", key, self.keys.len()));
         self.keys.push(new_key.clone());
         new_key
       },
@@ -206,22 +222,22 @@ impl KeyPool {
 
   /// Selects a key for reading based on the provided strategy. This either resuses an existing key
   /// or generates a new one without updating the key pool.
-  fn key_for_read(&self, strategy: &KeyStrategy) -> String {
+  fn key_for_read(&self, strategy: &KeyStrategy) -> (Scope, String) {
     match strategy {
       KeyStrategy::Existing(index) => {
         if self.keys.is_empty() {
           // No existing keys, create a new one. At this point we have not inserted any keys yet so
           // // we can just create a new key.
-          format!("key_{}", self.keys.len())
+          (Scope::FeatureFlag, format!("key_{}", self.keys.len()))
         } else {
           // Use modulo to wrap index into valid range
           let idx = (*index as usize) % self.keys.len();
           self.keys[idx].clone()
         }
       },
-      KeyStrategy::New(key) => {
+      KeyStrategy::New(scope, key) => {
         // Generate a new key that hasn't been used before.
-        format!("{}_{:x}", key, self.keys.len())
+        (scope.0, format!("{}_{:x}", key, self.keys.len()))
       },
     }
   }
@@ -250,7 +266,7 @@ pub struct VersionedKVJournalFuzzTest {
   high_water_mark_ratio: Option<f32>,
   temp_dir: TempDir,
   time_provider: Arc<TestTimeProvider>,
-  state: AHashMap<String, TimestampedValue>,
+  state: AHashMap<(Scope, String), TimestampedValue>,
   keys: KeyPool,
   /// Track whether the journal is full (capacity exceeded)
   is_full: bool,
@@ -320,8 +336,9 @@ impl VersionedKVJournalFuzzTest {
   /// in the journal.
   fn estimate_entry_size(key: &str, value: &StateValue) -> usize {
     const AVG_VARINT_SIZE: usize = 5; // Average size for frame length and timestamp varints
+    const SCOPE_SIZE: usize = 1; // Scope is serialized as u8
     const CRC_SIZE: usize = 4;
-    const OVERHEAD_PER_ENTRY: usize = AVG_VARINT_SIZE + AVG_VARINT_SIZE + CRC_SIZE;
+    const OVERHEAD_PER_ENTRY: usize = AVG_VARINT_SIZE + SCOPE_SIZE + AVG_VARINT_SIZE + CRC_SIZE;
 
     let entry_size = StateKeyValuePair {
       key: key.to_string(),
@@ -340,9 +357,9 @@ impl VersionedKVJournalFuzzTest {
 
     let mut total_size = HEADER_SIZE;
 
-    for (key, timestamped_value) in &self.state {
+    for ((_, key_str), timestamped_value) in &self.state {
       // Use our entry size estimator for consistency
-      let entry_size = Self::estimate_entry_size(key, &timestamped_value.value);
+      let entry_size = Self::estimate_entry_size(key_str, &timestamped_value.value);
       total_size += entry_size;
     }
 
@@ -361,10 +378,9 @@ impl VersionedKVJournalFuzzTest {
       // Check if we have any very large entries that individually exceed the buffer
       // We use 75% as the threshold - entries larger than this are genuinely oversized
       // and can be the primary cause of capacity issues.
-      let has_oversized_entry = self
-        .state
-        .iter()
-        .any(|(key, tv)| Self::estimate_entry_size(key, &tv.value) > self.buffer_size * 3 / 4);
+      let has_oversized_entry = self.state.iter().any(|((_, key_str), tv)| {
+        Self::estimate_entry_size(key_str, &tv.value) > self.buffer_size * 3 / 4
+      });
 
       if has_oversized_entry {
         // When we have oversized entries, we can't reliably validate capacity usage
@@ -455,9 +471,9 @@ impl VersionedKVJournalFuzzTest {
         } => {
           log::info!("Inserting key with strategy {key_strategy:?} and value {value:?}",);
 
-          let key = self.keys.key_for_write(&key_strategy);
+          let (scope, key_str) = self.keys.key_for_write(&key_strategy);
 
-          let result = store.insert(key.clone(), value.0.clone()).await;
+          let result = store.insert(scope, &key_str, value.0.clone()).await;
 
           match result {
             Ok(timestamp) => {
@@ -470,7 +486,7 @@ impl VersionedKVJournalFuzzTest {
 
               if value.0.value_type.is_some() {
                 self.state.insert(
-                  key.clone(),
+                  (scope, key_str.clone()),
                   TimestampedValue {
                     value: value.0.clone(),
                     timestamp,
@@ -478,17 +494,17 @@ impl VersionedKVJournalFuzzTest {
                 );
 
                 // Verify timestamp is available
-                let with_timestamp = store.get_with_timestamp(&key);
+                let with_timestamp = store.get_with_timestamp(scope, &key_str);
                 assert!(with_timestamp.is_some());
                 assert_eq!(with_timestamp.unwrap().timestamp, timestamp);
               } else {
-                self.state.remove(&key);
-                assert!(store.get(&key).is_none());
+                self.state.remove(&(scope, key_str.clone()));
+                assert!(store.get(scope, &key_str).is_none());
               }
             },
             Err(e) => {
               // Classify the error
-              let entry_size = Self::estimate_entry_size(&key, &value.0);
+              let entry_size = Self::estimate_entry_size(&key_str, &value.0);
               match Self::classify_capacity_error(&e, Some(entry_size), self.buffer_size) {
                 CapacityErrorKind::OversizedEntry => {
                   log::info!(
@@ -515,15 +531,16 @@ impl VersionedKVJournalFuzzTest {
           }
         },
         OperationType::Remove { key_strategy } => {
-          let key = self.keys.key_for_read(&key_strategy);
+          let (scope, key_str) = self.keys.key_for_read(&key_strategy);
 
-          let result = store.remove(&key).await;
+          let result = store.remove(scope, &key_str).await;
 
           match result {
             Ok(timestamp) => {
               // Reset full flag on successful remove
               self.is_full = false;
 
+              let key = (scope, key_str.clone());
               if self.state.contains_key(&key) {
                 // Key existed, should get the current timestamp of removal.
                 assert_eq!(timestamp, Some(current_timestamp_micros()));
@@ -531,7 +548,7 @@ impl VersionedKVJournalFuzzTest {
                 self.state.remove(&key);
 
                 // Verify the value was removed
-                assert!(store.get(&key).is_none());
+                assert!(store.get(scope, &key_str).is_none());
               } else {
                 // If key did not exist we'll get None timestamp since no change was made.
                 assert_eq!(timestamp, None);
@@ -554,10 +571,11 @@ impl VersionedKVJournalFuzzTest {
           }
         },
         OperationType::Get { key_strategy } => {
-          let key = self.keys.key_for_read(&key_strategy);
-          let value = store.get_with_timestamp(&key);
+          let (scope, key_str) = self.keys.key_for_read(&key_strategy);
+          let value = store.get_with_timestamp(scope, &key_str);
 
           // Special handling to compare floating point NaN values correctly
+          let key = (scope, key_str);
           let expected_value = self.state.get(&key).cloned();
           match (&value, &expected_value) {
             (Some(_), None) => panic!("Got value for key that should not exist"),
@@ -667,8 +685,8 @@ impl VersionedKVJournalFuzzTest {
           // In the case of partial data loss, update expected keys based on what was recovered.
           if data_loss == DataLoss::Partial {
             // Update expected state based on what was recovered
-            for (key, value) in store.as_hashmap() {
-              self.state.insert(key.clone(), value.clone());
+            for ((scope, key), value) in store.as_hashmap() {
+              self.state.insert((*scope, key.clone()), value.clone());
             }
           }
         },
@@ -696,24 +714,30 @@ impl VersionedKVJournalFuzzTest {
             },
           }
         },
-        OperationType::BulkInsert { count, key_prefix } => {
+        OperationType::BulkInsert {
+          count,
+          scope,
+          key_prefix,
+        } => {
           // Insert multiple entries to stress the buffer
           let insert_count = count.max(1) as usize; // At least 1 entry
+          let scope = scope.0;
           for i in 0 .. insert_count {
-            let key = format!("{key_prefix}_{i}");
+            let key_str = format!("{key_prefix}_{i}");
             // Generate a small arbitrary value for bulk inserts
             let mut value = StateValue::new();
             #[allow(clippy::cast_possible_wrap)]
             let int_value = i as i64;
             value.value_type = Some(Value_type::IntValue(int_value));
 
-            let result = store.insert(key.clone(), value.clone()).await;
+            let result = store.insert(scope, &key_str, value.clone()).await;
 
             match result {
               Ok(timestamp) => {
                 // Reset full flag on successful insert
                 self.is_full = false;
 
+                let key = (scope, key_str.clone());
                 // Track in our state
                 self.state.insert(
                   key.clone(),
@@ -730,7 +754,7 @@ impl VersionedKVJournalFuzzTest {
               },
               Err(e) => {
                 // Classify the error (bulk inserts use small int values)
-                let entry_size = Self::estimate_entry_size(&key, &value);
+                let entry_size = Self::estimate_entry_size(&key_str, &value);
                 match Self::classify_capacity_error(&e, Some(entry_size), self.buffer_size) {
                   CapacityErrorKind::OversizedEntry => {
                     log::info!(
@@ -795,11 +819,11 @@ impl VersionedKVJournalFuzzTest {
         self.state.is_empty(),
         "is_empty mismatch after operation"
       );
-      for key in &self.keys.keys {
+      for (scope, key_str) in &self.keys.keys {
         assert_eq!(
-          store.contains_key(key),
-          self.state.contains_key(key),
-          "contains_key mismatch for key: {key}"
+          store.contains_key(*scope, key_str),
+          self.state.contains_key(&(*scope, key_str.clone())),
+          "contains_key mismatch for key: ({scope:?}, {key_str})"
         );
       }
     }
@@ -807,8 +831,8 @@ impl VersionedKVJournalFuzzTest {
 }
 
 fn compare_maps(
-  expected: &AHashMap<String, TimestampedValue>,
-  actual: &AHashMap<String, TimestampedValue>,
+  expected: &AHashMap<(Scope, String), TimestampedValue>,
+  actual: &AHashMap<(Scope, String), TimestampedValue>,
 ) -> bool {
   if expected.len() != actual.len() {
     return false;

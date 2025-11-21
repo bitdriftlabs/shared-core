@@ -5,6 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::Scope;
 use crate::versioned_kv_journal::TimestampedValue;
 use crate::versioned_kv_journal::file_manager::{self, compress_archived_journal};
 use crate::versioned_kv_journal::journal::PartialDataLoss;
@@ -46,8 +47,8 @@ impl From<PartialDataLoss> for DataLoss {
 /// For detailed information about timestamp semantics, recovery bucketing, and invariants,
 /// see the `VERSIONED_FORMAT.md` documentation.
 pub struct VersionedKVStore {
-  journal: MemMappedVersionedJournal<StateKeyValuePair>,
-  cached_map: AHashMap<String, TimestampedValue>,
+  journal: MemMappedVersionedJournal<StateValue>,
+  cached_map: AHashMap<(Scope, String), TimestampedValue>,
   dir_path: PathBuf,
   journal_name: String,
   buffer_size: usize,
@@ -196,33 +197,34 @@ impl VersionedKVStore {
     ))
   }
 
+  #[allow(clippy::type_complexity)]
   fn open(
     journal_path: &Path,
     buffer_size: usize,
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
   ) -> anyhow::Result<(
-    MemMappedVersionedJournal<StateKeyValuePair>,
-    AHashMap<String, TimestampedValue>,
+    MemMappedVersionedJournal<StateValue>,
+    AHashMap<(Scope, String), TimestampedValue>,
     PartialDataLoss,
   )> {
     let mut initial_state = AHashMap::default();
-    let (journal, data_loss) = MemMappedVersionedJournal::<StateKeyValuePair>::from_file(
+    let (journal, data_loss) = MemMappedVersionedJournal::<StateValue>::from_file(
       journal_path,
       buffer_size,
       high_water_mark_ratio,
       time_provider,
-      |entry, timestamp| {
-        if let Some(value) = entry.value.as_ref() {
+      |scope, key, value, timestamp| {
+        if value.value_type.is_some() {
           initial_state.insert(
-            entry.key.clone(),
+            (scope, key.to_string()),
             TimestampedValue {
               value: value.clone(),
               timestamp,
             },
           );
         } else {
-          initial_state.remove(&entry.key);
+          initial_state.remove(&(scope, key.to_string()));
         }
       },
     )?;
@@ -234,16 +236,30 @@ impl VersionedKVStore {
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
   #[must_use]
-  pub fn get(&self, key: &str) -> Option<&StateValue> {
-    self.cached_map.get(key).map(|tv| &tv.value)
+  pub fn get(&self, scope: Scope, key: &str) -> Option<&StateValue> {
+    self
+      .cached_map
+      .get(&(scope, key.to_string()))
+      .map(|tv| &tv.value)
   }
 
   /// Get a value with its timestamp by key.
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
   #[must_use]
-  pub fn get_with_timestamp(&self, key: &str) -> Option<&TimestampedValue> {
-    self.cached_map.get(key)
+  pub fn get_with_timestamp(&self, scope: Scope, key: &str) -> Option<&TimestampedValue> {
+    self.cached_map.get(&(scope, key.to_string()))
+  }
+
+  /// Get a value with its scope and timestamp by key.
+  ///
+  /// This operation is O(1) as it reads from the in-memory cache.
+  #[must_use]
+  pub fn get_with_metadata(&self, scope: Scope, key: &str) -> Option<(Scope, &TimestampedValue)> {
+    self
+      .cached_map
+      .get(&(scope, key.to_string()))
+      .map(|tv| (scope, tv))
   }
 
   /// Insert a value for a key, returning the timestamp assigned to this write.
@@ -252,24 +268,25 @@ impl VersionedKVStore {
   ///
   /// # Errors
   /// Returns an error if the value cannot be written to the journal.
-  pub async fn insert(&mut self, key: String, value: StateValue) -> anyhow::Result<u64> {
+  pub async fn insert(
+    &mut self,
+    scope: Scope,
+    key: &str,
+    value: StateValue,
+  ) -> anyhow::Result<u64> {
     let timestamp = if value.value_type.is_none() {
       // Inserting null is equivalent to deletion
-      let timestamp = self.journal.insert_entry(StateKeyValuePair {
-        key: key.clone(),
-        ..Default::default()
-      })?;
-      self.cached_map.remove(&key);
+      let timestamp = self
+        .journal
+        .insert_entry(scope, key, StateValue::default())?;
+      self.cached_map.remove(&(scope, key.to_string()));
       timestamp
     } else {
-      let timestamp = self.journal.insert_entry(StateKeyValuePair {
-        key: key.clone(),
-        value: Some(value.clone()).into(),
-        ..Default::default()
-      })?;
-      self
-        .cached_map
-        .insert(key, TimestampedValue { value, timestamp });
+      let timestamp = self.journal.insert_entry(scope, key, value.clone())?;
+      self.cached_map.insert(
+        (scope, key.to_string()),
+        TimestampedValue { value, timestamp },
+      );
       timestamp
     };
 
@@ -289,16 +306,15 @@ impl VersionedKVStore {
   ///
   /// # Errors
   /// Returns an error if the deletion cannot be written to the journal.
-  pub async fn remove(&mut self, key: &str) -> anyhow::Result<Option<u64>> {
-    if !self.cached_map.contains_key(key) {
+  pub async fn remove(&mut self, scope: Scope, key: &str) -> anyhow::Result<Option<u64>> {
+    if !self.cached_map.contains_key(&(scope, key.to_string())) {
       return Ok(None);
     }
 
-    let timestamp = self.journal.insert_entry(StateKeyValuePair {
-      key: key.to_string(),
-      ..Default::default()
-    })?;
-    self.cached_map.remove(key);
+    let timestamp = self
+      .journal
+      .insert_entry(scope, key, StateValue::default())?;
+    self.cached_map.remove(&(scope, key.to_string()));
 
     // Check if rotation is needed
     if self.journal.is_high_water_mark_triggered() {
@@ -312,8 +328,8 @@ impl VersionedKVStore {
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
   #[must_use]
-  pub fn contains_key(&self, key: &str) -> bool {
-    self.cached_map.contains_key(key)
+  pub fn contains_key(&self, scope: Scope, key: &str) -> bool {
+    self.cached_map.contains_key(&(scope, key.to_string()))
   }
 
   /// Get the number of key-value pairs in the store.
@@ -336,7 +352,7 @@ impl VersionedKVStore {
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
   #[must_use]
-  pub fn as_hashmap(&self) -> &AHashMap<String, TimestampedValue> {
+  pub fn as_hashmap(&self) -> &AHashMap<(Scope, String), TimestampedValue> {
     &self.cached_map
   }
 
@@ -525,22 +541,16 @@ impl VersionedKVStore {
   fn create_rotated_journal(
     &self,
     journal_path: &Path,
-  ) -> anyhow::Result<MemMappedVersionedJournal<StateKeyValuePair>> {
+  ) -> anyhow::Result<MemMappedVersionedJournal<StateValue>> {
     MemMappedVersionedJournal::new(
       journal_path,
       self.buffer_size,
       self.high_water_mark_ratio,
       self.journal.time_provider.clone(),
-      self.cached_map.iter().map(|kv| {
-        (
-          StateKeyValuePair {
-            key: kv.0.clone(),
-            value: Some(kv.1.value.clone()).into(),
-            ..Default::default()
-          },
-          kv.1.timestamp,
-        )
-      }),
+      self
+        .cached_map
+        .iter()
+        .map(|((frame_type, key), tv)| (*frame_type, key.clone(), tv.value.clone(), tv.timestamp)),
     )
   }
 }

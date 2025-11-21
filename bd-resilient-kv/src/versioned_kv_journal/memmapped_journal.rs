@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::journal::VersionedJournal;
+use crate::Scope;
 use crate::versioned_kv_journal::journal::PartialDataLoss;
 use bd_time::TimeProvider;
 use memmap2::{MmapMut, MmapOptions};
@@ -82,7 +83,7 @@ impl<M: protobuf::Message> MemMappedVersionedJournal<M> {
     size: usize,
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
-    entries: impl IntoIterator<Item = (M, u64)>,
+    entries: impl IntoIterator<Item = (Scope, String, M, u64)>,
   ) -> anyhow::Result<Self> {
     let file = OpenOptions::new()
       .read(true)
@@ -125,7 +126,7 @@ impl<M: protobuf::Message> MemMappedVersionedJournal<M> {
     size: usize,
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
-    f: impl FnMut(&M, u64),
+    f: impl FnMut(Scope, &str, &M, u64),
   ) -> anyhow::Result<(Self, PartialDataLoss)> {
     let file = OpenOptions::new().read(true).write(true).open(file_path)?;
 
