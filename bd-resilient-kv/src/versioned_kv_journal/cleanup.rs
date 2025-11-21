@@ -10,6 +10,7 @@
 mod tests;
 
 use super::retention::RetentionRegistry;
+use bd_error_reporter::reporter::handle_unexpected;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -47,10 +48,12 @@ pub async fn cleanup_old_snapshots(
         min_retention
       );
 
-      match tokio::fs::remove_file(&path).await {
-        Ok(()) => deleted_count += 1,
-        Err(e) => log::warn!("Failed to delete snapshot {}: {}", path.display(), e),
-      }
+      handle_unexpected(
+        tokio::fs::remove_file(&path)
+          .await
+          .map(|_| deleted_count += 1),
+        "snapshot deletion",
+      );
     } else {
       kept_count += 1;
     }

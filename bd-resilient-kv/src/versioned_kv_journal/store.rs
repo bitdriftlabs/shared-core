@@ -11,6 +11,7 @@ use crate::versioned_kv_journal::journal::PartialDataLoss;
 use crate::versioned_kv_journal::memmapped_journal::MemMappedVersionedJournal;
 use crate::versioned_kv_journal::retention::RetentionRegistry;
 use ahash::AHashMap;
+use bd_error_reporter::reporter::handle_unexpected;
 use bd_proto::protos::state::payload::{StateKeyValuePair, StateValue};
 use bd_time::TimeProvider;
 use std::path::{Path, PathBuf};
@@ -461,9 +462,14 @@ impl VersionedKVStore {
         archived_path.display()
       );
 
+      // TODO(snowp): In cases where we are logging but were unable to create snapshots this
+      // would lose data needed for recovery. Consider surfacing this in a better way.
+
       // Create snapshots directory if it doesn't exist
       if let Err(e) = tokio::fs::create_dir_all(&snapshots_dir).await {
-        log::warn!(
+        // This is an expected failure, e.g. permission denied or disk full so gracefully log and
+        // skip snapshot creation.
+        log::debug!(
           "Failed to create snapshots directory {}: {}",
           snapshots_dir.display(),
           e
@@ -471,7 +477,9 @@ impl VersionedKVStore {
       } else {
         // Try to compress the old journal for longer-term storage.
         if let Err(e) = compress_archived_journal(old_journal_path, &archived_path).await {
-          log::warn!(
+          // This is an expected failure, e.g. permission denied or disk full so gracefully log and
+          // skip snapshot creation.
+          log::debug!(
             "Failed to compress archived journal {}: {}",
             old_journal_path.display(),
             e
@@ -479,12 +487,12 @@ impl VersionedKVStore {
         }
 
         // After creating a snapshot, trigger cleanup of old snapshots
-        if let Some(registry) = &self.retention_registry
-          && let Err(e) =
+        if let Some(registry) = &self.retention_registry {
+          handle_unexpected(
             super::cleanup::cleanup_old_snapshots(&snapshots_dir, &self.journal_name, registry)
-              .await
-        {
-          log::warn!("Failed to cleanup old snapshots: {e}");
+              .await,
+            "old snapshot cleanup",
+          );
         }
       }
     } else {
@@ -499,7 +507,7 @@ impl VersionedKVStore {
     let _ignored = tokio::fs::remove_file(old_journal_path)
       .await
       .inspect_err(|e| {
-        log::warn!(
+        log::debug!(
           "Failed to remove old journal {}: {}",
           old_journal_path.display(),
           e
