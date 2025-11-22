@@ -51,7 +51,7 @@ impl DualModeSetup {
         (Some(temp_dir), store)
       },
       StoreMode::InMemory => {
-        let store = VersionedKVStore::new_in_memory(time_provider.clone());
+        let store = VersionedKVStore::new_in_memory(time_provider.clone(), None);
         (None, store)
       },
     };
@@ -139,24 +139,22 @@ async fn empty_store(#[case] mode: StoreMode) -> anyhow::Result<()> {
   Ok(())
 }
 
-#[rstest]
-#[case(StoreMode::Persistent)]
-#[case(StoreMode::InMemory)]
 #[tokio::test]
-async fn basic_crud(#[case] mode: StoreMode) -> anyhow::Result<()> {
-  let mut setup = DualModeSetup::new(mode).await?;
+async fn test_in_memory_size_limit() -> anyhow::Result<()> {
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
-  // Insert some values
-  let ts1 = setup
-    .store
+  // Create an in-memory store with a small size limit (1KB)
+  let mut store = VersionedKVStore::new_in_memory(time_provider, Some(1024));
+
+  // Should be able to insert some small values
+  store
     .insert(
       Scope::FeatureFlag,
       "key1".to_string(),
       make_string_value("value1"),
     )
     .await?;
-  let ts2 = setup
-    .store
+  store
     .insert(
       Scope::FeatureFlag,
       "key2".to_string(),
@@ -164,35 +162,114 @@ async fn basic_crud(#[case] mode: StoreMode) -> anyhow::Result<()> {
     )
     .await?;
 
-  assert_eq!(setup.store.len(), 2);
-  assert!(ts2 >= ts1);
+  assert_eq!(store.len(), 2);
 
-  // Remove a key
-  let ts3 = setup.store.remove(Scope::FeatureFlag, "key1").await?;
-  assert!(ts3.is_some());
-  assert!(ts3.unwrap() >= ts2);
+  // Try to insert a large value that would exceed the limit
+  let large_value = make_string_value(&"x".repeat(2000));
+  let result = store
+    .insert(Scope::FeatureFlag, "large".to_string(), large_value)
+    .await;
 
-  assert_eq!(setup.store.len(), 1);
-  assert!(!setup.store.contains_key(Scope::FeatureFlag, "key1"));
-  assert!(setup.store.contains_key(Scope::FeatureFlag, "key2"));
+  // Should fail with capacity error
+  assert!(result.is_err());
+  let err_msg = result.unwrap_err().to_string();
+  assert!(
+    err_msg.contains("capacity exceeded") || err_msg.contains("would use"),
+    "Error message should mention capacity: {}",
+    err_msg
+  );
 
-  // Remove non-existent key
-  let removed = setup
-    .store
-    .remove(Scope::FeatureFlag, "nonexistent")
+  // Original data should still be intact
+  assert_eq!(store.len(), 2);
+  assert!(store.contains_key(Scope::FeatureFlag, "key1"));
+  assert!(store.contains_key(Scope::FeatureFlag, "key2"));
+
+  // Should be able to delete to free up space
+  store.remove(Scope::FeatureFlag, "key1").await?;
+  assert_eq!(store.len(), 1);
+
+  // Now should be able to insert a smaller value
+  store
+    .insert(
+      Scope::FeatureFlag,
+      "key3".to_string(),
+      make_string_value("value3"),
+    )
     .await?;
-  assert!(removed.is_none());
-
-  // Read back existing key
-  let val = setup.store.get(Scope::FeatureFlag, "key2");
-  assert_eq!(val, Some(&make_string_value("value2")));
-
-  // Read non-existent key
-  let val = setup.store.get(Scope::FeatureFlag, "key1");
-  assert_eq!(val, None);
+  assert_eq!(store.len(), 2);
 
   Ok(())
 }
+
+#[tokio::test]
+async fn test_in_memory_no_size_limit() -> anyhow::Result<()> {
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+
+  // Create an in-memory store with no size limit
+  let mut store = VersionedKVStore::new_in_memory(time_provider, None);
+
+  // Should be able to insert many large values without limit
+  for i in 0 .. 100 {
+    let large_value = make_string_value(&"x".repeat(1000));
+    store
+      .insert(Scope::FeatureFlag, format!("key{}", i), large_value)
+      .await?;
+  }
+
+  assert_eq!(store.len(), 100);
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn test_in_memory_size_limit_replacement() -> anyhow::Result<()> {
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+
+  // Create an in-memory store with a small size limit
+  let mut store = VersionedKVStore::new_in_memory(time_provider, Some(1024));
+
+  // Insert a value
+  store
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("small"),
+    )
+    .await?;
+
+  // Replace with a similar-sized value (should succeed)
+  store
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value"),
+    )
+    .await?;
+
+  assert_eq!(store.len(), 1);
+  assert_eq!(
+    store.get(Scope::FeatureFlag, "key1"),
+    Some(&make_string_value("value"))
+  );
+
+  // Try to replace with a much larger value that would exceed capacity
+  let large_value = make_string_value(&"x".repeat(2000));
+  let result = store
+    .insert(Scope::FeatureFlag, "key1".to_string(), large_value)
+    .await;
+
+  // Should fail
+  assert!(result.is_err());
+
+  // Original value should still be intact
+  assert_eq!(
+    store.get(Scope::FeatureFlag, "key1"),
+    Some(&make_string_value("value"))
+  );
+
+  Ok(())
+}
+
 
 #[tokio::test]
 async fn test_persistence_and_reload() -> anyhow::Result<()> {

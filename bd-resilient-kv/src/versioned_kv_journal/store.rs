@@ -466,31 +466,85 @@ impl PersistentStore {
 struct InMemoryStore {
   time_provider: Arc<dyn TimeProvider>,
   cached_map: ScopedMaps,
+  max_bytes: Option<usize>,
+  current_size_bytes: usize,
 }
 
 impl InMemoryStore {
-  fn new(time_provider: Arc<dyn TimeProvider>) -> Self {
+  fn new(time_provider: Arc<dyn TimeProvider>, max_bytes: Option<usize>) -> Self {
     Self {
       time_provider,
       cached_map: ScopedMaps::new(),
+      max_bytes,
+      current_size_bytes: 0,
     }
   }
 
-  fn insert(&mut self, scope: Scope, key: &str, value: StateValue) -> u64 {
+  /// Estimate the size in bytes of a key-value entry.
+  ///
+  /// This provides a conservative estimate of memory usage including:
+  /// - Key string storage
+  /// - Value protobuf size
+  /// - Timestamp storage
+  /// - `HashMap` overhead
+  fn estimate_entry_size(key: &str, value: &StateValue) -> usize {
+    const TIMESTAMP_SIZE: usize = 8; // u64
+    const HASHMAP_OVERHEAD: usize = 24; // Approximate per-entry overhead in AHashMap
+
+    let key_size = key.len();
+    let value_size: usize = protobuf::MessageDyn::compute_size_dyn(value)
+      .try_into()
+      .unwrap_or(0);
+
+    key_size + value_size + TIMESTAMP_SIZE + HASHMAP_OVERHEAD
+  }
+
+  fn insert(&mut self, scope: Scope, key: &str, value: &StateValue) -> anyhow::Result<u64> {
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let timestamp = self.time_provider.now().unix_timestamp_nanos() as u64 / 1_000;
 
     if value.value_type.is_none() {
-      self.cached_map.remove(scope, key);
+      // Deletion - reclaim space
+      if let Some(old_value) = self.cached_map.remove(scope, key) {
+        let old_size = Self::estimate_entry_size(key, &old_value.value);
+        self.current_size_bytes = self.current_size_bytes.saturating_sub(old_size);
+      }
     } else {
+      let new_entry_size = Self::estimate_entry_size(key, value);
+
+      // Check if we're replacing an existing entry
+      let size_delta = self
+        .cached_map
+        .get(scope, key)
+        .map_or(new_entry_size, |old_value| {
+          let old_size = Self::estimate_entry_size(key, &old_value.value);
+          // If replacing, we only need space for the difference
+          new_entry_size.saturating_sub(old_size)
+        });
+
+      // Check capacity before inserting
+      if let Some(max_bytes) = self.max_bytes {
+        let new_size = self.current_size_bytes.saturating_add(size_delta);
+        if new_size > max_bytes {
+          anyhow::bail!(
+            "In-memory store capacity exceeded: would use {new_size} bytes, limit is {max_bytes} \
+             bytes"
+          );
+        }
+      }
+
       self.cached_map.insert(
         scope,
         key.to_string(),
-        TimestampedValue { value, timestamp },
+        TimestampedValue {
+          value: value.clone(),
+          timestamp,
+        },
       );
+      self.current_size_bytes = self.current_size_bytes.saturating_add(size_delta);
     }
 
-    timestamp
+    Ok(timestamp)
   }
 
   fn remove(&mut self, scope: Scope, key: &str) -> Option<u64> {
@@ -573,13 +627,30 @@ impl VersionedKVStore {
   }
 
   /// Create a new in-memory `VersionedKVStore` with no persistence.
+  /// Create a new in-memory `VersionedKVStore`.
   ///
-  /// All data is kept only in memory and will be lost when the store is dropped.
-  /// No journal file is created and no disk I/O is performed.
+  /// The in-memory store keeps all data in RAM and does not persist to disk.
+  /// Data is lost when the store is dropped.
+  ///
+  /// # Arguments
+  ///
+  /// * `time_provider` - Provides timestamps for operations
+  /// * `max_bytes` - Optional maximum memory usage in bytes. If None, no limit is enforced.
+  ///
+  /// # Size Limit
+  ///
+  /// If `max_bytes` is specified, insert operations will fail with an error when the limit
+  /// is exceeded. The size calculation includes:
+  /// - Key strings
+  /// - Value protobuf data
+  /// - Timestamps
+  /// - `HashMap` overhead
+  ///
+  /// The size limit is approximate and uses conservative estimates.
   #[must_use]
-  pub fn new_in_memory(time_provider: Arc<dyn TimeProvider>) -> Self {
+  pub fn new_in_memory(time_provider: Arc<dyn TimeProvider>, max_bytes: Option<usize>) -> Self {
     Self {
-      backend: StoreBackend::InMemory(InMemoryStore::new(time_provider)),
+      backend: StoreBackend::InMemory(InMemoryStore::new(time_provider, max_bytes)),
     }
   }
 
@@ -676,7 +747,7 @@ impl VersionedKVStore {
   ) -> anyhow::Result<u64> {
     match &mut self.backend {
       StoreBackend::Persistent(store) => store.insert(scope, &key, value).await,
-      StoreBackend::InMemory(store) => Ok(store.insert(scope, &key, value)),
+      StoreBackend::InMemory(store) => store.insert(scope, &key, &value),
     }
   }
 
