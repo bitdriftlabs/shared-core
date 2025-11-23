@@ -195,6 +195,7 @@ async fn basic_crud(#[case] mode: StoreMode) -> anyhow::Result<()> {
   Ok(())
 }
 
+#[allow(clippy::cast_possible_truncation)]
 #[tokio::test]
 async fn test_automatic_rotation_on_high_water_mark() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
