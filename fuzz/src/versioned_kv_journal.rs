@@ -5,20 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-//! Fuzz testing for VersionedKVStore journal operations.
-//!
-//! # Performance Optimizations
-//!
-//! This fuzzer includes several optimizations to improve throughput while maintaining
-//! comprehensive coverage:
-//!
-//! - **Smaller buffer sizes**: Limited to 1KB-16KB (vs 1KB-1MB) to reduce I/O overhead
-//! - **No snapshot retention**: Uses RetentionRegistry without handles to skip compression
-//! - **Limited bulk operations**: Capped at 64 entries per BulkInsert operation
-//!
-//! These optimizations significantly speed up fuzzing while still testing edge cases like
-//! buffer fills, rotations, and reopening without sync.
-
 use ahash::AHashMap;
 use arbitrary::{Arbitrary, Unstructured};
 use bd_proto::protos::state::payload::state_value::Value_type;
