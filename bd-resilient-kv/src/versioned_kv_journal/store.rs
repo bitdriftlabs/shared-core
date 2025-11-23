@@ -5,12 +5,12 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::Scope;
 use crate::versioned_kv_journal::TimestampedValue;
 use crate::versioned_kv_journal::file_manager::{self, compress_archived_journal};
 use crate::versioned_kv_journal::journal::PartialDataLoss;
 use crate::versioned_kv_journal::memmapped_journal::MemMappedVersionedJournal;
 use crate::versioned_kv_journal::retention::RetentionRegistry;
+use crate::{Scope, UpdateError};
 use ahash::AHashMap;
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_proto::protos::state::payload::StateValue;
@@ -299,7 +299,12 @@ impl PersistentStore {
     })
   }
 
-  async fn insert(&mut self, scope: Scope, key: &str, value: StateValue) -> anyhow::Result<u64> {
+  async fn insert(
+    &mut self,
+    scope: Scope,
+    key: &str,
+    value: StateValue,
+  ) -> Result<u64, UpdateError> {
     let timestamp = if value.value_type.is_none() {
       let timestamp = self
         .journal
@@ -323,7 +328,7 @@ impl PersistentStore {
     Ok(timestamp)
   }
 
-  async fn remove(&mut self, scope: Scope, key: &str) -> anyhow::Result<Option<u64>> {
+  async fn remove(&mut self, scope: Scope, key: &str) -> Result<Option<u64>, UpdateError> {
     if !self.cached_map.contains_key(scope, key) {
       return Ok(None);
     }
@@ -511,7 +516,7 @@ impl InMemoryStore {
     key_size + value_size + TIMESTAMP_SIZE + HASHMAP_OVERHEAD
   }
 
-  fn insert(&mut self, scope: Scope, key: &str, value: &StateValue) -> anyhow::Result<u64> {
+  fn insert(&mut self, scope: Scope, key: &str, value: &StateValue) -> Result<u64, UpdateError> {
     use std::collections::hash_map::Entry;
 
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -537,10 +542,7 @@ impl InMemoryStore {
           if let Some(max_bytes) = self.max_bytes {
             let new_size = self.current_size_bytes.saturating_add(size_delta);
             if new_size > max_bytes {
-              anyhow::bail!(
-                "In-memory store capacity exceeded: would use {new_size} bytes, limit is \
-                 {max_bytes} bytes"
-              );
+              return Err(UpdateError::CapacityExceeded);
             }
           }
 
@@ -556,10 +558,7 @@ impl InMemoryStore {
           if let Some(max_bytes) = self.max_bytes {
             let new_size = self.current_size_bytes.saturating_add(new_entry_size);
             if new_size > max_bytes {
-              anyhow::bail!(
-                "In-memory store capacity exceeded: would use {new_size} bytes, limit is \
-                 {max_bytes} bytes"
-              );
+              return Err(UpdateError::CapacityExceeded);
             }
           }
 
@@ -766,13 +765,15 @@ impl VersionedKVStore {
   /// Note: Inserting `Value::Null` is equivalent to removing the key.
   ///
   /// # Errors
-  /// Returns an error if the value cannot be written to the journal (persistent mode only).
+  /// - Returns `UpdateError::CapacityExceeded` if the in-memory store would exceed its size limit
+  /// - Returns `UpdateError::System` if the value cannot be written to the journal (persistent
+  ///   mode)
   pub async fn insert(
     &mut self,
     scope: Scope,
     key: String,
     value: StateValue,
-  ) -> anyhow::Result<u64> {
+  ) -> Result<u64, UpdateError> {
     match &mut self.backend {
       StoreBackend::Persistent(store) => store.insert(scope, &key, value).await,
       StoreBackend::InMemory(store) => store.insert(scope, &key, &value),
@@ -785,7 +786,7 @@ impl VersionedKVStore {
   ///
   /// # Errors
   /// Returns an error if the deletion cannot be written to the journal (persistent mode only).
-  pub async fn remove(&mut self, scope: Scope, key: &str) -> anyhow::Result<Option<u64>> {
+  pub async fn remove(&mut self, scope: Scope, key: &str) -> Result<Option<u64>, UpdateError> {
     match &mut self.backend {
       StoreBackend::Persistent(store) => store.remove(scope, key).await,
       StoreBackend::InMemory(store) => Ok(store.remove(scope, key)),

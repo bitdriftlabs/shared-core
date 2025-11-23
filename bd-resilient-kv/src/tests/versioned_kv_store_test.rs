@@ -10,7 +10,7 @@
 use crate::tests::decompress_zlib;
 use crate::versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry};
 use crate::versioned_kv_journal::{TimestampedValue, make_string_value};
-use crate::{Scope, VersionedKVStore};
+use crate::{Scope, UpdateError, VersionedKVStore};
 use bd_proto::protos::state::payload::StateValue;
 use bd_time::TestTimeProvider;
 use rstest::rstest;
@@ -172,12 +172,8 @@ async fn test_in_memory_size_limit() -> anyhow::Result<()> {
 
   // Should fail with capacity error
   assert!(result.is_err());
-  let err_msg = result.unwrap_err().to_string();
-  assert!(
-    err_msg.contains("capacity exceeded") || err_msg.contains("would use"),
-    "Error message should mention capacity: {}",
-    err_msg
-  );
+  let error = result.unwrap_err();
+  assert!(matches!(error, UpdateError::CapacityExceeded));
 
   // Original data should still be intact
   assert_eq!(store.len(), 2);
