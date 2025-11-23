@@ -10,7 +10,7 @@
 use crate::tests::decompress_zlib;
 use crate::versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry};
 use crate::versioned_kv_journal::{TimestampedValue, make_string_value};
-use crate::{Scope, UpdateError, VersionedKVStore};
+use crate::{DataLoss, Scope, UpdateError, VersionedKVStore};
 use bd_proto::protos::state::payload::StateValue;
 use bd_time::TestTimeProvider;
 use rstest::rstest;
@@ -107,7 +107,7 @@ impl Setup {
     )?;
 
     let registry = Arc::new(RetentionRegistry::new());
-    let (store, _) = VersionedKVStore::open_existing(
+    let (store, data_loss) = VersionedKVStore::new(
       self.temp_dir.path(),
       "snapshot",
       4096,
@@ -116,6 +116,7 @@ impl Setup {
       registry,
     )
     .await?;
+    assert_eq!(data_loss, DataLoss::None);
 
     Ok(store)
   }
@@ -467,9 +468,9 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
 
   // Reopen and verify data persisted
   {
-    let (store, _) =
-      VersionedKVStore::open_existing(temp_dir.path(), "test", 4096, None, time_provider, registry)
-        .await?;
+    let (store, data_loss) =
+      VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider, registry).await?;
+    assert_eq!(data_loss, DataLoss::None);
     assert_eq!(store.len(), 2);
     assert_eq!(
       store.get_with_timestamp(Scope::FeatureFlag, "key1"),

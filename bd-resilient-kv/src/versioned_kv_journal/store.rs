@@ -227,43 +227,6 @@ impl PersistentStore {
     ))
   }
 
-  async fn open_existing<P: AsRef<Path>>(
-    dir_path: P,
-    name: &str,
-    buffer_size: usize,
-    high_water_mark_ratio: Option<f32>,
-    time_provider: Arc<dyn TimeProvider>,
-    retention_registry: Arc<RetentionRegistry>,
-  ) -> anyhow::Result<(Self, DataLoss)> {
-    let dir = dir_path.as_ref();
-    let (journal_path, generation) = file_manager::find_active_journal(dir, name).await;
-
-    let opened = Self::open(
-      &journal_path,
-      buffer_size,
-      high_water_mark_ratio,
-      time_provider,
-    )?;
-
-    Ok((
-      Self {
-        journal: opened.journal,
-        dir_path: dir.to_path_buf(),
-        journal_name: name.to_string(),
-        buffer_size,
-        high_water_mark_ratio,
-        current_generation: generation,
-        cached_map: opened.initial_state,
-        retention_registry,
-      },
-      if matches!(opened.data_loss, PartialDataLoss::Yes) {
-        DataLoss::Partial
-      } else {
-        DataLoss::None
-      },
-    ))
-  }
-
   fn open(
     journal_path: &Path,
     buffer_size: usize,
@@ -679,49 +642,6 @@ impl VersionedKVStore {
     Self {
       backend: StoreBackend::InMemory(InMemoryStore::new(time_provider, max_bytes)),
     }
-  }
-
-  /// Open an existing `VersionedKVStore` from a pre-existing journal file.
-  ///
-  /// Unlike `new()`, this method requires the journal file to exist and will fail if it's
-  /// missing.
-  ///
-  /// # Arguments
-  /// * `dir_path` - Directory path where the journal is stored
-  /// * `name` - Base name of the journal (e.g., "store" for "store.jrn.N")
-  /// * `buffer_size` - Size in bytes for the journal buffer
-  /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
-  ///
-  /// # Errors
-  /// Returns an error if:
-  /// - The journal file does not exist
-  /// - The journal file cannot be opened
-  /// - The journal file contains invalid data
-  /// - Initialization fails
-  pub async fn open_existing<P: AsRef<Path>>(
-    dir_path: P,
-    name: &str,
-    buffer_size: usize,
-    high_water_mark_ratio: Option<f32>,
-    time_provider: Arc<dyn TimeProvider>,
-    retention_registry: Arc<RetentionRegistry>,
-  ) -> anyhow::Result<(Self, DataLoss)> {
-    let (store, data_loss) = PersistentStore::open_existing(
-      dir_path,
-      name,
-      buffer_size,
-      high_water_mark_ratio,
-      time_provider,
-      retention_registry,
-    )
-    .await?;
-
-    Ok((
-      Self {
-        backend: StoreBackend::Persistent(store),
-      },
-      data_loss,
-    ))
   }
 
   /// Get a value by key.

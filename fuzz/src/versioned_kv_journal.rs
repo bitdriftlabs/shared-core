@@ -346,7 +346,7 @@ impl VersionedKVJournalFuzzTest {
   }
 
   async fn existing_store(&self) -> anyhow::Result<(VersionedKVStore, DataLoss)> {
-    VersionedKVStore::open_existing(
+    VersionedKVStore::new(
       self.temp_dir.path(),
       JOURNAL_NAME,
       self.buffer_size,
