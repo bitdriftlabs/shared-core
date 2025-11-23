@@ -195,6 +195,113 @@ async fn basic_crud(#[case] mode: StoreMode) -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn test_automatic_rotation_on_high_water_mark() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+  let registry = Arc::new(RetentionRegistry::new());
+  let _handle = registry.create_handle().await; // Retain snapshots
+
+  // Create a store with a small buffer and aggressive high water mark to trigger rotation
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    1024,      // Small buffer size
+    Some(0.3), // Very low high water mark (30%)
+    time_provider.clone(),
+    registry,
+  )
+  .await?;
+
+  // Insert initial data
+  store
+    .insert(
+      Scope::FeatureFlag,
+      "initial".to_string(),
+      make_string_value("value"),
+    )
+    .await?;
+
+  // Verify we're on generation 0
+  let initial_path = store.journal_path().unwrap();
+  assert!(initial_path.to_str().unwrap().contains(".jrn.0"));
+  assert!(initial_path.exists());
+
+  // Fill the store with enough data to trigger high water mark
+  // With a 1024-byte buffer and 30% high water mark, we need to use about 307 bytes
+  // Each insert may trigger a rotation, so we'll see multiple rotations
+  for i in 0 .. 20 {
+    store
+      .insert(
+        Scope::FeatureFlag,
+        format!("key{}", i),
+        make_string_value(&format!("value_with_some_length_{}", i)),
+      )
+      .await?;
+  }
+
+  // After filling, the store should have automatically rotated at least once
+  let final_path = store.journal_path().unwrap();
+  let final_generation = final_path
+    .to_str()
+    .unwrap()
+    .split(".jrn.")
+    .last()
+    .unwrap()
+    .parse::<u64>()
+    .unwrap();
+
+  assert!(
+    final_generation > 0,
+    "Store should have automatically rotated at least once, but generation is: {}",
+    final_generation
+  );
+  assert!(final_path.exists());
+
+  // Verify the old journals were archived
+  let snapshot_dir = temp_dir.path().join("snapshots");
+  assert!(snapshot_dir.exists());
+
+  // Count snapshots - should be equal to the number of rotations
+  let snapshot_count = std::fs::read_dir(&snapshot_dir)?
+    .filter_map(Result::ok)
+    .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("zz"))
+    .count();
+
+  assert_eq!(
+    snapshot_count, final_generation as usize,
+    "Should have {} compressed snapshots after {} automatic rotations",
+    final_generation, final_generation
+  );
+
+  // Verify data integrity after automatic rotation
+  assert!(store.contains_key(Scope::FeatureFlag, "initial"));
+  assert_eq!(
+    store.get(Scope::FeatureFlag, "initial"),
+    Some(&make_string_value("value"))
+  );
+  assert_eq!(
+    store.get(Scope::FeatureFlag, "key0"),
+    Some(&make_string_value("value_with_some_length_0"))
+  );
+
+  // Verify we can continue writing after automatic rotation
+  store
+    .insert(
+      Scope::FeatureFlag,
+      "after_rotation".to_string(),
+      make_string_value("works"),
+    )
+    .await?;
+  assert_eq!(
+    store.get(Scope::FeatureFlag, "after_rotation"),
+    Some(&make_string_value("works"))
+  );
+
+  Ok(())
+}
+
+
+#[tokio::test]
 async fn test_in_memory_size_limit() -> anyhow::Result<()> {
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
