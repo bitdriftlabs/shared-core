@@ -127,6 +127,18 @@ impl ScopedMaps {
       .values()
       .chain(self.global_state.values())
   }
+
+  /// Get a mutable entry for the given scope and key, allowing efficient insert/update operations.
+  fn entry(
+    &mut self,
+    scope: Scope,
+    key: String,
+  ) -> std::collections::hash_map::Entry<'_, String, TimestampedValue> {
+    match scope {
+      Scope::FeatureFlag => self.feature_flags.entry(key),
+      Scope::GlobalState => self.global_state.entry(key),
+    }
+  }
 }
 
 
@@ -500,6 +512,8 @@ impl InMemoryStore {
   }
 
   fn insert(&mut self, scope: Scope, key: &str, value: &StateValue) -> anyhow::Result<u64> {
+    use std::collections::hash_map::Entry;
+
     #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     let timestamp = self.time_provider.now().unix_timestamp_nanos() as u64 / 1_000;
 
@@ -512,36 +526,51 @@ impl InMemoryStore {
     } else {
       let new_entry_size = Self::estimate_entry_size(key, value);
 
-      // Check if we're replacing an existing entry
-      let size_delta = self
-        .cached_map
-        .get(scope, key)
-        .map_or(new_entry_size, |old_value| {
-          let old_size = Self::estimate_entry_size(key, &old_value.value);
-          // If replacing, we only need space for the difference
-          new_entry_size.saturating_sub(old_size)
-        });
+      // Use entry API to avoid multiple lookups
+      match self.cached_map.entry(scope, key.to_string()) {
+        Entry::Occupied(mut entry) => {
+          // Replacing existing entry - calculate size delta
+          let old_size = Self::estimate_entry_size(key, &entry.get().value);
+          let size_delta = new_entry_size.saturating_sub(old_size);
 
-      // Check capacity before inserting
-      if let Some(max_bytes) = self.max_bytes {
-        let new_size = self.current_size_bytes.saturating_add(size_delta);
-        if new_size > max_bytes {
-          anyhow::bail!(
-            "In-memory store capacity exceeded: would use {new_size} bytes, limit is {max_bytes} \
-             bytes"
-          );
-        }
-      }
+          // Check capacity before replacing
+          if let Some(max_bytes) = self.max_bytes {
+            let new_size = self.current_size_bytes.saturating_add(size_delta);
+            if new_size > max_bytes {
+              anyhow::bail!(
+                "In-memory store capacity exceeded: would use {new_size} bytes, limit is \
+                 {max_bytes} bytes"
+              );
+            }
+          }
 
-      self.cached_map.insert(
-        scope,
-        key.to_string(),
-        TimestampedValue {
-          value: value.clone(),
-          timestamp,
+          // Replace the value
+          entry.insert(TimestampedValue {
+            value: value.clone(),
+            timestamp,
+          });
+          self.current_size_bytes = self.current_size_bytes.saturating_add(size_delta);
         },
-      );
-      self.current_size_bytes = self.current_size_bytes.saturating_add(size_delta);
+        Entry::Vacant(entry) => {
+          // New entry - check if we have capacity
+          if let Some(max_bytes) = self.max_bytes {
+            let new_size = self.current_size_bytes.saturating_add(new_entry_size);
+            if new_size > max_bytes {
+              anyhow::bail!(
+                "In-memory store capacity exceeded: would use {new_size} bytes, limit is \
+                 {max_bytes} bytes"
+              );
+            }
+          }
+
+          // Insert the new value
+          entry.insert(TimestampedValue {
+            value: value.clone(),
+            timestamp,
+          });
+          self.current_size_bytes = self.current_size_bytes.saturating_add(new_entry_size);
+        },
+      }
     }
 
     Ok(timestamp)
@@ -627,7 +656,6 @@ impl VersionedKVStore {
   }
 
   /// Create a new in-memory `VersionedKVStore` with no persistence.
-  /// Create a new in-memory `VersionedKVStore`.
   ///
   /// The in-memory store keeps all data in RAM and does not persist to disk.
   /// Data is lost when the store is dropped.
