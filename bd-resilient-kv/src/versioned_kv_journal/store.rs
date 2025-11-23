@@ -748,18 +748,6 @@ impl VersionedKVStore {
     cached_map.get(scope, key)
   }
 
-  /// Get a value with its scope and timestamp by key.
-  ///
-  /// This operation is O(1) as it reads from the in-memory cache.
-  #[must_use]
-  pub fn get_with_metadata(&self, scope: Scope, key: &str) -> Option<(Scope, &TimestampedValue)> {
-    let cached_map = match &self.backend {
-      StoreBackend::Persistent(store) => &store.cached_map,
-      StoreBackend::InMemory(store) => &store.cached_map,
-    };
-    cached_map.get(scope, key).map(|tv| (scope, tv))
-  }
-
   /// Insert a value for a key, returning the timestamp assigned to this write.
   ///
   /// Note: Inserting `Value::Null` is equivalent to removing the key.

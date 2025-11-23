@@ -139,6 +139,61 @@ async fn empty_store(#[case] mode: StoreMode) -> anyhow::Result<()> {
   Ok(())
 }
 
+#[rstest]
+#[case(StoreMode::Persistent)]
+#[case(StoreMode::InMemory)]
+#[tokio::test]
+async fn basic_crud(#[case] mode: StoreMode) -> anyhow::Result<()> {
+  let mut setup = DualModeSetup::new(mode).await?;
+
+  // Insert some values
+  let ts1 = setup
+    .store
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
+    .await?;
+  let ts2 = setup
+    .store
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    )
+    .await?;
+
+  assert_eq!(setup.store.len(), 2);
+  assert!(ts2 >= ts1);
+
+  // Remove a key
+  let ts3 = setup.store.remove(Scope::FeatureFlag, "key1").await?;
+  assert!(ts3.is_some());
+  assert!(ts3.unwrap() >= ts2);
+
+  assert_eq!(setup.store.len(), 1);
+  assert!(!setup.store.contains_key(Scope::FeatureFlag, "key1"));
+  assert!(setup.store.contains_key(Scope::FeatureFlag, "key2"));
+
+  // Remove non-existent key
+  let removed = setup
+    .store
+    .remove(Scope::FeatureFlag, "nonexistent")
+    .await?;
+  assert!(removed.is_none());
+
+  // Read back existing key
+  let val = setup.store.get(Scope::FeatureFlag, "key2");
+  assert_eq!(val, Some(&make_string_value("value2")));
+
+  // Read non-existent key
+  let val = setup.store.get(Scope::FeatureFlag, "key1");
+  assert_eq!(val, None);
+
+  Ok(())
+}
+
 #[tokio::test]
 async fn test_in_memory_size_limit() -> anyhow::Result<()> {
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
