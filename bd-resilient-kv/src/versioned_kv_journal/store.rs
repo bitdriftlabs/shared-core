@@ -46,7 +46,7 @@ impl PersistentStoreConfig {
   /// This is designed for dynamic config scenarios where validation errors can't be communicated.
   pub fn normalize(&mut self) {
     const DEFAULT_INITIAL_SIZE: usize = 8 * 1024; // 8KB
-    const DEFAULT_MAX_CAPACITY: usize = 10 * 1024 * 1024; // 10MB
+    const DEFAULT_MAX_CAPACITY: usize = 1024 * 1024; // 1MB
     const DEFAULT_RATIO: f32 = 0.7;
 
     const ABSOLUTE_MIN: usize = 4096; // 4KB

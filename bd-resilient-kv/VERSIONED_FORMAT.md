@@ -144,7 +144,7 @@ The persistent store uses memory-mapped files with dynamically sized buffers tha
 - **Growth Pattern**: Power-of-2 doubling (8KB → 16KB → 32KB → 64KB → ...)
 - **Growth Trigger**: During journal rotation, if the compacted state requires more space
 - **Headroom**: After growth, buffer provides 50% extra capacity beyond compacted size
-- **Maximum Capacity**: Configurable via `PersistentStoreConfig::max_capacity_bytes` (default: 10MB)
+- **Maximum Capacity**: Configurable via `PersistentStoreConfig::max_capacity_bytes` (default: 1MB)
 
 ### Configuration
 
@@ -175,7 +175,7 @@ let config = PersistentStoreConfig {
 
 Invalid configuration values are automatically normalized to safe defaults:
 - `initial_buffer_size`: Non-power-of-2 → rounded up; invalid → 8KB
-- `max_capacity_bytes`: Invalid or missing → 10MB (prevents unbounded growth)
+- `max_capacity_bytes`: Invalid or missing → 1MB (prevents unbounded growth)
 - `high_water_mark_ratio`: Out of range or NaN → 0.7 (70%)
 
 ### File Size Reconciliation

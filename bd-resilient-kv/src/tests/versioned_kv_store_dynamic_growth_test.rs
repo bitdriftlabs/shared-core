@@ -191,7 +191,7 @@ async fn config_validation() {
   // Test: initial_buffer_size too small (should default to 8KB)
   let mut config = PersistentStoreConfig {
     initial_buffer_size: 1024, // Too small, minimum is 4096
-    max_capacity_bytes: 10 * 1024 * 1024,
+    max_capacity_bytes: 1024 * 1024,
     high_water_mark_ratio: None,
   };
   config.normalize();
@@ -200,7 +200,7 @@ async fn config_validation() {
   // Test: initial_buffer_size too large (should default to 8KB)
   let mut config = PersistentStoreConfig {
     initial_buffer_size: 2 * 1024 * 1024 * 1024, // 2GB, way too large
-    max_capacity_bytes: 10 * 1024 * 1024,
+    max_capacity_bytes: 1024 * 1024,
     high_water_mark_ratio: None,
   };
   config.normalize();
@@ -209,7 +209,7 @@ async fn config_validation() {
   // Test: initial_buffer_size not power of 2 (should round up)
   let mut config = PersistentStoreConfig {
     initial_buffer_size: 9000, // Not power of 2, should round to 16384
-    max_capacity_bytes: 10 * 1024 * 1024,
+    max_capacity_bytes: 1024 * 1024,
     high_water_mark_ratio: None,
   };
   config.normalize();
@@ -222,30 +222,30 @@ async fn config_validation() {
     high_water_mark_ratio: None,
   };
   config.normalize();
-  assert_eq!(config.max_capacity_bytes, 10 * 1024 * 1024); // Falls back to 10MB default
+  assert_eq!(config.max_capacity_bytes, 1024 * 1024); // Falls back to 1MB default
 
-  // Test: max too large (should default to 10MB)
+  // Test: max too large (should default to 1MB)
   let mut config = PersistentStoreConfig {
     initial_buffer_size: 8 * 1024,
     max_capacity_bytes: 2 * 1024 * 1024 * 1024, // 2GB, too large
     high_water_mark_ratio: None,
   };
   config.normalize();
-  assert_eq!(config.max_capacity_bytes, 10 * 1024 * 1024); // Falls back to 10MB default
+  assert_eq!(config.max_capacity_bytes, 1024 * 1024); // Falls back to 1MB default
 
-  // Test: max_capacity not specified (should default to 10MB)
+  // Test: max_capacity not specified (should default to 1MB)
   let mut config = PersistentStoreConfig {
     initial_buffer_size: 8 * 1024,
-    max_capacity_bytes: 10 * 1024 * 1024, // Not specified
+    max_capacity_bytes: 1024 * 1024, // Not specified
     high_water_mark_ratio: None,
   };
   config.normalize();
-  assert_eq!(config.max_capacity_bytes, 10 * 1024 * 1024); // Falls back to 10MB default
+  assert_eq!(config.max_capacity_bytes, 1024 * 1024); // Falls back to 1MB default
 
   // Test: high_water_mark_ratio out of range (should default to 0.7)
   let mut config = PersistentStoreConfig {
     initial_buffer_size: 8 * 1024,
-    max_capacity_bytes: 10 * 1024 * 1024,
+    max_capacity_bytes: 1024 * 1024,
     high_water_mark_ratio: Some(1.5), // > 1.0
   };
   config.normalize();
@@ -254,7 +254,7 @@ async fn config_validation() {
   // Test: high_water_mark_ratio NaN (should default to 0.7)
   let mut config = PersistentStoreConfig {
     initial_buffer_size: 8 * 1024,
-    max_capacity_bytes: 10 * 1024 * 1024,
+    max_capacity_bytes: 1024 * 1024,
     high_water_mark_ratio: Some(f32::NAN),
   };
   config.normalize();
