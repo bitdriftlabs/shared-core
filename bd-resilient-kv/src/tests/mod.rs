@@ -35,6 +35,7 @@ pub mod error_handling_test;
 pub mod kv_store_test;
 pub mod kv_test;
 pub mod memmapped_test;
+pub mod versioned_kv_store_dynamic_growth_test;
 pub mod versioned_kv_store_test;
 pub mod versioned_recovery_error_test;
 pub mod versioned_recovery_test;

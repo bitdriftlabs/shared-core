@@ -33,7 +33,7 @@ mod versioned_kv_journal;
 pub use kv_journal::{DoubleBufferedKVJournal, InMemoryKVJournal, KVJournal, MemMappedKVJournal};
 pub use kv_store::KVStore;
 pub use scope::Scope;
-pub use versioned_kv_journal::TimestampedValue;
 pub use versioned_kv_journal::recovery::VersionedRecovery;
 pub use versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry};
 pub use versioned_kv_journal::store::{DataLoss, VersionedKVStore};
+pub use versioned_kv_journal::{PersistentStoreConfig, TimestampedValue};

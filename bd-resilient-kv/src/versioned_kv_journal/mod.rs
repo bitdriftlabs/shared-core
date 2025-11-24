@@ -16,6 +16,8 @@ pub mod recovery;
 pub mod retention;
 pub mod store;
 
+pub use store::PersistentStoreConfig;
+
 /// Represents a value with its associated timestamp.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimestampedValue {
