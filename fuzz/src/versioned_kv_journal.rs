@@ -254,8 +254,8 @@ impl KeyPool {
 pub struct VersionedKVJournalFuzzTestCase {
   buffer_size: u32,
   high_water_mark_ratio: Option<f32>,
-  /// If Some, enables dynamic growth with the specified max capacity
-  max_capacity_bytes: Option<u32>,
+  /// Maximum capacity in bytes for dynamic growth (will be clamped to reasonable range)
+  max_capacity_bytes: u32,
   operations: Vec<OperationType>,
 }
 
@@ -302,17 +302,17 @@ impl VersionedKVJournalFuzzTest {
       }
     });
 
-    // Clamp max capacity to a reasonable range if provided (must be >= buffer_size, <= 10MB)
-    // Treat 0 or None as default (10MB)
+    // Clamp max capacity to a reasonable range if provided (must be >= buffer_size, <= 1MB)
+    // Treat 0 or None as default (1MB)
     let max_capacity_bytes = test_case
       .max_capacity_bytes
       .filter(|&max| max != 0)
       .map(|max| {
         let max_usize = max as usize;
-        // Ensure max >= buffer_size and <= 10MB
-        max_usize.max(buffer_size).min(10 * 1024 * 1024)
+        // Ensure max >= buffer_size and <= 1MB
+        max_usize.max(buffer_size).min(1024 * 1024)
       })
-      .unwrap_or(10 * 1024 * 1024); // Default to 10MB if not specified
+      .unwrap_or(1024 * 1024); // Default to 1MB if not specified
 
     // Create a temporary directory for the journal files
     let Ok(temp_dir) = TempDir::new() else {
