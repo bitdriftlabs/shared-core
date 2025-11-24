@@ -61,7 +61,7 @@ async fn normal_growth_pattern() -> anyhow::Result<()> {
   let setup = Setup::new();
 
   let config = PersistentStoreConfig {
-    initial_buffer_size: 8 * 1024,         // 8KB
+    initial_buffer_size: 8 * 1024,   // 8KB
     max_capacity_bytes: 1024 * 1024, // 1MB max
     high_water_mark_ratio: Some(0.8),
   };
@@ -101,9 +101,9 @@ async fn max_capacity_limiting() -> anyhow::Result<()> {
   let setup = Setup::new();
 
   let config = PersistentStoreConfig {
-    initial_buffer_size: 4 * 1024,       // 4KB
-    max_capacity_bytes: 16 * 1024, // 16KB max (small for testing)
-    high_water_mark_ratio: Some(0.5),    // Lower threshold for faster rotation
+    initial_buffer_size: 4 * 1024,    // 4KB
+    max_capacity_bytes: 16 * 1024,    // 16KB max (small for testing)
+    high_water_mark_ratio: Some(0.5), // Lower threshold for faster rotation
   };
 
   let mut store = setup.create_store(config).await?;
@@ -164,7 +164,7 @@ async fn config_changes_on_restart() -> anyhow::Result<()> {
 
   // Restart with larger initial size
   let config2 = PersistentStoreConfig {
-    initial_buffer_size: 32 * 1024,       // Increased from 8KB
+    initial_buffer_size: 32 * 1024, // Increased from 8KB
     max_capacity_bytes: 128 * 1024, // Increased cap
     high_water_mark_ratio: Some(0.8),
   };

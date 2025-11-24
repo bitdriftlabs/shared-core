@@ -91,7 +91,10 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
   let (mut store, _) = VersionedKVStore::new(
     temp_dir.path(),
     "test",
-    PersistentStoreConfig { initial_buffer_size: 4096, ..Default::default() },
+    PersistentStoreConfig {
+      initial_buffer_size: 4096,
+      ..Default::default()
+    },
     time_provider.clone(),
     registry,
   )

@@ -80,7 +80,10 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   let (mut store, _) = VersionedKVStore::new(
     temp_dir.path(),
     "test",
-    PersistentStoreConfig { initial_buffer_size: 2048, ..Default::default() },
+    PersistentStoreConfig {
+      initial_buffer_size: 2048,
+      ..Default::default()
+    },
     time_provider.clone(),
     registry,
   )
@@ -194,8 +197,17 @@ async fn test_recovery_empty_journal() -> anyhow::Result<()> {
   let _handle = registry.create_handle().await; // Retain all snapshots
 
   // Create an empty store
-  let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", PersistentStoreConfig { initial_buffer_size: 4096, ..Default::default() }, time_provider, registry).await?;
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    PersistentStoreConfig {
+      initial_buffer_size: 4096,
+      ..Default::default()
+    },
+    time_provider,
+    registry,
+  )
+  .await?;
   store.sync()?;
 
   // Rotate to create snapshot
@@ -229,7 +241,10 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   let (mut store, _) = VersionedKVStore::new(
     temp_dir.path(),
     "test",
-    PersistentStoreConfig { initial_buffer_size: 4096, ..Default::default() },
+    PersistentStoreConfig {
+      initial_buffer_size: 4096,
+      ..Default::default()
+    },
     time_provider.clone(),
     registry,
   )
@@ -329,7 +344,10 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   let (mut store, _) = VersionedKVStore::new(
     temp_dir.path(),
     "test",
-    PersistentStoreConfig { initial_buffer_size: 4096, ..Default::default() },
+    PersistentStoreConfig {
+      initial_buffer_size: 4096,
+      ..Default::default()
+    },
     time_provider.clone(),
     registry,
   )
@@ -449,7 +467,10 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
   let (mut store, _) = VersionedKVStore::new(
     temp_dir.path(),
     "test",
-    PersistentStoreConfig { initial_buffer_size: 4096, ..Default::default() },
+    PersistentStoreConfig {
+      initial_buffer_size: 4096,
+      ..Default::default()
+    },
     time_provider.clone(),
     registry,
   )

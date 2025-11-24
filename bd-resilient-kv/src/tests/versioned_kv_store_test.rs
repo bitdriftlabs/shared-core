@@ -36,7 +36,10 @@ impl Setup {
     let (store, _) = VersionedKVStore::new(
       temp_dir.path(),
       "test",
-      PersistentStoreConfig { initial_buffer_size: 4096, ..Default::default() },
+      PersistentStoreConfig {
+        initial_buffer_size: 4096,
+        ..Default::default()
+      },
       time_provider.clone(),
       registry,
     )
@@ -67,7 +70,10 @@ impl Setup {
     let (store, _) = VersionedKVStore::open_existing(
       self.temp_dir.path(),
       "snapshot",
-      PersistentStoreConfig { initial_buffer_size: 4096, ..Default::default() },
+      PersistentStoreConfig {
+        initial_buffer_size: 4096,
+        ..Default::default()
+      },
       self.time_provider.clone(),
       registry,
     )
@@ -96,8 +102,17 @@ async fn basic_crud() -> anyhow::Result<()> {
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
   let registry = Arc::new(RetentionRegistry::new());
 
-  let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", PersistentStoreConfig { initial_buffer_size: 4096, ..Default::default() }, time_provider, registry).await?;
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    PersistentStoreConfig {
+      initial_buffer_size: 4096,
+      ..Default::default()
+    },
+    time_provider,
+    registry,
+  )
+  .await?;
 
   // Insert some values
   let ts1 = store
@@ -153,7 +168,10 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
     let (mut store, _) = VersionedKVStore::new(
       temp_dir.path(),
       "test",
-      PersistentStoreConfig { initial_buffer_size: 4096, ..Default::default() },
+      PersistentStoreConfig {
+        initial_buffer_size: 4096,
+        ..Default::default()
+      },
       time_provider.clone(),
       registry.clone(),
     )
@@ -179,9 +197,17 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
 
   // Reopen and verify data persisted
   {
-    let (store, _) =
-      VersionedKVStore::open_existing(temp_dir.path(), "test", PersistentStoreConfig { initial_buffer_size: 4096, ..Default::default() }, time_provider, registry)
-        .await?;
+    let (store, _) = VersionedKVStore::open_existing(
+      temp_dir.path(),
+      "test",
+      PersistentStoreConfig {
+        initial_buffer_size: 4096,
+        ..Default::default()
+      },
+      time_provider,
+      registry,
+    )
+    .await?;
     assert_eq!(store.len(), 2);
     assert_eq!(
       store.get_with_timestamp(Scope::FeatureFlag, "key1"),
@@ -485,7 +511,10 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
   let (mut store, _) = VersionedKVStore::new(
     temp_dir.path(),
     "test",
-    PersistentStoreConfig { initial_buffer_size: 4096, ..Default::default() },
+    PersistentStoreConfig {
+      initial_buffer_size: 4096,
+      ..Default::default()
+    },
     time_provider.clone(),
     registry.clone(),
   )
@@ -576,8 +605,17 @@ async fn test_multiple_rotations_with_same_timestamp() -> anyhow::Result<()> {
   let registry = Arc::new(RetentionRegistry::new());
   let _handle = registry.create_handle().await; // Retain all snapshots
 
-  let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", PersistentStoreConfig { initial_buffer_size: 4096, ..Default::default() }, time_provider, registry).await?;
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    PersistentStoreConfig {
+      initial_buffer_size: 4096,
+      ..Default::default()
+    },
+    time_provider,
+    registry,
+  )
+  .await?;
 
   // Insert data once
   store

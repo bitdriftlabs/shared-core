@@ -34,8 +34,8 @@ pub struct PersistentStoreConfig {
 impl Default for PersistentStoreConfig {
   fn default() -> Self {
     Self {
-      initial_buffer_size: 8 * 1024,     // 8KB
-      max_capacity_bytes: 1024 * 1024,   // 1MB
+      initial_buffer_size: 8 * 1024,   // 8KB
+      max_capacity_bytes: 1024 * 1024, // 1MB
       high_water_mark_ratio: Some(0.8),
     }
   }
@@ -63,8 +63,7 @@ impl PersistentStoreConfig {
     }
 
     // Validate and fix max_capacity_bytes - always enforce a reasonable maximum
-    if self.max_capacity_bytes < self.initial_buffer_size
-      || self.max_capacity_bytes > ABSOLUTE_MAX
+    if self.max_capacity_bytes < self.initial_buffer_size || self.max_capacity_bytes > ABSOLUTE_MAX
     {
       // If max is invalid, use a safe default (10MB)
       self.max_capacity_bytes = DEFAULT_MAX_CAPACITY;
@@ -633,8 +632,7 @@ impl VersionedKVStore {
       // - Truncating data (not ideal as it violates durability guarantees)
       // - Alerting and requiring manual intervention
       anyhow::bail!(
-        "Cannot rotate: compacted state ({compacted_size} bytes) exceeds max capacity ({} \
-         bytes)",
+        "Cannot rotate: compacted state ({compacted_size} bytes) exceeds max capacity ({} bytes)",
         self.max_capacity_bytes
       );
     }

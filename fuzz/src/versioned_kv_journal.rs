@@ -302,17 +302,15 @@ impl VersionedKVJournalFuzzTest {
       }
     });
 
-    // Clamp max capacity to a reasonable range if provided (must be >= buffer_size, <= 1MB)
-    // Treat 0 or None as default (1MB)
-    let max_capacity_bytes = test_case
-      .max_capacity_bytes
-      .filter(|&max| max != 0)
-      .map(|max| {
-        let max_usize = max as usize;
-        // Ensure max >= buffer_size and <= 1MB
-        max_usize.max(buffer_size).min(1024 * 1024)
-      })
-      .unwrap_or(1024 * 1024); // Default to 1MB if not specified
+    // Clamp max capacity to a reasonable range (must be >= buffer_size, <= 1MB)
+    // Treat 0 as default (1MB)
+    let max_capacity_bytes = if test_case.max_capacity_bytes == 0 {
+      1024 * 1024 // Default to 1MB
+    } else {
+      let max_usize = test_case.max_capacity_bytes as usize;
+      // Ensure max >= buffer_size and <= 1MB
+      max_usize.max(buffer_size).min(1024 * 1024)
+    };
 
     // Create a temporary directory for the journal files
     let Ok(temp_dir) = TempDir::new() else {
