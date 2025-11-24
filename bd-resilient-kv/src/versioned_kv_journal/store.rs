@@ -21,7 +21,7 @@ use std::sync::Arc;
 /// Configuration for persistent store with dynamic growth capabilities.
 #[derive(Debug, Clone)]
 pub struct PersistentStoreConfig {
-  /// Starting buffer size - must be power of 2 (e.g., 8KB = 8,192 bytes).
+  /// Starting buffer size - will be rounded to next power of 2 if needed.
   pub initial_buffer_size: usize,
 
   /// Maximum total capacity in bytes (e.g., 10MB).
@@ -34,8 +34,8 @@ pub struct PersistentStoreConfig {
 impl Default for PersistentStoreConfig {
   fn default() -> Self {
     Self {
-      initial_buffer_size: 8 * 1024,
-      max_capacity_bytes: Some(10 * 1024 * 1024),
+      initial_buffer_size: 8 * 1024,             // 8KB
+      max_capacity_bytes: Some(1 * 1024 * 1024), // 1MB
       high_water_mark_ratio: Some(0.8),
     }
   }
@@ -46,8 +46,9 @@ impl PersistentStoreConfig {
   /// This is designed for dynamic config scenarios where validation errors can't be communicated.
   pub fn normalize(&mut self) {
     const DEFAULT_INITIAL_SIZE: usize = 8 * 1024; // 8KB
-    const DEFAULT_MAX_CAPACITY: usize = 10 * 1024 * 1024; // 10MB
+    const DEFAULT_MAX_CAPACITY: usize = 1 * 1024 * 1024; // 1MB
     const DEFAULT_RATIO: f32 = 0.7;
+
     const ABSOLUTE_MIN: usize = 4096; // 4KB
     const ABSOLUTE_MAX: usize = 1024 * 1024 * 1024; // 1GB
 
