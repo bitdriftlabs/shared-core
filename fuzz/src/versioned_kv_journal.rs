@@ -290,7 +290,7 @@ impl VersionedKVJournalFuzzTest {
     // Note: 4KB is the minimum required by PersistentStoreConfig
     // Config validation will automatically round to power of 2 if needed
     let buffer_size = ((test_case.buffer_size % 1_048_576) + 4096) as usize;
-    
+
     // Clamp high water mark ratio to valid range [0.1, 1.0]
     // Config validation requires >= 0.1 when using max_capacity
     let high_water_mark_ratio = test_case.high_water_mark_ratio.and_then(|ratio| {
@@ -509,7 +509,8 @@ impl VersionedKVJournalFuzzTest {
 
     let Ok((mut store, _data_loss)) = store_result else {
       panic!(
-        "Failed to create initial VersionedKVStore: {:?}. Config: buffer_size={}, max_capacity={:?}",
+        "Failed to create initial VersionedKVStore: {:?}. Config: buffer_size={}, \
+         max_capacity={:?}",
         store_result.err(),
         self.buffer_size,
         self.max_capacity_bytes

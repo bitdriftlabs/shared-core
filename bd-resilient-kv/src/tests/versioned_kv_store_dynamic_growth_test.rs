@@ -289,7 +289,11 @@ async fn growth_with_compaction() -> anyhow::Result<()> {
 
   // Write enough data to fill ~70% of buffer (triggers high water mark)
   let value = "x".repeat(256);
-  #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+  #[allow(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss
+  )]
   let entries_needed = (old_size as f32 * 0.7 / 256.0) as usize;
 
   for i in 0 .. entries_needed {
