@@ -273,7 +273,7 @@ pub struct VersionedKVJournalFuzzTest {
   test_case: VersionedKVJournalFuzzTestCase,
   buffer_size: usize,
   high_water_mark_ratio: Option<f32>,
-  max_capacity_bytes: Option<usize>,
+  max_capacity_bytes: usize,
   temp_dir: TempDir,
   time_provider: Arc<TestTimeProvider>,
   registry: Arc<RetentionRegistry>,
@@ -303,15 +303,16 @@ impl VersionedKVJournalFuzzTest {
     });
 
     // Clamp max capacity to a reasonable range if provided (must be >= buffer_size, <= 10MB)
-    // Treat 0 as None (no max capacity)
-    let max_capacity_bytes = test_case.max_capacity_bytes.and_then(|max| {
-      if max == 0 {
-        return None; // Treat 0 as "no max capacity"
-      }
-      let max_usize = max as usize;
-      // Ensure max >= buffer_size and <= 10MB
-      Some(max_usize.max(buffer_size).min(10 * 1024 * 1024))
-    });
+    // Treat 0 or None as default (10MB)
+    let max_capacity_bytes = test_case
+      .max_capacity_bytes
+      .filter(|&max| max != 0)
+      .map(|max| {
+        let max_usize = max as usize;
+        // Ensure max >= buffer_size and <= 10MB
+        max_usize.max(buffer_size).min(10 * 1024 * 1024)
+      })
+      .unwrap_or(10 * 1024 * 1024); // Default to 10MB if not specified
 
     // Create a temporary directory for the journal files
     let Ok(temp_dir) = TempDir::new() else {
@@ -336,63 +337,35 @@ impl VersionedKVJournalFuzzTest {
   }
 
   async fn new_store(&self) -> anyhow::Result<(VersionedKVStore, DataLoss)> {
-    // Use config-based creation if max_capacity is set (tests dynamic growth)
-    if let Some(max_capacity) = self.max_capacity_bytes {
-      let config = PersistentStoreConfig {
-        initial_buffer_size: self.buffer_size,
-        max_capacity_bytes: Some(max_capacity),
-        high_water_mark_ratio: self.high_water_mark_ratio,
-      };
-      VersionedKVStore::new_with_config(
-        self.temp_dir.path(),
-        JOURNAL_NAME,
-        config,
-        self.time_provider.clone(),
-        self.registry.clone(),
-      )
-      .await
-    } else {
-      // Use traditional fixed-size creation
-      VersionedKVStore::new(
-        self.temp_dir.path(),
-        JOURNAL_NAME,
-        self.buffer_size,
-        self.high_water_mark_ratio,
-        self.time_provider.clone(),
-        self.registry.clone(),
-      )
-      .await
-    }
+    let config = PersistentStoreConfig {
+      initial_buffer_size: self.buffer_size,
+      max_capacity_bytes: self.max_capacity_bytes,
+      high_water_mark_ratio: self.high_water_mark_ratio,
+    };
+    VersionedKVStore::new(
+      self.temp_dir.path(),
+      JOURNAL_NAME,
+      config,
+      self.time_provider.clone(),
+      self.registry.clone(),
+    )
+    .await
   }
 
   async fn existing_store(&self) -> anyhow::Result<(VersionedKVStore, DataLoss)> {
-    // Use config-based opening if max_capacity is set (tests dynamic growth)
-    if let Some(max_capacity) = self.max_capacity_bytes {
-      let config = PersistentStoreConfig {
-        initial_buffer_size: self.buffer_size,
-        max_capacity_bytes: Some(max_capacity),
-        high_water_mark_ratio: self.high_water_mark_ratio,
-      };
-      VersionedKVStore::open_existing_with_config(
-        self.temp_dir.path(),
-        JOURNAL_NAME,
-        config,
-        self.time_provider.clone(),
-        self.registry.clone(),
-      )
-      .await
-    } else {
-      // Use traditional fixed-size opening
-      VersionedKVStore::open_existing(
-        self.temp_dir.path(),
-        JOURNAL_NAME,
-        self.buffer_size,
-        self.high_water_mark_ratio,
-        self.time_provider.clone(),
-        self.registry.clone(),
-      )
-      .await
-    }
+    let config = PersistentStoreConfig {
+      initial_buffer_size: self.buffer_size,
+      max_capacity_bytes: self.max_capacity_bytes,
+      high_water_mark_ratio: self.high_water_mark_ratio,
+    };
+    VersionedKVStore::open_existing(
+      self.temp_dir.path(),
+      JOURNAL_NAME,
+      config,
+      self.time_provider.clone(),
+      self.registry.clone(),
+    )
+    .await
   }
 
   /// Estimate the size of a single entry in bytes.

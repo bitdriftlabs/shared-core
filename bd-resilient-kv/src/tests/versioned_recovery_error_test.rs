@@ -12,6 +12,7 @@ use crate::tests::decompress_zlib;
 use crate::versioned_kv_journal::make_string_value;
 use crate::versioned_kv_journal::recovery::VersionedRecovery;
 use crate::versioned_kv_journal::retention::RetentionRegistry;
+use crate::versioned_kv_journal::store::PersistentStoreConfig;
 use crate::{Scope, VersionedKVStore};
 use bd_time::TestTimeProvider;
 use std::sync::Arc;
@@ -90,8 +91,7 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
   let (mut store, _) = VersionedKVStore::new(
     temp_dir.path(),
     "test",
-    4096,
-    None,
+    PersistentStoreConfig { initial_buffer_size: 4096, ..Default::default() },
     time_provider.clone(),
     registry,
   )

@@ -24,8 +24,8 @@ pub struct PersistentStoreConfig {
   /// Starting buffer size - will be rounded to next power of 2 if needed.
   pub initial_buffer_size: usize,
 
-  /// Maximum total capacity in bytes (e.g., 10MB).
-  pub max_capacity_bytes: Option<usize>,
+  /// Maximum total capacity in bytes (e.g., 10MB). Always enforced to prevent unbounded growth.
+  pub max_capacity_bytes: usize,
 
   /// High water mark ratio for triggering rotation (0.0-1.0).
   pub high_water_mark_ratio: Option<f32>,
@@ -34,8 +34,8 @@ pub struct PersistentStoreConfig {
 impl Default for PersistentStoreConfig {
   fn default() -> Self {
     Self {
-      initial_buffer_size: 8 * 1024,             // 8KB
-      max_capacity_bytes: Some(1 * 1024 * 1024), // 1MB
+      initial_buffer_size: 8 * 1024,     // 8KB
+      max_capacity_bytes: 1024 * 1024,   // 1MB
       high_water_mark_ratio: Some(0.8),
     }
   }
@@ -46,7 +46,7 @@ impl PersistentStoreConfig {
   /// This is designed for dynamic config scenarios where validation errors can't be communicated.
   pub fn normalize(&mut self) {
     const DEFAULT_INITIAL_SIZE: usize = 8 * 1024; // 8KB
-    const DEFAULT_MAX_CAPACITY: usize = 1 * 1024 * 1024; // 1MB
+    const DEFAULT_MAX_CAPACITY: usize = 10 * 1024 * 1024; // 10MB
     const DEFAULT_RATIO: f32 = 0.7;
 
     const ABSOLUTE_MIN: usize = 4096; // 4KB
@@ -63,14 +63,11 @@ impl PersistentStoreConfig {
     }
 
     // Validate and fix max_capacity_bytes - always enforce a reasonable maximum
-    if let Some(max) = self.max_capacity_bytes
-      && (max < self.initial_buffer_size || max > ABSOLUTE_MAX)
+    if self.max_capacity_bytes < self.initial_buffer_size
+      || self.max_capacity_bytes > ABSOLUTE_MAX
     {
       // If max is invalid, use a safe default (10MB)
-      self.max_capacity_bytes = Some(DEFAULT_MAX_CAPACITY);
-    } else if self.max_capacity_bytes.is_none() {
-      // If not specified, use a safe default (10MB)
-      self.max_capacity_bytes = Some(DEFAULT_MAX_CAPACITY);
+      self.max_capacity_bytes = DEFAULT_MAX_CAPACITY;
     }
 
     // Clamp high_water_mark_ratio to valid range [0.1, 1.0]
@@ -119,7 +116,7 @@ pub struct VersionedKVStore {
 
   // Dynamic growth configuration
   initial_buffer_size: usize,
-  max_capacity_bytes: Option<usize>,
+  max_capacity_bytes: usize,
   current_buffer_size: usize,
   high_water_mark_ratio: Option<f32>,
 
@@ -168,15 +165,10 @@ impl VersionedKVStore {
     }
 
     // Apply new config's max capacity as a cap
-    let size = config
-      .max_capacity_bytes
-      .map_or(file_size, |max| file_size.min(max));
+    let size = file_size.min(config.max_capacity_bytes);
 
     // Consider growing to new baseline if config increased
-    if size < config.initial_buffer_size
-      && config
-        .max_capacity_bytes
-        .is_none_or(|max| config.initial_buffer_size <= max)
+    if size < config.initial_buffer_size && config.initial_buffer_size <= config.max_capacity_bytes
     {
       log::debug!(
         "Growing journal from {} bytes to initial_buffer_size {} bytes",
@@ -189,92 +181,6 @@ impl VersionedKVStore {
     Ok(size)
   }
 
-  /// Create a new `VersionedKVStore` with the specified directory, name, and buffer size.
-  ///
-  /// The journal file will be named `<name>.jrn.N` where N is the generation number.
-  /// If a journal already exists, it will be loaded with its existing contents.
-  /// If the specified size is larger than an existing file, it will be resized while preserving
-  /// data. If the specified size is smaller and the existing data doesn't fit, a fresh journal
-  /// will be created.
-  ///
-  /// # Errors
-  /// Returns an error if we failed to create or open the journal file.
-  pub async fn new<P: AsRef<Path>>(
-    dir_path: P,
-    name: &str,
-    buffer_size: usize,
-    high_water_mark_ratio: Option<f32>,
-    time_provider: Arc<dyn TimeProvider>,
-    retention_registry: Arc<RetentionRegistry>,
-  ) -> anyhow::Result<(Self, DataLoss)> {
-    let dir = dir_path.as_ref();
-
-    let (journal_path, generation) = file_manager::find_active_journal(dir, name).await;
-
-    // TODO(snowp): It would be ideal to be able to start with a small buffer and grow is as needed
-    // depending on the particular device need. We can embed size information in the journal header
-    // or in the filename itself to facilitate this.
-
-    log::debug!(
-      "Opening VersionedKVStore journal at {} (generation {generation})",
-      journal_path.display()
-    );
-
-    let (journal, initial_state, data_loss) = if journal_path.exists() {
-      // Try to open existing journal
-      Self::open(
-        &journal_path,
-        buffer_size,
-        high_water_mark_ratio,
-        time_provider.clone(),
-      )
-      .map(|(j, initial_state, data_loss)| (j, initial_state, data_loss.into()))
-      .or_else(|_| {
-        // Data is corrupt or unreadable, create fresh journal
-        Ok::<_, anyhow::Error>((
-          MemMappedVersionedJournal::new(
-            &journal_path,
-            buffer_size,
-            high_water_mark_ratio,
-            time_provider,
-            std::iter::empty(),
-          )?,
-          AHashMap::default(),
-          DataLoss::Total,
-        ))
-      })?
-    } else {
-      // Create new journal
-      (
-        MemMappedVersionedJournal::new(
-          &journal_path,
-          buffer_size,
-          high_water_mark_ratio,
-          time_provider,
-          std::iter::empty(),
-        )?,
-        AHashMap::default(),
-        DataLoss::None,
-      )
-    };
-
-    Ok((
-      Self {
-        journal,
-        cached_map: initial_state,
-        dir_path: dir.to_path_buf(),
-        journal_name: name.to_string(),
-        initial_buffer_size: buffer_size,
-        max_capacity_bytes: None,
-        current_buffer_size: buffer_size,
-        high_water_mark_ratio,
-        current_generation: generation,
-        retention_registry,
-      },
-      data_loss,
-    ))
-  }
-
   /// Create a new `VersionedKVStore` with dynamic growth configuration.
   ///
   /// The journal file will be named `<name>.jrn.N` where N is the generation number.
@@ -284,7 +190,7 @@ impl VersionedKVStore {
   /// # Errors
   /// Returns an error if we failed to create or open the journal file, or if the
   /// configuration is invalid.
-  pub async fn new_with_config<P: AsRef<Path>>(
+  pub async fn new<P: AsRef<Path>>(
     dir_path: P,
     name: &str,
     mut config: PersistentStoreConfig,
@@ -367,7 +273,7 @@ impl VersionedKVStore {
 
   /// Open an existing `VersionedKVStore` with dynamic growth configuration.
   ///
-  /// Unlike `new_with_config()`, this method requires the journal file to exist and will fail if
+  /// Unlike `new()`, this method requires the journal file to exist and will fail if
   /// it's missing.
   ///
   /// # Arguments
@@ -384,7 +290,7 @@ impl VersionedKVStore {
   /// - The journal file cannot be opened
   /// - The journal file contains invalid data
   /// - Initialization fails
-  pub async fn open_existing_with_config<P: AsRef<Path>>(
+  pub async fn open_existing<P: AsRef<Path>>(
     dir_path: P,
     name: &str,
     mut config: PersistentStoreConfig,
@@ -418,63 +324,6 @@ impl VersionedKVStore {
         max_capacity_bytes: config.max_capacity_bytes,
         current_buffer_size: buffer_size,
         high_water_mark_ratio: config.high_water_mark_ratio,
-        current_generation: generation,
-        retention_registry,
-      },
-      if matches!(data_loss, PartialDataLoss::Yes) {
-        DataLoss::Partial
-      } else {
-        DataLoss::None
-      },
-    ))
-  }
-
-  /// Open an existing `VersionedKVStore` from a pre-existing journal file.
-  ///
-  /// Unlike `new()`, this method requires the journal file to exist and will fail if it's
-  /// missing.
-  ///
-  /// # Arguments
-  /// * `dir_path` - Directory path where the journal is stored
-  /// * `name` - Base name of the journal (e.g., "store" for "store.jrn.N")
-  /// * `buffer_size` - Size in bytes for the journal buffer
-  /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
-  ///
-  /// # Errors
-  /// Returns an error if:
-  /// - The journal file does not exist
-  /// - The journal file cannot be opened
-  /// - The journal file contains invalid data
-  /// - Initialization fails
-  pub async fn open_existing<P: AsRef<Path>>(
-    dir_path: P,
-    name: &str,
-    buffer_size: usize,
-    high_water_mark_ratio: Option<f32>,
-    time_provider: Arc<dyn TimeProvider>,
-    retention_registry: Arc<RetentionRegistry>,
-  ) -> anyhow::Result<(Self, DataLoss)> {
-    let dir = dir_path.as_ref();
-
-    let (journal_path, generation) = file_manager::find_active_journal(dir, name).await;
-
-    let (journal, initial_state, data_loss) = Self::open(
-      &journal_path,
-      buffer_size,
-      high_water_mark_ratio,
-      time_provider,
-    )?;
-
-    Ok((
-      Self {
-        journal,
-        cached_map: initial_state,
-        dir_path: dir.to_path_buf(),
-        journal_name: name.to_string(),
-        initial_buffer_size: buffer_size,
-        max_capacity_bytes: None,
-        current_buffer_size: buffer_size,
-        high_water_mark_ratio,
         current_generation: generation,
         retention_registry,
       },
@@ -673,9 +522,9 @@ impl VersionedKVStore {
     self.current_buffer_size
   }
 
-  /// Returns the maximum capacity in bytes, if configured.
+  /// Returns the maximum capacity in bytes.
   #[must_use]
-  pub fn max_capacity_bytes(&self) -> Option<usize> {
+  pub fn max_capacity_bytes(&self) -> usize {
     self.max_capacity_bytes
   }
 }
@@ -750,9 +599,7 @@ impl VersionedKVStore {
     let new_size = target_size.next_power_of_two();
 
     // Apply capacity cap
-    self
-      .max_capacity_bytes
-      .map_or(new_size, |max| new_size.min(max))
+    new_size.min(self.max_capacity_bytes)
   }
 
   pub async fn rotate_journal(&mut self) -> anyhow::Result<Rotation> {
@@ -771,12 +618,13 @@ impl VersionedKVStore {
     );
 
     // Check if compacted state fits in max capacity
-    if let Some(max) = self.max_capacity_bytes
-      && compacted_size > max
-    {
+    if compacted_size > self.max_capacity_bytes {
       // This should only happen if we decrease the max capacity to below current usage
       // during process restart, as otherwise we couldn't have grown to this point.
-      log::debug!("Compaction size {compacted_size} exceeds max capacity {max} bytes");
+      log::debug!(
+        "Compaction size {compacted_size} exceeds max capacity {} bytes",
+        self.max_capacity_bytes
+      );
 
       // TODO(snowp): We need a strategy for this since we are allowing for dynamic configuration
       // of max capacity. Options include:
@@ -785,8 +633,9 @@ impl VersionedKVStore {
       // - Truncating data (not ideal as it violates durability guarantees)
       // - Alerting and requiring manual intervention
       anyhow::bail!(
-        "Cannot rotate: compacted state ({compacted_size} bytes) exceeds max capacity ({max} \
-         bytes)"
+        "Cannot rotate: compacted state ({compacted_size} bytes) exceeds max capacity ({} \
+         bytes)",
+        self.max_capacity_bytes
       );
     }
 
