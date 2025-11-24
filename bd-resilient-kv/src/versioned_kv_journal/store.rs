@@ -139,54 +139,54 @@ impl VersionedKVStore {
     const MIN_BUFFER_SIZE: usize = 21; // HEADER_SIZE (17) + min frame (4)
     const MAX_REASONABLE_SIZE: usize = 1024 * 1024 * 1024; // 1GB
 
-    if let Ok(metadata) = tokio::fs::metadata(journal_path).await {
-      #[allow(clippy::cast_possible_truncation)]
-      let file_size = metadata.len() as usize;
+    let Ok(metadata) = tokio::fs::metadata(journal_path).await else {
+      // Unable to read metadata - treat as new file
+      return Ok(config.initial_buffer_size);
+    };
 
-      // Sanity check: minimum size
-      if file_size < MIN_BUFFER_SIZE {
-        log::debug!(
-          "Journal file {} too small ({} bytes), using initial_buffer_size",
-          journal_path.display(),
-          file_size
-        );
-        return Ok(config.initial_buffer_size);
-      }
+    #[allow(clippy::cast_possible_truncation)]
+    let file_size = metadata.len() as usize;
 
-      // Sanity check: maximum reasonable size
-      if file_size > MAX_REASONABLE_SIZE {
-        log::debug!(
-          "Journal file {} suspiciously large ({} bytes), using initial_buffer_size",
-          journal_path.display(),
-          file_size
-        );
-        return Ok(config.initial_buffer_size);
-      }
-
-      // Apply new config's max capacity as a cap
-      let size = config
-        .max_capacity_bytes
-        .map_or(file_size, |max| file_size.min(max));
-
-      // Consider growing to new baseline if config increased
-      if size < config.initial_buffer_size
-        && config
-          .max_capacity_bytes
-          .is_none_or(|max| config.initial_buffer_size <= max)
-      {
-        log::debug!(
-          "Growing journal from {} bytes to initial_buffer_size {} bytes",
-          file_size,
-          config.initial_buffer_size
-        );
-        return Ok(config.initial_buffer_size);
-      }
-
-      Ok(size)
-    } else {
-      // New file - use config
-      Ok(config.initial_buffer_size)
+    // Sanity check: minimum size
+    if file_size < MIN_BUFFER_SIZE {
+      log::debug!(
+        "Journal file {} too small ({} bytes), using initial_buffer_size",
+        journal_path.display(),
+        file_size
+      );
+      return Ok(config.initial_buffer_size);
     }
+
+    // Sanity check: maximum reasonable size
+    if file_size > MAX_REASONABLE_SIZE {
+      log::debug!(
+        "Journal file {} suspiciously large ({} bytes), using initial_buffer_size",
+        journal_path.display(),
+        file_size
+      );
+      return Ok(config.initial_buffer_size);
+    }
+
+    // Apply new config's max capacity as a cap
+    let size = config
+      .max_capacity_bytes
+      .map_or(file_size, |max| file_size.min(max));
+
+    // Consider growing to new baseline if config increased
+    if size < config.initial_buffer_size
+      && config
+        .max_capacity_bytes
+        .is_none_or(|max| config.initial_buffer_size <= max)
+    {
+      log::debug!(
+        "Growing journal from {} bytes to initial_buffer_size {} bytes",
+        file_size,
+        config.initial_buffer_size
+      );
+      return Ok(config.initial_buffer_size);
+    }
+
+    Ok(size)
   }
 
   /// Create a new `VersionedKVStore` with the specified directory, name, and buffer size.
