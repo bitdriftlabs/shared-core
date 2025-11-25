@@ -420,7 +420,9 @@ async fn compaction_helps_at_max_capacity() -> anyhow::Result<()> {
 
   // Delete most entries to create compaction opportunity
   for i in 0 .. 8 {
-    store.remove(Scope::GlobalState, &format!("key_{i}")).await?;
+    store
+      .remove(Scope::GlobalState, &format!("key_{i}"))
+      .await?;
   }
 
   // Now we have lots of tombstone entries taking up space
