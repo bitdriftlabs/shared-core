@@ -237,7 +237,7 @@ async fn config_validation() {
     high_water_mark_ratio: 1.5, // > 1.0
   };
   config.normalize();
-  assert_eq!(config.high_water_mark_ratio, 0.7); // Falls back to default
+  assert!((config.high_water_mark_ratio - 0.7).abs() < f32::EPSILON); // Falls back to default
 
   // Test: high_water_mark_ratio NaN (should default to 0.7)
   let mut config = PersistentStoreConfig {
