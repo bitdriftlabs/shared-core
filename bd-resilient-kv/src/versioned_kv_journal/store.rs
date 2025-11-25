@@ -417,7 +417,10 @@ impl PersistentStore {
     let target_ratio = self.high_water_mark_ratio.unwrap_or(0.7);
 
     // Calculate target size: compacted_size / target_ratio to ensure compacted data
-    // stays below high water mark
+    // stays below high water mark.
+    //
+    // In this case if compated_size_estimate is greater than (buffer_size * target_ratio),
+    // the new size will be larger than the current buffer_size, triggering growth.
     #[allow(
       clippy::cast_precision_loss,
       clippy::cast_possible_truncation,
@@ -425,7 +428,8 @@ impl PersistentStore {
     )]
     let target_size = (compacted_size_estimate as f32 / target_ratio).ceil() as usize;
 
-    // Round up to next power of 2 for efficient memory alignment
+    // Keep the buffer size as a power of two for efficiency reasons and to give headroom
+    // during for writes.
     let suggested_size = target_size.next_power_of_two();
 
     // Determine new buffer size:
