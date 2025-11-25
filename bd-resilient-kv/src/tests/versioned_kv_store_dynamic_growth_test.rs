@@ -294,8 +294,7 @@ async fn growth_with_compaction() -> anyhow::Result<()> {
       .await?;
   }
 
-  // Rotation should trigger automatically or we can trigger manually
-  store.rotate_journal().await?;
+  // Rotation should have triggered automatically.
 
   // Should have grown (50% headroom on compacted size)
   let new_size = store.current_buffer_size();
