@@ -390,3 +390,113 @@ async fn insert_fails_when_exceeding_max_capacity() -> anyhow::Result<()> {
 
   Ok(())
 }
+
+/// Test that rotation with compaction can help even when at max capacity.
+/// If we're at max buffer size but have lots of deleted/overwritten entries,
+/// compaction might free up enough space for a new entry.
+#[tokio::test]
+async fn compaction_helps_at_max_capacity() -> anyhow::Result<()> {
+  let setup = Setup::new();
+
+  let config = PersistentStoreConfig {
+    initial_buffer_size: 8 * 1024, // 8KB
+    max_capacity_bytes: 8 * 1024,  // 8KB max (no growth allowed)
+    high_water_mark_ratio: 0.8,
+  };
+
+  let mut store = setup.open_store(config).await?;
+
+  // Fill the buffer with entries
+  let value = "x".repeat(512); // 512 byte values
+  for i in 0 .. 10 {
+    store
+      .insert(
+        Scope::GlobalState,
+        format!("key_{i}"),
+        make_string_value(&value),
+      )
+      .await?;
+  }
+
+  // Delete most entries to create compaction opportunity
+  for i in 0 .. 8 {
+    store.remove(Scope::GlobalState, &format!("key_{i}")).await?;
+  }
+
+  // Now we have lots of tombstone entries taking up space
+  // Buffer is at max size (8KB), but compaction would free up space
+
+  // Try to insert a new moderately-sized entry
+  // This should succeed because rotation+compaction will free up space
+  let new_value = "y".repeat(512);
+  let result = store
+    .insert(
+      Scope::GlobalState,
+      "new_key".to_string(),
+      make_string_value(&new_value),
+    )
+    .await;
+
+  // Should succeed after compaction
+  assert!(
+    result.is_ok(),
+    "Insert should succeed after compaction frees space"
+  );
+
+  // Still at max capacity
+  assert_eq!(store.current_buffer_size(), 8 * 1024);
+
+  Ok(())
+}
+
+/// Test that rotation fails fast when even compaction wouldn't help.
+/// When buffer is at max capacity and compacted state plus new entry
+/// still wouldn't fit, we should fail immediately without attempting rotation.
+#[tokio::test]
+async fn fails_fast_when_compaction_wont_help() -> anyhow::Result<()> {
+  let setup = Setup::new();
+
+  let config = PersistentStoreConfig {
+    initial_buffer_size: 8 * 1024, // 8KB
+    max_capacity_bytes: 8 * 1024,  // 8KB max
+    high_water_mark_ratio: 0.8,
+  };
+
+  let mut store = setup.open_store(config).await?;
+
+  // Fill buffer with entries that will remain after compaction
+  let value = "x".repeat(512);
+  for i in 0 .. 10 {
+    store
+      .insert(
+        Scope::GlobalState,
+        format!("key_{i}"),
+        make_string_value(&value),
+      )
+      .await?;
+  }
+
+  // Now buffer is mostly full with live data
+  // Try to insert a large entry that wouldn't fit even after compaction
+  let large_value = "y".repeat(4 * 1024); // 4KB value
+
+  let result = store
+    .insert(
+      Scope::GlobalState,
+      "large_key".to_string(),
+      make_string_value(&large_value),
+    )
+    .await;
+
+  // Should fail because compacted data (10 * ~512 bytes) + new entry (4KB)
+  // would exceed high water mark (8KB * 0.8 = 6.4KB)
+  assert!(
+    result.is_err(),
+    "Insert should fail when compaction wouldn't help"
+  );
+
+  // Verify nothing was inserted
+  assert!(!store.contains_key(Scope::GlobalState, "large_key"));
+
+  Ok(())
+}

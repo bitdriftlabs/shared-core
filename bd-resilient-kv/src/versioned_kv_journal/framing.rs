@@ -61,12 +61,20 @@ impl<'a, M: protobuf::Message> Frame<'a, M> {
   /// Calculate the encoded size of this frame.
   #[must_use]
   pub fn encoded_size(&self) -> usize {
+    Self::compute_encoded_size(self.key, self.timestamp_micros, &self.payload)
+  }
+
+  /// Calculate the encoded size for a frame without constructing it.
+  ///
+  /// This is useful when you want to estimate size without cloning or moving the payload.
+  #[must_use]
+  pub fn compute_encoded_size(key: &str, timestamp_micros: u64, payload: &M) -> usize {
     let scope_size = 1; // u8
-    let key_bytes = self.key.as_bytes();
+    let key_bytes = key.as_bytes();
     let key_len_varint_size = varint::compute_size(key_bytes.len() as u64);
     let key_size = key_bytes.len();
-    let timestamp_varint_size = varint::compute_size(self.timestamp_micros);
-    let payload_size: usize = self.payload.compute_size().try_into().unwrap_or(0);
+    let timestamp_varint_size = varint::compute_size(timestamp_micros);
+    let payload_size: usize = payload.compute_size().try_into().unwrap_or(0);
 
     let frame_content_len =
       scope_size + key_len_varint_size + key_size + timestamp_varint_size + payload_size + CRC_LEN;

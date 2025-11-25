@@ -28,7 +28,7 @@ mod tests;
 pub mod kv_journal;
 pub mod kv_store;
 mod scope;
-mod versioned_kv_journal;
+pub mod versioned_kv_journal;
 
 pub use kv_journal::{DoubleBufferedKVJournal, InMemoryKVJournal, KVJournal, MemMappedKVJournal};
 pub use kv_store::KVStore;

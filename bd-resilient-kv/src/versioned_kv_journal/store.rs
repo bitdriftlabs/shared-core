@@ -344,13 +344,16 @@ impl PersistentStore {
         },
         Err(UpdateError::CapacityExceeded) => {
           // Calculate size needed for tombstone entry
-          let entry_size = super::framing::Frame::new(
-            scope,
+          let entry_size = super::framing::Frame::compute_encoded_size(
             key,
-            0, // Timestamp placeholder, will be assigned during actual insert
-            StateValue::default(),
-          )
-          .encoded_size();
+            u64::MAX, // Overshoot the timestamp for size calculation
+            &StateValue::default(),
+          );
+
+          // Check if rotation would help. If not, fail immediately.
+          if !self.would_rotation_help(entry_size) {
+            return Err(UpdateError::CapacityExceeded);
+          }
 
           // Rotate with knowledge of incoming entry size
           self.rotate_journal_with_hint(entry_size).await?;
@@ -380,13 +383,16 @@ impl PersistentStore {
         },
         Err(UpdateError::CapacityExceeded) => {
           // Calculate size needed for this entry
-          let entry_size = super::framing::Frame::new(
-            scope,
+          let entry_size = super::framing::Frame::compute_encoded_size(
             key,
-            0, // Timestamp placeholder, will be assigned during actual insert
-            value.clone(),
-          )
-          .encoded_size();
+            u64::MAX, // Overshoot the timestamp for size calculation
+            &value,
+          );
+
+          // Check if rotation would help. If not, fail immediately.
+          if !self.would_rotation_help(entry_size) {
+            return Err(UpdateError::CapacityExceeded);
+          }
 
           // Rotate with knowledge of incoming entry size
           self.rotate_journal_with_hint(entry_size).await?;
@@ -426,13 +432,16 @@ impl PersistentStore {
       },
       Err(UpdateError::CapacityExceeded) => {
         // Calculate size needed for tombstone entry
-        let entry_size = super::framing::Frame::new(
-          scope,
+        let entry_size = super::framing::Frame::compute_encoded_size(
           key,
-          0, // Timestamp placeholder
-          StateValue::default(),
-        )
-        .encoded_size();
+          u64::MAX, // Overshoot the timestamp for size calculation
+          &StateValue::default(),
+        );
+
+        // Check if rotation would help. If not, fail immediately.
+        if !self.would_rotation_help(entry_size) {
+          return Err(UpdateError::CapacityExceeded);
+        }
 
         // Rotate with knowledge of incoming entry size
         self.rotate_journal_with_hint(entry_size).await?;
@@ -469,6 +478,62 @@ impl PersistentStore {
     self.rotate_journal_with_hint(0).await
   }
 
+  /// Calculate the compacted size estimate by summing encoded sizes of all live entries.
+  fn calculate_compacted_size(&self) -> usize {
+    self
+      .cached_map
+      .iter()
+      .map(|(_, key, tv)| {
+        super::framing::Frame::compute_encoded_size(key.as_str(), tv.timestamp, &tv.value)
+      })
+      .sum()
+  }
+
+  /// Calculate what the new buffer size would be after rotation with the given hint.
+  ///
+  /// Returns the new buffer size based on:
+  /// - Current compacted size
+  /// - Additional space hint
+  /// - High water mark ratio
+  /// - Current buffer size (never shrink)
+  /// - Max capacity bytes (cap at max)
+  fn calculate_new_buffer_size(&self, min_additional_space: usize) -> usize {
+    let compacted_size_estimate = self.calculate_compacted_size();
+    let total_size_needed = compacted_size_estimate + min_additional_space;
+
+    #[allow(
+      clippy::cast_precision_loss,
+      clippy::cast_possible_truncation,
+      clippy::cast_sign_loss
+    )]
+    let target_size = (total_size_needed as f32 / self.high_water_mark_ratio).ceil() as usize;
+    let suggested_size = target_size.next_power_of_two();
+
+    suggested_size
+      .max(self.buffer_size)
+      .min(self.max_capacity_bytes)
+  }
+
+  /// Check if rotation would allow an entry of the given size to fit.
+  ///
+  /// Returns true if:
+  /// - The entry fits within `max_capacity_bytes` AND
+  /// - After compaction and potential buffer growth, there would be enough space
+  fn would_rotation_help(&self, entry_size: usize) -> bool {
+    // Entry must fit within absolute max capacity
+    if entry_size > self.max_capacity_bytes {
+      return false;
+    }
+
+    let compacted_size_estimate = self.calculate_compacted_size();
+    let total_size_needed = compacted_size_estimate + entry_size;
+    let new_buffer_size = self.calculate_new_buffer_size(entry_size);
+
+    // Check if the compacted state plus new entry would fit in the new buffer. This effectively
+    // checks if we're able to grow the buffer enough to accommodate the new entry.
+    total_size_needed <= new_buffer_size
+  }
+
   /// Rotate the journal with a hint about the minimum additional space needed.
   ///
   /// This is used when an insert fails due to capacity exceeded and we need to ensure
@@ -494,51 +559,13 @@ impl PersistentStore {
       .join(format!("{}.jrn.{next_generation}", self.journal_name));
 
     // Calculate new buffer size with dynamic growth
-    // Estimate compacted size by summing up the encoded size of all entries
-    let compacted_size_estimate: usize = self
-      .cached_map
-      .iter()
-      .map(|(scope, key, tv)| {
-        super::framing::Frame::new(scope, key.as_str(), tv.timestamp, tv.value.clone())
-          .encoded_size()
-      })
-      .sum();
-
-    let target_ratio = self.high_water_mark_ratio;
-
-    // Factor in the incoming entry size hint
-    let total_size_needed = compacted_size_estimate + min_additional_space;
-
-    // Calculate target size: compacted_size / target_ratio to ensure compacted data
-    // stays below high water mark.
-    //
-    // In this case if compated_size_estimate is greater than (buffer_size * target_ratio),
-    // the new size will be larger than the current buffer_size, triggering growth.
-    #[allow(
-      clippy::cast_precision_loss,
-      clippy::cast_possible_truncation,
-      clippy::cast_sign_loss
-    )]
-    let target_size = (total_size_needed as f32 / target_ratio).ceil() as usize;
-
-    // Keep the buffer size as a power of two for efficiency reasons and to give headroom
-    // during for writes.
-    let suggested_size = target_size.next_power_of_two();
-
-    // Determine new buffer size:
-    // - Minimum: current buffer_size (never shrink)
-    // - Maximum: max_capacity_bytes
-    // - Preferred: suggested_size with headroom
-    let new_buffer_size = suggested_size
-      .max(self.buffer_size)  // Never shrink
-      .min(self.max_capacity_bytes); // Cap at max
+    let compacted_size_estimate = self.calculate_compacted_size();
+    let new_buffer_size = self.calculate_new_buffer_size(min_additional_space);
 
     log::debug!(
-      "Rotation sizing: compacted={} bytes, hint={} bytes, target={} bytes, new_buffer={} bytes \
-       (max={})",
+      "Rotation sizing: compacted={} bytes, hint={} bytes, new_buffer={} bytes (max={})",
       compacted_size_estimate,
       min_additional_space,
-      suggested_size,
       new_buffer_size,
       self.max_capacity_bytes
     );

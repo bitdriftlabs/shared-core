@@ -8,6 +8,7 @@
 use crate::Scope;
 use crate::versioned_kv_journal::TimestampedValue;
 use crate::versioned_kv_journal::framing::Frame;
+use crate::versioned_kv_journal::journal::HEADER_SIZE;
 use ahash::AHashMap;
 use bd_proto::protos::state::payload::StateValue;
 
@@ -154,9 +155,6 @@ fn replay_journal_to_timestamp(
   target_timestamp: u64,
   map: &mut AHashMap<(Scope, String), TimestampedValue>,
 ) -> anyhow::Result<()> {
-  // Skip the header (17 bytes: version + position + reserved)
-  const HEADER_SIZE: usize = 17;
-
   if buffer.len() < HEADER_SIZE {
     anyhow::bail!("Buffer too small: {}", buffer.len());
   }

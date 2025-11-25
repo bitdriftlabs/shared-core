@@ -7,8 +7,8 @@
 
 use ahash::AHashMap;
 use arbitrary::{Arbitrary, Unstructured};
+use bd_proto::protos::state::payload::StateValue;
 use bd_proto::protos::state::payload::state_value::Value_type;
-use bd_proto::protos::state::payload::{StateKeyValuePair, StateValue};
 use bd_resilient_kv::{
   DataLoss,
   PersistentStoreConfig,
@@ -19,7 +19,6 @@ use bd_resilient_kv::{
   VersionedKVStore,
 };
 use bd_time::{TestTimeProvider, TimeProvider as _};
-use protobuf::MessageDyn;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::macros::datetime;
@@ -293,7 +292,10 @@ impl VersionedKVJournalFuzzTest {
     let buffer_size = ((test_case.buffer_size % 1_048_576) + 4096) as usize;
 
     // Clamp high water mark ratio to valid range [0.1, 1.0]
-    let high_water_mark_ratio = test_case.high_water_mark_ratio.clamp(0.1, 1.0);
+    let mut high_water_mark_ratio = test_case.high_water_mark_ratio.clamp(0.1, 1.0);
+    if high_water_mark_ratio.is_nan() {
+      high_water_mark_ratio = 0.8; // Default value
+    }
 
     // Clamp max capacity to a reasonable range (must be >= buffer_size, <= 1MB)
     // Treat 0 as default (1MB)
@@ -363,34 +365,29 @@ impl VersionedKVJournalFuzzTest {
 
   /// Estimate the size of a single entry in bytes.
   ///
-  /// This estimates the size that would be required to store this key-value pair
-  /// in the journal.
-  fn estimate_entry_size(key: &str, value: &StateValue) -> usize {
-    const AVG_VARINT_SIZE: usize = 5; // Average size for frame length and timestamp varints
-    const SCOPE_SIZE: usize = 1; // Scope is serialized as u8
-    const CRC_SIZE: usize = 4;
-    const OVERHEAD_PER_ENTRY: usize = AVG_VARINT_SIZE + SCOPE_SIZE + AVG_VARINT_SIZE + CRC_SIZE;
-
-    let entry_size = StateKeyValuePair {
-      key: key.to_string(),
-      value: Some(value.clone()).into(),
-      ..Default::default()
-    }
-    .compute_size_dyn();
-
-    OVERHEAD_PER_ENTRY + entry_size.try_into().unwrap_or(usize::MAX)
+  /// This computes the actual size that would be required to store this key-value pair
+  /// in the journal using the Frame encoding.
+  fn estimate_entry_size(key: &str, value: &StateValue, timestamp: u64) -> usize {
+    use bd_resilient_kv::versioned_kv_journal::framing::Frame;
+    // Use a dummy scope and timestamp for size calculation
+    // The actual scope doesn't affect size calculation (it's always 1 byte)
+    Frame::compute_encoded_size(key, timestamp, value)
   }
 
   /// Estimate the size of the current state in bytes.
   /// We estimate conservatively to avoid false positives.
   fn estimate_state_size(&self) -> usize {
-    const HEADER_SIZE: usize = 17;
+    use bd_resilient_kv::versioned_kv_journal::VERSIONED_JOURNAL_HEADER_SIZE;
 
-    let mut total_size = HEADER_SIZE;
+    let mut total_size = VERSIONED_JOURNAL_HEADER_SIZE;
 
     for ((_, key_str), timestamped_value) in &self.state {
       // Use our entry size estimator for consistency
-      let entry_size = Self::estimate_entry_size(key_str, &timestamped_value.value);
+      let entry_size = Self::estimate_entry_size(
+        key_str,
+        &timestamped_value.value,
+        timestamped_value.timestamp,
+      );
       total_size += entry_size;
     }
 
@@ -409,7 +406,18 @@ impl VersionedKVJournalFuzzTest {
       // Check if we have any entries that individually exceed max capacity.
       // Such entries are genuinely oversized and should legitimately cause CapacityExceeded.
       let has_oversized_entry = self.state.iter().any(|((_, key_str), tv)| {
-        Self::estimate_entry_size(key_str, &tv.value) > self.max_capacity_bytes
+        Self::estimate_entry_size(
+          key_str,
+          &tv.value,
+          (self
+            .time_provider
+            .now()
+            .unix_timestamp_nanos()
+            .checked_div(1_000)
+            .unwrap())
+          .try_into()
+          .unwrap(),
+        ) > self.max_capacity_bytes
       });
 
       if has_oversized_entry {
@@ -540,7 +548,8 @@ impl VersionedKVJournalFuzzTest {
             },
             Err(e) => {
               // Classify the error
-              let entry_size = Self::estimate_entry_size(&key_str, &value.0);
+              let entry_size =
+                Self::estimate_entry_size(&key_str, &value.0, current_timestamp_micros());
               match Self::classify_error(
                 &e,
                 Some(entry_size),
@@ -788,7 +797,8 @@ impl VersionedKVJournalFuzzTest {
               },
               Err(e) => {
                 // Classify the error (bulk inserts use small int values)
-                let entry_size = Self::estimate_entry_size(&key_str, &value);
+                let entry_size =
+                  Self::estimate_entry_size(&key_str, &value, current_timestamp_micros());
                 match Self::classify_error(
                   &e,
                   Some(entry_size),

@@ -67,7 +67,11 @@ pub struct VersionedJournal<'a, M> {
 // The journal format version, incremented on incompatible changes.
 const VERSION: u64 = 1;
 
-const HEADER_SIZE: usize = 17;
+// Size of the journal header in bytes. The header consists of:
+// - 8 bytes for the version (u64)
+// - 8 bytes for the position (u64)
+// - 1 byte reserved for future use
+pub const HEADER_SIZE: usize = 17;
 
 // Minimum buffer size for a valid journal
 const MIN_BUFFER_SIZE: usize = HEADER_SIZE + 4;
@@ -118,7 +122,10 @@ fn validate_buffer_len(buffer: &[u8]) -> anyhow::Result<usize> {
 }
 
 /// Validate high water mark ratio and calculate the position from buffer length.
-fn calculate_high_water_mark(buffer_len: usize, high_water_mark_ratio: f32) -> anyhow::Result<usize> {
+fn calculate_high_water_mark(
+  buffer_len: usize,
+  high_water_mark_ratio: f32,
+) -> anyhow::Result<usize> {
   if !(0.1 ..= 1.0).contains(&high_water_mark_ratio) {
     anyhow::bail!(
       "High water mark ratio must be between 0.1 and 1.0, got: {high_water_mark_ratio}"
