@@ -30,18 +30,6 @@ impl Setup {
     }
   }
 
-  async fn create_store(&self, config: PersistentStoreConfig) -> anyhow::Result<VersionedKVStore> {
-    let (store, _) = VersionedKVStore::new(
-      self.temp_dir.path(),
-      "test",
-      config,
-      self.time_provider.clone(),
-      self.registry.clone(),
-    )
-    .await?;
-    Ok(store)
-  }
-
   async fn open_store(&self, config: PersistentStoreConfig) -> anyhow::Result<VersionedKVStore> {
     let (store, _) = VersionedKVStore::new(
       self.temp_dir.path(),
@@ -66,7 +54,7 @@ async fn normal_growth_pattern() -> anyhow::Result<()> {
     high_water_mark_ratio: Some(0.8),
   };
 
-  let mut store = setup.create_store(config).await?;
+  let mut store = setup.open_store(config).await?;
 
   // Verify initial size
   assert_eq!(store.initial_buffer_size(), 8 * 1024);
@@ -106,7 +94,7 @@ async fn max_capacity_limiting() -> anyhow::Result<()> {
     high_water_mark_ratio: Some(0.5), // Lower threshold for faster rotation
   };
 
-  let mut store = setup.create_store(config).await?;
+  let mut store = setup.open_store(config).await?;
 
   assert_eq!(store.current_buffer_size(), 4 * 1024);
 
@@ -146,7 +134,7 @@ async fn config_changes_on_restart() -> anyhow::Result<()> {
   };
 
   {
-    let mut store = setup.create_store(config1.clone()).await?;
+    let mut store = setup.open_store(config1.clone()).await?;
 
     // Write some data
     for i in 0 .. 5 {
@@ -283,7 +271,7 @@ async fn growth_with_compaction() -> anyhow::Result<()> {
     high_water_mark_ratio: Some(0.7),
   };
 
-  let mut store = setup.create_store(config).await?;
+  let mut store = setup.open_store(config).await?;
 
   let old_size = store.current_buffer_size();
 
