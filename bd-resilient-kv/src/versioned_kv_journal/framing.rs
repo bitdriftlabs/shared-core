@@ -25,7 +25,7 @@
 #[path = "./framing_test.rs"]
 mod tests;
 
-use crate::Scope;
+use crate::{Scope, UpdateError};
 use bytes::BufMut;
 use crc32fast::Hasher;
 
@@ -76,17 +76,15 @@ impl<'a, M: protobuf::Message> Frame<'a, M> {
   }
 
   /// Encode this frame into a buffer.
-  ///
-  /// # Errors
-  /// Returns an error if the buffer is too small.
-  pub fn encode(&self, buf: &mut [u8]) -> anyhow::Result<usize> {
+  pub fn encode(&self, buf: &mut [u8]) -> Result<usize, UpdateError> {
     let required_size = self.encoded_size();
     if buf.len() < required_size {
-      anyhow::bail!(
+      log::debug!(
         "Buffer too small: need {} bytes, have {} bytes",
         required_size,
         buf.len()
       );
+      return Err(UpdateError::CapacityExceeded);
     }
 
     let mut cursor = buf;

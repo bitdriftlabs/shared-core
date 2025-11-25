@@ -9,7 +9,15 @@ use ahash::AHashMap;
 use arbitrary::{Arbitrary, Unstructured};
 use bd_proto::protos::state::payload::state_value::Value_type;
 use bd_proto::protos::state::payload::{StateKeyValuePair, StateValue};
-use bd_resilient_kv::{DataLoss, Scope, TimestampedValue, VersionedKVStore};
+use bd_resilient_kv::{
+  DataLoss,
+  PersistentStoreConfig,
+  RetentionRegistry,
+  Scope,
+  TimestampedValue,
+  UpdateError,
+  VersionedKVStore,
+};
 use bd_time::{TestTimeProvider, TimeProvider as _};
 use protobuf::MessageDyn;
 use std::sync::Arc;
@@ -247,6 +255,8 @@ impl KeyPool {
 pub struct VersionedKVJournalFuzzTestCase {
   buffer_size: u32,
   high_water_mark_ratio: Option<f32>,
+  /// Maximum capacity in bytes for dynamic growth (will be clamped to reasonable range)
+  max_capacity_bytes: u32,
   operations: Vec<OperationType>,
 }
 
@@ -264,8 +274,10 @@ pub struct VersionedKVJournalFuzzTest {
   test_case: VersionedKVJournalFuzzTestCase,
   buffer_size: usize,
   high_water_mark_ratio: Option<f32>,
+  max_capacity_bytes: usize,
   temp_dir: TempDir,
   time_provider: Arc<TestTimeProvider>,
+  registry: Arc<RetentionRegistry>,
   state: AHashMap<(Scope, String), TimestampedValue>,
   keys: KeyPool,
   /// Track whether the journal is full (capacity exceeded)
@@ -275,11 +287,15 @@ pub struct VersionedKVJournalFuzzTest {
 impl VersionedKVJournalFuzzTest {
   #[must_use]
   pub fn new(test_case: VersionedKVJournalFuzzTestCase) -> Self {
-    // Clamp to a reasonable range (1KB - 1MB)
-    let buffer_size = ((test_case.buffer_size % 1_048_576) + 1024) as usize;
-    // Clamp high water mark ratio to valid range [0.0, 1.0]
+    // Clamp to a reasonable range (4KB - 1MB)
+    // Note: 4KB is the minimum required by PersistentStoreConfig
+    // Config validation will automatically round to power of 2 if needed
+    let buffer_size = ((test_case.buffer_size % 1_048_576) + 4096) as usize;
+
+    // Clamp high water mark ratio to valid range [0.1, 1.0]
+    // Config validation requires >= 0.1 when using max_capacity
     let high_water_mark_ratio = test_case.high_water_mark_ratio.and_then(|ratio| {
-      let clamped = ratio.clamp(0.0, 1.0);
+      let clamped = ratio.clamp(0.1, 1.0);
       if clamped.is_finite() {
         Some(clamped)
       } else {
@@ -287,19 +303,34 @@ impl VersionedKVJournalFuzzTest {
       }
     });
 
+    // Clamp max capacity to a reasonable range (must be >= buffer_size, <= 1MB)
+    // Treat 0 as default (1MB)
+    let max_capacity_bytes = if test_case.max_capacity_bytes == 0 {
+      1024 * 1024 // Default to 1MB
+    } else {
+      let max_usize = test_case.max_capacity_bytes as usize;
+      // Ensure max >= buffer_size and <= 1MB
+      max_usize.max(buffer_size).min(1024 * 1024)
+    };
+
     // Create a temporary directory for the journal files
     let Ok(temp_dir) = TempDir::new() else {
       panic!("Failed to create temporary directory");
     };
 
     let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+    // Create a registry with no retention handles - this prevents snapshot compression
+    // during rotation, significantly speeding up fuzzing
+    let registry = Arc::new(RetentionRegistry::new());
 
     Self {
       test_case,
       buffer_size,
       high_water_mark_ratio,
+      max_capacity_bytes,
       temp_dir,
       time_provider,
+      registry,
       state: AHashMap::default(),
       keys: KeyPool { keys: Vec::new() },
       is_full: false,
@@ -307,23 +338,33 @@ impl VersionedKVJournalFuzzTest {
   }
 
   async fn new_store(&self) -> anyhow::Result<(VersionedKVStore, DataLoss)> {
+    let config = PersistentStoreConfig {
+      initial_buffer_size: self.buffer_size,
+      max_capacity_bytes: self.max_capacity_bytes,
+      high_water_mark_ratio: self.high_water_mark_ratio,
+    };
     VersionedKVStore::new(
       self.temp_dir.path(),
       JOURNAL_NAME,
-      self.buffer_size,
-      self.high_water_mark_ratio,
+      config,
       self.time_provider.clone(),
+      self.registry.clone(),
     )
     .await
   }
 
   async fn existing_store(&self) -> anyhow::Result<(VersionedKVStore, DataLoss)> {
-    VersionedKVStore::open_existing(
+    let config = PersistentStoreConfig {
+      initial_buffer_size: self.buffer_size,
+      max_capacity_bytes: self.max_capacity_bytes,
+      high_water_mark_ratio: self.high_water_mark_ratio,
+    };
+    VersionedKVStore::new(
       self.temp_dir.path(),
       JOURNAL_NAME,
-      self.buffer_size,
-      self.high_water_mark_ratio,
+      config,
       self.time_provider.clone(),
+      self.registry.clone(),
     )
     .await
   }
@@ -402,33 +443,28 @@ impl VersionedKVJournalFuzzTest {
     }
   }
 
-  /// Check if an error is a buffer capacity error and classify it.
+  /// Classify the kind of error that is being returned.
   ///
   /// Returns the kind of capacity error, or `Other` if it's not a capacity error.
-  fn classify_capacity_error(
-    error: &anyhow::Error,
+  fn classify_error(
+    error: &UpdateError,
     entry_size_estimate: Option<usize>,
     buffer_size: usize,
   ) -> CapacityErrorKind {
-    let error_msg = error.to_string();
+    if matches!(error, UpdateError::CapacityExceeded) {
+      // If we have an entry size estimate, determine if it's an oversized entry.
+      // We use 75% as the threshold - entries larger than this are genuinely oversized
+      // and are the primary cause of the capacity error, rather than accumulated writes.
+      if let Some(entry_size) = entry_size_estimate
+        && entry_size > buffer_size * 3 / 4
+      {
+        return CapacityErrorKind::OversizedEntry;
+      }
 
-    // TODO(snowp): Might be nicer to use typed errors instead of string matching.
-
-    // Check if this is a buffer capacity error
-    if !error_msg.contains("Buffer too small") {
-      return CapacityErrorKind::Other;
+      return CapacityErrorKind::BufferFull;
     }
 
-    // If we have an entry size estimate, determine if it's an oversized entry.
-    // We use 75% as the threshold - entries larger than this are genuinely oversized
-    // and are the primary cause of the capacity error, rather than accumulated writes.
-    if let Some(entry_size) = entry_size_estimate
-      && entry_size > buffer_size * 3 / 4
-    {
-      return CapacityErrorKind::OversizedEntry;
-    }
-
-    CapacityErrorKind::BufferFull
+    CapacityErrorKind::Other
   }
 
   pub fn run(self) {
@@ -441,7 +477,13 @@ impl VersionedKVJournalFuzzTest {
     let store_result = self.new_store().await;
 
     let Ok((mut store, _data_loss)) = store_result else {
-      panic!("Failed to create initial VersionedKVStore");
+      panic!(
+        "Failed to create initial VersionedKVStore: {:?}. Config: buffer_size={}, \
+         max_capacity={:?}",
+        store_result.err(),
+        self.buffer_size,
+        self.max_capacity_bytes
+      );
     };
 
     // Helper function to get current timestamp as microseconds
@@ -471,7 +513,7 @@ impl VersionedKVJournalFuzzTest {
 
           let (scope, key_str) = self.keys.key_for_write(&key_strategy);
 
-          let result = store.insert(scope, &key_str, value.0.clone()).await;
+          let result = store.insert(scope, key_str.clone(), value.0.clone()).await;
 
           match result {
             Ok(timestamp) => {
@@ -503,7 +545,7 @@ impl VersionedKVJournalFuzzTest {
             Err(e) => {
               // Classify the error
               let entry_size = Self::estimate_entry_size(&key_str, &value.0);
-              match Self::classify_capacity_error(&e, Some(entry_size), self.buffer_size) {
+              match Self::classify_error(&e, Some(entry_size), self.buffer_size) {
                 CapacityErrorKind::OversizedEntry => {
                   log::info!(
                     "Single entry too large (~{entry_size} bytes) for buffer ({} bytes), skipping \
@@ -554,7 +596,7 @@ impl VersionedKVJournalFuzzTest {
             },
             Err(e) => {
               // Classify the error (remove operations write small deletion markers)
-              match Self::classify_capacity_error(&e, None, self.buffer_size) {
+              match Self::classify_error(&e, None, self.buffer_size) {
                 CapacityErrorKind::BufferFull | CapacityErrorKind::OversizedEntry => {
                   log::info!("Journal full, cannot remove entries");
                   self.is_full = true;
@@ -607,7 +649,10 @@ impl VersionedKVJournalFuzzTest {
           // Sync to ensure all data is written before corruption
           let _ = store.sync();
 
-          let journal_path = store.journal_path();
+          let Some(journal_path) = store.journal_path() else {
+            log::info!("Skipping corruption test for in-memory store");
+            continue;
+          };
 
           drop(store);
 
@@ -683,8 +728,8 @@ impl VersionedKVJournalFuzzTest {
           // In the case of partial data loss, update expected keys based on what was recovered.
           if data_loss == DataLoss::Partial {
             // Update expected state based on what was recovered
-            for ((scope, key), value) in store.as_hashmap() {
-              self.state.insert((*scope, key.clone()), value.clone());
+            for (scope, key, value) in store.as_hashmap().iter() {
+              self.state.insert((scope, key.clone()), value.clone());
             }
           }
         },
@@ -697,18 +742,7 @@ impl VersionedKVJournalFuzzTest {
               self.is_full = false;
             },
             Err(e) => {
-              // Rotation might fail if there's not enough space to write the compacted state
-              match Self::classify_capacity_error(&e, None, self.buffer_size) {
-                CapacityErrorKind::BufferFull | CapacityErrorKind::OversizedEntry => {
-                  log::info!("Failed to rotate journal due to insufficient space");
-                  self.is_full = true;
-                  continue;
-                },
-                CapacityErrorKind::Other => {
-                  // Unexpected error, propagate
-                  panic!("Unexpected error during rotation: {e}");
-                },
-              }
+              panic!("Unexpected error during rotation: {e}");
             },
           }
         },
@@ -718,7 +752,8 @@ impl VersionedKVJournalFuzzTest {
           key_prefix,
         } => {
           // Insert multiple entries to stress the buffer
-          let insert_count = count.max(1) as usize; // At least 1 entry
+          // Limit to 64 entries max for faster fuzzing (still sufficient to test bulk operations)
+          let insert_count = (count.max(1) as usize).min(64);
           let scope = scope.0;
           for i in 0 .. insert_count {
             let key_str = format!("{key_prefix}_{i}");
@@ -728,7 +763,7 @@ impl VersionedKVJournalFuzzTest {
             let int_value = i as i64;
             value.value_type = Some(Value_type::IntValue(int_value));
 
-            let result = store.insert(scope, &key_str, value.clone()).await;
+            let result = store.insert(scope, key_str.clone(), value.clone()).await;
 
             match result {
               Ok(timestamp) => {
@@ -753,7 +788,7 @@ impl VersionedKVJournalFuzzTest {
               Err(e) => {
                 // Classify the error (bulk inserts use small int values)
                 let entry_size = Self::estimate_entry_size(&key_str, &value);
-                match Self::classify_capacity_error(&e, Some(entry_size), self.buffer_size) {
+                match Self::classify_error(&e, Some(entry_size), self.buffer_size) {
                   CapacityErrorKind::OversizedEntry => {
                     log::info!(
                       "Entry too large (~{entry_size} bytes) during bulk insert at entry {i}, \
@@ -829,16 +864,16 @@ impl VersionedKVJournalFuzzTest {
 }
 
 fn compare_maps(
+  actual_maps: &bd_resilient_kv::ScopedMaps,
   expected: &AHashMap<(Scope, String), TimestampedValue>,
-  actual: &AHashMap<(Scope, String), TimestampedValue>,
 ) -> bool {
-  if expected.len() != actual.len() {
+  if actual_maps.len() != expected.len() {
     return false;
   }
 
-  for (key, expected_value) in expected {
-    match actual.get(key) {
-      Some(actual_value) => {
+  for (scope, key, actual_value) in actual_maps.iter() {
+    match expected.get(&(scope, key.clone())) {
+      Some(expected_value) => {
         if !compare_values(expected_value, actual_value) {
           return false;
         }

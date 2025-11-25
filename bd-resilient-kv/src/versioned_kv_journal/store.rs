@@ -5,16 +5,79 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::Scope;
 use crate::versioned_kv_journal::TimestampedValue;
 use crate::versioned_kv_journal::file_manager::{self, compress_archived_journal};
 use crate::versioned_kv_journal::journal::PartialDataLoss;
 use crate::versioned_kv_journal::memmapped_journal::MemMappedVersionedJournal;
+use crate::versioned_kv_journal::retention::RetentionRegistry;
+use crate::{Scope, UpdateError};
 use ahash::AHashMap;
+use bd_error_reporter::reporter::handle_unexpected;
 use bd_proto::protos::state::payload::StateValue;
 use bd_time::TimeProvider;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+/// Configuration for persistent store with dynamic growth capabilities.
+#[derive(Debug, Clone)]
+pub struct PersistentStoreConfig {
+  /// Starting buffer size - will be rounded to next power of 2 if needed.
+  pub initial_buffer_size: usize,
+
+  /// Maximum total capacity in bytes (e.g., 10MB). Always enforced to prevent unbounded growth.
+  pub max_capacity_bytes: usize,
+
+  /// High water mark ratio for triggering rotation (0.0-1.0).
+  pub high_water_mark_ratio: Option<f32>,
+}
+
+impl Default for PersistentStoreConfig {
+  fn default() -> Self {
+    Self {
+      initial_buffer_size: 8 * 1024,   // 8KB
+      max_capacity_bytes: 1024 * 1024, // 1MB
+      high_water_mark_ratio: Some(0.8),
+    }
+  }
+}
+
+impl PersistentStoreConfig {
+  /// Normalize the configuration by applying defaults to invalid values.
+  /// This is designed for dynamic config scenarios where validation errors can't be communicated.
+  pub fn normalize(&mut self) {
+    const DEFAULT_INITIAL_SIZE: usize = 8 * 1024; // 8KB
+    const DEFAULT_MAX_CAPACITY: usize = 1024 * 1024; // 1MB
+    const DEFAULT_RATIO: f32 = 0.7;
+
+    const ABSOLUTE_MIN: usize = 4096; // 4KB
+    const ABSOLUTE_MAX: usize = 1024 * 1024 * 1024; // 1GB
+
+    // Clamp initial_buffer_size to valid range
+    if self.initial_buffer_size < ABSOLUTE_MIN || self.initial_buffer_size > ABSOLUTE_MAX {
+      self.initial_buffer_size = DEFAULT_INITIAL_SIZE;
+    }
+
+    // Round up to next power of 2 if needed
+    if !self.initial_buffer_size.is_power_of_two() {
+      self.initial_buffer_size = self.initial_buffer_size.next_power_of_two();
+    }
+
+    // Validate and fix max_capacity_bytes - always enforce a reasonable maximum
+    if self.max_capacity_bytes < self.initial_buffer_size || self.max_capacity_bytes > ABSOLUTE_MAX
+    {
+      // If max is invalid, use a safe default (10MB)
+      self.max_capacity_bytes = DEFAULT_MAX_CAPACITY;
+    }
+
+    // Clamp high_water_mark_ratio to valid range [0.1, 1.0]
+    if let Some(ratio) = self.high_water_mark_ratio
+      && (!ratio.is_finite() || !(0.1 ..= 1.0).contains(&ratio))
+    {
+      self.high_water_mark_ratio = Some(DEFAULT_RATIO);
+    }
+  }
+}
+
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum DataLoss {
@@ -32,11 +95,590 @@ impl From<PartialDataLoss> for DataLoss {
   }
 }
 
-/// A persistent key-value store with timestamp tracking.
+/// Information about a journal rotation. This is used by test code to verify rotation results.
+pub struct Rotation {
+  pub new_journal_path: PathBuf,
+  pub old_journal_path: PathBuf,
+  pub snapshot_path: PathBuf,
+}
+
+/// Result of opening a journal file, containing the journal, initial state, and data loss info.
+struct OpenedJournal {
+  journal: MemMappedVersionedJournal<StateValue>,
+  initial_state: ScopedMaps,
+  data_loss: PartialDataLoss,
+}
+
+/// Scoped maps that avoid string allocations during lookups.
 ///
-/// `VersionedKVStore` provides HashMap-like semantics backed by a timestamped journal that
+/// Instead of using a single map with `(Scope, String)` as the key (which requires `to_string()`
+/// calls on every lookup), we use separate maps per scope and dispatch with a match statement.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScopedMaps {
+  feature_flags: AHashMap<String, TimestampedValue>,
+  global_state: AHashMap<String, TimestampedValue>,
+}
+
+impl ScopedMaps {
+  fn new() -> Self {
+    Self {
+      feature_flags: AHashMap::new(),
+      global_state: AHashMap::new(),
+    }
+  }
+
+  fn get(&self, scope: Scope, key: &str) -> Option<&TimestampedValue> {
+    match scope {
+      Scope::FeatureFlag => self.feature_flags.get(key),
+      Scope::GlobalState => self.global_state.get(key),
+    }
+  }
+
+  fn insert(&mut self, scope: Scope, key: String, value: TimestampedValue) {
+    match scope {
+      Scope::FeatureFlag => {
+        self.feature_flags.insert(key, value);
+      },
+      Scope::GlobalState => {
+        self.global_state.insert(key, value);
+      },
+    }
+  }
+
+  fn remove(&mut self, scope: Scope, key: &str) -> Option<TimestampedValue> {
+    match scope {
+      Scope::FeatureFlag => self.feature_flags.remove(key),
+      Scope::GlobalState => self.global_state.remove(key),
+    }
+  }
+
+  fn contains_key(&self, scope: Scope, key: &str) -> bool {
+    match scope {
+      Scope::FeatureFlag => self.feature_flags.contains_key(key),
+      Scope::GlobalState => self.global_state.contains_key(key),
+    }
+  }
+
+  #[must_use]
+  pub fn len(&self) -> usize {
+    self.feature_flags.len() + self.global_state.len()
+  }
+
+  #[must_use]
+  pub fn is_empty(&self) -> bool {
+    self.feature_flags.is_empty() && self.global_state.is_empty()
+  }
+
+  pub fn iter(&self) -> impl Iterator<Item = (Scope, &String, &TimestampedValue)> {
+    self
+      .feature_flags
+      .iter()
+      .map(|(k, v)| (Scope::FeatureFlag, k, v))
+      .chain(
+        self
+          .global_state
+          .iter()
+          .map(|(k, v)| (Scope::GlobalState, k, v)),
+      )
+  }
+
+  fn values(&self) -> impl Iterator<Item = &TimestampedValue> {
+    self
+      .feature_flags
+      .values()
+      .chain(self.global_state.values())
+  }
+
+  /// Get a mutable entry for the given scope and key, allowing efficient insert/update operations.
+  fn entry(
+    &mut self,
+    scope: Scope,
+    key: String,
+  ) -> std::collections::hash_map::Entry<'_, String, TimestampedValue> {
+    match scope {
+      Scope::FeatureFlag => self.feature_flags.entry(key),
+      Scope::GlobalState => self.global_state.entry(key),
+    }
+  }
+}
+
+
+/// Persistent storage implementation using a memory-mapped journal.
+struct PersistentStore {
+  journal: MemMappedVersionedJournal<StateValue>,
+  dir_path: PathBuf,
+  journal_name: String,
+  buffer_size: usize,
+  high_water_mark_ratio: Option<f32>,
+  current_generation: u64,
+  cached_map: ScopedMaps,
+  retention_registry: Arc<RetentionRegistry>,
+  // Configuration for dynamic sizing
+  initial_buffer_size: usize,
+  max_capacity_bytes: usize,
+}
+
+impl PersistentStore {
+  async fn new<P: AsRef<Path>>(
+    dir_path: P,
+    name: &str,
+    config: PersistentStoreConfig,
+    time_provider: Arc<dyn TimeProvider>,
+    retention_registry: Arc<RetentionRegistry>,
+  ) -> anyhow::Result<(Self, DataLoss)> {
+    let buffer_size = config.initial_buffer_size;
+    let high_water_mark_ratio = config.high_water_mark_ratio;
+    let dir = dir_path.as_ref();
+    let (journal_path, generation) = file_manager::find_active_journal(dir, name).await;
+
+    log::debug!(
+      "Opening VersionedKVStore journal at {} (generation {generation})",
+      journal_path.display()
+    );
+
+    let (journal, initial_state, data_loss) = if journal_path.exists() {
+      Self::open(
+        &journal_path,
+        buffer_size,
+        high_water_mark_ratio,
+        time_provider.clone(),
+      )
+      .map(|opened| {
+        (
+          opened.journal,
+          opened.initial_state,
+          opened.data_loss.into(),
+        )
+      })
+      .or_else(|_| {
+        Ok::<_, anyhow::Error>((
+          MemMappedVersionedJournal::new(
+            &journal_path,
+            buffer_size,
+            high_water_mark_ratio,
+            time_provider,
+            std::iter::empty(),
+          )?,
+          ScopedMaps::new(),
+          DataLoss::Total,
+        ))
+      })?
+    } else {
+      (
+        MemMappedVersionedJournal::new(
+          &journal_path,
+          buffer_size,
+          high_water_mark_ratio,
+          time_provider,
+          std::iter::empty(),
+        )?,
+        ScopedMaps::new(),
+        DataLoss::None,
+      )
+    };
+
+    Ok((
+      Self {
+        journal,
+        dir_path: dir.to_path_buf(),
+        journal_name: name.to_string(),
+        buffer_size,
+        high_water_mark_ratio,
+        current_generation: generation,
+        cached_map: initial_state,
+        retention_registry,
+        initial_buffer_size: config.initial_buffer_size,
+        max_capacity_bytes: config.max_capacity_bytes,
+      },
+      data_loss,
+    ))
+  }
+
+  fn open(
+    journal_path: &Path,
+    buffer_size: usize,
+    high_water_mark_ratio: Option<f32>,
+    time_provider: Arc<dyn TimeProvider>,
+  ) -> anyhow::Result<OpenedJournal> {
+    let mut initial_state = ScopedMaps::new();
+    let (journal, data_loss) = MemMappedVersionedJournal::<StateValue>::from_file(
+      journal_path,
+      buffer_size,
+      high_water_mark_ratio,
+      time_provider,
+      |scope, key, value, timestamp| {
+        if value.value_type.is_some() {
+          initial_state.insert(
+            scope,
+            key.to_string(),
+            TimestampedValue {
+              value: value.clone(),
+              timestamp,
+            },
+          );
+        } else {
+          initial_state.remove(scope, key);
+        }
+      },
+    )?;
+
+    Ok(OpenedJournal {
+      journal,
+      initial_state,
+      data_loss,
+    })
+  }
+
+  async fn insert(
+    &mut self,
+    scope: Scope,
+    key: &str,
+    value: StateValue,
+  ) -> Result<u64, UpdateError> {
+    let timestamp = if value.value_type.is_none() {
+      let timestamp = self
+        .journal
+        .insert_entry(scope, key, StateValue::default())?;
+      self.cached_map.remove(scope, key);
+      timestamp
+    } else {
+      let timestamp = self.journal.insert_entry(scope, key, value.clone())?;
+      self.cached_map.insert(
+        scope,
+        key.to_string(),
+        TimestampedValue { value, timestamp },
+      );
+      timestamp
+    };
+
+    if self.journal.is_high_water_mark_triggered() {
+      self.rotate_journal().await?;
+    }
+
+    Ok(timestamp)
+  }
+
+  async fn remove(&mut self, scope: Scope, key: &str) -> Result<Option<u64>, UpdateError> {
+    if !self.cached_map.contains_key(scope, key) {
+      return Ok(None);
+    }
+
+    let timestamp = self
+      .journal
+      .insert_entry(scope, key, StateValue::default())?;
+    self.cached_map.remove(scope, key);
+
+    if self.journal.is_high_water_mark_triggered() {
+      self.rotate_journal().await?;
+    }
+
+    Ok(Some(timestamp))
+  }
+
+  fn sync(&self) -> anyhow::Result<()> {
+    MemMappedVersionedJournal::sync(&self.journal)
+  }
+
+  fn journal_path(&self) -> PathBuf {
+    self.dir_path.join(format!(
+      "{}.jrn.{}",
+      self.journal_name, self.current_generation
+    ))
+  }
+
+  async fn rotate_journal(&mut self) -> anyhow::Result<Rotation> {
+    let next_generation = self.current_generation + 1;
+    let old_generation = self.current_generation;
+    self.current_generation = next_generation;
+
+    log::debug!("Rotating journal to generation {next_generation}");
+
+    // TODO(snowp): This part needs fuzzing and more safeguards around I/O errors.
+    // TODO(snowp): Consider doing this out of band to split error handling for the insert and
+    // rotation.
+
+    // Create new journal with compacted state. This doens't touch the file containing the old
+    // journal.
+    let new_journal_path = self
+      .dir_path
+      .join(format!("{}.jrn.{next_generation}", self.journal_name));
+
+    // Calculate new buffer size with dynamic growth
+    // Estimate compacted size by summing up the encoded size of all entries
+    let compacted_size_estimate: usize = self
+      .cached_map
+      .iter()
+      .map(|(scope, key, tv)| {
+        super::framing::Frame::new(scope, key.as_str(), tv.timestamp, tv.value.clone())
+          .encoded_size()
+      })
+      .sum();
+
+    let target_ratio = self.high_water_mark_ratio.unwrap_or(0.7);
+
+    // Calculate target size: compacted_size / target_ratio to ensure compacted data
+    // stays below high water mark.
+    //
+    // In this case if compated_size_estimate is greater than (buffer_size * target_ratio),
+    // the new size will be larger than the current buffer_size, triggering growth.
+    #[allow(
+      clippy::cast_precision_loss,
+      clippy::cast_possible_truncation,
+      clippy::cast_sign_loss
+    )]
+    let target_size = (compacted_size_estimate as f32 / target_ratio).ceil() as usize;
+
+    // Keep the buffer size as a power of two for efficiency reasons and to give headroom
+    // during for writes.
+    let suggested_size = target_size.next_power_of_two();
+
+    // Determine new buffer size:
+    // - Minimum: current buffer_size (never shrink)
+    // - Maximum: max_capacity_bytes
+    // - Preferred: suggested_size with headroom
+    let new_buffer_size = suggested_size
+      .max(self.buffer_size)  // Never shrink
+      .min(self.max_capacity_bytes); // Cap at max
+
+    log::debug!(
+      "Rotation sizing: compacted={} bytes, target={} bytes, new_buffer={} bytes (max={})",
+      compacted_size_estimate,
+      suggested_size,
+      new_buffer_size,
+      self.max_capacity_bytes
+    );
+
+    MemMappedVersionedJournal::sync(&self.journal)?;
+    let time_provider = self.journal.time_provider.clone();
+    let new_journal = MemMappedVersionedJournal::new(
+      &new_journal_path,
+      new_buffer_size,
+      self.high_water_mark_ratio,
+      time_provider,
+      self
+        .cached_map
+        .iter()
+        .map(|(frame_type, key, tv)| (frame_type, key.clone(), tv.value.clone(), tv.timestamp)),
+    )?;
+
+    // Update buffer_size to reflect the new journal's size
+    self.buffer_size = new_buffer_size;
+    self.journal = new_journal;
+
+    // Best-effort cleanup: compress and archive the old journal
+    let old_journal_path = self
+      .dir_path
+      .join(format!("{}.jrn.{old_generation}", self.journal_name));
+
+    let rotation_timestamp = self
+      .cached_map
+      .values()
+      .map(|tv| tv.timestamp)
+      .max()
+      .unwrap_or(0);
+
+    // Check if we need to create a snapshot based on retention requirements
+    let min_retention = self.retention_registry.min_retention_timestamp().await;
+    // If min_retention is None (no handles), don't create snapshot
+    // If min_retention is Some(0), retain everything (at least one handle wants all data)
+    // If min_retention > rotation_timestamp, no one needs this snapshot
+    let should_create_snapshot = match min_retention {
+      None => false,
+      Some(0) => true,
+      Some(ts) => ts <= rotation_timestamp,
+    };
+
+    // Store snapshots in a separate subdirectory
+    let snapshots_dir = self.dir_path.join("snapshots");
+    let archived_path = snapshots_dir.join(format!(
+      "{}.jrn.g{}.t{}.zz",
+      self.journal_name, old_generation, rotation_timestamp
+    ));
+
+    if should_create_snapshot {
+      log::debug!(
+        "Archiving journal {} to {}",
+        old_journal_path.display(),
+        archived_path.display()
+      );
+
+      // Create snapshots directory if it doesn't exist
+      if let Err(e) = tokio::fs::create_dir_all(&snapshots_dir).await {
+        log::debug!(
+          "Failed to create snapshots directory {}: {}",
+          snapshots_dir.display(),
+          e
+        );
+      } else {
+        // Try to compress the old journal for longer-term storage.
+        if let Err(e) = compress_archived_journal(&old_journal_path, &archived_path).await {
+          log::debug!(
+            "Failed to compress archived journal {}: {}",
+            old_journal_path.display(),
+            e
+          );
+        }
+
+        // After creating a snapshot, trigger cleanup of old snapshots
+        handle_unexpected(
+          super::cleanup::cleanup_old_snapshots(&snapshots_dir, &self.retention_registry).await,
+          "old snapshot cleanup",
+        );
+      }
+    } else {
+      log::debug!(
+        "Skipping snapshot creation for {} (no retention required)",
+        old_journal_path.display()
+      );
+    }
+
+    // Remove the uncompressed journal regardless of compression success or skip. If we succeeded we
+    // no longer need it, while if we failed we consider the snapshot lost.
+    let _ignored = tokio::fs::remove_file(&old_journal_path)
+      .await
+      .inspect_err(|e| {
+        log::debug!(
+          "Failed to remove old journal {}: {}",
+          old_journal_path.display(),
+          e
+        );
+      });
+
+    Ok(Rotation {
+      new_journal_path,
+      old_journal_path,
+      snapshot_path: archived_path,
+    })
+  }
+}
+
+/// In-memory storage implementation with no persistence.
+struct InMemoryStore {
+  time_provider: Arc<dyn TimeProvider>,
+  cached_map: ScopedMaps,
+  max_bytes: Option<usize>,
+  current_size_bytes: usize,
+}
+
+impl InMemoryStore {
+  fn new(time_provider: Arc<dyn TimeProvider>, max_bytes: Option<usize>) -> Self {
+    Self {
+      time_provider,
+      cached_map: ScopedMaps::new(),
+      max_bytes,
+      current_size_bytes: 0,
+    }
+  }
+
+  /// Estimate the size in bytes of a key-value entry.
+  ///
+  /// This provides a conservative estimate of memory usage including:
+  /// - Key string storage
+  /// - Value protobuf size
+  /// - Timestamp storage
+  /// - `HashMap` overhead
+  fn estimate_entry_size(key: &str, value: &StateValue) -> usize {
+    const TIMESTAMP_SIZE: usize = 8; // u64
+    const HASHMAP_OVERHEAD: usize = 24; // Approximate per-entry overhead in AHashMap
+
+    let key_size = key.len();
+    let value_size: usize = protobuf::MessageDyn::compute_size_dyn(value)
+      .try_into()
+      .unwrap_or(0);
+
+    key_size + value_size + TIMESTAMP_SIZE + HASHMAP_OVERHEAD
+  }
+
+  fn insert(&mut self, scope: Scope, key: &str, value: &StateValue) -> Result<u64, UpdateError> {
+    use std::collections::hash_map::Entry;
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let timestamp = self.time_provider.now().unix_timestamp_nanos() as u64 / 1_000;
+
+    if value.value_type.is_none() {
+      // Deletion - reclaim space
+      if let Some(old_value) = self.cached_map.remove(scope, key) {
+        let old_size = Self::estimate_entry_size(key, &old_value.value);
+        self.current_size_bytes = self.current_size_bytes.saturating_sub(old_size);
+      }
+    } else {
+      let new_entry_size = Self::estimate_entry_size(key, value);
+
+      // Use entry API to avoid multiple lookups
+      match self.cached_map.entry(scope, key.to_string()) {
+        Entry::Occupied(mut entry) => {
+          // Replacing existing entry - calculate size delta
+          let old_size = Self::estimate_entry_size(key, &entry.get().value);
+          let size_delta = new_entry_size.saturating_sub(old_size);
+
+          // Check capacity before replacing
+          if let Some(max_bytes) = self.max_bytes {
+            let new_size = self.current_size_bytes.saturating_add(size_delta);
+            if new_size > max_bytes {
+              return Err(UpdateError::CapacityExceeded);
+            }
+          }
+
+          // Replace the value
+          entry.insert(TimestampedValue {
+            value: value.clone(),
+            timestamp,
+          });
+          self.current_size_bytes = self.current_size_bytes.saturating_add(size_delta);
+        },
+        Entry::Vacant(entry) => {
+          // New entry - check if we have capacity
+          if let Some(max_bytes) = self.max_bytes {
+            let new_size = self.current_size_bytes.saturating_add(new_entry_size);
+            if new_size > max_bytes {
+              return Err(UpdateError::CapacityExceeded);
+            }
+          }
+
+          // Insert the new value
+          entry.insert(TimestampedValue {
+            value: value.clone(),
+            timestamp,
+          });
+          self.current_size_bytes = self.current_size_bytes.saturating_add(new_entry_size);
+        },
+      }
+    }
+
+    Ok(timestamp)
+  }
+
+  fn remove(&mut self, scope: Scope, key: &str) -> Option<u64> {
+    if !self.cached_map.contains_key(scope, key) {
+      return None;
+    }
+
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let timestamp = self.time_provider.now().unix_timestamp_nanos() as u64 / 1_000;
+    self.cached_map.remove(scope, key);
+
+    Some(timestamp)
+  }
+}
+
+/// Storage backend enum that dispatches to either persistent or in-memory implementation.
+enum StoreBackend {
+  Persistent(PersistentStore),
+  InMemory(InMemoryStore),
+}
+
+/// A key-value store with timestamp tracking and optional persistence.
 ///
-/// # Rotation Strategy
+/// `VersionedKVStore` provides HashMap-like semantics with optional persistence via a timestamped
+/// journal.
+///
+/// # Storage Modes
+///
+/// The store can operate in two modes:
+/// - **Persistent**: Data is written to a memory-mapped journal file and survives process restarts.
+/// - **In-Memory**: Data is kept only in memory and lost when the store is dropped.
+///
+/// # Rotation Strategy (Persistent mode only)
 ///
 /// When the journal reaches its high water mark, the store automatically rotates to a new journal.
 /// The rotation process creates a snapshot of the current state while preserving timestamp
@@ -45,17 +687,11 @@ impl From<PartialDataLoss> for DataLoss {
 /// For detailed information about timestamp semantics, recovery bucketing, and invariants,
 /// see the `VERSIONED_FORMAT.md` documentation.
 pub struct VersionedKVStore {
-  journal: MemMappedVersionedJournal<StateValue>,
-  cached_map: AHashMap<(Scope, String), TimestampedValue>,
-  dir_path: PathBuf,
-  journal_name: String,
-  buffer_size: usize,
-  high_water_mark_ratio: Option<f32>,
-  current_generation: u64,
+  backend: StoreBackend,
 }
 
 impl VersionedKVStore {
-  /// Create a new `VersionedKVStore` with the specified directory, name, and buffer size.
+  /// Create a new `VersionedKVStore` with the specified directory, name, and configuration.
   ///
   /// The journal file will be named `<name>.jrn.N` where N is the generation number.
   /// If a journal already exists, it will be loaded with its existing contents.
@@ -68,161 +704,46 @@ impl VersionedKVStore {
   pub async fn new<P: AsRef<Path>>(
     dir_path: P,
     name: &str,
-    buffer_size: usize,
-    high_water_mark_ratio: Option<f32>,
+    config: PersistentStoreConfig,
     time_provider: Arc<dyn TimeProvider>,
+    retention_registry: Arc<RetentionRegistry>,
   ) -> anyhow::Result<(Self, DataLoss)> {
-    let dir = dir_path.as_ref();
-
-    let (journal_path, generation) = file_manager::find_active_journal(dir, name).await;
-
-    // TODO(snowp): It would be ideal to be able to start with a small buffer and grow is as needed
-    // depending on the particular device need. We can embed size information in the journal header
-    // or in the filename itself to facilitate this.
-
-    log::debug!(
-      "Opening VersionedKVStore journal at {} (generation {generation})",
-      journal_path.display()
-    );
-
-    let (journal, initial_state, data_loss) = if journal_path.exists() {
-      // Try to open existing journal
-      Self::open(
-        &journal_path,
-        buffer_size,
-        high_water_mark_ratio,
-        time_provider.clone(),
-      )
-      .map(|(j, initial_state, data_loss)| (j, initial_state, data_loss.into()))
-      .or_else(|_| {
-        // Data is corrupt or unreadable, create fresh journal
-        Ok::<_, anyhow::Error>((
-          MemMappedVersionedJournal::new(
-            &journal_path,
-            buffer_size,
-            high_water_mark_ratio,
-            time_provider,
-            std::iter::empty(),
-          )?,
-          AHashMap::default(),
-          DataLoss::Total,
-        ))
-      })?
-    } else {
-      // Create new journal
-      (
-        MemMappedVersionedJournal::new(
-          &journal_path,
-          buffer_size,
-          high_water_mark_ratio,
-          time_provider,
-          std::iter::empty(),
-        )?,
-        AHashMap::default(),
-        DataLoss::None,
-      )
-    };
+    let (store, data_loss) =
+      PersistentStore::new(dir_path, name, config, time_provider, retention_registry).await?;
 
     Ok((
       Self {
-        journal,
-        cached_map: initial_state,
-        dir_path: dir.to_path_buf(),
-        journal_name: name.to_string(),
-        buffer_size,
-        high_water_mark_ratio,
-        current_generation: generation,
+        backend: StoreBackend::Persistent(store),
       },
       data_loss,
     ))
   }
 
-  /// Open an existing `VersionedKVStore` from a pre-existing journal file.
+  /// Create a new in-memory `VersionedKVStore` with no persistence.
   ///
-  /// Unlike `new()`, this method requires the journal file to exist and will fail if it's
-  /// missing.
+  /// The in-memory store keeps all data in RAM and does not persist to disk.
+  /// Data is lost when the store is dropped.
   ///
   /// # Arguments
-  /// * `dir_path` - Directory path where the journal is stored
-  /// * `name` - Base name of the journal (e.g., "store" for "store.jrn.N")
-  /// * `buffer_size` - Size in bytes for the journal buffer
-  /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
   ///
-  /// # Errors
-  /// Returns an error if:
-  /// - The journal file does not exist
-  /// - The journal file cannot be opened
-  /// - The journal file contains invalid data
-  /// - Initialization fails
-  pub async fn open_existing<P: AsRef<Path>>(
-    dir_path: P,
-    name: &str,
-    buffer_size: usize,
-    high_water_mark_ratio: Option<f32>,
-    time_provider: Arc<dyn TimeProvider>,
-  ) -> anyhow::Result<(Self, DataLoss)> {
-    let dir = dir_path.as_ref();
-
-    let (journal_path, generation) = file_manager::find_active_journal(dir, name).await;
-
-    let (journal, initial_state, data_loss) = Self::open(
-      &journal_path,
-      buffer_size,
-      high_water_mark_ratio,
-      time_provider,
-    )?;
-
-    Ok((
-      Self {
-        journal,
-        cached_map: initial_state,
-        dir_path: dir.to_path_buf(),
-        journal_name: name.to_string(),
-        buffer_size,
-        high_water_mark_ratio,
-        current_generation: generation,
-      },
-      if matches!(data_loss, PartialDataLoss::Yes) {
-        DataLoss::Partial
-      } else {
-        DataLoss::None
-      },
-    ))
-  }
-
-  #[allow(clippy::type_complexity)]
-  fn open(
-    journal_path: &Path,
-    buffer_size: usize,
-    high_water_mark_ratio: Option<f32>,
-    time_provider: Arc<dyn TimeProvider>,
-  ) -> anyhow::Result<(
-    MemMappedVersionedJournal<StateValue>,
-    AHashMap<(Scope, String), TimestampedValue>,
-    PartialDataLoss,
-  )> {
-    let mut initial_state = AHashMap::default();
-    let (journal, data_loss) = MemMappedVersionedJournal::<StateValue>::from_file(
-      journal_path,
-      buffer_size,
-      high_water_mark_ratio,
-      time_provider,
-      |scope, key, value, timestamp| {
-        if value.value_type.is_some() {
-          initial_state.insert(
-            (scope, key.to_string()),
-            TimestampedValue {
-              value: value.clone(),
-              timestamp,
-            },
-          );
-        } else {
-          initial_state.remove(&(scope, key.to_string()));
-        }
-      },
-    )?;
-
-    Ok((journal, initial_state, data_loss))
+  /// * `time_provider` - Provides timestamps for operations
+  /// * `max_bytes` - Optional maximum memory usage in bytes. If None, no limit is enforced.
+  ///
+  /// # Size Limit
+  ///
+  /// If `max_bytes` is specified, insert operations will fail with an error when the limit
+  /// is exceeded. The size calculation includes:
+  /// - Key strings
+  /// - Value protobuf data
+  /// - Timestamps
+  /// - `HashMap` overhead
+  ///
+  /// The size limit is approximate and uses conservative estimates.
+  #[must_use]
+  pub fn new_in_memory(time_provider: Arc<dyn TimeProvider>, max_bytes: Option<usize>) -> Self {
+    Self {
+      backend: StoreBackend::InMemory(InMemoryStore::new(time_provider, max_bytes)),
+    }
   }
 
   /// Get a value by key.
@@ -230,10 +751,11 @@ impl VersionedKVStore {
   /// This operation is O(1) as it reads from the in-memory cache.
   #[must_use]
   pub fn get(&self, scope: Scope, key: &str) -> Option<&StateValue> {
-    self
-      .cached_map
-      .get(&(scope, key.to_string()))
-      .map(|tv| &tv.value)
+    let cached_map = match &self.backend {
+      StoreBackend::Persistent(store) => &store.cached_map,
+      StoreBackend::InMemory(store) => &store.cached_map,
+    };
+    cached_map.get(scope, key).map(|tv| &tv.value)
   }
 
   /// Get a value with its timestamp by key.
@@ -241,18 +763,11 @@ impl VersionedKVStore {
   /// This operation is O(1) as it reads from the in-memory cache.
   #[must_use]
   pub fn get_with_timestamp(&self, scope: Scope, key: &str) -> Option<&TimestampedValue> {
-    self.cached_map.get(&(scope, key.to_string()))
-  }
-
-  /// Get a value with its scope and timestamp by key.
-  ///
-  /// This operation is O(1) as it reads from the in-memory cache.
-  #[must_use]
-  pub fn get_with_metadata(&self, scope: Scope, key: &str) -> Option<(Scope, &TimestampedValue)> {
-    self
-      .cached_map
-      .get(&(scope, key.to_string()))
-      .map(|tv| (scope, tv))
+    let cached_map = match &self.backend {
+      StoreBackend::Persistent(store) => &store.cached_map,
+      StoreBackend::InMemory(store) => &store.cached_map,
+    };
+    cached_map.get(scope, key)
   }
 
   /// Insert a value for a key, returning the timestamp assigned to this write.
@@ -260,37 +775,19 @@ impl VersionedKVStore {
   /// Note: Inserting `Value::Null` is equivalent to removing the key.
   ///
   /// # Errors
-  /// Returns an error if the value cannot be written to the journal.
+  /// - Returns `UpdateError::CapacityExceeded` if the in-memory store would exceed its size limit
+  /// - Returns `UpdateError::System` if the value cannot be written to the journal (persistent
+  ///   mode)
   pub async fn insert(
     &mut self,
     scope: Scope,
-    key: &str,
+    key: String,
     value: StateValue,
-  ) -> anyhow::Result<u64> {
-    let timestamp = if value.value_type.is_none() {
-      // Inserting null is equivalent to deletion
-      let timestamp = self
-        .journal
-        .insert_entry(scope, key, StateValue::default())?;
-      self.cached_map.remove(&(scope, key.to_string()));
-      timestamp
-    } else {
-      let timestamp = self.journal.insert_entry(scope, key, value.clone())?;
-      self.cached_map.insert(
-        (scope, key.to_string()),
-        TimestampedValue { value, timestamp },
-      );
-      timestamp
-    };
-
-    // Check if rotation is needed
-    if self.journal.is_high_water_mark_triggered() {
-      // TODO(snowp): Consider doing this out of band to split error handling for the insert and
-      // rotation.
-      self.rotate_journal().await?;
+  ) -> Result<u64, UpdateError> {
+    match &mut self.backend {
+      StoreBackend::Persistent(store) => store.insert(scope, &key, value).await,
+      StoreBackend::InMemory(store) => store.insert(scope, &key, &value),
     }
-
-    Ok(timestamp)
   }
 
   /// Remove a key and return the timestamp assigned to this deletion.
@@ -298,23 +795,12 @@ impl VersionedKVStore {
   /// Returns `None` if the key didn't exist, otherwise returns the timestamp.
   ///
   /// # Errors
-  /// Returns an error if the deletion cannot be written to the journal.
-  pub async fn remove(&mut self, scope: Scope, key: &str) -> anyhow::Result<Option<u64>> {
-    if !self.cached_map.contains_key(&(scope, key.to_string())) {
-      return Ok(None);
+  /// Returns an error if the deletion cannot be written to the journal (persistent mode only).
+  pub async fn remove(&mut self, scope: Scope, key: &str) -> Result<Option<u64>, UpdateError> {
+    match &mut self.backend {
+      StoreBackend::Persistent(store) => store.remove(scope, key).await,
+      StoreBackend::InMemory(store) => Ok(store.remove(scope, key)),
     }
-
-    let timestamp = self
-      .journal
-      .insert_entry(scope, key, StateValue::default())?;
-    self.cached_map.remove(&(scope, key.to_string()));
-
-    // Check if rotation is needed
-    if self.journal.is_high_water_mark_triggered() {
-      self.rotate_journal().await?;
-    }
-
-    Ok(Some(timestamp))
   }
 
   /// Check if the store contains a key.
@@ -322,7 +808,11 @@ impl VersionedKVStore {
   /// This operation is O(1) as it reads from the in-memory cache.
   #[must_use]
   pub fn contains_key(&self, scope: Scope, key: &str) -> bool {
-    self.cached_map.contains_key(&(scope, key.to_string()))
+    let cached_map = match &self.backend {
+      StoreBackend::Persistent(store) => &store.cached_map,
+      StoreBackend::InMemory(store) => &store.cached_map,
+    };
+    cached_map.contains_key(scope, key)
   }
 
   /// Get the number of key-value pairs in the store.
@@ -330,7 +820,11 @@ impl VersionedKVStore {
   /// This operation is O(1) as it reads from the in-memory cache.
   #[must_use]
   pub fn len(&self) -> usize {
-    self.cached_map.len()
+    let cached_map = match &self.backend {
+      StoreBackend::Persistent(store) => &store.cached_map,
+      StoreBackend::InMemory(store) => &store.cached_map,
+    };
+    cached_map.len()
   }
 
   /// Check if the store is empty.
@@ -341,148 +835,100 @@ impl VersionedKVStore {
     self.len() == 0
   }
 
-  /// Get a reference to the current hash map with timestamps.
+  /// Get a reference to the current state.
   ///
-  /// This operation is O(1) as it reads from the in-memory cache.
+  /// This operation is O(1) as it returns a reference to the in-memory cache.
   #[must_use]
-  pub fn as_hashmap(&self) -> &AHashMap<(Scope, String), TimestampedValue> {
-    &self.cached_map
+  pub fn as_hashmap(&self) -> &ScopedMaps {
+    match &self.backend {
+      StoreBackend::Persistent(store) => &store.cached_map,
+      StoreBackend::InMemory(store) => &store.cached_map,
+    }
+  }
+
+  /// Get a reference to the current state.
+  ///
+  /// This operation is O(1) as it returns a reference to the in-memory cache.
+  #[must_use]
+  pub fn state(&self) -> &ScopedMaps {
+    match &self.backend {
+      StoreBackend::Persistent(store) => &store.cached_map,
+      StoreBackend::InMemory(store) => &store.cached_map,
+    }
   }
 
   /// Synchronize changes to disk.
   ///
   /// This is a blocking operation that performs synchronous I/O. In async contexts,
   /// consider wrapping this call with `tokio::task::spawn_blocking`.
+  ///
+  /// For in-memory stores, this is a no-op.
   pub fn sync(&self) -> anyhow::Result<()> {
-    MemMappedVersionedJournal::sync(&self.journal)
+    match &self.backend {
+      StoreBackend::Persistent(store) => store.sync(),
+      StoreBackend::InMemory(_) => Ok(()),
+    }
   }
 
   /// Returns the path to the current primary journal file.
+  ///
+  /// Returns `None` for in-memory stores.
   #[must_use]
-  pub fn journal_path(&self) -> PathBuf {
-    self.dir_path.join(format!(
-      "{}.jrn.{}",
-      self.journal_name, self.current_generation
-    ))
+  pub fn journal_path(&self) -> Option<PathBuf> {
+    match &self.backend {
+      StoreBackend::Persistent(store) => Some(store.journal_path()),
+      StoreBackend::InMemory(_) => None,
+    }
   }
-}
 
-
-/// Information about a journal rotation. This is used by test code to verify rotation results.
-pub struct Rotation {
-  pub new_journal_path: PathBuf,
-  pub old_journal_path: PathBuf,
-  pub snapshot_path: PathBuf,
-}
-
-impl VersionedKVStore {
   /// Manually trigger journal rotation, returning the path to the new journal file.
   ///
   /// This will create a new journal with the current state compacted and archive the old journal.
   /// The archived journal will be compressed using zlib to reduce storage size.
   /// Rotation typically happens automatically when the high water mark is reached, but this
   /// method allows manual control when needed.
+  ///
+  /// # Errors
+  /// Returns an error if called on an in-memory store or if rotation fails.
   pub async fn rotate_journal(&mut self) -> anyhow::Result<Rotation> {
-    let next_generation = self.current_generation + 1;
-    let old_generation = self.current_generation;
-    self.current_generation = next_generation;
-
-    log::debug!("Rotating journal to generation {next_generation}");
-
-    // TODO(snowp): This part needs fuzzing and more safeguards.
-    // TODO(snowp): Consider doing this out of band to split error handling for the insert and
-    // rotation.
-
-    // Create new journal with compacted state. This doens't touch the file containing the old
-    // journal.
-    let new_journal_path = self
-      .dir_path
-      .join(format!("{}.jrn.{next_generation}", self.journal_name));
-
-    MemMappedVersionedJournal::sync(&self.journal)?;
-    let new_journal = self.create_rotated_journal(&new_journal_path)?;
-    self.journal = new_journal;
-
-    // Best-effort cleanup: compress and archive the old journal
-    let old_journal_path = self
-      .dir_path
-      .join(format!("{}.jrn.{old_generation}", self.journal_name));
-    let snapshot_path = self.archive_journal(&old_journal_path).await;
-
-    Ok(Rotation {
-      new_journal_path,
-      old_journal_path,
-      snapshot_path,
-    })
-  }
-
-  /// Archives the old journal by compressing it and removing the original.
-  ///
-  /// This is a best-effort operation; failures to compress or delete the old journal
-  /// are logged but do not cause the rotation to fail.
-  async fn archive_journal(&self, old_journal_path: &Path) -> PathBuf {
-    // Generate archived path with timestamp
-    let rotation_timestamp = self
-      .cached_map
-      .values()
-      .map(|tv| tv.timestamp)
-      .max()
-      .unwrap_or(0);
-
-    let archived_path = self.dir_path.join(format!(
-      "{}.jrn.t{}.zz",
-      self.journal_name, rotation_timestamp
-    ));
-
-    log::debug!(
-      "Archiving journal {} to {}",
-      old_journal_path.display(),
-      archived_path.display()
-    );
-
-    // Try to compress the old journal for longer-term storage.
-    if let Err(e) = compress_archived_journal(old_journal_path, &archived_path).await {
-      log::warn!(
-        "Failed to compress archived journal {}: {}",
-        old_journal_path.display(),
-        e
-      );
+    match &mut self.backend {
+      StoreBackend::Persistent(store) => store.rotate_journal().await,
+      StoreBackend::InMemory(_) => anyhow::bail!("Cannot rotate journal on in-memory store"),
     }
-
-    // Remove the uncompressed regardless of compression success. If we succeeded we no longer need
-    // it, while if we failed we consider the snapshot lost.
-    let _ignored = tokio::fs::remove_file(old_journal_path)
-      .await
-      .inspect_err(|e| {
-        log::warn!(
-          "Failed to remove old journal {}: {}",
-          old_journal_path.display(),
-          e
-        );
-      });
-
-    archived_path
   }
 
-  /// Create a new rotated journal with compacted state.
+  /// Get the initial buffer size configured for this store.
   ///
-  /// Note: Rotation cannot fail due to insufficient buffer space. Since rotation creates a new
-  /// journal with the same buffer size and compaction only removes redundant updates (old
-  /// versions of keys), the compacted state is always ≤ the current journal size. If data fits
-  /// during normal operation, it will always fit during rotation.
-  fn create_rotated_journal(
-    &self,
-    journal_path: &Path,
-  ) -> anyhow::Result<MemMappedVersionedJournal<StateValue>> {
-    MemMappedVersionedJournal::new(
-      journal_path,
-      self.buffer_size,
-      self.high_water_mark_ratio,
-      self.journal.time_provider.clone(),
-      self
-        .cached_map
-        .iter()
-        .map(|((frame_type, key), tv)| (*frame_type, key.clone(), tv.value.clone(), tv.timestamp)),
-    )
+  /// For persistent stores, returns the initial buffer size from the configuration.
+  /// For in-memory stores, returns 0.
+  #[must_use]
+  pub fn initial_buffer_size(&self) -> usize {
+    match &self.backend {
+      StoreBackend::Persistent(store) => store.initial_buffer_size,
+      StoreBackend::InMemory(_) => 0,
+    }
+  }
+
+  /// Get the current buffer size of the journal.
+  ///
+  /// This may differ from `initial_buffer_size` if the journal has grown dynamically.
+  /// For in-memory stores, returns 0.
+  #[must_use]
+  pub fn current_buffer_size(&self) -> usize {
+    match &self.backend {
+      StoreBackend::Persistent(store) => store.buffer_size,
+      StoreBackend::InMemory(_) => 0,
+    }
+  }
+
+  /// Get the maximum capacity in bytes configured for this store.
+  ///
+  /// For in-memory stores, returns 0.
+  #[must_use]
+  pub fn max_capacity_bytes(&self) -> usize {
+    match &self.backend {
+      StoreBackend::Persistent(store) => store.max_capacity_bytes,
+      StoreBackend::InMemory(_) => 0,
+    }
   }
 }

@@ -134,6 +134,59 @@ Fields:
   - Typical small entries: 25-60 bytes total
   - Typical medium entries: 60-220 bytes total
 
+## Buffer Sizing and Dynamic Growth
+
+The persistent store uses memory-mapped files with dynamically sized buffers that grow as needed to accommodate data. This balances memory efficiency with performance by starting small and expanding only when necessary.
+
+### Growth Strategy
+
+- **Initial Size**: Configurable via `PersistentStoreConfig::initial_buffer_size` (default: 8KB, power-of-2 recommended)
+- **Growth Pattern**: Power-of-2 doubling (8KB → 16KB → 32KB → 64KB → ...)
+- **Growth Trigger**: During journal rotation, if the compacted state requires more space
+- **Headroom**: After growth, buffer provides 50% extra capacity beyond compacted size
+- **Maximum Capacity**: Configurable via `PersistentStoreConfig::max_capacity_bytes` (default: 1MB)
+
+### Configuration
+
+```rust
+let config = PersistentStoreConfig {
+  initial_buffer_size: Some(8192),      // Start at 8KB (any value accepted, rounded to power-of-2)
+  max_capacity_bytes: Some(10_485_760), // Cap at 10MB
+  high_water_mark_ratio: Some(0.7),     // Rotate at 70% full
+};
+```
+
+### Growth Behavior
+
+**Normal Growth Example:**
+1. Start: 8KB buffer
+2. Data grows to 5.6KB (70% of 8KB) → rotation triggered
+3. Compacted state is 4KB → grow to 8KB (provides 50% headroom)
+4. More data → reaches 70% of 8KB again → rotation
+5. Compacted state is 7KB → grow to 16KB (provides 50% headroom)
+6. Continues until `max_capacity_bytes` is reached
+
+**Maximum Capacity:**
+- Once `max_capacity_bytes` is reached, buffer stops growing
+- Rotations continue normally, but buffer size remains constant
+- This prevents unbounded memory usage while allowing continued operation
+
+### Config Normalization
+
+Invalid configuration values are automatically normalized to safe defaults:
+- `initial_buffer_size`: Non-power-of-2 → rounded up; invalid → 8KB
+- `max_capacity_bytes`: Invalid or missing → 1MB (prevents unbounded growth)
+- `high_water_mark_ratio`: Out of range or NaN → 0.7 (70%)
+
+### File Size Reconciliation
+
+When reopening an existing store with different configuration:
+- If existing file is larger than configured initial size → file size preserved
+- If existing file is smaller → continues with existing size
+- Growth continues from current size using new configuration parameters
+
+This allows configuration changes without data loss or unnecessary resizing.
+
 ## Journal Structure
 
 ### Initial Journal
