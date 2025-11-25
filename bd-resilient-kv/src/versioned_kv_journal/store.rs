@@ -109,32 +109,25 @@ struct OpenedJournal {
   data_loss: PartialDataLoss,
 }
 
-/// Scoped maps that avoid string allocations during lookups.
+/// Scoped maps that store key-value pairs separately per scope.
 ///
 /// Instead of using a single map with `(Scope, String)` as the key (which requires `to_string()`
 /// calls on every lookup), we use separate maps per scope and dispatch with a match statement.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone, PartialEq)]
 pub struct ScopedMaps {
   feature_flags: AHashMap<String, TimestampedValue>,
   global_state: AHashMap<String, TimestampedValue>,
 }
 
 impl ScopedMaps {
-  fn new() -> Self {
-    Self {
-      feature_flags: AHashMap::new(),
-      global_state: AHashMap::new(),
-    }
-  }
-
-  fn get(&self, scope: Scope, key: &str) -> Option<&TimestampedValue> {
+  pub fn get(&self, scope: Scope, key: &str) -> Option<&TimestampedValue> {
     match scope {
       Scope::FeatureFlag => self.feature_flags.get(key),
       Scope::GlobalState => self.global_state.get(key),
     }
   }
 
-  fn insert(&mut self, scope: Scope, key: String, value: TimestampedValue) {
+  pub fn insert(&mut self, scope: Scope, key: String, value: TimestampedValue) {
     match scope {
       Scope::FeatureFlag => {
         self.feature_flags.insert(key, value);
@@ -145,14 +138,14 @@ impl ScopedMaps {
     }
   }
 
-  fn remove(&mut self, scope: Scope, key: &str) -> Option<TimestampedValue> {
+  pub fn remove(&mut self, scope: Scope, key: &str) -> Option<TimestampedValue> {
     match scope {
       Scope::FeatureFlag => self.feature_flags.remove(key),
       Scope::GlobalState => self.global_state.remove(key),
     }
   }
 
-  fn contains_key(&self, scope: Scope, key: &str) -> bool {
+  pub fn contains_key(&self, scope: Scope, key: &str) -> bool {
     match scope {
       Scope::FeatureFlag => self.feature_flags.contains_key(key),
       Scope::GlobalState => self.global_state.contains_key(key),
@@ -259,7 +252,7 @@ impl PersistentStore {
             time_provider,
             std::iter::empty(),
           )?,
-          ScopedMaps::new(),
+          ScopedMaps::default(),
           DataLoss::Total,
         ))
       })?
@@ -272,7 +265,7 @@ impl PersistentStore {
           time_provider,
           std::iter::empty(),
         )?,
-        ScopedMaps::new(),
+        ScopedMaps::default(),
         DataLoss::None,
       )
     };
@@ -300,7 +293,7 @@ impl PersistentStore {
     high_water_mark_ratio: Option<f32>,
     time_provider: Arc<dyn TimeProvider>,
   ) -> anyhow::Result<OpenedJournal> {
-    let mut initial_state = ScopedMaps::new();
+    let mut initial_state = ScopedMaps::default();
     let (journal, data_loss) = MemMappedVersionedJournal::<StateValue>::from_file(
       journal_path,
       buffer_size,
@@ -564,7 +557,7 @@ impl InMemoryStore {
   fn new(time_provider: Arc<dyn TimeProvider>, max_bytes: Option<usize>) -> Self {
     Self {
       time_provider,
-      cached_map: ScopedMaps::new(),
+      cached_map: ScopedMaps::default(),
       max_bytes,
       current_size_bytes: 0,
     }

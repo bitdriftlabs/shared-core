@@ -22,7 +22,14 @@ pub mod test;
 
 use ahash::AHashMap;
 pub use bd_resilient_kv::Scope;
-use bd_resilient_kv::{DataLoss, PersistentStoreConfig, RetentionRegistry, StateValue, Value_type};
+use bd_resilient_kv::{
+  DataLoss,
+  PersistentStoreConfig,
+  RetentionRegistry,
+  ScopedMaps,
+  StateValue,
+  Value_type,
+};
 use bd_time::TimeProvider;
 use itertools::Itertools as _;
 use std::path::Path;
@@ -50,7 +57,7 @@ pub struct StoreInitResult {
   /// Information about any data loss detected when loading the persisted state
   pub data_loss: DataLoss,
   /// Snapshot of state from the previous process, captured before clearing ephemeral scopes
-  pub previous_state: StateSnapshot,
+  pub previous_state: ScopedMaps,
 }
 
 //
@@ -67,7 +74,7 @@ pub struct StoreInitWithFallbackResult {
   /// Data loss information (None if fallback to in-memory occurred)
   pub data_loss: Option<DataLoss>,
   /// Snapshot of previous state (empty if fallback occurred)
-  pub previous_state: StateSnapshot,
+  pub previous_state: ScopedMaps,
   /// Whether fallback to in-memory storage occurred
   pub fallback_occurred: bool,
 }
@@ -170,7 +177,7 @@ impl Store {
   ///
   /// Both `FeatureFlag` and `GlobalState` scopes are cleared on each process start, requiring
   /// users to re-set these values.
-  pub async fn create(
+  pub async fn persistent(
     directory: &Path,
     time_provider: Arc<dyn TimeProvider>,
   ) -> anyhow::Result<StoreInitResult> {
@@ -189,13 +196,12 @@ impl Store {
     )
     .await?;
 
+    // Capture a snapshot of the previous process's state before clearing ephemeral scopes.
+    // This snapshot is used for crash reporting to include feature flags from the crashed process.
+    let previous_snapshot = inner.as_hashmap().clone();
     let store = Self {
       inner: Arc::new(RwLock::new(inner)),
     };
-
-    // Capture a snapshot of the previous process's state before clearing ephemeral scopes.
-    // This snapshot is used for crash reporting to include feature flags from the crashed process.
-    let previous_snapshot = store.read().await.to_snapshot();
 
     // Clear ephemeral scopes so the current process starts with fresh state.
     // Users must re-set feature flags and global state on each process start.
@@ -214,15 +220,15 @@ impl Store {
     })
   }
 
-  /// Creates a new Store, falling back to an in-memory store if initialization fails.
+  /// Creates a new persistent Store, falling back to an in-memory store if initialization fails.
   ///
   /// This method never fails - if the persistent store cannot be initialized, it will
   /// return an in-memory store instead.
-  pub async fn new_or_fallback(
+  pub async fn persistent_or_fallback(
     directory: &Path,
     time_provider: Arc<dyn TimeProvider>,
   ) -> StoreInitWithFallbackResult {
-    match Self::create(directory, time_provider.clone()).await {
+    match Self::persistent(directory, time_provider.clone()).await {
       Ok(result) => StoreInitWithFallbackResult {
         store: result.store,
         data_loss: Some(result.data_loss),
@@ -233,15 +239,11 @@ impl Store {
         log::debug!(
           "Failed to initialize persistent state store: {e}, falling back to in-memory store"
         );
-        let store = Self::new_in_memory(time_provider);
-        let empty_snapshot = StateSnapshot {
-          feature_flags: AHashMap::new(),
-          global_state: AHashMap::new(),
-        };
+        let store = Self::in_memory(time_provider);
         StoreInitWithFallbackResult {
           store,
           data_loss: None,
-          previous_state: empty_snapshot,
+          previous_state: ScopedMaps::default(),
           fallback_occurred: true,
         }
       },
@@ -253,7 +255,7 @@ impl Store {
   /// This is useful when persistent storage is not needed or when used as a fallback
   /// when the persistent store cannot be initialized.
   #[must_use]
-  pub fn new_in_memory(time_provider: Arc<dyn TimeProvider>) -> Self {
+  pub fn in_memory(time_provider: Arc<dyn TimeProvider>) -> Self {
     Self {
       inner: Arc::new(RwLock::new(
         bd_resilient_kv::VersionedKVStore::new_in_memory(time_provider, None),

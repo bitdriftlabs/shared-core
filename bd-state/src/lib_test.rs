@@ -5,73 +5,41 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-//! Test Organization:
-//! - Parameterized tests (dual backend): Tests that run against both persistent and in-memory
-//!   stores using the `#[apply(dual_backend)]` template
-//! - Persistence tests: Tests specific to persistent storage behavior (restart, fallback, etc.)
-
 #![allow(clippy::unwrap_used)]
 
 use crate::{Scope, StateReader, Store};
-use rstest::rstest;
-use rstest_reuse::{apply, template};
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::macros::datetime;
 
 struct Setup {
-  _dir: Option<TempDir>,
+  _dir: TempDir,
   _time_provider: Arc<bd_time::TestTimeProvider>,
   store: Store,
 }
 
 impl Setup {
-  async fn persistent() -> Self {
+  async fn new() -> Self {
     let temp_dir = tempfile::tempdir().unwrap();
     let time_provider = Arc::new(bd_time::TestTimeProvider::new(
       datetime!(2024-01-01 00:00:00 UTC),
     ));
-    let store = Store::new(temp_dir.path(), time_provider.clone())
+    let store = Store::persistent(temp_dir.path(), time_provider.clone())
       .await
       .unwrap()
       .store;
 
     Self {
-      _dir: Some(temp_dir),
+      _dir: temp_dir,
       _time_provider: time_provider,
       store,
     }
   }
-
-  fn in_memory() -> Self {
-    let time_provider = Arc::new(bd_time::TestTimeProvider::new(
-      datetime!(2024-01-01 00:00:00 UTC),
-    ));
-    let store = Store::new_in_memory(time_provider.clone());
-
-    Self {
-      _dir: None,
-      _time_provider: time_provider,
-      store,
-    }
-  }
-}
-
-#[template]
-#[rstest]
-#[case(async { Setup::persistent().await })]
-#[case(async { Setup::in_memory() })]
-fn dual_backend(
-  #[future]
-  #[case]
-  setup: Setup,
-) {
 }
 
 #[tokio::test]
-#[apply(dual_backend)]
-async fn basic_insert_and_get(setup: Setup) {
-  let setup = setup.await;
+async fn basic_insert_and_get() {
+  let setup = Setup::new().await;
 
   setup
     .store
@@ -85,9 +53,8 @@ async fn basic_insert_and_get(setup: Setup) {
 }
 
 #[tokio::test]
-#[apply(dual_backend)]
-async fn insert_multiple_values(setup: Setup) {
-  let setup = setup.await;
+async fn insert_multiple_values() {
+  let setup = Setup::new().await;
 
   setup
     .store
@@ -112,9 +79,8 @@ async fn insert_multiple_values(setup: Setup) {
 }
 
 #[tokio::test]
-#[apply(dual_backend)]
-async fn update_existing_value(setup: Setup) {
-  let setup = setup.await;
+async fn update_existing_value() {
+  let setup = Setup::new().await;
 
   setup
     .store
@@ -132,9 +98,8 @@ async fn update_existing_value(setup: Setup) {
 }
 
 #[tokio::test]
-#[apply(dual_backend)]
-async fn remove_value(setup: Setup) {
-  let setup = setup.await;
+async fn remove_value() {
+  let setup = Setup::new().await;
 
   setup
     .store
@@ -152,9 +117,8 @@ async fn remove_value(setup: Setup) {
 }
 
 #[tokio::test]
-#[apply(dual_backend)]
-async fn remove_nonexistent_value(setup: Setup) {
-  let setup = setup.await;
+async fn remove_nonexistent_value() {
+  let setup = Setup::new().await;
 
   setup
     .store
@@ -167,9 +131,8 @@ async fn remove_nonexistent_value(setup: Setup) {
 }
 
 #[tokio::test]
-#[apply(dual_backend)]
-async fn clear_scope(setup: Setup) {
-  let setup = setup.await;
+async fn clear_scope() {
+  let setup = Setup::new().await;
 
   setup
     .store
@@ -196,9 +159,8 @@ async fn clear_scope(setup: Setup) {
 }
 
 #[tokio::test]
-#[apply(dual_backend)]
-async fn scope_isolation(setup: Setup) {
-  let setup = setup.await;
+async fn scope_isolation() {
+  let setup = Setup::new().await;
 
   setup
     .store
@@ -217,9 +179,8 @@ async fn scope_isolation(setup: Setup) {
 }
 
 #[tokio::test]
-#[apply(dual_backend)]
-async fn iter_scope(setup: Setup) {
-  let setup = setup.await;
+async fn iter_scope() {
+  let setup = Setup::new().await;
 
   setup
     .store
@@ -251,9 +212,8 @@ async fn iter_scope(setup: Setup) {
 }
 
 #[tokio::test]
-#[apply(dual_backend)]
-async fn iter_empty_scope(setup: Setup) {
-  let setup = setup.await;
+async fn iter_empty_scope() {
+  let setup = Setup::new().await;
 
   let reader = setup.store.read().await;
   let count = reader
@@ -265,9 +225,8 @@ async fn iter_empty_scope(setup: Setup) {
 }
 
 #[tokio::test]
-#[apply(dual_backend)]
-async fn to_snapshot(setup: Setup) {
-  let setup = setup.await;
+async fn to_snapshot() {
+  let setup = Setup::new().await;
 
   setup
     .store
@@ -305,9 +264,8 @@ async fn to_snapshot(setup: Setup) {
 }
 
 #[tokio::test]
-#[apply(dual_backend)]
-async fn to_scoped_snapshot(setup: Setup) {
-  let setup = setup.await;
+async fn to_scoped_snapshot() {
+  let setup = Setup::new().await;
 
   setup
     .store
@@ -332,9 +290,8 @@ async fn to_scoped_snapshot(setup: Setup) {
 }
 
 #[tokio::test]
-#[apply(dual_backend)]
-async fn empty_snapshot(setup: Setup) {
-  let setup = setup.await;
+async fn empty_snapshot() {
+  let setup = Setup::new().await;
 
   let reader = setup.store.read().await;
   let snapshot = reader.to_snapshot();
@@ -344,9 +301,8 @@ async fn empty_snapshot(setup: Setup) {
 }
 
 #[tokio::test]
-#[apply(dual_backend)]
-async fn large_value(setup: Setup) {
-  let setup = setup.await;
+async fn large_value() {
+  let setup = Setup::new().await;
 
   let large_value = "x".repeat(10_000);
   setup
@@ -363,9 +319,8 @@ async fn large_value(setup: Setup) {
 }
 
 #[tokio::test]
-#[apply(dual_backend)]
-async fn many_keys(setup: Setup) {
-  let setup = setup.await;
+async fn many_keys() {
+  let setup = Setup::new().await;
 
   for i in 0 .. 100 {
     setup
@@ -391,9 +346,8 @@ async fn many_keys(setup: Setup) {
 }
 
 #[tokio::test]
-#[apply(dual_backend)]
-async fn special_characters_in_keys(setup: Setup) {
-  let setup = setup.await;
+async fn special_characters_in_keys() {
+  let setup = Setup::new().await;
 
   setup
     .store
@@ -427,9 +381,8 @@ async fn special_characters_in_keys(setup: Setup) {
 }
 
 #[tokio::test]
-#[apply(dual_backend)]
-async fn empty_key(setup: Setup) {
-  let setup = setup.await;
+async fn empty_key() {
+  let setup = Setup::new().await;
 
   setup
     .store
@@ -442,9 +395,8 @@ async fn empty_key(setup: Setup) {
 }
 
 #[tokio::test]
-#[apply(dual_backend)]
-async fn empty_value(setup: Setup) {
-  let setup = setup.await;
+async fn empty_value() {
+  let setup = Setup::new().await;
 
   setup
     .store
@@ -464,7 +416,7 @@ async fn persistence_across_restart() {
   ));
 
   {
-    let store = Store::new(temp_dir.path(), time_provider.clone())
+    let store = Store::persistent(temp_dir.path(), time_provider.clone())
       .await
       .unwrap()
       .store;
@@ -478,7 +430,7 @@ async fn persistence_across_restart() {
       .unwrap();
   }
 
-  let store = Store::new(temp_dir.path(), time_provider.clone())
+  let store = Store::persistent(temp_dir.path(), time_provider.clone())
     .await
     .unwrap()
     .store;
@@ -498,15 +450,14 @@ async fn ephemeral_scopes_cleared_on_restart() {
 
   // First process: write state and verify snapshot on creation is empty
   {
-    let result = Store::new(temp_dir.path(), time_provider.clone())
+    let result = Store::persistent(temp_dir.path(), time_provider.clone())
       .await
       .unwrap();
     let store = result.store;
     let prev_snapshot = result.previous_state;
 
     // First run should have empty snapshot
-    assert!(prev_snapshot.feature_flags.is_empty());
-    assert!(prev_snapshot.global_state.is_empty());
+    assert!(prev_snapshot.is_empty());
 
     // Insert some values
     store
@@ -531,34 +482,43 @@ async fn ephemeral_scopes_cleared_on_restart() {
 
   // Second process: state should be cleared but snapshot should have previous data
   {
-    let result = Store::new(temp_dir.path(), time_provider.clone())
+    let result = Store::persistent(temp_dir.path(), time_provider.clone())
       .await
       .unwrap();
     let store = result.store;
     let prev_snapshot = result.previous_state;
 
     // Snapshot should contain previous process's data
-    assert_eq!(prev_snapshot.feature_flags.len(), 2);
-    assert_eq!(prev_snapshot.global_state.len(), 1);
     assert_eq!(
       prev_snapshot
-        .feature_flags
-        .get("flag1")
-        .map(|(v, _)| v.as_str()),
+        .iter()
+        .filter(|(scope, ..)| *scope == Scope::FeatureFlag)
+        .count(),
+      2
+    );
+    assert_eq!(
+      prev_snapshot
+        .iter()
+        .filter(|(scope, ..)| *scope == Scope::GlobalState)
+        .count(),
+      1
+    );
+    assert_eq!(
+      prev_snapshot
+        .get(Scope::FeatureFlag, "flag1")
+        .map(|v| v.value.string_value()),
       Some("value1")
     );
     assert_eq!(
       prev_snapshot
-        .feature_flags
-        .get("flag2")
-        .map(|(v, _)| v.as_str()),
+        .get(Scope::FeatureFlag, "flag2")
+        .map(|v| v.value.string_value()),
       Some("value2")
     );
     assert_eq!(
       prev_snapshot
-        .global_state
-        .get("key1")
-        .map(|(v, _)| v.as_str()),
+        .get(Scope::GlobalState, "key1")
+        .map(|v| v.value.string_value()),
       Some("global_value")
     );
 
@@ -584,14 +544,13 @@ async fn fallback_to_in_memory_on_invalid_directory() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
-  let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  let result = Store::persistent_or_fallback(temp_file.path(), time_provider).await;
   let store = result.store;
 
   // Should have fallen back to in-memory
   assert!(result.fallback_occurred);
   assert!(result.data_loss.is_none());
-  assert!(result.previous_state.feature_flags.is_empty());
-  assert!(result.previous_state.global_state.is_empty());
+  assert!(result.previous_state.is_empty());
 
   // Verify in-memory store works correctly
   store
@@ -613,7 +572,7 @@ async fn in_memory_store_supports_all_operations() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
-  let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  let result = Store::persistent_or_fallback(temp_file.path(), time_provider).await;
   assert!(result.fallback_occurred);
   let store = result.store;
 
@@ -670,7 +629,7 @@ async fn in_memory_store_does_not_persist() {
 
   // Create in-memory store and add data
   {
-    let result = Store::new_or_fallback(temp_file.path(), time_provider.clone()).await;
+    let result = Store::persistent_or_fallback(temp_file.path(), time_provider.clone()).await;
     assert!(result.fallback_occurred);
     let store = result.store;
 
@@ -685,7 +644,7 @@ async fn in_memory_store_does_not_persist() {
 
   // Create a new in-memory store - data should not persist
   {
-    let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+    let result = Store::persistent_or_fallback(temp_file.path(), time_provider).await;
     assert!(result.fallback_occurred);
     let store = result.store;
 
@@ -701,7 +660,7 @@ async fn in_memory_store_scoped_snapshot() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
-  let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  let result = Store::persistent_or_fallback(temp_file.path(), time_provider).await;
   assert!(result.fallback_occurred);
   let store = result.store;
 
@@ -749,7 +708,7 @@ async fn in_memory_store_clear_respects_scope() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
-  let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  let result = Store::persistent_or_fallback(temp_file.path(), time_provider).await;
   assert!(result.fallback_occurred);
   let store = result.store;
 
@@ -779,7 +738,7 @@ async fn in_memory_store_concurrent_readers() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
-  let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  let result = Store::persistent_or_fallback(temp_file.path(), time_provider).await;
   assert!(result.fallback_occurred);
   let store = result.store;
 
@@ -805,7 +764,7 @@ async fn in_memory_store_empty_operations() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
-  let result = Store::new_or_fallback(temp_file.path(), time_provider).await;
+  let result = Store::persistent_or_fallback(temp_file.path(), time_provider).await;
   assert!(result.fallback_occurred);
   let store = result.store;
 
