@@ -468,8 +468,7 @@ impl PersistentStore {
       Ok(timestamp) => Ok(timestamp),
       Err(UpdateError::CapacityExceeded) => {
         // Calculate size needed for this entry
-        let entry_size =
-          super::framing::Frame::compute_encoded_size(key, u64::MAX, value);
+        let entry_size = super::framing::Frame::compute_encoded_size(key, u64::MAX, value);
 
         // Check if rotation would help. If not, fail immediately.
         if !self.would_rotation_help(entry_size) {
