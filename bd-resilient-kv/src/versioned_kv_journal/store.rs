@@ -213,17 +213,21 @@ struct PersistentStore {
   current_generation: u64,
   cached_map: ScopedMaps,
   retention_registry: Arc<RetentionRegistry>,
+  // Configuration for dynamic sizing
+  initial_buffer_size: usize,
+  max_capacity_bytes: usize,
 }
 
 impl PersistentStore {
   async fn new<P: AsRef<Path>>(
     dir_path: P,
     name: &str,
-    buffer_size: usize,
-    high_water_mark_ratio: Option<f32>,
+    config: PersistentStoreConfig,
     time_provider: Arc<dyn TimeProvider>,
     retention_registry: Arc<RetentionRegistry>,
   ) -> anyhow::Result<(Self, DataLoss)> {
+    let buffer_size = config.initial_buffer_size;
+    let high_water_mark_ratio = config.high_water_mark_ratio;
     let dir = dir_path.as_ref();
     let (journal_path, generation) = file_manager::find_active_journal(dir, name).await;
 
@@ -283,6 +287,8 @@ impl PersistentStore {
         current_generation: generation,
         cached_map: initial_state,
         retention_registry,
+        initial_buffer_size: config.initial_buffer_size,
+        max_capacity_bytes: config.max_capacity_bytes,
       },
       data_loss,
     ))
@@ -397,16 +403,48 @@ impl PersistentStore {
       .dir_path
       .join(format!("{}.jrn.{next_generation}", self.journal_name));
 
-    // Note: Rotation cannot fail due to insufficient buffer space. Since rotation creates a new
-    // journal with the same buffer size and compaction only removes redundant updates (old
-    // versions of keys), the compacted state is always ≤ the current journal size. If data fits
-    // during normal operation, it will always fit during rotation.
+    // Calculate new buffer size with dynamic growth
+    // Estimate compacted size by summing up the encoded size of all entries
+    let compacted_size_estimate: usize = self
+      .cached_map
+      .iter()
+      .map(|(scope, key, tv)| {
+        super::framing::Frame::new(scope, key.as_str(), tv.timestamp, tv.value.clone())
+          .encoded_size()
+      })
+      .sum();
+    
+    let target_ratio = self.high_water_mark_ratio.unwrap_or(0.7);
+    
+    // Calculate target size: compacted_size / target_ratio to ensure compacted data
+    // stays below high water mark
+    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let target_size = (compacted_size_estimate as f32 / target_ratio).ceil() as usize;
+    
+    // Round up to next power of 2 for efficient memory alignment
+    let suggested_size = target_size.next_power_of_two();
+    
+    // Determine new buffer size:
+    // - Minimum: current buffer_size (never shrink)
+    // - Maximum: max_capacity_bytes
+    // - Preferred: suggested_size with headroom
+    let new_buffer_size = suggested_size
+      .max(self.buffer_size)  // Never shrink
+      .min(self.max_capacity_bytes);  // Cap at max
+    
+    log::debug!(
+      "Rotation sizing: compacted={} bytes, target={} bytes, new_buffer={} bytes (max={})",
+      compacted_size_estimate,
+      suggested_size,
+      new_buffer_size,
+      self.max_capacity_bytes
+    );
 
     MemMappedVersionedJournal::sync(&self.journal)?;
     let time_provider = self.journal.time_provider.clone();
     let new_journal = MemMappedVersionedJournal::new(
       &new_journal_path,
-      self.buffer_size,
+      new_buffer_size,
       self.high_water_mark_ratio,
       time_provider,
       self
@@ -414,6 +452,9 @@ impl PersistentStore {
         .iter()
         .map(|(frame_type, key, tv)| (frame_type, key.clone(), tv.value.clone(), tv.timestamp)),
     )?;
+    
+    // Update buffer_size to reflect the new journal's size
+    self.buffer_size = new_buffer_size;
     self.journal = new_journal;
 
     // Best-effort cleanup: compress and archive the old journal
@@ -662,8 +703,7 @@ impl VersionedKVStore {
     let (store, data_loss) = PersistentStore::new(
       dir_path,
       name,
-      config.initial_buffer_size,
-      config.high_water_mark_ratio,
+      config,
       time_provider,
       retention_registry,
     )
@@ -852,6 +892,41 @@ impl VersionedKVStore {
     match &mut self.backend {
       StoreBackend::Persistent(store) => store.rotate_journal().await,
       StoreBackend::InMemory(_) => anyhow::bail!("Cannot rotate journal on in-memory store"),
+    }
+  }
+
+  /// Get the initial buffer size configured for this store.
+  ///
+  /// For persistent stores, returns the initial buffer size from the configuration.
+  /// For in-memory stores, returns 0.
+  #[must_use]
+  pub fn initial_buffer_size(&self) -> usize {
+    match &self.backend {
+      StoreBackend::Persistent(store) => store.initial_buffer_size,
+      StoreBackend::InMemory(_) => 0,
+    }
+  }
+
+  /// Get the current buffer size of the journal.
+  ///
+  /// This may differ from `initial_buffer_size` if the journal has grown dynamically.
+  /// For in-memory stores, returns 0.
+  #[must_use]
+  pub fn current_buffer_size(&self) -> usize {
+    match &self.backend {
+      StoreBackend::Persistent(store) => store.buffer_size,
+      StoreBackend::InMemory(_) => 0,
+    }
+  }
+
+  /// Get the maximum capacity in bytes configured for this store.
+  ///
+  /// For in-memory stores, returns 0.
+  #[must_use]
+  pub fn max_capacity_bytes(&self) -> usize {
+    match &self.backend {
+      StoreBackend::Persistent(store) => store.max_capacity_bytes,
+      StoreBackend::InMemory(_) => 0,
     }
   }
 }
