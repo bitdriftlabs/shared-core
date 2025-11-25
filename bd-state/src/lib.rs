@@ -170,8 +170,7 @@ impl Store {
   ///
   /// Both `FeatureFlag` and `GlobalState` scopes are cleared on each process start, requiring
   /// users to re-set these values.
-  #[allow(clippy::new_ret_no_self)]
-  pub async fn new(
+  pub async fn create(
     directory: &Path,
     time_provider: Arc<dyn TimeProvider>,
   ) -> anyhow::Result<StoreInitResult> {
@@ -223,7 +222,7 @@ impl Store {
     directory: &Path,
     time_provider: Arc<dyn TimeProvider>,
   ) -> StoreInitWithFallbackResult {
-    match Self::new(directory, time_provider.clone()).await {
+    match Self::create(directory, time_provider.clone()).await {
       Ok(result) => StoreInitWithFallbackResult {
         store: result.store,
         data_loss: Some(result.data_loss),
