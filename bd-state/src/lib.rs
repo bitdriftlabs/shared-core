@@ -144,9 +144,6 @@ impl Store {
     // Clear ephemeral scopes so the current process starts with fresh state.
     // Users must re-set feature flags and global state on each process start.
 
-    // TODO(snowp): Consider improving the overhead of clear by adding explicit support for
-    // clearing by prefix in the underlying store, rather than iterating and removing individual
-    // keys.
     // Ignore errors during clearing - we'll proceed with whatever state we have.
     let _ = store.clear(Scope::FeatureFlag).await;
     let _ = store.clear(Scope::GlobalState).await;
