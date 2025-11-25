@@ -83,15 +83,15 @@ async fn normal_growth_pattern() -> anyhow::Result<()> {
   Ok(())
 }
 
-/// Test growth stops when max capacity is reached.
+/// Test that growth stops when max capacity is reached.
 #[tokio::test]
 async fn max_capacity_limiting() -> anyhow::Result<()> {
   let setup = Setup::new();
 
   let config = PersistentStoreConfig {
-    initial_buffer_size: 4 * 1024,    // 4KB
-    max_capacity_bytes: 16 * 1024,    // 16KB max (small for testing)
-    high_water_mark_ratio: 0.5, // Lower threshold for faster rotation
+    initial_buffer_size: 4 * 1024, // 4KB
+    max_capacity_bytes: 16 * 1024, // 16KB max (small for testing)
+    high_water_mark_ratio: 0.5,    // Lower threshold for faster rotation
   };
 
   let mut store = setup.open_store(config).await?;
@@ -311,9 +311,9 @@ async fn insert_triggers_rotation_on_capacity_exceeded() -> anyhow::Result<()> {
 
   // Start with a very small buffer (4KB) but allow growth up to 64KB
   let config = PersistentStoreConfig {
-    initial_buffer_size: 4 * 1024,    // 4KB
-    max_capacity_bytes: 64 * 1024,    // 64KB max
-    high_water_mark_ratio: 0.8, // High threshold to avoid early rotation
+    initial_buffer_size: 4 * 1024, // 4KB
+    max_capacity_bytes: 64 * 1024, // 64KB max
+    high_water_mark_ratio: 0.8,    // High threshold to avoid early rotation
   };
 
   let mut store = setup.open_store(config).await?;
@@ -360,8 +360,8 @@ async fn insert_fails_when_exceeding_max_capacity() -> anyhow::Result<()> {
 
   // Small max capacity for testing
   let config = PersistentStoreConfig {
-    initial_buffer_size: 4 * 1024,    // 4KB
-    max_capacity_bytes: 8 * 1024,     // 8KB max (very small)
+    initial_buffer_size: 4 * 1024, // 4KB
+    max_capacity_bytes: 8 * 1024,  // 8KB max (very small)
     high_water_mark_ratio: 0.8,
   };
 
