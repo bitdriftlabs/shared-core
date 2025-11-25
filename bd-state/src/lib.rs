@@ -100,9 +100,8 @@ pub struct StateEntry<'a> {
 // StateReader
 //
 
-/// A trait for reading state values. This is used to abstract over different storage
-/// implementations, such as persistent stores and in-memory stores. This pattern allows for
-/// non-async access to state values while the underlying store may be async.
+/// A trait for reading state values. This pattern allows for non-async access to state values while
+/// the underlying store may be async.
 pub trait StateReader {
   /// Gets a value from the state store.
   fn get(&self, scope: Scope, key: &str) -> Option<&str>;
