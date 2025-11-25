@@ -21,15 +21,8 @@ mod tests;
 pub mod test;
 
 use ahash::AHashMap;
-pub use bd_resilient_kv::Scope;
-use bd_resilient_kv::{
-  DataLoss,
-  PersistentStoreConfig,
-  RetentionRegistry,
-  ScopedMaps,
-  StateValue,
-  Value_type,
-};
+use bd_resilient_kv::{DataLoss, RetentionRegistry, ScopedMaps, StateValue, Value_type};
+pub use bd_resilient_kv::{PersistentStoreConfig, Scope};
 use bd_time::TimeProvider;
 use itertools::Itertools as _;
 use std::path::Path;
@@ -179,13 +172,9 @@ impl Store {
   /// users to re-set these values.
   pub async fn persistent(
     directory: &Path,
+    config: PersistentStoreConfig,
     time_provider: Arc<dyn TimeProvider>,
   ) -> anyhow::Result<StoreInitResult> {
-    let config = PersistentStoreConfig {
-      initial_buffer_size: 1024 * 1024,
-      max_capacity_bytes: 10 * 1024 * 1024,
-      high_water_mark_ratio: None,
-    };
     let retention_registry = Arc::new(RetentionRegistry::new());
     let (inner, data_loss) = bd_resilient_kv::VersionedKVStore::new(
       directory,
@@ -226,9 +215,10 @@ impl Store {
   /// return an in-memory store instead.
   pub async fn persistent_or_fallback(
     directory: &Path,
+    config: PersistentStoreConfig,
     time_provider: Arc<dyn TimeProvider>,
   ) -> StoreInitWithFallbackResult {
-    match Self::persistent(directory, time_provider.clone()).await {
+    match Self::persistent(directory, config, time_provider.clone()).await {
       Ok(result) => StoreInitWithFallbackResult {
         store: result.store,
         data_loss: Some(result.data_loss),
@@ -239,7 +229,7 @@ impl Store {
         log::debug!(
           "Failed to initialize persistent state store: {e}, falling back to in-memory store"
         );
-        let store = Self::in_memory(time_provider);
+        let store = Self::in_memory(time_provider, None);
         StoreInitWithFallbackResult {
           store,
           data_loss: None,
@@ -254,42 +244,42 @@ impl Store {
   ///
   /// This is useful when persistent storage is not needed or when used as a fallback
   /// when the persistent store cannot be initialized.
+  ///
+  /// # Arguments
+  ///
+  /// * `time_provider` - Time provider for timestamps
+  /// * `capacity` - Optional maximum number of entries. If None, no limit is enforced.
   #[must_use]
-  pub fn in_memory(time_provider: Arc<dyn TimeProvider>) -> Self {
+  pub fn in_memory(time_provider: Arc<dyn TimeProvider>, capacity: Option<usize>) -> Self {
     Self {
       inner: Arc::new(RwLock::new(
-        bd_resilient_kv::VersionedKVStore::new_in_memory(time_provider, None),
+        bd_resilient_kv::VersionedKVStore::new_in_memory(time_provider, capacity),
       )),
     }
   }
 
-  pub async fn insert(&self, scope: Scope, key: &str, value: String) -> anyhow::Result<()> {
+  pub async fn insert(&self, scope: Scope, key: String, value: String) -> anyhow::Result<()> {
     self
       .inner
       .write()
       .await
       .insert(
         scope,
-        key.to_string(),
+        key,
         StateValue {
           value_type: Value_type::StringValue(value).into(),
           ..Default::default()
         },
       )
-      .await
-      .map(|_| ())
-      .map_err(Into::into)
+      .await?;
+
+    Ok(())
   }
 
   pub async fn remove(&self, scope: Scope, key: &str) -> anyhow::Result<()> {
-    self
-      .inner
-      .write()
-      .await
-      .remove(scope, key)
-      .await
-      .map(|_| ())
-      .map_err(Into::into)
+    self.inner.write().await.remove(scope, key).await?;
+
+    Ok(())
   }
 
   pub async fn clear(&self, scope: Scope) -> anyhow::Result<()> {

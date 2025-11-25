@@ -8,6 +8,7 @@
 #![allow(clippy::unwrap_used)]
 
 use crate::{Scope, StateReader, Store};
+use bd_resilient_kv::PersistentStoreConfig;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::macros::datetime;
@@ -24,10 +25,14 @@ impl Setup {
     let time_provider = Arc::new(bd_time::TestTimeProvider::new(
       datetime!(2024-01-01 00:00:00 UTC),
     ));
-    let store = Store::persistent(temp_dir.path(), time_provider.clone())
-      .await
-      .unwrap()
-      .store;
+    let store = Store::persistent(
+      temp_dir.path(),
+      PersistentStoreConfig::default(),
+      time_provider.clone(),
+    )
+    .await
+    .unwrap()
+    .store;
 
     Self {
       _dir: temp_dir,
@@ -43,17 +48,29 @@ async fn clear_scope() {
 
   setup
     .store
-    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .insert(
+      Scope::FeatureFlag,
+      "flag1".to_string(),
+      "value1".to_string(),
+    )
     .await
     .unwrap();
   setup
     .store
-    .insert(Scope::FeatureFlag, "flag2", "value2".to_string())
+    .insert(
+      Scope::FeatureFlag,
+      "flag2".to_string(),
+      "value2".to_string(),
+    )
     .await
     .unwrap();
   setup
     .store
-    .insert(Scope::GlobalState, "key1", "global_value".to_string())
+    .insert(
+      Scope::GlobalState,
+      "key1".to_string(),
+      "global_value".to_string(),
+    )
     .await
     .unwrap();
 
@@ -71,17 +88,29 @@ async fn iter_scope() {
 
   setup
     .store
-    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .insert(
+      Scope::FeatureFlag,
+      "flag1".to_string(),
+      "value1".to_string(),
+    )
     .await
     .unwrap();
   setup
     .store
-    .insert(Scope::FeatureFlag, "flag2", "value2".to_string())
+    .insert(
+      Scope::FeatureFlag,
+      "flag2".to_string(),
+      "value2".to_string(),
+    )
     .await
     .unwrap();
   setup
     .store
-    .insert(Scope::GlobalState, "key1", "global_value".to_string())
+    .insert(
+      Scope::GlobalState,
+      "key1".to_string(),
+      "global_value".to_string(),
+    )
     .await
     .unwrap();
 
@@ -117,17 +146,29 @@ async fn to_snapshot() {
 
   setup
     .store
-    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .insert(
+      Scope::FeatureFlag,
+      "flag1".to_string(),
+      "value1".to_string(),
+    )
     .await
     .unwrap();
   setup
     .store
-    .insert(Scope::FeatureFlag, "flag2", "value2".to_string())
+    .insert(
+      Scope::FeatureFlag,
+      "flag2".to_string(),
+      "value2".to_string(),
+    )
     .await
     .unwrap();
   setup
     .store
-    .insert(Scope::GlobalState, "key1", "global_value".to_string())
+    .insert(
+      Scope::GlobalState,
+      "key1".to_string(),
+      "global_value".to_string(),
+    )
     .await
     .unwrap();
 
@@ -156,12 +197,20 @@ async fn to_scoped_snapshot() {
 
   setup
     .store
-    .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+    .insert(
+      Scope::FeatureFlag,
+      "flag1".to_string(),
+      "value1".to_string(),
+    )
     .await
     .unwrap();
   setup
     .store
-    .insert(Scope::GlobalState, "key1", "global_value".to_string())
+    .insert(
+      Scope::GlobalState,
+      "key1".to_string(),
+      "global_value".to_string(),
+    )
     .await
     .unwrap();
 
@@ -189,16 +238,28 @@ async fn empty_snapshot() {
 
 #[tokio::test]
 async fn large_value() {
-  let setup = Setup::new().await;
+  // Use a larger config to accommodate the large value
+  let temp_dir = tempfile::tempdir().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+  let config = PersistentStoreConfig {
+    initial_buffer_size: 1024 * 1024,
+    max_capacity_bytes: 10 * 1024 * 1024,
+    high_water_mark_ratio: None,
+  };
+  let store = Store::persistent(temp_dir.path(), config, time_provider.clone())
+    .await
+    .unwrap()
+    .store;
 
   let large_value = "x".repeat(10_000);
-  setup
-    .store
-    .insert(Scope::FeatureFlag, "large", large_value.clone())
+  store
+    .insert(Scope::FeatureFlag, "large".to_string(), large_value.clone())
     .await
     .unwrap();
 
-  let reader = setup.store.read().await;
+  let reader = store.read().await;
   assert_eq!(
     reader.get(Scope::FeatureFlag, "large"),
     Some(large_value.as_str())
@@ -211,17 +272,29 @@ async fn special_characters_in_keys() {
 
   setup
     .store
-    .insert(Scope::FeatureFlag, "key:with:colons", "value1".to_string())
+    .insert(
+      Scope::FeatureFlag,
+      "key:with:colons".to_string(),
+      "value1".to_string(),
+    )
     .await
     .unwrap();
   setup
     .store
-    .insert(Scope::FeatureFlag, "key/with/slashes", "value2".to_string())
+    .insert(
+      Scope::FeatureFlag,
+      "key/with/slashes".to_string(),
+      "value2".to_string(),
+    )
     .await
     .unwrap();
   setup
     .store
-    .insert(Scope::FeatureFlag, "key with spaces", "value3".to_string())
+    .insert(
+      Scope::FeatureFlag,
+      "key with spaces".to_string(),
+      "value3".to_string(),
+    )
     .await
     .unwrap();
 
@@ -246,7 +319,7 @@ async fn empty_key() {
 
   setup
     .store
-    .insert(Scope::FeatureFlag, "", "value".to_string())
+    .insert(Scope::FeatureFlag, "".to_string(), "value".to_string())
     .await
     .unwrap();
 
@@ -260,7 +333,7 @@ async fn empty_value() {
 
   setup
     .store
-    .insert(Scope::FeatureFlag, "flag1", String::new())
+    .insert(Scope::FeatureFlag, "flag1".to_string(), String::new())
     .await
     .unwrap();
 
@@ -276,24 +349,40 @@ async fn persistence_across_restart() {
   ));
 
   {
-    let store = Store::persistent(temp_dir.path(), time_provider.clone())
-      .await
-      .unwrap()
-      .store;
+    let store = Store::persistent(
+      temp_dir.path(),
+      PersistentStoreConfig::default(),
+      time_provider.clone(),
+    )
+    .await
+    .unwrap()
+    .store;
     store
-      .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+      .insert(
+        Scope::FeatureFlag,
+        "flag1".to_string(),
+        "value1".to_string(),
+      )
       .await
       .unwrap();
     store
-      .insert(Scope::GlobalState, "key1", "global_value".to_string())
+      .insert(
+        Scope::GlobalState,
+        "key1".to_string(),
+        "global_value".to_string(),
+      )
       .await
       .unwrap();
   }
 
-  let store = Store::persistent(temp_dir.path(), time_provider.clone())
-    .await
-    .unwrap()
-    .store;
+  let store = Store::persistent(
+    temp_dir.path(),
+    PersistentStoreConfig::default(),
+    time_provider.clone(),
+  )
+  .await
+  .unwrap()
+  .store;
 
   // After restart, ephemeral scopes are cleared
   let reader = store.read().await;
@@ -310,9 +399,13 @@ async fn ephemeral_scopes_cleared_on_restart() {
 
   // First process: write state and verify snapshot on creation is empty
   {
-    let result = Store::persistent(temp_dir.path(), time_provider.clone())
-      .await
-      .unwrap();
+    let result = Store::persistent(
+      temp_dir.path(),
+      PersistentStoreConfig::default(),
+      time_provider.clone(),
+    )
+    .await
+    .unwrap();
     let store = result.store;
     let prev_snapshot = result.previous_state;
 
@@ -321,15 +414,27 @@ async fn ephemeral_scopes_cleared_on_restart() {
 
     // Insert some values
     store
-      .insert(Scope::FeatureFlag, "flag1", "value1".to_string())
+      .insert(
+        Scope::FeatureFlag,
+        "flag1".to_string(),
+        "value1".to_string(),
+      )
       .await
       .unwrap();
     store
-      .insert(Scope::FeatureFlag, "flag2", "value2".to_string())
+      .insert(
+        Scope::FeatureFlag,
+        "flag2".to_string(),
+        "value2".to_string(),
+      )
       .await
       .unwrap();
     store
-      .insert(Scope::GlobalState, "key1", "global_value".to_string())
+      .insert(
+        Scope::GlobalState,
+        "key1".to_string(),
+        "global_value".to_string(),
+      )
       .await
       .unwrap();
 
@@ -342,9 +447,13 @@ async fn ephemeral_scopes_cleared_on_restart() {
 
   // Second process: state should be cleared but snapshot should have previous data
   {
-    let result = Store::persistent(temp_dir.path(), time_provider.clone())
-      .await
-      .unwrap();
+    let result = Store::persistent(
+      temp_dir.path(),
+      PersistentStoreConfig::default(),
+      time_provider.clone(),
+    )
+    .await
+    .unwrap();
     let store = result.store;
     let prev_snapshot = result.previous_state;
 
@@ -404,7 +513,12 @@ async fn fallback_to_in_memory_on_invalid_directory() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
-  let result = Store::persistent_or_fallback(temp_file.path(), time_provider).await;
+  let result = Store::persistent_or_fallback(
+    temp_file.path(),
+    PersistentStoreConfig::default(),
+    time_provider,
+  )
+  .await;
   let store = result.store;
 
   // Should have fallen back to in-memory
@@ -414,7 +528,11 @@ async fn fallback_to_in_memory_on_invalid_directory() {
 
   // Verify in-memory store works correctly
   store
-    .insert(Scope::FeatureFlag, "test_flag", "test_value".to_string())
+    .insert(
+      Scope::FeatureFlag,
+      "test_flag".to_string(),
+      "test_value".to_string(),
+    )
     .await
     .unwrap();
 
