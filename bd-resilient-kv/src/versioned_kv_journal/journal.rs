@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::framing::Frame;
-use crate::Scope;
+use crate::{Scope, UpdateError};
 use bd_client_common::error::InvariantError;
 use bd_time::TimeProvider;
 use std::sync::Arc;
@@ -95,7 +95,7 @@ fn read_position(buffer: &[u8]) -> anyhow::Result<usize> {
   let position = usize::try_from(position_u64)
     .map_err(|_| anyhow::anyhow!("Position {position_u64} too large for usize"))?;
   let buffer_len = buffer.len();
-  if position >= buffer_len {
+  if position > buffer_len {
     anyhow::bail!("Invalid position: {position}, buffer size: {buffer_len}",);
   }
   Ok(position)
@@ -315,7 +315,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   /// * `scope` - The scope for this entry (e.g., `FeatureFlag`, `ClientStat`, etc.)
   /// * `key` - The key for this entry
   /// * `message` - The protobuf message payload
-  pub fn insert_entry(&mut self, scope: Scope, key: &str, message: M) -> anyhow::Result<u64> {
+  pub fn insert_entry(&mut self, scope: Scope, key: &str, message: M) -> Result<u64, UpdateError> {
     let timestamp = self.next_monotonic_timestamp()?;
 
     // Create payload
