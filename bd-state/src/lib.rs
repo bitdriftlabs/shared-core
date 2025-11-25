@@ -73,17 +73,6 @@ pub struct StoreInitWithFallbackResult {
 }
 
 //
-// StateSnapshot
-//
-
-/// A simple snapshot of the state store, used for crash reporting and similar use cases.
-#[derive(Debug, Clone)]
-pub struct StateSnapshot {
-  pub feature_flags: ScopedStateMap,
-  pub global_state: ScopedStateMap,
-}
-
-//
 // StateEntry
 //
 
@@ -108,46 +97,6 @@ pub trait StateReader {
 
   /// Returns an iterator over all entries in the state store.
   fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = StateEntry<'a>> + 'a>;
-
-  /// Creates an owned snapshot of all entries in a specific scope.
-  ///
-  /// Returns a map of key -> (value, timestamp) for all entries in the scope.
-  fn to_scoped_snapshot(&self, scope: Scope) -> ScopedStateMap {
-    self
-      .iter()
-      .filter(move |entry| entry.scope == scope)
-      .map(|entry| {
-        (
-          entry.key.to_string(),
-          (entry.value.to_string(), entry.timestamp),
-        )
-      })
-      .collect()
-  }
-
-  /// Creates an owned snapshot of the entire state store, organized by scope. Prefer this over
-  /// calling `to_scoped_snapshot` multiple times to avoid multiple iterations.
-  fn to_snapshot(&self) -> StateSnapshot {
-    let mut feature_flags = AHashMap::new();
-    let mut global_state = AHashMap::new();
-
-    for entry in self.iter() {
-      let kv = (entry.value.to_string(), entry.timestamp);
-      match entry.scope {
-        Scope::FeatureFlag => {
-          feature_flags.insert(entry.key.to_string(), kv);
-        },
-        Scope::GlobalState => {
-          global_state.insert(entry.key.to_string(), kv);
-        },
-      }
-    }
-
-    StateSnapshot {
-      feature_flags,
-      global_state,
-    }
-  }
 }
 
 //
