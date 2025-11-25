@@ -9,6 +9,7 @@
 
 use crate::tests::decompress_zlib;
 use crate::versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry};
+use crate::versioned_kv_journal::store::PersistentStoreConfig;
 use crate::versioned_kv_journal::{TimestampedValue, make_string_value};
 use crate::{DataLoss, Scope, UpdateError, VersionedKVStore};
 use bd_proto::protos::state::payload::StateValue;
@@ -42,8 +43,10 @@ impl DualModeSetup {
         let (store, _) = VersionedKVStore::new(
           temp_dir.path(),
           "test",
-          4096,
-          None,
+          PersistentStoreConfig {
+            initial_buffer_size: 4096,
+            ..Default::default()
+          },
           time_provider.clone(),
           registry,
         )
@@ -78,8 +81,10 @@ impl Setup {
     let (store, _) = VersionedKVStore::new(
       temp_dir.path(),
       "test",
-      4096,
-      None,
+      PersistentStoreConfig {
+        initial_buffer_size: 4096,
+        ..Default::default()
+      },
       time_provider.clone(),
       registry,
     )
@@ -110,8 +115,10 @@ impl Setup {
     let (store, data_loss) = VersionedKVStore::new(
       self.temp_dir.path(),
       "snapshot",
-      4096,
-      None,
+      PersistentStoreConfig {
+        initial_buffer_size: 4096,
+        ..Default::default()
+      },
       self.time_provider.clone(),
       registry,
     )
@@ -207,8 +214,11 @@ async fn test_automatic_rotation_on_high_water_mark() -> anyhow::Result<()> {
   let (mut store, _) = VersionedKVStore::new(
     temp_dir.path(),
     "test",
-    1024,      // Small buffer size
-    Some(0.3), // Very low high water mark (30%)
+    PersistentStoreConfig {
+      initial_buffer_size: 1024,        // Small buffer size
+      max_capacity_bytes: 10 * 1024,    // 10KB max
+      high_water_mark_ratio: Some(0.3), // Very low high water mark (30%)
+    },
     time_provider.clone(),
     registry,
   )
@@ -442,8 +452,10 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
     let (mut store, _) = VersionedKVStore::new(
       temp_dir.path(),
       "test",
-      4096,
-      None,
+      PersistentStoreConfig {
+        initial_buffer_size: 4096,
+        ..Default::default()
+      },
       time_provider.clone(),
       registry.clone(),
     )
@@ -469,8 +481,17 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
 
   // Reopen and verify data persisted
   {
-    let (store, data_loss) =
-      VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider, registry).await?;
+    let (store, data_loss) = VersionedKVStore::new(
+      temp_dir.path(),
+      "test",
+      PersistentStoreConfig {
+        initial_buffer_size: 4096,
+        ..Default::default()
+      },
+      time_provider,
+      registry,
+    )
+    .await?;
     assert_eq!(data_loss, DataLoss::None);
     assert_eq!(store.len(), 2);
     assert_eq!(
@@ -783,8 +804,10 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
   let (mut store, _) = VersionedKVStore::new(
     temp_dir.path(),
     "test",
-    4096,
-    None,
+    PersistentStoreConfig {
+      initial_buffer_size: 4096,
+      ..Default::default()
+    },
     time_provider.clone(),
     registry.clone(),
   )
@@ -875,8 +898,17 @@ async fn test_multiple_rotations_with_same_timestamp() -> anyhow::Result<()> {
   let registry = Arc::new(RetentionRegistry::new());
   let _handle = registry.create_handle().await; // Retain all snapshots
 
-  let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider, registry).await?;
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    PersistentStoreConfig {
+      initial_buffer_size: 4096,
+      ..Default::default()
+    },
+    time_provider,
+    registry,
+  )
+  .await?;
 
   // Insert data once
   store

@@ -11,6 +11,7 @@ use bd_proto::protos::state::payload::state_value::Value_type;
 use bd_proto::protos::state::payload::{StateKeyValuePair, StateValue};
 use bd_resilient_kv::{
   DataLoss,
+  PersistentStoreConfig,
   RetentionRegistry,
   Scope,
   TimestampedValue,
@@ -254,6 +255,8 @@ impl KeyPool {
 pub struct VersionedKVJournalFuzzTestCase {
   buffer_size: u32,
   high_water_mark_ratio: Option<f32>,
+  /// Maximum capacity in bytes for dynamic growth (will be clamped to reasonable range)
+  max_capacity_bytes: u32,
   operations: Vec<OperationType>,
 }
 
@@ -271,6 +274,7 @@ pub struct VersionedKVJournalFuzzTest {
   test_case: VersionedKVJournalFuzzTestCase,
   buffer_size: usize,
   high_water_mark_ratio: Option<f32>,
+  max_capacity_bytes: usize,
   temp_dir: TempDir,
   time_provider: Arc<TestTimeProvider>,
   registry: Arc<RetentionRegistry>,
@@ -283,18 +287,31 @@ pub struct VersionedKVJournalFuzzTest {
 impl VersionedKVJournalFuzzTest {
   #[must_use]
   pub fn new(test_case: VersionedKVJournalFuzzTestCase) -> Self {
-    // Clamp to a smaller range for faster fuzzing (1KB - 16KB)
-    // This reduces the time spent on I/O operations while still testing edge cases
-    let buffer_size = ((test_case.buffer_size % 15_360) + 1024) as usize;
-    // Clamp high water mark ratio to valid range [0.0, 1.0]
+    // Clamp to a reasonable range (4KB - 1MB)
+    // Note: 4KB is the minimum required by PersistentStoreConfig
+    // Config validation will automatically round to power of 2 if needed
+    let buffer_size = ((test_case.buffer_size % 1_048_576) + 4096) as usize;
+
+    // Clamp high water mark ratio to valid range [0.1, 1.0]
+    // Config validation requires >= 0.1 when using max_capacity
     let high_water_mark_ratio = test_case.high_water_mark_ratio.and_then(|ratio| {
-      let clamped = ratio.clamp(0.0, 1.0);
+      let clamped = ratio.clamp(0.1, 1.0);
       if clamped.is_finite() {
         Some(clamped)
       } else {
         None
       }
     });
+
+    // Clamp max capacity to a reasonable range (must be >= buffer_size, <= 1MB)
+    // Treat 0 as default (1MB)
+    let max_capacity_bytes = if test_case.max_capacity_bytes == 0 {
+      1024 * 1024 // Default to 1MB
+    } else {
+      let max_usize = test_case.max_capacity_bytes as usize;
+      // Ensure max >= buffer_size and <= 1MB
+      max_usize.max(buffer_size).min(1024 * 1024)
+    };
 
     // Create a temporary directory for the journal files
     let Ok(temp_dir) = TempDir::new() else {
@@ -310,6 +327,7 @@ impl VersionedKVJournalFuzzTest {
       test_case,
       buffer_size,
       high_water_mark_ratio,
+      max_capacity_bytes,
       temp_dir,
       time_provider,
       registry,
@@ -320,11 +338,15 @@ impl VersionedKVJournalFuzzTest {
   }
 
   async fn new_store(&self) -> anyhow::Result<(VersionedKVStore, DataLoss)> {
+    let config = PersistentStoreConfig {
+      initial_buffer_size: self.buffer_size,
+      max_capacity_bytes: self.max_capacity_bytes,
+      high_water_mark_ratio: self.high_water_mark_ratio,
+    };
     VersionedKVStore::new(
       self.temp_dir.path(),
       JOURNAL_NAME,
-      self.buffer_size,
-      self.high_water_mark_ratio,
+      config,
       self.time_provider.clone(),
       self.registry.clone(),
     )
@@ -332,11 +354,15 @@ impl VersionedKVJournalFuzzTest {
   }
 
   async fn existing_store(&self) -> anyhow::Result<(VersionedKVStore, DataLoss)> {
+    let config = PersistentStoreConfig {
+      initial_buffer_size: self.buffer_size,
+      max_capacity_bytes: self.max_capacity_bytes,
+      high_water_mark_ratio: self.high_water_mark_ratio,
+    };
     VersionedKVStore::new(
       self.temp_dir.path(),
       JOURNAL_NAME,
-      self.buffer_size,
-      self.high_water_mark_ratio,
+      config,
       self.time_provider.clone(),
       self.registry.clone(),
     )
@@ -451,7 +477,13 @@ impl VersionedKVJournalFuzzTest {
     let store_result = self.new_store().await;
 
     let Ok((mut store, _data_loss)) = store_result else {
-      panic!("Failed to create initial VersionedKVStore");
+      panic!(
+        "Failed to create initial VersionedKVStore: {:?}. Config: buffer_size={}, \
+         max_capacity={:?}",
+        store_result.err(),
+        self.buffer_size,
+        self.max_capacity_bytes
+      );
     };
 
     // Helper function to get current timestamp as microseconds

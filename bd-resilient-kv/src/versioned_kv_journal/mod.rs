@@ -16,6 +16,8 @@ pub mod recovery;
 pub mod retention;
 pub mod store;
 
+pub use store::PersistentStoreConfig;
+
 /// Errors that can occur during store operations.
 #[derive(thiserror::Error, Debug)]
 pub enum UpdateError {

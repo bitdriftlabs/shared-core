@@ -36,4 +36,4 @@ pub use scope::Scope;
 pub use versioned_kv_journal::recovery::VersionedRecovery;
 pub use versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry};
 pub use versioned_kv_journal::store::{DataLoss, ScopedMaps, VersionedKVStore};
-pub use versioned_kv_journal::{TimestampedValue, UpdateError};
+pub use versioned_kv_journal::{PersistentStoreConfig, TimestampedValue, UpdateError};
