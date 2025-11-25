@@ -51,7 +51,7 @@ async fn normal_growth_pattern() -> anyhow::Result<()> {
   let config = PersistentStoreConfig {
     initial_buffer_size: 8 * 1024,   // 8KB
     max_capacity_bytes: 1024 * 1024, // 1MB max
-    high_water_mark_ratio: Some(0.8),
+    high_water_mark_ratio: 0.8,
   };
 
   let mut store = setup.open_store(config).await?;
@@ -91,7 +91,7 @@ async fn max_capacity_limiting() -> anyhow::Result<()> {
   let config = PersistentStoreConfig {
     initial_buffer_size: 4 * 1024,    // 4KB
     max_capacity_bytes: 16 * 1024,    // 16KB max (small for testing)
-    high_water_mark_ratio: Some(0.5), // Lower threshold for faster rotation
+    high_water_mark_ratio: 0.5, // Lower threshold for faster rotation
   };
 
   let mut store = setup.open_store(config).await?;
@@ -121,51 +121,6 @@ async fn max_capacity_limiting() -> anyhow::Result<()> {
   Ok(())
 }
 
-/// Test that buffer growth works even when `high_water_mark_ratio` is None (no automatic rotation).
-/// This ensures the manual rotation path also handles large entries correctly.
-#[tokio::test]
-async fn insert_triggers_rotation_with_no_high_water_mark() -> anyhow::Result<()> {
-  let setup = Setup::new();
-
-  // Disable automatic rotation by setting high_water_mark_ratio to None
-  let config = PersistentStoreConfig {
-    initial_buffer_size: 4 * 1024, // 4KB
-    max_capacity_bytes: 64 * 1024, // 64KB max
-    high_water_mark_ratio: None,   // No automatic rotation
-  };
-
-  let mut store = setup.open_store(config).await?;
-
-  assert_eq!(store.current_buffer_size(), 4 * 1024);
-
-  // Try to insert a value that's larger than the current buffer (4KB)
-  // Even without automatic rotation, this should trigger rotation on-demand
-  let large_value = "x".repeat(5 * 1024); // 5KB value
-
-  let result = store
-    .insert(
-      Scope::GlobalState,
-      "large_key".to_string(),
-      make_string_value(&large_value),
-    )
-    .await;
-
-  // Should succeed after on-demand rotation
-  assert!(result.is_ok(), "Insert should succeed after on-demand rotation");
-
-  // Buffer should have grown to accommodate the large value
-  assert!(
-    store.current_buffer_size() > 4 * 1024,
-    "Buffer should have grown from initial 4KB"
-  );
-
-  // Verify the value was actually inserted
-  assert_eq!(store.len(), 1);
-  assert!(store.contains_key(Scope::GlobalState, "large_key"));
-
-  Ok(())
-}
-
 /// Test that changing config on restart is handled correctly.
 #[tokio::test]
 async fn config_changes_on_restart() -> anyhow::Result<()> {
@@ -175,7 +130,7 @@ async fn config_changes_on_restart() -> anyhow::Result<()> {
   let config1 = PersistentStoreConfig {
     initial_buffer_size: 8 * 1024,
     max_capacity_bytes: 64 * 1024,
-    high_water_mark_ratio: Some(0.8),
+    high_water_mark_ratio: 0.8,
   };
 
   {
@@ -199,7 +154,7 @@ async fn config_changes_on_restart() -> anyhow::Result<()> {
   let config2 = PersistentStoreConfig {
     initial_buffer_size: 32 * 1024, // Increased from 8KB
     max_capacity_bytes: 128 * 1024, // Increased cap
-    high_water_mark_ratio: Some(0.8),
+    high_water_mark_ratio: 0.8,
   };
 
   {
@@ -225,7 +180,7 @@ async fn config_validation() {
   let mut config = PersistentStoreConfig {
     initial_buffer_size: 1024, // Too small, minimum is 4096
     max_capacity_bytes: 1024 * 1024,
-    high_water_mark_ratio: None,
+    high_water_mark_ratio: 0.7,
   };
   config.normalize();
   assert_eq!(config.initial_buffer_size, 8 * 1024); // Falls back to default
@@ -234,7 +189,7 @@ async fn config_validation() {
   let mut config = PersistentStoreConfig {
     initial_buffer_size: 2 * 1024 * 1024 * 1024, // 2GB, way too large
     max_capacity_bytes: 1024 * 1024,
-    high_water_mark_ratio: None,
+    high_water_mark_ratio: 0.7,
   };
   config.normalize();
   assert_eq!(config.initial_buffer_size, 8 * 1024); // Falls back to default
@@ -243,7 +198,7 @@ async fn config_validation() {
   let mut config = PersistentStoreConfig {
     initial_buffer_size: 9000, // Not power of 2, should round to 16384
     max_capacity_bytes: 1024 * 1024,
-    high_water_mark_ratio: None,
+    high_water_mark_ratio: 0.7,
   };
   config.normalize();
   assert_eq!(config.initial_buffer_size, 16384); // Rounded up from 9000
@@ -252,7 +207,7 @@ async fn config_validation() {
   let mut config = PersistentStoreConfig {
     initial_buffer_size: 16 * 1024,
     max_capacity_bytes: 8 * 1024, // Smaller than initial
-    high_water_mark_ratio: None,
+    high_water_mark_ratio: 0.7,
   };
   config.normalize();
   assert_eq!(config.max_capacity_bytes, 1024 * 1024); // Falls back to 1MB default
@@ -261,7 +216,7 @@ async fn config_validation() {
   let mut config = PersistentStoreConfig {
     initial_buffer_size: 8 * 1024,
     max_capacity_bytes: 2 * 1024 * 1024 * 1024, // 2GB, too large
-    high_water_mark_ratio: None,
+    high_water_mark_ratio: 0.7,
   };
   config.normalize();
   assert_eq!(config.max_capacity_bytes, 1024 * 1024); // Falls back to 1MB default
@@ -270,7 +225,7 @@ async fn config_validation() {
   let mut config = PersistentStoreConfig {
     initial_buffer_size: 8 * 1024,
     max_capacity_bytes: 1024 * 1024, // Not specified
-    high_water_mark_ratio: None,
+    high_water_mark_ratio: 0.7,
   };
   config.normalize();
   assert_eq!(config.max_capacity_bytes, 1024 * 1024); // Falls back to 1MB default
@@ -279,30 +234,30 @@ async fn config_validation() {
   let mut config = PersistentStoreConfig {
     initial_buffer_size: 8 * 1024,
     max_capacity_bytes: 1024 * 1024,
-    high_water_mark_ratio: Some(1.5), // > 1.0
+    high_water_mark_ratio: 1.5, // > 1.0
   };
   config.normalize();
-  assert_eq!(config.high_water_mark_ratio, Some(0.7)); // Falls back to default
+  assert_eq!(config.high_water_mark_ratio, 0.7); // Falls back to default
 
   // Test: high_water_mark_ratio NaN (should default to 0.7)
   let mut config = PersistentStoreConfig {
     initial_buffer_size: 8 * 1024,
     max_capacity_bytes: 1024 * 1024,
-    high_water_mark_ratio: Some(f32::NAN),
+    high_water_mark_ratio: f32::NAN,
   };
   config.normalize();
-  assert_eq!(config.high_water_mark_ratio, Some(0.7)); // Falls back to default
+  assert!((config.high_water_mark_ratio - 0.7).abs() < f32::EPSILON); // Falls back to default
 
   // Test: valid config (should remain unchanged)
   let mut config = PersistentStoreConfig {
     initial_buffer_size: 8 * 1024,
     max_capacity_bytes: 1024 * 1024,
-    high_water_mark_ratio: Some(0.8),
+    high_water_mark_ratio: 0.8,
   };
   config.normalize();
   assert_eq!(config.initial_buffer_size, 8 * 1024);
   assert_eq!(config.max_capacity_bytes, 1024 * 1024);
-  assert_eq!(config.high_water_mark_ratio, Some(0.8));
+  assert!((config.high_water_mark_ratio - 0.8).abs() < f32::EPSILON);
 }
 
 /// Test growth with actual compaction size calculation.
@@ -313,7 +268,7 @@ async fn growth_with_compaction() -> anyhow::Result<()> {
   let config = PersistentStoreConfig {
     initial_buffer_size: 8 * 1024,
     max_capacity_bytes: 256 * 1024,
-    high_water_mark_ratio: Some(0.7),
+    high_water_mark_ratio: 0.7,
   };
 
   let mut store = setup.open_store(config).await?;
@@ -358,7 +313,7 @@ async fn insert_triggers_rotation_on_capacity_exceeded() -> anyhow::Result<()> {
   let config = PersistentStoreConfig {
     initial_buffer_size: 4 * 1024,    // 4KB
     max_capacity_bytes: 64 * 1024,    // 64KB max
-    high_water_mark_ratio: Some(0.8), // High threshold to avoid early rotation
+    high_water_mark_ratio: 0.8, // High threshold to avoid early rotation
   };
 
   let mut store = setup.open_store(config).await?;
@@ -407,7 +362,7 @@ async fn insert_fails_when_exceeding_max_capacity() -> anyhow::Result<()> {
   let config = PersistentStoreConfig {
     initial_buffer_size: 4 * 1024,    // 4KB
     max_capacity_bytes: 8 * 1024,     // 8KB max (very small)
-    high_water_mark_ratio: Some(0.8),
+    high_water_mark_ratio: 0.8,
   };
 
   let mut store = setup.open_store(config).await?;

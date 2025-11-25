@@ -27,8 +27,8 @@ pub struct PersistentStoreConfig {
   /// Maximum total capacity in bytes (e.g., 10MB). Always enforced to prevent unbounded growth.
   pub max_capacity_bytes: usize,
 
-  /// High water mark ratio for triggering rotation (0.0-1.0).
-  pub high_water_mark_ratio: Option<f32>,
+  /// High water mark ratio for triggering rotation (0.1-1.0).
+  pub high_water_mark_ratio: f32,
 }
 
 impl Default for PersistentStoreConfig {
@@ -36,7 +36,7 @@ impl Default for PersistentStoreConfig {
     Self {
       initial_buffer_size: 8 * 1024,   // 8KB
       max_capacity_bytes: 1024 * 1024, // 1MB
-      high_water_mark_ratio: Some(0.8),
+      high_water_mark_ratio: 0.8,
     }
   }
 }
@@ -70,10 +70,10 @@ impl PersistentStoreConfig {
     }
 
     // Clamp high_water_mark_ratio to valid range [0.1, 1.0]
-    if let Some(ratio) = self.high_water_mark_ratio
-      && (!ratio.is_finite() || !(0.1 ..= 1.0).contains(&ratio))
+    if !self.high_water_mark_ratio.is_finite()
+      || !(0.1 ..= 1.0).contains(&self.high_water_mark_ratio)
     {
-      self.high_water_mark_ratio = Some(DEFAULT_RATIO);
+      self.high_water_mark_ratio = DEFAULT_RATIO;
     }
   }
 }
@@ -209,7 +209,7 @@ struct PersistentStore {
   dir_path: PathBuf,
   journal_name: String,
   buffer_size: usize,
-  high_water_mark_ratio: Option<f32>,
+  high_water_mark_ratio: f32,
   current_generation: u64,
   cached_map: ScopedMaps,
   retention_registry: Arc<RetentionRegistry>,
@@ -297,7 +297,7 @@ impl PersistentStore {
   fn open(
     journal_path: &Path,
     buffer_size: usize,
-    high_water_mark_ratio: Option<f32>,
+    high_water_mark_ratio: f32,
     time_provider: Arc<dyn TimeProvider>,
   ) -> anyhow::Result<OpenedJournal> {
     let mut initial_state = ScopedMaps::new();
@@ -419,10 +419,7 @@ impl PersistentStore {
       return Ok(None);
     }
 
-    let timestamp = match self
-      .journal
-      .insert_entry(scope, key, StateValue::default())
-    {
+    let timestamp = match self.journal.insert_entry(scope, key, StateValue::default()) {
       Ok(timestamp) => {
         self.cached_map.remove(scope, key);
         timestamp
@@ -507,7 +504,7 @@ impl PersistentStore {
       })
       .sum();
 
-    let target_ratio = self.high_water_mark_ratio.unwrap_or(0.7);
+    let target_ratio = self.high_water_mark_ratio;
 
     // Factor in the incoming entry size hint
     let total_size_needed = compacted_size_estimate + min_additional_space;
@@ -537,7 +534,8 @@ impl PersistentStore {
       .min(self.max_capacity_bytes); // Cap at max
 
     log::debug!(
-      "Rotation sizing: compacted={} bytes, hint={} bytes, target={} bytes, new_buffer={} bytes (max={})",
+      "Rotation sizing: compacted={} bytes, hint={} bytes, target={} bytes, new_buffer={} bytes \
+       (max={})",
       compacted_size_estimate,
       min_additional_space,
       suggested_size,

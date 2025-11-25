@@ -254,7 +254,7 @@ impl KeyPool {
 #[derive(Arbitrary, Debug)]
 pub struct VersionedKVJournalFuzzTestCase {
   buffer_size: u32,
-  high_water_mark_ratio: Option<f32>,
+  high_water_mark_ratio: f32,
   /// Maximum capacity in bytes for dynamic growth (will be clamped to reasonable range)
   max_capacity_bytes: u32,
   operations: Vec<OperationType>,
@@ -273,7 +273,7 @@ enum CapacityErrorKind {
 pub struct VersionedKVJournalFuzzTest {
   test_case: VersionedKVJournalFuzzTestCase,
   buffer_size: usize,
-  high_water_mark_ratio: Option<f32>,
+  high_water_mark_ratio: f32,
   max_capacity_bytes: usize,
   temp_dir: TempDir,
   time_provider: Arc<TestTimeProvider>,
@@ -293,15 +293,7 @@ impl VersionedKVJournalFuzzTest {
     let buffer_size = ((test_case.buffer_size % 1_048_576) + 4096) as usize;
 
     // Clamp high water mark ratio to valid range [0.1, 1.0]
-    // Config validation requires >= 0.1 when using max_capacity
-    let high_water_mark_ratio = test_case.high_water_mark_ratio.and_then(|ratio| {
-      let clamped = ratio.clamp(0.1, 1.0);
-      if clamped.is_finite() {
-        Some(clamped)
-      } else {
-        None
-      }
-    });
+    let high_water_mark_ratio = test_case.high_water_mark_ratio.clamp(0.1, 1.0);
 
     // Clamp max capacity to a reasonable range (must be >= buffer_size, <= 1MB)
     // Treat 0 as default (1MB)
@@ -424,7 +416,10 @@ impl VersionedKVJournalFuzzTest {
         // When we have oversized entries (larger than max capacity), we can't reliably
         // validate capacity usage since even a single entry cannot fit. This is an expected
         // failure case.
-        log::debug!("Buffer full with oversized entries (> max_capacity) present, skipping capacity validation");
+        log::debug!(
+          "Buffer full with oversized entries (> max_capacity) present, skipping capacity \
+           validation"
+        );
         return;
       }
 
@@ -546,11 +541,16 @@ impl VersionedKVJournalFuzzTest {
             Err(e) => {
               // Classify the error
               let entry_size = Self::estimate_entry_size(&key_str, &value.0);
-              match Self::classify_error(&e, Some(entry_size), self.buffer_size, self.max_capacity_bytes) {
+              match Self::classify_error(
+                &e,
+                Some(entry_size),
+                self.buffer_size,
+                self.max_capacity_bytes,
+              ) {
                 CapacityErrorKind::OversizedEntry => {
                   log::info!(
-                    "Single entry too large (~{entry_size} bytes) for max capacity ({} bytes), skipping \
-                     insert",
+                    "Single entry too large (~{entry_size} bytes) for max capacity ({} bytes), \
+                     skipping insert",
                     self.max_capacity_bytes
                   );
                   // Don't set is_full - this is an oversized entry, not accumulated capacity
@@ -789,7 +789,12 @@ impl VersionedKVJournalFuzzTest {
               Err(e) => {
                 // Classify the error (bulk inserts use small int values)
                 let entry_size = Self::estimate_entry_size(&key_str, &value);
-                match Self::classify_error(&e, Some(entry_size), self.buffer_size, self.max_capacity_bytes) {
+                match Self::classify_error(
+                  &e,
+                  Some(entry_size),
+                  self.buffer_size,
+                  self.max_capacity_bytes,
+                ) {
                   CapacityErrorKind::OversizedEntry => {
                     log::info!(
                       "Entry too large (~{entry_size} bytes) during bulk insert at entry {i}, \

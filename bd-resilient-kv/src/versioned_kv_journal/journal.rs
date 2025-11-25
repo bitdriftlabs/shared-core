@@ -118,13 +118,11 @@ fn validate_buffer_len(buffer: &[u8]) -> anyhow::Result<usize> {
 }
 
 /// Validate high water mark ratio and calculate the position from buffer length.
-fn calculate_high_water_mark(
-  buffer_len: usize,
-  high_water_mark_ratio: Option<f32>,
-) -> anyhow::Result<usize> {
-  let ratio = high_water_mark_ratio.unwrap_or(0.8);
-  if !(0.0 ..= 1.0).contains(&ratio) {
-    anyhow::bail!("High water mark ratio must be between 0.0 and 1.0, got: {ratio}");
+fn calculate_high_water_mark(buffer_len: usize, high_water_mark_ratio: f32) -> anyhow::Result<usize> {
+  if !(0.1 ..= 1.0).contains(&high_water_mark_ratio) {
+    anyhow::bail!(
+      "High water mark ratio must be between 0.1 and 1.0, got: {high_water_mark_ratio}"
+    );
   }
 
   #[allow(
@@ -132,7 +130,7 @@ fn calculate_high_water_mark(
     clippy::cast_possible_truncation,
     clippy::cast_sign_loss
   )]
-  let high_water_mark = (buffer_len as f32 * ratio) as usize;
+  let high_water_mark = (buffer_len as f32 * high_water_mark_ratio) as usize;
   Ok(high_water_mark)
 }
 
@@ -141,7 +139,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   ///
   /// # Arguments
   /// * `buffer` - The storage buffer
-  /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
+  /// * `high_water_mark_ratio` - Ratio (0.1 to 1.0) for high water mark trigger point
   /// * `time_provider` - Time provider for generating timestamps
   /// * `entries` - Iterator of (scope, key, payload, timestamp) tuples to be inserted into the
   ///   newly created buffer
@@ -150,7 +148,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   /// Returns an error if the buffer is too small or if `high_water_mark_ratio` is invalid.
   pub fn new(
     buffer: &'a mut [u8],
-    high_water_mark_ratio: Option<f32>,
+    high_water_mark_ratio: f32,
     time_provider: Arc<dyn TimeProvider>,
     entries: impl IntoIterator<Item = (Scope, String, M, u64)>,
   ) -> anyhow::Result<Self> {
@@ -196,7 +194,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   ///
   /// # Arguments
   /// * `buffer` - The storage buffer containing existing versioned KV data
-  /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
+  /// * `high_water_mark_ratio` - Ratio (0.1 to 1.0) for high water mark trigger point
   /// * `time_provider` - Time provider for generating timestamps
   /// * `f` - Function called for each entry with (scope, key, payload, timestamp)
   ///
@@ -205,7 +203,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   /// invalid.
   pub fn from_buffer(
     buffer: &'a mut [u8],
-    high_water_mark_ratio: Option<f32>,
+    high_water_mark_ratio: f32,
     time_provider: Arc<dyn TimeProvider>,
     f: impl FnMut(Scope, &str, &M, u64),
   ) -> anyhow::Result<(Self, PartialDataLoss)> {
