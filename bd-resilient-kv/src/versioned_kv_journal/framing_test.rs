@@ -290,7 +290,7 @@ fn compute_encoded_size_matches_frame_encoded_size() {
 
   for (key, value_str) in test_cases {
     let value = make_string_value(value_str);
-    let timestamp = 123456789u64;
+    let timestamp = 123_456_789_u64;
 
     // Method 1: Create frame and call encoded_size()
     let frame = Frame::new(Scope::GlobalState, key, timestamp, value.clone());
