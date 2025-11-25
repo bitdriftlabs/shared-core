@@ -120,6 +120,7 @@ pub struct ScopedMaps {
 }
 
 impl ScopedMaps {
+  #[must_use]
   pub fn get(&self, scope: Scope, key: &str) -> Option<&TimestampedValue> {
     match scope {
       Scope::FeatureFlag => self.feature_flags.get(key),
@@ -145,6 +146,7 @@ impl ScopedMaps {
     }
   }
 
+  #[must_use]
   pub fn contains_key(&self, scope: Scope, key: &str) -> bool {
     match scope {
       Scope::FeatureFlag => self.feature_flags.contains_key(key),
