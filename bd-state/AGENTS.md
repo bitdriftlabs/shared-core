@@ -5,8 +5,6 @@ This document provides guidance for AI agents working with the `bd-state` crate,
 ## Purpose and Design
 
 `bd-state` provides a high-level, synchronized wrapper around `bd-resilient-kv` for managing application state with:
-- **Persistent storage** with automatic fallback to in-memory mode
-- **Scope-based organization** (FeatureFlags, GlobalState) for logical separation
 - **Ephemeral scope lifecycle** - scopes are cleared on each process restart
 - **Previous state snapshots** for crash reporting and debugging
 - **Thread-safe async access** via RwLock for concurrent reads/writes
@@ -20,13 +18,6 @@ State is organized into scopes defined in `bd-resilient-kv::Scope`:
 
 **Critical behavior**: Both scopes are **ephemeral** - they are automatically cleared when a new `Store` is created. This ensures each process starts with fresh state. Consumers must re-populate these values on startup.
 
-### Store Variants
-The `Store` type has two internal implementations:
-1. **Persistent** (`StoreInner::Persistent`): Backed by `bd-resilient-kv::VersionedKVStore`
-2. **In-Memory** (`StoreInner::InMemory`): Fallback using `AHashMap` when persistence fails
-
-Both variants expose the same API, making the distinction transparent to consumers.
-
 ### State Lifecycle
 1. **Initialization**: `Store::new()` loads existing state from disk
 2. **Snapshot capture**: Previous process's state is captured before clearing
@@ -39,28 +30,8 @@ This lifecycle enables crash reporting to access the crashed process's feature f
 The `StateReader` trait provides a type-generic interface for reading state:
 - `get(scope, key)` - Get a single value
 - `iter()` - Iterator over all entries
-- `to_scoped_snapshot(scope)` - Owned snapshot of one scope
-- `to_snapshot()` - Owned snapshot of all scopes
 
 The `read()` method returns a guard implementing `StateReader`, allowing for flexible state access patterns.
-
-## Common Pitfalls
-
-### 1. Multiple Snapshot Calls
-**Inefficient**:
-```rust
-let feature_flags = reader.to_scoped_snapshot(Scope::FeatureFlag);
-let global_state = reader.to_scoped_snapshot(Scope::GlobalState);
-// Iterates the store twice
-```
-
-**Efficient**:
-```rust
-let snapshot = reader.to_snapshot();
-// Iterates once, populates both maps
-let feature_flags = &snapshot.feature_flags;
-let global_state = &snapshot.global_state;
-```
 
 ## Performance Characteristics
 
