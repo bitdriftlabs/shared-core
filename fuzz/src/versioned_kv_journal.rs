@@ -16,6 +16,7 @@ use bd_resilient_kv::{
   Scope,
   TimestampedValue,
   UpdateError,
+  VERSIONED_JOURNAL_HEADER_SIZE,
   VersionedKVStore,
 };
 use bd_time::{TestTimeProvider, TimeProvider as _};
@@ -377,8 +378,6 @@ impl VersionedKVJournalFuzzTest {
   /// Estimate the size of the current state in bytes.
   /// We estimate conservatively to avoid false positives.
   fn estimate_state_size(&self) -> usize {
-    use bd_resilient_kv::versioned_kv_journal::VERSIONED_JOURNAL_HEADER_SIZE;
-
     let mut total_size = VERSIONED_JOURNAL_HEADER_SIZE;
 
     for ((_, key_str), timestamped_value) in &self.state {

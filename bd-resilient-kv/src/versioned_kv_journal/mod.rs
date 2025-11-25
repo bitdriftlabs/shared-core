@@ -7,16 +7,6 @@
 
 use bd_proto::protos::state;
 
-// Journal format constants
-// These define the wire format for the versioned journal.
-//
-// Journal header structure (17 bytes):
-// | Offset | Field            | Type | Size |
-// |--------|------------------|------|------|
-// | 0      | Format Version   | u64  | 8    |
-// | 8      | Position         | u64  | 8    |
-// | 16     | Reserved         | u8   | 1    |
-pub const HEADER_SIZE: usize = 17;
 
 pub mod cleanup;
 mod file_manager;
@@ -27,6 +17,7 @@ pub mod recovery;
 pub mod retention;
 pub mod store;
 
+pub use journal::HEADER_SIZE;
 pub use store::PersistentStoreConfig;
 
 /// Errors that can occur during store operations.
