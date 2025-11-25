@@ -336,19 +336,75 @@ impl PersistentStore {
     value: StateValue,
   ) -> Result<u64, UpdateError> {
     let timestamp = if value.value_type.is_none() {
-      let timestamp = self
-        .journal
-        .insert_entry(scope, key, StateValue::default())?;
-      self.cached_map.remove(scope, key);
-      timestamp
+      // Deletion
+      match self.journal.insert_entry(scope, key, StateValue::default()) {
+        Ok(timestamp) => {
+          self.cached_map.remove(scope, key);
+          timestamp
+        },
+        Err(UpdateError::CapacityExceeded) => {
+          // Calculate size needed for tombstone entry
+          let entry_size = super::framing::Frame::new(
+            scope,
+            key,
+            0, // Timestamp placeholder, will be assigned during actual insert
+            StateValue::default(),
+          )
+          .encoded_size();
+
+          // Rotate with knowledge of incoming entry size
+          self.rotate_journal_with_hint(entry_size).await?;
+
+          // Retry insert after rotation
+          let timestamp = self
+            .journal
+            .insert_entry(scope, key, StateValue::default())?;
+          self.cached_map.remove(scope, key);
+          timestamp
+        },
+        Err(e) => return Err(e),
+      }
     } else {
-      let timestamp = self.journal.insert_entry(scope, key, value.clone())?;
-      self.cached_map.insert(
-        scope,
-        key.to_string(),
-        TimestampedValue { value, timestamp },
-      );
-      timestamp
+      // Insert/update
+      match self.journal.insert_entry(scope, key, value.clone()) {
+        Ok(timestamp) => {
+          self.cached_map.insert(
+            scope,
+            key.to_string(),
+            TimestampedValue {
+              value: value.clone(),
+              timestamp,
+            },
+          );
+          timestamp
+        },
+        Err(UpdateError::CapacityExceeded) => {
+          // Calculate size needed for this entry
+          let entry_size = super::framing::Frame::new(
+            scope,
+            key,
+            0, // Timestamp placeholder, will be assigned during actual insert
+            value.clone(),
+          )
+          .encoded_size();
+
+          // Rotate with knowledge of incoming entry size
+          self.rotate_journal_with_hint(entry_size).await?;
+
+          // Retry insert after rotation
+          let timestamp = self.journal.insert_entry(scope, key, value.clone())?;
+          self.cached_map.insert(
+            scope,
+            key.to_string(),
+            TimestampedValue {
+              value: value.clone(),
+              timestamp,
+            },
+          );
+          timestamp
+        },
+        Err(e) => return Err(e),
+      }
     };
 
     if self.journal.is_high_water_mark_triggered() {
@@ -363,10 +419,36 @@ impl PersistentStore {
       return Ok(None);
     }
 
-    let timestamp = self
+    let timestamp = match self
       .journal
-      .insert_entry(scope, key, StateValue::default())?;
-    self.cached_map.remove(scope, key);
+      .insert_entry(scope, key, StateValue::default())
+    {
+      Ok(timestamp) => {
+        self.cached_map.remove(scope, key);
+        timestamp
+      },
+      Err(UpdateError::CapacityExceeded) => {
+        // Calculate size needed for tombstone entry
+        let entry_size = super::framing::Frame::new(
+          scope,
+          key,
+          0, // Timestamp placeholder
+          StateValue::default(),
+        )
+        .encoded_size();
+
+        // Rotate with knowledge of incoming entry size
+        self.rotate_journal_with_hint(entry_size).await?;
+
+        // Retry insert after rotation
+        let timestamp = self
+          .journal
+          .insert_entry(scope, key, StateValue::default())?;
+        self.cached_map.remove(scope, key);
+        timestamp
+      },
+      Err(e) => return Err(e),
+    };
 
     if self.journal.is_high_water_mark_triggered() {
       self.rotate_journal().await?;
@@ -387,6 +469,17 @@ impl PersistentStore {
   }
 
   async fn rotate_journal(&mut self) -> anyhow::Result<Rotation> {
+    self.rotate_journal_with_hint(0).await
+  }
+
+  /// Rotate the journal with a hint about the minimum additional space needed.
+  ///
+  /// This is used when an insert fails due to capacity exceeded and we need to ensure
+  /// the new buffer is large enough for the incoming entry.
+  async fn rotate_journal_with_hint(
+    &mut self,
+    min_additional_space: usize,
+  ) -> anyhow::Result<Rotation> {
     let next_generation = self.current_generation + 1;
     let old_generation = self.current_generation;
     self.current_generation = next_generation;
@@ -416,6 +509,9 @@ impl PersistentStore {
 
     let target_ratio = self.high_water_mark_ratio.unwrap_or(0.7);
 
+    // Factor in the incoming entry size hint
+    let total_size_needed = compacted_size_estimate + min_additional_space;
+
     // Calculate target size: compacted_size / target_ratio to ensure compacted data
     // stays below high water mark.
     //
@@ -426,7 +522,7 @@ impl PersistentStore {
       clippy::cast_possible_truncation,
       clippy::cast_sign_loss
     )]
-    let target_size = (compacted_size_estimate as f32 / target_ratio).ceil() as usize;
+    let target_size = (total_size_needed as f32 / target_ratio).ceil() as usize;
 
     // Keep the buffer size as a power of two for efficiency reasons and to give headroom
     // during for writes.
@@ -441,8 +537,9 @@ impl PersistentStore {
       .min(self.max_capacity_bytes); // Cap at max
 
     log::debug!(
-      "Rotation sizing: compacted={} bytes, target={} bytes, new_buffer={} bytes (max={})",
+      "Rotation sizing: compacted={} bytes, hint={} bytes, target={} bytes, new_buffer={} bytes (max={})",
       compacted_size_estimate,
+      min_additional_space,
       suggested_size,
       new_buffer_size,
       self.max_capacity_bytes

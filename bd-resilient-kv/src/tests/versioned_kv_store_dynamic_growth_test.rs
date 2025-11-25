@@ -83,7 +83,7 @@ async fn normal_growth_pattern() -> anyhow::Result<()> {
   Ok(())
 }
 
-/// Test that growth stops when max capacity is reached.
+/// Test growth stops when max capacity is reached.
 #[tokio::test]
 async fn max_capacity_limiting() -> anyhow::Result<()> {
   let setup = Setup::new();
@@ -117,6 +117,51 @@ async fn max_capacity_limiting() -> anyhow::Result<()> {
 
   // Should have capped at max_capacity_bytes
   assert!(store.current_buffer_size() <= 16 * 1024);
+
+  Ok(())
+}
+
+/// Test that buffer growth works even when `high_water_mark_ratio` is None (no automatic rotation).
+/// This ensures the manual rotation path also handles large entries correctly.
+#[tokio::test]
+async fn insert_triggers_rotation_with_no_high_water_mark() -> anyhow::Result<()> {
+  let setup = Setup::new();
+
+  // Disable automatic rotation by setting high_water_mark_ratio to None
+  let config = PersistentStoreConfig {
+    initial_buffer_size: 4 * 1024, // 4KB
+    max_capacity_bytes: 64 * 1024, // 64KB max
+    high_water_mark_ratio: None,   // No automatic rotation
+  };
+
+  let mut store = setup.open_store(config).await?;
+
+  assert_eq!(store.current_buffer_size(), 4 * 1024);
+
+  // Try to insert a value that's larger than the current buffer (4KB)
+  // Even without automatic rotation, this should trigger rotation on-demand
+  let large_value = "x".repeat(5 * 1024); // 5KB value
+
+  let result = store
+    .insert(
+      Scope::GlobalState,
+      "large_key".to_string(),
+      make_string_value(&large_value),
+    )
+    .await;
+
+  // Should succeed after on-demand rotation
+  assert!(result.is_ok(), "Insert should succeed after on-demand rotation");
+
+  // Buffer should have grown to accommodate the large value
+  assert!(
+    store.current_buffer_size() > 4 * 1024,
+    "Buffer should have grown from initial 4KB"
+  );
+
+  // Verify the value was actually inserted
+  assert_eq!(store.len(), 1);
+  assert!(store.contains_key(Scope::GlobalState, "large_key"));
 
   Ok(())
 }
@@ -299,6 +344,94 @@ async fn growth_with_compaction() -> anyhow::Result<()> {
   // Should have grown (50% headroom on compacted size)
   let new_size = store.current_buffer_size();
   assert!(new_size > old_size);
+
+  Ok(())
+}
+
+/// Test that inserting a value larger than current buffer but smaller than max capacity
+/// triggers automatic rotation and retry instead of failing immediately.
+#[tokio::test]
+async fn insert_triggers_rotation_on_capacity_exceeded() -> anyhow::Result<()> {
+  let setup = Setup::new();
+
+  // Start with a very small buffer (4KB) but allow growth up to 64KB
+  let config = PersistentStoreConfig {
+    initial_buffer_size: 4 * 1024,    // 4KB
+    max_capacity_bytes: 64 * 1024,    // 64KB max
+    high_water_mark_ratio: Some(0.8), // High threshold to avoid early rotation
+  };
+
+  let mut store = setup.open_store(config).await?;
+
+  assert_eq!(store.current_buffer_size(), 4 * 1024);
+
+  // Try to insert a value that's larger than the current buffer (4KB)
+  // but smaller than max capacity (64KB).
+  // This should trigger automatic rotation with buffer growth, then retry the insert.
+  let large_value = "x".repeat(5 * 1024); // 5KB value
+
+  let result = store
+    .insert(
+      Scope::GlobalState,
+      "large_key".to_string(),
+      make_string_value(&large_value),
+    )
+    .await;
+
+  // Should succeed after automatic rotation
+  assert!(result.is_ok(), "Insert should succeed after rotation");
+
+  // Buffer should have grown to accommodate the large value
+  assert!(
+    store.current_buffer_size() > 4 * 1024,
+    "Buffer should have grown from initial 4KB"
+  );
+  assert!(
+    store.current_buffer_size() <= 64 * 1024,
+    "Buffer should not exceed max capacity"
+  );
+
+  // Verify the value was actually inserted
+  assert_eq!(store.len(), 1);
+  assert!(store.contains_key(Scope::GlobalState, "large_key"));
+
+  Ok(())
+}
+
+/// Test that inserting a value larger than max capacity still fails gracefully.
+#[tokio::test]
+async fn insert_fails_when_exceeding_max_capacity() -> anyhow::Result<()> {
+  let setup = Setup::new();
+
+  // Small max capacity for testing
+  let config = PersistentStoreConfig {
+    initial_buffer_size: 4 * 1024,    // 4KB
+    max_capacity_bytes: 8 * 1024,     // 8KB max (very small)
+    high_water_mark_ratio: Some(0.8),
+  };
+
+  let mut store = setup.open_store(config).await?;
+
+  // Try to insert a value that's larger than max capacity
+  let huge_value = "x".repeat(10 * 1024); // 10KB value, exceeds 8KB max
+
+  let result = store
+    .insert(
+      Scope::GlobalState,
+      "huge_key".to_string(),
+      make_string_value(&huge_value),
+    )
+    .await;
+
+  // Should fail with CapacityExceeded even after rotation attempt
+  assert!(
+    result.is_err(),
+    "Insert should fail when value exceeds max capacity"
+  );
+
+  // Verify nothing was inserted
+  assert_eq!(store.len(), 0);
+  assert!(!store.contains_key(Scope::GlobalState, "huge_key"));
 
   Ok(())
 }
