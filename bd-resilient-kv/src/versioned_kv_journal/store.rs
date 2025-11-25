@@ -413,25 +413,29 @@ impl PersistentStore {
           .encoded_size()
       })
       .sum();
-    
+
     let target_ratio = self.high_water_mark_ratio.unwrap_or(0.7);
-    
+
     // Calculate target size: compacted_size / target_ratio to ensure compacted data
     // stays below high water mark
-    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[allow(
+      clippy::cast_precision_loss,
+      clippy::cast_possible_truncation,
+      clippy::cast_sign_loss
+    )]
     let target_size = (compacted_size_estimate as f32 / target_ratio).ceil() as usize;
-    
+
     // Round up to next power of 2 for efficient memory alignment
     let suggested_size = target_size.next_power_of_two();
-    
+
     // Determine new buffer size:
     // - Minimum: current buffer_size (never shrink)
     // - Maximum: max_capacity_bytes
     // - Preferred: suggested_size with headroom
     let new_buffer_size = suggested_size
       .max(self.buffer_size)  // Never shrink
-      .min(self.max_capacity_bytes);  // Cap at max
-    
+      .min(self.max_capacity_bytes); // Cap at max
+
     log::debug!(
       "Rotation sizing: compacted={} bytes, target={} bytes, new_buffer={} bytes (max={})",
       compacted_size_estimate,
@@ -452,7 +456,7 @@ impl PersistentStore {
         .iter()
         .map(|(frame_type, key, tv)| (frame_type, key.clone(), tv.value.clone(), tv.timestamp)),
     )?;
-    
+
     // Update buffer_size to reflect the new journal's size
     self.buffer_size = new_buffer_size;
     self.journal = new_journal;
@@ -700,14 +704,8 @@ impl VersionedKVStore {
     time_provider: Arc<dyn TimeProvider>,
     retention_registry: Arc<RetentionRegistry>,
   ) -> anyhow::Result<(Self, DataLoss)> {
-    let (store, data_loss) = PersistentStore::new(
-      dir_path,
-      name,
-      config,
-      time_provider,
-      retention_registry,
-    )
-    .await?;
+    let (store, data_loss) =
+      PersistentStore::new(dir_path, name, config, time_provider, retention_registry).await?;
 
     Ok((
       Self {

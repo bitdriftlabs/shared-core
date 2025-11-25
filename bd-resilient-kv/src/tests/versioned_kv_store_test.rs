@@ -215,8 +215,8 @@ async fn test_automatic_rotation_on_high_water_mark() -> anyhow::Result<()> {
     temp_dir.path(),
     "test",
     PersistentStoreConfig {
-      initial_buffer_size: 1024, // Small buffer size
-      max_capacity_bytes: 10 * 1024, // 10KB max
+      initial_buffer_size: 1024,        // Small buffer size
+      max_capacity_bytes: 10 * 1024,    // 10KB max
       high_water_mark_ratio: Some(0.3), // Very low high water mark (30%)
     },
     time_provider.clone(),
@@ -481,18 +481,17 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
 
   // Reopen and verify data persisted
   {
-    let (store, data_loss) =
-      VersionedKVStore::new(
-        temp_dir.path(),
-        "test",
-        PersistentStoreConfig {
-          initial_buffer_size: 4096,
-          ..Default::default()
-        },
-        time_provider,
-        registry,
-      )
-      .await?;
+    let (store, data_loss) = VersionedKVStore::new(
+      temp_dir.path(),
+      "test",
+      PersistentStoreConfig {
+        initial_buffer_size: 4096,
+        ..Default::default()
+      },
+      time_provider,
+      registry,
+    )
+    .await?;
     assert_eq!(data_loss, DataLoss::None);
     assert_eq!(store.len(), 2);
     assert_eq!(
