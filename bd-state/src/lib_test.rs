@@ -47,7 +47,7 @@ impl Setup {
     let time_provider = Arc::new(bd_time::TestTimeProvider::new(
       datetime!(2024-01-01 00:00:00 UTC),
     ));
-    let store = Store::new_in_memory();
+    let store = Store::new_in_memory(time_provider.clone());
 
     Self {
       _dir: None,
