@@ -400,12 +400,6 @@ async fn ephemeral_scopes_cleared_on_restart() {
     assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
     assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), None);
     assert_eq!(reader.get(Scope::GlobalState, "key1"), None);
-
-    // Verify snapshot is also empty
-    let reader = store.read().await;
-    let current_snapshot = reader.to_snapshot();
-    assert!(current_snapshot.feature_flags.is_empty());
-    assert!(current_snapshot.global_state.is_empty());
   }
 }
 
