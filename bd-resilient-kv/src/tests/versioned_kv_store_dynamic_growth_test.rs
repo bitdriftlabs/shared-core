@@ -299,7 +299,7 @@ async fn growth_with_compaction() -> anyhow::Result<()> {
 
   // Should have grown (50% headroom on compacted size)
   let new_size = store.current_buffer_size();
-  assert!(new_size >= old_size); // May not grow if headroom sufficient
+  assert!(new_size > old_size);
 
   Ok(())
 }
