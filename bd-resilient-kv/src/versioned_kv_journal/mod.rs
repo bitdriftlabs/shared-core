@@ -18,6 +18,24 @@ pub mod store;
 
 pub use store::PersistentStoreConfig;
 
+/// Errors that can occur during store operations.
+#[derive(thiserror::Error, Debug)]
+pub enum UpdateError {
+  /// The has exceeded its configured capacity limit.
+  ///
+  /// For the persistent store this indicates the journal buffer size has been exceeded despite
+  /// attempts to rotate the journal.
+  ///
+  /// For the in-memory store this indicates the maximum memory usage has been exceeded.
+  #[error("Capacity exeeded")]
+  CapacityExceeded,
+
+  /// An underlying system error occurred (I/O, serialization, etc.).
+  #[error(transparent)]
+  System(#[from] anyhow::Error),
+}
+
+
 /// Represents a value with its associated timestamp.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TimestampedValue {
