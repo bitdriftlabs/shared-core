@@ -320,6 +320,14 @@ impl Stats {
   }
 }
 
+#[derive(thiserror::Error, Debug)]
+enum ApiError {
+  #[error("stream closure")]
+  StreamClosure(Option<Duration>),
+  #[error("other error: {0}")]
+  Other(#[from] anyhow::Error),
+}
+
 //
 // Api
 //
@@ -368,6 +376,9 @@ pub struct Api {
     DurationWatch<bd_runtime::runtime::sleep_mode::MinReconnectInterval>,
 
   reconnect_state: crate::reconnect::ReconnectState,
+
+  disconnected_at: Option<Instant>,
+  last_disconnect_reason: Option<String>,
 
   #[cfg(test)]
   pub data_idle_timeout_test_hook: Option<tokio::sync::mpsc::Sender<()>>,
@@ -428,12 +439,14 @@ impl Api {
       min_reconnect_interval,
       sleep_mode_min_reconnect_interval,
       reconnect_state,
+      disconnected_at: None,
+      last_disconnect_reason: None,
       #[cfg(test)]
       data_idle_timeout_test_hook: None,
     }
   }
 
-  pub async fn start(mut self) -> anyhow::Result<()> {
+  pub async fn start(mut self) {
     self.config_updater.try_load_persisted_config().await;
 
     // To make the client kill process as simple as possible we won't watch for runtime updates
@@ -444,7 +457,7 @@ impl Api {
     self.runtime_loader.expect_initialized();
     self.maybe_kill_client().await;
 
-    self.maintain_active_stream().await
+    self.maintain_active_stream().await;
   }
 
   fn kill_file_path(&self) -> PathBuf {
@@ -580,7 +593,7 @@ impl Api {
   // Maintains an active stream by re-establishing a stream whenever we disconnect (with backoff),
   // until shutdown has been signaled.
   #[tracing::instrument(skip(self), level = "debug", name = "api")]
-  async fn maintain_active_stream(mut self) -> anyhow::Result<()> {
+  async fn maintain_active_stream(mut self) {
     // Collect metadata as part of maintaining active stream and not earlier to ensure that the
     // collection happens on SDK run loop.
     let metadata = self.static_metadata.collect();
@@ -599,12 +612,11 @@ impl Api {
       })
       .collect();
 
-    let mut disconnected_at = None;
-    let mut last_disconnect_reason = None;
-
     loop {
-      let elapsed_since_last_disconnect =
-        disconnected_at.get_or_insert_with(Instant::now).elapsed();
+      let elapsed_since_last_disconnect = self
+        .disconnected_at
+        .get_or_insert_with(Instant::now)
+        .elapsed();
 
       // If we're blocked from connecting due to configured reconnect delay, we'll want to wait
       // until there are either new uploads or the delay has elapsed. We need to make sure that any
@@ -679,211 +691,224 @@ impl Api {
         );
       }
 
-      self.stats.stream_total.inc();
-
-      log::debug!("starting new stream");
-
-      self
-        .internal_logger
-        .log_internal("Starting new bitdrift Capture API stream");
-
-      let headers = HashMap::from([
-        ("x-bitdrift-api-key", self.api_key.as_ref()),
-        ("x-bitdrift-app-id", app_id.as_ref()),
-        ("content-type", "application/grpc"),
-        (GRPC_ENCODING_HEADER, GRPC_ENCODING_DEFLATE),
-        (GRPC_ACCEPT_ENCODING_HEADER, GRPC_ENCODING_DEFLATE),
-      ]);
-
-      // Set the size to 16 to avoid blocking if we get back to back upstream events.
-      let (stream_event_tx, stream_event_rx) = tokio::sync::mpsc::channel(16);
-      let mut stream_state = StreamState::new(
-        Some(Compression::StatelessZlib {
-          level: DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
-        }),
+      if let Err(e) = self
+        .do_stream(upload_during_idle_timeout, &app_id, &handshake_metadata)
+        .await
+      {
+        log::debug!("stream ended with error: {e}");
         self
-          .manager
-          .start_stream(stream_event_tx.clone(), &self.runtime_loader, &headers)
-          .await?,
-        stream_event_rx,
-        self.time_provider.clone(),
-        &self.stats,
-        self.sleep_mode_active.clone(),
-      );
-
-      log::debug!("sending handshake");
-
-      stream_state
-        .send_request(
-          self
-            .handshake_request(&handshake_metadata, last_disconnect_reason.take())
-            .await,
-        )
-        .await?;
-
-      log::debug!("waiting for handshake");
-
-      match self.wait_for_handshake(&mut stream_state).await? {
-        // We received a handshake, so initialize the stream state with the stream settings
-        // and process any additional frames we read together with the handshake.
-        HandshakeResult::Received {
-          stream_settings,
-          configuration_update_status,
-          remaining_responses,
-        } => {
-          stream_state.initialize_stream_settings(stream_settings);
-
-          if let Some(stream_closure_info) = self
-            .handle_responses(remaining_responses, &mut stream_state)
-            .await?
-          {
-            last_disconnect_reason = Some(stream_closure_info.reason);
-            self.stats.remote_connect_failure.inc();
-            self
-              .do_reconnect_backoff(stream_closure_info.retry_after)
-              .await;
-            continue;
-          }
-
-          // Let all the configuration pipelines know that we are able to connect to the
-          // backend. We supply the configuration update status to the pipelines so they can
-          // determine whether cached configuration can be marked safe immediately. It's possible
-          // that we already processed a configuration update frame in which case the config was
-          // already marked safe.
-          self
-            .runtime_loader
-            .on_handshake_complete(configuration_update_status)
-            .await;
-
-          self
-            .config_updater
-            .on_handshake_complete(configuration_update_status)
-            .await;
-        },
-        // The stream closed while waiting for the handshake. Move to the next loop iteration
-        // to attempt to re-create a stream.
-        HandshakeResult::StreamClosure(info) => {
-          // The network manager API doesn't expose the underlying issue in a type-safe manner,
-          // so just treat all failures to handshake as a connect failure.
-          last_disconnect_reason = Some(info.reason);
-          self.stats.remote_connect_failure.inc();
-          self.do_reconnect_backoff(info.retry_after).await;
-          continue;
-        },
-        // Unauthenticated, we need to perform a kill action to stop the API.
-        HandshakeResult::Unauthenticated => {
-          log::debug!("unauthenticated, killing client");
-          let unauthorized_kill_duration = *self.unauthenticated_kill_duration.read();
-          if let Err(e) = self.write_kill_file(unauthorized_kill_duration).await {
-            log::warn!("failed to write kill file: {e}");
-          }
-          continue;
-        },
+          .do_reconnect_backoff(match e {
+            ApiError::StreamClosure(retry_after) => retry_after,
+            ApiError::Other(_) => None,
+          })
+          .await;
       }
+    }
+  }
 
-      log::debug!("handshake received, entering main loop");
-      let handshake_established = Instant::now();
+  async fn do_stream(
+    &mut self,
+    upload_during_idle_timeout: Option<DataUpload>,
+    app_id: &str,
+    handshake_metadata: &HashMap<String, ProtoData>,
+  ) -> Result<(), ApiError> {
+    self.stats.stream_total.inc();
+
+    log::debug!("starting new stream");
+
+    self
+      .internal_logger
+      .log_internal("Starting new bitdrift Capture API stream");
+
+    let headers = HashMap::from([
+      ("x-bitdrift-api-key", self.api_key.as_ref()),
+      ("x-bitdrift-app-id", app_id),
+      ("content-type", "application/grpc"),
+      (GRPC_ENCODING_HEADER, GRPC_ENCODING_DEFLATE),
+      (GRPC_ACCEPT_ENCODING_HEADER, GRPC_ENCODING_DEFLATE),
+    ]);
+
+    // Set the size to 16 to avoid blocking if we get back to back upstream events.
+    let (stream_event_tx, stream_event_rx) = tokio::sync::mpsc::channel(16);
+    let mut stream_state = StreamState::new(
+      Some(Compression::StatelessZlib {
+        level: DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL,
+      }),
       self
-        .network_quality_monitor
-        .set_network_quality(NetworkQuality::Online);
-      self.reconnect_state.record_connectivity_event();
+        .manager
+        .start_stream(stream_event_tx.clone(), &self.runtime_loader, &headers)
+        .await?,
+      stream_event_rx,
+      self.time_provider.clone(),
+      &self.stats,
+      self.sleep_mode_active.clone(),
+    );
 
-      disconnected_at = None;
+    log::debug!("sending handshake");
 
-      if let Some(spurious_upload) = upload_during_idle_timeout {
-        log::trace!("processing spurious upload received during idle timeout wait");
-        // If we received a spurious upload while waiting to reconnect, process it now.
-        stream_state.handle_data_upload(spurious_upload).await?;
-        self.reconnect_state.record_connectivity_event();
-      }
+    let last_disconnect_reason = self.last_disconnect_reason.take();
+    stream_state
+      .send_request(
+        self
+          .handshake_request(handshake_metadata, last_disconnect_reason)
+          .await,
+      )
+      .await?;
 
-      // Consider the time we've processed the handshake or the spurious upload as the last
-      // time we received data at the start. This is refreshed below whenever we upload data.
-      let mut last_data_received_at = Instant::now();
+    log::debug!("waiting for handshake");
 
-      // At this point we have established the stream, so we should start the general
-      // request/response handling.
-      loop {
-        // Set up a data idle timeout if configured.
-        let mut data_idle_timeout_at = {
-          let interval = self.get_data_idle_timeout();
-          if interval.is_zero() {
-            // If the timeout is disabled, we can just await forever.
-            None
-          } else {
-            log::trace!("setting data idle timeout for {interval:?}");
-            let data_idle_timeout_at = last_data_received_at + interval.unsigned_abs();
-            Box::pin(tokio::time::sleep_until(data_idle_timeout_at)).into()
-          }
-        };
+    match self.wait_for_handshake(&mut stream_state).await? {
+      // We received a handshake, so initialize the stream state with the stream settings
+      // and process any additional frames we read together with the handshake.
+      HandshakeResult::Received {
+        stream_settings,
+        configuration_update_status,
+        remaining_responses,
+      } => {
+        stream_state.initialize_stream_settings(stream_settings);
 
-        let upstream_event = tokio::select! {
-          // Fire a ping timer if the ping timer elapses.
-          () = maybe_await(&mut stream_state.ping_sleep) => {
-            stream_state.send_ping().await?;
-            continue;
-          }
-          _ = stream_state.sleep_mode_active.changed() => {
-            // Sleep mode state has changed, we need to re-evaluate our data idle timeout.
-            log::trace!("sleep mode state changed, re-evaluating data idle timeout");
-            continue;
-          }
-          Some(data_upload) = self.data_upload_rx.recv() => {
-              log::trace!("received data upload");
-            last_data_received_at = Instant::now();
-            stream_state.handle_data_upload(data_upload).await?;
-            self.reconnect_state.record_connectivity_event();
-            continue;
-          },
-          () = maybe_await(&mut data_idle_timeout_at) => {
-            // We haven't received any data to upload for a while, so we'll shut down the stream and
-            // then reconnect after a short delay.
-            let idle_timeout_interval = self.get_data_idle_timeout();
-            let idle_reconnect_interval = self.get_min_reconnect_interval();
-            log::debug!("no data received for {idle_timeout_interval}, disconnecting and reconnecting in {idle_reconnect_interval}");
-
-            #[cfg(test)]
-            if let Some(tx) = & self.data_idle_timeout_test_hook {
-              let _ = tx.try_send(());
-            }
-
-            self.stats.data_idle_timeout.inc();
-
-            break;
-          },
-          // Process network events coming from the platform layer, i.e. response data or stream
-          // closures.
-          event = stream_state.stream_event_rx.recv() => event,
-        };
-
-        let stream_closure_info = match stream_state.handle_upstream_event(upstream_event).await? {
-          UpstreamEvent::UpstreamMessages(responses) => {
-            self.handle_responses(responses, &mut stream_state).await?
-          },
-          UpstreamEvent::StreamClosed(reason) => Some(StreamClosureInfo {
-            reason,
-            retry_after: None,
-          }),
-        };
-
-        if let Some(stream_closure_info) = stream_closure_info {
-          // We want to avoid a case in which we spin on an error shutdown. We do this by just
-          // checking to see if the stream lived for longer than 1 minute, and if so reset the
-          // backoff. If the process restarts everything starts over again anyway.
-          last_disconnect_reason = Some(stream_closure_info.reason);
-          if stream_closure_info.retry_after.is_none()
-            && Instant::now() - handshake_established > Duration::minutes(1)
-          {
-            log::debug!("stream lived for more than 1 minute, resetting backoff");
-            self.backoff.reset();
-          } else {
-            self
-              .do_reconnect_backoff(stream_closure_info.retry_after)
-              .await;
-          }
-
-          break;
+        if let Some(stream_closure_info) = self
+          .handle_responses(remaining_responses, &mut stream_state)
+          .await?
+        {
+          self.last_disconnect_reason = Some(stream_closure_info.reason);
+          self.stats.remote_connect_failure.inc();
+          return Err(ApiError::StreamClosure(stream_closure_info.retry_after));
         }
+
+        // Let all the configuration pipelines know that we are able to connect to the
+        // backend. We supply the configuration update status to the pipelines so they can
+        // determine whether cached configuration can be marked safe immediately. It's possible
+        // that we already processed a configuration update frame in which case the config was
+        // already marked safe.
+        self
+          .runtime_loader
+          .on_handshake_complete(configuration_update_status)
+          .await;
+
+        self
+          .config_updater
+          .on_handshake_complete(configuration_update_status)
+          .await;
+      },
+      // The stream closed while waiting for the handshake. Move to the next loop iteration
+      // to attempt to re-create a stream.
+      HandshakeResult::StreamClosure(info) => {
+        // The network manager API doesn't expose the underlying issue in a type-safe manner,
+        // so just treat all failures to handshake as a connect failure.
+        self.last_disconnect_reason = Some(info.reason);
+        self.stats.remote_connect_failure.inc();
+        return Err(ApiError::StreamClosure(info.retry_after));
+      },
+      // Unauthenticated, we need to perform a kill action to stop the API.
+      HandshakeResult::Unauthenticated => {
+        log::debug!("unauthenticated, killing client");
+        let unauthorized_kill_duration = *self.unauthenticated_kill_duration.read();
+        if let Err(e) = self.write_kill_file(unauthorized_kill_duration).await {
+          log::warn!("failed to write kill file: {e}");
+        }
+        return Ok(());
+      },
+    }
+
+    log::debug!("handshake received, entering main loop");
+    let handshake_established = Instant::now();
+    self
+      .network_quality_monitor
+      .set_network_quality(NetworkQuality::Online);
+    self.reconnect_state.record_connectivity_event();
+
+    self.disconnected_at = None;
+
+    if let Some(spurious_upload) = upload_during_idle_timeout {
+      log::trace!("processing spurious upload received during idle timeout wait");
+      // If we received a spurious upload while waiting to reconnect, process it now.
+      stream_state.handle_data_upload(spurious_upload).await?;
+      self.reconnect_state.record_connectivity_event();
+    }
+
+    // Consider the time we've processed the handshake or the spurious upload as the last
+    // time we received data at the start. This is refreshed below whenever we upload data.
+    let mut last_data_received_at = Instant::now();
+
+    // At this point we have established the stream, so we should start the general
+    // request/response handling.
+    loop {
+      // Set up a data idle timeout if configured.
+      let mut data_idle_timeout_at = {
+        let interval = self.get_data_idle_timeout();
+        if interval.is_zero() {
+          // If the timeout is disabled, we can just await forever.
+          None
+        } else {
+          log::trace!("setting data idle timeout for {interval:?}");
+          let data_idle_timeout_at = last_data_received_at + interval.unsigned_abs();
+          Box::pin(tokio::time::sleep_until(data_idle_timeout_at)).into()
+        }
+      };
+
+      let upstream_event = tokio::select! {
+        // Fire a ping timer if the ping timer elapses.
+        () = maybe_await(&mut stream_state.ping_sleep) => {
+          stream_state.send_ping().await?;
+          continue;
+        }
+        _ = stream_state.sleep_mode_active.changed() => {
+          // Sleep mode state has changed, we need to re-evaluate our data idle timeout.
+          log::trace!("sleep mode state changed, re-evaluating data idle timeout");
+          continue;
+        }
+        Some(data_upload) = self.data_upload_rx.recv() => {
+            log::trace!("received data upload");
+          last_data_received_at = Instant::now();
+          stream_state.handle_data_upload(data_upload).await?;
+          self.reconnect_state.record_connectivity_event();
+          continue;
+        },
+        () = maybe_await(&mut data_idle_timeout_at) => {
+          // We haven't received any data to upload for a while, so we'll shut down the stream and
+          // then reconnect after a short delay.
+          let idle_timeout_interval = self.get_data_idle_timeout();
+          let idle_reconnect_interval = self.get_min_reconnect_interval();
+          log::debug!("no data received for {idle_timeout_interval}, disconnecting and reconnecting in {idle_reconnect_interval}");
+
+          #[cfg(test)]
+          if let Some(tx) = & self.data_idle_timeout_test_hook {
+            let _ = tx.try_send(());
+          }
+
+          self.stats.data_idle_timeout.inc();
+
+          return Ok(());
+        },
+        // Process network events coming from the platform layer, i.e. response data or stream
+        // closures.
+        event = stream_state.stream_event_rx.recv() => event,
+      };
+
+      let stream_closure_info = match stream_state.handle_upstream_event(upstream_event).await? {
+        UpstreamEvent::UpstreamMessages(responses) => {
+          self.handle_responses(responses, &mut stream_state).await?
+        },
+        UpstreamEvent::StreamClosed(reason) => Some(StreamClosureInfo {
+          reason,
+          retry_after: None,
+        }),
+      };
+
+      if let Some(stream_closure_info) = stream_closure_info {
+        // We want to avoid a case in which we spin on an error shutdown. We do this by just
+        // checking to see if the stream lived for longer than 1 minute, and if so reset the
+        // backoff. If the process restarts everything starts over again anyway.
+        self.last_disconnect_reason = Some(stream_closure_info.reason);
+        if stream_closure_info.retry_after.is_none()
+          && Instant::now() - handshake_established > Duration::minutes(1)
+        {
+          log::debug!("stream lived for more than 1 minute, resetting backoff");
+          self.backoff.reset();
+          return Ok(());
+        }
+        return Err(ApiError::StreamClosure(stream_closure_info.retry_after));
       }
     }
   }
