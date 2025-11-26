@@ -1151,18 +1151,18 @@ async fn extend_empty_is_noop(#[case] mode: StoreMode) -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn extend_triggers_rotation() -> anyhow::Result<()> {
+async fn extend_triggers_rotation_and_succeeds() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
   let registry = Arc::new(RetentionRegistry::new());
 
-  // Create a small buffer that will trigger rotation
+  // Create a small buffer that will trigger rotation, with enough max capacity to succeed
   let (mut store, _) = VersionedKVStore::new(
     temp_dir.path(),
     "test",
     PersistentStoreConfig {
       initial_buffer_size: 512, // Small buffer to trigger rotation
-      max_capacity_bytes: 2048,
+      max_capacity_bytes: 8192, // Large enough to fit the batch after rotation
       high_water_mark_ratio: 0.5,
     },
     time_provider,
@@ -1182,20 +1182,61 @@ async fn extend_triggers_rotation() -> anyhow::Result<()> {
     ));
   }
 
-  let result = store.extend(entries).await;
+  // This should trigger rotation and succeed
+  store.extend(entries).await?;
 
-  // Extend might trigger rotation and succeed, or fail if capacity exceeded
-  match result {
-    Ok(_) => {
-      // If it succeeded, verify the data
-      assert_eq!(store.len(), 50);
-      // Buffer might have grown due to rotation
-      assert!(store.current_buffer_size() >= initial_buffer_size);
+  // Verify the data was written
+  assert_eq!(store.len(), 50);
+  for i in 0 .. 50 {
+    assert!(store.contains_key(Scope::FeatureFlag, &format!("key_{i}")));
+  }
+
+  // Buffer should have grown due to rotation
+  assert!(store.current_buffer_size() > initial_buffer_size);
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn extend_triggers_rotation_but_fails_capacity() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+  let registry = Arc::new(RetentionRegistry::new());
+
+  // Create a store with limited max capacity that won't fit the batch even after rotation
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    PersistentStoreConfig {
+      initial_buffer_size: 512,
+      max_capacity_bytes: 1024, // Too small to fit 50 entries
+      high_water_mark_ratio: 0.5,
     },
-    Err(UpdateError::CapacityExceeded) => {
-      // This is also acceptable - batch was too large
-    },
-    Err(e) => return Err(e.into()),
+    time_provider,
+    registry,
+  )
+  .await?;
+
+  let initial_len = store.len();
+
+  // Try to insert a batch that's too large for max capacity
+  let mut entries = Vec::new();
+  for i in 0 .. 50 {
+    entries.push((
+      Scope::FeatureFlag,
+      format!("key_{i}"),
+      make_string_value(&format!("value_{i}")),
+    ));
+  }
+
+  // This should fail with CapacityExceeded even after rotation
+  let result = store.extend(entries).await;
+  assert!(matches!(result, Err(UpdateError::CapacityExceeded)));
+
+  // Verify atomicity - no partial writes
+  assert_eq!(store.len(), initial_len);
+  for i in 0 .. 50 {
+    assert!(!store.contains_key(Scope::FeatureFlag, &format!("key_{i}")));
   }
 
   Ok(())
