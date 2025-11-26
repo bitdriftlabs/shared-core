@@ -39,11 +39,11 @@ The byte-level layout of a VERSION 1 journal file:
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         JOURNAL FILE HEADER                             │
-├──────────────────┬──────────────────┬───────────────────────────────────┤
-│  Format Version  │    Position      │  Reserved                         │
-│     (u64)        │     (u64)        │    (u8)                           │
-│    8 bytes       │    8 bytes       │   1 byte                          │
-└──────────────────┴──────────────────┴───────────────────────────────────┘
+├──────────────────┬──────────────────────────────────────────────────────┤
+│  Format Version  │    Position                                          │
+│     (u8)         │     (u64)                                            │
+│    1 byte        │    8 bytes                                           │
+└──────────────────┴──────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                    VERSIONED JOURNAL ENTRY                              │
@@ -66,13 +66,12 @@ The byte-level layout of a VERSION 1 journal file:
 ```
 
 
-### Header Structure (17 bytes total)
+### Header Structure (9 bytes total)
 
 | Field | Offset | Size | Type | Value | Purpose |
 |-------|--------|------|------|-------|---------|
-| Format Version | 0 | 8 bytes | u64 (little-endian) | `1` | Allows future format evolution |
-| Position | 8 | 8 bytes | u64 (little-endian) | Current write position | Tracks where next entry will be written |
-| Reserved | 16 | 1 byte | u8 | `0` | Reserved for future use |
+| Format Version | 0 | 1 byte | u8 | `1` | Allows future format evolution |
+| Position | 1 | 8 bytes | u64 (little-endian) | Current write position | Tracks where next entry will be written |
 
 ### Entry Framing Format
 
@@ -122,7 +121,7 @@ Fields:
 - null value (indicates DELETE operation)
 
 **Size Considerations:**
-- **Header**: Fixed 17 bytes
+- **Header**: Fixed 9 bytes
 - **Per Entry**: Varies based on key and value size
   - Frame length: 1-10 bytes (varint-encoded)
   - Scope: 1 byte

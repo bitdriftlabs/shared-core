@@ -23,8 +23,8 @@ use time::macros::datetime;
 
 #[test]
 fn test_recovery_buffer_too_small() {
-  // Create a buffer that's smaller than the header size (17 bytes)
-  let buffer = vec![0u8; 10];
+  // Create a buffer that's smaller than the header size (9 bytes)
+  let buffer = vec![0u8; 8];
 
   let recovery = VersionedRecovery::new(vec![(&buffer, 1000)]).unwrap();
   let result = recovery.recover_current();
@@ -35,16 +35,16 @@ fn test_recovery_buffer_too_small() {
 
 #[test]
 fn test_recovery_invalid_position_less_than_header() {
-  // Create a buffer with a position field that's less than HEADER_SIZE (17)
+  // Create a buffer with a position field that's less than HEADER_SIZE (9)
   let mut buffer = vec![0u8; 100];
 
   // Write version (1 byte)
   buffer[0] = 1;
 
-  // Write position at bytes 8-15 (u64, little-endian)
-  // Set position to 10, which is less than HEADER_SIZE (17)
-  let invalid_position: u64 = 10;
-  buffer[8 .. 16].copy_from_slice(&invalid_position.to_le_bytes());
+  // Write position at bytes 1-8 (u64, little-endian)
+  // Set position to 5, which is less than HEADER_SIZE (9)
+  let invalid_position: u64 = 5;
+  buffer[1 .. 9].copy_from_slice(&invalid_position.to_le_bytes());
 
   let recovery = VersionedRecovery::new(vec![(&buffer, 1000)]).unwrap();
   let result = recovery.recover_current();
@@ -65,10 +65,10 @@ fn test_recovery_position_exceeds_buffer_length() {
   // Write version (1 byte)
   buffer[0] = 1;
 
-  // Write position at bytes 8-15 (u64, little-endian)
+  // Write position at bytes 1-8 (u64, little-endian)
   // Set position to 100, which exceeds buffer length of 50
   let invalid_position: u64 = 100;
-  buffer[8 .. 16].copy_from_slice(&invalid_position.to_le_bytes());
+  buffer[1 .. 9].copy_from_slice(&invalid_position.to_le_bytes());
 
   let recovery = VersionedRecovery::new(vec![(&buffer, 1000)]).unwrap();
   let result = recovery.recover_current();
@@ -166,13 +166,13 @@ fn test_recovery_with_corrupted_frame() {
   // Write version (1 byte)
   buffer[0] = 1;
 
-  // Write valid position at bytes 8-15 (u64, little-endian)
+  // Write valid position at bytes 1-8 (u64, little-endian)
   let position: u64 = 50;
-  buffer[8 .. 16].copy_from_slice(&position.to_le_bytes());
+  buffer[1 .. 9].copy_from_slice(&position.to_le_bytes());
 
   // Fill data area with corrupted/invalid frame data
   // (random bytes that won't decode as a valid frame)
-  buffer[17 .. 50].fill(0xFF);
+  buffer[9 .. 50].fill(0xFF);
 
   // This should not panic, but should handle the corrupted frame gracefully
   let result = VersionedRecovery::new(vec![(&buffer, 1000)]);
