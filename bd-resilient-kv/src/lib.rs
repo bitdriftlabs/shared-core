@@ -30,6 +30,8 @@ pub mod kv_store;
 mod scope;
 pub mod versioned_kv_journal;
 
+pub use bd_proto::protos::state::payload::StateValue;
+pub use bd_proto::protos::state::payload::state_value::Value_type;
 pub use kv_journal::{DoubleBufferedKVJournal, InMemoryKVJournal, KVJournal, MemMappedKVJournal};
 pub use kv_store::KVStore;
 pub use scope::Scope;

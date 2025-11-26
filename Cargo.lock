@@ -1250,6 +1250,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-state"
+version = "1.0.0"
+dependencies = [
+ "ahash",
+ "anyhow",
+ "async-trait",
+ "bd-bonjson",
+ "bd-client-common",
+ "bd-resilient-kv",
+ "bd-time",
+ "bd-workspace-hack",
+ "itertools 0.14.0",
+ "log",
+ "rstest",
+ "rstest_reuse",
+ "tempfile",
+ "time",
+ "tokio",
+]
+
+[[package]]
 name = "bd-stats-common"
 version = "1.0.0"
 dependencies = [
@@ -3686,6 +3707,17 @@ dependencies = [
  "rustc_version",
  "syn",
  "unicode-ident",
+]
+
+[[package]]
+name = "rstest_reuse"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3a8fb4672e840a587a66fc577a5491375df51ddb88f2a2c2a792598c326fe14"
+dependencies = [
+ "quote",
+ "rand 0.8.5",
+ "syn",
 ]
 
 [[package]]
