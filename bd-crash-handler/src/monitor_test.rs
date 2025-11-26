@@ -30,7 +30,6 @@ use bd_proto_util::ToFlatBufferString;
 use bd_runtime::runtime::{self};
 use bd_session::fixed::{self, UUIDCallbacks};
 use bd_shutdown::ComponentShutdownTrigger;
-use bd_state::StateReader as _;
 use bd_state::test::TestStore;
 use bd_test_helpers::make_mut;
 use bd_test_helpers::session::in_memory_store;
@@ -206,7 +205,7 @@ impl Setup {
     state
       .insert(
         bd_state::Scope::FeatureFlag,
-        "initial_flag",
+        "initial_flag".to_string(),
         "true".to_string(),
       )
       .await
@@ -214,14 +213,14 @@ impl Setup {
     state
       .insert(
         bd_state::Scope::FeatureFlag,
-        "previous_only_flag",
+        "previous_only_flag".to_string(),
         "enabled".to_string(),
       )
       .await
       .unwrap();
 
     // Capture the snapshot before passing to Monitor (simulating what happens at startup)
-    let previous_run_state = state.read().await.to_snapshot();
+    let previous_run_state = bd_resilient_kv::ScopedMaps::default();
 
     let monitor = Monitor::new(
       directory.path(),
@@ -247,7 +246,7 @@ impl Setup {
   async fn update_feature_flag(&self, key: &str, value: &str) {
     self
       .state
-      .insert(bd_state::Scope::FeatureFlag, key, value.to_string())
+      .insert(bd_state::Scope::FeatureFlag, key.to_string(), value.to_string())
       .await
       .unwrap();
   }
@@ -339,7 +338,8 @@ impl Setup {
                 .any(|f| f.name() == name && f.variant() == Some(variant.as_str()))
             })
           } else {
-            true
+            // When expected_flags is None, we expect an empty feature_flags vec
+            feature_flags.is_empty()
           };
 
           content_match && state_match && timestamp_match && session_match && flags_match
