@@ -83,9 +83,27 @@ impl<'a, M: protobuf::Message> Frame<'a, M> {
     length_varint_size + frame_content_len
   }
 
-  /// Encode this frame into a buffer.
-  pub fn encode(&self, buf: &mut [u8]) -> Result<usize, UpdateError> {
-    let required_size = self.encoded_size();
+  /// Encode an entry directly to a buffer without constructing a Frame.
+  ///
+  /// This is more efficient than creating a Frame and then calling `encode()` when you have
+  /// borrowed data, as it avoids any intermediate allocations or clones.
+  ///
+  /// # Arguments
+  /// * `scope` - The scope for this entry
+  /// * `key` - The key for this entry
+  /// * `timestamp_micros` - Timestamp in microseconds
+  /// * `payload` - The protobuf message payload (borrowed)
+  /// * `buf` - Buffer to encode into
+  ///
+  /// Returns the number of bytes written on success.
+  pub fn encode_entry(
+    scope: Scope,
+    key: &str,
+    timestamp_micros: u64,
+    payload: &M,
+    buf: &mut [u8],
+  ) -> Result<usize, UpdateError> {
+    let required_size = Self::compute_encoded_size(key, timestamp_micros, payload);
     if buf.len() < required_size {
       log::debug!(
         "Buffer too small: need {} bytes, have {} bytes",
@@ -98,19 +116,18 @@ impl<'a, M: protobuf::Message> Frame<'a, M> {
     let mut cursor = buf;
 
     // Encode scope
-    let scope_byte = [self.scope.to_u8()];
+    let scope_byte = [scope.to_u8()];
 
     // Encode key length and key
-    let key_bytes = self.key.as_bytes();
+    let key_bytes = key.as_bytes();
     let mut key_len_buf = [0u8; varint::MAX_SIZE];
     let key_len_varint_len = varint::encode(key_bytes.len() as u64, &mut key_len_buf);
 
     // Encode timestamp
     let mut timestamp_buf = [0u8; varint::MAX_SIZE];
-    let timestamp_len = varint::encode(self.timestamp_micros, &mut timestamp_buf);
+    let timestamp_len = varint::encode(timestamp_micros, &mut timestamp_buf);
 
-    let payload_bytes = self
-      .payload
+    let payload_bytes = payload
       .write_to_bytes()
       .map_err(|e| anyhow::anyhow!("Failed to serialize payload: {e}"))?;
 
@@ -140,6 +157,11 @@ impl<'a, M: protobuf::Message> Frame<'a, M> {
     cursor.put_u32_le(crc);
 
     Ok(required_size)
+  }
+
+  /// Encode this frame into a buffer.
+  pub fn encode(&self, buf: &mut [u8]) -> Result<usize, UpdateError> {
+    Self::encode_entry(self.scope, self.key, self.timestamp_micros, &self.payload, buf)
   }
 
   /// Decode a frame from a buffer.

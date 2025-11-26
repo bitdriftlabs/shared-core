@@ -334,7 +334,8 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     Ok(timestamp)
   }
 
-  /// Insert multiple entries with a shared timestamp into the journal.
+
+  /// Insert multiple key-value pairs with a shared timestamp, taking references.
   ///
   /// All entries are written with the same timestamp. If any entry fails to write due to
   /// insufficient space, the journal position is rolled back and an error is returned.
@@ -342,21 +343,19 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   /// If entries is empty, this is a no-op that returns the current timestamp.
   ///
   /// # Arguments
-  /// * `entries` - Iterator of (scope, key, message) tuples
+  /// * `entries` - Iterator of (scope, key, message) tuples with borrowed strings and messages
   ///
   /// Returns the timestamp assigned to all entries on success.
-  pub fn extend_entries(
+  pub fn extend_entries_ref<'b>(
     &mut self,
-    entries: impl IntoIterator<Item = (Scope, String, M)>,
+    entries: impl IntoIterator<Item = (Scope, &'b str, &'b M)>,
   ) -> Result<u64, UpdateError> {
     let timestamp = self.next_monotonic_timestamp()?;
     let start_position = self.position;
 
     for (scope, key, message) in entries {
-      let frame = Frame::new(scope, &key, timestamp, message);
-
       let available_space = &mut self.buffer[self.position ..];
-      match frame.encode(available_space) {
+      match Frame::encode_entry(scope, key, timestamp, message, available_space) {
         Ok(encoded_len) => {
           self.position += encoded_len;
         },
