@@ -352,11 +352,9 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     let timestamp = self.next_monotonic_timestamp()?;
     let start_position = self.position;
 
-    // Try to write all entries
     for (scope, key, message) in entries {
       let frame = Frame::new(scope, &key, timestamp, message);
 
-      // Encode frame
       let available_space = &mut self.buffer[self.position ..];
       match frame.encode(available_space) {
         Ok(encoded_len) => {
@@ -370,7 +368,6 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
       }
     }
 
-    // Update position in buffer header and check high water mark
     write_position(self.buffer, self.position);
     self.check_high_water_mark();
 
