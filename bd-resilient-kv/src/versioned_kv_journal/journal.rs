@@ -334,6 +334,49 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     Ok(timestamp)
   }
 
+  /// Insert multiple entries with a shared timestamp into the journal.
+  ///
+  /// All entries are written with the same timestamp. If any entry fails to write due to
+  /// insufficient space, the journal position is rolled back and an error is returned.
+  ///
+  /// If entries is empty, this is a no-op that returns the current timestamp.
+  ///
+  /// # Arguments
+  /// * `entries` - Iterator of (scope, key, message) tuples
+  ///
+  /// Returns the timestamp assigned to all entries on success.
+  pub fn extend_entries(
+    &mut self,
+    entries: impl IntoIterator<Item = (Scope, String, M)>,
+  ) -> Result<u64, UpdateError> {
+    let timestamp = self.next_monotonic_timestamp()?;
+    let start_position = self.position;
+
+    // Try to write all entries
+    for (scope, key, message) in entries {
+      let frame = Frame::new(scope, &key, timestamp, message);
+
+      // Encode frame
+      let available_space = &mut self.buffer[self.position ..];
+      match frame.encode(available_space) {
+        Ok(encoded_len) => {
+          self.position += encoded_len;
+        },
+        Err(e) => {
+          // Rollback to start position on failure
+          self.position = start_position;
+          return Err(e);
+        },
+      }
+    }
+
+    // Update position in buffer header and check high water mark
+    write_position(self.buffer, self.position);
+    self.check_high_water_mark();
+
+    Ok(timestamp)
+  }
+
   /// Check if the high water mark has been triggered.
   #[must_use]
   pub fn is_high_water_mark_triggered(&self) -> bool {

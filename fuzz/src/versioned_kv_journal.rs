@@ -196,6 +196,10 @@ enum OperationType {
   },
   // Reopen without syncing first (test dirty state handling)
   ReopenWithoutSync,
+  // Extend with arbitrary entries (different from BulkInsert which uses simple int values)
+  Extend {
+    entries: Vec<(ArbitraryScope, String, ArbitraryStateValue)>,
+  },
 }
 
 /// Tracks keys created during the test to allow reuse between INSERT/GET/REMOVE operations.
@@ -844,6 +848,117 @@ impl VersionedKVJournalFuzzTest {
             DataLoss::None,
             "Unexpected data loss on reopen without sync"
           );
+        },
+        OperationType::Extend { entries } => {
+          // Limit batch size to avoid excessive fuzzing time
+          let batch_size = entries.len().min(32);
+          let entries_to_insert: Vec<_> = entries
+            .into_iter()
+            .take(batch_size)
+            .map(|(scope, key, value)| {
+              // Use key pool to track keys
+              let tracked_key = format!("batch_{}_{:x}", key, self.keys.keys.len());
+              (scope.0, tracked_key, value.0)
+            })
+            .collect();
+
+          if entries_to_insert.is_empty() {
+            // Skip empty batches
+            continue;
+          }
+
+          log::info!("Extending {} entries", entries_to_insert.len());
+
+          let result = store.extend(entries_to_insert.clone()).await;
+
+          match result {
+            Ok(timestamp) => {
+              // Reset full flag on successful extend
+              self.is_full = false;
+
+              // Process all entries into our state model first (in order)
+              // This handles cases where the same key appears multiple times in the batch
+              for (scope, key_str, value) in &entries_to_insert {
+                let key = (*scope, key_str.clone());
+                if value.value_type.is_some() {
+                  self.state.insert(
+                    key.clone(),
+                    TimestampedValue {
+                      value: value.clone(),
+                      timestamp,
+                    },
+                  );
+
+                  // Add to key pool for future operations
+                  if !self.keys.keys.contains(&key) {
+                    self.keys.keys.push(key);
+                  }
+                } else {
+                  // Deletion
+                  self.state.remove(&key);
+                }
+              }
+
+              // Now verify the final state matches the store
+              for (scope, key_str, _value) in entries_to_insert {
+                let key = (scope, key_str.clone());
+
+                // Check what the final state should be based on our model
+                let expected_value = self.state.get(&key);
+                let actual_value = store.get_with_timestamp(scope, &key_str);
+
+                match (expected_value, actual_value) {
+                  (Some(expected), Some(actual)) => {
+                    assert_eq!(
+                      actual.timestamp, timestamp,
+                      "Timestamp mismatch for key {:?}",
+                      key
+                    );
+                    assert_eq!(
+                      &actual.value, &expected.value,
+                      "Value mismatch for key {:?}",
+                      key
+                    );
+                  },
+                  (None, None) => {
+                    // Both agree the key doesn't exist - correct
+                  },
+                  (Some(_), None) => {
+                    panic!("Expected key {:?} to exist in store but it doesn't", key);
+                  },
+                  (None, Some(_)) => {
+                    panic!("Expected key {:?} to not exist in store but it does", key);
+                  },
+                }
+              }
+            },
+            Err(e) => {
+              // Classify the error
+              let total_size: usize = entries_to_insert
+                .iter()
+                .map(|(_, key_str, value)| {
+                  Self::estimate_entry_size(key_str, value, current_timestamp_micros())
+                })
+                .sum();
+
+              match Self::classify_error(
+                &e,
+                Some(total_size),
+                self.buffer_size,
+                self.max_capacity_bytes,
+              ) {
+                CapacityErrorKind::OversizedEntry | CapacityErrorKind::BufferFull => {
+                  log::info!("Extend failed due to capacity (~{total_size} bytes), journal full");
+                  self.is_full = true;
+                  continue;
+                },
+                CapacityErrorKind::Other => {
+                  // Unexpected error, propagate
+                  panic!("Unexpected error during extend: {e}");
+                },
+              }
+            },
+          }
         },
       }
 

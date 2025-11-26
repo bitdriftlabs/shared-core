@@ -329,6 +329,12 @@ impl PersistentStore {
     })
   }
 
+  /// Get current timestamp in microseconds.
+  #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+  fn current_timestamp(&self) -> u64 {
+    self.journal.time_provider.now().unix_timestamp_nanos() as u64 / 1_000
+  }
+
   async fn insert(
     &mut self,
     scope: Scope,
@@ -356,6 +362,41 @@ impl PersistentStore {
       timestamp
     };
 
+    if self.journal.is_high_water_mark_triggered() {
+      self.rotate_journal().await?;
+    }
+
+    Ok(timestamp)
+  }
+
+  async fn extend_entries(
+    &mut self,
+    entries: Vec<(Scope, String, StateValue)>,
+  ) -> Result<u64, UpdateError> {
+    if entries.is_empty() {
+      // Return current timestamp for empty batch (no-op)
+      return Ok(self.current_timestamp());
+    }
+
+    // Try to insert all entries with rotation handling, preserving order
+    // This consumes the entries vector
+    let timestamp = self.try_extend_with_rotation(&entries).await?;
+
+    // Update cached_map for all entries in order
+    // We iterate again, but this avoids cloning during the write phase
+    for (scope, key, value) in entries {
+      if value.value_type.is_none() {
+        // Deletion
+        self.cached_map.remove(scope, &key);
+      } else {
+        // Insert/update
+        self
+          .cached_map
+          .insert(scope, key, TimestampedValue { value, timestamp });
+      }
+    }
+
+    // Check if rotation is needed after extend
     if self.journal.is_high_water_mark_triggered() {
       self.rotate_journal().await?;
     }
@@ -480,6 +521,47 @@ impl PersistentStore {
 
         // Retry insert after rotation
         self.journal.insert_entry(scope, key, value.clone())
+      },
+      Err(e) => Err(e),
+    }
+  }
+
+  /// Try to extend the journal with entries, rotating if needed on capacity exceeded.
+  ///
+  /// This is similar to `try_insert_with_rotation` but handles multiple entries atomically
+  /// while preserving their order.
+  async fn try_extend_with_rotation(
+    &mut self,
+    entries: &[(Scope, String, StateValue)],
+  ) -> Result<u64, UpdateError> {
+    // Prepare all entries for the journal
+    let journal_entries: Vec<_> = entries
+      .iter()
+      .map(|(scope, key, value)| (*scope, key.clone(), value.clone()))
+      .collect();
+
+    // Try the extend operation
+    match self.journal.extend_entries(journal_entries.clone()) {
+      Ok(timestamp) => Ok(timestamp),
+      Err(UpdateError::CapacityExceeded) => {
+        // Calculate total size needed for all entries
+        let total_size: usize = entries
+          .iter()
+          .map(|(_, key, value)| {
+            super::framing::Frame::compute_encoded_size(key.as_str(), u64::MAX, value)
+          })
+          .sum();
+
+        // Check if rotation would help. If not, fail immediately.
+        if !self.would_rotation_help(total_size) {
+          return Err(UpdateError::CapacityExceeded);
+        }
+
+        // Rotate with knowledge of incoming batch size
+        self.rotate_journal_with_hint(total_size).await?;
+
+        // Retry extend operation after rotation
+        self.journal.extend_entries(journal_entries)
       },
       Err(e) => Err(e),
     }
@@ -662,11 +744,16 @@ impl InMemoryStore {
     key_size + value_size + TIMESTAMP_SIZE + HASHMAP_OVERHEAD
   }
 
+  /// Get current timestamp in microseconds.
+  #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+  fn current_timestamp(&self) -> u64 {
+    self.time_provider.now().unix_timestamp_nanos() as u64 / 1_000
+  }
+
   fn insert(&mut self, scope: Scope, key: &str, value: &StateValue) -> Result<u64, UpdateError> {
     use std::collections::hash_map::Entry;
 
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let timestamp = self.time_provider.now().unix_timestamp_nanos() as u64 / 1_000;
+    let timestamp = self.current_timestamp();
 
     if value.value_type.is_none() {
       // Deletion - reclaim space
@@ -721,13 +808,101 @@ impl InMemoryStore {
     Ok(timestamp)
   }
 
+  fn extend_entries(
+    &mut self,
+    entries: Vec<(Scope, String, StateValue)>,
+  ) -> Result<u64, UpdateError> {
+    if entries.is_empty() {
+      // Return current timestamp for empty batch (no-op)
+      return Ok(self.current_timestamp());
+    }
+
+    let timestamp = self.current_timestamp();
+
+    // Calculate total size change for all entries
+    let mut total_size_delta: isize = 0;
+
+    for (scope, key, value) in &entries {
+      if value.value_type.is_none() {
+        // Deletion - will reclaim space
+        if let Some(old_value) = self.cached_map.get(*scope, key) {
+          let old_size = Self::estimate_entry_size(key, &old_value.value);
+          #[allow(clippy::cast_possible_wrap)]
+          {
+            total_size_delta -= old_size as isize;
+          }
+        }
+      } else {
+        let new_entry_size = Self::estimate_entry_size(key, value);
+
+        if let Some(old_value) = self.cached_map.get(*scope, key) {
+          // Replacing existing entry
+          let old_size = Self::estimate_entry_size(key, &old_value.value);
+          #[allow(clippy::cast_possible_wrap)]
+          {
+            total_size_delta += new_entry_size as isize - old_size as isize;
+          }
+        } else {
+          // New entry
+          #[allow(clippy::cast_possible_wrap)]
+          {
+            total_size_delta += new_entry_size as isize;
+          }
+        }
+      }
+    }
+
+    // Check capacity before applying any changes
+    if let Some(max_bytes) = self.max_bytes {
+      #[allow(clippy::cast_sign_loss)]
+      let new_size = if total_size_delta >= 0 {
+        self
+          .current_size_bytes
+          .saturating_add(total_size_delta as usize)
+      } else {
+        self
+          .current_size_bytes
+          .saturating_sub((-total_size_delta) as usize)
+      };
+
+      if new_size > max_bytes {
+        return Err(UpdateError::CapacityExceeded);
+      }
+    }
+
+    // Apply all changes atomically
+    for (scope, key, value) in entries {
+      if value.value_type.is_none() {
+        // Deletion
+        if let Some(old_value) = self.cached_map.remove(scope, &key) {
+          let old_size = Self::estimate_entry_size(&key, &old_value.value);
+          self.current_size_bytes = self.current_size_bytes.saturating_sub(old_size);
+        }
+      } else {
+        let new_entry_size = Self::estimate_entry_size(&key, &value);
+
+        if let Some(old_value) = self.cached_map.get(scope, &key) {
+          // Update existing entry
+          let old_size = Self::estimate_entry_size(&key, &old_value.value);
+          self.current_size_bytes = self.current_size_bytes.saturating_sub(old_size);
+        }
+
+        self
+          .cached_map
+          .insert(scope, key, TimestampedValue { value, timestamp });
+        self.current_size_bytes = self.current_size_bytes.saturating_add(new_entry_size);
+      }
+    }
+
+    Ok(timestamp)
+  }
+
   fn remove(&mut self, scope: Scope, key: &str) -> Option<u64> {
     if !self.cached_map.contains_key(scope, key) {
       return None;
     }
 
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-    let timestamp = self.time_provider.now().unix_timestamp_nanos() as u64 / 1_000;
+    let timestamp = self.current_timestamp();
     self.cached_map.remove(scope, key);
 
     Some(timestamp)
@@ -863,6 +1038,29 @@ impl VersionedKVStore {
     }
   }
 
+  /// Insert multiple key-value pairs with a shared timestamp.
+  ///
+  /// All entries are written with the same timestamp. If any entry fails to write to the journal,
+  /// the operation is rolled back and an error is returned.
+  ///
+  /// For persistent stores, this operation handles rotation and retries automatically if needed.
+  /// If empty, this is a no-op that returns the current timestamp.
+  ///
+  /// Note: Entries with `Value::Null` are treated as deletions.
+  ///
+  /// # Errors
+  /// - Returns `UpdateError::CapacityExceeded` if the batch would exceed capacity limits
+  /// - Returns `UpdateError::System` if the batch cannot be written (persistent mode)
+  pub async fn extend(
+    &mut self,
+    entries: Vec<(Scope, String, StateValue)>,
+  ) -> Result<u64, UpdateError> {
+    match &mut self.backend {
+      StoreBackend::Persistent(store) => store.extend_entries(entries).await,
+      StoreBackend::InMemory(store) => store.extend_entries(entries),
+    }
+  }
+
   /// Remove a key and return the timestamp assigned to this deletion.
   ///
   /// Returns `None` if the key didn't exist, otherwise returns the timestamp.
@@ -874,6 +1072,38 @@ impl VersionedKVStore {
       StoreBackend::Persistent(store) => store.remove(scope, key).await,
       StoreBackend::InMemory(store) => Ok(store.remove(scope, key)),
     }
+  }
+
+  /// Clear all keys in a given scope with a shared timestamp.
+  ///
+  /// All entries in the scope are deleted with the same timestamp. Returns `None` if the scope
+  /// was empty (no-op).
+  ///
+  /// This is implemented using `extend()` for efficiency.
+  ///
+  /// # Errors
+  /// Returns an error if the deletions cannot be written to the journal (persistent mode only).
+  pub async fn clear(&mut self, scope: Scope) -> Result<Option<u64>, UpdateError> {
+    // Collect all keys in this scope
+    let keys: Vec<String> = self
+      .as_hashmap()
+      .iter()
+      .filter_map(|(s, key, _)| if s == scope { Some(key.clone()) } else { None })
+      .collect();
+
+    if keys.is_empty() {
+      return Ok(None);
+    }
+
+    // Create deletion entries (null values)
+    let entries: Vec<(Scope, String, StateValue)> = keys
+      .into_iter()
+      .map(|key| (scope, key, StateValue::default()))
+      .collect();
+
+    // Use extend for batch deletion with shared timestamp
+    let timestamp = self.extend(entries).await?;
+    Ok(Some(timestamp))
   }
 
   /// Check if the store contains a key.
