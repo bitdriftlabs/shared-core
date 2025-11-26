@@ -161,7 +161,13 @@ impl<'a, M: protobuf::Message> Frame<'a, M> {
 
   /// Encode this frame into a buffer.
   pub fn encode(&self, buf: &mut [u8]) -> Result<usize, UpdateError> {
-    Self::encode_entry(self.scope, self.key, self.timestamp_micros, &self.payload, buf)
+    Self::encode_entry(
+      self.scope,
+      self.key,
+      self.timestamp_micros,
+      &self.payload,
+      buf,
+    )
   }
 
   /// Decode a frame from a buffer.
