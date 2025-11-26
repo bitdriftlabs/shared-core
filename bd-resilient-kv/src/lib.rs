@@ -28,13 +28,19 @@ mod tests;
 pub mod kv_journal;
 pub mod kv_store;
 mod scope;
-mod versioned_kv_journal;
+pub mod versioned_kv_journal;
 
 pub use bd_proto::protos::state::payload::StateValue;
 pub use bd_proto::protos::state::payload::state_value::Value_type;
 pub use kv_journal::{DoubleBufferedKVJournal, InMemoryKVJournal, KVJournal, MemMappedKVJournal};
 pub use kv_store::KVStore;
 pub use scope::Scope;
-pub use versioned_kv_journal::TimestampedValue;
 pub use versioned_kv_journal::recovery::VersionedRecovery;
-pub use versioned_kv_journal::store::{DataLoss, VersionedKVStore};
+pub use versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry};
+pub use versioned_kv_journal::store::{DataLoss, ScopedMaps, VersionedKVStore};
+pub use versioned_kv_journal::{
+  HEADER_SIZE as VERSIONED_JOURNAL_HEADER_SIZE,
+  PersistentStoreConfig,
+  TimestampedValue,
+  UpdateError,
+};

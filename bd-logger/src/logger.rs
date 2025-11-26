@@ -54,7 +54,6 @@ pub struct Stats {
 pub enum ReportProcessingSession {
   Current,
   PreviousRun,
-  Other(String),
 }
 
 impl Stats {

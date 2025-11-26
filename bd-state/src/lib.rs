@@ -20,9 +20,8 @@ mod tests;
 
 pub mod test;
 
-use ahash::AHashMap;
-pub use bd_resilient_kv::Scope;
-use bd_resilient_kv::{DataLoss, StateValue, Value_type};
+use bd_resilient_kv::{DataLoss, RetentionRegistry, ScopedMaps, StateValue, Value_type};
+pub use bd_resilient_kv::{PersistentStoreConfig, Scope};
 use bd_time::TimeProvider;
 use itertools::Itertools as _;
 use std::path::Path;
@@ -36,18 +35,40 @@ pub type TimestampedStateValue = (String, OffsetDateTime);
 /// A map of keys to timestamped values for a single scope.
 pub type ScopedStateMap = AHashMap<String, TimestampedStateValue>;
 
-/// In-memory storage type for the state store.
-type InMemoryStateMap = AHashMap<(Scope, String), (String, OffsetDateTime)>;
-
 //
-// StateSnapshot
+// StoreInitResult
 //
 
-/// A simple snapshot of the state store, used for crash reporting and similar use cases.
-#[derive(Debug, Clone)]
-pub struct StateSnapshot {
-  pub feature_flags: ScopedStateMap,
-  pub global_state: ScopedStateMap,
+/// Result of initializing a Store with persistent storage.
+///
+/// Contains the initialized store, data loss information from loading persisted state,
+/// and a snapshot of the previous process's state (captured before clearing ephemeral scopes).
+pub struct StoreInitResult {
+  /// The initialized store with ephemeral scopes cleared
+  pub store: Store,
+  /// Information about any data loss detected when loading the persisted state
+  pub data_loss: DataLoss,
+  /// Snapshot of state from the previous process, captured before clearing ephemeral scopes
+  pub previous_state: ScopedMaps,
+}
+
+//
+// StoreInitWithFallbackResult
+//
+
+/// Result of initializing a Store with automatic fallback to in-memory storage.
+///
+/// If persistent storage initialization fails, the store automatically falls back to
+/// in-memory mode. The `fallback_occurred` flag indicates whether this happened.
+pub struct StoreInitWithFallbackResult {
+  /// The initialized store (either persistent or in-memory)
+  pub store: Store,
+  /// Data loss information (None if fallback to in-memory occurred)
+  pub data_loss: Option<DataLoss>,
+  /// Snapshot of previous state (empty if fallback occurred)
+  pub previous_state: ScopedMaps,
+  /// Whether fallback to in-memory storage occurred
+  pub fallback_occurred: bool,
 }
 
 //
@@ -67,57 +88,14 @@ pub struct StateEntry<'a> {
 // StateReader
 //
 
-/// A trait for reading state values. This allows for simple in-memory implementations in tests
-/// without requiring async or filesystem access.
-///
-/// This trait provides a core `iter()` method that returns all entries, along with default
-/// implementations for common filtering patterns.
+/// A trait for reading state values. This pattern allows for non-async access to state values while
+/// the underlying store may be async.
 pub trait StateReader {
   /// Gets a value from the state store.
   fn get(&self, scope: Scope, key: &str) -> Option<&str>;
 
   /// Returns an iterator over all entries in the state store.
   fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = StateEntry<'a>> + 'a>;
-
-  /// Creates an owned snapshot of all entries in a specific scope.
-  ///
-  /// Returns a map of key -> (value, timestamp) for all entries in the scope.
-  fn to_scoped_snapshot(&self, scope: Scope) -> ScopedStateMap {
-    self
-      .iter()
-      .filter(move |entry| entry.scope == scope)
-      .map(|entry| {
-        (
-          entry.key.to_string(),
-          (entry.value.to_string(), entry.timestamp),
-        )
-      })
-      .collect()
-  }
-
-  /// Creates an owned snapshot of the entire state store, organized by scope. Prefer this over
-  /// calling `to_scoped_snapshot` multiple times to avoid multiple iterations.
-  fn to_snapshot(&self) -> StateSnapshot {
-    let mut feature_flags = AHashMap::new();
-    let mut global_state = AHashMap::new();
-
-    for entry in self.iter() {
-      let kv = (entry.value.to_string(), entry.timestamp);
-      match entry.scope {
-        Scope::FeatureFlag => {
-          feature_flags.insert(entry.key.to_string(), kv);
-        },
-        Scope::GlobalState => {
-          global_state.insert(entry.key.to_string(), kv);
-        },
-      }
-    }
-
-    StateSnapshot {
-      feature_flags,
-      global_state,
-    }
-  }
 }
 
 //
@@ -128,13 +106,7 @@ pub trait StateReader {
 /// management of ephemeral scopes, and snapshot capabilities.
 #[derive(Clone)]
 pub struct Store {
-  inner: StoreInner,
-}
-
-#[derive(Clone)]
-enum StoreInner {
-  Persistent(Arc<RwLock<bd_resilient_kv::VersionedKVStore>>),
-  InMemory(Arc<RwLock<InMemoryStateMap>>),
+  inner: Arc<RwLock<bd_resilient_kv::VersionedKVStore>>,
 }
 
 impl Store {
@@ -146,141 +118,69 @@ impl Store {
   ///
   /// Both `FeatureFlag` and `GlobalState` scopes are cleared on each process start, requiring
   /// users to re-set these values.
-  ///
-  /// Returns:
-  /// - The store (with ephemeral scopes cleared)
-  /// - Data loss information from loading the persisted state
-  /// - Snapshot of state from the previous process (before clearing ephemeral scopes)
-  pub async fn new(
+  pub async fn persistent(
     directory: &Path,
+    config: PersistentStoreConfig,
     time_provider: Arc<dyn TimeProvider>,
-  ) -> anyhow::Result<(Self, DataLoss, StateSnapshot)> {
-    let (inner, data_loss) =
-      bd_resilient_kv::VersionedKVStore::new(directory, "state", 1024 * 1024, None, time_provider)
-        .await?;
-
-    let store = Self {
-      inner: StoreInner::Persistent(Arc::new(RwLock::new(inner))),
-    };
+  ) -> anyhow::Result<StoreInitResult> {
+    let retention_registry = Arc::new(RetentionRegistry::new());
+    let (inner, data_loss) = bd_resilient_kv::VersionedKVStore::new(
+      directory,
+      "state",
+      config,
+      time_provider,
+      retention_registry,
+    )
+    .await?;
 
     // Capture a snapshot of the previous process's state before clearing ephemeral scopes.
     // This snapshot is used for crash reporting to include feature flags from the crashed process.
-    let previous_snapshot = store.read().await.to_snapshot();
+    let previous_snapshot = inner.as_hashmap().clone();
+    let store = Self {
+      inner: Arc::new(RwLock::new(inner)),
+    };
 
     // Clear ephemeral scopes so the current process starts with fresh state.
     // Users must re-set feature flags and global state on each process start.
-    // TODO(snowp): Consider improving the overhead of clear by adding explicit support for
-    // clearing by prefix in the underlying store, rather than iterating and removing individual
-    // keys.
+
     // Ignore errors during clearing - we'll proceed with whatever state we have.
     let _ = store.clear(Scope::FeatureFlag).await;
     let _ = store.clear(Scope::GlobalState).await;
 
-    Ok((store, data_loss, previous_snapshot))
+    Ok(StoreInitResult {
+      store,
+      data_loss,
+      previous_state: previous_snapshot,
+    })
   }
 
-  pub async fn insert(&self, scope: Scope, key: &str, value: String) -> anyhow::Result<()> {
-    match &self.inner {
-      StoreInner::Persistent(store) => {
-        store
-          .write()
-          .await
-          .insert(
-            scope,
-            key,
-            StateValue {
-              value_type: Value_type::StringValue(value).into(),
-              ..Default::default()
-            },
-          )
-          .await
-          .map(|_| ())
-      },
-      StoreInner::InMemory(map) => {
-        map
-          .write()
-          .await
-          .insert((scope, key.to_string()), (value, OffsetDateTime::now_utc()));
-        Ok(())
-      },
-    }
-  }
-
-  pub async fn remove(&self, scope: Scope, key: &str) -> anyhow::Result<()> {
-    match &self.inner {
-      StoreInner::Persistent(store) => store.write().await.remove(scope, key).await.map(|_| ()),
-      StoreInner::InMemory(map) => {
-        map.write().await.remove(&(scope, key.to_string()));
-        Ok(())
-      },
-    }
-  }
-
-  pub async fn clear(&self, scope: Scope) -> anyhow::Result<()> {
-    match &self.inner {
-      StoreInner::Persistent(store) => {
-        let mut locked_store = store.write().await;
-        let keys_to_remove: Vec<String> = locked_store
-          .as_hashmap()
-          .keys()
-          .filter(|(s, _)| *s == scope)
-          .map(|(_, key)| key.clone())
-          .collect_vec();
-
-        // TODO(snowp): Ideally we should have built in support for batch deletions in the
-        // underlying store. This leaves us open for partial deletions if something fails halfway
-        // through.
-        for key in keys_to_remove {
-          locked_store.remove(scope, &key).await?;
-        }
-
-        Ok(())
-      },
-      StoreInner::InMemory(map) => {
-        let mut locked_map = map.write().await;
-        locked_map.retain(|(s, _), _| *s != scope);
-        Ok(())
-      },
-    }
-  }
-
-  /// Returns a reader for accessing state values.
-  ///
-  /// The returned reader holds a read lock on the store for its lifetime.
-  pub async fn read(&self) -> impl StateReader + '_ {
-    match &self.inner {
-      StoreInner::Persistent(store) => ReadLockedStoreGuard::Persistent(store.read().await),
-      StoreInner::InMemory(map) => ReadLockedStoreGuard::InMemory(map.read().await),
-    }
-  }
-
-  /// Creates a new Store, falling back to an in-memory store if initialization fails.
+  /// Creates a new persistent Store, falling back to an in-memory store if initialization fails.
   ///
   /// This method never fails - if the persistent store cannot be initialized, it will
-  /// return an in-memory store instead. The boolean return value indicates whether
-  /// a fallback occurred.
-  ///
-  /// # Returns
-  /// - The store (either persistent or in-memory)
-  /// - Data loss information (None if using in-memory fallback)
-  /// - Snapshot of state from the previous process (empty if using in-memory fallback)
-  /// - Boolean indicating whether fallback to in-memory occurred (true = fallback)
-  pub async fn new_or_fallback(
+  /// return an in-memory store instead.
+  pub async fn persistent_or_fallback(
     directory: &Path,
+    config: PersistentStoreConfig,
     time_provider: Arc<dyn TimeProvider>,
-  ) -> (Self, Option<DataLoss>, StateSnapshot, bool) {
-    match Self::new(directory, time_provider.clone()).await {
-      Ok((store, data_loss, snapshot)) => (store, Some(data_loss), snapshot, false),
+  ) -> StoreInitWithFallbackResult {
+    match Self::persistent(directory, config, time_provider.clone()).await {
+      Ok(result) => StoreInitWithFallbackResult {
+        store: result.store,
+        data_loss: Some(result.data_loss),
+        previous_state: result.previous_state,
+        fallback_occurred: false,
+      },
       Err(e) => {
-        log::warn!(
+        log::debug!(
           "Failed to initialize persistent state store: {e}, falling back to in-memory store"
         );
-        let store = Self::new_in_memory();
-        let empty_snapshot = StateSnapshot {
-          feature_flags: AHashMap::new(),
-          global_state: AHashMap::new(),
-        };
-        (store, None, empty_snapshot, true)
+        let store = Self::in_memory(time_provider, None);
+        StoreInitWithFallbackResult {
+          store,
+          data_loss: None,
+          previous_state: ScopedMaps::default(),
+          fallback_occurred: true,
+        }
       },
     }
   }
@@ -289,63 +189,101 @@ impl Store {
   ///
   /// This is useful when persistent storage is not needed or when used as a fallback
   /// when the persistent store cannot be initialized.
-  pub fn new_in_memory() -> Self {
+  ///
+  /// # Arguments
+  ///
+  /// * `time_provider` - Time provider for timestamps
+  /// * `capacity` - Optional maximum number of entries. If None, no limit is enforced.
+  #[must_use]
+  pub fn in_memory(time_provider: Arc<dyn TimeProvider>, capacity: Option<usize>) -> Self {
     Self {
-      inner: StoreInner::InMemory(Arc::new(RwLock::new(AHashMap::new()))),
+      inner: Arc::new(RwLock::new(
+        bd_resilient_kv::VersionedKVStore::new_in_memory(time_provider, capacity),
+      )),
     }
+  }
+
+  pub async fn insert(&self, scope: Scope, key: String, value: String) -> anyhow::Result<()> {
+    self
+      .inner
+      .write()
+      .await
+      .insert(
+        scope,
+        key,
+        StateValue {
+          value_type: Value_type::StringValue(value).into(),
+          ..Default::default()
+        },
+      )
+      .await?;
+
+    Ok(())
+  }
+
+  pub async fn remove(&self, scope: Scope, key: &str) -> anyhow::Result<()> {
+    self.inner.write().await.remove(scope, key).await?;
+
+    Ok(())
+  }
+
+  pub async fn clear(&self, scope: Scope) -> anyhow::Result<()> {
+    let mut locked_store = self.inner.write().await;
+    let keys_to_remove: Vec<String> = locked_store
+      .as_hashmap()
+      .iter()
+      .filter(|(s, ..)| *s == scope)
+      .map(|(_, key, _)| key.clone())
+      .collect_vec();
+
+    // TODO(snowp): Ideally we should have built in support for batch deletions in the
+    // underlying store. This leaves us open for partial deletions if something fails halfway
+    // through.
+    for key in keys_to_remove {
+      locked_store.remove(scope, &key).await?;
+    }
+
+    Ok(())
+  }
+
+  /// Returns a reader for accessing state values.
+  ///
+  /// The returned reader holds a read lock on the store for its lifetime.
+  pub async fn read(&self) -> impl StateReader + '_ {
+    self.inner.read().await
   }
 }
 
-enum ReadLockedStoreGuard<'a> {
-  Persistent(tokio::sync::RwLockReadGuard<'a, bd_resilient_kv::VersionedKVStore>),
-  InMemory(tokio::sync::RwLockReadGuard<'a, InMemoryStateMap>),
-}
-
-impl StateReader for ReadLockedStoreGuard<'_> {
+impl StateReader for tokio::sync::RwLockReadGuard<'_, bd_resilient_kv::VersionedKVStore> {
   fn get(&self, scope: Scope, key: &str) -> Option<&str> {
-    match self {
-      Self::Persistent(guard) => guard
-        .get(scope, key)
-        .and_then(|v| v.has_string_value().then(|| v.string_value())),
-      Self::InMemory(map) => map
-        .get(&(scope, key.to_string()))
-        .map(|(value, _)| value.as_str()),
-    }
+    (**self)
+      .get(scope, key)
+      .and_then(|v| v.has_string_value().then(|| v.string_value()))
   }
 
   fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = StateEntry<'a>> + 'a> {
-    match self {
-      Self::Persistent(guard) => Box::new(
-        guard
-          .as_hashmap()
-          .iter()
-          .filter_map(|((scope, key), timestamped_value)| {
-            let value = timestamped_value
-              .value
-              .has_string_value()
-              .then(|| timestamped_value.value.string_value())?;
+    Box::new(
+      self
+        .as_hashmap()
+        .iter()
+        .filter_map(|(scope, key, timestamped_value)| {
+          let value = timestamped_value
+            .value
+            .has_string_value()
+            .then(|| timestamped_value.value.string_value())?;
 
-            let timestamp = OffsetDateTime::from_unix_timestamp_nanos(
-              i128::from(timestamped_value.timestamp) * 1_000,
-            )
-            .ok()?;
+          let timestamp = OffsetDateTime::from_unix_timestamp_nanos(
+            i128::from(timestamped_value.timestamp) * 1_000,
+          )
+          .ok()?;
 
-            Some(StateEntry {
-              scope: *scope,
-              key,
-              value,
-              timestamp,
-            })
-          }),
-      ),
-      Self::InMemory(map) => Box::new(map.iter().map(|((scope, key), (value, timestamp))| {
-        StateEntry {
-          scope: *scope,
-          key,
-          value,
-          timestamp: *timestamp,
-        }
-      })),
-    }
+          Some(StateEntry {
+            scope,
+            key,
+            value,
+            timestamp,
+          })
+        }),
+    )
   }
 }

@@ -73,7 +73,7 @@ impl<M: protobuf::Message> MemMappedVersionedJournal<M> {
   /// # Arguments
   /// * `file_path` - Path to the file to use for storage
   /// * `size` - Minimum size of the file in bytes
-  /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
+  /// * `high_water_mark_ratio` - Ratio (0.1 to 1.0) for high water mark trigger point
   /// * `entries` - Iterator of entries to be inserted into the newly created buffer.
   ///
   /// # Errors
@@ -81,7 +81,7 @@ impl<M: protobuf::Message> MemMappedVersionedJournal<M> {
   pub fn new<P: AsRef<Path>>(
     file_path: P,
     size: usize,
-    high_water_mark_ratio: Option<f32>,
+    high_water_mark_ratio: f32,
     time_provider: Arc<dyn TimeProvider>,
     entries: impl IntoIterator<Item = (Scope, String, M, u64)>,
   ) -> anyhow::Result<Self> {
@@ -116,7 +116,7 @@ impl<M: protobuf::Message> MemMappedVersionedJournal<M> {
   /// # Arguments
   /// * `file_path` - Path to the existing file
   /// * `size` - Size to resize the file to in bytes
-  /// * `high_water_mark_ratio` - Optional ratio (0.0 to 1.0) for high water mark. Default: 0.8
+  /// * `high_water_mark_ratio` - Ratio (0.1 to 1.0) for high water mark trigger point
   ///
   /// # Errors
   /// Returns an error if the file cannot be opened, memory-mapped, or contains invalid data.
@@ -124,7 +124,7 @@ impl<M: protobuf::Message> MemMappedVersionedJournal<M> {
   pub fn from_file<P: AsRef<Path>>(
     file_path: P,
     size: usize,
-    high_water_mark_ratio: Option<f32>,
+    high_water_mark_ratio: f32,
     time_provider: Arc<dyn TimeProvider>,
     f: impl FnMut(Scope, &str, &M, u64),
   ) -> anyhow::Result<(Self, PartialDataLoss)> {

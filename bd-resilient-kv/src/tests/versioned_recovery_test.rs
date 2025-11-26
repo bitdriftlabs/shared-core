@@ -11,16 +11,26 @@
 use crate::tests::decompress_zlib;
 use crate::versioned_kv_journal::make_string_value;
 use crate::versioned_kv_journal::recovery::VersionedRecovery;
+use crate::versioned_kv_journal::retention::RetentionRegistry;
+use crate::versioned_kv_journal::store::PersistentStoreConfig;
 use crate::{Scope, VersionedKVStore};
+use bd_time::TestTimeProvider;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::ext::NumericalDuration;
 use time::macros::datetime;
 
 /// Helper function to find archived journal files in a directory.
-/// Returns sorted paths to all `.zz` compressed journal archives.
+/// Returns sorted paths to all `.zz` compressed journal archives in the snapshots subdirectory.
 fn find_archived_journals(dir: &std::path::Path) -> anyhow::Result<Vec<std::path::PathBuf>> {
-  let mut archived_files = std::fs::read_dir(dir)?
+  let snapshots_dir = dir.join("snapshots");
+
+  // If snapshots directory doesn't exist, return empty vec
+  if !snapshots_dir.exists() {
+    return Ok(Vec::new());
+  }
+
+  let mut archived_files = std::fs::read_dir(snapshots_dir)?
     .filter_map(|entry| {
       let entry = entry.ok()?;
       let path = entry.path();
@@ -37,7 +47,7 @@ fn find_archived_journals(dir: &std::path::Path) -> anyhow::Result<Vec<std::path
 }
 
 /// Helper function to extract rotation timestamp from an archived journal filename.
-/// Archived journals have the format: `{name}.jrn.t{timestamp}.zz`
+/// Archived journals have the format: `{name}.jrn.g{generation}.t{timestamp}.zz`
 fn extract_rotation_timestamp(path: &std::path::Path) -> anyhow::Result<u64> {
   let filename = path
     .file_name()
@@ -60,17 +70,31 @@ fn extract_rotation_timestamp(path: &std::path::Path) -> anyhow::Result<u64> {
 async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
 
-
-  let time_provider = Arc::new(bd_time::TestTimeProvider::new(datetime!(
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
   )));
+  let registry = Arc::new(RetentionRegistry::new());
+  let _handle = registry.create_handle().await; // Retain all snapshots
 
   // Create a store with larger buffer to avoid BufferFull errors during test
-  let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", 2048, None, time_provider.clone()).await?;
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    PersistentStoreConfig {
+      initial_buffer_size: 2048,
+      ..Default::default()
+    },
+    time_provider.clone(),
+    registry,
+  )
+  .await?;
 
   store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
   let ts1 = store
     .get_with_timestamp(Scope::FeatureFlag, "key1")
@@ -80,7 +104,11 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   time_provider.advance(10.milliseconds());
 
   store
-    .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    )
     .await?;
 
   // Write more data to trigger rotation
@@ -88,7 +116,7 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
     store
       .insert(
         Scope::FeatureFlag,
-        &format!("key{i}"),
+        format!("key{i}"),
         make_string_value("foo"),
       )
       .await?;
@@ -105,7 +133,7 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   store
     .insert(
       Scope::FeatureFlag,
-      "final",
+      "final".to_string(),
       make_string_value("final_value"),
     )
     .await?;
@@ -162,14 +190,24 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_recovery_empty_journal() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let time_provider = Arc::new(bd_time::TestTimeProvider::new(datetime!(
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
   )));
-
+  let registry = Arc::new(RetentionRegistry::new());
+  let _handle = registry.create_handle().await; // Retain all snapshots
 
   // Create an empty store
-  let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider).await?;
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    PersistentStoreConfig {
+      initial_buffer_size: 4096,
+      ..Default::default()
+    },
+    time_provider,
+    registry,
+  )
+  .await?;
   store.sync()?;
 
   // Rotate to create snapshot
@@ -194,15 +232,29 @@ async fn test_recovery_empty_journal() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let time_provider = Arc::new(bd_time::TestTimeProvider::new(datetime!(
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
   )));
+  let registry = Arc::new(RetentionRegistry::new());
+  let _handle = registry.create_handle().await; // Retain all snapshots
 
-
-  let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone()).await?;
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    PersistentStoreConfig {
+      initial_buffer_size: 4096,
+      ..Default::default()
+    },
+    time_provider.clone(),
+    registry,
+  )
+  .await?;
   store
-    .insert(Scope::FeatureFlag, "key", make_string_value("1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key".to_string(),
+      make_string_value("1"),
+    )
     .await?;
   let ts1 = store
     .get_with_timestamp(Scope::FeatureFlag, "key")
@@ -212,7 +264,11 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   time_provider.advance(10.milliseconds());
 
   store
-    .insert(Scope::FeatureFlag, "key", make_string_value("2"))
+    .insert(
+      Scope::FeatureFlag,
+      "key".to_string(),
+      make_string_value("2"),
+    )
     .await?;
   let ts2 = store
     .get_with_timestamp(Scope::FeatureFlag, "key")
@@ -222,7 +278,11 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   time_provider.advance(10.milliseconds());
 
   store
-    .insert(Scope::FeatureFlag, "key", make_string_value("3"))
+    .insert(
+      Scope::FeatureFlag,
+      "key".to_string(),
+      make_string_value("3"),
+    )
     .await?;
   let ts3 = store
     .get_with_timestamp(Scope::FeatureFlag, "key")
@@ -274,16 +334,31 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let time_provider = Arc::new(bd_time::TestTimeProvider::new(datetime!(
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
   )));
+  let registry = Arc::new(RetentionRegistry::new());
+  let _handle = registry.create_handle().await; // Retain all snapshots
 
   // Create a store and write some timestamped data
-  let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone()).await?;
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    PersistentStoreConfig {
+      initial_buffer_size: 4096,
+      ..Default::default()
+    },
+    time_provider.clone(),
+    registry,
+  )
+  .await?;
 
   store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
   let ts1 = store
     .get_with_timestamp(Scope::FeatureFlag, "key1")
@@ -294,7 +369,11 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   time_provider.advance(10.milliseconds());
 
   store
-    .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    )
     .await?;
   let ts2 = store
     .get_with_timestamp(Scope::FeatureFlag, "key2")
@@ -305,7 +384,11 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   time_provider.advance(10.milliseconds());
 
   store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("updated1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("updated1"),
+    )
     .await?;
   let ts3 = store
     .get_with_timestamp(Scope::FeatureFlag, "key1")
@@ -375,16 +458,31 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
-  let time_provider = Arc::new(bd_time::TestTimeProvider::new(datetime!(
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
   )));
+  let registry = Arc::new(RetentionRegistry::new());
+  let _handle = registry.create_handle().await; // Retain all snapshots
 
-  let (mut store, _) =
-    VersionedKVStore::new(temp_dir.path(), "test", 4096, None, time_provider.clone()).await?;
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    PersistentStoreConfig {
+      initial_buffer_size: 4096,
+      ..Default::default()
+    },
+    time_provider.clone(),
+    registry,
+  )
+  .await?;
 
   // Write some data before rotation
   store
-    .insert(Scope::FeatureFlag, "key1", make_string_value("value1"))
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
     .await?;
   let ts1 = store
     .get_with_timestamp(Scope::FeatureFlag, "key1")
@@ -394,7 +492,11 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
   time_provider.advance(10.milliseconds());
 
   store
-    .insert(Scope::FeatureFlag, "key2", make_string_value("value2"))
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    )
     .await?;
   let ts2 = store
     .get_with_timestamp(Scope::FeatureFlag, "key2")
@@ -408,7 +510,11 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
 
   // Write data after rotation
   store
-    .insert(Scope::FeatureFlag, "key3", make_string_value("value3"))
+    .insert(
+      Scope::FeatureFlag,
+      "key3".to_string(),
+      make_string_value("value3"),
+    )
     .await?;
   let ts3 = store
     .get_with_timestamp(Scope::FeatureFlag, "key3")

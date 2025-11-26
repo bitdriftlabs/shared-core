@@ -9,7 +9,9 @@ version      = "1.0.0"
 doctest = false
 
 [dev-dependencies]
-tempfile.workspace = true
+rstest.workspace       = true
+rstest_reuse.workspace = true
+tempfile.workspace     = true
 
 [dependencies]
 ahash.workspace             = true
