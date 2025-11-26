@@ -65,6 +65,13 @@ impl crate::StateReader for TestStateReader {
         }),
     )
   }
+
+  fn as_scoped_maps(&self) -> &bd_resilient_kv::ScopedMaps {
+    // TestStateReader doesn't maintain ScopedMaps internally, so return an empty one.
+    // This is acceptable for tests that don't rely on as_scoped_maps.
+    static EMPTY: std::sync::OnceLock<bd_resilient_kv::ScopedMaps> = std::sync::OnceLock::new();
+    EMPTY.get_or_init(bd_resilient_kv::ScopedMaps::default)
+  }
 }
 
 //

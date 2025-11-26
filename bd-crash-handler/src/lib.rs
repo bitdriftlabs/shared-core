@@ -389,18 +389,25 @@ impl Monitor {
         .state
         .read()
         .await
+        .as_scoped_maps()
         .iter()
-        .filter(|entry| entry.scope == bd_state::Scope::FeatureFlag)
-        .map(|entry| {
-          (
-            entry.key.to_string(),
-            entry.value.to_string(),
-            entry.timestamp,
-          )
+        .filter(|(scope, _, _)| *scope == bd_resilient_kv::Scope::FeatureFlag)
+        .filter_map(|(_, key, value)| {
+          value
+            .value
+            .has_string_value()
+            .then(|| {
+              let variant = value.value.string_value().to_string();
+              let timestamp =
+                OffsetDateTime::from_unix_timestamp_nanos(i128::from(value.timestamp) * 1_000)
+                  .ok()?;
+              Some((key.to_string(), variant, timestamp))
+            })
+            .flatten()
         })
         .collect(),
     };
-    
+
     values
       .into_iter()
       .map(|(name, variant, timestamp)| {

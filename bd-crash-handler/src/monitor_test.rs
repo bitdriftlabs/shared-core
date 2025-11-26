@@ -220,7 +220,38 @@ impl Setup {
       .unwrap();
 
     // Capture the snapshot before passing to Monitor (simulating what happens at startup)
-    let previous_run_state = bd_resilient_kv::ScopedMaps::default();
+    // Manually populate previous_run_state with the feature flags that were set
+    let mut previous_run_state = bd_resilient_kv::ScopedMaps::default();
+    previous_run_state.insert(
+      bd_resilient_kv::Scope::FeatureFlag,
+      "initial_flag".to_string(),
+      bd_resilient_kv::TimestampedValue {
+        value: bd_proto::protos::state::payload::StateValue {
+          value_type: Some(
+            bd_proto::protos::state::payload::state_value::Value_type::StringValue(
+              "true".to_string(),
+            ),
+          ),
+          ..Default::default()
+        },
+        timestamp: datetime!(2024-01-01 00:00 UTC).unix_timestamp_nanos() as u64 / 1000,
+      },
+    );
+    previous_run_state.insert(
+      bd_resilient_kv::Scope::FeatureFlag,
+      "previous_only_flag".to_string(),
+      bd_resilient_kv::TimestampedValue {
+        value: bd_proto::protos::state::payload::StateValue {
+          value_type: Some(
+            bd_proto::protos::state::payload::state_value::Value_type::StringValue(
+              "enabled".to_string(),
+            ),
+          ),
+          ..Default::default()
+        },
+        timestamp: datetime!(2024-01-01 00:00 UTC).unix_timestamp_nanos() as u64 / 1000,
+      },
+    );
 
     let monitor = Monitor::new(
       directory.path(),
@@ -295,6 +326,7 @@ impl Setup {
       .collect()
   }
 
+  #[allow(dead_code)]
   fn expect_artifact_upload(
     &mut self,
     content: &[u8],
@@ -432,7 +464,7 @@ async fn test_log_report_fields() {
   setup.make_crash("report.cap", data);
 
   let uuid = "12345678-1234-5678-1234-5678123456aa".parse().unwrap();
-  setup.expect_artifact_upload(
+  setup.expect_artifact_upload_with_flags(
     data,
     uuid,
     [
@@ -445,6 +477,10 @@ async fn test_log_report_fields() {
     .into(),
     crash_timestamp.into(),
     "previous_session_id",
+    Some(vec![
+      ("initial_flag".to_string(), "true".to_string()),
+      ("previous_only_flag".to_string(), "enabled".to_string()),
+    ]),
   );
 
   let logs = setup.process_all_pending_reports().await;
@@ -613,7 +649,7 @@ async fn file_watcher_detects_previous_session_report() {
 
   let mut setup = Setup::new(None, true).await;
 
-  setup.expect_artifact_upload(
+  setup.expect_artifact_upload_with_flags(
     &data,
     "12345678-1234-5678-1234-567812345679".parse().unwrap(),
     [
@@ -623,6 +659,10 @@ async fn file_watcher_detects_previous_session_report() {
     .into(),
     None,
     "previous_session_id",
+    Some(vec![
+      ("initial_flag".to_string(), "true".to_string()),
+      ("previous_only_flag".to_string(), "enabled".to_string()),
+    ]),
   );
 
   // Write a crash report to the previous_session directory

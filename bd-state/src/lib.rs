@@ -97,6 +97,9 @@ pub trait StateReader {
 
   /// Returns an iterator over all entries in the state store.
   fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = StateEntry<'a>> + 'a>;
+
+  /// Returns the underlying scoped maps.
+  fn as_scoped_maps(&self) -> &ScopedMaps;
 }
 
 //
@@ -286,5 +289,10 @@ impl StateReader for tokio::sync::RwLockReadGuard<'_, bd_resilient_kv::Versioned
           })
         }),
     )
+  }
+
+  fn as_scoped_maps(&self) -> &ScopedMaps {
+    // TODO(snowp): Consider removing iter() and get() in favor of direct access to the hashmap?
+    self.as_hashmap()
   }
 }

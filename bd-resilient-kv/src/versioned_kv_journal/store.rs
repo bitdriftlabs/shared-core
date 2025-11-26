@@ -115,8 +115,8 @@ struct OpenedJournal {
 /// calls on every lookup), we use separate maps per scope and dispatch with a match statement.
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct ScopedMaps {
-  feature_flags: AHashMap<String, TimestampedValue>,
-  global_state: AHashMap<String, TimestampedValue>,
+  pub feature_flags: AHashMap<String, TimestampedValue>,
+  pub global_state: AHashMap<String, TimestampedValue>,
 }
 
 impl ScopedMaps {
