@@ -500,7 +500,7 @@ impl PersistentStore {
     key: &str,
     value: &StateValue,
   ) -> Result<u64, UpdateError> {
-    match self.journal.insert_entry(scope, key, value.clone()) {
+    match self.journal.insert_entry_ref(scope, key, value) {
       Ok(timestamp) => Ok(timestamp),
       Err(UpdateError::CapacityExceeded) => {
         // Calculate size needed for this entry
@@ -515,7 +515,7 @@ impl PersistentStore {
         self.rotate_journal_with_hint(entry_size).await?;
 
         // Retry insert after rotation
-        self.journal.insert_entry(scope, key, value.clone())
+        self.journal.insert_entry_ref(scope, key, value)
       },
       Err(e) => Err(e),
     }
