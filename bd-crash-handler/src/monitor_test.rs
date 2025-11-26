@@ -551,7 +551,7 @@ async fn file_watcher_detects_current_session_report() {
   let mut setup = Setup::new(None, true).await;
 
   let uuid = "12345678-1234-5678-1234-567812345678".parse().unwrap();
-  setup.expect_artifact_upload(
+  setup.expect_artifact_upload_with_flags(
     &data,
     uuid,
     [
@@ -562,6 +562,10 @@ async fn file_watcher_detects_current_session_report() {
     .into(),
     crash_timestamp.into(),
     setup.monitor.session.session_id().as_str(),
+    Some(vec![
+      ("initial_flag".to_string(), "true".to_string()),
+      ("previous_only_flag".to_string(), "enabled".to_string()),
+    ]),
   );
 
   // Write a crash report to the current_session directory
