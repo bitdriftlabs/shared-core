@@ -529,14 +529,14 @@ impl PersistentStore {
     &mut self,
     entries: &[(Scope, String, StateValue)],
   ) -> Result<u64, UpdateError> {
-    // Prepare all entries for the journal
+    // Prepare all entries for the journal (clone once)
     let journal_entries: Vec<_> = entries
       .iter()
       .map(|(scope, key, value)| (*scope, key.clone(), value.clone()))
       .collect();
 
-    // Try the extend operation
-    match self.journal.extend_entries(journal_entries.clone()) {
+    // Try the extend operation (move journal_entries on first attempt - no extra clone!)
+    match self.journal.extend_entries(journal_entries) {
       Ok(timestamp) => Ok(timestamp),
       Err(UpdateError::CapacityExceeded) => {
         // Calculate total size needed for all entries
@@ -555,8 +555,12 @@ impl PersistentStore {
         // Rotate with knowledge of incoming batch size
         self.rotate_journal_with_hint(total_size).await?;
 
-        // Retry extend operation after rotation
-        self.journal.extend_entries(journal_entries)
+        // Retry extend operation after rotation (recreate journal_entries from original entries)
+        let journal_entries_retry: Vec<_> = entries
+          .iter()
+          .map(|(scope, key, value)| (*scope, key.clone(), value.clone()))
+          .collect();
+        self.journal.extend_entries(journal_entries_retry)
       },
       Err(e) => Err(e),
     }
