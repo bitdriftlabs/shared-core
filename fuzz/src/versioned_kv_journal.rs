@@ -911,23 +911,21 @@ impl VersionedKVJournalFuzzTest {
                   (Some(expected), Some(actual)) => {
                     assert_eq!(
                       actual.timestamp, timestamp,
-                      "Timestamp mismatch for key {:?}",
-                      key
+                      "Timestamp mismatch for key {key:?}"
                     );
                     assert_eq!(
                       &actual.value, &expected.value,
-                      "Value mismatch for key {:?}",
-                      key
+                      "Value mismatch for key {key:?}"
                     );
                   },
                   (None, None) => {
                     // Both agree the key doesn't exist - correct
                   },
                   (Some(_), None) => {
-                    panic!("Expected key {:?} to exist in store but it doesn't", key);
+                    panic!("Expected key {key:?} to exist in store but it doesn't");
                   },
                   (None, Some(_)) => {
-                    panic!("Expected key {:?} to not exist in store but it does", key);
+                    panic!("Expected key {key:?} to not exist in store but it does");
                   },
                 }
               }
