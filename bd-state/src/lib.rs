@@ -20,6 +20,7 @@ mod tests;
 
 pub mod test;
 
+use ahash::AHashMap;
 use bd_resilient_kv::{DataLoss, RetentionRegistry, ScopedMaps, StateValue, Value_type};
 pub use bd_resilient_kv::{PersistentStoreConfig, Scope};
 use bd_time::TimeProvider;

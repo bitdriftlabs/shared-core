@@ -109,7 +109,7 @@ pub enum ReportOrigin {
 pub struct Monitor {
   report_directory: PathBuf,
   previous_run_global_state: LogFields,
-  previous_run_state: bd_state::StateSnapshot,
+  previous_run_state: bd_resilient_kv::ScopedMaps,
   state: bd_state::Store,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
 
@@ -126,7 +126,7 @@ impl Monitor {
     session: Arc<bd_session::Strategy>,
     init_lifecycle: &InitLifecycleState,
     state: bd_state::Store,
-    previous_run_state: bd_state::StateSnapshot,
+    previous_run_state: bd_resilient_kv::ScopedMaps,
     emit_log: impl Fn(CrashLog) -> anyhow::Result<()> + Send + Sync + 'static,
   ) -> Self {
     debug_check_lifecycle_less_than!(
@@ -365,19 +365,48 @@ impl Monitor {
   }
 
   async fn get_feature_flags(&self, origin: ReportOrigin) -> Vec<SnappedFeatureFlag> {
-    match origin {
-      ReportOrigin::Previous => self.previous_run_state.feature_flags.clone(),
+    let values: Vec<(String, String, OffsetDateTime)> = match origin {
+      ReportOrigin::Previous => self
+        .previous_run_state
+        .iter()
+        .filter(|(scope, _, _)| *scope == bd_resilient_kv::Scope::FeatureFlag)
+        .filter_map(|(_, name, timestamped_value)| {
+          timestamped_value
+            .value
+            .has_string_value()
+            .then(|| {
+              let variant = timestamped_value.value.string_value().to_string();
+              let timestamp = OffsetDateTime::from_unix_timestamp_nanos(
+                i128::from(timestamped_value.timestamp) * 1_000,
+              )
+              .ok()?;
+              Some((name.clone(), variant, timestamp))
+            })
+            .flatten()
+        })
+        .collect(),
       ReportOrigin::Current => self
         .state
         .read()
         .await
-        .to_scoped_snapshot(bd_state::Scope::FeatureFlag),
-    }
-    .into_iter()
-    .map(|(name, (variant, timestamp))| {
-      SnappedFeatureFlag::new(name, (!variant.is_empty()).then(|| variant), timestamp)
-    })
-    .collect_vec()
+        .iter()
+        .filter(|entry| entry.scope == bd_state::Scope::FeatureFlag)
+        .map(|entry| {
+          (
+            entry.key.to_string(),
+            entry.value.to_string(),
+            entry.timestamp,
+          )
+        })
+        .collect(),
+    };
+    
+    values
+      .into_iter()
+      .map(|(name, variant, timestamp)| {
+        SnappedFeatureFlag::new(name, (!variant.is_empty()).then(|| variant), timestamp)
+      })
+      .collect_vec()
   }
 
   fn get_global_state_fields(&self, origin: ReportOrigin) -> LogFields {

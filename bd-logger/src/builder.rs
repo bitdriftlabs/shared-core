@@ -290,16 +290,24 @@ impl LoggerBuilder {
       let (state_store, _data_loss, previous_run_state, used_fallback) = if use_persistent_storage
       {
         // Attempt persistent storage with fallback to in-memory
-        bd_state::Store::new_or_fallback(&state_directory, time_provider.clone()).await
+        let result = bd_state::Store::persistent_or_fallback(
+          &state_directory,
+          bd_state::PersistentStoreConfig::default(),
+          time_provider.clone(),
+        )
+        .await;
+        (
+          result.store,
+          result.data_loss,
+          result.previous_state,
+          result.fallback_occurred,
+        )
       } else {
         // Use in-memory only
         (
-          bd_state::Store::new_in_memory(),
+          bd_state::Store::in_memory(time_provider.clone(), None),
           None,
-          bd_state::StateSnapshot {
-            feature_flags: Default::default(),
-            global_state: Default::default(),
-          },
+          bd_resilient_kv::ScopedMaps::default(),
           false,
         )
       };
