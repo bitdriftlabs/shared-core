@@ -7,8 +7,8 @@
 
 use ahash::AHashMap;
 use arbitrary::{Arbitrary, Unstructured};
+use bd_proto::protos::state::payload::StateValue;
 use bd_proto::protos::state::payload::state_value::Value_type;
-use bd_proto::protos::state::payload::{StateKeyValuePair, StateValue};
 use bd_resilient_kv::{
   DataLoss,
   PersistentStoreConfig,
@@ -16,10 +16,10 @@ use bd_resilient_kv::{
   Scope,
   TimestampedValue,
   UpdateError,
+  VERSIONED_JOURNAL_HEADER_SIZE,
   VersionedKVStore,
 };
 use bd_time::{TestTimeProvider, TimeProvider as _};
-use protobuf::MessageDyn;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::macros::datetime;
@@ -254,7 +254,7 @@ impl KeyPool {
 #[derive(Arbitrary, Debug)]
 pub struct VersionedKVJournalFuzzTestCase {
   buffer_size: u32,
-  high_water_mark_ratio: Option<f32>,
+  high_water_mark_ratio: f32,
   /// Maximum capacity in bytes for dynamic growth (will be clamped to reasonable range)
   max_capacity_bytes: u32,
   operations: Vec<OperationType>,
@@ -273,7 +273,7 @@ enum CapacityErrorKind {
 pub struct VersionedKVJournalFuzzTest {
   test_case: VersionedKVJournalFuzzTestCase,
   buffer_size: usize,
-  high_water_mark_ratio: Option<f32>,
+  high_water_mark_ratio: f32,
   max_capacity_bytes: usize,
   temp_dir: TempDir,
   time_provider: Arc<TestTimeProvider>,
@@ -293,15 +293,10 @@ impl VersionedKVJournalFuzzTest {
     let buffer_size = ((test_case.buffer_size % 1_048_576) + 4096) as usize;
 
     // Clamp high water mark ratio to valid range [0.1, 1.0]
-    // Config validation requires >= 0.1 when using max_capacity
-    let high_water_mark_ratio = test_case.high_water_mark_ratio.and_then(|ratio| {
-      let clamped = ratio.clamp(0.1, 1.0);
-      if clamped.is_finite() {
-        Some(clamped)
-      } else {
-        None
-      }
-    });
+    let mut high_water_mark_ratio = test_case.high_water_mark_ratio.clamp(0.1, 1.0);
+    if high_water_mark_ratio.is_nan() {
+      high_water_mark_ratio = 0.8; // Default value
+    }
 
     // Clamp max capacity to a reasonable range (must be >= buffer_size, <= 1MB)
     // Treat 0 as default (1MB)
@@ -371,34 +366,27 @@ impl VersionedKVJournalFuzzTest {
 
   /// Estimate the size of a single entry in bytes.
   ///
-  /// This estimates the size that would be required to store this key-value pair
-  /// in the journal.
-  fn estimate_entry_size(key: &str, value: &StateValue) -> usize {
-    const AVG_VARINT_SIZE: usize = 5; // Average size for frame length and timestamp varints
-    const SCOPE_SIZE: usize = 1; // Scope is serialized as u8
-    const CRC_SIZE: usize = 4;
-    const OVERHEAD_PER_ENTRY: usize = AVG_VARINT_SIZE + SCOPE_SIZE + AVG_VARINT_SIZE + CRC_SIZE;
-
-    let entry_size = StateKeyValuePair {
-      key: key.to_string(),
-      value: Some(value.clone()).into(),
-      ..Default::default()
-    }
-    .compute_size_dyn();
-
-    OVERHEAD_PER_ENTRY + entry_size.try_into().unwrap_or(usize::MAX)
+  /// This computes the actual size that would be required to store this key-value pair
+  /// in the journal using the Frame encoding.
+  fn estimate_entry_size(key: &str, value: &StateValue, timestamp: u64) -> usize {
+    use bd_resilient_kv::versioned_kv_journal::framing::Frame;
+    // Use a dummy scope and timestamp for size calculation
+    // The actual scope doesn't affect size calculation (it's always 1 byte)
+    Frame::compute_encoded_size(key, timestamp, value)
   }
 
   /// Estimate the size of the current state in bytes.
   /// We estimate conservatively to avoid false positives.
   fn estimate_state_size(&self) -> usize {
-    const HEADER_SIZE: usize = 17;
-
-    let mut total_size = HEADER_SIZE;
+    let mut total_size = VERSIONED_JOURNAL_HEADER_SIZE;
 
     for ((_, key_str), timestamped_value) in &self.state {
       // Use our entry size estimator for consistency
-      let entry_size = Self::estimate_entry_size(key_str, &timestamped_value.value);
+      let entry_size = Self::estimate_entry_size(
+        key_str,
+        &timestamped_value.value,
+        timestamped_value.timestamp,
+      );
       total_size += entry_size;
     }
 
@@ -409,22 +397,36 @@ impl VersionedKVJournalFuzzTest {
   /// a significant portion of the buffer capacity.
   ///
   /// This validation is lenient for cases with very large individual entries that
-  /// may not fit in the buffer, focusing on detecting genuine incorrect full detection.
+  /// may not fit in max capacity, focusing on detecting genuine incorrect full detection.
   fn verify_full_flag(&self) {
     if self.is_full {
       let estimated_size = self.estimate_state_size();
 
-      // Check if we have any very large entries that individually exceed the buffer
-      // We use 75% as the threshold - entries larger than this are genuinely oversized
-      // and can be the primary cause of capacity issues.
+      // Check if we have any entries that individually exceed max capacity.
+      // Such entries are genuinely oversized and should legitimately cause CapacityExceeded.
       let has_oversized_entry = self.state.iter().any(|((_, key_str), tv)| {
-        Self::estimate_entry_size(key_str, &tv.value) > self.buffer_size * 3 / 4
+        Self::estimate_entry_size(
+          key_str,
+          &tv.value,
+          (self
+            .time_provider
+            .now()
+            .unix_timestamp_nanos()
+            .checked_div(1_000)
+            .unwrap())
+          .try_into()
+          .unwrap(),
+        ) > self.max_capacity_bytes
       });
 
       if has_oversized_entry {
-        // When we have oversized entries, we can't reliably validate capacity usage
-        // since even a single entry may not fit. This is an expected failure case.
-        log::debug!("Buffer full with oversized entries present, skipping capacity validation");
+        // When we have oversized entries (larger than max capacity), we can't reliably
+        // validate capacity usage since even a single entry cannot fit. This is an expected
+        // failure case.
+        log::debug!(
+          "Buffer full with oversized entries (> max_capacity) present, skipping capacity \
+           validation"
+        );
         return;
       }
 
@@ -449,14 +451,15 @@ impl VersionedKVJournalFuzzTest {
   fn classify_error(
     error: &UpdateError,
     entry_size_estimate: Option<usize>,
-    buffer_size: usize,
+    _buffer_size: usize,
+    max_capacity_bytes: usize,
   ) -> CapacityErrorKind {
     if matches!(error, UpdateError::CapacityExceeded) {
       // If we have an entry size estimate, determine if it's an oversized entry.
-      // We use 75% as the threshold - entries larger than this are genuinely oversized
-      // and are the primary cause of the capacity error, rather than accumulated writes.
+      // An entry is considered oversized if it exceeds max_capacity_bytes.
+      // Entries smaller than max_capacity should trigger automatic rotation and succeed.
       if let Some(entry_size) = entry_size_estimate
-        && entry_size > buffer_size * 3 / 4
+        && entry_size > max_capacity_bytes
       {
         return CapacityErrorKind::OversizedEntry;
       }
@@ -544,13 +547,19 @@ impl VersionedKVJournalFuzzTest {
             },
             Err(e) => {
               // Classify the error
-              let entry_size = Self::estimate_entry_size(&key_str, &value.0);
-              match Self::classify_error(&e, Some(entry_size), self.buffer_size) {
+              let entry_size =
+                Self::estimate_entry_size(&key_str, &value.0, current_timestamp_micros());
+              match Self::classify_error(
+                &e,
+                Some(entry_size),
+                self.buffer_size,
+                self.max_capacity_bytes,
+              ) {
                 CapacityErrorKind::OversizedEntry => {
                   log::info!(
-                    "Single entry too large (~{entry_size} bytes) for buffer ({} bytes), skipping \
-                     insert",
-                    self.buffer_size
+                    "Single entry too large (~{entry_size} bytes) for max capacity ({} bytes), \
+                     skipping insert",
+                    self.max_capacity_bytes
                   );
                   // Don't set is_full - this is an oversized entry, not accumulated capacity
                   continue;
@@ -596,7 +605,7 @@ impl VersionedKVJournalFuzzTest {
             },
             Err(e) => {
               // Classify the error (remove operations write small deletion markers)
-              match Self::classify_error(&e, None, self.buffer_size) {
+              match Self::classify_error(&e, None, self.buffer_size, self.max_capacity_bytes) {
                 CapacityErrorKind::BufferFull | CapacityErrorKind::OversizedEntry => {
                   log::info!("Journal full, cannot remove entries");
                   self.is_full = true;
@@ -787,8 +796,14 @@ impl VersionedKVJournalFuzzTest {
               },
               Err(e) => {
                 // Classify the error (bulk inserts use small int values)
-                let entry_size = Self::estimate_entry_size(&key_str, &value);
-                match Self::classify_error(&e, Some(entry_size), self.buffer_size) {
+                let entry_size =
+                  Self::estimate_entry_size(&key_str, &value, current_timestamp_micros());
+                match Self::classify_error(
+                  &e,
+                  Some(entry_size),
+                  self.buffer_size,
+                  self.max_capacity_bytes,
+                ) {
                   CapacityErrorKind::OversizedEntry => {
                     log::info!(
                       "Entry too large (~{entry_size} bytes) during bulk insert at entry {i}, \

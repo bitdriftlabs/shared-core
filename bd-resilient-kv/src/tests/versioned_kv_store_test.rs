@@ -215,9 +215,9 @@ async fn test_automatic_rotation_on_high_water_mark() -> anyhow::Result<()> {
     temp_dir.path(),
     "test",
     PersistentStoreConfig {
-      initial_buffer_size: 1024,        // Small buffer size
-      max_capacity_bytes: 10 * 1024,    // 10KB max
-      high_water_mark_ratio: Some(0.3), // Very low high water mark (30%)
+      initial_buffer_size: 1024,     // Small buffer size
+      max_capacity_bytes: 10 * 1024, // 10KB max
+      high_water_mark_ratio: 0.3,    // Very low high water mark (30%)
     },
     time_provider.clone(),
     registry,

@@ -273,3 +273,38 @@ fn frame_length_varint_encoding() {
   assert_eq!(decoded, small_frame);
   assert_eq!(consumed, encoded_len);
 }
+
+#[test]
+fn compute_encoded_size_matches_frame_encoded_size() {
+  // Test that compute_encoded_size gives the same result as creating a Frame and calling
+  // encoded_size()
+  let long_value = "x".repeat(100);
+  let very_long_value = "y".repeat(1000);
+
+  let test_cases = vec![
+    ("", ""),
+    ("key", "value"),
+    ("long_key_name", long_value.as_str()),
+    ("k", very_long_value.as_str()),
+  ];
+
+  for (key, value_str) in test_cases {
+    let value = make_string_value(value_str);
+    let timestamp = 123_456_789_u64;
+
+    // Method 1: Create frame and call encoded_size()
+    let frame = Frame::new(Scope::GlobalState, key, timestamp, value.clone());
+    let size_via_frame = frame.encoded_size();
+
+    // Method 2: Use compute_encoded_size without creating frame
+    let size_via_compute = Frame::compute_encoded_size(key, timestamp, &value);
+
+    assert_eq!(
+      size_via_frame,
+      size_via_compute,
+      "compute_encoded_size should match Frame::new().encoded_size() for key='{}', value_len={}",
+      key,
+      value_str.len()
+    );
+  }
+}

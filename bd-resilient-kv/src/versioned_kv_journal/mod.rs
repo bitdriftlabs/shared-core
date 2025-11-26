@@ -7,15 +7,17 @@
 
 use bd_proto::protos::state;
 
+
 pub mod cleanup;
 mod file_manager;
-mod framing;
+pub mod framing;
 mod journal;
 mod memmapped_journal;
 pub mod recovery;
 pub mod retention;
 pub mod store;
 
+pub use journal::HEADER_SIZE;
 pub use store::PersistentStoreConfig;
 
 /// Errors that can occur during store operations.
@@ -47,6 +49,7 @@ pub struct TimestampedValue {
 }
 
 #[cfg(test)]
+#[must_use]
 pub fn make_string_value(s: &str) -> state::payload::StateValue {
   state::payload::StateValue {
     value_type: Some(state::payload::state_value::Value_type::StringValue(
