@@ -409,7 +409,7 @@ impl LoggerBuilder {
       try_join!(
         async move {
           tokio::select! {
-            res = api.start() => { res },
+            () = api.start() => { Ok(()) },
             () = api_shutdown.cancelled() => { Ok(()) }
           }
         },

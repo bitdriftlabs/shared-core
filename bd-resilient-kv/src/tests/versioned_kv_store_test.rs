@@ -202,6 +202,85 @@ async fn basic_crud(#[case] mode: StoreMode) -> anyhow::Result<()> {
   Ok(())
 }
 
+#[rstest]
+#[case(StoreMode::Persistent)]
+#[case(StoreMode::InMemory)]
+#[tokio::test]
+async fn extend_same_key_ordering(#[case] mode: StoreMode) -> anyhow::Result<()> {
+  let mut setup = DualModeSetup::new(mode).await?;
+
+  // Test 1: Insert then delete same key - final state should be deleted
+  let entries1 = vec![
+    (
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value"),
+    ),
+    (
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      StateValue::default(), // deletion
+    ),
+  ];
+
+  setup.store.extend(entries1).await?;
+  assert_eq!(
+    setup.store.get(Scope::FeatureFlag, "key1"),
+    None,
+    "key1 should be deleted (last operation was delete)"
+  );
+
+  // Test 2: Delete then insert same key - final state should be inserted
+  let entries2 = vec![
+    (
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      StateValue::default(), // deletion (no-op since doesn't exist)
+    ),
+    (
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value"),
+    ),
+  ];
+
+  setup.store.extend(entries2).await?;
+  assert_eq!(
+    setup.store.get(Scope::FeatureFlag, "key2"),
+    Some(&make_string_value("value")),
+    "key2 should exist (last operation was insert)"
+  );
+
+  // Test 3: Multiple operations on same key
+  let entries3 = vec![
+    (
+      Scope::FeatureFlag,
+      "key3".to_string(),
+      make_string_value("v1"),
+    ),
+    (
+      Scope::FeatureFlag,
+      "key3".to_string(),
+      make_string_value("v2"),
+    ),
+    (
+      Scope::FeatureFlag,
+      "key3".to_string(),
+      make_string_value("v3"),
+    ),
+  ];
+
+  setup.store.extend(entries3).await?;
+  assert_eq!(
+    setup.store.get(Scope::FeatureFlag, "key3"),
+    Some(&make_string_value("v3")),
+    "key3 should have the last inserted value"
+  );
+
+  Ok(())
+}
+
+
 #[allow(clippy::cast_possible_truncation)]
 #[tokio::test]
 async fn test_automatic_rotation_on_high_water_mark() -> anyhow::Result<()> {
@@ -962,6 +1041,391 @@ async fn test_multiple_rotations_with_same_timestamp() -> anyhow::Result<()> {
   assert!(
     !snapshot2_data.is_empty(),
     "Second snapshot should have data"
+  );
+
+  Ok(())
+}
+
+#[rstest]
+#[case(StoreMode::Persistent)]
+#[case(StoreMode::InMemory)]
+#[tokio::test]
+async fn extend_basic(#[case] mode: StoreMode) -> anyhow::Result<()> {
+  let mut setup = DualModeSetup::new(mode).await?;
+
+  // Extend multiple entries
+  let entries = vec![
+    (
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("value1"),
+    ),
+    (
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("value2"),
+    ),
+    (
+      Scope::GlobalState,
+      "key3".to_string(),
+      make_string_value("value3"),
+    ),
+  ];
+
+  let ts = setup.store.extend(entries).await?;
+
+  // Verify all entries were inserted with the same timestamp
+  assert_eq!(setup.store.len(), 3);
+  assert_eq!(
+    setup
+      .store
+      .get_with_timestamp(Scope::FeatureFlag, "key1")
+      .unwrap()
+      .timestamp,
+    ts
+  );
+  assert_eq!(
+    setup
+      .store
+      .get_with_timestamp(Scope::FeatureFlag, "key2")
+      .unwrap()
+      .timestamp,
+    ts
+  );
+  assert_eq!(
+    setup
+      .store
+      .get_with_timestamp(Scope::GlobalState, "key3")
+      .unwrap()
+      .timestamp,
+    ts
+  );
+
+  Ok(())
+}
+
+#[rstest]
+#[case(StoreMode::Persistent)]
+#[case(StoreMode::InMemory)]
+#[tokio::test]
+async fn extend_with_updates_and_deletions(#[case] mode: StoreMode) -> anyhow::Result<()> {
+  let mut setup = DualModeSetup::new(mode).await?;
+
+  // Insert initial data
+  setup
+    .store
+    .insert(
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("old_value"),
+    )
+    .await?;
+  setup
+    .store
+    .insert(
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      make_string_value("keep_value"),
+    )
+    .await?;
+
+  assert_eq!(setup.store.len(), 2);
+
+  // Extend with mix of new inserts, updates, and deletions
+  let entries = vec![
+    // Update existing key
+    (
+      Scope::FeatureFlag,
+      "key1".to_string(),
+      make_string_value("new_value"),
+    ),
+    // Delete existing key (null value)
+    (
+      Scope::FeatureFlag,
+      "key2".to_string(),
+      StateValue::default(),
+    ),
+    // New insert
+    (
+      Scope::GlobalState,
+      "key3".to_string(),
+      make_string_value("value3"),
+    ),
+  ];
+
+  let ts = setup.store.extend(entries).await?;
+
+  // Verify state
+  assert_eq!(setup.store.len(), 2); // key1 and key3 remain
+  assert_eq!(
+    setup.store.get(Scope::FeatureFlag, "key1"),
+    Some(&make_string_value("new_value"))
+  );
+  assert_eq!(setup.store.get(Scope::FeatureFlag, "key2"), None);
+  assert_eq!(
+    setup.store.get(Scope::GlobalState, "key3"),
+    Some(&make_string_value("value3"))
+  );
+
+  // All operations should have the same timestamp
+  assert_eq!(
+    setup
+      .store
+      .get_with_timestamp(Scope::FeatureFlag, "key1")
+      .unwrap()
+      .timestamp,
+    ts
+  );
+  assert_eq!(
+    setup
+      .store
+      .get_with_timestamp(Scope::GlobalState, "key3")
+      .unwrap()
+      .timestamp,
+    ts
+  );
+
+  Ok(())
+}
+
+#[rstest]
+#[case(StoreMode::Persistent)]
+#[case(StoreMode::InMemory)]
+#[tokio::test]
+async fn extend_empty_is_noop(#[case] mode: StoreMode) -> anyhow::Result<()> {
+  let mut setup = DualModeSetup::new(mode).await?;
+
+  // Empty extend should succeed and return a timestamp
+  let result = setup.store.extend(vec![]).await;
+  assert!(result.is_ok());
+
+  // Store should still be empty
+  assert_eq!(setup.store.len(), 0);
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn extend_triggers_rotation_and_succeeds() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+  let registry = Arc::new(RetentionRegistry::new());
+
+  // Create a small buffer that will trigger rotation, with enough max capacity to succeed
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    PersistentStoreConfig {
+      initial_buffer_size: 512, // Small buffer to trigger rotation
+      max_capacity_bytes: 8192, // Large enough to fit the batch after rotation
+      high_water_mark_ratio: 0.5,
+    },
+    time_provider,
+    registry,
+  )
+  .await?;
+
+  let initial_buffer_size = store.current_buffer_size();
+
+  // Insert enough data to trigger rotation
+  let mut entries = Vec::new();
+  for i in 0 .. 50 {
+    entries.push((
+      Scope::FeatureFlag,
+      format!("key_{i}"),
+      make_string_value(&format!("value_{i}")),
+    ));
+  }
+
+  // This should trigger rotation and succeed
+  store.extend(entries).await?;
+
+  // Verify the data was written
+  assert_eq!(store.len(), 50);
+  for i in 0 .. 50 {
+    assert!(store.contains_key(Scope::FeatureFlag, &format!("key_{i}")));
+  }
+
+  // Buffer should have grown due to rotation
+  assert!(store.current_buffer_size() > initial_buffer_size);
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn extend_triggers_rotation_but_fails_capacity() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+  let registry = Arc::new(RetentionRegistry::new());
+
+  // Create a store with limited max capacity that won't fit the batch even after rotation
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    PersistentStoreConfig {
+      initial_buffer_size: 512,
+      max_capacity_bytes: 1024, // Too small to fit 50 entries
+      high_water_mark_ratio: 0.5,
+    },
+    time_provider,
+    registry,
+  )
+  .await?;
+
+  let initial_len = store.len();
+
+  // Try to insert a batch that's too large for max capacity
+  let mut entries = Vec::new();
+  for i in 0 .. 50 {
+    entries.push((
+      Scope::FeatureFlag,
+      format!("key_{i}"),
+      make_string_value(&format!("value_{i}")),
+    ));
+  }
+
+  // This should fail with CapacityExceeded even after rotation
+  let result = store.extend(entries).await;
+  assert!(matches!(result, Err(UpdateError::CapacityExceeded)));
+
+  // Verify atomicity - no partial writes
+  assert_eq!(store.len(), initial_len);
+  for i in 0 .. 50 {
+    assert!(!store.contains_key(Scope::FeatureFlag, &format!("key_{i}")));
+  }
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn extend_atomicity_on_capacity_exceeded() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+  let registry = Arc::new(RetentionRegistry::new());
+
+  // Create a store with limited capacity
+  let (mut store, _) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    PersistentStoreConfig {
+      initial_buffer_size: 256, // Very small buffer
+      max_capacity_bytes: 512,  // Limited max capacity
+      high_water_mark_ratio: 0.8,
+    },
+    time_provider,
+    registry,
+  )
+  .await?;
+
+  // Fill up the store
+  for i in 0 .. 5 {
+    let _ = store
+      .insert(
+        Scope::FeatureFlag,
+        format!("existing_{i}"),
+        make_string_value(&format!("value_{i}")),
+      )
+      .await;
+  }
+
+  let initial_len = store.len();
+
+  // Try to batch insert entries that would exceed capacity
+  let mut entries = Vec::new();
+  for i in 0 .. 20 {
+    entries.push((
+      Scope::FeatureFlag,
+      format!("new_key_{i}"),
+      make_string_value(&format!("large_value_{}", "x".repeat(100))),
+    ));
+  }
+
+  let result = store.extend(entries).await;
+
+  // On failure, the journal write is rolled back so no entries are persisted
+  if result.is_err() {
+    // If it failed, verify no partial inserts occurred
+    assert_eq!(store.len(), initial_len, "No partial writes on failure");
+    for i in 0 .. 20 {
+      assert_eq!(
+        store.get(Scope::FeatureFlag, &format!("new_key_{i}")),
+        None,
+        "No partial inserts should occur on failure"
+      );
+    }
+  }
+
+  Ok(())
+}
+
+#[tokio::test]
+async fn extend_persistence() -> anyhow::Result<()> {
+  let temp_dir = TempDir::new()?;
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+  let registry = Arc::new(RetentionRegistry::new());
+
+  {
+    let (mut store, _) = VersionedKVStore::new(
+      temp_dir.path(),
+      "test",
+      PersistentStoreConfig {
+        initial_buffer_size: 4096,
+        ..Default::default()
+      },
+      time_provider.clone(),
+      registry.clone(),
+    )
+    .await?;
+
+    // Extend multiple entries
+    let entries = vec![
+      (
+        Scope::FeatureFlag,
+        "key1".to_string(),
+        make_string_value("value1"),
+      ),
+      (
+        Scope::FeatureFlag,
+        "key2".to_string(),
+        make_string_value("value2"),
+      ),
+      (
+        Scope::GlobalState,
+        "key3".to_string(),
+        make_string_value("value3"),
+      ),
+    ];
+
+    store.extend(entries).await?;
+    store.sync()?;
+  }
+
+  // Reopen and verify data persisted
+  let (store, data_loss) = VersionedKVStore::new(
+    temp_dir.path(),
+    "test",
+    PersistentStoreConfig {
+      initial_buffer_size: 4096,
+      ..Default::default()
+    },
+    time_provider,
+    registry,
+  )
+  .await?;
+
+  assert_eq!(data_loss, DataLoss::None);
+  assert_eq!(store.len(), 3);
+  assert_eq!(
+    store.get(Scope::FeatureFlag, "key1"),
+    Some(&make_string_value("value1"))
+  );
+  assert_eq!(
+    store.get(Scope::FeatureFlag, "key2"),
+    Some(&make_string_value("value2"))
+  );
+  assert_eq!(
+    store.get(Scope::GlobalState, "key3"),
+    Some(&make_string_value("value3"))
   );
 
   Ok(())

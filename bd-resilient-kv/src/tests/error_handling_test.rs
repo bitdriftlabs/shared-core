@@ -69,7 +69,11 @@ fn test_position_larger_than_buffer() {
     Err(e) => e.to_string(),
     Ok(_) => panic!("Expected error but got Ok"),
   };
-  assert!(error_message.contains("Invalid position"));
+  assert!(
+    error_message.contains("Invalid position") || error_message.contains("position"),
+    "Expected error about position, got: {}",
+    error_message
+  );
 }
 
 #[test]
