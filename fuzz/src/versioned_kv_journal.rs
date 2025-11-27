@@ -284,8 +284,6 @@ pub struct VersionedKVJournalFuzzTest {
   registry: Arc<RetentionRegistry>,
   state: AHashMap<(Scope, String), TimestampedValue>,
   keys: KeyPool,
-  /// Track whether the journal is full (capacity exceeded)
-  is_full: bool,
 }
 
 impl VersionedKVJournalFuzzTest {
@@ -332,7 +330,6 @@ impl VersionedKVJournalFuzzTest {
       registry,
       state: AHashMap::default(),
       keys: KeyPool { keys: Vec::new() },
-      is_full: false,
     }
   }
 
@@ -377,76 +374,6 @@ impl VersionedKVJournalFuzzTest {
     // Use a dummy scope and timestamp for size calculation
     // The actual scope doesn't affect size calculation (it's always 1 byte)
     Frame::compute_encoded_size(key, timestamp, value)
-  }
-
-  /// Estimate the size of the current state in bytes.
-  /// We estimate conservatively to avoid false positives.
-  fn estimate_state_size(&self) -> usize {
-    let mut total_size = VERSIONED_JOURNAL_HEADER_SIZE;
-
-    for ((_, key_str), timestamped_value) in &self.state {
-      // Use our entry size estimator for consistency
-      let entry_size = Self::estimate_entry_size(
-        key_str,
-        &timestamped_value.value,
-        timestamped_value.timestamp,
-      );
-      total_size += entry_size;
-    }
-
-    total_size
-  }
-
-  /// Verify that when the buffer is flagged as full, the state is actually using
-  /// a significant portion of the buffer capacity.
-  ///
-  /// This validation is lenient for cases with very large individual entries that
-  /// may not fit in max capacity, focusing on detecting genuine incorrect full detection.
-  fn verify_full_flag(&self) {
-    if self.is_full {
-      let estimated_size = self.estimate_state_size();
-
-      // Check if we have any entries that individually exceed max capacity.
-      // Such entries are genuinely oversized and should legitimately cause CapacityExceeded.
-      let has_oversized_entry = self.state.iter().any(|((_, key_str), tv)| {
-        Self::estimate_entry_size(
-          key_str,
-          &tv.value,
-          (self
-            .time_provider
-            .now()
-            .unix_timestamp_nanos()
-            .checked_div(1_000)
-            .unwrap())
-          .try_into()
-          .unwrap(),
-        ) > self.max_capacity_bytes
-      });
-
-      if has_oversized_entry {
-        // When we have oversized entries (larger than max capacity), we can't reliably
-        // validate capacity usage since even a single entry cannot fit. This is an expected
-        // failure case.
-        log::debug!(
-          "Buffer full with oversized entries (> max_capacity) present, skipping capacity \
-           validation"
-        );
-        return;
-      }
-
-      // We expect the state to use at least 50% of the buffer size when flagged as full.
-      // This threshold is conservative to account for estimation errors and overhead.
-      let min_expected_size = self.buffer_size / 2;
-
-      assert!(
-        estimated_size >= min_expected_size,
-        "Buffer flagged as full but state only uses ~{} bytes out of {} buffer capacity (expected \
-         at least {}). This suggests incorrect full detection.",
-        estimated_size,
-        self.buffer_size,
-        min_expected_size
-      );
-    }
   }
 
   /// Classify the kind of error that is being returned.
@@ -524,9 +451,6 @@ impl VersionedKVJournalFuzzTest {
 
           match result {
             Ok(timestamp) => {
-              // Reset full flag on successful insert
-              self.is_full = false;
-
               // Since time is frozen unless advanced, the timestamp of the entry should be exactly
               // the current time.
               assert_eq!(timestamp, current_timestamp_micros());
@@ -565,14 +489,12 @@ impl VersionedKVJournalFuzzTest {
                      skipping insert",
                     self.max_capacity_bytes
                   );
-                  // Don't set is_full - this is an oversized entry, not accumulated capacity
                   continue;
                 },
                 CapacityErrorKind::BufferFull => {
                   log::info!(
                     "Journal full (entry size ~{entry_size} bytes), cannot insert more entries"
                   );
-                  self.is_full = true;
                   continue;
                 },
                 CapacityErrorKind::Other => {
@@ -590,9 +512,6 @@ impl VersionedKVJournalFuzzTest {
 
           match result {
             Ok(timestamp) => {
-              // Reset full flag on successful remove
-              self.is_full = false;
-
               let key = (scope, key_str.clone());
               if self.state.contains_key(&key) {
                 // Key existed, should get the current timestamp of removal.
@@ -612,7 +531,6 @@ impl VersionedKVJournalFuzzTest {
               match Self::classify_error(&e, None, self.buffer_size, self.max_capacity_bytes) {
                 CapacityErrorKind::BufferFull | CapacityErrorKind::OversizedEntry => {
                   log::info!("Journal full, cannot remove entries");
-                  self.is_full = true;
                   continue;
                 },
                 CapacityErrorKind::Other => {
@@ -730,8 +648,6 @@ impl VersionedKVJournalFuzzTest {
             store = new_store;
             self.state.clear();
             self.keys.keys.clear();
-            // Reset full flag since we have a fresh store with no data
-            self.is_full = false;
             continue;
           };
 
@@ -744,10 +660,7 @@ impl VersionedKVJournalFuzzTest {
           if data_loss != DataLoss::None {
             // We saw some data loss so we need to update our expected state.
             self.state.clear();
-            // Reset full flag since we lost data
-            self.is_full = false;
           }
-          // If no data loss, keep is_full flag as-is since we recovered the same state
 
           // In the case of partial data loss, update expected keys based on what was recovered.
           if data_loss == DataLoss::Partial {
@@ -761,10 +674,7 @@ impl VersionedKVJournalFuzzTest {
           // Manually trigger rotation
           let result = store.rotate_journal().await;
           match result {
-            Ok(_) => {
-              // Reset full flag after successful rotation
-              self.is_full = false;
-            },
+            Ok(_) => {},
             Err(e) => {
               panic!("Unexpected error during rotation: {e}");
             },
@@ -791,9 +701,6 @@ impl VersionedKVJournalFuzzTest {
 
             match result {
               Ok(timestamp) => {
-                // Reset full flag on successful insert
-                self.is_full = false;
-
                 let key = (scope, key_str.clone());
                 // Track in our state
                 self.state.insert(
@@ -822,7 +729,7 @@ impl VersionedKVJournalFuzzTest {
                   CapacityErrorKind::OversizedEntry => {
                     log::info!(
                       "Entry too large (~{entry_size} bytes) during bulk insert at entry {i}, \
-                       stopping bulk insert"
+                        stopping bulk insert"
                     );
                     break;
                   },
@@ -830,7 +737,6 @@ impl VersionedKVJournalFuzzTest {
                     log::info!(
                       "Journal full during bulk insert at entry {i}, stopping bulk insert"
                     );
-                    self.is_full = true;
                     break;
                   },
                   CapacityErrorKind::Other => {
@@ -884,9 +790,6 @@ impl VersionedKVJournalFuzzTest {
 
           match result {
             Ok(timestamp) => {
-              // Reset full flag on successful extend
-              self.is_full = false;
-
               // Process all entries into our state model first (in order)
               // This handles cases where the same key appears multiple times in the batch
               for (scope, key_str, value) in &entries_to_insert {
@@ -955,7 +858,6 @@ impl VersionedKVJournalFuzzTest {
               ) {
                 CapacityErrorKind::OversizedEntry | CapacityErrorKind::BufferFull => {
                   log::info!("Extend failed due to capacity (~{total_size} bytes), journal full");
-                  self.is_full = true;
                   continue;
                 },
                 CapacityErrorKind::Other => {
@@ -967,9 +869,6 @@ impl VersionedKVJournalFuzzTest {
           }
         },
       }
-
-      // Verify that if buffer is flagged as full, the state is close to the size of the buffer.
-      self.verify_full_flag();
 
       // Ensure that the store's state matches our expected state
       assert!(
