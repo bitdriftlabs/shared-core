@@ -641,6 +641,9 @@ impl VersionedKVJournalFuzzTest {
           let _ = store.sync();
         },
         OperationType::Reopen => {
+          // Capture buffer size before reopen to verify it's preserved
+          let buffer_size_before = store.current_buffer_size();
+
           // Drop the store to release the file
           store.sync().unwrap();
           drop(store);
@@ -655,6 +658,14 @@ impl VersionedKVJournalFuzzTest {
           store = reopened_store;
 
           assert_eq!(data_loss, DataLoss::None, "Unexpected data loss on reopen");
+
+          // Verify buffer size is preserved after reopen (not reset to initial_buffer_size)
+          let buffer_size_after = store.current_buffer_size();
+          assert_eq!(
+            buffer_size_before, buffer_size_after,
+            "Buffer size should be preserved across reopen: before={buffer_size_before}, \
+             after={buffer_size_after}"
+          );
         },
         OperationType::ReopenWithCorruption { corruption, target } => {
           log::info!("Reopening with corruption: {corruption:?} targeting {target:?}",);
@@ -909,13 +920,10 @@ impl VersionedKVJournalFuzzTest {
 
                 match (expected_value, actual_value) {
                   (Some(expected), Some(actual)) => {
-                    assert_eq!(
-                      actual.timestamp, timestamp,
-                      "Timestamp mismatch for key {key:?}"
-                    );
-                    assert_eq!(
-                      &actual.value, &expected.value,
-                      "Value mismatch for key {key:?}"
+                    assert!(
+                      compare_values(expected, actual),
+                      "Value or timestamp mismatch for key {key:?}: expected={expected:?}, \
+                       actual={actual:?}"
                     );
                   },
                   (None, None) => {
