@@ -238,7 +238,6 @@ impl PersistentStore {
     retention_registry: Arc<RetentionRegistry>,
     stats: CommonStats,
   ) -> anyhow::Result<(Self, DataLoss)> {
-    let buffer_size = config.initial_buffer_size;
     let high_water_mark_ratio = config.high_water_mark_ratio;
     let dir = dir_path.as_ref();
     let (journal_path, generation) = file_manager::find_active_journal(dir, name).await;
@@ -248,44 +247,50 @@ impl PersistentStore {
       journal_path.display()
     );
 
-    let (journal, initial_state, data_loss) = if journal_path.exists() {
-      Self::open(
-        &journal_path,
-        buffer_size,
-        high_water_mark_ratio,
-        time_provider.clone(),
-      )
-      .map(|opened| {
-        (
-          opened.journal,
-          opened.initial_state,
-          opened.data_loss.into(),
-        )
-      })
-      .or_else(|_| {
-        Ok::<_, anyhow::Error>((
-          MemMappedVersionedJournal::new(
-            &journal_path,
+    let (journal, initial_state, data_loss, buffer_size) = if journal_path.exists() {
+      Self::open(&journal_path, high_water_mark_ratio, time_provider.clone())
+        .map(|opened| {
+          // Get the buffer size from the opened journal. The buffer might have grown dynamically.
+          let buffer_size = opened.journal.buffer_len();
+          (
+            opened.journal,
+            opened.initial_state,
+            opened.data_loss.into(),
             buffer_size,
-            high_water_mark_ratio,
-            time_provider,
-            std::iter::empty(),
-          )?,
-          ScopedMaps::default(),
-          DataLoss::Total,
-        ))
-      })?
+          )
+        })
+        .or_else(|e| {
+          log::debug!(
+            "Failed to open existing journal {}: {}. Creating a fresh journal.",
+            journal_path.display(),
+            e
+          );
+
+          Ok::<_, anyhow::Error>((
+            MemMappedVersionedJournal::new(
+              &journal_path,
+              config.initial_buffer_size,
+              high_water_mark_ratio,
+              time_provider,
+              std::iter::empty(),
+            )?,
+            ScopedMaps::default(),
+            DataLoss::Total,
+            config.initial_buffer_size,
+          ))
+        })?
     } else {
       (
         MemMappedVersionedJournal::new(
           &journal_path,
-          buffer_size,
+          config.initial_buffer_size,
           high_water_mark_ratio,
           time_provider,
           std::iter::empty(),
         )?,
         ScopedMaps::default(),
         DataLoss::None,
+        config.initial_buffer_size,
       )
     };
 
@@ -309,18 +314,17 @@ impl PersistentStore {
 
   fn open(
     journal_path: &Path,
-    buffer_size: usize,
     high_water_mark_ratio: f32,
     time_provider: Arc<dyn TimeProvider>,
   ) -> anyhow::Result<OpenedJournal> {
     let mut initial_state = ScopedMaps::default();
     let (journal, data_loss) = MemMappedVersionedJournal::<StateValue>::from_file(
       journal_path,
-      buffer_size,
       high_water_mark_ratio,
       time_provider,
       |scope, key, value, timestamp| {
         if value.value_type.is_some() {
+          log::trace!("Restoring key in scope {scope:?}: {key} (ts={timestamp})");
           initial_state.insert(
             scope,
             key.to_string(),
@@ -330,6 +334,7 @@ impl PersistentStore {
             },
           );
         } else {
+          log::trace!("Restoring deletion in scope {scope:?}: {key}");
           initial_state.remove(scope, key);
         }
       },
