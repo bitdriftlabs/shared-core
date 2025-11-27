@@ -305,7 +305,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     self.high_water_mark_triggered = true;
   }
 
-  /// Insert a new entry into the journal with the given scope, key, and payload.
+  /// Insert a new entry into the journal with the given scope, key, and payload reference.
   /// Returns the timestamp of the operation.
   ///
   /// The timestamp is monotonically non-decreasing and serves as the version identifier.
@@ -315,17 +315,57 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
   /// * `scope` - The scope for this entry (e.g., `FeatureFlag`, `ClientStat`, etc.)
   /// * `key` - The key for this entry
   /// * `message` - The protobuf message payload
-  pub fn insert_entry(&mut self, scope: Scope, key: &str, message: M) -> Result<u64, UpdateError> {
+  pub fn insert_entry_ref(
+    &mut self,
+    scope: Scope,
+    key: &str,
+    message: &M,
+  ) -> Result<u64, UpdateError> {
     let timestamp = self.next_monotonic_timestamp()?;
 
-    // Create payload
-    let frame = Frame::new(scope, key, timestamp, message);
-
-    // Encode frame
+    // Encode directly from references
     let available_space = &mut self.buffer[self.position ..];
-    let encoded_len = frame.encode(available_space)?;
+    let encoded_len = Frame::encode_entry(scope, key, timestamp, message, available_space)?;
 
     self.set_position(self.position + encoded_len);
+    Ok(timestamp)
+  }
+
+  /// Insert multiple key-value pairs with a shared timestamp.
+  ///
+  /// All entries are written with the same timestamp. If any entry fails to write due to
+  /// insufficient space, the journal position is rolled back and an error is returned.
+  ///
+  /// If entries is empty, this is a no-op that returns the current timestamp.
+  ///
+  /// # Arguments
+  /// * `entries` - Iterator of (scope, key, message) tuples with borrowed strings and messages
+  ///
+  /// Returns the timestamp assigned to all entries on success.
+  pub fn extend_entries_ref<'b>(
+    &mut self,
+    entries: impl IntoIterator<Item = (Scope, &'b str, &'b M)>,
+  ) -> Result<u64, UpdateError> {
+    let timestamp = self.next_monotonic_timestamp()?;
+    let start_position = self.position;
+
+    for (scope, key, message) in entries {
+      let available_space = &mut self.buffer[self.position ..];
+      match Frame::encode_entry(scope, key, timestamp, message, available_space) {
+        Ok(encoded_len) => {
+          self.position += encoded_len;
+        },
+        Err(e) => {
+          // Rollback to start position on failure
+          self.position = start_position;
+          return Err(e);
+        },
+      }
+    }
+
+    write_position(self.buffer, self.position);
+    self.check_high_water_mark();
+
     Ok(timestamp)
   }
 
