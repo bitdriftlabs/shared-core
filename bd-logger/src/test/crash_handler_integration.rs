@@ -23,7 +23,7 @@ use time::macros::datetime;
 const CRASH_CONTENTS: &str = "\x14\x00\x00\x00\x00\x00\x0e\x00\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00\x04\x00\x0e\x00\x00\x00\x04\x00\x00\x00\x01\x00\x00\x00\x0c\x00\x00\x00\x00\x00\x06\x00\x08\x00\x04\x00\x06\x00\x00\x00\x04\x00\x00\x00\x06\x00\x00\x00crash1\x00\x00";
 
 #[test]
-fn crash_reports_feature_flags() {
+fn crash_report_upload() {
   let timestamp = datetime!(2021-01-01 00:00:00 UTC);
 
   let (directory, initial_session_id) = {
@@ -44,6 +44,11 @@ fn crash_reports_feature_flags() {
     setup
       .logger_handle
       .set_feature_flag("flag_with_variant".to_string(), Some("variant".to_string()));
+
+    // Flush state to ensure feature flags are persisted before writing the crash report
+    setup
+      .logger_handle
+      .flush_state(Block::Yes(5.std_seconds()));
 
     // Log one log to trigger a global state update, blocking to make sure it gets processed.
     setup.logger_handle.log(

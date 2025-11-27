@@ -25,9 +25,7 @@ use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_common::{maybe_await, maybe_await_map};
 use bd_crash_handler::global_state;
 use bd_device::Store;
-use bd_error_reporter::reporter::{handle_unexpected, handle_unexpected_error_with_details};
-use bd_feature_flags::{FeatureFlags, FeatureFlagsBuilder};
-use bd_log::warn_every;
+use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
@@ -51,6 +49,7 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
+use bd_state::Scope;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::WorkflowDebugStateMap;
@@ -62,7 +61,6 @@ use std::sync::Arc;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use tokio::sync::{mpsc, oneshot};
-use tokio::task;
 use tokio::time::Sleep;
 
 //
@@ -183,14 +181,6 @@ impl MemorySized for LogLine {
   }
 }
 
-/// Tracks the initialization state of the feature flags. By tracking the initialization state like
-/// this we can avoid attempting to initialize the feature flags multiple times in the case of
-/// failures.
-enum FeatureFlagInitialization {
-  Pending(FeatureFlagsBuilder),
-  Initialized(Option<FeatureFlags>),
-}
-
 //
 // AsyncLogBuffer
 //
@@ -221,7 +211,6 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   time_provider: Arc<dyn TimeProvider>,
   lifecycle_state: InitLifecycleState,
 
-  feature_flags: FeatureFlagInitialization,
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
 }
@@ -245,7 +234,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     store: &Arc<Store>,
     time_provider: Arc<dyn TimeProvider>,
     lifecycle_state: InitLifecycleState,
-    feature_flags_builder: FeatureFlagsBuilder,
     data_upload_tx: mpsc::Sender<DataUpload>,
   ) -> (Self, Sender<AsyncLogBufferMessage>) {
     let (async_log_buffer_communication_tx, async_log_buffer_communication_rx) = channel(
@@ -316,8 +304,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         ),
         time_provider,
         lifecycle_state,
-
-        feature_flags: FeatureFlagInitialization::Pending(feature_flags_builder),
 
         pending_workflow_debug_state: HashMap::new(),
         send_workflow_debug_state_delay: None,
@@ -768,10 +754,18 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
-  pub async fn run(self, state_store: bd_state::Store, report_processor: impl ReportProcessor) -> Self {
+  pub async fn run(
+    self,
+    state_store: bd_state::Store,
+    report_processor: impl ReportProcessor,
+  ) -> Self {
     let shutdown_trigger = ComponentShutdownTrigger::default();
     self
-      .run_with_shutdown(state_store, report_processor, shutdown_trigger.make_shutdown())
+      .run_with_shutdown(
+        state_store,
+        report_processor,
+        shutdown_trigger.make_shutdown(),
+      )
       .await
   }
 
@@ -890,32 +884,27 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               self.metadata_collector.remove_field(&field_name);
             },
             AsyncLogBufferMessage::SetFeatureFlag(flag, variant) => {
-              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
-                feature_flags.set(flag, variant.as_deref()).unwrap_or_else(|e| {
-                  log::warn!("failed to set feature flag: {e}");
-                });
-              }
+                handle_unexpected(
+                state_store.insert(Scope::FeatureFlag, flag.clone(), variant.clone().unwrap_or_default()).await,
+                &format!("async log buffer: failed to set feature flag ({flag:?})"));
             },
             AsyncLogBufferMessage::SetFeatureFlags(flags) => {
-              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
-                feature_flags.set_multiple(flags).unwrap_or_else(|e| {
-                  log::warn!("failed to set feature flags: {e}");
-                });
-              }
+                handle_unexpected(
+                state_store.extend(Scope::FeatureFlag, flags.into_iter().map(|(k, v)| (k, v.unwrap_or_default()))).await,
+                "async log buffer: failed to set feature flags");
             },
             AsyncLogBufferMessage::RemoveFeatureFlag(flag) => {
-              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
-                feature_flags.remove(&flag).unwrap_or_else(|e| {
-                  log::warn!("failed to remove feature flag ({flag:?}): {e}");
-                });
-              }
+                handle_unexpected(
+                state_store.remove(Scope::FeatureFlag, &flag).await
+                ,
+                &format!("async log buffer: failed to remove feature flag ({flag:?})"));
+
             },
             AsyncLogBufferMessage::ClearFeatureFlags => {
-              if let Some(feature_flags) = self.maybe_initialize_feature_flags().await {
-                feature_flags.clear().unwrap_or_else(|e| {
-                  log::warn!("failed to clear feature flags: {e}");
-                });
-              }
+                handle_unexpected(
+                state_store.clear(Scope::FeatureFlag)
+                .await,
+                "async log buffer: failed to clear feature flags");
             },
             AsyncLogBufferMessage::FlushState(completion_tx) => {
               let (sender, receiver) = bd_completion::Sender::new();
@@ -970,39 +959,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           return self;
         },
       }
-    }
-  }
-
-  /// Lazily initializes the feature flags if they have not been initialized yet.
-  async fn maybe_initialize_feature_flags(&mut self) -> Option<&mut FeatureFlags> {
-    if let FeatureFlagInitialization::Pending(builder) = &self.feature_flags {
-      let builder = builder.clone();
-      let feature_flags = task::spawn_blocking(move || {
-        // This should never fail unless there's a serious filesystem issue.
-        // Treat this as an unexpected error so we get visibility into it.
-        // If this keeps happening for normal reasons we can remove this later.
-        builder
-          .current_feature_flags()
-          .map_err(|e| {
-            handle_unexpected_error_with_details(e, "feature flag initialization", || None);
-          })
-          .ok()
-      })
-      .await
-      .ok()
-      .flatten();
-
-      self.feature_flags = FeatureFlagInitialization::Initialized(feature_flags);
-    }
-
-    if let FeatureFlagInitialization::Initialized(ref mut feature_flags) = self.feature_flags {
-      feature_flags.as_mut()
-    } else {
-      warn_every!(
-        30.seconds(),
-        "feature flags failed to initialize, will not be available"
-      );
-      None
     }
   }
 

@@ -7,7 +7,7 @@
 
 #![allow(clippy::unwrap_used)]
 
-use crate::{Scope, StateReader, Store};
+use crate::{InitStrategy, Scope, StateReader, Store};
 use bd_resilient_kv::PersistentStoreConfig;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -315,4 +315,209 @@ async fn fallback_to_in_memory_on_invalid_directory() {
     reader.get(Scope::FeatureFlag, "test_flag"),
     Some("test_value")
   );
+}
+
+#[tokio::test]
+async fn from_strategy_in_memory_only() {
+  let temp_dir = tempfile::tempdir().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  let result = Store::from_strategy(
+    temp_dir.path(),
+    PersistentStoreConfig::default(),
+    time_provider,
+    InitStrategy::InMemoryOnly,
+  )
+  .await;
+
+  // Should create an in-memory store
+  assert!(!result.fallback_occurred);
+  assert!(result.data_loss.is_none());
+  assert!(result.previous_state.is_empty());
+
+  // Verify store works
+  result
+    .store
+    .insert(
+      Scope::FeatureFlag,
+      "flag".to_string(),
+      "value".to_string(),
+    )
+    .await
+    .unwrap();
+
+  let reader = result.store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag"), Some("value"));
+}
+
+#[tokio::test]
+async fn from_strategy_persistent_with_fallback() {
+  let temp_dir = tempfile::tempdir().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  let result = Store::from_strategy(
+    temp_dir.path(),
+    PersistentStoreConfig::default(),
+    time_provider,
+    InitStrategy::PersistentWithFallback,
+  )
+  .await;
+
+  // Should create a persistent store successfully
+  assert!(!result.fallback_occurred);
+  assert!(result.data_loss.is_some());
+  assert!(result.previous_state.is_empty());
+
+  // Verify store works
+  result
+    .store
+    .insert(
+      Scope::FeatureFlag,
+      "flag".to_string(),
+      "value".to_string(),
+    )
+    .await
+    .unwrap();
+
+  let reader = result.store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag"), Some("value"));
+}
+
+#[tokio::test]
+async fn from_strategy_persistent_with_fallback_on_failure() {
+  // Use an invalid path to trigger fallback
+  let temp_file = tempfile::NamedTempFile::new().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  let result = Store::from_strategy(
+    temp_file.path(),
+    PersistentStoreConfig::default(),
+    time_provider,
+    InitStrategy::PersistentWithFallback,
+  )
+  .await;
+
+  // Should fall back to in-memory
+  assert!(result.fallback_occurred);
+  assert!(result.data_loss.is_none());
+  assert!(result.previous_state.is_empty());
+
+  // Verify in-memory store works
+  result
+    .store
+    .insert(
+      Scope::FeatureFlag,
+      "flag".to_string(),
+      "value".to_string(),
+    )
+    .await
+    .unwrap();
+
+  let reader = result.store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag"), Some("value"));
+}
+
+#[tokio::test]
+async fn from_runtime_config_enabled() {
+  let temp_dir = tempfile::tempdir().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  // Create a watch channel with persistent storage enabled
+  let (tx, rx) = tokio::sync::watch::channel(true);
+
+  let result = Store::from_runtime_config(
+    temp_dir.path(),
+    PersistentStoreConfig::default(),
+    time_provider.clone(),
+    rx,
+  )
+  .await;
+
+  // Should create a persistent store
+  assert!(!result.fallback_occurred);
+  assert!(result.data_loss.is_some());
+
+  // Verify store works and persists across restarts
+  result
+    .store
+    .insert(
+      Scope::FeatureFlag,
+      "flag".to_string(),
+      "value".to_string(),
+    )
+    .await
+    .unwrap();
+
+  drop(result);
+
+  // Create a new store with the same directory
+  let (_, rx2) = tokio::sync::watch::channel(true);
+  let result2 = Store::from_runtime_config(
+    temp_dir.path(),
+    PersistentStoreConfig::default(),
+    time_provider,
+    rx2,
+  )
+  .await;
+
+  // Previous state should be captured before clearing
+  assert_eq!(
+    result2
+      .previous_state
+      .get(Scope::FeatureFlag, "flag")
+      .map(|v| v.value.string_value()),
+    Some("value")
+  );
+
+  // But current store should be empty (ephemeral scopes cleared)
+  let reader = result2.store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag"), None);
+  drop(tx);
+}
+
+#[tokio::test]
+async fn from_runtime_config_disabled() {
+  let temp_dir = tempfile::tempdir().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  // Create a watch channel with persistent storage disabled
+  let (tx, rx) = tokio::sync::watch::channel(false);
+
+  let result = Store::from_runtime_config(
+    temp_dir.path(),
+    PersistentStoreConfig::default(),
+    time_provider,
+    rx,
+  )
+  .await;
+
+  // Should create an in-memory store
+  assert!(!result.fallback_occurred);
+  assert!(result.data_loss.is_none());
+  assert!(result.previous_state.is_empty());
+
+  // Verify store works
+  result
+    .store
+    .insert(
+      Scope::FeatureFlag,
+      "flag".to_string(),
+      "value".to_string(),
+    )
+    .await
+    .unwrap();
+
+  let reader = result.store.read().await;
+  assert_eq!(reader.get(Scope::FeatureFlag, "flag"), Some("value"));
+  drop(tx);
 }

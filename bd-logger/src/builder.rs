@@ -30,7 +30,6 @@ use bd_client_stats::stats::{
 use bd_client_stats_store::Collector;
 use bd_crash_handler::Monitor;
 use bd_error_reporter::reporter::{UnexpectedErrorHandler, handle_unexpected};
-use bd_feature_flags::FeatureFlagsBuilder;
 use bd_internal_logging::NoopLogger;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::network_quality::NetworkCallOnlineIndicatorTimeout;
@@ -207,12 +206,6 @@ impl LoggerBuilder {
         log_network_quality_provider.clone(),
       ]));
 
-    let feature_flags_builder = FeatureFlagsBuilder::new(
-      &self.params.sdk_directory,
-      self.params.feature_flags_file_size_bytes,
-      self.params.feature_flags_high_watermark,
-    );
-
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
       UninitializedLoggingContext::new(
         &self.params.sdk_directory,
@@ -242,7 +235,6 @@ impl LoggerBuilder {
       &self.params.store,
       time_provider.clone(),
       init_lifecycle.clone(),
-      feature_flags_builder.clone(),
       data_upload_tx.clone(),
     );
 
@@ -281,38 +273,22 @@ impl LoggerBuilder {
       let state_directory = self.params.sdk_directory.join("state");
       std::fs::create_dir_all(&state_directory)?;
 
-      // Check if persistent storage is enabled via runtime flag
-      let use_persistent_storage =
-        *bd_runtime::runtime::global_state::UsePersistentStorage::register(&runtime_loader)
-          .into_inner()
-          .borrow();
+      // Initialize state store based on runtime configuration
+      let use_persistent_storage_flag =
+        bd_runtime::runtime::global_state::UsePersistentStorage::register(&runtime_loader)
+          .into_inner();
 
-      let (state_store, _data_loss, previous_run_state, used_fallback) = if use_persistent_storage
-      {
-        // Attempt persistent storage with fallback to in-memory
-        let result = bd_state::Store::persistent_or_fallback(
-          &state_directory,
-          bd_state::PersistentStoreConfig::default(),
-          time_provider.clone(),
-        )
-        .await;
-        (
-          result.store,
-          result.data_loss,
-          result.previous_state,
-          result.fallback_occurred,
-        )
-      } else {
-        // Use in-memory only
-        (
-          bd_state::Store::in_memory(time_provider.clone(), None),
-          None,
-          bd_resilient_kv::ScopedMaps::default(),
-          false,
-        )
-      };
+      let result = bd_state::Store::from_runtime_config(
+        &state_directory,
+        bd_state::PersistentStoreConfig::default(),
+        time_provider.clone(),
+        use_persistent_storage_flag,
+      )
+      .await;
 
-      if used_fallback {
+      let (state_store, previous_run_state) = (result.store, result.previous_state);
+
+      if result.fallback_occurred {
         handle_unexpected(
           Err::<(), anyhow::Error>(anyhow::anyhow!(
             "Failed to initialize persistent state store, using in-memory fallback"
@@ -320,8 +296,6 @@ impl LoggerBuilder {
           "state initialization",
         );
       }
-
-      feature_flags_builder.backup_previous();
 
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
         Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),

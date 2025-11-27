@@ -20,6 +20,7 @@ mod tests;
 
 pub mod test;
 
+pub use self::InitStrategy::{InMemoryOnly, PersistentWithFallback};
 use ahash::AHashMap;
 use bd_resilient_kv::{DataLoss, RetentionRegistry, ScopedMaps, StateValue, Value_type};
 pub use bd_resilient_kv::{PersistentStoreConfig, Scope};
@@ -28,7 +29,7 @@ use itertools::Itertools as _;
 use std::path::Path;
 use std::sync::Arc;
 use time::OffsetDateTime;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, watch};
 
 /// A timestamped state value, used in snapshots.
 pub type TimestampedStateValue = (String, OffsetDateTime);
@@ -70,6 +71,19 @@ pub struct StoreInitWithFallbackResult {
   pub previous_state: ScopedMaps,
   /// Whether fallback to in-memory storage occurred
   pub fallback_occurred: bool,
+}
+
+//
+// InitStrategy
+//
+
+/// Strategy for initializing the state store, based on runtime configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InitStrategy {
+  /// Use persistent storage with automatic fallback to in-memory if initialization fails
+  PersistentWithFallback,
+  /// Use in-memory storage only
+  InMemoryOnly,
 }
 
 //
@@ -189,6 +203,68 @@ impl Store {
     }
   }
 
+  /// Creates a Store based on runtime configuration.
+  ///
+  /// This method monitors a runtime flag to determine whether to use persistent or in-memory
+  /// storage. When persistent storage is enabled, it will automatically fall back to in-memory
+  /// storage if initialization fails.
+  ///
+  /// # Arguments
+  ///
+  /// * `directory` - Directory for persistent storage
+  /// * `config` - Configuration for persistent storage
+  /// * `time_provider` - Time provider for timestamps
+  /// * `use_persistent_storage` - Watch receiver for the runtime flag
+  ///
+  /// # Returns
+  ///
+  /// A `StoreInitWithFallbackResult` containing the initialized store and metadata about
+  /// initialization (data loss, previous state snapshot, whether fallback occurred).
+  pub async fn from_runtime_config(
+    directory: &Path,
+    config: PersistentStoreConfig,
+    time_provider: Arc<dyn TimeProvider>,
+    use_persistent_storage: watch::Receiver<bool>,
+  ) -> StoreInitWithFallbackResult {
+    let strategy = if *use_persistent_storage.borrow() {
+      InitStrategy::PersistentWithFallback
+    } else {
+      InitStrategy::InMemoryOnly
+    };
+
+    Self::from_strategy(directory, config, time_provider, strategy).await
+  }
+
+  /// Creates a Store based on an explicit initialization strategy.
+  ///
+  /// This is useful for testing the initialization logic without needing to set up
+  /// runtime configuration.
+  ///
+  /// # Arguments
+  ///
+  /// * `directory` - Directory for persistent storage
+  /// * `config` - Configuration for persistent storage
+  /// * `time_provider` - Time provider for timestamps
+  /// * `strategy` - The initialization strategy to use
+  pub async fn from_strategy(
+    directory: &Path,
+    config: PersistentStoreConfig,
+    time_provider: Arc<dyn TimeProvider>,
+    strategy: InitStrategy,
+  ) -> StoreInitWithFallbackResult {
+    match strategy {
+      InitStrategy::PersistentWithFallback => {
+        Self::persistent_or_fallback(directory, config, time_provider).await
+      },
+      InitStrategy::InMemoryOnly => StoreInitWithFallbackResult {
+        store: Self::in_memory(time_provider, None),
+        data_loss: None,
+        previous_state: ScopedMaps::default(),
+        fallback_occurred: false,
+      },
+    }
+  }
+
   /// Creates a new in-memory Store that does not persist to disk.
   ///
   /// This is useful when persistent storage is not needed or when used as a fallback
@@ -219,6 +295,35 @@ impl Store {
           value_type: Value_type::StringValue(value).into(),
           ..Default::default()
         },
+      )
+      .await?;
+
+    Ok(())
+  }
+
+  pub async fn extend(
+    &self,
+    scope: Scope,
+    entries: impl IntoIterator<Item = (String, String)>,
+  ) -> anyhow::Result<()> {
+    self
+      .inner
+      .write()
+      .await
+      .extend(
+        entries
+          .into_iter()
+          .map(|(key, value)| {
+            (
+              scope,
+              key,
+              StateValue {
+                value_type: Value_type::StringValue(value).into(),
+                ..Default::default()
+              },
+            )
+          })
+          .collect(),
       )
       .await?;
 
