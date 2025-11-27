@@ -387,13 +387,13 @@ impl LoggerHandle {
     );
   }
 
-  pub fn add_log_field(&self, key: &str, value: LogFieldValue) {
+  pub fn add_log_field(&self, key: String, value: LogFieldValue) {
     with_reentrancy_guard!(
       {
-        let result =
-          AsyncLogBuffer::<LoggerReplay>::add_log_field(&self.tx, key.to_string(), value);
+        let field_name = key.clone();
+        let result = AsyncLogBuffer::<LoggerReplay>::add_log_field(&self.tx, key, value);
         if let Err(e) = result {
-          log::warn!("failed to add {key:?} log field: {e:?}");
+          log::warn!("failed to add {field_name:?} log field: {e:?}");
         }
       },
       "failed to add {:?} log field, adding log fields from within a field provider is not allowed",
