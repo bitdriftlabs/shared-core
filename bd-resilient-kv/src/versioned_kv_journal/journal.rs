@@ -14,7 +14,6 @@ use std::sync::Arc;
 /// Indicates whether partial data loss has occurred. Partial data loss is detected when the
 /// journal would be parsed from disk, but we were not able to find valid records up to `position`
 /// as stored in the header.
-#[derive(Debug)]
 pub enum PartialDataLoss {
   Yes,
   None,
@@ -222,11 +221,6 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
       anyhow::bail!("Unsupported version: {version}, expected {VERSION}");
     }
 
-    log::debug!(
-      "Initializing VersionedJournal: position={position}, high_water_mark={high_water_mark}, \
-       buffer_len={buffer_len}"
-    );
-
     // Find initialization timestamp and highest timestamp in the journal
     let buffer_state = Self::iterate_buffer(buffer, position, f);
 
@@ -260,9 +254,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
       partial_data_loss: PartialDataLoss::None,
     };
 
-    let mut count = 0;
     while cursor < position {
-      count += 1;
       let remaining = &buffer[cursor .. position];
 
       if let Ok((frame, consumed)) = Frame::<M>::decode(remaining) {
@@ -281,12 +273,6 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
         break;
       }
     }
-
-    log::debug!(
-      "Journal iteration complete: highest_timestamp={}, partial_data_loss={:?}, entries={count}",
-      state.highest_timestamp,
-      state.partial_data_loss
-    );
 
     state
   }
@@ -403,11 +389,5 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
       .checked_div(1_000)
       .and_then(|micros| micros.try_into().ok())
       .ok_or(InvariantError::Invariant)
-  }
-
-  /// Returns the total buffer size in bytes.
-  #[must_use]
-  pub fn buffer_len(&self) -> usize {
-    self.buffer.len()
   }
 }

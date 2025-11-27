@@ -111,22 +111,29 @@ impl<M: protobuf::Message> MemMappedVersionedJournal<M> {
   /// Create a new memory-mapped versioned KV journal from an existing file.
   ///
   /// The file must already exist and contain a properly formatted versioned KV journal.
-  /// The actual file size is used rather than resizing, preserving any dynamic growth
-  /// that occurred during previous runs.
+  /// The file will be resized to the specified size if it's different.
   ///
   /// # Arguments
   /// * `file_path` - Path to the existing file
+  /// * `size` - Size to resize the file to in bytes
   /// * `high_water_mark_ratio` - Ratio (0.1 to 1.0) for high water mark trigger point
   ///
   /// # Errors
   /// Returns an error if the file cannot be opened, memory-mapped, or contains invalid data.
+  /// Note: If the new size is smaller than the current file size, data may be truncated.
   pub fn from_file<P: AsRef<Path>>(
     file_path: P,
+    size: usize,
     high_water_mark_ratio: f32,
     time_provider: Arc<dyn TimeProvider>,
     f: impl FnMut(Scope, &str, &M, u64),
   ) -> anyhow::Result<(Self, PartialDataLoss)> {
     let file = OpenOptions::new().read(true).write(true).open(file_path)?;
+
+    let file_len = file.metadata()?.len();
+    if file_len != size as u64 {
+      file.set_len(size as u64)?;
+    }
 
     let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 
