@@ -27,12 +27,14 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Timestamp,
 };
 use bd_proto_util::ToFlatBufferString;
+use bd_resilient_kv::StateValue;
 use bd_runtime::runtime::{self};
 use bd_session::fixed::{self, UUIDCallbacks};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::test::TestStore;
 use bd_test_helpers::make_mut;
 use bd_test_helpers::session::in_memory_store;
+use bd_time::TestTimeProvider;
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, WIPOffset};
 use itertools::Itertools;
 use std::io::Read;
@@ -167,29 +169,27 @@ impl Setup {
   ///
   /// In production, this snapshot is created by `Store::persistent()` which captures state
   /// before clearing ephemeral scopes. This helper allows tests to simulate that snapshot.
-  fn make_previous_run_state(flags: Vec<(&str, &str)>) -> bd_resilient_kv::ScopedMaps {
-    let mut previous_run_state = bd_resilient_kv::ScopedMaps::default();
-    let timestamp = datetime!(2024-01-01 00:00 UTC).unix_timestamp_nanos() as u64 / 1000;
+  async fn make_previous_run_state(flags: Vec<(&str, &str)>) -> bd_resilient_kv::ScopedMaps {
+    let mut store = bd_resilient_kv::VersionedKVStore::new_in_memory(
+      Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00 UTC))),
+      None,
+    );
+
 
     for (name, value) in flags {
-      previous_run_state.insert(
-        bd_resilient_kv::Scope::FeatureFlag,
-        name.to_string(),
-        bd_resilient_kv::TimestampedValue {
-          value: bd_proto::protos::state::payload::StateValue {
-            value_type: Some(
-              bd_proto::protos::state::payload::state_value::Value_type::StringValue(
-                value.to_string(),
-              ),
-            ),
+      store
+        .insert(
+          bd_resilient_kv::Scope::FeatureFlag,
+          name.to_string(),
+          StateValue {
+            value_type: Some(bd_resilient_kv::Value_type::StringValue(value.to_string())),
             ..Default::default()
           },
-          timestamp,
-        },
-      );
+        )
+        .await;
     }
 
-    previous_run_state
+    store.as_hashmap().clone()
   }
 
   async fn new(maybe_global_state: Option<LogFields>, enable_file_watcher: bool) -> Self {
@@ -246,7 +246,8 @@ impl Setup {
     let previous_run_state = Self::make_previous_run_state(vec![
       ("initial_flag", "true"),
       ("previous_only_flag", "enabled"),
-    ]);
+    ])
+    .await;
 
     // Seed the current state with initial feature flags to represent the state at startup.
     // This simulates flags being set during the current session initialization.
