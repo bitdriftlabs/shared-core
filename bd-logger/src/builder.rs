@@ -271,20 +271,11 @@ impl LoggerBuilder {
       // Load the previous state snapshot into memory-mapped storage for crash reporting.
       // This loads the state from disk without maintaining an open file handle.
       let state_directory = self.params.sdk_directory.join("state");
-      std::fs::create_dir_all(&state_directory)?;
 
-      // Initialize state store based on runtime configuration
-      let use_persistent_storage_flag =
-        bd_runtime::runtime::global_state::UsePersistentStorage::register(&runtime_loader)
-          .into_inner();
-
-      let result = bd_state::Store::from_runtime_config(
-        &state_directory,
-        bd_state::PersistentStoreConfig::default(),
-        time_provider.clone(),
-        use_persistent_storage_flag,
-      )
-      .await;
+      // Initialize state store using runtime configuration
+      let result =
+        bd_state::Store::from_runtime(&state_directory, time_provider.clone(), &runtime_loader)
+          .await;
 
       let (state_store, previous_run_state) = (result.store, result.previous_state);
 

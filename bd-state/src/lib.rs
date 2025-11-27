@@ -24,12 +24,13 @@ pub use self::InitStrategy::{InMemoryOnly, PersistentWithFallback};
 use ahash::AHashMap;
 use bd_resilient_kv::{DataLoss, RetentionRegistry, ScopedMaps, StateValue, Value_type};
 pub use bd_resilient_kv::{PersistentStoreConfig, Scope};
+use bd_runtime::runtime::ConfigLoader;
 use bd_time::TimeProvider;
 use itertools::Itertools as _;
 use std::path::Path;
 use std::sync::Arc;
 use time::OffsetDateTime;
-use tokio::sync::{RwLock, watch};
+use tokio::sync::RwLock;
 
 /// A timestamped state value, used in snapshots.
 pub type TimestampedStateValue = (String, OffsetDateTime);
@@ -136,11 +137,15 @@ impl Store {
   ///
   /// Both `FeatureFlag` and `GlobalState` scopes are cleared on each process start, requiring
   /// users to re-set these values.
+  ///
+  /// The directory will be created if it doesn't exist.
   pub async fn persistent(
     directory: &Path,
     config: PersistentStoreConfig,
     time_provider: Arc<dyn TimeProvider>,
   ) -> anyhow::Result<StoreInitResult> {
+    std::fs::create_dir_all(directory)?;
+
     let retention_registry = Arc::new(RetentionRegistry::new());
     let (inner, data_loss) = bd_resilient_kv::VersionedKVStore::new(
       directory,
@@ -203,42 +208,7 @@ impl Store {
     }
   }
 
-  /// Creates a Store based on runtime configuration.
-  ///
-  /// This method monitors a runtime flag to determine whether to use persistent or in-memory
-  /// storage. When persistent storage is enabled, it will automatically fall back to in-memory
-  /// storage if initialization fails.
-  ///
-  /// # Arguments
-  ///
-  /// * `directory` - Directory for persistent storage
-  /// * `config` - Configuration for persistent storage
-  /// * `time_provider` - Time provider for timestamps
-  /// * `use_persistent_storage` - Watch receiver for the runtime flag
-  ///
-  /// # Returns
-  ///
-  /// A `StoreInitWithFallbackResult` containing the initialized store and metadata about
-  /// initialization (data loss, previous state snapshot, whether fallback occurred).
-  pub async fn from_runtime_config(
-    directory: &Path,
-    config: PersistentStoreConfig,
-    time_provider: Arc<dyn TimeProvider>,
-    use_persistent_storage: watch::Receiver<bool>,
-  ) -> StoreInitWithFallbackResult {
-    let strategy = if *use_persistent_storage.borrow() {
-      InitStrategy::PersistentWithFallback
-    } else {
-      InitStrategy::InMemoryOnly
-    };
-
-    Self::from_strategy(directory, config, time_provider, strategy).await
-  }
-
-  /// Creates a Store based on an explicit initialization strategy.
-  ///
-  /// This is useful for testing the initialization logic without needing to set up
-  /// runtime configuration.
+  /// Creates a Store based on an initialization strategy.
   ///
   /// # Arguments
   ///
@@ -262,6 +232,65 @@ impl Store {
         previous_state: ScopedMaps::default(),
         fallback_occurred: false,
       },
+    }
+  }
+
+  /// Creates a Store using configuration from the runtime loader.
+  ///
+  /// This method reads runtime flags to determine store configuration:
+  /// - `state.use_persistent_storage`: Whether to use persistent or in-memory storage
+  /// - `state.initial_buffer_size_bytes`: Initial buffer size for persistent storage
+  /// - `state.max_capacity_bytes`: Max capacity (file size for persistent, entry count for
+  ///   in-memory)
+  ///
+  /// When persistent storage is enabled, it will automatically fall back to in-memory storage
+  /// if initialization fails.
+  ///
+  /// # Arguments
+  ///
+  /// * `directory` - Directory for persistent storage
+  /// * `time_provider` - Time provider for timestamps
+  /// * `runtime_loader` - Runtime configuration loader
+  pub async fn from_runtime(
+    directory: &Path,
+    time_provider: Arc<dyn TimeProvider>,
+    runtime_loader: &ConfigLoader,
+  ) -> StoreInitWithFallbackResult {
+    let use_persistent_storage =
+      *bd_runtime::runtime::state::UsePersistentStorage::register(runtime_loader)
+        .into_inner()
+        .borrow();
+
+    let initial_buffer_size =
+      *bd_runtime::runtime::state::InitialBufferSize::register(runtime_loader)
+        .into_inner()
+        .borrow() as usize;
+
+    let max_capacity = *bd_runtime::runtime::state::MaxCapacity::register(runtime_loader)
+      .into_inner()
+      .borrow() as usize;
+
+    if use_persistent_storage {
+      let config = PersistentStoreConfig {
+        initial_buffer_size,
+        max_capacity_bytes: max_capacity,
+        ..Default::default()
+      };
+      Self::from_strategy(
+        directory,
+        config,
+        time_provider,
+        InitStrategy::PersistentWithFallback,
+      )
+      .await
+    } else {
+      // For in-memory, use max_capacity as the entry count limit
+      StoreInitWithFallbackResult {
+        store: Self::in_memory(time_provider, Some(max_capacity)),
+        data_loss: None,
+        previous_state: ScopedMaps::default(),
+        fallback_occurred: false,
+      }
     }
   }
 

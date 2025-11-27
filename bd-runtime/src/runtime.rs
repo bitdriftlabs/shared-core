@@ -925,14 +925,27 @@ pub mod global_state {
     "global_state.coalesce_window_ms",
     1.seconds()
   );
+}
 
+pub mod state {
   // Controls whether the state store uses persistent storage or operates purely in-memory.
   // When set to false, the state store operates in-memory only and does not persist
-  // feature flags or global state to disk. When set to true (default), the state store will
+  // feature flags or global state to disk. When set to true, the state store will
   // attempt to use persistent storage, falling back to in-memory if initialization fails.
-  bool_feature_flag!(
-    UsePersistentStorage,
-    "global_state.use_persistent_storage",
-    true
+  // Defaults to false for safety during crash loops.
+  bool_feature_flag!(UsePersistentStorage, "state.use_persistent_storage", false);
+
+  // Controls the initial buffer size for the persistent state store in bytes.
+  // This determines the starting size of the memory-mapped file. The buffer will grow
+  // as needed up to MaxCapacity.
+  int_feature_flag!(
+    InitialBufferSize,
+    "state.initial_buffer_size_bytes",
+    128 * 1024
   );
+
+  // Controls the maximum capacity for the state store in bytes.
+  // For persistent storage, this is the maximum file size. For in-memory storage,
+  // this bounds the memory usage of the state store.
+  int_feature_flag!(MaxCapacity, "state.max_capacity_bytes", 1024 * 1024);
 }

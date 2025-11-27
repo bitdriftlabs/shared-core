@@ -1265,6 +1265,7 @@ dependencies = [
  "bd-bonjson",
  "bd-client-common",
  "bd-resilient-kv",
+ "bd-runtime",
  "bd-time",
  "bd-workspace-hack",
  "itertools 0.14.0",
