@@ -268,11 +268,9 @@ impl LoggerBuilder {
       runtime_loader.try_load_persisted_config().await;
       init_lifecycle.set(bd_client_common::init_lifecycle::InitLifecycle::RuntimeLoaded);
 
-      // Load the previous state snapshot into memory-mapped storage for crash reporting.
-      // This loads the state from disk without maintaining an open file handle.
+      // Initialize state store using runtime configuration. This may fall back to an in-memory
+      // store if persistent storage cannot be initialized or if directed by configuration.
       let state_directory = self.params.sdk_directory.join("state");
-
-      // Initialize state store using runtime configuration
       let result =
         bd_state::Store::from_runtime(&state_directory, time_provider.clone(), &runtime_loader)
           .await;
