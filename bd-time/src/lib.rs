@@ -29,6 +29,7 @@ use std::future::{Future, IntoFuture};
 use std::sync::Arc;
 use std::time::Duration;
 use time::OffsetDateTime;
+use time::error::ComponentRange;
 use tokio::time::{Interval, MissedTickBehavior, Sleep, Timeout, interval, interval_at};
 
 //
@@ -74,6 +75,14 @@ pub trait OffsetDateTimeExt {
   ///
   /// Note that `interval` will be rounded down to the nearest second and should be positive.
   fn ceil(&self, interval: time::Duration) -> OffsetDateTime;
+
+  /// Create an `OffsetDateTime` from a unix timestamp in microseconds.
+  fn from_unix_timestamp_micros(micros: i64) -> Result<OffsetDateTime, ComponentRange> {
+    let micros: i128 = micros.into();
+    let nanos = micros * 1_000;
+
+    OffsetDateTime::from_unix_timestamp_nanos(nanos)
+  }
 }
 
 impl OffsetDateTimeExt for OffsetDateTime {

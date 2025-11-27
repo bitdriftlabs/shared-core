@@ -41,7 +41,9 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Report,
   ReportType,
 };
+use bd_resilient_kv::TimestampedValue;
 use bd_state::StateReader;
+use bd_time::OffsetDateTimeExt as _;
 use fbs::issue_reporting::v_1::root_as_report;
 use itertools::Itertools as _;
 use memmap2::Mmap;
@@ -370,17 +372,12 @@ impl Monitor {
         .previous_run_state
         .iter()
         .filter(|(scope, ..)| *scope == bd_resilient_kv::Scope::FeatureFlag)
-        .filter_map(|(_, name, timestamped_value)| {
-          timestamped_value
-            .value
+        .filter_map(|(_, name, TimestampedValue { value, timestamp })| {
+          value
             .has_string_value()
             .then(|| {
-              let variant = timestamped_value.value.string_value().to_string();
-              let timestamp = OffsetDateTime::from_unix_timestamp_nanos(
-                i128::from(timestamped_value.timestamp) * 1_000,
-              )
-              .ok()?;
-              Some((name.clone(), variant, timestamp))
+              let variant = value.string_value().to_string();
+              Some((name.clone(), variant, timestamp.unix_timestamp_micros()))
             })
             .flatten()
         })

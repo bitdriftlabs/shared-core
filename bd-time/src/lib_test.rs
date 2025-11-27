@@ -76,3 +76,39 @@ fn timestamp_ceil() {
     );
   }
 }
+
+#[test]
+fn from_unix_timestamp_micros() {
+  use time::OffsetDateTime;
+
+  // Test zero
+  let result = OffsetDateTime::from_unix_timestamp_micros(0).unwrap();
+  assert_eq!(result.unix_timestamp(), 0);
+  assert_eq!(result.unix_timestamp_nanos(), 0);
+
+  // Test positive microseconds: 1,500,000 micros = 1.5 seconds
+  let result = OffsetDateTime::from_unix_timestamp_micros(1_500_000).unwrap();
+  assert_eq!(result.unix_timestamp(), 1);
+  assert_eq!(result.unix_timestamp_nanos(), 1_500_000_000);
+
+  // Test negative microseconds: -1,500,000 micros = -1.5 seconds
+  let result = OffsetDateTime::from_unix_timestamp_micros(-1_500_000).unwrap();
+  assert_eq!(result.unix_timestamp(), -2);
+  assert_eq!(result.unix_timestamp_nanos(), -1_500_000_000);
+
+  // Test exact second boundary: 1,000,000 micros = 1 second
+  let result = OffsetDateTime::from_unix_timestamp_micros(1_000_000).unwrap();
+  assert_eq!(result.unix_timestamp(), 1);
+  assert_eq!(result.unix_timestamp_nanos(), 1_000_000_000);
+
+  // Test sub-microsecond precision is properly handled
+  // 1,234,567 micros = 1.234567 seconds = 1_234_567_000 nanos
+  let result = OffsetDateTime::from_unix_timestamp_micros(1_234_567).unwrap();
+  assert_eq!(result.unix_timestamp_nanos(), 1_234_567_000);
+
+  // Test large value
+  // Jan 1, 2024 00:00:00 UTC ≈ 1,704,067,200 seconds = 1,704,067,200,000,000 micros
+  let micros_2024 = 1_704_067_200_000_000_i64;
+  let result = OffsetDateTime::from_unix_timestamp_micros(micros_2024).unwrap();
+  assert_eq!(result.unix_timestamp(), 1_704_067_200);
+}
