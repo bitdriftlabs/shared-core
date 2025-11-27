@@ -293,7 +293,7 @@ fn invalid_address() {
     Client::new_http("", 1.milliseconds(), 1024)
       .unwrap_err()
       .to_string(),
-    anyhow::anyhow!("invalid format").to_string()
+    anyhow::anyhow!("empty string").to_string()
   );
 
   assert_eq!(
