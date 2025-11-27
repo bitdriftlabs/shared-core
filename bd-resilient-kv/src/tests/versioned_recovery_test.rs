@@ -68,6 +68,8 @@ fn extract_rotation_timestamp(path: &std::path::Path) -> anyhow::Result<u64> {
 
 #[tokio::test]
 async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
 
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(
@@ -86,6 +88,7 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
     },
     time_provider.clone(),
     registry,
+    &stats,
   )
   .await?;
 
@@ -189,6 +192,8 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_recovery_empty_journal() -> anyhow::Result<()> {
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
@@ -206,6 +211,7 @@ async fn test_recovery_empty_journal() -> anyhow::Result<()> {
     },
     time_provider,
     registry,
+    &stats,
   )
   .await?;
   store.sync()?;
@@ -231,6 +237,8 @@ async fn test_recovery_empty_journal() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
@@ -247,6 +255,7 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
     },
     time_provider.clone(),
     registry,
+    &stats,
   )
   .await?;
   store
@@ -333,6 +342,8 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
@@ -350,6 +361,7 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
     },
     time_provider.clone(),
     registry,
+    &stats,
   )
   .await?;
 
@@ -457,6 +469,8 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
@@ -473,6 +487,7 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
     },
     time_provider.clone(),
     registry,
+    &stats,
   )
   .await?;
 

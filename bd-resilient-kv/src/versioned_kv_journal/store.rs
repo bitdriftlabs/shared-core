@@ -18,6 +18,20 @@ use bd_time::TimeProvider;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+/// Common statistics for versioned KV store operations.
+#[derive(Clone)]
+struct CommonStats {
+  capacity_exceeded_unrecoverable: bd_client_stats_store::Counter,
+}
+
+impl CommonStats {
+  fn new(stats: &bd_client_stats_store::Scope) -> Self {
+    Self {
+      capacity_exceeded_unrecoverable: stats.scope("kv").counter("capacity_exceeded_unrecoverable"),
+    }
+  }
+}
+
 /// Configuration for persistent store with dynamic growth capabilities.
 #[derive(Debug, Clone)]
 pub struct PersistentStoreConfig {
@@ -211,6 +225,8 @@ struct PersistentStore {
   // Configuration for dynamic sizing
   initial_buffer_size: usize,
   max_capacity_bytes: usize,
+  // Stats
+  stats: CommonStats,
 }
 
 impl PersistentStore {
@@ -220,6 +236,7 @@ impl PersistentStore {
     config: PersistentStoreConfig,
     time_provider: Arc<dyn TimeProvider>,
     retention_registry: Arc<RetentionRegistry>,
+    stats: CommonStats,
   ) -> anyhow::Result<(Self, DataLoss)> {
     let buffer_size = config.initial_buffer_size;
     let high_water_mark_ratio = config.high_water_mark_ratio;
@@ -284,6 +301,7 @@ impl PersistentStore {
         retention_registry,
         initial_buffer_size: config.initial_buffer_size,
         max_capacity_bytes: config.max_capacity_bytes,
+        stats,
       },
       data_loss,
     ))
@@ -508,6 +526,7 @@ impl PersistentStore {
 
         // Check if rotation would help. If not, fail immediately.
         if !self.would_rotation_help(entry_size) {
+          self.stats.capacity_exceeded_unrecoverable.inc();
           return Err(UpdateError::CapacityExceeded);
         }
 
@@ -547,6 +566,7 @@ impl PersistentStore {
 
         // Check if rotation would help. If not, fail immediately.
         if !self.would_rotation_help(total_size) {
+          self.stats.capacity_exceeded_unrecoverable.inc();
           return Err(UpdateError::CapacityExceeded);
         }
 
@@ -709,15 +729,21 @@ struct InMemoryStore {
   cached_map: ScopedMaps,
   max_bytes: Option<usize>,
   current_size_bytes: usize,
+  stats: CommonStats,
 }
 
 impl InMemoryStore {
-  fn new(time_provider: Arc<dyn TimeProvider>, max_bytes: Option<usize>) -> Self {
+  fn new(
+    time_provider: Arc<dyn TimeProvider>,
+    max_bytes: Option<usize>,
+    stats: CommonStats,
+  ) -> Self {
     Self {
       time_provider,
       cached_map: ScopedMaps::default(),
       max_bytes,
       current_size_bytes: 0,
+      stats,
     }
   }
 
@@ -771,6 +797,7 @@ impl InMemoryStore {
           if let Some(max_bytes) = self.max_bytes {
             let new_size = self.current_size_bytes.saturating_add(size_delta);
             if new_size > max_bytes {
+              self.stats.capacity_exceeded_unrecoverable.inc();
               return Err(UpdateError::CapacityExceeded);
             }
           }
@@ -787,6 +814,7 @@ impl InMemoryStore {
           if let Some(max_bytes) = self.max_bytes {
             let new_size = self.current_size_bytes.saturating_add(new_entry_size);
             if new_size > max_bytes {
+              self.stats.capacity_exceeded_unrecoverable.inc();
               return Err(UpdateError::CapacityExceeded);
             }
           }
@@ -862,6 +890,7 @@ impl InMemoryStore {
       };
 
       if new_size > max_bytes {
+        self.stats.capacity_exceeded_unrecoverable.inc();
         return Err(UpdateError::CapacityExceeded);
       }
     }
@@ -951,9 +980,19 @@ impl VersionedKVStore {
     config: PersistentStoreConfig,
     time_provider: Arc<dyn TimeProvider>,
     retention_registry: Arc<RetentionRegistry>,
+    stats: &bd_client_stats_store::Scope,
   ) -> anyhow::Result<(Self, DataLoss)> {
-    let (store, data_loss) =
-      PersistentStore::new(dir_path, name, config, time_provider, retention_registry).await?;
+    let common_stats = CommonStats::new(stats);
+
+    let (store, data_loss) = PersistentStore::new(
+      dir_path,
+      name,
+      config,
+      time_provider,
+      retention_registry,
+      common_stats,
+    )
+    .await?;
 
     Ok((
       Self {
@@ -972,6 +1011,7 @@ impl VersionedKVStore {
   ///
   /// * `time_provider` - Provides timestamps for operations
   /// * `max_bytes` - Optional maximum memory usage in bytes. If None, no limit is enforced.
+  /// * `stats` - Stats scope for emitting metrics
   ///
   /// # Size Limit
   ///
@@ -984,9 +1024,15 @@ impl VersionedKVStore {
   ///
   /// The size limit is approximate and uses conservative estimates.
   #[must_use]
-  pub fn new_in_memory(time_provider: Arc<dyn TimeProvider>, max_bytes: Option<usize>) -> Self {
+  pub fn new_in_memory(
+    time_provider: Arc<dyn TimeProvider>,
+    max_bytes: Option<usize>,
+    stats: &bd_client_stats_store::Scope,
+  ) -> Self {
+    let common_stats = CommonStats::new(stats);
+
     Self {
-      backend: StoreBackend::InMemory(InMemoryStore::new(time_provider, max_bytes)),
+      backend: StoreBackend::InMemory(InMemoryStore::new(time_provider, max_bytes, common_stats)),
     }
   }
 

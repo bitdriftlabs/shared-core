@@ -19,6 +19,7 @@ anyhow.workspace            = true
 async-trait.workspace       = true
 bd-bonjson                  = { path = "../bd-bonjson" }
 bd-client-common            = { path = "../bd-client-common" }
+bd-client-stats-store       = { path = "../bd-client-stats-store" }
 bd-resilient-kv             = { path = "../bd-resilient-kv" }
 bd-runtime                  = { path = "../bd-runtime" }
 bd-time                     = { path = "../bd-time" }

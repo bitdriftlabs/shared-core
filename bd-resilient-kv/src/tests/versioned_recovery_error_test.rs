@@ -83,6 +83,8 @@ fn test_recovery_position_exceeds_buffer_length() {
 
 #[tokio::test]
 async fn test_recovery_with_deletions() -> anyhow::Result<()> {
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
   let registry = Arc::new(RetentionRegistry::new());
@@ -97,6 +99,7 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
     },
     time_provider.clone(),
     registry,
+    &stats,
   )
   .await?;
 
