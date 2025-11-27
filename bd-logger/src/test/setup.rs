@@ -239,7 +239,7 @@ impl Setup {
     stream.blocking_stream_action(StreamAction::SendRuntime(make_update(
       Self::get_default_runtime_values()
         .into_iter()
-        .chain(extra_runtime_values.into_iter())
+        .chain(extra_runtime_values)
         .collect(),
       "base".to_string(),
     )));
