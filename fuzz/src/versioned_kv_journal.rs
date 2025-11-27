@@ -729,7 +729,7 @@ impl VersionedKVJournalFuzzTest {
                   CapacityErrorKind::OversizedEntry => {
                     log::info!(
                       "Entry too large (~{entry_size} bytes) during bulk insert at entry {i}, \
-                        stopping bulk insert"
+                       stopping bulk insert"
                     );
                     break;
                   },
