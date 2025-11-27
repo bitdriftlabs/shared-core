@@ -163,6 +163,35 @@ struct Setup {
 }
 
 impl Setup {
+  /// Helper to construct a previous run state snapshot with feature flags.
+  ///
+  /// In production, this snapshot is created by `Store::persistent()` which captures state
+  /// before clearing ephemeral scopes. This helper allows tests to simulate that snapshot.
+  fn make_previous_run_state(flags: Vec<(&str, &str)>) -> bd_resilient_kv::ScopedMaps {
+    let mut previous_run_state = bd_resilient_kv::ScopedMaps::default();
+    let timestamp = datetime!(2024-01-01 00:00 UTC).unix_timestamp_nanos() as u64 / 1000;
+
+    for (name, value) in flags {
+      previous_run_state.insert(
+        bd_resilient_kv::Scope::FeatureFlag,
+        name.to_string(),
+        bd_resilient_kv::TimestampedValue {
+          value: bd_proto::protos::state::payload::StateValue {
+            value_type: Some(
+              bd_proto::protos::state::payload::state_value::Value_type::StringValue(
+                value.to_string(),
+              ),
+            ),
+            ..Default::default()
+          },
+          timestamp,
+        },
+      );
+    }
+
+    previous_run_state
+  }
+
   async fn new(maybe_global_state: Option<LogFields>, enable_file_watcher: bool) -> Self {
     let directory = TempDir::new().unwrap();
 
@@ -201,7 +230,26 @@ impl Setup {
 
     let state = TestStore::new().await;
 
-    // Seed state with initial feature flags by default
+    // The Monitor requires two separate state representations:
+    //
+    // 1. `previous_run_state`: A snapshot of feature flags from the previous process run. In
+    //    production, Store::persistent() captures this snapshot before clearing ephemeral scopes.
+    //    This is used for crashes from the previous session.
+    //
+    // 2. `state` (current): The live state store for the current process run. In production, this
+    //    starts empty after ephemeral scopes are cleared, then gets populated as the application
+    //    runs. This is used for crashes from the current session.
+    //
+    // We manually construct both to test that Monitor correctly routes previous session crashes
+    // to use previous_run_state and current session crashes to use the live state.
+
+    let previous_run_state = Self::make_previous_run_state(vec![
+      ("initial_flag", "true"),
+      ("previous_only_flag", "enabled"),
+    ]);
+
+    // Seed the current state with initial feature flags to represent the state at startup.
+    // This simulates flags being set during the current session initialization.
     state
       .insert(
         bd_state::Scope::FeatureFlag,
@@ -218,40 +266,6 @@ impl Setup {
       )
       .await
       .unwrap();
-
-    // Capture the snapshot before passing to Monitor (simulating what happens at startup)
-    // Manually populate previous_run_state with the feature flags that were set
-    let mut previous_run_state = bd_resilient_kv::ScopedMaps::default();
-    previous_run_state.insert(
-      bd_resilient_kv::Scope::FeatureFlag,
-      "initial_flag".to_string(),
-      bd_resilient_kv::TimestampedValue {
-        value: bd_proto::protos::state::payload::StateValue {
-          value_type: Some(
-            bd_proto::protos::state::payload::state_value::Value_type::StringValue(
-              "true".to_string(),
-            ),
-          ),
-          ..Default::default()
-        },
-        timestamp: datetime!(2024-01-01 00:00 UTC).unix_timestamp_nanos() as u64 / 1000,
-      },
-    );
-    previous_run_state.insert(
-      bd_resilient_kv::Scope::FeatureFlag,
-      "previous_only_flag".to_string(),
-      bd_resilient_kv::TimestampedValue {
-        value: bd_proto::protos::state::payload::StateValue {
-          value_type: Some(
-            bd_proto::protos::state::payload::state_value::Value_type::StringValue(
-              "enabled".to_string(),
-            ),
-          ),
-          ..Default::default()
-        },
-        timestamp: datetime!(2024-01-01 00:00 UTC).unix_timestamp_nanos() as u64 / 1000,
-      },
-    );
 
     let monitor = Monitor::new(
       directory.path(),
