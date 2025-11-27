@@ -1518,6 +1518,7 @@ async fn test_buffer_size_preserved_across_restart() -> anyhow::Result<()> {
       config.clone(),
       time_provider.clone(),
       registry.clone(),
+      &bd_client_stats_store::Collector::default().scope("test"),
     )
     .await?;
 
@@ -1555,6 +1556,7 @@ async fn test_buffer_size_preserved_across_restart() -> anyhow::Result<()> {
       config.clone(),
       time_provider.clone(),
       registry.clone(),
+      &bd_client_stats_store::Collector::default().scope("test"),
     )
     .await?;
 
