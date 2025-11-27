@@ -271,9 +271,13 @@ impl LoggerBuilder {
       // Initialize state store using runtime configuration. This may fall back to an in-memory
       // store if persistent storage cannot be initialized or if directed by configuration.
       let state_directory = self.params.sdk_directory.join("state");
-      let result =
-        bd_state::Store::from_runtime(&state_directory, time_provider.clone(), &runtime_loader)
-          .await;
+      let result = bd_state::Store::from_runtime(
+        &state_directory,
+        time_provider.clone(),
+        &runtime_loader,
+        &scope,
+      )
+      .await;
 
       let (state_store, previous_run_state) = (result.store, result.previous_state);
 

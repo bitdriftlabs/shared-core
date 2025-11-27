@@ -14,6 +14,7 @@ async-trait.workspace       = true
 bd-api.path                 = "../bd-api"
 bd-artifact-upload.path     = "../bd-artifact-upload"
 bd-client-common.path       = "../bd-client-common"
+bd-client-stats-store.path  = "../bd-client-stats-store"
 bd-device.path              = "../bd-device"
 bd-error-reporter.path      = "../bd-error-reporter"
 bd-key-value.path           = "../bd-key-value"

@@ -173,6 +173,7 @@ impl Setup {
     let mut store = bd_resilient_kv::VersionedKVStore::new_in_memory(
       Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00 UTC))),
       None,
+      &bd_client_stats_store::Collector::default().scope("test"),
     );
 
 

@@ -5,9 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#![allow(clippy::unwrap_used)]
-
 use crate::{InitStrategy, Scope, StateReader, Store};
+use bd_client_stats_store::Collector;
 use bd_resilient_kv::PersistentStoreConfig;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -25,10 +24,12 @@ impl Setup {
     let time_provider = Arc::new(bd_time::TestTimeProvider::new(
       datetime!(2024-01-01 00:00:00 UTC),
     ));
+    let collector = bd_client_stats_store::Collector::default();
     let store = Store::persistent(
       temp_dir.path(),
       PersistentStoreConfig::default(),
       time_provider.clone(),
+      &collector.scope("test"),
     )
     .await
     .unwrap()
@@ -152,10 +153,15 @@ async fn large_value() {
     max_capacity_bytes: 10 * 1024 * 1024,
     ..Default::default()
   };
-  let store = Store::persistent(temp_dir.path(), config, time_provider.clone())
-    .await
-    .unwrap()
-    .store;
+  let store = Store::persistent(
+    temp_dir.path(),
+    config,
+    time_provider.clone(),
+    &Collector::default().scope("test"),
+  )
+  .await
+  .unwrap()
+  .store;
 
   let large_value = "x".repeat(10_000);
   store
@@ -176,6 +182,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
   let time_provider = Arc::new(bd_time::TestTimeProvider::new(
     datetime!(2024-01-01 00:00:00 UTC),
   ));
+  let scope = Collector::default().scope("test");
 
   // First process: write state and verify snapshot on creation is empty
   {
@@ -183,6 +190,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
       temp_dir.path(),
       PersistentStoreConfig::default(),
       time_provider.clone(),
+      &scope,
     )
     .await
     .unwrap();
@@ -231,6 +239,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
       temp_dir.path(),
       PersistentStoreConfig::default(),
       time_provider.clone(),
+      &Collector::default().scope("test"),
     )
     .await
     .unwrap();
@@ -291,6 +300,7 @@ async fn fallback_to_in_memory_on_invalid_directory() {
     temp_file.path(),
     PersistentStoreConfig::default(),
     time_provider,
+    &Collector::default().scope("test"),
   )
   .await;
   let store = result.store;
@@ -329,6 +339,7 @@ async fn from_strategy_in_memory_only() {
     PersistentStoreConfig::default(),
     time_provider,
     InitStrategy::InMemoryOnly,
+    &Collector::default().scope("test"),
   )
   .await;
 
@@ -360,6 +371,7 @@ async fn from_strategy_persistent_with_fallback() {
     PersistentStoreConfig::default(),
     time_provider,
     InitStrategy::PersistentWithFallback,
+    &Collector::default().scope("test"),
   )
   .await;
 
@@ -392,6 +404,7 @@ async fn from_strategy_persistent_with_fallback_on_failure() {
     PersistentStoreConfig::default(),
     time_provider,
     InitStrategy::PersistentWithFallback,
+    &Collector::default().scope("test"),
   )
   .await;
 

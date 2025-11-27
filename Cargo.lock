@@ -567,6 +567,7 @@ dependencies = [
  "bd-api",
  "bd-artifact-upload",
  "bd-client-common",
+ "bd-client-stats-store",
  "bd-device",
  "bd-error-reporter",
  "bd-key-value",

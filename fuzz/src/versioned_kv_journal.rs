@@ -281,6 +281,7 @@ pub struct VersionedKVJournalFuzzTest {
   max_capacity_bytes: usize,
   temp_dir: TempDir,
   time_provider: Arc<TestTimeProvider>,
+  collector: bd_client_stats_store::Collector,
   registry: Arc<RetentionRegistry>,
   state: AHashMap<(Scope, String), TimestampedValue>,
   keys: KeyPool,
@@ -318,6 +319,8 @@ impl VersionedKVJournalFuzzTest {
     };
 
     let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+    let collector = bd_client_stats_store::Collector::default();
+
     // Create a registry with no retention handles - this prevents snapshot compression
     // during rotation, significantly speeding up fuzzing
     let registry = Arc::new(RetentionRegistry::new());
@@ -329,6 +332,7 @@ impl VersionedKVJournalFuzzTest {
       max_capacity_bytes,
       temp_dir,
       time_provider,
+      collector,
       registry,
       state: AHashMap::default(),
       keys: KeyPool { keys: Vec::new() },
@@ -348,6 +352,7 @@ impl VersionedKVJournalFuzzTest {
       config,
       self.time_provider.clone(),
       self.registry.clone(),
+      &self.collector.scope("fuzz"),
     )
     .await
   }
@@ -364,6 +369,7 @@ impl VersionedKVJournalFuzzTest {
       config,
       self.time_provider.clone(),
       self.registry.clone(),
+      &self.collector.scope("fuzz"),
     )
     .await
   }

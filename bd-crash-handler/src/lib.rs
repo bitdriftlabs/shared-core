@@ -377,7 +377,11 @@ impl Monitor {
             .has_string_value()
             .then(|| {
               let variant = value.string_value().to_string();
-              Some((name.clone(), variant, timestamp.unix_timestamp_micros()))
+              Some((
+                name.clone(),
+                variant,
+                OffsetDateTime::from_unix_timestamp_micros((*timestamp).try_into().ok()?).ok()?,
+              ))
             })
             .flatten()
         })
