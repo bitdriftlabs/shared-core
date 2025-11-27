@@ -159,8 +159,8 @@ fn replay_journal_to_timestamp(
     anyhow::bail!("Buffer too small: {}", buffer.len());
   }
 
-  // Read position from header (bytes 8-15)
-  let position_bytes: [u8; 8] = buffer[8 .. 16]
+  // Read position from header (bytes 1-8)
+  let position_bytes: [u8; 8] = buffer[1 .. 9]
     .try_into()
     .map_err(|_| anyhow::anyhow!("Failed to read position"))?;
   #[allow(clippy::cast_possible_truncation)]

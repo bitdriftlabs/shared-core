@@ -175,7 +175,7 @@ struct Setup {
   requests_decoder: bd_grpc_codec::Decoder<ApiRequest>,
   time_provider: Arc<bd_time::TestTimeProvider>,
   current_stream_tx: Arc<Mutex<Option<Sender<StreamEvent>>>>,
-  api_task: Option<JoinHandle<anyhow::Result<()>>>,
+  api_task: Option<JoinHandle<()>>,
   api_key: String,
   network_quality_provider: Arc<SimpleNetworkQualityProvider>,
   sleep_mode_active: watch::Sender<bool>,
@@ -244,7 +244,7 @@ impl Setup {
 
     let api_task = tokio::task::spawn(async move {
       runtime_loader.try_load_persisted_config().await;
-      api.start().await
+      api.start().await;
     });
 
     Self {

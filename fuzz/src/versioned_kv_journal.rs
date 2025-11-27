@@ -677,7 +677,7 @@ impl VersionedKVJournalFuzzTest {
           // TODO(snowp): Consider targeting specific record types for more focused corruption.
           // This simply makes the fuzzer more likely to hit interesting cases.
           let range_end = match target {
-            CorruptionTarget::Header => 17,
+            CorruptionTarget::Header => VERSIONED_JOURNAL_HEADER_SIZE,
             CorruptionTarget::Random => file_data.len(),
           };
 

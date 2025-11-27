@@ -40,10 +40,9 @@ pub struct VersionedJournal<'a, M> {
 // Versioned KV files have the following structure:
 // | Position | Data                     | Type           |
 // |----------|--------------------------|----------------|
-// | 0        | Format Version           | u64            |
-// | 8        | Position                 | u64            |
-// | 16       | Reserved                 | u8             |
-// | 17       | Frame 1                  | Framed Entry   |
+// | 0        | Format Version           | u8             |
+// | 1        | Position                 | u64            |
+// | 9        | Frame 1                  | Framed Entry   |
 // | ...      | Frame 2                  | Framed Entry   |
 // | ...      | Frame N                  | Framed Entry   |
 //
@@ -64,14 +63,13 @@ pub struct VersionedJournal<'a, M> {
 // enum. The wire representation is arbitrary so if we ever want to use this journal for other
 // purposes we can abstract out the enum we want to use for frame types.
 
-// The journal format version, incremented on incompatible changes.
-const VERSION: u64 = 1;
+// The journal format version.
+const VERSION: u8 = 1;
 
 // Size of the journal header in bytes. The header consists of:
-// - 8 bytes for the version (u64)
+// - 1 byte for the version (u8)
 // - 8 bytes for the position (u64)
-// - 1 byte reserved for future use
-pub const HEADER_SIZE: usize = 17;
+pub const HEADER_SIZE: usize = 9;
 
 // Minimum buffer size for a valid journal
 const MIN_BUFFER_SIZE: usize = HEADER_SIZE + 4;
@@ -83,9 +81,8 @@ struct BufferState {
 }
 
 /// Write to the version field of a journal buffer.
-fn write_version_field(buffer: &mut [u8], version: u64) {
-  let version_bytes = version.to_le_bytes();
-  buffer[0 .. 8].copy_from_slice(&version_bytes);
+fn write_version_field(buffer: &mut [u8], version: u8) {
+  buffer[0] = version;
 }
 
 /// Write the version to a journal buffer.
@@ -94,7 +91,7 @@ fn write_version(buffer: &mut [u8]) {
 }
 
 fn read_position(buffer: &[u8]) -> anyhow::Result<usize> {
-  let position_bytes: [u8; 8] = buffer[8 .. 16].try_into()?;
+  let position_bytes: [u8; 8] = buffer[1 .. 9].try_into()?;
   let position_u64 = u64::from_le_bytes(position_bytes);
   let position = usize::try_from(position_u64)
     .map_err(|_| anyhow::anyhow!("Position {position_u64} too large for usize"))?;
@@ -108,7 +105,7 @@ fn read_position(buffer: &[u8]) -> anyhow::Result<usize> {
 /// Write the position to a journal buffer.
 fn write_position(buffer: &mut [u8], position: usize) {
   let position_bytes = (position as u64).to_le_bytes();
-  buffer[8 .. 16].copy_from_slice(&position_bytes);
+  buffer[1 .. 9].copy_from_slice(&position_bytes);
 }
 
 fn validate_buffer_len(buffer: &[u8]) -> anyhow::Result<usize> {
@@ -182,7 +179,6 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
 
     write_position(buffer, position);
     write_version(buffer);
-    buffer[16] = 0; // Reserved byte
 
     let now = Self::unix_timestamp_micros(time_provider.as_ref())?;
 
@@ -219,8 +215,7 @@ impl<'a, M: protobuf::Message> VersionedJournal<'a, M> {
     let high_water_mark = calculate_high_water_mark(buffer_len, high_water_mark_ratio)?;
 
     // Read version
-    let version_bytes: [u8; 8] = buffer[0 .. 8].try_into()?;
-    let version = u64::from_le_bytes(version_bytes);
+    let version = buffer[0];
 
     if version != VERSION {
       anyhow::bail!("Unsupported version: {version}, expected {VERSION}");

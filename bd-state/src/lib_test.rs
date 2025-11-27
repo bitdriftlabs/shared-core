@@ -150,7 +150,7 @@ async fn large_value() {
   let config = PersistentStoreConfig {
     initial_buffer_size: 1024 * 1024,
     max_capacity_bytes: 10 * 1024 * 1024,
-    high_water_mark_ratio: 0.8,
+    ..Default::default()
   };
   let store = Store::persistent(temp_dir.path(), config, time_provider.clone())
     .await
