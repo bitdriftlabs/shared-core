@@ -34,6 +34,8 @@ struct DualModeSetup {
 
 impl DualModeSetup {
   async fn new(mode: StoreMode) -> anyhow::Result<Self> {
+    let collector = bd_client_stats_store::Collector::default();
+    let stats = collector.scope("test");
     let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
     let (temp_dir, store) = match mode {
@@ -49,12 +51,13 @@ impl DualModeSetup {
           },
           time_provider.clone(),
           registry,
+          &stats,
         )
         .await?;
         (Some(temp_dir), store)
       },
       StoreMode::InMemory => {
-        let store = VersionedKVStore::new_in_memory(time_provider.clone(), None);
+        let store = VersionedKVStore::new_in_memory(time_provider.clone(), None, &stats);
         (None, store)
       },
     };
@@ -73,6 +76,8 @@ struct Setup {
 
 impl Setup {
   async fn new() -> anyhow::Result<Self> {
+    let collector = bd_client_stats_store::Collector::default();
+    let stats = collector.scope("test");
     let temp_dir = TempDir::new()?;
     let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
     let registry = Arc::new(RetentionRegistry::new());
@@ -87,6 +92,7 @@ impl Setup {
       },
       time_provider.clone(),
       registry,
+      &stats,
     )
     .await?;
 
@@ -102,6 +108,8 @@ impl Setup {
     &self,
     snapshot_path: &std::path::Path,
   ) -> anyhow::Result<VersionedKVStore> {
+    let collector = bd_client_stats_store::Collector::default();
+    let stats = collector.scope("test");
     // Decompress the snapshot and journal files into the temp directory
     // so we can open them as a store.
     let data = std::fs::read(snapshot_path)?;
@@ -121,6 +129,7 @@ impl Setup {
       },
       self.time_provider.clone(),
       registry,
+      &stats,
     )
     .await?;
     assert_eq!(data_loss, DataLoss::None);
@@ -284,6 +293,8 @@ async fn extend_same_key_ordering(#[case] mode: StoreMode) -> anyhow::Result<()>
 #[allow(clippy::cast_possible_truncation)]
 #[tokio::test]
 async fn test_automatic_rotation_on_high_water_mark() -> anyhow::Result<()> {
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
   let registry = Arc::new(RetentionRegistry::new());
@@ -300,6 +311,7 @@ async fn test_automatic_rotation_on_high_water_mark() -> anyhow::Result<()> {
     },
     time_provider.clone(),
     registry,
+    &stats,
   )
   .await?;
 
@@ -394,10 +406,15 @@ async fn test_automatic_rotation_on_high_water_mark() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_in_memory_size_limit() -> anyhow::Result<()> {
+  use bd_client_stats_store::test::StatsHelper;
+  use std::collections::BTreeMap;
+
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
   // Create an in-memory store with a small size limit (1KB)
-  let mut store = VersionedKVStore::new_in_memory(time_provider, Some(1024));
+  let mut store = VersionedKVStore::new_in_memory(time_provider, Some(1024), &stats);
 
   // Should be able to insert some small values
   store
@@ -428,6 +445,13 @@ async fn test_in_memory_size_limit() -> anyhow::Result<()> {
   let error = result.unwrap_err();
   assert!(matches!(error, UpdateError::CapacityExceeded));
 
+  // Verify the metric was incremented
+  collector.assert_counter_eq(
+    1,
+    "test:kv:capacity_exceeded_unrecoverable",
+    BTreeMap::new(),
+  );
+
   // Original data should still be intact
   assert_eq!(store.len(), 2);
   assert!(store.contains_key(Scope::FeatureFlag, "key1"));
@@ -452,10 +476,12 @@ async fn test_in_memory_size_limit() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_in_memory_no_size_limit() -> anyhow::Result<()> {
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
   // Create an in-memory store with no size limit
-  let mut store = VersionedKVStore::new_in_memory(time_provider, None);
+  let mut store = VersionedKVStore::new_in_memory(time_provider, None, &stats);
 
   // Should be able to insert many large values without limit
   for i in 0 .. 100 {
@@ -472,10 +498,12 @@ async fn test_in_memory_no_size_limit() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_in_memory_size_limit_replacement() -> anyhow::Result<()> {
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
   // Create an in-memory store with a small size limit
-  let mut store = VersionedKVStore::new_in_memory(time_provider, Some(1024));
+  let mut store = VersionedKVStore::new_in_memory(time_provider, Some(1024), &stats);
 
   // Insert a value
   store
@@ -522,6 +550,8 @@ async fn test_in_memory_size_limit_replacement() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_persistence_and_reload() -> anyhow::Result<()> {
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
   let registry = Arc::new(RetentionRegistry::new());
@@ -537,6 +567,7 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
       },
       time_provider.clone(),
       registry.clone(),
+      &stats,
     )
     .await?;
     let ts1 = store
@@ -569,6 +600,7 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
       },
       time_provider,
       registry,
+      &stats,
     )
     .await?;
     assert_eq!(data_loss, DataLoss::None);
@@ -875,6 +907,8 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
   use crate::RetentionRegistry;
   use std::sync::Arc;
 
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
   let registry = Arc::new(RetentionRegistry::new());
@@ -889,6 +923,7 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
     },
     time_provider.clone(),
     registry.clone(),
+    &stats,
   )
   .await?;
 
@@ -971,6 +1006,8 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn test_multiple_rotations_with_same_timestamp() -> anyhow::Result<()> {
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   // Use fixed time so all rotations have the same data timestamp
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
@@ -986,6 +1023,7 @@ async fn test_multiple_rotations_with_same_timestamp() -> anyhow::Result<()> {
     },
     time_provider,
     registry,
+    &stats,
   )
   .await?;
 
@@ -1207,6 +1245,8 @@ async fn extend_empty_is_noop(#[case] mode: StoreMode) -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn extend_triggers_rotation_and_succeeds() -> anyhow::Result<()> {
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
   let registry = Arc::new(RetentionRegistry::new());
@@ -1222,6 +1262,7 @@ async fn extend_triggers_rotation_and_succeeds() -> anyhow::Result<()> {
     },
     time_provider,
     registry,
+    &stats,
   )
   .await?;
 
@@ -1254,6 +1295,8 @@ async fn extend_triggers_rotation_and_succeeds() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn extend_triggers_rotation_but_fails_capacity() -> anyhow::Result<()> {
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
   let registry = Arc::new(RetentionRegistry::new());
@@ -1269,6 +1312,7 @@ async fn extend_triggers_rotation_but_fails_capacity() -> anyhow::Result<()> {
     },
     time_provider,
     registry,
+    &stats,
   )
   .await?;
 
@@ -1299,6 +1343,11 @@ async fn extend_triggers_rotation_but_fails_capacity() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn extend_atomicity_on_capacity_exceeded() -> anyhow::Result<()> {
+  use bd_client_stats_store::test::StatsHelper;
+  use std::collections::BTreeMap;
+
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
   let registry = Arc::new(RetentionRegistry::new());
@@ -1314,6 +1363,7 @@ async fn extend_atomicity_on_capacity_exceeded() -> anyhow::Result<()> {
     },
     time_provider,
     registry,
+    &stats,
   )
   .await?;
 
@@ -1353,6 +1403,13 @@ async fn extend_atomicity_on_capacity_exceeded() -> anyhow::Result<()> {
         "No partial inserts should occur on failure"
       );
     }
+
+    // Verify the capacity exceeded metric was incremented
+    collector.assert_counter_eq(
+      1,
+      "test:kv:capacity_exceeded_unrecoverable",
+      BTreeMap::new(),
+    );
   }
 
   Ok(())
@@ -1360,6 +1417,8 @@ async fn extend_atomicity_on_capacity_exceeded() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn extend_persistence() -> anyhow::Result<()> {
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
   let registry = Arc::new(RetentionRegistry::new());
@@ -1374,6 +1433,7 @@ async fn extend_persistence() -> anyhow::Result<()> {
       },
       time_provider.clone(),
       registry.clone(),
+      &stats,
     )
     .await?;
 
@@ -1410,6 +1470,7 @@ async fn extend_persistence() -> anyhow::Result<()> {
     },
     time_provider,
     registry,
+    &stats,
   )
   .await?;
 
@@ -1457,6 +1518,7 @@ async fn test_buffer_size_preserved_across_restart() -> anyhow::Result<()> {
       config.clone(),
       time_provider.clone(),
       registry.clone(),
+      &bd_client_stats_store::Collector::default().scope("test"),
     )
     .await?;
 
@@ -1494,6 +1556,7 @@ async fn test_buffer_size_preserved_across_restart() -> anyhow::Result<()> {
       config.clone(),
       time_provider.clone(),
       registry.clone(),
+      &bd_client_stats_store::Collector::default().scope("test"),
     )
     .await?;
 

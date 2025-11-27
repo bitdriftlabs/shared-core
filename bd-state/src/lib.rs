@@ -20,9 +20,11 @@ mod tests;
 
 pub mod test;
 
+pub use self::InitStrategy::{InMemoryOnly, PersistentWithFallback};
 use ahash::AHashMap;
 use bd_resilient_kv::{DataLoss, RetentionRegistry, ScopedMaps, StateValue, Value_type};
 pub use bd_resilient_kv::{PersistentStoreConfig, Scope};
+use bd_runtime::runtime::ConfigLoader;
 use bd_time::TimeProvider;
 use itertools::Itertools as _;
 use std::path::Path;
@@ -73,6 +75,19 @@ pub struct StoreInitWithFallbackResult {
 }
 
 //
+// InitStrategy
+//
+
+/// Strategy for initializing the state store, based on runtime configuration.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InitStrategy {
+  /// Use persistent storage with automatic fallback to in-memory if initialization fails
+  PersistentWithFallback,
+  /// Use in-memory storage only
+  InMemoryOnly,
+}
+
+//
 // StateEntry
 //
 
@@ -97,6 +112,9 @@ pub trait StateReader {
 
   /// Returns an iterator over all entries in the state store.
   fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = StateEntry<'a>> + 'a>;
+
+  /// Returns the underlying scoped maps.
+  fn as_scoped_maps(&self) -> &ScopedMaps;
 }
 
 //
@@ -119,11 +137,16 @@ impl Store {
   ///
   /// Both `FeatureFlag` and `GlobalState` scopes are cleared on each process start, requiring
   /// users to re-set these values.
+  ///
+  /// The directory will be created if it doesn't exist.
   pub async fn persistent(
     directory: &Path,
     config: PersistentStoreConfig,
     time_provider: Arc<dyn TimeProvider>,
+    stats: &bd_client_stats_store::Scope,
   ) -> anyhow::Result<StoreInitResult> {
+    std::fs::create_dir_all(directory)?;
+
     let retention_registry = Arc::new(RetentionRegistry::new());
     let (inner, data_loss) = bd_resilient_kv::VersionedKVStore::new(
       directory,
@@ -131,6 +154,7 @@ impl Store {
       config,
       time_provider,
       retention_registry,
+      stats,
     )
     .await?;
 
@@ -163,8 +187,9 @@ impl Store {
     directory: &Path,
     config: PersistentStoreConfig,
     time_provider: Arc<dyn TimeProvider>,
+    stats: &bd_client_stats_store::Scope,
   ) -> StoreInitWithFallbackResult {
-    match Self::persistent(directory, config, time_provider.clone()).await {
+    match Self::persistent(directory, config, time_provider.clone(), stats).await {
       Ok(result) => StoreInitWithFallbackResult {
         store: result.store,
         data_loss: Some(result.data_loss),
@@ -175,7 +200,7 @@ impl Store {
         log::debug!(
           "Failed to initialize persistent state store: {e}, falling back to in-memory store"
         );
-        let store = Self::in_memory(time_provider, None);
+        let store = Self::in_memory(time_provider, None, stats);
         StoreInitWithFallbackResult {
           store,
           data_loss: None,
@@ -183,6 +208,97 @@ impl Store {
           fallback_occurred: true,
         }
       },
+    }
+  }
+
+  /// Creates a Store based on an initialization strategy.
+  ///
+  /// # Arguments
+  ///
+  /// * `directory` - Directory for persistent storage
+  /// * `config` - Configuration for persistent storage
+  /// * `time_provider` - Time provider for timestamps
+  /// * `strategy` - The initialization strategy to use
+  /// * `stats` - Stats scope for metrics
+  pub async fn from_strategy(
+    directory: &Path,
+    config: PersistentStoreConfig,
+    time_provider: Arc<dyn TimeProvider>,
+    strategy: InitStrategy,
+    stats: &bd_client_stats_store::Scope,
+  ) -> StoreInitWithFallbackResult {
+    match strategy {
+      InitStrategy::PersistentWithFallback => {
+        Self::persistent_or_fallback(directory, config, time_provider, stats).await
+      },
+      InitStrategy::InMemoryOnly => StoreInitWithFallbackResult {
+        store: Self::in_memory(time_provider, None, stats),
+        data_loss: None,
+        previous_state: ScopedMaps::default(),
+        fallback_occurred: false,
+      },
+    }
+  }
+
+  /// Creates a Store using configuration from the runtime loader.
+  ///
+  /// This method reads runtime flags to determine store configuration:
+  /// - `state.use_persistent_storage`: Whether to use persistent or in-memory storage
+  /// - `state.initial_buffer_size_bytes`: Initial buffer size for persistent storage
+  /// - `state.max_capacity_bytes`: Max capacity (file size for persistent, entry count for
+  ///   in-memory)
+  ///
+  /// When persistent storage is enabled, it will automatically fall back to in-memory storage
+  /// if initialization fails.
+  ///
+  /// # Arguments
+  ///
+  /// * `directory` - Directory for persistent storage
+  /// * `time_provider` - Time provider for timestamps
+  /// * `runtime_loader` - Runtime configuration loader
+  /// * `stats` - Stats scope for metrics
+  pub async fn from_runtime(
+    directory: &Path,
+    time_provider: Arc<dyn TimeProvider>,
+    runtime_loader: &ConfigLoader,
+    stats: &bd_client_stats_store::Scope,
+  ) -> StoreInitWithFallbackResult {
+    let use_persistent_storage =
+      *bd_runtime::runtime::state::UsePersistentStorage::register(runtime_loader)
+        .into_inner()
+        .borrow();
+
+    let initial_buffer_size =
+      *bd_runtime::runtime::state::InitialBufferSize::register(runtime_loader)
+        .into_inner()
+        .borrow() as usize;
+
+    let max_capacity = *bd_runtime::runtime::state::MaxCapacity::register(runtime_loader)
+      .into_inner()
+      .borrow() as usize;
+
+    if use_persistent_storage {
+      let config = PersistentStoreConfig {
+        initial_buffer_size,
+        max_capacity_bytes: max_capacity,
+        ..Default::default()
+      };
+      Self::from_strategy(
+        directory,
+        config,
+        time_provider,
+        InitStrategy::PersistentWithFallback,
+        stats,
+      )
+      .await
+    } else {
+      // For in-memory, use max_capacity as the entry count limit
+      StoreInitWithFallbackResult {
+        store: Self::in_memory(time_provider, Some(max_capacity), stats),
+        data_loss: None,
+        previous_state: ScopedMaps::default(),
+        fallback_occurred: false,
+      }
     }
   }
 
@@ -195,11 +311,16 @@ impl Store {
   ///
   /// * `time_provider` - Time provider for timestamps
   /// * `capacity` - Optional maximum number of entries. If None, no limit is enforced.
+  /// * `stats` - Stats scope for metrics
   #[must_use]
-  pub fn in_memory(time_provider: Arc<dyn TimeProvider>, capacity: Option<usize>) -> Self {
+  pub fn in_memory(
+    time_provider: Arc<dyn TimeProvider>,
+    capacity: Option<usize>,
+    stats: &bd_client_stats_store::Scope,
+  ) -> Self {
     Self {
       inner: Arc::new(RwLock::new(
-        bd_resilient_kv::VersionedKVStore::new_in_memory(time_provider, capacity),
+        bd_resilient_kv::VersionedKVStore::new_in_memory(time_provider, capacity, stats),
       )),
     }
   }
@@ -216,6 +337,35 @@ impl Store {
           value_type: Value_type::StringValue(value).into(),
           ..Default::default()
         },
+      )
+      .await?;
+
+    Ok(())
+  }
+
+  pub async fn extend(
+    &self,
+    scope: Scope,
+    entries: impl IntoIterator<Item = (String, String)>,
+  ) -> anyhow::Result<()> {
+    self
+      .inner
+      .write()
+      .await
+      .extend(
+        entries
+          .into_iter()
+          .map(|(key, value)| {
+            (
+              scope,
+              key,
+              StateValue {
+                value_type: Value_type::StringValue(value).into(),
+                ..Default::default()
+              },
+            )
+          })
+          .collect(),
       )
       .await?;
 
@@ -286,5 +436,10 @@ impl StateReader for tokio::sync::RwLockReadGuard<'_, bd_resilient_kv::Versioned
           })
         }),
     )
+  }
+
+  fn as_scoped_maps(&self) -> &ScopedMaps {
+    // TODO(snowp): Consider removing iter() and get() in favor of direct access to the hashmap?
+    self.as_hashmap()
   }
 }

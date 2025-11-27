@@ -19,6 +19,7 @@ ahash.workspace        = true
 anyhow.workspace       = true
 bd-bonjson             = { path = "../bd-bonjson" }
 bd-client-common       = { path = "../bd-client-common" }
+bd-client-stats-store  = { path = "../bd-client-stats-store" }
 bd-log                      = { path = "../bd-log" }
 bd-proto                    = { path = "../bd-proto" }
 bd-time                     = { path = "../bd-time" }

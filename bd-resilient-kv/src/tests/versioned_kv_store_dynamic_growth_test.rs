@@ -19,6 +19,7 @@ struct Setup {
   temp_dir: TempDir,
   time_provider: Arc<TestTimeProvider>,
   registry: Arc<RetentionRegistry>,
+  collector: bd_client_stats_store::Collector,
 }
 
 impl Setup {
@@ -27,16 +28,19 @@ impl Setup {
       temp_dir: TempDir::new().unwrap(),
       time_provider: Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC))),
       registry: Arc::new(RetentionRegistry::new()),
+      collector: bd_client_stats_store::Collector::default(),
     }
   }
 
   async fn open_store(&self, config: PersistentStoreConfig) -> anyhow::Result<VersionedKVStore> {
+    let stats = self.collector.scope("test");
     let (store, _) = VersionedKVStore::new(
       self.temp_dir.path(),
       "test",
       config,
       self.time_provider.clone(),
       self.registry.clone(),
+      &stats,
     )
     .await?;
     Ok(store)
@@ -356,6 +360,9 @@ async fn insert_triggers_rotation_on_capacity_exceeded() -> anyhow::Result<()> {
 /// Test that inserting a value larger than max capacity still fails gracefully.
 #[tokio::test]
 async fn insert_fails_when_exceeding_max_capacity() -> anyhow::Result<()> {
+  use bd_client_stats_store::test::StatsHelper;
+  use std::collections::BTreeMap;
+
   let setup = Setup::new();
 
   // Small max capacity for testing
@@ -387,6 +394,13 @@ async fn insert_fails_when_exceeding_max_capacity() -> anyhow::Result<()> {
   // Verify nothing was inserted
   assert_eq!(store.len(), 0);
   assert!(!store.contains_key(Scope::GlobalState, "huge_key"));
+
+  // Verify the metric was incremented
+  setup.collector.assert_counter_eq(
+    1,
+    "test:kv:capacity_exceeded_unrecoverable",
+    BTreeMap::new(),
+  );
 
   Ok(())
 }

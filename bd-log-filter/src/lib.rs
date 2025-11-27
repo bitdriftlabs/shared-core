@@ -85,7 +85,7 @@ impl FilterChain {
     (Self { filters }, failures_count)
   }
 
-  pub fn process(&self, log: &mut Log, feature_flags: Option<&bd_feature_flags::FeatureFlags>) {
+  pub fn process(&self, log: &mut Log, state: &dyn bd_state::StateReader) {
     for filter in &self.filters {
       let fields_ref = FieldsRef::new(&log.fields, &log.matching_fields);
       if !filter.matcher.do_match(
@@ -93,7 +93,7 @@ impl FilterChain {
         log.log_type,
         &log.message,
         fields_ref,
-        feature_flags,
+        state,
         &TinyMap::default(),
       ) {
         continue;

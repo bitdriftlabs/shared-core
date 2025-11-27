@@ -30,7 +30,6 @@ use bd_client_stats::stats::{
 use bd_client_stats_store::Collector;
 use bd_crash_handler::Monitor;
 use bd_error_reporter::reporter::{UnexpectedErrorHandler, handle_unexpected};
-use bd_feature_flags::FeatureFlagsBuilder;
 use bd_internal_logging::NoopLogger;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::network_quality::NetworkCallOnlineIndicatorTimeout;
@@ -207,12 +206,6 @@ impl LoggerBuilder {
         log_network_quality_provider.clone(),
       ]));
 
-    let feature_flags_builder = FeatureFlagsBuilder::new(
-      &self.params.sdk_directory,
-      self.params.feature_flags_file_size_bytes,
-      self.params.feature_flags_high_watermark,
-    );
-
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
       UninitializedLoggingContext::new(
         &self.params.sdk_directory,
@@ -242,7 +235,6 @@ impl LoggerBuilder {
       &self.params.store,
       time_provider.clone(),
       init_lifecycle.clone(),
-      feature_flags_builder.clone(),
       data_upload_tx.clone(),
     );
 
@@ -275,7 +267,28 @@ impl LoggerBuilder {
     let logger_future = async move {
       runtime_loader.try_load_persisted_config().await;
       init_lifecycle.set(bd_client_common::init_lifecycle::InitLifecycle::RuntimeLoaded);
-      feature_flags_builder.backup_previous();
+
+      // Initialize state store using runtime configuration. This may fall back to an in-memory
+      // store if persistent storage cannot be initialized or if directed by configuration.
+      let state_directory = self.params.sdk_directory.join("state");
+      let result = bd_state::Store::from_runtime(
+        &state_directory,
+        time_provider.clone(),
+        &runtime_loader,
+        &scope,
+      )
+      .await;
+
+      let (state_store, previous_run_state) = (result.store, result.previous_state);
+
+      if result.fallback_occurred {
+        handle_unexpected(
+          Err::<(), anyhow::Error>(anyhow::anyhow!(
+            "Failed to initialize persistent state store, using in-memory fallback"
+          )),
+          "state initialization",
+        );
+      }
 
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
         Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
@@ -292,8 +305,9 @@ impl LoggerBuilder {
         Arc::new(artifact_client),
         self.params.session_strategy.clone(),
         &init_lifecycle,
-        feature_flags_builder,
-        move |log| {
+        state_store.clone(),
+        previous_run_state,
+        move |log: bd_crash_handler::CrashLog| {
           AsyncLogBuffer::<LoggerReplay>::enqueue_log(
             &async_log_buffer_communication_tx,
             log.log_level,
@@ -369,7 +383,7 @@ impl LoggerBuilder {
         async move { buffer_uploader.run().await },
         async move { config_writer.run().await },
         async move {
-          async_log_buffer.run(crash_monitor).await;
+          async_log_buffer.run(state_store, crash_monitor).await;
           Ok(())
         },
         async move { buffer_manager.process_flushes(flush_buffers_rx).await },

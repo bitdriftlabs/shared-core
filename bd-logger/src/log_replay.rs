@@ -56,7 +56,7 @@ pub trait LogReplay {
     log: Log,
     block: bool,
     pipeline: &mut ProcessingPipeline,
-    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
+    state: &bd_state::Store,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult>;
 }
@@ -74,10 +74,10 @@ impl LogReplay for LoggerReplay {
     log: Log,
     block: bool,
     pipeline: &mut ProcessingPipeline,
-    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
+    state_store: &bd_state::Store,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
-    pipeline.process_log(log, feature_flags, block, now).await
+    pipeline.process_log(log, state_store, block, now).await
   }
 }
 
@@ -187,20 +187,21 @@ impl ProcessingPipeline {
   async fn process_log(
     &mut self,
     mut log: Log,
-    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
+    state: &bd_state::Store,
     block: bool,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
     self.stats.logs_received.inc();
 
+    let state_reader = state.read().await;
     // TODO(Augustyniak): Add a histogram for the time it takes to process a log.
-    self.filter_chain.process(&mut log, feature_flags);
+    self.filter_chain.process(&mut log, &state_reader);
     let mut log = LogEncodingHelper::new(log, (*self.min_log_compression_size.read()).into());
 
     let flush_stats_trigger = self.flush_stats_trigger.clone();
     let flush_buffers_tx = self.flush_buffers_tx.clone();
 
-    match self.tail_configs.maybe_stream_log(&mut log, feature_flags) {
+    match self.tail_configs.maybe_stream_log(&mut log, &state_reader) {
       Ok(streamed) => {
         if streamed {
           self.stats.streamed_logs.inc();
@@ -216,12 +217,13 @@ impl ProcessingPipeline {
       log.log.log_level,
       &log.log.message,
       FieldsRef::new(&log.log.fields, &log.log.matching_fields),
+      &state_reader,
     );
 
     let mut result =
       self
         .workflows_engine
-        .process_log(&log.log, &matching_buffers, feature_flags, now);
+        .process_log(&log.log, &matching_buffers, &state_reader, now);
     let log_replay_result = LogReplayResult {
       logs_to_inject: std::mem::take(&mut result.logs_to_inject)
         .into_values()

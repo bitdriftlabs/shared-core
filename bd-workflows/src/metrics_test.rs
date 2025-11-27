@@ -10,7 +10,6 @@ use crate::config::{ActionEmitMetric, TagValue};
 use bd_client_stats::Stats;
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
-use bd_feature_flags::test::TestFeatureFlags;
 use bd_log_primitives::{Log, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_stats_common::{MetricType, NameType, labels};
@@ -80,7 +79,7 @@ fn metric_increment_value_extraction() {
       matching_fields: matching_only_fields,
       capture_session: None,
     },
-    None,
+    &bd_state::test::TestStateReader::default(),
   );
 
   collector.assert_workflow_counter_eq(1, "action_id_1", labels! {});
@@ -109,13 +108,8 @@ fn counter_label_extraction() {
 
   let (metrics_collector, collector) = make_metrics_collector();
 
-  let mut feature_flags = TestFeatureFlags::default();
-  feature_flags
-    .set("enabled_flag".to_string(), Some("variant_a"))
-    .unwrap();
-  feature_flags
-    .set("no variant flag".to_string(), None)
-    .unwrap();
+  let mut state_reader = bd_state::test::TestStateReader::default();
+  state_reader.insert(bd_state::Scope::FeatureFlag, "enabled_flag", "variant_a");
 
   metrics_collector.emit_metrics(
     &[&ActionEmitMetric {
@@ -171,7 +165,7 @@ fn counter_label_extraction() {
       matching_fields: matching_only_fields,
       capture_session: None,
     },
-    Some(&feature_flags),
+    &state_reader,
   );
 
   collector.assert_workflow_counter_eq(

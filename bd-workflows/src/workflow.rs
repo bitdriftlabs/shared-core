@@ -19,7 +19,6 @@ use crate::config::{
   WorkflowDebugMode,
 };
 use crate::generate_log::generate_log_action;
-use bd_feature_flags::FeatureFlags;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{FieldsRef, Log};
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
@@ -100,7 +99,7 @@ impl Workflow {
     &mut self,
     config: &'a Config,
     log: &Log,
-    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
+    state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
   ) -> WorkflowResult<'a> {
     let mut result = WorkflowResult::default();
@@ -131,7 +130,7 @@ impl Workflow {
       let Some(run) = self.runs.get_mut(index) else {
         continue;
       };
-      let mut run_result = run.process_log(config, log, feature_flags, now);
+      let mut run_result = run.process_log(config, log, state_reader, now);
 
       result.incorporate_run_result(&mut run_result);
 
@@ -546,7 +545,7 @@ impl Run {
     &mut self,
     config: &'a Config,
     log: &Log,
-    feature_flags: Option<&bd_feature_flags::FeatureFlags>,
+    state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
   ) -> RunResult<'a> {
     // Optimize for the case when no traversal is advanced as it's
@@ -569,7 +568,7 @@ impl Run {
       let Some(traversal) = self.traversals.get_mut(index) else {
         continue;
       };
-      let mut traversal_result = traversal.process_log(config, log, feature_flags, now);
+      let mut traversal_result = traversal.process_log(config, log, state_reader, now);
 
       run_triggered_actions.append(&mut traversal_result.triggered_actions);
       run_logs_to_inject.append(&mut traversal_result.log_to_inject);
@@ -833,7 +832,7 @@ impl Traversal {
     &mut self,
     config: &'a Config,
     log: &Log,
-    feature_flags: Option<&FeatureFlags>,
+    state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
   ) -> TraversalResult<'a> {
     fn process_transition<'a>(
@@ -907,7 +906,7 @@ impl Traversal {
             log.log_type,
             &log.message,
             FieldsRef::new(&log.fields, &log.matching_fields),
-            feature_flags,
+            state_reader,
             &self.extractions.fields,
           ) {
             let Some(matched_logs_counts) = self.matched_logs_counts.get_mut(index) else {
@@ -928,7 +927,7 @@ impl Traversal {
             {
               process_transition(
                 &mut result,
-                self.do_extractions(config, index, log, feature_flags),
+                self.do_extractions(config, index, log, state_reader),
                 actions,
                 log,
                 self.state_index,
@@ -995,7 +994,7 @@ impl Traversal {
     config: &Config,
     index: usize,
     log: &Log,
-    feature_flags: Option<&FeatureFlags>,
+    state_reader: &dyn bd_state::StateReader,
   ) -> TraversalExtractions {
     // TODO(mattklein123): In the common case without forking we should be able to move this data
     // and not clone it. It will require some thinking on how to do this given the loops involved.
@@ -1009,7 +1008,7 @@ impl Traversal {
       let Some(extracted_value) = extraction.value.extract_value(
         FieldsRef::new(&log.fields, &log.matching_fields),
         &log.message,
-        feature_flags,
+        state_reader,
       ) else {
         continue;
       };

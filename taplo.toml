@@ -1,4 +1,4 @@
-exclude = ["bazel-*", "target/**", "proto/**"]
+exclude = ["bazel-*", "target/**", "proto/**", "api/**", "thirdparty/flatbuffers/**", "bd-workspace-hack/Cargo.toml"]
 
 [formatting]
 align_comments       = true

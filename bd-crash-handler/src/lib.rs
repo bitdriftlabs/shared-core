@@ -26,7 +26,6 @@ use bd_artifact_upload::SnappedFeatureFlag;
 use bd_client_common::debug_check_lifecycle_less_than;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_error_reporter::reporter::handle_unexpected;
-use bd_feature_flags::FeatureFlagsBuilder;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
@@ -42,7 +41,11 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Report,
   ReportType,
 };
+use bd_resilient_kv::TimestampedValue;
+use bd_state::StateReader;
+use bd_time::OffsetDateTimeExt as _;
 use fbs::issue_reporting::v_1::root_as_report;
+use itertools::Itertools as _;
 use memmap2::Mmap;
 use std::ffi::OsStr;
 use std::fs::File;
@@ -108,8 +111,9 @@ pub enum ReportOrigin {
 pub struct Monitor {
   report_directory: PathBuf,
   previous_run_global_state: LogFields,
+  previous_run_state: bd_resilient_kv::ScopedMaps,
+  state: bd_state::Store,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
-  feature_flags_manager: FeatureFlagsBuilder,
 
   global_state_reader: global_state::Reader,
   pub session: Arc<bd_session::Strategy>,
@@ -123,7 +127,8 @@ impl Monitor {
     artifact_client: Arc<dyn bd_artifact_upload::Client>,
     session: Arc<bd_session::Strategy>,
     init_lifecycle: &InitLifecycleState,
-    feature_flags_manager: FeatureFlagsBuilder,
+    state: bd_state::Store,
+    previous_run_state: bd_resilient_kv::ScopedMaps,
     emit_log: impl Fn(CrashLog) -> anyhow::Result<()> + Send + Sync + 'static,
   ) -> Self {
     debug_check_lifecycle_less_than!(
@@ -138,8 +143,9 @@ impl Monitor {
     let mut monitor = Self {
       report_directory: sdk_directory.join(REPORTS_DIRECTORY),
       previous_run_global_state,
+      previous_run_state,
+      state,
       artifact_client,
-      feature_flags_manager,
       global_state_reader,
       session,
       monitor: None,
@@ -360,27 +366,55 @@ impl Monitor {
     fields
   }
 
-  fn get_feature_flags(&self, origin: ReportOrigin) -> Vec<SnappedFeatureFlag> {
-    // TODO(snowp): This pattern won't work for current feature flags as we cannot have
-    // concurrent handles to the file manager. Fix this with the FF rework.
-    match origin {
-      ReportOrigin::Current => self.feature_flags_manager.current_feature_flags(),
-      ReportOrigin::Previous => self.feature_flags_manager.previous_feature_flags(),
-    }
-    .ok()
-    .as_ref()
-    .map(|ff| {
-      ff.iter()
-        .map(|(name, flag)| {
-          SnappedFeatureFlag::new(
-            name.to_string(),
-            flag.variant.map(ToString::to_string),
-            flag.timestamp,
-          )
+  async fn get_feature_flags(&self, origin: ReportOrigin) -> Vec<SnappedFeatureFlag> {
+    let values: Vec<(String, String, OffsetDateTime)> = match origin {
+      ReportOrigin::Previous => self
+        .previous_run_state
+        .iter()
+        .filter(|(scope, ..)| *scope == bd_resilient_kv::Scope::FeatureFlag)
+        .filter_map(|(_, name, TimestampedValue { value, timestamp })| {
+          value
+            .has_string_value()
+            .then(|| {
+              let variant = value.string_value().to_string();
+              Some((
+                name.clone(),
+                variant,
+                OffsetDateTime::from_unix_timestamp_micros((*timestamp).try_into().ok()?).ok()?,
+              ))
+            })
+            .flatten()
         })
-        .collect()
-    })
-    .unwrap_or_default()
+        .collect(),
+      ReportOrigin::Current => self
+        .state
+        .read()
+        .await
+        .as_scoped_maps()
+        .iter()
+        .filter(|(scope, ..)| *scope == bd_resilient_kv::Scope::FeatureFlag)
+        .filter_map(|(_, key, value)| {
+          value
+            .value
+            .has_string_value()
+            .then(|| {
+              let variant = value.value.string_value().to_string();
+              let timestamp =
+                OffsetDateTime::from_unix_timestamp_nanos(i128::from(value.timestamp) * 1_000)
+                  .ok()?;
+              Some((key.clone(), variant, timestamp))
+            })
+            .flatten()
+        })
+        .collect(),
+    };
+
+    values
+      .into_iter()
+      .map(|(name, variant, timestamp)| {
+        SnappedFeatureFlag::new(name, (!variant.is_empty()).then_some(variant), timestamp)
+      })
+      .collect_vec()
   }
 
   fn get_global_state_fields(&self, origin: ReportOrigin) -> LogFields {
@@ -439,7 +473,7 @@ impl Monitor {
       return None;
     };
 
-    let reporting_feature_flags = self.get_feature_flags(origin);
+    let reporting_feature_flags = self.get_feature_flags(origin).await;
     let global_state_fields = self.get_global_state_fields(origin);
     let session_id = self.get_session_id(origin);
     let (timestamp, state_fields) = Self::read_log_fields(bin_report, &global_state_fields);

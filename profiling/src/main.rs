@@ -93,6 +93,7 @@ impl WorkflowConfigurationsInit {
 
 struct AnnotatedWorkflowsEngine {
   engine: WorkflowsEngine,
+  state_reader: bd_state::test::TestStateReader,
 }
 
 impl AnnotatedWorkflowsEngine {
@@ -121,7 +122,10 @@ impl AnnotatedWorkflowsEngine {
       )
       .await;
 
-    Self { engine }
+    Self {
+      engine,
+      state_reader: bd_state::test::TestStateReader::default(),
+    }
   }
 
   fn process_log(
@@ -148,7 +152,7 @@ impl AnnotatedWorkflowsEngine {
         capture_session: None,
       },
       &TinySet::default(),
-      None,
+      &self.state_reader,
       OffsetDateTime::now_utc(),
     );
   }
