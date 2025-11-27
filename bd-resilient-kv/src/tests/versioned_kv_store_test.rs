@@ -1430,3 +1430,94 @@ async fn extend_persistence() -> anyhow::Result<()> {
 
   Ok(())
 }
+
+
+#[tokio::test]
+async fn test_buffer_size_preserved_across_restart() -> anyhow::Result<()> {
+  // Test that buffer size is preserved when reopening a store after dynamic growth
+  let temp_dir = tempfile::tempdir()?;
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+  let registry = Arc::new(RetentionRegistry::new());
+
+  // Use a small initial buffer to force growth
+  let config = PersistentStoreConfig {
+    initial_buffer_size: 128 * 1024,      // 128KB
+    max_capacity_bytes: 10 * 1024 * 1024, // 10MB
+    high_water_mark_ratio: 0.7,
+  };
+
+  let num_entries = 10_000;
+  let buffer_size_after_growth;
+
+  // First process: insert many entries to trigger buffer growth
+  {
+    let (mut store, data_loss) = VersionedKVStore::new(
+      temp_dir.path(),
+      "test",
+      config.clone(),
+      time_provider.clone(),
+      registry.clone(),
+    )
+    .await?;
+
+    assert_eq!(data_loss, DataLoss::None);
+
+    // Use extend for efficient bulk insert
+    let entries: Vec<_> = (0 .. num_entries)
+      .map(|i| {
+        (
+          Scope::FeatureFlag,
+          format!("key_{i}"),
+          make_string_value(&format!("value_{i}")),
+        )
+      })
+      .collect();
+
+    store.extend(entries).await?;
+    store.sync()?;
+
+    // Verify buffer grew beyond initial size
+    buffer_size_after_growth = store.current_buffer_size();
+    assert!(
+      buffer_size_after_growth > config.initial_buffer_size,
+      "Buffer should have grown from {} to {}",
+      config.initial_buffer_size,
+      buffer_size_after_growth
+    );
+  }
+
+  // Second process: reopen and verify buffer size is preserved
+  {
+    let (store, data_loss) = VersionedKVStore::new(
+      temp_dir.path(),
+      "test",
+      config.clone(),
+      time_provider.clone(),
+      registry.clone(),
+    )
+    .await?;
+
+    assert_eq!(data_loss, DataLoss::None);
+
+    // Verify all data is still present
+    assert_eq!(store.len(), num_entries);
+
+    // Verify buffer size was preserved (not reset to initial_buffer_size)
+    let current_buffer_size = store.current_buffer_size();
+    assert_eq!(
+      current_buffer_size, buffer_size_after_growth,
+      "Buffer size should be preserved across restart: expected {}, got {}",
+      buffer_size_after_growth, current_buffer_size
+    );
+
+    // Sample check: verify some entries are present
+    for i in (0 .. num_entries).step_by(1000) {
+      assert_eq!(
+        store.get(Scope::FeatureFlag, &format!("key_{i}")),
+        Some(&make_string_value(&format!("value_{i}")))
+      );
+    }
+  }
+
+  Ok(())
+}
