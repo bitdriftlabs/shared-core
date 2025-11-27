@@ -186,7 +186,8 @@ impl Setup {
             ..Default::default()
           },
         )
-        .await;
+        .await
+        .unwrap();
     }
 
     store.as_hashmap().clone()
