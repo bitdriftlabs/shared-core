@@ -885,12 +885,19 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             },
             AsyncLogBufferMessage::SetFeatureFlag(flag, variant) => {
                 handle_unexpected(
-                state_store.insert(Scope::FeatureFlag, flag.clone(), variant.clone().unwrap_or_default()).await,
+                state_store.insert(
+                    Scope::FeatureFlag,
+                    flag.clone(),
+                    variant.clone().unwrap_or_default()
+                ).await,
                 &format!("async log buffer: failed to set feature flag ({flag:?})"));
             },
             AsyncLogBufferMessage::SetFeatureFlags(flags) => {
                 handle_unexpected(
-                state_store.extend(Scope::FeatureFlag, flags.into_iter().map(|(k, v)| (k, v.unwrap_or_default()))).await,
+                state_store.extend(
+                    Scope::FeatureFlag,
+                    flags.into_iter().map(|(k, v)| (k, v.unwrap_or_default()))
+                ).await,
                 "async log buffer: failed to set feature flags");
             },
             AsyncLogBufferMessage::RemoveFeatureFlag(flag) => {

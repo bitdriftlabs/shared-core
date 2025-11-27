@@ -401,7 +401,7 @@ impl Monitor {
               let timestamp =
                 OffsetDateTime::from_unix_timestamp_nanos(i128::from(value.timestamp) * 1_000)
                   .ok()?;
-              Some((key.to_string(), variant, timestamp))
+              Some((key.clone(), variant, timestamp))
             })
             .flatten()
         })
@@ -411,7 +411,7 @@ impl Monitor {
     values
       .into_iter()
       .map(|(name, variant, timestamp)| {
-        SnappedFeatureFlag::new(name, (!variant.is_empty()).then(|| variant), timestamp)
+        SnappedFeatureFlag::new(name, (!variant.is_empty()).then_some(variant), timestamp)
       })
       .collect_vec()
   }

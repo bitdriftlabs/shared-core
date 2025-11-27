@@ -277,7 +277,11 @@ impl Setup {
   async fn update_feature_flag(&self, key: &str, value: &str) {
     self
       .state
-      .insert(bd_state::Scope::FeatureFlag, key.to_string(), value.to_string())
+      .insert(
+        bd_state::Scope::FeatureFlag,
+        key.to_string(),
+        value.to_string(),
+      )
       .await
       .unwrap();
   }

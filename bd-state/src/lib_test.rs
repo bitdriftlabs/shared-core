@@ -340,11 +340,7 @@ async fn from_strategy_in_memory_only() {
   // Verify store works
   result
     .store
-    .insert(
-      Scope::FeatureFlag,
-      "flag".to_string(),
-      "value".to_string(),
-    )
+    .insert(Scope::FeatureFlag, "flag".to_string(), "value".to_string())
     .await
     .unwrap();
 
@@ -375,11 +371,7 @@ async fn from_strategy_persistent_with_fallback() {
   // Verify store works
   result
     .store
-    .insert(
-      Scope::FeatureFlag,
-      "flag".to_string(),
-      "value".to_string(),
-    )
+    .insert(Scope::FeatureFlag, "flag".to_string(), "value".to_string())
     .await
     .unwrap();
 
@@ -411,11 +403,7 @@ async fn from_strategy_persistent_with_fallback_on_failure() {
   // Verify in-memory store works
   result
     .store
-    .insert(
-      Scope::FeatureFlag,
-      "flag".to_string(),
-      "value".to_string(),
-    )
+    .insert(Scope::FeatureFlag, "flag".to_string(), "value".to_string())
     .await
     .unwrap();
 
@@ -448,11 +436,7 @@ async fn from_runtime_config_enabled() {
   // Verify store works and persists across restarts
   result
     .store
-    .insert(
-      Scope::FeatureFlag,
-      "flag".to_string(),
-      "value".to_string(),
-    )
+    .insert(Scope::FeatureFlag, "flag".to_string(), "value".to_string())
     .await
     .unwrap();
 
@@ -509,11 +493,7 @@ async fn from_runtime_config_disabled() {
   // Verify store works
   result
     .store
-    .insert(
-      Scope::FeatureFlag,
-      "flag".to_string(),
-      "value".to_string(),
-    )
+    .insert(Scope::FeatureFlag, "flag".to_string(), "value".to_string())
     .await
     .unwrap();
 

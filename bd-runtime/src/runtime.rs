@@ -918,7 +918,8 @@ pub mod global_state {
   use time::ext::NumericalDuration as _;
 
   // Controls the time window within which multiple updates to the global state are coalesced into a
-  // single write. The first write happens immediately, and subsequent writes within the window are delayed until the window has passed.
+  // single write. The first write happens immediately, and subsequent writes within the window are
+  // delayed until the window has passed.
   duration_feature_flag!(
     CoalesceWindow,
     "global_state.coalesce_window_ms",
