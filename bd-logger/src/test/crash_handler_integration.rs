@@ -10,7 +10,9 @@ use crate::logger::{Block, CaptureSession, ReportProcessingSession};
 use crate::test::setup::SetupOptions;
 use assert_matches::assert_matches;
 use bd_proto::protos::logging::payload::LogType;
+use bd_runtime::runtime::FeatureFlag as _;
 use bd_test_helpers::metadata_provider::LogMetadata;
+use bd_test_helpers::runtime::ValueKind;
 use bd_test_helpers::test_api_server::log_upload::LogUpload;
 use itertools::Itertools as _;
 use std::collections::HashSet;
@@ -26,7 +28,8 @@ const CRASH_CONTENTS: &str = "\x14\x00\x00\x00\x00\x00\x0e\x00\x08\x00\x00\x00\x
 fn crash_report_upload() {
   let timestamp = datetime!(2021-01-01 00:00:00 UTC);
 
-  let (directory, initial_session_id) = {
+  // In order to get persistent storage enabled, we need to send a runtime update first.
+  let directory = {
     let setup = Setup::new_with_options(SetupOptions {
       disk_storage: true,
       metadata_provider: Arc::new(LogMetadata {
@@ -34,6 +37,28 @@ fn crash_report_upload() {
         ootb_fields: [("_ootb_field".into(), "ootb".into())].into(),
         custom_fields: [("custom".into(), "custom".into())].into(),
       }),
+      extra_runtime_values: vec![(
+        bd_runtime::runtime::state::UsePersistentStorage::path(),
+        ValueKind::Bool(true),
+      )],
+      ..Default::default()
+    });
+    setup.sdk_directory.clone()
+  };
+
+  let initial_session_id = {
+    let setup = Setup::new_with_options(SetupOptions {
+      disk_storage: true,
+      metadata_provider: Arc::new(LogMetadata {
+        timestamp: time::OffsetDateTime::now_utc().into(),
+        ootb_fields: [("_ootb_field".into(), "ootb".into())].into(),
+        custom_fields: [("custom".into(), "custom".into())].into(),
+      }),
+      sdk_directory: directory.clone(),
+      extra_runtime_values: vec![(
+        bd_runtime::runtime::state::UsePersistentStorage::path(),
+        ValueKind::Bool(true),
+      )],
       ..Default::default()
     });
 
@@ -68,15 +93,16 @@ fn crash_report_upload() {
     )
     .unwrap();
 
-    (
-      setup.sdk_directory.clone(),
-      setup.logger.new_logger_handle().session_id(),
-    )
+    setup.logger.new_logger_handle().session_id()
   };
 
   let mut setup = Setup::new_with_options(SetupOptions {
     sdk_directory: directory,
     disk_storage: true,
+    extra_runtime_values: vec![(
+      bd_runtime::runtime::state::UsePersistentStorage::path(),
+      ValueKind::Bool(true),
+    )],
     ..Default::default()
   });
 

@@ -90,6 +90,7 @@ pub struct SetupOptions {
   pub disk_storage: bool,
   pub start_in_sleep_mode: bool,
   pub time_provider: Option<Arc<dyn TimeProvider>>,
+  pub extra_runtime_values: Vec<(&'static str, ValueKind)>,
 }
 
 impl Default for SetupOptions {
@@ -100,6 +101,7 @@ impl Default for SetupOptions {
       disk_storage: false,
       start_in_sleep_mode: false,
       time_provider: None,
+      extra_runtime_values: vec![],
     }
   }
 }
@@ -184,7 +186,11 @@ impl Setup {
     .unwrap();
 
     let logger_handle = logger.new_logger_handle();
-    let current_api_stream = Self::do_stream_setup(&mut server, options.start_in_sleep_mode);
+    let current_api_stream = Self::do_stream_setup(
+      &mut server,
+      options.start_in_sleep_mode,
+      options.extra_runtime_values,
+    );
     Self {
       logger,
       logger_handle,
@@ -209,12 +215,17 @@ impl Setup {
     self
       .current_api_stream()
       .blocking_stream_action(StreamAction::CloseStream);
-    self.current_api_stream = Some(Self::do_stream_setup(&mut self.server, expect_sleep_mode));
+    self.current_api_stream = Some(Self::do_stream_setup(
+      &mut self.server,
+      expect_sleep_mode,
+      vec![],
+    ));
   }
 
   pub fn do_stream_setup(
     server: &mut bd_test_helpers::test_api_server::ServerHandle,
     expect_sleep_mode: bool,
+    extra_runtime_values: Vec<(&'static str, ValueKind)>,
   ) -> StreamHandle {
     let stream = server.blocking_next_stream().unwrap();
     assert!(stream.await_event_with_timeout(
@@ -226,7 +237,10 @@ impl Setup {
     ));
 
     stream.blocking_stream_action(StreamAction::SendRuntime(make_update(
-      Self::get_default_runtime_values(),
+      Self::get_default_runtime_values()
+        .into_iter()
+        .chain(extra_runtime_values.into_iter())
+        .collect(),
       "base".to_string(),
     )));
 

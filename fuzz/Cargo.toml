@@ -13,7 +13,6 @@ cargo-fuzz = true
 
 [dependencies]
 ahash.workspace             = true
-anyhow.workspace            = true
 arbitrary.workspace         = true
 async-trait.workspace       = true
 bd-bonjson.path             = "../bd-bonjson"
@@ -27,10 +26,11 @@ bd-time.path                = "../bd-time"
 bd-workspace-hack.workspace = true
 libfuzzer-sys.workspace     = true
 log.workspace               = true
-protobuf.workspace          = true
 tempfile.workspace          = true
 time.workspace              = true
+protobuf.workspace          = true
 tokio.workspace             = true
+anyhow.workspace            = true
 
 [dev-dependencies]
 bd-test-helpers.path = "../bd-test-helpers"
