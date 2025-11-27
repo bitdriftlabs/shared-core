@@ -410,3 +410,94 @@ async fn from_strategy_persistent_with_fallback_on_failure() {
   let reader = result.store.read().await;
   assert_eq!(reader.get(Scope::FeatureFlag, "flag"), Some("value"));
 }
+
+#[tokio::test]
+async fn large_batch_insert_with_rotation_and_restart() {
+  // Test that a large batch of entries causing rotation with buffer growth
+  // is properly persisted and can be read back after restart
+  let temp_dir = tempfile::tempdir().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+
+  // Use a small initial buffer to force rotation with growth
+  let config = PersistentStoreConfig {
+    initial_buffer_size: 128 * 1024,      // 128KB
+    max_capacity_bytes: 10 * 1024 * 1024, // 10MB
+    high_water_mark_ratio: 0.7,
+  };
+
+  let num_entries = 10_000;
+  let expected_keys: Vec<String> = (0 .. num_entries)
+    .map(|i| format!("feature_flag_{i}"))
+    .collect();
+
+  // First process: insert large batch that will cause rotation
+  {
+    let store = Store::persistent(temp_dir.path(), config.clone(), time_provider.clone())
+      .await
+      .unwrap()
+      .store;
+
+    // Insert entries as a batch to trigger rotation
+    let entries: Vec<(String, String)> = expected_keys
+      .iter()
+      .map(|key| (key.clone(), format!("value_{key}")))
+      .collect();
+
+    store.extend(Scope::FeatureFlag, entries).await.unwrap();
+
+    // Verify all entries are present
+    let reader = store.read().await;
+    for key in &expected_keys {
+      assert_eq!(
+        reader.get(Scope::FeatureFlag, key),
+        Some(format!("value_{key}").as_str()),
+        "Key {key} should be present"
+      );
+    }
+
+    // Check that buffer grew (should be larger than initial size)
+    let current_size = store.inner.read().await.current_buffer_size();
+    assert!(
+      current_size > config.initial_buffer_size,
+      "Buffer should have grown from {} to {}, but it didn't",
+      config.initial_buffer_size,
+      current_size
+    );
+  }
+
+  // Second process: restart and verify all data is still there
+  {
+    let result = Store::persistent(temp_dir.path(), config.clone(), time_provider.clone())
+      .await
+      .unwrap();
+    let store = result.store;
+
+    // Previous state should contain all entries before ephemeral scopes were cleared
+    assert_eq!(
+      result.previous_state.feature_flags.len(),
+      num_entries,
+      "Previous state should contain all {num_entries} feature flags",
+    );
+
+    // Current store should be empty (ephemeral scopes cleared on restart)
+    let reader = store.read().await;
+    for key in &expected_keys {
+      assert_eq!(
+        reader.get(Scope::FeatureFlag, key),
+        None,
+        "Key {key} should be cleared in current store"
+      );
+    }
+
+    // Verify buffer size was preserved from the previous run
+    let current_size = store.inner.read().await.current_buffer_size();
+    assert!(
+      current_size > config.initial_buffer_size,
+      "Buffer size should be preserved from previous run: {} > {}",
+      current_size,
+      config.initial_buffer_size
+    );
+  }
+}

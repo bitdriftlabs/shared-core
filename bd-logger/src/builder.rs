@@ -32,6 +32,7 @@ use bd_crash_handler::Monitor;
 use bd_error_reporter::reporter::{UnexpectedErrorHandler, handle_unexpected};
 use bd_internal_logging::NoopLogger;
 use bd_proto::protos::logging::payload::LogType;
+use bd_resilient_kv::DataLoss;
 use bd_runtime::runtime::network_quality::NetworkCallOnlineIndicatorTimeout;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
 use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
@@ -279,7 +280,24 @@ impl LoggerBuilder {
 
       let (state_store, previous_run_state) = (result.store, result.previous_state);
 
+      if result.data_loss.as_ref().unwrap_or(&DataLoss::None) != &DataLoss::None {
+        log::warn!(
+          "Persistent state store experienced data loss: {:?}",
+          result.data_loss
+        );
+
+        handle_unexpected(
+          Err::<(), anyhow::Error>(anyhow::anyhow!(
+            "Persistent state store experienced data loss: {:?}",
+            result.data_loss
+          )),
+          "state initialization",
+        );
+      }
+
       if result.fallback_occurred {
+        log::warn!("Persistent state store initialization failed, using in-memory fallback");
+
         handle_unexpected(
           Err::<(), anyhow::Error>(anyhow::anyhow!(
             "Failed to initialize persistent state store, using in-memory fallback"
