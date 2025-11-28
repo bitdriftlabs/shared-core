@@ -62,30 +62,6 @@ test = false
 
 [[bin]]
 doc  = false
-name = "resilient_kv_in_memory"
-path = "fuzz_targets/resilient_kv_in_memory.rs"
-test = false
-
-[[bin]]
-doc  = false
-name = "resilient_kv_memmapped"
-path = "fuzz_targets/resilient_kv_memmapped.rs"
-test = false
-
-[[bin]]
-doc  = false
-name = "resilient_kv_double_buffered"
-path = "fuzz_targets/resilient_kv_double_buffered.rs"
-test = false
-
-[[bin]]
-doc  = false
-name = "resilient_kv_store"
-path = "fuzz_targets/resilient_kv_store.rs"
-test = false
-
-[[bin]]
-doc  = false
 name = "versioned_kv_journal"
 path = "fuzz_targets/versioned_kv_journal.rs"
 test = false

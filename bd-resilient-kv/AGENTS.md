@@ -4,10 +4,14 @@ This document provides insights and understanding about the `bd-resilient-kv` jo
 
 ## Core Architecture
 
-The `bd-resilient-kv` library provides two storage models:
+The `bd-resilient-kv` library provides a versioned storage model:
 
-1. **KVStore**: Standard double-buffered key-value store with automatic compaction
-2. **VersionedKVStore**: Version-tracked store with point-in-time recovery and automatic rotation
+**VersionedKVStore**: Version-tracked store with point-in-time recovery and automatic rotation
+- Best for: Audit logs, state history, remote backup
+- Architecture: Single journal with archived versions
+- Rotation: Creates new journal with compacted state
+- Timestamp tracking: Every write returns a timestamp
+- Format: Protobuf-based entries (VERSION 1)
 
 ### KVJournal Trait
 The `KVJournal` trait is the foundation of the system, providing:
@@ -20,7 +24,7 @@ The `KVJournal` trait is the foundation of the system, providing:
 
 1. **InMemoryKVJournal**: Core implementation backed by byte buffers
 2. **MemMappedKVJournal**: File-backed implementation wrapping InMemoryKVJournal
-3. **DoubleBufferedKVJournal**: High-level wrapper providing automatic compaction and retry logic
+3. **DoubleBufferedKVJournal**: High-level wrapper providing automatic compaction and retry logic (used internally)
 4. **VersionedKVJournal**: Versioned journal with entry-level version tracking
 5. **MemMappedVersionedKVJournal**: Memory-mapped wrapper for versioned journals
 6. **VersionedKVStore**: High-level API for versioned key-value storage with automatic rotation
@@ -90,14 +94,7 @@ The `VersionedRecovery` utility provides point-in-time recovery by replaying jou
 
 ## Critical Design Insights
 
-### 1. Two Storage Models
-
-**KVStore (Double-Buffered)**:
-- Best for: General-purpose key-value storage, configuration, caches
-- Architecture: Two journals with automatic switching
-- Compaction: Compresses entire state into inactive journal
-- No version tracking
-- Format: BONJSON-based entries
+### 1. Versioned Storage Model
 
 **VersionedKVStore (Single Journal with Rotation)**:
 - Best for: Audit logs, state history, remote backup
@@ -111,22 +108,24 @@ The `VersionedRecovery` utility provides point-in-time recovery by replaying jou
 
 **Implication**: Never assume compaction can always solve high water mark issues. Sometimes both buffers are legitimately full.
 
-### 3. Versioned Store Rotation vs KVStore Compaction
-
-**Key Differences**:
-- **KVStore**: Switches between two buffers, old buffer is reset and reused
-- **VersionedKVStore**: Archives old journal with `.t{timestamp}` suffix, creates new journal
-- **Version Preservation**: Archived journals preserve complete history for recovery
+### 3. Journal Rotation Strategy
 
 **When Rotation Occurs**:
 - Triggered during `insert()` or `remove()` when journal size exceeds high water mark
-- Can be manually triggered via `rotate()`
+- Can be manually triggered via `rotate_journal()`
 - Automatic and transparent to the caller
 
-### 4. Bulk Operations and Retry Logic
-The system includes sophisticated retry logic specifically for bulk operations:
+**Rotation Process**:
+- Archives old journal with `.t{timestamp}` suffix
+- Creates new journal with compacted current state
+- Asynchronously compresses archived journal to `.t{timestamp}.zz`
+- Preserves complete history for point-in-time recovery
 
-**`set_multiple` Intelligence**: The `set_multiple` method in `DoubleBufferedKVJournal` implements a two-phase approach:
+### 4. Bulk Operations and Retry Logic
+
+The system includes sophisticated retry logic for bulk operations through the `DoubleBufferedKVJournal` (used internally):
+
+**`set_multiple` Intelligence**: The `set_multiple` method implements a two-phase approach:
 1. **Primary Attempt**: Forward operation to active journal using standard logic
 2. **Intelligent Retry**: If the operation fails but high water mark is not triggered, retry once more
 
@@ -136,13 +135,16 @@ The system includes sophisticated retry logic specifically for bulk operations:
 - A retry immediately after might succeed on the now-compacted journal
 - High water mark flag accurately reflects whether retry is worthwhile
 
+Note: This retry logic is internal to the journal system and handled automatically by VersionedKVStore.
+
 ### 5. Simplified High Water Mark Detection
-The system uses a straightforward approach to high water mark detection:
+
+The system uses a straightforward approach to high water mark detection (internal to journal implementation):
 
 ```rust
 // Check if high water mark is triggered
 if journal.is_high_water_mark_triggered() {
-    // React to high water mark - typically involves compaction
+    // React to high water mark - typically involves compaction or rotation
 }
 ```
 
@@ -150,6 +152,8 @@ if journal.is_high_water_mark_triggered() {
 - Simple, clear API
 - No callback complexity or thread safety concerns
 - Direct control over when to check status
+
+Note: For VersionedKVStore users, rotation is handled automatically during write operations.
 
 ### 6. Double Buffered Journal Logic
 The `DoubleBufferedKVJournal` implements automatic switching with sophisticated retry logic:
@@ -188,45 +192,55 @@ fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
    ```rust
    for round in 0..20 {
        for key in ["key1", "key2", "key3"] {
-           journal.set(key, &format!("data_round_{}", round));
+           store.insert(scope, key, value).await?;
        }
    }
    // Journal has 60 entries but only 3 unique keys
-   // Compaction reduces to 3 final entries
+   // Rotation reduces to 3 final entries
    ```
 
-2. **Small Buffers + Large Data**: Force scenarios where compaction cannot help
+2. **Point-in-Time Recovery**: Test timestamp-based recovery
    ```rust
-   let small_buffer = vec![0u8; 128];  // Very small
-   let large_values = "very_long_value_that_exceeds_high_water_mark";
-   // Even compacted, data is too large for buffer
+   let ts1 = store.insert(scope, "key1", value1).await?;
+   let ts2 = store.insert(scope, "key2", value2).await?;
+   let ts3 = store.remove(scope, "key1").await?;
+   
+   // Recover at ts2 should have both keys
+   let state_at_ts2 = recovery.recover_at_timestamp(ts2)?;
+   assert!(state_at_ts2.contains("key1"));
    ```
 
-3. **Bulk Operation Scenarios**: Test retry logic in `set_multiple`
+3. **Rotation Scenarios**: Test automatic rotation on high water mark
    ```rust
-   // Create a scenario where initial bulk operation might fail
-   // but retry succeeds after automatic compaction
-   let mut large_batch = HashMap::new();
+   let config = PersistentStoreConfig {
+       buffer_size: 1024,  // Small buffer
+       high_water_mark_ratio: 0.8,
+   };
+   
+   // Write until rotation occurs
    for i in 0..100 {
-       large_batch.insert(format!("key_{}", i), generate_large_value());
+       store.insert(scope, &format!("key_{}", i), large_value).await?;
    }
-
-   // This should trigger the retry logic in DoubleBufferedKVJournal
-   let result = journal.set_multiple(&large_batch);
+   
+   // Verify archived journals exist
+   assert!(archived_journals_exist());
    ```
 
-4. **Edge Case Testing**: Verify retry logic boundaries
+4. **Compression Verification**: Verify archived journals are compressed
    ```rust
-   // Test case where first attempt fails but high water mark isn't triggered
-   // Should retry and potentially succeed
-   // vs case where high water mark is triggered (should not retry)
+   // Trigger rotation
+   store.rotate_journal().await?;
+   
+   // Check that archived journal has .zz extension
+   // and is smaller than original
    ```
 
 ### Test Expectations
 
-- **Successful Compaction**: High water mark flag should be cleared after successful compaction
-- **Failed Compaction**: High water mark flag should remain set when compaction cannot help
-- **Retry Logic**: `set_multiple` should retry on failure if high water mark not triggered
+- **Successful Rotation**: Archived journals created with proper timestamps
+- **Compression**: Archived journals have `.zz` extension and are compressed
+- **Point-in-Time Recovery**: Can reconstruct state at any historical timestamp
+- **Async Operations**: Write operations complete asynchronously
 - **Error Scenarios**: Actual errors should be propagated, not masked
 
 ## Failure Modes: What to Handle vs What's Impossible
@@ -235,158 +249,119 @@ fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
 
 1. **Buffer Full During Normal Writes**
    - **When**: Writing to journal when buffer is at capacity
-   - **Result**: Write operations return `SerializationError::BufferFull`
-   - **Action**: Check `is_high_water_mark_triggered()`, trigger compaction/rotation if needed
-   - **Note**: Even after compaction, if unique data exceeds buffer size, writes will still fail
+   - **Result**: Write operations return error
+   - **Action**: Automatic rotation will occur on next write attempt
+   - **Note**: VersionedKVStore handles rotation automatically during write operations
 
-2. **High Water Mark Triggered After Compaction (KVStore)**
-   - **When**: Compacted state still exceeds high water mark threshold
-   - **Result**: `is_high_water_mark_triggered()` returns true after `switch_journals()`
-   - **Action**: Indicates buffer size is too small for the unique data volume, not a transient issue
-
-3. **I/O Errors During Persistence**
+2. **I/O Errors During Persistence**
    - **When**: File operations fail (disk full, permissions, etc.)
    - **Result**: I/O errors propagated from memory-mapped operations
    - **Action**: Handle as standard I/O errors
 
-4. **Compression/Archive Errors (VersionedKVStore)**
+3. **Compression/Archive Errors**
    - **When**: Asynchronous compression of archived journal fails
    - **Result**: Error during rotation's async compression phase
    - **Action**: Retry compression, handle cleanup appropriately
 
+4. **Recovery Errors**
+   - **When**: Archived journals are corrupted or missing
+   - **Result**: Recovery operations fail or return incomplete state
+   - **Action**: Handle missing data gracefully, implement backup strategies
+
 ### Impossible Failure Modes (Architectural Guarantees)
 
-1. **Timestamp Overflow (VersionedKVStore)**
+1. **Timestamp Overflow**
    - **Why Practically Impossible**: Uses u64 for microsecond timestamps, would require 584,000+ years to overflow (u64::MAX microseconds ≈ year 586,524 CE)
    - **Implication**: No overflow handling needed in practice
 
 ## Common Pitfalls
 
-### 1. Assuming Compaction Always Works
-**Wrong Assumption**: "If we trigger compaction, the high water mark issue will be resolved"
-**Reality**: Compaction may reduce size but still exceed thresholds
+### 1. Assuming Rotation Always Solves Space Issues
+**Wrong Assumption**: "If we trigger rotation, the buffer will have enough space"
+**Reality**: Rotation reduces size but unique data still needs to fit in buffer
 
-### 2. Misunderstanding the Flag Behavior
-**Legacy Expectation**: Expecting callback-based notifications
-**Current Reality**: Simple boolean flag that must be checked explicitly
+### 2. Forgetting Async Context
+**Wrong**: Calling write operations without `.await` or outside async context
+**Right**: All write operations require async context and must be awaited
 
 ### 3. Error Handling
-**Wrong**: Assuming high water mark flag means operation failed
-**Right**: High water mark flag indicates resource pressure, operations may still succeed
+**Wrong**: Ignoring errors from write operations
+**Right**: Properly handle and propagate errors, especially I/O and rotation failures
 
-### 4. Over-Engineering for Impossible Scenarios
-**Wrong**: Adding error handling for rotation buffer overflow
-**Right**: Trust architectural guarantees, focus on actual failure modes
+### 4. Point-in-Time Recovery Assumptions
+**Wrong**: Assuming timestamps are strictly increasing
+**Right**: Timestamps are monotonically non-decreasing (multiple entries can have same timestamp)
 
 ## Key Methods and Their Purposes
 
-### `set_multiple(entries: &[(String, Value)])`
-- **Purpose**: Efficiently set multiple key-value pairs in a single operation
-- **Behavior**: Atomic batch update with automatic retry logic in DoubleBufferedKVJournal
-- **Retry Logic**: If initial attempt fails but high water mark not triggered, attempts once more
-- **Performance**: More efficient than individual `set()` calls for batch operations
-- **Error Handling**: Returns error only if both initial attempt and retry fail, or if retry not warranted
+### `insert(scope, key, value)` (VersionedKVStore)
+- **Purpose**: Insert or update a key-value pair in the specified scope
+- **Behavior**: Async operation that writes to journal and updates cache
+- **Returns**: Timestamp of the write operation
+- **Side Effects**: May trigger automatic rotation if high water mark exceeded
 
-### `reinit_from(other: &dyn KVJournal)`
-- **Purpose**: Initialize journal with compacted state from another journal
-- **Behavior**: Clears current journal, serializes other's hashmap, writes compactly
-- **Side Effects**: Resets high_water_mark_triggered flag, updates timestamps
-- **Efficiency**: Already maximally efficient - writes most compact possible representation
+### `remove(scope, key)` (VersionedKVStore)
+- **Purpose**: Remove a key from the specified scope
+- **Behavior**: Async operation that writes deletion entry to journal
+- **Returns**: Timestamp of the deletion
+- **Note**: Deletion is recorded with timestamp for point-in-time recovery
 
-### `is_high_water_mark_triggered()`
-- **Purpose**: Check if high water mark threshold has been exceeded
-- **Returns**: Boolean indicating resource pressure status
-- **Usage**: Should be checked after operations to determine if action needed
-- **Reset**: Cleared by `reinit_from()` or when condition no longer applies
+### `rotate_journal()` (VersionedKVStore)
+- **Purpose**: Manually trigger journal rotation
+- **Behavior**: Async operation that creates new journal and archives old one
+- **Side Effects**: Compresses archived journal asynchronously
+- **Use Case**: Proactive rotation before expected high write volume
 
-### `switch_journals()` (DoubleBuffered)
-- **Purpose**: Perform compaction by switching active journal
-- **Process**: Calls `reinit_from()` on inactive journal, then switches
-- **Flag Update**: Updates `high_water_mark_triggered` based on post-switch status
-- **Error Handling**: Returns errors from `reinit_from()`, should be propagated
+### `recover_at_timestamp(timestamp)` (VersionedRecovery)
+- **Purpose**: Reconstruct state at a specific point in time
+- **Behavior**: Replays journal entries up to the target timestamp
+- **Returns**: Map of scoped state at that timestamp
+- **Use Case**: Audit trails, rollback scenarios, historical queries
 
 ## Architecture Evolution
 
-The system has evolved from:
-1. **Manual Polling**: Checking flags periodically
-2. **Callback Complexity**: Attempted callback-based notifications (removed)
-3. **Simplified Flags**: Return to simple boolean status checking
-4. **Smart Retry Logic**: Automatic retry in `set_multiple` for bulk operations
+The system has evolved to focus on versioned storage:
+1. **Legacy KVStore**: Double-buffered non-versioned store (removed)
+2. **VersionedKVStore**: Current primary implementation with timestamp tracking
+3. **Async Architecture**: Write operations are async for efficient compression
+4. **Automatic Management**: Rotation and compression handled automatically
 
 ## Working with the Code
 
 ### When Adding New Features
-1. **Check status flags**: Use `is_high_water_mark_triggered()` to check resource pressure
-2. **Consider compaction limits**: Don't assume it always works
-3. **Proper error handling**: Distinguish system errors from "resource exhaustion"
-4. **Test realistic scenarios**: Use patterns that actually trigger the logic you're testing
+1. **Use async/await**: All write operations are async
+2. **Handle timestamps**: Every write returns a timestamp for tracking
+3. **Consider rotation**: New features should work correctly across rotation boundaries
+4. **Test recovery**: Ensure new features work with point-in-time recovery
 
 ### When Debugging
-1. **Check flag status**: Verify `is_high_water_mark_triggered()` returns expected values
-2. **Understand compaction timing**: Flags update after `reinit_from()` completes
-3. **Consider buffer sizes**: Ensure test scenarios are realistic
-4. **Verify retry logic**: `set_multiple` has special retry behavior after journal switching
+1. **Check timestamps**: Verify timestamp ordering and monotonicity
+2. **Examine archived journals**: Look for `.zz` compressed archives
+3. **Test async operations**: Ensure proper async context and awaiting
+4. **Verify compression**: Check that archived journals are actually compressed
 
 ## Future Considerations
 
 ### Potential Improvements
-1. **Metrics**: Track compaction effectiveness ratios and retry success rates
-2. **Adaptive Thresholds**: Adjust high water marks based on compaction success rates
-3. **Extended Retry Logic**: Consider applying intelligent retry to other operations beyond `set_multiple`
-4. **Batch Operation Optimization**: Further optimize bulk updates with streaming or chunked processing
-5. **Retry Strategy Refinement**: Consider exponential backoff or multiple retry attempts for edge cases
+1. **Metrics**: Track rotation frequency, compression ratios, and recovery times
+2. **Adaptive Buffer Sizes**: Automatically adjust buffer size based on usage patterns
+3. **Parallel Compression**: Compress multiple archived journals concurrently
+4. **Incremental Recovery**: Optimize recovery for large history sets
+5. **Retention Policies**: Enhanced automatic cleanup of old archived journals
 
 ### API Stability
-The current simplified flag-based approach provides a foundation for more sophisticated resource management strategies while maintaining simple, efficient core journal operations. The removal of callback complexity makes the API more predictable and easier to reason about. The addition of intelligent retry logic in bulk operations demonstrates the system's evolution toward more robust automatic handling of edge cases.
+The current versioned store provides a robust foundation for persistent state management with full audit trail capabilities. The async architecture enables efficient background operations without blocking application threads.
 
 ## Summary
 
-The kv_journal system is built around efficient append-only storage with intelligent automatic compaction. The key insight is that compaction has physical limits - when even the most compact representation exceeds available space, the system correctly sets status flags rather than failing silently. The simplified flag-based architecture enables straightforward resource management while maintaining high performance for normal operations.
+The bd-resilient-kv system provides versioned persistent key-value storage with point-in-time recovery capabilities. The key insight is that every write operation returns a timestamp, enabling precise state tracking and historical queries. The async architecture enables efficient background compression of archived journals without blocking application threads.
 
-**Current State**: The system has been simplified by removing callback complexity in favor of simple boolean flags that can be checked as needed. The `DoubleBufferedKVJournal` provides automatic compaction with intelligent retry logic for bulk operations.
+**Current State**: The system focuses on VersionedKVStore as the primary storage implementation. Key features include:
 
-## Refactoring Best Practices
+- **Versioned Storage**: Every write tracked with timestamps
+- **Point-in-Time Recovery**: Reconstruct state at any historical timestamp
+- **Automatic Rotation**: Journal rotation triggered by high water mark
+- **Async Compression**: Archived journals compressed asynchronously
+- **Cross-Rotation Recovery**: Recovery works seamlessly across rotation boundaries
 
-When modifying or refactoring code in the kv_journal system (or any Rust codebase), follow these essential practices to maintain code quality and prevent issues:
-
-### Documentation and Comments
-- **Always update documentation and comments** to reflect current functionality
-- Pay special attention to trait documentation, method comments, and module-level explanations
-- Update CLAUDE.md or similar architectural documentation when making significant changes
-- Ensure code comments explain the "why" behind complex logic, especially around compaction strategies and retry mechanisms
-
-### Code Quality Checks
-After making changes, run these commands in order:
-
-1. **Lint with Clippy**: Run `cargo clippy --workspace --bins --examples --tests -- --no-deps`
-   - Fix all warnings and errors before proceeding
-   - Clippy catches common Rust antipatterns and potential bugs
-   - The `--no-deps` flag focuses on your code changes, not dependencies
-
-2. **Format Code**: Run `cargo +nightly fmt --all`
-   - Ensures consistent code formatting across the entire workspace
-   - Must be done after all code changes are complete
-   - Uses nightly rustfmt for the most up-to-date formatting rules
-
-### Testing
-- Run the full test suite: `cargo test -p bd-resilient-kv --lib`
-- Pay special attention to tests that verify automatic switching and retry logic
-- When adding new functionality, include comprehensive tests covering edge cases
-
-### Git Workflow
-- Commit documentation updates alongside code changes
-- Use descriptive commit messages that explain both what changed and why
-- Consider the impact on other parts of the system that depend on modified interfaces
-
-## Summary
-
-The kv_journal system is built around efficient append-only storage with intelligent automatic compaction. The key insight is that compaction has physical limits - when even the most compact representation exceeds available space, the system correctly sets status flags rather than failing silently. The simplified flag-based architecture enables straightforward resource management while maintaining high performance for normal operations.
-
-**Current State**: The system has been simplified by removing callback complexity in favor of simple boolean flags that can be checked as needed. The `DoubleBufferedKVJournal` provides automatic compaction with intelligent retry logic for bulk operations. Key features include:
-
-- **Bulk Operations**: Efficient `set_multiple` method with HashMap-based batch processing
-- **Smart Retry Logic**: Automatic retry on failure when high water mark conditions suggest success is possible
-- **Cross-Layer Integration**: Consistent bulk operation patterns from FeatureFlags → KVStore → KVJournal
-- **Optimized for Real-World Use**: Handles edge cases like partial buffer fills and concurrent compaction
-
-**Breaking Changes**: The callback system (`set_high_water_mark_callback`, `HighWaterMarkCallback`) has been completely removed. Code relying on callbacks will no longer compile and must be updated to check the `is_high_water_mark_triggered()` flag instead.
+**Removed Features**: The non-versioned KVStore (double-buffered) implementation has been removed. All new code should use VersionedKVStore for persistent state management.

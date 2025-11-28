@@ -651,22 +651,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bd-feature-flags"
-version = "1.0.0"
-dependencies = [
- "ahash",
- "anyhow",
- "bd-bonjson",
- "bd-client-common",
- "bd-resilient-kv",
- "bd-state",
- "bd-workspace-hack",
- "log",
- "tempfile",
- "time",
-]
-
-[[package]]
 name = "bd-grpc"
 version = "1.0.0"
 dependencies = [
@@ -1363,7 +1347,6 @@ dependencies = [
  "bd-client-stats-store",
  "bd-completion",
  "bd-error-reporter",
- "bd-feature-flags",
  "bd-log",
  "bd-log-matcher",
  "bd-log-primitives",
