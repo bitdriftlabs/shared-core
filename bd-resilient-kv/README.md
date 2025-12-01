@@ -1,20 +1,22 @@
 # bd-resilient-kv
 
-A crash-resilient key-value store library for Rust with automatic persistence, compression, and high performance.
+A versioned, crash-resilient key-value store library for Rust with automatic persistence, compression, and point-in-time recovery.
 
 ## Overview
 
-`bd-resilient-kv` provides a HashMap-like persistent key-value store that automatically saves data to disk while maintaining excellent performance through in-memory caching and smart buffering strategies. The library is designed to be crash-resilient, ensuring data integrity even in the event of unexpected shutdowns.
+`bd-resilient-kv` provides a versioned persistent key-value store that automatically saves data to disk while maintaining excellent performance through in-memory caching and smart buffering strategies. The library is designed to be crash-resilient with version tracking, ensuring data integrity and enabling point-in-time recovery even in the event of unexpected shutdowns.
 
 ## Key Features
 
 - **🛡️ Crash Resilient**: Automatic persistence with crash recovery capabilities
+- **🕐 Version Tracking**: Every write returns a timestamp for precise state tracking
+- **⏪ Point-in-Time Recovery**: Recover state at any historical timestamp
 - **⚡ High Performance**: O(1) reads via in-memory caching, optimized writes
-- **🗜️ Automatic Compression**: Double-buffered journaling with automatic compaction
+- **🗜️ Automatic Compression**: Archived journals automatically compressed using zlib
 - **💾 Memory Mapped I/O**: Efficient file operations using memory-mapped files
-- **🔄 Self-Managing**: Automatic high water mark detection and buffer switching
+- **🔄 Automatic Rotation**: Journal rotation with archived history preservation
 - **🎯 Simple API**: HashMap-like interface that's easy to use
-- **🏗️ JSON-like Values**: Built on `bd-bonjson` for flexible value types
+- **📦 Protobuf-based**: Efficient serialization for versioned entries
 
 ## Quick Start
 
@@ -23,152 +25,108 @@ Add to your `Cargo.toml`:
 ```toml
 [dependencies]
 bd-resilient-kv = { path = "path/to/bd-resilient-kv" }
-bd-bonjson = { path = "path/to/bd-bonjson" }
+bd-proto = { path = "path/to/bd-proto" }
 ```
 
 ### Basic Usage
 
 ```rust
-use bd_resilient_kv::KVStore;
-use bd_bonjson::Value;
+use bd_resilient_kv::{VersionedKVStore, PersistentStoreConfig, Scope};
+use bd_proto::protos::state::payload::StateValue;
+use bd_proto::protos::state::payload::state_value::Value_type;
 
-fn main() -> anyhow::Result<()> {
-    // Create a new store with 1MB buffer size
-    let mut store = KVStore::new("my_store", 1024 * 1024, None, None)?;
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Create a new versioned store with 1MB buffer size
+    let config = PersistentStoreConfig {
+        buffer_size: 1024 * 1024,
+        high_water_mark_ratio: 0.8,
+    };
+    
+    let mut store = VersionedKVStore::new(
+        "my_store",
+        config,
+        None, // No retention registry
+    ).await?;
 
-    // Insert some values
-    store.insert("name".to_string(), Value::String("Alice".to_string()))?;
-    store.insert("age".to_string(), Value::Integer(30))?;
-    store.insert("active".to_string(), Value::Boolean(true))?;
+    // Insert some values - each returns a timestamp
+    let ts1 = store.insert(
+        Scope::Permanent,
+        "name",
+        StateValue {
+            value_type: Some(Value_type::StringValue("Alice".to_string())),
+            ..Default::default()
+        }
+    ).await?;
+    
+    println!("Inserted at timestamp: {}", ts1);
 
-    // Read values
-    if let Some(name) = store.get("name") {
-        println!("Name: {}", name);
+    // Read values (synchronous)
+    if let Some((value, timestamp)) = store.get(Scope::Permanent, "name") {
+        println!("Name: {:?} (written at {})", value, timestamp);
     }
 
     // Check existence
-    if store.contains_key("age") {
-        println!("Age is stored");
+    if store.contains(Scope::Permanent, "name") {
+        println!("Name is stored");
     }
 
-    // Remove a key
-    let old_value = store.remove("active")?;
-    println!("Removed: {:?}", old_value);
+    // Remove a key (returns timestamp)
+    let ts2 = store.remove(Scope::Permanent, "name").await?;
+    println!("Removed at timestamp: {}", ts2);
 
-    // Get all keys via as_hashmap
-    let keys: Vec<&String> = store.as_hashmap().keys().collect();
-    println!("Keys: {:?}", keys);
+    Ok(())
+}
+```
 
-    // Get all values
-    let values: Vec<&Value> = store.as_hashmap().values().collect();
-    println!("Values: {:?}", values);
+### Working with Scopes
 
-    // Iterate over all key-value pairs
-    for (key, value) in store.as_hashmap() {
-        println!("{}: {:?}", key, value);
+The versioned store supports multiple scopes for different data lifecycles:
+
+```rust
+use bd_resilient_kv::{VersionedKVStore, Scope};
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let mut store = VersionedKVStore::new("scoped_store", config, None).await?;
+
+    // Permanent data - survives restarts
+    store.insert(Scope::Permanent, "user_id", value).await?;
+
+    // Ephemeral data - cleared on restart
+    store.insert(Scope::Ephemeral, "session_token", value).await?;
+
+    // Get all data for a scope
+    let permanent_data = store.get_all(Scope::Permanent);
+    for (key, (value, timestamp)) in permanent_data {
+        println!("{}: {:?} at {}", key, value, timestamp);
     }
 
     Ok(())
 }
 ```
 
-### Working with Different Value Types
+### Persistence and Point-in-Time Recovery
+
+The store automatically rotates journals and archives old versions:
 
 ```rust
-use bd_resilient_kv::KVStore;
-use bd_bonjson::Value;
-use std::collections::HashMap;
+use bd_resilient_kv::{VersionedKVStore, VersionedRecovery};
 
-fn main() -> anyhow::Result<()> {
-    let mut store = KVStore::new("typed_store", 1024 * 1024, None, None)?;
-
-    // Strings
-    store.insert("greeting".to_string(), Value::String("Hello, World!".to_string()))?;
-
-    // Numbers
-    store.insert("count".to_string(), Value::Integer(42))?;
-    store.insert("temperature".to_string(), Value::Float(98.6))?;
-
-    // Booleans
-    store.insert("enabled".to_string(), Value::Boolean(true))?;
-
-    // Arrays
-    let array = Value::Array(vec![
-        Value::String("item1".to_string()),
-        Value::String("item2".to_string()),
-        Value::Integer(123),
-    ]);
-    store.insert("items".to_string(), array)?;
-
-    // Objects
-    let mut obj = HashMap::new();
-    obj.insert("x".to_string(), Value::Integer(10));
-    obj.insert("y".to_string(), Value::Integer(20));
-    store.insert("coordinates".to_string(), Value::Object(obj))?;
-
-    // Null (equivalent to deletion)
-    store.insert("to_delete".to_string(), Value::Null)?; // This removes the key
-
-    Ok(())
-}
-```
-
-### Persistence and Recovery
-
-The store automatically creates two journal files with `.jrna` and `.jrnb` extensions:
-
-```rust
-use bd_resilient_kv::KVStore;
-use bd_bonjson::Value;
-
-fn main() -> anyhow::Result<()> {
-    {
-        // Create store and add data
-        let mut store = KVStore::new("persistent_store", 1024 * 1024, None, None)?;
-        store.insert("persistent_key".to_string(), Value::String("This survives restarts".to_string()))?;
-        // Store automatically syncs to disk
-    } // store goes out of scope
-
-    {
-        // Open the same store later - data is recovered
-        let store = KVStore::new("persistent_store", 1024 * 1024, None, None)?;
-        let value = store.get("persistent_key");
-        assert_eq!(value, Some(Value::String("This survives restarts".to_string())));
-    }
-
-    Ok(())
-}
-```
-
-### High Water Mark Monitoring
-
-Monitor buffer usage and get notified when it's time to compress:
-
-```rust
-use bd_resilient_kv::KVStore;
-use bd_bonjson::Value;
-
-fn high_water_mark_callback(current_pos: usize, buffer_size: usize, hwm_pos: usize) {
-    println!("High water mark triggered!");
-    println!("Current position: {}, Buffer size: {}, HWM position: {}",
-             current_pos, buffer_size, hwm_pos);
-}
-
-fn main() -> anyhow::Result<()> {
-    let mut store = KVStore::new(
-        "monitored_store",
-        1024 * 1024,                    // 1MB buffer
-        Some(0.8),                      // Trigger at 80% full
-        Some(high_water_mark_callback)  // Callback function
-    )?;
-
-    // Add lots of data to trigger the high water mark
-    for i in 0..1000 {
-        store.insert(
-            format!("key_{}", i),
-            Value::String(format!("value_{}", i))
-        )?;
-    }
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    // Create store and add data
+    let mut store = VersionedKVStore::new("history_store", config, None).await?;
+    
+    let ts1 = store.insert(Scope::Permanent, "key1", value1).await?;
+    let ts2 = store.insert(Scope::Permanent, "key2", value2).await?;
+    let ts3 = store.remove(Scope::Permanent, "key1").await?;
+    
+    // Recover state at a specific point in time
+    let recovery = VersionedRecovery::new(/* journal bytes */)?;
+    let state_at_ts2 = recovery.recover_at_timestamp(ts2)?;
+    
+    // state_at_ts2 will have key1 and key2, but not the removal
 
     Ok(())
 }
@@ -176,79 +134,96 @@ fn main() -> anyhow::Result<()> {
 
 ## API Reference
 
-### KVStore
+### VersionedKVStore
 
-The main interface for the key-value store.
+The main interface for the versioned key-value store.
 
 #### Constructor
 
 ```rust
-pub fn new<P: AsRef<Path>>(
+pub async fn new<P: AsRef<Path>>(
     base_path: P,
-    buffer_size: usize,
-    high_water_mark_ratio: Option<f32>,
-    callback: Option<HighWaterMarkCallback>
+    config: PersistentStoreConfig,
+    retention_registry: Option<Arc<RetentionRegistry>>,
 ) -> anyhow::Result<Self>
 ```
 
-- `base_path`: Base path for journal files (`.jrna` and `.jrnb` extensions added automatically)
-- `buffer_size`: Size in bytes for each journal buffer
-- `high_water_mark_ratio`: Optional ratio (0.0 to 1.0) for triggering compression (default: 0.8)
-- `callback`: Optional callback function called when high water mark is exceeded
+- `base_path`: Base path for journal files
+- `config`: Store configuration (buffer size, high water mark ratio)
+- `retention_registry`: Optional registry for retention policies
 
 #### Core Methods
 
 ```rust
-// Read operations (O(1) from cache)
-pub fn get(&self, key: &str) -> Option<Value>
-pub fn contains_key(&self, key: &str) -> bool
-pub fn len(&self) -> usize
-pub fn is_empty(&self) -> bool
-pub fn as_hashmap(&self) -> &HashMap<String, Value>
+// Read operations (synchronous, O(1) from cache)
+pub fn get(&self, scope: Scope, key: &str) -> Option<(&StateValue, OffsetDateTime)>
+pub fn contains(&self, scope: Scope, key: &str) -> bool
+pub fn get_all(&self, scope: Scope) -> &AHashMap<String, (StateValue, OffsetDateTime)>
+pub fn snapshot(&self) -> ScopedMaps
 
-// Write operations
-pub fn insert(&mut self, key: String, value: Value) -> anyhow::Result<Option<Value>>
-pub fn remove(&mut self, key: &str) -> anyhow::Result<Option<Value>>
-pub fn clear(&mut self) -> anyhow::Result<()>
+// Write operations (async, returns timestamp)
+pub async fn insert(
+    &mut self,
+    scope: Scope,
+    key: &str,
+    value: StateValue
+) -> anyhow::Result<OffsetDateTime>
+
+pub async fn remove(
+    &mut self,
+    scope: Scope,
+    key: &str
+) -> anyhow::Result<OffsetDateTime>
+
+// Journal management
+pub async fn rotate_journal(&mut self) -> anyhow::Result<()>
 ```
 
 ## Architecture
 
-### Double-Buffered Journaling
+### Versioned Journal with Rotation
 
-The store uses a double-buffered approach with two journal files:
+The store uses a single journal with automatic rotation and archival:
 
-1. **Active Journal**: Receives new writes
-2. **Inactive Journal**: Standby for compression
-3. **Automatic Switching**: When the active journal reaches its high water mark, the system:
-   - Compresses the current state into the inactive journal
-   - Switches the inactive journal to become the new active journal
-   - Resets the old active journal for future use
+1. **Active Journal**: Receives new writes with timestamps
+2. **Rotation**: When buffer exceeds high water mark:
+   - Current state is compacted into a new journal
+   - Old journal is archived with `.t{timestamp}.zz` suffix
+   - Archived journal is automatically compressed using zlib
+3. **Point-in-Time Recovery**: Historical state can be reconstructed by replaying journals up to any timestamp
 
 ### Memory-Mapped I/O
 
 - Uses `memmap2` for efficient file operations
 - Changes are automatically synced to disk
-- Crash recovery reads from the most recent valid journal
+- Crash recovery reads from journals in order
+- Archived journals are decompressed transparently during recovery
 
 ### Caching Strategy
 
-- Maintains an in-memory `HashMap` cache of all key-value pairs
+- Maintains in-memory maps per scope with timestamped values
 - Cache is always kept in sync with the persistent state
 - Provides O(1) read performance
-- Write operations update both cache and journal
+- Write operations update both cache and journal asynchronously
+
+### Async Architecture
+
+- Write operations are async to enable efficient background compression
+- Compression of archived journals uses streaming I/O
+- Read operations remain synchronous for maximum performance
+- Requires a Tokio runtime for async operations
 
 ## Performance Characteristics
 
-| Operation        | Time Complexity | Notes                           |
-|------------------|-----------------|---------------------------------|
-| `get()`          | O(1)            | Reads from in-memory cache      |
-| `insert()`       | O(1) amortized  | Journal write + cache update    |
-| `remove()`       | O(1) amortized  | Journal write + cache update    |
-| `contains_key()` | O(1)            | Cache lookup                    |
-| `len()`          | O(1)            | Cache size                      |
-| `as_hashmap()`   | O(1)            | Returns reference to cache      |
-| `clear()`        | O(1)            | Efficient journal clearing      |
+| Operation        | Time Complexity | Notes                              |
+|------------------|-----------------|-------------------------------------|
+| `get()`          | O(1)            | Reads from in-memory cache         |
+| `insert()`       | O(1) amortized  | Async journal write + cache update |
+| `remove()`       | O(1) amortized  | Async journal write + cache update |
+| `contains()`     | O(1)            | Cache lookup                       |
+| `get_all()`      | O(1)            | Returns reference to scope map     |
+| `snapshot()`     | O(n)            | Creates deep copy of all scopes    |
+| `rotate_journal()`| O(n)           | Async compaction and compression   |
 
 ## Error Handling
 
@@ -274,31 +249,34 @@ fn main() -> anyhow::Result<()> {
 
 The library automatically manages journal files:
 
-- **Creation**: Files are created if they don't exist
-- **Recovery**: Existing files are loaded and validated on startup
-- **Resizing**: Files are resized if the specified buffer size differs
-- **Corruption Handling**: Corrupted files are automatically recreated
-- **Cleanup**: No manual cleanup required
+- **Creation**: Journal files are created on first write
+- **Rotation**: Old journals are automatically archived with `.t{timestamp}.zz` suffix
+- **Compression**: Archived journals are automatically compressed using zlib (RFC 1950, level 5)
+- **Recovery**: All journals (active and archived) are loaded and validated on startup
+- **Cleanup**: Archived journals can be deleted based on retention policies
+- **Decompression**: Archived journals are transparently decompressed during recovery
 
 Example file structure:
 ```
-my_store.jrna  # Journal A
-my_store.jrnb  # Journal B
+my_store.journal              # Active journal
+my_store.journal.t1234567890  # Archived journal (uncompressed, during rotation)
+my_store.journal.t1234567890.zz  # Archived journal (compressed)
 ```
 
 ## Thread Safety
 
-`KVStore` is **not** thread-safe by design for maximum performance. For concurrent access, wrap it in appropriate synchronization primitives:
+`VersionedKVStore` is **not** thread-safe by design for maximum performance. For concurrent access, wrap it in appropriate synchronization primitives:
 
 ```rust
-use std::sync::{Arc, Mutex};
-use bd_resilient_kv::KVStore;
+use std::sync::Arc;
+use tokio::sync::RwLock;
+use bd_resilient_kv::VersionedKVStore;
 
-let store = Arc::new(Mutex::new(
-    KVStore::new("shared_store", 1024 * 1024, None, None)?
+let store = Arc::new(RwLock::new(
+    VersionedKVStore::new("shared_store", config, None).await?
 ));
 
-// Use store across threads with proper locking
+// Use store across tasks with async locking
 ```
 
 ## Advanced Usage
@@ -308,34 +286,45 @@ let store = Arc::new(Mutex::new(
 Choose buffer sizes based on your use case:
 
 ```rust
-// Small applications
-let store = KVStore::new("small_app", 64 * 1024, None, None)?; // 64KB
+use bd_resilient_kv::PersistentStoreConfig;
 
-// Medium applications
-let store = KVStore::new("medium_app", 1024 * 1024, None, None)?; // 1MB
+// Small applications
+let config = PersistentStoreConfig {
+    buffer_size: 64 * 1024,  // 64KB
+    high_water_mark_ratio: 0.8,
+};
+
+// Medium applications  
+let config = PersistentStoreConfig {
+    buffer_size: 1024 * 1024,  // 1MB
+    high_water_mark_ratio: 0.8,
+};
 
 // Large applications
-let store = KVStore::new("large_app", 16 * 1024 * 1024, None, None)?; // 16MB
+let config = PersistentStoreConfig {
+    buffer_size: 16 * 1024 * 1024,  // 16MB
+    high_water_mark_ratio: 0.8,
+};
 ```
 
 ### Monitoring and Debugging
 
 ```rust
-use bd_resilient_kv::KVStore;
+use bd_resilient_kv::{VersionedKVStore, Scope};
 
-let store = KVStore::new("debug_store", 1024 * 1024, None, None)?;
+let store = VersionedKVStore::new("debug_store", config, None).await?;
 
-// Check store statistics
-println!("Store size: {} items", store.len());
-println!("Is empty: {}", store.is_empty());
+// Get all data for a scope
+let permanent_data = store.get_all(Scope::Permanent);
+println!("Permanent data count: {}", permanent_data.len());
 
-// Get all data for debugging
-let all_data = store.as_hashmap();
-println!("All data: {:?}", all_data);
-
-// Or iterate over keys and values
-for (key, value) in store.as_hashmap() {
-    println!("{}: {:?}", key, value);
+// Get complete snapshot
+let snapshot = store.snapshot();
+for (scope_name, scope_map) in snapshot {
+    println!("Scope {}: {} entries", scope_name, scope_map.len());
+    for (key, (value, timestamp)) in scope_map {
+        println!("  {}: {:?} at {}", key, value, timestamp);
+    }
 }
 ```
 
