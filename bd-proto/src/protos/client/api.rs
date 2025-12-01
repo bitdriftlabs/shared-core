@@ -9397,14 +9397,14 @@ pub mod api_response {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n,bitdrift_public/protobuf/client/v1/api.proto\x12\"bitdrift_public.pro\
-    tobuf.client.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1egoogle/pro\
-    tobuf/duration.proto\x1a0bitdrift_public/protobuf/client/v1/runtime.prot\
-    o\x1a/bitdrift_public/protobuf/client/v1/metric.proto\x1a/bitdrift_publi\
-    c/protobuf/filter/v1/filter.proto\x1a3bitdrift_public/protobuf/workflow/\
-    v1/workflow.proto\x1a6bitdrift_public/protobuf/bdtail/v1/bdtail_config.p\
-    roto\x1a/bitdrift_public/protobuf/config/v1/config.proto\x1a5bitdrift_pu\
-    blic/protobuf/client/v1/feature_flag.proto\x1a1bitdrift_public/protobuf/\
-    logging/v1/payload.proto\x1a\x17validate/validate.proto\"m\n\x0eClientKi\
+    tobuf.client.v1\x1a6bitdrift_public/protobuf/bdtail/v1/bdtail_config.pro\
+    to\x1a5bitdrift_public/protobuf/client/v1/feature_flag.proto\x1a/bitdrif\
+    t_public/protobuf/client/v1/metric.proto\x1a0bitdrift_public/protobuf/cl\
+    ient/v1/runtime.proto\x1a/bitdrift_public/protobuf/config/v1/config.prot\
+    o\x1a/bitdrift_public/protobuf/filter/v1/filter.proto\x1a1bitdrift_publi\
+    c/protobuf/logging/v1/payload.proto\x1a3bitdrift_public/protobuf/workflo\
+    w/v1/workflow.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/\
+    protobuf/timestamp.proto\x1a\x17validate/validate.proto\"m\n\x0eClientKi\
     llFile\x12\x20\n\x0capi_key_hash\x18\x01\x20\x01(\x0cR\napiKeyHash\x129\
     \n\nkill_until\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tkil\
     lUntil\"\xcc\x04\n\x10HandshakeRequest\x12\x84\x01\n\x16static_device_me\
@@ -9645,16 +9645,16 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
             let mut deps = ::std::vec::Vec::with_capacity(11);
-            deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
-            deps.push(::protobuf::well_known_types::duration::file_descriptor().clone());
-            deps.push(super::runtime::file_descriptor().clone());
-            deps.push(super::metric::file_descriptor().clone());
-            deps.push(super::filter::file_descriptor().clone());
-            deps.push(super::workflow::file_descriptor().clone());
             deps.push(super::bdtail_config::file_descriptor().clone());
-            deps.push(super::config::file_descriptor().clone());
             deps.push(super::feature_flag::file_descriptor().clone());
+            deps.push(super::metric::file_descriptor().clone());
+            deps.push(super::runtime::file_descriptor().clone());
+            deps.push(super::config::file_descriptor().clone());
+            deps.push(super::filter::file_descriptor().clone());
             deps.push(super::payload::file_descriptor().clone());
+            deps.push(super::workflow::file_descriptor().clone());
+            deps.push(::protobuf::well_known_types::duration::file_descriptor().clone());
+            deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
             let mut messages = ::std::vec::Vec::with_capacity(45);
             messages.push(ClientKillFile::generated_message_descriptor_data());

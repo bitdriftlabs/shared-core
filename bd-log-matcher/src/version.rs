@@ -10,7 +10,7 @@
 mod test;
 
 use anyhow::{Result, anyhow};
-use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Operator;
+use bd_proto::protos::value_matcher::value_matcher::Operator;
 use itertools::Itertools;
 use regex::Regex;
 use std::cmp::Ordering;

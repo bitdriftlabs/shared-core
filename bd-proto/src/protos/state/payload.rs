@@ -367,156 +367,13 @@ pub mod state_value {
     }
 }
 
-// @@protoc_insertion_point(message:bitdrift_public.protobuf.state.v1.StateKeyValuePair)
-#[derive(PartialEq,Clone,Default,Debug)]
-pub struct StateKeyValuePair {
-    // message fields
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.state.v1.StateKeyValuePair.key)
-    pub key: ::std::string::String,
-    // @@protoc_insertion_point(field:bitdrift_public.protobuf.state.v1.StateKeyValuePair.value)
-    pub value: ::protobuf::MessageField<StateValue>,
-    // special fields
-    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.state.v1.StateKeyValuePair.special_fields)
-    pub special_fields: ::protobuf::SpecialFields,
-}
-
-impl<'a> ::std::default::Default for &'a StateKeyValuePair {
-    fn default() -> &'a StateKeyValuePair {
-        <StateKeyValuePair as ::protobuf::Message>::default_instance()
-    }
-}
-
-impl StateKeyValuePair {
-    pub fn new() -> StateKeyValuePair {
-        ::std::default::Default::default()
-    }
-
-    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(2);
-        let mut oneofs = ::std::vec::Vec::with_capacity(0);
-        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-            "key",
-            |m: &StateKeyValuePair| { &m.key },
-            |m: &mut StateKeyValuePair| { &mut m.key },
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, StateValue>(
-            "value",
-            |m: &StateKeyValuePair| { &m.value },
-            |m: &mut StateKeyValuePair| { &mut m.value },
-        ));
-        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<StateKeyValuePair>(
-            "StateKeyValuePair",
-            fields,
-            oneofs,
-        )
-    }
-}
-
-impl ::protobuf::Message for StateKeyValuePair {
-    const NAME: &'static str = "StateKeyValuePair";
-
-    fn is_initialized(&self) -> bool {
-        true
-    }
-
-    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-        while let Some(tag) = is.read_raw_tag_or_eof()? {
-            match tag {
-                10 => {
-                    self.key = is.read_string()?;
-                },
-                18 => {
-                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.value)?;
-                },
-                tag => {
-                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                },
-            };
-        }
-        ::std::result::Result::Ok(())
-    }
-
-    // Compute sizes of nested messages
-    #[allow(unused_variables)]
-    fn compute_size(&self) -> u64 {
-        let mut my_size = 0;
-        if !self.key.is_empty() {
-            my_size += ::protobuf::rt::string_size(1, &self.key);
-        }
-        if let Some(v) = self.value.as_ref() {
-            let len = v.compute_size();
-            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-        }
-        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-        self.special_fields.cached_size().set(my_size as u32);
-        my_size
-    }
-
-    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-        if !self.key.is_empty() {
-            os.write_string(1, &self.key)?;
-        }
-        if let Some(v) = self.value.as_ref() {
-            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
-        }
-        os.write_unknown_fields(self.special_fields.unknown_fields())?;
-        ::std::result::Result::Ok(())
-    }
-
-    fn special_fields(&self) -> &::protobuf::SpecialFields {
-        &self.special_fields
-    }
-
-    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-        &mut self.special_fields
-    }
-
-    fn new() -> StateKeyValuePair {
-        StateKeyValuePair::new()
-    }
-
-    fn clear(&mut self) {
-        self.key.clear();
-        self.value.clear();
-        self.special_fields.clear();
-    }
-
-    fn default_instance() -> &'static StateKeyValuePair {
-        static instance: StateKeyValuePair = StateKeyValuePair {
-            key: ::std::string::String::new(),
-            value: ::protobuf::MessageField::none(),
-            special_fields: ::protobuf::SpecialFields::new(),
-        };
-        &instance
-    }
-}
-
-impl ::protobuf::MessageFull for StateKeyValuePair {
-    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-        descriptor.get(|| file_descriptor().message_by_package_relative_name("StateKeyValuePair").unwrap()).clone()
-    }
-}
-
-impl ::std::fmt::Display for StateKeyValuePair {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-        ::protobuf::text_format::fmt(self, f)
-    }
-}
-
-impl ::protobuf::reflect::ProtobufValue for StateKeyValuePair {
-    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-}
-
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n/bitdrift_public/protobuf/state/v1/payload.proto\x12!bitdrift_public.p\
     rotobuf.state.v1\"\xa4\x01\n\nStateValue\x12#\n\x0cstring_value\x18\x01\
     \x20\x01(\tH\0R\x0bstringValue\x12\x1d\n\tint_value\x18\x02\x20\x01(\x03\
     H\0R\x08intValue\x12#\n\x0cdouble_value\x18\x03\x20\x01(\x01H\0R\x0bdoub\
     leValue\x12\x1f\n\nbool_value\x18\x04\x20\x01(\x08H\0R\tboolValueB\x0c\n\
-    \nvalue_type\"j\n\x11StateKeyValuePair\x12\x10\n\x03key\x18\x01\x20\x01(\
-    \tR\x03key\x12C\n\x05value\x18\x02\x20\x01(\x0b2-.bitdrift_public.protob\
-    uf.state.v1.StateValueR\x05valueb\x06proto3\
+    \nvalue_typeb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -534,9 +391,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
             let mut deps = ::std::vec::Vec::with_capacity(0);
-            let mut messages = ::std::vec::Vec::with_capacity(2);
+            let mut messages = ::std::vec::Vec::with_capacity(1);
             messages.push(StateValue::generated_message_descriptor_data());
-            messages.push(StateKeyValuePair::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(0);
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),

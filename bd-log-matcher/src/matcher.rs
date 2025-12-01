@@ -15,8 +15,7 @@ mod legacy_matcher_test;
 
 use crate::version;
 use anyhow::{Result, anyhow};
-use base_log_matcher::Match_type::{FeatureFlagMatch, MessageMatch, TagMatch};
-use base_log_matcher::Operator;
+use base_log_matcher::Match_type::{MessageMatch, StateMatch, TagMatch};
 use base_log_matcher::tag_match::Value_match::{
   DoubleValueMatch,
   IntValueMatch,
@@ -24,6 +23,7 @@ use base_log_matcher::tag_match::Value_match::{
   SemVerValueMatch,
   StringValueMatch,
 };
+use bd_proto::protos::value_matcher::value_matcher::Operator;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{FieldsRef, LogLevel, LogMessage};
 use bd_proto::protos::config::v1::config::log_matcher::base_log_matcher::StringMatchType;
@@ -37,14 +37,14 @@ use bd_proto::protos::config::v1::config::{
 };
 use bd_proto::protos::log_matcher::log_matcher;
 use bd_proto::protos::logging::payload::LogType;
-use log_matcher::LogMatcher;
-use log_matcher::log_matcher::base_log_matcher::double_value_match::Double_value_match_type;
-use log_matcher::log_matcher::base_log_matcher::int_value_match::Int_value_match_type;
-use log_matcher::log_matcher::base_log_matcher::string_value_match::String_value_match_type;
-use log_matcher::log_matcher::base_log_matcher::{
+use bd_proto::protos::value_matcher::value_matcher::double_value_match::Double_value_match_type;
+use bd_proto::protos::value_matcher::value_matcher::int_value_match::Int_value_match_type;
+use bd_proto::protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
+use bd_proto::protos::value_matcher::value_matcher::{
   IntValueMatch as IntValueMatch_type,
   StringValueMatch as StringValueMatch_type,
 };
+use log_matcher::LogMatcher;
 use log_matcher::log_matcher::{BaseLogMatcher, Matcher, base_log_matcher};
 use regex::Regex;
 use std::borrow::Cow;
@@ -598,26 +598,81 @@ impl Leaf {
             transform_string_value_match(&message_match.string_value_match),
           )?,
         ),
-        FeatureFlagMatch(feature_flag_match) => match feature_flag_match
-          .value_match
-          .as_ref()
-          .ok_or_else(|| anyhow!("missing feature_flag_match value_match"))?
-        {
-          base_log_matcher::feature_flag_match::Value_match::StringValueMatch(
-            string_value_match,
-          ) => Self::StringValue(
-            InputType::FeatureFlag(feature_flag_match.flag_name.clone()),
-            StringMatch::new(
-              string_value_match
-                .operator
-                .enum_value()
-                .map_err(|_| anyhow!("unknown field or enum"))?,
-              transform_string_value_match(string_value_match),
-            )?,
-          ),
-          base_log_matcher::feature_flag_match::Value_match::IsSetMatch(_) => {
-            Self::IsSetValue(InputType::FeatureFlag(feature_flag_match.flag_name.clone()))
-          },
+        StateMatch(state_match) => {
+          // Get the state key from the match
+          let state_key = state_match.state_key.clone();
+          
+          // Handle state match based on the scope
+          let input_type = match state_match.scope.enum_value_or_default() {
+            bd_proto::protos::state::scope::StateScope::FEATURE_FLAG => {
+              InputType::FeatureFlag(state_key)
+            },
+            _ => {
+              // For now, we only support feature flags. Other scopes would need additional handling.
+              return Err(anyhow!("Unsupported state scope"));
+            },
+          };
+
+          // Handle the value match
+          match state_match
+            .state_value_match
+            .as_ref()
+            .ok_or_else(|| anyhow!("missing state_value_match"))?
+            .value_match
+            .as_ref()
+            .ok_or_else(|| anyhow!("missing state value_match"))?
+          {
+            bd_proto::protos::state::matcher::state_value_match::Value_match::StringValueMatch(
+              string_value_match,
+            ) => Self::StringValue(
+              input_type,
+              StringMatch::new(
+                string_value_match
+                  .operator
+                  .enum_value()
+                  .map_err(|_| anyhow!("unknown field or enum"))?,
+                transform_string_value_match(string_value_match),
+              )?,
+            ),
+            bd_proto::protos::state::matcher::state_value_match::Value_match::IsSetMatch(_) => {
+              Self::IsSetValue(input_type)
+            },
+            bd_proto::protos::state::matcher::state_value_match::Value_match::IntValueMatch(
+              int_value_match,
+            ) => Self::IntValue(
+              input_type,
+              IntMatch::new(
+                int_value_match
+                  .operator
+                  .enum_value()
+                  .map_err(|_| anyhow!("unknown field or enum"))?,
+                transform_int_value_match(int_value_match),
+              )?,
+            ),
+            bd_proto::protos::state::matcher::state_value_match::Value_match::DoubleValueMatch(
+              double_value_match,
+            ) => Self::DoubleValue(
+              input_type,
+              DoubleMatch::new(
+                double_value_match
+                  .operator
+                  .enum_value()
+                  .map_err(|_| anyhow!("unknown field or enum"))?,
+                match double_value_match
+                  .double_value_match_type
+                  .as_ref()
+                  .unwrap_or(&Double_value_match_type::MatchValue(0.0))
+                {
+                  Double_value_match_type::MatchValue(d) => {
+                    ValueOrSavedFieldId::Value(NanEqualFloat(*d))
+                  },
+                  Double_value_match_type::SaveFieldId(s) => {
+                    ValueOrSavedFieldId::SaveFieldId(s.clone())
+                  },
+                },
+              )?,
+            ),
+          }
         },
         TagMatch(tag_match) => match tag_match
           .value_match

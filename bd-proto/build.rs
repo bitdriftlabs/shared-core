@@ -117,7 +117,7 @@ fn main() {
     .out_dir("src/protos/logging/")
     .capture_stderr()
     .run_from_script();
-  std::fs::create_dir_all("src/protos/state").unwrap();
+  std::fs::create_dir_all("src/protos/value_matcher").unwrap();
   protobuf_codegen::Codegen::new()
     .protoc()
     .customize(
@@ -127,7 +127,25 @@ fn main() {
         .file_header(GENERATED_HEADER.to_string()),
     )
     .includes(["../api/thirdparty", "../api/src"])
-    .inputs(["../api/src/bitdrift_public/protobuf/state/v1/payload.proto"])
+    .inputs(["../api/src/bitdrift_public/protobuf/value_matcher/v1/value_matcher.proto"])
+    .out_dir("src/protos/value_matcher/")
+    .capture_stderr()
+    .run_from_script();
+  std::fs::create_dir_all("src/protos/value_matcher").unwrap();
+  protobuf_codegen::Codegen::new()
+    .protoc()
+    .customize(
+      Customize::default()
+        .gen_mod_rs(false)
+        .oneofs_non_exhaustive(false)
+        .file_header(GENERATED_HEADER.to_string()),
+    )
+    .includes(["../api/thirdparty", "../api/src"])
+    .inputs([
+      "../api/src/bitdrift_public/protobuf/state/v1/payload.proto",
+      "../api/src/bitdrift_public/protobuf/state/v1/scope.proto",
+      "../api/src/bitdrift_public/protobuf/state/v1/matcher.proto",
+    ])
     .out_dir("src/protos/state/")
     .capture_stderr()
     .run_from_script();

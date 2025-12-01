@@ -10,7 +10,6 @@ use action_generate_log::value_reference::Value_reference_type;
 use action_generate_log::{GeneratedField, ValueReference, ValueReferencePair};
 use bd_log_primitives::{LogFields, StringOrBytes};
 use bd_proto::protos;
-use bd_proto::protos::log_matcher::log_matcher::log_matcher;
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::Streaming;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::streaming::{
@@ -41,7 +40,8 @@ use bd_proto::protos::workflow::workflow::workflow::{
   TransitionExtension,
   TransitionTimeout,
 };
-use log_matcher::base_log_matcher::string_value_match::String_value_match_type;
+use protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
+use protos::value_matcher::value_matcher::Operator;
 use protobuf::MessageField;
 use protos::log_matcher::log_matcher::LogMatcher;
 use protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Match_type::{
@@ -521,13 +521,13 @@ pub fn make_log_match_rule(matcher: LogMatcher, count: u32) -> Rule {
 #[must_use]
 pub fn make_log_message_matcher(
   value: &str,
-  operator: log_matcher::base_log_matcher::Operator,
+  operator: Operator,
 ) -> LogMatcher {
   LogMatcher {
     matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
       match_type: Some(MessageMatch(base_log_matcher::MessageMatch {
         string_value_match: protobuf::MessageField::from_option(Some(
-          base_log_matcher::StringValueMatch {
+          protos::value_matcher::value_matcher::StringValueMatch {
             operator: operator.into(),
             string_value_match_type: Some(String_value_match_type::MatchValue(value.to_string())),
             ..Default::default()
@@ -548,8 +548,8 @@ pub fn make_log_tag_matcher(name: &str, value: &str) -> LogMatcher {
       match_type: Some(TagMatch(base_log_matcher::TagMatch {
         tag_key: name.to_string(),
         value_match: Some(Value_match::StringValueMatch(
-          base_log_matcher::StringValueMatch {
-            operator: log_matcher::base_log_matcher::Operator::OPERATOR_EQUALS.into(),
+          protos::value_matcher::value_matcher::StringValueMatch {
+            operator: Operator::OPERATOR_EQUALS.into(),
             string_value_match_type: Some(String_value_match_type::MatchValue(value.to_string())),
             ..Default::default()
           },

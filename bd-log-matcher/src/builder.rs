@@ -21,9 +21,7 @@
 //! ]);
 //! ```
 
-use base_log_matcher::int_value_match::Int_value_match_type;
-use base_log_matcher::string_value_match::String_value_match_type;
-use base_log_matcher::{IsSetMatch, Operator, tag_match};
+use base_log_matcher::tag_match;
 use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
 use bd_proto::protos::log_matcher::log_matcher::log_matcher::{
   BaseLogMatcher,
@@ -32,8 +30,12 @@ use bd_proto::protos::log_matcher::log_matcher::log_matcher::{
   base_log_matcher,
 };
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::value_matcher::value_matcher;
 use tag_match::Value_match;
 use tag_match::Value_match::IntValueMatch;
+use value_matcher::int_value_match::Int_value_match_type;
+use value_matcher::string_value_match::String_value_match_type;
+use value_matcher::{IsSetMatch, Operator};
 
 /// Creates a matcher that matches if all of the provided matchers match (logical AND).
 ///
@@ -199,7 +201,7 @@ pub fn log_level_equals(level: i32) -> LogMatcher {
     matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
       match_type: Some(TagMatch(base_log_matcher::TagMatch {
         tag_key: "log_level".to_string(),
-        value_match: Some(IntValueMatch(base_log_matcher::IntValueMatch {
+        value_match: Some(IntValueMatch(value_matcher::IntValueMatch {
           operator: Operator::OPERATOR_EQUALS.into(),
           int_value_match_type: Some(Int_value_match_type::MatchValue(level)),
           ..Default::default()
@@ -227,7 +229,7 @@ pub fn log_type_equals(log_type: LogType) -> LogMatcher {
     matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
       match_type: Some(TagMatch(base_log_matcher::TagMatch {
         tag_key: "log_type".to_string(),
-        value_match: Some(IntValueMatch(base_log_matcher::IntValueMatch {
+        value_match: Some(IntValueMatch(value_matcher::IntValueMatch {
           operator: Operator::OPERATOR_EQUALS.into(),
           int_value_match_type: Some(Int_value_match_type::MatchValue(log_type as i32)),
           ..Default::default()
@@ -276,7 +278,7 @@ fn log_field_matcher(field: &str, value: &str, operator: Operator) -> LogMatcher
       match_type: Some(TagMatch(base_log_matcher::TagMatch {
         tag_key: field.to_string(),
         value_match: Some(Value_match::StringValueMatch(
-          base_log_matcher::StringValueMatch {
+          value_matcher::StringValueMatch {
             operator: operator.into(),
             string_value_match_type: Some(String_value_match_type::MatchValue(value.to_string())),
             ..Default::default()
@@ -293,9 +295,9 @@ fn log_field_matcher(field: &str, value: &str, operator: Operator) -> LogMatcher
 /// Creates a log field matcher that matches when a field is equal to the provided double value.
 #[must_use]
 fn log_field_double_matcher(key: &str, value: f64, operator: Operator) -> LogMatcher {
-  use base_log_matcher::DoubleValueMatch;
   use base_log_matcher::Match_type::TagMatch;
-  use base_log_matcher::double_value_match::Double_value_match_type;
+  use value_matcher::DoubleValueMatch;
+  use value_matcher::double_value_match::Double_value_match_type;
 
   LogMatcher {
     matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
@@ -322,7 +324,7 @@ fn make_log_message_matcher(value: &str, operator: Operator) -> LogMatcher {
     matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
       match_type: Some(MessageMatch(base_log_matcher::MessageMatch {
         string_value_match: protobuf::MessageField::from_option(Some(
-          base_log_matcher::StringValueMatch {
+          value_matcher::StringValueMatch {
             operator: operator.into(),
             string_value_match_type: Some(String_value_match_type::MatchValue(value.to_string())),
             ..Default::default()
@@ -345,7 +347,7 @@ fn make_log_tag_matcher(name: &str, value: &str) -> LogMatcher {
       match_type: Some(TagMatch(base_log_matcher::TagMatch {
         tag_key: name.to_string(),
         value_match: Some(Value_match::StringValueMatch(
-          base_log_matcher::StringValueMatch {
+          value_matcher::StringValueMatch {
             operator: Operator::OPERATOR_EQUALS.into(),
             string_value_match_type: Some(String_value_match_type::MatchValue(value.to_string())),
             ..Default::default()

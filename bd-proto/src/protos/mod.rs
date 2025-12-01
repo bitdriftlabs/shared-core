@@ -18,4 +18,5 @@ pub mod mme;
 pub mod prometheus;
 pub mod pulse;
 pub mod state;
+pub mod value_matcher;
 pub mod workflow;
