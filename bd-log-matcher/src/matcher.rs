@@ -36,6 +36,7 @@ use bd_proto::protos::config::v1::config::{
 };
 use bd_proto::protos::log_matcher::log_matcher;
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::state::scope::StateScope;
 use bd_proto::protos::value_matcher::value_matcher::double_value_match::Double_value_match_type;
 use bd_proto::protos::value_matcher::value_matcher::int_value_match::Int_value_match_type;
 use bd_proto::protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
@@ -600,9 +601,9 @@ impl Leaf {
         StateMatch(state_match) => {
           let state_key = state_match.state_key.clone();
           let scope = match state_match.scope.enum_value_or_default() {
-            bd_proto::protos::state::scope::StateScope::FEATURE_FLAG => Scope::FeatureFlag,
-            bd_proto::protos::state::scope::StateScope::GLOBAL_STATE => Scope::GlobalState,
-            _ => {
+            StateScope::FEATURE_FLAG => Scope::FeatureFlag,
+            StateScope::GLOBAL_STATE => Scope::GlobalState,
+            StateScope::UNSPECIFIED => {
               // For now, we only support feature flags. Other scopes would need additional
               // handling.
               // We'll need to config version guard any new scopes.
