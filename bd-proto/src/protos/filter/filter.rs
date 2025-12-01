@@ -1762,8 +1762,8 @@ pub mod filter {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n/bitdrift_public/protobuf/filter/v1/filter.proto\x12\"bitdrift_public.\
-    protobuf.filter.v1\x1a\x17validate/validate.proto\x1a5bitdrift_public/pr\
-    otobuf/matcher/v1/log_matcher.proto\"\\\n\x14FiltersConfiguration\x12D\n\
+    protobuf.filter.v1\x1a5bitdrift_public/protobuf/matcher/v1/log_matcher.p\
+    roto\x1a\x17validate/validate.proto\"\\\n\x14FiltersConfiguration\x12D\n\
     \x07filters\x18\x01\x20\x03(\x0b2*.bitdrift_public.protobuf.filter.v1.Fi\
     lterR\x07filters\"\xf9\x0b\n\x06Filter\x12S\n\x07matcher\x18\x01\x20\x01\
     (\x0b2/.bitdrift_public.protobuf.matcher.v1.LogMatcherR\x07matcherB\x08\
@@ -1816,8 +1816,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
             let mut deps = ::std::vec::Vec::with_capacity(2);
-            deps.push(super::validate::file_descriptor().clone());
             deps.push(super::log_matcher::file_descriptor().clone());
+            deps.push(super::validate::file_descriptor().clone());
             let mut messages = ::std::vec::Vec::with_capacity(9);
             messages.push(FiltersConfiguration::generated_message_descriptor_data());
             messages.push(Filter::generated_message_descriptor_data());

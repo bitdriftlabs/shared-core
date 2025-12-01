@@ -8,4 +8,5 @@
 pub mod workflow;
 
 use super::log_matcher::log_matcher;
+use super::state::{matcher, scope};
 use bd_pgv::generated::protos::validate;

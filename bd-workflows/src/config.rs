@@ -480,6 +480,9 @@ impl Transition {
       Rule_type::RuleLogMatch(rule) => {
         Predicate::LogMatch(Tree::new(&rule.log_matcher)?, rule.count)
       },
+      Rule_type::RuleStateChangeMatch(_) => {
+        return Err(anyhow!("RuleStateChangeMatch is not yet implemented"));
+      },
     };
 
     let actions = transition

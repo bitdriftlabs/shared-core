@@ -388,9 +388,9 @@ pub mod artifact_upload_index {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n1bitdrift_public/protobuf/client/v1/artifact.proto\x12\"bitdrift_publi\
-    c.protobuf.client.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a1bitdrift\
-    _public/protobuf/logging/v1/payload.proto\x1a5bitdrift_public/protobuf/c\
-    lient/v1/feature_flag.proto\"\xe0\x04\n\x13ArtifactUploadIndex\x12\\\n\
+    c.protobuf.client.v1\x1a5bitdrift_public/protobuf/client/v1/feature_flag\
+    .proto\x1a1bitdrift_public/protobuf/logging/v1/payload.proto\x1a\x1fgoog\
+    le/protobuf/timestamp.proto\"\xe0\x04\n\x13ArtifactUploadIndex\x12\\\n\
     \x08artifact\x18\x01\x20\x03(\x0b2@.bitdrift_public.protobuf.client.v1.A\
     rtifactUploadIndex.ArtifactR\x08artifact\x1a\xea\x03\n\x08Artifact\x12\
     \x12\n\x04name\x18\x01\x20\x01(\tR\x04name\x12.\n\x04time\x18\x02\x20\
@@ -420,9 +420,9 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
             let mut deps = ::std::vec::Vec::with_capacity(3);
-            deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
-            deps.push(super::payload::file_descriptor().clone());
             deps.push(super::feature_flag::file_descriptor().clone());
+            deps.push(super::payload::file_descriptor().clone());
+            deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             let mut messages = ::std::vec::Vec::with_capacity(2);
             messages.push(ArtifactUploadIndex::generated_message_descriptor_data());
             messages.push(artifact_upload_index::Artifact::generated_message_descriptor_data());

@@ -564,52 +564,52 @@ pub mod log_matcher {
             }
         }
 
-        // .bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.FeatureFlagMatch feature_flag_match = 3;
+        // .bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StateMatch state_match = 4;
 
-        pub fn feature_flag_match(&self) -> &base_log_matcher::FeatureFlagMatch {
+        pub fn state_match(&self) -> &base_log_matcher::StateMatch {
             match self.match_type {
-                ::std::option::Option::Some(base_log_matcher::Match_type::FeatureFlagMatch(ref v)) => v,
-                _ => <base_log_matcher::FeatureFlagMatch as ::protobuf::Message>::default_instance(),
+                ::std::option::Option::Some(base_log_matcher::Match_type::StateMatch(ref v)) => v,
+                _ => <base_log_matcher::StateMatch as ::protobuf::Message>::default_instance(),
             }
         }
 
-        pub fn clear_feature_flag_match(&mut self) {
+        pub fn clear_state_match(&mut self) {
             self.match_type = ::std::option::Option::None;
         }
 
-        pub fn has_feature_flag_match(&self) -> bool {
+        pub fn has_state_match(&self) -> bool {
             match self.match_type {
-                ::std::option::Option::Some(base_log_matcher::Match_type::FeatureFlagMatch(..)) => true,
+                ::std::option::Option::Some(base_log_matcher::Match_type::StateMatch(..)) => true,
                 _ => false,
             }
         }
 
         // Param is passed by value, moved
-        pub fn set_feature_flag_match(&mut self, v: base_log_matcher::FeatureFlagMatch) {
-            self.match_type = ::std::option::Option::Some(base_log_matcher::Match_type::FeatureFlagMatch(v))
+        pub fn set_state_match(&mut self, v: base_log_matcher::StateMatch) {
+            self.match_type = ::std::option::Option::Some(base_log_matcher::Match_type::StateMatch(v))
         }
 
         // Mutable pointer to the field.
-        pub fn mut_feature_flag_match(&mut self) -> &mut base_log_matcher::FeatureFlagMatch {
-            if let ::std::option::Option::Some(base_log_matcher::Match_type::FeatureFlagMatch(_)) = self.match_type {
+        pub fn mut_state_match(&mut self) -> &mut base_log_matcher::StateMatch {
+            if let ::std::option::Option::Some(base_log_matcher::Match_type::StateMatch(_)) = self.match_type {
             } else {
-                self.match_type = ::std::option::Option::Some(base_log_matcher::Match_type::FeatureFlagMatch(base_log_matcher::FeatureFlagMatch::new()));
+                self.match_type = ::std::option::Option::Some(base_log_matcher::Match_type::StateMatch(base_log_matcher::StateMatch::new()));
             }
             match self.match_type {
-                ::std::option::Option::Some(base_log_matcher::Match_type::FeatureFlagMatch(ref mut v)) => v,
+                ::std::option::Option::Some(base_log_matcher::Match_type::StateMatch(ref mut v)) => v,
                 _ => panic!(),
             }
         }
 
         // Take field
-        pub fn take_feature_flag_match(&mut self) -> base_log_matcher::FeatureFlagMatch {
-            if self.has_feature_flag_match() {
+        pub fn take_state_match(&mut self) -> base_log_matcher::StateMatch {
+            if self.has_state_match() {
                 match self.match_type.take() {
-                    ::std::option::Option::Some(base_log_matcher::Match_type::FeatureFlagMatch(v)) => v,
+                    ::std::option::Option::Some(base_log_matcher::Match_type::StateMatch(v)) => v,
                     _ => panic!(),
                 }
             } else {
-                base_log_matcher::FeatureFlagMatch::new()
+                base_log_matcher::StateMatch::new()
             }
         }
 
@@ -630,12 +630,12 @@ pub mod log_matcher {
                 BaseLogMatcher::mut_tag_match,
                 BaseLogMatcher::set_tag_match,
             ));
-            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, base_log_matcher::FeatureFlagMatch>(
-                "feature_flag_match",
-                BaseLogMatcher::has_feature_flag_match,
-                BaseLogMatcher::feature_flag_match,
-                BaseLogMatcher::mut_feature_flag_match,
-                BaseLogMatcher::set_feature_flag_match,
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, base_log_matcher::StateMatch>(
+                "state_match",
+                BaseLogMatcher::has_state_match,
+                BaseLogMatcher::state_match,
+                BaseLogMatcher::mut_state_match,
+                BaseLogMatcher::set_state_match,
             ));
             oneofs.push(base_log_matcher::Match_type::generated_oneof_descriptor_data());
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<BaseLogMatcher>(
@@ -662,8 +662,8 @@ pub mod log_matcher {
                     18 => {
                         self.match_type = ::std::option::Option::Some(base_log_matcher::Match_type::TagMatch(is.read_message()?));
                     },
-                    26 => {
-                        self.match_type = ::std::option::Option::Some(base_log_matcher::Match_type::FeatureFlagMatch(is.read_message()?));
+                    34 => {
+                        self.match_type = ::std::option::Option::Some(base_log_matcher::Match_type::StateMatch(is.read_message()?));
                     },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -687,7 +687,7 @@ pub mod log_matcher {
                         let len = v.compute_size();
                         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                     },
-                    &base_log_matcher::Match_type::FeatureFlagMatch(ref v) => {
+                    &base_log_matcher::Match_type::StateMatch(ref v) => {
                         let len = v.compute_size();
                         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                     },
@@ -707,8 +707,8 @@ pub mod log_matcher {
                     &base_log_matcher::Match_type::TagMatch(ref v) => {
                         ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
                     },
-                    &base_log_matcher::Match_type::FeatureFlagMatch(ref v) => {
-                        ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                    &base_log_matcher::Match_type::StateMatch(ref v) => {
+                        ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
                     },
                 };
             }
@@ -771,8 +771,8 @@ pub mod log_matcher {
             MessageMatch(MessageMatch),
             // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.tag_match)
             TagMatch(TagMatch),
-            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.feature_flag_match)
-            FeatureFlagMatch(FeatureFlagMatch),
+            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.state_match)
+            StateMatch(StateMatch),
         }
 
         impl ::protobuf::Oneof for Match_type {
@@ -790,983 +790,12 @@ pub mod log_matcher {
                 ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Match_type>("match_type")
             }
         }
-        // @@protoc_insertion_point(message:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StringValueMatch)
-        #[derive(PartialEq,Clone,Default,Debug)]
-        pub struct StringValueMatch {
-            // message fields
-            // @@protoc_insertion_point(field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StringValueMatch.operator)
-            pub operator: ::protobuf::EnumOrUnknown<Operator>,
-            // message oneof groups
-            pub string_value_match_type: ::std::option::Option<string_value_match::String_value_match_type>,
-            // special fields
-            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StringValueMatch.special_fields)
-            pub special_fields: ::protobuf::SpecialFields,
-        }
-
-        impl<'a> ::std::default::Default for &'a StringValueMatch {
-            fn default() -> &'a StringValueMatch {
-                <StringValueMatch as ::protobuf::Message>::default_instance()
-            }
-        }
-
-        impl StringValueMatch {
-            pub fn new() -> StringValueMatch {
-                ::std::default::Default::default()
-            }
-
-            // string match_value = 2;
-
-            pub fn match_value(&self) -> &str {
-                match self.string_value_match_type {
-                    ::std::option::Option::Some(string_value_match::String_value_match_type::MatchValue(ref v)) => v,
-                    _ => "",
-                }
-            }
-
-            pub fn clear_match_value(&mut self) {
-                self.string_value_match_type = ::std::option::Option::None;
-            }
-
-            pub fn has_match_value(&self) -> bool {
-                match self.string_value_match_type {
-                    ::std::option::Option::Some(string_value_match::String_value_match_type::MatchValue(..)) => true,
-                    _ => false,
-                }
-            }
-
-            // Param is passed by value, moved
-            pub fn set_match_value(&mut self, v: ::std::string::String) {
-                self.string_value_match_type = ::std::option::Option::Some(string_value_match::String_value_match_type::MatchValue(v))
-            }
-
-            // Mutable pointer to the field.
-            pub fn mut_match_value(&mut self) -> &mut ::std::string::String {
-                if let ::std::option::Option::Some(string_value_match::String_value_match_type::MatchValue(_)) = self.string_value_match_type {
-                } else {
-                    self.string_value_match_type = ::std::option::Option::Some(string_value_match::String_value_match_type::MatchValue(::std::string::String::new()));
-                }
-                match self.string_value_match_type {
-                    ::std::option::Option::Some(string_value_match::String_value_match_type::MatchValue(ref mut v)) => v,
-                    _ => panic!(),
-                }
-            }
-
-            // Take field
-            pub fn take_match_value(&mut self) -> ::std::string::String {
-                if self.has_match_value() {
-                    match self.string_value_match_type.take() {
-                        ::std::option::Option::Some(string_value_match::String_value_match_type::MatchValue(v)) => v,
-                        _ => panic!(),
-                    }
-                } else {
-                    ::std::string::String::new()
-                }
-            }
-
-            // string save_field_id = 3;
-
-            pub fn save_field_id(&self) -> &str {
-                match self.string_value_match_type {
-                    ::std::option::Option::Some(string_value_match::String_value_match_type::SaveFieldId(ref v)) => v,
-                    _ => "",
-                }
-            }
-
-            pub fn clear_save_field_id(&mut self) {
-                self.string_value_match_type = ::std::option::Option::None;
-            }
-
-            pub fn has_save_field_id(&self) -> bool {
-                match self.string_value_match_type {
-                    ::std::option::Option::Some(string_value_match::String_value_match_type::SaveFieldId(..)) => true,
-                    _ => false,
-                }
-            }
-
-            // Param is passed by value, moved
-            pub fn set_save_field_id(&mut self, v: ::std::string::String) {
-                self.string_value_match_type = ::std::option::Option::Some(string_value_match::String_value_match_type::SaveFieldId(v))
-            }
-
-            // Mutable pointer to the field.
-            pub fn mut_save_field_id(&mut self) -> &mut ::std::string::String {
-                if let ::std::option::Option::Some(string_value_match::String_value_match_type::SaveFieldId(_)) = self.string_value_match_type {
-                } else {
-                    self.string_value_match_type = ::std::option::Option::Some(string_value_match::String_value_match_type::SaveFieldId(::std::string::String::new()));
-                }
-                match self.string_value_match_type {
-                    ::std::option::Option::Some(string_value_match::String_value_match_type::SaveFieldId(ref mut v)) => v,
-                    _ => panic!(),
-                }
-            }
-
-            // Take field
-            pub fn take_save_field_id(&mut self) -> ::std::string::String {
-                if self.has_save_field_id() {
-                    match self.string_value_match_type.take() {
-                        ::std::option::Option::Some(string_value_match::String_value_match_type::SaveFieldId(v)) => v,
-                        _ => panic!(),
-                    }
-                } else {
-                    ::std::string::String::new()
-                }
-            }
-
-            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-                let mut fields = ::std::vec::Vec::with_capacity(3);
-                let mut oneofs = ::std::vec::Vec::with_capacity(1);
-                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                    "operator",
-                    |m: &StringValueMatch| { &m.operator },
-                    |m: &mut StringValueMatch| { &mut m.operator },
-                ));
-                fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
-                    "match_value",
-                    StringValueMatch::has_match_value,
-                    StringValueMatch::match_value,
-                    StringValueMatch::set_match_value,
-                ));
-                fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
-                    "save_field_id",
-                    StringValueMatch::has_save_field_id,
-                    StringValueMatch::save_field_id,
-                    StringValueMatch::set_save_field_id,
-                ));
-                oneofs.push(string_value_match::String_value_match_type::generated_oneof_descriptor_data());
-                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<StringValueMatch>(
-                    "LogMatcher.BaseLogMatcher.StringValueMatch",
-                    fields,
-                    oneofs,
-                )
-            }
-        }
-
-        impl ::protobuf::Message for StringValueMatch {
-            const NAME: &'static str = "StringValueMatch";
-
-            fn is_initialized(&self) -> bool {
-                true
-            }
-
-            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-                while let Some(tag) = is.read_raw_tag_or_eof()? {
-                    match tag {
-                        8 => {
-                            self.operator = is.read_enum_or_unknown()?;
-                        },
-                        18 => {
-                            self.string_value_match_type = ::std::option::Option::Some(string_value_match::String_value_match_type::MatchValue(is.read_string()?));
-                        },
-                        26 => {
-                            self.string_value_match_type = ::std::option::Option::Some(string_value_match::String_value_match_type::SaveFieldId(is.read_string()?));
-                        },
-                        tag => {
-                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                        },
-                    };
-                }
-                ::std::result::Result::Ok(())
-            }
-
-            // Compute sizes of nested messages
-            #[allow(unused_variables)]
-            fn compute_size(&self) -> u64 {
-                let mut my_size = 0;
-                if self.operator != ::protobuf::EnumOrUnknown::new(Operator::OPERATOR_UNSPECIFIED) {
-                    my_size += ::protobuf::rt::int32_size(1, self.operator.value());
-                }
-                if let ::std::option::Option::Some(ref v) = self.string_value_match_type {
-                    match v {
-                        &string_value_match::String_value_match_type::MatchValue(ref v) => {
-                            my_size += ::protobuf::rt::string_size(2, &v);
-                        },
-                        &string_value_match::String_value_match_type::SaveFieldId(ref v) => {
-                            my_size += ::protobuf::rt::string_size(3, &v);
-                        },
-                    };
-                }
-                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-                self.special_fields.cached_size().set(my_size as u32);
-                my_size
-            }
-
-            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-                if self.operator != ::protobuf::EnumOrUnknown::new(Operator::OPERATOR_UNSPECIFIED) {
-                    os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.operator))?;
-                }
-                if let ::std::option::Option::Some(ref v) = self.string_value_match_type {
-                    match v {
-                        &string_value_match::String_value_match_type::MatchValue(ref v) => {
-                            os.write_string(2, v)?;
-                        },
-                        &string_value_match::String_value_match_type::SaveFieldId(ref v) => {
-                            os.write_string(3, v)?;
-                        },
-                    };
-                }
-                os.write_unknown_fields(self.special_fields.unknown_fields())?;
-                ::std::result::Result::Ok(())
-            }
-
-            fn special_fields(&self) -> &::protobuf::SpecialFields {
-                &self.special_fields
-            }
-
-            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-                &mut self.special_fields
-            }
-
-            fn new() -> StringValueMatch {
-                StringValueMatch::new()
-            }
-
-            fn clear(&mut self) {
-                self.operator = ::protobuf::EnumOrUnknown::new(Operator::OPERATOR_UNSPECIFIED);
-                self.string_value_match_type = ::std::option::Option::None;
-                self.string_value_match_type = ::std::option::Option::None;
-                self.special_fields.clear();
-            }
-
-            fn default_instance() -> &'static StringValueMatch {
-                static instance: StringValueMatch = StringValueMatch {
-                    operator: ::protobuf::EnumOrUnknown::from_i32(0),
-                    string_value_match_type: ::std::option::Option::None,
-                    special_fields: ::protobuf::SpecialFields::new(),
-                };
-                &instance
-            }
-        }
-
-        impl ::protobuf::MessageFull for StringValueMatch {
-            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("LogMatcher.BaseLogMatcher.StringValueMatch").unwrap()).clone()
-            }
-        }
-
-        impl ::std::fmt::Display for StringValueMatch {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                ::protobuf::text_format::fmt(self, f)
-            }
-        }
-
-        impl ::protobuf::reflect::ProtobufValue for StringValueMatch {
-            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-        }
-
-        /// Nested message and enums of message `StringValueMatch`
-        pub mod string_value_match {
-
-            #[derive(Clone,PartialEq,Debug)]
-            // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StringValueMatch.string_value_match_type)
-            pub enum String_value_match_type {
-                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StringValueMatch.match_value)
-                MatchValue(::std::string::String),
-                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StringValueMatch.save_field_id)
-                SaveFieldId(::std::string::String),
-            }
-
-            impl ::protobuf::Oneof for String_value_match_type {
-            }
-
-            impl ::protobuf::OneofFull for String_value_match_type {
-                fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
-                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
-                    descriptor.get(|| <super::StringValueMatch as ::protobuf::MessageFull>::descriptor().oneof_by_name("string_value_match_type").unwrap()).clone()
-                }
-            }
-
-            impl String_value_match_type {
-                pub(in super::super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
-                    ::protobuf::reflect::GeneratedOneofDescriptorData::new::<String_value_match_type>("string_value_match_type")
-                }
-            }
-        }
-
-        // @@protoc_insertion_point(message:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.IntValueMatch)
-        #[derive(PartialEq,Clone,Default,Debug)]
-        pub struct IntValueMatch {
-            // message fields
-            // @@protoc_insertion_point(field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.IntValueMatch.operator)
-            pub operator: ::protobuf::EnumOrUnknown<Operator>,
-            // message oneof groups
-            pub int_value_match_type: ::std::option::Option<int_value_match::Int_value_match_type>,
-            // special fields
-            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.IntValueMatch.special_fields)
-            pub special_fields: ::protobuf::SpecialFields,
-        }
-
-        impl<'a> ::std::default::Default for &'a IntValueMatch {
-            fn default() -> &'a IntValueMatch {
-                <IntValueMatch as ::protobuf::Message>::default_instance()
-            }
-        }
-
-        impl IntValueMatch {
-            pub fn new() -> IntValueMatch {
-                ::std::default::Default::default()
-            }
-
-            // int32 match_value = 2;
-
-            pub fn match_value(&self) -> i32 {
-                match self.int_value_match_type {
-                    ::std::option::Option::Some(int_value_match::Int_value_match_type::MatchValue(v)) => v,
-                    _ => 0,
-                }
-            }
-
-            pub fn clear_match_value(&mut self) {
-                self.int_value_match_type = ::std::option::Option::None;
-            }
-
-            pub fn has_match_value(&self) -> bool {
-                match self.int_value_match_type {
-                    ::std::option::Option::Some(int_value_match::Int_value_match_type::MatchValue(..)) => true,
-                    _ => false,
-                }
-            }
-
-            // Param is passed by value, moved
-            pub fn set_match_value(&mut self, v: i32) {
-                self.int_value_match_type = ::std::option::Option::Some(int_value_match::Int_value_match_type::MatchValue(v))
-            }
-
-            // string save_field_id = 3;
-
-            pub fn save_field_id(&self) -> &str {
-                match self.int_value_match_type {
-                    ::std::option::Option::Some(int_value_match::Int_value_match_type::SaveFieldId(ref v)) => v,
-                    _ => "",
-                }
-            }
-
-            pub fn clear_save_field_id(&mut self) {
-                self.int_value_match_type = ::std::option::Option::None;
-            }
-
-            pub fn has_save_field_id(&self) -> bool {
-                match self.int_value_match_type {
-                    ::std::option::Option::Some(int_value_match::Int_value_match_type::SaveFieldId(..)) => true,
-                    _ => false,
-                }
-            }
-
-            // Param is passed by value, moved
-            pub fn set_save_field_id(&mut self, v: ::std::string::String) {
-                self.int_value_match_type = ::std::option::Option::Some(int_value_match::Int_value_match_type::SaveFieldId(v))
-            }
-
-            // Mutable pointer to the field.
-            pub fn mut_save_field_id(&mut self) -> &mut ::std::string::String {
-                if let ::std::option::Option::Some(int_value_match::Int_value_match_type::SaveFieldId(_)) = self.int_value_match_type {
-                } else {
-                    self.int_value_match_type = ::std::option::Option::Some(int_value_match::Int_value_match_type::SaveFieldId(::std::string::String::new()));
-                }
-                match self.int_value_match_type {
-                    ::std::option::Option::Some(int_value_match::Int_value_match_type::SaveFieldId(ref mut v)) => v,
-                    _ => panic!(),
-                }
-            }
-
-            // Take field
-            pub fn take_save_field_id(&mut self) -> ::std::string::String {
-                if self.has_save_field_id() {
-                    match self.int_value_match_type.take() {
-                        ::std::option::Option::Some(int_value_match::Int_value_match_type::SaveFieldId(v)) => v,
-                        _ => panic!(),
-                    }
-                } else {
-                    ::std::string::String::new()
-                }
-            }
-
-            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-                let mut fields = ::std::vec::Vec::with_capacity(3);
-                let mut oneofs = ::std::vec::Vec::with_capacity(1);
-                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                    "operator",
-                    |m: &IntValueMatch| { &m.operator },
-                    |m: &mut IntValueMatch| { &mut m.operator },
-                ));
-                fields.push(::protobuf::reflect::rt::v2::make_oneof_copy_has_get_set_simpler_accessors::<_, _>(
-                    "match_value",
-                    IntValueMatch::has_match_value,
-                    IntValueMatch::match_value,
-                    IntValueMatch::set_match_value,
-                ));
-                fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
-                    "save_field_id",
-                    IntValueMatch::has_save_field_id,
-                    IntValueMatch::save_field_id,
-                    IntValueMatch::set_save_field_id,
-                ));
-                oneofs.push(int_value_match::Int_value_match_type::generated_oneof_descriptor_data());
-                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<IntValueMatch>(
-                    "LogMatcher.BaseLogMatcher.IntValueMatch",
-                    fields,
-                    oneofs,
-                )
-            }
-        }
-
-        impl ::protobuf::Message for IntValueMatch {
-            const NAME: &'static str = "IntValueMatch";
-
-            fn is_initialized(&self) -> bool {
-                true
-            }
-
-            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-                while let Some(tag) = is.read_raw_tag_or_eof()? {
-                    match tag {
-                        8 => {
-                            self.operator = is.read_enum_or_unknown()?;
-                        },
-                        16 => {
-                            self.int_value_match_type = ::std::option::Option::Some(int_value_match::Int_value_match_type::MatchValue(is.read_int32()?));
-                        },
-                        26 => {
-                            self.int_value_match_type = ::std::option::Option::Some(int_value_match::Int_value_match_type::SaveFieldId(is.read_string()?));
-                        },
-                        tag => {
-                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                        },
-                    };
-                }
-                ::std::result::Result::Ok(())
-            }
-
-            // Compute sizes of nested messages
-            #[allow(unused_variables)]
-            fn compute_size(&self) -> u64 {
-                let mut my_size = 0;
-                if self.operator != ::protobuf::EnumOrUnknown::new(Operator::OPERATOR_UNSPECIFIED) {
-                    my_size += ::protobuf::rt::int32_size(1, self.operator.value());
-                }
-                if let ::std::option::Option::Some(ref v) = self.int_value_match_type {
-                    match v {
-                        &int_value_match::Int_value_match_type::MatchValue(v) => {
-                            my_size += ::protobuf::rt::int32_size(2, v);
-                        },
-                        &int_value_match::Int_value_match_type::SaveFieldId(ref v) => {
-                            my_size += ::protobuf::rt::string_size(3, &v);
-                        },
-                    };
-                }
-                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-                self.special_fields.cached_size().set(my_size as u32);
-                my_size
-            }
-
-            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-                if self.operator != ::protobuf::EnumOrUnknown::new(Operator::OPERATOR_UNSPECIFIED) {
-                    os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.operator))?;
-                }
-                if let ::std::option::Option::Some(ref v) = self.int_value_match_type {
-                    match v {
-                        &int_value_match::Int_value_match_type::MatchValue(v) => {
-                            os.write_int32(2, v)?;
-                        },
-                        &int_value_match::Int_value_match_type::SaveFieldId(ref v) => {
-                            os.write_string(3, v)?;
-                        },
-                    };
-                }
-                os.write_unknown_fields(self.special_fields.unknown_fields())?;
-                ::std::result::Result::Ok(())
-            }
-
-            fn special_fields(&self) -> &::protobuf::SpecialFields {
-                &self.special_fields
-            }
-
-            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-                &mut self.special_fields
-            }
-
-            fn new() -> IntValueMatch {
-                IntValueMatch::new()
-            }
-
-            fn clear(&mut self) {
-                self.operator = ::protobuf::EnumOrUnknown::new(Operator::OPERATOR_UNSPECIFIED);
-                self.int_value_match_type = ::std::option::Option::None;
-                self.int_value_match_type = ::std::option::Option::None;
-                self.special_fields.clear();
-            }
-
-            fn default_instance() -> &'static IntValueMatch {
-                static instance: IntValueMatch = IntValueMatch {
-                    operator: ::protobuf::EnumOrUnknown::from_i32(0),
-                    int_value_match_type: ::std::option::Option::None,
-                    special_fields: ::protobuf::SpecialFields::new(),
-                };
-                &instance
-            }
-        }
-
-        impl ::protobuf::MessageFull for IntValueMatch {
-            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("LogMatcher.BaseLogMatcher.IntValueMatch").unwrap()).clone()
-            }
-        }
-
-        impl ::std::fmt::Display for IntValueMatch {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                ::protobuf::text_format::fmt(self, f)
-            }
-        }
-
-        impl ::protobuf::reflect::ProtobufValue for IntValueMatch {
-            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-        }
-
-        /// Nested message and enums of message `IntValueMatch`
-        pub mod int_value_match {
-
-            #[derive(Clone,PartialEq,Debug)]
-            // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.IntValueMatch.int_value_match_type)
-            pub enum Int_value_match_type {
-                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.IntValueMatch.match_value)
-                MatchValue(i32),
-                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.IntValueMatch.save_field_id)
-                SaveFieldId(::std::string::String),
-            }
-
-            impl ::protobuf::Oneof for Int_value_match_type {
-            }
-
-            impl ::protobuf::OneofFull for Int_value_match_type {
-                fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
-                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
-                    descriptor.get(|| <super::IntValueMatch as ::protobuf::MessageFull>::descriptor().oneof_by_name("int_value_match_type").unwrap()).clone()
-                }
-            }
-
-            impl Int_value_match_type {
-                pub(in super::super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
-                    ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Int_value_match_type>("int_value_match_type")
-                }
-            }
-        }
-
-        // @@protoc_insertion_point(message:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.DoubleValueMatch)
-        #[derive(PartialEq,Clone,Default,Debug)]
-        pub struct DoubleValueMatch {
-            // message fields
-            // @@protoc_insertion_point(field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.DoubleValueMatch.operator)
-            pub operator: ::protobuf::EnumOrUnknown<Operator>,
-            // message oneof groups
-            pub double_value_match_type: ::std::option::Option<double_value_match::Double_value_match_type>,
-            // special fields
-            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.DoubleValueMatch.special_fields)
-            pub special_fields: ::protobuf::SpecialFields,
-        }
-
-        impl<'a> ::std::default::Default for &'a DoubleValueMatch {
-            fn default() -> &'a DoubleValueMatch {
-                <DoubleValueMatch as ::protobuf::Message>::default_instance()
-            }
-        }
-
-        impl DoubleValueMatch {
-            pub fn new() -> DoubleValueMatch {
-                ::std::default::Default::default()
-            }
-
-            // double match_value = 2;
-
-            pub fn match_value(&self) -> f64 {
-                match self.double_value_match_type {
-                    ::std::option::Option::Some(double_value_match::Double_value_match_type::MatchValue(v)) => v,
-                    _ => 0.,
-                }
-            }
-
-            pub fn clear_match_value(&mut self) {
-                self.double_value_match_type = ::std::option::Option::None;
-            }
-
-            pub fn has_match_value(&self) -> bool {
-                match self.double_value_match_type {
-                    ::std::option::Option::Some(double_value_match::Double_value_match_type::MatchValue(..)) => true,
-                    _ => false,
-                }
-            }
-
-            // Param is passed by value, moved
-            pub fn set_match_value(&mut self, v: f64) {
-                self.double_value_match_type = ::std::option::Option::Some(double_value_match::Double_value_match_type::MatchValue(v))
-            }
-
-            // string save_field_id = 3;
-
-            pub fn save_field_id(&self) -> &str {
-                match self.double_value_match_type {
-                    ::std::option::Option::Some(double_value_match::Double_value_match_type::SaveFieldId(ref v)) => v,
-                    _ => "",
-                }
-            }
-
-            pub fn clear_save_field_id(&mut self) {
-                self.double_value_match_type = ::std::option::Option::None;
-            }
-
-            pub fn has_save_field_id(&self) -> bool {
-                match self.double_value_match_type {
-                    ::std::option::Option::Some(double_value_match::Double_value_match_type::SaveFieldId(..)) => true,
-                    _ => false,
-                }
-            }
-
-            // Param is passed by value, moved
-            pub fn set_save_field_id(&mut self, v: ::std::string::String) {
-                self.double_value_match_type = ::std::option::Option::Some(double_value_match::Double_value_match_type::SaveFieldId(v))
-            }
-
-            // Mutable pointer to the field.
-            pub fn mut_save_field_id(&mut self) -> &mut ::std::string::String {
-                if let ::std::option::Option::Some(double_value_match::Double_value_match_type::SaveFieldId(_)) = self.double_value_match_type {
-                } else {
-                    self.double_value_match_type = ::std::option::Option::Some(double_value_match::Double_value_match_type::SaveFieldId(::std::string::String::new()));
-                }
-                match self.double_value_match_type {
-                    ::std::option::Option::Some(double_value_match::Double_value_match_type::SaveFieldId(ref mut v)) => v,
-                    _ => panic!(),
-                }
-            }
-
-            // Take field
-            pub fn take_save_field_id(&mut self) -> ::std::string::String {
-                if self.has_save_field_id() {
-                    match self.double_value_match_type.take() {
-                        ::std::option::Option::Some(double_value_match::Double_value_match_type::SaveFieldId(v)) => v,
-                        _ => panic!(),
-                    }
-                } else {
-                    ::std::string::String::new()
-                }
-            }
-
-            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-                let mut fields = ::std::vec::Vec::with_capacity(3);
-                let mut oneofs = ::std::vec::Vec::with_capacity(1);
-                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                    "operator",
-                    |m: &DoubleValueMatch| { &m.operator },
-                    |m: &mut DoubleValueMatch| { &mut m.operator },
-                ));
-                fields.push(::protobuf::reflect::rt::v2::make_oneof_copy_has_get_set_simpler_accessors::<_, _>(
-                    "match_value",
-                    DoubleValueMatch::has_match_value,
-                    DoubleValueMatch::match_value,
-                    DoubleValueMatch::set_match_value,
-                ));
-                fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
-                    "save_field_id",
-                    DoubleValueMatch::has_save_field_id,
-                    DoubleValueMatch::save_field_id,
-                    DoubleValueMatch::set_save_field_id,
-                ));
-                oneofs.push(double_value_match::Double_value_match_type::generated_oneof_descriptor_data());
-                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DoubleValueMatch>(
-                    "LogMatcher.BaseLogMatcher.DoubleValueMatch",
-                    fields,
-                    oneofs,
-                )
-            }
-        }
-
-        impl ::protobuf::Message for DoubleValueMatch {
-            const NAME: &'static str = "DoubleValueMatch";
-
-            fn is_initialized(&self) -> bool {
-                true
-            }
-
-            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-                while let Some(tag) = is.read_raw_tag_or_eof()? {
-                    match tag {
-                        8 => {
-                            self.operator = is.read_enum_or_unknown()?;
-                        },
-                        17 => {
-                            self.double_value_match_type = ::std::option::Option::Some(double_value_match::Double_value_match_type::MatchValue(is.read_double()?));
-                        },
-                        26 => {
-                            self.double_value_match_type = ::std::option::Option::Some(double_value_match::Double_value_match_type::SaveFieldId(is.read_string()?));
-                        },
-                        tag => {
-                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                        },
-                    };
-                }
-                ::std::result::Result::Ok(())
-            }
-
-            // Compute sizes of nested messages
-            #[allow(unused_variables)]
-            fn compute_size(&self) -> u64 {
-                let mut my_size = 0;
-                if self.operator != ::protobuf::EnumOrUnknown::new(Operator::OPERATOR_UNSPECIFIED) {
-                    my_size += ::protobuf::rt::int32_size(1, self.operator.value());
-                }
-                if let ::std::option::Option::Some(ref v) = self.double_value_match_type {
-                    match v {
-                        &double_value_match::Double_value_match_type::MatchValue(v) => {
-                            my_size += 1 + 8;
-                        },
-                        &double_value_match::Double_value_match_type::SaveFieldId(ref v) => {
-                            my_size += ::protobuf::rt::string_size(3, &v);
-                        },
-                    };
-                }
-                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-                self.special_fields.cached_size().set(my_size as u32);
-                my_size
-            }
-
-            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-                if self.operator != ::protobuf::EnumOrUnknown::new(Operator::OPERATOR_UNSPECIFIED) {
-                    os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.operator))?;
-                }
-                if let ::std::option::Option::Some(ref v) = self.double_value_match_type {
-                    match v {
-                        &double_value_match::Double_value_match_type::MatchValue(v) => {
-                            os.write_double(2, v)?;
-                        },
-                        &double_value_match::Double_value_match_type::SaveFieldId(ref v) => {
-                            os.write_string(3, v)?;
-                        },
-                    };
-                }
-                os.write_unknown_fields(self.special_fields.unknown_fields())?;
-                ::std::result::Result::Ok(())
-            }
-
-            fn special_fields(&self) -> &::protobuf::SpecialFields {
-                &self.special_fields
-            }
-
-            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-                &mut self.special_fields
-            }
-
-            fn new() -> DoubleValueMatch {
-                DoubleValueMatch::new()
-            }
-
-            fn clear(&mut self) {
-                self.operator = ::protobuf::EnumOrUnknown::new(Operator::OPERATOR_UNSPECIFIED);
-                self.double_value_match_type = ::std::option::Option::None;
-                self.double_value_match_type = ::std::option::Option::None;
-                self.special_fields.clear();
-            }
-
-            fn default_instance() -> &'static DoubleValueMatch {
-                static instance: DoubleValueMatch = DoubleValueMatch {
-                    operator: ::protobuf::EnumOrUnknown::from_i32(0),
-                    double_value_match_type: ::std::option::Option::None,
-                    special_fields: ::protobuf::SpecialFields::new(),
-                };
-                &instance
-            }
-        }
-
-        impl ::protobuf::MessageFull for DoubleValueMatch {
-            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("LogMatcher.BaseLogMatcher.DoubleValueMatch").unwrap()).clone()
-            }
-        }
-
-        impl ::std::fmt::Display for DoubleValueMatch {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                ::protobuf::text_format::fmt(self, f)
-            }
-        }
-
-        impl ::protobuf::reflect::ProtobufValue for DoubleValueMatch {
-            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-        }
-
-        /// Nested message and enums of message `DoubleValueMatch`
-        pub mod double_value_match {
-
-            #[derive(Clone,PartialEq,Debug)]
-            // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.DoubleValueMatch.double_value_match_type)
-            pub enum Double_value_match_type {
-                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.DoubleValueMatch.match_value)
-                MatchValue(f64),
-                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.DoubleValueMatch.save_field_id)
-                SaveFieldId(::std::string::String),
-            }
-
-            impl ::protobuf::Oneof for Double_value_match_type {
-            }
-
-            impl ::protobuf::OneofFull for Double_value_match_type {
-                fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
-                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
-                    descriptor.get(|| <super::DoubleValueMatch as ::protobuf::MessageFull>::descriptor().oneof_by_name("double_value_match_type").unwrap()).clone()
-                }
-            }
-
-            impl Double_value_match_type {
-                pub(in super::super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
-                    ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Double_value_match_type>("double_value_match_type")
-                }
-            }
-        }
-
-        // @@protoc_insertion_point(message:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.SemVerValueMatch)
-        #[derive(PartialEq,Clone,Default,Debug)]
-        pub struct SemVerValueMatch {
-            // message fields
-            // @@protoc_insertion_point(field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.SemVerValueMatch.operator)
-            pub operator: ::protobuf::EnumOrUnknown<Operator>,
-            // @@protoc_insertion_point(field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.SemVerValueMatch.match_value)
-            pub match_value: ::std::string::String,
-            // special fields
-            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.SemVerValueMatch.special_fields)
-            pub special_fields: ::protobuf::SpecialFields,
-        }
-
-        impl<'a> ::std::default::Default for &'a SemVerValueMatch {
-            fn default() -> &'a SemVerValueMatch {
-                <SemVerValueMatch as ::protobuf::Message>::default_instance()
-            }
-        }
-
-        impl SemVerValueMatch {
-            pub fn new() -> SemVerValueMatch {
-                ::std::default::Default::default()
-            }
-
-            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-                let mut fields = ::std::vec::Vec::with_capacity(2);
-                let mut oneofs = ::std::vec::Vec::with_capacity(0);
-                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                    "operator",
-                    |m: &SemVerValueMatch| { &m.operator },
-                    |m: &mut SemVerValueMatch| { &mut m.operator },
-                ));
-                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                    "match_value",
-                    |m: &SemVerValueMatch| { &m.match_value },
-                    |m: &mut SemVerValueMatch| { &mut m.match_value },
-                ));
-                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SemVerValueMatch>(
-                    "LogMatcher.BaseLogMatcher.SemVerValueMatch",
-                    fields,
-                    oneofs,
-                )
-            }
-        }
-
-        impl ::protobuf::Message for SemVerValueMatch {
-            const NAME: &'static str = "SemVerValueMatch";
-
-            fn is_initialized(&self) -> bool {
-                true
-            }
-
-            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-                while let Some(tag) = is.read_raw_tag_or_eof()? {
-                    match tag {
-                        8 => {
-                            self.operator = is.read_enum_or_unknown()?;
-                        },
-                        18 => {
-                            self.match_value = is.read_string()?;
-                        },
-                        tag => {
-                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                        },
-                    };
-                }
-                ::std::result::Result::Ok(())
-            }
-
-            // Compute sizes of nested messages
-            #[allow(unused_variables)]
-            fn compute_size(&self) -> u64 {
-                let mut my_size = 0;
-                if self.operator != ::protobuf::EnumOrUnknown::new(Operator::OPERATOR_UNSPECIFIED) {
-                    my_size += ::protobuf::rt::int32_size(1, self.operator.value());
-                }
-                if !self.match_value.is_empty() {
-                    my_size += ::protobuf::rt::string_size(2, &self.match_value);
-                }
-                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-                self.special_fields.cached_size().set(my_size as u32);
-                my_size
-            }
-
-            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-                if self.operator != ::protobuf::EnumOrUnknown::new(Operator::OPERATOR_UNSPECIFIED) {
-                    os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.operator))?;
-                }
-                if !self.match_value.is_empty() {
-                    os.write_string(2, &self.match_value)?;
-                }
-                os.write_unknown_fields(self.special_fields.unknown_fields())?;
-                ::std::result::Result::Ok(())
-            }
-
-            fn special_fields(&self) -> &::protobuf::SpecialFields {
-                &self.special_fields
-            }
-
-            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-                &mut self.special_fields
-            }
-
-            fn new() -> SemVerValueMatch {
-                SemVerValueMatch::new()
-            }
-
-            fn clear(&mut self) {
-                self.operator = ::protobuf::EnumOrUnknown::new(Operator::OPERATOR_UNSPECIFIED);
-                self.match_value.clear();
-                self.special_fields.clear();
-            }
-
-            fn default_instance() -> &'static SemVerValueMatch {
-                static instance: SemVerValueMatch = SemVerValueMatch {
-                    operator: ::protobuf::EnumOrUnknown::from_i32(0),
-                    match_value: ::std::string::String::new(),
-                    special_fields: ::protobuf::SpecialFields::new(),
-                };
-                &instance
-            }
-        }
-
-        impl ::protobuf::MessageFull for SemVerValueMatch {
-            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("LogMatcher.BaseLogMatcher.SemVerValueMatch").unwrap()).clone()
-            }
-        }
-
-        impl ::std::fmt::Display for SemVerValueMatch {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                ::protobuf::text_format::fmt(self, f)
-            }
-        }
-
-        impl ::protobuf::reflect::ProtobufValue for SemVerValueMatch {
-            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-        }
-
         // @@protoc_insertion_point(message:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.MessageMatch)
         #[derive(PartialEq,Clone,Default,Debug)]
         pub struct MessageMatch {
             // message fields
             // @@protoc_insertion_point(field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.MessageMatch.string_value_match)
-            pub string_value_match: ::protobuf::MessageField<StringValueMatch>,
+            pub string_value_match: ::protobuf::MessageField<super::super::super::value_matcher::StringValueMatch>,
             // special fields
             // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.MessageMatch.special_fields)
             pub special_fields: ::protobuf::SpecialFields,
@@ -1786,7 +815,7 @@ pub mod log_matcher {
             pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
                 let mut fields = ::std::vec::Vec::with_capacity(1);
                 let mut oneofs = ::std::vec::Vec::with_capacity(0);
-                fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, StringValueMatch>(
+                fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::super::value_matcher::StringValueMatch>(
                     "string_value_match",
                     |m: &MessageMatch| { &m.string_value_match },
                     |m: &mut MessageMatch| { &mut m.string_value_match },
@@ -1884,109 +913,6 @@ pub mod log_matcher {
             type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
         }
 
-        // @@protoc_insertion_point(message:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.IsSetMatch)
-        #[derive(PartialEq,Clone,Default,Debug)]
-        pub struct IsSetMatch {
-            // special fields
-            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.IsSetMatch.special_fields)
-            pub special_fields: ::protobuf::SpecialFields,
-        }
-
-        impl<'a> ::std::default::Default for &'a IsSetMatch {
-            fn default() -> &'a IsSetMatch {
-                <IsSetMatch as ::protobuf::Message>::default_instance()
-            }
-        }
-
-        impl IsSetMatch {
-            pub fn new() -> IsSetMatch {
-                ::std::default::Default::default()
-            }
-
-            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-                let mut fields = ::std::vec::Vec::with_capacity(0);
-                let mut oneofs = ::std::vec::Vec::with_capacity(0);
-                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<IsSetMatch>(
-                    "LogMatcher.BaseLogMatcher.IsSetMatch",
-                    fields,
-                    oneofs,
-                )
-            }
-        }
-
-        impl ::protobuf::Message for IsSetMatch {
-            const NAME: &'static str = "IsSetMatch";
-
-            fn is_initialized(&self) -> bool {
-                true
-            }
-
-            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-                while let Some(tag) = is.read_raw_tag_or_eof()? {
-                    match tag {
-                        tag => {
-                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                        },
-                    };
-                }
-                ::std::result::Result::Ok(())
-            }
-
-            // Compute sizes of nested messages
-            #[allow(unused_variables)]
-            fn compute_size(&self) -> u64 {
-                let mut my_size = 0;
-                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-                self.special_fields.cached_size().set(my_size as u32);
-                my_size
-            }
-
-            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-                os.write_unknown_fields(self.special_fields.unknown_fields())?;
-                ::std::result::Result::Ok(())
-            }
-
-            fn special_fields(&self) -> &::protobuf::SpecialFields {
-                &self.special_fields
-            }
-
-            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-                &mut self.special_fields
-            }
-
-            fn new() -> IsSetMatch {
-                IsSetMatch::new()
-            }
-
-            fn clear(&mut self) {
-                self.special_fields.clear();
-            }
-
-            fn default_instance() -> &'static IsSetMatch {
-                static instance: IsSetMatch = IsSetMatch {
-                    special_fields: ::protobuf::SpecialFields::new(),
-                };
-                &instance
-            }
-        }
-
-        impl ::protobuf::MessageFull for IsSetMatch {
-            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("LogMatcher.BaseLogMatcher.IsSetMatch").unwrap()).clone()
-            }
-        }
-
-        impl ::std::fmt::Display for IsSetMatch {
-            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-                ::protobuf::text_format::fmt(self, f)
-            }
-        }
-
-        impl ::protobuf::reflect::ProtobufValue for IsSetMatch {
-            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-        }
-
         // @@protoc_insertion_point(message:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.TagMatch)
         #[derive(PartialEq,Clone,Default,Debug)]
         pub struct TagMatch {
@@ -2011,12 +937,12 @@ pub mod log_matcher {
                 ::std::default::Default::default()
             }
 
-            // .bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StringValueMatch string_value_match = 2;
+            // .bitdrift_public.protobuf.value_matcher.v1.StringValueMatch string_value_match = 2;
 
-            pub fn string_value_match(&self) -> &StringValueMatch {
+            pub fn string_value_match(&self) -> &super::super::super::value_matcher::StringValueMatch {
                 match self.value_match {
                     ::std::option::Option::Some(tag_match::Value_match::StringValueMatch(ref v)) => v,
-                    _ => <StringValueMatch as ::protobuf::Message>::default_instance(),
+                    _ => <super::super::super::value_matcher::StringValueMatch as ::protobuf::Message>::default_instance(),
                 }
             }
 
@@ -2032,15 +958,15 @@ pub mod log_matcher {
             }
 
             // Param is passed by value, moved
-            pub fn set_string_value_match(&mut self, v: StringValueMatch) {
+            pub fn set_string_value_match(&mut self, v: super::super::super::value_matcher::StringValueMatch) {
                 self.value_match = ::std::option::Option::Some(tag_match::Value_match::StringValueMatch(v))
             }
 
             // Mutable pointer to the field.
-            pub fn mut_string_value_match(&mut self) -> &mut StringValueMatch {
+            pub fn mut_string_value_match(&mut self) -> &mut super::super::super::value_matcher::StringValueMatch {
                 if let ::std::option::Option::Some(tag_match::Value_match::StringValueMatch(_)) = self.value_match {
                 } else {
-                    self.value_match = ::std::option::Option::Some(tag_match::Value_match::StringValueMatch(StringValueMatch::new()));
+                    self.value_match = ::std::option::Option::Some(tag_match::Value_match::StringValueMatch(super::super::super::value_matcher::StringValueMatch::new()));
                 }
                 match self.value_match {
                     ::std::option::Option::Some(tag_match::Value_match::StringValueMatch(ref mut v)) => v,
@@ -2049,23 +975,23 @@ pub mod log_matcher {
             }
 
             // Take field
-            pub fn take_string_value_match(&mut self) -> StringValueMatch {
+            pub fn take_string_value_match(&mut self) -> super::super::super::value_matcher::StringValueMatch {
                 if self.has_string_value_match() {
                     match self.value_match.take() {
                         ::std::option::Option::Some(tag_match::Value_match::StringValueMatch(v)) => v,
                         _ => panic!(),
                     }
                 } else {
-                    StringValueMatch::new()
+                    super::super::super::value_matcher::StringValueMatch::new()
                 }
             }
 
-            // .bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.IntValueMatch int_value_match = 3;
+            // .bitdrift_public.protobuf.value_matcher.v1.IntValueMatch int_value_match = 3;
 
-            pub fn int_value_match(&self) -> &IntValueMatch {
+            pub fn int_value_match(&self) -> &super::super::super::value_matcher::IntValueMatch {
                 match self.value_match {
                     ::std::option::Option::Some(tag_match::Value_match::IntValueMatch(ref v)) => v,
-                    _ => <IntValueMatch as ::protobuf::Message>::default_instance(),
+                    _ => <super::super::super::value_matcher::IntValueMatch as ::protobuf::Message>::default_instance(),
                 }
             }
 
@@ -2081,15 +1007,15 @@ pub mod log_matcher {
             }
 
             // Param is passed by value, moved
-            pub fn set_int_value_match(&mut self, v: IntValueMatch) {
+            pub fn set_int_value_match(&mut self, v: super::super::super::value_matcher::IntValueMatch) {
                 self.value_match = ::std::option::Option::Some(tag_match::Value_match::IntValueMatch(v))
             }
 
             // Mutable pointer to the field.
-            pub fn mut_int_value_match(&mut self) -> &mut IntValueMatch {
+            pub fn mut_int_value_match(&mut self) -> &mut super::super::super::value_matcher::IntValueMatch {
                 if let ::std::option::Option::Some(tag_match::Value_match::IntValueMatch(_)) = self.value_match {
                 } else {
-                    self.value_match = ::std::option::Option::Some(tag_match::Value_match::IntValueMatch(IntValueMatch::new()));
+                    self.value_match = ::std::option::Option::Some(tag_match::Value_match::IntValueMatch(super::super::super::value_matcher::IntValueMatch::new()));
                 }
                 match self.value_match {
                     ::std::option::Option::Some(tag_match::Value_match::IntValueMatch(ref mut v)) => v,
@@ -2098,23 +1024,23 @@ pub mod log_matcher {
             }
 
             // Take field
-            pub fn take_int_value_match(&mut self) -> IntValueMatch {
+            pub fn take_int_value_match(&mut self) -> super::super::super::value_matcher::IntValueMatch {
                 if self.has_int_value_match() {
                     match self.value_match.take() {
                         ::std::option::Option::Some(tag_match::Value_match::IntValueMatch(v)) => v,
                         _ => panic!(),
                     }
                 } else {
-                    IntValueMatch::new()
+                    super::super::super::value_matcher::IntValueMatch::new()
                 }
             }
 
-            // .bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.SemVerValueMatch sem_ver_value_match = 4;
+            // .bitdrift_public.protobuf.value_matcher.v1.SemVerValueMatch sem_ver_value_match = 4;
 
-            pub fn sem_ver_value_match(&self) -> &SemVerValueMatch {
+            pub fn sem_ver_value_match(&self) -> &super::super::super::value_matcher::SemVerValueMatch {
                 match self.value_match {
                     ::std::option::Option::Some(tag_match::Value_match::SemVerValueMatch(ref v)) => v,
-                    _ => <SemVerValueMatch as ::protobuf::Message>::default_instance(),
+                    _ => <super::super::super::value_matcher::SemVerValueMatch as ::protobuf::Message>::default_instance(),
                 }
             }
 
@@ -2130,15 +1056,15 @@ pub mod log_matcher {
             }
 
             // Param is passed by value, moved
-            pub fn set_sem_ver_value_match(&mut self, v: SemVerValueMatch) {
+            pub fn set_sem_ver_value_match(&mut self, v: super::super::super::value_matcher::SemVerValueMatch) {
                 self.value_match = ::std::option::Option::Some(tag_match::Value_match::SemVerValueMatch(v))
             }
 
             // Mutable pointer to the field.
-            pub fn mut_sem_ver_value_match(&mut self) -> &mut SemVerValueMatch {
+            pub fn mut_sem_ver_value_match(&mut self) -> &mut super::super::super::value_matcher::SemVerValueMatch {
                 if let ::std::option::Option::Some(tag_match::Value_match::SemVerValueMatch(_)) = self.value_match {
                 } else {
-                    self.value_match = ::std::option::Option::Some(tag_match::Value_match::SemVerValueMatch(SemVerValueMatch::new()));
+                    self.value_match = ::std::option::Option::Some(tag_match::Value_match::SemVerValueMatch(super::super::super::value_matcher::SemVerValueMatch::new()));
                 }
                 match self.value_match {
                     ::std::option::Option::Some(tag_match::Value_match::SemVerValueMatch(ref mut v)) => v,
@@ -2147,23 +1073,23 @@ pub mod log_matcher {
             }
 
             // Take field
-            pub fn take_sem_ver_value_match(&mut self) -> SemVerValueMatch {
+            pub fn take_sem_ver_value_match(&mut self) -> super::super::super::value_matcher::SemVerValueMatch {
                 if self.has_sem_ver_value_match() {
                     match self.value_match.take() {
                         ::std::option::Option::Some(tag_match::Value_match::SemVerValueMatch(v)) => v,
                         _ => panic!(),
                     }
                 } else {
-                    SemVerValueMatch::new()
+                    super::super::super::value_matcher::SemVerValueMatch::new()
                 }
             }
 
-            // .bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.IsSetMatch is_set_match = 5;
+            // .bitdrift_public.protobuf.value_matcher.v1.IsSetMatch is_set_match = 5;
 
-            pub fn is_set_match(&self) -> &IsSetMatch {
+            pub fn is_set_match(&self) -> &super::super::super::value_matcher::IsSetMatch {
                 match self.value_match {
                     ::std::option::Option::Some(tag_match::Value_match::IsSetMatch(ref v)) => v,
-                    _ => <IsSetMatch as ::protobuf::Message>::default_instance(),
+                    _ => <super::super::super::value_matcher::IsSetMatch as ::protobuf::Message>::default_instance(),
                 }
             }
 
@@ -2179,15 +1105,15 @@ pub mod log_matcher {
             }
 
             // Param is passed by value, moved
-            pub fn set_is_set_match(&mut self, v: IsSetMatch) {
+            pub fn set_is_set_match(&mut self, v: super::super::super::value_matcher::IsSetMatch) {
                 self.value_match = ::std::option::Option::Some(tag_match::Value_match::IsSetMatch(v))
             }
 
             // Mutable pointer to the field.
-            pub fn mut_is_set_match(&mut self) -> &mut IsSetMatch {
+            pub fn mut_is_set_match(&mut self) -> &mut super::super::super::value_matcher::IsSetMatch {
                 if let ::std::option::Option::Some(tag_match::Value_match::IsSetMatch(_)) = self.value_match {
                 } else {
-                    self.value_match = ::std::option::Option::Some(tag_match::Value_match::IsSetMatch(IsSetMatch::new()));
+                    self.value_match = ::std::option::Option::Some(tag_match::Value_match::IsSetMatch(super::super::super::value_matcher::IsSetMatch::new()));
                 }
                 match self.value_match {
                     ::std::option::Option::Some(tag_match::Value_match::IsSetMatch(ref mut v)) => v,
@@ -2196,23 +1122,23 @@ pub mod log_matcher {
             }
 
             // Take field
-            pub fn take_is_set_match(&mut self) -> IsSetMatch {
+            pub fn take_is_set_match(&mut self) -> super::super::super::value_matcher::IsSetMatch {
                 if self.has_is_set_match() {
                     match self.value_match.take() {
                         ::std::option::Option::Some(tag_match::Value_match::IsSetMatch(v)) => v,
                         _ => panic!(),
                     }
                 } else {
-                    IsSetMatch::new()
+                    super::super::super::value_matcher::IsSetMatch::new()
                 }
             }
 
-            // .bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.DoubleValueMatch double_value_match = 6;
+            // .bitdrift_public.protobuf.value_matcher.v1.DoubleValueMatch double_value_match = 6;
 
-            pub fn double_value_match(&self) -> &DoubleValueMatch {
+            pub fn double_value_match(&self) -> &super::super::super::value_matcher::DoubleValueMatch {
                 match self.value_match {
                     ::std::option::Option::Some(tag_match::Value_match::DoubleValueMatch(ref v)) => v,
-                    _ => <DoubleValueMatch as ::protobuf::Message>::default_instance(),
+                    _ => <super::super::super::value_matcher::DoubleValueMatch as ::protobuf::Message>::default_instance(),
                 }
             }
 
@@ -2228,15 +1154,15 @@ pub mod log_matcher {
             }
 
             // Param is passed by value, moved
-            pub fn set_double_value_match(&mut self, v: DoubleValueMatch) {
+            pub fn set_double_value_match(&mut self, v: super::super::super::value_matcher::DoubleValueMatch) {
                 self.value_match = ::std::option::Option::Some(tag_match::Value_match::DoubleValueMatch(v))
             }
 
             // Mutable pointer to the field.
-            pub fn mut_double_value_match(&mut self) -> &mut DoubleValueMatch {
+            pub fn mut_double_value_match(&mut self) -> &mut super::super::super::value_matcher::DoubleValueMatch {
                 if let ::std::option::Option::Some(tag_match::Value_match::DoubleValueMatch(_)) = self.value_match {
                 } else {
-                    self.value_match = ::std::option::Option::Some(tag_match::Value_match::DoubleValueMatch(DoubleValueMatch::new()));
+                    self.value_match = ::std::option::Option::Some(tag_match::Value_match::DoubleValueMatch(super::super::super::value_matcher::DoubleValueMatch::new()));
                 }
                 match self.value_match {
                     ::std::option::Option::Some(tag_match::Value_match::DoubleValueMatch(ref mut v)) => v,
@@ -2245,14 +1171,14 @@ pub mod log_matcher {
             }
 
             // Take field
-            pub fn take_double_value_match(&mut self) -> DoubleValueMatch {
+            pub fn take_double_value_match(&mut self) -> super::super::super::value_matcher::DoubleValueMatch {
                 if self.has_double_value_match() {
                     match self.value_match.take() {
                         ::std::option::Option::Some(tag_match::Value_match::DoubleValueMatch(v)) => v,
                         _ => panic!(),
                     }
                 } else {
-                    DoubleValueMatch::new()
+                    super::super::super::value_matcher::DoubleValueMatch::new()
                 }
             }
 
@@ -2264,35 +1190,35 @@ pub mod log_matcher {
                     |m: &TagMatch| { &m.tag_key },
                     |m: &mut TagMatch| { &mut m.tag_key },
                 ));
-                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, StringValueMatch>(
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::super::super::value_matcher::StringValueMatch>(
                     "string_value_match",
                     TagMatch::has_string_value_match,
                     TagMatch::string_value_match,
                     TagMatch::mut_string_value_match,
                     TagMatch::set_string_value_match,
                 ));
-                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, IntValueMatch>(
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::super::super::value_matcher::IntValueMatch>(
                     "int_value_match",
                     TagMatch::has_int_value_match,
                     TagMatch::int_value_match,
                     TagMatch::mut_int_value_match,
                     TagMatch::set_int_value_match,
                 ));
-                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, SemVerValueMatch>(
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::super::super::value_matcher::SemVerValueMatch>(
                     "sem_ver_value_match",
                     TagMatch::has_sem_ver_value_match,
                     TagMatch::sem_ver_value_match,
                     TagMatch::mut_sem_ver_value_match,
                     TagMatch::set_sem_ver_value_match,
                 ));
-                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, IsSetMatch>(
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::super::super::value_matcher::IsSetMatch>(
                     "is_set_match",
                     TagMatch::has_is_set_match,
                     TagMatch::is_set_match,
                     TagMatch::mut_is_set_match,
                     TagMatch::set_is_set_match,
                 ));
-                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, DoubleValueMatch>(
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::super::super::value_matcher::DoubleValueMatch>(
                     "double_value_match",
                     TagMatch::has_double_value_match,
                     TagMatch::double_value_match,
@@ -2463,15 +1389,15 @@ pub mod log_matcher {
             // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.TagMatch.value_match)
             pub enum Value_match {
                 // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.TagMatch.string_value_match)
-                StringValueMatch(super::StringValueMatch),
+                StringValueMatch(super::super::super::super::value_matcher::StringValueMatch),
                 // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.TagMatch.int_value_match)
-                IntValueMatch(super::IntValueMatch),
+                IntValueMatch(super::super::super::super::value_matcher::IntValueMatch),
                 // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.TagMatch.sem_ver_value_match)
-                SemVerValueMatch(super::SemVerValueMatch),
+                SemVerValueMatch(super::super::super::super::value_matcher::SemVerValueMatch),
                 // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.TagMatch.is_set_match)
-                IsSetMatch(super::IsSetMatch),
+                IsSetMatch(super::super::super::super::value_matcher::IsSetMatch),
                 // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.TagMatch.double_value_match)
-                DoubleValueMatch(super::DoubleValueMatch),
+                DoubleValueMatch(super::super::super::super::value_matcher::DoubleValueMatch),
             }
 
             impl ::protobuf::Oneof for Value_match {
@@ -2491,161 +1417,60 @@ pub mod log_matcher {
             }
         }
 
-        // @@protoc_insertion_point(message:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.FeatureFlagMatch)
+        // @@protoc_insertion_point(message:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StateMatch)
         #[derive(PartialEq,Clone,Default,Debug)]
-        pub struct FeatureFlagMatch {
+        pub struct StateMatch {
             // message fields
-            // @@protoc_insertion_point(field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.FeatureFlagMatch.flag_name)
-            pub flag_name: ::std::string::String,
-            // message oneof groups
-            pub value_match: ::std::option::Option<feature_flag_match::Value_match>,
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StateMatch.scope)
+            pub scope: ::protobuf::EnumOrUnknown<super::super::super::scope::StateScope>,
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StateMatch.state_key)
+            pub state_key: ::std::string::String,
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StateMatch.state_value_match)
+            pub state_value_match: ::protobuf::MessageField<super::super::super::matcher::StateValueMatch>,
             // special fields
-            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.FeatureFlagMatch.special_fields)
+            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StateMatch.special_fields)
             pub special_fields: ::protobuf::SpecialFields,
         }
 
-        impl<'a> ::std::default::Default for &'a FeatureFlagMatch {
-            fn default() -> &'a FeatureFlagMatch {
-                <FeatureFlagMatch as ::protobuf::Message>::default_instance()
+        impl<'a> ::std::default::Default for &'a StateMatch {
+            fn default() -> &'a StateMatch {
+                <StateMatch as ::protobuf::Message>::default_instance()
             }
         }
 
-        impl FeatureFlagMatch {
-            pub fn new() -> FeatureFlagMatch {
+        impl StateMatch {
+            pub fn new() -> StateMatch {
                 ::std::default::Default::default()
-            }
-
-            // .bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StringValueMatch string_value_match = 2;
-
-            pub fn string_value_match(&self) -> &StringValueMatch {
-                match self.value_match {
-                    ::std::option::Option::Some(feature_flag_match::Value_match::StringValueMatch(ref v)) => v,
-                    _ => <StringValueMatch as ::protobuf::Message>::default_instance(),
-                }
-            }
-
-            pub fn clear_string_value_match(&mut self) {
-                self.value_match = ::std::option::Option::None;
-            }
-
-            pub fn has_string_value_match(&self) -> bool {
-                match self.value_match {
-                    ::std::option::Option::Some(feature_flag_match::Value_match::StringValueMatch(..)) => true,
-                    _ => false,
-                }
-            }
-
-            // Param is passed by value, moved
-            pub fn set_string_value_match(&mut self, v: StringValueMatch) {
-                self.value_match = ::std::option::Option::Some(feature_flag_match::Value_match::StringValueMatch(v))
-            }
-
-            // Mutable pointer to the field.
-            pub fn mut_string_value_match(&mut self) -> &mut StringValueMatch {
-                if let ::std::option::Option::Some(feature_flag_match::Value_match::StringValueMatch(_)) = self.value_match {
-                } else {
-                    self.value_match = ::std::option::Option::Some(feature_flag_match::Value_match::StringValueMatch(StringValueMatch::new()));
-                }
-                match self.value_match {
-                    ::std::option::Option::Some(feature_flag_match::Value_match::StringValueMatch(ref mut v)) => v,
-                    _ => panic!(),
-                }
-            }
-
-            // Take field
-            pub fn take_string_value_match(&mut self) -> StringValueMatch {
-                if self.has_string_value_match() {
-                    match self.value_match.take() {
-                        ::std::option::Option::Some(feature_flag_match::Value_match::StringValueMatch(v)) => v,
-                        _ => panic!(),
-                    }
-                } else {
-                    StringValueMatch::new()
-                }
-            }
-
-            // .bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.IsSetMatch is_set_match = 3;
-
-            pub fn is_set_match(&self) -> &IsSetMatch {
-                match self.value_match {
-                    ::std::option::Option::Some(feature_flag_match::Value_match::IsSetMatch(ref v)) => v,
-                    _ => <IsSetMatch as ::protobuf::Message>::default_instance(),
-                }
-            }
-
-            pub fn clear_is_set_match(&mut self) {
-                self.value_match = ::std::option::Option::None;
-            }
-
-            pub fn has_is_set_match(&self) -> bool {
-                match self.value_match {
-                    ::std::option::Option::Some(feature_flag_match::Value_match::IsSetMatch(..)) => true,
-                    _ => false,
-                }
-            }
-
-            // Param is passed by value, moved
-            pub fn set_is_set_match(&mut self, v: IsSetMatch) {
-                self.value_match = ::std::option::Option::Some(feature_flag_match::Value_match::IsSetMatch(v))
-            }
-
-            // Mutable pointer to the field.
-            pub fn mut_is_set_match(&mut self) -> &mut IsSetMatch {
-                if let ::std::option::Option::Some(feature_flag_match::Value_match::IsSetMatch(_)) = self.value_match {
-                } else {
-                    self.value_match = ::std::option::Option::Some(feature_flag_match::Value_match::IsSetMatch(IsSetMatch::new()));
-                }
-                match self.value_match {
-                    ::std::option::Option::Some(feature_flag_match::Value_match::IsSetMatch(ref mut v)) => v,
-                    _ => panic!(),
-                }
-            }
-
-            // Take field
-            pub fn take_is_set_match(&mut self) -> IsSetMatch {
-                if self.has_is_set_match() {
-                    match self.value_match.take() {
-                        ::std::option::Option::Some(feature_flag_match::Value_match::IsSetMatch(v)) => v,
-                        _ => panic!(),
-                    }
-                } else {
-                    IsSetMatch::new()
-                }
             }
 
             pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
                 let mut fields = ::std::vec::Vec::with_capacity(3);
-                let mut oneofs = ::std::vec::Vec::with_capacity(1);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
                 fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                    "flag_name",
-                    |m: &FeatureFlagMatch| { &m.flag_name },
-                    |m: &mut FeatureFlagMatch| { &mut m.flag_name },
+                    "scope",
+                    |m: &StateMatch| { &m.scope },
+                    |m: &mut StateMatch| { &mut m.scope },
                 ));
-                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, StringValueMatch>(
-                    "string_value_match",
-                    FeatureFlagMatch::has_string_value_match,
-                    FeatureFlagMatch::string_value_match,
-                    FeatureFlagMatch::mut_string_value_match,
-                    FeatureFlagMatch::set_string_value_match,
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "state_key",
+                    |m: &StateMatch| { &m.state_key },
+                    |m: &mut StateMatch| { &mut m.state_key },
                 ));
-                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, IsSetMatch>(
-                    "is_set_match",
-                    FeatureFlagMatch::has_is_set_match,
-                    FeatureFlagMatch::is_set_match,
-                    FeatureFlagMatch::mut_is_set_match,
-                    FeatureFlagMatch::set_is_set_match,
+                fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::super::matcher::StateValueMatch>(
+                    "state_value_match",
+                    |m: &StateMatch| { &m.state_value_match },
+                    |m: &mut StateMatch| { &mut m.state_value_match },
                 ));
-                oneofs.push(feature_flag_match::Value_match::generated_oneof_descriptor_data());
-                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<FeatureFlagMatch>(
-                    "LogMatcher.BaseLogMatcher.FeatureFlagMatch",
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<StateMatch>(
+                    "LogMatcher.BaseLogMatcher.StateMatch",
                     fields,
                     oneofs,
                 )
             }
         }
 
-        impl ::protobuf::Message for FeatureFlagMatch {
-            const NAME: &'static str = "FeatureFlagMatch";
+        impl ::protobuf::Message for StateMatch {
+            const NAME: &'static str = "StateMatch";
 
             fn is_initialized(&self) -> bool {
                 true
@@ -2654,14 +1479,14 @@ pub mod log_matcher {
             fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
                 while let Some(tag) = is.read_raw_tag_or_eof()? {
                     match tag {
-                        10 => {
-                            self.flag_name = is.read_string()?;
+                        8 => {
+                            self.scope = is.read_enum_or_unknown()?;
                         },
                         18 => {
-                            self.value_match = ::std::option::Option::Some(feature_flag_match::Value_match::StringValueMatch(is.read_message()?));
+                            self.state_key = is.read_string()?;
                         },
                         26 => {
-                            self.value_match = ::std::option::Option::Some(feature_flag_match::Value_match::IsSetMatch(is.read_message()?));
+                            ::protobuf::rt::read_singular_message_into_field(is, &mut self.state_value_match)?;
                         },
                         tag => {
                             ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -2675,20 +1500,15 @@ pub mod log_matcher {
             #[allow(unused_variables)]
             fn compute_size(&self) -> u64 {
                 let mut my_size = 0;
-                if !self.flag_name.is_empty() {
-                    my_size += ::protobuf::rt::string_size(1, &self.flag_name);
+                if self.scope != ::protobuf::EnumOrUnknown::new(super::super::super::scope::StateScope::UNSPECIFIED) {
+                    my_size += ::protobuf::rt::int32_size(1, self.scope.value());
                 }
-                if let ::std::option::Option::Some(ref v) = self.value_match {
-                    match v {
-                        &feature_flag_match::Value_match::StringValueMatch(ref v) => {
-                            let len = v.compute_size();
-                            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-                        },
-                        &feature_flag_match::Value_match::IsSetMatch(ref v) => {
-                            let len = v.compute_size();
-                            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-                        },
-                    };
+                if !self.state_key.is_empty() {
+                    my_size += ::protobuf::rt::string_size(2, &self.state_key);
+                }
+                if let Some(v) = self.state_value_match.as_ref() {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 }
                 my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
                 self.special_fields.cached_size().set(my_size as u32);
@@ -2696,18 +1516,14 @@ pub mod log_matcher {
             }
 
             fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-                if !self.flag_name.is_empty() {
-                    os.write_string(1, &self.flag_name)?;
+                if self.scope != ::protobuf::EnumOrUnknown::new(super::super::super::scope::StateScope::UNSPECIFIED) {
+                    os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.scope))?;
                 }
-                if let ::std::option::Option::Some(ref v) = self.value_match {
-                    match v {
-                        &feature_flag_match::Value_match::StringValueMatch(ref v) => {
-                            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
-                        },
-                        &feature_flag_match::Value_match::IsSetMatch(ref v) => {
-                            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
-                        },
-                    };
+                if !self.state_key.is_empty() {
+                    os.write_string(2, &self.state_key)?;
+                }
+                if let Some(v) = self.state_value_match.as_ref() {
+                    ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
                 }
                 os.write_unknown_fields(self.special_fields.unknown_fields())?;
                 ::std::result::Result::Ok(())
@@ -2721,163 +1537,43 @@ pub mod log_matcher {
                 &mut self.special_fields
             }
 
-            fn new() -> FeatureFlagMatch {
-                FeatureFlagMatch::new()
+            fn new() -> StateMatch {
+                StateMatch::new()
             }
 
             fn clear(&mut self) {
-                self.flag_name.clear();
-                self.value_match = ::std::option::Option::None;
-                self.value_match = ::std::option::Option::None;
+                self.scope = ::protobuf::EnumOrUnknown::new(super::super::super::scope::StateScope::UNSPECIFIED);
+                self.state_key.clear();
+                self.state_value_match.clear();
                 self.special_fields.clear();
             }
 
-            fn default_instance() -> &'static FeatureFlagMatch {
-                static instance: FeatureFlagMatch = FeatureFlagMatch {
-                    flag_name: ::std::string::String::new(),
-                    value_match: ::std::option::Option::None,
+            fn default_instance() -> &'static StateMatch {
+                static instance: StateMatch = StateMatch {
+                    scope: ::protobuf::EnumOrUnknown::from_i32(0),
+                    state_key: ::std::string::String::new(),
+                    state_value_match: ::protobuf::MessageField::none(),
                     special_fields: ::protobuf::SpecialFields::new(),
                 };
                 &instance
             }
         }
 
-        impl ::protobuf::MessageFull for FeatureFlagMatch {
+        impl ::protobuf::MessageFull for StateMatch {
             fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
                 static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("LogMatcher.BaseLogMatcher.FeatureFlagMatch").unwrap()).clone()
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("LogMatcher.BaseLogMatcher.StateMatch").unwrap()).clone()
             }
         }
 
-        impl ::std::fmt::Display for FeatureFlagMatch {
+        impl ::std::fmt::Display for StateMatch {
             fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
                 ::protobuf::text_format::fmt(self, f)
             }
         }
 
-        impl ::protobuf::reflect::ProtobufValue for FeatureFlagMatch {
+        impl ::protobuf::reflect::ProtobufValue for StateMatch {
             type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-        }
-
-        /// Nested message and enums of message `FeatureFlagMatch`
-        pub mod feature_flag_match {
-
-            #[derive(Clone,PartialEq,Debug)]
-            // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.FeatureFlagMatch.value_match)
-            pub enum Value_match {
-                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.FeatureFlagMatch.string_value_match)
-                StringValueMatch(super::StringValueMatch),
-                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.FeatureFlagMatch.is_set_match)
-                IsSetMatch(super::IsSetMatch),
-            }
-
-            impl ::protobuf::Oneof for Value_match {
-            }
-
-            impl ::protobuf::OneofFull for Value_match {
-                fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
-                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
-                    descriptor.get(|| <super::FeatureFlagMatch as ::protobuf::MessageFull>::descriptor().oneof_by_name("value_match").unwrap()).clone()
-                }
-            }
-
-            impl Value_match {
-                pub(in super::super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
-                    ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Value_match>("value_match")
-                }
-            }
-        }
-
-        #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
-        // @@protoc_insertion_point(enum:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.Operator)
-        pub enum Operator {
-            // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.Operator.OPERATOR_UNSPECIFIED)
-            OPERATOR_UNSPECIFIED = 0,
-            // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.Operator.OPERATOR_LESS_THAN)
-            OPERATOR_LESS_THAN = 1,
-            // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.Operator.OPERATOR_LESS_THAN_OR_EQUAL)
-            OPERATOR_LESS_THAN_OR_EQUAL = 2,
-            // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.Operator.OPERATOR_EQUALS)
-            OPERATOR_EQUALS = 3,
-            // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.Operator.OPERATOR_GREATER_THAN)
-            OPERATOR_GREATER_THAN = 4,
-            // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.Operator.OPERATOR_GREATER_THAN_OR_EQUAL)
-            OPERATOR_GREATER_THAN_OR_EQUAL = 5,
-            // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.Operator.OPERATOR_NOT_EQUALS)
-            OPERATOR_NOT_EQUALS = 6,
-            // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.Operator.OPERATOR_REGEX)
-            OPERATOR_REGEX = 7,
-        }
-
-        impl ::protobuf::Enum for Operator {
-            const NAME: &'static str = "Operator";
-
-            fn value(&self) -> i32 {
-                *self as i32
-            }
-
-            fn from_i32(value: i32) -> ::std::option::Option<Operator> {
-                match value {
-                    0 => ::std::option::Option::Some(Operator::OPERATOR_UNSPECIFIED),
-                    1 => ::std::option::Option::Some(Operator::OPERATOR_LESS_THAN),
-                    2 => ::std::option::Option::Some(Operator::OPERATOR_LESS_THAN_OR_EQUAL),
-                    3 => ::std::option::Option::Some(Operator::OPERATOR_EQUALS),
-                    4 => ::std::option::Option::Some(Operator::OPERATOR_GREATER_THAN),
-                    5 => ::std::option::Option::Some(Operator::OPERATOR_GREATER_THAN_OR_EQUAL),
-                    6 => ::std::option::Option::Some(Operator::OPERATOR_NOT_EQUALS),
-                    7 => ::std::option::Option::Some(Operator::OPERATOR_REGEX),
-                    _ => ::std::option::Option::None
-                }
-            }
-
-            fn from_str(str: &str) -> ::std::option::Option<Operator> {
-                match str {
-                    "OPERATOR_UNSPECIFIED" => ::std::option::Option::Some(Operator::OPERATOR_UNSPECIFIED),
-                    "OPERATOR_LESS_THAN" => ::std::option::Option::Some(Operator::OPERATOR_LESS_THAN),
-                    "OPERATOR_LESS_THAN_OR_EQUAL" => ::std::option::Option::Some(Operator::OPERATOR_LESS_THAN_OR_EQUAL),
-                    "OPERATOR_EQUALS" => ::std::option::Option::Some(Operator::OPERATOR_EQUALS),
-                    "OPERATOR_GREATER_THAN" => ::std::option::Option::Some(Operator::OPERATOR_GREATER_THAN),
-                    "OPERATOR_GREATER_THAN_OR_EQUAL" => ::std::option::Option::Some(Operator::OPERATOR_GREATER_THAN_OR_EQUAL),
-                    "OPERATOR_NOT_EQUALS" => ::std::option::Option::Some(Operator::OPERATOR_NOT_EQUALS),
-                    "OPERATOR_REGEX" => ::std::option::Option::Some(Operator::OPERATOR_REGEX),
-                    _ => ::std::option::Option::None
-                }
-            }
-
-            const VALUES: &'static [Operator] = &[
-                Operator::OPERATOR_UNSPECIFIED,
-                Operator::OPERATOR_LESS_THAN,
-                Operator::OPERATOR_LESS_THAN_OR_EQUAL,
-                Operator::OPERATOR_EQUALS,
-                Operator::OPERATOR_GREATER_THAN,
-                Operator::OPERATOR_GREATER_THAN_OR_EQUAL,
-                Operator::OPERATOR_NOT_EQUALS,
-                Operator::OPERATOR_REGEX,
-            ];
-        }
-
-        impl ::protobuf::EnumFull for Operator {
-            fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
-                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
-                descriptor.get(|| super::super::file_descriptor().enum_by_package_relative_name("LogMatcher.BaseLogMatcher.Operator").unwrap()).clone()
-            }
-
-            fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
-                let index = *self as usize;
-                Self::enum_descriptor().value_by_index(index)
-            }
-        }
-
-        impl ::std::default::Default for Operator {
-            fn default() -> Self {
-                Operator::OPERATOR_UNSPECIFIED
-            }
-        }
-
-        impl Operator {
-            pub(in super::super) fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
-                ::protobuf::reflect::GeneratedEnumDescriptorData::new::<Operator>("LogMatcher.BaseLogMatcher.Operator")
-            }
         }
     }
 
@@ -3007,67 +1703,42 @@ pub mod log_matcher {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n5bitdrift_public/protobuf/matcher/v1/log_matcher.proto\x12#bitdrift_pu\
-    blic.protobuf.matcher.v1\x1a\x17validate/validate.proto\"\xe9\x18\n\nLog\
-    Matcher\x12c\n\x0cbase_matcher\x18\x01\x20\x01(\x0b2>.bitdrift_public.pr\
-    otobuf.matcher.v1.LogMatcher.BaseLogMatcherH\0R\x0bbaseMatcher\x12\\\n\n\
-    or_matcher\x18\x02\x20\x01(\x0b2;.bitdrift_public.protobuf.matcher.v1.Lo\
-    gMatcher.MatcherListH\0R\torMatcher\x12^\n\x0band_matcher\x18\x03\x20\
-    \x01(\x0b2;.bitdrift_public.protobuf.matcher.v1.LogMatcher.MatcherListH\
-    \0R\nandMatcher\x12R\n\x0bnot_matcher\x18\x04\x20\x01(\x0b2/.bitdrift_pu\
-    blic.protobuf.matcher.v1.LogMatcherH\0R\nnotMatcher\x1a\xe6\x14\n\x0eBas\
-    eLogMatcher\x12r\n\rmessage_match\x18\x01\x20\x01(\x0b2K.bitdrift_public\
-    .protobuf.matcher.v1.LogMatcher.BaseLogMatcher.MessageMatchH\0R\x0cmessa\
-    geMatch\x12f\n\ttag_match\x18\x02\x20\x01(\x0b2G.bitdrift_public.protobu\
-    f.matcher.v1.LogMatcher.BaseLogMatcher.TagMatchH\0R\x08tagMatch\x12\x7f\
-    \n\x12feature_flag_match\x18\x03\x20\x01(\x0b2O.bitdrift_public.protobuf\
-    .matcher.v1.LogMatcher.BaseLogMatcher.FeatureFlagMatchH\0R\x10featureFla\
-    gMatch\x1a\xee\x01\n\x10StringValueMatch\x12m\n\x08operator\x18\x01\x20\
-    \x01(\x0e2G.bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatche\
-    r.OperatorR\x08operatorB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12*\n\x0bmatc\
-    h_value\x18\x02\x20\x01(\tH\0R\nmatchValueB\x07\xfaB\x04r\x02\x10\x01\
-    \x12$\n\rsave_field_id\x18\x03\x20\x01(\tH\0R\x0bsaveFieldIdB\x19\n\x17s\
-    tring_value_match_type\x1a\xdf\x01\n\rIntValueMatch\x12m\n\x08operator\
-    \x18\x01\x20\x01(\x0e2G.bitdrift_public.protobuf.matcher.v1.LogMatcher.B\
-    aseLogMatcher.OperatorR\x08operatorB\x08\xfaB\x05\x82\x01\x02\x10\x01\
-    \x12!\n\x0bmatch_value\x18\x02\x20\x01(\x05H\0R\nmatchValue\x12$\n\rsave\
-    _field_id\x18\x03\x20\x01(\tH\0R\x0bsaveFieldIdB\x16\n\x14int_value_matc\
-    h_type\x1a\xe5\x01\n\x10DoubleValueMatch\x12m\n\x08operator\x18\x01\x20\
-    \x01(\x0e2G.bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatche\
-    r.OperatorR\x08operatorB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12!\n\x0bmatc\
-    h_value\x18\x02\x20\x01(\x01H\0R\nmatchValue\x12$\n\rsave_field_id\x18\
-    \x03\x20\x01(\tH\0R\x0bsaveFieldIdB\x19\n\x17double_value_match_type\x1a\
-    \xab\x01\n\x10SemVerValueMatch\x12m\n\x08operator\x18\x01\x20\x01(\x0e2G\
-    .bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.OperatorR\
-    \x08operatorB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12(\n\x0bmatch_value\x18\
-    \x02\x20\x01(\tR\nmatchValueB\x07\xfaB\x04r\x02\x10\x01\x1a\x8d\x01\n\
-    \x0cMessageMatch\x12}\n\x12string_value_match\x18\x01\x20\x01(\x0b2O.bit\
-    drift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StringValueMa\
-    tchR\x10stringValueMatch\x1a\x0c\n\nIsSetMatch\x1a\xae\x05\n\x08TagMatch\
-    \x12\"\n\x07tag_key\x18\x01\x20\x01(\tR\x06tagKeyB\t\xfaB\x06r\x04\x10\
-    \x01\x18@\x12\x7f\n\x12string_value_match\x18\x02\x20\x01(\x0b2O.bitdrif\
-    t_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StringValueMatchH\
-    \0R\x10stringValueMatch\x12v\n\x0fint_value_match\x18\x03\x20\x01(\x0b2L\
-    .bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.IntValueM\
-    atchH\0R\rintValueMatch\x12\x80\x01\n\x13sem_ver_value_match\x18\x04\x20\
-    \x01(\x0b2O.bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatche\
-    r.SemVerValueMatchH\0R\x10semVerValueMatch\x12m\n\x0cis_set_match\x18\
-    \x05\x20\x01(\x0b2I.bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseL\
-    ogMatcher.IsSetMatchH\0R\nisSetMatch\x12\x7f\n\x12double_value_match\x18\
-    \x06\x20\x01(\x0b2O.bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseL\
-    ogMatcher.DoubleValueMatchH\0R\x10doubleValueMatchB\x12\n\x0bvalue_match\
-    \x12\x03\xf8B\x01\x1a\xbe\x02\n\x10FeatureFlagMatch\x12&\n\tflag_name\
-    \x18\x01\x20\x01(\tR\x08flagNameB\t\xfaB\x06r\x04\x10\x01\x18@\x12\x7f\n\
-    \x12string_value_match\x18\x02\x20\x01(\x0b2O.bitdrift_public.protobuf.m\
-    atcher.v1.LogMatcher.BaseLogMatcher.StringValueMatchH\0R\x10stringValueM\
-    atch\x12m\n\x0cis_set_match\x18\x03\x20\x01(\x0b2I.bitdrift_public.proto\
-    buf.matcher.v1.LogMatcher.BaseLogMatcher.IsSetMatchH\0R\nisSetMatchB\x12\
-    \n\x0bvalue_match\x12\x03\xf8B\x01\"\xea\x01\n\x08Operator\x12\x18\n\x14\
-    OPERATOR_UNSPECIFIED\x10\0\x12\x16\n\x12OPERATOR_LESS_THAN\x10\x01\x12\
-    \x1f\n\x1bOPERATOR_LESS_THAN_OR_EQUAL\x10\x02\x12\x13\n\x0fOPERATOR_EQUA\
-    LS\x10\x03\x12\x19\n\x15OPERATOR_GREATER_THAN\x10\x04\x12\"\n\x1eOPERATO\
-    R_GREATER_THAN_OR_EQUAL\x10\x05\x12\x17\n\x13OPERATOR_NOT_EQUALS\x10\x06\
-    \x12\x12\n\x0eOPERATOR_REGEX\x10\x07\"\x04\x08\x08\x10\x08\"\x04\x08\t\
-    \x10\tB\x11\n\nmatch_type\x12\x03\xf8B\x01\x1ak\n\x0bMatcherList\x12\\\n\
+    blic.protobuf.matcher.v1\x1a/bitdrift_public/protobuf/state/v1/matcher.p\
+    roto\x1a-bitdrift_public/protobuf/state/v1/scope.proto\x1a=bitdrift_publ\
+    ic/protobuf/value_matcher/v1/value_matcher.proto\x1a\x17validate/validat\
+    e.proto\"\xab\x0e\n\nLogMatcher\x12c\n\x0cbase_matcher\x18\x01\x20\x01(\
+    \x0b2>.bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcherH\0R\
+    \x0bbaseMatcher\x12\\\n\nor_matcher\x18\x02\x20\x01(\x0b2;.bitdrift_publ\
+    ic.protobuf.matcher.v1.LogMatcher.MatcherListH\0R\torMatcher\x12^\n\x0ba\
+    nd_matcher\x18\x03\x20\x01(\x0b2;.bitdrift_public.protobuf.matcher.v1.Lo\
+    gMatcher.MatcherListH\0R\nandMatcher\x12R\n\x0bnot_matcher\x18\x04\x20\
+    \x01(\x0b2/.bitdrift_public.protobuf.matcher.v1.LogMatcherH\0R\nnotMatch\
+    er\x1a\xa8\n\n\x0eBaseLogMatcher\x12r\n\rmessage_match\x18\x01\x20\x01(\
+    \x0b2K.bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.Mes\
+    sageMatchH\0R\x0cmessageMatch\x12f\n\ttag_match\x18\x02\x20\x01(\x0b2G.b\
+    itdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.TagMatchH\0\
+    R\x08tagMatch\x12l\n\x0bstate_match\x18\x04\x20\x01(\x0b2I.bitdrift_publ\
+    ic.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StateMatchH\0R\nstateMa\
+    tch\x1ay\n\x0cMessageMatch\x12i\n\x12string_value_match\x18\x01\x20\x01(\
+    \x0b2;.bitdrift_public.protobuf.value_matcher.v1.StringValueMatchR\x10st\
+    ringValueMatch\x1a\xc9\x04\n\x08TagMatch\x12\"\n\x07tag_key\x18\x01\x20\
+    \x01(\tR\x06tagKeyB\t\xfaB\x06r\x04\x10\x01\x18@\x12k\n\x12string_value_\
+    match\x18\x02\x20\x01(\x0b2;.bitdrift_public.protobuf.value_matcher.v1.S\
+    tringValueMatchH\0R\x10stringValueMatch\x12b\n\x0fint_value_match\x18\
+    \x03\x20\x01(\x0b28.bitdrift_public.protobuf.value_matcher.v1.IntValueMa\
+    tchH\0R\rintValueMatch\x12l\n\x13sem_ver_value_match\x18\x04\x20\x01(\
+    \x0b2;.bitdrift_public.protobuf.value_matcher.v1.SemVerValueMatchH\0R\
+    \x10semVerValueMatch\x12Y\n\x0cis_set_match\x18\x05\x20\x01(\x0b25.bitdr\
+    ift_public.protobuf.value_matcher.v1.IsSetMatchH\0R\nisSetMatch\x12k\n\
+    \x12double_value_match\x18\x06\x20\x01(\x0b2;.bitdrift_public.protobuf.v\
+    alue_matcher.v1.DoubleValueMatchH\0R\x10doubleValueMatchB\x12\n\x0bvalue\
+    _match\x12\x03\xf8B\x01\x1a\xeb\x01\n\nStateMatch\x12M\n\x05scope\x18\
+    \x01\x20\x01(\x0e2-.bitdrift_public.protobuf.state.v1.StateScopeR\x05sco\
+    peB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12$\n\tstate_key\x18\x02\x20\x01(\
+    \tR\x08stateKeyB\x07\xfaB\x04r\x02\x10\x01\x12h\n\x11state_value_match\
+    \x18\x03\x20\x01(\x0b22.bitdrift_public.protobuf.state.v1.StateValueMatc\
+    hR\x0fstateValueMatchB\x08\xfaB\x05\x8a\x01\x02\x10\x01B\x11\n\nmatch_ty\
+    pe\x12\x03\xf8B\x01J\x04\x08\x03\x10\x04\x1ak\n\x0bMatcherList\x12\\\n\
     \x0clog_matchers\x18\x01\x20\x03(\x0b2/.bitdrift_public.protobuf.matcher\
     .v1.LogMatcherR\x0blogMatchersB\x08\xfaB\x05\x92\x01\x02\x08\x02B\x0e\n\
     \x07matcher\x12\x03\xf8B\x01b\x06proto3\
@@ -3087,22 +1758,19 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(1);
+            let mut deps = ::std::vec::Vec::with_capacity(4);
+            deps.push(super::matcher::file_descriptor().clone());
+            deps.push(super::scope::file_descriptor().clone());
+            deps.push(super::value_matcher::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(11);
+            let mut messages = ::std::vec::Vec::with_capacity(6);
             messages.push(LogMatcher::generated_message_descriptor_data());
             messages.push(log_matcher::BaseLogMatcher::generated_message_descriptor_data());
             messages.push(log_matcher::MatcherList::generated_message_descriptor_data());
-            messages.push(log_matcher::base_log_matcher::StringValueMatch::generated_message_descriptor_data());
-            messages.push(log_matcher::base_log_matcher::IntValueMatch::generated_message_descriptor_data());
-            messages.push(log_matcher::base_log_matcher::DoubleValueMatch::generated_message_descriptor_data());
-            messages.push(log_matcher::base_log_matcher::SemVerValueMatch::generated_message_descriptor_data());
             messages.push(log_matcher::base_log_matcher::MessageMatch::generated_message_descriptor_data());
-            messages.push(log_matcher::base_log_matcher::IsSetMatch::generated_message_descriptor_data());
             messages.push(log_matcher::base_log_matcher::TagMatch::generated_message_descriptor_data());
-            messages.push(log_matcher::base_log_matcher::FeatureFlagMatch::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(1);
-            enums.push(log_matcher::base_log_matcher::Operator::generated_enum_descriptor_data());
+            messages.push(log_matcher::base_log_matcher::StateMatch::generated_message_descriptor_data());
+            let mut enums = ::std::vec::Vec::with_capacity(0);
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),
                 deps,

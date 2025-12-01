@@ -297,8 +297,8 @@ impl ::protobuf::reflect::ProtobufValue for BdTailConfigurations {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n6bitdrift_public/protobuf/bdtail/v1/bdtail_config.proto\x12\"bitdrift_\
-    public.protobuf.bdtail.v1\x1a\x17validate/validate.proto\x1a5bitdrift_pu\
-    blic/protobuf/matcher/v1/log_matcher.proto\"\x7f\n\x0cBdTailStream\x12$\
+    public.protobuf.bdtail.v1\x1a5bitdrift_public/protobuf/matcher/v1/log_ma\
+    tcher.proto\x1a\x17validate/validate.proto\"\x7f\n\x0cBdTailStream\x12$\
     \n\tstream_id\x18\x01\x20\x01(\tR\x08streamIdB\x07\xfaB\x04r\x02\x10\x01\
     \x12I\n\x07matcher\x18\x02\x20\x01(\x0b2/.bitdrift_public.protobuf.match\
     er.v1.LogMatcherR\x07matcher\"o\n\x14BdTailConfigurations\x12W\n\x0eacti\
@@ -321,8 +321,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
             let mut deps = ::std::vec::Vec::with_capacity(2);
-            deps.push(super::validate::file_descriptor().clone());
             deps.push(super::log_matcher::file_descriptor().clone());
+            deps.push(super::validate::file_descriptor().clone());
             let mut messages = ::std::vec::Vec::with_capacity(2);
             messages.push(BdTailStream::generated_message_descriptor_data());
             messages.push(BdTailConfigurations::generated_message_descriptor_data());
