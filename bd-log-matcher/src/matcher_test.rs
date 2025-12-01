@@ -24,10 +24,10 @@ use bd_proto::protos::log_matcher::log_matcher::{LogMatcher, log_matcher};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::state::matcher::state_value_match;
 use bd_proto::protos::state::scope::StateScope;
+use bd_proto::protos::value_matcher::value_matcher::Operator;
 use bd_proto::protos::value_matcher::value_matcher::double_value_match::Double_value_match_type;
 use bd_proto::protos::value_matcher::value_matcher::int_value_match::Int_value_match_type;
 use bd_proto::protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
-use bd_proto::protos::value_matcher::value_matcher::Operator;
 use bd_state::StateReader;
 use log_matcher::base_log_matcher::Match_type::{MessageMatch, StateMatch, TagMatch};
 use log_matcher::base_log_matcher::tag_match::Value_match::{
@@ -280,11 +280,13 @@ fn test_tag_binary_string_eq_matcher() {
 fn test_extracted_double_matcher() {
   let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
     tag_key: "key".to_string(),
-    value_match: Some(DoubleValueMatch(bd_proto::protos::value_matcher::value_matcher::DoubleValueMatch {
-      operator: Operator::OPERATOR_EQUALS.into(),
-      double_value_match_type: Some(Double_value_match_type::SaveFieldId("id1".to_string())),
-      ..Default::default()
-    })),
+    value_match: Some(DoubleValueMatch(
+      bd_proto::protos::value_matcher::value_matcher::DoubleValueMatch {
+        operator: Operator::OPERATOR_EQUALS.into(),
+        double_value_match_type: Some(Double_value_match_type::SaveFieldId("id1".to_string())),
+        ..Default::default()
+      },
+    )),
     ..Default::default()
   }));
 
@@ -319,11 +321,13 @@ fn test_tag_double_matcher() {
   fn make_config(match_value: f64, operator: Operator) -> LogMatcher {
     simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
       tag_key: "key".to_string(),
-      value_match: Some(DoubleValueMatch(bd_proto::protos::value_matcher::value_matcher::DoubleValueMatch {
-        operator: operator.into(),
-        double_value_match_type: Some(Double_value_match_type::MatchValue(match_value)),
-        ..Default::default()
-      })),
+      value_match: Some(DoubleValueMatch(
+        bd_proto::protos::value_matcher::value_matcher::DoubleValueMatch {
+          operator: operator.into(),
+          double_value_match_type: Some(Double_value_match_type::MatchValue(match_value)),
+          ..Default::default()
+        },
+      )),
       ..Default::default()
     }))
   }
@@ -393,11 +397,13 @@ fn test_tag_double_matcher() {
 fn test_extracted_int_matcher() {
   let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
     tag_key: "key".to_string(),
-    value_match: Some(IntValueMatch(bd_proto::protos::value_matcher::value_matcher::IntValueMatch {
-      operator: Operator::OPERATOR_EQUALS.into(),
-      int_value_match_type: Some(Int_value_match_type::SaveFieldId("id1".to_string())),
-      ..Default::default()
-    })),
+    value_match: Some(IntValueMatch(
+      bd_proto::protos::value_matcher::value_matcher::IntValueMatch {
+        operator: Operator::OPERATOR_EQUALS.into(),
+        int_value_match_type: Some(Int_value_match_type::SaveFieldId("id1".to_string())),
+        ..Default::default()
+      },
+    )),
     ..Default::default()
   }));
 
@@ -423,11 +429,13 @@ fn test_extracted_int_matcher() {
 fn test_tag_int_lte_matcher() {
   let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
     tag_key: "key".to_string(),
-    value_match: Some(IntValueMatch(bd_proto::protos::value_matcher::value_matcher::IntValueMatch {
-      operator: Operator::OPERATOR_LESS_THAN_OR_EQUAL.into(),
-      int_value_match_type: Some(Int_value_match_type::MatchValue(12)),
-      ..Default::default()
-    })),
+    value_match: Some(IntValueMatch(
+      bd_proto::protos::value_matcher::value_matcher::IntValueMatch {
+        operator: Operator::OPERATOR_LESS_THAN_OR_EQUAL.into(),
+        int_value_match_type: Some(Int_value_match_type::MatchValue(12)),
+        ..Default::default()
+      },
+    )),
     ..Default::default()
   }));
 
@@ -454,11 +462,13 @@ fn test_tag_int_lte_matcher() {
 fn test_tag_string_gt_matcher() {
   let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
     tag_key: "key".to_string(),
-    value_match: Some(StringValueMatch(bd_proto::protos::value_matcher::value_matcher::StringValueMatch {
-      operator: Operator::OPERATOR_GREATER_THAN.into(),
-      string_value_match_type: Some(String_value_match_type::MatchValue("40".to_string())),
-      ..Default::default()
-    })),
+    value_match: Some(StringValueMatch(
+      bd_proto::protos::value_matcher::value_matcher::StringValueMatch {
+        operator: Operator::OPERATOR_GREATER_THAN.into(),
+        string_value_match_type: Some(String_value_match_type::MatchValue("40".to_string())),
+        ..Default::default()
+      },
+    )),
     ..Default::default()
   }));
 
@@ -482,11 +492,13 @@ fn test_tag_string_gt_matcher() {
 fn test_tag_int_invalid_regex_matcher() {
   let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
     tag_key: "key".to_string(),
-    value_match: Some(IntValueMatch(bd_proto::protos::value_matcher::value_matcher::IntValueMatch {
-      operator: Operator::OPERATOR_REGEX.into(),
-      int_value_match_type: Some(Int_value_match_type::MatchValue(12)),
-      ..Default::default()
-    })),
+    value_match: Some(IntValueMatch(
+      bd_proto::protos::value_matcher::value_matcher::IntValueMatch {
+        operator: Operator::OPERATOR_REGEX.into(),
+        int_value_match_type: Some(Int_value_match_type::MatchValue(12)),
+        ..Default::default()
+      },
+    )),
     ..Default::default()
   }));
 
@@ -500,11 +512,13 @@ fn test_tag_int_invalid_regex_matcher() {
 fn test_tag_log_type_invalid_config_value() {
   let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
     tag_key: "log_type".to_string(),
-    value_match: Some(IntValueMatch(bd_proto::protos::value_matcher::value_matcher::IntValueMatch {
-      operator: Operator::OPERATOR_REGEX.into(), // this is ignored
-      int_value_match_type: Some(Int_value_match_type::MatchValue(-1)), // invalid
-      ..Default::default()
-    })),
+    value_match: Some(IntValueMatch(
+      bd_proto::protos::value_matcher::value_matcher::IntValueMatch {
+        operator: Operator::OPERATOR_REGEX.into(), // this is ignored
+        int_value_match_type: Some(Int_value_match_type::MatchValue(-1)), // invalid
+        ..Default::default()
+      },
+    )),
     ..Default::default()
   }));
 
@@ -518,11 +532,13 @@ fn test_tag_log_type_invalid_config_value() {
 fn test_tag_log_type() {
   let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
     tag_key: "log_type".to_string(),
-    value_match: Some(IntValueMatch(bd_proto::protos::value_matcher::value_matcher::IntValueMatch {
-      operator: Operator::OPERATOR_REGEX.into(), // this is ignored
-      int_value_match_type: Some(Int_value_match_type::MatchValue(3)),
-      ..Default::default()
-    })),
+    value_match: Some(IntValueMatch(
+      bd_proto::protos::value_matcher::value_matcher::IntValueMatch {
+        operator: Operator::OPERATOR_REGEX.into(), // this is ignored
+        int_value_match_type: Some(Int_value_match_type::MatchValue(3)),
+        ..Default::default()
+      },
+    )),
     ..Default::default()
   }));
 
@@ -543,11 +559,13 @@ fn test_tag_log_type() {
 fn test_tag_log_level() {
   let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
     tag_key: "log_level".to_string(),
-    value_match: Some(IntValueMatch(bd_proto::protos::value_matcher::value_matcher::IntValueMatch {
-      operator: Operator::OPERATOR_GREATER_THAN_OR_EQUAL.into(),
-      int_value_match_type: Some(Int_value_match_type::MatchValue(2)), // INFO
-      ..Default::default()
-    })),
+    value_match: Some(IntValueMatch(
+      bd_proto::protos::value_matcher::value_matcher::IntValueMatch {
+        operator: Operator::OPERATOR_GREATER_THAN_OR_EQUAL.into(),
+        int_value_match_type: Some(Int_value_match_type::MatchValue(2)), // INFO
+        ..Default::default()
+      },
+    )),
     ..Default::default()
   }));
 
@@ -566,11 +584,13 @@ fn test_tag_log_level() {
 fn semver_tag_matcher_config(value: &str, operator: Operator) -> LogMatcher {
   simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
     tag_key: "key".to_string(),
-    value_match: Some(SemVerValueMatch(bd_proto::protos::value_matcher::value_matcher::SemVerValueMatch {
-      operator: operator.into(),
-      match_value: value.to_string(),
-      ..Default::default()
-    })),
+    value_match: Some(SemVerValueMatch(
+      bd_proto::protos::value_matcher::value_matcher::SemVerValueMatch {
+        operator: operator.into(),
+        match_value: value.to_string(),
+        ..Default::default()
+      },
+    )),
     ..Default::default()
   }))
 }
@@ -701,11 +721,13 @@ fn tag_semver_neq_matcher() {
 fn mixed_segment_semver_matcher() {
   let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
     tag_key: "key".to_string(),
-    value_match: Some(SemVerValueMatch(bd_proto::protos::value_matcher::value_matcher::SemVerValueMatch {
-      operator: Operator::OPERATOR_LESS_THAN_OR_EQUAL.into(),
-      match_value: "1.5.foo.0".to_string(),
-      ..Default::default()
-    })),
+    value_match: Some(SemVerValueMatch(
+      bd_proto::protos::value_matcher::value_matcher::SemVerValueMatch {
+        operator: Operator::OPERATOR_LESS_THAN_OR_EQUAL.into(),
+        match_value: "1.5.foo.0".to_string(),
+        ..Default::default()
+      },
+    )),
     ..Default::default()
   }));
 
@@ -726,11 +748,13 @@ fn mixed_segment_semver_matcher() {
 fn test_tag_semver_eq_regex_matcher() {
   let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
     tag_key: "key".to_string(),
-    value_match: Some(SemVerValueMatch(bd_proto::protos::value_matcher::value_matcher::SemVerValueMatch {
-      operator: Operator::OPERATOR_REGEX.into(),
-      match_value: "1\\.5\\.*".to_string(),
-      ..Default::default()
-    })),
+    value_match: Some(SemVerValueMatch(
+      bd_proto::protos::value_matcher::value_matcher::SemVerValueMatch {
+        operator: Operator::OPERATOR_REGEX.into(),
+        match_value: "1\\.5\\.*".to_string(),
+        ..Default::default()
+      },
+    )),
     ..Default::default()
   }));
 
@@ -811,7 +835,9 @@ fn test_not_matcher() {
 fn test_is_set_matcher() {
   let matcher = TagMatch(base_log_matcher::TagMatch {
     tag_key: "foo".to_string(),
-    value_match: Some(IsSetMatch(bd_proto::protos::value_matcher::value_matcher::IsSetMatch::default())),
+    value_match: Some(IsSetMatch(
+      bd_proto::protos::value_matcher::value_matcher::IsSetMatch::default(),
+    )),
     ..Default::default()
   });
 
@@ -1061,11 +1087,13 @@ fn simple_log_matcher(match_type: base_log_matcher::Match_type) -> LogMatcher {
 
 fn make_message_match(operator: Operator, match_value: &str) -> base_log_matcher::Match_type {
   MessageMatch(base_log_matcher::MessageMatch {
-    string_value_match: MessageField::from_option(Some(bd_proto::protos::value_matcher::value_matcher::StringValueMatch {
-      operator: operator.into(),
-      string_value_match_type: Some(String_value_match_type::MatchValue(match_value.to_string())),
-      ..Default::default()
-    })),
+    string_value_match: MessageField::from_option(Some(
+      bd_proto::protos::value_matcher::value_matcher::StringValueMatch {
+        operator: operator.into(),
+        string_value_match_type: Some(String_value_match_type::MatchValue(match_value.to_string())),
+        ..Default::default()
+      },
+    )),
     ..Default::default()
   })
 }
@@ -1132,11 +1160,7 @@ fn make_int_state_matcher(state_key: &str, operator: Operator, match_value: i32)
   }))
 }
 
-fn make_double_state_matcher(
-  state_key: &str,
-  operator: Operator,
-  match_value: f64,
-) -> LogMatcher {
+fn make_double_state_matcher(state_key: &str, operator: Operator, match_value: f64) -> LogMatcher {
   simple_log_matcher(StateMatch(base_log_matcher::StateMatch {
     scope: StateScope::FEATURE_FLAG.into(),
     state_key: state_key.to_string(),

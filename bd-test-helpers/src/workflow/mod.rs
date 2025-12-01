@@ -40,8 +40,6 @@ use bd_proto::protos::workflow::workflow::workflow::{
   TransitionExtension,
   TransitionTimeout,
 };
-use protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
-use protos::value_matcher::value_matcher::Operator;
 use protobuf::MessageField;
 use protos::log_matcher::log_matcher::LogMatcher;
 use protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Match_type::{
@@ -50,6 +48,8 @@ use protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Match_type:
 };
 use protos::log_matcher::log_matcher::log_matcher::base_log_matcher::tag_match::Value_match;
 use protos::log_matcher::log_matcher::log_matcher::{BaseLogMatcher, Matcher, base_log_matcher};
+use protos::value_matcher::value_matcher::Operator;
+use protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
 use protos::workflow::workflow::workflow::action::action_emit_metric::Value_extractor_type;
 use protos::workflow::workflow::workflow::action::{
   Action_type,
@@ -519,10 +519,7 @@ pub fn make_log_match_rule(matcher: LogMatcher, count: u32) -> Rule {
 }
 
 #[must_use]
-pub fn make_log_message_matcher(
-  value: &str,
-  operator: Operator,
-) -> LogMatcher {
+pub fn make_log_message_matcher(value: &str, operator: Operator) -> LogMatcher {
   LogMatcher {
     matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
       match_type: Some(MessageMatch(base_log_matcher::MessageMatch {
