@@ -33,8 +33,10 @@ use bd_grpc_codec::{
   OptimizeFor,
 };
 use bd_time::TimeDurationExt;
+use bytes::Bytes;
 use http::header::{CONTENT_ENCODING, CONTENT_TYPE, TRANSFER_ENCODING};
 use http::{HeaderMap, Uri};
+use http_body::Frame;
 use http_body_util::{BodyExt, StreamBody};
 use hyper::body::Incoming;
 use hyper_util::client::legacy::connect::{Connect, HttpConnector};
@@ -42,6 +44,8 @@ use hyper_util::rt::TokioExecutor;
 use protobuf::MessageFull;
 use std::error::Error as StdError;
 use std::io::ErrorKind;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use time::Duration;
 use tokio::sync::{Semaphore, mpsc};
 use tokio_stream::wrappers::ReceiverStream;
@@ -95,6 +99,46 @@ impl AddressHelper {
       .path_and_query(service_method.full_path().as_str())
       .build()
       .unwrap()
+  }
+}
+
+//
+// InitialRequestsStream
+//
+
+// A stream adapter that yields initial encoded requests first, then switches to reading from
+// a channel for subsequent requests. This avoids the need to upsize the channel to accommodate
+// initial requests.
+struct InitialRequestsStream {
+  initial_frames: Vec<Frame<Bytes>>,
+  receiver: ReceiverStream<std::result::Result<Frame<Bytes>, Box<dyn StdError + Send + Sync>>>,
+}
+
+impl InitialRequestsStream {
+  fn new(
+    initial_frames: Vec<Frame<Bytes>>,
+    receiver: ReceiverStream<std::result::Result<Frame<Bytes>, Box<dyn StdError + Send + Sync>>>,
+  ) -> Self {
+    Self {
+      initial_frames,
+      receiver,
+    }
+  }
+}
+
+impl futures::Stream for InitialRequestsStream {
+  type Item = std::result::Result<Frame<Bytes>, Box<dyn StdError + Send + Sync>>;
+
+  fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    // First, yield all initial frames.
+    if !self.initial_frames.is_empty() {
+      // Remove and return the first frame (FIFO order), wrapping in Ok.
+      let frame = self.initial_frames.remove(0);
+      return Poll::Ready(Some(Ok(frame)));
+    }
+
+    // Once initial frames are exhausted, delegate to the receiver stream.
+    Pin::new(&mut self.receiver).poll_next(cx)
   }
 }
 
@@ -289,18 +333,28 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
   }
 
   // Perform a bi-di streaming request.
-  // TODO(mattklein123): Allow an initial vector of request messages to be sent along with the
-  //                     request.
   pub async fn streaming<OutgoingType: MessageFull, IncomingType: MessageFull>(
     &self,
     service_method: &ServiceMethod<OutgoingType, IncomingType>,
     mut extra_headers: Option<HeaderMap>,
+    initial_requests: Vec<OutgoingType>,
     validate: bool,
     compression: Option<bd_grpc_codec::Compression>,
     optimize_for: OptimizeFor,
   ) -> Result<StreamingApi<OutgoingType, IncomingType>> {
     let (tx, rx) = mpsc::channel(1);
-    let body = StreamBody::new(ReceiverStream::new(rx));
+
+    // Encode initial requests into frames without sending them through the channel.
+    let mut encoder = Encoder::new(compression);
+    let mut initial_frames = Vec::with_capacity(initial_requests.len());
+    for request in initial_requests {
+      let encoded = encoder.encode(&request)?;
+      initial_frames.push(Frame::data(encoded));
+    }
+
+    // Create a stream that yields initial frames first, then reads from the channel.
+    let stream = InitialRequestsStream::new(initial_frames, ReceiverStream::new(rx));
+    let body = StreamBody::new(stream);
 
     match compression {
       None => {},
