@@ -104,6 +104,23 @@ impl<OutgoingType: Message, IncomingType: MessageFull> StreamingApi<OutgoingType
     }
   }
 
+  // Create a new streaming API handler from an existing sender. This is useful when initial
+  // requests need to be sent before the HTTP request completes.
+  #[must_use]
+  pub fn from_sender(
+    sender: StreamingApiSender<OutgoingType>,
+    headers: HeaderMap,
+    body: Body,
+    validate: bool,
+    optimize_for: OptimizeFor,
+    read_stop: Option<watch::Receiver<bool>>,
+  ) -> Self {
+    Self {
+      sender,
+      receiver: StreamingApiReceiver::new(headers, body, validate, optimize_for, read_stop),
+    }
+  }
+
   // Send a message on the stream.
   pub async fn send(&mut self, message: OutgoingType) -> Result<()> {
     self.sender.send(message).await

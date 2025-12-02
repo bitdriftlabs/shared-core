@@ -440,7 +440,14 @@ async fn read_stop() {
   tokio::spawn(async { server.await.unwrap() });
   let client = Client::new_http(local_address.to_string().as_str(), 1.minutes(), 1024).unwrap();
   let mut stream = client
-    .streaming(&service_method(), None, true, None, OptimizeFor::Memory)
+    .streaming(
+      &service_method(),
+      None,
+      vec![],
+      true,
+      None,
+      OptimizeFor::Memory,
+    )
     .await
     .unwrap();
   stream.send(EchoRequest::default()).await.unwrap();
@@ -475,6 +482,88 @@ async fn read_stop() {
   let next_future = api.next();
   tokio::pin!(next_future);
   assert!(poll!(&mut next_future).is_pending());
+}
+
+#[tokio::test]
+async fn streaming_with_initial_requests() {
+  let (api_tx, mut api_rx) = mpsc::channel(1);
+
+  let router = Router::new().route(
+    &service_method().full_path(),
+    post(move |request: Request| async move {
+      let (parts, body) = request.into_parts();
+      let (response_sender, response_body) = mpsc::channel(1);
+      let response = new_grpc_response(
+        Body::new(StreamBody::new(ReceiverStream::new(response_body))),
+        None,
+        None,
+      );
+      let api = StreamingApi::<EchoResponse, EchoRequest>::new(
+        response_sender,
+        parts.headers,
+        body,
+        false,
+        None,
+        OptimizeFor::Memory,
+        None,
+      );
+      api_tx.send(api).await.unwrap();
+      response
+    }),
+  );
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let local_address = listener.local_addr().unwrap();
+  let server = axum::serve(listener, router.into_make_service());
+  tokio::spawn(async { server.await.unwrap() });
+  let client = Client::new_http(local_address.to_string().as_str(), 1.minutes(), 1024).unwrap();
+
+  // Create initial requests to send before waiting for headers.
+  let initial_request_1 = EchoRequest {
+    echo: "first".to_string(),
+    ..Default::default()
+  };
+  let initial_request_2 = EchoRequest {
+    echo: "second".to_string(),
+    ..Default::default()
+  };
+
+  let mut stream = client
+    .streaming(
+      &service_method(),
+      None,
+      vec![initial_request_1.clone(), initial_request_2.clone()],
+      true,
+      None,
+      OptimizeFor::Memory,
+    )
+    .await
+    .unwrap();
+
+  // The server should receive the two initial requests without needing to wait for any additional
+  // sends.
+  let mut api = api_rx.recv().await.unwrap();
+
+  // Verify the first initial request was received.
+  let messages = api.next().await.unwrap().unwrap();
+  assert_eq!(1, messages.len());
+  assert_eq!(initial_request_1.echo, messages[0].echo);
+
+  // Verify the second initial request was received.
+  let messages = api.next().await.unwrap().unwrap();
+  assert_eq!(1, messages.len());
+  assert_eq!(initial_request_2.echo, messages[0].echo);
+
+  // Now send an additional message after the stream is established.
+  let additional_request = EchoRequest {
+    echo: "third".to_string(),
+    ..Default::default()
+  };
+  stream.send(additional_request.clone()).await.unwrap();
+
+  // Verify the additional request was received.
+  let messages = api.next().await.unwrap().unwrap();
+  assert_eq!(1, messages.len());
+  assert_eq!(additional_request.echo, messages[0].echo);
 }
 
 #[tokio::test]

@@ -16,6 +16,7 @@ use crate::{
   GRPC_STATUS,
   StreamingApi,
   StreamingApiReceiver,
+  StreamingApiSender,
   TRANSFER_ENCODING_TRAILERS,
   finalize_decompression,
 };
@@ -289,18 +290,26 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
   }
 
   // Perform a bi-di streaming request.
-  // TODO(mattklein123): Allow an initial vector of request messages to be sent along with the
-  //                     request.
   pub async fn streaming<OutgoingType: MessageFull, IncomingType: MessageFull>(
     &self,
     service_method: &ServiceMethod<OutgoingType, IncomingType>,
     mut extra_headers: Option<HeaderMap>,
+    initial_requests: Vec<OutgoingType>,
     validate: bool,
     compression: Option<bd_grpc_codec::Compression>,
     optimize_for: OptimizeFor,
   ) -> Result<StreamingApi<OutgoingType, IncomingType>> {
-    let (tx, rx) = mpsc::channel(1);
+    let (tx, rx) = mpsc::channel(initial_requests.len() + 1);
     let body = StreamBody::new(ReceiverStream::new(rx));
+
+    // Create the sender early so we can send initial requests without waiting for headers.
+    // No bi-di Connect support currently.
+    let mut sender = StreamingApiSender::new(tx, compression, false);
+
+    // Send initial requests before the HTTP request is made.
+    for request in initial_requests {
+      sender.send(request).await?;
+    }
 
     match compression {
       None => {},
@@ -322,18 +331,16 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
       },
     }
 
-    // No bi-di Connect support currently.
     let response = self
       .common_request(service_method, extra_headers, Body::new(body), None)
       .await?;
     let (parts, body) = response.into_parts();
 
-    Ok(StreamingApi::new(
-      tx,
+    Ok(StreamingApi::from_sender(
+      sender,
       parts.headers,
       Body::new(body),
       validate,
-      compression,
       optimize_for,
       None,
     ))
