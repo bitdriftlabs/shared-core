@@ -9,12 +9,12 @@
 
 use super::StateValueMatcher;
 use bd_log_primitives::tiny_set::TinyMap;
-use bd_proto::protos::state::matcher::state_value_match::Value_match;
 use bd_proto::protos::state::matcher::StateValueMatch;
+use bd_proto::protos::state::matcher::state_value_match::Value_match;
+use bd_proto::protos::value_matcher::value_matcher::Operator;
 use bd_proto::protos::value_matcher::value_matcher::double_value_match::Double_value_match_type;
 use bd_proto::protos::value_matcher::value_matcher::int_value_match::Int_value_match_type;
 use bd_proto::protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
-use bd_proto::protos::value_matcher::value_matcher::Operator;
 
 #[test]
 fn string_match_equals() {
@@ -332,10 +332,12 @@ fn missing_value_match() {
 
   let result = StateValueMatcher::try_from_proto(&proto);
   assert!(result.is_err());
-  assert!(result
-    .unwrap_err()
-    .to_string()
-    .contains("missing value_match"));
+  assert!(
+    result
+      .unwrap_err()
+      .to_string()
+      .contains("missing value_match")
+  );
 }
 
 #[test]
@@ -361,9 +363,7 @@ fn string_match_with_extracted_field() {
     value_match: Some(Value_match::StringValueMatch(
       bd_proto::protos::value_matcher::value_matcher::StringValueMatch {
         operator: Operator::OPERATOR_EQUALS.into(),
-        string_value_match_type: Some(String_value_match_type::MatchValue(
-          "12345".to_string(),
-        )),
+        string_value_match_type: Some(String_value_match_type::MatchValue("12345".to_string())),
         ..Default::default()
       },
     )),
