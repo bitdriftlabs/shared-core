@@ -737,15 +737,14 @@ impl WorkflowsEngine {
       .stats
       .record_workflow_debug_state(all_incremental_workflow_debug_state);
 
-    // Emit metrics and sankeys only for log events (not state changes)
-    if let WorkflowEvent::Log(log_event) = event {
-      self
-        .metrics_collector
-        .emit_metrics(&emit_metric_actions, log_event, state_reader);
-      self
-        .metrics_collector
-        .emit_sankeys(&emit_sankey_diagrams_actions, log_event, state_reader);
-    }
+    // Emit metrics and sankeys for all event types.
+    // For state changes, field/message extraction will return None (as expected).
+    self
+      .metrics_collector
+      .emit_metrics(&emit_metric_actions, event, state_reader);
+    self
+      .metrics_collector
+      .emit_sankeys(&emit_sankey_diagrams_actions, event, state_reader);
 
     for action in emit_sankey_diagrams_actions {
       // There is no real limit on the number of sankey paths we might want to upload, so ensure

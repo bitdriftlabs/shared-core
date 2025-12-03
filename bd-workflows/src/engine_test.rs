@@ -287,7 +287,7 @@ impl AnnotatedWorkflowsEngine {
       WorkflowEvent::StateChange(state_change),
       &EMPTY_BUFFER_IDS,
       &bd_state::test::TestStateReader::default(),
-      OffsetDateTime::now_utc(),
+      state_change.timestamp,
     )
   }
 
@@ -3628,22 +3628,34 @@ async fn state_change_with_timestamp_extraction() {
   assert_eq!(extracted_timestamp, "1705314645000");
 }
 
-// Tests that state changes do NOT trigger timeout checks.
-// Timeouts are only checked when processing log events to maintain
-// backward compatibility with field extraction behavior.
+// Tests that state changes DO trigger timeout checks.
+// Both logs and state changes can trigger timeouts since timeout transitions
+// use default extractions and don't depend on the triggering event's fields.
 #[tokio::test]
-async fn state_change_does_not_trigger_timeout() {
+async fn state_change_does_trigger_timeout() {
   use time::macros::datetime;
 
   // Create a workflow with a timeout from state A to state C
-  let c = state("C");
+  let c = state("C").declare_transition(&state("C"), rule!(message_equals("keep_alive")));
   let b = state("B").declare_transition(&state("B"), rule!(message_equals("keep_alive")));
   let a = state("A")
     .declare_transition(
       &b,
-      make_state_change_rule(bd_state::Scope::FeatureFlag, "flag", make_is_set_match()),
+      make_state_change_rule(
+        bd_state::Scope::FeatureFlag,
+        "wrong_flag",
+        make_is_set_match(),
+      ),
     )
-    .with_timeout(&c, 1.seconds(), &[]);
+    .with_timeout(
+      &c,
+      1.seconds(),
+      &[make_emit_counter_action(
+        "timeout_metric",
+        metric_value(1),
+        vec![],
+      )],
+    );
 
   let workflow = WorkflowBuilder::new("timeout_test", &[&a, &b, &c]).make_config();
   let setup = Setup::new();
@@ -3659,32 +3671,33 @@ async fn state_change_does_not_trigger_timeout() {
   engine_assert_active_runs!(engine; 0; "A");
 
   // Process a state change at T=2 seconds (after the timeout would have expired)
-  // This should transition to B via state change match, NOT to C via timeout
+  // This SHOULD trigger the timeout transition to C (not match the state change rule)
   let state_change = bd_state::StateChange {
     scope: bd_state::Scope::FeatureFlag,
-    key: "flag".to_string(),
+    key: "different_flag".to_string(),
     change_type: bd_state::StateChangeType::Inserted {
       value: "enabled".to_string(),
     },
     timestamp: datetime!(2024-01-01 00:00:02 UTC),
   };
 
-  let result = engine.process_state_change(&state_change);
+  engine.process_state_change(&state_change);
 
-  // Verify that no timeout was processed
-  assert!(!result.has_debug_workflows);
-  assert_eq!(result.triggered_flush_buffers_action_ids.len(), 0);
-
-  // Verify that we transitioned to B (via the state change match), NOT to C (via timeout)
-  // The state change should NOT have triggered the timeout check
-  // Note: There may be multiple runs depending on initial state behavior
+  // Verify that we transitioned to C (via timeout), not B (via state change match)
+  // The state change DID trigger the timeout check
   assert!(
     engine.state.workflows[0]
       .runs()
       .iter()
-      .any(|r| r.traversals().first().is_some_and(|t| t.state_index == 1))
-  ); // State B is index 1
+      .any(|r| r.traversals().first().is_some_and(|t| t.state_index == 2))
+  ); // State C is index 2
+
+  // Verify the timeout metric was emitted
+  setup
+    .collector
+    .assert_workflow_counter_eq(1, "timeout_metric", labels! {});
 }
+
 
 // Tests that logs DO trigger timeout checks (ensuring existing behavior is preserved).
 #[tokio::test]

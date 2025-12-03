@@ -968,55 +968,42 @@ impl Traversal {
       }
     }
 
-    // Timeout handling: Only check timeouts when processing log events.
-    // This maintains backward compatibility where timeout transitions can extract fields
-    // from the triggering log. We check timeouts regardless of whether the log matched
-    // any transitions.
-    match event {
-      WorkflowEvent::Log(log) => {
-        // Timeout handling: Only process timeout if NO explicit transitions matched.
-        // This implements a priority system where explicit transitions take precedence
-        // over timeout transitions. The timeout serves as a fallback mechanism when
-        // the workflow is stuck waiting for an event that never arrives.
-        if result.output_traversals.is_empty()
-          && let Some(timeout_unix_ms) = self.timeout_unix_ms
-          && now.unix_timestamp_ms() >= timeout_unix_ms
-          && let Some(actions) = config.inner().actions_for_timeout(self.state_index)
-          && let Some(next_state_index) = config
-            .inner()
-            .next_state_index_for_timeout(self.state_index)
-        {
-          // For timeout transitions, we pass the fields from the log that triggered the
-          // timeout check. This maintains backward compatibility where timeout transitions
-          // could extract fields from the triggering log.
-          process_transition(
-            &mut result,
-            TraversalExtractions::default(),
-            actions,
-            FieldsRef::new(&log.fields, &log.matching_fields),
-            self.state_index,
-            next_state_index,
-            WorkflowDebugTransitionType::Timeout,
-            config,
-            now,
-          );
-          result.processed_timeout = true;
+    // Timeout handling: Check timeouts for both logs and state changes.
+    // Timeout transitions use default extractions and don't extract from the triggering event,
+    // so this works correctly for both event types.
+    if result.output_traversals.is_empty()
+      && let Some(timeout_unix_ms) = self.timeout_unix_ms
+      && now.unix_timestamp_ms() >= timeout_unix_ms
+      && let Some(actions) = config.inner().actions_for_timeout(self.state_index)
+      && let Some(next_state_index) = config
+        .inner()
+        .next_state_index_for_timeout(self.state_index)
+    {
+      // Timeout transitions use default extractions and pass appropriate fields based on event
+      // type. For logs, we pass the log fields. For state changes, we pass empty fields.
+      let empty_fields = bd_log_primitives::LogFields::default();
+      let fields = match event {
+        WorkflowEvent::Log(log) => FieldsRef::new(&log.fields, &log.matching_fields),
+        WorkflowEvent::StateChange(_) => FieldsRef::new(&empty_fields, &empty_fields),
+      };
 
-          log::trace!(
-            "traversal timed out and is advancing, workflow id={:?}",
-            config.inner().id(),
-          );
-        }
-      },
-      WorkflowEvent::StateChange(_) => {
-        // TODO: Consider checking timeouts on state change events after moving more
-        // fields into state. Currently, we only check timeouts when processing log
-        // events to maintain backward compatibility with field extraction behavior.
-        // State changes could reasonably trigger timeout checks since they have
-        // timestamps and represent time progression, but we need to decide:
-        // 1. Should timeout transitions be able to extract from state changes?
-        // 2. What fields should be available for extraction in timeout transitions?
-      },
+      process_transition(
+        &mut result,
+        TraversalExtractions::default(),
+        actions,
+        fields,
+        self.state_index,
+        next_state_index,
+        WorkflowDebugTransitionType::Timeout,
+        config,
+        now,
+      );
+      result.processed_timeout = true;
+
+      log::trace!(
+        "traversal timed out and is advancing, workflow id={:?}",
+        config.inner().id(),
+      );
     }
 
     result

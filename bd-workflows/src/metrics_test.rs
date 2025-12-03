@@ -7,6 +7,7 @@
 
 use super::MetricsCollector;
 use crate::config::{ActionEmitMetric, TagValue};
+use crate::workflow::WorkflowEvent;
 use bd_client_stats::Stats;
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
@@ -28,6 +29,17 @@ fn metric_increment_value_extraction() {
   let matching_only_fields = [("m1".into(), "5".into())].into();
 
   let (metrics_collector, collector) = make_metrics_collector();
+
+  let log = Log {
+    message: "message".into(),
+    session_id: "session_id".to_string(),
+    occurred_at: time::OffsetDateTime::now_utc(),
+    log_level: log_level::DEBUG,
+    log_type: LogType::NORMAL,
+    fields,
+    matching_fields: matching_only_fields,
+    capture_session: None,
+  };
 
   metrics_collector.emit_metrics(
     &[
@@ -69,16 +81,7 @@ fn metric_increment_value_extraction() {
       },
     ]
     .into(),
-    &Log {
-      message: "message".into(),
-      session_id: "session_id".to_string(),
-      occurred_at: time::OffsetDateTime::now_utc(),
-      log_level: log_level::DEBUG,
-      log_type: LogType::NORMAL,
-      fields,
-      matching_fields: matching_only_fields,
-      capture_session: None,
-    },
+    WorkflowEvent::Log(&log),
     &bd_state::test::TestStateReader::default(),
   );
 
@@ -110,6 +113,17 @@ fn counter_label_extraction() {
 
   let mut state_reader = bd_state::test::TestStateReader::default();
   state_reader.insert(bd_state::Scope::FeatureFlag, "enabled_flag", "variant_a");
+
+  let log = Log {
+    message: "message".into(),
+    session_id: "session_id".to_string(),
+    occurred_at: time::OffsetDateTime::now_utc(),
+    log_level: log_level::DEBUG,
+    log_type: LogType::NORMAL,
+    fields,
+    matching_fields: matching_only_fields,
+    capture_session: None,
+  };
 
   metrics_collector.emit_metrics(
     &[&ActionEmitMetric {
@@ -155,16 +169,7 @@ fn counter_label_extraction() {
       metric_type: MetricType::Counter,
     }]
     .into(),
-    &Log {
-      message: "message".into(),
-      session_id: "session_id".to_string(),
-      occurred_at: time::OffsetDateTime::now_utc(),
-      log_level: log_level::DEBUG,
-      log_type: LogType::NORMAL,
-      fields,
-      matching_fields: matching_only_fields,
-      capture_session: None,
-    },
+    WorkflowEvent::Log(&log),
     &state_reader,
   );
 
