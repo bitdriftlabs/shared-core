@@ -5,8 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::matcher::IntMatch;
-use crate::value_matcher::{DoubleMatch, StringMatch};
+use crate::value_matcher::{DoubleMatch, IntMatch, StringMatch};
 use anyhow::{Result, anyhow};
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_proto::protos::state::matcher::StateValueMatch;

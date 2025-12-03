@@ -13,7 +13,7 @@ mod matcher_test;
 #[path = "./legacy_matcher_test.rs"]
 mod legacy_matcher_test;
 
-use crate::value_matcher::{DoubleMatch, NanEqualFloat, StringMatch, ValueOrSavedFieldId};
+use crate::value_matcher::{DoubleMatch, IntMatch, StringMatch, ValueOrSavedFieldId};
 use crate::version;
 use anyhow::{Result, anyhow};
 use base_log_matcher::Match_type::{MessageMatch, StateMatch, TagMatch};
@@ -38,11 +38,10 @@ use bd_proto::protos::config::v1::config::{
 use bd_proto::protos::log_matcher::log_matcher;
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::state::scope::StateScope;
-use bd_proto::protos::value_matcher::value_matcher::{self, Operator};
+use bd_proto::protos::value_matcher::value_matcher::Operator;
 use bd_state::Scope;
 use log_matcher::LogMatcher;
 use log_matcher::log_matcher::{BaseLogMatcher, Matcher, base_log_matcher};
-use protobuf::EnumOrUnknown;
 use std::borrow::Cow;
 
 const LOG_LEVEL_KEY: &str = "log_level";
@@ -197,54 +196,6 @@ impl Tree {
   }
 }
 
-/// Describes a comparison match criteria against a int32 value
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct IntMatch {
-  operator: Operator,
-  value: ValueOrSavedFieldId<i32>,
-}
-
-/// Supports comparison between two integers
-impl IntMatch {
-  pub fn from_proto(proto: &value_matcher::IntValueMatch) -> Result<Self> {
-    Self::new(
-      proto.operator,
-      ValueOrSavedFieldId::<i32>::from_proto(proto),
-    )
-  }
-
-  pub fn new(operator: EnumOrUnknown<Operator>, value: ValueOrSavedFieldId<i32>) -> Result<Self> {
-    let operator = operator
-      .enum_value()
-      .map_err(|_| anyhow!("invalid operator for StringValueMatch"))?;
-    match operator {
-      // Regex operator is not valid for int32
-      Operator::OPERATOR_REGEX => Err(anyhow!("regex does not support int32")),
-      _ => Ok(Self { operator, value }),
-    }
-  }
-
-  pub fn evaluate(&self, candidate: i32, extracted_fields: &TinyMap<String, String>) -> bool {
-    let Some(value) = self.value.load(extracted_fields) else {
-      return false;
-    };
-
-    match self.operator {
-      // This should never happen as we check for UNSPECIFIED when we parse
-      // workflow config.
-      Operator::OPERATOR_UNSPECIFIED => false,
-      Operator::OPERATOR_LESS_THAN => candidate < *value,
-      Operator::OPERATOR_LESS_THAN_OR_EQUAL => candidate <= *value,
-      Operator::OPERATOR_GREATER_THAN => candidate > *value,
-      Operator::OPERATOR_GREATER_THAN_OR_EQUAL => candidate >= *value,
-      Operator::OPERATOR_NOT_EQUALS => candidate != *value,
-      // Real Regex is not supported.
-      Operator::OPERATOR_EQUALS | Operator::OPERATOR_REGEX => candidate == *value,
-    }
-  }
-}
-
-
 
 /// Represents either the input type to match against.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -323,8 +274,8 @@ impl Leaf {
       .ok_or_else(|| anyhow!("missing legacy log matcher"))?
     {
       legacy_log_matcher::base_log_matcher::Match_type::LogLevelMatch(log_level_match) => {
-        Ok(Self::LogLevel(IntMatch {
-          operator: match log_level_match.operator.enum_value_or_default() {
+        Ok(Self::LogLevel(IntMatch::new(
+          match log_level_match.operator.enum_value_or_default() {
             legacy_base_log_matcher::log_level_match::ComparisonOperator::LESS_THAN => {
               Operator::OPERATOR_LESS_THAN
             },
@@ -340,9 +291,10 @@ impl Leaf {
             legacy_base_log_matcher::log_level_match::ComparisonOperator::GREATER_THAN_OR_EQUAL => {
               Operator::OPERATOR_GREATER_THAN_OR_EQUAL
             },
-          },
-          value: log_level_match.log_level.value().into(),
-        }))
+          }
+          .into(),
+          ValueOrSavedFieldId::Value(log_level_match.log_level.value().into()),
+        )?))
       },
       legacy_log_matcher::base_log_matcher::Match_type::MessageMatch(message_match) => {
         Ok(Self::StringValue(
@@ -421,22 +373,10 @@ impl Leaf {
             },
             bd_proto::protos::state::matcher::state_value_match::Value_match::IntValueMatch(
               int_value_match,
-            ) => Self::IntValue(
-              input_type,
-              IntMatch::new(
-                int_value_match.operator,
-                ValueOrSavedFieldId::<i32>::from_proto(int_value_match),
-              )?,
-            ),
+            ) => Self::IntValue(input_type, IntMatch::from_proto(int_value_match)?),
             bd_proto::protos::state::matcher::state_value_match::Value_match::DoubleValueMatch(
               double_value_match,
-            ) => Self::DoubleValue(
-              input_type,
-              DoubleMatch::new(
-                double_value_match.operator,
-                ValueOrSavedFieldId::<NanEqualFloat>::from_proto(double_value_match),
-              )?,
-            ),
+            ) => Self::DoubleValue(input_type, DoubleMatch::from_proto(double_value_match)?),
           }
         },
         TagMatch(tag_match) => match tag_match
@@ -449,10 +389,7 @@ impl Leaf {
             // We're special casing log level because we need to look for this tag outside of the
             // regular fields map It should be a bd_matcher::log_level enum value, so
             // using an IntMatch should work
-            LOG_LEVEL_KEY => Self::LogLevel(IntMatch::new(
-              int_value_match.operator,
-              ValueOrSavedFieldId::<i32>::from_proto(int_value_match),
-            )?),
+            LOG_LEVEL_KEY => Self::LogLevel(IntMatch::from_proto(int_value_match)?),
             // Special case for key="log_type"
             // We're special casing log type because we need to look for this tag outside of the
             // regular fields map It should be a bd_matcher::LogType u32 value, so we
@@ -468,32 +405,20 @@ impl Leaf {
             // Any other int uses the IntValue match
             _ => Self::IntValue(
               InputType::Field(tag_match.tag_key.clone()),
-              IntMatch::new(
-                int_value_match.operator,
-                ValueOrSavedFieldId::<i32>::from_proto(int_value_match),
-              )?,
+              IntMatch::from_proto(int_value_match)?,
             ),
           },
           DoubleValueMatch(double_value_match) => Self::DoubleValue(
             InputType::Field(tag_match.tag_key.clone()),
-            DoubleMatch::new(
-              double_value_match.operator,
-              ValueOrSavedFieldId::<NanEqualFloat>::from_proto(double_value_match),
-            )?,
+            DoubleMatch::from_proto(double_value_match)?,
           ),
           StringValueMatch(string_value_match) => Self::StringValue(
             InputType::Field(tag_match.tag_key.clone()),
-            StringMatch::new(
-              string_value_match.operator,
-              ValueOrSavedFieldId::<String>::from_proto(string_value_match),
-            )?,
+            StringMatch::from_proto(string_value_match)?,
           ),
           SemVerValueMatch(sem_ver_value_match) => Self::VersionValue(
             InputType::Field(tag_match.tag_key.clone()),
-            version::VersionMatch::new(
-              sem_ver_value_match.operator,
-              sem_ver_value_match.match_value.as_str(),
-            )?,
+            version::VersionMatch::from_proto(sem_ver_value_match)?,
           ),
           IsSetMatch(_) => Self::IsSetValue(InputType::Field(tag_match.tag_key.clone())),
         },

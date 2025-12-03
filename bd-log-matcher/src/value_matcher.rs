@@ -290,3 +290,52 @@ impl DoubleMatch {
     }
   }
 }
+
+/// Describes a comparison match criteria against a int32 value
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IntMatch {
+  operator: Operator,
+  value: ValueOrSavedFieldId<i32>,
+}
+
+/// Supports comparison between two integers
+impl IntMatch {
+  pub fn from_proto(
+    proto: &bd_proto::protos::value_matcher::value_matcher::IntValueMatch,
+  ) -> Result<Self> {
+    Self::new(
+      proto.operator,
+      ValueOrSavedFieldId::<i32>::from_proto(proto),
+    )
+  }
+
+  pub fn new(operator: EnumOrUnknown<Operator>, value: ValueOrSavedFieldId<i32>) -> Result<Self> {
+    let operator = operator
+      .enum_value()
+      .map_err(|_| anyhow!("invalid operator for StringValueMatch"))?;
+    match operator {
+      // Regex operator is not valid for int32
+      Operator::OPERATOR_REGEX => Err(anyhow!("regex does not support int32")),
+      _ => Ok(Self { operator, value }),
+    }
+  }
+
+  pub fn evaluate(&self, candidate: i32, extracted_fields: &TinyMap<String, String>) -> bool {
+    let Some(value) = self.value.load(extracted_fields) else {
+      return false;
+    };
+
+    match self.operator {
+      // This should never happen as we check for UNSPECIFIED when we parse
+      // workflow config.
+      Operator::OPERATOR_UNSPECIFIED => false,
+      Operator::OPERATOR_LESS_THAN => candidate < *value,
+      Operator::OPERATOR_LESS_THAN_OR_EQUAL => candidate <= *value,
+      Operator::OPERATOR_GREATER_THAN => candidate > *value,
+      Operator::OPERATOR_GREATER_THAN_OR_EQUAL => candidate >= *value,
+      Operator::OPERATOR_NOT_EQUALS => candidate != *value,
+      // Real Regex is not supported.
+      Operator::OPERATOR_EQUALS | Operator::OPERATOR_REGEX => candidate == *value,
+    }
+  }
+}

@@ -10,7 +10,7 @@
 mod test;
 
 use anyhow::{Result, anyhow};
-use bd_proto::protos::value_matcher::value_matcher::Operator;
+use bd_proto::protos::value_matcher::value_matcher::{Operator, SemVerValueMatch};
 use itertools::Itertools;
 use protobuf::EnumOrUnknown;
 use regex::Regex;
@@ -253,6 +253,10 @@ impl PartialEq for VersionMatch {
 impl Eq for VersionMatch {}
 
 impl VersionMatch {
+  pub fn from_proto(proto: &SemVerValueMatch) -> Result<Self> {
+    Self::new(proto.operator, &proto.match_value)
+  }
+
   pub fn new(operator: EnumOrUnknown<Operator>, value: &str) -> Result<Self> {
     let operator = operator
       .enum_value()
