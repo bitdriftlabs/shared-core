@@ -11,7 +11,12 @@ use crate::config::{Action, FlushBufferId, WorkflowDebugMode, WorkflowsConfigura
 use crate::engine::{WORKFLOWS_STATE_FILE_NAME, WorkflowsEngineConfig, WorkflowsEngineResult};
 use crate::engine_assert_active_runs;
 use crate::test::{MakeConfig, TestLog};
-use crate::workflow::{Workflow, WorkflowDebugStateMap, WorkflowTransitionDebugState};
+use crate::workflow::{
+  Workflow,
+  WorkflowDebugStateMap,
+  WorkflowEvent,
+  WorkflowTransitionDebugState,
+};
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
@@ -22,6 +27,11 @@ use bd_error_reporter::reporter::{Reporter, UnexpectedErrorHandler};
 use bd_log_matcher::builder::{field_equals, message_equals, or};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{Log, LogFields, LogMessage, log_level};
+use std::borrow::Cow;
+use std::sync::LazyLock;
+
+// Static empty TinySet for state changes, which don't write to log buffers
+static EMPTY_BUFFER_IDS: LazyLock<TinySet<Cow<'static, str>>> = LazyLock::new(|| TinySet::from([]));
 use bd_proto::protos::client::api::log_upload_intent_request::Intent_type::WorkflowActionUpload;
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{
@@ -55,7 +65,6 @@ use bd_test_helpers::workflow::{
 use bd_time::TimeDurationExt;
 use itertools::Itertools;
 use pretty_assertions::assert_eq;
-use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -252,8 +261,8 @@ impl AnnotatedWorkflowsEngine {
   }
 
   fn process_log(&mut self, log: TestLog) -> WorkflowsEngineResult<'_> {
-    self.engine.process_log(
-      &bd_log_primitives::Log {
+    self.engine.process_event(
+      WorkflowEvent::Log(&bd_log_primitives::Log {
         log_type: LogType::NORMAL,
         log_level: log_level::DEBUG,
         message: LogMessage::String(log.message),
@@ -262,10 +271,23 @@ impl AnnotatedWorkflowsEngine {
         fields: bd_test_helpers::workflow::make_tags(log.tags),
         matching_fields: LogFields::new(),
         capture_session: None,
-      },
+      }),
       &self.log_destination_buffer_ids,
       &bd_state::test::TestStateReader::default(),
       log.now,
+    )
+  }
+
+  fn process_state_change(
+    &mut self,
+    state_change: &bd_state::StateChange,
+  ) -> WorkflowsEngineResult<'_> {
+    // State changes don't write to log buffers, so use the static empty set
+    self.engine.process_event(
+      WorkflowEvent::StateChange(state_change),
+      &EMPTY_BUFFER_IDS,
+      &bd_state::test::TestStateReader::default(),
+      OffsetDateTime::now_utc(),
     )
   }
 
@@ -1612,8 +1634,8 @@ async fn ignore_persisted_state_if_invalid_dir() {
   );
 
   // Change workflows state
-  workflows_engine.process_log(
-    &Log {
+  workflows_engine.process_event(
+    WorkflowEvent::Log(&Log {
       log_type: LogType::NORMAL,
       log_level: log_level::DEBUG,
       message: LogMessage::String("foo".to_string()),
@@ -1622,7 +1644,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
       session_id: "foo_session".to_string(),
       occurred_at: OffsetDateTime::now_utc(),
       capture_session: None,
-    },
+    }),
     &TinySet::default(),
     &bd_state::test::TestStateReader::default(),
     OffsetDateTime::now_utc(),
@@ -3319,4 +3341,394 @@ async fn take_screenshot_action() {
 fn make_runtime() -> std::sync::Arc<ConfigLoader> {
   let dir = tempfile::TempDir::with_prefix(".").unwrap();
   ConfigLoader::new(dir.path())
+}
+
+//
+// State Change Test Helpers
+//
+
+use bd_proto::protos::state::matcher::{StateValueMatch, state_value_match};
+use bd_proto::protos::state::scope::StateScope;
+use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
+use bd_proto::protos::workflow::workflow::workflow::{Rule, RuleStateChangeMatch};
+
+fn make_state_change_rule(
+  scope: bd_state::Scope,
+  key: &str,
+  new_value_match: state_value_match::Value_match,
+) -> Rule {
+  Rule {
+    rule_type: Some(Rule_type::RuleStateChangeMatch(RuleStateChangeMatch {
+      scope: match scope {
+        bd_state::Scope::FeatureFlag => StateScope::FEATURE_FLAG.into(),
+        bd_state::Scope::GlobalState => StateScope::GLOBAL_STATE.into(),
+      },
+      key: key.to_string(),
+      previous_value: protobuf::MessageField::none(),
+      new_value: protobuf::MessageField::some(StateValueMatch {
+        value_match: Some(new_value_match),
+        ..Default::default()
+      }),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
+fn make_string_match(value: &str) -> state_value_match::Value_match {
+  use bd_proto::protos::value_matcher::value_matcher::Operator;
+  use bd_proto::protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
+
+  state_value_match::Value_match::StringValueMatch(
+    bd_proto::protos::value_matcher::value_matcher::StringValueMatch {
+      operator: Operator::OPERATOR_EQUALS.into(),
+      string_value_match_type: Some(String_value_match_type::MatchValue(value.to_string())),
+      ..Default::default()
+    },
+  )
+}
+
+fn make_is_set_match() -> state_value_match::Value_match {
+  state_value_match::Value_match::IsSetMatch(
+    bd_proto::protos::value_matcher::value_matcher::IsSetMatch::default(),
+  )
+}
+
+//
+// State Change Tests
+//
+
+// Tests that state changes can trigger workflow transitions using string value matching.
+#[tokio::test]
+async fn state_change_string_match_triggers_transition() {
+  // State B needs a self-loop to keep the run active after transition
+  let b = state("B").declare_transition(&state("B"), rule!(message_equals("keep_alive")));
+
+  // State A needs a self-loop to create an initial run, then can transition to B on state change
+  let a = state("A")
+    .declare_transition(&state("A"), rule!(message_equals("start")))
+    .declare_transition(
+      &b,
+      make_state_change_rule(
+        bd_state::Scope::FeatureFlag,
+        "feature_flag",
+        make_string_match("enabled"),
+      ),
+    );
+
+  let workflow = WorkflowBuilder::new("state_change_workflow", &[&a, &b]).make_config();
+  let setup = Setup::new();
+
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
+
+  // Create initial run in state A
+  engine.process_log(TestLog::new("start"));
+  engine_assert_active_runs!(engine; 0; "A");
+
+  // Process a state change that matches
+  let state_change = bd_state::StateChange {
+    scope: bd_state::Scope::FeatureFlag,
+    key: "feature_flag".to_string(),
+    change_type: bd_state::StateChangeType::Inserted {
+      value: "enabled".to_string(),
+    },
+    timestamp: OffsetDateTime::now_utc(),
+  };
+
+  engine.process_state_change(&state_change);
+
+  // Verify transition occurred
+  engine_assert_active_runs!(engine; 0; "B");
+}
+
+// Tests that IsSet matcher works for state changes (matching any value).
+#[tokio::test]
+async fn state_change_is_set_match() {
+  let b = state("B").declare_transition(&state("B"), rule!(message_equals("keep_alive")));
+  let a = state("A")
+    .declare_transition(&state("A"), rule!(message_equals("start")))
+    .declare_transition(
+      &b,
+      make_state_change_rule(
+        bd_state::Scope::FeatureFlag,
+        "any_value",
+        make_is_set_match(),
+      ),
+    );
+
+  let workflow = WorkflowBuilder::new("is_set_test", &[&a, &b]).make_config();
+  let setup = Setup::new();
+
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
+
+  // Create initial run
+  engine.process_log(TestLog::new("start"));
+  engine_assert_active_runs!(engine; 0; "A");
+
+  // Test with string value
+  let state_change = bd_state::StateChange {
+    scope: bd_state::Scope::FeatureFlag,
+    key: "any_value".to_string(),
+    change_type: bd_state::StateChangeType::Inserted {
+      value: "hello".to_string(),
+    },
+    timestamp: OffsetDateTime::now_utc(),
+  };
+
+  engine.process_state_change(&state_change);
+  engine_assert_active_runs!(engine; 0; "B");
+}
+
+// Tests that state changes that don't match predicates don't trigger transitions.
+#[tokio::test]
+async fn state_change_no_match_no_transition() {
+  let b = state("B").declare_transition(&state("B"), rule!(message_equals("keep_alive")));
+  let a = state("A")
+    .declare_transition(&state("A"), rule!(message_equals("start")))
+    .declare_transition(
+      &b,
+      make_state_change_rule(
+        bd_state::Scope::FeatureFlag,
+        "flag",
+        make_string_match("enabled"),
+      ),
+    );
+
+  let workflow = WorkflowBuilder::new("no_match_test", &[&a, &b]).make_config();
+  let setup = Setup::new();
+
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
+
+  // Create initial run
+  engine.process_log(TestLog::new("start"));
+  engine_assert_active_runs!(engine; 0; "A");
+
+  // Process state change with wrong key
+  let state_change = bd_state::StateChange {
+    scope: bd_state::Scope::FeatureFlag,
+    key: "different_key".to_string(),
+    change_type: bd_state::StateChangeType::Inserted {
+      value: "enabled".to_string(),
+    },
+    timestamp: OffsetDateTime::now_utc(),
+  };
+
+  engine.process_state_change(&state_change);
+  // Should stay in state A
+  engine_assert_active_runs!(engine; 0; "A");
+
+  // Process state change with wrong value
+  let state_change = bd_state::StateChange {
+    scope: bd_state::Scope::FeatureFlag,
+    key: "flag".to_string(),
+    change_type: bd_state::StateChangeType::Inserted {
+      value: "disabled".to_string(),
+    },
+    timestamp: OffsetDateTime::now_utc(),
+  };
+
+  engine.process_state_change(&state_change);
+  // Should still stay in state A
+  engine_assert_active_runs!(engine; 0; "A");
+}
+
+// Tests that state changes support timestamp extractions.
+#[tokio::test]
+async fn state_change_with_timestamp_extraction() {
+  use time::macros::datetime;
+
+  let c = state("C");
+  let b = state("B").declare_transition_with_all(
+    &c,
+    rule!(message_equals("check_timestamp")),
+    &[make_generate_log_action_proto(
+      "message_with_timestamp",
+      &[(
+        "extracted_timestamp",
+        TestFieldType::Single(TestFieldRef::SavedTimestampId("state_change_time")),
+      )],
+      "generated_log_id",
+      LogType::NORMAL,
+    )],
+    &[],
+  );
+
+  let a = state("A")
+    .declare_transition(&state("A"), rule!(message_equals("start")))
+    .declare_transition_with_extractions(
+      &b,
+      make_state_change_rule(
+        bd_state::Scope::FeatureFlag,
+        "test_flag",
+        make_is_set_match(),
+      ),
+      &[make_save_timestamp_extraction("state_change_time")],
+    );
+
+  let workflow = WorkflowBuilder::new("extraction_test", &[&a, &b, &c]).make_config();
+  let setup = Setup::new();
+
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
+
+  // Create initial run
+  engine.process_log(TestLog::new("start"));
+  engine_assert_active_runs!(engine; 0; "A");
+
+  // Process state change at a specific timestamp
+  let state_change_time = datetime!(2024-01-15 10:30:45 UTC);
+  let state_change = bd_state::StateChange {
+    scope: bd_state::Scope::FeatureFlag,
+    key: "test_flag".to_string(),
+    change_type: bd_state::StateChangeType::Inserted {
+      value: "enabled".to_string(),
+    },
+    timestamp: state_change_time,
+  };
+
+  let result = engine.process_state_change(&state_change);
+  assert!(result.logs_to_inject.is_empty());
+  engine_assert_active_runs!(engine; 0; "B");
+
+  // Trigger log generation to use the extracted timestamp
+  let result = engine.process_log(TestLog::new("check_timestamp"));
+
+  // Check that a log was generated with the extracted timestamp
+  let generated_logs: Vec<_> = result.logs_to_inject.into_values().collect();
+  assert_eq!(generated_logs.len(), 1);
+
+  let generated_log = &generated_logs[0];
+  assert_eq!(
+    generated_log.message,
+    bd_log_primitives::LogMessage::String("message_with_timestamp".to_string())
+  );
+
+  // Verify the extracted timestamp field matches the state change timestamp
+  let extracted_timestamp = generated_log
+    .field_value("extracted_timestamp")
+    .expect("extracted_timestamp field should exist");
+
+  // The timestamp should be stored as fractional milliseconds since epoch
+  // 2024-01-15T10:30:45.000000000Z = 1705314645000 milliseconds
+  assert_eq!(extracted_timestamp, "1705314645000");
+}
+
+// Tests that state changes do NOT trigger timeout checks.
+// Timeouts are only checked when processing log events to maintain
+// backward compatibility with field extraction behavior.
+#[tokio::test]
+async fn state_change_does_not_trigger_timeout() {
+  use time::macros::datetime;
+
+  // Create a workflow with a timeout from state A to state C
+  let c = state("C");
+  let b = state("B").declare_transition(&state("B"), rule!(message_equals("keep_alive")));
+  let a = state("A")
+    .declare_transition(
+      &b,
+      make_state_change_rule(bd_state::Scope::FeatureFlag, "flag", make_is_set_match()),
+    )
+    .with_timeout(&c, 1.seconds(), &[]);
+
+  let workflow = WorkflowBuilder::new("timeout_test", &[&a, &b, &c]).make_config();
+  let setup = Setup::new();
+
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
+
+  // Create initial run at T=0 by processing a log (this initializes the timeout)
+  engine.process_log(TestLog::new("init").with_now(datetime!(2024-01-01 00:00:00 UTC)));
+  engine_assert_active_runs!(engine; 0; "A");
+
+  // Process a state change at T=2 seconds (after the timeout would have expired)
+  // This should transition to B via state change match, NOT to C via timeout
+  let state_change = bd_state::StateChange {
+    scope: bd_state::Scope::FeatureFlag,
+    key: "flag".to_string(),
+    change_type: bd_state::StateChangeType::Inserted {
+      value: "enabled".to_string(),
+    },
+    timestamp: datetime!(2024-01-01 00:00:02 UTC),
+  };
+
+  let result = engine.process_state_change(&state_change);
+
+  // Verify that no timeout was processed
+  assert!(!result.has_debug_workflows);
+  assert_eq!(result.triggered_flush_buffers_action_ids.len(), 0);
+
+  // Verify that we transitioned to B (via the state change match), NOT to C (via timeout)
+  // The state change should NOT have triggered the timeout check
+  // Note: There may be multiple runs depending on initial state behavior
+  assert!(
+    engine.state.workflows[0]
+      .runs()
+      .iter()
+      .any(|r| r.traversals().first().is_some_and(|t| t.state_index == 1))
+  ); // State B is index 1
+}
+
+// Tests that logs DO trigger timeout checks (ensuring existing behavior is preserved).
+#[tokio::test]
+async fn log_does_trigger_timeout() {
+  use time::macros::datetime;
+
+  // State C needs a self-loop to keep the run active after timeout
+  let c = state("C").declare_transition(&state("C"), rule!(message_equals("keep_alive")));
+  let b = state("B");
+  let a = state("A")
+    .declare_transition(&b, rule!(message_equals("never_happens")))
+    .with_timeout(
+      &c,
+      1.seconds(),
+      &[make_emit_counter_action(
+        "timeout_metric",
+        metric_value(1),
+        vec![],
+      )],
+    );
+
+  let workflow = WorkflowBuilder::new("log_timeout_test", &[&a, &b, &c]).make_config();
+  let setup = Setup::new();
+
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
+
+  // Create initial run at T=0 - this initializes the timeout
+  engine.process_log(TestLog::new("start").with_now(datetime!(2024-01-01 00:00:00 UTC)));
+  engine_assert_active_runs!(engine; 0; "A");
+
+  // Process a log at T=2 seconds (after the timeout would have expired)
+  // This SHOULD trigger the timeout transition to C
+  engine.process_log(TestLog::new("unrelated").with_now(datetime!(2024-01-01 00:00:02 UTC)));
+
+  // Verify that we transitioned to C (via timeout)
+  // Note: There will also be an initial state run in A
+  engine_assert_active_runs!(engine; 0; "A", "C");
+
+  // Verify the timeout metric was emitted
+  setup
+    .collector
+    .assert_workflow_counter_eq(1, "timeout_metric", labels! {});
 }

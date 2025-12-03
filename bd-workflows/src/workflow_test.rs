@@ -14,7 +14,14 @@ use crate::config::{
   WorkflowDebugMode,
 };
 use crate::test::{MakeConfig, TestLog};
-use crate::workflow::{Run, TriggeredAction, Workflow, WorkflowResult, WorkflowResultStats};
+use crate::workflow::{
+  Run,
+  TriggeredAction,
+  Workflow,
+  WorkflowEvent,
+  WorkflowResult,
+  WorkflowResultStats,
+};
 use bd_log_matcher::builder::{field_equals, message_equals};
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{LogFields, LogMessage, log_level};
@@ -78,9 +85,9 @@ impl AnnotatedWorkflow {
   }
 
   fn process_log(&mut self, log: TestLog) -> WorkflowResult<'_> {
-    self.workflow.process_log(
+    self.workflow.process_event(
       &self.config,
-      &bd_log_primitives::Log {
+      WorkflowEvent::Log(&bd_log_primitives::Log {
         log_type: LogType::NORMAL,
         log_level: log_level::DEBUG,
         message: LogMessage::String(log.message),
@@ -89,9 +96,18 @@ impl AnnotatedWorkflow {
         fields: bd_test_helpers::workflow::make_tags(log.tags),
         matching_fields: LogFields::new(),
         capture_session: None,
-      },
+      }),
       &bd_state::test::TestStateReader::default(),
       log.now,
+    )
+  }
+
+  fn process_state_change(&mut self, state_change: &bd_state::StateChange) -> WorkflowResult<'_> {
+    self.workflow.process_event(
+      &self.config,
+      WorkflowEvent::StateChange(state_change),
+      &bd_state::test::TestStateReader::default(),
+      state_change.timestamp,
     )
   }
 }
@@ -1338,4 +1354,74 @@ fn branching_exclusive_workflow() {
   assert_eq!(2, workflow.runs()[0].traversals.len());
   assert_active_run_traversals!(workflow; 0; "B", "C");
   assert!(!workflow.is_in_initial_state());
+}
+
+//
+// State change matching tests
+//
+
+#[test]
+fn state_change_match_basic() {
+  use bd_proto::protos::state::matcher::StateValueMatch;
+  use bd_proto::protos::state::matcher::state_value_match::Value_match;
+  use bd_proto::protos::state::scope::StateScope;
+  use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
+  use bd_proto::protos::workflow::workflow::workflow::{Rule, RuleStateChangeMatch};
+
+  // Create states - need to declare upfront for self-referential transitions
+  let b = state("B");
+
+  // State A has 2 transitions:
+  // 1. On any log with message "start" -> stay at A (to create a run)
+  // 2. On state change for test_flag -> go to B
+  let a = state("A")
+    .declare_transition_with_actions(&state("A"), rule!(message_equals("start")), &[])
+    .declare_transition_with_actions(
+      &b,
+      Rule {
+        rule_type: Some(Rule_type::RuleStateChangeMatch(RuleStateChangeMatch {
+          scope: StateScope::FEATURE_FLAG.into(),
+          key: "test_flag".to_string(),
+          previous_value: protobuf::MessageField::none(),
+          new_value: protobuf::MessageField::some(StateValueMatch {
+            value_match: Some(Value_match::IsSetMatch(
+              bd_proto::protos::value_matcher::value_matcher::IsSetMatch::default(),
+            )),
+            ..Default::default()
+          }),
+          ..Default::default()
+        })),
+        ..Default::default()
+      },
+      &[make_flush_buffers_action(&["buffer1"], None, "action1")],
+    );
+
+  let config = WorkflowBuilder::new("test", &[&a, &b]).make_config();
+  let mut workflow = AnnotatedWorkflow::new(config);
+
+  // First, create a run by sending a log
+  let _log_result = workflow.process_log(TestLog::new("start"));
+  assert_eq!(workflow.runs().len(), 1);
+  assert_active_runs!(workflow; "A");
+
+  // Now process a state change for feature flag insertion
+  let state_change = bd_state::StateChange {
+    scope: bd_state::Scope::FeatureFlag,
+    key: "test_flag".to_string(),
+    change_type: bd_state::StateChangeType::Inserted {
+      value: "enabled".to_string(),
+    },
+    timestamp: datetime!(2024-01-01 0:00 UTC),
+  };
+
+  let result = workflow.process_state_change(&state_change);
+
+  // Should trigger transition from A to B
+  assert_eq!(result.triggered_actions.len(), 1);
+  assert!(matches!(
+    result.triggered_actions[0],
+    TriggeredAction::FlushBuffers(_)
+  ));
+  // State B has no transitions, so the run completes and is removed
+  assert!(workflow.is_in_initial_state());
 }
