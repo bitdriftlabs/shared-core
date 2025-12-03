@@ -12,6 +12,7 @@ mod test;
 use anyhow::{Result, anyhow};
 use bd_proto::protos::value_matcher::value_matcher::Operator;
 use itertools::Itertools;
+use protobuf::EnumOrUnknown;
 use regex::Regex;
 use std::cmp::Ordering;
 use std::fmt::Display;
@@ -252,7 +253,11 @@ impl PartialEq for VersionMatch {
 impl Eq for VersionMatch {}
 
 impl VersionMatch {
-  pub fn new(operator: Operator, value: &str) -> Result<Self> {
+  pub fn new(operator: EnumOrUnknown<Operator>, value: &str) -> Result<Self> {
+    let operator = operator
+      .enum_value()
+      .unwrap_or(Operator::OPERATOR_UNSPECIFIED);
+
     if operator == Operator::OPERATOR_UNSPECIFIED {
       return Err(anyhow!("UNSPECIFIED operator"));
     }
