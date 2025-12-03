@@ -211,7 +211,7 @@ fn double_match_equals() {
     value_match: Some(Value_match::DoubleValueMatch(
       bd_proto::protos::value_matcher::value_matcher::DoubleValueMatch {
         operator: Operator::OPERATOR_EQUALS.into(),
-        double_value_match_type: Some(Double_value_match_type::MatchValue(3.14)),
+        double_value_match_type: Some(Double_value_match_type::MatchValue(10.5)),
         ..Default::default()
       },
     )),
@@ -221,9 +221,9 @@ fn double_match_equals() {
   let matcher = StateValueMatcher::try_from_proto(&proto).unwrap();
   let empty_fields = TinyMap::default();
 
-  assert!(matcher.matches(Some("3.14"), &empty_fields));
-  assert!(!matcher.matches(Some("3.15"), &empty_fields));
-  assert!(!matcher.matches(Some("3.13"), &empty_fields));
+  assert!(matcher.matches(Some("10.5"), &empty_fields));
+  assert!(!matcher.matches(Some("10.4"), &empty_fields));
+  assert!(!matcher.matches(Some("10.6"), &empty_fields));
   assert!(!matcher.matches(Some("not_a_number"), &empty_fields));
   assert!(!matcher.matches(None, &empty_fields));
 }
@@ -408,7 +408,7 @@ fn double_parse_failure() {
     value_match: Some(Value_match::DoubleValueMatch(
       bd_proto::protos::value_matcher::value_matcher::DoubleValueMatch {
         operator: Operator::OPERATOR_EQUALS.into(),
-        double_value_match_type: Some(Double_value_match_type::MatchValue(3.14)),
+        double_value_match_type: Some(Double_value_match_type::MatchValue(10.5)),
         ..Default::default()
       },
     )),

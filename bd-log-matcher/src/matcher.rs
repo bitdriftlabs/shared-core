@@ -293,7 +293,7 @@ impl Leaf {
             },
           }
           .into(),
-          ValueOrSavedFieldId::Value(log_level_match.log_level.value().into()),
+          ValueOrSavedFieldId::Value(log_level_match.log_level.value()),
         )?))
       },
       legacy_log_matcher::base_log_matcher::Match_type::MessageMatch(message_match) => {

@@ -25,7 +25,7 @@ pub enum ValueOrSavedFieldId<T> {
 }
 
 impl ValueOrSavedFieldId<i32> {
-  pub fn from_proto(int_value_match: &IntValueMatch_type) -> ValueOrSavedFieldId<i32> {
+  pub fn from_proto(int_value_match: &IntValueMatch_type) -> Self {
     // This used to not be a oneof so supply an equivalent default if the field is not set.
     match int_value_match
       .int_value_match_type
@@ -39,7 +39,7 @@ impl ValueOrSavedFieldId<i32> {
 }
 
 impl ValueOrSavedFieldId<String> {
-  pub fn from_proto(string_value_match: &StringValueMatch_type) -> ValueOrSavedFieldId<String> {
+  pub fn from_proto(string_value_match: &StringValueMatch_type) -> Self {
     // This used to not be a oneof so supply an equivalent default if the field is not set.
     match string_value_match
       .string_value_match_type
@@ -55,7 +55,7 @@ impl ValueOrSavedFieldId<String> {
 impl ValueOrSavedFieldId<NanEqualFloat> {
   pub fn from_proto(
     double_value_match: &bd_proto::protos::value_matcher::value_matcher::DoubleValueMatch,
-  ) -> ValueOrSavedFieldId<NanEqualFloat> {
+  ) -> Self {
     // This used to not be a oneof so supply an equivalent default if the field is not
     // set.
     match double_value_match
@@ -63,8 +63,8 @@ impl ValueOrSavedFieldId<NanEqualFloat> {
       .as_ref()
       .unwrap_or(&Double_value_match_type::MatchValue(0.0))
     {
-      Double_value_match_type::MatchValue(d) => ValueOrSavedFieldId::Value(NanEqualFloat(*d)),
-      Double_value_match_type::SaveFieldId(s) => ValueOrSavedFieldId::SaveFieldId(s.clone()),
+      Double_value_match_type::MatchValue(d) => Self::Value(NanEqualFloat(*d)),
+      Double_value_match_type::SaveFieldId(s) => Self::SaveFieldId(s.clone()),
     }
   }
 }

@@ -16,7 +16,7 @@ use bd_proto::protos::state::matcher::StateValueMatch;
 use bd_proto::protos::state::matcher::state_value_match::Value_match;
 
 /// Matches state values (strings, ints, doubles, or checks if set).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StateValueMatcher {
   String(StringMatch),
   Int(IntMatch),
