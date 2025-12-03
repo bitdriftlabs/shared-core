@@ -5,6 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(test)]
+#[path = "./state_value_matcher_test.rs"]
+mod tests;
+
 use crate::value_matcher::{DoubleMatch, IntMatch, StringMatch};
 use anyhow::{Result, anyhow};
 use bd_log_primitives::tiny_set::TinyMap;
