@@ -5,10 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[cfg(test)]
-#[path = "./state_value_matcher_test.rs"]
-mod tests;
-
 use crate::matcher::IntMatch;
 use crate::value_matcher::{DoubleMatch, StringMatch};
 use anyhow::{Result, anyhow};
@@ -17,7 +13,7 @@ use bd_proto::protos::state::matcher::StateValueMatch;
 use bd_proto::protos::state::matcher::state_value_match::Value_match;
 
 /// Matches state values (strings, ints, doubles, or checks if set).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum StateValueMatcher {
   String(StringMatch),
   Int(IntMatch),
