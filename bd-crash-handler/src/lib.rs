@@ -371,7 +371,7 @@ impl Monitor {
       ReportOrigin::Previous => self
         .previous_run_state
         .iter()
-        .filter(|(scope, ..)| *scope == bd_resilient_kv::Scope::FeatureFlag)
+        .filter(|(scope, ..)| *scope == bd_resilient_kv::Scope::FeatureFlagExposure)
         .filter_map(|(_, name, TimestampedValue { value, timestamp })| {
           value
             .has_string_value()
@@ -392,7 +392,7 @@ impl Monitor {
         .await
         .as_scoped_maps()
         .iter()
-        .filter(|(scope, ..)| *scope == bd_resilient_kv::Scope::FeatureFlag)
+        .filter(|(scope, ..)| *scope == bd_resilient_kv::Scope::FeatureFlagExposure)
         .filter_map(|(_, key, value)| {
           value
             .value

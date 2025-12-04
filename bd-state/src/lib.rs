@@ -169,7 +169,7 @@ impl Store {
     // Users must re-set feature flags and global state on each process start.
 
     // Ignore errors during clearing - we'll proceed with whatever state we have.
-    let _ = store.clear(Scope::FeatureFlag).await;
+    let _ = store.clear(Scope::FeatureFlagExposure).await;
     let _ = store.clear(Scope::GlobalState).await;
 
     Ok(StoreInitResult {

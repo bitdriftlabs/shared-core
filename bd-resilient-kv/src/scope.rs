@@ -12,8 +12,8 @@ use strum::FromRepr;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, FromRepr)]
 #[repr(u8)]
 pub enum Scope {
-  FeatureFlag = 1,
-  GlobalState = 2,
+  FeatureFlagExposure = 1,
+  GlobalState         = 2,
 }
 
 impl Scope {
