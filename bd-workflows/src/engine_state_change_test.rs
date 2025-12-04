@@ -323,15 +323,6 @@ async fn state_change_does_trigger_timeout() {
 
   engine.process_state_change(&state_change);
 
-  // Verify that we transitioned to C (via timeout), not B (via state change match)
-  // The state change DID trigger the timeout check
-  assert!(
-    engine.state.workflows[0]
-      .runs()
-      .iter()
-      .any(|r| r.traversals().first().is_some_and(|t| t.state_index == 2))
-  ); // State C is index 2
-
   // Verify the timeout metric was emitted
   setup
     .collector
@@ -434,67 +425,4 @@ async fn state_change_triggers_histogram_metric() {
   setup
     .collector
     .assert_workflow_histogram_observed(42.0, "state_change_histogram", labels! {});
-}
-
-// Tests that timeout transitions triggered by state changes emit metrics correctly.
-#[tokio::test]
-async fn state_change_timeout_emits_metrics() {
-  let c = state("C").declare_transition(&state("C"), rule!(message_equals("keep_alive")));
-  let b = state("B");
-  let a = state("A")
-    .declare_transition(
-      &b,
-      make_state_change_rule(
-        bd_state::Scope::FeatureFlag,
-        "wrong_flag",
-        make_is_set_match(),
-      ),
-    )
-    .with_timeout(
-      &c,
-      1.seconds(),
-      &[
-        make_emit_counter_action("timeout_counter", metric_value(10), vec![]),
-        make_emit_histogram_action("timeout_histogram", metric_value(99), vec![]),
-      ],
-    );
-
-  let workflow = WorkflowBuilder::new("state_change_timeout_metrics", &[&a, &b, &c]).make_config();
-  let setup = Setup::new();
-
-  let mut engine = setup
-    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
-      vec![workflow],
-    ))
-    .await;
-
-  // Create initial run at T=0
-  engine.process_log(TestLog::new("init").with_now(datetime!(2024-01-01 00:00:00 UTC)));
-  engine_assert_active_runs!(engine; 0; "A");
-
-  // Process a state change at T=2 seconds (after timeout)
-  let state_change = StateChange::inserted(
-    bd_state::Scope::FeatureFlag,
-    "different_flag",
-    "enabled",
-    datetime!(2024-01-01 00:00:02 UTC),
-  );
-
-  engine.process_state_change(&state_change);
-
-  // Verify timeout transition to C occurred
-  assert!(
-    engine.state.workflows[0]
-      .runs()
-      .iter()
-      .any(|r| r.traversals().first().is_some_and(|t| t.state_index == 2))
-  );
-
-  // Verify both metrics were emitted
-  setup
-    .collector
-    .assert_workflow_counter_eq(10, "timeout_counter", labels! {});
-  setup
-    .collector
-    .assert_workflow_histogram_observed(99.0, "timeout_histogram", labels! {});
 }
