@@ -304,6 +304,25 @@ pub fn extract_log_body_tag() -> Tag {
 }
 
 #[must_use]
+pub fn extract_feature_flag_tag(flag_name: &str, tag_name: &str) -> Tag {
+  use protos::workflow::workflow::workflow::FeatureFlagExtracted;
+  use protos::workflow::workflow::workflow::action::tag::Tag_type;
+  use protos::workflow::workflow::workflow::feature_flag_extracted::Extraction_type;
+
+  Tag {
+    name: tag_name.to_string(),
+    tag_type: Some(Tag_type::FeatureFlagExtracted(FeatureFlagExtracted {
+      name: flag_name.to_string(),
+      extraction_type: Some(Extraction_type::Exact(
+        protos::workflow::workflow::workflow::feature_flag_extracted::Exact::default(),
+      )),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
+#[must_use]
 pub fn metric_value(value: u32) -> Value_extractor_type {
   Value_extractor_type::Fixed(value)
 }
