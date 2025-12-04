@@ -6,8 +6,16 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
+#[path = "./engine_test_helpers.rs"]
+mod engine_test_helpers;
+
+#[cfg(test)]
 #[path = "./engine_test.rs"]
 mod engine_test;
+
+#[cfg(test)]
+#[path = "./engine_state_change_test.rs"]
+mod engine_state_change_test;
 
 use crate::actions_flush_buffers::{
   BuffersToFlush,

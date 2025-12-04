@@ -56,8 +56,8 @@ fn test_global_init() {
 // state of a given workflow into one entity for easier passing to method/macro
 // calls.
 pub struct AnnotatedWorkflow {
-  config: Config,
-  workflow: Workflow,
+  pub config: Config,
+  pub workflow: Workflow,
 }
 
 impl AnnotatedWorkflow {

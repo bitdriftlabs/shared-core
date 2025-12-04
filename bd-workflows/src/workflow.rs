@@ -7,7 +7,7 @@
 
 #[cfg(test)]
 #[path = "./workflow_test.rs"]
-mod workflow_test;
+pub(crate) mod workflow_test;
 
 use crate::config::{
   Action,
@@ -85,7 +85,7 @@ pub struct Workflow {
   // of the list and the maximum number of runs is equal to two. If runs list is non-empty then the
   // first run in the list is guaranteed to be in an initial state. If there are two runs then the
   // second run is guaranteed not to be in an initial state.
-  runs: Vec<Run>,
+  pub(crate) runs: Vec<Run>,
   // Persisted workflow debug state. This is only used for live debugging. Global debugging is
   // persisted as part of stats snapshots.
   workflow_debug_state: OptWorkflowDebugStateMap,
@@ -546,7 +546,7 @@ pub(crate) struct Run {
   ///  * tag "key" equal to "value"
   ///
   /// sees a log with message "foo" and tag "key" equal to "value".
-  traversals: Vec<Traversal>,
+  pub(crate) traversals: Vec<Traversal>,
   /// The number of logs matched by a given workflow run.
   matched_logs_count: u32,
   /// The time at which run left its initial state. Used to implement
