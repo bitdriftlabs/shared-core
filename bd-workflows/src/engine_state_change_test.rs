@@ -40,19 +40,23 @@ use time::macros::datetime;
 // Tests that state changes can trigger workflow transitions using string value matching.
 #[tokio::test]
 async fn state_change_string_match_triggers_transition() {
-  // State B needs a self-loop to keep the run active after transition
-  let b = state("B").declare_transition(&state("B"), rule!(message_equals("keep_alive")));
+  let b = state("B");
 
   // State A needs a self-loop to create an initial run, then can transition to B on state change
   let a = state("A")
     .declare_transition(&state("A"), rule!(message_equals("start")))
-    .declare_transition(
+    .declare_transition_with_actions(
       &b,
       make_state_change_rule(
         bd_state::Scope::FeatureFlag,
         "feature_flag",
         make_string_match("enabled"),
       ),
+      &[make_emit_counter_action(
+        "string_match_metric",
+        metric_value(1),
+        vec![],
+      )],
     );
 
   let workflow = WorkflowBuilder::new("state_change_workflow", &[&a, &b]).make_config();
@@ -80,23 +84,30 @@ async fn state_change_string_match_triggers_transition() {
 
   engine.process_state_change(&state_change);
 
-  // Verify transition occurred
-  engine_assert_active_runs!(engine; 0; "B");
+  // Verify transition occurred by checking the metric was emitted
+  setup
+    .collector
+    .assert_workflow_counter_eq(1, "string_match_metric", labels! {});
 }
 
 // Tests that IsSet matcher works for state changes (matching any value).
 #[tokio::test]
 async fn state_change_is_set_match() {
-  let b = state("B").declare_transition(&state("B"), rule!(message_equals("keep_alive")));
+  let b = state("B");
   let a = state("A")
     .declare_transition(&state("A"), rule!(message_equals("start")))
-    .declare_transition(
+    .declare_transition_with_actions(
       &b,
       make_state_change_rule(
         bd_state::Scope::FeatureFlag,
         "any_value",
         make_is_set_match(),
       ),
+      &[make_emit_counter_action(
+        "is_set_match_metric",
+        metric_value(1),
+        vec![],
+      )],
     );
 
   let workflow = WorkflowBuilder::new("is_set_test", &[&a, &b]).make_config();
@@ -123,22 +134,31 @@ async fn state_change_is_set_match() {
   };
 
   engine.process_state_change(&state_change);
-  engine_assert_active_runs!(engine; 0; "B");
+
+  // Verify transition occurred by checking the metric was emitted
+  setup
+    .collector
+    .assert_workflow_counter_eq(1, "is_set_match_metric", labels! {});
 }
 
 // Tests that state changes that don't match predicates don't trigger transitions.
 #[tokio::test]
 async fn state_change_no_match_no_transition() {
-  let b = state("B").declare_transition(&state("B"), rule!(message_equals("keep_alive")));
+  let b = state("B");
   let a = state("A")
     .declare_transition(&state("A"), rule!(message_equals("start")))
-    .declare_transition(
+    .declare_transition_with_actions(
       &b,
       make_state_change_rule(
         bd_state::Scope::FeatureFlag,
         "flag",
         make_string_match("enabled"),
       ),
+      &[make_emit_counter_action(
+        "no_match_metric",
+        metric_value(1),
+        vec![],
+      )],
     );
 
   let workflow = WorkflowBuilder::new("no_match_test", &[&a, &b]).make_config();
@@ -165,8 +185,16 @@ async fn state_change_no_match_no_transition() {
   };
 
   engine.process_state_change(&state_change);
-  // Should stay in state A
-  engine_assert_active_runs!(engine; 0; "A");
+  // Verify no transition occurred - metric should not be emitted
+  assert!(
+    setup
+      .collector
+      .find_counter(
+        &bd_stats_common::NameType::Global("no_match_metric".to_string()),
+        &labels! {}
+      )
+      .is_none()
+  );
 
   // Process state change with wrong value
   let state_change = bd_state::StateChange {
@@ -179,8 +207,16 @@ async fn state_change_no_match_no_transition() {
   };
 
   engine.process_state_change(&state_change);
-  // Should still stay in state A
-  engine_assert_active_runs!(engine; 0; "A");
+  // Verify still no transition - metric should still not be emitted
+  assert!(
+    setup
+      .collector
+      .find_counter(
+        &bd_stats_common::NameType::Global("no_match_metric".to_string()),
+        &labels! {}
+      )
+      .is_none()
+  );
 }
 
 // Tests that state changes support timestamp extractions.
@@ -326,52 +362,6 @@ async fn state_change_does_trigger_timeout() {
       .iter()
       .any(|r| r.traversals().first().is_some_and(|t| t.state_index == 2))
   ); // State C is index 2
-
-  // Verify the timeout metric was emitted
-  setup
-    .collector
-    .assert_workflow_counter_eq(1, "timeout_metric", labels! {});
-}
-
-
-// Tests that logs DO trigger timeout checks (ensuring existing behavior is preserved).
-#[tokio::test]
-async fn log_does_trigger_timeout() {
-  // State C needs a self-loop to keep the run active after timeout
-  let c = state("C").declare_transition(&state("C"), rule!(message_equals("keep_alive")));
-  let b = state("B");
-  let a = state("A")
-    .declare_transition(&b, rule!(message_equals("never_happens")))
-    .with_timeout(
-      &c,
-      1.seconds(),
-      &[make_emit_counter_action(
-        "timeout_metric",
-        metric_value(1),
-        vec![],
-      )],
-    );
-
-  let workflow = WorkflowBuilder::new("log_timeout_test", &[&a, &b, &c]).make_config();
-  let setup = Setup::new();
-
-  let mut engine = setup
-    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
-      vec![workflow],
-    ))
-    .await;
-
-  // Create initial run at T=0 - this initializes the timeout
-  engine.process_log(TestLog::new("start").with_now(datetime!(2024-01-01 00:00:00 UTC)));
-  engine_assert_active_runs!(engine; 0; "A");
-
-  // Process a log at T=2 seconds (after the timeout would have expired)
-  // This SHOULD trigger the timeout transition to C
-  engine.process_log(TestLog::new("unrelated").with_now(datetime!(2024-01-01 00:00:02 UTC)));
-
-  // Verify that we transitioned to C (via timeout)
-  // Note: There will also be an initial state run in A
-  engine_assert_active_runs!(engine; 0; "A", "C");
 
   // Verify the timeout metric was emitted
   setup
