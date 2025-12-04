@@ -41,23 +41,19 @@ use time::macros::datetime;
 #[tokio::test]
 async fn state_change_string_match_triggers_transition() {
   let b = state("B");
-
-  // State A needs a self-loop to create an initial run, then can transition to B on state change
-  let a = state("A")
-    .declare_transition(&state("A"), rule!(message_equals("start")))
-    .declare_transition_with_actions(
-      &b,
-      make_state_change_rule(
-        bd_state::Scope::FeatureFlag,
-        "feature_flag",
-        make_string_match("enabled"),
-      ),
-      &[make_emit_counter_action(
-        "string_match_metric",
-        metric_value(1),
-        vec![],
-      )],
-    );
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    make_state_change_rule(
+      bd_state::Scope::FeatureFlag,
+      "feature_flag",
+      make_string_match("enabled"),
+    ),
+    &[make_emit_counter_action(
+      "string_match_metric",
+      metric_value(1),
+      vec![],
+    )],
+  );
 
   let workflow = WorkflowBuilder::new("state_change_workflow", &[&a, &b]).make_config();
   let setup = Setup::new();
@@ -67,10 +63,6 @@ async fn state_change_string_match_triggers_transition() {
       vec![workflow],
     ))
     .await;
-
-  // Create initial run in state A
-  engine.process_log(TestLog::new("start"));
-  engine_assert_active_runs!(engine; 0; "A");
 
   // Process a state change that matches
   let state_change = bd_state::StateChange {
@@ -94,21 +86,19 @@ async fn state_change_string_match_triggers_transition() {
 #[tokio::test]
 async fn state_change_is_set_match() {
   let b = state("B");
-  let a = state("A")
-    .declare_transition(&state("A"), rule!(message_equals("start")))
-    .declare_transition_with_actions(
-      &b,
-      make_state_change_rule(
-        bd_state::Scope::FeatureFlag,
-        "any_value",
-        make_is_set_match(),
-      ),
-      &[make_emit_counter_action(
-        "is_set_match_metric",
-        metric_value(1),
-        vec![],
-      )],
-    );
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    make_state_change_rule(
+      bd_state::Scope::FeatureFlag,
+      "any_value",
+      make_is_set_match(),
+    ),
+    &[make_emit_counter_action(
+      "is_set_match_metric",
+      metric_value(1),
+      vec![],
+    )],
+  );
 
   let workflow = WorkflowBuilder::new("is_set_test", &[&a, &b]).make_config();
   let setup = Setup::new();
@@ -118,10 +108,6 @@ async fn state_change_is_set_match() {
       vec![workflow],
     ))
     .await;
-
-  // Create initial run
-  engine.process_log(TestLog::new("start"));
-  engine_assert_active_runs!(engine; 0; "A");
 
   // Test with string value
   let state_change = bd_state::StateChange {
@@ -145,21 +131,19 @@ async fn state_change_is_set_match() {
 #[tokio::test]
 async fn state_change_no_match_no_transition() {
   let b = state("B");
-  let a = state("A")
-    .declare_transition(&state("A"), rule!(message_equals("start")))
-    .declare_transition_with_actions(
-      &b,
-      make_state_change_rule(
-        bd_state::Scope::FeatureFlag,
-        "flag",
-        make_string_match("enabled"),
-      ),
-      &[make_emit_counter_action(
-        "no_match_metric",
-        metric_value(1),
-        vec![],
-      )],
-    );
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    make_state_change_rule(
+      bd_state::Scope::FeatureFlag,
+      "flag",
+      make_string_match("enabled"),
+    ),
+    &[make_emit_counter_action(
+      "no_match_metric",
+      metric_value(1),
+      vec![],
+    )],
+  );
 
   let workflow = WorkflowBuilder::new("no_match_test", &[&a, &b]).make_config();
   let setup = Setup::new();
@@ -169,10 +153,6 @@ async fn state_change_no_match_no_transition() {
       vec![workflow],
     ))
     .await;
-
-  // Create initial run
-  engine.process_log(TestLog::new("start"));
-  engine_assert_active_runs!(engine; 0; "A");
 
   // Process state change with wrong key
   let state_change = bd_state::StateChange {
