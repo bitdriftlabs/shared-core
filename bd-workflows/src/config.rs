@@ -585,17 +585,16 @@ impl StateChangeMatch {
       bd_proto::protos::state::scope::StateScope::GLOBAL_STATE => Scope::GlobalState,
     };
 
-    // Parse previous_value matcher if present
     let previous_value = proto
       .previous_value
       .as_ref()
       .map(bd_log_matcher::state_value_matcher::StateValueMatcher::try_from_proto)
       .transpose()?;
 
-    // Parse new_value matcher (required)
-    let new_value_proto = proto.new_value.as_ref().ok_or_else(|| {
-      anyhow!("invalid state change match configuration: missing new_value matcher")
-    })?;
+    let Some(new_value_proto) = proto.new_value.as_ref() else {
+      anyhow::bail!("invalid state change match configuration: missing new_value matcher")
+    };
+
     let new_value =
       bd_log_matcher::state_value_matcher::StateValueMatcher::try_from_proto(new_value_proto)?;
 
