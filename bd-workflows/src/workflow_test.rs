@@ -101,15 +101,6 @@ impl AnnotatedWorkflow {
       log.now,
     )
   }
-
-  fn process_state_change(&mut self, state_change: &bd_state::StateChange) -> WorkflowResult<'_> {
-    self.workflow.process_event(
-      &self.config,
-      WorkflowEvent::StateChange(state_change),
-      &bd_state::test::TestStateReader::default(),
-      state_change.timestamp,
-    )
-  }
 }
 
 /// Asserts that the states of workflow' runs are equal to expected
