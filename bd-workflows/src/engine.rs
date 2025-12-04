@@ -580,8 +580,8 @@ impl WorkflowsEngine {
     }
   }
 
-  /// Processes a given log. Returns actions that should be performed
-  /// as the result of processing a log.
+  /// Process a single workflow event against all managed workflows. This advances the active
+  /// workflows based on the event, collecting any resulting triggered actions and logs to inject.
   pub fn process_event<'a>(
     &'a mut self,
     event: WorkflowEvent<'_>,
@@ -598,7 +598,7 @@ impl WorkflowsEngine {
 
     // Return early if there's no work to avoid unnecessary copies.
     // In order to support explicit session capture even when there are no workflows we need to
-    // proceed with the processing if either this log is requesting a session capture or if there
+    // proceed with the processing if either this is a log requesting a session capture or if there
     // is an active streaming action.
     if self.state.workflows.is_empty()
       && event.capture_session().is_none()
@@ -746,7 +746,10 @@ impl WorkflowsEngine {
       .record_workflow_debug_state(all_incremental_workflow_debug_state);
 
     // Emit metrics and sankeys for all event types.
-    // For state changes, field/message extraction will return None (as expected).
+    // For state changes, field/message extraction will fail to extract a value as there are no
+    // associated fields/message.
+    // TODO(snowp): Support state extractions for metrics and sankeys. We'll need to figure out the
+    // migration strategy for this as we transition certain values from fields to state.
     self
       .metrics_collector
       .emit_metrics(&emit_metric_actions, event, state_reader);
