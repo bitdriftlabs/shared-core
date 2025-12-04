@@ -14,7 +14,14 @@ use crate::config::{
   WorkflowDebugMode,
 };
 use crate::test::{MakeConfig, TestLog};
-use crate::workflow::{Run, TriggeredAction, Workflow, WorkflowResult, WorkflowResultStats};
+use crate::workflow::{
+  Run,
+  TriggeredAction,
+  Workflow,
+  WorkflowEvent,
+  WorkflowResult,
+  WorkflowResultStats,
+};
 use bd_log_matcher::builder::{field_equals, message_equals};
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{LogFields, LogMessage, log_level};
@@ -49,8 +56,8 @@ fn test_global_init() {
 // state of a given workflow into one entity for easier passing to method/macro
 // calls.
 pub struct AnnotatedWorkflow {
-  config: Config,
-  workflow: Workflow,
+  pub config: Config,
+  pub workflow: Workflow,
 }
 
 impl AnnotatedWorkflow {
@@ -78,9 +85,9 @@ impl AnnotatedWorkflow {
   }
 
   fn process_log(&mut self, log: TestLog) -> WorkflowResult<'_> {
-    self.workflow.process_log(
+    self.workflow.process_event(
       &self.config,
-      &bd_log_primitives::Log {
+      WorkflowEvent::Log(&bd_log_primitives::Log {
         log_type: LogType::NORMAL,
         log_level: log_level::DEBUG,
         message: LogMessage::String(log.message),
@@ -89,7 +96,7 @@ impl AnnotatedWorkflow {
         fields: bd_test_helpers::workflow::make_tags(log.tags),
         matching_fields: LogFields::new(),
         capture_session: None,
-      },
+      }),
       &bd_state::test::TestStateReader::default(),
       log.now,
     )

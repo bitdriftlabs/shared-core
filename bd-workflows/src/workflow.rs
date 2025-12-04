@@ -7,7 +7,7 @@
 
 #[cfg(test)]
 #[path = "./workflow_test.rs"]
-mod workflow_test;
+pub(crate) mod workflow_test;
 
 use crate::config::{
   Action,
@@ -31,6 +31,42 @@ use std::time::SystemTime;
 use time::OffsetDateTime;
 
 //
+// WorkflowEvent
+//
+
+/// Represents an event that can trigger workflow transitions.
+#[derive(Clone, Copy)]
+pub enum WorkflowEvent<'a> {
+  /// A log message was received
+  Log(&'a Log),
+  /// A state change occurred
+  StateChange(&'a bd_state::StateChange),
+}
+
+impl WorkflowEvent<'_> {
+  pub(crate) fn session_id(&self) -> Option<&str> {
+    match self {
+      WorkflowEvent::Log(log) => Some(log.session_id.as_str()),
+      WorkflowEvent::StateChange(_) => None,
+    }
+  }
+
+  pub(crate) fn capture_session(&self) -> Option<&'static str> {
+    match self {
+      WorkflowEvent::Log(log) => log.capture_session,
+      WorkflowEvent::StateChange(_) => None,
+    }
+  }
+
+  pub(crate) fn occurred_at(&self) -> OffsetDateTime {
+    match self {
+      WorkflowEvent::Log(log) => log.occurred_at,
+      WorkflowEvent::StateChange(state_change) => state_change.timestamp,
+    }
+  }
+}
+
+//
 // Workflow
 //
 
@@ -49,7 +85,7 @@ pub struct Workflow {
   // of the list and the maximum number of runs is equal to two. If runs list is non-empty then the
   // first run in the list is guaranteed to be in an initial state. If there are two runs then the
   // second run is guaranteed not to be in an initial state.
-  runs: Vec<Run>,
+  pub(crate) runs: Vec<Run>,
   // Persisted workflow debug state. This is only used for live debugging. Global debugging is
   // persisted as part of stats snapshots.
   workflow_debug_state: OptWorkflowDebugStateMap,
@@ -95,10 +131,10 @@ impl Workflow {
     self.workflow_debug_state = None;
   }
 
-  pub(crate) fn process_log<'a>(
+  pub(crate) fn process_event<'a>(
     &mut self,
     config: &'a Config,
-    log: &Log,
+    event: WorkflowEvent<'_>,
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
   ) -> WorkflowResult<'a> {
@@ -130,7 +166,7 @@ impl Workflow {
       let Some(run) = self.runs.get_mut(index) else {
         continue;
       };
-      let mut run_result = run.process_log(config, log, state_reader, now);
+      let mut run_result = run.process_event(config, event, state_reader, now);
 
       result.incorporate_run_result(&mut run_result);
 
@@ -510,7 +546,7 @@ pub(crate) struct Run {
   ///  * tag "key" equal to "value"
   ///
   /// sees a log with message "foo" and tag "key" equal to "value".
-  traversals: Vec<Traversal>,
+  pub(crate) traversals: Vec<Traversal>,
   /// The number of logs matched by a given workflow run.
   matched_logs_count: u32,
   /// The time at which run left its initial state. Used to implement
@@ -541,10 +577,10 @@ impl Run {
     &self.traversals
   }
 
-  fn process_log<'a>(
+  fn process_event<'a>(
     &mut self,
     config: &'a Config,
-    log: &Log,
+    event: WorkflowEvent<'_>,
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
   ) -> RunResult<'a> {
@@ -568,7 +604,7 @@ impl Run {
       let Some(traversal) = self.traversals.get_mut(index) else {
         continue;
       };
-      let mut traversal_result = traversal.process_log(config, log, state_reader, now);
+      let mut traversal_result = traversal.process_event(config, event, state_reader, now);
 
       run_triggered_actions.append(&mut traversal_result.triggered_actions);
       run_logs_to_inject.append(&mut traversal_result.log_to_inject);
@@ -599,7 +635,7 @@ impl Run {
       if let Some(duration_limit) = config.inner().duration_limit()
         && let Some(first_progress_occurred_at) = self.first_progress_occurred_at
       {
-        let current_time: SystemTime = log.occurred_at.into();
+        let current_time: SystemTime = event.occurred_at().into();
 
         match current_time.duration_since(first_progress_occurred_at) {
           Ok(duration_since_first_progress) => {
@@ -632,7 +668,7 @@ impl Run {
       // Update the value of `first_progress_occurred_at` if this is the first progress a run
       // has made.
       if self.first_progress_occurred_at.is_none() && traversal_result.did_make_progress() {
-        self.first_progress_occurred_at = Some(log.occurred_at.into());
+        self.first_progress_occurred_at = Some(event.occurred_at().into());
       }
 
       // Check if the traversal should advance.
@@ -763,6 +799,47 @@ pub(crate) struct TraversalExtractions {
 // Traversal
 //
 
+/// Helper function to process a transition and create the next traversal.
+/// Used by both log matching and state change matching.
+fn process_transition<'a>(
+  result: &mut TraversalResult<'a>,
+  mut extractions: TraversalExtractions,
+  actions: &'a [Action],
+  fields: FieldsRef<'_>,
+  current_state_index: usize,
+  next_state_index: usize,
+  transition_type: WorkflowDebugTransitionType,
+  config: &Config,
+  now: OffsetDateTime,
+) {
+  result.followed_transitions_count += 1;
+
+  // Collect triggered actions and injected logs.
+  let (triggered_actions, logs_to_inject) =
+    Traversal::triggered_actions(actions, &mut extractions, fields);
+
+  result.triggered_actions.extend(triggered_actions);
+  result.log_to_inject.extend(logs_to_inject);
+
+  // Create next traversal. Subsequent traversals always have their timeout initialized if there
+  // is one.
+  if let Some(traversal) = Traversal::new(config, next_state_index, extractions, now, true) {
+    if traversal.timeout_unix_ms.is_some() {
+      result.processed_timeout = true;
+    }
+    result.output_traversals.push(traversal);
+  }
+
+  if let Some(state) = config.inner().states().get(current_state_index) {
+    result
+      .workflow_debug_state
+      .push(WorkflowDebugStateKey::new_state_transition(
+        state.id().to_string(),
+        transition_type,
+      ));
+  }
+}
+
 /// A traversal points at a specific workflow state. Most workflow runs
 /// have one traversal but it's possible for a workflow run to have multiple
 /// traversals. That can happen when a given workflow traversal is forked when
@@ -828,55 +905,13 @@ impl Traversal {
     });
   }
 
-  fn process_log<'a>(
+  fn process_event<'a>(
     &mut self,
     config: &'a Config,
-    log: &Log,
+    event: WorkflowEvent<'_>,
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
   ) -> TraversalResult<'a> {
-    fn process_transition<'a>(
-      result: &mut TraversalResult<'a>,
-      mut extractions: TraversalExtractions,
-      actions: &'a [Action],
-      log: &Log,
-      current_state_index: usize,
-      next_state_index: usize,
-      transition_type: WorkflowDebugTransitionType,
-      config: &Config,
-      now: OffsetDateTime,
-    ) {
-      result.followed_transitions_count += 1;
-
-      // Collect triggered actions and injected logs.
-      let (triggered_actions, logs_to_inject) = Traversal::triggered_actions(
-        actions,
-        &mut extractions,
-        FieldsRef::new(&log.fields, &log.matching_fields),
-      );
-
-      result.triggered_actions.extend(triggered_actions);
-      result.log_to_inject.extend(logs_to_inject);
-
-      // Create next traversal. Subsequent traversals always have their timeout initialized if there
-      // is one.
-      if let Some(traversal) = Traversal::new(config, next_state_index, extractions, now, true) {
-        if traversal.timeout_unix_ms.is_some() {
-          result.processed_timeout = true;
-        }
-        result.output_traversals.push(traversal);
-      }
-
-      if let Some(state) = config.inner().states().get(current_state_index) {
-        result
-          .workflow_debug_state
-          .push(WorkflowDebugStateKey::new_state_transition(
-            state.id().to_string(),
-            transition_type,
-          ));
-      }
-    }
-
     let transitions = config
       .inner()
       .transitions_for_traversal(self)
@@ -898,67 +933,44 @@ impl Traversal {
         .map(super::config::State::id)
         .unwrap_or_default()
     );
+
+    // Try to match explicit transitions (logs or state changes).
+    // Multiple transitions can match the same event, causing workflow forking.
     for (index, transition) in transitions.iter().enumerate() {
-      match &transition.rule() {
-        Predicate::LogMatch(log_match, count) => {
-          if log_match.do_match(
-            log.log_level,
-            log.log_type,
-            &log.message,
-            FieldsRef::new(&log.fields, &log.matching_fields),
+      match (&transition.rule(), event) {
+        (Predicate::LogMatch(log_match, count), WorkflowEvent::Log(log)) => {
+          self.process_log_match(
+            config,
+            log,
+            log_match,
+            *count,
+            index,
             state_reader,
-            &self.extractions.fields,
-          ) {
-            let Some(matched_logs_counts) = self.matched_logs_counts.get_mut(index) else {
-              continue;
-            };
-            *matched_logs_counts += 1;
-            let matched_logs_counts = *matched_logs_counts;
-
-            // We do mark the log being matched on the `Run` level even if
-            // the transition doesn't end up happening for when
-            // self.matched_logs_count < *count.
-            result.matched_logs_count += 1;
-
-            if matched_logs_counts == *count
-              && let Some(actions) = config.inner().actions_for_traversal(self, index)
-              && let Some(next_state_index) =
-                config.inner().next_state_index_for_traversal(self, index)
-            {
-              process_transition(
-                &mut result,
-                self.do_extractions(config, index, log, state_reader),
-                actions,
-                log,
-                self.state_index,
-                next_state_index,
-                WorkflowDebugTransitionType::Normal(index),
-                config,
-                now,
-              );
-
-              log::trace!(
-                "traversal's transition {} matched log ({} matches in total) and is advancing, \
-                 workflow id={:?}",
-                index,
-                matched_logs_counts,
-                config.inner().id(),
-              );
-            } else {
-              log::trace!(
-                "traversal's transition {} matched log ({} matches in total) but needs {} matches \
-                 to advance, workflow id={:?}",
-                index,
-                matched_logs_counts,
-                *count,
-                config.inner().id(),
-              );
-            }
-          }
+            now,
+            &mut result,
+          );
         },
+        (
+          Predicate::StateChangeMatch(state_change_config),
+          WorkflowEvent::StateChange(state_change),
+        ) => {
+          self.process_state_change_match(
+            config,
+            state_change,
+            state_change_config,
+            index,
+            state_reader,
+            now,
+            &mut result,
+          );
+        },
+        _ => { /* No match, continue to next transition */ },
       }
     }
 
+    // Timeout handling: Check timeouts for both logs and state changes.
+    // Timeout transitions use default extractions and don't extract from the triggering event,
+    // so this works correctly for both event types.
     if result.output_traversals.is_empty()
       && let Some(timeout_unix_ms) = self.timeout_unix_ms
       && now.unix_timestamp_ms() >= timeout_unix_ms
@@ -967,11 +979,19 @@ impl Traversal {
         .inner()
         .next_state_index_for_timeout(self.state_index)
     {
+      // Timeout transitions use default extractions and pass appropriate fields based on event
+      // type. For logs, we pass the log fields. For state changes, we pass empty fields.
+      let empty_fields = bd_log_primitives::LogFields::default();
+      let fields = match event {
+        WorkflowEvent::Log(log) => FieldsRef::new(&log.fields, &log.matching_fields),
+        WorkflowEvent::StateChange(_) => FieldsRef::new(&empty_fields, &empty_fields),
+      };
+
       process_transition(
         &mut result,
         TraversalExtractions::default(),
         actions,
-        log,
+        fields,
         self.state_index,
         next_state_index,
         WorkflowDebugTransitionType::Timeout,
@@ -989,7 +1009,152 @@ impl Traversal {
     result
   }
 
-  fn do_extractions(
+  /// Processes a log match for a single transition.
+  /// Increments match counters and triggers the transition if the count threshold is reached.
+  fn process_log_match<'a>(
+    &mut self,
+    config: &'a Config,
+    log: &Log,
+    log_match: &bd_log_matcher::matcher::Tree,
+    count: u32,
+    index: usize,
+    state_reader: &dyn bd_state::StateReader,
+    now: OffsetDateTime,
+    result: &mut TraversalResult<'a>,
+  ) {
+    if !log_match.do_match(
+      log.log_level,
+      log.log_type,
+      &log.message,
+      FieldsRef::new(&log.fields, &log.matching_fields),
+      state_reader,
+      &self.extractions.fields,
+    ) {
+      return;
+    }
+
+    let Some(matched_logs_counts) = self.matched_logs_counts.get_mut(index) else {
+      return;
+    };
+    *matched_logs_counts += 1;
+    let matched_logs_counts = *matched_logs_counts;
+
+    // We do mark the log being matched on the `Run` level even if
+    // the transition doesn't end up happening for when
+    // self.matched_logs_count < count.
+    result.matched_logs_count += 1;
+
+    if matched_logs_counts == count
+      && let Some(actions) = config.inner().actions_for_traversal(self, index)
+      && let Some(next_state_index) = config.inner().next_state_index_for_traversal(self, index)
+    {
+      process_transition(
+        result,
+        self.do_log_extractions(config, index, log, state_reader),
+        actions,
+        FieldsRef::new(&log.fields, &log.matching_fields),
+        self.state_index,
+        next_state_index,
+        WorkflowDebugTransitionType::Normal(index),
+        config,
+        now,
+      );
+
+      log::trace!(
+        "traversal's transition {} matched log ({} matches in total) and is advancing, workflow \
+         id={:?}",
+        index,
+        matched_logs_counts,
+        config.inner().id(),
+      );
+    } else {
+      log::trace!(
+        "traversal's transition {} matched log ({} matches in total) but needs {} matches to \
+         advance, workflow id={:?}",
+        index,
+        matched_logs_counts,
+        count,
+        config.inner().id(),
+      );
+    }
+  }
+
+  /// Processes a state change match for a single transition.
+  /// Checks scope, key, and value matchers, then triggers the transition if all match.
+  fn process_state_change_match<'a>(
+    &self,
+    config: &'a Config,
+    state_change: &bd_state::StateChange,
+    state_change_match: &crate::config::StateChangeMatch,
+    index: usize,
+    state_reader: &dyn bd_state::StateReader,
+    now: OffsetDateTime,
+    result: &mut TraversalResult<'a>,
+  ) {
+    if state_change.scope != state_change_match.scope || state_change.key != state_change_match.key
+    {
+      return;
+    }
+
+    // Extract previous and new values based on change type
+    let (previous_value, new_value) = match &state_change.change_type {
+      bd_state::StateChangeType::Inserted { value } => (None, Some(value.as_str())),
+      bd_state::StateChangeType::Updated {
+        old_value,
+        new_value,
+      } => (Some(old_value.as_str()), Some(new_value.as_str())),
+      bd_state::StateChangeType::Removed { old_value } => (Some(old_value.as_str()), None),
+      bd_state::StateChangeType::NoChange => return,
+    };
+
+    // Check if previous value matches (if matcher specified)
+    let empty_fields = bd_log_primitives::tiny_set::TinyMap::default();
+    let previous_matches = state_change_match
+      .previous_value
+      .as_ref()
+      .is_none_or(|matcher| matcher.matches(previous_value, &empty_fields));
+
+    if !previous_matches {
+      return;
+    }
+
+    // Check if new value matches
+    if !state_change_match
+      .new_value
+      .matches(new_value, &empty_fields)
+    {
+      return;
+    }
+
+    if let Some(actions) = config.inner().actions_for_traversal(self, index)
+      && let Some(next_state_index) = config.inner().next_state_index_for_traversal(self, index)
+    {
+      // Use empty FieldsRef for state changes since they don't have log fields
+      let empty_fields = bd_log_primitives::LogFields::default();
+      process_transition(
+        result,
+        self.do_state_change_extractions(config, index, state_change, state_reader),
+        actions,
+        FieldsRef::new(&empty_fields, &empty_fields),
+        self.state_index,
+        next_state_index,
+        WorkflowDebugTransitionType::Normal(index),
+        config,
+        now,
+      );
+
+      log::trace!(
+        "traversal's transition {} matched state change and is advancing, workflow id={:?}",
+        index,
+        config.inner().id(),
+      );
+    }
+  }
+
+  /// Performs extractions for a log event.
+  /// We're able to extract sankey values, timestamps, and field values from the log in addition to
+  /// the shared state reader.
+  fn do_log_extractions(
     &self,
     config: &Config,
     index: usize,
@@ -1042,6 +1207,61 @@ impl Traversal {
           .fields
           .insert(extraction.id.clone(), value.to_string());
       }
+    }
+
+    new_extractions
+  }
+
+  /// Performs extractions for a state change event.
+  /// State changes can extract timestamps and values from the state reader.
+  /// Uses empty fields since state changes don't have log fields or messages.
+  fn do_state_change_extractions(
+    &self,
+    config: &Config,
+    index: usize,
+    state_change: &bd_state::StateChange,
+    state_reader: &dyn bd_state::StateReader,
+  ) -> TraversalExtractions {
+    let mut new_extractions = self.extractions.clone();
+
+    let Some(extractions) = config.inner().extractions(self, index) else {
+      return new_extractions;
+    };
+
+    // Empty fields and message for state changes
+    let empty_fields = bd_log_primitives::LogFields::default();
+    let empty_message = bd_log_primitives::LogMessage::String(String::new());
+
+    // Sankey extractions: Can extract from state reader (e.g., feature flags)
+    for extraction in &extractions.sankey_extractions {
+      let Some(extracted_value) = extraction.value.extract_value(
+        FieldsRef::new(&empty_fields, &empty_fields),
+        &empty_message,
+        state_reader,
+      ) else {
+        continue;
+      };
+
+      new_extractions
+        .sankey_states
+        .get_mut_or_insert_default(extraction.sankey_id.clone())
+        .push(
+          extracted_value.into_owned(),
+          extraction.limit,
+          extraction.counts_toward_sankey_values_extraction_limit,
+        );
+    }
+
+    // Timestamp extraction: Use state change timestamp
+    if let Some(timestamp_extraction_id) = &extractions.timestamp_extraction_id {
+      let timestamp = state_change.timestamp;
+      log::debug!(
+        "extracted timestamp {timestamp} from state change for extraction ID \
+         {timestamp_extraction_id}"
+      );
+      new_extractions
+        .timestamps
+        .insert(timestamp_extraction_id.clone(), timestamp);
     }
 
     new_extractions

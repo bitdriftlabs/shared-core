@@ -5,33 +5,30 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{StateStore, WorkflowsEngine};
-use crate::actions_flush_buffers::BuffersToFlush;
+use super::WorkflowsEngine;
+use super::engine_test_helpers::{
+  DebugStateType,
+  Setup,
+  assert_workflow_debug_state,
+  make_runtime,
+};
 use crate::config::{Action, FlushBufferId, WorkflowDebugMode, WorkflowsConfiguration};
-use crate::engine::{WORKFLOWS_STATE_FILE_NAME, WorkflowsEngineConfig, WorkflowsEngineResult};
-use crate::engine_assert_active_runs;
+use crate::engine::{WorkflowsEngineConfig, WorkflowsEngineResult};
 use crate::test::{MakeConfig, TestLog};
-use crate::workflow::{Workflow, WorkflowDebugStateMap, WorkflowTransitionDebugState};
+use crate::workflow::{Workflow, WorkflowEvent, WorkflowTransitionDebugState};
+use crate::{engine_assert_active_run_traversals, engine_assert_active_runs};
 use assert_matches::assert_matches;
-use bd_api::DataUpload;
-use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
-use bd_client_stats::Stats;
+use bd_api::upload::IntentDecision;
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
 use bd_error_reporter::reporter::{Reporter, UnexpectedErrorHandler};
 use bd_log_matcher::builder::{field_equals, message_equals, or};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{Log, LogFields, LogMessage, log_level};
-use bd_proto::protos::client::api::log_upload_intent_request::Intent_type::WorkflowActionUpload;
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
-use bd_proto::protos::client::api::{
-  SankeyIntentRequest,
-  SankeyPathUploadRequest,
-  log_upload_intent_request,
-};
+use bd_proto::protos::client::api::{SankeyPathUploadRequest, log_upload_intent_request};
 use bd_proto::protos::logging::payload::LogType;
-use bd_runtime::runtime::ConfigLoader;
-use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
+use bd_stats_common::workflow::WorkflowDebugTransitionType;
 use bd_stats_common::{NameType, labels};
 use bd_test_helpers::sankey_value;
 use bd_test_helpers::workflow::macros::rule;
@@ -58,430 +55,11 @@ use pretty_assertions::assert_eq;
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 use std::vec;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use time::macros::datetime;
-use tokio::sync::mpsc::Receiver;
-use tokio::task::JoinHandle;
-
-enum DebugStateType {
-  StartOrReset,
-  StateId(&'static str, WorkflowDebugTransitionType),
-}
-
-#[allow(clippy::type_complexity)]
-fn assert_workflow_debug_state(
-  result: &WorkflowsEngineResult<'_>,
-  expected: &[(&str, &[(DebugStateType, WorkflowTransitionDebugState)])],
-) {
-  let expected: Vec<(String, WorkflowDebugStateMap)> = expected
-    .iter()
-    .map(|(workflow_id, states)| {
-      (
-        (*workflow_id).to_string(),
-        WorkflowDebugStateMap(Box::new(
-          states
-            .iter()
-            .map(|(state_type, state)| {
-              (
-                match state_type {
-                  DebugStateType::StartOrReset => WorkflowDebugStateKey::StartOrReset,
-                  DebugStateType::StateId(state_id, transition_type) => {
-                    WorkflowDebugStateKey::new_state_transition(
-                      (*state_id).to_string(),
-                      *transition_type,
-                    )
-                  },
-                },
-                state.clone(),
-              )
-            })
-            .collect(),
-        )),
-      )
-    })
-    .collect();
-
-  assert_eq!(expected, result.workflow_debug_state);
-}
-
-/// Asserts that the states of runs of specified workflow of a given workflow engine
-/// are equal to expected list of states.
-/// The macro assumes that each run has only one traversals.
-/// For macros that don't meet this condition `engine_assert_active_run_traversals`
-/// macro should be used instead.
-#[macro_export]
-macro_rules! engine_assert_active_runs {
-  ($workflows_engine:expr; $workflow_index:expr; $($state_id:expr),+) => {
-    let workflow = $workflows_engine.state.workflows[$workflow_index].clone();
-    let config = $workflows_engine.configs[$workflow_index].clone();
-
-    let expected_states = [$($state_id,)+];
-
-    pretty_assertions::assert_eq!(
-      expected_states.len(),
-      workflow.runs().len(),
-      "workflow runs' states list ({:?}) and expected states list ({:?}) have different lengths",
-      workflow.runs_states(&config),
-      expected_states
-    );
-
-    for (index, id) in expected_states.iter().enumerate() {
-      let expected_state_index = config.inner().states().iter()
-        .position(|state| state.id() == *id);
-      assert!(
-        expected_state_index.is_some(),
-        "failed to find state with \"{}\" ID", *id
-      );
-      pretty_assertions::assert_eq!(
-        1,
-        workflow.runs()[index].traversals().len(),
-        "run has more than 1 traversal, use `assert_active_run_traversals` macro instead"
-      );
-      pretty_assertions::assert_eq!(
-        expected_state_index.unwrap(),
-        workflow.runs()[index].traversals()[0].state_index,
-        "workflow runs' states list ({:?}) doesn't match expected states list ({:?}) length",
-        workflow.runs_states(&config),
-        expected_states
-      );
-    }
-
-    for run in workflow.runs() {
-      pretty_assertions::assert_eq!(1, run.traversals().len());
-    }
-  };
-}
-
-/// Asserts that the states of traversals of a specified workflow of a given workflow engine
-/// are equal to expected list of states.
-#[macro_export]
-macro_rules! engine_assert_active_run_traversals {
-  ($engine:expr; $workflow_index:expr => $run_index:expr; $($state_id:expr),+) => {
-    let workflow = $engine.state.workflows[$workflow_index].clone();
-    let config = $engine.configs[$workflow_index].clone();
-
-    #[allow(unused_comparisons)]
-    let run_exists = workflow.runs().len() >= $run_index;
-    assert!(
-      run_exists,
-      "run with index ({}) doesn't exist, workflow has only {} runs: {:?}",
-      $run_index,
-      workflow.runs().len(),
-      workflow.runs_states(&config)
-    );
-
-    let expected_states = [$($state_id,)+];
-    pretty_assertions::assert_eq!(
-      expected_states.len(),
-      workflow.runs()[$run_index].traversals().len(),
-      "workflow run traversals' states list ({:?}) \
-      and expected states list ({:?}) have different lengths",
-      workflow.traversals_states(&config, $run_index),
-      expected_states
-    );
-
-    for (index, id) in expected_states.iter().enumerate() {
-      let expected_state_index = config.inner().states().iter()
-        .position(|state| state.id() == *id);
-      assert!(
-        expected_state_index.is_some(),
-        "failed to find state with \"{}\" ID", *id
-      );
-      pretty_assertions::assert_eq!(
-        expected_state_index.unwrap(),
-        workflow.runs()[$run_index].traversals()[index].state_index,
-        "workflow runs traversals' states list ({:?}) doesn't match expected states list ({:?})",
-        workflow.traversals_states(&config, $run_index),
-        expected_states
-      );
-    }
-  }
-}
-
-//
-// AnnotatedWorkflowsEngine
-//
-
-#[derive(Default)]
-struct Hooks {
-  flushed_buffers: Vec<BuffersToFlush>,
-  received_logs_upload_intents: Vec<log_upload_intent_request::WorkflowActionUpload>,
-  awaiting_logs_upload_intent_decisions: Vec<IntentDecision>,
-
-  sankey_uploads: Vec<SankeyPathUploadRequest>,
-  received_sankey_upload_intents: Vec<SankeyIntentRequest>,
-  awaiting_sankey_upload_intent_decisions: Vec<Option<IntentDecision>>,
-}
-
-struct AnnotatedWorkflowsEngine {
-  engine: WorkflowsEngine,
-
-  session_id: String,
-  log_destination_buffer_ids: TinySet<Cow<'static, str>>,
-
-  hooks: Arc<parking_lot::Mutex<Hooks>>,
-
-  client_stats: Arc<Stats>,
-
-  task_handle: JoinHandle<()>,
-}
-
-impl AnnotatedWorkflowsEngine {
-  fn new(
-    engine: WorkflowsEngine,
-    hooks: Arc<parking_lot::Mutex<Hooks>>,
-    client_stats: Arc<Stats>,
-    task_handle: JoinHandle<()>,
-  ) -> Self {
-    Self {
-      engine,
-
-      session_id: "foo_session".to_string(),
-      log_destination_buffer_ids: TinySet::default(),
-
-      hooks,
-
-      client_stats,
-
-      task_handle,
-    }
-  }
-
-  fn process_log(&mut self, log: TestLog) -> WorkflowsEngineResult<'_> {
-    self.engine.process_log(
-      &bd_log_primitives::Log {
-        log_type: LogType::NORMAL,
-        log_level: log_level::DEBUG,
-        message: LogMessage::String(log.message),
-        session_id: log.session.unwrap_or_else(|| self.session_id.clone()),
-        occurred_at: log.occurred_at,
-        fields: bd_test_helpers::workflow::make_tags(log.tags),
-        matching_fields: LogFields::new(),
-        capture_session: None,
-      },
-      &self.log_destination_buffer_ids,
-      &bd_state::test::TestStateReader::default(),
-      log.now,
-    )
-  }
-
-  async fn run_once_for_test(&mut self) {
-    self.engine.run_once().await;
-    // Give the task started inside of `run_for_test()` method chance to run before proceeding.
-    1.milliseconds().sleep().await;
-  }
-
-  fn run_for_test(
-    buffers_to_flush_rx: Receiver<BuffersToFlush>,
-    data_upload_rx: Receiver<DataUpload>,
-    hooks: Arc<parking_lot::Mutex<Hooks>>,
-  ) -> JoinHandle<()> {
-    let mut buffers_to_flush_rx = buffers_to_flush_rx;
-    let mut data_upload_rx = data_upload_rx;
-
-    tokio::spawn(async move {
-      loop {
-        tokio::select! {
-          Some(buffers_to_flush) = buffers_to_flush_rx.recv() => {
-              log::debug!("received new buffers to flush {buffers_to_flush:?}");
-              hooks.lock().flushed_buffers.push(buffers_to_flush);
-            },
-            Some(data_upload) = data_upload_rx.recv() => {
-              match data_upload {
-                DataUpload::LogsUploadIntent(logs_upload_intent) => {
-
-                if hooks.lock().awaiting_logs_upload_intent_decisions.is_empty() {
-                  continue;
-                }
-
-                let Some(WorkflowActionUpload(upload)) =
-                  logs_upload_intent.payload.intent_type.clone() else
-                {
-                  panic!("unexpected intent type");
-                };
-
-                let decision = hooks.lock().awaiting_logs_upload_intent_decisions.remove(0);
-                log::debug!("responding \"{:?}\" to logs upload intent \"{}\" intent", decision, logs_upload_intent.uuid);
-
-                hooks.lock().received_logs_upload_intents.push(upload.clone());
-
-                if let Err(e) = logs_upload_intent
-                  .response_tx
-                  .send(IntentResponse {
-                    uuid: logs_upload_intent.uuid.clone(),
-                    decision,
-                  })
-                  {
-                    panic!("failed to send response: {e:?}");
-                  }
-                },
-                DataUpload::SankeyPathUploadIntent(sankey_upload_intent) => {
-                  assert!(!hooks.lock().awaiting_sankey_upload_intent_decisions.is_empty(), "received sankey upload intent there are no awaiting intents");
-
-                  let sankey_upload_intent_payload = sankey_upload_intent.payload.clone();
-
-                  let decision = hooks.lock().awaiting_sankey_upload_intent_decisions.remove(0);
-                  let Some(decision) =  decision else {
-                    log::debug!("no decision available for sankey upload intent, not responding");
-                      continue;
-                  };
-
-
-                  log::debug!("responding \"{:?}\" to sankey upload intent \"{}\" intent", decision, sankey_upload_intent.uuid);
-
-                  hooks.lock().received_sankey_upload_intents
-                    .push(sankey_upload_intent_payload.clone());
-
-                  if let Err(e) = sankey_upload_intent
-                    .response_tx
-                    .send(IntentResponse {
-                      uuid: sankey_upload_intent.uuid.clone(),
-                      decision,
-                    })
-                    {
-                      panic!("failed to send response: {e:?}");
-                    }
-                },
-                DataUpload::SankeyPathUpload(upload) => {
-                  hooks.lock().sankey_uploads.push(upload.payload.clone());
-
-                  upload.response_tx.send(UploadResponse {
-                    success: true,
-                    uuid: upload.uuid,
-                  }).unwrap();
-                },
-                default => {
-                  log::error!("received unhandled data upload: {default:?}");
-                }
-              }
-            }
-        };
-      }
-    })
-  }
-
-  fn flushed_buffers(&self) -> Vec<TinySet<Cow<'static, str>>> {
-    self
-      .hooks
-      .lock()
-      .flushed_buffers
-      .iter()
-      .map(|b| b.buffer_ids.clone())
-      .collect()
-  }
-
-  fn complete_flushes(&self) {
-    for b in &mut self.hooks.lock().flushed_buffers.drain(..) {
-      b.response_tx.send(()).unwrap();
-    }
-  }
-
-  fn received_logs_upload_intents(&self) -> Vec<log_upload_intent_request::WorkflowActionUpload> {
-    self.hooks.lock().received_logs_upload_intents.clone()
-  }
-
-  fn set_awaiting_logs_upload_intent_decisions(&self, decisions: Vec<IntentDecision>) {
-    for decision in decisions {
-      self
-        .hooks
-        .lock()
-        .awaiting_logs_upload_intent_decisions
-        .push(decision);
-    }
-  }
-}
-
-impl std::ops::Deref for AnnotatedWorkflowsEngine {
-  type Target = WorkflowsEngine;
-
-  fn deref(&self) -> &Self::Target {
-    &self.engine
-  }
-}
-
-impl std::ops::DerefMut for AnnotatedWorkflowsEngine {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    &mut self.engine
-  }
-}
-
-impl std::ops::Drop for AnnotatedWorkflowsEngine {
-  fn drop(&mut self) {
-    self.task_handle.abort();
-  }
-}
-
-//
-// Setup
-//
-
-struct Setup {
-  runtime: Arc<ConfigLoader>,
-  collector: Collector,
-  sdk_directory: Arc<tempfile::TempDir>,
-}
-
-impl Setup {
-  fn new() -> Self {
-    Self::new_with_sdk_directory(&Arc::new(tempfile::TempDir::with_prefix("root-").unwrap()))
-  }
-
-  fn new_with_sdk_directory(sdk_directory: &Arc<tempfile::TempDir>) -> Self {
-    let runtime = ConfigLoader::new(sdk_directory.path());
-    let collector = Collector::default();
-
-    Self {
-      runtime,
-      collector,
-      sdk_directory: sdk_directory.clone(),
-    }
-  }
-
-  // Can be called at most once for each created `Setup`. Calling it more than once
-  // results in a crash due to re-registration of some stats. Use `new_with_sdk_directory`
-  // to re-initialize `Setup`.
-  async fn make_workflows_engine(
-    &self,
-    workflows_engine_config: WorkflowsEngineConfig,
-  ) -> AnnotatedWorkflowsEngine {
-    let (data_upload_tx, data_upload_rx) = tokio::sync::mpsc::channel(1);
-
-    let hooks = Arc::new(parking_lot::Mutex::new(Hooks::default()));
-
-    let stats = bd_client_stats::Stats::new(self.collector.clone());
-
-    let (mut workflows_engine, buffers_to_flush_rx) = WorkflowsEngine::new(
-      &self.collector.scope(""),
-      self.sdk_directory.path(),
-      &self.runtime,
-      data_upload_tx,
-      stats.clone(),
-    );
-
-    let task_handle =
-      AnnotatedWorkflowsEngine::run_for_test(buffers_to_flush_rx, data_upload_rx, hooks.clone());
-
-    workflows_engine.start(workflows_engine_config, false).await;
-
-    AnnotatedWorkflowsEngine::new(workflows_engine, hooks, stats, task_handle)
-  }
-
-  fn make_state_store(&self) -> StateStore {
-    StateStore::new(
-      self.sdk_directory.path(),
-      &self.collector.scope("state_store"),
-      &self.runtime,
-    )
-  }
-
-  fn workflows_state_path(&self) -> PathBuf {
-    self.sdk_directory.path().join(WORKFLOWS_STATE_FILE_NAME)
-  }
-}
 
 #[tokio::test]
 async fn debug_mode() {
@@ -1612,8 +1190,8 @@ async fn ignore_persisted_state_if_invalid_dir() {
   );
 
   // Change workflows state
-  workflows_engine.process_log(
-    &Log {
+  workflows_engine.process_event(
+    WorkflowEvent::Log(&Log {
       log_type: LogType::NORMAL,
       log_level: log_level::DEBUG,
       message: LogMessage::String("foo".to_string()),
@@ -1622,7 +1200,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
       session_id: "foo_session".to_string(),
       occurred_at: OffsetDateTime::now_utc(),
       capture_session: None,
-    },
+    }),
     &TinySet::default(),
     &bd_state::test::TestStateReader::default(),
     OffsetDateTime::now_utc(),
@@ -3314,9 +2892,4 @@ async fn take_screenshot_action() {
   let result = engine.process_log(TestLog::new("foo"));
 
   assert!(result.capture_screenshot);
-}
-
-fn make_runtime() -> std::sync::Arc<ConfigLoader> {
-  let dir = tempfile::TempDir::with_prefix(".").unwrap();
-  ConfigLoader::new(dir.path())
 }

@@ -41,6 +41,7 @@ use bd_test_helpers::workflow::{
 use bd_time::TimeDurationExt;
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
+use bd_workflows::workflow::WorkflowEvent;
 use protobuf::Message;
 use rand::Rng;
 use sha2::Digest;
@@ -140,17 +141,19 @@ impl AnnotatedWorkflowsEngine {
       fields.insert(key.to_string().into(), value.into());
     }
 
-    self.engine.process_log(
-      &Log {
-        log_type: LogType::NORMAL,
-        log_level,
-        message: LogMessage::String(message.to_string()),
-        fields,
-        matching_fields: [].into(),
-        session_id: "1231231231312312312312".to_string(),
-        occurred_at: OffsetDateTime::now_utc(),
-        capture_session: None,
-      },
+    let log = Log {
+      log_type: LogType::NORMAL,
+      log_level,
+      message: LogMessage::String(message.to_string()),
+      fields,
+      matching_fields: [].into(),
+      session_id: "1231231231312312312312".to_string(),
+      occurred_at: OffsetDateTime::now_utc(),
+      capture_session: None,
+    };
+
+    self.engine.process_event(
+      WorkflowEvent::Log(&log),
       &TinySet::default(),
       &self.state_reader,
       OffsetDateTime::now_utc(),

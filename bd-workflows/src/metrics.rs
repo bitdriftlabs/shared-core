@@ -10,9 +10,8 @@
 mod metrics_test;
 
 use crate::config::{ActionEmitMetric, TagValue};
-use crate::workflow::TriggeredActionEmitSankey;
+use crate::workflow::{TriggeredActionEmitSankey, WorkflowEvent};
 use bd_client_stats::Stats;
-use bd_log_primitives::Log;
 use bd_stats_common::MetricType;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -35,19 +34,19 @@ impl MetricsCollector {
   pub(crate) fn emit_metrics(
     &self,
     actions: &BTreeSet<&ActionEmitMetric>,
-    log: &Log,
+    event: WorkflowEvent<'_>,
     state_reader: &dyn bd_state::StateReader,
   ) {
     // TODO(Augustyniak): We dedupe stats in here too only when both their tags and the value of
     // If `counter_increment` values are identical, consider deduping metrics even if their
     // `counter_increment` fields have different values.
     for action in actions {
-      let tags = Self::extract_tags(log, state_reader, &action.tags);
+      let tags = Self::extract_tags(event, state_reader, &action.tags);
 
       #[allow(clippy::cast_precision_loss)]
       let maybe_value: anyhow::Result<f64> = match &action.increment {
         crate::config::ValueIncrement::Fixed(value) => Ok(*value as f64),
-        crate::config::ValueIncrement::Extract(extract) => Self::resolve_field_name(extract, log)
+        crate::config::ValueIncrement::Extract(extract) => Self::resolve_field_name(extract, event)
           .ok_or_else(|| anyhow::anyhow!("field {extract:?} not found"))
           .and_then(|value| value.parse::<f64>().map_err(Into::into)),
       };
@@ -82,11 +81,11 @@ impl MetricsCollector {
   pub(crate) fn emit_sankeys(
     &self,
     actions: &BTreeSet<TriggeredActionEmitSankey<'_>>,
-    log: &Log,
+    event: WorkflowEvent<'_>,
     state_reader: &dyn bd_state::StateReader,
   ) {
     for action in actions {
-      let mut tags = Self::extract_tags(log, state_reader, action.action.tags());
+      let mut tags = Self::extract_tags(event, state_reader, action.action.tags());
       tags.insert("_path_id".to_string(), action.path.path_id.clone());
 
       self
@@ -95,11 +94,17 @@ impl MetricsCollector {
     }
   }
 
-  fn resolve_field_name<'a>(key: &str, log: &'a Log) -> Option<Cow<'a, str>> {
-    match key {
-      "log_level" => Some(log.log_level.to_string().into()),
-      "log_type" => Some((log.log_type as u32).to_string().into()),
-      key => log.field_value(key),
+  fn resolve_field_name<'a>(key: &str, event: WorkflowEvent<'a>) -> Option<Cow<'a, str>> {
+    match event {
+      WorkflowEvent::Log(log) => match key {
+        "log_level" => Some(log.log_level.to_string().into()),
+        "log_type" => Some((log.log_type as u32).to_string().into()),
+        key => log.field_value(key),
+      },
+      WorkflowEvent::StateChange(_) => {
+        // State changes don't have log fields, so field extraction always fails
+        None
+      },
     }
   }
 
@@ -113,7 +118,7 @@ impl MetricsCollector {
   }
 
   fn extract_tags(
-    log: &Log,
+    event: WorkflowEvent<'_>,
     state_reader: &dyn bd_state::StateReader,
     tags: &BTreeMap<String, TagValue>,
   ) -> BTreeMap<String, String> {
@@ -121,12 +126,15 @@ impl MetricsCollector {
 
     for (key, value) in tags {
       if let Some(extracted_value) = match value {
-        crate::config::TagValue::FieldExtract(extract) => Self::resolve_field_name(extract, log),
+        crate::config::TagValue::FieldExtract(extract) => Self::resolve_field_name(extract, event),
         crate::config::TagValue::FeatureFlagExtract(extract) => {
           Self::resolve_feature_flag_value(extract, state_reader)
         },
         crate::config::TagValue::Fixed(value) => Some(value.as_str().into()),
-        crate::config::TagValue::LogBodyExtract => log.message.as_str().map(Cow::Borrowed),
+        crate::config::TagValue::LogBodyExtract => match event {
+          WorkflowEvent::Log(log) => log.message.as_str().map(Cow::Borrowed),
+          WorkflowEvent::StateChange(_) => None,
+        },
       } {
         extracted_tags.insert(key.clone(), extracted_value.into_owned());
       }

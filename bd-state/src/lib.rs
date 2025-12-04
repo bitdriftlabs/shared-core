@@ -39,6 +39,107 @@ pub type TimestampedStateValue = (String, OffsetDateTime);
 pub type ScopedStateMap = AHashMap<String, TimestampedStateValue>;
 
 //
+// StateChangeType
+//
+
+/// The type of state change that occurred.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StateChangeType {
+  /// A new key was inserted
+  Inserted { value: String },
+  /// An existing key was updated
+  Updated {
+    old_value: String,
+    new_value: String,
+  },
+  /// A key was removed
+  Removed { old_value: String },
+  /// No change occurred (e.g., setting same value)
+  NoChange,
+}
+
+//
+// StateChange
+//
+
+/// Information about a state change operation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StateChange {
+  pub scope: Scope,
+  pub key: String,
+  pub change_type: StateChangeType,
+  pub timestamp: OffsetDateTime,
+}
+
+impl StateChange {
+  /// Creates a `StateChange` for an inserted value.
+  #[must_use]
+  pub fn inserted(
+    scope: Scope,
+    key: impl Into<String>,
+    value: impl Into<String>,
+    timestamp: OffsetDateTime,
+  ) -> Self {
+    Self {
+      scope,
+      key: key.into(),
+      change_type: StateChangeType::Inserted {
+        value: value.into(),
+      },
+      timestamp,
+    }
+  }
+
+  /// Creates a `StateChange` for an updated value.
+  #[must_use]
+  pub fn updated(
+    scope: Scope,
+    key: impl Into<String>,
+    old_value: impl Into<String>,
+    new_value: impl Into<String>,
+    timestamp: OffsetDateTime,
+  ) -> Self {
+    Self {
+      scope,
+      key: key.into(),
+      change_type: StateChangeType::Updated {
+        old_value: old_value.into(),
+        new_value: new_value.into(),
+      },
+      timestamp,
+    }
+  }
+
+  /// Creates a `StateChange` for a removed value.
+  #[must_use]
+  pub fn removed(
+    scope: Scope,
+    key: impl Into<String>,
+    old_value: impl Into<String>,
+    timestamp: OffsetDateTime,
+  ) -> Self {
+    Self {
+      scope,
+      key: key.into(),
+      change_type: StateChangeType::Removed {
+        old_value: old_value.into(),
+      },
+      timestamp,
+    }
+  }
+}
+
+//
+// StateChanges
+//
+
+/// Result of operations that may modify multiple keys.
+#[derive(Debug, Clone, Default)]
+pub struct StateChanges {
+  pub changes: Vec<StateChange>,
+}
+
+//
 // StoreInitResult
 //
 

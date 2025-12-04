@@ -6,8 +6,16 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
+#[path = "./engine_test_helpers.rs"]
+mod engine_test_helpers;
+
+#[cfg(test)]
 #[path = "./engine_test.rs"]
 mod engine_test;
+
+#[cfg(test)]
+#[path = "./engine_state_change_test.rs"]
+mod engine_state_change_test;
 
 use crate::actions_flush_buffers::{
   BuffersToFlush,
@@ -35,6 +43,7 @@ use crate::workflow::{
   TriggeredActionEmitSankey,
   Workflow,
   WorkflowDebugStateMap,
+  WorkflowEvent,
 };
 use anyhow::anyhow;
 use bd_api::DataUpload;
@@ -539,23 +548,9 @@ impl WorkflowsEngine {
     self.needs_state_persistence = true;
   }
 
-  /// Processes a given log. Returns actions that should be performed
-  /// as the result of processing a log.
-  pub fn process_log<'a>(
-    &'a mut self,
-    log: &Log,
-    log_destination_buffer_ids: &'a TinySet<Cow<'a, str>>,
-    state_reader: &dyn bd_state::StateReader,
-    now: OffsetDateTime,
-  ) -> WorkflowsEngineResult<'a> {
-    // Measure duration in here even if the list of workflows is empty.
-    let _timer = self.stats.process_log_duration.start_timer();
-
+  fn maybe_update_session(&mut self, incoming_session_id: &str) {
     if self.state.session_id.is_empty() {
-      log::debug!(
-        "workflows engine: moving from no session to session \"{}\"",
-        log.session_id
-      );
+      log::debug!("workflows engine: moving from no session to session \"{incoming_session_id}\"",);
       // There was no state on a disk when workflows engine was started
       // and engine just observed first session ID.
       // We do not have to rush to persist it to disk until any of the
@@ -563,13 +558,13 @@ impl WorkflowsEngine {
       // state on session change, having empty session ID
       // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
       // all workflows in their initial states.
-      self.state.session_id.clone_from(&log.session_id);
+      self.state.session_id = incoming_session_id.to_string();
       self.stats.sessions_total.inc();
-    } else if self.state.session_id != log.session_id {
+    } else if self.state.session_id != incoming_session_id {
       log::debug!(
         "workflows engine: moving from \"{}\" to new session \"{}\", cleaning workflows state",
         self.state.session_id,
-        log.session_id
+        incoming_session_id
       );
       // We are lazy and don't say that state needs persistence.
       // That may result in new session ID not being stored to disk
@@ -580,16 +575,33 @@ impl WorkflowsEngine {
       // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
       // all workflows in their initial states.
       self.clean_state();
-      self.state.session_id.clone_from(&log.session_id);
+      self.state.session_id = incoming_session_id.to_string();
       self.stats.sessions_total.inc();
+    }
+  }
+
+  /// Process a single workflow event against all managed workflows. This advances the active
+  /// workflows based on the event, collecting any resulting triggered actions and logs to inject.
+  pub fn process_event<'a>(
+    &'a mut self,
+    event: WorkflowEvent<'_>,
+    log_destination_buffer_ids: &'a TinySet<Cow<'a, str>>,
+    state_reader: &dyn bd_state::StateReader,
+    now: OffsetDateTime,
+  ) -> WorkflowsEngineResult<'a> {
+    // Measure duration in here even if the list of workflows is empty.
+    let _timer = self.stats.process_log_duration.start_timer();
+
+    if let Some(session_id) = &event.session_id() {
+      self.maybe_update_session(session_id);
     }
 
     // Return early if there's no work to avoid unnecessary copies.
     // In order to support explicit session capture even when there are no workflows we need to
-    // proceed with the processing if either this log is requesting a session capture or if there
+    // proceed with the processing if either this is a log requesting a session capture or if there
     // is an active streaming action.
     if self.state.workflows.is_empty()
-      && log.capture_session.is_none()
+      && event.capture_session().is_none()
       && self.state.streaming_actions.is_empty()
     {
       return WorkflowsEngineResult {
@@ -614,7 +626,7 @@ impl WorkflowsEngine {
       };
 
       let was_in_initial_state = workflow.is_in_initial_state();
-      let result = workflow.process_log(config, log, state_reader, now);
+      let result = workflow.process_event(config, event, state_reader, now);
 
       macro_rules! inc_by {
         ($field:ident, $value:ident) => {
@@ -675,8 +687,8 @@ impl WorkflowsEngine {
       capture_screenshot,
     } = Self::prepare_actions(actions);
 
-    if let Some(capture_session) = log.capture_session {
-      log::debug!("log requested session capture, capturing session");
+    if let Some(capture_session) = event.capture_session() {
+      log::debug!("event requested session capture, capturing session");
 
       let streaming_log_count = self.explicit_session_capture_streaming_log_count.read();
 
@@ -732,12 +744,17 @@ impl WorkflowsEngine {
       .metrics_collector
       .stats
       .record_workflow_debug_state(all_incremental_workflow_debug_state);
+
+    // Emit metrics and sankeys for all event types.
+    // For state changes, field/message extraction will fail to extract a value as there are no
+    // associated fields/message.
+    // TODO(snowp): Implement generic state extractions in favor of the feature flag extraction.
     self
       .metrics_collector
-      .emit_metrics(&emit_metric_actions, log, state_reader);
+      .emit_metrics(&emit_metric_actions, event, state_reader);
     self
       .metrics_collector
-      .emit_sankeys(&emit_sankey_diagrams_actions, log, state_reader);
+      .emit_sankeys(&emit_sankey_diagrams_actions, event, state_reader);
 
     for action in emit_sankey_diagrams_actions {
       // There is no real limit on the number of sankey paths we might want to upload, so ensure

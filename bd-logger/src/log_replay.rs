@@ -22,7 +22,7 @@ use bd_session_replay::CaptureScreenshotHandler;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::config::FlushBufferId;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
-use bd_workflows::workflow::WorkflowDebugStateMap;
+use bd_workflows::workflow::{WorkflowDebugStateMap, WorkflowEvent};
 use itertools::Itertools;
 use protobuf::CodedOutputStream;
 use std::borrow::Cow;
@@ -220,10 +220,12 @@ impl ProcessingPipeline {
       &state_reader,
     );
 
-    let mut result =
-      self
-        .workflows_engine
-        .process_log(&log.log, &matching_buffers, &state_reader, now);
+    let mut result = self.workflows_engine.process_event(
+      WorkflowEvent::Log(&log.log),
+      &matching_buffers,
+      &state_reader,
+      now,
+    );
     let log_replay_result = LogReplayResult {
       logs_to_inject: std::mem::take(&mut result.logs_to_inject)
         .into_values()
