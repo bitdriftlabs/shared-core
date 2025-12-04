@@ -1346,7 +1346,3 @@ fn branching_exclusive_workflow() {
   assert_active_run_traversals!(workflow; 0; "B", "C");
   assert!(!workflow.is_in_initial_state());
 }
-
-//
-// State change matching tests
-//
