@@ -27,7 +27,10 @@ use time::macros::datetime;
 ///
 /// let mut reader = TestStateReader::default();
 /// reader.insert(Scope::FeatureFlagExposure, "my_flag", "true");
-/// assert_eq!(reader.get(Scope::FeatureFlagExposure, "my_flag"), Some("true"));
+/// assert_eq!(
+///   reader.get(Scope::FeatureFlagExposure, "my_flag"),
+///   Some("true")
+/// );
 /// ```
 #[derive(Default)]
 pub struct TestStateReader {

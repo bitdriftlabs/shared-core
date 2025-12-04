@@ -201,6 +201,16 @@ pub struct Sender {
 }
 
 impl Sender {
+  pub fn from_parts(
+    log_buffer_tx: bd_bounded_buffer::Sender<EmitLogMessage>,
+    state_buffer_tx: bd_bounded_buffer::Sender<StateUpdateMessage>,
+  ) -> Self {
+    Self {
+      log_buffer_tx,
+      state_buffer_tx,
+    }
+  }
+
   pub fn try_send_log(&self, msg: EmitLogMessage) -> Result<(), TrySendError> {
     self.log_buffer_tx.try_send(msg)
   }

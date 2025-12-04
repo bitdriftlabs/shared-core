@@ -124,7 +124,10 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
   time_provider.advance(10_i64.milliseconds());
 
   // Delete key1
-  let ts3 = store.remove(Scope::FeatureFlagExposure, "key1").await?.unwrap();
+  let ts3 = store
+    .remove(Scope::FeatureFlagExposure, "key1")
+    .await?
+    .unwrap();
 
   store.sync()?;
 

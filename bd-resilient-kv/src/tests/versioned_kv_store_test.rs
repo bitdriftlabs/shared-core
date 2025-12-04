@@ -185,7 +185,10 @@ async fn basic_crud(#[case] mode: StoreMode) -> anyhow::Result<()> {
   assert!(ts2 >= ts1);
 
   // Remove a key
-  let ts3 = setup.store.remove(Scope::FeatureFlagExposure, "key1").await?;
+  let ts3 = setup
+    .store
+    .remove(Scope::FeatureFlagExposure, "key1")
+    .await?;
   assert!(ts3.is_some());
   assert!(ts3.unwrap() >= ts2);
 
@@ -785,8 +788,15 @@ async fn test_empty_store_operations(#[case] mode: StoreMode) -> anyhow::Result<
   let mut setup = DualModeSetup::new(mode).await?;
 
   // Operations on empty store
-  assert_eq!(setup.store.get(Scope::FeatureFlagExposure, "nonexistent"), None);
-  assert!(!setup.store.contains_key(Scope::FeatureFlagExposure, "nonexistent"));
+  assert_eq!(
+    setup.store.get(Scope::FeatureFlagExposure, "nonexistent"),
+    None
+  );
+  assert!(
+    !setup
+      .store
+      .contains_key(Scope::FeatureFlagExposure, "nonexistent")
+  );
   assert_eq!(
     setup
       .store
@@ -885,7 +895,10 @@ async fn test_multiple_rotations() -> anyhow::Result<()> {
   for i in 0 .. 3 {
     let key = format!("key{}", i);
     let value = make_string_value(&format!("value{}", i));
-    setup.store.insert(Scope::FeatureFlagExposure, key, value).await?;
+    setup
+      .store
+      .insert(Scope::FeatureFlagExposure, key, value)
+      .await?;
     let rotation = setup.store.rotate_journal().await?;
     snapshot_paths.push(rotation.snapshot_path.clone());
   }

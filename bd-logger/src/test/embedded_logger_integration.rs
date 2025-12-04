@@ -83,8 +83,6 @@ impl Setup {
       static_metadata: Arc::new(EmptyMetadata),
       api_key: "apikey".to_string(),
       start_in_sleep_mode: false,
-      feature_flags_file_size_bytes: 1024 * 1024,
-      feature_flags_high_watermark: 0.8,
     })
     .with_shutdown_handle(shutdown.make_handle())
     .build()
