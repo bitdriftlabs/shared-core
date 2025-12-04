@@ -577,11 +577,7 @@ pub(crate) struct StateChangeMatch {
 
 impl StateChangeMatch {
   fn try_from_proto(proto: &workflow::workflow::RuleStateChangeMatch) -> anyhow::Result<Self> {
-    let scope = match proto
-      .scope
-      .enum_value()
-      .map_err(|_| anyhow!("invalid state scope"))?
-    {
+    let scope = match proto.scope.enum_value_or_default() {
       bd_proto::protos::state::scope::StateScope::UNSPECIFIED => {
         anyhow::bail!("invalid state scope: unspecified");
       },
