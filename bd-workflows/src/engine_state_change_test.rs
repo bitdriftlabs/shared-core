@@ -19,6 +19,7 @@ use crate::test::{MakeConfig, TestLog};
 use bd_client_stats_store::test::StatsHelper;
 use bd_log_matcher::builder::message_equals;
 use bd_proto::protos::logging::payload::LogType;
+use bd_state::StateChange;
 use bd_stats_common::labels;
 use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
@@ -65,14 +66,12 @@ async fn state_change_string_match_triggers_transition() {
     .await;
 
   // Process a state change that matches
-  let state_change = bd_state::StateChange {
-    scope: bd_state::Scope::FeatureFlag,
-    key: "feature_flag".to_string(),
-    change_type: bd_state::StateChangeType::Inserted {
-      value: "enabled".to_string(),
-    },
-    timestamp: OffsetDateTime::now_utc(),
-  };
+  let state_change = StateChange::inserted(
+    bd_state::Scope::FeatureFlag,
+    "feature_flag",
+    "enabled",
+    OffsetDateTime::now_utc(),
+  );
 
   engine.process_state_change(&state_change);
 
@@ -110,14 +109,12 @@ async fn state_change_is_set_match() {
     .await;
 
   // Test with string value
-  let state_change = bd_state::StateChange {
-    scope: bd_state::Scope::FeatureFlag,
-    key: "any_value".to_string(),
-    change_type: bd_state::StateChangeType::Inserted {
-      value: "hello".to_string(),
-    },
-    timestamp: OffsetDateTime::now_utc(),
-  };
+  let state_change = StateChange::inserted(
+    bd_state::Scope::FeatureFlag,
+    "any_value",
+    "hello",
+    OffsetDateTime::now_utc(),
+  );
 
   engine.process_state_change(&state_change);
 
@@ -155,14 +152,12 @@ async fn state_change_no_match_no_transition() {
     .await;
 
   // Process state change with wrong key
-  let state_change = bd_state::StateChange {
-    scope: bd_state::Scope::FeatureFlag,
-    key: "different_key".to_string(),
-    change_type: bd_state::StateChangeType::Inserted {
-      value: "enabled".to_string(),
-    },
-    timestamp: OffsetDateTime::now_utc(),
-  };
+  let state_change = StateChange::inserted(
+    bd_state::Scope::FeatureFlag,
+    "different_key",
+    "enabled",
+    OffsetDateTime::now_utc(),
+  );
 
   engine.process_state_change(&state_change);
   // Verify no transition occurred - metric should not be emitted
@@ -177,14 +172,12 @@ async fn state_change_no_match_no_transition() {
   );
 
   // Process state change with wrong value
-  let state_change = bd_state::StateChange {
-    scope: bd_state::Scope::FeatureFlag,
-    key: "flag".to_string(),
-    change_type: bd_state::StateChangeType::Inserted {
-      value: "disabled".to_string(),
-    },
-    timestamp: OffsetDateTime::now_utc(),
-  };
+  let state_change = StateChange::inserted(
+    bd_state::Scope::FeatureFlag,
+    "flag",
+    "disabled",
+    OffsetDateTime::now_utc(),
+  );
 
   engine.process_state_change(&state_change);
   // Verify still no transition - metric should still not be emitted
@@ -245,14 +238,12 @@ async fn state_change_with_timestamp_extraction() {
 
   // Process state change at a specific timestamp
   let state_change_time = datetime!(2024-01-15 10:30:45 UTC);
-  let state_change = bd_state::StateChange {
-    scope: bd_state::Scope::FeatureFlag,
-    key: "test_flag".to_string(),
-    change_type: bd_state::StateChangeType::Inserted {
-      value: "enabled".to_string(),
-    },
-    timestamp: state_change_time,
-  };
+  let state_change = StateChange::inserted(
+    bd_state::Scope::FeatureFlag,
+    "test_flag",
+    "enabled",
+    state_change_time,
+  );
 
   let result = engine.process_state_change(&state_change);
   assert!(result.logs_to_inject.is_empty());
@@ -323,14 +314,12 @@ async fn state_change_does_trigger_timeout() {
 
   // Process a state change at T=2 seconds (after the timeout would have expired)
   // This SHOULD trigger the timeout transition to C (not match the state change rule)
-  let state_change = bd_state::StateChange {
-    scope: bd_state::Scope::FeatureFlag,
-    key: "different_flag".to_string(),
-    change_type: bd_state::StateChangeType::Inserted {
-      value: "enabled".to_string(),
-    },
-    timestamp: datetime!(2024-01-01 00:00:02 UTC),
-  };
+  let state_change = StateChange::inserted(
+    bd_state::Scope::FeatureFlag,
+    "different_flag",
+    "enabled",
+    datetime!(2024-01-01 00:00:02 UTC),
+  );
 
   engine.process_state_change(&state_change);
 
