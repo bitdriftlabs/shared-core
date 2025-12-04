@@ -370,14 +370,12 @@ async fn state_change_triggers_counter_metric() {
   engine_assert_active_runs!(engine; 0; "A");
 
   // Process a state change that matches the rule
-  let state_change = bd_state::StateChange {
-    scope: bd_state::Scope::FeatureFlag,
-    key: "test_flag".to_string(),
-    change_type: bd_state::StateChangeType::Inserted {
-      value: "enabled".to_string(),
-    },
-    timestamp: time::OffsetDateTime::now_utc(),
-  };
+  let state_change = StateChange::inserted(
+    bd_state::Scope::FeatureFlag,
+    "test_flag",
+    "enabled",
+    OffsetDateTime::now_utc(),
+  );
 
   engine.process_state_change(&state_change);
 
@@ -423,14 +421,12 @@ async fn state_change_triggers_histogram_metric() {
   engine_assert_active_runs!(engine; 0; "A");
 
   // Process a state change that matches the rule
-  let state_change = bd_state::StateChange {
-    scope: bd_state::Scope::FeatureFlag,
-    key: "test_flag".to_string(),
-    change_type: bd_state::StateChangeType::Inserted {
-      value: "enabled".to_string(),
-    },
-    timestamp: time::OffsetDateTime::now_utc(),
-  };
+  let state_change = StateChange::inserted(
+    bd_state::Scope::FeatureFlag,
+    "test_flag",
+    "enabled",
+    OffsetDateTime::now_utc(),
+  );
 
   engine.process_state_change(&state_change);
 
@@ -477,14 +473,12 @@ async fn state_change_timeout_emits_metrics() {
   engine_assert_active_runs!(engine; 0; "A");
 
   // Process a state change at T=2 seconds (after timeout)
-  let state_change = bd_state::StateChange {
-    scope: bd_state::Scope::FeatureFlag,
-    key: "different_flag".to_string(),
-    change_type: bd_state::StateChangeType::Inserted {
-      value: "enabled".to_string(),
-    },
-    timestamp: datetime!(2024-01-01 00:00:02 UTC),
-  };
+  let state_change = StateChange::inserted(
+    bd_state::Scope::FeatureFlag,
+    "different_flag",
+    "enabled",
+    datetime!(2024-01-01 00:00:02 UTC),
+  );
 
   engine.process_state_change(&state_change);
 
