@@ -155,11 +155,19 @@ impl AnnotatedWorkflowsEngine {
     &mut self,
     state_change: &bd_state::StateChange,
   ) -> WorkflowsEngineResult<'_> {
+    self.process_state_change_with_reader(state_change, &bd_state::test::TestStateReader::default())
+  }
+
+  pub fn process_state_change_with_reader(
+    &mut self,
+    state_change: &bd_state::StateChange,
+    state_reader: &dyn bd_state::StateReader,
+  ) -> WorkflowsEngineResult<'_> {
     // State changes don't write to log buffers, so use the static empty set
     self.engine.process_event(
       WorkflowEvent::StateChange(state_change),
       &EMPTY_BUFFER_IDS,
-      &bd_state::test::TestStateReader::default(),
+      state_reader,
       state_change.timestamp,
     )
   }

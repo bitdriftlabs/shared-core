@@ -748,8 +748,7 @@ impl WorkflowsEngine {
     // Emit metrics and sankeys for all event types.
     // For state changes, field/message extraction will fail to extract a value as there are no
     // associated fields/message.
-    // TODO(snowp): Support state extractions for metrics and sankeys. We'll need to figure out the
-    // migration strategy for this as we transition certain values from fields to state.
+    // TODO(snowp): Implement generic state extractions in favor of the feature flag extraction.
     self
       .metrics_collector
       .emit_metrics(&emit_metric_actions, event, state_reader);

@@ -426,3 +426,69 @@ async fn state_change_triggers_histogram_metric() {
     .collector
     .assert_workflow_histogram_observed(42.0, "state_change_histogram", labels! {});
 }
+
+// Tests that state changes can extract feature flag values from the state reader.
+// During a state change transition, we can extract values from the state reader (like feature
+// flags) and use them in metric tags. This is useful for adding context about other feature flags
+// when a state change occurs.
+#[tokio::test]
+async fn state_change_with_feature_flag_extraction() {
+  use bd_test_helpers::workflow::extract_feature_flag_tag;
+
+  let b = state("B");
+
+  // Transition from A to B on state change, extracting a feature flag value into a metric tag
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    make_state_change_rule(
+      bd_state::Scope::FeatureFlag,
+      "trigger_flag",
+      make_is_set_match(),
+    ),
+    &[make_emit_counter_action(
+      "state_change_with_extraction",
+      metric_value(1),
+      vec![extract_feature_flag_tag("extracted_flag", "flag_value")],
+    )],
+  );
+
+  let workflow = WorkflowBuilder::new("feature_flag_extraction_test", &[&a, &b]).make_config();
+  let setup = Setup::new();
+
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
+
+  // Set up a state reader with a feature flag value to extract
+  let mut state_reader = bd_state::test::TestStateReader::new();
+  state_reader.insert(
+    bd_state::Scope::FeatureFlag,
+    "extracted_flag",
+    "extracted_value",
+  );
+
+  // Process state change that triggers the transition, with our custom state reader
+  // This will create the initial run and transition to B
+  let state_change = StateChange::inserted(
+    bd_state::Scope::FeatureFlag,
+    "trigger_flag",
+    "enabled",
+    OffsetDateTime::now_utc(),
+  );
+
+  engine.process_state_change_with_reader(&state_change, &state_reader);
+
+  // State B is a final state (no outgoing transitions), so the run completes and is removed
+  // We can verify the transition occurred by checking the metric was emitted
+
+  // Verify the metric was emitted with the extracted feature flag value in the tag
+  setup.collector.assert_workflow_counter_eq(
+    1,
+    "state_change_with_extraction",
+    labels! {
+      "flag_value" => "extracted_value",
+    },
+  );
+}
