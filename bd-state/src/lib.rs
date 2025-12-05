@@ -426,6 +426,7 @@ impl Store {
     }
   }
 
+<<<<<<< HEAD
   pub async fn insert(
     &self,
     scope: Scope,
@@ -434,14 +435,8 @@ impl Store {
   ) -> anyhow::Result<StateChange> {
     let mut locked = self.inner.write().await;
 
-    // Check if key exists and get old value
-    let old_value = locked
-      .get(scope, &key)
-      .filter(|v| v.has_string_value())
-      .map(|v| v.string_value().to_string());
-
-    // Perform the insert
-    let timestamp_u64 = locked
+    // Perform the insert and get both timestamp and old value in one operation
+    let (timestamp_u64, old_state_value) = locked
       .insert(
         scope,
         key.clone(),
@@ -452,13 +447,18 @@ impl Store {
       )
       .await?;
 
+    // Extract old string value if it exists and is a string
+    let old_value = old_state_value
+      .filter(|v| v.has_string_value())
+      .map(|v| v.string_value().to_string());
+
     // Convert timestamp
     let timestamp = OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_u64) * 1_000)
       .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
     // Determine change type
     let change_type = match old_value {
-      Some(old) if old == value => StateChangeType::NoChange,
+      Some(old) if old == value => StateChangeType::NoChange { key: key.clone() },
       Some(old) => StateChangeType::Updated {
         old_value: old,
         new_value: value,

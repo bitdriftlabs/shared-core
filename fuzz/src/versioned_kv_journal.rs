@@ -462,7 +462,7 @@ impl VersionedKVJournalFuzzTest {
           let result = store.insert(scope, key_str.clone(), value.0.clone()).await;
 
           match result {
-            Ok(timestamp) => {
+            Ok((timestamp, _old_value)) => {
               // Since time is frozen unless advanced, the timestamp of the entry should be exactly
               // the current time.
               assert_eq!(timestamp, current_timestamp_micros());
@@ -712,7 +712,7 @@ impl VersionedKVJournalFuzzTest {
             let result = store.insert(scope, key_str.clone(), value.clone()).await;
 
             match result {
-              Ok(timestamp) => {
+              Ok((timestamp, _old_value)) => {
                 let key = (scope, key_str.clone());
                 // Track in our state
                 self.state.insert(
