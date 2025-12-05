@@ -338,7 +338,7 @@ impl Leaf {
         StateMatch(state_match) => {
           let state_key = state_match.state_key.clone();
           let scope = match state_match.scope.enum_value_or_default() {
-            StateScope::FEATURE_FLAG => Scope::FeatureFlag,
+            StateScope::FEATURE_FLAG => Scope::FeatureFlagExposure,
             StateScope::GLOBAL_STATE => Scope::GlobalState,
             StateScope::UNSPECIFIED => {
               // For now, we only support feature flags. Other scopes would need additional

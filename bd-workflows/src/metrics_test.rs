@@ -112,7 +112,11 @@ fn counter_label_extraction() {
   let (metrics_collector, collector) = make_metrics_collector();
 
   let mut state_reader = bd_state::test::TestStateReader::default();
-  state_reader.insert(bd_state::Scope::FeatureFlag, "enabled_flag", "variant_a");
+  state_reader.insert(
+    bd_state::Scope::FeatureFlagExposure,
+    "enabled_flag",
+    "variant_a",
+  );
 
   let log = Log {
     message: "message".into(),

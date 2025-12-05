@@ -224,8 +224,6 @@ pub fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Result<Lo
     network: Box::new(network),
     static_metadata,
     start_in_sleep_mode: false,
-    feature_flags_file_size_bytes: 1024 * 1024,
-    feature_flags_high_watermark: 0.8,
   })
   .build()?;
   Ok(LoggerHolder::new(logger, future, shutdown_trigger))

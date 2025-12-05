@@ -113,7 +113,7 @@ impl MetricsCollector {
     state_reader: &'a dyn bd_state::StateReader,
   ) -> Option<Cow<'a, str>> {
     state_reader
-      .get(bd_state::Scope::FeatureFlag, key)
+      .get(bd_state::Scope::FeatureFlagExposure, key)
       .map(Cow::Borrowed)
   }
 

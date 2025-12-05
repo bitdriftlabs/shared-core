@@ -5,15 +5,13 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::AsyncLogBufferMessage;
 use crate::Block;
-use crate::async_log_buffer::{AsyncLogBuffer, LogLine, LogReplay};
+use crate::async_log_buffer::{AsyncLogBuffer, LogLine, LogReplay, Sender};
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
 use bd_api::{DataUpload, SimpleNetworkQualityProvider};
-use bd_bounded_buffer::{self};
 use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::Collector;
@@ -110,10 +108,7 @@ impl Setup {
   fn make_test_async_log_buffer(
     &mut self,
     config_update_rx: tokio::sync::mpsc::Receiver<ConfigUpdate>,
-  ) -> (
-    AsyncLogBuffer<TestReplay>,
-    bd_bounded_buffer::Sender<AsyncLogBufferMessage>,
-  ) {
+  ) -> (AsyncLogBuffer<TestReplay>, Sender) {
     let replayer = TestReplay::new();
     self.replayer_log_count = replayer.logs_count.clone();
     self.replayer_logs = replayer.logs.clone();
@@ -151,10 +146,7 @@ impl Setup {
   fn make_real_async_log_buffer(
     &self,
     config_update_rx: tokio::sync::mpsc::Receiver<ConfigUpdate>,
-  ) -> (
-    AsyncLogBuffer<LoggerReplay>,
-    bd_bounded_buffer::Sender<AsyncLogBufferMessage>,
-  ) {
+  ) -> (AsyncLogBuffer<LoggerReplay>, Sender) {
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
     let (_, report_rx) = tokio::sync::mpsc::channel(1);
     AsyncLogBuffer::new(
@@ -495,7 +487,7 @@ fn enqueuing_log_blocks() {
 
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
 
-  let (buffer, buffer_tx) = setup.make_real_async_log_buffer(config_update_rx);
+  let (buffer, buffer_sender) = setup.make_real_async_log_buffer(config_update_rx);
 
   let rt = tokio::runtime::Runtime::new().unwrap();
   rt.spawn(async move {
@@ -523,7 +515,7 @@ fn enqueuing_log_blocks() {
   });
 
   let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
-    &buffer_tx,
+    &buffer_sender,
     0,
     LogType::NORMAL,
     "test".into(),
@@ -676,20 +668,17 @@ async fn logs_resource_utilization_log() {
     assert_ok!(config_update_tx.blocking_send(config_update));
   });
 
-  let message = AsyncLogBufferMessage::EmitLog((
-    LogLine {
-      log_level: log_level::DEBUG,
-      log_type: LogType::RESOURCE,
-      message: StringOrBytes::String(String::new()),
-      fields: AnnotatedLogFields::new(),
-      matching_fields: AnnotatedLogFields::new(),
-      attributes_overrides: None,
-      capture_session: None,
-    },
-    None,
-  ));
+  let log = LogLine {
+    log_level: log_level::DEBUG,
+    log_type: LogType::RESOURCE,
+    message: StringOrBytes::String(String::new()),
+    fields: AnnotatedLogFields::new(),
+    matching_fields: AnnotatedLogFields::new(),
+    attributes_overrides: None,
+    capture_session: None,
+  };
 
-  sender.try_send(message).unwrap();
+  sender.try_send_log(log.into()).unwrap();
 
   let state_store = TestStore::new().await;
 

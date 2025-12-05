@@ -137,14 +137,14 @@ impl ScopedMaps {
   #[must_use]
   pub fn get(&self, scope: Scope, key: &str) -> Option<&TimestampedValue> {
     match scope {
-      Scope::FeatureFlag => self.feature_flags.get(key),
+      Scope::FeatureFlagExposure => self.feature_flags.get(key),
       Scope::GlobalState => self.global_state.get(key),
     }
   }
 
   pub fn insert(&mut self, scope: Scope, key: String, value: TimestampedValue) {
     match scope {
-      Scope::FeatureFlag => {
+      Scope::FeatureFlagExposure => {
         self.feature_flags.insert(key, value);
       },
       Scope::GlobalState => {
@@ -155,7 +155,7 @@ impl ScopedMaps {
 
   pub fn remove(&mut self, scope: Scope, key: &str) -> Option<TimestampedValue> {
     match scope {
-      Scope::FeatureFlag => self.feature_flags.remove(key),
+      Scope::FeatureFlagExposure => self.feature_flags.remove(key),
       Scope::GlobalState => self.global_state.remove(key),
     }
   }
@@ -163,7 +163,7 @@ impl ScopedMaps {
   #[must_use]
   pub fn contains_key(&self, scope: Scope, key: &str) -> bool {
     match scope {
-      Scope::FeatureFlag => self.feature_flags.contains_key(key),
+      Scope::FeatureFlagExposure => self.feature_flags.contains_key(key),
       Scope::GlobalState => self.global_state.contains_key(key),
     }
   }
@@ -182,7 +182,7 @@ impl ScopedMaps {
     self
       .feature_flags
       .iter()
-      .map(|(k, v)| (Scope::FeatureFlag, k, v))
+      .map(|(k, v)| (Scope::FeatureFlagExposure, k, v))
       .chain(
         self
           .global_state
@@ -205,7 +205,7 @@ impl ScopedMaps {
     key: String,
   ) -> std::collections::hash_map::Entry<'_, String, TimestampedValue> {
     match scope {
-      Scope::FeatureFlag => self.feature_flags.entry(key),
+      Scope::FeatureFlagExposure => self.feature_flags.entry(key),
       Scope::GlobalState => self.global_state.entry(key),
     }
   }

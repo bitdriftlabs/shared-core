@@ -2456,8 +2456,6 @@ fn runtime_caching() {
       metadata_provider: Arc::new(LogMetadata::default()),
       device,
       start_in_sleep_mode: false,
-      feature_flags_file_size_bytes: 1024 * 1024,
-      feature_flags_high_watermark: 0.8,
     })
     .with_client_stats_tickers(Box::new(flush_ticker), Box::new(upload_ticker))
     .build_dedicated_thread()
@@ -2545,7 +2543,7 @@ fn workflow_state_change_match_advances_workflow() {
   // Set the feature flag to "enabled" - should transition from A to B
   setup
     .logger_handle
-    .set_feature_flag("test_flag".to_string(), Some("enabled".to_string()));
+    .set_feature_flag_exposure("test_flag".to_string(), Some("enabled".to_string()));
 
   // Wait a moment for the state change to be processed
   std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2553,7 +2551,7 @@ fn workflow_state_change_match_advances_workflow() {
   // Set the feature flag to "disabled" - should transition from B to C and emit metric
   setup
     .logger_handle
-    .set_feature_flag("test_flag".to_string(), Some("disabled".to_string()));
+    .set_feature_flag_exposure("test_flag".to_string(), Some("disabled".to_string()));
 
   // Wait a moment for the state change to be processed
   std::thread::sleep(std::time::Duration::from_millis(100));
@@ -2614,7 +2612,7 @@ fn workflow_state_change_match_flush_buffers() {
   // Set the feature flag to trigger the flush
   setup
     .logger_handle
-    .set_feature_flag("trigger_flush".to_string(), Some("true".to_string()));
+    .set_feature_flag_exposure("trigger_flush".to_string(), Some("true".to_string()));
 
   // The workflow should trigger a buffer flush, which should result in an upload
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {

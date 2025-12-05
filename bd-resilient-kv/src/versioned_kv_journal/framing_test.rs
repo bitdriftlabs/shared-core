@@ -90,7 +90,7 @@ fn varint_too_long() {
 #[test]
 fn frame_encode_decode() {
   let frame = Frame::new(
-    Scope::FeatureFlag,
+    Scope::FeatureFlagExposure,
     "key1",
     1_700_000_000_000_000,
     make_string_value("value"),
@@ -126,7 +126,7 @@ fn frame_with_delete() {
 #[test]
 fn frame_empty_payload() {
   let frame = Frame::new(
-    Scope::FeatureFlag,
+    Scope::FeatureFlagExposure,
     "empty_key",
     1_700_000_000_000_000,
     StateValue::default(),
@@ -147,7 +147,7 @@ fn frame_various_timestamps() {
 
   for timestamp in timestamps {
     let frame = Frame::new(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "test_key",
       timestamp,
       make_string_value("test"),
@@ -157,7 +157,7 @@ fn frame_various_timestamps() {
     let (decoded_frame, decoded_len) = Frame::<StateValue>::decode(&buf).unwrap();
 
     assert_eq!(decoded_frame.timestamp_micros, timestamp);
-    assert_eq!(decoded_frame.scope, Scope::FeatureFlag);
+    assert_eq!(decoded_frame.scope, Scope::FeatureFlagExposure);
     assert_eq!(decoded_frame.key, "test_key");
     assert_eq!(decoded_frame.payload, make_string_value("test"));
     assert_eq!(decoded_len, encoded_len);
@@ -167,7 +167,7 @@ fn frame_various_timestamps() {
 #[test]
 fn frame_buffer_too_small() {
   let frame = Frame::new(
-    Scope::FeatureFlag,
+    Scope::FeatureFlagExposure,
     "mykey",
     1_700_000_000_000_000,
     make_string_value("key:value"),
@@ -202,7 +202,7 @@ fn frame_incomplete_data() {
 #[test]
 fn frame_crc_mismatch() {
   let frame = Frame::new(
-    Scope::FeatureFlag,
+    Scope::FeatureFlagExposure,
     "mykey",
     1_700_000_000_000_000,
     make_string_value("key:value"),
@@ -221,14 +221,24 @@ fn frame_crc_mismatch() {
 
 #[test]
 fn frame_multiple_frames() {
-  let frame1 = Frame::new(Scope::FeatureFlag, "key1", 1000, make_string_value("first"));
+  let frame1 = Frame::new(
+    Scope::FeatureFlagExposure,
+    "key1",
+    1000,
+    make_string_value("first"),
+  );
   let frame2 = Frame::new(
     Scope::GlobalState,
     "key2",
     2000,
     make_string_value("second"),
   );
-  let frame3 = Frame::new(Scope::FeatureFlag, "key3", 3000, make_string_value("third"));
+  let frame3 = Frame::new(
+    Scope::FeatureFlagExposure,
+    "key3",
+    3000,
+    make_string_value("third"),
+  );
 
   let mut buf = vec![0u8; 1024];
   let len1 = frame1.encode(&mut buf).unwrap();
@@ -254,7 +264,7 @@ fn frame_length_varint_encoding() {
   // Small frames should use 1 byte for length, larger frames may use more
 
   // Very small payload (length should fit in 1 byte varint)
-  let small_frame = Frame::new(Scope::FeatureFlag, "x", 0, make_string_value("x"));
+  let small_frame = Frame::new(Scope::FeatureFlagExposure, "x", 0, make_string_value("x"));
   let mut buf = vec![0u8; 1024];
   let encoded_len = small_frame.encode(&mut buf).unwrap();
 

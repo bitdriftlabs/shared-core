@@ -34,7 +34,7 @@ impl<'a> Arbitrary<'a> for ArbitraryScope {
   fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
     let variant: u8 = u.arbitrary()?;
     Ok(Self(match variant % 2 {
-      0 => Scope::FeatureFlag,
+      0 => Scope::FeatureFlagExposure,
       1 => Scope::GlobalState,
       _ => unreachable!(),
     }))
@@ -215,7 +215,10 @@ impl KeyPool {
       KeyStrategy::Existing(index) => {
         if self.keys.is_empty() {
           // No existing keys, create a new one.
-          let new_key = (Scope::FeatureFlag, format!("key_{}", self.keys.len()));
+          let new_key = (
+            Scope::FeatureFlagExposure,
+            format!("key_{}", self.keys.len()),
+          );
           self.keys.push(new_key.clone());
           new_key
         } else {
@@ -240,7 +243,10 @@ impl KeyPool {
         if self.keys.is_empty() {
           // No existing keys, create a new one. At this point we have not inserted any keys yet so
           // // we can just create a new key.
-          (Scope::FeatureFlag, format!("key_{}", self.keys.len()))
+          (
+            Scope::FeatureFlagExposure,
+            format!("key_{}", self.keys.len()),
+          )
         } else {
           // Use modulo to wrap index into valid range
           let idx = (*index as usize) % self.keys.len();

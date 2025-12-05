@@ -105,7 +105,7 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
 
   let ts1 = store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key1".to_string(),
       make_string_value("value1"),
     )
@@ -115,7 +115,7 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
 
   let ts2 = store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key2".to_string(),
       make_string_value("value2"),
     )
@@ -124,7 +124,10 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
   time_provider.advance(10_i64.milliseconds());
 
   // Delete key1
-  let ts3 = store.remove(Scope::FeatureFlag, "key1").await?.unwrap();
+  let ts3 = store
+    .remove(Scope::FeatureFlagExposure, "key1")
+    .await?
+    .unwrap();
 
   store.sync()?;
 
@@ -141,22 +144,22 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
   // At ts1, only key1 should exist
   let state_ts1 = recovery.recover_at_timestamp(ts1)?;
   assert_eq!(state_ts1.len(), 1);
-  assert!(state_ts1.contains_key(&(Scope::FeatureFlag, "key1".to_string())));
+  assert!(state_ts1.contains_key(&(Scope::FeatureFlagExposure, "key1".to_string())));
 
   // At ts2, both keys should exist
   let state_ts2 = recovery.recover_at_timestamp(ts2)?;
   assert_eq!(state_ts2.len(), 2);
-  assert!(state_ts2.contains_key(&(Scope::FeatureFlag, "key1".to_string())));
-  assert!(state_ts2.contains_key(&(Scope::FeatureFlag, "key2".to_string())));
+  assert!(state_ts2.contains_key(&(Scope::FeatureFlagExposure, "key1".to_string())));
+  assert!(state_ts2.contains_key(&(Scope::FeatureFlagExposure, "key2".to_string())));
 
   // At ts3 (after deletion), only key2 should exist
   let state_ts3 = recovery.recover_at_timestamp(ts3)?;
   assert_eq!(state_ts3.len(), 1);
   assert!(
-    !state_ts3.contains_key(&(Scope::FeatureFlag, "key1".to_string())),
+    !state_ts3.contains_key(&(Scope::FeatureFlagExposure, "key1".to_string())),
     "key1 should be deleted"
   );
-  assert!(state_ts3.contains_key(&(Scope::FeatureFlag, "key2".to_string())));
+  assert!(state_ts3.contains_key(&(Scope::FeatureFlagExposure, "key2".to_string())));
 
   Ok(())
 }

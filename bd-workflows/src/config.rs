@@ -581,7 +581,7 @@ impl StateChangeMatch {
       bd_proto::protos::state::scope::StateScope::UNSPECIFIED => {
         anyhow::bail!("invalid state scope: unspecified");
       },
-      bd_proto::protos::state::scope::StateScope::FEATURE_FLAG => Scope::FeatureFlag,
+      bd_proto::protos::state::scope::StateScope::FEATURE_FLAG => Scope::FeatureFlagExposure,
       bd_proto::protos::state::scope::StateScope::GLOBAL_STATE => Scope::GlobalState,
     };
 
@@ -898,7 +898,7 @@ impl TagValue {
     match self {
       Self::FieldExtract(field_key) => fields.field_value(field_key),
       Self::FeatureFlagExtract(flag_key) => state_reader
-        .get(bd_state::Scope::FeatureFlag, flag_key)
+        .get(bd_state::Scope::FeatureFlagExposure, flag_key)
         .map(Cow::Borrowed),
       Self::Fixed(value) => Some(Cow::Owned(value.clone())),
       Self::LogBodyExtract => message.as_str().map(Cow::Borrowed),
