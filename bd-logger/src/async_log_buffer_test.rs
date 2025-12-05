@@ -253,6 +253,18 @@ impl LogReplay for TestReplay {
 
     Ok(LogReplayResult::default())
   }
+
+  async fn replay_state_change(
+    &mut self,
+    _state_change: bd_state::StateChange,
+    _pipeline: &mut ProcessingPipeline,
+    _state: &bd_state::Store,
+    _now: OffsetDateTime,
+    _session_id: &str,
+  ) -> LogReplayResult {
+    // Test implementation does nothing with state changes
+    LogReplayResult::default()
+  }
 }
 
 #[test]

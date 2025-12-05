@@ -884,34 +884,133 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               self.metadata_collector.remove_field(&field_name);
             },
             AsyncLogBufferMessage::SetFeatureFlag(flag, variant) => {
-                handle_unexpected(
-                state_store.insert(
-                    Scope::FeatureFlag,
-                    flag.clone(),
-                    variant.clone().unwrap_or_default()
-                ).await,
-                &format!("async log buffer: failed to set feature flag ({flag:?})"));
+              match state_store
+                .insert(Scope::FeatureFlag, flag.clone(), variant.clone().unwrap_or_default())
+                .await
+              {
+                Ok(state_change) => {
+                  // Process state change through workflows if initialized
+                  if let LoggingState::Initialized(initialized_logging_context) =
+                    &mut self.logging_state
+                    && !matches!(state_change.change_type, bd_state::StateChangeType::NoChange)
+                  {
+                    let now = self.time_provider.now();
+                    let session_id = self.session_strategy.session_id();
+                    self
+                      .replayer
+                      .replay_state_change(
+                        state_change,
+                        &mut initialized_logging_context.processing_pipeline,
+                        &state_store,
+                        now,
+                        &session_id,
+                      )
+                      .await;
+                  }
+                },
+                Err(e) => {
+                  handle_unexpected::<(), anyhow::Error>(Err(e), &format!("async log buffer: failed to set feature flag ({flag:?})"));
+                },
+              }
             },
             AsyncLogBufferMessage::SetFeatureFlags(flags) => {
-                handle_unexpected(
-                state_store.extend(
-                    Scope::FeatureFlag,
-                    flags.into_iter().map(|(k, v)| (k, v.unwrap_or_default()))
-                ).await,
-                "async log buffer: failed to set feature flags");
+              match state_store
+                .extend(
+                  Scope::FeatureFlag,
+                  flags.into_iter().map(|(k, v)| (k, v.unwrap_or_default())),
+                )
+                .await
+              {
+                Ok(state_changes) => {
+                  // Process state changes through workflows if initialized
+                  if let LoggingState::Initialized(initialized_logging_context) =
+                    &mut self.logging_state
+                  {
+                    let now = self.time_provider.now();
+                    let session_id = self.session_strategy.session_id();
+                    for state_change in state_changes.changes {
+                      if !matches!(state_change.change_type, bd_state::StateChangeType::NoChange) {
+                        self
+                          .replayer
+                          .replay_state_change(
+                            state_change,
+                            &mut initialized_logging_context.processing_pipeline,
+                            &state_store,
+                            now,
+                            &session_id,
+                          )
+                          .await;
+                      }
+                    }
+                  }
+                },
+                Err(e) => {
+                  handle_unexpected::<(), anyhow::Error>(
+                    Err(e),
+                    "async log buffer: failed to set feature flags",
+                  );
+                },
+              }
             },
             AsyncLogBufferMessage::RemoveFeatureFlag(flag) => {
-                handle_unexpected(
-                state_store.remove(Scope::FeatureFlag, &flag).await
-                ,
-                &format!("async log buffer: failed to remove feature flag ({flag:?})"));
-
+              match state_store.remove(Scope::FeatureFlag, &flag).await {
+                Ok(state_change) => {
+                  // Process state change through workflows if initialized
+                  if let LoggingState::Initialized(initialized_logging_context) =
+                    &mut self.logging_state
+                    && !matches!(state_change.change_type, bd_state::StateChangeType::NoChange)
+                  {
+                    let now = self.time_provider.now();
+                    let session_id = self.session_strategy.session_id();
+                    self
+                      .replayer
+                      .replay_state_change(
+                        state_change,
+                        &mut initialized_logging_context.processing_pipeline,
+                        &state_store,
+                        now,
+                        &session_id,
+                      )
+                      .await;
+                  }
+                },
+                Err(e) => {
+                  handle_unexpected::<(), anyhow::Error>(
+                    Err(e),
+                    &format!("async log buffer: failed to remove feature flag ({flag:?})"),
+                  );
+                },
+              }
             },
             AsyncLogBufferMessage::ClearFeatureFlags => {
-                handle_unexpected(
-                state_store.clear(Scope::FeatureFlag)
-                .await,
-                "async log buffer: failed to clear feature flags");
+              match state_store.clear(Scope::FeatureFlag).await {
+                Ok(state_changes) => {
+                  // Process state changes through workflows if initialized
+                  if let LoggingState::Initialized(initialized_logging_context) =
+                    &mut self.logging_state
+                  {
+                    let now = self.time_provider.now();
+                    let session_id = self.session_strategy.session_id();
+                    for state_change in state_changes.changes {
+                      if !matches!(state_change.change_type, bd_state::StateChangeType::NoChange) {
+                        self
+                          .replayer
+                          .replay_state_change(
+                            state_change,
+                            &mut initialized_logging_context.processing_pipeline,
+                            &state_store,
+                            now,
+                            &session_id,
+                          )
+                          .await;
+                      }
+                    }
+                  }
+                },
+                Err(e) => {
+                  handle_unexpected::<(), anyhow::Error>(Err(e), "async log buffer: failed to clear feature flags");
+                },
+              }
             },
             AsyncLogBufferMessage::FlushState(completion_tx) => {
               let (sender, receiver) = bd_completion::Sender::new();

@@ -59,6 +59,20 @@ pub trait LogReplay {
     state: &bd_state::Store,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult>;
+
+  // Replays state changes for further processing.
+  // In production code, this method acts as an indirection layer that
+  // takes in a state change and a processing pipeline, using the pipeline to process the state
+  // change. In tests, this method can be used to capture replayed state changes for confirmation
+  // that they look as expected.
+  async fn replay_state_change(
+    &mut self,
+    state_change: bd_state::StateChange,
+    pipeline: &mut ProcessingPipeline,
+    state: &bd_state::Store,
+    now: OffsetDateTime,
+    session_id: &str,
+  ) -> LogReplayResult;
 }
 
 //
@@ -78,6 +92,19 @@ impl LogReplay for LoggerReplay {
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
     pipeline.process_log(log, state_store, block, now).await
+  }
+
+  async fn replay_state_change(
+    &mut self,
+    state_change: bd_state::StateChange,
+    pipeline: &mut ProcessingPipeline,
+    state: &bd_state::Store,
+    now: OffsetDateTime,
+    session_id: &str,
+  ) -> LogReplayResult {
+    pipeline
+      .process_state_change(state_change, state, now, session_id)
+      .await
   }
 }
 
@@ -199,7 +226,6 @@ impl ProcessingPipeline {
     let mut log = LogEncodingHelper::new(log, (*self.min_log_compression_size.read()).into());
 
     let flush_stats_trigger = self.flush_stats_trigger.clone();
-    let flush_buffers_tx = self.flush_buffers_tx.clone();
 
     match self.tail_configs.maybe_stream_log(&mut log, &state_reader) {
       Ok(streamed) => {
@@ -241,16 +267,11 @@ impl ProcessingPipeline {
       log.log.capture_session
     );
 
-    if !result.triggered_flush_buffers_action_ids.is_empty() {
-      log::debug!(
-        "triggered flush buffer action IDs: {:?}",
-        result.triggered_flush_buffers_action_ids
-      );
-    }
-
-    if result.capture_screenshot {
-      self.capture_screenshot_handler.capture_screenshot();
-    }
+    Self::handle_common_pre_buffer_write(
+      &self.capture_screenshot_handler,
+      &result.triggered_flush_buffers_action_ids,
+      result.capture_screenshot,
+    );
 
     Self::write_to_buffers(
       &mut self.buffer_producers,
@@ -283,15 +304,94 @@ impl ProcessingPipeline {
     self.workflows_engine.maybe_persist(block).await;
 
     if block {
-      Self::finish_blocking_log_processing(flush_buffers_tx, flush_stats_trigger, matching_buffers)
-        .await?;
+      Self::finish_blocking_log_processing(
+        &self.flush_buffers_tx,
+        flush_stats_trigger,
+        matching_buffers,
+      )
+      .await?;
     }
 
     Ok(log_replay_result)
   }
 
+  fn handle_common_pre_buffer_write(
+    capture_screenshot_handler: &CaptureScreenshotHandler,
+    triggered_flush_buffers_action_ids: &BTreeSet<Cow<'_, FlushBufferId>>,
+    capture_screenshot: bool,
+  ) {
+    if !triggered_flush_buffers_action_ids.is_empty() {
+      log::debug!("triggered flush buffer action IDs: {triggered_flush_buffers_action_ids:?}");
+    }
+
+    if capture_screenshot {
+      capture_screenshot_handler.capture_screenshot();
+    }
+  }
+
+
+
+  pub(crate) async fn process_state_change(
+    &mut self,
+    state_change: bd_state::StateChange,
+    state: &bd_state::Store,
+    now: OffsetDateTime,
+    session_id: &str,
+  ) -> LogReplayResult {
+    let state_reader = state.read().await;
+
+    let empty_set = TinySet::default();
+    let mut result = self.workflows_engine.process_event(
+      bd_workflows::workflow::WorkflowEvent::StateChange(&state_change),
+      &empty_set,
+      &state_reader,
+      now,
+    );
+
+    let log_replay_result = LogReplayResult {
+      logs_to_inject: std::mem::take(&mut result.logs_to_inject)
+        .into_values()
+        .collect(),
+      workflow_debug_state: result.workflow_debug_state,
+      engine_has_debug_workflows: result.has_debug_workflows,
+    };
+
+    log::debug!("processed {state_change:?} state change");
+
+    Self::handle_common_pre_buffer_write(
+      &self.capture_screenshot_handler,
+      &result.triggered_flush_buffers_action_ids,
+      result.capture_screenshot,
+    );
+
+    let synthetic_log = Log {
+      log_level: log_level::INFO,
+      log_type: LogType::INTERNAL_SDK,
+      message: "State Change".into(),
+      // TODO(snowp): We should propagate common fields so that they get included here.
+      fields: [].into(),
+      matching_fields: [].into(),
+      session_id: session_id.to_string(),
+      occurred_at: state_change.timestamp,
+      capture_session: None,
+    };
+
+    Self::process_flush_buffers_actions(
+      &result.triggered_flush_buffers_action_ids,
+      &mut self.buffer_producers,
+      &result.triggered_flushes_buffer_ids,
+      &result.log_destination_buffer_ids,
+      &synthetic_log,
+    );
+
+    // State changes are never blocking, so we pass false for force_state_persistence.
+    self.workflows_engine.maybe_persist(false).await;
+
+    log_replay_result
+  }
+
   async fn finish_blocking_log_processing(
-    flush_buffers_tx: tokio::sync::mpsc::Sender<BuffersWithAck>,
+    flush_buffers_tx: &tokio::sync::mpsc::Sender<BuffersWithAck>,
     flush_stats_trigger: FlushTrigger,
     matching_buffers: TinySet<Cow<'_, str>>,
   ) -> anyhow::Result<()> {
