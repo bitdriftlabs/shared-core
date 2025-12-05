@@ -581,7 +581,7 @@ impl StateChangeMatch {
       bd_proto::protos::state::scope::StateScope::UNSPECIFIED => {
         anyhow::bail!("invalid state scope: unspecified");
       },
-      bd_proto::protos::state::scope::StateScope::FEATURE_FLAG => Scope::FeatureFlag,
+      bd_proto::protos::state::scope::StateScope::FEATURE_FLAG => Scope::FeatureFlagExposure,
       bd_proto::protos::state::scope::StateScope::GLOBAL_STATE => Scope::GlobalState,
     };
 
