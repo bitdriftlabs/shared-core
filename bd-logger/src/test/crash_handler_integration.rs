@@ -64,11 +64,11 @@ fn crash_report_upload() {
 
     setup
       .logger_handle
-      .set_feature_flag("flag_name".to_string(), None);
+      .set_feature_flag_exposure("flag_name".to_string(), None);
 
     setup
       .logger_handle
-      .set_feature_flag("flag_with_variant".to_string(), Some("variant".to_string()));
+      .set_feature_flag_exposure("flag_with_variant".to_string(), Some("variant".to_string()));
 
     // Flush state to ensure feature flags are persisted before writing the crash report
     setup.logger_handle.flush_state(Block::Yes(5.std_seconds()));

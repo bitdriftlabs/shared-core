@@ -50,7 +50,7 @@ async fn clear_scope() {
   setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "flag1".to_string(),
       "value1".to_string(),
     )
@@ -59,7 +59,7 @@ async fn clear_scope() {
   setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "flag2".to_string(),
       "value2".to_string(),
     )
@@ -75,11 +75,11 @@ async fn clear_scope() {
     .await
     .unwrap();
 
-  setup.store.clear(Scope::FeatureFlag).await.unwrap();
+  setup.store.clear(Scope::FeatureFlagExposure).await.unwrap();
 
   let reader = setup.store.read().await;
-  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
-  assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), None);
+  assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag1"), None);
+  assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag2"), None);
   assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global_value"));
 }
 
@@ -90,7 +90,7 @@ async fn iter_scope() {
   setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "flag1".to_string(),
       "value1".to_string(),
     )
@@ -99,7 +99,7 @@ async fn iter_scope() {
   setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "flag2".to_string(),
       "value2".to_string(),
     )
@@ -118,7 +118,7 @@ async fn iter_scope() {
   let reader = setup.store.read().await;
   let items: std::collections::HashMap<_, _> = reader
     .iter()
-    .filter(|entry| entry.scope == Scope::FeatureFlag)
+    .filter(|entry| entry.scope == Scope::FeatureFlagExposure)
     .map(|entry| (entry.key.to_string(), entry.value.to_string()))
     .collect();
 
@@ -135,7 +135,7 @@ async fn iter_empty_scope() {
   let reader = setup.store.read().await;
   let count = reader
     .iter()
-    .filter(|entry| entry.scope == Scope::FeatureFlag)
+    .filter(|entry| entry.scope == Scope::FeatureFlagExposure)
     .count();
 
   assert_eq!(count, 0);
@@ -165,13 +165,17 @@ async fn large_value() {
 
   let large_value = "x".repeat(10_000);
   store
-    .insert(Scope::FeatureFlag, "large".to_string(), large_value.clone())
+    .insert(
+      Scope::FeatureFlagExposure,
+      "large".to_string(),
+      large_value.clone(),
+    )
     .await
     .unwrap();
 
   let reader = store.read().await;
   assert_eq!(
-    reader.get(Scope::FeatureFlag, "large"),
+    reader.get(Scope::FeatureFlagExposure, "large"),
     Some(large_value.as_str())
   );
 }
@@ -203,7 +207,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
     // Insert some values
     store
       .insert(
-        Scope::FeatureFlag,
+        Scope::FeatureFlagExposure,
         "flag1".to_string(),
         "value1".to_string(),
       )
@@ -211,7 +215,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
       .unwrap();
     store
       .insert(
-        Scope::FeatureFlag,
+        Scope::FeatureFlagExposure,
         "flag2".to_string(),
         "value2".to_string(),
       )
@@ -228,8 +232,14 @@ async fn ephemeral_scopes_cleared_on_restart() {
 
     // Verify they're present
     let reader = store.read().await;
-    assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), Some("value1"));
-    assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), Some("value2"));
+    assert_eq!(
+      reader.get(Scope::FeatureFlagExposure, "flag1"),
+      Some("value1")
+    );
+    assert_eq!(
+      reader.get(Scope::FeatureFlagExposure, "flag2"),
+      Some("value2")
+    );
     assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global_value"));
   }
 
@@ -250,7 +260,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
     assert_eq!(
       prev_snapshot
         .iter()
-        .filter(|(scope, ..)| *scope == Scope::FeatureFlag)
+        .filter(|(scope, ..)| *scope == Scope::FeatureFlagExposure)
         .count(),
       2
     );
@@ -263,13 +273,13 @@ async fn ephemeral_scopes_cleared_on_restart() {
     );
     assert_eq!(
       prev_snapshot
-        .get(Scope::FeatureFlag, "flag1")
+        .get(Scope::FeatureFlagExposure, "flag1")
         .map(|v| v.value.string_value()),
       Some("value1")
     );
     assert_eq!(
       prev_snapshot
-        .get(Scope::FeatureFlag, "flag2")
+        .get(Scope::FeatureFlagExposure, "flag2")
         .map(|v| v.value.string_value()),
       Some("value2")
     );
@@ -282,8 +292,8 @@ async fn ephemeral_scopes_cleared_on_restart() {
 
     // But current store should be empty (ephemeral scopes cleared)
     let reader = store.read().await;
-    assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
-    assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), None);
+    assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag1"), None);
+    assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag2"), None);
     assert_eq!(reader.get(Scope::GlobalState, "key1"), None);
   }
 }
@@ -313,7 +323,7 @@ async fn fallback_to_in_memory_on_invalid_directory() {
   // Verify in-memory store works correctly
   store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "test_flag".to_string(),
       "test_value".to_string(),
     )
@@ -322,7 +332,7 @@ async fn fallback_to_in_memory_on_invalid_directory() {
 
   let reader = store.read().await;
   assert_eq!(
-    reader.get(Scope::FeatureFlag, "test_flag"),
+    reader.get(Scope::FeatureFlagExposure, "test_flag"),
     Some("test_value")
   );
 }
@@ -351,12 +361,19 @@ async fn from_strategy_in_memory_only() {
   // Verify store works
   result
     .store
-    .insert(Scope::FeatureFlag, "flag".to_string(), "value".to_string())
+    .insert(
+      Scope::FeatureFlagExposure,
+      "flag".to_string(),
+      "value".to_string(),
+    )
     .await
     .unwrap();
 
   let reader = result.store.read().await;
-  assert_eq!(reader.get(Scope::FeatureFlag, "flag"), Some("value"));
+  assert_eq!(
+    reader.get(Scope::FeatureFlagExposure, "flag"),
+    Some("value")
+  );
 }
 
 #[tokio::test]
@@ -383,12 +400,19 @@ async fn from_strategy_persistent_with_fallback() {
   // Verify store works
   result
     .store
-    .insert(Scope::FeatureFlag, "flag".to_string(), "value".to_string())
+    .insert(
+      Scope::FeatureFlagExposure,
+      "flag".to_string(),
+      "value".to_string(),
+    )
     .await
     .unwrap();
 
   let reader = result.store.read().await;
-  assert_eq!(reader.get(Scope::FeatureFlag, "flag"), Some("value"));
+  assert_eq!(
+    reader.get(Scope::FeatureFlagExposure, "flag"),
+    Some("value")
+  );
 }
 
 #[tokio::test]
@@ -416,10 +440,17 @@ async fn from_strategy_persistent_with_fallback_on_failure() {
   // Verify in-memory store works
   result
     .store
-    .insert(Scope::FeatureFlag, "flag".to_string(), "value".to_string())
+    .insert(
+      Scope::FeatureFlagExposure,
+      "flag".to_string(),
+      "value".to_string(),
+    )
     .await
     .unwrap();
 
   let reader = result.store.read().await;
-  assert_eq!(reader.get(Scope::FeatureFlag, "flag"), Some("value"));
+  assert_eq!(
+    reader.get(Scope::FeatureFlagExposure, "flag"),
+    Some("value")
+  );
 }

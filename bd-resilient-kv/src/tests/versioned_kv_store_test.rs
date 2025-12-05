@@ -167,7 +167,7 @@ async fn basic_crud(#[case] mode: StoreMode) -> anyhow::Result<()> {
   let ts1 = setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key1".to_string(),
       make_string_value("value1"),
     )
@@ -175,7 +175,7 @@ async fn basic_crud(#[case] mode: StoreMode) -> anyhow::Result<()> {
   let ts2 = setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key2".to_string(),
       make_string_value("value2"),
     )
@@ -185,27 +185,30 @@ async fn basic_crud(#[case] mode: StoreMode) -> anyhow::Result<()> {
   assert!(ts2 >= ts1);
 
   // Remove a key
-  let ts3 = setup.store.remove(Scope::FeatureFlag, "key1").await?;
+  let ts3 = setup
+    .store
+    .remove(Scope::FeatureFlagExposure, "key1")
+    .await?;
   assert!(ts3.is_some());
   assert!(ts3.unwrap() >= ts2);
 
   assert_eq!(setup.store.len(), 1);
-  assert!(!setup.store.contains_key(Scope::FeatureFlag, "key1"));
-  assert!(setup.store.contains_key(Scope::FeatureFlag, "key2"));
+  assert!(!setup.store.contains_key(Scope::FeatureFlagExposure, "key1"));
+  assert!(setup.store.contains_key(Scope::FeatureFlagExposure, "key2"));
 
   // Remove non-existent key
   let removed = setup
     .store
-    .remove(Scope::FeatureFlag, "nonexistent")
+    .remove(Scope::FeatureFlagExposure, "nonexistent")
     .await?;
   assert!(removed.is_none());
 
   // Read back existing key
-  let val = setup.store.get(Scope::FeatureFlag, "key2");
+  let val = setup.store.get(Scope::FeatureFlagExposure, "key2");
   assert_eq!(val, Some(&make_string_value("value2")));
 
   // Read non-existent key
-  let val = setup.store.get(Scope::FeatureFlag, "key1");
+  let val = setup.store.get(Scope::FeatureFlagExposure, "key1");
   assert_eq!(val, None);
 
   Ok(())
@@ -221,12 +224,12 @@ async fn extend_same_key_ordering(#[case] mode: StoreMode) -> anyhow::Result<()>
   // Test 1: Insert then delete same key - final state should be deleted
   let entries1 = vec![
     (
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key1".to_string(),
       make_string_value("value"),
     ),
     (
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key1".to_string(),
       StateValue::default(), // deletion
     ),
@@ -234,7 +237,7 @@ async fn extend_same_key_ordering(#[case] mode: StoreMode) -> anyhow::Result<()>
 
   setup.store.extend(entries1).await?;
   assert_eq!(
-    setup.store.get(Scope::FeatureFlag, "key1"),
+    setup.store.get(Scope::FeatureFlagExposure, "key1"),
     None,
     "key1 should be deleted (last operation was delete)"
   );
@@ -242,12 +245,12 @@ async fn extend_same_key_ordering(#[case] mode: StoreMode) -> anyhow::Result<()>
   // Test 2: Delete then insert same key - final state should be inserted
   let entries2 = vec![
     (
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key2".to_string(),
       StateValue::default(), // deletion (no-op since doesn't exist)
     ),
     (
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key2".to_string(),
       make_string_value("value"),
     ),
@@ -255,7 +258,7 @@ async fn extend_same_key_ordering(#[case] mode: StoreMode) -> anyhow::Result<()>
 
   setup.store.extend(entries2).await?;
   assert_eq!(
-    setup.store.get(Scope::FeatureFlag, "key2"),
+    setup.store.get(Scope::FeatureFlagExposure, "key2"),
     Some(&make_string_value("value")),
     "key2 should exist (last operation was insert)"
   );
@@ -263,17 +266,17 @@ async fn extend_same_key_ordering(#[case] mode: StoreMode) -> anyhow::Result<()>
   // Test 3: Multiple operations on same key
   let entries3 = vec![
     (
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key3".to_string(),
       make_string_value("v1"),
     ),
     (
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key3".to_string(),
       make_string_value("v2"),
     ),
     (
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key3".to_string(),
       make_string_value("v3"),
     ),
@@ -281,7 +284,7 @@ async fn extend_same_key_ordering(#[case] mode: StoreMode) -> anyhow::Result<()>
 
   setup.store.extend(entries3).await?;
   assert_eq!(
-    setup.store.get(Scope::FeatureFlag, "key3"),
+    setup.store.get(Scope::FeatureFlagExposure, "key3"),
     Some(&make_string_value("v3")),
     "key3 should have the last inserted value"
   );
@@ -318,7 +321,7 @@ async fn test_automatic_rotation_on_high_water_mark() -> anyhow::Result<()> {
   // Insert initial data
   store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "initial".to_string(),
       make_string_value("value"),
     )
@@ -335,7 +338,7 @@ async fn test_automatic_rotation_on_high_water_mark() -> anyhow::Result<()> {
   for i in 0 .. 20 {
     store
       .insert(
-        Scope::FeatureFlag,
+        Scope::FeatureFlagExposure,
         format!("key{}", i),
         make_string_value(&format!("value_with_some_length_{}", i)),
       )
@@ -377,26 +380,26 @@ async fn test_automatic_rotation_on_high_water_mark() -> anyhow::Result<()> {
   );
 
   // Verify data integrity after automatic rotation
-  assert!(store.contains_key(Scope::FeatureFlag, "initial"));
+  assert!(store.contains_key(Scope::FeatureFlagExposure, "initial"));
   assert_eq!(
-    store.get(Scope::FeatureFlag, "initial"),
+    store.get(Scope::FeatureFlagExposure, "initial"),
     Some(&make_string_value("value"))
   );
   assert_eq!(
-    store.get(Scope::FeatureFlag, "key0"),
+    store.get(Scope::FeatureFlagExposure, "key0"),
     Some(&make_string_value("value_with_some_length_0"))
   );
 
   // Verify we can continue writing after automatic rotation
   store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "after_rotation".to_string(),
       make_string_value("works"),
     )
     .await?;
   assert_eq!(
-    store.get(Scope::FeatureFlag, "after_rotation"),
+    store.get(Scope::FeatureFlagExposure, "after_rotation"),
     Some(&make_string_value("works"))
   );
 
@@ -419,14 +422,14 @@ async fn test_in_memory_size_limit() -> anyhow::Result<()> {
   // Should be able to insert some small values
   store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key1".to_string(),
       make_string_value("value1"),
     )
     .await?;
   store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key2".to_string(),
       make_string_value("value2"),
     )
@@ -437,7 +440,7 @@ async fn test_in_memory_size_limit() -> anyhow::Result<()> {
   // Try to insert a large value that would exceed the limit
   let large_value = make_string_value(&"x".repeat(2000));
   let result = store
-    .insert(Scope::FeatureFlag, "large".to_string(), large_value)
+    .insert(Scope::FeatureFlagExposure, "large".to_string(), large_value)
     .await;
 
   // Should fail with capacity error
@@ -454,17 +457,17 @@ async fn test_in_memory_size_limit() -> anyhow::Result<()> {
 
   // Original data should still be intact
   assert_eq!(store.len(), 2);
-  assert!(store.contains_key(Scope::FeatureFlag, "key1"));
-  assert!(store.contains_key(Scope::FeatureFlag, "key2"));
+  assert!(store.contains_key(Scope::FeatureFlagExposure, "key1"));
+  assert!(store.contains_key(Scope::FeatureFlagExposure, "key2"));
 
   // Should be able to delete to free up space
-  store.remove(Scope::FeatureFlag, "key1").await?;
+  store.remove(Scope::FeatureFlagExposure, "key1").await?;
   assert_eq!(store.len(), 1);
 
   // Now should be able to insert a smaller value
   store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key3".to_string(),
       make_string_value("value3"),
     )
@@ -487,7 +490,7 @@ async fn test_in_memory_no_size_limit() -> anyhow::Result<()> {
   for i in 0 .. 100 {
     let large_value = make_string_value(&"x".repeat(1000));
     store
-      .insert(Scope::FeatureFlag, format!("key{}", i), large_value)
+      .insert(Scope::FeatureFlagExposure, format!("key{}", i), large_value)
       .await?;
   }
 
@@ -508,7 +511,7 @@ async fn test_in_memory_size_limit_replacement() -> anyhow::Result<()> {
   // Insert a value
   store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key1".to_string(),
       make_string_value("small"),
     )
@@ -517,7 +520,7 @@ async fn test_in_memory_size_limit_replacement() -> anyhow::Result<()> {
   // Replace with a similar-sized value (should succeed)
   store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key1".to_string(),
       make_string_value("value"),
     )
@@ -525,14 +528,14 @@ async fn test_in_memory_size_limit_replacement() -> anyhow::Result<()> {
 
   assert_eq!(store.len(), 1);
   assert_eq!(
-    store.get(Scope::FeatureFlag, "key1"),
+    store.get(Scope::FeatureFlagExposure, "key1"),
     Some(&make_string_value("value"))
   );
 
   // Try to replace with a much larger value that would exceed capacity
   let large_value = make_string_value(&"x".repeat(2000));
   let result = store
-    .insert(Scope::FeatureFlag, "key1".to_string(), large_value)
+    .insert(Scope::FeatureFlagExposure, "key1".to_string(), large_value)
     .await;
 
   // Should fail
@@ -540,7 +543,7 @@ async fn test_in_memory_size_limit_replacement() -> anyhow::Result<()> {
 
   // Original value should still be intact
   assert_eq!(
-    store.get(Scope::FeatureFlag, "key1"),
+    store.get(Scope::FeatureFlagExposure, "key1"),
     Some(&make_string_value("value"))
   );
 
@@ -572,14 +575,14 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
     .await?;
     let ts1 = store
       .insert(
-        Scope::FeatureFlag,
+        Scope::FeatureFlagExposure,
         "key1".to_string(),
         make_string_value("value1"),
       )
       .await?;
     let ts2 = store
       .insert(
-        Scope::FeatureFlag,
+        Scope::FeatureFlagExposure,
         "key2".to_string(),
         make_string_value("foo"),
       )
@@ -606,14 +609,14 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
     assert_eq!(data_loss, DataLoss::None);
     assert_eq!(store.len(), 2);
     assert_eq!(
-      store.get_with_timestamp(Scope::FeatureFlag, "key1"),
+      store.get_with_timestamp(Scope::FeatureFlagExposure, "key1"),
       Some(&TimestampedValue {
         value: make_string_value("value1"),
         timestamp: ts1,
       })
     );
     assert_eq!(
-      store.get_with_timestamp(Scope::FeatureFlag, "key2"),
+      store.get_with_timestamp(Scope::FeatureFlagExposure, "key2"),
       Some(&TimestampedValue {
         value: make_string_value("foo"),
         timestamp: ts2,
@@ -635,23 +638,23 @@ async fn test_null_value_is_deletion(#[case] mode: StoreMode) -> anyhow::Result<
   setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key1".to_string(),
       make_string_value("value1"),
     )
     .await?;
-  assert!(setup.store.contains_key(Scope::FeatureFlag, "key1"));
+  assert!(setup.store.contains_key(Scope::FeatureFlagExposure, "key1"));
 
   // Insert empty state to delete
   setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key1".to_string(),
       StateValue::default(),
     )
     .await?;
-  assert!(!setup.store.contains_key(Scope::FeatureFlag, "key1"));
+  assert!(!setup.store.contains_key(Scope::FeatureFlagExposure, "key1"));
   assert_eq!(setup.store.len(), 0);
 
   Ok(())
@@ -665,7 +668,7 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
   let _ts1 = setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key1".to_string(),
       make_string_value("value1"),
     )
@@ -673,7 +676,7 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
   let ts2 = setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key2".to_string(),
       make_string_value("value2"),
     )
@@ -681,7 +684,7 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
 
   setup
     .store
-    .get_with_timestamp(Scope::FeatureFlag, "key2")
+    .get_with_timestamp(Scope::FeatureFlagExposure, "key2")
     .map(|tv| tv.timestamp)
     .unwrap();
 
@@ -695,7 +698,7 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
   let ts3 = setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key3".to_string(),
       make_string_value("value3"),
     )
@@ -705,15 +708,15 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
 
   // Verify data is intact
   assert_eq!(
-    setup.store.get(Scope::FeatureFlag, "key1"),
+    setup.store.get(Scope::FeatureFlagExposure, "key1"),
     Some(&make_string_value("value1"))
   );
   assert_eq!(
-    setup.store.get(Scope::FeatureFlag, "key2"),
+    setup.store.get(Scope::FeatureFlagExposure, "key2"),
     Some(&make_string_value("value2"))
   );
   assert_eq!(
-    setup.store.get(Scope::FeatureFlag, "key3"),
+    setup.store.get(Scope::FeatureFlagExposure, "key3"),
     Some(&make_string_value("value3"))
   );
 
@@ -722,11 +725,11 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
     .make_store_from_snapshot_file(&rotation.snapshot_path)
     .await?;
   assert_eq!(
-    snapshot_store.get(Scope::FeatureFlag, "key1"),
+    snapshot_store.get(Scope::FeatureFlagExposure, "key1"),
     Some(&make_string_value("value1"))
   );
   assert_eq!(
-    snapshot_store.get(Scope::FeatureFlag, "key2"),
+    snapshot_store.get(Scope::FeatureFlagExposure, "key2"),
     Some(&make_string_value("value2"))
   );
   assert_eq!(snapshot_store.len(), 2);
@@ -741,7 +744,7 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
   setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key1".to_string(),
       make_string_value("value1"),
     )
@@ -750,7 +753,7 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
   let pre_rotation_state = setup.store.as_hashmap().clone();
   let pre_rotation_ts = setup
     .store
-    .get_with_timestamp(Scope::FeatureFlag, "key1")
+    .get_with_timestamp(Scope::FeatureFlagExposure, "key1")
     .map(|tv| tv.timestamp)
     .unwrap();
 
@@ -766,7 +769,7 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
   let ts_new = setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key2".to_string(),
       make_string_value("value2"),
     )
@@ -785,12 +788,19 @@ async fn test_empty_store_operations(#[case] mode: StoreMode) -> anyhow::Result<
   let mut setup = DualModeSetup::new(mode).await?;
 
   // Operations on empty store
-  assert_eq!(setup.store.get(Scope::FeatureFlag, "nonexistent"), None);
-  assert!(!setup.store.contains_key(Scope::FeatureFlag, "nonexistent"));
+  assert_eq!(
+    setup.store.get(Scope::FeatureFlagExposure, "nonexistent"),
+    None
+  );
+  assert!(
+    !setup
+      .store
+      .contains_key(Scope::FeatureFlagExposure, "nonexistent")
+  );
   assert_eq!(
     setup
       .store
-      .remove(Scope::FeatureFlag, "nonexistent")
+      .remove(Scope::FeatureFlagExposure, "nonexistent")
       .await?,
     None
   );
@@ -810,7 +820,7 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
   let ts1 = setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key1".to_string(),
       make_string_value("value1"),
     )
@@ -822,7 +832,7 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
   let ts2 = setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key2".to_string(),
       make_string_value("value2"),
     )
@@ -837,7 +847,7 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
     setup
       .store
       .insert(
-        Scope::FeatureFlag,
+        Scope::FeatureFlagExposure,
         format!("fill{i}"),
         make_string_value("foo"),
       )
@@ -847,13 +857,13 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
   // Verify that after rotation, the original timestamps are preserved
   let ts1_after = setup
     .store
-    .get_with_timestamp(Scope::FeatureFlag, "key1")
+    .get_with_timestamp(Scope::FeatureFlagExposure, "key1")
     .map(|tv| tv.timestamp)
     .unwrap();
 
   let ts2_after = setup
     .store
-    .get_with_timestamp(Scope::FeatureFlag, "key2")
+    .get_with_timestamp(Scope::FeatureFlagExposure, "key2")
     .map(|tv| tv.timestamp)
     .unwrap();
 
@@ -885,7 +895,10 @@ async fn test_multiple_rotations() -> anyhow::Result<()> {
   for i in 0 .. 3 {
     let key = format!("key{}", i);
     let value = make_string_value(&format!("value{}", i));
-    setup.store.insert(Scope::FeatureFlag, key, value).await?;
+    setup
+      .store
+      .insert(Scope::FeatureFlagExposure, key, value)
+      .await?;
     let rotation = setup.store.rotate_journal().await?;
     snapshot_paths.push(rotation.snapshot_path.clone());
   }
@@ -930,7 +943,7 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
   // Insert some data
   store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key1".to_string(),
       make_string_value("value1"),
     )
@@ -957,7 +970,7 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
   // Insert more data and rotate WITH retention handle - snapshot SHOULD be created
   store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key2".to_string(),
       make_string_value("value2"),
     )
@@ -983,7 +996,7 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
 
   store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key3".to_string(),
       make_string_value("value3"),
     )
@@ -1030,7 +1043,7 @@ async fn test_multiple_rotations_with_same_timestamp() -> anyhow::Result<()> {
   // Insert data once
   store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key1".to_string(),
       make_string_value("value1"),
     )
@@ -1094,12 +1107,12 @@ async fn extend_basic(#[case] mode: StoreMode) -> anyhow::Result<()> {
   // Extend multiple entries
   let entries = vec![
     (
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key1".to_string(),
       make_string_value("value1"),
     ),
     (
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key2".to_string(),
       make_string_value("value2"),
     ),
@@ -1117,7 +1130,7 @@ async fn extend_basic(#[case] mode: StoreMode) -> anyhow::Result<()> {
   assert_eq!(
     setup
       .store
-      .get_with_timestamp(Scope::FeatureFlag, "key1")
+      .get_with_timestamp(Scope::FeatureFlagExposure, "key1")
       .unwrap()
       .timestamp,
     ts
@@ -1125,7 +1138,7 @@ async fn extend_basic(#[case] mode: StoreMode) -> anyhow::Result<()> {
   assert_eq!(
     setup
       .store
-      .get_with_timestamp(Scope::FeatureFlag, "key2")
+      .get_with_timestamp(Scope::FeatureFlagExposure, "key2")
       .unwrap()
       .timestamp,
     ts
@@ -1153,7 +1166,7 @@ async fn extend_with_updates_and_deletions(#[case] mode: StoreMode) -> anyhow::R
   setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key1".to_string(),
       make_string_value("old_value"),
     )
@@ -1161,7 +1174,7 @@ async fn extend_with_updates_and_deletions(#[case] mode: StoreMode) -> anyhow::R
   setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key2".to_string(),
       make_string_value("keep_value"),
     )
@@ -1173,13 +1186,13 @@ async fn extend_with_updates_and_deletions(#[case] mode: StoreMode) -> anyhow::R
   let entries = vec![
     // Update existing key
     (
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key1".to_string(),
       make_string_value("new_value"),
     ),
     // Delete existing key (null value)
     (
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "key2".to_string(),
       StateValue::default(),
     ),
@@ -1196,10 +1209,10 @@ async fn extend_with_updates_and_deletions(#[case] mode: StoreMode) -> anyhow::R
   // Verify state
   assert_eq!(setup.store.len(), 2); // key1 and key3 remain
   assert_eq!(
-    setup.store.get(Scope::FeatureFlag, "key1"),
+    setup.store.get(Scope::FeatureFlagExposure, "key1"),
     Some(&make_string_value("new_value"))
   );
-  assert_eq!(setup.store.get(Scope::FeatureFlag, "key2"), None);
+  assert_eq!(setup.store.get(Scope::FeatureFlagExposure, "key2"), None);
   assert_eq!(
     setup.store.get(Scope::GlobalState, "key3"),
     Some(&make_string_value("value3"))
@@ -1209,7 +1222,7 @@ async fn extend_with_updates_and_deletions(#[case] mode: StoreMode) -> anyhow::R
   assert_eq!(
     setup
       .store
-      .get_with_timestamp(Scope::FeatureFlag, "key1")
+      .get_with_timestamp(Scope::FeatureFlagExposure, "key1")
       .unwrap()
       .timestamp,
     ts
@@ -1272,7 +1285,7 @@ async fn extend_triggers_rotation_and_succeeds() -> anyhow::Result<()> {
   let mut entries = Vec::new();
   for i in 0 .. 50 {
     entries.push((
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       format!("key_{i}"),
       make_string_value(&format!("value_{i}")),
     ));
@@ -1284,7 +1297,7 @@ async fn extend_triggers_rotation_and_succeeds() -> anyhow::Result<()> {
   // Verify the data was written
   assert_eq!(store.len(), 50);
   for i in 0 .. 50 {
-    assert!(store.contains_key(Scope::FeatureFlag, &format!("key_{i}")));
+    assert!(store.contains_key(Scope::FeatureFlagExposure, &format!("key_{i}")));
   }
 
   // Buffer should have grown due to rotation
@@ -1322,7 +1335,7 @@ async fn extend_triggers_rotation_but_fails_capacity() -> anyhow::Result<()> {
   let mut entries = Vec::new();
   for i in 0 .. 50 {
     entries.push((
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       format!("key_{i}"),
       make_string_value(&format!("value_{i}")),
     ));
@@ -1335,7 +1348,7 @@ async fn extend_triggers_rotation_but_fails_capacity() -> anyhow::Result<()> {
   // Verify atomicity - no partial writes
   assert_eq!(store.len(), initial_len);
   for i in 0 .. 50 {
-    assert!(!store.contains_key(Scope::FeatureFlag, &format!("key_{i}")));
+    assert!(!store.contains_key(Scope::FeatureFlagExposure, &format!("key_{i}")));
   }
 
   Ok(())
@@ -1371,7 +1384,7 @@ async fn extend_atomicity_on_capacity_exceeded() -> anyhow::Result<()> {
   for i in 0 .. 5 {
     let _ = store
       .insert(
-        Scope::FeatureFlag,
+        Scope::FeatureFlagExposure,
         format!("existing_{i}"),
         make_string_value(&format!("value_{i}")),
       )
@@ -1384,7 +1397,7 @@ async fn extend_atomicity_on_capacity_exceeded() -> anyhow::Result<()> {
   let mut entries = Vec::new();
   for i in 0 .. 20 {
     entries.push((
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       format!("new_key_{i}"),
       make_string_value(&format!("large_value_{}", "x".repeat(100))),
     ));
@@ -1398,7 +1411,7 @@ async fn extend_atomicity_on_capacity_exceeded() -> anyhow::Result<()> {
     assert_eq!(store.len(), initial_len, "No partial writes on failure");
     for i in 0 .. 20 {
       assert_eq!(
-        store.get(Scope::FeatureFlag, &format!("new_key_{i}")),
+        store.get(Scope::FeatureFlagExposure, &format!("new_key_{i}")),
         None,
         "No partial inserts should occur on failure"
       );
@@ -1440,12 +1453,12 @@ async fn extend_persistence() -> anyhow::Result<()> {
     // Extend multiple entries
     let entries = vec![
       (
-        Scope::FeatureFlag,
+        Scope::FeatureFlagExposure,
         "key1".to_string(),
         make_string_value("value1"),
       ),
       (
-        Scope::FeatureFlag,
+        Scope::FeatureFlagExposure,
         "key2".to_string(),
         make_string_value("value2"),
       ),
@@ -1477,11 +1490,11 @@ async fn extend_persistence() -> anyhow::Result<()> {
   assert_eq!(data_loss, DataLoss::None);
   assert_eq!(store.len(), 3);
   assert_eq!(
-    store.get(Scope::FeatureFlag, "key1"),
+    store.get(Scope::FeatureFlagExposure, "key1"),
     Some(&make_string_value("value1"))
   );
   assert_eq!(
-    store.get(Scope::FeatureFlag, "key2"),
+    store.get(Scope::FeatureFlagExposure, "key2"),
     Some(&make_string_value("value2"))
   );
   assert_eq!(
@@ -1528,7 +1541,7 @@ async fn test_buffer_size_preserved_across_restart() -> anyhow::Result<()> {
     let entries: Vec<_> = (0 .. num_entries)
       .map(|i| {
         (
-          Scope::FeatureFlag,
+          Scope::FeatureFlagExposure,
           format!("key_{i}"),
           make_string_value(&format!("value_{i}")),
         )
@@ -1576,7 +1589,7 @@ async fn test_buffer_size_preserved_across_restart() -> anyhow::Result<()> {
     // Sample check: verify some entries are present
     for i in (0 .. num_entries).step_by(1000) {
       assert_eq!(
-        store.get(Scope::FeatureFlag, &format!("key_{i}")),
+        store.get(Scope::FeatureFlagExposure, &format!("key_{i}")),
         Some(&make_string_value(&format!("value_{i}")))
       );
     }

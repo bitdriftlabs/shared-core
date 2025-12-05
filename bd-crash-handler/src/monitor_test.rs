@@ -180,7 +180,7 @@ impl Setup {
     for (name, value) in flags {
       store
         .insert(
-          bd_resilient_kv::Scope::FeatureFlag,
+          bd_resilient_kv::Scope::FeatureFlagExposure,
           name.to_string(),
           StateValue {
             value_type: Some(bd_resilient_kv::Value_type::StringValue(value.to_string())),
@@ -255,7 +255,7 @@ impl Setup {
     // This simulates flags being set during the current session initialization.
     state
       .insert(
-        bd_state::Scope::FeatureFlag,
+        bd_state::Scope::FeatureFlagExposure,
         "initial_flag".to_string(),
         "true".to_string(),
       )
@@ -263,7 +263,7 @@ impl Setup {
       .unwrap();
     state
       .insert(
-        bd_state::Scope::FeatureFlag,
+        bd_state::Scope::FeatureFlagExposure,
         "previous_only_flag".to_string(),
         "enabled".to_string(),
       )
@@ -295,7 +295,7 @@ impl Setup {
     self
       .state
       .insert(
-        bd_state::Scope::FeatureFlag,
+        bd_state::Scope::FeatureFlagExposure,
         key.to_string(),
         value.to_string(),
       )

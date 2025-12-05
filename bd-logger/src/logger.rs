@@ -10,11 +10,11 @@
 mod logger_test;
 
 use crate::app_version::{AppVersion, AppVersionExtra, Repository};
-use crate::async_log_buffer::{AsyncLogBuffer, AsyncLogBufferMessage, LogAttributesOverrides};
+use crate::async_log_buffer::{self, AsyncLogBuffer, LogAttributesOverrides};
 use crate::log_replay::LoggerReplay;
 use crate::{MetadataProvider, app_version};
 use bd_api::Metadata;
-use bd_bounded_buffer::{self, Sender as MemoryBoundSender};
+use bd_bounded_buffer::{self};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log::warn_every;
 use bd_log_primitives::{
@@ -164,7 +164,7 @@ impl CaptureSession {
 /// A handle to the logger that can be used to log messages. This is the primary interface for
 /// submitting logs into the system.
 pub struct LoggerHandle {
-  tx: MemoryBoundSender<AsyncLogBufferMessage>,
+  tx: async_log_buffer::Sender,
 
   session_strategy: Arc<bd_session::Strategy>,
   device: Arc<bd_device::Device>,
@@ -391,7 +391,13 @@ impl LoggerHandle {
     with_reentrancy_guard!(
       {
         let field_name = key.clone();
-        let result = AsyncLogBuffer::<LoggerReplay>::add_log_field(&self.tx, key, value);
+        let result =
+          self
+            .tx
+            .try_send_state_update(async_log_buffer::StateUpdateMessage::AddLogField(
+              key, value,
+            ));
+
         if let Err(e) = result {
           log::warn!("failed to add {field_name:?} log field: {e:?}");
         }
@@ -404,7 +410,13 @@ impl LoggerHandle {
   pub fn remove_log_field(&self, field_name: &str) {
     with_reentrancy_guard!(
       {
-        let result = AsyncLogBuffer::<LoggerReplay>::remove_log_field(&self.tx, field_name);
+        let result =
+          self
+            .tx
+            .try_send_state_update(async_log_buffer::StateUpdateMessage::RemoveLogField(
+              field_name.to_string(),
+            ));
+
         if let Err(e) = result {
           log::warn!("failed to remove {field_name:?} log field: {e:?}");
         }
@@ -414,28 +426,12 @@ impl LoggerHandle {
     );
   }
 
-  /// Sets or updates a feature flag in the logger.
-  ///
-  /// Creates or updates a feature flag with the given name and variant. Feature flags
-  /// are used to control runtime behavior and logging configurations. The flag is
-  /// stored persistently and will be available across logger restarts.
-  ///
-  /// # Arguments
-  ///
-  /// * `flag` - The name of the feature flag to set or update
-  /// * `variant` - The variant value for the flag:
-  ///   - `Some(string)` sets the flag with the specified variant
-  ///   - `None` sets the flag without a variant (simple boolean-style flag)
-  ///
-  /// # Notes
-  ///
-  /// This method is non-blocking and will not panic if called from within a log field
-  /// provider callback. If called from within a callback, a warning will be logged
-  /// and the operation will be ignored.
-  pub fn set_feature_flag(&self, flag: String, variant: Option<String>) {
+  pub fn set_feature_flag_exposure(&self, flag: String, variant: Option<String>) {
     with_reentrancy_guard!(
       {
-        let result = AsyncLogBuffer::<LoggerReplay>::set_feature_flag(&self.tx, flag, variant);
+        let result = self.tx.try_send_state_update(
+          async_log_buffer::StateUpdateMessage::SetFeatureFlagExposure(flag, variant),
+        );
         if let Err(e) = result {
           log::warn!("failed to set feature flag: {e:?}");
         }
@@ -445,82 +441,9 @@ impl LoggerHandle {
     );
   }
 
-  /// Sets or updates multiple feature flags in a single operation.
-  ///
-  /// Creates or updates multiple feature flags with their respective variants. This method
-  /// is more efficient than calling `set_feature_flag()` multiple times as it batches
-  /// the operations. All flags are stored persistently and will be available across
-  /// logger restarts.
-  ///
-  /// # Arguments
-  ///
-  /// * `flags` - A vector of tuples containing flag names and their variants:
-  ///   - `Some(string)` sets the flag with the specified variant
-  ///   - `None` sets the flag without a variant (simple boolean-style flag)
-  ///
-  /// # Notes
-  ///
-  /// This method is non-blocking and will not panic if called from within a log field
-  /// provider callback. If called from within a callback, a warning will be logged
-  /// and the operation will be ignored.
-  pub fn set_feature_flags(&self, flags: Vec<(String, Option<String>)>) {
-    with_reentrancy_guard!(
-      {
-        let result = AsyncLogBuffer::<LoggerReplay>::set_feature_flags(&self.tx, flags);
-        if let Err(e) = result {
-          log::warn!("failed to set feature flags: {e:?}");
-        }
-      },
-      "failed to set {:?} feature flags, setting flags from within a callback is not permitted",
-      flags
-    );
-  }
-
-  /// Removes a feature flag from the logger.
-  ///
-  /// Deletes the specified feature flag (in memory and from persistent storage).
-  ///
-  /// # Arguments
-  ///
-  /// * `flag` - The name of the feature flag to remove
-  ///
-  /// # Notes
-  ///
-  /// This method is non-blocking and will not panic if called from within a log field
-  /// provider callback. If called from within a callback, a warning will be logged
-  /// and the operation will be ignored.
-  pub fn remove_feature_flag(&self, flag: String) {
-    with_reentrancy_guard!(
-      {
-        let result = AsyncLogBuffer::<LoggerReplay>::remove_feature_flag(&self.tx, flag);
-        if let Err(e) = result {
-          log::warn!("failed to remove feature flag: {e:?}");
-        }
-      },
-      "failed to remove {:?} feature flag, removing flags from within a callback is not permitted",
-      flag
-    );
-  }
-
-  /// Clears all feature flags from the logger.
-  ///
-  /// Deletes all feature flags (in memory and from persistent storage).
-  pub fn clear_feature_flags(&self) {
-    with_reentrancy_guard!(
-      {
-        let result = AsyncLogBuffer::<LoggerReplay>::clear_feature_flags(&self.tx);
-        if let Err(e) = result {
-          log::warn!("failed to clear feature flags: {e:?}");
-        }
-      },
-      "failed to clear feature flags, clearing flags from within a callback is not permitted{}",
-      ""
-    );
-  }
-
   pub fn flush_state(&self, block: Block) {
     log::debug!("state flushing initiated");
-    let result = AsyncLogBuffer::<LoggerReplay>::flush_state(&self.tx, block);
+    let result = self.tx.flush_state(block);
     self.stats.state_flushing_counters.record(&result);
   }
 
@@ -573,9 +496,6 @@ pub struct InitParams {
   // Whether the logger should start in sleep mode. It can then be transitioned using the provided
   // transition APIs.
   pub start_in_sleep_mode: bool,
-
-  pub feature_flags_file_size_bytes: usize,
-  pub feature_flags_high_watermark: f32,
 }
 
 pub struct ReportProcessingRequest {
@@ -596,7 +516,7 @@ pub struct Logger {
 
   runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
 
-  async_log_buffer_tx: MemoryBoundSender<AsyncLogBufferMessage>,
+  async_log_buffer_tx: async_log_buffer::Sender,
   report_processor_tx: Sender<ReportProcessingRequest>,
 
   session_strategy: Arc<bd_session::Strategy>,
@@ -617,7 +537,7 @@ impl Logger {
     shutdown_state: Option<ComponentShutdownTrigger>,
     runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
     stats_scope: Scope,
-    async_log_buffer_tx: MemoryBoundSender<AsyncLogBufferMessage>,
+    async_log_buffer_tx: async_log_buffer::Sender,
     report_processor_tx: Sender<ReportProcessingRequest>,
     session_strategy: Arc<bd_session::Strategy>,
     device: Arc<bd_device::Device>,

@@ -19,7 +19,7 @@ use crate::pre_config_buffer::PreConfigBuffer;
 use crate::{Block, internal_report, network};
 use anyhow::anyhow;
 use bd_api::DataUpload;
-use bd_bounded_buffer::{Receiver, Sender, TrySendError, channel};
+use bd_bounded_buffer::{Receiver, TrySendError, channel};
 use bd_buffer::BuffersWithAck;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_common::{maybe_await, maybe_await_map};
@@ -85,35 +85,48 @@ impl ReportProcessor for () {
 }
 
 #[derive(Debug)]
-pub enum AsyncLogBufferMessage {
-  EmitLog((LogLine, Option<oneshot::Sender<()>>)),
+pub enum StateUpdateMessage {
   AddLogField(String, StringOrBytes<String, Vec<u8>>),
   RemoveLogField(String),
-  SetFeatureFlag(String, Option<String>),
-  SetFeatureFlags(Vec<(String, Option<String>)>),
-  RemoveFeatureFlag(String),
-  ClearFeatureFlags,
+  SetFeatureFlagExposure(String, Option<String>),
   FlushState(Option<bd_completion::Sender<()>>),
 }
 
-impl MemorySized for AsyncLogBufferMessage {
+impl MemorySized for StateUpdateMessage {
   fn size(&self) -> usize {
     size_of_val(self)
       + match self {
-        Self::EmitLog((log, _)) => log.size(),
         Self::AddLogField(key, value) => key.size() + value.size(),
         Self::RemoveLogField(field_name) => field_name.len(),
-        Self::SetFeatureFlag(flag, variant) => flag.len() + variant.as_ref().map_or(0, String::len),
-        Self::SetFeatureFlags(flags) => flags
-          .iter()
-          .map(|(k, v)| k.len() + v.as_ref().map_or(0, String::len))
-          .sum(),
-        Self::RemoveFeatureFlag(flag) => flag.len(),
-        Self::ClearFeatureFlags => 0,
+        Self::SetFeatureFlagExposure(flag, variant) => {
+          flag.len() + variant.as_ref().map_or(0, String::len)
+        },
         Self::FlushState(sender) => size_of_val(sender),
       }
   }
 }
+
+#[derive(Debug)]
+pub struct EmitLogMessage {
+  log: LogLine,
+  log_processing_completed_tx: Option<oneshot::Sender<()>>,
+}
+
+impl From<LogLine> for EmitLogMessage {
+  fn from(log: LogLine) -> Self {
+    Self {
+      log,
+      log_processing_completed_tx: None,
+    }
+  }
+}
+
+impl MemorySized for EmitLogMessage {
+  fn size(&self) -> usize {
+    size_of_val(self) + self.log.size()
+  }
+}
+
 
 //
 // LogLine
@@ -181,6 +194,59 @@ impl MemorySized for LogLine {
   }
 }
 
+#[derive(Clone)]
+pub struct Sender {
+  log_buffer_tx: bd_bounded_buffer::Sender<EmitLogMessage>,
+  state_buffer_tx: bd_bounded_buffer::Sender<StateUpdateMessage>,
+}
+
+impl Sender {
+  pub fn from_parts(
+    log_buffer_tx: bd_bounded_buffer::Sender<EmitLogMessage>,
+    state_buffer_tx: bd_bounded_buffer::Sender<StateUpdateMessage>,
+  ) -> Self {
+    Self {
+      log_buffer_tx,
+      state_buffer_tx,
+    }
+  }
+
+  pub fn try_send_log(&self, msg: EmitLogMessage) -> Result<(), TrySendError> {
+    self.log_buffer_tx.try_send(msg)
+  }
+
+  pub fn try_send_state_update(&self, msg: StateUpdateMessage) -> Result<(), TrySendError> {
+    self.state_buffer_tx.try_send(msg)
+  }
+
+  pub fn flush_state(&self, block: Block) -> Result<(), TrySendError> {
+    let (completion_tx, completion_rx) = if matches!(block, Block::Yes(_)) {
+      let (tx, rx) = bd_completion::Sender::new();
+      (Some(tx), Some(rx))
+    } else {
+      (None, None)
+    };
+
+    self.try_send_state_update(StateUpdateMessage::FlushState(completion_tx))?;
+
+    // Wait for the processing to be completed only if passed `blocking` argument is equal to
+    // `true`.
+    if let Some(completion_rx) = completion_rx
+      && let Block::Yes(block_timeout) = block
+    {
+      match &completion_rx.blocking_recv_with_timeout(block_timeout) {
+        Ok(()) => {
+          log::debug!("flush state: completion received");
+        },
+        Err(e) => {
+          log::debug!("flush state: received an error when waiting for completion: {e}");
+        },
+      }
+    }
+    Ok(())
+  }
+}
+
 //
 // AsyncLogBuffer
 //
@@ -188,7 +254,8 @@ impl MemorySized for LogLine {
 // Orchestrates buffering of incoming logs and offloading their processing to
 // a run loop in an async way.
 pub struct AsyncLogBuffer<R: LogReplay> {
-  communication_rx: Receiver<AsyncLogBufferMessage>,
+  log_rx: Receiver<EmitLogMessage>,
+  state_rx: Receiver<StateUpdateMessage>,
   config_update_rx: mpsc::Receiver<ConfigUpdate>,
   report_processor_rx: mpsc::Receiver<ReportProcessingRequest>,
   data_upload_tx: mpsc::Sender<DataUpload>,
@@ -235,14 +302,23 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     time_provider: Arc<dyn TimeProvider>,
     lifecycle_state: InitLifecycleState,
     data_upload_tx: mpsc::Sender<DataUpload>,
-  ) -> (Self, Sender<AsyncLogBufferMessage>) {
-    let (async_log_buffer_communication_tx, async_log_buffer_communication_rx) = channel(
+  ) -> (Self, Sender) {
+    let (log_tx, log_rx) = channel(
       uninitialized_logging_context
         .pre_config_log_buffer
         .max_count(),
       uninitialized_logging_context
         .pre_config_log_buffer
         .max_size(),
+    );
+
+    // Larger channel for state updates as they are less frequent and we want
+    // to avoid dropping any state updates if possible.
+    // Note that the 10 MB is not pre-allocated memory, just the upper limit of data stored within
+    // the buffer before backpressure is applied.
+    let (state_tx, state_rx) = channel(
+      1000,
+      10 * 1024 * 1024, // 10 MB
     );
 
     let (
@@ -267,7 +343,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     (
       Self {
-        communication_rx: async_log_buffer_communication_rx,
+        log_rx,
+        state_rx,
+
         config_update_rx,
         report_processor_rx,
         data_upload_tx,
@@ -308,12 +386,15 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         pending_workflow_debug_state: HashMap::new(),
         send_workflow_debug_state_delay: None,
       },
-      async_log_buffer_communication_tx,
+      Sender {
+        log_buffer_tx: log_tx,
+        state_buffer_tx: state_tx,
+      },
     )
   }
 
   pub fn enqueue_log(
-    tx: &Sender<AsyncLogBufferMessage>,
+    tx: &Sender,
     log_level: LogLevel,
     log_type: LogType,
     message: LogMessage,
@@ -344,10 +425,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       capture_session,
     };
 
-    if let Err(e) = tx.try_send(AsyncLogBufferMessage::EmitLog((
+    if let Err(e) = tx.try_send_log(EmitLogMessage {
       log,
-      log_processing_completed_tx_option,
-    ))) {
+      log_processing_completed_tx: log_processing_completed_tx_option,
+    }) {
       log::debug!("enqueue_log: sending to channel failed: {e:?}");
 
       if matches!(&e, TrySendError::Closed) {
@@ -382,136 +463,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
     // Report success even if the `blocking == true` part of the
     // implementation above failed.
-    Ok(())
-  }
-
-  pub fn add_log_field(
-    tx: &Sender<AsyncLogBufferMessage>,
-    key: String,
-    value: StringOrBytes<String, Vec<u8>>,
-  ) -> Result<(), TrySendError> {
-    tx.try_send(AsyncLogBufferMessage::AddLogField(key, value))
-  }
-
-  pub fn remove_log_field(
-    tx: &Sender<AsyncLogBufferMessage>,
-    field_name: &str,
-  ) -> Result<(), TrySendError> {
-    tx.try_send(AsyncLogBufferMessage::RemoveLogField(
-      field_name.to_string(),
-    ))
-  }
-
-  /// Sends a message to set or update a feature flag.
-  ///
-  /// This is an internal method used by the logger to send feature flag update messages
-  /// to the async log buffer. The message is sent asynchronously and will be processed
-  /// by the log buffer thread.
-  ///
-  /// # Arguments
-  ///
-  /// * `tx` - The sender channel to the async log buffer
-  /// * `flag` - The name of the feature flag to set or update
-  /// * `variant` - The variant value for the flag (None for boolean-style flags)
-  ///
-  /// # Returns
-  ///
-  /// Returns `Ok(())` if the message was sent successfully, or a `TrySendError`
-  /// if the channel is full or disconnected.
-  pub fn set_feature_flag(
-    tx: &Sender<AsyncLogBufferMessage>,
-    flag: String,
-    variant: Option<String>,
-  ) -> Result<(), TrySendError> {
-    tx.try_send(AsyncLogBufferMessage::SetFeatureFlag(flag, variant))
-  }
-
-  /// Sends a message to set or update multiple feature flags.
-  ///
-  /// This is an internal method used by the logger to send multiple feature flag update
-  /// messages to the async log buffer in a single operation. The message is sent
-  /// asynchronously and will be processed by the log buffer thread.
-  ///
-  /// # Arguments
-  ///
-  /// * `tx` - The sender channel to the async log buffer
-  /// * `flags` - A vector of tuples containing flag names and their variants
-  ///
-  /// # Returns
-  ///
-  /// Returns `Ok(())` if the message was sent successfully, or a `TrySendError`
-  /// if the channel is full or disconnected.
-  pub fn set_feature_flags(
-    tx: &Sender<AsyncLogBufferMessage>,
-    flags: Vec<(String, Option<String>)>,
-  ) -> Result<(), TrySendError> {
-    tx.try_send(AsyncLogBufferMessage::SetFeatureFlags(flags))
-  }
-
-  /// Sends a message to remove a feature flag.
-  ///
-  /// This is an internal method used by the logger to send feature flag removal messages
-  /// to the async log buffer. The message is sent asynchronously and will be processed
-  /// by the log buffer thread.
-  ///
-  /// # Arguments
-  ///
-  /// * `tx` - The sender channel to the async log buffer
-  /// * `flag` - The name of the feature flag to remove
-  ///
-  /// # Returns
-  ///
-  /// Returns `Ok(())` if the message was sent successfully, or a `TrySendError`
-  /// if the channel is full or disconnected.
-  pub fn remove_feature_flag(
-    tx: &Sender<AsyncLogBufferMessage>,
-    flag: String,
-  ) -> Result<(), TrySendError> {
-    tx.try_send(AsyncLogBufferMessage::RemoveFeatureFlag(flag))
-  }
-
-  /// Sends a message to clear all feature flags.
-  ///
-  /// This is an internal method used by the logger to send feature flag clear messages
-  /// to the async log buffer. The message is sent asynchronously and will be processed
-  /// by the log buffer thread.
-  ///
-  /// # Arguments
-  ///
-  /// * `tx` - The sender channel to the async log buffer
-  ///
-  /// # Returns
-  ///
-  /// Returns `Ok(())` if the message was sent successfully, or a `TrySendError`
-  /// if the channel is full or disconnected.
-  pub fn clear_feature_flags(tx: &Sender<AsyncLogBufferMessage>) -> Result<(), TrySendError> {
-    tx.try_send(AsyncLogBufferMessage::ClearFeatureFlags)
-  }
-
-  pub fn flush_state(tx: &Sender<AsyncLogBufferMessage>, block: Block) -> Result<(), TrySendError> {
-    let (completion_tx, completion_rx) = if matches!(block, Block::Yes(_)) {
-      let (tx, rx) = bd_completion::Sender::new();
-      (Some(tx), Some(rx))
-    } else {
-      (None, None)
-    };
-
-    tx.try_send(AsyncLogBufferMessage::FlushState(completion_tx))?;
-
-    // Wait for the processing to be completed only if passed `blocking` argument is equal to
-    // `true`.
-    if let Some(completion_rx) = completion_rx
-      && let Block::Yes(block_timeout) = block
-    {
-      match &completion_rx.blocking_recv_with_timeout(block_timeout) {
-        Ok(()) => {
-          log::debug!("flush state: completion received");
-        },
-        Err(e) => {
-          log::debug!("flush state: received an error when waiting for completion: {e}");
-        },
-      }
-    }
     Ok(())
   }
 
@@ -849,9 +800,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             }
           }
         },
-        Some(async_log_buffer_message) = self.communication_rx.recv() => {
-          match async_log_buffer_message {
-            AsyncLogBufferMessage::EmitLog((mut log, log_processing_completed_tx)) => {
+        Some(EmitLogMessage { mut log, log_processing_completed_tx }) = self.log_rx.recv() => {
               for interceptor in &mut self.interceptors {
                 interceptor.process(
                   log.log_level,
@@ -874,46 +823,27 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 debug_assert!(false, "failed to send log processing completion");
                 log::debug!("failed to send log processing completion");
               }
-            },
-            AsyncLogBufferMessage::AddLogField(key, value) => {
+        },
+        Some(async_log_buffer_message) = self.state_rx.recv() => {
+          match async_log_buffer_message {
+            StateUpdateMessage::AddLogField(key, value) => {
               if let Err(e) = self.metadata_collector.add_field(key.clone().into(), value.clone()) {
                 log::warn!("failed to add log field ({key:?}): {e}");
               }
             },
-            AsyncLogBufferMessage::RemoveLogField(field_name) => {
+            StateUpdateMessage::RemoveLogField(field_name) => {
               self.metadata_collector.remove_field(&field_name);
             },
-            AsyncLogBufferMessage::SetFeatureFlag(flag, variant) => {
+            StateUpdateMessage::SetFeatureFlagExposure(flag, variant) => {
                 handle_unexpected(
                 state_store.insert(
-                    Scope::FeatureFlag,
+                    Scope::FeatureFlagExposure,
                     flag.clone(),
                     variant.clone().unwrap_or_default()
                 ).await,
                 &format!("async log buffer: failed to set feature flag ({flag:?})"));
             },
-            AsyncLogBufferMessage::SetFeatureFlags(flags) => {
-                handle_unexpected(
-                state_store.extend(
-                    Scope::FeatureFlag,
-                    flags.into_iter().map(|(k, v)| (k, v.unwrap_or_default()))
-                ).await,
-                "async log buffer: failed to set feature flags");
-            },
-            AsyncLogBufferMessage::RemoveFeatureFlag(flag) => {
-                handle_unexpected(
-                state_store.remove(Scope::FeatureFlag, &flag).await
-                ,
-                &format!("async log buffer: failed to remove feature flag ({flag:?})"));
-
-            },
-            AsyncLogBufferMessage::ClearFeatureFlags => {
-                handle_unexpected(
-                state_store.clear(Scope::FeatureFlag)
-                .await,
-                "async log buffer: failed to clear feature flags");
-            },
-            AsyncLogBufferMessage::FlushState(completion_tx) => {
+            StateUpdateMessage::FlushState(completion_tx) => {
               let (sender, receiver) = bd_completion::Sender::new();
               if let Err(e) = self.logging_state.flush_stats_trigger().flush(Some(sender)).await {
                 log::debug!("flushing state: failed to flush stats: {e}");

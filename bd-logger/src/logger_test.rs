@@ -6,9 +6,9 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::{Stats, with_thread_local_logger_guard};
-use crate::LoggerHandle;
 use crate::app_version::Repository;
 use crate::logger::{Block, CaptureSession};
+use crate::{LoggerHandle, async_log_buffer};
 use bd_client_stats_store::Collector;
 use bd_log_primitives::log_level;
 use bd_proto::protos::logging::payload::LogType;
@@ -23,11 +23,13 @@ use tokio_test::assert_pending;
 
 #[tokio::test]
 async fn thread_local_logger_guard() {
-  let (tx, mut rx) = bd_bounded_buffer::channel(1, 100);
+  let (log_tx, mut log_rx) = bd_bounded_buffer::channel(1, 100);
+  let (state_tx, _state_rx) = bd_bounded_buffer::channel(1, 100);
+  let sender = async_log_buffer::Sender::from_parts(log_tx, state_tx);
 
   let store = in_memory_store();
   let handle = LoggerHandle {
-    tx,
+    tx: sender,
     stats: Stats::new(&Collector::default().scope("")),
     session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
       store.clone(),
@@ -52,7 +54,7 @@ async fn thread_local_logger_guard() {
     );
   });
 
-  let recv = rx.recv();
+  let recv = log_rx.recv();
   pin!(recv);
   assert_pending!(poll!(recv));
 }
