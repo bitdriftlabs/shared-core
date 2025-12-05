@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::Block;
-use crate::async_log_buffer::{AsyncLogBuffer, LogLine, LogReplay, Sender};
+use crate::async_log_buffer::{AsyncLogBuffer, LogLine, LogReplay, PreConfigItem, Sender};
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
@@ -174,7 +174,7 @@ impl Setup {
     )
   }
 
-  fn make_logging_context(&self) -> UninitializedLoggingContext<Log> {
+  fn make_logging_context(&self) -> UninitializedLoggingContext<PreConfigItem> {
     let (trigger_upload_tx, _) = tokio::sync::mpsc::channel(1);
     let (data_upload_tx, _) = tokio::sync::mpsc::channel(1);
     let (flush_buffers_tx, _) = tokio::sync::mpsc::channel(1);

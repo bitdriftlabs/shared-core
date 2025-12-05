@@ -135,12 +135,37 @@ impl MemorySized for EmitLogMessage {
 /// These operations are queued and replayed after initialization to ensure
 /// proper ordering with logs and proper workflow state transitions.
 #[derive(Debug, Clone)]
-enum PendingStateOperation {
+#[allow(clippy::redundant_pub_crate)]
+pub(crate) enum PendingStateOperation {
   SetFeatureFlagExposure(String, Option<String>),
 }
 
 //
-// LogLine
+// PreConfigItem
+//
+
+/// An item that can be stored in the pre-config buffer, representing either
+/// a log or a state operation that occurred before initialization. This allows
+/// both logs and state changes to be replayed in the exact order they arrived.
+#[derive(Debug)]
+#[allow(clippy::redundant_pub_crate)]
+pub(crate) enum PreConfigItem {
+  Log(bd_log_primitives::Log),
+  StateOperation(PendingStateOperation),
+}
+
+impl MemorySized for PreConfigItem {
+  fn size(&self) -> usize {
+    size_of_val(self)
+      + match self {
+        Self::Log(log) => log.size(),
+        Self::StateOperation(PendingStateOperation::SetFeatureFlagExposure(flag, variant)) => {
+          flag.len() + variant.as_ref().map_or(0, String::len)
+        },
+      }
+  }
+}
+
 //
 // LogLine
 //
@@ -286,21 +311,18 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   replayer: R,
   interceptors: Vec<Arc<dyn LogInterceptor>>,
 
-  logging_state: LoggingState<bd_log_primitives::Log>,
+  logging_state: LoggingState<PreConfigItem>,
   global_state_tracker: global_state::Tracker,
   time_provider: Arc<dyn TimeProvider>,
   lifecycle_state: InitLifecycleState,
 
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
-  /// Queue of state operations that occurred before initialization. These will be replayed
-  /// after initialization to ensure proper ordering with logs.
-  pending_state_operations: VecDeque<PendingStateOperation>,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   pub(crate) fn new(
-    uninitialized_logging_context: UninitializedLoggingContext<bd_log_primitives::Log>,
+    uninitialized_logging_context: UninitializedLoggingContext<PreConfigItem>,
     replayer: R,
     session_strategy: Arc<bd_session::Strategy>,
     metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
@@ -401,7 +423,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
         pending_workflow_debug_state: HashMap::new(),
         send_workflow_debug_state_delay: None,
-        pending_state_operations: VecDeque::new(),
       },
       Sender {
         log_buffer_tx: log_tx,
@@ -645,7 +666,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
         let result = uninitialized_logging_context
           .pre_config_log_buffer
-          .push(log);
+          .push(PreConfigItem::Log(log));
 
         uninitialized_logging_context
           .stats
@@ -673,7 +694,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     Ok(log_replay_result)
   }
 
-  async fn update(mut self, config: ConfigUpdate) -> (Self, Option<PreConfigBuffer<Log>>) {
+  async fn update(
+    mut self,
+    config: ConfigUpdate,
+  ) -> (Self, Option<PreConfigBuffer<PreConfigItem>>) {
     let (initialized_logging_context, maybe_pre_config_log_buffer) = match self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
         let (initialized_logging_context, pre_config_log_buffer) = uninitialized_logging_context
@@ -695,9 +719,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     (self, maybe_pre_config_log_buffer)
   }
 
-  async fn maybe_replay_pre_config_buffer_logs(
+  async fn maybe_replay_pre_config_buffer(
     &mut self,
-    pre_config_log_buffer: PreConfigBuffer<bd_log_primitives::Log>,
+    pre_config_buffer: PreConfigBuffer<PreConfigItem>,
     state_store: &bd_state::Store,
   ) {
     let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state else {
@@ -705,64 +729,63 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     };
 
     let now = self.time_provider.now();
-    for log_line in pre_config_log_buffer.pop_all() {
-      if let Err(e) = self
-        .replayer
-        .replay_log(
-          log_line,
-          false,
-          &mut initialized_logging_context.processing_pipeline,
-          state_store,
-          now,
-        )
-        .await
-      {
-        log::debug!("failed to reply pre-config log buffer logs: {e}");
-      }
-    }
-  }
-
-  async fn maybe_replay_pending_state_operations(&mut self, state_store: &bd_state::Store) {
-    let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state else {
-      return;
-    };
-
-    let now = self.time_provider.now();
     let session_id = self.session_strategy.session_id();
 
-    for operation in std::mem::take(&mut self.pending_state_operations) {
-      let state_change_result = match operation {
-        PendingStateOperation::SetFeatureFlagExposure(flag, variant) => {
-          state_store
-            .insert(
-              Scope::FeatureFlagExposure,
-              flag.clone(),
-              variant.unwrap_or_default(),
+    for item in pre_config_buffer.pop_all() {
+      match item {
+        PreConfigItem::Log(log) => {
+          if let Err(e) = self
+            .replayer
+            .replay_log(
+              log,
+              false,
+              &mut initialized_logging_context.processing_pipeline,
+              state_store,
+              now,
             )
             .await
-        },
-      };
-
-      match state_change_result {
-        Ok(state_change) => {
-          if !matches!(state_change.change_type, bd_state::StateChangeType::NoChange) {
-            self
-              .replayer
-              .replay_state_change(
-                state_change,
-                &mut initialized_logging_context.processing_pipeline,
-                state_store,
-                now,
-                &session_id,
-              )
-              .await;
+          {
+            log::debug!("failed to replay pre-config log: {e}");
           }
         },
-        Err(e) => {
-          handle_unexpected::<(), anyhow::Error>(
-            Err(e),
-            "async log buffer: failed to replay pending state operation",
-          );
+        PreConfigItem::StateOperation(operation) => {
+          let state_change_result = match operation {
+            PendingStateOperation::SetFeatureFlagExposure(flag, variant) => {
+              state_store
+                .insert(
+                  Scope::FeatureFlagExposure,
+                  flag.clone(),
+                  variant.unwrap_or_default(),
+                )
+                .await
+            },
+          };
+
+          match state_change_result {
+            Ok(state_change) => {
+              if !matches!(
+                state_change.change_type,
+                bd_state::StateChangeType::NoChange
+              ) {
+                self
+                  .replayer
+                  .replay_state_change(
+                    state_change,
+                    &mut initialized_logging_context.processing_pipeline,
+                    state_store,
+                    now,
+                    &session_id,
+                  )
+                  .await;
+              }
+            },
+            Err(e) => {
+              handle_unexpected::<(), anyhow::Error>(
+                Err(e),
+                "async log buffer: failed to replay pending state operation",
+              );
+            },
+          }
         },
       }
     }
@@ -818,14 +841,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             = self.update(config).await;
 
           self = updated_self;
-          if let Some(pre_config_log_buffer) = maybe_pre_config_buffer {
+          if let Some(pre_config_buffer) = maybe_pre_config_buffer {
             self.lifecycle_state.set(InitLifecycle::LogProcessingStarted);
-            self.maybe_replay_pre_config_buffer_logs(
-                pre_config_log_buffer,
-                &state_store,
-            ).await;
-            // Replay any state operations that occurred before initialization
-            self.maybe_replay_pending_state_operations(&state_store).await;
+            self
+              .maybe_replay_pre_config_buffer(pre_config_buffer, &state_store)
+              .await;
           }
         },
         Some(ReportProcessingRequest {
@@ -900,7 +920,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               self.metadata_collector.remove_field(&field_name);
             },
             StateUpdateMessage::SetFeatureFlagExposure(flag, variant) => {
-              if let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state
+              if let LoggingState::Initialized(initialized_logging_context) =
+                &mut self.logging_state
               {
                 // Initialized: update state store and replay through workflows
                 match state_store
@@ -936,9 +957,22 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 }
               } else {
                 // Not initialized: queue the operation for later replay
-                self
-                  .pending_state_operations
-                  .push_back(PendingStateOperation::SetFeatureFlagExposure(flag, variant));
+                if let LoggingState::Uninitialized(uninitialized_logging_context) =
+                  &mut self.logging_state
+                {
+                  let result = uninitialized_logging_context.pre_config_log_buffer.push(
+                    PreConfigItem::StateOperation(PendingStateOperation::SetFeatureFlagExposure(
+                      flag, variant,
+                    )),
+                  );
+                  uninitialized_logging_context
+                    .stats
+                    .pre_config_log_buffer
+                    .record(&result);
+                  if let Err(e) = result {
+                    log::debug!("failed to enqueue state operation to pre-config buffer: {e}");
+                  }
+                }
               }
             },
             StateUpdateMessage::FlushState(completion_tx) => {

@@ -2515,7 +2515,11 @@ fn workflow_state_change_match_advances_workflow() {
       "test_flag",
       Some("disabled"),
     ),
-    &[make_emit_counter_action("state_change_action", metric_value(42), vec![])],
+    &[make_emit_counter_action(
+      "state_change_action",
+      metric_value(42),
+      vec![],
+    )],
   );
   let a = state("A").declare_transition(
     &b,
@@ -2580,7 +2584,11 @@ fn workflow_state_change_match_flush_buffers() {
       "trigger_flush",
       Some("true"),
     ),
-    &[make_flush_buffers_action(&["default"], None, "flush_action_id")],
+    &[make_flush_buffers_action(
+      &["default"],
+      None,
+      "flush_action_id",
+    )],
   );
 
   // Send down the configuration with a trigger buffer and the workflow
@@ -2619,11 +2627,10 @@ fn workflow_state_change_match_flush_buffers() {
     assert_eq!(log_upload.buffer_id(), "default");
     // Should have 5 regular logs + 1 synthetic "State Change" log
     assert_eq!(log_upload.logs().len(), 6);
-    
+
     // Verify the last log is the synthetic state change log with the flush action ID
     let last_log = &log_upload.logs()[5];
     assert_eq!(last_log.message(), "State Change");
     assert_eq!(vec!["flush_action_id"], *last_log.workflow_action_ids());
   });
 }
-

@@ -47,7 +47,7 @@ fn crash_report_upload() {
   };
 
   let initial_session_id = {
-    let setup = Setup::new_with_options(SetupOptions {
+    let mut setup = Setup::new_with_options(SetupOptions {
       disk_storage: true,
       metadata_provider: Arc::new(LogMetadata {
         timestamp: time::OffsetDateTime::now_utc().into(),
@@ -69,6 +69,9 @@ fn crash_report_upload() {
     setup
       .logger_handle
       .set_feature_flag_exposure("flag_with_variant".to_string(), Some("variant".to_string()));
+
+    // Configure the logger to drain the pre-config buffer and persist feature flags
+    setup.configure_stream_all_logs();
 
     // Flush state to ensure feature flags are persisted before writing the crash report
     setup.logger_handle.flush_state(Block::Yes(5.std_seconds()));

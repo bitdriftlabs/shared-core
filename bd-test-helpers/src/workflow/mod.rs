@@ -543,8 +543,7 @@ pub fn make_state_change_rule(
   key: &str,
   new_value: Option<&str>,
 ) -> Rule {
-  use protos::state::matcher::state_value_match;
-  use protos::state::matcher::StateValueMatch;
+  use protos::state::matcher::{StateValueMatch, state_value_match};
 
   Rule {
     rule_type: Some(Rule_type::RuleStateChangeMatch(

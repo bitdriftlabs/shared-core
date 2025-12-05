@@ -554,11 +554,7 @@ async fn remove_returns_removed_state_change() {
   // Insert a value first
   setup
     .store
-    .insert(
-      Scope::FeatureFlag,
-      "flag".to_string(),
-      "value".to_string(),
-    )
+    .insert(Scope::FeatureFlag, "flag".to_string(), "value".to_string())
     .await
     .unwrap();
 
@@ -697,11 +693,7 @@ async fn clear_returns_all_removed_state_changes() {
   // Should have 2 removed changes (flag1 and flag2)
   assert_eq!(changes.changes.len(), 2);
 
-  let keys: std::collections::HashSet<_> = changes
-    .changes
-    .iter()
-    .map(|c| c.key.as_str())
-    .collect();
+  let keys: std::collections::HashSet<_> = changes.changes.iter().map(|c| c.key.as_str()).collect();
   assert!(keys.contains("flag1"));
   assert!(keys.contains("flag2"));
 
