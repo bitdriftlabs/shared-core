@@ -45,7 +45,7 @@ async fn state_change_string_match_triggers_transition() {
   let a = state("A").declare_transition_with_actions(
     &b,
     make_state_change_rule(
-      bd_state::Scope::FeatureFlag,
+      bd_state::Scope::FeatureFlagExposure,
       "feature_flag",
       make_string_match("enabled"),
     ),
@@ -67,7 +67,7 @@ async fn state_change_string_match_triggers_transition() {
 
   // Process a state change that matches
   let state_change = StateChange::inserted(
-    bd_state::Scope::FeatureFlag,
+    bd_state::Scope::FeatureFlagExposure,
     "feature_flag",
     "enabled",
     OffsetDateTime::now_utc(),
@@ -88,7 +88,7 @@ async fn state_change_is_set_match() {
   let a = state("A").declare_transition_with_actions(
     &b,
     make_state_change_rule(
-      bd_state::Scope::FeatureFlag,
+      bd_state::Scope::FeatureFlagExposure,
       "any_value",
       make_is_set_match(),
     ),
@@ -110,7 +110,7 @@ async fn state_change_is_set_match() {
 
   // Test with string value
   let state_change = StateChange::inserted(
-    bd_state::Scope::FeatureFlag,
+    bd_state::Scope::FeatureFlagExposure,
     "any_value",
     "hello",
     OffsetDateTime::now_utc(),
@@ -131,7 +131,7 @@ async fn state_change_no_match_no_transition() {
   let a = state("A").declare_transition_with_actions(
     &b,
     make_state_change_rule(
-      bd_state::Scope::FeatureFlag,
+      bd_state::Scope::FeatureFlagExposure,
       "flag",
       make_string_match("enabled"),
     ),
@@ -153,7 +153,7 @@ async fn state_change_no_match_no_transition() {
 
   // Process state change with wrong key
   let state_change = StateChange::inserted(
-    bd_state::Scope::FeatureFlag,
+    bd_state::Scope::FeatureFlagExposure,
     "different_key",
     "enabled",
     OffsetDateTime::now_utc(),
@@ -173,7 +173,7 @@ async fn state_change_no_match_no_transition() {
 
   // Process state change with wrong value
   let state_change = StateChange::inserted(
-    bd_state::Scope::FeatureFlag,
+    bd_state::Scope::FeatureFlagExposure,
     "flag",
     "disabled",
     OffsetDateTime::now_utc(),
@@ -216,7 +216,7 @@ async fn state_change_with_timestamp_extraction() {
     .declare_transition_with_extractions(
       &b,
       make_state_change_rule(
-        bd_state::Scope::FeatureFlag,
+        bd_state::Scope::FeatureFlagExposure,
         "test_flag",
         make_is_set_match(),
       ),
@@ -239,7 +239,7 @@ async fn state_change_with_timestamp_extraction() {
   // Process state change at a specific timestamp
   let state_change_time = datetime!(2024-01-15 10:30:45 UTC);
   let state_change = StateChange::inserted(
-    bd_state::Scope::FeatureFlag,
+    bd_state::Scope::FeatureFlagExposure,
     "test_flag",
     "enabled",
     state_change_time,
@@ -284,7 +284,7 @@ async fn state_change_does_trigger_timeout() {
     .declare_transition(
       &b,
       make_state_change_rule(
-        bd_state::Scope::FeatureFlag,
+        bd_state::Scope::FeatureFlagExposure,
         "wrong_flag",
         make_is_set_match(),
       ),
@@ -315,7 +315,7 @@ async fn state_change_does_trigger_timeout() {
   // Process a state change at T=2 seconds (after the timeout would have expired)
   // This SHOULD trigger the timeout transition to C (not match the state change rule)
   let state_change = StateChange::inserted(
-    bd_state::Scope::FeatureFlag,
+    bd_state::Scope::FeatureFlagExposure,
     "different_flag",
     "enabled",
     datetime!(2024-01-01 00:00:02 UTC),
@@ -336,7 +336,7 @@ async fn state_change_triggers_counter_metric() {
   let a = state("A").declare_transition_with_actions(
     &b,
     make_state_change_rule(
-      bd_state::Scope::FeatureFlag,
+      bd_state::Scope::FeatureFlagExposure,
       "test_flag",
       make_is_set_match(),
     ),
@@ -362,7 +362,7 @@ async fn state_change_triggers_counter_metric() {
 
   // Process a state change that matches the rule
   let state_change = StateChange::inserted(
-    bd_state::Scope::FeatureFlag,
+    bd_state::Scope::FeatureFlagExposure,
     "test_flag",
     "enabled",
     OffsetDateTime::now_utc(),
@@ -387,7 +387,7 @@ async fn state_change_triggers_histogram_metric() {
   let a = state("A").declare_transition_with_actions(
     &b,
     make_state_change_rule(
-      bd_state::Scope::FeatureFlag,
+      bd_state::Scope::FeatureFlagExposure,
       "test_flag",
       make_is_set_match(),
     ),
@@ -413,7 +413,7 @@ async fn state_change_triggers_histogram_metric() {
 
   // Process a state change that matches the rule
   let state_change = StateChange::inserted(
-    bd_state::Scope::FeatureFlag,
+    bd_state::Scope::FeatureFlagExposure,
     "test_flag",
     "enabled",
     OffsetDateTime::now_utc(),
@@ -441,7 +441,7 @@ async fn state_change_with_feature_flag_extraction() {
   let a = state("A").declare_transition_with_actions(
     &b,
     make_state_change_rule(
-      bd_state::Scope::FeatureFlag,
+      bd_state::Scope::FeatureFlagExposure,
       "trigger_flag",
       make_is_set_match(),
     ),
@@ -464,7 +464,7 @@ async fn state_change_with_feature_flag_extraction() {
   // Set up a state reader with a feature flag value to extract
   let mut state_reader = bd_state::test::TestStateReader::new();
   state_reader.insert(
-    bd_state::Scope::FeatureFlag,
+    bd_state::Scope::FeatureFlagExposure,
     "extracted_flag",
     "extracted_value",
   );
@@ -472,7 +472,7 @@ async fn state_change_with_feature_flag_extraction() {
   // Process state change that triggers the transition, with our custom state reader
   // This will create the initial run and transition to B
   let state_change = StateChange::inserted(
-    bd_state::Scope::FeatureFlag,
+    bd_state::Scope::FeatureFlagExposure,
     "trigger_flag",
     "enabled",
     OffsetDateTime::now_utc(),
