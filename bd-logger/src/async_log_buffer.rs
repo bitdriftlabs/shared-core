@@ -15,7 +15,7 @@ use crate::logger::{ReportProcessingRequest, with_thread_local_logger_guard};
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
 use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
-use crate::pre_config_buffer::PreConfigBuffer;
+use crate::pre_config_buffer::{PendingStateOperation, PreConfigBuffer, PreConfigItem};
 use crate::{Block, internal_report, network};
 use anyhow::anyhow;
 use bd_api::DataUpload;
@@ -124,45 +124,6 @@ impl From<LogLine> for EmitLogMessage {
 impl MemorySized for EmitLogMessage {
   fn size(&self) -> usize {
     size_of_val(self) + self.log.size()
-  }
-}
-
-//
-// PendingStateOperation
-//
-
-/// Represents a state update operation that occurred before initialization.
-/// These operations are queued and replayed after initialization to ensure
-/// proper ordering with logs and proper workflow state transitions.
-#[derive(Debug, Clone)]
-#[allow(clippy::redundant_pub_crate)]
-pub(crate) enum PendingStateOperation {
-  SetFeatureFlagExposure(String, Option<String>),
-}
-
-//
-// PreConfigItem
-//
-
-/// An item that can be stored in the pre-config buffer, representing either
-/// a log or a state operation that occurred before initialization. This allows
-/// both logs and state changes to be replayed in the exact order they arrived.
-#[derive(Debug)]
-#[allow(clippy::redundant_pub_crate)]
-pub(crate) enum PreConfigItem {
-  Log(bd_log_primitives::Log),
-  StateOperation(PendingStateOperation),
-}
-
-impl MemorySized for PreConfigItem {
-  fn size(&self) -> usize {
-    size_of_val(self)
-      + match self {
-        Self::Log(log) => log.size(),
-        Self::StateOperation(PendingStateOperation::SetFeatureFlagExposure(flag, variant)) => {
-          flag.len() + variant.as_ref().map_or(0, String::len)
-        },
-      }
   }
 }
 

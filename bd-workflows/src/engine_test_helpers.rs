@@ -410,7 +410,7 @@ pub fn make_state_change_rule(
   Rule {
     rule_type: Some(Rule_type::RuleStateChangeMatch(RuleStateChangeMatch {
       scope: match scope {
-        bd_state::Scope::FeatureFlag => StateScope::FEATURE_FLAG.into(),
+        bd_state::Scope::FeatureFlagExposure => StateScope::FEATURE_FLAG.into(),
         bd_state::Scope::GlobalState => StateScope::GLOBAL_STATE.into(),
       },
       key: key.to_string(),

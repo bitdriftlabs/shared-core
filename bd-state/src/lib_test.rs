@@ -462,14 +462,14 @@ async fn insert_returns_inserted_state_change() {
   let change = setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "new_flag".to_string(),
       "new_value".to_string(),
     )
     .await
     .unwrap();
 
-  assert_eq!(change.scope, Scope::FeatureFlag);
+  assert_eq!(change.scope, Scope::FeatureFlagExposure);
   assert_eq!(change.key, "new_flag");
   assert_eq!(
     change.change_type,
@@ -487,7 +487,7 @@ async fn insert_returns_updated_state_change() {
   setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "flag".to_string(),
       "old_value".to_string(),
     )
@@ -498,14 +498,14 @@ async fn insert_returns_updated_state_change() {
   let change = setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "flag".to_string(),
       "new_value".to_string(),
     )
     .await
     .unwrap();
 
-  assert_eq!(change.scope, Scope::FeatureFlag);
+  assert_eq!(change.scope, Scope::FeatureFlagExposure);
   assert_eq!(change.key, "flag");
   assert_eq!(
     change.change_type,
@@ -524,7 +524,7 @@ async fn insert_returns_no_change_when_value_unchanged() {
   setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "flag".to_string(),
       "same_value".to_string(),
     )
@@ -535,14 +535,14 @@ async fn insert_returns_no_change_when_value_unchanged() {
   let change = setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "flag".to_string(),
       "same_value".to_string(),
     )
     .await
     .unwrap();
 
-  assert_eq!(change.scope, Scope::FeatureFlag);
+  assert_eq!(change.scope, Scope::FeatureFlagExposure);
   assert_eq!(change.key, "flag");
   assert_eq!(change.change_type, crate::StateChangeType::NoChange);
 }
@@ -554,18 +554,22 @@ async fn remove_returns_removed_state_change() {
   // Insert a value first
   setup
     .store
-    .insert(Scope::FeatureFlag, "flag".to_string(), "value".to_string())
+    .insert(
+      Scope::FeatureFlagExposure,
+      "flag".to_string(),
+      "value".to_string(),
+    )
     .await
     .unwrap();
 
   // Remove it
   let change = setup
     .store
-    .remove(Scope::FeatureFlag, "flag")
+    .remove(Scope::FeatureFlagExposure, "flag")
     .await
     .unwrap();
 
-  assert_eq!(change.scope, Scope::FeatureFlag);
+  assert_eq!(change.scope, Scope::FeatureFlagExposure);
   assert_eq!(change.key, "flag");
   assert_eq!(
     change.change_type,
@@ -576,7 +580,7 @@ async fn remove_returns_removed_state_change() {
 
   // Verify it's actually removed
   let reader = setup.store.read().await;
-  assert_eq!(reader.get(Scope::FeatureFlag, "flag"), None);
+  assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag"), None);
 }
 
 #[tokio::test]
@@ -585,11 +589,11 @@ async fn remove_returns_no_change_for_nonexistent_key() {
 
   let change = setup
     .store
-    .remove(Scope::FeatureFlag, "nonexistent")
+    .remove(Scope::FeatureFlagExposure, "nonexistent")
     .await
     .unwrap();
 
-  assert_eq!(change.scope, Scope::FeatureFlag);
+  assert_eq!(change.scope, Scope::FeatureFlagExposure);
   assert_eq!(change.key, "nonexistent");
   assert_eq!(change.change_type, crate::StateChangeType::NoChange);
 }
@@ -602,7 +606,7 @@ async fn extend_returns_multiple_state_changes() {
   setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "existing".to_string(),
       "old".to_string(),
     )
@@ -613,7 +617,7 @@ async fn extend_returns_multiple_state_changes() {
   let changes = setup
     .store
     .extend(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       vec![
         ("new1".to_string(), "value1".to_string()),
         ("existing".to_string(), "updated".to_string()),
@@ -662,7 +666,7 @@ async fn clear_returns_all_removed_state_changes() {
   setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "flag1".to_string(),
       "value1".to_string(),
     )
@@ -671,7 +675,7 @@ async fn clear_returns_all_removed_state_changes() {
   setup
     .store
     .insert(
-      Scope::FeatureFlag,
+      Scope::FeatureFlagExposure,
       "flag2".to_string(),
       "value2".to_string(),
     )
@@ -688,7 +692,7 @@ async fn clear_returns_all_removed_state_changes() {
     .unwrap();
 
   // Clear FeatureFlag scope
-  let changes = setup.store.clear(Scope::FeatureFlag).await.unwrap();
+  let changes = setup.store.clear(Scope::FeatureFlagExposure).await.unwrap();
 
   // Should have 2 removed changes (flag1 and flag2)
   assert_eq!(changes.changes.len(), 2);
@@ -699,7 +703,7 @@ async fn clear_returns_all_removed_state_changes() {
 
   // All changes should be removals
   for change in &changes.changes {
-    assert_eq!(change.scope, Scope::FeatureFlag);
+    assert_eq!(change.scope, Scope::FeatureFlagExposure);
     assert!(matches!(
       change.change_type,
       crate::StateChangeType::Removed { .. }
@@ -708,8 +712,8 @@ async fn clear_returns_all_removed_state_changes() {
 
   // Verify FeatureFlag scope is cleared but GlobalState remains
   let reader = setup.store.read().await;
-  assert_eq!(reader.get(Scope::FeatureFlag, "flag1"), None);
-  assert_eq!(reader.get(Scope::FeatureFlag, "flag2"), None);
+  assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag1"), None);
+  assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag2"), None);
   assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global_value"));
 }
 
@@ -717,7 +721,7 @@ async fn clear_returns_all_removed_state_changes() {
 async fn clear_empty_scope_returns_empty_changes() {
   let setup = Setup::new().await;
 
-  let changes = setup.store.clear(Scope::FeatureFlag).await.unwrap();
+  let changes = setup.store.clear(Scope::FeatureFlagExposure).await.unwrap();
 
   assert_eq!(changes.changes.len(), 0);
 }

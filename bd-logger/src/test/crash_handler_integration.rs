@@ -9,8 +9,10 @@ use super::setup::Setup;
 use crate::logger::{Block, CaptureSession, ReportProcessingSession};
 use crate::test::setup::SetupOptions;
 use assert_matches::assert_matches;
+use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::FeatureFlag as _;
+use bd_test_helpers::config_helper::configuration_update;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::runtime::ValueKind;
 use bd_test_helpers::test_api_server::log_upload::LogUpload;
@@ -25,6 +27,7 @@ use time::macros::datetime;
 const CRASH_CONTENTS: &str = "\x14\x00\x00\x00\x00\x00\x0e\x00\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00\x04\x00\x0e\x00\x00\x00\x04\x00\x00\x00\x01\x00\x00\x00\x0c\x00\x00\x00\x00\x00\x06\x00\x08\x00\x04\x00\x06\x00\x00\x00\x04\x00\x00\x00\x06\x00\x00\x00crash1\x00\x00";
 
 #[test]
+#[allow(unused_variables)]
 fn crash_report_upload() {
   let timestamp = datetime!(2021-01-01 00:00:00 UTC);
 
@@ -70,8 +73,9 @@ fn crash_report_upload() {
       .logger_handle
       .set_feature_flag_exposure("flag_with_variant".to_string(), Some("variant".to_string()));
 
-    // Configure the logger to drain the pre-config buffer and persist feature flags
-    setup.configure_stream_all_logs();
+    // Trigger config initialization so pre-config buffer (including feature flags) gets replayed
+    // Use an empty configuration to avoid setting up any buffers or generating extra logs
+    setup.send_configuration_update(configuration_update("", StateOfTheWorld::default()));
 
     // Flush state to ensure feature flags are persisted before writing the crash report
     setup.logger_handle.flush_state(Block::Yes(5.std_seconds()));
@@ -118,7 +122,15 @@ fn crash_report_upload() {
   setup.upload_individual_logs();
   setup.upload_crash_reports(ReportProcessingSession::PreviousRun);
 
-  let uploads: Vec<LogUpload> = vec![setup.server.blocking_next_log_upload().unwrap()];
+  // Collect all log uploads - crash reports generate separate uploads
+  let mut uploads: Vec<LogUpload> = vec![];
+  for _ in 0..5 {
+    if let Some(upload) = setup.server.blocking_next_log_upload() {
+      uploads.push(upload);
+    } else {
+      break;
+    }
+  }
 
   let logs = uploads
     .iter()
@@ -127,7 +139,7 @@ fn crash_report_upload() {
 
   let crash = logs
     .iter()
-    .find(|log| log.field("_app_exit_info") == "crash1")
+    .find(|log| log.has_field("_app_exit_info") && log.field("_app_exit_info") == "crash1")
     .unwrap();
   assert_eq!(crash.message(), "AppExit");
   assert_eq!(crash.session_id(), initial_session_id);

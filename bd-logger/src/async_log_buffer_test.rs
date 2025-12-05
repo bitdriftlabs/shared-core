@@ -380,7 +380,7 @@ async fn logs_are_replayed_in_order() {
   let written_logs_clone = written_logs.clone();
   // The test sometimes produces zero logs on the background threads when left unchecked, so use
   // a second channel to ensure that we get a certain number of logs processed.
-  let (counting_logs_tx, mut counting_logs_rx) = tokio::sync::mpsc::channel(5000);
+  let (counting_logs_tx, mut counting_logs_rx) = tokio::sync::mpsc::unbounded_channel();
 
   let logging_task = std::thread::spawn(move || {
     let mut counter = 0;
@@ -408,7 +408,7 @@ async fn logs_are_replayed_in_order() {
 
       // It's possible that we fill up this channel and we don't want that to prevent the threads
       // from being able to shut down on cancel.
-      let _ignored = counting_logs_tx.blocking_send(());
+      let _ignored = counting_logs_tx.send(());
     }
   });
 
