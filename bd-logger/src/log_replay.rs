@@ -13,8 +13,9 @@ use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::BuffersWithAck;
 use bd_client_stats::FlushTrigger;
 use bd_log_filter::FilterChain;
+use bd_log_metadata::LogFields;
 use bd_log_primitives::tiny_set::TinySet;
-use bd_log_primitives::{FieldsRef, Log, LogEncodingHelper, LossyIntToU32, log_level};
+use bd_log_primitives::{FieldsRef, Log, LogEncodingHelper, LogMessage, LossyIntToU32, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
 use bd_runtime::runtime::{ConfigLoader, IntWatch};
@@ -293,7 +294,10 @@ impl ProcessingPipeline {
       &mut self.buffer_producers,
       &result.triggered_flushes_buffer_ids,
       &result.log_destination_buffer_ids,
-      &log.log,
+      &log.log.message,
+      &log.log.fields,
+      &log.log.session_id,
+      log.log.occurred_at,
     ) {
       // We emitted a synthetic log. Add the buffer it was written to to the list of matching
       // buffers.
@@ -329,8 +333,6 @@ impl ProcessingPipeline {
     }
   }
 
-
-
   pub(crate) async fn process_state_change(
     &mut self,
     state_change: bd_state::StateChange,
@@ -364,24 +366,18 @@ impl ProcessingPipeline {
       result.capture_screenshot,
     );
 
-    let synthetic_log = Log {
-      log_level: log_level::INFO,
-      log_type: LogType::INTERNAL_SDK,
-      message: "State Change".into(),
-      // TODO(snowp): We should propagate common fields so that they get included here.
-      fields: [].into(),
-      matching_fields: [].into(),
-      session_id: session_id.to_string(),
-      occurred_at: state_change.timestamp,
-      capture_session: None,
-    };
-
+    // In order to work with session capture we need there to be a log that can be emitted with the
+    // action ID for the flush action. Since state changes typically don't have associated logs, we
+    // need to rely on the mechanism to synthesize a log here.
     Self::process_flush_buffers_actions(
       &result.triggered_flush_buffers_action_ids,
       &mut self.buffer_producers,
       &result.triggered_flushes_buffer_ids,
       &result.log_destination_buffer_ids,
-      &synthetic_log,
+      &"State Change".into(),
+      &[].into(),
+      session_id,
+      state_change.timestamp,
     );
 
     // State changes are never blocking, so we pass false for force_state_persistence.
@@ -460,12 +456,20 @@ impl ProcessingPipeline {
     Ok(())
   }
 
+  /// Processes flush buffer actions that were triggered by the log being processed.
+  /// If the log that triggered the flush was not written to any of the buffers that are
+  /// about to be flushed, a synthetic log resembling the original log is created and added
+  /// to one of the buffers scheduled for flushing.
+  /// Returns the ID of the buffer to which the synthetic log was added, if any.
   fn process_flush_buffers_actions(
     triggered_flush_buffers_action_ids: &BTreeSet<Cow<'_, FlushBufferId>>,
     buffers: &mut BufferProducers,
     triggered_flushes_buffer_ids: &TinySet<Cow<'_, str>>,
     written_to_buffers: &TinySet<Cow<'_, str>>,
-    log: &Log,
+    log_message: &LogMessage,
+    log_fields: &LogFields,
+    session_id: &str,
+    occurred_at: OffsetDateTime,
   ) -> Option<String> {
     if triggered_flush_buffers_action_ids.is_empty() {
       return None;
@@ -499,7 +503,7 @@ impl ProcessingPipeline {
     {
       log::debug!(
         "adding synthetic log \"{:?}\" to \"{}\" buffer; flush buffer action IDs {:?}",
-        log.message,
+        log_message,
         arbitrary_buffer_id_to_flush,
         triggered_flush_buffers_action_ids
       );
@@ -518,10 +522,10 @@ impl ProcessingPipeline {
           let mut cached_encoding_data = None;
           let size = LogEncodingHelper::serialize_proto_size_inner(
             log_level::DEBUG,
-            &log.message,
-            &log.fields,
-            &log.session_id,
-            log.occurred_at,
+            &log_message,
+            &log_fields,
+            &session_id,
+            occurred_at,
             LogType::INTERNAL_SDK,
             &action_ids,
             &[],
@@ -532,10 +536,10 @@ impl ProcessingPipeline {
           let mut os = CodedOutputStream::bytes(reserved);
           LogEncodingHelper::serialize_proto_to_stream_inner(
             log_level::DEBUG,
-            &log.message,
-            &log.fields,
-            &log.session_id,
-            log.occurred_at,
+            &log_message,
+            &log_fields,
+            &session_id,
+            occurred_at,
             LogType::INTERNAL_SDK,
             &action_ids,
             &[],

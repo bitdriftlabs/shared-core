@@ -12,7 +12,12 @@ mod async_log_buffer_test;
 use crate::device_id::DeviceIdInterceptor;
 use crate::log_replay::{LogReplay, LogReplayResult};
 use crate::logger::{ReportProcessingRequest, with_thread_local_logger_guard};
-use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
+use crate::logging_state::{
+  ConfigUpdate,
+  InitializedLoggingContext,
+  LoggingState,
+  UninitializedLoggingContext,
+};
 use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::pre_config_buffer::{PendingStateOperation, PreConfigBuffer, PreConfigItem};
@@ -709,44 +714,20 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             log::debug!("failed to replay pre-config log: {e}");
           }
         },
-        PreConfigItem::StateOperation(operation) => {
-          let state_change_result = match operation {
-            PendingStateOperation::SetFeatureFlagExposure(flag, variant) => {
-              state_store
-                .insert(
-                  Scope::FeatureFlagExposure,
-                  flag.clone(),
-                  variant.unwrap_or_default(),
-                )
-                .await
-            },
-          };
-
-          match state_change_result {
-            Ok(state_change) => {
-              if !matches!(
-                state_change.change_type,
-                bd_state::StateChangeType::NoChange
-              ) {
-                self
-                  .replayer
-                  .replay_state_change(
-                    state_change,
-                    &mut initialized_logging_context.processing_pipeline,
-                    state_store,
-                    now,
-                    &session_id,
-                  )
-                  .await;
-              }
-            },
-            Err(e) => {
-              handle_unexpected::<(), anyhow::Error>(
-                Err(e),
-                "async log buffer: failed to replay pending state operation",
-              );
-            },
-          }
+        PreConfigItem::StateOperation(operation) => match operation {
+          PendingStateOperation::SetFeatureFlagExposure(key, value) => {
+            Self::handle_state_insert(
+              state_store,
+              initialized_logging_context,
+              &mut self.replayer,
+              Scope::FeatureFlagExposure,
+              key,
+              value.unwrap_or_default(),
+              now,
+              &session_id,
+            )
+            .await
+          },
         },
       }
     }
@@ -885,37 +866,18 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 &mut self.logging_state
               {
                 // Initialized: update state store and replay through workflows
-                match state_store
-                  .insert(
+                Self::
+                  handle_state_insert(
+                    &state_store,
+                    initialized_logging_context,
+                    &mut self.replayer,
                     Scope::FeatureFlagExposure,
-                    flag.clone(),
-                    variant.clone().unwrap_or_default(),
+                    flag,
+                    variant.unwrap_or_default(),
+                    self.time_provider.now(),
+                    &self.session_strategy.session_id(),
                   )
-                  .await
-                {
-                  Ok(state_change) => {
-                    if !matches!(state_change.change_type, bd_state::StateChangeType::NoChange) {
-                      let now = self.time_provider.now();
-                      let session_id = self.session_strategy.session_id();
-                      self
-                        .replayer
-                        .replay_state_change(
-                          state_change,
-                          &mut initialized_logging_context.processing_pipeline,
-                          &state_store,
-                          now,
-                          &session_id,
-                        )
-                        .await;
-                    }
-                  },
-                  Err(e) => {
-                    handle_unexpected::<(), anyhow::Error>(
-                      Err(e),
-                      &format!("async log buffer: failed to set feature flag ({flag:?})"),
-                    );
-                  },
-                }
+                  .await;
               } else {
                 // Not initialized: queue the operation for later replay
                 if let LoggingState::Uninitialized(uninitialized_logging_context) =
@@ -989,6 +951,42 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           return self;
         },
       }
+    }
+  }
+
+  async fn handle_state_insert(
+    state_store: &bd_state::Store,
+    initialized_logging_context: &mut InitializedLoggingContext,
+    replayer: &mut R,
+    scope: Scope,
+    key: String,
+    value: String,
+    now: OffsetDateTime,
+    session_id: &str,
+  ) {
+    match state_store.insert(scope, key, value).await {
+      Ok(state_change) => {
+        if !matches!(
+          state_change.change_type,
+          bd_state::StateChangeType::NoChange
+        ) {
+          replayer
+            .replay_state_change(
+              state_change,
+              &mut initialized_logging_context.processing_pipeline,
+              &state_store,
+              now,
+              &session_id,
+            )
+            .await;
+        }
+      },
+      Err(e) => {
+        handle_unexpected::<(), anyhow::Error>(
+          Err(e),
+          &format!("async log buffer: failed to update state"),
+        );
+      },
     }
   }
 
