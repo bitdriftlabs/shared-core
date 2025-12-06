@@ -190,7 +190,7 @@ async fn basic_crud(#[case] mode: StoreMode) -> anyhow::Result<()> {
     .remove(Scope::FeatureFlagExposure, "key1")
     .await?;
   assert!(ts3.is_some());
-  assert!(ts3.unwrap() >= ts2);
+  assert!(ts3.unwrap().0 >= ts2);
 
   assert_eq!(setup.store.len(), 1);
   assert!(!setup.store.contains_key(Scope::FeatureFlagExposure, "key1"));

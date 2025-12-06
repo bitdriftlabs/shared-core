@@ -451,7 +451,7 @@ impl Store {
 
     // Extract old string value if it exists and is a string
     let old_value = old_state_value
-      .filter(|v| v.has_string_value())
+      .filter(bd_resilient_kv::StateValue::has_string_value)
       .map(|mut v| v.take_string_value());
 
     // Convert timestamp
@@ -477,47 +477,60 @@ impl Store {
     })
   }
 
+  // TODO(snowp): Extend should return StateChanges to track what was inserted/updated, but this
+  // requires support from the underlying store to return old values for batch operations.
   pub async fn extend(
     &self,
     scope: Scope,
     entries: impl IntoIterator<Item = (String, String)>,
-  ) -> anyhow::Result<StateChanges> {
-    let mut changes = Vec::new();
+  ) -> anyhow::Result<()> {
+    self
+      .inner
+      .write()
+      .await
+      .extend(
+        entries
+          .into_iter()
+          .map(|(key, value)| {
+            (
+              scope,
+              key,
+              StateValue {
+                value_type: Value_type::StringValue(value).into(),
+                ..Default::default()
+              },
+            )
+          })
+          .collect(),
+      )
+      .await?;
 
-    // Process each entry and track changes
-    for (key, value) in entries {
-      let change = self.insert(scope, key, value).await?;
-      changes.push(change);
-    }
-
-    Ok(StateChanges { changes })
+    Ok(())
   }
 
   pub async fn remove(&self, scope: Scope, key: &str) -> anyhow::Result<StateChange> {
     let mut locked = self.inner.write().await;
 
-    // Get old value and timestamp before removal
-    let (old_value, timestamp) = locked
-      .as_hashmap()
-      .iter()
-      .find(|(s, k, _)| *s == scope && k.as_str() == key)
-      .map_or_else(
-        || (None, OffsetDateTime::now_utc()),
-        |(_, _, timestamped_value)| {
-          let timestamp = OffsetDateTime::from_unix_timestamp_nanos(
-            i128::from(timestamped_value.timestamp) * 1_000,
-          )
-          .unwrap_or_else(|_| OffsetDateTime::now_utc());
-          let value = timestamped_value.value.string_value().to_string();
-          (Some(value), timestamp)
-        },
-      );
+    let result = locked.remove(scope, key).await?;
 
-    locked.remove(scope, key).await?;
+    let (change_type, timestamp) = match result {
+      Some((timestamp_u64, mut old_state_value)) => {
+        let timestamp =
+          OffsetDateTime::from_unix_timestamp_micros(timestamp_u64.try_into().unwrap_or_default())
+            .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
-    let change_type = old_value.map_or(StateChangeType::NoChange, |old| StateChangeType::Removed {
-      old_value: old,
-    });
+        let change_type = if old_state_value.has_string_value() {
+          StateChangeType::Removed {
+            old_value: old_state_value.take_string_value(),
+          }
+        } else {
+          StateChangeType::NoChange
+        };
+
+        (change_type, timestamp)
+      },
+      None => (StateChangeType::NoChange, OffsetDateTime::now_utc()),
+    };
 
     Ok(StateChange {
       scope,
@@ -530,19 +543,12 @@ impl Store {
   pub async fn clear(&self, scope: Scope) -> anyhow::Result<StateChanges> {
     let mut locked_store = self.inner.write().await;
 
-    // Capture all keys and values being cleared
-    let keys_to_remove: Vec<(String, String, OffsetDateTime)> = locked_store
+    // Collect all keys in this scope
+    let keys_to_remove: Vec<String> = locked_store
       .as_hashmap()
       .iter()
       .filter(|(s, ..)| *s == scope)
-      .map(|(_, key, timestamped_value)| {
-        let timestamp = OffsetDateTime::from_unix_timestamp_nanos(
-          i128::from(timestamped_value.timestamp) * 1_000,
-        )
-        .unwrap_or_else(|_| OffsetDateTime::now_utc());
-        let value = timestamped_value.value.string_value().to_string();
-        (key.clone(), value, timestamp)
-      })
+      .map(|(_, key, _)| key.clone())
       .collect_vec();
 
     let mut changes = Vec::new();
@@ -550,14 +556,23 @@ impl Store {
     // TODO(snowp): Ideally we should have built in support for batch deletions in the
     // underlying store. This leaves us open for partial deletions if something fails halfway
     // through.
-    for (key, old_value, timestamp) in keys_to_remove {
-      locked_store.remove(scope, &key).await?;
-      changes.push(StateChange {
-        scope,
-        key,
-        change_type: StateChangeType::Removed { old_value },
-        timestamp,
-      });
+    for key in keys_to_remove {
+      if let Some((timestamp_u64, mut old_state_value)) = locked_store.remove(scope, &key).await? {
+        let timestamp =
+          OffsetDateTime::from_unix_timestamp_micros(timestamp_u64.try_into().unwrap_or_default())
+            .unwrap_or_else(|_| OffsetDateTime::now_utc());
+
+        if old_state_value.has_string_value() {
+          changes.push(StateChange {
+            scope,
+            key,
+            change_type: StateChangeType::Removed {
+              old_value: old_state_value.take_string_value(),
+            },
+            timestamp,
+          });
+        }
+      }
     }
 
     Ok(StateChanges { changes })

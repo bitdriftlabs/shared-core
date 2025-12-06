@@ -599,7 +599,7 @@ async fn remove_returns_no_change_for_nonexistent_key() {
 }
 
 #[tokio::test]
-async fn extend_returns_multiple_state_changes() {
+async fn extend_inserts_multiple_values() {
   let setup = Setup::new().await;
 
   // First insert one value
@@ -614,7 +614,7 @@ async fn extend_returns_multiple_state_changes() {
     .unwrap();
 
   // Extend with multiple values, including updating the existing one
-  let changes = setup
+  setup
     .store
     .extend(
       Scope::FeatureFlagExposure,
@@ -627,34 +627,19 @@ async fn extend_returns_multiple_state_changes() {
     .await
     .unwrap();
 
-  assert_eq!(changes.changes.len(), 3);
-
-  // First change should be an insert
-  assert_eq!(changes.changes[0].key, "new1");
+  // Verify all values were set correctly
+  let reader = setup.store.read().await;
   assert_eq!(
-    changes.changes[0].change_type,
-    crate::StateChangeType::Inserted {
-      value: "value1".to_string()
-    }
+    reader.get(Scope::FeatureFlagExposure, "new1"),
+    Some("value1")
   );
-
-  // Second change should be an update
-  assert_eq!(changes.changes[1].key, "existing");
   assert_eq!(
-    changes.changes[1].change_type,
-    crate::StateChangeType::Updated {
-      old_value: "old".to_string(),
-      new_value: "updated".to_string()
-    }
+    reader.get(Scope::FeatureFlagExposure, "existing"),
+    Some("updated")
   );
-
-  // Third change should be an insert
-  assert_eq!(changes.changes[2].key, "new2");
   assert_eq!(
-    changes.changes[2].change_type,
-    crate::StateChangeType::Inserted {
-      value: "value2".to_string()
-    }
+    reader.get(Scope::FeatureFlagExposure, "new2"),
+    Some("value2")
   );
 }
 

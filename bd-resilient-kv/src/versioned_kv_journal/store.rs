@@ -427,7 +427,11 @@ impl PersistentStore {
     Ok(timestamp)
   }
 
-  async fn remove(&mut self, scope: Scope, key: &str) -> Result<Option<u64>, UpdateError> {
+  async fn remove(
+    &mut self,
+    scope: Scope,
+    key: &str,
+  ) -> Result<Option<(u64, StateValue)>, UpdateError> {
     if !self.cached_map.contains_key(scope, key) {
       return Ok(None);
     }
@@ -435,13 +439,13 @@ impl PersistentStore {
     let timestamp = self
       .try_insert_with_rotation(scope, key, &StateValue::default())
       .await?;
-    self.cached_map.remove(scope, key);
+    let old_value = self.cached_map.remove(scope, key);
 
     if self.journal.is_high_water_mark_triggered() {
       self.rotate_journal().await?;
     }
 
-    Ok(Some(timestamp))
+    Ok(old_value.map(|v| (timestamp, v.value)))
   }
 
   fn sync(&self) -> anyhow::Result<()> {
@@ -936,15 +940,15 @@ impl InMemoryStore {
     Ok(timestamp)
   }
 
-  fn remove(&mut self, scope: Scope, key: &str) -> Option<u64> {
+  fn remove(&mut self, scope: Scope, key: &str) -> Option<(u64, StateValue)> {
     if !self.cached_map.contains_key(scope, key) {
       return None;
     }
 
     let timestamp = self.current_timestamp();
-    self.cached_map.remove(scope, key);
+    let old_value = self.cached_map.remove(scope, key);
 
-    Some(timestamp)
+    old_value.map(|v| (timestamp, v.value))
   }
 }
 
@@ -1120,13 +1124,17 @@ impl VersionedKVStore {
     }
   }
 
-  /// Remove a key and return the timestamp assigned to this deletion.
+  /// Remove a key and return the timestamp and old value.
   ///
-  /// Returns `None` if the key didn't exist, otherwise returns the timestamp.
+  /// Returns `None` if the key didn't exist, otherwise returns the timestamp and old value.
   ///
   /// # Errors
   /// Returns an error if the deletion cannot be written to the journal (persistent mode only).
-  pub async fn remove(&mut self, scope: Scope, key: &str) -> Result<Option<u64>, UpdateError> {
+  pub async fn remove(
+    &mut self,
+    scope: Scope,
+    key: &str,
+  ) -> Result<Option<(u64, StateValue)>, UpdateError> {
     match &mut self.backend {
       StoreBackend::Persistent(store) => store.remove(scope, key).await,
       StoreBackend::InMemory(store) => Ok(store.remove(scope, key)),
