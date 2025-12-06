@@ -25,7 +25,7 @@ use ahash::AHashMap;
 use bd_resilient_kv::{DataLoss, RetentionRegistry, ScopedMaps, StateValue, Value_type};
 pub use bd_resilient_kv::{PersistentStoreConfig, Scope};
 use bd_runtime::runtime::ConfigLoader;
-use bd_time::TimeProvider;
+use bd_time::{OffsetDateTimeExt, TimeProvider};
 use itertools::Itertools as _;
 use std::path::Path;
 use std::sync::Arc;
@@ -66,6 +66,9 @@ pub enum StateChangeType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateChange {
   pub scope: Scope,
+  // TODO(snowp): Ideally we could return &str but avoid copies in this path, but in order to do
+  // that we need to extend the lifetime of the write lock such that we can return the &str
+  // references safely. For now we copy the strings but we could optimize this later if needed.
   pub key: String,
   pub change_type: StateChangeType,
   pub timestamp: OffsetDateTime,
@@ -426,7 +429,6 @@ impl Store {
     }
   }
 
-<<<<<<< HEAD
   pub async fn insert(
     &self,
     scope: Scope,
@@ -450,15 +452,16 @@ impl Store {
     // Extract old string value if it exists and is a string
     let old_value = old_state_value
       .filter(|v| v.has_string_value())
-      .map(|v| v.string_value().to_string());
+      .map(|mut v| v.take_string_value());
 
     // Convert timestamp
-    let timestamp = OffsetDateTime::from_unix_timestamp_nanos(i128::from(timestamp_u64) * 1_000)
-      .unwrap_or_else(|_| OffsetDateTime::now_utc());
+    let timestamp =
+      OffsetDateTime::from_unix_timestamp_micros(timestamp_u64.try_into().unwrap_or_default())
+        .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
     // Determine change type
     let change_type = match old_value {
-      Some(old) if old == value => StateChangeType::NoChange { key: key.clone() },
+      Some(old) if old == value => StateChangeType::NoChange,
       Some(old) => StateChangeType::Updated {
         old_value: old,
         new_value: value,
