@@ -62,10 +62,6 @@ pub trait LogReplay {
   ) -> anyhow::Result<LogReplayResult>;
 
   // Replays state changes for further processing.
-  // In production code, this method acts as an indirection layer that
-  // takes in a state change and a processing pipeline, using the pipeline to process the state
-  // change. In tests, this method can be used to capture replayed state changes for confirmation
-  // that they look as expected.
   async fn replay_state_change(
     &mut self,
     state_change: bd_state::StateChange,

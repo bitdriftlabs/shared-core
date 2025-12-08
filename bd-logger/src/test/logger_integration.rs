@@ -2549,16 +2549,10 @@ fn workflow_state_change_match_advances_workflow() {
     .logger_handle
     .set_feature_flag_exposure("test_flag".to_string(), Some("enabled".to_string()));
 
-  // Wait a moment for the state change to be processed
-  std::thread::sleep(std::time::Duration::from_millis(100));
-
   // Set the feature flag to "disabled" - should transition from B to C and emit metric
   setup
     .logger_handle
     .set_feature_flag_exposure("test_flag".to_string(), Some("disabled".to_string()));
-
-  // Wait a moment for the state change to be processed
-  std::thread::sleep(std::time::Duration::from_millis(100));
 
   // Flush stats and verify the metric was emitted
   setup.flush_and_upload_stats();
