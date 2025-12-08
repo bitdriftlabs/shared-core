@@ -28,7 +28,7 @@ pub enum Error {
 /// These operations are queued and replayed after initialization to ensure
 /// proper ordering with logs and proper workflow state transitions.
 #[derive(Debug, Clone)]
-pub(crate) enum PendingStateOperation {
+pub enum PendingStateOperation {
   SetFeatureFlagExposure(String, Option<String>),
 }
 
@@ -40,7 +40,7 @@ pub(crate) enum PendingStateOperation {
 /// a log or a state operation that occurred before initialization. This allows
 /// both logs and state changes to be replayed in the exact order they arrived.
 #[derive(Debug)]
-pub(crate) enum PreConfigItem {
+pub enum PreConfigItem {
   Log(bd_log_primitives::Log),
   StateOperation(PendingStateOperation),
 }

@@ -731,7 +731,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               now,
               &session_id,
             )
-            .await
+            .await;
           },
         },
       }
@@ -979,9 +979,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             .replay_state_change(
               state_change,
               &mut initialized_logging_context.processing_pipeline,
-              &state_store,
+              state_store,
               now,
-              &session_id,
+              session_id,
             )
             .await;
         }
@@ -989,7 +989,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       Err(e) => {
         handle_unexpected::<(), anyhow::Error>(
           Err(e),
-          &format!("async log buffer: failed to update state"),
+          "async log buffer: failed to update state",
         );
       },
     }

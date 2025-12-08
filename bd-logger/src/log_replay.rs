@@ -502,10 +502,7 @@ impl ProcessingPipeline {
         .map(std::string::ToString::to_string)
     {
       log::debug!(
-        "adding synthetic log \"{:?}\" to \"{}\" buffer; flush buffer action IDs {:?}",
-        log_message,
-        arbitrary_buffer_id_to_flush,
-        triggered_flush_buffers_action_ids
+        "adding synthetic log \"{log_message:?}\" to \"{arbitrary_buffer_id_to_flush}\" buffer; flush buffer action IDs {triggered_flush_buffers_action_ids:?}"
       );
 
       if let Ok(buffer_producer) =
@@ -522,9 +519,9 @@ impl ProcessingPipeline {
           let mut cached_encoding_data = None;
           let size = LogEncodingHelper::serialize_proto_size_inner(
             log_level::DEBUG,
-            &log_message,
-            &log_fields,
-            &session_id,
+            log_message,
+            log_fields,
+            session_id,
             occurred_at,
             LogType::INTERNAL_SDK,
             &action_ids,
@@ -536,9 +533,9 @@ impl ProcessingPipeline {
           let mut os = CodedOutputStream::bytes(reserved);
           LogEncodingHelper::serialize_proto_to_stream_inner(
             log_level::DEBUG,
-            &log_message,
-            &log_fields,
-            &session_id,
+            log_message,
+            log_fields,
+            session_id,
             occurred_at,
             LogType::INTERNAL_SDK,
             &action_ids,
