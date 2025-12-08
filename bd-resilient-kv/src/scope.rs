@@ -9,7 +9,7 @@ use strum::FromRepr;
 
 /// A state scope that determines the namespace used for storing state. This avoids key collisions
 /// and provides logical separation of different types of state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, FromRepr)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, FromRepr)]
 #[repr(u8)]
 pub enum Scope {
   FeatureFlagExposure = 1,
