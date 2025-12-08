@@ -987,10 +987,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         }
       },
       Err(e) => {
-        handle_unexpected::<(), anyhow::Error>(
-          Err(e),
-          "async log buffer: failed to update state",
-        );
+        handle_unexpected::<(), anyhow::Error>(Err(e), "async log buffer: failed to update state");
       },
     }
   }

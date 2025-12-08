@@ -124,7 +124,7 @@ fn crash_report_upload() {
 
   // Collect all log uploads - crash reports generate separate uploads
   let mut uploads: Vec<LogUpload> = vec![];
-  for _ in 0..5 {
+  for _ in 0 .. 5 {
     if let Some(upload) = setup.server.blocking_next_log_upload() {
       uploads.push(upload);
     } else {

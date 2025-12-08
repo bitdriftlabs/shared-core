@@ -502,7 +502,8 @@ impl ProcessingPipeline {
         .map(std::string::ToString::to_string)
     {
       log::debug!(
-        "adding synthetic log \"{log_message:?}\" to \"{arbitrary_buffer_id_to_flush}\" buffer; flush buffer action IDs {triggered_flush_buffers_action_ids:?}"
+        "adding synthetic log \"{log_message:?}\" to \"{arbitrary_buffer_id_to_flush}\" buffer; \
+         flush buffer action IDs {triggered_flush_buffers_action_ids:?}"
       );
 
       if let Ok(buffer_producer) =

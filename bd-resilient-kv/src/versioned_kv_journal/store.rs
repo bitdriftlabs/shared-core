@@ -786,7 +786,12 @@ impl InMemoryStore {
     self.time_provider.now().unix_timestamp_nanos() as u64 / 1_000
   }
 
-  fn insert(&mut self, scope: Scope, key: &str, value: &StateValue) -> Result<(u64, Option<StateValue>), UpdateError> {
+  fn insert(
+    &mut self,
+    scope: Scope,
+    key: &str,
+    value: &StateValue,
+  ) -> Result<(u64, Option<StateValue>), UpdateError> {
     use std::collections::hash_map::Entry;
 
     let timestamp = self.current_timestamp();
