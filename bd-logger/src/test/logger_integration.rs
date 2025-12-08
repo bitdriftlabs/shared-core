@@ -2600,7 +2600,7 @@ fn workflow_state_change_match_flush_buffers() {
   assert!(maybe_nack.is_none());
 
   // Write some logs to the buffer
-  for i in 0 .. 5 {
+  for i in 0 .. 4 {
     setup.log(
       log_level::DEBUG,
       LogType::NORMAL,
@@ -2610,6 +2610,15 @@ fn workflow_state_change_match_flush_buffers() {
       None,
     );
   }
+
+  // Use blocking log for the last one to ensure all logs are written before triggering the flush
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "test log 4".into(),
+    [].into(),
+    [].into(),
+  );
 
   // Set the feature flag to trigger the flush
   setup
