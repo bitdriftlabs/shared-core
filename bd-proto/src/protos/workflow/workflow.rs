@@ -5737,52 +5737,52 @@ pub mod workflow {
                 self.tag_type = ::std::option::Option::Some(tag::Tag_type::LogBodyExtracted(v))
             }
 
-            // .bitdrift_public.protobuf.workflow.v1.Workflow.FeatureFlagExtracted feature_flag_extracted = 5;
+            // .bitdrift_public.protobuf.workflow.v1.Workflow.StateExtracted state_extracted = 6;
 
-            pub fn feature_flag_extracted(&self) -> &super::FeatureFlagExtracted {
+            pub fn state_extracted(&self) -> &super::StateExtracted {
                 match self.tag_type {
-                    ::std::option::Option::Some(tag::Tag_type::FeatureFlagExtracted(ref v)) => v,
-                    _ => <super::FeatureFlagExtracted as ::protobuf::Message>::default_instance(),
+                    ::std::option::Option::Some(tag::Tag_type::StateExtracted(ref v)) => v,
+                    _ => <super::StateExtracted as ::protobuf::Message>::default_instance(),
                 }
             }
 
-            pub fn clear_feature_flag_extracted(&mut self) {
+            pub fn clear_state_extracted(&mut self) {
                 self.tag_type = ::std::option::Option::None;
             }
 
-            pub fn has_feature_flag_extracted(&self) -> bool {
+            pub fn has_state_extracted(&self) -> bool {
                 match self.tag_type {
-                    ::std::option::Option::Some(tag::Tag_type::FeatureFlagExtracted(..)) => true,
+                    ::std::option::Option::Some(tag::Tag_type::StateExtracted(..)) => true,
                     _ => false,
                 }
             }
 
             // Param is passed by value, moved
-            pub fn set_feature_flag_extracted(&mut self, v: super::FeatureFlagExtracted) {
-                self.tag_type = ::std::option::Option::Some(tag::Tag_type::FeatureFlagExtracted(v))
+            pub fn set_state_extracted(&mut self, v: super::StateExtracted) {
+                self.tag_type = ::std::option::Option::Some(tag::Tag_type::StateExtracted(v))
             }
 
             // Mutable pointer to the field.
-            pub fn mut_feature_flag_extracted(&mut self) -> &mut super::FeatureFlagExtracted {
-                if let ::std::option::Option::Some(tag::Tag_type::FeatureFlagExtracted(_)) = self.tag_type {
+            pub fn mut_state_extracted(&mut self) -> &mut super::StateExtracted {
+                if let ::std::option::Option::Some(tag::Tag_type::StateExtracted(_)) = self.tag_type {
                 } else {
-                    self.tag_type = ::std::option::Option::Some(tag::Tag_type::FeatureFlagExtracted(super::FeatureFlagExtracted::new()));
+                    self.tag_type = ::std::option::Option::Some(tag::Tag_type::StateExtracted(super::StateExtracted::new()));
                 }
                 match self.tag_type {
-                    ::std::option::Option::Some(tag::Tag_type::FeatureFlagExtracted(ref mut v)) => v,
+                    ::std::option::Option::Some(tag::Tag_type::StateExtracted(ref mut v)) => v,
                     _ => panic!(),
                 }
             }
 
             // Take field
-            pub fn take_feature_flag_extracted(&mut self) -> super::FeatureFlagExtracted {
-                if self.has_feature_flag_extracted() {
+            pub fn take_state_extracted(&mut self) -> super::StateExtracted {
+                if self.has_state_extracted() {
                     match self.tag_type.take() {
-                        ::std::option::Option::Some(tag::Tag_type::FeatureFlagExtracted(v)) => v,
+                        ::std::option::Option::Some(tag::Tag_type::StateExtracted(v)) => v,
                         _ => panic!(),
                     }
                 } else {
-                    super::FeatureFlagExtracted::new()
+                    super::StateExtracted::new()
                 }
             }
 
@@ -5813,12 +5813,12 @@ pub mod workflow {
                     Tag::log_body_extracted,
                     Tag::set_log_body_extracted,
                 ));
-                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::FeatureFlagExtracted>(
-                    "feature_flag_extracted",
-                    Tag::has_feature_flag_extracted,
-                    Tag::feature_flag_extracted,
-                    Tag::mut_feature_flag_extracted,
-                    Tag::set_feature_flag_extracted,
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::StateExtracted>(
+                    "state_extracted",
+                    Tag::has_state_extracted,
+                    Tag::state_extracted,
+                    Tag::mut_state_extracted,
+                    Tag::set_state_extracted,
                 ));
                 oneofs.push(tag::Tag_type::generated_oneof_descriptor_data());
                 ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Tag>(
@@ -5851,8 +5851,8 @@ pub mod workflow {
                         32 => {
                             self.tag_type = ::std::option::Option::Some(tag::Tag_type::LogBodyExtracted(is.read_bool()?));
                         },
-                        42 => {
-                            self.tag_type = ::std::option::Option::Some(tag::Tag_type::FeatureFlagExtracted(is.read_message()?));
+                        50 => {
+                            self.tag_type = ::std::option::Option::Some(tag::Tag_type::StateExtracted(is.read_message()?));
                         },
                         tag => {
                             ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -5881,7 +5881,7 @@ pub mod workflow {
                         &tag::Tag_type::LogBodyExtracted(v) => {
                             my_size += 1 + 1;
                         },
-                        &tag::Tag_type::FeatureFlagExtracted(ref v) => {
+                        &tag::Tag_type::StateExtracted(ref v) => {
                             let len = v.compute_size();
                             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                         },
@@ -5907,8 +5907,8 @@ pub mod workflow {
                         &tag::Tag_type::LogBodyExtracted(v) => {
                             os.write_bool(4, v)?;
                         },
-                        &tag::Tag_type::FeatureFlagExtracted(ref v) => {
-                            ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
+                        &tag::Tag_type::StateExtracted(ref v) => {
+                            ::protobuf::rt::write_message_field_with_cached_size(6, v, os)?;
                         },
                     };
                 }
@@ -5976,8 +5976,8 @@ pub mod workflow {
                 FieldExtracted(super::super::FieldExtracted),
                 // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.Tag.log_body_extracted)
                 LogBodyExtracted(bool),
-                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.Tag.feature_flag_extracted)
-                FeatureFlagExtracted(super::super::FeatureFlagExtracted),
+                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.Action.Tag.state_extracted)
+                StateExtracted(super::super::StateExtracted),
             }
 
             impl ::protobuf::Oneof for Tag_type {
@@ -6986,36 +6986,38 @@ pub mod workflow {
         }
     }
 
-    // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.FeatureFlagExtracted)
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.StateExtracted)
     #[derive(PartialEq,Clone,Default,Debug)]
-    pub struct FeatureFlagExtracted {
+    pub struct StateExtracted {
         // message fields
-        // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.FeatureFlagExtracted.name)
-        pub name: ::std::string::String,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.StateExtracted.scope)
+        pub scope: ::protobuf::EnumOrUnknown<super::super::scope::StateScope>,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.StateExtracted.key)
+        pub key: ::std::string::String,
         // message oneof groups
-        pub extraction_type: ::std::option::Option<feature_flag_extracted::Extraction_type>,
+        pub extraction_type: ::std::option::Option<state_extracted::Extraction_type>,
         // special fields
-        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.FeatureFlagExtracted.special_fields)
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.StateExtracted.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
     }
 
-    impl<'a> ::std::default::Default for &'a FeatureFlagExtracted {
-        fn default() -> &'a FeatureFlagExtracted {
-            <FeatureFlagExtracted as ::protobuf::Message>::default_instance()
+    impl<'a> ::std::default::Default for &'a StateExtracted {
+        fn default() -> &'a StateExtracted {
+            <StateExtracted as ::protobuf::Message>::default_instance()
         }
     }
 
-    impl FeatureFlagExtracted {
-        pub fn new() -> FeatureFlagExtracted {
+    impl StateExtracted {
+        pub fn new() -> StateExtracted {
             ::std::default::Default::default()
         }
 
-        // .bitdrift_public.protobuf.workflow.v1.Workflow.FeatureFlagExtracted.Exact exact = 2;
+        // .bitdrift_public.protobuf.workflow.v1.Workflow.StateExtracted.Exact exact = 3;
 
-        pub fn exact(&self) -> &feature_flag_extracted::Exact {
+        pub fn exact(&self) -> &state_extracted::Exact {
             match self.extraction_type {
-                ::std::option::Option::Some(feature_flag_extracted::Extraction_type::Exact(ref v)) => v,
-                _ => <feature_flag_extracted::Exact as ::protobuf::Message>::default_instance(),
+                ::std::option::Option::Some(state_extracted::Extraction_type::Exact(ref v)) => v,
+                _ => <state_extracted::Exact as ::protobuf::Message>::default_instance(),
             }
         }
 
@@ -7025,66 +7027,71 @@ pub mod workflow {
 
         pub fn has_exact(&self) -> bool {
             match self.extraction_type {
-                ::std::option::Option::Some(feature_flag_extracted::Extraction_type::Exact(..)) => true,
+                ::std::option::Option::Some(state_extracted::Extraction_type::Exact(..)) => true,
                 _ => false,
             }
         }
 
         // Param is passed by value, moved
-        pub fn set_exact(&mut self, v: feature_flag_extracted::Exact) {
-            self.extraction_type = ::std::option::Option::Some(feature_flag_extracted::Extraction_type::Exact(v))
+        pub fn set_exact(&mut self, v: state_extracted::Exact) {
+            self.extraction_type = ::std::option::Option::Some(state_extracted::Extraction_type::Exact(v))
         }
 
         // Mutable pointer to the field.
-        pub fn mut_exact(&mut self) -> &mut feature_flag_extracted::Exact {
-            if let ::std::option::Option::Some(feature_flag_extracted::Extraction_type::Exact(_)) = self.extraction_type {
+        pub fn mut_exact(&mut self) -> &mut state_extracted::Exact {
+            if let ::std::option::Option::Some(state_extracted::Extraction_type::Exact(_)) = self.extraction_type {
             } else {
-                self.extraction_type = ::std::option::Option::Some(feature_flag_extracted::Extraction_type::Exact(feature_flag_extracted::Exact::new()));
+                self.extraction_type = ::std::option::Option::Some(state_extracted::Extraction_type::Exact(state_extracted::Exact::new()));
             }
             match self.extraction_type {
-                ::std::option::Option::Some(feature_flag_extracted::Extraction_type::Exact(ref mut v)) => v,
+                ::std::option::Option::Some(state_extracted::Extraction_type::Exact(ref mut v)) => v,
                 _ => panic!(),
             }
         }
 
         // Take field
-        pub fn take_exact(&mut self) -> feature_flag_extracted::Exact {
+        pub fn take_exact(&mut self) -> state_extracted::Exact {
             if self.has_exact() {
                 match self.extraction_type.take() {
-                    ::std::option::Option::Some(feature_flag_extracted::Extraction_type::Exact(v)) => v,
+                    ::std::option::Option::Some(state_extracted::Extraction_type::Exact(v)) => v,
                     _ => panic!(),
                 }
             } else {
-                feature_flag_extracted::Exact::new()
+                state_extracted::Exact::new()
             }
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut fields = ::std::vec::Vec::with_capacity(3);
             let mut oneofs = ::std::vec::Vec::with_capacity(1);
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                "name",
-                |m: &FeatureFlagExtracted| { &m.name },
-                |m: &mut FeatureFlagExtracted| { &mut m.name },
+                "scope",
+                |m: &StateExtracted| { &m.scope },
+                |m: &mut StateExtracted| { &mut m.scope },
             ));
-            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, feature_flag_extracted::Exact>(
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "key",
+                |m: &StateExtracted| { &m.key },
+                |m: &mut StateExtracted| { &mut m.key },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, state_extracted::Exact>(
                 "exact",
-                FeatureFlagExtracted::has_exact,
-                FeatureFlagExtracted::exact,
-                FeatureFlagExtracted::mut_exact,
-                FeatureFlagExtracted::set_exact,
+                StateExtracted::has_exact,
+                StateExtracted::exact,
+                StateExtracted::mut_exact,
+                StateExtracted::set_exact,
             ));
-            oneofs.push(feature_flag_extracted::Extraction_type::generated_oneof_descriptor_data());
-            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<FeatureFlagExtracted>(
-                "Workflow.FeatureFlagExtracted",
+            oneofs.push(state_extracted::Extraction_type::generated_oneof_descriptor_data());
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<StateExtracted>(
+                "Workflow.StateExtracted",
                 fields,
                 oneofs,
             )
         }
     }
 
-    impl ::protobuf::Message for FeatureFlagExtracted {
-        const NAME: &'static str = "FeatureFlagExtracted";
+    impl ::protobuf::Message for StateExtracted {
+        const NAME: &'static str = "StateExtracted";
 
         fn is_initialized(&self) -> bool {
             true
@@ -7093,11 +7100,14 @@ pub mod workflow {
         fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
             while let Some(tag) = is.read_raw_tag_or_eof()? {
                 match tag {
-                    10 => {
-                        self.name = is.read_string()?;
+                    8 => {
+                        self.scope = is.read_enum_or_unknown()?;
                     },
                     18 => {
-                        self.extraction_type = ::std::option::Option::Some(feature_flag_extracted::Extraction_type::Exact(is.read_message()?));
+                        self.key = is.read_string()?;
+                    },
+                    26 => {
+                        self.extraction_type = ::std::option::Option::Some(state_extracted::Extraction_type::Exact(is.read_message()?));
                     },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -7111,12 +7121,15 @@ pub mod workflow {
         #[allow(unused_variables)]
         fn compute_size(&self) -> u64 {
             let mut my_size = 0;
-            if !self.name.is_empty() {
-                my_size += ::protobuf::rt::string_size(1, &self.name);
+            if self.scope != ::protobuf::EnumOrUnknown::new(super::super::scope::StateScope::UNSPECIFIED) {
+                my_size += ::protobuf::rt::int32_size(1, self.scope.value());
+            }
+            if !self.key.is_empty() {
+                my_size += ::protobuf::rt::string_size(2, &self.key);
             }
             if let ::std::option::Option::Some(ref v) = self.extraction_type {
                 match v {
-                    &feature_flag_extracted::Extraction_type::Exact(ref v) => {
+                    &state_extracted::Extraction_type::Exact(ref v) => {
                         let len = v.compute_size();
                         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                     },
@@ -7128,13 +7141,16 @@ pub mod workflow {
         }
 
         fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-            if !self.name.is_empty() {
-                os.write_string(1, &self.name)?;
+            if self.scope != ::protobuf::EnumOrUnknown::new(super::super::scope::StateScope::UNSPECIFIED) {
+                os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.scope))?;
+            }
+            if !self.key.is_empty() {
+                os.write_string(2, &self.key)?;
             }
             if let ::std::option::Option::Some(ref v) = self.extraction_type {
                 match v {
-                    &feature_flag_extracted::Extraction_type::Exact(ref v) => {
-                        ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                    &state_extracted::Extraction_type::Exact(ref v) => {
+                        ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
                     },
                 };
             }
@@ -7150,19 +7166,21 @@ pub mod workflow {
             &mut self.special_fields
         }
 
-        fn new() -> FeatureFlagExtracted {
-            FeatureFlagExtracted::new()
+        fn new() -> StateExtracted {
+            StateExtracted::new()
         }
 
         fn clear(&mut self) {
-            self.name.clear();
+            self.scope = ::protobuf::EnumOrUnknown::new(super::super::scope::StateScope::UNSPECIFIED);
+            self.key.clear();
             self.extraction_type = ::std::option::Option::None;
             self.special_fields.clear();
         }
 
-        fn default_instance() -> &'static FeatureFlagExtracted {
-            static instance: FeatureFlagExtracted = FeatureFlagExtracted {
-                name: ::std::string::String::new(),
+        fn default_instance() -> &'static StateExtracted {
+            static instance: StateExtracted = StateExtracted {
+                scope: ::protobuf::EnumOrUnknown::from_i32(0),
+                key: ::std::string::String::new(),
                 extraction_type: ::std::option::Option::None,
                 special_fields: ::protobuf::SpecialFields::new(),
             };
@@ -7170,30 +7188,30 @@ pub mod workflow {
         }
     }
 
-    impl ::protobuf::MessageFull for FeatureFlagExtracted {
+    impl ::protobuf::MessageFull for StateExtracted {
         fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
             static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("Workflow.FeatureFlagExtracted").unwrap()).clone()
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("Workflow.StateExtracted").unwrap()).clone()
         }
     }
 
-    impl ::std::fmt::Display for FeatureFlagExtracted {
+    impl ::std::fmt::Display for StateExtracted {
         fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
             ::protobuf::text_format::fmt(self, f)
         }
     }
 
-    impl ::protobuf::reflect::ProtobufValue for FeatureFlagExtracted {
+    impl ::protobuf::reflect::ProtobufValue for StateExtracted {
         type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
     }
 
-    /// Nested message and enums of message `FeatureFlagExtracted`
-    pub mod feature_flag_extracted {
+    /// Nested message and enums of message `StateExtracted`
+    pub mod state_extracted {
 
         #[derive(Clone,PartialEq,Debug)]
-        // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.workflow.v1.Workflow.FeatureFlagExtracted.extraction_type)
+        // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.workflow.v1.Workflow.StateExtracted.extraction_type)
         pub enum Extraction_type {
-            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.FeatureFlagExtracted.exact)
+            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.workflow.v1.Workflow.StateExtracted.exact)
             Exact(Exact),
         }
 
@@ -7203,7 +7221,7 @@ pub mod workflow {
         impl ::protobuf::OneofFull for Extraction_type {
             fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
                 static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
-                descriptor.get(|| <super::FeatureFlagExtracted as ::protobuf::MessageFull>::descriptor().oneof_by_name("extraction_type").unwrap()).clone()
+                descriptor.get(|| <super::StateExtracted as ::protobuf::MessageFull>::descriptor().oneof_by_name("extraction_type").unwrap()).clone()
             }
         }
 
@@ -7212,11 +7230,11 @@ pub mod workflow {
                 ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Extraction_type>("extraction_type")
             }
         }
-        // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.FeatureFlagExtracted.Exact)
+        // @@protoc_insertion_point(message:bitdrift_public.protobuf.workflow.v1.Workflow.StateExtracted.Exact)
         #[derive(PartialEq,Clone,Default,Debug)]
         pub struct Exact {
             // special fields
-            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.FeatureFlagExtracted.Exact.special_fields)
+            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.StateExtracted.Exact.special_fields)
             pub special_fields: ::protobuf::SpecialFields,
         }
 
@@ -7235,7 +7253,7 @@ pub mod workflow {
                 let mut fields = ::std::vec::Vec::with_capacity(0);
                 let mut oneofs = ::std::vec::Vec::with_capacity(0);
                 ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Exact>(
-                    "Workflow.FeatureFlagExtracted.Exact",
+                    "Workflow.StateExtracted.Exact",
                     fields,
                     oneofs,
                 )
@@ -7301,7 +7319,7 @@ pub mod workflow {
         impl ::protobuf::MessageFull for Exact {
             fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
                 static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Workflow.FeatureFlagExtracted.Exact").unwrap()).clone()
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Workflow.StateExtracted.Exact").unwrap()).clone()
             }
         }
 
@@ -7323,7 +7341,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     her.proto\x1a/bitdrift_public/protobuf/state/v1/matcher.proto\x1a-bitdri\
     ft_public/protobuf/state/v1/scope.proto\x1a\x17validate/validate.proto\"\
     f\n\x16WorkflowsConfiguration\x12L\n\tworkflows\x18\x01\x20\x03(\x0b2..b\
-    itdrift_public.protobuf.workflow.v1.WorkflowR\tworkflows\"\xc78\n\x08Wor\
+    itdrift_public.protobuf.workflow.v1.WorkflowR\tworkflows\"\x939\n\x08Wor\
     kflow\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\
     \x01\x12V\n\x06states\x18\x02\x20\x03(\x0b24.bitdrift_public.protobuf.wo\
     rkflow.v1.Workflow.StateR\x06statesB\x08\xfaB\x05\x92\x01\x02\x08\x01\
@@ -7380,7 +7398,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     previous_value\x18\x03\x20\x01(\x0b22.bitdrift_public.protobuf.state.v1.\
     StateValueMatchR\rpreviousValue\x12Y\n\tnew_value\x18\x04\x20\x01(\x0b22\
     .bitdrift_public.protobuf.state.v1.StateValueMatchR\x08newValueB\x08\xfa\
-    B\x05\x8a\x01\x02\x10\x01\x1a\xe1\x1d\n\x06Action\x12|\n\x14action_flush\
+    B\x05\x8a\x01\x02\x10\x01\x1a\xec\x1d\n\x06Action\x12|\n\x14action_flush\
     _buffers\x18\x01\x20\x01(\x0b2H.bitdrift_public.protobuf.workflow.v1.Wor\
     kflow.Action.ActionFlushBuffersH\0R\x12actionFlushBuffers\x12v\n\x12acti\
     on_emit_metric\x18\x02\x20\x01(\x0b2F.bitdrift_public.protobuf.workflow.\
@@ -7446,30 +7464,32 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     R\x02idB\x07\xfaB\x04r\x02\x10\x01\x12\x1d\n\x05limit\x18\x02\x20\x01(\r\
     R\x05limitB\x07\xfaB\x04*\x02\x20\0\x12M\n\x04tags\x18\x03\x20\x03(\x0b2\
     9.bitdrift_public.protobuf.workflow.v1.Workflow.Action.TagR\x04tags\x1a\
-    \xf6\x02\n\x03Tag\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfa\
+    \x81\x03\n\x03Tag\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfa\
     B\x04r\x02\x10\x01\x12*\n\x0bfixed_value\x18\x02\x20\x01(\tH\0R\nfixedVa\
     lueB\x07\xfaB\x04r\x02\x10\x01\x12h\n\x0ffield_extracted\x18\x03\x20\x01\
     (\x0b2=.bitdrift_public.protobuf.workflow.v1.Workflow.FieldExtractedH\0R\
     \x0efieldExtracted\x12.\n\x12log_body_extracted\x18\x04\x20\x01(\x08H\0R\
-    \x10logBodyExtracted\x12{\n\x16feature_flag_extracted\x18\x05\x20\x01(\
-    \x0b2C.bitdrift_public.protobuf.workflow.v1.Workflow.FeatureFlagExtracte\
-    dH\0R\x14featureFlagExtractedB\x0f\n\x08tag_type\x12\x03\xf8B\x01\x1a\
-    \x1c\n\x14ActionTakeScreenshotJ\x04\x08\x01\x10\x02B\x12\n\x0baction_typ\
-    e\x12\x03\xf8B\x01\x1a\xb9\x01\n\tExecution\x12~\n\x13execution_exclusiv\
-    e\x18\x01\x20\x01(\x0b2K.bitdrift_public.protobuf.workflow.v1.Workflow.E\
-    xecution.ExecutionExclusiveH\0R\x12executionExclusive\x1a\x14\n\x12Execu\
-    tionExclusiveB\x10\n\x0eexecution_typeJ\x04\x08\x02\x10\x03\x1a6\n\x15Li\
-    mitMatchedLogsCount\x12\x1d\n\x05count\x18\x01\x20\x01(\rR\x05countB\x07\
-    \xfaB\x04*\x02\x20\0\x1a9\n\rLimitDuration\x12(\n\x0bduration_ms\x18\x02\
-    \x20\x01(\x04R\ndurationMsB\x07\xfaB\x042\x02\x20\0\x1a\xb1\x01\n\x0eFie\
-    ldExtracted\x12&\n\nfield_name\x18\x01\x20\x01(\tR\tfieldNameB\x07\xfaB\
-    \x04r\x02\x10\x01\x12[\n\x05exact\x18\x02\x20\x01(\x0b2C.bitdrift_public\
-    .protobuf.workflow.v1.Workflow.FieldExtracted.ExactH\0R\x05exact\x1a\x07\
-    \n\x05ExactB\x11\n\x0fextraction_type\x1a\xb2\x01\n\x14FeatureFlagExtrac\
-    ted\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\
-    \x01\x12a\n\x05exact\x18\x02\x20\x01(\x0b2I.bitdrift_public.protobuf.wor\
-    kflow.v1.Workflow.FeatureFlagExtracted.ExactH\0R\x05exact\x1a\x07\n\x05E\
-    xactB\x11\n\x0fextraction_typeb\x06proto3\
+    \x10logBodyExtracted\x12h\n\x0fstate_extracted\x18\x06\x20\x01(\x0b2=.bi\
+    tdrift_public.protobuf.workflow.v1.Workflow.StateExtractedH\0R\x0estateE\
+    xtractedB\x0f\n\x08tag_type\x12\x03\xf8B\x01J\x04\x08\x05\x10\x06R\x16fe\
+    ature_flag_extracted\x1a\x1c\n\x14ActionTakeScreenshotJ\x04\x08\x01\x10\
+    \x02B\x12\n\x0baction_type\x12\x03\xf8B\x01\x1a\xb9\x01\n\tExecution\x12\
+    ~\n\x13execution_exclusive\x18\x01\x20\x01(\x0b2K.bitdrift_public.protob\
+    uf.workflow.v1.Workflow.Execution.ExecutionExclusiveH\0R\x12executionExc\
+    lusive\x1a\x14\n\x12ExecutionExclusiveB\x10\n\x0eexecution_typeJ\x04\x08\
+    \x02\x10\x03\x1a6\n\x15LimitMatchedLogsCount\x12\x1d\n\x05count\x18\x01\
+    \x20\x01(\rR\x05countB\x07\xfaB\x04*\x02\x20\0\x1a9\n\rLimitDuration\x12\
+    (\n\x0bduration_ms\x18\x02\x20\x01(\x04R\ndurationMsB\x07\xfaB\x042\x02\
+    \x20\0\x1a\xb1\x01\n\x0eFieldExtracted\x12&\n\nfield_name\x18\x01\x20\
+    \x01(\tR\tfieldNameB\x07\xfaB\x04r\x02\x10\x01\x12[\n\x05exact\x18\x02\
+    \x20\x01(\x0b2C.bitdrift_public.protobuf.workflow.v1.Workflow.FieldExtra\
+    cted.ExactH\0R\x05exact\x1a\x07\n\x05ExactB\x11\n\x0fextraction_type\x1a\
+    \xf3\x01\n\x0eStateExtracted\x12M\n\x05scope\x18\x01\x20\x01(\x0e2-.bitd\
+    rift_public.protobuf.state.v1.StateScopeR\x05scopeB\x08\xfaB\x05\x82\x01\
+    \x02\x10\x01\x12\x19\n\x03key\x18\x02\x20\x01(\tR\x03keyB\x07\xfaB\x04r\
+    \x02\x10\x01\x12[\n\x05exact\x18\x03\x20\x01(\x0b2C.bitdrift_public.prot\
+    obuf.workflow.v1.Workflow.StateExtracted.ExactH\0R\x05exact\x1a\x07\n\
+    \x05ExactB\x11\n\x0fextraction_typeb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -7506,7 +7526,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(workflow::LimitMatchedLogsCount::generated_message_descriptor_data());
             messages.push(workflow::LimitDuration::generated_message_descriptor_data());
             messages.push(workflow::FieldExtracted::generated_message_descriptor_data());
-            messages.push(workflow::FeatureFlagExtracted::generated_message_descriptor_data());
+            messages.push(workflow::StateExtracted::generated_message_descriptor_data());
             messages.push(workflow::transition_extension::SaveTimestamp::generated_message_descriptor_data());
             messages.push(workflow::transition_extension::SaveField::generated_message_descriptor_data());
             messages.push(workflow::transition_extension::SankeyDiagramValueExtraction::generated_message_descriptor_data());
@@ -7526,7 +7546,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(workflow::action::action_emit_metric::Histogram::generated_message_descriptor_data());
             messages.push(workflow::execution::ExecutionExclusive::generated_message_descriptor_data());
             messages.push(workflow::field_extracted::Exact::generated_message_descriptor_data());
-            messages.push(workflow::feature_flag_extracted::Exact::generated_message_descriptor_data());
+            messages.push(workflow::state_extracted::Exact::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(0);
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),

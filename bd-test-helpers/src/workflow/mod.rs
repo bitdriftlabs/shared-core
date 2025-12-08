@@ -305,16 +305,17 @@ pub fn extract_log_body_tag() -> Tag {
 
 #[must_use]
 pub fn extract_feature_flag_tag(flag_name: &str, tag_name: &str) -> Tag {
-  use protos::workflow::workflow::workflow::FeatureFlagExtracted;
+  use protos::workflow::workflow::workflow::StateExtracted;
   use protos::workflow::workflow::workflow::action::tag::Tag_type;
-  use protos::workflow::workflow::workflow::feature_flag_extracted::Extraction_type;
+  use protos::workflow::workflow::workflow::state_extracted::Extraction_type;
 
   Tag {
     name: tag_name.to_string(),
-    tag_type: Some(Tag_type::FeatureFlagExtracted(FeatureFlagExtracted {
-      name: flag_name.to_string(),
+    tag_type: Some(Tag_type::StateExtracted(StateExtracted {
+      scope: bd_proto::protos::state::scope::StateScope::FEATURE_FLAG.into(),
+      key: flag_name.to_string(),
       extraction_type: Some(Extraction_type::Exact(
-        protos::workflow::workflow::workflow::feature_flag_extracted::Exact::default(),
+        protos::workflow::workflow::workflow::state_extracted::Exact::default(),
       )),
       ..Default::default()
     })),

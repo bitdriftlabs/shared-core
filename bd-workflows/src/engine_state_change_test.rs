@@ -427,9 +427,9 @@ async fn state_change_triggers_histogram_metric() {
     .assert_workflow_histogram_observed(42.0, "state_change_histogram", labels! {});
 }
 
-// Tests that state changes can extract feature flag values from the state reader.
+// Tests that state changes can extract state values from the state reader.
 // During a state change transition, we can extract values from the state reader (like feature
-// flags) and use them in metric tags. This is useful for adding context about other feature flags
+// flags) and use them in metric tags. This is useful for adding context about other state
 // when a state change occurs.
 #[tokio::test]
 async fn state_change_with_feature_flag_extraction() {
@@ -461,7 +461,7 @@ async fn state_change_with_feature_flag_extraction() {
     ))
     .await;
 
-  // Set up a state reader with a feature flag value to extract
+  // Set up a state reader with a state value (feature flag) to extract
   let mut state_reader = bd_state::test::TestStateReader::new();
   state_reader.insert(
     bd_state::Scope::FeatureFlagExposure,
@@ -483,7 +483,7 @@ async fn state_change_with_feature_flag_extraction() {
   // State B is a final state (no outgoing transitions), so the run completes and is removed
   // We can verify the transition occurred by checking the metric was emitted
 
-  // Verify the metric was emitted with the extracted feature flag value in the tag
+  // Verify the metric was emitted with the extracted state value in the tag
   setup.collector.assert_workflow_counter_eq(
     1,
     "state_change_with_extraction",

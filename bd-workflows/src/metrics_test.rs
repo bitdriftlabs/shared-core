@@ -157,15 +157,24 @@ fn counter_label_extraction() {
         ("tag_7".to_string(), TagValue::LogBodyExtract),
         (
           "tag_8".to_string(),
-          TagValue::FeatureFlagExtract("enabled_flag".to_string()),
+          TagValue::StateExtract(
+            bd_state::Scope::FeatureFlagExposure,
+            "enabled_flag".to_string(),
+          ),
         ),
         (
           "tag_9".to_string(),
-          TagValue::FeatureFlagExtract("missing_flag".to_string()),
+          TagValue::StateExtract(
+            bd_state::Scope::FeatureFlagExposure,
+            "missing_flag".to_string(),
+          ),
         ),
         (
           "tag_10".to_string(),
-          TagValue::FeatureFlagExtract("no variant flag".to_string()),
+          TagValue::StateExtract(
+            bd_state::Scope::FeatureFlagExposure,
+            "no variant flag".to_string(),
+          ),
         ),
       ]
       .into(),

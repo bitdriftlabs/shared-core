@@ -108,13 +108,12 @@ impl MetricsCollector {
     }
   }
 
-  fn resolve_feature_flag_value<'a>(
+  fn resolve_state_value<'a>(
+    scope: bd_state::Scope,
     key: &str,
     state_reader: &'a dyn bd_state::StateReader,
   ) -> Option<Cow<'a, str>> {
-    state_reader
-      .get(bd_state::Scope::FeatureFlagExposure, key)
-      .map(Cow::Borrowed)
+    state_reader.get(scope, key).map(Cow::Borrowed)
   }
 
   fn extract_tags(
@@ -127,8 +126,8 @@ impl MetricsCollector {
     for (key, value) in tags {
       if let Some(extracted_value) = match value {
         crate::config::TagValue::FieldExtract(extract) => Self::resolve_field_name(extract, event),
-        crate::config::TagValue::FeatureFlagExtract(extract) => {
-          Self::resolve_feature_flag_value(extract, state_reader)
+        crate::config::TagValue::StateExtract(scope, extract) => {
+          Self::resolve_state_value(*scope, extract, state_reader)
         },
         crate::config::TagValue::Fixed(value) => Some(value.as_str().into()),
         crate::config::TagValue::LogBodyExtract => match event {

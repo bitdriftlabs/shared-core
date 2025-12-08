@@ -754,8 +754,17 @@ impl ActionEmitMetric {
           Some(Tag_type::FixedValue(value)) => TagValue::Fixed(value),
           Some(Tag_type::FieldExtracted(extracted)) => TagValue::FieldExtract(extracted.field_name),
           Some(Tag_type::LogBodyExtracted(_)) => TagValue::LogBodyExtract,
-          Some(Tag_type::FeatureFlagExtracted(extracted)) => {
-            TagValue::FeatureFlagExtract(extracted.name)
+          Some(Tag_type::StateExtracted(extracted)) => {
+            let scope = match extracted.scope.enum_value_or_default() {
+              bd_proto::protos::state::scope::StateScope::UNSPECIFIED => {
+                anyhow::bail!("invalid state scope: unspecified");
+              },
+              bd_proto::protos::state::scope::StateScope::FEATURE_FLAG => {
+                Scope::FeatureFlagExposure
+              },
+              bd_proto::protos::state::scope::StateScope::GLOBAL_STATE => Scope::GlobalState,
+            };
+            TagValue::StateExtract(scope, extracted.key)
           },
           None => {
             anyhow::bail!("invalid action emit metric configuration: unknown tag_type")
@@ -825,8 +834,17 @@ impl ActionEmitSankey {
             Some(Tag_type::FieldExtracted(extracted)) => {
               TagValue::FieldExtract(extracted.field_name)
             },
-            Some(Tag_type::FeatureFlagExtracted(extracted)) => {
-              TagValue::FeatureFlagExtract(extracted.name)
+            Some(Tag_type::StateExtracted(extracted)) => {
+              let scope = match extracted.scope.enum_value_or_default() {
+                bd_proto::protos::state::scope::StateScope::UNSPECIFIED => {
+                  anyhow::bail!("invalid state scope: unspecified");
+                },
+                bd_proto::protos::state::scope::StateScope::FEATURE_FLAG => {
+                  Scope::FeatureFlagExposure
+                },
+                bd_proto::protos::state::scope::StateScope::GLOBAL_STATE => Scope::GlobalState,
+              };
+              TagValue::StateExtract(scope, extracted.key)
             },
             Some(Tag_type::LogBodyExtracted(_)) => TagValue::LogBodyExtract,
             None => {
@@ -880,8 +898,8 @@ pub enum ValueIncrement {
 pub enum TagValue {
   // Use the value of the specified tag without further modification.
   FieldExtract(String),
-  // Use the value of the variant for an active feature flag.
-  FeatureFlagExtract(String),
+  // Use the value from state storage.
+  StateExtract(bd_state::Scope, String),
   // Use a fixed value.
   Fixed(FieldKey),
   // Use the value of the entire log line.
@@ -897,9 +915,7 @@ impl TagValue {
   ) -> Option<Cow<'a, str>> {
     match self {
       Self::FieldExtract(field_key) => fields.field_value(field_key),
-      Self::FeatureFlagExtract(flag_key) => state_reader
-        .get(bd_state::Scope::FeatureFlagExposure, flag_key)
-        .map(Cow::Borrowed),
+      Self::StateExtract(scope, key) => state_reader.get(*scope, key).map(Cow::Borrowed),
       Self::Fixed(value) => Some(Cow::Owned(value.clone())),
       Self::LogBodyExtract => message.as_str().map(Cow::Borrowed),
     }
