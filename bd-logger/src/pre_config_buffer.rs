@@ -47,14 +47,14 @@ pub(crate) enum PreConfigItem {
 
 impl MemorySized for PreConfigItem {
   fn size(&self) -> usize {
-    // Size of enum discriminant (8 bytes on 64-bit platforms)
-    std::mem::size_of::<u64>()
-      + match self {
-        Self::Log(log) => log.size(),
-        Self::StateOperation(PendingStateOperation::SetFeatureFlagExposure(flag, variant)) => {
-          flag.len() + variant.as_ref().map_or(0, String::len)
-        },
-      }
+    // Don't add extra discriminant overhead - the enum's memory layout already accounts for it.
+    // We only need to measure the actual data size of each variant.
+    match self {
+      Self::Log(log) => log.size(),
+      Self::StateOperation(PendingStateOperation::SetFeatureFlagExposure(flag, variant)) => {
+        flag.len() + variant.as_ref().map_or(0, String::len)
+      },
+    }
   }
 }
 
