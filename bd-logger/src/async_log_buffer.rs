@@ -694,6 +694,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       return;
     };
 
+    // Make sure we don't try to allocate a session ID if there is nothing to replay.
+    if pre_config_buffer.is_empty() {
+      return;
+    }
+
     let now = self.time_provider.now();
     let session_id = self.session_strategy.session_id();
 

@@ -111,6 +111,10 @@ impl<T: MemorySized + std::fmt::Debug> PreConfigBuffer<T> {
     self.items.into_iter()
   }
 
+  pub fn is_empty(&self) -> bool {
+    self.items.is_empty()
+  }
+
   pub const fn max_count(&self) -> usize {
     self.max_count
   }
