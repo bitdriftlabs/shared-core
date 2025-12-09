@@ -381,11 +381,6 @@ pub fn global_state_equals(key: &str, value: &str) -> LogMatcher {
 /// Creates a matcher that checks if a global state value is set (has any value).
 ///
 /// This is a convenience function equivalent to `state_is_set(StateScope::GLOBAL_STATE, key)`.
-///
-/// # Example
-/// ```ignore
-/// let matcher = builder::global_state_is_set("session_id");
-/// ```
 #[inline]
 #[must_use]
 pub fn global_state_is_set(key: &str) -> LogMatcher {
