@@ -544,7 +544,43 @@ pub fn make_state_change_rule(
   key: &str,
   new_value: Option<&str>,
 ) -> Rule {
+  make_state_change_rule_with_extra_matcher(scope, key, new_value, None)
+}
+
+/// Creates a state change rule with an optional extra log matcher.
+///
+/// The extra matcher allows you to add additional conditions beyond the state change itself,
+/// such as checking other state values or log fields during the transition.
+///
+/// When `new_value` is `None`, the rule matches any state change (`IsSet` semantics).
+/// When `new_value` is `Some(value)`, the rule only matches when the new value equals the
+/// specified value.
+#[must_use]
+pub fn make_state_change_rule_with_extra_matcher(
+  scope: protos::state::scope::StateScope,
+  key: &str,
+  new_value: Option<&str>,
+  extra_matcher: Option<LogMatcher>,
+) -> Rule {
   use protos::state::matcher::{StateValueMatch, state_value_match};
+  use protos::value_matcher::value_matcher::IsSetMatch;
+
+  let value_match = new_value.map_or_else(
+    || {
+      // No value specified - match any value (IsSet)
+      state_value_match::Value_match::IsSetMatch(IsSetMatch::default())
+    },
+    |v| {
+      // Specific value - match exact string
+      state_value_match::Value_match::StringValueMatch(
+        protos::value_matcher::value_matcher::StringValueMatch {
+          operator: Operator::OPERATOR_EQUALS.into(),
+          string_value_match_type: Some(String_value_match_type::MatchValue(v.to_string())),
+          ..Default::default()
+        },
+      )
+    },
+  );
 
   Rule {
     rule_type: Some(Rule_type::RuleStateChangeMatch(
@@ -552,18 +588,12 @@ pub fn make_state_change_rule(
         scope: scope.into(),
         key: key.to_string(),
         previous_value: MessageField::none(),
-        new_value: MessageField::from_option(Some(StateValueMatch {
-          value_match: new_value.map(|v| {
-            state_value_match::Value_match::StringValueMatch(
-              protos::value_matcher::value_matcher::StringValueMatch {
-                operator: Operator::OPERATOR_EQUALS.into(),
-                string_value_match_type: Some(String_value_match_type::MatchValue(v.to_string())),
-                ..Default::default()
-              },
-            )
-          }),
+        new_value: Some(StateValueMatch {
+          value_match: Some(value_match),
           ..Default::default()
-        })),
+        })
+        .into(),
+        log_matcher: extra_matcher.into(),
         ..Default::default()
       },
     )),

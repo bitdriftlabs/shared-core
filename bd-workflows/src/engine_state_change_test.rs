@@ -31,6 +31,7 @@ use bd_test_helpers::workflow::{
   make_emit_histogram_action,
   make_generate_log_action_proto,
   make_save_timestamp_extraction,
+  make_state_change_rule_with_extra_matcher,
   metric_tag,
   metric_value,
   state,
@@ -499,27 +500,15 @@ async fn state_change_with_feature_flag_extraction() {
 // AND additional conditions like other state values being set to specific values.
 #[tokio::test]
 async fn state_change_with_extra_state_matcher() {
-  use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
-  use bd_proto::protos::workflow::workflow::workflow::{Rule, RuleStateChangeMatch};
-
   let b = state("B");
 
   // Create a state change rule that also checks another state value using log matcher
-  let state_change_rule_with_matcher = Rule {
-    rule_type: Some(Rule_type::RuleStateChangeMatch(RuleStateChangeMatch {
-      scope: bd_proto::protos::state::scope::StateScope::FEATURE_FLAG.into(),
-      key: "trigger_flag".to_string(),
-      previous_value: protobuf::MessageField::none(),
-      new_value: protobuf::MessageField::some(bd_proto::protos::state::matcher::StateValueMatch {
-        value_match: Some(make_is_set_match()),
-        ..Default::default()
-      }),
-      // Add a log matcher that checks if another state value equals "enabled"
-      log_matcher: Some(feature_flag_equals("required_flag", "enabled")).into(),
-      ..Default::default()
-    })),
-    ..Default::default()
-  };
+  let state_change_rule_with_matcher = make_state_change_rule_with_extra_matcher(
+    StateScope::FEATURE_FLAG,
+    "trigger_flag",
+    None, // Any value triggers
+    Some(feature_flag_equals("required_flag", "enabled")),
+  );
 
   let a = state("A").declare_transition_with_actions(
     &b,
@@ -567,26 +556,15 @@ async fn state_change_with_extra_state_matcher() {
 // Tests that state change transitions fail when the extra matcher doesn't match.
 #[tokio::test]
 async fn state_change_with_extra_state_matcher_no_match() {
-  use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
-  use bd_proto::protos::workflow::workflow::workflow::{Rule, RuleStateChangeMatch};
-
   let b = state("B");
 
   // Create a state change rule that requires another state value to be "enabled"
-  let state_change_rule_with_matcher = Rule {
-    rule_type: Some(Rule_type::RuleStateChangeMatch(RuleStateChangeMatch {
-      scope: bd_proto::protos::state::scope::StateScope::FEATURE_FLAG.into(),
-      key: "trigger_flag".to_string(),
-      previous_value: protobuf::MessageField::none(),
-      new_value: protobuf::MessageField::some(bd_proto::protos::state::matcher::StateValueMatch {
-        value_match: Some(make_is_set_match()),
-        ..Default::default()
-      }),
-      log_matcher: Some(feature_flag_equals("required_flag", "enabled")).into(),
-      ..Default::default()
-    })),
-    ..Default::default()
-  };
+  let state_change_rule_with_matcher = make_state_change_rule_with_extra_matcher(
+    StateScope::FEATURE_FLAG,
+    "trigger_flag",
+    None, // Any value triggers
+    Some(feature_flag_equals("required_flag", "enabled")),
+  );
 
   let a = state("A").declare_transition_with_actions(
     &b,
@@ -641,29 +619,17 @@ async fn state_change_with_extra_state_matcher_no_match() {
 // This allows complex conditions like "trigger when flag A changes AND flag B equals X".
 #[tokio::test]
 async fn state_change_with_multiple_state_conditions() {
-  use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
-  use bd_proto::protos::workflow::workflow::workflow::{Rule, RuleStateChangeMatch};
-
   let b = state("B");
 
   // Create a state change rule that checks TWO different state values:
   // 1. The trigger_flag must change (primary condition)
   // 2. The secondary_flag must equal "ready" (extra condition via log_matcher)
-  let state_change_rule_with_multiple_conditions = Rule {
-    rule_type: Some(Rule_type::RuleStateChangeMatch(RuleStateChangeMatch {
-      scope: bd_proto::protos::state::scope::StateScope::FEATURE_FLAG.into(),
-      key: "trigger_flag".to_string(),
-      previous_value: protobuf::MessageField::none(),
-      new_value: protobuf::MessageField::some(bd_proto::protos::state::matcher::StateValueMatch {
-        value_match: Some(make_is_set_match()),
-        ..Default::default()
-      }),
-      // Additional condition: another state value must equal "ready"
-      log_matcher: Some(feature_flag_equals("secondary_flag", "ready")).into(),
-      ..Default::default()
-    })),
-    ..Default::default()
-  };
+  let state_change_rule_with_multiple_conditions = make_state_change_rule_with_extra_matcher(
+    StateScope::FEATURE_FLAG,
+    "trigger_flag",
+    None, // Any value triggers
+    Some(feature_flag_equals("secondary_flag", "ready")),
+  );
 
   let a = state("A").declare_transition_with_actions(
     &b,
@@ -712,9 +678,6 @@ async fn state_change_with_multiple_state_conditions() {
 // a state value against an extracted field value using SaveFieldId.
 #[tokio::test]
 async fn state_change_compares_state_to_extracted_field() {
-  use bd_proto::protos::state::matcher::StateValueMatch;
-  use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
-  use bd_proto::protos::workflow::workflow::workflow::{Rule, RuleStateChangeMatch};
   use bd_test_helpers::workflow::make_save_field_extraction;
 
   let c = state("C").declare_transition(&state("C"), rule!(message_equals("keep_alive")));
@@ -724,20 +687,12 @@ async fn state_change_compares_state_to_extracted_field() {
 
   // B -> C transition triggered by state change, with extra matcher comparing state to extracted
   // field
-  let state_change_rule = Rule {
-    rule_type: Some(Rule_type::RuleStateChangeMatch(RuleStateChangeMatch {
-      scope: StateScope::FEATURE_FLAG.into(),
-      key: "trigger".to_string(),
-      previous_value: protobuf::MessageField::none(),
-      new_value: protobuf::MessageField::some(StateValueMatch {
-        value_match: Some(make_is_set_match()),
-        ..Default::default()
-      }),
-      log_matcher: Some(matcher).into(),
-      ..Default::default()
-    })),
-    ..Default::default()
-  };
+  let state_change_rule = make_state_change_rule_with_extra_matcher(
+    StateScope::FEATURE_FLAG,
+    "trigger",
+    None, // Any value triggers
+    Some(matcher),
+  );
 
   let b = state("B").declare_transition_with_actions(
     &c,
