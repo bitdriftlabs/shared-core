@@ -82,8 +82,8 @@ impl<T: MemorySized + std::fmt::Debug> PreConfigBuffer<T> {
     }
   }
 
-  pub fn push(&mut self, log: T) -> Result<(), Error> {
-    let log_size = log.size();
+  pub fn push(&mut self, entry: T) -> Result<(), Error> {
+    let log_size = entry.size();
     if self.current_size + log_size > self.max_size {
       log::debug!(
         "failed to enqueue log due to items size limit ({}), current size: {}, log size: {}",
