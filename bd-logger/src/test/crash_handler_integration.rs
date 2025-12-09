@@ -9,8 +9,10 @@ use super::setup::Setup;
 use crate::logger::{Block, CaptureSession, ReportProcessingSession};
 use crate::test::setup::SetupOptions;
 use assert_matches::assert_matches;
+use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::FeatureFlag as _;
+use bd_test_helpers::config_helper::configuration_update;
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::runtime::ValueKind;
 use bd_test_helpers::test_api_server::log_upload::LogUpload;
@@ -47,7 +49,7 @@ fn crash_report_upload() {
   };
 
   let initial_session_id = {
-    let setup = Setup::new_with_options(SetupOptions {
+    let mut setup = Setup::new_with_options(SetupOptions {
       disk_storage: true,
       metadata_provider: Arc::new(LogMetadata {
         timestamp: time::OffsetDateTime::now_utc().into(),
@@ -69,6 +71,10 @@ fn crash_report_upload() {
     setup
       .logger_handle
       .set_feature_flag_exposure("flag_with_variant".to_string(), Some("variant".to_string()));
+
+    // Trigger config initialization so pre-config buffer (including feature flags) gets replayed
+    // Use an empty configuration to avoid setting up any buffers or generating extra logs
+    setup.send_configuration_update(configuration_update("", StateOfTheWorld::default()));
 
     // Flush state to ensure feature flags are persisted before writing the crash report
     setup.logger_handle.flush_state(Block::Yes(5.std_seconds()));
@@ -115,7 +121,15 @@ fn crash_report_upload() {
   setup.upload_individual_logs();
   setup.upload_crash_reports(ReportProcessingSession::PreviousRun);
 
-  let uploads: Vec<LogUpload> = vec![setup.server.blocking_next_log_upload().unwrap()];
+  // Collect all log uploads - crash reports generate separate uploads
+  let mut uploads: Vec<LogUpload> = vec![];
+  for _ in 0 .. 5 {
+    if let Some(upload) = setup.server.blocking_next_log_upload() {
+      uploads.push(upload);
+    } else {
+      break;
+    }
+  }
 
   let logs = uploads
     .iter()
@@ -124,7 +138,7 @@ fn crash_report_upload() {
 
   let crash = logs
     .iter()
-    .find(|log| log.field("_app_exit_info") == "crash1")
+    .find(|log| log.has_field("_app_exit_info") && log.field("_app_exit_info") == "crash1")
     .unwrap();
   assert_eq!(crash.message(), "AppExit");
   assert_eq!(crash.session_id(), initial_session_id);

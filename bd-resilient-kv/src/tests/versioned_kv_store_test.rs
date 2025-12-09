@@ -164,7 +164,7 @@ async fn basic_crud(#[case] mode: StoreMode) -> anyhow::Result<()> {
   let mut setup = DualModeSetup::new(mode).await?;
 
   // Insert some values
-  let ts1 = setup
+  let (ts1, _) = setup
     .store
     .insert(
       Scope::FeatureFlagExposure,
@@ -172,7 +172,7 @@ async fn basic_crud(#[case] mode: StoreMode) -> anyhow::Result<()> {
       make_string_value("value1"),
     )
     .await?;
-  let ts2 = setup
+  let (ts2, _) = setup
     .store
     .insert(
       Scope::FeatureFlagExposure,
@@ -190,7 +190,7 @@ async fn basic_crud(#[case] mode: StoreMode) -> anyhow::Result<()> {
     .remove(Scope::FeatureFlagExposure, "key1")
     .await?;
   assert!(ts3.is_some());
-  assert!(ts3.unwrap() >= ts2);
+  assert!(ts3.unwrap().0 >= ts2);
 
   assert_eq!(setup.store.len(), 1);
   assert!(!setup.store.contains_key(Scope::FeatureFlagExposure, "key1"));
@@ -573,14 +573,14 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
       &stats,
     )
     .await?;
-    let ts1 = store
+    let (ts1, _) = store
       .insert(
         Scope::FeatureFlagExposure,
         "key1".to_string(),
         make_string_value("value1"),
       )
       .await?;
-    let ts2 = store
+    let (ts2, _) = store
       .insert(
         Scope::FeatureFlagExposure,
         "key2".to_string(),
@@ -665,7 +665,7 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
   let mut setup = Setup::new().await?;
 
   // Insert some data
-  let _ts1 = setup
+  let (_ts1, _) = setup
     .store
     .insert(
       Scope::FeatureFlagExposure,
@@ -673,7 +673,7 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
       make_string_value("value1"),
     )
     .await?;
-  let ts2 = setup
+  let (ts2, _) = setup
     .store
     .insert(
       Scope::FeatureFlagExposure,
@@ -695,7 +695,7 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
   assert!(rotation.snapshot_path.exists());
 
   // Verify active journal still works
-  let ts3 = setup
+  let (ts3, _) = setup
     .store
     .insert(
       Scope::FeatureFlagExposure,
@@ -766,7 +766,7 @@ async fn test_rotation_preserves_state() -> anyhow::Result<()> {
   assert_eq!(setup.store.len(), 1);
 
   // Verify we can continue writing
-  let ts_new = setup
+  let (ts_new, _) = setup
     .store
     .insert(
       Scope::FeatureFlagExposure,
@@ -817,7 +817,7 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
   let mut setup = Setup::new().await?;
 
   // Insert some keys and capture their timestamps
-  let ts1 = setup
+  let (ts1, _) = setup
     .store
     .insert(
       Scope::FeatureFlagExposure,
@@ -829,7 +829,7 @@ async fn test_timestamp_preservation_during_rotation() -> anyhow::Result<()> {
   // Advance time to ensure different timestamps.
   setup.time_provider.advance(10.milliseconds());
 
-  let ts2 = setup
+  let (ts2, _) = setup
     .store
     .insert(
       Scope::FeatureFlagExposure,

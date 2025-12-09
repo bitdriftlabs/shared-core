@@ -539,6 +539,39 @@ pub fn make_log_match_rule(matcher: LogMatcher, count: u32) -> Rule {
 }
 
 #[must_use]
+pub fn make_state_change_rule(
+  scope: protos::state::scope::StateScope,
+  key: &str,
+  new_value: Option<&str>,
+) -> Rule {
+  use protos::state::matcher::{StateValueMatch, state_value_match};
+
+  Rule {
+    rule_type: Some(Rule_type::RuleStateChangeMatch(
+      protos::workflow::workflow::workflow::RuleStateChangeMatch {
+        scope: scope.into(),
+        key: key.to_string(),
+        previous_value: MessageField::none(),
+        new_value: MessageField::from_option(Some(StateValueMatch {
+          value_match: new_value.map(|v| {
+            state_value_match::Value_match::StringValueMatch(
+              protos::value_matcher::value_matcher::StringValueMatch {
+                operator: Operator::OPERATOR_EQUALS.into(),
+                string_value_match_type: Some(String_value_match_type::MatchValue(v.to_string())),
+                ..Default::default()
+              },
+            )
+          }),
+          ..Default::default()
+        })),
+        ..Default::default()
+      },
+    )),
+    ..Default::default()
+  }
+}
+
+#[must_use]
 pub fn make_log_message_matcher(value: &str, operator: Operator) -> LogMatcher {
   LogMatcher {
     matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {

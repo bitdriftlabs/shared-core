@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::Block;
-use crate::async_log_buffer::{AsyncLogBuffer, LogLine, LogReplay, Sender};
+use crate::async_log_buffer::{AsyncLogBuffer, LogLine, LogReplay, PreConfigItem, Sender};
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
@@ -174,7 +174,7 @@ impl Setup {
     )
   }
 
-  fn make_logging_context(&self) -> UninitializedLoggingContext<Log> {
+  fn make_logging_context(&self) -> UninitializedLoggingContext<PreConfigItem> {
     let (trigger_upload_tx, _) = tokio::sync::mpsc::channel(1);
     let (data_upload_tx, _) = tokio::sync::mpsc::channel(1);
     let (flush_buffers_tx, _) = tokio::sync::mpsc::channel(1);
@@ -243,6 +243,18 @@ impl LogReplay for TestReplay {
     self.fields.lock().push(log.fields);
 
     Ok(LogReplayResult::default())
+  }
+
+  async fn replay_state_change(
+    &mut self,
+    _state_change: bd_state::StateChange,
+    _pipeline: &mut ProcessingPipeline,
+    _state: &bd_state::Store,
+    _now: OffsetDateTime,
+    _session_id: &str,
+  ) -> LogReplayResult {
+    // Test implementation does nothing with state changes
+    LogReplayResult::default()
   }
 }
 
@@ -367,7 +379,7 @@ async fn logs_are_replayed_in_order() {
   let written_logs_clone = written_logs.clone();
   // The test sometimes produces zero logs on the background threads when left unchecked, so use
   // a second channel to ensure that we get a certain number of logs processed.
-  let (counting_logs_tx, mut counting_logs_rx) = tokio::sync::mpsc::channel(5000);
+  let (counting_logs_tx, mut counting_logs_rx) = tokio::sync::mpsc::unbounded_channel();
 
   let logging_task = std::thread::spawn(move || {
     let mut counter = 0;
@@ -395,7 +407,7 @@ async fn logs_are_replayed_in_order() {
 
       // It's possible that we fill up this channel and we don't want that to prevent the threads
       // from being able to shut down on cancel.
-      let _ignored = counting_logs_tx.blocking_send(());
+      let _ignored = counting_logs_tx.send(());
     }
   });
 

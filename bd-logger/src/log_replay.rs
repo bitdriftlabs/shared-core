@@ -13,8 +13,9 @@ use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::BuffersWithAck;
 use bd_client_stats::FlushTrigger;
 use bd_log_filter::FilterChain;
+use bd_log_metadata::LogFields;
 use bd_log_primitives::tiny_set::TinySet;
-use bd_log_primitives::{FieldsRef, Log, LogEncodingHelper, LossyIntToU32, log_level};
+use bd_log_primitives::{FieldsRef, Log, LogEncodingHelper, LogMessage, LossyIntToU32, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
 use bd_runtime::runtime::{ConfigLoader, IntWatch};
@@ -59,6 +60,16 @@ pub trait LogReplay {
     state: &bd_state::Store,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult>;
+
+  // Replays state changes for further processing.
+  async fn replay_state_change(
+    &mut self,
+    state_change: bd_state::StateChange,
+    pipeline: &mut ProcessingPipeline,
+    state: &bd_state::Store,
+    now: OffsetDateTime,
+    session_id: &str,
+  ) -> LogReplayResult;
 }
 
 //
@@ -78,6 +89,19 @@ impl LogReplay for LoggerReplay {
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
     pipeline.process_log(log, state_store, block, now).await
+  }
+
+  async fn replay_state_change(
+    &mut self,
+    state_change: bd_state::StateChange,
+    pipeline: &mut ProcessingPipeline,
+    state: &bd_state::Store,
+    now: OffsetDateTime,
+    session_id: &str,
+  ) -> LogReplayResult {
+    pipeline
+      .process_state_change(state_change, state, now, session_id)
+      .await
   }
 }
 
@@ -199,7 +223,6 @@ impl ProcessingPipeline {
     let mut log = LogEncodingHelper::new(log, (*self.min_log_compression_size.read()).into());
 
     let flush_stats_trigger = self.flush_stats_trigger.clone();
-    let flush_buffers_tx = self.flush_buffers_tx.clone();
 
     match self.tail_configs.maybe_stream_log(&mut log, &state_reader) {
       Ok(streamed) => {
@@ -241,16 +264,11 @@ impl ProcessingPipeline {
       log.log.capture_session
     );
 
-    if !result.triggered_flush_buffers_action_ids.is_empty() {
-      log::debug!(
-        "triggered flush buffer action IDs: {:?}",
-        result.triggered_flush_buffers_action_ids
-      );
-    }
-
-    if result.capture_screenshot {
-      self.capture_screenshot_handler.capture_screenshot();
-    }
+    Self::handle_common_pre_buffer_write(
+      &self.capture_screenshot_handler,
+      &result.triggered_flush_buffers_action_ids,
+      result.capture_screenshot,
+    );
 
     Self::write_to_buffers(
       &mut self.buffer_producers,
@@ -272,7 +290,10 @@ impl ProcessingPipeline {
       &mut self.buffer_producers,
       &result.triggered_flushes_buffer_ids,
       &result.log_destination_buffer_ids,
-      &log.log,
+      &log.log.message,
+      &log.log.fields,
+      &log.log.session_id,
+      log.log.occurred_at,
     ) {
       // We emitted a synthetic log. Add the buffer it was written to to the list of matching
       // buffers.
@@ -283,15 +304,86 @@ impl ProcessingPipeline {
     self.workflows_engine.maybe_persist(block).await;
 
     if block {
-      Self::finish_blocking_log_processing(flush_buffers_tx, flush_stats_trigger, matching_buffers)
-        .await?;
+      Self::finish_blocking_log_processing(
+        &self.flush_buffers_tx,
+        flush_stats_trigger,
+        matching_buffers,
+      )
+      .await?;
     }
 
     Ok(log_replay_result)
   }
 
+  fn handle_common_pre_buffer_write(
+    capture_screenshot_handler: &CaptureScreenshotHandler,
+    triggered_flush_buffers_action_ids: &BTreeSet<Cow<'_, FlushBufferId>>,
+    capture_screenshot: bool,
+  ) {
+    if !triggered_flush_buffers_action_ids.is_empty() {
+      log::debug!("triggered flush buffer action IDs: {triggered_flush_buffers_action_ids:?}");
+    }
+
+    if capture_screenshot {
+      capture_screenshot_handler.capture_screenshot();
+    }
+  }
+
+  pub(crate) async fn process_state_change(
+    &mut self,
+    state_change: bd_state::StateChange,
+    state: &bd_state::Store,
+    now: OffsetDateTime,
+    session_id: &str,
+  ) -> LogReplayResult {
+    let state_reader = state.read().await;
+
+    let empty_set = TinySet::default();
+    let mut result = self.workflows_engine.process_event(
+      bd_workflows::workflow::WorkflowEvent::StateChange(&state_change),
+      &empty_set,
+      &state_reader,
+      now,
+    );
+
+    let log_replay_result = LogReplayResult {
+      logs_to_inject: std::mem::take(&mut result.logs_to_inject)
+        .into_values()
+        .collect(),
+      workflow_debug_state: result.workflow_debug_state,
+      engine_has_debug_workflows: result.has_debug_workflows,
+    };
+
+    log::debug!("processed {state_change:?} state change");
+
+    Self::handle_common_pre_buffer_write(
+      &self.capture_screenshot_handler,
+      &result.triggered_flush_buffers_action_ids,
+      result.capture_screenshot,
+    );
+
+    // In order to work with session capture we need there to be a log that can be emitted with the
+    // action ID for the flush action. Since state changes typically don't have associated logs, we
+    // need to rely on the mechanism to synthesize a log here.
+    Self::process_flush_buffers_actions(
+      &result.triggered_flush_buffers_action_ids,
+      &mut self.buffer_producers,
+      &result.triggered_flushes_buffer_ids,
+      &result.log_destination_buffer_ids,
+      &"State Change".into(),
+      &[].into(),
+      session_id,
+      state_change.timestamp,
+    );
+
+    // State changes are never blocking, so we pass false for force_state_persistence.
+    self.workflows_engine.maybe_persist(false).await;
+
+    log_replay_result
+  }
+
   async fn finish_blocking_log_processing(
-    flush_buffers_tx: tokio::sync::mpsc::Sender<BuffersWithAck>,
+    flush_buffers_tx: &tokio::sync::mpsc::Sender<BuffersWithAck>,
     flush_stats_trigger: FlushTrigger,
     matching_buffers: TinySet<Cow<'_, str>>,
   ) -> anyhow::Result<()> {
@@ -360,12 +452,20 @@ impl ProcessingPipeline {
     Ok(())
   }
 
+  /// Processes flush buffer actions that were triggered by the log being processed.
+  /// If the log that triggered the flush was not written to any of the buffers that are
+  /// about to be flushed, a synthetic log resembling the original log is created and added
+  /// to one of the buffers scheduled for flushing.
+  /// Returns the ID of the buffer to which the synthetic log was added, if any.
   fn process_flush_buffers_actions(
     triggered_flush_buffers_action_ids: &BTreeSet<Cow<'_, FlushBufferId>>,
     buffers: &mut BufferProducers,
     triggered_flushes_buffer_ids: &TinySet<Cow<'_, str>>,
     written_to_buffers: &TinySet<Cow<'_, str>>,
-    log: &Log,
+    log_message: &LogMessage,
+    log_fields: &LogFields,
+    session_id: &str,
+    occurred_at: OffsetDateTime,
   ) -> Option<String> {
     if triggered_flush_buffers_action_ids.is_empty() {
       return None;
@@ -398,10 +498,8 @@ impl ProcessingPipeline {
         .map(std::string::ToString::to_string)
     {
       log::debug!(
-        "adding synthetic log \"{:?}\" to \"{}\" buffer; flush buffer action IDs {:?}",
-        log.message,
-        arbitrary_buffer_id_to_flush,
-        triggered_flush_buffers_action_ids
+        "adding synthetic log \"{log_message:?}\" to \"{arbitrary_buffer_id_to_flush}\" buffer; \
+         flush buffer action IDs {triggered_flush_buffers_action_ids:?}"
       );
 
       if let Ok(buffer_producer) =
@@ -418,10 +516,10 @@ impl ProcessingPipeline {
           let mut cached_encoding_data = None;
           let size = LogEncodingHelper::serialize_proto_size_inner(
             log_level::DEBUG,
-            &log.message,
-            &log.fields,
-            &log.session_id,
-            log.occurred_at,
+            log_message,
+            log_fields,
+            session_id,
+            occurred_at,
             LogType::INTERNAL_SDK,
             &action_ids,
             &[],
@@ -432,10 +530,10 @@ impl ProcessingPipeline {
           let mut os = CodedOutputStream::bytes(reserved);
           LogEncodingHelper::serialize_proto_to_stream_inner(
             log_level::DEBUG,
-            &log.message,
-            &log.fields,
-            &log.session_id,
-            log.occurred_at,
+            log_message,
+            log_fields,
+            session_id,
+            occurred_at,
             LogType::INTERNAL_SDK,
             &action_ids,
             &[],

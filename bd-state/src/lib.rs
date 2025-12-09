@@ -25,7 +25,7 @@ use ahash::AHashMap;
 use bd_resilient_kv::{DataLoss, RetentionRegistry, ScopedMaps, StateValue, Value_type};
 pub use bd_resilient_kv::{PersistentStoreConfig, Scope};
 use bd_runtime::runtime::ConfigLoader;
-use bd_time::TimeProvider;
+use bd_time::{OffsetDateTimeExt, TimeProvider};
 use itertools::Itertools as _;
 use std::path::Path;
 use std::sync::Arc;
@@ -66,6 +66,9 @@ pub enum StateChangeType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateChange {
   pub scope: Scope,
+  // TODO(snowp): Ideally we could return &str but avoid copies in this path, but in order to do
+  // that we need to extend the lifetime of the write lock such that we can return the &str
+  // references safely. For now we copy the strings but we could optimize this later if needed.
   pub key: String,
   pub change_type: StateChangeType,
   pub timestamp: OffsetDateTime,
@@ -426,24 +429,56 @@ impl Store {
     }
   }
 
-  pub async fn insert(&self, scope: Scope, key: String, value: String) -> anyhow::Result<()> {
-    self
-      .inner
-      .write()
-      .await
+  pub async fn insert(
+    &self,
+    scope: Scope,
+    key: String,
+    value: String,
+  ) -> anyhow::Result<StateChange> {
+    let mut locked = self.inner.write().await;
+
+    // Perform the insert and get both timestamp and old value in one operation
+    let (timestamp_u64, old_state_value) = locked
       .insert(
         scope,
-        key,
+        key.clone(),
         StateValue {
-          value_type: Value_type::StringValue(value).into(),
+          value_type: Value_type::StringValue(value.clone()).into(),
           ..Default::default()
         },
       )
       .await?;
 
-    Ok(())
+    // Extract old string value if it exists and is a string
+    let old_value = old_state_value
+      .filter(bd_resilient_kv::StateValue::has_string_value)
+      .map(|mut v| v.take_string_value());
+
+    // Convert timestamp
+    let timestamp =
+      OffsetDateTime::from_unix_timestamp_micros(timestamp_u64.try_into().unwrap_or_default())
+        .unwrap_or_else(|_| OffsetDateTime::now_utc());
+
+    // Determine change type
+    let change_type = match old_value {
+      Some(old) if old == value => StateChangeType::NoChange,
+      Some(old) => StateChangeType::Updated {
+        old_value: old,
+        new_value: value,
+      },
+      None => StateChangeType::Inserted { value },
+    };
+
+    Ok(StateChange {
+      scope,
+      key,
+      change_type,
+      timestamp,
+    })
   }
 
+  // TODO(snowp): Extend should return StateChanges to track what was inserted/updated, but this
+  // requires support from the underlying store to return old values for batch operations.
   pub async fn extend(
     &self,
     scope: Scope,
@@ -473,14 +508,42 @@ impl Store {
     Ok(())
   }
 
-  pub async fn remove(&self, scope: Scope, key: &str) -> anyhow::Result<()> {
-    self.inner.write().await.remove(scope, key).await?;
+  pub async fn remove(&self, scope: Scope, key: &str) -> anyhow::Result<StateChange> {
+    let mut locked = self.inner.write().await;
 
-    Ok(())
+    let result = locked.remove(scope, key).await?;
+
+    let (change_type, timestamp) = match result {
+      Some((timestamp_u64, mut old_state_value)) => {
+        let timestamp =
+          OffsetDateTime::from_unix_timestamp_micros(timestamp_u64.try_into().unwrap_or_default())
+            .unwrap_or_else(|_| OffsetDateTime::now_utc());
+
+        let change_type = if old_state_value.has_string_value() {
+          StateChangeType::Removed {
+            old_value: old_state_value.take_string_value(),
+          }
+        } else {
+          StateChangeType::NoChange
+        };
+
+        (change_type, timestamp)
+      },
+      None => (StateChangeType::NoChange, OffsetDateTime::now_utc()),
+    };
+
+    Ok(StateChange {
+      scope,
+      key: key.to_string(),
+      change_type,
+      timestamp,
+    })
   }
 
-  pub async fn clear(&self, scope: Scope) -> anyhow::Result<()> {
+  pub async fn clear(&self, scope: Scope) -> anyhow::Result<StateChanges> {
     let mut locked_store = self.inner.write().await;
+
+    // Collect all keys in this scope
     let keys_to_remove: Vec<String> = locked_store
       .as_hashmap()
       .iter()
@@ -488,14 +551,31 @@ impl Store {
       .map(|(_, key, _)| key.clone())
       .collect_vec();
 
+    let mut changes = Vec::new();
+
     // TODO(snowp): Ideally we should have built in support for batch deletions in the
     // underlying store. This leaves us open for partial deletions if something fails halfway
     // through.
     for key in keys_to_remove {
-      locked_store.remove(scope, &key).await?;
+      if let Some((timestamp_u64, mut old_state_value)) = locked_store.remove(scope, &key).await? {
+        let timestamp =
+          OffsetDateTime::from_unix_timestamp_micros(timestamp_u64.try_into().unwrap_or_default())
+            .unwrap_or_else(|_| OffsetDateTime::now_utc());
+
+        if old_state_value.has_string_value() {
+          changes.push(StateChange {
+            scope,
+            key,
+            change_type: StateChangeType::Removed {
+              old_value: old_state_value.take_string_value(),
+            },
+            timestamp,
+          });
+        }
+      }
     }
 
-    Ok(())
+    Ok(StateChanges { changes })
   }
 
   /// Returns a reader for accessing state values.

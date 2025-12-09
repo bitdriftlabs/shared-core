@@ -103,7 +103,7 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
   )
   .await?;
 
-  let ts1 = store
+  let (ts1, _) = store
     .insert(
       Scope::FeatureFlagExposure,
       "key1".to_string(),
@@ -113,7 +113,7 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
 
   time_provider.advance(10_i64.milliseconds());
 
-  let ts2 = store
+  let (ts2, _) = store
     .insert(
       Scope::FeatureFlagExposure,
       "key2".to_string(),
@@ -124,7 +124,7 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
   time_provider.advance(10_i64.milliseconds());
 
   // Delete key1
-  let ts3 = store
+  let (ts3, _) = store
     .remove(Scope::FeatureFlagExposure, "key1")
     .await?
     .unwrap();
