@@ -499,6 +499,32 @@ fn make_state_matcher(
   key: &str,
   value: &str,
 ) -> bd_proto::protos::log_matcher::log_matcher::LogMatcher {
+  use bd_proto::protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
+  make_state_matcher_ex(
+    scope,
+    key,
+    String_value_match_type::MatchValue(value.to_string()),
+  )
+}
+
+fn make_state_matcher_ex(
+  scope: bd_state::Scope,
+  key: &str,
+  string_value_match_type: String_value_match_type,
+) -> bd_proto::protos::log_matcher::log_matcher::LogMatcher {
+  use bd_proto::protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
+  make_state_matcher_ex(
+    scope,
+    key,
+    String_value_match_type::MatchValue(value.to_string()),
+  )
+}
+
+fn make_state_matcher_ex(
+  scope: bd_state::Scope,
+  key: &str,
+  string_value_match_type: String_value_match_type,
+) -> bd_proto::protos::log_matcher::log_matcher::LogMatcher {
   use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
   use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Match_type;
   use bd_proto::protos::log_matcher::log_matcher::log_matcher::{
@@ -525,7 +551,7 @@ fn make_state_matcher(
           value_match: Some(state_value_match::Value_match::StringValueMatch(
             value_matcher::StringValueMatch {
               operator: Operator::OPERATOR_EQUALS.into(),
-              string_value_match_type: Some(String_value_match_type::MatchValue(value.to_string())),
+              string_value_match_type: Some(string_value_match_type),
               ..Default::default()
             },
           )),
@@ -763,4 +789,98 @@ async fn state_change_with_multiple_state_conditions() {
   setup
     .collector
     .assert_workflow_counter_eq(1, "multi_condition_metric", labels! {});
+}
+
+// Tests that we can match against extracted fields during state change by comparing
+// a state value against an extracted field value using SaveFieldId.
+#[tokio::test]
+async fn state_change_compares_state_to_extracted_field() {
+  use bd_proto::protos::state::matcher::StateValueMatch;
+  use bd_proto::protos::state::scope::StateScope;
+  use bd_proto::protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
+  use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
+  use bd_proto::protos::workflow::workflow::workflow::{Rule, RuleStateChangeMatch};
+  use bd_test_helpers::workflow::make_save_field_extraction;
+
+  let c = state("C").declare_transition(&state("C"), rule!(message_equals("keep_alive")));
+
+  // Matcher that compares state value "requirement" to extracted field "saved_tier"
+  let matcher = make_state_matcher_ex(
+    bd_state::Scope::FeatureFlagExposure,
+    "requirement",
+    String_value_match_type::SaveFieldId("saved_tier".to_string()),
+  );
+
+  // B -> C transition triggered by state change, with extra matcher comparing state to extracted
+  // field
+  let state_change_rule = Rule {
+    rule_type: Some(Rule_type::RuleStateChangeMatch(RuleStateChangeMatch {
+      scope: StateScope::FEATURE_FLAG.into(),
+      key: "trigger".to_string(),
+      previous_value: protobuf::MessageField::none(),
+      new_value: protobuf::MessageField::some(StateValueMatch {
+        value_match: Some(make_is_set_match()),
+        ..Default::default()
+      }),
+      log_matcher: protobuf::MessageField::some(matcher),
+      ..Default::default()
+    })),
+    ..Default::default()
+  };
+
+  let b = state("B").declare_transition_with_actions(
+    &c,
+    state_change_rule,
+    &[make_emit_counter_action("matched", metric_value(1), vec![])],
+  );
+
+  // A -> B transition triggered by log, with field extraction
+  let a = state("A")
+    .declare_transition(&state("A"), rule!(message_equals("init")))
+    .declare_transition_with_extractions(
+      &b,
+      rule!(message_equals("extract")),
+      &[make_save_field_extraction("saved_tier", "tier")],
+    );
+
+  let workflow = WorkflowBuilder::new("test", &[&a, &b, &c]).make_config();
+  let setup = Setup::new();
+
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
+
+  // Step 0: Start workflow in state A
+  engine.process_log(TestLog::new("init"));
+  engine_assert_active_runs!(engine; 0; "A");
+
+  // Step 1: A -> B via log match with field extraction (tier="premium" extracted as saved_tier)
+  engine.process_log(TestLog::new("extract").with_tags(labels! { "tier" => "premium" }));
+  engine_assert_active_runs!(engine; 0; "B");
+
+  // Step 2: B -> C via state change, where the extra matcher compares state to extracted field
+  // Set state requirement="premium" (should match saved_tier="premium")
+  let mut state_reader = bd_state::test::TestStateReader::new();
+  state_reader.insert(
+    bd_state::Scope::FeatureFlagExposure,
+    "requirement",
+    "premium",
+  );
+
+  let state_change = StateChange::inserted(
+    bd_state::Scope::FeatureFlagExposure,
+    "trigger",
+    "on",
+    OffsetDateTime::now_utc(),
+  );
+
+  engine.process_state_change_with_reader(&state_change, &state_reader);
+
+  // Should transition to C because requirement state ("premium") equals saved_tier field
+  // ("premium") The counter action should have been triggered, proving the extra matcher worked
+  setup
+    .collector
+    .assert_workflow_counter_eq(1, "matched", labels! {});
 }
