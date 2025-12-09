@@ -189,7 +189,6 @@ impl Setup {
       data_upload_tx,
       flush_buffers_tx,
       flush_stats_trigger,
-      5_000,
       1_000_000,
     )
   }

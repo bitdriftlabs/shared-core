@@ -275,17 +275,12 @@ impl Uploader {
     // TODO(snowp): It would be nice to not have to create a watch in order to use the typed
     // runtime flags. This buffer cannot be recreated on config change so we're only reading it on
     // startup.
-    let buffer_capacity = *runtime
-      .register_int_watch::<artifact_upload::BufferCountLimit>()
-      .read();
     let buffer_memory_capacity = *runtime
       .register_int_watch::<artifact_upload::BufferByteLimit>()
       .read();
 
-    let (upload_tx, upload_rx) = bd_bounded_buffer::channel(
-      buffer_capacity.try_into().unwrap_or_default(),
-      buffer_memory_capacity.try_into().unwrap_or_default(),
-    );
+    let (upload_tx, upload_rx) =
+      bd_bounded_buffer::channel(buffer_memory_capacity.try_into().unwrap_or_default());
 
     let uploader = Self {
       data_upload_tx,

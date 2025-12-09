@@ -21,7 +21,7 @@ impl MemorySized for Item {
 
 #[tokio::test]
 async fn test_memory_capacity_limit_is_respected() {
-  let (tx, mut rx) = channel::<Item>(10, 200);
+  let (tx, mut rx) = channel::<Item>(200);
 
   assert_ok!(tx.try_send(Item { reported_size: 100 }));
   assert_ok!(tx.try_send(Item { reported_size: 100 }));
@@ -36,17 +36,23 @@ async fn test_memory_capacity_limit_is_respected() {
 }
 
 #[tokio::test]
-async fn test_capacity_limit_is_respected() {
-  let (tx, mut rx) = channel::<Item>(2, 200);
+async fn test_many_small_messages_within_memory_limit() {
+  let (tx, mut rx) = channel::<Item>(200);
 
-  assert_ok!(tx.try_send(Item { reported_size: 1 }));
-  assert_ok!(tx.try_send(Item { reported_size: 1 }));
+  // Can send many small messages as long as we're within memory limit
+  for _ in 0 .. 100 {
+    assert_ok!(tx.try_send(Item { reported_size: 1 }));
+  }
+
+  // Still within 200 byte limit (exactly at limit)
+  assert_ok!(tx.try_send(Item { reported_size: 100 }));
+
+  // Now we exceed the limit
   assert_err!(tx.try_send(Item { reported_size: 1 }));
 
-  assert!(rx.recv().await.is_some());
+  // Consume one message to free up space
   assert!(rx.recv().await.is_some());
 
+  // Now we can send again
   assert_ok!(tx.try_send(Item { reported_size: 1 }));
-  assert_ok!(tx.try_send(Item { reported_size: 1 }));
-  assert_err!(tx.try_send(Item { reported_size: 1 }));
 }

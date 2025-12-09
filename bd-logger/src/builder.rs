@@ -216,7 +216,6 @@ impl LoggerBuilder {
         data_upload_tx.clone(),
         flush_buffers_tx,
         flusher_trigger.clone(),
-        512,
         1024 * 1024,
       ),
       LoggerReplay,

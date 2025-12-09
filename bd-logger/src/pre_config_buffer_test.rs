@@ -21,7 +21,7 @@ impl MemorySized for SimulatedSizeLog {
 
 #[test]
 fn buffer_acts_as_fifo_queue_with_limits() {
-  let mut buffer = PreConfigBuffer::new(2, 1024);
+  let mut buffer = PreConfigBuffer::new(1024);
 
   let logs = [
     SimulatedSizeLog { size: 1 },
@@ -37,14 +37,21 @@ fn buffer_acts_as_fifo_queue_with_limits() {
     buffer.push(logs[1])
   );
   assert_eq!(Ok(()), buffer.push(logs[2]));
-  // At this point buffer has 2 elements which means that it's full.
+  assert_eq!(Ok(()), buffer.push(logs[3]));
+
+  // Can add many small items as long as we're within memory limit
+  for _ in 0 .. 500 {
+    assert_eq!(Ok(()), buffer.push(SimulatedSizeLog { size: 2 }));
+  }
+
+  // Now at 1 + 2 + 3 + (500 * 2) = 1006 bytes
+  // Adding another 20 bytes would exceed 1024
   assert_eq!(
-    Err(pre_config_buffer::Error::FullCountOverflow),
-    buffer.push(logs[3])
+    Err(pre_config_buffer::Error::FullSizeOverflow),
+    buffer.push(SimulatedSizeLog { size: 20 })
   );
 
-  assert_eq!(
-    vec![logs[0], logs[2]],
-    buffer.pop_all().collect::<Vec<SimulatedSizeLog>>()
-  );
+  // First few items
+  let items: Vec<_> = buffer.pop_all().take(3).collect();
+  assert_eq!(vec![logs[0], logs[2], logs[3]], items);
 }

@@ -14,8 +14,6 @@ use bd_stats_common::labels;
 
 #[derive(thiserror::Error, Debug, PartialEq, Eq)]
 pub enum Error {
-  #[error("Full count overflow")]
-  FullCountOverflow,
   #[error("Full size overflow")]
   FullSizeOverflow,
 }
@@ -69,7 +67,6 @@ impl MemorySized for PreConfigItem {
 /// "replayed" once the configuration has been applied.
 #[derive(Debug)]
 pub struct PreConfigBuffer<T: MemorySized + std::fmt::Debug> {
-  max_count: usize,
   max_size: usize,
 
   current_size: usize,
@@ -77,9 +74,8 @@ pub struct PreConfigBuffer<T: MemorySized + std::fmt::Debug> {
 }
 
 impl<T: MemorySized + std::fmt::Debug> PreConfigBuffer<T> {
-  pub const fn new(max_count: usize, max_size: usize) -> Self {
+  pub const fn new(max_size: usize) -> Self {
     Self {
-      max_count,
       max_size,
       current_size: 0,
       items: vec![],
@@ -87,12 +83,6 @@ impl<T: MemorySized + std::fmt::Debug> PreConfigBuffer<T> {
   }
 
   pub fn push(&mut self, entry: T) -> Result<(), Error> {
-    // The buffer is full when it comes to the number of elements it holds.
-    if self.items.len() >= self.max_count {
-      log::debug!("failed to enqueue log due to items count limit");
-      return Err(Error::FullCountOverflow);
-    }
-
     let log_size = entry.size();
     if self.current_size + log_size > self.max_size {
       log::debug!(
@@ -117,10 +107,6 @@ impl<T: MemorySized + std::fmt::Debug> PreConfigBuffer<T> {
     self.items.into_iter()
   }
 
-  pub const fn max_count(&self) -> usize {
-    self.max_count
-  }
-
   pub const fn max_size(&self) -> usize {
     self.max_size
   }
@@ -133,7 +119,6 @@ impl<T: MemorySized + std::fmt::Debug> PreConfigBuffer<T> {
 
 pub struct PushCounters {
   ok: Counter,
-  err_full_count_overflow: Counter,
   err_full_size_overflow: Counter,
 }
 
@@ -141,10 +126,6 @@ impl PushCounters {
   pub(crate) fn new(scope: &Scope) -> Self {
     Self {
       ok: scope.counter_with_labels("log_enqueueing", labels!("result" => "success")),
-      err_full_count_overflow: scope.counter_with_labels(
-        "log_enqueueing",
-        labels!("result" => "failure_count_overflow"),
-      ),
       err_full_size_overflow: scope.counter_with_labels(
         "log_enqueueing",
         labels!("result" => "failure_size_overflow"),
@@ -155,9 +136,6 @@ impl PushCounters {
   pub(crate) fn record(&self, result: &std::result::Result<(), Error>) {
     match result {
       Ok(()) => self.ok.inc(),
-      Err(Error::FullCountOverflow) => {
-        self.err_full_count_overflow.inc();
-      },
       Err(Error::FullSizeOverflow) => {
         self.err_full_size_overflow.inc();
       },
