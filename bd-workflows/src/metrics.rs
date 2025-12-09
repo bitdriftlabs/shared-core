@@ -101,10 +101,7 @@ impl MetricsCollector {
         "log_type" => Some((log.log_type as u32).to_string().into()),
         key => log.field_value(key),
       },
-      WorkflowEvent::StateChange(_state_change, fields) => {
-        // State changes can have fields (typically global metadata like device_id, app_version)
-        fields.field_value(key)
-      },
+      WorkflowEvent::StateChange(_state_change, fields) => fields.field_value(key),
     }
   }
 

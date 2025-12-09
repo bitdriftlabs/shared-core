@@ -1257,14 +1257,14 @@ impl Traversal {
       return new_extractions;
     };
 
-    let empty_message = bd_log_primitives::LogMessage::String(String::new());
+    let empty_messsage = "".into();
 
     // Sankey extractions: Can extract from state reader (e.g., feature flags) and from fields
     for extraction in &extractions.sankey_extractions {
       let Some(extracted_value) =
         extraction
           .value
-          .extract_value(fields, &empty_message, state_reader)
+          .extract_value(fields, &empty_messsage, state_reader)
       else {
         continue;
       };

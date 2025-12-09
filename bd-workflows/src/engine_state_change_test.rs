@@ -17,8 +17,9 @@ use crate::engine::WorkflowsEngineConfig;
 use crate::engine_assert_active_runs;
 use crate::test::{MakeConfig, TestLog};
 use bd_client_stats_store::test::StatsHelper;
-use bd_log_matcher::builder::message_equals;
+use bd_log_matcher::builder::{feature_flag_equals, message_equals, state_equals_saved_field};
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::state::scope::StateScope;
 use bd_state::StateChange;
 use bd_stats_common::labels;
 use bd_test_helpers::workflow::macros::rule;
@@ -493,67 +494,6 @@ async fn state_change_with_feature_flag_extraction() {
   );
 }
 
-// Helper function to create a log matcher that checks a state value (e.g., feature flag).
-fn make_state_matcher(
-  scope: bd_state::Scope,
-  key: &str,
-  value: &str,
-) -> bd_proto::protos::log_matcher::log_matcher::LogMatcher {
-  use bd_proto::protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
-  make_state_matcher_ex(
-    scope,
-    key,
-    String_value_match_type::MatchValue(value.to_string()),
-  )
-}
-
-type StringValueMatchType =
-  bd_proto::protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
-
-fn make_state_matcher_ex(
-  scope: bd_state::Scope,
-  key: &str,
-  string_value_match_type: StringValueMatchType,
-) -> bd_proto::protos::log_matcher::log_matcher::LogMatcher {
-  use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
-  use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Match_type;
-  use bd_proto::protos::log_matcher::log_matcher::log_matcher::{
-    BaseLogMatcher,
-    Matcher,
-    base_log_matcher,
-  };
-  use bd_proto::protos::state::matcher::{StateValueMatch, state_value_match};
-  use bd_proto::protos::state::scope::StateScope;
-  use bd_proto::protos::value_matcher::value_matcher;
-  use bd_proto::protos::value_matcher::value_matcher::Operator;
-
-  LogMatcher {
-    matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
-      match_type: Some(Match_type::StateMatch(base_log_matcher::StateMatch {
-        scope: match scope {
-          bd_state::Scope::FeatureFlagExposure => StateScope::FEATURE_FLAG,
-          bd_state::Scope::GlobalState => StateScope::GLOBAL_STATE,
-        }
-        .into(),
-        state_key: key.to_string(),
-        state_value_match: protobuf::MessageField::some(StateValueMatch {
-          value_match: Some(state_value_match::Value_match::StringValueMatch(
-            value_matcher::StringValueMatch {
-              operator: Operator::OPERATOR_EQUALS.into(),
-              string_value_match_type: Some(string_value_match_type),
-              ..Default::default()
-            },
-          )),
-          ..Default::default()
-        }),
-        ..Default::default()
-      })),
-      ..Default::default()
-    })),
-    ..Default::default()
-  }
-}
-
 // Tests that state changes can include additional log matchers that check other state values.
 // This allows state change transitions to require multiple conditions: the state change itself
 // AND additional conditions like other state values being set to specific values.
@@ -575,11 +515,7 @@ async fn state_change_with_extra_state_matcher() {
         ..Default::default()
       }),
       // Add a log matcher that checks if another state value equals "enabled"
-      log_matcher: protobuf::MessageField::some(make_state_matcher(
-        bd_state::Scope::FeatureFlagExposure,
-        "required_flag",
-        "enabled",
-      )),
+      log_matcher: Some(feature_flag_equals("required_flag", "enabled")).into(),
       ..Default::default()
     })),
     ..Default::default()
@@ -646,11 +582,7 @@ async fn state_change_with_extra_state_matcher_no_match() {
         value_match: Some(make_is_set_match()),
         ..Default::default()
       }),
-      log_matcher: protobuf::MessageField::some(make_state_matcher(
-        bd_state::Scope::FeatureFlagExposure,
-        "required_flag",
-        "enabled",
-      )),
+      log_matcher: Some(feature_flag_equals("required_flag", "enabled")).into(),
       ..Default::default()
     })),
     ..Default::default()
@@ -727,11 +659,7 @@ async fn state_change_with_multiple_state_conditions() {
         ..Default::default()
       }),
       // Additional condition: another state value must equal "ready"
-      log_matcher: protobuf::MessageField::some(make_state_matcher(
-        bd_state::Scope::FeatureFlagExposure,
-        "secondary_flag",
-        "ready",
-      )),
+      log_matcher: Some(feature_flag_equals("secondary_flag", "ready")).into(),
       ..Default::default()
     })),
     ..Default::default()
@@ -785,8 +713,6 @@ async fn state_change_with_multiple_state_conditions() {
 #[tokio::test]
 async fn state_change_compares_state_to_extracted_field() {
   use bd_proto::protos::state::matcher::StateValueMatch;
-  use bd_proto::protos::state::scope::StateScope;
-  use bd_proto::protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
   use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
   use bd_proto::protos::workflow::workflow::workflow::{Rule, RuleStateChangeMatch};
   use bd_test_helpers::workflow::make_save_field_extraction;
@@ -794,11 +720,7 @@ async fn state_change_compares_state_to_extracted_field() {
   let c = state("C").declare_transition(&state("C"), rule!(message_equals("keep_alive")));
 
   // Matcher that compares state value "requirement" to extracted field "saved_tier"
-  let matcher = make_state_matcher_ex(
-    bd_state::Scope::FeatureFlagExposure,
-    "requirement",
-    String_value_match_type::SaveFieldId("saved_tier".to_string()),
-  );
+  let matcher = state_equals_saved_field(StateScope::FEATURE_FLAG, "requirement", "saved_tier");
 
   // B -> C transition triggered by state change, with extra matcher comparing state to extracted
   // field
@@ -811,7 +733,7 @@ async fn state_change_compares_state_to_extracted_field() {
         value_match: Some(make_is_set_match()),
         ..Default::default()
       }),
-      log_matcher: protobuf::MessageField::some(matcher),
+      log_matcher: Some(matcher).into(),
       ..Default::default()
     })),
     ..Default::default()
