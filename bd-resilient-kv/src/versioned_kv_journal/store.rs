@@ -142,14 +142,16 @@ impl ScopedMaps {
     }
   }
 
-  pub fn insert(&mut self, scope: Scope, key: String, value: TimestampedValue) {
+  /// Inserts a key-value pair into the scoped map, returning the previous value if it existed.
+  pub fn insert(
+    &mut self,
+    scope: Scope,
+    key: String,
+    value: TimestampedValue,
+  ) -> Option<TimestampedValue> {
     match scope {
-      Scope::FeatureFlagExposure => {
-        self.feature_flags.insert(key, value);
-      },
-      Scope::GlobalState => {
-        self.global_state.insert(key, value);
-      },
+      Scope::FeatureFlagExposure => self.feature_flags.insert(key, value),
+      Scope::GlobalState => self.global_state.insert(key, value),
     }
   }
 
@@ -358,33 +360,36 @@ impl PersistentStore {
     scope: Scope,
     key: &str,
     value: StateValue,
-  ) -> Result<u64, UpdateError> {
-    let timestamp = if value.value_type.is_none() {
+  ) -> Result<(u64, Option<StateValue>), UpdateError> {
+    let (timestamp, old_value) = if value.value_type.is_none() {
       // Deletion
       let timestamp = self
         .try_insert_with_rotation(scope, key, &StateValue::default())
         .await?;
-      self.cached_map.remove(scope, key);
-      timestamp
+      let old_value = self.cached_map.remove(scope, key).map(|tv| tv.value);
+      (timestamp, old_value)
     } else {
       // Insert/update
       let timestamp = self.try_insert_with_rotation(scope, key, &value).await?;
-      self.cached_map.insert(
-        scope,
-        key.to_string(),
-        TimestampedValue {
-          value: value.clone(),
-          timestamp,
-        },
-      );
-      timestamp
+      let old_value = self
+        .cached_map
+        .insert(
+          scope,
+          key.to_string(),
+          TimestampedValue {
+            value: value.clone(),
+            timestamp,
+          },
+        )
+        .map(|tv| tv.value);
+      (timestamp, old_value)
     };
 
     if self.journal.is_high_water_mark_triggered() {
       self.rotate_journal().await?;
     }
 
-    Ok(timestamp)
+    Ok((timestamp, old_value))
   }
 
   async fn extend_entries(
@@ -422,7 +427,11 @@ impl PersistentStore {
     Ok(timestamp)
   }
 
-  async fn remove(&mut self, scope: Scope, key: &str) -> Result<Option<u64>, UpdateError> {
+  async fn remove(
+    &mut self,
+    scope: Scope,
+    key: &str,
+  ) -> Result<Option<(u64, StateValue)>, UpdateError> {
     if !self.cached_map.contains_key(scope, key) {
       return Ok(None);
     }
@@ -430,13 +439,13 @@ impl PersistentStore {
     let timestamp = self
       .try_insert_with_rotation(scope, key, &StateValue::default())
       .await?;
-    self.cached_map.remove(scope, key);
+    let old_value = self.cached_map.remove(scope, key);
 
     if self.journal.is_high_water_mark_triggered() {
       self.rotate_journal().await?;
     }
 
-    Ok(Some(timestamp))
+    Ok(old_value.map(|v| (timestamp, v.value)))
   }
 
   fn sync(&self) -> anyhow::Result<()> {
@@ -777,7 +786,12 @@ impl InMemoryStore {
     self.time_provider.now().unix_timestamp_nanos() as u64 / 1_000
   }
 
-  fn insert(&mut self, scope: Scope, key: &str, value: &StateValue) -> Result<u64, UpdateError> {
+  fn insert(
+    &mut self,
+    scope: Scope,
+    key: &str,
+    value: &StateValue,
+  ) -> Result<(u64, Option<StateValue>), UpdateError> {
     use std::collections::hash_map::Entry;
 
     let timestamp = self.current_timestamp();
@@ -787,6 +801,9 @@ impl InMemoryStore {
       if let Some(old_value) = self.cached_map.remove(scope, key) {
         let old_size = Self::estimate_entry_size(key, &old_value.value);
         self.current_size_bytes = self.current_size_bytes.saturating_sub(old_size);
+        Ok((timestamp, Some(old_value.value)))
+      } else {
+        Ok((timestamp, None))
       }
     } else {
       let new_entry_size = Self::estimate_entry_size(key, value);
@@ -795,7 +812,8 @@ impl InMemoryStore {
       match self.cached_map.entry(scope, key.to_string()) {
         Entry::Occupied(mut entry) => {
           // Replacing existing entry - calculate size delta
-          let old_size = Self::estimate_entry_size(key, &entry.get().value);
+          let old_value = entry.get().value.clone();
+          let old_size = Self::estimate_entry_size(key, &old_value);
           let size_delta = new_entry_size.saturating_sub(old_size);
 
           // Check capacity before replacing
@@ -813,6 +831,7 @@ impl InMemoryStore {
             timestamp,
           });
           self.current_size_bytes = self.current_size_bytes.saturating_add(size_delta);
+          Ok((timestamp, Some(old_value)))
         },
         Entry::Vacant(entry) => {
           // New entry - check if we have capacity
@@ -830,11 +849,10 @@ impl InMemoryStore {
             timestamp,
           });
           self.current_size_bytes = self.current_size_bytes.saturating_add(new_entry_size);
+          Ok((timestamp, None))
         },
       }
     }
-
-    Ok(timestamp)
   }
 
   fn extend_entries(
@@ -927,15 +945,15 @@ impl InMemoryStore {
     Ok(timestamp)
   }
 
-  fn remove(&mut self, scope: Scope, key: &str) -> Option<u64> {
+  fn remove(&mut self, scope: Scope, key: &str) -> Option<(u64, StateValue)> {
     if !self.cached_map.contains_key(scope, key) {
       return None;
     }
 
     let timestamp = self.current_timestamp();
-    self.cached_map.remove(scope, key);
+    let old_value = self.cached_map.remove(scope, key);
 
-    Some(timestamp)
+    old_value.map(|v| (timestamp, v.value))
   }
 }
 
@@ -1065,7 +1083,10 @@ impl VersionedKVStore {
     cached_map.get(scope, key)
   }
 
-  /// Insert a value for a key, returning the timestamp assigned to this write.
+  /// Insert a value for a key, returning the timestamp and old value (if any).
+  ///
+  /// Returns a tuple of `(timestamp, old_value)` where `old_value` is `Some` if the key already
+  /// existed, or `None` if it was a new insertion.
   ///
   /// Note: Inserting `Value::Null` is equivalent to removing the key.
   ///
@@ -1078,7 +1099,7 @@ impl VersionedKVStore {
     scope: Scope,
     key: String,
     value: StateValue,
-  ) -> Result<u64, UpdateError> {
+  ) -> Result<(u64, Option<StateValue>), UpdateError> {
     match &mut self.backend {
       StoreBackend::Persistent(store) => store.insert(scope, &key, value).await,
       StoreBackend::InMemory(store) => store.insert(scope, &key, &value),
@@ -1108,13 +1129,17 @@ impl VersionedKVStore {
     }
   }
 
-  /// Remove a key and return the timestamp assigned to this deletion.
+  /// Remove a key and return the timestamp and old value.
   ///
-  /// Returns `None` if the key didn't exist, otherwise returns the timestamp.
+  /// Returns `None` if the key didn't exist, otherwise returns the timestamp and old value.
   ///
   /// # Errors
   /// Returns an error if the deletion cannot be written to the journal (persistent mode only).
-  pub async fn remove(&mut self, scope: Scope, key: &str) -> Result<Option<u64>, UpdateError> {
+  pub async fn remove(
+    &mut self,
+    scope: Scope,
+    key: &str,
+  ) -> Result<Option<(u64, StateValue)>, UpdateError> {
     match &mut self.backend {
       StoreBackend::Persistent(store) => store.remove(scope, key).await,
       StoreBackend::InMemory(store) => Ok(store.remove(scope, key)),

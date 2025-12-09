@@ -462,7 +462,7 @@ impl VersionedKVJournalFuzzTest {
           let result = store.insert(scope, key_str.clone(), value.0.clone()).await;
 
           match result {
-            Ok(timestamp) => {
+            Ok((timestamp, _old_value)) => {
               // Since time is frozen unless advanced, the timestamp of the entry should be exactly
               // the current time.
               assert_eq!(timestamp, current_timestamp_micros());
@@ -523,20 +523,24 @@ impl VersionedKVJournalFuzzTest {
           let result = store.remove(scope, &key_str).await;
 
           match result {
-            Ok(timestamp) => {
+            Ok(Some((timestamp, _))) => {
               let key = (scope, key_str.clone());
               if self.state.contains_key(&key) {
                 // Key existed, should get the current timestamp of removal.
-                assert_eq!(timestamp, Some(current_timestamp_micros()));
+                assert_eq!(timestamp, current_timestamp_micros());
 
                 self.state.remove(&key);
 
                 // Verify the value was removed
                 assert!(store.get(scope, &key_str).is_none());
               } else {
-                // If key did not exist we'll get None timestamp since no change was made.
-                assert_eq!(timestamp, None);
+                panic!("Remove returned a value for a key that should not exist: {key:?}",);
               }
+            },
+            Ok(None) => {
+              // Key did not exist, nothing to do
+              let key = (scope, key_str.clone());
+              assert!(!self.state.contains_key(&key));
             },
             Err(e) => {
               // Classify the error (remove operations write small deletion markers)
@@ -712,7 +716,7 @@ impl VersionedKVJournalFuzzTest {
             let result = store.insert(scope, key_str.clone(), value.clone()).await;
 
             match result {
-              Ok(timestamp) => {
+              Ok((timestamp, _old_value)) => {
                 let key = (scope, key_str.clone());
                 // Track in our state
                 self.state.insert(

@@ -74,6 +74,7 @@ use bd_test_helpers::workflow::{
   make_flush_buffers_action,
   make_generate_log_action_proto,
   make_save_timestamp_extraction,
+  make_state_change_rule,
   make_take_screenshot_action,
   metric_tag,
   metric_value,
@@ -2494,4 +2495,145 @@ fn runtime_caching() {
   // At this point the retry count should have been reset since we were able to verify that we
   // can connect to the backend with this runtime configuration.
   assert_eq!(std::fs::read(&retry_file).unwrap(), &[0]);
+}
+
+#[test]
+fn workflow_state_change_match_advances_workflow() {
+  let mut setup = Setup::new();
+
+  setup.send_runtime_update();
+
+  // Create a workflow that:
+  // - Initial state A
+  // - Transitions to B when feature flag "test_flag" is set to "enabled"
+  // - B transitions to C and emits a metric when feature flag "test_flag" is set to "disabled"
+  let c = state("C");
+  let b = state("B").declare_transition_with_actions(
+    &c,
+    make_state_change_rule(
+      bd_proto::protos::state::scope::StateScope::FEATURE_FLAG,
+      "test_flag",
+      Some("disabled"),
+    ),
+    &[make_emit_counter_action(
+      "state_change_action",
+      metric_value(42),
+      vec![],
+    )],
+  );
+  let a = state("A").declare_transition(
+    &b,
+    make_state_change_rule(
+      bd_proto::protos::state::scope::StateScope::FEATURE_FLAG,
+      "test_flag",
+      Some("enabled"),
+    ),
+  );
+
+  // Send down the configuration with the workflow
+  let maybe_nack = setup.send_configuration_update(configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![default_buffer_config(
+        Type::CONTINUOUS,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      workflows: vec![WorkflowBuilder::new("state_workflow", &[&a, &b, &c]).build()],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  // Set the feature flag to "enabled" - should transition from A to B
+  setup
+    .logger_handle
+    .set_feature_flag_exposure("test_flag".to_string(), Some("enabled".to_string()));
+
+  // Set the feature flag to "disabled" - should transition from B to C and emit metric
+  setup
+    .logger_handle
+    .set_feature_flag_exposure("test_flag".to_string(), Some("disabled".to_string()));
+
+  // Flush stats and verify the metric was emitted
+  setup.flush_and_upload_stats();
+  let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
+  assert_eq!(
+    stat_upload.get_workflow_counter("state_change_action", labels! {}),
+    Some(42),
+  );
+}
+
+#[test]
+fn workflow_state_change_match_flush_buffers() {
+  let mut setup = Setup::new();
+
+  setup.send_runtime_update();
+
+  // Create a workflow that flushes buffers when a feature flag is set
+  let b = state("B");
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    make_state_change_rule(
+      bd_proto::protos::state::scope::StateScope::FEATURE_FLAG,
+      "trigger_flush",
+      Some("true"),
+    ),
+    &[make_flush_buffers_action(
+      &["default"],
+      None,
+      "flush_action_id",
+    )],
+  );
+
+  // Send down the configuration with a trigger buffer and the workflow
+  let maybe_nack = setup.send_configuration_update(configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![default_buffer_config(
+        Type::TRIGGER,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      workflows: vec![WorkflowBuilder::new("flush_workflow", &[&a, &b]).build()],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  // Write some logs to the buffer
+  for i in 0 .. 4 {
+    setup.log(
+      log_level::DEBUG,
+      LogType::NORMAL,
+      format!("test log {i}").into(),
+      [].into(),
+      [].into(),
+      None,
+    );
+  }
+
+  // Use blocking log for the last one to ensure all logs are written before triggering the flush
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "test log 4".into(),
+    [].into(),
+    [].into(),
+  );
+
+  // Set the feature flag to trigger the flush
+  setup
+    .logger_handle
+    .set_feature_flag_exposure("trigger_flush".to_string(), Some("true".to_string()));
+
+  // The workflow should trigger a buffer flush, which should result in an upload
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "default");
+    // Should have 5 regular logs + 1 synthetic "State Change" log
+    assert_eq!(log_upload.logs().len(), 6);
+
+    // Verify the last log is the synthetic state change log with the flush action ID
+    let last_log = &log_upload.logs()[5];
+    assert_eq!(last_log.message(), "State Change");
+    assert_eq!(vec!["flush_action_id"], *last_log.workflow_action_ids());
+  });
 }
