@@ -890,8 +890,6 @@ pub mod platform_events {
 pub mod artifact_upload {
   int_feature_flag!(MaxPendingEntries, "artifact_upload.max_pending_entries", 10);
 
-  int_feature_flag!(BufferCountLimit, "artifact_upload.buffer_count_limit", 100);
-
   static ONE_MEGABYTE: u32 = 1024 * 1024; // 1 MiB in bytes
 
   int_feature_flag!(
