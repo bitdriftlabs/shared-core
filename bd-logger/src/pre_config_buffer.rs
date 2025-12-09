@@ -29,7 +29,11 @@ pub enum Error {
 /// proper ordering with logs and proper workflow state transitions.
 #[derive(Debug, Clone)]
 pub enum PendingStateOperation {
-  SetFeatureFlagExposure(String, Option<String>),
+  SetFeatureFlagExposure {
+    name: String,
+    variant: Option<String>,
+    session_id: String,
+  },
 }
 
 //
@@ -51,9 +55,11 @@ impl MemorySized for PreConfigItem {
     // We only need to measure the actual data size of each variant.
     match self {
       Self::Log(log) => log.size(),
-      Self::StateOperation(PendingStateOperation::SetFeatureFlagExposure(flag, variant)) => {
-        flag.len() + variant.as_ref().map_or(0, String::len)
-      },
+      Self::StateOperation(PendingStateOperation::SetFeatureFlagExposure {
+        name,
+        variant,
+        session_id,
+      }) => name.len() + variant.as_ref().map_or(0, String::len) + session_id.len(),
     }
   }
 }
@@ -109,10 +115,6 @@ impl<T: MemorySized + std::fmt::Debug> PreConfigBuffer<T> {
   pub fn pop_all(mut self) -> impl Iterator<Item = T> {
     self.current_size = 0;
     self.items.into_iter()
-  }
-
-  pub fn is_empty(&self) -> bool {
-    self.items.is_empty()
   }
 
   pub const fn max_count(&self) -> usize {

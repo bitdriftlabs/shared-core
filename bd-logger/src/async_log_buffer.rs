@@ -694,13 +694,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       return;
     };
 
-    // Make sure we don't try to allocate a session ID if there is nothing to replay.
-    if pre_config_buffer.is_empty() {
-      return;
-    }
-
     let now = self.time_provider.now();
-    let session_id = self.session_strategy.session_id();
 
     for item in pre_config_buffer.pop_all() {
       match item {
@@ -720,14 +714,18 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           }
         },
         PreConfigItem::StateOperation(operation) => match operation {
-          PendingStateOperation::SetFeatureFlagExposure(key, value) => {
+          PendingStateOperation::SetFeatureFlagExposure {
+            name,
+            variant,
+            session_id,
+          } => {
             Self::handle_state_insert(
               state_store,
               initialized_logging_context,
               &mut self.replayer,
               Scope::FeatureFlagExposure,
-              key,
-              value.unwrap_or_default(),
+              name,
+              variant.unwrap_or_default(),
               now,
               &session_id,
             )
@@ -889,9 +887,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                   &mut self.logging_state
                 {
                   let result = uninitialized_logging_context.pre_config_log_buffer.push(
-                    PreConfigItem::StateOperation(PendingStateOperation::SetFeatureFlagExposure(
-                      flag, variant,
-                    )),
+                    PreConfigItem::StateOperation(PendingStateOperation::SetFeatureFlagExposure{ name: flag, variant, session_id: self.session_strategy.session_id() }),
                   );
                   uninitialized_logging_context
                     .stats
