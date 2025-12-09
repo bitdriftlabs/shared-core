@@ -306,9 +306,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     let (log_tx, log_rx) = channel(
       uninitialized_logging_context
         .pre_config_log_buffer
-        .max_count(),
-      uninitialized_logging_context
-        .pre_config_log_buffer
         .max_size(),
     );
 
@@ -317,7 +314,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // Note that the 10 MB is not pre-allocated memory, just the upper limit of data stored within
     // the buffer before backpressure is applied.
     let (state_tx, state_rx) = channel(
-      1000,
       10 * 1024 * 1024, // 10 MB
     );
 

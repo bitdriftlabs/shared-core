@@ -126,11 +126,10 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
     data_upload_tx: Sender<DataUpload>,
     flush_buffers_tx: Sender<BuffersWithAck>,
     flush_stats_trigger: FlushTrigger,
-    max_count: usize,
     max_size: usize,
   ) -> Self {
     Self {
-      pre_config_log_buffer: PreConfigBuffer::new(max_count, max_size),
+      pre_config_log_buffer: PreConfigBuffer::new(max_size),
       data_upload_tx,
       trigger_upload_tx,
       flush_buffers_tx,

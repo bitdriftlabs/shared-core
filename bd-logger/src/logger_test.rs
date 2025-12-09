@@ -23,8 +23,8 @@ use tokio_test::assert_pending;
 
 #[tokio::test]
 async fn thread_local_logger_guard() {
-  let (log_tx, mut log_rx) = bd_bounded_buffer::channel(1, 100);
-  let (state_tx, _state_rx) = bd_bounded_buffer::channel(1, 100);
+  let (log_tx, mut log_rx) = bd_bounded_buffer::channel(100);
+  let (state_tx, _state_rx) = bd_bounded_buffer::channel(100);
   let sender = async_log_buffer::Sender::from_parts(log_tx, state_tx);
 
   let store = in_memory_store();

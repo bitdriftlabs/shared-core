@@ -23,22 +23,17 @@ use bd_log_primitives::size::MemorySized;
 use bd_stats_common::labels;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use tokio::sync::mpsc::error::TrySendError as TokioTrySendError;
-use tokio::sync::mpsc::{Receiver as TokioReceiver, Sender as TokioSender};
+use tokio::sync::mpsc::{UnboundedReceiver as TokioReceiver, UnboundedSender as TokioSender};
 
-// Like `mpsc::channel` but provides a way to specify the maximum amount of
-// memory a channel may use. The channel becomes full when it reaches the maximum
-// number of items or when items stored within it reach the maximum memory capacity,
-// whichever happens first.
+// Like `mpsc::unbounded_channel` but provides a way to specify the maximum amount of
+// memory a channel may use. The channel becomes full when items stored within it reach
+// the maximum memory capacity.
 // The interface for working with the channel is supposed to be a subset of the interface exposed
-// by mpsc::channel. For improved ergonomics, we keep the interface of our channel to
-// be as closed to underlying mpsc::channel interface as possible.
+// by mpsc::unbounded_channel. For improved ergonomics, we keep the interface of our channel to
+// be as closed to underlying mpsc::unbounded_channel interface as possible.
 #[must_use]
-pub fn channel<L: MemorySized>(
-  capacity: usize,
-  memory_capacity: usize,
-) -> (Sender<L>, Receiver<L>) {
-  let (tx, rx) = tokio::sync::mpsc::channel(capacity);
+pub fn channel<L: MemorySized>(memory_capacity: usize) -> (Sender<L>, Receiver<L>) {
+  let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
   let memory_capacity_usage: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
 
   (
@@ -63,11 +58,6 @@ pub struct MemoryReservationErrorNoMemory {}
 
 #[derive(Debug, thiserror::Error)]
 pub enum TrySendError {
-  // Adding a message to the buffer would cause the buffer to
-  // exceed the maximum number of messages it was configured to
-  // hold.
-  #[error("buffer count overflow")]
-  FullCountOverflow,
   // Adding a message to the buffer would cause the buffer to exceed it's
   // memory capacity.
   #[error("buffer size overflow")]
@@ -92,21 +82,13 @@ impl<T: MemorySized> Sender<T> {
       return Err(TrySendError::FullSizeOverflow);
     };
 
-    match self.tx.try_send(message) {
-      Ok(()) => {
-        log::trace!("Added {message_size:?} bytes to the channel");
-        Ok(())
-      },
-      Err(TokioTrySendError::Closed(_)) => {
-        log::debug!("Failed to add {message_size:?} bytes to the channel: Channel is closed");
-        self.void_memory_reservation(message_size);
-        Err(TrySendError::Closed)
-      },
-      Err(TokioTrySendError::Full(_)) => {
-        log::debug!("Failed to add {message_size:?} bytes to the channel: Channel is full");
-        self.void_memory_reservation(message_size);
-        Err(TrySendError::FullCountOverflow)
-      },
+    if self.tx.send(message).is_ok() {
+      log::trace!("Added {message_size:?} bytes to the channel");
+      Ok(())
+    } else {
+      log::debug!("Failed to add {message_size:?} bytes to the channel: Channel is closed");
+      self.void_memory_reservation(message_size);
+      Err(TrySendError::Closed)
     }
   }
 
@@ -198,7 +180,6 @@ impl<T: MemorySized> Receiver<T> {
 #[derive(Debug, Clone)]
 pub struct SendCounters {
   ok: Counter,
-  err_full_count_overflow: Counter,
   err_full_size_overflow: Counter,
   err_closed: Counter,
 }
@@ -208,10 +189,6 @@ impl SendCounters {
   pub fn new(scope: &Scope, operation_name: &str) -> Self {
     Self {
       ok: scope.counter_with_labels(operation_name, labels!("result" => "success")),
-      err_full_count_overflow: scope.counter_with_labels(
-        operation_name,
-        labels!("result" => "failure_count_overflow"),
-      ),
       err_full_size_overflow: scope
         .counter_with_labels(operation_name, labels!("result" => "failure_size_overflow")),
       err_closed: scope.counter_with_labels(operation_name, labels!("result" => "failure_closed")),
@@ -221,9 +198,6 @@ impl SendCounters {
   pub fn record(&self, result: &std::result::Result<(), TrySendError>) {
     match result {
       Ok(()) => self.ok.inc(),
-      Err(TrySendError::FullCountOverflow) => {
-        self.err_full_count_overflow.inc();
-      },
       Err(TrySendError::FullSizeOverflow) => {
         self.err_full_size_overflow.inc();
       },
