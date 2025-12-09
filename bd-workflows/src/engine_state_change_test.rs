@@ -492,3 +492,275 @@ async fn state_change_with_feature_flag_extraction() {
     },
   );
 }
+
+// Helper function to create a log matcher that checks a state value (e.g., feature flag).
+fn make_state_matcher(
+  scope: bd_state::Scope,
+  key: &str,
+  value: &str,
+) -> bd_proto::protos::log_matcher::log_matcher::LogMatcher {
+  use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
+  use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Match_type;
+  use bd_proto::protos::log_matcher::log_matcher::log_matcher::{
+    BaseLogMatcher,
+    Matcher,
+    base_log_matcher,
+  };
+  use bd_proto::protos::state::matcher::{StateValueMatch, state_value_match};
+  use bd_proto::protos::state::scope::StateScope;
+  use bd_proto::protos::value_matcher::value_matcher;
+  use bd_proto::protos::value_matcher::value_matcher::Operator;
+  use bd_proto::protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
+
+  LogMatcher {
+    matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
+      match_type: Some(Match_type::StateMatch(base_log_matcher::StateMatch {
+        scope: match scope {
+          bd_state::Scope::FeatureFlagExposure => StateScope::FEATURE_FLAG,
+          bd_state::Scope::GlobalState => StateScope::GLOBAL_STATE,
+        }
+        .into(),
+        state_key: key.to_string(),
+        state_value_match: protobuf::MessageField::some(StateValueMatch {
+          value_match: Some(state_value_match::Value_match::StringValueMatch(
+            value_matcher::StringValueMatch {
+              operator: Operator::OPERATOR_EQUALS.into(),
+              string_value_match_type: Some(String_value_match_type::MatchValue(value.to_string())),
+              ..Default::default()
+            },
+          )),
+          ..Default::default()
+        }),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
+// Tests that state changes can include additional log matchers that check other state values.
+// This allows state change transitions to require multiple conditions: the state change itself
+// AND additional conditions like other state values being set to specific values.
+#[tokio::test]
+async fn state_change_with_extra_state_matcher() {
+  use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
+  use bd_proto::protos::workflow::workflow::workflow::{Rule, RuleStateChangeMatch};
+
+  let b = state("B");
+
+  // Create a state change rule that also checks another state value using log matcher
+  let state_change_rule_with_matcher = Rule {
+    rule_type: Some(Rule_type::RuleStateChangeMatch(RuleStateChangeMatch {
+      scope: bd_proto::protos::state::scope::StateScope::FEATURE_FLAG.into(),
+      key: "trigger_flag".to_string(),
+      previous_value: protobuf::MessageField::none(),
+      new_value: protobuf::MessageField::some(bd_proto::protos::state::matcher::StateValueMatch {
+        value_match: Some(make_is_set_match()),
+        ..Default::default()
+      }),
+      // Add a log matcher that checks if another state value equals "enabled"
+      log_matcher: protobuf::MessageField::some(make_state_matcher(
+        bd_state::Scope::FeatureFlagExposure,
+        "required_flag",
+        "enabled",
+      )),
+      ..Default::default()
+    })),
+    ..Default::default()
+  };
+
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    state_change_rule_with_matcher,
+    &[make_emit_counter_action(
+      "state_change_with_extra_match",
+      metric_value(1),
+      vec![],
+    )],
+  );
+
+  let workflow = WorkflowBuilder::new("extra_matcher_test", &[&a, &b]).make_config();
+  let setup = Setup::new();
+
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
+
+  // Set up a state reader with the required state value
+  let mut state_reader = bd_state::test::TestStateReader::new();
+  state_reader.insert(
+    bd_state::Scope::FeatureFlagExposure,
+    "required_flag",
+    "enabled",
+  );
+
+  // Process state change with the state reader - this SHOULD match
+  let state_change = StateChange::inserted(
+    bd_state::Scope::FeatureFlagExposure,
+    "trigger_flag",
+    "any_value",
+    OffsetDateTime::now_utc(),
+  );
+
+  engine.process_state_change_with_reader(&state_change, &state_reader);
+
+  // Verify the transition occurred
+  setup
+    .collector
+    .assert_workflow_counter_eq(1, "state_change_with_extra_match", labels! {});
+}
+
+// Tests that state change transitions fail when the extra matcher doesn't match.
+#[tokio::test]
+async fn state_change_with_extra_state_matcher_no_match() {
+  use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
+  use bd_proto::protos::workflow::workflow::workflow::{Rule, RuleStateChangeMatch};
+
+  let b = state("B");
+
+  // Create a state change rule that requires another state value to be "enabled"
+  let state_change_rule_with_matcher = Rule {
+    rule_type: Some(Rule_type::RuleStateChangeMatch(RuleStateChangeMatch {
+      scope: bd_proto::protos::state::scope::StateScope::FEATURE_FLAG.into(),
+      key: "trigger_flag".to_string(),
+      previous_value: protobuf::MessageField::none(),
+      new_value: protobuf::MessageField::some(bd_proto::protos::state::matcher::StateValueMatch {
+        value_match: Some(make_is_set_match()),
+        ..Default::default()
+      }),
+      log_matcher: protobuf::MessageField::some(make_state_matcher(
+        bd_state::Scope::FeatureFlagExposure,
+        "required_flag",
+        "enabled",
+      )),
+      ..Default::default()
+    })),
+    ..Default::default()
+  };
+
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    state_change_rule_with_matcher,
+    &[make_emit_counter_action(
+      "should_not_emit",
+      metric_value(1),
+      vec![],
+    )],
+  );
+
+  let workflow = WorkflowBuilder::new("extra_matcher_no_match_test", &[&a, &b]).make_config();
+  let setup = Setup::new();
+
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
+
+  // Set up a state reader with the WRONG value for required_flag
+  let mut state_reader = bd_state::test::TestStateReader::new();
+  state_reader.insert(
+    bd_state::Scope::FeatureFlagExposure,
+    "required_flag",
+    "disabled", // Wrong value!
+  );
+
+  // Process state change - this should NOT match due to the extra matcher
+  let state_change = StateChange::inserted(
+    bd_state::Scope::FeatureFlagExposure,
+    "trigger_flag",
+    "any_value",
+    OffsetDateTime::now_utc(),
+  );
+
+  engine.process_state_change_with_reader(&state_change, &state_reader);
+
+  // Verify the transition did NOT occur
+  assert!(
+    setup
+      .collector
+      .find_counter(
+        &bd_stats_common::NameType::Global("should_not_emit".to_string()),
+        &labels! {}
+      )
+      .is_none()
+  );
+}
+
+// Tests that state change transitions can check multiple state values simultaneously.
+// This allows complex conditions like "trigger when flag A changes AND flag B equals X".
+#[tokio::test]
+async fn state_change_with_multiple_state_conditions() {
+  use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
+  use bd_proto::protos::workflow::workflow::workflow::{Rule, RuleStateChangeMatch};
+
+  let b = state("B");
+
+  // Create a state change rule that checks TWO different state values:
+  // 1. The trigger_flag must change (primary condition)
+  // 2. The secondary_flag must equal "ready" (extra condition via log_matcher)
+  let state_change_rule_with_multiple_conditions = Rule {
+    rule_type: Some(Rule_type::RuleStateChangeMatch(RuleStateChangeMatch {
+      scope: bd_proto::protos::state::scope::StateScope::FEATURE_FLAG.into(),
+      key: "trigger_flag".to_string(),
+      previous_value: protobuf::MessageField::none(),
+      new_value: protobuf::MessageField::some(bd_proto::protos::state::matcher::StateValueMatch {
+        value_match: Some(make_is_set_match()),
+        ..Default::default()
+      }),
+      // Additional condition: another state value must equal "ready"
+      log_matcher: protobuf::MessageField::some(make_state_matcher(
+        bd_state::Scope::FeatureFlagExposure,
+        "secondary_flag",
+        "ready",
+      )),
+      ..Default::default()
+    })),
+    ..Default::default()
+  };
+
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    state_change_rule_with_multiple_conditions,
+    &[make_emit_counter_action(
+      "multi_condition_metric",
+      metric_value(1),
+      vec![],
+    )],
+  );
+
+  let workflow = WorkflowBuilder::new("multi_condition_test", &[&a, &b]).make_config();
+  let setup = Setup::new();
+
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
+
+  // Set up state reader with secondary_flag = "ready"
+  let mut state_reader = bd_state::test::TestStateReader::new();
+  state_reader.insert(
+    bd_state::Scope::FeatureFlagExposure,
+    "secondary_flag",
+    "ready",
+  );
+
+  // Process state change - should match because both conditions are met
+  let state_change = StateChange::inserted(
+    bd_state::Scope::FeatureFlagExposure,
+    "trigger_flag",
+    "enabled",
+    OffsetDateTime::now_utc(),
+  );
+
+  engine.process_state_change_with_reader(&state_change, &state_reader);
+
+  // Verify the transition occurred
+  setup
+    .collector
+    .assert_workflow_counter_eq(1, "multi_condition_metric", labels! {});
+}

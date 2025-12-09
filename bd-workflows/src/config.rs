@@ -478,11 +478,13 @@ impl Transition {
       .as_ref()
       .ok_or_else(|| anyhow!("invalid transition configuration: missing rule type"))?
     {
-      Rule_type::RuleLogMatch(rule) => {
-        Predicate::LogMatch(Tree::new(&rule.log_matcher)?, rule.count)
+      Rule_type::RuleLogMatch(rule) => Predicate::LogMatch {
+        matcher: Tree::new(&rule.log_matcher)?,
+        required_matches: rule.count,
       },
-      Rule_type::RuleStateChangeMatch(rule) => {
-        Predicate::StateChangeMatch(StateChangeMatch::try_from_proto(rule)?)
+      Rule_type::RuleStateChangeMatch(rule) => Predicate::StateChangeMatch {
+        state_change_match: StateChangeMatch::try_from_proto(rule)?,
+        extra_matcher: rule.log_matcher.as_ref().map(Tree::new).transpose()?,
       },
     };
 
@@ -558,8 +560,14 @@ impl Transition {
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Predicate {
-  LogMatch(Tree, u32),
-  StateChangeMatch(StateChangeMatch),
+  LogMatch {
+    matcher: Tree,
+    required_matches: u32,
+  },
+  StateChangeMatch {
+    state_change_match: StateChangeMatch,
+    extra_matcher: Option<Tree>,
+  },
 }
 
 //

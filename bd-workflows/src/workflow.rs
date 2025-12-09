@@ -20,7 +20,8 @@ use crate::config::{
 };
 use crate::generate_log::generate_log_action;
 use bd_log_primitives::tiny_set::TinyMap;
-use bd_log_primitives::{FieldsRef, Log};
+use bd_log_primitives::{FieldsRef, Log, log_level};
+use bd_proto::protos::logging::payload::LogType;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_time::OffsetDateTimeExt;
 use itertools::Itertools;
@@ -938,12 +939,18 @@ impl Traversal {
     // Multiple transitions can match the same event, causing workflow forking.
     for (index, transition) in transitions.iter().enumerate() {
       match (&transition.rule(), event) {
-        (Predicate::LogMatch(log_match, count), WorkflowEvent::Log(log)) => {
+        (
+          Predicate::LogMatch {
+            matcher,
+            required_matches,
+          },
+          WorkflowEvent::Log(log),
+        ) => {
           self.process_log_match(
             config,
             log,
-            log_match,
-            *count,
+            matcher,
+            *required_matches,
             index,
             state_reader,
             now,
@@ -951,13 +958,17 @@ impl Traversal {
           );
         },
         (
-          Predicate::StateChangeMatch(state_change_config),
+          Predicate::StateChangeMatch {
+            state_change_match,
+            extra_matcher,
+          },
           WorkflowEvent::StateChange(state_change),
         ) => {
           self.process_state_change_match(
             config,
             state_change,
-            state_change_config,
+            state_change_match,
+            extra_matcher.as_ref(),
             index,
             state_reader,
             now,
@@ -1086,6 +1097,7 @@ impl Traversal {
     config: &'a Config,
     state_change: &bd_state::StateChange,
     state_change_match: &crate::config::StateChangeMatch,
+    extra_matcher: Option<&bd_log_matcher::matcher::Tree>,
     index: usize,
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
@@ -1122,6 +1134,21 @@ impl Traversal {
     if !state_change_match
       .new_value
       .matches(new_value, &empty_fields)
+    {
+      return;
+    }
+
+    // Check extra matcher. We're reusing the log matcher infrastructure here by passing
+    // empty fields and message since state changes won't have those.
+    if let Some(extra_matcher) = extra_matcher.as_ref()
+      && !extra_matcher.do_match(
+        log_level::DEBUG,
+        LogType::INTERNAL_SDK,
+        &"".into(),
+        FieldsRef::new(&[].into(), &[].into()),
+        state_reader,
+        &self.extractions.fields,
+      )
     {
       return;
     }
