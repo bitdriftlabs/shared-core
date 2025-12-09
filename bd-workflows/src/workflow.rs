@@ -20,7 +20,8 @@ use crate::config::{
 };
 use crate::generate_log::generate_log_action;
 use bd_log_primitives::tiny_set::TinyMap;
-use bd_log_primitives::{FieldsRef, Log};
+use bd_log_primitives::{FieldsRef, Log, log_level};
+use bd_proto::protos::logging::payload::LogType;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_time::OffsetDateTimeExt;
 use itertools::Itertools;
@@ -39,29 +40,29 @@ use time::OffsetDateTime;
 pub enum WorkflowEvent<'a> {
   /// A log message was received
   Log(&'a Log),
-  /// A state change occurred
-  StateChange(&'a bd_state::StateChange),
+  /// A state change occurred, with optional global metadata fields
+  StateChange(&'a bd_state::StateChange, FieldsRef<'a>),
 }
 
 impl WorkflowEvent<'_> {
   pub(crate) fn session_id(&self) -> Option<&str> {
     match self {
       WorkflowEvent::Log(log) => Some(log.session_id.as_str()),
-      WorkflowEvent::StateChange(_) => None,
+      WorkflowEvent::StateChange(..) => None,
     }
   }
 
   pub(crate) fn capture_session(&self) -> Option<&'static str> {
     match self {
       WorkflowEvent::Log(log) => log.capture_session,
-      WorkflowEvent::StateChange(_) => None,
+      WorkflowEvent::StateChange(..) => None,
     }
   }
 
   pub(crate) fn occurred_at(&self) -> OffsetDateTime {
     match self {
       WorkflowEvent::Log(log) => log.occurred_at,
-      WorkflowEvent::StateChange(state_change) => state_change.timestamp,
+      WorkflowEvent::StateChange(state_change, _) => state_change.timestamp,
     }
   }
 }
@@ -938,12 +939,18 @@ impl Traversal {
     // Multiple transitions can match the same event, causing workflow forking.
     for (index, transition) in transitions.iter().enumerate() {
       match (&transition.rule(), event) {
-        (Predicate::LogMatch(log_match, count), WorkflowEvent::Log(log)) => {
+        (
+          Predicate::LogMatch {
+            matcher,
+            required_matches,
+          },
+          WorkflowEvent::Log(log),
+        ) => {
           self.process_log_match(
             config,
             log,
-            log_match,
-            *count,
+            matcher,
+            *required_matches,
             index,
             state_reader,
             now,
@@ -951,13 +958,18 @@ impl Traversal {
           );
         },
         (
-          Predicate::StateChangeMatch(state_change_config),
-          WorkflowEvent::StateChange(state_change),
+          Predicate::StateChangeMatch {
+            state_change_match,
+            extra_matcher,
+          },
+          WorkflowEvent::StateChange(state_change, fields),
         ) => {
           self.process_state_change_match(
             config,
             state_change,
-            state_change_config,
+            state_change_match,
+            extra_matcher.as_ref(),
+            fields,
             index,
             state_reader,
             now,
@@ -980,11 +992,11 @@ impl Traversal {
         .next_state_index_for_timeout(self.state_index)
     {
       // Timeout transitions use default extractions and pass appropriate fields based on event
-      // type. For logs, we pass the log fields. For state changes, we pass empty fields.
-      let empty_fields = bd_log_primitives::LogFields::default();
+      // type. For logs, we pass the log fields. For state changes, we pass the fields that were
+      // collected (typically global metadata).
       let fields = match event {
         WorkflowEvent::Log(log) => FieldsRef::new(&log.fields, &log.matching_fields),
-        WorkflowEvent::StateChange(_) => FieldsRef::new(&empty_fields, &empty_fields),
+        WorkflowEvent::StateChange(_, fields) => fields,
       };
 
       process_transition(
@@ -1086,6 +1098,8 @@ impl Traversal {
     config: &'a Config,
     state_change: &bd_state::StateChange,
     state_change_match: &crate::config::StateChangeMatch,
+    extra_matcher: Option<&bd_log_matcher::matcher::Tree>,
+    fields: FieldsRef<'_>,
     index: usize,
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
@@ -1126,16 +1140,30 @@ impl Traversal {
       return;
     }
 
+    // Check extra matcher. Now we can match against global metadata fields that were collected
+    // for this state change event.
+    if let Some(extra_matcher) = extra_matcher.as_ref()
+      && !extra_matcher.do_match(
+        log_level::DEBUG,
+        LogType::INTERNAL_SDK,
+        &"".into(),
+        fields,
+        state_reader,
+        &self.extractions.fields,
+      )
+    {
+      return;
+    }
+
     if let Some(actions) = config.inner().actions_for_traversal(self, index)
       && let Some(next_state_index) = config.inner().next_state_index_for_traversal(self, index)
     {
-      // Use empty FieldsRef for state changes since they don't have log fields
-      let empty_fields = bd_log_primitives::LogFields::default();
+      // Use the collected fields (typically global metadata) for state changes
       process_transition(
         result,
-        self.do_state_change_extractions(config, index, state_change, state_reader),
+        self.do_state_change_extractions(config, index, state_change, fields, state_reader),
         actions,
-        FieldsRef::new(&empty_fields, &empty_fields),
+        fields,
         self.state_index,
         next_state_index,
         WorkflowDebugTransitionType::Normal(index),
@@ -1220,6 +1248,7 @@ impl Traversal {
     config: &Config,
     index: usize,
     state_change: &bd_state::StateChange,
+    fields: FieldsRef<'_>,
     state_reader: &dyn bd_state::StateReader,
   ) -> TraversalExtractions {
     let mut new_extractions = self.extractions.clone();
@@ -1228,17 +1257,15 @@ impl Traversal {
       return new_extractions;
     };
 
-    // Empty fields and message for state changes
-    let empty_fields = bd_log_primitives::LogFields::default();
-    let empty_message = bd_log_primitives::LogMessage::String(String::new());
+    let empty_messsage = "".into();
 
-    // Sankey extractions: Can extract from state reader (e.g., feature flags)
+    // Sankey extractions: Can extract from state reader (e.g., feature flags) and from fields
     for extraction in &extractions.sankey_extractions {
-      let Some(extracted_value) = extraction.value.extract_value(
-        FieldsRef::new(&empty_fields, &empty_fields),
-        &empty_message,
-        state_reader,
-      ) else {
+      let Some(extracted_value) =
+        extraction
+          .value
+          .extract_value(fields, &empty_messsage, state_reader)
+      else {
         continue;
       };
 
@@ -1262,6 +1289,21 @@ impl Traversal {
       new_extractions
         .timestamps
         .insert(timestamp_extraction_id.clone(), timestamp);
+    }
+
+    // Field extractions: Can extract from fields (typically global metadata like device_id,
+    // app_version, etc.)
+    for extraction in &extractions.field_extractions {
+      if let Some(value) = fields.field_value(&extraction.field_name) {
+        log::debug!(
+          "extracted field value {} from state change for extraction ID {}",
+          value,
+          extraction.id
+        );
+        new_extractions
+          .fields
+          .insert(extraction.id.clone(), value.to_string());
+      }
     }
 
     new_extractions

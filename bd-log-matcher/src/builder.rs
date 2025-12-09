@@ -30,6 +30,8 @@ use bd_proto::protos::log_matcher::log_matcher::log_matcher::{
   base_log_matcher,
 };
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::state::matcher::{StateValueMatch, state_value_match};
+use bd_proto::protos::state::scope::StateScope;
 use bd_proto::protos::value_matcher::value_matcher;
 use tag_match::Value_match;
 use tag_match::Value_match::IntValueMatch;
@@ -264,6 +266,125 @@ pub fn ios() -> LogMatcher {
 #[must_use]
 pub fn android() -> LogMatcher {
   log_field_matcher("os", "Android", Operator::OPERATOR_EQUALS)
+}
+
+/// Creates a matcher for state values with a specific scope, key, and string value.
+#[must_use]
+pub fn state_equals(scope: StateScope, key: &str, value: &str) -> LogMatcher {
+  state_string_matcher(
+    scope,
+    key,
+    String_value_match_type::MatchValue(value.to_string()),
+  )
+}
+
+/// Creates a matcher for state values that compares against a saved field.
+///
+/// This is useful in workflows where you want to compare a state value
+/// against a previously extracted field value.
+#[must_use]
+pub fn state_equals_saved_field(scope: StateScope, key: &str, saved_field_id: &str) -> LogMatcher {
+  state_string_matcher(
+    scope,
+    key,
+    String_value_match_type::SaveFieldId(saved_field_id.to_string()),
+  )
+}
+
+/// Helper function to create a state matcher with a specific string value match type.
+#[must_use]
+fn state_string_matcher(
+  scope: StateScope,
+  key: &str,
+  string_value_match_type: String_value_match_type,
+) -> LogMatcher {
+  use base_log_matcher::Match_type::StateMatch;
+
+  LogMatcher {
+    matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
+      match_type: Some(StateMatch(base_log_matcher::StateMatch {
+        scope: scope.into(),
+        state_key: key.to_string(),
+        state_value_match: Some(StateValueMatch {
+          value_match: Some(state_value_match::Value_match::StringValueMatch(
+            value_matcher::StringValueMatch {
+              operator: Operator::OPERATOR_EQUALS.into(),
+              string_value_match_type: Some(string_value_match_type),
+              ..Default::default()
+            },
+          )),
+          ..Default::default()
+        })
+        .into(),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
+/// Creates a matcher that checks if a state value is set (has any value).
+#[must_use]
+pub fn state_is_set(scope: StateScope, key: &str) -> LogMatcher {
+  use base_log_matcher::Match_type::StateMatch;
+
+  LogMatcher {
+    matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
+      match_type: Some(StateMatch(base_log_matcher::StateMatch {
+        scope: scope.into(),
+        state_key: key.to_string(),
+        state_value_match: Some(StateValueMatch {
+          value_match: Some(state_value_match::Value_match::IsSetMatch(
+            IsSetMatch::default(),
+          )),
+          ..Default::default()
+        })
+        .into(),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
+/// Creates a matcher for feature flag values.
+///
+/// This is a convenience function equivalent to `state_equals(StateScope::FEATURE_FLAG, key,
+/// value)`.
+#[inline]
+#[must_use]
+pub fn feature_flag_equals(key: &str, value: &str) -> LogMatcher {
+  state_equals(StateScope::FEATURE_FLAG, key, value)
+}
+
+/// Creates a matcher that checks if a feature flag is set (has any value).
+///
+/// This is a convenience function equivalent to `state_is_set(StateScope::FEATURE_FLAG, key)`.
+#[inline]
+#[must_use]
+pub fn feature_flag_is_set(key: &str) -> LogMatcher {
+  state_is_set(StateScope::FEATURE_FLAG, key)
+}
+
+/// Creates a matcher for global state values.
+///
+/// This is a convenience function equivalent to `state_equals(StateScope::GLOBAL_STATE, key,
+/// value)`.
+#[inline]
+#[must_use]
+pub fn global_state_equals(key: &str, value: &str) -> LogMatcher {
+  state_equals(StateScope::GLOBAL_STATE, key, value)
+}
+
+/// Creates a matcher that checks if a global state value is set (has any value).
+///
+/// This is a convenience function equivalent to `state_is_set(StateScope::GLOBAL_STATE, key)`.
+#[inline]
+#[must_use]
+pub fn global_state_is_set(key: &str) -> LogMatcher {
+  state_is_set(StateScope::GLOBAL_STATE, key)
 }
 
 // Helper functions

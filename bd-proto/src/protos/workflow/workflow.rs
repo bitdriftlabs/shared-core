@@ -2204,6 +2204,8 @@ pub mod workflow {
         pub previous_value: ::protobuf::MessageField<super::super::matcher::StateValueMatch>,
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.RuleStateChangeMatch.new_value)
         pub new_value: ::protobuf::MessageField<super::super::matcher::StateValueMatch>,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.workflow.v1.Workflow.RuleStateChangeMatch.log_matcher)
+        pub log_matcher: ::protobuf::MessageField<super::super::log_matcher::LogMatcher>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.workflow.v1.Workflow.RuleStateChangeMatch.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -2221,7 +2223,7 @@ pub mod workflow {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(4);
+            let mut fields = ::std::vec::Vec::with_capacity(5);
             let mut oneofs = ::std::vec::Vec::with_capacity(0);
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "scope",
@@ -2242,6 +2244,11 @@ pub mod workflow {
                 "new_value",
                 |m: &RuleStateChangeMatch| { &m.new_value },
                 |m: &mut RuleStateChangeMatch| { &mut m.new_value },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::log_matcher::LogMatcher>(
+                "log_matcher",
+                |m: &RuleStateChangeMatch| { &m.log_matcher },
+                |m: &mut RuleStateChangeMatch| { &mut m.log_matcher },
             ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<RuleStateChangeMatch>(
                 "Workflow.RuleStateChangeMatch",
@@ -2273,6 +2280,9 @@ pub mod workflow {
                     34 => {
                         ::protobuf::rt::read_singular_message_into_field(is, &mut self.new_value)?;
                     },
+                    42 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.log_matcher)?;
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -2299,6 +2309,10 @@ pub mod workflow {
                 let len = v.compute_size();
                 my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
             }
+            if let Some(v) = self.log_matcher.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
             my_size
@@ -2316,6 +2330,9 @@ pub mod workflow {
             }
             if let Some(v) = self.new_value.as_ref() {
                 ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+            }
+            if let Some(v) = self.log_matcher.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
             }
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
@@ -2338,6 +2355,7 @@ pub mod workflow {
             self.key.clear();
             self.previous_value.clear();
             self.new_value.clear();
+            self.log_matcher.clear();
             self.special_fields.clear();
         }
 
@@ -2347,6 +2365,7 @@ pub mod workflow {
                 key: ::std::string::String::new(),
                 previous_value: ::protobuf::MessageField::none(),
                 new_value: ::protobuf::MessageField::none(),
+                log_matcher: ::protobuf::MessageField::none(),
                 special_fields: ::protobuf::SpecialFields::new(),
             };
             &instance
@@ -7341,7 +7360,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     her.proto\x1a/bitdrift_public/protobuf/state/v1/matcher.proto\x1a-bitdri\
     ft_public/protobuf/state/v1/scope.proto\x1a\x17validate/validate.proto\"\
     f\n\x16WorkflowsConfiguration\x12L\n\tworkflows\x18\x01\x20\x03(\x0b2..b\
-    itdrift_public.protobuf.workflow.v1.WorkflowR\tworkflows\"\x939\n\x08Wor\
+    itdrift_public.protobuf.workflow.v1.WorkflowR\tworkflows\"\xe59\n\x08Wor\
     kflow\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\
     \x01\x12V\n\x06states\x18\x02\x20\x03(\x0b24.bitdrift_public.protobuf.wo\
     rkflow.v1.Workflow.StateR\x06statesB\x08\xfaB\x05\x92\x01\x02\x08\x01\
@@ -7391,105 +7410,107 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \xf8B\x01\x1a\x89\x01\n\x0cRuleLogMatch\x12Z\n\x0blog_matcher\x18\x01\
     \x20\x01(\x0b2/.bitdrift_public.protobuf.matcher.v1.LogMatcherR\nlogMatc\
     herB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x1d\n\x05count\x18\x02\x20\x01\
-    (\rR\x05countB\x07\xfaB\x04*\x02\x20\0\x1a\xb6\x02\n\x14RuleStateChangeM\
+    (\rR\x05countB\x07\xfaB\x04*\x02\x20\0\x1a\x88\x03\n\x14RuleStateChangeM\
     atch\x12M\n\x05scope\x18\x01\x20\x01(\x0e2-.bitdrift_public.protobuf.sta\
     te.v1.StateScopeR\x05scopeB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12\x19\n\
     \x03key\x18\x02\x20\x01(\tR\x03keyB\x07\xfaB\x04r\x02\x10\x01\x12Y\n\x0e\
     previous_value\x18\x03\x20\x01(\x0b22.bitdrift_public.protobuf.state.v1.\
     StateValueMatchR\rpreviousValue\x12Y\n\tnew_value\x18\x04\x20\x01(\x0b22\
     .bitdrift_public.protobuf.state.v1.StateValueMatchR\x08newValueB\x08\xfa\
-    B\x05\x8a\x01\x02\x10\x01\x1a\xec\x1d\n\x06Action\x12|\n\x14action_flush\
-    _buffers\x18\x01\x20\x01(\x0b2H.bitdrift_public.protobuf.workflow.v1.Wor\
-    kflow.Action.ActionFlushBuffersH\0R\x12actionFlushBuffers\x12v\n\x12acti\
-    on_emit_metric\x18\x02\x20\x01(\x0b2F.bitdrift_public.protobuf.workflow.\
-    v1.Workflow.Action.ActionEmitMetricH\0R\x10actionEmitMetric\x12\x8c\x01\
-    \n\x1aaction_emit_sankey_diagram\x18\x03\x20\x01(\x0b2M.bitdrift_public.\
-    protobuf.workflow.v1.Workflow.Action.ActionEmitSankeyDiagramH\0R\x17acti\
-    onEmitSankeyDiagram\x12\x82\x01\n\x16action_take_screenshot\x18\x04\x20\
-    \x01(\x0b2J.bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionT\
-    akeScreenshotH\0R\x14actionTakeScreenshot\x12y\n\x13action_generate_log\
-    \x18\x05\x20\x01(\x0b2G.bitdrift_public.protobuf.workflow.v1.Workflow.Ac\
-    tion.ActionGenerateLogH\0R\x11actionGenerateLog\x1a\xb1\n\n\x11ActionGen\
-    erateLog\x12\x18\n\x07message\x18\x01\x20\x01(\tR\x07message\x12n\n\x06f\
-    ields\x18\x02\x20\x03(\x0b2V.bitdrift_public.protobuf.workflow.v1.Workfl\
-    ow.Action.ActionGenerateLog.GeneratedFieldR\x06fields\x12\x0e\n\x02id\
-    \x18\x03\x20\x01(\tR\x02id\x12\x19\n\x08log_type\x18\x04\x20\x01(\rR\x07\
-    logType\x1a\xe5\x01\n\x0eValueReference\x12\x16\n\x05fixed\x18\x01\x20\
-    \x01(\tH\0R\x05fixed\x125\n\x16field_from_current_log\x18\x02\x20\x01(\t\
-    H\0R\x13fieldFromCurrentLog\x12&\n\x0esaved_field_id\x18\x03\x20\x01(\tH\
-    \0R\x0csavedFieldId\x12.\n\x12saved_timestamp_id\x18\x04\x20\x01(\tH\0R\
-    \x10savedTimestampId\x12\x14\n\x04uuid\x18\x05\x20\x01(\x08H\0R\x04uuidB\
-    \x16\n\x14value_reference_type\x1a\xe8\x01\n\x12ValueReferencePair\x12h\
-    \n\x03lhs\x18\x01\x20\x01(\x0b2V.bitdrift_public.protobuf.workflow.v1.Wo\
-    rkflow.Action.ActionGenerateLog.ValueReferenceR\x03lhs\x12h\n\x03rhs\x18\
-    \x02\x20\x01(\x0b2V.bitdrift_public.protobuf.workflow.v1.Workflow.Action\
-    .ActionGenerateLog.ValueReferenceR\x03rhs\x1a\x93\x05\n\x0eGeneratedFiel\
-    d\x12\x12\n\x04name\x18\x01\x20\x01(\tR\x04name\x12p\n\x06single\x18\x02\
-    \x20\x01(\x0b2V.bitdrift_public.protobuf.workflow.v1.Workflow.Action.Act\
-    ionGenerateLog.ValueReferenceH\0R\x06single\x12x\n\x08subtract\x18\x03\
-    \x20\x01(\x0b2Z.bitdrift_public.protobuf.workflow.v1.Workflow.Action.Act\
-    ionGenerateLog.ValueReferencePairH\0R\x08subtract\x12n\n\x03add\x18\x04\
-    \x20\x01(\x0b2Z.bitdrift_public.protobuf.workflow.v1.Workflow.Action.Act\
-    ionGenerateLog.ValueReferencePairH\0R\x03add\x12x\n\x08multiply\x18\x05\
-    \x20\x01(\x0b2Z.bitdrift_public.protobuf.workflow.v1.Workflow.Action.Act\
-    ionGenerateLog.ValueReferencePairH\0R\x08multiply\x12t\n\x06divide\x18\
-    \x06\x20\x01(\x0b2Z.bitdrift_public.protobuf.workflow.v1.Workflow.Action\
-    .ActionGenerateLog.ValueReferencePairH\0R\x06divideB!\n\x1agenerated_fie\
-    ld_value_type\x12\x03\xf8B\x01\x1a\xa9\x05\n\x12ActionFlushBuffers\x12\
-    \x1d\n\nbuffer_ids\x18\x01\x20\x03(\tR\tbufferIds\x12\x17\n\x02id\x18\
-    \x02\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12p\n\tstreaming\x18\
-    \x03\x20\x01(\x0b2R.bitdrift_public.protobuf.workflow.v1.Workflow.Action\
-    .ActionFlushBuffers.StreamingR\tstreaming\x1a\xe8\x03\n\tStreaming\x12G\
-    \n\x20destination_streaming_buffer_ids\x18\x01\x20\x03(\tR\x1ddestinatio\
-    nStreamingBufferIds\x12\x9a\x01\n\x14termination_criteria\x18\x02\x20\
-    \x03(\x0b2g.bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionF\
-    lushBuffers.Streaming.TerminationCriterionR\x13terminationCriteria\x1a\
-    \xf4\x01\n\x14TerminationCriterion\x12\x92\x01\n\nlogs_count\x18\x01\x20\
-    \x01(\x0b2q.bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionF\
-    lushBuffers.Streaming.TerminationCriterion.LogsCountH\0R\tlogsCount\x1a:\
-    \n\tLogsCount\x12-\n\x0emax_logs_count\x18\x01\x20\x01(\x04R\x0cmaxLogsC\
-    ountB\x07\xfaB\x042\x02\x20\0B\x0b\n\x04type\x12\x03\xf8B\x01\x1a\xa3\
-    \x04\n\x10ActionEmitMetric\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\
-    \x07\xfaB\x04r\x02\x10\x01\x12j\n\x07counter\x18\x02\x20\x01(\x0b2N.bitd\
-    rift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.Counte\
-    rH\0R\x07counter\x12p\n\thistogram\x18\x05\x20\x01(\x0b2P.bitdrift_publi\
-    c.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.HistogramH\0R\th\
-    istogram\x12\x16\n\x05fixed\x18\x03\x20\x01(\rH\x01R\x05fixed\x12h\n\x0f\
-    field_extracted\x18\x06\x20\x01(\x0b2=.bitdrift_public.protobuf.workflow\
-    .v1.Workflow.FieldExtractedH\x01R\x0efieldExtracted\x12M\n\x04tags\x18\
-    \x04\x20\x03(\x0b29.bitdrift_public.protobuf.workflow.v1.Workflow.Action\
-    .TagR\x04tags\x1a\t\n\x07Counter\x1a\x0b\n\tHistogramB\x12\n\x0bmetric_t\
-    ype\x12\x03\xf8B\x01B\x1b\n\x14value_extractor_type\x12\x03\xf8B\x01\x1a\
-    \xa0\x01\n\x17ActionEmitSankeyDiagram\x12\x17\n\x02id\x18\x01\x20\x01(\t\
-    R\x02idB\x07\xfaB\x04r\x02\x10\x01\x12\x1d\n\x05limit\x18\x02\x20\x01(\r\
-    R\x05limitB\x07\xfaB\x04*\x02\x20\0\x12M\n\x04tags\x18\x03\x20\x03(\x0b2\
-    9.bitdrift_public.protobuf.workflow.v1.Workflow.Action.TagR\x04tags\x1a\
-    \x81\x03\n\x03Tag\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfa\
-    B\x04r\x02\x10\x01\x12*\n\x0bfixed_value\x18\x02\x20\x01(\tH\0R\nfixedVa\
-    lueB\x07\xfaB\x04r\x02\x10\x01\x12h\n\x0ffield_extracted\x18\x03\x20\x01\
-    (\x0b2=.bitdrift_public.protobuf.workflow.v1.Workflow.FieldExtractedH\0R\
-    \x0efieldExtracted\x12.\n\x12log_body_extracted\x18\x04\x20\x01(\x08H\0R\
-    \x10logBodyExtracted\x12h\n\x0fstate_extracted\x18\x06\x20\x01(\x0b2=.bi\
-    tdrift_public.protobuf.workflow.v1.Workflow.StateExtractedH\0R\x0estateE\
-    xtractedB\x0f\n\x08tag_type\x12\x03\xf8B\x01J\x04\x08\x05\x10\x06R\x16fe\
-    ature_flag_extracted\x1a\x1c\n\x14ActionTakeScreenshotJ\x04\x08\x01\x10\
-    \x02B\x12\n\x0baction_type\x12\x03\xf8B\x01\x1a\xb9\x01\n\tExecution\x12\
-    ~\n\x13execution_exclusive\x18\x01\x20\x01(\x0b2K.bitdrift_public.protob\
-    uf.workflow.v1.Workflow.Execution.ExecutionExclusiveH\0R\x12executionExc\
-    lusive\x1a\x14\n\x12ExecutionExclusiveB\x10\n\x0eexecution_typeJ\x04\x08\
-    \x02\x10\x03\x1a6\n\x15LimitMatchedLogsCount\x12\x1d\n\x05count\x18\x01\
-    \x20\x01(\rR\x05countB\x07\xfaB\x04*\x02\x20\0\x1a9\n\rLimitDuration\x12\
-    (\n\x0bduration_ms\x18\x02\x20\x01(\x04R\ndurationMsB\x07\xfaB\x042\x02\
-    \x20\0\x1a\xb1\x01\n\x0eFieldExtracted\x12&\n\nfield_name\x18\x01\x20\
-    \x01(\tR\tfieldNameB\x07\xfaB\x04r\x02\x10\x01\x12[\n\x05exact\x18\x02\
-    \x20\x01(\x0b2C.bitdrift_public.protobuf.workflow.v1.Workflow.FieldExtra\
-    cted.ExactH\0R\x05exact\x1a\x07\n\x05ExactB\x11\n\x0fextraction_type\x1a\
-    \xf3\x01\n\x0eStateExtracted\x12M\n\x05scope\x18\x01\x20\x01(\x0e2-.bitd\
-    rift_public.protobuf.state.v1.StateScopeR\x05scopeB\x08\xfaB\x05\x82\x01\
-    \x02\x10\x01\x12\x19\n\x03key\x18\x02\x20\x01(\tR\x03keyB\x07\xfaB\x04r\
-    \x02\x10\x01\x12[\n\x05exact\x18\x03\x20\x01(\x0b2C.bitdrift_public.prot\
-    obuf.workflow.v1.Workflow.StateExtracted.ExactH\0R\x05exact\x1a\x07\n\
-    \x05ExactB\x11\n\x0fextraction_typeb\x06proto3\
+    B\x05\x8a\x01\x02\x10\x01\x12P\n\x0blog_matcher\x18\x05\x20\x01(\x0b2/.b\
+    itdrift_public.protobuf.matcher.v1.LogMatcherR\nlogMatcher\x1a\xec\x1d\n\
+    \x06Action\x12|\n\x14action_flush_buffers\x18\x01\x20\x01(\x0b2H.bitdrif\
+    t_public.protobuf.workflow.v1.Workflow.Action.ActionFlushBuffersH\0R\x12\
+    actionFlushBuffers\x12v\n\x12action_emit_metric\x18\x02\x20\x01(\x0b2F.b\
+    itdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetricH\0R\
+    \x10actionEmitMetric\x12\x8c\x01\n\x1aaction_emit_sankey_diagram\x18\x03\
+    \x20\x01(\x0b2M.bitdrift_public.protobuf.workflow.v1.Workflow.Action.Act\
+    ionEmitSankeyDiagramH\0R\x17actionEmitSankeyDiagram\x12\x82\x01\n\x16act\
+    ion_take_screenshot\x18\x04\x20\x01(\x0b2J.bitdrift_public.protobuf.work\
+    flow.v1.Workflow.Action.ActionTakeScreenshotH\0R\x14actionTakeScreenshot\
+    \x12y\n\x13action_generate_log\x18\x05\x20\x01(\x0b2G.bitdrift_public.pr\
+    otobuf.workflow.v1.Workflow.Action.ActionGenerateLogH\0R\x11actionGenera\
+    teLog\x1a\xb1\n\n\x11ActionGenerateLog\x12\x18\n\x07message\x18\x01\x20\
+    \x01(\tR\x07message\x12n\n\x06fields\x18\x02\x20\x03(\x0b2V.bitdrift_pub\
+    lic.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.GeneratedFiel\
+    dR\x06fields\x12\x0e\n\x02id\x18\x03\x20\x01(\tR\x02id\x12\x19\n\x08log_\
+    type\x18\x04\x20\x01(\rR\x07logType\x1a\xe5\x01\n\x0eValueReference\x12\
+    \x16\n\x05fixed\x18\x01\x20\x01(\tH\0R\x05fixed\x125\n\x16field_from_cur\
+    rent_log\x18\x02\x20\x01(\tH\0R\x13fieldFromCurrentLog\x12&\n\x0esaved_f\
+    ield_id\x18\x03\x20\x01(\tH\0R\x0csavedFieldId\x12.\n\x12saved_timestamp\
+    _id\x18\x04\x20\x01(\tH\0R\x10savedTimestampId\x12\x14\n\x04uuid\x18\x05\
+    \x20\x01(\x08H\0R\x04uuidB\x16\n\x14value_reference_type\x1a\xe8\x01\n\
+    \x12ValueReferencePair\x12h\n\x03lhs\x18\x01\x20\x01(\x0b2V.bitdrift_pub\
+    lic.protobuf.workflow.v1.Workflow.Action.ActionGenerateLog.ValueReferenc\
+    eR\x03lhs\x12h\n\x03rhs\x18\x02\x20\x01(\x0b2V.bitdrift_public.protobuf.\
+    workflow.v1.Workflow.Action.ActionGenerateLog.ValueReferenceR\x03rhs\x1a\
+    \x93\x05\n\x0eGeneratedField\x12\x12\n\x04name\x18\x01\x20\x01(\tR\x04na\
+    me\x12p\n\x06single\x18\x02\x20\x01(\x0b2V.bitdrift_public.protobuf.work\
+    flow.v1.Workflow.Action.ActionGenerateLog.ValueReferenceH\0R\x06single\
+    \x12x\n\x08subtract\x18\x03\x20\x01(\x0b2Z.bitdrift_public.protobuf.work\
+    flow.v1.Workflow.Action.ActionGenerateLog.ValueReferencePairH\0R\x08subt\
+    ract\x12n\n\x03add\x18\x04\x20\x01(\x0b2Z.bitdrift_public.protobuf.workf\
+    low.v1.Workflow.Action.ActionGenerateLog.ValueReferencePairH\0R\x03add\
+    \x12x\n\x08multiply\x18\x05\x20\x01(\x0b2Z.bitdrift_public.protobuf.work\
+    flow.v1.Workflow.Action.ActionGenerateLog.ValueReferencePairH\0R\x08mult\
+    iply\x12t\n\x06divide\x18\x06\x20\x01(\x0b2Z.bitdrift_public.protobuf.wo\
+    rkflow.v1.Workflow.Action.ActionGenerateLog.ValueReferencePairH\0R\x06di\
+    videB!\n\x1agenerated_field_value_type\x12\x03\xf8B\x01\x1a\xa9\x05\n\
+    \x12ActionFlushBuffers\x12\x1d\n\nbuffer_ids\x18\x01\x20\x03(\tR\tbuffer\
+    Ids\x12\x17\n\x02id\x18\x02\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\
+    \x12p\n\tstreaming\x18\x03\x20\x01(\x0b2R.bitdrift_public.protobuf.workf\
+    low.v1.Workflow.Action.ActionFlushBuffers.StreamingR\tstreaming\x1a\xe8\
+    \x03\n\tStreaming\x12G\n\x20destination_streaming_buffer_ids\x18\x01\x20\
+    \x03(\tR\x1ddestinationStreamingBufferIds\x12\x9a\x01\n\x14termination_c\
+    riteria\x18\x02\x20\x03(\x0b2g.bitdrift_public.protobuf.workflow.v1.Work\
+    flow.Action.ActionFlushBuffers.Streaming.TerminationCriterionR\x13termin\
+    ationCriteria\x1a\xf4\x01\n\x14TerminationCriterion\x12\x92\x01\n\nlogs_\
+    count\x18\x01\x20\x01(\x0b2q.bitdrift_public.protobuf.workflow.v1.Workfl\
+    ow.Action.ActionFlushBuffers.Streaming.TerminationCriterion.LogsCountH\0\
+    R\tlogsCount\x1a:\n\tLogsCount\x12-\n\x0emax_logs_count\x18\x01\x20\x01(\
+    \x04R\x0cmaxLogsCountB\x07\xfaB\x042\x02\x20\0B\x0b\n\x04type\x12\x03\
+    \xf8B\x01\x1a\xa3\x04\n\x10ActionEmitMetric\x12\x17\n\x02id\x18\x01\x20\
+    \x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12j\n\x07counter\x18\x02\x20\
+    \x01(\x0b2N.bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionE\
+    mitMetric.CounterH\0R\x07counter\x12p\n\thistogram\x18\x05\x20\x01(\x0b2\
+    P.bitdrift_public.protobuf.workflow.v1.Workflow.Action.ActionEmitMetric.\
+    HistogramH\0R\thistogram\x12\x16\n\x05fixed\x18\x03\x20\x01(\rH\x01R\x05\
+    fixed\x12h\n\x0ffield_extracted\x18\x06\x20\x01(\x0b2=.bitdrift_public.p\
+    rotobuf.workflow.v1.Workflow.FieldExtractedH\x01R\x0efieldExtracted\x12M\
+    \n\x04tags\x18\x04\x20\x03(\x0b29.bitdrift_public.protobuf.workflow.v1.W\
+    orkflow.Action.TagR\x04tags\x1a\t\n\x07Counter\x1a\x0b\n\tHistogramB\x12\
+    \n\x0bmetric_type\x12\x03\xf8B\x01B\x1b\n\x14value_extractor_type\x12\
+    \x03\xf8B\x01\x1a\xa0\x01\n\x17ActionEmitSankeyDiagram\x12\x17\n\x02id\
+    \x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12\x1d\n\x05limit\
+    \x18\x02\x20\x01(\rR\x05limitB\x07\xfaB\x04*\x02\x20\0\x12M\n\x04tags\
+    \x18\x03\x20\x03(\x0b29.bitdrift_public.protobuf.workflow.v1.Workflow.Ac\
+    tion.TagR\x04tags\x1a\x81\x03\n\x03Tag\x12\x1b\n\x04name\x18\x01\x20\x01\
+    (\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x12*\n\x0bfixed_value\x18\x02\
+    \x20\x01(\tH\0R\nfixedValueB\x07\xfaB\x04r\x02\x10\x01\x12h\n\x0ffield_e\
+    xtracted\x18\x03\x20\x01(\x0b2=.bitdrift_public.protobuf.workflow.v1.Wor\
+    kflow.FieldExtractedH\0R\x0efieldExtracted\x12.\n\x12log_body_extracted\
+    \x18\x04\x20\x01(\x08H\0R\x10logBodyExtracted\x12h\n\x0fstate_extracted\
+    \x18\x06\x20\x01(\x0b2=.bitdrift_public.protobuf.workflow.v1.Workflow.St\
+    ateExtractedH\0R\x0estateExtractedB\x0f\n\x08tag_type\x12\x03\xf8B\x01J\
+    \x04\x08\x05\x10\x06R\x16feature_flag_extracted\x1a\x1c\n\x14ActionTakeS\
+    creenshotJ\x04\x08\x01\x10\x02B\x12\n\x0baction_type\x12\x03\xf8B\x01\
+    \x1a\xb9\x01\n\tExecution\x12~\n\x13execution_exclusive\x18\x01\x20\x01(\
+    \x0b2K.bitdrift_public.protobuf.workflow.v1.Workflow.Execution.Execution\
+    ExclusiveH\0R\x12executionExclusive\x1a\x14\n\x12ExecutionExclusiveB\x10\
+    \n\x0eexecution_typeJ\x04\x08\x02\x10\x03\x1a6\n\x15LimitMatchedLogsCoun\
+    t\x12\x1d\n\x05count\x18\x01\x20\x01(\rR\x05countB\x07\xfaB\x04*\x02\x20\
+    \0\x1a9\n\rLimitDuration\x12(\n\x0bduration_ms\x18\x02\x20\x01(\x04R\ndu\
+    rationMsB\x07\xfaB\x042\x02\x20\0\x1a\xb1\x01\n\x0eFieldExtracted\x12&\n\
+    \nfield_name\x18\x01\x20\x01(\tR\tfieldNameB\x07\xfaB\x04r\x02\x10\x01\
+    \x12[\n\x05exact\x18\x02\x20\x01(\x0b2C.bitdrift_public.protobuf.workflo\
+    w.v1.Workflow.FieldExtracted.ExactH\0R\x05exact\x1a\x07\n\x05ExactB\x11\
+    \n\x0fextraction_type\x1a\xf3\x01\n\x0eStateExtracted\x12M\n\x05scope\
+    \x18\x01\x20\x01(\x0e2-.bitdrift_public.protobuf.state.v1.StateScopeR\
+    \x05scopeB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12\x19\n\x03key\x18\x02\x20\
+    \x01(\tR\x03keyB\x07\xfaB\x04r\x02\x10\x01\x12[\n\x05exact\x18\x03\x20\
+    \x01(\x0b2C.bitdrift_public.protobuf.workflow.v1.Workflow.StateExtracted\
+    .ExactH\0R\x05exact\x1a\x07\n\x05ExactB\x11\n\x0fextraction_typeb\x06pro\
+    to3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
