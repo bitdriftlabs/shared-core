@@ -7,16 +7,22 @@
 
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
-use crate::log_replay::ProcessingPipeline;
+use crate::log_replay::{LogReplay, ProcessingPipeline};
+use crate::logger::with_thread_local_logger_guard;
+use crate::metadata::MetadataCollector;
 use crate::pre_config_buffer::{self, PreConfigBuffer};
 use anyhow::anyhow;
 use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::BuffersWithAck;
 use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::{Counter, Scope};
+use bd_crash_handler::global_state;
+use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_filter::FilterChain;
 use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::tiny_set::TinySet;
+use bd_proto::protos::logging::payload::LogType;
+use bd_resilient_kv::Scope as StateScope;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_stats_common::labels;
@@ -27,6 +33,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use time::OffsetDateTime;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::mpsc::error::TrySendError;
 
@@ -189,6 +196,78 @@ impl InitializedLoggingContext {
 
   pub(crate) fn update(&mut self, config: ConfigUpdate) {
     self.processing_pipeline.update(config);
+  }
+
+  /// Handles state insertion and replays the state change through workflows with global metadata.
+  /// This method collects global metadata fields (like device info, app version, etc.) and passes
+  /// them to the workflow engine, enabling state changes to match against and extract from global
+  /// fields just like logs do.
+  pub(crate) async fn handle_state_insert<R: LogReplay>(
+    &mut self,
+    state_store: &bd_state::Store,
+    metadata_collector: &MetadataCollector,
+    global_state_tracker: &mut global_state::Tracker,
+    replayer: &mut R,
+    scope: StateScope,
+    key: String,
+    value: String,
+    now: OffsetDateTime,
+    session_id: &str,
+  ) {
+    match state_store.insert(scope, key, value).await {
+      Ok(state_change) => {
+        if !matches!(
+          state_change.change_type,
+          bd_state::StateChangeType::NoChange
+        ) {
+          // Collect global metadata fields for state changes, similar to logs.
+          // We pass empty annotated fields since state changes don't have log-specific fields,
+          // but we want to capture global metadata (like device info, app version, etc.)
+          let metadata_result = with_thread_local_logger_guard(|| {
+            metadata_collector.normalized_metadata_with_extra_fields(
+              [].into(), // empty log fields
+              [].into(), // empty matching fields
+              LogType::INTERNAL_SDK,
+              global_state_tracker,
+            )
+          });
+
+          match metadata_result {
+            Ok(metadata) => {
+              replayer
+                .replay_state_change(
+                  state_change,
+                  &mut self.processing_pipeline,
+                  state_store,
+                  now,
+                  session_id,
+                  &metadata.fields,
+                  &metadata.matching_fields,
+                )
+                .await;
+            },
+            Err(e) => {
+              log::debug!("failed to collect metadata for state change, using empty fields: {e}");
+              // Fall back to empty fields if metadata collection fails
+              replayer
+                .replay_state_change(
+                  state_change,
+                  &mut self.processing_pipeline,
+                  state_store,
+                  now,
+                  session_id,
+                  &[].into(),
+                  &[].into(),
+                )
+                .await;
+            },
+          }
+        }
+      },
+      Err(e) => {
+        handle_unexpected::<(), anyhow::Error>(Err(e), "async log buffer: failed to update state");
+      },
+    }
   }
 }
 

@@ -252,6 +252,8 @@ impl LogReplay for TestReplay {
     _state: &bd_state::Store,
     _now: OffsetDateTime,
     _session_id: &str,
+    _fields: &bd_log_primitives::LogFields,
+    _matching_fields: &bd_log_primitives::LogFields,
   ) -> LogReplayResult {
     // Test implementation does nothing with state changes
     LogReplayResult::default()

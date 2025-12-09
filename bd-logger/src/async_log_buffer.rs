@@ -12,12 +12,7 @@ mod async_log_buffer_test;
 use crate::device_id::DeviceIdInterceptor;
 use crate::log_replay::{LogReplay, LogReplayResult};
 use crate::logger::{ReportProcessingRequest, with_thread_local_logger_guard};
-use crate::logging_state::{
-  ConfigUpdate,
-  InitializedLoggingContext,
-  LoggingState,
-  UninitializedLoggingContext,
-};
+use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
 use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::pre_config_buffer::{PendingStateOperation, PreConfigBuffer, PreConfigItem};
@@ -715,17 +710,19 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             variant,
             session_id,
           } => {
-            Self::handle_state_insert(
-              state_store,
-              initialized_logging_context,
-              &mut self.replayer,
-              Scope::FeatureFlagExposure,
-              name,
-              variant.unwrap_or_default(),
-              now,
-              &session_id,
-            )
-            .await;
+            initialized_logging_context
+              .handle_state_insert(
+                state_store,
+                &self.metadata_collector,
+                &mut self.global_state_tracker,
+                &mut self.replayer,
+                Scope::FeatureFlagExposure,
+                name,
+                variant.unwrap_or_default(),
+                now,
+                &session_id,
+              )
+              .await;
           },
         },
       }
@@ -865,10 +862,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 &mut self.logging_state
               {
                 // Initialized: update state store and replay through workflows
-                Self::
-                  handle_state_insert(
+                initialized_logging_context
+                  .handle_state_insert(
                     &state_store,
-                    initialized_logging_context,
+                    &self.metadata_collector,
+                    &mut self.global_state_tracker,
                     &mut self.replayer,
                     Scope::FeatureFlagExposure,
                     flag,
@@ -955,38 +953,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
-  async fn handle_state_insert(
-    state_store: &bd_state::Store,
-    initialized_logging_context: &mut InitializedLoggingContext,
-    replayer: &mut R,
-    scope: Scope,
-    key: String,
-    value: String,
-    now: OffsetDateTime,
-    session_id: &str,
-  ) {
-    match state_store.insert(scope, key, value).await {
-      Ok(state_change) => {
-        if !matches!(
-          state_change.change_type,
-          bd_state::StateChangeType::NoChange
-        ) {
-          replayer
-            .replay_state_change(
-              state_change,
-              &mut initialized_logging_context.processing_pipeline,
-              state_store,
-              now,
-              session_id,
-            )
-            .await;
-        }
-      },
-      Err(e) => {
-        handle_unexpected::<(), anyhow::Error>(Err(e), "async log buffer: failed to update state");
-      },
-    }
-  }
+
 
   async fn send_debug_data(&mut self) {
     log::debug!("sending workflow debug data");

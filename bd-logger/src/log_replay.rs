@@ -69,6 +69,8 @@ pub trait LogReplay {
     state: &bd_state::Store,
     now: OffsetDateTime,
     session_id: &str,
+    fields: &LogFields,
+    matching_fields: &LogFields,
   ) -> LogReplayResult;
 }
 
@@ -98,9 +100,18 @@ impl LogReplay for LoggerReplay {
     state: &bd_state::Store,
     now: OffsetDateTime,
     session_id: &str,
+    fields: &LogFields,
+    matching_fields: &LogFields,
   ) -> LogReplayResult {
     pipeline
-      .process_state_change(state_change, state, now, session_id)
+      .process_state_change(
+        state_change,
+        state,
+        now,
+        session_id,
+        fields,
+        matching_fields,
+      )
       .await
   }
 }
@@ -335,12 +346,17 @@ impl ProcessingPipeline {
     state: &bd_state::Store,
     now: OffsetDateTime,
     session_id: &str,
+    fields: &LogFields,
+    matching_fields: &LogFields,
   ) -> LogReplayResult {
     let state_reader = state.read().await;
 
     let empty_set = TinySet::default();
     let mut result = self.workflows_engine.process_event(
-      bd_workflows::workflow::WorkflowEvent::StateChange(&state_change),
+      bd_workflows::workflow::WorkflowEvent::StateChange(
+        &state_change,
+        FieldsRef::new(fields, matching_fields),
+      ),
       &empty_set,
       &state_reader,
       now,
@@ -364,14 +380,15 @@ impl ProcessingPipeline {
 
     // In order to work with session capture we need there to be a log that can be emitted with the
     // action ID for the flush action. Since state changes typically don't have associated logs, we
-    // need to rely on the mechanism to synthesize a log here.
+    // need to rely on the mechanism to synthesize a log here. Now we pass the collected fields
+    // (global metadata) so they can be included in the synthetic log.
     Self::process_flush_buffers_actions(
       &result.triggered_flush_buffers_action_ids,
       &mut self.buffer_producers,
       &result.triggered_flushes_buffer_ids,
       &result.log_destination_buffer_ids,
       &"State Change".into(),
-      &[].into(),
+      fields,
       session_id,
       state_change.timestamp,
     );

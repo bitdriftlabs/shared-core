@@ -164,8 +164,13 @@ impl AnnotatedWorkflowsEngine {
     state_reader: &dyn bd_state::StateReader,
   ) -> WorkflowsEngineResult<'_> {
     // State changes don't write to log buffers, so use the static empty set
+    // For tests, we pass empty fields since we're not testing global metadata yet
+    let empty_fields = bd_log_primitives::LogFields::default();
     self.engine.process_event(
-      WorkflowEvent::StateChange(state_change),
+      WorkflowEvent::StateChange(
+        state_change,
+        bd_log_primitives::FieldsRef::new(&empty_fields, &empty_fields),
+      ),
       &EMPTY_BUFFER_IDS,
       state_reader,
       state_change.timestamp,

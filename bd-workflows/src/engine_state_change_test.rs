@@ -507,23 +507,13 @@ fn make_state_matcher(
   )
 }
 
-fn make_state_matcher_ex(
-  scope: bd_state::Scope,
-  key: &str,
-  string_value_match_type: String_value_match_type,
-) -> bd_proto::protos::log_matcher::log_matcher::LogMatcher {
-  use bd_proto::protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
-  make_state_matcher_ex(
-    scope,
-    key,
-    String_value_match_type::MatchValue(value.to_string()),
-  )
-}
+type StringValueMatchType =
+  bd_proto::protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
 
 fn make_state_matcher_ex(
   scope: bd_state::Scope,
   key: &str,
-  string_value_match_type: String_value_match_type,
+  string_value_match_type: StringValueMatchType,
 ) -> bd_proto::protos::log_matcher::log_matcher::LogMatcher {
   use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
   use bd_proto::protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Match_type;
@@ -536,7 +526,6 @@ fn make_state_matcher_ex(
   use bd_proto::protos::state::scope::StateScope;
   use bd_proto::protos::value_matcher::value_matcher;
   use bd_proto::protos::value_matcher::value_matcher::Operator;
-  use bd_proto::protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
 
   LogMatcher {
     matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
@@ -883,4 +872,250 @@ async fn state_change_compares_state_to_extracted_field() {
   setup
     .collector
     .assert_workflow_counter_eq(1, "matched", labels! {});
+}
+
+// Tests that state changes can match on global metadata fields passed in via FieldsRef.
+// This verifies that fields collected from global metadata (like device info, app version, etc.)
+// can be used in log matchers during state change transitions.
+#[tokio::test]
+async fn state_change_matches_on_global_metadata_fields() {
+  use bd_log_matcher::builder::field_equals;
+
+  let b = state("B");
+
+  // Create a state change rule that requires a specific device_id field value
+  let state_change_rule = {
+    use bd_proto::protos::workflow::workflow::workflow::rule::Rule_type;
+    use bd_proto::protos::workflow::workflow::workflow::{Rule, RuleStateChangeMatch};
+
+    Rule {
+      rule_type: Some(Rule_type::RuleStateChangeMatch(RuleStateChangeMatch {
+        scope: bd_proto::protos::state::scope::StateScope::FEATURE_FLAG.into(),
+        key: "trigger_flag".to_string(),
+        previous_value: protobuf::MessageField::none(),
+        new_value: protobuf::MessageField::some(
+          bd_proto::protos::state::matcher::StateValueMatch {
+            value_match: Some(make_is_set_match()),
+            ..Default::default()
+          },
+        ),
+        // Add a log matcher that checks device_id field
+        log_matcher: protobuf::MessageField::some(field_equals("device_id", "test_device_123")),
+        ..Default::default()
+      })),
+      ..Default::default()
+    }
+  };
+
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    state_change_rule,
+    &[make_emit_counter_action(
+      "matched_on_field",
+      metric_value(1),
+      vec![],
+    )],
+  );
+
+  let workflow = WorkflowBuilder::new("field_match_test", &[&a, &b]).make_config();
+  let setup = Setup::new();
+
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
+
+  // Create initial run
+  engine.process_log(TestLog::new("init"));
+  engine_assert_active_runs!(engine; 0; "A");
+
+  // Process state change WITH global metadata fields
+  let state_change = StateChange::inserted(
+    bd_state::Scope::FeatureFlagExposure,
+    "trigger_flag",
+    "enabled",
+    OffsetDateTime::now_utc(),
+  );
+
+  // Create fields that would come from global metadata
+  let fields = bd_test_helpers::workflow::make_tags(labels! { "device_id" => "test_device_123" });
+  let matching_fields = bd_log_primitives::LogFields::default();
+
+  // Process state change with fields
+  let fields_ref = bd_log_primitives::FieldsRef::new(&fields, &matching_fields);
+  engine.engine.process_event(
+    crate::workflow::WorkflowEvent::StateChange(&state_change, fields_ref),
+    &super::engine_test_helpers::EMPTY_BUFFER_IDS,
+    &bd_state::test::TestStateReader::default(),
+    state_change.timestamp,
+  );
+
+  // Verify the transition occurred because the field matched
+  setup
+    .collector
+    .assert_workflow_counter_eq(1, "matched_on_field", labels! {});
+}
+
+// Tests that state changes can extract values from global metadata fields.
+// This verifies that fields passed in via FieldsRef (like device info, app version)
+// can be extracted during the state change transition and used in actions.
+#[tokio::test]
+async fn state_change_extracts_global_metadata_fields() {
+  let b = state("B");
+
+  // A -> B transition triggered by state change, extracting app_version field from fields
+  // and using it directly in a metric tag
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    make_state_change_rule(
+      bd_state::Scope::FeatureFlagExposure,
+      "trigger_flag",
+      make_is_set_match(),
+    ),
+    &[make_emit_counter_action(
+      "extraction_metric",
+      metric_value(1),
+      vec![bd_test_helpers::workflow::extract_metric_tag(
+        "app_version",
+        "app_version_tag",
+      )],
+    )],
+  );
+
+  let workflow = WorkflowBuilder::new("field_extraction_test", &[&a, &b]).make_config();
+  let setup = Setup::new();
+
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
+
+  // Create initial run
+  engine.process_log(TestLog::new("init"));
+  engine_assert_active_runs!(engine; 0; "A");
+
+  // Process state change with global metadata fields
+  let state_change = StateChange::inserted(
+    bd_state::Scope::FeatureFlagExposure,
+    "trigger_flag",
+    "enabled",
+    OffsetDateTime::now_utc(),
+  );
+
+  // Create fields that would come from global metadata
+  let fields = bd_test_helpers::workflow::make_tags(labels! { "app_version" => "1.2.3" });
+  let matching_fields = bd_log_primitives::LogFields::default();
+
+  // Process state change with fields
+  let fields_ref = bd_log_primitives::FieldsRef::new(&fields, &matching_fields);
+  engine.engine.process_event(
+    crate::workflow::WorkflowEvent::StateChange(&state_change, fields_ref),
+    &super::engine_test_helpers::EMPTY_BUFFER_IDS,
+    &bd_state::test::TestStateReader::default(),
+    state_change.timestamp,
+  );
+
+  // Verify the metric was emitted with the extracted app_version field
+  setup.collector.assert_workflow_counter_eq(
+    1,
+    "extraction_metric",
+    labels! {
+      "app_version_tag" => "1.2.3",
+    },
+  );
+}
+
+// Tests that state changes can include global metadata fields in generated logs.
+// This verifies that when a state change triggers a log generation action,
+// the fields from global metadata are available and can be included in the generated log.
+#[tokio::test]
+async fn state_change_includes_fields_in_generated_log() {
+  use bd_test_helpers::workflow::TestFieldRef;
+
+  let b = state("B");
+
+  // A -> B transition triggered by state change, generating a log with a field reference
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    make_state_change_rule(
+      bd_state::Scope::FeatureFlagExposure,
+      "trigger_flag",
+      make_is_set_match(),
+    ),
+    &[make_generate_log_action_proto(
+      "state_change_occurred",
+      &[
+        (
+          "device",
+          TestFieldType::Single(TestFieldRef::FieldFromCurrentLog("device_id")),
+        ),
+        (
+          "version",
+          TestFieldType::Single(TestFieldRef::FieldFromCurrentLog("app_version")),
+        ),
+      ],
+      "generated_log_id",
+      LogType::NORMAL,
+    )],
+  );
+
+  let workflow = WorkflowBuilder::new("generated_log_test", &[&a, &b]).make_config();
+  let setup = Setup::new();
+
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
+
+  // Create initial run
+  engine.process_log(TestLog::new("init"));
+  engine_assert_active_runs!(engine; 0; "A");
+
+  // Process state change with global metadata fields
+  let state_change = StateChange::inserted(
+    bd_state::Scope::FeatureFlagExposure,
+    "trigger_flag",
+    "enabled",
+    OffsetDateTime::now_utc(),
+  );
+
+  // Create fields that would come from global metadata
+  let fields = bd_test_helpers::workflow::make_tags(labels! {
+    "device_id" => "device_abc",
+    "app_version" => "2.0.0",
+  });
+  let matching_fields = bd_log_primitives::LogFields::default();
+
+  // Process state change with fields
+  let fields_ref = bd_log_primitives::FieldsRef::new(&fields, &matching_fields);
+  let result = engine.engine.process_event(
+    crate::workflow::WorkflowEvent::StateChange(&state_change, fields_ref),
+    &super::engine_test_helpers::EMPTY_BUFFER_IDS,
+    &bd_state::test::TestStateReader::default(),
+    state_change.timestamp,
+  );
+
+  // Verify a log was generated
+  let generated_logs: Vec<_> = result.logs_to_inject.into_values().collect();
+  assert_eq!(generated_logs.len(), 1);
+
+  let generated_log = &generated_logs[0];
+  assert_eq!(
+    generated_log.message,
+    bd_log_primitives::LogMessage::String("state_change_occurred".to_string())
+  );
+
+  // Verify the generated log includes the fields from global metadata
+  let device_field = generated_log
+    .field_value("device")
+    .expect("device field should exist");
+  assert_eq!(device_field, "device_abc");
+
+  let version_field = generated_log
+    .field_value("version")
+    .expect("version field should exist");
+  assert_eq!(version_field, "2.0.0");
 }

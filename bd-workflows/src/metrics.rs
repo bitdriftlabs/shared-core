@@ -101,9 +101,9 @@ impl MetricsCollector {
         "log_type" => Some((log.log_type as u32).to_string().into()),
         key => log.field_value(key),
       },
-      WorkflowEvent::StateChange(_) => {
-        // State changes don't have log fields, so field extraction always fails
-        None
+      WorkflowEvent::StateChange(_state_change, fields) => {
+        // State changes can have fields (typically global metadata like device_id, app_version)
+        fields.field_value(key)
       },
     }
   }
@@ -132,7 +132,7 @@ impl MetricsCollector {
         crate::config::TagValue::Fixed(value) => Some(value.as_str().into()),
         crate::config::TagValue::LogBodyExtract => match event {
           WorkflowEvent::Log(log) => log.message.as_str().map(Cow::Borrowed),
-          WorkflowEvent::StateChange(_) => None,
+          WorkflowEvent::StateChange(..) => None,
         },
       } {
         extracted_tags.insert(key.clone(), extracted_value.into_owned());
