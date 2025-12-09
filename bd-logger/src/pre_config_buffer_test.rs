@@ -40,7 +40,7 @@ fn buffer_acts_as_fifo_queue_with_limits() {
   assert_eq!(Ok(()), buffer.push(logs[3]));
 
   // Can add many small items as long as we're within memory limit
-  for _ in 0..500 {
+  for _ in 0 .. 500 {
     assert_eq!(Ok(()), buffer.push(SimulatedSizeLog { size: 2 }));
   }
 
