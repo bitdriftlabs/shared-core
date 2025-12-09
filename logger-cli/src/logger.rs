@@ -169,6 +169,43 @@ impl fixed::Callbacks for MaybeStaticSessionGenerator {
   }
 }
 
+#[derive(serde::Serialize)]
+struct DeviceCodeRequest {
+  device_id: String,
+}
+
+#[derive(serde::Deserialize)]
+struct DeviceCodeResponse {
+  code: String,
+}
+
+async fn fetch_device_code(args: &LoggerArgs, device_id: &str) -> anyhow::Result<String> {
+  let client = reqwest::Client::new();
+  let request = DeviceCodeRequest {
+    device_id: device_id.to_string(),
+  };
+
+  let url = format!("{}/v1/device/code", args.api_url);
+  let response = client
+    .post(&url)
+    .header("x-bitdrift-api-key", &args.api_key)
+    .json(&request)
+    .send()
+    .await?;
+
+  let status = response.status();
+  if !status.is_success() {
+    let response_text = response
+      .text()
+      .await
+      .unwrap_or_else(|_| "<unable to read body>".to_string());
+    anyhow::bail!("HTTP {status} - {response_text}");
+  }
+
+  let device_code_response: DeviceCodeResponse = response.json().await?;
+  Ok(device_code_response.code)
+}
+
 pub struct LoggerArgs {
   pub api_url: String,
   pub api_key: String,
@@ -179,7 +216,7 @@ pub struct LoggerArgs {
   pub model: String,
 }
 
-pub fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Result<LoggerHolder> {
+pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Result<LoggerHolder> {
   let session_callbacks = Arc::new(MaybeStaticSessionGenerator {
     config_path: sdk_directory.join(SESSION_FILE),
   });
@@ -187,6 +224,18 @@ pub fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Result<Lo
   let storage = SQLiteStorage::new(&storage_db);
   let store = Arc::new(bd_key_value::Store::new(Box::new(storage)));
   let device = Arc::new(bd_device::Device::new(store.clone()));
+
+  // Fetch and log device code
+  let device_id = device.id();
+  match fetch_device_code(args, &device_id).await {
+    Ok(code) => {
+      log::info!("Device code: {code}");
+    },
+    Err(e) => {
+      log::warn!("Failed to fetch device code: {e}");
+    },
+  }
+
   let shutdown_trigger = bd_shutdown::ComponentShutdownTrigger::default();
   let shutdown = shutdown_trigger.make_shutdown();
   let network = bd_hyper_network::HyperNetwork::run_on_thread(&args.api_url, shutdown);
@@ -198,7 +247,6 @@ pub fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Result<Lo
     device: device.clone(),
     model: args.model.clone(),
   });
-
 
   let (logger, _, future, _) = bd_logger::LoggerBuilder::new(InitParams {
     sdk_directory: sdk_directory.to_path_buf(),

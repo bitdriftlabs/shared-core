@@ -2837,6 +2837,7 @@ dependencies = [
  "libc",
  "log",
  "parking_lot",
+ "reqwest",
  "rmcp",
  "serde",
  "serde_json",

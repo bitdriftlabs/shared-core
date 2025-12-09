@@ -132,7 +132,7 @@ protobuf-json-mapping = { git = "https://github.com/bitdriftlabs/rust-protobuf.g
 
 rand           = "0.9.2"
 regex          = "1.12.2"
-reqwest        = { version = "0.12.24", features = ["deflate"] }
+reqwest        = { version = "0.12.24", features = ["deflate", "json"] }
 rstest         = "0.26.1"
 rstest_reuse   = "0.7.0"
 rustls-pemfile = "2.2.0"

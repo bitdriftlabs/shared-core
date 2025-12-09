@@ -48,7 +48,7 @@ async fn spawn(fut: impl Future<Output = ()> + Send + 'static) {
 static LOGGER: parking_lot::Mutex<Option<LoggerHolder>> = parking_lot::Mutex::new(None);
 
 pub async fn start(sdk_directory: &Path, args: &LoggerArgs, port: u16) -> anyhow::Result<()> {
-  let logger = crate::logger::make_logger(sdk_directory, args)?;
+  let logger = crate::logger::make_logger(sdk_directory, args).await?;
   logger.start();
   LOGGER.lock().replace(logger);
 
