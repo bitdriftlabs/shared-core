@@ -197,6 +197,12 @@ impl<T: MemorySized> Receiver<T> {
 
     Ok(item)
   }
+
+  /// Returns whether the channel is closed (all senders have been dropped).
+  #[must_use]
+  pub fn is_closed(&self) -> bool {
+    self.rx.is_closed()
+  }
 }
 
 //
