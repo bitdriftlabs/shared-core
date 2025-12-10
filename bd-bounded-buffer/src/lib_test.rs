@@ -90,5 +90,5 @@ async fn test_recv_on_closed_channel_returns_immediately() {
   // recv should return None immediately
   let result = tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv()).await;
 
-  assert_eq!(result, Ok(None));
+  assert!(matches!(result, Ok(None)));
 }
