@@ -971,7 +971,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                   if let Some(completion_tx) = completion_tx {
                     completion_tx.send(());
                   }
-                }
+                },
               }
             },
           }
