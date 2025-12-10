@@ -90,15 +90,5 @@ async fn test_recv_on_closed_channel_returns_immediately() {
   // recv should return None immediately
   let result = tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv()).await;
 
-  match result {
-    Ok(None) => {
-      // Expected behavior - recv returned None immediately
-    },
-    Ok(Some(_)) => {
-      panic!("recv returned Some instead of None on closed channel");
-    },
-    Err(_) => {
-      panic!("recv timed out - should return None immediately on closed channel");
-    },
-  }
+  assert_eq!(result, Ok(None));
 }
