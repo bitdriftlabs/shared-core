@@ -15,6 +15,7 @@ use crate::logger::{ReportProcessingRequest, with_thread_local_logger_guard};
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
 use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
+use crate::ordered_receiver::{OrderedMessage, OrderedReceiver, SequencedMessage};
 use crate::pre_config_buffer::{PendingStateOperation, PreConfigBuffer, PreConfigItem};
 use crate::{Block, internal_report, network};
 use anyhow::anyhow;
@@ -107,11 +108,7 @@ impl MemorySized for StateUpdateMessage {
   }
 }
 
-#[derive(Debug)]
-pub struct SequencedStateUpdate {
-  sequence: u64,
-  message: StateUpdateMessage,
-}
+pub type SequencedStateUpdate = SequencedMessage<StateUpdateMessage>;
 
 impl MemorySized for SequencedStateUpdate {
   fn size(&self) -> usize {
@@ -126,11 +123,7 @@ pub struct EmitLogMessage {
   log_processing_completed_tx: Option<oneshot::Sender<()>>,
 }
 
-#[derive(Debug)]
-pub struct SequencedLog {
-  sequence: u64,
-  message: EmitLogMessage,
-}
+pub type SequencedLog = SequencedMessage<EmitLogMessage>;
 
 impl MemorySized for SequencedLog {
   fn size(&self) -> usize {
@@ -245,7 +238,7 @@ impl Sender {
   }
 
   pub fn try_send_log(&self, msg: EmitLogMessage) -> Result<(), TrySendError> {
-    let sequenced = SequencedLog {
+    let sequenced = SequencedMessage {
       sequence: self.next_sequence(),
       message: msg,
     };
@@ -253,7 +246,7 @@ impl Sender {
   }
 
   pub fn try_send_state_update(&self, msg: StateUpdateMessage) -> Result<(), TrySendError> {
-    let sequenced = SequencedStateUpdate {
+    let sequenced = SequencedMessage {
       sequence: self.next_sequence(),
       message: msg,
     };
@@ -285,87 +278,6 @@ impl Sender {
       }
     }
     Ok(())
-  }
-}
-
-//
-// OrderedReceiver
-//
-
-/// Merges two channels (logs and state updates) into a single ordered stream based on sequence
-/// numbers. This ensures that single-threaded callers doing `log(); setField(); log();` observe
-/// the same ordering in the engine.
-pub enum OrderedMessage {
-  Log(EmitLogMessage),
-  State(StateUpdateMessage),
-}
-
-pub struct OrderedReceiver {
-  log_rx: Receiver<SequencedLog>,
-  state_rx: Receiver<SequencedStateUpdate>,
-  // Buffer at most one message from each channel
-  buffered_log: Option<SequencedLog>,
-  buffered_state: Option<SequencedStateUpdate>,
-}
-
-impl OrderedReceiver {
-  pub fn new(log_rx: Receiver<SequencedLog>, state_rx: Receiver<SequencedStateUpdate>) -> Self {
-    Self {
-      log_rx,
-      state_rx,
-      buffered_log: None,
-      buffered_state: None,
-    }
-  }
-
-  pub async fn recv(&mut self) -> Option<OrderedMessage> {
-    loop {
-      // If we have both buffered, return the one with lower sequence
-      if let (Some(log), Some(state)) = (&self.buffered_log, &self.buffered_state) {
-        return if log.sequence <= state.sequence {
-          let log = self.buffered_log.take()?;
-          Some(OrderedMessage::Log(log.message))
-        } else {
-          let state = self.buffered_state.take()?;
-          Some(OrderedMessage::State(state.message))
-        };
-      }
-
-      // If we only have one buffered, return it (single-threaded case - both will be queued)
-      if let Some(log) = self.buffered_log.take() {
-        return Some(OrderedMessage::Log(log.message));
-      }
-      if let Some(state) = self.buffered_state.take() {
-        return Some(OrderedMessage::State(state.message));
-      }
-
-      // Need to receive from channels. Use biased select to check log channel first.
-      tokio::select! {
-        biased;
-        log = self.log_rx.recv(), if self.buffered_log.is_none() => {
-          match log {
-            Some(log) => self.buffered_log = Some(log),
-            None if self.buffered_state.is_some() => {
-              // Log channel closed but still have state buffered
-              let state = self.buffered_state.take()?;
-              return Some(OrderedMessage::State(state.message));
-            }
-            None => return None, // Both channels closed or only log closed with no state
-          }
-        }
-        state = self.state_rx.recv(), if self.buffered_state.is_none() => {
-          match state {
-            Some(state) => self.buffered_state = Some(state),
-            None if self.buffered_log.is_some() => {
-              // State channel closed but still have log buffered
-              let log = self.buffered_log.take()?;
-              return Some(OrderedMessage::Log(log.message));
-            }
-            None => return None, // Both channels closed or only state closed with no log
-          }
-        }
-      }
-    }
   }
 }
 
