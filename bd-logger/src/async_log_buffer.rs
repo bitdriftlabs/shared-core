@@ -58,6 +58,7 @@ use std::collections::{HashMap, VecDeque};
 use std::mem::size_of_val;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use tokio::sync::{mpsc, oneshot};
@@ -107,9 +108,35 @@ impl MemorySized for StateUpdateMessage {
 }
 
 #[derive(Debug)]
+pub struct SequencedStateUpdate {
+  sequence: u64,
+  message: StateUpdateMessage,
+}
+
+impl MemorySized for SequencedStateUpdate {
+  fn size(&self) -> usize {
+    // Don't count sequence overhead - size() is consistent source of truth for accounting
+    self.message.size()
+  }
+}
+
+#[derive(Debug)]
 pub struct EmitLogMessage {
   log: LogLine,
   log_processing_completed_tx: Option<oneshot::Sender<()>>,
+}
+
+#[derive(Debug)]
+pub struct SequencedLog {
+  sequence: u64,
+  message: EmitLogMessage,
+}
+
+impl MemorySized for SequencedLog {
+  fn size(&self) -> usize {
+    // Don't count sequence overhead - size() is consistent source of truth for accounting
+    self.message.size()
+  }
 }
 
 impl From<LogLine> for EmitLogMessage {
@@ -195,27 +222,42 @@ impl MemorySized for LogLine {
 
 #[derive(Clone)]
 pub struct Sender {
-  log_buffer_tx: bd_bounded_buffer::Sender<EmitLogMessage>,
-  state_buffer_tx: bd_bounded_buffer::Sender<StateUpdateMessage>,
+  log_buffer_tx: bd_bounded_buffer::Sender<SequencedLog>,
+  state_buffer_tx: bd_bounded_buffer::Sender<SequencedStateUpdate>,
+  sequence: Arc<AtomicU64>,
 }
 
 impl Sender {
-  pub fn from_parts(
-    log_buffer_tx: bd_bounded_buffer::Sender<EmitLogMessage>,
-    state_buffer_tx: bd_bounded_buffer::Sender<StateUpdateMessage>,
+  #[cfg(test)]
+  pub(crate) fn from_parts(
+    log_buffer_tx: bd_bounded_buffer::Sender<SequencedLog>,
+    state_buffer_tx: bd_bounded_buffer::Sender<SequencedStateUpdate>,
   ) -> Self {
     Self {
       log_buffer_tx,
       state_buffer_tx,
+      sequence: Arc::new(AtomicU64::new(0)),
     }
   }
 
+  fn next_sequence(&self) -> u64 {
+    self.sequence.fetch_add(1, Ordering::Relaxed)
+  }
+
   pub fn try_send_log(&self, msg: EmitLogMessage) -> Result<(), TrySendError> {
-    self.log_buffer_tx.try_send(msg)
+    let sequenced = SequencedLog {
+      sequence: self.next_sequence(),
+      message: msg,
+    };
+    self.log_buffer_tx.try_send(sequenced)
   }
 
   pub fn try_send_state_update(&self, msg: StateUpdateMessage) -> Result<(), TrySendError> {
-    self.state_buffer_tx.try_send(msg)
+    let sequenced = SequencedStateUpdate {
+      sequence: self.next_sequence(),
+      message: msg,
+    };
+    self.state_buffer_tx.try_send(sequenced)
   }
 
   pub fn flush_state(&self, block: Block) -> Result<(), TrySendError> {
@@ -247,14 +289,94 @@ impl Sender {
 }
 
 //
+// OrderedReceiver
+//
+
+/// Merges two channels (logs and state updates) into a single ordered stream based on sequence
+/// numbers. This ensures that single-threaded callers doing `log(); setField(); log();` observe
+/// the same ordering in the engine.
+pub enum OrderedMessage {
+  Log(EmitLogMessage),
+  State(StateUpdateMessage),
+}
+
+pub struct OrderedReceiver {
+  log_rx: Receiver<SequencedLog>,
+  state_rx: Receiver<SequencedStateUpdate>,
+  // Buffer at most one message from each channel
+  buffered_log: Option<SequencedLog>,
+  buffered_state: Option<SequencedStateUpdate>,
+}
+
+impl OrderedReceiver {
+  pub fn new(log_rx: Receiver<SequencedLog>, state_rx: Receiver<SequencedStateUpdate>) -> Self {
+    Self {
+      log_rx,
+      state_rx,
+      buffered_log: None,
+      buffered_state: None,
+    }
+  }
+
+  pub async fn recv(&mut self) -> Option<OrderedMessage> {
+    loop {
+      // If we have both buffered, return the one with lower sequence
+      if let (Some(log), Some(state)) = (&self.buffered_log, &self.buffered_state) {
+        return if log.sequence <= state.sequence {
+          let log = self.buffered_log.take()?;
+          Some(OrderedMessage::Log(log.message))
+        } else {
+          let state = self.buffered_state.take()?;
+          Some(OrderedMessage::State(state.message))
+        };
+      }
+
+      // If we only have one buffered, return it (single-threaded case - both will be queued)
+      if let Some(log) = self.buffered_log.take() {
+        return Some(OrderedMessage::Log(log.message));
+      }
+      if let Some(state) = self.buffered_state.take() {
+        return Some(OrderedMessage::State(state.message));
+      }
+
+      // Need to receive from channels. Use biased select to check log channel first.
+      tokio::select! {
+        biased;
+        log = self.log_rx.recv(), if self.buffered_log.is_none() => {
+          match log {
+            Some(log) => self.buffered_log = Some(log),
+            None if self.buffered_state.is_some() => {
+              // Log channel closed but still have state buffered
+              let state = self.buffered_state.take()?;
+              return Some(OrderedMessage::State(state.message));
+            }
+            None => return None, // Both channels closed or only log closed with no state
+          }
+        }
+        state = self.state_rx.recv(), if self.buffered_state.is_none() => {
+          match state {
+            Some(state) => self.buffered_state = Some(state),
+            None if self.buffered_log.is_some() => {
+              // State channel closed but still have log buffered
+              let log = self.buffered_log.take()?;
+              return Some(OrderedMessage::Log(log.message));
+            }
+            None => return None, // Both channels closed or only state closed with no log
+          }
+        }
+      }
+    }
+  }
+}
+
+//
 // AsyncLogBuffer
 //
 
 // Orchestrates buffering of incoming logs and offloading their processing to
 // a run loop in an async way.
 pub struct AsyncLogBuffer<R: LogReplay> {
-  log_rx: Receiver<EmitLogMessage>,
-  state_rx: Receiver<StateUpdateMessage>,
+  ordered_rx: OrderedReceiver,
   config_update_rx: mpsc::Receiver<ConfigUpdate>,
   report_processor_rx: mpsc::Receiver<ReportProcessingRequest>,
   data_upload_tx: mpsc::Sender<DataUpload>,
@@ -338,8 +460,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     (
       Self {
-        log_rx,
-        state_rx,
+        ordered_rx: OrderedReceiver::new(log_rx, state_rx),
 
         config_update_rx,
         report_processor_rx,
@@ -384,6 +505,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       Sender {
         log_buffer_tx: log_tx,
         state_buffer_tx: state_tx,
+        sequence: Arc::new(AtomicU64::new(0)),
       },
     )
   }
@@ -823,7 +945,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             }
           }
         },
-        Some(EmitLogMessage { mut log, log_processing_completed_tx }) = self.log_rx.recv() => {
+        Some(ordered_message) = self.ordered_rx.recv() => {
+          match ordered_message {
+            OrderedMessage::Log(EmitLogMessage { mut log, log_processing_completed_tx }) => {
               for interceptor in &mut self.interceptors {
                 interceptor.process(
                   log.log_level,
@@ -846,89 +970,96 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 debug_assert!(false, "failed to send log processing completion");
                 log::debug!("failed to send log processing completion");
               }
-        },
-        Some(async_log_buffer_message) = self.state_rx.recv() => {
-          match async_log_buffer_message {
-            StateUpdateMessage::AddLogField(key, value) => {
-              if let Err(e) = self.metadata_collector.add_field(key.clone().into(), value.clone()) {
-                log::warn!("failed to add log field ({key:?}): {e}");
-              }
             },
-            StateUpdateMessage::RemoveLogField(field_name) => {
-              self.metadata_collector.remove_field(&field_name);
-            },
-            StateUpdateMessage::SetFeatureFlagExposure(flag, variant) => {
-              if let LoggingState::Initialized(initialized_logging_context) =
-                &mut self.logging_state
-              {
-                // Initialized: update state store and replay through workflows
-                initialized_logging_context
-                  .handle_state_insert(
-                    &state_store,
-                    &self.metadata_collector,
-                    &mut self.global_state_tracker,
-                    &mut self.replayer,
-                    Scope::FeatureFlagExposure,
-                    flag,
-                    variant.unwrap_or_default(),
-                    self.time_provider.now(),
-                    &self.session_strategy.session_id(),
-                  )
-                  .await;
-              } else {
-                // Not initialized: queue the operation for later replay
-                if let LoggingState::Uninitialized(uninitialized_logging_context) =
-                  &mut self.logging_state
-                {
-                  let result = uninitialized_logging_context.pre_config_log_buffer.push(
-                    PreConfigItem::StateOperation(PendingStateOperation::SetFeatureFlagExposure{
-                        name: flag,
-                        variant,
-                        session_id: self.session_strategy.session_id()
-                    }),
-                  );
-                  uninitialized_logging_context
-                    .stats
-                    .pre_config_log_buffer
-                    .record(&result);
-                  if let Err(e) = result {
-                    log::debug!("failed to enqueue state operation to pre-config buffer: {e}");
+            OrderedMessage::State(async_log_buffer_message) => {
+              match async_log_buffer_message {
+                StateUpdateMessage::AddLogField(key, value) => {
+                  if let Err(e) = self
+                    .metadata_collector
+                    .add_field(key.clone().into(), value.clone())
+                  {
+                    log::warn!("failed to add log field ({key:?}): {e}");
+                  }
+                },
+                StateUpdateMessage::RemoveLogField(field_name) => {
+                  self.metadata_collector.remove_field(&field_name);
+                },
+                StateUpdateMessage::SetFeatureFlagExposure(flag, variant) => {
+                  if let LoggingState::Initialized(initialized_logging_context) =
+                    &mut self.logging_state
+                  {
+                    // Initialized: update state store and replay through workflows
+                    initialized_logging_context
+                      .handle_state_insert(
+                        &state_store,
+                        &self.metadata_collector,
+                        &mut self.global_state_tracker,
+                        &mut self.replayer,
+                        Scope::FeatureFlagExposure,
+                        flag,
+                        variant.unwrap_or_default(),
+                        self.time_provider.now(),
+                        &self.session_strategy.session_id(),
+                      )
+                      .await;
+                  } else {
+                    // Not initialized: queue the operation for later replay
+                    if let LoggingState::Uninitialized(uninitialized_logging_context) =
+                      &mut self.logging_state
+                    {
+                      let result = uninitialized_logging_context.pre_config_log_buffer.push(
+                        PreConfigItem::StateOperation(PendingStateOperation::SetFeatureFlagExposure{
+                            name: flag,
+                            variant,
+                            session_id: self.session_strategy.session_id()
+                        }),
+                      );
+                      uninitialized_logging_context
+                        .stats
+                        .pre_config_log_buffer
+                        .record(&result);
+                      if let Err(e) = result {
+                        log::debug!("failed to enqueue state operation to pre-config buffer: {e}");
+                      }
+                    }
+                  }
+                },
+                StateUpdateMessage::FlushState(completion_tx) => {
+                  let (sender, receiver) = bd_completion::Sender::new();
+                  if let Err(e) =
+                    self.logging_state.flush_stats_trigger().flush(Some(sender)).await
+                  {
+                    log::debug!("flushing state: failed to flush stats: {e}");
+                  }
+
+                  if let Err(e) = receiver.recv().await {
+                    log::debug!("flushing state: failed to wait for stats flush: {e}");
+                  }
+
+                  let (sender, receiver) = bd_completion::Sender::new();
+                  let buffers_with_ack = BuffersWithAck::new_all_buffers(Some(sender));
+                  if let Err(e) = self.logging_state.flush_buffers_trigger()
+                    .send(buffers_with_ack).await
+                  {
+                    log::debug!("flushing state: failed to flush buffers: {e}");
+                  }
+
+                  if let Err(e) = receiver.recv().await {
+                    log::debug!("flushing state: failed to wait for buffers flush: {e}");
+                  }
+
+                  self.session_strategy.flush();
+
+                  if let Some(workflows_engine) = self.logging_state.workflows_engine() {
+                    workflows_engine.maybe_persist(true).await;
+                  }
+
+                  if let Some(completion_tx) = completion_tx {
+                    completion_tx.send(());
                   }
                 }
               }
             },
-            StateUpdateMessage::FlushState(completion_tx) => {
-              let (sender, receiver) = bd_completion::Sender::new();
-              if let Err(e) = self.logging_state.flush_stats_trigger().flush(Some(sender)).await {
-                log::debug!("flushing state: failed to flush stats: {e}");
-              }
-
-              if let Err(e) = receiver.recv().await {
-                log::debug!("flushing state: failed to wait for stats flush: {e}");
-              }
-
-              let (sender, receiver) = bd_completion::Sender::new();
-              let buffers_with_ack = BuffersWithAck::new_all_buffers(Some(sender));
-              if let Err(e) = self.logging_state.flush_buffers_trigger()
-                .send(buffers_with_ack).await
-              {
-                log::debug!("flushing state: failed to flush buffers: {e}");
-              }
-
-              if let Err(e) = receiver.recv().await {
-                log::debug!("flushing state: failed to wait for buffers flush: {e}");
-              }
-
-              self.session_strategy.flush();
-
-              if let Some(workflows_engine) = self.logging_state.workflows_engine() {
-                workflows_engine.maybe_persist(true).await;
-              }
-
-              if let Some(completion_tx) = completion_tx {
-                completion_tx.send(());
-              }
-            }
           }
         },
         () = maybe_await_map(

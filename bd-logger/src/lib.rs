@@ -28,6 +28,7 @@ mod logger;
 mod logging_state;
 mod metadata;
 mod network;
+mod ordered_receiver;
 mod pre_config_buffer;
 mod service;
 
