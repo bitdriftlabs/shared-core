@@ -56,3 +56,39 @@ async fn test_many_small_messages_within_memory_limit() {
   // Now we can send again
   assert_ok!(tx.try_send(Item { reported_size: 1 }));
 }
+
+#[tokio::test]
+async fn test_try_recv_on_closed_channel() {
+  let (tx, mut rx) = channel::<Item>(1024);
+
+  // Drop sender to close channel
+  drop(tx);
+
+  // try_recv should return Disconnected
+  let result = rx.try_recv();
+
+  match result {
+    Err(super::TryRecvError::Disconnected) => {
+      // Expected behavior
+    },
+    Err(super::TryRecvError::Empty) => {
+      panic!("try_recv returned Empty instead of Disconnected on closed channel");
+    },
+    Ok(_) => {
+      panic!("try_recv returned Ok instead of error on closed channel");
+    },
+  }
+}
+
+#[tokio::test]
+async fn test_recv_on_closed_channel_returns_immediately() {
+  let (tx, mut rx) = channel::<Item>(1024);
+
+  // Drop sender to close channel
+  drop(tx);
+
+  // recv should return None immediately
+  let result = tokio::time::timeout(std::time::Duration::from_millis(100), rx.recv()).await;
+
+  assert!(matches!(result, Ok(None)));
+}

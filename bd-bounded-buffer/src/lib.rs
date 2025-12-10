@@ -23,6 +23,7 @@ use bd_log_primitives::size::MemorySized;
 use bd_stats_common::labels;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use tokio::sync::mpsc::error::TryRecvError as TokioTryRecvError;
 use tokio::sync::mpsc::{UnboundedReceiver as TokioReceiver, UnboundedSender as TokioSender};
 
 // Like `mpsc::unbounded_channel` but provides a way to specify the maximum amount of
@@ -64,6 +65,14 @@ pub enum TrySendError {
   FullSizeOverflow,
   #[error("buffer closed")]
   Closed,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum TryRecvError {
+  #[error("channel empty")]
+  Empty,
+  #[error("channel disconnected")]
+  Disconnected,
 }
 
 pub struct Sender<T: MemorySized> {
@@ -170,6 +179,29 @@ impl<T: MemorySized> Receiver<T> {
     }
 
     item
+  }
+
+  pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
+    let item = self.rx.try_recv().map_err(|e| match e {
+      TokioTryRecvError::Empty => TryRecvError::Empty,
+      TokioTryRecvError::Disconnected => TryRecvError::Disconnected,
+    })?;
+
+    let size: u64 = item.size() as u64;
+    let previous_size = self.memory_capacity_usage.fetch_sub(size, Ordering::SeqCst);
+
+    log::trace!(
+      "{size:?} bytes read from the channel, new channel size {:?} bytes",
+      previous_size - size,
+    );
+
+    Ok(item)
+  }
+
+  /// Returns whether the channel is closed (all senders have been dropped).
+  #[must_use]
+  pub fn is_closed(&self) -> bool {
+    self.rx.is_closed()
   }
 }
 
