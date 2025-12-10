@@ -179,15 +179,46 @@ async fn handles_only_states() {
   }
 }
 
-#[tokio::test]
+#[tokio::test(flavor = "multi_thread")]
 async fn returns_none_when_both_channels_closed() {
-  let (_log_tx, log_rx) = channel::<SequencedMessage<TestLog>>(1024);
-  let (_state_tx, state_rx) = channel::<SequencedMessage<TestState>>(1024);
+  let (log_tx, log_rx) = channel::<SequencedMessage<TestLog>>(1024);
+  let (state_tx, state_rx) = channel::<SequencedMessage<TestState>>(1024);
   let mut ordered = OrderedReceiver::new(log_rx, state_rx);
 
   // Drop senders to close channels
+  drop(log_tx);
+  drop(state_tx);
 
-  assert!(ordered.recv().await.is_none());
+  let result = tokio::time::timeout(std::time::Duration::from_secs(1), ordered.recv()).await;
+
+  match result {
+    Ok(Some(_)) => panic!("Expected None"),
+    Ok(None) => {}, // Success
+    Err(e) => panic!("recv() timed out - likely deadlock: {e}"),
+  }
+}
+
+#[tokio::test]
+async fn closed_channel_recv_returns_none() {
+  let (log_tx, mut log_rx) = channel::<SequencedMessage<TestLog>>(1024);
+  let (state_tx, mut state_rx) = channel::<SequencedMessage<TestState>>(1024);
+
+  // Drop senders to close channels
+  drop(log_tx);
+  drop(state_tx);
+
+  // Test that recv() on a closed channel returns None
+  let log_result = log_rx.recv().await;
+  let state_result = state_rx.recv().await;
+
+  assert!(
+    log_result.is_none(),
+    "Closed log channel should return None"
+  );
+  assert!(
+    state_result.is_none(),
+    "Closed state channel should return None"
+  );
 }
 
 #[tokio::test]
@@ -263,7 +294,7 @@ async fn handles_many_logs_then_state() {
   let mut ordered = OrderedReceiver::new(log_rx, state_rx);
 
   // Send many logs, then a state update
-  for i in 0..10 {
+  for i in 0 .. 10 {
     log_tx
       .try_send(SequencedMessage {
         sequence: i * 2,
@@ -296,10 +327,10 @@ async fn handles_many_logs_then_state() {
   for (msg_type, seq) in expected {
     match ordered.recv().await {
       Some(OrderedMessage::Log(TestLog(msg))) if msg_type == "log" => {
-        assert_eq!(msg, format!("log{seq}"))
+        assert_eq!(msg, format!("log{seq}"));
       },
       Some(OrderedMessage::State(TestState(msg))) if msg_type == "state" => {
-        assert_eq!(msg, format!("state{seq}"))
+        assert_eq!(msg, format!("state{seq}"));
       },
       other => panic!("Unexpected message: {other:?}"),
     }

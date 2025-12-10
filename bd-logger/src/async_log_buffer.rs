@@ -20,7 +20,7 @@ use crate::pre_config_buffer::{PendingStateOperation, PreConfigBuffer, PreConfig
 use crate::{Block, internal_report, network};
 use anyhow::anyhow;
 use bd_api::DataUpload;
-use bd_bounded_buffer::{Receiver, TrySendError, channel};
+use bd_bounded_buffer::{TrySendError, channel};
 use bd_buffer::BuffersWithAck;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_common::{maybe_await, maybe_await_map};
@@ -281,6 +281,8 @@ impl Sender {
   }
 }
 
+pub type AsyncLogBufferOrderedReceiver = OrderedReceiver<EmitLogMessage, StateUpdateMessage>;
+
 //
 // AsyncLogBuffer
 //
@@ -288,7 +290,7 @@ impl Sender {
 // Orchestrates buffering of incoming logs and offloading their processing to
 // a run loop in an async way.
 pub struct AsyncLogBuffer<R: LogReplay> {
-  ordered_rx: OrderedReceiver,
+  ordered_rx: AsyncLogBufferOrderedReceiver,
   config_update_rx: mpsc::Receiver<ConfigUpdate>,
   report_processor_rx: mpsc::Receiver<ReportProcessingRequest>,
   data_upload_tx: mpsc::Sender<DataUpload>,
