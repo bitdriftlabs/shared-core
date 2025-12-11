@@ -33,7 +33,7 @@ fn platform_default() {
           info
             .payload()
             .downcast_ref::<String>()
-            .map_or("<none>", |s| s)
+            .map_or("<none>", |s| s.as_str())
         },
         |s| s,
       );
