@@ -7,43 +7,10 @@
 
 #![allow(clippy::unwrap_used)]
 
-use crate::{InitParams, LoggerBuilder};
-use bd_device::Store;
-use bd_noop_network::NoopNetwork;
-use bd_session::fixed::{Strategy, UUIDCallbacks};
-use bd_test_helpers::metadata::EmptyMetadata;
-use bd_test_helpers::metadata_provider::LogMetadata;
-use bd_test_helpers::resource_utilization::EmptyTarget;
-use bd_test_helpers::session::in_memory_store;
-use std::sync::Arc;
+use super::setup::create_minimal_init_params;
+use crate::LoggerBuilder;
 use std::time::Duration;
 use tempfile::TempDir;
-
-// Helper to create minimal init params for testing directory locking
-fn create_init_params(sdk_directory: &TempDir) -> InitParams {
-  let session_store = in_memory_store();
-  let device_store = Arc::new(Store::new(Box::new(
-    bd_test_helpers::session::InMemoryStorage::default(),
-  )));
-
-  InitParams {
-    sdk_directory: sdk_directory.path().into(),
-    api_key: "test-api-key".to_string(),
-    session_strategy: Arc::new(bd_session::Strategy::Fixed(Strategy::new(
-      session_store,
-      Arc::new(UUIDCallbacks),
-    ))),
-    metadata_provider: Arc::new(LogMetadata::default()),
-    resource_utilization_target: Box::new(EmptyTarget),
-    session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
-    events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
-    device: Arc::new(bd_device::Device::new(device_store.clone())),
-    store: device_store,
-    network: Box::new(NoopNetwork),
-    static_metadata: Arc::new(EmptyMetadata),
-    start_in_sleep_mode: false,
-  }
-}
 
 #[tokio::test]
 async fn multiple_loggers_same_directory_second_becomes_noop() {
@@ -51,7 +18,7 @@ async fn multiple_loggers_same_directory_second_becomes_noop() {
   let shared_sdk_dir = TempDir::new().unwrap();
 
   // First logger should successfully acquire the lock
-  let params1 = create_init_params(&shared_sdk_dir);
+  let params1 = create_minimal_init_params(shared_sdk_dir.path());
   let (_logger1, _tx1, future1, _flush1) = LoggerBuilder::new(params1).build().unwrap();
 
   // Spawn the first logger's event loop
@@ -61,7 +28,7 @@ async fn multiple_loggers_same_directory_second_becomes_noop() {
   tokio::time::sleep(Duration::from_millis(100)).await;
 
   // Second logger with the same directory should fail to acquire lock and become no-op
-  let params2 = create_init_params(&shared_sdk_dir);
+  let params2 = create_minimal_init_params(shared_sdk_dir.path());
   let (_logger2, _tx2, future2, _flush2) = LoggerBuilder::new(params2).build().unwrap();
 
   // Spawn the second logger's event loop - it should return immediately (no-op mode)
@@ -84,7 +51,7 @@ async fn logger_releases_lock_on_shutdown() {
 
   // First logger acquires the lock
   {
-    let params1 = create_init_params(&shared_sdk_dir);
+    let params1 = create_minimal_init_params(shared_sdk_dir.path());
     let (_logger1, _tx1, future1, _flush1) = LoggerBuilder::new(params1).build().unwrap();
 
     let handle1 = tokio::spawn(future1);
@@ -100,7 +67,7 @@ async fn logger_releases_lock_on_shutdown() {
   tokio::time::sleep(Duration::from_millis(100)).await;
 
   // Second logger should now be able to acquire the lock successfully
-  let params2 = create_init_params(&shared_sdk_dir);
+  let params2 = create_minimal_init_params(shared_sdk_dir.path());
   let (_logger2, _tx2, future2, _flush2) = LoggerBuilder::new(params2).build().unwrap();
 
   let handle2 = tokio::spawn(future2);
@@ -124,8 +91,8 @@ async fn concurrent_logger_initialization() {
   let shared_sdk_dir = TempDir::new().unwrap();
 
   // Build two loggers concurrently
-  let params1 = create_init_params(&shared_sdk_dir);
-  let params2 = create_init_params(&shared_sdk_dir);
+  let params1 = create_minimal_init_params(shared_sdk_dir.path());
+  let params2 = create_minimal_init_params(shared_sdk_dir.path());
 
   let (logger1, _tx1, future1, _flush1) = LoggerBuilder::new(params1).build().unwrap();
   let (logger2, _tx2, future2, _flush2) = LoggerBuilder::new(params2).build().unwrap();

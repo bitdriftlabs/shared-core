@@ -17,6 +17,7 @@ use crate::{
 };
 use bd_client_stats::FlushTrigger;
 use bd_device::Store;
+use bd_noop_network::NoopNetwork;
 use bd_proto::protos::client::api::ConfigurationUpdate;
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::client::api::configuration_update_ack::Nack;
@@ -434,5 +435,32 @@ impl Drop for Setup {
     // Perform blocking shutdown to ensure that the ring buffers are released by the time Drop
     // completes.
     self.logger.shutdown(true);
+  }
+}
+
+/// Creates minimal `InitParams` for testing without a server connection.
+/// Useful for testing infrastructure-level concerns like directory locking.
+pub fn create_minimal_init_params(sdk_directory: &std::path::Path) -> InitParams {
+  let session_store = in_memory_store();
+  let device_store = Arc::new(Store::new(Box::new(
+    bd_test_helpers::session::InMemoryStorage::default(),
+  )));
+
+  InitParams {
+    sdk_directory: sdk_directory.into(),
+    api_key: "test-api-key".to_string(),
+    session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
+      session_store,
+      Arc::new(UUIDCallbacks),
+    ))),
+    metadata_provider: Arc::new(LogMetadata::default()),
+    resource_utilization_target: Box::new(EmptyTarget),
+    session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
+    events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
+    device: Arc::new(bd_device::Device::new(device_store.clone())),
+    store: device_store,
+    network: Box::new(NoopNetwork),
+    static_metadata: Arc::new(EmptyMetadata),
+    start_in_sleep_mode: false,
   }
 }
