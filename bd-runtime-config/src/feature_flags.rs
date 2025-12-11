@@ -141,9 +141,11 @@ pub fn new_memory_feature_flags_loader(
     |feature_flags: Option<MemoryFeatureFlags>| -> ConfigPtr<dyn FeatureFlags> {
       // For feature flags we always return a valid object so callers can unwrap() directly
       // and use defaults.
-      Some(std::sync::Arc::new(feature_flags.unwrap_or_else(|| MemoryFeatureFlags {
+      Some(std::sync::Arc::new(feature_flags.unwrap_or_else(|| {
+        MemoryFeatureFlags {
           values: HashMap::new(),
-        })))
+        }
+      })))
     },
     stats,
   )

@@ -52,10 +52,10 @@ impl Device {
       id.clone()
     } else {
       let id = self.store.get(&DEVICE_ID_KEY).unwrap_or_else(|| {
-          let id = Uuid::new_v4().to_string();
-          self.store.set(&DEVICE_ID_KEY, &id);
-          id
-        });
+        let id = Uuid::new_v4().to_string();
+        self.store.set(&DEVICE_ID_KEY, &id);
+        id
+      });
 
       log::info!("bitdrift Capture device ID: {id:?}");
 
