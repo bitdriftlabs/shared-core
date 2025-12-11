@@ -47,7 +47,7 @@ pub enum Error {
   #[error("A absl::Status was returned: {0:?}:{1}")]
   AbslStatus(AbslCode, String),
   #[error("An error ocurred while attempting to create buffer '{0}': {1}")]
-  BufferCreation(PathBuf, Box<Error>),
+  BufferCreation(PathBuf, Box<Self>),
   #[error("Failed to convert a Path into a valid String")]
   InvalidFileName,
   #[error("Failed to start a thread: {0}")]

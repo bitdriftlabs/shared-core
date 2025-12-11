@@ -169,11 +169,8 @@ fn test_reinit_from_failing_source() -> anyhow::Result<()> {
   // Try to reinit journal1 from journal2 - should handle any errors gracefully
   let result = journal1.reinit_from(&journal2);
   // This should succeed since journal1 has enough space, or at least handle errors gracefully
-  if result.is_err() {
-    println!(
-      "Reinit failed as expected due to buffer constraints: {}",
-      result.unwrap_err()
-    );
+  if let Err(e) = result {
+    println!("Reinit failed as expected due to buffer constraints: {e}",);
     // This is acceptable - the test is just checking that we don't panic
   } else {
     // Verify the reinit worked if it succeeded
