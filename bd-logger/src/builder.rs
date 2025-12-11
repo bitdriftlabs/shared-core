@@ -8,6 +8,7 @@
 use crate::async_log_buffer::AsyncLogBuffer;
 use crate::client_config::{self, LoggerUpdate};
 use crate::consumer::BufferUploadManager;
+use crate::directory_lock::DirectoryLock;
 use crate::internal::InternalLogger;
 use crate::log_replay::LoggerReplay;
 use crate::logger::Logger;
@@ -264,6 +265,25 @@ impl LoggerBuilder {
     UnexpectedErrorHandler::register_stats(&scope);
 
     let logger_future = async move {
+      // Acquire exclusive lock on the SDK directory to prevent multiple processes from
+      // accessing it simultaneously. The lock is acquired asynchronously using spawn_blocking
+      // internally to avoid blocking the async runtime.
+      let _directory_lock =
+        match DirectoryLock::try_acquire(self.params.sdk_directory.clone()).await {
+          Ok(lock) => {
+            log::info!("Successfully acquired directory lock for SDK directory");
+            lock
+          },
+          Err(e) => {
+            log::warn!(
+              "Failed to acquire directory lock, another process may be using this directory: \
+               {e:?}. Logger will operate in no-op mode."
+            );
+            // Return early, effectively turning this into a no-op event loop
+            return Ok(());
+          },
+        };
+
       runtime_loader.try_load_persisted_config().await;
       init_lifecycle.set(bd_client_common::init_lifecycle::InitLifecycle::RuntimeLoaded);
 

@@ -46,6 +46,7 @@ bd-time.path                 = "../bd-time"
 bd-workflows.path            = "../bd-workflows"
 bd-workspace-hack.workspace  = true
 flatbuffers.workspace        = true
+fs2.workspace                = true
 futures-util.workspace       = true
 itertools.workspace          = true
 log.workspace                = true
