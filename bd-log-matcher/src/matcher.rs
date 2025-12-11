@@ -56,13 +56,13 @@ pub enum Tree {
   Base(Leaf),
 
   // A composite matching node. This tree matches if any of the subtrees evaluates to true.
-  Or(Vec<Tree>),
+  Or(Vec<Self>),
 
   // A composite matching node. This tree matches if all of the subtrees evaluates to true.
-  And(Vec<Tree>),
+  And(Vec<Self>),
 
   // An invert of a predicate. This tree matches if its subtree doesn't match.
-  Not(Box<Tree>),
+  Not(Box<Self>),
 }
 
 impl Tree {

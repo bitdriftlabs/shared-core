@@ -35,9 +35,9 @@ pub enum Value {
   Signed(i64),
   Unsigned(u64),
   String(String),
-  Array(Vec<Value>),
-  Object(AHashMap<String, Value>),
-  KVVec(Vec<(String, Value)>),
+  Array(Vec<Self>),
+  Object(AHashMap<String, Self>),
+  KVVec(Vec<(String, Self)>),
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
