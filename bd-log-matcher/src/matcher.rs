@@ -219,6 +219,10 @@ impl InputType {
         use bd_state::Value_type;
         match v.value_type {
           Some(Value_type::StringValue(ref s)) => Cow::Borrowed(s.as_str()),
+          // TODO(snowp): Ideally we would avoid allocating here, but since state values are
+          // stored as Value_type enum, we need to convert them to strings. Int/Double state values
+          // are not really used right now, but if we ever do consider either caching this or
+          // making the comparison machinery work against the different types directly.
           Some(Value_type::IntValue(i)) => Cow::Owned(i.to_string()),
           Some(Value_type::DoubleValue(d)) => Cow::Owned(d.to_string()),
           Some(Value_type::BoolValue(true)) => Cow::Borrowed("true"),
