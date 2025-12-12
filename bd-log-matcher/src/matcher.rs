@@ -215,7 +215,17 @@ impl InputType {
     match self {
       Self::Message => message.as_str().map(Cow::Borrowed),
       Self::Field(field_key) => fields.field_value(field_key),
-      Self::State(scope, flag_key) => state.get(*scope, flag_key).map(Cow::Borrowed),
+      Self::State(scope, flag_key) => state.get(*scope, flag_key).map(|v| {
+        use bd_state::Value_type;
+        match v.value_type {
+          Some(Value_type::StringValue(ref s)) => Cow::Borrowed(s.as_str()),
+          Some(Value_type::IntValue(i)) => Cow::Owned(i.to_string()),
+          Some(Value_type::DoubleValue(d)) => Cow::Owned(d.to_string()),
+          Some(Value_type::BoolValue(true)) => Cow::Borrowed("true"),
+          Some(Value_type::BoolValue(false)) => Cow::Borrowed("false"),
+          None => Cow::Borrowed(""),
+        }
+      }),
     }
   }
 }

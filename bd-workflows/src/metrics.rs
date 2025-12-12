@@ -110,7 +110,17 @@ impl MetricsCollector {
     key: &str,
     state_reader: &'a dyn bd_state::StateReader,
   ) -> Option<Cow<'a, str>> {
-    state_reader.get(scope, key).map(Cow::Borrowed)
+    state_reader.get(scope, key).map(|v| {
+      use bd_state::Value_type;
+      match v.value_type {
+        Some(Value_type::StringValue(ref s)) => Cow::Borrowed(s.as_str()),
+        Some(Value_type::IntValue(i)) => Cow::Owned(i.to_string()),
+        Some(Value_type::DoubleValue(d)) => Cow::Owned(d.to_string()),
+        Some(Value_type::BoolValue(true)) => Cow::Borrowed("true"),
+        Some(Value_type::BoolValue(false)) => Cow::Borrowed("false"),
+        None => Cow::Borrowed(""),
+      }
+    })
   }
 
   fn extract_tags(
