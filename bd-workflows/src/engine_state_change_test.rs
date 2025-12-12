@@ -71,7 +71,7 @@ async fn state_change_string_match_triggers_transition() {
   let state_change = StateChange::inserted(
     bd_state::Scope::FeatureFlagExposure,
     "feature_flag",
-    "enabled",
+    bd_state::string_value("enabled"),
     OffsetDateTime::now_utc(),
   );
 
@@ -114,7 +114,7 @@ async fn state_change_is_set_match() {
   let state_change = StateChange::inserted(
     bd_state::Scope::FeatureFlagExposure,
     "any_value",
-    "hello",
+    bd_state::string_value("hello"),
     OffsetDateTime::now_utc(),
   );
 
@@ -157,7 +157,7 @@ async fn state_change_no_match_no_transition() {
   let state_change = StateChange::inserted(
     bd_state::Scope::FeatureFlagExposure,
     "different_key",
-    "enabled",
+    bd_state::string_value("enabled"),
     OffsetDateTime::now_utc(),
   );
 
@@ -177,7 +177,7 @@ async fn state_change_no_match_no_transition() {
   let state_change = StateChange::inserted(
     bd_state::Scope::FeatureFlagExposure,
     "flag",
-    "disabled",
+    bd_state::string_value("disabled"),
     OffsetDateTime::now_utc(),
   );
 
@@ -243,7 +243,7 @@ async fn state_change_with_timestamp_extraction() {
   let state_change = StateChange::inserted(
     bd_state::Scope::FeatureFlagExposure,
     "test_flag",
-    "enabled",
+    bd_state::string_value("enabled"),
     state_change_time,
   );
 
@@ -319,7 +319,7 @@ async fn state_change_does_trigger_timeout() {
   let state_change = StateChange::inserted(
     bd_state::Scope::FeatureFlagExposure,
     "different_flag",
-    "enabled",
+    bd_state::string_value("enabled"),
     datetime!(2024-01-01 00:00:02 UTC),
   );
 
@@ -366,7 +366,7 @@ async fn state_change_triggers_counter_metric() {
   let state_change = StateChange::inserted(
     bd_state::Scope::FeatureFlagExposure,
     "test_flag",
-    "enabled",
+    bd_state::string_value("enabled"),
     OffsetDateTime::now_utc(),
   );
 
@@ -417,7 +417,7 @@ async fn state_change_triggers_histogram_metric() {
   let state_change = StateChange::inserted(
     bd_state::Scope::FeatureFlagExposure,
     "test_flag",
-    "enabled",
+    bd_state::string_value("enabled"),
     OffsetDateTime::now_utc(),
   );
 
@@ -468,7 +468,7 @@ async fn state_change_with_feature_flag_extraction() {
   state_reader.insert(
     bd_state::Scope::FeatureFlagExposure,
     "extracted_flag",
-    "extracted_value",
+    bd_state::string_value("extracted_value"),
   );
 
   // Process state change that triggers the transition, with our custom state reader
@@ -476,7 +476,7 @@ async fn state_change_with_feature_flag_extraction() {
   let state_change = StateChange::inserted(
     bd_state::Scope::FeatureFlagExposure,
     "trigger_flag",
-    "enabled",
+    bd_state::string_value("enabled"),
     OffsetDateTime::now_utc(),
   );
 
@@ -534,14 +534,14 @@ async fn state_change_with_extra_state_matcher() {
   state_reader.insert(
     bd_state::Scope::FeatureFlagExposure,
     "required_flag",
-    "enabled",
+    bd_state::string_value("enabled"),
   );
 
   // Process state change with the state reader - this SHOULD match
   let state_change = StateChange::inserted(
     bd_state::Scope::FeatureFlagExposure,
     "trigger_flag",
-    "any_value",
+    bd_state::string_value("any_value"),
     OffsetDateTime::now_utc(),
   );
 
@@ -590,14 +590,14 @@ async fn state_change_with_extra_state_matcher_no_match() {
   state_reader.insert(
     bd_state::Scope::FeatureFlagExposure,
     "required_flag",
-    "disabled", // Wrong value!
+    bd_state::string_value("disabled"), // Wrong value!
   );
 
   // Process state change - this should NOT match due to the extra matcher
   let state_change = StateChange::inserted(
     bd_state::Scope::FeatureFlagExposure,
     "trigger_flag",
-    "any_value",
+    bd_state::string_value("any_value"),
     OffsetDateTime::now_utc(),
   );
 
@@ -655,14 +655,14 @@ async fn state_change_with_multiple_state_conditions() {
   state_reader.insert(
     bd_state::Scope::FeatureFlagExposure,
     "secondary_flag",
-    "ready",
+    bd_state::string_value("ready"),
   );
 
   // Process state change - should match because both conditions are met
   let state_change = StateChange::inserted(
     bd_state::Scope::FeatureFlagExposure,
     "trigger_flag",
-    "enabled",
+    bd_state::string_value("enabled"),
     OffsetDateTime::now_utc(),
   );
 
@@ -732,13 +732,13 @@ async fn state_change_compares_state_to_extracted_field() {
   state_reader.insert(
     bd_state::Scope::FeatureFlagExposure,
     "requirement",
-    "premium",
+    bd_state::string_value("premium"),
   );
 
   let state_change = StateChange::inserted(
     bd_state::Scope::FeatureFlagExposure,
     "trigger",
-    "on",
+    bd_state::string_value("on"),
     OffsetDateTime::now_utc(),
   );
 
@@ -811,7 +811,7 @@ async fn state_change_matches_on_global_metadata_fields() {
   let state_change = StateChange::inserted(
     bd_state::Scope::FeatureFlagExposure,
     "trigger_flag",
-    "enabled",
+    bd_state::string_value("enabled"),
     OffsetDateTime::now_utc(),
   );
 
@@ -877,7 +877,7 @@ async fn state_change_extracts_global_metadata_fields() {
   let state_change = StateChange::inserted(
     bd_state::Scope::FeatureFlagExposure,
     "trigger_flag",
-    "enabled",
+    bd_state::string_value("enabled"),
     OffsetDateTime::now_utc(),
   );
 
@@ -955,7 +955,7 @@ async fn state_change_includes_fields_in_generated_log() {
   let state_change = StateChange::inserted(
     bd_state::Scope::FeatureFlagExposure,
     "trigger_flag",
-    "enabled",
+    bd_state::string_value("enabled"),
     OffsetDateTime::now_utc(),
   );
 

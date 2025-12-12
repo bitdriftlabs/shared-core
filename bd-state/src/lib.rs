@@ -22,8 +22,8 @@ pub mod test;
 
 pub use self::InitStrategy::{InMemoryOnly, PersistentWithFallback};
 use ahash::AHashMap;
-use bd_resilient_kv::{DataLoss, RetentionRegistry, ScopedMaps, StateValue, Value_type};
-pub use bd_resilient_kv::{PersistentStoreConfig, Scope};
+use bd_resilient_kv::{DataLoss, RetentionRegistry, ScopedMaps, StateValue};
+pub use bd_resilient_kv::{PersistentStoreConfig, Scope, StateValue as Value, Value_type};
 use bd_runtime::runtime::ConfigLoader;
 use bd_time::{OffsetDateTimeExt, TimeProvider};
 use itertools::Itertools as _;
@@ -31,6 +31,42 @@ use std::path::Path;
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::RwLock;
+
+/// Creates a `StateValue` from a string.
+#[must_use]
+pub fn string_value(s: impl Into<String>) -> Value {
+  Value {
+    value_type: Value_type::StringValue(s.into()).into(),
+    ..Default::default()
+  }
+}
+
+/// Creates a `StateValue` from an integer.
+#[must_use]
+pub fn int_value(i: i64) -> Value {
+  Value {
+    value_type: Value_type::IntValue(i).into(),
+    ..Default::default()
+  }
+}
+
+/// Creates a `StateValue` from a double.
+#[must_use]
+pub fn double_value(d: f64) -> Value {
+  Value {
+    value_type: Value_type::DoubleValue(d).into(),
+    ..Default::default()
+  }
+}
+
+/// Creates a `StateValue` from a boolean.
+#[must_use]
+pub fn bool_value(b: bool) -> Value {
+  Value {
+    value_type: Value_type::BoolValue(b).into(),
+    ..Default::default()
+  }
+}
 
 /// A timestamped state value, used in snapshots.
 pub type TimestampedStateValue = (String, OffsetDateTime);
@@ -43,17 +79,17 @@ pub type ScopedStateMap = AHashMap<String, TimestampedStateValue>;
 //
 
 /// The type of state change that occurred.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum StateChangeType {
   /// A new key was inserted
-  Inserted { value: String },
+  Inserted { value: StateValue },
   /// An existing key was updated
   Updated {
-    old_value: String,
-    new_value: String,
+    old_value: StateValue,
+    new_value: StateValue,
   },
   /// A key was removed
-  Removed { old_value: String },
+  Removed { old_value: StateValue },
   /// No change occurred (e.g., setting same value)
   NoChange,
 }
@@ -63,7 +99,7 @@ pub enum StateChangeType {
 //
 
 /// Information about a state change operation.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StateChange {
   pub scope: Scope,
   // TODO(snowp): Ideally we could return &str but avoid copies in this path, but in order to do
@@ -80,15 +116,13 @@ impl StateChange {
   pub fn inserted(
     scope: Scope,
     key: impl Into<String>,
-    value: impl Into<String>,
+    value: StateValue,
     timestamp: OffsetDateTime,
   ) -> Self {
     Self {
       scope,
       key: key.into(),
-      change_type: StateChangeType::Inserted {
-        value: value.into(),
-      },
+      change_type: StateChangeType::Inserted { value },
       timestamp,
     }
   }
@@ -98,16 +132,16 @@ impl StateChange {
   pub fn updated(
     scope: Scope,
     key: impl Into<String>,
-    old_value: impl Into<String>,
-    new_value: impl Into<String>,
+    old_value: StateValue,
+    new_value: StateValue,
     timestamp: OffsetDateTime,
   ) -> Self {
     Self {
       scope,
       key: key.into(),
       change_type: StateChangeType::Updated {
-        old_value: old_value.into(),
-        new_value: new_value.into(),
+        old_value,
+        new_value,
       },
       timestamp,
     }
@@ -118,15 +152,13 @@ impl StateChange {
   pub fn removed(
     scope: Scope,
     key: impl Into<String>,
-    old_value: impl Into<String>,
+    old_value: StateValue,
     timestamp: OffsetDateTime,
   ) -> Self {
     Self {
       scope,
       key: key.into(),
-      change_type: StateChangeType::Removed {
-        old_value: old_value.into(),
-      },
+      change_type: StateChangeType::Removed { old_value },
       timestamp,
     }
   }
@@ -196,11 +228,11 @@ pub enum InitStrategy {
 //
 
 /// A single entry in the state store, including its scope, key, value, and timestamp.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StateEntry<'a> {
+#[derive(Debug, Clone, PartialEq)]
+pub struct StateEntry {
   pub scope: Scope,
-  pub key: &'a str,
-  pub value: &'a str,
+  pub key: String,
+  pub value: StateValue,
   pub timestamp: OffsetDateTime,
 }
 
@@ -211,11 +243,11 @@ pub struct StateEntry<'a> {
 /// A trait for reading state values. This pattern allows for non-async access to state values while
 /// the underlying store may be async.
 pub trait StateReader {
-  /// Gets a value from the state store.
-  fn get(&self, scope: Scope, key: &str) -> Option<&str>;
+  /// Gets a reference to the raw state value from the store.
+  fn get(&self, scope: Scope, key: &str) -> Option<&StateValue>;
 
   /// Returns an iterator over all entries in the state store.
-  fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = StateEntry<'a>> + 'a>;
+  fn iter(&self) -> Box<dyn Iterator<Item = StateEntry> + '_>;
 
   /// Returns the underlying scoped maps.
   fn as_scoped_maps(&self) -> &ScopedMaps;
@@ -433,26 +465,12 @@ impl Store {
     &self,
     scope: Scope,
     key: String,
-    value: String,
+    value: StateValue,
   ) -> anyhow::Result<StateChange> {
     let mut locked = self.inner.write().await;
 
     // Perform the insert and get both timestamp and old value in one operation
-    let (timestamp_u64, old_state_value) = locked
-      .insert(
-        scope,
-        key.clone(),
-        StateValue {
-          value_type: Value_type::StringValue(value.clone()).into(),
-          ..Default::default()
-        },
-      )
-      .await?;
-
-    // Extract old string value if it exists and is a string
-    let old_value = old_state_value
-      .filter(bd_resilient_kv::StateValue::has_string_value)
-      .map(|mut v| v.take_string_value());
+    let (timestamp_u64, old_state_value) = locked.insert(scope, key.clone(), value.clone()).await?;
 
     // Convert timestamp
     let timestamp =
@@ -460,7 +478,7 @@ impl Store {
         .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
     // Determine change type
-    let change_type = match old_value {
+    let change_type = match old_state_value {
       Some(old) if old == value => StateChangeType::NoChange,
       Some(old) => StateChangeType::Updated {
         old_value: old,
@@ -482,7 +500,7 @@ impl Store {
   pub async fn extend(
     &self,
     scope: Scope,
-    entries: impl IntoIterator<Item = (String, String)>,
+    entries: impl IntoIterator<Item = (String, StateValue)>,
   ) -> anyhow::Result<()> {
     self
       .inner
@@ -491,16 +509,7 @@ impl Store {
       .extend(
         entries
           .into_iter()
-          .map(|(key, value)| {
-            (
-              scope,
-              key,
-              StateValue {
-                value_type: Value_type::StringValue(value).into(),
-                ..Default::default()
-              },
-            )
-          })
+          .map(|(key, value)| (scope, key, value))
           .collect(),
       )
       .await?;
@@ -514,14 +523,14 @@ impl Store {
     let result = locked.remove(scope, key).await?;
 
     let (change_type, timestamp) = match result {
-      Some((timestamp_u64, mut old_state_value)) => {
+      Some((timestamp_u64, old_state_value)) => {
         let timestamp =
           OffsetDateTime::from_unix_timestamp_micros(timestamp_u64.try_into().unwrap_or_default())
             .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
-        let change_type = if old_state_value.has_string_value() {
+        let change_type = if old_state_value.value_type.is_some() {
           StateChangeType::Removed {
-            old_value: old_state_value.take_string_value(),
+            old_value: old_state_value,
           }
         } else {
           StateChangeType::NoChange
@@ -557,17 +566,17 @@ impl Store {
     // underlying store. This leaves us open for partial deletions if something fails halfway
     // through.
     for key in keys_to_remove {
-      if let Some((timestamp_u64, mut old_state_value)) = locked_store.remove(scope, &key).await? {
+      if let Some((timestamp_u64, old_state_value)) = locked_store.remove(scope, &key).await? {
         let timestamp =
           OffsetDateTime::from_unix_timestamp_micros(timestamp_u64.try_into().unwrap_or_default())
             .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
-        if old_state_value.has_string_value() {
+        if old_state_value.value_type.is_some() {
           changes.push(StateChange {
             scope,
             key,
             change_type: StateChangeType::Removed {
-              old_value: old_state_value.take_string_value(),
+              old_value: old_state_value,
             },
             timestamp,
           });
@@ -587,22 +596,18 @@ impl Store {
 }
 
 impl StateReader for tokio::sync::RwLockReadGuard<'_, bd_resilient_kv::VersionedKVStore> {
-  fn get(&self, scope: Scope, key: &str) -> Option<&str> {
-    (**self)
-      .get(scope, key)
-      .and_then(|v| v.has_string_value().then(|| v.string_value()))
+  fn get(&self, scope: Scope, key: &str) -> Option<&StateValue> {
+    (**self).get(scope, key)
   }
 
-  fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = StateEntry<'a>> + 'a> {
+  fn iter(&self) -> Box<dyn Iterator<Item = StateEntry> + '_> {
     Box::new(
       self
         .as_hashmap()
         .iter()
         .filter_map(|(scope, key, timestamped_value)| {
-          let value = timestamped_value
-            .value
-            .has_string_value()
-            .then(|| timestamped_value.value.string_value())?;
+          // Only include entries that have a value
+          timestamped_value.value.value_type.as_ref()?;
 
           let timestamp = OffsetDateTime::from_unix_timestamp_nanos(
             i128::from(timestamped_value.timestamp) * 1_000,
@@ -611,8 +616,8 @@ impl StateReader for tokio::sync::RwLockReadGuard<'_, bd_resilient_kv::Versioned
 
           Some(StateEntry {
             scope,
-            key,
-            value,
+            key: key.clone(),
+            value: timestamped_value.value.clone(),
             timestamp,
           })
         }),

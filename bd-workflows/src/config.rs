@@ -923,7 +923,17 @@ impl TagValue {
   ) -> Option<Cow<'a, str>> {
     match self {
       Self::FieldExtract(field_key) => fields.field_value(field_key),
-      Self::StateExtract(scope, key) => state_reader.get(*scope, key).map(Cow::Borrowed),
+      Self::StateExtract(scope, key) => state_reader.get(*scope, key).map(|v| {
+        use bd_state::Value_type;
+        match v.value_type {
+          Some(Value_type::StringValue(ref s)) => Cow::Borrowed(s.as_str()),
+          Some(Value_type::IntValue(i)) => Cow::Owned(i.to_string()),
+          Some(Value_type::DoubleValue(d)) => Cow::Owned(d.to_string()),
+          Some(Value_type::BoolValue(true)) => Cow::Borrowed("true"),
+          Some(Value_type::BoolValue(false)) => Cow::Borrowed("false"),
+          None => Cow::Borrowed(""),
+        }
+      }),
       Self::Fixed(value) => Some(Cow::Owned(value.clone())),
       Self::LogBodyExtract => message.as_str().map(Cow::Borrowed),
     }

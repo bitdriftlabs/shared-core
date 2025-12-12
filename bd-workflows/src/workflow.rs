@@ -27,6 +27,7 @@ use bd_time::OffsetDateTimeExt;
 use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::time::SystemTime;
 use time::OffsetDateTime;
@@ -1105,6 +1106,8 @@ impl Traversal {
     now: OffsetDateTime,
     result: &mut TraversalResult<'a>,
   ) {
+    use bd_state::Value_type;
+
     if state_change.scope != state_change_match.scope || state_change.key != state_change_match.key
     {
       return;
@@ -1112,12 +1115,50 @@ impl Traversal {
 
     // Extract previous and new values based on change type
     let (previous_value, new_value) = match &state_change.change_type {
-      bd_state::StateChangeType::Inserted { value } => (None, Some(value.as_str())),
+      bd_state::StateChangeType::Inserted { value } => (
+        None,
+        match value.value_type {
+          Some(Value_type::StringValue(ref s)) => Some(Cow::Borrowed(s.as_str())),
+          Some(Value_type::IntValue(i)) => Some(Cow::Owned(i.to_string())),
+          Some(Value_type::DoubleValue(d)) => Some(Cow::Owned(d.to_string())),
+          Some(Value_type::BoolValue(true)) => Some(Cow::Borrowed("true")),
+          Some(Value_type::BoolValue(false)) => Some(Cow::Borrowed("false")),
+          None => None,
+        },
+      ),
       bd_state::StateChangeType::Updated {
         old_value,
         new_value,
-      } => (Some(old_value.as_str()), Some(new_value.as_str())),
-      bd_state::StateChangeType::Removed { old_value } => (Some(old_value.as_str()), None),
+      } => {
+        let old = match old_value.value_type {
+          Some(Value_type::StringValue(ref s)) => Some(Cow::Borrowed(s.as_str())),
+          Some(Value_type::IntValue(i)) => Some(Cow::Owned(i.to_string())),
+          Some(Value_type::DoubleValue(d)) => Some(Cow::Owned(d.to_string())),
+          Some(Value_type::BoolValue(true)) => Some(Cow::Borrowed("true")),
+          Some(Value_type::BoolValue(false)) => Some(Cow::Borrowed("false")),
+          None => None,
+        };
+        let new = match new_value.value_type {
+          Some(Value_type::StringValue(ref s)) => Some(Cow::Borrowed(s.as_str())),
+          Some(Value_type::IntValue(i)) => Some(Cow::Owned(i.to_string())),
+          Some(Value_type::DoubleValue(d)) => Some(Cow::Owned(d.to_string())),
+          Some(Value_type::BoolValue(true)) => Some(Cow::Borrowed("true")),
+          Some(Value_type::BoolValue(false)) => Some(Cow::Borrowed("false")),
+          None => None,
+        };
+        (old, new)
+      },
+      bd_state::StateChangeType::Removed { old_value } => (
+        match old_value.value_type {
+          Some(Value_type::StringValue(ref s)) => Some(Cow::Borrowed(s.as_str())),
+          Some(Value_type::IntValue(i)) => Some(Cow::Owned(i.to_string())),
+          Some(Value_type::DoubleValue(d)) => Some(Cow::Owned(d.to_string())),
+          Some(Value_type::BoolValue(true)) => Some(Cow::Borrowed("true")),
+          Some(Value_type::BoolValue(false)) => Some(Cow::Borrowed("false")),
+          None => None,
+        },
+        None,
+      ),
       bd_state::StateChangeType::NoChange => return,
     };
 
@@ -1126,7 +1167,7 @@ impl Traversal {
     let previous_matches = state_change_match
       .previous_value
       .as_ref()
-      .is_none_or(|matcher| matcher.matches(previous_value, &empty_fields));
+      .is_none_or(|matcher| matcher.matches(previous_value.as_deref(), &empty_fields));
 
     if !previous_matches {
       return;
@@ -1135,7 +1176,7 @@ impl Traversal {
     // Check if new value matches
     if !state_change_match
       .new_value
-      .matches(new_value, &empty_fields)
+      .matches(new_value.as_deref(), &empty_fields)
     {
       return;
     }

@@ -52,7 +52,7 @@ async fn clear_scope() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag1".to_string(),
-      "value1".to_string(),
+      crate::string_value("value1"),
     )
     .await
     .unwrap();
@@ -61,7 +61,7 @@ async fn clear_scope() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag2".to_string(),
-      "value2".to_string(),
+      crate::string_value("value2"),
     )
     .await
     .unwrap();
@@ -70,7 +70,7 @@ async fn clear_scope() {
     .insert(
       Scope::GlobalState,
       "key1".to_string(),
-      "global_value".to_string(),
+      crate::string_value("global_value"),
     )
     .await
     .unwrap();
@@ -80,7 +80,11 @@ async fn clear_scope() {
   let reader = setup.store.read().await;
   assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag1"), None);
   assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag2"), None);
-  assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global_value"));
+  assert!(
+    reader
+      .get(Scope::GlobalState, "key1")
+      .is_some_and(|v| v.has_string_value() && v.string_value() == "global_value")
+  );
 }
 
 #[tokio::test]
@@ -92,7 +96,7 @@ async fn iter_scope() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag1".to_string(),
-      "value1".to_string(),
+      crate::string_value("value1"),
     )
     .await
     .unwrap();
@@ -101,7 +105,7 @@ async fn iter_scope() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag2".to_string(),
-      "value2".to_string(),
+      crate::string_value("value2"),
     )
     .await
     .unwrap();
@@ -110,7 +114,7 @@ async fn iter_scope() {
     .insert(
       Scope::GlobalState,
       "key1".to_string(),
-      "global_value".to_string(),
+      crate::string_value("global_value"),
     )
     .await
     .unwrap();
@@ -119,12 +123,20 @@ async fn iter_scope() {
   let items: std::collections::HashMap<_, _> = reader
     .iter()
     .filter(|entry| entry.scope == Scope::FeatureFlagExposure)
-    .map(|entry| (entry.key.to_string(), entry.value.to_string()))
+    .map(|entry| (entry.key.clone(), entry.value))
     .collect();
 
   assert_eq!(items.len(), 2);
-  assert_eq!(items.get("flag1"), Some(&"value1".to_string()));
-  assert_eq!(items.get("flag2"), Some(&"value2".to_string()));
+  assert!(
+    items
+      .get("flag1")
+      .is_some_and(|v| v.has_string_value() && v.string_value() == "value1")
+  );
+  assert!(
+    items
+      .get("flag2")
+      .is_some_and(|v| v.has_string_value() && v.string_value() == "value2")
+  );
   assert_eq!(items.get("key1"), None);
 }
 
@@ -168,16 +180,16 @@ async fn large_value() {
     .insert(
       Scope::FeatureFlagExposure,
       "large".to_string(),
-      large_value.clone(),
+      crate::string_value(large_value.clone()),
     )
     .await
     .unwrap();
 
   let reader = store.read().await;
-  assert_eq!(
-    reader.get(Scope::FeatureFlagExposure, "large"),
-    Some(large_value.as_str())
-  );
+  let value = reader.get(Scope::FeatureFlagExposure, "large");
+  assert!(value.is_some());
+  assert!(value.unwrap().has_string_value());
+  assert_eq!(value.unwrap().string_value(), large_value);
 }
 
 #[tokio::test]
@@ -209,7 +221,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
       .insert(
         Scope::FeatureFlagExposure,
         "flag1".to_string(),
-        "value1".to_string(),
+        crate::string_value("value1"),
       )
       .await
       .unwrap();
@@ -217,7 +229,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
       .insert(
         Scope::FeatureFlagExposure,
         "flag2".to_string(),
-        "value2".to_string(),
+        crate::string_value("value2"),
       )
       .await
       .unwrap();
@@ -225,22 +237,28 @@ async fn ephemeral_scopes_cleared_on_restart() {
       .insert(
         Scope::GlobalState,
         "key1".to_string(),
-        "global_value".to_string(),
+        crate::string_value("global_value"),
       )
       .await
       .unwrap();
 
     // Verify they're present
     let reader = store.read().await;
-    assert_eq!(
-      reader.get(Scope::FeatureFlagExposure, "flag1"),
-      Some("value1")
+    assert!(
+      reader
+        .get(Scope::FeatureFlagExposure, "flag1")
+        .is_some_and(|v| v.has_string_value() && v.string_value() == "value1")
     );
-    assert_eq!(
-      reader.get(Scope::FeatureFlagExposure, "flag2"),
-      Some("value2")
+    assert!(
+      reader
+        .get(Scope::FeatureFlagExposure, "flag2")
+        .is_some_and(|v| v.has_string_value() && v.string_value() == "value2")
     );
-    assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global_value"));
+    assert!(
+      reader
+        .get(Scope::GlobalState, "key1")
+        .is_some_and(|v| v.has_string_value() && v.string_value() == "global_value")
+    );
   }
 
   // Second process: state should be cleared but snapshot should have previous data
@@ -271,23 +289,26 @@ async fn ephemeral_scopes_cleared_on_restart() {
         .count(),
       1
     );
-    assert_eq!(
+    assert!(
       prev_snapshot
         .get(Scope::FeatureFlagExposure, "flag1")
-        .map(|v| v.value.string_value()),
-      Some("value1")
+        .is_some_and(
+          |entry| entry.value.has_string_value() && entry.value.string_value() == "value1"
+        )
     );
-    assert_eq!(
+    assert!(
       prev_snapshot
         .get(Scope::FeatureFlagExposure, "flag2")
-        .map(|v| v.value.string_value()),
-      Some("value2")
+        .is_some_and(
+          |entry| entry.value.has_string_value() && entry.value.string_value() == "value2"
+        )
     );
-    assert_eq!(
+    assert!(
       prev_snapshot
         .get(Scope::GlobalState, "key1")
-        .map(|v| v.value.string_value()),
-      Some("global_value")
+        .is_some_and(
+          |entry| entry.value.has_string_value() && entry.value.string_value() == "global_value"
+        )
     );
 
     // But current store should be empty (ephemeral scopes cleared)
@@ -325,15 +346,16 @@ async fn fallback_to_in_memory_on_invalid_directory() {
     .insert(
       Scope::FeatureFlagExposure,
       "test_flag".to_string(),
-      "test_value".to_string(),
+      crate::string_value("test_value"),
     )
     .await
     .unwrap();
 
   let reader = store.read().await;
-  assert_eq!(
-    reader.get(Scope::FeatureFlagExposure, "test_flag"),
-    Some("test_value")
+  assert!(
+    reader
+      .get(Scope::FeatureFlagExposure, "test_flag")
+      .is_some_and(|v| v.has_string_value() && v.string_value() == "test_value")
   );
 }
 
@@ -364,15 +386,16 @@ async fn from_strategy_in_memory_only() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag".to_string(),
-      "value".to_string(),
+      crate::string_value("value"),
     )
     .await
     .unwrap();
 
   let reader = result.store.read().await;
-  assert_eq!(
-    reader.get(Scope::FeatureFlagExposure, "flag"),
-    Some("value")
+  assert!(
+    reader
+      .get(Scope::FeatureFlagExposure, "flag")
+      .is_some_and(|v| v.has_string_value() && v.string_value() == "value")
   );
 }
 
@@ -403,15 +426,16 @@ async fn from_strategy_persistent_with_fallback() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag".to_string(),
-      "value".to_string(),
+      crate::string_value("value"),
     )
     .await
     .unwrap();
 
   let reader = result.store.read().await;
-  assert_eq!(
-    reader.get(Scope::FeatureFlagExposure, "flag"),
-    Some("value")
+  assert!(
+    reader
+      .get(Scope::FeatureFlagExposure, "flag")
+      .is_some_and(|v| v.has_string_value() && v.string_value() == "value")
   );
 }
 
@@ -443,15 +467,16 @@ async fn from_strategy_persistent_with_fallback_on_failure() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag".to_string(),
-      "value".to_string(),
+      crate::string_value("value"),
     )
     .await
     .unwrap();
 
   let reader = result.store.read().await;
-  assert_eq!(
-    reader.get(Scope::FeatureFlagExposure, "flag"),
-    Some("value")
+  assert!(
+    reader
+      .get(Scope::FeatureFlagExposure, "flag")
+      .is_some_and(|v| v.has_string_value() && v.string_value() == "value")
   );
 }
 
@@ -464,7 +489,7 @@ async fn insert_returns_inserted_state_change() {
     .insert(
       Scope::FeatureFlagExposure,
       "new_flag".to_string(),
-      "new_value".to_string(),
+      crate::string_value("new_value"),
     )
     .await
     .unwrap();
@@ -474,7 +499,7 @@ async fn insert_returns_inserted_state_change() {
   assert_eq!(
     change.change_type,
     crate::StateChangeType::Inserted {
-      value: "new_value".to_string()
+      value: crate::string_value("new_value")
     }
   );
 }
@@ -489,7 +514,7 @@ async fn insert_returns_updated_state_change() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag".to_string(),
-      "old_value".to_string(),
+      crate::string_value("old_value"),
     )
     .await
     .unwrap();
@@ -500,7 +525,7 @@ async fn insert_returns_updated_state_change() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag".to_string(),
-      "new_value".to_string(),
+      crate::string_value("new_value"),
     )
     .await
     .unwrap();
@@ -510,8 +535,8 @@ async fn insert_returns_updated_state_change() {
   assert_eq!(
     change.change_type,
     crate::StateChangeType::Updated {
-      old_value: "old_value".to_string(),
-      new_value: "new_value".to_string()
+      old_value: crate::string_value("old_value"),
+      new_value: crate::string_value("new_value")
     }
   );
 }
@@ -526,7 +551,7 @@ async fn insert_returns_no_change_when_value_unchanged() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag".to_string(),
-      "same_value".to_string(),
+      crate::string_value("same_value"),
     )
     .await
     .unwrap();
@@ -537,7 +562,7 @@ async fn insert_returns_no_change_when_value_unchanged() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag".to_string(),
-      "same_value".to_string(),
+      crate::string_value("same_value"),
     )
     .await
     .unwrap();
@@ -557,7 +582,7 @@ async fn remove_returns_removed_state_change() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag".to_string(),
-      "value".to_string(),
+      crate::string_value("value"),
     )
     .await
     .unwrap();
@@ -574,7 +599,7 @@ async fn remove_returns_removed_state_change() {
   assert_eq!(
     change.change_type,
     crate::StateChangeType::Removed {
-      old_value: "value".to_string()
+      old_value: crate::string_value("value")
     }
   );
 
@@ -608,7 +633,7 @@ async fn extend_inserts_multiple_values() {
     .insert(
       Scope::FeatureFlagExposure,
       "existing".to_string(),
-      "old".to_string(),
+      crate::string_value("old"),
     )
     .await
     .unwrap();
@@ -619,9 +644,9 @@ async fn extend_inserts_multiple_values() {
     .extend(
       Scope::FeatureFlagExposure,
       vec![
-        ("new1".to_string(), "value1".to_string()),
-        ("existing".to_string(), "updated".to_string()),
-        ("new2".to_string(), "value2".to_string()),
+        ("new1".to_string(), crate::string_value("value1")),
+        ("existing".to_string(), crate::string_value("updated")),
+        ("new2".to_string(), crate::string_value("value2")),
       ],
     )
     .await
@@ -629,17 +654,20 @@ async fn extend_inserts_multiple_values() {
 
   // Verify all values were set correctly
   let reader = setup.store.read().await;
-  assert_eq!(
-    reader.get(Scope::FeatureFlagExposure, "new1"),
-    Some("value1")
+  assert!(
+    reader
+      .get(Scope::FeatureFlagExposure, "new1")
+      .is_some_and(|v| v.has_string_value() && v.string_value() == "value1")
   );
-  assert_eq!(
-    reader.get(Scope::FeatureFlagExposure, "existing"),
-    Some("updated")
+  assert!(
+    reader
+      .get(Scope::FeatureFlagExposure, "existing")
+      .is_some_and(|v| v.has_string_value() && v.string_value() == "updated")
   );
-  assert_eq!(
-    reader.get(Scope::FeatureFlagExposure, "new2"),
-    Some("value2")
+  assert!(
+    reader
+      .get(Scope::FeatureFlagExposure, "new2")
+      .is_some_and(|v| v.has_string_value() && v.string_value() == "value2")
   );
 }
 
@@ -653,7 +681,7 @@ async fn clear_returns_all_removed_state_changes() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag1".to_string(),
-      "value1".to_string(),
+      crate::string_value("value1"),
     )
     .await
     .unwrap();
@@ -662,7 +690,7 @@ async fn clear_returns_all_removed_state_changes() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag2".to_string(),
-      "value2".to_string(),
+      crate::string_value("value2"),
     )
     .await
     .unwrap();
@@ -671,7 +699,7 @@ async fn clear_returns_all_removed_state_changes() {
     .insert(
       Scope::GlobalState,
       "key1".to_string(),
-      "global_value".to_string(),
+      crate::string_value("global_value"),
     )
     .await
     .unwrap();
@@ -699,7 +727,11 @@ async fn clear_returns_all_removed_state_changes() {
   let reader = setup.store.read().await;
   assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag1"), None);
   assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag2"), None);
-  assert_eq!(reader.get(Scope::GlobalState, "key1"), Some("global_value"));
+  assert!(
+    reader
+      .get(Scope::GlobalState, "key1")
+      .is_some_and(|v| v.has_string_value() && v.string_value() == "global_value")
+  );
 }
 
 #[tokio::test]

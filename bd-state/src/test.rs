@@ -34,7 +34,7 @@ use time::macros::datetime;
 /// ```
 #[derive(Default)]
 pub struct TestStateReader {
-  data: HashMap<(crate::Scope, String), String>,
+  data: HashMap<(crate::Scope, String), bd_resilient_kv::StateValue>,
 }
 
 impl TestStateReader {
@@ -45,25 +45,30 @@ impl TestStateReader {
 
   /// Inserts a value into the test state reader. This is synchronous and doesn't
   /// require async, making it easy to use in tests.
-  pub fn insert(&mut self, scope: crate::Scope, key: impl Into<String>, value: impl Into<String>) {
-    self.data.insert((scope, key.into()), value.into());
+  pub fn insert(
+    &mut self,
+    scope: crate::Scope,
+    key: impl Into<String>,
+    value: bd_resilient_kv::StateValue,
+  ) {
+    self.data.insert((scope, key.into()), value);
   }
 }
 
 impl crate::StateReader for TestStateReader {
-  fn get(&self, scope: crate::Scope, key: &str) -> Option<&str> {
-    self.data.get(&(scope, key.to_string())).map(String::as_str)
+  fn get(&self, scope: crate::Scope, key: &str) -> Option<&bd_resilient_kv::StateValue> {
+    self.data.get(&(scope, key.to_string()))
   }
 
-  fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = crate::StateEntry<'a>> + 'a> {
+  fn iter(&self) -> Box<dyn Iterator<Item = crate::StateEntry> + '_> {
     Box::new(
       self
         .data
         .iter()
         .map(|((scope, key), value)| crate::StateEntry {
           scope: *scope,
-          key,
-          value,
+          key: key.clone(),
+          value: value.clone(),
           timestamp: time::macros::datetime!(2024-01-01 00:00:00 UTC),
         }),
     )
