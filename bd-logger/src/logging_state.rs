@@ -214,7 +214,10 @@ impl InitializedLoggingContext {
     now: OffsetDateTime,
     session_id: &str,
   ) {
-    match state_store.insert(scope, key, bd_state::string_value(value)).await {
+    match state_store
+      .insert(scope, key, bd_state::string_value(value))
+      .await
+    {
       Ok(state_change) => {
         if !matches!(
           state_change.change_type,
