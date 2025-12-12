@@ -11,6 +11,7 @@ mod pre_config_buffer_test;
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::size::MemorySized;
 use bd_stats_common::labels;
+use protobuf::MessageDyn as _;
 
 #[derive(thiserror::Error, Debug, PartialEq, Eq)]
 pub enum Error {
@@ -29,7 +30,7 @@ pub enum Error {
 pub enum PendingStateOperation {
   SetFeatureFlagExposure {
     name: String,
-    variant: Option<String>,
+    variant: bd_state::Value,
     session_id: String,
   },
 }
@@ -57,7 +58,11 @@ impl MemorySized for PreConfigItem {
         name,
         variant,
         session_id,
-      }) => name.len() + variant.as_ref().map_or(0, String::len) + session_id.len(),
+      }) => {
+        name.len()
+          + usize::try_from(variant.compute_size_dyn()).unwrap_or_default()
+          + session_id.len()
+      },
     }
   }
 }

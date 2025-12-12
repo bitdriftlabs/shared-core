@@ -66,11 +66,12 @@ fn crash_report_upload() {
 
     setup
       .logger_handle
-      .set_feature_flag_exposure("flag_name".to_string(), None);
+      .set_feature_flag_exposure("flag_name".to_string(), bd_state::string_value(""));
 
-    setup
-      .logger_handle
-      .set_feature_flag_exposure("flag_with_variant".to_string(), Some("variant".to_string()));
+    setup.logger_handle.set_feature_flag_exposure(
+      "flag_with_variant".to_string(),
+      bd_state::string_value("variant"),
+    );
 
     // Trigger config initialization so pre-config buffer (including feature flags) gets replayed
     // Use an empty configuration to avoid setting up any buffers or generating extra logs

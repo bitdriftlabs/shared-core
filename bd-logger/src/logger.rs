@@ -426,7 +426,7 @@ impl LoggerHandle {
     );
   }
 
-  pub fn set_feature_flag_exposure(&self, flag: String, variant: Option<String>) {
+  pub fn set_feature_flag_exposure(&self, flag: String, variant: bd_state::Value) {
     with_reentrancy_guard!(
       {
         let result = self.tx.try_send_state_update(

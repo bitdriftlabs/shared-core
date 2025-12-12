@@ -55,6 +55,7 @@ use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionTy
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::WorkflowDebugStateMap;
 use debug_data_request::workflow_transition_debug_data::Transition_type;
+use protobuf::MessageDyn as _;
 use std::collections::{HashMap, VecDeque};
 use std::mem::size_of_val;
 use std::pin::Pin;
@@ -90,7 +91,7 @@ impl ReportProcessor for () {
 pub enum StateUpdateMessage {
   AddLogField(String, StringOrBytes<String, Vec<u8>>),
   RemoveLogField(String),
-  SetFeatureFlagExposure(String, Option<String>),
+  SetFeatureFlagExposure(String, bd_state::Value),
   FlushState(Option<bd_completion::Sender<()>>),
 }
 
@@ -101,7 +102,7 @@ impl MemorySized for StateUpdateMessage {
         Self::AddLogField(key, value) => key.size() + value.size(),
         Self::RemoveLogField(field_name) => field_name.len(),
         Self::SetFeatureFlagExposure(flag, variant) => {
-          flag.len() + variant.as_ref().map_or(0, String::len)
+          flag.len() + usize::try_from(variant.compute_size_dyn()).unwrap_or_default()
         },
         Self::FlushState(sender) => size_of_val(sender),
       }
@@ -754,7 +755,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 &mut self.replayer,
                 Scope::FeatureFlagExposure,
                 name,
-                variant.unwrap_or_default(),
+                variant,
                 now,
                 &session_id,
               )
@@ -911,7 +912,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                         &mut self.replayer,
                         Scope::FeatureFlagExposure,
                         flag,
-                        variant.unwrap_or_default(),
+                        variant,
                         self.time_provider.now(),
                         &self.session_strategy.session_id(),
                       )

@@ -2545,14 +2545,16 @@ fn workflow_state_change_match_advances_workflow() {
   assert!(maybe_nack.is_none());
 
   // Set the feature flag to "enabled" - should transition from A to B
-  setup
-    .logger_handle
-    .set_feature_flag_exposure("test_flag".to_string(), Some("enabled".to_string()));
+  setup.logger_handle.set_feature_flag_exposure(
+    "test_flag".to_string(),
+    bd_state::string_value("enabled".to_string()),
+  );
 
   // Set the feature flag to "disabled" - should transition from B to C and emit metric
-  setup
-    .logger_handle
-    .set_feature_flag_exposure("test_flag".to_string(), Some("disabled".to_string()));
+  setup.logger_handle.set_feature_flag_exposure(
+    "test_flag".to_string(),
+    bd_state::string_value("disabled".to_string()),
+  );
 
   // Flush stats and verify the metric was emitted
   setup.flush_and_upload_stats();
@@ -2623,7 +2625,7 @@ fn workflow_state_change_match_flush_buffers() {
   // Set the feature flag to trigger the flush
   setup
     .logger_handle
-    .set_feature_flag_exposure("trigger_flush".to_string(), Some("true".to_string()));
+    .set_feature_flag_exposure("trigger_flush".to_string(), bd_state::string_value("true"));
 
   // The workflow should trigger a buffer flush, which should result in an upload
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
