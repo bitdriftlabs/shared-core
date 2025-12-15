@@ -279,7 +279,9 @@ impl LoggerBuilder {
               "Failed to acquire directory lock, another process may be using this directory: \
                {e:?}. Logger will operate in no-op mode."
             );
-            // Return early, effectively turning this into a no-op event loop
+
+            // Return early, effectively turning this into a no-op event loop. We don't want to
+            // return an error as that would flag this as an unexpected error.
             return Ok(());
           },
         };
@@ -342,8 +344,6 @@ impl LoggerBuilder {
         },
       );
 
-      // TODO(Augustyniak): Move the initialization of the SDK directory off the calling thread to
-      // improve the perceived performance of the logger initialization.
       let buffer_directory = Logger::initialize_buffer_directory(&self.params.sdk_directory)?;
       let (buffer_manager, buffer_event_rx) =
         bd_buffer::Manager::new(buffer_directory, &scope, &runtime_loader);
@@ -400,7 +400,10 @@ impl LoggerBuilder {
           }
         },
         async move { buffer_uploader.run().await },
-        async move { config_writer.run().await },
+        async move {
+          config_writer.run().await;
+          Ok(())
+        },
         async move {
           async_log_buffer.run(state_store, crash_monitor).await;
           Ok(())

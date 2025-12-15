@@ -43,21 +43,21 @@ impl ConfigWriter {
     }
   }
 
-  pub async fn run(&mut self) -> anyhow::Result<()> {
+  pub async fn run(&mut self) {
     if let Ok(exists) = tokio::fs::try_exists(self.config_path.clone()).await
       && !exists
     {
       self.write_config_file().await;
     }
 
-    self.check_for_config_changes().await
+    self.check_for_config_changes().await;
   }
 
-  async fn check_for_config_changes(&mut self) -> anyhow::Result<()> {
+  async fn check_for_config_changes(&mut self) {
     loop {
       tokio::select! {
         _ = self.crash_reporting_enabled_flag.changed() => {},
-        () = self.shutdown.cancelled() => return Ok(()),
+        () = self.shutdown.cancelled() => return,
       };
 
       // There is chance here of the value changing during platform read, in
