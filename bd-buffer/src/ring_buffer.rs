@@ -190,14 +190,11 @@ impl Manager {
   }
 
   #[tracing::instrument(level = "debug", skip(self))]
-  pub async fn process_flushes(
-    &self,
-    mut flush_buffer_rx: Receiver<BuffersWithAck>,
-  ) -> anyhow::Result<()> {
+  pub async fn process_flushes(&self, mut flush_buffer_rx: Receiver<BuffersWithAck>) {
     loop {
       let Some(buffers_with_ack) = flush_buffer_rx.recv().await else {
         log::debug!("shutting down buffer flush task");
-        return Ok(());
+        return;
       };
 
       let flush_all_buffers = buffers_with_ack.buffers.is_empty();
@@ -215,7 +212,7 @@ impl Manager {
           buffer.flush();
         } else {
           log::debug!("buffer_id={buffer_id} signaled to flush not found");
-          return Ok(());
+          return;
         }
       }
 

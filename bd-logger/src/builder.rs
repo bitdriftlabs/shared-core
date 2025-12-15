@@ -408,7 +408,10 @@ impl LoggerBuilder {
           async_log_buffer.run(state_store, crash_monitor).await;
           Ok(())
         },
-        async move { buffer_manager.process_flushes(flush_buffers_rx).await },
+        async move {
+          buffer_manager.process_flushes(flush_buffers_rx).await;
+          Ok(())
+        },
         async move {
           stats_flusher.periodic_flush().await;
           Ok(())
