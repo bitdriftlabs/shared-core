@@ -26,7 +26,6 @@ use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_common::{maybe_await, maybe_await_map};
 use bd_crash_handler::global_state;
 use bd_device::Store;
-use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
@@ -456,25 +455,21 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       capture_session,
     };
 
-    if let Err(e) = tx.try_send_log(EmitLogMessage {
+    // There is no point in continuing the execution of the method and waiting for the log
+    // processing to complete if we failed to enqueue the log. In fact, waiting in such case would
+    // lead to infinite waiting.
+    //
+    // There are two possible reasons for the call to fail:
+    // 1. The channel is full due to us hitting the capacity limit.
+    // 2. The receiver side has been closed. This should only happen in cases in which the event
+    //    loop has shut down, which means that we either errored out and defensively shut down the
+    //    loop or explicitly shut it down. In either case it is not helpful to report this as an
+    //    unexpected error.
+    tx.try_send_log(EmitLogMessage {
       log,
       log_processing_completed_tx: log_processing_completed_tx_option,
-    }) {
-      log::debug!("enqueue_log: sending to channel failed: {e:?}");
-
-      if matches!(&e, TrySendError::Closed) {
-        handle_unexpected::<(), anyhow::Error>(
-          Err(anyhow::anyhow!("channel closed")),
-          "async log buffer: channel is closed",
-        );
-      }
-
-      // Return early from here. There is no point in continuing the execution
-      // of the method and waiting for the log processing to complete if we
-      // failed to send the log in here. In fact, waiting in such case would lead
-      // to infinite waiting.
-      return Err(e);
-    }
+    })
+    .inspect_err(|e| log::debug!("enqueue_log: sending to channel failed: {e:?}"))?;
 
     // Wait for log processing to be completed only if passed `blocking`
     // argument is equal to `true` and we created a relevant one shot Tokio channel.
