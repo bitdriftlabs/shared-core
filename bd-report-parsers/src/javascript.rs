@@ -141,7 +141,7 @@ fn parse_location(location: &str) -> (String, Option<i64>, Option<i64>, Option<S
       .ok();
     let column_num = location[last_colon + 1 ..].parse::<i64>().ok();
 
-    let bundle_path = if file_path.ends_with(".bundle") {
+    let bundle_path = if file_path.ends_with(".bundle") || file_path.ends_with(".jsbundle") {
       // Extract just the filename (no leading slash) to match source map format
       file_path.rsplit('/').next().map(String::from)
     } else {
@@ -516,5 +516,34 @@ mod tests {
     assert_eq!(frames[2].line, 0);
     assert_eq!(frames[2].column, 0);
     assert!(!frames[2].in_app);
+  }
+
+  #[test]
+  fn parse_ios_jsbundle_release_build() {
+    let stack = concat!(
+      "triggerGlobalJsError@main.jsbundle:1:717458\n",
+      "onPress@main.jsbundle:1:720868\n",
+      "_performTransitionSideEffects@main.jsbundle:1:456325\n",
+      "[native code]"
+    );
+    let frames = parse_javascript_stack_trace(stack, Some("5aa81d1c6931a5db1800b6f5ee411e9e"));
+    assert_eq!(frames.len(), 4);
+    assert_eq!(frames[0].function_name, "triggerGlobalJsError");
+    assert_eq!(frames[0].file_path, "main.jsbundle");
+    assert_eq!(frames[0].line, 1);
+    assert_eq!(frames[0].column, 717_458);
+    assert_eq!(frames[0].bundle_path, Some("main.jsbundle".to_string()));
+    assert_eq!(
+      frames[0].image_id,
+      Some("5aa81d1c6931a5db1800b6f5ee411e9e".to_string())
+    );
+    assert!(!frames[0].in_app);
+    assert_eq!(frames[1].function_name, "onPress");
+    assert_eq!(frames[1].file_path, "main.jsbundle");
+    assert_eq!(frames[1].bundle_path, Some("main.jsbundle".to_string()));
+    assert!(!frames[1].in_app);
+    assert_eq!(frames[3].function_name, "[native code]");
+    assert_eq!(frames[3].file_path, "[native code]");
+    assert!(!frames[3].in_app);
   }
 }
