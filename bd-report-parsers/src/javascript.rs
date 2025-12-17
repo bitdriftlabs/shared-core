@@ -520,8 +520,12 @@ mod tests {
 
   #[test]
   fn parse_ios_jsbundle_release_build() {
-    let stack =
-      "triggerGlobalJsError@main.jsbundle:1:717458\nonPress@main.jsbundle:1:720868\n_performTransitionSideEffects@main.jsbundle:1:456325\n[native code]";
+    let stack = concat!(
+      "triggerGlobalJsError@main.jsbundle:1:717458\n",
+      "onPress@main.jsbundle:1:720868\n",
+      "_performTransitionSideEffects@main.jsbundle:1:456325\n",
+      "[native code]"
+    );
     let frames = parse_javascript_stack_trace(stack, Some("5aa81d1c6931a5db1800b6f5ee411e9e"));
     assert_eq!(frames.len(), 4);
     assert_eq!(frames[0].function_name, "triggerGlobalJsError");
