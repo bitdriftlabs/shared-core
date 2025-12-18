@@ -136,6 +136,19 @@ impl HyperNetwork {
 
     let (body_sender, request) = Self::create_request(self.uri.as_str(), stream.headers);
 
+    let initial_data = tokio::select! {
+      data = stream.data_rx.recv() => data,
+      () = self.shutdown.cancelled() => {
+        log::debug!("received shutdown signal, shutting down hyper networking");
+        return None;
+      }
+    };
+
+    body_sender
+      .send(Ok(Frame::data(initial_data?.into())))
+      .await
+      .ok()?;
+
     // TODO(snowp): Should this also be gated on the shutdown hook?
     let mut response = match client.request(request).await {
       Ok(response) => response,
