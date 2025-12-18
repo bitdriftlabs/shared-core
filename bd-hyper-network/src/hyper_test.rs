@@ -25,10 +25,12 @@ async fn connect_failure() {
   tokio::spawn(network.start());
 
   let (event_tx, mut event_rx) = tokio::sync::mpsc::channel(1);
-  handle
+  let mut stream = handle
     .start_stream(event_tx, &(), &HashMap::new())
     .await
     .unwrap();
+
+  stream.send_data(b"hello").await.unwrap();
 
   assert_matches!(
     event_rx.recv().await,
