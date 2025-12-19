@@ -236,8 +236,8 @@ impl LogReplay for TestReplay {
     _now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
     self.logs_count.fetch_add(1, Ordering::SeqCst);
-    if let StringOrBytes::String(message) = &log.message {
-      self.logs.lock().push(message.clone());
+    if let Some(message) = log.message.as_str() {
+      self.logs.lock().push(message.to_string());
     }
 
     self.fields.lock().push(log.fields);
@@ -281,7 +281,7 @@ fn log_line_size_is_computed_correctly() {
   // Add one extra character to the `message` and verify that reported size increases by 1 byte
   let mut baseline_log_with_longer_message = create_baseline_log();
   baseline_log_with_longer_message.message =
-    StringOrBytes::String(baseline_log.message.as_str().unwrap().to_owned() + "1");
+    StringOrBytes::from(baseline_log.message.as_str().unwrap().to_owned() + "1");
   assert_eq!(
     baseline_log_expected_size + 1,
     baseline_log_with_longer_message.size()
@@ -331,7 +331,7 @@ fn annotated_log_line_size_is_computed_correctly() {
   // Add one extra character to the `message` and verify that reported size increases by 1 bytes
   let mut baseline_log_with_longer_message = create_baseline_log();
   baseline_log_with_longer_message.message =
-    StringOrBytes::String(baseline_log.message.as_str().unwrap().to_owned() + "1");
+    StringOrBytes::from(baseline_log.message.as_str().unwrap().to_owned() + "1");
   assert_eq!(
     baseline_log_expected_size + 1,
     baseline_log_with_longer_message.size()

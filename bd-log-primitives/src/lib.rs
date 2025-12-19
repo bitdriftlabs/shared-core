@@ -14,6 +14,7 @@
   clippy::unwrap_used
 )]
 
+
 #[cfg(test)]
 #[path = "./lib_test.rs"]
 mod lib_test;
@@ -25,7 +26,8 @@ pub mod zlib;
 use crate::size::MemorySized;
 use crate::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use ahash::AHashMap;
-use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::logging::payload::data::Data_type;
+use bd_proto::protos::logging::payload::{BinaryData, Data, LogType};
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
 use protobuf::rt::WireType;
@@ -87,11 +89,63 @@ impl LossyIntToUsize for u64 {
 
 /// A union type that allows representing either a UTF-8 string or an opaque series of bytes. This
 /// is generic over the underlying String type to support different ownership models.
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
 pub enum StringOrBytes<S: AsRef<str>, B: AsRef<[u8]>> {
   String(S),
-  SharedString(Arc<String>),
+  SharedString(Arc<str>),
+  StaticString(&'static str),
   Bytes(B),
+}
+
+impl<'de, S, B> Deserialize<'de> for StringOrBytes<S, B>
+where
+  S: AsRef<str> + From<String> + Deserialize<'de>,
+  B: AsRef<[u8]> + Deserialize<'de>,
+{
+  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+  where
+    D: serde::Deserializer<'de>,
+  {
+    #[derive(Deserialize)]
+    enum Helper<S, B> {
+      String(S),
+      SharedString(String),
+      StaticString(String),
+      Bytes(B),
+    }
+
+    let helper = Helper::deserialize(deserializer)?;
+    match helper {
+      Helper::String(s) => Ok(Self::String(s)),
+      Helper::SharedString(s) | Helper::StaticString(s) => Ok(Self::String(s.into())),
+      Helper::Bytes(b) => Ok(Self::Bytes(b)),
+    }
+  }
+}
+
+impl StringOrBytes<String, Vec<u8>> {
+  /// Creates a new `StringOrBytes` instance from a static string slice. This is slightly more
+  /// efficient than using `SharedString` as it avoids heap allocation.
+  #[must_use]
+  pub fn from_static_str(s: &'static str) -> Self {
+    Self::StaticString(s)
+  }
+
+  #[must_use]
+  pub fn into_proto(self) -> Data {
+    Data {
+      data_type: Some(match self {
+        Self::String(s) => Data_type::StringData(s),
+        Self::StaticString(s) => Data_type::StringData(s.to_string()),
+        Self::SharedString(s) => Data_type::StringData((*s).to_string()),
+        Self::Bytes(b) => Data_type::BinaryData(BinaryData {
+          payload: b,
+          ..Default::default()
+        }),
+      }),
+      ..Default::default()
+    }
+  }
 }
 
 impl<T: AsRef<str>, B: AsRef<[u8]>> StringOrBytes<T, B> {
@@ -99,7 +153,8 @@ impl<T: AsRef<str>, B: AsRef<[u8]>> StringOrBytes<T, B> {
   pub fn as_str(&self) -> Option<&str> {
     match self {
       Self::String(s) => Some(s.as_ref()),
-      Self::SharedString(s) => Some(s.as_str()),
+      Self::SharedString(s) => Some(s),
+      Self::StaticString(s) => Some(s),
       Self::Bytes(_) => None,
     }
   }
@@ -107,7 +162,7 @@ impl<T: AsRef<str>, B: AsRef<[u8]>> StringOrBytes<T, B> {
   /// Extracts the underlying bytes if the enum represents a Bytes, None otherwise.
   pub fn as_bytes(&self) -> Option<&[u8]> {
     match self {
-      Self::String(_) | Self::SharedString(_) => None,
+      Self::String(_) | Self::SharedString(_) | Self::StaticString(_) => None,
       Self::Bytes(b) => Some(b.as_ref()),
     }
   }
@@ -119,8 +174,8 @@ impl From<String> for StringOrBytes<String, Vec<u8>> {
   }
 }
 
-impl<S: AsRef<str>> From<Arc<String>> for StringOrBytes<S, Vec<u8>> {
-  fn from(s: Arc<String>) -> Self {
+impl<S: AsRef<str>> From<Arc<str>> for StringOrBytes<S, Vec<u8>> {
+  fn from(s: Arc<str>) -> Self {
     Self::SharedString(s)
   }
 }
@@ -154,6 +209,7 @@ impl std::fmt::Display for LogMessage {
     match self {
       Self::String(s) => write!(f, "{s}"),
       Self::SharedString(s) => write!(f, "{s}"),
+      Self::StaticString(s) => write!(f, "{s}"),
       Self::Bytes(b) => {
         write!(f, "bytes:{b:?}")
       },
@@ -335,6 +391,10 @@ impl LogEncodingHelper {
         // string string_data = 1;
         my_size += ::protobuf::rt::string_size(1, s.as_ref());
       },
+      StringOrBytes::StaticString(s) => {
+        // string string_data = 1;
+        my_size += ::protobuf::rt::string_size(1, s);
+      },
       StringOrBytes::Bytes(b) => {
         // This encodes the Binary proto message.
         // bytes payload = 2;
@@ -363,6 +423,10 @@ impl LogEncodingHelper {
       StringOrBytes::SharedString(s) => {
         // string string_data = 1;
         os.write_string(1, s.as_ref())?;
+      },
+      StringOrBytes::StaticString(s) => {
+        // string string_data = 1;
+        os.write_string(1, s)?;
       },
       StringOrBytes::Bytes(b) => {
         // This encodes the Binary proto message.
@@ -715,8 +779,9 @@ impl MemorySized for LogFieldValue {
     size_of_val(self)
       + match self {
         Self::String(s) => s.len(),
-        // TODO(snowp): Can we avoid counting the size of the string if we know that it's "shared"?
-        Self::SharedString(s) => s.len(),
+        // For these variants the string is stored on the heap so we assume that it takes up no
+        // space within the enum itself.
+        Self::SharedString(_) | Self::StaticString(_) => 0,
         Self::Bytes(b) => b.capacity(),
       }
   }
