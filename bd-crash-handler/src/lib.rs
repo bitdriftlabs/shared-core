@@ -110,7 +110,6 @@ pub enum ReportOrigin {
 #[derive(Clone)]
 pub struct Monitor {
   report_directory: PathBuf,
-  previous_run_global_state: LogFields,
   previous_run_state: bd_resilient_kv::ScopedMaps,
   state: bd_state::Store,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
@@ -138,11 +137,9 @@ impl Monitor {
     );
 
     let global_state_reader = global_state::Reader::new(store);
-    let previous_run_global_state = global_state_reader.global_state_fields();
 
     let mut monitor = Self {
       report_directory: sdk_directory.join(REPORTS_DIRECTORY),
-      previous_run_global_state,
       previous_run_state,
       state,
       artifact_client,
@@ -420,7 +417,11 @@ impl Monitor {
   fn get_global_state_fields(&self, origin: ReportOrigin) -> LogFields {
     match origin {
       ReportOrigin::Current => self.global_state_reader.global_state_fields(),
-      ReportOrigin::Previous => self.previous_run_global_state.clone(),
+      ReportOrigin::Previous => self
+        .global_state_reader
+        .previous_global_state_fields()
+        .cloned()
+        .unwrap_or_default(),
     }
   }
 
