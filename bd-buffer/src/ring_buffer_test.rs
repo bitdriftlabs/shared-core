@@ -38,6 +38,7 @@ async fn test_create_ring_buffer() {
     fake_counter(),
     fake_counter(),
     None,
+    None,
   )
   .unwrap();
 
@@ -63,6 +64,7 @@ fn test_create_ring_buffer_illegal_path() {
     fake_counter(),
     fake_counter(),
     fake_counter(),
+    None,
     None,
   );
 
@@ -96,6 +98,7 @@ fn corrupted_buffer() {
     fake_counter(),
     fake_counter(),
     None,
+    None,
   )
   .unwrap();
   assert!(!deleted);
@@ -118,6 +121,7 @@ fn corrupted_buffer() {
     fake_counter(),
     fake_counter(),
     None,
+    None,
   )
   .unwrap();
   assert!(deleted);
@@ -130,6 +134,7 @@ async fn test_ring_buffer_manager() {
     dir.path().to_path_buf(),
     &Collector::default().scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
+    None,
   );
 
   // Make sure we're not letting any buffer events sit in the channel, as this extends the
@@ -177,6 +182,7 @@ async fn ring_buffer_stats() {
     diretory.path().to_owned(),
     &collector.scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
+    None,
   );
 
   // Make sure we're not letting any buffer events sit in the channel, as this extends the
@@ -276,6 +282,7 @@ async fn write_failure_stats() {
     diretory.path().to_owned(),
     &collector.scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
+    None,
   );
 
   // Make sure we're not letting any buffer events sit in the channel, as this extends the
@@ -320,6 +327,7 @@ async fn buffer_never_resizes() {
     buffer_directory.path().to_path_buf(),
     &Collector::default().scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from("")),
+    None,
   );
 
   // Make sure we're not letting any buffer events sit in the channel, as this extends the

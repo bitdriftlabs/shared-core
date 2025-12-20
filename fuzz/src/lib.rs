@@ -117,7 +117,7 @@ impl BufferState {
   ) -> Option<Self> {
     let buffer = match test_case.buffer_type {
       BufferType::Volatile => {
-        VolatileRingBuffer::new("test".to_string(), test_case.buffer_size, stats)
+        VolatileRingBuffer::new("test".to_string(), test_case.buffer_size, stats, None)
       },
       BufferType::NonVolatile => {
         // TODO(mattklein123): fuzz no overwrite in non-cursor mode.
@@ -133,6 +133,7 @@ impl BufferState {
           BlockWhenReservingIntoConcurrentRead::No,
           PerRecordCrc32Check::Yes,
           stats,
+          None,
         ) {
           Ok(buffer) => buffer as Arc<dyn RingBuffer>,
           Err(e) => {
@@ -166,6 +167,7 @@ impl BufferState {
           },
           stats.clone(),
           stats,
+          None,
         ) {
           Ok(buffer) => buffer as Arc<dyn RingBuffer>,
           Err(e) => {

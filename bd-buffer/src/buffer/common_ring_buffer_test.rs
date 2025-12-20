@@ -29,7 +29,7 @@ use bd_client_stats_store::Collector;
 use bd_log_primitives::LossyIntToU32;
 use parameterized::parameterized;
 use std::any::Any;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 
 #[derive(Clone, Copy)]
@@ -66,15 +66,27 @@ struct Helper {
   helper: CommonHelper,
   _temp_dir: TempDir,
   stats: StatsTestHelper,
+  evicted_records: Arc<Mutex<Vec<Vec<u8>>>>,
 }
 
 impl Helper {
   fn new(size: u32, test_type: TestType) -> Self {
     let temp_dir = TempDir::with_prefix("buffer_test").unwrap();
     let stats = StatsTestHelper::new(&Collector::default().scope(""));
+    let evicted_records = Arc::new(Mutex::new(Vec::new()));
+    let evicted_records_clone = evicted_records.clone();
+
+    let on_evicted_cb = Some(Arc::new(move |bytes: &[u8]| {
+        evicted_records_clone.lock().unwrap().push(bytes.to_vec());
+    }) as Arc<dyn Fn(&[u8]) + Send + Sync>);
+
     let buffer = match test_type {
-      TestType::Volatile => VolatileRingBuffer::new("test".to_string(), size, stats.stats.clone())
-        as Arc<dyn RingBuffer>,
+      TestType::Volatile => VolatileRingBuffer::new(
+        "test".to_string(),
+        size,
+        stats.stats.clone(),
+        on_evicted_cb,
+      ) as Arc<dyn RingBuffer>,
       TestType::NonVolatile => NonVolatileRingBuffer::new(
         "test".to_string(),
         temp_dir.path().join("buffer"),
@@ -83,6 +95,7 @@ impl Helper {
         BlockWhenReservingIntoConcurrentRead::No,
         PerRecordCrc32Check::No,
         stats.stats.clone(),
+        on_evicted_cb,
       )
       .unwrap() as Arc<dyn RingBuffer>,
       TestType::Aggregate => AggregateRingBuffer::new(
@@ -94,6 +107,7 @@ impl Helper {
         AllowOverwrite::Yes,
         Arc::new(RingBufferStats::default()),
         stats.stats.clone(),
+        on_evicted_cb,
       )
       .unwrap() as Arc<dyn RingBuffer>,
     };
@@ -101,6 +115,7 @@ impl Helper {
       helper: CommonHelper::new(buffer, Cursor::No),
       _temp_dir: temp_dir,
       stats,
+      evicted_records,
     }
   }
 }
@@ -112,7 +127,67 @@ impl Drop for Helper {
   }
 }
 
-// Test basic error cases.
+
+// Test that the eviction callback is fired when records are overwritten.
+#[parameterized(test_type = {TestType::Volatile, TestType::NonVolatile, TestType::Aggregate})]
+fn callback_fired_on_eviction(test_type: TestType) {
+  let mut root = Helper::new(30, test_type);
+  let helper = &mut root.helper;
+
+
+  // Reserve and write 0-9.
+  helper.reserve_and_commit("aaaaaa");
+
+  // Reserve and write 10-19.
+  helper.reserve_and_commit("bbbbbb");
+
+  // Reserve and write 20-29.
+  helper.reserve_and_commit("cccccc");
+
+  // Ensure these are propagated to NonVolatile in Aggregate case.
+  // This prevents the "slow flush" race where Volatile overwrites before flushing to NonVolatile.
+  if matches!(test_type, TestType::Aggregate) {
+      helper.buffer.flush();
+  }
+  
+  root.stats.wait_for_total_records_written(3);
+
+  // Reserve and write 0-9. This should overwrite "aaaaaa".
+  helper.reserve_and_commit("dddddd");
+
+  if matches!(test_type, TestType::Aggregate) {
+      helper.buffer.flush();
+  }
+
+  root.stats.wait_for_total_records_written(4);
+
+  
+  // Give a little time for callbacks to fire if there's any async behavior (though CommonRingBuffer calls it synchronously).
+  // However, for AggregateRingBuffer, the flush happens in a separate thread, so the eviction (and callback) 
+  // happens on that thread.
+  // wait_for_total_records_written waits for the *write* to complete.
+  // If it's Aggregate, the write goes to Volatile. Then flush thread moves it to NonVolatile.
+  // The eviction happens when NonVolatile is written to.
+  
+  // Let's loop briefly to wait for the callback.
+  let start = std::time::Instant::now();
+  loop {
+      let evicted = root.evicted_records.lock().unwrap();
+      if !evicted.is_empty() || start.elapsed() > std::time::Duration::from_secs(5) {
+          break;
+      }
+      std::thread::sleep(std::time::Duration::from_millis(10));
+  }
+
+  let evicted = root.evicted_records.lock().unwrap();
+  assert_eq!(evicted.len(), 1, "Expected 1 evicted record");
+  let record = &evicted[0];
+  let as_string = String::from_utf8_lossy(record);
+  // We verify that the evicted record contains "aaaaaa".
+  // The exact format includes some header bytes, but the payload should be there.
+  assert!(as_string.contains("aaaaaa"), "Evicted record should contain 'aaaaaa', got: {:?}", as_string);
+}
+
 #[parameterized(test_type = {TestType::Volatile, TestType::NonVolatile, TestType::Aggregate})]
 fn errors(test_type: TestType) {
   let mut root = Helper::new(100, test_type);

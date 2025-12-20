@@ -159,6 +159,10 @@ pub struct LockedData<ExtraLockedData> {
   has_read_reservation_cb: Box<dyn Fn(&ExtraLockedData) -> bool + Send>,
   has_write_reservation_cb: Box<dyn Fn(&ExtraLockedData) -> bool + Send>,
 
+  // Callback invoked when a record is evicted (overwritten).
+  // The argument is the record data.
+  on_evicted_cb: Box<dyn Fn(&[u8]) + Send + Sync>,
+
   // Indicates whether the buffer is in a readable state or not, i.e. if we expect a read() call to
   // immediately return an entry.
   pub readable: tokio::sync::watch::Sender<bool>,
@@ -456,6 +460,20 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
         // When overwriting we zero out any extra data, to make sure that CRCs, etc. become so the
         // overwritten record is skipped correctly if corruption lands us in it somehow.
         let next_read_start = guard.next_read_start().ok_or(InvariantError::Invariant)?;
+
+        // Invoke the eviction callback before zeroing/advancing.
+        // We need to calculate the data slice.
+        let data_start = (next_read_start + guard.extra_bytes_per_record) as usize;
+        let data_len = next_read_size as usize;
+        // Safety: We are holding the lock so reading this memory is safe.
+        // We just need to make sure we don't access out of bounds.
+        // The load_next_read_size checks ensures size is valid and within bounds.
+        let memory_slice = unsafe {
+          let ptr = guard.memory().as_ptr().add(data_start);
+          std::slice::from_raw_parts(ptr, data_len)
+        };
+        (guard.on_evicted_cb)(memory_slice);
+
         guard.zero_extra_data(next_read_start);
         guard.advance_next_read(next_read_actual_size, Cursor::No)?;
       } else {
@@ -981,6 +999,7 @@ impl<ExtraLockedData> CommonRingBuffer<ExtraLockedData> {
     on_total_data_loss_cb: impl Fn(&mut ExtraLockedData) + Send + 'static,
     has_read_reservation_cb: impl Fn(&ExtraLockedData) -> bool + Send + 'static,
     has_write_reservation_cb: impl Fn(&ExtraLockedData) -> bool + Send + 'static,
+    on_evicted_cb: Option<Arc<dyn Fn(&[u8]) + Send + Sync>>,
   ) -> Self {
     // Initialize the channel to true on startup. If we end up reading from the buffer when it's
     // not ready the async read calls will still wait for the read to be available, and starting
@@ -1005,6 +1024,11 @@ impl<ExtraLockedData> CommonRingBuffer<ExtraLockedData> {
         on_total_data_loss_cb: Box::new(on_total_data_loss_cb),
         has_read_reservation_cb: Box::new(has_read_reservation_cb),
         has_write_reservation_cb: Box::new(has_write_reservation_cb),
+        on_evicted_cb: Box::new(move |data| {
+          if let Some(cb) = &on_evicted_cb {
+            cb(data);
+          }
+        }),
         wait_for_drain_data: None,
         pending_total_data_loss_reset: false,
         readable,
