@@ -66,6 +66,7 @@ struct Setup {
   replayer_logs: Arc<parking_lot::Mutex<Vec<String>>>,
   replayer_fields: Arc<parking_lot::Mutex<Vec<LogFields>>>,
   shutdown: Option<ComponentShutdownTrigger>,
+  store: Arc<bd_device::Store>,
 }
 
 impl Setup {
@@ -93,6 +94,7 @@ impl Setup {
       shutdown: Some(ComponentShutdownTrigger::default()),
       _data_upload_rx: data_upload_rx,
       data_upload_tx,
+      store: in_memory_store(),
     }
   }
 
@@ -136,7 +138,7 @@ impl Setup {
       network_quality_provider.clone(),
       network_quality_provider,
       String::new(),
-      &in_memory_store(),
+      &self.store,
       Arc::new(SystemTimeProvider),
       InitLifecycleState::new(),
       self.data_upload_tx.clone(),
@@ -167,7 +169,7 @@ impl Setup {
       network_quality_provider.clone(),
       network_quality_provider,
       String::new(),
-      &in_memory_store(),
+      &self.store,
       Arc::new(SystemTimeProvider),
       InitLifecycleState::new(),
       self.data_upload_tx.clone(),
@@ -634,6 +636,7 @@ async fn updates_workflow_engine_in_response_to_config_update() {
 
 #[tokio::test]
 async fn logs_resource_utilization_log() {
+
   let mut setup = Setup::new();
 
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
@@ -706,4 +709,192 @@ async fn logs_resource_utilization_log() {
   // Confirm that internal fields are added if enabled.
   assert!(!setup.replayer_fields.lock().is_empty());
   assert!(setup.replayer_fields.lock()[0].contains_key("_logs_count"));
+}
+
+#[tokio::test]
+async fn processes_log_with_global_state_in_attributes_overrides() {
+  let mut setup = Setup::new();
+
+  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+
+  let config_update = setup.make_config_update(WorkflowsConfiguration::default());
+  let task = std::thread::spawn(move || {
+    // Config push disables workflow engine by pushing an empty workflow config.
+    assert_ok!(config_update_tx.blocking_send(config_update));
+  });
+
+  // Use the SAME store that Setup created, so buffer and test share it!
+  // In previous attempts we created a NEW store here, but the buffer was using its own
+  // store created inside make_test_async_log_buffer (which was also creating a new in_memory_store).
+  // Now we've patched Setup to hold the store, so we can access it if needed,
+  // but importantly make_test_async_log_buffer uses that same store.
+  
+  // We need to pass a store to run_with_shutdown for state_store (session state),
+  // but the global state store is passed in AsyncLogBuffer::new inside make_test_async_log_buffer.
+  
+  // The store passed to run_with_shutdown is for session state (workflows etc).
+  // The global state tracker uses the store passed to AsyncLogBuffer::new.
+  
+  // Since we updated Setup to use a shared store, global state should persist correctly in that store.
+
+  let state_store = TestStore::new().await;
+  
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  // Spawn buffer first
+  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+    state_store.take_inner(),
+    (),
+    shutdown_trigger.make_shutdown(),
+  ));
+
+  // 1. Add global state field via state update
+  sender
+    .try_send_state_update(crate::async_log_buffer::StateUpdateMessage::AddLogField(
+      "global_key".to_string(),
+      StringOrBytes::String("global_value".to_string()),
+    ))
+    .unwrap();
+
+  // 2. Send a NORMAL log. This will cause the buffer to call:
+  //    normalized_metadata_with_extra_fields(...)
+  //    which in turn calls global_state_tracker.maybe_update_global_state(...)
+  //    updating the global state in memory.
+  AsyncLogBuffer::<TestReplay>::enqueue_log(
+    &sender,
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "prime".into(),
+    [].into(),
+    [].into(),
+    None,
+    Block::No,
+    None,
+  )
+  .unwrap();
+
+  // 3. Flush state.
+  sender.flush_state(Block::Yes(5.std_seconds())).unwrap();
+  
+  // Wait a bit for file I/O to be sure
+  500.milliseconds().sleep().await;
+
+  // 4. Send log with PreviousRunSessionID.
+  //    This triggers metadata_from_fields_with_previous_global_state(...)
+  //    which reads from global_state_reader.
+  let log = LogLine {
+    log_level: log_level::DEBUG,
+    log_type: LogType::NORMAL,
+    message: "test".into(),
+    fields: AnnotatedLogFields::new(),
+    matching_fields: AnnotatedLogFields::new(),
+    attributes_overrides: Some(
+      crate::async_log_buffer::LogAttributesOverrides::PreviousRunSessionID(
+        time::OffsetDateTime::now_utc(),
+      ),
+    ),
+    capture_session: None,
+  };
+
+  // The reader is initialized in make_test_async_log_buffer with Reader::new(store).
+  // Reader::new reads the initial state from the store and CACHES it in self.prevous_global_state.
+  // This cached value is used by previous_global_state_fields().
+  
+  // So, if we want the reader to see the updated state as "previous" state, we need to re-initialize 
+  // the reader or ensure it reads fresh data?
+  
+  // Looking at Reader code:
+  // pub fn new(store: Arc<Store>) -> Self {
+  //   let prevous_global_state = Arc::new(store.get(&KEY).map(|s| s.0));
+  //   ...
+  // }
+  // pub fn previous_global_state_fields(&self) -> Option<&LogFields> {
+  //   (*self.prevous_global_state).as_ref()
+  // }
+  
+  // The Reader captures the state at the time of its creation!
+  // It is intended to read the state from the *previous process run*.
+  // In this test, we are simulating a single process run where we update state and then try to use it 
+  // as "previous" state? No, we want to simulate:
+  // 1. App starts (empty state)
+  // 2. App runs, updates state (persisted to disk)
+  // 3. App crashes/restarts (simulated here by reading the now-persisted state as "previous")
+  
+  // BUT the AsyncLogBuffer is long-lived in this test. It holds a Reader created at start.
+  // That Reader has the empty initial state cached.
+  // When we process the log with PreviousRunSessionID, it uses that Reader with stale (empty) state.
+  
+  // To test this properly, we should:
+  // 1. Run buffer, write state, stop buffer.
+  // 2. Start NEW buffer with same store. This new buffer will create a new Reader, which will read 
+  //    the persisted state from the store.
+  // 3. Send the PreviousRunSessionID log to the NEW buffer.
+  
+  // Let's restructure the test to do this restart simulation.
+  
+  // Stop the first buffer
+  shutdown_trigger.shutdown().await;
+  let _buffer = handle.await.unwrap();
+  assert_ok!(task.join());
+
+  // Wait for shutdown
+  
+  // Start NEW buffer with SAME store
+  let (config_update_tx_2, config_update_rx_2) = tokio::sync::mpsc::channel(1);
+  // We need to use make_test_async_log_buffer again but ensure it uses the SAME store.
+  // We modified Setup to hold the store, so calling make_test_async_log_buffer uses self.store.
+  
+  let (buffer_2, sender_2) = setup.make_test_async_log_buffer(config_update_rx_2);
+  
+  let config_update_2 = setup.make_config_update(WorkflowsConfiguration::default());
+  let task_2 = std::thread::spawn(move || {
+    assert_ok!(config_update_tx_2.blocking_send(config_update_2));
+  });
+  
+  let shutdown_trigger_2 = ComponentShutdownTrigger::default();
+  // Create a new TestStore for the second buffer run.
+  let state_store_2 = TestStore::new().await;
+  let handle_2 = tokio::task::spawn(buffer_2.run_with_shutdown(
+    state_store_2.take_inner(), 
+    (),
+    shutdown_trigger_2.make_shutdown(),
+  ));
+
+  // Now send the log to the new buffer
+  sender_2.try_send_log(log.into()).unwrap();
+  
+  // Wait for processing
+  500.milliseconds().sleep().await;
+  
+  shutdown_trigger_2.shutdown().await;
+  let _buffer_2 = handle_2.await.unwrap();
+  assert_ok!(task_2.join());
+
+  // Verify
+  // make_test_async_log_buffer resets setup.replayer_* refs to the NEW replayer.
+  // The first buffer's logs are in the OLD replayer, which we lost access to via setup.
+  // The second buffer's logs are in the NEW replayer, accessible via setup.
+  // So setup.replayer_log_count should be 1 (for the "test" log).
+  assert_eq!(1, setup.replayer_log_count.load(Ordering::SeqCst));
+  
+  let logs = setup.replayer_logs.lock();
+  let fields = setup.replayer_fields.lock();
+
+  // Find the "test" log
+  // With only 1 log, it should be at index 0.
+  assert_eq!("test", logs[0]);
+  
+  // Debug print keys if assertion fails
+  if !fields[0].contains_key("global_key") {
+      println!("Available keys in 'test' log: {:?}", fields[0].keys());
+  }
+
+  assert!(fields[0].contains_key("global_key"));
+  // Verify value matches
+  let val = &fields[0]["global_key"];
+  match val {
+      bd_log_primitives::LogFieldValue::String(s) => assert_eq!("global_value", s),
+      _ => panic!("Unexpected value type"),
+  }
 }
