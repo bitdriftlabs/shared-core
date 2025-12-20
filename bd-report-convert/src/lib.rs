@@ -14,6 +14,7 @@ use std::slice;
   non_snake_case,
   non_upper_case_globals,
   clippy::unreadable_literal,
+  clippy::use_self,
   dead_code
 )]
 mod generated;

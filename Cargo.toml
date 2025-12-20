@@ -63,66 +63,73 @@ arbitrary         = { version = "1.4.2", features = ["derive"] }
 arc-swap          = "1.7.1"
 assert_matches    = "1.5.0"
 assert_no_alloc   = "1.1.2"
-async-compression = { version = "0.4.20", features = ["tokio", "zlib"] }
+async-compression = { version = "0.4.36", features = ["tokio", "zlib"] }
 async-trait       = "0.1.89"
-axum              = { version = "0.8.6", features = ["http2", "macros"] }
+axum              = { version = "0.8.8", features = ["http2", "macros"] }
 backoff           = "0.4.0"
 base64            = "0.22.1"
 base64-url        = "3.0.2"
-base64ct          = { version = "1.8.0", features = ["alloc", "std"] }
+base64ct          = { version = "1.8.1", features = ["alloc", "std"] }
 bd-workspace-hack = "0.1.0"
-bincode           = { version = "2.0.1", features = ["serde"] }
-bindgen           = "0.72.1"
-bytes             = "1.10.1"
-cbindgen          = "0.29.2"
-cc                = "1.2.45"
-clap              = { version = "4.5.51", features = ["derive", "env"] }
-cmake             = "0.1.54"
-color-backtrace   = "0.7.2"
-concat-string     = "1.0.1"
-crc32fast         = "1.5.0"
-ctor              = "0.6.1"
-dashmap           = "6.1.0"
-flatbuffers       = "25.9.23"
-flatc-rust        = "0.2.0"
-flate2            = { version = "1.1.5", default-features = false }
-fs2               = "0.4.3"
-futures           = "0.3.31"
-futures-core      = "0.3.31"
-futures-util      = "0.3.31"
-http              = "1.3.1"
-http-body         = "1.0.1"
-http-body-util    = "0.1.3"
-hyper             = "1.8.1"
-ordered-float     = { version = "5.1.0", features = ["serde"] }
-rmcp              = { version = "0.8.5", features = ["transport-io"] }
-walkdir           = "2.5.0"
+
+# This project is abandoned and needs to be replaced so is pinned for now. The maintainers just
+# deleted all the code in a 3.0 version.
+bincode = { version = "=2.0.1", features = ["serde"] }
+
+bindgen         = "0.72.1"
+bytes           = "1.11.0"
+cbindgen        = "0.29.2"
+cc              = "1.2.50"
+clap            = { version = "4.5.53", features = ["derive", "env"] }
+cmake           = "0.1.57"
+color-backtrace = "0.7.2"
+concat-string   = "1.0.1"
+crc32fast       = "1.5.0"
+ctor            = "0.6.3"
+dashmap         = "6.1.0"
+
+# Pinned due to https://github.com/google/flatbuffers/issues/8876
+flatbuffers = "=25.9.23"
+
+flatc-rust     = "0.2.0"
+flate2         = { version = "1.1.5", default-features = false }
+fs2            = "0.4.3"
+futures        = "0.3.31"
+futures-core   = "0.3.31"
+futures-util   = "0.3.31"
+http           = "1.4.0"
+http-body      = "1.0.1"
+http-body-util = "0.1.3"
+hyper          = "1.8.1"
+rmcp           = { version = "0.12.0", features = ["transport-io"] }
+walkdir        = "2.5.0"
 
 hyper-rustls = { version = "0.27.7", default-features = false, features = ["ring", "http1", "http2", "webpki-roots"] }
 
 ahash                 = { version = "0.8.12", features = ["serde"] }
-hyper-util            = { version = "0.1.18", features = ["client", "client-legacy"] }
-insta                 = "1.43.2"
+hyper-util            = { version = "0.1.19", features = ["client", "client-legacy"] }
+insta                 = "1.45.0"
 intrusive-collections = "0.9.7"
 itertools             = "0.14.0"
 jni                   = "0.21.1"
-libc                  = "0.2.177"
+libc                  = "0.2.178"
 libfuzzer-sys         = "0.4.10"
-log                   = "0.4.28"
+log                   = "0.4.29"
 matches               = "0.1.10"
 memmap2               = "0.9.9"
-mockall               = "0.13.1"
+mockall               = "0.14.0"
 nom                   = "8.0.0"
 nom-language          = "0.1.0"
 notify                = "8.2.0"
+ordered-float         = { version = "5.1.0", features = ["serde"] }
 parameterized         = "2.1.0"
 parking_lot           = "0.12.5"
 pretty_assertions     = "1.4.1"
 prometheus            = "0.14.0"
 thread_local          = "1.1"
-tracing               = "0.1.41"
+tracing               = "0.1.44"
 tracing-log           = "0.2.0"
-tracing-subscriber    = { version = "0.3.20", features = ["env-filter"] }
+tracing-subscriber    = { version = "0.3.22", features = ["env-filter"] }
 
 protobuf = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", branch = "patch-stack", features = [
   "bytes",
@@ -133,12 +140,12 @@ protobuf-json-mapping = { git = "https://github.com/bitdriftlabs/rust-protobuf.g
 
 rand           = "0.9.2"
 regex          = "1.12.2"
-reqwest        = { version = "0.12.24", features = ["deflate", "json"] }
+reqwest        = { version = "0.12.28", features = ["deflate", "json"] }
 rstest         = "0.26.1"
 rstest_reuse   = "0.7.0"
 rustls-pemfile = "2.2.0"
 serde          = { version = "1", features = ["derive", "rc"] }
-serde_json     = "1.0.145"
+serde_json     = "1.0.146"
 serde_yaml     = "0.9.34"
 sha2           = "0.10.9"
 
@@ -159,11 +166,11 @@ tokio-rustls      = { version = "0.26.4", default-features = false, features = [
 tokio-stream      = "0.1.17"
 tokio-test        = "0.4.4"
 tower             = { version = "0.5.2", features = ["retry", "util"] }
-tower-http        = { version = "0.6.6", features = ["compression-deflate"] }
+tower-http        = { version = "0.6.8", features = ["compression-deflate"] }
 tracing-error     = "0.2.1"
-unwrap-infallible = "0.1.5"
+unwrap-infallible = "1.0.0"
 urlencoding       = "2.1.3"
-uuid              = { version = "1.18.1", features = ["v4"] }
+uuid              = { version = "1.19.0", features = ["v4"] }
 
 [profile.bench]
 debug = true

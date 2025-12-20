@@ -101,13 +101,13 @@ hyper-util = { version = "0.1", default-features = false, features = ["client-pr
 libc = { version = "0.2", default-features = false, features = ["extra_traits"] }
 miniz_oxide = { version = "0.8", default-features = false, features = ["simd", "with-alloc"] }
 tower = { version = "0.5", default-features = false, features = ["timeout"] }
-tower-http = { version = "0.6", features = ["compression-deflate", "follow-redirect"] }
+tower-http = { version = "0.6", features = ["compression-deflate", "decompression-deflate", "follow-redirect"] }
 
 [target.aarch64-apple-darwin.build-dependencies]
 hyper-util = { version = "0.1", default-features = false, features = ["client-proxy", "client-proxy-system"] }
 libc = { version = "0.2", default-features = false, features = ["extra_traits"] }
 miniz_oxide = { version = "0.8", default-features = false, features = ["simd", "with-alloc"] }
 tower = { version = "0.5", default-features = false, features = ["timeout"] }
-tower-http = { version = "0.6", features = ["compression-deflate", "follow-redirect"] }
+tower-http = { version = "0.6", features = ["compression-deflate", "decompression-deflate", "follow-redirect"] }
 
 ### END HAKARI SECTION
