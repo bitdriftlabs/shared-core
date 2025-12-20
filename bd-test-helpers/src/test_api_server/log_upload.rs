@@ -72,6 +72,12 @@ impl WrappedLog {
     match self.0.message.data_type.as_ref().unwrap() {
       Data_type::StringData(string_data) => StringOrBytes::String(string_data.clone()),
       Data_type::BinaryData(binary_data) => StringOrBytes::Bytes(binary_data.payload.clone()),
+      Data_type::BoolData(bool_data) => StringOrBytes::Boolean(*bool_data),
+      Data_type::IntData(int_data) => StringOrBytes::U64(*int_data),
+      Data_type::SintData(sint_data) => StringOrBytes::I64(*sint_data),
+      Data_type::DoubleData(double_data) => {
+        StringOrBytes::Double(ordered_float::NotNan::new(*double_data).unwrap())
+      },
     }
   }
 

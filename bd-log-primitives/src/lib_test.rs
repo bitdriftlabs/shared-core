@@ -36,7 +36,12 @@ fn custom_proto_encoder() {
   Data::descriptor()
     .fields()
     .for_each(|field| match field.name() {
-      "string_data" | "binary_data" => {},
+      "string_data"
+      | "binary_data"
+      | "int_data"
+      | "double_data"
+      | "bool_data"
+      | "sint_data" => {},
       other => panic!("unexpected field added to Data proto: {other}"),
     });
   // Note that "type" is unused currently and not encoded.
