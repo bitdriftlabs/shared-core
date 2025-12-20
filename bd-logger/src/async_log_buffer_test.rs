@@ -81,6 +81,7 @@ impl Setup {
         tmp_dir.path().join("buffer"),
         &collector.scope(""),
         runtime,
+        None,
       )
       .0,
       runtime: Self::make_runtime(&tmp_dir),

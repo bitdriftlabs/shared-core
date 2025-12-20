@@ -444,7 +444,12 @@ pub struct RingBufferImpl {
 
 impl RingBufferImpl {
   #[must_use]
-  pub fn new(name: String, size: u32, stats: Arc<RingBufferStats>) -> Arc<Self> {
+  pub fn new(
+    name: String,
+    size: u32,
+    stats: Arc<RingBufferStats>,
+    on_evicted_cb: Option<Arc<dyn Fn(&[u8]) + Send + Sync>>,
+  ) -> Arc<Self> {
     let mut memory_do_not_use = Vec::with_capacity(size as usize);
     memory_do_not_use.spare_capacity_mut(); // Appease clippy.
     unsafe {
@@ -481,6 +486,7 @@ impl RingBufferImpl {
           .is_some()
       },
       |extra_locked_data| !extra_locked_data.reservations.is_empty(),
+      on_evicted_cb,
     );
 
     Arc::new(Self {

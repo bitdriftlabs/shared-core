@@ -163,6 +163,9 @@ pub struct Manager {
 
   stream_buffer_size_flag:
     bd_runtime::runtime::IntWatch<bd_runtime::runtime::buffers::StreamBufferSizeBytes>,
+
+  // Callback invoked when a record is evicted (overwritten).
+  on_evicted_cb: Option<Arc<dyn Fn(&[u8]) + Send + Sync>>,
 }
 
 impl Manager {
@@ -170,6 +173,7 @@ impl Manager {
     buffer_directory: PathBuf,
     stats: &Scope,
     runtime: &bd_runtime::runtime::ConfigLoader,
+    on_evicted_cb: Option<Arc<dyn Fn(&[u8]) + Send + Sync>>,
   ) -> (
     Arc<Self>,
     tokio::sync::mpsc::Receiver<BufferEventWithResponse>,
@@ -184,6 +188,7 @@ impl Manager {
         buffer_event_tx,
         scope,
         stream_buffer_size_flag: runtime.register_int_watch(),
+        on_evicted_cb,
       }),
       buffer_event_rx,
     )
@@ -294,6 +299,7 @@ impl Manager {
             .scope
             .counter_with_labels("total_data_loss", labels! {"buffer_id" => &buffer.id}),
           None,
+          self.on_evicted_cb.clone(),
         )?;
 
         updated_buffers.insert(buffer.id.clone(), (buffer_type, ring_buffer.clone()));
@@ -419,6 +425,7 @@ impl Manager {
           "bd tail".to_string(),
           *self.stream_buffer_size_flag.read(),
           Arc::new(RingBufferStats::default()),
+          self.on_evicted_cb.clone(),
         ));
 
         Some(BufferEventWithResponse::new(
@@ -565,6 +572,7 @@ impl RingBuffer {
     volatile_records_written: Counter,
     volatile_records_refused: Counter,
     non_volatile_records_written: Option<Counter>,
+    on_evicted_cb: Option<Arc<dyn Fn(&[u8]) + Send + Sync>>,
   ) -> Result<Arc<AggregateRingBuffer>> {
     // TODO(mattklein123): Right now we expose a very limited set of stats. Given it's much easier
     // now to inject stats we can consider exposing the rest. For now just duplicate what we
@@ -595,6 +603,7 @@ impl RingBuffer {
       },
       Arc::new(volatile_stats),
       Arc::new(non_volatile_stats),
+      on_evicted_cb,
     )
   }
 
@@ -612,6 +621,7 @@ impl RingBuffer {
     corrupted_record_counter: Counter,
     total_data_loss_counter: Counter,
     non_volatile_records_written: Option<Counter>,
+    on_evicted_cb: Option<Arc<dyn Fn(&[u8]) + Send + Sync>>,
   ) -> Result<(Arc<Self>, bool)> {
     let filename = non_volatile_filename
       .to_str()
@@ -630,6 +640,7 @@ impl RingBuffer {
       write_counter.clone(),
       write_failure_counter.clone(),
       non_volatile_records_written.clone(),
+      on_evicted_cb.clone(),
     );
 
     let mut deleted = false;
@@ -660,6 +671,7 @@ impl RingBuffer {
         write_counter,
         write_failure_counter,
         non_volatile_records_written,
+        on_evicted_cb,
       );
     }
 

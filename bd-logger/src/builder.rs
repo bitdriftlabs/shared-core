@@ -32,6 +32,7 @@ use bd_client_stats_store::Collector;
 use bd_crash_handler::Monitor;
 use bd_error_reporter::reporter::{UnexpectedErrorHandler, handle_unexpected};
 use bd_internal_logging::NoopLogger;
+use bd_log_primitives::LogEncodingHelper;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::network_quality::NetworkCallOnlineIndicatorTimeout;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
@@ -241,6 +242,16 @@ impl LoggerBuilder {
     let data_upload_tx_clone = data_upload_tx.clone();
     let collector_clone = collector;
 
+    // TODO(mattklein123): This is an extremely rough estimate of the oldest log timestamp.
+    // In the future we should likely do something better here like a histogram.
+    // For now we just use a gauge which tracks the oldest timestamp evicted.
+    let on_evicted_cb: Option<Arc<dyn Fn(&[u8]) + Send + Sync>> = Some(Arc::new(move |bytes| {
+      if let Some(ts) = LogEncodingHelper::extract_timestamp(bytes) {
+          // TODO: implement gauge metric update here
+          let _ = ts.unix_timestamp();
+      }
+    }));
+
     let logger = Logger::new(
       maybe_shutdown_trigger,
       runtime_loader.clone(),
@@ -346,7 +357,7 @@ impl LoggerBuilder {
 
       let buffer_directory = Logger::initialize_buffer_directory(&self.params.sdk_directory)?;
       let (buffer_manager, buffer_event_rx) =
-        bd_buffer::Manager::new(buffer_directory, &scope, &runtime_loader);
+        bd_buffer::Manager::new(buffer_directory, &scope, &runtime_loader, on_evicted_cb);
       let buffer_uploader = BufferUploadManager::new(
         data_upload_tx_clone.clone(),
         &runtime_loader,
