@@ -31,8 +31,7 @@ use bd_proto::protos::client::api::{UploadArtifactIntentRequest, UploadArtifactR
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::feature_flag::FeatureFlag;
-use bd_proto::protos::logging::payload::data::Data_type;
-use bd_proto::protos::logging::payload::{BinaryData, Data};
+use bd_proto::protos::logging::payload::Data;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, artifact_upload};
 use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
@@ -628,24 +627,7 @@ impl Uploader {
       pending_intent_negotiation: true,
       state_metadata: state
         .into_iter()
-        .map(|(key, value)| {
-          (
-            key.into(),
-            Data {
-              data_type: Some(match value {
-                bd_log_primitives::StringOrBytes::String(s) => Data_type::StringData(s),
-                bd_log_primitives::StringOrBytes::SharedString(s) => {
-                  Data_type::StringData((*s).clone())
-                },
-                bd_log_primitives::StringOrBytes::Bytes(b) => Data_type::BinaryData(BinaryData {
-                  payload: b,
-                  ..Default::default()
-                }),
-              }),
-              ..Default::default()
-            },
-          )
-        })
+        .map(|(key, value)| (key.into(), value.into_proto()))
         .collect(),
       feature_flags: feature_flags
         .into_iter()
