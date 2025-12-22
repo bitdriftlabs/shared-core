@@ -21,6 +21,7 @@ pub const _DARWIN_FEATURE_ONLY_VERS_1050: u32 = 1;
 pub const _DARWIN_FEATURE_ONLY_UNIX_CONFORMANCE: u32 = 1;
 pub const _DARWIN_FEATURE_UNIX_CONFORMANCE: u32 = 3;
 pub const __has_ptrcheck: u32 = 0;
+pub const __has_bounds_safety_attributes: u32 = 0;
 pub const USE_CLANG_TYPES: u32 = 0;
 pub const __PTHREAD_SIZE__: u32 = 8176;
 pub const __PTHREAD_ATTR_SIZE__: u32 = 56;
@@ -156,7 +157,7 @@ pub type __darwin_uuid_string_t = [::std::os::raw::c_char; 37usize];
 pub struct __darwin_pthread_handler_rec {
   pub __routine: ::std::option::Option<unsafe extern "C" fn(arg1: *mut ::std::os::raw::c_void)>,
   pub __arg: *mut ::std::os::raw::c_void,
-  pub __next: *mut Self,
+  pub __next: *mut __darwin_pthread_handler_rec,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
