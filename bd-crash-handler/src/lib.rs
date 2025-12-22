@@ -107,6 +107,7 @@ pub enum ReportOrigin {
 ///   responsible for copying the raw files into this directory.
 /// - `reports/watcher/current_session/` - When watcher directory exists, native layer will scan for
 ///   added reports to be processed right away.
+#[derive(Clone)]
 pub struct Monitor {
   report_directory: PathBuf,
   previous_run_global_state: LogFields,
@@ -117,21 +118,6 @@ pub struct Monitor {
   global_state_reader: global_state::Reader,
   pub session: Arc<bd_session::Strategy>,
   monitor: Option<file_watcher::FileWatcher>,
-}
-
-impl Clone for Monitor {
-  fn clone(&self) -> Self {
-    Self {
-      report_directory: self.report_directory.clone(),
-      previous_run_global_state: self.previous_run_global_state.clone(),
-      previous_run_state: self.previous_run_state.clone(),
-      state: self.state.clone(),
-      artifact_client: self.artifact_client.clone(),
-      global_state_reader: self.global_state_reader.clone(),
-      session: self.session.clone(),
-      monitor: None,
-    }
-  }
 }
 
 impl Monitor {

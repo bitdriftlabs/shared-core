@@ -154,16 +154,9 @@ pub(crate) fn fields_to_crash_state(fields: &LogFields) -> CrashGlobalState {
 // Reader
 //
 
+#[derive(Clone)]
 pub struct Reader {
   store: Arc<Store>,
-}
-
-impl Clone for Reader {
-  fn clone(&self) -> Self {
-    Self {
-      store: self.store.clone(),
-    }
-  }
 }
 
 impl Reader {
