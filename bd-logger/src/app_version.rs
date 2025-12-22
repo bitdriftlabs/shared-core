@@ -28,17 +28,6 @@ impl AppVersion {
       ..Default::default()
     })
   }
-
-  #[cfg(test)]
-  pub fn new_build_number(version: &str, build_number: &str) -> Self {
-    Self(key_value::AppVersion {
-      version: version.to_string(),
-      extra: Some(key_value::app_version::Extra::BuildNumber(
-        build_number.to_string(),
-      )),
-      ..Default::default()
-    })
-  }
 }
 
 impl Deref for AppVersion {

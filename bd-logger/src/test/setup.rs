@@ -41,7 +41,8 @@ use bd_test_helpers::test_api_server::{ExpectedStreamEvent, StreamAction, Stream
 use bd_time::TimeProvider;
 use bd_time::test::TestTicker;
 use bd_workflows::engine::WORKFLOWS_STATE_FILE_NAME;
-use std::sync::{Arc, atomic::AtomicUsize};
+use std::sync::Arc;
+use std::sync::atomic::AtomicUsize;
 use tempfile::TempDir;
 // removed unused import
 use tokio::sync::mpsc;
@@ -230,7 +231,7 @@ impl Setup {
       ExpectedStreamEvent::Handshake {
         matcher: None,
         sleep_mode: expect_sleep_mode
-       },
+      },
       time::Duration::seconds(2),
     ));
 
@@ -276,7 +277,12 @@ impl Setup {
       ),
       (
         bd_runtime::runtime::sleep_mode::MinReconnectInterval::path(),
-        ValueKind::Int(time::Duration::seconds(1).whole_milliseconds().try_into().unwrap()),
+        ValueKind::Int(
+          time::Duration::seconds(1)
+            .whole_milliseconds()
+            .try_into()
+            .unwrap(),
+        ),
       ),
     ]
   }
@@ -439,9 +445,7 @@ impl Drop for Setup {
 
 /// Creates minimal `InitParams` for testing without a server connection.
 /// Useful for testing infrastructure-level concerns like directory locking.
-pub fn create_minimal_init_params(
-  sdk_directory: &std::path::Path,
-) -> InitParams {
+pub fn create_minimal_init_params(sdk_directory: &std::path::Path) -> InitParams {
   let session_store = in_memory_store();
   let device_store = in_memory_store();
 

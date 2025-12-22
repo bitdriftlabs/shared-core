@@ -18,8 +18,8 @@
 #[path = "./device_test.rs"]
 mod device_test;
 
-pub use bd_key_value::Store;
 use bd_key_value::Key;
+pub use bd_key_value::Store;
 use std::sync::Arc;
 use uuid::Uuid;
 

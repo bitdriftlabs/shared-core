@@ -88,10 +88,10 @@ use bd_test_helpers::workflow::{
 use bd_test_helpers::{RecordingErrorReporter, field_value, set_field};
 use bd_time::test::TestTicker;
 use bd_time::{OffsetDateTimeExt, TestTimeProvider};
-use flate2::bufread::ZlibDecoder;
+use flate2::write::ZlibDecoder;
 use parking_lot::Mutex;
 use protobuf::Message;
-use std::io::{Cursor, Read};
+use std::io::Write;
 use std::ops::Add;
 use std::sync::Arc;
 use std::time::Instant;
@@ -235,9 +235,9 @@ fn log_upload_with_compression() {
 
         let log = &log_upload.logs()[i];
         let compressed_data = log.compressed_contents();
-        let mut decoder = ZlibDecoder::new(Cursor::new(compressed_data));
-        let mut decoded = Vec::new();
-        decoder.read_to_end(&mut decoded).unwrap();
+        let mut decoder = ZlibDecoder::new(Vec::new());
+        decoder.write_all(compressed_data).unwrap();
+        let decoded = decoder.finish().unwrap();
         let compressed_contents = CompressedContents::parse_from_bytes(&decoded).unwrap();
         assert_eq!(compressed_contents.message.string_data(), "some log");
         assert_eq!(compressed_contents.fields[0].key, "super_long");
@@ -873,7 +873,7 @@ fn blocking_flush_state() {
 
   setup
     .logger_handle
-    .flush_state(Block::Yes(std::time::Duration::from_secs(15)));
+    .flush_state(Block::Yes(15.std_seconds()));
 
   assert!(setup.workflows_state_file_path().exists());
   assert!(setup.pending_aggregation_index_file_path().exists());
@@ -898,7 +898,7 @@ fn blocking_flush_state_uninitialized() {
 
   setup
     .logger_handle
-    .flush_state(Block::Yes(std::time::Duration::from_secs(15)));
+    .flush_state(Block::Yes(15.std_seconds()));
 
   assert!(!setup.workflows_state_file_path().exists());
   assert!(setup.pending_aggregation_index_file_path().exists());
