@@ -5,9 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{Callbacks, State, UUIDCallbacks};
+use super::{Callbacks, UUIDCallbacks};
 use crate::fixed::{self, STATE_KEY};
 use bd_key_value::{Storage, Store};
+use bd_proto::protos::client::key_value::FixedSessionStrategyState;
 use pretty_assertions::assert_eq;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -59,8 +60,9 @@ fn test_session_id() {
 
   store.set(
     &STATE_KEY,
-    &State {
+    &FixedSessionStrategyState {
       session_id: "foo".to_string(),
+      ..Default::default()
     },
   );
 
@@ -80,8 +82,9 @@ fn test_start_new_session() {
 
   store.set(
     &STATE_KEY,
-    &State {
+    &FixedSessionStrategyState {
       session_id: "foo".to_string(),
+      ..Default::default()
     },
   );
 
@@ -108,8 +111,9 @@ fn test_previous_process_session_id() {
 
   store.set(
     &STATE_KEY,
-    &State {
+    &FixedSessionStrategyState {
       session_id: "foo".to_string(),
+      ..Default::default()
     },
   );
 

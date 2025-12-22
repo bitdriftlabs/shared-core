@@ -5,10 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::State;
 use crate::activity_based::{self, Callbacks, STATE_KEY, Store};
 use bd_key_value::Storage;
-use bd_time::TestTimeProvider;
+use bd_proto::protos::client::key_value::ActivitySessionStrategyState;
+use bd_time::{OffsetDateTimeExt as _, TestTimeProvider};
 use pretty_assertions::assert_eq;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -85,9 +85,10 @@ fn generates_new_session_and_stores_it_if_none_exists() {
   assert_eq!(1, callbacks.session_id_changes.lock().len());
   assert_eq!(session_id, callbacks.session_id_changes.lock()[0]);
   assert_eq!(
-    State {
+    ActivitySessionStrategyState {
       session_id,
-      last_activity: now,
+      last_activity_timestamp: now.into_proto(),
+      ..Default::default()
     },
     store.as_ref().get(&STATE_KEY).unwrap(),
   );
@@ -102,9 +103,10 @@ fn generates_new_session_and_stores_it_if_old_exceeded_inactivity_threshold() {
 
   store.set(
     &STATE_KEY,
-    &State {
+    &ActivitySessionStrategyState {
       session_id: "foo".to_string(),
-      last_activity: now - std::time::Duration::from_secs(31),
+      last_activity_timestamp: (now - std::time::Duration::from_secs(31)).into_proto(),
+      ..Default::default()
     },
   );
 
@@ -125,9 +127,10 @@ fn generates_new_session_and_stores_it_if_old_exceeded_inactivity_threshold() {
   assert_eq!(1, callbacks.session_id_changes.lock().len());
   assert_eq!(session_id, callbacks.session_id_changes.lock()[0]);
   assert_eq!(
-    State {
+    ActivitySessionStrategyState {
       session_id,
-      last_activity: now,
+      last_activity_timestamp: now.into_proto(),
+      ..Default::default()
     },
     store.as_ref().get(&STATE_KEY).unwrap(),
   );
@@ -162,9 +165,10 @@ fn does_not_update_neither_session_nor_last_activity_if_within_max_write_interva
   assert_eq!(session_id, second_session_id);
   assert!(callbacks.session_id_changes.lock().is_empty());
   assert_eq!(
-    State {
+    ActivitySessionStrategyState {
       session_id,
-      last_activity: now,
+      last_activity_timestamp: now.into_proto(),
+      ..Default::default()
     },
     store.as_ref().get(&STATE_KEY).unwrap()
   );
@@ -196,9 +200,10 @@ fn updates_only_last_activity_date_if_after_max_write_interval() {
   assert_eq!(session_id, second_session_id);
   assert!(callbacks.session_id_changes.lock().is_empty());
   assert_eq!(
-    State {
+    ActivitySessionStrategyState {
       session_id,
-      last_activity: advanced_time,
+      last_activity_timestamp: advanced_time.into_proto(),
+      ..Default::default()
     },
     store.as_ref().get(&STATE_KEY).unwrap(),
   );
@@ -230,9 +235,10 @@ fn updates_session_and_last_activity_after_inactivity_threshold_is_exceeded() {
   assert_eq!(1, callbacks.session_id_changes.lock().len());
   assert_ne!(session_id, second_session_id);
   assert_eq!(
-    State {
+    ActivitySessionStrategyState {
       session_id: second_session_id,
-      last_activity: advanced_time,
+      last_activity_timestamp: advanced_time.into_proto(),
+      ..Default::default()
     },
     store.as_ref().get(&STATE_KEY).unwrap(),
   );
@@ -248,9 +254,10 @@ fn refreshes_session_and_last_activity_after_reboot() {
 
   store.set(
     &STATE_KEY,
-    &State {
+    &ActivitySessionStrategyState {
       session_id: "foo".to_string(),
-      last_activity: now,
+      last_activity_timestamp: now.into_proto(),
+      ..Default::default()
     },
   );
 
@@ -274,9 +281,10 @@ fn refreshes_session_and_last_activity_after_reboot() {
   assert_eq!(1, callbacks.session_id_changes.lock().len());
   assert_ne!("foo", session_id);
   assert_eq!(
-    State {
+    ActivitySessionStrategyState {
       session_id,
-      last_activity: past_time,
+      last_activity_timestamp: past_time.into_proto(),
+      ..Default::default()
     },
     store.as_ref().get(&STATE_KEY).unwrap(),
   );
@@ -313,9 +321,10 @@ fn starts_new_session() {
   assert_ne!(session_id, next_session_id);
   assert!(callbacks.session_id_changes.lock().is_empty());
   assert_eq!(
-    State {
+    ActivitySessionStrategyState {
       session_id: next_session_id,
-      last_activity: advanced_time,
+      last_activity_timestamp: advanced_time.into_proto(),
+      ..Default::default()
     },
     store.as_ref().get(&STATE_KEY).unwrap(),
   );
@@ -338,9 +347,10 @@ fn previous_session_id() {
 
   store.set(
     &STATE_KEY,
-    &State {
+    &ActivitySessionStrategyState {
       session_id: "foo".to_string(),
-      last_activity: now,
+      last_activity_timestamp: now.into_proto(),
+      ..Default::default()
     },
   );
 
@@ -389,9 +399,10 @@ fn flushes_state() {
 
   assert_eq!(session_id, next_session_id);
   assert_eq!(
-    State {
+    ActivitySessionStrategyState {
       session_id: next_session_id,
-      last_activity: advanced_time,
+      last_activity_timestamp: advanced_time.into_proto(),
+      ..Default::default()
     },
     store.as_ref().get(&STATE_KEY).unwrap(),
   );
