@@ -15,45 +15,45 @@ fn app_version_repo() {
 
   let repo = super::Repository::new(store.clone());
   // Initial check
-  assert!(!repo.has_changed(&AppVersion::new_build_numbrer("1.0.0", "1")));
+  assert!(!repo.has_changed(&AppVersion::new_build_number("1.0.0", "1")));
   // Consecutive check after app update
-  assert!(repo.has_changed(&AppVersion::new_build_numbrer("1.0.0", "2")));
+  assert!(repo.has_changed(&AppVersion::new_build_number("1.0.0", "2")));
 
   // Initial app version
   assert!(
     repo
-      .set(&AppVersion::new_build_numbrer("1.0.0", "1"))
+      .set(&AppVersion::new_build_number("1.0.0", "1"))
       .is_none()
   );
   // Follow up check
-  assert!(!repo.has_changed(&AppVersion::new_build_numbrer("1.0.0", "1")));
+  assert!(!repo.has_changed(&AppVersion::new_build_number("1.0.0", "1")));
   // Follow up update with old app version
   assert!(
     repo
-      .set(&AppVersion::new_build_numbrer("1.0.0", "1"))
+      .set(&AppVersion::new_build_number("1.0.0", "1"))
       .is_none()
   );
   // Follow up check with new app version
-  assert!(repo.has_changed(&AppVersion::new_build_numbrer("1.0.0", "2")));
+  assert!(repo.has_changed(&AppVersion::new_build_number("1.0.0", "2")));
 
   // Follow up update with new app version
   assert_eq!(
-    Some(AppVersion::new_build_numbrer("1.0.0", "1")),
-    repo.set(&AppVersion::new_build_numbrer("1.0.0", "2"))
+    Some(AppVersion::new_build_number("1.0.0", "1")),
+    repo.set(&AppVersion::new_build_number("1.0.0", "2"))
   );
 
   // Simulate a new SDK configuration without app update.
   let repo = super::Repository::new(store.clone());
   assert!(
     repo
-      .set(&AppVersion::new_build_numbrer("1.0.0", "2"))
+      .set(&AppVersion::new_build_number("1.0.0", "2"))
       .is_none()
   );
 
   // Simulate a new SDK configuration with app update.
   let repo = super::Repository::new(store);
   assert_eq!(
-    Some(AppVersion::new_build_numbrer("1.0.0", "2")),
-    repo.set(&AppVersion::new_build_numbrer("1.0.0", "3"))
+    Some(AppVersion::new_build_number("1.0.0", "2")),
+    repo.set(&AppVersion::new_build_number("1.0.0", "3"))
   );
 }

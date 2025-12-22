@@ -326,12 +326,9 @@ impl LoggerHandle {
     app_version: String,
     app_version_extra: AppVersionExtra,
   ) -> bool {
-    let version = match app_version_extra {
-      AppVersionExtra::AppVersionCode(code) => AppVersion::new_app_version_code(&app_version, code),
-      AppVersionExtra::BuildNumber(build) => AppVersion::new_build_numbrer(&app_version, &build),
-    };
-
-    self.app_version_repo.has_changed(&version)
+    self
+      .app_version_repo
+      .has_changed(&AppVersion::new(app_version, app_version_extra))
   }
 
   pub fn log_app_update(
@@ -342,10 +339,7 @@ impl LoggerHandle {
     mut fields: AnnotatedLogFields,
     duration: time::Duration,
   ) {
-    let version = match app_version_extra {
-      AppVersionExtra::AppVersionCode(code) => AppVersion::new_app_version_code(&app_version, code),
-      AppVersionExtra::BuildNumber(build) => AppVersion::new_build_numbrer(&app_version, &build),
-    };
+    let version = AppVersion::new(app_version, app_version_extra);
 
     let Some(previous_app_version) = self.app_version_repo.set(&version) else {
       return;
@@ -368,20 +362,20 @@ impl LoggerHandle {
       AnnotatedLogField::new_ootb(previous_app_version.version.clone()),
     );
     if let Some(extra) = &previous_app_version.extra {
-        match extra {
-            AppVersionExtra::AppVersionCode(code) => {
-                 fields.insert(
-                    "_previous_app_version_code".into(),
-                    AnnotatedLogField::new_ootb(code.to_string()),
-                );
-            }
-             AppVersionExtra::BuildNumber(build) => {
-                 fields.insert(
-                    "_previous_build_number".into(),
-                    AnnotatedLogField::new_ootb(build.clone()),
-                );
-            }
-        }
+      match extra {
+        AppVersionExtra::AppVersionCode(code) => {
+          fields.insert(
+            "_previous_app_version_code".into(),
+            AnnotatedLogField::new_ootb(code.to_string()),
+          );
+        },
+        AppVersionExtra::BuildNumber(build) => {
+          fields.insert(
+            "_previous_build_number".into(),
+            AnnotatedLogField::new_ootb(build.clone()),
+          );
+        },
+      }
     }
 
     self.log(

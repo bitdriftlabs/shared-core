@@ -9,8 +9,8 @@
 #[path = "./app_version_test.rs"]
 mod app_version_test;
 
-pub use bd_proto::protos::client::key_value::app_version::Extra as AppVersionExtra;
 use bd_proto::protos::client::key_value;
+pub use bd_proto::protos::client::key_value::app_version::Extra as AppVersionExtra;
 use std::ops::Deref;
 use std::sync::Arc;
 
@@ -21,17 +21,16 @@ static APP_VERSION_KEY: bd_key_value::Key<key_value::AppVersion> =
 pub struct AppVersion(key_value::AppVersion);
 
 impl AppVersion {
-  pub fn new_app_version_code(version: &str, app_version_code: i64) -> Self {
+  pub fn new(version: String, extra: AppVersionExtra) -> Self {
     Self(key_value::AppVersion {
-      version: version.to_string(),
-      extra: Some(key_value::app_version::Extra::AppVersionCode(
-        app_version_code,
-      )),
+      version,
+      extra: Some(extra),
       ..Default::default()
     })
   }
 
-  pub fn new_build_numbrer(version: &str, build_number: &str) -> Self {
+  #[cfg(test)]
+  pub fn new_build_number(version: &str, build_number: &str) -> Self {
     Self(key_value::AppVersion {
       version: version.to_string(),
       extra: Some(key_value::app_version::Extra::BuildNumber(

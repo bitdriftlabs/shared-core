@@ -104,7 +104,7 @@ use time::macros::datetime;
 
 #[test]
 fn sleep_mode() {
-  let mut setup: Setup = Setup::new_with_options(SetupOptions {
+  let mut setup = Setup::new_with_options(SetupOptions {
     start_in_sleep_mode: true,
     ..Default::default()
   });
@@ -129,7 +129,7 @@ fn sleep_mode() {
 
 #[test]
 fn attributes_accessors() {
-  let setup: Setup = Setup::new();
+  let setup = Setup::new();
 
   assert_eq!(36, setup.logger_handle.session_id().len());
   assert_eq!(36, setup.logger_handle.device_id().len());
@@ -138,7 +138,7 @@ fn attributes_accessors() {
 #[test]
 fn logger_api() {
   // Test basic handshaking which is handled by Setup.
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
   let nack = setup.send_configuration_update(
     make_configuration_update_with_workflow_flushing_buffer_on_anything(
       "default",
@@ -154,7 +154,7 @@ fn logger_api() {
 
 #[test]
 fn log_upload() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
   setup.send_configuration_update(
     make_configuration_update_with_workflow_flushing_buffer_on_anything(
       "default",
@@ -186,7 +186,7 @@ fn log_upload() {
 
 #[test]
 fn log_upload_with_compression() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
   setup.send_configuration_update(
     make_configuration_update_with_workflow_flushing_buffer_on_anything(
       "default",
@@ -238,8 +238,7 @@ fn log_upload_with_compression() {
         let mut decoder = ZlibDecoder::new(Cursor::new(compressed_data));
         let mut decoded = Vec::new();
         decoder.read_to_end(&mut decoded).unwrap();
-        let mut cis = protobuf::CodedInputStream::from_bytes(&decoded);
-        let compressed_contents = CompressedContents::parse_from(&mut cis).unwrap();
+        let compressed_contents = CompressedContents::parse_from_bytes(&decoded).unwrap();
         assert_eq!(compressed_contents.message.string_data(), "some log");
         assert_eq!(compressed_contents.fields[0].key, "super_long");
         assert_eq!(
@@ -253,7 +252,7 @@ fn log_upload_with_compression() {
 
 #[test]
 fn explicit_session_capture() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
   assert!(
     setup
       .send_configuration_update(config_helper::configuration_update_from_parts(
@@ -332,7 +331,7 @@ fn explicit_session_capture() {
 
 #[test]
 fn explicit_session_capture_disabled_streaming() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
   assert!(
     setup
       .send_configuration_update(config_helper::configuration_update_from_parts(
@@ -406,7 +405,7 @@ fn explicit_session_capture_disabled_streaming() {
 #[test]
 fn log_upload_attributes_override() {
   let time_first = datetime!(2024-06-01 12:00:00 UTC);
-  let mut setup: Setup = Setup::new_with_metadata(Arc::new(LogMetadata {
+  let mut setup = Setup::new_with_metadata(Arc::new(LogMetadata {
     timestamp: Mutex::new(time_first),
     ootb_fields: LogFields::from([("_some_version".into(), "400".into())]),
     ..Default::default()
@@ -507,7 +506,7 @@ fn log_upload_attributes_override() {
 
 #[test]
 fn api_bandwidth_counters() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
 
   setup
     .current_api_stream()
@@ -537,7 +536,7 @@ fn api_bandwidth_counters() {
 
 #[test]
 fn buffer_selection_update() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
 
   setup.send_configuration_update(configuration_update(
     "",
@@ -598,7 +597,7 @@ fn buffer_selection_update() {
 
 #[test]
 fn bad_config() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
 
   let maybe_nack = setup.send_configuration_update(invalid_configuration());
   assert_matches!(maybe_nack, Some(nack) => {
@@ -614,7 +613,7 @@ fn configuration_caching() {
 
   // Initialize the logger once, sending it a configuration that will upload all logs.
   {
-    let mut setup: Setup = Setup::new_with_options(SetupOptions {
+    let mut setup = Setup::new_with_options(SetupOptions {
       sdk_directory: sdk_directory.clone(),
       ..Default::default()
     });
@@ -625,7 +624,7 @@ fn configuration_caching() {
   // After shutting down the previous logger, create a new one with the same buffer directory.
   // It should reuse the previous configuration and upload logs without receiving a configuration
   // update.
-  let mut setup: Setup = Setup::new_with_options(SetupOptions {
+  let mut setup = Setup::new_with_options(SetupOptions {
     sdk_directory,
     ..Default::default()
   });
@@ -649,7 +648,7 @@ fn configuration_caching() {
 
 #[test]
 fn trigger_buffers_not_uploaded() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
 
   let maybe_nack = setup.send_configuration_update(configuration_update(
     "",
@@ -683,7 +682,7 @@ fn trigger_buffers_not_uploaded() {
 
 #[test]
 fn blocking_log() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
 
   setup.send_runtime_update();
 
@@ -719,7 +718,7 @@ fn blocking_log() {
 
 #[test]
 fn session_replay_actions() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
   setup.send_runtime_update();
 
   let b = state("B");
@@ -817,7 +816,7 @@ fn session_replay_actions() {
 
 #[test]
 fn flush_state() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
 
   // Send down a configuration with a single 'default' buffer.
   let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
@@ -847,7 +846,7 @@ fn flush_state() {
 
 #[test]
 fn blocking_flush_state() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
 
   // Send down a configuration with a single 'default' buffer.
   let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
@@ -882,7 +881,7 @@ fn blocking_flush_state() {
 
 #[test]
 fn flush_state_uninitialized() {
-  let setup: Setup = Setup::new();
+  let setup = Setup::new();
 
   setup.logger_handle.flush_state(Block::No);
 
@@ -895,7 +894,7 @@ fn flush_state_uninitialized() {
 
 #[test]
 fn blocking_flush_state_uninitialized() {
-  let setup: Setup = Setup::new();
+  let setup = Setup::new();
 
   setup
     .logger_handle
@@ -907,7 +906,7 @@ fn blocking_flush_state_uninitialized() {
 
 #[test]
 fn log_tailing() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
 
   let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
     "",
@@ -988,7 +987,7 @@ fn log_tailing() {
 
 #[test]
 fn workflow_flush_buffers_action_uploads_buffer() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
 
   setup.send_runtime_update();
 
@@ -1069,7 +1068,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
       )      ],
     );
 
-  let mut setup: Setup = Setup::new_with_metadata(Arc::new(LogMetadata {
+  let mut setup = Setup::new_with_metadata(Arc::new(LogMetadata {
     timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
     custom_fields: [("k1".into(), "provider_value_1".into())].into(),
     ootb_fields: [("k2".into(), "provider_value_2".into())].into(),
@@ -1210,7 +1209,7 @@ fn workflow_generate_log_to_histogram() {
     timestamp: Mutex::new(datetime!(2023-10-01 00:00:00 UTC)),
     ..Default::default()
   });
-  let mut setup: Setup = Setup::new_with_metadata(metadata.clone());
+  let mut setup = Setup::new_with_metadata(metadata.clone());
   setup.send_runtime_update();
 
   let mut a = state("A");
@@ -1318,7 +1317,7 @@ fn workflow_generate_log_to_histogram() {
 #[test]
 fn workflow_debugging() {
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2023-10-01 00:00:00 UTC)));
-  let mut setup: Setup = Setup::new_with_options(SetupOptions {
+  let mut setup = Setup::new_with_options(SetupOptions {
     time_provider: Some(time_provider.clone()),
     ..Default::default()
   });
@@ -1494,7 +1493,7 @@ fn workflow_debugging() {
 
 #[test]
 fn workflow_emit_metric_action_emits_metric() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
 
   setup.send_runtime_update();
 
@@ -1615,7 +1614,7 @@ fn workflow_emit_metric_action_emits_metric() {
 
 #[test]
 fn workflow_emit_metric_action_triggers_runtime_limits() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
 
   setup
     .current_api_stream()
@@ -1713,7 +1712,7 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
 
 #[test]
 fn transforms_emitted_logs_according_to_filters() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
 
   setup.send_runtime_update();
 
@@ -1782,7 +1781,7 @@ fn transforms_emitted_logs_according_to_filters() {
 
 #[test]
 fn remote_buffer_upload() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
 
   // Send down a configuration with a trigger buffer ('default') which accepts all logs with no
   // local listeners that would cause it to trigger.
@@ -1837,7 +1836,7 @@ fn remote_buffer_upload() {
 
 #[test]
 fn continuous_and_trigger_buffer() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
 
   // Send down a configuration with a trigger buffer ('trigger')
   // which accepts all logs and a single workflow which matches for logs
@@ -1933,7 +1932,7 @@ fn continuous_and_trigger_buffer() {
 
 #[test]
 fn device_id_matching() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
 
   let device_id = setup.logger.new_logger_handle().device_id();
 
@@ -1995,7 +1994,7 @@ fn device_id_matching() {
 
 #[test]
 fn matching_on_but_not_capturing_matching_fields() {
-  let mut setup: Setup = Setup::new();
+  let mut setup = Setup::new();
 
   // Send down a configuration with a trigger buffer ('trigger') which accepts all logs and a
   // single workflow which matches for logs with the 'fire!' message in order to flush the
