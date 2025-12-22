@@ -36,6 +36,7 @@ use bd_grpc_codec::{
   GRPC_ENCODING_HEADER,
   OptimizeFor,
 };
+use bd_key_value::Storage;
 use bd_log_primitives::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use bd_metadata::Metadata;
 use bd_network_quality::{NetworkQuality, NetworkQualityMonitor};
@@ -335,7 +336,7 @@ enum ApiError {
 /// The main handle for handling the Mux API. The API consumer communicates with this handler via a
 /// number of channels, both for sending data (e.g. log/stats upload) or receiving updates
 /// (configuration updates, upload acks).
-pub struct Api {
+pub struct Api<S> {
   sdk_directory: PathBuf,
   api_key: String,
   manager: Box<dyn PlatformNetworkManager<bd_runtime::runtime::ConfigLoader>>,
@@ -375,7 +376,7 @@ pub struct Api {
   sleep_mode_min_reconnect_interval:
     DurationWatch<bd_runtime::runtime::sleep_mode::MinReconnectInterval>,
 
-  reconnect_state: crate::reconnect::ReconnectState,
+  reconnect_state: crate::reconnect::ReconnectState<S>,
 
   disconnected_at: Option<Instant>,
   last_disconnect_reason: Option<String>,
@@ -384,7 +385,7 @@ pub struct Api {
   pub data_idle_timeout_test_hook: Option<tokio::sync::mpsc::Sender<()>>,
 }
 
-impl Api {
+impl<S: Storage> Api<S> {
   pub fn new(
     sdk_directory: PathBuf,
     api_key: String,
@@ -399,7 +400,7 @@ impl Api {
     self_logger: Arc<dyn bd_internal_logging::Logger>,
     stats: &Scope,
     sleep_mode_active: watch::Receiver<bool>,
-    store: Arc<bd_key_value::Store>,
+    store: Arc<bd_key_value::Store<S>>,
   ) -> Self {
     let mut max_backoff_interval = runtime_loader.register_duration_watch();
     let mut initial_backoff_interval = runtime_loader.register_duration_watch();

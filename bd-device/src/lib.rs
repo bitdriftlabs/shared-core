@@ -18,8 +18,8 @@
 #[path = "./device_test.rs"]
 mod device_test;
 
-use bd_key_value::Key;
 pub use bd_key_value::Store;
+use bd_key_value::{Key, Storage};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -30,14 +30,14 @@ pub(crate) static DEVICE_ID_KEY: Key<String> = Key::new("device.state");
 // Device
 //
 
-pub struct Device {
-  store: Arc<Store>,
+pub struct Device<S> {
+  store: Arc<Store<S>>,
   id: parking_lot::Mutex<Option<String>>,
 }
 
-impl Device {
+impl<S: Storage> Device<S> {
   #[must_use]
-  pub const fn new(store: Arc<Store>) -> Self {
+  pub const fn new(store: Arc<Store<S>>) -> Self {
     Self {
       store,
       id: parking_lot::Mutex::new(None),
@@ -47,20 +47,19 @@ impl Device {
   pub fn id(&self) -> String {
     let mut guard = self.id.lock();
 
-    #[allow(clippy::option_if_let_else)]
-    if let Some(id) = guard.as_ref() {
-      id.clone()
-    } else {
-      let id = self.store.get(&DEVICE_ID_KEY).unwrap_or_else(|| {
+    let Some(id) = guard.clone() else {
+      let id = self.store.get_string(&DEVICE_ID_KEY).unwrap_or_else(|| {
         let id = Uuid::new_v4().to_string();
-        self.store.set(&DEVICE_ID_KEY, &id);
+        self.store.set_string(&DEVICE_ID_KEY, &id);
         id
       });
 
       log::info!("bitdrift Capture device ID: {id:?}");
 
       *guard = Some(id.clone());
-      id
-    }
+      return id;
+    };
+
+    id
   }
 }

@@ -41,7 +41,7 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_stats_common::labels;
 use bd_test_helpers::make_mut;
-use bd_test_helpers::session::in_memory_store;
+use bd_test_helpers::session::{InMemoryStorage, in_memory_store};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, ToProtoDuration};
 use mockall::predicate::eq;
 use std::collections::{BTreeMap, HashMap};
@@ -179,7 +179,7 @@ struct Setup {
   api_key: String,
   network_quality_provider: Arc<SimpleNetworkQualityProvider>,
   sleep_mode_active: watch::Sender<bool>,
-  store: Arc<Store>,
+  store: Arc<Store<InMemoryStorage>>,
   config_updater: Arc<MockClientConfigurationUpdate>,
 }
 

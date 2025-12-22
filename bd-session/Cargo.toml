@@ -13,6 +13,7 @@ anyhow.workspace            = true
 bd-key-value.path           = "../bd-key-value"
 bd-log.path                 = "../bd-log"
 bd-time.path                = "../bd-time"
+bd-proto.path                = "../bd-proto"
 bd-workspace-hack.workspace = true
 log.workspace               = true
 parking_lot.workspace       = true

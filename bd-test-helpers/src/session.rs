@@ -100,7 +100,7 @@ impl Storage for InMemoryStorage {
 }
 
 #[must_use]
-pub fn in_memory_store() -> Arc<bd_key_value::Store> {
+pub fn in_memory_store() -> Arc<bd_key_value::Store<InMemoryStorage>> {
   Arc::new(bd_key_value::Store::new(Box::new(
     InMemoryStorage::default(),
   )))

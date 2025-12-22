@@ -9,8 +9,9 @@
 #[path = "./fixed_test.rs"]
 mod fixed_test;
 
-use bd_key_value::{Key, Storable, Store};
+use bd_key_value::{Key, Storage, Store};
 use bd_log::warn_every;
+use bd_proto::protos::client::key_value::FixedSessionStrategyState;
 use std::cell::Cell;
 use std::sync::Arc;
 use thread_local::ThreadLocal;
@@ -18,15 +19,15 @@ use time::ext::NumericalDuration;
 use uuid::Uuid;
 
 /// The key used to store the state of the session strategy.
-pub static STATE_KEY: Key<State> = Key::new("session_strategy.fixed.state.1");
+pub static STATE_KEY: Key<FixedSessionStrategyState> = Key::new("session_strategy.fixed.state.1");
 
 //
 // Strategy
 //
 
 /// A session strategy that generates a new session ID on each SDK launch.
-pub struct Strategy {
-  store: Arc<Store>,
+pub struct Strategy<S> {
+  store: Arc<Store<S>>,
   callbacks: Arc<dyn Callbacks>,
 
   // Used to prevent a case where a Capture SDK customer calls into the logger to start a new
@@ -36,8 +37,8 @@ pub struct Strategy {
   state: parking_lot::Mutex<Option<InMemoryState>>,
 }
 
-impl Strategy {
-  pub fn new(store: Arc<Store>, callbacks: Arc<dyn Callbacks>) -> Self {
+impl<S: Storage> Strategy<S> {
+  pub fn new(store: Arc<Store<S>>, callbacks: Arc<dyn Callbacks>) -> Self {
     Self {
       store,
       callbacks,
@@ -99,7 +100,7 @@ impl Strategy {
     // Clippy's proposal leads to code that doesn't compile.
     #[allow(clippy::option_if_let_else)]
     if let Some(state) = guard.as_ref() {
-      state.session_id.clone()
+      state.state.session_id.clone()
     } else {
       let previous_process_session_id = if let Some(state) = self.store.get(&STATE_KEY) {
         Some(state.session_id)
@@ -110,13 +111,16 @@ impl Strategy {
       let session_id = self.generate_session_id();
 
       let state = InMemoryState {
-        session_id: session_id.clone(),
+        state: FixedSessionStrategyState {
+          session_id: session_id.clone(),
+          ..Default::default()
+        },
         previous_process_session_id,
       };
 
       *guard = Some(state.clone());
 
-      self.store.set(&STATE_KEY, &state.into());
+      self.store.set(&STATE_KEY, &state.state);
 
       log::info!("bitdrift Capture initialized with session ID: {session_id:?}");
 
@@ -143,21 +147,30 @@ impl Strategy {
     let state = guard.as_ref().map_or_else(
       || match self.store.get(&STATE_KEY) {
         Some(state) => InMemoryState {
-          session_id: session_id.clone(),
+          state: FixedSessionStrategyState {
+            session_id: session_id.clone(),
+            ..Default::default()
+          },
           previous_process_session_id: Some(state.session_id),
         },
         None => InMemoryState {
-          session_id: session_id.clone(),
+          state: FixedSessionStrategyState {
+            session_id: session_id.clone(),
+            ..Default::default()
+          },
           previous_process_session_id: None,
         },
       },
       |state| InMemoryState {
-        session_id: session_id.clone(),
+        state: FixedSessionStrategyState {
+          session_id: session_id.clone(),
+          ..Default::default()
+        },
         previous_process_session_id: state.previous_process_session_id.clone(),
       },
     );
 
-    self.store.set(&STATE_KEY, &state.clone().into());
+    self.store.set(&STATE_KEY, &state.state);
     *guard = Some(state);
 
     Ok(session_id)
@@ -194,34 +207,12 @@ impl Callbacks for UUIDCallbacks {
 }
 
 //
-// State
-//
-
-#[cfg_attr(test, derive(Clone, PartialEq, Eq))]
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
-pub struct State {
-  /// The last active session ID. Used on SDK launch to retrieve the `previous_process_session_id`.
-  pub session_id: String,
-}
-
-impl Storable for State {}
-
-//
 // InMemoryState
 //
 
 #[derive(Clone, Debug)]
 struct InMemoryState {
-  /// The current session ID.
-  session_id: String,
+  state: FixedSessionStrategyState,
   /// The last active session ID from the previous SDK run.
   previous_process_session_id: Option<String>,
-}
-
-impl From<InMemoryState> for State {
-  fn from(state: InMemoryState) -> Self {
-    Self {
-      session_id: state.session_id,
-    }
-  }
 }

@@ -10,18 +10,14 @@
 mod tests;
 
 use bd_device::Store;
-use bd_key_value::{Key, Storable};
+use bd_key_value::{Key, Storage};
 use bd_log_primitives::LogFields;
+use bd_proto::protos::client::key_value::CrashGlobalState;
 use bd_runtime::runtime::DurationWatch;
 use std::sync::Arc;
 use tokio::time::Instant;
 
-const KEY: Key<State> = Key::new("global_state");
-
-#[derive(Debug, serde::Serialize, serde::Deserialize, Default, PartialEq, Eq)]
-struct State(LogFields);
-
-impl Storable for State {}
+const KEY: Key<CrashGlobalState> = Key::new("global_state");
 
 /// Results of attempting to update the global state. This is exposed for testing purposes..
 #[derive(Debug, PartialEq, Eq)]
@@ -35,18 +31,18 @@ pub enum UpdateResult {
 // Tracker
 //
 
-pub struct Tracker {
-  store: Arc<Store>,
-  current_global_state: State,
+pub struct Tracker<S> {
+  store: Arc<Store<S>>,
+  current_global_state: CrashGlobalState,
   last_write: Option<Instant>,
   next_write: Option<Instant>,
   coalesce_window: DurationWatch<bd_runtime::runtime::global_state::CoalesceWindow>,
 }
 
-impl Tracker {
+impl<S: Storage> Tracker<S> {
   #[must_use]
   pub fn new(
-    store: Arc<Store>,
+    store: Arc<Store<S>>,
     coalesce_window: DurationWatch<bd_runtime::runtime::global_state::CoalesceWindow>,
   ) -> Self {
     let global_state = store.get(&KEY).unwrap_or_default();
@@ -72,6 +68,28 @@ impl Tracker {
     // TODO(snowp): All of this is likely going to be replaced by the crash safe k-v map, but
     // this will require a bit more work to integrate with so that the reports can be constructed
     // with the map directly.
+
+    let candidate_state = CrashGlobalState {
+      fields: new_global_state
+        .iter()
+        .map(|(key, value)| bd_proto::protos::client::logging::LogField {
+          key: key.clone().into(),
+          value: Some(Data {
+            data_type: Some(match value {
+              bd_log_primitives::LogFieldValue::String(s) => {
+                Data_type::StringData(s.clone().into())
+              },
+              bd_log_primitives::LogFieldValue::Bytes(b) => Data_type::BinaryData(
+                bd_proto::protos::client::logging::payload::data::BinaryData { payload: b.clone() },
+              ),
+              // We only support string and binary data in the global state.
+              _ => continue,
+            }),
+          }),
+          ..Default::default()
+        })
+        .collect(),
+    };
 
     // If we have a pending write scheduled, check if it's time to do it.
     let now = Instant::now();
@@ -142,18 +160,42 @@ impl Tracker {
 //
 
 #[derive(Clone)]
-pub struct Reader {
-  store: Arc<Store>,
+pub struct Reader<S> {
+  store: Arc<Store<S>>,
 }
 
-impl Reader {
+impl<S: Storage> Reader<S> {
   #[must_use]
-  pub fn new(store: Arc<Store>) -> Self {
+  pub fn new(store: Arc<Store<S>>) -> Self {
     Self { store }
   }
 
   #[must_use]
   pub fn global_state_fields(&self) -> LogFields {
-    self.store.get(&KEY).unwrap_or_default().0
+    self
+      .store
+      .get(&KEY)
+      .map(|state| {
+        state
+          .fields
+          .into_iter()
+          .filter_map(|mut field| {
+            Some((
+              field.key.into(),
+              match field.value.take()?.data_type.take()? {
+                bd_proto::protos::logging::payload::data::Data_type::StringData(s) => s.into(),
+                bd_proto::protos::logging::payload::data::Data_type::BinaryData(b) => {
+                  b.payload.into()
+                },
+                bd_proto::protos::logging::payload::data::Data_type::IntData(_)
+                | bd_proto::protos::logging::payload::data::Data_type::DoubleData(_)
+                | bd_proto::protos::logging::payload::data::Data_type::SintData(_)
+                | bd_proto::protos::logging::payload::data::Data_type::BoolData(_) => return None,
+              },
+            ))
+          })
+          .collect()
+      })
+      .unwrap_or_default()
   }
 }
