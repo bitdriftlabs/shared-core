@@ -290,8 +290,108 @@ impl Data {
         }
     }
 
+    // uint64 int_data = 3;
+
+    pub fn int_data(&self) -> u64 {
+        match self.data_type {
+            ::std::option::Option::Some(data::Data_type::IntData(v)) => v,
+            _ => 0,
+        }
+    }
+
+    pub fn clear_int_data(&mut self) {
+        self.data_type = ::std::option::Option::None;
+    }
+
+    pub fn has_int_data(&self) -> bool {
+        match self.data_type {
+            ::std::option::Option::Some(data::Data_type::IntData(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_int_data(&mut self, v: u64) {
+        self.data_type = ::std::option::Option::Some(data::Data_type::IntData(v))
+    }
+
+    // double double_data = 4;
+
+    pub fn double_data(&self) -> f64 {
+        match self.data_type {
+            ::std::option::Option::Some(data::Data_type::DoubleData(v)) => v,
+            _ => 0.,
+        }
+    }
+
+    pub fn clear_double_data(&mut self) {
+        self.data_type = ::std::option::Option::None;
+    }
+
+    pub fn has_double_data(&self) -> bool {
+        match self.data_type {
+            ::std::option::Option::Some(data::Data_type::DoubleData(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_double_data(&mut self, v: f64) {
+        self.data_type = ::std::option::Option::Some(data::Data_type::DoubleData(v))
+    }
+
+    // int64 sint_data = 5;
+
+    pub fn sint_data(&self) -> i64 {
+        match self.data_type {
+            ::std::option::Option::Some(data::Data_type::SintData(v)) => v,
+            _ => 0,
+        }
+    }
+
+    pub fn clear_sint_data(&mut self) {
+        self.data_type = ::std::option::Option::None;
+    }
+
+    pub fn has_sint_data(&self) -> bool {
+        match self.data_type {
+            ::std::option::Option::Some(data::Data_type::SintData(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_sint_data(&mut self, v: i64) {
+        self.data_type = ::std::option::Option::Some(data::Data_type::SintData(v))
+    }
+
+    // bool bool_data = 6;
+
+    pub fn bool_data(&self) -> bool {
+        match self.data_type {
+            ::std::option::Option::Some(data::Data_type::BoolData(v)) => v,
+            _ => false,
+        }
+    }
+
+    pub fn clear_bool_data(&mut self) {
+        self.data_type = ::std::option::Option::None;
+    }
+
+    pub fn has_bool_data(&self) -> bool {
+        match self.data_type {
+            ::std::option::Option::Some(data::Data_type::BoolData(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_bool_data(&mut self, v: bool) {
+        self.data_type = ::std::option::Option::Some(data::Data_type::BoolData(v))
+    }
+
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut fields = ::std::vec::Vec::with_capacity(6);
         let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
             "string_data",
@@ -305,6 +405,30 @@ impl Data {
             Data::binary_data,
             Data::mut_binary_data,
             Data::set_binary_data,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_copy_has_get_set_simpler_accessors::<_, _>(
+            "int_data",
+            Data::has_int_data,
+            Data::int_data,
+            Data::set_int_data,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_copy_has_get_set_simpler_accessors::<_, _>(
+            "double_data",
+            Data::has_double_data,
+            Data::double_data,
+            Data::set_double_data,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_copy_has_get_set_simpler_accessors::<_, _>(
+            "sint_data",
+            Data::has_sint_data,
+            Data::sint_data,
+            Data::set_sint_data,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_copy_has_get_set_simpler_accessors::<_, _>(
+            "bool_data",
+            Data::has_bool_data,
+            Data::bool_data,
+            Data::set_bool_data,
         ));
         oneofs.push(data::Data_type::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Data>(
@@ -331,6 +455,18 @@ impl ::protobuf::Message for Data {
                 18 => {
                     self.data_type = ::std::option::Option::Some(data::Data_type::BinaryData(is.read_message()?));
                 },
+                24 => {
+                    self.data_type = ::std::option::Option::Some(data::Data_type::IntData(is.read_uint64()?));
+                },
+                33 => {
+                    self.data_type = ::std::option::Option::Some(data::Data_type::DoubleData(is.read_double()?));
+                },
+                40 => {
+                    self.data_type = ::std::option::Option::Some(data::Data_type::SintData(is.read_int64()?));
+                },
+                48 => {
+                    self.data_type = ::std::option::Option::Some(data::Data_type::BoolData(is.read_bool()?));
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -352,6 +488,18 @@ impl ::protobuf::Message for Data {
                     let len = v.compute_size();
                     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 },
+                &data::Data_type::IntData(v) => {
+                    my_size += ::protobuf::rt::uint64_size(3, v);
+                },
+                &data::Data_type::DoubleData(v) => {
+                    my_size += 1 + 8;
+                },
+                &data::Data_type::SintData(v) => {
+                    my_size += ::protobuf::rt::int64_size(5, v);
+                },
+                &data::Data_type::BoolData(v) => {
+                    my_size += 1 + 1;
+                },
             };
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -367,6 +515,18 @@ impl ::protobuf::Message for Data {
                 },
                 &data::Data_type::BinaryData(ref v) => {
                     ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                },
+                &data::Data_type::IntData(v) => {
+                    os.write_uint64(3, v)?;
+                },
+                &data::Data_type::DoubleData(v) => {
+                    os.write_double(4, v)?;
+                },
+                &data::Data_type::SintData(v) => {
+                    os.write_int64(5, v)?;
+                },
+                &data::Data_type::BoolData(v) => {
+                    os.write_bool(6, v)?;
                 },
             };
         }
@@ -387,6 +547,10 @@ impl ::protobuf::Message for Data {
     }
 
     fn clear(&mut self) {
+        self.data_type = ::std::option::Option::None;
+        self.data_type = ::std::option::Option::None;
+        self.data_type = ::std::option::Option::None;
+        self.data_type = ::std::option::Option::None;
         self.data_type = ::std::option::Option::None;
         self.data_type = ::std::option::Option::None;
         self.special_fields.clear();
@@ -428,6 +592,14 @@ pub mod data {
         StringData(::std::string::String),
         // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.logging.v1.Data.binary_data)
         BinaryData(super::BinaryData),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.logging.v1.Data.int_data)
+        IntData(u64),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.logging.v1.Data.double_data)
+        DoubleData(f64),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.logging.v1.Data.sint_data)
+        SintData(i64),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.logging.v1.Data.bool_data)
+        BoolData(bool),
     }
 
     impl ::protobuf::Oneof for Data_type {
@@ -1102,28 +1274,31 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \n1bitdrift_public/protobuf/logging/v1/payload.proto\x12#bitdrift_public\
     .protobuf.logging.v1\"H\n\nBinaryData\x12\x17\n\x04type\x18\x01\x20\x01(\
     \tH\0R\x04type\x88\x01\x01\x12\x18\n\x07payload\x18\x02\x20\x01(\x0cR\
-    \x07payloadB\x07\n\x05_type\"\x8a\x01\n\x04Data\x12!\n\x0bstring_data\
+    \x07payloadB\x07\n\x05_type\"\x88\x02\n\x04Data\x12!\n\x0bstring_data\
     \x18\x01\x20\x01(\tH\0R\nstringData\x12R\n\x0bbinary_data\x18\x02\x20\
     \x01(\x0b2/.bitdrift_public.protobuf.logging.v1.BinaryDataH\0R\nbinaryDa\
-    taB\x0b\n\tdata_type\"\xb8\x05\n\x03Log\x120\n\x14timestamp_unix_micro\
-    \x18\x01\x20\x01(\x04R\x12timestampUnixMicro\x12\x1b\n\tlog_level\x18\
-    \x02\x20\x01(\rR\x08logLevel\x12C\n\x07message\x18\x03\x20\x01(\x0b2).bi\
-    tdrift_public.protobuf.logging.v1.DataR\x07message\x12F\n\x06fields\x18\
-    \x04\x20\x03(\x0b2..bitdrift_public.protobuf.logging.v1.Log.FieldR\x06fi\
-    elds\x12\x1d\n\nsession_id\x18\x05\x20\x01(\tR\tsessionId\x12\x1d\n\nact\
-    ion_ids\x18\x06\x20\x03(\tR\tactionIds\x12G\n\x08log_type\x18\x07\x20\
-    \x01(\x0e2,.bitdrift_public.protobuf.logging.v1.LogTypeR\x07logType\x12\
-    \x1d\n\nstream_ids\x18\x08\x20\x03(\tR\tstreamIds\x12/\n\x13compressed_c\
-    ontents\x18\t\x20\x01(\x0cR\x12compressedContents\x1aZ\n\x05Field\x12\
-    \x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01\
-    (\x0b2).bitdrift_public.protobuf.logging.v1.DataR\x05value\x1a\xa1\x01\n\
-    \x12CompressedContents\x12C\n\x07message\x18\x01\x20\x01(\x0b2).bitdrift\
-    _public.protobuf.logging.v1.DataR\x07message\x12F\n\x06fields\x18\x02\
-    \x20\x03(\x0b2..bitdrift_public.protobuf.logging.v1.Log.FieldR\x06fields\
-    *x\n\x07LogType\x12\n\n\x06NORMAL\x10\0\x12\n\n\x06REPLAY\x10\x01\x12\r\
-    \n\tLIFECYCLE\x10\x02\x12\x0c\n\x08RESOURCE\x10\x03\x12\x10\n\x0cINTERNA\
-    L_SDK\x10\x04\x12\x08\n\x04VIEW\x10\x05\x12\n\n\x06DEVICE\x10\x06\x12\
-    \x06\n\x02UX\x10\x07\x12\x08\n\x04SPAN\x10\x08b\x06proto3\
+    ta\x12\x1b\n\x08int_data\x18\x03\x20\x01(\x04H\0R\x07intData\x12!\n\x0bd\
+    ouble_data\x18\x04\x20\x01(\x01H\0R\ndoubleData\x12\x1d\n\tsint_data\x18\
+    \x05\x20\x01(\x03H\0R\x08sintData\x12\x1d\n\tbool_data\x18\x06\x20\x01(\
+    \x08H\0R\x08boolDataB\x0b\n\tdata_type\"\xb8\x05\n\x03Log\x120\n\x14time\
+    stamp_unix_micro\x18\x01\x20\x01(\x04R\x12timestampUnixMicro\x12\x1b\n\t\
+    log_level\x18\x02\x20\x01(\rR\x08logLevel\x12C\n\x07message\x18\x03\x20\
+    \x01(\x0b2).bitdrift_public.protobuf.logging.v1.DataR\x07message\x12F\n\
+    \x06fields\x18\x04\x20\x03(\x0b2..bitdrift_public.protobuf.logging.v1.Lo\
+    g.FieldR\x06fields\x12\x1d\n\nsession_id\x18\x05\x20\x01(\tR\tsessionId\
+    \x12\x1d\n\naction_ids\x18\x06\x20\x03(\tR\tactionIds\x12G\n\x08log_type\
+    \x18\x07\x20\x01(\x0e2,.bitdrift_public.protobuf.logging.v1.LogTypeR\x07\
+    logType\x12\x1d\n\nstream_ids\x18\x08\x20\x03(\tR\tstreamIds\x12/\n\x13c\
+    ompressed_contents\x18\t\x20\x01(\x0cR\x12compressedContents\x1aZ\n\x05F\
+    ield\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\
+    \x20\x01(\x0b2).bitdrift_public.protobuf.logging.v1.DataR\x05value\x1a\
+    \xa1\x01\n\x12CompressedContents\x12C\n\x07message\x18\x01\x20\x01(\x0b2\
+    ).bitdrift_public.protobuf.logging.v1.DataR\x07message\x12F\n\x06fields\
+    \x18\x02\x20\x03(\x0b2..bitdrift_public.protobuf.logging.v1.Log.FieldR\
+    \x06fields*x\n\x07LogType\x12\n\n\x06NORMAL\x10\0\x12\n\n\x06REPLAY\x10\
+    \x01\x12\r\n\tLIFECYCLE\x10\x02\x12\x0c\n\x08RESOURCE\x10\x03\x12\x10\n\
+    \x0cINTERNAL_SDK\x10\x04\x12\x08\n\x04VIEW\x10\x05\x12\n\n\x06DEVICE\x10\
+    \x06\x12\x06\n\x02UX\x10\x07\x12\x08\n\x04SPAN\x10\x08b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
