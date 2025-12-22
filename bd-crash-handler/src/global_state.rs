@@ -11,7 +11,7 @@ mod tests;
 
 use bd_device::Store;
 use bd_key_value::Key;
-use bd_log_primitives::LogFields;
+use bd_log_primitives::{LogFields, StringOrBytes};
 use bd_proto::protos::client::key_value::CrashGlobalState;
 use bd_proto::protos::logging::payload;
 use bd_runtime::runtime::DurationWatch;
@@ -177,16 +177,7 @@ impl Reader {
           .filter_map(|mut field| {
             Some((
               field.key.into(),
-              match field.value.take()?.data_type.take()? {
-                bd_proto::protos::logging::payload::data::Data_type::StringData(s) => s.into(),
-                bd_proto::protos::logging::payload::data::Data_type::BinaryData(b) => {
-                  b.payload.into()
-                },
-                bd_proto::protos::logging::payload::data::Data_type::IntData(_)
-                | bd_proto::protos::logging::payload::data::Data_type::DoubleData(_)
-                | bd_proto::protos::logging::payload::data::Data_type::SintData(_)
-                | bd_proto::protos::logging::payload::data::Data_type::BoolData(_) => return None,
-              },
+              StringOrBytes::from_proto(field.value.take()?)?,
             ))
           })
           .collect()
