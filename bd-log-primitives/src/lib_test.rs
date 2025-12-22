@@ -122,6 +122,10 @@ fn test_data_encoding() {
 
     let decoded_log =
       bd_proto::protos::logging::payload::Log::parse_from_bytes(&output_bytes).unwrap();
-    assert_eq!(decoded_log.message.unwrap(), expected, "Failed for {input:?}");
+    assert_eq!(
+      decoded_log.message.unwrap(),
+      expected,
+      "Failed for {input:?}"
+    );
   }
 }
