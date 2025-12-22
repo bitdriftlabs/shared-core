@@ -156,7 +156,7 @@ pub type __darwin_uuid_string_t = [::std::os::raw::c_char; 37usize];
 pub struct __darwin_pthread_handler_rec {
   pub __routine: ::std::option::Option<unsafe extern "C" fn(arg1: *mut ::std::os::raw::c_void)>,
   pub __arg: *mut ::std::os::raw::c_void,
-  pub __next: *mut __darwin_pthread_handler_rec,
+  pub __next: *mut Self,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
