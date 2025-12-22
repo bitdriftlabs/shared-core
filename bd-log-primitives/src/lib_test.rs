@@ -114,18 +114,14 @@ fn test_data_encoding() {
     // Since serialize_proto_data is private, we'll verify via the Log serialization
     // by creating a log with this message
 
-    let mut output_bytes = Vec::new();
+    let size = helper.serialized_proto_size(&[], &[]).unwrap();
+    let mut output_bytes = vec![0; usize::try_from(size).unwrap()];
     helper
       .serialized_proto_to_bytes(&[], &[], &mut output_bytes)
       .unwrap();
 
     let decoded_log =
       bd_proto::protos::logging::payload::Log::parse_from_bytes(&output_bytes).unwrap();
-    assert_eq!(
-      decoded_log.message.unwrap(),
-      expected,
-      "Failed for {:?}",
-      input
-    );
+    assert_eq!(decoded_log.message.unwrap(), expected, "Failed for {input:?}");
   }
 }

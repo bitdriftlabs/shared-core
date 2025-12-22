@@ -832,9 +832,13 @@ impl MemorySized for LogFieldValue {
         Self::String(s) => s.len(),
         // For these variants the string is stored on the heap so we assume that it takes up no
         // space within the enum itself.
-        Self::SharedString(_) | Self::StaticString(_) => 0,
+        Self::SharedString(_)
+        | Self::StaticString(_)
+        | Self::Boolean(_)
+        | Self::U64(_)
+        | Self::I64(_)
+        | Self::Double(_) => 0,
         Self::Bytes(b) => b.capacity(),
-        Self::Boolean(_) | Self::U64(_) | Self::I64(_) | Self::Double(_) => 0,
       }
   }
 }
