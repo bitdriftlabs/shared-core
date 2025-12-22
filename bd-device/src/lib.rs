@@ -19,7 +19,7 @@
 mod device_test;
 
 pub use bd_key_value::Store;
-use bd_key_value::{Key, Storage};
+use bd_key_value::Key;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -30,14 +30,14 @@ pub(crate) static DEVICE_ID_KEY: Key<String> = Key::new("device.state");
 // Device
 //
 
-pub struct Device<S> {
-  store: Arc<Store<S>>,
+pub struct Device {
+  store: Arc<Store>,
   id: parking_lot::Mutex<Option<String>>,
 }
 
-impl<S: Storage> Device<S> {
+impl Device {
   #[must_use]
-  pub const fn new(store: Arc<Store<S>>) -> Self {
+  pub const fn new(store: Arc<Store>) -> Self {
     Self {
       store,
       id: parking_lot::Mutex::new(None),

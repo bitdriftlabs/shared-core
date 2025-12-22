@@ -108,7 +108,7 @@ impl Setup {
   fn make_test_async_log_buffer(
     &mut self,
     config_update_rx: tokio::sync::mpsc::Receiver<ConfigUpdate>,
-  ) -> (AsyncLogBuffer<TestReplay>, Sender) {
+  ) -> (AsyncLogBuffer<TestReplay, bd_test_helpers::session::InMemoryStorage>, Sender) {
     let replayer = TestReplay::new();
     self.replayer_log_count = replayer.logs_count.clone();
     self.replayer_logs = replayer.logs.clone();
@@ -146,7 +146,7 @@ impl Setup {
   fn make_real_async_log_buffer(
     &self,
     config_update_rx: tokio::sync::mpsc::Receiver<ConfigUpdate>,
-  ) -> (AsyncLogBuffer<LoggerReplay>, Sender) {
+  ) -> (AsyncLogBuffer<LoggerReplay, bd_test_helpers::session::InMemoryStorage>, Sender) {
     let network_quality_provider = Arc::new(SimpleNetworkQualityProvider::default());
     let (_, report_rx) = tokio::sync::mpsc::channel(1);
     AsyncLogBuffer::new(
@@ -393,7 +393,7 @@ async fn logs_are_replayed_in_order() {
         .push(current_log_message.clone());
 
       counter += 1;
-      let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
+      let result = AsyncLogBuffer::<TestReplay, bd_test_helpers::session::InMemoryStorage>::enqueue_log(
         &buffer_tx,
         0,
         LogType::NORMAL,
@@ -467,7 +467,7 @@ fn enqueuing_log_does_not_block() {
 
   let (mut _buffer, buffer_tx) = setup.make_real_async_log_buffer(config_update_rx);
 
-  let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
+  let result = AsyncLogBuffer::<TestReplay, bd_test_helpers::session::InMemoryStorage>::enqueue_log(
     &buffer_tx,
     0,
     LogType::NORMAL,
@@ -515,7 +515,7 @@ fn enqueuing_log_blocks() {
     drop(test_store);
   });
 
-  let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
+  let result = AsyncLogBuffer::<TestReplay, bd_test_helpers::session::InMemoryStorage>::enqueue_log(
     &buffer_sender,
     0,
     LogType::NORMAL,

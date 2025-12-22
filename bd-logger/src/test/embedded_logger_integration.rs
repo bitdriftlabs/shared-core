@@ -47,7 +47,7 @@ impl MetadataProvider for TestMetadataProvider {
 struct Setup {
   _sdk_directory: tempfile::TempDir,
   server: Box<bd_test_helpers::test_api_server::ServerHandle>,
-  logger: Logger,
+  logger: Logger<bd_test_helpers::session::InMemoryStorage>,
   shutdown: ComponentShutdownTrigger,
 }
 

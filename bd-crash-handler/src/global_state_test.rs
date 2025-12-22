@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::global_state::{Reader, Tracker, UpdateResult};
+use crate::global_state::{Reader, Tracker, UpdateResult, fields_to_crash_state};
 use bd_runtime::runtime::Watch;
 use bd_test_helpers::session::in_memory_store;
 use time::ext::{NumericalDuration, NumericalStdDuration};
@@ -16,7 +16,7 @@ fn global_state_update() {
   let reader = Reader::new(store.clone());
   let mut state_tracker = Tracker::new(store, Watch::new_for_testing(0.seconds()));
 
-  assert!(state_tracker.current_global_state.0.is_empty());
+  assert!(state_tracker.current_global_state.fields.is_empty());
   assert!(reader.global_state_fields().is_empty());
 
   let fields = [
@@ -34,7 +34,10 @@ fn global_state_update() {
   );
 
   assert_eq!(reader.global_state_fields(), fields);
-  assert_eq!(state_tracker.current_global_state.0, fields);
+  assert_eq!(
+    state_tracker.current_global_state,
+    fields_to_crash_state(&fields)
+  );
 
   let updated_fields = [("key".into(), "value".into())].into();
 
@@ -48,7 +51,10 @@ fn global_state_update() {
   );
 
   assert_eq!(reader.global_state_fields(), updated_fields);
-  assert_eq!(state_tracker.current_global_state.0, updated_fields);
+  assert_eq!(
+    state_tracker.current_global_state,
+    fields_to_crash_state(&updated_fields)
+  );
 
   let updated_fields = [("key".into(), b"value".to_vec().into())].into();
 

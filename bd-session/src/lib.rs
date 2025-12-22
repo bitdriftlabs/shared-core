@@ -17,7 +17,6 @@
 pub mod activity_based;
 pub mod fixed;
 
-use bd_key_value::Storage;
 pub use bd_key_value::Store;
 
 #[cfg(test)]
@@ -30,12 +29,12 @@ fn test_global_init() {
 // Strategy
 //
 
-pub enum Strategy<S> {
-  Fixed(fixed::Strategy<S>),
-  ActivityBased(activity_based::Strategy<S>),
+pub enum Strategy {
+  Fixed(fixed::Strategy),
+  ActivityBased(activity_based::Strategy),
 }
 
-impl<S: Storage> Strategy<S> {
+impl Strategy {
   pub fn session_id(&self) -> String {
     match self {
       Self::Fixed(strategy) => strategy.session_id(),

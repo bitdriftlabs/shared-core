@@ -33,7 +33,7 @@ use bd_session::fixed::{self, UUIDCallbacks};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::test::TestStore;
 use bd_test_helpers::make_mut;
-use bd_test_helpers::session::in_memory_store;
+use bd_test_helpers::session::{InMemoryStorage, in_memory_store};
 use bd_time::TestTimeProvider;
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, WIPOffset};
 use itertools::Itertools;
@@ -157,7 +157,7 @@ impl CrashReportBuilder {
 
 struct Setup {
   directory: TempDir,
-  monitor: Monitor,
+  monitor: Monitor<InMemoryStorage>,
   upload_client: Arc<bd_artifact_upload::MockClient>,
   emit_log_rx: tokio::sync::mpsc::Receiver<crate::CrashLog>,
   state: TestStore,
@@ -586,7 +586,9 @@ async fn file_watcher_enabled_when_watcher_directory_exists() {
   let report_directory = temp.path().join("reports");
 
   // Watcher should not be enabled when the watcher directory doesn't exist
-  assert!(!Monitor::is_reports_watcher_enabled(&report_directory));
+  assert!(!Monitor::<InMemoryStorage>::is_reports_watcher_enabled(
+    &report_directory
+  ));
 
   // Create the watcher directory
   std::fs::create_dir_all(report_directory.join("watcher")).unwrap();

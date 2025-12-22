@@ -10,9 +10,10 @@
 mod tests;
 
 use bd_device::Store;
-use bd_key_value::{Key, Storage};
+use bd_key_value::Key;
 use bd_log_primitives::LogFields;
 use bd_proto::protos::client::key_value::CrashGlobalState;
+use bd_proto::protos::logging::payload;
 use bd_runtime::runtime::DurationWatch;
 use std::sync::Arc;
 use tokio::time::Instant;
@@ -31,18 +32,18 @@ pub enum UpdateResult {
 // Tracker
 //
 
-pub struct Tracker<S> {
-  store: Arc<Store<S>>,
+pub struct Tracker {
+  store: Arc<Store>,
   current_global_state: CrashGlobalState,
   last_write: Option<Instant>,
   next_write: Option<Instant>,
   coalesce_window: DurationWatch<bd_runtime::runtime::global_state::CoalesceWindow>,
 }
 
-impl<S: Storage> Tracker<S> {
+impl Tracker {
   #[must_use]
   pub fn new(
-    store: Arc<Store<S>>,
+    store: Arc<Store>,
     coalesce_window: DurationWatch<bd_runtime::runtime::global_state::CoalesceWindow>,
   ) -> Self {
     let global_state = store.get(&KEY).unwrap_or_default();
@@ -69,27 +70,7 @@ impl<S: Storage> Tracker<S> {
     // this will require a bit more work to integrate with so that the reports can be constructed
     // with the map directly.
 
-    let candidate_state = CrashGlobalState {
-      fields: new_global_state
-        .iter()
-        .map(|(key, value)| bd_proto::protos::client::logging::LogField {
-          key: key.clone().into(),
-          value: Some(Data {
-            data_type: Some(match value {
-              bd_log_primitives::LogFieldValue::String(s) => {
-                Data_type::StringData(s.clone().into())
-              },
-              bd_log_primitives::LogFieldValue::Bytes(b) => Data_type::BinaryData(
-                bd_proto::protos::client::logging::payload::data::BinaryData { payload: b.clone() },
-              ),
-              // We only support string and binary data in the global state.
-              _ => continue,
-            }),
-          }),
-          ..Default::default()
-        })
-        .collect(),
-    };
+    let candidate_state = fields_to_crash_state(new_global_state);
 
     // If we have a pending write scheduled, check if it's time to do it.
     let now = Instant::now();
@@ -98,14 +79,14 @@ impl<S: Storage> Tracker<S> {
         self.next_write = None;
         // Check again at this point to see if the state has changed since we last checked. If it's
         // the same we don't have to do anything.
-        if self.current_global_state.0 == *new_global_state {
+        if self.current_global_state == candidate_state {
           log::trace!(
             "No change to global state at coalesced write time, not writing but clearing timer"
           );
           return UpdateResult::NoChange;
         }
         log::trace!("Writing coalesced global state");
-        self.current_global_state = State(new_global_state.clone());
+        self.current_global_state = candidate_state;
         self.write_global_state();
         return UpdateResult::Updated;
       }
@@ -115,7 +96,7 @@ impl<S: Storage> Tracker<S> {
     }
 
     // No write is scheduled and there has been no change, no need to do anything.
-    if self.current_global_state.0 == *new_global_state {
+    if self.current_global_state == candidate_state {
       log::trace!("No change to global state, not writing");
       return UpdateResult::NoChange;
     }
@@ -124,7 +105,7 @@ impl<S: Storage> Tracker<S> {
       // We have never written before, write immediately.
       (None, _) => {
         log::trace!("Writing initial global state");
-        self.current_global_state = State(new_global_state.clone());
+        self.current_global_state = candidate_state;
         self.write_global_state();
         UpdateResult::Updated
       },
@@ -139,7 +120,7 @@ impl<S: Storage> Tracker<S> {
           UpdateResult::Deferred
         } else {
           log::trace!("Writing global state immediately");
-          self.current_global_state = State(new_global_state.clone());
+          self.current_global_state = candidate_state;
           self.write_global_state();
           UpdateResult::Updated
         }
@@ -155,18 +136,39 @@ impl<S: Storage> Tracker<S> {
   }
 }
 
+pub(crate) fn fields_to_crash_state(fields: &LogFields) -> CrashGlobalState {
+  CrashGlobalState {
+    fields: fields
+      .iter()
+      .map(|(key, value)| payload::log::Field {
+        key: key.clone().into(),
+        value: Some(value.clone().into_proto()).into(),
+        ..Default::default()
+      })
+      .collect(),
+    ..Default::default()
+  }
+}
+
 //
 // Reader
 //
 
-#[derive(Clone)]
-pub struct Reader<S> {
-  store: Arc<Store<S>>,
+pub struct Reader {
+  store: Arc<Store>,
 }
 
-impl<S: Storage> Reader<S> {
+impl Clone for Reader {
+  fn clone(&self) -> Self {
+    Self {
+      store: self.store.clone(),
+    }
+  }
+}
+
+impl Reader {
   #[must_use]
-  pub fn new(store: Arc<Store<S>>) -> Self {
+  pub fn new(store: Arc<Store>) -> Self {
     Self { store }
   }
 

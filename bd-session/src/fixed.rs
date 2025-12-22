@@ -9,7 +9,7 @@
 #[path = "./fixed_test.rs"]
 mod fixed_test;
 
-use bd_key_value::{Key, Storage, Store};
+use bd_key_value::{Key, Store};
 use bd_log::warn_every;
 use bd_proto::protos::client::key_value::FixedSessionStrategyState;
 use std::cell::Cell;
@@ -26,8 +26,8 @@ pub static STATE_KEY: Key<FixedSessionStrategyState> = Key::new("session_strateg
 //
 
 /// A session strategy that generates a new session ID on each SDK launch.
-pub struct Strategy<S> {
-  store: Arc<Store<S>>,
+pub struct Strategy {
+  store: Arc<Store>,
   callbacks: Arc<dyn Callbacks>,
 
   // Used to prevent a case where a Capture SDK customer calls into the logger to start a new
@@ -37,8 +37,8 @@ pub struct Strategy<S> {
   state: parking_lot::Mutex<Option<InMemoryState>>,
 }
 
-impl<S: Storage> Strategy<S> {
-  pub fn new(store: Arc<Store<S>>, callbacks: Arc<dyn Callbacks>) -> Self {
+impl Strategy {
+  pub fn new(store: Arc<Store>, callbacks: Arc<dyn Callbacks>) -> Self {
     Self {
       store,
       callbacks,

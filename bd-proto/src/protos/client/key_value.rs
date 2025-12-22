@@ -417,6 +417,275 @@ impl ::protobuf::reflect::ProtobufValue for CrashGlobalState {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.AppVersion)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct AppVersion {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.AppVersion.version)
+    pub version: ::std::string::String,
+    // message oneof groups
+    pub extra: ::std::option::Option<app_version::Extra>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.AppVersion.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a AppVersion {
+    fn default() -> &'a AppVersion {
+        <AppVersion as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl AppVersion {
+    pub fn new() -> AppVersion {
+        ::std::default::Default::default()
+    }
+
+    // int64 app_version_code = 2;
+
+    pub fn app_version_code(&self) -> i64 {
+        match self.extra {
+            ::std::option::Option::Some(app_version::Extra::AppVersionCode(v)) => v,
+            _ => 0,
+        }
+    }
+
+    pub fn clear_app_version_code(&mut self) {
+        self.extra = ::std::option::Option::None;
+    }
+
+    pub fn has_app_version_code(&self) -> bool {
+        match self.extra {
+            ::std::option::Option::Some(app_version::Extra::AppVersionCode(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_app_version_code(&mut self, v: i64) {
+        self.extra = ::std::option::Option::Some(app_version::Extra::AppVersionCode(v))
+    }
+
+    // string build_number = 3;
+
+    pub fn build_number(&self) -> &str {
+        match self.extra {
+            ::std::option::Option::Some(app_version::Extra::BuildNumber(ref v)) => v,
+            _ => "",
+        }
+    }
+
+    pub fn clear_build_number(&mut self) {
+        self.extra = ::std::option::Option::None;
+    }
+
+    pub fn has_build_number(&self) -> bool {
+        match self.extra {
+            ::std::option::Option::Some(app_version::Extra::BuildNumber(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_build_number(&mut self, v: ::std::string::String) {
+        self.extra = ::std::option::Option::Some(app_version::Extra::BuildNumber(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_build_number(&mut self) -> &mut ::std::string::String {
+        if let ::std::option::Option::Some(app_version::Extra::BuildNumber(_)) = self.extra {
+        } else {
+            self.extra = ::std::option::Option::Some(app_version::Extra::BuildNumber(::std::string::String::new()));
+        }
+        match self.extra {
+            ::std::option::Option::Some(app_version::Extra::BuildNumber(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_build_number(&mut self) -> ::std::string::String {
+        if self.has_build_number() {
+            match self.extra.take() {
+                ::std::option::Option::Some(app_version::Extra::BuildNumber(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            ::std::string::String::new()
+        }
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "version",
+            |m: &AppVersion| { &m.version },
+            |m: &mut AppVersion| { &mut m.version },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_copy_has_get_set_simpler_accessors::<_, _>(
+            "app_version_code",
+            AppVersion::has_app_version_code,
+            AppVersion::app_version_code,
+            AppVersion::set_app_version_code,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+            "build_number",
+            AppVersion::has_build_number,
+            AppVersion::build_number,
+            AppVersion::set_build_number,
+        ));
+        oneofs.push(app_version::Extra::generated_oneof_descriptor_data());
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<AppVersion>(
+            "AppVersion",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for AppVersion {
+    const NAME: &'static str = "AppVersion";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.version = is.read_string()?;
+                },
+                16 => {
+                    self.extra = ::std::option::Option::Some(app_version::Extra::AppVersionCode(is.read_int64()?));
+                },
+                26 => {
+                    self.extra = ::std::option::Option::Some(app_version::Extra::BuildNumber(is.read_string()?));
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.version.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.version);
+        }
+        if let ::std::option::Option::Some(ref v) = self.extra {
+            match v {
+                &app_version::Extra::AppVersionCode(v) => {
+                    my_size += ::protobuf::rt::int64_size(2, v);
+                },
+                &app_version::Extra::BuildNumber(ref v) => {
+                    my_size += ::protobuf::rt::string_size(3, &v);
+                },
+            };
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.version.is_empty() {
+            os.write_string(1, &self.version)?;
+        }
+        if let ::std::option::Option::Some(ref v) = self.extra {
+            match v {
+                &app_version::Extra::AppVersionCode(v) => {
+                    os.write_int64(2, v)?;
+                },
+                &app_version::Extra::BuildNumber(ref v) => {
+                    os.write_string(3, v)?;
+                },
+            };
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> AppVersion {
+        AppVersion::new()
+    }
+
+    fn clear(&mut self) {
+        self.version.clear();
+        self.extra = ::std::option::Option::None;
+        self.extra = ::std::option::Option::None;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static AppVersion {
+        static instance: AppVersion = AppVersion {
+            version: ::std::string::String::new(),
+            extra: ::std::option::Option::None,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for AppVersion {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("AppVersion").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for AppVersion {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for AppVersion {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `AppVersion`
+pub mod app_version {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.client.v1.AppVersion.extra)
+    pub enum Extra {
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.AppVersion.app_version_code)
+        AppVersionCode(i64),
+        // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.client.v1.AppVersion.build_number)
+        BuildNumber(::std::string::String),
+    }
+
+    impl ::protobuf::Oneof for Extra {
+    }
+
+    impl ::protobuf::OneofFull for Extra {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::AppVersion as ::protobuf::MessageFull>::descriptor().oneof_by_name("extra").unwrap()).clone()
+        }
+    }
+
+    impl Extra {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Extra>("extra")
+        }
+    }
+}
+
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n2bitdrift_public/protobuf/client/v1/key_value.proto\x12\"bitdrift_publ\
     ic.protobuf.client.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17vali\
@@ -426,8 +695,11 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \n\nsession_id\x18\x01\x20\x01(\tR\tsessionId\x12R\n\x17last_activity_ti\
     mestamp\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x15lastActi\
     vityTimestamp\"Z\n\x10CrashGlobalState\x12F\n\x06fields\x18\x01\x20\x03(\
-    \x0b2..bitdrift_public.protobuf.logging.v1.Log.FieldR\x06fieldsb\x06prot\
-    o3\
+    \x0b2..bitdrift_public.protobuf.logging.v1.Log.FieldR\x06fields\"\x80\
+    \x01\n\nAppVersion\x12\x18\n\x07version\x18\x01\x20\x01(\tR\x07version\
+    \x12*\n\x10app_version_code\x18\x02\x20\x01(\x03H\0R\x0eappVersionCode\
+    \x12#\n\x0cbuild_number\x18\x03\x20\x01(\tH\0R\x0bbuildNumberB\x07\n\x05\
+    extrab\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -448,10 +720,11 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
             deps.push(super::payload::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(3);
+            let mut messages = ::std::vec::Vec::with_capacity(4);
             messages.push(FixedSessionStrategyState::generated_message_descriptor_data());
             messages.push(ActivitySessionStrategyState::generated_message_descriptor_data());
             messages.push(CrashGlobalState::generated_message_descriptor_data());
+            messages.push(AppVersion::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(0);
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),

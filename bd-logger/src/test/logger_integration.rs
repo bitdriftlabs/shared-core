@@ -97,9 +97,11 @@ use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::macros::datetime;
 
+use bd_test_helpers::session::InMemoryStorage;
+
 #[test]
 fn sleep_mode() {
-  let mut setup = Setup::new_with_options(SetupOptions {
+  let mut setup: Setup = Setup::new_with_options(SetupOptions {
     start_in_sleep_mode: true,
     ..Default::default()
   });
@@ -124,7 +126,7 @@ fn sleep_mode() {
 
 #[test]
 fn attributes_accessors() {
-  let setup = Setup::new();
+  let setup: Setup = Setup::new();
 
   assert_eq!(36, setup.logger_handle.session_id().len());
   assert_eq!(36, setup.logger_handle.device_id().len());
@@ -133,7 +135,7 @@ fn attributes_accessors() {
 #[test]
 fn logger_api() {
   // Test basic handshaking which is handled by Setup.
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
   let nack = setup.send_configuration_update(
     make_configuration_update_with_workflow_flushing_buffer_on_anything(
       "default",
@@ -149,7 +151,7 @@ fn logger_api() {
 
 #[test]
 fn log_upload() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
   setup.send_configuration_update(
     make_configuration_update_with_workflow_flushing_buffer_on_anything(
       "default",
@@ -181,7 +183,7 @@ fn log_upload() {
 
 #[test]
 fn log_upload_with_compression() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
   setup.send_configuration_update(
     make_configuration_update_with_workflow_flushing_buffer_on_anything(
       "default",
@@ -246,7 +248,7 @@ fn log_upload_with_compression() {
 
 #[test]
 fn explicit_session_capture() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
   assert!(
     setup
       .send_configuration_update(config_helper::configuration_update_from_parts(
@@ -325,7 +327,7 @@ fn explicit_session_capture() {
 
 #[test]
 fn explicit_session_capture_disabled_streaming() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
   assert!(
     setup
       .send_configuration_update(config_helper::configuration_update_from_parts(
@@ -399,7 +401,7 @@ fn explicit_session_capture_disabled_streaming() {
 #[test]
 fn log_upload_attributes_override() {
   let time_first = datetime!(2024-06-01 12:00:00 UTC);
-  let mut setup = Setup::new_with_metadata(Arc::new(LogMetadata {
+  let mut setup: Setup = Setup::new_with_metadata(Arc::new(LogMetadata {
     timestamp: Mutex::new(time_first),
     ootb_fields: LogFields::from([("_some_version".into(), "400".into())]),
     ..Default::default()
@@ -499,7 +501,7 @@ fn log_upload_attributes_override() {
 
 #[test]
 fn api_bandwidth_counters() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
 
   setup
     .current_api_stream()
@@ -529,7 +531,7 @@ fn api_bandwidth_counters() {
 
 #[test]
 fn buffer_selection_update() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
 
   setup.send_configuration_update(configuration_update(
     "",
@@ -590,7 +592,7 @@ fn buffer_selection_update() {
 
 #[test]
 fn bad_config() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
 
   let maybe_nack = setup.send_configuration_update(invalid_configuration());
   assert_matches!(maybe_nack, Some(nack) => {
@@ -606,7 +608,7 @@ fn configuration_caching() {
 
   // Initialize the logger once, sending it a configuration that will upload all logs.
   {
-    let mut setup = Setup::new_with_options(SetupOptions {
+    let mut setup: Setup = Setup::new_with_options(SetupOptions {
       sdk_directory: sdk_directory.clone(),
       ..Default::default()
     });
@@ -617,7 +619,7 @@ fn configuration_caching() {
   // After shutting down the previous logger, create a new one with the same buffer directory.
   // It should reuse the previous configuration and upload logs without receiving a configuration
   // update.
-  let mut setup = Setup::new_with_options(SetupOptions {
+  let mut setup: Setup = Setup::new_with_options(SetupOptions {
     sdk_directory,
     ..Default::default()
   });
@@ -641,7 +643,7 @@ fn configuration_caching() {
 
 #[test]
 fn trigger_buffers_not_uploaded() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
 
   let maybe_nack = setup.send_configuration_update(configuration_update(
     "",
@@ -675,7 +677,7 @@ fn trigger_buffers_not_uploaded() {
 
 #[test]
 fn blocking_log() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
 
   setup.send_runtime_update();
 
@@ -711,7 +713,7 @@ fn blocking_log() {
 
 #[test]
 fn session_replay_actions() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
   setup.send_runtime_update();
 
   let b = state("B");
@@ -809,7 +811,7 @@ fn session_replay_actions() {
 
 #[test]
 fn flush_state() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
 
   // Send down a configuration with a single 'default' buffer.
   let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
@@ -839,7 +841,7 @@ fn flush_state() {
 
 #[test]
 fn blocking_flush_state() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
 
   // Send down a configuration with a single 'default' buffer.
   let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
@@ -874,7 +876,7 @@ fn blocking_flush_state() {
 
 #[test]
 fn flush_state_uninitialized() {
-  let setup = Setup::new();
+  let setup: Setup = Setup::new();
 
   setup.logger_handle.flush_state(Block::No);
 
@@ -887,7 +889,7 @@ fn flush_state_uninitialized() {
 
 #[test]
 fn blocking_flush_state_uninitialized() {
-  let setup = Setup::new();
+  let setup: Setup = Setup::new();
 
   setup
     .logger_handle
@@ -899,7 +901,7 @@ fn blocking_flush_state_uninitialized() {
 
 #[test]
 fn log_tailing() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
 
   let maybe_nack = setup.send_configuration_update(config_helper::configuration_update(
     "",
@@ -980,7 +982,7 @@ fn log_tailing() {
 
 #[test]
 fn workflow_flush_buffers_action_uploads_buffer() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
 
   setup.send_runtime_update();
 
@@ -1058,10 +1060,10 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
         &["trigger_buffer_id"],
         None,
         "flush_with_streaming_action_id",
-      )],
+      )      ],
     );
 
-  let mut setup = Setup::new_with_metadata(Arc::new(LogMetadata {
+  let mut setup: Setup = Setup::new_with_metadata(Arc::new(LogMetadata {
     timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
     custom_fields: [("k1".into(), "provider_value_1".into())].into(),
     ootb_fields: [("k2".into(), "provider_value_2".into())].into(),
@@ -1069,6 +1071,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
 
   // Send down a configuration with a single buffer ('default')
   // which does not accept `InternalSDK` logs and a single workflow
+
   // which matches for logs with the 'fire workflow action!' message
   // in order to flush all buffers.
   let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
@@ -1201,7 +1204,7 @@ fn workflow_generate_log_to_histogram() {
     timestamp: Mutex::new(datetime!(2023-10-01 00:00:00 UTC)),
     ..Default::default()
   });
-  let mut setup = Setup::new_with_metadata(metadata.clone());
+  let mut setup: Setup = Setup::new_with_metadata(metadata.clone());
   setup.send_runtime_update();
 
   let mut a = state("A");
@@ -1309,7 +1312,7 @@ fn workflow_generate_log_to_histogram() {
 #[test]
 fn workflow_debugging() {
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2023-10-01 00:00:00 UTC)));
-  let mut setup = Setup::new_with_options(SetupOptions {
+  let mut setup: Setup = Setup::new_with_options(SetupOptions {
     time_provider: Some(time_provider.clone()),
     ..Default::default()
   });
@@ -1485,7 +1488,7 @@ fn workflow_debugging() {
 
 #[test]
 fn workflow_emit_metric_action_emits_metric() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
 
   setup.send_runtime_update();
 
@@ -1606,7 +1609,7 @@ fn workflow_emit_metric_action_emits_metric() {
 
 #[test]
 fn workflow_emit_metric_action_triggers_runtime_limits() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
 
   setup
     .current_api_stream()
@@ -1704,7 +1707,7 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
 
 #[test]
 fn transforms_emitted_logs_according_to_filters() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
 
   setup.send_runtime_update();
 
@@ -1773,7 +1776,7 @@ fn transforms_emitted_logs_according_to_filters() {
 
 #[test]
 fn remote_buffer_upload() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
 
   // Send down a configuration with a trigger buffer ('default') which accepts all logs with no
   // local listeners that would cause it to trigger.
@@ -1828,7 +1831,7 @@ fn remote_buffer_upload() {
 
 #[test]
 fn continuous_and_trigger_buffer() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
 
   // Send down a configuration with a trigger buffer ('trigger')
   // which accepts all logs and a single workflow which matches for logs
@@ -1924,7 +1927,7 @@ fn continuous_and_trigger_buffer() {
 
 #[test]
 fn device_id_matching() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
 
   let device_id = setup.logger.new_logger_handle().device_id();
 
@@ -1986,83 +1989,82 @@ fn device_id_matching() {
 
 #[test]
 fn matching_on_but_not_capturing_matching_fields() {
-  let mut setup = Setup::new();
+  let mut setup: Setup = Setup::new();
 
   // Send down a configuration with a trigger buffer ('trigger') which accepts all logs and a
   // single workflow which matches for logs with the 'fire!' message in order to flush the
   // default buffer.
-  let maybe_nack = setup.send_configuration_update(configuration_update_from_parts(
-    "",
-    ConfigurationUpdateParts {
-      buffer_config: vec![
-        BufferConfigBuilder {
-          name: "trigger",
-          buffer_type: Type::TRIGGER,
-          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-          non_volatile_size: 100_000,
-          volatile_size: 10_000,
-        }
-        .build(),
-      ],
-      workflows: make_workflow_config_flushing_buffer("trigger", field_equals("key", "value")),
-      ..Default::default()
-    },
-  ));
-  assert!(maybe_nack.is_none());
+  assert!(setup
+    .send_configuration_update(configuration_update_from_parts(
+      "",
+      ConfigurationUpdateParts {
+        buffer_config: vec![
+          BufferConfigBuilder {
+            name: "trigger",
+            buffer_type: Type::TRIGGER,
+            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+            non_volatile_size: 100_000,
+            volatile_size: 10_000,
+          }
+          .build(),
+        ],
+        workflows: vec![],
+        ..Default::default()
+      },
+    ))
+    .is_none());
+
+  setup.send_runtime_update();
 
   for _ in 0 .. 9 {
     setup.log(
       log_level::DEBUG,
       LogType::NORMAL,
-      "test".into(),
+      "some log".into(),
       [].into(),
       [].into(),
       None,
     );
   }
 
-  setup.log(
+  setup.log_with_session_capture(
     log_level::DEBUG,
-    LogType::INTERNAL_SDK,
-    "fire!".into(),
-    [
-      (
-        "_should_be_dropped_starting_with_underscore_key".into(),
-        AnnotatedLogField::new_custom("should be dropped value"),
-      ),
-      (
-        "_key".into(),
-        AnnotatedLogField::new_custom("_should_be_overridden_due_to_conflict_with_ootb_field"),
-      ),
-      ("_key".into(), AnnotatedLogField::new_ootb("_value")),
-      ("key".into(), AnnotatedLogField::new_custom("value")),
-    ]
-    .into(),
-    [(
-      "_phantom_key".into(),
-      AnnotatedLogField::new_ootb("_phantom_value"),
-    )]
-    .into(),
-    None,
+    LogType::NORMAL,
+    "some log".into(),
+    [].into(),
+    [].into(),
   );
 
-  // After writing this log we expect to see two uploads:
-  //  1. from the trigger upload uploading
-  //  2. from the continuous buffer uploading the single trigger line.
-  assert_matches!(setup.server.next_log_intent(), Some(_intent));
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_id(), "trigger");
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    uuid::Uuid::parse_str(log_upload.upload_uuid()).unwrap();
     assert_eq!(log_upload.logs().len(), 10);
 
-    let log = &log_upload.logs()[9];
-    assert_eq!(log.message(), "fire!");
-    assert_eq!(log.field("key"), "value");
-    assert_eq!(log.field("_key"), "_value");
-    assert!(!log.has_field("_should_be_dropped_starting_with_underscore_key"));
-    assert!(!log.has_field("_phantom_key"));
+    assert_eq!(log_upload.logs()[0].message(), "some log");
+  });
+
+  // Verify that we start streaming logs.
+  for _ in 0 .. 100 {
+    setup.log(
+      log_level::DEBUG,
+      LogType::NORMAL,
+      "some log".into(),
+      [].into(),
+      [].into(),
+      None,
+    );
+  }
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "default");
+    uuid::Uuid::parse_str(log_upload.upload_uuid()).unwrap();
+    assert_eq!(log_upload.logs().len(), 10);
+
+    assert_eq!(log_upload.logs()[0].message(), "some log");
   });
 }
 
+#[test]
 #[test]
 fn log_app_update() {
   let mut setup = Setup::new();

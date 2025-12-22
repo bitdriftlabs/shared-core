@@ -9,7 +9,7 @@
 #[path = "logger_test.rs"]
 mod logger_test;
 
-use crate::app_version::{AppVersion, AppVersionExtra, Repository};
+use crate::app_version::{AppVersion, Repository};
 use crate::async_log_buffer::{self, AsyncLogBuffer, LogAttributesOverrides};
 use crate::log_replay::LoggerReplay;
 use crate::{MetadataProvider, app_version};
@@ -25,6 +25,7 @@ use bd_log_primitives::{
   LogMessage,
   log_level,
 };
+use bd_proto::protos::client::key_value::app_version::Extra as AppVersionExtra;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::Snapshot;
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
@@ -325,9 +326,9 @@ impl LoggerHandle {
     app_version: String,
     app_version_extra: AppVersionExtra,
   ) -> bool {
-    let version = AppVersion {
-      app_version,
-      app_version_extra,
+    let version = match app_version_extra {
+      AppVersionExtra::AppVersionCode(code) => AppVersion::new_app_version_code(&app_version, code),
+      AppVersionExtra::BuildNumber(build) => AppVersion::new_build_numbrer(&app_version, &build),
     };
 
     self.app_version_repo.has_changed(&version)
@@ -341,9 +342,9 @@ impl LoggerHandle {
     mut fields: AnnotatedLogFields,
     duration: time::Duration,
   ) {
-    let version = AppVersion {
-      app_version,
-      app_version_extra,
+    let version = match app_version_extra {
+      AppVersionExtra::AppVersionCode(code) => AppVersion::new_app_version_code(&app_version, code),
+      AppVersionExtra::BuildNumber(build) => AppVersion::new_build_numbrer(&app_version, &build),
     };
 
     let Some(previous_app_version) = self.app_version_repo.set(&version) else {
@@ -364,16 +365,24 @@ impl LoggerHandle {
     }
     fields.insert(
       "_previous_app_version".into(),
-      AnnotatedLogField::new_ootb(previous_app_version.app_version),
+      AnnotatedLogField::new_ootb(previous_app_version.version.clone()),
     );
-    fields.insert(
-      format!(
-        "_previous_{}",
-        previous_app_version.app_version_extra.name()
-      )
-      .into(),
-      AnnotatedLogField::new_ootb(previous_app_version.app_version_extra.string_value()),
-    );
+    if let Some(extra) = &previous_app_version.extra {
+        match extra {
+            AppVersionExtra::AppVersionCode(code) => {
+                 fields.insert(
+                    "_previous_app_version_code".into(),
+                    AnnotatedLogField::new_ootb(code.to_string()),
+                );
+            }
+             AppVersionExtra::BuildNumber(build) => {
+                 fields.insert(
+                    "_previous_build_number".into(),
+                    AnnotatedLogField::new_ootb(build.clone()),
+                );
+            }
+        }
+    }
 
     self.log(
       log_level::INFO,

@@ -9,7 +9,7 @@
 #[path = "./activity_based_test.rs"]
 mod activity_based_test;
 
-use bd_key_value::{Key, Storage, Store};
+use bd_key_value::{Key, Store};
 use bd_proto::protos::client::key_value::ActivitySessionStrategyState;
 use bd_time::{OffsetDateTimeExt as _, TimeProvider, TimestampExt};
 use std::sync::Arc;
@@ -29,10 +29,10 @@ pub(crate) static STATE_KEY: Key<ActivitySessionStrategyState> =
 /// of the session ID and regenerates the session ID after an inactivity period threshold.
 ///
 /// Writes to the store are throttled to avoid excessive writes.
-pub struct Strategy<S> {
+pub struct Strategy {
   callbacks: Arc<dyn Callbacks>,
   inactivity_threshold: time::Duration,
-  store: Arc<Store<S>>,
+  store: Arc<Store>,
   time_provider: Arc<dyn TimeProvider>,
 
   // The current state of the strategy. Starts off as `None` and is initialized lazily on the first
@@ -45,10 +45,10 @@ pub struct Strategy<S> {
   max_write_interval: time::Duration,
 }
 
-impl<S: Storage> Strategy<S> {
+impl Strategy {
   pub fn new(
     inactivity_threshold: time::Duration,
-    store: Arc<Store<S>>,
+    store: Arc<Store>,
     callbacks: Arc<dyn Callbacks>,
     time_provider: Arc<dyn bd_time::TimeProvider>,
   ) -> Self {

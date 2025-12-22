@@ -9,7 +9,7 @@
 #[path = "./reconnect_test.rs"]
 mod tests;
 
-use bd_key_value::{Key, Storage};
+use bd_key_value::{Key, Store};
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
 use protobuf::well_known_types::timestamp::Timestamp;
 use std::sync::Arc;
@@ -17,14 +17,14 @@ use time::{Duration, OffsetDateTime};
 
 const LAST_CONNECTED_AT_KEY: Key<Timestamp> = Key::new("api:reconnect:last_connected_at");
 
-pub struct ReconnectState<T> {
-  store: Arc<bd_key_value::Store<T>>,
+pub struct ReconnectState {
+  store: Arc<Store>,
   last_connected_at: Option<OffsetDateTime>,
   time_provider: Arc<dyn TimeProvider>,
 }
 
-impl<S: Storage> ReconnectState<S> {
-  pub fn new(store: Arc<bd_key_value::Store<S>>, time_provider: Arc<dyn TimeProvider>) -> Self {
+impl ReconnectState {
+  pub fn new(store: Arc<Store>, time_provider: Arc<dyn TimeProvider>) -> Self {
     let last_connected_at = store
       .get(&LAST_CONNECTED_AT_KEY)
       .map(|v| v.to_offset_date_time());

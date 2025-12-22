@@ -31,7 +31,7 @@ fn test_global_init() {
 // Storage
 //
 
-pub trait Storage {
+pub trait Storage: Send + Sync {
   // TODO(Augustyniak): Make async variants of these operations.
   fn set_string(&self, key: &str, value: &str) -> anyhow::Result<()>;
   fn get_string(&self, key: &str) -> anyhow::Result<Option<String>>;
@@ -42,18 +42,18 @@ pub trait Storage {
 // Store
 //
 
-pub struct Store<S> {
-  storage: Box<S>,
+pub struct Store {
+  storage: Box<dyn Storage>,
 }
 
-impl<S> Store<S> {
+impl Store {
   #[must_use]
-  pub fn new(storage: Box<S>) -> Self {
+  pub fn new(storage: Box<dyn Storage>) -> Self {
     Self { storage }
   }
 }
 
-impl<S: Storage> Store<S> {
+impl Store {
   pub fn set_string(&self, key: &Key<String>, value: &str) {
     if let Err(e) = self.set_internal_string(key, value) {
       warn_every!(

@@ -145,13 +145,13 @@ impl Setup {
     let mut server = bd_test_helpers::test_api_server::start_server(false, None);
     let shutdown = ComponentShutdownTrigger::default();
 
-    let store = if options.disk_storage {
-      Arc::new(Store::new(Box::new(DiskStorage::new(
-        options.sdk_directory.path().join("store"),
-      ))))
+    let storage: Box<dyn bd_key_value::Storage> = if options.disk_storage {
+      Box::new(DiskStorage::default())
     } else {
-      in_memory_store()
+      Box::new(bd_test_helpers::session::InMemoryStorage::default())
     };
+
+    let store = Arc::new(Store::new(storage));
     let device = Arc::new(bd_device::Device::new(store.clone()));
 
     let session_replay_target = Box::new(MockSessionReplayTarget::default());
@@ -440,11 +440,14 @@ impl Drop for Setup {
 
 /// Creates minimal `InitParams` for testing without a server connection.
 /// Useful for testing infrastructure-level concerns like directory locking.
-pub fn create_minimal_init_params(sdk_directory: &std::path::Path) -> InitParams {
-  let session_store = in_memory_store();
-  let device_store = Arc::new(Store::new(Box::new(
-    bd_test_helpers::session::InMemoryStorage::default(),
-  )));
+pub fn create_minimal_init_params(
+  sdk_directory: &std::path::Path,
+) -> InitParams {
+  let session_store = Box::new(in_memory_store());
+  let device_store = Box::new(in_memory_store());
+
+  let session_store = Arc::new(Store::new(session_store));
+  let device_store = Arc::new(Store::new(device_store));
 
   InitParams {
     sdk_directory: sdk_directory.into(),
