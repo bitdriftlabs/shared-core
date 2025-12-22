@@ -26,8 +26,13 @@ use bd_log_primitives::AnnotatedLogFields;
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
-use bd_proto::protos::client::api::debug_data_request::WorkflowTransitionDebugData;
-use bd_proto::protos::client::api::{DebugDataRequest, debug_data_request};
+use bd_proto::protos::client::api::debug_data_request::workflow_transition_debug_data::Transition_type;
+use bd_proto::protos::client::api::debug_data_request::{
+  WorkflowDebugData,
+  WorkflowStateDebugData,
+  WorkflowTransitionDebugData,
+};
+use bd_proto::protos::client::api::DebugDataRequest;
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::filter::filter::Filter;
@@ -35,8 +40,8 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::logging::payload::log::CompressedContents;
 use bd_runtime::runtime::FeatureFlag;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
-use bd_session::fixed::{State, UUIDCallbacks};
-use bd_session::{Strategy, fixed};
+use bd_session::Strategy;
+use bd_session::fixed::{self, UUIDCallbacks};
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
 use bd_stats_common::labels;
 use bd_test_helpers::config_helper::{
@@ -83,21 +88,19 @@ use bd_test_helpers::workflow::{
 use bd_test_helpers::{RecordingErrorReporter, field_value, set_field};
 use bd_time::test::TestTicker;
 use bd_time::{OffsetDateTimeExt, TestTimeProvider};
-use debug_data_request::workflow_transition_debug_data::Transition_type;
-use debug_data_request::{WorkflowDebugData, WorkflowStateDebugData};
-use flate2::write::ZlibDecoder;
+use flate2::bufread::ZlibDecoder;
 use parking_lot::Mutex;
-use pretty_assertions::assert_eq;
 use protobuf::Message;
-use std::io::Write;
+use std::io::{Cursor, Read};
 use std::ops::Add;
 use std::sync::Arc;
 use std::time::Instant;
+
 use time::OffsetDateTime;
-use time::ext::{NumericalDuration, NumericalStdDuration};
+use time::ext::NumericalStdDuration;
 use time::macros::datetime;
 
-use bd_test_helpers::session::InMemoryStorage;
+
 
 #[test]
 fn sleep_mode() {
@@ -230,11 +233,13 @@ fn log_upload_with_compression() {
         assert!(!log_upload.logs()[i].has_message());
         assert!(!log_upload.logs()[i].has_field("super_long"));
 
-        let decoded = Vec::new();
-        let mut decoder = ZlibDecoder::new(decoded);
-        decoder.write_all(log_upload.logs()[i].compressed_contents()).unwrap();
-        let decoded = decoder.finish().unwrap();
-        let compressed_contents = CompressedContents::parse_from_bytes(&decoded).unwrap();
+        let log = &log_upload.logs()[i];
+        let compressed_data = log.compressed_contents();
+        let mut decoder = ZlibDecoder::new(Cursor::new(compressed_data));
+        let mut decoded = Vec::new();
+        decoder.read_to_end(&mut decoded).unwrap();
+        let mut cis = protobuf::CodedInputStream::from_bytes(&decoded);
+        let compressed_contents = CompressedContents::parse_from(&mut cis).unwrap();
         assert_eq!(compressed_contents.message.string_data(), "some log");
         assert_eq!(compressed_contents.fields[0].key, "super_long");
         assert_eq!(
@@ -421,8 +426,9 @@ fn log_upload_attributes_override() {
 
   setup.store.set(
     &fixed::STATE_KEY,
-    &State {
+    &bd_proto::protos::client::key_value::FixedSessionStrategyState {
       session_id: "foo_overridden".to_string(),
+      ..Default::default()
     },
   );
 
@@ -747,7 +753,7 @@ fn session_replay_actions() {
   );
   // TODO(snowp): This is a bit of a brittle test as it relies on the timing of the screenshot
   // handling.
-  std::thread::sleep(100.std_milliseconds());
+  std::thread::sleep(std::time::Duration::from_millis(100));
   assert_eq!(
     0,
     setup
@@ -868,7 +874,7 @@ fn blocking_flush_state() {
 
   setup
     .logger_handle
-    .flush_state(Block::Yes(15.std_seconds()));
+    .flush_state(Block::Yes(std::time::Duration::from_secs(15)));
 
   assert!(setup.workflows_state_file_path().exists());
   assert!(setup.pending_aggregation_index_file_path().exists());
@@ -893,7 +899,7 @@ fn blocking_flush_state_uninitialized() {
 
   setup
     .logger_handle
-    .flush_state(Block::Yes(15.std_seconds()));
+    .flush_state(Block::Yes(std::time::Duration::from_secs(15)));
 
   assert!(!setup.workflows_state_file_path().exists());
   assert!(setup.pending_aggregation_index_file_path().exists());
@@ -1371,7 +1377,7 @@ fn workflow_debugging() {
   );
 
   // Now send a log that will match.
-  time_provider.advance(1.minutes());
+  time_provider.advance(time::Duration::minutes(1));
   setup.blocking_log(
     log_level::DEBUG,
     LogType::NORMAL,
@@ -1435,7 +1441,7 @@ fn workflow_debugging() {
   ));
   assert!(maybe_nack.is_none());
 
-  time_provider.advance(1.minutes());
+  time_provider.advance(time::Duration::minutes(1));
   setup.blocking_log(
     log_level::DEBUG,
     LogType::NORMAL,
@@ -2065,7 +2071,6 @@ fn matching_on_but_not_capturing_matching_fields() {
 }
 
 #[test]
-#[test]
 fn log_app_update() {
   let mut setup = Setup::new();
 
@@ -2467,7 +2472,7 @@ fn runtime_caching() {
     // The runtime configuration should use the cached value. As we load the cached config from
     // the event loop thread, there is a slight delay before we pick up on this cached value.
 
-    let deadline = Instant::now().add(1.seconds());
+    let deadline = Instant::now().add(1.std_seconds());
 
     let mut deadline_elapsed = true;
     while Instant::now() < deadline {

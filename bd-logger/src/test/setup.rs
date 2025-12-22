@@ -41,10 +41,9 @@ use bd_test_helpers::test_api_server::{ExpectedStreamEvent, StreamAction, Stream
 use bd_time::TimeProvider;
 use bd_time::test::TestTicker;
 use bd_workflows::engine::WORKFLOWS_STATE_FILE_NAME;
-use std::sync::Arc;
-use std::sync::atomic::AtomicUsize;
+use std::sync::{Arc, atomic::AtomicUsize};
 use tempfile::TempDir;
-use time::ext::{NumericalDuration, NumericalStdDuration};
+// removed unused import
 use tokio::sync::mpsc;
 
 /// Wait for a condition to be true, or panic after 5 seconds.
@@ -53,10 +52,10 @@ macro_rules! wait_for {
   ($condition:expr) => {
     let start = std::time::Instant::now();
     while !$condition {
-      if start.elapsed() > 5.seconds() {
+      if start.elapsed() > std::time::Duration::from_secs(5) {
         panic!("Timeout waiting for condition");
       }
-      std::thread::sleep(10.std_milliseconds());
+      std::thread::sleep(std::time::Duration::from_millis(10));
     }
   };
 }
@@ -231,8 +230,8 @@ impl Setup {
       ExpectedStreamEvent::Handshake {
         matcher: None,
         sleep_mode: expect_sleep_mode
-      },
-      2.seconds(),
+       },
+      time::Duration::seconds(2),
     ));
 
     stream.blocking_stream_action(StreamAction::SendRuntime(make_update(
@@ -277,7 +276,7 @@ impl Setup {
       ),
       (
         bd_runtime::runtime::sleep_mode::MinReconnectInterval::path(),
-        ValueKind::Int(1.seconds().whole_milliseconds().try_into().unwrap()),
+        ValueKind::Int(time::Duration::seconds(1).whole_milliseconds().try_into().unwrap()),
       ),
     ]
   }
@@ -328,7 +327,7 @@ impl Setup {
       fields,
       matching_fields,
       None,
-      Block::Yes(15.std_seconds()),
+      Block::Yes(std::time::Duration::from_secs(15)),
       &CaptureSession::default(),
     );
   }
@@ -443,11 +442,8 @@ impl Drop for Setup {
 pub fn create_minimal_init_params(
   sdk_directory: &std::path::Path,
 ) -> InitParams {
-  let session_store = Box::new(in_memory_store());
-  let device_store = Box::new(in_memory_store());
-
-  let session_store = Arc::new(Store::new(session_store));
-  let device_store = Arc::new(Store::new(device_store));
+  let session_store = in_memory_store();
+  let device_store = in_memory_store();
 
   InitParams {
     sdk_directory: sdk_directory.into(),
