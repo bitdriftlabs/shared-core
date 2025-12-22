@@ -14,7 +14,6 @@ use bd_log::warn_every;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::{AnnotatedLogFields, LogFieldKey, LogFieldKind, LogFieldValue, LogFields};
 use bd_proto::protos::logging::payload::LogType;
-use itertools::Itertools;
 use std::collections::BTreeSet;
 use std::sync::{Arc, LazyLock};
 use time::ext::NumericalDuration;
@@ -66,18 +65,32 @@ impl MetadataCollector {
   }
 
   /// Creates metadata from log fields without interpolating provider fields
-  pub(crate) fn metadata_from_fields(
+  pub(crate) fn metadata_from_fields_with_previous_global_state(
     &self,
     fields: AnnotatedLogFields,
     matching_fields: AnnotatedLogFields,
+    global_state_reader: &global_state::Reader,
   ) -> anyhow::Result<LogMetadata> {
     let timestamp = self.metadata_provider.timestamp()?;
+
+    let fields = if let Some(previous_global_state_fields) =
+      global_state_reader.previous_global_state_fields()
+    {
+      let log_fields = partition_fields(fields);
+
+      log_fields
+        .ootb
+        .into_iter()
+        .chain(previous_global_state_fields.clone())
+        .chain(log_fields.custom)
+        .collect()
+    } else {
+      fields.into_iter().map(|(k, v)| (k, v.value)).collect()
+    };
+
     Ok(LogMetadata {
       timestamp,
-      fields: fields
-        .into_iter()
-        .map(|(k, v)| (k.clone(), v.value))
-        .collect(),
+      fields,
       matching_fields: matching_fields
         .into_iter()
         .map(|(k, v)| (k.clone(), v.value))
@@ -155,8 +168,8 @@ impl MetadataCollector {
       provider_fields.custom,
     ]
     .into_iter()
+    .rev()
     .flatten()
-    .unique_by(|(key, _)| key.clone())
     .collect();
 
     let matching_fields = partition_fields(matching_fields);
@@ -168,8 +181,8 @@ impl MetadataCollector {
       provider_matching_fields.custom,
     ]
     .into_iter()
+    .rev()
     .flatten()
-    .unique_by(|(key, _)| key.clone())
     .collect();
 
     Ok(LogMetadata {

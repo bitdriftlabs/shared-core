@@ -309,6 +309,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
 
   logging_state: LoggingState<PreConfigItem>,
   global_state_tracker: global_state::Tracker,
+  global_state_reader: global_state::Reader,
   time_provider: Arc<dyn TimeProvider>,
   lifecycle_state: InitLifecycleState,
 
@@ -406,9 +407,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         // async log buffer.
         logging_state: LoggingState::Uninitialized(uninitialized_logging_context),
         global_state_tracker: global_state::Tracker::new(
-          Arc::clone(store),
+          store.clone(),
           runtime_loader.register_duration_watch(),
         ),
+        global_state_reader: global_state::Reader::new(store.clone()),
         time_provider,
         lifecycle_state,
 
@@ -563,11 +565,15 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // Prevent re-entrancy when we are evaluating the log metadata.
     let result = with_thread_local_logger_guard(|| {
       if let Some(LogAttributesOverrides::PreviousRunSessionID(_)) = &log.attributes_overrides {
-        // avoid normalizing metadata for logs from previous sessions, which may
-        // have had different global state
+        // Since we're mimicing a log from the previous app start we want to use the previous
+        // global state instead of calling into the providers at this point.
         self
           .metadata_collector
-          .metadata_from_fields(log.fields, log.matching_fields)
+          .metadata_from_fields_with_previous_global_state(
+            log.fields,
+            log.matching_fields,
+            &self.global_state_reader,
+          )
       } else {
         self
           .metadata_collector
