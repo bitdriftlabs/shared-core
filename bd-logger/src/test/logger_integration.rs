@@ -25,14 +25,14 @@ use bd_log_metadata::LogFields;
 use bd_log_primitives::AnnotatedLogFields;
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
+use bd_proto::protos::client::api::DebugDataRequest;
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
-use bd_proto::protos::client::api::debug_data_request::workflow_transition_debug_data::Transition_type;
 use bd_proto::protos::client::api::debug_data_request::{
   WorkflowDebugData,
   WorkflowStateDebugData,
   WorkflowTransitionDebugData,
+  workflow_transition_debug_data,
 };
-use bd_proto::protos::client::api::DebugDataRequest;
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::filter::filter::Filter;
@@ -95,10 +95,10 @@ use std::io::Write;
 use std::ops::Add;
 use std::sync::Arc;
 use std::time::Instant;
-
 use time::OffsetDateTime;
 use time::ext::NumericalStdDuration;
 use time::macros::datetime;
+use workflow_transition_debug_data::Transition_type;
 
 
 
@@ -1065,7 +1065,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
         &["trigger_buffer_id"],
         None,
         "flush_with_streaming_action_id",
-      )      ],
+      )],
     );
 
   let mut setup = Setup::new_with_metadata(Arc::new(LogMetadata {
@@ -1999,25 +1999,27 @@ fn matching_on_but_not_capturing_matching_fields() {
   // Send down a configuration with a trigger buffer ('trigger') which accepts all logs and a
   // single workflow which matches for logs with the 'fire!' message in order to flush the
   // default buffer.
-  assert!(setup
-    .send_configuration_update(configuration_update_from_parts(
-      "",
-      ConfigurationUpdateParts {
-        buffer_config: vec![
-          BufferConfigBuilder {
-            name: "trigger",
-            buffer_type: Type::TRIGGER,
-            filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-            non_volatile_size: 100_000,
-            volatile_size: 10_000,
-          }
-          .build(),
-        ],
-        workflows: vec![],
-        ..Default::default()
-      },
-    ))
-    .is_none());
+  assert!(
+    setup
+      .send_configuration_update(configuration_update_from_parts(
+        "",
+        ConfigurationUpdateParts {
+          buffer_config: vec![
+            BufferConfigBuilder {
+              name: "trigger",
+              buffer_type: Type::TRIGGER,
+              filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+              non_volatile_size: 100_000,
+              volatile_size: 10_000,
+            }
+            .build(),
+          ],
+          workflows: vec![],
+          ..Default::default()
+        },
+      ))
+      .is_none()
+  );
 
   setup.send_runtime_update();
 
