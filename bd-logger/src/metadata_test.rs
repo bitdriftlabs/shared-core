@@ -277,7 +277,10 @@ fn metadata_from_fields_with_previous_global_state_includes_global_fields() {
 
   // Setup input fields
   let input_fields = [
-    ("local_key".into(), AnnotatedLogField::new_custom("local_value")),
+    (
+      "local_key".into(),
+      AnnotatedLogField::new_custom("local_value"),
+    ),
     (
       "shared_custom_key".into(),
       AnnotatedLogField::new_custom("local_value"),
