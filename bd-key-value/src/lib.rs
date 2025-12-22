@@ -43,12 +43,12 @@ pub trait Storage: Send + Sync {
 //
 
 pub struct Store {
-  storage: Box<dyn Storage>,
+  storage: Box<dyn Storage + Send + Sync>,
 }
 
 impl Store {
   #[must_use]
-  pub fn new(storage: Box<dyn Storage>) -> Self {
+  pub fn new(storage: Box<dyn Storage + Send + Sync>) -> Self {
     Self { storage }
   }
 }

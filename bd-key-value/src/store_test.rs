@@ -10,6 +10,7 @@ use base64::Engine as _;
 use pretty_assertions::assert_eq;
 use protobuf::well_known_types::wrappers::BoolValue;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 static STRING_TEST_KEY: Key<String> = Key::new("test");
 static PROTO_TEST_KEY: Key<BoolValue> = Key::new("test");
@@ -20,7 +21,7 @@ static PROTO_TEST_KEY: Key<BoolValue> = Key::new("test");
 
 #[derive(Default)]
 struct MockStorage {
-  state: parking_lot::Mutex<HashMap<String, String>>,
+  state: Arc<parking_lot::Mutex<HashMap<String, String>>>,
 }
 
 impl Storage for MockStorage {
@@ -71,6 +72,7 @@ fn returns_none_if_underlying_data_malformed() {
 #[test]
 fn bincode_string_compatibility() {
   let storage = Box::<MockStorage>::default();
+  let storage_values = storage.state.clone();
   let store = Store::new(storage);
 
   let value = "test-string".to_string();
@@ -79,9 +81,7 @@ fn bincode_string_compatibility() {
 
   assert_eq!(
     base64::engine::general_purpose::STANDARD.encode(&bincode_encoded),
-    store
-      .storage
-      .state
+    storage_values
       .lock()
       .get(STRING_TEST_KEY.key())
       .unwrap()
@@ -92,6 +92,7 @@ fn bincode_string_compatibility() {
 #[test]
 fn bincode_string_compatibility_long_string() {
   let storage = Box::<MockStorage>::default();
+  let storage_values = storage.state.clone();
   let store = Store::new(storage);
 
   // Test a large string so that we ensure length prefixes are using the correct endianness.
@@ -101,9 +102,7 @@ fn bincode_string_compatibility_long_string() {
   let bincode_encoded = bincode::encode_to_vec(value, bincode::config::legacy()).unwrap();
   assert_eq!(
     base64::engine::general_purpose::STANDARD.encode(&bincode_encoded),
-    store
-      .storage
-      .state
+    storage_values
       .lock()
       .get(STRING_TEST_KEY.key())
       .unwrap()
