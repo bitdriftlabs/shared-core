@@ -30,6 +30,7 @@ use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::{BinaryData, Data, LogType};
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
+use ordered_float::NotNan;
 use protobuf::rt::WireType;
 use protobuf::{CodedInputStream, CodedOutputStream};
 use serde::{Deserialize, Serialize};
@@ -95,6 +96,10 @@ pub enum StringOrBytes<S: AsRef<str>, B: AsRef<[u8]>> {
   SharedString(Arc<str>),
   StaticString(&'static str),
   Bytes(B),
+  Boolean(bool),
+  U64(u64),
+  I64(i64),
+  Double(NotNan<f64>),
 }
 
 impl<'de, S, B> Deserialize<'de> for StringOrBytes<S, B>
@@ -142,6 +147,10 @@ impl StringOrBytes<String, Vec<u8>> {
           payload: b,
           ..Default::default()
         }),
+        Self::Boolean(b) => Data_type::BoolData(b),
+        Self::U64(v) => Data_type::IntData(v),
+        Self::I64(v) => Data_type::SintData(v),
+        Self::Double(v) => Data_type::DoubleData(*v),
       }),
       ..Default::default()
     }
@@ -153,16 +162,22 @@ impl<T: AsRef<str>, B: AsRef<[u8]>> StringOrBytes<T, B> {
   pub fn as_str(&self) -> Option<&str> {
     match self {
       Self::String(s) => Some(s.as_ref()),
-      Self::SharedString(s) => Some(s),
+      Self::SharedString(s) => Some(s.as_ref()),
       Self::StaticString(s) => Some(s),
-      Self::Bytes(_) => None,
+      Self::Bytes(_) | Self::Boolean(_) | Self::U64(_) | Self::I64(_) | Self::Double(_) => None,
     }
   }
 
   /// Extracts the underlying bytes if the enum represents a Bytes, None otherwise.
   pub fn as_bytes(&self) -> Option<&[u8]> {
     match self {
-      Self::String(_) | Self::SharedString(_) | Self::StaticString(_) => None,
+      Self::String(_)
+      | Self::SharedString(_)
+      | Self::StaticString(_)
+      | Self::Boolean(_)
+      | Self::U64(_)
+      | Self::I64(_)
+      | Self::Double(_) => None,
       Self::Bytes(b) => Some(b.as_ref()),
     }
   }
@@ -213,6 +228,10 @@ impl std::fmt::Display for LogMessage {
       Self::Bytes(b) => {
         write!(f, "bytes:{b:?}")
       },
+      Self::Boolean(b) => write!(f, "{b}"),
+      Self::U64(v) => write!(f, "{v}"),
+      Self::I64(v) => write!(f, "{v}"),
+      Self::Double(v) => write!(f, "{v}"),
     }
   }
 }
@@ -402,6 +421,22 @@ impl LogEncodingHelper {
         // BinaryData binary_data = 2;
         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(inner_len) + inner_len;
       },
+      StringOrBytes::Boolean(_) => {
+        // bool bool_data = 6;
+        my_size += 1 + 1; // bool is always 1 byte + tag size
+      },
+      StringOrBytes::U64(v) => {
+        // uint64 int_data = 3;
+        my_size += ::protobuf::rt::uint64_size(3, *v);
+      },
+      StringOrBytes::I64(v) => {
+        // int64 sint_data = 5;
+        my_size += ::protobuf::rt::int64_size(5, *v);
+      },
+      StringOrBytes::Double(_v) => {
+        // double double_data = 4;
+        my_size += 8 + 1; // double is always 8 bytes + tag size
+      },
     }
 
     my_size
@@ -436,6 +471,22 @@ impl LogEncodingHelper {
         os.write_raw_varint32(inner_len.to_u32_lossy())?;
         // BinaryData binary_data = 2;
         os.write_bytes(2, b)?;
+      },
+      StringOrBytes::Boolean(v) => {
+        // bool bool_data = 6;
+        os.write_bool(6, *v)?;
+      },
+      StringOrBytes::U64(v) => {
+        // uint64 int_data = 3;
+        os.write_uint64(3, *v)?;
+      },
+      StringOrBytes::I64(v) => {
+        // int64 sint_data = 5;
+        os.write_int64(5, *v)?;
+      },
+      StringOrBytes::Double(v) => {
+        // double double_data = 4;
+        os.write_double(4, **v)?;
       },
     }
 
@@ -781,7 +832,12 @@ impl MemorySized for LogFieldValue {
         Self::String(s) => s.len(),
         // For these variants the string is stored on the heap so we assume that it takes up no
         // space within the enum itself.
-        Self::SharedString(_) | Self::StaticString(_) => 0,
+        Self::SharedString(_)
+        | Self::StaticString(_)
+        | Self::Boolean(_)
+        | Self::U64(_)
+        | Self::I64(_)
+        | Self::Double(_) => 0,
         Self::Bytes(b) => b.capacity(),
       }
   }

@@ -38,6 +38,7 @@ hyper.workspace             = true
 hyper-util.workspace        = true
 log.workspace               = true
 mockall                     = { workspace = true, optional = true }
+ordered-float               = { version = "5.1.0" }
 parking_lot.workspace       = true
 prometheus.workspace        = true
 protobuf.workspace          = true

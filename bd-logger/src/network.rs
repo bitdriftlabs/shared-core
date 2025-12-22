@@ -288,7 +288,11 @@ fn get_int_field_value(fields: &AnnotatedLogFields, field_key: &str) -> Option<u
     StringOrBytes::String(value) => value,
     StringOrBytes::SharedString(value) => value.as_ref(),
     StringOrBytes::StaticString(value) => value,
-    StringOrBytes::Bytes(_) => return None,
+    StringOrBytes::Bytes(_)
+    | StringOrBytes::Boolean(_)
+    | StringOrBytes::U64(_)
+    | StringOrBytes::I64(_)
+    | StringOrBytes::Double(_) => return None,
   };
 
   string_value.parse::<u64>().ok()

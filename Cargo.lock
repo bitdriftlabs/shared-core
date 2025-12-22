@@ -852,6 +852,7 @@ dependencies = [
  "bd-proto",
  "bd-workspace-hack",
  "flate2",
+ "ordered-float",
  "protobuf 4.0.0-alpha.0",
  "serde",
  "time",
@@ -1310,6 +1311,7 @@ dependencies = [
  "hyper-util",
  "log",
  "mockall",
+ "ordered-float",
  "parking_lot",
  "prometheus",
  "protobuf 4.0.0-alpha.0",
@@ -3161,6 +3163,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ordered-float"
+version = "5.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f4779c6901a562440c3786d08192c6fbda7c1c2060edd10006b05ee35d10f2d"
+dependencies = [
+ "num-traits",
+ "rand 0.8.5",
+ "serde",
+]
+
+[[package]]
 name = "parameterized"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3472,6 +3485,7 @@ dependencies = [
  "libc",
  "rand_chacha 0.3.1",
  "rand_core 0.6.4",
+ "serde",
 ]
 
 [[package]]
@@ -3511,6 +3525,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom 0.2.16",
+ "serde",
 ]
 
 [[package]]
