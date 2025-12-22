@@ -422,19 +422,19 @@ impl LogEncodingHelper {
         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(inner_len) + inner_len;
       },
       StringOrBytes::Boolean(_) => {
-        // bool boolean_data = 3;
+        // bool bool_data = 6;
         my_size += 1 + 1; // bool is always 1 byte + tag size
       },
       StringOrBytes::U64(v) => {
-        // uint64 u64_data = 4;
-        my_size += ::protobuf::rt::uint64_size(4, *v);
+        // uint64 int_data = 3;
+        my_size += ::protobuf::rt::uint64_size(3, *v);
       },
       StringOrBytes::I64(v) => {
-        // int64 i64_data = 5;
+        // int64 sint_data = 5;
         my_size += ::protobuf::rt::int64_size(5, *v);
       },
       StringOrBytes::Double(_v) => {
-        // double double_data = 6;
+        // double double_data = 4;
         my_size += 8 + 1; // double is always 8 bytes + tag size
       },
     }
@@ -473,20 +473,20 @@ impl LogEncodingHelper {
         os.write_bytes(2, b)?;
       },
       StringOrBytes::Boolean(v) => {
-        // bool boolean_data = 3;
-        os.write_bool(3, *v)?;
+        // bool bool_data = 6;
+        os.write_bool(6, *v)?;
       },
       StringOrBytes::U64(v) => {
-        // uint64 u64_data = 4;
-        os.write_uint64(4, *v)?;
+        // uint64 int_data = 3;
+        os.write_uint64(3, *v)?;
       },
       StringOrBytes::I64(v) => {
-        // int64 i64_data = 5;
+        // int64 sint_data = 5;
         os.write_int64(5, *v)?;
       },
       StringOrBytes::Double(v) => {
-        // double double_data = 6;
-        os.write_double(6, **v)?;
+        // double double_data = 4;
+        os.write_double(4, **v)?;
       },
     }
 
