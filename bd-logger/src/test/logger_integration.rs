@@ -229,7 +229,8 @@ fn log_upload_with_compression() {
         assert!(!log_upload.logs()[i].has_message());
         assert!(!log_upload.logs()[i].has_field("super_long"));
 
-        let mut decoder = ZlibDecoder::new(Vec::new());
+        let decoded = Vec::new();
+        let mut decoder = ZlibDecoder::new(decoded);
         decoder.write_all(log_upload.logs()[i].compressed_contents()).unwrap();
         let decoded = decoder.finish().unwrap();
         let compressed_contents = CompressedContents::parse_from_bytes(&decoded).unwrap();
