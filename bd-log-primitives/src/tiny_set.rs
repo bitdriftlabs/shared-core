@@ -99,6 +99,20 @@ impl<T: PartialEq> FromIterator<T> for TinySet<T> {
   }
 }
 
+impl<T: PartialEq> Extend<T> for TinySet<T> {
+  fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+    self.inner.extend(iter.into_iter().map(|item| (item, ())));
+  }
+}
+
+impl<T: PartialEq> Extend<Self> for TinySet<T> {
+  fn extend<I: IntoIterator<Item = Self>>(&mut self, iter: I) {
+    for set in iter {
+      self.inner.extend(set.inner);
+    }
+  }
+}
+
 impl<T: PartialEq, const N: usize> From<[T; N]> for TinySet<T> {
   fn from(arr: [T; N]) -> Self {
     Self {
@@ -119,6 +133,18 @@ impl<T> IntoIterator for TinySet<T> {
   }
 }
 
+impl<'a, T> IntoIterator for &'a TinySet<T> {
+  type Item = &'a T;
+  type IntoIter = std::iter::Map<std::slice::Iter<'a, (T, ())>, fn(&'a (T, ())) -> &'a T>;
+
+  fn into_iter(self) -> Self::IntoIter {
+    fn map_ref<T>((k, ()): &(T, ())) -> &T {
+      k
+    }
+    self.inner.items.iter().map(map_ref)
+  }
+}
+
 //
 // TinyMap
 //
@@ -129,6 +155,10 @@ pub struct TinyMap<K, V> {
 }
 
 impl<K: PartialEq, V> TinyMap<K, V> {
+  pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+    self.items.iter().map(|(k, v)| (k, v))
+  }
+
   pub fn get<Q>(&self, key: &Q) -> Option<&V>
   where
     K: Borrow<Q>,
@@ -209,6 +239,18 @@ impl<K, V> IntoIterator for TinyMap<K, V> {
   }
 }
 
+impl<'a, K, V> IntoIterator for &'a TinyMap<K, V> {
+  type Item = (&'a K, &'a V);
+  type IntoIter = std::iter::Map<std::slice::Iter<'a, (K, V)>, fn(&'a (K, V)) -> (&'a K, &'a V)>;
+
+  fn into_iter(self) -> Self::IntoIter {
+    fn map_ref<K, V>((k, v): &(K, V)) -> (&K, &V) {
+      (k, v)
+    }
+    self.items.iter().map(map_ref)
+  }
+}
+
 impl<K: PartialEq, V> FromIterator<(K, V)> for TinyMap<K, V> {
   fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
     let mut new = Self::default();
@@ -225,8 +267,69 @@ impl<K: PartialEq, V, const N: usize> From<[(K, V); N]> for TinyMap<K, V> {
   }
 }
 
+impl<K: PartialEq, V> Extend<(K, V)> for TinyMap<K, V> {
+  fn extend<I: IntoIterator<Item = (K, V)>>(&mut self, iter: I) {
+    for (k, v) in iter {
+      self.insert(k, v);
+    }
+  }
+}
+
+impl<K: PartialEq, V> Extend<Self> for TinyMap<K, V> {
+  fn extend<I: IntoIterator<Item = Self>>(&mut self, iter: I) {
+    for map in iter {
+      for (k, v) in map {
+        self.insert(k, v);
+      }
+    }
+  }
+}
+
 impl<K, V> Default for TinyMap<K, V> {
   fn default() -> Self {
     Self { items: Vec::new() }
+  }
+}
+
+// ProtoFieldSerialize/ProtoFieldDeserialize implementations for TinySet<T>
+// TinySet is serialized as a repeated field in protobuf.
+bd_proto_util::impl_proto_repeated!(TinySet<T>, T, PartialEq);
+
+// ProtoFieldSerialize/ProtoFieldDeserialize implementations for TinyMap
+// TinyMap is serialized as a map field (repeated key-value pairs) in protobuf.
+impl<K, V> bd_proto_util::serialization::ProtoType for TinyMap<K, V> {
+  fn wire_type() -> protobuf::rt::WireType {
+    protobuf::rt::WireType::LengthDelimited
+  }
+}
+
+impl<K, V> bd_proto_util::serialization::ProtoFieldSerialize for TinyMap<K, V>
+where
+  K: bd_proto_util::serialization::ProtoFieldSerialize + PartialEq,
+  V: bd_proto_util::serialization::ProtoFieldSerialize,
+{
+  fn compute_size(&self, field_number: u32) -> u64 {
+    bd_proto_util::serialization::compute_map_size(self, field_number)
+  }
+
+  fn serialize(
+    &self,
+    field_number: u32,
+    os: &mut protobuf::CodedOutputStream<'_>,
+  ) -> anyhow::Result<()> {
+    bd_proto_util::serialization::serialize_map(self, field_number, os)
+  }
+}
+
+impl<K, V> bd_proto_util::serialization::ProtoFieldDeserialize for TinyMap<K, V>
+where
+  K: bd_proto_util::serialization::ProtoFieldDeserialize + PartialEq + Default,
+  V: bd_proto_util::serialization::ProtoFieldDeserialize + Default,
+{
+  fn deserialize(is: &mut protobuf::CodedInputStream<'_>) -> anyhow::Result<Self> {
+    let (key, value) = bd_proto_util::serialization::deserialize_map_entry(is)?;
+    let mut map = Self::default();
+    map.extend(std::iter::once((key, value)));
+    Ok(map)
   }
 }

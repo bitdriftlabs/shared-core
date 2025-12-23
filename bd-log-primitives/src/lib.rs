@@ -28,6 +28,7 @@ use crate::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use ahash::AHashMap;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::{BinaryData, Data, LogType};
+use bd_proto_util::serialization::{ProtoFieldSerialize, TimestampMicros};
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
 use ordered_float::NotNan;
@@ -143,6 +144,7 @@ impl StringOrBytes<String, Vec<u8>> {
 
 impl<T: AsRef<str>, B: AsRef<[u8]>> StringOrBytes<T, B> {
   /// Extracts the underlying str if the enum represents a String, None otherwise.
+  #[must_use]
   pub fn as_str(&self) -> Option<&str> {
     match self {
       Self::String(s) => Some(s.as_ref()),
@@ -153,6 +155,7 @@ impl<T: AsRef<str>, B: AsRef<[u8]>> StringOrBytes<T, B> {
   }
 
   /// Extracts the underlying bytes if the enum represents a Bytes, None otherwise.
+  #[must_use]
   pub fn as_bytes(&self) -> Option<&[u8]> {
     match self {
       Self::String(_)
@@ -572,8 +575,10 @@ impl LogEncodingHelper {
 
         // uint64 timestamp_unix_micro = 1;
         // No zero check is this should always be set.
-        my_size +=
-          ::protobuf::rt::uint64_size(1, occurred_at.unix_timestamp_nanos().to_u64_lossy() / 1000);
+        // We manually serialize this as a uint64 (microsecond timestamp) to match the proto
+        // definition.
+        let micros = TimestampMicros::new(occurred_at).as_micros();
+        my_size += protobuf::rt::uint64_size(1, micros);
 
         // uint32 log_level = 2;
         if log_level != 0 {
@@ -585,9 +590,7 @@ impl LogEncodingHelper {
         my_size += ::protobuf::rt::string_size(5, session_id);
 
         // LogType log_type = 7;
-        if log_type != LogType::NORMAL {
-          my_size += ::protobuf::rt::int32_size(7, log_type as i32);
-        }
+        my_size += <LogType as ProtoFieldSerialize>::compute_size(&log_type, 7);
 
         *cached_encoding_data = Some(CachedEncodingData {
           core_size: my_size,
@@ -646,7 +649,10 @@ impl LogEncodingHelper {
     cached_encoding_data: Option<&CachedEncodingData>,
   ) -> anyhow::Result<()> {
     // uint64 timestamp_unix_micro = 1;
-    os.write_uint64(1, occurred_at.unix_timestamp_nanos().to_u64_lossy() / 1000)?;
+    // We manually serialize this as a uint64 (microsecond timestamp) to match the proto definition.
+    let micros = TimestampMicros::new(occurred_at).as_micros();
+    os.write_tag(1, protobuf::rt::WireType::Varint)?;
+    os.write_uint64_no_tag(micros)?;
 
     // uint32 log_level = 2;
     if log_level != 0 {
@@ -674,9 +680,7 @@ impl LogEncodingHelper {
     }
 
     // LogType log_type = 7;
-    if log_type != LogType::NORMAL {
-      os.write_enum(7, log_type as i32)?;
-    }
+    <LogType as ProtoFieldSerialize>::serialize(&log_type, 7, os)?;
 
     // repeated string stream_ids = 8;
     for v in stream_ids {
@@ -734,7 +738,9 @@ impl LogEncodingHelper {
     if raw_tag == 8 // field number 1, wire type 0
       && let Some(ts_micros) = cis.read_uint64().ok()
     {
-      return OffsetDateTime::from_unix_timestamp_nanos((ts_micros * 1000).into()).ok();
+      return TimestampMicros::from_micros(ts_micros)
+        .ok()
+        .map(TimestampMicros::into_inner);
     }
 
     None
