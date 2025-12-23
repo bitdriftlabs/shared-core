@@ -28,6 +28,7 @@ use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::client::api::debug_data_request::WorkflowTransitionDebugData;
 use bd_proto::protos::client::api::{DebugDataRequest, debug_data_request};
+use bd_proto::protos::client::key_value::FixedSessionStrategyState as State;
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::filter::filter::Filter;
@@ -35,9 +36,8 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::logging::payload::log::CompressedContents;
 use bd_runtime::runtime::FeatureFlag;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
-use bd_proto::protos::client::key_value::FixedSessionStrategyState as State;
-use bd_session::{Strategy, fixed};
 use bd_session::fixed::UUIDCallbacks;
+use bd_session::{Strategy, fixed};
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
 use bd_stats_common::labels;
 use bd_test_helpers::config_helper::{
