@@ -44,7 +44,7 @@ use bd_workflows::engine::WORKFLOWS_STATE_FILE_NAME;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use tempfile::TempDir;
-// removed unused import
+use time::ext::{NumericalDuration, NumericalStdDuration};
 use tokio::sync::mpsc;
 
 /// Wait for a condition to be true, or panic after 5 seconds.
@@ -53,10 +53,10 @@ macro_rules! wait_for {
   ($condition:expr) => {
     let start = std::time::Instant::now();
     while !$condition {
-      if start.elapsed() > std::time::Duration::from_secs(5) {
+      if start.elapsed() > 5.seconds() {
         panic!("Timeout waiting for condition");
       }
-      std::thread::sleep(std::time::Duration::from_millis(10));
+      std::thread::sleep(10.std_milliseconds());
     }
   };
 }
@@ -145,13 +145,13 @@ impl Setup {
     let mut server = bd_test_helpers::test_api_server::start_server(false, None);
     let shutdown = ComponentShutdownTrigger::default();
 
-    let storage: Box<dyn bd_key_value::Storage> = if options.disk_storage {
-      Box::new(DiskStorage::default())
+    let store = if options.disk_storage {
+      Arc::new(Store::new(Box::new(DiskStorage::new(
+        options.sdk_directory.path().join("store"),
+      ))))
     } else {
-      Box::new(bd_test_helpers::session::InMemoryStorage::default())
+      in_memory_store()
     };
-
-    let store = Arc::new(Store::new(storage));
     let device = Arc::new(bd_device::Device::new(store.clone()));
 
     let session_replay_target = Box::new(MockSessionReplayTarget::default());
@@ -232,7 +232,7 @@ impl Setup {
         matcher: None,
         sleep_mode: expect_sleep_mode
       },
-      time::Duration::seconds(2),
+      2.seconds(),
     ));
 
     stream.blocking_stream_action(StreamAction::SendRuntime(make_update(
@@ -277,12 +277,7 @@ impl Setup {
       ),
       (
         bd_runtime::runtime::sleep_mode::MinReconnectInterval::path(),
-        ValueKind::Int(
-          time::Duration::seconds(1)
-            .whole_milliseconds()
-            .try_into()
-            .unwrap(),
-        ),
+        ValueKind::Int(1.seconds().whole_milliseconds().try_into().unwrap()),
       ),
     ]
   }
@@ -333,7 +328,7 @@ impl Setup {
       fields,
       matching_fields,
       None,
-      Block::Yes(std::time::Duration::from_secs(15)),
+      Block::Yes(15.std_seconds()),
       &CaptureSession::default(),
     );
   }
@@ -447,7 +442,9 @@ impl Drop for Setup {
 /// Useful for testing infrastructure-level concerns like directory locking.
 pub fn create_minimal_init_params(sdk_directory: &std::path::Path) -> InitParams {
   let session_store = in_memory_store();
-  let device_store = in_memory_store();
+  let device_store = Arc::new(Store::new(Box::new(
+    bd_test_helpers::session::InMemoryStorage::default(),
+  )));
 
   InitParams {
     sdk_directory: sdk_directory.into(),

@@ -25,14 +25,9 @@ use bd_log_metadata::LogFields;
 use bd_log_primitives::AnnotatedLogFields;
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
-use bd_proto::protos::client::api::DebugDataRequest;
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
-use bd_proto::protos::client::api::debug_data_request::{
-  WorkflowDebugData,
-  WorkflowStateDebugData,
-  WorkflowTransitionDebugData,
-  workflow_transition_debug_data,
-};
+use bd_proto::protos::client::api::debug_data_request::WorkflowTransitionDebugData;
+use bd_proto::protos::client::api::{DebugDataRequest, debug_data_request};
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::filter::filter::Filter;
@@ -40,8 +35,9 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::logging::payload::log::CompressedContents;
 use bd_runtime::runtime::FeatureFlag;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
-use bd_session::Strategy;
-use bd_session::fixed::{self, UUIDCallbacks};
+use bd_proto::protos::client::key_value::FixedSessionStrategyState as State;
+use bd_session::{Strategy, fixed};
+use bd_session::fixed::UUIDCallbacks;
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
 use bd_stats_common::labels;
 use bd_test_helpers::config_helper::{
@@ -88,19 +84,19 @@ use bd_test_helpers::workflow::{
 use bd_test_helpers::{RecordingErrorReporter, field_value, set_field};
 use bd_time::test::TestTicker;
 use bd_time::{OffsetDateTimeExt, TestTimeProvider};
+use debug_data_request::workflow_transition_debug_data::Transition_type;
+use debug_data_request::{WorkflowDebugData, WorkflowStateDebugData};
 use flate2::write::ZlibDecoder;
 use parking_lot::Mutex;
+use pretty_assertions::assert_eq;
 use protobuf::Message;
 use std::io::Write;
 use std::ops::Add;
 use std::sync::Arc;
 use std::time::Instant;
 use time::OffsetDateTime;
-use time::ext::NumericalStdDuration;
+use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::macros::datetime;
-use workflow_transition_debug_data::Transition_type;
-
-
 
 #[test]
 fn sleep_mode() {
@@ -233,10 +229,8 @@ fn log_upload_with_compression() {
         assert!(!log_upload.logs()[i].has_message());
         assert!(!log_upload.logs()[i].has_field("super_long"));
 
-        let log = &log_upload.logs()[i];
-        let compressed_data = log.compressed_contents();
         let mut decoder = ZlibDecoder::new(Vec::new());
-        decoder.write_all(compressed_data).unwrap();
+        decoder.write_all(log_upload.logs()[i].compressed_contents()).unwrap();
         let decoded = decoder.finish().unwrap();
         let compressed_contents = CompressedContents::parse_from_bytes(&decoded).unwrap();
         assert_eq!(compressed_contents.message.string_data(), "some log");
@@ -425,7 +419,7 @@ fn log_upload_attributes_override() {
 
   setup.store.set(
     &fixed::STATE_KEY,
-    &bd_proto::protos::client::key_value::FixedSessionStrategyState {
+    &State {
       session_id: "foo_overridden".to_string(),
       ..Default::default()
     },
@@ -752,7 +746,7 @@ fn session_replay_actions() {
   );
   // TODO(snowp): This is a bit of a brittle test as it relies on the timing of the screenshot
   // handling.
-  std::thread::sleep(std::time::Duration::from_millis(100));
+  std::thread::sleep(100.std_milliseconds());
   assert_eq!(
     0,
     setup
@@ -1076,7 +1070,6 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
 
   // Send down a configuration with a single buffer ('default')
   // which does not accept `InternalSDK` logs and a single workflow
-
   // which matches for logs with the 'fire workflow action!' message
   // in order to flush all buffers.
   let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
@@ -1376,7 +1369,7 @@ fn workflow_debugging() {
   );
 
   // Now send a log that will match.
-  time_provider.advance(time::Duration::minutes(1));
+  time_provider.advance(1.minutes());
   setup.blocking_log(
     log_level::DEBUG,
     LogType::NORMAL,
@@ -1440,7 +1433,7 @@ fn workflow_debugging() {
   ));
   assert!(maybe_nack.is_none());
 
-  time_provider.advance(time::Duration::minutes(1));
+  time_provider.advance(1.minutes());
   setup.blocking_log(
     log_level::DEBUG,
     LogType::NORMAL,
@@ -1999,75 +1992,75 @@ fn matching_on_but_not_capturing_matching_fields() {
   // Send down a configuration with a trigger buffer ('trigger') which accepts all logs and a
   // single workflow which matches for logs with the 'fire!' message in order to flush the
   // default buffer.
-  assert!(
-    setup
-      .send_configuration_update(configuration_update_from_parts(
-        "",
-        ConfigurationUpdateParts {
-          buffer_config: vec![
-            BufferConfigBuilder {
-              name: "trigger",
-              buffer_type: Type::TRIGGER,
-              filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
-              non_volatile_size: 100_000,
-              volatile_size: 10_000,
-            }
-            .build(),
-          ],
-          workflows: vec![],
-          ..Default::default()
-        },
-      ))
-      .is_none()
-  );
-
-  setup.send_runtime_update();
+  let maybe_nack = setup.send_configuration_update(configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![
+        BufferConfigBuilder {
+          name: "trigger",
+          buffer_type: Type::TRIGGER,
+          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+          non_volatile_size: 100_000,
+          volatile_size: 10_000,
+        }
+        .build(),
+      ],
+      workflows: make_workflow_config_flushing_buffer("trigger", field_equals("key", "value")),
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
 
   for _ in 0 .. 9 {
     setup.log(
       log_level::DEBUG,
       LogType::NORMAL,
-      "some log".into(),
+      "test".into(),
       [].into(),
       [].into(),
       None,
     );
   }
 
-  setup.log_with_session_capture(
+  setup.log(
     log_level::DEBUG,
-    LogType::NORMAL,
-    "some log".into(),
-    [].into(),
-    [].into(),
+    LogType::INTERNAL_SDK,
+    "fire!".into(),
+    [
+      (
+        "_should_be_dropped_starting_with_underscore_key".into(),
+        AnnotatedLogField::new_custom("should be dropped value"),
+      ),
+      (
+        "_key".into(),
+        AnnotatedLogField::new_custom("_should_be_overridden_due_to_conflict_with_ootb_field"),
+      ),
+      ("_key".into(), AnnotatedLogField::new_ootb("_value")),
+      ("key".into(), AnnotatedLogField::new_custom("value")),
+    ]
+    .into(),
+    [(
+      "_phantom_key".into(),
+      AnnotatedLogField::new_ootb("_phantom_value"),
+    )]
+    .into(),
+    None,
   );
 
+  // After writing this log we expect to see two uploads:
+  //  1. from the trigger upload uploading
+  //  2. from the continuous buffer uploading the single trigger line.
+  assert_matches!(setup.server.next_log_intent(), Some(_intent));
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
-    uuid::Uuid::parse_str(log_upload.upload_uuid()).unwrap();
+    assert_eq!(log_upload.buffer_id(), "trigger");
     assert_eq!(log_upload.logs().len(), 10);
 
-    assert_eq!(log_upload.logs()[0].message(), "some log");
-  });
-
-  // Verify that we start streaming logs.
-  for _ in 0 .. 100 {
-    setup.log(
-      log_level::DEBUG,
-      LogType::NORMAL,
-      "some log".into(),
-      [].into(),
-      [].into(),
-      None,
-    );
-  }
-
-  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
-    assert_eq!(log_upload.buffer_id(), "default");
-    uuid::Uuid::parse_str(log_upload.upload_uuid()).unwrap();
-    assert_eq!(log_upload.logs().len(), 10);
-
-    assert_eq!(log_upload.logs()[0].message(), "some log");
+    let log = &log_upload.logs()[9];
+    assert_eq!(log.message(), "fire!");
+    assert_eq!(log.field("key"), "value");
+    assert_eq!(log.field("_key"), "_value");
+    assert!(!log.has_field("_should_be_dropped_starting_with_underscore_key"));
+    assert!(!log.has_field("_phantom_key"));
   });
 }
 
@@ -2473,7 +2466,7 @@ fn runtime_caching() {
     // The runtime configuration should use the cached value. As we load the cached config from
     // the event loop thread, there is a slight delay before we pick up on this cached value.
 
-    let deadline = Instant::now().add(1.std_seconds());
+    let deadline = Instant::now().add(1.seconds());
 
     let mut deadline_elapsed = true;
     while Instant::now() < deadline {
