@@ -164,24 +164,19 @@ impl Store {
         Ok(result.map_or_else(
           |e| anyhow::bail!("failed to decode base64 value: {e:?}"),
           |bytes| {
-            if bytes.len() < 8 {
-              anyhow::bail!("stored string is too short to contain length prefix");
-            }
-
-            let len_bytes: [u8; 8] = match bytes[0 .. 8].try_into() {
-              Ok(b) => b,
-              Err(_) => anyhow::bail!("failed to convert slice to array"),
+            let (len_bytes, rest) = match bytes.split_first_chunk::<8>() {
+              Some(v) => v,
+              None => anyhow::bail!("stored string is too short to contain length prefix"),
             };
-            let str_len = usize::try_from(u64::from_le_bytes(len_bytes))
-              .map_err(|e| anyhow::anyhow!("failed to cast u64 to usize: {e:?}"))?;
 
-            if bytes.len() != 8 + str_len {
+            let len = usize::from_le_bytes(*len_bytes);
+
+            if rest.len() != len {
               anyhow::bail!("stored string length prefix does not match actual length");
             }
 
-            let string_data = &bytes[8 .. 8 + str_len];
-            match String::from_utf8(string_data.to_vec()) {
-              Ok(s) => Ok(Some(s)),
+            match str::from_utf8(rest) {
+              Ok(s) => Ok(Some(s.to_string())),
               Err(e) => anyhow::bail!("failed to decode UTF-8 string: {e:?}"),
             }
           },
