@@ -164,9 +164,8 @@ impl Store {
         Ok(result.map_or_else(
           |e| anyhow::bail!("failed to decode base64 value: {e:?}"),
           |bytes| {
-            let (len_bytes, rest) = match bytes.split_first_chunk::<8>() {
-              Some(v) => v,
-              None => anyhow::bail!("stored string is too short to contain length prefix"),
+            let Some((len_bytes, rest)) = bytes.split_first_chunk::<8>() else {
+              anyhow::bail!("stored string is too short to contain length prefix")
             };
 
             let len = usize::from_le_bytes(*len_bytes);
