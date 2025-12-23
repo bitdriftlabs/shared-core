@@ -77,7 +77,7 @@ impl Strategy {
         if let Some(state) = self.store.get(&STATE_KEY) {
           InMemoryState {
             state: state.clone(),
-            previous_process_session_id: Some(state.session_id.clone()),
+            previous_process_session_id: Some(state.session_id),
             last_activity_write: None,
           }
         } else {
