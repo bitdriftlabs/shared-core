@@ -43,7 +43,7 @@ fn device_id_is_stored_once_and_does_not_change() {
   let device = Device::new(store.clone());
 
   let device_id_1 = device.id();
-  assert_eq!(store.get(&DEVICE_ID_KEY).unwrap(), device_id_1);
+  assert_eq!(store.get_string(&DEVICE_ID_KEY).unwrap(), device_id_1);
 
   let device_id_2 = device.id();
   assert_eq!(device_id_1, device_id_2);

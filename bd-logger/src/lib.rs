@@ -36,8 +36,8 @@ mod service;
 #[cfg(test)]
 mod test;
 
+pub use crate::app_version::AppVersionExtra;
 pub use crate::logger::{ChannelPair, InitParams};
-pub use app_version::AppVersionExtra;
 pub use async_log_buffer::LogAttributesOverrides;
 pub use bd_api::{PlatformNetworkManager, PlatformNetworkStream};
 use bd_buffer::AbslCode;

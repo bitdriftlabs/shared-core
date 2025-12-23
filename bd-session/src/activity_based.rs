@@ -9,14 +9,16 @@
 #[path = "./activity_based_test.rs"]
 mod activity_based_test;
 
-use bd_key_value::{Key, Storable, Store};
-use bd_time::TimeProvider;
+use bd_key_value::{Key, Store};
+use bd_proto::protos::client::key_value::ActivitySessionStrategyState;
+use bd_time::{OffsetDateTimeExt as _, TimeProvider, TimestampExt};
 use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 /// The key used to store the state of the session strategy.
-pub(crate) static STATE_KEY: Key<State> = Key::new("session_strategy.activity_based.state.1");
+pub(crate) static STATE_KEY: Key<ActivitySessionStrategyState> =
+  Key::new("session_strategy.activity_based.state.1");
 
 //
 // Strategy
@@ -74,16 +76,18 @@ impl Strategy {
       || {
         if let Some(state) = self.store.get(&STATE_KEY) {
           InMemoryState {
-            session_id: state.session_id.clone(),
+            state: state.clone(),
             previous_process_session_id: Some(state.session_id),
-            last_activity: state.last_activity,
             last_activity_write: None,
           }
         } else {
           let state = InMemoryState {
-            session_id: Self::generate_session_id(),
+            state: ActivitySessionStrategyState {
+              session_id: Self::generate_session_id(),
+              last_activity_timestamp: now.into_proto(),
+              ..Default::default()
+            },
             previous_process_session_id: None,
-            last_activity: now,
             last_activity_write: None,
           };
 
@@ -91,7 +95,7 @@ impl Strategy {
 
           log::info!(
             "bitdrift Capture initialized with session ID: {:?}",
-            state.session_id,
+            state.state.session_id,
           );
 
           state
@@ -100,8 +104,10 @@ impl Strategy {
       std::clone::Clone::clone,
     );
 
-    let is_now_before_last_activity = now < state.last_activity;
-    let is_inactivity_threshold_exceeded = now - state.last_activity > self.inactivity_threshold;
+    let is_now_before_last_activity =
+      now < state.state.last_activity_timestamp.to_offset_date_time();
+    let is_inactivity_threshold_exceeded =
+      now - state.state.last_activity_timestamp.to_offset_date_time() > self.inactivity_threshold;
 
     // We debounce writes to the store to avoid excessive writes, so only perform a state write if
     // we haven't written to the store yet or if the last write was more than `max_write_interval`
@@ -110,24 +116,24 @@ impl Strategy {
       .last_activity_write
       .is_none_or(|last_activity_write| now - last_activity_write > self.max_write_interval);
 
-    state.last_activity = now;
+    state.state.last_activity_timestamp = now.into_proto();
 
     if is_now_before_last_activity || is_inactivity_threshold_exceeded {
       let session_id = Self::generate_session_id();
 
-      state.session_id.clone_from(&session_id);
+      state.state.session_id.clone_from(&session_id);
       state.last_activity_write = Some(now);
 
-      self.store.set(&STATE_KEY, &state.clone().into());
+      self.store.set(&STATE_KEY, &state.state);
 
       need_callback = true;
     } else if last_activity_storage_needs_write {
       state.last_activity_write = Some(now);
 
-      self.store.set(&STATE_KEY, &state.clone().into());
+      self.store.set(&STATE_KEY, &state.state);
     }
 
-    let session_id = state.session_id.clone();
+    let session_id = state.state.session_id.clone();
     *guard = Some(state);
 
     // Make sure we call the callback with the lock released. There are legitimate cases where
@@ -158,13 +164,16 @@ impl Strategy {
     );
 
     let state = InMemoryState {
-      session_id: session_id.clone(),
       previous_process_session_id,
-      last_activity: now,
+      state: ActivitySessionStrategyState {
+        session_id: session_id.clone(),
+        last_activity_timestamp: now.into_proto(),
+        ..Default::default()
+      },
       last_activity_write: Some(now),
     };
 
-    self.store.set(&STATE_KEY, &state.clone().into());
+    self.store.set(&STATE_KEY, &state.state);
 
     *guard = Some(state);
 
@@ -181,7 +190,7 @@ impl Strategy {
   pub(crate) fn flush(&self) {
     log::debug!("flushing session state");
     if let Some(state) = self.state.lock().as_ref() {
-      self.store.set(&STATE_KEY, &state.clone().into());
+      self.store.set(&STATE_KEY, &state.state);
     } else {
       log::debug!("no session state to flush");
     }
@@ -202,32 +211,8 @@ pub trait Callbacks: Send + Sync {
 
 #[derive(Clone)]
 struct InMemoryState {
-  session_id: String,
+  state: ActivitySessionStrategyState,
   /// The last active session ID from the previous SDK run.
   previous_process_session_id: Option<String>,
-  last_activity: OffsetDateTime,
   last_activity_write: Option<OffsetDateTime>,
-}
-
-//
-// State
-//
-
-#[cfg_attr(test, derive(Clone, PartialEq, Eq))]
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
-pub struct State {
-  session_id: String,
-  #[serde(with = "time::serde::rfc3339")]
-  last_activity: OffsetDateTime,
-}
-
-impl Storable for State {}
-
-impl From<InMemoryState> for State {
-  fn from(state: InMemoryState) -> Self {
-    Self {
-      session_id: state.session_id,
-      last_activity: state.last_activity,
-    }
-  }
 }

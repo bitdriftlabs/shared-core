@@ -9,31 +9,25 @@
 #[path = "./reconnect_test.rs"]
 mod tests;
 
-use bd_key_value::{Key, Storable};
-use bd_time::TimeProvider;
+use bd_key_value::{Key, Store};
+use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
+use protobuf::well_known_types::timestamp::Timestamp;
 use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
 
-const LAST_CONNECTED_AT_KEY: Key<LastConnectedAt> = Key::new("api:reconnect:last_connected_at");
-
-#[derive(serde::Serialize, serde::Deserialize)]
-struct LastConnectedAt {
-  last_connected_at: OffsetDateTime,
-}
-
-impl Storable for LastConnectedAt {}
+const LAST_CONNECTED_AT_KEY: Key<Timestamp> = Key::new("api:reconnect:last_connected_at");
 
 pub struct ReconnectState {
-  store: Arc<bd_key_value::Store>,
+  store: Arc<Store>,
   last_connected_at: Option<OffsetDateTime>,
   time_provider: Arc<dyn TimeProvider>,
 }
 
 impl ReconnectState {
-  pub fn new(store: Arc<bd_key_value::Store>, time_provider: Arc<dyn TimeProvider>) -> Self {
+  pub fn new(store: Arc<Store>, time_provider: Arc<dyn TimeProvider>) -> Self {
     let last_connected_at = store
       .get(&LAST_CONNECTED_AT_KEY)
-      .map(|v| v.last_connected_at);
+      .map(|v| v.to_offset_date_time());
 
     Self {
       store,
@@ -79,9 +73,8 @@ impl ReconnectState {
 
     let last_connected_at = self.time_provider.now();
     self.last_connected_at = Some(last_connected_at);
-    let () = self.store.set(
-      &LAST_CONNECTED_AT_KEY,
-      &LastConnectedAt { last_connected_at },
-    );
+    let () = self
+      .store
+      .set(&LAST_CONNECTED_AT_KEY, &last_connected_at.into_proto());
   }
 }

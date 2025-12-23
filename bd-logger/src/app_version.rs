@@ -9,44 +9,32 @@
 #[path = "./app_version_test.rs"]
 mod app_version_test;
 
+use bd_proto::protos::client::key_value;
+pub use bd_proto::protos::client::key_value::app_version::Extra as AppVersionExtra;
+use std::ops::Deref;
 use std::sync::Arc;
 
-static APP_VERSION_KEY: bd_key_value::Key<AppVersion> =
+static APP_VERSION_KEY: bd_key_value::Key<key_value::AppVersion> =
   bd_key_value::Key::new("app_version.state.1");
 
-//
-// AppVersion
-//
+#[derive(Debug, Clone, PartialEq)]
+pub struct AppVersion(key_value::AppVersion);
 
-#[derive(Eq, PartialEq, serde::Serialize, serde::Deserialize, Debug)]
-pub struct AppVersion {
-  pub(crate) app_version: String,
-  pub(crate) app_version_extra: AppVersionExtra,
-}
-
-impl bd_key_value::Storable for AppVersion {}
-
-#[derive(Eq, PartialEq, serde::Serialize, serde::Deserialize, Debug)]
-pub enum AppVersionExtra {
-  // Comparable using number comparison.
-  AppVersionCode(i64),
-  // Comparable using semver comparison.
-  BuildNumber(String),
-}
-
-impl AppVersionExtra {
-  pub(crate) const fn name(&self) -> &str {
-    match self {
-      Self::AppVersionCode(_) => "app_version_code",
-      Self::BuildNumber(_) => "build_number",
-    }
+impl AppVersion {
+  pub fn new(version: String, extra: AppVersionExtra) -> Self {
+    Self(key_value::AppVersion {
+      version,
+      extra: Some(extra),
+      ..Default::default()
+    })
   }
+}
 
-  pub(crate) fn string_value(&self) -> String {
-    match self {
-      Self::BuildNumber(value) => value.clone(),
-      Self::AppVersionCode(value) => value.to_string(),
-    }
+impl Deref for AppVersion {
+  type Target = key_value::AppVersion;
+
+  fn deref(&self) -> &Self::Target {
+    &self.0
   }
 }
 
@@ -63,7 +51,7 @@ impl Repository {
     Self { store }
   }
 
-  pub(crate) fn has_changed(&self, app_version: &AppVersion) -> bool {
+  pub(crate) fn has_changed(&self, app_version: &key_value::AppVersion) -> bool {
     let Some(previous_app_version) = self.store.get(&APP_VERSION_KEY) else {
       // Initialize app version change detection logic by setting the current app version,
       // making it available for comparison after a user updates their app.
@@ -77,7 +65,7 @@ impl Repository {
   }
 
   // Sets the current app version and returns the previous app version if it changed.
-  pub(crate) fn set(&self, app_version: &AppVersion) -> Option<AppVersion> {
+  pub(crate) fn set(&self, app_version: &key_value::AppVersion) -> Option<AppVersion> {
     let Some(previous_app_version) = self.store.get(&APP_VERSION_KEY) else {
       // Initialize app version change detection logic by setting the current app version,
       // making it available for comparison after a user updates their app.
@@ -95,6 +83,6 @@ impl Repository {
     self.store.set(&APP_VERSION_KEY, app_version);
 
     // Version changed. Return previous app version.
-    Some(previous_app_version)
+    Some(AppVersion(previous_app_version))
   }
 }

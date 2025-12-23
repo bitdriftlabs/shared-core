@@ -15,15 +15,16 @@ bd-bonjson.path             = "../bd-bonjson"
 bd-log.path                 = "../bd-log"
 bd-resilient-kv.path        = "../bd-resilient-kv"
 bd-workspace-hack.workspace = true
-bincode.workspace           = true
 log.workspace               = true
 parking_lot.workspace       = true
+protobuf.workspace          = true
 serde.workspace             = true
 time.workspace              = true
 tokio.workspace             = true
 
 [dev-dependencies]
 bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
+bincode.workspace           = true
 ctor.workspace              = true
 parking_lot.workspace       = true
 pretty_assertions.workspace = true

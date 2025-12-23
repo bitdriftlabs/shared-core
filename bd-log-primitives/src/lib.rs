@@ -33,7 +33,6 @@ use flate2::write::ZlibEncoder;
 use ordered_float::NotNan;
 use protobuf::rt::WireType;
 use protobuf::{CodedInputStream, CodedOutputStream};
-use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::sync::{Arc, LazyLock};
 use time::OffsetDateTime;
@@ -90,7 +89,7 @@ impl LossyIntToUsize for u64 {
 
 /// A union type that allows representing either a UTF-8 string or an opaque series of bytes. This
 /// is generic over the underlying String type to support different ownership models.
-#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StringOrBytes<S: AsRef<str>, B: AsRef<[u8]>> {
   String(S),
   SharedString(Arc<str>),
@@ -100,32 +99,6 @@ pub enum StringOrBytes<S: AsRef<str>, B: AsRef<[u8]>> {
   U64(u64),
   I64(i64),
   Double(NotNan<f64>),
-}
-
-impl<'de, S, B> Deserialize<'de> for StringOrBytes<S, B>
-where
-  S: AsRef<str> + From<String> + Deserialize<'de>,
-  B: AsRef<[u8]> + Deserialize<'de>,
-{
-  fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-  where
-    D: serde::Deserializer<'de>,
-  {
-    #[derive(Deserialize)]
-    enum Helper<S, B> {
-      String(S),
-      SharedString(String),
-      StaticString(String),
-      Bytes(B),
-    }
-
-    let helper = Helper::deserialize(deserializer)?;
-    match helper {
-      Helper::String(s) => Ok(Self::String(s)),
-      Helper::SharedString(s) | Helper::StaticString(s) => Ok(Self::String(s.into())),
-      Helper::Bytes(b) => Ok(Self::Bytes(b)),
-    }
-  }
 }
 
 impl StringOrBytes<String, Vec<u8>> {
@@ -153,6 +126,17 @@ impl StringOrBytes<String, Vec<u8>> {
         Self::Double(v) => Data_type::DoubleData(*v),
       }),
       ..Default::default()
+    }
+  }
+
+  pub fn from_proto(data: Data) -> Option<Self> {
+    match data.data_type? {
+      Data_type::StringData(s) => Some(Self::String(s)),
+      Data_type::BinaryData(b) => Some(Self::Bytes(b.payload)),
+      Data_type::BoolData(b) => Some(Self::Boolean(b)),
+      Data_type::IntData(v) => Some(Self::U64(v)),
+      Data_type::SintData(v) => Some(Self::I64(v)),
+      Data_type::DoubleData(v) => Some(Self::Double(NotNan::new(v).ok()?)),
     }
   }
 }

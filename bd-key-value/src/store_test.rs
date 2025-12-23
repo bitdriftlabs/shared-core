@@ -5,17 +5,15 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{Key, Storable, Storage, Store};
+use crate::{Key, Storage, Store};
+use base64::Engine as _;
 use pretty_assertions::assert_eq;
+use protobuf::well_known_types::wrappers::BoolValue;
 use std::collections::HashMap;
+use std::sync::Arc;
 
-static TEST_KEY_1: Key<MockState> = Key::new("test");
-static TEST_KEY_2: Key<String> = Key::new("test");
-
-#[derive(serde::Serialize, serde::Deserialize, Debug, Default, Eq, PartialEq)]
-struct MockState {}
-
-impl Storable for MockState {}
+static STRING_TEST_KEY: Key<String> = Key::new("test");
+static PROTO_TEST_KEY: Key<BoolValue> = Key::new("test");
 
 //
 // MockStorage
@@ -23,7 +21,7 @@ impl Storable for MockState {}
 
 #[derive(Default)]
 struct MockStorage {
-  state: parking_lot::Mutex<HashMap<String, String>>,
+  state: Arc<parking_lot::Mutex<HashMap<String, String>>>,
 }
 
 impl Storage for MockStorage {
@@ -51,10 +49,9 @@ fn returns_stored_value() {
   let storage = Box::<MockStorage>::default();
   let store = Store::new(storage);
 
-  let value = MockState::default();
-  store.set(&TEST_KEY_1, &value);
+  store.set_string(&STRING_TEST_KEY, "foo");
 
-  assert_eq!(value, store.get(&TEST_KEY_1).unwrap());
+  assert_eq!("foo", store.get_string(&STRING_TEST_KEY).unwrap());
 }
 
 #[test]
@@ -62,12 +59,58 @@ fn returns_none_if_underlying_data_malformed() {
   let storage = Box::<MockStorage>::default();
   let store = Store::new(storage);
 
-  let value = MockState::default();
-  store.set(&TEST_KEY_1, &value);
+  let value = "foo".to_string();
+  store.set_string(&STRING_TEST_KEY, &value);
 
   // The data is invalid, we should receive None and the underlying value in storage should be
   // cleared.
-  assert!(store.get(&TEST_KEY_2).is_none());
+  assert!(store.get(&PROTO_TEST_KEY).is_none());
   // The underlying value in storage should be cleared.
-  assert!(store.get(&TEST_KEY_1).is_none());
+  assert!(store.get_string(&STRING_TEST_KEY).is_none());
+}
+
+#[test]
+fn bincode_string_compatibility() {
+  let storage = Box::<MockStorage>::default();
+  let storage_values = storage.state.clone();
+  let store = Store::new(storage);
+
+  let value = "test-string".to_string();
+  store.set_string(&STRING_TEST_KEY, &value);
+  let bincode_encoded = bincode::encode_to_vec(value, bincode::config::legacy()).unwrap();
+
+  assert_eq!(
+    base64::engine::general_purpose::STANDARD.encode(&bincode_encoded),
+    *storage_values.lock().get(STRING_TEST_KEY.key()).unwrap()
+  );
+}
+
+#[test]
+fn bincode_string_compatibility_long_string() {
+  let storage = Box::<MockStorage>::default();
+  let storage_values = storage.state.clone();
+  let store = Store::new(storage);
+
+  // Test a large string so that we ensure length prefixes are using the correct endianness.
+  let value = "test-string".repeat(1000);
+  store.set_string(&STRING_TEST_KEY, &value);
+
+  let bincode_encoded = bincode::encode_to_vec(value, bincode::config::legacy()).unwrap();
+  assert_eq!(
+    base64::engine::general_purpose::STANDARD.encode(&bincode_encoded),
+    *storage_values.lock().get(STRING_TEST_KEY.key()).unwrap()
+  );
+}
+
+#[test]
+fn returns_stored_proto_value() {
+  let storage = Box::<MockStorage>::default();
+  let store = Store::new(storage);
+
+  let mut value = BoolValue::new();
+  value.value = true;
+
+  store.set_internal(&PROTO_TEST_KEY, &value).unwrap();
+
+  assert!(store.get(&PROTO_TEST_KEY).unwrap().value);
 }

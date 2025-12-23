@@ -47,20 +47,19 @@ impl Device {
   pub fn id(&self) -> String {
     let mut guard = self.id.lock();
 
-    #[allow(clippy::option_if_let_else)]
-    if let Some(id) = guard.as_ref() {
-      id.clone()
-    } else {
-      let id = self.store.get(&DEVICE_ID_KEY).unwrap_or_else(|| {
+    let Some(id) = guard.clone() else {
+      let id = self.store.get_string(&DEVICE_ID_KEY).unwrap_or_else(|| {
         let id = Uuid::new_v4().to_string();
-        self.store.set(&DEVICE_ID_KEY, &id);
+        self.store.set_string(&DEVICE_ID_KEY, &id);
         id
       });
 
       log::info!("bitdrift Capture device ID: {id:?}");
 
       *guard = Some(id.clone());
-      id
-    }
+      return id;
+    };
+
+    id
   }
 }

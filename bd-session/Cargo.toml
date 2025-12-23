@@ -12,6 +12,7 @@ doctest = false
 anyhow.workspace            = true
 bd-key-value.path           = "../bd-key-value"
 bd-log.path                 = "../bd-log"
+bd-proto.path               = "../bd-proto"
 bd-time.path                = "../bd-time"
 bd-workspace-hack.workspace = true
 log.workspace               = true
