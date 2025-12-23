@@ -175,10 +175,7 @@ impl Store {
               anyhow::bail!("stored string length prefix does not match actual length");
             }
 
-            match str::from_utf8(rest) {
-              Ok(s) => Ok(Some(s.to_string())),
-              Err(e) => anyhow::bail!("failed to decode UTF-8 string: {e:?}"),
-            }
+            Ok(Some(String::from_utf8_lossy(rest).into_owned()))
           },
         )?)
       },
