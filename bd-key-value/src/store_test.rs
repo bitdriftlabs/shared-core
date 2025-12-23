@@ -49,7 +49,7 @@ fn returns_stored_value() {
   let storage = Box::<MockStorage>::default();
   let store = Store::new(storage);
 
-  store.set_string(&STRING_TEST_KEY, &"foo");
+  store.set_string(&STRING_TEST_KEY, "foo");
 
   assert_eq!("foo", store.get_string(&STRING_TEST_KEY).unwrap());
 }
@@ -81,11 +81,7 @@ fn bincode_string_compatibility() {
 
   assert_eq!(
     base64::engine::general_purpose::STANDARD.encode(&bincode_encoded),
-    storage_values
-      .lock()
-      .get(STRING_TEST_KEY.key())
-      .unwrap()
-      .to_string()
+    *storage_values.lock().get(STRING_TEST_KEY.key()).unwrap()
   );
 }
 
@@ -102,11 +98,7 @@ fn bincode_string_compatibility_long_string() {
   let bincode_encoded = bincode::encode_to_vec(value, bincode::config::legacy()).unwrap();
   assert_eq!(
     base64::engine::general_purpose::STANDARD.encode(&bincode_encoded),
-    storage_values
-      .lock()
-      .get(STRING_TEST_KEY.key())
-      .unwrap()
-      .to_string()
+    *storage_values.lock().get(STRING_TEST_KEY.key()).unwrap()
   );
 }
 
