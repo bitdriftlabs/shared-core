@@ -23,9 +23,9 @@ fn test_simple_struct() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, PartialEq, Default)]
   struct Foo {
-    #[field = 1]
+    #[field(id = 1)]
     a: u32,
-    #[field = 2]
+    #[field(id = 2)]
     b: String,
   }
 
@@ -72,9 +72,9 @@ fn test_struct_with_map() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, PartialEq, Default)]
   struct Foo {
-    #[field = 1]
+    #[field(id = 1)]
     name: String,
-    #[field = 2]
+    #[field(id = 2)]
     #[field(repeated)]
     tags: AHashMap<String, String>,
   }
@@ -115,16 +115,16 @@ fn test_nested_struct() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, PartialEq, Default, Clone)]
   struct Bar {
-    #[field = 1]
+    #[field(id = 1)]
     x: i64,
   }
 
   #[proto_serializable]
   #[derive(Debug, PartialEq, Default)]
   struct Foo {
-    #[field = 1]
+    #[field(id = 1)]
     bar: Bar,
-    #[field = 2]
+    #[field(id = 2)]
     val: Option<u32>,
   }
 
@@ -231,11 +231,11 @@ fn test_explicit_override_all_fields() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, PartialEq, Default)]
   struct ExplicitOverride {
-    #[field = 3]
+    #[field(id = 3)]
     name: String,
-    #[field = 1]
+    #[field(id = 1)]
     age: u32,
-    #[field = 2]
+    #[field(id = 2)]
     email: String,
   }
 
@@ -267,10 +267,10 @@ fn test_enum_struct_variant_implicit() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, PartialEq, Default)]
   enum MyEnum {
-    #[field = 1]
+    #[field(id = 1)]
     #[field(deserialize)]
     StructVariant { name: String, count: u32 },
-    #[field = 2]
+    #[field(id = 2)]
     #[default]
     Unit,
   }
@@ -348,7 +348,7 @@ fn test_roundtrip_with_rust_protobuf() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, Default, PartialEq)]
   struct CustomStringValue {
-    #[field = 1]
+    #[field(id = 1)]
     value: String,
   }
 
@@ -395,9 +395,9 @@ fn test_roundtrip_nested_with_protobuf() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, Default)]
   struct CustomAny {
-    #[field = 1]
+    #[field(id = 1)]
     type_url: String,
-    #[field = 2]
+    #[field(id = 2)]
     value: Vec<u8>,
   }
 
@@ -432,13 +432,13 @@ fn test_enum_roundtrip() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, PartialEq, Default)]
   enum Status {
-    #[field = 1]
+    #[field(id = 1)]
     #[field(deserialize)]
     #[default]
     Pending,
-    #[field = 2]
+    #[field(id = 2)]
     Active { user_id: String, start_time: i64 },
-    #[field = 3]
+    #[field(id = 3)]
     Complete(i32),
   }
 

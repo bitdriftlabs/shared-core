@@ -7,18 +7,7 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{
-  Data,
-  DeriveInput,
-  Expr,
-  Field,
-  Fields,
-  Lit,
-  Meta,
-  MetaNameValue,
-  Variant,
-  parse_macro_input,
-};
+use syn::{Data, DeriveInput, Field, Fields, Meta, Variant, parse_macro_input};
 
 // === Helper structs for parsed attributes ===
 
@@ -46,35 +35,30 @@ fn parse_field_attrs(field: &Field) -> FieldAttrs {
   let mut default_expr = None;
 
   for attr in &field.attrs {
-    if attr.path().is_ident("field") {
-      if let Meta::List(meta_list) = &attr.meta {
-        let content = meta_list.tokens.to_string();
-        if content == "skip" {
+    if attr.path().is_ident("field")
+      && let Meta::List(meta_list) = &attr.meta
+    {
+      let content = meta_list.tokens.to_string();
+      if content == "skip" {
+        skip = true;
+      }
+      let _ = attr.parse_nested_meta(|meta| {
+        if meta.path.is_ident("id") {
+          let value = meta.value()?;
+          tag = Some(value.parse::<syn::LitInt>()?.base10_parse().unwrap());
+        } else if meta.path.is_ident("skip") {
           skip = true;
+        } else if meta.path.is_ident("default") {
+          let value = meta.value()?;
+          let s: syn::LitStr = value.parse()?;
+          default_expr = Some(s.value());
+        } else if meta.path.is_ident("required") {
+          required = true;
+        } else if meta.path.is_ident("repeated") {
+          repeated = true;
         }
-        let _ = attr.parse_nested_meta(|meta| {
-          if meta.path.is_ident("skip") {
-            skip = true;
-          } else if meta.path.is_ident("default") {
-            let value = meta.value()?;
-            let s: syn::LitStr = value.parse()?;
-            default_expr = Some(s.value());
-          } else if meta.path.is_ident("required") {
-            required = true;
-          } else if meta.path.is_ident("repeated") {
-            repeated = true;
-          }
-          Ok(())
-        });
-      }
-      if let Meta::NameValue(MetaNameValue {
-        value: Expr::Lit(expr_lit),
-        ..
-      }) = &attr.meta
-        && let Lit::Int(lit_int) = &expr_lit.lit
-      {
-        tag = Some(lit_int.base10_parse().unwrap());
-      }
+        Ok(())
+      });
     }
   }
 
@@ -92,30 +76,58 @@ fn parse_variant_attrs(variant: &Variant) -> VariantAttrs {
   let mut explicit_deserialize = false;
 
   for attr in &variant.attrs {
-    if attr.path().is_ident("field") {
-      if let Meta::NameValue(MetaNameValue {
-        value: Expr::Lit(expr_lit),
-        ..
-      }) = &attr.meta
-      {
-        if let Lit::Int(lit_int) = &expr_lit.lit {
-          tag = Some(lit_int.base10_parse().unwrap());
+    if attr.path().is_ident("field")
+      && let Meta::List(_) = &attr.meta
+    {
+      let _ = attr.parse_nested_meta(|meta| {
+        if meta.path.is_ident("id") {
+          let value = meta.value()?;
+          tag = Some(value.parse::<syn::LitInt>()?.base10_parse().unwrap());
+        } else if meta.path.is_ident("deserialize") {
+          explicit_deserialize = true;
         }
-      } else if let Meta::List(_) = &attr.meta {
-        let _ = attr.parse_nested_meta(|meta| {
-          if meta.path.is_ident("deserialize") {
-            explicit_deserialize = true;
-          }
-          Ok(())
-        });
-      }
+        Ok(())
+      });
     }
   }
 
-  let tag = tag.expect("All enum variants must have #[field = N]");
+  let tag = tag.expect("All enum variants must have #[field(id = N)]");
   VariantAttrs {
     tag,
     explicit_deserialize,
+  }
+}
+
+// === Type detection helpers ===
+
+/// Checks if a type is a repeated field type (`Vec`, `HashMap`, `AHashMap`, `TinyMap`, etc.)
+/// Returns true if the type should use `RepeatedFieldDeserialize` trait.
+/// This is used for auto-detection of common collection types.
+fn is_repeated_field_type(ty: &syn::Type) -> bool {
+  // Extract the base type path
+  if let syn::Type::Path(type_path) = ty {
+    type_path.path.segments.last().is_some_and(|segment| {
+      let ident = segment.ident.to_string();
+
+      // Special case: Vec<u8> is a bytes field, not a repeated field
+      if ident == "Vec" {
+        // Check if the generic argument is u8
+        if let syn::PathArguments::AngleBracketed(args) = &segment.arguments
+          && let Some(syn::GenericArgument::Type(syn::Type::Path(inner))) = args.args.first()
+          && inner.path.is_ident("u8")
+        {
+          return false; // Vec<u8> is bytes, not repeated
+        }
+      }
+
+      // Check for known repeated field types
+      matches!(
+        ident.as_str(),
+        "Vec" | "HashMap" | "AHashMap" | "TinyMap" | "BTreeMap" | "IndexMap"
+      )
+    })
+  } else {
+    false
   }
 }
 
@@ -461,18 +473,31 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             let var_name = syn::Ident::new(&format!("var_{field_name}"), field_name.span());
 
-            if attrs.repeated {
-              // For repeated fields, we start with an empty/default value and merge each
-              // occurrence
+            // Check if this is a repeated field:
+            // 1. Explicitly marked with #[field(repeated)]
+            // 2. Auto-detected as a known collection type (Vec, HashMap, etc.)
+            let is_repeated = attrs.repeated || is_repeated_field_type(field_type);
+
+            // Error if the field is marked as required but is also a repeated type
+            assert!(
+              !(attrs.required && is_repeated),
+              "Field '{field_name}' cannot be both required and a repeated field type (Vec, \
+               HashMap, etc.)"
+            );
+
+            if is_repeated {
+              // For repeated fields, use the optimized RepeatedFieldDeserialize path
               field_vars_init.push(quote! {
                   let mut #var_name: #field_type = Default::default();
               });
 
               deserialize_arms.push(quote! {
                   #tag => {
-                      let entry = <#field_type as
-                          bd_proto_util::serialization::ProtoFieldDeserialize>::deserialize(is)?;
-                      bd_proto_util::serialization::merge_repeated(&mut #var_name, entry);
+                      use bd_proto_util::serialization::RepeatedFieldDeserialize;
+                      let elem = <#field_type as RepeatedFieldDeserialize>
+                          ::deserialize_element(is)?;
+                      <#field_type as RepeatedFieldDeserialize>
+                          ::add_element(&mut #var_name, elem);
                       Ok(true)
                   }
               });
@@ -492,8 +517,8 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             let var_name = syn::Ident::new(&format!("var_{field_name}"), field_name.span());
 
-            let init_expr = if attrs.repeated {
-              // For repeated fields, we already initialized with default and merged all occurrences
+            let init_expr = if is_repeated {
+              // For repeated fields, we already initialized with default and inserted all elements
               quote! { #var_name }
             } else if attrs.required {
               quote! { #var_name.ok_or_else(|| anyhow::anyhow!(concat!("Field ", stringify!(#field_name), " is required")))? }

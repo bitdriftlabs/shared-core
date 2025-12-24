@@ -15,10 +15,9 @@
 //!
 //! This module contains ProtoFieldSerialize/ProtoFieldDeserialize implementations for:
 //! - Primitive types (String, integers, bool, f64)
-//! - Standard library types (`Vec<u8>`, `Option<T>`, `Box<T>`, `Cow<str>`, `Arc<str>`,
-//!   `SystemTime`)
+//! - Standard library types (`Vec<u8>`, `Option<T>`, `Box<T>`, `Cow<str>`, `Arc<str>`)
 //! - Collection types (`HashMap`, `AHashMap`, `Vec<T>`, `BTreeSet<T>`)
-//! - Time types (`OffsetDateTime`, `SystemTime`, `TimestampMicros`)
+//! - Time types (`OffsetDateTime`, `TimestampMicros`)
 //! - Special types (`LogType` enum, `NotNan<f64>`, unit type)
 
 use crate::serialization::{
@@ -550,39 +549,6 @@ impl ProtoFieldDeserialize for TimestampMicros {
   }
 }
 
-// SystemTime implementation - serialize as seconds since UNIX_EPOCH
-impl ProtoType for std::time::SystemTime {
-  fn wire_type() -> WireType {
-    WireType::Varint
-  }
-}
-
-impl ProtoFieldSerialize for std::time::SystemTime {
-  fn compute_size(&self, field_number: u32) -> u64 {
-    let secs = self
-      .duration_since(Self::UNIX_EPOCH)
-      .unwrap_or_default()
-      .as_secs();
-    protobuf::rt::uint64_size(field_number, secs)
-  }
-
-  fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
-    let secs = self
-      .duration_since(Self::UNIX_EPOCH)
-      .unwrap_or_default()
-      .as_secs();
-    os.write_uint64(field_number, secs)?;
-    Ok(())
-  }
-}
-
-impl ProtoFieldDeserialize for std::time::SystemTime {
-  fn deserialize(is: &mut CodedInputStream<'_>) -> Result<Self> {
-    let secs = is.read_uint64()?;
-    Ok(Self::UNIX_EPOCH + std::time::Duration::from_secs(secs))
-  }
-}
-
 // ============================================================================
 // Collection types (HashMap, AHashMap)
 // ============================================================================
@@ -663,6 +629,62 @@ where
     Ok(inner.into())
   }
 }
+
+// ============================================================================
+// RepeatedFieldDeserialize implementations for efficient repeated field handling
+// ============================================================================
+
+impl<K, V, S: std::hash::BuildHasher + Default> crate::serialization::RepeatedFieldDeserialize
+  for std::collections::HashMap<K, V, S>
+where
+  K: ProtoFieldDeserialize + Eq + std::hash::Hash + Default,
+  V: ProtoFieldDeserialize + Default,
+{
+  type Element = (K, V);
+
+  fn deserialize_element(is: &mut CodedInputStream<'_>) -> Result<Self::Element> {
+    deserialize_map_entry(is)
+  }
+
+  fn add_element(&mut self, (key, value): Self::Element) {
+    self.insert(key, value);
+  }
+}
+
+impl<K, V> crate::serialization::RepeatedFieldDeserialize for ahash::AHashMap<K, V>
+where
+  K: ProtoFieldDeserialize + Eq + std::hash::Hash + Default,
+  V: ProtoFieldDeserialize + Default,
+{
+  type Element = (K, V);
+
+  fn deserialize_element(is: &mut CodedInputStream<'_>) -> Result<Self::Element> {
+    deserialize_map_entry(is)
+  }
+
+  fn add_element(&mut self, (key, value): Self::Element) {
+    self.insert(key, value);
+  }
+}
+
+// Note: Vec<u8> is intentionally NOT implemented here because it has special handling
+// as a bytes field (single blob, not repeated elements).
+// This implementation is for Vec<T> where T != u8, which are true repeated fields.
+impl<T> crate::serialization::RepeatedFieldDeserialize for Vec<T>
+where
+  T: ProtoFieldDeserialize,
+{
+  type Element = T;
+
+  fn deserialize_element(is: &mut CodedInputStream<'_>) -> Result<Self::Element> {
+    T::deserialize(is)
+  }
+
+  fn add_element(&mut self, element: Self::Element) {
+    self.push(element);
+  }
+}
+
 
 // ============================================================================
 // Special types

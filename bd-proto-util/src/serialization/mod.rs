@@ -64,6 +64,44 @@ pub trait ProtoFieldDeserialize: ProtoType + Sized {
   fn deserialize(is: &mut CodedInputStream<'_>) -> anyhow::Result<Self>;
 }
 
+/// Optimized trait for repeated field types (maps, vectors, etc.) that allows direct
+/// incremental deserialization instead of creating intermediate single-element containers.
+///
+/// This trait provides a more efficient deserialization path for collections by eliminating
+/// creating intermediate single-element containers and merging them.
+///
+/// # Example
+///
+/// For a protobuf map field, instead of:
+/// 1. Deserialize entry → create `HashMap` with 1 entry
+/// 2. Deserialize entry → create `HashMap` with 1 entry
+/// 3. Merge all `HashMaps` together
+///
+/// We can:
+/// 1. Create empty `HashMap`
+/// 2. Deserialize entry → insert directly
+/// 3. Deserialize entry → insert directly
+///
+/// # Implementation
+///
+/// Types implementing this trait should:
+/// - Define `Element` as the type of a single repeated item (e.g., `(K, V)` for maps)
+/// - Implement `deserialize_element` to read one element from the stream
+/// - Implement `add_element` to add an element to the container
+pub trait RepeatedFieldDeserialize: ProtoType + Sized + Default {
+  /// The type of a single repeated element.
+  /// For `HashMap<K, V>`, this is (K, V).
+  /// For `Vec<T>`, this is T.
+  type Element;
+
+  /// Deserialize a single element from the input stream.
+  /// This is called *after* the tag has been read.
+  fn deserialize_element(is: &mut CodedInputStream<'_>) -> anyhow::Result<Self::Element>;
+
+  /// Add an element to this container.
+  fn add_element(&mut self, element: Self::Element);
+}
+
 /// Trait for message types that can be serialized/deserialized as top-level messages.
 /// This is only implemented for struct types (messages), not primitives or collections.
 /// Top-level serialization writes the message fields directly without an outer tag+length wrapper.

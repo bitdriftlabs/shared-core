@@ -333,3 +333,19 @@ where
     Ok(map)
   }
 }
+
+impl<K, V> bd_proto_util::serialization::RepeatedFieldDeserialize for TinyMap<K, V>
+where
+  K: bd_proto_util::serialization::ProtoFieldDeserialize + PartialEq + Default,
+  V: bd_proto_util::serialization::ProtoFieldDeserialize + Default,
+{
+  type Element = (K, V);
+
+  fn deserialize_element(is: &mut protobuf::CodedInputStream<'_>) -> anyhow::Result<Self::Element> {
+    bd_proto_util::serialization::deserialize_map_entry(is)
+  }
+
+  fn add_element(&mut self, (key, value): Self::Element) {
+    self.extend(std::iter::once((key, value)));
+  }
+}
