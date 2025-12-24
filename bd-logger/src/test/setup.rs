@@ -15,7 +15,7 @@ use crate::{
   Logger,
   ReportProcessingSession,
 };
-use bd_client_stats::FlushTrigger;
+use bd_client_stats::{FlushTrigger, FlushTriggerRequest};
 use bd_device::Store;
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::client::api::ConfigurationUpdate;
@@ -125,7 +125,7 @@ pub struct Setup {
   _shutdown: ComponentShutdownTrigger,
 
   pub _stats_flush_tx: mpsc::Sender<()>,
-  pub stats_upload_tx: mpsc::Sender<()>,
+  pub _stats_upload_tx: mpsc::Sender<()>,
   pub stats_flush_trigger: FlushTrigger,
 }
 
@@ -201,7 +201,7 @@ impl Setup {
       capture_screenshot_count,
       _shutdown: shutdown,
       _stats_flush_tx: flush_tick_tx,
-      stats_upload_tx: upload_tick_tx,
+      _stats_upload_tx: upload_tick_tx,
       stats_flush_trigger: flush_trigger,
     }
   }
@@ -286,10 +286,12 @@ impl Setup {
     let (sender, receiver) = bd_completion::Sender::new();
     self
       .stats_flush_trigger
-      .blocking_flush_for_test(Some(sender))
+      .blocking_flush_for_test(FlushTriggerRequest {
+        do_upload: true,
+        completion_tx: Some(sender),
+      })
       .unwrap();
     receiver.blocking_recv().unwrap();
-    self.stats_upload_tx.blocking_send(()).unwrap();
   }
 
   pub fn log(
