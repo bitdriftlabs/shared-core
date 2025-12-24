@@ -422,7 +422,7 @@ impl Flusher {
         } => {
           workflow_entry
             .states
-            .entry(state_id)
+            .entry(state_id.clone())
             .or_default()
             .transitions
             .push(WorkflowTransitionDebugData {

@@ -71,7 +71,7 @@ impl Helper {
     self
       .extractions
       .timestamps
-      .insert(id.to_string(), timestamp);
+      .insert(id.to_string(), Some(timestamp));
   }
 
   fn add_extracted_field(&mut self, id: &str, value: &str) {

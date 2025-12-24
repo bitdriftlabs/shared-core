@@ -23,12 +23,17 @@ impl WorkflowDebugKey {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[bd_macros::proto_serializable]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash, Default)]
 pub enum WorkflowDebugStateKey {
+  #[field(id = 1)]
+  #[field(deserialize)]
   StateTransition {
     state_id: String,
     transition_type: WorkflowDebugTransitionType,
   },
+  #[field(id = 2)]
+  #[default]
   StartOrReset,
 }
 
@@ -45,10 +50,14 @@ impl WorkflowDebugStateKey {
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[bd_macros::proto_serializable]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash, Default)]
 pub enum WorkflowDebugTransitionType {
   // Normal transition including the index.
+  #[field(id = 1)]
   Normal(usize),
   // Timeout transition.
+  #[field(id = 2)]
+  #[default]
   Timeout,
 }

@@ -567,7 +567,9 @@ impl VersionedKVJournalFuzzTest {
           match (&value, &expected_value) {
             (Some(_), None) => panic!("Got value for key that should not exist"),
             (None, Some(_)) => panic!("Did not get value for key that should exist"),
-            (Some(value), Some(expected_value)) => assert!(compare_values(value, expected_value)),
+            (Some(value), Some(expected_value)) => {
+              assert!(compare_values(value, expected_value));
+            },
             (None, None) => {},
           }
         },

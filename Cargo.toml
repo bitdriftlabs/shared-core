@@ -71,6 +71,8 @@ backoff           = "0.4.0"
 base64            = "0.22.1"
 base64-url        = "3.0.2"
 base64ct          = { version = "1.8.1", features = ["alloc", "std"] }
+bd-macros         = { path = "bd-macros" }
+bd-proto-util     = { path = "bd-proto-util" }
 bd-workspace-hack = "0.1.0"
 
 # This project is abandoned and needs to be replaced so is pinned for now. The maintainers just

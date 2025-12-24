@@ -1021,6 +1021,7 @@ dependencies = [
  "base64ct",
  "bd-macros",
  "bd-proto",
+ "bd-time",
  "bd-workspace-hack",
  "cc",
  "flatbuffers",
@@ -1287,7 +1288,10 @@ name = "bd-stats-common"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "bd-macros",
+ "bd-proto-util",
  "bd-workspace-hack",
+ "protobuf 4.0.0-alpha.0",
  "serde",
  "sketches-rust",
 ]
