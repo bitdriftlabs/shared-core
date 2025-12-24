@@ -123,7 +123,7 @@ fn is_repeated_field_type(ty: &syn::Type) -> bool {
       // Check for known repeated field types
       matches!(
         ident.as_str(),
-        "Vec" | "HashMap" | "AHashMap" | "TinyMap" | "BTreeMap" | "IndexMap"
+        "Vec" | "HashMap" | "AHashMap" | "TinyMap" | "BTreeMap" | "BTreeSet" | "IndexMap"
       )
     })
   } else {

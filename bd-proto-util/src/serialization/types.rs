@@ -5,12 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-// Copyright (C) 2024 Bitdrift, Inc.
-// SPDX-License-Identifier: Apache-2.0 OR PolyForm-Shield-1.0.0
-// You may obtain a copy of the license at
-// https://www.apache.org/licenses/LICENSE-2.0
-// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
-
 //! Trait implementations for common types.
 //!
 //! This module contains ProtoFieldSerialize/ProtoFieldDeserialize implementations for:
@@ -24,11 +18,13 @@ use crate::serialization::{
   ProtoFieldDeserialize,
   ProtoFieldSerialize,
   ProtoType,
+  RepeatedFieldDeserialize,
   compute_map_size,
   deserialize_map_entry,
   serialize_map,
 };
 use anyhow::Result;
+use bd_time::OffsetDateTimeExt;
 use protobuf::rt::WireType;
 use protobuf::well_known_types::timestamp::Timestamp;
 use protobuf::{CodedInputStream, CodedOutputStream, Message as _};
@@ -252,10 +248,6 @@ impl ProtoFieldDeserialize for Vec<u8> {
     Ok(is.read_bytes()?)
   }
 }
-
-// ============================================================================
-// Generic wrapper types
-// ============================================================================
 
 // Blanket implementation for Option<T>
 // Note: For deserialization, this is slightly tricky because the tag handles the "None" case (by
@@ -487,14 +479,10 @@ impl TimestampMicros {
   }
 
   /// Converts the timestamp to microseconds since Unix epoch.
-  ///
-  /// # Panics
-  /// This function assumes the timestamp is within a reasonable range
-  /// (~292 million years from epoch) that fits in a u64.
   #[must_use]
   #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
   pub fn as_micros(&self) -> u64 {
-    (self.0.unix_timestamp_nanos() / 1000) as u64
+    self.0.unix_timestamp_micros() as u64
   }
 
   /// Creates a `TimestampMicros` from microseconds since Unix epoch.
@@ -553,11 +541,6 @@ impl ProtoFieldDeserialize for TimestampMicros {
 // Collection types (HashMap, AHashMap)
 // ============================================================================
 
-// Maps in protobuf are repeated messages with key/value fields.
-// map<KeyType, ValueType> map_field = N;
-// On wire:
-// tag(N, LengthDelimited) -> len -> { key_tag(1) -> key, value_tag(2) -> value }
-// repeated for each entry.
 impl<K, V, S: std::hash::BuildHasher> ProtoType for std::collections::HashMap<K, V, S> {
   fn wire_type() -> WireType {
     WireType::LengthDelimited
@@ -578,24 +561,25 @@ where
   }
 }
 
-impl<K, V, S: std::hash::BuildHasher + Default> ProtoFieldDeserialize
+impl<K, V, S: std::hash::BuildHasher + Default> RepeatedFieldDeserialize
   for std::collections::HashMap<K, V, S>
 where
   K: ProtoFieldDeserialize + Eq + std::hash::Hash + Default,
   V: ProtoFieldDeserialize + Default,
 {
-  fn deserialize(is: &mut CodedInputStream<'_>) -> Result<Self> {
-    let (key, value) = deserialize_map_entry(is)?;
-    let mut map = Self::default();
-    map.insert(key, value);
-    Ok(map)
+  type Element = (K, V);
+
+  fn deserialize_element(is: &mut CodedInputStream<'_>) -> Result<Self::Element> {
+    deserialize_map_entry(is)
+  }
+
+  fn add_element(&mut self, (key, value): Self::Element) {
+    self.insert(key, value);
   }
 }
 
-// AHashMap is a type alias for HashMap<K, V, ahash::RandomState>, which is already covered
-// by the generic HashMap<K, V, S: BuildHasher> implementation above. However, we provide
-// explicit implementations here for better error messages and to ensure the type alias works
-// seamlessly in generic contexts.
+// AHashMap is a newtype around HashMap with a different hasher, so we have to re-implement
+// the traits for it and delegate to the inner type.
 
 impl<K, V> ProtoType for ahash::AHashMap<K, V> {
   fn wire_type() -> WireType {
@@ -619,39 +603,7 @@ where
   }
 }
 
-impl<K, V> ProtoFieldDeserialize for ahash::AHashMap<K, V>
-where
-  K: ProtoFieldDeserialize + Eq + std::hash::Hash + Default,
-  V: ProtoFieldDeserialize + Default,
-{
-  fn deserialize(is: &mut CodedInputStream<'_>) -> Result<Self> {
-    let inner = std::collections::HashMap::deserialize(is)?;
-    Ok(inner.into())
-  }
-}
-
-// ============================================================================
-// RepeatedFieldDeserialize implementations for efficient repeated field handling
-// ============================================================================
-
-impl<K, V, S: std::hash::BuildHasher + Default> crate::serialization::RepeatedFieldDeserialize
-  for std::collections::HashMap<K, V, S>
-where
-  K: ProtoFieldDeserialize + Eq + std::hash::Hash + Default,
-  V: ProtoFieldDeserialize + Default,
-{
-  type Element = (K, V);
-
-  fn deserialize_element(is: &mut CodedInputStream<'_>) -> Result<Self::Element> {
-    deserialize_map_entry(is)
-  }
-
-  fn add_element(&mut self, (key, value): Self::Element) {
-    self.insert(key, value);
-  }
-}
-
-impl<K, V> crate::serialization::RepeatedFieldDeserialize for ahash::AHashMap<K, V>
+impl<K, V> RepeatedFieldDeserialize for ahash::AHashMap<K, V>
 where
   K: ProtoFieldDeserialize + Eq + std::hash::Hash + Default,
   V: ProtoFieldDeserialize + Default,
@@ -670,7 +622,7 @@ where
 // Note: Vec<u8> is intentionally NOT implemented here because it has special handling
 // as a bytes field (single blob, not repeated elements).
 // This implementation is for Vec<T> where T != u8, which are true repeated fields.
-impl<T> crate::serialization::RepeatedFieldDeserialize for Vec<T>
+impl<T> RepeatedFieldDeserialize for Vec<T>
 where
   T: ProtoFieldDeserialize,
 {
@@ -682,6 +634,22 @@ where
 
   fn add_element(&mut self, element: Self::Element) {
     self.push(element);
+  }
+}
+
+// Implementation for BTreeSet<T> as a repeated field
+impl<T> crate::serialization::RepeatedFieldDeserialize for std::collections::BTreeSet<T>
+where
+  T: ProtoFieldDeserialize + Ord,
+{
+  type Element = T;
+
+  fn deserialize_element(is: &mut CodedInputStream<'_>) -> Result<Self::Element> {
+    T::deserialize(is)
+  }
+
+  fn add_element(&mut self, element: Self::Element) {
+    self.insert(element);
   }
 }
 

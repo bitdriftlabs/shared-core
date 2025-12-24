@@ -23,9 +23,7 @@ fn test_simple_struct() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, PartialEq, Default)]
   struct Foo {
-    #[field(id = 1)]
     a: u32,
-    #[field(id = 2)]
     b: String,
   }
 
@@ -115,16 +113,13 @@ fn test_nested_struct() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, PartialEq, Default, Clone)]
   struct Bar {
-    #[field(id = 1)]
     x: i64,
   }
 
   #[proto_serializable]
   #[derive(Debug, PartialEq, Default)]
   struct Foo {
-    #[field(id = 1)]
     bar: Bar,
-    #[field(id = 2)]
     val: Option<u32>,
   }
 
@@ -348,7 +343,6 @@ fn test_roundtrip_with_rust_protobuf() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, Default, PartialEq)]
   struct CustomStringValue {
-    #[field(id = 1)]
     value: String,
   }
 
@@ -395,9 +389,7 @@ fn test_roundtrip_nested_with_protobuf() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, Default)]
   struct CustomAny {
-    #[field(id = 1)]
     type_url: String,
-    #[field(id = 2)]
     value: Vec<u8>,
   }
 
