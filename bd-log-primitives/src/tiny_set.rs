@@ -5,6 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+mod proto;
+
 use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
 
@@ -288,64 +290,5 @@ impl<K: PartialEq, V> Extend<Self> for TinyMap<K, V> {
 impl<K, V> Default for TinyMap<K, V> {
   fn default() -> Self {
     Self { items: Vec::new() }
-  }
-}
-
-// ProtoFieldSerialize/ProtoFieldDeserialize implementations for TinySet<T>
-// TinySet is serialized as a repeated field in protobuf.
-bd_proto_util::impl_proto_repeated!(TinySet<T>, T, PartialEq);
-
-// ProtoFieldSerialize/ProtoFieldDeserialize implementations for TinyMap
-// TinyMap is serialized as a map field (repeated key-value pairs) in protobuf.
-impl<K, V> bd_proto_util::serialization::ProtoType for TinyMap<K, V> {
-  fn wire_type() -> protobuf::rt::WireType {
-    protobuf::rt::WireType::LengthDelimited
-  }
-}
-
-impl<K, V> bd_proto_util::serialization::ProtoFieldSerialize for TinyMap<K, V>
-where
-  K: bd_proto_util::serialization::ProtoFieldSerialize + PartialEq,
-  V: bd_proto_util::serialization::ProtoFieldSerialize,
-{
-  fn compute_size(&self, field_number: u32) -> u64 {
-    bd_proto_util::serialization::compute_map_size(self, field_number)
-  }
-
-  fn serialize(
-    &self,
-    field_number: u32,
-    os: &mut protobuf::CodedOutputStream<'_>,
-  ) -> anyhow::Result<()> {
-    bd_proto_util::serialization::serialize_map(self, field_number, os)
-  }
-}
-
-impl<K, V> bd_proto_util::serialization::ProtoFieldDeserialize for TinyMap<K, V>
-where
-  K: bd_proto_util::serialization::ProtoFieldDeserialize + PartialEq + Default,
-  V: bd_proto_util::serialization::ProtoFieldDeserialize + Default,
-{
-  fn deserialize(is: &mut protobuf::CodedInputStream<'_>) -> anyhow::Result<Self> {
-    let (key, value) = bd_proto_util::serialization::deserialize_map_entry(is)?;
-    let mut map = Self::default();
-    map.extend(std::iter::once((key, value)));
-    Ok(map)
-  }
-}
-
-impl<K, V> bd_proto_util::serialization::RepeatedFieldDeserialize for TinyMap<K, V>
-where
-  K: bd_proto_util::serialization::ProtoFieldDeserialize + PartialEq + Default,
-  V: bd_proto_util::serialization::ProtoFieldDeserialize + Default,
-{
-  type Element = (K, V);
-
-  fn deserialize_element(is: &mut protobuf::CodedInputStream<'_>) -> anyhow::Result<Self::Element> {
-    bd_proto_util::serialization::deserialize_map_entry(is)
-  }
-
-  fn add_element(&mut self, (key, value): Self::Element) {
-    self.extend(std::iter::once((key, value)));
   }
 }
