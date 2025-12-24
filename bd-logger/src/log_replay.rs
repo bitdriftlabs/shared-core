@@ -11,7 +11,7 @@ use crate::logging_state::{BufferProducers, ConfigUpdate, InitializedLoggingCont
 use crate::write_log_to_buffer;
 use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::BuffersWithAck;
-use bd_client_stats::FlushTrigger;
+use bd_client_stats::{FlushTrigger, FlushTriggerRequest};
 use bd_log_filter::FilterChain;
 use bd_log_metadata::LogFields;
 use bd_log_primitives::tiny_set::TinySet;
@@ -437,9 +437,19 @@ impl ProcessingPipeline {
     }
 
     // If the log is blocking, we need to flush the stats to disk.
+    // TODO(mattklein123): Figure out if we need blocking logs and explicit flushing. It would be
+    // better to remove this complexity if we could do it all as part of the explicit flush call
+    // which also uploads stats and does other things. For now in this case we just do what we did
+    // before which is write to disk only.
     log::debug!("blocking log: sending signal to flush stats to disk");
     let (sender, receiver) = bd_completion::Sender::new();
-    if let Err(e) = flush_stats_trigger.flush(Some(sender)).await {
+    if let Err(e) = flush_stats_trigger
+      .flush(FlushTriggerRequest {
+        do_upload: false,
+        completion_tx: Some(sender),
+      })
+      .await
+    {
       anyhow::bail!("blocking log: failed to send signal to flush stats: {e:?}");
     }
 

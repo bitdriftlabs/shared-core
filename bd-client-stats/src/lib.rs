@@ -48,10 +48,13 @@ pub struct FlushHandles {
 }
 
 //
-// FlushTriggerCompletionSender
+// FlushTriggerRequest
 //
 
-type FlushTriggerCompletionSender = Option<bd_completion::Sender<()>>;
+pub struct FlushTriggerRequest {
+  pub do_upload: bool,
+  pub completion_tx: Option<bd_completion::Sender<()>>,
+}
 
 //
 // FlushTrigger
@@ -59,23 +62,20 @@ type FlushTriggerCompletionSender = Option<bd_completion::Sender<()>>;
 
 #[derive(Clone, Debug)]
 pub struct FlushTrigger {
-  flush_tx: Sender<FlushTriggerCompletionSender>,
+  flush_tx: Sender<FlushTriggerRequest>,
 }
 
 impl FlushTrigger {
   #[must_use]
-  pub fn new() -> (
-    Self,
-    tokio::sync::mpsc::Receiver<FlushTriggerCompletionSender>,
-  ) {
-    let (flush_tx, flush_rx) = tokio::sync::mpsc::channel::<FlushTriggerCompletionSender>(1);
+  pub fn new() -> (Self, tokio::sync::mpsc::Receiver<FlushTriggerRequest>) {
+    let (flush_tx, flush_rx) = tokio::sync::mpsc::channel::<FlushTriggerRequest>(1);
 
     (Self { flush_tx }, flush_rx)
   }
 
   // Signals the SDK to flush stats to disk and waits for the operation to complete before
   // returning.
-  pub async fn flush(&self, completion_tx: FlushTriggerCompletionSender) -> anyhow::Result<()> {
+  pub async fn flush(&self, completion_tx: FlushTriggerRequest) -> anyhow::Result<()> {
     self
       .flush_tx
       .send(completion_tx)
@@ -83,10 +83,7 @@ impl FlushTrigger {
       .map_err(|e| anyhow::anyhow!("failed to send flush stats trigger: {e}"))
   }
 
-  pub fn blocking_flush_for_test(
-    &self,
-    completion_tx: FlushTriggerCompletionSender,
-  ) -> anyhow::Result<()> {
+  pub fn blocking_flush_for_test(&self, completion_tx: FlushTriggerRequest) -> anyhow::Result<()> {
     self.flush_tx.blocking_send(completion_tx)?;
     Ok(())
   }

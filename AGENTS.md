@@ -1,12 +1,12 @@
 # Agent Guidelines for Shared Core
 
 ## Build/Lint/Test Commands
-- Build: `SKIP_PROTO_GEN=1 cargo build --workspace`
-- Lint: `SKIP_PROTO_GEN=1 cargo clippy --workspace --bins --examples --tests -- --no-deps`
-- Test (all): `SKIP_PROTO_GEN=1 cargo test` or `cargo nextest run`
-- Test (single): `SKIP_PROTO_GEN=1 cargo test test_name` or `cargo nextest run test_name`
-- Test (specific crate): `SKIP_PROTO_GEN=1 cargo test -p crate-name`
-- Coverage: `SKIP_PROTO_GEN=1 cargo tarpaulin --engine llvm -o html`
+- Build: `cargo build --workspace`
+- Lint: `cargo clippy --workspace --bins --examples --tests -- --no-deps`
+- Test (all): `cargo test` or `cargo nextest run`
+- Test (single): `cargo test test_name` or `cargo nextest run test_name`
+- Test (specific crate): `cargo test -p crate-name`
+- Coverage: `cargo tarpaulin --engine llvm -o html`
 
 ## Code Style Guidelines
 - Use 2-space indentation (no tabs)
@@ -18,6 +18,7 @@
 - Edition: Rust 2024
 - Make sure to run `cargo +nightly fmt` after making changes to apply default formatting rules.
 - Use pattern matching with if-let and match expressions for error handling
+- When you write comments, flow them out to 100 columns for wrapping
 
 ## Documentation Guidelines
 - Avoid redundant documentation for the sake of convention. For example
@@ -43,8 +44,8 @@
 
 ## Code Quality Checks
 - After generating or modifying code, always run clippy to check for static lint violations:
-  `SKIP_PROTO_GEN=1 cargo clippy --workspace --bins --examples --tests -- --no-deps`
+  `cargo clippy --workspace --bins --examples --tests -- --no-deps`
 - For automatic fixing of some linting issues, use the `--fix` flag:
-  `SKIP_PROTO_GEN=1 cargo clippy --workspace --bins --examples --tests --fix -- --no-deps`
+  `cargo clippy --workspace --bins --examples --tests --fix -- --no-deps`
 - Fix any remaining warnings before committing code
 - Running clippy is especially important after code generation or modification to catch any potential issues

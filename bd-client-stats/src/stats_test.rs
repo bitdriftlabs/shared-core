@@ -5,9 +5,9 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::Stats;
 use crate::file_manager::{FileManager, PENDING_AGGREGATION_INDEX_FILE, STATS_DIRECTORY};
 use crate::stats::{IntervalCreator, SleepModeAwareRuntimeWatchTicker, Ticker};
+use crate::{FlushTrigger, FlushTriggerRequest, Stats};
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
 use bd_api::upload::{Tracked, UploadResponse};
@@ -111,9 +111,10 @@ struct Setup {
   flush_handle: tokio::task::JoinHandle<()>,
   data_rx: mpsc::Receiver<DataUpload>,
   test_time: Arc<TestTimeProvider>,
-  flush_tick_tx: mpsc::Sender<()>,
+  periodic_flush_tick_tx: mpsc::Sender<()>,
   upload_tick_tx: mpsc::Sender<()>,
   test_hooks: TestHooksReceiver,
+  explicit_flush_trigger: FlushTrigger,
 }
 
 impl Setup {
@@ -149,10 +150,10 @@ impl Setup {
 
     let stats = Stats::new(Collector::new(Some(watch::channel(limit).1)));
     let (data_tx, data_rx) = mpsc::channel(1);
-    let (flush_tick_tx, flush_ticker) = TestTicker::new();
+    let (periodic_flush_tick_tx, periodic_flush_ticker) = TestTicker::new();
     let (upload_tick_tx, upload_ticker) = TestTicker::new();
     let mut flush_handles = stats.flush_handle_helper(
-      Box::new(flush_ticker),
+      Box::new(periodic_flush_ticker),
       Box::new(upload_ticker),
       shutdown_trigger.make_shutdown(),
       data_tx,
@@ -160,6 +161,7 @@ impl Setup {
     );
 
     let test_hooks = flush_handles.flusher.test_hooks();
+    let explicit_flush_trigger = flush_handles.flush_trigger.clone();
     let flush_handle = tokio::spawn(async move {
       flush_handles.flusher.periodic_flush().await;
     });
@@ -172,15 +174,27 @@ impl Setup {
       _runtime_loader: runtime_loader,
       flush_handle,
       data_rx,
-      flush_tick_tx,
+      periodic_flush_tick_tx,
       upload_tick_tx,
       test_hooks,
+      explicit_flush_trigger,
     }
   }
 
-  async fn do_flush(&mut self) {
-    self.flush_tick_tx.send(()).await.unwrap();
+  async fn do_periodic_flush(&mut self) {
+    self.periodic_flush_tick_tx.send(()).await.unwrap();
     self.test_hooks.flush_complete_rx.recv().await.unwrap();
+  }
+
+  async fn do_explicit_flush(&self, completion: bd_completion::Sender<()>) {
+    self
+      .explicit_flush_trigger
+      .flush(FlushTriggerRequest {
+        do_upload: true,
+        completion_tx: Some(completion),
+      })
+      .await
+      .unwrap();
   }
 
   async fn next_stat_upload(&mut self) -> Tracked<StatsUploadRequest, UploadResponse> {
@@ -201,7 +215,7 @@ impl Setup {
     // In order for the tests to be deterministic we have to do this dance carefully to make sure
     // that the events are fully complete before continuing. This is the basic sequence. Some tests
     // use more complicated interleavings.
-    self.do_flush().await;
+    self.do_periodic_flush().await;
 
     self.upload_tick_tx.send(()).await.unwrap();
     let stats = self.next_stat_upload().await;
@@ -248,10 +262,10 @@ async fn overflow() {
   setup
     .stats
     .record_dynamic_counter(labels!("foo" => "baz"), "id2", 10);
-  setup.do_flush().await;
+  setup.do_periodic_flush().await;
 
   // This will cause the unused metrics to get freed from RAM.
-  setup.do_flush().await;
+  setup.do_periodic_flush().await;
 
   // Make sure we don't overflow when we merge into the disk snapshot and upload and also make sure
   // we add up all of the overflows properly.
@@ -384,12 +398,12 @@ async fn max_files_upload_race() {
 
   let counter = setup.stats.collector.scope("test").counter("test");
   counter.inc();
-  setup.do_flush().await;
+  setup.do_periodic_flush().await;
 
   // Advance 5 minutes and flush. This will start a new file.
   setup.test_time.advance(5.minutes());
   counter.inc_by(10);
-  setup.do_flush().await;
+  setup.do_periodic_flush().await;
 
   // Start the upload but don't complete it.
   setup.upload_tick_tx.send(()).await.unwrap();
@@ -398,7 +412,7 @@ async fn max_files_upload_race() {
   // Advance 5 minutes and flush. This will remove the file that is currently being uploaded.
   setup.test_time.advance(5.minutes());
   counter.inc_by(100);
-  setup.do_flush().await;
+  setup.do_periodic_flush().await;
 
   // Complete the upload and make sure we ignore the removed file from previous overflow.
   stats
@@ -447,12 +461,12 @@ async fn max_files() {
     .await;
 
   counter.inc_by(10);
-  setup.do_flush().await;
+  setup.do_periodic_flush().await;
 
   // Now advance 5 minutes, increment, and flush again. This will exceed max files.
   setup.test_time.advance(5.minutes());
   counter.inc_by(100);
-  setup.do_flush().await;
+  setup.do_periodic_flush().await;
 
   // Now upload, we should get the 2nd counter increment.
   setup
@@ -1008,4 +1022,234 @@ async fn sleep_mode_aware_runtime_watch_ticker() {
   assert!(poll!(&mut tick_future).is_pending());
   sleep(1.std_seconds()).await;
   assert!(poll!(tick_future).is_ready());
+}
+
+#[tokio::test(start_paused = true)]
+async fn flush_during_periodic_upload() {
+  let mut setup = Setup::new().await;
+
+  // 1. Record Metric A
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "bar"), "id1", 1);
+
+  // 2. Flush to disk (periodic flush)
+  setup.do_periodic_flush().await;
+
+  // 3. Trigger periodic upload
+  setup.upload_tick_tx.send(()).await.unwrap();
+
+  // 4. Receive Upload 1
+  let upload1 = setup.next_stat_upload().await;
+  {
+    let helper = StatsRequestHelper::new(upload1.payload.clone());
+    assert_eq!(
+      helper.get_workflow_counter("id1", labels!("foo" => "bar")),
+      Some(1)
+    );
+  }
+
+  // 5. Record Metric B
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "baz"), "id2", 2);
+
+  // 6. Trigger explicit flush
+  let (tx, rx) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx).await;
+
+  // 7. Receive Upload 2 (triggered by flush)
+  let upload2 = setup.next_stat_upload().await;
+  {
+    let helper = StatsRequestHelper::new(upload2.payload.clone());
+    assert_eq!(
+      helper.get_workflow_counter("id2", labels!("foo" => "baz")),
+      Some(2)
+    );
+  }
+
+  // 8. Complete Upload 1
+  upload1
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload1.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  // 9. Complete Upload 2
+  upload2
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload2.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  rx.recv().await.unwrap();
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn explicit_flush_triggers_upload_immediately() {
+  let mut setup = Setup::new().await;
+
+  // 1. Record Metric
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "bar"), "id1", 1);
+
+  // 2. Trigger explicit flush. This should flush to disk AND trigger upload because there is no
+  // upload in flight.
+  let (tx, rx) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx).await;
+
+  // 3. Receive Upload
+  let upload = setup.next_stat_upload().await;
+  {
+    let helper = StatsRequestHelper::new(upload.payload.clone());
+    assert_eq!(
+      helper.get_workflow_counter("id1", labels!("foo" => "bar")),
+      Some(1)
+    );
+  }
+
+  // 4. Complete Upload
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  rx.recv().await.unwrap();
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn concurrent_flushes() {
+  let mut setup = Setup::new().await;
+
+  // 1. Record Metric A
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "bar"), "id1", 1);
+
+  // 2. Trigger explicit flush 1
+  let (tx1, rx1) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx1).await;
+
+  // 3. Wait for Upload 1 to start. The flush triggers an upload. We need to grab it. Also drain the
+  // flush complete hook.
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  let upload1 = setup.next_stat_upload().await;
+
+  // 4. Record Metric B
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "baz"), "id2", 2);
+
+  // 5. Trigger explicit flush 2 while Upload 1 is in flight
+  let (tx2, rx2) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx2).await;
+
+  // 6. Verify behavior of Flush 2. With current code, flush 2 is ignored. The completion tx2 is
+  // dropped. So rx2.recv() should return Err.
+  let result = rx2.recv().await;
+  assert!(result.is_err(), "Expected flush 2 completion to be dropped");
+
+  // 7. Verify Metric B was NOT flushed to disk. If it was flushed, we would see a file or it would
+  // be in the next upload. But since flush_to_disk was skipped, it should still be in memory. If we
+  // finish upload 1, and then trigger another flush, we can check.
+  upload1
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload1.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  rx1.recv().await.unwrap(); // Flush 1 complete
+
+  // Now trigger Flush 3.
+  let (tx3, rx3) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx3).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  let upload3 = setup.next_stat_upload().await;
+  {
+    let helper = StatsRequestHelper::new(upload3.payload.clone());
+    // It should contain Metric B (id2)
+    assert_eq!(
+      helper.get_workflow_counter("id2", labels!("foo" => "baz")),
+      Some(2)
+    );
+  }
+
+  upload3
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload3.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  rx3.recv().await.unwrap();
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn explicit_flush_no_data() {
+  let mut setup = Setup::new().await;
+
+  // Trigger explicit flush with no data
+  let (tx, rx) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx).await;
+
+  // Should complete immediately without upload. Note: flush_to_disk is still called, so we must
+  // drain the hook.
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  rx.recv().await.unwrap();
+
+  // Verify no upload
+  assert!(poll!(Box::pin(setup.data_rx.recv())).is_pending());
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn explicit_flush_upload_failure() {
+  let mut setup = Setup::new().await;
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "bar"), "id1", 1);
+
+  let (tx, rx) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  let upload = setup.next_stat_upload().await;
+
+  // Fail the upload
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: false,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  // Completion should still fire
+  rx.recv().await.unwrap();
+
+  setup.shutdown().await.unwrap();
 }
