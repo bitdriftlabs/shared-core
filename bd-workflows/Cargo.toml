@@ -29,12 +29,10 @@ bd-stats-common.path        = "../bd-stats-common"
 bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
 bd-time.path                = "../bd-time"
 bd-workspace-hack.workspace = true
-bincode.workspace           = true
 itertools.workspace         = true
 log.workspace               = true
 protobuf.workspace          = true
 regex.workspace             = true
-serde.workspace             = true
 sha2.workspace              = true
 thiserror.workspace         = true
 time.workspace              = true

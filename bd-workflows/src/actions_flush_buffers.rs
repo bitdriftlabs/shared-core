@@ -18,7 +18,6 @@ use bd_log_primitives::tiny_set::TinySet;
 use bd_proto::protos::client::api::LogUploadIntentRequest;
 use bd_proto::protos::client::api::log_upload_intent_request::ExplicitSessionCapture;
 use bd_stats_common::labels;
-use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::fmt::Debug;
@@ -740,7 +739,8 @@ pub(crate) struct StreamingBuffersActionsProcessingResult<'a> {
 // The action created by a flush buffer workflow action. This tracks the action while upload intent
 // negotiation is performed. At that point, it either transitions into a `StreamingBuffersAction` if
 // streaming was configured for the action.
-#[derive(Clone, Serialize, Deserialize)]
+#[bd_macros::proto_serializable]
+#[derive(Clone)]
 pub(crate) struct PendingFlushBuffersAction {
   pub(crate) id: FlushBufferId,
   session_id: String,
@@ -861,7 +861,8 @@ impl PendingFlushBuffersAction {
 // Streaming
 //
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[bd_macros::proto_serializable]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Streaming {
   destination_continuous_buffer_ids: TinySet<Cow<'static, str>>,
 
@@ -872,7 +873,8 @@ pub(crate) struct Streaming {
 // StreamingBuffersAction
 //
 
-#[derive(Clone, Serialize, Deserialize, PartialEq)]
+#[bd_macros::proto_serializable]
+#[derive(Clone, PartialEq)]
 // The action created in response to flush buffer actions that were accepted for upload and had a
 // streaming configuration attached to them.
 pub(crate) struct StreamingBuffersAction {

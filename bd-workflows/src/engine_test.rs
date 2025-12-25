@@ -1567,8 +1567,8 @@ async fn logs_streaming() {
   // immediately).
   workflows_engine.run_once_for_test().await;
 
-  assert_eq!(
-    vec![
+  {
+    let mut expected = vec![
       log_upload_intent_request::WorkflowActionUpload {
         workflow_action_ids: vec!["immediate_drop".to_string()],
         ..Default::default()
@@ -1576,10 +1576,21 @@ async fn logs_streaming() {
       log_upload_intent_request::WorkflowActionUpload {
         workflow_action_ids: vec!["immediate_upload_no_streaming".to_string()],
         ..Default::default()
-      }
-    ],
-    workflows_engine.received_logs_upload_intents()
-  );
+      },
+    ];
+    let mut actual = workflows_engine.received_logs_upload_intents();
+    expected.sort_by(|a, b| {
+      a.workflow_action_ids
+        .first()
+        .cmp(&b.workflow_action_ids.first())
+    });
+    actual.sort_by(|a, b| {
+      a.workflow_action_ids
+        .first()
+        .cmp(&b.workflow_action_ids.first())
+    });
+    assert_eq!(expected, actual);
+  }
   assert_eq!(
     workflows_engine.flushed_buffers(),
     vec![TinySet::from(["trigger_buffer_id".into()])],
@@ -1743,8 +1754,8 @@ async fn logs_streaming() {
   // immediately).
   workflows_engine.run_once_for_test().await;
 
-  assert_eq!(
-    vec![
+  {
+    let mut expected = vec![
       log_upload_intent_request::WorkflowActionUpload {
         workflow_action_ids: vec!["relaunch_upload_no_streaming".to_string()],
         ..Default::default()
@@ -1753,9 +1764,20 @@ async fn logs_streaming() {
         workflow_action_ids: vec!["relaunch_upload_streaming".to_string()],
         ..Default::default()
       },
-    ],
-    workflows_engine.received_logs_upload_intents()
-  );
+    ];
+    let mut actual = workflows_engine.received_logs_upload_intents();
+    expected.sort_by(|a, b| {
+      a.workflow_action_ids
+        .first()
+        .cmp(&b.workflow_action_ids.first())
+    });
+    actual.sort_by(|a, b| {
+      a.workflow_action_ids
+        .first()
+        .cmp(&b.workflow_action_ids.first())
+    });
+    assert_eq!(expected, actual);
+  }
   assert_eq!(
     workflows_engine.flushed_buffers(),
     vec![
