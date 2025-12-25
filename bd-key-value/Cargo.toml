@@ -18,7 +18,6 @@ bd-workspace-hack.workspace = true
 log.workspace               = true
 parking_lot.workspace       = true
 protobuf.workspace          = true
-serde.workspace             = true
 time.workspace              = true
 tokio.workspace             = true
 

@@ -14,5 +14,4 @@ bd-macros.workspace         = true
 bd-proto-util.workspace     = true
 bd-workspace-hack.workspace = true
 protobuf.workspace          = true
-serde.workspace             = true
 sketches-rust.workspace     = true

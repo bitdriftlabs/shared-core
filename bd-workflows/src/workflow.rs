@@ -647,8 +647,8 @@ impl Run {
         let duration_since_first_progress = current_time - first_progress_occurred_at;
         if duration_since_first_progress > duration_limit {
           log::debug!(
-            "run stopped due to exceeding duration limit ({duration_limit:?}), duration since \
-             the run first made progress progress: {duration_since_first_progress:?}"
+            "run stopped due to exceeding duration limit ({duration_limit:?}), duration since the \
+             run first made progress progress: {duration_since_first_progress:?}"
           );
           return RunResult {
             state: RunState::Stopped,
