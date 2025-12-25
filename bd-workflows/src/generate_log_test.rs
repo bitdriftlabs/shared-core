@@ -10,6 +10,7 @@ use crate::workflow::TraversalExtractions;
 use bd_log_primitives::{FieldsRef, Log, LogFieldKey, LogFields, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow::workflow::action::ActionGenerateLog;
+use bd_proto_util::serialization::TimestampMicros;
 use bd_test_helpers::workflow::{TestFieldRef, TestFieldType, make_generate_log_action};
 use pretty_assertions::assert_eq;
 use time::OffsetDateTime;
@@ -71,7 +72,7 @@ impl Helper {
     self
       .extractions
       .timestamps
-      .insert(id.to_string(), timestamp);
+      .insert(id.to_string(), TimestampMicros(timestamp));
   }
 
   fn add_extracted_field(&mut self, id: &str, value: &str) {

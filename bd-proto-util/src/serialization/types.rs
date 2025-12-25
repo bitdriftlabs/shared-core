@@ -179,6 +179,12 @@ impl ProtoFieldSerialize for &'static str {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TimestampMicros(pub time::OffsetDateTime);
 
+impl Default for TimestampMicros {
+  fn default() -> Self {
+    Self(time::OffsetDateTime::UNIX_EPOCH)
+  }
+}
+
 impl TimestampMicros {
   /// Creates a new `TimestampMicros` from an `OffsetDateTime`.
   #[must_use]

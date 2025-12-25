@@ -134,7 +134,7 @@ macro_rules! assert_active_runs {
           "run has more than 1 traversal, use `assert_active_run_traversals` macro instead"
         );
         pretty_assertions::assert_eq!(
-          expected_state_index.unwrap(),
+          expected_state_index.unwrap() as u64,
           $workflow_annotated.workflow.runs()[index].traversals[0].state_index,
           "workflow runs' states list ({:?}) doesn't match expected states list ({:?}) length",
           $workflow_annotated.runs_state_list(),
@@ -181,7 +181,7 @@ macro_rules! assert_active_run_traversals {
           "failed to find state with \"{}\" ID", *id
         );
         pretty_assertions::assert_eq!(
-          expected_state_index.unwrap(),
+          expected_state_index.unwrap() as u64,
           $annotated_workflow.workflow.runs()[$run_index].traversals[index].state_index,
           "workflow runs traversals' states list ({:?}) doesn't match expected states list ({:?})",
           $annotated_workflow.traversals_state_list($run_index),

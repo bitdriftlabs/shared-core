@@ -5,8 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use serde::{Deserialize, Serialize};
-
 #[derive(PartialEq, Eq, Hash, Debug)]
 pub struct WorkflowDebugKey {
   pub workflow_id: String,
@@ -23,12 +21,17 @@ impl WorkflowDebugKey {
   }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[bd_macros::proto_serializable]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum WorkflowDebugStateKey {
+  #[field(id = 1)]
+  #[field(deserialize)]
   StateTransition {
     state_id: String,
     transition_type: WorkflowDebugTransitionType,
   },
+  #[field(id = 2)]
+  #[default]
   StartOrReset,
 }
 
@@ -45,10 +48,14 @@ impl WorkflowDebugStateKey {
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
+#[bd_macros::proto_serializable]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum WorkflowDebugTransitionType {
   // Normal transition including the index.
-  Normal(usize),
+  #[field(id = 1)]
+  Normal(u64),
   // Timeout transition.
+  #[field(id = 2)]
+  #[default]
   Timeout,
 }

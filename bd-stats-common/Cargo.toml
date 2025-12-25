@@ -10,6 +10,8 @@ doctest = false
 
 [dependencies]
 anyhow.workspace            = true
+bd-macros.path              = "../bd-macros"
+bd-proto-util.path          = "../bd-proto-util"
 bd-workspace-hack.workspace = true
-serde.workspace             = true
+protobuf.workspace          = true
 sketches-rust.workspace     = true
