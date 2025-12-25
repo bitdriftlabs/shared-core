@@ -831,32 +831,32 @@ impl WorkflowsEngine {
       .collect();
 
     let emit_metric_actions: BTreeSet<&ActionEmitMetric> = actions
-            .iter()
-            .filter_map(|action| {
-                if let TriggeredAction::EmitMetric(emit_metric_action) = action {
-                    Some(*emit_metric_action)
-                } else {
-                    None
-                }
-            })
-            // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
-            .collect();
+      .iter()
+      .filter_map(|action| {
+          if let TriggeredAction::EmitMetric(emit_metric_action) = action {
+              Some(*emit_metric_action)
+          } else {
+              None
+          }
+      })
+      // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
+      .collect();
 
     let capture_screenshot = actions
       .iter()
       .any(|action| matches!(action, TriggeredAction::TakeScreenshot));
 
     let emit_sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>> = actions
-            .into_iter()
-            .filter_map(|action| {
-                if let TriggeredAction::SankeyDiagram(action) = action {
-                    Some(action)
-                } else {
-                    None
-                }
-            })
-            // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
-            .collect();
+      .into_iter()
+      .filter_map(|action| {
+          if let TriggeredAction::SankeyDiagram(action) = action {
+              Some(action)
+          } else {
+              None
+          }
+      })
+      // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
+      .collect();
 
     PreparedActions {
       flush_buffers_actions,
@@ -1028,7 +1028,6 @@ impl StateStore {
   pub(self) async fn load_state(&self) -> anyhow::Result<WorkflowsState> {
     let bytes = read_compressed(&tokio::fs::read(&self.state_path).await?)?;
     let mut coded_input_stream = protobuf::CodedInputStream::from_bytes(&bytes);
-    // Use deserialize_message for top-level message deserialization (no outer tag+length)
     bd_proto_util::serialization::ProtoMessage::deserialize_message(&mut coded_input_stream)
   }
 
