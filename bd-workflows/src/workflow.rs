@@ -22,14 +22,13 @@ use crate::generate_log::generate_log_action;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{FieldsRef, Log, log_level};
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto_util::serialization::TimestampMicros;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_time::OffsetDateTimeExt;
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 use sha2::Digest;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::time::SystemTime;
 use time::OffsetDateTime;
 
 //
@@ -80,7 +79,8 @@ impl WorkflowEvent<'_> {
 ///     of extra state that's necessary to execute a given workflow i.e., the number of times a
 ///     given log matcher rule has matched a log.
 #[cfg_attr(test, derive(Clone))]
-#[derive(Debug, Serialize, Deserialize)]
+#[bd_macros::proto_serializable]
+#[derive(Debug)]
 pub struct Workflow {
   id: String,
   // The list of runs. Runs are organized in the following way: New runs are added to the beginning
@@ -90,7 +90,7 @@ pub struct Workflow {
   pub(crate) runs: Vec<Run>,
   // Persisted workflow debug state. This is only used for live debugging. Global debugging is
   // persisted as part of stats snapshots.
-  workflow_debug_state: OptWorkflowDebugStateMap,
+  workflow_debug_state: Option<WorkflowDebugStateMap>,
   // Whether we need to emit a "start" metric for this workflow. This is true when the workflow
   // is first delivered to the client. If the workflow is subsequently loaded from cache it
   // will not increment.
@@ -333,7 +333,7 @@ impl Workflow {
     (0 .. self.runs.len())
       .flat_map(|run_index| {
         self.runs[run_index].traversals.iter().map(|traversal| {
-          config.inner().states()[traversal.state_index]
+          config.inner().states()[traversal.state_index as usize]
             .id()
             .to_string()
         })
@@ -348,7 +348,7 @@ impl Workflow {
       .traversals
       .iter()
       .map(|traversal| {
-        config.inner().states()[traversal.state_index]
+        config.inner().states()[traversal.state_index as usize]
           .id()
           .to_string()
       })
@@ -464,7 +464,8 @@ impl WorkflowResultStats {
 // SankeyPath
 //
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[bd_macros::proto_serializable]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub(crate) struct SankeyPath {
   pub(crate) sankey_id: String,
   pub(crate) nodes: Vec<String>,
@@ -498,13 +499,15 @@ impl SankeyPath {
 // SankeyState
 //
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[bd_macros::proto_serializable]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct SankeyNodeState {
   value: String,
   counts_toward_limit: bool,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize, Clone, PartialEq, Eq)]
+#[bd_macros::proto_serializable]
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct SankeyState {
   nodes: Vec<SankeyNodeState>,
   is_trimmed: bool,
@@ -537,7 +540,8 @@ impl SankeyState {
 // Run
 //
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[bd_macros::proto_serializable]
+#[derive(Debug, Clone)]
 pub(crate) struct Run {
   /// A list of active traversals for a given workflow run.
   /// A given run can have multiple traversals. That can happen
@@ -553,7 +557,8 @@ pub(crate) struct Run {
   matched_logs_count: u32,
   /// The time at which run left its initial state. Used to implement
   /// duration limit.
-  first_progress_occurred_at: Option<SystemTime>,
+  #[field(skip)]
+  first_progress_occurred_at: Option<OffsetDateTime>,
 }
 
 impl Run {
@@ -637,40 +642,29 @@ impl Run {
       if let Some(duration_limit) = config.inner().duration_limit()
         && let Some(first_progress_occurred_at) = self.first_progress_occurred_at
       {
-        let current_time: SystemTime = event.occurred_at().into();
+        let current_time = event.occurred_at();
 
-        match current_time.duration_since(first_progress_occurred_at) {
-          Ok(duration_since_first_progress) => {
-            if duration_since_first_progress > duration_limit {
-              log::debug!(
-                "run stopped due to exceeding duration limit ({duration_limit:?}), duration since \
-                 the run first made progress progress: {duration_since_first_progress:?}"
-              );
-              return RunResult {
-                state: RunState::Stopped,
-                triggered_actions: vec![],
-                matched_logs_count: run_matched_logs_count,
-                processed_timeout: run_processed_timeout,
-                workflow_debug_state,
-                logs_to_inject: TinyMap::default(),
-              };
-            }
-          },
-          // `duration_since` fails if `earlier` time (passed as an argument) is after
-          // `current_time`. This can happen as time instances processed in here come from
-          // `TimeProvider` registered by SDK customer and nothing prevents these
-          // providers from returning decreasing times.
-          Err(e) => log::debug!(
-            "failed to calculate time difference between current time {current_time:?} and first \
-             progress occurred at time {first_progress_occurred_at:?}: {e}",
-          ),
+        let duration_since_first_progress = current_time - first_progress_occurred_at;
+        if duration_since_first_progress > duration_limit {
+          log::debug!(
+            "run stopped due to exceeding duration limit ({duration_limit:?}), duration since the \
+             run first made progress progress: {duration_since_first_progress:?}"
+          );
+          return RunResult {
+            state: RunState::Stopped,
+            triggered_actions: vec![],
+            matched_logs_count: run_matched_logs_count,
+            processed_timeout: run_processed_timeout,
+            workflow_debug_state,
+            logs_to_inject: TinyMap::default(),
+          };
         }
       }
 
       // Update the value of `first_progress_occurred_at` if this is the first progress a run
       // has made.
       if self.first_progress_occurred_at.is_none() && traversal_result.did_make_progress() {
-        self.first_progress_occurred_at = Some(event.occurred_at().into());
+        self.first_progress_occurred_at = Some(event.occurred_at());
       }
 
       // Check if the traversal should advance.
@@ -786,13 +780,14 @@ impl RunResult<'_> {
 // TraversalExtractions
 //
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[bd_macros::proto_serializable]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct TraversalExtractions {
   /// States of Sankey diagrams. It's a `None` when traversal is initialized and is set
   /// to `Some` after the first value for a Sankey and a given traversal is extracted.
   pub(crate) sankey_states: TinyMap<String, SankeyState>,
   /// Snapped timestamps, by extraction ID.
-  pub(crate) timestamps: TinyMap<String, OffsetDateTime>,
+  pub(crate) timestamps: TinyMap<String, TimestampMicros>,
   /// Snapped field values, by extraction ID.
   pub(crate) fields: TinyMap<String, String>,
 }
@@ -847,10 +842,11 @@ fn process_transition<'a>(
 /// traversals. That can happen when a given workflow traversal is forked when
 /// multiple transitions outgoing from a given state match on the
 /// same event (i.e., log).
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[bd_macros::proto_serializable]
+#[derive(Debug, Clone)]
 pub(crate) struct Traversal {
   /// The index of a state the traversal is currently at.
-  pub(crate) state_index: usize,
+  pub(crate) state_index: u64,
   /// The number of logs matched by traversal's transitions.
   /// Each element in an array corresponds to one transition.
   pub(crate) matched_logs_counts: Vec<u32>,
@@ -876,7 +872,7 @@ impl Traversal {
       None
     } else {
       let mut traversal = Self {
-        state_index,
+        state_index: state_index as u64,
         // The number of logs matched by a given traversal.
         // Start at 0 for a new traversal.
         matched_logs_counts: vec![0; state.transitions().len()],
@@ -893,7 +889,7 @@ impl Traversal {
   }
 
   fn initialize_timeout(&mut self, config: &Config, now: OffsetDateTime) {
-    let Some(state) = &config.inner().states().get(self.state_index) else {
+    let Some(state) = &config.inner().states().get(self.state_index as usize) else {
       return;
     };
     self.timeout_unix_ms = state.timeout().map(|timeout| {
@@ -931,7 +927,7 @@ impl Traversal {
       config
         .inner()
         .states()
-        .get(self.state_index)
+        .get(self.state_index as usize)
         .map(super::config::State::id)
         .unwrap_or_default()
     );
@@ -987,10 +983,12 @@ impl Traversal {
     if result.output_traversals.is_empty()
       && let Some(timeout_unix_ms) = self.timeout_unix_ms
       && now.unix_timestamp_ms() >= timeout_unix_ms
-      && let Some(actions) = config.inner().actions_for_timeout(self.state_index)
+      && let Some(actions) = config
+        .inner()
+        .actions_for_timeout(self.state_index as usize)
       && let Some(next_state_index) = config
         .inner()
-        .next_state_index_for_timeout(self.state_index)
+        .next_state_index_for_timeout(self.state_index as usize)
     {
       // Timeout transitions use default extractions and pass appropriate fields based on event
       // type. For logs, we pass the log fields. For state changes, we pass the fields that were
@@ -1005,7 +1003,7 @@ impl Traversal {
         TraversalExtractions::default(),
         actions,
         fields,
-        self.state_index,
+        self.state_index as usize,
         next_state_index,
         WorkflowDebugTransitionType::Timeout,
         config,
@@ -1066,9 +1064,9 @@ impl Traversal {
         self.do_log_extractions(config, index, log, state_reader),
         actions,
         FieldsRef::new(&log.fields, &log.matching_fields),
-        self.state_index,
+        self.state_index as usize,
         next_state_index,
-        WorkflowDebugTransitionType::Normal(index),
+        WorkflowDebugTransitionType::Normal(index as u64),
         config,
         now,
       );
@@ -1205,9 +1203,9 @@ impl Traversal {
         self.do_state_change_extractions(config, index, state_change, fields, state_reader),
         actions,
         fields,
-        self.state_index,
+        self.state_index as usize,
         next_state_index,
-        WorkflowDebugTransitionType::Normal(index),
+        WorkflowDebugTransitionType::Normal(index as u64),
         config,
         now,
       );
@@ -1262,7 +1260,7 @@ impl Traversal {
       log::debug!("extracted timestamp {timestamp} for extraction ID {timestamp_extraction_id}");
       new_extractions
         .timestamps
-        .insert(timestamp_extraction_id.clone(), timestamp);
+        .insert(timestamp_extraction_id.clone(), TimestampMicros(timestamp));
     }
 
     for extraction in &extractions.field_extractions {
@@ -1329,7 +1327,7 @@ impl Traversal {
       );
       new_extractions
         .timestamps
-        .insert(timestamp_extraction_id.clone(), timestamp);
+        .insert(timestamp_extraction_id.clone(), TimestampMicros(timestamp));
     }
 
     // Field extractions: Can extract from fields (typically global metadata like device_id,
@@ -1462,29 +1460,40 @@ impl TraversalResult<'_> {
 // WorkflowTransitionDebugState
 //
 
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone)]
+#[bd_macros::proto_serializable]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct WorkflowTransitionDebugState {
   pub count: u64,
-  pub last_transition_time: SystemTime,
+  #[field(default = "TimestampMicros::from(OffsetDateTime::UNIX_EPOCH)")]
+  pub last_transition_time: TimestampMicros,
+}
+
+impl Default for WorkflowTransitionDebugState {
+  fn default() -> Self {
+    Self {
+      count: 0,
+      last_transition_time: OffsetDateTime::UNIX_EPOCH.into(),
+    }
+  }
 }
 
 //
 // WorkflowDebugStateMap
 //
 
-// There is a non-zero size cost to using an empty HashMap over a not initialize Option so given
-// this will almost never be used minimize the cost as much as possible.
-#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[allow(clippy::box_collection)]
-pub struct WorkflowDebugStateMap(
-  pub(crate) Box<HashMap<WorkflowDebugStateKey, WorkflowTransitionDebugState>>,
-);
+// Note: Using HashMap directly instead of Box<HashMap> to support protobuf serialization.
+// The memory overhead of an empty HashMap is acceptable given debug mode is rarely enabled.
+#[bd_macros::proto_serializable]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct WorkflowDebugStateMap {
+  pub(crate) inner: HashMap<WorkflowDebugStateKey, WorkflowTransitionDebugState>,
+}
 pub type OptWorkflowDebugStateMap = Option<WorkflowDebugStateMap>;
 
 impl WorkflowDebugStateMap {
   #[must_use]
   pub fn into_inner(self) -> HashMap<WorkflowDebugStateKey, WorkflowTransitionDebugState> {
-    *self.0
+    self.inner
   }
 }
 
@@ -1492,7 +1501,7 @@ impl WorkflowDebugStateMap {
   fn merge(&mut self, other: &[WorkflowDebugStateKey], now: OffsetDateTime) {
     for key in other {
       self
-        .0
+        .inner
         .entry(key.clone())
         .and_modify(|state| {
           state.count += 1;
