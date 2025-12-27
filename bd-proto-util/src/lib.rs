@@ -7,6 +7,7 @@
 
 pub mod fbs;
 pub mod proto;
+pub mod serialization;
 
 #[cfg(feature = "buffer-log-validate")]
 use anyhow::bail;

@@ -24,6 +24,7 @@ members = [
   "bd-logger",
   "bd-log-filter",
   "bd-log-matcher",
+  "bd-macros",
   "bd-internal-logging",
   "bd-network-quality",
   "bd-noop-network",
