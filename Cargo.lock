@@ -851,6 +851,7 @@ dependencies = [
  "anyhow",
  "bd-proto",
  "bd-proto-util",
+ "bd-time",
  "bd-workspace-hack",
  "flate2",
  "ordered-float",

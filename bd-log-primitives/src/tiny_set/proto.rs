@@ -18,12 +18,8 @@ use bd_proto_util::serialization::{
   RepeatedFieldDeserialize,
 };
 
-// ProtoFieldSerialize/ProtoFieldDeserialize implementations for TinySet<T>
-// TinySet is serialized as a repeated field in protobuf.
 bd_proto_util::impl_proto_repeated!(TinySet<T>, T, PartialEq);
 
-// ProtoFieldSerialize/ProtoFieldDeserialize implementations for TinyMap
-// TinyMap is serialized as a map field (repeated key-value pairs) in protobuf.
 impl<K, V> ProtoType for TinyMap<K, V> {
   fn wire_type() -> protobuf::rt::WireType {
     protobuf::rt::WireType::LengthDelimited

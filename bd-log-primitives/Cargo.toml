@@ -12,6 +12,7 @@ doctest = false
 ahash.workspace             = true
 anyhow.workspace            = true
 bd-proto                    = { path = "../bd-proto" }
+bd-time                     = { path = "../bd-time" }
 bd-proto-util               = { path = "../bd-proto-util" }
 bd-workspace-hack.workspace = true
 flate2                      = { workspace = true, default-features = false, features = ["zlib"] }
