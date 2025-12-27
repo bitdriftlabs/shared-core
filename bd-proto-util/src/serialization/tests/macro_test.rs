@@ -292,10 +292,6 @@ fn test_enum_struct_variant_implicit() -> Result<()> {
   Ok(())
 }
 
-// ============================================================================
-// Round-trip serialization tests
-// ============================================================================
-
 #[test]
 fn test_roundtrip_proto_serializable() -> Result<()> {
   #[proto_serializable]

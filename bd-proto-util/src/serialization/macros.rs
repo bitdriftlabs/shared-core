@@ -5,38 +5,19 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-// Copyright (C) 2024 Bitdrift, Inc.
-// SPDX-License-Identifier: Apache-2.0 OR PolyForm-Shield-1.0.0
-// You may obtain a copy of the license at
-// https://www.apache.org/licenses/LICENSE-2.0
-// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
-
 //! Macros for implementing protobuf serialization traits.
 
-/// Implements `ProtoFieldSerialize` and `ProtoFieldDeserialize` for repeated field collections.
+/// Implements `ProtoFieldSerialize` and `RepeatedFieldDeserialize` for repeated field collections.
 ///
 /// This macro reduces boilerplate for collection types like `Vec<T>`, `BTreeSet<T>`, and
 /// `TinySet<T>` by generating the standard repeated field serialization logic.
-///
-/// # Usage
-///
-/// ```ignore
-/// // For Vec<T> (no additional trait bounds)
-/// impl_proto_repeated!(Vec<T>, T);
-///
-/// // For BTreeSet<T> (requires Ord)
-/// impl_proto_repeated!(std::collections::BTreeSet<T>, T, Ord);
-///
-/// // For TinySet<T> (requires PartialEq)
-/// impl_proto_repeated!(TinySet<T>, T, PartialEq);
-/// ```
 ///
 /// # How it works
 ///
 /// The macro generates implementations that:
 /// - Serialize each element with the same field number (protobuf repeated fields)
-/// - Deserialize returns a collection with a single element
-/// - The proc macro uses `merge_repeated` to extend the target collection
+/// - Use `RepeatedFieldDeserialize` for efficient incremental deserialization
+/// - Elements are added directly to the collection without intermediate allocations
 ///
 /// # Variants
 ///
@@ -78,16 +59,20 @@ macro_rules! impl_proto_repeated {
     }
 
     impl<$item: $crate::serialization::ProtoFieldDeserialize + $bounds>
-      $crate::serialization::ProtoFieldDeserialize for $collection
+      $crate::serialization::RepeatedFieldDeserialize for $collection
     where
       $collection: Default + Extend<$item>,
     {
-      fn deserialize(is: &mut protobuf::CodedInputStream<'_>) -> anyhow::Result<Self> {
-        // For repeated fields, deserialize returns a collection with a single element.
-        // The macro will call merge_repeated to extend the target collection.
-        let mut result = Self::default();
-        result.extend(std::iter::once($item::deserialize(is)?));
-        Ok(result)
+      type Element = $item;
+
+      fn deserialize_element(
+        is: &mut protobuf::CodedInputStream<'_>,
+      ) -> anyhow::Result<Self::Element> {
+        $item::deserialize(is)
+      }
+
+      fn add_element(&mut self, element: Self::Element) {
+        self.extend(std::iter::once(element));
       }
     }
   };
@@ -123,21 +108,21 @@ macro_rules! impl_proto_repeated {
     }
 
     impl<$item: $crate::serialization::ProtoFieldDeserialize>
-      $crate::serialization::ProtoFieldDeserialize for $collection
+      $crate::serialization::RepeatedFieldDeserialize for $collection
     where
       $collection: Default + Extend<$item>,
     {
-      fn deserialize(is: &mut protobuf::CodedInputStream<'_>) -> anyhow::Result<Self> {
-        // For repeated fields, deserialize returns a collection with a single element.
-        // The macro will call merge_repeated to extend the target collection.
-        let mut result = Self::default();
-        result.extend(std::iter::once($item::deserialize(is)?));
-        Ok(result)
+      type Element = $item;
+
+      fn deserialize_element(
+        is: &mut protobuf::CodedInputStream<'_>,
+      ) -> anyhow::Result<Self::Element> {
+        $item::deserialize(is)
+      }
+
+      fn add_element(&mut self, element: Self::Element) {
+        self.extend(std::iter::once(element));
       }
     }
   };
 }
-
-// Apply the macro to standard library types
-impl_proto_repeated!(Vec<T>, T);
-impl_proto_repeated!(std::collections::BTreeSet<T>, T, Ord);

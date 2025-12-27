@@ -5,13 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-// shared-core - bitdrift's common client/server libraries
-// Copyright Bitdrift, Inc. All rights reserved.
-//
-// Use of this source code is governed by a source available license that can be found in the
-// LICENSE file or at:
-// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
-
 //! Protobuf serialization traits and implementations.
 //!
 //! This module provides a trait-based system for manual protobuf serialization that works
@@ -36,7 +29,7 @@ pub mod types;
 
 // Re-export commonly used items
 pub use map::{compute_map_size, deserialize_map_entry, serialize_map};
-pub use runtime::{merge_repeated, read_nested};
+pub use runtime::read_nested;
 pub use types::TimestampMicros;
 
 /// Trait defining the wire type of a value.

@@ -25,8 +25,6 @@ struct VariantAttrs {
   explicit_deserialize: bool,
 }
 
-// === Attribute parsing helpers ===
-
 fn parse_field_attrs(field: &Field) -> FieldAttrs {
   let mut tag = None;
   let mut skip = false;
@@ -98,8 +96,6 @@ fn parse_variant_attrs(variant: &Variant) -> VariantAttrs {
   }
 }
 
-// === Type detection helpers ===
-
 /// Checks if a type is a repeated field type (`Vec`, `HashMap`, `AHashMap`, `TinyMap`, etc.)
 /// Returns true if the type should use `RepeatedFieldDeserialize` trait.
 /// This is used for auto-detection of common collection types.
@@ -130,8 +126,6 @@ fn is_repeated_field_type(ty: &syn::Type) -> bool {
     false
   }
 }
-
-// === Enum variant handlers ===
 
 fn handle_tuple_variant(
   variant_name: &syn::Ident,
@@ -358,9 +352,7 @@ fn insert_with_conflict_check(
 
 #[proc_macro_attribute]
 pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
-  // Check for arguments
   let attr_str = attr.to_string();
-  // DEBUG: panic!("Attr: '{}'", attr_str);
   let serialize_only = attr_str.contains("serialize_only");
 
   // We expect this attribute to be placed on a struct.
@@ -403,7 +395,6 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
 
   match &input.data {
     Data::Struct(data_struct) => {
-      // ... existing struct logic ...
       match &data_struct.fields {
         Fields::Named(fields) => {
           // First pass: collect all field attrs and check for explicit numbering mode

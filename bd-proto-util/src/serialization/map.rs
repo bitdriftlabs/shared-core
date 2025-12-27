@@ -5,12 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-// Copyright (C) 2024 Bitdrift, Inc.
-// SPDX-License-Identifier: Apache-2.0 OR PolyForm-Shield-1.0.0
-// You may obtain a copy of the license at
-// https://www.apache.org/licenses/LICENSE-2.0
-// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
-
 //! Helper functions for implementing protobuf map serialization.
 //!
 //! These functions provide reusable implementations for map-like types (`HashMap`, `TinyMap`, etc.)
@@ -30,21 +24,6 @@ use protobuf::{CodedInputStream, CodedOutputStream};
 /// Maps in protobuf are encoded as repeated messages, where each message contains:
 /// - Field 1: key
 /// - Field 2: value
-///
-/// # Example
-///
-/// ```ignore
-/// impl<K, V> ProtoFieldSerialize for MyMap<K, V>
-/// where
-///   K: ProtoFieldSerialize,
-///   V: ProtoFieldSerialize,
-/// {
-///   fn compute_size(&self, field_number: u32) -> u64 {
-///     compute_map_size(self, field_number)
-///   }
-///   // ...
-/// }
-/// ```
 pub fn compute_map_size<'a, K, V>(
   entries: impl IntoIterator<Item = (&'a K, &'a V)>,
   field_number: u32,
@@ -76,21 +55,6 @@ where
 /// - Length of the entry message
 /// - Key (field 1)
 /// - Value (field 2)
-///
-/// # Example
-///
-/// ```ignore
-/// impl<K, V> ProtoFieldSerialize for MyMap<K, V>
-/// where
-///   K: ProtoFieldSerialize,
-///   V: ProtoFieldSerialize,
-/// {
-///   fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
-///     serialize_map(self, field_number, os)
-///   }
-///   // ...
-/// }
-/// ```
 pub fn serialize_map<'a, K, V>(
   entries: impl IntoIterator<Item = (&'a K, &'a V)>,
   field_number: u32,
@@ -124,29 +88,6 @@ where
 ///
 /// According to the protobuf specification, if a key or value is missing from a map entry,
 /// the default value for that type should be used. This matches standard protobuf behavior.
-///
-/// # Usage
-///
-/// The `deserialize` implementation for map types should call this function and insert
-/// the returned entry into the map. Since protobuf maps can have multiple entries, the
-/// proc macro will call `merge_repeated` to merge entries together.
-///
-/// # Example
-///
-/// ```ignore
-/// impl<K, V> ProtoFieldDeserialize for MyMap<K, V>
-/// where
-///   K: ProtoFieldDeserialize + Default,
-///   V: ProtoFieldDeserialize + Default,
-/// {
-///   fn deserialize(is: &mut CodedInputStream<'_>) -> Result<Self> {
-///     let (key, value) = deserialize_map_entry(is)?;
-///     let mut map = Self::default();
-///     map.insert(key, value);
-///     Ok(map)
-///   }
-/// }
-/// ```
 pub fn deserialize_map_entry<K, V>(is: &mut CodedInputStream<'_>) -> Result<(K, V)>
 where
   K: ProtoFieldDeserialize + Default,

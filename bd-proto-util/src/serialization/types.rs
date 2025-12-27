@@ -29,10 +29,6 @@ use protobuf::rt::WireType;
 use protobuf::well_known_types::timestamp::Timestamp;
 use protobuf::{CodedInputStream, CodedOutputStream, Message as _};
 
-// ============================================================================
-// Primitive types
-// ============================================================================
-
 impl ProtoType for String {
   fn wire_type() -> WireType {
     WireType::LengthDelimited
@@ -622,6 +618,28 @@ where
 // Note: Vec<u8> is intentionally NOT implemented here because it has special handling
 // as a bytes field (single blob, not repeated elements).
 // This implementation is for Vec<T> where T != u8, which are true repeated fields.
+impl<T: ProtoType> ProtoType for Vec<T> {
+  fn wire_type() -> WireType {
+    T::wire_type()
+  }
+}
+
+impl<T: ProtoFieldSerialize> ProtoFieldSerialize for Vec<T> {
+  fn compute_size(&self, field_number: u32) -> u64 {
+    self
+      .iter()
+      .map(|item| item.compute_size(field_number))
+      .sum()
+  }
+
+  fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    for item in self {
+      item.serialize(field_number, os)?;
+    }
+    Ok(())
+  }
+}
+
 impl<T> RepeatedFieldDeserialize for Vec<T>
 where
   T: ProtoFieldDeserialize,
@@ -638,6 +656,28 @@ where
 }
 
 // Implementation for BTreeSet<T> as a repeated field
+impl<T: ProtoType + Ord> ProtoType for std::collections::BTreeSet<T> {
+  fn wire_type() -> WireType {
+    T::wire_type()
+  }
+}
+
+impl<T: ProtoFieldSerialize + Ord> ProtoFieldSerialize for std::collections::BTreeSet<T> {
+  fn compute_size(&self, field_number: u32) -> u64 {
+    self
+      .iter()
+      .map(|item| item.compute_size(field_number))
+      .sum()
+  }
+
+  fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    for item in self {
+      item.serialize(field_number, os)?;
+    }
+    Ok(())
+  }
+}
+
 impl<T> crate::serialization::RepeatedFieldDeserialize for std::collections::BTreeSet<T>
 where
   T: ProtoFieldDeserialize + Ord,
