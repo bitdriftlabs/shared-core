@@ -13,6 +13,7 @@ ahash.workspace             = true
 anyhow.workspace            = true
 base64ct.workspace          = true
 bd-proto.path               = "../bd-proto"
+bd-time.path                = "../bd-time"
 bd-workspace-hack.workspace = true
 flatbuffers.workspace       = true
 itertools.workspace         = true

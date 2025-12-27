@@ -1021,6 +1021,7 @@ dependencies = [
  "base64ct",
  "bd-macros",
  "bd-proto",
+ "bd-time",
  "bd-workspace-hack",
  "cc",
  "flatbuffers",
