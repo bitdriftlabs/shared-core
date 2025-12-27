@@ -103,10 +103,32 @@ pub trait ProtoMessage: ProtoFieldSerialize + ProtoFieldDeserialize {
   /// Use this when saving messages to files or other contexts where there's no enclosing message.
   fn serialize_message(&self, os: &mut CodedOutputStream<'_>) -> anyhow::Result<()>;
 
+  // Serializes this message to a byte vector as a top-level message.
+  fn serialize_message_to_bytes(&self) -> anyhow::Result<Vec<u8>> {
+    let size = self.compute_size(0);
+    let capacity = usize::try_from(size)
+      .map_err(|_| anyhow::anyhow!("Message size {size} exceeds usize::MAX"))?;
+    let mut buf = Vec::with_capacity(capacity);
+    {
+      let mut os = CodedOutputStream::vec(&mut buf);
+      self.serialize_message(&mut os)?;
+      os.flush()?;
+    }
+    Ok(buf)
+  }
+
   /// Deserializes this message as a top-level message (without expecting outer tag+length wrapper).
   /// Use this when loading messages from files or other contexts where there's no enclosing
   /// message.
   fn deserialize_message(is: &mut CodedInputStream<'_>) -> anyhow::Result<Self>;
+
+  /// Deserializes this message from a byte slice as a top-level message.
+  fn deserialize_message_from_bytes(bytes: &[u8]) -> anyhow::Result<Self> {
+    let mut is = CodedInputStream::from_bytes(bytes);
+    let msg = Self::deserialize_message(&mut is)?;
+    is.check_eof()?;
+    Ok(msg)
+  }
 }
 
 #[cfg(test)]

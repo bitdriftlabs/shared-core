@@ -5,12 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#![allow(clippy::items_after_statements)]
-#![allow(clippy::unreadable_literal)]
-#![allow(clippy::use_self)]
-#![allow(clippy::uninlined_format_args)]
-#![allow(clippy::implicit_hasher)]
-
 // We need to alias crate to bd_proto_util for the macro to work within the crate itself
 use crate as bd_proto_util;
 use anyhow::Result;
@@ -452,6 +446,42 @@ fn test_enum_roundtrip() -> Result<()> {
 
     assert_eq!(original, roundtripped);
   }
+
+  Ok(())
+}
+
+#[test]
+fn test_field_numbering_starts_at_one() -> Result<()> {
+  // This test verifies that auto-assigned field numbers start at 1, not 0
+  #[proto_serializable]
+  #[derive(Debug, PartialEq, Default)]
+  struct TestImplicitFieldNumbers {
+    first: String,
+    second: u32,
+  }
+
+  #[proto_serializable]
+  #[derive(Debug, PartialEq, Default)]
+  struct TestExplicitFieldNumbers {
+    #[field(id = 1)]
+    first: String,
+    #[field(id = 2)]
+    second: u32,
+  }
+
+  let obj1 = TestImplicitFieldNumbers {
+    first: "test".to_string(),
+    second: 42,
+  };
+  let obj2 = TestExplicitFieldNumbers {
+    first: "test".to_string(),
+    second: 42,
+  };
+
+  assert_eq!(
+    obj1.serialize_message_to_bytes()?,
+    obj2.serialize_message_to_bytes()?
+  );
 
   Ok(())
 }

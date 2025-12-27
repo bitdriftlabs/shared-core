@@ -11,7 +11,7 @@
 //! - Primitive types (String, integers, bool, f64)
 //! - Standard library types (`Vec<u8>`, `Option<T>`, `Box<T>`, `Cow<str>`, `Arc<str>`)
 //! - Collection types (`HashMap`, `AHashMap`, `Vec<T>`, `BTreeSet<T>`)
-//! - Time types (`OffsetDateTime`, `TimestampMicros`)
+//! - Time types (`TimestampMicros`)
 //! - Special types (`LogType` enum, `NotNan<f64>`, unit type)
 
 use crate::serialization::{
@@ -26,8 +26,7 @@ use crate::serialization::{
 use anyhow::Result;
 use bd_time::OffsetDateTimeExt;
 use protobuf::rt::WireType;
-use protobuf::well_known_types::timestamp::Timestamp;
-use protobuf::{CodedInputStream, CodedOutputStream, Message as _};
+use protobuf::{CodedInputStream, CodedOutputStream};
 
 impl ProtoType for String {
   fn wire_type() -> WireType {
@@ -98,32 +97,24 @@ impl ProtoFieldDeserialize for u64 {
   }
 }
 
-impl ProtoType for usize {
-  fn wire_type() -> WireType {
-    WireType::Varint
-  }
-}
-
-impl ProtoFieldSerialize for usize {
-  fn compute_size(&self, field_number: u32) -> u64 {
-    #[allow(clippy::cast_possible_truncation)]
-    protobuf::rt::uint64_size(field_number, *self as u64)
-  }
-
-  fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
-    #[allow(clippy::cast_possible_truncation)]
-    os.write_uint64(field_number, *self as u64)?;
-    Ok(())
-  }
-}
-
-impl ProtoFieldDeserialize for usize {
-  fn deserialize(is: &mut CodedInputStream<'_>) -> Result<Self> {
-    let value = is.read_uint64()?;
-    #[allow(clippy::cast_possible_truncation)]
-    Ok(value as Self)
-  }
-}
+// NOTE: We intentionally do NOT implement ProtoFieldSerialize/ProtoFieldDeserialize for
+// usize/isize.
+//
+// Rationale:
+// - usize/isize have platform-dependent sizes (32-bit on some platforms, 64-bit on others)
+// - Serializing them would require choosing either: a) Platform-specific wire format (breaks
+//   cross-platform compatibility) b) Fixed wire format (uint64) with validation (adds surprising
+//   behavior and potential runtime errors)
+// - Using usize in a serialized format suggests platform-dependent semantics, which is usually a
+//   design smell
+// - Better API design: explicitly use u32 or u64 based on your actual requirements
+//
+// If you need to serialize a size/length/index, explicitly choose:
+// - u32 if your values will always fit in 4 bytes (most cases)
+// - u64 if you need the full range
+//
+// Example: Instead of `field: usize`, use `field: u64` or cast at usage: `field: u64 = vec.len() as
+// u64`
 
 impl ProtoType for i32 {
   fn wire_type() -> WireType {
@@ -382,76 +373,9 @@ impl ProtoFieldSerialize for &'static str {
   }
 }
 
-// ============================================================================
-// Time types
-// ============================================================================
-
-// Implementation for time::OffsetDateTime
-// Serializes as google.protobuf.Timestamp
-// message Timestamp {
-//   int64 seconds = 1;
-//   int32 nanos = 2;
-// }
-
-impl ProtoType for time::OffsetDateTime {
-  fn wire_type() -> WireType {
-    WireType::LengthDelimited
-  }
-}
-
-impl ProtoFieldSerialize for time::OffsetDateTime {
-  fn compute_size(&self, field_number: u32) -> u64 {
-    // Since OffsetDateTime maps to google.protobuf.Timestamp and google.protobuf.Timestamp is a
-    // trivial message we can just delegate to the protobuf implementation here.
-    Timestamp::default().compute_size() + protobuf::rt::tag_size(field_number)
-  }
-
-  fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
-    os.write_tag(field_number, WireType::LengthDelimited)?;
-    Timestamp {
-      seconds: self.unix_timestamp(),
-      #[allow(clippy::cast_possible_wrap)]
-      nanos: self.nanosecond() as i32,
-      ..Default::default()
-    }
-    .write_to(os)?;
-
-    Ok(())
-  }
-}
-
-impl ProtoFieldDeserialize for time::OffsetDateTime {
-  fn deserialize(is: &mut CodedInputStream<'_>) -> Result<Self> {
-    let ts = Timestamp::parse_from(is)?;
-
-    Ok(Self::from_unix_timestamp_nanos(
-      ts.seconds
-        .checked_mul(1_000_000_000)
-        .and_then(|s| s.checked_add(i64::from(ts.nanos)))
-        .ok_or_else(|| anyhow::anyhow!("Timestamp overflow"))?
-        .into(),
-    )?)
-  }
-}
-
-// ============================================================================
-// TimestampMicros - Microseconds since Unix epoch
-// ============================================================================
-
 /// A timestamp stored as microseconds since Unix epoch (uint64).
 ///
-/// This is an alternative to serializing `time::OffsetDateTime` as a nested
-/// `google.protobuf.Timestamp` message. Use this when you need a simpler,
-/// more compact representation at the cost of losing nanosecond precision.
-///
-/// # Example
-/// ```ignore
-/// #[proto_serializable]
-/// struct MyMessage {
-///   #[field(1)]
-///   timestamp: TimestampMicros,
-/// }
-/// ```
+/// This serializes an OffsetDateTime as a uint64 representing microseconds since Unix epoch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TimestampMicros(pub time::OffsetDateTime);
 

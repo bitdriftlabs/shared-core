@@ -9,8 +9,6 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{Data, DeriveInput, Field, Fields, Meta, Variant, parse_macro_input};
 
-// === Helper structs for parsed attributes ===
-
 #[derive(Clone)]
 struct FieldAttrs {
   tag: Option<u32>,
@@ -257,7 +255,12 @@ fn handle_struct_variant(
 
       if inner_size > 0 {
         os.write_tag(#tag, protobuf::rt::WireType::LengthDelimited)?;
-        os.write_raw_varint32(inner_size as u32)?;
+        let inner_size_u32 = u32::try_from(inner_size)
+          .map_err(|_| anyhow::anyhow!(
+            "Enum struct variant payload too large to serialize: {} bytes exceeds u32::MAX",
+            inner_size
+          ))?;
+        os.write_raw_varint32(inner_size_u32)?;
         #(#serialize_fields)*
       }
     }
@@ -441,12 +444,15 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
               )
             } else {
               // Auto-assign based on position (skip counted fields)
+              // Protobuf field numbers start at 1, not 0
               let auto_idx = fields_with_attrs[..= field_idx]
                 .iter()
                 .filter(|(_, a)| !a.skip)
                 .count();
+
               #[allow(clippy::cast_possible_truncation)]
               let field_num = auto_idx as u32;
+              assert!(field_num > 0, "Field numbering must start at 1");
               field_num
             };
 
@@ -609,7 +615,12 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
                           if inner_size == 0 { return Ok(()); }
 
                           os.write_tag(field_number, protobuf::rt::WireType::LengthDelimited)?;
-                          os.write_raw_varint32(inner_size as u32)?;
+                          let inner_size_u32 = u32::try_from(inner_size)
+                            .map_err(|_| anyhow::anyhow!(
+                              "Enum variant payload too large to serialize: {} bytes exceeds u32::MAX",
+                              inner_size
+                            ))?;
+                          os.write_raw_varint32(inner_size_u32)?;
 
                           match self {
                               #(#serialize_arms)*
@@ -705,7 +716,12 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
                   }
 
                   os.write_tag(field_number, protobuf::rt::WireType::LengthDelimited)?;
-                  os.write_raw_varint32(inner_size as u32)?;
+                  let inner_size_u32 = u32::try_from(inner_size)
+                    .map_err(|_| anyhow::anyhow!(
+                      "Message payload too large to serialize: {} bytes exceeds u32::MAX",
+                      inner_size
+                    ))?;
+                  os.write_raw_varint32(inner_size_u32)?;
 
                   #(#field_processing)*
 
