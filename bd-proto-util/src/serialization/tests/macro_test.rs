@@ -139,10 +139,6 @@ fn test_nested_struct() -> Result<()> {
   Ok(())
 }
 
-// ============================================================================
-// Tests for implicit field numbering
-// ============================================================================
-
 #[test]
 fn test_implicit_field_numbering() -> Result<()> {
   #[proto_serializable]
@@ -322,13 +318,6 @@ fn test_roundtrip_proto_serializable() -> Result<()> {
 fn test_roundtrip_with_rust_protobuf() -> Result<()> {
   use protobuf::well_known_types::wrappers::StringValue;
 
-  // Create a StringValue using rust-protobuf
-  let mut string_val = StringValue::new();
-  string_val.value = "test_value".to_string();
-
-  // Serialize using rust-protobuf
-  let pb_bytes = string_val.write_to_bytes()?;
-
   // Create our custom struct with same wire format
   #[proto_serializable]
   #[derive(Debug, Default, PartialEq)]
@@ -336,19 +325,21 @@ fn test_roundtrip_with_rust_protobuf() -> Result<()> {
     value: String,
   }
 
+  // Create a StringValue using rust-protobuf
+  let mut string_val = StringValue::new();
+  string_val.value = "test_value".to_string();
+
+  // Serialize using rust-protobuf
+  let pb_bytes = string_val.write_to_bytes()?;
+
   // Deserialize rust-protobuf bytes into our custom struct (without field wrapper)
-  let mut is = CodedInputStream::from_bytes(&pb_bytes);
-  let custom = CustomStringValue::deserialize_message(&mut is)?;
+  let custom = CustomStringValue::deserialize_message_from_bytes(&pb_bytes)?;
 
   // Verify fields match
   assert_eq!(custom.value, "test_value");
 
   // Serialize our custom struct (without field wrapper)
-  let mut buf = Vec::new();
-  let mut os = CodedOutputStream::vec(&mut buf);
-  custom.serialize_message(&mut os)?;
-  os.flush()?;
-  drop(os);
+  let buf = custom.serialize_message_to_bytes()?;
 
   // Deserialize back into rust-protobuf
   let string_val2 = StringValue::parse_from_bytes(&buf)?;
@@ -364,6 +355,15 @@ fn test_roundtrip_nested_with_protobuf() -> Result<()> {
   use protobuf::well_known_types::any::Any;
   use protobuf::well_known_types::wrappers::StringValue;
 
+  // Our custom struct that should be compatible
+  #[proto_serializable]
+  #[derive(Debug, Default)]
+  struct CustomAny {
+    type_url: String,
+    value: Vec<u8>,
+  }
+
+
   // Create a StringValue using rust-protobuf
   let mut string_val = StringValue::new();
   string_val.value = "nested_test".to_string();
@@ -375,17 +375,8 @@ fn test_roundtrip_nested_with_protobuf() -> Result<()> {
   any.value = string_bytes.clone();
   let any_bytes = any.write_to_bytes()?;
 
-  // Our custom struct that should be compatible
-  #[proto_serializable]
-  #[derive(Debug, Default)]
-  struct CustomAny {
-    type_url: String,
-    value: Vec<u8>,
-  }
-
   // Deserialize Any into our custom struct (without field wrapper)
-  let mut is = CodedInputStream::from_bytes(&any_bytes);
-  let custom_any = CustomAny::deserialize_message(&mut is)?;
+  let custom_any = CustomAny::deserialize_message_from_bytes(&any_bytes)?;
 
   assert_eq!(
     custom_any.type_url,
@@ -394,11 +385,7 @@ fn test_roundtrip_nested_with_protobuf() -> Result<()> {
   assert_eq!(custom_any.value, string_bytes);
 
   // Serialize back (without field wrapper)
-  let mut buf = Vec::new();
-  let mut os = CodedOutputStream::vec(&mut buf);
-  custom_any.serialize_message(&mut os)?;
-  os.flush()?;
-  drop(os);
+  let buf = custom_any.serialize_message_to_bytes()?;
 
   // Deserialize back into rust-protobuf Any
   let any2 = Any::parse_from_bytes(&buf)?;
@@ -428,7 +415,7 @@ fn test_enum_roundtrip() -> Result<()> {
     Status::Pending,
     Status::Active {
       user_id: "user123".to_string(),
-      start_time: 1234567890,
+      start_time: 1_234_567_890,
     },
     Status::Complete(42),
   ];

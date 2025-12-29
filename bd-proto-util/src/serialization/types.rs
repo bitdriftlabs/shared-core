@@ -105,16 +105,10 @@ impl ProtoFieldDeserialize for u64 {
 // - Serializing them would require choosing either: a) Platform-specific wire format (breaks
 //   cross-platform compatibility) b) Fixed wire format (uint64) with validation (adds surprising
 //   behavior and potential runtime errors)
-// - Using usize in a serialized format suggests platform-dependent semantics, which is usually a
-//   design smell
-// - Better API design: explicitly use u32 or u64 based on your actual requirements
 //
 // If you need to serialize a size/length/index, explicitly choose:
 // - u32 if your values will always fit in 4 bytes (most cases)
 // - u64 if you need the full range
-//
-// Example: Instead of `field: usize`, use `field: u64` or cast at usage: `field: u64 = vec.len() as
-// u64`
 
 impl ProtoType for i32 {
   fn wire_type() -> WireType {
@@ -375,7 +369,7 @@ impl ProtoFieldSerialize for &'static str {
 
 /// A timestamp stored as microseconds since Unix epoch (uint64).
 ///
-/// This serializes an OffsetDateTime as a uint64 representing microseconds since Unix epoch.
+/// This serializes an `OffsetDateTime` as a uint64 representing microseconds since Unix epoch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TimestampMicros(pub time::OffsetDateTime);
 

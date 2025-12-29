@@ -62,25 +62,6 @@ pub trait ProtoFieldDeserialize: ProtoType + Sized {
 ///
 /// This trait provides a more efficient deserialization path for collections by eliminating
 /// creating intermediate single-element containers and merging them.
-///
-/// # Example
-///
-/// For a protobuf map field, instead of:
-/// 1. Deserialize entry → create `HashMap` with 1 entry
-/// 2. Deserialize entry → create `HashMap` with 1 entry
-/// 3. Merge all `HashMaps` together
-///
-/// We can:
-/// 1. Create empty `HashMap`
-/// 2. Deserialize entry → insert directly
-/// 3. Deserialize entry → insert directly
-///
-/// # Implementation
-///
-/// Types implementing this trait should:
-/// - Define `Element` as the type of a single repeated item (e.g., `(K, V)` for maps)
-/// - Implement `deserialize_element` to read one element from the stream
-/// - Implement `add_element` to add an element to the container
 pub trait RepeatedFieldDeserialize: ProtoType + Sized + Default {
   /// The type of a single repeated element.
   /// For `HashMap<K, V>`, this is (K, V).
