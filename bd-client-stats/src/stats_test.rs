@@ -1072,7 +1072,7 @@ async fn flush_during_periodic_upload() {
     .stats
     .record_dynamic_counter(labels!("foo" => "baz"), "id2", 2);
 
-  // 6. Trigger explicit flush. Pretend periodic is taking a very long time to come back to that
+  // 6. Trigger explicit flush. Pretend periodic is taking a very long time to come back so that
   // the minimum time between uploads has elapsed.
   setup.test_time.advance(Duration::seconds(31));
   let (tx, rx) = bd_completion::Sender::new();

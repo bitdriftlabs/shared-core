@@ -299,36 +299,39 @@ impl Flusher {
     // TODO(mattklein123): Currently we just ignore flush requests if one is already in flight.
     // We could consider queueing them up and processing them one after another, but given that
     // flushes are relatively infrequent this seems ok for now.
-    if !self.flush_in_flight {
-      log::debug!("received a signal to flush stats to disk");
-      self.flush_to_disk().await;
-      log::debug!("stats flushed");
+    if self.flush_in_flight {
+      log::debug!("flush already in progress, skipping");
+      return;
+    }
 
-      if !request.do_upload {
-        if let Some(tx) = request.completion_tx {
-          let () = tx.send(());
-        }
-        return;
-      }
+    log::debug!("received a signal to flush stats to disk");
+    self.flush_to_disk().await;
+    log::debug!("stats flushed");
 
-      if self.should_skip_upload() {
-        log::debug!("skipping flush upload, minimum interval not elapsed");
-        if let Some(tx) = request.completion_tx {
-          let () = tx.send(());
-        }
-        return;
-      }
-
-      if let Some((uuid, rx)) = self
-        .upload_from_disk(false, UploadReason::UPLOAD_REASON_EVENT_TRIGGERED)
-        .await
-      {
-        self.last_upload_time = Some(self.time_provider.now());
-        self.flush_in_flight = true;
-        self.push_upload_future(uuid, rx, UploadContext::Flush(request));
-      } else if let Some(tx) = request.completion_tx {
+    if !request.do_upload {
+      if let Some(tx) = request.completion_tx {
         let () = tx.send(());
       }
+      return;
+    }
+
+    if self.should_skip_upload() {
+      log::debug!("skipping flush upload, minimum interval not elapsed");
+      if let Some(tx) = request.completion_tx {
+        let () = tx.send(());
+      }
+      return;
+    }
+
+    if let Some((uuid, rx)) = self
+      .upload_from_disk(false, UploadReason::UPLOAD_REASON_EVENT_TRIGGERED)
+      .await
+    {
+      self.last_upload_time = Some(self.time_provider.now());
+      self.flush_in_flight = true;
+      self.push_upload_future(uuid, rx, UploadContext::Flush(request));
+    } else if let Some(tx) = request.completion_tx {
+      let () = tx.send(());
     }
   }
 
@@ -367,7 +370,7 @@ impl Flusher {
             .upload_from_disk(true, UploadReason::UPLOAD_REASON_PERIODIC)
             .await
           {
-            // Old file uploads bypass the minimum interval check, so don't update last_upload_time.
+            // Old file uploads bypass the minimum interval check, so don't check last_upload_time.
             self.push_upload_future(uuid, rx, UploadContext::Periodic);
           } else {
             self.periodic_in_flight = false;
