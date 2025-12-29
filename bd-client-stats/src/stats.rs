@@ -17,8 +17,11 @@ use bd_api::upload::{TrackedStatsUploadRequest, UploadResponse};
 use bd_client_common::maybe_await_interval;
 use bd_client_stats_store::{Collector, Histogram, MetricData, MetricsByNameCore};
 use bd_error_reporter::reporter::handle_unexpected;
-use bd_proto::protos::client::api::stats_upload_request::Snapshot as StatsSnapshot;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::Snapshot_type;
+use bd_proto::protos::client::api::stats_upload_request::{
+  Snapshot as StatsSnapshot,
+  UploadReason,
+};
 use bd_proto::protos::client::api::{StatsUploadRequest, debug_data_request};
 use bd_proto::protos::client::metric::metric::Metric_name_type;
 use bd_proto::protos::client::metric::{Metric as ProtoMetric, MetricsList};
@@ -282,7 +285,10 @@ impl Flusher {
       return;
     }
 
-    if let Some((uuid, rx)) = self.upload_from_disk(false).await {
+    if let Some((uuid, rx)) = self
+      .upload_from_disk(false, UploadReason::UPLOAD_REASON_PERIODIC)
+      .await
+    {
       self.last_upload_time = Some(self.time_provider.now());
       self.periodic_in_flight = true;
       self.push_upload_future(uuid, rx, UploadContext::Periodic);
@@ -313,7 +319,10 @@ impl Flusher {
         return;
       }
 
-      if let Some((uuid, rx)) = self.upload_from_disk(false).await {
+      if let Some((uuid, rx)) = self
+        .upload_from_disk(false, UploadReason::UPLOAD_REASON_EVENT_TRIGGERED)
+        .await
+      {
         self.last_upload_time = Some(self.time_provider.now());
         self.flush_in_flight = true;
         self.push_upload_future(uuid, rx, UploadContext::Flush(request));
@@ -354,7 +363,10 @@ impl Flusher {
           // old file at the head of the list which we should upload immediately.
           // TODO(mattklein123): It would be better to batch all of the "old" files into a single
           // upload request. We can do this in the future.
-          if let Some((uuid, rx)) = self.upload_from_disk(true).await {
+          if let Some((uuid, rx)) = self
+            .upload_from_disk(true, UploadReason::UPLOAD_REASON_PERIODIC)
+            .await
+          {
             // Old file uploads bypass the minimum interval check, so don't update last_upload_time.
             self.push_upload_future(uuid, rx, UploadContext::Periodic);
           } else {
@@ -599,17 +611,21 @@ impl Flusher {
   async fn upload_from_disk(
     &self,
     only_if_file_is_old: bool,
+    upload_reason: UploadReason,
   ) -> Option<(String, oneshot::Receiver<UploadResponse>)> {
     async fn inner(
       flusher: &Flusher,
       only_if_file_is_old: bool,
+      upload_reason: UploadReason,
     ) -> anyhow::Result<Option<(String, oneshot::Receiver<UploadResponse>)>> {
       if let Some(pending_upload) = flusher
         .file_manager
         .get_or_create_pending_upload(only_if_file_is_old)
         .await?
       {
-        return flusher.process_pending_upload(pending_upload).await;
+        return flusher
+          .process_pending_upload(pending_upload, upload_reason)
+          .await;
       }
       Ok(None)
     }
@@ -620,7 +636,7 @@ impl Flusher {
     // get a better understanding of why things are failing at which point we can do more targeted
     // error handling.
     log::debug!("processing upload from disk");
-    match inner(self, only_if_file_is_old).await {
+    match inner(self, only_if_file_is_old, upload_reason).await {
       Ok(result) => result,
       Err(e) => {
         handle_unexpected::<(), anyhow::Error>(Err(e), "upload from disk");
@@ -633,8 +649,10 @@ impl Flusher {
   // request will be deleted.
   async fn process_pending_upload(
     &self,
-    request: StatsUploadRequest,
+    mut request: StatsUploadRequest,
+    upload_reason: UploadReason,
   ) -> anyhow::Result<Option<(String, oneshot::Receiver<UploadResponse>)>> {
+    request.upload_reason = upload_reason.into();
     let (stats, response_rx) = TrackedStatsUploadRequest::new(request.upload_uuid.clone(), request);
 
     log::debug!(

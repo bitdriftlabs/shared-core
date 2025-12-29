@@ -16,11 +16,14 @@ use bd_client_common::file_system::{FileSystem, RealFileSystem};
 use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
 use bd_proto::protos::client::api::StatsUploadRequest;
-use bd_proto::protos::client::api::stats_upload_request::Snapshot as StatsSnapshot;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::{
   Aggregated,
   Occurred_at,
   Snapshot_type,
+};
+use bd_proto::protos::client::api::stats_upload_request::{
+  Snapshot as StatsSnapshot,
+  UploadReason,
 };
 use bd_proto::protos::client::metric::metric::{Data as MetricData, Metric_name_type};
 use bd_proto::protos::client::metric::pending_aggregation_index::PendingFile;
@@ -332,6 +335,7 @@ async fn report() {
         upload.get_counter("test:test", labels! {"buffer" => "continuous"}),
         Some(1)
       );
+      assert_eq!(upload.upload_reason(), UploadReason::UPLOAD_REASON_PERIODIC);
     })
     .await;
 
@@ -1130,6 +1134,10 @@ async fn explicit_flush_triggers_upload_immediately() {
     assert_eq!(
       helper.get_workflow_counter("id1", labels!("foo" => "bar")),
       Some(1)
+    );
+    assert_eq!(
+      helper.upload_reason(),
+      UploadReason::UPLOAD_REASON_EVENT_TRIGGERED
     );
   }
 
