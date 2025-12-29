@@ -16,6 +16,7 @@ struct FieldAttrs {
   required: bool,
   repeated: bool,
   default_expr: Option<String>,
+  serialize_as: Option<syn::Type>,
 }
 
 struct VariantAttrs {
@@ -29,6 +30,7 @@ fn parse_field_attrs(field: &Field) -> FieldAttrs {
   let mut required = false;
   let mut repeated = false;
   let mut default_expr = None;
+  let mut serialize_as = None;
 
   for attr in &field.attrs {
     if attr.path().is_ident("field")
@@ -52,6 +54,10 @@ fn parse_field_attrs(field: &Field) -> FieldAttrs {
           required = true;
         } else if meta.path.is_ident("repeated") {
           repeated = true;
+        } else if meta.path.is_ident("serialize_as") {
+          let value = meta.value()?;
+          let s: syn::LitStr = value.parse()?;
+          serialize_as = Some(syn::parse_str(&s.value()).expect("Invalid type in serialize_as"));
         }
         Ok(())
       });
@@ -64,6 +70,7 @@ fn parse_field_attrs(field: &Field) -> FieldAttrs {
     required,
     repeated,
     default_expr,
+    serialize_as,
   }
 }
 
@@ -456,16 +463,39 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
               field_num
             };
 
+            // Determine serialization type and conversion expressions
+            let (serialize_type, serialize_expr, deserialize_convert) =
+              if let Some(ref ser_type) = attrs.serialize_as {
+                // Use the specified serialization type with conversions
+                (
+                  ser_type.clone(),
+                  quote! { #ser_type::from(self.#field_name) },
+                  quote! {
+                    #field_type::try_from(val).map_err(|_| {
+                      anyhow::anyhow!(
+                        "Field '{}' value cannot be converted from {} to {}",
+                        stringify!(#field_name),
+                        stringify!(#ser_type),
+                        stringify!(#field_type)
+                      )
+                    })?
+                  },
+                )
+              } else {
+                // Use the field type directly, no conversion
+                (field_type.clone(), quote! { &self.#field_name }, quote! { val })
+              };
+
             size_computations.push(quote! {
-                my_size += <#field_type as
+                my_size += <#serialize_type as
                     bd_proto_util::serialization::ProtoFieldSerialize>::compute_size(
-                        &self.#field_name, #tag);
+                        &#serialize_expr, #tag);
             });
 
             field_processing.push(quote! {
-                <#field_type as
+                <#serialize_type as
                     bd_proto_util::serialization::ProtoFieldSerialize>::serialize(
-                        &self.#field_name, #tag, os)?;
+                        &#serialize_expr, #tag, os)?;
             });
 
             let var_name = syn::Ident::new(&format!("var_{field_name}"), field_name.span());
@@ -480,6 +510,12 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
               !(attrs.required && is_repeated),
               "Field '{field_name}' cannot be both required and a repeated field type (Vec, \
                HashMap, etc.)"
+            );
+
+            // Error if serialize_as is used with repeated fields
+            assert!(
+              !(attrs.serialize_as.is_some() && is_repeated),
+              "Field '{field_name}' cannot use serialize_as with repeated field types"
             );
 
             if is_repeated {
@@ -505,8 +541,9 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
 
               deserialize_arms.push(quote! {
                   #tag => {
-                      #var_name = Some(<#field_type as
-                          bd_proto_util::serialization::ProtoFieldDeserialize>::deserialize(is)?);
+                      let val = <#serialize_type as
+                          bd_proto_util::serialization::ProtoFieldDeserialize>::deserialize(is)?;
+                      #var_name = Some(#deserialize_convert);
                       Ok(true)
                   }
               });
