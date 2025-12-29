@@ -1027,8 +1027,7 @@ impl StateStore {
 
   pub(self) async fn load_state(&self) -> anyhow::Result<WorkflowsState> {
     let bytes = read_compressed(&tokio::fs::read(&self.state_path).await?)?;
-    let mut coded_input_stream = protobuf::CodedInputStream::from_bytes(&bytes);
-    bd_proto_util::serialization::ProtoMessage::deserialize_message(&mut coded_input_stream)
+    bd_proto_util::serialization::ProtoMessage::deserialize_message_from_bytes(&bytes)
   }
 
   /// Stores states of the passed workflows if all pre-conditions are met.
@@ -1076,16 +1075,7 @@ impl StateStore {
   }
 
   async fn store(state_path: &Path, state: &WorkflowsState) -> anyhow::Result<()> {
-    let mut bytes = Vec::new();
-    {
-      let mut coded_output_stream = protobuf::CodedOutputStream::new(&mut bytes);
-      // Use serialize_message for top-level message serialization (no outer tag+length)
-      bd_proto_util::serialization::ProtoMessage::serialize_message(
-        state,
-        &mut coded_output_stream,
-      )?;
-      coded_output_stream.flush()?;
-    }
+    let bytes = bd_proto_util::serialization::ProtoMessage::serialize_message_to_bytes(state)?;
     tokio::fs::write(state_path, write_compressed(&bytes)?).await?;
 
     Ok(())
