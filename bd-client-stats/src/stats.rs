@@ -25,7 +25,7 @@ use bd_proto::protos::client::metric::{Metric as ProtoMetric, MetricsList};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{MetricType, NameType};
-use bd_time::{Ticker, TimeDurationExt};
+use bd_time::{Ticker, TimeDurationExt, TimeProvider};
 use debug_data_request::workflow_transition_debug_data::Transition_type;
 use debug_data_request::{WorkflowDebugData, WorkflowTransitionDebugData};
 use futures::StreamExt;
@@ -193,6 +193,11 @@ pub struct Flusher {
   uploads: FuturesUnordered<UploadFuture>,
   periodic_in_flight: bool,
   flush_in_flight: bool,
+  // This uses system time to allow integration tests to work. It should really use monotonic time.
+  last_upload_time: Option<time::OffsetDateTime>,
+  time_provider: Arc<dyn TimeProvider>,
+  minimum_upload_interval:
+    bd_runtime::runtime::DurationWatch<bd_runtime::runtime::stats::MinimumUploadIntervalFlag>,
 
   #[cfg(test)]
   test_hooks: TestHooks,
@@ -208,6 +213,10 @@ impl Flusher {
     upload_ticker: Box<dyn Ticker>,
     data_flush_tx: mpsc::Sender<DataUpload>,
     file_manager: Arc<FileManager>,
+    time_provider: Arc<dyn TimeProvider>,
+    minimum_upload_interval: bd_runtime::runtime::DurationWatch<
+      bd_runtime::runtime::stats::MinimumUploadIntervalFlag,
+    >,
   ) -> Self {
     Self {
       stats,
@@ -221,6 +230,9 @@ impl Flusher {
       uploads: FuturesUnordered::new(),
       periodic_in_flight: false,
       flush_in_flight: false,
+      last_upload_time: None,
+      time_provider,
+      minimum_upload_interval,
 
       #[cfg(test)]
       test_hooks: TestHooks::default(),
@@ -230,6 +242,15 @@ impl Flusher {
   #[cfg(test)]
   pub const fn test_hooks(&mut self) -> TestHooksReceiver {
     self.test_hooks.receiver.take().unwrap()
+  }
+
+  fn should_skip_upload(&self) -> bool {
+    self.last_upload_time.is_some_and(|last_upload| {
+      let now = self.time_provider.now();
+      let elapsed = (now - last_upload).unsigned_abs();
+      let min_interval = self.minimum_upload_interval.read().unsigned_abs();
+      elapsed < min_interval
+    })
   }
 
   pub async fn periodic_flush(mut self) {
@@ -256,7 +277,13 @@ impl Flusher {
       return;
     }
 
+    if self.should_skip_upload() {
+      log::debug!("skipping periodic upload, minimum interval not elapsed");
+      return;
+    }
+
     if let Some((uuid, rx)) = self.upload_from_disk(false).await {
+      self.last_upload_time = Some(self.time_provider.now());
       self.periodic_in_flight = true;
       self.push_upload_future(uuid, rx, UploadContext::Periodic);
     }
@@ -278,7 +305,16 @@ impl Flusher {
         return;
       }
 
+      if self.should_skip_upload() {
+        log::debug!("skipping flush upload, minimum interval not elapsed");
+        if let Some(tx) = request.completion_tx {
+          let () = tx.send(());
+        }
+        return;
+      }
+
       if let Some((uuid, rx)) = self.upload_from_disk(false).await {
+        self.last_upload_time = Some(self.time_provider.now());
         self.flush_in_flight = true;
         self.push_upload_future(uuid, rx, UploadContext::Flush(request));
       } else if let Some(tx) = request.completion_tx {
@@ -292,6 +328,11 @@ impl Flusher {
     upload_response: UploadResponse,
     context: UploadContext,
   ) {
+    // Clear last_upload_time on failure to allow immediate retry.
+    if !upload_response.success {
+      self.last_upload_time = None;
+    }
+
     self
       .process_pending_upload_completion(&upload_response)
       .await;
@@ -314,6 +355,7 @@ impl Flusher {
           // TODO(mattklein123): It would be better to batch all of the "old" files into a single
           // upload request. We can do this in the future.
           if let Some((uuid, rx)) = self.upload_from_disk(true).await {
+            // Old file uploads bypass the minimum interval check, so don't update last_upload_time.
             self.push_upload_future(uuid, rx, UploadContext::Periodic);
           } else {
             self.periodic_in_flight = false;

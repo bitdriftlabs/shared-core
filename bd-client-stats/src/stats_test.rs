@@ -107,7 +107,7 @@ struct Setup {
   stats: Arc<Stats>,
   _directory: TempDir,
   shutdown_trigger: ComponentShutdownTrigger,
-  _runtime_loader: Arc<ConfigLoader>,
+  runtime_loader: Arc<ConfigLoader>,
   flush_handle: tokio::task::JoinHandle<()>,
   data_rx: mpsc::Receiver<DataUpload>,
   test_time: Arc<TestTimeProvider>,
@@ -152,12 +152,15 @@ impl Setup {
     let (data_tx, data_rx) = mpsc::channel(1);
     let (periodic_flush_tick_tx, periodic_flush_ticker) = TestTicker::new();
     let (upload_tick_tx, upload_ticker) = TestTicker::new();
+    let minimum_upload_interval = runtime_loader.register_duration_watch();
     let mut flush_handles = stats.flush_handle_helper(
       Box::new(periodic_flush_ticker),
       Box::new(upload_ticker),
       shutdown_trigger.make_shutdown(),
       data_tx,
       Arc::new(FileManager::new(fs, test_time.clone(), &runtime_loader)),
+      test_time.clone(),
+      minimum_upload_interval,
     );
 
     let test_hooks = flush_handles.flusher.test_hooks();
@@ -171,7 +174,7 @@ impl Setup {
       stats,
       _directory: directory,
       shutdown_trigger,
-      _runtime_loader: runtime_loader,
+      runtime_loader,
       flush_handle,
       data_rx,
       periodic_flush_tick_tx,
@@ -332,7 +335,7 @@ async fn report() {
     })
     .await;
 
-  setup.test_time.advance(Duration::seconds(1));
+  setup.test_time.advance(Duration::seconds(31));
 
   // Time of second flush.
   let t1 = setup.test_time.now();
@@ -361,6 +364,7 @@ async fn report() {
 
   second_counter.inc();
 
+  setup.test_time.advance(Duration::seconds(31));
   setup
     .with_next_stats_upload(|upload| {
       assert_eq!(upload.number_of_metrics(), 2);
@@ -375,6 +379,7 @@ async fn report() {
   second_counter.inc();
   c.inc();
 
+  setup.test_time.advance(Duration::seconds(31));
   setup
     .with_next_stats_upload(|upload| {
       assert_eq!(upload.number_of_metrics(), 3);
@@ -476,6 +481,7 @@ async fn max_files() {
     .await;
 
   // Upload again. We should get the 3rd counter increment.
+  setup.test_time.advance(Duration::seconds(31));
   setup
     .with_next_stats_upload(|upload| {
       assert_eq!(upload.get_counter("test:test", labels! {}), Some(100));
@@ -538,10 +544,12 @@ async fn earliest_aggregation_start_end_maintained() {
 
   // The next upload should contain the aggregation window which started at t2, but contains the
   // increments that happened at t3.
+  setup.test_time.advance(Duration::seconds(31));
+  let t4 = setup.test_time.now();
   setup
     .with_next_stats_upload(|upload| {
       assert_eq!(upload.aggregation_window_start(), t2);
-      assert_eq!(upload.aggregation_window_end(), t3);
+      assert_eq!(upload.aggregation_window_end(), t4);
       assert_eq!(upload.number_of_metrics(), 2);
       assert_eq!(upload.get_counter("test:test", labels! {}), Some(2));
     })
@@ -774,6 +782,7 @@ async fn different_histogram_merges() {
       upload.expect_inline_histogram("test:blah", labels! {}, &[1.0, 2.0, 3.0, 4.0, 5.0]);
     })
     .await;
+  setup.test_time.advance(Duration::seconds(31));
   setup
     .with_next_stats_upload_with_result(true, |upload| {
       upload.expect_ddsketch_histogram("test:blah", labels! {}, 51.126_736_746_918_93, 16);
@@ -815,6 +824,7 @@ async fn different_histogram_merges2() {
       upload.expect_inline_histogram("test:blah", labels! {}, &[1.0, 2.0, 3.0, 4.0, 5.0]);
     })
     .await;
+  setup.test_time.advance(Duration::seconds(31));
   setup
     .with_next_stats_upload_with_result(true, |upload| {
       upload.expect_ddsketch_histogram("test:blah", labels! {}, 36.061_183_799_491_74, 11);
@@ -841,6 +851,7 @@ async fn histograms() {
   histogram.observe(1.0);
   histogram.observe(3.0);
 
+  setup.test_time.advance(Duration::seconds(31));
   setup
     .with_next_stats_upload(|upload| {
       upload.expect_inline_histogram("test:blah", labels! {}, &[1.0, 3.0]);
@@ -851,6 +862,7 @@ async fn histograms() {
     histogram.observe(*i);
   }
 
+  setup.test_time.advance(Duration::seconds(31));
   setup
     .with_next_stats_upload(|upload| {
       upload.expect_ddsketch_histogram("test:blah", labels! {}, 20.995_630_852_064_536, 6);
@@ -912,6 +924,7 @@ async fn dynamic_stats() {
     3,
   );
 
+  setup.test_time.advance(Duration::seconds(31));
   setup
     .with_next_stats_upload(|upload| {
       assert_eq!(upload.number_of_metrics(), 3);
@@ -936,6 +949,7 @@ async fn dynamic_stats() {
     5,
   );
 
+  setup.test_time.advance(Duration::seconds(31));
   setup
     .with_next_stats_upload(|upload| {
       assert_eq!(upload.number_of_metrics(), 2);
@@ -1054,7 +1068,9 @@ async fn flush_during_periodic_upload() {
     .stats
     .record_dynamic_counter(labels!("foo" => "baz"), "id2", 2);
 
-  // 6. Trigger explicit flush
+  // 6. Trigger explicit flush. Pretend periodic is taking a very long time to come back to that
+  // the minimum time between uploads has elapsed.
+  setup.test_time.advance(Duration::seconds(31));
   let (tx, rx) = bd_completion::Sender::new();
   setup.do_explicit_flush(tx).await;
 
@@ -1178,6 +1194,7 @@ async fn concurrent_flushes() {
   rx1.recv().await.unwrap(); // Flush 1 complete
 
   // Now trigger Flush 3.
+  setup.test_time.advance(Duration::seconds(31));
   let (tx3, rx3) = bd_completion::Sender::new();
   setup.do_explicit_flush(tx3).await;
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
@@ -1250,6 +1267,154 @@ async fn explicit_flush_upload_failure() {
 
   // Completion should still fire
   rx.recv().await.unwrap();
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn minimum_upload_interval() {
+  let mut setup = Setup::new().await;
+
+  // Configure minimum upload interval to 10 seconds
+  setup
+    .runtime_loader
+    .update_snapshot(make_simple_update(vec![(
+      bd_runtime::runtime::stats::MinimumUploadIntervalFlag::path(),
+      ValueKind::Int(10_000),
+    )]))
+    .await
+    .unwrap();
+
+  // Record some data
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "bar"), "id1", 1);
+
+  // First upload should succeed
+  let (tx1, rx1) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx1).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  let upload1 = setup.next_stat_upload().await;
+  upload1
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload1.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  rx1.recv().await.unwrap();
+
+  // Immediately trigger another force flush with upload - should be skipped due to minimum interval
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "baz"), "id1", 2);
+
+  let (tx2, rx2) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx2).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  // Should complete immediately without upload
+  rx2.recv().await.unwrap();
+
+  // Verify no upload occurred
+  assert!(poll!(Box::pin(setup.data_rx.recv())).is_pending());
+
+  // Trigger periodic upload tick - should also be skipped
+  setup.upload_tick_tx.send(()).await.unwrap();
+
+  // Yield to let the background task process the upload tick
+  tokio::task::yield_now().await;
+
+  // Verify no upload occurred
+  assert!(poll!(Box::pin(setup.data_rx.recv())).is_pending());
+
+  // Advance time by 10+ seconds
+  setup.test_time.advance(Duration::seconds(11));
+
+  // Now force flush should succeed
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "qux"), "id1", 3);
+
+  let (tx3, rx3) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx3).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  let upload2 = setup.next_stat_upload().await;
+  upload2
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload2.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  rx3.recv().await.unwrap();
+
+  // Advance time again
+  setup.test_time.advance(Duration::seconds(11));
+
+  // Periodic upload should now succeed
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "quux"), "id1", 4);
+  setup.do_periodic_flush().await;
+
+  setup.upload_tick_tx.send(()).await.unwrap();
+  let upload3 = setup.next_stat_upload().await;
+  upload3
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload3.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  // Test failure case: failed uploads should clear the timer and allow immediate retry
+  setup.test_time.advance(Duration::seconds(11));
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "fail"), "id1", 5);
+
+  let (tx4, rx4) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx4).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  let upload4 = setup.next_stat_upload().await;
+
+  // Fail this upload
+  upload4
+    .response_tx
+    .send(UploadResponse {
+      success: false,
+      uuid: upload4.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  rx4.recv().await.unwrap();
+
+  // Immediately retry should succeed (no minimum interval after failure)
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "retry"), "id1", 6);
+
+  let (tx5, rx5) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx5).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  let upload5 = setup.next_stat_upload().await;
+  upload5
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload5.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  rx5.recv().await.unwrap();
 
   setup.shutdown().await.unwrap();
 }

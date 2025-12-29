@@ -24,7 +24,7 @@ use bd_client_stats_store::{Collector, Error as StatsError};
 use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::workflow::WorkflowDebugKey;
-use bd_time::{SystemTimeProvider, Ticker};
+use bd_time::{SystemTimeProvider, Ticker, TimeProvider};
 use file_manager::FileManager;
 use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap};
@@ -118,7 +118,9 @@ impl Stats {
     data_flush_tx: tokio::sync::mpsc::Sender<DataUpload>,
     flush_ticker: Box<dyn Ticker>,
     upload_ticker: Box<dyn Ticker>,
+    time_provider: Arc<dyn TimeProvider>,
   ) -> FlushHandles {
+    let minimum_upload_interval = runtime_loader.register_duration_watch();
     self.flush_handle_helper(
       flush_ticker,
       upload_ticker,
@@ -129,6 +131,8 @@ impl Stats {
         Arc::new(SystemTimeProvider),
         runtime_loader,
       )),
+      time_provider,
+      minimum_upload_interval,
     )
   }
 
@@ -139,6 +143,10 @@ impl Stats {
     shutdown: ComponentShutdown,
     data_flush_tx: tokio::sync::mpsc::Sender<DataUpload>,
     fs: Arc<FileManager>,
+    time_provider: Arc<dyn TimeProvider>,
+    minimum_upload_interval: bd_runtime::runtime::DurationWatch<
+      bd_runtime::runtime::stats::MinimumUploadIntervalFlag,
+    >,
   ) -> FlushHandles {
     let flush_time_histogram = self.collector.scope("stats").histogram("flush_time");
     let (flush_trigger, flush_rx) = FlushTrigger::new();
@@ -153,6 +161,8 @@ impl Stats {
         upload_ticker,
         data_flush_tx,
         fs,
+        time_provider,
+        minimum_upload_interval,
       ),
       flush_trigger,
     }
@@ -180,6 +190,7 @@ impl Stats {
   }
 
   pub fn record_dynamic_counter(&self, tags: BTreeMap<String, String>, id: &str, value: u64) {
+    log::debug!("recording dynamic counter: id={id}, value={value}, tags={tags:?}");
     match self.collector.dynamic_counter(tags, id) {
       Ok(counter) => counter.inc_by(value),
       Err(StatsError::Overflow) => {
@@ -189,6 +200,7 @@ impl Stats {
   }
 
   pub fn record_dynamic_histogram(&self, tags: BTreeMap<String, String>, id: &str, value: f64) {
+    log::debug!("recording dynamic histogram: id={id}, value={value}, tags={tags:?}");
     match self.collector.dynamic_histogram(tags, id) {
       Ok(histogram) => histogram.observe(value),
       Err(StatsError::Overflow) => {

@@ -38,7 +38,7 @@ use bd_test_helpers::workflow::{
   metric_value,
   state,
 };
-use bd_time::TimeDurationExt;
+use bd_time::{SystemTimeProvider, TimeDurationExt};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use bd_workflows::workflow::WorkflowEvent;
@@ -384,6 +384,7 @@ impl Setup {
       data_tx,
       flush_ticker,
       upload_ticker,
+      Arc::new(SystemTimeProvider),
     );
 
     let flush_handle = tokio::spawn(async move {
