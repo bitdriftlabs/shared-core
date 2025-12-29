@@ -48,7 +48,7 @@ use crate::workflow::{
 use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_client_common::file::{read_compressed, write_compressed};
-use bd_client_stats::Stats;
+use bd_client_stats::{FlushTrigger, FlushTriggerRequest, Stats};
 use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::Log;
@@ -103,6 +103,7 @@ pub struct WorkflowsEngine {
   sankey_processor_join_handle: JoinHandle<()>,
 
   metrics_collector: MetricsCollector,
+  stats_flush_trigger: FlushTrigger,
 
   buffers_to_flush_tx: Sender<BuffersToFlush>,
 
@@ -116,6 +117,7 @@ impl WorkflowsEngine {
     runtime: &ConfigLoader,
     data_upload_tx: Sender<DataUpload>,
     stats: Arc<Stats>,
+    stats_flush_trigger: FlushTrigger,
   ) -> (Self, Receiver<BuffersToFlush>) {
     let scope = scope.scope("workflows");
 
@@ -156,6 +158,7 @@ impl WorkflowsEngine {
       sankey_processor_output_rx: sankey_output_rx,
       sankey_processor_join_handle,
       metrics_collector: MetricsCollector::new(stats),
+      stats_flush_trigger,
       buffers_to_flush_tx,
       pending_buffer_flushes: HashMap::new(),
 
@@ -455,7 +458,7 @@ impl WorkflowsEngine {
 
         match negotiator_output {
           NegotiatorOutput::UploadApproved(action) => {
-              self.on_log_upload_approved(&action);
+              self.on_log_upload_approved(&action).await;
           },
           NegotiatorOutput::UploadRejected(action) => {
             self.state.pending_flush_actions.remove(&action);
@@ -474,8 +477,25 @@ impl WorkflowsEngine {
     }
   }
 
-  fn on_log_upload_approved(&mut self, action: &PendingFlushBuffersAction) {
+  async fn on_log_upload_approved(&mut self, action: &PendingFlushBuffersAction) {
     self.state.pending_flush_actions.remove(action);
+
+    // Signal an explicit stats flush if we are about to start uploading logs. This is not perfect
+    // but it should generally cover the case where we want to ensure stats are up to date on log
+    // uploads if a workflow emits metrics and triggers on the same event.
+    // TODO(mattklein123): This is a long standing issue but right now we don't block for any
+    // upload to complete before starting log uploads. In general we need to spend more time
+    // hardening this entire path.
+    if let Err(e) = self
+      .stats_flush_trigger
+      .flush(FlushTriggerRequest {
+        do_upload: true,
+        completion_tx: None,
+      })
+      .await
+    {
+      log::debug!("failed to trigger stats flush on log upload approval: {e}");
+    }
 
     // If there is already a pending buffer flush we don't want to signal another one, as
     // this would do nothing but mess up our tracking of the in-flight flush.
