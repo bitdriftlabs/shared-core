@@ -296,7 +296,7 @@ impl Flusher {
   }
 
   async fn handle_flush_request(&mut self, request: FlushTriggerRequest) {
-    // TOOD(mattklein123): Currently we just ignore flush requests if one is already in flight.
+    // TODO(mattklein123): Currently we just ignore flush requests if one is already in flight.
     // We could consider queueing them up and processing them one after another, but given that
     // flushes are relatively infrequent this seems ok for now.
     if !self.flush_in_flight {
