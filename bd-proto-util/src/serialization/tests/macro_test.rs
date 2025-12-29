@@ -472,3 +472,32 @@ fn test_field_numbering_starts_at_one() -> Result<()> {
 
   Ok(())
 }
+
+#[test]
+fn test_serialize_as() -> Result<()> {
+  #[proto_serializable]
+  #[derive(Debug, PartialEq)]
+  struct Example {
+    #[field(id = 1, serialize_as = "u64")]
+    index: usize,
+    #[field(id = 2)]
+    name: String,
+  }
+
+  let original = Example {
+    index: 42_usize,
+    name: "test".to_string(),
+  };
+
+  // Serialize
+  let bytes = original.serialize_message_to_bytes()?;
+
+  // Deserialize
+  let mut is = CodedInputStream::from_bytes(&bytes);
+  let deserialized = Example::deserialize_message(&mut is)?;
+
+  assert_eq!(original, deserialized);
+  assert_eq!(deserialized.index, 42_usize);
+
+  Ok(())
+}

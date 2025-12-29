@@ -124,7 +124,14 @@ fn is_repeated_field_type(ty: &syn::Type) -> bool {
       // Check for known repeated field types
       matches!(
         ident.as_str(),
-        "Vec" | "HashMap" | "AHashMap" | "TinyMap" | "BTreeMap" | "BTreeSet" | "IndexMap"
+        "Vec"
+          | "HashMap"
+          | "AHashMap"
+          | "TinyMap"
+          | "TinySet"
+          | "BTreeMap"
+          | "BTreeSet"
+          | "IndexMap"
       )
     })
   } else {
@@ -464,38 +471,43 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
             };
 
             // Determine serialization type and conversion expressions
-            let (serialize_type, serialize_expr, deserialize_convert) =
-              if let Some(ref ser_type) = attrs.serialize_as {
-                // Use the specified serialization type with conversions
-                (
-                  ser_type.clone(),
-                  quote! { #ser_type::from(self.#field_name) },
-                  quote! {
-                    #field_type::try_from(val).map_err(|_| {
-                      anyhow::anyhow!(
-                        "Field '{}' value cannot be converted from {} to {}",
-                        stringify!(#field_name),
-                        stringify!(#ser_type),
-                        stringify!(#field_type)
-                      )
-                    })?
-                  },
-                )
-              } else {
+            let (serialize_type, serialize_with_ref, deserialize_convert) =
+              attrs.serialize_as.as_ref().map_or_else(
+                ||
                 // Use the field type directly, no conversion
-                (field_type.clone(), quote! { &self.#field_name }, quote! { val })
-              };
+                (field_type.clone(), quote! { &self.#field_name }, quote! { val }),
+                |ser_type| {
+                  // Use the specified serialization type with conversions
+                  // For serialization, cast the field value to the serialization type
+                  // The generated code will be: &(self.field as SerType)
+                  // For deserialization, use TryFrom with proper error handling
+                  (
+                    ser_type.clone(),
+                    quote! { &(self.#field_name as #ser_type) },
+                    quote! {
+                      #field_type::try_from(val).map_err(|_| {
+                        anyhow::anyhow!(
+                          "Field '{}' value cannot be converted from {} to {}",
+                          stringify!(#field_name),
+                          stringify!(#ser_type),
+                          stringify!(#field_type)
+                        )
+                      })?
+                    },
+                  )
+                },
+              );
 
             size_computations.push(quote! {
                 my_size += <#serialize_type as
                     bd_proto_util::serialization::ProtoFieldSerialize>::compute_size(
-                        &#serialize_expr, #tag);
+                        #serialize_with_ref, #tag);
             });
 
             field_processing.push(quote! {
                 <#serialize_type as
                     bd_proto_util::serialization::ProtoFieldSerialize>::serialize(
-                        &#serialize_expr, #tag, os)?;
+                        #serialize_with_ref, #tag, os)?;
             });
 
             let var_name = syn::Ident::new(&format!("var_{field_name}"), field_name.span());
