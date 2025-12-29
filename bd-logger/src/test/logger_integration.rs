@@ -1317,8 +1317,6 @@ fn workflow_debugging() {
   });
   setup.send_runtime_update();
 
-  setup.send_runtime_update();
-
   let b = state("B");
   let a = state("A").declare_transition_with_actions(
     &b,

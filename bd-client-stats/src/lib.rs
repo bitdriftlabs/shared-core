@@ -24,7 +24,7 @@ use bd_client_stats_store::{Collector, Error as StatsError};
 use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::workflow::WorkflowDebugKey;
-use bd_time::{SystemTimeProvider, Ticker};
+use bd_time::{SystemTimeProvider, Ticker, TimeProvider};
 use file_manager::FileManager;
 use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap};
@@ -48,10 +48,13 @@ pub struct FlushHandles {
 }
 
 //
-// FlushTriggerCompletionSender
+// FlushTriggerRequest
 //
 
-type FlushTriggerCompletionSender = Option<bd_completion::Sender<()>>;
+pub struct FlushTriggerRequest {
+  pub do_upload: bool,
+  pub completion_tx: Option<bd_completion::Sender<()>>,
+}
 
 //
 // FlushTrigger
@@ -59,23 +62,20 @@ type FlushTriggerCompletionSender = Option<bd_completion::Sender<()>>;
 
 #[derive(Clone, Debug)]
 pub struct FlushTrigger {
-  flush_tx: Sender<FlushTriggerCompletionSender>,
+  flush_tx: Sender<FlushTriggerRequest>,
 }
 
 impl FlushTrigger {
   #[must_use]
-  pub fn new() -> (
-    Self,
-    tokio::sync::mpsc::Receiver<FlushTriggerCompletionSender>,
-  ) {
-    let (flush_tx, flush_rx) = tokio::sync::mpsc::channel::<FlushTriggerCompletionSender>(1);
+  pub fn new() -> (Self, tokio::sync::mpsc::Receiver<FlushTriggerRequest>) {
+    let (flush_tx, flush_rx) = tokio::sync::mpsc::channel::<FlushTriggerRequest>(1);
 
     (Self { flush_tx }, flush_rx)
   }
 
   // Signals the SDK to flush stats to disk and waits for the operation to complete before
   // returning.
-  pub async fn flush(&self, completion_tx: FlushTriggerCompletionSender) -> anyhow::Result<()> {
+  pub async fn flush(&self, completion_tx: FlushTriggerRequest) -> anyhow::Result<()> {
     self
       .flush_tx
       .send(completion_tx)
@@ -83,10 +83,7 @@ impl FlushTrigger {
       .map_err(|e| anyhow::anyhow!("failed to send flush stats trigger: {e}"))
   }
 
-  pub fn blocking_flush_for_test(
-    &self,
-    completion_tx: FlushTriggerCompletionSender,
-  ) -> anyhow::Result<()> {
+  pub fn blocking_flush_for_test(&self, completion_tx: FlushTriggerRequest) -> anyhow::Result<()> {
     self.flush_tx.blocking_send(completion_tx)?;
     Ok(())
   }
@@ -121,7 +118,9 @@ impl Stats {
     data_flush_tx: tokio::sync::mpsc::Sender<DataUpload>,
     flush_ticker: Box<dyn Ticker>,
     upload_ticker: Box<dyn Ticker>,
+    time_provider: Arc<dyn TimeProvider>,
   ) -> FlushHandles {
+    let minimum_upload_interval = runtime_loader.register_duration_watch();
     self.flush_handle_helper(
       flush_ticker,
       upload_ticker,
@@ -132,6 +131,8 @@ impl Stats {
         Arc::new(SystemTimeProvider),
         runtime_loader,
       )),
+      time_provider,
+      minimum_upload_interval,
     )
   }
 
@@ -142,6 +143,10 @@ impl Stats {
     shutdown: ComponentShutdown,
     data_flush_tx: tokio::sync::mpsc::Sender<DataUpload>,
     fs: Arc<FileManager>,
+    time_provider: Arc<dyn TimeProvider>,
+    minimum_upload_interval: bd_runtime::runtime::DurationWatch<
+      bd_runtime::runtime::stats::MinimumUploadIntervalFlag,
+    >,
   ) -> FlushHandles {
     let flush_time_histogram = self.collector.scope("stats").histogram("flush_time");
     let (flush_trigger, flush_rx) = FlushTrigger::new();
@@ -156,6 +161,8 @@ impl Stats {
         upload_ticker,
         data_flush_tx,
         fs,
+        time_provider,
+        minimum_upload_interval,
       ),
       flush_trigger,
     }
@@ -183,6 +190,7 @@ impl Stats {
   }
 
   pub fn record_dynamic_counter(&self, tags: BTreeMap<String, String>, id: &str, value: u64) {
+    log::debug!("recording dynamic counter: id={id}, value={value}, tags={tags:?}");
     match self.collector.dynamic_counter(tags, id) {
       Ok(counter) => counter.inc_by(value),
       Err(StatsError::Overflow) => {
@@ -192,6 +200,7 @@ impl Stats {
   }
 
   pub fn record_dynamic_histogram(&self, tags: BTreeMap<String, String>, id: &str, value: f64) {
+    log::debug!("recording dynamic histogram: id={id}, value={value}, tags={tags:?}");
     match self.collector.dynamic_histogram(tags, id) {
       Ok(histogram) => histogram.observe(value),
       Err(StatsError::Overflow) => {

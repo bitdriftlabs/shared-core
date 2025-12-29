@@ -10,33 +10,47 @@
 mod stats_test;
 
 use crate::file_manager::FileManager;
-use crate::{FlushTriggerCompletionSender, Stats};
+use crate::{FlushTriggerRequest, Stats};
 use async_trait::async_trait;
 use bd_api::DataUpload;
 use bd_api::upload::{TrackedStatsUploadRequest, UploadResponse};
-use bd_client_common::{maybe_await, maybe_await_interval};
+use bd_client_common::maybe_await_interval;
 use bd_client_stats_store::{Collector, Histogram, MetricData, MetricsByNameCore};
 use bd_error_reporter::reporter::handle_unexpected;
-use bd_proto::protos::client::api::stats_upload_request::Snapshot as StatsSnapshot;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::Snapshot_type;
+use bd_proto::protos::client::api::stats_upload_request::{
+  Snapshot as StatsSnapshot,
+  UploadReason,
+};
 use bd_proto::protos::client::api::{StatsUploadRequest, debug_data_request};
 use bd_proto::protos::client::metric::metric::Metric_name_type;
 use bd_proto::protos::client::metric::{Metric as ProtoMetric, MetricsList};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{MetricType, NameType};
-use bd_time::{Ticker, TimeDurationExt};
+use bd_time::{Ticker, TimeDurationExt, TimeProvider};
 use debug_data_request::workflow_transition_debug_data::Transition_type;
 use debug_data_request::{WorkflowDebugData, WorkflowTransitionDebugData};
+use futures::StreamExt;
+use futures::stream::FuturesUnordered;
 use itertools::Itertools;
 #[cfg(test)]
 use stats_test::{TestHooks, TestHooksReceiver};
 use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
+use std::pin::Pin;
 use std::sync::Arc;
 use time::Duration;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::MissedTickBehavior;
+
+type UploadFuture =
+  Pin<Box<dyn std::future::Future<Output = (UploadResponse, UploadContext)> + Send + Sync>>;
+
+enum UploadContext {
+  Periodic,
+  Flush(FlushTriggerRequest),
+}
 
 //
 // RuntimeWatchTicker
@@ -174,11 +188,19 @@ pub struct Flusher {
   stats: Arc<Stats>,
   shutdown: ComponentShutdown,
   flush_ticker: Box<dyn Ticker>,
-  flush_rx: tokio::sync::mpsc::Receiver<FlushTriggerCompletionSender>,
+  flush_rx: tokio::sync::mpsc::Receiver<FlushTriggerRequest>,
   flush_time_histogram: Histogram,
   upload_ticker: Box<dyn Ticker>,
   data_flush_tx: mpsc::Sender<DataUpload>,
   file_manager: Arc<FileManager>,
+  uploads: FuturesUnordered<UploadFuture>,
+  periodic_in_flight: bool,
+  flush_in_flight: bool,
+  // This uses system time to allow integration tests to work. It should really use monotonic time.
+  last_upload_time: Option<time::OffsetDateTime>,
+  time_provider: Arc<dyn TimeProvider>,
+  minimum_upload_interval:
+    bd_runtime::runtime::DurationWatch<bd_runtime::runtime::stats::MinimumUploadIntervalFlag>,
 
   #[cfg(test)]
   test_hooks: TestHooks,
@@ -189,11 +211,15 @@ impl Flusher {
     stats: Arc<Stats>,
     shutdown: ComponentShutdown,
     flush_ticker: Box<dyn Ticker>,
-    flush_rx: tokio::sync::mpsc::Receiver<FlushTriggerCompletionSender>,
+    flush_rx: tokio::sync::mpsc::Receiver<FlushTriggerRequest>,
     flush_time_histogram: Histogram,
     upload_ticker: Box<dyn Ticker>,
     data_flush_tx: mpsc::Sender<DataUpload>,
     file_manager: Arc<FileManager>,
+    time_provider: Arc<dyn TimeProvider>,
+    minimum_upload_interval: bd_runtime::runtime::DurationWatch<
+      bd_runtime::runtime::stats::MinimumUploadIntervalFlag,
+    >,
   ) -> Self {
     Self {
       stats,
@@ -204,6 +230,12 @@ impl Flusher {
       upload_ticker,
       data_flush_tx,
       file_manager,
+      uploads: FuturesUnordered::new(),
+      periodic_in_flight: false,
+      flush_in_flight: false,
+      last_upload_time: None,
+      time_provider,
+      minimum_upload_interval,
 
       #[cfg(test)]
       test_hooks: TestHooks::default(),
@@ -215,39 +247,160 @@ impl Flusher {
     self.test_hooks.receiver.take().unwrap()
   }
 
+  fn should_skip_upload(&self) -> bool {
+    self.last_upload_time.is_some_and(|last_upload| {
+      let now = self.time_provider.now();
+      let elapsed = (now - last_upload).unsigned_abs();
+      let min_interval = self.minimum_upload_interval.read().unsigned_abs();
+      elapsed < min_interval
+    })
+  }
+
   pub async fn periodic_flush(mut self) {
-    let mut upload_rx = None;
     loop {
       tokio::select! {
-        Some(completion_tx) = self.flush_rx.recv() => {
-          log::debug!("received a signal to flush stats to disk");
-          self.flush_to_disk().await;
-          log::debug!("stats flushed");
-
-          if let Some(completion_tx) = completion_tx {
-            completion_tx.send(());
-          }
+        Some(request) = self.flush_rx.recv() => {
+          self.handle_flush_request(request).await;
         },
         () = self.shutdown.cancelled() => return,
         () = self.flush_ticker.tick() => self.flush_to_disk().await,
         () = self.upload_ticker.tick() => {
-          if upload_rx.is_some() {
-            log::debug!("upload already in progress, skipping");
-            continue;
-          }
-
-          upload_rx = self.upload_from_disk(false).await;
+          self.handle_upload_tick().await;
         },
-        upload_result = maybe_await(&mut upload_rx) => {
-          upload_rx = self.process_pending_upload_completion(
-            upload_result.unwrap_or(UploadResponse { success: false, uuid: String::new() })
-          ).await;
-
-          #[cfg(test)]
-          self.test_hooks.sender.upload_complete_tx.send(()).await.unwrap();
+        Some((upload_response, context)) = self.uploads.next() => {
+          self.handle_upload_completion(upload_response, context).await;
         },
       };
     }
+  }
+
+  async fn handle_upload_tick(&mut self) {
+    if self.periodic_in_flight {
+      log::debug!("upload already in progress, skipping");
+      return;
+    }
+
+    if self.should_skip_upload() {
+      log::debug!("skipping periodic upload, minimum interval not elapsed");
+      return;
+    }
+
+    if let Some((uuid, rx)) = self
+      .upload_from_disk(false, UploadReason::UPLOAD_REASON_PERIODIC)
+      .await
+    {
+      self.last_upload_time = Some(self.time_provider.now());
+      self.periodic_in_flight = true;
+      self.push_upload_future(uuid, rx, UploadContext::Periodic);
+    }
+  }
+
+  async fn handle_flush_request(&mut self, request: FlushTriggerRequest) {
+    // TODO(mattklein123): Currently we just ignore flush requests if one is already in flight.
+    // We could consider queueing them up and processing them one after another, but given that
+    // flushes are relatively infrequent this seems ok for now.
+    if self.flush_in_flight {
+      log::debug!("flush already in progress, skipping");
+      return;
+    }
+
+    log::debug!("received a signal to flush stats to disk");
+    self.flush_to_disk().await;
+    log::debug!("stats flushed");
+
+    if !request.do_upload {
+      if let Some(tx) = request.completion_tx {
+        let () = tx.send(());
+      }
+      return;
+    }
+
+    if self.should_skip_upload() {
+      log::debug!("skipping flush upload, minimum interval not elapsed");
+      if let Some(tx) = request.completion_tx {
+        let () = tx.send(());
+      }
+      return;
+    }
+
+    if let Some((uuid, rx)) = self
+      .upload_from_disk(false, UploadReason::UPLOAD_REASON_EVENT_TRIGGERED)
+      .await
+    {
+      self.last_upload_time = Some(self.time_provider.now());
+      self.flush_in_flight = true;
+      self.push_upload_future(uuid, rx, UploadContext::Flush(request));
+    } else if let Some(tx) = request.completion_tx {
+      let () = tx.send(());
+    }
+  }
+
+  async fn handle_upload_completion(
+    &mut self,
+    upload_response: UploadResponse,
+    context: UploadContext,
+  ) {
+    // Clear last_upload_time on failure to allow immediate retry.
+    if !upload_response.success {
+      self.last_upload_time = None;
+    }
+
+    self
+      .process_pending_upload_completion(&upload_response)
+      .await;
+
+    #[cfg(test)]
+    self
+      .test_hooks
+      .sender
+      .upload_complete_tx
+      .send(())
+      .await
+      .unwrap();
+
+    match context {
+      UploadContext::Periodic => {
+        if upload_response.success {
+          // During startup or after getting network connectivity back it's possible that we will
+          // have a number of pending uploads to process. Go ahead and see if we have an
+          // old file at the head of the list which we should upload immediately.
+          // TODO(mattklein123): It would be better to batch all of the "old" files into a single
+          // upload request. We can do this in the future.
+          if let Some((uuid, rx)) = self
+            .upload_from_disk(true, UploadReason::UPLOAD_REASON_PERIODIC)
+            .await
+          {
+            // Old file uploads bypass the minimum interval check, so don't check last_upload_time.
+            self.push_upload_future(uuid, rx, UploadContext::Periodic);
+          } else {
+            self.periodic_in_flight = false;
+          }
+        } else {
+          self.periodic_in_flight = false;
+        }
+      },
+      UploadContext::Flush(request) => {
+        self.flush_in_flight = false;
+        if let Some(tx) = request.completion_tx {
+          let () = tx.send(());
+        }
+      },
+    }
+  }
+
+  fn push_upload_future(
+    &self,
+    uuid: String,
+    rx: oneshot::Receiver<UploadResponse>,
+    context: UploadContext,
+  ) {
+    self.uploads.push(Box::pin(async move {
+      let res = rx.await.unwrap_or(UploadResponse {
+        success: false,
+        uuid,
+      });
+      (res, context)
+    }));
   }
 
   // Merges a delta snapshot to disk. This contains the difference in metrics since the last time
@@ -461,17 +614,21 @@ impl Flusher {
   async fn upload_from_disk(
     &self,
     only_if_file_is_old: bool,
-  ) -> Option<oneshot::Receiver<UploadResponse>> {
+    upload_reason: UploadReason,
+  ) -> Option<(String, oneshot::Receiver<UploadResponse>)> {
     async fn inner(
       flusher: &Flusher,
       only_if_file_is_old: bool,
-    ) -> anyhow::Result<Option<oneshot::Receiver<UploadResponse>>> {
+      upload_reason: UploadReason,
+    ) -> anyhow::Result<Option<(String, oneshot::Receiver<UploadResponse>)>> {
       if let Some(pending_upload) = flusher
         .file_manager
         .get_or_create_pending_upload(only_if_file_is_old)
         .await?
       {
-        return flusher.process_pending_upload(pending_upload).await;
+        return flusher
+          .process_pending_upload(pending_upload, upload_reason)
+          .await;
       }
       Ok(None)
     }
@@ -482,7 +639,7 @@ impl Flusher {
     // get a better understanding of why things are failing at which point we can do more targeted
     // error handling.
     log::debug!("processing upload from disk");
-    match inner(self, only_if_file_is_old).await {
+    match inner(self, only_if_file_is_old, upload_reason).await {
       Ok(result) => result,
       Err(e) => {
         handle_unexpected::<(), anyhow::Error>(Err(e), "upload from disk");
@@ -495,8 +652,10 @@ impl Flusher {
   // request will be deleted.
   async fn process_pending_upload(
     &self,
-    request: StatsUploadRequest,
-  ) -> anyhow::Result<Option<oneshot::Receiver<UploadResponse>>> {
+    mut request: StatsUploadRequest,
+    upload_reason: UploadReason,
+  ) -> anyhow::Result<Option<(String, oneshot::Receiver<UploadResponse>)>> {
+    request.upload_reason = upload_reason.into();
     let (stats, response_rx) = TrackedStatsUploadRequest::new(request.upload_uuid.clone(), request);
 
     log::debug!(
@@ -510,6 +669,7 @@ impl Flusher {
         .sum::<usize>(),
     );
 
+    let uuid = stats.payload.upload_uuid.clone();
     let tracked_upload = DataUpload::StatsUpload(stats);
 
     // If this errors out the other end of the channel has closed, indicating that we are shutting
@@ -518,32 +678,20 @@ impl Flusher {
       return Ok(None);
     }
 
-    Ok(Some(response_rx))
+    Ok(Some((uuid, response_rx)))
   }
 
-  async fn process_pending_upload_completion(
-    &self,
-    upload_response: UploadResponse,
-  ) -> Option<oneshot::Receiver<UploadResponse>> {
+  async fn process_pending_upload_completion(&self, upload_response: &UploadResponse) {
     log::debug!("stat upload attempt complete: {upload_response:?}");
-    if upload_response.success {
-      // If this fails we are in a bad state and are likely going to end up double uploading, but
-      // there is little we can do about it.
-      handle_unexpected(
-        self
-          .file_manager
-          .complete_pending_upload(&upload_response.uuid)
-          .await,
-        "complete pending upload",
-      );
-      // During startup or after getting network connectivity back it's possible that we will have
-      // a number of pending uploads to process. Go ahead and see if we have an old file at the
-      // head of the list which we should upload immediately.
-      // TODO(mattklein123): It would be better to batch all of the "old" files into a single
-      // upload request. We can do this in the future.
-      return self.upload_from_disk(true).await;
-    }
-    None
+    // If this fails we are in a bad state and are likely going to end up double uploading, but
+    // there is little we can do about it.
+    handle_unexpected(
+      self
+        .file_manager
+        .complete_pending_upload(&upload_response.uuid, upload_response.success)
+        .await,
+      "complete pending upload",
+    );
   }
 }
 

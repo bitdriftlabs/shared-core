@@ -11,7 +11,7 @@ use crate::logging_state::{BufferProducers, ConfigUpdate, InitializedLoggingCont
 use crate::write_log_to_buffer;
 use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::BuffersWithAck;
-use bd_client_stats::FlushTrigger;
+use bd_client_stats::{FlushTrigger, FlushTriggerRequest};
 use bd_log_filter::FilterChain;
 use bd_log_metadata::LogFields;
 use bd_log_primitives::tiny_set::TinySet;
@@ -168,6 +168,7 @@ impl ProcessingPipeline {
         runtime,
         data_upload_tx,
         stats.stats.clone(),
+        flush_stats_trigger.clone(),
       );
 
       workflows_engine
@@ -404,48 +405,56 @@ impl ProcessingPipeline {
     flush_stats_trigger: FlushTrigger,
     matching_buffers: TinySet<Cow<'_, str>>,
   ) -> anyhow::Result<()> {
-    // The processing of a blocking log is about to complete.
-    // We make an arbitrary decision to start with the flushing of log buffers to disk first and
-    // move on to flushing stats to disk next.
+    // The processing of a blocking log is about to complete. Flush buffers and stats to disk in
+    // parallel.
+    // TODO(mattklein123): Figure out if we need blocking logs and explicit flushing. It would be
+    // better to remove this complexity if we could do it all as part of the explicit flush call
+    // which also uploads stats and does other things. For now in this case we just do what we did
+    // before which is write to disk only.
+    log::debug!("blocking log: flushing buffers and stats to disk in parallel");
 
-    log::debug!("blocking log: sending signal to flush buffers after log");
+    let flush_buffers_fut = async {
+      if matching_buffers.is_empty() {
+        log::debug!("blocking log: log processed but no buffers matched, skipping buffers flush");
+        return Ok(());
+      }
 
-    let flush_stats_trigger = flush_stats_trigger.clone();
-
-    if matching_buffers.is_empty() {
-      // Return early to avoid unnecessary tokio messages.
-      log::debug!(
-        "blocking log: log processed but no buffers matched, returning without waiting for \
-         buffers flush"
-      );
-    } else {
       let (tx, rx) = bd_completion::Sender::new();
-      // call the sender to flush the buffers using the tx that was created along with the logger
       let buffers_to_flush = BuffersWithAck::new(
         matching_buffers.iter().map(ToString::to_string).collect(),
         Some(tx),
       );
 
-      let result = flush_buffers_tx.send(buffers_to_flush).await;
-      if let Err(e) = result {
-        anyhow::bail!("blocking log: failed to send signal to flush buffer(s): {e:?}");
-      }
+      flush_buffers_tx.send(buffers_to_flush).await.map_err(|e| {
+        anyhow::anyhow!("blocking log: failed to send signal to flush buffer(s): {e:?}")
+      })?;
 
-      if let Err(e) = rx.recv().await {
-        anyhow::bail!("blocking log: failed to receive buffer(s) flush completion signal: {e:?}");
-      }
-    }
+      rx.recv().await.map_err(|e| {
+        anyhow::anyhow!("blocking log: failed to receive buffer(s) flush completion signal: {e:?}")
+      })
+    };
 
-    // If the log is blocking, we need to flush the stats to disk.
-    log::debug!("blocking log: sending signal to flush stats to disk");
-    let (sender, receiver) = bd_completion::Sender::new();
-    if let Err(e) = flush_stats_trigger.flush(Some(sender)).await {
-      anyhow::bail!("blocking log: failed to send signal to flush stats: {e:?}");
-    }
+    let flush_stats_fut = async {
+      log::debug!("blocking log: sending signal to flush stats to disk");
+      let (sender, receiver) = bd_completion::Sender::new();
 
-    receiver.recv().await.map_err(|e| {
-      anyhow::anyhow!("failed to await receiving flush stats trigger completion: {e:?}")
-    })
+      flush_stats_trigger
+        .flush(FlushTriggerRequest {
+          do_upload: false,
+          completion_tx: Some(sender),
+        })
+        .await
+        .map_err(|e| {
+          anyhow::anyhow!("blocking log: failed to send signal to flush stats: {e:?}")
+        })?;
+
+      receiver.recv().await.map_err(|e| {
+        anyhow::anyhow!("failed to await receiving flush stats trigger completion: {e:?}")
+      })
+    };
+
+    tokio::try_join!(flush_buffers_fut, flush_stats_fut)?;
+    Ok(())
   }
 
   fn write_to_buffers(

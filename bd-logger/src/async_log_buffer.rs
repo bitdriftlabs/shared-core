@@ -24,6 +24,7 @@ use bd_bounded_buffer::{TrySendError, channel};
 use bd_buffer::BuffersWithAck;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_common::{maybe_await, maybe_await_map};
+use bd_client_stats::FlushTriggerRequest;
 use bd_crash_handler::global_state;
 use bd_device::Store;
 use bd_log_metadata::MetadataProvider;
@@ -934,34 +935,53 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                   }
                 },
                 StateUpdateMessage::FlushState(completion_tx) => {
-                  let (sender, receiver) = bd_completion::Sender::new();
-                  if let Err(e) =
-                    self.logging_state.flush_stats_trigger().flush(Some(sender)).await
-                  {
-                    log::debug!("flushing state: failed to flush stats: {e}");
-                  }
+                  let flush_stats_trigger = self.logging_state.flush_stats_trigger().clone();
+                  let flush_stats = async move {
+                    let (sender, receiver) = bd_completion::Sender::new();
+                    if let Err(e) =
+                      flush_stats_trigger.flush(
+                        FlushTriggerRequest { do_upload: true, completion_tx: Some(sender) }
+                      ).await
+                    {
+                      log::debug!("flushing state: failed to flush stats: {e}");
+                    }
 
-                  if let Err(e) = receiver.recv().await {
-                    log::debug!("flushing state: failed to wait for stats flush: {e}");
-                  }
+                    if let Err(e) = receiver.recv().await {
+                      log::debug!("flushing state: failed to wait for stats flush: {e}");
+                    }
+                  };
 
-                  let (sender, receiver) = bd_completion::Sender::new();
-                  let buffers_with_ack = BuffersWithAck::new_all_buffers(Some(sender));
-                  if let Err(e) = self.logging_state.flush_buffers_trigger()
-                    .send(buffers_with_ack).await
-                  {
-                    log::debug!("flushing state: failed to flush buffers: {e}");
-                  }
+                  let flush_buffers_trigger = self.logging_state.flush_buffers_trigger().clone();
+                  let flush_buffers = async move {
+                    let (sender, receiver) = bd_completion::Sender::new();
+                    let buffers_with_ack = BuffersWithAck::new_all_buffers(Some(sender));
+                    if let Err(e) = flush_buffers_trigger
+                      .send(buffers_with_ack).await
+                    {
+                      log::debug!("flushing state: failed to flush buffers: {e}");
+                    }
 
-                  if let Err(e) = receiver.recv().await {
-                    log::debug!("flushing state: failed to wait for buffers flush: {e}");
-                  }
+                    if let Err(e) = receiver.recv().await {
+                      log::debug!("flushing state: failed to wait for buffers flush: {e}");
+                    }
+                  };
 
-                  self.session_strategy.flush();
+                  // TODO(mattklein123): We need the store interfaces to be async so that this
+                  // flush can be async also. For now we do spawn blocking.
+                  let session_strategy = self.session_strategy.clone();
+                  let flush_session = async {
+                    let _ = tokio::task::spawn_blocking(move || {
+                      session_strategy.flush();
+                    }).await;
+                  };
 
-                  if let Some(workflows_engine) = self.logging_state.workflows_engine() {
-                    workflows_engine.maybe_persist(true).await;
-                  }
+                  let persist_workflows = async {
+                    if let Some(workflows_engine) = self.logging_state.workflows_engine() {
+                      workflows_engine.maybe_persist(true).await;
+                    }
+                  };
+
+                  tokio::join!(flush_stats, flush_buffers, flush_session, persist_workflows);
 
                   if let Some(completion_tx) = completion_tx {
                     completion_tx.send(());

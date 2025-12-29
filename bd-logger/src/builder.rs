@@ -187,6 +187,7 @@ impl LoggerBuilder {
         data_upload_tx.clone(),
         flush_ticker,
         upload_ticker,
+        time_provider.clone(),
       );
 
       (flush_handles.flusher, flush_handles.flush_trigger)

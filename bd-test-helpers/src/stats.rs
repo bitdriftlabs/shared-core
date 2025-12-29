@@ -7,6 +7,7 @@
 
 use assert_matches::assert_matches;
 use bd_proto::protos::client::api::StatsUploadRequest;
+use bd_proto::protos::client::api::stats_upload_request::UploadReason;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::{
   Aggregated,
   Occurred_at,
@@ -234,5 +235,10 @@ impl StatsRequestHelper {
     }
 
     self.request.snapshot[0].metrics().metric.len()
+  }
+
+  #[must_use]
+  pub fn upload_reason(&self) -> UploadReason {
+    self.request.upload_reason.enum_value_or_default()
   }
 }

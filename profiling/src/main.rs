@@ -9,7 +9,7 @@ mod paths;
 
 use crate::paths::PATHS;
 use bd_client_common::file::read_compressed_protobuf;
-use bd_client_stats::Stats;
+use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::{Collector, Scope};
 use bd_log_matcher::builder::{message_equals, message_regex_matches};
 use bd_log_primitives::tiny_set::TinySet;
@@ -38,7 +38,7 @@ use bd_test_helpers::workflow::{
   metric_value,
   state,
 };
-use bd_time::TimeDurationExt;
+use bd_time::{SystemTimeProvider, TimeDurationExt};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use bd_workflows::workflow::WorkflowEvent;
@@ -106,7 +106,14 @@ impl AnnotatedWorkflowsEngine {
   ) -> Self {
     let (data_tx, _data_rx) = tokio::sync::mpsc::channel(1);
 
-    let (mut engine, _) = WorkflowsEngine::new(scope, directory, runtime_loader, data_tx, stats);
+    let (mut engine, _) = WorkflowsEngine::new(
+      scope,
+      directory,
+      runtime_loader,
+      data_tx,
+      stats,
+      FlushTrigger::new().0,
+    );
 
     let mut workflow_configurations = WorkflowConfigurationsInit::new();
     Self::create_general_health_workflows(&mut workflow_configurations);
@@ -384,6 +391,7 @@ impl Setup {
       data_tx,
       flush_ticker,
       upload_ticker,
+      Arc::new(SystemTimeProvider),
     );
 
     let flush_handle = tokio::spawn(async move {

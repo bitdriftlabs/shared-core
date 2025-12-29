@@ -14,7 +14,7 @@ use crate::test::TestLog;
 use crate::workflow::{WorkflowDebugStateMap, WorkflowEvent, WorkflowTransitionDebugState};
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
-use bd_client_stats::Stats;
+use bd_client_stats::{FlushTrigger, FlushTriggerRequest, Stats};
 use bd_client_stats_store::Collector;
 use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{LogFields, LogMessage, log_level};
@@ -93,6 +93,8 @@ pub struct Hooks {
   pub sankey_uploads: Vec<SankeyPathUploadRequest>,
   pub received_sankey_upload_intents: Vec<SankeyIntentRequest>,
   pub awaiting_sankey_upload_intent_decisions: Vec<Option<IntentDecision>>,
+
+  pub stats_flush_requests_received: u32,
 }
 
 //
@@ -187,14 +189,20 @@ impl AnnotatedWorkflowsEngine {
   pub fn run_for_test(
     buffers_to_flush_rx: Receiver<BuffersToFlush>,
     data_upload_rx: Receiver<DataUpload>,
+    stats_flush_rx: Receiver<FlushTriggerRequest>,
     hooks: Arc<parking_lot::Mutex<Hooks>>,
   ) -> JoinHandle<()> {
     let mut buffers_to_flush_rx = buffers_to_flush_rx;
     let mut data_upload_rx = data_upload_rx;
+    let mut stats_flush_rx = stats_flush_rx;
 
     tokio::spawn(async move {
       loop {
         tokio::select! {
+          Some(_flush_request) = stats_flush_rx.recv() => {
+              log::debug!("received stats flush request");
+              hooks.lock().stats_flush_requests_received += 1;
+            },
           Some(buffers_to_flush) = buffers_to_flush_rx.recv() => {
               log::debug!("received new buffers to flush {buffers_to_flush:?}");
               hooks.lock().flushed_buffers.push(buffers_to_flush);
@@ -304,6 +312,10 @@ impl AnnotatedWorkflowsEngine {
         .push(decision);
     }
   }
+
+  pub fn stats_flush_requests_count(&self) -> u32 {
+    self.hooks.lock().stats_flush_requests_received
+  }
 }
 
 impl std::ops::Deref for AnnotatedWorkflowsEngine {
@@ -365,16 +377,23 @@ impl Setup {
 
     let stats = bd_client_stats::Stats::new(self.collector.clone());
 
+    let (flush_trigger, stats_flush_rx) = FlushTrigger::new();
+
     let (mut workflows_engine, buffers_to_flush_rx) = WorkflowsEngine::new(
       &self.collector.scope(""),
       self.sdk_directory.path(),
       &self.runtime,
       data_upload_tx,
       stats.clone(),
+      flush_trigger,
     );
 
-    let task_handle =
-      AnnotatedWorkflowsEngine::run_for_test(buffers_to_flush_rx, data_upload_rx, hooks.clone());
+    let task_handle = AnnotatedWorkflowsEngine::run_for_test(
+      buffers_to_flush_rx,
+      data_upload_rx,
+      stats_flush_rx,
+      hooks.clone(),
+    );
 
     workflows_engine.start(workflows_engine_config, false).await;
 

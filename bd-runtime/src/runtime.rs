@@ -830,6 +830,16 @@ pub mod stats {
   // This limit prevents unbounded growth of metrics, which could result in the system running out
   // of memory.
   int_feature_flag!(MaxDynamicCountersFlag, "stats.max_dynamic_stats", 500);
+
+  // This controls the minimum time between stats uploads. If uploads are triggered more frequently
+  // than this interval (either through periodic uploads or force flushes), they will be skipped.
+  // This prevents excessive upload traffic when flushes happen frequently. Failed uploads do not
+  // count against this limit to allow immediate retries.
+  duration_feature_flag!(
+    MinimumUploadIntervalFlag,
+    "stats.minimum_upload_interval_ms",
+    30.seconds()
+  );
 }
 
 pub mod sleep_mode {

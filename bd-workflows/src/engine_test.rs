@@ -19,6 +19,7 @@ use crate::workflow::{Workflow, WorkflowEvent, WorkflowTransitionDebugState};
 use crate::{engine_assert_active_run_traversals, engine_assert_active_runs};
 use assert_matches::assert_matches;
 use bd_api::upload::IntentDecision;
+use bd_client_stats::FlushTrigger;
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
 use bd_error_reporter::reporter::{Reporter, UnexpectedErrorHandler};
@@ -1172,6 +1173,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
     &make_runtime(),
     tx,
     stats.clone(),
+    FlushTrigger::new().0,
   );
 
   workflows_engine
@@ -1224,6 +1226,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
     &make_runtime(),
     rx,
     stats,
+    FlushTrigger::new().0,
   );
 
   workflows_engine
@@ -2892,4 +2895,62 @@ async fn take_screenshot_action() {
   let result = engine.process_log(TestLog::new("foo"));
 
   assert!(result.capture_screenshot);
+}
+
+#[tokio::test]
+async fn stats_flush_triggered_on_log_upload_approval() {
+  let b = state("B");
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    rule!(message_equals("flush")),
+    &[make_flush_buffers_action(
+      &["trigger_buffer_id"],
+      None,
+      "flush_action",
+    )],
+  );
+
+  let workflow = WorkflowBuilder::new("1", &[&a, &b]).make_config();
+  let setup = Setup::new();
+
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new(
+      WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![workflow]),
+      TinySet::from(["trigger_buffer_id".into()]),
+      TinySet::default(),
+    ))
+    .await;
+  engine.log_destination_buffer_ids = TinySet::from(["trigger_buffer_id".into()]);
+
+  // No stats flush requests yet.
+  assert_eq!(0, engine.stats_flush_requests_count());
+
+  // Process a log that triggers a buffer flush action.
+  let result = engine.process_log(TestLog::new("flush"));
+  assert_eq!(
+    result.log_destination_buffer_ids,
+    Cow::Owned(TinySet::from(["trigger_buffer_id".into()]))
+  );
+
+  // Set up the intent server to approve the upload.
+  engine.set_awaiting_logs_upload_intent_decisions(vec![IntentDecision::UploadImmediately]);
+
+  // Let the engine process the intent and receive approval.
+  engine.run_once_for_test().await;
+
+  // Verify the upload was approved and buffer flush was triggered.
+  assert_eq!(
+    vec![log_upload_intent_request::WorkflowActionUpload {
+      workflow_action_ids: vec!["flush_action".to_string()],
+      ..Default::default()
+    }],
+    engine.received_logs_upload_intents()
+  );
+  assert_eq!(
+    engine.flushed_buffers(),
+    vec![TinySet::from(["trigger_buffer_id".into()])],
+  );
+
+  // Verify that a stats flush was triggered when the upload was approved.
+  assert_eq!(1, engine.stats_flush_requests_count());
 }

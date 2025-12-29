@@ -517,6 +517,7 @@ dependencies = [
  "bd-workspace-hack",
  "ctor",
  "flate2",
+ "futures",
  "futures-util",
  "itertools 0.14.0",
  "log",
