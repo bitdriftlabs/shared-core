@@ -333,7 +333,7 @@ impl Workflow {
     (0 .. self.runs.len())
       .flat_map(|run_index| {
         self.runs[run_index].traversals.iter().map(|traversal| {
-          config.inner().states()[traversal.state_index as usize]
+          config.inner().states()[traversal.state_index]
             .id()
             .to_string()
         })
@@ -348,7 +348,7 @@ impl Workflow {
       .traversals
       .iter()
       .map(|traversal| {
-        config.inner().states()[traversal.state_index as usize]
+        config.inner().states()[traversal.state_index]
           .id()
           .to_string()
       })
@@ -846,13 +846,17 @@ fn process_transition<'a>(
 #[derive(Debug, Clone)]
 pub(crate) struct Traversal {
   /// The index of a state the traversal is currently at.
-  pub(crate) state_index: u64,
+  #[field(id = 1, serialize_as = "u64")]
+  pub(crate) state_index: usize,
   /// The number of logs matched by traversal's transitions.
   /// Each element in an array corresponds to one transition.
+  #[field(id = 2)]
   pub(crate) matched_logs_counts: Vec<u32>,
   /// Extractions folded across all traversals in a path.
+  #[field(id = 3)]
   pub(crate) extractions: TraversalExtractions,
   /// The unix timestamp in milliseconds of when the optional state timeout expires.
+  #[field(id = 4)]
   timeout_unix_ms: Option<i64>,
 }
 
@@ -872,7 +876,7 @@ impl Traversal {
       None
     } else {
       let mut traversal = Self {
-        state_index: state_index as u64,
+        state_index,
         // The number of logs matched by a given traversal.
         // Start at 0 for a new traversal.
         matched_logs_counts: vec![0; state.transitions().len()],
@@ -889,7 +893,7 @@ impl Traversal {
   }
 
   fn initialize_timeout(&mut self, config: &Config, now: OffsetDateTime) {
-    let Some(state) = &config.inner().states().get(self.state_index as usize) else {
+    let Some(state) = &config.inner().states().get(self.state_index) else {
       return;
     };
     self.timeout_unix_ms = state.timeout().map(|timeout| {
@@ -927,7 +931,7 @@ impl Traversal {
       config
         .inner()
         .states()
-        .get(self.state_index as usize)
+        .get(self.state_index)
         .map(super::config::State::id)
         .unwrap_or_default()
     );
@@ -983,12 +987,10 @@ impl Traversal {
     if result.output_traversals.is_empty()
       && let Some(timeout_unix_ms) = self.timeout_unix_ms
       && now.unix_timestamp_ms() >= timeout_unix_ms
-      && let Some(actions) = config
-        .inner()
-        .actions_for_timeout(self.state_index as usize)
+      && let Some(actions) = config.inner().actions_for_timeout(self.state_index)
       && let Some(next_state_index) = config
         .inner()
-        .next_state_index_for_timeout(self.state_index as usize)
+        .next_state_index_for_timeout(self.state_index)
     {
       // Timeout transitions use default extractions and pass appropriate fields based on event
       // type. For logs, we pass the log fields. For state changes, we pass the fields that were
@@ -1003,7 +1005,7 @@ impl Traversal {
         TraversalExtractions::default(),
         actions,
         fields,
-        self.state_index as usize,
+        self.state_index,
         next_state_index,
         WorkflowDebugTransitionType::Timeout,
         config,
@@ -1064,7 +1066,7 @@ impl Traversal {
         self.do_log_extractions(config, index, log, state_reader),
         actions,
         FieldsRef::new(&log.fields, &log.matching_fields),
-        self.state_index as usize,
+        self.state_index,
         next_state_index,
         WorkflowDebugTransitionType::Normal(index as u64),
         config,
@@ -1203,7 +1205,7 @@ impl Traversal {
         self.do_state_change_extractions(config, index, state_change, fields, state_reader),
         actions,
         fields,
-        self.state_index as usize,
+        self.state_index,
         next_state_index,
         WorkflowDebugTransitionType::Normal(index as u64),
         config,

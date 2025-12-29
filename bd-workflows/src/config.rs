@@ -259,7 +259,7 @@ impl InnerConfig {
   pub(crate) fn transitions_for_traversal(&self, traversal: &Traversal) -> Option<&[Transition]> {
     self
       .states
-      .get(traversal.state_index as usize)
+      .get(traversal.state_index)
       .map(|state| state.transitions.as_slice())
   }
 
@@ -268,15 +268,12 @@ impl InnerConfig {
     traversal: &Traversal,
     transition_index: usize,
   ) -> Option<&[Action]> {
-    self
-      .states
-      .get(traversal.state_index as usize)
-      .and_then(|state| {
-        state
-          .transitions
-          .get(transition_index)
-          .map(|transition| transition.actions.as_slice())
-      })
+    self.states.get(traversal.state_index).and_then(|state| {
+      state
+        .transitions
+        .get(transition_index)
+        .map(|transition| transition.actions.as_slice())
+    })
   }
 
   pub(crate) fn actions_for_timeout(&self, state_index: usize) -> Option<&[Action]> {
@@ -293,15 +290,12 @@ impl InnerConfig {
     traversal: &Traversal,
     transition_index: usize,
   ) -> Option<&TransitionExtractions> {
-    self
-      .states
-      .get(traversal.state_index as usize)
-      .and_then(|state| {
-        state
-          .transitions
-          .get(transition_index)
-          .map(|transition| &transition.extractions)
-      })
+    self.states.get(traversal.state_index).and_then(|state| {
+      state
+        .transitions
+        .get(transition_index)
+        .map(|transition| &transition.extractions)
+    })
   }
 
   pub(crate) fn next_state_index_for_traversal(
@@ -309,15 +303,12 @@ impl InnerConfig {
     traversal: &Traversal,
     transition_index: usize,
   ) -> Option<usize> {
-    self
-      .states
-      .get(traversal.state_index as usize)
-      .and_then(|state| {
-        state
-          .transitions
-          .get(transition_index)
-          .map(|transition| transition.target_state_index)
-      })
+    self.states.get(traversal.state_index).and_then(|state| {
+      state
+        .transitions
+        .get(transition_index)
+        .map(|transition| transition.target_state_index)
+    })
   }
 
   pub(crate) fn next_state_index_for_timeout(&self, state_index: usize) -> Option<usize> {
@@ -680,7 +671,7 @@ pub enum FlushBufferId {
 
 impl Default for FlushBufferId {
   fn default() -> Self {
-    FlushBufferId::WorkflowActionId(String::new())
+    Self::WorkflowActionId(String::new())
   }
 }
 
