@@ -25,13 +25,11 @@ fn test_global_init() {
 #[cfg(test)]
 mod tests;
 
-pub mod kv_journal;
 mod scope;
 pub mod versioned_kv_journal;
 
 pub use bd_proto::protos::state::payload::StateValue;
 pub use bd_proto::protos::state::payload::state_value::Value_type;
-pub use kv_journal::{DoubleBufferedKVJournal, InMemoryKVJournal, KVJournal, MemMappedKVJournal};
 pub use scope::Scope;
 pub use versioned_kv_journal::recovery::VersionedRecovery;
 pub use versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry};
