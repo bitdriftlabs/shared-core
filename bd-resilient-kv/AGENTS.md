@@ -13,35 +13,11 @@ The `bd-resilient-kv` library provides a versioned storage model:
 - Timestamp tracking: Every write returns a timestamp
 - Format: Protobuf-based entries (VERSION 1)
 
-### KVJournal Trait
-The `KVJournal` trait is the foundation of the system, providing:
-- **Append-only semantics**: Journals accumulate entries over time without removing old data
-- **High water mark monitoring**: Automatic detection when buffer usage exceeds thresholds
-- **Flag-based status**: Simple boolean flag indicating if high water mark has been triggered
-- **Compaction via reinit**: `reinit_from()` creates compact representations by serializing current state
-
 ### Key Implementations
 
-1. **InMemoryKVJournal**: Core implementation backed by byte buffers
-2. **MemMappedKVJournal**: File-backed implementation wrapping InMemoryKVJournal
-3. **DoubleBufferedKVJournal**: High-level wrapper providing automatic compaction and retry logic (used internally)
-4. **VersionedKVJournal**: Versioned journal with entry-level version tracking
-5. **MemMappedVersionedKVJournal**: Memory-mapped wrapper for versioned journals
-6. **VersionedKVStore**: High-level API for versioned key-value storage with automatic rotation
-
-### Bulk Operations Architecture
-
-The system provides efficient bulk operations through a consistent pattern:
-
-**KVJournal Trait**: Defines `set_multiple(&mut self, entries: &[(String, Value)])` for efficient batch updates
-**KVStore Integration**: The `insert_multiple()` method in KVStore calls through to the underlying journal's `set_multiple()`
-**Feature Flags Integration**: The `set_multiple()` method in FeatureFlags converts `Vec<(String, Option<String>)>` inputs to the Vec format expected by the KV store
-
-**Performance Benefits**:
-- Single transaction for multiple updates
-- Reduced I/O overhead compared to individual `set()` calls
-- Optimized for batch processing scenarios
-- Automatic timestamp synchronization for related entries
+1. **VersionedKVJournal**: Versioned journal with entry-level version tracking
+2. **MemMappedVersionedKVJournal**: Memory-mapped wrapper for versioned journals
+3. **VersionedKVStore**: High-level API for versioned key-value storage with automatic rotation
 
 ### Versioned Storage Architecture
 
@@ -121,22 +97,6 @@ The `VersionedRecovery` utility provides point-in-time recovery by replaying jou
 - Asynchronously compresses archived journal to `.t{timestamp}.zz`
 - Preserves complete history for point-in-time recovery
 
-### 4. Bulk Operations and Retry Logic
-
-The system includes sophisticated retry logic for bulk operations through the `DoubleBufferedKVJournal` (used internally):
-
-**`set_multiple` Intelligence**: The `set_multiple` method implements a two-phase approach:
-1. **Primary Attempt**: Forward operation to active journal using standard logic
-2. **Intelligent Retry**: If the operation fails but high water mark is not triggered, retry once more
-
-**Rationale**: This handles the edge case where:
-- The underlying journal buffer fills up during the operation
-- Background compaction frees space automatically
-- A retry immediately after might succeed on the now-compacted journal
-- High water mark flag accurately reflects whether retry is worthwhile
-
-Note: This retry logic is internal to the journal system and handled automatically by VersionedKVStore.
-
 ### 5. Simplified High Water Mark Detection
 
 The system uses a straightforward approach to high water mark detection (internal to journal implementation):
@@ -152,37 +112,6 @@ if journal.is_high_water_mark_triggered() {
 - Simple, clear API
 - No callback complexity or thread safety concerns
 - Direct control over when to check status
-
-Note: For VersionedKVStore users, rotation is handled automatically during write operations.
-
-### 6. Double Buffered Journal Logic
-The `DoubleBufferedKVJournal` implements automatic switching with sophisticated retry logic:
-
-1. **Normal Operations**: Forward to active journal, switch if high water mark triggered
-2. **set_multiple Retry**: Special handling for bulk operations with intelligent retry after failures
-3. **Flag Management**: Tracks high water mark status to indicate when compaction cannot help
-
-**Critical Logic**:
-```rust
-// Sophisticated retry logic in set_multiple
-fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
-    // First attempt using the standard logic
-    let result = self.with_active_journal_mut(|journal| journal.set_multiple(entries));
-
-    // If it failed and our high water mark isn't triggered, try again
-    // (this handles the case where the underlying journal filled up but compaction freed space)
-    if result.is_err() && !self.is_high_water_mark_triggered() {
-        self.with_active_journal_mut(|journal| journal.set_multiple(entries))
-    } else {
-        result
-    }
-}
-```
-
-**Key Insight**: The retry logic specifically handles scenarios where:
-- The initial `set_multiple` operation fails (possibly due to buffer limitations)
-- But the high water mark is not triggered (indicating potential compaction occurred)
-- A second attempt might succeed on the now-compacted journal
 
 ## Testing Strategies
 
@@ -204,7 +133,7 @@ fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
    let ts1 = store.insert(scope, "key1", value1).await?;
    let ts2 = store.insert(scope, "key2", value2).await?;
    let ts3 = store.remove(scope, "key1").await?;
-   
+
    // Recover at ts2 should have both keys
    let state_at_ts2 = recovery.recover_at_timestamp(ts2)?;
    assert!(state_at_ts2.contains("key1"));
@@ -216,12 +145,12 @@ fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
        buffer_size: 1024,  // Small buffer
        high_water_mark_ratio: 0.8,
    };
-   
+
    // Write until rotation occurs
    for i in 0..100 {
        store.insert(scope, &format!("key_{}", i), large_value).await?;
    }
-   
+
    // Verify archived journals exist
    assert!(archived_journals_exist());
    ```
@@ -230,8 +159,8 @@ fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
    ```rust
    // Trigger rotation
    store.rotate_journal().await?;
-   
-   // Check that archived journal has .zz extension
+
+  // Check that archived journal has .zz extension
    // and is smaller than original
    ```
 
@@ -321,10 +250,9 @@ fn set_multiple(&mut self, entries: &[(String, Value)]) -> anyhow::Result<()> {
 ## Architecture Evolution
 
 The system has evolved to focus on versioned storage:
-1. **Legacy KVStore**: Double-buffered non-versioned store (removed)
-2. **VersionedKVStore**: Current primary implementation with timestamp tracking
-3. **Async Architecture**: Write operations are async for efficient compression
-4. **Automatic Management**: Rotation and compression handled automatically
+1. **VersionedKVStore**: Current primary implementation with timestamp tracking
+2. **Async Architecture**: Write operations are async for efficient compression
+3. **Automatic Management**: Rotation and compression handled automatically
 
 ## Working with the Code
 
@@ -363,5 +291,3 @@ The bd-resilient-kv system provides versioned persistent key-value storage with 
 - **Automatic Rotation**: Journal rotation triggered by high water mark
 - **Async Compression**: Archived journals compressed asynchronously
 - **Cross-Rotation Recovery**: Recovery works seamlessly across rotation boundaries
-
-**Removed Features**: The non-versioned KVStore (double-buffered) implementation has been removed. All new code should use VersionedKVStore for persistent state management.
