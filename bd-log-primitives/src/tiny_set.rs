@@ -7,6 +7,7 @@
 
 mod proto;
 
+use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
 
 // The purpose of these data structures are to have a small map/set like structures which are
@@ -17,7 +18,7 @@ use std::borrow::Borrow;
 // TinySet
 //
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub struct TinySet<T> {
   inner: TinyMap<T, ()>,
 }
@@ -150,7 +151,7 @@ impl<'a, T> IntoIterator for &'a TinySet<T> {
 // TinyMap
 //
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
 pub struct TinyMap<K, V> {
   items: Vec<(K, V)>,
 }

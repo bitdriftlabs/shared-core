@@ -657,22 +657,15 @@ impl Action {
   }
 }
 
-#[bd_macros::proto_serializable]
-#[derive(Hash, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+  serde::Serialize, serde::Deserialize, Hash, Clone, Debug, PartialEq, Eq, PartialOrd, Ord,
+)]
 pub enum FlushBufferId {
   /// Flush the buffer due to a workflow action triggering.
-  #[field(id = 1)]
   WorkflowActionId(String),
   /// Flush the buffer in response to an explicit session capture request. The ID is provided to
   /// identify the origin of the session capture request.
-  #[field(id = 2)]
   ExplicitSessionCapture(String),
-}
-
-impl Default for FlushBufferId {
-  fn default() -> Self {
-    Self::WorkflowActionId(String::new())
-  }
 }
 
 //

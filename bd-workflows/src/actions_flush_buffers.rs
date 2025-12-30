@@ -15,10 +15,10 @@ use bd_api::DataUpload;
 use bd_api::upload::{Intent_type, IntentDecision, TrackedLogUploadIntent, WorkflowActionUpload};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::tiny_set::TinySet;
-use bd_macros::proto_serializable;
 use bd_proto::protos::client::api::LogUploadIntentRequest;
 use bd_proto::protos::client::api::log_upload_intent_request::ExplicitSessionCapture;
 use bd_stats_common::labels;
+use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::fmt::Debug;
@@ -740,18 +740,13 @@ pub(crate) struct StreamingBuffersActionsProcessingResult<'a> {
 // The action created by a flush buffer workflow action. This tracks the action while upload intent
 // negotiation is performed. At that point, it either transitions into a `StreamingBuffersAction` if
 // streaming was configured for the action.
-#[proto_serializable]
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct PendingFlushBuffersAction {
-  #[field(id = 1)]
   pub(crate) id: FlushBufferId,
-  #[field(id = 2)]
   session_id: String,
 
-  #[field(id = 3)]
   trigger_buffer_ids: TinySet<Cow<'static, str>>,
 
-  #[field(id = 4)]
   streaming: Option<Streaming>,
 }
 
@@ -866,13 +861,10 @@ impl PendingFlushBuffersAction {
 // Streaming
 //
 
-#[proto_serializable]
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub(crate) struct Streaming {
-  #[field(id = 1)]
   destination_continuous_buffer_ids: TinySet<Cow<'static, str>>,
 
-  #[field(id = 2)]
   max_logs_count: Option<u64>,
 }
 
@@ -880,25 +872,18 @@ pub(crate) struct Streaming {
 // StreamingBuffersAction
 //
 
-#[proto_serializable]
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
 // The action created in response to flush buffer actions that were accepted for upload and had a
 // streaming configuration attached to them.
 pub(crate) struct StreamingBuffersAction {
-  #[field(id = 1)]
   pub(crate) id: FlushBufferId,
-  #[field(id = 2)]
   session_id: String,
 
-  #[field(id = 3)]
   source_trigger_buffer_ids: TinySet<Cow<'static, str>>,
-  #[field(id = 4)]
   destination_continuous_buffer_ids: TinySet<Cow<'static, str>>,
 
-  #[field(id = 5)]
   max_logs_count: Option<u64>,
 
-  #[field(id = 6)]
   logs_count: u64,
 }
 

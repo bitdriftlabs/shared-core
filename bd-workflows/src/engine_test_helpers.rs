@@ -54,8 +54,8 @@ pub fn assert_workflow_debug_state(
     .map(|(workflow_id, states)| {
       (
         (*workflow_id).to_string(),
-        WorkflowDebugStateMap {
-          inner: states
+        WorkflowDebugStateMap(Box::new(
+          states
             .iter()
             .map(|(state_type, state)| {
               (
@@ -72,7 +72,7 @@ pub fn assert_workflow_debug_state(
               )
             })
             .collect(),
-        },
+        )),
       )
     })
     .collect();
