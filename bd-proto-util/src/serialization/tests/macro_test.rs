@@ -17,7 +17,9 @@ fn test_simple_struct() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, PartialEq, Default)]
   struct Foo {
+    #[field(id = 1)]
     a: u32,
+    #[field(id = 2)]
     b: String,
   }
 
@@ -107,13 +109,16 @@ fn test_nested_struct() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, PartialEq, Default, Clone)]
   struct Bar {
+    #[field(id = 1)]
     x: i64,
   }
 
   #[proto_serializable]
   #[derive(Debug, PartialEq, Default)]
   struct Foo {
+    #[field(id = 1)]
     bar: Bar,
+    #[field(id = 2)]
     val: Option<u32>,
   }
 
@@ -140,16 +145,19 @@ fn test_nested_struct() -> Result<()> {
 }
 
 #[test]
-fn test_implicit_field_numbering() -> Result<()> {
+fn test_explicit_field_numbering() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, PartialEq, Default)]
-  struct ImplicitFields {
+  struct ExplicitFields {
+    #[field(id = 1)]
     name: String,
+    #[field(id = 2)]
     age: u32,
+    #[field(id = 3)]
     email: String,
   }
 
-  let obj = ImplicitFields {
+  let obj = ExplicitFields {
     name: "Alice".to_string(),
     age: 30,
     email: "alice@example.com".to_string(),
@@ -166,21 +174,23 @@ fn test_implicit_field_numbering() -> Result<()> {
   let field_num = raw_tag >> 3;
   assert_eq!(field_num, 1);
 
-  let obj2 = ImplicitFields::deserialize(&mut is)?;
+  let obj2 = ExplicitFields::deserialize(&mut is)?;
   assert_eq!(obj, obj2);
 
   Ok(())
 }
 
 #[test]
-fn test_implicit_with_skip() -> Result<()> {
+fn test_explicit_with_skip() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, PartialEq)]
   struct WithSkip {
+    #[field(id = 1)]
     name: String,
     #[field(skip)]
     #[field(default = r#""default_value".to_string()"#)]
     skipped: String,
+    #[field(id = 2)]
     age: u32,
   }
 
@@ -248,13 +258,18 @@ fn test_explicit_override_all_fields() -> Result<()> {
 }
 
 #[test]
-fn test_enum_struct_variant_implicit() -> Result<()> {
+fn test_enum_struct_variant_explicit() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, PartialEq, Default)]
   enum MyEnum {
     #[field(id = 1)]
     #[field(deserialize)]
-    StructVariant { name: String, count: u32 },
+    StructVariant {
+      #[field(id = 1)]
+      name: String,
+      #[field(id = 2)]
+      count: u32,
+    },
     #[field(id = 2)]
     #[default]
     Unit,
@@ -287,8 +302,11 @@ fn test_roundtrip_proto_serializable() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, PartialEq, Default)]
   struct Data {
+    #[field(id = 1)]
     text: String,
+    #[field(id = 2)]
     number: i32,
+    #[field(id = 3)]
     flag: bool,
   }
 
@@ -322,6 +340,7 @@ fn test_roundtrip_with_rust_protobuf() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, Default, PartialEq)]
   struct CustomStringValue {
+    #[field(id = 1)]
     value: String,
   }
 
@@ -359,7 +378,9 @@ fn test_roundtrip_nested_with_protobuf() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, Default)]
   struct CustomAny {
+    #[field(id = 1)]
     type_url: String,
+    #[field(id = 2)]
     value: Vec<u8>,
   }
 
@@ -406,7 +427,12 @@ fn test_enum_roundtrip() -> Result<()> {
     #[default]
     Pending,
     #[field(id = 2)]
-    Active { user_id: String, start_time: i64 },
+    Active {
+      #[field(id = 1)]
+      user_id: String,
+      #[field(id = 2)]
+      start_time: i64,
+    },
     #[field(id = 3)]
     Complete(i32),
   }
@@ -439,14 +465,7 @@ fn test_enum_roundtrip() -> Result<()> {
 
 #[test]
 fn test_field_numbering_starts_at_one() -> Result<()> {
-  // This test verifies that auto-assigned field numbers start at 1, not 0
-  #[proto_serializable]
-  #[derive(Debug, PartialEq, Default)]
-  struct TestImplicitFieldNumbers {
-    first: String,
-    second: u32,
-  }
-
+  // This test verifies that field numbers start at 1, not 0
   #[proto_serializable]
   #[derive(Debug, PartialEq, Default)]
   struct TestExplicitFieldNumbers {
@@ -456,19 +475,15 @@ fn test_field_numbering_starts_at_one() -> Result<()> {
     second: u32,
   }
 
-  let obj1 = TestImplicitFieldNumbers {
-    first: "test".to_string(),
-    second: 42,
-  };
-  let obj2 = TestExplicitFieldNumbers {
+  let obj = TestExplicitFieldNumbers {
     first: "test".to_string(),
     second: 42,
   };
 
-  assert_eq!(
-    obj1.serialize_message_to_bytes()?,
-    obj2.serialize_message_to_bytes()?
-  );
+  // Serialize and deserialize to verify field numbering
+  let bytes = obj.serialize_message_to_bytes()?;
+  let deserialized = TestExplicitFieldNumbers::deserialize_message_from_bytes(&bytes)?;
+  assert_eq!(obj, deserialized);
 
   Ok(())
 }

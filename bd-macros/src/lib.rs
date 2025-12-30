@@ -204,16 +204,20 @@ fn handle_struct_variant(
 ) {
   let field_names: Vec<_> = fields.named.iter().map(|f| &f.ident).collect();
 
-  // Build field info with auto-assigned numbers
+  // Build field info with explicit field numbers required
   let field_info: Vec<_> = fields
     .named
     .iter()
-    .enumerate()
-    .map(|(idx, field)| {
+    .map(|field| {
       let field_name = field.ident.as_ref().unwrap();
       let field_type = &field.ty;
-      #[allow(clippy::cast_possible_truncation)]
-      let field_num = (idx + 1) as u32;
+      let attrs = parse_field_attrs(field);
+      let field_num = attrs.tag.expect(
+        &format!(
+          "Enum struct variant field '{}' must have explicit #[field(id = N)] attribute",
+          field_name
+        )
+      );
       (field_name, field_type, field_num)
     })
     .collect();
@@ -405,6 +409,12 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
   } else if let Data::Enum(data_enum) = &mut stripped_input.data {
     for variant in &mut data_enum.variants {
       variant.attrs.retain(|attr| !attr.path().is_ident("field"));
+      // Also strip field attributes from struct variant fields
+      if let Fields::Named(fields) = &mut variant.fields {
+        for field in &mut fields.named {
+          field.attrs.retain(|attr| !attr.path().is_ident("field"));
+        }
+      }
     }
   }
 
@@ -414,7 +424,7 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
     Data::Struct(data_struct) => {
       match &data_struct.fields {
         Fields::Named(fields) => {
-          // First pass: collect all field attrs and check for explicit numbering mode
+          // First pass: collect all field attrs
           let fields_with_attrs: Vec<_> = fields
             .named
             .iter()
@@ -424,13 +434,8 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
             })
             .collect();
 
-          // Check if any non-skipped field has explicit numbering
-          let has_any_explicit = fields_with_attrs
-            .iter()
-            .any(|(_, attrs)| !attrs.skip && attrs.tag.is_some());
-
           // Second pass: process fields with assigned numbers
-          for (field_idx, (field, attrs)) in fields_with_attrs.iter().enumerate() {
+          for (field, attrs) in fields_with_attrs.iter() {
             let field_name = field.ident.as_ref().unwrap();
             let field_type = &field.ty;
             let attrs = attrs.clone(); // Clone so we can consume attrs later
@@ -450,25 +455,13 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
               continue;
             }
 
-            // Determine field number: explicit or auto-assigned
-            let tag = if has_any_explicit {
-              attrs.tag.expect(
-                "Some fields have explicit #[field = N], so all non-skipped fields must be \
-                 explicit",
+            // All non-skipped fields must have explicit field numbering
+            let tag = attrs.tag.expect(
+              &format!(
+                "Field '{}' must have explicit #[field(id = N)] attribute",
+                field_name
               )
-            } else {
-              // Auto-assign based on position (skip counted fields)
-              // Protobuf field numbers start at 1, not 0
-              let auto_idx = fields_with_attrs[..= field_idx]
-                .iter()
-                .filter(|(_, a)| !a.skip)
-                .count();
-
-              #[allow(clippy::cast_possible_truncation)]
-              let field_num = auto_idx as u32;
-              assert!(field_num > 0, "Field numbering must start at 1");
-              field_num
-            };
+            );
 
             // Determine serialization type and conversion expressions
             let (serialize_type, serialize_with_ref, deserialize_convert) =
