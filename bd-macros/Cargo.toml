@@ -1,0 +1,16 @@
+[package]
+edition      = "2024"
+license-file = "../LICENSE"
+name         = "bd-macros"
+publish      = false
+version      = "1.0.0"
+
+[lib]
+doctest    = false
+proc-macro = true
+
+[dependencies]
+bd-workspace-hack.workspace = true
+proc-macro2                 = "1.0"
+quote                       = "1.0"
+syn                         = { version = "2.0", features = ["full"] }

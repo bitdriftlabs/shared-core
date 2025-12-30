@@ -325,7 +325,6 @@ dependencies = [
  "mockall",
  "parking_lot",
  "protobuf 4.0.0-alpha.0",
- "serde",
  "tempfile",
  "thiserror 2.0.17",
  "time",
@@ -768,7 +767,6 @@ dependencies = [
  "parking_lot",
  "pretty_assertions",
  "protobuf 4.0.0-alpha.0",
- "serde",
  "time",
  "tokio",
 ]
@@ -850,11 +848,12 @@ dependencies = [
  "ahash",
  "anyhow",
  "bd-proto",
+ "bd-proto-util",
+ "bd-time",
  "bd-workspace-hack",
  "flate2",
  "ordered-float",
  "protobuf 4.0.0-alpha.0",
- "serde",
  "time",
 ]
 
@@ -923,6 +922,16 @@ dependencies = [
  "tracing",
  "unwrap-infallible",
  "uuid",
+]
+
+[[package]]
+name = "bd-macros"
+version = "1.0.0"
+dependencies = [
+ "bd-workspace-hack",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1005,13 +1014,17 @@ dependencies = [
 name = "bd-proto-util"
 version = "1.0.0"
 dependencies = [
+ "ahash",
  "anyhow",
  "base64ct",
+ "bd-macros",
  "bd-proto",
+ "bd-time",
  "bd-workspace-hack",
  "cc",
  "flatbuffers",
  "itertools 0.14.0",
+ "ordered-float",
  "protobuf 4.0.0-alpha.0",
  "sha2",
  "time",
@@ -1273,8 +1286,10 @@ name = "bd-stats-common"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "bd-macros",
+ "bd-proto-util",
  "bd-workspace-hack",
- "serde",
+ "protobuf 4.0.0-alpha.0",
  "sketches-rust",
 ]
 
@@ -1316,7 +1331,6 @@ dependencies = [
  "prometheus",
  "protobuf 4.0.0-alpha.0",
  "rustls-pemfile",
- "serde",
  "tempfile",
  "time",
  "tokio",
@@ -1355,7 +1369,9 @@ dependencies = [
  "bd-log",
  "bd-log-matcher",
  "bd-log-primitives",
+ "bd-macros",
  "bd-proto",
+ "bd-proto-util",
  "bd-runtime",
  "bd-shutdown",
  "bd-state",
@@ -1363,7 +1379,6 @@ dependencies = [
  "bd-test-helpers",
  "bd-time",
  "bd-workspace-hack",
- "bincode 2.0.1",
  "ctor",
  "futures-util",
  "gungraun",
@@ -1373,7 +1388,6 @@ dependencies = [
  "pretty_assertions",
  "protobuf 4.0.0-alpha.0",
  "regex",
- "serde",
  "sha2",
  "simplelog",
  "tempfile",

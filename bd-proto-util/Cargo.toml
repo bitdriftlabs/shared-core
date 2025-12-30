@@ -9,15 +9,21 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
+ahash.workspace             = true
 anyhow.workspace            = true
 base64ct.workspace          = true
 bd-proto.path               = "../bd-proto"
+bd-time.path                = "../bd-time"
 bd-workspace-hack.workspace = true
 flatbuffers.workspace       = true
 itertools.workspace         = true
+ordered-float.workspace     = true
 protobuf.workspace          = true
 sha2.workspace              = true
 time.workspace              = true
+
+[dev-dependencies]
+bd-macros = { path = "../bd-macros" }
 
 [build-dependencies]
 cc.workspace = true

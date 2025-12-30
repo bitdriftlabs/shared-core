@@ -18,7 +18,6 @@ use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{SankeyIntentRequest, SankeyPathUploadRequest};
 use bd_stats_common::labels;
 use itertools::Itertools;
-use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::{Receiver, Sender};
 
 const PROCESSED_INTENTS_LRU_CACHE_SIZE: usize = 100;
@@ -83,7 +82,8 @@ impl ProcessedIntents {
   }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialOrd, Ord, PartialEq, Eq)]
+#[bd_macros::proto_serializable]
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub struct PendingSankeyPathUpload {
   pub sankey_path: SankeyPath,
 }

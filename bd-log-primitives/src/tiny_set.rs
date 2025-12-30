@@ -5,7 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use serde::{Deserialize, Serialize};
+mod proto;
+
 use std::borrow::Borrow;
 
 // The purpose of these data structures are to have a small map/set like structures which are
@@ -16,7 +17,7 @@ use std::borrow::Borrow;
 // TinySet
 //
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TinySet<T> {
   inner: TinyMap<T, ()>,
 }
@@ -99,6 +100,20 @@ impl<T: PartialEq> FromIterator<T> for TinySet<T> {
   }
 }
 
+impl<T: PartialEq> Extend<T> for TinySet<T> {
+  fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+    self.inner.extend(iter.into_iter().map(|item| (item, ())));
+  }
+}
+
+impl<T: PartialEq> Extend<Self> for TinySet<T> {
+  fn extend<I: IntoIterator<Item = Self>>(&mut self, iter: I) {
+    for set in iter {
+      self.inner.extend(set.inner);
+    }
+  }
+}
+
 impl<T: PartialEq, const N: usize> From<[T; N]> for TinySet<T> {
   fn from(arr: [T; N]) -> Self {
     Self {
@@ -119,16 +134,32 @@ impl<T> IntoIterator for TinySet<T> {
   }
 }
 
+impl<'a, T> IntoIterator for &'a TinySet<T> {
+  type Item = &'a T;
+  type IntoIter = std::iter::Map<std::slice::Iter<'a, (T, ())>, fn(&'a (T, ())) -> &'a T>;
+
+  fn into_iter(self) -> Self::IntoIter {
+    fn map_ref<T>((k, ()): &(T, ())) -> &T {
+      k
+    }
+    self.inner.items.iter().map(map_ref)
+  }
+}
+
 //
 // TinyMap
 //
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct TinyMap<K, V> {
   items: Vec<(K, V)>,
 }
 
 impl<K: PartialEq, V> TinyMap<K, V> {
+  pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+    self.items.iter().map(|(k, v)| (k, v))
+  }
+
   pub fn get<Q>(&self, key: &Q) -> Option<&V>
   where
     K: Borrow<Q>,
@@ -209,6 +240,18 @@ impl<K, V> IntoIterator for TinyMap<K, V> {
   }
 }
 
+impl<'a, K, V> IntoIterator for &'a TinyMap<K, V> {
+  type Item = (&'a K, &'a V);
+  type IntoIter = std::iter::Map<std::slice::Iter<'a, (K, V)>, fn(&'a (K, V)) -> (&'a K, &'a V)>;
+
+  fn into_iter(self) -> Self::IntoIter {
+    fn map_ref<K, V>((k, v): &(K, V)) -> (&K, &V) {
+      (k, v)
+    }
+    self.items.iter().map(map_ref)
+  }
+}
+
 impl<K: PartialEq, V> FromIterator<(K, V)> for TinyMap<K, V> {
   fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
     let mut new = Self::default();
@@ -222,6 +265,24 @@ impl<K: PartialEq, V, const N: usize> From<[(K, V); N]> for TinyMap<K, V> {
     let mut new = Self::default();
     new.extend(arr);
     new
+  }
+}
+
+impl<K: PartialEq, V> Extend<(K, V)> for TinyMap<K, V> {
+  fn extend<I: IntoIterator<Item = (K, V)>>(&mut self, iter: I) {
+    for (k, v) in iter {
+      self.insert(k, v);
+    }
+  }
+}
+
+impl<K: PartialEq, V> Extend<Self> for TinyMap<K, V> {
+  fn extend<I: IntoIterator<Item = Self>>(&mut self, iter: I) {
+    for map in iter {
+      for (k, v) in map {
+        self.insert(k, v);
+      }
+    }
   }
 }
 

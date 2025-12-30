@@ -57,7 +57,6 @@ use bd_runtime::runtime::workflows::PersistenceWriteIntervalFlag;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, session_capture};
 use bd_stats_common::labels;
 use bd_stats_common::workflow::WorkflowDebugKey;
-use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
@@ -834,11 +833,11 @@ impl WorkflowsEngine {
     let emit_metric_actions: BTreeSet<&ActionEmitMetric> = actions
       .iter()
       .filter_map(|action| {
-        if let TriggeredAction::EmitMetric(emit_metric_action) = action {
-          Some(*emit_metric_action)
-        } else {
-          None
-        }
+          if let TriggeredAction::EmitMetric(emit_metric_action) = action {
+              Some(*emit_metric_action)
+          } else {
+              None
+          }
       })
       // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
       .collect();
@@ -850,11 +849,11 @@ impl WorkflowsEngine {
     let emit_sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>> = actions
       .into_iter()
       .filter_map(|action| {
-        if let TriggeredAction::SankeyDiagram(action) = action {
-          Some(action)
-        } else {
-          None
-        }
+          if let TriggeredAction::SankeyDiagram(action) = action {
+              Some(action)
+          } else {
+              None
+          }
       })
       // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
       .collect();
@@ -1028,7 +1027,7 @@ impl StateStore {
 
   pub(self) async fn load_state(&self) -> anyhow::Result<WorkflowsState> {
     let bytes = read_compressed(&tokio::fs::read(&self.state_path).await?)?;
-    Ok(bincode::serde::decode_from_slice(&bytes, bincode::config::standard())?.0)
+    bd_proto_util::serialization::ProtoMessage::deserialize_message_from_bytes(&bytes)
   }
 
   /// Stores states of the passed workflows if all pre-conditions are met.
@@ -1076,7 +1075,7 @@ impl StateStore {
   }
 
   async fn store(state_path: &Path, state: &WorkflowsState) -> anyhow::Result<()> {
-    let bytes = bincode::serde::encode_to_vec(state, bincode::config::standard())?;
+    let bytes = bd_proto_util::serialization::ProtoMessage::serialize_message_to_bytes(state)?;
     tokio::fs::write(state_path, write_compressed(&bytes)?).await?;
 
     Ok(())
@@ -1098,7 +1097,8 @@ impl StateStore {
 //
 
 /// Maintains state about the workflow engine that is persisted to disk.
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[bd_macros::proto_serializable]
+#[derive(Debug, Default)]
 pub(crate) struct WorkflowsState {
   session_id: String,
   workflows: Vec<Workflow>,
