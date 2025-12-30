@@ -212,12 +212,10 @@ fn handle_struct_variant(
       let field_name = field.ident.as_ref().unwrap();
       let field_type = &field.ty;
       let attrs = parse_field_attrs(field);
-      let field_num = attrs.tag.expect(
-        &format!(
-          "Enum struct variant field '{}' must have explicit #[field(id = N)] attribute",
-          field_name
-        )
-      );
+      let field_num = attrs.tag.expect(&format!(
+        "Enum struct variant field '{}' must have explicit #[field(id = N)] attribute",
+        field_name
+      ));
       (field_name, field_type, field_num)
     })
     .collect();
@@ -456,12 +454,10 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
             }
 
             // All non-skipped fields must have explicit field numbering
-            let tag = attrs.tag.expect(
-              &format!(
-                "Field '{}' must have explicit #[field(id = N)] attribute",
-                field_name
-              )
-            );
+            let tag = attrs.tag.expect(&format!(
+              "Field '{}' must have explicit #[field(id = N)] attribute",
+              field_name
+            ));
 
             // Determine serialization type and conversion expressions
             let (serialize_type, serialize_with_ref, deserialize_convert) =
