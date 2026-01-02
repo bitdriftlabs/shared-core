@@ -24,6 +24,7 @@
 ///
 /// - `$t` - The type to implement traits for (e.g., `String`, `u32`)
 /// - `$wire_type` - The protobuf wire type (e.g., `WireType::LengthDelimited`, `WireType::Varint`)
+/// - `$canonical` - The canonical type for validation (e.g., `CanonicalType::String`)
 /// - `$write_fn` - The `CodedOutputStream` method to write this type (e.g., `write_string`,
 ///   `write_uint32`)
 /// - `$read_fn` - The `CodedInputStream` method to read this type (e.g., `read_string`,
@@ -46,6 +47,7 @@ macro_rules! impl_proto_for_primitive {
   (
     $t:ty,
     $wire_type:expr,
+    $canonical:expr,
     $write_fn:ident,
     $read_fn:ident, |
     $v:ident |
@@ -56,6 +58,10 @@ macro_rules! impl_proto_for_primitive {
     impl ProtoType for $t {
       fn wire_type() -> WireType {
         $wire_type
+      }
+
+      fn canonical_type() -> $crate::serialization::CanonicalType {
+        $canonical
       }
     }
 
@@ -108,6 +114,7 @@ macro_rules! impl_proto_for_primitive {
 /// # Parameters
 ///
 /// - `$t` - The integer type (e.g., `u32`, `i64`, `u64`, `i32`)
+/// - `$canonical` - The canonical type for validation (e.g., `CanonicalType::U32`)
 /// - `$size_fn` - The `protobuf::rt` function to compute size (e.g., `uint32_size`, `int64_size`)
 /// - `$write_fn` - The `CodedOutputStream` write method (e.g., `write_uint32`, `write_int64`)
 /// - `$read_fn` - The `CodedInputStream` read method (e.g., `read_uint32`, `read_int64`)
@@ -120,10 +127,11 @@ macro_rules! impl_proto_for_primitive {
 /// - Size expression: `protobuf::rt::$size_fn(field_number, *v)`
 #[macro_export]
 macro_rules! impl_proto_for_varint_primitive {
-  ($t:ty, $size_fn:ident, $write_fn:ident, $read_fn:ident) => {
+  ($t:ty, $canonical:expr, $size_fn:ident, $write_fn:ident, $read_fn:ident) => {
     impl_proto_for_primitive!(
       $t,
       WireType::Varint,
+      $canonical,
       $write_fn,
       $read_fn,
       |v| *v,
@@ -141,6 +149,7 @@ macro_rules! impl_proto_for_varint_primitive {
 ///
 /// The macro generates implementations that:
 /// - Delegate wire type to the inner type
+/// - Delegate canonical type to the inner type
 /// - Serialize by dereferencing to the inner value
 /// - Deserialize by wrapping the inner value
 ///
@@ -158,6 +167,10 @@ macro_rules! impl_proto_for_type_wrapper {
     {
       fn wire_type() -> protobuf::rt::WireType {
         $inner_ident::wire_type()
+      }
+
+      fn canonical_type() -> $crate::serialization::CanonicalType {
+        $inner_ident::canonical_type()
       }
     }
 
@@ -214,6 +227,10 @@ macro_rules! impl_proto_repeated {
       fn wire_type() -> protobuf::rt::WireType {
         $item::wire_type()
       }
+
+      fn canonical_type() -> $crate::serialization::CanonicalType {
+        $crate::serialization::CanonicalType::Repeated(Box::new($item::canonical_type()))
+      }
     }
 
     impl<$item: $crate::serialization::ProtoFieldSerialize + $bounds>
@@ -262,6 +279,10 @@ macro_rules! impl_proto_repeated {
     impl<$item: $crate::serialization::ProtoType> $crate::serialization::ProtoType for $collection {
       fn wire_type() -> protobuf::rt::WireType {
         $item::wire_type()
+      }
+
+      fn canonical_type() -> $crate::serialization::CanonicalType {
+        $crate::serialization::CanonicalType::Repeated(Box::new($item::canonical_type()))
       }
     }
 
@@ -324,9 +345,21 @@ macro_rules! impl_proto_repeated {
 macro_rules! impl_proto_map {
   // Version with additional type parameters and where clause
   ($map_type:ty, $key:ident, $value:ident, where $($bounds:tt)*) => {
-    impl<$key, $value, $($bounds)*> $crate::serialization::ProtoType for $map_type {
+    impl<
+        $key: $crate::serialization::ProtoType,
+        $value: $crate::serialization::ProtoType,
+        $($bounds)*
+      > $crate::serialization::ProtoType for $map_type
+    {
       fn wire_type() -> protobuf::rt::WireType {
         protobuf::rt::WireType::LengthDelimited
+      }
+
+      fn canonical_type() -> $crate::serialization::CanonicalType {
+        $crate::serialization::CanonicalType::Map(
+          Box::new($key::canonical_type()),
+          Box::new($value::canonical_type()),
+        )
       }
     }
 
@@ -369,9 +402,20 @@ macro_rules! impl_proto_map {
 
   // Version without additional type parameters (for types like AHashMap)
   ($map_type:ty, $key:ident, $value:ident) => {
-    impl<$key, $value> $crate::serialization::ProtoType for $map_type {
+    impl<
+        $key: $crate::serialization::ProtoType,
+        $value: $crate::serialization::ProtoType,
+      > $crate::serialization::ProtoType for $map_type
+    {
       fn wire_type() -> protobuf::rt::WireType {
         protobuf::rt::WireType::LengthDelimited
+      }
+
+      fn canonical_type() -> $crate::serialization::CanonicalType {
+        $crate::serialization::CanonicalType::Map(
+          Box::new($key::canonical_type()),
+          Box::new($value::canonical_type()),
+        )
       }
     }
 
