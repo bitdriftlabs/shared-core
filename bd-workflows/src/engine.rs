@@ -68,9 +68,10 @@ use tokio::sync::oneshot::error::TryRecvError;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
-// This is currently serialized using bincode so we need to change the file name any time the
-// format changes. Ultimately we should consider whether moving this to protobuf makes more sense.
-pub const WORKFLOWS_STATE_FILE_NAME: &str = "workflows_state_snapshot.10.bin";
+// This was previously serialized with bincode so we had to update the file every time we changed
+// the serialization format. The current version uses protobuf so we can avoid changing the file
+// name every time we change the serialization format.
+pub const WORKFLOWS_STATE_FILE_NAME: &str = "workflows_state_snapshot.11.bin";
 
 //
 // WorkflowsEngine
