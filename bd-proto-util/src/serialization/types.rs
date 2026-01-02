@@ -14,69 +14,13 @@
 //! - Time types (`TimestampMicros`)
 //! - Special types (`LogType` enum, `NotNan<f64>`, unit type)
 
-use crate::serialization::{
-  ProtoFieldDeserialize,
-  ProtoFieldSerialize,
-  ProtoType,
-  RepeatedFieldDeserialize,
-  deserialize_map_entry,
-};
+use crate::serialization::{ProtoFieldDeserialize, ProtoFieldSerialize, ProtoType};
 use anyhow::Result;
 use bd_time::OffsetDateTimeExt;
+use ordered_float::FloatCore;
 use protobuf::rt::WireType;
 use protobuf::{CodedInputStream, CodedOutputStream};
-
-macro_rules! impl_proto_for_primitive {
-  (
-    $t:ty,
-    $wire_type:expr,
-    $write_fn:ident,
-    $read_fn:ident, |
-    $v:ident |
-    $deref:expr,size: |
-    $field:ident |
-    $size_expr:expr
-  ) => {
-    impl ProtoType for $t {
-      fn wire_type() -> WireType {
-        $wire_type
-      }
-    }
-
-    impl ProtoFieldSerialize for $t {
-      #[allow(unused_variables)]
-      fn compute_size(&self, $field: u32) -> u64 {
-        let $v = self;
-        $size_expr
-      }
-
-      fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
-        let $v = self;
-        os.$write_fn(field_number, $deref)?;
-        Ok(())
-      }
-    }
-
-    impl ProtoFieldDeserialize for $t {
-      fn deserialize(is: &mut CodedInputStream<'_>) -> Result<Self> {
-        Ok(is.$read_fn()?)
-      }
-    }
-  };
-}
-
-macro_rules! impl_proto_for_varint_primitive {
-  ($t:ty, $size_fn:ident, $write_fn:ident, $read_fn:ident) => {
-    impl_proto_for_primitive!(
-      $t,
-      WireType::Varint,
-      $write_fn,
-      $read_fn,
-      |v| *v,
-      size: |field_number| protobuf::rt::$size_fn(field_number, *v)
-    );
-  };
-}
+use std::sync::Arc;
 
 impl_proto_for_primitive!(
   String,
@@ -142,6 +86,28 @@ impl_proto_for_primitive!(
   size: |field_number| protobuf::rt::bytes_size(field_number, v.as_slice())
 );
 
+impl_proto_for_primitive!(
+  std::borrow::Cow<'_, str>,
+  WireType::LengthDelimited,
+  write_string,
+  read_string,
+  |v| v.as_ref(),
+  size: |field_number| protobuf::rt::string_size(field_number, v)
+);
+
+impl_proto_for_primitive!(
+  std::sync::Arc<str>,
+  WireType::LengthDelimited,
+  write_string,
+  read_string,
+  |v| v.as_ref(),
+  size: |field_number| protobuf::rt::string_size(field_number, v)
+);
+
+// Transparent wrapper types (Box, Arc) - delegate to inner type
+crate::impl_proto_for_type_wrapper!(Box<T>, T, Box::new);
+crate::impl_proto_for_type_wrapper!(Arc<T>, T, std::sync::Arc::new);
+
 // Blanket implementation for Option<T>
 // Note: For deserialization, this is slightly tricky because the tag handles the "None" case (by
 // absence). This deserialize implementation assumes we ARE reading a value.
@@ -188,80 +154,8 @@ impl<T: ProtoFieldSerialize> ProtoFieldSerialize for &T {
   }
 }
 
-// Box<T> implementation - transparent wrapper
-impl<T: ProtoType> ProtoType for Box<T> {
-  fn wire_type() -> WireType {
-    T::wire_type()
-  }
-}
 
-impl<T: ProtoFieldSerialize> ProtoFieldSerialize for Box<T> {
-  fn compute_size(&self, field_number: u32) -> u64 {
-    (**self).compute_size(field_number)
-  }
-
-  fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
-    (**self).serialize(field_number, os)
-  }
-}
-
-impl<T: ProtoFieldDeserialize> ProtoFieldDeserialize for Box<T> {
-  fn deserialize(is: &mut CodedInputStream<'_>) -> Result<Self> {
-    Ok(Self::new(T::deserialize(is)?))
-  }
-}
-
-// ============================================================================
-// String types
-// ============================================================================
-
-// Implementation for Cow<'a, str>
-impl ProtoType for std::borrow::Cow<'_, str> {
-  fn wire_type() -> WireType {
-    WireType::LengthDelimited
-  }
-}
-
-impl ProtoFieldSerialize for std::borrow::Cow<'_, str> {
-  fn compute_size(&self, field_number: u32) -> u64 {
-    protobuf::rt::string_size(field_number, self.as_ref())
-  }
-
-  fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
-    os.write_string(field_number, self.as_ref())?;
-    Ok(())
-  }
-}
-
-impl ProtoFieldDeserialize for std::borrow::Cow<'_, str> {
-  fn deserialize(is: &mut CodedInputStream<'_>) -> Result<Self> {
-    Ok(std::borrow::Cow::Owned(is.read_string()?))
-  }
-}
-
-impl ProtoType for std::sync::Arc<str> {
-  fn wire_type() -> WireType {
-    WireType::LengthDelimited
-  }
-}
-
-impl ProtoFieldSerialize for std::sync::Arc<str> {
-  fn compute_size(&self, field_number: u32) -> u64 {
-    protobuf::rt::string_size(field_number, self.as_ref())
-  }
-
-  fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
-    os.write_string(field_number, self.as_ref())?;
-    Ok(())
-  }
-}
-
-impl ProtoFieldDeserialize for std::sync::Arc<str> {
-  fn deserialize(is: &mut CodedInputStream<'_>) -> Result<Self> {
-    Ok(is.read_string()?.into())
-  }
-}
-
+// &'static str implementation is special in that we can only serialize it.
 impl ProtoType for &'static str {
   fn wire_type() -> WireType {
     WireType::LengthDelimited
@@ -306,15 +200,14 @@ impl TimestampMicros {
 
   /// Converts the timestamp to microseconds since Unix epoch.
   #[must_use]
-  #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-  pub fn as_micros(&self) -> u64 {
-    self.0.unix_timestamp_micros() as u64
+  pub fn as_micros(&self) -> i64 {
+    self.0.unix_timestamp_micros()
   }
 
   /// Creates a `TimestampMicros` from microseconds since Unix epoch.
-  pub fn from_micros(micros: u64) -> anyhow::Result<Self> {
-    Ok(Self(time::OffsetDateTime::from_unix_timestamp_nanos(
-      i128::from(micros) * 1000,
+  pub fn from_micros(micros: i64) -> anyhow::Result<Self> {
+    Ok(Self(time::OffsetDateTime::from_unix_timestamp_micros(
+      micros,
     )?))
   }
 }
@@ -347,189 +240,53 @@ impl ProtoType for TimestampMicros {
 
 impl ProtoFieldSerialize for TimestampMicros {
   fn compute_size(&self, field_number: u32) -> u64 {
-    protobuf::rt::uint64_size(field_number, self.as_micros())
+    self.as_micros().compute_size(field_number)
   }
 
   fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
-    os.write_uint64(field_number, self.as_micros())?;
-    Ok(())
+    self.as_micros().serialize(field_number, os)
   }
 }
 
 impl ProtoFieldDeserialize for TimestampMicros {
   fn deserialize(is: &mut CodedInputStream<'_>) -> Result<Self> {
-    let micros = is.read_uint64()?;
-    Self::from_micros(micros)
+    Self::from_micros(i64::deserialize(is)?)
   }
 }
 
-// ============================================================================
-// Collection types (HashMap, AHashMap)
-// ============================================================================
-
-impl<K, V, S: std::hash::BuildHasher> ProtoType for std::collections::HashMap<K, V, S> {
-  fn wire_type() -> WireType {
-    WireType::LengthDelimited
-  }
-}
-
-impl<K, V, S: std::hash::BuildHasher + Default> RepeatedFieldDeserialize
-  for std::collections::HashMap<K, V, S>
-where
-  K: ProtoFieldDeserialize + Eq + std::hash::Hash + Default,
-  V: ProtoFieldDeserialize + Default,
-{
-  type Element = (K, V);
-
-  fn deserialize_element(is: &mut CodedInputStream<'_>) -> Result<Self::Element> {
-    deserialize_map_entry(is)
-  }
-
-  fn add_element(&mut self, (key, value): Self::Element) {
-    self.insert(key, value);
-  }
-}
-
-// AHashMap is a newtype around HashMap with a different hasher, so we have to re-implement
-// the traits for it and delegate to the inner type.
-
-impl<K, V> ProtoType for ahash::AHashMap<K, V> {
-  fn wire_type() -> WireType {
-    WireType::LengthDelimited
-  }
-}
-
-impl<K, V> RepeatedFieldDeserialize for ahash::AHashMap<K, V>
-where
-  K: ProtoFieldDeserialize + Eq + std::hash::Hash + Default,
-  V: ProtoFieldDeserialize + Default,
-{
-  type Element = (K, V);
-
-  fn deserialize_element(is: &mut CodedInputStream<'_>) -> Result<Self::Element> {
-    deserialize_map_entry(is)
-  }
-
-  fn add_element(&mut self, (key, value): Self::Element) {
-    self.insert(key, value);
-  }
-}
-
-// Note: Vec<u8> is treated specially in the macro and will not use this implementation.
-impl<T: ProtoType> ProtoType for Vec<T> {
-  fn wire_type() -> WireType {
-    T::wire_type()
-  }
-}
-
-impl<T> RepeatedFieldDeserialize for Vec<T>
-where
-  T: ProtoFieldDeserialize,
-{
-  type Element = T;
-
-  fn deserialize_element(is: &mut CodedInputStream<'_>) -> Result<Self::Element> {
-    T::deserialize(is)
-  }
-
-  fn add_element(&mut self, element: Self::Element) {
-    self.push(element);
-  }
-}
-
-// Implementation for BTreeSet<T> as a repeated field
-impl<T: ProtoType + Ord> ProtoType for std::collections::BTreeSet<T> {
-  fn wire_type() -> WireType {
-    T::wire_type()
-  }
-}
-
-impl<T> crate::serialization::RepeatedFieldDeserialize for std::collections::BTreeSet<T>
-where
-  T: ProtoFieldDeserialize + Ord,
-{
-  type Element = T;
-
-  fn deserialize_element(is: &mut CodedInputStream<'_>) -> Result<Self::Element> {
-    T::deserialize(is)
-  }
-
-  fn add_element(&mut self, element: Self::Element) {
-    self.insert(element);
-  }
-}
-
-// Macro for implementing protobuf enum serialization
-// Note: We cannot use a blanket impl<E: protobuf::Enum> due to trait coherence rules,
-// but this macro makes it easy to add support for specific enum types.
-macro_rules! impl_proto_for_enum {
-  ($enum_type:ty, $default_value:expr) => {
-    impl ProtoType for $enum_type {
-      fn wire_type() -> WireType {
-        WireType::Varint
-      }
-    }
-
-    impl ProtoFieldSerialize for $enum_type {
-      fn compute_size(&self, field_number: u32) -> u64 {
-        use protobuf::Enum;
-        let val = self.value();
-        if val == 0 {
-          return 0;
-        }
-        protobuf::rt::int32_size(field_number, val)
-      }
-
-      fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
-        use protobuf::Enum;
-        let val = self.value();
-        if val == 0 {
-          return Ok(());
-        }
-        os.write_enum(field_number, val)?;
-        Ok(())
-      }
-    }
-
-    impl ProtoFieldDeserialize for $enum_type {
-      fn deserialize(is: &mut CodedInputStream<'_>) -> Result<Self> {
-        use protobuf::Enum;
-        let val = is.read_int32()?;
-        Ok(Self::from_i32(val).unwrap_or($default_value))
-      }
-    }
-  };
-}
-
-// Implementation for LogType enum (int32)
-impl_proto_for_enum!(
-  bd_proto::protos::logging::payload::LogType,
-  bd_proto::protos::logging::payload::LogType::NORMAL
+crate::impl_proto_map!(
+  std::collections::HashMap<K, V, S>,
+  K,
+  V,
+  where S: std::hash::BuildHasher + Default
 );
 
+crate::impl_proto_map!(ahash::AHashMap<K, V>, K, V);
+
+impl_proto_repeated!(std::collections::BTreeSet<T>, T, Ord);
+
+impl_proto_repeated!(Vec<T>, T);
+
 // Implementation for ordered_float::NotNan<f64>
-impl ProtoType for ordered_float::NotNan<f64> {
+impl<T> ProtoType for ordered_float::NotNan<T> {
   fn wire_type() -> WireType {
     WireType::Fixed64
   }
 }
 
-impl ProtoFieldSerialize for ordered_float::NotNan<f64> {
+impl<T: ProtoFieldSerialize + FloatCore> ProtoFieldSerialize for ordered_float::NotNan<T> {
   fn compute_size(&self, field_number: u32) -> u64 {
-    // double is always 8 bytes + tag size
-    let tag_size = protobuf::rt::tag_size(field_number);
-    tag_size + 8
+    self.as_ref().compute_size(field_number)
   }
 
   fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
-    os.write_double(field_number, **self)?;
-    Ok(())
+    self.as_ref().serialize(field_number, os)
   }
 }
 
-impl ProtoFieldDeserialize for ordered_float::NotNan<f64> {
+impl<T: ProtoFieldDeserialize + FloatCore> ProtoFieldDeserialize for ordered_float::NotNan<T> {
   fn deserialize(is: &mut CodedInputStream<'_>) -> Result<Self> {
-    Ok(Self::new(is.read_double()?)?)
+    Ok(Self::new(T::deserialize(is)?)?)
   }
 }
 

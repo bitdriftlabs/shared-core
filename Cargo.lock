@@ -1027,6 +1027,7 @@ dependencies = [
  "cc",
  "flatbuffers",
  "itertools 0.14.0",
+ "num-traits",
  "ordered-float",
  "protobuf 4.0.0-alpha.0",
  "sha2",

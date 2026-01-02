@@ -516,3 +516,34 @@ fn test_serialize_as() -> Result<()> {
 
   Ok(())
 }
+
+#[test]
+#[allow(clippy::box_collection)]
+fn test_wrapper_types() -> Result<()> {
+  use std::sync::Arc;
+
+  #[proto_serializable]
+  #[derive(Debug, PartialEq, Default)]
+  struct WithWrappers {
+    #[field(id = 1)]
+    boxed: Box<String>,
+    #[field(id = 2)]
+    arced: Arc<u32>,
+  }
+
+  let original = WithWrappers {
+    boxed: Box::new("hello".to_string()),
+    arced: Arc::new(42),
+  };
+
+  // Serialize
+  let bytes = original.serialize_message_to_bytes()?;
+
+  // Deserialize
+  let deserialized = WithWrappers::deserialize_message_from_bytes(&bytes)?;
+
+  assert_eq!(*original.boxed, *deserialized.boxed);
+  assert_eq!(*original.arced, *deserialized.arced);
+
+  Ok(())
+}

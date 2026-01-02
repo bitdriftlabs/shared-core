@@ -34,7 +34,7 @@ use flate2::Compression;
 use flate2::write::ZlibEncoder;
 use ordered_float::NotNan;
 use protobuf::rt::WireType;
-use protobuf::{CodedInputStream, CodedOutputStream};
+use protobuf::{CodedInputStream, CodedOutputStream, Enum as _};
 use std::borrow::Cow;
 use std::sync::{Arc, LazyLock};
 use time::OffsetDateTime;
@@ -589,7 +589,7 @@ impl LogEncodingHelper {
         my_size += ::protobuf::rt::string_size(5, session_id);
 
         // LogType log_type = 7;
-        my_size += <LogType as ProtoFieldSerialize>::compute_size(&log_type, 7);
+        my_size += log_type.value().compute_size(7);
 
         *cached_encoding_data = Some(CachedEncodingData {
           core_size: my_size,
@@ -677,7 +677,7 @@ impl LogEncodingHelper {
     }
 
     // LogType log_type = 7;
-    <LogType as ProtoFieldSerialize>::serialize(&log_type, 7, os)?;
+    log_type.value().serialize(7, os)?;
 
     // repeated string stream_ids = 8;
     for v in stream_ids {

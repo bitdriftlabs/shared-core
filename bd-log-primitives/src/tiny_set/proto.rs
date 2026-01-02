@@ -20,6 +20,7 @@ use bd_proto_util::serialization::{
 
 bd_proto_util::impl_proto_repeated!(TinySet<T>, T, PartialEq);
 
+// TinyMap uses PartialEq for keys instead of Hash+Eq, so we implement it manually
 impl<K, V> ProtoType for TinyMap<K, V> {
   fn wire_type() -> protobuf::rt::WireType {
     protobuf::rt::WireType::LengthDelimited
