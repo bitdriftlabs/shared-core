@@ -10,6 +10,7 @@
 //! These functions provide reusable implementations for map-like types (`HashMap`, `TinyMap`, etc.)
 //! without requiring macro-based code generation.
 
+use crate::serialization::runtime::Tag;
 use crate::serialization::{ProtoFieldDeserialize, ProtoFieldSerialize};
 use anyhow::Result;
 use protobuf::rt::WireType;
@@ -101,26 +102,12 @@ where
 
   while !is.eof()? {
     let tag = is.read_raw_varint32()?;
-    let field_number = tag >> 3;
-    let wire_type_bits = tag & 0x07;
-    let wire_type = match wire_type_bits {
-      0 => WireType::Varint,
-      1 => WireType::Fixed64,
-      2 => WireType::LengthDelimited,
-      3 => WireType::StartGroup,
-      4 => WireType::EndGroup,
-      5 => WireType::Fixed32,
-      _ => {
-        return Err(anyhow::anyhow!(
-          "Unknown wire type {wire_type_bits} in map entry (tag={tag}, field={field_number})"
-        ));
-      },
-    };
+    let tag = Tag::new(tag)?;
 
-    match field_number {
+    match tag.field_number {
       1 => key = Some(K::deserialize(is)?),
       2 => value = Some(V::deserialize(is)?),
-      _ => is.skip_field(wire_type)?,
+      _ => is.skip_field(tag.wire_type)?,
     }
   }
 

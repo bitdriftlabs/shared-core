@@ -454,8 +454,8 @@ pub fn process_struct_fields(
 
                 bd_proto_util::serialization::read_nested(
                     is,
-                    |is, field_number, _wire_type| {
-                        match field_number {
+                    |is, tag| {
+                        match tag.field_number {
                             #(#deserialize_arms)*
                             _ => Ok(false),
                         }
@@ -493,27 +493,18 @@ pub fn process_struct_fields(
                 // Deserialize fields directly without expecting outer tag+length wrapper
                 #(#field_vars_init)*
 
+
                 while !is.eof()? {
                     let tag = is.read_raw_varint32()?;
-                    let field_number = tag >> 3;
-                    let wire_type_bits = tag & 0x07;
-                    let wire_type = match wire_type_bits {
-                        0 => protobuf::rt::WireType::Varint,
-                        1 => protobuf::rt::WireType::Fixed64,
-                        2 => protobuf::rt::WireType::LengthDelimited,
-                        3 => protobuf::rt::WireType::StartGroup,
-                        4 => protobuf::rt::WireType::EndGroup,
-                        5 => protobuf::rt::WireType::Fixed32,
-                        _ => return Err(anyhow::anyhow!("Unknown wire type {} (tag={}, field={})", wire_type_bits, tag, field_number)),
-                    };
+                    let tag = bd_proto_util::serialization::runtime::Tag::new(tag)?;
 
-                    let handled: bool = match field_number {
+                    let handled: bool = match tag.field_number {
                         #(#deserialize_arms)*
                         _ => Ok::<bool, anyhow::Error>(false),
                     }?;
 
                     if !handled {
-                        is.skip_field(wire_type)?;
+                        is.skip_field(tag.wire_type)?;
                     }
                 }
 

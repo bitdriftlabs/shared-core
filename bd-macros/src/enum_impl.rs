@@ -378,8 +378,8 @@ fn handle_struct_variant(
   let deserialize_code = quote! {
     #(#field_vars_init)*
 
-    bd_proto_util::serialization::read_nested(is, |is, field_number, _wire_type| {
-      match field_number {
+    bd_proto_util::serialization::read_nested(is, |is, tag| {
+      match tag.field_number {
         #(#deserialize_arms_inner)*
         _ => Ok(false),
       }
@@ -587,8 +587,8 @@ pub fn process_enum_variants(
                 let mut result = None;
 
                 bd_proto_util::serialization::read_nested(is,
-                    |is, field_number, _wire_type| {
-                    match field_number {
+                    |is, tag| {
+                    match tag.field_number {
                         #(#deserialize_match_arms)*
                         _ => Ok(false),
                     }

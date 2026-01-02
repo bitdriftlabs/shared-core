@@ -6,7 +6,8 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 // We need to alias crate to bd_proto_util for the macro to work within the crate itself
-use crate as bd_proto_util;
+use crate::serialization::runtime::Tag;
+use crate::{self as bd_proto_util};
 use anyhow::Result;
 use bd_macros::proto_serializable;
 use bd_proto_util::serialization::{ProtoFieldDeserialize, ProtoFieldSerialize, ProtoMessage};
@@ -40,17 +41,10 @@ fn test_simple_struct() -> Result<()> {
 
   // Read the tag (10)
   let raw_tag = is.read_raw_varint32()?;
-  let field_num = raw_tag >> 3;
-  let wire_type = match raw_tag & 0x07 {
-    0 => protobuf::rt::WireType::Varint,
-    1 => protobuf::rt::WireType::Fixed64,
-    2 => protobuf::rt::WireType::LengthDelimited,
-    5 => protobuf::rt::WireType::Fixed32,
-    _ => panic!("Unknown wire type"),
-  };
+  let tag = Tag::new(raw_tag)?;
 
-  assert_eq!(field_num, 10);
-  assert_eq!(wire_type, protobuf::rt::WireType::LengthDelimited);
+  assert_eq!(tag.field_number, 10);
+  assert_eq!(tag.wire_type, protobuf::rt::WireType::LengthDelimited);
 
   // Deserialize
   let foo2 = Foo::deserialize(&mut is)?;
