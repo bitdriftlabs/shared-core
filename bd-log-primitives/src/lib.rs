@@ -28,11 +28,13 @@ use crate::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use ahash::AHashMap;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::{BinaryData, Data, LogType};
+use bd_proto_util::serialization::ProtoFieldSerialize;
+use bd_time::OffsetDateTimeExt as _;
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
 use ordered_float::NotNan;
 use protobuf::rt::WireType;
-use protobuf::{CodedInputStream, CodedOutputStream};
+use protobuf::{CodedInputStream, CodedOutputStream, Enum as _};
 use std::borrow::Cow;
 use std::sync::{Arc, LazyLock};
 use time::OffsetDateTime;
@@ -572,8 +574,10 @@ impl LogEncodingHelper {
 
         // uint64 timestamp_unix_micro = 1;
         // No zero check is this should always be set.
+        // We manually serialize this as a uint64 (microsecond timestamp) to match the proto
+        // definition.
         my_size +=
-          ::protobuf::rt::uint64_size(1, occurred_at.unix_timestamp_nanos().to_u64_lossy() / 1000);
+          ::protobuf::rt::uint64_size(1, occurred_at.unix_timestamp_micros().cast_unsigned());
 
         // uint32 log_level = 2;
         if log_level != 0 {
@@ -585,9 +589,7 @@ impl LogEncodingHelper {
         my_size += ::protobuf::rt::string_size(5, session_id);
 
         // LogType log_type = 7;
-        if log_type != LogType::NORMAL {
-          my_size += ::protobuf::rt::int32_size(7, log_type as i32);
-        }
+        my_size += log_type.value().compute_size(7);
 
         *cached_encoding_data = Some(CachedEncodingData {
           core_size: my_size,
@@ -646,7 +648,8 @@ impl LogEncodingHelper {
     cached_encoding_data: Option<&CachedEncodingData>,
   ) -> anyhow::Result<()> {
     // uint64 timestamp_unix_micro = 1;
-    os.write_uint64(1, occurred_at.unix_timestamp_nanos().to_u64_lossy() / 1000)?;
+    // We manually serialize this as a uint64 (microsecond timestamp) to match the proto definition.
+    os.write_uint64(1, occurred_at.unix_timestamp_micros().cast_unsigned())?;
 
     // uint32 log_level = 2;
     if log_level != 0 {
@@ -674,9 +677,7 @@ impl LogEncodingHelper {
     }
 
     // LogType log_type = 7;
-    if log_type != LogType::NORMAL {
-      os.write_enum(7, log_type as i32)?;
-    }
+    log_type.value().serialize(7, os)?;
 
     // repeated string stream_ids = 8;
     for v in stream_ids {
@@ -734,7 +735,7 @@ impl LogEncodingHelper {
     if raw_tag == 8 // field number 1, wire type 0
       && let Some(ts_micros) = cis.read_uint64().ok()
     {
-      return OffsetDateTime::from_unix_timestamp_nanos((ts_micros * 1000).into()).ok();
+      return OffsetDateTime::from_unix_timestamp_micros(ts_micros.cast_signed()).ok();
     }
 
     None

@@ -851,6 +851,8 @@ dependencies = [
  "ahash",
  "anyhow",
  "bd-proto",
+ "bd-proto-util",
+ "bd-time",
  "bd-workspace-hack",
  "flate2",
  "ordered-float",
@@ -924,6 +926,16 @@ dependencies = [
  "tracing",
  "unwrap-infallible",
  "uuid",
+]
+
+[[package]]
+name = "bd-macros"
+version = "1.0.0"
+dependencies = [
+ "bd-workspace-hack",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1006,13 +1018,18 @@ dependencies = [
 name = "bd-proto-util"
 version = "1.0.0"
 dependencies = [
+ "ahash",
  "anyhow",
  "base64ct",
+ "bd-macros",
  "bd-proto",
+ "bd-time",
  "bd-workspace-hack",
  "cc",
  "flatbuffers",
  "itertools 0.14.0",
+ "num-traits",
+ "ordered-float",
  "protobuf 4.0.0-alpha.0",
  "sha2",
  "time",
@@ -1356,7 +1373,9 @@ dependencies = [
  "bd-log",
  "bd-log-matcher",
  "bd-log-primitives",
+ "bd-macros",
  "bd-proto",
+ "bd-proto-util",
  "bd-runtime",
  "bd-shutdown",
  "bd-state",
