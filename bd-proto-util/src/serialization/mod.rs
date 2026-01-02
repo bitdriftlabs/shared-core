@@ -40,13 +40,29 @@ pub trait ProtoType {
 
 /// Trait for types that can be serialized manually to Protobuf streams.
 pub trait ProtoFieldSerialize: ProtoType {
-  /// Computes the size of this field when serialized.
-  /// This should include the tag size (key + wire type).
+  /// Computes the size of this field when serialized with implicit presence (proto3 default).
+  /// Fields set to their default value (0, false, "", etc.) will return size 0 and not be
+  /// serialized. This should include the tag size (key + wire type).
   fn compute_size(&self, field_number: u32) -> u64;
 
-  /// Serializes this field to the output stream.
-  /// This should write the tag first, then the value.
+  /// Serializes this field to the output stream with implicit presence (proto3 default). Fields
+  /// set to their default value will not be serialized. This should write the tag first, then the
+  /// value.
   fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> anyhow::Result<()>;
+
+  /// Computes the size of this field when serialized with explicit presence. The field will
+  /// always be serialized, even if set to its default value. Used for proto3 `optional` fields and
+  /// oneof variants. This should include the tag size (key + wire type).
+  fn compute_size_explicit(&self, field_number: u32) -> u64;
+
+  /// Serializes this field to the output stream with explicit presence. The field will always be
+  /// serialized, even if set to its default value. Used for proto3 `optional` fields and oneof
+  /// variants. This should write the tag first, then the value.
+  fn serialize_explicit(
+    &self,
+    field_number: u32,
+    os: &mut CodedOutputStream<'_>,
+  ) -> anyhow::Result<()>;
 }
 
 /// Trait for types that can be deserialized manually from Protobuf streams.

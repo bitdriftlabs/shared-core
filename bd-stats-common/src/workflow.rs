@@ -51,13 +51,20 @@ impl WorkflowDebugStateKey {
 }
 
 #[bd_macros::proto_serializable]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum WorkflowDebugTransitionType {
-  // Normal transition including the index.
-  #[field(id = 1)]
+  // Normal transition including the index. This is the default variant because Normal(0)
+  // serializes to empty bytes (0 is the default for u64), and we need deserialization to
+  // recover the correct variant.
+  #[field(id = 1, default)]
   Normal(u64),
   // Timeout transition.
   #[field(id = 2)]
-  #[default]
   Timeout,
+}
+
+impl Default for WorkflowDebugTransitionType {
+  fn default() -> Self {
+    Self::Normal(0)
+  }
 }

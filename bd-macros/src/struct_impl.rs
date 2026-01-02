@@ -438,6 +438,19 @@ pub fn process_struct_fields(
 
                   Ok(())
               }
+
+          fn compute_size_explicit(&self, _field_number: u32) -> u64 {
+              // Messages always have explicit presence (empty message is different from not
+              // present), so explicit and implicit are the same
+              self.compute_size(_field_number)
+          }
+
+          fn serialize_explicit(&self, field_number: u32, os: &mut protobuf::CodedOutputStream)
+              -> anyhow::Result<()> {
+              // Messages always have explicit presence (empty message is different from not
+              // present), so explicit and implicit are the same
+              self.serialize(field_number, os)
+          }
       }
   };
 

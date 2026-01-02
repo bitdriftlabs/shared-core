@@ -129,6 +129,23 @@ impl<T: ProtoFieldSerialize> ProtoFieldSerialize for Option<T> {
     }
     Ok(())
   }
+
+  fn compute_size_explicit(&self, field_number: u32) -> u64 {
+    // Option always has explicit presence via Some/None, so when Some, always serialize the inner
+    // value even if it's a default value
+    self
+      .as_ref()
+      .map_or(0, |v| v.compute_size_explicit(field_number))
+  }
+
+  fn serialize_explicit(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    // Option always has explicit presence via Some/None, so when Some, always serialize the inner
+    // value even if it's a default value
+    if let Some(v) = self {
+      v.serialize_explicit(field_number, os)?;
+    }
+    Ok(())
+  }
 }
 
 impl<T: ProtoFieldDeserialize> ProtoFieldDeserialize for Option<T> {
@@ -152,6 +169,14 @@ impl<T: ProtoFieldSerialize> ProtoFieldSerialize for &T {
   fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
     (**self).serialize(field_number, os)
   }
+
+  fn compute_size_explicit(&self, field_number: u32) -> u64 {
+    (**self).compute_size_explicit(field_number)
+  }
+
+  fn serialize_explicit(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    (**self).serialize_explicit(field_number, os)
+  }
 }
 
 
@@ -168,6 +193,19 @@ impl ProtoFieldSerialize for &'static str {
   }
 
   fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    os.write_string(field_number, self)?;
+    Ok(())
+  }
+
+  fn compute_size_explicit(&self, field_number: u32) -> u64 {
+    // Strings always have explicit presence (empty string is different from not-present), so
+    // explicit and implicit are the same
+    protobuf::rt::string_size(field_number, self)
+  }
+
+  fn serialize_explicit(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    // Strings always have explicit presence (empty string is different from not-present), so
+    // explicit and implicit are the same
     os.write_string(field_number, self)?;
     Ok(())
   }
@@ -252,6 +290,14 @@ impl ProtoFieldSerialize for TimestampMicros {
   fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
     self.as_micros().serialize(field_number, os)
   }
+
+  fn compute_size_explicit(&self, field_number: u32) -> u64 {
+    self.as_micros().compute_size_explicit(field_number)
+  }
+
+  fn serialize_explicit(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    self.as_micros().serialize_explicit(field_number, os)
+  }
 }
 
 impl ProtoFieldDeserialize for TimestampMicros {
@@ -288,6 +334,14 @@ impl<T: ProtoFieldSerialize + FloatCore> ProtoFieldSerialize for ordered_float::
   fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
     self.as_ref().serialize(field_number, os)
   }
+
+  fn compute_size_explicit(&self, field_number: u32) -> u64 {
+    self.as_ref().compute_size_explicit(field_number)
+  }
+
+  fn serialize_explicit(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    self.as_ref().serialize_explicit(field_number, os)
+  }
 }
 
 impl<T: ProtoFieldDeserialize + FloatCore> ProtoFieldDeserialize for ordered_float::NotNan<T> {
@@ -310,6 +364,20 @@ impl ProtoFieldSerialize for () {
   }
 
   fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    os.write_tag(field_number, WireType::LengthDelimited)?;
+    os.write_raw_varint32(0)?; // length = 0
+    Ok(())
+  }
+
+  fn compute_size_explicit(&self, field_number: u32) -> u64 {
+    // Unit type always has explicit presence (it's either present or not), so explicit and
+    // implicit are the same
+    protobuf::rt::tag_size(field_number) + 1 // tag + length(0)
+  }
+
+  fn serialize_explicit(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    // Unit type always has explicit presence (it's either present or not), so explicit and
+    // implicit are the same
     os.write_tag(field_number, WireType::LengthDelimited)?;
     os.write_raw_varint32(0)?; // length = 0
     Ok(())

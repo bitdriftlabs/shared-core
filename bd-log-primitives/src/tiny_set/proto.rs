@@ -43,6 +43,20 @@ where
   ) -> anyhow::Result<()> {
     bd_proto_util::serialization::serialize_map(self, field_number, os)
   }
+
+  fn compute_size_explicit(&self, field_number: u32) -> u64 {
+    // Maps always have explicit presence, so this is the same as compute_size
+    self.compute_size(field_number)
+  }
+
+  fn serialize_explicit(
+    &self,
+    field_number: u32,
+    os: &mut protobuf::CodedOutputStream<'_>,
+  ) -> anyhow::Result<()> {
+    // Maps always have explicit presence, so this is the same as serialize
+    self.serialize(field_number, os)
+  }
 }
 
 impl<K, V> RepeatedFieldDeserialize for TinyMap<K, V>
