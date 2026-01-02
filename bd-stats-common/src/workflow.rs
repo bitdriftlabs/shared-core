@@ -27,7 +27,9 @@ pub enum WorkflowDebugStateKey {
   #[field(id = 1)]
   #[field(deserialize)]
   StateTransition {
+    #[field(id = 1)]
     state_id: String,
+    #[field(id = 2)]
     transition_type: WorkflowDebugTransitionType,
   },
   #[field(id = 2)]

@@ -869,8 +869,10 @@ impl PendingFlushBuffersAction {
 #[proto_serializable]
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Streaming {
+  #[field(id = 1)]
   destination_continuous_buffer_ids: TinySet<Cow<'static, str>>,
 
+  #[field(id = 2)]
   max_logs_count: Option<u64>,
 }
 

@@ -49,6 +49,10 @@ pub fn read_compressed(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
   Ok(decompressed_bytes)
 }
 
+pub fn compressed_reader(reader: impl Read) -> impl Read {
+  ZlibDecoder::new_with_buf(reader, vec![0; 1024])
+}
+
 pub fn read_compressed_protobuf<T: protobuf::Message>(
   compressed_bytes: &[u8],
 ) -> anyhow::Result<T> {

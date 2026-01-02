@@ -85,6 +85,7 @@ impl ProcessedIntents {
 #[bd_macros::proto_serializable]
 #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
 pub struct PendingSankeyPathUpload {
+  #[field(id = 1)]
   pub sankey_path: SankeyPath,
 }
 

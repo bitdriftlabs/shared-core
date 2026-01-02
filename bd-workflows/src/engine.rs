@@ -47,7 +47,7 @@ use crate::workflow::{
 };
 use anyhow::anyhow;
 use bd_api::DataUpload;
-use bd_client_common::file::{read_compressed, write_compressed};
+use bd_client_common::file::{compressed_reader, write_compressed};
 use bd_client_stats::{FlushTrigger, FlushTriggerRequest, Stats};
 use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
@@ -59,6 +59,7 @@ use bd_stats_common::labels;
 use bd_stats_common::workflow::WorkflowDebugKey;
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -1046,8 +1047,8 @@ impl StateStore {
   }
 
   pub(self) async fn load_state(&self) -> anyhow::Result<WorkflowsState> {
-    let bytes = read_compressed(&tokio::fs::read(&self.state_path).await?)?;
-    bd_proto_util::serialization::ProtoMessage::deserialize_message_from_bytes(&bytes)
+    let mut reader = compressed_reader(Cursor::new(tokio::fs::read(&self.state_path).await?));
+    bd_proto_util::serialization::ProtoMessage::deserialize_message_from_reader(&mut reader)
   }
 
   /// Stores states of the passed workflows if all pre-conditions are met.
@@ -1120,11 +1121,16 @@ impl StateStore {
 #[bd_macros::proto_serializable]
 #[derive(Debug, Default)]
 pub(crate) struct WorkflowsState {
+  #[field(id = 1)]
   session_id: String,
+  #[field(id = 2)]
   workflows: Vec<Workflow>,
 
+  #[field(id = 3)]
   pending_flush_actions: BTreeSet<PendingFlushBuffersAction>,
+  #[field(id = 4)]
   pending_sankey_actions: BTreeSet<PendingSankeyPathUpload>,
+  #[field(id = 5)]
   streaming_actions: Vec<StreamingBuffersAction>,
 }
 

@@ -82,18 +82,22 @@ impl WorkflowEvent<'_> {
 #[bd_macros::proto_serializable]
 #[derive(Debug)]
 pub struct Workflow {
+  #[field(id = 1)]
   id: String,
   // The list of runs. Runs are organized in the following way: New runs are added to the beginning
   // of the list and the maximum number of runs is equal to two. If runs list is non-empty then the
   // first run in the list is guaranteed to be in an initial state. If there are two runs then the
   // second run is guaranteed not to be in an initial state.
+  #[field(id = 2)]
   pub(crate) runs: Vec<Run>,
   // Persisted workflow debug state. This is only used for live debugging. Global debugging is
   // persisted as part of stats snapshots.
+  #[field(id = 3)]
   workflow_debug_state: Option<WorkflowDebugStateMap>,
   // Whether we need to emit a "start" metric for this workflow. This is true when the workflow
   // is first delivered to the client. If the workflow is subsequently loaded from cache it
   // will not increment.
+  #[field(id = 4)]
   needs_start_metric: bool,
 }
 
@@ -467,9 +471,13 @@ impl WorkflowResultStats {
 #[bd_macros::proto_serializable]
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub(crate) struct SankeyPath {
+  #[field(id = 1)]
   pub(crate) sankey_id: String,
+  #[field(id = 2)]
   pub(crate) nodes: Vec<String>,
+  #[field(id = 3)]
   pub(crate) path_id: String,
+  #[field(id = 4)]
   pub(crate) is_trimmed: bool,
 }
 
@@ -502,14 +510,18 @@ impl SankeyPath {
 #[bd_macros::proto_serializable]
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SankeyNodeState {
+  #[field(id = 1)]
   value: String,
+  #[field(id = 2)]
   counts_toward_limit: bool,
 }
 
 #[bd_macros::proto_serializable]
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct SankeyState {
+  #[field(id = 1)]
   nodes: Vec<SankeyNodeState>,
+  #[field(id = 2)]
   is_trimmed: bool,
 }
 
@@ -552,8 +564,10 @@ pub(crate) struct Run {
   ///  * tag "key" equal to "value"
   ///
   /// sees a log with message "foo" and tag "key" equal to "value".
+  #[field(id = 1)]
   pub(crate) traversals: Vec<Traversal>,
   /// The number of logs matched by a given workflow run.
+  #[field(id = 2)]
   matched_logs_count: u32,
   /// The time at which run left its initial state. Used to implement
   /// duration limit.
@@ -785,10 +799,13 @@ impl RunResult<'_> {
 pub(crate) struct TraversalExtractions {
   /// States of Sankey diagrams. It's a `None` when traversal is initialized and is set
   /// to `Some` after the first value for a Sankey and a given traversal is extracted.
+  #[field(id = 1)]
   pub(crate) sankey_states: TinyMap<String, SankeyState>,
   /// Snapped timestamps, by extraction ID.
+  #[field(id = 2)]
   pub(crate) timestamps: TinyMap<String, TimestampMicros>,
   /// Snapped field values, by extraction ID.
+  #[field(id = 3)]
   pub(crate) fields: TinyMap<String, String>,
 }
 
@@ -1465,7 +1482,9 @@ impl TraversalResult<'_> {
 #[bd_macros::proto_serializable]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct WorkflowTransitionDebugState {
+  #[field(id = 1)]
   pub count: u64,
+  #[field(id = 2)]
   #[field(default = "TimestampMicros::from(OffsetDateTime::UNIX_EPOCH)")]
   pub last_transition_time: TimestampMicros,
 }
@@ -1488,6 +1507,7 @@ impl Default for WorkflowTransitionDebugState {
 #[bd_macros::proto_serializable]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct WorkflowDebugStateMap {
+  #[field(id = 1)]
   pub(crate) inner: HashMap<WorkflowDebugStateKey, WorkflowTransitionDebugState>,
 }
 pub type OptWorkflowDebugStateMap = Option<WorkflowDebugStateMap>;

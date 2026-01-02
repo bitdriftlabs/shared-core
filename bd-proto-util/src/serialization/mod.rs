@@ -110,6 +110,13 @@ pub trait ProtoMessage: ProtoFieldSerialize + ProtoFieldDeserialize {
     is.check_eof()?;
     Ok(msg)
   }
+
+  fn deserialize_message_from_reader<R: std::io::Read>(reader: &mut R) -> anyhow::Result<Self> {
+    let mut is = CodedInputStream::new(reader);
+    let msg = Self::deserialize_message(&mut is)?;
+    is.check_eof()?;
+    Ok(msg)
+  }
 }
 
 #[cfg(test)]

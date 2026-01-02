@@ -360,6 +360,8 @@ impl Log {
   }
 }
 
+// TODO(snowp): Ideally we should be using the new proc macro for Log but we need to add support
+// for passing throught the compression context first.
 pub struct LogEncodingHelper {
   pub log: Log,
   compression_min_size: u64,
