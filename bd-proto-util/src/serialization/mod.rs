@@ -16,6 +16,8 @@
 //! - [`runtime`] - Runtime helpers used by proc-macro-generated code
 //! - [`types`] - Trait implementations for standard types
 //! - [`macros`] - Declarative macros for reducing boilerplate
+//! - [`wire`] - Wire format types that encapsulate serialization logic
+//! - [`validation`] - Runtime validation against protobuf descriptors
 
 use protobuf::rt::WireType;
 use protobuf::{CodedInputStream, CodedOutputStream};
@@ -27,15 +29,19 @@ pub mod map;
 pub mod runtime;
 pub mod types;
 pub mod validation;
+pub mod wire;
 
-// Re-export validation types for use by generated code
 // Re-export commonly used items
 pub use map::{compute_map_size, deserialize_map_entry, serialize_map};
 pub use runtime::read_nested;
 pub use types::TimestampMicros;
 pub use validation::{CanonicalType, ValidationResult, validate_field_type};
+pub use wire::WireFormat;
 
-/// Trait defining the wire type of a value.
+/// Trait defining the wire format characteristics of a type.
+///
+/// Types implement this trait to specify how they map to protobuf wire format.
+/// For scalar types, this delegates to a [`wire::WireFormat`] implementation.
 pub trait ProtoType {
   /// The wire type of this field. Used for skipping unknown fields or verification.
   fn wire_type() -> WireType;
@@ -44,9 +50,6 @@ pub trait ProtoType {
   ///
   /// This is used for validation against protobuf descriptors. The canonical type maps
   /// Rust types (like `Arc<str>`, `Box<String>`, etc.) to their protobuf equivalents.
-  ///
-  /// Override this only when needed (e.g., for wrappers). Most implementations use
-  /// the provided helper macros which implement this automatically.
   fn canonical_type() -> CanonicalType;
 }
 

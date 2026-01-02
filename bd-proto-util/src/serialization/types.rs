@@ -14,7 +14,13 @@
 //! - Time types (`TimestampMicros`)
 //! - Special types (`LogType` enum, `NotNan<f64>`, unit type)
 
-use crate::serialization::{CanonicalType, ProtoFieldDeserialize, ProtoFieldSerialize, ProtoType};
+use crate::serialization::{
+  CanonicalType,
+  ProtoFieldDeserialize,
+  ProtoFieldSerialize,
+  ProtoType,
+  wire,
+};
 use anyhow::Result;
 use bd_time::OffsetDateTimeExt;
 use ordered_float::FloatCore;
@@ -22,33 +28,16 @@ use protobuf::rt::WireType;
 use protobuf::{CodedInputStream, CodedOutputStream};
 use std::sync::Arc;
 
-impl_proto_for_primitive!(
-  String,
-  WireType::LengthDelimited,
-  CanonicalType::String,
-  write_string,
-  read_string,
-  |v| v.as_str(),
-  size: |field_number| protobuf::rt::string_size(field_number, v.as_str())
-);
-
-impl_proto_for_varint_primitive!(
-  u32,
-  CanonicalType::U32,
-  uint32_size,
-  write_uint32,
-  read_uint32
-);
-impl_proto_for_varint_primitive!(
-  u64,
-  CanonicalType::U64,
-  uint64_size,
-  write_uint64,
-  read_uint64
-);
-impl_proto_for_varint_primitive!(i64, CanonicalType::I64, int64_size, write_int64, read_int64);
-impl_proto_for_varint_primitive!(i32, CanonicalType::I32, int32_size, write_int32, read_int32);
-
+// Primitive scalar types - delegate to wire format types
+impl_proto_scalar!(u32, wire::U32);
+impl_proto_scalar!(u64, wire::U64);
+impl_proto_scalar!(i32, wire::I32);
+impl_proto_scalar!(i64, wire::I64);
+impl_proto_scalar!(f32, wire::F32);
+impl_proto_scalar!(f64, wire::F64);
+impl_proto_scalar!(bool, wire::Bool);
+impl_proto_scalar!(String, wire::StringOwned);
+impl_proto_scalar!(Vec<u8>, wire::BytesOwned);
 
 // NOTE: We intentionally do NOT implement ProtoFieldSerialize/ProtoFieldDeserialize for
 // usize/isize.
@@ -63,78 +52,11 @@ impl_proto_for_varint_primitive!(i32, CanonicalType::I32, int32_size, write_int3
 // - u32 if your values will always fit in 4 bytes (most cases)
 // - u64 if you need the full range
 
-impl_proto_for_primitive!(
-  bool,
-  WireType::Varint,
-  CanonicalType::Bool,
-  write_bool,
-  read_bool,
-  |v| *v,
-  size: |field_number| {
-    // bool is varint, so compute_raw_varint64_size of 1 + tag size
-    let tag_size = protobuf::rt::tag_size(field_number);
-    // bool payload is always 1 byte
-    tag_size + 1
-  }
-);
-
-impl_proto_for_primitive!(
-  f64,
-  WireType::Fixed64,
-  CanonicalType::F64,
-  write_double,
-  read_double,
-  |v| *v,
-  size: |field_number| {
-    // double is always 8 bytes + tag size
-    let tag_size = protobuf::rt::tag_size(field_number);
-    tag_size + 8
-  }
-);
-
-impl_proto_for_primitive!(
-  f32,
-  WireType::Fixed32,
-  CanonicalType::F32,
-  write_float,
-  read_float,
-  |v| *v,
-  size: |field_number| {
-    // float is always 4 bytes + tag size
-    let tag_size = protobuf::rt::tag_size(field_number);
-    tag_size + 4
-  }
-);
-
-impl_proto_for_primitive!(
-  Vec<u8>,
-  WireType::LengthDelimited,
-  CanonicalType::Bytes,
-  write_bytes,
-  read_bytes,
-  |v| v.as_slice(),
-  size: |field_number| protobuf::rt::bytes_size(field_number, v.as_slice())
-);
-
-impl_proto_for_primitive!(
-  std::borrow::Cow<'_, str>,
-  WireType::LengthDelimited,
-  CanonicalType::String,
-  write_string,
-  read_string,
-  |v| v.as_ref(),
-  size: |field_number| protobuf::rt::string_size(field_number, v)
-);
-
-impl_proto_for_primitive!(
-  std::sync::Arc<str>,
-  WireType::LengthDelimited,
-  CanonicalType::String,
-  write_string,
-  read_string,
-  |v| v.as_ref(),
-  size: |field_number| protobuf::rt::string_size(field_number, v)
-);
+// String-like types that need conversion (implement AsRef<str>)
+impl_proto_string_like!(std::borrow::Cow<'static, str>, |s: String| {
+  std::borrow::Cow::Owned(s)
+});
+impl_proto_string_like!(std::sync::Arc<str>, |s: String| s.into());
 
 // Transparent wrapper types (Box, Arc) - delegate to inner type
 crate::impl_proto_for_type_wrapper!(Box<T>, T, Box::new);
