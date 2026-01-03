@@ -12,8 +12,25 @@
 //! trait implementations for `ProtoType`, `ProtoFieldSerialize`, `ProtoFieldDeserialize`, and
 //! `ProtoMessage`.
 
+use crate::validation::{ValidationConfig, generate_struct_validation_tests};
 use quote::quote;
 use syn::{Field, Meta};
+
+/// Converts a CamelCase identifier to `snake_case`.
+fn to_snake_case(s: &str) -> String {
+  let mut result = String::new();
+  for (i, ch) in s.chars().enumerate() {
+    if ch.is_uppercase() {
+      if i > 0 {
+        result.push('_');
+      }
+      result.push(ch.to_ascii_lowercase());
+    } else {
+      result.push(ch);
+    }
+  }
+  result
+}
 
 /// Parsed attributes from a struct field's `#[field(...)]` attribute.
 ///
@@ -171,6 +188,7 @@ pub struct StructProcessingResult {
   pub serialize_impl: proc_macro2::TokenStream,
   pub deserialize_impl: proc_macro2::TokenStream,
   pub message_impl: proc_macro2::TokenStream,
+  pub validation_tests: proc_macro2::TokenStream,
 }
 
 /// Processes all fields in a struct, generating complete trait implementations.
@@ -187,10 +205,11 @@ pub struct StructProcessingResult {
 /// - `ty_generics` - Generic parameters for the type
 /// - `where_clause` - Where clause for generic constraints
 /// - `serialize_only` - Whether to skip generating deserialization code
+/// - `validation_config` - Configuration for generating validation tests
 ///
 /// # Returns
 ///
-/// A `StructProcessingResult` containing all four trait implementations.
+/// A `StructProcessingResult` containing all trait implementations and validation tests.
 pub fn process_struct_fields(
   fields: &syn::FieldsNamed,
   name: &syn::Ident,
@@ -198,6 +217,7 @@ pub fn process_struct_fields(
   ty_generics: &syn::TypeGenerics<'_>,
   where_clause: Option<&syn::WhereClause>,
   serialize_only: bool,
+  validation_config: &ValidationConfig,
 ) -> StructProcessingResult {
   let mut field_processing = Vec::new();
   let mut deserialize_arms = Vec::new();
@@ -392,6 +412,10 @@ pub fn process_struct_fields(
           fn wire_type() -> protobuf::rt::WireType {
               protobuf::rt::WireType::LengthDelimited
           }
+
+          fn canonical_type() -> bd_proto_util::serialization::CanonicalType {
+              bd_proto_util::serialization::CanonicalType::Message
+          }
       }
   };
 
@@ -516,10 +540,46 @@ pub fn process_struct_fields(
     }
   };
 
+  // Generate validation tests if validate_against is specified
+  let validation_tests = validation_config.proto_path.as_ref().map_or_else(
+    || quote! {},
+    |proto_path| {
+      // Convert fields_with_attrs to the format needed by validation
+      let field_attrs_for_validation: Vec<_> = fields_with_attrs
+        .iter()
+        .map(|(field, attrs)| {
+          let field_name = field.ident.as_ref().unwrap().clone();
+          let field_type = field.ty.clone();
+          (field_name, field_type, attrs.clone())
+        })
+        .collect();
+
+      let tests = generate_struct_validation_tests(
+        name,
+        fields,
+        proto_path,
+        &field_attrs_for_validation,
+        validation_config.validate_partial,
+      );
+
+      // Use a unique module name based on the struct name (in snake_case) to avoid collisions
+      let snake_name = to_snake_case(&name.to_string());
+      let validation_mod_name = quote::format_ident!("__proto_validation_{}", snake_name);
+      quote! {
+        #[cfg(test)]
+        mod #validation_mod_name {
+          use super::*;
+          #tests
+        }
+      }
+    },
+  );
+
   StructProcessingResult {
     proto_type_impl,
     serialize_impl,
     deserialize_impl,
     message_impl,
+    validation_tests,
   }
 }

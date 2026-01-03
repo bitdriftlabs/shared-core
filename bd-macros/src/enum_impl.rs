@@ -12,6 +12,7 @@
 //! trait implementations for `ProtoType`, `ProtoFieldSerialize`, and `ProtoFieldDeserialize`.
 
 use crate::struct_impl::FieldAttrs;
+use crate::validation::ValidationConfig;
 use quote::quote;
 use syn::{Fields, Meta, Variant};
 
@@ -459,6 +460,7 @@ pub struct EnumProcessingResult {
   pub proto_type_impl: proc_macro2::TokenStream,
   pub serialize_impl: proc_macro2::TokenStream,
   pub deserialize_impl: proc_macro2::TokenStream,
+  pub validation_tests: proc_macro2::TokenStream,
 }
 
 /// Processes all variants in an enum, generating complete trait implementations.
@@ -471,6 +473,7 @@ pub struct EnumProcessingResult {
 /// - `ty_generics` - Generic parameters for the type
 /// - `where_clause` - Where clause for generic constraints
 /// - `serialize_only` - Whether to skip generating deserialization code
+/// - `validation_config` - Configuration for generating validation tests
 pub fn process_enum_variants(
   data_enum: &syn::DataEnum,
   name: &syn::Ident,
@@ -478,6 +481,7 @@ pub fn process_enum_variants(
   ty_generics: &syn::TypeGenerics<'_>,
   where_clause: Option<&syn::WhereClause>,
   serialize_only: bool,
+  validation_config: &ValidationConfig,
 ) -> EnumProcessingResult {
   let mut compute_size_arms = Vec::new();
   let mut serialize_arms = Vec::new();
@@ -532,6 +536,11 @@ pub fn process_enum_variants(
            for #name #ty_generics #where_clause {
                fn wire_type() -> protobuf::rt::WireType {
                    protobuf::rt::WireType::LengthDelimited
+               }
+
+               fn canonical_type() -> bd_proto_util::serialization::CanonicalType {
+                   // Enums in this context are oneof fields, which are essentially messages
+                   bd_proto_util::serialization::CanonicalType::Message
                }
            }
   };
@@ -606,9 +615,25 @@ pub fn process_enum_variants(
     }
   };
 
+  // TODO: Add enum/oneof validation support
+  // Enum validation is more complex as it maps to protobuf oneof fields
+  let validation_tests = if validation_config.proto_path.is_some() {
+    // For now, generate a placeholder that indicates enum validation is not yet implemented
+    quote! {
+      #[cfg(test)]
+      mod __proto_validation {
+        // Enum validation against protobuf oneof is not yet implemented
+        // The struct fields within enum variants should still be validated
+      }
+    }
+  } else {
+    quote! {}
+  };
+
   EnumProcessingResult {
     proto_type_impl,
     serialize_impl,
     deserialize_impl,
+    validation_tests,
   }
 }
