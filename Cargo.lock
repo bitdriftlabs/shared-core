@@ -846,6 +846,7 @@ version = "1.0.0"
 dependencies = [
  "ahash",
  "anyhow",
+ "bd-macros",
  "bd-proto",
  "bd-proto-util",
  "bd-time",

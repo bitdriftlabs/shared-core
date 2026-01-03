@@ -25,15 +25,15 @@ pub mod zlib;
 use crate::size::MemorySized;
 use crate::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use ahash::AHashMap;
+use bd_macros::proto_serializable;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::{BinaryData, Data, LogType};
-use bd_proto_util::serialization::ProtoFieldSerialize;
+use bd_proto_util::serialization::ProtoMessageSerialize;
 use bd_time::OffsetDateTimeExt as _;
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
 use ordered_float::NotNan;
-use protobuf::rt::WireType;
-use protobuf::{CodedInputStream, CodedOutputStream, Enum as _};
+use protobuf::{CodedInputStream, CodedOutputStream};
 use std::borrow::Cow;
 use std::sync::{Arc, LazyLock};
 use time::OffsetDateTime;
@@ -88,21 +88,104 @@ impl LossyIntToUsize for u64 {
   }
 }
 
-/// A union type that allows representing either a UTF-8 string or an opaque series of bytes. This
-/// is generic over the underlying String type to support different ownership models.
+/// Binary data wrapper for protobuf serialization.
+///
+/// This newtype wraps a `Vec<u8>` payload and serializes as the protobuf `BinaryData` message
+/// (field 2 = payload bytes). The optional `type` field (field 1) is not used.
+#[proto_serializable(
+  serialize_only,
+  validate_against = "bd_proto::protos::logging::payload::BinaryData",
+  validate_partial
+)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LogBinaryData {
+  #[field(id = 2)]
+  payload: Vec<u8>,
+}
+
+impl LogBinaryData {
+  /// Creates a new `LogBinaryData` from a byte vector.
+  #[must_use]
+  pub fn new(payload: Vec<u8>) -> Self {
+    Self { payload }
+  }
+
+  /// Returns a reference to the payload bytes.
+  #[must_use]
+  pub fn payload(&self) -> &[u8] {
+    &self.payload
+  }
+
+  /// Consumes self and returns the inner payload.
+  #[must_use]
+  pub fn into_payload(self) -> Vec<u8> {
+    self.payload
+  }
+
+  /// Returns the capacity of the underlying vector.
+  #[must_use]
+  pub fn capacity(&self) -> usize {
+    self.payload.capacity()
+  }
+}
+
+impl From<Vec<u8>> for LogBinaryData {
+  fn from(payload: Vec<u8>) -> Self {
+    Self { payload }
+  }
+}
+
+impl From<&[u8]> for LogBinaryData {
+  fn from(slice: &[u8]) -> Self {
+    Self {
+      payload: slice.to_vec(),
+    }
+  }
+}
+
+impl From<LogBinaryData> for Vec<u8> {
+  fn from(data: LogBinaryData) -> Self {
+    data.payload
+  }
+}
+
+impl AsRef<[u8]> for LogBinaryData {
+  fn as_ref(&self) -> &[u8] {
+    &self.payload
+  }
+}
+
+impl std::ops::Deref for LogBinaryData {
+  type Target = [u8];
+
+  fn deref(&self) -> &Self::Target {
+    &self.payload
+  }
+}
+
+/// A union type that allows representing either a UTF-8 string, binary data, or primitive values.
+#[proto_serializable(serialize_only)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StringOrBytes<S: AsRef<str>, B: AsRef<[u8]>> {
-  String(S),
+pub enum StringOrBytes {
+  #[field(id = 1, deserialize)]
+  String(String),
+  #[field(id = 1)]
   SharedString(Arc<str>),
+  #[field(id = 1)]
   StaticString(&'static str),
-  Bytes(B),
+  #[field(id = 2)]
+  Bytes(LogBinaryData),
+  #[field(id = 6)]
   Boolean(bool),
+  #[field(id = 3)]
   U64(u64),
+  #[field(id = 5)]
   I64(i64),
+  #[field(id = 4)]
   Double(NotNan<f64>),
 }
 
-impl StringOrBytes<String, Vec<u8>> {
+impl StringOrBytes {
   /// Creates a new `StringOrBytes` instance from a static string slice. This is slightly more
   /// efficient than using `SharedString` as it avoids heap allocation.
   #[must_use]
@@ -118,7 +201,7 @@ impl StringOrBytes<String, Vec<u8>> {
         Self::StaticString(s) => Data_type::StringData(s.to_string()),
         Self::SharedString(s) => Data_type::StringData((*s).to_string()),
         Self::Bytes(b) => Data_type::BinaryData(BinaryData {
-          payload: b,
+          payload: b.into_payload(),
           ..Default::default()
         }),
         Self::Boolean(b) => Data_type::BoolData(b),
@@ -133,17 +216,16 @@ impl StringOrBytes<String, Vec<u8>> {
   pub fn from_proto(data: Data) -> Option<Self> {
     match data.data_type? {
       Data_type::StringData(s) => Some(Self::String(s)),
-      Data_type::BinaryData(b) => Some(Self::Bytes(b.payload)),
+      Data_type::BinaryData(b) => Some(Self::Bytes(LogBinaryData::new(b.payload))),
       Data_type::BoolData(b) => Some(Self::Boolean(b)),
       Data_type::IntData(v) => Some(Self::U64(v)),
       Data_type::SintData(v) => Some(Self::I64(v)),
       Data_type::DoubleData(v) => Some(Self::Double(NotNan::new(v).ok()?)),
     }
   }
-}
 
-impl<T: AsRef<str>, B: AsRef<[u8]>> StringOrBytes<T, B> {
   /// Extracts the underlying str if the enum represents a String, None otherwise.
+  #[must_use]
   pub fn as_str(&self) -> Option<&str> {
     match self {
       Self::String(s) => Some(s.as_ref()),
@@ -154,6 +236,7 @@ impl<T: AsRef<str>, B: AsRef<[u8]>> StringOrBytes<T, B> {
   }
 
   /// Extracts the underlying bytes if the enum represents a Bytes, None otherwise.
+  #[must_use]
   pub fn as_bytes(&self) -> Option<&[u8]> {
     match self {
       Self::String(_)
@@ -168,40 +251,38 @@ impl<T: AsRef<str>, B: AsRef<[u8]>> StringOrBytes<T, B> {
   }
 }
 
-impl From<String> for StringOrBytes<String, Vec<u8>> {
+impl From<String> for StringOrBytes {
   fn from(s: String) -> Self {
     Self::String(s)
   }
 }
 
-impl<S: AsRef<str>> From<Arc<str>> for StringOrBytes<S, Vec<u8>> {
+impl From<Arc<str>> for StringOrBytes {
   fn from(s: Arc<str>) -> Self {
     Self::SharedString(s)
   }
 }
 
-impl From<Vec<u8>> for StringOrBytes<String, Vec<u8>> {
+impl From<Vec<u8>> for StringOrBytes {
   fn from(s: Vec<u8>) -> Self {
-    Self::Bytes(s)
+    Self::Bytes(LogBinaryData::new(s))
   }
 }
 
-// Support converting a &str into a StringOrBytes<S>::String if S : From<&str>.
-impl<'a, T: AsRef<str> + From<&'a str>, B: AsRef<[u8]>> From<&'a str> for StringOrBytes<T, B> {
-  fn from(s: &'a str) -> Self {
-    Self::String(s.into())
+impl From<&str> for StringOrBytes {
+  fn from(s: &str) -> Self {
+    Self::String(s.to_string())
   }
 }
 
-// A &[u8] can be converted to a StringOrBytes<S>::Bytes.
-impl<'a, T: AsRef<str>, B: AsRef<[u8]> + From<&'a [u8]>> From<&'a [u8]> for StringOrBytes<T, B> {
-  fn from(slice: &'a [u8]) -> Self {
-    Self::Bytes(slice.into())
+impl From<&[u8]> for StringOrBytes {
+  fn from(slice: &[u8]) -> Self {
+    Self::Bytes(LogBinaryData::new(slice.to_vec()))
   }
 }
 
-/// A log message is a borrowed string or binary value.
-pub type LogMessage = StringOrBytes<String, Vec<u8>>;
+/// A log message is a string or binary value.
+pub type LogMessage = StringOrBytes;
 
 impl std::fmt::Display for LogMessage {
   // This trait requires `fmt` with this exact signature.
@@ -264,13 +345,13 @@ pub type LogFieldKey = Cow<'static, str>;
 // LogFieldValue
 //
 
-pub type LogFieldValue = StringOrBytes<String, Vec<u8>>;
+pub type LogFieldValue = StringOrBytes;
 
 //
 // LogMessageValue
 //
 
-pub type LogMessageValue = StringOrBytes<String, Vec<u8>>;
+pub type LogMessageValue = StringOrBytes;
 
 //
 // AnnotatedLogFields
@@ -329,22 +410,121 @@ pub enum LogFieldKind {
 }
 
 //
+// LogContentsRef
+//
+
+/// A reference wrapper over the message and fields of a log entry.
+///
+/// This struct corresponds to the `bitdrift_public.protobuf.logging.v1.Log.CompressedContents`
+/// message, which is serialized and then zlib-compressed to produce the `compressed_contents`
+/// field of a `CompressedLogRef`.
+///
+/// Proto field mapping:
+/// - Field 1: `message` (Data) - the log message
+/// - Field 2: `fields` (repeated Field) - the log fields as a map
+#[derive(Debug, Clone, Copy)]
+#[proto_serializable(
+  serialize_only,
+  validate_against = "bd_proto::protos::logging::payload::log::CompressedContents"
+)]
+pub struct LogContentsRef<'a> {
+  #[field(id = 1)]
+  pub message: &'a StringOrBytes,
+  #[field(id = 2, repeated)]
+  pub fields: &'a LogFields,
+}
+
+impl LogContentsRef<'_> {
+  /// Compresses this contents struct into zlib-compressed bytes.
+  pub fn compress(&self) -> anyhow::Result<Vec<u8>> {
+    let size = self.compute_message_size();
+    let compressed_output = Vec::with_capacity(size.to_usize_lossy());
+    let mut encoder = ZlibEncoder::new(
+      compressed_output,
+      Compression::new(DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL),
+    );
+    let mut cos = CodedOutputStream::new(&mut encoder);
+    self.serialize_message(&mut cos)?;
+    drop(cos);
+    Ok(encoder.finish()?)
+  }
+}
+
+//
+// Proc-macro generated log serialization structs
+//
+
+/// A reference wrapper for serializing a raw (uncompressed) log entry.
+///
+/// This struct uses proc-macro-generated serialization code and corresponds to the
+/// `bitdrift_public.protobuf.logging.v1.Log` message with fields 3 and 4 (message and fields)
+/// present, and field 9 (`compressed_contents`) absent.
+#[proto_serializable(
+  serialize_only,
+  validate_against = "bd_proto::protos::logging::payload::Log",
+  validate_partial
+)]
+pub struct RawLogRef<'a> {
+  #[field(id = 1, serialize_as = "u64")]
+  pub occurred_at: i64,
+  #[field(id = 2)]
+  pub log_level: u32,
+  #[field(id = 3)]
+  pub message: &'a StringOrBytes,
+  #[field(id = 4, repeated)]
+  pub fields: &'a LogFields,
+  #[field(id = 5)]
+  pub session_id: &'a str,
+  #[field(id = 6, repeated)]
+  pub action_ids: &'a [&'a str],
+  #[field(id = 7, proto_enum)]
+  pub log_type: LogType,
+  #[field(id = 8, repeated)]
+  pub stream_ids: &'a [&'a str],
+}
+
+/// A reference wrapper for serializing a compressed log entry.
+///
+/// This struct uses proc-macro-generated serialization code and corresponds to the
+/// `bitdrift_public.protobuf.logging.v1.Log` message with field 9 (`compressed_contents`) present,
+/// and fields 3 and 4 (message and fields) absent.
+#[proto_serializable(
+  serialize_only,
+  validate_against = "bd_proto::protos::logging::payload::Log",
+  validate_partial
+)]
+pub struct CompressedLogRef<'a> {
+  #[field(id = 1, serialize_as = "u64")]
+  pub occurred_at: i64,
+  #[field(id = 2)]
+  pub log_level: u32,
+  #[field(id = 5)]
+  pub session_id: &'a str,
+  #[field(id = 6, repeated)]
+  pub action_ids: &'a [&'a str],
+  #[field(id = 7, proto_enum)]
+  pub log_type: LogType,
+  #[field(id = 8, repeated)]
+  pub stream_ids: &'a [&'a str],
+  #[field(id = 9)]
+  pub compressed_contents: &'a [u8],
+}
+
+//
 // Log
 //
 
-// This is a wrapper around an owned log entry that is being processed by the workflow engine.
-// Most of this code is a custom protobuf serialization implementation to avoid the overhead of
-// the normal protobuf generated code which requires extensive copying.
-//
-// TODO(mattklein123): Very likely if we wrote a custom proc macro we could generate this code
-// automatically (though with compression logic it may be tricky).
+/// An owned log entry being processed by the workflow engine.
+///
+/// Serialization is handled via proc-macro-generated `RawLogRef` and `CompressedLogRef` structs,
+/// which avoid the overhead of normal protobuf generated code by eliminating copying.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Log {
   // Remember to update the implementation of the `MemorySized` trait every time the struct is
   // modified!!!
   pub log_level: LogLevel,
   pub log_type: LogType,
-  pub message: StringOrBytes<String, Vec<u8>>,
+  pub message: StringOrBytes,
   pub fields: LogFields,
   pub matching_fields: LogFields,
   pub session_id: String,
@@ -357,377 +537,170 @@ impl Log {
   pub fn field_value<'a>(&'a self, field_key: &str) -> Option<Cow<'a, str>> {
     FieldsRef::new(&self.fields, &self.matching_fields).field_value(field_key)
   }
+
+  /// Returns a reference to the compressible contents (message and fields) of this log.
+  #[must_use]
+  pub fn contents_ref(&self) -> LogContentsRef<'_> {
+    LogContentsRef {
+      message: &self.message,
+      fields: &self.fields,
+    }
+  }
+
+  /// Creates a `RawLogRef` for serializing this log without compression.
+  #[must_use]
+  pub fn as_raw_ref<'a>(
+    &'a self,
+    action_ids: &'a [&'a str],
+    stream_ids: &'a [&'a str],
+  ) -> RawLogRef<'a> {
+    RawLogRef {
+      occurred_at: self.occurred_at.unix_timestamp_micros(),
+      log_level: self.log_level,
+      message: &self.message,
+      fields: &self.fields,
+      session_id: &self.session_id,
+      action_ids,
+      log_type: self.log_type,
+      stream_ids,
+    }
+  }
+
+  /// Creates a `CompressedLogRef` for serializing this log with pre-compressed contents.
+  #[must_use]
+  pub fn as_compressed_ref<'a>(
+    &'a self,
+    action_ids: &'a [&'a str],
+    stream_ids: &'a [&'a str],
+    compressed_contents: &'a [u8],
+  ) -> CompressedLogRef<'a> {
+    CompressedLogRef {
+      occurred_at: self.occurred_at.unix_timestamp_micros(),
+      log_level: self.log_level,
+      session_id: &self.session_id,
+      action_ids,
+      log_type: self.log_type,
+      stream_ids,
+      compressed_contents,
+    }
+  }
 }
 
-// TODO(snowp): Ideally we should be using the new proc macro for Log but we need to add support
-// for passing throught the compression context first.
-pub struct LogEncodingHelper {
+/// A wrapper around `Log` that provides efficient protobuf serialization with optional compression.
+///
+/// `EncodableLog` takes ownership of a `Log` and provides serialization methods that:
+/// - Compute sizes and serialize in a single pass when possible
+/// - Handle compression of message+fields when size exceeds the threshold
+/// - Accept external `action_ids` and `stream_ids` at serialization time
+///
+/// The serialization uses either `RawLogRef` (uncompressed) or `CompressedLogRef` (compressed)
+/// depending on the content size and compression threshold.
+pub struct EncodableLog {
   pub log: Log,
   compression_min_size: u64,
-  cached_encoding_data: Option<CachedEncodingData>,
+  /// Cached state from size computation
+  cached: Option<EncodableLogCached>,
 }
 
-pub struct CachedEncodingData {
-  // The size of everything except action IDs and stream IDs, since these are sent/encoded on
-  // demand depending on the context.
-  core_size: u64,
-  // If we have decided to compress the log, this contains the compressed contents.
+/// Cached state for `EncodableLog` serialization.
+struct EncodableLogCached {
+  /// If compression was applied, the compressed bytes
   compressed_contents: Option<Vec<u8>>,
 }
 
-impl LogEncodingHelper {
+impl EncodableLog {
   #[must_use]
   pub fn new(log: Log, compression_min_size: u64) -> Self {
     Self {
       log,
       compression_min_size,
-      cached_encoding_data: None,
+      cached: None,
     }
   }
 
-  // bitdrift_public.protobuf.logging.v1.Data
-  fn size_proto_data(value: &LogFieldValue) -> u64 {
-    let mut my_size = 0;
-    match value {
-      StringOrBytes::String(s) => {
-        // string string_data = 1;
-        my_size += ::protobuf::rt::string_size(1, s);
+  /// Computes the serialized size of this log with the given action and stream IDs.
+  ///
+  /// This caches any compression results for use in subsequent `serialize_to_stream` or
+  /// `serialize_to_bytes` calls.
+  pub fn compute_size(&mut self, action_ids: &[&str], stream_ids: &[&str]) -> anyhow::Result<u64> {
+    // Compute core size if not cached
+    let cached = self.cached.get_or_insert_with(|| {
+      let contents = self.log.contents_ref();
+      let uncompressed_size = contents.compute_message_size();
+
+      // Decide whether to compress
+      let compressed_contents =
+        if self.compression_min_size > 0 && uncompressed_size >= self.compression_min_size {
+          contents.compress().ok()
+        } else {
+          None
+        };
+
+      EncodableLogCached {
+        compressed_contents,
+      }
+    });
+
+    // Use proc-macro-generated size computation
+    Ok(
+      if let Some(compressed) = &cached.compressed_contents {
+        self
+          .log
+          .as_compressed_ref(action_ids, stream_ids, compressed)
+          .compute_message_size()
+      } else {
+        self
+          .log
+          .as_raw_ref(action_ids, stream_ids)
+          .compute_message_size()
       },
-      StringOrBytes::SharedString(s) => {
-        // string string_data = 1;
-        my_size += ::protobuf::rt::string_size(1, s.as_ref());
-      },
-      StringOrBytes::StaticString(s) => {
-        // string string_data = 1;
-        my_size += ::protobuf::rt::string_size(1, s);
-      },
-      StringOrBytes::Bytes(b) => {
-        // This encodes the Binary proto message.
-        // bytes payload = 2;
-        let inner_len = ::protobuf::rt::bytes_size(2, b);
-        // BinaryData binary_data = 2;
-        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(inner_len) + inner_len;
-      },
-      StringOrBytes::Boolean(_) => {
-        // bool bool_data = 6;
-        my_size += 1 + 1; // bool is always 1 byte + tag size
-      },
-      StringOrBytes::U64(v) => {
-        // uint64 int_data = 3;
-        my_size += ::protobuf::rt::uint64_size(3, *v);
-      },
-      StringOrBytes::I64(v) => {
-        // int64 sint_data = 5;
-        my_size += ::protobuf::rt::int64_size(5, *v);
-      },
-      StringOrBytes::Double(_v) => {
-        // double double_data = 4;
-        my_size += 8 + 1; // double is always 8 bytes + tag size
-      },
-    }
-
-    my_size
-  }
-
-  // bitdrift_public.protobuf.logging.v1.Data
-  fn serialize_proto_data(
-    field_number: u32,
-    value: &LogFieldValue,
-    os: &mut CodedOutputStream<'_>,
-  ) -> anyhow::Result<()> {
-    os.write_tag(field_number, WireType::LengthDelimited)?;
-    os.write_raw_varint32(Self::size_proto_data(value).to_u32_lossy())?;
-    match value {
-      StringOrBytes::String(s) => {
-        // string string_data = 1;
-        os.write_string(1, s)?;
-      },
-      StringOrBytes::SharedString(s) => {
-        // string string_data = 1;
-        os.write_string(1, s.as_ref())?;
-      },
-      StringOrBytes::StaticString(s) => {
-        // string string_data = 1;
-        os.write_string(1, s)?;
-      },
-      StringOrBytes::Bytes(b) => {
-        // This encodes the Binary proto message.
-        // bytes payload = 2;
-        let inner_len = ::protobuf::rt::bytes_size(2, b);
-        os.write_tag(2, WireType::LengthDelimited)?;
-        os.write_raw_varint32(inner_len.to_u32_lossy())?;
-        // BinaryData binary_data = 2;
-        os.write_bytes(2, b)?;
-      },
-      StringOrBytes::Boolean(v) => {
-        // bool bool_data = 6;
-        os.write_bool(6, *v)?;
-      },
-      StringOrBytes::U64(v) => {
-        // uint64 int_data = 3;
-        os.write_uint64(3, *v)?;
-      },
-      StringOrBytes::I64(v) => {
-        // int64 sint_data = 5;
-        os.write_int64(5, *v)?;
-      },
-      StringOrBytes::Double(v) => {
-        // double double_data = 4;
-        os.write_double(4, **v)?;
-      },
-    }
-
-    Ok(())
-  }
-
-  // bitdrift_public.protobuf.logging.v1.Log.Field
-  fn size_proto_field(key: &LogFieldKey, value: &LogFieldValue) -> u64 {
-    let mut my_size = 0;
-    // string key = 1;
-    my_size += ::protobuf::rt::string_size(1, key.as_ref());
-    // Data value = 2;
-    let value_len = Self::size_proto_data(value);
-    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(value_len) + value_len;
-    my_size
-  }
-
-  // bitdrift_public.protobuf.logging.v1.Log.Field
-  fn serialize_proto_field(
-    field_number: u32,
-    key: &LogFieldKey,
-    value: &LogFieldValue,
-    os: &mut CodedOutputStream<'_>,
-  ) -> anyhow::Result<()> {
-    os.write_tag(field_number, WireType::LengthDelimited)?;
-    os.write_raw_varint32(Self::size_proto_field(key, value).to_u32_lossy())?;
-    // string key = 1;
-    os.write_string(1, key.as_ref())?;
-    // Data value = 2;
-    Self::serialize_proto_data(2, value, os)?;
-    Ok(())
-  }
-
-  // bitdrift_public.protobuf.logging.v1.Log
-  pub fn serialize_proto_size_inner(
-    log_level: u32,
-    message: &LogFieldValue,
-    fields: &LogFields,
-    session_id: &str,
-    occurred_at: OffsetDateTime,
-    log_type: LogType,
-    action_ids: &[&str],
-    stream_ids: &[&str],
-    cached_encoding_data: &mut Option<CachedEncodingData>,
-    compression_min_size: u64,
-  ) -> anyhow::Result<u64> {
-    let mut my_size = match cached_encoding_data {
-      None => {
-        // Start by figuring out the size of message and fields as this is what we may want to
-        // compress.
-        let mut message_and_fields_size = 0;
-
-        // Data message = 3;
-        // No empty check as this should always be set.
-        let message_len = Self::size_proto_data(message);
-        message_and_fields_size +=
-          1 + ::protobuf::rt::compute_raw_varint64_size(message_len) + message_len;
-
-        // repeated Field fields = 4;
-        for value in fields {
-          let len = Self::size_proto_field(value.0, value.1);
-          message_and_fields_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-        }
-
-        let (message_and_fields_size, compressed_contents) =
-          if compression_min_size <= message_and_fields_size {
-            // If we are compressing, we need to actually do the compression here and we cache the
-            // compression result. This allows us to compute the final size including with the
-            // compression result.
-            let compressed_output = Vec::with_capacity(message_and_fields_size.to_usize_lossy());
-            let mut encoder = ZlibEncoder::new(
-              compressed_output,
-              Compression::new(DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL),
-            );
-            let mut cos = CodedOutputStream::new(&mut encoder);
-
-            // The following encodes bitdrift_public.protobuf.logging.v1.Log.CompressedContents
-            // Data message = 1;
-            Self::serialize_proto_data(1, message, &mut cos)?;
-
-            // repeated Field fields = 2;
-            for v in fields {
-              Self::serialize_proto_field(2, v.0, v.1, &mut cos)?;
-            }
-
-            drop(cos);
-            let compressed_output = encoder.finish()?;
-
-            // bytes compressed_contents = 9;
-            (
-              ::protobuf::rt::bytes_size(9, &compressed_output),
-              Some(compressed_output),
-            )
-          } else {
-            (message_and_fields_size, None)
-          };
-
-        let mut my_size = message_and_fields_size;
-
-        // uint64 timestamp_unix_micro = 1;
-        // No zero check is this should always be set.
-        // We manually serialize this as a uint64 (microsecond timestamp) to match the proto
-        // definition.
-        my_size +=
-          ::protobuf::rt::uint64_size(1, occurred_at.unix_timestamp_micros().cast_unsigned());
-
-        // uint32 log_level = 2;
-        if log_level != 0 {
-          my_size += ::protobuf::rt::uint32_size(2, log_level);
-        }
-
-        // string session_id = 5;
-        // No zero check as this should always be set.
-        my_size += ::protobuf::rt::string_size(5, session_id);
-
-        // LogType log_type = 7;
-        my_size += log_type.value().compute_size(7);
-
-        *cached_encoding_data = Some(CachedEncodingData {
-          core_size: my_size,
-          compressed_contents,
-        });
-
-        my_size
-      },
-      Some(cached_data) => cached_data.core_size,
-    };
-
-    // repeated string action_ids = 6;
-    for value in action_ids {
-      my_size += ::protobuf::rt::string_size(6, value);
-    }
-
-    // repeated string stream_ids = 8;
-    for value in stream_ids {
-      my_size += ::protobuf::rt::string_size(8, value);
-    }
-
-    Ok(my_size)
-  }
-
-  // bitdrift_public.protobuf.logging.v1.Log
-  pub fn serialized_proto_size(
-    &mut self,
-    action_ids: &[&str],
-    stream_ids: &[&str],
-  ) -> anyhow::Result<u64> {
-    Self::serialize_proto_size_inner(
-      self.log.log_level,
-      &self.log.message,
-      &self.log.fields,
-      &self.log.session_id,
-      self.log.occurred_at,
-      self.log.log_type,
-      action_ids,
-      stream_ids,
-      &mut self.cached_encoding_data,
-      self.compression_min_size,
     )
   }
 
-  // bitdrift_public.protobuf.logging.v1.Log
-  pub fn serialize_proto_to_stream_inner(
-    log_level: u32,
-    message: &LogFieldValue,
-    fields: &LogFields,
-    session_id: &str,
-    occurred_at: OffsetDateTime,
-    log_type: LogType,
-    action_ids: &[&str],
-    stream_ids: &[&str],
-    os: &mut CodedOutputStream<'_>,
-    cached_encoding_data: Option<&CachedEncodingData>,
-  ) -> anyhow::Result<()> {
-    // uint64 timestamp_unix_micro = 1;
-    // We manually serialize this as a uint64 (microsecond timestamp) to match the proto definition.
-    os.write_uint64(1, occurred_at.unix_timestamp_micros().cast_unsigned())?;
-
-    // uint32 log_level = 2;
-    if log_level != 0 {
-      os.write_uint32(2, log_level)?;
-    }
-
-    if cached_encoding_data
-      .is_none_or(|cached_encoding_data| cached_encoding_data.compressed_contents.is_none())
-    {
-      // Data message = 3;
-      Self::serialize_proto_data(3, message, os)?;
-
-      // repeated Field fields = 4;
-      for v in fields {
-        Self::serialize_proto_field(4, v.0, v.1, os)?;
-      }
-    }
-
-    // string session_id = 5;
-    os.write_string(5, session_id)?;
-
-    // repeated string action_ids = 6;
-    for v in action_ids {
-      os.write_string(6, v)?;
-    }
-
-    // LogType log_type = 7;
-    log_type.value().serialize(7, os)?;
-
-    // repeated string stream_ids = 8;
-    for v in stream_ids {
-      os.write_string(8, v)?;
-    }
-
-    // bytes compressed_contents = 9;
-    if let Some(cached_encoding_data) = cached_encoding_data
-      && let Some(compressed_contents) = &cached_encoding_data.compressed_contents
-    {
-      os.write_bytes(9, compressed_contents)?;
-    }
-
-    Ok(())
-  }
-
-  // bitdrift_public.protobuf.logging.v1.Log
-  pub fn serialized_proto_to_stream(
+  /// Serializes this log to the given output stream.
+  ///
+  /// Note: `compute_size` must have been called first to populate the cache.
+  pub fn serialize_to_stream(
     &self,
     action_ids: &[&str],
     stream_ids: &[&str],
     os: &mut CodedOutputStream<'_>,
   ) -> anyhow::Result<()> {
-    Self::serialize_proto_to_stream_inner(
-      self.log.log_level,
-      &self.log.message,
-      &self.log.fields,
-      &self.log.session_id,
-      self.log.occurred_at,
-      self.log.log_type,
-      action_ids,
-      stream_ids,
-      os,
-      self.cached_encoding_data.as_ref(),
-    )
+    let cached = self
+      .cached
+      .as_ref()
+      .ok_or_else(|| anyhow::anyhow!("compute_size must be called before serialize_to_stream"))?;
+
+    // Use proc-macro-generated serialization
+    if let Some(compressed) = &cached.compressed_contents {
+      self
+        .log
+        .as_compressed_ref(action_ids, stream_ids, compressed)
+        .serialize_message(os)
+    } else {
+      self
+        .log
+        .as_raw_ref(action_ids, stream_ids)
+        .serialize_message(os)
+    }
   }
 
-  // bitdrift_public.protobuf.logging.v1.Log
-  pub fn serialized_proto_to_bytes(
+  /// Serializes this log to the given byte buffer.
+  ///
+  /// Note: `compute_size` must have been called first to populate the cache.
+  pub fn serialize_to_bytes(
     &self,
     action_ids: &[&str],
     stream_ids: &[&str],
     buffer: &mut [u8],
   ) -> anyhow::Result<()> {
     let mut os = CodedOutputStream::bytes(buffer);
-    self.serialized_proto_to_stream(action_ids, stream_ids, &mut os)
+    self.serialize_to_stream(action_ids, stream_ids, &mut os)
   }
 
-  // Currently this assumes timestamp is encoded first and will fail otherwise.
+  /// Extracts the timestamp from serialized log bytes.
+  ///
+  /// Currently this assumes timestamp is encoded first and will fail otherwise.
   #[must_use]
   pub fn extract_timestamp(bytes: &[u8]) -> Option<OffsetDateTime> {
     let mut cis = CodedInputStream::from_bytes(bytes);

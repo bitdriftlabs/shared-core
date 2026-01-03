@@ -15,7 +15,15 @@ use bd_client_stats::{FlushTrigger, FlushTriggerRequest};
 use bd_log_filter::FilterChain;
 use bd_log_metadata::LogFields;
 use bd_log_primitives::tiny_set::TinySet;
-use bd_log_primitives::{FieldsRef, Log, LogEncodingHelper, LogMessage, LossyIntToU32, log_level};
+use bd_log_primitives::{
+  EncodableLog,
+  FieldsRef,
+  Log,
+  LogFields as LogFieldsPrimitive,
+  LogMessage,
+  LossyIntToU32,
+  log_level,
+};
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
 use bd_runtime::runtime::{ConfigLoader, IntWatch};
@@ -25,7 +33,6 @@ use bd_workflows::config::FlushBufferId;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use bd_workflows::workflow::{WorkflowDebugStateMap, WorkflowEvent};
 use itertools::Itertools;
-use protobuf::CodedOutputStream;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::path::Path;
@@ -232,7 +239,7 @@ impl ProcessingPipeline {
     let state_reader = state.read().await;
     // TODO(Augustyniak): Add a histogram for the time it takes to process a log.
     self.filter_chain.process(&mut log, &state_reader);
-    let mut log = LogEncodingHelper::new(log, (*self.min_log_compression_size.read()).into());
+    let mut log = EncodableLog::new(log, (*self.min_log_compression_size.read()).into());
 
     let flush_stats_trigger = self.flush_stats_trigger.clone();
 
@@ -460,7 +467,7 @@ impl ProcessingPipeline {
   fn write_to_buffers(
     buffers: &mut BufferProducers,
     matching_buffers: &TinySet<Cow<'_, str>>,
-    log: &mut LogEncodingHelper,
+    log: &mut EncodableLog,
     action_ids: &[&str],
   ) -> anyhow::Result<()> {
     if matching_buffers.is_empty() {
@@ -531,42 +538,32 @@ impl ProcessingPipeline {
       if let Ok(buffer_producer) =
         BufferProducers::producer(&mut buffers.buffers, arbitrary_buffer_id_to_flush.as_str())
         && let Err(e) = (|| {
-          let action_ids = triggered_flush_buffers_action_ids
+          let action_ids: Vec<&str> = triggered_flush_buffers_action_ids
             .iter()
             .filter_map(|id| match id.as_ref() {
               bd_workflows::config::FlushBufferId::WorkflowActionId(workflow) => Some(workflow),
               bd_workflows::config::FlushBufferId::ExplicitSessionCapture(_) => None,
             })
             .map(std::convert::AsRef::as_ref)
-            .collect_vec();
-          let mut cached_encoding_data = None;
-          let size = LogEncodingHelper::serialize_proto_size_inner(
-            log_level::DEBUG,
-            log_message,
-            log_fields,
-            session_id,
+            .collect();
+
+          // Create a synthetic log with the same message and fields
+          let synthetic_log = Log {
+            log_level: log_level::DEBUG,
+            log_type: LogType::INTERNAL_SDK,
+            message: log_message.clone(),
+            fields: log_fields.clone(),
+            matching_fields: LogFieldsPrimitive::default(),
+            session_id: session_id.to_string(),
             occurred_at,
-            LogType::INTERNAL_SDK,
-            &action_ids,
-            &[],
-            &mut cached_encoding_data,
-            u64::MAX,
-          )?;
+            capture_session: None,
+          };
+
+          // Encode with compression disabled (u64::MAX threshold)
+          let mut encodable = EncodableLog::new(synthetic_log, u64::MAX);
+          let size = encodable.compute_size(&action_ids, &[])?;
           let reserved = buffer_producer.reserve(size.to_u32_lossy(), true)?;
-          let mut os = CodedOutputStream::bytes(reserved);
-          LogEncodingHelper::serialize_proto_to_stream_inner(
-            log_level::DEBUG,
-            log_message,
-            log_fields,
-            session_id,
-            occurred_at,
-            LogType::INTERNAL_SDK,
-            &action_ids,
-            &[],
-            &mut os,
-            cached_encoding_data.as_ref(),
-          )?;
-          drop(os);
+          encodable.serialize_to_bytes(&action_ids, &[], reserved)?;
           buffer_producer.commit()?;
           Ok::<_, anyhow::Error>(())
         })()

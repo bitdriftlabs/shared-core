@@ -3,3 +3,4 @@ flamegraph.svg
 flamegraph_old.svg
 perf.data*
 /.idea
+.claude/settings.local.json

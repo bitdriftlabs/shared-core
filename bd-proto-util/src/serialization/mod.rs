@@ -107,17 +107,25 @@ pub trait RepeatedFieldDeserialize: ProtoType + Sized + Default {
   fn add_element(&mut self, element: Self::Element);
 }
 
-/// Trait for message types that can be serialized/deserialized as top-level messages.
-/// This is only implemented for struct types (messages), not primitives or collections.
-/// Top-level serialization writes the message fields directly without an outer tag+length wrapper.
-pub trait ProtoMessage: ProtoFieldSerialize + ProtoFieldDeserialize {
+/// Trait for message types that can be serialized as top-level messages.
+///
+/// This is implemented for struct types (messages) that can be serialized directly without an
+/// outer tag+length wrapper. This is useful for saving messages to files, sending over streams,
+/// or any context where there's no enclosing message.
+///
+/// The proc-macro generates this trait for all `#[proto_serializable]` structs, including
+/// `serialize_only` types that use reference fields like `&str` or `&[u8]`.
+pub trait ProtoMessageSerialize: ProtoFieldSerialize {
+  /// Computes the size of this message when serialized as a top-level message.
+  /// This is the total size of all fields without any outer tag+length wrapper.
+  fn compute_message_size(&self) -> u64;
+
   /// Serializes this message as a top-level message (without outer tag+length wrapper).
-  /// Use this when saving messages to files or other contexts where there's no enclosing message.
   fn serialize_message(&self, os: &mut CodedOutputStream<'_>) -> anyhow::Result<()>;
 
-  // Serializes this message to a byte vector as a top-level message.
+  /// Serializes this message to a byte vector as a top-level message.
   fn serialize_message_to_bytes(&self) -> anyhow::Result<Vec<u8>> {
-    let size = self.compute_size(0);
+    let size = self.compute_message_size();
     let capacity = usize::try_from(size)
       .map_err(|_| anyhow::anyhow!("Message size {size} exceeds usize::MAX"))?;
     let mut buf = Vec::with_capacity(capacity);
@@ -128,10 +136,20 @@ pub trait ProtoMessage: ProtoFieldSerialize + ProtoFieldDeserialize {
     }
     Ok(buf)
   }
+}
 
-  /// Deserializes this message as a top-level message (without expecting outer tag+length wrapper).
-  /// Use this when loading messages from files or other contexts where there's no enclosing
-  /// message.
+/// Trait for message types that can be deserialized as top-level messages.
+///
+/// This is implemented for struct types (messages) that can be deserialized directly without
+/// expecting an outer tag+length wrapper. This is useful for loading messages from files,
+/// receiving from streams, or any context where there's no enclosing message.
+///
+/// The proc-macro generates this trait for `#[proto_serializable]` structs that are NOT marked
+/// as `serialize_only`. Types with reference fields cannot implement this trait since there's
+/// no owned storage to deserialize into.
+pub trait ProtoMessageDeserialize: ProtoFieldDeserialize {
+  /// Deserializes this message as a top-level message (without expecting outer tag+length
+  /// wrapper).
   fn deserialize_message(is: &mut CodedInputStream<'_>) -> anyhow::Result<Self>;
 
   /// Deserializes this message from a byte slice as a top-level message.
@@ -149,6 +167,15 @@ pub trait ProtoMessage: ProtoFieldSerialize + ProtoFieldDeserialize {
     Ok(msg)
   }
 }
+
+/// Combined trait for message types that support both serialization and deserialization.
+///
+/// This is a convenience trait that combines [`ProtoMessageSerialize`] and
+/// [`ProtoMessageDeserialize`]. It's automatically implemented for any type that implements both.
+pub trait ProtoMessage: ProtoMessageSerialize + ProtoMessageDeserialize {}
+
+// Blanket implementation for types that implement both traits
+impl<T: ProtoMessageSerialize + ProtoMessageDeserialize> ProtoMessage for T {}
 
 #[cfg(test)]
 mod tests {

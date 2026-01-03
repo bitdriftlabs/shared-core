@@ -154,8 +154,8 @@ impl<T: ProtoFieldSerialize> ProtoFieldSerialize for &T {
   }
 }
 
-// &'static str implementation is special in that we can only serialize it.
-impl ProtoType for &'static str {
+// &str implementation (serialize only) - works for any lifetime including 'static.
+impl ProtoType for &str {
   fn wire_type() -> WireType {
     WireType::LengthDelimited
   }
@@ -165,12 +165,20 @@ impl ProtoType for &'static str {
   }
 }
 
-impl ProtoFieldSerialize for &'static str {
+impl ProtoFieldSerialize for &str {
   fn compute_size(&self, field_number: u32) -> u64 {
+    // Skip serializing if empty (proto3 behavior)
+    if self.is_empty() {
+      return 0;
+    }
     protobuf::rt::string_size(field_number, self)
   }
 
   fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    // Skip serializing if empty (proto3 behavior)
+    if self.is_empty() {
+      return Ok(());
+    }
     os.write_string(field_number, self)?;
     Ok(())
   }
@@ -185,6 +193,37 @@ impl ProtoFieldSerialize for &'static str {
     // Strings always have explicit presence (empty string is different from not-present), so
     // explicit and implicit are the same
     os.write_string(field_number, self)?;
+    Ok(())
+  }
+}
+
+// &[u8] implementation (serialize only) - byte slices as protobuf `bytes`.
+// This is distinct from &[T] which serializes as repeated fields.
+impl ProtoType for &[u8] {
+  fn wire_type() -> WireType {
+    WireType::LengthDelimited
+  }
+
+  fn canonical_type() -> CanonicalType {
+    CanonicalType::Bytes
+  }
+}
+
+impl ProtoFieldSerialize for &[u8] {
+  fn compute_size(&self, field_number: u32) -> u64 {
+    // Skip serializing if empty (proto3 behavior)
+    if self.is_empty() {
+      return 0;
+    }
+    protobuf::rt::bytes_size(field_number, self)
+  }
+
+  fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    // Skip serializing if empty (proto3 behavior)
+    if self.is_empty() {
+      return Ok(());
+    }
+    os.write_bytes(field_number, self)?;
     Ok(())
   }
 }
@@ -301,6 +340,33 @@ crate::impl_proto_map!(ahash::AHashMap<K, V>, K, V);
 impl_proto_repeated!(std::collections::BTreeSet<T>, T, Ord);
 
 impl_proto_repeated!(Vec<T>, T);
+
+// Slice &[T] implementation (serialize only) - for repeated fields from borrowed data.
+impl<T: ProtoType> ProtoType for &[T] {
+  fn wire_type() -> WireType {
+    T::wire_type()
+  }
+
+  fn canonical_type() -> CanonicalType {
+    CanonicalType::Repeated(Box::new(T::canonical_type()))
+  }
+}
+
+impl<T: ProtoFieldSerialize> ProtoFieldSerialize for &[T] {
+  fn compute_size(&self, field_number: u32) -> u64 {
+    self
+      .iter()
+      .map(|item| item.compute_size(field_number))
+      .sum()
+  }
+
+  fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    for item in *self {
+      item.serialize(field_number, os)?;
+    }
+    Ok(())
+  }
+}
 
 // Implementation for ordered_float::NotNan<f64>
 impl<T: ProtoType> ProtoType for ordered_float::NotNan<T> {

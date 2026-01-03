@@ -10,7 +10,12 @@ use crate::serialization::runtime::Tag;
 use crate::{self as bd_proto_util};
 use anyhow::Result;
 use bd_macros::proto_serializable;
-use bd_proto_util::serialization::{ProtoFieldDeserialize, ProtoFieldSerialize, ProtoMessage};
+use bd_proto_util::serialization::{
+  ProtoFieldDeserialize,
+  ProtoFieldSerialize,
+  ProtoMessageDeserialize,
+  ProtoMessageSerialize,
+};
 use protobuf::{CodedInputStream, CodedOutputStream, Message};
 
 #[test]

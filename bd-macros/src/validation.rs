@@ -68,6 +68,7 @@ pub fn canonicalize_rust_type(ty: &syn::Type, is_proto_enum: bool) -> CanonicalT
   match ty {
     syn::Type::Path(type_path) => canonicalize_type_path(type_path),
     syn::Type::Reference(type_ref) => canonicalize_reference_type(type_ref),
+    syn::Type::Slice(type_slice) => canonicalize_slice_type(type_slice),
     _ => panic!("Unsupported type for protobuf serialization: {ty:?}"),
   }
 }
@@ -215,8 +216,26 @@ fn canonicalize_reference_type(type_ref: &syn::TypeReference) -> CanonicalType {
     return CanonicalType::String;
   }
 
+  // Handle &[u8] -> Bytes
+  if let syn::Type::Slice(slice) = &*type_ref.elem
+    && is_u8_type(&slice.elem)
+  {
+    return CanonicalType::Bytes;
+  }
+
   // Otherwise, canonicalize the referenced type
   canonicalize_rust_type(&type_ref.elem, false)
+}
+
+fn canonicalize_slice_type(type_slice: &syn::TypeSlice) -> CanonicalType {
+  // Special case: [u8] is bytes
+  if is_u8_type(&type_slice.elem) {
+    return CanonicalType::Bytes;
+  }
+
+  // Otherwise it's a repeated field
+  let inner_canonical = canonicalize_rust_type(&type_slice.elem, false);
+  CanonicalType::Repeated(Box::new(inner_canonical))
 }
 
 fn is_u8_type(ty: &syn::Type) -> bool {
@@ -242,7 +261,21 @@ pub fn extract_field_info(field_attrs: &[(syn::Ident, syn::Type, FieldAttrs)]) -
     .iter()
     .filter(|(_, _, attrs)| !attrs.skip && attrs.tag.is_some())
     .map(|(name, ty, attrs)| {
-      let canonical = canonicalize_rust_type(ty, attrs.proto_enum);
+      // Use serialize_as type if present, otherwise use the original type
+      let effective_type = attrs.serialize_as.as_ref().unwrap_or(ty);
+      let mut canonical = canonicalize_rust_type(effective_type, attrs.proto_enum);
+
+      // If the field is marked as repeated but wasn't detected as such
+      // (e.g., type aliases like `LogFields`), wrap it in Repeated
+      if attrs.repeated
+        && !matches!(
+          canonical,
+          CanonicalType::Repeated(_) | CanonicalType::Map(..)
+        )
+      {
+        canonical = CanonicalType::Repeated(Box::new(canonical));
+      }
+
       FieldInfo {
         name: name.clone(),
         ty: ty.clone(),
@@ -540,18 +573,93 @@ pub fn generate_struct_validation_tests(
   proto_path: &syn::Path,
   field_attrs: &[(syn::Ident, syn::Type, FieldAttrs)],
   validate_partial: bool,
+  serialize_only: bool,
 ) -> TokenStream {
   let field_infos = extract_field_info(field_attrs);
 
   let descriptor_test =
     generate_descriptor_validation_test(name, proto_path, &field_infos, validate_partial);
-  let macro_to_proto_test = generate_macro_to_proto_test(name, proto_path, &field_infos);
-  let full_roundtrip_test = generate_full_roundtrip_test(name, proto_path, &field_infos);
+
+  if serialize_only {
+    // For serialize_only types, check if any fields are references (can't be constructed for tests)
+    let has_reference_fields = field_infos
+      .iter()
+      .any(|info| matches!(info.ty, syn::Type::Reference(_)));
+
+    if has_reference_fields {
+      // Can't generate serialize tests for reference types - only do descriptor validation
+      quote! {
+        #descriptor_test
+      }
+    } else {
+      // Non-reference serialize_only types can do one-way validation
+      let serialize_only_test = generate_serialize_only_test(name, proto_path, &field_infos);
+      quote! {
+        #descriptor_test
+        #serialize_only_test
+      }
+    }
+  } else {
+    let macro_to_proto_test = generate_macro_to_proto_test(name, proto_path, &field_infos);
+    let full_roundtrip_test = generate_full_roundtrip_test(name, proto_path, &field_infos);
+    quote! {
+      #descriptor_test
+      #macro_to_proto_test
+      #full_roundtrip_test
+    }
+  }
+}
+
+/// Generates a serialize-only test for types that don't implement deserialization.
+///
+/// This test verifies that our serialization produces bytes that the protobuf library can parse.
+fn generate_serialize_only_test(
+  name: &syn::Ident,
+  proto_path: &syn::Path,
+  field_infos: &[FieldInfo],
+) -> TokenStream {
+  let test_field_values: Vec<_> = field_infos
+    .iter()
+    .map(|info| {
+      let field_name = &info.name;
+      let value = generate_test_value(&info.canonical, &info.ty);
+      quote! { #field_name: #value }
+    })
+    .collect();
 
   quote! {
-    #descriptor_test
-    #macro_to_proto_test
-    #full_roundtrip_test
+    #[test]
+    #[allow(clippy::needless_update)]
+    fn test_serialize_only_validation() -> anyhow::Result<()> {
+      use protobuf::Message;
+      use bd_proto_util::serialization::ProtoMessageSerialize;
+
+      // Create Rust instance with test values
+      let rust_obj = #name {
+        #(#test_field_values),*,
+        ..Default::default()
+      };
+
+      // Serialize using our macro
+      let mut bytes = Vec::new();
+      {
+        let mut os = protobuf::CodedOutputStream::vec(&mut bytes);
+        rust_obj.serialize_message(&mut os)?;
+        os.flush()?;
+      }
+
+      // Verify protobuf can parse our bytes
+      let proto_obj = <#proto_path as Message>::parse_from_bytes(&bytes)?;
+
+      // Re-serialize using protobuf and verify we get the same bytes
+      let bytes2 = proto_obj.write_to_bytes()?;
+      assert_eq!(
+        bytes, bytes2,
+        "Serialization mismatch: macro-generated bytes differ from protobuf re-serialization"
+      );
+
+      Ok(())
+    }
   }
 }
 
