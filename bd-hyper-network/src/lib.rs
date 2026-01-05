@@ -356,7 +356,6 @@ impl ErrorReporter {
       .http2_only(true)
       .build(make_tls_connector());
 
-
     // Give the channel a buffer of 5 so we can send multiple errors without dropping errors.
     let (tx, rx) = tokio::sync::mpsc::channel(5);
     (

@@ -57,7 +57,6 @@ impl Storage for DiskStorage {
   }
 }
 
-
 //
 // InMemoryStorage
 //

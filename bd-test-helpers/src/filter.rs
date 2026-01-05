@@ -141,7 +141,6 @@ pub fn make_remove_field(field_name: &str) -> filter::transform::Transform_type 
   })
 }
 
-
 #[must_use]
 pub fn make_regex_match_and_substitute_field(
   field_name: &str,

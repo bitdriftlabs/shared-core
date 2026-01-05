@@ -20,7 +20,6 @@ use tempfile::TempDir;
 use time::ext::NumericalDuration;
 use time::macros::datetime;
 
-
 #[test]
 fn test_recovery_buffer_too_small() {
   // Create a buffer that's smaller than the header size (9 bytes)

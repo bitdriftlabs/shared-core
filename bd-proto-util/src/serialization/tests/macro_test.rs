@@ -378,7 +378,6 @@ fn test_roundtrip_nested_with_protobuf() -> Result<()> {
     value: Vec<u8>,
   }
 
-
   // Create a StringValue using rust-protobuf
   let mut string_val = StringValue::new();
   string_val.value = "nested_test".to_string();
@@ -426,9 +425,7 @@ fn test_enum_roundtrip() -> Result<()> {
       #[field(id = 2)]
       start_time: i64,
     },
-    // This tuple variant must be the default because Complete(0) serializes to empty bytes
-    // (0 is the default for i32). Without this, Complete(0) would deserialize as Pending.
-    #[field(id = 3, default)]
+    #[field(id = 3)]
     Complete(i32),
   }
 
@@ -562,7 +559,7 @@ fn test_enum_tuple_variant_with_default_values() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, PartialEq)]
   enum TransitionType {
-    #[field(id = 1, default)]
+    #[field(id = 1)]
     Normal(u64),
     #[field(id = 2)]
     Timeout,
@@ -627,7 +624,7 @@ fn test_enum_multiple_tuple_variants_with_defaults() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, PartialEq)]
   enum Value {
-    #[field(id = 1, default)]
+    #[field(id = 1)]
     IntValue(i32),
     #[field(id = 2)]
     UintValue(u32),

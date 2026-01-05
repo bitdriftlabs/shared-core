@@ -196,7 +196,6 @@ impl Tree {
   }
 }
 
-
 /// Represents either the input type to match against.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum InputType {

@@ -58,7 +58,6 @@ fn parse_javascript_stack_trace(stack_trace: &str, debug_id: Option<&str>) -> Ve
   frames
 }
 
-
 fn parse_javascript_frame(line: &str, debug_id: Option<&str>) -> Option<JavaScriptFrame> {
   let trimmed = line.trim();
 
@@ -157,7 +156,6 @@ fn parse_location(location: &str) -> (String, Option<i64>, Option<i64>, Option<S
   }
   (file_path, None, None, None)
 }
-
 
 fn build_javascript_error_report(
   error_name: &str,

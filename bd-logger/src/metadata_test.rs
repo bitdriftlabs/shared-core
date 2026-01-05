@@ -18,7 +18,6 @@ use parking_lot::Mutex;
 use std::sync::Arc;
 use time::ext::NumericalDuration;
 
-
 #[test]
 fn collector_attaches_provider_fields_as_matching_fields() {
   let metadata = LogMetadata {

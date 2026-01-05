@@ -31,7 +31,6 @@ impl DeviceIdInterceptor {
   }
 }
 
-
 impl LogInterceptor for DeviceIdInterceptor {
   fn process(
     &self,

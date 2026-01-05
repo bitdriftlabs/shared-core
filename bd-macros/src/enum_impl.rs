@@ -43,11 +43,6 @@ pub struct VariantAttrs {
   /// Used to resolve conflicts when multiple variants share the same tag number.
   /// Only one variant per tag can have this set to true.
   explicit_deserialize: bool,
-
-  /// Whether this variant is marked as the default for serialization safety checks.
-  /// Use `#[field(default)]` to mark a tuple variant as the default, which allows
-  /// it to safely serialize values that might be their type's default (e.g., 0 for u64).
-  is_default: bool,
 }
 
 impl VariantAttrs {
@@ -56,7 +51,6 @@ impl VariantAttrs {
   /// Similar to `FieldAttrs::parse()` but simpler since enum variants only support:
   /// - Field number (id) - required
   /// - Deserialize flag - optional, for conflict resolution
-  /// - Default flag - optional, marks this as the default variant for serialization safety
   ///
   /// # Panics
   ///
@@ -64,7 +58,6 @@ impl VariantAttrs {
   fn parse(variant: &Variant) -> Self {
     let mut tag = None;
     let mut explicit_deserialize = false;
-    let mut is_default = false;
 
     for attr in &variant.attrs {
       if attr.path().is_ident("field")
@@ -78,9 +71,6 @@ impl VariantAttrs {
           } else if meta.path.is_ident("deserialize") {
             // Parse: deserialize (flag only)
             explicit_deserialize = true;
-          } else if meta.path.is_ident("default") {
-            // Parse: default (flag only) - marks this variant as the default
-            is_default = true;
           }
           Ok(())
         });
@@ -92,17 +82,8 @@ impl VariantAttrs {
     Self {
       tag,
       explicit_deserialize,
-      is_default,
     }
   }
-}
-
-/// Checks if a variant has the `#[default]` attribute (from Rust's Default derive).
-fn has_default_attribute(variant: &Variant) -> bool {
-  variant
-    .attrs
-    .iter()
-    .any(|attr| attr.path().is_ident("default"))
 }
 
 /// Result of processing a single enum variant.
@@ -521,43 +502,11 @@ pub fn process_enum_variants(
     (proc_macro2::TokenStream, bool, syn::Ident),
   > = std::collections::BTreeMap::new();
 
-  // Collect tuple variants and check which variant is the default.
-  // This is used to validate that tuple variants are safe for serialization.
-  // A variant is considered "default" if it has either:
-  // - `#[default]` attribute (from Rust's Default derive), or
-  // - `#[field(default)]` attribute (our custom marker for manual Default impls)
-  let mut tuple_variant_names: Vec<&syn::Ident> = Vec::new();
-  let mut default_variant_name: Option<&syn::Ident> = None;
-
-  for variant in &data_enum.variants {
-    let attrs = VariantAttrs::parse(variant);
-    if has_default_attribute(variant) || attrs.is_default {
-      default_variant_name = Some(&variant.ident);
-    }
-    if matches!(&variant.fields, Fields::Unnamed(fields) if fields.unnamed.len() == 1) {
-      tuple_variant_names.push(&variant.ident);
-    }
-  }
-
-  // Validate: if there's exactly one tuple variant and it's not the default, error.
-  // When the inner value is a default (e.g., 0 for u64), the entire variant serializes to nothing,
-  // and deserialization will return the enum's default variant instead.
-  //
-  // Note: When there are multiple tuple variants, only one can be the default, meaning the others
-  // are inherently unsafe if their inner type can be default. This is a known limitation of the
-  // proto3 serialization format. We only enforce the check for single tuple variants to avoid
-  // breaking existing code, but users should be aware of this limitation.
-  if tuple_variant_names.len() == 1 {
-    let tuple_name = tuple_variant_names[0];
-    assert!(
-      default_variant_name == Some(tuple_name),
-      "Enum `{name}` has tuple variant `{tuple_name}` that is not the default. This is unsafe for \
-       serialization: if the inner value is its type's default (e.g., 0 for integers), the \
-       variant will serialize to empty bytes and deserialize as the enum's default variant \
-       instead. Either:\n1. Make `{tuple_name}` the default variant and add `#[field(default)]` \
-       to mark it, or\n2. Use a unit variant or struct variant instead."
-    );
-  }
+  // Note: The `#[field(default)]` or `#[default]` attribute can be used to mark which variant is
+  // the default for documentation purposes, but it's not required for correctness. Enum tuple
+  // variants use explicit presence semantics (serialize_explicit), which ensures that even default
+  // values (like 0 for integers, "" for strings) are serialized on the wire and round-trip
+  // correctly.
 
   // Process each enum variant
   for variant in &data_enum.variants {

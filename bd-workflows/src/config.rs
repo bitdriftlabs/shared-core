@@ -661,7 +661,7 @@ impl Action {
 #[derive(Hash, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FlushBufferId {
   /// Flush the buffer due to a workflow action triggering.
-  #[field(id = 1, default)]
+  #[field(id = 1)]
   WorkflowActionId(String),
   /// Flush the buffer in response to an explicit session capture request. The ID is provided to
   /// identify the origin of the session capture request.

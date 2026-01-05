@@ -36,7 +36,6 @@ impl_proto_for_varint_primitive!(u64, uint64_size, write_uint64, read_uint64);
 impl_proto_for_varint_primitive!(i64, int64_size, write_int64, read_int64);
 impl_proto_for_varint_primitive!(i32, int32_size, write_int32, read_int32);
 
-
 // NOTE: We intentionally do NOT implement ProtoFieldSerialize/ProtoFieldDeserialize for
 // usize/isize.
 //
@@ -178,7 +177,6 @@ impl<T: ProtoFieldSerialize> ProtoFieldSerialize for &T {
     (**self).serialize_explicit(field_number, os)
   }
 }
-
 
 // &'static str implementation is special in that we can only serialize it.
 impl ProtoType for &'static str {

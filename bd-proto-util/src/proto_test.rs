@@ -10,7 +10,6 @@ use itertools::Itertools;
 use protobuf::Message;
 use protobuf::well_known_types::struct_::{Struct, Value};
 
-
 #[test]
 fn test_map_hashing() {
   let fields = vec![

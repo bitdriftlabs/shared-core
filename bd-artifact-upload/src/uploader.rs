@@ -366,7 +366,6 @@ impl Uploader {
           return Ok(());
         };
 
-
         log::debug!("starting file upload for {:?}", next.name);
         self.upload_task_handle = Some(tokio::spawn(Self::upload_artifact(
           self.data_upload_tx.clone(),
@@ -649,7 +648,6 @@ impl Uploader {
 
     self.write_index().await;
 
-
     #[cfg(test)]
     if let Some(hooks) = &self.test_hooks {
       hooks.entry_received_tx.send(uuid.clone()).await.unwrap();
@@ -663,7 +661,6 @@ impl Uploader {
       artifact: self.index.iter().cloned().collect(),
       ..Default::default()
     };
-
 
     if let Err(e) = async {
       let compressed = write_compressed_protobuf(&index)?;

@@ -112,7 +112,6 @@ impl<T: MemorySized + std::fmt::Debug> PreConfigBuffer<T> {
   }
 }
 
-
 //
 // PushCounters
 //

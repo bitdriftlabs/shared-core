@@ -41,7 +41,6 @@ pub fn main() {
   println!("cargo:rerun-if-changed=src/glue.cpp");
   println!("cargo:rerun-if-changed=src/glue.h");
 
-
   if std::env::var("SKIP_PROTO_GEN").is_err() {
     let bindings = bindgen::Builder::default()
         .header("src/glue.h")

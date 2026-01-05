@@ -398,7 +398,6 @@ fn set_field(fields: &mut LogFields, key: LogFieldKey, value: LogFieldValue) {
   fields.insert(key, value);
 }
 
-
 /// Extracts a value from the log using the convention that certain names map to the log messsage,
 /// type or log level while others map to an arbitrary field.
 fn extract_value<'a>(log: &'a Log, key: &str) -> Option<Cow<'a, str>> {
