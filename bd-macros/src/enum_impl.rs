@@ -502,11 +502,10 @@ pub fn process_enum_variants(
     (proc_macro2::TokenStream, bool, syn::Ident),
   > = std::collections::BTreeMap::new();
 
-  // Note: The `#[field(default)]` or `#[default]` attribute can be used to mark which variant is
-  // the default for documentation purposes, but it's not required for correctness. Enum tuple
-  // variants use explicit presence semantics (serialize_explicit), which ensures that even default
-  // values (like 0 for integers, "" for strings) are serialized on the wire and round-trip
-  // correctly.
+  // Enum tuple variants use explicit presence semantics (serialize_explicit), which ensures that
+  // even default values (like 0 for integers, "" for strings) are serialized on the wire and
+  // round-trip correctly. The `#[default]` attribute (from Rust's derive macro) can be used for
+  // documentation purposes to indicate which variant is returned by Default::default().
 
   // Process each enum variant
   for variant in &data_enum.variants {
@@ -596,10 +595,10 @@ pub fn process_enum_variants(
                       Ok(())
                   }
 
-              fn compute_size_explicit(&self, _field_number: u32) -> u64 {
+              fn compute_size_explicit(&self, field_number: u32) -> u64 {
                   // Enums (oneofs) always have explicit presence, so explicit and implicit are the
                   // same
-                  self.compute_size(_field_number)
+                  self.compute_size(field_number)
               }
 
               fn serialize_explicit(&self, field_number: u32, os: &mut protobuf::CodedOutputStream)
