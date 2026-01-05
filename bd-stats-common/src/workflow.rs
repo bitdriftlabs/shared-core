@@ -25,7 +25,6 @@ impl WorkflowDebugKey {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub enum WorkflowDebugStateKey {
   #[field(id = 1)]
-  #[field(deserialize)]
   StateTransition {
     #[field(id = 1)]
     state_id: String,
