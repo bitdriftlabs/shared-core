@@ -325,7 +325,6 @@ dependencies = [
  "mockall",
  "parking_lot",
  "protobuf 4.0.0-alpha.0",
- "serde",
  "tempfile",
  "thiserror 2.0.17",
  "time",
@@ -769,7 +768,6 @@ dependencies = [
  "parking_lot",
  "pretty_assertions",
  "protobuf 4.0.0-alpha.0",
- "serde",
  "time",
  "tokio",
 ]
@@ -857,7 +855,6 @@ dependencies = [
  "flate2",
  "ordered-float",
  "protobuf 4.0.0-alpha.0",
- "serde",
  "time",
 ]
 
@@ -916,7 +913,6 @@ dependencies = [
  "parking_lot",
  "pretty_assertions",
  "protobuf 4.0.0-alpha.0",
- "serde",
  "tempfile",
  "thiserror 2.0.17",
  "time",
