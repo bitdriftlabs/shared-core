@@ -1507,14 +1507,14 @@ impl Default for WorkflowTransitionDebugState {
 #[bd_macros::proto_serializable]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct WorkflowDebugStateMap {
-  #[field(id = 1)]
-  pub(crate) inner: HashMap<WorkflowDebugStateKey, WorkflowTransitionDebugState>,
+  #[field(id = 1, repeated)]
+  pub(crate) inner: Box<HashMap<WorkflowDebugStateKey, WorkflowTransitionDebugState>>,
 }
 pub type OptWorkflowDebugStateMap = Option<WorkflowDebugStateMap>;
 
 impl WorkflowDebugStateMap {
   #[must_use]
-  pub fn into_inner(self) -> HashMap<WorkflowDebugStateKey, WorkflowTransitionDebugState> {
+  pub fn into_inner(self) -> Box<HashMap<WorkflowDebugStateKey, WorkflowTransitionDebugState>> {
     self.inner
   }
 }

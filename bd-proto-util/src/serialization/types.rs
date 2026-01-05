@@ -19,6 +19,7 @@ use crate::serialization::{
   ProtoFieldDeserialize,
   ProtoFieldSerialize,
   ProtoType,
+  RepeatedFieldDeserialize,
   wire,
 };
 use anyhow::Result;
@@ -61,6 +62,18 @@ impl_proto_string_like!(std::sync::Arc<str>, |s: String| s.into());
 // Transparent wrapper types (Box, Arc) - delegate to inner type
 crate::impl_proto_for_type_wrapper!(Box<T>, T, Box::new);
 crate::impl_proto_for_type_wrapper!(Arc<T>, T, std::sync::Arc::new);
+
+impl<T: RepeatedFieldDeserialize> RepeatedFieldDeserialize for Box<T> {
+  type Element = T::Element;
+
+  fn deserialize_element(is: &mut CodedInputStream<'_>) -> anyhow::Result<Self::Element> {
+    T::deserialize_element(is)
+  }
+
+  fn add_element(&mut self, element: Self::Element) {
+    (**self).add_element(element);
+  }
+}
 
 // Blanket implementation for Option<T>
 // Note: For deserialization, this is slightly tricky because the tag handles the "None" case (by

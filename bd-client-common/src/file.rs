@@ -42,14 +42,14 @@ pub fn read_compressed(bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
   // For now we just read the entire thing and then decompress it in memory. We can consider
   // streaming later. Generally these are small files so we use a small buffer to avoid needless
   // allocation.
-  // TODO(mattklein123): Zero-initializing is not necessary here but we will defer this for now.
-  let mut decoder = ZlibDecoder::new_with_buf(bytes, vec![0; 1024]);
+  let mut decoder = compressed_reader(bytes);
   let mut decompressed_bytes = Vec::new();
   decoder.read_to_end(&mut decompressed_bytes)?;
   Ok(decompressed_bytes)
 }
 
 pub fn compressed_reader(reader: impl Read) -> impl Read {
+  // TODO(mattklein123): Zero-initializing is not necessary here but we will defer this for now.
   ZlibDecoder::new_with_buf(reader, vec![0; 1024])
 }
 

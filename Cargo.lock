@@ -591,7 +591,6 @@ dependencies = [
  "mockall",
  "notify",
  "regex",
- "serde",
  "tempfile",
  "thiserror 2.0.17",
  "time",
@@ -611,7 +610,6 @@ dependencies = [
  "log",
  "parking_lot",
  "pretty_assertions",
- "serde",
  "time",
  "uuid",
 ]
