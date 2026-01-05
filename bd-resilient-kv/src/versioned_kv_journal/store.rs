@@ -92,6 +92,7 @@ impl PersistentStoreConfig {
   }
 }
 
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum DataLoss {
   Total,
@@ -211,6 +212,7 @@ impl ScopedMaps {
     }
   }
 }
+
 
 /// Persistent storage implementation using a memory-mapped journal.
 struct PersistentStore {

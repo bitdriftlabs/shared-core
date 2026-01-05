@@ -106,6 +106,7 @@ impl Setup {
     });
   }
 
+
   fn make_test_async_log_buffer(
     &mut self,
     config_update_rx: tokio::sync::mpsc::Receiver<ConfigUpdate>,

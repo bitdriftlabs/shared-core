@@ -18,4 +18,5 @@ bd-workspace-hack.workspace = true
 flate2                      = { workspace = true, default-features = false, features = ["zlib"] }
 ordered-float.workspace     = true
 protobuf.workspace          = true
+serde.workspace             = true
 time.workspace              = true

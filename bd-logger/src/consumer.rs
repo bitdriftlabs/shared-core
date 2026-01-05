@@ -163,6 +163,7 @@ impl BufferUploadManager {
   ) -> anyhow::Result<()> {
     log::debug!("received trigger upload request");
 
+
     let mut buffer_upload_completions = vec![];
 
     for buffer_id in trigger_upload.buffer_ids {

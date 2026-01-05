@@ -233,6 +233,7 @@ pub enum VersionMatch {
   Comparator(SimpleComparator, Version),
 }
 
+
 // We want PartialEq to describe whether the underlying configuration for the type is the same, not
 // based on how they match against a candidate.
 impl PartialEq for VersionMatch {

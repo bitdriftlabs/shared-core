@@ -133,6 +133,7 @@ async fn runtime_update() {
   setup.shutdown.shutdown().await;
 }
 
+
 #[tokio::test]
 async fn configuration_update_with_log_uploads() {
   let mut setup = Setup::new();

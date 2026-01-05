@@ -240,6 +240,7 @@ async fn feature_flags() {
           decision: bd_api::upload::IntentDecision::UploadImmediately }).unwrap();
   });
 
+
   let upload = setup.data_upload_rx.recv().await.unwrap();
   assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
       assert_eq!(upload.payload.artifact_id, id.to_string());

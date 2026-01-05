@@ -176,6 +176,7 @@ impl Setup {
       &bd_client_stats_store::Collector::default().scope("test"),
     );
 
+
     for (name, value) in flags {
       store
         .insert(

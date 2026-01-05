@@ -292,6 +292,7 @@ async fn extend_same_key_ordering(#[case] mode: StoreMode) -> anyhow::Result<()>
   Ok(())
 }
 
+
 #[allow(clippy::cast_possible_truncation)]
 #[tokio::test]
 async fn test_automatic_rotation_on_high_water_mark() -> anyhow::Result<()> {
@@ -404,6 +405,7 @@ async fn test_automatic_rotation_on_high_water_mark() -> anyhow::Result<()> {
 
   Ok(())
 }
+
 
 #[tokio::test]
 async fn test_in_memory_size_limit() -> anyhow::Result<()> {
@@ -547,6 +549,7 @@ async fn test_in_memory_size_limit_replacement() -> anyhow::Result<()> {
 
   Ok(())
 }
+
 
 #[tokio::test]
 async fn test_persistence_and_reload() -> anyhow::Result<()> {
@@ -1501,6 +1504,7 @@ async fn extend_persistence() -> anyhow::Result<()> {
 
   Ok(())
 }
+
 
 #[tokio::test]
 async fn test_buffer_size_preserved_across_restart() -> anyhow::Result<()> {

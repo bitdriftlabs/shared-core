@@ -1019,6 +1019,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
+
+
   async fn send_debug_data(&mut self) {
     log::debug!("sending workflow debug data");
     let mut workflow_debug_data: HashMap<String, WorkflowDebugData> = HashMap::new();
