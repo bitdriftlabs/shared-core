@@ -7,10 +7,8 @@
 
 //! Macros for implementing protobuf serialization traits.
 
-/// Implements protobuf serialization traits for primitive types.
-///
-/// This macro generates complete `ProtoType`, `ProtoFieldSerialize`, and `ProtoFieldDeserialize`
-/// implementations for primitive types like `String`, integers, `bool`, and `f64`.
+/// Implements `ProtoType`, `ProtoFieldSerialize`, and `ProtoFieldDeserialize` for a scalar type
+/// by delegating to a [`super::wire::WireFormat`] implementation.
 ///
 /// # Proto3 Behavior
 ///
@@ -22,132 +20,143 @@
 ///
 /// # Parameters
 ///
-/// - `$t` - The type to implement traits for (e.g., `String`, `u32`)
-/// - `$wire_type` - The protobuf wire type (e.g., `WireType::LengthDelimited`, `WireType::Varint`)
-/// - `$write_fn` - The `CodedOutputStream` method to write this type (e.g., `write_string`,
-///   `write_uint32`)
-/// - `$read_fn` - The `CodedInputStream` method to read this type (e.g., `read_string`,
-///   `read_uint32`)
-/// - `$v` - Variable name for capturing the value in closures
-/// - `$deref` - Expression to convert `&self` to the format expected by `$write_fn`
-/// - `$field` - Variable name for the field number in size computation
-/// - `$size_expr` - Expression to compute the serialized size (usually calls
-///   `protobuf::rt::*_size`)
+/// - `$t` - The Rust type to implement traits for (e.g., `u32`, `String`)
+/// - `$wire` - The wire format type (e.g., `wire::U32`, `wire::StringOwned`)
 ///
-/// # Wire Format
-///
-/// The wire format depends on the `$wire_type` parameter:
-/// - `Varint` - Variable-length integer encoding (most integers)
-/// - `LengthDelimited` - Length-prefixed encoding (strings, bytes, messages)
-/// - `Fixed64` - Fixed 8-byte encoding (f64, fixed64)
-/// - `Fixed32` - Fixed 4-byte encoding (f32, fixed32)
+/// The wire format type provides the wire type, canonical type, and serialization functions.
 #[macro_export]
-macro_rules! impl_proto_for_primitive {
-  (
-    $t:ty,
-    $wire_type:expr,
-    $write_fn:ident,
-    $read_fn:ident, |
-    $v:ident |
-    $deref:expr,size: |
-    $field:ident |
-    $size_expr:expr
-  ) => {
-    impl ProtoType for $t {
-      fn wire_type() -> WireType {
-        $wire_type
+macro_rules! impl_proto_scalar {
+  ($t:ty, $wire:ty) => {
+    impl $crate::serialization::ProtoType for $t {
+      fn wire_type() -> protobuf::rt::WireType {
+        <$wire as $crate::serialization::WireFormat>::WIRE_TYPE
+      }
+
+      fn canonical_type() -> $crate::serialization::CanonicalType {
+        <$wire as $crate::serialization::WireFormat>::CANONICAL
       }
     }
 
-    impl ProtoFieldSerialize for $t {
-      #[allow(unused_variables, clippy::float_cmp)]
-      fn compute_size(&self, $field: u32) -> u64 {
+    impl $crate::serialization::ProtoFieldSerialize for $t {
+      #[allow(clippy::float_cmp)]
+      fn compute_size(&self, field_number: u32) -> u64 {
         // Skip serializing if this is the default value (proto3 implicit presence)
         if self == &<$t as Default>::default() {
           return 0;
         }
-        let $v = self;
-        $size_expr
+        <$wire as $crate::serialization::WireFormat>::compute_size(self, field_number)
       }
 
       #[allow(clippy::float_cmp)]
-      fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+      fn serialize(
+        &self,
+        field_number: u32,
+        os: &mut protobuf::CodedOutputStream<'_>,
+      ) -> anyhow::Result<()> {
         // Skip serializing if this is the default value (proto3 implicit presence)
         if self == &<$t as Default>::default() {
           return Ok(());
         }
-        let $v = self;
-        os.$write_fn(field_number, $deref)?;
-        Ok(())
+        <$wire as $crate::serialization::WireFormat>::write(self, field_number, os)
       }
 
-      #[allow(unused_variables, clippy::float_cmp)]
-      fn compute_size_explicit(&self, $field: u32) -> u64 {
+      #[allow(clippy::float_cmp)]
+      fn compute_size_explicit(&self, field_number: u32) -> u64 {
         // Always compute size, even for default values (proto3 explicit presence)
-        let $v = self;
-        $size_expr
+        <$wire as $crate::serialization::WireFormat>::compute_size(self, field_number)
       }
 
       #[allow(clippy::float_cmp)]
       fn serialize_explicit(
         &self,
         field_number: u32,
-        os: &mut CodedOutputStream<'_>,
-      ) -> Result<()> {
+        os: &mut protobuf::CodedOutputStream<'_>,
+      ) -> anyhow::Result<()> {
         // Always serialize, even for default values (proto3 explicit presence)
-        let $v = self;
-        os.$write_fn(field_number, $deref)?;
-        Ok(())
+        <$wire as $crate::serialization::WireFormat>::write(self, field_number, os)
       }
     }
 
-    impl ProtoFieldDeserialize for $t {
-      fn deserialize(is: &mut CodedInputStream<'_>) -> Result<Self> {
-        Ok(is.$read_fn()?.into())
+    impl $crate::serialization::ProtoFieldDeserialize for $t {
+      fn deserialize(is: &mut protobuf::CodedInputStream<'_>) -> anyhow::Result<Self> {
+        <$wire as $crate::serialization::WireFormat>::read(is)
       }
     }
   };
 }
 
-/// Convenience macro for implementing protobuf traits for varint primitive types.
+/// Implements `ProtoType`, `ProtoFieldSerialize`, and `ProtoFieldDeserialize` for a string-like
+/// type that implements `AsRef<str>` and can be constructed from `String`.
 ///
-/// This is a specialized wrapper around `impl_proto_for_primitive!` for types that use
-/// varint wire encoding (most integer types). It automatically fills in the wire type
-/// and standard size/deref expressions.
-///
-/// # Varint Encoding
-///
-/// Varint is a variable-length encoding where smaller numbers use fewer bytes:
-/// - Values 0-127: 1 byte
-/// - Values 128-16383: 2 bytes
-/// - And so on...
-///
-/// This is efficient for small integers but can use up to 10 bytes for large values.
+/// This is useful for types like `Arc<str>` and `Cow<str>` that serialize as strings but need
+/// conversion.
 ///
 /// # Parameters
 ///
-/// - `$t` - The integer type (e.g., `u32`, `i64`, `u64`, `i32`)
-/// - `$size_fn` - The `protobuf::rt` function to compute size (e.g., `uint32_size`, `int64_size`)
-/// - `$write_fn` - The `CodedOutputStream` write method (e.g., `write_uint32`, `write_int64`)
-/// - `$read_fn` - The `CodedInputStream` read method (e.g., `read_uint32`, `read_int64`)
-///
-/// # Generated Code
-///
-/// This macro expands to a call to `impl_proto_for_primitive!` with:
-/// - Wire type: `WireType::Varint`
-/// - Deref expression: `|v| *v` (simple dereference)
-/// - Size expression: `protobuf::rt::$size_fn(field_number, *v)`
+/// - `$t` - The Rust type to implement traits for (must implement `AsRef<str>`)
+/// - `$from_owned` - Expression to convert `String` to `$t` (e.g., `|s: String| s.into()`)
 #[macro_export]
-macro_rules! impl_proto_for_varint_primitive {
-  ($t:ty, $size_fn:ident, $write_fn:ident, $read_fn:ident) => {
-    impl_proto_for_primitive!(
-      $t,
-      WireType::Varint,
-      $write_fn,
-      $read_fn,
-      |v| *v,
-      size: |field_number| protobuf::rt::$size_fn(field_number, *v)
-    );
+macro_rules! impl_proto_string_like {
+  ($t:ty, $from_owned:expr) => {
+    impl $crate::serialization::ProtoType for $t {
+      fn wire_type() -> protobuf::rt::WireType {
+        protobuf::rt::WireType::LengthDelimited
+      }
+
+      fn canonical_type() -> $crate::serialization::CanonicalType {
+        $crate::serialization::CanonicalType::String
+      }
+    }
+
+    impl $crate::serialization::ProtoFieldSerialize for $t {
+      fn compute_size(&self, field_number: u32) -> u64 {
+        let value_ref: &str = self.as_ref();
+        // Skip serializing if empty (proto3 behavior for strings/bytes)
+        if value_ref.is_empty() {
+          return 0;
+        }
+        protobuf::rt::string_size(field_number, value_ref)
+      }
+
+      fn serialize(
+        &self,
+        field_number: u32,
+        os: &mut protobuf::CodedOutputStream<'_>,
+      ) -> anyhow::Result<()> {
+        let value_ref: &str = self.as_ref();
+        // Skip serializing if empty (proto3 behavior for strings/bytes)
+        if value_ref.is_empty() {
+          return Ok(());
+        }
+        os.write_string(field_number, value_ref)?;
+        Ok(())
+      }
+
+      fn compute_size_explicit(&self, field_number: u32) -> u64 {
+        let value_ref: &str = self.as_ref();
+        // Always compute size, even for empty strings (proto3 explicit presence)
+        protobuf::rt::string_size(field_number, value_ref)
+      }
+
+      fn serialize_explicit(
+        &self,
+        field_number: u32,
+        os: &mut protobuf::CodedOutputStream<'_>,
+      ) -> anyhow::Result<()> {
+        let value_ref: &str = self.as_ref();
+        // Always serialize, even for empty strings (proto3 explicit presence)
+        os.write_string(field_number, value_ref)?;
+        Ok(())
+      }
+    }
+
+    impl $crate::serialization::ProtoFieldDeserialize for $t {
+      fn deserialize(is: &mut protobuf::CodedInputStream<'_>) -> anyhow::Result<Self> {
+        let owned = is.read_string()?;
+        let from_owned: fn(String) -> $t = $from_owned;
+        Ok(from_owned(owned))
+      }
+    }
   };
 }
 
@@ -160,6 +169,7 @@ macro_rules! impl_proto_for_varint_primitive {
 ///
 /// The macro generates implementations that:
 /// - Delegate wire type to the inner type
+/// - Delegate canonical type to the inner type
 /// - Serialize by dereferencing to the inner value
 /// - Deserialize by wrapping the inner value
 ///
@@ -177,6 +187,10 @@ macro_rules! impl_proto_for_type_wrapper {
     {
       fn wire_type() -> protobuf::rt::WireType {
         $inner_ident::wire_type()
+      }
+
+      fn canonical_type() -> $crate::serialization::CanonicalType {
+        $inner_ident::canonical_type()
       }
     }
 
@@ -244,6 +258,10 @@ macro_rules! impl_proto_repeated {
     {
       fn wire_type() -> protobuf::rt::WireType {
         $item::wire_type()
+      }
+
+      fn canonical_type() -> $crate::serialization::CanonicalType {
+        $crate::serialization::CanonicalType::Repeated(Box::new($item::canonical_type()))
       }
     }
 
@@ -315,6 +333,10 @@ macro_rules! impl_proto_repeated {
     impl<$item: $crate::serialization::ProtoType> $crate::serialization::ProtoType for $collection {
       fn wire_type() -> protobuf::rt::WireType {
         $item::wire_type()
+      }
+
+      fn canonical_type() -> $crate::serialization::CanonicalType {
+        $crate::serialization::CanonicalType::Repeated(Box::new($item::canonical_type()))
       }
     }
 
@@ -399,9 +421,21 @@ macro_rules! impl_proto_repeated {
 macro_rules! impl_proto_map {
   // Version with additional type parameters and where clause
   ($map_type:ty, $key:ident, $value:ident, where $($bounds:tt)*) => {
-    impl<$key, $value, $($bounds)*> $crate::serialization::ProtoType for $map_type {
+    impl<
+        $key: $crate::serialization::ProtoType,
+        $value: $crate::serialization::ProtoType,
+        $($bounds)*
+      > $crate::serialization::ProtoType for $map_type
+    {
       fn wire_type() -> protobuf::rt::WireType {
         protobuf::rt::WireType::LengthDelimited
+      }
+
+      fn canonical_type() -> $crate::serialization::CanonicalType {
+        $crate::serialization::CanonicalType::Map(
+          Box::new($key::canonical_type()),
+          Box::new($value::canonical_type()),
+        )
       }
     }
 
@@ -460,9 +494,20 @@ macro_rules! impl_proto_map {
 
   // Version without additional type parameters (for types like AHashMap)
   ($map_type:ty, $key:ident, $value:ident) => {
-    impl<$key, $value> $crate::serialization::ProtoType for $map_type {
+    impl<
+        $key: $crate::serialization::ProtoType,
+        $value: $crate::serialization::ProtoType,
+      > $crate::serialization::ProtoType for $map_type
+    {
       fn wire_type() -> protobuf::rt::WireType {
         protobuf::rt::WireType::LengthDelimited
+      }
+
+      fn canonical_type() -> $crate::serialization::CanonicalType {
+        $crate::serialization::CanonicalType::Map(
+          Box::new($key::canonical_type()),
+          Box::new($value::canonical_type()),
+        )
       }
     }
 

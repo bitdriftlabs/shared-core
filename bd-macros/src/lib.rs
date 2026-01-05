@@ -25,16 +25,96 @@
 //!   - Unit variants (markers)
 //!   - Tuple variants (single wrapped value)
 //!   - Struct variants (nested messages)
+//!
+//! # Validation
+//!
+//! The macro supports optional validation against protobuf descriptors:
+//!
+//! ```ignore
+//! #[proto_serializable(validate_against = "bd_proto::proto::MyMessage")]
+//! struct MyStruct { ... }
+//! ```
+//!
+//! This generates tests that validate:
+//! - Field IDs match between Rust struct and protobuf descriptor
+//! - Field types are compatible
+//! - Bidirectional round-trip serialization works correctly
+//!
+//! Use `validate_partial` to allow the Rust struct to have fewer fields than the proto:
+//!
+//! ```ignore
+//! #[proto_serializable(validate_against = "...", validate_partial)]
+//! struct MyPartialStruct { ... }
+//! ```
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Fields, parse_macro_input};
+use syn::parse::Parser;
+use syn::{Data, DeriveInput, Fields, Meta, parse_macro_input};
 
 mod enum_impl;
 mod struct_impl;
+mod validation;
 
 use enum_impl::process_enum_variants;
 use struct_impl::process_struct_fields;
+use validation::ValidationConfig;
+
+/// Configuration parsed from the macro attributes.
+struct MacroConfig {
+  /// Only generate serialization code (no deserialization)
+  serialize_only: bool,
+  /// Validation configuration (if `validate_against` is specified)
+  validation: ValidationConfig,
+}
+
+/// Parses the macro attribute arguments into a configuration struct.
+fn parse_macro_config(attr: TokenStream) -> MacroConfig {
+  let mut config = MacroConfig {
+    serialize_only: false,
+    validation: ValidationConfig::default(),
+  };
+
+  // Handle empty attributes
+  if attr.is_empty() {
+    return config;
+  }
+
+  // Parse as a list of meta items
+  let parser = syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated;
+  let Ok(metas) = parser.parse(attr) else {
+    return config;
+  };
+
+  for meta in metas {
+    match &meta {
+      Meta::Path(path) => {
+        if path.is_ident("serialize_only") {
+          config.serialize_only = true;
+        } else if path.is_ident("validate_partial") {
+          config.validation.validate_partial = true;
+        }
+      },
+      Meta::NameValue(nv) => {
+        if nv.path.is_ident("validate_against")
+          && let syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Str(lit_str),
+            ..
+          }) = &nv.value
+        {
+          let path_str = lit_str.value();
+          config.validation.proto_path =
+            Some(syn::parse_str(&path_str).expect("Invalid path in validate_against"));
+        }
+      },
+      Meta::List(_) => {
+        // Ignore nested lists for now
+      },
+    }
+  }
+
+  config
+}
 
 /// Main procedural macro that generates protobuf serialization code for structs and enums.
 ///
@@ -45,6 +125,10 @@ use struct_impl::process_struct_fields;
 ///
 /// - `#[proto_serializable]` - Standard mode, generates both serialization and deserialization
 /// - `#[proto_serializable(serialize_only)]` - Only generates serialization code
+/// - `#[proto_serializable(validate_against = "path::to::ProtoType")]` - Generates validation tests
+///   that ensure the Rust struct is compatible with the specified protobuf type
+/// - `#[proto_serializable(validate_against = "...", validate_partial)]` - Same as above, but
+///   allows the Rust struct to have fewer fields than the protobuf type
 ///
 /// # High-Level Flow
 ///
@@ -53,6 +137,7 @@ use struct_impl::process_struct_fields;
 /// │ 1. PARSE INPUT                                                  │
 /// │    - Parse struct or enum definition                            │
 /// │    - Check for serialize_only attribute                         │
+/// │    - Check for validate_against attribute                       │
 /// │    - Strip #[field(...)] attributes from output                 │
 /// └─────────────────────────────────────────────────────────────────┘
 ///                              ↓
@@ -76,12 +161,14 @@ use struct_impl::process_struct_fields;
 /// │ - ProtoFieldSerialize    │   │ - ProtoFieldSerialize        │
 /// │ - ProtoFieldDeserialize  │   │ - ProtoFieldDeserialize      │
 /// │ - ProtoMessage           │   │ (No ProtoMessage for enums)  │
+/// │ - Validation tests       │   │ - Validation tests           │
 /// └──────────────────────────┘   └──────────────────────────────┘
 ///                ↓                              ↓
 /// ┌─────────────────────────────────────────────────────────────────┐
 /// │ 5. RETURN EXPANDED CODE                                         │
 /// │    - Original struct/enum (with field attrs stripped)           │
 /// │    - Generated trait implementations                            │
+/// │    - Generated validation tests (if validate_against specified) │
 /// └─────────────────────────────────────────────────────────────────┘
 /// ```
 ///
@@ -89,8 +176,8 @@ use struct_impl::process_struct_fields;
 /// implementations for the enum (oneof in protobuf terms).
 #[proc_macro_attribute]
 pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
-  let attr_str = attr.to_string();
-  let serialize_only = attr_str.contains("serialize_only");
+  let config = parse_macro_config(attr);
+  let serialize_only = config.serialize_only;
 
   let input = parse_macro_input!(item as DeriveInput);
   let name = &input.ident;
@@ -128,6 +215,7 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
           serialize_impl,
           deserialize_impl,
           message_impl,
+          validation_tests,
         } = process_struct_fields(
           fields,
           name,
@@ -135,6 +223,7 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
           &ty_generics,
           where_clause,
           serialize_only,
+          &config.validation,
         );
 
         let expanded = quote! {
@@ -143,6 +232,7 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
             #serialize_impl
             #deserialize_impl
             #message_impl
+            #validation_tests
         };
         TokenStream::from(expanded)
       },
@@ -153,6 +243,7 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
         proto_type_impl,
         serialize_impl,
         deserialize_impl,
+        validation_tests,
       } = process_enum_variants(
         data_enum,
         name,
@@ -160,6 +251,7 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
         &ty_generics,
         where_clause,
         serialize_only,
+        &config.validation,
       );
 
       let expanded = quote! {
@@ -167,6 +259,7 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
           #proto_type_impl
           #serialize_impl
           #deserialize_impl
+          #validation_tests
       };
       TokenStream::from(expanded)
     },

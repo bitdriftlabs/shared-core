@@ -253,3 +253,78 @@ fn collector_fields_management() {
 fn expected_field_value(fields: &LogFields, key: &str) -> Option<String> {
   Some(fields.get(key)?.as_str()?.to_string())
 }
+
+#[test]
+fn metadata_from_fields_with_previous_global_state_includes_global_fields() {
+  let metadata = LogMetadata {
+    timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
+    ..Default::default()
+  };
+  let collector = MetadataCollector::new(Arc::new(metadata));
+
+  let store = in_memory_store();
+  let mut tracker = global_state::Tracker::new(store.clone(), Watch::new_for_testing(10.seconds()));
+
+  // Setup global state
+  let global_fields = [
+    ("global_key".into(), "global_value".into()),
+    ("shared_custom_key".into(), "global_value".into()),
+    ("shared_ootb_key".into(), "global_value".into()),
+  ]
+  .into();
+  tracker.maybe_update_global_state(&global_fields);
+
+  // Setup input fields
+  let input_fields = [
+    (
+      "local_key".into(),
+      AnnotatedLogField::new_custom("local_value"),
+    ),
+    (
+      "shared_custom_key".into(),
+      AnnotatedLogField::new_custom("local_value"),
+    ),
+    (
+      "shared_ootb_key".into(),
+      AnnotatedLogField::new_ootb("local_value"),
+    ),
+  ]
+  .into();
+
+  let reader = Reader::new(store);
+
+  let metadata = collector
+    .metadata_from_fields_with_previous_global_state(input_fields, [].into(), &reader)
+    .unwrap();
+
+  // Verify fields
+
+  // 1. Unique global field should be present
+  assert_eq!(
+    "global_value",
+    expected_field_value(&metadata.fields, "global_key").unwrap()
+  );
+
+  // 2. Unique local field should be present
+  assert_eq!(
+    "local_value",
+    expected_field_value(&metadata.fields, "local_key").unwrap()
+  );
+
+  // 3. Precedence check:
+  // Order: OOTB -> Global -> Custom
+
+  // shared_ootb_key: OOTB ("local_value") vs Global ("global_value")
+  // Global comes AFTER OOTB in chain, so Global should win.
+  assert_eq!(
+    "global_value",
+    expected_field_value(&metadata.fields, "shared_ootb_key").unwrap()
+  );
+
+  // shared_custom_key: Custom ("local_value") vs Global ("global_value")
+  // Custom comes AFTER Global in chain, so Custom should win.
+  assert_eq!(
+    "local_value",
+    expected_field_value(&metadata.fields, "shared_custom_key").unwrap()
+  );
+}

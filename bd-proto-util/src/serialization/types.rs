@@ -14,7 +14,13 @@
 //! - Time types (`TimestampMicros`)
 //! - Special types (`LogType` enum, `NotNan<f64>`, unit type)
 
-use crate::serialization::{ProtoFieldDeserialize, ProtoFieldSerialize, ProtoType};
+use crate::serialization::{
+  CanonicalType,
+  ProtoFieldDeserialize,
+  ProtoFieldSerialize,
+  ProtoType,
+  wire,
+};
 use anyhow::Result;
 use bd_time::OffsetDateTimeExt;
 use ordered_float::FloatCore;
@@ -22,19 +28,16 @@ use protobuf::rt::WireType;
 use protobuf::{CodedInputStream, CodedOutputStream};
 use std::sync::Arc;
 
-impl_proto_for_primitive!(
-  String,
-  WireType::LengthDelimited,
-  write_string,
-  read_string,
-  |v| v.as_str(),
-  size: |field_number| protobuf::rt::string_size(field_number, v.as_str())
-);
-
-impl_proto_for_varint_primitive!(u32, uint32_size, write_uint32, read_uint32);
-impl_proto_for_varint_primitive!(u64, uint64_size, write_uint64, read_uint64);
-impl_proto_for_varint_primitive!(i64, int64_size, write_int64, read_int64);
-impl_proto_for_varint_primitive!(i32, int32_size, write_int32, read_int32);
+// Primitive scalar types - delegate to wire format types
+impl_proto_scalar!(u32, wire::U32);
+impl_proto_scalar!(u64, wire::U64);
+impl_proto_scalar!(i32, wire::I32);
+impl_proto_scalar!(i64, wire::I64);
+impl_proto_scalar!(f32, wire::F32);
+impl_proto_scalar!(f64, wire::F64);
+impl_proto_scalar!(bool, wire::Bool);
+impl_proto_scalar!(String, wire::StringOwned);
+impl_proto_scalar!(Vec<u8>, wire::BytesOwned);
 
 // NOTE: We intentionally do NOT implement ProtoFieldSerialize/ProtoFieldDeserialize for
 // usize/isize.
@@ -49,59 +52,11 @@ impl_proto_for_varint_primitive!(i32, int32_size, write_int32, read_int32);
 // - u32 if your values will always fit in 4 bytes (most cases)
 // - u64 if you need the full range
 
-impl_proto_for_primitive!(
-  bool,
-  WireType::Varint,
-  write_bool,
-  read_bool,
-  |v| *v,
-  size: |field_number| {
-    // bool is varint, so compute_raw_varint64_size of 1 + tag size
-    let tag_size = protobuf::rt::tag_size(field_number);
-    // bool payload is always 1 byte
-    tag_size + 1
-  }
-);
-
-impl_proto_for_primitive!(
-  f64,
-  WireType::Fixed64,
-  write_double,
-  read_double,
-  |v| *v,
-  size: |field_number| {
-    // double is always 8 bytes + tag size
-    let tag_size = protobuf::rt::tag_size(field_number);
-    tag_size + 8
-  }
-);
-
-impl_proto_for_primitive!(
-  Vec<u8>,
-  WireType::LengthDelimited,
-  write_bytes,
-  read_bytes,
-  |v| v.as_slice(),
-  size: |field_number| protobuf::rt::bytes_size(field_number, v.as_slice())
-);
-
-impl_proto_for_primitive!(
-  std::borrow::Cow<'_, str>,
-  WireType::LengthDelimited,
-  write_string,
-  read_string,
-  |v| v.as_ref(),
-  size: |field_number| protobuf::rt::string_size(field_number, v)
-);
-
-impl_proto_for_primitive!(
-  std::sync::Arc<str>,
-  WireType::LengthDelimited,
-  write_string,
-  read_string,
-  |v| v.as_ref(),
-  size: |field_number| protobuf::rt::string_size(field_number, v)
-);
+// String-like types that need conversion (implement AsRef<str>)
+impl_proto_string_like!(std::borrow::Cow<'static, str>, |s: String| {
+  std::borrow::Cow::Owned(s)
+});
+impl_proto_string_like!(std::sync::Arc<str>, |s: String| s.into());
 
 // Transparent wrapper types (Box, Arc) - delegate to inner type
 crate::impl_proto_for_type_wrapper!(Box<T>, T, Box::new);
@@ -114,6 +69,10 @@ crate::impl_proto_for_type_wrapper!(Arc<T>, T, std::sync::Arc::new);
 impl<T: ProtoType> ProtoType for Option<T> {
   fn wire_type() -> WireType {
     T::wire_type()
+  }
+
+  fn canonical_type() -> CanonicalType {
+    CanonicalType::Optional(Box::new(T::canonical_type()))
   }
 }
 
@@ -158,6 +117,10 @@ impl<T: ProtoType> ProtoType for &T {
   fn wire_type() -> WireType {
     T::wire_type()
   }
+
+  fn canonical_type() -> CanonicalType {
+    T::canonical_type()
+  }
 }
 
 impl<T: ProtoFieldSerialize> ProtoFieldSerialize for &T {
@@ -182,6 +145,10 @@ impl<T: ProtoFieldSerialize> ProtoFieldSerialize for &T {
 impl ProtoType for &'static str {
   fn wire_type() -> WireType {
     WireType::LengthDelimited
+  }
+
+  fn canonical_type() -> CanonicalType {
+    CanonicalType::String
   }
 }
 
@@ -278,6 +245,11 @@ impl ProtoType for TimestampMicros {
   fn wire_type() -> WireType {
     WireType::Varint
   }
+
+  fn canonical_type() -> CanonicalType {
+    // TimestampMicros serializes as i64 (microseconds since epoch)
+    CanonicalType::I64
+  }
 }
 
 impl ProtoFieldSerialize for TimestampMicros {
@@ -318,9 +290,13 @@ impl_proto_repeated!(std::collections::BTreeSet<T>, T, Ord);
 impl_proto_repeated!(Vec<T>, T);
 
 // Implementation for ordered_float::NotNan<f64>
-impl<T> ProtoType for ordered_float::NotNan<T> {
+impl<T: ProtoType> ProtoType for ordered_float::NotNan<T> {
   fn wire_type() -> WireType {
     WireType::Fixed64
+  }
+
+  fn canonical_type() -> CanonicalType {
+    T::canonical_type()
   }
 }
 
@@ -352,6 +328,11 @@ impl<T: ProtoFieldDeserialize + FloatCore> ProtoFieldDeserialize for ordered_flo
 impl ProtoType for () {
   fn wire_type() -> WireType {
     WireType::LengthDelimited
+  }
+
+  fn canonical_type() -> CanonicalType {
+    // Unit type serializes as an empty message
+    CanonicalType::Message
   }
 }
 

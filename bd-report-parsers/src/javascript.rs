@@ -5,6 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(test)]
+#[path = "./javascript_tests.rs"]
+mod tests;
+
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1;
 use flatbuffers::FlatBufferBuilder;
 use nom::branch::alt;
@@ -44,24 +48,19 @@ pub struct JavaScriptAppMetrics {
   pub javascript_engine: v_1::JavaScriptEngine,
 }
 
-fn parse_javascript_stack_trace(stack_trace: &str, debug_id: Option<&str>) -> Vec<JavaScriptFrame> {
-  let lines: Vec<&str> = stack_trace
+fn parse_javascript_stack_trace<'a>(
+  stack_trace: &'a str,
+  debug_id: Option<&'a str>,
+) -> impl Iterator<Item = JavaScriptFrame> + 'a {
+  stack_trace
     .lines()
-    .map(str::trim)
-    .filter(|line| !line.is_empty())
-    .collect();
-
-  let frames: Vec<JavaScriptFrame> = lines
-    .iter()
-    .filter_map(|line| parse_javascript_frame(line, debug_id))
-    .collect();
-  frames
+    .filter_map(move |line| parse_javascript_frame(line, debug_id))
 }
 
 fn parse_javascript_frame(line: &str, debug_id: Option<&str>) -> Option<JavaScriptFrame> {
-  let trimmed = line.trim();
+  let line = line.trim();
 
-  if trimmed == "[native code]" {
+  if line == "[native code]" {
     return Some(JavaScriptFrame {
       function_name: "[native code]".to_string(),
       file_path: "[native code]".to_string(),
@@ -75,7 +74,7 @@ fn parse_javascript_frame(line: &str, debug_id: Option<&str>) -> Option<JavaScri
     });
   }
 
-  if let Ok((_, (function_name, location))) = parse_frame_with_nom(trimmed) {
+  if let Ok((_, (function_name, location))) = parse_frame_with_nom(line) {
     let (file_path, line_num, column_num, bundle_path) = parse_location(location);
     // Always set in_app to false; backend will re-evaluate in_app after symbolication based on
     // the actual symbolicated source file path. This ensures accurate in_app determination
@@ -179,7 +178,6 @@ fn build_javascript_error_report(
   let error_message_offset = builder.create_string(error_message);
 
   let frame_offsets: Vec<_> = frames
-    .iter()
     .map(|frame| {
       let function_name_offset = builder.create_string(&frame.function_name);
       let bundle_path_offset = frame
@@ -375,173 +373,4 @@ pub fn build_javascript_error_report_to_file(
   std::fs::write(destination_path, bytes)
     .map_err(|e| anyhow::anyhow!("failed to write report to file: {e}"))?;
   Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  #[test]
-  fn parse_android_react_native_stack() {
-    let stack = "Error: test\nat \
-                 render(/home/username/sample-workspace/sampleapp.collect.react/src/components/\
-                 GpsMonitorScene.js:78:24)\nat \
-                 _renderValidatedComponentWithoutOwnerOrContext(/home/username/sample-workspace/\
-                 sampleapp.collect.react/node_modules/react-native/Libraries/Renderer/src/\
-                 renderers/shared/stack/reconciler/ReactCompositeComponent.js:1050:29)";
-    let frames = parse_javascript_stack_trace(stack, None);
-    assert_eq!(frames.len(), 2);
-    assert_eq!(frames[0].function_name, "render");
-    assert_eq!(
-      frames[0].file_path,
-      "/home/username/sample-workspace/sampleapp.collect.react/src/components/GpsMonitorScene.js"
-    );
-    assert_eq!(frames[0].line, 78);
-    assert_eq!(frames[0].column, 24);
-    assert!(!frames[0].in_app);
-    assert_eq!(
-      frames[1].function_name,
-      "_renderValidatedComponentWithoutOwnerOrContext"
-    );
-    assert_eq!(
-      frames[1].file_path,
-      "/home/username/sample-workspace/sampleapp.collect.react/node_modules/react-native/\
-       Libraries/Renderer/src/renderers/shared/stack/reconciler/ReactCompositeComponent.js"
-    );
-    assert!(!frames[1].in_app);
-  }
-
-  #[test]
-  fn parse_ios_react_native_1_stack() {
-    let stack = "_exampleFunction@/home/test/project/App.js:125:13\n_depRunCallbacks@/home/test/\
-                 project/node_modules/dep/index.js:77:45\ntryCallTwo@/home/test/project/\
-                 node_modules/react-native/node_modules/promise/lib/core.js:45:5";
-    let frames = parse_javascript_stack_trace(stack, None);
-    assert_eq!(frames.len(), 3);
-    assert_eq!(frames[0].function_name, "_exampleFunction");
-    assert_eq!(frames[0].file_path, "/home/test/project/App.js");
-    assert_eq!(frames[0].line, 125);
-    assert_eq!(frames[0].column, 13);
-    assert!(!frames[0].in_app);
-    assert!(!frames[1].in_app);
-    assert!(!frames[2].in_app);
-  }
-
-  #[test]
-  fn parse_android_react_native_prod_stack() {
-    let stack = "value@index.android.bundle:12:1917\nonPress@index.android.bundle:12:2336\\
-                 ntouchableHandlePress@index.android.bundle:258:1497\n[native code]";
-    let frames = parse_javascript_stack_trace(stack, None);
-    assert_eq!(frames.len(), 4);
-    assert_eq!(frames[0].function_name, "value");
-    assert_eq!(frames[0].file_path, "index.android.bundle");
-    assert_eq!(frames[0].line, 12);
-    assert_eq!(frames[0].column, 1917);
-    assert_eq!(
-      frames[0].bundle_path,
-      Some("index.android.bundle".to_string())
-    );
-    assert!(!frames[0].in_app);
-    assert_eq!(frames[1].function_name, "onPress");
-    assert_eq!(frames[1].file_path, "index.android.bundle");
-    assert_eq!(
-      frames[1].bundle_path,
-      Some("index.android.bundle".to_string())
-    );
-    assert!(!frames[1].in_app);
-    assert_eq!(frames[3].function_name, "[native code]");
-    assert_eq!(frames[3].file_path, "[native code]");
-    assert_eq!(frames[3].line, 0);
-    assert_eq!(frames[3].column, 0);
-    assert!(!frames[3].in_app);
-  }
-
-  #[test]
-  fn parse_release_build_with_address_at_prefix() {
-    let stack = "triggerGlobalJsError@address at \
-                 index.android.bundle:1:726416\n_performTransitionSideEffects@address at \
-                 index.android.bundle:1:460430";
-    let frames = parse_javascript_stack_trace(stack, None);
-    assert_eq!(frames.len(), 2);
-    assert_eq!(frames[0].function_name, "triggerGlobalJsError");
-    assert_eq!(frames[0].file_path, "index.android.bundle");
-    assert_eq!(frames[0].line, 1);
-    assert_eq!(frames[0].column, 726_416);
-    assert_eq!(
-      frames[0].bundle_path,
-      Some("index.android.bundle".to_string())
-    );
-    assert!(!frames[0].in_app);
-    assert_eq!(frames[1].function_name, "_performTransitionSideEffects");
-    assert_eq!(frames[1].file_path, "index.android.bundle");
-    assert_eq!(frames[1].line, 1);
-    assert_eq!(frames[1].column, 460_430);
-    assert_eq!(
-      frames[1].bundle_path,
-      Some("index.android.bundle".to_string())
-    );
-    assert!(!frames[1].in_app);
-  }
-
-  #[test]
-  fn parse_release_build_at_format_with_address_at() {
-    let stack = "Error: Triggered Global JS Error - Intentional for testing\n    at \
-                 triggerGlobalJsError (address at index.android.bundle:1:726416)\n    at \
-                 _performTransitionSideEffects (address at index.android.bundle:1:460430)\n    at \
-                 forEach (native)";
-    let frames = parse_javascript_stack_trace(stack, None);
-    assert_eq!(frames.len(), 3);
-    assert_eq!(frames[0].function_name, "triggerGlobalJsError");
-    assert_eq!(frames[0].file_path, "index.android.bundle");
-    assert_eq!(frames[0].line, 1);
-    assert_eq!(frames[0].column, 726_416);
-    assert_eq!(
-      frames[0].bundle_path,
-      Some("index.android.bundle".to_string())
-    );
-    assert!(!frames[0].in_app);
-    assert_eq!(frames[1].function_name, "_performTransitionSideEffects");
-    assert_eq!(frames[1].file_path, "index.android.bundle");
-    assert_eq!(frames[1].line, 1);
-    assert_eq!(frames[1].column, 460_430);
-    assert_eq!(
-      frames[1].bundle_path,
-      Some("index.android.bundle".to_string())
-    );
-    assert!(!frames[1].in_app);
-    assert_eq!(frames[2].function_name, "forEach");
-    assert_eq!(frames[2].file_path, "native");
-    assert_eq!(frames[2].line, 0);
-    assert_eq!(frames[2].column, 0);
-    assert!(!frames[2].in_app);
-  }
-
-  #[test]
-  fn parse_ios_jsbundle_release_build() {
-    let stack = concat!(
-      "triggerGlobalJsError@main.jsbundle:1:717458\n",
-      "onPress@main.jsbundle:1:720868\n",
-      "_performTransitionSideEffects@main.jsbundle:1:456325\n",
-      "[native code]"
-    );
-    let frames = parse_javascript_stack_trace(stack, Some("5aa81d1c6931a5db1800b6f5ee411e9e"));
-    assert_eq!(frames.len(), 4);
-    assert_eq!(frames[0].function_name, "triggerGlobalJsError");
-    assert_eq!(frames[0].file_path, "main.jsbundle");
-    assert_eq!(frames[0].line, 1);
-    assert_eq!(frames[0].column, 717_458);
-    assert_eq!(frames[0].bundle_path, Some("main.jsbundle".to_string()));
-    assert_eq!(
-      frames[0].image_id,
-      Some("5aa81d1c6931a5db1800b6f5ee411e9e".to_string())
-    );
-    assert!(!frames[0].in_app);
-    assert_eq!(frames[1].function_name, "onPress");
-    assert_eq!(frames[1].file_path, "main.jsbundle");
-    assert_eq!(frames[1].bundle_path, Some("main.jsbundle".to_string()));
-    assert!(!frames[1].in_app);
-    assert_eq!(frames[3].function_name, "[native code]");
-    assert_eq!(frames[3].file_path, "[native code]");
-    assert!(!frames[3].in_app);
-  }
 }

@@ -15,6 +15,7 @@ use bd_log_primitives::{LogFields, StringOrBytes};
 use bd_proto::protos::client::key_value::CrashGlobalState;
 use bd_proto::protos::logging::payload;
 use bd_runtime::runtime::DurationWatch;
+use std::borrow::Cow;
 use std::sync::Arc;
 use tokio::time::Instant;
 
@@ -157,12 +158,28 @@ pub(crate) fn fields_to_crash_state(fields: &LogFields) -> CrashGlobalState {
 #[derive(Clone)]
 pub struct Reader {
   store: Arc<Store>,
+  prevous_global_state: Arc<Option<LogFields>>,
 }
 
 impl Reader {
   #[must_use]
   pub fn new(store: Arc<Store>) -> Self {
-    Self { store }
+    let prevous_global_state = Arc::new(store.get(&KEY).map(|s| {
+      s.fields
+        .into_iter()
+        .filter_map(|field| {
+          Some((
+            Cow::Owned(field.key),
+            StringOrBytes::from_proto(field.value.into_option()?)?,
+          ))
+        })
+        .collect()
+    }));
+
+    Self {
+      store,
+      prevous_global_state,
+    }
   }
 
   #[must_use]
@@ -183,5 +200,10 @@ impl Reader {
           .collect()
       })
       .unwrap_or_default()
+  }
+
+  #[must_use]
+  pub fn previous_global_state_fields(&self) -> Option<&LogFields> {
+    (*self.prevous_global_state).as_ref()
   }
 }

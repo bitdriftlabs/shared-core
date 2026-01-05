@@ -559,7 +559,7 @@ fn test_enum_tuple_variant_with_default_values() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, PartialEq)]
   enum TransitionType {
-    #[field(id = 1)]
+    #[field(id = 1, default)]
     Normal(u64),
     #[field(id = 2)]
     Timeout,
@@ -624,7 +624,7 @@ fn test_enum_multiple_tuple_variants_with_defaults() -> Result<()> {
   #[proto_serializable]
   #[derive(Debug, PartialEq)]
   enum Value {
-    #[field(id = 1)]
+    #[field(id = 1, default)]
     IntValue(i32),
     #[field(id = 2)]
     UintValue(u32),
@@ -669,4 +669,133 @@ fn test_enum_multiple_tuple_variants_with_defaults() -> Result<()> {
   }
 
   Ok(())
+}
+
+/// Test that a struct with `validate_against` generates passing validation tests.
+///
+/// This struct is designed to match the protobuf definition of
+/// `FixedSessionStrategyState` from bd-proto.
+#[proto_serializable(
+  validate_against = "bd_proto::protos::client::key_value::FixedSessionStrategyState"
+)]
+#[derive(Debug, PartialEq, Default)]
+struct ValidatedFixedSessionState {
+  #[field(id = 1)]
+  session_id: String,
+}
+
+/// Test partial validation - Rust struct has fewer fields than proto.
+/// Uses `ActivitySessionStrategyState` which has `session_id` (1) and `last_activity_timestamp`
+/// (2). Our Rust struct only has `session_id`.
+#[proto_serializable(
+  validate_against = "bd_proto::protos::client::key_value::ActivitySessionStrategyState",
+  validate_partial
+)]
+#[derive(Debug, PartialEq, Default)]
+struct PartialActivitySessionState {
+  #[field(id = 1)]
+  session_id: String,
+  // Note: we intentionally omit last_activity_timestamp (field 2)
+}
+
+/// Test with type aliases (Arc<str> should be treated as String).
+#[proto_serializable(
+  validate_against = "bd_proto::protos::client::key_value::FixedSessionStrategyState"
+)]
+#[derive(Debug, Default)]
+struct ValidatedWithArcStr {
+  #[field(id = 1)]
+  session_id: std::sync::Arc<str>,
+}
+
+/// Validate against google.protobuf.DoubleValue
+#[proto_serializable(validate_against = "protobuf::well_known_types::wrappers::DoubleValue")]
+#[derive(Debug, PartialEq, Default)]
+struct WktDoubleValue {
+  #[field(id = 1)]
+  value: f64,
+}
+
+/// Validate against google.protobuf.FloatValue
+#[proto_serializable(validate_against = "protobuf::well_known_types::wrappers::FloatValue")]
+#[derive(Debug, PartialEq, Default)]
+struct WktFloatValue {
+  #[field(id = 1)]
+  value: f32,
+}
+
+/// Validate against google.protobuf.Int64Value
+#[proto_serializable(validate_against = "protobuf::well_known_types::wrappers::Int64Value")]
+#[derive(Debug, PartialEq, Default)]
+struct WktInt64Value {
+  #[field(id = 1)]
+  value: i64,
+}
+
+/// Validate against google.protobuf.UInt64Value
+#[proto_serializable(validate_against = "protobuf::well_known_types::wrappers::UInt64Value")]
+#[derive(Debug, PartialEq, Default)]
+struct WktUInt64Value {
+  #[field(id = 1)]
+  value: u64,
+}
+
+/// Validate against google.protobuf.Int32Value
+#[proto_serializable(validate_against = "protobuf::well_known_types::wrappers::Int32Value")]
+#[derive(Debug, PartialEq, Default)]
+struct WktInt32Value {
+  #[field(id = 1)]
+  value: i32,
+}
+
+/// Validate against google.protobuf.UInt32Value
+#[proto_serializable(validate_against = "protobuf::well_known_types::wrappers::UInt32Value")]
+#[derive(Debug, PartialEq, Default)]
+struct WktUInt32Value {
+  #[field(id = 1)]
+  value: u32,
+}
+
+/// Validate against google.protobuf.BoolValue
+#[proto_serializable(validate_against = "protobuf::well_known_types::wrappers::BoolValue")]
+#[derive(Debug, PartialEq, Default)]
+struct WktBoolValue {
+  #[field(id = 1)]
+  value: bool,
+}
+
+/// Validate against google.protobuf.StringValue
+#[proto_serializable(validate_against = "protobuf::well_known_types::wrappers::StringValue")]
+#[derive(Debug, PartialEq, Default)]
+struct WktStringValue {
+  #[field(id = 1)]
+  value: String,
+}
+
+/// Validate against google.protobuf.BytesValue
+#[proto_serializable(validate_against = "protobuf::well_known_types::wrappers::BytesValue")]
+#[derive(Debug, PartialEq, Default)]
+struct WktBytesValue {
+  #[field(id = 1)]
+  value: Vec<u8>,
+}
+
+/// Validate against google.protobuf.Duration (multi-field message)
+#[proto_serializable(validate_against = "protobuf::well_known_types::duration::Duration")]
+#[derive(Debug, PartialEq, Default)]
+struct WktDuration {
+  #[field(id = 1)]
+  seconds: i64,
+  #[field(id = 2)]
+  nanos: i32,
+}
+
+/// Validate against google.protobuf.Timestamp (multi-field message)
+#[proto_serializable(validate_against = "protobuf::well_known_types::timestamp::Timestamp")]
+#[derive(Debug, PartialEq, Default)]
+struct WktTimestamp {
+  #[field(id = 1)]
+  seconds: i64,
+  #[field(id = 2)]
+  nanos: i32,
 }
