@@ -1506,6 +1506,7 @@ impl Default for WorkflowTransitionDebugState {
 // The memory overhead of an empty HashMap is acceptable given debug mode is rarely enabled.
 #[bd_macros::proto_serializable]
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[allow(clippy::box_collection)]
 pub struct WorkflowDebugStateMap {
   #[field(id = 1, repeated)]
   pub(crate) inner: Box<HashMap<WorkflowDebugStateKey, WorkflowTransitionDebugState>>,
