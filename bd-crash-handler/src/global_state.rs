@@ -157,12 +157,18 @@ pub(crate) fn fields_to_crash_state(fields: &LogFields) -> CrashGlobalState {
 #[derive(Clone)]
 pub struct Reader {
   store: Arc<Store>,
+  prevous_global_state: Arc<Option<LogFields>>,
 }
 
 impl Reader {
   #[must_use]
   pub fn new(store: Arc<Store>) -> Self {
-    Self { store }
+    let prevous_global_state = Arc::new(store.get(&KEY).map(|s| s.0));
+
+    Self {
+      store,
+      prevous_global_state,
+    }
   }
 
   #[must_use]
@@ -183,5 +189,10 @@ impl Reader {
           .collect()
       })
       .unwrap_or_default()
+  }
+
+  #[must_use]
+  pub fn previous_global_state_fields(&self) -> Option<&LogFields> {
+    (*self.prevous_global_state).as_ref()
   }
 }
