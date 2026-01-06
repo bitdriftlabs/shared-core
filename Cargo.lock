@@ -1091,6 +1091,7 @@ dependencies = [
  "bd-error-reporter",
  "bd-log",
  "bd-proto",
+ "bd-stats-common",
  "bd-time",
  "bd-workspace-hack",
  "bytes",
