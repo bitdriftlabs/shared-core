@@ -25,6 +25,7 @@
 use bd_proto::protos::state;
 
 pub mod versioned_kv_store_dynamic_growth_test;
+pub mod versioned_kv_store_metrics_test;
 pub mod versioned_kv_store_test;
 pub mod versioned_recovery_error_test;
 pub mod versioned_recovery_test;
