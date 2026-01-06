@@ -71,14 +71,12 @@ fn test_global_init() {
 
 fn write_log_to_buffer(
   producer: &mut bd_buffer::Producer,
-  log: &mut bd_log_primitives::LogEncodingHelper,
+  log: &mut bd_log_primitives::EncodableLog,
   action_ids: &[&str],
   stream_ids: &[&str],
 ) -> anyhow::Result<()> {
   match producer.reserve(
-    log
-      .serialized_proto_size(action_ids, stream_ids)?
-      .to_u32_lossy(),
+    log.compute_size(action_ids, stream_ids)?.to_u32_lossy(),
     true,
   ) {
     // If the buffer is locked, drop the error. This helps ensure that we are able to
@@ -95,7 +93,7 @@ fn write_log_to_buffer(
     },
     Err(e) => Err(e),
     Ok(reservation) => {
-      log.serialized_proto_to_bytes(action_ids, stream_ids, reservation)?;
+      log.serialize_to_bytes(action_ids, stream_ids, reservation)?;
       producer.commit()
     },
   }?;

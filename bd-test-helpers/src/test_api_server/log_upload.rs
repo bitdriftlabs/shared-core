@@ -68,10 +68,12 @@ impl WrappedLog {
   }
 
   #[must_use]
-  pub fn typed_message(&self) -> StringOrBytes<String, Vec<u8>> {
+  pub fn typed_message(&self) -> StringOrBytes {
     match self.0.message.data_type.as_ref().unwrap() {
       Data_type::StringData(string_data) => StringOrBytes::String(string_data.clone()),
-      Data_type::BinaryData(binary_data) => StringOrBytes::Bytes(binary_data.payload.clone()),
+      Data_type::BinaryData(binary_data) => {
+        StringOrBytes::Bytes(binary_data.payload.clone().into())
+      },
       Data_type::BoolData(bool_data) => StringOrBytes::Boolean(*bool_data),
       Data_type::IntData(int_data) => StringOrBytes::U64(*int_data),
       Data_type::SintData(sint_data) => StringOrBytes::I64(*sint_data),
@@ -82,7 +84,7 @@ impl WrappedLog {
   }
 
   #[must_use]
-  pub fn typed_fields(&self) -> Vec<(String, StringOrBytes<String, Vec<u8>>)> {
+  pub fn typed_fields(&self) -> Vec<(String, StringOrBytes)> {
     self
       .0
       .fields
@@ -96,7 +98,7 @@ impl WrappedLog {
         } else {
           (
             field.key.clone(),
-            StringOrBytes::Bytes(field.value.binary_data().payload.clone()),
+            StringOrBytes::Bytes(field.value.binary_data().payload.clone().into()),
           )
         }
       })

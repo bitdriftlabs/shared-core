@@ -17,7 +17,7 @@ use bd_client_common::error::InvariantError;
 use bd_client_common::maybe_await;
 use bd_client_stats_store::{Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected_error_with_details;
-use bd_log_primitives::LogEncodingHelper;
+use bd_log_primitives::EncodableLog;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use futures_util::future::try_join_all;
@@ -711,7 +711,7 @@ impl CompleteBufferUpload {
         Ok(log) => {
           if let Some(lookback_window) = self.lookback_window {
             // We are defensive here as we can't be sure the log is well formed.
-            if let Some(ts) = LogEncodingHelper::extract_timestamp(&log)
+            if let Some(ts) = EncodableLog::extract_timestamp(&log)
               && ts < lookback_window
             {
               log::debug!("skipping log, outside lookback window");

@@ -55,7 +55,7 @@ fn binary_log_msg(message: &[u8]) -> Input<'_> {
   (
     LogType::NORMAL,
     log_level::DEBUG,
-    LogMessage::Bytes(message.to_vec()),
+    LogMessage::Bytes(message.into()),
     [].into(),
   )
 }

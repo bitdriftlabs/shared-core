@@ -11,6 +11,7 @@ doctest = false
 [dependencies]
 ahash.workspace             = true
 anyhow.workspace            = true
+bd-macros                   = { path = "../bd-macros" }
 bd-proto                    = { path = "../bd-proto" }
 bd-time                     = { path = "../bd-time" }
 bd-proto-util               = { path = "../bd-proto-util" }

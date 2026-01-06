@@ -2306,10 +2306,10 @@ fn binary_message_and_fields() {
   setup.log(
     log_level::DEBUG,
     LogType::NORMAL,
-    LogMessage::Bytes(vec![1, 2, 3]),
+    LogMessage::Bytes(vec![1, 2, 3].into()),
     [
       ("str".into(), StringOrBytes::String("str-data".to_string())),
-      ("binary".into(), StringOrBytes::Bytes(vec![0, 0, 0])),
+      ("binary".into(), StringOrBytes::Bytes(vec![0, 0, 0].into())),
     ]
     .into_iter()
     .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))

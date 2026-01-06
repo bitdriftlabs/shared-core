@@ -187,7 +187,8 @@ pub struct StructProcessingResult {
   pub proto_type_impl: proc_macro2::TokenStream,
   pub serialize_impl: proc_macro2::TokenStream,
   pub deserialize_impl: proc_macro2::TokenStream,
-  pub message_impl: proc_macro2::TokenStream,
+  pub message_serialize_impl: proc_macro2::TokenStream,
+  pub message_deserialize_impl: proc_macro2::TokenStream,
   pub validation_tests: proc_macro2::TokenStream,
 }
 
@@ -507,29 +508,42 @@ pub fn process_struct_fields(
     }
   };
 
-  // Generate the ProtoMessage trait implementation (top-level message serialization)
-  let message_impl = if serialize_only {
+  // Generate the ProtoMessageSerialize trait implementation (always generated)
+  // This allows serialize_only types to be used as top-level messages
+  let message_serialize_impl = quote! {
+      impl #impl_generics bd_proto_util::serialization::ProtoMessageSerialize
+          for #name #ty_generics #where_clause
+      {
+          fn compute_message_size(&self) -> u64 {
+              let mut my_size = 0;
+              #(#size_computations)*
+              my_size
+          }
+
+          fn serialize_message(
+              &self,
+              os: &mut protobuf::CodedOutputStream,
+          ) -> anyhow::Result<()> {
+              // Serialize fields directly without outer tag+length wrapper
+              #(#field_processing)*
+              Ok(())
+          }
+      }
+  };
+
+  // Generate the ProtoMessageDeserialize trait implementation (only for non-serialize_only types)
+  let message_deserialize_impl = if serialize_only {
     quote! {}
   } else {
     quote! {
-        impl #impl_generics bd_proto_util::serialization::ProtoMessage
+        impl #impl_generics bd_proto_util::serialization::ProtoMessageDeserialize
             for #name #ty_generics #where_clause
         {
-            fn serialize_message(
-                &self,
-                os: &mut protobuf::CodedOutputStream,
-            ) -> anyhow::Result<()> {
-                // Serialize fields directly without outer tag+length wrapper
-                #(#field_processing)*
-                Ok(())
-            }
-
             fn deserialize_message(
                 is: &mut protobuf::CodedInputStream,
             ) -> anyhow::Result<Self> {
                 // Deserialize fields directly without expecting outer tag+length wrapper
                 #(#field_vars_init)*
-
 
                 while !is.eof()? {
                     let tag = is.read_raw_varint32()?;
@@ -573,6 +587,7 @@ pub fn process_struct_fields(
         proto_path,
         &field_attrs_for_validation,
         validation_config.validate_partial,
+        serialize_only,
       );
 
       // Use a unique module name based on the struct name (in snake_case) to avoid collisions
@@ -592,7 +607,8 @@ pub fn process_struct_fields(
     proto_type_impl,
     serialize_impl,
     deserialize_impl,
-    message_impl,
+    message_serialize_impl,
+    message_deserialize_impl,
     validation_tests,
   }
 }

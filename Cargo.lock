@@ -846,6 +846,7 @@ version = "1.0.0"
 dependencies = [
  "ahash",
  "anyhow",
+ "bd-macros",
  "bd-proto",
  "bd-proto-util",
  "bd-time",
@@ -888,6 +889,7 @@ dependencies = [
  "bd-network-quality",
  "bd-noop-network",
  "bd-proto",
+ "bd-proto-util",
  "bd-resilient-kv",
  "bd-resource-utilization",
  "bd-runtime",

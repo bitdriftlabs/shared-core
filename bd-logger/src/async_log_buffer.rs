@@ -88,7 +88,7 @@ impl ReportProcessor for () {
 
 #[derive(Debug)]
 pub enum StateUpdateMessage {
-  AddLogField(String, StringOrBytes<String, Vec<u8>>),
+  AddLogField(String, StringOrBytes),
   RemoveLogField(String),
   SetFeatureFlagExposure(String, Option<String>),
   FlushState(Option<bd_completion::Sender<()>>),
