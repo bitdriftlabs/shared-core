@@ -418,10 +418,6 @@ pub enum LogFieldKind {
 /// This struct corresponds to the `bitdrift_public.protobuf.logging.v1.Log.CompressedContents`
 /// message, which is serialized and then zlib-compressed to produce the `compressed_contents`
 /// field of a `CompressedLogRef`.
-///
-/// Proto field mapping:
-/// - Field 1: `message` (Data) - the log message
-/// - Field 2: `fields` (repeated Field) - the log fields as a map
 #[derive(Debug, Clone, Copy)]
 #[proto_serializable(
   serialize_only,
@@ -453,6 +449,10 @@ impl LogContentsRef<'_> {
 //
 // Proc-macro generated log serialization structs
 //
+
+// TODO(snowp): Ideally we'd be able to do this without maintaining two different structs, but
+// allowing additional context (the compressed values) to be optionally serialized based on presence
+// is not currently supported by the proc-macro.
 
 /// A reference wrapper for serializing a raw (uncompressed) log entry.
 ///
@@ -586,9 +586,11 @@ impl Log {
   }
 }
 
-/// A wrapper around `Log` that provides efficient protobuf serialization with optional compression.
+/// A wrapper around log data that provides efficient protobuf serialization with optional
+/// compression.
 ///
-/// `EncodableLog` takes ownership of a `Log` and provides serialization methods that:
+/// `EncodableLog` can work with either owned or borrowed data (using `Cow`) and provides
+/// serialization methods that:
 /// - Compute sizes and serialize in a single pass when possible
 /// - Handle compression of message+fields when size exceeds the threshold
 /// - Accept external `action_ids` and `stream_ids` at serialization time
@@ -609,6 +611,7 @@ struct EncodableLogCached {
 }
 
 impl EncodableLog {
+  /// Creates a new `EncodableLog` from owned log data.
   #[must_use]
   pub fn new(log: Log, compression_min_size: u64) -> Self {
     Self {
@@ -625,7 +628,10 @@ impl EncodableLog {
   pub fn compute_size(&mut self, action_ids: &[&str], stream_ids: &[&str]) -> anyhow::Result<u64> {
     // Compute core size if not cached
     let cached = self.cached.get_or_insert_with(|| {
-      let contents = self.log.contents_ref();
+      let contents = LogContentsRef {
+        message: &self.log.message,
+        fields: &self.log.fields,
+      };
       let uncompressed_size = contents.compute_message_size();
 
       // Decide whether to compress
@@ -644,15 +650,28 @@ impl EncodableLog {
     // Use proc-macro-generated size computation
     Ok(
       if let Some(compressed) = &cached.compressed_contents {
-        self
-          .log
-          .as_compressed_ref(action_ids, stream_ids, compressed)
-          .compute_message_size()
+        CompressedLogRef {
+          occurred_at: self.log.occurred_at.unix_timestamp_micros(),
+          log_level: self.log.log_level,
+          session_id: &self.log.session_id,
+          action_ids,
+          log_type: self.log.log_type,
+          stream_ids,
+          compressed_contents: compressed,
+        }
+        .compute_message_size()
       } else {
-        self
-          .log
-          .as_raw_ref(action_ids, stream_ids)
-          .compute_message_size()
+        RawLogRef {
+          occurred_at: self.log.occurred_at.unix_timestamp_micros(),
+          log_level: self.log.log_level,
+          message: &self.log.message,
+          fields: &self.log.fields,
+          session_id: &self.log.session_id,
+          action_ids,
+          log_type: self.log.log_type,
+          stream_ids,
+        }
+        .compute_message_size()
       },
     )
   }
@@ -673,15 +692,28 @@ impl EncodableLog {
 
     // Use proc-macro-generated serialization
     if let Some(compressed) = &cached.compressed_contents {
-      self
-        .log
-        .as_compressed_ref(action_ids, stream_ids, compressed)
-        .serialize_message(os)
+      CompressedLogRef {
+        occurred_at: self.log.occurred_at.unix_timestamp_micros(),
+        log_level: self.log.log_level,
+        session_id: &self.log.session_id,
+        action_ids,
+        log_type: self.log.log_type,
+        stream_ids,
+        compressed_contents: compressed,
+      }
+      .serialize_message(os)
     } else {
-      self
-        .log
-        .as_raw_ref(action_ids, stream_ids)
-        .serialize_message(os)
+      RawLogRef {
+        occurred_at: self.log.occurred_at.unix_timestamp_micros(),
+        log_level: self.log.log_level,
+        message: &self.log.message,
+        fields: &self.log.fields,
+        session_id: &self.log.session_id,
+        action_ids,
+        log_type: self.log.log_type,
+        stream_ids,
+      }
+      .serialize_message(os)
     }
   }
 

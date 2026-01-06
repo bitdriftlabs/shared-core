@@ -226,6 +226,16 @@ impl ProtoFieldSerialize for &[u8] {
     os.write_bytes(field_number, self)?;
     Ok(())
   }
+
+  fn compute_size_explicit(&self, field_number: u32) -> u64 {
+    // Bytes always have explicit presence (empty bytes is different from not-present)
+    protobuf::rt::bytes_size(field_number, self)
+  }
+
+  fn serialize_explicit(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    os.write_bytes(field_number, self)?;
+    Ok(())
+  }
 }
 
 /// A timestamp stored as microseconds since Unix epoch (uint64).
@@ -363,6 +373,20 @@ impl<T: ProtoFieldSerialize> ProtoFieldSerialize for &[T] {
   fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
     for item in *self {
       item.serialize(field_number, os)?;
+    }
+    Ok(())
+  }
+
+  fn compute_size_explicit(&self, field_number: u32) -> u64 {
+    self
+      .iter()
+      .map(|item| item.compute_size_explicit(field_number))
+      .sum()
+  }
+
+  fn serialize_explicit(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    for item in *self {
+      item.serialize_explicit(field_number, os)?;
     }
     Ok(())
   }

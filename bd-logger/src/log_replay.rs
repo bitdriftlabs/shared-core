@@ -15,19 +15,13 @@ use bd_client_stats::{FlushTrigger, FlushTriggerRequest};
 use bd_log_filter::FilterChain;
 use bd_log_metadata::LogFields;
 use bd_log_primitives::tiny_set::TinySet;
-use bd_log_primitives::{
-  EncodableLog,
-  FieldsRef,
-  Log,
-  LogFields as LogFieldsPrimitive,
-  LogMessage,
-  LossyIntToU32,
-  log_level,
-};
+use bd_log_primitives::{EncodableLog, FieldsRef, Log, LogMessage, LossyIntToU32, log_level};
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto_util::serialization::ProtoMessageSerialize;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
 use bd_runtime::runtime::{ConfigLoader, IntWatch};
 use bd_session_replay::CaptureScreenshotHandler;
+use bd_time::OffsetDateTimeExt;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::config::FlushBufferId;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
@@ -547,23 +541,23 @@ impl ProcessingPipeline {
             .map(std::convert::AsRef::as_ref)
             .collect();
 
-          // Create a synthetic log with the same message and fields
-          let synthetic_log = Log {
+          // Use RawLogRef directly for zero-allocation serialization
+          let raw_log = bd_log_primitives::RawLogRef {
+            occurred_at: occurred_at.unix_timestamp_micros(),
             log_level: log_level::DEBUG,
+            message: log_message,
+            fields: log_fields,
+            session_id,
+            action_ids: &action_ids,
             log_type: LogType::INTERNAL_SDK,
-            message: log_message.clone(),
-            fields: log_fields.clone(),
-            matching_fields: LogFieldsPrimitive::default(),
-            session_id: session_id.to_string(),
-            occurred_at,
-            capture_session: None,
+            stream_ids: &[],
           };
-
-          // Encode with compression disabled (u64::MAX threshold)
-          let mut encodable = EncodableLog::new(synthetic_log, u64::MAX);
-          let size = encodable.compute_size(&action_ids, &[])?;
+          let size = raw_log.compute_message_size();
           let reserved = buffer_producer.reserve(size.to_u32_lossy(), true)?;
-          encodable.serialize_to_bytes(&action_ids, &[], reserved)?;
+          {
+            let mut os = protobuf::CodedOutputStream::bytes(reserved);
+            raw_log.serialize_message(&mut os)?;
+          } // Drop CodedOutputStream before calling commit()
           buffer_producer.commit()?;
           Ok::<_, anyhow::Error>(())
         })()
