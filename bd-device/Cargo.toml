@@ -14,7 +14,6 @@ bd-key-value.path           = "../bd-key-value"
 bd-workspace-hack.workspace = true
 log.workspace               = true
 parking_lot.workspace       = true
-serde.workspace             = true
 time.workspace              = true
 uuid.workspace              = true
 

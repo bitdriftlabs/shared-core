@@ -19,6 +19,7 @@ use crate::serialization::{
   ProtoFieldDeserialize,
   ProtoFieldSerialize,
   ProtoType,
+  RepeatedFieldDeserialize,
   wire,
 };
 use anyhow::Result;
@@ -62,6 +63,18 @@ impl_proto_string_like!(std::sync::Arc<str>, |s: String| s.into());
 crate::impl_proto_for_type_wrapper!(Box<T>, T, Box::new);
 crate::impl_proto_for_type_wrapper!(Arc<T>, T, std::sync::Arc::new);
 
+impl<T: RepeatedFieldDeserialize> RepeatedFieldDeserialize for Box<T> {
+  type Element = T::Element;
+
+  fn deserialize_element(is: &mut CodedInputStream<'_>) -> anyhow::Result<Self::Element> {
+    T::deserialize_element(is)
+  }
+
+  fn add_element(&mut self, element: Self::Element) {
+    (**self).add_element(element);
+  }
+}
+
 // Blanket implementation for Option<T>
 // Note: For deserialization, this is slightly tricky because the tag handles the "None" case (by
 // absence). This deserialize implementation assumes we ARE reading a value.
@@ -84,6 +97,23 @@ impl<T: ProtoFieldSerialize> ProtoFieldSerialize for Option<T> {
   fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
     if let Some(v) = self {
       v.serialize(field_number, os)?;
+    }
+    Ok(())
+  }
+
+  fn compute_size_explicit(&self, field_number: u32) -> u64 {
+    // Option always has explicit presence via Some/None, so when Some, always serialize the inner
+    // value even if it's a default value
+    self
+      .as_ref()
+      .map_or(0, |v| v.compute_size_explicit(field_number))
+  }
+
+  fn serialize_explicit(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    // Option always has explicit presence via Some/None, so when Some, always serialize the inner
+    // value even if it's a default value
+    if let Some(v) = self {
+      v.serialize_explicit(field_number, os)?;
     }
     Ok(())
   }
@@ -114,8 +144,15 @@ impl<T: ProtoFieldSerialize> ProtoFieldSerialize for &T {
   fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
     (**self).serialize(field_number, os)
   }
-}
 
+  fn compute_size_explicit(&self, field_number: u32) -> u64 {
+    (**self).compute_size_explicit(field_number)
+  }
+
+  fn serialize_explicit(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    (**self).serialize_explicit(field_number, os)
+  }
+}
 
 // &'static str implementation is special in that we can only serialize it.
 impl ProtoType for &'static str {
@@ -137,6 +174,19 @@ impl ProtoFieldSerialize for &'static str {
     os.write_string(field_number, self)?;
     Ok(())
   }
+
+  fn compute_size_explicit(&self, field_number: u32) -> u64 {
+    // Strings always have explicit presence (empty string is different from not-present), so
+    // explicit and implicit are the same
+    protobuf::rt::string_size(field_number, self)
+  }
+
+  fn serialize_explicit(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    // Strings always have explicit presence (empty string is different from not-present), so
+    // explicit and implicit are the same
+    os.write_string(field_number, self)?;
+    Ok(())
+  }
 }
 
 /// A timestamp stored as microseconds since Unix epoch (uint64).
@@ -144,6 +194,12 @@ impl ProtoFieldSerialize for &'static str {
 /// This serializes an `OffsetDateTime` as a uint64 representing microseconds since Unix epoch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TimestampMicros(pub time::OffsetDateTime);
+
+impl Default for TimestampMicros {
+  fn default() -> Self {
+    Self(time::OffsetDateTime::UNIX_EPOCH)
+  }
+}
 
 impl TimestampMicros {
   /// Creates a new `TimestampMicros` from an `OffsetDateTime`.
@@ -217,6 +273,14 @@ impl ProtoFieldSerialize for TimestampMicros {
   fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
     self.as_micros().serialize(field_number, os)
   }
+
+  fn compute_size_explicit(&self, field_number: u32) -> u64 {
+    self.as_micros().compute_size_explicit(field_number)
+  }
+
+  fn serialize_explicit(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    self.as_micros().serialize_explicit(field_number, os)
+  }
 }
 
 impl ProtoFieldDeserialize for TimestampMicros {
@@ -257,6 +321,14 @@ impl<T: ProtoFieldSerialize + FloatCore> ProtoFieldSerialize for ordered_float::
   fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
     self.as_ref().serialize(field_number, os)
   }
+
+  fn compute_size_explicit(&self, field_number: u32) -> u64 {
+    self.as_ref().compute_size_explicit(field_number)
+  }
+
+  fn serialize_explicit(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    self.as_ref().serialize_explicit(field_number, os)
+  }
 }
 
 impl<T: ProtoFieldDeserialize + FloatCore> ProtoFieldDeserialize for ordered_float::NotNan<T> {
@@ -284,6 +356,20 @@ impl ProtoFieldSerialize for () {
   }
 
   fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    os.write_tag(field_number, WireType::LengthDelimited)?;
+    os.write_raw_varint32(0)?; // length = 0
+    Ok(())
+  }
+
+  fn compute_size_explicit(&self, field_number: u32) -> u64 {
+    // Unit type always has explicit presence (it's either present or not), so explicit and
+    // implicit are the same
+    protobuf::rt::tag_size(field_number) + 1 // tag + length(0)
+  }
+
+  fn serialize_explicit(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    // Unit type always has explicit presence (it's either present or not), so explicit and
+    // implicit are the same
     os.write_tag(field_number, WireType::LengthDelimited)?;
     os.write_raw_varint32(0)?; // length = 0
     Ok(())

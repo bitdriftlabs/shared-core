@@ -54,25 +54,27 @@ pub fn assert_workflow_debug_state(
     .map(|(workflow_id, states)| {
       (
         (*workflow_id).to_string(),
-        WorkflowDebugStateMap(Box::new(
-          states
-            .iter()
-            .map(|(state_type, state)| {
-              (
-                match state_type {
-                  DebugStateType::StartOrReset => WorkflowDebugStateKey::StartOrReset,
-                  DebugStateType::StateId(state_id, transition_type) => {
-                    WorkflowDebugStateKey::new_state_transition(
-                      (*state_id).to_string(),
-                      *transition_type,
-                    )
+        WorkflowDebugStateMap {
+          inner: Box::new(
+            states
+              .iter()
+              .map(|(state_type, state)| {
+                (
+                  match state_type {
+                    DebugStateType::StartOrReset => WorkflowDebugStateKey::StartOrReset,
+                    DebugStateType::StateId(state_id, transition_type) => {
+                      WorkflowDebugStateKey::new_state_transition(
+                        (*state_id).to_string(),
+                        *transition_type,
+                      )
+                    },
                   },
-                },
-                state.clone(),
-              )
-            })
-            .collect(),
-        )),
+                  state.clone(),
+                )
+              })
+              .collect(),
+          ),
+        },
       )
     })
     .collect();

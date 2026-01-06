@@ -47,19 +47,20 @@ use crate::workflow::{
 };
 use anyhow::anyhow;
 use bd_api::DataUpload;
-use bd_client_common::file::{read_compressed, write_compressed};
+use bd_client_common::file::{compressed_reader, write_compressed};
 use bd_client_stats::{FlushTrigger, FlushTriggerRequest, Stats};
 use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::Log;
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
+use bd_proto_util::serialization::ProtoMessage as _;
 use bd_runtime::runtime::workflows::PersistenceWriteIntervalFlag;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, session_capture};
 use bd_stats_common::labels;
 use bd_stats_common::workflow::WorkflowDebugKey;
-use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -68,9 +69,10 @@ use tokio::sync::oneshot::error::TryRecvError;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
-// This is currently serialized using bincode so we need to change the file name any time the
-// format changes. Ultimately we should consider whether moving this to protobuf makes more sense.
-pub const WORKFLOWS_STATE_FILE_NAME: &str = "workflows_state_snapshot.10.bin";
+// This was previously serialized with bincode so we had to update the file every time we changed
+// the serialization format. The current version uses protobuf so we can avoid changing the file
+// name every time we change the serialization format.
+pub const WORKFLOWS_STATE_FILE_NAME: &str = "workflows_state_snapshot.11.bin";
 
 //
 // WorkflowsEngine
@@ -854,11 +856,11 @@ impl WorkflowsEngine {
     let emit_metric_actions: BTreeSet<&ActionEmitMetric> = actions
       .iter()
       .filter_map(|action| {
-        if let TriggeredAction::EmitMetric(emit_metric_action) = action {
-          Some(*emit_metric_action)
-        } else {
-          None
-        }
+          if let TriggeredAction::EmitMetric(emit_metric_action) = action {
+              Some(*emit_metric_action)
+          } else {
+              None
+          }
       })
       // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
       .collect();
@@ -870,11 +872,11 @@ impl WorkflowsEngine {
     let emit_sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>> = actions
       .into_iter()
       .filter_map(|action| {
-        if let TriggeredAction::SankeyDiagram(action) = action {
-          Some(action)
-        } else {
-          None
-        }
+          if let TriggeredAction::SankeyDiagram(action) = action {
+              Some(action)
+          } else {
+              None
+          }
       })
       // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
       .collect();
@@ -1047,8 +1049,8 @@ impl StateStore {
   }
 
   pub(self) async fn load_state(&self) -> anyhow::Result<WorkflowsState> {
-    let bytes = read_compressed(&tokio::fs::read(&self.state_path).await?)?;
-    Ok(bincode::serde::decode_from_slice(&bytes, bincode::config::standard())?.0)
+    let mut reader = compressed_reader(Cursor::new(tokio::fs::read(&self.state_path).await?));
+    WorkflowsState::deserialize_message_from_reader(&mut reader)
   }
 
   /// Stores states of the passed workflows if all pre-conditions are met.
@@ -1096,8 +1098,13 @@ impl StateStore {
   }
 
   async fn store(state_path: &Path, state: &WorkflowsState) -> anyhow::Result<()> {
-    let bytes = bincode::serde::encode_to_vec(state, bincode::config::standard())?;
-    tokio::fs::write(state_path, write_compressed(&bytes)?).await?;
+    // TODO(snowp): Consider adding better support for async compression - this would let us use
+    // async between file I/O and compression layers. This should save some intermediate copies.
+    tokio::fs::write(
+      state_path,
+      write_compressed(&state.serialize_message_to_bytes()?)?,
+    )
+    .await?;
 
     Ok(())
   }
@@ -1118,13 +1125,19 @@ impl StateStore {
 //
 
 /// Maintains state about the workflow engine that is persisted to disk.
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[bd_macros::proto_serializable]
+#[derive(Debug, Default)]
 pub(crate) struct WorkflowsState {
+  #[field(id = 1)]
   session_id: String,
+  #[field(id = 2)]
   workflows: Vec<Workflow>,
 
+  #[field(id = 3)]
   pending_flush_actions: BTreeSet<PendingFlushBuffersAction>,
+  #[field(id = 4)]
   pending_sankey_actions: BTreeSet<PendingSankeyPathUpload>,
+  #[field(id = 5)]
   streaming_actions: Vec<StreamingBuffersAction>,
 }
 

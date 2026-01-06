@@ -40,7 +40,7 @@ macro_rules! impl_proto_scalar {
     impl $crate::serialization::ProtoFieldSerialize for $t {
       #[allow(clippy::float_cmp)]
       fn compute_size(&self, field_number: u32) -> u64 {
-        // Skip serializing if this is the default value (proto3 behavior)
+        // Skip serializing if this is the default value (proto3 implicit presence)
         if self == &<$t as Default>::default() {
           return 0;
         }
@@ -53,10 +53,26 @@ macro_rules! impl_proto_scalar {
         field_number: u32,
         os: &mut protobuf::CodedOutputStream<'_>,
       ) -> anyhow::Result<()> {
-        // Skip serializing if this is the default value (proto3 behavior)
+        // Skip serializing if this is the default value (proto3 implicit presence)
         if self == &<$t as Default>::default() {
           return Ok(());
         }
+        <$wire as $crate::serialization::WireFormat>::write(self, field_number, os)
+      }
+
+      #[allow(clippy::float_cmp)]
+      fn compute_size_explicit(&self, field_number: u32) -> u64 {
+        // Always compute size, even for default values (proto3 explicit presence)
+        <$wire as $crate::serialization::WireFormat>::compute_size(self, field_number)
+      }
+
+      #[allow(clippy::float_cmp)]
+      fn serialize_explicit(
+        &self,
+        field_number: u32,
+        os: &mut protobuf::CodedOutputStream<'_>,
+      ) -> anyhow::Result<()> {
+        // Always serialize, even for default values (proto3 explicit presence)
         <$wire as $crate::serialization::WireFormat>::write(self, field_number, os)
       }
     }
@@ -112,6 +128,23 @@ macro_rules! impl_proto_string_like {
         if value_ref.is_empty() {
           return Ok(());
         }
+        os.write_string(field_number, value_ref)?;
+        Ok(())
+      }
+
+      fn compute_size_explicit(&self, field_number: u32) -> u64 {
+        let value_ref: &str = self.as_ref();
+        // Always compute size, even for empty strings (proto3 explicit presence)
+        protobuf::rt::string_size(field_number, value_ref)
+      }
+
+      fn serialize_explicit(
+        &self,
+        field_number: u32,
+        os: &mut protobuf::CodedOutputStream<'_>,
+      ) -> anyhow::Result<()> {
+        let value_ref: &str = self.as_ref();
+        // Always serialize, even for empty strings (proto3 explicit presence)
         os.write_string(field_number, value_ref)?;
         Ok(())
       }
@@ -174,6 +207,18 @@ macro_rules! impl_proto_for_type_wrapper {
         os: &mut protobuf::CodedOutputStream<'_>,
       ) -> anyhow::Result<()> {
         (**self).serialize(field_number, os)
+      }
+
+      fn compute_size_explicit(&self, field_number: u32) -> u64 {
+        (**self).compute_size_explicit(field_number)
+      }
+
+      fn serialize_explicit(
+        &self,
+        field_number: u32,
+        os: &mut protobuf::CodedOutputStream<'_>,
+      ) -> anyhow::Result<()> {
+        (**self).serialize_explicit(field_number, os)
       }
     }
 
@@ -240,6 +285,28 @@ macro_rules! impl_proto_repeated {
         }
         Ok(())
       }
+
+      fn compute_size_explicit(&self, field_number: u32) -> u64 {
+        // Repeated fields don't have implicit presence (empty list is serializable), so explicit
+        // and implicit are the same
+        self
+          .iter()
+          .map(|item| item.compute_size(field_number))
+          .sum()
+      }
+
+      fn serialize_explicit(
+        &self,
+        field_number: u32,
+        os: &mut protobuf::CodedOutputStream<'_>,
+      ) -> anyhow::Result<()> {
+        // Repeated fields don't have implicit presence (empty list is serializable), so explicit
+        // and implicit are the same
+        for item in self {
+          item.serialize(field_number, os)?;
+        }
+        Ok(())
+      }
     }
 
     impl<$item: $crate::serialization::ProtoFieldDeserialize + $bounds>
@@ -288,6 +355,28 @@ macro_rules! impl_proto_repeated {
         field_number: u32,
         os: &mut protobuf::CodedOutputStream<'_>,
       ) -> anyhow::Result<()> {
+        for item in self {
+          item.serialize(field_number, os)?;
+        }
+        Ok(())
+      }
+
+      fn compute_size_explicit(&self, field_number: u32) -> u64 {
+        // Repeated fields don't have implicit presence (empty list is serializable), so explicit
+        // and implicit are the same
+        self
+          .iter()
+          .map(|item| item.compute_size(field_number))
+          .sum()
+      }
+
+      fn serialize_explicit(
+        &self,
+        field_number: u32,
+        os: &mut protobuf::CodedOutputStream<'_>,
+      ) -> anyhow::Result<()> {
+        // Repeated fields don't have implicit presence (empty list is serializable), so explicit
+        // and implicit are the same
         for item in self {
           item.serialize(field_number, os)?;
         }
@@ -366,6 +455,22 @@ macro_rules! impl_proto_map {
       ) -> anyhow::Result<()> {
         $crate::serialization::serialize_map(self, field_number, os)
       }
+
+      fn compute_size_explicit(&self, field_number: u32) -> u64 {
+        // Maps don't have implicit presence (empty map is serializable), so explicit and implicit
+        // are the same
+        $crate::serialization::compute_map_size(self, field_number)
+      }
+
+      fn serialize_explicit(
+        &self,
+        field_number: u32,
+        os: &mut protobuf::CodedOutputStream<'_>,
+      ) -> anyhow::Result<()> {
+        // Maps don't have implicit presence (empty map is serializable), so explicit and implicit
+        // are the same
+        $crate::serialization::serialize_map(self, field_number, os)
+      }
     }
 
     impl<$key, $value, $($bounds)*> $crate::serialization::RepeatedFieldDeserialize for $map_type
@@ -420,6 +525,22 @@ macro_rules! impl_proto_map {
         field_number: u32,
         os: &mut protobuf::CodedOutputStream<'_>,
       ) -> anyhow::Result<()> {
+        $crate::serialization::serialize_map(self, field_number, os)
+      }
+
+      fn compute_size_explicit(&self, field_number: u32) -> u64 {
+        // Maps don't have implicit presence (empty map is serializable), so explicit and implicit
+        // are the same
+        $crate::serialization::compute_map_size(self, field_number)
+      }
+
+      fn serialize_explicit(
+        &self,
+        field_number: u32,
+        os: &mut protobuf::CodedOutputStream<'_>,
+      ) -> anyhow::Result<()> {
+        // Maps don't have implicit presence (empty map is serializable), so explicit and implicit
+        // are the same
         $crate::serialization::serialize_map(self, field_number, os)
       }
     }

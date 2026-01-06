@@ -325,7 +325,6 @@ dependencies = [
  "mockall",
  "parking_lot",
  "protobuf 4.0.0-alpha.0",
- "serde",
  "tempfile",
  "thiserror 2.0.17",
  "time",
@@ -592,7 +591,6 @@ dependencies = [
  "mockall",
  "notify",
  "regex",
- "serde",
  "tempfile",
  "thiserror 2.0.17",
  "time",
@@ -612,7 +610,6 @@ dependencies = [
  "log",
  "parking_lot",
  "pretty_assertions",
- "serde",
  "time",
  "uuid",
 ]
@@ -769,7 +766,6 @@ dependencies = [
  "parking_lot",
  "pretty_assertions",
  "protobuf 4.0.0-alpha.0",
- "serde",
  "time",
  "tokio",
 ]
@@ -857,7 +853,6 @@ dependencies = [
  "flate2",
  "ordered-float",
  "protobuf 4.0.0-alpha.0",
- "serde",
  "time",
 ]
 
@@ -916,7 +911,6 @@ dependencies = [
  "parking_lot",
  "pretty_assertions",
  "protobuf 4.0.0-alpha.0",
- "serde",
  "tempfile",
  "thiserror 2.0.17",
  "time",
@@ -1291,8 +1285,10 @@ name = "bd-stats-common"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "bd-macros",
+ "bd-proto-util",
  "bd-workspace-hack",
- "serde",
+ "protobuf 4.0.0-alpha.0",
  "sketches-rust",
 ]
 

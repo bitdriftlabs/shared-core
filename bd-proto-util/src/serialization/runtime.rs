@@ -25,7 +25,7 @@ pub struct Tag {
 
 impl Tag {
   /// Extract wire type and field number from integer tag
-  pub(crate) fn new(value: u32) -> anyhow::Result<Self> {
+  pub fn new(value: u32) -> anyhow::Result<Self> {
     let Some(wire_type) = WireType::new(value & TAG_TYPE_MASK) else {
       anyhow::bail!("Incorrect tag value: {value}");
     };

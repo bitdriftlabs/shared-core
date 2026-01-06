@@ -1026,7 +1026,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     let mut workflow_debug_data: HashMap<String, WorkflowDebugData> = HashMap::new();
     for (workflow_id, state) in std::mem::take(&mut self.pending_workflow_debug_state) {
       let workflow_entry = workflow_debug_data.entry(workflow_id).or_default();
-      for (state_key, data) in state.into_inner() {
+      for (state_key, data) in state.into_inner().into_iter() {
         let last_transition_time: OffsetDateTime = data.last_transition_time.into();
         match state_key {
           WorkflowDebugStateKey::StartOrReset => {

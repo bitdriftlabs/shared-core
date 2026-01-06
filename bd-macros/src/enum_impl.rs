@@ -106,8 +106,24 @@ pub struct VariantCodeGenResult {
 
 /// Generates serialization code for enum tuple variants (variants with a single wrapped value).
 ///
-/// Tuple variants like `Variant(Type)` are the most common form for oneof fields.
-/// They wrap a single value and serialize it directly with the variant's field number.
+/// Tuple variants like `Variant(Type)` are the most common form for oneof fields. They wrap a
+/// single value and serialize it directly with the variant's field number.
+///
+/// # Explicit Presence Semantics
+///
+/// Enum variants model protobuf `oneof` fields, which have explicit presence: the discriminant
+/// (which variant is set) is tracked separately from the value. According to proto3 spec: "If you
+/// set a oneof field to the default value (such as setting an int32 oneof field to 0), the 'case'
+/// of that oneof field will be set, and the value will be serialized on the wire."
+///
+/// Therefore, we use `serialize_explicit` to ensure that even default values (like `0` for
+/// integers, `""` for strings) are serialized on the wire. This ensures round-trip correctness:
+/// ```text
+/// MyEnum::Variant(0) → serialize → deserialize → MyEnum::Variant(0)  ✓ correct
+/// ```
+///
+/// Without explicit presence, the default value would be skipped during serialization, causing the
+/// enum to deserialize as the default variant instead of the intended variant.
 ///
 /// # Example Input
 ///
@@ -130,13 +146,13 @@ fn handle_tuple_variant(
   tag: u32,
 ) -> VariantCodeGenResult {
   let compute_size_arm = quote! {
-    Self::#variant_name(v) =>
-      <#field_type as bd_proto_util::serialization::ProtoFieldSerialize>::compute_size(v, #tag),
+    Self::#variant_name(v) => <#field_type as bd_proto_util::serialization::ProtoFieldSerialize>
+      ::compute_size_explicit(v, #tag),
   };
 
   let serialize_arm = quote! {
-    Self::#variant_name(v) =>
-      <#field_type as bd_proto_util::serialization::ProtoFieldSerialize>::serialize(v, #tag, os)?,
+    Self::#variant_name(v) => <#field_type as bd_proto_util::serialization::ProtoFieldSerialize>
+      ::serialize_explicit(v, #tag, os)?,
   };
 
   let deserialize_code = quote! {
@@ -490,6 +506,11 @@ pub fn process_enum_variants(
     (proc_macro2::TokenStream, bool, syn::Ident),
   > = std::collections::BTreeMap::new();
 
+  // Enum tuple variants use explicit presence semantics (serialize_explicit), which ensures that
+  // even default values (like 0 for integers, "" for strings) are serialized on the wire and
+  // round-trip correctly. The `#[default]` attribute (from Rust's derive macro) can be used for
+  // documentation purposes to indicate which variant is returned by Default::default().
+
   // Process each enum variant
   for variant in &data_enum.variants {
     let variant_name = &variant.ident;
@@ -582,6 +603,19 @@ pub fn process_enum_variants(
                       }
                       Ok(())
                   }
+
+              fn compute_size_explicit(&self, field_number: u32) -> u64 {
+                  // Enums (oneofs) always have explicit presence, so explicit and implicit are the
+                  // same
+                  self.compute_size(field_number)
+              }
+
+              fn serialize_explicit(&self, field_number: u32, os: &mut protobuf::CodedOutputStream)
+                  -> anyhow::Result<()> {
+                  // Enums (oneofs) always have explicit presence, so explicit and implicit are the
+                  // same
+                  self.serialize(field_number, os)
+              }
           }
   };
 

@@ -378,7 +378,6 @@ fn test_roundtrip_nested_with_protobuf() -> Result<()> {
     value: Vec<u8>,
   }
 
-
   // Create a StringValue using rust-protobuf
   let mut string_val = StringValue::new();
   string_val.value = "nested_test".to_string();
@@ -414,11 +413,10 @@ fn test_roundtrip_nested_with_protobuf() -> Result<()> {
 #[test]
 fn test_enum_roundtrip() -> Result<()> {
   #[proto_serializable]
-  #[derive(Debug, PartialEq, Default)]
+  #[derive(Debug, PartialEq)]
   enum Status {
     #[field(id = 1)]
     #[field(deserialize)]
-    #[default]
     Pending,
     #[field(id = 2)]
     Active {
@@ -429,6 +427,12 @@ fn test_enum_roundtrip() -> Result<()> {
     },
     #[field(id = 3)]
     Complete(i32),
+  }
+
+  impl Default for Status {
+    fn default() -> Self {
+      Self::Complete(0)
+    }
   }
 
   let test_cases = vec![
@@ -538,6 +542,131 @@ fn test_wrapper_types() -> Result<()> {
 
   assert_eq!(*original.boxed, *deserialized.boxed);
   assert_eq!(*original.arced, *deserialized.arced);
+
+  Ok(())
+}
+
+#[test]
+fn test_enum_tuple_variant_with_default_values() -> Result<()> {
+  // This test verifies that enum tuple variants (oneofs) serialize correctly even when their inner
+  // values are set to default values (0, "", false, etc.). According to proto3 spec: "If you set a
+  // oneof field to the default value (such as setting an int32 oneof field to 0), the 'case' of
+  // that oneof field will be set, and the value will be serialized on the wire."
+  //
+  // Prior to adding serialize_explicit, Normal(0) would serialize to empty bytes and deserialize
+  // as Timeout (the default variant), causing data corruption.
+
+  #[proto_serializable]
+  #[derive(Debug, PartialEq)]
+  enum TransitionType {
+    #[field(id = 1, default)]
+    Normal(u64),
+    #[field(id = 2)]
+    Timeout,
+    #[field(id = 3)]
+    WithString(String),
+  }
+
+  impl Default for TransitionType {
+    fn default() -> Self {
+      Self::Normal(0)
+    }
+  }
+
+  // Test case 1: Default value for u64 (0) should round-trip correctly
+  let test_cases = vec![
+    TransitionType::Normal(0),  // Default value - critical test case!
+    TransitionType::Normal(42), // Non-default value
+    TransitionType::Timeout,    // Unit variant
+    TransitionType::WithString(String::new()), // Default value for String
+    TransitionType::WithString("hello".to_string()), // Non-default value
+  ];
+
+  for (i, original) in test_cases.into_iter().enumerate() {
+    let mut buf = Vec::new();
+    let mut os = CodedOutputStream::vec(&mut buf);
+    original.serialize(1, &mut os)?;
+    os.flush()?;
+    drop(os);
+
+    // Verify that even default values produce non-empty serialization
+    let is_default_value = match &original {
+      TransitionType::Normal(0) => true,
+      TransitionType::WithString(s) if s.is_empty() => true,
+      _ => false,
+    };
+    if is_default_value {
+      assert!(
+        !buf.is_empty(),
+        "Test case {i}: Default value should serialize to non-empty bytes"
+      );
+    }
+
+    let mut is = CodedInputStream::from_bytes(&buf);
+    let _tag = is.read_raw_varint32()?;
+    let roundtripped = TransitionType::deserialize(&mut is)?;
+
+    assert_eq!(
+      original, roundtripped,
+      "Test case {i}: Round-trip failed for {original:?}"
+    );
+  }
+
+  Ok(())
+}
+
+#[test]
+#[allow(clippy::enum_variant_names)] // Test enum intentionally uses uniform naming
+fn test_enum_multiple_tuple_variants_with_defaults() -> Result<()> {
+  // This test verifies that multiple tuple variants with different types all handle default values
+  // correctly.
+
+  #[proto_serializable]
+  #[derive(Debug, PartialEq)]
+  enum Value {
+    #[field(id = 1, default)]
+    IntValue(i32),
+    #[field(id = 2)]
+    UintValue(u32),
+    #[field(id = 3)]
+    BoolValue(bool),
+    #[field(id = 4)]
+    StringValue(String),
+  }
+
+  impl Default for Value {
+    fn default() -> Self {
+      Self::IntValue(0)
+    }
+  }
+
+  let test_cases = vec![
+    Value::IntValue(0),                     // Default i32
+    Value::IntValue(-42),                   // Non-default i32
+    Value::UintValue(0),                    // Default u32
+    Value::UintValue(100),                  // Non-default u32
+    Value::BoolValue(false),                // Default bool
+    Value::BoolValue(true),                 // Non-default bool
+    Value::StringValue(String::new()),      // Default String
+    Value::StringValue("test".to_string()), // Non-default String
+  ];
+
+  for (i, original) in test_cases.into_iter().enumerate() {
+    let mut buf = Vec::new();
+    let mut os = CodedOutputStream::vec(&mut buf);
+    original.serialize(1, &mut os)?;
+    os.flush()?;
+    drop(os);
+
+    let mut is = CodedInputStream::from_bytes(&buf);
+    let _tag = is.read_raw_varint32()?;
+    let roundtripped = Value::deserialize(&mut is)?;
+
+    assert_eq!(
+      original, roundtripped,
+      "Test case {i}: Round-trip failed for {original:?}"
+    );
+  }
 
   Ok(())
 }
