@@ -13,6 +13,7 @@ use bd_api::{PlatformNetworkManager, PlatformNetworkStream};
 use bd_error_reporter::reporter::{Reporter, handle_unexpected};
 use bd_shutdown::ComponentShutdown;
 use bytes::Bytes;
+use http::header::USER_AGENT;
 use http::{Method, Request};
 use http_body::Frame;
 use http_body_util::{BodyExt, StreamBody};
@@ -93,7 +94,7 @@ impl HyperNetwork {
 
     let client = Client::builder(TokioExecutor::new())
       .http2_only(true)
-      .build(make_tls_connector());
+      .build(make_tls_connector()?);
 
     loop {
       // Loop until we get a new start stream event. There might be stale data left from an
@@ -269,7 +270,10 @@ impl HyperNetwork {
 
   fn create_request(uri: &str, headers: HashMap<String, String>) -> (BodySender, Request<BoxBody>) {
     let (tx, rx) = mpsc::channel(1);
-    let mut builder = Request::builder().method(Method::POST).uri(uri);
+    let mut builder = Request::builder()
+      .method(Method::POST)
+      .uri(uri)
+      .header(USER_AGENT, "bd-hyper-network");
 
     for (key, value) in headers {
       builder = builder.header(key, value);
@@ -350,16 +354,14 @@ pub struct ErrorReporter {
 }
 
 impl ErrorReporter {
-  #[must_use]
-  pub fn new(api_address: String, api_key: String) -> (Self, ErrorReporterHandle) {
+  pub fn new(api_address: String, api_key: String) -> anyhow::Result<(Self, ErrorReporterHandle)> {
     let client = Client::builder(TokioExecutor::new())
       .http2_only(true)
-      .build(make_tls_connector());
-
+      .build(make_tls_connector()?);
 
     // Give the channel a buffer of 5 so we can send multiple errors without dropping errors.
     let (tx, rx) = tokio::sync::mpsc::channel(5);
-    (
+    Ok((
       Self {
         api_address,
         api_key,
@@ -367,7 +369,7 @@ impl ErrorReporter {
         rx,
       },
       ErrorReporterHandle(tx),
-    )
+    ))
   }
 
   pub async fn start(mut self) {
@@ -434,15 +436,17 @@ impl Reporter for ErrorReporterHandle {
   }
 }
 
-fn make_tls_connector() -> HttpsConnector<HttpConnector> {
+fn make_tls_connector() -> anyhow::Result<HttpsConnector<HttpConnector>> {
   let mut connector = HttpConnector::new();
   connector.enforce_http(false);
 
-  HttpsConnectorBuilder::new()
-    .with_webpki_roots()
-    .https_or_http()
-    .enable_http2()
-    .wrap_connector(connector)
+  Ok(
+    HttpsConnectorBuilder::new()
+      .with_native_roots()?
+      .https_or_http()
+      .enable_http2()
+      .wrap_connector(connector),
+  )
 }
 
 #[cfg(test)]

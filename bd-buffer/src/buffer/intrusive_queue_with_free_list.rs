@@ -22,7 +22,7 @@ pub struct Container<T> {
 }
 
 intrusive_adapter!(ContainerAdapter<T> = Box<Container<T>>:
-                   Container<T> { link: LinkedListLink });
+                   Container<T> { link => LinkedListLink });
 
 //
 // IntrusiveQueueWithFreeList
