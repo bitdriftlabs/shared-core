@@ -43,7 +43,7 @@ fn error_reporter() {
   let mut test_server = TestServer::new();
 
   let (reporter, handle) =
-    super::ErrorReporter::new(test_server.address.clone(), "api-key".to_string());
+    super::ErrorReporter::new(test_server.address.clone(), "api-key".to_string()).unwrap();
 
   std::thread::spawn(move || {
     tokio::runtime::Runtime::new()

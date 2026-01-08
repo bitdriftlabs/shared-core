@@ -34,7 +34,7 @@ use bd_grpc_codec::{
 };
 use bd_time::TimeDurationExt;
 use bytes::Bytes;
-use http::header::{CONTENT_ENCODING, CONTENT_TYPE, TRANSFER_ENCODING};
+use http::header::{CONTENT_ENCODING, CONTENT_TYPE, TRANSFER_ENCODING, USER_AGENT};
 use http::{HeaderMap, Uri};
 use http_body::Frame;
 use http_body_util::{BodyExt, StreamBody};
@@ -205,7 +205,8 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
     let mut request = hyper::Request::builder()
       .method(hyper::Method::POST)
       .uri(uri)
-      .header(CONTENT_TYPE, connect_protocol.to_content_type());
+      .header(CONTENT_TYPE, connect_protocol.to_content_type())
+      .header(USER_AGENT, "bd-grpc");
     if connect_protocol.is_some() {
       request = request.header(CONNECT_PROTOCOL_VERSION, "1");
     } else {
