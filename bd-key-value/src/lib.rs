@@ -168,12 +168,9 @@ impl Store {
               anyhow::bail!("stored string is too short to contain length prefix")
             };
 
-            let len_u64 = u64::from_le_bytes(*len_bytes);
-            let len = usize::try_from(len_u64).map_err(|_| {
-              anyhow::anyhow!("stored string length {len_u64} exceeds platform maximum")
-            })?;
+            let len = u64::from_le_bytes(*len_bytes);
 
-            if rest.len() != len {
+            if rest.len() as u64 != len {
               anyhow::bail!("stored string length prefix does not match actual length");
             }
 
