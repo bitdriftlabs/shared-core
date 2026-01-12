@@ -47,11 +47,14 @@ serde.workspace             = true
 tempfile.workspace          = true
 time.workspace              = true
 tokio.workspace             = true
-tokio-rustls.workspace      = true
+tokio-rustls                = { workspace = true, default-features = false }
 tokio-stream.workspace      = true
 tower.workspace             = true
 tracing.workspace           = true
 
 [features]
-default = ["runtime"]
-runtime = ["bd-runtime-config", "mockall"]
+aws-lc-rs            = ["tokio-rustls/aws-lc-rs", "tokio-rustls-default"]
+default              = ["runtime", "aws-lc-rs"]
+ring                 = ["tokio-rustls/ring", "tokio-rustls-default"]
+runtime              = ["bd-runtime-config", "mockall"]
+tokio-rustls-default = ["tokio-rustls/tls12"]
