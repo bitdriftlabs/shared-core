@@ -1285,7 +1285,7 @@ fn workflow_generate_log_to_histogram() {
     [].into(),
   );
 
-  setup.flush_and_upload_stats();
+  // The log flush will also upload stats.
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
     stat_upload.get_inline_histogram(

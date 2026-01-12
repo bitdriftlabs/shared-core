@@ -8,6 +8,12 @@ version      = "1.0.0"
 [lib]
 doctest = false
 
+[features]
+aws-lc-rs            = ["hyper-rustls/aws-lc-rs", "hyper-rustls-default"]
+default              = ["aws-lc-rs"]
+hyper-rustls-default = ["hyper-rustls/native-tokio", "hyper-rustls/http1", "hyper-rustls/http2", "hyper-rustls/tls12"]
+ring                 = ["hyper-rustls/ring", "hyper-rustls-default"]
+
 [dependencies]
 anyhow.workspace            = true
 async-trait.workspace       = true
@@ -21,7 +27,7 @@ http.workspace              = true
 http-body.workspace         = true
 http-body-util.workspace    = true
 hyper.workspace             = true
-hyper-rustls.workspace      = true
+hyper-rustls                = { workspace = true, default-features = false }
 hyper-util.workspace        = true
 log.workspace               = true
 serde.workspace             = true
