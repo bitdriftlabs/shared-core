@@ -32,6 +32,7 @@ pub trait Remote {
   async fn get_api_url() -> String;
   async fn start_new_session();
   async fn set_sleep_mode(enabled: bool);
+  async fn set_feature_flag(name: String, variant: Option<String>);
 }
 
 #[derive(Clone)]
@@ -142,6 +143,17 @@ impl Remote for Server {
   async fn start_new_session(self, _: ::tarpc::context::Context) {
     if let Some(logger) = &*LOGGER.lock() {
       logger.start_new_session();
+    }
+  }
+
+  async fn set_feature_flag(
+    self,
+    _: ::tarpc::context::Context,
+    name: String,
+    variant: Option<String>,
+  ) {
+    if let Some(logger) = &*LOGGER.lock() {
+      logger.set_feature_flag(name, variant);
     }
   }
 }

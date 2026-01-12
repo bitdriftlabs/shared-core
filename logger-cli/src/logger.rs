@@ -87,6 +87,11 @@ impl LoggerHolder {
     handle.transition_sleep_mode(enabled);
   }
 
+  pub fn set_feature_flag(&self, name: String, variant: Option<String>) {
+    let handle = self.logger.lock().new_logger_handle();
+    handle.set_feature_flag_exposure(name, variant);
+  }
+
   pub fn stop(&self) {
     sleep(2.std_seconds());
     self.logger.lock().shutdown(true);

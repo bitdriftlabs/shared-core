@@ -79,6 +79,15 @@ struct LogParameters {
   fields: Vec<LogField>,
 }
 
+#[derive(serde::Deserialize, Debug, schemars::JsonSchema)]
+struct SetFeatureFlagParameters {
+  /// The name of the feature flag.
+  name: String,
+
+  /// The optional variant value for the feature flag.
+  variant: Option<String>,
+}
+
 struct Tool {
   tool_router: ToolRouter<Self>,
 
@@ -159,6 +168,32 @@ impl Tool {
       .map_err(|e| {
         McpError::internal_error(
           "failed to start new session",
+          Some(json!({
+            "error": format!("{e}")
+          })),
+        )
+      })?;
+
+    Ok(CallToolResult::success(vec![]))
+  }
+
+  #[tool(description = "Set a feature flag exposure")]
+  async fn set_feature_flag(
+    &self,
+    Parameters(params): Parameters<SetFeatureFlagParameters>,
+  ) -> Result<CallToolResult, McpError> {
+    self
+      .with_logger(|logger: RemoteClient| async move {
+        logger
+          .set_feature_flag(tarpc::context::current(), params.name, params.variant)
+          .await?;
+
+        Ok(())
+      })
+      .await
+      .map_err(|e| {
+        McpError::internal_error(
+          "failed to set feature flag",
           Some(json!({
             "error": format!("{e}")
           })),

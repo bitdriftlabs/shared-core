@@ -63,6 +63,9 @@ pub enum Command {
 
   /// Toggle sleep mode
   SetSleepMode(SleepModeCommand),
+
+  /// Set a feature flag exposure
+  SetFeatureFlag(SetFeatureFlagCommand),
 }
 
 #[derive(Args, Debug)]
@@ -159,6 +162,16 @@ pub struct RuntimeValueCommand {
   pub type_: RuntimeValueType,
 
   pub name: String,
+}
+
+#[derive(Args, Debug)]
+pub struct SetFeatureFlagCommand {
+  /// Name of the feature flag
+  pub name: String,
+
+  /// Optional variant value for the feature flag
+  #[clap(long)]
+  pub variant: Option<String>,
 }
 
 pub struct FieldPairs<T>(pub Vec<T>);
