@@ -913,6 +913,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                   if let LoggingState::Initialized(initialized_logging_context) =
                     &mut self.logging_state
                   {
+                    let variant_value = variant.clone().unwrap_or_default();
+
                     // Initialized: update state store and replay through workflows
                     initialized_logging_context
                       .handle_state_insert(
@@ -921,12 +923,37 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                         &mut self.global_state_tracker,
                         &mut self.replayer,
                         Scope::FeatureFlagExposure,
-                        flag,
-                        variant.unwrap_or_default(),
+                        flag.clone(),
+                        variant_value.clone(),
                         self.time_provider.now(),
                         &self.session_strategy.session_id(),
                       )
                       .await;
+
+                    // Emit an internal log for the feature flag change
+                    let mut fields: AnnotatedLogFields = AnnotatedLogFields::new();
+                    fields.insert(
+                      "_feature_flag_name".into(),
+                      AnnotatedLogField::new_ootb(flag.clone()),
+                    );
+                    fields.insert(
+                      "_feature_flag_variant".into(),
+                      AnnotatedLogField::new_ootb(variant_value),
+                    );
+
+                    let log = LogLine {
+                      log_level: bd_log_primitives::log_level::INFO,
+                      log_type: LogType::INTERNAL_SDK,
+                      message: LogMessage::String(format!("Feature flag set: {flag}")),
+                      fields,
+                      matching_fields: AnnotatedLogFields::new(),
+                      attributes_overrides: None,
+                      capture_session: None,
+                    };
+
+                    if let Err(e) = self.process_all_logs(log, false, &state_store).await {
+                      log::debug!("failed to emit feature flag log: {e}");
+                    }
                   } else {
                     // Not initialized: queue the operation for later replay
                     if let LoggingState::Uninitialized(uninitialized_logging_context) =
