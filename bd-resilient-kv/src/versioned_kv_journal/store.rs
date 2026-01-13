@@ -14,20 +14,99 @@ use crate::{Scope, UpdateError};
 use ahash::AHashMap;
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_proto::protos::state::payload::StateValue;
+use bd_stats_common::labels;
 use bd_time::TimeProvider;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-/// Common statistics for versioned KV store operations.
+/// Counters for operations with success/failure outcomes.
 #[derive(Clone)]
-struct CommonStats {
-  capacity_exceeded_unrecoverable: bd_client_stats_store::Counter,
+struct OperationCounters {
+  success: bd_client_stats_store::Counter,
+  failure: bd_client_stats_store::Counter,
 }
 
-impl CommonStats {
-  fn new(stats: &bd_client_stats_store::Scope) -> Self {
+impl OperationCounters {
+  fn new(scope: &bd_client_stats_store::Scope, name: &str) -> Self {
     Self {
-      capacity_exceeded_unrecoverable: stats.scope("kv").counter("capacity_exceeded_unrecoverable"),
+      success: scope.counter_with_labels(name, labels!("result" => "success")),
+      failure: scope.counter_with_labels(name, labels!("result" => "failure")),
+    }
+  }
+
+  fn record_success(&self) {
+    self.success.inc();
+  }
+
+  fn record_failure(&self) {
+    self.failure.inc();
+  }
+}
+
+/// Counters for data loss events.
+#[derive(Clone)]
+struct DataLossCounters {
+  partial: bd_client_stats_store::Counter,
+  total: bd_client_stats_store::Counter,
+}
+
+impl DataLossCounters {
+  fn new(scope: &bd_client_stats_store::Scope) -> Self {
+    Self {
+      partial: scope.counter_with_labels("data_loss", labels!("severity" => "partial")),
+      total: scope.counter_with_labels("data_loss", labels!("severity" => "total")),
+    }
+  }
+
+  fn record(&self, data_loss: &DataLoss) {
+    match data_loss {
+      DataLoss::Partial => self.partial.inc(),
+      DataLoss::Total => self.total.inc(),
+      DataLoss::None => {},
+    }
+  }
+}
+
+/// Counters for capacity events.
+#[derive(Clone)]
+struct CapacityCounters {
+  recoverable: bd_client_stats_store::Counter,
+  unrecoverable: bd_client_stats_store::Counter,
+}
+
+impl CapacityCounters {
+  fn new(scope: &bd_client_stats_store::Scope) -> Self {
+    Self {
+      recoverable: scope.counter_with_labels("capacity_exceeded", labels!("recoverable" => "true")),
+      unrecoverable: scope
+        .counter_with_labels("capacity_exceeded", labels!("recoverable" => "false")),
+    }
+  }
+}
+
+/// All stats for the KV store.
+#[derive(Clone)]
+struct Stats {
+  data_loss: DataLossCounters,
+  journal_open: OperationCounters,
+  journal_rotation: OperationCounters,
+  journal_sync: OperationCounters,
+  compression: OperationCounters,
+  capacity: CapacityCounters,
+  rotation_duration_s: bd_client_stats_store::Histogram,
+}
+
+impl Stats {
+  fn new(scope: &bd_client_stats_store::Scope) -> Self {
+    let kv = scope.scope("kv");
+    Self {
+      data_loss: DataLossCounters::new(&kv),
+      journal_open: OperationCounters::new(&kv, "journal_open"),
+      journal_rotation: OperationCounters::new(&kv, "journal_rotation"),
+      journal_sync: OperationCounters::new(&kv, "journal_sync"),
+      compression: OperationCounters::new(&kv, "compression"),
+      capacity: CapacityCounters::new(&kv),
+      rotation_duration_s: kv.histogram("rotation_duration_s"),
     }
   }
 }
@@ -228,7 +307,7 @@ struct PersistentStore {
   initial_buffer_size: usize,
   max_capacity_bytes: usize,
   // Stats
-  stats: CommonStats,
+  stats: Stats,
 }
 
 impl PersistentStore {
@@ -238,7 +317,7 @@ impl PersistentStore {
     config: PersistentStoreConfig,
     time_provider: Arc<dyn TimeProvider>,
     retention_registry: Arc<RetentionRegistry>,
-    stats: CommonStats,
+    stats: Stats,
   ) -> anyhow::Result<(Self, DataLoss)> {
     let high_water_mark_ratio = config.high_water_mark_ratio;
     let dir = dir_path.as_ref();
@@ -254,6 +333,8 @@ impl PersistentStore {
         .map(|opened| {
           // Get the buffer size from the opened journal. The buffer might have grown dynamically.
           let buffer_size = opened.journal.buffer_len();
+          stats.journal_open.record_success();
+          stats.data_loss.record(&opened.data_loss.clone().into());
           (
             opened.journal,
             opened.initial_state,
@@ -268,6 +349,10 @@ impl PersistentStore {
             e
           );
 
+          stats.journal_open.record_failure();
+          let data_loss = DataLoss::Total;
+          stats.data_loss.record(&data_loss);
+
           Ok::<_, anyhow::Error>((
             MemMappedVersionedJournal::new(
               &journal_path,
@@ -277,11 +362,12 @@ impl PersistentStore {
               std::iter::empty(),
             )?,
             ScopedMaps::default(),
-            DataLoss::Total,
+            data_loss,
             config.initial_buffer_size,
           ))
         })?
     } else {
+      stats.journal_open.record_success();
       (
         MemMappedVersionedJournal::new(
           &journal_path,
@@ -449,7 +535,13 @@ impl PersistentStore {
   }
 
   fn sync(&self) -> anyhow::Result<()> {
-    MemMappedVersionedJournal::sync(&self.journal)
+    let result = MemMappedVersionedJournal::sync(&self.journal);
+    if result.is_ok() {
+      self.stats.journal_sync.record_success();
+    } else {
+      self.stats.journal_sync.record_failure();
+    }
+    result
   }
 
   fn journal_path(&self) -> PathBuf {
@@ -540,9 +632,12 @@ impl PersistentStore {
 
         // Check if rotation would help. If not, fail immediately.
         if !self.would_rotation_help(entry_size) {
-          self.stats.capacity_exceeded_unrecoverable.inc();
+          self.stats.capacity.unrecoverable.inc();
           return Err(UpdateError::CapacityExceeded);
         }
+
+        // Rotation can help - record recoverable capacity exceeded
+        self.stats.capacity.recoverable.inc();
 
         // Rotate with knowledge of incoming entry size
         self.rotate_journal_with_hint(entry_size).await?;
@@ -580,9 +675,11 @@ impl PersistentStore {
 
         // Check if rotation would help. If not, fail immediately.
         if !self.would_rotation_help(total_size) {
-          self.stats.capacity_exceeded_unrecoverable.inc();
+          self.stats.capacity.unrecoverable.inc();
           return Err(UpdateError::CapacityExceeded);
         }
+
+        self.stats.capacity.recoverable.inc();
 
         // Rotate with knowledge of incoming batch size
         self.rotate_journal_with_hint(total_size).await?;
@@ -605,6 +702,8 @@ impl PersistentStore {
     &mut self,
     min_additional_space: usize,
   ) -> anyhow::Result<Rotation> {
+    let _timer = self.stats.rotation_duration_s.start_timer();
+
     let next_generation = self.current_generation + 1;
     let old_generation = self.current_generation;
     self.current_generation = next_generation;
@@ -635,7 +734,7 @@ impl PersistentStore {
 
     MemMappedVersionedJournal::sync(&self.journal)?;
     let time_provider = self.journal.time_provider.clone();
-    let new_journal = MemMappedVersionedJournal::new(
+    let new_journal_result = MemMappedVersionedJournal::new(
       &new_journal_path,
       new_buffer_size,
       self.high_water_mark_ratio,
@@ -644,7 +743,15 @@ impl PersistentStore {
         .cached_map
         .iter()
         .map(|(frame_type, key, tv)| (frame_type, key.clone(), tv.value.clone(), tv.timestamp)),
-    )?;
+    );
+
+    let new_journal = match new_journal_result {
+      Ok(journal) => journal,
+      Err(e) => {
+        self.stats.journal_rotation.record_failure();
+        return Err(e);
+      },
+    };
 
     // Update buffer_size to reflect the new journal's size
     self.buffer_size = new_buffer_size;
@@ -696,12 +803,18 @@ impl PersistentStore {
         );
       } else {
         // Try to compress the old journal for longer-term storage.
-        if let Err(e) = compress_archived_journal(&old_journal_path, &archived_path).await {
-          log::debug!(
-            "Failed to compress archived journal {}: {}",
-            old_journal_path.display(),
-            e
-          );
+        match compress_archived_journal(&old_journal_path, &archived_path).await {
+          Ok(()) => {
+            self.stats.compression.record_success();
+          },
+          Err(e) => {
+            self.stats.compression.record_failure();
+            log::debug!(
+              "Failed to compress archived journal {}: {}",
+              old_journal_path.display(),
+              e
+            );
+          },
         }
 
         // After creating a snapshot, trigger cleanup of old snapshots
@@ -729,6 +842,8 @@ impl PersistentStore {
         );
       });
 
+    self.stats.journal_rotation.record_success();
+
     Ok(Rotation {
       new_journal_path,
       old_journal_path,
@@ -743,15 +858,11 @@ struct InMemoryStore {
   cached_map: ScopedMaps,
   max_bytes: Option<usize>,
   current_size_bytes: usize,
-  stats: CommonStats,
+  stats: Stats,
 }
 
 impl InMemoryStore {
-  fn new(
-    time_provider: Arc<dyn TimeProvider>,
-    max_bytes: Option<usize>,
-    stats: CommonStats,
-  ) -> Self {
+  fn new(time_provider: Arc<dyn TimeProvider>, max_bytes: Option<usize>, stats: Stats) -> Self {
     Self {
       time_provider,
       cached_map: ScopedMaps::default(),
@@ -820,7 +931,7 @@ impl InMemoryStore {
           if let Some(max_bytes) = self.max_bytes {
             let new_size = self.current_size_bytes.saturating_add(size_delta);
             if new_size > max_bytes {
-              self.stats.capacity_exceeded_unrecoverable.inc();
+              self.stats.capacity.unrecoverable.inc();
               return Err(UpdateError::CapacityExceeded);
             }
           }
@@ -838,7 +949,7 @@ impl InMemoryStore {
           if let Some(max_bytes) = self.max_bytes {
             let new_size = self.current_size_bytes.saturating_add(new_entry_size);
             if new_size > max_bytes {
-              self.stats.capacity_exceeded_unrecoverable.inc();
+              self.stats.capacity.unrecoverable.inc();
               return Err(UpdateError::CapacityExceeded);
             }
           }
@@ -913,7 +1024,7 @@ impl InMemoryStore {
       };
 
       if new_size > max_bytes {
-        self.stats.capacity_exceeded_unrecoverable.inc();
+        self.stats.capacity.unrecoverable.inc();
         return Err(UpdateError::CapacityExceeded);
       }
     }
@@ -1005,7 +1116,7 @@ impl VersionedKVStore {
     retention_registry: Arc<RetentionRegistry>,
     stats: &bd_client_stats_store::Scope,
   ) -> anyhow::Result<(Self, DataLoss)> {
-    let common_stats = CommonStats::new(stats);
+    let kv_stats = Stats::new(stats);
 
     let (store, data_loss) = PersistentStore::new(
       dir_path,
@@ -1013,7 +1124,7 @@ impl VersionedKVStore {
       config,
       time_provider,
       retention_registry,
-      common_stats,
+      kv_stats,
     )
     .await?;
 
@@ -1052,10 +1163,10 @@ impl VersionedKVStore {
     max_bytes: Option<usize>,
     stats: &bd_client_stats_store::Scope,
   ) -> Self {
-    let common_stats = CommonStats::new(stats);
+    let kv_stats = Stats::new(stats);
 
     Self {
-      backend: StoreBackend::InMemory(InMemoryStore::new(time_provider, max_bytes, common_stats)),
+      backend: StoreBackend::InMemory(InMemoryStore::new(time_provider, max_bytes, kv_stats)),
     }
   }
 

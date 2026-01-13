@@ -361,7 +361,7 @@ async fn insert_triggers_rotation_on_capacity_exceeded() -> anyhow::Result<()> {
 #[tokio::test]
 async fn insert_fails_when_exceeding_max_capacity() -> anyhow::Result<()> {
   use bd_client_stats_store::test::StatsHelper;
-  use std::collections::BTreeMap;
+  use bd_stats_common::labels;
 
   let setup = Setup::new();
 
@@ -398,8 +398,8 @@ async fn insert_fails_when_exceeding_max_capacity() -> anyhow::Result<()> {
   // Verify the metric was incremented
   setup.collector.assert_counter_eq(
     1,
-    "test:kv:capacity_exceeded_unrecoverable",
-    BTreeMap::new(),
+    "test:kv:capacity_exceeded",
+    labels!("recoverable" => "false"),
   );
 
   Ok(())
