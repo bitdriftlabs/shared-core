@@ -69,6 +69,9 @@ pub enum Command {
 
   /// Print the current feature flags
   GetFeatureFlags,
+
+  /// Dump the current configuration as JSON
+  DumpConfig,
 }
 
 #[derive(Args, Debug)]

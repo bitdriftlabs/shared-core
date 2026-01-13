@@ -5,6 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use bd_client_common::file::read_compressed_protobuf;
+use bd_proto::protos::client::api::ConfigurationUpdate;
 use logger_cli::service::RemoteClient;
 use logger_cli::types::{LogLevel, LogType};
 use rmcp::handler::server::tool::ToolRouter;
@@ -30,6 +32,8 @@ use rmcp::{
   tool_router,
 };
 use serde_json::json;
+use std::env;
+use std::path::PathBuf;
 use tarpc::client;
 use tarpc::tokio_serde::formats::Json;
 use tracing_subscriber::EnvFilter;
@@ -106,6 +110,11 @@ impl Tool {
     let logger = RemoteClient::new(client::Config::default(), transport.await?).spawn();
     f(logger).await?;
     Ok(())
+  }
+
+  fn sdk_directory(&self) -> PathBuf {
+    let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(&home).join(".local").join("bd-logger-cli")
   }
 }
 
@@ -247,6 +256,43 @@ impl Tool {
         )
       })?,
     ]))
+  }
+
+  #[tool(description = "Dump the current configuration as JSON")]
+  async fn dump_config(&self) -> Result<CallToolResult, McpError> {
+    let sdk_directory = self.sdk_directory();
+    let config_file = sdk_directory.join("config").join("protobuf.pb");
+
+    if !config_file.exists() {
+      return Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+        "No configuration cached (config file not found)",
+      )]));
+    }
+
+    let compressed_bytes = std::fs::read(&config_file).map_err(|e| {
+      McpError::internal_error(
+        "failed to read config file",
+        Some(json!({ "error": format!("{e}") })),
+      )
+    })?;
+
+    let config: ConfigurationUpdate = read_compressed_protobuf(&compressed_bytes).map_err(|e| {
+      McpError::internal_error(
+        "failed to parse config",
+        Some(json!({ "error": format!("{e}") })),
+      )
+    })?;
+
+    let json = protobuf_json_mapping::print_to_string(&config).map_err(|e| {
+      McpError::internal_error(
+        "failed to serialize config to JSON",
+        Some(json!({ "error": format!("{e}") })),
+      )
+    })?;
+
+    Ok(CallToolResult::success(vec![rmcp::model::Content::text(
+      json,
+    )]))
   }
 }
 
