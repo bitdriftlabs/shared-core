@@ -33,6 +33,7 @@ pub trait Remote {
   async fn start_new_session();
   async fn set_sleep_mode(enabled: bool);
   async fn set_feature_flag(name: String, variant: Option<String>);
+  async fn get_feature_flags() -> Vec<(String, String)>;
 }
 
 #[derive(Clone)]
@@ -155,5 +156,11 @@ impl Remote for Server {
     if let Some(logger) = &*LOGGER.lock() {
       logger.set_feature_flag(name, variant);
     }
+  }
+
+  async fn get_feature_flags(self, _: ::tarpc::context::Context) -> Vec<(String, String)> {
+    (*LOGGER.lock())
+      .as_ref()
+      .map_or_else(Vec::new, LoggerHolder::get_feature_flags)
   }
 }

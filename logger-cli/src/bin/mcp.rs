@@ -202,6 +202,52 @@ impl Tool {
 
     Ok(CallToolResult::success(vec![]))
   }
+
+  #[tool(description = "Get all currently set feature flags")]
+  async fn get_feature_flags(&self) -> Result<CallToolResult, McpError> {
+    let addr = format!("{}:{}", self.host, self.port);
+    let mut transport = tarpc::serde_transport::tcp::connect(addr, Json::default);
+    transport.config_mut().max_frame_length(usize::MAX);
+    let logger = RemoteClient::new(
+      client::Config::default(),
+      transport.await.map_err(|e| {
+        McpError::internal_error(
+          "failed to connect to logger",
+          Some(json!({ "error": format!("{e}") })),
+        )
+      })?,
+    )
+    .spawn();
+
+    let flags = logger
+      .get_feature_flags(tarpc::context::current())
+      .await
+      .map_err(|e| {
+        McpError::internal_error(
+          "failed to get feature flags",
+          Some(json!({ "error": format!("{e}") })),
+        )
+      })?;
+
+    let result = flags
+      .into_iter()
+      .map(|(name, variant)| {
+        json!({
+          "name": name,
+          "variant": if variant.is_empty() { None } else { Some(variant) }
+        })
+      })
+      .collect::<Vec<_>>();
+
+    Ok(CallToolResult::success(vec![
+      rmcp::model::Content::json(result).map_err(|e| {
+        McpError::internal_error(
+          "failed to serialize feature flags",
+          Some(json!({ "error": format!("{e}") })),
+        )
+      })?,
+    ]))
+  }
 }
 
 #[tool_handler]

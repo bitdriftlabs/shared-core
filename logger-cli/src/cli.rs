@@ -66,6 +66,9 @@ pub enum Command {
 
   /// Set a feature flag exposure
   SetFeatureFlag(SetFeatureFlagCommand),
+
+  /// Print the current feature flags
+  GetFeatureFlags,
 }
 
 #[derive(Args, Debug)]

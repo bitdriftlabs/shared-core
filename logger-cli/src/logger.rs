@@ -92,6 +92,15 @@ impl LoggerHolder {
     handle.set_feature_flag_exposure(name, variant);
   }
 
+  pub fn get_feature_flags(&self) -> Vec<(String, String)> {
+    let handle = self.logger.lock().new_logger_handle();
+    handle
+      .get_feature_flags(time::Duration::seconds(1))
+      .into_iter()
+      .map(|entry| (entry.name, entry.variant))
+      .collect()
+  }
+
   pub fn stop(&self) {
     sleep(2.std_seconds());
     self.logger.lock().shutdown(true);

@@ -137,6 +137,28 @@ async fn main() -> anyhow::Result<()> {
       })
       .await?;
     },
+    Command::GetFeatureFlags => {
+      with_logger(&args, async |logger| {
+        let flags = logger.get_feature_flags(context::current()).await?;
+        if flags.is_empty() {
+          eprintln!("No feature flags set");
+        } else {
+          // Print table header
+          eprintln!("{:<30} VARIANT", "NAME");
+          eprintln!("{}", "-".repeat(50));
+          for (name, variant) in flags {
+            let variant_display = if variant.is_empty() {
+              "<none>".to_string()
+            } else {
+              variant
+            };
+            eprintln!("{name:<30} {variant_display}");
+          }
+        }
+        Ok(())
+      })
+      .await?;
+    },
     Command::Stop => {
       let addr = format!("{}:{}", args.host, args.port);
       let mut transport = tarpc::serde_transport::tcp::connect(addr, Json::default);
