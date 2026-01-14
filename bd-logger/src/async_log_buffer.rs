@@ -929,31 +929,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                         &self.session_strategy.session_id(),
                       )
                       .await;
-
-                    // Emit an internal log for the feature flag change
-                    let mut fields: AnnotatedLogFields = AnnotatedLogFields::new();
-                    fields.insert(
-                      "_feature_flag_name".into(),
-                      AnnotatedLogField::new_ootb(flag.clone()),
-                    );
-                    fields.insert(
-                      "_feature_flag_variant".into(),
-                      AnnotatedLogField::new_ootb(variant_value),
-                    );
-
-                    let log = LogLine {
-                      log_level: bd_log_primitives::log_level::INFO,
-                      log_type: LogType::INTERNAL_SDK,
-                      message: LogMessage::String(format!("Feature flag set: {flag}")),
-                      fields,
-                      matching_fields: AnnotatedLogFields::new(),
-                      attributes_overrides: None,
-                      capture_session: None,
-                    };
-
-                    if let Err(e) = self.process_all_logs(log, false, &state_store).await {
-                      log::debug!("failed to emit feature flag log: {e}");
-                    }
                   } else {
                     // Not initialized: queue the operation for later replay
                     if let LoggingState::Uninitialized(uninitialized_logging_context) =
