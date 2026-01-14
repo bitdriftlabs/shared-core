@@ -66,12 +66,6 @@ pub enum Command {
 
   /// Set a feature flag exposure
   SetFeatureFlag(SetFeatureFlagCommand),
-
-  /// Print the current feature flags
-  GetFeatureFlags,
-
-  /// Dump the current configuration as JSON
-  DumpConfig,
 }
 
 #[derive(Args, Debug)]

@@ -50,7 +50,7 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
-use bd_state::{Scope, StateReader};
+use bd_state::Scope;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::WorkflowDebugStateMap;
@@ -86,19 +86,11 @@ impl ReportProcessor for () {
   }
 }
 
-/// A feature flag entry returned from `GetFeatureFlags`.
-#[derive(Debug, Clone)]
-pub struct FeatureFlagEntry {
-  pub name: String,
-  pub variant: String,
-}
-
 #[derive(Debug)]
 pub enum StateUpdateMessage {
   AddLogField(String, StringOrBytes),
   RemoveLogField(String),
   SetFeatureFlagExposure(String, Option<String>),
-  GetFeatureFlags(bd_completion::Sender<Vec<FeatureFlagEntry>>),
   FlushState(Option<bd_completion::Sender<()>>),
 }
 
@@ -111,7 +103,6 @@ impl MemorySized for StateUpdateMessage {
         Self::SetFeatureFlagExposure(flag, variant) => {
           flag.len() + variant.as_ref().map_or(0, String::len)
         },
-        Self::GetFeatureFlags(sender) => size_of_val(sender),
         Self::FlushState(sender) => size_of_val(sender),
       }
   }
@@ -913,7 +904,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                   if let LoggingState::Initialized(initialized_logging_context) =
                     &mut self.logging_state
                   {
-
                     // Initialized: update state store and replay through workflows
                     initialized_logging_context
                       .handle_state_insert(
@@ -949,27 +939,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                       }
                     }
                   }
-                },
-                StateUpdateMessage::GetFeatureFlags(response_tx) => {
-                  let entries = state_store
-                    .read()
-                    .await
-                    .iter()
-                    .filter(|entry| entry.scope == Scope::FeatureFlagExposure)
-                    .map(|entry| FeatureFlagEntry {
-                      name: entry.key.clone(),
-                      variant: entry
-                        .value
-                        .value_type
-                        .as_ref()
-                        .and_then(|v| match v {
-                          bd_state::Value_type::StringValue(s) => Some(s.clone()),
-                          _ => None,
-                        })
-                        .unwrap_or_default(),
-                    })
-                    .collect();
-                  response_tx.send(entries);
                 },
                 StateUpdateMessage::FlushState(completion_tx) => {
                   let flush_stats_trigger = self.logging_state.flush_stats_trigger().clone();

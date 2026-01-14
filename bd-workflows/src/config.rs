@@ -77,17 +77,7 @@ impl WorkflowsConfiguration {
           WorkflowDebugMode::None
         };
 
-        let workflow_id = config.id.clone();
-        match Config::new(config, mode) {
-          Ok(c) => {
-            log::debug!("workflow={workflow_id}: successfully parsed config");
-            Some(c)
-          },
-          Err(e) => {
-            log::debug!("workflow={workflow_id}: failed to parse config: {e}");
-            None
-          },
-        }
+        Config::new(config, mode).ok()
       })
       .collect();
     // Add debug workflows that are not deployed.

@@ -6,8 +6,6 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::cli::{Command, EnableFlag, FieldPairs, Options};
-use bd_client_common::file::read_compressed_protobuf;
-use bd_proto::protos::client::api::ConfigurationUpdate;
 use bd_session::fixed::Callbacks;
 use clap::Parser;
 use logger_cli::logger::{MaybeStaticSessionGenerator, SESSION_FILE};
@@ -139,28 +137,6 @@ async fn main() -> anyhow::Result<()> {
       })
       .await?;
     },
-    Command::GetFeatureFlags => {
-      with_logger(&args, async |logger| {
-        let flags = logger.get_feature_flags(context::current()).await?;
-        if flags.is_empty() {
-          eprintln!("No feature flags set");
-        } else {
-          // Print table header
-          eprintln!("{:<30} VARIANT", "NAME");
-          eprintln!("{}", "-".repeat(50));
-          for (name, variant) in flags {
-            let variant_display = if variant.is_empty() {
-              "<none>".to_string()
-            } else {
-              variant
-            };
-            eprintln!("{name:<30} {variant_display}");
-          }
-        }
-        Ok(())
-      })
-      .await?;
-    },
     Command::Stop => {
       let addr = format!("{}:{}", args.host, args.port);
       let mut transport = tarpc::serde_transport::tcp::connect(addr, Json::default);
@@ -168,17 +144,6 @@ async fn main() -> anyhow::Result<()> {
       let client = RemoteClient::new(client::Config::default(), transport.await?).spawn();
 
       client.stop(context::current()).await?;
-    },
-    Command::DumpConfig => {
-      let config_file = sdk_directory.join("config").join("protobuf.pb");
-      if config_file.exists() {
-        let compressed_bytes = std::fs::read(&config_file)?;
-        let config: ConfigurationUpdate = read_compressed_protobuf(&compressed_bytes)?;
-        let json = protobuf_json_mapping::print_to_string(&config)?;
-        println!("{json}");
-      } else {
-        eprintln!("No configuration cached (config file not found)");
-      }
     },
   }
 

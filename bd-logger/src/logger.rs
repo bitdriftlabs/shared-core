@@ -444,29 +444,6 @@ impl LoggerHandle {
     );
   }
 
-  /// Returns a list of currently set feature flags with their variants.
-  #[must_use]
-  pub fn get_feature_flags(
-    &self,
-    timeout: time::Duration,
-  ) -> Vec<async_log_buffer::FeatureFlagEntry> {
-    let (tx, rx) = bd_completion::Sender::new();
-    let result = self
-      .tx
-      .try_send_state_update(async_log_buffer::StateUpdateMessage::GetFeatureFlags(tx));
-    if let Err(e) = result {
-      log::warn!("failed to get feature flags: {e:?}");
-      return vec![];
-    }
-    match rx.blocking_recv_with_timeout(timeout.unsigned_abs()) {
-      Ok(flags) => flags,
-      Err(e) => {
-        log::warn!("failed to receive feature flags: {e:?}");
-        vec![]
-      },
-    }
-  }
-
   pub fn flush_state(&self, block: Block) {
     log::debug!("state flushing initiated");
     let result = self.tx.flush_state(block);
