@@ -112,7 +112,7 @@ impl Tool {
     Ok(())
   }
 
-  fn sdk_directory(&self) -> PathBuf {
+  fn sdk_directory() -> PathBuf {
     let home = env::var("HOME").unwrap_or_else(|_| ".".to_string());
     PathBuf::from(&home).join(".local").join("bd-logger-cli")
   }
