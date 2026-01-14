@@ -913,7 +913,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                   if let LoggingState::Initialized(initialized_logging_context) =
                     &mut self.logging_state
                   {
-                    let variant_value = variant.clone().unwrap_or_default();
 
                     // Initialized: update state store and replay through workflows
                     initialized_logging_context
@@ -923,8 +922,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                         &mut self.global_state_tracker,
                         &mut self.replayer,
                         Scope::FeatureFlagExposure,
-                        flag.clone(),
-                        variant_value.clone(),
+                        flag,
+                        variant.unwrap_or_default(),
                         self.time_provider.now(),
                         &self.session_strategy.session_id(),
                       )
