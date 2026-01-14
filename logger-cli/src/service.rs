@@ -157,10 +157,4 @@ impl Remote for Server {
       logger.set_feature_flag(name, variant);
     }
   }
-
-  async fn get_feature_flags(self, _: ::tarpc::context::Context) -> Vec<(String, String)> {
-    (*LOGGER.lock())
-      .as_ref()
-      .map_or_else(Vec::new, LoggerHolder::get_feature_flags)
-  }
 }
