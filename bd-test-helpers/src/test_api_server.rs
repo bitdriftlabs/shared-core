@@ -50,7 +50,7 @@ use time::Duration;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, oneshot};
 use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 use tower::Service;
@@ -593,6 +593,7 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
   let (debug_data_tx, debug_data_rx) = channel(256);
 
   let (stream_action_tx, stream_action_rx) = channel(1);
+  let (ready_tx, ready_rx) = oneshot::channel::<()>();
 
   let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
   let local_addr = listener.local_addr().unwrap();
@@ -636,11 +637,13 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
           TestEventProcessor::new(timed_event_wait_rx, event_rx).process_event_queries(),
         );
 
-        serve(listener, tls, service_state).await;
+        serve(listener, tls, service_state, ready_tx).await;
       });
 
     log::debug!("stopping test server");
   });
+
+  futures::executor::block_on(ready_rx).expect("server failed to start");
 
   Box::new(ServerHandle {
     timed_event_wait_tx,
@@ -680,7 +683,12 @@ async fn dispatch_per_stream_actions(
   }
 }
 
-async fn serve(listener: std::net::TcpListener, tls: bool, service_state: Arc<ServiceState>) {
+async fn serve(
+  listener: std::net::TcpListener,
+  tls: bool,
+  service_state: Arc<ServiceState>,
+  ready_tx: oneshot::Sender<()>,
+) {
   listener.set_nonblocking(true).unwrap();
   let listener = TcpListener::from_std(listener).unwrap();
 
@@ -710,6 +718,8 @@ async fn serve(listener: std::net::TcpListener, tls: bool, service_state: Arc<Se
     let app = router(service_state.clone());
 
     let mut shutdown_rx = service_state.shutdown_tx.subscribe();
+
+    let _ = ready_tx.send(());
 
     loop {
       tokio::select! {
@@ -754,6 +764,8 @@ async fn serve(listener: std::net::TcpListener, tls: bool, service_state: Arc<Se
       }
     }
   } else {
+    let _ = ready_tx.send(());
+
     let _ignored = axum::serve(listener, router(service_state.clone()).into_make_service())
       .with_graceful_shutdown(async move {
         let mut rx = service_state.shutdown_tx.subscribe();
