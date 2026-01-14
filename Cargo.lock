@@ -2903,8 +2903,6 @@ dependencies = [
  "libc",
  "log",
  "parking_lot",
- "protobuf 4.0.0-alpha.0",
- "protobuf-json-mapping",
  "reqwest",
  "rmcp",
  "serde",
@@ -3446,16 +3444,6 @@ dependencies = [
  "protobuf-parse",
  "regex",
  "tempfile",
- "thiserror 1.0.69",
-]
-
-[[package]]
-name = "protobuf-json-mapping"
-version = "4.0.0-alpha.0"
-source = "git+https://github.com/bitdriftlabs/rust-protobuf.git?branch=patch-stack#4d5c5822ad96089057c438616a943aadf6f613ac"
-dependencies = [
- "protobuf 4.0.0-alpha.0",
- "protobuf-support 4.0.0-alpha.0",
  "thiserror 1.0.69",
 ]
 
