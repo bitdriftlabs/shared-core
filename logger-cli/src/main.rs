@@ -128,6 +128,15 @@ async fn main() -> anyhow::Result<()> {
       })
       .await?;
     },
+    Command::SetFeatureFlag(ref cmd) => {
+      with_logger(&args, async |logger| {
+        logger
+          .set_feature_flag(context::current(), cmd.name.clone(), cmd.variant.clone())
+          .await?;
+        Ok(())
+      })
+      .await?;
+    },
     Command::Stop => {
       let addr = format!("{}:{}", args.host, args.port);
       let mut transport = tarpc::serde_transport::tcp::connect(addr, Json::default);

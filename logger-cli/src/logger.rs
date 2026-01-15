@@ -8,10 +8,10 @@
 use crate::metadata::Metadata;
 use crate::storage::SQLiteStorage;
 use crate::types::{Platform, RuntimeValueType};
-use bd_logger::{CaptureSession, InitParams, Logger};
+use bd_log_primitives::LogFields;
+use bd_logger::{CaptureSession, InitParams, Logger, MetadataProvider};
 use bd_proto::protos::logging::payload::LogType as ProtoLogType;
 use bd_session::{Strategy, fixed};
-use bd_test_helpers::metadata_provider::LogMetadata;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -24,6 +24,21 @@ pub type LoggerFuture =
   Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'static + std::marker::Send>>;
 
 pub const SESSION_FILE: &str = "session_id";
+
+/// A metadata provider that returns the current time on each call rather than a fixed timestamp.
+struct LiveTimestampMetadata {
+  ootb_fields: LogFields,
+}
+
+impl MetadataProvider for LiveTimestampMetadata {
+  fn timestamp(&self) -> anyhow::Result<time::OffsetDateTime> {
+    Ok(time::OffsetDateTime::now_utc())
+  }
+
+  fn fields(&self) -> anyhow::Result<(LogFields, LogFields)> {
+    Ok((LogFields::default(), self.ootb_fields.clone()))
+  }
+}
 
 pub struct LoggerHolder {
   pub logger: Arc<Mutex<Logger>>,
@@ -85,6 +100,11 @@ impl LoggerHolder {
   pub fn set_sleep_mode(&self, enabled: bool) {
     let handle = self.logger.lock().new_logger_handle();
     handle.transition_sleep_mode(enabled);
+  }
+
+  pub fn set_feature_flag(&self, name: String, variant: Option<String>) {
+    let handle = self.logger.lock().new_logger_handle();
+    handle.set_feature_flag_exposure(name, variant);
   }
 
   pub fn stop(&self) {
@@ -255,14 +275,12 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
       store.clone(),
       session_callbacks,
     ))),
-    metadata_provider: Arc::new(LogMetadata {
-      timestamp: time::OffsetDateTime::now_utc().into(),
+    metadata_provider: Arc::new(LiveTimestampMetadata {
       ootb_fields: [(
         "_app_version_code".into(),
         args.app_version_code.clone().into(),
       )]
       .into(),
-      ..Default::default()
     }),
     resource_utilization_target: Box::new(bd_test_helpers::resource_utilization::EmptyTarget),
     session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
