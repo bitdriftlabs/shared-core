@@ -10,3 +10,4 @@ mod directory_lock_integration;
 mod embedded_logger_integration;
 mod logger_integration;
 mod setup;
+mod state_upload_integration;
