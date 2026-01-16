@@ -22,15 +22,27 @@ pub mod test;
 
 pub use self::InitStrategy::{InMemoryOnly, PersistentWithFallback};
 use ahash::AHashMap;
-use bd_resilient_kv::{DataLoss, RetentionRegistry, ScopedMaps, StateValue};
-pub use bd_resilient_kv::{PersistentStoreConfig, Scope, StateValue as Value, Value_type};
+use bd_resilient_kv::{DataLoss, ScopedMaps, StateValue};
+pub use bd_resilient_kv::{
+  PersistentStoreConfig,
+  RetentionHandle,
+  RetentionRegistry,
+  Scope,
+  StateValue as Value,
+  Value_type,
+};
 use bd_runtime::runtime::ConfigLoader;
 use bd_time::{OffsetDateTimeExt, TimeProvider};
 use itertools::Itertools as _;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 use tokio::sync::RwLock;
+
+/// A listener that gets notified when state changes occur.
+///
+/// The listener receives the timestamp of when the change occurred.
+pub type StateChangeListener = Arc<dyn Fn(OffsetDateTime) + Send + Sync>;
 
 /// Creates a `StateValue` from a string.
 #[must_use]
@@ -189,6 +201,10 @@ pub struct StoreInitResult {
   pub data_loss: DataLoss,
   /// Snapshot of state from the previous process, captured before clearing ephemeral scopes
   pub previous_state: ScopedMaps,
+  /// Registry for managing snapshot retention across buffers. Each buffer should create a
+  /// retention handle from this registry to prevent snapshots from being cleaned up while
+  /// logs that reference them are still in the buffer.
+  pub retention_registry: Arc<RetentionRegistry>,
 }
 
 //
@@ -208,6 +224,8 @@ pub struct StoreInitWithFallbackResult {
   pub previous_state: ScopedMaps,
   /// Whether fallback to in-memory storage occurred
   pub fallback_occurred: bool,
+  /// Registry for managing snapshot retention across buffers. Empty if fallback occurred.
+  pub retention_registry: Arc<RetentionRegistry>,
 }
 
 //
@@ -262,6 +280,8 @@ pub trait StateReader {
 #[derive(Clone)]
 pub struct Store {
   inner: Arc<RwLock<bd_resilient_kv::VersionedKVStore>>,
+  /// Optional listener that gets notified when state changes occur.
+  change_listener: Arc<Mutex<Option<StateChangeListener>>>,
 }
 
 impl Store {
@@ -289,7 +309,7 @@ impl Store {
       "state",
       config,
       time_provider,
-      retention_registry,
+      retention_registry.clone(),
       stats,
     )
     .await?;
@@ -299,6 +319,7 @@ impl Store {
     let previous_snapshot = inner.as_hashmap().clone();
     let store = Self {
       inner: Arc::new(RwLock::new(inner)),
+      change_listener: Arc::new(Mutex::new(None)),
     };
 
     // Clear ephemeral scopes so the current process starts with fresh state.
@@ -312,6 +333,7 @@ impl Store {
       store,
       data_loss,
       previous_state: previous_snapshot,
+      retention_registry,
     })
   }
 
@@ -331,6 +353,7 @@ impl Store {
         data_loss: Some(result.data_loss),
         previous_state: result.previous_state,
         fallback_occurred: false,
+        retention_registry: result.retention_registry,
       },
       Err(e) => {
         log::debug!(
@@ -342,6 +365,9 @@ impl Store {
           data_loss: None,
           previous_state: ScopedMaps::default(),
           fallback_occurred: true,
+          // In-memory store doesn't have snapshots to retain, but we still provide a registry
+          // so callers don't need to handle the Option case.
+          retention_registry: Arc::new(RetentionRegistry::new()),
         }
       },
     }
@@ -372,6 +398,7 @@ impl Store {
         data_loss: None,
         previous_state: ScopedMaps::default(),
         fallback_occurred: false,
+        retention_registry: Arc::new(RetentionRegistry::new()),
       },
     }
   }
@@ -434,6 +461,7 @@ impl Store {
         data_loss: None,
         previous_state: ScopedMaps::default(),
         fallback_occurred: false,
+        retention_registry: Arc::new(RetentionRegistry::new()),
       }
     }
   }
@@ -458,6 +486,29 @@ impl Store {
       inner: Arc::new(RwLock::new(
         bd_resilient_kv::VersionedKVStore::new_in_memory(time_provider, capacity, stats),
       )),
+      change_listener: Arc::new(Mutex::new(None)),
+    }
+  }
+
+  /// Sets a listener that will be notified whenever state changes.
+  ///
+  /// The listener receives the timestamp of the change. This is used for coordinating state
+  /// snapshot uploads with log uploads - the logger needs to know when state has changed so it can
+  /// upload the relevant snapshots before uploading logs.
+  ///
+  /// Only one listener can be active at a time; setting a new listener replaces any previous one.
+  pub fn set_change_listener(&self, listener: StateChangeListener) {
+    if let Ok(mut guard) = self.change_listener.lock() {
+      *guard = Some(listener);
+    }
+  }
+
+  /// Notifies the change listener if one is set.
+  fn notify_change(&self, timestamp: OffsetDateTime) {
+    if let Ok(guard) = self.change_listener.lock()
+      && let Some(ref listener) = *guard
+    {
+      listener(timestamp);
     }
   }
 
@@ -487,6 +538,11 @@ impl Store {
       None => StateChangeType::Inserted { value },
     };
 
+    // Notify the listener if state actually changed
+    if !matches!(change_type, StateChangeType::NoChange) {
+      self.notify_change(timestamp);
+    }
+
     Ok(StateChange {
       scope,
       key,
@@ -502,17 +558,21 @@ impl Store {
     scope: Scope,
     entries: impl IntoIterator<Item = (String, StateValue)>,
   ) -> anyhow::Result<()> {
-    self
-      .inner
-      .write()
-      .await
-      .extend(
-        entries
-          .into_iter()
-          .map(|(key, value)| (scope, key, value))
-          .collect(),
-      )
-      .await?;
+    let entries_vec: Vec<_> = entries
+      .into_iter()
+      .map(|(key, value)| (scope, key, value))
+      .collect();
+
+    let has_entries = !entries_vec.is_empty();
+
+    self.inner.write().await.extend(entries_vec).await?;
+
+    // Notify the listener if any entries were inserted.
+    // Note: We can't tell if entries were actually new vs updates without tracking old values,
+    // so we conservatively notify on any non-empty extend.
+    if has_entries {
+      self.notify_change(OffsetDateTime::now_utc());
+    }
 
     Ok(())
   }
@@ -541,6 +601,11 @@ impl Store {
       None => (StateChangeType::NoChange, OffsetDateTime::now_utc()),
     };
 
+    // Notify the listener if state actually changed
+    if !matches!(change_type, StateChangeType::NoChange) {
+      self.notify_change(timestamp);
+    }
+
     Ok(StateChange {
       scope,
       key: key.to_string(),
@@ -561,6 +626,7 @@ impl Store {
       .collect_vec();
 
     let mut changes = Vec::new();
+    let mut latest_timestamp = None;
 
     // TODO(snowp): Ideally we should have built in support for batch deletions in the
     // underlying store. This leaves us open for partial deletions if something fails halfway
@@ -572,6 +638,10 @@ impl Store {
             .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
         if old_state_value.value_type.is_some() {
+          // Track the latest timestamp among all changes
+          if latest_timestamp.is_none() || timestamp > latest_timestamp.unwrap_or(timestamp) {
+            latest_timestamp = Some(timestamp);
+          }
           changes.push(StateChange {
             scope,
             key,
@@ -582,6 +652,11 @@ impl Store {
           });
         }
       }
+    }
+
+    // Notify the listener once with the latest timestamp if any changes occurred
+    if let Some(ts) = latest_timestamp {
+      self.notify_change(ts);
     }
 
     Ok(StateChanges { changes })
