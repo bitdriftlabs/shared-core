@@ -42,6 +42,17 @@
    ```
    This should be placed at the top of the test file, after the license header and before imports.
 
+## Formatting
+
+- **ONLY** use `cargo +nightly fmt` to format code. This command automatically picks up `rustfmt.toml` from the repo root.
+- **NEVER** use any of these alternatives - they may not use the correct config:
+  - `cargo fmt` (stable rustfmt lacks required features)
+  - `rustfmt <file>` (may not find config)
+  - `cargo +nightly fmt -- <args> .` (using `.` as path can break config discovery)
+  - Any editor/IDE auto-format (may use wrong rustfmt version or config)
+- If you see unexpected whitespace-only changes across many files after formatting, STOP and investigate - the wrong formatter was likely used.
+- The repo uses `edition = "2024"` and `imports_layout = "HorizontalVertical"` in rustfmt.toml - imports should be vertical (one per line), not horizontal.
+
 ## Code Quality Checks
 - After generating or modifying code, always run clippy to check for static lint violations:
   `cargo clippy --workspace --bins --examples --tests -- --no-deps`

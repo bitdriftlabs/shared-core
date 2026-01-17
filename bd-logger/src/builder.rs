@@ -13,6 +13,7 @@ use crate::internal::InternalLogger;
 use crate::log_replay::LoggerReplay;
 use crate::logger::Logger;
 use crate::logging_state::UninitializedLoggingContext;
+use crate::state_upload::StateLogCorrelator;
 use crate::{InitParams, LogAttributesOverrides};
 use bd_api::{
   AggregatedNetworkQualityProvider,
@@ -312,6 +313,23 @@ impl LoggerBuilder {
         );
       }
 
+      // Create state-log correlator for uploading state snapshots alongside logs
+      let state_correlator = Arc::new(
+        StateLogCorrelator::new(
+          Some(state_directory.clone()),
+          self.params.sdk_directory.clone(),
+          Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
+          &scope,
+        )
+        .await,
+      );
+
+      // Set up state change listener to notify correlator when state changes
+      let correlator_for_listener = state_correlator.clone();
+      state_store.set_change_listener(Arc::new(move |timestamp| {
+        correlator_for_listener.on_state_change(timestamp);
+      }));
+
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
         Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
         data_upload_tx_clone.clone(),
@@ -320,11 +338,12 @@ impl LoggerBuilder {
         &collector_clone,
         shutdown_handle.make_shutdown(),
       );
+      let artifact_client: Arc<dyn bd_artifact_upload::Client> = Arc::new(artifact_client);
 
       let crash_monitor = Monitor::new(
         &self.params.sdk_directory,
         self.params.store.clone(),
-        Arc::new(artifact_client),
+        artifact_client.clone(),
         self.params.session_strategy.clone(),
         &init_lifecycle,
         state_store.clone(),
@@ -348,6 +367,7 @@ impl LoggerBuilder {
       let buffer_directory = Logger::initialize_buffer_directory(&self.params.sdk_directory)?;
       let (buffer_manager, buffer_event_rx) =
         bd_buffer::Manager::new(buffer_directory, &scope, &runtime_loader);
+      let session_strategy_for_uploader = self.params.session_strategy.clone();
       let buffer_uploader = BufferUploadManager::new(
         data_upload_tx_clone.clone(),
         &runtime_loader,
@@ -356,6 +376,9 @@ impl LoggerBuilder {
         trigger_upload_rx,
         &scope,
         log.clone(),
+        Some(state_correlator),
+        artifact_client,
+        Arc::new(move || session_strategy_for_uploader.session_id()),
       );
 
       let updater = Arc::new(client_config::Config::new(

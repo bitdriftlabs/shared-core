@@ -105,7 +105,6 @@ impl TriggerUpload {
   }
 }
 
-
 //
 // StreamEvent
 //

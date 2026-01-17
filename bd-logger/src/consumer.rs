@@ -10,8 +10,10 @@
 mod consumer_test;
 
 use crate::service::{self, UploadRequest};
+use crate::state_upload::StateLogCorrelator;
+use bd_api::TriggerUpload;
 use bd_api::upload::LogBatch;
-use bd_api::{DataUpload, TriggerUpload};
+use bd_artifact_upload::Client as ArtifactClient;
 use bd_buffer::{AbslCode, Buffer, BufferEvent, BufferEventWithResponse, Consumer, Error};
 use bd_client_common::error::InvariantError;
 use bd_client_common::maybe_await;
@@ -92,17 +94,29 @@ pub struct BufferUploadManager {
   stream_buffer_shutdown_trigger: Option<ComponentShutdownTrigger>,
 
   old_logs_dropped: Counter,
+
+  // State-log correlator for uploading state snapshots before logs.
+  state_correlator: Option<Arc<StateLogCorrelator>>,
+
+  // Artifact client for uploading state snapshots.
+  artifact_client: Arc<dyn ArtifactClient>,
+
+  // Session ID for correlating uploads.
+  session_id: Arc<dyn Fn() -> String + Send + Sync>,
 }
 
 impl BufferUploadManager {
   pub(crate) fn new(
-    data_upload_tx: Sender<DataUpload>,
+    data_upload_tx: tokio::sync::mpsc::Sender<bd_api::DataUpload>,
     runtime_loader: &Arc<ConfigLoader>,
     shutdown: ComponentShutdown,
     buffer_event_rx: Receiver<BufferEventWithResponse>,
     trigger_upload_rx: Receiver<TriggerUpload>,
     stats: &Scope,
     logging: Arc<dyn bd_internal_logging::Logger>,
+    state_correlator: Option<Arc<StateLogCorrelator>>,
+    artifact_client: Arc<dyn ArtifactClient>,
+    session_id: Arc<dyn Fn() -> String + Send + Sync>,
   ) -> Self {
     Self {
       log_upload_service: service::new(data_upload_tx, shutdown.clone(), runtime_loader, stats),
@@ -122,6 +136,9 @@ impl BufferUploadManager {
       logging,
       stream_buffer_shutdown_trigger: None,
       old_logs_dropped: stats.counter("old_logs_dropped"),
+      state_correlator,
+      artifact_client,
+      session_id,
     }
   }
 
@@ -162,7 +179,6 @@ impl BufferUploadManager {
     trigger_upload_complete_tx: &Sender<String>,
   ) -> anyhow::Result<()> {
     log::debug!("received trigger upload request");
-
 
     let mut buffer_upload_completions = vec![];
 
@@ -306,12 +322,18 @@ impl BufferUploadManager {
         let consumer = buffer.clone().register_consumer()?;
 
         let batch_builder = BatchBuilder::new(self.feature_flags.clone());
+        let state_correlator = self.state_correlator.clone();
+        let artifact_client = self.artifact_client.clone();
+        let session_id = self.session_id.clone();
         tokio::task::spawn(async move {
           StreamedBufferUpload {
             consumer,
             log_upload_service,
             batch_builder,
             shutdown,
+            state_correlator,
+            artifact_client,
+            session_id,
           }
           .start()
           .await
@@ -355,6 +377,9 @@ impl BufferUploadManager {
         self.feature_flags.clone(),
         shutdown_trigger.make_shutdown(),
         buffer_name.to_string(),
+        self.state_correlator.clone(),
+        self.artifact_client.clone(),
+        self.session_id.clone(),
       ),
       shutdown_trigger,
     ))
@@ -373,6 +398,9 @@ impl BufferUploadManager {
       self.log_upload_service.clone(),
       buffer_name.to_string(),
       self.old_logs_dropped.clone(),
+      self.state_correlator.clone(),
+      self.artifact_client.clone(),
+      self.session_id.clone(),
     ))
   }
 }
@@ -414,6 +442,24 @@ impl BatchBuilder {
     max_batch_size_bytes <= self.total_bytes || max_batch_size_logs <= self.logs.len()
   }
 
+  /// Extracts the timestamp range (oldest, newest) from the current batch of logs.
+  /// Returns None if there are no logs with extractable timestamps.
+  fn timestamp_range_micros(&self) -> Option<(u64, u64)> {
+    let mut oldest: Option<u64> = None;
+    let mut newest: Option<u64> = None;
+
+    for log_bytes in &self.logs {
+      if let Some(ts) = EncodableLog::extract_timestamp(log_bytes) {
+        let ts_micros =
+          ts.unix_timestamp().cast_unsigned() * 1_000_000 + u64::from(ts.microsecond());
+        oldest = Some(oldest.map_or(ts_micros, |o| o.min(ts_micros)));
+        newest = Some(newest.map_or(ts_micros, |n| n.max(ts_micros)));
+      }
+    }
+
+    oldest.zip(newest)
+  }
+
   /// Consumes the current batch, resetting all accounting.
   fn take(&mut self) -> Vec<Vec<u8>> {
     self.total_bytes = 0;
@@ -444,6 +490,15 @@ struct ContinuousBufferUploader {
   feature_flags: Flags,
 
   buffer_id: String,
+
+  // State-log correlator for uploading state snapshots before logs.
+  state_correlator: Option<Arc<StateLogCorrelator>>,
+
+  // Artifact client for uploading state snapshots.
+  artifact_client: Arc<dyn ArtifactClient>,
+
+  // Session ID getter for correlating uploads.
+  session_id: Arc<dyn Fn() -> String + Send + Sync>,
 }
 
 impl ContinuousBufferUploader {
@@ -453,6 +508,9 @@ impl ContinuousBufferUploader {
     feature_flags: Flags,
     shutdown: ComponentShutdown,
     buffer_id: String,
+    state_correlator: Option<Arc<StateLogCorrelator>>,
+    artifact_client: Arc<dyn ArtifactClient>,
+    session_id: Arc<dyn Fn() -> String + Send + Sync>,
   ) -> Self {
     Self {
       consumer,
@@ -462,6 +520,9 @@ impl ContinuousBufferUploader {
       batch_builder: BatchBuilder::new(feature_flags.clone()),
       feature_flags,
       buffer_id,
+      state_correlator,
+      artifact_client,
+      session_id,
     }
   }
   // Attempts to upload all logs in the provided buffer. For every polling interval we
@@ -507,10 +568,25 @@ impl ContinuousBufferUploader {
     // Disarm the deadline which forces a partial flush to fire.
     self.flush_batch_sleep = None;
 
+    // Extract timestamps before taking logs from the batch
+    let timestamp_range = self.batch_builder.timestamp_range_micros();
+
     let logs = self.batch_builder.take();
     let logs_len = logs.len();
 
     log::debug!("flushing {logs_len} logs");
+
+    // Upload state snapshot if needed before uploading logs
+    if let (Some(correlator), Some((oldest, newest))) = (&self.state_correlator, timestamp_range) {
+      correlator
+        .upload_state_if_needed(
+          oldest,
+          newest,
+          self.artifact_client.as_ref(),
+          &(self.session_id)(),
+        )
+        .await;
+    }
 
     // Attempt to perform an upload of these buffers, with retries ++. See logger/service.rs for
     // details about retry policies etc.
@@ -565,6 +641,15 @@ struct StreamedBufferUpload {
   batch_builder: BatchBuilder,
 
   shutdown: ComponentShutdown,
+
+  // State-log correlator for uploading state snapshots before logs.
+  state_correlator: Option<Arc<StateLogCorrelator>>,
+
+  // Artifact client for uploading state snapshots.
+  artifact_client: Arc<dyn ArtifactClient>,
+
+  // Session ID getter for correlating uploads.
+  session_id: Arc<dyn Fn() -> String + Send + Sync>,
 }
 
 impl StreamedBufferUpload {
@@ -622,6 +707,22 @@ impl StreamedBufferUpload {
         }
       }
 
+      // Extract timestamps before taking logs from the batch
+      let timestamp_range = self.batch_builder.timestamp_range_micros();
+
+      // Upload state snapshot if needed before uploading logs
+      if let (Some(correlator), Some((oldest, newest))) = (&self.state_correlator, timestamp_range)
+      {
+        correlator
+          .upload_state_if_needed(
+            oldest,
+            newest,
+            self.artifact_client.as_ref(),
+            &(self.session_id)(),
+          )
+          .await;
+      }
+
       let upload_future = async {
         self
           .log_upload_service
@@ -668,6 +769,15 @@ struct CompleteBufferUpload {
   lookback_window: Option<time::OffsetDateTime>,
 
   old_logs_dropped: Counter,
+
+  // State-log correlator for uploading state snapshots before logs.
+  state_correlator: Option<Arc<StateLogCorrelator>>,
+
+  // Artifact client for uploading state snapshots.
+  artifact_client: Arc<dyn ArtifactClient>,
+
+  // Session ID getter for correlating uploads.
+  session_id: Arc<dyn Fn() -> String + Send + Sync>,
 }
 
 impl CompleteBufferUpload {
@@ -677,6 +787,9 @@ impl CompleteBufferUpload {
     log_upload_service: service::Upload,
     buffer_id: String,
     old_logs_dropped: Counter,
+    state_correlator: Option<Arc<StateLogCorrelator>>,
+    artifact_client: Arc<dyn ArtifactClient>,
+    session_id: Arc<dyn Fn() -> String + Send + Sync>,
   ) -> Self {
     let lookback_window_limit = *runtime_flags.upload_lookback_window_feature_flag.read();
 
@@ -693,6 +806,9 @@ impl CompleteBufferUpload {
       buffer_id,
       lookback_window,
       old_logs_dropped,
+      state_correlator,
+      artifact_client,
+      session_id,
     }
   }
 
@@ -743,9 +859,24 @@ impl CompleteBufferUpload {
   }
 
   async fn flush_batch(&mut self) -> anyhow::Result<()> {
+    // Extract timestamps before taking logs from the batch
+    let timestamp_range = self.batch_builder.timestamp_range_micros();
+
     let logs = self.batch_builder.take();
 
     log::debug!("flushing {} logs", logs.len());
+
+    // Upload state snapshot if needed before uploading logs
+    if let (Some(correlator), Some((oldest, newest))) = (&self.state_correlator, timestamp_range) {
+      correlator
+        .upload_state_if_needed(
+          oldest,
+          newest,
+          self.artifact_client.as_ref(),
+          &(self.session_id)(),
+        )
+        .await;
+    }
 
     // Attempt to perform an upload of these buffers, with retries ++. See logger/service.rs for
     // details about retry policies etc.

@@ -102,6 +102,8 @@ struct NewUpload {
   timestamp: Option<OffsetDateTime>,
   session_id: String,
   feature_flags: Vec<SnappedFeatureFlag>,
+  type_id: String,
+  skip_intent: bool,
 }
 
 // Used for bounded_buffer logs
@@ -131,6 +133,7 @@ impl MemorySized for NewUpload {
       + std::mem::size_of::<Option<OffsetDateTime>>()
       + self.session_id.len()
       + self.feature_flags.size()
+      + self.type_id.len()
   }
 }
 
@@ -169,6 +172,8 @@ pub trait Client: Send + Sync {
     timestamp: Option<OffsetDateTime>,
     session_id: String,
     feature_flags: Vec<SnappedFeatureFlag>,
+    type_id: String,
+    skip_intent: bool,
   ) -> anyhow::Result<Uuid>;
 }
 
@@ -178,7 +183,6 @@ pub struct UploadClient {
 }
 
 impl Client for UploadClient {
-  /// Dispatches a payload to be uploaded, returning the associated artifact UUID.
   fn enqueue_upload(
     &self,
     file: std::fs::File,
@@ -186,6 +190,8 @@ impl Client for UploadClient {
     timestamp: Option<OffsetDateTime>,
     session_id: String,
     feature_flags: Vec<SnappedFeatureFlag>,
+    type_id: String,
+    skip_intent: bool,
   ) -> anyhow::Result<Uuid> {
     let uuid = uuid::Uuid::new_v4();
 
@@ -198,6 +204,8 @@ impl Client for UploadClient {
         timestamp,
         session_id,
         feature_flags,
+        type_id,
+        skip_intent,
       })
       .inspect_err(|e| log::warn!("failed to enqueue artifact upload: {e:?}"));
 
@@ -402,9 +410,22 @@ impl Uploader {
             timestamp,
             session_id,
             feature_flags,
+            type_id,
+            skip_intent,
         }) = self.upload_queued_rx.recv() => {
           log::debug!("tracking artifact: {uuid} for upload");
-          self.track_new_upload(uuid, file, state, session_id, timestamp, feature_flags).await;
+          self
+            .track_new_upload(
+              uuid,
+              file,
+              state,
+              session_id,
+              timestamp,
+              feature_flags,
+              type_id,
+              skip_intent,
+            )
+            .await;
         }
         intent_decision = maybe_await(&mut self.intent_task_handle) => {
             self.handle_intent_negotiation_decision(intent_decision??).await?;
@@ -574,6 +595,8 @@ impl Uploader {
     session_id: String,
     timestamp: Option<OffsetDateTime>,
     feature_flags: Vec<SnappedFeatureFlag>,
+    _type_id: String,
+    skip_intent: bool,
   ) {
     // If we've reached our limit of entries, stop the entry currently being uploaded (the oldest
     // one) to make space for the newer one.
@@ -624,7 +647,7 @@ impl Uploader {
         .unwrap_or_else(|| self.time_provider.now())
         .into_proto(),
       session_id,
-      pending_intent_negotiation: true,
+      pending_intent_negotiation: !skip_intent,
       state_metadata: state
         .into_iter()
         .map(|(key, value)| (key.into(), value.into_proto()))
