@@ -14,7 +14,7 @@ env:
 jobs:
   test:
     name: rust
-    runs-on: ubuntu-latest-arm-8-cores
+    runs-on: ubuntu-latest-arm-16-cores
     if: github.actor != 'bitdriftlabs-terraform[bot]'
     strategy:
       matrix:
