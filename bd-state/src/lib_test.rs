@@ -320,6 +320,140 @@ async fn ephemeral_scopes_cleared_on_restart() {
 }
 
 #[tokio::test]
+async fn system_scope_persists_on_restart() {
+  let temp_dir = tempfile::tempdir().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+  let scope = Collector::default().scope("test");
+
+  {
+    let result = Store::persistent(
+      temp_dir.path(),
+      PersistentStoreConfig::default(),
+      time_provider.clone(),
+      &scope,
+    )
+    .await
+    .unwrap();
+    let store = result.store;
+
+    store
+      .insert(
+        Scope::System,
+        "session_id".to_string(),
+        crate::string_value("session-1"),
+      )
+      .await
+      .unwrap();
+  }
+
+  {
+    let result = Store::persistent(
+      temp_dir.path(),
+      PersistentStoreConfig::default(),
+      time_provider.clone(),
+      &Collector::default().scope("test"),
+    )
+    .await
+    .unwrap();
+    let store = result.store;
+    let prev_snapshot = result.previous_state;
+
+    assert!(
+      prev_snapshot
+        .get(Scope::System, "session_id")
+        .is_some_and(
+          |entry| entry.value.has_string_value() && entry.value.string_value() == "session-1"
+        )
+    );
+
+    let reader = store.read().await;
+    assert!(
+      reader
+        .get(Scope::System, "session_id")
+        .is_some_and(|value| value.has_string_value() && value.string_value() == "session-1")
+    );
+  }
+}
+
+#[tokio::test]
+async fn session_id_persists_while_ephemeral_scopes_clear() {
+  let temp_dir = tempfile::tempdir().unwrap();
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(
+    datetime!(2024-01-01 00:00:00 UTC),
+  ));
+  let scope = Collector::default().scope("test");
+
+  {
+    let result = Store::persistent(
+      temp_dir.path(),
+      PersistentStoreConfig::default(),
+      time_provider.clone(),
+      &scope,
+    )
+    .await
+    .unwrap();
+    let store = result.store;
+
+    store
+      .insert(
+        Scope::FeatureFlagExposure,
+        "flag1".to_string(),
+        crate::string_value("value1"),
+      )
+      .await
+      .unwrap();
+    store
+      .insert(
+        Scope::GlobalState,
+        "key1".to_string(),
+        crate::string_value("global_value"),
+      )
+      .await
+      .unwrap();
+    store
+      .insert(
+        Scope::System,
+        "session_id".to_string(),
+        crate::string_value("session-1"),
+      )
+      .await
+      .unwrap();
+  }
+
+  {
+    let result = Store::persistent(
+      temp_dir.path(),
+      PersistentStoreConfig::default(),
+      time_provider.clone(),
+      &Collector::default().scope("test"),
+    )
+    .await
+    .unwrap();
+    let store = result.store;
+    let prev_snapshot = result.previous_state;
+
+    assert!(
+      prev_snapshot
+        .get(Scope::System, "session_id")
+        .is_some_and(
+          |entry| entry.value.has_string_value() && entry.value.string_value() == "session-1"
+        )
+    );
+
+    let reader = store.read().await;
+    assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag1"), None);
+    assert_eq!(reader.get(Scope::GlobalState, "key1"), None);
+    assert!(
+      reader
+        .get(Scope::System, "session_id")
+        .is_some_and(|value| value.has_string_value() && value.string_value() == "session-1")
+    );
+  }
+}
+
+#[tokio::test]
 async fn fallback_to_in_memory_on_invalid_directory() {
   // Try to create a store with an invalid path (e.g., a file instead of a directory)
   let temp_file = tempfile::NamedTempFile::new().unwrap();

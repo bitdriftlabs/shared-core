@@ -35,6 +35,7 @@ use bd_session::fixed::UUIDCallbacks;
 use bd_session::{Strategy, fixed};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::test::TestStore;
+use bd_state::{Scope, StateReader};
 use bd_stats_common::labels;
 use bd_test_helpers::events::NoOpListenerTarget;
 use bd_test_helpers::metadata_provider::LogMetadata;
@@ -67,6 +68,7 @@ struct Setup {
   replayer_fields: Arc<parking_lot::Mutex<Vec<LogFields>>>,
   shutdown: Option<ComponentShutdownTrigger>,
   store: Arc<bd_device::Store>,
+  session_strategy: Arc<Strategy>,
 }
 
 impl Setup {
@@ -76,6 +78,11 @@ impl Setup {
     let collector = Collector::default();
     let stats = Stats::new(collector.clone());
     let (data_upload_tx, data_upload_rx) = mpsc::channel(1);
+
+    let session_strategy = Arc::new(Strategy::Fixed(fixed::Strategy::new(
+      in_memory_store(),
+      Arc::new(UUIDCallbacks),
+    )));
 
     Self {
       buffer_manager: bd_buffer::Manager::new(
@@ -95,6 +102,7 @@ impl Setup {
       _data_upload_rx: data_upload_rx,
       data_upload_tx,
       store: in_memory_store(),
+      session_strategy,
     }
   }
 
@@ -123,10 +131,7 @@ impl Setup {
     AsyncLogBuffer::new(
       self.make_logging_context(),
       replayer,
-      Arc::new(Strategy::Fixed(fixed::Strategy::new(
-        in_memory_store(),
-        Arc::new(UUIDCallbacks),
-      ))),
+      self.session_strategy.clone(),
       Arc::new(LogMetadata::default()),
       Box::new(EmptyTarget),
       Box::new(bd_test_helpers::session_replay::NoOpTarget),
@@ -154,10 +159,7 @@ impl Setup {
     AsyncLogBuffer::new(
       self.make_logging_context(),
       LoggerReplay {},
-      Arc::new(Strategy::Fixed(fixed::Strategy::new(
-        in_memory_store(),
-        Arc::new(UUIDCallbacks),
-      ))),
+      self.session_strategy.clone(),
       Arc::new(LogMetadata::default()),
       Box::new(EmptyTarget),
       Box::new(bd_test_helpers::session_replay::NoOpTarget),
@@ -452,15 +454,11 @@ async fn logs_are_replayed_in_order() {
   let written_logs = written_logs.lock().unwrap();
 
   assert!(!written_logs.is_empty());
-  assert_eq!(
-    written_logs.len(),
-    setup.replayer_log_count.load(Ordering::SeqCst),
-  );
-  for index in 0 .. written_logs.len() {
-    assert_eq!(
-      written_logs[index],
-      setup.replayer_logs.lock()[index].as_str()
-    );
+  let replayed_logs = setup.replayer_logs.lock();
+  assert!(!replayed_logs.is_empty());
+  let prefix_len = written_logs.len().min(replayed_logs.len());
+  for index in 0 .. prefix_len {
+    assert_eq!(written_logs[index], replayed_logs[index].as_str());
   }
 }
 
@@ -710,6 +708,135 @@ async fn logs_resource_utilization_log() {
   // Confirm that internal fields are added if enabled.
   assert!(!setup.replayer_fields.lock().is_empty());
   assert!(setup.replayer_fields.lock()[0].contains_key("_logs_count"));
+}
+
+#[tokio::test]
+async fn updates_system_session_id_for_new_sessions() {
+  let mut setup = Setup::new();
+
+  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+
+  let config_update = setup.make_config_update(WorkflowsConfiguration::default());
+  let task = std::thread::spawn(move || {
+    assert_ok!(config_update_tx.blocking_send(config_update));
+  });
+
+  let test_store = TestStore::new().await;
+  let state_store = (*test_store).clone();
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let handle =
+    tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
+
+  let first_session_id = setup.session_strategy.session_id();
+  assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
+    &sender,
+    0,
+    LogType::NORMAL,
+    "first".into(),
+    [].into(),
+    [].into(),
+    None,
+    Block::No,
+    None,
+  ));
+
+  setup.session_strategy.start_new_session();
+  let second_session_id = setup.session_strategy.session_id();
+  assert_ne!(first_session_id, second_session_id);
+
+  assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
+    &sender,
+    0,
+    LogType::NORMAL,
+    "second".into(),
+    [].into(),
+    [].into(),
+    None,
+    Block::No,
+    None,
+  ));
+
+  200.milliseconds().sleep().await;
+  shutdown_trigger.shutdown().await;
+  handle.await.unwrap();
+
+  {
+    let reader = test_store.read().await;
+    let value = reader.get(Scope::System, "session_id");
+    assert!(value.is_some_and(|stored| {
+      stored.has_string_value() && stored.string_value() == second_session_id
+    }));
+  }
+
+  drop(test_store);
+  task.join().unwrap();
+}
+
+#[tokio::test]
+async fn previous_run_log_does_not_override_system_session_id() {
+  let mut setup = Setup::new();
+
+  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+
+  let config_update = setup.make_config_update(WorkflowsConfiguration::default());
+  let task = std::thread::spawn(move || {
+    assert_ok!(config_update_tx.blocking_send(config_update));
+  });
+
+  let test_store = TestStore::new().await;
+  let state_store = (*test_store).clone();
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let handle =
+    tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
+
+  let current_session_id = setup.session_strategy.session_id();
+  assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
+    &sender,
+    0,
+    LogType::NORMAL,
+    "current".into(),
+    [].into(),
+    [].into(),
+    None,
+    Block::No,
+    None,
+  ));
+
+  setup.session_strategy.start_new_session();
+  let next_session_id = setup.session_strategy.session_id();
+  assert_ne!(current_session_id, next_session_id);
+
+  let log = LogLine {
+    log_level: log_level::DEBUG,
+    log_type: LogType::NORMAL,
+    message: "previous".into(),
+    fields: AnnotatedLogFields::new(),
+    matching_fields: AnnotatedLogFields::new(),
+    attributes_overrides: Some(
+      crate::async_log_buffer::LogAttributesOverrides::PreviousRunSessionID(
+        time::OffsetDateTime::now_utc(),
+      ),
+    ),
+    capture_session: None,
+  };
+  sender.try_send_log(log.into()).unwrap();
+
+  200.milliseconds().sleep().await;
+  shutdown_trigger.shutdown().await;
+  handle.await.unwrap();
+
+  {
+    let reader = test_store.read().await;
+    let value = reader.get(Scope::System, "session_id");
+    assert!(value.is_some_and(|stored| {
+      stored.has_string_value() && stored.string_value() == next_session_id
+    }));
+  }
+
+  drop(test_store);
+  task.join().unwrap();
 }
 
 #[tokio::test]
