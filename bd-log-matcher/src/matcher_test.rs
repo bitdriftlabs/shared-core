@@ -907,7 +907,7 @@ fn feature_flag_matcher() {
       state.insert(
         bd_state::Scope::FeatureFlagExposure,
         key,
-        bd_state::string_value(value.unwrap_or("")),
+        value.unwrap_or("").into(),
       );
     }
 
@@ -964,11 +964,7 @@ fn state_match_int_values() {
 
     let mut state = bd_state::test::TestStateReader::default();
     for (key, value) in input.state_values {
-      state.insert(
-        bd_state::Scope::FeatureFlagExposure,
-        key,
-        bd_state::string_value(value),
-      );
+      state.insert(bd_state::Scope::FeatureFlagExposure, key, value.into());
     }
 
     let actual =
@@ -1019,11 +1015,7 @@ fn state_match_double_values() {
 
     let mut state = bd_state::test::TestStateReader::default();
     for (key, value) in input.state_values {
-      state.insert(
-        bd_state::Scope::FeatureFlagExposure,
-        key,
-        bd_state::string_value(value),
-      );
+      state.insert(bd_state::Scope::FeatureFlagExposure, key, value.into());
     }
 
     let actual =
@@ -1069,11 +1061,7 @@ fn state_match_is_set() {
 
     let mut state = bd_state::test::TestStateReader::default();
     for (key, value) in input.state_values {
-      state.insert(
-        bd_state::Scope::FeatureFlagExposure,
-        key,
-        bd_state::string_value(value),
-      );
+      state.insert(bd_state::Scope::FeatureFlagExposure, key, value.into());
     }
 
     let actual =

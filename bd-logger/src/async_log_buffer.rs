@@ -50,7 +50,7 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
-use bd_state::{Scope, string_value};
+use bd_state::Scope;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::WorkflowDebugStateMap;
@@ -629,9 +629,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           log.attributes_overrides,
           Some(LogAttributesOverrides::PreviousRunSessionID(_))
         ) {
+<<<<<<< HEAD
           self
             .update_system_session_id(state_store, &session_id)
             .await;
+||||||| parent of dc5939a5 (record session ID into bd-state)
+=======
+          self.update_system_session_id(state_store, &session_id).await;
+>>>>>>> dc5939a5 (record session ID into bd-state)
         }
 
         let processed_log = bd_log_primitives::Log {
@@ -713,7 +718,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       .insert(
         Scope::System,
         SYSTEM_SESSION_ID_KEY.to_string(),
-        string_value(session_id),
+        session_id.into(),
       )
       .await
     {
@@ -958,6 +963,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                       &mut self.logging_state
                     {
                       let result = uninitialized_logging_context.pre_config_log_buffer.push(
+<<<<<<< HEAD
                         PreConfigItem::StateOperation(
                           PendingStateOperation::SetFeatureFlagExposure {
                             name: flag,
@@ -965,6 +971,19 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                             session_id,
                           }
                         ),
+||||||| parent of dc5939a5 (record session ID into bd-state)
+                        PreConfigItem::StateOperation(PendingStateOperation::SetFeatureFlagExposure{
+                            name: flag,
+                            variant,
+                            session_id: self.session_strategy.session_id()
+                        }),
+=======
+                        PreConfigItem::StateOperation(PendingStateOperation::SetFeatureFlagExposure {
+                          name: flag,
+                          variant,
+                          session_id,
+                        }),
+>>>>>>> dc5939a5 (record session ID into bd-state)
                       );
                       uninitialized_logging_context
                         .stats

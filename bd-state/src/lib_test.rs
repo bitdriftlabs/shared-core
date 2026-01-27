@@ -52,7 +52,7 @@ async fn clear_scope() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag1".to_string(),
-      crate::string_value("value1"),
+      "value1".into(),
     )
     .await
     .unwrap();
@@ -61,7 +61,7 @@ async fn clear_scope() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag2".to_string(),
-      crate::string_value("value2"),
+      "value2".into(),
     )
     .await
     .unwrap();
@@ -70,7 +70,7 @@ async fn clear_scope() {
     .insert(
       Scope::GlobalState,
       "key1".to_string(),
-      crate::string_value("global_value"),
+      "global_value".into(),
     )
     .await
     .unwrap();
@@ -96,7 +96,7 @@ async fn iter_scope() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag1".to_string(),
-      crate::string_value("value1"),
+      "value1".into(),
     )
     .await
     .unwrap();
@@ -105,7 +105,7 @@ async fn iter_scope() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag2".to_string(),
-      crate::string_value("value2"),
+      "value2".into(),
     )
     .await
     .unwrap();
@@ -114,7 +114,7 @@ async fn iter_scope() {
     .insert(
       Scope::GlobalState,
       "key1".to_string(),
-      crate::string_value("global_value"),
+      "global_value".into(),
     )
     .await
     .unwrap();
@@ -180,7 +180,7 @@ async fn large_value() {
     .insert(
       Scope::FeatureFlagExposure,
       "large".to_string(),
-      crate::string_value(large_value.clone()),
+      large_value.clone().into(),
     )
     .await
     .unwrap();
@@ -221,7 +221,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
       .insert(
         Scope::FeatureFlagExposure,
         "flag1".to_string(),
-        crate::string_value("value1"),
+        "value1".into(),
       )
       .await
       .unwrap();
@@ -229,7 +229,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
       .insert(
         Scope::FeatureFlagExposure,
         "flag2".to_string(),
-        crate::string_value("value2"),
+        "value2".into(),
       )
       .await
       .unwrap();
@@ -237,7 +237,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
       .insert(
         Scope::GlobalState,
         "key1".to_string(),
-        crate::string_value("global_value"),
+        "global_value".into(),
       )
       .await
       .unwrap();
@@ -339,11 +339,7 @@ async fn system_scope_persists_on_restart() {
     let store = result.store;
 
     store
-      .insert(
-        Scope::System,
-        "session_id".to_string(),
-        crate::string_value("session-1"),
-      )
+      .insert(Scope::System, "session_id".to_string(), "session-1".into())
       .await
       .unwrap();
   }
@@ -363,6 +359,7 @@ async fn system_scope_persists_on_restart() {
     assert!(
       prev_snapshot
         .get(Scope::System, "session_id")
+<<<<<<< HEAD
         .is_some_and(
           |entry| entry.value.has_string_value() && entry.value.string_value() == "session-1"
         )
@@ -445,6 +442,13 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
     let reader = store.read().await;
     assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag1"), None);
     assert_eq!(reader.get(Scope::GlobalState, "key1"), None);
+||||||| parent of dc5939a5 (record session ID into bd-state)
+=======
+        .is_some_and(|entry| entry.value.has_string_value() && entry.value.string_value() == "session-1")
+    );
+
+    let reader = store.read().await;
+>>>>>>> dc5939a5 (record session ID into bd-state)
     assert!(
       reader
         .get(Scope::System, "session_id")
@@ -480,7 +484,7 @@ async fn fallback_to_in_memory_on_invalid_directory() {
     .insert(
       Scope::FeatureFlagExposure,
       "test_flag".to_string(),
-      crate::string_value("test_value"),
+      "test_value".into(),
     )
     .await
     .unwrap();
@@ -520,7 +524,7 @@ async fn from_strategy_in_memory_only() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag".to_string(),
-      crate::string_value("value"),
+      "value".into(),
     )
     .await
     .unwrap();
@@ -560,7 +564,7 @@ async fn from_strategy_persistent_with_fallback() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag".to_string(),
-      crate::string_value("value"),
+      "value".into(),
     )
     .await
     .unwrap();
@@ -601,7 +605,7 @@ async fn from_strategy_persistent_with_fallback_on_failure() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag".to_string(),
-      crate::string_value("value"),
+      "value".into(),
     )
     .await
     .unwrap();
@@ -623,7 +627,7 @@ async fn insert_returns_inserted_state_change() {
     .insert(
       Scope::FeatureFlagExposure,
       "new_flag".to_string(),
-      crate::string_value("new_value"),
+      "new_value".into(),
     )
     .await
     .unwrap();
@@ -633,7 +637,7 @@ async fn insert_returns_inserted_state_change() {
   assert_eq!(
     change.change_type,
     crate::StateChangeType::Inserted {
-      value: crate::string_value("new_value")
+      value: "new_value".into()
     }
   );
 }
@@ -648,7 +652,7 @@ async fn insert_returns_updated_state_change() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag".to_string(),
-      crate::string_value("old_value"),
+      "old_value".into(),
     )
     .await
     .unwrap();
@@ -659,7 +663,7 @@ async fn insert_returns_updated_state_change() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag".to_string(),
-      crate::string_value("new_value"),
+      "new_value".into(),
     )
     .await
     .unwrap();
@@ -669,8 +673,8 @@ async fn insert_returns_updated_state_change() {
   assert_eq!(
     change.change_type,
     crate::StateChangeType::Updated {
-      old_value: crate::string_value("old_value"),
-      new_value: crate::string_value("new_value")
+      old_value: "old_value".into(),
+      new_value: "new_value".into()
     }
   );
 }
@@ -685,7 +689,7 @@ async fn insert_returns_no_change_when_value_unchanged() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag".to_string(),
-      crate::string_value("same_value"),
+      "same_value".into(),
     )
     .await
     .unwrap();
@@ -696,7 +700,7 @@ async fn insert_returns_no_change_when_value_unchanged() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag".to_string(),
-      crate::string_value("same_value"),
+      "same_value".into(),
     )
     .await
     .unwrap();
@@ -716,7 +720,7 @@ async fn remove_returns_removed_state_change() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag".to_string(),
-      crate::string_value("value"),
+      "value".into(),
     )
     .await
     .unwrap();
@@ -733,7 +737,7 @@ async fn remove_returns_removed_state_change() {
   assert_eq!(
     change.change_type,
     crate::StateChangeType::Removed {
-      old_value: crate::string_value("value")
+      old_value: "value".into()
     }
   );
 
@@ -767,7 +771,7 @@ async fn extend_inserts_multiple_values() {
     .insert(
       Scope::FeatureFlagExposure,
       "existing".to_string(),
-      crate::string_value("old"),
+      "old".into(),
     )
     .await
     .unwrap();
@@ -778,9 +782,9 @@ async fn extend_inserts_multiple_values() {
     .extend(
       Scope::FeatureFlagExposure,
       vec![
-        ("new1".to_string(), crate::string_value("value1")),
-        ("existing".to_string(), crate::string_value("updated")),
-        ("new2".to_string(), crate::string_value("value2")),
+        ("new1".to_string(), "value1".into()),
+        ("existing".to_string(), "updated".into()),
+        ("new2".to_string(), "value2".into()),
       ],
     )
     .await
@@ -815,7 +819,7 @@ async fn clear_returns_all_removed_state_changes() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag1".to_string(),
-      crate::string_value("value1"),
+      "value1".into(),
     )
     .await
     .unwrap();
@@ -824,7 +828,7 @@ async fn clear_returns_all_removed_state_changes() {
     .insert(
       Scope::FeatureFlagExposure,
       "flag2".to_string(),
-      crate::string_value("value2"),
+      "value2".into(),
     )
     .await
     .unwrap();
@@ -833,7 +837,7 @@ async fn clear_returns_all_removed_state_changes() {
     .insert(
       Scope::GlobalState,
       "key1".to_string(),
-      crate::string_value("global_value"),
+      "global_value".into(),
     )
     .await
     .unwrap();
