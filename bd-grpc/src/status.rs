@@ -96,9 +96,9 @@ impl Status {
       .header(CONTENT_TYPE, CONTENT_TYPE_GRPC)
       .header(GRPC_STATUS, self.code.to_int());
 
-    if self.message.is_some() {
+    if let Some(message) = self.message.as_ref() {
       // We need to make sure the message is a valid header so we URL encode it to be sure.
-      let encoded = urlencoding::encode(self.message.as_ref().unwrap());
+      let encoded = urlencoding::encode(message);
       let header_value = HeaderValue::from_str(&encoded).unwrap();
 
       builder = builder.header(GRPC_MESSAGE, header_value);
