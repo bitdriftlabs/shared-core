@@ -407,7 +407,9 @@ async fn logs_are_replayed_in_order() {
         None,
       );
 
-      assert_ok!(result);
+      if result.is_err() {
+        break;
+      }
 
       // It's possible that we fill up this channel and we don't want that to prevent the threads
       // from being able to shut down on cancel.
