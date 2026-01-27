@@ -50,7 +50,7 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
-use bd_state::Scope;
+use bd_state::{Scope, string_value};
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::WorkflowDebugStateMap;
@@ -93,6 +93,8 @@ pub enum StateUpdateMessage {
   SetFeatureFlagExposure(String, Option<String>),
   FlushState(Option<bd_completion::Sender<()>>),
 }
+
+const SYSTEM_SESSION_ID_KEY: &str = "session_id";
 
 impl MemorySized for StateUpdateMessage {
   fn size(&self) -> usize {
@@ -316,6 +318,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
 
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
+  last_session_id: Option<String>,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
@@ -417,6 +420,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
         pending_workflow_debug_state: HashMap::new(),
         send_workflow_debug_state_delay: None,
+        last_session_id: None,
       },
       Sender {
         log_buffer_tx: log_tx,
@@ -621,6 +625,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           },
         };
 
+        if !matches!(
+          log.attributes_overrides,
+          Some(LogAttributesOverrides::PreviousRunSessionID(_))
+        ) {
+          self.update_system_session_id(state_store, &session_id).await;
+        }
+
         let processed_log = bd_log_primitives::Log {
           log_level: log.log_level,
           log_type: log.log_type,
@@ -687,6 +698,25 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     };
 
     Ok(log_replay_result)
+  }
+
+  async fn update_system_session_id(&mut self, state_store: &bd_state::Store, session_id: &str) {
+    if self.last_session_id.as_deref() == Some(session_id) {
+      return;
+    }
+
+    self.last_session_id = Some(session_id.to_string());
+
+    if let Err(e) = state_store
+      .insert(
+        Scope::System,
+        SYSTEM_SESSION_ID_KEY.to_string(),
+        string_value(session_id),
+      )
+      .await
+    {
+      log::debug!("failed to persist session_id in state store: {e}");
+    }
   }
 
   async fn update(
@@ -901,6 +931,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                   self.metadata_collector.remove_field(&field_name);
                 },
                 StateUpdateMessage::SetFeatureFlagExposure(flag, variant) => {
+                  let session_id = self.session_strategy.session_id();
+                  self.update_system_session_id(&state_store, &session_id).await;
                   if let LoggingState::Initialized(initialized_logging_context) =
                     &mut self.logging_state
                   {
@@ -915,7 +947,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                         flag,
                         variant.unwrap_or_default(),
                         self.time_provider.now(),
-                        &self.session_strategy.session_id(),
+                        &session_id,
                       )
                       .await;
                   } else {
@@ -924,10 +956,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                       &mut self.logging_state
                     {
                       let result = uninitialized_logging_context.pre_config_log_buffer.push(
-                        PreConfigItem::StateOperation(PendingStateOperation::SetFeatureFlagExposure{
-                            name: flag,
-                            variant,
-                            session_id: self.session_strategy.session_id()
+                        PreConfigItem::StateOperation(PendingStateOperation::SetFeatureFlagExposure {
+                          name: flag,
+                          variant,
+                          session_id,
                         }),
                       );
                       uninitialized_logging_context

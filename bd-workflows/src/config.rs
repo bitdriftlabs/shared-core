@@ -591,6 +591,9 @@ impl StateChangeMatch {
       },
       bd_proto::protos::state::scope::StateScope::FEATURE_FLAG => Scope::FeatureFlagExposure,
       bd_proto::protos::state::scope::StateScope::GLOBAL_STATE => Scope::GlobalState,
+      bd_proto::protos::state::scope::StateScope::SYSTEM => {
+        anyhow::bail!("invalid state scope: system");
+      },
     };
 
     let previous_value = proto
@@ -778,6 +781,9 @@ impl ActionEmitMetric {
                 Scope::FeatureFlagExposure
               },
               bd_proto::protos::state::scope::StateScope::GLOBAL_STATE => Scope::GlobalState,
+              bd_proto::protos::state::scope::StateScope::SYSTEM => {
+                anyhow::bail!("invalid state scope: system");
+              },
             };
             TagValue::StateExtract(scope, extracted.key)
           },
@@ -858,6 +864,9 @@ impl ActionEmitSankey {
                   Scope::FeatureFlagExposure
                 },
                 bd_proto::protos::state::scope::StateScope::GLOBAL_STATE => Scope::GlobalState,
+                bd_proto::protos::state::scope::StateScope::SYSTEM => {
+                  anyhow::bail!("invalid state scope: system");
+                },
               };
               TagValue::StateExtract(scope, extracted.key)
             },
