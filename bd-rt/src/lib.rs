@@ -36,12 +36,13 @@ pub fn num_cpus() -> usize {
   if let Ok(num_cpus_env) = std::env::var("NUM_CPUS") {
     match num_cpus_env.parse::<f64>() {
       Ok(fractional_cpus) => {
-        if !fractional_cpus.is_normal() {
-          log::warn!(
-            "env variable NUM_CPUS set to subnormal float `{fractional_cpus}`; ignoring it"
-          );
+        if !fractional_cpus.is_normal() || fractional_cpus.is_sign_negative() {
+          log::warn!("env variable NUM_CPUS set to invalid float `{fractional_cpus}`; ignoring it");
+        } else {
+          #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+          let num_threads = fractional_cpus.ceil() as usize;
+          return num_threads.clamp(1, MAX_RT_THREADPOOL_SIZE);
         }
-        return std::cmp::max(1, num_cpus as usize);
       },
       Err(_) => {
         log::warn!("non-numeric value in `NUM_CPUS` environment variable; ignoring it");
