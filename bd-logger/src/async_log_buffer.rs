@@ -958,27 +958,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                       &mut self.logging_state
                     {
                       let result = uninitialized_logging_context.pre_config_log_buffer.push(
-<<<<<<< HEAD
-                        PreConfigItem::StateOperation(
-                          PendingStateOperation::SetFeatureFlagExposure {
-                            name: flag,
-                            variant,
-                            session_id,
-                          }
-                        ),
-||||||| parent of f0f5c4df (record session ID into bd-state)
                         PreConfigItem::StateOperation(PendingStateOperation::SetFeatureFlagExposure{
                             name: flag,
                             variant,
                             session_id: self.session_strategy.session_id()
                         }),
-=======
-                        PreConfigItem::StateOperation(PendingStateOperation::SetFeatureFlagExposure {
-                          name: flag,
-                          variant,
-                          session_id,
-                        }),
->>>>>>> f0f5c4df (record session ID into bd-state)
                       );
                       uninitialized_logging_context
                         .stats

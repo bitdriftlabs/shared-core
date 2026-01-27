@@ -189,6 +189,8 @@ pub struct StoreInitResult {
   pub data_loss: DataLoss,
   /// Snapshot of state from the previous process, captured before clearing ephemeral scopes
   pub previous_state: ScopedMaps,
+  /// Retention registry used for snapshot retention
+  pub retention_registry: Arc<RetentionRegistry>,
 }
 
 //
@@ -208,6 +210,8 @@ pub struct StoreInitWithFallbackResult {
   pub previous_state: ScopedMaps,
   /// Whether fallback to in-memory storage occurred
   pub fallback_occurred: bool,
+  /// Retention registry used for snapshot retention
+  pub retention_registry: Arc<RetentionRegistry>,
 }
 
 //
@@ -265,6 +269,21 @@ pub struct Store {
 }
 
 impl Store {
+  fn spawn_max_snapshot_count_watcher(
+    mut watch: bd_runtime::runtime::IntWatch<bd_runtime::runtime::state::MaxSnapshotCount>,
+    retention_registry: Arc<RetentionRegistry>,
+  ) {
+    tokio::spawn(async move {
+      loop {
+        if watch.changed().await.is_err() {
+          return;
+        }
+
+        let max_snapshot_count = usize::try_from(*watch.read()).ok();
+        retention_registry.set_max_snapshot_count(max_snapshot_count);
+      }
+    });
+  }
   /// Creates a new `Store` instance at the given directory with the provided time provider.
   ///
   /// If there is an existing store, it will be loaded and a snapshot of the previous process's
@@ -289,7 +308,7 @@ impl Store {
       "state",
       config,
       time_provider,
-      retention_registry,
+      retention_registry.clone(),
       stats,
     )
     .await?;
@@ -312,6 +331,7 @@ impl Store {
       store,
       data_loss,
       previous_state: previous_snapshot,
+      retention_registry,
     })
   }
 
@@ -331,6 +351,7 @@ impl Store {
         data_loss: Some(result.data_loss),
         previous_state: result.previous_state,
         fallback_occurred: false,
+        retention_registry: result.retention_registry,
       },
       Err(e) => {
         log::debug!(
@@ -342,6 +363,7 @@ impl Store {
           data_loss: None,
           previous_state: ScopedMaps::default(),
           fallback_occurred: true,
+          retention_registry: Arc::new(RetentionRegistry::new()),
         }
       },
     }
@@ -372,6 +394,7 @@ impl Store {
         data_loss: None,
         previous_state: ScopedMaps::default(),
         fallback_occurred: false,
+        retention_registry: Arc::new(RetentionRegistry::new()),
       },
     }
   }
@@ -399,6 +422,8 @@ impl Store {
     runtime_loader: &ConfigLoader,
     stats: &bd_client_stats_store::Scope,
   ) -> StoreInitWithFallbackResult {
+    let max_snapshot_count_watch =
+      bd_runtime::runtime::state::MaxSnapshotCount::register(runtime_loader);
     let use_persistent_storage =
       *bd_runtime::runtime::state::UsePersistentStorage::register(runtime_loader)
         .into_inner()
@@ -419,22 +444,47 @@ impl Store {
         max_capacity_bytes: max_capacity,
         ..Default::default()
       };
-      Self::from_strategy(
+      let result = Self::from_strategy(
         directory,
         config,
         time_provider,
         InitStrategy::PersistentWithFallback,
         stats,
       )
-      .await
+      .await;
+
+      let max_snapshot_count = usize::try_from(*max_snapshot_count_watch.read()).ok();
+      result
+        .retention_registry
+        .set_max_snapshot_count(max_snapshot_count);
+
+      Self::spawn_max_snapshot_count_watcher(
+        max_snapshot_count_watch,
+        result.retention_registry.clone(),
+      );
+
+      result
     } else {
       // For in-memory, use max_capacity as the entry count limit
-      StoreInitWithFallbackResult {
+      let result = StoreInitWithFallbackResult {
         store: Self::in_memory(time_provider, Some(max_capacity), stats),
         data_loss: None,
         previous_state: ScopedMaps::default(),
         fallback_occurred: false,
-      }
+        retention_registry: Arc::new(RetentionRegistry::new()),
+      };
+
+      let max_snapshot_count = usize::try_from(*max_snapshot_count_watch.read()).ok();
+      result
+        .retention_registry
+        .set_max_snapshot_count(max_snapshot_count);
+
+      Self::spawn_max_snapshot_count_watcher(
+        max_snapshot_count_watch,
+        result.retention_registry.clone(),
+      );
+
+      result
     }
   }
 

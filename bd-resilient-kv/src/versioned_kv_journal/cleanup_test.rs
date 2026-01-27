@@ -129,3 +129,28 @@ async fn cleanup_respects_zero_retention() {
   assert!(temp_dir.path().join("test.jrn.g0.t1000.zz").exists());
   assert!(temp_dir.path().join("test.jrn.g1.t2000.zz").exists());
 }
+
+#[tokio::test]
+async fn cleanup_respects_max_snapshot_count() {
+  let temp_dir = TempDir::new().unwrap();
+  let registry = Arc::new(RetentionRegistry::new());
+
+  // Create snapshots that would all be deleted by min_retention.
+  create_test_snapshot(temp_dir.path(), "test", 0, 1000).await;
+  create_test_snapshot(temp_dir.path(), "test", 1, 2000).await;
+  create_test_snapshot(temp_dir.path(), "test", 2, 3000).await;
+  create_test_snapshot(temp_dir.path(), "test", 3, 4000).await;
+
+  let handle = registry.create_handle().await;
+  handle.update_retention_micros(10_000); // Deletes all based on time.
+  registry.set_max_snapshot_count(Some(2));
+
+  let result = cleanup_old_snapshots(temp_dir.path(), &registry).await;
+  assert!(result.is_ok());
+
+  // Keep newest two regardless of retention timestamp.
+  assert!(!temp_dir.path().join("test.jrn.g0.t1000.zz").exists());
+  assert!(!temp_dir.path().join("test.jrn.g1.t2000.zz").exists());
+  assert!(temp_dir.path().join("test.jrn.g2.t3000.zz").exists());
+  assert!(temp_dir.path().join("test.jrn.g3.t4000.zz").exists());
+}

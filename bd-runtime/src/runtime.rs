@@ -956,4 +956,8 @@ pub mod state {
   // For persistent storage, this is the maximum file size. For in-memory storage,
   // this bounds the memory usage of the state store.
   int_feature_flag!(MaxCapacity, "state.max_capacity_bytes", 1024 * 1024);
+
+  // Controls the maximum number of snapshots to retain for persistent state.
+  // A value of 0 disables count-based cleanup.
+  int_feature_flag!(MaxSnapshotCount, "state.max_snapshot_count", 0);
 }

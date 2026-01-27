@@ -40,6 +40,7 @@ impl Helper {
       super::BlockWhenReservingIntoConcurrentRead::No,
       super::PerRecordCrc32Check::Yes,
       stats.stats.clone(),
+      |_| {},
     )
     .unwrap();
     Self {
@@ -82,6 +83,7 @@ impl Helper {
         super::BlockWhenReservingIntoConcurrentRead::No,
         super::PerRecordCrc32Check::Yes,
         self.stats.stats.clone(),
+        |_| {},
       )?,
       self.cursor,
     ));
