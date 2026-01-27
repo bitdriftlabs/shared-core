@@ -14,6 +14,7 @@ use strum::FromRepr;
 pub enum Scope {
   FeatureFlagExposure = 1,
   GlobalState         = 2,
+  System              = 3,
 }
 
 impl Scope {
