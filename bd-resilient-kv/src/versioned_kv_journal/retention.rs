@@ -9,8 +9,8 @@
 #[path = "./retention_test.rs"]
 mod tests;
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use tokio::sync::RwLock;
 
 /// A handle that declares a retention requirement for snapshot data.
@@ -27,6 +27,7 @@ pub struct RetentionHandle {
   /// Stored as microseconds since epoch to match the journal timestamp format.
   retain_from: Arc<AtomicU64>,
 }
+
 
 impl RetentionHandle {
   /// Updates the retention requirement to retain data from the given timestamp (in microseconds).
@@ -50,6 +51,7 @@ impl RetentionHandle {
 /// retention timestamp needed across all registered handles.
 pub struct RetentionRegistry {
   handles: Arc<RwLock<Vec<Weak<AtomicU64>>>>,
+  max_snapshot_count: Arc<AtomicUsize>,
 }
 
 impl Default for RetentionRegistry {
@@ -63,7 +65,23 @@ impl RetentionRegistry {
   pub fn new() -> Self {
     Self {
       handles: Arc::new(RwLock::new(Vec::new())),
+      max_snapshot_count: Arc::new(AtomicUsize::new(0)),
     }
+  }
+
+  /// Sets the maximum number of snapshots to retain.
+  ///
+  /// A value of `None` means no count-based limit is applied.
+  pub fn set_max_snapshot_count(&self, max_snapshot_count: Option<usize>) {
+    let value = max_snapshot_count.unwrap_or(0);
+    self.max_snapshot_count.store(value, Ordering::Relaxed);
+  }
+
+  /// Returns the maximum number of snapshots to retain, if configured.
+  #[must_use]
+  pub fn max_snapshot_count(&self) -> Option<usize> {
+    let value = self.max_snapshot_count.load(Ordering::Relaxed);
+    if value == 0 { None } else { Some(value) }
   }
 
   /// Creates a new retention handle.

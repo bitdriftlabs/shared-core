@@ -340,6 +340,7 @@ async fn fallback_to_in_memory_on_invalid_directory() {
   assert!(result.fallback_occurred);
   assert!(result.data_loss.is_none());
   assert!(result.previous_state.is_empty());
+  assert_eq!(result.retention_registry.max_snapshot_count(), None);
 
   // Verify in-memory store works correctly
   store
@@ -379,6 +380,7 @@ async fn from_strategy_in_memory_only() {
   assert!(!result.fallback_occurred);
   assert!(result.data_loss.is_none());
   assert!(result.previous_state.is_empty());
+  assert_eq!(result.retention_registry.max_snapshot_count(), None);
 
   // Verify store works
   result

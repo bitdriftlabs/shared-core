@@ -881,6 +881,7 @@ async fn log_streaming() {
     "test".to_string(),
     1024 * 1024,
     Arc::new(RingBufferStats::default()),
+    |_| {},
   );
 
   let mut producer = buffer.clone().register_producer().unwrap();
@@ -931,6 +932,7 @@ async fn streaming_batch_size_flag() {
     "test_stream_batch".to_string(),
     1024 * 1024,
     Arc::new(bd_buffer::RingBufferStats::default()),
+    |_| {},
   );
 
   let mut producer = buffer.clone().register_producer().unwrap();
@@ -988,6 +990,7 @@ async fn log_streaming_shutdown() {
     "test".to_string(),
     1024 * 1024,
     Arc::new(RingBufferStats::default()),
+    |_| {},
   );
 
   let mut producer = buffer.clone().register_producer().unwrap();

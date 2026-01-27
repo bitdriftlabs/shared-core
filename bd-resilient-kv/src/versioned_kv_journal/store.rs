@@ -992,6 +992,7 @@ enum StoreBackend {
 /// see the `VERSIONED_FORMAT.md` documentation.
 pub struct VersionedKVStore {
   backend: StoreBackend,
+  retention_registry: Arc<RetentionRegistry>,
 }
 
 impl VersionedKVStore {
@@ -1028,6 +1029,7 @@ impl VersionedKVStore {
     Ok((
       Self {
         backend: StoreBackend::Persistent(store),
+        retention_registry,
       },
       data_loss,
     ))
@@ -1061,9 +1063,11 @@ impl VersionedKVStore {
     stats: &bd_client_stats_store::Scope,
   ) -> Self {
     let common_stats = CommonStats::new(stats);
+    let retention_registry = Arc::new(RetentionRegistry::new());
 
     Self {
       backend: StoreBackend::InMemory(InMemoryStore::new(time_provider, max_bytes, common_stats)),
+      retention_registry,
     }
   }
 
@@ -1313,5 +1317,10 @@ impl VersionedKVStore {
       StoreBackend::Persistent(store) => store.max_capacity_bytes,
       StoreBackend::InMemory(_) => 0,
     }
+  }
+
+  #[must_use]
+  pub fn retention_registry(&self) -> Arc<RetentionRegistry> {
+    self.retention_registry.clone()
   }
 }

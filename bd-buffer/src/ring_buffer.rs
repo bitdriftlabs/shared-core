@@ -27,7 +27,9 @@ use crate::{Error, Result};
 use anyhow::anyhow;
 use bd_client_stats_store::{Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
+use bd_log_primitives::{EncodableLog, OffsetDateTimeExt as _};
 use bd_proto::protos::config::v1::config::{BufferConfigList, buffer_config};
+use bd_resilient_kv::{RetentionHandle, RetentionRegistry};
 use bd_stats_common::labels;
 use futures::future::join_all;
 use std::collections::HashMap;
@@ -35,6 +37,7 @@ use std::fmt::Debug;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tokio::sync::RwLock;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 // TODO(snowp): This file is growing large, consider splitting trigger and continuous into their own
@@ -163,6 +166,10 @@ pub struct Manager {
 
   stream_buffer_size_flag:
     bd_runtime::runtime::IntWatch<bd_runtime::runtime::buffers::StreamBufferSizeBytes>,
+
+  retention_handle_registry: Arc<RwLock<HashMap<String, RetentionHandle>>>,
+
+  retention_registry: Arc<RetentionRegistry>,
 }
 
 impl Manager {
@@ -170,6 +177,7 @@ impl Manager {
     buffer_directory: PathBuf,
     stats: &Scope,
     runtime: &bd_runtime::runtime::ConfigLoader,
+    retention_registry: Arc<RetentionRegistry>,
   ) -> (
     Arc<Self>,
     tokio::sync::mpsc::Receiver<BufferEventWithResponse>,
@@ -184,6 +192,8 @@ impl Manager {
         buffer_event_tx,
         scope,
         stream_buffer_size_flag: runtime.register_int_watch(),
+        retention_handle_registry: Arc::new(RwLock::new(HashMap::new())),
+        retention_registry,
       }),
       buffer_event_rx,
     )
@@ -272,6 +282,11 @@ impl Manager {
            non_volatile_size={non_volatile_buffer_size}"
         );
 
+        let retention_registry = self.retention_registry.clone();
+        let retention_handle_registry = self.retention_handle_registry.clone();
+        let buffer_id = buffer.id.clone();
+        let buffer_id_for_handle = buffer.id.clone();
+        let allow_overwrite_for_cb = allow_overwrite;
         let (ring_buffer, _) = RingBuffer::new(
           &buffer.name,
           volatile_buffer_size,
@@ -294,7 +309,27 @@ impl Manager {
             .scope
             .counter_with_labels("total_data_loss", labels! {"buffer_id" => &buffer.id}),
           None,
+          if allow_overwrite_for_cb {
+            Some(Arc::new(move |record_data| {
+              if let Some(ts) = EncodableLog::extract_timestamp(record_data)
+                && let Some(micros) = u64::try_from(ts.unix_timestamp_micros()).ok()
+                && let Some(handle) = retention_handle_registry.blocking_read().get(&buffer_id)
+              {
+                handle.update_retention_micros(micros);
+              }
+            }))
+          } else {
+            None
+          },
         )?;
+
+        if allow_overwrite {
+          let retention_handle = retention_registry.create_handle().await;
+          retention_handle_registry
+            .write()
+            .await
+            .insert(buffer_id_for_handle, retention_handle);
+        }
 
         updated_buffers.insert(buffer.id.clone(), (buffer_type, ring_buffer.clone()));
         new_buffers.push((buffer.id.clone(), (buffer_type, ring_buffer)));
@@ -352,6 +387,8 @@ impl Manager {
       unreferenced_buffer
         .delete_on_drop
         .store(true, Ordering::Relaxed);
+
+      self.retention_handle_registry.write().await.remove(&id);
 
       let (event, rx) = BufferEventWithResponse::new(BufferEvent::BufferRemoved(id.clone()));
       // Returning an error triggers a config nack, so handle the error immediately.
@@ -419,6 +456,7 @@ impl Manager {
           "bd tail".to_string(),
           *self.stream_buffer_size_flag.read(),
           Arc::new(RingBufferStats::default()),
+          |_| {},
         ));
 
         Some(BufferEventWithResponse::new(
@@ -565,6 +603,7 @@ impl RingBuffer {
     volatile_records_written: Counter,
     volatile_records_refused: Counter,
     non_volatile_records_written: Option<Counter>,
+    on_record_evicted_cb: Option<Arc<dyn Fn(&[u8]) + Send + Sync + 'static>>,
   ) -> Result<Arc<AggregateRingBuffer>> {
     // TODO(mattklein123): Right now we expose a very limited set of stats. Given it's much easier
     // now to inject stats we can consider exposing the rest. For now just duplicate what we
@@ -595,6 +634,11 @@ impl RingBuffer {
       },
       Arc::new(volatile_stats),
       Arc::new(non_volatile_stats),
+      move |record_data| {
+        if let Some(callback) = on_record_evicted_cb.as_ref() {
+          callback(record_data);
+        }
+      },
     )
   }
 
@@ -612,6 +656,7 @@ impl RingBuffer {
     corrupted_record_counter: Counter,
     total_data_loss_counter: Counter,
     non_volatile_records_written: Option<Counter>,
+    on_record_evicted_cb: Option<Arc<dyn Fn(&[u8]) + Send + Sync + 'static>>,
   ) -> Result<(Arc<Self>, bool)> {
     let filename = non_volatile_filename
       .to_str()
@@ -630,6 +675,7 @@ impl RingBuffer {
       write_counter.clone(),
       write_failure_counter.clone(),
       non_volatile_records_written.clone(),
+      on_record_evicted_cb.clone(),
     );
 
     let mut deleted = false;
@@ -660,6 +706,7 @@ impl RingBuffer {
         write_counter,
         write_failure_counter,
         non_volatile_records_written,
+        None,
       );
     }
 

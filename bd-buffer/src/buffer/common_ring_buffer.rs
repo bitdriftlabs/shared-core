@@ -156,6 +156,7 @@ pub struct LockedData<ExtraLockedData> {
 
   // Callbacks used by concrete buffers for customizing some behavior.
   on_total_data_loss_cb: Box<dyn Fn(&mut ExtraLockedData) + Send>,
+  on_record_evicted_cb: Box<dyn Fn(&[u8]) + Send + Sync>,
   has_read_reservation_cb: Box<dyn Fn(&ExtraLockedData) -> bool + Send>,
   has_write_reservation_cb: Box<dyn Fn(&ExtraLockedData) -> bool + Send>,
 
@@ -453,11 +454,21 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
         if let Some(stat) = &guard.stats.bytes_overwritten {
           stat.inc_by(next_read_size.into());
         }
+        let record_start = (next_read.start + guard.extra_bytes_per_record) as usize;
+        let record_end = record_start + next_read_size as usize;
+        let record_data = if record_end <= guard.memory().len() {
+          guard.memory()[record_start .. record_end].to_vec()
+        } else {
+          Vec::new()
+        };
         // When overwriting we zero out any extra data, to make sure that CRCs, etc. become so the
         // overwritten record is skipped correctly if corruption lands us in it somehow.
         let next_read_start = guard.next_read_start().ok_or(InvariantError::Invariant)?;
         guard.zero_extra_data(next_read_start);
         guard.advance_next_read(next_read_actual_size, Cursor::No)?;
+        if !record_data.is_empty() {
+          guard.emit_evicted_record(&record_data);
+        }
       } else {
         break;
       }
@@ -779,6 +790,10 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     }
   }
 
+  fn emit_evicted_record(&mut self, record_data: &[u8]) {
+    (self.on_record_evicted_cb)(record_data);
+  }
+
   // Common implementation for the consumer startRead() API. On return will fill reserved_read with
   // a reservation if in blocking mode.
   pub fn start_read<'a>(
@@ -979,6 +994,7 @@ impl<ExtraLockedData> CommonRingBuffer<ExtraLockedData> {
     allow_overwrite: AllowOverwrite,
     stats: Arc<RingBufferStats>,
     on_total_data_loss_cb: impl Fn(&mut ExtraLockedData) + Send + 'static,
+    on_record_evicted_cb: impl Fn(&[u8]) + Send + Sync + 'static,
     has_read_reservation_cb: impl Fn(&ExtraLockedData) -> bool + Send + 'static,
     has_write_reservation_cb: impl Fn(&ExtraLockedData) -> bool + Send + 'static,
   ) -> Self {
@@ -1003,6 +1019,7 @@ impl<ExtraLockedData> CommonRingBuffer<ExtraLockedData> {
         extra_locked_data,
         allow_overwrite,
         on_total_data_loss_cb: Box::new(on_total_data_loss_cb),
+        on_record_evicted_cb: Box::new(on_record_evicted_cb),
         has_read_reservation_cb: Box::new(has_read_reservation_cb),
         has_write_reservation_cb: Box::new(has_write_reservation_cb),
         wait_for_drain_data: None,

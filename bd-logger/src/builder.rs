@@ -301,7 +301,11 @@ impl LoggerBuilder {
       )
       .await;
 
-      let (state_store, previous_run_state) = (result.store, result.previous_state);
+      let (state_store, previous_run_state, retention_registry) = (
+        result.store,
+        result.previous_state,
+        result.retention_registry,
+      );
 
       if result.fallback_occurred {
         handle_unexpected(
@@ -346,8 +350,12 @@ impl LoggerBuilder {
       );
 
       let buffer_directory = Logger::initialize_buffer_directory(&self.params.sdk_directory)?;
-      let (buffer_manager, buffer_event_rx) =
-        bd_buffer::Manager::new(buffer_directory, &scope, &runtime_loader);
+      let (buffer_manager, buffer_event_rx) = bd_buffer::Manager::new(
+        buffer_directory,
+        &scope,
+        &runtime_loader,
+        retention_registry,
+      );
       let buffer_uploader = BufferUploadManager::new(
         data_upload_tx_clone.clone(),
         &runtime_loader,
