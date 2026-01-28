@@ -5,6 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::buffer::{RingBuffer as BufferRingBuffer, RingBufferStats, VolatileRingBuffer};
 use crate::ring_buffer::{Manager, RingBuffer};
 use crate::{AbslCode, Error};
 use assert_matches::assert_matches;
@@ -306,58 +307,30 @@ async fn ring_buffer_stats() {
 
 #[tokio::test]
 async fn trigger_buffer_eviction_updates_retention_handle() {
-  let directory = tmp_dir();
   let retention_registry = Arc::new(bd_resilient_kv::RetentionRegistry::new());
-  let (ring_buffer_manager, mut buffer_update_rx) = Manager::new(
-    directory.path().to_path_buf(),
-    &Collector::default().scope(""),
-    &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
-    retention_registry.clone(),
-  );
-
-  tokio::spawn(async move { while buffer_update_rx.recv().await.is_some() {} });
-
   let first_time = time::OffsetDateTime::now_utc();
   let second_time = first_time + time::Duration::seconds(1);
   let first_log = make_test_log_bytes(first_time);
   let second_log = make_test_log_bytes(second_time);
-
   let log_size = u32::try_from(first_log.len()).unwrap();
-  let volatile_size = log_size.checked_add(8).unwrap();
-  let non_volatile_size = volatile_size.checked_add(64).unwrap();
-  let config = single_buffer_with_size(
-    "trigger",
-    non_volatile_size,
+  let volatile_size = log_size.checked_add(4).unwrap();
+  let retention_handle = retention_registry.create_handle().await;
+  let on_record_evicted_cb = move |record_data: &[u8]| {
+    if let Some(ts) = EncodableLog::extract_timestamp(record_data)
+      && let Some(micros) = u64::try_from(ts.unix_timestamp_micros()).ok()
+    {
+      retention_handle.update_retention_micros(micros);
+    }
+  };
+  let buffer = VolatileRingBuffer::new(
+    "trigger".to_string(),
     volatile_size,
-    buffer_config::Type::TRIGGER,
+    Arc::new(RingBufferStats::default()),
+    on_record_evicted_cb,
   );
-  ring_buffer_manager
-    .update_from_config(&config, false)
-    .await
-    .unwrap();
-
-  if let Some(stream_buffer) = ring_buffer_manager.stream_buffer() {
-    stream_buffer.flush();
-  }
-
-  let (_, buffer_handle) = ring_buffer_manager
-    .buffers()
-    .get("trigger")
-    .unwrap()
-    .clone();
-  let synchronizer = buffer_handle.thread_synchronizer();
-  synchronizer.wait_on("block_advance_next_read");
-  let mut producer = buffer_handle.new_thread_local_producer().unwrap();
+  let mut producer = buffer.clone().register_producer().unwrap();
   producer.write(&first_log).unwrap();
-
-  let mut consumer = buffer_handle.new_consumer().unwrap();
-  let _ignored = consumer.try_read().unwrap();
-  drop(consumer);
-
   producer.write(&second_log).unwrap();
-  synchronizer.barrier_on("block_advance_next_read");
-  synchronizer.signal("block_advance_next_read");
-  buffer_handle.flush();
 
   let retained = retention_registry.min_retention_timestamp().await.unwrap();
   let first_micros =
@@ -378,12 +351,7 @@ async fn retention_handle_is_released_on_buffer_removal() {
 
   tokio::spawn(async move { while buffer_update_rx.recv().await.is_some() {} });
 
-  let config = single_buffer_with_size(
-    "trigger",
-    1000,
-    100,
-    buffer_config::Type::TRIGGER,
-  );
+  let config = single_buffer_with_size("trigger", 1000, 100, buffer_config::Type::TRIGGER);
   ring_buffer_manager
     .update_from_config(&config, false)
     .await

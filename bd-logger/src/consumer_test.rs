@@ -1068,6 +1068,7 @@ fn create_buffer(
     Counter::default(),
     Some(records_written),
     None,
+    None,
   )
   .unwrap();
 
