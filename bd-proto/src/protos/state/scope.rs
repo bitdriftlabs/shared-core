@@ -40,6 +40,8 @@ pub enum StateScope {
     FEATURE_FLAG = 1,
     // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.state.v1.StateScope.GLOBAL_STATE)
     GLOBAL_STATE = 2,
+    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.state.v1.StateScope.SYSTEM)
+    SYSTEM = 3,
 }
 
 impl ::protobuf::Enum for StateScope {
@@ -54,6 +56,7 @@ impl ::protobuf::Enum for StateScope {
             0 => ::std::option::Option::Some(StateScope::UNSPECIFIED),
             1 => ::std::option::Option::Some(StateScope::FEATURE_FLAG),
             2 => ::std::option::Option::Some(StateScope::GLOBAL_STATE),
+            3 => ::std::option::Option::Some(StateScope::SYSTEM),
             _ => ::std::option::Option::None
         }
     }
@@ -63,6 +66,7 @@ impl ::protobuf::Enum for StateScope {
             "UNSPECIFIED" => ::std::option::Option::Some(StateScope::UNSPECIFIED),
             "FEATURE_FLAG" => ::std::option::Option::Some(StateScope::FEATURE_FLAG),
             "GLOBAL_STATE" => ::std::option::Option::Some(StateScope::GLOBAL_STATE),
+            "SYSTEM" => ::std::option::Option::Some(StateScope::SYSTEM),
             _ => ::std::option::Option::None
         }
     }
@@ -71,6 +75,7 @@ impl ::protobuf::Enum for StateScope {
         StateScope::UNSPECIFIED,
         StateScope::FEATURE_FLAG,
         StateScope::GLOBAL_STATE,
+        StateScope::SYSTEM,
     ];
 }
 
@@ -100,8 +105,9 @@ impl StateScope {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n-bitdrift_public/protobuf/state/v1/scope.proto\x12!bitdrift_public.pro\
-    tobuf.state.v1*A\n\nStateScope\x12\x0f\n\x0bUNSPECIFIED\x10\0\x12\x10\n\
-    \x0cFEATURE_FLAG\x10\x01\x12\x10\n\x0cGLOBAL_STATE\x10\x02b\x06proto3\
+    tobuf.state.v1*M\n\nStateScope\x12\x0f\n\x0bUNSPECIFIED\x10\0\x12\x10\n\
+    \x0cFEATURE_FLAG\x10\x01\x12\x10\n\x0cGLOBAL_STATE\x10\x02\x12\n\n\x06SY\
+    STEM\x10\x03b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
