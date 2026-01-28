@@ -35,6 +35,7 @@ use bd_time::OffsetDateTimeExt as _;
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
 use ordered_float::NotNan;
+use protobuf::rt::WireType;
 use protobuf::{CodedInputStream, CodedOutputStream};
 use std::borrow::Cow;
 use std::sync::{Arc, LazyLock};
@@ -645,12 +646,10 @@ impl EncodableLog {
         } else {
           None
         };
-
       EncodableLogCached {
         compressed_contents,
       }
     });
-
     // Use proc-macro-generated size computation
     Ok(
       if let Some(compressed) = &cached.compressed_contents {
@@ -834,6 +833,7 @@ impl MemorySized for LogFieldValue {
         | Self::I64(_)
         | Self::Double(_) => 0,
         Self::Bytes(b) => b.capacity(),
+        Self::Boolean(_) | Self::U64(_) | Self::I64(_) | Self::Double(_) => 0,
       }
   }
 }
