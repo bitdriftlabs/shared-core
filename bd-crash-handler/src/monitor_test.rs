@@ -256,7 +256,7 @@ impl Setup {
       .insert(
         bd_state::Scope::FeatureFlagExposure,
         "initial_flag".to_string(),
-        bd_state::string_value("true"),
+        "true".into(),
       )
       .await
       .unwrap();
@@ -264,7 +264,7 @@ impl Setup {
       .insert(
         bd_state::Scope::FeatureFlagExposure,
         "previous_only_flag".to_string(),
-        bd_state::string_value("enabled"),
+        "enabled".into(),
       )
       .await
       .unwrap();
@@ -296,7 +296,7 @@ impl Setup {
       .insert(
         bd_state::Scope::FeatureFlagExposure,
         key.to_string(),
-        bd_state::string_value(value),
+        value.into(),
       )
       .await
       .unwrap();

@@ -127,17 +127,10 @@ fn data_encoding() {
 
     let decoded_log =
       bd_proto::protos::logging::payload::Log::parse_from_bytes(&output_bytes).unwrap();
-    assert_eq!(
-      decoded_log.message.unwrap(),
-      expected,
-      "Failed for {input:?}"
-    );
+    let decoded_message = decoded_log.message.unwrap();
+    assert_eq!(decoded_message, expected, "Failed for {input:?}");
 
-    let mut roundtrip_data = Data::default();
-    roundtrip_data
-      .merge_from_bytes(&input.clone().into_proto().write_to_bytes().unwrap())
-      .unwrap();
-    let roundtrip = DataValue::from_proto(roundtrip_data).unwrap();
+    let roundtrip = DataValue::from_proto(decoded_message).unwrap();
     assert_eq!(roundtrip, input, "Roundtrip failed for {input:?}");
   }
 }

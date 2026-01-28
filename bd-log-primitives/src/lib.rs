@@ -30,11 +30,7 @@ use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::{BinaryData, Data, LogType};
 #[cfg(test)]
 use bd_proto_util::serialization::ProtoMessageDeserialize;
-use bd_proto_util::serialization::{
-  ProtoFieldDeserialize,
-  ProtoFieldSerialize,
-  ProtoMessageSerialize,
-};
+use bd_proto_util::serialization::ProtoMessageSerialize as _;
 use bd_time::OffsetDateTimeExt as _;
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
@@ -191,69 +187,6 @@ pub enum DataValue {
   I64(i64),
   #[field(id = 4)]
   Double(NotNan<f64>),
-}
-
-impl bd_proto_util::serialization::ProtoMessageSerialize for DataValue {
-  fn compute_message_size(&self) -> u64 {
-    match self {
-      Self::String(value) => value.compute_size_explicit(1),
-      Self::SharedString(value) => value.compute_size_explicit(1),
-      Self::StaticString(value) => value.compute_size_explicit(1),
-      Self::Bytes(value) => value.compute_size_explicit(2),
-      Self::Boolean(value) => value.compute_size_explicit(6),
-      Self::U64(value) => value.compute_size_explicit(3),
-      Self::I64(value) => value.compute_size_explicit(5),
-      Self::Double(value) => value.compute_size_explicit(4),
-    }
-  }
-
-  fn serialize_message(&self, os: &mut CodedOutputStream<'_>) -> anyhow::Result<()> {
-    match self {
-      Self::String(value) => value.serialize_explicit(1, os),
-      Self::SharedString(value) => value.serialize_explicit(1, os),
-      Self::StaticString(value) => value.serialize_explicit(1, os),
-      Self::Bytes(value) => value.serialize_explicit(2, os),
-      Self::Boolean(value) => value.serialize_explicit(6, os),
-      Self::U64(value) => value.serialize_explicit(3, os),
-      Self::I64(value) => value.serialize_explicit(5, os),
-      Self::Double(value) => value.serialize_explicit(4, os),
-    }
-  }
-}
-
-impl bd_proto_util::serialization::ProtoMessageDeserialize for DataValue {
-  fn deserialize_message(is: &mut CodedInputStream<'_>) -> anyhow::Result<Self> {
-    use bd_proto_util::serialization::runtime::Tag;
-
-    let mut result = None;
-
-    while !is.eof()? {
-      let tag = Tag::new(is.read_raw_varint32()?)?;
-      let next_value = match tag.field_number {
-        1 => Self::String(String::deserialize(is)?),
-        2 => Self::Bytes(LogBinaryData::deserialize(is)?),
-        3 => Self::U64(u64::deserialize(is)?),
-        4 => Self::Double(NotNan::<f64>::deserialize(is)?),
-        5 => Self::I64(i64::deserialize(is)?),
-        6 => Self::Boolean(bool::deserialize(is)?),
-        _ => {
-          is.skip_field(tag.wire_type)?;
-          continue;
-        },
-      };
-
-      if result.is_some() {
-        anyhow::bail!("Multiple Data oneof variants set in DataValue payload");
-      }
-      result = Some(next_value);
-    }
-
-    result.ok_or_else(|| {
-      anyhow::anyhow!(
-        "No variant set for DataValue. Use Option<DataValue> if this field should be optional."
-      )
-    })
-  }
 }
 
 impl DataValue {

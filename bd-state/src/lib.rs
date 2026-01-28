@@ -28,35 +28,10 @@ use bd_resilient_kv::{DataLoss, RetentionRegistry, ScopedMaps};
 use bd_runtime::runtime::ConfigLoader;
 use bd_time::{OffsetDateTimeExt, TimeProvider};
 use itertools::Itertools as _;
-use ordered_float::NotNan;
 use std::path::Path;
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::RwLock;
-
-/// Creates a `DataValue` from a string.
-#[must_use]
-pub fn string_value(s: impl Into<String>) -> DataValue {
-  DataValue::String(s.into())
-}
-
-/// Creates a `DataValue` from an integer.
-#[must_use]
-pub fn int_value(i: i64) -> DataValue {
-  DataValue::I64(i)
-}
-
-/// Creates a `DataValue` from a double.
-#[must_use]
-pub fn double_value(d: f64) -> DataValue {
-  DataValue::Double(NotNan::new(d).unwrap_or_default())
-}
-
-/// Creates a `DataValue` from a boolean.
-#[must_use]
-pub fn bool_value(b: bool) -> DataValue {
-  DataValue::Boolean(b)
-}
 
 /// A timestamped state value, used in snapshots.
 pub type TimestampedStateValue = (String, OffsetDateTime);
