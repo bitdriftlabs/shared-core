@@ -166,7 +166,9 @@ async fn test_ring_buffer_manager() {
     dir.path().to_path_buf(),
     &Collector::default().scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
-    Arc::new(bd_resilient_kv::RetentionRegistry::new()),
+    Arc::new(bd_resilient_kv::RetentionRegistry::new(
+      bd_runtime::runtime::IntWatch::new_for_testing(0),
+    )),
   );
 
   // Make sure we're not letting any buffer events sit in the channel, as this extends the
@@ -214,7 +216,9 @@ async fn ring_buffer_stats() {
     diretory.path().to_owned(),
     &collector.scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
-    Arc::new(bd_resilient_kv::RetentionRegistry::new()),
+    Arc::new(bd_resilient_kv::RetentionRegistry::new(
+      bd_runtime::runtime::IntWatch::new_for_testing(0),
+    )),
   );
 
   // Make sure we're not letting any buffer events sit in the channel, as this extends the
@@ -307,7 +311,9 @@ async fn ring_buffer_stats() {
 
 #[tokio::test]
 async fn trigger_buffer_eviction_updates_retention_handle() {
-  let retention_registry = Arc::new(bd_resilient_kv::RetentionRegistry::new());
+  let retention_registry = Arc::new(bd_resilient_kv::RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
   let first_time = time::OffsetDateTime::now_utc();
   let second_time = first_time + time::Duration::seconds(1);
   let first_log = make_test_log_bytes(first_time);
@@ -341,7 +347,9 @@ async fn trigger_buffer_eviction_updates_retention_handle() {
 #[tokio::test]
 async fn retention_handle_is_released_on_buffer_removal() {
   let directory = tmp_dir();
-  let retention_registry = Arc::new(bd_resilient_kv::RetentionRegistry::new());
+  let retention_registry = Arc::new(bd_resilient_kv::RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
   let (ring_buffer_manager, mut buffer_update_rx) = Manager::new(
     directory.path().to_path_buf(),
     &Collector::default().scope(""),
@@ -377,7 +385,9 @@ async fn write_failure_stats() {
     diretory.path().to_owned(),
     &collector.scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
-    Arc::new(bd_resilient_kv::RetentionRegistry::new()),
+    Arc::new(bd_resilient_kv::RetentionRegistry::new(
+      bd_runtime::runtime::IntWatch::new_for_testing(0),
+    )),
   );
 
   // Make sure we're not letting any buffer events sit in the channel, as this extends the
@@ -422,7 +432,9 @@ async fn buffer_never_resizes() {
     buffer_directory.path().to_path_buf(),
     &Collector::default().scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from("")),
-    Arc::new(bd_resilient_kv::RetentionRegistry::new()),
+    Arc::new(bd_resilient_kv::RetentionRegistry::new(
+      bd_runtime::runtime::IntWatch::new_for_testing(0),
+    )),
   );
 
   // Make sure we're not letting any buffer events sit in the channel, as this extends the
