@@ -20,6 +20,7 @@ use tokio::sync::RwLock;
 ///
 /// When dropped, the handle automatically releases its retention requirement by
 /// setting the retention timestamp to "now".
+#[derive(Clone)]
 pub struct RetentionHandle {
   /// The timestamp from which data must be retained (inclusive).
   /// Data older than this timestamp may be eligible for cleanup.

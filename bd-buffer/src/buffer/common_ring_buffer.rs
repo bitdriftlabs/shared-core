@@ -119,7 +119,7 @@ struct WaitForDrainData {
 //
 
 // All data that must be accessed under lock within the buffer.
-type EvictedRecordCallback = Box<dyn Fn(&[u8]) + Send + Sync + 'static>;
+type BoxedEvictedCallback = Box<dyn Fn(&[u8]) + Send + Sync + 'static>;
 
 pub struct LockedData<ExtraLockedData> {
   memory: SendSyncNonNull<[u8]>,
@@ -158,7 +158,7 @@ pub struct LockedData<ExtraLockedData> {
 
   // Callbacks used by concrete buffers for customizing some behavior.
   on_total_data_loss_cb: Box<dyn Fn(&mut ExtraLockedData) + Send>,
-  on_record_evicted_cb: EvictedRecordCallback,
+  on_record_evicted_cb: BoxedEvictedCallback,
   has_read_reservation_cb: Box<dyn Fn(&ExtraLockedData) -> bool + Send>,
   has_write_reservation_cb: Box<dyn Fn(&ExtraLockedData) -> bool + Send>,
 

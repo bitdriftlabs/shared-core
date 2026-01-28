@@ -66,6 +66,7 @@ async fn test_create_ring_buffer() {
     fake_counter(),
     None,
     None,
+    None,
   )
   .unwrap();
 
@@ -91,6 +92,7 @@ fn test_create_ring_buffer_illegal_path() {
     fake_counter(),
     fake_counter(),
     fake_counter(),
+    None,
     None,
     None,
   );
@@ -126,6 +128,7 @@ fn corrupted_buffer() {
     fake_counter(),
     None,
     None,
+    None,
   )
   .unwrap();
   assert!(!deleted);
@@ -147,6 +150,7 @@ fn corrupted_buffer() {
     fake_counter(),
     fake_counter(),
     fake_counter(),
+    None,
     None,
     None,
   )
@@ -359,6 +363,41 @@ async fn trigger_buffer_eviction_updates_retention_handle() {
   let first_micros =
     u64::try_from(first_time.unix_timestamp_micros()).expect("timestamp micros fits u64");
   assert_eq!(retained, first_micros);
+}
+
+#[tokio::test]
+async fn retention_handle_is_released_on_buffer_removal() {
+  let directory = tmp_dir();
+  let retention_registry = Arc::new(bd_resilient_kv::RetentionRegistry::new());
+  let (ring_buffer_manager, mut buffer_update_rx) = Manager::new(
+    directory.path().to_path_buf(),
+    &Collector::default().scope(""),
+    &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
+    retention_registry.clone(),
+  );
+
+  tokio::spawn(async move { while buffer_update_rx.recv().await.is_some() {} });
+
+  let config = single_buffer_with_size(
+    "trigger",
+    1000,
+    100,
+    buffer_config::Type::TRIGGER,
+  );
+  ring_buffer_manager
+    .update_from_config(&config, false)
+    .await
+    .unwrap();
+
+  assert!(retention_registry.min_retention_timestamp().await.is_some());
+
+  let removed_config = BufferConfigList::default();
+  ring_buffer_manager
+    .update_from_config(&removed_config, false)
+    .await
+    .unwrap();
+
+  assert!(retention_registry.min_retention_timestamp().await.is_none());
 }
 
 #[tokio::test]
