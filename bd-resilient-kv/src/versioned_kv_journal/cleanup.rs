@@ -18,18 +18,24 @@ use std::path::{Path, PathBuf};
 /// This function is called during journal rotation to delete archived journal snapshots
 /// that are older than the minimum retention timestamp required by any registered handle.
 ///
-/// If no retention handles are registered, no cleanup is performed (snapshots are kept).
+/// If no retention handles are registered and no snapshot limit is set, no cleanup is performed
+/// (snapshots are kept).
 pub async fn cleanup_old_snapshots(
   directory: &Path,
   registry: &RetentionRegistry,
 ) -> anyhow::Result<()> {
   // Get minimum retention timestamp across all subsystems
-  let Some(min_retention) = registry.min_retention_timestamp().await else {
-    log::debug!("No retention handles registered, skipping cleanup");
+  let min_retention = registry.min_retention_timestamp().await;
+  let max_snapshot_count = registry.max_snapshot_count();
+  if min_retention.is_none() && max_snapshot_count.is_none() {
+    log::debug!("No retention handles or snapshot limit, skipping cleanup");
     return Ok(());
-  };
+  }
 
-  log::debug!("Running snapshot cleanup with min_retention={min_retention}");
+  log::debug!(
+    "Running snapshot cleanup with min_retention={min_retention:?}, \
+     max_snapshot_count={max_snapshot_count:?}"
+  );
 
   // Find all archived snapshots
   let snapshots = find_archived_snapshots(directory).await?;
@@ -37,10 +43,22 @@ pub async fn cleanup_old_snapshots(
   let mut deleted_count = 0;
   let mut kept_count = 0;
 
-  for (path, timestamp) in snapshots {
-    if timestamp < min_retention {
+  let keep_newest_at_least = max_snapshot_count.unwrap_or(0);
+  let total_snapshots = snapshots.len();
+  let keep_newest_threshold = total_snapshots.saturating_sub(keep_newest_at_least);
+
+  for (index, (path, timestamp)) in snapshots.into_iter().enumerate() {
+    let is_within_newest_window = keep_newest_at_least > 0 && index >= keep_newest_threshold;
+    if is_within_newest_window {
+      kept_count += 1;
+      continue;
+    }
+
+    let should_delete = min_retention.is_none_or(|min_retention| timestamp < min_retention);
+
+    if should_delete {
       log::debug!(
-        "Deleting snapshot {} (timestamp={} < min_retention={})",
+        "Deleting snapshot {} (timestamp={} < min_retention={:?})",
         path.display(),
         timestamp,
         min_retention

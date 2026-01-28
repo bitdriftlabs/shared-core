@@ -54,6 +54,7 @@ impl Helper {
       allow_overwrite,
       Arc::new(RingBufferStats::default()),
       stats.stats.clone(),
+      |_| {},
     )
     .unwrap();
     Self {
@@ -86,6 +87,7 @@ impl Helper {
         self.allow_overwrite,
         Arc::new(RingBufferStats::default()),
         self.stats.stats.clone(),
+        |_| {},
       )?,
       self.cursor,
     ));

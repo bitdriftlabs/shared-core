@@ -9,6 +9,7 @@
 #[path = "./retention_test.rs"]
 mod tests;
 
+use bd_runtime::runtime::IntWatch;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use tokio::sync::RwLock;
@@ -20,6 +21,7 @@ use tokio::sync::RwLock;
 ///
 /// When dropped, the handle automatically releases its retention requirement by
 /// setting the retention timestamp to "now".
+#[derive(Clone)]
 pub struct RetentionHandle {
   /// The timestamp from which data must be retained (inclusive).
   /// Data older than this timestamp may be eligible for cleanup.
@@ -27,6 +29,7 @@ pub struct RetentionHandle {
   /// Stored as microseconds since epoch to match the journal timestamp format.
   retain_from: Arc<AtomicU64>,
 }
+
 
 impl RetentionHandle {
   /// Updates the retention requirement to retain data from the given timestamp (in microseconds).
@@ -50,20 +53,25 @@ impl RetentionHandle {
 /// retention timestamp needed across all registered handles.
 pub struct RetentionRegistry {
   handles: Arc<RwLock<Vec<Weak<AtomicU64>>>>,
-}
-
-impl Default for RetentionRegistry {
-  fn default() -> Self {
-    Self::new()
-  }
+  max_snapshot_count_watch: IntWatch<bd_runtime::runtime::state::MaxSnapshotCount>,
 }
 
 impl RetentionRegistry {
   #[must_use]
-  pub fn new() -> Self {
+  pub fn new(
+    max_snapshot_count_watch: IntWatch<bd_runtime::runtime::state::MaxSnapshotCount>,
+  ) -> Self {
     Self {
       handles: Arc::new(RwLock::new(Vec::new())),
+      max_snapshot_count_watch,
     }
+  }
+
+  /// Returns the maximum number of snapshots to retain, if configured.
+  #[must_use]
+  pub fn max_snapshot_count(&self) -> Option<usize> {
+    let value = usize::try_from(*self.max_snapshot_count_watch.read()).ok()?;
+    if value == 0 { None } else { Some(value) }
   }
 
   /// Creates a new retention handle.

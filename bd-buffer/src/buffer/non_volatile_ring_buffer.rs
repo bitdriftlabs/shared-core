@@ -723,6 +723,7 @@ impl RingBufferImpl {
     block_when_reserving_into_concurrent_read: BlockWhenReservingIntoConcurrentRead,
     per_record_crc32_check: PerRecordCrc32Check,
     stats: Arc<RingBufferStats>,
+    on_record_evicted_cb: impl Fn(&[u8]) + Send + Sync + 'static,
   ) -> Result<Arc<Self>> {
     // The following static asserts verify that FileHeader is a known size with all field offsets
     // known. This is done to avoid the use of #pragma pack(1) which may lead to poor performance on
@@ -880,6 +881,7 @@ impl RingBufferImpl {
         allow_overwrite,
         stats,
         ExtraLockedData::on_total_data_loss,
+        on_record_evicted_cb,
         |extra_locked_data| {
           extra_locked_data
             .consumer
