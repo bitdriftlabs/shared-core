@@ -11,7 +11,6 @@ mod network_test;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
-  DataValue,
   LogFieldKey,
   LogInterceptor,
   LogLevel,

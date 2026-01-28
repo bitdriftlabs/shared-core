@@ -7,6 +7,7 @@
 
 use crate::{InitStrategy, Scope, StateReader, Store};
 use bd_client_stats_store::Collector;
+use bd_log_primitives::DataValue;
 use bd_resilient_kv::PersistentStoreConfig;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -364,7 +365,9 @@ async fn system_scope_persists_on_restart() {
     assert!(
       prev_snapshot
         .get(Scope::System, "session_id")
-        .is_some_and(|entry| entry.value.as_str() == Some("session-1"))
+        .is_some_and(
+          |entry| DataValue::from_proto(entry.value.clone()).unwrap().as_str() == Some("session-1")
+        )
     );
 
     let reader = store.read().await;
@@ -432,7 +435,9 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
     assert!(
       prev_snapshot
         .get(Scope::System, "session_id")
-        .is_some_and(|entry| entry.value.as_str() == Some("session-1"))
+        .is_some_and(
+          |entry| DataValue::from_proto(entry.value.clone()).unwrap().as_str() == Some("session-1")
+        )
     );
 
     let reader = store.read().await;

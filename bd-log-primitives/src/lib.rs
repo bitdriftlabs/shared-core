@@ -35,7 +35,6 @@ use bd_time::OffsetDateTimeExt as _;
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
 use ordered_float::NotNan;
-use protobuf::rt::WireType;
 use protobuf::{CodedInputStream, CodedOutputStream};
 use std::borrow::Cow;
 use std::sync::{Arc, LazyLock};
@@ -824,16 +823,16 @@ impl MemorySized for LogFieldValue {
     size_of_val(self)
       + match self {
         Self::String(s) => s.len(),
+        Self::Bytes(b) => b.capacity(),
         // For these variants the string is stored on the heap so we assume that it takes up no
-        // space within the enum itself.
+        // space within the enum itself. For primitives the size is already accounted for by
+        // size_of_val(self).
         Self::SharedString(_)
         | Self::StaticString(_)
         | Self::Boolean(_)
         | Self::U64(_)
         | Self::I64(_)
         | Self::Double(_) => 0,
-        Self::Bytes(b) => b.capacity(),
-        Self::Boolean(_) | Self::U64(_) | Self::I64(_) | Self::Double(_) => 0,
       }
   }
 }
