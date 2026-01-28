@@ -284,17 +284,7 @@ impl MetricsSample {
 /// fields.
 fn get_int_field_value(fields: &AnnotatedLogFields, field_key: &str) -> Option<u64> {
   let value = fields.get(field_key)?;
-  let string_value = match &value.value {
-    DataValue::String(value) => value,
-    DataValue::SharedString(value) => value.as_ref(),
-    DataValue::StaticString(value) => value,
-    DataValue::Bytes(_)
-    | DataValue::Boolean(_)
-    | DataValue::U64(_)
-    | DataValue::I64(_)
-    | DataValue::Double(_) => return None,
-  };
-
+  let string_value = value.value.as_str()?;
   string_value.parse::<u64>().ok()
 }
 
