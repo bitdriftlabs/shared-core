@@ -9,8 +9,8 @@
 #[path = "./retention_test.rs"]
 mod tests;
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::{Arc, Weak};
 use tokio::sync::RwLock;
 
 /// A handle that declares a retention requirement for snapshot data.

@@ -54,10 +54,7 @@ pub async fn cleanup_old_snapshots(
       continue;
     }
 
-    let should_delete = match min_retention {
-      None => true,
-      Some(min_retention) => timestamp < min_retention,
-    };
+    let should_delete = min_retention.is_none_or(|min_retention| timestamp < min_retention);
 
     if should_delete {
       log::debug!(

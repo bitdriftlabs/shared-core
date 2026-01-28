@@ -16,7 +16,12 @@ use itertools::Itertools;
 
 fn make_helper(size: u32) -> Helper {
   Helper::new(
-    RingBufferImpl::new("test".to_string(), size, RingBufferStats::default().into()),
+    RingBufferImpl::new(
+      "test".to_string(),
+      size,
+      RingBufferStats::default().into(),
+      |_| {},
+    ),
     Cursor::No,
   )
 }

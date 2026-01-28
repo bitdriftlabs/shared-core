@@ -27,10 +27,11 @@ use crate::{Error, Result};
 use anyhow::anyhow;
 use bd_client_stats_store::{Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
-use bd_log_primitives::{EncodableLog, OffsetDateTimeExt as _};
+use bd_log_primitives::EncodableLog;
 use bd_proto::protos::config::v1::config::{BufferConfigList, buffer_config};
 use bd_resilient_kv::{RetentionHandle, RetentionRegistry};
 use bd_stats_common::labels;
+use bd_time::OffsetDateTimeExt as _;
 use futures::future::join_all;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -147,6 +148,8 @@ type AllBuffers = (
 );
 
 // Responsible for managing multiple ring buffers and applying dynamic configuration updates.
+type EvictedRecordCallback = Arc<dyn Fn(&[u8]) + Send + Sync + 'static>;
+
 pub struct Manager {
   // Both the file-based ring buffers and the RAM-only stream buffer are kept within an RwLock in
   // order to allow modifications to be done in the updater while allowing the flush channel
@@ -284,6 +287,7 @@ impl Manager {
 
         let retention_registry = self.retention_registry.clone();
         let retention_handle_registry = self.retention_handle_registry.clone();
+        let retention_handle_registry_for_cb = retention_handle_registry.clone();
         let buffer_id = buffer.id.clone();
         let buffer_id_for_handle = buffer.id.clone();
         let allow_overwrite_for_cb = allow_overwrite;
@@ -313,7 +317,9 @@ impl Manager {
             Some(Arc::new(move |record_data| {
               if let Some(ts) = EncodableLog::extract_timestamp(record_data)
                 && let Some(micros) = u64::try_from(ts.unix_timestamp_micros()).ok()
-                && let Some(handle) = retention_handle_registry.blocking_read().get(&buffer_id)
+                && let Some(handle) = retention_handle_registry_for_cb
+                  .blocking_read()
+                  .get(&buffer_id)
               {
                 handle.update_retention_micros(micros);
               }
@@ -603,7 +609,7 @@ impl RingBuffer {
     volatile_records_written: Counter,
     volatile_records_refused: Counter,
     non_volatile_records_written: Option<Counter>,
-    on_record_evicted_cb: Option<Arc<dyn Fn(&[u8]) + Send + Sync + 'static>>,
+    on_record_evicted_cb: Option<EvictedRecordCallback>,
   ) -> Result<Arc<AggregateRingBuffer>> {
     // TODO(mattklein123): Right now we expose a very limited set of stats. Given it's much easier
     // now to inject stats we can consider exposing the rest. For now just duplicate what we
@@ -656,13 +662,14 @@ impl RingBuffer {
     corrupted_record_counter: Counter,
     total_data_loss_counter: Counter,
     non_volatile_records_written: Option<Counter>,
-    on_record_evicted_cb: Option<Arc<dyn Fn(&[u8]) + Send + Sync + 'static>>,
+    on_record_evicted_cb: Option<EvictedRecordCallback>,
   ) -> Result<(Arc<Self>, bool)> {
     let filename = non_volatile_filename
       .to_str()
       .ok_or(Error::InvalidFileName)?
       .to_string();
 
+    let on_record_evicted_cb = on_record_evicted_cb;
     let mut buffer = Self::make_buffer(
       name,
       volatile_size,
@@ -759,6 +766,13 @@ impl RingBuffer {
   // Flush the underlying buffer.
   pub fn flush(&self) {
     self.buffer.flush();
+  }
+
+  #[cfg(test)]
+  pub fn thread_synchronizer(
+    &self,
+  ) -> Arc<crate::buffer::test::thread_synchronizer::ThreadSynchronizer> {
+    self.buffer.thread_synchronizer()
   }
 }
 

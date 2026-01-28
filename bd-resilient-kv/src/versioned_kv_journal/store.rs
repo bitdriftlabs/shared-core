@@ -1021,7 +1021,7 @@ impl VersionedKVStore {
       name,
       config,
       time_provider,
-      retention_registry,
+      retention_registry.clone(),
       common_stats,
     )
     .await?;
