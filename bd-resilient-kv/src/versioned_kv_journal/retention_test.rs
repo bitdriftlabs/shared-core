@@ -14,7 +14,9 @@ use std::sync::Arc;
 
 #[tokio::test]
 async fn handle_starts_with_retain_all() {
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
   let handle = registry.create_handle().await;
 
   assert_eq!(
@@ -26,7 +28,9 @@ async fn handle_starts_with_retain_all() {
 
 #[tokio::test]
 async fn handle_can_update_retention() {
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
   let handle = registry.create_handle().await;
 
   let timestamp_micros = 1_000_000_u64; // 1 second since epoch
@@ -37,7 +41,9 @@ async fn handle_can_update_retention() {
 
 #[tokio::test]
 async fn registry_returns_none_when_no_handles() {
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
 
   let min_retention = registry.min_retention_timestamp().await;
   assert_eq!(
@@ -48,7 +54,9 @@ async fn registry_returns_none_when_no_handles() {
 
 #[tokio::test]
 async fn registry_returns_minimum_across_handles() {
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
 
   let handle1 = registry.create_handle().await;
   let handle2 = registry.create_handle().await;
@@ -74,7 +82,9 @@ async fn registry_returns_minimum_across_handles() {
 
 #[tokio::test]
 async fn registry_handles_zero_retention() {
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
 
   let _handle1 = registry.create_handle().await;
   let handle2 = registry.create_handle().await;
@@ -93,7 +103,9 @@ async fn registry_handles_zero_retention() {
 
 #[tokio::test]
 async fn handle_releases_on_drop() {
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
 
   {
     let handle = registry.create_handle().await;

@@ -14,6 +14,7 @@ use crate::{Scope, UpdateError};
 use ahash::AHashMap;
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_proto::protos::state::payload::StateValue;
+use bd_runtime::runtime::IntWatch;
 use bd_time::TimeProvider;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -1065,9 +1066,10 @@ impl VersionedKVStore {
     time_provider: Arc<dyn TimeProvider>,
     max_bytes: Option<usize>,
     stats: &bd_client_stats_store::Scope,
+    max_snapshot_count_watch: IntWatch<bd_runtime::runtime::state::MaxSnapshotCount>,
   ) -> Self {
     let common_stats = CommonStats::new(stats);
-    let retention_registry = Arc::new(RetentionRegistry::new());
+    let retention_registry = Arc::new(RetentionRegistry::new(max_snapshot_count_watch));
 
     Self {
       backend: StoreBackend::InMemory(InMemoryStore::new(time_provider, max_bytes, common_stats)),

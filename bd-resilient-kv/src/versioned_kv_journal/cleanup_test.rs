@@ -24,7 +24,9 @@ async fn create_test_snapshot(dir: &std::path::Path, name: &str, generation: u64
 #[tokio::test]
 async fn cleanup_deletes_old_snapshots() {
   let temp_dir = TempDir::new().unwrap();
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
 
   // Create some test snapshots with different timestamps
   create_test_snapshot(temp_dir.path(), "test", 0, 1000).await;
@@ -55,7 +57,9 @@ async fn cleanup_deletes_old_snapshots() {
 #[tokio::test]
 async fn cleanup_skips_when_no_handles() {
   let temp_dir = TempDir::new().unwrap();
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
 
   // Create some test snapshots
   create_test_snapshot(temp_dir.path(), "test", 0, 1000).await;
@@ -76,7 +80,9 @@ async fn cleanup_skips_when_no_handles() {
 #[tokio::test]
 async fn cleanup_deletes_all_old_snapshots_in_directory() {
   let temp_dir = TempDir::new().unwrap();
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
 
   // Create snapshots - all in the same directory, so all should be processed
   create_test_snapshot(temp_dir.path(), "test", 0, 1000).await;
@@ -97,7 +103,9 @@ async fn cleanup_deletes_all_old_snapshots_in_directory() {
 #[tokio::test]
 async fn cleanup_handles_missing_directory_gracefully() {
   let temp_dir = TempDir::new().unwrap();
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(2),
+  ));
 
   let nonexistent = temp_dir.path().join("nonexistent");
 
@@ -112,7 +120,9 @@ async fn cleanup_handles_missing_directory_gracefully() {
 #[tokio::test]
 async fn cleanup_respects_zero_retention() {
   let temp_dir = TempDir::new().unwrap();
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(2),
+  ));
 
   // Create some test snapshots
   create_test_snapshot(temp_dir.path(), "test", 0, 1000).await;
@@ -133,7 +143,9 @@ async fn cleanup_respects_zero_retention() {
 #[tokio::test]
 async fn cleanup_respects_max_snapshot_count() {
   let temp_dir = TempDir::new().unwrap();
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(2),
+  ));
 
   // Create snapshots that would all be deleted by min_retention.
   create_test_snapshot(temp_dir.path(), "test", 0, 1000).await;
@@ -143,7 +155,6 @@ async fn cleanup_respects_max_snapshot_count() {
 
   let handle = registry.create_handle().await;
   handle.update_retention_micros(10_000); // Deletes all based on time.
-  registry.set_max_snapshot_count(Some(2));
 
   let result = cleanup_old_snapshots(temp_dir.path(), &registry).await;
   assert!(result.is_ok());
