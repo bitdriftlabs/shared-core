@@ -32,13 +32,13 @@ use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
+  DataValue,
   Log,
   LogFieldValue,
   LogFields,
   LogInterceptor,
   LogLevel,
   LogMessage,
-  StringOrBytes,
 };
 use bd_network_quality::{NetworkQualityMonitor, NetworkQualityResolver};
 use bd_proto::protos::client::api::debug_data_request::{
@@ -88,7 +88,7 @@ impl ReportProcessor for () {
 
 #[derive(Debug)]
 pub enum StateUpdateMessage {
-  AddLogField(String, StringOrBytes),
+  AddLogField(String, DataValue),
   RemoveLogField(String),
   SetFeatureFlagExposure(String, Option<String>),
   FlushState(Option<bd_completion::Sender<()>>),
@@ -629,14 +629,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           log.attributes_overrides,
           Some(LogAttributesOverrides::PreviousRunSessionID(_))
         ) {
-<<<<<<< HEAD
           self
             .update_system_session_id(state_store, &session_id)
             .await;
-||||||| parent of dc5939a5 (record session ID into bd-state)
-=======
-          self.update_system_session_id(state_store, &session_id).await;
->>>>>>> dc5939a5 (record session ID into bd-state)
         }
 
         let processed_log = bd_log_primitives::Log {
@@ -963,27 +958,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                       &mut self.logging_state
                     {
                       let result = uninitialized_logging_context.pre_config_log_buffer.push(
-<<<<<<< HEAD
                         PreConfigItem::StateOperation(
                           PendingStateOperation::SetFeatureFlagExposure {
                             name: flag,
                             variant,
                             session_id,
-                          }
+                          },
                         ),
-||||||| parent of dc5939a5 (record session ID into bd-state)
-                        PreConfigItem::StateOperation(PendingStateOperation::SetFeatureFlagExposure{
-                            name: flag,
-                            variant,
-                            session_id: self.session_strategy.session_id()
-                        }),
-=======
-                        PreConfigItem::StateOperation(PendingStateOperation::SetFeatureFlagExposure {
-                          name: flag,
-                          variant,
-                          session_id,
-                        }),
->>>>>>> dc5939a5 (record session ID into bd-state)
                       );
                       uninitialized_logging_context
                         .stats

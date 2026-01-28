@@ -11,12 +11,12 @@ use crate::matcher::base_log_matcher::tag_match::Value_match::DoubleValueMatch;
 use crate::test::TestMatcher;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{
+  DataValue,
   EMPTY_FIELDS,
   FieldsRef,
   LogFields,
   LogLevel,
   LogMessage,
-  StringOrBytes,
   TypedLogLevel,
   log_level,
 };
@@ -65,7 +65,7 @@ fn log_tag(key: &'static str, value: &'static str) -> Input<'static> {
     LogType::NORMAL,
     log_level::DEBUG,
     LogMessage::String("message".into()),
-    [(key.into(), StringOrBytes::String(value.into()))].into(),
+    [(key.into(), DataValue::String(value.into()))].into(),
   )
 }
 
@@ -74,7 +74,7 @@ fn binary_log_tag(key: &'static str, value: &'static [u8]) -> Input<'static> {
     LogType::NORMAL,
     log_level::DEBUG,
     LogMessage::String("message".into()),
-    [(key.into(), StringOrBytes::Bytes(value.into()))].into(),
+    [(key.into(), DataValue::Bytes(value.into()))].into(),
   )
 }
 

@@ -1123,8 +1123,6 @@ impl Traversal {
     now: OffsetDateTime,
     result: &mut TraversalResult<'a>,
   ) {
-    use bd_state::Value_type;
-
     if state_change.scope != state_change_match.scope || state_change.key != state_change_match.key
     {
       return;
@@ -1132,50 +1130,18 @@ impl Traversal {
 
     // Extract previous and new values based on change type
     let (previous_value, new_value) = match &state_change.change_type {
-      bd_state::StateChangeType::Inserted { value } => (
-        None,
-        match value.value_type {
-          Some(Value_type::StringValue(ref s)) => Some(Cow::Borrowed(s.as_str())),
-          Some(Value_type::IntValue(i)) => Some(Cow::Owned(i.to_string())),
-          Some(Value_type::DoubleValue(d)) => Some(Cow::Owned(d.to_string())),
-          Some(Value_type::BoolValue(true)) => Some(Cow::Borrowed("true")),
-          Some(Value_type::BoolValue(false)) => Some(Cow::Borrowed("false")),
-          None => None,
-        },
-      ),
+      bd_state::StateChangeType::Inserted { value } => (None, Some(Cow::Owned(value.to_string()))),
       bd_state::StateChangeType::Updated {
         old_value,
         new_value,
       } => {
-        let old = match old_value.value_type {
-          Some(Value_type::StringValue(ref s)) => Some(Cow::Borrowed(s.as_str())),
-          Some(Value_type::IntValue(i)) => Some(Cow::Owned(i.to_string())),
-          Some(Value_type::DoubleValue(d)) => Some(Cow::Owned(d.to_string())),
-          Some(Value_type::BoolValue(true)) => Some(Cow::Borrowed("true")),
-          Some(Value_type::BoolValue(false)) => Some(Cow::Borrowed("false")),
-          None => None,
-        };
-        let new = match new_value.value_type {
-          Some(Value_type::StringValue(ref s)) => Some(Cow::Borrowed(s.as_str())),
-          Some(Value_type::IntValue(i)) => Some(Cow::Owned(i.to_string())),
-          Some(Value_type::DoubleValue(d)) => Some(Cow::Owned(d.to_string())),
-          Some(Value_type::BoolValue(true)) => Some(Cow::Borrowed("true")),
-          Some(Value_type::BoolValue(false)) => Some(Cow::Borrowed("false")),
-          None => None,
-        };
+        let old = Some(Cow::Owned(old_value.to_string()));
+        let new = Some(Cow::Owned(new_value.to_string()));
         (old, new)
       },
-      bd_state::StateChangeType::Removed { old_value } => (
-        match old_value.value_type {
-          Some(Value_type::StringValue(ref s)) => Some(Cow::Borrowed(s.as_str())),
-          Some(Value_type::IntValue(i)) => Some(Cow::Owned(i.to_string())),
-          Some(Value_type::DoubleValue(d)) => Some(Cow::Owned(d.to_string())),
-          Some(Value_type::BoolValue(true)) => Some(Cow::Borrowed("true")),
-          Some(Value_type::BoolValue(false)) => Some(Cow::Borrowed("false")),
-          None => None,
-        },
-        None,
-      ),
+      bd_state::StateChangeType::Removed { old_value } => {
+        (Some(Cow::Owned(old_value.to_string())), None)
+      },
       bd_state::StateChangeType::NoChange => return,
     };
 
