@@ -28,7 +28,13 @@ use ahash::AHashMap;
 use bd_macros::proto_serializable;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::{BinaryData, Data, LogType};
-use bd_proto_util::serialization::ProtoMessageSerialize;
+#[cfg(test)]
+use bd_proto_util::serialization::ProtoMessageDeserialize;
+use bd_proto_util::serialization::{
+  ProtoFieldDeserialize,
+  ProtoFieldSerialize,
+  ProtoMessageSerialize,
+};
 use bd_time::OffsetDateTimeExt as _;
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
@@ -93,7 +99,6 @@ impl LossyIntToUsize for u64 {
 /// This newtype wraps a `Vec<u8>` payload and serializes as the protobuf `BinaryData` message
 /// (field 2 = payload bytes). The optional `type` field (field 1) is not used.
 #[proto_serializable(
-  serialize_only,
   validate_against = "bd_proto::protos::logging::payload::BinaryData",
   validate_partial
 )]
@@ -164,9 +169,12 @@ impl std::ops::Deref for LogBinaryData {
 }
 
 /// A union type that allows representing either a UTF-8 string, binary data, or primitive values.
-#[proto_serializable(serialize_only)]
+#[proto_serializable(
+  validate_against = "bd_proto::protos::logging::payload::Data",
+  validate_partial
+)]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StringOrBytes {
+pub enum DataValue {
   #[field(id = 1, deserialize)]
   String(String),
   #[field(id = 1)]
@@ -185,8 +193,71 @@ pub enum StringOrBytes {
   Double(NotNan<f64>),
 }
 
-impl StringOrBytes {
-  /// Creates a new `StringOrBytes` instance from a static string slice. This is slightly more
+impl bd_proto_util::serialization::ProtoMessageSerialize for DataValue {
+  fn compute_message_size(&self) -> u64 {
+    match self {
+      Self::String(value) => value.compute_size_explicit(1),
+      Self::SharedString(value) => value.compute_size_explicit(1),
+      Self::StaticString(value) => value.compute_size_explicit(1),
+      Self::Bytes(value) => value.compute_size_explicit(2),
+      Self::Boolean(value) => value.compute_size_explicit(6),
+      Self::U64(value) => value.compute_size_explicit(3),
+      Self::I64(value) => value.compute_size_explicit(5),
+      Self::Double(value) => value.compute_size_explicit(4),
+    }
+  }
+
+  fn serialize_message(&self, os: &mut CodedOutputStream<'_>) -> anyhow::Result<()> {
+    match self {
+      Self::String(value) => value.serialize_explicit(1, os),
+      Self::SharedString(value) => value.serialize_explicit(1, os),
+      Self::StaticString(value) => value.serialize_explicit(1, os),
+      Self::Bytes(value) => value.serialize_explicit(2, os),
+      Self::Boolean(value) => value.serialize_explicit(6, os),
+      Self::U64(value) => value.serialize_explicit(3, os),
+      Self::I64(value) => value.serialize_explicit(5, os),
+      Self::Double(value) => value.serialize_explicit(4, os),
+    }
+  }
+}
+
+impl bd_proto_util::serialization::ProtoMessageDeserialize for DataValue {
+  fn deserialize_message(is: &mut CodedInputStream<'_>) -> anyhow::Result<Self> {
+    use bd_proto_util::serialization::runtime::Tag;
+
+    let mut result = None;
+
+    while !is.eof()? {
+      let tag = Tag::new(is.read_raw_varint32()?)?;
+      let next_value = match tag.field_number {
+        1 => Self::String(String::deserialize(is)?),
+        2 => Self::Bytes(LogBinaryData::deserialize(is)?),
+        3 => Self::U64(u64::deserialize(is)?),
+        4 => Self::Double(NotNan::<f64>::deserialize(is)?),
+        5 => Self::I64(i64::deserialize(is)?),
+        6 => Self::Boolean(bool::deserialize(is)?),
+        _ => {
+          is.skip_field(tag.wire_type)?;
+          continue;
+        },
+      };
+
+      if result.is_some() {
+        anyhow::bail!("Multiple Data oneof variants set in DataValue payload");
+      }
+      result = Some(next_value);
+    }
+
+    result.ok_or_else(|| {
+      anyhow::anyhow!(
+        "No variant set for DataValue. Use Option<DataValue> if this field should be optional."
+      )
+    })
+  }
+}
+
+impl DataValue {
+  /// Creates a new `DataValue` instance from a static string slice. This is slightly more
   /// efficient than using `SharedString` as it avoids heap allocation.
   #[must_use]
   pub fn from_static_str(s: &'static str) -> Self {
@@ -251,38 +322,38 @@ impl StringOrBytes {
   }
 }
 
-impl From<String> for StringOrBytes {
+impl From<String> for DataValue {
   fn from(s: String) -> Self {
     Self::String(s)
   }
 }
 
-impl From<Arc<str>> for StringOrBytes {
+impl From<Arc<str>> for DataValue {
   fn from(s: Arc<str>) -> Self {
     Self::SharedString(s)
   }
 }
 
-impl From<Vec<u8>> for StringOrBytes {
+impl From<Vec<u8>> for DataValue {
   fn from(s: Vec<u8>) -> Self {
     Self::Bytes(LogBinaryData::new(s))
   }
 }
 
-impl From<&str> for StringOrBytes {
+impl From<&str> for DataValue {
   fn from(s: &str) -> Self {
     Self::String(s.to_string())
   }
 }
 
-impl From<&[u8]> for StringOrBytes {
+impl From<&[u8]> for DataValue {
   fn from(slice: &[u8]) -> Self {
     Self::Bytes(LogBinaryData::new(slice.to_vec()))
   }
 }
 
 /// A log message is a string or binary value.
-pub type LogMessage = StringOrBytes;
+pub type LogMessage = DataValue;
 
 impl std::fmt::Display for LogMessage {
   // This trait requires `fmt` with this exact signature.
@@ -345,13 +416,13 @@ pub type LogFieldKey = Cow<'static, str>;
 // LogFieldValue
 //
 
-pub type LogFieldValue = StringOrBytes;
+pub type LogFieldValue = DataValue;
 
 //
 // LogMessageValue
 //
 
-pub type LogMessageValue = StringOrBytes;
+pub type LogMessageValue = DataValue;
 
 //
 // AnnotatedLogFields
@@ -425,7 +496,7 @@ pub enum LogFieldKind {
 )]
 pub struct LogContentsRef<'a> {
   #[field(id = 1)]
-  pub message: &'a StringOrBytes,
+  pub message: &'a DataValue,
   #[field(id = 2, repeated)]
   pub fields: &'a LogFields,
 }
@@ -470,7 +541,7 @@ pub struct RawLogRef<'a> {
   #[field(id = 2)]
   pub log_level: u32,
   #[field(id = 3)]
-  pub message: &'a StringOrBytes,
+  pub message: &'a DataValue,
   #[field(id = 4, repeated)]
   pub fields: &'a LogFields,
   #[field(id = 5)]
@@ -524,7 +595,7 @@ pub struct Log {
   // modified!!!
   pub log_level: LogLevel,
   pub log_type: LogType,
-  pub message: StringOrBytes,
+  pub message: DataValue,
   pub fields: LogFields,
   pub matching_fields: LogFields,
   pub session_id: String,
