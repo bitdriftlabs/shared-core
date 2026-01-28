@@ -11,9 +11,9 @@ use bd_api::SimpleNetworkQualityProvider;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
+  DataValue,
   LogInterceptor,
   LogMessage,
-  StringOrBytes,
   log_level,
 };
 use bd_network_quality::{NetworkQuality, NetworkQualityMonitor as _, NetworkQualityResolver as _};
@@ -242,5 +242,5 @@ fn get_int_field_value(fields: &AnnotatedLogFields, field_key: &str) -> Option<u
 
 /// Creates a string field using a provided key and integer value.
 fn create_int_field(value: u64) -> AnnotatedLogField {
-  AnnotatedLogField::new_ootb(StringOrBytes::String(value.to_string()))
+  AnnotatedLogField::new_ootb(DataValue::String(value.to_string()))
 }

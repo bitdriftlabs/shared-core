@@ -32,13 +32,13 @@ use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
+  DataValue,
   Log,
   LogFieldValue,
   LogFields,
   LogInterceptor,
   LogLevel,
   LogMessage,
-  StringOrBytes,
 };
 use bd_network_quality::{NetworkQualityMonitor, NetworkQualityResolver};
 use bd_proto::protos::client::api::debug_data_request::{
@@ -50,7 +50,7 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
-use bd_state::{Scope, string_value};
+use bd_state::Scope;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::WorkflowDebugStateMap;
@@ -88,7 +88,7 @@ impl ReportProcessor for () {
 
 #[derive(Debug)]
 pub enum StateUpdateMessage {
-  AddLogField(String, StringOrBytes),
+  AddLogField(String, DataValue),
   RemoveLogField(String),
   SetFeatureFlagExposure(String, Option<String>),
   FlushState(Option<bd_completion::Sender<()>>),
@@ -713,7 +713,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       .insert(
         Scope::System,
         SYSTEM_SESSION_ID_KEY.to_string(),
-        string_value(session_id),
+        session_id.into(),
       )
       .await
     {
@@ -963,7 +963,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                             name: flag,
                             variant,
                             session_id,
-                          }
+                          },
                         ),
                       );
                       uninitialized_logging_context

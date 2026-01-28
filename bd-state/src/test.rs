@@ -28,13 +28,15 @@ use time::macros::datetime;
 /// let mut reader = TestStateReader::default();
 /// reader.insert(Scope::FeatureFlagExposure, "my_flag", "true");
 /// assert_eq!(
-///   reader.get(Scope::FeatureFlagExposure, "my_flag"),
+///   reader
+///     .get(Scope::FeatureFlagExposure, "my_flag")
+///     .and_then(|value| value.as_str()),
 ///   Some("true")
 /// );
 /// ```
 #[derive(Default)]
 pub struct TestStateReader {
-  data: HashMap<(crate::Scope, String), bd_resilient_kv::StateValue>,
+  data: HashMap<(crate::Scope, String), bd_log_primitives::DataValue>,
 }
 
 impl TestStateReader {
@@ -49,14 +51,14 @@ impl TestStateReader {
     &mut self,
     scope: crate::Scope,
     key: impl Into<String>,
-    value: bd_resilient_kv::StateValue,
+    value: bd_log_primitives::DataValue,
   ) {
     self.data.insert((scope, key.into()), value);
   }
 }
 
 impl crate::StateReader for TestStateReader {
-  fn get(&self, scope: crate::Scope, key: &str) -> Option<&bd_resilient_kv::StateValue> {
+  fn get(&self, scope: crate::Scope, key: &str) -> Option<&bd_log_primitives::DataValue> {
     self.data.get(&(scope, key.to_string()))
   }
 

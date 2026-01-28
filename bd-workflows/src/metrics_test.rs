@@ -115,7 +115,7 @@ fn counter_label_extraction() {
   state_reader.insert(
     bd_state::Scope::FeatureFlagExposure,
     "enabled_flag",
-    bd_state::string_value("variant_a"),
+    "variant_a".into(),
   );
 
   let log = Log {

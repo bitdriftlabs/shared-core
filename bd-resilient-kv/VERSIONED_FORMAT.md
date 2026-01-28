@@ -60,7 +60,7 @@ The byte-level layout of a VERSION 1 journal file:
 │  Payload contains:                                                      │
 │  StateKeyValuePair {                                                    │
 │    key: String,              // The key being modified                  │
-│    value: StateValue         // Value for SET, null for DELETE          │
+│    value: Data               // Value for SET, null for DELETE          │
 │  }                                                                      │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -94,19 +94,24 @@ Each entry in the journal is a `StateKeyValuePair` protobuf message:
 ```protobuf
 message StateKeyValuePair {
   string key = 1;         // The key being modified
-  StateValue value = 2;   // Value for SET, null/empty for DELETE
+Data value = 2;         // Value for SET, null/empty for DELETE
 }
 
-message StateValue {
-  oneof value {
-    string string_value = 1;
+message Data {
+  oneof data_type {
+    string string_data = 1;
+    BinaryData binary_data = 2;
+    uint64 int_data = 3;
+    double double_data = 4;
+    int64 sint_data = 5;
+    bool bool_data = 6;
   }
 }
 ```
 
 Fields:
 - `key`: The key being written (string)
-- `value`: The value being set (StateValue) or null/empty for DELETE operations
+- `value`: The value being set (Data) or null/empty for DELETE operations
 
 **Timestamp Semantics:**
 - Timestamps are stored as varints in microseconds since UNIX epoch
@@ -114,7 +119,7 @@ Fields:
 - If the system clock doesn't advance between writes, multiple entries may share the same timestamp
 - This is expected behavior and ensures proper ordering without clock skew
 
-**Type Flexibility**: The `StateValue` message supports multiple value types:
+**Type Flexibility**: The `Data` message supports multiple value types:
 - Primitives: strings, integers, doubles, booleans
 - Complex types: lists, maps
 - Binary data: bytes

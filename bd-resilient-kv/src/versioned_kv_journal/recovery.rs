@@ -10,7 +10,12 @@ use crate::versioned_kv_journal::TimestampedValue;
 use crate::versioned_kv_journal::framing::Frame;
 use crate::versioned_kv_journal::journal::HEADER_SIZE;
 use ahash::AHashMap;
-use bd_proto::protos::state::payload::StateValue;
+use bd_log_primitives::{DataValue, LogBinaryData};
+use bd_proto::protos::logging::payload::Data;
+
+fn empty_bytes_deletion() -> DataValue {
+  DataValue::Bytes(LogBinaryData::new(Vec::new()))
+}
 
 /// A utility for recovering state at arbitrary timestamps from journal snapshots.
 ///
@@ -182,22 +187,22 @@ fn replay_journal_to_timestamp(
   let data = &buffer[HEADER_SIZE .. position];
 
   while offset < data.len() {
-    match Frame::<StateValue>::decode(&data[offset ..]) {
+    match Frame::<Data>::decode(&data[offset ..]) {
       Ok((frame, bytes_read)) => {
         // Only apply entries up to target timestamp
         if frame.timestamp_micros > target_timestamp {
           break;
         }
 
-        if frame.payload.value_type.is_none() {
-          // Deletion (StateValue with no value_type set)
+        if frame.payload.data_type.is_none() {
+          // Deletion (Data with no data_type set)
           map.remove(&(frame.scope, frame.key.to_string()));
         } else {
-          // Insertion - store the protobuf StateValue with (scope, key) tuple
+          // Insertion - store the protobuf Data with (scope, key) tuple
           map.insert(
             (frame.scope, frame.key.to_string()),
             TimestampedValue {
-              value: frame.payload,
+              value: DataValue::from_proto(frame.payload).unwrap_or_else(empty_bytes_deletion),
               timestamp: frame.timestamp_micros,
             },
           );

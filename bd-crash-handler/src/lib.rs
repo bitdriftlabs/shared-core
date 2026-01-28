@@ -370,17 +370,11 @@ impl Monitor {
         .iter()
         .filter(|(scope, ..)| *scope == bd_resilient_kv::Scope::FeatureFlagExposure)
         .filter_map(|(_, name, TimestampedValue { value, timestamp })| {
-          value
-            .has_string_value()
-            .then(|| {
-              let variant = value.string_value().to_string();
-              Some((
-                name.clone(),
-                variant,
-                OffsetDateTime::from_unix_timestamp_micros((*timestamp).try_into().ok()?).ok()?,
-              ))
-            })
-            .flatten()
+          value.as_str().map(ToString::to_string).and_then(|variant| {
+            let timestamp =
+              OffsetDateTime::from_unix_timestamp_micros((*timestamp).try_into().ok()?).ok()?;
+            Some((name.clone(), variant, timestamp))
+          })
         })
         .collect(),
       ReportOrigin::Current => self
@@ -393,15 +387,14 @@ impl Monitor {
         .filter_map(|(_, key, value)| {
           value
             .value
-            .has_string_value()
-            .then(|| {
-              let variant = value.value.string_value().to_string();
+            .as_str()
+            .map(ToString::to_string)
+            .and_then(|variant| {
               let timestamp =
                 OffsetDateTime::from_unix_timestamp_nanos(i128::from(value.timestamp) * 1_000)
                   .ok()?;
               Some((key.clone(), variant, timestamp))
             })
-            .flatten()
         })
         .collect(),
     };

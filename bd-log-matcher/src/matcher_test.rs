@@ -11,12 +11,12 @@ use crate::matcher::base_log_matcher::tag_match::Value_match::DoubleValueMatch;
 use crate::test::TestMatcher;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{
+  DataValue,
   EMPTY_FIELDS,
   FieldsRef,
   LogFields,
   LogLevel,
   LogMessage,
-  StringOrBytes,
   TypedLogLevel,
   log_level,
 };
@@ -65,7 +65,7 @@ fn log_tag(key: &'static str, value: &'static str) -> Input<'static> {
     LogType::NORMAL,
     log_level::DEBUG,
     LogMessage::String("message".into()),
-    [(key.into(), StringOrBytes::String(value.into()))].into(),
+    [(key.into(), DataValue::String(value.into()))].into(),
   )
 }
 
@@ -74,7 +74,7 @@ fn binary_log_tag(key: &'static str, value: &'static [u8]) -> Input<'static> {
     LogType::NORMAL,
     log_level::DEBUG,
     LogMessage::String("message".into()),
-    [(key.into(), StringOrBytes::Bytes(value.into()))].into(),
+    [(key.into(), DataValue::Bytes(value.into()))].into(),
   )
 }
 
@@ -907,7 +907,7 @@ fn feature_flag_matcher() {
       state.insert(
         bd_state::Scope::FeatureFlagExposure,
         key,
-        bd_state::string_value(value.unwrap_or("")),
+        value.unwrap_or("").into(),
       );
     }
 
@@ -964,11 +964,7 @@ fn state_match_int_values() {
 
     let mut state = bd_state::test::TestStateReader::default();
     for (key, value) in input.state_values {
-      state.insert(
-        bd_state::Scope::FeatureFlagExposure,
-        key,
-        bd_state::string_value(value),
-      );
+      state.insert(bd_state::Scope::FeatureFlagExposure, key, value.into());
     }
 
     let actual =
@@ -1019,11 +1015,7 @@ fn state_match_double_values() {
 
     let mut state = bd_state::test::TestStateReader::default();
     for (key, value) in input.state_values {
-      state.insert(
-        bd_state::Scope::FeatureFlagExposure,
-        key,
-        bd_state::string_value(value),
-      );
+      state.insert(bd_state::Scope::FeatureFlagExposure, key, value.into());
     }
 
     let actual =
@@ -1069,11 +1061,7 @@ fn state_match_is_set() {
 
     let mut state = bd_state::test::TestStateReader::default();
     for (key, value) in input.state_values {
-      state.insert(
-        bd_state::Scope::FeatureFlagExposure,
-        key,
-        bd_state::string_value(value),
-      );
+      state.insert(bd_state::Scope::FeatureFlagExposure, key, value.into());
     }
 
     let actual =

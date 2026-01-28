@@ -8,7 +8,7 @@
 use crate::metadata::MetadataCollector;
 use assert_matches::assert_matches;
 use bd_crash_handler::global_state::{self, Reader};
-use bd_log_primitives::{AnnotatedLogField, LogFields, StringOrBytes};
+use bd_log_primitives::{AnnotatedLogField, DataValue, LogFields};
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::Watch;
 use bd_test_helpers::metadata_provider::LogMetadata;
@@ -87,14 +87,11 @@ fn collector_fields_hierarchy() {
   collector
     .add_field(
       "collector_key".into(),
-      StringOrBytes::String("collector_value".into()),
+      DataValue::String("collector_value".into()),
     )
     .unwrap();
   collector
-    .add_field(
-      "key".into(),
-      StringOrBytes::String("collector_value".into()),
-    )
+    .add_field("key".into(), DataValue::String("collector_value".into()))
     .unwrap();
 
   let store = in_memory_store();
@@ -192,7 +189,7 @@ fn collector_does_not_accept_reserved_fields() {
     collector
       .add_field(
         "_collector_key".into(),
-        StringOrBytes::String("collector_value".into()),
+        DataValue::String("collector_value".into()),
       )
       .is_err()
   );
@@ -206,10 +203,7 @@ fn collector_does_not_accept_reserved_fields() {
 
   assert!(
     collector
-      .add_field(
-        "app_id".into(),
-        StringOrBytes::String("collector_value".into()),
-      )
+      .add_field("app_id".into(), DataValue::String("collector_value".into()),)
       .is_err()
   );
 
@@ -230,21 +224,15 @@ fn collector_fields_management() {
   let mut collector = MetadataCollector::new(Arc::new(metadata));
 
   collector
-    .add_field(
-      "key".into(),
-      StringOrBytes::String("collector_field_1".into()),
-    )
+    .add_field("key".into(), DataValue::String("collector_field_1".into()))
     .unwrap();
 
   collector
-    .add_field(
-      "key".into(),
-      StringOrBytes::String("collector_field_2".into()),
-    )
+    .add_field("key".into(), DataValue::String("collector_field_2".into()))
     .unwrap();
 
   assert_eq!(collector.fields().len(), 1);
-  assert_matches!(&collector.fields()["key"], StringOrBytes::String(value) if value == "collector_field_2");
+  assert_matches!(&collector.fields()["key"], DataValue::String(value) if value == "collector_field_2");
 
   collector.remove_field("key");
 

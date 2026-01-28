@@ -22,7 +22,7 @@
   clippy::items_after_statements
 )]
 
-use bd_proto::protos::state;
+use crate::DataValue;
 
 pub mod versioned_kv_store_dynamic_growth_test;
 pub mod versioned_kv_store_test;
@@ -40,11 +40,6 @@ pub fn decompress_zlib(data: &[u8]) -> anyhow::Result<Vec<u8>> {
   Ok(decompressed)
 }
 
-pub fn make_string_value(s: &str) -> state::payload::StateValue {
-  state::payload::StateValue {
-    value_type: Some(state::payload::state_value::Value_type::StringValue(
-      s.to_string(),
-    )),
-    ..Default::default()
-  }
+pub fn make_string_value(s: &str) -> DataValue {
+  DataValue::String(s.to_string())
 }

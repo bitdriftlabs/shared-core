@@ -10,7 +10,7 @@
 use super::*;
 use crate::Scope;
 use crate::tests::make_string_value;
-use bd_proto::protos::state::payload::StateValue;
+use bd_proto::protos::logging::payload::Data;
 
 #[test]
 fn varint_encoding() {
@@ -93,13 +93,13 @@ fn frame_encode_decode() {
     Scope::FeatureFlagExposure,
     "key1",
     1_700_000_000_000_000,
-    make_string_value("value"),
+    make_string_value("value").into_proto(),
   );
 
   let mut buf = vec![0u8; 1024];
   let encoded_len = frame.encode(&mut buf).unwrap();
 
-  let (decoded_frame, decoded_len) = Frame::<StateValue>::decode(&buf).unwrap();
+  let (decoded_frame, decoded_len) = Frame::<Data>::decode(&buf).unwrap();
 
   assert_eq!(decoded_frame, frame);
   assert_eq!(decoded_len, encoded_len);
@@ -111,13 +111,13 @@ fn frame_with_delete() {
     Scope::GlobalState,
     "key2",
     1_700_000_000_000_000,
-    make_string_value(""),
+    make_string_value("").into_proto(),
   );
 
   let mut buf = vec![0u8; 1024];
   let encoded_len = frame.encode(&mut buf).unwrap();
 
-  let (decoded_frame, decoded_len) = Frame::<StateValue>::decode(&buf).unwrap();
+  let (decoded_frame, decoded_len) = Frame::<Data>::decode(&buf).unwrap();
 
   assert_eq!(decoded_frame, frame);
   assert_eq!(decoded_len, encoded_len);
@@ -129,13 +129,13 @@ fn frame_empty_payload() {
     Scope::FeatureFlagExposure,
     "empty_key",
     1_700_000_000_000_000,
-    StateValue::default(),
+    Data::default(),
   );
 
   let mut buf = vec![0u8; 1024];
   let encoded_len = frame.encode(&mut buf).unwrap();
 
-  let (decoded_frame, decoded_len) = Frame::<StateValue>::decode(&buf).unwrap();
+  let (decoded_frame, decoded_len) = Frame::<Data>::decode(&buf).unwrap();
 
   assert_eq!(decoded_frame, frame);
   assert_eq!(decoded_len, encoded_len);
@@ -150,16 +150,19 @@ fn frame_various_timestamps() {
       Scope::FeatureFlagExposure,
       "test_key",
       timestamp,
-      make_string_value("test"),
+      make_string_value("test").into_proto(),
     );
     let mut buf = vec![0u8; 1024];
     let encoded_len = frame.encode(&mut buf).unwrap();
-    let (decoded_frame, decoded_len) = Frame::<StateValue>::decode(&buf).unwrap();
+    let (decoded_frame, decoded_len) = Frame::<Data>::decode(&buf).unwrap();
 
     assert_eq!(decoded_frame.timestamp_micros, timestamp);
     assert_eq!(decoded_frame.scope, Scope::FeatureFlagExposure);
     assert_eq!(decoded_frame.key, "test_key");
-    assert_eq!(decoded_frame.payload, make_string_value("test"));
+    assert_eq!(
+      decoded_frame.payload,
+      make_string_value("test").into_proto()
+    );
     assert_eq!(decoded_len, encoded_len);
   }
 }
@@ -170,7 +173,7 @@ fn frame_buffer_too_small() {
     Scope::FeatureFlagExposure,
     "mykey",
     1_700_000_000_000_000,
-    make_string_value("key:value"),
+    make_string_value("key:value").into_proto(),
   );
   let mut buf = vec![0u8; 5]; // Too small
 
@@ -182,7 +185,7 @@ fn frame_buffer_too_small() {
 fn frame_incomplete_length() {
   let buf = vec![0x80]; // Incomplete varint (has continuation bit but no next byte)
 
-  let result = Frame::<StateValue>::decode(&buf);
+  let result = Frame::<Data>::decode(&buf);
   assert!(result.is_err());
 }
 
@@ -195,7 +198,7 @@ fn frame_incomplete_data() {
   // Truncate to simulate incomplete frame
   buf.truncate(length_len + 10);
 
-  let result = Frame::<StateValue>::decode(&buf);
+  let result = Frame::<Data>::decode(&buf);
   assert!(result.is_err());
 }
 
@@ -205,7 +208,7 @@ fn frame_crc_mismatch() {
     Scope::FeatureFlagExposure,
     "mykey",
     1_700_000_000_000_000,
-    make_string_value("key:value"),
+    make_string_value("key:value").into_proto(),
   );
 
   let mut buf = vec![0u8; 1024];
@@ -214,7 +217,7 @@ fn frame_crc_mismatch() {
   // Corrupt the CRC
   buf[encoded_len - 1] ^= 0xFF;
 
-  let result = Frame::<StateValue>::decode(&buf);
+  let result = Frame::<Data>::decode(&buf);
   assert!(result.is_err());
   assert!(result.unwrap_err().to_string().contains("CRC mismatch"));
 }
@@ -225,19 +228,19 @@ fn frame_multiple_frames() {
     Scope::FeatureFlagExposure,
     "key1",
     1000,
-    make_string_value("first"),
+    make_string_value("first").into_proto(),
   );
   let frame2 = Frame::new(
     Scope::GlobalState,
     "key2",
     2000,
-    make_string_value("second"),
+    make_string_value("second").into_proto(),
   );
   let frame3 = Frame::new(
     Scope::FeatureFlagExposure,
     "key3",
     3000,
-    make_string_value("third"),
+    make_string_value("third").into_proto(),
   );
 
   let mut buf = vec![0u8; 1024];
@@ -246,9 +249,9 @@ fn frame_multiple_frames() {
   let len3 = frame3.encode(&mut buf[len1 + len2 ..]).unwrap();
 
   // Decode all three
-  let (decoded1, consumed1) = Frame::<StateValue>::decode(&buf).unwrap();
-  let (decoded2, consumed2) = Frame::<StateValue>::decode(&buf[consumed1 ..]).unwrap();
-  let (decoded3, consumed3) = Frame::<StateValue>::decode(&buf[consumed1 + consumed2 ..]).unwrap();
+  let (decoded1, consumed1) = Frame::<Data>::decode(&buf).unwrap();
+  let (decoded2, consumed2) = Frame::<Data>::decode(&buf[consumed1 ..]).unwrap();
+  let (decoded3, consumed3) = Frame::<Data>::decode(&buf[consumed1 + consumed2 ..]).unwrap();
 
   assert_eq!(decoded1, frame1);
   assert_eq!(decoded2, frame2);
@@ -264,7 +267,12 @@ fn frame_length_varint_encoding() {
   // Small frames should use 1 byte for length, larger frames may use more
 
   // Very small payload (length should fit in 1 byte varint)
-  let small_frame = Frame::new(Scope::FeatureFlagExposure, "x", 0, make_string_value("x"));
+  let small_frame = Frame::new(
+    Scope::FeatureFlagExposure,
+    "x",
+    0,
+    make_string_value("x").into_proto(),
+  );
   let mut buf = vec![0u8; 1024];
   let encoded_len = small_frame.encode(&mut buf).unwrap();
 
@@ -279,7 +287,7 @@ fn frame_length_varint_encoding() {
   assert_eq!(encoded_len as u64, length_varint_len as u64 + frame_len);
 
   // Verify decoding works
-  let (decoded, consumed) = Frame::<StateValue>::decode(&buf).unwrap();
+  let (decoded, consumed) = Frame::<Data>::decode(&buf).unwrap();
   assert_eq!(decoded, small_frame);
   assert_eq!(consumed, encoded_len);
 }
@@ -299,7 +307,7 @@ fn compute_encoded_size_matches_frame_encoded_size() {
   ];
 
   for (key, value_str) in test_cases {
-    let value = make_string_value(value_str);
+    let value = make_string_value(value_str).into_proto();
     let timestamp = 123_456_789_u64;
 
     // Method 1: Create frame and call encoded_size()

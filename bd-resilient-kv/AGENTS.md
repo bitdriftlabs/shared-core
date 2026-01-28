@@ -38,7 +38,7 @@ The `VersionedKVStore` provides a higher-level API built on top of `VersionedKVJ
 - Every write operation (`insert`, `remove`) returns a monotonically non-decreasing timestamp (microseconds since UNIX epoch)
 - Timestamps serve as both version identifiers and logical clocks
 - If the system clock goes backward, timestamps are clamped to the last timestamp to maintain monotonicity
-- Entries with `Value::Null` are treated as deletions but still timestamped
+- Entries with empty `Data` are treated as deletions but still timestamped
 - During rotation, snapshot entries preserve their original timestamps
 
 **Timestamp Tracking**:

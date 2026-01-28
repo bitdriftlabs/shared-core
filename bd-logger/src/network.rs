@@ -15,7 +15,6 @@ use bd_log_primitives::{
   LogInterceptor,
   LogLevel,
   LogMessage,
-  StringOrBytes,
 };
 use bd_network_quality::{NetworkQuality, NetworkQualityMonitor, NetworkQualityResolver};
 use bd_proto::protos::logging::payload::LogType;
@@ -284,17 +283,7 @@ impl MetricsSample {
 /// fields.
 fn get_int_field_value(fields: &AnnotatedLogFields, field_key: &str) -> Option<u64> {
   let value = fields.get(field_key)?;
-  let string_value = match &value.value {
-    StringOrBytes::String(value) => value,
-    StringOrBytes::SharedString(value) => value.as_ref(),
-    StringOrBytes::StaticString(value) => value,
-    StringOrBytes::Bytes(_)
-    | StringOrBytes::Boolean(_)
-    | StringOrBytes::U64(_)
-    | StringOrBytes::I64(_)
-    | StringOrBytes::Double(_) => return None,
-  };
-
+  let string_value = value.value.as_str()?;
   string_value.parse::<u64>().ok()
 }
 

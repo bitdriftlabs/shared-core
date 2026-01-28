@@ -11,10 +11,10 @@ use crate::test::setup::SetupOptions;
 use crate::{
   AnnotatedLogField,
   AppVersionExtra,
+  DataValue,
   InitParams,
   LogAttributesOverrides,
   LogMessage,
-  StringOrBytes,
   log_level,
   wait_for,
 };
@@ -1111,7 +1111,7 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
     log_level::DEBUG,
     LogType::NORMAL,
     "fire flush trigger buffer and start streaming action!".into(),
-    vec![("k3".into(), StringOrBytes::String("value_3".into()))]
+    vec![("k3".into(), DataValue::String("value_3".into()))]
       .into_iter()
       .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
       .collect(),
@@ -1528,7 +1528,7 @@ fn workflow_emit_metric_action_emits_metric() {
     "fire workflow action!".into(),
     std::iter::once((
       "extraction_key_from".into(),
-      StringOrBytes::String("extracted_value".into()),
+      DataValue::String("extracted_value".into()),
     ))
     .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
     .collect(),
@@ -2308,8 +2308,8 @@ fn binary_message_and_fields() {
     LogType::NORMAL,
     LogMessage::Bytes(vec![1, 2, 3].into()),
     [
-      ("str".into(), StringOrBytes::String("str-data".to_string())),
-      ("binary".into(), StringOrBytes::Bytes(vec![0, 0, 0].into())),
+      ("str".into(), DataValue::String("str-data".to_string())),
+      ("binary".into(), DataValue::Bytes(vec![0, 0, 0].into())),
     ]
     .into_iter()
     .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))

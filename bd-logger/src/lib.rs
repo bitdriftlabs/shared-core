@@ -48,13 +48,13 @@ use bd_log_primitives::LossyIntToU32;
 pub use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
+  DataValue,
   FieldsRef,
   LogFieldKind,
   LogFieldValue,
   LogFields,
   LogLevel,
   LogMessage,
-  StringOrBytes,
   log_level,
 };
 pub use bd_resource_utilization::Target as ResourceUtilizationTarget;
