@@ -32,8 +32,8 @@ bd-proto = { path = "path/to/bd-proto" }
 
 ```rust
 use bd_resilient_kv::{VersionedKVStore, PersistentStoreConfig, Scope};
-use bd_proto::protos::state::payload::StateValue;
-use bd_proto::protos::state::payload::state_value::Value_type;
+use bd_proto::protos::logging::payload::Data;
+use bd_proto::protos::logging::payload::data::Data_type;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -53,8 +53,8 @@ async fn main() -> anyhow::Result<()> {
     let ts1 = store.insert(
         Scope::Permanent,
         "name",
-        StateValue {
-            value_type: Some(Value_type::StringValue("Alice".to_string())),
+        Data {
+            data_type: Some(Data_type::StringData("Alice".to_string())),
             ..Default::default()
         }
     ).await?;
@@ -156,9 +156,9 @@ pub async fn new<P: AsRef<Path>>(
 
 ```rust
 // Read operations (synchronous, O(1) from cache)
-pub fn get(&self, scope: Scope, key: &str) -> Option<(&StateValue, OffsetDateTime)>
+pub fn get(&self, scope: Scope, key: &str) -> Option<(&Data, OffsetDateTime)>
 pub fn contains(&self, scope: Scope, key: &str) -> bool
-pub fn get_all(&self, scope: Scope) -> &AHashMap<String, (StateValue, OffsetDateTime)>
+pub fn get_all(&self, scope: Scope) -> &AHashMap<String, (Data, OffsetDateTime)>
 pub fn snapshot(&self) -> ScopedMaps
 
 // Write operations (async, returns timestamp)
@@ -166,7 +166,7 @@ pub async fn insert(
     &mut self,
     scope: Scope,
     key: &str,
-    value: StateValue
+    value: Data
 ) -> anyhow::Result<OffsetDateTime>
 
 pub async fn remove(

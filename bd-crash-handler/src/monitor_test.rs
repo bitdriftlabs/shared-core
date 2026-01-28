@@ -27,7 +27,6 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Timestamp,
 };
 use bd_proto_util::ToFlatBufferString;
-use bd_resilient_kv::StateValue;
 use bd_runtime::runtime::{self};
 use bd_session::fixed::{self, UUIDCallbacks};
 use bd_shutdown::ComponentShutdownTrigger;
@@ -182,8 +181,8 @@ impl Setup {
         .insert(
           bd_resilient_kv::Scope::FeatureFlagExposure,
           name.to_string(),
-          StateValue {
-            value_type: Some(bd_resilient_kv::Value_type::StringValue(value.to_string())),
+          bd_resilient_kv::Data {
+            data_type: Some(bd_resilient_kv::Data_type::StringData(value.to_string())),
             ..Default::default()
           },
         )
