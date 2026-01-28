@@ -269,21 +269,6 @@ pub struct Store {
 }
 
 impl Store {
-  fn spawn_max_snapshot_count_watcher(
-    mut watch: bd_runtime::runtime::IntWatch<bd_runtime::runtime::state::MaxSnapshotCount>,
-    retention_registry: Arc<RetentionRegistry>,
-  ) {
-    tokio::spawn(async move {
-      loop {
-        if watch.changed().await.is_err() {
-          return;
-        }
-
-        let max_snapshot_count = usize::try_from(*watch.read()).ok();
-        retention_registry.set_max_snapshot_count(max_snapshot_count);
-      }
-    });
-  }
   /// Creates a new `Store` instance at the given directory with the provided time provider.
   ///
   /// If there is an existing store, it will be loaded and a snapshot of the previous process's
@@ -294,15 +279,26 @@ impl Store {
   /// users to re-set these values.
   ///
   /// The directory will be created if it doesn't exist.
+  ///
+  /// # Arguments
+  ///
+  /// * `directory` - Directory for persistent storage
+  /// * `config` - Configuration for persistent storage
+  /// * `time_provider` - Time provider for timestamps
+  /// * `runtime_loader` - Runtime configuration loader
+  /// * `stats` - Stats scope for metrics
   pub async fn persistent(
     directory: &Path,
     config: PersistentStoreConfig,
     time_provider: Arc<dyn TimeProvider>,
+    runtime_loader: &ConfigLoader,
     stats: &bd_client_stats_store::Scope,
   ) -> anyhow::Result<StoreInitResult> {
     std::fs::create_dir_all(directory)?;
 
-    let retention_registry = Arc::new(RetentionRegistry::new());
+    let retention_registry = Arc::new(RetentionRegistry::new(
+      bd_runtime::runtime::state::MaxSnapshotCount::register(runtime_loader),
+    ));
     let (inner, data_loss) = bd_resilient_kv::VersionedKVStore::new(
       directory,
       "state",
@@ -339,13 +335,30 @@ impl Store {
   ///
   /// This method never fails - if the persistent store cannot be initialized, it will
   /// return an in-memory store instead.
+  ///
+  /// # Arguments
+  ///
+  /// * `directory` - Directory for persistent storage
+  /// * `config` - Configuration for persistent storage
+  /// * `time_provider` - Time provider for timestamps
+  /// * `runtime_loader` - Runtime configuration loader
+  /// * `stats` - Stats scope for metrics
   pub async fn persistent_or_fallback(
     directory: &Path,
     config: PersistentStoreConfig,
     time_provider: Arc<dyn TimeProvider>,
+    runtime_loader: &ConfigLoader,
     stats: &bd_client_stats_store::Scope,
   ) -> StoreInitWithFallbackResult {
-    match Self::persistent(directory, config, time_provider.clone(), stats).await {
+    match Self::persistent(
+      directory,
+      config,
+      time_provider.clone(),
+      runtime_loader,
+      stats,
+    )
+    .await
+    {
       Ok(result) => StoreInitWithFallbackResult {
         store: result.store,
         data_loss: Some(result.data_loss),
@@ -357,13 +370,15 @@ impl Store {
         log::debug!(
           "Failed to initialize persistent state store: {e}, falling back to in-memory store"
         );
-        let store = Self::in_memory(time_provider, None, stats);
+        let store = Self::in_memory(time_provider, None, runtime_loader, stats);
         StoreInitWithFallbackResult {
           store,
           data_loss: None,
           previous_state: ScopedMaps::default(),
           fallback_occurred: true,
-          retention_registry: Arc::new(RetentionRegistry::new()),
+          retention_registry: Arc::new(RetentionRegistry::new(
+            bd_runtime::runtime::state::MaxSnapshotCount::register(runtime_loader),
+          )),
         }
       },
     }
@@ -376,25 +391,29 @@ impl Store {
   /// * `directory` - Directory for persistent storage
   /// * `config` - Configuration for persistent storage
   /// * `time_provider` - Time provider for timestamps
+  /// * `runtime_loader` - Runtime configuration loader
   /// * `strategy` - The initialization strategy to use
   /// * `stats` - Stats scope for metrics
   pub async fn from_strategy(
     directory: &Path,
     config: PersistentStoreConfig,
     time_provider: Arc<dyn TimeProvider>,
+    runtime_loader: &ConfigLoader,
     strategy: InitStrategy,
     stats: &bd_client_stats_store::Scope,
   ) -> StoreInitWithFallbackResult {
     match strategy {
       InitStrategy::PersistentWithFallback => {
-        Self::persistent_or_fallback(directory, config, time_provider, stats).await
+        Self::persistent_or_fallback(directory, config, time_provider, runtime_loader, stats).await
       },
       InitStrategy::InMemoryOnly => StoreInitWithFallbackResult {
-        store: Self::in_memory(time_provider, None, stats),
+        store: Self::in_memory(time_provider, None, runtime_loader, stats),
         data_loss: None,
         previous_state: ScopedMaps::default(),
         fallback_occurred: false,
-        retention_registry: Arc::new(RetentionRegistry::new()),
+        retention_registry: Arc::new(RetentionRegistry::new(
+          bd_runtime::runtime::state::MaxSnapshotCount::register(runtime_loader),
+        )),
       },
     }
   }
@@ -422,8 +441,6 @@ impl Store {
     runtime_loader: &ConfigLoader,
     stats: &bd_client_stats_store::Scope,
   ) -> StoreInitWithFallbackResult {
-    let max_snapshot_count_watch =
-      bd_runtime::runtime::state::MaxSnapshotCount::register(runtime_loader);
     let use_persistent_storage =
       *bd_runtime::runtime::state::UsePersistentStorage::register(runtime_loader)
         .into_inner()
@@ -444,47 +461,26 @@ impl Store {
         max_capacity_bytes: max_capacity,
         ..Default::default()
       };
-      let result = Self::from_strategy(
+      Self::from_strategy(
         directory,
         config,
         time_provider,
+        runtime_loader,
         InitStrategy::PersistentWithFallback,
         stats,
       )
-      .await;
-
-      let max_snapshot_count = usize::try_from(*max_snapshot_count_watch.read()).ok();
-      result
-        .retention_registry
-        .set_max_snapshot_count(max_snapshot_count);
-
-      Self::spawn_max_snapshot_count_watcher(
-        max_snapshot_count_watch,
-        result.retention_registry.clone(),
-      );
-
-      result
+      .await
     } else {
       // For in-memory, use max_capacity as the entry count limit
-      let result = StoreInitWithFallbackResult {
-        store: Self::in_memory(time_provider, Some(max_capacity), stats),
+      StoreInitWithFallbackResult {
+        store: Self::in_memory(time_provider, Some(max_capacity), runtime_loader, stats),
         data_loss: None,
         previous_state: ScopedMaps::default(),
         fallback_occurred: false,
-        retention_registry: Arc::new(RetentionRegistry::new()),
-      };
-
-      let max_snapshot_count = usize::try_from(*max_snapshot_count_watch.read()).ok();
-      result
-        .retention_registry
-        .set_max_snapshot_count(max_snapshot_count);
-
-      Self::spawn_max_snapshot_count_watcher(
-        max_snapshot_count_watch,
-        result.retention_registry.clone(),
-      );
-
-      result
+        retention_registry: Arc::new(RetentionRegistry::new(
+          bd_runtime::runtime::state::MaxSnapshotCount::register(runtime_loader),
+        )),
+      }
     }
   }
 
@@ -497,16 +493,23 @@ impl Store {
   ///
   /// * `time_provider` - Time provider for timestamps
   /// * `capacity` - Optional maximum number of entries. If None, no limit is enforced.
+  /// * `runtime_loader` - Runtime configuration loader
   /// * `stats` - Stats scope for metrics
   #[must_use]
   pub fn in_memory(
     time_provider: Arc<dyn TimeProvider>,
     capacity: Option<usize>,
+    runtime_loader: &ConfigLoader,
     stats: &bd_client_stats_store::Scope,
   ) -> Self {
     Self {
       inner: Arc::new(RwLock::new(
-        bd_resilient_kv::VersionedKVStore::new_in_memory(time_provider, capacity, stats),
+        bd_resilient_kv::VersionedKVStore::new_in_memory(
+          time_provider,
+          capacity,
+          stats,
+          bd_runtime::runtime::state::MaxSnapshotCount::register(runtime_loader),
+        ),
       )),
     }
   }
