@@ -75,7 +75,9 @@ async fn test_recovery_multiple_journals_with_rotation() -> anyhow::Result<()> {
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
   )));
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
   let _handle = registry.create_handle().await; // Retain all snapshots
 
   // Create a store with larger buffer to avoid BufferFull errors during test
@@ -198,7 +200,9 @@ async fn test_recovery_empty_journal() -> anyhow::Result<()> {
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
   )));
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
   let _handle = registry.create_handle().await; // Retain all snapshots
 
   // Create an empty store
@@ -243,7 +247,9 @@ async fn test_recovery_with_overwrites() -> anyhow::Result<()> {
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
   )));
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
   let _handle = registry.create_handle().await; // Retain all snapshots
 
   let (mut store, _) = VersionedKVStore::new(
@@ -348,7 +354,9 @@ async fn test_recovery_at_timestamp() -> anyhow::Result<()> {
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
   )));
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
   let _handle = registry.create_handle().await; // Retain all snapshots
 
   // Create a store and write some timestamped data
@@ -475,7 +483,9 @@ async fn test_recovery_at_timestamp_with_rotation() -> anyhow::Result<()> {
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(
     2024-01-01 00:00:00 UTC
   )));
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
   let _handle = registry.create_handle().await; // Retain all snapshots
 
   let (mut store, _) = VersionedKVStore::new(
