@@ -7,8 +7,8 @@
 
 use ahash::AHashMap;
 use arbitrary::{Arbitrary, Unstructured};
-use bd_proto::protos::state::payload::StateValue;
-use bd_proto::protos::state::payload::state_value::Value_type;
+use bd_proto::protos::logging::payload::Data;
+use bd_proto::protos::logging::payload::data::Data_type;
 use bd_resilient_kv::{
   DataLoss,
   PersistentStoreConfig,
@@ -41,9 +41,9 @@ impl<'a> Arbitrary<'a> for ArbitraryScope {
   }
 }
 
-// Wrapper for StateValue to implement Arbitrary
+// Wrapper for Data to implement Arbitrary
 #[derive(Debug, Clone)]
-struct ArbitraryStateValue(StateValue);
+struct ArbitraryData(Data);
 
 #[derive(Arbitrary, Debug, Clone)]
 enum ValueEdgeCase {
@@ -60,78 +60,78 @@ enum ValueEdgeCase {
 }
 
 impl ValueEdgeCase {
-  fn to_state_value(&self) -> StateValue {
-    let mut value = StateValue::new();
+  fn to_data(&self) -> Data {
+    let mut value = Data::new();
     match self {
       Self::EmptyString => {
-        value.value_type = Some(Value_type::StringValue(String::new()));
+        value.data_type = Some(Data_type::StringData(String::new()));
       },
       Self::LargeString => {
-        value.value_type = Some(Value_type::StringValue("x".repeat(10_000)));
+        value.data_type = Some(Data_type::StringData("x".repeat(10_000)));
       },
       Self::VeryLargeString => {
-        value.value_type = Some(Value_type::StringValue("y".repeat(100_000)));
+        value.data_type = Some(Data_type::StringData("y".repeat(100_000)));
       },
       Self::ExtremelyLargeString => {
-        value.value_type = Some(Value_type::StringValue("z".repeat(1_000_000)));
+        value.data_type = Some(Data_type::StringData("z".repeat(1_000_000)));
       },
       Self::MinInt => {
-        value.value_type = Some(Value_type::IntValue(i64::MIN));
+        value.data_type = Some(Data_type::SintData(i64::MIN));
       },
       Self::MaxInt => {
-        value.value_type = Some(Value_type::IntValue(i64::MAX));
+        value.data_type = Some(Data_type::SintData(i64::MAX));
       },
       Self::PositiveInfinity => {
-        value.value_type = Some(Value_type::DoubleValue(f64::INFINITY));
+        value.data_type = Some(Data_type::DoubleData(f64::INFINITY));
       },
       Self::NegativeInfinity => {
-        value.value_type = Some(Value_type::DoubleValue(f64::NEG_INFINITY));
+        value.data_type = Some(Data_type::DoubleData(f64::NEG_INFINITY));
       },
       Self::NegativeZero => {
-        value.value_type = Some(Value_type::DoubleValue(-0.0));
+        value.data_type = Some(Data_type::DoubleData(-0.0));
       },
       Self::NaN => {
-        value.value_type = Some(Value_type::DoubleValue(f64::NAN));
+        value.data_type = Some(Data_type::DoubleData(f64::NAN));
       },
     }
     value
   }
 }
 
-impl<'a> Arbitrary<'a> for ArbitraryStateValue {
+impl<'a> Arbitrary<'a> for ArbitraryData {
   fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
     let variant: u8 = u.arbitrary()?;
-    let mut value = StateValue::new();
+    let mut value = Data::new();
 
     // 10% chance of edge case, 90% chance of normal arbitrary value
     if variant.is_multiple_of(10) {
       let edge_case: ValueEdgeCase = u.arbitrary()?;
-      return Ok(Self(edge_case.to_state_value()));
+      return Ok(Self(edge_case.to_data()));
     }
 
     match variant % 5 {
       0 => {
-        // Null value (no value_type set)
+        // Null value (no data_type set)
       },
       1 => {
         // String value
         let s: String = u.arbitrary()?;
-        value.value_type = Some(Value_type::StringValue(s));
+        value.data_type = Some(Data_type::StringData(s));
       },
       2 => {
         // Int value
         let i: i64 = u.arbitrary()?;
-        value.value_type = Some(Value_type::IntValue(i));
+        value.data_type = Some(Data_type::SintData(i));
       },
       3 => {
         // Double value
         let d: f64 = u.arbitrary()?;
-        value.value_type = Some(Value_type::DoubleValue(d));
+        value.data_type = Some(Data_type::DoubleData(d));
       },
       4 => {
         // Bool value
         let b: bool = u.arbitrary()?;
-        value.value_type = Some(Value_type::BoolValue(b));
+        value.data_type = Some(Data_type::BoolData(b));
       },
       _ => unreachable!(),
     }
@@ -173,7 +173,7 @@ enum OperationType {
   },
   Insert {
     key_strategy: KeyStrategy,
-    value: ArbitraryStateValue,
+    value: ArbitraryData,
   },
   Remove {
     key_strategy: KeyStrategy,
@@ -198,7 +198,7 @@ enum OperationType {
   ReopenWithoutSync,
   // Extend with arbitrary entries (different from BulkInsert which uses simple int values)
   Extend {
-    entries: Vec<(ArbitraryScope, String, ArbitraryStateValue)>,
+    entries: Vec<(ArbitraryScope, String, ArbitraryData)>,
   },
 }
 
@@ -381,7 +381,7 @@ impl VersionedKVJournalFuzzTest {
   ///
   /// This computes the actual size that would be required to store this key-value pair
   /// in the journal using the Frame encoding.
-  fn estimate_entry_size(key: &str, value: &StateValue, timestamp: u64) -> usize {
+  fn estimate_entry_size(key: &str, value: &Data, timestamp: u64) -> usize {
     use bd_resilient_kv::versioned_kv_journal::framing::Frame;
     // Use a dummy scope and timestamp for size calculation
     // The actual scope doesn't affect size calculation (it's always 1 byte)
@@ -467,7 +467,7 @@ impl VersionedKVJournalFuzzTest {
               // the current time.
               assert_eq!(timestamp, current_timestamp_micros());
 
-              if value.0.value_type.is_some() {
+              if value.0.data_type.is_some() {
                 self.state.insert(
                   (scope, key_str.clone()),
                   TimestampedValue {
@@ -708,10 +708,10 @@ impl VersionedKVJournalFuzzTest {
           for i in 0 .. insert_count {
             let key_str = format!("{key_prefix}_{i}");
             // Generate a small arbitrary value for bulk inserts
-            let mut value = StateValue::new();
+            let mut value = Data::new();
             #[allow(clippy::cast_possible_wrap)]
             let int_value = i as i64;
-            value.value_type = Some(Value_type::IntValue(int_value));
+            value.data_type = Some(Data_type::SintData(int_value));
 
             let result = store.insert(scope, key_str.clone(), value.clone()).await;
 
@@ -810,7 +810,7 @@ impl VersionedKVJournalFuzzTest {
               // This handles cases where the same key appears multiple times in the batch
               for (scope, key_str, value) in &entries_to_insert {
                 let key = (*scope, key_str.clone());
-                if value.value_type.is_some() {
+                if value.data_type.is_some() {
                   self.state.insert(
                     key.clone(),
                     TimestampedValue {
@@ -939,13 +939,15 @@ fn compare_maps(
 fn compare_values(expected: &TimestampedValue, actual: &TimestampedValue) -> bool {
   // In the case of both values having identical floating point NaN values, we need to handle that
   // specially since NaN != NaN.
-  if let (
-    Some(Value_type::DoubleValue(expected_double)),
-    Some(Value_type::DoubleValue(actual_double)),
-  ) = (&expected.value.value_type, &actual.value.value_type)
-    && expected_double.is_nan()
-    && actual_double.is_nan()
-  {
+  let expected_double = matches!(
+    expected.value.data_type,
+    Some(Data_type::DoubleData(value)) if value.is_nan()
+  );
+  let actual_double = matches!(
+    actual.value.data_type,
+    Some(Data_type::DoubleData(value)) if value.is_nan()
+  );
+  if expected_double && actual_double {
     return expected.timestamp == actual.timestamp;
   }
 

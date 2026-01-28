@@ -13,7 +13,7 @@ use crate::versioned_kv_journal::retention::RetentionRegistry;
 use crate::{Scope, UpdateError};
 use ahash::AHashMap;
 use bd_error_reporter::reporter::handle_unexpected;
-use bd_proto::protos::state::payload::StateValue;
+use bd_proto::protos::logging::payload::Data;
 use bd_time::TimeProvider;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -118,7 +118,7 @@ pub struct Rotation {
 
 /// Result of opening a journal file, containing the journal, initial state, and data loss info.
 struct OpenedJournal {
-  journal: MemMappedVersionedJournal<StateValue>,
+  journal: MemMappedVersionedJournal<Data>,
   initial_state: ScopedMaps,
   data_loss: PartialDataLoss,
 }
@@ -228,7 +228,7 @@ impl ScopedMaps {
 
 /// Persistent storage implementation using a memory-mapped journal.
 struct PersistentStore {
-  journal: MemMappedVersionedJournal<StateValue>,
+  journal: MemMappedVersionedJournal<Data>,
   dir_path: PathBuf,
   journal_name: String,
   buffer_size: usize,
@@ -332,12 +332,12 @@ impl PersistentStore {
     time_provider: Arc<dyn TimeProvider>,
   ) -> anyhow::Result<OpenedJournal> {
     let mut initial_state = ScopedMaps::default();
-    let (journal, data_loss) = MemMappedVersionedJournal::<StateValue>::from_file(
+    let (journal, data_loss) = MemMappedVersionedJournal::<Data>::from_file(
       journal_path,
       high_water_mark_ratio,
       time_provider,
       |scope, key, value, timestamp| {
-        if value.value_type.is_some() {
+        if value.data_type.is_some() {
           log::trace!("Restoring key in scope {scope:?}: {key} (ts={timestamp})");
           initial_state.insert(
             scope,
@@ -371,12 +371,12 @@ impl PersistentStore {
     &mut self,
     scope: Scope,
     key: &str,
-    value: StateValue,
-  ) -> Result<(u64, Option<StateValue>), UpdateError> {
-    let (timestamp, old_value) = if value.value_type.is_none() {
+    value: Data,
+  ) -> Result<(u64, Option<Data>), UpdateError> {
+    let (timestamp, old_value) = if value.data_type.is_none() {
       // Deletion
       let timestamp = self
-        .try_insert_with_rotation(scope, key, &StateValue::default())
+        .try_insert_with_rotation(scope, key, &Data::default())
         .await?;
       let old_value = self.cached_map.remove(scope, key).map(|tv| tv.value);
       (timestamp, old_value)
@@ -406,7 +406,7 @@ impl PersistentStore {
 
   async fn extend_entries(
     &mut self,
-    entries: Vec<(Scope, String, StateValue)>,
+    entries: Vec<(Scope, String, Data)>,
   ) -> Result<u64, UpdateError> {
     if entries.is_empty() {
       // Return current timestamp for empty batch (no-op)
@@ -420,7 +420,7 @@ impl PersistentStore {
     // Update cached_map for all entries in order
     // We iterate again, but this avoids cloning during the write phase
     for (scope, key, value) in entries {
-      if value.value_type.is_none() {
+      if value.data_type.is_none() {
         // Deletion
         self.cached_map.remove(scope, &key);
       } else {
@@ -439,17 +439,13 @@ impl PersistentStore {
     Ok(timestamp)
   }
 
-  async fn remove(
-    &mut self,
-    scope: Scope,
-    key: &str,
-  ) -> Result<Option<(u64, StateValue)>, UpdateError> {
+  async fn remove(&mut self, scope: Scope, key: &str) -> Result<Option<(u64, Data)>, UpdateError> {
     if !self.cached_map.contains_key(scope, key) {
       return Ok(None);
     }
 
     let timestamp = self
-      .try_insert_with_rotation(scope, key, &StateValue::default())
+      .try_insert_with_rotation(scope, key, &Data::default())
       .await?;
     let old_value = self.cached_map.remove(scope, key);
 
@@ -542,7 +538,7 @@ impl PersistentStore {
     &mut self,
     scope: Scope,
     key: &str,
-    value: &StateValue,
+    value: &Data,
   ) -> Result<u64, UpdateError> {
     match self.journal.insert_entry_ref(scope, key, value) {
       Ok(timestamp) => Ok(timestamp),
@@ -572,7 +568,7 @@ impl PersistentStore {
   /// while preserving their order.
   async fn try_extend_with_rotation(
     &mut self,
-    entries: &[(Scope, String, StateValue)],
+    entries: &[(Scope, String, Data)],
   ) -> Result<u64, UpdateError> {
     // Try the extend operation with references (no clones!)
     let entries_iter = entries
@@ -780,7 +776,7 @@ impl InMemoryStore {
   /// - Value protobuf size
   /// - Timestamp storage
   /// - `HashMap` overhead
-  fn estimate_entry_size(key: &str, value: &StateValue) -> usize {
+  fn estimate_entry_size(key: &str, value: &Data) -> usize {
     const TIMESTAMP_SIZE: usize = 8; // u64
     const HASHMAP_OVERHEAD: usize = 24; // Approximate per-entry overhead in AHashMap
 
@@ -802,13 +798,13 @@ impl InMemoryStore {
     &mut self,
     scope: Scope,
     key: &str,
-    value: &StateValue,
-  ) -> Result<(u64, Option<StateValue>), UpdateError> {
+    value: &Data,
+  ) -> Result<(u64, Option<Data>), UpdateError> {
     use std::collections::hash_map::Entry;
 
     let timestamp = self.current_timestamp();
 
-    if value.value_type.is_none() {
+    if value.data_type.is_none() {
       // Deletion - reclaim space
       if let Some(old_value) = self.cached_map.remove(scope, key) {
         let old_size = Self::estimate_entry_size(key, &old_value.value);
@@ -867,10 +863,7 @@ impl InMemoryStore {
     }
   }
 
-  fn extend_entries(
-    &mut self,
-    entries: Vec<(Scope, String, StateValue)>,
-  ) -> Result<u64, UpdateError> {
+  fn extend_entries(&mut self, entries: Vec<(Scope, String, Data)>) -> Result<u64, UpdateError> {
     if entries.is_empty() {
       // Return current timestamp for empty batch (no-op)
       return Ok(self.current_timestamp());
@@ -882,7 +875,7 @@ impl InMemoryStore {
     let mut total_size_delta: isize = 0;
 
     for (scope, key, value) in &entries {
-      if value.value_type.is_none() {
+      if value.data_type.is_none() {
         // Deletion - will reclaim space
         if let Some(old_value) = self.cached_map.get(*scope, key) {
           let old_size = Self::estimate_entry_size(key, &old_value.value);
@@ -932,7 +925,7 @@ impl InMemoryStore {
 
     // Apply all changes atomically
     for (scope, key, value) in entries {
-      if value.value_type.is_none() {
+      if value.data_type.is_none() {
         // Deletion
         if let Some(old_value) = self.cached_map.remove(scope, &key) {
           let old_size = Self::estimate_entry_size(&key, &old_value.value);
@@ -957,7 +950,7 @@ impl InMemoryStore {
     Ok(timestamp)
   }
 
-  fn remove(&mut self, scope: Scope, key: &str) -> Option<(u64, StateValue)> {
+  fn remove(&mut self, scope: Scope, key: &str) -> Option<(u64, Data)> {
     if !self.cached_map.contains_key(scope, key) {
       return None;
     }
@@ -1075,7 +1068,7 @@ impl VersionedKVStore {
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
   #[must_use]
-  pub fn get(&self, scope: Scope, key: &str) -> Option<&StateValue> {
+  pub fn get(&self, scope: Scope, key: &str) -> Option<&Data> {
     let cached_map = match &self.backend {
       StoreBackend::Persistent(store) => &store.cached_map,
       StoreBackend::InMemory(store) => &store.cached_map,
@@ -1110,8 +1103,8 @@ impl VersionedKVStore {
     &mut self,
     scope: Scope,
     key: String,
-    value: StateValue,
-  ) -> Result<(u64, Option<StateValue>), UpdateError> {
+    value: Data,
+  ) -> Result<(u64, Option<Data>), UpdateError> {
     match &mut self.backend {
       StoreBackend::Persistent(store) => store.insert(scope, &key, value).await,
       StoreBackend::InMemory(store) => store.insert(scope, &key, &value),
@@ -1131,10 +1124,7 @@ impl VersionedKVStore {
   /// # Errors
   /// - Returns `UpdateError::CapacityExceeded` if the batch would exceed capacity limits
   /// - Returns `UpdateError::System` if the batch cannot be written (persistent mode)
-  pub async fn extend(
-    &mut self,
-    entries: Vec<(Scope, String, StateValue)>,
-  ) -> Result<u64, UpdateError> {
+  pub async fn extend(&mut self, entries: Vec<(Scope, String, Data)>) -> Result<u64, UpdateError> {
     match &mut self.backend {
       StoreBackend::Persistent(store) => store.extend_entries(entries).await,
       StoreBackend::InMemory(store) => store.extend_entries(entries),
@@ -1151,7 +1141,7 @@ impl VersionedKVStore {
     &mut self,
     scope: Scope,
     key: &str,
-  ) -> Result<Option<(u64, StateValue)>, UpdateError> {
+  ) -> Result<Option<(u64, Data)>, UpdateError> {
     match &mut self.backend {
       StoreBackend::Persistent(store) => store.remove(scope, key).await,
       StoreBackend::InMemory(store) => Ok(store.remove(scope, key)),
@@ -1180,9 +1170,9 @@ impl VersionedKVStore {
     }
 
     // Create deletion entries (null values)
-    let entries: Vec<(Scope, String, StateValue)> = keys
+    let entries: Vec<(Scope, String, Data)> = keys
       .into_iter()
-      .map(|key| (scope, key, StateValue::default()))
+      .map(|key| (scope, key, Data::default()))
       .collect();
 
     // Use extend for batch deletion with shared timestamp

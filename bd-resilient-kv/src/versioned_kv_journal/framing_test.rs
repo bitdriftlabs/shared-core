@@ -10,7 +10,7 @@
 use super::*;
 use crate::Scope;
 use crate::tests::make_string_value;
-use bd_proto::protos::state::payload::StateValue;
+use bd_proto::protos::logging::payload::Data;
 
 #[test]
 fn varint_encoding() {
@@ -99,7 +99,7 @@ fn frame_encode_decode() {
   let mut buf = vec![0u8; 1024];
   let encoded_len = frame.encode(&mut buf).unwrap();
 
-  let (decoded_frame, decoded_len) = Frame::<StateValue>::decode(&buf).unwrap();
+  let (decoded_frame, decoded_len) = Frame::<Data>::decode(&buf).unwrap();
 
   assert_eq!(decoded_frame, frame);
   assert_eq!(decoded_len, encoded_len);
@@ -117,7 +117,7 @@ fn frame_with_delete() {
   let mut buf = vec![0u8; 1024];
   let encoded_len = frame.encode(&mut buf).unwrap();
 
-  let (decoded_frame, decoded_len) = Frame::<StateValue>::decode(&buf).unwrap();
+  let (decoded_frame, decoded_len) = Frame::<Data>::decode(&buf).unwrap();
 
   assert_eq!(decoded_frame, frame);
   assert_eq!(decoded_len, encoded_len);
@@ -129,13 +129,13 @@ fn frame_empty_payload() {
     Scope::FeatureFlagExposure,
     "empty_key",
     1_700_000_000_000_000,
-    StateValue::default(),
+    Data::default(),
   );
 
   let mut buf = vec![0u8; 1024];
   let encoded_len = frame.encode(&mut buf).unwrap();
 
-  let (decoded_frame, decoded_len) = Frame::<StateValue>::decode(&buf).unwrap();
+  let (decoded_frame, decoded_len) = Frame::<Data>::decode(&buf).unwrap();
 
   assert_eq!(decoded_frame, frame);
   assert_eq!(decoded_len, encoded_len);
@@ -154,7 +154,7 @@ fn frame_various_timestamps() {
     );
     let mut buf = vec![0u8; 1024];
     let encoded_len = frame.encode(&mut buf).unwrap();
-    let (decoded_frame, decoded_len) = Frame::<StateValue>::decode(&buf).unwrap();
+    let (decoded_frame, decoded_len) = Frame::<Data>::decode(&buf).unwrap();
 
     assert_eq!(decoded_frame.timestamp_micros, timestamp);
     assert_eq!(decoded_frame.scope, Scope::FeatureFlagExposure);
@@ -182,7 +182,7 @@ fn frame_buffer_too_small() {
 fn frame_incomplete_length() {
   let buf = vec![0x80]; // Incomplete varint (has continuation bit but no next byte)
 
-  let result = Frame::<StateValue>::decode(&buf);
+  let result = Frame::<Data>::decode(&buf);
   assert!(result.is_err());
 }
 
@@ -195,7 +195,7 @@ fn frame_incomplete_data() {
   // Truncate to simulate incomplete frame
   buf.truncate(length_len + 10);
 
-  let result = Frame::<StateValue>::decode(&buf);
+  let result = Frame::<Data>::decode(&buf);
   assert!(result.is_err());
 }
 
@@ -214,7 +214,7 @@ fn frame_crc_mismatch() {
   // Corrupt the CRC
   buf[encoded_len - 1] ^= 0xFF;
 
-  let result = Frame::<StateValue>::decode(&buf);
+  let result = Frame::<Data>::decode(&buf);
   assert!(result.is_err());
   assert!(result.unwrap_err().to_string().contains("CRC mismatch"));
 }
@@ -246,9 +246,9 @@ fn frame_multiple_frames() {
   let len3 = frame3.encode(&mut buf[len1 + len2 ..]).unwrap();
 
   // Decode all three
-  let (decoded1, consumed1) = Frame::<StateValue>::decode(&buf).unwrap();
-  let (decoded2, consumed2) = Frame::<StateValue>::decode(&buf[consumed1 ..]).unwrap();
-  let (decoded3, consumed3) = Frame::<StateValue>::decode(&buf[consumed1 + consumed2 ..]).unwrap();
+  let (decoded1, consumed1) = Frame::<Data>::decode(&buf).unwrap();
+  let (decoded2, consumed2) = Frame::<Data>::decode(&buf[consumed1 ..]).unwrap();
+  let (decoded3, consumed3) = Frame::<Data>::decode(&buf[consumed1 + consumed2 ..]).unwrap();
 
   assert_eq!(decoded1, frame1);
   assert_eq!(decoded2, frame2);
@@ -279,7 +279,7 @@ fn frame_length_varint_encoding() {
   assert_eq!(encoded_len as u64, length_varint_len as u64 + frame_len);
 
   // Verify decoding works
-  let (decoded, consumed) = Frame::<StateValue>::decode(&buf).unwrap();
+  let (decoded, consumed) = Frame::<Data>::decode(&buf).unwrap();
   assert_eq!(decoded, small_frame);
   assert_eq!(consumed, encoded_len);
 }

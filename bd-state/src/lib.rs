@@ -22,50 +22,40 @@ pub mod test;
 
 pub use self::InitStrategy::{InMemoryOnly, PersistentWithFallback};
 use ahash::AHashMap;
-use bd_resilient_kv::{DataLoss, RetentionRegistry, ScopedMaps, StateValue};
-pub use bd_resilient_kv::{PersistentStoreConfig, Scope, StateValue as Value, Value_type};
+use bd_log_primitives::DataValue;
+pub use bd_resilient_kv::{Data_type, PersistentStoreConfig, Scope};
+use bd_resilient_kv::{DataLoss, RetentionRegistry, ScopedMaps};
 use bd_runtime::runtime::ConfigLoader;
 use bd_time::{OffsetDateTimeExt, TimeProvider};
 use itertools::Itertools as _;
+use ordered_float::NotNan;
 use std::path::Path;
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::RwLock;
 
-/// Creates a `StateValue` from a string.
+/// Creates a `DataValue` from a string.
 #[must_use]
-pub fn string_value(s: impl Into<String>) -> Value {
-  Value {
-    value_type: Value_type::StringValue(s.into()).into(),
-    ..Default::default()
-  }
+pub fn string_value(s: impl Into<String>) -> DataValue {
+  DataValue::String(s.into())
 }
 
-/// Creates a `StateValue` from an integer.
+/// Creates a `DataValue` from an integer.
 #[must_use]
-pub fn int_value(i: i64) -> Value {
-  Value {
-    value_type: Value_type::IntValue(i).into(),
-    ..Default::default()
-  }
+pub fn int_value(i: i64) -> DataValue {
+  DataValue::I64(i)
 }
 
-/// Creates a `StateValue` from a double.
+/// Creates a `DataValue` from a double.
 #[must_use]
-pub fn double_value(d: f64) -> Value {
-  Value {
-    value_type: Value_type::DoubleValue(d).into(),
-    ..Default::default()
-  }
+pub fn double_value(d: f64) -> DataValue {
+  DataValue::Double(NotNan::new(d).unwrap_or_default())
 }
 
-/// Creates a `StateValue` from a boolean.
+/// Creates a `DataValue` from a boolean.
 #[must_use]
-pub fn bool_value(b: bool) -> Value {
-  Value {
-    value_type: Value_type::BoolValue(b).into(),
-    ..Default::default()
-  }
+pub fn bool_value(b: bool) -> DataValue {
+  DataValue::Boolean(b)
 }
 
 /// A timestamped state value, used in snapshots.
@@ -79,17 +69,17 @@ pub type ScopedStateMap = AHashMap<String, TimestampedStateValue>;
 //
 
 /// The type of state change that occurred.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StateChangeType {
   /// A new key was inserted
-  Inserted { value: StateValue },
+  Inserted { value: DataValue },
   /// An existing key was updated
   Updated {
-    old_value: StateValue,
-    new_value: StateValue,
+    old_value: DataValue,
+    new_value: DataValue,
   },
   /// A key was removed
-  Removed { old_value: StateValue },
+  Removed { old_value: DataValue },
   /// No change occurred (e.g., setting same value)
   NoChange,
 }
@@ -99,7 +89,7 @@ pub enum StateChangeType {
 //
 
 /// Information about a state change operation.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateChange {
   pub scope: Scope,
   // TODO(snowp): Ideally we could return &str but avoid copies in this path, but in order to do
@@ -116,7 +106,7 @@ impl StateChange {
   pub fn inserted(
     scope: Scope,
     key: impl Into<String>,
-    value: StateValue,
+    value: DataValue,
     timestamp: OffsetDateTime,
   ) -> Self {
     Self {
@@ -132,8 +122,8 @@ impl StateChange {
   pub fn updated(
     scope: Scope,
     key: impl Into<String>,
-    old_value: StateValue,
-    new_value: StateValue,
+    old_value: DataValue,
+    new_value: DataValue,
     timestamp: OffsetDateTime,
   ) -> Self {
     Self {
@@ -152,7 +142,7 @@ impl StateChange {
   pub fn removed(
     scope: Scope,
     key: impl Into<String>,
-    old_value: StateValue,
+    old_value: DataValue,
     timestamp: OffsetDateTime,
   ) -> Self {
     Self {
@@ -228,11 +218,11 @@ pub enum InitStrategy {
 //
 
 /// A single entry in the state store, including its scope, key, value, and timestamp.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateEntry {
   pub scope: Scope,
   pub key: String,
-  pub value: StateValue,
+  pub value: DataValue,
   pub timestamp: OffsetDateTime,
 }
 
@@ -244,7 +234,7 @@ pub struct StateEntry {
 /// the underlying store may be async.
 pub trait StateReader {
   /// Gets a reference to the raw state value from the store.
-  fn get(&self, scope: Scope, key: &str) -> Option<&StateValue>;
+  fn get(&self, scope: Scope, key: &str) -> Option<DataValue>;
 
   /// Returns an iterator over all entries in the state store.
   fn iter(&self) -> Box<dyn Iterator<Item = StateEntry> + '_>;
@@ -465,12 +455,14 @@ impl Store {
     &self,
     scope: Scope,
     key: String,
-    value: StateValue,
+    value: DataValue,
   ) -> anyhow::Result<StateChange> {
     let mut locked = self.inner.write().await;
 
+    let encoded = value.clone().into_proto();
+
     // Perform the insert and get both timestamp and old value in one operation
-    let (timestamp_u64, old_state_value) = locked.insert(scope, key.clone(), value.clone()).await?;
+    let (timestamp_u64, old_state_value) = locked.insert(scope, key.clone(), encoded).await?;
 
     // Convert timestamp
     let timestamp =
@@ -478,7 +470,7 @@ impl Store {
         .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
     // Determine change type
-    let change_type = match old_state_value {
+    let change_type = match old_state_value.and_then(bd_log_primitives::DataValue::from_proto) {
       Some(old) if old == value => StateChangeType::NoChange,
       Some(old) => StateChangeType::Updated {
         old_value: old,
@@ -500,7 +492,7 @@ impl Store {
   pub async fn extend(
     &self,
     scope: Scope,
-    entries: impl IntoIterator<Item = (String, StateValue)>,
+    entries: impl IntoIterator<Item = (String, DataValue)>,
   ) -> anyhow::Result<()> {
     self
       .inner
@@ -509,7 +501,7 @@ impl Store {
       .extend(
         entries
           .into_iter()
-          .map(|(key, value)| (scope, key, value))
+          .map(|(key, value)| (scope, key, value.into_proto()))
           .collect(),
       )
       .await?;
@@ -528,13 +520,14 @@ impl Store {
           OffsetDateTime::from_unix_timestamp_micros(timestamp_u64.try_into().unwrap_or_default())
             .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
-        let change_type = if old_state_value.value_type.is_some() {
-          StateChangeType::Removed {
-            old_value: old_state_value,
-          }
-        } else {
-          StateChangeType::NoChange
-        };
+        let change_type = old_state_value
+          .data_type
+          .is_some()
+          .then_some(old_state_value)
+          .and_then(bd_log_primitives::DataValue::from_proto)
+          .map_or(StateChangeType::NoChange, |old_value| {
+            StateChangeType::Removed { old_value }
+          });
 
         (change_type, timestamp)
       },
@@ -571,13 +564,16 @@ impl Store {
           OffsetDateTime::from_unix_timestamp_micros(timestamp_u64.try_into().unwrap_or_default())
             .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
-        if old_state_value.value_type.is_some() {
+        if let Some(old_value) = old_state_value
+          .data_type
+          .is_some()
+          .then_some(old_state_value)
+          .and_then(bd_log_primitives::DataValue::from_proto)
+        {
           changes.push(StateChange {
             scope,
             key,
-            change_type: StateChangeType::Removed {
-              old_value: old_state_value,
-            },
+            change_type: StateChangeType::Removed { old_value },
             timestamp,
           });
         }
@@ -596,8 +592,10 @@ impl Store {
 }
 
 impl StateReader for tokio::sync::RwLockReadGuard<'_, bd_resilient_kv::VersionedKVStore> {
-  fn get(&self, scope: Scope, key: &str) -> Option<&StateValue> {
-    (**self).get(scope, key)
+  fn get(&self, scope: Scope, key: &str) -> Option<DataValue> {
+    (**self)
+      .get(scope, key)
+      .and_then(|value| bd_log_primitives::DataValue::from_proto(value.clone()))
   }
 
   fn iter(&self) -> Box<dyn Iterator<Item = StateEntry> + '_> {
@@ -606,8 +604,7 @@ impl StateReader for tokio::sync::RwLockReadGuard<'_, bd_resilient_kv::Versioned
         .as_hashmap()
         .iter()
         .filter_map(|(scope, key, timestamped_value)| {
-          // Only include entries that have a value
-          timestamped_value.value.value_type.as_ref()?;
+          let value = bd_log_primitives::DataValue::from_proto(timestamped_value.value.clone())?;
 
           let timestamp = OffsetDateTime::from_unix_timestamp_nanos(
             i128::from(timestamped_value.timestamp) * 1_000,
@@ -617,7 +614,7 @@ impl StateReader for tokio::sync::RwLockReadGuard<'_, bd_resilient_kv::Versioned
           Some(StateEntry {
             scope,
             key: key.clone(),
-            value: timestamped_value.value.clone(),
+            value,
             timestamp,
           })
         }),

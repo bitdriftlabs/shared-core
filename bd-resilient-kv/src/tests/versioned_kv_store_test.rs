@@ -12,7 +12,7 @@ use crate::versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry}
 use crate::versioned_kv_journal::store::PersistentStoreConfig;
 use crate::versioned_kv_journal::{TimestampedValue, make_string_value};
 use crate::{DataLoss, Scope, UpdateError, VersionedKVStore};
-use bd_proto::protos::state::payload::StateValue;
+use bd_proto::protos::logging::payload::Data;
 use bd_time::TestTimeProvider;
 use rstest::rstest;
 use std::sync::Arc;
@@ -231,7 +231,7 @@ async fn extend_same_key_ordering(#[case] mode: StoreMode) -> anyhow::Result<()>
     (
       Scope::FeatureFlagExposure,
       "key1".to_string(),
-      StateValue::default(), // deletion
+      Data::default(), // deletion
     ),
   ];
 
@@ -247,7 +247,7 @@ async fn extend_same_key_ordering(#[case] mode: StoreMode) -> anyhow::Result<()>
     (
       Scope::FeatureFlagExposure,
       "key2".to_string(),
-      StateValue::default(), // deletion (no-op since doesn't exist)
+      Data::default(), // deletion (no-op since doesn't exist)
     ),
     (
       Scope::FeatureFlagExposure,
@@ -651,7 +651,7 @@ async fn test_null_value_is_deletion(#[case] mode: StoreMode) -> anyhow::Result<
     .insert(
       Scope::FeatureFlagExposure,
       "key1".to_string(),
-      StateValue::default(),
+      Data::default(),
     )
     .await?;
   assert!(!setup.store.contains_key(Scope::FeatureFlagExposure, "key1"));
@@ -1194,7 +1194,7 @@ async fn extend_with_updates_and_deletions(#[case] mode: StoreMode) -> anyhow::R
     (
       Scope::FeatureFlagExposure,
       "key2".to_string(),
-      StateValue::default(),
+      Data::default(),
     ),
     // New insert
     (

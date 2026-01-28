@@ -34,7 +34,7 @@ use time::macros::datetime;
 /// ```
 #[derive(Default)]
 pub struct TestStateReader {
-  data: HashMap<(crate::Scope, String), bd_resilient_kv::StateValue>,
+  data: HashMap<(crate::Scope, String), bd_log_primitives::DataValue>,
 }
 
 impl TestStateReader {
@@ -49,15 +49,15 @@ impl TestStateReader {
     &mut self,
     scope: crate::Scope,
     key: impl Into<String>,
-    value: bd_resilient_kv::StateValue,
+    value: bd_log_primitives::DataValue,
   ) {
     self.data.insert((scope, key.into()), value);
   }
 }
 
 impl crate::StateReader for TestStateReader {
-  fn get(&self, scope: crate::Scope, key: &str) -> Option<&bd_resilient_kv::StateValue> {
-    self.data.get(&(scope, key.to_string()))
+  fn get(&self, scope: crate::Scope, key: &str) -> Option<bd_log_primitives::DataValue> {
+    self.data.get(&(scope, key.to_string())).cloned()
   }
 
   fn iter(&self) -> Box<dyn Iterator<Item = crate::StateEntry> + '_> {

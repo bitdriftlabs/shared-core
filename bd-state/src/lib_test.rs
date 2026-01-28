@@ -83,7 +83,7 @@ async fn clear_scope() {
   assert!(
     reader
       .get(Scope::GlobalState, "key1")
-      .is_some_and(|v| v.has_string_value() && v.string_value() == "global_value")
+      .is_some_and(|v| v.as_str() == Some("global_value"))
   );
 }
 
@@ -130,12 +130,12 @@ async fn iter_scope() {
   assert!(
     items
       .get("flag1")
-      .is_some_and(|v| v.has_string_value() && v.string_value() == "value1")
+      .is_some_and(|v| v.as_str() == Some("value1"))
   );
   assert!(
     items
       .get("flag2")
-      .is_some_and(|v| v.has_string_value() && v.string_value() == "value2")
+      .is_some_and(|v| v.as_str() == Some("value2"))
   );
   assert_eq!(items.get("key1"), None);
 }
@@ -188,8 +188,7 @@ async fn large_value() {
   let reader = store.read().await;
   let value = reader.get(Scope::FeatureFlagExposure, "large");
   assert!(value.is_some());
-  assert!(value.unwrap().has_string_value());
-  assert_eq!(value.unwrap().string_value(), large_value);
+  assert_eq!(value.unwrap().as_str(), Some(large_value.as_str()));
 }
 
 #[tokio::test]
@@ -247,17 +246,17 @@ async fn ephemeral_scopes_cleared_on_restart() {
     assert!(
       reader
         .get(Scope::FeatureFlagExposure, "flag1")
-        .is_some_and(|v| v.has_string_value() && v.string_value() == "value1")
+        .is_some_and(|v| v.as_str() == Some("value1"))
     );
     assert!(
       reader
         .get(Scope::FeatureFlagExposure, "flag2")
-        .is_some_and(|v| v.has_string_value() && v.string_value() == "value2")
+        .is_some_and(|v| v.as_str() == Some("value2"))
     );
     assert!(
       reader
         .get(Scope::GlobalState, "key1")
-        .is_some_and(|v| v.has_string_value() && v.string_value() == "global_value")
+        .is_some_and(|v| v.as_str() == Some("global_value"))
     );
   }
 
@@ -292,23 +291,29 @@ async fn ephemeral_scopes_cleared_on_restart() {
     assert!(
       prev_snapshot
         .get(Scope::FeatureFlagExposure, "flag1")
-        .is_some_and(
-          |entry| entry.value.has_string_value() && entry.value.string_value() == "value1"
-        )
+        .is_some_and(|entry| {
+          bd_log_primitives::DataValue::from_proto(entry.value.clone())
+            .and_then(|value| value.as_str().map(|v| v == "value1"))
+            .unwrap_or(false)
+        })
     );
     assert!(
       prev_snapshot
         .get(Scope::FeatureFlagExposure, "flag2")
-        .is_some_and(
-          |entry| entry.value.has_string_value() && entry.value.string_value() == "value2"
-        )
+        .is_some_and(|entry| {
+          bd_log_primitives::DataValue::from_proto(entry.value.clone())
+            .and_then(|value| value.as_str().map(|v| v == "value2"))
+            .unwrap_or(false)
+        })
     );
     assert!(
       prev_snapshot
         .get(Scope::GlobalState, "key1")
-        .is_some_and(
-          |entry| entry.value.has_string_value() && entry.value.string_value() == "global_value"
-        )
+        .is_some_and(|entry| {
+          bd_log_primitives::DataValue::from_proto(entry.value.clone())
+            .and_then(|value| value.as_str().map(|v| v == "global_value"))
+            .unwrap_or(false)
+        })
     );
 
     // But current store should be empty (ephemeral scopes cleared)
@@ -359,17 +364,14 @@ async fn system_scope_persists_on_restart() {
     assert!(
       prev_snapshot
         .get(Scope::System, "session_id")
-<<<<<<< HEAD
-        .is_some_and(
-          |entry| entry.value.has_string_value() && entry.value.string_value() == "session-1"
-        )
+        .is_some_and(|entry| entry.value.as_str() == Some("session-1"))
     );
 
     let reader = store.read().await;
     assert!(
       reader
         .get(Scope::System, "session_id")
-        .is_some_and(|value| value.has_string_value() && value.string_value() == "session-1")
+        .is_some_and(|value| value.as_str() == Some("session-1"))
     );
   }
 }
@@ -397,7 +399,7 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
       .insert(
         Scope::FeatureFlagExposure,
         "flag1".to_string(),
-        crate::string_value("value1"),
+        "value1".into(),
       )
       .await
       .unwrap();
@@ -405,16 +407,12 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
       .insert(
         Scope::GlobalState,
         "key1".to_string(),
-        crate::string_value("global_value"),
+        "global_value".into(),
       )
       .await
       .unwrap();
     store
-      .insert(
-        Scope::System,
-        "session_id".to_string(),
-        crate::string_value("session-1"),
-      )
+      .insert(Scope::System, "session_id".to_string(), "session-1".into())
       .await
       .unwrap();
   }
@@ -434,25 +432,16 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
     assert!(
       prev_snapshot
         .get(Scope::System, "session_id")
-        .is_some_and(
-          |entry| entry.value.has_string_value() && entry.value.string_value() == "session-1"
-        )
+        .is_some_and(|entry| entry.value.as_str() == Some("session-1"))
     );
 
     let reader = store.read().await;
     assert_eq!(reader.get(Scope::FeatureFlagExposure, "flag1"), None);
     assert_eq!(reader.get(Scope::GlobalState, "key1"), None);
-||||||| parent of dc5939a5 (record session ID into bd-state)
-=======
-        .is_some_and(|entry| entry.value.has_string_value() && entry.value.string_value() == "session-1")
-    );
-
-    let reader = store.read().await;
->>>>>>> dc5939a5 (record session ID into bd-state)
     assert!(
       reader
         .get(Scope::System, "session_id")
-        .is_some_and(|value| value.has_string_value() && value.string_value() == "session-1")
+        .is_some_and(|value| value.as_str() == Some("session-1"))
     );
   }
 }
@@ -493,7 +482,7 @@ async fn fallback_to_in_memory_on_invalid_directory() {
   assert!(
     reader
       .get(Scope::FeatureFlagExposure, "test_flag")
-      .is_some_and(|v| v.has_string_value() && v.string_value() == "test_value")
+      .is_some_and(|v| v.as_str() == Some("test_value"))
   );
 }
 
@@ -533,7 +522,7 @@ async fn from_strategy_in_memory_only() {
   assert!(
     reader
       .get(Scope::FeatureFlagExposure, "flag")
-      .is_some_and(|v| v.has_string_value() && v.string_value() == "value")
+      .is_some_and(|v| v.as_str() == Some("value"))
   );
 }
 
@@ -573,7 +562,7 @@ async fn from_strategy_persistent_with_fallback() {
   assert!(
     reader
       .get(Scope::FeatureFlagExposure, "flag")
-      .is_some_and(|v| v.has_string_value() && v.string_value() == "value")
+      .is_some_and(|v| v.as_str() == Some("value"))
   );
 }
 
@@ -614,7 +603,7 @@ async fn from_strategy_persistent_with_fallback_on_failure() {
   assert!(
     reader
       .get(Scope::FeatureFlagExposure, "flag")
-      .is_some_and(|v| v.has_string_value() && v.string_value() == "value")
+      .is_some_and(|v| v.as_str() == Some("value"))
   );
 }
 
@@ -795,17 +784,17 @@ async fn extend_inserts_multiple_values() {
   assert!(
     reader
       .get(Scope::FeatureFlagExposure, "new1")
-      .is_some_and(|v| v.has_string_value() && v.string_value() == "value1")
+      .is_some_and(|v| v.as_str() == Some("value1"))
   );
   assert!(
     reader
       .get(Scope::FeatureFlagExposure, "existing")
-      .is_some_and(|v| v.has_string_value() && v.string_value() == "updated")
+      .is_some_and(|v| v.as_str() == Some("updated"))
   );
   assert!(
     reader
       .get(Scope::FeatureFlagExposure, "new2")
-      .is_some_and(|v| v.has_string_value() && v.string_value() == "value2")
+      .is_some_and(|v| v.as_str() == Some("value2"))
   );
 }
 
@@ -868,7 +857,7 @@ async fn clear_returns_all_removed_state_changes() {
   assert!(
     reader
       .get(Scope::GlobalState, "key1")
-      .is_some_and(|v| v.has_string_value() && v.string_value() == "global_value")
+      .is_some_and(|v| v.as_str() == Some("global_value"))
   );
 }
 
