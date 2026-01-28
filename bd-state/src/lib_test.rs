@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{InitStrategy, Scope, StateReader, Store};
+use crate::{InitStrategy, SYSTEM_SESSION_ID_KEY, Scope, StateReader, Store};
 use bd_client_stats_store::Collector;
 use bd_resilient_kv::PersistentStoreConfig;
 use std::sync::Arc;
@@ -341,7 +341,7 @@ async fn system_scope_persists_on_restart() {
     store
       .insert(
         Scope::System,
-        "session_id".to_string(),
+        SYSTEM_SESSION_ID_KEY.to_string(),
         crate::string_value("session-1"),
       )
       .await
@@ -362,7 +362,7 @@ async fn system_scope_persists_on_restart() {
 
     assert!(
       prev_snapshot
-        .get(Scope::System, "session_id")
+        .get(Scope::System, SYSTEM_SESSION_ID_KEY)
         .is_some_and(
           |entry| entry.value.has_string_value() && entry.value.string_value() == "session-1"
         )
@@ -371,7 +371,7 @@ async fn system_scope_persists_on_restart() {
     let reader = store.read().await;
     assert!(
       reader
-        .get(Scope::System, "session_id")
+        .get(Scope::System, SYSTEM_SESSION_ID_KEY)
         .is_some_and(|value| value.has_string_value() && value.string_value() == "session-1")
     );
   }
@@ -415,7 +415,7 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
     store
       .insert(
         Scope::System,
-        "session_id".to_string(),
+        SYSTEM_SESSION_ID_KEY.to_string(),
         crate::string_value("session-1"),
       )
       .await
@@ -436,7 +436,7 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
 
     assert!(
       prev_snapshot
-        .get(Scope::System, "session_id")
+        .get(Scope::System, SYSTEM_SESSION_ID_KEY)
         .is_some_and(
           |entry| entry.value.has_string_value() && entry.value.string_value() == "session-1"
         )
@@ -447,7 +447,7 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
     assert_eq!(reader.get(Scope::GlobalState, "key1"), None);
     assert!(
       reader
-        .get(Scope::System, "session_id")
+        .get(Scope::System, SYSTEM_SESSION_ID_KEY)
         .is_some_and(|value| value.has_string_value() && value.string_value() == "session-1")
     );
   }

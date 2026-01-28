@@ -50,7 +50,7 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
-use bd_state::{Scope, string_value};
+use bd_state::{SYSTEM_SESSION_ID_KEY, Scope, string_value};
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::WorkflowDebugStateMap;
@@ -93,8 +93,6 @@ pub enum StateUpdateMessage {
   SetFeatureFlagExposure(String, Option<String>),
   FlushState(Option<bd_completion::Sender<()>>),
 }
-
-const SYSTEM_SESSION_ID_KEY: &str = "session_id";
 
 impl MemorySized for StateUpdateMessage {
   fn size(&self) -> usize {
@@ -717,7 +715,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       )
       .await
     {
-      log::debug!("failed to persist session_id in state store: {e}");
+      log::debug!("failed to persist sid in state store: {e}");
     }
   }
 
@@ -751,15 +749,22 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     pre_config_buffer: PreConfigBuffer<PreConfigItem>,
     state_store: &bd_state::Store,
   ) {
-    let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state else {
+    if !matches!(self.logging_state, LoggingState::Initialized(_)) {
       return;
-    };
+    }
 
     let now = self.time_provider.now();
 
     for item in pre_config_buffer.pop_all() {
       match item {
         PreConfigItem::Log(log) => {
+          self
+            .update_system_session_id(state_store, &log.session_id)
+            .await;
+          let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state
+          else {
+            return;
+          };
           if let Err(e) = self
             .replayer
             .replay_log(
@@ -780,6 +785,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             variant,
             session_id,
           } => {
+            let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state
+            else {
+              return;
+            };
             initialized_logging_context
               .handle_state_insert(
                 state_store,
@@ -934,7 +943,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 },
                 StateUpdateMessage::SetFeatureFlagExposure(flag, variant) => {
                   let session_id = self.session_strategy.session_id();
-                  self.update_system_session_id(&state_store, &session_id).await;
                   if let LoggingState::Initialized(initialized_logging_context) =
                     &mut self.logging_state
                   {

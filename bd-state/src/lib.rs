@@ -32,6 +32,9 @@ use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::RwLock;
 
+/// The key used for storing the current system session ID in the state store.
+pub const SYSTEM_SESSION_ID_KEY: &str = "sid";
+
 /// Creates a `StateValue` from a string.
 #[must_use]
 pub fn string_value(s: impl Into<String>) -> Value {
