@@ -129,8 +129,13 @@ struct OpenedJournal {
 /// calls on every lookup), we use separate maps per scope and dispatch with a match statement.
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct ScopedMaps {
+  // We keep per-scope maps instead of a single (scope, key) map to avoid composite key
+  // allocation/hashing on hot paths and to make per-scope iteration/clearing cheap and explicit.
+  // A single map could be cheaper with a different map impl (e.g., hashbrown), but that's an
+  // added dependency and likely a binary-size tradeoff we don't want here.
   pub feature_flags: AHashMap<String, TimestampedValue>,
   pub global_state: AHashMap<String, TimestampedValue>,
+  pub system: AHashMap<String, TimestampedValue>,
 }
 
 impl ScopedMaps {
@@ -139,6 +144,7 @@ impl ScopedMaps {
     match scope {
       Scope::FeatureFlagExposure => self.feature_flags.get(key),
       Scope::GlobalState => self.global_state.get(key),
+      Scope::System => self.system.get(key),
     }
   }
 
@@ -152,6 +158,7 @@ impl ScopedMaps {
     match scope {
       Scope::FeatureFlagExposure => self.feature_flags.insert(key, value),
       Scope::GlobalState => self.global_state.insert(key, value),
+      Scope::System => self.system.insert(key, value),
     }
   }
 
@@ -159,6 +166,7 @@ impl ScopedMaps {
     match scope {
       Scope::FeatureFlagExposure => self.feature_flags.remove(key),
       Scope::GlobalState => self.global_state.remove(key),
+      Scope::System => self.system.remove(key),
     }
   }
 
@@ -167,17 +175,18 @@ impl ScopedMaps {
     match scope {
       Scope::FeatureFlagExposure => self.feature_flags.contains_key(key),
       Scope::GlobalState => self.global_state.contains_key(key),
+      Scope::System => self.system.contains_key(key),
     }
   }
 
   #[must_use]
   pub fn len(&self) -> usize {
-    self.feature_flags.len() + self.global_state.len()
+    self.feature_flags.len() + self.global_state.len() + self.system.len()
   }
 
   #[must_use]
   pub fn is_empty(&self) -> bool {
-    self.feature_flags.is_empty() && self.global_state.is_empty()
+    self.feature_flags.is_empty() && self.global_state.is_empty() && self.system.is_empty()
   }
 
   pub fn iter(&self) -> impl Iterator<Item = (Scope, &String, &TimestampedValue)> {
@@ -191,6 +200,7 @@ impl ScopedMaps {
           .iter()
           .map(|(k, v)| (Scope::GlobalState, k, v)),
       )
+      .chain(self.system.iter().map(|(k, v)| (Scope::System, k, v)))
   }
 
   fn values(&self) -> impl Iterator<Item = &TimestampedValue> {
@@ -198,6 +208,7 @@ impl ScopedMaps {
       .feature_flags
       .values()
       .chain(self.global_state.values())
+      .chain(self.system.values())
   }
 
   /// Get a mutable entry for the given scope and key, allowing efficient insert/update operations.
@@ -209,6 +220,7 @@ impl ScopedMaps {
     match scope {
       Scope::FeatureFlagExposure => self.feature_flags.entry(key),
       Scope::GlobalState => self.global_state.entry(key),
+      Scope::System => self.system.entry(key),
     }
   }
 }

@@ -354,6 +354,7 @@ impl Leaf {
           let scope = match state_match.scope.enum_value_or_default() {
             StateScope::FEATURE_FLAG => Scope::FeatureFlagExposure,
             StateScope::GLOBAL_STATE => Scope::GlobalState,
+            StateScope::SYSTEM => Scope::System,
             StateScope::UNSPECIFIED => {
               // For now, we only support feature flags. Other scopes would need additional
               // handling.
