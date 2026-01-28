@@ -327,7 +327,9 @@ impl VersionedKVJournalFuzzTest {
 
     // Create a registry with no retention handles - this prevents snapshot compression
     // during rotation, significantly speeding up fuzzing
-    let registry = Arc::new(RetentionRegistry::new());
+    let registry = Arc::new(RetentionRegistry::new(
+      bd_runtime::runtime::IntWatch::new_for_testing(0),
+    ));
 
     Self {
       test_case,
