@@ -129,6 +129,10 @@ struct OpenedJournal {
 /// calls on every lookup), we use separate maps per scope and dispatch with a match statement.
 #[derive(Default, Debug, Clone, PartialEq)]
 pub struct ScopedMaps {
+  // We keep per-scope maps instead of a single (scope, key) map to avoid composite key
+  // allocation/hashing on hot paths and to make per-scope iteration/clearing cheap and explicit.
+  // A single map could be cheaper with a different map impl (e.g., hashbrown), but that's an
+  // added dependency and likely a binary-size tradeoff we don't want here.
   pub feature_flags: AHashMap<String, TimestampedValue>,
   pub global_state: AHashMap<String, TimestampedValue>,
   pub system: AHashMap<String, TimestampedValue>,
