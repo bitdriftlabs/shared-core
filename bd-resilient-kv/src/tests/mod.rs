@@ -22,7 +22,7 @@
   clippy::items_after_statements
 )]
 
-use crate::{Data, Data_type};
+use crate::DataValue;
 
 pub mod versioned_kv_store_dynamic_growth_test;
 pub mod versioned_kv_store_test;
@@ -40,9 +40,6 @@ pub fn decompress_zlib(data: &[u8]) -> anyhow::Result<Vec<u8>> {
   Ok(decompressed)
 }
 
-pub fn make_string_value(s: &str) -> Data {
-  Data {
-    data_type: Some(Data_type::StringData(s.to_string())),
-    ..Default::default()
-  }
+pub fn make_string_value(s: &str) -> DataValue {
+  DataValue::String(s.to_string())
 }

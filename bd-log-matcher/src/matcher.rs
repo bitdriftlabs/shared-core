@@ -25,7 +25,7 @@ use base_log_matcher::tag_match::Value_match::{
   StringValueMatch,
 };
 use bd_log_primitives::tiny_set::TinyMap;
-use bd_log_primitives::{FieldsRef, LogLevel, LogMessage};
+use bd_log_primitives::{DataValue, FieldsRef, LogLevel, LogMessage};
 use bd_proto::protos::config::v1::config::log_matcher::base_log_matcher::StringMatchType;
 use bd_proto::protos::config::v1::config::log_matcher::{
   BaseLogMatcher as LegacyBaseLogMatcher,
@@ -217,7 +217,8 @@ impl InputType {
       Self::Field(field_key) => fields.field_value(field_key),
       Self::State(scope, flag_key) => state
         .get(*scope, flag_key)
-        .map(|value| Cow::Owned(value.to_string())),
+        .and_then(DataValue::as_str)
+        .map(Cow::Borrowed),
     }
   }
 }

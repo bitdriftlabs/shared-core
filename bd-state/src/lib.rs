@@ -23,8 +23,9 @@ pub mod test;
 pub use self::InitStrategy::{InMemoryOnly, PersistentWithFallback};
 use ahash::AHashMap;
 use bd_log_primitives::DataValue;
-pub use bd_resilient_kv::{Data_type, PersistentStoreConfig, Scope};
+use bd_resilient_kv::versioned_kv_journal::store::EntryValue;
 use bd_resilient_kv::{DataLoss, RetentionRegistry, ScopedMaps};
+pub use bd_resilient_kv::{PersistentStoreConfig, Scope};
 use bd_runtime::runtime::ConfigLoader;
 use bd_time::{OffsetDateTimeExt, TimeProvider};
 use itertools::Itertools as _;
@@ -209,7 +210,7 @@ pub struct StateEntry {
 /// the underlying store may be async.
 pub trait StateReader {
   /// Gets a reference to the raw state value from the store.
-  fn get(&self, scope: Scope, key: &str) -> Option<DataValue>;
+  fn get(&self, scope: Scope, key: &str) -> Option<&DataValue>;
 
   /// Returns an iterator over all entries in the state store.
   fn iter(&self) -> Box<dyn Iterator<Item = StateEntry> + '_>;
@@ -434,10 +435,8 @@ impl Store {
   ) -> anyhow::Result<StateChange> {
     let mut locked = self.inner.write().await;
 
-    let encoded = value.clone().into_proto();
-
     // Perform the insert and get both timestamp and old value in one operation
-    let (timestamp_u64, old_state_value) = locked.insert(scope, key.clone(), encoded).await?;
+    let (timestamp_u64, old_state_value) = locked.insert(scope, key.clone(), value.clone()).await?;
 
     // Convert timestamp
     let timestamp =
@@ -445,7 +444,7 @@ impl Store {
         .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
     // Determine change type
-    let change_type = match old_state_value.and_then(bd_log_primitives::DataValue::from_proto) {
+    let change_type = match old_state_value {
       Some(old) if old == value => StateChangeType::NoChange,
       Some(old) => StateChangeType::Updated {
         old_value: old,
@@ -476,7 +475,7 @@ impl Store {
       .extend(
         entries
           .into_iter()
-          .map(|(key, value)| (scope, key, value.into_proto()))
+          .map(|(key, value)| (scope, key, EntryValue::Value(value)))
           .collect(),
       )
       .await?;
@@ -495,14 +494,9 @@ impl Store {
           OffsetDateTime::from_unix_timestamp_micros(timestamp_u64.try_into().unwrap_or_default())
             .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
-        let change_type = old_state_value
-          .data_type
-          .is_some()
-          .then_some(old_state_value)
-          .and_then(bd_log_primitives::DataValue::from_proto)
-          .map_or(StateChangeType::NoChange, |old_value| {
-            StateChangeType::Removed { old_value }
-          });
+        let change_type = StateChangeType::Removed {
+          old_value: old_state_value,
+        };
 
         (change_type, timestamp)
       },
@@ -539,19 +533,14 @@ impl Store {
           OffsetDateTime::from_unix_timestamp_micros(timestamp_u64.try_into().unwrap_or_default())
             .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
-        if let Some(old_value) = old_state_value
-          .data_type
-          .is_some()
-          .then_some(old_state_value)
-          .and_then(bd_log_primitives::DataValue::from_proto)
-        {
-          changes.push(StateChange {
-            scope,
-            key,
-            change_type: StateChangeType::Removed { old_value },
-            timestamp,
-          });
-        }
+        changes.push(StateChange {
+          scope,
+          key,
+          change_type: StateChangeType::Removed {
+            old_value: old_state_value,
+          },
+          timestamp,
+        });
       }
     }
 
@@ -567,10 +556,8 @@ impl Store {
 }
 
 impl StateReader for tokio::sync::RwLockReadGuard<'_, bd_resilient_kv::VersionedKVStore> {
-  fn get(&self, scope: Scope, key: &str) -> Option<DataValue> {
-    (**self)
-      .get(scope, key)
-      .and_then(|value| bd_log_primitives::DataValue::from_proto(value.clone()))
+  fn get(&self, scope: Scope, key: &str) -> Option<&DataValue> {
+    (**self).get(scope, key)
   }
 
   fn iter(&self) -> Box<dyn Iterator<Item = StateEntry> + '_> {
@@ -578,20 +565,18 @@ impl StateReader for tokio::sync::RwLockReadGuard<'_, bd_resilient_kv::Versioned
       self
         .as_hashmap()
         .iter()
-        .filter_map(|(scope, key, timestamped_value)| {
-          let value = bd_log_primitives::DataValue::from_proto(timestamped_value.value.clone())?;
-
+        .map(|(scope, key, timestamped_value)| {
           let timestamp = OffsetDateTime::from_unix_timestamp_nanos(
             i128::from(timestamped_value.timestamp) * 1_000,
           )
-          .ok()?;
+          .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
-          Some(StateEntry {
+          StateEntry {
             scope,
             key: key.clone(),
-            value,
+            value: timestamped_value.value.clone(),
             timestamp,
-          })
+          }
         }),
     )
   }

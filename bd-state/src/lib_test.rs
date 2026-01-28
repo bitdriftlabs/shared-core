@@ -7,7 +7,6 @@
 
 use crate::{InitStrategy, Scope, StateReader, Store};
 use bd_client_stats_store::Collector;
-use bd_log_primitives::DataValue;
 use bd_resilient_kv::PersistentStoreConfig;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -292,29 +291,17 @@ async fn ephemeral_scopes_cleared_on_restart() {
     assert!(
       prev_snapshot
         .get(Scope::FeatureFlagExposure, "flag1")
-        .is_some_and(|entry| {
-          bd_log_primitives::DataValue::from_proto(entry.value.clone())
-            .and_then(|value| value.as_str().map(|v| v == "value1"))
-            .unwrap_or(false)
-        })
+        .is_some_and(|entry| entry.value.as_str() == Some("value1"))
     );
     assert!(
       prev_snapshot
         .get(Scope::FeatureFlagExposure, "flag2")
-        .is_some_and(|entry| {
-          bd_log_primitives::DataValue::from_proto(entry.value.clone())
-            .and_then(|value| value.as_str().map(|v| v == "value2"))
-            .unwrap_or(false)
-        })
+        .is_some_and(|entry| entry.value.as_str() == Some("value2"))
     );
     assert!(
       prev_snapshot
         .get(Scope::GlobalState, "key1")
-        .is_some_and(|entry| {
-          bd_log_primitives::DataValue::from_proto(entry.value.clone())
-            .and_then(|value| value.as_str().map(|v| v == "global_value"))
-            .unwrap_or(false)
-        })
+        .is_some_and(|entry| entry.value.as_str() == Some("global_value"))
     );
 
     // But current store should be empty (ephemeral scopes cleared)
@@ -365,9 +352,7 @@ async fn system_scope_persists_on_restart() {
     assert!(
       prev_snapshot
         .get(Scope::System, "session_id")
-        .is_some_and(
-          |entry| DataValue::from_proto(entry.value.clone()).unwrap().as_str() == Some("session-1")
-        )
+        .is_some_and(|entry| entry.value.as_str() == Some("session-1"))
     );
 
     let reader = store.read().await;
@@ -435,9 +420,7 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
     assert!(
       prev_snapshot
         .get(Scope::System, "session_id")
-        .is_some_and(
-          |entry| DataValue::from_proto(entry.value.clone()).unwrap().as_str() == Some("session-1")
-        )
+        .is_some_and(|entry| entry.value.as_str() == Some("session-1"))
     );
 
     let reader = store.read().await;

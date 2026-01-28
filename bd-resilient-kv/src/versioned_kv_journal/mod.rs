@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_proto::protos::logging;
+use bd_log_primitives::DataValue;
 
 
 pub mod cleanup;
@@ -39,10 +39,10 @@ pub enum UpdateError {
 
 
 /// Represents a value with its associated timestamp.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimestampedValue {
   /// The value stored in the key-value store.
-  pub value: logging::payload::Data,
+  pub value: DataValue,
 
   /// The timestamp (in microseconds since UNIX epoch) when this value was last written.
   pub timestamp: u64,
@@ -50,9 +50,6 @@ pub struct TimestampedValue {
 
 #[cfg(test)]
 #[must_use]
-pub fn make_string_value(s: &str) -> logging::payload::Data {
-  logging::payload::Data {
-    data_type: Some(logging::payload::data::Data_type::StringData(s.to_string())),
-    ..Default::default()
-  }
+pub fn make_string_value(s: &str) -> DataValue {
+  DataValue::String(s.to_string())
 }

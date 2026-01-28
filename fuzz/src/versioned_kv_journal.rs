@@ -7,8 +7,9 @@
 
 use ahash::AHashMap;
 use arbitrary::{Arbitrary, Unstructured};
-use bd_proto::protos::logging::payload::Data;
-use bd_proto::protos::logging::payload::data::Data_type;
+use bd_log_primitives::{DataValue, LogBinaryData};
+use ordered_float::NotNan;
+use bd_resilient_kv::versioned_kv_journal::store::EntryValue;
 use bd_resilient_kv::{
   DataLoss,
   PersistentStoreConfig,
@@ -25,6 +26,10 @@ use tempfile::TempDir;
 use time::macros::datetime;
 
 const JOURNAL_NAME: &str = "fuzz_journal";
+
+fn empty_bytes_deletion() -> DataValue {
+  DataValue::Bytes(LogBinaryData::new(Vec::new()))
+}
 
 // Wrapper for Scope to implement Arbitrary
 #[derive(Debug, Clone, Copy)]
@@ -43,7 +48,7 @@ impl<'a> Arbitrary<'a> for ArbitraryScope {
 
 // Wrapper for Data to implement Arbitrary
 #[derive(Debug, Clone)]
-struct ArbitraryData(Data);
+struct ArbitraryData(DataValue);
 
 #[derive(Arbitrary, Debug, Clone)]
 enum ValueEdgeCase {
@@ -60,48 +65,25 @@ enum ValueEdgeCase {
 }
 
 impl ValueEdgeCase {
-  fn to_data(&self) -> Data {
-    let mut value = Data::new();
+  fn to_data(&self) -> DataValue {
     match self {
-      Self::EmptyString => {
-        value.data_type = Some(Data_type::StringData(String::new()));
+      Self::EmptyString => DataValue::String(String::new()),
+      Self::LargeString => DataValue::String("x".repeat(10_000)),
+      Self::VeryLargeString => DataValue::String("y".repeat(100_000)),
+      Self::ExtremelyLargeString => DataValue::String("z".repeat(1_000_000)),
+      Self::MinInt => DataValue::I64(i64::MIN),
+      Self::MaxInt => DataValue::I64(i64::MAX),
+      Self::PositiveInfinity | Self::NegativeInfinity | Self::NaN => {
+        DataValue::Double(NotNan::new(0.0).unwrap())
       },
-      Self::LargeString => {
-        value.data_type = Some(Data_type::StringData("x".repeat(10_000)));
-      },
-      Self::VeryLargeString => {
-        value.data_type = Some(Data_type::StringData("y".repeat(100_000)));
-      },
-      Self::ExtremelyLargeString => {
-        value.data_type = Some(Data_type::StringData("z".repeat(1_000_000)));
-      },
-      Self::MinInt => {
-        value.data_type = Some(Data_type::SintData(i64::MIN));
-      },
-      Self::MaxInt => {
-        value.data_type = Some(Data_type::SintData(i64::MAX));
-      },
-      Self::PositiveInfinity => {
-        value.data_type = Some(Data_type::DoubleData(f64::INFINITY));
-      },
-      Self::NegativeInfinity => {
-        value.data_type = Some(Data_type::DoubleData(f64::NEG_INFINITY));
-      },
-      Self::NegativeZero => {
-        value.data_type = Some(Data_type::DoubleData(-0.0));
-      },
-      Self::NaN => {
-        value.data_type = Some(Data_type::DoubleData(f64::NAN));
-      },
+      Self::NegativeZero => DataValue::Double(NotNan::new(-0.0).unwrap()),
     }
-    value
   }
 }
 
 impl<'a> Arbitrary<'a> for ArbitraryData {
   fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
     let variant: u8 = u.arbitrary()?;
-    let mut value = Data::new();
 
     // 10% chance of edge case, 90% chance of normal arbitrary value
     if variant.is_multiple_of(10) {
@@ -109,32 +91,33 @@ impl<'a> Arbitrary<'a> for ArbitraryData {
       return Ok(Self(edge_case.to_data()));
     }
 
-    match variant % 5 {
+    let value = match variant % 5 {
       0 => {
         // Null value (no data_type set)
+        empty_bytes_deletion()
       },
       1 => {
         // String value
         let s: String = u.arbitrary()?;
-        value.data_type = Some(Data_type::StringData(s));
+        DataValue::String(s)
       },
       2 => {
         // Int value
         let i: i64 = u.arbitrary()?;
-        value.data_type = Some(Data_type::SintData(i));
+        DataValue::I64(i)
       },
       3 => {
         // Double value
         let d: f64 = u.arbitrary()?;
-        value.data_type = Some(Data_type::DoubleData(d));
+        DataValue::Double(NotNan::new(d).unwrap_or_else(|_| NotNan::new(0.0).unwrap()))
       },
       4 => {
         // Bool value
         let b: bool = u.arbitrary()?;
-        value.data_type = Some(Data_type::BoolData(b));
+        DataValue::Boolean(b)
       },
       _ => unreachable!(),
-    }
+    };
 
     Ok(Self(value))
   }
@@ -381,11 +364,12 @@ impl VersionedKVJournalFuzzTest {
   ///
   /// This computes the actual size that would be required to store this key-value pair
   /// in the journal using the Frame encoding.
-  fn estimate_entry_size(key: &str, value: &Data, timestamp: u64) -> usize {
+  fn estimate_entry_size(key: &str, value: &DataValue, timestamp: u64) -> usize {
     use bd_resilient_kv::versioned_kv_journal::framing::Frame;
+    let proto_value = value.clone().into_proto();
     // Use a dummy scope and timestamp for size calculation
     // The actual scope doesn't affect size calculation (it's always 1 byte)
-    Frame::compute_encoded_size(key, timestamp, value)
+    Frame::compute_encoded_size(key, timestamp, &proto_value)
   }
 
   /// Classify the kind of error that is being returned.
@@ -467,7 +451,10 @@ impl VersionedKVJournalFuzzTest {
               // the current time.
               assert_eq!(timestamp, current_timestamp_micros());
 
-              if value.0.data_type.is_some() {
+              if value.0.as_bytes().is_some_and(<[u8]>::is_empty) {
+                self.state.remove(&(scope, key_str.clone()));
+                assert!(store.get(scope, &key_str).is_none());
+              } else {
                 self.state.insert(
                   (scope, key_str.clone()),
                   TimestampedValue {
@@ -480,9 +467,6 @@ impl VersionedKVJournalFuzzTest {
                 let with_timestamp = store.get_with_timestamp(scope, &key_str);
                 assert!(with_timestamp.is_some());
                 assert_eq!(with_timestamp.unwrap().timestamp, timestamp);
-              } else {
-                self.state.remove(&(scope, key_str.clone()));
-                assert!(store.get(scope, &key_str).is_none());
               }
             },
             Err(e) => {
@@ -708,10 +692,9 @@ impl VersionedKVJournalFuzzTest {
           for i in 0 .. insert_count {
             let key_str = format!("{key_prefix}_{i}");
             // Generate a small arbitrary value for bulk inserts
-            let mut value = Data::new();
             #[allow(clippy::cast_possible_wrap)]
             let int_value = i as i64;
-            value.data_type = Some(Data_type::SintData(int_value));
+            let value = DataValue::I64(int_value);
 
             let result = store.insert(scope, key_str.clone(), value.clone()).await;
 
@@ -791,7 +774,12 @@ impl VersionedKVJournalFuzzTest {
             .map(|(scope, key, value)| {
               // Use key pool to track keys
               let tracked_key = format!("batch_{}_{:x}", key, self.keys.keys.len());
-              (scope.0, tracked_key, value.0)
+              let entry = if value.0.as_bytes().is_some_and(<[u8]>::is_empty) {
+                EntryValue::Delete
+              } else {
+                EntryValue::Value(value.0)
+              };
+              (scope.0, tracked_key, entry)
             })
             .collect();
 
@@ -810,22 +798,24 @@ impl VersionedKVJournalFuzzTest {
               // This handles cases where the same key appears multiple times in the batch
               for (scope, key_str, value) in &entries_to_insert {
                 let key = (*scope, key_str.clone());
-                if value.data_type.is_some() {
-                  self.state.insert(
-                    key.clone(),
-                    TimestampedValue {
-                      value: value.clone(),
-                      timestamp,
-                    },
-                  );
+                match value {
+                  EntryValue::Delete => {
+                    self.state.remove(&key);
+                  },
+                  EntryValue::Value(value) => {
+                    self.state.insert(
+                      key.clone(),
+                      TimestampedValue {
+                        value: value.clone(),
+                        timestamp,
+                      },
+                    );
 
-                  // Add to key pool for future operations
-                  if !self.keys.keys.contains(&key) {
-                    self.keys.keys.push(key);
-                  }
-                } else {
-                  // Deletion
-                  self.state.remove(&key);
+                    // Add to key pool for future operations
+                    if !self.keys.keys.contains(&key) {
+                      self.keys.keys.push(key);
+                    }
+                  },
                 }
               }
 
@@ -861,8 +851,14 @@ impl VersionedKVJournalFuzzTest {
               // Classify the error
               let total_size: usize = entries_to_insert
                 .iter()
-                .map(|(_, key_str, value)| {
-                  Self::estimate_entry_size(key_str, value, current_timestamp_micros())
+                .map(|(_, key_str, value)| match value {
+                  EntryValue::Delete => {
+                    let empty_value = empty_bytes_deletion();
+                    Self::estimate_entry_size(key_str, &empty_value, current_timestamp_micros())
+                  },
+                  EntryValue::Value(value) => {
+                    Self::estimate_entry_size(key_str, value, current_timestamp_micros())
+                  },
                 })
                 .sum();
 
@@ -939,14 +935,8 @@ fn compare_maps(
 fn compare_values(expected: &TimestampedValue, actual: &TimestampedValue) -> bool {
   // In the case of both values having identical floating point NaN values, we need to handle that
   // specially since NaN != NaN.
-  let expected_double = matches!(
-    expected.value.data_type,
-    Some(Data_type::DoubleData(value)) if value.is_nan()
-  );
-  let actual_double = matches!(
-    actual.value.data_type,
-    Some(Data_type::DoubleData(value)) if value.is_nan()
-  );
+  let expected_double = matches!(expected.value, DataValue::Double(value) if value.is_nan());
+  let actual_double = matches!(actual.value, DataValue::Double(value) if value.is_nan());
   if expected_double && actual_double {
     return expected.timestamp == actual.timestamp;
   }

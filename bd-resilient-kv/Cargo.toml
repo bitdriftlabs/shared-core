@@ -22,6 +22,7 @@ bd-client-common            = { path = "../bd-client-common" }
 bd-client-stats-store       = { path = "../bd-client-stats-store" }
 bd-error-reporter           = { path = "../bd-error-reporter" }
 bd-log                      = { path = "../bd-log" }
+bd-log-primitives           = { path = "../bd-log-primitives" }
 bd-proto                    = { path = "../bd-proto" }
 bd-time                     = { path = "../bd-time" }
 bd-workspace-hack.workspace = true

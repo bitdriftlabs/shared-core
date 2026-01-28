@@ -13,10 +13,15 @@ use crate::versioned_kv_journal::retention::RetentionRegistry;
 use crate::{Scope, UpdateError};
 use ahash::AHashMap;
 use bd_error_reporter::reporter::handle_unexpected;
+use bd_log_primitives::{DataValue, LogBinaryData};
 use bd_proto::protos::logging::payload::Data;
 use bd_time::TimeProvider;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+
+fn empty_bytes_deletion() -> DataValue {
+  DataValue::Bytes(LogBinaryData::new(Vec::new()))
+}
 
 /// Common statistics for versioned KV store operations.
 #[derive(Clone)]
@@ -100,6 +105,12 @@ pub enum DataLoss {
   None,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EntryValue {
+  Delete,
+  Value(DataValue),
+}
+
 impl From<PartialDataLoss> for DataLoss {
   fn from(value: PartialDataLoss) -> Self {
     match value {
@@ -127,7 +138,7 @@ struct OpenedJournal {
 ///
 /// Instead of using a single map with `(Scope, String)` as the key (which requires `to_string()`
 /// calls on every lookup), we use separate maps per scope and dispatch with a match statement.
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct ScopedMaps {
   // We keep per-scope maps instead of a single (scope, key) map to avoid composite key
   // allocation/hashing on hot paths and to make per-scope iteration/clearing cheap and explicit.
@@ -343,7 +354,7 @@ impl PersistentStore {
             scope,
             key.to_string(),
             TimestampedValue {
-              value: value.clone(),
+              value: DataValue::from_proto(value.clone()).unwrap_or_else(empty_bytes_deletion),
               timestamp,
             },
           );
@@ -371,30 +382,25 @@ impl PersistentStore {
     &mut self,
     scope: Scope,
     key: &str,
-    value: Data,
-  ) -> Result<(u64, Option<Data>), UpdateError> {
-    let (timestamp, old_value) = if value.data_type.is_none() {
-      // Deletion
-      let timestamp = self
-        .try_insert_with_rotation(scope, key, &Data::default())
-        .await?;
-      let old_value = self.cached_map.remove(scope, key).map(|tv| tv.value);
-      (timestamp, old_value)
-    } else {
-      // Insert/update
-      let timestamp = self.try_insert_with_rotation(scope, key, &value).await?;
-      let old_value = self
+    value: EntryValue,
+  ) -> Result<(u64, Option<DataValue>), UpdateError> {
+    let (proto_value, value) = match value {
+      EntryValue::Delete => (Data::default(), None),
+      EntryValue::Value(value) => (value.clone().into_proto(), Some(value)),
+    };
+    let timestamp = self
+      .try_insert_with_rotation(scope, key, &proto_value)
+      .await?;
+    let old_value = match value {
+      Some(value) => self
         .cached_map
         .insert(
           scope,
           key.to_string(),
-          TimestampedValue {
-            value: value.clone(),
-            timestamp,
-          },
+          TimestampedValue { value, timestamp },
         )
-        .map(|tv| tv.value);
-      (timestamp, old_value)
+        .map(|tv| tv.value),
+      None => self.cached_map.remove(scope, key).map(|tv| tv.value),
     };
 
     if self.journal.is_high_water_mark_triggered() {
@@ -406,7 +412,7 @@ impl PersistentStore {
 
   async fn extend_entries(
     &mut self,
-    entries: Vec<(Scope, String, Data)>,
+    entries: Vec<(Scope, String, EntryValue)>,
   ) -> Result<u64, UpdateError> {
     if entries.is_empty() {
       // Return current timestamp for empty batch (no-op)
@@ -415,19 +421,30 @@ impl PersistentStore {
 
     // Try to insert all entries with rotation handling, preserving order
     // This consumes the entries vector
-    let timestamp = self.try_extend_with_rotation(&entries).await?;
+    let proto_entries: Vec<(Scope, String, Data)> = entries
+      .iter()
+      .map(|(scope, key, value)| {
+        let proto_value = match value {
+          EntryValue::Delete => Data::default(),
+          EntryValue::Value(value) => value.clone().into_proto(),
+        };
+        (*scope, key.clone(), proto_value)
+      })
+      .collect();
+    let timestamp = self.try_extend_with_rotation(&proto_entries).await?;
 
     // Update cached_map for all entries in order
     // We iterate again, but this avoids cloning during the write phase
     for (scope, key, value) in entries {
-      if value.data_type.is_none() {
-        // Deletion
-        self.cached_map.remove(scope, &key);
-      } else {
-        // Insert/update
-        self
-          .cached_map
-          .insert(scope, key, TimestampedValue { value, timestamp });
+      match value {
+        EntryValue::Delete => {
+          self.cached_map.remove(scope, &key);
+        },
+        EntryValue::Value(value) => {
+          self
+            .cached_map
+            .insert(scope, key, TimestampedValue { value, timestamp });
+        },
       }
     }
 
@@ -439,22 +456,6 @@ impl PersistentStore {
     Ok(timestamp)
   }
 
-  async fn remove(&mut self, scope: Scope, key: &str) -> Result<Option<(u64, Data)>, UpdateError> {
-    if !self.cached_map.contains_key(scope, key) {
-      return Ok(None);
-    }
-
-    let timestamp = self
-      .try_insert_with_rotation(scope, key, &Data::default())
-      .await?;
-    let old_value = self.cached_map.remove(scope, key);
-
-    if self.journal.is_high_water_mark_triggered() {
-      self.rotate_journal().await?;
-    }
-
-    Ok(old_value.map(|v| (timestamp, v.value)))
-  }
 
   fn sync(&self) -> anyhow::Result<()> {
     MemMappedVersionedJournal::sync(&self.journal)
@@ -477,7 +478,8 @@ impl PersistentStore {
       .cached_map
       .iter()
       .map(|(_, key, tv)| {
-        super::framing::Frame::compute_encoded_size(key.as_str(), tv.timestamp, &tv.value)
+        let proto_value = tv.value.clone().into_proto();
+        super::framing::Frame::compute_encoded_size(key.as_str(), tv.timestamp, &proto_value)
       })
       .sum()
   }
@@ -651,7 +653,14 @@ impl PersistentStore {
       self
         .cached_map
         .iter()
-        .map(|(frame_type, key, tv)| (frame_type, key.clone(), tv.value.clone(), tv.timestamp)),
+        .map(|(frame_type, key, tv)| {
+          (
+            frame_type,
+            key.clone(),
+            tv.value.clone().into_proto(),
+            tv.timestamp,
+          )
+        }),
     )?;
 
     // Update buffer_size to reflect the new journal's size
@@ -776,12 +785,17 @@ impl InMemoryStore {
   /// - Value protobuf size
   /// - Timestamp storage
   /// - `HashMap` overhead
-  fn estimate_entry_size(key: &str, value: &Data) -> usize {
+  fn estimate_entry_size(key: &str, value: &DataValue) -> usize {
+    use protobuf::Message as _;
+
     const TIMESTAMP_SIZE: usize = 8; // u64
     const HASHMAP_OVERHEAD: usize = 24; // Approximate per-entry overhead in AHashMap
 
     let key_size = key.len();
-    let value_size: usize = protobuf::MessageDyn::compute_size_dyn(value)
+    let value_size: usize = value
+      .clone()
+      .into_proto()
+      .compute_size()
       .try_into()
       .unwrap_or(0);
 
@@ -798,72 +812,70 @@ impl InMemoryStore {
     &mut self,
     scope: Scope,
     key: &str,
-    value: &Data,
-  ) -> Result<(u64, Option<Data>), UpdateError> {
+    value: EntryValue,
+  ) -> Result<(u64, Option<DataValue>), UpdateError> {
     use std::collections::hash_map::Entry;
 
     let timestamp = self.current_timestamp();
 
-    if value.data_type.is_none() {
-      // Deletion - reclaim space
-      if let Some(old_value) = self.cached_map.remove(scope, key) {
-        let old_size = Self::estimate_entry_size(key, &old_value.value);
-        self.current_size_bytes = self.current_size_bytes.saturating_sub(old_size);
-        Ok((timestamp, Some(old_value.value)))
-      } else {
+    let value = match value {
+      EntryValue::Delete => {
+        if let Some(old_value) = self.cached_map.remove(scope, key) {
+          let old_size = Self::estimate_entry_size(key, &old_value.value);
+          self.current_size_bytes = self.current_size_bytes.saturating_sub(old_size);
+          return Ok((timestamp, Some(old_value.value)));
+        }
+        return Ok((timestamp, None));
+      },
+      EntryValue::Value(value) => value,
+    };
+
+    let new_entry_size = Self::estimate_entry_size(key, &value);
+
+    // Use entry API to avoid multiple lookups
+    match self.cached_map.entry(scope, key.to_string()) {
+      Entry::Occupied(mut entry) => {
+        // Replacing existing entry - calculate size delta
+        let old_value = entry.get().value.clone();
+        let old_size = Self::estimate_entry_size(key, &old_value);
+        let size_delta = new_entry_size.saturating_sub(old_size);
+
+        // Check capacity before replacing
+        if let Some(max_bytes) = self.max_bytes {
+          let new_size = self.current_size_bytes.saturating_add(size_delta);
+          if new_size > max_bytes {
+            self.stats.capacity_exceeded_unrecoverable.inc();
+            return Err(UpdateError::CapacityExceeded);
+          }
+        }
+
+        // Replace the value
+        entry.insert(TimestampedValue { value, timestamp });
+        self.current_size_bytes = self.current_size_bytes.saturating_add(size_delta);
+        Ok((timestamp, Some(old_value)))
+      },
+      Entry::Vacant(entry) => {
+        // New entry - check if we have capacity
+        if let Some(max_bytes) = self.max_bytes {
+          let new_size = self.current_size_bytes.saturating_add(new_entry_size);
+          if new_size > max_bytes {
+            self.stats.capacity_exceeded_unrecoverable.inc();
+            return Err(UpdateError::CapacityExceeded);
+          }
+        }
+
+        // Insert the new value
+        entry.insert(TimestampedValue { value, timestamp });
+        self.current_size_bytes = self.current_size_bytes.saturating_add(new_entry_size);
         Ok((timestamp, None))
-      }
-    } else {
-      let new_entry_size = Self::estimate_entry_size(key, value);
-
-      // Use entry API to avoid multiple lookups
-      match self.cached_map.entry(scope, key.to_string()) {
-        Entry::Occupied(mut entry) => {
-          // Replacing existing entry - calculate size delta
-          let old_value = entry.get().value.clone();
-          let old_size = Self::estimate_entry_size(key, &old_value);
-          let size_delta = new_entry_size.saturating_sub(old_size);
-
-          // Check capacity before replacing
-          if let Some(max_bytes) = self.max_bytes {
-            let new_size = self.current_size_bytes.saturating_add(size_delta);
-            if new_size > max_bytes {
-              self.stats.capacity_exceeded_unrecoverable.inc();
-              return Err(UpdateError::CapacityExceeded);
-            }
-          }
-
-          // Replace the value
-          entry.insert(TimestampedValue {
-            value: value.clone(),
-            timestamp,
-          });
-          self.current_size_bytes = self.current_size_bytes.saturating_add(size_delta);
-          Ok((timestamp, Some(old_value)))
-        },
-        Entry::Vacant(entry) => {
-          // New entry - check if we have capacity
-          if let Some(max_bytes) = self.max_bytes {
-            let new_size = self.current_size_bytes.saturating_add(new_entry_size);
-            if new_size > max_bytes {
-              self.stats.capacity_exceeded_unrecoverable.inc();
-              return Err(UpdateError::CapacityExceeded);
-            }
-          }
-
-          // Insert the new value
-          entry.insert(TimestampedValue {
-            value: value.clone(),
-            timestamp,
-          });
-          self.current_size_bytes = self.current_size_bytes.saturating_add(new_entry_size);
-          Ok((timestamp, None))
-        },
-      }
+      },
     }
   }
 
-  fn extend_entries(&mut self, entries: Vec<(Scope, String, Data)>) -> Result<u64, UpdateError> {
+  fn extend_entries(
+    &mut self,
+    entries: Vec<(Scope, String, EntryValue)>,
+  ) -> Result<u64, UpdateError> {
     if entries.is_empty() {
       // Return current timestamp for empty batch (no-op)
       return Ok(self.current_timestamp());
@@ -875,32 +887,34 @@ impl InMemoryStore {
     let mut total_size_delta: isize = 0;
 
     for (scope, key, value) in &entries {
-      if value.data_type.is_none() {
-        // Deletion - will reclaim space
-        if let Some(old_value) = self.cached_map.get(*scope, key) {
-          let old_size = Self::estimate_entry_size(key, &old_value.value);
-          #[allow(clippy::cast_possible_wrap)]
-          {
-            total_size_delta -= old_size as isize;
+      match value {
+        EntryValue::Delete => {
+          if let Some(old_value) = self.cached_map.get(*scope, key) {
+            let old_size = Self::estimate_entry_size(key, &old_value.value);
+            #[allow(clippy::cast_possible_wrap)]
+            {
+              total_size_delta -= old_size as isize;
+            }
           }
-        }
-      } else {
-        let new_entry_size = Self::estimate_entry_size(key, value);
+        },
+        EntryValue::Value(value) => {
+          let new_entry_size = Self::estimate_entry_size(key, value);
 
-        if let Some(old_value) = self.cached_map.get(*scope, key) {
-          // Replacing existing entry
-          let old_size = Self::estimate_entry_size(key, &old_value.value);
-          #[allow(clippy::cast_possible_wrap)]
-          {
-            total_size_delta += new_entry_size as isize - old_size as isize;
+          if let Some(old_value) = self.cached_map.get(*scope, key) {
+            // Replacing existing entry
+            let old_size = Self::estimate_entry_size(key, &old_value.value);
+            #[allow(clippy::cast_possible_wrap)]
+            {
+              total_size_delta += new_entry_size as isize - old_size as isize;
+            }
+          } else {
+            // New entry
+            #[allow(clippy::cast_possible_wrap)]
+            {
+              total_size_delta += new_entry_size as isize;
+            }
           }
-        } else {
-          // New entry
-          #[allow(clippy::cast_possible_wrap)]
-          {
-            total_size_delta += new_entry_size as isize;
-          }
-        }
+        },
       }
     }
 
@@ -925,41 +939,33 @@ impl InMemoryStore {
 
     // Apply all changes atomically
     for (scope, key, value) in entries {
-      if value.data_type.is_none() {
-        // Deletion
-        if let Some(old_value) = self.cached_map.remove(scope, &key) {
-          let old_size = Self::estimate_entry_size(&key, &old_value.value);
-          self.current_size_bytes = self.current_size_bytes.saturating_sub(old_size);
-        }
-      } else {
-        let new_entry_size = Self::estimate_entry_size(&key, &value);
+      match value {
+        EntryValue::Delete => {
+          if let Some(old_value) = self.cached_map.remove(scope, &key) {
+            let old_size = Self::estimate_entry_size(&key, &old_value.value);
+            self.current_size_bytes = self.current_size_bytes.saturating_sub(old_size);
+          }
+        },
+        EntryValue::Value(value) => {
+          let new_entry_size = Self::estimate_entry_size(&key, &value);
 
-        if let Some(old_value) = self.cached_map.get(scope, &key) {
-          // Update existing entry
-          let old_size = Self::estimate_entry_size(&key, &old_value.value);
-          self.current_size_bytes = self.current_size_bytes.saturating_sub(old_size);
-        }
+          if let Some(old_value) = self.cached_map.get(scope, &key) {
+            // Update existing entry
+            let old_size = Self::estimate_entry_size(&key, &old_value.value);
+            self.current_size_bytes = self.current_size_bytes.saturating_sub(old_size);
+          }
 
-        self
-          .cached_map
-          .insert(scope, key, TimestampedValue { value, timestamp });
-        self.current_size_bytes = self.current_size_bytes.saturating_add(new_entry_size);
+          self
+            .cached_map
+            .insert(scope, key, TimestampedValue { value, timestamp });
+          self.current_size_bytes = self.current_size_bytes.saturating_add(new_entry_size);
+        },
       }
     }
 
     Ok(timestamp)
   }
 
-  fn remove(&mut self, scope: Scope, key: &str) -> Option<(u64, Data)> {
-    if !self.cached_map.contains_key(scope, key) {
-      return None;
-    }
-
-    let timestamp = self.current_timestamp();
-    let old_value = self.cached_map.remove(scope, key);
-
-    old_value.map(|v| (timestamp, v.value))
-  }
 }
 
 /// Storage backend enum that dispatches to either persistent or in-memory implementation.
@@ -1068,7 +1074,7 @@ impl VersionedKVStore {
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
   #[must_use]
-  pub fn get(&self, scope: Scope, key: &str) -> Option<&Data> {
+  pub fn get(&self, scope: Scope, key: &str) -> Option<&DataValue> {
     let cached_map = match &self.backend {
       StoreBackend::Persistent(store) => &store.cached_map,
       StoreBackend::InMemory(store) => &store.cached_map,
@@ -1093,7 +1099,7 @@ impl VersionedKVStore {
   /// Returns a tuple of `(timestamp, old_value)` where `old_value` is `Some` if the key already
   /// existed, or `None` if it was a new insertion.
   ///
-  /// Note: Inserting `Value::Null` is equivalent to removing the key.
+  /// Note: Deletions should use `remove()` or `extend()` with `EntryValue::Delete`.
   ///
   /// # Errors
   /// - Returns `UpdateError::CapacityExceeded` if the in-memory store would exceed its size limit
@@ -1103,11 +1109,11 @@ impl VersionedKVStore {
     &mut self,
     scope: Scope,
     key: String,
-    value: Data,
-  ) -> Result<(u64, Option<Data>), UpdateError> {
+    value: DataValue,
+  ) -> Result<(u64, Option<DataValue>), UpdateError> {
     match &mut self.backend {
-      StoreBackend::Persistent(store) => store.insert(scope, &key, value).await,
-      StoreBackend::InMemory(store) => store.insert(scope, &key, &value),
+      StoreBackend::Persistent(store) => store.insert(scope, &key, EntryValue::Value(value)).await,
+      StoreBackend::InMemory(store) => store.insert(scope, &key, EntryValue::Value(value)),
     }
   }
 
@@ -1119,12 +1125,15 @@ impl VersionedKVStore {
   /// For persistent stores, this operation handles rotation and retries automatically if needed.
   /// If empty, this is a no-op that returns the current timestamp.
   ///
-  /// Note: Entries with `Value::Null` are treated as deletions.
+  /// Note: Entries with `EntryValue::Delete` are treated as deletions.
   ///
   /// # Errors
   /// - Returns `UpdateError::CapacityExceeded` if the batch would exceed capacity limits
   /// - Returns `UpdateError::System` if the batch cannot be written (persistent mode)
-  pub async fn extend(&mut self, entries: Vec<(Scope, String, Data)>) -> Result<u64, UpdateError> {
+  pub async fn extend(
+    &mut self,
+    entries: Vec<(Scope, String, EntryValue)>,
+  ) -> Result<u64, UpdateError> {
     match &mut self.backend {
       StoreBackend::Persistent(store) => store.extend_entries(entries).await,
       StoreBackend::InMemory(store) => store.extend_entries(entries),
@@ -1141,10 +1150,15 @@ impl VersionedKVStore {
     &mut self,
     scope: Scope,
     key: &str,
-  ) -> Result<Option<(u64, Data)>, UpdateError> {
+  ) -> Result<Option<(u64, DataValue)>, UpdateError> {
     match &mut self.backend {
-      StoreBackend::Persistent(store) => store.remove(scope, key).await,
-      StoreBackend::InMemory(store) => Ok(store.remove(scope, key)),
+      StoreBackend::Persistent(store) => store
+        .insert(scope, key, EntryValue::Delete)
+        .await
+        .map(|(timestamp, old_value)| old_value.map(|value| (timestamp, value))),
+      StoreBackend::InMemory(store) => store
+        .insert(scope, key, EntryValue::Delete)
+        .map(|(timestamp, old_value)| old_value.map(|value| (timestamp, value))),
     }
   }
 
@@ -1170,9 +1184,9 @@ impl VersionedKVStore {
     }
 
     // Create deletion entries (null values)
-    let entries: Vec<(Scope, String, Data)> = keys
+    let entries: Vec<(Scope, String, EntryValue)> = keys
       .into_iter()
-      .map(|key| (scope, key, Data::default()))
+      .map(|key| (scope, key, EntryValue::Delete))
       .collect();
 
     // Use extend for batch deletion with shared timestamp

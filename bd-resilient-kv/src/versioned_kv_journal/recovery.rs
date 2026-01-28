@@ -10,7 +10,12 @@ use crate::versioned_kv_journal::TimestampedValue;
 use crate::versioned_kv_journal::framing::Frame;
 use crate::versioned_kv_journal::journal::HEADER_SIZE;
 use ahash::AHashMap;
+use bd_log_primitives::{DataValue, LogBinaryData};
 use bd_proto::protos::logging::payload::Data;
+
+fn empty_bytes_deletion() -> DataValue {
+  DataValue::Bytes(LogBinaryData::new(Vec::new()))
+}
 
 /// A utility for recovering state at arbitrary timestamps from journal snapshots.
 ///
@@ -197,7 +202,7 @@ fn replay_journal_to_timestamp(
           map.insert(
             (frame.scope, frame.key.to_string()),
             TimestampedValue {
-              value: frame.payload,
+              value: DataValue::from_proto(frame.payload).unwrap_or_else(empty_bytes_deletion),
               timestamp: frame.timestamp_micros,
             },
           );

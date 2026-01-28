@@ -28,6 +28,7 @@ mod tests;
 mod scope;
 pub mod versioned_kv_journal;
 
+pub use bd_log_primitives::DataValue;
 pub use bd_proto::protos::logging::payload::Data;
 pub use bd_proto::protos::logging::payload::data::Data_type;
 pub use scope::Scope;

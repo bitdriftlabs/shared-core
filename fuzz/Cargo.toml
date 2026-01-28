@@ -27,6 +27,7 @@ bd-time.path                = "../bd-time"
 bd-workspace-hack.workspace = true
 libfuzzer-sys.workspace     = true
 log.workspace               = true
+ordered-float.workspace     = true
 protobuf.workspace          = true
 tempfile.workspace          = true
 time.workspace              = true

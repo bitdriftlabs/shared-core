@@ -93,7 +93,7 @@ fn frame_encode_decode() {
     Scope::FeatureFlagExposure,
     "key1",
     1_700_000_000_000_000,
-    make_string_value("value"),
+    make_string_value("value").into_proto(),
   );
 
   let mut buf = vec![0u8; 1024];
@@ -111,7 +111,7 @@ fn frame_with_delete() {
     Scope::GlobalState,
     "key2",
     1_700_000_000_000_000,
-    make_string_value(""),
+    make_string_value("").into_proto(),
   );
 
   let mut buf = vec![0u8; 1024];
@@ -150,7 +150,7 @@ fn frame_various_timestamps() {
       Scope::FeatureFlagExposure,
       "test_key",
       timestamp,
-      make_string_value("test"),
+      make_string_value("test").into_proto(),
     );
     let mut buf = vec![0u8; 1024];
     let encoded_len = frame.encode(&mut buf).unwrap();
@@ -159,7 +159,10 @@ fn frame_various_timestamps() {
     assert_eq!(decoded_frame.timestamp_micros, timestamp);
     assert_eq!(decoded_frame.scope, Scope::FeatureFlagExposure);
     assert_eq!(decoded_frame.key, "test_key");
-    assert_eq!(decoded_frame.payload, make_string_value("test"));
+    assert_eq!(
+      decoded_frame.payload,
+      make_string_value("test").into_proto()
+    );
     assert_eq!(decoded_len, encoded_len);
   }
 }
@@ -170,7 +173,7 @@ fn frame_buffer_too_small() {
     Scope::FeatureFlagExposure,
     "mykey",
     1_700_000_000_000_000,
-    make_string_value("key:value"),
+    make_string_value("key:value").into_proto(),
   );
   let mut buf = vec![0u8; 5]; // Too small
 
@@ -205,7 +208,7 @@ fn frame_crc_mismatch() {
     Scope::FeatureFlagExposure,
     "mykey",
     1_700_000_000_000_000,
-    make_string_value("key:value"),
+    make_string_value("key:value").into_proto(),
   );
 
   let mut buf = vec![0u8; 1024];
@@ -225,19 +228,19 @@ fn frame_multiple_frames() {
     Scope::FeatureFlagExposure,
     "key1",
     1000,
-    make_string_value("first"),
+    make_string_value("first").into_proto(),
   );
   let frame2 = Frame::new(
     Scope::GlobalState,
     "key2",
     2000,
-    make_string_value("second"),
+    make_string_value("second").into_proto(),
   );
   let frame3 = Frame::new(
     Scope::FeatureFlagExposure,
     "key3",
     3000,
-    make_string_value("third"),
+    make_string_value("third").into_proto(),
   );
 
   let mut buf = vec![0u8; 1024];
@@ -264,7 +267,12 @@ fn frame_length_varint_encoding() {
   // Small frames should use 1 byte for length, larger frames may use more
 
   // Very small payload (length should fit in 1 byte varint)
-  let small_frame = Frame::new(Scope::FeatureFlagExposure, "x", 0, make_string_value("x"));
+  let small_frame = Frame::new(
+    Scope::FeatureFlagExposure,
+    "x",
+    0,
+    make_string_value("x").into_proto(),
+  );
   let mut buf = vec![0u8; 1024];
   let encoded_len = small_frame.encode(&mut buf).unwrap();
 
@@ -299,7 +307,7 @@ fn compute_encoded_size_matches_frame_encoded_size() {
   ];
 
   for (key, value_str) in test_cases {
-    let value = make_string_value(value_str);
+    let value = make_string_value(value_str).into_proto();
     let timestamp = 123_456_789_u64;
 
     // Method 1: Create frame and call encoded_size()

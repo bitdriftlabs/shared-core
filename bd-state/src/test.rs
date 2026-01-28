@@ -28,7 +28,9 @@ use time::macros::datetime;
 /// let mut reader = TestStateReader::default();
 /// reader.insert(Scope::FeatureFlagExposure, "my_flag", "true");
 /// assert_eq!(
-///   reader.get(Scope::FeatureFlagExposure, "my_flag"),
+///   reader
+///     .get(Scope::FeatureFlagExposure, "my_flag")
+///     .and_then(|value| value.as_str()),
 ///   Some("true")
 /// );
 /// ```
@@ -56,8 +58,8 @@ impl TestStateReader {
 }
 
 impl crate::StateReader for TestStateReader {
-  fn get(&self, scope: crate::Scope, key: &str) -> Option<bd_log_primitives::DataValue> {
-    self.data.get(&(scope, key.to_string())).cloned()
+  fn get(&self, scope: crate::Scope, key: &str) -> Option<&bd_log_primitives::DataValue> {
+    self.data.get(&(scope, key.to_string()))
   }
 
   fn iter(&self) -> Box<dyn Iterator<Item = crate::StateEntry> + '_> {

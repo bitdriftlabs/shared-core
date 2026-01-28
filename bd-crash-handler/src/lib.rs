@@ -370,13 +370,11 @@ impl Monitor {
         .iter()
         .filter(|(scope, ..)| *scope == bd_resilient_kv::Scope::FeatureFlagExposure)
         .filter_map(|(_, name, TimestampedValue { value, timestamp })| {
-          bd_log_primitives::DataValue::from_proto(value.clone())
-            .and_then(|value| value.as_str().map(ToString::to_string))
-            .and_then(|variant| {
-              let timestamp =
-                OffsetDateTime::from_unix_timestamp_micros((*timestamp).try_into().ok()?).ok()?;
-              Some((name.clone(), variant, timestamp))
-            })
+          value.as_str().map(ToString::to_string).and_then(|variant| {
+            let timestamp =
+              OffsetDateTime::from_unix_timestamp_micros((*timestamp).try_into().ok()?).ok()?;
+            Some((name.clone(), variant, timestamp))
+          })
         })
         .collect(),
       ReportOrigin::Current => self
@@ -387,8 +385,10 @@ impl Monitor {
         .iter()
         .filter(|(scope, ..)| *scope == bd_resilient_kv::Scope::FeatureFlagExposure)
         .filter_map(|(_, key, value)| {
-          bd_log_primitives::DataValue::from_proto(value.value.clone())
-            .and_then(|value| value.as_str().map(ToString::to_string))
+          value
+            .value
+            .as_str()
+            .map(ToString::to_string)
             .and_then(|variant| {
               let timestamp =
                 OffsetDateTime::from_unix_timestamp_nanos(i128::from(value.timestamp) * 1_000)

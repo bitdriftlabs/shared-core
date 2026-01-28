@@ -181,10 +181,7 @@ impl Setup {
         .insert(
           bd_resilient_kv::Scope::FeatureFlagExposure,
           name.to_string(),
-          bd_resilient_kv::Data {
-            data_type: Some(bd_resilient_kv::Data_type::StringData(value.to_string())),
-            ..Default::default()
-          },
+          bd_resilient_kv::DataValue::String(value.to_string()),
         )
         .await
         .unwrap();

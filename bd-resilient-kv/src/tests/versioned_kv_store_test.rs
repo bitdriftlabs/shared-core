@@ -9,10 +9,9 @@
 
 use crate::tests::decompress_zlib;
 use crate::versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry};
-use crate::versioned_kv_journal::store::PersistentStoreConfig;
+use crate::versioned_kv_journal::store::{EntryValue, PersistentStoreConfig};
 use crate::versioned_kv_journal::{TimestampedValue, make_string_value};
 use crate::{DataLoss, Scope, UpdateError, VersionedKVStore};
-use bd_proto::protos::logging::payload::Data;
 use bd_time::TestTimeProvider;
 use rstest::rstest;
 use std::sync::Arc;
@@ -226,12 +225,12 @@ async fn extend_same_key_ordering(#[case] mode: StoreMode) -> anyhow::Result<()>
     (
       Scope::FeatureFlagExposure,
       "key1".to_string(),
-      make_string_value("value"),
+      EntryValue::Value(make_string_value("value")),
     ),
     (
       Scope::FeatureFlagExposure,
       "key1".to_string(),
-      Data::default(), // deletion
+      EntryValue::Delete,
     ),
   ];
 
@@ -247,12 +246,12 @@ async fn extend_same_key_ordering(#[case] mode: StoreMode) -> anyhow::Result<()>
     (
       Scope::FeatureFlagExposure,
       "key2".to_string(),
-      Data::default(), // deletion (no-op since doesn't exist)
+      EntryValue::Delete,
     ),
     (
       Scope::FeatureFlagExposure,
       "key2".to_string(),
-      make_string_value("value"),
+      EntryValue::Value(make_string_value("value")),
     ),
   ];
 
@@ -268,17 +267,17 @@ async fn extend_same_key_ordering(#[case] mode: StoreMode) -> anyhow::Result<()>
     (
       Scope::FeatureFlagExposure,
       "key3".to_string(),
-      make_string_value("v1"),
+      EntryValue::Value(make_string_value("v1")),
     ),
     (
       Scope::FeatureFlagExposure,
       "key3".to_string(),
-      make_string_value("v2"),
+      EntryValue::Value(make_string_value("v2")),
     ),
     (
       Scope::FeatureFlagExposure,
       "key3".to_string(),
-      make_string_value("v3"),
+      EntryValue::Value(make_string_value("v3")),
     ),
   ];
 
@@ -440,7 +439,11 @@ async fn test_in_memory_size_limit() -> anyhow::Result<()> {
   // Try to insert a large value that would exceed the limit
   let large_value = make_string_value(&"x".repeat(2000));
   let result = store
-    .insert(Scope::FeatureFlagExposure, "large".to_string(), large_value)
+    .insert(
+      Scope::FeatureFlagExposure,
+      "large".to_string(),
+      large_value,
+    )
     .await;
 
   // Should fail with capacity error
@@ -535,7 +538,11 @@ async fn test_in_memory_size_limit_replacement() -> anyhow::Result<()> {
   // Try to replace with a much larger value that would exceed capacity
   let large_value = make_string_value(&"x".repeat(2000));
   let result = store
-    .insert(Scope::FeatureFlagExposure, "key1".to_string(), large_value)
+    .insert(
+      Scope::FeatureFlagExposure,
+      "key1".to_string(),
+      large_value,
+    )
     .await;
 
   // Should fail
@@ -645,15 +652,8 @@ async fn test_null_value_is_deletion(#[case] mode: StoreMode) -> anyhow::Result<
     .await?;
   assert!(setup.store.contains_key(Scope::FeatureFlagExposure, "key1"));
 
-  // Insert empty state to delete
-  setup
-    .store
-    .insert(
-      Scope::FeatureFlagExposure,
-      "key1".to_string(),
-      Data::default(),
-    )
-    .await?;
+  // Remove the key
+  setup.store.remove(Scope::FeatureFlagExposure, "key1").await?;
   assert!(!setup.store.contains_key(Scope::FeatureFlagExposure, "key1"));
   assert_eq!(setup.store.len(), 0);
 
@@ -1109,17 +1109,17 @@ async fn extend_basic(#[case] mode: StoreMode) -> anyhow::Result<()> {
     (
       Scope::FeatureFlagExposure,
       "key1".to_string(),
-      make_string_value("value1"),
+      EntryValue::Value(make_string_value("value1")),
     ),
     (
       Scope::FeatureFlagExposure,
       "key2".to_string(),
-      make_string_value("value2"),
+      EntryValue::Value(make_string_value("value2")),
     ),
     (
       Scope::GlobalState,
       "key3".to_string(),
-      make_string_value("value3"),
+      EntryValue::Value(make_string_value("value3")),
     ),
   ];
 
@@ -1188,19 +1188,19 @@ async fn extend_with_updates_and_deletions(#[case] mode: StoreMode) -> anyhow::R
     (
       Scope::FeatureFlagExposure,
       "key1".to_string(),
-      make_string_value("new_value"),
+      EntryValue::Value(make_string_value("new_value")),
     ),
     // Delete existing key (null value)
     (
       Scope::FeatureFlagExposure,
       "key2".to_string(),
-      Data::default(),
+      EntryValue::Delete,
     ),
     // New insert
     (
       Scope::GlobalState,
       "key3".to_string(),
-      make_string_value("value3"),
+      EntryValue::Value(make_string_value("value3")),
     ),
   ];
 
@@ -1287,7 +1287,7 @@ async fn extend_triggers_rotation_and_succeeds() -> anyhow::Result<()> {
     entries.push((
       Scope::FeatureFlagExposure,
       format!("key_{i}"),
-      make_string_value(&format!("value_{i}")),
+      EntryValue::Value(make_string_value(&format!("value_{i}"))),
     ));
   }
 
@@ -1337,7 +1337,7 @@ async fn extend_triggers_rotation_but_fails_capacity() -> anyhow::Result<()> {
     entries.push((
       Scope::FeatureFlagExposure,
       format!("key_{i}"),
-      make_string_value(&format!("value_{i}")),
+      EntryValue::Value(make_string_value(&format!("value_{i}"))),
     ));
   }
 
@@ -1399,7 +1399,10 @@ async fn extend_atomicity_on_capacity_exceeded() -> anyhow::Result<()> {
     entries.push((
       Scope::FeatureFlagExposure,
       format!("new_key_{i}"),
-      make_string_value(&format!("large_value_{}", "x".repeat(100))),
+      EntryValue::Value(make_string_value(&format!(
+        "large_value_{}",
+        "x".repeat(100)
+      ))),
     ));
   }
 
@@ -1455,17 +1458,17 @@ async fn extend_persistence() -> anyhow::Result<()> {
       (
         Scope::FeatureFlagExposure,
         "key1".to_string(),
-        make_string_value("value1"),
+        EntryValue::Value(make_string_value("value1")),
       ),
       (
         Scope::FeatureFlagExposure,
         "key2".to_string(),
-        make_string_value("value2"),
+        EntryValue::Value(make_string_value("value2")),
       ),
       (
         Scope::GlobalState,
         "key3".to_string(),
-        make_string_value("value3"),
+        EntryValue::Value(make_string_value("value3")),
       ),
     ];
 
@@ -1543,7 +1546,7 @@ async fn test_buffer_size_preserved_across_restart() -> anyhow::Result<()> {
         (
           Scope::FeatureFlagExposure,
           format!("key_{i}"),
-          make_string_value(&format!("value_{i}")),
+          EntryValue::Value(make_string_value(&format!("value_{i}"))),
         )
       })
       .collect();
