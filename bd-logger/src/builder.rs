@@ -339,6 +339,7 @@ impl LoggerBuilder {
           Some(retention_registry),
           Some(Arc::new(state_store.clone())),
           snapshot_creation_interval_ms,
+          time_provider.clone(),
           &scope,
         )
         .await,

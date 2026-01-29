@@ -27,6 +27,7 @@ use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::LogFields;
 use bd_resilient_kv::SnapshotFilename;
 use bd_state::{RetentionHandle, RetentionRegistry};
+use bd_time::TimeProvider;
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -136,6 +137,8 @@ pub struct StateLogCorrelator {
   /// Snapshot creator for triggering on-demand snapshot creation before uploads.
   snapshot_creator: Option<Arc<dyn SnapshotCreator>>,
 
+  time_provider: Arc<dyn TimeProvider>,
+
   /// Statistics.
   stats: Stats,
 }
@@ -150,6 +153,7 @@ impl StateLogCorrelator {
   /// * `retention_registry` - Registry for managing snapshot retention to prevent cleanup
   /// * `snapshot_creator` - Optional snapshot creator for triggering on-demand snapshots
   /// * `snapshot_creation_interval_ms` - Minimum interval between snapshot creations (milliseconds)
+  /// * `time_provider` - Time provider for getting current time
   /// * `stats_scope` - Stats scope for metrics
   pub async fn new(
     state_store_path: Option<PathBuf>,
@@ -158,6 +162,7 @@ impl StateLogCorrelator {
     retention_registry: Option<Arc<RetentionRegistry>>,
     snapshot_creator: Option<Arc<dyn SnapshotCreator>>,
     snapshot_creation_interval_ms: u32,
+    time_provider: Arc<dyn TimeProvider>,
     stats_scope: &Scope,
   ) -> Self {
     let stats = Stats::new(&stats_scope.scope("state_upload"));
@@ -178,6 +183,7 @@ impl StateLogCorrelator {
       persist_lock: RwLock::new(()),
       retention_handle,
       snapshot_creator,
+      time_provider,
       stats,
     };
 
@@ -401,7 +407,7 @@ impl StateLogCorrelator {
     let creator = self.snapshot_creator.as_ref()?;
 
     let now_micros = {
-      let now = time::OffsetDateTime::now_utc();
+      let now = self.time_provider.now();
       now.unix_timestamp().cast_unsigned() * 1_000_000 + u64::from(now.microsecond())
     };
     let last_creation = self.last_snapshot_creation_micros.load(Ordering::Relaxed);

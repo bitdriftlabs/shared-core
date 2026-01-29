@@ -10,6 +10,7 @@
 use super::*;
 use bd_client_common::file_system::RealFileSystem;
 use bd_resilient_kv::SnapshotFilename;
+use bd_time::{SystemTimeProvider, TestTimeProvider};
 use std::sync::atomic::Ordering;
 use time::OffsetDateTime;
 
@@ -82,6 +83,7 @@ async fn correlator_no_state_changes() {
     None,
     None,
     0,
+    Arc::new(SystemTimeProvider {}),
     &stats,
   )
   .await;
@@ -106,6 +108,7 @@ async fn correlator_tracks_state_changes() {
     None,
     None,
     0,
+    Arc::new(SystemTimeProvider {}),
     &stats,
   )
   .await;
@@ -130,6 +133,7 @@ async fn correlator_uploaded_coverage_prevents_reupload() {
     None,
     None,
     0,
+    Arc::new(SystemTimeProvider {}),
     &stats,
   )
   .await;
@@ -163,6 +167,7 @@ async fn cooldown_prevents_rapid_snapshot_creation() {
     None,
     Some(mock_creator.clone()),
     1000,
+    Arc::new(SystemTimeProvider {}),
     &stats,
   )
   .await;
@@ -197,6 +202,7 @@ async fn cooldown_allows_snapshot_after_interval() {
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
   let mock_creator = Arc::new(MockSnapshotCreator::new(snapshots_dir.clone()));
+  let time_provider = Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc()));
 
   let correlator = StateLogCorrelator::new(
     Some(state_dir),
@@ -205,20 +211,21 @@ async fn cooldown_allows_snapshot_after_interval() {
     None,
     Some(mock_creator.clone()),
     1,
+    time_provider.clone(),
     &stats,
   )
   .await;
 
-  correlator.on_state_change(OffsetDateTime::now_utc());
+  correlator.on_state_change(time_provider.now());
 
-  let batch_ts =
-    OffsetDateTime::now_utc().unix_timestamp().cast_unsigned() * 1_000_000 + u64::MAX / 2;
+  let batch_ts = time_provider.now().unix_timestamp().cast_unsigned() * 1_000_000 + u64::MAX / 2;
 
   let snapshot1 = correlator.get_or_create_snapshot(batch_ts).await;
   assert!(snapshot1.is_some());
   assert_eq!(mock_creator.call_count(), 1);
 
-  std::thread::sleep(std::time::Duration::from_millis(2));
+  // Advance time past cooldown.
+  time_provider.advance(time::Duration::milliseconds(2));
 
   // Clear the first snapshot so the second call must create a new one.
   for entry in std::fs::read_dir(&snapshots_dir).unwrap() {
@@ -253,6 +260,7 @@ async fn zero_cooldown_allows_immediate_snapshot_creation() {
     None,
     Some(mock_creator.clone()),
     0,
+    Arc::new(SystemTimeProvider {}),
     &stats,
   )
   .await;
@@ -304,6 +312,7 @@ async fn uses_existing_snapshot_from_normal_rotation() {
     None,
     Some(mock_creator.clone()),
     0,
+    Arc::new(SystemTimeProvider {}),
     &stats,
   )
   .await;
@@ -341,6 +350,7 @@ async fn creates_on_demand_snapshot_when_none_exists() {
     None,
     Some(mock_creator.clone()),
     0,
+    Arc::new(SystemTimeProvider {}),
     &stats,
   )
   .await;
@@ -386,6 +396,7 @@ async fn prefers_existing_snapshot_over_on_demand_creation() {
     None,
     Some(mock_creator.clone()),
     0,
+    Arc::new(SystemTimeProvider {}),
     &stats,
   )
   .await;

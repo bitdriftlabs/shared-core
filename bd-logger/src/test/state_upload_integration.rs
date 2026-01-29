@@ -72,8 +72,6 @@ fn continuous_buffer_creates_and_uploads_state_snapshot() {
     .logger_handle
     .set_feature_flag_exposure("another_flag".to_string(), Some("variant_b".to_string()));
 
-  std::thread::sleep(std::time::Duration::from_millis(100));
-
   setup.log(
     log_level::INFO,
     LogType::NORMAL,
@@ -149,8 +147,6 @@ fn trigger_buffer_flush_creates_snapshot() {
     .logger_handle
     .set_feature_flag_exposure("trigger_flag".to_string(), Some("enabled".to_string()));
 
-  std::thread::sleep(std::time::Duration::from_millis(100));
-
   for i in 0 .. 3 {
     setup.log(
       log_level::INFO,
@@ -207,6 +203,8 @@ fn trigger_buffer_flush_creates_snapshot() {
     }
     std::thread::sleep(std::time::Duration::from_millis(100));
   }
+
+  panic!("expected state snapshot upload within timeout");
 }
 
 #[test]
@@ -244,8 +242,6 @@ fn trigger_buffer_with_multiple_flushes_uploads_state_once() {
   setup
     .logger_handle
     .set_feature_flag_exposure("multi_flush_flag".to_string(), Some("value".to_string()));
-
-  std::thread::sleep(std::time::Duration::from_millis(100));
 
   setup.log(
     log_level::INFO,
@@ -343,8 +339,6 @@ fn state_correlator_prevents_duplicate_uploads() {
     .logger_handle
     .set_feature_flag_exposure("dup_test_flag".to_string(), Some("value".to_string()));
 
-  std::thread::sleep(std::time::Duration::from_millis(100));
-
   setup.log(
     log_level::INFO,
     LogType::NORMAL,
@@ -425,8 +419,6 @@ fn new_state_changes_trigger_new_snapshot() {
     .logger_handle
     .set_feature_flag_exposure("flag_v1".to_string(), Some("value1".to_string()));
 
-  std::thread::sleep(std::time::Duration::from_millis(100));
-
   setup.log(
     log_level::INFO,
     LogType::NORMAL,
@@ -449,8 +441,6 @@ fn new_state_changes_trigger_new_snapshot() {
   setup
     .logger_handle
     .set_feature_flag_exposure("flag_v2".to_string(), Some("value2".to_string()));
-
-  std::thread::sleep(std::time::Duration::from_millis(100));
 
   setup.log(
     log_level::INFO,
@@ -493,8 +483,6 @@ fn continuous_streaming_uploads_state_with_first_batch() {
   setup
     .logger_handle
     .set_feature_flag_exposure("streaming_flag".to_string(), Some("active".to_string()));
-
-  std::thread::sleep(std::time::Duration::from_millis(100));
 
   setup.log(
     log_level::INFO,
@@ -580,8 +568,6 @@ fn continuous_streaming_multiple_batches_single_state_upload() {
   setup
     .logger_handle
     .set_feature_flag_exposure("batch_flag".to_string(), Some("test".to_string()));
-
-  std::thread::sleep(std::time::Duration::from_millis(100));
 
   setup.log(
     log_level::INFO,
