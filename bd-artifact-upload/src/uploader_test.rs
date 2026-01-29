@@ -165,6 +165,8 @@ async fn basic_flow() {
       Some(timestamp),
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
     )
     .unwrap();
 
@@ -226,6 +228,8 @@ async fn feature_flags() {
         ),
         SnappedFeatureFlag::new("key2".to_string(), None, timestamp - 2.std_seconds()),
       ],
+      "client_report".to_string(),
+      false,
     )
     .unwrap();
 
@@ -239,7 +243,6 @@ async fn feature_flags() {
           uuid: intent.uuid,
           decision: bd_api::upload::IntentDecision::UploadImmediately }).unwrap();
   });
-
 
   let upload = setup.data_upload_rx.recv().await.unwrap();
   assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
@@ -294,6 +297,8 @@ async fn pending_upload_limit() {
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
     )
     .unwrap();
   assert_eq!(
@@ -309,6 +314,8 @@ async fn pending_upload_limit() {
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
     )
     .unwrap();
   assert_eq!(
@@ -323,6 +330,8 @@ async fn pending_upload_limit() {
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
     )
     .unwrap();
   assert_eq!(
@@ -390,6 +399,8 @@ async fn inconsistent_state_missing_file() {
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
     )
     .unwrap();
   assert_eq!(
@@ -404,6 +415,8 @@ async fn inconsistent_state_missing_file() {
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
     )
     .unwrap();
   assert_eq!(
@@ -446,6 +459,8 @@ async fn inconsistent_state_extra_file() {
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
     )
     .unwrap();
   assert_eq!(
@@ -516,6 +531,8 @@ async fn disk_persistence() {
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
     )
     .unwrap();
   assert_eq!(
@@ -562,6 +579,8 @@ async fn inconsistent_state_missing_index() {
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
     )
     .unwrap();
   assert_eq!(
@@ -585,6 +604,8 @@ async fn inconsistent_state_missing_index() {
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
     )
     .unwrap();
   assert_eq!(
@@ -630,6 +651,8 @@ async fn new_entry_disk_full() {
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
     )
     .unwrap();
   assert_eq!(
@@ -658,6 +681,8 @@ async fn new_entry_disk_full_after_received() {
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
     )
     .unwrap();
   assert_eq!(
@@ -698,6 +723,8 @@ async fn intent_retries() {
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
     )
     .unwrap();
   assert_eq!(
@@ -732,6 +759,8 @@ async fn intent_drop() {
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
     )
     .unwrap();
   assert_eq!(
@@ -768,6 +797,8 @@ async fn upload_retries() {
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
     )
     .unwrap();
   assert_eq!(

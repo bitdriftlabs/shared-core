@@ -32,6 +32,9 @@ mod network;
 mod ordered_receiver;
 mod pre_config_buffer;
 mod service;
+mod state_upload;
+
+pub use state_upload::{SnapshotCreator, SnapshotRef, StateLogCorrelator};
 
 #[cfg(test)]
 mod test;

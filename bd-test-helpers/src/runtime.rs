@@ -11,6 +11,7 @@ use bd_proto::protos::client::runtime::runtime::{Value, value};
 
 /// A simple representation of a runtime value. This is used to provide better ergonomics than the
 /// protobuf enums.
+#[derive(Clone)]
 pub enum ValueKind {
   Bool(bool),
   Int(u32),
