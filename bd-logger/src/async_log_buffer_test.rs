@@ -35,7 +35,7 @@ use bd_session::fixed::UUIDCallbacks;
 use bd_session::{Strategy, fixed};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::test::TestStore;
-use bd_state::{Scope, StateReader};
+use bd_state::{SYSTEM_SESSION_ID_KEY, Scope, StateReader};
 use bd_stats_common::labels;
 use bd_test_helpers::events::NoOpListenerTarget;
 use bd_test_helpers::metadata_provider::LogMetadata;
@@ -763,7 +763,7 @@ async fn updates_system_session_id_for_new_sessions() {
 
   {
     let reader = test_store.read().await;
-    let value = reader.get(Scope::System, "session_id");
+    let value = reader.get(Scope::System, SYSTEM_SESSION_ID_KEY);
     assert!(value.is_some_and(|stored| {
       stored.has_string_value() && stored.string_value() == second_session_id
     }));
@@ -829,9 +829,73 @@ async fn previous_run_log_does_not_override_system_session_id() {
 
   {
     let reader = test_store.read().await;
-    let value = reader.get(Scope::System, "session_id");
+    let value = reader.get(Scope::System, SYSTEM_SESSION_ID_KEY);
     assert!(value.is_some_and(|stored| {
       stored.has_string_value() && stored.string_value() == next_session_id
+    }));
+  }
+
+  drop(test_store);
+  task.join().unwrap();
+}
+
+#[tokio::test]
+async fn pre_config_logs_trigger_session_id_update() {
+  let mut setup = Setup::new();
+
+  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+
+  let test_store = TestStore::new().await;
+  let state_store = (*test_store).clone();
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+
+  let first_session_id = setup.session_strategy.session_id();
+  assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
+    &sender,
+    0,
+    LogType::NORMAL,
+    "first_pre_config".into(),
+    [].into(),
+    [].into(),
+    None,
+    Block::No,
+    None,
+  ));
+
+  setup.session_strategy.start_new_session();
+  let second_session_id = setup.session_strategy.session_id();
+  assert_ne!(first_session_id, second_session_id);
+
+  assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
+    &sender,
+    0,
+    LogType::NORMAL,
+    "second_pre_config".into(),
+    [].into(),
+    [].into(),
+    None,
+    Block::No,
+    None,
+  ));
+
+  let handle =
+    tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
+
+  let config_update = setup.make_config_update(WorkflowsConfiguration::default());
+  let task = std::thread::spawn(move || {
+    assert_ok!(config_update_tx.blocking_send(config_update));
+  });
+
+  200.milliseconds().sleep().await;
+  shutdown_trigger.shutdown().await;
+  handle.await.unwrap();
+
+  {
+    let reader = test_store.read().await;
+    let value = reader.get(Scope::System, SYSTEM_SESSION_ID_KEY);
+    assert!(value.is_some_and(|stored| {
+      stored.has_string_value() && stored.string_value() == second_session_id
     }));
   }
 
