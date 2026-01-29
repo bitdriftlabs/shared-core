@@ -11,7 +11,7 @@ mod tests;
 
 use bd_device::Store;
 use bd_key_value::Key;
-use bd_log_primitives::{LogFields, StringOrBytes};
+use bd_log_primitives::{DataValue, LogFields};
 use bd_proto::protos::client::key_value::CrashGlobalState;
 use bd_proto::protos::logging::payload;
 use bd_runtime::runtime::DurationWatch;
@@ -170,7 +170,7 @@ impl Reader {
         .filter_map(|field| {
           Some((
             Cow::Owned(field.key),
-            StringOrBytes::from_proto(field.value.into_option()?)?,
+            DataValue::from_proto(field.value.into_option()?)?,
           ))
         })
         .collect()
@@ -194,7 +194,7 @@ impl Reader {
           .filter_map(|mut field| {
             Some((
               field.key.into(),
-              StringOrBytes::from_proto(field.value.take()?)?,
+              DataValue::from_proto(field.value.take()?)?,
             ))
           })
           .collect()

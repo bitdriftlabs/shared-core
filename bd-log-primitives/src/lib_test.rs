@@ -7,7 +7,7 @@
 
 #![allow(clippy::cast_possible_truncation, clippy::unwrap_used)]
 
-use crate::{EncodableLog, Log, LogFieldValue, LogType, StringOrBytes};
+use crate::{DataValue, EncodableLog, Log, LogFieldValue, LogType};
 use ahash::AHashMap;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::log::Field;
@@ -141,7 +141,7 @@ fn encodable_log_produces_valid_proto() {
   let log = Log {
     log_level: 2,
     log_type: LogType::REPLAY,
-    message: StringOrBytes::String("test message".to_string()),
+    message: DataValue::String("test message".to_string()),
     fields: AHashMap::from_iter([
       (
         Cow::Borrowed("key1"),
@@ -213,7 +213,7 @@ fn encodable_log_compression_works() {
   let log = Log {
     log_level: 1,
     log_type: LogType::NORMAL,
-    message: StringOrBytes::String(large_message),
+    message: DataValue::String(large_message),
     fields: AHashMap::from_iter([(
       Cow::Borrowed("key"),
       LogFieldValue::String("value".to_string()),
@@ -262,7 +262,7 @@ fn extract_timestamp_works() {
   let log = Log {
     log_level: 1,
     log_type: LogType::NORMAL,
-    message: StringOrBytes::String("test".to_string()),
+    message: DataValue::String("test".to_string()),
     fields: AHashMap::new(),
     matching_fields: AHashMap::new(),
     session_id: "test".to_string(),

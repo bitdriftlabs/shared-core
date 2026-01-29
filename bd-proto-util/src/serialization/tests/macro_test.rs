@@ -621,6 +621,46 @@ fn test_enum_tuple_variant_with_default_values() -> Result<()> {
 }
 
 #[test]
+fn test_enum_message_variant_with_empty_message() -> Result<()> {
+  #[proto_serializable]
+  #[derive(Debug, PartialEq, Default)]
+  struct EmptyMessage {}
+
+  #[proto_serializable]
+  #[derive(Debug, PartialEq)]
+  enum Wrapper {
+    #[field(id = 1, default)]
+    Empty(EmptyMessage),
+    #[field(id = 2)]
+    Other(u32),
+  }
+
+  impl Default for Wrapper {
+    fn default() -> Self {
+      Self::Empty(EmptyMessage::default())
+    }
+  }
+
+  let original = Wrapper::Empty(EmptyMessage::default());
+  let mut buf = Vec::new();
+  let mut os = CodedOutputStream::vec(&mut buf);
+  original.serialize(1, &mut os)?;
+  os.flush()?;
+  drop(os);
+
+  assert!(!buf.is_empty());
+
+  let mut is = CodedInputStream::from_bytes(&buf);
+  let _tag = is.read_raw_varint32()?;
+  let roundtripped = Wrapper::deserialize(&mut is)?;
+
+  assert_eq!(original, roundtripped);
+
+  Ok(())
+}
+
+
+#[test]
 #[allow(clippy::enum_variant_names)] // Test enum intentionally uses uniform naming
 fn test_enum_multiple_tuple_variants_with_defaults() -> Result<()> {
   // This test verifies that multiple tuple variants with different types all handle default values
