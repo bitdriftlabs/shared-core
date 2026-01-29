@@ -465,16 +465,34 @@ pub fn process_struct_fields(
               }
 
           fn compute_size_explicit(&self, field_number: u32) -> u64 {
-              // Messages always have explicit presence (empty message is different from not
-              // present), so explicit and implicit are the same
-              self.compute_size(field_number)
+              let mut my_size = 0;
+              #(#size_computations)*
+
+              let inner_size = my_size;
+
+              let tag_size = protobuf::rt::tag_size(field_number);
+              let len_varint_size = protobuf::rt::compute_raw_varint64_size(inner_size);
+
+              tag_size + len_varint_size + inner_size
           }
 
           fn serialize_explicit(&self, field_number: u32, os: &mut protobuf::CodedOutputStream)
               -> anyhow::Result<()> {
-              // Messages always have explicit presence (empty message is different from not
-              // present), so explicit and implicit are the same
-              self.serialize(field_number, os)
+              let mut my_size = 0;
+              #(#size_computations)*
+              let inner_size = my_size;
+
+              os.write_tag(field_number, protobuf::rt::WireType::LengthDelimited)?;
+              let inner_size_u32 = u32::try_from(inner_size)
+                .map_err(|_| anyhow::anyhow!(
+                  "Message payload too large to serialize: {} bytes exceeds u32::MAX",
+                  inner_size
+                ))?;
+              os.write_raw_varint32(inner_size_u32)?;
+
+              #(#field_processing)*
+
+              Ok(())
           }
       }
   };

@@ -32,13 +32,13 @@ use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
+  DataValue,
   Log,
   LogFieldValue,
   LogFields,
   LogInterceptor,
   LogLevel,
   LogMessage,
-  StringOrBytes,
 };
 use bd_network_quality::{NetworkQualityMonitor, NetworkQualityResolver};
 use bd_proto::protos::client::api::debug_data_request::{
@@ -88,7 +88,7 @@ impl ReportProcessor for () {
 
 #[derive(Debug)]
 pub enum StateUpdateMessage {
-  AddLogField(String, StringOrBytes),
+  AddLogField(String, DataValue),
   RemoveLogField(String),
   SetFeatureFlagExposure(String, Option<String>),
   FlushState(Option<bd_completion::Sender<()>>),

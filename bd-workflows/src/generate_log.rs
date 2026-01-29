@@ -14,7 +14,7 @@ use action::ActionGenerateLog;
 use action::action_generate_log::ValueReference;
 use action::action_generate_log::generated_field::Generated_field_value_type;
 use action::action_generate_log::value_reference::Value_reference_type;
-use bd_log_primitives::{FieldsRef, Log, LogFields, StringOrBytes, log_level};
+use bd_log_primitives::{DataValue, FieldsRef, Log, LogFields, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow::workflow::action;
 use bd_proto::protos::workflow::workflow::workflow::action::action_generate_log::ValueReferencePair;
@@ -127,7 +127,7 @@ pub fn generate_log_action(
     if let Some(value) = value {
       fields.insert(
         field.name.clone().into(),
-        StringOrBytes::String(value.to_string()),
+        DataValue::String(value.to_string()),
       );
     }
   }
@@ -137,10 +137,10 @@ pub fn generate_log_action(
     #[allow(clippy::cast_possible_wrap)]
     log_type: LogType::from_i32(action.log_type as i32).unwrap_or_default(),
     fields,
-    message: StringOrBytes::String(message),
+    message: DataValue::String(message),
     matching_fields: LogFields::from([(
       "_generate_log_id".into(),
-      StringOrBytes::String(action.id.clone()),
+      DataValue::String(action.id.clone()),
     )]),
     // These will be filled in later via the log processor.
     session_id: String::new(),

@@ -245,6 +245,8 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
         proto_type_impl,
         serialize_impl,
         deserialize_impl,
+        message_serialize_impl,
+        message_deserialize_impl,
         validation_tests,
       } = process_enum_variants(
         data_enum,
@@ -261,6 +263,8 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
           #proto_type_impl
           #serialize_impl
           #deserialize_impl
+          #message_serialize_impl
+          #message_deserialize_impl
           #validation_tests
       };
       TokenStream::from(expanded)

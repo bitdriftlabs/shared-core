@@ -22,9 +22,9 @@ use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
+  DataValue,
   Log,
   LogFields,
-  StringOrBytes,
   log_level,
 };
 use bd_proto::protos::config::v1::config::BufferConfigList;
@@ -285,7 +285,7 @@ fn log_line_size_is_computed_correctly() {
   // Add one extra character to the `message` and verify that reported size increases by 1 byte
   let mut baseline_log_with_longer_message = create_baseline_log();
   baseline_log_with_longer_message.message =
-    StringOrBytes::from(baseline_log.message.as_str().unwrap().to_owned() + "1");
+    DataValue::from(baseline_log.message.as_str().unwrap().to_owned() + "1");
   assert_eq!(
     baseline_log_expected_size + 1,
     baseline_log_with_longer_message.size()
@@ -335,7 +335,7 @@ fn annotated_log_line_size_is_computed_correctly() {
   // Add one extra character to the `message` and verify that reported size increases by 1 bytes
   let mut baseline_log_with_longer_message = create_baseline_log();
   baseline_log_with_longer_message.message =
-    StringOrBytes::from(baseline_log.message.as_str().unwrap().to_owned() + "1");
+    DataValue::from(baseline_log.message.as_str().unwrap().to_owned() + "1");
   assert_eq!(
     baseline_log_expected_size + 1,
     baseline_log_with_longer_message.size()
@@ -353,7 +353,7 @@ fn annotated_log_line_size_is_computed_correctly() {
   // by 1 byte
   let mut baseline_log_with_longer_field_key = create_baseline_log();
   baseline_log_with_longer_field_key.fields =
-    [("foo".into(), StringOrBytes::String("bar1".to_string()))].into();
+    [("foo".into(), DataValue::String("bar1".to_string()))].into();
   assert_eq!(
     baseline_log_expected_size + 1,
     baseline_log_with_longer_field_key.size()
@@ -363,7 +363,7 @@ fn annotated_log_line_size_is_computed_correctly() {
   // by 1 byte
   let mut baseline_log_with_longer_field_value = baseline_log;
   baseline_log_with_longer_field_value.fields =
-    [("foo".into(), StringOrBytes::String("bar1".to_string()))].into();
+    [("foo".into(), DataValue::String("bar1".to_string()))].into();
   assert_eq!(
     baseline_log_expected_size + 1,
     baseline_log_with_longer_field_value.size()
@@ -674,7 +674,7 @@ async fn logs_resource_utilization_log() {
   let log = LogLine {
     log_level: log_level::DEBUG,
     log_type: LogType::RESOURCE,
-    message: StringOrBytes::String(String::new()),
+    message: DataValue::String(String::new()),
     fields: AnnotatedLogFields::new(),
     matching_fields: AnnotatedLogFields::new(),
     attributes_overrides: None,
@@ -946,7 +946,7 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
   sender
     .try_send_state_update(crate::async_log_buffer::StateUpdateMessage::AddLogField(
       "global_key".to_string(),
-      StringOrBytes::String("global_value".to_string()),
+      DataValue::String("global_value".to_string()),
     ))
     .unwrap();
 
