@@ -32,6 +32,8 @@ pub struct RetentionHandle {
 
 
 impl RetentionHandle {
+  pub const NO_RETENTION_REQUIREMENT: u64 = u64::MAX;
+
   /// Updates the retention requirement to retain data from the given timestamp (in microseconds).
   ///
   /// The timestamp should be in microseconds since UNIX epoch to match the journal timestamp
@@ -76,10 +78,9 @@ impl RetentionRegistry {
 
   /// Creates a new retention handle.
   ///
-  /// The handle starts with a retention timestamp of 0 (epoch), meaning it initially
-  /// requires all historical data to be retained.
+  /// The handle starts with a sentinel indicating no retention requirement until initialized.
   pub async fn create_handle(&self) -> RetentionHandle {
-    let retain_from = Arc::new(AtomicU64::new(0)); // Start with "retain everything"
+    let retain_from = Arc::new(AtomicU64::new(RetentionHandle::NO_RETENTION_REQUIREMENT));
 
     // Store weak reference to the Arc<AtomicU64> so dropped handles are automatically cleaned up
     self
@@ -107,11 +108,21 @@ impl RetentionRegistry {
       return None;
     }
 
-    // Collect all valid handles and find minimum
-    handles
-      .iter()
-      .filter_map(std::sync::Weak::upgrade)
-      .map(|atomic| atomic.load(Ordering::Relaxed))
-      .min()
+    let mut min_retention: Option<u64> = None;
+    let mut has_handles = false;
+    for handle in handles.iter().filter_map(std::sync::Weak::upgrade) {
+      has_handles = true;
+      let retention = handle.load(Ordering::Relaxed);
+      if retention == RetentionHandle::NO_RETENTION_REQUIREMENT {
+        continue;
+      }
+      min_retention = Some(min_retention.map_or(retention, |min| min.min(retention)));
+    }
+
+    if min_retention.is_some() {
+      return min_retention;
+    }
+
+    has_handles.then_some(RetentionHandle::NO_RETENTION_REQUIREMENT)
   }
 }

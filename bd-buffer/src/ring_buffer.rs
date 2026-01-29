@@ -327,8 +327,26 @@ impl Manager {
             .counter_with_labels("total_data_loss", labels! {"buffer_id" => &buffer.id}),
           None,
           on_record_evicted_cb,
-          retention_handle,
+          retention_handle.clone(),
         )?;
+
+        if let Some(handle) = retention_handle.as_ref() {
+          match ring_buffer.buffer.peek_oldest_record() {
+            Ok(Some(record_data)) => {
+              if let Some(ts) = EncodableLog::extract_timestamp(&record_data)
+                && let Some(micros) = u64::try_from(ts.unix_timestamp_micros()).ok()
+              {
+                handle.update_retention_micros(micros);
+              }
+            },
+            Ok(None) => {
+              handle.update_retention_micros(RetentionHandle::NO_RETENTION_REQUIREMENT);
+            },
+            Err(error) => {
+              log::debug!("failed to peek oldest record for retention init: {error}");
+            },
+          }
+        }
 
         updated_buffers.insert(buffer.id.clone(), (buffer_type, ring_buffer.clone()));
         new_buffers.push((buffer.id.clone(), (buffer_type, ring_buffer)));

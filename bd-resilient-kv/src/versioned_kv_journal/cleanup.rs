@@ -9,7 +9,7 @@
 #[path = "./cleanup_test.rs"]
 mod tests;
 
-use super::retention::RetentionRegistry;
+use super::retention::{RetentionHandle, RetentionRegistry};
 use bd_error_reporter::reporter::handle_unexpected;
 use std::path::{Path, PathBuf};
 
@@ -54,7 +54,9 @@ pub async fn cleanup_old_snapshots(
       continue;
     }
 
-    let should_delete = min_retention.is_none_or(|min_retention| timestamp < min_retention);
+  let should_delete = min_retention.is_none_or(|min_retention| {
+    min_retention == RetentionHandle::NO_RETENTION_REQUIREMENT || timestamp < min_retention
+  });
 
     if should_delete {
       log::debug!(

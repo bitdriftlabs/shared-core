@@ -9,7 +9,7 @@ use crate::versioned_kv_journal::TimestampedValue;
 use crate::versioned_kv_journal::file_manager::{self, compress_archived_journal};
 use crate::versioned_kv_journal::journal::PartialDataLoss;
 use crate::versioned_kv_journal::memmapped_journal::MemMappedVersionedJournal;
-use crate::versioned_kv_journal::retention::RetentionRegistry;
+use crate::versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry};
 use crate::{Scope, UpdateError};
 use ahash::AHashMap;
 use bd_error_reporter::reporter::handle_unexpected;
@@ -679,9 +679,10 @@ impl PersistentStore {
     let min_retention = self.retention_registry.min_retention_timestamp().await;
     // If min_retention is None (no handles), don't create snapshot
     // If min_retention is Some(0), retain everything (at least one handle wants all data)
+    // If min_retention is Some(u64::MAX), no handle requires retention
     // If min_retention > rotation_timestamp, no one needs this snapshot
     let should_create_snapshot = match min_retention {
-      None => false,
+      None | Some(RetentionHandle::NO_RETENTION_REQUIREMENT) => false,
       Some(0) => true,
       Some(ts) => ts <= rotation_timestamp,
     };

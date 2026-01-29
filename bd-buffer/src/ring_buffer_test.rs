@@ -377,6 +377,64 @@ async fn retention_handle_is_released_on_buffer_removal() {
 }
 
 #[tokio::test]
+async fn trigger_buffer_retention_initialized_from_oldest_record() {
+  let directory = tmp_dir();
+  let config = single_buffer_with_size("trigger", 10_000, 1_000, buffer_config::Type::TRIGGER);
+
+  let retention_registry = Arc::new(bd_resilient_kv::RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+  let (ring_buffer_manager, mut buffer_update_rx) = Manager::new(
+    directory.path().to_path_buf(),
+    &Collector::default().scope(""),
+    &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
+    retention_registry,
+  );
+  tokio::spawn(async move { while buffer_update_rx.recv().await.is_some() {} });
+
+  ring_buffer_manager
+    .update_from_config(&config, false)
+    .await
+    .unwrap();
+
+  let buffer_handle = ring_buffer_manager
+    .buffers()
+    .get("trigger")
+    .unwrap()
+    .1
+    .clone();
+  let first_time = time::OffsetDateTime::now_utc();
+  let log_bytes = make_test_log_bytes(first_time);
+  let mut producer = buffer_handle.new_thread_local_producer().unwrap();
+  producer.write(&log_bytes).unwrap();
+  buffer_handle.flush();
+
+  std::mem::drop(buffer_handle);
+  std::mem::drop(ring_buffer_manager);
+
+  let retention_registry = Arc::new(bd_resilient_kv::RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+  let (ring_buffer_manager, mut buffer_update_rx) = Manager::new(
+    directory.path().to_path_buf(),
+    &Collector::default().scope(""),
+    &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
+    retention_registry.clone(),
+  );
+  tokio::spawn(async move { while buffer_update_rx.recv().await.is_some() {} });
+
+  ring_buffer_manager
+    .update_from_config(&config, false)
+    .await
+    .unwrap();
+
+  let retained = retention_registry.min_retention_timestamp().await.unwrap();
+  let first_micros =
+    u64::try_from(first_time.unix_timestamp_micros()).expect("timestamp micros fits u64");
+  assert_eq!(retained, first_micros);
+}
+
+#[tokio::test]
 async fn write_failure_stats() {
   let diretory = tempfile::TempDir::with_prefix("ringbuffer").unwrap();
 

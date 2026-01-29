@@ -901,6 +901,27 @@ impl RingBufferImpl {
       ),
     }))
   }
+
+  pub fn peek_oldest_record(&self) -> Result<Option<Vec<u8>>> {
+    let mut common_ring_buffer = self.common_ring_buffer.locked_data.lock();
+    let Some(record_range) =
+      common_ring_buffer.peek_next_read_record_range(Cursor::No)?
+    else {
+      return Ok(None);
+    };
+
+    let record_start = record_range.start as usize;
+    let record_end = record_start + record_range.size as usize;
+    let memory = common_ring_buffer.memory();
+    if record_end > memory.len() {
+      return Err(Error::AbslStatus(
+        AbslCode::DataLoss,
+        "corrupted record size".to_string(),
+      ));
+    }
+
+    Ok(Some(memory[record_start .. record_end].to_vec()))
+  }
 }
 
 impl RingBuffer for RingBufferImpl {

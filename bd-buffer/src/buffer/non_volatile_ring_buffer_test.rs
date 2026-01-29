@@ -423,3 +423,49 @@ fn cursor_consumer() {
   helper.helper().cursor_read_and_verify_and_advance("dd"); // 0-9
   helper.helper().cursor_read_and_verify_and_advance("ee"); // 10-19
 }
+
+#[test]
+fn peek_oldest_record_empty() {
+  let mut helper = Helper::new(30, AllowOverwrite::Yes, Cursor::No);
+  let buffer = helper
+    .helper()
+    .buffer
+    .as_any()
+    .downcast_ref::<RingBufferImpl>()
+    .unwrap();
+
+  assert!(buffer.peek_oldest_record().unwrap().is_none());
+}
+
+#[test]
+fn peek_oldest_record_does_not_consume() {
+  let mut helper = Helper::new(30, AllowOverwrite::Yes, Cursor::No);
+  helper.helper().reserve_and_commit("aa");
+  helper.helper().reserve_and_commit("bb");
+
+  {
+    let buffer = helper
+      .helper()
+      .buffer
+      .as_any()
+      .downcast_ref::<RingBufferImpl>()
+      .unwrap();
+    let first_peek = buffer.peek_oldest_record().unwrap().unwrap();
+    let second_peek = buffer.peek_oldest_record().unwrap().unwrap();
+    assert_eq!(first_peek, b"aa");
+    assert_eq!(second_peek, b"aa");
+  }
+
+  helper.helper().read_and_verify("aa");
+
+  let third_peek = helper
+    .helper()
+    .buffer
+    .as_any()
+    .downcast_ref::<RingBufferImpl>()
+    .unwrap()
+    .peek_oldest_record()
+    .unwrap()
+    .unwrap();
+  assert_eq!(third_peek, b"bb");
+}

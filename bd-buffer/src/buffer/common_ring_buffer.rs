@@ -334,6 +334,17 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     Ok(size)
   }
 
+  pub fn peek_next_read_record_range(&mut self, cursor: Cursor) -> Result<Option<Range>> {
+    let Some(next_read_start) = *self.next_read_start_to_use(cursor) else {
+      return Ok(None);
+    };
+    let next_read_size = self.load_next_read_size(cursor)?;
+    Ok(Some(Range {
+      start: next_read_start + self.extra_bytes_per_record,
+      size: next_read_size,
+    }))
+  }
+
   // Checks to see if the wrap gap (the space after last_write_end_before_wrap) in this reservation
   // (if applicable) intersects with another range.
   fn intersect_in_wrap_gap(

@@ -9,11 +9,11 @@
 #![allow(clippy::cast_possible_truncation)]
 #![allow(clippy::cast_sign_loss)]
 
-use super::RetentionRegistry;
+use super::{RetentionHandle, RetentionRegistry};
 use std::sync::Arc;
 
 #[tokio::test]
-async fn handle_starts_with_retain_all() {
+async fn handle_starts_with_no_requirement() {
   let registry = Arc::new(RetentionRegistry::new(
     bd_runtime::runtime::IntWatch::new_for_testing(0),
   ));
@@ -21,8 +21,8 @@ async fn handle_starts_with_retain_all() {
 
   assert_eq!(
     handle.get_retention(),
-    0,
-    "Handle should start with timestamp 0 (retain all)"
+    RetentionHandle::NO_RETENTION_REQUIREMENT,
+    "Handle should start with sentinel (no retention requirement)"
   );
 }
 
@@ -98,6 +98,26 @@ async fn registry_handles_zero_retention() {
     min_retention,
     Some(0),
     "Should return 0 when at least one handle wants all data"
+  );
+}
+
+#[tokio::test]
+async fn registry_ignores_no_requirement_handles() {
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+
+  let _handle1 = registry.create_handle().await;
+  let handle2 = registry.create_handle().await;
+
+  let timestamp_micros = 1_000_000_u64;
+  handle2.update_retention_micros(timestamp_micros);
+
+  let min_retention = registry.min_retention_timestamp().await;
+  assert_eq!(
+    min_retention,
+    Some(timestamp_micros),
+    "Should ignore handles with no retention requirement"
   );
 }
 

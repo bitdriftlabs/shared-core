@@ -200,6 +200,10 @@ impl RingBufferImpl {
   pub fn non_volatile_buffer(&self) -> &NonVolatileRingBuffer {
     &self.shared_data.non_volatile_buffer
   }
+
+  pub fn peek_oldest_record(&self) -> Result<Option<Vec<u8>>> {
+    self.shared_data.non_volatile_buffer.peek_oldest_record()
+  }
 }
 
 impl Drop for RingBufferImpl {
