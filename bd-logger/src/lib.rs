@@ -34,7 +34,7 @@ mod pre_config_buffer;
 mod service;
 mod state_upload;
 
-pub use state_upload::{SnapshotRef, StateLogCorrelator};
+pub use state_upload::{SnapshotCreator, SnapshotRef, StateLogCorrelator};
 
 #[cfg(test)]
 mod test;

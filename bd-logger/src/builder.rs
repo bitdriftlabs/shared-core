@@ -243,6 +243,9 @@ impl LoggerBuilder {
     let data_upload_tx_clone = data_upload_tx.clone();
     let collector_clone = collector;
 
+    let state_storage_fallback = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let state_storage_fallback_for_future = state_storage_fallback.clone();
+
     let logger = Logger::new(
       maybe_shutdown_trigger,
       runtime_loader.clone(),
@@ -254,6 +257,7 @@ impl LoggerBuilder {
       self.params.static_metadata.sdk_version(),
       self.params.store.clone(),
       sleep_mode_active_tx,
+      state_storage_fallback,
     );
     let log = if self.internal_logger {
       Arc::new(InternalLogger::new(
@@ -302,8 +306,11 @@ impl LoggerBuilder {
       )
       .await;
 
-      let (state_store, previous_run_state, retention_registry) =
-        (result.store, result.previous_state, result.retention_registry);
+      let (state_store, previous_run_state, retention_registry) = (
+        result.store,
+        result.previous_state,
+        result.retention_registry,
+      );
 
       if result.fallback_occurred {
         handle_unexpected(
@@ -314,13 +321,24 @@ impl LoggerBuilder {
         );
       }
 
+      state_storage_fallback_for_future.store(
+        result.fallback_occurred,
+        std::sync::atomic::Ordering::Relaxed,
+      );
+
       // Create state-log correlator for uploading state snapshots alongside logs
+      let snapshot_creation_interval_ms =
+        *bd_runtime::runtime::state::SnapshotCreationIntervalMs::register(&runtime_loader)
+          .into_inner()
+          .borrow();
       let state_correlator = Arc::new(
         StateLogCorrelator::new(
           Some(state_directory.clone()),
           self.params.sdk_directory.clone(),
           Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
           Some(retention_registry),
+          Some(Arc::new(state_store.clone())),
+          snapshot_creation_interval_ms,
           &scope,
         )
         .await,

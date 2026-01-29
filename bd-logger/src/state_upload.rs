@@ -25,6 +25,7 @@ use bd_client_common::file::{read_checksummed_data, write_checksummed_data};
 use bd_client_common::file_system::FileSystem;
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::LogFields;
+use bd_resilient_kv::SnapshotFilename;
 use bd_state::{RetentionHandle, RetentionRegistry};
 use std::fs::File;
 use std::path::{Path, PathBuf};
@@ -38,6 +39,23 @@ const STATE_UPLOAD_DIR: &str = "state_upload";
 
 /// Index file name for tracking uploaded snapshots.
 const STATE_UPLOAD_INDEX_FILE: &str = "upload_index.bin";
+
+//
+// SnapshotCreator
+//
+
+/// Trait for creating state snapshots on demand.
+///
+/// This is implemented by `bd_state::Store` to allow the correlator to trigger journal rotation
+/// and create snapshot files when needed for log uploads.
+#[async_trait::async_trait]
+pub trait SnapshotCreator: Send + Sync {
+  /// Triggers a journal rotation to create a snapshot file.
+  ///
+  /// Returns the path to the created snapshot file, or `None` if snapshot creation failed or is
+  /// not supported (e.g., in-memory store).
+  async fn create_snapshot(&self) -> Option<PathBuf>;
+}
 
 /// A reference to a state snapshot that should be uploaded.
 #[derive(Debug, Clone)]
@@ -83,6 +101,22 @@ pub struct StateLogCorrelator {
   /// Any logs with timestamps before this value have their state coverage already uploaded.
   state_uploaded_through_micros: AtomicU64,
 
+  /// Timestamp of the last snapshot creation (microseconds since epoch).
+  /// Used to implement batching/cooldown between snapshot creations.
+  ///
+  /// This cooldown is primarily necessary for **log streaming** configurations where potentially
+  /// all logs are streamed to the server in rapid succession. Since logs are batched for upload
+  /// (e.g., every few seconds), we want to ensure state snapshots are also batched to avoid
+  /// creating a new snapshot for every log batch. Without this cooldown, a high-volume streaming
+  /// configuration could trigger dozens of snapshot creations per minute, wasting disk I/O and
+  /// upload bandwidth.
+  last_snapshot_creation_micros: AtomicU64,
+
+  /// Minimum interval between snapshot creations (microseconds).
+  /// Prevents excessive snapshot creation on rapid log uploads. See
+  /// `last_snapshot_creation_micros` for details on why batching is necessary.
+  snapshot_creation_interval_micros: u64,
+
   /// Path to the state store directory (for finding snapshot files).
   state_store_path: Option<PathBuf>,
 
@@ -99,6 +133,9 @@ pub struct StateLogCorrelator {
   /// cleanup of old snapshots that have already been uploaded.
   retention_handle: Option<RetentionHandle>,
 
+  /// Snapshot creator for triggering on-demand snapshot creation before uploads.
+  snapshot_creator: Option<Arc<dyn SnapshotCreator>>,
+
   /// Statistics.
   stats: Stats,
 }
@@ -111,19 +148,20 @@ impl StateLogCorrelator {
   /// * `sdk_directory` - Path to the SDK directory for persisting the upload index
   /// * `file_system` - File system for persistence operations
   /// * `retention_registry` - Registry for managing snapshot retention to prevent cleanup
+  /// * `snapshot_creator` - Optional snapshot creator for triggering on-demand snapshots
+  /// * `snapshot_creation_interval_ms` - Minimum interval between snapshot creations (milliseconds)
   /// * `stats_scope` - Stats scope for metrics
   pub async fn new(
     state_store_path: Option<PathBuf>,
     sdk_directory: PathBuf,
     file_system: Arc<dyn FileSystem>,
     retention_registry: Option<Arc<RetentionRegistry>>,
+    snapshot_creator: Option<Arc<dyn SnapshotCreator>>,
+    snapshot_creation_interval_ms: u32,
     stats_scope: &Scope,
   ) -> Self {
     let stats = Stats::new(&stats_scope.scope("state_upload"));
 
-    // Create a retention handle to prevent snapshot cleanup while we have pending uploads.
-    // The handle starts at timestamp 0, meaning "retain everything". We'll update it after
-    // loading persisted state and when state is uploaded.
     let retention_handle = match &retention_registry {
       Some(registry) => Some(registry.create_handle().await),
       None => None,
@@ -132,20 +170,23 @@ impl StateLogCorrelator {
     let correlator = Self {
       last_state_change_micros: AtomicU64::new(0),
       state_uploaded_through_micros: AtomicU64::new(0),
+      last_snapshot_creation_micros: AtomicU64::new(0),
+      snapshot_creation_interval_micros: u64::from(snapshot_creation_interval_ms) * 1000,
       state_store_path,
       sdk_directory,
       file_system,
       persist_lock: RwLock::new(()),
       retention_handle,
+      snapshot_creator,
       stats,
     };
 
-    // Try to load persisted state
     correlator.load_persisted_state().await;
 
-    // Update retention handle to match loaded state (if any)
     if let Some(handle) = &correlator.retention_handle {
-      let uploaded_through = correlator.state_uploaded_through_micros.load(Ordering::Relaxed);
+      let uploaded_through = correlator
+        .state_uploaded_through_micros
+        .load(Ordering::Relaxed);
       if uploaded_through > 0 {
         handle.update_retention_micros(uploaded_through);
       }
@@ -223,10 +264,9 @@ impl StateLogCorrelator {
 
   /// Uploads a state snapshot if needed before uploading logs.
   ///
-  /// This method checks if a state snapshot upload is needed for the given log batch timestamps,
-  /// and if so, enqueues the snapshot file for upload via the artifact uploader.
-  ///
-  /// The artifact uploader handles the actual upload asynchronously with retries.
+  /// This method checks if a state snapshot upload is needed for the given log batch timestamps.
+  /// If state has changed since our last upload, it triggers snapshot creation via the
+  /// `SnapshotCreator` and then uploads the snapshot via the artifact uploader.
   pub async fn upload_state_if_needed(
     &self,
     batch_oldest_micros: u64,
@@ -234,8 +274,28 @@ impl StateLogCorrelator {
     artifact_client: &dyn ArtifactClient,
     session_id: &str,
   ) {
-    let Some(snapshot_ref) = self.should_upload_state(batch_oldest_micros, batch_newest_micros)
-    else {
+    let state_uploaded_through = self.state_uploaded_through_micros.load(Ordering::Relaxed);
+    let last_state_change = self.last_state_change_micros.load(Ordering::Relaxed);
+
+    // If we've never seen any state changes, no upload needed
+    if last_state_change == 0 {
+      return;
+    }
+
+    // If we've already uploaded state that covers this batch, no upload needed
+    if state_uploaded_through >= batch_oldest_micros {
+      self.stats.snapshots_skipped.inc();
+      return;
+    }
+
+    // If there are no pending state changes since our last upload, no upload needed
+    if last_state_change <= state_uploaded_through {
+      self.stats.snapshots_skipped.inc();
+      return;
+    }
+
+    // Try to find an existing snapshot or create one
+    let Some(snapshot_ref) = self.get_or_create_snapshot(batch_oldest_micros).await else {
       return;
     };
 
@@ -304,33 +364,85 @@ impl StateLogCorrelator {
     let state_path = self.state_store_path.as_ref()?;
     let snapshots_dir = state_path.join("snapshots");
 
-    // List snapshot files and find the most recent one before the timestamp
     let entries = std::fs::read_dir(&snapshots_dir).ok()?;
 
     let mut best_match: Option<SnapshotRef> = None;
 
     for entry in entries.flatten() {
       let path = entry.path();
-      if let Some(filename) = path.file_name().and_then(|f| f.to_str()) {
-        // Parse filename like "state.jrn.g{generation}.t{timestamp}.zz"
-        if let Some((generation, file_timestamp)) = parse_snapshot_filename(filename) {
-          // Only consider snapshots created before the log batch
-          if file_timestamp <= timestamp_micros
-            && best_match
-              .as_ref()
-              .is_none_or(|b| file_timestamp > b.timestamp_micros)
-          {
-            best_match = Some(SnapshotRef {
-              timestamp_micros: file_timestamp,
-              generation,
-              path,
-            });
-          }
-        }
+      if let Some(filename) = path.file_name().and_then(|f| f.to_str())
+        && let Some(parsed) = SnapshotFilename::parse(filename)
+        && parsed.timestamp_micros <= timestamp_micros
+        && best_match
+          .as_ref()
+          .is_none_or(|b| parsed.timestamp_micros > b.timestamp_micros)
+      {
+        best_match = Some(SnapshotRef {
+          timestamp_micros: parsed.timestamp_micros,
+          generation: parsed.generation,
+          path,
+        });
       }
     }
 
     best_match
+  }
+
+  /// Finds an existing snapshot or creates a new one for the given timestamp.
+  ///
+  /// Implements cooldown logic to prevent excessive snapshot creation during high-volume log
+  /// streaming. If a snapshot was created recently (within `snapshot_creation_interval_micros`),
+  /// returns `None` to skip this upload cycle.
+  async fn get_or_create_snapshot(&self, batch_oldest_micros: u64) -> Option<SnapshotRef> {
+    if let Some(snapshot) = self.find_snapshot_for_timestamp(batch_oldest_micros) {
+      return Some(snapshot);
+    }
+
+    let creator = self.snapshot_creator.as_ref()?;
+
+    let now_micros = {
+      let now = time::OffsetDateTime::now_utc();
+      now.unix_timestamp().cast_unsigned() * 1_000_000 + u64::from(now.microsecond())
+    };
+    let last_creation = self.last_snapshot_creation_micros.load(Ordering::Relaxed);
+    if last_creation > 0
+      && now_micros.saturating_sub(last_creation) < self.snapshot_creation_interval_micros
+    {
+      log::debug!(
+        "skipping snapshot creation due to cooldown (last={last_creation}, now={now_micros}, \
+         interval={})",
+        self.snapshot_creation_interval_micros
+      );
+      self.stats.snapshots_skipped.inc();
+      return None;
+    }
+
+    log::debug!(
+      "no existing snapshot covers log batch (oldest={batch_oldest_micros}), creating new snapshot"
+    );
+
+    let Some(snapshot_path) = creator.create_snapshot().await else {
+      log::debug!("snapshot creation failed or not supported");
+      self.on_upload_failed();
+      return None;
+    };
+
+    self
+      .last_snapshot_creation_micros
+      .store(now_micros, Ordering::Relaxed);
+
+    let filename = snapshot_path.file_name().and_then(|f| f.to_str())?;
+    let Some(parsed) = SnapshotFilename::parse(filename) else {
+      log::debug!("failed to parse snapshot filename: {filename}");
+      self.on_upload_failed();
+      return None;
+    };
+
+    Some(SnapshotRef {
+      timestamp_micros: parsed.timestamp_micros,
+      generation: parsed.generation,
+      path: snapshot_path,
+    })
   }
 
   /// Loads persisted state from disk.
@@ -384,32 +496,9 @@ impl StateLogCorrelator {
   }
 }
 
-/// Parses a snapshot filename to extract generation and timestamp.
-///
-/// Expected format: "state.jrn.g{generation}.t{timestamp}.zz"
-/// Returns (generation, `timestamp_micros`) if successful.
-fn parse_snapshot_filename(filename: &str) -> Option<(u64, u64)> {
-  // Check for expected prefix and suffix
-  if !filename.starts_with("state.jrn.g")
-    || !std::path::Path::new(filename)
-      .extension()
-      .is_some_and(|ext| ext.eq_ignore_ascii_case("zz"))
-  {
-    return None;
+#[async_trait::async_trait]
+impl SnapshotCreator for bd_state::Store {
+  async fn create_snapshot(&self) -> Option<PathBuf> {
+    self.rotate_journal().await
   }
-
-  // Extract the middle part: "{generation}.t{timestamp}"
-  let middle = filename.strip_prefix("state.jrn.g")?.strip_suffix(".zz")?;
-
-  // Split by ".t" to get generation and timestamp
-  let mut parts = middle.split(".t");
-  let generation: u64 = parts.next()?.parse().ok()?;
-  let timestamp: u64 = parts.next()?.parse().ok()?;
-
-  // Ensure no more parts
-  if parts.next().is_some() {
-    return None;
-  }
-
-  Some((generation, timestamp))
 }

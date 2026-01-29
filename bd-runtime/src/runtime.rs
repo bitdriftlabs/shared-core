@@ -940,8 +940,8 @@ pub mod state {
   // When set to false, the state store operates in-memory only and does not persist
   // feature flags or global state to disk. When set to true, the state store will
   // attempt to use persistent storage, falling back to in-memory if initialization fails.
-  // Defaults to false for safety during crash loops.
-  bool_feature_flag!(UsePersistentStorage, "state.use_persistent_storage", false);
+  // Defaults to true; in-memory mode is only used as a fallback when persistent storage fails.
+  bool_feature_flag!(UsePersistentStorage, "state.use_persistent_storage", true);
 
   // Controls the initial buffer size for the persistent state store in bytes.
   // This determines the starting size of the memory-mapped file. The buffer will grow
@@ -956,4 +956,13 @@ pub mod state {
   // For persistent storage, this is the maximum file size. For in-memory storage,
   // this bounds the memory usage of the state store.
   int_feature_flag!(MaxCapacity, "state.max_capacity_bytes", 1024 * 1024);
+
+  // Minimum interval between state snapshot creations in milliseconds. This batching is primarily
+  // necessary for log streaming configurations where all logs are streamed rapidly. Defaults to
+  // 5000ms (5 seconds).
+  int_feature_flag!(
+    SnapshotCreationIntervalMs,
+    "state.snapshot_creation_interval_ms",
+    5000
+  );
 }

@@ -9,6 +9,7 @@
 #[path = "./cleanup_test.rs"]
 mod tests;
 
+use super::filename::SnapshotFilename;
 use super::retention::RetentionRegistry;
 use bd_error_reporter::reporter::handle_unexpected;
 use std::path::{Path, PathBuf};
@@ -76,12 +77,8 @@ async fn find_archived_snapshots(directory: &Path) -> anyhow::Result<Vec<(PathBu
   while let Some(entry) = entries.next_entry().await? {
     let path = entry.path();
 
-    // All .zz files in the snapshots directory belong to this journal
     if let Some(filename) = path.file_name().and_then(|f| f.to_str())
-      && std::path::Path::new(filename)
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("zz"))
-      && let Some(timestamp) = extract_timestamp_from_filename(filename)
+      && let Some(timestamp) = SnapshotFilename::extract_timestamp(filename)
     {
       snapshots.push((path, timestamp));
     }
@@ -89,17 +86,4 @@ async fn find_archived_snapshots(directory: &Path) -> anyhow::Result<Vec<(PathBu
 
   snapshots.sort_by_key(|(_, ts)| *ts);
   Ok(snapshots)
-}
-
-/// Extracts the timestamp from an archived journal filename.
-///
-/// Expected format: `{name}.jrn.g{generation}.t{timestamp}.zz`
-fn extract_timestamp_from_filename(filename: &str) -> Option<u64> {
-  filename
-    .split('.')
-    .find(|part| {
-      part.starts_with('t') && part.len() > 1 && part[1 ..].chars().all(|c| c.is_ascii_digit())
-    })
-    .and_then(|part| part.strip_prefix('t'))
-    .and_then(|ts| ts.parse::<u64>().ok())
 }

@@ -668,6 +668,28 @@ impl Store {
   pub async fn read(&self) -> impl StateReader + '_ {
     self.inner.read().await
   }
+
+  /// Triggers a journal rotation to create a snapshot.
+  ///
+  /// This is primarily used to create a state snapshot before uploading logs, ensuring the server
+  /// has the state context needed to hydrate those logs. The rotation creates a compressed `.zz`
+  /// snapshot file in the `state/snapshots/` directory.
+  ///
+  /// Returns the path to the created snapshot file, or `None` if:
+  /// - The store is in-memory only (no persistence)
+  /// - The rotation failed for some reason
+  ///
+  /// Note: For in-memory stores, this is a no-op that returns `None`.
+  pub async fn rotate_journal(&self) -> Option<std::path::PathBuf> {
+    let mut locked = self.inner.write().await;
+    match locked.rotate_journal().await {
+      Ok(rotation) => Some(rotation.snapshot_path),
+      Err(e) => {
+        log::debug!("Failed to rotate journal for snapshot: {e}");
+        None
+      },
+    }
+  }
 }
 
 impl StateReader for tokio::sync::RwLockReadGuard<'_, bd_resilient_kv::VersionedKVStore> {
