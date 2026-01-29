@@ -314,7 +314,8 @@ async fn test_automatic_rotation_on_high_water_mark() -> anyhow::Result<()> {
   let registry = Arc::new(RetentionRegistry::new(
     bd_runtime::runtime::IntWatch::new_for_testing(0),
   ));
-  let _handle = registry.create_handle().await; // Retain snapshots
+  let handle = registry.create_handle().await; // Retain snapshots
+  handle.update_retention_micros(0);
 
   // Create a store with a small buffer and aggressive high water mark to trigger rotation
   let (mut store, _) = VersionedKVStore::new(
