@@ -904,9 +904,7 @@ impl RingBufferImpl {
 
   pub fn peek_oldest_record(&self) -> Result<Option<Vec<u8>>> {
     let mut common_ring_buffer = self.common_ring_buffer.locked_data.lock();
-    let Some(record_range) =
-      common_ring_buffer.peek_next_read_record_range(Cursor::No)?
-    else {
+    let Some(record_range) = common_ring_buffer.peek_next_read_record_range(Cursor::No)? else {
       return Ok(None);
     };
 

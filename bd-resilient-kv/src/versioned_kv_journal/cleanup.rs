@@ -79,7 +79,10 @@ pub async fn cleanup_old_snapshots(
   if kept_snapshots.len() > keep_newest_at_most {
     let overflow = kept_snapshots.len() - keep_newest_at_most;
     for (path, _timestamp) in kept_snapshots.iter().take(overflow) {
-      log::debug!("Deleting snapshot {} (exceeds max snapshot count)", path.display());
+      log::debug!(
+        "Deleting snapshot {} (exceeds max snapshot count)",
+        path.display()
+      );
       handle_unexpected(
         tokio::fs::remove_file(path)
           .await
