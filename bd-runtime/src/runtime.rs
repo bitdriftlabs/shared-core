@@ -958,6 +958,12 @@ pub mod state {
   int_feature_flag!(MaxCapacity, "state.max_capacity_bytes", 1024 * 1024);
 
   // Controls the maximum number of snapshots to retain for persistent state.
-  // A value of 0 disables count-based cleanup.
+  // Snapshots will generally be cleaned up based on the retention window dictated by the active
+  // retention handles, but this flag places an upper limit on the number of snapshots retained. The
+  // main goal of this is to provide a safety limit to prevent unbounded disk usage in case of a bug
+  // in the retention logic or if state changes are made extremely frequently but also serves as a
+  // failsafe to disable snapshotting entirely.
+  //
+  // A value of 0 disables snapshotting.
   int_feature_flag!(MaxSnapshotCount, "state.max_snapshot_count", 0);
 }

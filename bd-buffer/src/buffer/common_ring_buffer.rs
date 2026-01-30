@@ -220,6 +220,13 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     unsafe { self.memory.0.as_mut() }
   }
 
+  // Return the backing memory slice.
+  pub const fn const_memory(&self) -> &[u8] {
+    // Safety: The underlying memory is valid for shared access while self exists.
+    unsafe { self.memory.0.as_ref() }
+  }
+
+
   // Load the next read start value to use, depending on the value of use_cursor.
   fn next_read_start_to_use(&mut self, cursor: Cursor) -> &mut Option<u32> {
     match cursor {
@@ -469,18 +476,14 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
         }
         let record_start = (next_read.start + guard.extra_bytes_per_record) as usize;
         let record_end = record_start + next_read_size as usize;
-        let record_data = if record_end <= guard.memory().len() {
-          guard.memory()[record_start .. record_end].to_vec()
-        } else {
-          Vec::new()
-        };
         // When overwriting we zero out any extra data, to make sure that CRCs, etc. become so the
         // overwritten record is skipped correctly if corruption lands us in it somehow.
         let next_read_start = guard.next_read_start().ok_or(InvariantError::Invariant)?;
         guard.zero_extra_data(next_read_start);
         guard.advance_next_read(next_read_actual_size, Cursor::No)?;
-        if !record_data.is_empty() {
-          guard.emit_evicted_record(&record_data);
+
+        if record_end <= guard.memory().len() {
+          guard.emit_evicted_record(&guard.const_memory()[record_start .. record_end]);
         }
       } else {
         break;

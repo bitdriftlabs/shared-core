@@ -59,6 +59,7 @@ async fn registry_returns_minimum_across_handles() {
   ));
 
   let handle1 = registry.create_handle().await;
+  handle1.update_retention_micros(0);
   let handle2 = registry.create_handle().await;
   let handle3 = registry.create_handle().await;
 
@@ -86,10 +87,11 @@ async fn registry_handles_zero_retention() {
     bd_runtime::runtime::IntWatch::new_for_testing(0),
   ));
 
-  let _handle1 = registry.create_handle().await;
+  let handle1 = registry.create_handle().await;
   let handle2 = registry.create_handle().await;
 
   // handle1 wants all data (timestamp 0), handle2 wants recent data
+  handle1.update_retention_micros(0);
   let ts2 = 2_000_000_u64;
   handle2.update_retention_micros(ts2);
 

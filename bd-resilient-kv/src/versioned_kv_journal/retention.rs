@@ -70,10 +70,17 @@ impl RetentionRegistry {
   }
 
   /// Returns the maximum number of snapshots to retain, if configured.
+  ///
+  /// A value of 0 disables snapshotting entirely.
   #[must_use]
   pub fn max_snapshot_count(&self) -> Option<usize> {
     let value = usize::try_from(*self.max_snapshot_count_watch.read()).ok()?;
     if value == 0 { None } else { Some(value) }
+  }
+
+  #[must_use]
+  pub fn snapshots_enabled(&self) -> bool {
+    self.max_snapshot_count().is_some()
   }
 
   /// Creates a new retention handle.

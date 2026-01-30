@@ -25,7 +25,7 @@ async fn create_test_snapshot(dir: &std::path::Path, name: &str, generation: u64
 async fn cleanup_deletes_old_snapshots() {
   let temp_dir = TempDir::new().unwrap();
   let registry = Arc::new(RetentionRegistry::new(
-    bd_runtime::runtime::IntWatch::new_for_testing(0),
+    bd_runtime::runtime::IntWatch::new_for_testing(1),
   ));
 
   // Create some test snapshots with different timestamps
@@ -55,25 +55,19 @@ async fn cleanup_deletes_old_snapshots() {
 }
 
 #[tokio::test]
-async fn cleanup_skips_when_no_handles() {
+async fn cleanup_respects_max_snapshot_count_without_handles() {
   let temp_dir = TempDir::new().unwrap();
   let registry = Arc::new(RetentionRegistry::new(
-    bd_runtime::runtime::IntWatch::new_for_testing(0),
+    bd_runtime::runtime::IntWatch::new_for_testing(1),
   ));
 
-  // Create some test snapshots
   create_test_snapshot(temp_dir.path(), "test", 0, 1000).await;
   create_test_snapshot(temp_dir.path(), "test", 1, 2000).await;
 
-  // Run cleanup without any handles
   let result = cleanup_old_snapshots(temp_dir.path(), &registry).await;
-  assert!(
-    result.is_ok(),
-    "Cleanup should succeed even with no handles"
-  );
+  assert!(result.is_ok());
 
-  // Files should still exist because no handles means no cleanup
-  assert!(temp_dir.path().join("test.jrn.g0.t1000.zz").exists());
+  assert!(!temp_dir.path().join("test.jrn.g0.t1000.zz").exists());
   assert!(temp_dir.path().join("test.jrn.g1.t2000.zz").exists());
 }
 
@@ -81,7 +75,7 @@ async fn cleanup_skips_when_no_handles() {
 async fn cleanup_deletes_all_old_snapshots_in_directory() {
   let temp_dir = TempDir::new().unwrap();
   let registry = Arc::new(RetentionRegistry::new(
-    bd_runtime::runtime::IntWatch::new_for_testing(0),
+    bd_runtime::runtime::IntWatch::new_for_testing(10),
   ));
 
   // Create snapshots - all in the same directory, so all should be processed
@@ -104,7 +98,7 @@ async fn cleanup_deletes_all_old_snapshots_in_directory() {
 async fn cleanup_handles_missing_directory_gracefully() {
   let temp_dir = TempDir::new().unwrap();
   let registry = Arc::new(RetentionRegistry::new(
-    bd_runtime::runtime::IntWatch::new_for_testing(2),
+    bd_runtime::runtime::IntWatch::new_for_testing(10),
   ));
 
   let nonexistent = temp_dir.path().join("nonexistent");
@@ -121,7 +115,7 @@ async fn cleanup_handles_missing_directory_gracefully() {
 async fn cleanup_respects_zero_retention() {
   let temp_dir = TempDir::new().unwrap();
   let registry = Arc::new(RetentionRegistry::new(
-    bd_runtime::runtime::IntWatch::new_for_testing(2),
+    bd_runtime::runtime::IntWatch::new_for_testing(10),
   ));
 
   // Create some test snapshots
@@ -144,7 +138,7 @@ async fn cleanup_respects_zero_retention() {
 async fn cleanup_respects_no_requirement_handle() {
   let temp_dir = TempDir::new().unwrap();
   let registry = Arc::new(RetentionRegistry::new(
-    bd_runtime::runtime::IntWatch::new_for_testing(2),
+    bd_runtime::runtime::IntWatch::new_for_testing(1),
   ));
 
   create_test_snapshot(temp_dir.path(), "test", 0, 1000).await;
@@ -164,7 +158,7 @@ async fn cleanup_respects_no_requirement_handle() {
 async fn cleanup_respects_max_snapshot_count() {
   let temp_dir = TempDir::new().unwrap();
   let registry = Arc::new(RetentionRegistry::new(
-    bd_runtime::runtime::IntWatch::new_for_testing(2),
+    bd_runtime::runtime::IntWatch::new_for_testing(10),
   ));
 
   // Create snapshots that would all be deleted by min_retention.
@@ -179,9 +173,8 @@ async fn cleanup_respects_max_snapshot_count() {
   let result = cleanup_old_snapshots(temp_dir.path(), &registry).await;
   assert!(result.is_ok());
 
-  // Keep newest two regardless of retention timestamp.
   assert!(!temp_dir.path().join("test.jrn.g0.t1000.zz").exists());
   assert!(!temp_dir.path().join("test.jrn.g1.t2000.zz").exists());
-  assert!(temp_dir.path().join("test.jrn.g2.t3000.zz").exists());
-  assert!(temp_dir.path().join("test.jrn.g3.t4000.zz").exists());
+  assert!(!temp_dir.path().join("test.jrn.g2.t3000.zz").exists());
+  assert!(!temp_dir.path().join("test.jrn.g3.t4000.zz").exists());
 }

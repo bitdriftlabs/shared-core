@@ -675,17 +675,24 @@ impl PersistentStore {
       .max()
       .unwrap_or(0);
 
+    let snapshots_enabled = self.retention_registry.snapshots_enabled();
+
     // Check if we need to create a snapshot based on retention requirements
-    let min_retention = self.retention_registry.min_retention_timestamp().await;
+    let min_retention = if snapshots_enabled {
+      self.retention_registry.min_retention_timestamp().await
+    } else {
+      None
+    };
     // If min_retention is None (no handles), don't create snapshot
     // If min_retention is Some(0), retain everything (at least one handle wants all data)
     // If min_retention is Some(u64::MAX), no handle requires retention
     // If min_retention > rotation_timestamp, no one needs this snapshot
-    let should_create_snapshot = match min_retention {
-      None | Some(RetentionHandle::NO_RETENTION_REQUIREMENT) => false,
-      Some(0) => true,
-      Some(ts) => ts <= rotation_timestamp,
-    };
+    let should_create_snapshot = snapshots_enabled
+      && match min_retention {
+        Some(RetentionHandle::NO_RETENTION_REQUIREMENT) => false,
+        None | Some(0) => true,
+        Some(ts) => ts <= rotation_timestamp,
+      };
 
     // Store snapshots in a separate subdirectory
     let snapshots_dir = self.dir_path.join("snapshots");
@@ -725,9 +732,15 @@ impl PersistentStore {
         );
       }
     } else {
+      let reason = if snapshots_enabled {
+        "no retention required"
+      } else {
+        "snapshotting disabled"
+      };
       log::debug!(
-        "Skipping snapshot creation for {} (no retention required)",
-        old_journal_path.display()
+        "Skipping snapshot creation for {} ({})",
+        old_journal_path.display(),
+        reason
       );
     }
 
