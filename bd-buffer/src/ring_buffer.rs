@@ -290,6 +290,12 @@ impl Manager {
           None
         };
         let retention_handle_for_cb = retention_handle.clone();
+
+        // Only install the eviction callback if we are allowed to overwrite, as it's only
+        // meaningful to update the retention based on evicted records in that mode. This maps to
+        // the "trigger buffer" mode, where logs are retained on disk for some period of time in
+        // case they must be updated. In the other mode the ring buffer serves more as an upload
+        // queue and so old records are never evicted in normal operation.
         let on_record_evicted_cb = if allow_overwrite_for_cb {
           retention_handle_for_cb.map(|handle| {
             let callback: EvictedRecordCallback = Arc::new(move |record_data: &[u8]| {
