@@ -5,15 +5,21 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::buffer::{RingBuffer as BufferRingBuffer, RingBufferStats, VolatileRingBuffer};
 use crate::ring_buffer::{Manager, RingBuffer};
 use crate::{AbslCode, Error};
 use assert_matches::assert_matches;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter};
+use bd_log_primitives::{EncodableLog, Log, log_level};
 use bd_proto::protos::config::v1::config::buffer_config::BufferSizes;
 use bd_proto::protos::config::v1::config::{BufferConfig, BufferConfigList, buffer_config};
+use bd_proto::protos::logging::payload::LogType;
 use bd_stats_common::{NameType, labels};
+use bd_time::OffsetDateTimeExt as _;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use time::OffsetDateTime;
 
 fn fake_counter() -> Counter {
   Collector::default().scope("test").counter("test")
@@ -21,6 +27,28 @@ fn fake_counter() -> Counter {
 
 fn tmp_dir() -> tempfile::TempDir {
   tempfile::TempDir::with_prefix("ring-buffer-").unwrap()
+}
+
+fn make_test_log_bytes(t: OffsetDateTime) -> Vec<u8> {
+  let mut log = EncodableLog::new(
+    Log {
+      log_level: log_level::INFO,
+      log_type: LogType::NORMAL,
+      message: "".into(),
+      fields: [].into(),
+      matching_fields: [].into(),
+      session_id: String::new(),
+      occurred_at: t,
+      capture_session: None,
+    },
+    u64::MAX,
+  );
+
+  let size = log.compute_size(&[], &[]).unwrap();
+  let output_size = usize::try_from(size).expect("serialized log size fits usize");
+  let mut output_bytes = vec![0u8; output_size];
+  log.serialize_to_bytes(&[], &[], &mut output_bytes).unwrap();
+  output_bytes
 }
 
 #[tokio::test]
@@ -37,6 +65,8 @@ async fn test_create_ring_buffer() {
     fake_counter(),
     fake_counter(),
     fake_counter(),
+    None,
+    None,
     None,
   )
   .unwrap();
@@ -63,6 +93,8 @@ fn test_create_ring_buffer_illegal_path() {
     fake_counter(),
     fake_counter(),
     fake_counter(),
+    None,
+    None,
     None,
   );
 
@@ -96,6 +128,8 @@ fn corrupted_buffer() {
     fake_counter(),
     fake_counter(),
     None,
+    None,
+    None,
   )
   .unwrap();
   assert!(!deleted);
@@ -118,6 +152,8 @@ fn corrupted_buffer() {
     fake_counter(),
     fake_counter(),
     None,
+    None,
+    None,
   )
   .unwrap();
   assert!(deleted);
@@ -130,6 +166,9 @@ async fn test_ring_buffer_manager() {
     dir.path().to_path_buf(),
     &Collector::default().scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
+    Arc::new(bd_resilient_kv::RetentionRegistry::new(
+      bd_runtime::runtime::IntWatch::new_for_testing(0),
+    )),
   );
 
   // Make sure we're not letting any buffer events sit in the channel, as this extends the
@@ -177,6 +216,9 @@ async fn ring_buffer_stats() {
     diretory.path().to_owned(),
     &collector.scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
+    Arc::new(bd_resilient_kv::RetentionRegistry::new(
+      bd_runtime::runtime::IntWatch::new_for_testing(0),
+    )),
   );
 
   // Make sure we're not letting any buffer events sit in the channel, as this extends the
@@ -268,6 +310,131 @@ async fn ring_buffer_stats() {
 }
 
 #[tokio::test]
+async fn trigger_buffer_eviction_updates_retention_handle() {
+  let retention_registry = Arc::new(bd_resilient_kv::RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+  let first_time = time::OffsetDateTime::now_utc();
+  let second_time = first_time + time::Duration::seconds(1);
+  let first_log = make_test_log_bytes(first_time);
+  let second_log = make_test_log_bytes(second_time);
+  let log_size = u32::try_from(first_log.len()).unwrap();
+  let volatile_size = log_size.checked_add(4).unwrap();
+  let retention_handle = retention_registry.create_handle().await;
+  let on_record_evicted_cb = move |record_data: &[u8]| {
+    if let Some(ts) = EncodableLog::extract_timestamp(record_data)
+      && let Some(micros) = u64::try_from(ts.unix_timestamp_micros()).ok()
+    {
+      retention_handle.update_retention_micros(micros);
+    }
+  };
+  let buffer = VolatileRingBuffer::new(
+    "trigger".to_string(),
+    volatile_size,
+    Arc::new(RingBufferStats::default()),
+    on_record_evicted_cb,
+  );
+  let mut producer = buffer.clone().register_producer().unwrap();
+  producer.write(&first_log).unwrap();
+  producer.write(&second_log).unwrap();
+
+  let retained = retention_registry.min_retention_timestamp().await.unwrap();
+  let first_micros =
+    u64::try_from(first_time.unix_timestamp_micros()).expect("timestamp micros fits u64");
+  assert_eq!(retained, first_micros);
+}
+
+#[tokio::test]
+async fn retention_handle_is_released_on_buffer_removal() {
+  let directory = tmp_dir();
+  let retention_registry = Arc::new(bd_resilient_kv::RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+  let (ring_buffer_manager, mut buffer_update_rx) = Manager::new(
+    directory.path().to_path_buf(),
+    &Collector::default().scope(""),
+    &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
+    retention_registry.clone(),
+  );
+
+  tokio::spawn(async move { while buffer_update_rx.recv().await.is_some() {} });
+
+  let config = single_buffer_with_size("trigger", 1000, 100, buffer_config::Type::TRIGGER);
+  ring_buffer_manager
+    .update_from_config(&config, false)
+    .await
+    .unwrap();
+
+  assert!(retention_registry.min_retention_timestamp().await.is_some());
+
+  let removed_config = BufferConfigList::default();
+  ring_buffer_manager
+    .update_from_config(&removed_config, false)
+    .await
+    .unwrap();
+
+  assert!(retention_registry.min_retention_timestamp().await.is_none());
+}
+
+#[tokio::test]
+async fn trigger_buffer_retention_initialized_from_oldest_record() {
+  let directory = tmp_dir();
+  let config = single_buffer_with_size("trigger", 10_000, 1_000, buffer_config::Type::TRIGGER);
+
+  let retention_registry = Arc::new(bd_resilient_kv::RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+  let (ring_buffer_manager, mut buffer_update_rx) = Manager::new(
+    directory.path().to_path_buf(),
+    &Collector::default().scope(""),
+    &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
+    retention_registry,
+  );
+  tokio::spawn(async move { while buffer_update_rx.recv().await.is_some() {} });
+
+  ring_buffer_manager
+    .update_from_config(&config, false)
+    .await
+    .unwrap();
+
+  let buffer_handle = ring_buffer_manager
+    .buffers()
+    .get("trigger")
+    .unwrap()
+    .1
+    .clone();
+  let first_time = time::OffsetDateTime::now_utc();
+  let log_bytes = make_test_log_bytes(first_time);
+  let mut producer = buffer_handle.new_thread_local_producer().unwrap();
+  producer.write(&log_bytes).unwrap();
+  buffer_handle.flush();
+
+  std::mem::drop(buffer_handle);
+  std::mem::drop(ring_buffer_manager);
+
+  let retention_registry = Arc::new(bd_resilient_kv::RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+  let (ring_buffer_manager, mut buffer_update_rx) = Manager::new(
+    directory.path().to_path_buf(),
+    &Collector::default().scope(""),
+    &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
+    retention_registry.clone(),
+  );
+  tokio::spawn(async move { while buffer_update_rx.recv().await.is_some() {} });
+
+  ring_buffer_manager
+    .update_from_config(&config, false)
+    .await
+    .unwrap();
+
+  let retained = retention_registry.min_retention_timestamp().await.unwrap();
+  let first_micros =
+    u64::try_from(first_time.unix_timestamp_micros()).expect("timestamp micros fits u64");
+  assert_eq!(retained, first_micros);
+}
+
+#[tokio::test]
 async fn write_failure_stats() {
   let diretory = tempfile::TempDir::with_prefix("ringbuffer").unwrap();
 
@@ -276,6 +443,9 @@ async fn write_failure_stats() {
     diretory.path().to_owned(),
     &collector.scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
+    Arc::new(bd_resilient_kv::RetentionRegistry::new(
+      bd_runtime::runtime::IntWatch::new_for_testing(0),
+    )),
   );
 
   // Make sure we're not letting any buffer events sit in the channel, as this extends the
@@ -320,6 +490,9 @@ async fn buffer_never_resizes() {
     buffer_directory.path().to_path_buf(),
     &Collector::default().scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from("")),
+    Arc::new(bd_resilient_kv::RetentionRegistry::new(
+      bd_runtime::runtime::IntWatch::new_for_testing(0),
+    )),
   );
 
   // Make sure we're not letting any buffer events sit in the channel, as this extends the
