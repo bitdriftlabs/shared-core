@@ -331,14 +331,12 @@ impl Manager {
         )?;
 
         if let Some(handle) = retention_handle.as_ref() {
-          match ring_buffer.buffer.peek_oldest_record() {
-            Ok(Some(record_data)) => {
-              if let Some(ts) = EncodableLog::extract_timestamp(&record_data)
-                && let Some(micros) = u64::try_from(ts.unix_timestamp_micros()).ok()
-              {
-                handle.update_retention_micros(micros);
-              }
-            },
+          match ring_buffer.buffer.peek_oldest_record(|record_data| {
+            EncodableLog::extract_timestamp(record_data)
+              .and_then(|ts| u64::try_from(ts.unix_timestamp_micros()).ok())
+          }) {
+            Ok(Some(Some(micros))) => handle.update_retention_micros(micros),
+            Ok(Some(None)) => {},
             Ok(None) => {
               handle.update_retention_micros(RetentionHandle::NO_RETENTION_REQUIREMENT);
             },

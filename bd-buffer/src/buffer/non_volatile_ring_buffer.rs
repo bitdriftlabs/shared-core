@@ -902,7 +902,10 @@ impl RingBufferImpl {
     }))
   }
 
-  pub fn peek_oldest_record(&self) -> Result<Option<Vec<u8>>> {
+  /// Runs `f` against the oldest record while holding the buffer lock.
+  ///
+  /// The closure must be non-blocking and must not await.
+  pub fn peek_oldest_record<T>(&self, f: impl FnOnce(&[u8]) -> T) -> Result<Option<T>> {
     let mut common_ring_buffer = self.common_ring_buffer.locked_data.lock();
     let Some(record_range) = common_ring_buffer.peek_next_read_record_range(Cursor::No)? else {
       return Ok(None);
@@ -918,7 +921,7 @@ impl RingBufferImpl {
       ));
     }
 
-    Ok(Some(memory[record_start .. record_end].to_vec()))
+    Ok(Some(f(&memory[record_start .. record_end])))
   }
 }
 

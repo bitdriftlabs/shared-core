@@ -434,7 +434,7 @@ fn peek_oldest_record_empty() {
     .downcast_ref::<RingBufferImpl>()
     .unwrap();
 
-  assert!(buffer.peek_oldest_record().unwrap().is_none());
+  assert!(buffer.peek_oldest_record(|record| record.to_vec()).unwrap().is_none());
 }
 
 #[test]
@@ -450,8 +450,8 @@ fn peek_oldest_record_does_not_consume() {
       .as_any()
       .downcast_ref::<RingBufferImpl>()
       .unwrap();
-    let first_peek = buffer.peek_oldest_record().unwrap().unwrap();
-    let second_peek = buffer.peek_oldest_record().unwrap().unwrap();
+    let first_peek = buffer.peek_oldest_record(|record| record.to_vec()).unwrap().unwrap();
+    let second_peek = buffer.peek_oldest_record(|record| record.to_vec()).unwrap().unwrap();
     assert_eq!(first_peek, b"aa");
     assert_eq!(second_peek, b"aa");
   }
@@ -464,7 +464,7 @@ fn peek_oldest_record_does_not_consume() {
     .as_any()
     .downcast_ref::<RingBufferImpl>()
     .unwrap()
-    .peek_oldest_record()
+    .peek_oldest_record(|record| record.to_vec())
     .unwrap()
     .unwrap();
   assert_eq!(third_peek, b"bb");
