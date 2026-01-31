@@ -9,7 +9,7 @@ use crate::versioned_kv_journal::TimestampedValue;
 use crate::versioned_kv_journal::file_manager::{self, compress_archived_journal};
 use crate::versioned_kv_journal::journal::PartialDataLoss;
 use crate::versioned_kv_journal::memmapped_journal::MemMappedVersionedJournal;
-use crate::versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry};
+use crate::versioned_kv_journal::retention::RetentionRegistry;
 use crate::{Scope, UpdateError};
 use ahash::AHashMap;
 use bd_error_reporter::reporter::handle_unexpected;
@@ -683,16 +683,15 @@ impl PersistentStore {
     } else {
       None
     };
+
+    // We never create a snapshot if snapshotting is disabled through the max snapshot count config.
+    // Otherwise we use the min retention timestamp (oldest timestamp requested by a handle)
+    // to indicate the time range we need to keep.
     // If min_retention is None (no handles), don't create snapshot
-    // If min_retention is Some(0), retain everything (at least one handle wants all data)
     // If min_retention is Some(u64::MAX), no handle requires retention
     // If min_retention > rotation_timestamp, no one needs this snapshot
-    let should_create_snapshot = snapshots_enabled
-      && match min_retention {
-        Some(RetentionHandle::NO_RETENTION_REQUIREMENT) => false,
-        None | Some(0) => true,
-        Some(ts) => ts <= rotation_timestamp,
-      };
+    let should_create_snapshot =
+      snapshots_enabled && min_retention.is_some_and(|ts| ts <= rotation_timestamp);
 
     // Store snapshots in a separate subdirectory
     let snapshots_dir = self.dir_path.join("snapshots");

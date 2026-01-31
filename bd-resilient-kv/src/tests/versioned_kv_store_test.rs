@@ -986,14 +986,14 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
   // Advance time so each rotation has a different timestamp
   time_provider.advance(1.seconds());
 
-  // Rotate WITHOUT any retention handles - snapshot should be created when snapshotting is enabled
+  // Rotate WITHOUT any retention handles - snapshot should NOT be created
   let rotation1 = store.rotate_journal().await?;
   let snapshot_path1 = rotation1.snapshot_path;
 
-  // Snapshot file should exist because snapshotting is enabled
+  // Snapshot file should NOT exist because no handles require it
   assert!(
-    snapshot_path1.exists(),
-    "Snapshot should be created when snapshotting is enabled"
+    !snapshot_path1.exists(),
+    "Snapshot should not be created when no retention handles exist"
   );
 
   // Now create a handle that requires retention - use a timestamp far in the past
@@ -1023,7 +1023,7 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
     "Snapshot should be created when retention handle exists"
   );
 
-  // Drop the handle and rotate again - snapshot should still be created
+  // Drop the handle and rotate again - snapshot should NOT be created
   drop(handle);
 
   // Give the registry time to clean up the dropped handle
@@ -1043,10 +1043,10 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
   let rotation3 = store.rotate_journal().await?;
   let snapshot_path3 = rotation3.snapshot_path;
 
-  // After handle is dropped, snapshot should still be created
+  // After handle is dropped, snapshot should not be created
   assert!(
-    snapshot_path3.exists(),
-    "Snapshot should be created when snapshotting is enabled"
+    !snapshot_path3.exists(),
+    "Snapshot should not be created after handle is dropped"
   );
 
   Ok(())
