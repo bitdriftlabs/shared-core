@@ -271,7 +271,7 @@ macro_rules! impl_proto_repeated {
       fn compute_size(&self, field_number: u32) -> u64 {
         self
           .iter()
-          .map(|item| item.compute_size(field_number))
+          .map(|item| item.compute_size_explicit(field_number))
           .sum()
       }
 
@@ -281,7 +281,7 @@ macro_rules! impl_proto_repeated {
         os: &mut protobuf::CodedOutputStream<'_>,
       ) -> anyhow::Result<()> {
         for item in self {
-          item.serialize(field_number, os)?;
+          item.serialize_explicit(field_number, os)?;
         }
         Ok(())
       }
@@ -291,7 +291,7 @@ macro_rules! impl_proto_repeated {
         // and implicit are the same
         self
           .iter()
-          .map(|item| item.compute_size(field_number))
+          .map(|item| item.compute_size_explicit(field_number))
           .sum()
       }
 
@@ -303,7 +303,7 @@ macro_rules! impl_proto_repeated {
         // Repeated fields don't have implicit presence (empty list is serializable), so explicit
         // and implicit are the same
         for item in self {
-          item.serialize(field_number, os)?;
+          item.serialize_explicit(field_number, os)?;
         }
         Ok(())
       }
@@ -346,7 +346,7 @@ macro_rules! impl_proto_repeated {
       fn compute_size(&self, field_number: u32) -> u64 {
         self
           .iter()
-          .map(|item| item.compute_size(field_number))
+          .map(|item| item.compute_size_explicit(field_number))
           .sum()
       }
 
@@ -356,7 +356,7 @@ macro_rules! impl_proto_repeated {
         os: &mut protobuf::CodedOutputStream<'_>,
       ) -> anyhow::Result<()> {
         for item in self {
-          item.serialize(field_number, os)?;
+          item.serialize_explicit(field_number, os)?;
         }
         Ok(())
       }
@@ -366,7 +366,7 @@ macro_rules! impl_proto_repeated {
         // and implicit are the same
         self
           .iter()
-          .map(|item| item.compute_size(field_number))
+          .map(|item| item.compute_size_explicit(field_number))
           .sum()
       }
 
@@ -378,7 +378,7 @@ macro_rules! impl_proto_repeated {
         // Repeated fields don't have implicit presence (empty list is serializable), so explicit
         // and implicit are the same
         for item in self {
-          item.serialize(field_number, os)?;
+          item.serialize_explicit(field_number, os)?;
         }
         Ok(())
       }
