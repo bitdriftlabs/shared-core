@@ -353,7 +353,7 @@ async fn trigger_buffer_eviction_updates_retention_handle() {
   )
   .unwrap();
 
-  let mut producer = buffer.clone().register_producer().unwrap();
+  let mut producer = buffer.register_producer().unwrap();
   for _ in 0 .. 10 {
     producer.write(&first_log).unwrap();
     producer.write(&second_log).unwrap();
