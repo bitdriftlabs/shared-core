@@ -351,8 +351,9 @@ async fn trigger_buffer_eviction_updates_retention_handle() {
   )
   .unwrap();
 
-  let buffer_for_producer = buffer.clone();
-  let mut producer = buffer_for_producer.register_producer().unwrap();
+  // We need to extend the lifetime of buffer as register_producer moves the Arc.
+  let _retained = buffer.clone();
+  let mut producer = buffer.register_producer().unwrap();
   for _ in 0 .. 10 {
     producer.write(&first_log).unwrap();
     producer.write(&second_log).unwrap();
