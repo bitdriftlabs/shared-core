@@ -19,10 +19,10 @@ use assert_matches::assert_matches;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter};
 use bd_log_primitives::{EncodableLog, Log, log_level};
-use bd_resilient_kv::RetentionHandle;
 use bd_proto::protos::config::v1::config::buffer_config::BufferSizes;
 use bd_proto::protos::config::v1::config::{BufferConfig, BufferConfigList, buffer_config};
 use bd_proto::protos::logging::payload::LogType;
+use bd_resilient_kv::RetentionHandle;
 use bd_stats_common::{NameType, labels};
 use bd_time::OffsetDateTimeExt as _;
 use std::path::{Path, PathBuf};
@@ -329,9 +329,7 @@ async fn trigger_buffer_eviction_updates_retention_handle() {
   let first_log = make_test_log_bytes(first_time);
   let second_log = make_test_log_bytes(second_time);
   let log_size = u32::try_from(first_log.len()).unwrap();
-  let buffer_size = log_size
-    .checked_add(64)
-    .unwrap();
+  let buffer_size = log_size.checked_add(64).unwrap();
   let handle_for_cb = retention_handle.clone();
   let on_record_evicted_cb = move |record_data: &[u8]| {
     if let Some(ts) = EncodableLog::extract_timestamp(record_data)
