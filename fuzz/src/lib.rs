@@ -34,6 +34,7 @@ pub mod buffer_corruption_fuzz_test;
 pub mod mpsc_buffer_fuzz_test;
 pub mod spsc_buffer_fuzz_test;
 pub mod versioned_kv_journal;
+pub mod workflow_state;
 
 #[cfg(test)]
 #[ctor::ctor]

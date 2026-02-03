@@ -31,6 +31,188 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use time::OffsetDateTime;
 
+#[cfg(feature = "fuzzing")]
+mod fuzzing {
+  use super::{
+    Run,
+    SankeyNodeState,
+    SankeyState,
+    Traversal,
+    TraversalExtractions,
+    Workflow,
+    WorkflowDebugStateMap,
+  };
+  use arbitrary::{Arbitrary, Unstructured};
+  use bd_log_primitives::tiny_set::TinyMap;
+  use bd_proto_util::serialization::TimestampMicros;
+  use bd_stats_common::workflow::WorkflowDebugStateKey;
+  use std::collections::HashMap;
+  use time::OffsetDateTime;
+
+  fn clamp_len(value: usize, max: usize) -> usize {
+    if value > max { max } else { value }
+  }
+
+  fn arbitrary_offset_date_time(u: &mut Unstructured<'_>) -> OffsetDateTime {
+    let micros: i64 = u.arbitrary().unwrap_or_default();
+    OffsetDateTime::from_unix_timestamp_nanos(i128::from(micros) * 1_000)
+      .unwrap_or(OffsetDateTime::UNIX_EPOCH)
+  }
+
+  fn arbitrary_timestamp_micros(u: &mut Unstructured<'_>) -> TimestampMicros {
+    TimestampMicros(arbitrary_offset_date_time(u))
+  }
+
+  impl<'a> Arbitrary<'a> for WorkflowDebugStateMap {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+      let len = clamp_len(u.arbitrary::<usize>()?, 8);
+      let mut inner = HashMap::with_capacity(len);
+      for _ in 0 .. len {
+        let key: WorkflowDebugStateKey = u.arbitrary()?;
+        let count: u64 = u.arbitrary()?;
+        let last_transition_time = arbitrary_timestamp_micros(u);
+        inner.insert(
+          key,
+          super::WorkflowTransitionDebugState {
+            count,
+            last_transition_time,
+          },
+        );
+      }
+      Ok(Self {
+        inner: Box::new(inner),
+      })
+    }
+  }
+
+  impl<'a> Arbitrary<'a> for SankeyNodeState {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+      Ok(Self {
+        value: u.arbitrary()?,
+        counts_toward_limit: u.arbitrary()?,
+      })
+    }
+  }
+
+  impl<'a> Arbitrary<'a> for SankeyState {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+      let len = clamp_len(u.arbitrary::<usize>()?, 8);
+      let mut nodes = Vec::with_capacity(len);
+      for _ in 0 .. len {
+        nodes.push(u.arbitrary()?);
+      }
+      Ok(Self {
+        nodes,
+        is_trimmed: u.arbitrary()?,
+      })
+    }
+  }
+
+  impl<'a> Arbitrary<'a> for TraversalExtractions {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+      let sankey_len = clamp_len(u.arbitrary::<usize>()?, 6);
+      let mut sankey_states = TinyMap::default();
+      for _ in 0 .. sankey_len {
+        let key: String = u.arbitrary()?;
+        let value: SankeyState = u.arbitrary()?;
+        sankey_states.insert(key, value);
+      }
+
+      let timestamp_len = clamp_len(u.arbitrary::<usize>()?, 6);
+      let mut timestamps = TinyMap::default();
+      for _ in 0 .. timestamp_len {
+        let key: String = u.arbitrary()?;
+        let value = arbitrary_timestamp_micros(u);
+        timestamps.insert(key, value);
+      }
+
+      let field_len = clamp_len(u.arbitrary::<usize>()?, 6);
+      let mut fields = TinyMap::default();
+      for _ in 0 .. field_len {
+        let key: String = u.arbitrary()?;
+        let value: String = u.arbitrary()?;
+        fields.insert(key, value);
+      }
+
+      Ok(Self {
+        sankey_states,
+        timestamps,
+        fields,
+      })
+    }
+  }
+
+  impl<'a> Arbitrary<'a> for Traversal {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+      let matched_len = clamp_len(u.arbitrary::<usize>()?, 8);
+      let mut matched_logs_counts = Vec::with_capacity(matched_len);
+      for _ in 0 .. matched_len {
+        matched_logs_counts.push(u.arbitrary()?);
+      }
+
+      let timeout_unix_ms = if u.arbitrary::<bool>()? {
+        Some(u.arbitrary::<i64>()?)
+      } else {
+        None
+      };
+
+      let state_index = u.arbitrary()?;
+      let extractions: TraversalExtractions = u.arbitrary()?;
+      Ok(Self {
+        state_index,
+        matched_logs_counts,
+        extractions,
+        timeout_unix_ms,
+      })
+    }
+  }
+
+  impl<'a> Arbitrary<'a> for Run {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+      let traversal_len = clamp_len(u.arbitrary::<usize>()?, 4);
+      let mut traversals = Vec::with_capacity(traversal_len);
+      for _ in 0 .. traversal_len {
+        traversals.push(u.arbitrary()?);
+      }
+
+      let first_progress_occurred_at = if u.arbitrary::<bool>()? {
+        Some(arbitrary_offset_date_time(u))
+      } else {
+        None
+      };
+
+      Ok(Self {
+        traversals,
+        matched_logs_count: u.arbitrary()?,
+        first_progress_occurred_at,
+      })
+    }
+  }
+
+  impl<'a> Arbitrary<'a> for Workflow {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+      let runs_len = clamp_len(u.arbitrary::<usize>()?, 2);
+      let mut runs = Vec::with_capacity(runs_len);
+      for _ in 0 .. runs_len {
+        runs.push(u.arbitrary()?);
+      }
+
+      let workflow_debug_state = if u.arbitrary::<bool>()? {
+        Some(u.arbitrary()?)
+      } else {
+        None
+      };
+
+      Ok(Self::new_from_parts(
+        u.arbitrary()?,
+        runs,
+        workflow_debug_state,
+        u.arbitrary()?,
+      ))
+    }
+  }
+}
+
 //
 // WorkflowEvent
 //
@@ -99,6 +281,15 @@ pub struct Workflow {
   // will not increment.
   #[field(id = 4)]
   needs_start_metric: bool,
+}
+
+impl PartialEq for Workflow {
+  fn eq(&self, other: &Self) -> bool {
+    self.id == other.id
+      && self.runs == other.runs
+      && self.workflow_debug_state == other.workflow_debug_state
+      && self.needs_start_metric == other.needs_start_metric
+  }
 }
 
 impl Workflow {
@@ -553,7 +744,7 @@ impl SankeyState {
 //
 
 #[bd_macros::proto_serializable]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Run {
   /// A list of active traversals for a given workflow run.
   /// A given run can have multiple traversals. That can happen
@@ -795,7 +986,7 @@ impl RunResult<'_> {
 //
 
 #[bd_macros::proto_serializable]
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct TraversalExtractions {
   /// States of Sankey diagrams. It's a `None` when traversal is initialized and is set
   /// to `Some` after the first value for a Sankey and a given traversal is extracted.
@@ -860,7 +1051,7 @@ fn process_transition<'a>(
 /// multiple transitions outgoing from a given state match on the
 /// same event (i.e., log).
 #[bd_macros::proto_serializable]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Traversal {
   /// The index of a state the traversal is currently at.
   #[field(id = 1, serialize_as = "u64")]

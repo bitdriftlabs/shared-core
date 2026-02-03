@@ -11,6 +11,37 @@ pub struct WorkflowDebugKey {
   pub state_key: WorkflowDebugStateKey,
 }
 
+#[cfg(feature = "fuzzing")]
+mod fuzzing {
+  use super::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
+  use arbitrary::{Arbitrary, Unstructured};
+
+  impl<'a> Arbitrary<'a> for WorkflowDebugTransitionType {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+      let variant: u8 = u.arbitrary()?;
+      Ok(match variant % 2 {
+        0 => Self::Normal(u.arbitrary()?),
+        1 => Self::Timeout,
+        _ => unreachable!(),
+      })
+    }
+  }
+
+  impl<'a> Arbitrary<'a> for WorkflowDebugStateKey {
+    fn arbitrary(u: &mut Unstructured<'a>) -> arbitrary::Result<Self> {
+      let variant: u8 = u.arbitrary()?;
+      Ok(match variant % 2 {
+        0 => Self::StateTransition {
+          state_id: u.arbitrary()?,
+          transition_type: u.arbitrary()?,
+        },
+        1 => Self::StartOrReset,
+        _ => unreachable!(),
+      })
+    }
+  }
+}
+
 impl WorkflowDebugKey {
   #[must_use]
   pub fn new(workflow_id: String, state_key: WorkflowDebugStateKey) -> Self {
