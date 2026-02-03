@@ -1286,6 +1286,7 @@ name = "bd-stats-common"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "arbitrary",
  "bd-macros",
  "bd-proto-util",
  "bd-workspace-hack",
@@ -1360,6 +1361,7 @@ name = "bd-workflows"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "arbitrary",
  "assert_matches",
  "async-trait",
  "bd-api",
@@ -2225,9 +2227,11 @@ dependencies = [
  "bd-client-stats-store",
  "bd-log-primitives",
  "bd-proto",
+ "bd-proto-util",
  "bd-resilient-kv",
  "bd-test-helpers",
  "bd-time",
+ "bd-workflows",
  "bd-workspace-hack",
  "ctor",
  "libfuzzer-sys",

@@ -22,8 +22,10 @@ bd-client-common.path       = "../bd-client-common"
 bd-client-stats-store.path  = "../bd-client-stats-store"
 bd-log-primitives.path      = "../bd-log-primitives"
 bd-proto.path               = "../bd-proto"
+bd-proto-util.path          = "../bd-proto-util"
 bd-resilient-kv.path        = "../bd-resilient-kv"
 bd-time.path                = "../bd-time"
+bd-workflows                = { path = "../bd-workflows", features = ["fuzzing"], default-features = false }
 bd-workspace-hack.workspace = true
 libfuzzer-sys.workspace     = true
 log.workspace               = true
@@ -64,4 +66,10 @@ test = false
 doc  = false
 name = "versioned_kv_journal"
 path = "fuzz_targets/versioned_kv_journal.rs"
+test = false
+
+[[bin]]
+doc  = false
+name = "workflow_state"
+path = "fuzz_targets/workflow_state.rs"
 test = false
