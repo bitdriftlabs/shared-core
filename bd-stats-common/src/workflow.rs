@@ -21,8 +21,7 @@ mod fuzzing {
       let variant: u8 = u.arbitrary()?;
       Ok(match variant % 2 {
         0 => Self::Normal(u.arbitrary()?),
-        1 => Self::Timeout,
-        _ => unreachable!(),
+        _ => Self::Timeout,
       })
     }
   }
@@ -35,8 +34,7 @@ mod fuzzing {
           state_id: u.arbitrary()?,
           transition_type: u.arbitrary()?,
         },
-        1 => Self::StartOrReset,
-        _ => unreachable!(),
+        _ => Self::StartOrReset,
       })
     }
   }
