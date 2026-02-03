@@ -1361,7 +1361,6 @@ impl Traversal {
         },
         None,
       ),
-      bd_state::StateChangeType::NoChange => return,
     };
 
     // Check if previous value matches (if matcher specified)

@@ -93,8 +93,6 @@ pub enum StateChangeType {
   },
   /// A key was removed
   Removed { old_value: StateValue },
-  /// No change occurred (e.g., setting same value)
-  NoChange,
 }
 
 //
@@ -469,7 +467,7 @@ impl Store {
     scope: Scope,
     key: String,
     value: StateValue,
-  ) -> anyhow::Result<StateChange> {
+  ) -> anyhow::Result<Option<StateChange>> {
     let mut locked = self.inner.write().await;
 
     // Perform the insert and get both timestamp and old value in one operation
@@ -482,7 +480,7 @@ impl Store {
 
     // Determine change type
     let change_type = match old_state_value {
-      Some(old) if old == value => StateChangeType::NoChange,
+      Some(old) if old == value => return Ok(None),
       Some(old) => StateChangeType::Updated {
         old_value: old,
         new_value: value,
@@ -490,12 +488,12 @@ impl Store {
       None => StateChangeType::Inserted { value },
     };
 
-    Ok(StateChange {
+    Ok(Some(StateChange {
       scope,
       key,
       change_type,
       timestamp,
-    })
+    }))
   }
 
   // TODO(snowp): Extend should return StateChanges to track what was inserted/updated, but this
@@ -520,7 +518,7 @@ impl Store {
     Ok(())
   }
 
-  pub async fn remove(&self, scope: Scope, key: &str) -> anyhow::Result<StateChange> {
+  pub async fn remove(&self, scope: Scope, key: &str) -> anyhow::Result<Option<StateChange>> {
     let mut locked = self.inner.write().await;
 
     let result = locked.remove(scope, key).await?;
@@ -531,25 +529,26 @@ impl Store {
           OffsetDateTime::from_unix_timestamp_micros(timestamp_u64.try_into().unwrap_or_default())
             .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
-        let change_type = if old_state_value.value_type.is_some() {
-          StateChangeType::Removed {
-            old_value: old_state_value,
-          }
+        if old_state_value.value_type.is_some() {
+          (
+            StateChangeType::Removed {
+              old_value: old_state_value,
+            },
+            timestamp,
+          )
         } else {
-          StateChangeType::NoChange
-        };
-
-        (change_type, timestamp)
+          return Ok(None);
+        }
       },
-      None => (StateChangeType::NoChange, OffsetDateTime::now_utc()),
+      None => return Ok(None),
     };
 
-    Ok(StateChange {
+    Ok(Some(StateChange {
       scope,
       key: key.to_string(),
       change_type,
       timestamp,
-    })
+    }))
   }
 
   pub async fn clear(&self, scope: Scope) -> anyhow::Result<StateChanges> {
