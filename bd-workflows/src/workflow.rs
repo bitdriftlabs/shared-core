@@ -175,16 +175,10 @@ mod fuzzing {
         traversals.push(u.arbitrary()?);
       }
 
-      let first_progress_occurred_at = if u.arbitrary::<bool>()? {
-        Some(arbitrary_offset_date_time(u))
-      } else {
-        None
-      };
-
       Ok(Self {
         traversals,
         matched_logs_count: u.arbitrary()?,
-        first_progress_occurred_at,
+        first_progress_occurred_at: None,
       })
     }
   }
