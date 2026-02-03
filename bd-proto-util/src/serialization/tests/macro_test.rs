@@ -716,6 +716,65 @@ fn test_enum_multiple_tuple_variants_with_defaults() -> Result<()> {
   Ok(())
 }
 
+#[test]
+fn test_vec_u32_roundtrip() -> Result<()> {
+  #[proto_serializable]
+  #[derive(Debug, PartialEq)]
+  struct VecHolder {
+    #[field(id = 1)]
+    values: Vec<u32>,
+  }
+
+  let original = VecHolder {
+    values: vec![0, 1, 2, 42, 1000],
+  };
+
+  let mut buf = Vec::new();
+  let mut os = CodedOutputStream::vec(&mut buf);
+  original.serialize(1, &mut os)?;
+  os.flush()?;
+  drop(os);
+
+  let mut is = CodedInputStream::from_bytes(&buf);
+  let _tag = is.read_raw_varint32()?;
+  let roundtripped = VecHolder::deserialize(&mut is)?;
+
+  assert_eq!(original, roundtripped);
+
+  Ok(())
+}
+
+#[test]
+fn test_map_u32_roundtrip() -> Result<()> {
+  #[proto_serializable]
+  #[derive(Debug, PartialEq)]
+  struct MapHolder {
+    #[field(id = 1)]
+    values: std::collections::HashMap<String, u32>,
+  }
+
+  let mut values = std::collections::HashMap::new();
+  values.insert("alpha".to_string(), 1);
+  values.insert("beta".to_string(), 42);
+  values.insert("gamma".to_string(), 1000);
+
+  let original = MapHolder { values };
+
+  let mut buf = Vec::new();
+  let mut os = CodedOutputStream::vec(&mut buf);
+  original.serialize(1, &mut os)?;
+  os.flush()?;
+  drop(os);
+
+  let mut is = CodedInputStream::from_bytes(&buf);
+  let _tag = is.read_raw_varint32()?;
+  let roundtripped = MapHolder::deserialize(&mut is)?;
+
+  assert_eq!(original, roundtripped);
+
+  Ok(())
+}
+
 /// Test that a struct with `validate_against` generates passing validation tests.
 ///
 /// This struct is designed to match the protobuf definition of

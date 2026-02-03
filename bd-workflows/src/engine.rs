@@ -72,7 +72,9 @@ use tokio::time::Instant;
 // This was previously serialized with bincode so we had to update the file every time we changed
 // the serialization format. The current version uses protobuf so we can avoid changing the file
 // name every time we change the serialization format.
-pub const WORKFLOWS_STATE_FILE_NAME: &str = "workflows_state_snapshot.11.bin";
+// The state version was updated from 11 to 12 after a serialization bug was present in version 1
+// that would lose some data when serializing/deserializing.
+pub const WORKFLOWS_STATE_FILE_NAME: &str = "workflows_state_snapshot.12.bin";
 
 //
 // WorkflowsEngine
