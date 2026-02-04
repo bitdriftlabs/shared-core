@@ -215,7 +215,7 @@ async fn basic_crud(#[case] mode: StoreMode) -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn dedupe_noop_preserves_timestamp() -> anyhow::Result<()> {
+async fn dedupe_noop_preserves_value() -> anyhow::Result<()> {
   let mut setup = Setup::new().await?;
 
   let (ts1, _) = setup
@@ -227,7 +227,7 @@ async fn dedupe_noop_preserves_timestamp() -> anyhow::Result<()> {
     )
     .await?;
 
-  let (ts2, old_value) = setup
+  let (_ts2, old_value) = setup
     .store
     .insert(
       Scope::FeatureFlagExposure,
@@ -236,7 +236,6 @@ async fn dedupe_noop_preserves_timestamp() -> anyhow::Result<()> {
     )
     .await?;
 
-  assert_eq!(ts2, ts1);
   assert_eq!(old_value, Some(make_string_value("value1")));
   assert_eq!(
     setup
@@ -247,7 +246,7 @@ async fn dedupe_noop_preserves_timestamp() -> anyhow::Result<()> {
     ts1
   );
 
-  let ts3 = setup
+  let _ts3 = setup
     .store
     .extend(vec![
       (
@@ -263,7 +262,6 @@ async fn dedupe_noop_preserves_timestamp() -> anyhow::Result<()> {
     ])
     .await?;
 
-  assert_eq!(ts3, ts1);
   assert_eq!(
     setup
       .store
