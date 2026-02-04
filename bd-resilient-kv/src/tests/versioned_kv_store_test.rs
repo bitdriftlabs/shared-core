@@ -214,6 +214,69 @@ async fn basic_crud(#[case] mode: StoreMode) -> anyhow::Result<()> {
   Ok(())
 }
 
+#[tokio::test]
+async fn dedupe_noop_preserves_timestamp() -> anyhow::Result<()> {
+  let mut setup = Setup::new().await?;
+
+  let (ts1, _) = setup
+    .store
+    .insert(
+      Scope::FeatureFlagExposure,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
+    .await?;
+
+  let (ts2, old_value) = setup
+    .store
+    .insert(
+      Scope::FeatureFlagExposure,
+      "key1".to_string(),
+      make_string_value("value1"),
+    )
+    .await?;
+
+  assert_eq!(ts2, ts1);
+  assert_eq!(old_value, Some(make_string_value("value1")));
+  assert_eq!(
+    setup
+      .store
+      .get_with_timestamp(Scope::FeatureFlagExposure, "key1")
+      .unwrap()
+      .timestamp,
+    ts1
+  );
+
+  let ts3 = setup
+    .store
+    .extend(vec![
+      (
+        Scope::FeatureFlagExposure,
+        "key1".to_string(),
+        make_string_value("value1"),
+      ),
+      (
+        Scope::FeatureFlagExposure,
+        "missing".to_string(),
+        StateValue::default(),
+      ),
+    ])
+    .await?;
+
+  assert_eq!(ts3, ts1);
+  assert_eq!(
+    setup
+      .store
+      .get_with_timestamp(Scope::FeatureFlagExposure, "key1")
+      .unwrap()
+      .timestamp,
+    ts1
+  );
+  assert_eq!(setup.store.get(Scope::FeatureFlagExposure, "missing"), None);
+
+  Ok(())
+}
+
 #[rstest]
 #[case(StoreMode::Persistent)]
 #[case(StoreMode::InMemory)]
