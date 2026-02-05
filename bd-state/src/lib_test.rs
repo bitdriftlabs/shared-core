@@ -55,6 +55,7 @@ async fn clear_scope() {
       crate::string_value("value1"),
     )
     .await
+    .unwrap()
     .unwrap();
   setup
     .store
@@ -64,6 +65,7 @@ async fn clear_scope() {
       crate::string_value("value2"),
     )
     .await
+    .unwrap()
     .unwrap();
   setup
     .store
@@ -73,6 +75,7 @@ async fn clear_scope() {
       crate::string_value("global_value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   setup.store.clear(Scope::FeatureFlagExposure).await.unwrap();
@@ -99,6 +102,7 @@ async fn iter_scope() {
       crate::string_value("value1"),
     )
     .await
+    .unwrap()
     .unwrap();
   setup
     .store
@@ -108,6 +112,7 @@ async fn iter_scope() {
       crate::string_value("value2"),
     )
     .await
+    .unwrap()
     .unwrap();
   setup
     .store
@@ -117,6 +122,7 @@ async fn iter_scope() {
       crate::string_value("global_value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   let reader = setup.store.read().await;
@@ -183,6 +189,7 @@ async fn large_value() {
       crate::string_value(large_value.clone()),
     )
     .await
+    .unwrap()
     .unwrap();
 
   let reader = store.read().await;
@@ -224,6 +231,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
         crate::string_value("value1"),
       )
       .await
+      .unwrap()
       .unwrap();
     store
       .insert(
@@ -232,6 +240,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
         crate::string_value("value2"),
       )
       .await
+      .unwrap()
       .unwrap();
     store
       .insert(
@@ -240,6 +249,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
         crate::string_value("global_value"),
       )
       .await
+      .unwrap()
       .unwrap();
 
     // Verify they're present
@@ -345,6 +355,7 @@ async fn system_scope_persists_on_restart() {
         crate::string_value("session-1"),
       )
       .await
+      .unwrap()
       .unwrap();
   }
 
@@ -403,6 +414,7 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
         crate::string_value("value1"),
       )
       .await
+      .unwrap()
       .unwrap();
     store
       .insert(
@@ -411,6 +423,7 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
         crate::string_value("global_value"),
       )
       .await
+      .unwrap()
       .unwrap();
     store
       .insert(
@@ -419,6 +432,7 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
         crate::string_value("session-1"),
       )
       .await
+      .unwrap()
       .unwrap();
   }
 
@@ -483,6 +497,7 @@ async fn fallback_to_in_memory_on_invalid_directory() {
       crate::string_value("test_value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   let reader = store.read().await;
@@ -523,6 +538,7 @@ async fn from_strategy_in_memory_only() {
       crate::string_value("value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   let reader = result.store.read().await;
@@ -563,6 +579,7 @@ async fn from_strategy_persistent_with_fallback() {
       crate::string_value("value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   let reader = result.store.read().await;
@@ -626,6 +643,7 @@ async fn insert_returns_inserted_state_change() {
       crate::string_value("new_value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   assert_eq!(change.scope, Scope::FeatureFlagExposure);
@@ -633,7 +651,7 @@ async fn insert_returns_inserted_state_change() {
   assert_eq!(
     change.change_type,
     crate::StateChangeType::Inserted {
-      value: crate::string_value("new_value")
+      value: crate::string_value("new_value"),
     }
   );
 }
@@ -651,6 +669,7 @@ async fn insert_returns_updated_state_change() {
       crate::string_value("old_value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   // Second insert (update)
@@ -662,6 +681,7 @@ async fn insert_returns_updated_state_change() {
       crate::string_value("new_value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   assert_eq!(change.scope, Scope::FeatureFlagExposure);
@@ -670,7 +690,7 @@ async fn insert_returns_updated_state_change() {
     change.change_type,
     crate::StateChangeType::Updated {
       old_value: crate::string_value("old_value"),
-      new_value: crate::string_value("new_value")
+      new_value: crate::string_value("new_value"),
     }
   );
 }
@@ -688,6 +708,7 @@ async fn insert_returns_no_change_when_value_unchanged() {
       crate::string_value("same_value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   // Second insert with same value
@@ -701,9 +722,7 @@ async fn insert_returns_no_change_when_value_unchanged() {
     .await
     .unwrap();
 
-  assert_eq!(change.scope, Scope::FeatureFlagExposure);
-  assert_eq!(change.key, "flag");
-  assert_eq!(change.change_type, crate::StateChangeType::NoChange);
+  assert!(change.is_none());
 }
 
 #[tokio::test]
@@ -719,6 +738,7 @@ async fn remove_returns_removed_state_change() {
       crate::string_value("value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   // Remove it
@@ -726,6 +746,7 @@ async fn remove_returns_removed_state_change() {
     .store
     .remove(Scope::FeatureFlagExposure, "flag")
     .await
+    .unwrap()
     .unwrap();
 
   assert_eq!(change.scope, Scope::FeatureFlagExposure);
@@ -733,7 +754,7 @@ async fn remove_returns_removed_state_change() {
   assert_eq!(
     change.change_type,
     crate::StateChangeType::Removed {
-      old_value: crate::string_value("value")
+      old_value: crate::string_value("value"),
     }
   );
 
@@ -752,9 +773,7 @@ async fn remove_returns_no_change_for_nonexistent_key() {
     .await
     .unwrap();
 
-  assert_eq!(change.scope, Scope::FeatureFlagExposure);
-  assert_eq!(change.key, "nonexistent");
-  assert_eq!(change.change_type, crate::StateChangeType::NoChange);
+  assert!(change.is_none());
 }
 
 #[tokio::test]
@@ -770,6 +789,7 @@ async fn extend_inserts_multiple_values() {
       crate::string_value("old"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   // Extend with multiple values, including updating the existing one
@@ -818,6 +838,7 @@ async fn clear_returns_all_removed_state_changes() {
       crate::string_value("value1"),
     )
     .await
+    .unwrap()
     .unwrap();
   setup
     .store
@@ -827,6 +848,7 @@ async fn clear_returns_all_removed_state_changes() {
       crate::string_value("value2"),
     )
     .await
+    .unwrap()
     .unwrap();
   setup
     .store
@@ -836,6 +858,7 @@ async fn clear_returns_all_removed_state_changes() {
       crate::string_value("global_value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   // Clear FeatureFlag scope

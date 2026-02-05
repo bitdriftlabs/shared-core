@@ -225,6 +225,37 @@ impl ScopedMaps {
   }
 }
 
+#[derive(Default)]
+struct PendingScopedValues {
+  feature_flags: AHashMap<String, Option<StateValue>>,
+  global_state: AHashMap<String, Option<StateValue>>,
+  system: AHashMap<String, Option<StateValue>>,
+}
+
+impl PendingScopedValues {
+  fn get(&self, scope: Scope, key: &str) -> Option<&Option<StateValue>> {
+    match scope {
+      Scope::FeatureFlagExposure => self.feature_flags.get(key),
+      Scope::GlobalState => self.global_state.get(key),
+      Scope::System => self.system.get(key),
+    }
+  }
+
+  fn insert(&mut self, scope: Scope, key: String, value: Option<StateValue>) {
+    match scope {
+      Scope::FeatureFlagExposure => {
+        self.feature_flags.insert(key, value);
+      },
+      Scope::GlobalState => {
+        self.global_state.insert(key, value);
+      },
+      Scope::System => {
+        self.system.insert(key, value);
+      },
+    }
+  }
+}
+
 
 /// Persistent storage implementation using a memory-mapped journal.
 struct PersistentStore {
@@ -367,6 +398,41 @@ impl PersistentStore {
     self.journal.time_provider.now().unix_timestamp_nanos() as u64 / 1_000
   }
 
+  fn filter_noop_entries(
+    &self,
+    entries: Vec<(Scope, String, StateValue)>,
+  ) -> Vec<(Scope, String, StateValue)> {
+    let mut pending = PendingScopedValues::default();
+    let mut filtered = Vec::with_capacity(entries.len());
+
+    for (scope, key, value) in entries {
+      let pending_value = pending.get(scope, &key);
+      let current_value = pending_value.map_or_else(
+        || self.cached_map.get(scope, &key).map(|tv| &tv.value),
+        |value| value.as_ref(),
+      );
+
+      if value.value_type.is_none() {
+        if current_value.is_none() {
+          continue;
+        }
+
+        pending.insert(scope, key.clone(), None);
+        filtered.push((scope, key, value));
+        continue;
+      }
+
+      if matches!(current_value, Some(existing) if existing == &value) {
+        continue;
+      }
+
+      pending.insert(scope, key.clone(), Some(value.clone()));
+      filtered.push((scope, key, value));
+    }
+
+    filtered
+  }
+
   async fn insert(
     &mut self,
     scope: Scope,
@@ -375,12 +441,20 @@ impl PersistentStore {
   ) -> Result<(u64, Option<StateValue>), UpdateError> {
     let (timestamp, old_value) = if value.value_type.is_none() {
       // Deletion
+      if !self.cached_map.contains_key(scope, key) {
+        return Ok((self.current_timestamp(), None));
+      }
       let timestamp = self
         .try_insert_with_rotation(scope, key, &StateValue::default())
         .await?;
       let old_value = self.cached_map.remove(scope, key).map(|tv| tv.value);
       (timestamp, old_value)
     } else {
+      if let Some(existing) = self.cached_map.get(scope, key)
+        && existing.value == value
+      {
+        return Ok((existing.timestamp, Some(existing.value.clone())));
+      }
       // Insert/update
       let timestamp = self.try_insert_with_rotation(scope, key, &value).await?;
       let old_value = self
@@ -409,7 +483,12 @@ impl PersistentStore {
     entries: Vec<(Scope, String, StateValue)>,
   ) -> Result<u64, UpdateError> {
     if entries.is_empty() {
-      // Return current timestamp for empty batch (no-op)
+      // Return zero timestamp for empty batch (no-op)
+      return Ok(self.current_timestamp());
+    }
+
+    let entries = self.filter_noop_entries(entries);
+    if entries.is_empty() {
       return Ok(self.current_timestamp());
     }
 
