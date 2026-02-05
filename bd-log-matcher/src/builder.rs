@@ -129,6 +129,18 @@ pub fn field_equals(key: &str, value: &str) -> LogMatcher {
   make_log_tag_matcher(key, value)
 }
 
+/// Creates a matcher for logs where a field value equals a saved field value.
+///
+/// # Example
+/// ```ignore
+/// let matcher = builder::field_equals_saved_field("session_id", "saved_session");
+/// ```
+#[inline]
+#[must_use]
+pub fn field_equals_saved_field(key: &str, saved_field_id: &str) -> LogMatcher {
+  log_field_saved_field_matcher(key, saved_field_id, Operator::OPERATOR_EQUALS)
+}
+
 /// Creates a matcher for logs where tag value does not equal the specified value.
 ///
 /// # Example
@@ -402,6 +414,36 @@ fn log_field_matcher(field: &str, value: &str, operator: Operator) -> LogMatcher
           value_matcher::StringValueMatch {
             operator: operator.into(),
             string_value_match_type: Some(String_value_match_type::MatchValue(value.to_string())),
+            ..Default::default()
+          },
+        )),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
+/// Creates a log field matcher that matches when a field is equal to a saved field value.
+#[must_use]
+fn log_field_saved_field_matcher(
+  field: &str,
+  saved_field_id: &str,
+  operator: Operator,
+) -> LogMatcher {
+  use base_log_matcher::Match_type::TagMatch;
+
+  LogMatcher {
+    matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
+      match_type: Some(TagMatch(base_log_matcher::TagMatch {
+        tag_key: field.to_string(),
+        value_match: Some(Value_match::StringValueMatch(
+          value_matcher::StringValueMatch {
+            operator: operator.into(),
+            string_value_match_type: Some(String_value_match_type::SaveFieldId(
+              saved_field_id.to_string(),
+            )),
             ..Default::default()
           },
         )),

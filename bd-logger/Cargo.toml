@@ -62,13 +62,16 @@ tracing.workspace            = true
 unwrap-infallible.workspace  = true
 
 [dev-dependencies]
-assert_matches.workspace    = true
-bd-hyper-network            = { path = "../bd-hyper-network" }
-bd-noop-network             = { path = "../bd-noop-network" }
-bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
-ctor.workspace              = true
-flate2.workspace            = true
-pretty_assertions.workspace = true
-tempfile.workspace          = true
-tokio-test.workspace        = true
-uuid.workspace              = true
+assert_matches.workspace        = true
+bd-hyper-network                = { path = "../bd-hyper-network" }
+bd-noop-network                 = { path = "../bd-noop-network" }
+bd-test-helpers                 = { path = "../bd-test-helpers", default-features = false }
+ctor.workspace                  = true
+flate2.workspace                = true
+pretty_assertions.workspace     = true
+protobuf-json-mapping.workspace = true
+serde_json.workspace            = true
+serde_yaml.workspace            = true
+tempfile.workspace              = true
+tokio-test.workspace            = true
+uuid.workspace                  = true

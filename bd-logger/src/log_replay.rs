@@ -228,6 +228,11 @@ impl ProcessingPipeline {
     block: bool,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
+    log::debug!(
+      "processing {:?} log",
+      log.message.as_str().unwrap_or("[DATA]"),
+    );
+
     self.stats.logs_received.inc();
 
     let state_reader = state.read().await;

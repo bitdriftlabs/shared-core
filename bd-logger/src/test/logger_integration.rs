@@ -34,6 +34,7 @@ use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::filter::filter::Filter;
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::logging::payload::log::CompressedContents;
+use bd_proto::protos::workflow::workflow::Workflow as WorkflowProto;
 use bd_runtime::runtime::FeatureFlag;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
 use bd_session::fixed::UUIDCallbacks;
@@ -1195,6 +1196,657 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
 
     assert_eq!("fire flush trigger buffer action!", log_upload.logs().last().unwrap().message());
   });
+}
+
+#[test]
+fn complex_measure_time() {
+  const COMPLEX_WORKFLOW: &str = r#"
+execution:
+  execution_exclusive: {}
+id: SkzssKIBDFV6wwpjtor0vNSzVQ+U3iq7xFqatWLceIg=
+limit_duration:
+  duration_ms: '86400000'
+limit_matched_logs_count:
+  count: 100
+states:
+- id: '0'
+  transitions:
+  - actions: []
+    extensions: []
+    rule:
+      rule_log_match:
+        count: 1
+        log_matcher:
+          and_matcher:
+            log_matchers:
+            - base_matcher:
+                message_match:
+                  string_value_match:
+                    match_value: '[LCL]: Location updated successfully'
+                    operator: OPERATOR_EQUALS
+            - base_matcher:
+                tag_match:
+                  string_value_match:
+                    match_value: offRoute
+                    operator: OPERATOR_EQUALS
+                  tag_key: preferred.status
+    target_state_id: '1'
+- id: '1'
+  transitions:
+  - actions: []
+    extensions:
+    - save_timestamp:
+        id: '8'
+    - save_field:
+        field_name: session_id
+        id: '9'
+    rule:
+      rule_log_match:
+        count: 1
+        log_matcher:
+          and_matcher:
+            log_matchers:
+            - base_matcher:
+                tag_match:
+                  string_value_match:
+                    match_value: 'true'
+                    operator: OPERATOR_EQUALS
+                  tag_key: is_reroute
+            - base_matcher:
+                message_match:
+                  string_value_match:
+                    match_value: '[Map XP]: Getting navigation directions'
+                    operator: OPERATOR_EQUALS
+    target_state_id: '2'
+- id: '10'
+  transitions: []
+- id: '11'
+  transitions:
+  - actions:
+    - action_emit_metric:
+        counter: {}
+        fixed: 1
+        id: iI-GN3VCo7grxr1XahKjt872hxVoyPUQvecEufP2bSs
+        tags:
+        - field_extracted:
+            exact: {}
+            field_name: app_version
+          name: app_version
+        - field_extracted:
+            exact: {}
+            field_name: foreground
+          name: foreground
+        - field_extracted:
+            exact: {}
+            field_name: model
+          name: model
+        - field_extracted:
+            exact: {}
+            field_name: network_type
+          name: network_type
+        - field_extracted:
+            exact: {}
+            field_name: os_version
+          name: os_version
+        - field_extracted:
+            exact: {}
+            field_name: radio_type
+          name: radio_type
+        - field_extracted:
+            exact: {}
+            field_name: _locale
+          name: _locale
+    extensions:
+    - save_timestamp:
+        id: '7'
+    rule:
+      rule_log_match:
+        count: 1
+        log_matcher:
+          and_matcher:
+            log_matchers:
+            - base_matcher:
+                message_match:
+                  string_value_match:
+                    match_value: '[LCL]: Location updated successfully'
+                    operator: OPERATOR_EQUALS
+            - base_matcher:
+                tag_match:
+                  string_value_match:
+                    match_value: onRoute
+                    operator: OPERATOR_EQUALS
+                  tag_key: preferred.status
+    target_state_id: '14'
+  - actions:
+    - action_generate_log:
+        fields:
+        - name: _span_type
+          single:
+            fixed: end
+        - name: _span_name
+          single:
+            fixed: '[5] LCL Detects Back On Route'
+        - name: _span_id
+          single:
+            uuid: true
+        - name: _duration_ms
+          subtract:
+            lhs:
+              saved_timestamp_id: '7'
+            rhs:
+              saved_timestamp_id: '5'
+        id: 0SXm8nMRu3i5ec248rr7OjryMaEkysFvjBbGUwWrw4U
+        log_type: 8
+        message: '[5] LCL Detects Back On Route'
+    extensions:
+    - save_timestamp:
+        id: '7'
+    rule:
+      rule_log_match:
+        count: 1
+        log_matcher:
+          and_matcher:
+            log_matchers:
+            - and_matcher:
+                log_matchers:
+                - base_matcher:
+                    message_match:
+                      string_value_match:
+                        match_value: '[LCL]: Location updated successfully'
+                        operator: OPERATOR_EQUALS
+                - base_matcher:
+                    tag_match:
+                      string_value_match:
+                        match_value: onRoute
+                        operator: OPERATOR_EQUALS
+                      tag_key: preferred.status
+            - base_matcher:
+                tag_match:
+                  string_value_match:
+                    operator: OPERATOR_EQUALS
+                    save_field_id: '6'
+                  tag_key: session_id
+    target_state_id: '15'
+- id: '12'
+  transitions:
+  - actions:
+    - action_emit_metric:
+        field_extracted:
+          field_name: _duration_ms
+        histogram: {}
+        id: VdpzO8gPpuIBNriMhxDfnHXGm86WAm_Uk84BTEcdVOo
+        tags: []
+    extensions: []
+    rule:
+      rule_log_match:
+        count: 1
+        log_matcher:
+          base_matcher:
+            tag_match:
+              string_value_match:
+                match_value: KwhJxJtAY-oZDJLc_Snbm_sv3EuMI6WaMh05S0Hhcnk
+                operator: OPERATOR_EQUALS
+              tag_key: _generate_log_id
+    target_state_id: '16'
+- id: '13'
+  transitions: []
+- id: '14'
+  transitions: []
+- id: '15'
+  transitions:
+  - actions:
+    - action_emit_metric:
+        field_extracted:
+          field_name: _duration_ms
+        histogram: {}
+        id: tNUQ9IC8Qqp7Ic-Ou-qHaJybmF2T2me-53N6k2O6foI
+        tags: []
+    extensions: []
+    rule:
+      rule_log_match:
+        count: 1
+        log_matcher:
+          base_matcher:
+            tag_match:
+              string_value_match:
+                match_value: 0SXm8nMRu3i5ec248rr7OjryMaEkysFvjBbGUwWrw4U
+                operator: OPERATOR_EQUALS
+              tag_key: _generate_log_id
+    target_state_id: '17'
+- id: '16'
+  transitions: []
+- id: '17'
+  transitions: []
+- id: '2'
+  transitions:
+  - actions: []
+    extensions:
+    - save_timestamp:
+        id: '1'
+    - save_field:
+        field_name: response_id
+        id: '2'
+    rule:
+      rule_log_match:
+        count: 1
+        log_matcher:
+          and_matcher:
+            log_matchers:
+            - base_matcher:
+                tag_match:
+                  string_value_match:
+                    match_value: 'true'
+                    operator: OPERATOR_EQUALS
+                  tag_key: is_reroute
+            - base_matcher:
+                message_match:
+                  string_value_match:
+                    match_value: '[Map XP]: Getting navigation directions responded'
+                    operator: OPERATOR_EQUALS
+    target_state_id: '3'
+  - actions:
+    - action_generate_log:
+        fields:
+        - name: _span_type
+          single:
+            fixed: end
+        - name: _span_name
+          single:
+            fixed: '[1] Get Directions'
+        - name: _span_id
+          single:
+            uuid: true
+        - name: _duration_ms
+          subtract:
+            lhs:
+              saved_timestamp_id: '1'
+            rhs:
+              saved_timestamp_id: '8'
+        id: M7daAb9wGC4vd1D3Hy-IetsUsvW1t-AA5NwSmsdl3kk
+        log_type: 8
+        message: '[1] Get Directions'
+    extensions:
+    - save_timestamp:
+        id: '1'
+    - save_field:
+        field_name: response_id
+        id: '2'
+    rule:
+      rule_log_match:
+        count: 1
+        log_matcher:
+          and_matcher:
+            log_matchers:
+            - and_matcher:
+                log_matchers:
+                - base_matcher:
+                    tag_match:
+                      string_value_match:
+                        match_value: 'true'
+                        operator: OPERATOR_EQUALS
+                      tag_key: is_reroute
+                - base_matcher:
+                    message_match:
+                      string_value_match:
+                        match_value: '[Map XP]: Getting navigation directions responded'
+                        operator: OPERATOR_EQUALS
+            - base_matcher:
+                tag_match:
+                  string_value_match:
+                    operator: OPERATOR_EQUALS
+                    save_field_id: '9'
+                  tag_key: session_id
+    target_state_id: '4'
+- id: '3'
+  transitions:
+  - actions: []
+    extensions:
+    - save_timestamp:
+        id: '3'
+    rule:
+      rule_log_match:
+        count: 1
+        log_matcher:
+          and_matcher:
+            log_matchers:
+            - base_matcher:
+                tag_match:
+                  string_value_match:
+                    match_value: 'true'
+                    operator: OPERATOR_EQUALS
+                  tag_key: is_reroute
+            - base_matcher:
+                message_match:
+                  string_value_match:
+                    match_value: '[Map XP]: Getting navigation directions succeeded'
+                    operator: OPERATOR_EQUALS
+    target_state_id: '5'
+  - actions:
+    - action_generate_log:
+        fields:
+        - name: _span_type
+          single:
+            fixed: end
+        - name: _span_name
+          single:
+            fixed: '[2] Parse Response'
+        - name: _span_id
+          single:
+            uuid: true
+        - name: _duration_ms
+          subtract:
+            lhs:
+              saved_timestamp_id: '3'
+            rhs:
+              saved_timestamp_id: '1'
+        id: 8sS-mF3TBI47P4OqPphwfIi9namfT449MbP2Y6LxLr8
+        log_type: 8
+        message: '[2] Parse Response'
+    extensions:
+    - save_timestamp:
+        id: '3'
+    rule:
+      rule_log_match:
+        count: 1
+        log_matcher:
+          and_matcher:
+            log_matchers:
+            - and_matcher:
+                log_matchers:
+                - base_matcher:
+                    tag_match:
+                      string_value_match:
+                        match_value: 'true'
+                        operator: OPERATOR_EQUALS
+                      tag_key: is_reroute
+                - base_matcher:
+                    message_match:
+                      string_value_match:
+                        match_value: '[Map XP]: Getting navigation directions succeeded'
+                        operator: OPERATOR_EQUALS
+            - base_matcher:
+                tag_match:
+                  string_value_match:
+                    operator: OPERATOR_EQUALS
+                    save_field_id: '2'
+                  tag_key: response_id
+    target_state_id: '6'
+- id: '4'
+  transitions:
+  - actions:
+    - action_emit_metric:
+        field_extracted:
+          field_name: _duration_ms
+        histogram: {}
+        id: JxquFNVyR0KfolS-KvbtWloxmYC0vF8FlyUTZGpeEpI
+        tags: []
+    extensions: []
+    rule:
+      rule_log_match:
+        count: 1
+        log_matcher:
+          base_matcher:
+            tag_match:
+              string_value_match:
+                match_value: M7daAb9wGC4vd1D3Hy-IetsUsvW1t-AA5NwSmsdl3kk
+                operator: OPERATOR_EQUALS
+              tag_key: _generate_log_id
+    target_state_id: '7'
+- id: '5'
+  transitions:
+  - actions: []
+    extensions:
+    - save_timestamp:
+        id: '4'
+    - save_field:
+        field_name: n_segments
+        id: '10'
+    rule:
+      rule_log_match:
+        count: 1
+        log_matcher:
+          base_matcher:
+            message_match:
+              string_value_match:
+                match_value: '[LCL]: Setting route line'
+                operator: OPERATOR_EQUALS
+    target_state_id: '8'
+  - actions:
+    - action_generate_log:
+        fields:
+        - name: _span_type
+          single:
+            fixed: end
+        - name: _span_name
+          single:
+            fixed: '[3] Validate Response'
+        - name: _span_id
+          single:
+            uuid: true
+        - name: _duration_ms
+          subtract:
+            lhs:
+              saved_timestamp_id: '4'
+            rhs:
+              saved_timestamp_id: '3'
+        id: K12vjIemeV2A0EOcIAYAzVoF5pvJ1xeRZhPS9jd_Rzo
+        log_type: 8
+        message: '[3] Validate Response'
+    extensions:
+    - save_timestamp:
+        id: '4'
+    - save_field:
+        field_name: n_segments
+        id: '10'
+    rule:
+      rule_log_match:
+        count: 1
+        log_matcher:
+          base_matcher:
+            message_match:
+              string_value_match:
+                match_value: '[LCL]: Setting route line'
+                operator: OPERATOR_EQUALS
+    target_state_id: '9'
+- id: '6'
+  transitions:
+  - actions:
+    - action_emit_metric:
+        field_extracted:
+          field_name: _duration_ms
+        histogram: {}
+        id: 6ye39ymmpS0EAZ-BcKPQO4SRBXoTZi1O4nlcYvEwilk
+        tags: []
+    extensions: []
+    rule:
+      rule_log_match:
+        count: 1
+        log_matcher:
+          base_matcher:
+            tag_match:
+              string_value_match:
+                match_value: 8sS-mF3TBI47P4OqPphwfIi9namfT449MbP2Y6LxLr8
+                operator: OPERATOR_EQUALS
+              tag_key: _generate_log_id
+    target_state_id: '10'
+- id: '7'
+  transitions: []
+- id: '8'
+  transitions:
+  - actions: []
+    extensions:
+    - save_timestamp:
+        id: '5'
+    - save_field:
+        field_name: session_id
+        id: '6'
+    rule:
+      rule_log_match:
+        count: 1
+        log_matcher:
+          base_matcher:
+            message_match:
+              string_value_match:
+                match_value: '[LCL]: Route line set'
+                operator: OPERATOR_EQUALS
+    target_state_id: '11'
+  - actions:
+    - action_generate_log:
+        fields:
+        - name: _span_type
+          single:
+            fixed: end
+        - name: _span_name
+          single:
+            fixed: '[4] Update LCL w/ Directions'
+        - name: _span_id
+          single:
+            uuid: true
+        - name: _duration_ms
+          subtract:
+            lhs:
+              saved_timestamp_id: '5'
+            rhs:
+              saved_timestamp_id: '4'
+        id: KwhJxJtAY-oZDJLc_Snbm_sv3EuMI6WaMh05S0Hhcnk
+        log_type: 8
+        message: '[4] Update LCL w/ Directions'
+    extensions:
+    - save_timestamp:
+        id: '5'
+    - save_field:
+        field_name: session_id
+        id: '6'
+    rule:
+      rule_log_match:
+        count: 1
+        log_matcher:
+          and_matcher:
+            log_matchers:
+            - base_matcher:
+                message_match:
+                  string_value_match:
+                    match_value: '[LCL]: Route line set'
+                    operator: OPERATOR_EQUALS
+            - base_matcher:
+                tag_match:
+                  string_value_match:
+                    operator: OPERATOR_EQUALS
+                    save_field_id: '10'
+                  tag_key: n_segments
+    target_state_id: '12'
+- id: '9'
+  transitions:
+  - actions:
+    - action_emit_metric:
+        field_extracted:
+          field_name: _duration_ms
+        histogram: {}
+        id: k3rPimjY0UBvlZqh-lGMGrCvpEiC26a3MloR6Bf7zzg
+        tags: []
+    extensions: []
+    rule:
+      rule_log_match:
+        count: 1
+        log_matcher:
+          base_matcher:
+            tag_match:
+              string_value_match:
+                match_value: K12vjIemeV2A0EOcIAYAzVoF5pvJ1xeRZhPS9jd_Rzo
+                operator: OPERATOR_EQUALS
+              tag_key: _generate_log_id
+    target_state_id: '13'
+  "#;
+
+  let yaml = serde_yaml::from_str::<serde_yaml::Value>(COMPLEX_WORKFLOW).unwrap();
+  let workflow: WorkflowProto =
+    protobuf_json_mapping::parse_from_str(serde_json::to_string(&yaml).unwrap().as_str()).unwrap();
+  let mut setup = Setup::new();
+  let maybe_nack = setup.send_configuration_update(configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      workflows: vec![workflow],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "[LCL]: Location updated successfully".into(),
+    [(
+      "preferred.status".into(),
+      AnnotatedLogField::new_custom("offRoute"),
+    )]
+    .into(),
+    [].into(),
+  );
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "[Map XP]: Getting navigation directions".into(),
+    [
+      ("is_reroute".into(), AnnotatedLogField::new_custom("true")),
+      ("session_id".into(), AnnotatedLogField::new_custom("abc")),
+    ]
+    .into(),
+    [].into(),
+  );
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "[Map XP]: Getting navigation directions responded".into(),
+    [
+      ("is_reroute".into(), AnnotatedLogField::new_custom("true")),
+      ("session_id".into(), AnnotatedLogField::new_custom("abc")),
+      ("response_id".into(), AnnotatedLogField::new_custom("def")),
+    ]
+    .into(),
+    [].into(),
+  );
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "[Map XP]: Getting navigation directions succeeded".into(),
+    [
+      ("is_reroute".into(), AnnotatedLogField::new_custom("true")),
+      ("response_id".into(), AnnotatedLogField::new_custom("def")),
+    ]
+    .into(),
+    [].into(),
+  );
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "[LCL]: Setting route line".into(),
+    [("n_segments".into(), AnnotatedLogField::new_custom("15"))].into(),
+    [].into(),
+  );
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "[LCL]: Route line set".into(),
+    [
+      ("n_segments".into(), AnnotatedLogField::new_custom("15")),
+      ("session_id".into(), AnnotatedLogField::new_custom("abc")),
+    ]
+    .into(),
+    [].into(),
+  );
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "[LCL]: Location updated successfully".into(),
+    [
+      (
+        "preferred.status".into(),
+        AnnotatedLogField::new_custom("onRoute"),
+      ),
+      ("session_id".into(), AnnotatedLogField::new_custom("abc")),
+    ]
+    .into(),
+    [].into(),
+  );
 }
 
 #[test]

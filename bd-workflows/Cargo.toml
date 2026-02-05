@@ -9,8 +9,8 @@ version      = "0.1.0"
 doctest = false
 
 [dependencies]
-arbitrary                  = { workspace = true, optional = true }
 anyhow.workspace            = true
+arbitrary                   = { workspace = true, optional = true }
 async-trait.workspace       = true
 bd-api.path                 = "../bd-api"
 bd-client-common.path       = "../bd-client-common"
