@@ -14,7 +14,7 @@ use std::sync::Arc;
 /// Indicates whether partial data loss has occurred. Partial data loss is detected when the
 /// journal would be parsed from disk, but we were not able to find valid records up to `position`
 /// as stored in the header.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum PartialDataLoss {
   Yes,
   None,

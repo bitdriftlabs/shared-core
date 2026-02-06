@@ -471,7 +471,7 @@ async fn test_automatic_rotation_on_high_water_mark() -> anyhow::Result<()> {
 #[tokio::test]
 async fn test_in_memory_size_limit() -> anyhow::Result<()> {
   use bd_client_stats_store::test::StatsHelper;
-  use std::collections::BTreeMap;
+  use bd_stats_common::labels;
 
   let collector = bd_client_stats_store::Collector::default();
   let stats = collector.scope("test");
@@ -512,8 +512,8 @@ async fn test_in_memory_size_limit() -> anyhow::Result<()> {
   // Verify the metric was incremented
   collector.assert_counter_eq(
     1,
-    "test:kv:capacity_exceeded_unrecoverable",
-    BTreeMap::new(),
+    "test:kv:capacity_exceeded",
+    labels!("recoverable" => "false"),
   );
 
   // Original data should still be intact
@@ -1418,7 +1418,7 @@ async fn extend_triggers_rotation_but_fails_capacity() -> anyhow::Result<()> {
 #[tokio::test]
 async fn extend_atomicity_on_capacity_exceeded() -> anyhow::Result<()> {
   use bd_client_stats_store::test::StatsHelper;
-  use std::collections::BTreeMap;
+  use bd_stats_common::labels;
 
   let collector = bd_client_stats_store::Collector::default();
   let stats = collector.scope("test");
@@ -1481,8 +1481,8 @@ async fn extend_atomicity_on_capacity_exceeded() -> anyhow::Result<()> {
     // Verify the capacity exceeded metric was incremented
     collector.assert_counter_eq(
       1,
-      "test:kv:capacity_exceeded_unrecoverable",
-      BTreeMap::new(),
+      "test:kv:capacity_exceeded",
+      labels!("recoverable" => "false"),
     );
   }
 
