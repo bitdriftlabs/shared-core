@@ -723,6 +723,7 @@ impl RingBufferImpl {
     block_when_reserving_into_concurrent_read: BlockWhenReservingIntoConcurrentRead,
     per_record_crc32_check: PerRecordCrc32Check,
     stats: Arc<RingBufferStats>,
+    on_record_evicted_cb: impl Fn(&[u8]) + Send + Sync + 'static,
   ) -> Result<Arc<Self>> {
     // The following static asserts verify that FileHeader is a known size with all field offsets
     // known. This is done to avoid the use of #pragma pack(1) which may lead to poor performance on
@@ -880,6 +881,7 @@ impl RingBufferImpl {
         allow_overwrite,
         stats,
         ExtraLockedData::on_total_data_loss,
+        on_record_evicted_cb,
         |extra_locked_data| {
           extra_locked_data
             .consumer
@@ -898,6 +900,28 @@ impl RingBufferImpl {
         },
       ),
     }))
+  }
+
+  /// Runs `f` against the oldest record while holding the buffer lock.
+  ///
+  /// The closure must be non-blocking and must not await.
+  pub fn peek_oldest_record<T>(&self, f: impl FnOnce(&[u8]) -> T) -> Result<Option<T>> {
+    let mut common_ring_buffer = self.common_ring_buffer.locked_data.lock();
+    let Some(record_range) = common_ring_buffer.peek_next_read_record_range(Cursor::No)? else {
+      return Ok(None);
+    };
+
+    let record_start = record_range.start as usize;
+    let record_end = record_start + record_range.size as usize;
+    let memory = common_ring_buffer.memory();
+    if record_end > memory.len() {
+      return Err(Error::AbslStatus(
+        AbslCode::DataLoss,
+        "corrupted record size".to_string(),
+      ));
+    }
+
+    Ok(Some(f(&memory[record_start .. record_end])))
   }
 }
 

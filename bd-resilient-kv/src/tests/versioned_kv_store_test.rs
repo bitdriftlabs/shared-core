@@ -41,7 +41,9 @@ impl DualModeSetup {
     let (temp_dir, store) = match mode {
       StoreMode::Persistent => {
         let temp_dir = TempDir::new()?;
-        let registry = Arc::new(RetentionRegistry::new());
+        let registry = Arc::new(RetentionRegistry::new(
+          bd_runtime::runtime::IntWatch::new_for_testing(2),
+        ));
         let (store, _) = VersionedKVStore::new(
           temp_dir.path(),
           "test",
@@ -57,7 +59,12 @@ impl DualModeSetup {
         (Some(temp_dir), store)
       },
       StoreMode::InMemory => {
-        let store = VersionedKVStore::new_in_memory(time_provider.clone(), None, &stats);
+        let store = VersionedKVStore::new_in_memory(
+          time_provider.clone(),
+          None,
+          &stats,
+          bd_runtime::runtime::IntWatch::new_for_testing(2),
+        );
         (None, store)
       },
     };
@@ -80,8 +87,11 @@ impl Setup {
     let stats = collector.scope("test");
     let temp_dir = TempDir::new()?;
     let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
-    let registry = Arc::new(RetentionRegistry::new());
+    let registry = Arc::new(RetentionRegistry::new(
+      bd_runtime::runtime::IntWatch::new_for_testing(10),
+    ));
     let retention_handle = registry.create_handle().await; // Retain all snapshots
+    retention_handle.update_retention_micros(0);
 
     let (store, _) = VersionedKVStore::new(
       temp_dir.path(),
@@ -119,7 +129,9 @@ impl Setup {
       decompressed_snapshot,
     )?;
 
-    let registry = Arc::new(RetentionRegistry::new());
+    let registry = Arc::new(RetentionRegistry::new(
+      bd_runtime::runtime::IntWatch::new_for_testing(2),
+    ));
     let (store, data_loss) = VersionedKVStore::new(
       self.temp_dir.path(),
       "snapshot",
@@ -361,8 +373,11 @@ async fn test_automatic_rotation_on_high_water_mark() -> anyhow::Result<()> {
   let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
-  let registry = Arc::new(RetentionRegistry::new());
-  let _handle = registry.create_handle().await; // Retain snapshots
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(10),
+  ));
+  let handle = registry.create_handle().await; // Retain snapshots
+  handle.update_retention_micros(0);
 
   // Create a store with a small buffer and aggressive high water mark to trigger rotation
   let (mut store, _) = VersionedKVStore::new(
@@ -478,7 +493,12 @@ async fn test_in_memory_size_limit() -> anyhow::Result<()> {
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
   // Create an in-memory store with a small size limit (1KB)
-  let mut store = VersionedKVStore::new_in_memory(time_provider, Some(1024), &stats);
+  let mut store = VersionedKVStore::new_in_memory(
+    time_provider,
+    Some(1024),
+    &stats,
+    bd_runtime::runtime::IntWatch::new_for_testing(2),
+  );
 
   // Should be able to insert some small values
   store
@@ -545,7 +565,12 @@ async fn test_in_memory_no_size_limit() -> anyhow::Result<()> {
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
   // Create an in-memory store with no size limit
-  let mut store = VersionedKVStore::new_in_memory(time_provider, None, &stats);
+  let mut store = VersionedKVStore::new_in_memory(
+    time_provider,
+    None,
+    &stats,
+    bd_runtime::runtime::IntWatch::new_for_testing(2),
+  );
 
   // Should be able to insert many large values without limit
   for i in 0 .. 100 {
@@ -567,7 +592,12 @@ async fn test_in_memory_size_limit_replacement() -> anyhow::Result<()> {
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
 
   // Create an in-memory store with a small size limit
-  let mut store = VersionedKVStore::new_in_memory(time_provider, Some(1024), &stats);
+  let mut store = VersionedKVStore::new_in_memory(
+    time_provider,
+    Some(1024),
+    &stats,
+    bd_runtime::runtime::IntWatch::new_for_testing(2),
+  );
 
   // Insert a value
   store
@@ -618,7 +648,9 @@ async fn test_persistence_and_reload() -> anyhow::Result<()> {
   let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(2),
+  ));
 
   // Create store and write some data
   let (ts1, ts2) = {
@@ -985,7 +1017,9 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
   let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(2),
+  ));
 
   // Create store with retention registry
   let (mut store, _) = VersionedKVStore::new(
@@ -1026,6 +1060,7 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
   // Now create a handle that requires retention - use a timestamp far in the past
   // so that any rotation will be newer than the retention requirement
   let handle = registry.create_handle().await;
+  handle.update_retention_micros(0);
   handle.update_retention_micros(0); // Retain all data from epoch
 
   // Insert more data and rotate WITH retention handle - snapshot SHOULD be created
@@ -1085,8 +1120,11 @@ async fn test_multiple_rotations_with_same_timestamp() -> anyhow::Result<()> {
   let temp_dir = TempDir::new()?;
   // Use fixed time so all rotations have the same data timestamp
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
-  let registry = Arc::new(RetentionRegistry::new());
-  let _handle = registry.create_handle().await; // Retain all snapshots
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(2),
+  ));
+  let handle = registry.create_handle().await; // Retain all snapshots
+  handle.update_retention_micros(0);
 
   let (mut store, _) = VersionedKVStore::new(
     temp_dir.path(),
@@ -1323,7 +1361,9 @@ async fn extend_triggers_rotation_and_succeeds() -> anyhow::Result<()> {
   let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(2),
+  ));
 
   // Create a small buffer that will trigger rotation, with enough max capacity to succeed
   let (mut store, _) = VersionedKVStore::new(
@@ -1373,7 +1413,9 @@ async fn extend_triggers_rotation_but_fails_capacity() -> anyhow::Result<()> {
   let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(2),
+  ));
 
   // Create a store with limited max capacity that won't fit the batch even after rotation
   let (mut store, _) = VersionedKVStore::new(
@@ -1424,7 +1466,9 @@ async fn extend_atomicity_on_capacity_exceeded() -> anyhow::Result<()> {
   let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(2),
+  ));
 
   // Create a store with limited capacity
   let (mut store, _) = VersionedKVStore::new(
@@ -1495,7 +1539,9 @@ async fn extend_persistence() -> anyhow::Result<()> {
   let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(2),
+  ));
 
   {
     let (mut store, _) = VersionedKVStore::new(
@@ -1572,7 +1618,9 @@ async fn test_buffer_size_preserved_across_restart() -> anyhow::Result<()> {
   // Test that buffer size is preserved when reopening a store after dynamic growth
   let temp_dir = tempfile::tempdir()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(2),
+  ));
 
   // Use a small initial buffer to force growth
   let config = PersistentStoreConfig {

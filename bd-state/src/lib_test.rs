@@ -25,10 +25,12 @@ impl Setup {
       datetime!(2024-01-01 00:00:00 UTC),
     ));
     let collector = bd_client_stats_store::Collector::default();
+    let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
     let store = Store::persistent(
       temp_dir.path(),
       PersistentStoreConfig::default(),
       time_provider.clone(),
+      &runtime_loader,
       &collector.scope("test"),
     )
     .await
@@ -171,10 +173,12 @@ async fn large_value() {
     max_capacity_bytes: 10 * 1024 * 1024,
     ..Default::default()
   };
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
   let store = Store::persistent(
     temp_dir.path(),
     config,
     time_provider.clone(),
+    &runtime_loader,
     &Collector::default().scope("test"),
   )
   .await
@@ -206,6 +210,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
   let scope = Collector::default().scope("test");
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
 
   // First process: write state and verify snapshot on creation is empty
   {
@@ -213,6 +218,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
       temp_dir.path(),
       PersistentStoreConfig::default(),
       time_provider.clone(),
+      &runtime_loader,
       &scope,
     )
     .await
@@ -277,6 +283,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
       temp_dir.path(),
       PersistentStoreConfig::default(),
       time_provider.clone(),
+      &runtime_loader,
       &Collector::default().scope("test"),
     )
     .await
@@ -336,12 +343,14 @@ async fn system_scope_persists_on_restart() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
   let scope = Collector::default().scope("test");
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
 
   {
     let result = Store::persistent(
       temp_dir.path(),
       PersistentStoreConfig::default(),
       time_provider.clone(),
+      &runtime_loader,
       &scope,
     )
     .await
@@ -364,6 +373,7 @@ async fn system_scope_persists_on_restart() {
       temp_dir.path(),
       PersistentStoreConfig::default(),
       time_provider.clone(),
+      &runtime_loader,
       &Collector::default().scope("test"),
     )
     .await
@@ -395,12 +405,14 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
   let scope = Collector::default().scope("test");
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
 
   {
     let result = Store::persistent(
       temp_dir.path(),
       PersistentStoreConfig::default(),
       time_provider.clone(),
+      &runtime_loader,
       &scope,
     )
     .await
@@ -441,6 +453,7 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
       temp_dir.path(),
       PersistentStoreConfig::default(),
       time_provider.clone(),
+      &runtime_loader,
       &Collector::default().scope("test"),
     )
     .await
@@ -475,10 +488,12 @@ async fn fallback_to_in_memory_on_invalid_directory() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_file.path());
   let result = Store::persistent_or_fallback(
     temp_file.path(),
     PersistentStoreConfig::default(),
     time_provider,
+    &runtime_loader,
     &Collector::default().scope("test"),
   )
   .await;
@@ -488,6 +503,7 @@ async fn fallback_to_in_memory_on_invalid_directory() {
   assert!(result.fallback_occurred);
   assert!(result.data_loss.is_none());
   assert!(result.previous_state.is_empty());
+  assert_eq!(result.retention_registry.max_snapshot_count(), None);
 
   // Verify in-memory store works correctly
   store
@@ -515,10 +531,12 @@ async fn from_strategy_in_memory_only() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
   let result = Store::from_strategy(
     temp_dir.path(),
     PersistentStoreConfig::default(),
     time_provider,
+    &runtime_loader,
     InitStrategy::InMemoryOnly,
     &Collector::default().scope("test"),
   )
@@ -528,6 +546,7 @@ async fn from_strategy_in_memory_only() {
   assert!(!result.fallback_occurred);
   assert!(result.data_loss.is_none());
   assert!(result.previous_state.is_empty());
+  assert_eq!(result.retention_registry.max_snapshot_count(), None);
 
   // Verify store works
   result
@@ -556,10 +575,12 @@ async fn from_strategy_persistent_with_fallback() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
   let result = Store::from_strategy(
     temp_dir.path(),
     PersistentStoreConfig::default(),
     time_provider,
+    &runtime_loader,
     InitStrategy::PersistentWithFallback,
     &Collector::default().scope("test"),
   )
@@ -598,10 +619,12 @@ async fn from_strategy_persistent_with_fallback_on_failure() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_file.path());
   let result = Store::from_strategy(
     temp_file.path(),
     PersistentStoreConfig::default(),
     time_provider,
+    &runtime_loader,
     InitStrategy::PersistentWithFallback,
     &Collector::default().scope("test"),
   )

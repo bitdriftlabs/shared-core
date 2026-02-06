@@ -23,6 +23,7 @@ bd-client-stats-store       = { path = "../bd-client-stats-store" }
 bd-error-reporter           = { path = "../bd-error-reporter" }
 bd-log                      = { path = "../bd-log" }
 bd-proto                    = { path = "../bd-proto" }
+bd-runtime                  = { path = "../bd-runtime" }
 bd-time                     = { path = "../bd-time" }
 bd-workspace-hack.workspace = true
 bytes.workspace             = true

@@ -87,8 +87,11 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
   let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
   let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
-  let registry = Arc::new(RetentionRegistry::new());
-  let _handle = registry.create_handle().await; // Retain all snapshots
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(2),
+  ));
+  let handle = registry.create_handle().await; // Retain all snapshots
+  handle.update_retention_micros(0);
 
   let (mut store, _) = VersionedKVStore::new(
     temp_dir.path(),

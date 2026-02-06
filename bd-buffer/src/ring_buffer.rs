@@ -27,8 +27,11 @@ use crate::{Error, Result};
 use anyhow::anyhow;
 use bd_client_stats_store::{Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
+use bd_log_primitives::EncodableLog;
 use bd_proto::protos::config::v1::config::{BufferConfigList, buffer_config};
+use bd_resilient_kv::{RetentionHandle, RetentionRegistry};
 use bd_stats_common::labels;
+use bd_time::OffsetDateTimeExt as _;
 use futures::future::join_all;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -144,8 +147,11 @@ type AllBuffers = (
 );
 
 // Responsible for managing multiple ring buffers and applying dynamic configuration updates.
+/// Callback invoked when a record is evicted from a buffer to make room for new data.
+pub type EvictedRecordCallback = Arc<dyn Fn(&[u8]) + Send + Sync + 'static>;
+
 pub struct Manager {
-  // Both the file-based ring buffers and the RAM-only stream buffer are kept within an RwLock in
+  // Both the file-based ring buffers and the RAM-only stream buffer are kept within a mutex in
   // order to allow modifications to be done in the updater while allowing the flush channel
   // process flush requests. We keep both kinds of buffer within one lock in order to avoid
   // having to lock multiple times during an update.
@@ -163,6 +169,8 @@ pub struct Manager {
 
   stream_buffer_size_flag:
     bd_runtime::runtime::IntWatch<bd_runtime::runtime::buffers::StreamBufferSizeBytes>,
+
+  retention_registry: Arc<RetentionRegistry>,
 }
 
 impl Manager {
@@ -170,6 +178,7 @@ impl Manager {
     buffer_directory: PathBuf,
     stats: &Scope,
     runtime: &bd_runtime::runtime::ConfigLoader,
+    retention_registry: Arc<RetentionRegistry>,
   ) -> (
     Arc<Self>,
     tokio::sync::mpsc::Receiver<BufferEventWithResponse>,
@@ -184,6 +193,7 @@ impl Manager {
         buffer_event_tx,
         scope,
         stream_buffer_size_flag: runtime.register_int_watch(),
+        retention_registry,
       }),
       buffer_event_rx,
     )
@@ -272,6 +282,34 @@ impl Manager {
            non_volatile_size={non_volatile_buffer_size}"
         );
 
+        let retention_registry = self.retention_registry.clone();
+        let allow_overwrite_for_cb = allow_overwrite;
+        let retention_handle = if allow_overwrite {
+          Some(retention_registry.create_handle().await)
+        } else {
+          None
+        };
+        let retention_handle_for_cb = retention_handle.clone();
+
+        // Only install the eviction callback if we are allowed to overwrite, as it's only
+        // meaningful to update the retention based on evicted records in that mode. This maps to
+        // the "trigger buffer" mode, where logs are retained on disk for some period of time in
+        // case they must be updated. In the other mode the ring buffer serves more as an upload
+        // queue and so old records are never evicted in normal operation.
+        let on_record_evicted_cb = if allow_overwrite_for_cb {
+          retention_handle_for_cb.map(|handle| {
+            let callback: EvictedRecordCallback = Arc::new(move |record_data: &[u8]| {
+              if let Some(ts) = EncodableLog::extract_timestamp(record_data)
+                && let Some(micros) = u64::try_from(ts.unix_timestamp_micros()).ok()
+              {
+                handle.update_retention_micros(micros);
+              }
+            });
+            callback
+          })
+        } else {
+          None
+        };
         let (ring_buffer, _) = RingBuffer::new(
           &buffer.name,
           volatile_buffer_size,
@@ -294,7 +332,25 @@ impl Manager {
             .scope
             .counter_with_labels("total_data_loss", labels! {"buffer_id" => &buffer.id}),
           None,
+          on_record_evicted_cb,
+          retention_handle.clone(),
         )?;
+
+        if let Some(handle) = retention_handle.as_ref() {
+          match ring_buffer.buffer.peek_oldest_record(|record_data| {
+            EncodableLog::extract_timestamp(record_data)
+              .and_then(|ts| u64::try_from(ts.unix_timestamp_micros()).ok())
+          }) {
+            Ok(Some(Some(micros))) => handle.update_retention_micros(micros),
+            Ok(Some(None)) => {},
+            Ok(None) => {
+              handle.update_retention_micros(RetentionHandle::NO_RETENTION_REQUIREMENT);
+            },
+            Err(error) => {
+              log::debug!("failed to peek oldest record for retention init: {error}");
+            },
+          }
+        }
 
         updated_buffers.insert(buffer.id.clone(), (buffer_type, ring_buffer.clone()));
         new_buffers.push((buffer.id.clone(), (buffer_type, ring_buffer)));
@@ -419,6 +475,7 @@ impl Manager {
           "bd tail".to_string(),
           *self.stream_buffer_size_flag.read(),
           Arc::new(RingBufferStats::default()),
+          |_| {},
         ));
 
         Some(BufferEventWithResponse::new(
@@ -544,6 +601,8 @@ pub struct RingBuffer {
 
   // The underlying buffer.
   buffer: Arc<AggregateRingBuffer>,
+
+  _retention_handle: Option<RetentionHandle>,
 }
 
 impl Debug for RingBuffer {
@@ -565,6 +624,7 @@ impl RingBuffer {
     volatile_records_written: Counter,
     volatile_records_refused: Counter,
     non_volatile_records_written: Option<Counter>,
+    on_record_evicted_cb: Option<EvictedRecordCallback>,
   ) -> Result<Arc<AggregateRingBuffer>> {
     // TODO(mattklein123): Right now we expose a very limited set of stats. Given it's much easier
     // now to inject stats we can consider exposing the rest. For now just duplicate what we
@@ -595,6 +655,11 @@ impl RingBuffer {
       },
       Arc::new(volatile_stats),
       Arc::new(non_volatile_stats),
+      move |record_data| {
+        if let Some(callback) = on_record_evicted_cb.as_ref() {
+          callback(record_data);
+        }
+      },
     )
   }
 
@@ -612,12 +677,15 @@ impl RingBuffer {
     corrupted_record_counter: Counter,
     total_data_loss_counter: Counter,
     non_volatile_records_written: Option<Counter>,
+    on_record_evicted_cb: Option<EvictedRecordCallback>,
+    retention_handle: Option<RetentionHandle>,
   ) -> Result<(Arc<Self>, bool)> {
     let filename = non_volatile_filename
       .to_str()
       .ok_or(Error::InvalidFileName)?
       .to_string();
 
+    let on_record_evicted_cb = on_record_evicted_cb;
     let mut buffer = Self::make_buffer(
       name,
       volatile_size,
@@ -630,6 +698,7 @@ impl RingBuffer {
       write_counter.clone(),
       write_failure_counter.clone(),
       non_volatile_records_written.clone(),
+      on_record_evicted_cb.clone(),
     );
 
     let mut deleted = false;
@@ -660,6 +729,7 @@ impl RingBuffer {
         write_counter,
         write_failure_counter,
         non_volatile_records_written,
+        None,
       );
     }
 
@@ -671,6 +741,7 @@ impl RingBuffer {
             filename: non_volatile_filename,
             delete_on_drop: AtomicBool::new(false),
             buffer,
+            _retention_handle: retention_handle,
           }),
           deleted,
         )
@@ -712,6 +783,13 @@ impl RingBuffer {
   // Flush the underlying buffer.
   pub fn flush(&self) {
     self.buffer.flush();
+  }
+
+  #[cfg(test)]
+  pub fn thread_synchronizer(
+    &self,
+  ) -> Arc<crate::buffer::test::thread_synchronizer::ThreadSynchronizer> {
+    self.buffer.thread_synchronizer()
   }
 }
 

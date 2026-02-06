@@ -134,6 +134,7 @@ impl RingBufferImpl {
     allow_overwrite: AllowOverwrite,
     volatile_stats: Arc<RingBufferStats>,
     non_volatile_stats: Arc<RingBufferStats>,
+    on_record_evicted_cb: impl Fn(&[u8]) + Send + Sync + 'static,
   ) -> Result<Arc<Self>> {
     // For aggregate buffers, the size of the file (after subtracting header space) must be >= the
     // size of RAM. This is to avoid situations in which we accept a record into RAM but cannot ever
@@ -162,10 +163,15 @@ impl RingBufferImpl {
       BlockWhenReservingIntoConcurrentRead::Yes,
       per_record_crc32_check,
       non_volatile_stats,
+      |_| {},
     )?;
 
-    let volatile_buffer =
-      VolatileRingBuffer::new(format!("{name}-volatile"), volatile_size, volatile_stats);
+    let volatile_buffer = VolatileRingBuffer::new(
+      format!("{name}-volatile"),
+      volatile_size,
+      volatile_stats,
+      on_record_evicted_cb,
+    );
 
     let shared_data = Arc::new(SharedData {
       volatile_buffer,
@@ -193,6 +199,10 @@ impl RingBufferImpl {
   #[must_use]
   pub fn non_volatile_buffer(&self) -> &NonVolatileRingBuffer {
     &self.shared_data.non_volatile_buffer
+  }
+
+  pub fn peek_oldest_record<T>(&self, f: impl FnOnce(&[u8]) -> T) -> Result<Option<T>> {
+    self.shared_data.non_volatile_buffer.peek_oldest_record(f)
   }
 }
 
