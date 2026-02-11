@@ -20,6 +20,7 @@ bd-bonjson.path             = "../bd-bonjson"
 bd-buffer.path              = "../bd-buffer"
 bd-client-common.path       = "../bd-client-common"
 bd-client-stats-store.path  = "../bd-client-stats-store"
+bd-json-path.path           = "../bd-json-path"
 bd-log-primitives.path      = "../bd-log-primitives"
 bd-proto.path               = "../bd-proto"
 bd-proto-util.path          = "../bd-proto-util"
@@ -30,6 +31,7 @@ bd-workspace-hack.workspace = true
 libfuzzer-sys.workspace     = true
 log.workspace               = true
 protobuf.workspace          = true
+serde_json.workspace        = true
 tempfile.workspace          = true
 time.workspace              = true
 tokio.workspace             = true
@@ -37,6 +39,7 @@ tokio.workspace             = true
 [dev-dependencies]
 bd-test-helpers.path = "../bd-test-helpers"
 ctor.workspace       = true
+serde_json.workspace = true
 
 [[bin]]
 doc  = false
@@ -72,4 +75,10 @@ test = false
 doc  = false
 name = "workflow_state"
 path = "fuzz_targets/workflow_state.rs"
+test = false
+
+[[bin]]
+doc  = false
+name = "json_path"
+path = "fuzz_targets/json_path.rs"
 test = false

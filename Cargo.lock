@@ -749,6 +749,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-json-path"
+version = "0.1.0"
+dependencies = [
+ "bd-test-helpers",
+ "ctor",
+ "serde_json",
+]
+
+[[package]]
 name = "bd-key-value"
 version = "1.0.0"
 dependencies = [
@@ -2224,6 +2233,7 @@ dependencies = [
  "bd-buffer",
  "bd-client-common",
  "bd-client-stats-store",
+ "bd-json-path",
  "bd-log-primitives",
  "bd-proto",
  "bd-proto-util",
@@ -2236,6 +2246,7 @@ dependencies = [
  "libfuzzer-sys",
  "log",
  "protobuf 4.0.0-alpha.0",
+ "serde_json",
  "tempfile",
  "time",
  "tokio",

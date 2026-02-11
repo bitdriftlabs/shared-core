@@ -1,0 +1,14 @@
+[package]
+name = "bd-json-path"
+version = "0.1.0"
+edition = "2024"
+license = "PolyForm-Shield-1.0.0"
+publish = false
+description = "Zero-allocation JSON path extractor with O(n) complexity"
+
+[dependencies]
+
+[dev-dependencies]
+bd-test-helpers = { path = "../bd-test-helpers" }
+ctor = { workspace = true }
+serde_json = { workspace = true }
