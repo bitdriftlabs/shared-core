@@ -42,6 +42,7 @@ use log_matcher::base_log_matcher::tag_match::Value_match::{
   StringValueMatch,
 };
 use log_matcher::{BaseLogMatcher, Matcher, MatcherList, base_log_matcher};
+use ordered_float::NotNan;
 use pretty_assertions::assert_eq;
 use protobuf::{Enum, MessageField};
 
@@ -89,6 +90,21 @@ fn map_log_tag(key: &'static str, value: DataValue) -> Input<'static> {
     log_level::DEBUG,
     LogMessage::String("message".into()),
     [(key.into(), value)].into(),
+  )
+}
+
+fn i64_log_tag(key: &'static str, value: i64) -> Input<'static> {
+  map_log_tag(key, DataValue::I64(value))
+}
+
+fn u64_log_tag(key: &'static str, value: u64) -> Input<'static> {
+  map_log_tag(key, DataValue::U64(value))
+}
+
+fn double_log_tag(key: &'static str, value: f64) -> Input<'static> {
+  map_log_tag(
+    key,
+    DataValue::Double(NotNan::new(value).expect("test value must not be NaN")),
   )
 }
 
@@ -1570,4 +1586,159 @@ fn match_test_runner_with_extractions(
       "{input:?} should result in {should_match} but did not",
     );
   }
+}
+
+#[test]
+fn int_matcher_with_i64_field() {
+  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+    tag_key: "key".to_string(),
+    value_match: Some(IntValueMatch(
+      bd_proto::protos::value_matcher::value_matcher::IntValueMatch {
+        operator: Operator::OPERATOR_EQUALS.into(),
+        int_value_match_type: Some(Int_value_match_type::MatchValue(42)),
+        ..Default::default()
+      },
+    )),
+    ..Default::default()
+  }));
+
+  match_test_runner(
+    config,
+    vec![
+      (i64_log_tag("key", 42), true),
+      (i64_log_tag("key", 41), false),
+      (i64_log_tag("key", 43), false),
+      (log_tag("key", "42"), true),
+    ],
+  );
+}
+
+#[test]
+fn int_matcher_with_u64_field() {
+  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+    tag_key: "key".to_string(),
+    value_match: Some(IntValueMatch(
+      bd_proto::protos::value_matcher::value_matcher::IntValueMatch {
+        operator: Operator::OPERATOR_LESS_THAN.into(),
+        int_value_match_type: Some(Int_value_match_type::MatchValue(100)),
+        ..Default::default()
+      },
+    )),
+    ..Default::default()
+  }));
+
+  match_test_runner(
+    config,
+    vec![
+      (u64_log_tag("key", 50), true),
+      (u64_log_tag("key", 100), false),
+      (u64_log_tag("key", 150), false),
+    ],
+  );
+}
+
+#[test]
+fn int_matcher_with_double_field() {
+  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+    tag_key: "key".to_string(),
+    value_match: Some(IntValueMatch(
+      bd_proto::protos::value_matcher::value_matcher::IntValueMatch {
+        operator: Operator::OPERATOR_EQUALS.into(),
+        int_value_match_type: Some(Int_value_match_type::MatchValue(42)),
+        ..Default::default()
+      },
+    )),
+    ..Default::default()
+  }));
+
+  match_test_runner(
+    config,
+    vec![
+      (double_log_tag("key", 42.0), true),
+      (double_log_tag("key", 42.9), true),
+      (double_log_tag("key", 41.1), false),
+    ],
+  );
+}
+
+#[test]
+fn double_matcher_with_double_field() {
+  fn make_config(match_value: f64, operator: Operator) -> LogMatcher {
+    simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+      tag_key: "key".to_string(),
+      value_match: Some(DoubleValueMatch(
+        bd_proto::protos::value_matcher::value_matcher::DoubleValueMatch {
+          operator: operator.into(),
+          double_value_match_type: Some(Double_value_match_type::MatchValue(match_value)),
+          ..Default::default()
+        },
+      )),
+      ..Default::default()
+    }))
+  }
+
+  match_test_runner(
+    make_config(12.0, Operator::OPERATOR_LESS_THAN_OR_EQUAL),
+    vec![
+      (double_log_tag("key", 13.0), false),
+      (double_log_tag("key", 12.0), true),
+      (double_log_tag("key", 11.0), true),
+    ],
+  );
+
+  match_test_runner(
+    make_config(12.5, Operator::OPERATOR_EQUALS),
+    vec![
+      (double_log_tag("key", 12.5), true),
+      (double_log_tag("key", 12.0), false),
+      (log_tag("key", "12.5"), true),
+    ],
+  );
+}
+
+#[test]
+fn double_matcher_with_i64_field() {
+  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+    tag_key: "key".to_string(),
+    value_match: Some(DoubleValueMatch(
+      bd_proto::protos::value_matcher::value_matcher::DoubleValueMatch {
+        operator: Operator::OPERATOR_GREATER_THAN.into(),
+        double_value_match_type: Some(Double_value_match_type::MatchValue(10.5)),
+        ..Default::default()
+      },
+    )),
+    ..Default::default()
+  }));
+
+  match_test_runner(
+    config,
+    vec![
+      (i64_log_tag("key", 11), true),
+      (i64_log_tag("key", 10), false),
+      (i64_log_tag("key", 100), true),
+    ],
+  );
+}
+
+#[test]
+fn double_matcher_with_u64_field() {
+  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+    tag_key: "key".to_string(),
+    value_match: Some(DoubleValueMatch(
+      bd_proto::protos::value_matcher::value_matcher::DoubleValueMatch {
+        operator: Operator::OPERATOR_EQUALS.into(),
+        double_value_match_type: Some(Double_value_match_type::MatchValue(100.0)),
+        ..Default::default()
+      },
+    )),
+    ..Default::default()
+  }));
+
+  match_test_runner(
+    config,
+    vec![
+      (u64_log_tag("key", 100), true),
+      (u64_log_tag("key", 99), false),
+    ],
+  );
 }

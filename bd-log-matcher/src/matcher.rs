@@ -144,22 +144,12 @@ impl Tree {
           .try_into()
           .is_ok_and(|log_level| log_level_matcher.evaluate(log_level, extracted_fields)),
         Leaf::LogType(l_type) => *l_type == log_type as u32,
-        Leaf::IntValue(input, criteria) =>
-        {
-          #[allow(clippy::cast_possible_truncation)]
-          input.get(message, fields, state).is_some_and(|input| {
-            input
-              .parse::<f64>()
-              .is_ok_and(|v| criteria.evaluate(v as i32, extracted_fields))
-          })
-        },
-        Leaf::DoubleValue(input, criteria) => {
-          input.get(message, fields, state).is_some_and(|input| {
-            input
-              .parse()
-              .is_ok_and(|v| criteria.evaluate(v, extracted_fields))
-          })
-        },
+        Leaf::IntValue(input, criteria) => input
+          .get_as_i32(message, fields, state)
+          .is_some_and(|v| criteria.evaluate(v, extracted_fields)),
+        Leaf::DoubleValue(input, criteria) => input
+          .get_as_f64(message, fields, state)
+          .is_some_and(|v| criteria.evaluate(v, extracted_fields)),
         Leaf::StringValue(input, criteria) => input
           .get(message, fields, state)
           .is_some_and(|input| criteria.evaluate(input.as_ref(), extracted_fields)),
@@ -243,6 +233,84 @@ impl InputType {
           None => Cow::Borrowed(""),
         }
       }),
+    }
+  }
+
+  /// Extracts a value as i32 for use with `IntMatch`. Handles numeric `DataValue` types directly,
+  /// falling back to string parsing for string types.
+  #[allow(clippy::cast_possible_truncation)]
+  fn get_as_i32(
+    &self,
+    message: &LogMessage,
+    fields: FieldsRef<'_>,
+    state: &dyn bd_state::StateReader,
+  ) -> Option<i32> {
+    match self {
+      Self::Message => message.as_str().and_then(|s| s.parse().ok()),
+      Self::Field(field_key) => {
+        let field = fields.field(field_key)?;
+        match field {
+          DataValue::I64(v) => i32::try_from(*v).ok(),
+          DataValue::U64(v) => i32::try_from(*v).ok(),
+          DataValue::Double(v) => Some(**v as i32),
+          DataValue::String(_) | DataValue::SharedString(_) | DataValue::StaticString(_) => {
+            // Parse as f64 first then truncate to preserve backward compatibility with strings
+            // like "13.0" that were previously accepted.
+            Some(field.as_str()?.parse::<f64>().ok()? as i32)
+          },
+          DataValue::Bytes(_) | DataValue::Boolean(_) | DataValue::Map(_) | DataValue::Array(_) => {
+            None
+          },
+        }
+      },
+      Self::State(scope, flag_key) => {
+        use bd_state::Value_type;
+        let v = state.get(*scope, flag_key)?;
+        match v.value_type {
+          Some(Value_type::IntValue(i)) => i32::try_from(i).ok(),
+          Some(Value_type::DoubleValue(d)) => Some(d as i32),
+          Some(Value_type::StringValue(ref s)) => s.parse().ok(),
+          Some(Value_type::BoolValue(_)) | None => None,
+        }
+      },
+    }
+  }
+
+  /// Extracts a value as f64 for use with `DoubleMatch`. Handles numeric `DataValue` types
+  /// directly, falling back to string parsing for string types.
+  #[allow(clippy::cast_precision_loss)]
+  fn get_as_f64(
+    &self,
+    message: &LogMessage,
+    fields: FieldsRef<'_>,
+    state: &dyn bd_state::StateReader,
+  ) -> Option<f64> {
+    match self {
+      Self::Message => message.as_str().and_then(|s| s.parse().ok()),
+      Self::Field(field_key) => {
+        let field = fields.field(field_key)?;
+        match field {
+          DataValue::Double(v) => Some(**v),
+          DataValue::I64(v) => Some(*v as f64),
+          DataValue::U64(v) => Some(*v as f64),
+          DataValue::String(_) | DataValue::SharedString(_) | DataValue::StaticString(_) => {
+            field.as_str()?.parse().ok()
+          },
+          DataValue::Bytes(_) | DataValue::Boolean(_) | DataValue::Map(_) | DataValue::Array(_) => {
+            None
+          },
+        }
+      },
+      Self::State(scope, flag_key) => {
+        use bd_state::Value_type;
+        let v = state.get(*scope, flag_key)?;
+        match v.value_type {
+          Some(Value_type::DoubleValue(d)) => Some(d),
+          Some(Value_type::IntValue(i)) => Some(i as f64),
+          Some(Value_type::StringValue(ref s)) => s.parse().ok(),
+          Some(Value_type::BoolValue(_)) | None => None,
+        }
+      },
     }
   }
 }
