@@ -11,7 +11,7 @@ use crate::{DataValue, EncodableLog, Log, LogFieldValue, LogType};
 use ahash::AHashMap;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::log::Field;
-use bd_proto::protos::logging::payload::{BinaryData, Data};
+use bd_proto::protos::logging::payload::{ArrayData, BinaryData, Data, MapData};
 use ordered_float::NotNan;
 use protobuf::{Message, MessageFull};
 use std::borrow::Cow;
@@ -44,7 +44,8 @@ fn custom_proto_encoder() {
   Data::descriptor()
     .fields()
     .for_each(|field| match field.name() {
-      "string_data" | "binary_data" | "int_data" | "double_data" | "bool_data" | "sint_data" => {},
+      "string_data" | "binary_data" | "int_data" | "double_data" | "bool_data" | "sint_data"
+      | "map_data" | "array_data" => {},
       other => panic!("unexpected field added to Data proto: {other}"),
     });
   // Note that "type" is unused currently and not encoded.
@@ -99,6 +100,38 @@ fn data_encoding() {
       Data {
         data_type: Some(Data_type::BinaryData(BinaryData {
           payload: vec![1, 2, 3, 4],
+          ..Default::default()
+        })),
+        ..Default::default()
+      },
+    ),
+    (
+      LogFieldValue::from(AHashMap::from_iter([(
+        "key".to_string(),
+        LogFieldValue::String("value".to_string()),
+      )])),
+      Data {
+        data_type: Some(Data_type::MapData(MapData {
+          entries: std::collections::HashMap::from_iter([(
+            "key".to_string(),
+            Data {
+              data_type: Some(Data_type::StringData("value".to_string())),
+              ..Default::default()
+            },
+          )]),
+          ..Default::default()
+        })),
+        ..Default::default()
+      },
+    ),
+    (
+      LogFieldValue::from(vec![LogFieldValue::String("value".to_string())]),
+      Data {
+        data_type: Some(Data_type::ArrayData(ArrayData {
+          items: vec![Data {
+            data_type: Some(Data_type::StringData("value".to_string())),
+            ..Default::default()
+          }],
           ..Default::default()
         })),
         ..Default::default()

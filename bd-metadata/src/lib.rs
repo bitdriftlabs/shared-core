@@ -30,7 +30,7 @@ use std::collections::HashMap;
 // Version 34: Added support for data idle timeouts and reconnect delays.
 // Version 35: Added support for workflow matching and tag extraction against feature flags.
 // Version 36: Added support for state to the worfklow engine.
-const CONFIGURATION_VERSION: &str = "36";
+const CONFIGURATION_VERSION: &str = "37";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]

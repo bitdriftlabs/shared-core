@@ -812,6 +812,7 @@ dependencies = [
 name = "bd-log-matcher"
 version = "1.0.0"
 dependencies = [
+ "ahash",
  "anyhow",
  "assert_matches",
  "bd-log-primitives",

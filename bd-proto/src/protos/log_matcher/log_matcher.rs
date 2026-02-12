@@ -1182,8 +1182,57 @@ pub mod log_matcher {
                 }
             }
 
+            // .bitdrift_public.protobuf.value_matcher.v1.JsonPathValueMatch json_value_match = 7;
+
+            pub fn json_value_match(&self) -> &super::super::super::value_matcher::JsonPathValueMatch {
+                match self.value_match {
+                    ::std::option::Option::Some(tag_match::Value_match::JsonValueMatch(ref v)) => v,
+                    _ => <super::super::super::value_matcher::JsonPathValueMatch as ::protobuf::Message>::default_instance(),
+                }
+            }
+
+            pub fn clear_json_value_match(&mut self) {
+                self.value_match = ::std::option::Option::None;
+            }
+
+            pub fn has_json_value_match(&self) -> bool {
+                match self.value_match {
+                    ::std::option::Option::Some(tag_match::Value_match::JsonValueMatch(..)) => true,
+                    _ => false,
+                }
+            }
+
+            // Param is passed by value, moved
+            pub fn set_json_value_match(&mut self, v: super::super::super::value_matcher::JsonPathValueMatch) {
+                self.value_match = ::std::option::Option::Some(tag_match::Value_match::JsonValueMatch(v))
+            }
+
+            // Mutable pointer to the field.
+            pub fn mut_json_value_match(&mut self) -> &mut super::super::super::value_matcher::JsonPathValueMatch {
+                if let ::std::option::Option::Some(tag_match::Value_match::JsonValueMatch(_)) = self.value_match {
+                } else {
+                    self.value_match = ::std::option::Option::Some(tag_match::Value_match::JsonValueMatch(super::super::super::value_matcher::JsonPathValueMatch::new()));
+                }
+                match self.value_match {
+                    ::std::option::Option::Some(tag_match::Value_match::JsonValueMatch(ref mut v)) => v,
+                    _ => panic!(),
+                }
+            }
+
+            // Take field
+            pub fn take_json_value_match(&mut self) -> super::super::super::value_matcher::JsonPathValueMatch {
+                if self.has_json_value_match() {
+                    match self.value_match.take() {
+                        ::std::option::Option::Some(tag_match::Value_match::JsonValueMatch(v)) => v,
+                        _ => panic!(),
+                    }
+                } else {
+                    super::super::super::value_matcher::JsonPathValueMatch::new()
+                }
+            }
+
             pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-                let mut fields = ::std::vec::Vec::with_capacity(6);
+                let mut fields = ::std::vec::Vec::with_capacity(7);
                 let mut oneofs = ::std::vec::Vec::with_capacity(1);
                 fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                     "tag_key",
@@ -1225,6 +1274,13 @@ pub mod log_matcher {
                     TagMatch::mut_double_value_match,
                     TagMatch::set_double_value_match,
                 ));
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::super::super::value_matcher::JsonPathValueMatch>(
+                    "json_value_match",
+                    TagMatch::has_json_value_match,
+                    TagMatch::json_value_match,
+                    TagMatch::mut_json_value_match,
+                    TagMatch::set_json_value_match,
+                ));
                 oneofs.push(tag_match::Value_match::generated_oneof_descriptor_data());
                 ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<TagMatch>(
                     "LogMatcher.BaseLogMatcher.TagMatch",
@@ -1261,6 +1317,9 @@ pub mod log_matcher {
                         },
                         50 => {
                             self.value_match = ::std::option::Option::Some(tag_match::Value_match::DoubleValueMatch(is.read_message()?));
+                        },
+                        58 => {
+                            self.value_match = ::std::option::Option::Some(tag_match::Value_match::JsonValueMatch(is.read_message()?));
                         },
                         tag => {
                             ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -1299,6 +1358,10 @@ pub mod log_matcher {
                             let len = v.compute_size();
                             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                         },
+                        &tag_match::Value_match::JsonValueMatch(ref v) => {
+                            let len = v.compute_size();
+                            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                        },
                     };
                 }
                 my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -1327,6 +1390,9 @@ pub mod log_matcher {
                         &tag_match::Value_match::DoubleValueMatch(ref v) => {
                             ::protobuf::rt::write_message_field_with_cached_size(6, v, os)?;
                         },
+                        &tag_match::Value_match::JsonValueMatch(ref v) => {
+                            ::protobuf::rt::write_message_field_with_cached_size(7, v, os)?;
+                        },
                     };
                 }
                 os.write_unknown_fields(self.special_fields.unknown_fields())?;
@@ -1347,6 +1413,7 @@ pub mod log_matcher {
 
             fn clear(&mut self) {
                 self.tag_key.clear();
+                self.value_match = ::std::option::Option::None;
                 self.value_match = ::std::option::Option::None;
                 self.value_match = ::std::option::Option::None;
                 self.value_match = ::std::option::Option::None;
@@ -1398,6 +1465,8 @@ pub mod log_matcher {
                 IsSetMatch(super::super::super::super::value_matcher::IsSetMatch),
                 // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.TagMatch.double_value_match)
                 DoubleValueMatch(super::super::super::super::value_matcher::DoubleValueMatch),
+                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.TagMatch.json_value_match)
+                JsonValueMatch(super::super::super::super::value_matcher::JsonPathValueMatch),
             }
 
             impl ::protobuf::Oneof for Value_match {
@@ -1706,42 +1775,44 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     blic.protobuf.matcher.v1\x1a/bitdrift_public/protobuf/state/v1/matcher.p\
     roto\x1a-bitdrift_public/protobuf/state/v1/scope.proto\x1a=bitdrift_publ\
     ic/protobuf/value_matcher/v1/value_matcher.proto\x1a\x17validate/validat\
-    e.proto\"\xab\x0e\n\nLogMatcher\x12c\n\x0cbase_matcher\x18\x01\x20\x01(\
+    e.proto\"\x96\x0f\n\nLogMatcher\x12c\n\x0cbase_matcher\x18\x01\x20\x01(\
     \x0b2>.bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcherH\0R\
     \x0bbaseMatcher\x12\\\n\nor_matcher\x18\x02\x20\x01(\x0b2;.bitdrift_publ\
     ic.protobuf.matcher.v1.LogMatcher.MatcherListH\0R\torMatcher\x12^\n\x0ba\
     nd_matcher\x18\x03\x20\x01(\x0b2;.bitdrift_public.protobuf.matcher.v1.Lo\
     gMatcher.MatcherListH\0R\nandMatcher\x12R\n\x0bnot_matcher\x18\x04\x20\
     \x01(\x0b2/.bitdrift_public.protobuf.matcher.v1.LogMatcherH\0R\nnotMatch\
-    er\x1a\xa8\n\n\x0eBaseLogMatcher\x12r\n\rmessage_match\x18\x01\x20\x01(\
-    \x0b2K.bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.Mes\
-    sageMatchH\0R\x0cmessageMatch\x12f\n\ttag_match\x18\x02\x20\x01(\x0b2G.b\
-    itdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.TagMatchH\0\
-    R\x08tagMatch\x12l\n\x0bstate_match\x18\x04\x20\x01(\x0b2I.bitdrift_publ\
-    ic.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StateMatchH\0R\nstateMa\
-    tch\x1ay\n\x0cMessageMatch\x12i\n\x12string_value_match\x18\x01\x20\x01(\
-    \x0b2;.bitdrift_public.protobuf.value_matcher.v1.StringValueMatchR\x10st\
-    ringValueMatch\x1a\xc9\x04\n\x08TagMatch\x12\"\n\x07tag_key\x18\x01\x20\
-    \x01(\tR\x06tagKeyB\t\xfaB\x06r\x04\x10\x01\x18@\x12k\n\x12string_value_\
-    match\x18\x02\x20\x01(\x0b2;.bitdrift_public.protobuf.value_matcher.v1.S\
-    tringValueMatchH\0R\x10stringValueMatch\x12b\n\x0fint_value_match\x18\
-    \x03\x20\x01(\x0b28.bitdrift_public.protobuf.value_matcher.v1.IntValueMa\
-    tchH\0R\rintValueMatch\x12l\n\x13sem_ver_value_match\x18\x04\x20\x01(\
-    \x0b2;.bitdrift_public.protobuf.value_matcher.v1.SemVerValueMatchH\0R\
-    \x10semVerValueMatch\x12Y\n\x0cis_set_match\x18\x05\x20\x01(\x0b25.bitdr\
-    ift_public.protobuf.value_matcher.v1.IsSetMatchH\0R\nisSetMatch\x12k\n\
-    \x12double_value_match\x18\x06\x20\x01(\x0b2;.bitdrift_public.protobuf.v\
-    alue_matcher.v1.DoubleValueMatchH\0R\x10doubleValueMatchB\x12\n\x0bvalue\
-    _match\x12\x03\xf8B\x01\x1a\xeb\x01\n\nStateMatch\x12M\n\x05scope\x18\
-    \x01\x20\x01(\x0e2-.bitdrift_public.protobuf.state.v1.StateScopeR\x05sco\
-    peB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12$\n\tstate_key\x18\x02\x20\x01(\
-    \tR\x08stateKeyB\x07\xfaB\x04r\x02\x10\x01\x12h\n\x11state_value_match\
-    \x18\x03\x20\x01(\x0b22.bitdrift_public.protobuf.state.v1.StateValueMatc\
-    hR\x0fstateValueMatchB\x08\xfaB\x05\x8a\x01\x02\x10\x01B\x11\n\nmatch_ty\
-    pe\x12\x03\xf8B\x01J\x04\x08\x03\x10\x04\x1ak\n\x0bMatcherList\x12\\\n\
-    \x0clog_matchers\x18\x01\x20\x03(\x0b2/.bitdrift_public.protobuf.matcher\
-    .v1.LogMatcherR\x0blogMatchersB\x08\xfaB\x05\x92\x01\x02\x08\x02B\x0e\n\
-    \x07matcher\x12\x03\xf8B\x01b\x06proto3\
+    er\x1a\x93\x0b\n\x0eBaseLogMatcher\x12r\n\rmessage_match\x18\x01\x20\x01\
+    (\x0b2K.bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.Me\
+    ssageMatchH\0R\x0cmessageMatch\x12f\n\ttag_match\x18\x02\x20\x01(\x0b2G.\
+    bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.TagMatchH\
+    \0R\x08tagMatch\x12l\n\x0bstate_match\x18\x04\x20\x01(\x0b2I.bitdrift_pu\
+    blic.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StateMatchH\0R\nstate\
+    Match\x1ay\n\x0cMessageMatch\x12i\n\x12string_value_match\x18\x01\x20\
+    \x01(\x0b2;.bitdrift_public.protobuf.value_matcher.v1.StringValueMatchR\
+    \x10stringValueMatch\x1a\xb4\x05\n\x08TagMatch\x12\"\n\x07tag_key\x18\
+    \x01\x20\x01(\tR\x06tagKeyB\t\xfaB\x06r\x04\x10\x01\x18@\x12k\n\x12strin\
+    g_value_match\x18\x02\x20\x01(\x0b2;.bitdrift_public.protobuf.value_matc\
+    her.v1.StringValueMatchH\0R\x10stringValueMatch\x12b\n\x0fint_value_matc\
+    h\x18\x03\x20\x01(\x0b28.bitdrift_public.protobuf.value_matcher.v1.IntVa\
+    lueMatchH\0R\rintValueMatch\x12l\n\x13sem_ver_value_match\x18\x04\x20\
+    \x01(\x0b2;.bitdrift_public.protobuf.value_matcher.v1.SemVerValueMatchH\
+    \0R\x10semVerValueMatch\x12Y\n\x0cis_set_match\x18\x05\x20\x01(\x0b25.bi\
+    tdrift_public.protobuf.value_matcher.v1.IsSetMatchH\0R\nisSetMatch\x12k\
+    \n\x12double_value_match\x18\x06\x20\x01(\x0b2;.bitdrift_public.protobuf\
+    .value_matcher.v1.DoubleValueMatchH\0R\x10doubleValueMatch\x12i\n\x10jso\
+    n_value_match\x18\x07\x20\x01(\x0b2=.bitdrift_public.protobuf.value_matc\
+    her.v1.JsonPathValueMatchH\0R\x0ejsonValueMatchB\x12\n\x0bvalue_match\
+    \x12\x03\xf8B\x01\x1a\xeb\x01\n\nStateMatch\x12M\n\x05scope\x18\x01\x20\
+    \x01(\x0e2-.bitdrift_public.protobuf.state.v1.StateScopeR\x05scopeB\x08\
+    \xfaB\x05\x82\x01\x02\x10\x01\x12$\n\tstate_key\x18\x02\x20\x01(\tR\x08s\
+    tateKeyB\x07\xfaB\x04r\x02\x10\x01\x12h\n\x11state_value_match\x18\x03\
+    \x20\x01(\x0b22.bitdrift_public.protobuf.state.v1.StateValueMatchR\x0fst\
+    ateValueMatchB\x08\xfaB\x05\x8a\x01\x02\x10\x01B\x11\n\nmatch_type\x12\
+    \x03\xf8B\x01J\x04\x08\x03\x10\x04\x1ak\n\x0bMatcherList\x12\\\n\x0clog_\
+    matchers\x18\x01\x20\x03(\x0b2/.bitdrift_public.protobuf.matcher.v1.LogM\
+    atcherR\x0blogMatchersB\x08\xfaB\x05\x92\x01\x02\x08\x02B\x0e\n\x07match\
+    er\x12\x03\xf8B\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

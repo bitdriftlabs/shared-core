@@ -7,7 +7,6 @@
 
 use bd_log_primitives::DataValue;
 use bd_proto::protos::client::api::LogUploadRequest;
-use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::{Log, LogType};
 use protobuf::Message;
 
@@ -69,16 +68,13 @@ impl WrappedLog {
 
   #[must_use]
   pub fn typed_message(&self) -> DataValue {
-    match self.0.message.data_type.as_ref().unwrap() {
-      Data_type::StringData(string_data) => DataValue::String(string_data.clone()),
-      Data_type::BinaryData(binary_data) => DataValue::Bytes(binary_data.payload.clone().into()),
-      Data_type::BoolData(bool_data) => DataValue::Boolean(*bool_data),
-      Data_type::IntData(int_data) => DataValue::U64(*int_data),
-      Data_type::SintData(sint_data) => DataValue::I64(*sint_data),
-      Data_type::DoubleData(double_data) => {
-        DataValue::Double(ordered_float::NotNan::new(*double_data).unwrap())
-      },
-    }
+    self
+      .0
+      .message
+      .clone()
+      .into_option()
+      .and_then(DataValue::from_proto)
+      .expect("missing message value")
   }
 
   #[must_use]
@@ -88,17 +84,13 @@ impl WrappedLog {
       .fields
       .iter()
       .map(|field| {
-        if field.value.has_string_data() {
-          (
-            field.key.clone(),
-            DataValue::String(field.value.string_data().to_string()),
-          )
-        } else {
-          (
-            field.key.clone(),
-            DataValue::Bytes(field.value.binary_data().payload.clone().into()),
-          )
-        }
+        let value = field
+          .value
+          .clone()
+          .into_option()
+          .and_then(DataValue::from_proto)
+          .expect("missing field value");
+        (field.key.clone(), value)
       })
       .collect()
   }

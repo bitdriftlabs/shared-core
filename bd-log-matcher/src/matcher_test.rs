@@ -9,6 +9,7 @@ use crate::builder;
 use crate::matcher::Tree;
 use crate::matcher::base_log_matcher::tag_match::Value_match::DoubleValueMatch;
 use crate::test::TestMatcher;
+use ahash::AHashMap;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{
   DataValue,
@@ -24,10 +25,14 @@ use bd_proto::protos::log_matcher::log_matcher::{LogMatcher, log_matcher};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::state::matcher::state_value_match;
 use bd_proto::protos::state::scope::StateScope;
-use bd_proto::protos::value_matcher::value_matcher::Operator;
 use bd_proto::protos::value_matcher::value_matcher::double_value_match::Double_value_match_type;
 use bd_proto::protos::value_matcher::value_matcher::int_value_match::Int_value_match_type;
+use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{
+  KeyOrIndex,
+  key_or_index,
+};
 use bd_proto::protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
+use bd_proto::protos::value_matcher::value_matcher::{JsonPathValueMatch, Operator};
 use bd_state::StateReader;
 use log_matcher::base_log_matcher::Match_type::{MessageMatch, StateMatch, TagMatch};
 use log_matcher::base_log_matcher::tag_match::Value_match::{
@@ -78,6 +83,15 @@ fn binary_log_tag(key: &'static str, value: &'static [u8]) -> Input<'static> {
   )
 }
 
+fn map_log_tag(key: &'static str, value: DataValue) -> Input<'static> {
+  (
+    LogType::NORMAL,
+    log_level::DEBUG,
+    LogMessage::String("message".into()),
+    [(key.into(), value)].into(),
+  )
+}
+
 fn log_type(log_type: LogType) -> Input<'static> {
   (
     log_type,
@@ -94,6 +108,321 @@ fn log_level(log_level: LogLevel) -> Input<'static> {
     LogMessage::String("message".into()),
     [].into(),
   )
+}
+
+#[test]
+fn json_path_matcher_string_match() {
+  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+    tag_key: "payload".to_string(),
+    value_match: Some(
+      log_matcher::base_log_matcher::tag_match::Value_match::JsonValueMatch(JsonPathValueMatch {
+        operator: Operator::OPERATOR_EQUALS.into(),
+        match_value: "value".to_string(),
+        key_or_index: vec![
+          KeyOrIndex {
+            key_or_index: Some(key_or_index::Key_or_index::Key("nested".to_string())),
+            ..Default::default()
+          },
+          KeyOrIndex {
+            key_or_index: Some(key_or_index::Key_or_index::Key("key".to_string())),
+            ..Default::default()
+          },
+        ],
+        ..Default::default()
+      }),
+    ),
+    ..Default::default()
+  }));
+
+  let input = map_log_tag(
+    "payload",
+    DataValue::from(AHashMap::from_iter([(
+      "nested".to_string(),
+      DataValue::from(AHashMap::from_iter([(
+        "key".to_string(),
+        DataValue::String("value".to_string()),
+      )])),
+    )])),
+  );
+  let input_mismatch = map_log_tag(
+    "payload",
+    DataValue::from(AHashMap::from_iter([(
+      "nested".to_string(),
+      DataValue::from(AHashMap::from_iter([(
+        "key".to_string(),
+        DataValue::String("other".to_string()),
+      )])),
+    )])),
+  );
+
+  match_test_runner(config, vec![(input, true), (input_mismatch, false)]);
+}
+
+#[test]
+fn json_path_matcher_array_index() {
+  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+    tag_key: "payload".to_string(),
+    value_match: Some(
+      log_matcher::base_log_matcher::tag_match::Value_match::JsonValueMatch(JsonPathValueMatch {
+        operator: Operator::OPERATOR_EQUALS.into(),
+        match_value: "first".to_string(),
+        key_or_index: vec![
+          KeyOrIndex {
+            key_or_index: Some(key_or_index::Key_or_index::Key("items".to_string())),
+            ..Default::default()
+          },
+          KeyOrIndex {
+            key_or_index: Some(key_or_index::Key_or_index::Index(0)),
+            ..Default::default()
+          },
+        ],
+        ..Default::default()
+      }),
+    ),
+    ..Default::default()
+  }));
+
+  let input = map_log_tag(
+    "payload",
+    DataValue::from(AHashMap::from_iter([(
+      "items".to_string(),
+      DataValue::from(vec![
+        DataValue::String("first".to_string()),
+        DataValue::String("second".to_string()),
+      ]),
+    )])),
+  );
+  let input_mismatch = map_log_tag(
+    "payload",
+    DataValue::from(AHashMap::from_iter([(
+      "items".to_string(),
+      DataValue::from(vec![DataValue::String("second".to_string())]),
+    )])),
+  );
+
+  match_test_runner(config, vec![(input, true), (input_mismatch, false)]);
+}
+
+#[test]
+fn json_path_matcher_non_map_field() {
+  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+    tag_key: "payload".to_string(),
+    value_match: Some(
+      log_matcher::base_log_matcher::tag_match::Value_match::JsonValueMatch(JsonPathValueMatch {
+        operator: Operator::OPERATOR_EQUALS.into(),
+        match_value: "value".to_string(),
+        key_or_index: vec![KeyOrIndex {
+          key_or_index: Some(key_or_index::Key_or_index::Key("nested".to_string())),
+          ..Default::default()
+        }],
+        ..Default::default()
+      }),
+    ),
+    ..Default::default()
+  }));
+
+  let input = log_tag("payload", "value");
+
+  match_test_runner(config, vec![(input, false)]);
+}
+
+#[test]
+fn json_path_matcher_missing_key() {
+  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+    tag_key: "payload".to_string(),
+    value_match: Some(
+      log_matcher::base_log_matcher::tag_match::Value_match::JsonValueMatch(JsonPathValueMatch {
+        operator: Operator::OPERATOR_EQUALS.into(),
+        match_value: "value".to_string(),
+        key_or_index: vec![KeyOrIndex {
+          key_or_index: Some(key_or_index::Key_or_index::Key("missing".to_string())),
+          ..Default::default()
+        }],
+        ..Default::default()
+      }),
+    ),
+    ..Default::default()
+  }));
+
+  let input = map_log_tag(
+    "payload",
+    DataValue::from(AHashMap::from_iter([(
+      "nested".to_string(),
+      DataValue::String("value".to_string()),
+    )])),
+  );
+
+  match_test_runner(config, vec![(input, false)]);
+}
+
+#[test]
+fn json_path_matcher_out_of_range_index() {
+  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+    tag_key: "payload".to_string(),
+    value_match: Some(
+      log_matcher::base_log_matcher::tag_match::Value_match::JsonValueMatch(JsonPathValueMatch {
+        operator: Operator::OPERATOR_EQUALS.into(),
+        match_value: "value".to_string(),
+        key_or_index: vec![
+          KeyOrIndex {
+            key_or_index: Some(key_or_index::Key_or_index::Key("items".to_string())),
+            ..Default::default()
+          },
+          KeyOrIndex {
+            key_or_index: Some(key_or_index::Key_or_index::Index(3)),
+            ..Default::default()
+          },
+        ],
+        ..Default::default()
+      }),
+    ),
+    ..Default::default()
+  }));
+
+  let input = map_log_tag(
+    "payload",
+    DataValue::from(AHashMap::from_iter([(
+      "items".to_string(),
+      DataValue::from(vec![DataValue::String("value".to_string())]),
+    )])),
+  );
+
+  match_test_runner(config, vec![(input, false)]);
+}
+
+#[test]
+fn json_path_matcher_negative_index() {
+  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+    tag_key: "payload".to_string(),
+    value_match: Some(
+      log_matcher::base_log_matcher::tag_match::Value_match::JsonValueMatch(JsonPathValueMatch {
+        operator: Operator::OPERATOR_EQUALS.into(),
+        match_value: "last".to_string(),
+        key_or_index: vec![
+          KeyOrIndex {
+            key_or_index: Some(key_or_index::Key_or_index::Key("items".to_string())),
+            ..Default::default()
+          },
+          KeyOrIndex {
+            key_or_index: Some(key_or_index::Key_or_index::Index(-1)),
+            ..Default::default()
+          },
+        ],
+        ..Default::default()
+      }),
+    ),
+    ..Default::default()
+  }));
+
+  let input = map_log_tag(
+    "payload",
+    DataValue::from(AHashMap::from_iter([(
+      "items".to_string(),
+      DataValue::from(vec![
+        DataValue::String("first".to_string()),
+        DataValue::String("last".to_string()),
+      ]),
+    )])),
+  );
+  let input_mismatch = map_log_tag(
+    "payload",
+    DataValue::from(AHashMap::from_iter([(
+      "items".to_string(),
+      DataValue::from(vec![DataValue::String("only".to_string())]),
+    )])),
+  );
+
+  match_test_runner(config, vec![(input, true), (input_mismatch, false)]);
+}
+
+#[test]
+fn json_path_matcher_negative_index_out_of_range() {
+  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+    tag_key: "payload".to_string(),
+    value_match: Some(
+      log_matcher::base_log_matcher::tag_match::Value_match::JsonValueMatch(JsonPathValueMatch {
+        operator: Operator::OPERATOR_EQUALS.into(),
+        match_value: "value".to_string(),
+        key_or_index: vec![
+          KeyOrIndex {
+            key_or_index: Some(key_or_index::Key_or_index::Key("items".to_string())),
+            ..Default::default()
+          },
+          KeyOrIndex {
+            key_or_index: Some(key_or_index::Key_or_index::Index(-3)),
+            ..Default::default()
+          },
+        ],
+        ..Default::default()
+      }),
+    ),
+    ..Default::default()
+  }));
+
+  let input = map_log_tag(
+    "payload",
+    DataValue::from(AHashMap::from_iter([(
+      "items".to_string(),
+      DataValue::from(vec![
+        DataValue::String("first".to_string()),
+        DataValue::String("last".to_string()),
+      ]),
+    )])),
+  );
+
+  match_test_runner(config, vec![(input, false)]);
+}
+
+#[test]
+fn json_path_matcher_nested_key_index() {
+  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+    tag_key: "payload".to_string(),
+    value_match: Some(
+      log_matcher::base_log_matcher::tag_match::Value_match::JsonValueMatch(JsonPathValueMatch {
+        operator: Operator::OPERATOR_EQUALS.into(),
+        match_value: "value".to_string(),
+        key_or_index: vec![
+          KeyOrIndex {
+            key_or_index: Some(key_or_index::Key_or_index::Key("items".to_string())),
+            ..Default::default()
+          },
+          KeyOrIndex {
+            key_or_index: Some(key_or_index::Key_or_index::Index(0)),
+            ..Default::default()
+          },
+          KeyOrIndex {
+            key_or_index: Some(key_or_index::Key_or_index::Key("inner".to_string())),
+            ..Default::default()
+          },
+        ],
+        ..Default::default()
+      }),
+    ),
+    ..Default::default()
+  }));
+
+  let input = map_log_tag(
+    "payload",
+    DataValue::from(AHashMap::from_iter([(
+      "items".to_string(),
+      DataValue::from(vec![DataValue::from(AHashMap::from_iter([(
+        "inner".to_string(),
+        DataValue::String("value".to_string()),
+      )]))]),
+    )])),
+  );
+  let input_mismatch = map_log_tag(
+    "payload",
+    DataValue::from(AHashMap::from_iter([(
+      "items".to_string(),
+      DataValue::from(vec![DataValue::from(AHashMap::from_iter([(
+        "inner".to_string(),
+        DataValue::String("other".to_string()),
+      )]))]),
+    )])),
+  );
+
+  match_test_runner(config, vec![(input, true), (input_mismatch, false)]);
 }
 
 #[test]
