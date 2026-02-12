@@ -292,7 +292,9 @@ fn get_int_field_value(fields: &AnnotatedLogFields, field_key: &str) -> Option<u
     | DataValue::Boolean(_)
     | DataValue::U64(_)
     | DataValue::I64(_)
-    | DataValue::Double(_) => return None,
+    | DataValue::Double(_)
+    | DataValue::Map(_)
+    | DataValue::Array(_) => return None,
   };
 
   string_value.parse::<u64>().ok()

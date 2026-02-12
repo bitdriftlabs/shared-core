@@ -278,7 +278,7 @@ fn log_line_size_is_computed_correctly() {
     }
   }
 
-  let baseline_log_expected_size = 488;
+  let baseline_log_expected_size = 688;
   let baseline_log = create_baseline_log();
   assert_eq!(baseline_log_expected_size, baseline_log.size());
 
@@ -328,7 +328,7 @@ fn annotated_log_line_size_is_computed_correctly() {
     }
   }
 
-  let baseline_log_expected_size = 561;
+  let baseline_log_expected_size = 761;
   let baseline_log = create_baseline_log();
   assert_eq!(baseline_log_expected_size, baseline_log.size());
 

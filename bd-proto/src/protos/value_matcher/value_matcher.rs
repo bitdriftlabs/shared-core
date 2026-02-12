@@ -1002,6 +1002,418 @@ impl ::protobuf::reflect::ProtobufValue for SemVerValueMatch {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.value_matcher.v1.JsonPathValueMatch)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct JsonPathValueMatch {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.value_matcher.v1.JsonPathValueMatch.operator)
+    pub operator: ::protobuf::EnumOrUnknown<Operator>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.value_matcher.v1.JsonPathValueMatch.key_or_index)
+    pub key_or_index: ::std::vec::Vec<json_path_value_match::KeyOrIndex>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.value_matcher.v1.JsonPathValueMatch.match_value)
+    pub match_value: ::std::string::String,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.value_matcher.v1.JsonPathValueMatch.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a JsonPathValueMatch {
+    fn default() -> &'a JsonPathValueMatch {
+        <JsonPathValueMatch as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl JsonPathValueMatch {
+    pub fn new() -> JsonPathValueMatch {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "operator",
+            |m: &JsonPathValueMatch| { &m.operator },
+            |m: &mut JsonPathValueMatch| { &mut m.operator },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "key_or_index",
+            |m: &JsonPathValueMatch| { &m.key_or_index },
+            |m: &mut JsonPathValueMatch| { &mut m.key_or_index },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "match_value",
+            |m: &JsonPathValueMatch| { &m.match_value },
+            |m: &mut JsonPathValueMatch| { &mut m.match_value },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<JsonPathValueMatch>(
+            "JsonPathValueMatch",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for JsonPathValueMatch {
+    const NAME: &'static str = "JsonPathValueMatch";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                8 => {
+                    self.operator = is.read_enum_or_unknown()?;
+                },
+                26 => {
+                    self.key_or_index.push(is.read_message()?);
+                },
+                18 => {
+                    self.match_value = is.read_string()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if self.operator != ::protobuf::EnumOrUnknown::new(Operator::OPERATOR_UNSPECIFIED) {
+            my_size += ::protobuf::rt::int32_size(1, self.operator.value());
+        }
+        for value in &self.key_or_index {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        if !self.match_value.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.match_value);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if self.operator != ::protobuf::EnumOrUnknown::new(Operator::OPERATOR_UNSPECIFIED) {
+            os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.operator))?;
+        }
+        for v in &self.key_or_index {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        };
+        if !self.match_value.is_empty() {
+            os.write_string(2, &self.match_value)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> JsonPathValueMatch {
+        JsonPathValueMatch::new()
+    }
+
+    fn clear(&mut self) {
+        self.operator = ::protobuf::EnumOrUnknown::new(Operator::OPERATOR_UNSPECIFIED);
+        self.key_or_index.clear();
+        self.match_value.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static JsonPathValueMatch {
+        static instance: JsonPathValueMatch = JsonPathValueMatch {
+            operator: ::protobuf::EnumOrUnknown::from_i32(0),
+            key_or_index: ::std::vec::Vec::new(),
+            match_value: ::std::string::String::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for JsonPathValueMatch {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("JsonPathValueMatch").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for JsonPathValueMatch {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for JsonPathValueMatch {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `JsonPathValueMatch`
+pub mod json_path_value_match {
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.value_matcher.v1.JsonPathValueMatch.KeyOrIndex)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct KeyOrIndex {
+        // message oneof groups
+        pub key_or_index: ::std::option::Option<key_or_index::Key_or_index>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.value_matcher.v1.JsonPathValueMatch.KeyOrIndex.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a KeyOrIndex {
+        fn default() -> &'a KeyOrIndex {
+            <KeyOrIndex as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl KeyOrIndex {
+        pub fn new() -> KeyOrIndex {
+            ::std::default::Default::default()
+        }
+
+        // string key = 1;
+
+        pub fn key(&self) -> &str {
+            match self.key_or_index {
+                ::std::option::Option::Some(key_or_index::Key_or_index::Key(ref v)) => v,
+                _ => "",
+            }
+        }
+
+        pub fn clear_key(&mut self) {
+            self.key_or_index = ::std::option::Option::None;
+        }
+
+        pub fn has_key(&self) -> bool {
+            match self.key_or_index {
+                ::std::option::Option::Some(key_or_index::Key_or_index::Key(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_key(&mut self, v: ::std::string::String) {
+            self.key_or_index = ::std::option::Option::Some(key_or_index::Key_or_index::Key(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_key(&mut self) -> &mut ::std::string::String {
+            if let ::std::option::Option::Some(key_or_index::Key_or_index::Key(_)) = self.key_or_index {
+            } else {
+                self.key_or_index = ::std::option::Option::Some(key_or_index::Key_or_index::Key(::std::string::String::new()));
+            }
+            match self.key_or_index {
+                ::std::option::Option::Some(key_or_index::Key_or_index::Key(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_key(&mut self) -> ::std::string::String {
+            if self.has_key() {
+                match self.key_or_index.take() {
+                    ::std::option::Option::Some(key_or_index::Key_or_index::Key(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                ::std::string::String::new()
+            }
+        }
+
+        // int32 index = 2;
+
+        pub fn index(&self) -> i32 {
+            match self.key_or_index {
+                ::std::option::Option::Some(key_or_index::Key_or_index::Index(v)) => v,
+                _ => 0,
+            }
+        }
+
+        pub fn clear_index(&mut self) {
+            self.key_or_index = ::std::option::Option::None;
+        }
+
+        pub fn has_index(&self) -> bool {
+            match self.key_or_index {
+                ::std::option::Option::Some(key_or_index::Key_or_index::Index(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_index(&mut self, v: i32) {
+            self.key_or_index = ::std::option::Option::Some(key_or_index::Key_or_index::Index(v))
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut oneofs = ::std::vec::Vec::with_capacity(1);
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+                "key",
+                KeyOrIndex::has_key,
+                KeyOrIndex::key,
+                KeyOrIndex::set_key,
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_copy_has_get_set_simpler_accessors::<_, _>(
+                "index",
+                KeyOrIndex::has_index,
+                KeyOrIndex::index,
+                KeyOrIndex::set_index,
+            ));
+            oneofs.push(key_or_index::Key_or_index::generated_oneof_descriptor_data());
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<KeyOrIndex>(
+                "JsonPathValueMatch.KeyOrIndex",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for KeyOrIndex {
+        const NAME: &'static str = "KeyOrIndex";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.key_or_index = ::std::option::Option::Some(key_or_index::Key_or_index::Key(is.read_string()?));
+                    },
+                    16 => {
+                        self.key_or_index = ::std::option::Option::Some(key_or_index::Key_or_index::Index(is.read_int32()?));
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let ::std::option::Option::Some(ref v) = self.key_or_index {
+                match v {
+                    &key_or_index::Key_or_index::Key(ref v) => {
+                        my_size += ::protobuf::rt::string_size(1, &v);
+                    },
+                    &key_or_index::Key_or_index::Index(v) => {
+                        my_size += ::protobuf::rt::int32_size(2, v);
+                    },
+                };
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let ::std::option::Option::Some(ref v) = self.key_or_index {
+                match v {
+                    &key_or_index::Key_or_index::Key(ref v) => {
+                        os.write_string(1, v)?;
+                    },
+                    &key_or_index::Key_or_index::Index(v) => {
+                        os.write_int32(2, v)?;
+                    },
+                };
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> KeyOrIndex {
+            KeyOrIndex::new()
+        }
+
+        fn clear(&mut self) {
+            self.key_or_index = ::std::option::Option::None;
+            self.key_or_index = ::std::option::Option::None;
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static KeyOrIndex {
+            static instance: KeyOrIndex = KeyOrIndex {
+                key_or_index: ::std::option::Option::None,
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for KeyOrIndex {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("JsonPathValueMatch.KeyOrIndex").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for KeyOrIndex {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for KeyOrIndex {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `KeyOrIndex`
+    pub mod key_or_index {
+
+        #[derive(Clone,PartialEq,Debug)]
+        // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.value_matcher.v1.JsonPathValueMatch.KeyOrIndex.key_or_index)
+        pub enum Key_or_index {
+            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.value_matcher.v1.JsonPathValueMatch.KeyOrIndex.key)
+            Key(::std::string::String),
+            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.value_matcher.v1.JsonPathValueMatch.KeyOrIndex.index)
+            Index(i32),
+        }
+
+        impl ::protobuf::Oneof for Key_or_index {
+        }
+
+        impl ::protobuf::OneofFull for Key_or_index {
+            fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| <super::KeyOrIndex as ::protobuf::MessageFull>::descriptor().oneof_by_name("key_or_index").unwrap()).clone()
+            }
+        }
+
+        impl Key_or_index {
+            pub(in super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+                ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Key_or_index>("key_or_index")
+            }
+        }
+    }
+}
+
 // @@protoc_insertion_point(message:bitdrift_public.protobuf.value_matcher.v1.IsSetMatch)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct IsSetMatch {
@@ -1217,13 +1629,21 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01\n\x10SemVerValueMatch\x12Y\n\x08operator\x18\x01\x20\x01(\x0e23.bit\
     drift_public.protobuf.value_matcher.v1.OperatorR\x08operatorB\x08\xfaB\
     \x05\x82\x01\x02\x10\x01\x12(\n\x0bmatch_value\x18\x02\x20\x01(\tR\nmatc\
-    hValueB\x07\xfaB\x04r\x02\x10\x01\"\x0c\n\nIsSetMatch*\xea\x01\n\x08Oper\
-    ator\x12\x18\n\x14OPERATOR_UNSPECIFIED\x10\0\x12\x16\n\x12OPERATOR_LESS_\
-    THAN\x10\x01\x12\x1f\n\x1bOPERATOR_LESS_THAN_OR_EQUAL\x10\x02\x12\x13\n\
-    \x0fOPERATOR_EQUALS\x10\x03\x12\x19\n\x15OPERATOR_GREATER_THAN\x10\x04\
-    \x12\"\n\x1eOPERATOR_GREATER_THAN_OR_EQUAL\x10\x05\x12\x17\n\x13OPERATOR\
-    _NOT_EQUALS\x10\x06\x12\x12\n\x0eOPERATOR_REGEX\x10\x07\"\x04\x08\x08\
-    \x10\x08\"\x04\x08\t\x10\tb\x06proto3\
+    hValueB\x07\xfaB\x04r\x02\x10\x01\"\xe7\x02\n\x12JsonPathValueMatch\x12Y\
+    \n\x08operator\x18\x01\x20\x01(\x0e23.bitdrift_public.protobuf.value_mat\
+    cher.v1.OperatorR\x08operatorB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12t\n\
+    \x0ckey_or_index\x18\x03\x20\x03(\x0b2H.bitdrift_public.protobuf.value_m\
+    atcher.v1.JsonPathValueMatch.KeyOrIndexR\nkeyOrIndexB\x08\xfaB\x05\x92\
+    \x01\x02\x08\x01\x12(\n\x0bmatch_value\x18\x02\x20\x01(\tR\nmatchValueB\
+    \x07\xfaB\x04r\x02\x10\x01\x1aV\n\nKeyOrIndex\x12\x1b\n\x03key\x18\x01\
+    \x20\x01(\tH\0R\x03keyB\x07\xfaB\x04r\x02\x10\x01\x12\x16\n\x05index\x18\
+    \x02\x20\x01(\x05H\0R\x05indexB\x13\n\x0ckey_or_index\x12\x03\xf8B\x01\"\
+    \x0c\n\nIsSetMatch*\xea\x01\n\x08Operator\x12\x18\n\x14OPERATOR_UNSPECIF\
+    IED\x10\0\x12\x16\n\x12OPERATOR_LESS_THAN\x10\x01\x12\x1f\n\x1bOPERATOR_\
+    LESS_THAN_OR_EQUAL\x10\x02\x12\x13\n\x0fOPERATOR_EQUALS\x10\x03\x12\x19\
+    \n\x15OPERATOR_GREATER_THAN\x10\x04\x12\"\n\x1eOPERATOR_GREATER_THAN_OR_\
+    EQUAL\x10\x05\x12\x17\n\x13OPERATOR_NOT_EQUALS\x10\x06\x12\x12\n\x0eOPER\
+    ATOR_REGEX\x10\x07\"\x04\x08\x08\x10\x08\"\x04\x08\t\x10\tb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1242,12 +1662,14 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
             let mut deps = ::std::vec::Vec::with_capacity(1);
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(5);
+            let mut messages = ::std::vec::Vec::with_capacity(7);
             messages.push(StringValueMatch::generated_message_descriptor_data());
             messages.push(IntValueMatch::generated_message_descriptor_data());
             messages.push(DoubleValueMatch::generated_message_descriptor_data());
             messages.push(SemVerValueMatch::generated_message_descriptor_data());
+            messages.push(JsonPathValueMatch::generated_message_descriptor_data());
             messages.push(IsSetMatch::generated_message_descriptor_data());
+            messages.push(json_path_value_match::KeyOrIndex::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(1);
             enums.push(Operator::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(

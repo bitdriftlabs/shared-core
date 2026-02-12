@@ -27,7 +27,7 @@ use crate::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use ahash::AHashMap;
 use bd_macros::proto_serializable;
 use bd_proto::protos::logging::payload::data::Data_type;
-use bd_proto::protos::logging::payload::{BinaryData, Data, LogType};
+use bd_proto::protos::logging::payload::{ArrayData, BinaryData, Data, LogType, MapData};
 use bd_proto_util::serialization::ProtoMessageSerialize;
 use bd_time::OffsetDateTimeExt as _;
 use flate2::Compression;
@@ -162,6 +162,92 @@ impl std::ops::Deref for LogBinaryData {
   }
 }
 
+#[proto_serializable(validate_against = "bd_proto::protos::logging::payload::MapData")]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LogMapData {
+  #[field(id = 1)]
+  entries: AHashMap<String, DataValue>,
+}
+
+impl LogMapData {
+  #[must_use]
+  pub fn new(entries: AHashMap<String, DataValue>) -> Self {
+    Self { entries }
+  }
+
+  #[must_use]
+  pub fn entries(&self) -> &AHashMap<String, DataValue> {
+    &self.entries
+  }
+
+  #[must_use]
+  pub fn into_entries(self) -> AHashMap<String, DataValue> {
+    self.entries
+  }
+
+  #[must_use]
+  pub fn into_proto(self) -> MapData {
+    MapData {
+      entries: self
+        .entries
+        .into_iter()
+        .map(|(key, value)| (key, value.into_proto()))
+        .collect(),
+      ..Default::default()
+    }
+  }
+
+  pub fn from_proto(map_data: MapData) -> Option<Self> {
+    let entries = map_data
+      .entries
+      .into_iter()
+      .map(|(key, value)| DataValue::from_proto(value).map(|value| (key, value)))
+      .collect::<Option<AHashMap<_, _>>>()?;
+    Some(Self { entries })
+  }
+}
+
+#[proto_serializable(validate_against = "bd_proto::protos::logging::payload::ArrayData")]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LogArrayData {
+  #[field(id = 1)]
+  items: Vec<DataValue>,
+}
+
+impl LogArrayData {
+  #[must_use]
+  pub fn new(items: Vec<DataValue>) -> Self {
+    Self { items }
+  }
+
+  #[must_use]
+  pub fn items(&self) -> &Vec<DataValue> {
+    &self.items
+  }
+
+  #[must_use]
+  pub fn into_items(self) -> Vec<DataValue> {
+    self.items
+  }
+
+  #[must_use]
+  pub fn into_proto(self) -> ArrayData {
+    ArrayData {
+      items: self.items.into_iter().map(DataValue::into_proto).collect(),
+      ..Default::default()
+    }
+  }
+
+  pub fn from_proto(array_data: ArrayData) -> Option<Self> {
+    let items = array_data
+      .items
+      .into_iter()
+      .map(DataValue::from_proto)
+      .collect::<Option<Vec<_>>>()?;
+    Some(Self { items })
+  }
+}
+
 /// A union type that allows representing either a UTF-8 string, binary data, or primitive values.
 #[proto_serializable(validate_against = "bd_proto::protos::logging::payload::Data")]
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -182,6 +268,10 @@ pub enum DataValue {
   I64(i64),
   #[field(id = 4)]
   Double(NotNan<f64>),
+  #[field(id = 7)]
+  Map(LogMapData),
+  #[field(id = 8)]
+  Array(LogArrayData),
 }
 
 impl DataValue {
@@ -207,6 +297,8 @@ impl DataValue {
         Self::U64(v) => Data_type::IntData(v),
         Self::I64(v) => Data_type::SintData(v),
         Self::Double(v) => Data_type::DoubleData(*v),
+        Self::Map(map_data) => Data_type::MapData(map_data.into_proto()),
+        Self::Array(array_data) => Data_type::ArrayData(array_data.into_proto()),
       }),
       ..Default::default()
     }
@@ -220,6 +312,8 @@ impl DataValue {
       Data_type::IntData(v) => Some(Self::U64(v)),
       Data_type::SintData(v) => Some(Self::I64(v)),
       Data_type::DoubleData(v) => Some(Self::Double(NotNan::new(v).ok()?)),
+      Data_type::MapData(map_data) => Some(Self::Map(LogMapData::from_proto(map_data)?)),
+      Data_type::ArrayData(array_data) => Some(Self::Array(LogArrayData::from_proto(array_data)?)),
     }
   }
 
@@ -230,7 +324,13 @@ impl DataValue {
       Self::String(s) => Some(s.as_ref()),
       Self::SharedString(s) => Some(s.as_ref()),
       Self::StaticString(s) => Some(s),
-      Self::Bytes(_) | Self::Boolean(_) | Self::U64(_) | Self::I64(_) | Self::Double(_) => None,
+      Self::Bytes(_)
+      | Self::Boolean(_)
+      | Self::U64(_)
+      | Self::I64(_)
+      | Self::Double(_)
+      | Self::Map(_)
+      | Self::Array(_) => None,
     }
   }
 
@@ -244,7 +344,9 @@ impl DataValue {
       | Self::Boolean(_)
       | Self::U64(_)
       | Self::I64(_)
-      | Self::Double(_) => None,
+      | Self::Double(_)
+      | Self::Map(_)
+      | Self::Array(_) => None,
       Self::Bytes(b) => Some(b.as_ref()),
     }
   }
@@ -265,6 +367,24 @@ impl From<Arc<str>> for DataValue {
 impl From<Vec<u8>> for DataValue {
   fn from(s: Vec<u8>) -> Self {
     Self::Bytes(LogBinaryData::new(s))
+  }
+}
+
+impl Default for DataValue {
+  fn default() -> Self {
+    Self::String(String::new())
+  }
+}
+
+impl From<AHashMap<String, Self>> for DataValue {
+  fn from(value: AHashMap<String, Self>) -> Self {
+    Self::Map(LogMapData::new(value))
+  }
+}
+
+impl From<Vec<Self>> for DataValue {
+  fn from(value: Vec<Self>) -> Self {
+    Self::Array(LogArrayData::new(value))
   }
 }
 
@@ -297,6 +417,8 @@ impl std::fmt::Display for LogMessage {
       Self::U64(v) => write!(f, "{v}"),
       Self::I64(v) => write!(f, "{v}"),
       Self::Double(v) => write!(f, "{v}"),
+      Self::Map(map_data) => write!(f, "map:{:?}", map_data.entries()),
+      Self::Array(array_data) => write!(f, "array:{:?}", array_data.items()),
     }
   }
 }
@@ -792,6 +914,15 @@ impl<'a> FieldsRef<'a> {
 
     self.matching_field_value(field_key).map(Cow::Borrowed)
   }
+
+  #[must_use]
+  pub fn field(&self, field_key: &str) -> Option<&'a LogFieldValue> {
+    if let Some(value) = self.captured_fields.get(field_key) {
+      return Some(value);
+    }
+
+    self.matching_fields.get(field_key)
+  }
 }
 
 //
@@ -829,6 +960,8 @@ impl MemorySized for LogFieldValue {
         | Self::I64(_)
         | Self::Double(_) => 0,
         Self::Bytes(b) => b.capacity(),
+        Self::Map(map_data) => map_data.entries().size(),
+        Self::Array(array_data) => array_data.items().size(),
       }
   }
 }
