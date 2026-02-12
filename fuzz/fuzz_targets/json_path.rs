@@ -31,8 +31,10 @@ impl JsonValue {
       Self::String(s) => json!(s),
       Self::Array(arr) => serde_json::Value::Array(arr.iter().map(Self::to_serde).collect()),
       Self::Object(pairs) => {
-        let map: serde_json::Map<String, serde_json::Value> =
-          pairs.iter().map(|(k, v)| (k.clone(), v.to_serde())).collect();
+        let map: serde_json::Map<String, serde_json::Value> = pairs
+          .iter()
+          .map(|(k, v)| (k.clone(), v.to_serde()))
+          .collect();
         serde_json::Value::Object(map)
       },
     }
@@ -102,19 +104,16 @@ fuzz_target!(|case: JsonPathFuzzCase| {
 
   match (our_result, serde_result) {
     (None, None) => {},
-    (None, Some(serde_val)) => {
-      match serde_val {
-        serde_json::Value::String(_) | serde_json::Value::Number(_) => {
-          if !json_string_has_escapes(&json_string) && !path_has_non_ascii_or_control(&path_strings)
-          {
-            panic!(
-              "Mismatch: we returned None, serde found {:?}\nJSON: {}\nPath: {:?}",
-              serde_val, json_string, path_strings
-            );
-          }
-        },
-        _ => {},
-      }
+    (None, Some(serde_val)) => match serde_val {
+      serde_json::Value::String(_) | serde_json::Value::Number(_) => {
+        if !json_string_has_escapes(&json_string) && !path_has_non_ascii_or_control(&path_strings) {
+          panic!(
+            "Mismatch: we returned None, serde found {:?}\nJSON: {}\nPath: {:?}",
+            serde_val, json_string, path_strings
+          );
+        }
+      },
+      _ => {},
     },
     (Some(_), None) => {
       panic!(
@@ -153,7 +152,7 @@ fuzz_target!(|case: JsonPathFuzzCase| {
 
 fn json_string_has_escapes(json: &str) -> bool {
   let bytes = json.as_bytes();
-  for i in 0..bytes.len().saturating_sub(1) {
+  for i in 0 .. bytes.len().saturating_sub(1) {
     if bytes[i] == b'\\' {
       return true;
     }
