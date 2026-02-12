@@ -276,14 +276,8 @@ fn large_array_skip() {
 #[test]
 fn key_with_special_chars() {
   let json = r#"{"key-with-dash": "a", "key.with.dots": "b", "key:colon": "c"}"#;
-  assert_eq!(
-    extract(json, &["key-with-dash"]),
-    Some(Value::String("a"))
-  );
-  assert_eq!(
-    extract(json, &["key.with.dots"]),
-    Some(Value::String("b"))
-  );
+  assert_eq!(extract(json, &["key-with-dash"]), Some(Value::String("a")));
+  assert_eq!(extract(json, &["key.with.dots"]), Some(Value::String("b")));
   assert_eq!(extract(json, &["key:colon"]), Some(Value::String("c")));
 }
 

@@ -164,7 +164,7 @@ impl<'a> Parser<'a> {
     self.skip_ws();
     match self.peek()? {
       b'"' => self.extract_string(),
-      b'-' | b'0'..=b'9' => self.extract_number(),
+      b'-' | b'0' ..= b'9' => self.extract_number(),
       // For other types (object, array, bool, null), we return None since they're not
       // string or number
       _ => None,
@@ -183,7 +183,7 @@ impl<'a> Parser<'a> {
           self.advance(); // consume closing '"'
           // SAFETY: We're working with valid UTF-8 JSON input, and string content between quotes
           // is valid UTF-8 (JSON spec guarantees this for well-formed JSON).
-          let s = std::str::from_utf8(&self.json[start..end]).ok()?;
+          let s = std::str::from_utf8(&self.json[start .. end]).ok()?;
           return Some(Value::String(s));
         },
         b'\\' => {
@@ -208,9 +208,9 @@ impl<'a> Parser<'a> {
     // Integer part
     match self.peek()? {
       b'0' => self.advance(),
-      b'1'..=b'9' => {
+      b'1' ..= b'9' => {
         self.advance();
-        while matches!(self.peek(), Some(b'0'..=b'9')) {
+        while matches!(self.peek(), Some(b'0' ..= b'9')) {
           self.advance();
         }
       },
@@ -220,10 +220,10 @@ impl<'a> Parser<'a> {
     // Optional fraction
     if self.peek() == Some(b'.') {
       self.advance();
-      if !matches!(self.peek(), Some(b'0'..=b'9')) {
+      if !matches!(self.peek(), Some(b'0' ..= b'9')) {
         return None; // Malformed: need at least one digit after '.'
       }
-      while matches!(self.peek(), Some(b'0'..=b'9')) {
+      while matches!(self.peek(), Some(b'0' ..= b'9')) {
         self.advance();
       }
     }
@@ -234,17 +234,17 @@ impl<'a> Parser<'a> {
       if matches!(self.peek(), Some(b'+' | b'-')) {
         self.advance();
       }
-      if !matches!(self.peek(), Some(b'0'..=b'9')) {
+      if !matches!(self.peek(), Some(b'0' ..= b'9')) {
         return None; // Malformed: need at least one digit in exponent
       }
-      while matches!(self.peek(), Some(b'0'..=b'9')) {
+      while matches!(self.peek(), Some(b'0' ..= b'9')) {
         self.advance();
       }
     }
 
     let end = self.pos;
     // SAFETY: Number characters are ASCII and thus valid UTF-8
-    let s = std::str::from_utf8(&self.json[start..end]).ok()?;
+    let s = std::str::from_utf8(&self.json[start .. end]).ok()?;
     Some(Value::Number(s))
   }
 
@@ -305,7 +305,7 @@ impl<'a> Parser<'a> {
       Some(b't') => self.skip_literal(b"true"),
       Some(b'f') => self.skip_literal(b"false"),
       Some(b'n') => self.skip_literal(b"null"),
-      Some(b'-' | b'0'..=b'9') => {
+      Some(b'-' | b'0' ..= b'9') => {
         self.skip_number();
         true
       },
@@ -417,14 +417,14 @@ impl<'a> Parser<'a> {
     }
 
     // Integer part
-    while matches!(self.peek(), Some(b'0'..=b'9')) {
+    while matches!(self.peek(), Some(b'0' ..= b'9')) {
       self.advance();
     }
 
     // Optional fraction
     if self.peek() == Some(b'.') {
       self.advance();
-      while matches!(self.peek(), Some(b'0'..=b'9')) {
+      while matches!(self.peek(), Some(b'0' ..= b'9')) {
         self.advance();
       }
     }
@@ -435,7 +435,7 @@ impl<'a> Parser<'a> {
       if matches!(self.peek(), Some(b'+' | b'-')) {
         self.advance();
       }
-      while matches!(self.peek(), Some(b'0'..=b'9')) {
+      while matches!(self.peek(), Some(b'0' ..= b'9')) {
         self.advance();
       }
     }
@@ -497,7 +497,7 @@ impl<'a> Parser<'a> {
 /// # Example
 ///
 /// ```
-/// use bd_json_path::{extract, Value};
+/// use bd_json_path::{Value, extract};
 ///
 /// let json = r#"{"users": [{"name": "Alice", "age": 30}]}"#;
 ///
