@@ -822,6 +822,7 @@ dependencies = [
  "bd-workspace-hack",
  "itertools 0.14.0",
  "matches",
+ "ordered-float",
  "pretty_assertions",
  "protobuf 4.0.0-alpha.0",
  "regex",

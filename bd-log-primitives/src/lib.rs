@@ -334,6 +334,21 @@ impl DataValue {
     }
   }
 
+  /// Returns the value as a string, converting numeric types to their string representation.
+  /// Returns `None` for `Bytes`, `Boolean`, `Map`, and `Array` variants.
+  #[must_use]
+  pub fn to_string_value(&self) -> Option<Cow<'_, str>> {
+    match self {
+      Self::String(s) => Some(Cow::Borrowed(s.as_ref())),
+      Self::SharedString(s) => Some(Cow::Borrowed(s.as_ref())),
+      Self::StaticString(s) => Some(Cow::Borrowed(s)),
+      Self::I64(v) => Some(Cow::Owned(v.to_string())),
+      Self::U64(v) => Some(Cow::Owned(v.to_string())),
+      Self::Double(v) => Some(Cow::Owned(v.to_string())),
+      Self::Bytes(_) | Self::Boolean(_) | Self::Map(_) | Self::Array(_) => None,
+    }
+  }
+
   /// Extracts the underlying bytes if the enum represents a Bytes, None otherwise.
   #[must_use]
   pub fn as_bytes(&self) -> Option<&[u8]> {
@@ -899,7 +914,8 @@ impl<'a> FieldsRef<'a> {
   }
 
   /// Looks up the field value corresponding to the provided key. If the field doesn't exist or
-  /// contains a binary value, None is returned.
+  /// contains a binary value, None is returned. Numeric types are converted to their string
+  /// representation.
   #[must_use]
   pub fn field_value(&self, field_key: &str) -> Option<Cow<'a, str>> {
     // In cases where there are conflicts between the keys of captured and matching fields, captured
@@ -907,12 +923,15 @@ impl<'a> FieldsRef<'a> {
     if let Some(value) = self
       .captured_fields
       .get(field_key)
-      .and_then(|value| value.as_str())
+      .and_then(DataValue::to_string_value)
     {
-      return Some(Cow::Borrowed(value));
+      return Some(value);
     }
 
-    self.matching_field_value(field_key).map(Cow::Borrowed)
+    self
+      .matching_fields
+      .get(field_key)
+      .and_then(DataValue::to_string_value)
   }
 
   #[must_use]
