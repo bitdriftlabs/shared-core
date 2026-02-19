@@ -14,8 +14,8 @@
   clippy::unwrap_used
 )]
 
-use backoff::SystemClock;
-use backoff::exponential::{ExponentialBackoff, ExponentialBackoffBuilder};
+use bd_backoff::SystemClock;
+use bd_backoff::exponential::{ExponentialBackoffBuilder, ExponentialBackoffInfinite, Finite};
 use bd_proto::protos::client::api::{
   DebugDataRequest,
   LogUploadIntentRequest,
@@ -34,6 +34,7 @@ pub use network_quality::{
   TimedNetworkQualityProvider,
 };
 use std::collections::HashMap;
+use time::Duration;
 use upload::{TrackedIntent, TrackedUpload};
 
 pub mod api;
@@ -159,10 +160,17 @@ pub trait PlatformNetworkStream: Send {
 pub fn backoff_policy(
   initial_backoff_interval: &mut DurationWatch<InitialBackoffInterval>,
   max_backoff_interval: &mut DurationWatch<MaxBackoffInterval>,
-) -> ExponentialBackoff<SystemClock> {
-  ExponentialBackoffBuilder::<SystemClock>::new()
-    .with_initial_interval(initial_backoff_interval.read_mark_update().unsigned_abs())
-    .with_max_interval(max_backoff_interval.read_mark_update().unsigned_abs())
-    .with_max_elapsed_time(None)
+) -> ExponentialBackoffInfinite<SystemClock> {
+  let initial_backoff_interval =
+    Duration::try_from(initial_backoff_interval.read_mark_update().unsigned_abs())
+      .unwrap_or(Duration::MAX);
+  let max_backoff_interval =
+    Duration::try_from(max_backoff_interval.read_mark_update().unsigned_abs())
+      .unwrap_or(Duration::MAX);
+
+  ExponentialBackoffBuilder::<SystemClock, Finite>::new()
+    .with_initial_interval(initial_backoff_interval)
+    .with_max_interval(max_backoff_interval)
+    .with_no_elapsed_time()
     .build()
 }
