@@ -106,15 +106,19 @@ fuzz_target!(|case: JsonPathFuzzCase| {
     (None, None) => {},
     (None, Some(serde_val)) => match serde_val {
       serde_json::Value::String(_) | serde_json::Value::Number(_) => {
-        assert!(!(!json_string_has_escapes(&json_string) && !path_has_non_ascii_or_control(&path_strings)), 
-          "Mismatch: we returned None, serde found {serde_val:?}\nJSON: {json_string}\nPath: {path_strings:?}"
+        assert!(
+          !(!json_string_has_escapes(&json_string)
+            && !path_has_non_ascii_or_control(&path_strings)),
+          "Mismatch: we returned None, serde found {serde_val:?}\nJSON: {json_string}\nPath: \
+           {path_strings:?}"
         );
       },
       _ => {},
     },
     (Some(_), None) => {
       panic!(
-        "Mismatch: we found something, serde returned None\nJSON: {json_string}\nPath: {path_strings:?}"
+        "Mismatch: we found something, serde returned None\nJSON: {json_string}\nPath: \
+         {path_strings:?}"
       );
     },
     (Some(Value::String(our_str)), Some(serde_json::Value::String(serde_str))) => {
@@ -137,7 +141,8 @@ fuzz_target!(|case: JsonPathFuzzCase| {
     },
     (Some(our_val), Some(serde_val)) => {
       panic!(
-        "Type mismatch: our {our_val:?} vs serde {serde_val:?}\nJSON: {json_string}\nPath: {path_strings:?}"
+        "Type mismatch: our {our_val:?} vs serde {serde_val:?}\nJSON: {json_string}\nPath: \
+         {path_strings:?}"
       );
     },
   }
