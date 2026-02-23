@@ -159,12 +159,13 @@ async fn basic_flow() {
   let timestamp = datetime!(2023-10-01 12:00:00 UTC);
   let id = setup
     .client
-    .enqueue_upload(
-      setup.make_file(b"abc"),
-      [("foo".into(), "bar".into())].into(),
-      Some(timestamp),
-      "session_id".to_string(),
-      vec![],
+      .enqueue_upload(
+        setup.make_file(b"abc"),
+        "client_report".to_string(),
+        [("foo".into(), "bar".into())].into(),
+        Some(timestamp),
+        "session_id".to_string(),
+        vec![],
     )
     .unwrap();
 
@@ -213,12 +214,13 @@ async fn feature_flags() {
   let timestamp = datetime!(2023-10-01 12:00:00 UTC);
   let id = setup
     .client
-    .enqueue_upload(
-      setup.make_file(b"abc"),
-      [("foo".into(), "bar".into())].into(),
-      Some(timestamp),
-      "session_id".to_string(),
-      vec![
+      .enqueue_upload(
+        setup.make_file(b"abc"),
+        "client_report".to_string(),
+        [("foo".into(), "bar".into())].into(),
+        Some(timestamp),
+        "session_id".to_string(),
+        vec![
         SnappedFeatureFlag::new(
           "key".to_string(),
           Some("value".to_string()),
@@ -288,12 +290,13 @@ async fn pending_upload_limit() {
 
   let id1 = setup
     .client
-    .enqueue_upload(
-      setup.make_file(b"1"),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
+      .enqueue_upload(
+        setup.make_file(b"1"),
+        "client_report".to_string(),
+        [].into(),
+        None,
+        "session_id".to_string(),
+        vec![],
     )
     .unwrap();
   assert_eq!(
@@ -303,12 +306,13 @@ async fn pending_upload_limit() {
 
   let id2 = setup
     .client
-    .enqueue_upload(
-      setup.make_file(b"2"),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
+      .enqueue_upload(
+        setup.make_file(b"2"),
+        "client_report".to_string(),
+        [].into(),
+        None,
+        "session_id".to_string(),
+        vec![],
     )
     .unwrap();
   assert_eq!(
@@ -317,12 +321,13 @@ async fn pending_upload_limit() {
   );
   let id3 = setup
     .client
-    .enqueue_upload(
-      setup.make_file(b"3"),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
+      .enqueue_upload(
+        setup.make_file(b"3"),
+        "client_report".to_string(),
+        [].into(),
+        None,
+        "session_id".to_string(),
+        vec![],
     )
     .unwrap();
   assert_eq!(
@@ -384,12 +389,13 @@ async fn inconsistent_state_missing_file() {
   let mut setup = Setup::new(2).await;
   let id1 = setup
     .client
-    .enqueue_upload(
-      setup.make_file(b"1"),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
+      .enqueue_upload(
+        setup.make_file(b"1"),
+        "client_report".to_string(),
+        [].into(),
+        None,
+        "session_id".to_string(),
+        vec![],
     )
     .unwrap();
   assert_eq!(
@@ -398,12 +404,13 @@ async fn inconsistent_state_missing_file() {
   );
   let id2 = setup
     .client
-    .enqueue_upload(
-      setup.make_file(b"2"),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
+      .enqueue_upload(
+        setup.make_file(b"2"),
+        "client_report".to_string(),
+        [].into(),
+        None,
+        "session_id".to_string(),
+        vec![],
     )
     .unwrap();
   assert_eq!(
@@ -440,12 +447,13 @@ async fn inconsistent_state_extra_file() {
   let mut setup = Setup::new(2).await;
   let id1 = setup
     .client
-    .enqueue_upload(
-      setup.make_file(b"1"),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
+      .enqueue_upload(
+        setup.make_file(b"1"),
+        "client_report".to_string(),
+        [].into(),
+        None,
+        "session_id".to_string(),
+        vec![],
     )
     .unwrap();
   assert_eq!(
@@ -510,12 +518,13 @@ async fn disk_persistence() {
   let mut setup = Setup::new(2).await;
   let id1 = setup
     .client
-    .enqueue_upload(
-      setup.make_file(b"1"),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
+      .enqueue_upload(
+        setup.make_file(b"1"),
+        "client_report".to_string(),
+        [].into(),
+        None,
+        "session_id".to_string(),
+        vec![],
     )
     .unwrap();
   assert_eq!(
@@ -556,12 +565,13 @@ async fn inconsistent_state_missing_index() {
   let mut setup = Setup::new(2).await;
   let id1 = setup
     .client
-    .enqueue_upload(
-      setup.make_file(b"1"),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
+      .enqueue_upload(
+        setup.make_file(b"1"),
+        "client_report".to_string(),
+        [].into(),
+        None,
+        "session_id".to_string(),
+        vec![],
     )
     .unwrap();
   assert_eq!(
@@ -579,12 +589,13 @@ async fn inconsistent_state_missing_index() {
 
   let id2 = setup
     .client
-    .enqueue_upload(
-      setup.make_file(b"2"),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
+      .enqueue_upload(
+        setup.make_file(b"2"),
+        "client_report".to_string(),
+        [].into(),
+        None,
+        "session_id".to_string(),
+        vec![],
     )
     .unwrap();
   assert_eq!(
@@ -624,12 +635,13 @@ async fn new_entry_disk_full() {
 
   let id1 = setup
     .client
-    .enqueue_upload(
-      setup.make_file(b"1"),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
+      .enqueue_upload(
+        setup.make_file(b"1"),
+        "client_report".to_string(),
+        [].into(),
+        None,
+        "session_id".to_string(),
+        vec![],
     )
     .unwrap();
   assert_eq!(
@@ -652,12 +664,13 @@ async fn new_entry_disk_full_after_received() {
 
   let id1 = setup
     .client
-    .enqueue_upload(
-      setup.make_file(b"1"),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
+      .enqueue_upload(
+        setup.make_file(b"1"),
+        "client_report".to_string(),
+        [].into(),
+        None,
+        "session_id".to_string(),
+        vec![],
     )
     .unwrap();
   assert_eq!(
@@ -692,12 +705,13 @@ async fn intent_retries() {
 
   let id1 = setup
     .client
-    .enqueue_upload(
-      setup.make_file(b"1"),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
+      .enqueue_upload(
+        setup.make_file(b"1"),
+        "client_report".to_string(),
+        [].into(),
+        None,
+        "session_id".to_string(),
+        vec![],
     )
     .unwrap();
   assert_eq!(
@@ -726,12 +740,13 @@ async fn intent_drop() {
 
   let id1 = setup
     .client
-    .enqueue_upload(
-      setup.make_file(b"1"),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
+      .enqueue_upload(
+        setup.make_file(b"1"),
+        "client_report".to_string(),
+        [].into(),
+        None,
+        "session_id".to_string(),
+        vec![],
     )
     .unwrap();
   assert_eq!(
@@ -762,12 +777,13 @@ async fn upload_retries() {
 
   let id1 = setup
     .client
-    .enqueue_upload(
-      setup.make_file(b"1"),
-      [].into(),
-      None,
-      "session_id".to_string(),
-      vec![],
+      .enqueue_upload(
+        setup.make_file(b"1"),
+        "client_report".to_string(),
+        [].into(),
+        None,
+        "session_id".to_string(),
+        vec![],
     )
     .unwrap();
   assert_eq!(
