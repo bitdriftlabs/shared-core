@@ -342,8 +342,7 @@ impl Manager {
               .and_then(|ts| u64::try_from(ts.unix_timestamp_micros()).ok())
           }) {
             Ok(Some(Some(micros))) => handle.update_retention_micros(micros),
-            Ok(Some(None)) => {},
-            Ok(None) => {},
+            Ok(Some(None) | None) => {},
             Err(error) => {
               log::debug!("failed to peek oldest record for retention init: {error}");
             },

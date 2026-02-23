@@ -84,7 +84,6 @@ impl RetentionRegistry {
   }
 
   /// Creates a new retention handle.
-  ///
   pub async fn create_handle(&self) -> RetentionHandle {
     let retain_from = Arc::new(AtomicU64::new(RetentionHandle::RETENTION_PENDING));
 
