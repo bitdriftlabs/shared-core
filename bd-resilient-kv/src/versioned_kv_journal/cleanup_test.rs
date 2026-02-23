@@ -7,7 +7,8 @@
 
 #![allow(clippy::unwrap_used)]
 
-use super::{RetentionHandle, RetentionRegistry, cleanup_old_snapshots};
+use super::{RetentionRegistry, cleanup_old_snapshots};
+use crate::RetentionHandle;
 use std::sync::Arc;
 use tempfile::TempDir;
 
@@ -135,7 +136,7 @@ async fn cleanup_respects_zero_retention() {
 }
 
 #[tokio::test]
-async fn cleanup_respects_no_requirement_handle() {
+async fn cleanup_retains_all_for_pending_handle() {
   let temp_dir = TempDir::new().unwrap();
   let registry = Arc::new(RetentionRegistry::new(
     bd_runtime::runtime::IntWatch::new_for_testing(1),
@@ -145,13 +146,16 @@ async fn cleanup_respects_no_requirement_handle() {
   create_test_snapshot(temp_dir.path(), "test", 1, 2000).await;
 
   let handle = registry.create_handle().await;
-  handle.update_retention_micros(RetentionHandle::NO_RETENTION_REQUIREMENT);
+  debug_assert!(
+    handle.get_retention() == RetentionHandle::RETENTION_PENDING,
+    "Handle should be initialized before retention cleanup"
+  );
 
   let result = cleanup_old_snapshots(temp_dir.path(), &registry).await;
   assert!(result.is_ok());
 
-  assert!(!temp_dir.path().join("test.jrn.g0.t1000.zz").exists());
-  assert!(!temp_dir.path().join("test.jrn.g1.t2000.zz").exists());
+  assert!(temp_dir.path().join("test.jrn.g0.t1000.zz").exists());
+  assert!(temp_dir.path().join("test.jrn.g1.t2000.zz").exists());
 }
 
 #[tokio::test]

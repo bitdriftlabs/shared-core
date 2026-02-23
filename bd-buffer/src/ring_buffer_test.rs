@@ -357,7 +357,7 @@ async fn trigger_buffer_eviction_updates_retention_handle() {
   for _ in 0 .. 10 {
     producer.write(&first_log).unwrap();
     producer.write(&second_log).unwrap();
-    if retention_handle.get_retention() != RetentionHandle::NO_RETENTION_REQUIREMENT {
+    if retention_handle.get_retention() != RetentionHandle::RETENTION_PENDING {
       break;
     }
   }

@@ -964,6 +964,6 @@ pub mod state {
   // in the retention logic or if state changes are made extremely frequently but also serves as a
   // failsafe to disable snapshotting entirely.
   //
-  // A value of 0 disables snapshotting.
+  // A value of 0 disables snapshotting to allow self-healing during crash loops.
   int_feature_flag!(MaxSnapshotCount, "state.max_snapshot_count", 0);
 }

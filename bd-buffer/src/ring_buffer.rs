@@ -343,9 +343,7 @@ impl Manager {
           }) {
             Ok(Some(Some(micros))) => handle.update_retention_micros(micros),
             Ok(Some(None)) => {},
-            Ok(None) => {
-              handle.update_retention_micros(RetentionHandle::NO_RETENTION_REQUIREMENT);
-            },
+            Ok(None) => {},
             Err(error) => {
               log::debug!("failed to peek oldest record for retention init: {error}");
             },

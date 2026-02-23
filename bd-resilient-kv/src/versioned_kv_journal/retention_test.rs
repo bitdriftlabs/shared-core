@@ -13,7 +13,7 @@ use super::{RetentionHandle, RetentionRegistry};
 use std::sync::Arc;
 
 #[tokio::test]
-async fn handle_starts_with_no_requirement() {
+async fn handle_starts_with_retention_pending() {
   let registry = Arc::new(RetentionRegistry::new(
     bd_runtime::runtime::IntWatch::new_for_testing(0),
   ));
@@ -21,8 +21,8 @@ async fn handle_starts_with_no_requirement() {
 
   assert_eq!(
     handle.get_retention(),
-    RetentionHandle::NO_RETENTION_REQUIREMENT,
-    "Handle should start with sentinel (no retention requirement)"
+    RetentionHandle::RETENTION_PENDING,
+    "Handle should start with retention pending sentinel"
   );
 }
 
@@ -104,22 +104,27 @@ async fn registry_handles_zero_retention() {
 }
 
 #[tokio::test]
-async fn registry_ignores_no_requirement_handles() {
+async fn registry_pending_handle_retains_all() {
   let registry = Arc::new(RetentionRegistry::new(
     bd_runtime::runtime::IntWatch::new_for_testing(0),
   ));
 
-  let _handle1 = registry.create_handle().await;
+  let handle1 = registry.create_handle().await;
   let handle2 = registry.create_handle().await;
 
   let timestamp_micros = 1_000_000_u64;
   handle2.update_retention_micros(timestamp_micros);
 
+  debug_assert!(
+    handle1.get_retention() == RetentionHandle::RETENTION_PENDING,
+    "Handle should be initialized before retention cleanup"
+  );
+
   let min_retention = registry.min_retention_timestamp().await;
   assert_eq!(
     min_retention,
-    Some(timestamp_micros),
-    "Should ignore handles with no retention requirement"
+    Some(0),
+    "Should retain all data while any handle is pending initialization"
   );
 }
 

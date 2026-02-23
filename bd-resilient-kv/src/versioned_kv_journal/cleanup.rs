@@ -9,7 +9,7 @@
 #[path = "./cleanup_test.rs"]
 mod tests;
 
-use super::retention::{RetentionHandle, RetentionRegistry};
+use super::retention::RetentionRegistry;
 use bd_error_reporter::reporter::handle_unexpected;
 use std::path::{Path, PathBuf};
 
@@ -51,7 +51,6 @@ pub async fn cleanup_old_snapshots(
   let mut kept_snapshots = Vec::new();
   for (path, timestamp) in snapshots {
     let should_delete = match min_retention {
-      Some(RetentionHandle::NO_RETENTION_REQUIREMENT) => true,
       None | Some(0) => false,
       Some(min_retention) => timestamp < min_retention,
     };
@@ -75,7 +74,11 @@ pub async fn cleanup_old_snapshots(
     }
   }
 
-  let keep_newest_at_most = max_snapshot_count.unwrap_or(usize::MAX);
+  let keep_newest_at_most = if min_retention == Some(0) {
+    usize::MAX
+  } else {
+    max_snapshot_count.unwrap_or(usize::MAX)
+  };
   if kept_snapshots.len() > keep_newest_at_most {
     let overflow = kept_snapshots.len() - keep_newest_at_most;
     for (path, _timestamp) in kept_snapshots.iter().take(overflow) {
