@@ -4183,7 +4183,7 @@ dependencies = [
 [[package]]
 name = "sketches-rust"
 version = "0.2.2"
-source = "git+https://github.com/mattklein123/sketches-rust.git?branch=patch-stack#654de9475d364e7d97f8615de5b7c5368ccd26a7"
+source = "git+https://github.com/mattklein123/sketches-rust.git?branch=patch-stack2#75999e6127181b2b00f1101dd5813e16022d6cc0"
 dependencies = [
  "thiserror 1.0.69",
 ]
