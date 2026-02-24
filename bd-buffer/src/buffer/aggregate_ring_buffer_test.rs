@@ -54,6 +54,7 @@ impl Helper {
       allow_overwrite,
       Arc::new(RingBufferStats::default()),
       stats.stats.clone(),
+      |_| {},
     )
     .unwrap();
     Self {
@@ -86,6 +87,7 @@ impl Helper {
         self.allow_overwrite,
         Arc::new(RingBufferStats::default()),
         self.stats.stats.clone(),
+        |_| {},
       )?,
       self.cursor,
     ));
@@ -271,4 +273,51 @@ async fn cursor() {
   assert!(future.poll().is_pending());
   helper.helper().reserve_and_commit("ff");
   future.await.unwrap();
+}
+
+#[test]
+fn peek_oldest_record_empty() {
+  let mut helper = Helper::new(18, 30, AllowOverwrite::Yes, Cursor::No);
+  let buffer = helper
+    .helper()
+    .buffer
+    .as_any()
+    .downcast_ref::<RingBufferImpl>()
+    .unwrap();
+
+  assert!(buffer.peek_oldest_record(<[u8]>::to_vec).unwrap().is_none());
+}
+
+#[test]
+fn peek_oldest_record_does_not_consume() {
+  let mut helper = Helper::new(18, 30, AllowOverwrite::Yes, Cursor::No);
+  helper.helper().reserve_and_commit("aa");
+  helper.helper().reserve_and_commit("bb");
+  helper.stats.wait_for_total_records_written(2);
+
+  {
+    let buffer = helper
+      .helper()
+      .buffer
+      .as_any()
+      .downcast_ref::<RingBufferImpl>()
+      .unwrap();
+    let first_peek = buffer.peek_oldest_record(<[u8]>::to_vec).unwrap().unwrap();
+    let second_peek = buffer.peek_oldest_record(<[u8]>::to_vec).unwrap().unwrap();
+    assert_eq!(first_peek, b"aa");
+    assert_eq!(second_peek, b"aa");
+  }
+
+  helper.helper().read_and_verify("aa");
+
+  let third_peek = helper
+    .helper()
+    .buffer
+    .as_any()
+    .downcast_ref::<RingBufferImpl>()
+    .unwrap()
+    .peek_oldest_record(<[u8]>::to_vec)
+    .unwrap()
+    .unwrap();
+  assert_eq!(third_peek, b"bb");
 }

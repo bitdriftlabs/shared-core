@@ -9,24 +9,28 @@
 #![allow(clippy::cast_possible_truncation)]
 #![allow(clippy::cast_sign_loss)]
 
-use super::RetentionRegistry;
+use super::{RetentionHandle, RetentionRegistry};
 use std::sync::Arc;
 
 #[tokio::test]
-async fn handle_starts_with_retain_all() {
-  let registry = Arc::new(RetentionRegistry::new());
+async fn handle_starts_with_retention_pending() {
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
   let handle = registry.create_handle().await;
 
   assert_eq!(
     handle.get_retention(),
-    0,
-    "Handle should start with timestamp 0 (retain all)"
+    RetentionHandle::RETENTION_PENDING,
+    "Handle should start with retention pending sentinel"
   );
 }
 
 #[tokio::test]
 async fn handle_can_update_retention() {
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
   let handle = registry.create_handle().await;
 
   let timestamp_micros = 1_000_000_u64; // 1 second since epoch
@@ -37,7 +41,9 @@ async fn handle_can_update_retention() {
 
 #[tokio::test]
 async fn registry_returns_none_when_no_handles() {
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
 
   let min_retention = registry.min_retention_timestamp().await;
   assert_eq!(
@@ -48,9 +54,12 @@ async fn registry_returns_none_when_no_handles() {
 
 #[tokio::test]
 async fn registry_returns_minimum_across_handles() {
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
 
   let handle1 = registry.create_handle().await;
+  handle1.update_retention_micros(0);
   let handle2 = registry.create_handle().await;
   let handle3 = registry.create_handle().await;
 
@@ -74,12 +83,15 @@ async fn registry_returns_minimum_across_handles() {
 
 #[tokio::test]
 async fn registry_handles_zero_retention() {
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
 
-  let _handle1 = registry.create_handle().await;
+  let handle1 = registry.create_handle().await;
   let handle2 = registry.create_handle().await;
 
   // handle1 wants all data (timestamp 0), handle2 wants recent data
+  handle1.update_retention_micros(0);
   let ts2 = 2_000_000_u64;
   handle2.update_retention_micros(ts2);
 
@@ -92,8 +104,35 @@ async fn registry_handles_zero_retention() {
 }
 
 #[tokio::test]
+async fn registry_pending_handle_retains_all() {
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+
+  let handle1 = registry.create_handle().await;
+  let handle2 = registry.create_handle().await;
+
+  let timestamp_micros = 1_000_000_u64;
+  handle2.update_retention_micros(timestamp_micros);
+
+  debug_assert!(
+    handle1.get_retention() == RetentionHandle::RETENTION_PENDING,
+    "Handle should be initialized before retention cleanup"
+  );
+
+  let min_retention = registry.min_retention_timestamp().await;
+  assert_eq!(
+    min_retention,
+    Some(0),
+    "Should retain all data while any handle is pending initialization"
+  );
+}
+
+#[tokio::test]
 async fn handle_releases_on_drop() {
-  let registry = Arc::new(RetentionRegistry::new());
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
 
   {
     let handle = registry.create_handle().await;

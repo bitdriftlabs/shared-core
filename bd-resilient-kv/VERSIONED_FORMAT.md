@@ -236,6 +236,34 @@ After rotation (generation 1):
   my_store.jrn.t1699564900000000.zz        # Compressed archive of generation 0
 ```
 
+## Retention and Snapshotting Semantics
+
+Archived journals (snapshots) are cleaned up based on retention handles and a safety cap. The
+retention system is intentionally conservative to avoid deleting snapshots that may still be
+required by downstream consumers.
+
+### Retention Handles
+
+- **RetentionRegistry** tracks all active retention handles and computes the minimum retention
+  timestamp.
+- **RetentionHandle** declares a requirement to retain data from a specific timestamp (inclusive).
+- **Pending handles** start in a retention-pending state until initialized by the owner. While any
+  handle is pending, the minimum retention timestamp is treated as `0` (retain everything).
+- Dropping a handle removes its requirement from the registry.
+
+### Snapshot Creation and Cleanup
+
+- Snapshot creation is gated by the **minimum retention timestamp**. If no handles are registered,
+  snapshots are skipped.
+- Snapshots older than the minimum retention timestamp are eligible for deletion.
+- While any handle is pending, cleanup keeps all snapshots (minimum retention treated as `0`).
+- A **max snapshot count** safety cap bounds the number of retained snapshots unless retention
+  requires keeping everything.
+
+### Runtime Controls
+
+- `state.max_snapshot_count=0` disables snapshotting entirely. This is intended as a
+  self-healing fallback during crash loops or unexpected retention behavior.
 ### Rotation Timeline Visualization
 
 ```

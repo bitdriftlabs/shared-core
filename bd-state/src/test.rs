@@ -105,6 +105,7 @@ impl TestStore {
       temp_dir.path(),
       crate::PersistentStoreConfig::default(),
       time_provider.clone(),
+      &bd_runtime::runtime::ConfigLoader::new(temp_dir.path()),
       &bd_client_stats_store::Collector::default().scope("test"),
     )
     .await

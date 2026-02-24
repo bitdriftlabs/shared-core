@@ -27,7 +27,9 @@ impl Setup {
     Self {
       temp_dir: TempDir::new().unwrap(),
       time_provider: Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC))),
-      registry: Arc::new(RetentionRegistry::new()),
+      registry: Arc::new(RetentionRegistry::new(
+        bd_runtime::runtime::IntWatch::new_for_testing(0),
+      )),
       collector: bd_client_stats_store::Collector::default(),
     }
   }

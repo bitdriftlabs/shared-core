@@ -13,7 +13,8 @@ mod stats_test_helper;
 mod volatile_ring_buffer;
 
 #[cfg(test)]
-mod test;
+pub(crate) mod test;
+
 
 use bd_client_stats_store::Counter;
 use bd_log_primitives::LossyIntToU32;
