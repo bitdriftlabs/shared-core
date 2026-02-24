@@ -28,6 +28,7 @@ use bd_log_primitives::LossyIntToU32;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use tempfile::TempDir;
 
 pub mod buffer_corruption_fuzz_test;
@@ -115,11 +116,61 @@ impl BufferState {
     temp_dir: &TempDir,
     stats: Arc<RingBufferStats>,
     saw_file_header_corruption: bool,
+    current_write_index: &Arc<AtomicU32>,
+    saw_file_body_corruption: &Arc<AtomicBool>,
+    eviction_count: &Arc<AtomicU32>,
+    last_evicted_sequence: &Arc<AtomicU32>,
+    has_evicted_sequence: &Arc<AtomicBool>,
   ) -> Option<Self> {
+    let on_record_evicted_cb = {
+      let current_write_index = Arc::clone(current_write_index);
+      let saw_file_body_corruption = Arc::clone(saw_file_body_corruption);
+      let eviction_count = Arc::clone(eviction_count);
+      let last_evicted_sequence = Arc::clone(last_evicted_sequence);
+      let has_evicted_sequence = Arc::clone(has_evicted_sequence);
+      move |record_data: &[u8]| {
+        if saw_file_body_corruption.load(Ordering::Relaxed) {
+          return;
+        }
+
+        eviction_count.fetch_add(1, Ordering::Relaxed);
+        match record_data.len() {
+          0 => panic!("unexpected empty record"),
+          1 => assert_eq!(record_data[0], b'a'),
+          2 => {
+            assert_eq!(record_data[0], b'a');
+            assert_eq!(record_data[1], b'b');
+          },
+          3 => {
+            assert_eq!(record_data[0], b'a');
+            assert_eq!(record_data[1], b'b');
+            assert_eq!(record_data[2], b'c');
+          },
+          _ => {
+            let write_index = u32::from_ne_bytes(record_data[0 .. 4].try_into().unwrap());
+            let current_write_index = current_write_index.load(Ordering::Relaxed);
+            assert!(write_index < current_write_index);
+
+            if has_evicted_sequence.swap(true, Ordering::Relaxed) {
+              let last_evicted = last_evicted_sequence.load(Ordering::Relaxed);
+              assert!(write_index >= last_evicted);
+            }
+            last_evicted_sequence.store(write_index, Ordering::Relaxed);
+
+            if record_data.len() > 4 {
+              assert!(record_data[4 ..].iter().all(|value| *value == 0));
+            }
+          },
+        }
+      }
+    };
     let buffer = match test_case.buffer_type {
-      BufferType::Volatile => {
-        VolatileRingBuffer::new("test".to_string(), test_case.buffer_size, stats, |_| {})
-      },
+      BufferType::Volatile => VolatileRingBuffer::new(
+        "test".to_string(),
+        test_case.buffer_size,
+        stats,
+        on_record_evicted_cb,
+      ),
       BufferType::NonVolatile => {
         // TODO(mattklein123): fuzz no overwrite in non-cursor mode.
         match NonVolatileRingBuffer::new(
@@ -134,7 +185,7 @@ impl BufferState {
           BlockWhenReservingIntoConcurrentRead::No,
           PerRecordCrc32Check::Yes,
           stats,
-          |_| {},
+          on_record_evicted_cb,
         ) {
           Ok(buffer) => buffer as Arc<dyn RingBuffer>,
           Err(e) => {
@@ -168,7 +219,7 @@ impl BufferState {
           },
           stats.clone(),
           stats,
-          |_| {},
+          on_record_evicted_cb,
         ) {
           Ok(buffer) => buffer as Arc<dyn RingBuffer>,
           Err(e) => {
@@ -214,12 +265,15 @@ impl BufferState {
 pub struct BufferFuzzTest {
   test_case: BufferFuzzTestCase,
   temp_dir: TempDir,
-  current_write_index: u32,
+  current_write_index: Arc<AtomicU32>,
   last_read_value: u32,
   buffer_state: Option<BufferState>,
   stats: Arc<RingBufferStats>,
   saw_file_header_corruption: bool,
-  saw_file_body_corruption: bool,
+  saw_file_body_corruption: Arc<AtomicBool>,
+  eviction_count: Arc<AtomicU32>,
+  last_evicted_sequence: Arc<AtomicU32>,
+  has_evicted_sequence: Arc<AtomicBool>,
 }
 
 impl BufferFuzzTest {
@@ -227,18 +281,36 @@ impl BufferFuzzTest {
   pub fn new(test_case: BufferFuzzTestCase) -> Self {
     let temp_dir = TempDir::with_prefix("buffer_fuzz").unwrap();
     let stats = StatsTestHelper::new(&Collector::default().scope(""));
-    let buffer_state = BufferState::new(&test_case, &temp_dir, stats.stats.clone(), false);
+    let current_write_index = Arc::new(AtomicU32::new(0));
+    let saw_file_body_corruption = Arc::new(AtomicBool::new(false));
+    let eviction_count = Arc::new(AtomicU32::new(0));
+    let last_evicted_sequence = Arc::new(AtomicU32::new(0));
+    let has_evicted_sequence = Arc::new(AtomicBool::new(false));
+    let buffer_state = BufferState::new(
+      &test_case,
+      &temp_dir,
+      stats.stats.clone(),
+      false,
+      &current_write_index,
+      &saw_file_body_corruption,
+      &eviction_count,
+      &last_evicted_sequence,
+      &has_evicted_sequence,
+    );
     assert!(buffer_state.is_some());
 
     Self {
       test_case,
       temp_dir,
       buffer_state,
-      current_write_index: 0,
+      current_write_index,
       last_read_value: 0,
       stats: stats.stats,
       saw_file_header_corruption: false,
-      saw_file_body_corruption: false,
+      saw_file_body_corruption,
+      eviction_count,
+      last_evicted_sequence,
+      has_evicted_sequence,
     }
   }
 
@@ -327,7 +399,7 @@ impl BufferFuzzTest {
         // In this case we should expect further reopens to fail so we can track that.
         self.saw_file_header_corruption = true;
       } else {
-        self.saw_file_body_corruption = true;
+        self.saw_file_body_corruption.store(true, Ordering::Relaxed);
       }
     }
     self.buffer_state = BufferState::new(
@@ -335,6 +407,11 @@ impl BufferFuzzTest {
       &self.temp_dir,
       self.stats.clone(),
       self.saw_file_header_corruption,
+      &self.current_write_index,
+      &self.saw_file_body_corruption,
+      &self.eviction_count,
+      &self.last_evicted_sequence,
+      &self.has_evicted_sequence,
     );
 
     if self.buffer_state.is_none() {
@@ -347,6 +424,11 @@ impl BufferFuzzTest {
         &self.temp_dir,
         self.stats.clone(),
         self.saw_file_header_corruption,
+        &self.current_write_index,
+        &self.saw_file_body_corruption,
+        &self.eviction_count,
+        &self.last_evicted_sequence,
+        &self.has_evicted_sequence,
       );
       assert!(self.buffer_state.is_some());
     }
@@ -370,13 +452,18 @@ impl BufferFuzzTest {
 
     // Total data loss should only happen if we saw file body corruption.
     assert!(
-      (allow_corruption && self.saw_file_body_corruption)
+      (allow_corruption && self.saw_file_body_corruption.load(Ordering::Relaxed))
         || 0 == self.stats.total_data_loss.get_value()
     );
 
     // Record corruption can happen if we close after reserve but before commit.
     // TODO(mattklein123): Track that this actually happened or we saw file body corruption.
     assert!(allow_corruption || 0 == self.stats.records_corrupted.get_value());
+
+    assert!(
+      self.eviction_count.load(Ordering::Relaxed)
+        <= self.stats.records_overwritten.get_value().to_u32_lossy()
+    );
   }
 
   fn cleanup_before_close(&mut self) {
@@ -455,13 +542,14 @@ impl BufferFuzzTest {
       },
       _ => {
         let write_index = u32::from_ne_bytes(memory[0 .. 4].try_into().unwrap());
+        let current_write_index = self.current_write_index.load(Ordering::Relaxed);
         log::trace!(
           "fuzz read {} {} {}",
           write_index,
-          self.current_write_index,
+          current_write_index,
           self.last_read_value,
         );
-        assert!(write_index < self.current_write_index);
+        assert!(write_index < current_write_index);
 
         // TODO(mattklein123): The cursor consumer can read without advancing which causes this
         // logic to become out of sync. This is disabled for right now but should be turned
@@ -472,7 +560,9 @@ impl BufferFuzzTest {
 
         self.last_read_value = write_index;
 
-        // TODO(mattklein123): Verify remainder is 0?
+        if memory.len() > 4 {
+          assert!(memory[4 ..].iter().all(|value| *value == 0));
+        }
       },
     }
   }
@@ -495,13 +585,10 @@ impl BufferFuzzTest {
 
     self.state().producers[producer_index].write_reservation =
       Some((reservation.as_mut_ptr(), reservation.len()));
-    self.state().producers[producer_index].write_index = self.current_write_index;
-    self.current_write_index += 1;
-    log::trace!(
-      "fuzz reserve {} {}",
-      self.current_write_index,
-      self.last_read_value
-    );
+    let write_index = self.current_write_index.load(Ordering::Relaxed);
+    self.state().producers[producer_index].write_index = write_index;
+    self.current_write_index.fetch_add(1, Ordering::Relaxed);
+    log::trace!("fuzz reserve {} {}", write_index + 1, self.last_read_value);
     true
   }
 
@@ -540,11 +627,11 @@ impl BufferFuzzTest {
         );
         log::trace!(
           "fuzz write {} {}",
-          self.current_write_index,
+          self.current_write_index.load(Ordering::Relaxed),
           self.last_read_value
         );
         if memory.len() > 4 {
-          memory[5 ..].fill(0);
+          memory[4 ..].fill(0);
         }
       },
     }
