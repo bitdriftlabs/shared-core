@@ -79,11 +79,7 @@ pub mod macros {
     };
   }
 
-  pub use capture_field;
-  pub use field_value;
-  pub use regex_match_and_substitute_field;
-  pub use remove_field;
-  pub use set_field;
+  pub use {capture_field, field_value, regex_match_and_substitute_field, remove_field, set_field};
 }
 
 #[must_use]
@@ -144,7 +140,6 @@ pub fn make_remove_field(field_name: &str) -> filter::transform::Transform_type 
     ..Default::default()
   })
 }
-
 
 #[must_use]
 pub fn make_regex_match_and_substitute_field(
