@@ -71,7 +71,6 @@ axum              = { version = "0.8.8", features = ["http2", "macros"] }
 base64            = "0.22.1"
 base64-url        = "3.0.2"
 base64ct          = { version = "1.8.3", features = ["alloc", "std"] }
-bd-backoff        = { path = "bd-backoff" }
 bd-workspace-hack = "0.1.0"
 num-traits        = "0.2.19"
 
