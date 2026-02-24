@@ -31,12 +31,11 @@ use bd_proto::protos::client::api::{UploadArtifactIntentRequest, UploadArtifactR
 use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::feature_flag::FeatureFlag;
-use bd_proto::protos::logging::payload::{Data, MapData};
+use bd_proto::protos::logging::payload::Data;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, artifact_upload};
 use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
 use mockall::automock;
-use protobuf::Message;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
@@ -52,7 +51,19 @@ pub static REPORT_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| "report_upload
 /// The index file used for tracking all of the individual files.
 pub static REPORT_INDEX_FILE: LazyLock<PathBuf> = LazyLock::new(|| "report_index.pb".into());
 
-const DEFAULT_TYPE_ID: &str = "client_report";
+#[derive(Default, Clone, Copy)]
+pub enum ArtifactType {
+  #[default]
+  Report,
+}
+
+impl ArtifactType {
+  fn to_type_id(self) -> &'static str {
+    match self {
+      Self::Report => "client_report",
+    }
+  }
+}
 
 //
 // FeatureFlag
@@ -336,13 +347,13 @@ impl Uploader {
       {
         if next.pending_intent_negotiation {
           log::debug!("starting intent negotiation for {:?}", next.name);
-          let type_id = Self::normalize_type_id(&next.type_id);
+
           self.intent_task_handle = Some(tokio::spawn(Self::perform_intent_negotiation(
             self.data_upload_tx.clone(),
             next.name.clone(),
-            type_id,
+            next.type_id.clone().unwrap_or_default(),
             next.time.to_offset_date_time(),
-            next.state_metadata.clone(),
+            next.metadata.clone(),
             bd_api::backoff_policy(
               &mut self.initial_backoff_interval,
               &mut self.max_backoff_interval,
@@ -376,22 +387,19 @@ impl Uploader {
 
           return Ok(());
         };
-
-
         log::debug!("starting file upload for {:?}", next.name);
-        let type_id = Self::normalize_type_id(&next.type_id);
         self.upload_task_handle = Some(tokio::spawn(Self::upload_artifact(
           self.data_upload_tx.clone(),
           contents,
           next.name.clone(),
-          type_id,
+          next.type_id.clone().unwrap_or_default(),
           next.time.to_offset_date_time(),
           next.session_id.clone(),
           bd_api::backoff_policy(
             &mut self.initial_backoff_interval,
             &mut self.max_backoff_interval,
           ),
-          next.state_metadata.clone(),
+          next.metadata.clone(),
           next.feature_flags.clone(),
         )));
       }
@@ -498,8 +506,11 @@ impl Uploader {
         modified = true;
         continue;
       }
-      if entry.type_id.is_empty() {
-        entry.type_id = DEFAULT_TYPE_ID.to_string();
+      // Handle inserting a default type_id for entries that are missing it. This can happen for
+      // older versions of the uploader that didn't persist the type_id to disk.
+      // TODO(snowp): Remove this at some point in the future after.
+      if entry.type_id.as_deref().unwrap_or_default().is_empty() {
+        entry.type_id = Some(ArtifactType::default().to_type_id().to_string());
         modified = true;
       }
       filenames.insert(entry.name.clone());
@@ -647,16 +658,20 @@ impl Uploader {
 
     // Only write the index after we've written the report file to disk to try to minimze the risk
     // of the file being written without a corresponding entry.
-    let type_id = Self::normalize_type_id(&type_id);
+    let type_id = if type_id.is_empty() {
+      ArtifactType::default().to_type_id().to_string()
+    } else {
+      type_id
+    };
     self.index.push_back(Artifact {
       name: uuid.clone(),
-      type_id,
+      type_id: Some(type_id),
       time: timestamp
         .unwrap_or_else(|| self.time_provider.now())
         .into_proto(),
       session_id,
       pending_intent_negotiation: true,
-      state_metadata: state
+      metadata: state
         .into_iter()
         .map(|(key, value)| (key.into(), value.into_proto()))
         .collect(),
@@ -774,15 +789,6 @@ impl Uploader {
     state_metadata: HashMap<String, Data>,
     mut retry_policy: ExponentialBackoff,
   ) -> Result<IntentDecision> {
-    let metadata = if state_metadata.is_empty() {
-      Vec::new()
-    } else {
-      MapData {
-        entries: state_metadata,
-        ..Default::default()
-      }
-      .write_to_bytes()?
-    };
     loop {
       let upload_uuid = TrackedArtifactIntent::upload_uuid();
       let (tracked, response) = TrackedArtifactIntent::new(
@@ -792,7 +798,7 @@ impl Uploader {
           artifact_id: id.clone(),
           intent_uuid: upload_uuid.clone(),
           time: timestamp.into_proto(),
-          metadata: metadata.clone(),
+          metadata: state_metadata.clone(),
           ..Default::default()
         },
       );
@@ -811,14 +817,6 @@ impl Uploader {
         .unwrap_or_else(|| 1.std_minutes());
       log::debug!("intent negotiation for artifact: {id} failed, retrying in {delay:?}");
       tokio::time::sleep(delay).await;
-    }
-  }
-
-  fn normalize_type_id(type_id: &str) -> String {
-    if type_id.is_empty() {
-      DEFAULT_TYPE_ID.to_string()
-    } else {
-      type_id.to_string()
     }
   }
 }

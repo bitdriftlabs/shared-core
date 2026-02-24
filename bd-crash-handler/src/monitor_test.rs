@@ -785,12 +785,12 @@ async fn file_watcher_processes_multiple_reports() {
     .expect_enqueue_upload()
     .times(1)
     .in_sequence(&mut seq)
-    .returning(move |_, _, _, _, _| Ok(uuid1));
+    .returning(move |_, _, _, _, _, _| Ok(uuid1));
   make_mut(&mut setup.upload_client)
     .expect_enqueue_upload()
     .times(1)
     .in_sequence(&mut seq)
-    .returning(move |_, _, _, _, _| Ok(uuid2));
+    .returning(move |_, _, _, _, _, _| Ok(uuid2));
 
   // Create two crash reports
   let data1 = CrashReportBuilder::new("Crash1").reason("error1").build();

@@ -159,13 +159,13 @@ async fn basic_flow() {
   let timestamp = datetime!(2023-10-01 12:00:00 UTC);
   let id = setup
     .client
-      .enqueue_upload(
-        setup.make_file(b"abc"),
-        "client_report".to_string(),
-        [("foo".into(), "bar".into())].into(),
-        Some(timestamp),
-        "session_id".to_string(),
-        vec![],
+    .enqueue_upload(
+      setup.make_file(b"abc"),
+      "client_report".to_string(),
+      [("foo".into(), "bar".into())].into(),
+      Some(timestamp),
+      "session_id".to_string(),
+      vec![],
     )
     .unwrap();
 
@@ -174,6 +174,10 @@ async fn basic_flow() {
       assert_eq!(intent.payload.artifact_id, id.to_string());
       assert_eq!(intent.payload.type_id, "client_report");
       assert_eq!(intent.payload.time, timestamp.into_proto());
+      assert_eq!(intent.payload.metadata, [("foo".into(), Data {
+          data_type: Some(Data_type::StringData("bar".to_string())),
+          ..Default::default()
+      })].into());
 
       intent.response_tx.send(IntentResponse {
           uuid: intent.uuid,
@@ -214,13 +218,13 @@ async fn feature_flags() {
   let timestamp = datetime!(2023-10-01 12:00:00 UTC);
   let id = setup
     .client
-      .enqueue_upload(
-        setup.make_file(b"abc"),
-        "client_report".to_string(),
-        [("foo".into(), "bar".into())].into(),
-        Some(timestamp),
-        "session_id".to_string(),
-        vec![
+    .enqueue_upload(
+      setup.make_file(b"abc"),
+      "client_report".to_string(),
+      [("foo".into(), "bar".into())].into(),
+      Some(timestamp),
+      "session_id".to_string(),
+      vec![
         SnappedFeatureFlag::new(
           "key".to_string(),
           Some("value".to_string()),
@@ -290,13 +294,13 @@ async fn pending_upload_limit() {
 
   let id1 = setup
     .client
-      .enqueue_upload(
-        setup.make_file(b"1"),
-        "client_report".to_string(),
-        [].into(),
-        None,
-        "session_id".to_string(),
-        vec![],
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      "client_report".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -306,13 +310,13 @@ async fn pending_upload_limit() {
 
   let id2 = setup
     .client
-      .enqueue_upload(
-        setup.make_file(b"2"),
-        "client_report".to_string(),
-        [].into(),
-        None,
-        "session_id".to_string(),
-        vec![],
+    .enqueue_upload(
+      setup.make_file(b"2"),
+      "client_report".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -321,13 +325,13 @@ async fn pending_upload_limit() {
   );
   let id3 = setup
     .client
-      .enqueue_upload(
-        setup.make_file(b"3"),
-        "client_report".to_string(),
-        [].into(),
-        None,
-        "session_id".to_string(),
-        vec![],
+    .enqueue_upload(
+      setup.make_file(b"3"),
+      "client_report".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -389,13 +393,13 @@ async fn inconsistent_state_missing_file() {
   let mut setup = Setup::new(2).await;
   let id1 = setup
     .client
-      .enqueue_upload(
-        setup.make_file(b"1"),
-        "client_report".to_string(),
-        [].into(),
-        None,
-        "session_id".to_string(),
-        vec![],
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      "client_report".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -404,13 +408,13 @@ async fn inconsistent_state_missing_file() {
   );
   let id2 = setup
     .client
-      .enqueue_upload(
-        setup.make_file(b"2"),
-        "client_report".to_string(),
-        [].into(),
-        None,
-        "session_id".to_string(),
-        vec![],
+    .enqueue_upload(
+      setup.make_file(b"2"),
+      "client_report".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -447,13 +451,13 @@ async fn inconsistent_state_extra_file() {
   let mut setup = Setup::new(2).await;
   let id1 = setup
     .client
-      .enqueue_upload(
-        setup.make_file(b"1"),
-        "client_report".to_string(),
-        [].into(),
-        None,
-        "session_id".to_string(),
-        vec![],
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      "client_report".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -518,13 +522,13 @@ async fn disk_persistence() {
   let mut setup = Setup::new(2).await;
   let id1 = setup
     .client
-      .enqueue_upload(
-        setup.make_file(b"1"),
-        "client_report".to_string(),
-        [].into(),
-        None,
-        "session_id".to_string(),
-        vec![],
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      "client_report".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -565,13 +569,13 @@ async fn inconsistent_state_missing_index() {
   let mut setup = Setup::new(2).await;
   let id1 = setup
     .client
-      .enqueue_upload(
-        setup.make_file(b"1"),
-        "client_report".to_string(),
-        [].into(),
-        None,
-        "session_id".to_string(),
-        vec![],
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      "client_report".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -589,13 +593,13 @@ async fn inconsistent_state_missing_index() {
 
   let id2 = setup
     .client
-      .enqueue_upload(
-        setup.make_file(b"2"),
-        "client_report".to_string(),
-        [].into(),
-        None,
-        "session_id".to_string(),
-        vec![],
+    .enqueue_upload(
+      setup.make_file(b"2"),
+      "client_report".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -635,13 +639,13 @@ async fn new_entry_disk_full() {
 
   let id1 = setup
     .client
-      .enqueue_upload(
-        setup.make_file(b"1"),
-        "client_report".to_string(),
-        [].into(),
-        None,
-        "session_id".to_string(),
-        vec![],
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      "client_report".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -664,13 +668,13 @@ async fn new_entry_disk_full_after_received() {
 
   let id1 = setup
     .client
-      .enqueue_upload(
-        setup.make_file(b"1"),
-        "client_report".to_string(),
-        [].into(),
-        None,
-        "session_id".to_string(),
-        vec![],
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      "client_report".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -705,13 +709,13 @@ async fn intent_retries() {
 
   let id1 = setup
     .client
-      .enqueue_upload(
-        setup.make_file(b"1"),
-        "client_report".to_string(),
-        [].into(),
-        None,
-        "session_id".to_string(),
-        vec![],
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      "client_report".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -740,13 +744,13 @@ async fn intent_drop() {
 
   let id1 = setup
     .client
-      .enqueue_upload(
-        setup.make_file(b"1"),
-        "client_report".to_string(),
-        [].into(),
-        None,
-        "session_id".to_string(),
-        vec![],
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      "client_report".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -777,13 +781,13 @@ async fn upload_retries() {
 
   let id1 = setup
     .client
-      .enqueue_upload(
-        setup.make_file(b"1"),
-        "client_report".to_string(),
-        [].into(),
-        None,
-        "session_id".to_string(),
-        vec![],
+    .enqueue_upload(
+      setup.make_file(b"1"),
+      "client_report".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
     )
     .unwrap();
   assert_eq!(
@@ -813,5 +817,69 @@ async fn upload_retries() {
   assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
       assert_eq!(upload.payload.artifact_id, id1.to_string());
       assert_eq!(upload.payload.type_id, "client_report");
+  });
+}
+
+#[tokio::test]
+async fn normalize_type_id_on_load() {
+  // Verify that an index entry with no type_id (as persisted by an older client) is normalized to
+  // the default type_id when the index is loaded.
+
+  use bd_client_common::file::write_compressed_protobuf;
+  use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
+
+  let mut setup = Setup::new(2).await;
+
+  // Enqueue a normal upload so the uploader writes the artifact file and index to disk.
+  let id = setup
+    .client
+    .enqueue_upload(
+      setup.make_file(b"abc"),
+      "client_report".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+    )
+    .unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id.to_string()
+  );
+
+  // Consume the pending intent from the first uploader so the channel is free for the new
+  // uploader after reinitialize. The channel has capacity=1, so the new intent task would block
+  // forever if we don't drain it first.
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(_));
+
+  // Overwrite the on-disk index with the same artifact but type_id cleared, simulating a
+  // pre-existing index written by an older version of the client.
+  let patched_index = ArtifactUploadIndex {
+    artifact: vec![Artifact {
+      name: id.to_string(),
+      type_id: None,
+      pending_intent_negotiation: true,
+      ..Default::default()
+    }],
+    ..Default::default()
+  };
+  setup
+    .filesystem
+    .write_file(
+      &super::REPORT_DIRECTORY.join(&*REPORT_INDEX_FILE),
+      &write_compressed_protobuf(&patched_index).unwrap(),
+    )
+    .await
+    .unwrap();
+
+  // Restart the uploader so it loads the patched index.
+  let mut setup = setup.reinitialize().await;
+
+  // The fresh instance should normalize the missing type_id to the default value.
+  let upload = setup.data_upload_rx.recv().await.unwrap();
+  assert_matches!(upload, DataUpload::ArtifactUploadIntent(intent) => {
+    assert_eq!(intent.payload.artifact_id, id.to_string());
+    assert_eq!(intent.payload.type_id, "client_report");
   });
 }
