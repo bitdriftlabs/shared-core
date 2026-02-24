@@ -974,3 +974,52 @@ async fn connect_unary() {
     }
   );
 }
+
+#[tokio::test]
+async fn connect_unary_error_stats() {
+  let stats = Helper::new();
+  let endpoints_stats = EndpointStats::new(stats.collector().scope("test"));
+  let called = Arc::new(AtomicBool::new(false));
+  let called_clone = called.clone();
+  let local_address = make_unary_server(
+    Arc::new(ErrorHandler {}),
+    move |e| {
+      assert_matches!(e, crate::Error::Grpc(_));
+      called_clone.store(true, Ordering::SeqCst);
+    },
+    Some(&endpoints_stats),
+  )
+  .await;
+  let client = reqwest::Client::builder().deflate(false).build().unwrap();
+  let address = AddressHelper::new(format!("http://{local_address}")).unwrap();
+  let response = client
+    .post(address.build(&service_method()).to_string())
+    .header(CONTENT_TYPE, CONTENT_TYPE_PROTO)
+    .header(CONNECT_PROTOCOL_VERSION, "1")
+    .body(
+      EchoRequest {
+        echo: "a".repeat(1024),
+        ..Default::default()
+      }
+      .write_to_bytes()
+      .unwrap(),
+    )
+    .send()
+    .await
+    .unwrap();
+  assert_eq!(response.status(), 500);
+  assert_eq!(
+    response.bytes().await.unwrap(),
+    "{\"code\":\"internal\",\"message\":\"foo\"}"
+  );
+  assert!(called.load(Ordering::SeqCst));
+  stats.assert_counter_eq(
+    1,
+    "test:rpc",
+    &labels! {
+      "service" => "test_Test",
+      "endpoint" => "Echo",
+      "result" => "failure"
+    },
+  );
+}

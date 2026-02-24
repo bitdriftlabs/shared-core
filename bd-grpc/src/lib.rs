@@ -527,12 +527,7 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
   let (headers, extensions, message) =
     decode_request::<OutgoingType>(request, validate_request, connect_protocol_type).await?;
   if matches!(connect_protocol_type, Some(ConnectProtocolType::Unary)) {
-    return Ok(
-      match unary_connect_handler(headers, extensions, message, handler).await {
-        Ok(response) => response,
-        Err(e) => e.to_connect_error_response(),
-      },
-    );
+    return unary_connect_handler(headers, extensions, message, handler).await;
   }
 
   let compression = finalize_response_compression(
