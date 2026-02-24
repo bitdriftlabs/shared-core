@@ -8,8 +8,8 @@
 #![allow(clippy::unwrap_used)]
 
 use super::*;
-use bd_client_common::file_system::RealFileSystem;
 use bd_resilient_kv::SnapshotFilename;
+use bd_test_helpers::session::in_memory_store;
 use bd_time::{SystemTimeProvider, TestTimeProvider};
 use std::sync::atomic::Ordering;
 use time::OffsetDateTime;
@@ -72,14 +72,12 @@ fn parse_snapshot_filename_invalid() {
 
 #[tokio::test]
 async fn correlator_no_state_changes() {
-  let temp_dir = tempfile::tempdir().unwrap();
-  let file_system = Arc::new(RealFileSystem::new(temp_dir.path().to_path_buf()));
+  let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
   let correlator = StateLogCorrelator::new(
     None,
-    temp_dir.path().to_path_buf(),
-    file_system,
+    store,
     None,
     None,
     0,
@@ -97,14 +95,12 @@ async fn correlator_no_state_changes() {
 
 #[tokio::test]
 async fn correlator_tracks_state_changes() {
-  let temp_dir = tempfile::tempdir().unwrap();
-  let file_system = Arc::new(RealFileSystem::new(temp_dir.path().to_path_buf()));
+  let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
   let correlator = StateLogCorrelator::new(
     None,
-    temp_dir.path().to_path_buf(),
-    file_system,
+    store,
     None,
     None,
     0,
@@ -122,14 +118,12 @@ async fn correlator_tracks_state_changes() {
 
 #[tokio::test]
 async fn correlator_uploaded_coverage_prevents_reupload() {
-  let temp_dir = tempfile::tempdir().unwrap();
-  let file_system = Arc::new(RealFileSystem::new(temp_dir.path().to_path_buf()));
+  let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
   let correlator = StateLogCorrelator::new(
     None,
-    temp_dir.path().to_path_buf(),
-    file_system,
+    store,
     None,
     None,
     0,
@@ -141,7 +135,7 @@ async fn correlator_uploaded_coverage_prevents_reupload() {
   let timestamp = OffsetDateTime::from_unix_timestamp(1_704_067_200).unwrap();
   correlator.on_state_change(timestamp);
 
-  correlator.on_state_uploaded(1_704_067_300_000_000).await;
+  correlator.on_state_uploaded(1_704_067_300_000_000);
 
   assert!(
     correlator
@@ -155,15 +149,14 @@ async fn cooldown_prevents_rapid_snapshot_creation() {
   let temp_dir = tempfile::tempdir().unwrap();
   let state_dir = temp_dir.path().join("state");
   let snapshots_dir = state_dir.join("snapshots");
-  let file_system = Arc::new(RealFileSystem::new(temp_dir.path().to_path_buf()));
+  let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
   let mock_creator = Arc::new(MockSnapshotCreator::new(snapshots_dir));
 
   let correlator = StateLogCorrelator::new(
     Some(state_dir),
-    temp_dir.path().to_path_buf(),
-    file_system,
+    store,
     None,
     Some(mock_creator.clone()),
     1000,
@@ -198,7 +191,7 @@ async fn cooldown_allows_snapshot_after_interval() {
   let temp_dir = tempfile::tempdir().unwrap();
   let state_dir = temp_dir.path().join("state");
   let snapshots_dir = state_dir.join("snapshots");
-  let file_system = Arc::new(RealFileSystem::new(temp_dir.path().to_path_buf()));
+  let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
   let mock_creator = Arc::new(MockSnapshotCreator::new(snapshots_dir.clone()));
@@ -206,8 +199,7 @@ async fn cooldown_allows_snapshot_after_interval() {
 
   let correlator = StateLogCorrelator::new(
     Some(state_dir),
-    temp_dir.path().to_path_buf(),
-    file_system,
+    store,
     None,
     Some(mock_creator.clone()),
     1,
@@ -248,15 +240,14 @@ async fn zero_cooldown_allows_immediate_snapshot_creation() {
   let temp_dir = tempfile::tempdir().unwrap();
   let state_dir = temp_dir.path().join("state");
   let snapshots_dir = state_dir.join("snapshots");
-  let file_system = Arc::new(RealFileSystem::new(temp_dir.path().to_path_buf()));
+  let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
   let mock_creator = Arc::new(MockSnapshotCreator::new(snapshots_dir.clone()));
 
   let correlator = StateLogCorrelator::new(
     Some(state_dir),
-    temp_dir.path().to_path_buf(),
-    file_system,
+    store,
     None,
     Some(mock_creator.clone()),
     0,
@@ -296,7 +287,7 @@ async fn uses_existing_snapshot_from_normal_rotation() {
   let state_dir = temp_dir.path().join("state");
   let snapshots_dir = state_dir.join("snapshots");
   std::fs::create_dir_all(&snapshots_dir).unwrap();
-  let file_system = Arc::new(RealFileSystem::new(temp_dir.path().to_path_buf()));
+  let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
   let mock_creator = Arc::new(MockSnapshotCreator::new(snapshots_dir.clone()));
@@ -307,8 +298,7 @@ async fn uses_existing_snapshot_from_normal_rotation() {
 
   let correlator = StateLogCorrelator::new(
     Some(state_dir),
-    temp_dir.path().to_path_buf(),
-    file_system,
+    store,
     None,
     Some(mock_creator.clone()),
     0,
@@ -338,15 +328,14 @@ async fn creates_on_demand_snapshot_when_none_exists() {
   let temp_dir = tempfile::tempdir().unwrap();
   let state_dir = temp_dir.path().join("state");
   let snapshots_dir = state_dir.join("snapshots");
-  let file_system = Arc::new(RealFileSystem::new(temp_dir.path().to_path_buf()));
+  let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
   let mock_creator = Arc::new(MockSnapshotCreator::new(snapshots_dir));
 
   let correlator = StateLogCorrelator::new(
     Some(state_dir),
-    temp_dir.path().to_path_buf(),
-    file_system,
+    store,
     None,
     Some(mock_creator.clone()),
     0,
@@ -376,7 +365,7 @@ async fn prefers_existing_snapshot_over_on_demand_creation() {
   let state_dir = temp_dir.path().join("state");
   let snapshots_dir = state_dir.join("snapshots");
   std::fs::create_dir_all(&snapshots_dir).unwrap();
-  let file_system = Arc::new(RealFileSystem::new(temp_dir.path().to_path_buf()));
+  let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
   let mock_creator = Arc::new(MockSnapshotCreator::new(snapshots_dir.clone()));
@@ -391,8 +380,7 @@ async fn prefers_existing_snapshot_over_on_demand_creation() {
 
   let correlator = StateLogCorrelator::new(
     Some(state_dir),
-    temp_dir.path().to_path_buf(),
-    file_system,
+    store,
     None,
     Some(mock_creator.clone()),
     0,

@@ -21,8 +21,6 @@
 mod tests;
 
 use bd_artifact_upload::Client as ArtifactClient;
-use bd_client_common::file::{read_checksummed_data, write_checksummed_data};
-use bd_client_common::file_system::FileSystem;
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::LogFields;
 use bd_resilient_kv::SnapshotFilename;
@@ -33,13 +31,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use time::OffsetDateTime;
-use tokio::sync::RwLock;
 
-/// Directory for storing state upload index.
-const STATE_UPLOAD_DIR: &str = "state_upload";
-
-/// Index file name for tracking uploaded snapshots.
-const STATE_UPLOAD_INDEX_FILE: &str = "upload_index.bin";
+/// Key for persisting the state upload index via bd-key-value.
+static STATE_UPLOAD_KEY: bd_key_value::Key<String> =
+  bd_key_value::Key::new("state_upload.uploaded_through.1");
 
 //
 // SnapshotCreator
@@ -121,14 +116,8 @@ pub struct StateLogCorrelator {
   /// Path to the state store directory (for finding snapshot files).
   state_store_path: Option<PathBuf>,
 
-  /// Path to the SDK directory (for persisting upload index).
-  sdk_directory: PathBuf,
-
-  /// File system for persistence operations.
-  file_system: Arc<dyn FileSystem>,
-
-  /// Lock for persisting the upload index.
-  persist_lock: RwLock<()>,
+  /// Key-value store for persisting upload index across restarts.
+  store: Arc<bd_key_value::Store>,
 
   /// Retention handle for preventing snapshot cleanup. Updated as state is uploaded to allow
   /// cleanup of old snapshots that have already been uploaded.
@@ -148,8 +137,7 @@ impl StateLogCorrelator {
   ///
   /// # Arguments
   /// * `state_store_path` - Path to the state store directory containing snapshot files
-  /// * `sdk_directory` - Path to the SDK directory for persisting the upload index
-  /// * `file_system` - File system for persistence operations
+  /// * `store` - Key-value store for persisting upload index
   /// * `retention_registry` - Registry for managing snapshot retention to prevent cleanup
   /// * `snapshot_creator` - Optional snapshot creator for triggering on-demand snapshots
   /// * `snapshot_creation_interval_ms` - Minimum interval between snapshot creations (milliseconds)
@@ -157,8 +145,7 @@ impl StateLogCorrelator {
   /// * `stats_scope` - Stats scope for metrics
   pub async fn new(
     state_store_path: Option<PathBuf>,
-    sdk_directory: PathBuf,
-    file_system: Arc<dyn FileSystem>,
+    store: Arc<bd_key_value::Store>,
     retention_registry: Option<Arc<RetentionRegistry>>,
     snapshot_creator: Option<Arc<dyn SnapshotCreator>>,
     snapshot_creation_interval_ms: u32,
@@ -172,33 +159,33 @@ impl StateLogCorrelator {
       None => None,
     };
 
-    let correlator = Self {
+    let uploaded_through = store
+      .get_string(&STATE_UPLOAD_KEY)
+      .and_then(|s| s.parse::<u64>().ok())
+      .unwrap_or(0);
+
+    if uploaded_through > 0 {
+      log::debug!("loaded state upload coverage through {uploaded_through}");
+    }
+
+    if let Some(handle) = &retention_handle
+      && uploaded_through > 0
+    {
+      handle.update_retention_micros(uploaded_through);
+    }
+
+    Self {
       last_state_change_micros: AtomicU64::new(0),
-      state_uploaded_through_micros: AtomicU64::new(0),
+      state_uploaded_through_micros: AtomicU64::new(uploaded_through),
       last_snapshot_creation_micros: AtomicU64::new(0),
       snapshot_creation_interval_micros: u64::from(snapshot_creation_interval_ms) * 1000,
       state_store_path,
-      sdk_directory,
-      file_system,
-      persist_lock: RwLock::new(()),
+      store,
       retention_handle,
       snapshot_creator,
       time_provider,
       stats,
-    };
-
-    correlator.load_persisted_state().await;
-
-    if let Some(handle) = &correlator.retention_handle {
-      let uploaded_through = correlator
-        .state_uploaded_through_micros
-        .load(Ordering::Relaxed);
-      if uploaded_through > 0 {
-        handle.update_retention_micros(uploaded_through);
-      }
     }
-
-    correlator
   }
 
   /// Called when state changes. Updates the tracked last state change timestamp.
@@ -248,7 +235,7 @@ impl StateLogCorrelator {
   /// Called after a state snapshot has been successfully uploaded.
   ///
   /// Updates the coverage tracking so future log batches won't trigger redundant uploads.
-  pub async fn on_state_uploaded(&self, snapshot_timestamp_micros: u64) {
+  pub fn on_state_uploaded(&self, snapshot_timestamp_micros: u64) {
     self
       .state_uploaded_through_micros
       .fetch_max(snapshot_timestamp_micros, Ordering::Relaxed);
@@ -260,7 +247,9 @@ impl StateLogCorrelator {
     }
 
     // Persist the updated coverage
-    self.persist_state().await;
+    self
+      .store
+      .set_string(&STATE_UPLOAD_KEY, &snapshot_timestamp_micros.to_string());
   }
 
   /// Records that an upload attempt failed.
@@ -330,8 +319,7 @@ impl StateLogCorrelator {
       OffsetDateTime::from_unix_timestamp_nanos(i128::from(snapshot_ref.timestamp_micros) * 1000)
         .ok();
 
-    // Enqueue the upload via artifact uploader
-    // skip_intent=true since we want to upload immediately without negotiation
+    // Enqueue the upload via artifact uploader (skip_intent=true for immediate upload)
     match artifact_client.enqueue_upload(
       file,
       LogFields::new(),
@@ -339,7 +327,7 @@ impl StateLogCorrelator {
       session_id.to_string(),
       vec![],
       "state_snapshot".to_string(),
-      true, // skip_intent - upload immediately
+      true,
     ) {
       Ok(_uuid) => {
         log::debug!(
@@ -347,7 +335,7 @@ impl StateLogCorrelator {
           snapshot_ref.timestamp_micros
         );
         // Mark as uploaded - the artifact uploader will handle retries
-        self.on_state_uploaded(snapshot_ref.timestamp_micros).await;
+        self.on_state_uploaded(snapshot_ref.timestamp_micros);
       },
       Err(e) => {
         log::warn!("failed to enqueue state snapshot upload: {e}");
@@ -449,56 +437,6 @@ impl StateLogCorrelator {
       generation: parsed.generation,
       path: snapshot_path,
     })
-  }
-
-  /// Loads persisted state from disk.
-  async fn load_persisted_state(&self) {
-    let index_path = self
-      .sdk_directory
-      .join(STATE_UPLOAD_DIR)
-      .join(STATE_UPLOAD_INDEX_FILE);
-
-    let Ok(contents) = self.file_system.read_file(&index_path).await else {
-      return;
-    };
-
-    let Ok(data) = read_checksummed_data(&contents) else {
-      log::debug!("state upload index checksum validation failed, starting fresh");
-      return;
-    };
-
-    // Simple binary format: just a u64 for state_uploaded_through_micros
-    if data.len() >= 8 {
-      let uploaded_through = u64::from_le_bytes(data[.. 8].try_into().unwrap_or_default());
-      self
-        .state_uploaded_through_micros
-        .store(uploaded_through, Ordering::Relaxed);
-      log::debug!("loaded state upload coverage through {uploaded_through}");
-    }
-  }
-
-  /// Persists state to disk.
-  async fn persist_state(&self) {
-    let _lock = self.persist_lock.write().await;
-
-    let dir_path = self.sdk_directory.join(STATE_UPLOAD_DIR);
-    let index_path = dir_path.join(STATE_UPLOAD_INDEX_FILE);
-
-    // Ensure directory exists
-    if let Err(e) = self.file_system.create_dir(&dir_path).await {
-      log::debug!("failed to create state upload directory: {e}");
-      return;
-    }
-
-    // Simple binary format: just a u64 for state_uploaded_through_micros
-    let uploaded_through = self.state_uploaded_through_micros.load(Ordering::Relaxed);
-    let data = uploaded_through.to_le_bytes().to_vec();
-
-    let checksummed = write_checksummed_data(&data);
-
-    if let Err(e) = self.file_system.write_file(&index_path, &checksummed).await {
-      log::debug!("failed to persist state upload index: {e}");
-    }
   }
 }
 

@@ -101,7 +101,7 @@ pub struct BufferUploadManager {
   // Artifact client for uploading state snapshots.
   artifact_client: Arc<dyn ArtifactClient>,
 
-  // Session ID for correlating uploads.
+  // Session ID getter for correlating uploads.
   session_id: Arc<dyn Fn() -> String + Send + Sync>,
 }
 

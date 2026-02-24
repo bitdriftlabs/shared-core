@@ -334,8 +334,7 @@ impl LoggerBuilder {
       let state_correlator = Arc::new(
         StateLogCorrelator::new(
           Some(state_directory.clone()),
-          self.params.sdk_directory.clone(),
-          Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
+          self.params.store.clone(),
           Some(retention_registry),
           Some(Arc::new(state_store.clone())),
           snapshot_creation_interval_ms,
