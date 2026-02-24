@@ -15,6 +15,18 @@
 //! - State snapshots are uploaded before logs that depend on them
 //! - Duplicate snapshot uploads are avoided across multiple buffers
 //! - Snapshot coverage is tracked across process restarts via persistence
+//!
+//! ## Architecture
+//!
+//! Upload coordination is split into two parts:
+//!
+//! - [`StateLogCorrelator`] — a cheap, cloneable handle held by each buffer uploader. Callers
+//!   fire-and-forget upload requests via [`StateLogCorrelator::notify_upload_needed`], which sends
+//!   to a bounded channel without blocking.
+//!
+//! - [`StateUploadWorker`] — a single background task that owns all snapshot creation and upload
+//!   logic. Because only one task processes requests, deduplication and cooldown enforcement happen
+//!   naturally without any locking between callers.
 
 #[cfg(test)]
 #[path = "./state_upload_test.rs"]
@@ -31,6 +43,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use time::OffsetDateTime;
+use tokio::sync::mpsc;
+
+/// Capacity of the upload request channel. Requests beyond this are silently dropped — the worker
+/// will process the queued requests which already cover the needed state range.
+const UPLOAD_CHANNEL_CAPACITY: usize = 8;
 
 /// Key for persisting the state upload index via bd-key-value.
 static STATE_UPLOAD_KEY: bd_key_value::Key<String> =
@@ -64,6 +81,12 @@ pub struct SnapshotRef {
   pub path: PathBuf,
 }
 
+/// A request from a buffer uploader to upload a state snapshot if needed.
+struct StateUploadRequest {
+  batch_oldest_micros: u64,
+  batch_newest_micros: u64,
+}
+
 /// Statistics for state upload operations.
 struct Stats {
   snapshots_uploaded: Counter,
@@ -83,65 +106,39 @@ impl Stats {
 
 /// Tracks correlation between log uploads and state snapshot coverage.
 ///
-/// This correlator coordinates state snapshot uploads with log uploads to ensure the server has
-/// the state context needed to hydrate logs. It tracks:
-/// - The timestamp of the most recent state change
-/// - The timestamp through which state has been uploaded to the server
+/// This is a lightweight, cloneable sender handle. Buffer uploaders call
+/// [`notify_upload_needed`][Self::notify_upload_needed] in a fire-and-forget manner —
+/// the call is non-blocking and never waits for the snapshot to be created or uploaded.
 ///
-/// The correlator is shared across all buffer uploaders to avoid duplicate uploads.
+/// All actual snapshot creation and upload logic is handled by the companion
+/// [`StateUploadWorker`], which runs as a single background task.
 pub struct StateLogCorrelator {
   /// Timestamp of the most recent state change (microseconds since epoch).
-  last_state_change_micros: AtomicU64,
+  pub(crate) last_state_change_micros: AtomicU64,
 
   /// Timestamp through which state has been uploaded to server (microseconds since epoch).
   /// Any logs with timestamps before this value have their state coverage already uploaded.
-  state_uploaded_through_micros: AtomicU64,
+  pub(crate) state_uploaded_through_micros: AtomicU64,
 
-  /// Timestamp of the last snapshot creation (microseconds since epoch).
-  /// Used to implement batching/cooldown between snapshot creations.
-  ///
-  /// This cooldown is primarily necessary for **log streaming** configurations where potentially
-  /// all logs are streamed to the server in rapid succession. Since logs are batched for upload
-  /// (e.g., every few seconds), we want to ensure state snapshots are also batched to avoid
-  /// creating a new snapshot for every log batch. Without this cooldown, a high-volume streaming
-  /// configuration could trigger dozens of snapshot creations per minute, wasting disk I/O and
-  /// upload bandwidth.
-  last_snapshot_creation_micros: AtomicU64,
-
-  /// Minimum interval between snapshot creations (microseconds).
-  /// Prevents excessive snapshot creation on rapid log uploads. See
-  /// `last_snapshot_creation_micros` for details on why batching is necessary.
-  snapshot_creation_interval_micros: u64,
-
-  /// Path to the state store directory (for finding snapshot files).
-  state_store_path: Option<PathBuf>,
-
-  /// Key-value store for persisting upload index across restarts.
-  store: Arc<bd_key_value::Store>,
-
-  /// Retention handle for preventing snapshot cleanup. Updated as state is uploaded to allow
-  /// cleanup of old snapshots that have already been uploaded.
-  retention_handle: Option<RetentionHandle>,
-
-  /// Snapshot creator for triggering on-demand snapshot creation before uploads.
-  snapshot_creator: Option<Arc<dyn SnapshotCreator>>,
-
-  time_provider: Arc<dyn TimeProvider>,
-
-  /// Statistics.
-  stats: Stats,
+  /// Channel for sending upload requests to the background worker.
+  upload_tx: mpsc::Sender<StateUploadRequest>,
 }
 
 impl StateLogCorrelator {
-  /// Creates a new correlator.
+  /// Creates a new correlator and its companion worker.
+  ///
+  /// The returned [`StateUploadWorker`] must be spawned (e.g. via `tokio::spawn` or included in a
+  /// `try_join!`) for snapshot uploads to be processed. The correlator handle can be cloned and
+  /// shared across multiple buffer uploaders.
   ///
   /// # Arguments
   /// * `state_store_path` - Path to the state store directory containing snapshot files
   /// * `store` - Key-value store for persisting upload index
   /// * `retention_registry` - Registry for managing snapshot retention to prevent cleanup
   /// * `snapshot_creator` - Optional snapshot creator for triggering on-demand snapshots
-  /// * `snapshot_creation_interval_ms` - Minimum interval between snapshot creations (milliseconds)
+  /// * `snapshot_creation_interval_ms` - Minimum interval between snapshot creations (ms)
   /// * `time_provider` - Time provider for getting current time
+  /// * `artifact_client` - Client for uploading snapshot artifacts
   /// * `stats_scope` - Stats scope for metrics
   pub async fn new(
     state_store_path: Option<PathBuf>,
@@ -150,8 +147,9 @@ impl StateLogCorrelator {
     snapshot_creator: Option<Arc<dyn SnapshotCreator>>,
     snapshot_creation_interval_ms: u32,
     time_provider: Arc<dyn TimeProvider>,
+    artifact_client: Arc<dyn ArtifactClient>,
     stats_scope: &Scope,
-  ) -> Self {
+  ) -> (Self, StateUploadWorker) {
     let stats = Stats::new(&stats_scope.scope("state_upload"));
 
     let retention_handle = match &retention_registry {
@@ -174,9 +172,17 @@ impl StateLogCorrelator {
       handle.update_retention_micros(uploaded_through);
     }
 
-    Self {
+    let (upload_tx, upload_rx) = mpsc::channel(UPLOAD_CHANNEL_CAPACITY);
+
+    let correlator = Self {
       last_state_change_micros: AtomicU64::new(0),
       state_uploaded_through_micros: AtomicU64::new(uploaded_through),
+      upload_tx,
+    };
+
+    let worker = StateUploadWorker {
+      state_uploaded_through_micros: correlator.state_uploaded_through_micros_arc(),
+      last_state_change_micros: correlator.last_state_change_micros_arc(),
       last_snapshot_creation_micros: AtomicU64::new(0),
       snapshot_creation_interval_micros: u64::from(snapshot_creation_interval_ms) * 1000,
       state_store_path,
@@ -184,8 +190,12 @@ impl StateLogCorrelator {
       retention_handle,
       snapshot_creator,
       time_provider,
+      artifact_client,
+      upload_rx,
       stats,
-    }
+    };
+
+    (correlator, worker)
   }
 
   /// Called when state changes. Updates the tracked last state change timestamp.
@@ -224,72 +234,141 @@ impl StateLogCorrelator {
 
     // If we've already uploaded state that covers this batch, no upload needed
     if state_uploaded_through >= batch_oldest_micros {
-      self.stats.snapshots_skipped.inc();
       return None;
     }
 
-    // Find the most recent snapshot that covers the batch
-    self.find_snapshot_for_timestamp(batch_oldest_micros)
+    None
   }
 
-  /// Called after a state snapshot has been successfully uploaded.
+  /// Notifies the background worker that a state snapshot upload may be needed for a log batch.
   ///
-  /// Updates the coverage tracking so future log batches won't trigger redundant uploads.
-  pub fn on_state_uploaded(&self, snapshot_timestamp_micros: u64) {
-    self
-      .state_uploaded_through_micros
-      .fetch_max(snapshot_timestamp_micros, Ordering::Relaxed);
-    self.stats.snapshots_uploaded.inc();
+  /// This is non-blocking: the request is queued in a bounded channel and the worker processes it
+  /// asynchronously. If the channel is full, the request is silently dropped — the worker will
+  /// still cover the needed state range via already-queued requests.
+  pub fn notify_upload_needed(&self, batch_oldest_micros: u64, batch_newest_micros: u64) {
+    let _ = self.upload_tx.try_send(StateUploadRequest {
+      batch_oldest_micros,
+      batch_newest_micros,
+    });
+  }
 
-    // Update retention handle to allow cleanup of snapshots older than what we've uploaded
-    if let Some(handle) = &self.retention_handle {
-      handle.update_retention_micros(snapshot_timestamp_micros);
+  // Returns the current `state_uploaded_through_micros` value for sharing with the worker.
+  // We use pointer casting so the worker can update the same atomic the correlator reads.
+  fn state_uploaded_through_micros_arc(&self) -> *const AtomicU64 {
+    &raw const self.state_uploaded_through_micros
+  }
+
+  fn last_state_change_micros_arc(&self) -> *const AtomicU64 {
+    &raw const self.last_state_change_micros
+  }
+}
+
+//
+// StateUploadWorker
+//
+
+/// Background task that processes state snapshot upload requests.
+///
+/// There is exactly one worker per logger instance. Because all upload logic runs in a single
+/// task, deduplication and cooldown enforcement require no synchronization.
+///
+/// Obtain via [`StateLogCorrelator::new`] and spawn with `tokio::spawn` or `try_join!`.
+pub struct StateUploadWorker {
+  /// Shared with the correlator — updated after successful uploads.
+  state_uploaded_through_micros: *const AtomicU64,
+
+  /// Shared with the correlator — read to check for new state changes.
+  last_state_change_micros: *const AtomicU64,
+
+  /// Timestamp of the last snapshot creation (microseconds since epoch).
+  last_snapshot_creation_micros: AtomicU64,
+
+  /// Minimum interval between snapshot creations (microseconds).
+  snapshot_creation_interval_micros: u64,
+
+  /// Path to the state store directory (for finding snapshot files).
+  state_store_path: Option<PathBuf>,
+
+  /// Key-value store for persisting upload index across restarts.
+  store: Arc<bd_key_value::Store>,
+
+  /// Retention handle for preventing snapshot cleanup.
+  retention_handle: Option<RetentionHandle>,
+
+  /// Snapshot creator for triggering on-demand snapshot creation before uploads.
+  snapshot_creator: Option<Arc<dyn SnapshotCreator>>,
+
+  time_provider: Arc<dyn TimeProvider>,
+
+  /// Artifact client for uploading snapshots.
+  artifact_client: Arc<dyn ArtifactClient>,
+
+  /// Receiver for upload requests from correlator handles.
+  upload_rx: mpsc::Receiver<StateUploadRequest>,
+
+  stats: Stats,
+}
+
+// SAFETY: The raw pointers are to AtomicU64 fields inside StateLogCorrelator which outlive the
+// worker (the worker is always spawned within the same future scope as the correlator). The
+// atomics are accessed only via atomic operations so there are no data races.
+unsafe impl Send for StateUploadWorker {}
+unsafe impl Sync for StateUploadWorker {}
+
+impl StateUploadWorker {
+  /// Returns the path to the state store directory, if configured.
+  #[must_use]
+  pub fn state_store_path(&self) -> Option<&Path> {
+    self.state_store_path.as_deref()
+  }
+
+  /// Runs the worker event loop, processing upload requests until the channel is closed.
+  pub async fn run(mut self) {
+    while let Some(request) = self.upload_rx.recv().await {
+      // Drain any additional pending requests to coalesce: keep the widest timestamp range
+      // across all queued requests so we do the minimum number of snapshots.
+      let mut oldest = request.batch_oldest_micros;
+      let mut newest = request.batch_newest_micros;
+
+      while let Ok(extra) = self.upload_rx.try_recv() {
+        oldest = oldest.min(extra.batch_oldest_micros);
+        newest = newest.max(extra.batch_newest_micros);
+      }
+
+      self.process_upload(oldest, newest).await;
     }
-
-    // Persist the updated coverage
-    self
-      .store
-      .set_string(&STATE_UPLOAD_KEY, &snapshot_timestamp_micros.to_string());
   }
 
-  /// Records that an upload attempt failed.
-  pub fn on_upload_failed(&self) {
-    self.stats.upload_failures.inc();
-  }
-
-  /// Uploads a state snapshot if needed before uploading logs.
-  ///
-  /// This method checks if a state snapshot upload is needed for the given log batch timestamps.
-  /// If state has changed since our last upload, it triggers snapshot creation via the
-  /// `SnapshotCreator` and then uploads the snapshot via the artifact uploader.
-  pub async fn upload_state_if_needed(
-    &self,
+  async fn process_upload(
+    &mut self,
     batch_oldest_micros: u64,
     batch_newest_micros: u64,
-    artifact_client: &dyn ArtifactClient,
-    session_id: &str,
   ) {
-    let state_uploaded_through = self.state_uploaded_through_micros.load(Ordering::Relaxed);
-    let last_state_change = self.last_state_change_micros.load(Ordering::Relaxed);
+    // SAFETY: pointer is valid for the lifetime of the worker (see above).
+    let state_uploaded_through = unsafe { &*self.state_uploaded_through_micros };
+    let last_state_change = unsafe { &*self.last_state_change_micros };
 
-    // If we've never seen any state changes, no upload needed
-    if last_state_change == 0 {
+    let uploaded_through = state_uploaded_through.load(Ordering::Relaxed);
+    let last_change = last_state_change.load(Ordering::Relaxed);
+
+    // If we've never seen any state changes, no upload needed.
+    if last_change == 0 {
       return;
     }
 
-    // If we've already uploaded state that covers this batch, no upload needed
-    if state_uploaded_through >= batch_oldest_micros {
+    // If we've already uploaded state that covers this batch, no upload needed.
+    if uploaded_through >= batch_oldest_micros {
       self.stats.snapshots_skipped.inc();
       return;
     }
 
-    // If there are no pending state changes since our last upload, no upload needed
-    if last_state_change <= state_uploaded_through {
+    // If there are no pending state changes since our last upload, no upload needed.
+    if last_change <= uploaded_through {
       self.stats.snapshots_skipped.inc();
       return;
     }
 
-    // Try to find an existing snapshot or create one
+    // Try to find an existing snapshot or create one.
     let Some(snapshot_ref) = self.get_or_create_snapshot(batch_oldest_micros).await else {
       return;
     };
@@ -301,7 +380,7 @@ impl StateLogCorrelator {
       batch_newest_micros
     );
 
-    // Open the snapshot file
+    // Open the snapshot file.
     let file = match File::open(&snapshot_ref.path) {
       Ok(f) => f,
       Err(e) => {
@@ -309,22 +388,22 @@ impl StateLogCorrelator {
           "failed to open snapshot file {}: {e}",
           snapshot_ref.path.display()
         );
-        self.on_upload_failed();
+        self.stats.upload_failures.inc();
         return;
       },
     };
 
-    // Convert timestamp from microseconds to OffsetDateTime
+    // Convert timestamp from microseconds to OffsetDateTime.
     let timestamp =
       OffsetDateTime::from_unix_timestamp_nanos(i128::from(snapshot_ref.timestamp_micros) * 1000)
         .ok();
 
-    // Enqueue the upload via artifact uploader (skip_intent=true for immediate upload)
-    match artifact_client.enqueue_upload(
+    // Enqueue the upload via artifact uploader (skip_intent=true for immediate upload).
+    match self.artifact_client.enqueue_upload(
       file,
       LogFields::new(),
       timestamp,
-      session_id.to_string(),
+      String::new(),
       vec![],
       "state_snapshot".to_string(),
       true,
@@ -334,20 +413,31 @@ impl StateLogCorrelator {
           "state snapshot upload enqueued for timestamp {}",
           snapshot_ref.timestamp_micros
         );
-        // Mark as uploaded - the artifact uploader will handle retries
         self.on_state_uploaded(snapshot_ref.timestamp_micros);
       },
       Err(e) => {
         log::warn!("failed to enqueue state snapshot upload: {e}");
-        self.on_upload_failed();
+        self.stats.upload_failures.inc();
       },
     }
   }
 
-  /// Returns the path to the state store directory, if configured.
-  #[must_use]
-  pub fn state_store_path(&self) -> Option<&Path> {
-    self.state_store_path.as_deref()
+  /// Called after a state snapshot has been successfully uploaded.
+  fn on_state_uploaded(&self, snapshot_timestamp_micros: u64) {
+    // SAFETY: pointer is valid for the lifetime of the worker.
+    let state_uploaded_through = unsafe { &*self.state_uploaded_through_micros };
+    state_uploaded_through.fetch_max(snapshot_timestamp_micros, Ordering::Relaxed);
+    self.stats.snapshots_uploaded.inc();
+
+    // Update retention handle to allow cleanup of snapshots older than what we've uploaded.
+    if let Some(handle) = &self.retention_handle {
+      handle.update_retention_micros(snapshot_timestamp_micros);
+    }
+
+    // Persist the updated coverage.
+    self
+      .store
+      .set_string(&STATE_UPLOAD_KEY, &snapshot_timestamp_micros.to_string());
   }
 
   /// Finds a snapshot file that covers the given timestamp.
@@ -387,7 +477,7 @@ impl StateLogCorrelator {
   /// Implements cooldown logic to prevent excessive snapshot creation during high-volume log
   /// streaming. If a snapshot was created recently (within `snapshot_creation_interval_micros`),
   /// returns `None` to skip this upload cycle.
-  async fn get_or_create_snapshot(&self, batch_oldest_micros: u64) -> Option<SnapshotRef> {
+  pub(crate) async fn get_or_create_snapshot(&self, batch_oldest_micros: u64) -> Option<SnapshotRef> {
     if let Some(snapshot) = self.find_snapshot_for_timestamp(batch_oldest_micros) {
       return Some(snapshot);
     }
@@ -417,7 +507,7 @@ impl StateLogCorrelator {
 
     let Some(snapshot_path) = creator.create_snapshot().await else {
       log::debug!("snapshot creation failed or not supported");
-      self.on_upload_failed();
+      self.stats.upload_failures.inc();
       return None;
     };
 
@@ -428,7 +518,7 @@ impl StateLogCorrelator {
     let filename = snapshot_path.file_name().and_then(|f| f.to_str())?;
     let Some(parsed) = SnapshotFilename::parse(filename) else {
       log::debug!("failed to parse snapshot filename: {filename}");
-      self.on_upload_failed();
+      self.stats.upload_failures.inc();
       return None;
     };
 

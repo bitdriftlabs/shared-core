@@ -26,6 +26,7 @@ use bd_log_matcher::builder::{field_equals, message_equals};
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{LogFields, LogMessage, log_level};
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto_util::serialization::{ProtoMessageDeserialize, ProtoMessageSerialize};
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{MetricType, labels};
 use bd_test_helpers::workflow::macros::rule;
@@ -38,6 +39,7 @@ use bd_test_helpers::workflow::{
 };
 use pretty_assertions::assert_eq;
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::Cursor;
 use std::vec;
 use time::ext::NumericalDuration;
 use time::macros::datetime;
@@ -45,6 +47,62 @@ use time::macros::datetime;
 #[ctor::ctor]
 fn test_global_init() {
   bd_test_helpers::test_global_init();
+}
+
+#[test]
+fn traversal_matched_logs_counts_persisted() {
+  let start = state("start");
+  let b = state("b");
+  let c = state("c");
+  let done = state("done");
+  let start = start.declare_transition(&b, rule!(message_equals("A")));
+  let b = b.declare_transition(&c, rule!(message_equals("B")));
+  let c = c.declare_transition(&done, rule!(message_equals("C")));
+
+  let config = WorkflowBuilder::new("workflow-serialization", &[&start, &b, &c, &done]).build();
+  let config = Config::new(config, WorkflowDebugMode::None).unwrap();
+
+  let now = datetime!(2026-02-03 05:00:00 UTC);
+
+  let traversal = crate::workflow::Traversal::new(
+    &config,
+    2,
+    crate::workflow::TraversalExtractions::default(),
+    now,
+    false,
+  )
+  .expect("state has transitions");
+
+  assert_eq!(1, traversal.matched_logs_counts.len());
+  assert_eq!(0, traversal.matched_logs_counts[0]);
+
+  let run = Run {
+    traversals: vec![traversal],
+    matched_logs_count: 0,
+    first_progress_occurred_at: None,
+  };
+
+  let workflow = Workflow::new_from_parts(
+    config.inner().id().to_string(),
+    vec![run.clone()],
+    None,
+    false,
+  );
+
+  let mut bytes = workflow
+    .serialize_message_to_bytes()
+    .expect("serialize workflow");
+  let mut reader = Cursor::new(&mut bytes);
+  let decoded =
+    Workflow::deserialize_message_from_reader(&mut reader).expect("deserialize workflow");
+
+  let decoded_run = decoded.runs().first().expect("run present");
+  let decoded_traversal = decoded_run.traversals().first().expect("traversal present");
+
+  assert_eq!(
+    run.traversals[0].matched_logs_counts,
+    decoded_traversal.matched_logs_counts
+  );
 }
 
 //

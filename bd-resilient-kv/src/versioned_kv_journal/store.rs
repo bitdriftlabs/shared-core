@@ -14,6 +14,7 @@ use crate::{Scope, UpdateError};
 use ahash::AHashMap;
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_proto::protos::state::payload::StateValue;
+use bd_runtime::runtime::IntWatch;
 use bd_time::TimeProvider;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -225,6 +226,37 @@ impl ScopedMaps {
   }
 }
 
+#[derive(Default)]
+struct PendingScopedValues {
+  feature_flags: AHashMap<String, Option<StateValue>>,
+  global_state: AHashMap<String, Option<StateValue>>,
+  system: AHashMap<String, Option<StateValue>>,
+}
+
+impl PendingScopedValues {
+  fn get(&self, scope: Scope, key: &str) -> Option<&Option<StateValue>> {
+    match scope {
+      Scope::FeatureFlagExposure => self.feature_flags.get(key),
+      Scope::GlobalState => self.global_state.get(key),
+      Scope::System => self.system.get(key),
+    }
+  }
+
+  fn insert(&mut self, scope: Scope, key: String, value: Option<StateValue>) {
+    match scope {
+      Scope::FeatureFlagExposure => {
+        self.feature_flags.insert(key, value);
+      },
+      Scope::GlobalState => {
+        self.global_state.insert(key, value);
+      },
+      Scope::System => {
+        self.system.insert(key, value);
+      },
+    }
+  }
+}
+
 
 /// Persistent storage implementation using a memory-mapped journal.
 struct PersistentStore {
@@ -367,6 +399,41 @@ impl PersistentStore {
     self.journal.time_provider.now().unix_timestamp_nanos() as u64 / 1_000
   }
 
+  fn filter_noop_entries(
+    &self,
+    entries: Vec<(Scope, String, StateValue)>,
+  ) -> Vec<(Scope, String, StateValue)> {
+    let mut pending = PendingScopedValues::default();
+    let mut filtered = Vec::with_capacity(entries.len());
+
+    for (scope, key, value) in entries {
+      let pending_value = pending.get(scope, &key);
+      let current_value = pending_value.map_or_else(
+        || self.cached_map.get(scope, &key).map(|tv| &tv.value),
+        |value| value.as_ref(),
+      );
+
+      if value.value_type.is_none() {
+        if current_value.is_none() {
+          continue;
+        }
+
+        pending.insert(scope, key.clone(), None);
+        filtered.push((scope, key, value));
+        continue;
+      }
+
+      if matches!(current_value, Some(existing) if existing == &value) {
+        continue;
+      }
+
+      pending.insert(scope, key.clone(), Some(value.clone()));
+      filtered.push((scope, key, value));
+    }
+
+    filtered
+  }
+
   async fn insert(
     &mut self,
     scope: Scope,
@@ -375,12 +442,20 @@ impl PersistentStore {
   ) -> Result<(u64, Option<StateValue>), UpdateError> {
     let (timestamp, old_value) = if value.value_type.is_none() {
       // Deletion
+      if !self.cached_map.contains_key(scope, key) {
+        return Ok((self.current_timestamp(), None));
+      }
       let timestamp = self
         .try_insert_with_rotation(scope, key, &StateValue::default())
         .await?;
       let old_value = self.cached_map.remove(scope, key).map(|tv| tv.value);
       (timestamp, old_value)
     } else {
+      if let Some(existing) = self.cached_map.get(scope, key)
+        && existing.value == value
+      {
+        return Ok((existing.timestamp, Some(existing.value.clone())));
+      }
       // Insert/update
       let timestamp = self.try_insert_with_rotation(scope, key, &value).await?;
       let old_value = self
@@ -409,7 +484,12 @@ impl PersistentStore {
     entries: Vec<(Scope, String, StateValue)>,
   ) -> Result<u64, UpdateError> {
     if entries.is_empty() {
-      // Return current timestamp for empty batch (no-op)
+      // Return zero timestamp for empty batch (no-op)
+      return Ok(self.current_timestamp());
+    }
+
+    let entries = self.filter_noop_entries(entries);
+    if entries.is_empty() {
       return Ok(self.current_timestamp());
     }
 
@@ -674,16 +754,23 @@ impl PersistentStore {
       .max()
       .unwrap_or(0);
 
+    let snapshots_enabled = self.retention_registry.snapshots_enabled();
+
     // Check if we need to create a snapshot based on retention requirements
-    let min_retention = self.retention_registry.min_retention_timestamp().await;
-    // If min_retention is None (no handles), don't create snapshot
-    // If min_retention is Some(0), retain everything (at least one handle wants all data)
-    // If min_retention > rotation_timestamp, no one needs this snapshot
-    let should_create_snapshot = match min_retention {
-      None => false,
-      Some(0) => true,
-      Some(ts) => ts <= rotation_timestamp,
+    let min_retention = if snapshots_enabled {
+      self.retention_registry.min_retention_timestamp().await
+    } else {
+      None
     };
+
+    // We never create a snapshot if snapshotting is disabled through the max snapshot count config.
+    // Otherwise we use the min retention timestamp (oldest timestamp requested by a handle)
+    // to indicate the time range we need to keep.
+    // If min_retention is None (no handles), don't create snapshot
+    // If min_retention is Some(u64::MAX), no handle requires retention
+    // If min_retention > rotation_timestamp, no one needs this snapshot
+    let should_create_snapshot =
+      snapshots_enabled && min_retention.is_some_and(|ts| ts <= rotation_timestamp);
 
     // Store snapshots in a separate subdirectory
     let snapshots_dir = self.dir_path.join("snapshots");
@@ -723,9 +810,15 @@ impl PersistentStore {
         );
       }
     } else {
+      let reason = if snapshots_enabled {
+        "no retention required"
+      } else {
+        "snapshotting disabled"
+      };
       log::debug!(
-        "Skipping snapshot creation for {} (no retention required)",
-        old_journal_path.display()
+        "Skipping snapshot creation for {} ({})",
+        old_journal_path.display(),
+        reason
       );
     }
 
@@ -996,6 +1089,7 @@ enum StoreBackend {
 /// see the `VERSIONED_FORMAT.md` documentation.
 pub struct VersionedKVStore {
   backend: StoreBackend,
+  retention_registry: Arc<RetentionRegistry>,
 }
 
 impl VersionedKVStore {
@@ -1024,7 +1118,7 @@ impl VersionedKVStore {
       name,
       config,
       time_provider,
-      retention_registry,
+      retention_registry.clone(),
       common_stats,
     )
     .await?;
@@ -1032,6 +1126,7 @@ impl VersionedKVStore {
     Ok((
       Self {
         backend: StoreBackend::Persistent(store),
+        retention_registry,
       },
       data_loss,
     ))
@@ -1063,11 +1158,14 @@ impl VersionedKVStore {
     time_provider: Arc<dyn TimeProvider>,
     max_bytes: Option<usize>,
     stats: &bd_client_stats_store::Scope,
+    max_snapshot_count_watch: IntWatch<bd_runtime::runtime::state::MaxSnapshotCount>,
   ) -> Self {
     let common_stats = CommonStats::new(stats);
+    let retention_registry = Arc::new(RetentionRegistry::new(max_snapshot_count_watch));
 
     Self {
       backend: StoreBackend::InMemory(InMemoryStore::new(time_provider, max_bytes, common_stats)),
+      retention_registry,
     }
   }
 
@@ -1317,5 +1415,10 @@ impl VersionedKVStore {
       StoreBackend::Persistent(store) => store.max_capacity_bytes,
       StoreBackend::InMemory(_) => 0,
     }
+  }
+
+  #[must_use]
+  pub fn retention_registry(&self) -> Arc<RetentionRegistry> {
+    self.retention_registry.clone()
   }
 }

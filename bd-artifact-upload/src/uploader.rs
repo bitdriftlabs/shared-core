@@ -9,10 +9,9 @@
 #[path = "./uploader_test.rs"]
 mod tests;
 
-use backoff::ExponentialBackoff;
-use backoff::backoff::Backoff;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, TrackedArtifactIntent, TrackedArtifactUpload};
+use bd_backoff::{ExponentialBackoff, InfiniteBackoff};
 use bd_bounded_buffer::SendCounters;
 use bd_client_common::error::InvariantError;
 use bd_client_common::file::{
@@ -34,7 +33,7 @@ use bd_proto::protos::client::feature_flag::FeatureFlag;
 use bd_proto::protos::logging::payload::Data;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, artifact_upload};
 use bd_shutdown::ComponentShutdown;
-use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
+use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, TimestampExt};
 use mockall::automock;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
@@ -42,7 +41,6 @@ use std::sync::{Arc, LazyLock};
 #[cfg(test)]
 use tests::TestHooks;
 use time::OffsetDateTime;
-use time::ext::NumericalStdDuration;
 use uuid::Uuid;
 
 /// Root directory for all files used for storage and uploading.
@@ -746,12 +744,10 @@ impl Uploader {
         break;
       }
 
-      let delay = retry_policy
-        .next_backoff()
-        .unwrap_or_else(|| 1.std_minutes());
+      let delay = retry_policy.next_backoff();
 
       log::debug!("upload of artifact: {name} failed, retrying in {delay:?}");
-      tokio::time::sleep(delay).await;
+      delay.sleep().await;
     }
 
     Ok(())
@@ -787,11 +783,9 @@ impl Uploader {
         break Ok(response.decision);
       }
 
-      let delay = retry_policy
-        .next_backoff()
-        .unwrap_or_else(|| 1.std_minutes());
+      let delay = retry_policy.next_backoff();
       log::debug!("intent negotiation for artifact: {id} failed, retrying in {delay:?}");
-      tokio::time::sleep(delay).await;
+      delay.sleep().await;
     }
   }
 }

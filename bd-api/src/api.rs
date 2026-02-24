@@ -19,9 +19,8 @@ use crate::{
   TriggerUpload,
 };
 use anyhow::anyhow;
-use backoff::SystemClock;
-use backoff::backoff::Backoff;
-use backoff::exponential::ExponentialBackoff;
+use bd_backoff::exponential::ExponentialBackoffInfinite;
+use bd_backoff::{InfiniteBackoff, SystemClock};
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::payload_conversion::IntoRequest;
 use bd_client_common::{ClientConfigurationUpdate, maybe_await};
@@ -65,7 +64,7 @@ use bd_proto::protos::client::api::{
 use bd_proto::protos::logging::payload::Data as ProtoData;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_runtime::runtime::DurationWatch;
-use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
+use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, TimestampExt};
 use std::cmp::max;
 use std::collections::HashMap;
 use std::future::pending;
@@ -74,7 +73,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use time::Duration;
-use time::ext::NumericalStdDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::watch;
 use tokio::time::{Instant, Sleep, sleep};
@@ -347,7 +345,7 @@ pub struct Api {
 
   max_backoff_interval: DurationWatch<bd_runtime::runtime::api::MaxBackoffInterval>,
   initial_backoff_interval: DurationWatch<bd_runtime::runtime::api::InitialBackoffInterval>,
-  backoff: ExponentialBackoff<SystemClock>,
+  backoff: ExponentialBackoffInfinite<SystemClock>,
   config_updater: Arc<dyn ClientConfigurationUpdate>,
   runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
 
@@ -562,16 +560,16 @@ impl Api {
   async fn do_reconnect_backoff(&mut self, min_retry_after: Option<Duration>) {
     // We have no max timeout, hence this should always return a backoff value.
     // Before moving to the next iteration, sleep according to the backoff strategy.
-    let reconnect_delay = self
-      .backoff
-      .next_backoff()
-      .unwrap_or_else(|| 1.std_minutes());
+    let reconnect_delay = self.backoff.next_backoff();
     let reconnect_delay =
-      min_retry_after.map_or(reconnect_delay, |f| max(f.unsigned_abs(), reconnect_delay));
-    log::debug!("reconnecting in {} ms", reconnect_delay.as_millis());
+      min_retry_after.map_or(reconnect_delay, |f| max(f.abs(), reconnect_delay));
+    log::debug!(
+      "reconnecting in {} ms",
+      reconnect_delay.whole_milliseconds()
+    );
 
     // Pause execution until we are ready to reconnect.
-    tokio::time::sleep(reconnect_delay).await;
+    reconnect_delay.sleep().await;
   }
 
   fn get_data_idle_timeout(&mut self) -> Duration {

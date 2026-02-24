@@ -43,7 +43,6 @@ ordered-float               = { version = "5.1.0" }
 parking_lot.workspace       = true
 prometheus.workspace        = true
 protobuf.workspace          = true
-rustls-pemfile.workspace    = true
 serde.workspace             = true
 tempfile.workspace          = true
 time.workspace              = true

@@ -5,9 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_log_primitives::StringOrBytes;
+use bd_log_primitives::DataValue;
 use bd_proto::protos::client::api::LogUploadRequest;
-use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::{Log, LogType};
 use protobuf::Message;
 
@@ -68,39 +67,30 @@ impl WrappedLog {
   }
 
   #[must_use]
-  pub fn typed_message(&self) -> StringOrBytes {
-    match self.0.message.data_type.as_ref().unwrap() {
-      Data_type::StringData(string_data) => StringOrBytes::String(string_data.clone()),
-      Data_type::BinaryData(binary_data) => {
-        StringOrBytes::Bytes(binary_data.payload.clone().into())
-      },
-      Data_type::BoolData(bool_data) => StringOrBytes::Boolean(*bool_data),
-      Data_type::IntData(int_data) => StringOrBytes::U64(*int_data),
-      Data_type::SintData(sint_data) => StringOrBytes::I64(*sint_data),
-      Data_type::DoubleData(double_data) => {
-        StringOrBytes::Double(ordered_float::NotNan::new(*double_data).unwrap())
-      },
-    }
+  pub fn typed_message(&self) -> DataValue {
+    self
+      .0
+      .message
+      .clone()
+      .into_option()
+      .and_then(DataValue::from_proto)
+      .expect("missing message value")
   }
 
   #[must_use]
-  pub fn typed_fields(&self) -> Vec<(String, StringOrBytes)> {
+  pub fn typed_fields(&self) -> Vec<(String, DataValue)> {
     self
       .0
       .fields
       .iter()
       .map(|field| {
-        if field.value.has_string_data() {
-          (
-            field.key.clone(),
-            StringOrBytes::String(field.value.string_data().to_string()),
-          )
-        } else {
-          (
-            field.key.clone(),
-            StringOrBytes::Bytes(field.value.binary_data().payload.clone().into()),
-          )
-        }
+        let value = field
+          .value
+          .clone()
+          .into_option()
+          .and_then(DataValue::from_proto)
+          .expect("missing field value");
+        (field.key.clone(), value)
       })
       .collect()
   }

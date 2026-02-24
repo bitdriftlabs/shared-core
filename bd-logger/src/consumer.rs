@@ -13,7 +13,6 @@ use crate::service::{self, UploadRequest};
 use crate::state_upload::StateLogCorrelator;
 use bd_api::TriggerUpload;
 use bd_api::upload::LogBatch;
-use bd_artifact_upload::Client as ArtifactClient;
 use bd_buffer::{AbslCode, Buffer, BufferEvent, BufferEventWithResponse, Consumer, Error};
 use bd_client_common::error::InvariantError;
 use bd_client_common::maybe_await;
@@ -97,12 +96,6 @@ pub struct BufferUploadManager {
 
   // State-log correlator for uploading state snapshots before logs.
   state_correlator: Option<Arc<StateLogCorrelator>>,
-
-  // Artifact client for uploading state snapshots.
-  artifact_client: Arc<dyn ArtifactClient>,
-
-  // Session ID getter for correlating uploads.
-  session_id: Arc<dyn Fn() -> String + Send + Sync>,
 }
 
 impl BufferUploadManager {
@@ -115,8 +108,6 @@ impl BufferUploadManager {
     stats: &Scope,
     logging: Arc<dyn bd_internal_logging::Logger>,
     state_correlator: Option<Arc<StateLogCorrelator>>,
-    artifact_client: Arc<dyn ArtifactClient>,
-    session_id: Arc<dyn Fn() -> String + Send + Sync>,
   ) -> Self {
     Self {
       log_upload_service: service::new(data_upload_tx, shutdown.clone(), runtime_loader, stats),
@@ -137,8 +128,6 @@ impl BufferUploadManager {
       stream_buffer_shutdown_trigger: None,
       old_logs_dropped: stats.counter("old_logs_dropped"),
       state_correlator,
-      artifact_client,
-      session_id,
     }
   }
 
@@ -323,8 +312,6 @@ impl BufferUploadManager {
 
         let batch_builder = BatchBuilder::new(self.feature_flags.clone());
         let state_correlator = self.state_correlator.clone();
-        let artifact_client = self.artifact_client.clone();
-        let session_id = self.session_id.clone();
         tokio::task::spawn(async move {
           StreamedBufferUpload {
             consumer,
@@ -332,8 +319,6 @@ impl BufferUploadManager {
             batch_builder,
             shutdown,
             state_correlator,
-            artifact_client,
-            session_id,
           }
           .start()
           .await
@@ -378,8 +363,6 @@ impl BufferUploadManager {
         shutdown_trigger.make_shutdown(),
         buffer_name.to_string(),
         self.state_correlator.clone(),
-        self.artifact_client.clone(),
-        self.session_id.clone(),
       ),
       shutdown_trigger,
     ))
@@ -399,8 +382,6 @@ impl BufferUploadManager {
       buffer_name.to_string(),
       self.old_logs_dropped.clone(),
       self.state_correlator.clone(),
-      self.artifact_client.clone(),
-      self.session_id.clone(),
     ))
   }
 }
@@ -493,12 +474,6 @@ struct ContinuousBufferUploader {
 
   // State-log correlator for uploading state snapshots before logs.
   state_correlator: Option<Arc<StateLogCorrelator>>,
-
-  // Artifact client for uploading state snapshots.
-  artifact_client: Arc<dyn ArtifactClient>,
-
-  // Session ID getter for correlating uploads.
-  session_id: Arc<dyn Fn() -> String + Send + Sync>,
 }
 
 impl ContinuousBufferUploader {
@@ -509,8 +484,6 @@ impl ContinuousBufferUploader {
     shutdown: ComponentShutdown,
     buffer_id: String,
     state_correlator: Option<Arc<StateLogCorrelator>>,
-    artifact_client: Arc<dyn ArtifactClient>,
-    session_id: Arc<dyn Fn() -> String + Send + Sync>,
   ) -> Self {
     Self {
       consumer,
@@ -521,8 +494,6 @@ impl ContinuousBufferUploader {
       feature_flags,
       buffer_id,
       state_correlator,
-      artifact_client,
-      session_id,
     }
   }
   // Attempts to upload all logs in the provided buffer. For every polling interval we
@@ -578,14 +549,7 @@ impl ContinuousBufferUploader {
 
     // Upload state snapshot if needed before uploading logs
     if let (Some(correlator), Some((oldest, newest))) = (&self.state_correlator, timestamp_range) {
-      correlator
-        .upload_state_if_needed(
-          oldest,
-          newest,
-          self.artifact_client.as_ref(),
-          &(self.session_id)(),
-        )
-        .await;
+      correlator.notify_upload_needed(oldest, newest);
     }
 
     // Attempt to perform an upload of these buffers, with retries ++. See logger/service.rs for
@@ -644,12 +608,6 @@ struct StreamedBufferUpload {
 
   // State-log correlator for uploading state snapshots before logs.
   state_correlator: Option<Arc<StateLogCorrelator>>,
-
-  // Artifact client for uploading state snapshots.
-  artifact_client: Arc<dyn ArtifactClient>,
-
-  // Session ID getter for correlating uploads.
-  session_id: Arc<dyn Fn() -> String + Send + Sync>,
 }
 
 impl StreamedBufferUpload {
@@ -711,16 +669,8 @@ impl StreamedBufferUpload {
       let timestamp_range = self.batch_builder.timestamp_range_micros();
 
       // Upload state snapshot if needed before uploading logs
-      if let (Some(correlator), Some((oldest, newest))) = (&self.state_correlator, timestamp_range)
-      {
-        correlator
-          .upload_state_if_needed(
-            oldest,
-            newest,
-            self.artifact_client.as_ref(),
-            &(self.session_id)(),
-          )
-          .await;
+      if let (Some(correlator), Some((oldest, newest))) = (&self.state_correlator, timestamp_range) {
+        correlator.notify_upload_needed(oldest, newest);
       }
 
       let upload_future = async {
@@ -773,11 +723,6 @@ struct CompleteBufferUpload {
   // State-log correlator for uploading state snapshots before logs.
   state_correlator: Option<Arc<StateLogCorrelator>>,
 
-  // Artifact client for uploading state snapshots.
-  artifact_client: Arc<dyn ArtifactClient>,
-
-  // Session ID getter for correlating uploads.
-  session_id: Arc<dyn Fn() -> String + Send + Sync>,
 }
 
 impl CompleteBufferUpload {
@@ -788,8 +733,6 @@ impl CompleteBufferUpload {
     buffer_id: String,
     old_logs_dropped: Counter,
     state_correlator: Option<Arc<StateLogCorrelator>>,
-    artifact_client: Arc<dyn ArtifactClient>,
-    session_id: Arc<dyn Fn() -> String + Send + Sync>,
   ) -> Self {
     let lookback_window_limit = *runtime_flags.upload_lookback_window_feature_flag.read();
 
@@ -807,8 +750,6 @@ impl CompleteBufferUpload {
       lookback_window,
       old_logs_dropped,
       state_correlator,
-      artifact_client,
-      session_id,
     }
   }
 
@@ -868,14 +809,7 @@ impl CompleteBufferUpload {
 
     // Upload state snapshot if needed before uploading logs
     if let (Some(correlator), Some((oldest, newest))) = (&self.state_correlator, timestamp_range) {
-      correlator
-        .upload_state_if_needed(
-          oldest,
-          newest,
-          self.artifact_client.as_ref(),
-          &(self.session_id)(),
-        )
-        .await;
+      correlator.notify_upload_needed(oldest, newest);
     }
 
     // Attempt to perform an upload of these buffers, with retries ++. See logger/service.rs for

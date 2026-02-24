@@ -75,13 +75,14 @@ async fn correlator_no_state_changes() {
   let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
-  let correlator = StateLogCorrelator::new(
+  let (correlator, _worker) = StateLogCorrelator::new(
     None,
     store,
     None,
     None,
     0,
     Arc::new(SystemTimeProvider {}),
+    Arc::new(bd_artifact_upload::MockClient::new()),
     &stats,
   )
   .await;
@@ -98,13 +99,14 @@ async fn correlator_tracks_state_changes() {
   let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
-  let correlator = StateLogCorrelator::new(
+  let (correlator, _worker) = StateLogCorrelator::new(
     None,
     store,
     None,
     None,
     0,
     Arc::new(SystemTimeProvider {}),
+    Arc::new(bd_artifact_upload::MockClient::new()),
     &stats,
   )
   .await;
@@ -121,13 +123,14 @@ async fn correlator_uploaded_coverage_prevents_reupload() {
   let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
-  let correlator = StateLogCorrelator::new(
+  let (correlator, worker) = StateLogCorrelator::new(
     None,
     store,
     None,
     None,
     0,
     Arc::new(SystemTimeProvider {}),
+    Arc::new(bd_artifact_upload::MockClient::new()),
     &stats,
   )
   .await;
@@ -135,7 +138,7 @@ async fn correlator_uploaded_coverage_prevents_reupload() {
   let timestamp = OffsetDateTime::from_unix_timestamp(1_704_067_200).unwrap();
   correlator.on_state_change(timestamp);
 
-  correlator.on_state_uploaded(1_704_067_300_000_000);
+  worker.on_state_uploaded(1_704_067_300_000_000);
 
   assert!(
     correlator
@@ -154,13 +157,14 @@ async fn cooldown_prevents_rapid_snapshot_creation() {
 
   let mock_creator = Arc::new(MockSnapshotCreator::new(snapshots_dir));
 
-  let correlator = StateLogCorrelator::new(
+  let (correlator, worker) = StateLogCorrelator::new(
     Some(state_dir),
     store,
     None,
     Some(mock_creator.clone()),
     1000,
     Arc::new(SystemTimeProvider {}),
+    Arc::new(bd_artifact_upload::MockClient::new()),
     &stats,
   )
   .await;
@@ -170,11 +174,11 @@ async fn cooldown_prevents_rapid_snapshot_creation() {
   let batch_ts =
     OffsetDateTime::now_utc().unix_timestamp().cast_unsigned() * 1_000_000 + u64::MAX / 2;
 
-  let snapshot1 = correlator.get_or_create_snapshot(batch_ts).await;
+  let snapshot1 = worker.get_or_create_snapshot(batch_ts).await;
   assert!(snapshot1.is_some(), "first snapshot should be created");
   assert_eq!(mock_creator.call_count(), 1);
 
-  let snapshot2 = correlator.get_or_create_snapshot(batch_ts + 1000).await;
+  let snapshot2 = worker.get_or_create_snapshot(batch_ts + 1000).await;
   assert!(
     snapshot2.is_some(),
     "second call should return existing snapshot"
@@ -197,13 +201,14 @@ async fn cooldown_allows_snapshot_after_interval() {
   let mock_creator = Arc::new(MockSnapshotCreator::new(snapshots_dir.clone()));
   let time_provider = Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc()));
 
-  let correlator = StateLogCorrelator::new(
+  let (correlator, worker) = StateLogCorrelator::new(
     Some(state_dir),
     store,
     None,
     Some(mock_creator.clone()),
     1,
     time_provider.clone(),
+    Arc::new(bd_artifact_upload::MockClient::new()),
     &stats,
   )
   .await;
@@ -212,7 +217,7 @@ async fn cooldown_allows_snapshot_after_interval() {
 
   let batch_ts = time_provider.now().unix_timestamp().cast_unsigned() * 1_000_000 + u64::MAX / 2;
 
-  let snapshot1 = correlator.get_or_create_snapshot(batch_ts).await;
+  let snapshot1 = worker.get_or_create_snapshot(batch_ts).await;
   assert!(snapshot1.is_some());
   assert_eq!(mock_creator.call_count(), 1);
 
@@ -226,7 +231,7 @@ async fn cooldown_allows_snapshot_after_interval() {
   }
 
   let future_batch_ts = batch_ts + 10_000_000;
-  let snapshot2 = correlator.get_or_create_snapshot(future_batch_ts).await;
+  let snapshot2 = worker.get_or_create_snapshot(future_batch_ts).await;
   assert!(snapshot2.is_some());
   assert_eq!(
     mock_creator.call_count(),
@@ -245,13 +250,14 @@ async fn zero_cooldown_allows_immediate_snapshot_creation() {
 
   let mock_creator = Arc::new(MockSnapshotCreator::new(snapshots_dir.clone()));
 
-  let correlator = StateLogCorrelator::new(
+  let (correlator, worker) = StateLogCorrelator::new(
     Some(state_dir),
     store,
     None,
     Some(mock_creator.clone()),
     0,
     Arc::new(SystemTimeProvider {}),
+    Arc::new(bd_artifact_upload::MockClient::new()),
     &stats,
   )
   .await;
@@ -268,7 +274,7 @@ async fn zero_cooldown_allows_immediate_snapshot_creation() {
       std::fs::remove_file(entry.path()).unwrap();
     }
 
-    let snapshot = correlator
+    let snapshot = worker
       .get_or_create_snapshot(base_ts + i * 10_000_000)
       .await;
     assert!(snapshot.is_some());
@@ -296,13 +302,14 @@ async fn uses_existing_snapshot_from_normal_rotation() {
   let existing_snapshot = snapshots_dir.join(format!("state.jrn.g0.t{existing_timestamp}.zz"));
   std::fs::write(&existing_snapshot, b"pre-existing snapshot from rotation").unwrap();
 
-  let correlator = StateLogCorrelator::new(
+  let (correlator, worker) = StateLogCorrelator::new(
     Some(state_dir),
     store,
     None,
     Some(mock_creator.clone()),
     0,
     Arc::new(SystemTimeProvider {}),
+    Arc::new(bd_artifact_upload::MockClient::new()),
     &stats,
   )
   .await;
@@ -310,7 +317,7 @@ async fn uses_existing_snapshot_from_normal_rotation() {
   correlator.on_state_change(OffsetDateTime::now_utc());
 
   let batch_ts = existing_timestamp + 1_000_000;
-  let snapshot = correlator.get_or_create_snapshot(batch_ts).await;
+  let snapshot = worker.get_or_create_snapshot(batch_ts).await;
 
   assert!(snapshot.is_some());
   let snapshot_ref = snapshot.unwrap();
@@ -333,13 +340,14 @@ async fn creates_on_demand_snapshot_when_none_exists() {
 
   let mock_creator = Arc::new(MockSnapshotCreator::new(snapshots_dir));
 
-  let correlator = StateLogCorrelator::new(
+  let (correlator, worker) = StateLogCorrelator::new(
     Some(state_dir),
     store,
     None,
     Some(mock_creator.clone()),
     0,
     Arc::new(SystemTimeProvider {}),
+    Arc::new(bd_artifact_upload::MockClient::new()),
     &stats,
   )
   .await;
@@ -349,7 +357,7 @@ async fn creates_on_demand_snapshot_when_none_exists() {
   let batch_ts =
     OffsetDateTime::now_utc().unix_timestamp().cast_unsigned() * 1_000_000 + u64::MAX / 2;
 
-  let snapshot = correlator.get_or_create_snapshot(batch_ts).await;
+  let snapshot = worker.get_or_create_snapshot(batch_ts).await;
 
   assert!(snapshot.is_some());
   assert_eq!(
@@ -378,13 +386,14 @@ async fn prefers_existing_snapshot_over_on_demand_creation() {
   let newer_snapshot = snapshots_dir.join(format!("state.jrn.g1.t{newer_snapshot_ts}.zz"));
   std::fs::write(&newer_snapshot, b"newer snapshot").unwrap();
 
-  let correlator = StateLogCorrelator::new(
+  let (correlator, worker) = StateLogCorrelator::new(
     Some(state_dir),
     store,
     None,
     Some(mock_creator.clone()),
     0,
     Arc::new(SystemTimeProvider {}),
+    Arc::new(bd_artifact_upload::MockClient::new()),
     &stats,
   )
   .await;
@@ -392,7 +401,7 @@ async fn prefers_existing_snapshot_over_on_demand_creation() {
   correlator.on_state_change(OffsetDateTime::now_utc());
 
   let batch_ts = newer_snapshot_ts + 1_000_000;
-  let snapshot = correlator.get_or_create_snapshot(batch_ts).await;
+  let snapshot = worker.get_or_create_snapshot(batch_ts).await;
 
   assert!(snapshot.is_some());
   let snapshot_ref = snapshot.unwrap();

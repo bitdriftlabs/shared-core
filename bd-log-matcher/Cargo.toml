@@ -9,6 +9,7 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
+ahash.workspace             = true
 anyhow.workspace            = true
 bd-log-primitives.path      = "../bd-log-primitives"
 bd-proto.path               = "../bd-proto"
@@ -24,6 +25,7 @@ tempfile.workspace          = true
 assert_matches.workspace    = true
 bd-test-helpers.path        = "../bd-test-helpers"
 matches.workspace           = true
+ordered-float.workspace     = true
 pretty_assertions.workspace = true
 time.workspace              = true
 tokio.workspace             = true

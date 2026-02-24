@@ -7,11 +7,11 @@
 
 #![allow(clippy::cast_possible_truncation, clippy::unwrap_used)]
 
-use crate::{EncodableLog, Log, LogFieldValue, LogType, StringOrBytes};
+use crate::{DataValue, EncodableLog, Log, LogFieldValue, LogType};
 use ahash::AHashMap;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::log::Field;
-use bd_proto::protos::logging::payload::{BinaryData, Data};
+use bd_proto::protos::logging::payload::{ArrayData, BinaryData, Data, MapData};
 use ordered_float::NotNan;
 use protobuf::{Message, MessageFull};
 use std::borrow::Cow;
@@ -44,7 +44,8 @@ fn custom_proto_encoder() {
   Data::descriptor()
     .fields()
     .for_each(|field| match field.name() {
-      "string_data" | "binary_data" | "int_data" | "double_data" | "bool_data" | "sint_data" => {},
+      "string_data" | "binary_data" | "int_data" | "double_data" | "bool_data" | "sint_data"
+      | "map_data" | "array_data" => {},
       other => panic!("unexpected field added to Data proto: {other}"),
     });
   // Note that "type" is unused currently and not encoded.
@@ -104,6 +105,38 @@ fn data_encoding() {
         ..Default::default()
       },
     ),
+    (
+      LogFieldValue::from(AHashMap::from_iter([(
+        "key".to_string(),
+        LogFieldValue::String("value".to_string()),
+      )])),
+      Data {
+        data_type: Some(Data_type::MapData(MapData {
+          entries: std::collections::HashMap::from_iter([(
+            "key".to_string(),
+            Data {
+              data_type: Some(Data_type::StringData("value".to_string())),
+              ..Default::default()
+            },
+          )]),
+          ..Default::default()
+        })),
+        ..Default::default()
+      },
+    ),
+    (
+      LogFieldValue::from(vec![LogFieldValue::String("value".to_string())]),
+      Data {
+        data_type: Some(Data_type::ArrayData(ArrayData {
+          items: vec![Data {
+            data_type: Some(Data_type::StringData("value".to_string())),
+            ..Default::default()
+          }],
+          ..Default::default()
+        })),
+        ..Default::default()
+      },
+    ),
   ];
 
   for (input, expected) in cases {
@@ -141,7 +174,7 @@ fn encodable_log_produces_valid_proto() {
   let log = Log {
     log_level: 2,
     log_type: LogType::REPLAY,
-    message: StringOrBytes::String("test message".to_string()),
+    message: DataValue::String("test message".to_string()),
     fields: AHashMap::from_iter([
       (
         Cow::Borrowed("key1"),
@@ -213,7 +246,7 @@ fn encodable_log_compression_works() {
   let log = Log {
     log_level: 1,
     log_type: LogType::NORMAL,
-    message: StringOrBytes::String(large_message),
+    message: DataValue::String(large_message),
     fields: AHashMap::from_iter([(
       Cow::Borrowed("key"),
       LogFieldValue::String("value".to_string()),
@@ -262,7 +295,7 @@ fn extract_timestamp_works() {
   let log = Log {
     log_level: 1,
     log_type: LogType::NORMAL,
-    message: StringOrBytes::String("test".to_string()),
+    message: DataValue::String("test".to_string()),
     fields: AHashMap::new(),
     matching_fields: AHashMap::new(),
     session_id: "test".to_string(),
@@ -282,4 +315,70 @@ fn extract_timestamp_works() {
     extracted,
     OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap()
   );
+}
+
+#[test]
+fn to_string_value_converts_numeric_types() {
+  assert_eq!(
+    DataValue::String("hello".to_string()).to_string_value(),
+    Some(Cow::Borrowed("hello"))
+  );
+  assert_eq!(
+    DataValue::I64(-42).to_string_value(),
+    Some(Cow::Owned("-42".to_string()))
+  );
+  assert_eq!(
+    DataValue::U64(42).to_string_value(),
+    Some(Cow::Owned("42".to_string()))
+  );
+  assert_eq!(
+    DataValue::Double(NotNan::new(1.5).unwrap()).to_string_value(),
+    Some(Cow::Owned("1.5".to_string()))
+  );
+  assert!(DataValue::Boolean(true).to_string_value().is_none());
+  assert!(
+    DataValue::Bytes(vec![1, 2, 3].into())
+      .to_string_value()
+      .is_none()
+  );
+}
+
+#[test]
+fn field_value_returns_numeric_types_as_strings() {
+  use crate::FieldsRef;
+
+  let captured_fields = AHashMap::from_iter([
+    (
+      Cow::Borrowed("str_field"),
+      LogFieldValue::String("hello".to_string()),
+    ),
+    (Cow::Borrowed("i64_field"), LogFieldValue::I64(-123)),
+    (Cow::Borrowed("u64_field"), LogFieldValue::U64(456)),
+    (
+      Cow::Borrowed("double_field"),
+      LogFieldValue::Double(NotNan::new(7.89).unwrap()),
+    ),
+    (Cow::Borrowed("bool_field"), LogFieldValue::Boolean(true)),
+  ]);
+  let matching_fields = AHashMap::new();
+  let fields_ref = FieldsRef::new(&captured_fields, &matching_fields);
+
+  assert_eq!(
+    fields_ref.field_value("str_field"),
+    Some(Cow::Borrowed("hello"))
+  );
+  assert_eq!(
+    fields_ref.field_value("i64_field"),
+    Some(Cow::Owned("-123".to_string()))
+  );
+  assert_eq!(
+    fields_ref.field_value("u64_field"),
+    Some(Cow::Owned("456".to_string()))
+  );
+  assert_eq!(
+    fields_ref.field_value("double_field"),
+    Some(Cow::Owned("7.89".to_string()))
+  );
+  assert!(fields_ref.field_value("bool_field").is_none());
+  assert!(fields_ref.field_value("nonexistent").is_none());
 }

@@ -91,7 +91,7 @@ fn canonicalize_type_path(type_path: &syn::TypePath) -> CanonicalType {
     "f64" => CanonicalType::F64,
 
     // Wrapper types that preserve the inner type's semantics
-    "Arc" | "Rc" | "Box" => canonicalize_wrapper_type(segment),
+    "Arc" | "Rc" | "Box" | "NotNan" => canonicalize_wrapper_type(segment),
 
     // Vec handling (special case: Vec<u8> is bytes)
     "Vec" => canonicalize_vec_type(segment),
@@ -480,7 +480,7 @@ fn generate_macro_to_proto_test(
     #[allow(clippy::needless_update)]
     fn test_macro_to_protobuf_roundtrip() -> anyhow::Result<()> {
       use protobuf::Message;
-      use bd_proto_util::serialization::ProtoMessage;
+      use bd_proto_util::serialization::{ProtoMessageSerialize, ProtoMessageDeserialize};
 
       // Create Rust instance with test values
       let rust_obj = #name {
@@ -532,7 +532,7 @@ fn generate_full_roundtrip_test(
     #[allow(clippy::needless_update)]
     fn test_full_roundtrip_with_values() -> anyhow::Result<()> {
       use protobuf::Message;
-      use bd_proto_util::serialization::ProtoMessage;
+      use bd_proto_util::serialization::{ProtoMessageSerialize, ProtoMessageDeserialize};
 
       // Create Rust instance with test values
       let original = #name {
@@ -670,4 +670,402 @@ pub struct ValidationConfig {
   pub proto_path: Option<syn::Path>,
   /// Whether to allow partial validation (Rust struct can have fewer fields)
   pub validate_partial: bool,
+}
+
+// =============================================================================
+// Enum Validation (for enums mapping to protobuf oneof)
+// =============================================================================
+
+/// Information about an enum variant needed for validation test generation.
+#[derive(Clone)]
+pub struct EnumVariantInfo {
+  /// The variant name (e.g., `String`, `Bytes`, `Boolean`)
+  pub name: syn::Ident,
+  /// The tag/field number for this variant
+  pub tag: u32,
+  /// The type contained in the variant (None for unit variants)
+  pub inner_type: Option<syn::Type>,
+  /// The canonical type of the inner value
+  pub canonical: CanonicalType,
+  /// Whether this variant is marked for deserialization (when tag conflicts exist)
+  pub is_deserialize_target: bool,
+}
+
+/// Extracts variant information from an enum for validation test generation.
+///
+/// This function parses enum variants with their `#[field(...)]` attributes and extracts
+/// the information needed to validate against a protobuf oneof.
+pub fn extract_enum_variant_info(data_enum: &syn::DataEnum) -> Vec<EnumVariantInfo> {
+  data_enum
+    .variants
+    .iter()
+    .map(|variant| {
+      let name = variant.ident.clone();
+      let (tag, is_deserialize_target) = parse_variant_field_attr(variant);
+
+      let (inner_type, canonical) = match &variant.fields {
+        syn::Fields::Unnamed(fields) => {
+          assert!(
+            fields.unnamed.len() == 1,
+            "Only single-field tuple variants supported for OneOf enums"
+          );
+          let ty = fields.unnamed[0].ty.clone();
+          let canonical = canonicalize_rust_type(&ty, false);
+          (Some(ty), canonical)
+        },
+        syn::Fields::Unit => {
+          // Unit variants map to empty messages (like proto message with no fields)
+          (
+            None,
+            CanonicalType::Message(Box::new(syn::parse_quote!(()))),
+          )
+        },
+        syn::Fields::Named(_) => {
+          // Struct variants are nested messages
+          // For validation purposes, we treat them as generic messages
+          (
+            None,
+            CanonicalType::Message(Box::new(syn::parse_quote!(()))),
+          )
+        },
+      };
+
+      EnumVariantInfo {
+        name,
+        tag,
+        inner_type,
+        canonical,
+        is_deserialize_target,
+      }
+    })
+    .collect()
+}
+
+/// Parses the `#[field(...)]` attribute from an enum variant.
+/// Returns (tag, `is_deserialize_target`).
+fn parse_variant_field_attr(variant: &syn::Variant) -> (u32, bool) {
+  let mut tag = None;
+  let mut is_deserialize = false;
+
+  for attr in &variant.attrs {
+    if attr.path().is_ident("field") {
+      let _ = attr.parse_nested_meta(|meta| {
+        if meta.path.is_ident("id") {
+          let value = meta.value()?;
+          tag = Some(value.parse::<syn::LitInt>()?.base10_parse().unwrap());
+        } else if meta.path.is_ident("deserialize") {
+          is_deserialize = true;
+        }
+        Ok(())
+      });
+    }
+  }
+
+  (
+    tag.expect("All enum variants must have #[field(id = N)]"),
+    is_deserialize,
+  )
+}
+
+/// Generates validation tests for an enum that maps to a protobuf message with a oneof.
+///
+/// The proto message should contain a single oneof, where each oneof field corresponds to an enum
+/// variant. The validation checks:
+/// 1. The proto message has exactly one oneof
+/// 2. Each enum variant's tag matches a field in the oneof
+/// 3. Type compatibility between Rust types and proto field types
+pub fn generate_enum_validation_tests(
+  name: &syn::Ident,
+  proto_path: &syn::Path,
+  variant_infos: &[EnumVariantInfo],
+  validate_partial: bool,
+  serialize_only: bool,
+) -> proc_macro2::TokenStream {
+  let descriptor_test =
+    generate_enum_descriptor_validation_test(name, proto_path, variant_infos, validate_partial);
+
+  if serialize_only {
+    // For serialize_only enums, only validate descriptor compatibility
+    quote! {
+      #descriptor_test
+    }
+  } else {
+    let roundtrip_test = generate_enum_roundtrip_test(name, proto_path, variant_infos);
+    quote! {
+      #descriptor_test
+      #roundtrip_test
+    }
+  }
+}
+
+/// Generates the descriptor validation test for an enum.
+fn generate_enum_descriptor_validation_test(
+  name: &syn::Ident,
+  proto_path: &syn::Path,
+  variant_infos: &[EnumVariantInfo],
+  validate_partial: bool,
+) -> proc_macro2::TokenStream {
+  // Build a map from tag to variant info for validation
+  // We only validate unique tags (the one marked for deserialization if there are conflicts)
+  let unique_tags: std::collections::BTreeMap<u32, &EnumVariantInfo> =
+    variant_infos
+      .iter()
+      .fold(std::collections::BTreeMap::new(), |mut map, info| {
+        map
+          .entry(info.tag)
+          .and_modify(|existing: &mut &EnumVariantInfo| {
+            // If new one is the deserialize target, replace
+            if info.is_deserialize_target {
+              *existing = info;
+            }
+          })
+          .or_insert(info);
+        map
+      });
+
+  let variant_validations: Vec<_> = unique_tags
+    .values()
+    .map(|info| {
+      let variant_name_str = info.name.to_string();
+      let tag = info.tag;
+      let canonical_expr = canonical_type_to_expr(&info.canonical);
+
+      // Generate type check based on the variant's canonical type
+      let type_check = if info.inner_type.is_some() {
+        quote! {
+          {
+            use bd_proto_util::serialization::{
+                validate_field_type,
+                ValidationResult,
+                CanonicalType
+            };
+            let rust_canonical = #canonical_expr;
+            let proto_field_type = oneof_field.runtime_field_type();
+            let result = validate_field_type(&rust_canonical, &proto_field_type);
+            if let ValidationResult::TypeMismatch { expected, actual } = result {
+              panic!(
+                "Enum variant '{}::{}' (tag {}) is incompatible with oneof field:\n  \
+                 - Rust canonical type: {}\n  \
+                 - Proto field type: {}\n  \
+                 Hint: The Rust type serializes as {} but the proto field expects {}.",
+                stringify!(#name),
+                #variant_name_str,
+                #tag,
+                expected,
+                actual,
+                expected,
+                actual
+              );
+            }
+          }
+        }
+      } else {
+        // Unit or struct variants - just verify field exists (type check is more complex)
+        quote! {}
+      };
+
+      quote! {
+        {
+          let oneof_field = oneof.fields().find(|f| f.number() as u32 == #tag)
+            .unwrap_or_else(|| panic!(
+              "Oneof '{}' in proto {} is missing field with number {} (Rust variant: '{}::{}')",
+              oneof_name,
+              stringify!(#proto_path),
+              #tag,
+              stringify!(#name),
+              #variant_name_str
+            ));
+
+          #type_check
+        }
+      }
+    })
+    .collect();
+
+  let unique_tag_count = unique_tags.len();
+
+  let missing_fields_check = if validate_partial {
+    quote! {
+      // Partial validation: only check that Rust variants exist in proto oneof
+      // (proto can have more fields than Rust)
+    }
+  } else {
+    quote! {
+      // Full validation: check that all oneof fields are covered
+      let oneof_field_count = oneof.fields().count();
+      assert_eq!(
+        oneof_field_count,
+        #unique_tag_count,
+        "Field count mismatch: oneof '{}' in proto {} has {} fields, Rust enum {} has {} unique \
+         variants (by tag). Use validate_partial if you intentionally want fewer variants.",
+        oneof_name,
+        stringify!(#proto_path),
+        oneof_field_count,
+        stringify!(#name),
+        #unique_tag_count
+      );
+    }
+  };
+
+  quote! {
+    #[test]
+    fn test_oneof_descriptor_compatibility() {
+      use protobuf::MessageFull;
+      use protobuf::reflect::MessageDescriptor;
+
+      let descriptor: MessageDescriptor = <#proto_path as MessageFull>::descriptor();
+
+      // The proto message should have exactly one oneof
+      let oneofs: Vec<_> = descriptor.oneofs().collect();
+      assert!(
+        !oneofs.is_empty(),
+        "Proto message {} has no oneofs, but Rust enum {} expects to map to a oneof",
+        stringify!(#proto_path),
+        stringify!(#name)
+      );
+      assert_eq!(
+        oneofs.len(),
+        1,
+        "Proto message {} has {} oneofs, expected exactly 1 for enum {}",
+        stringify!(#proto_path),
+        oneofs.len(),
+        stringify!(#name)
+      );
+
+      let oneof = &oneofs[0];
+      let oneof_name = oneof.name();
+
+      #(#variant_validations)*
+
+      #missing_fields_check
+    }
+  }
+}
+
+/// Generates a roundtrip test for enums that tests each deserializable variant.
+fn generate_enum_roundtrip_test(
+  name: &syn::Ident,
+  proto_path: &syn::Path,
+  variant_infos: &[EnumVariantInfo],
+) -> proc_macro2::TokenStream {
+  // Only test variants that are deserialize targets (unique tags)
+  let unique_tags: std::collections::BTreeMap<u32, &EnumVariantInfo> =
+    variant_infos
+      .iter()
+      .fold(std::collections::BTreeMap::new(), |mut map, info| {
+        map
+          .entry(info.tag)
+          .and_modify(|existing: &mut &EnumVariantInfo| {
+            if info.is_deserialize_target {
+              *existing = info;
+            }
+          })
+          .or_insert(info);
+        map
+      });
+
+  let variant_tests: Vec<_> = unique_tags
+    .values()
+    .filter_map(|info| {
+      // Generate test values for tuple variants with known types
+      let test_value = generate_enum_test_value(info)?;
+      let variant_name = &info.name;
+
+      Some(quote! {
+        // Test roundtrip for variant #variant_name
+        {
+          let rust_obj = #name::#variant_name(#test_value);
+          let bytes = rust_obj.serialize_message_to_bytes()?;
+
+          // Verify protobuf can parse it
+          let proto_obj = <#proto_path as Message>::parse_from_bytes(&bytes)?;
+
+          // Re-serialize with protobuf
+          let bytes2 = proto_obj.write_to_bytes()?;
+
+          // Deserialize back with our macro
+          let rust_obj2 = #name::deserialize_message_from_bytes(&bytes2)?;
+
+          // Serialize again to verify roundtrip stability
+          let bytes3 = rust_obj2.serialize_message_to_bytes()?;
+          assert_eq!(
+            bytes, bytes3,
+            "Roundtrip for variant '{}' produced different bytes",
+            stringify!(#variant_name)
+          );
+        }
+      })
+    })
+    .collect();
+
+  if variant_tests.is_empty() {
+    // No testable variants (all unit or struct variants without simple test values)
+    return quote! {};
+  }
+
+  quote! {
+    #[test]
+    fn test_enum_roundtrip() -> anyhow::Result<()> {
+      use protobuf::Message;
+      use bd_proto_util::serialization::{ProtoMessageSerialize, ProtoMessageDeserialize};
+
+      #(#variant_tests)*
+
+      Ok(())
+    }
+  }
+}
+
+/// Generates a test value for an enum variant.
+fn generate_enum_test_value(info: &EnumVariantInfo) -> Option<proc_macro2::TokenStream> {
+  let ty = info.inner_type.as_ref()?;
+
+  match &info.canonical {
+    CanonicalType::String => Some(quote! {{
+      let value: #ty = "test_string".to_string().into();
+      value
+    }}),
+    CanonicalType::Bytes => Some(quote! {{
+      let value: #ty = vec![1u8, 2, 3, 4, 5].into();
+      value
+    }}),
+    CanonicalType::Bool => Some(quote! {{
+      let value: #ty = true.into();
+      value
+    }}),
+    CanonicalType::I32 => Some(quote! {{
+      let value: #ty = 42i32.try_into().unwrap();
+      value
+    }}),
+    CanonicalType::I64 => Some(quote! {{
+      let value: #ty = 42i64.try_into().unwrap();
+      value
+    }}),
+    CanonicalType::U32 => Some(quote! {{
+      let value: #ty = 42u32.try_into().unwrap();
+      value
+    }}),
+    CanonicalType::U64 => Some(quote! {{
+      let value: #ty = 42u64.try_into().unwrap();
+      value
+    }}),
+    CanonicalType::F32 => Some(quote! {{
+      let value: #ty = 1.5f32.try_into().unwrap();
+      value
+    }}),
+    CanonicalType::F64 => Some(quote! {{
+      let value: #ty = 1.5f64.try_into().unwrap();
+      value
+    }}),
+    CanonicalType::Message(_) => Some(quote! {{
+      let value: #ty = Default::default();
+      value
+    }}),
+    CanonicalType::Optional(inner) => {
+      let inner_value = generate_test_value(inner, ty);
+      Some(quote! { Some(#inner_value) })
+    },
+    CanonicalType::Repeated(_) | CanonicalType::Map(..) => Some(quote! { Default::default() }),
+    CanonicalType::Enum => Some(quote! { <#ty as Default>::default() }),
+  }
 }

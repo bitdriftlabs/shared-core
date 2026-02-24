@@ -22,9 +22,9 @@ use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
+  DataValue,
   Log,
   LogFields,
-  StringOrBytes,
   log_level,
 };
 use bd_proto::protos::config::v1::config::BufferConfigList;
@@ -35,7 +35,7 @@ use bd_session::fixed::UUIDCallbacks;
 use bd_session::{Strategy, fixed};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::test::TestStore;
-use bd_state::{Scope, StateReader};
+use bd_state::{SYSTEM_SESSION_ID_KEY, Scope, StateReader};
 use bd_stats_common::labels;
 use bd_test_helpers::events::NoOpListenerTarget;
 use bd_test_helpers::metadata_provider::LogMetadata;
@@ -89,6 +89,9 @@ impl Setup {
         tmp_dir.path().join("buffer"),
         &collector.scope(""),
         runtime,
+        Arc::new(bd_resilient_kv::RetentionRegistry::new(
+          bd_runtime::runtime::IntWatch::new_for_testing(0),
+        )),
       )
       .0,
       runtime: Self::make_runtime(&tmp_dir),
@@ -278,14 +281,14 @@ fn log_line_size_is_computed_correctly() {
     }
   }
 
-  let baseline_log_expected_size = 488;
+  let baseline_log_expected_size = 688;
   let baseline_log = create_baseline_log();
   assert_eq!(baseline_log_expected_size, baseline_log.size());
 
   // Add one extra character to the `message` and verify that reported size increases by 1 byte
   let mut baseline_log_with_longer_message = create_baseline_log();
   baseline_log_with_longer_message.message =
-    StringOrBytes::from(baseline_log.message.as_str().unwrap().to_owned() + "1");
+    DataValue::from(baseline_log.message.as_str().unwrap().to_owned() + "1");
   assert_eq!(
     baseline_log_expected_size + 1,
     baseline_log_with_longer_message.size()
@@ -328,14 +331,14 @@ fn annotated_log_line_size_is_computed_correctly() {
     }
   }
 
-  let baseline_log_expected_size = 561;
+  let baseline_log_expected_size = 761;
   let baseline_log = create_baseline_log();
   assert_eq!(baseline_log_expected_size, baseline_log.size());
 
   // Add one extra character to the `message` and verify that reported size increases by 1 bytes
   let mut baseline_log_with_longer_message = create_baseline_log();
   baseline_log_with_longer_message.message =
-    StringOrBytes::from(baseline_log.message.as_str().unwrap().to_owned() + "1");
+    DataValue::from(baseline_log.message.as_str().unwrap().to_owned() + "1");
   assert_eq!(
     baseline_log_expected_size + 1,
     baseline_log_with_longer_message.size()
@@ -353,7 +356,7 @@ fn annotated_log_line_size_is_computed_correctly() {
   // by 1 byte
   let mut baseline_log_with_longer_field_key = create_baseline_log();
   baseline_log_with_longer_field_key.fields =
-    [("foo".into(), StringOrBytes::String("bar1".to_string()))].into();
+    [("foo".into(), DataValue::String("bar1".to_string()))].into();
   assert_eq!(
     baseline_log_expected_size + 1,
     baseline_log_with_longer_field_key.size()
@@ -363,7 +366,7 @@ fn annotated_log_line_size_is_computed_correctly() {
   // by 1 byte
   let mut baseline_log_with_longer_field_value = baseline_log;
   baseline_log_with_longer_field_value.fields =
-    [("foo".into(), StringOrBytes::String("bar1".to_string()))].into();
+    [("foo".into(), DataValue::String("bar1".to_string()))].into();
   assert_eq!(
     baseline_log_expected_size + 1,
     baseline_log_with_longer_field_value.size()
@@ -674,7 +677,7 @@ async fn logs_resource_utilization_log() {
   let log = LogLine {
     log_level: log_level::DEBUG,
     log_type: LogType::RESOURCE,
-    message: StringOrBytes::String(String::new()),
+    message: DataValue::String(String::new()),
     fields: AnnotatedLogFields::new(),
     matching_fields: AnnotatedLogFields::new(),
     attributes_overrides: None,
@@ -763,7 +766,7 @@ async fn updates_system_session_id_for_new_sessions() {
 
   {
     let reader = test_store.read().await;
-    let value = reader.get(Scope::System, "session_id");
+    let value = reader.get(Scope::System, SYSTEM_SESSION_ID_KEY);
     assert!(value.is_some_and(|stored| {
       stored.has_string_value() && stored.string_value() == second_session_id
     }));
@@ -829,9 +832,73 @@ async fn previous_run_log_does_not_override_system_session_id() {
 
   {
     let reader = test_store.read().await;
-    let value = reader.get(Scope::System, "session_id");
+    let value = reader.get(Scope::System, SYSTEM_SESSION_ID_KEY);
     assert!(value.is_some_and(|stored| {
       stored.has_string_value() && stored.string_value() == next_session_id
+    }));
+  }
+
+  drop(test_store);
+  task.join().unwrap();
+}
+
+#[tokio::test]
+async fn pre_config_logs_trigger_session_id_update() {
+  let mut setup = Setup::new();
+
+  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+
+  let test_store = TestStore::new().await;
+  let state_store = (*test_store).clone();
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+
+  let first_session_id = setup.session_strategy.session_id();
+  assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
+    &sender,
+    0,
+    LogType::NORMAL,
+    "first_pre_config".into(),
+    [].into(),
+    [].into(),
+    None,
+    Block::No,
+    None,
+  ));
+
+  setup.session_strategy.start_new_session();
+  let second_session_id = setup.session_strategy.session_id();
+  assert_ne!(first_session_id, second_session_id);
+
+  assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
+    &sender,
+    0,
+    LogType::NORMAL,
+    "second_pre_config".into(),
+    [].into(),
+    [].into(),
+    None,
+    Block::No,
+    None,
+  ));
+
+  let handle =
+    tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
+
+  let config_update = setup.make_config_update(WorkflowsConfiguration::default());
+  let task = std::thread::spawn(move || {
+    assert_ok!(config_update_tx.blocking_send(config_update));
+  });
+
+  200.milliseconds().sleep().await;
+  shutdown_trigger.shutdown().await;
+  handle.await.unwrap();
+
+  {
+    let reader = test_store.read().await;
+    let value = reader.get(Scope::System, SYSTEM_SESSION_ID_KEY);
+    assert!(value.is_some_and(|stored| {
+      stored.has_string_value() && stored.string_value() == second_session_id
     }));
   }
 
@@ -882,7 +949,7 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
   sender
     .try_send_state_update(crate::async_log_buffer::StateUpdateMessage::AddLogField(
       "global_key".to_string(),
-      StringOrBytes::String("global_value".to_string()),
+      DataValue::String("global_value".to_string()),
     ))
     .unwrap();
 

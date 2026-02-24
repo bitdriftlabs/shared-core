@@ -27,7 +27,7 @@ use crate::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use ahash::AHashMap;
 use bd_macros::proto_serializable;
 use bd_proto::protos::logging::payload::data::Data_type;
-use bd_proto::protos::logging::payload::{BinaryData, Data, LogType};
+use bd_proto::protos::logging::payload::{ArrayData, BinaryData, Data, LogType, MapData};
 use bd_proto_util::serialization::ProtoMessageSerialize;
 use bd_time::OffsetDateTimeExt as _;
 use flate2::Compression;
@@ -93,7 +93,6 @@ impl LossyIntToUsize for u64 {
 /// This newtype wraps a `Vec<u8>` payload and serializes as the protobuf `BinaryData` message
 /// (field 2 = payload bytes). The optional `type` field (field 1) is not used.
 #[proto_serializable(
-  serialize_only,
   validate_against = "bd_proto::protos::logging::payload::BinaryData",
   validate_partial
 )]
@@ -163,10 +162,96 @@ impl std::ops::Deref for LogBinaryData {
   }
 }
 
+#[proto_serializable(validate_against = "bd_proto::protos::logging::payload::MapData")]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LogMapData {
+  #[field(id = 1)]
+  entries: AHashMap<String, DataValue>,
+}
+
+impl LogMapData {
+  #[must_use]
+  pub fn new(entries: AHashMap<String, DataValue>) -> Self {
+    Self { entries }
+  }
+
+  #[must_use]
+  pub fn entries(&self) -> &AHashMap<String, DataValue> {
+    &self.entries
+  }
+
+  #[must_use]
+  pub fn into_entries(self) -> AHashMap<String, DataValue> {
+    self.entries
+  }
+
+  #[must_use]
+  pub fn into_proto(self) -> MapData {
+    MapData {
+      entries: self
+        .entries
+        .into_iter()
+        .map(|(key, value)| (key, value.into_proto()))
+        .collect(),
+      ..Default::default()
+    }
+  }
+
+  pub fn from_proto(map_data: MapData) -> Option<Self> {
+    let entries = map_data
+      .entries
+      .into_iter()
+      .map(|(key, value)| DataValue::from_proto(value).map(|value| (key, value)))
+      .collect::<Option<AHashMap<_, _>>>()?;
+    Some(Self { entries })
+  }
+}
+
+#[proto_serializable(validate_against = "bd_proto::protos::logging::payload::ArrayData")]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LogArrayData {
+  #[field(id = 1)]
+  items: Vec<DataValue>,
+}
+
+impl LogArrayData {
+  #[must_use]
+  pub fn new(items: Vec<DataValue>) -> Self {
+    Self { items }
+  }
+
+  #[must_use]
+  pub fn items(&self) -> &Vec<DataValue> {
+    &self.items
+  }
+
+  #[must_use]
+  pub fn into_items(self) -> Vec<DataValue> {
+    self.items
+  }
+
+  #[must_use]
+  pub fn into_proto(self) -> ArrayData {
+    ArrayData {
+      items: self.items.into_iter().map(DataValue::into_proto).collect(),
+      ..Default::default()
+    }
+  }
+
+  pub fn from_proto(array_data: ArrayData) -> Option<Self> {
+    let items = array_data
+      .items
+      .into_iter()
+      .map(DataValue::from_proto)
+      .collect::<Option<Vec<_>>>()?;
+    Some(Self { items })
+  }
+}
+
 /// A union type that allows representing either a UTF-8 string, binary data, or primitive values.
-#[proto_serializable(serialize_only)]
+#[proto_serializable(validate_against = "bd_proto::protos::logging::payload::Data")]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StringOrBytes {
+pub enum DataValue {
   #[field(id = 1, deserialize)]
   String(String),
   #[field(id = 1)]
@@ -183,10 +268,14 @@ pub enum StringOrBytes {
   I64(i64),
   #[field(id = 4)]
   Double(NotNan<f64>),
+  #[field(id = 7)]
+  Map(LogMapData),
+  #[field(id = 8)]
+  Array(LogArrayData),
 }
 
-impl StringOrBytes {
-  /// Creates a new `StringOrBytes` instance from a static string slice. This is slightly more
+impl DataValue {
+  /// Creates a new `DataValue` instance from a static string slice. This is slightly more
   /// efficient than using `SharedString` as it avoids heap allocation.
   #[must_use]
   pub fn from_static_str(s: &'static str) -> Self {
@@ -208,6 +297,8 @@ impl StringOrBytes {
         Self::U64(v) => Data_type::IntData(v),
         Self::I64(v) => Data_type::SintData(v),
         Self::Double(v) => Data_type::DoubleData(*v),
+        Self::Map(map_data) => Data_type::MapData(map_data.into_proto()),
+        Self::Array(array_data) => Data_type::ArrayData(array_data.into_proto()),
       }),
       ..Default::default()
     }
@@ -221,6 +312,8 @@ impl StringOrBytes {
       Data_type::IntData(v) => Some(Self::U64(v)),
       Data_type::SintData(v) => Some(Self::I64(v)),
       Data_type::DoubleData(v) => Some(Self::Double(NotNan::new(v).ok()?)),
+      Data_type::MapData(map_data) => Some(Self::Map(LogMapData::from_proto(map_data)?)),
+      Data_type::ArrayData(array_data) => Some(Self::Array(LogArrayData::from_proto(array_data)?)),
     }
   }
 
@@ -231,7 +324,28 @@ impl StringOrBytes {
       Self::String(s) => Some(s.as_ref()),
       Self::SharedString(s) => Some(s.as_ref()),
       Self::StaticString(s) => Some(s),
-      Self::Bytes(_) | Self::Boolean(_) | Self::U64(_) | Self::I64(_) | Self::Double(_) => None,
+      Self::Bytes(_)
+      | Self::Boolean(_)
+      | Self::U64(_)
+      | Self::I64(_)
+      | Self::Double(_)
+      | Self::Map(_)
+      | Self::Array(_) => None,
+    }
+  }
+
+  /// Returns the value as a string, converting numeric types to their string representation.
+  /// Returns `None` for `Bytes`, `Boolean`, `Map`, and `Array` variants.
+  #[must_use]
+  pub fn to_string_value(&self) -> Option<Cow<'_, str>> {
+    match self {
+      Self::String(s) => Some(Cow::Borrowed(s.as_ref())),
+      Self::SharedString(s) => Some(Cow::Borrowed(s.as_ref())),
+      Self::StaticString(s) => Some(Cow::Borrowed(s)),
+      Self::I64(v) => Some(Cow::Owned(v.to_string())),
+      Self::U64(v) => Some(Cow::Owned(v.to_string())),
+      Self::Double(v) => Some(Cow::Owned(v.to_string())),
+      Self::Bytes(_) | Self::Boolean(_) | Self::Map(_) | Self::Array(_) => None,
     }
   }
 
@@ -245,44 +359,64 @@ impl StringOrBytes {
       | Self::Boolean(_)
       | Self::U64(_)
       | Self::I64(_)
-      | Self::Double(_) => None,
+      | Self::Double(_)
+      | Self::Map(_)
+      | Self::Array(_) => None,
       Self::Bytes(b) => Some(b.as_ref()),
     }
   }
 }
 
-impl From<String> for StringOrBytes {
+impl From<String> for DataValue {
   fn from(s: String) -> Self {
     Self::String(s)
   }
 }
 
-impl From<Arc<str>> for StringOrBytes {
+impl From<Arc<str>> for DataValue {
   fn from(s: Arc<str>) -> Self {
     Self::SharedString(s)
   }
 }
 
-impl From<Vec<u8>> for StringOrBytes {
+impl From<Vec<u8>> for DataValue {
   fn from(s: Vec<u8>) -> Self {
     Self::Bytes(LogBinaryData::new(s))
   }
 }
 
-impl From<&str> for StringOrBytes {
+impl Default for DataValue {
+  fn default() -> Self {
+    Self::String(String::new())
+  }
+}
+
+impl From<AHashMap<String, Self>> for DataValue {
+  fn from(value: AHashMap<String, Self>) -> Self {
+    Self::Map(LogMapData::new(value))
+  }
+}
+
+impl From<Vec<Self>> for DataValue {
+  fn from(value: Vec<Self>) -> Self {
+    Self::Array(LogArrayData::new(value))
+  }
+}
+
+impl From<&str> for DataValue {
   fn from(s: &str) -> Self {
     Self::String(s.to_string())
   }
 }
 
-impl From<&[u8]> for StringOrBytes {
+impl From<&[u8]> for DataValue {
   fn from(slice: &[u8]) -> Self {
     Self::Bytes(LogBinaryData::new(slice.to_vec()))
   }
 }
 
 /// A log message is a string or binary value.
-pub type LogMessage = StringOrBytes;
+pub type LogMessage = DataValue;
 
 impl std::fmt::Display for LogMessage {
   // This trait requires `fmt` with this exact signature.
@@ -298,6 +432,8 @@ impl std::fmt::Display for LogMessage {
       Self::U64(v) => write!(f, "{v}"),
       Self::I64(v) => write!(f, "{v}"),
       Self::Double(v) => write!(f, "{v}"),
+      Self::Map(map_data) => write!(f, "map:{:?}", map_data.entries()),
+      Self::Array(array_data) => write!(f, "array:{:?}", array_data.items()),
     }
   }
 }
@@ -345,13 +481,13 @@ pub type LogFieldKey = Cow<'static, str>;
 // LogFieldValue
 //
 
-pub type LogFieldValue = StringOrBytes;
+pub type LogFieldValue = DataValue;
 
 //
 // LogMessageValue
 //
 
-pub type LogMessageValue = StringOrBytes;
+pub type LogMessageValue = DataValue;
 
 //
 // AnnotatedLogFields
@@ -425,7 +561,7 @@ pub enum LogFieldKind {
 )]
 pub struct LogContentsRef<'a> {
   #[field(id = 1)]
-  pub message: &'a StringOrBytes,
+  pub message: &'a DataValue,
   #[field(id = 2, repeated)]
   pub fields: &'a LogFields,
 }
@@ -470,7 +606,7 @@ pub struct RawLogRef<'a> {
   #[field(id = 2)]
   pub log_level: u32,
   #[field(id = 3)]
-  pub message: &'a StringOrBytes,
+  pub message: &'a DataValue,
   #[field(id = 4, repeated)]
   pub fields: &'a LogFields,
   #[field(id = 5)]
@@ -524,7 +660,7 @@ pub struct Log {
   // modified!!!
   pub log_level: LogLevel,
   pub log_type: LogType,
-  pub message: StringOrBytes,
+  pub message: DataValue,
   pub fields: LogFields,
   pub matching_fields: LogFields,
   pub session_id: String,
@@ -778,7 +914,8 @@ impl<'a> FieldsRef<'a> {
   }
 
   /// Looks up the field value corresponding to the provided key. If the field doesn't exist or
-  /// contains a binary value, None is returned.
+  /// contains a binary value, None is returned. Numeric types are converted to their string
+  /// representation.
   #[must_use]
   pub fn field_value(&self, field_key: &str) -> Option<Cow<'a, str>> {
     // In cases where there are conflicts between the keys of captured and matching fields, captured
@@ -786,12 +923,24 @@ impl<'a> FieldsRef<'a> {
     if let Some(value) = self
       .captured_fields
       .get(field_key)
-      .and_then(|value| value.as_str())
+      .and_then(DataValue::to_string_value)
     {
-      return Some(Cow::Borrowed(value));
+      return Some(value);
     }
 
-    self.matching_field_value(field_key).map(Cow::Borrowed)
+    self
+      .matching_fields
+      .get(field_key)
+      .and_then(DataValue::to_string_value)
+  }
+
+  #[must_use]
+  pub fn field(&self, field_key: &str) -> Option<&'a LogFieldValue> {
+    if let Some(value) = self.captured_fields.get(field_key) {
+      return Some(value);
+    }
+
+    self.matching_fields.get(field_key)
   }
 }
 
@@ -830,6 +979,8 @@ impl MemorySized for LogFieldValue {
         | Self::I64(_)
         | Self::Double(_) => 0,
         Self::Bytes(b) => b.capacity(),
+        Self::Map(map_data) => map_data.entries().size(),
+        Self::Array(array_data) => array_data.items().size(),
       }
   }
 }

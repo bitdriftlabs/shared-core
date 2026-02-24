@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{InitStrategy, Scope, StateReader, Store};
+use crate::{InitStrategy, SYSTEM_SESSION_ID_KEY, Scope, StateReader, Store};
 use bd_client_stats_store::Collector;
 use bd_resilient_kv::PersistentStoreConfig;
 use std::sync::Arc;
@@ -25,10 +25,12 @@ impl Setup {
       datetime!(2024-01-01 00:00:00 UTC),
     ));
     let collector = bd_client_stats_store::Collector::default();
+    let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
     let store = Store::persistent(
       temp_dir.path(),
       PersistentStoreConfig::default(),
       time_provider.clone(),
+      &runtime_loader,
       &collector.scope("test"),
     )
     .await
@@ -55,6 +57,7 @@ async fn clear_scope() {
       crate::string_value("value1"),
     )
     .await
+    .unwrap()
     .unwrap();
   setup
     .store
@@ -64,6 +67,7 @@ async fn clear_scope() {
       crate::string_value("value2"),
     )
     .await
+    .unwrap()
     .unwrap();
   setup
     .store
@@ -73,6 +77,7 @@ async fn clear_scope() {
       crate::string_value("global_value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   setup.store.clear(Scope::FeatureFlagExposure).await.unwrap();
@@ -99,6 +104,7 @@ async fn iter_scope() {
       crate::string_value("value1"),
     )
     .await
+    .unwrap()
     .unwrap();
   setup
     .store
@@ -108,6 +114,7 @@ async fn iter_scope() {
       crate::string_value("value2"),
     )
     .await
+    .unwrap()
     .unwrap();
   setup
     .store
@@ -117,6 +124,7 @@ async fn iter_scope() {
       crate::string_value("global_value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   let reader = setup.store.read().await;
@@ -165,10 +173,12 @@ async fn large_value() {
     max_capacity_bytes: 10 * 1024 * 1024,
     ..Default::default()
   };
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
   let store = Store::persistent(
     temp_dir.path(),
     config,
     time_provider.clone(),
+    &runtime_loader,
     &Collector::default().scope("test"),
   )
   .await
@@ -183,6 +193,7 @@ async fn large_value() {
       crate::string_value(large_value.clone()),
     )
     .await
+    .unwrap()
     .unwrap();
 
   let reader = store.read().await;
@@ -199,6 +210,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
   let scope = Collector::default().scope("test");
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
 
   // First process: write state and verify snapshot on creation is empty
   {
@@ -206,6 +218,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
       temp_dir.path(),
       PersistentStoreConfig::default(),
       time_provider.clone(),
+      &runtime_loader,
       &scope,
     )
     .await
@@ -224,6 +237,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
         crate::string_value("value1"),
       )
       .await
+      .unwrap()
       .unwrap();
     store
       .insert(
@@ -232,6 +246,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
         crate::string_value("value2"),
       )
       .await
+      .unwrap()
       .unwrap();
     store
       .insert(
@@ -240,6 +255,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
         crate::string_value("global_value"),
       )
       .await
+      .unwrap()
       .unwrap();
 
     // Verify they're present
@@ -267,6 +283,7 @@ async fn ephemeral_scopes_cleared_on_restart() {
       temp_dir.path(),
       PersistentStoreConfig::default(),
       time_provider.clone(),
+      &runtime_loader,
       &Collector::default().scope("test"),
     )
     .await
@@ -326,12 +343,14 @@ async fn system_scope_persists_on_restart() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
   let scope = Collector::default().scope("test");
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
 
   {
     let result = Store::persistent(
       temp_dir.path(),
       PersistentStoreConfig::default(),
       time_provider.clone(),
+      &runtime_loader,
       &scope,
     )
     .await
@@ -341,10 +360,11 @@ async fn system_scope_persists_on_restart() {
     store
       .insert(
         Scope::System,
-        "session_id".to_string(),
+        SYSTEM_SESSION_ID_KEY.to_string(),
         crate::string_value("session-1"),
       )
       .await
+      .unwrap()
       .unwrap();
   }
 
@@ -353,6 +373,7 @@ async fn system_scope_persists_on_restart() {
       temp_dir.path(),
       PersistentStoreConfig::default(),
       time_provider.clone(),
+      &runtime_loader,
       &Collector::default().scope("test"),
     )
     .await
@@ -362,7 +383,7 @@ async fn system_scope_persists_on_restart() {
 
     assert!(
       prev_snapshot
-        .get(Scope::System, "session_id")
+        .get(Scope::System, SYSTEM_SESSION_ID_KEY)
         .is_some_and(
           |entry| entry.value.has_string_value() && entry.value.string_value() == "session-1"
         )
@@ -371,7 +392,7 @@ async fn system_scope_persists_on_restart() {
     let reader = store.read().await;
     assert!(
       reader
-        .get(Scope::System, "session_id")
+        .get(Scope::System, SYSTEM_SESSION_ID_KEY)
         .is_some_and(|value| value.has_string_value() && value.string_value() == "session-1")
     );
   }
@@ -384,12 +405,14 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
   let scope = Collector::default().scope("test");
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
 
   {
     let result = Store::persistent(
       temp_dir.path(),
       PersistentStoreConfig::default(),
       time_provider.clone(),
+      &runtime_loader,
       &scope,
     )
     .await
@@ -403,6 +426,7 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
         crate::string_value("value1"),
       )
       .await
+      .unwrap()
       .unwrap();
     store
       .insert(
@@ -411,14 +435,16 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
         crate::string_value("global_value"),
       )
       .await
+      .unwrap()
       .unwrap();
     store
       .insert(
         Scope::System,
-        "session_id".to_string(),
+        SYSTEM_SESSION_ID_KEY.to_string(),
         crate::string_value("session-1"),
       )
       .await
+      .unwrap()
       .unwrap();
   }
 
@@ -427,6 +453,7 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
       temp_dir.path(),
       PersistentStoreConfig::default(),
       time_provider.clone(),
+      &runtime_loader,
       &Collector::default().scope("test"),
     )
     .await
@@ -436,7 +463,7 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
 
     assert!(
       prev_snapshot
-        .get(Scope::System, "session_id")
+        .get(Scope::System, SYSTEM_SESSION_ID_KEY)
         .is_some_and(
           |entry| entry.value.has_string_value() && entry.value.string_value() == "session-1"
         )
@@ -447,7 +474,7 @@ async fn session_id_persists_while_ephemeral_scopes_clear() {
     assert_eq!(reader.get(Scope::GlobalState, "key1"), None);
     assert!(
       reader
-        .get(Scope::System, "session_id")
+        .get(Scope::System, SYSTEM_SESSION_ID_KEY)
         .is_some_and(|value| value.has_string_value() && value.string_value() == "session-1")
     );
   }
@@ -461,10 +488,12 @@ async fn fallback_to_in_memory_on_invalid_directory() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_file.path());
   let result = Store::persistent_or_fallback(
     temp_file.path(),
     PersistentStoreConfig::default(),
     time_provider,
+    &runtime_loader,
     &Collector::default().scope("test"),
   )
   .await;
@@ -474,6 +503,7 @@ async fn fallback_to_in_memory_on_invalid_directory() {
   assert!(result.fallback_occurred);
   assert!(result.data_loss.is_none());
   assert!(result.previous_state.is_empty());
+  assert_eq!(result.retention_registry.max_snapshot_count(), None);
 
   // Verify in-memory store works correctly
   store
@@ -483,6 +513,7 @@ async fn fallback_to_in_memory_on_invalid_directory() {
       crate::string_value("test_value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   let reader = store.read().await;
@@ -500,10 +531,12 @@ async fn from_strategy_in_memory_only() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
   let result = Store::from_strategy(
     temp_dir.path(),
     PersistentStoreConfig::default(),
     time_provider,
+    &runtime_loader,
     InitStrategy::InMemoryOnly,
     &Collector::default().scope("test"),
   )
@@ -513,6 +546,7 @@ async fn from_strategy_in_memory_only() {
   assert!(!result.fallback_occurred);
   assert!(result.data_loss.is_none());
   assert!(result.previous_state.is_empty());
+  assert_eq!(result.retention_registry.max_snapshot_count(), None);
 
   // Verify store works
   result
@@ -523,6 +557,7 @@ async fn from_strategy_in_memory_only() {
       crate::string_value("value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   let reader = result.store.read().await;
@@ -540,10 +575,12 @@ async fn from_strategy_persistent_with_fallback() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
   let result = Store::from_strategy(
     temp_dir.path(),
     PersistentStoreConfig::default(),
     time_provider,
+    &runtime_loader,
     InitStrategy::PersistentWithFallback,
     &Collector::default().scope("test"),
   )
@@ -563,6 +600,7 @@ async fn from_strategy_persistent_with_fallback() {
       crate::string_value("value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   let reader = result.store.read().await;
@@ -581,10 +619,12 @@ async fn from_strategy_persistent_with_fallback_on_failure() {
     datetime!(2024-01-01 00:00:00 UTC),
   ));
 
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_file.path());
   let result = Store::from_strategy(
     temp_file.path(),
     PersistentStoreConfig::default(),
     time_provider,
+    &runtime_loader,
     InitStrategy::PersistentWithFallback,
     &Collector::default().scope("test"),
   )
@@ -626,6 +666,7 @@ async fn insert_returns_inserted_state_change() {
       crate::string_value("new_value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   assert_eq!(change.scope, Scope::FeatureFlagExposure);
@@ -633,7 +674,7 @@ async fn insert_returns_inserted_state_change() {
   assert_eq!(
     change.change_type,
     crate::StateChangeType::Inserted {
-      value: crate::string_value("new_value")
+      value: crate::string_value("new_value"),
     }
   );
 }
@@ -651,6 +692,7 @@ async fn insert_returns_updated_state_change() {
       crate::string_value("old_value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   // Second insert (update)
@@ -662,6 +704,7 @@ async fn insert_returns_updated_state_change() {
       crate::string_value("new_value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   assert_eq!(change.scope, Scope::FeatureFlagExposure);
@@ -670,7 +713,7 @@ async fn insert_returns_updated_state_change() {
     change.change_type,
     crate::StateChangeType::Updated {
       old_value: crate::string_value("old_value"),
-      new_value: crate::string_value("new_value")
+      new_value: crate::string_value("new_value"),
     }
   );
 }
@@ -688,6 +731,7 @@ async fn insert_returns_no_change_when_value_unchanged() {
       crate::string_value("same_value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   // Second insert with same value
@@ -701,9 +745,7 @@ async fn insert_returns_no_change_when_value_unchanged() {
     .await
     .unwrap();
 
-  assert_eq!(change.scope, Scope::FeatureFlagExposure);
-  assert_eq!(change.key, "flag");
-  assert_eq!(change.change_type, crate::StateChangeType::NoChange);
+  assert!(change.is_none());
 }
 
 #[tokio::test]
@@ -719,6 +761,7 @@ async fn remove_returns_removed_state_change() {
       crate::string_value("value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   // Remove it
@@ -726,6 +769,7 @@ async fn remove_returns_removed_state_change() {
     .store
     .remove(Scope::FeatureFlagExposure, "flag")
     .await
+    .unwrap()
     .unwrap();
 
   assert_eq!(change.scope, Scope::FeatureFlagExposure);
@@ -733,7 +777,7 @@ async fn remove_returns_removed_state_change() {
   assert_eq!(
     change.change_type,
     crate::StateChangeType::Removed {
-      old_value: crate::string_value("value")
+      old_value: crate::string_value("value"),
     }
   );
 
@@ -752,9 +796,7 @@ async fn remove_returns_no_change_for_nonexistent_key() {
     .await
     .unwrap();
 
-  assert_eq!(change.scope, Scope::FeatureFlagExposure);
-  assert_eq!(change.key, "nonexistent");
-  assert_eq!(change.change_type, crate::StateChangeType::NoChange);
+  assert!(change.is_none());
 }
 
 #[tokio::test]
@@ -770,6 +812,7 @@ async fn extend_inserts_multiple_values() {
       crate::string_value("old"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   // Extend with multiple values, including updating the existing one
@@ -818,6 +861,7 @@ async fn clear_returns_all_removed_state_changes() {
       crate::string_value("value1"),
     )
     .await
+    .unwrap()
     .unwrap();
   setup
     .store
@@ -827,6 +871,7 @@ async fn clear_returns_all_removed_state_changes() {
       crate::string_value("value2"),
     )
     .await
+    .unwrap()
     .unwrap();
   setup
     .store
@@ -836,6 +881,7 @@ async fn clear_returns_all_removed_state_changes() {
       crate::string_value("global_value"),
     )
     .await
+    .unwrap()
     .unwrap();
 
   // Clear FeatureFlag scope

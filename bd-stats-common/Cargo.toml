@@ -9,9 +9,13 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
+arbitrary                  = { workspace = true, optional = true }
 anyhow.workspace            = true
 bd-macros.path              = "../bd-macros"
 bd-proto-util.path          = "../bd-proto-util"
 bd-workspace-hack.workspace = true
 protobuf.workspace          = true
 sketches-rust.workspace     = true
+
+[features]
+fuzzing = ["arbitrary"]

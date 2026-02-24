@@ -326,30 +326,6 @@ impl LoggerBuilder {
         std::sync::atomic::Ordering::Relaxed,
       );
 
-      // Create state-log correlator for uploading state snapshots alongside logs
-      let snapshot_creation_interval_ms =
-        *bd_runtime::runtime::state::SnapshotCreationIntervalMs::register(&runtime_loader)
-          .into_inner()
-          .borrow();
-      let state_correlator = Arc::new(
-        StateLogCorrelator::new(
-          Some(state_directory.clone()),
-          self.params.store.clone(),
-          Some(retention_registry),
-          Some(Arc::new(state_store.clone())),
-          snapshot_creation_interval_ms,
-          time_provider.clone(),
-          &scope,
-        )
-        .await,
-      );
-
-      // Set up state change listener to notify correlator when state changes
-      let correlator_for_listener = state_correlator.clone();
-      state_store.set_change_listener(Arc::new(move |timestamp| {
-        correlator_for_listener.on_state_change(timestamp);
-      }));
-
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
         Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
         data_upload_tx_clone.clone(),
@@ -359,6 +335,30 @@ impl LoggerBuilder {
         shutdown_handle.make_shutdown(),
       );
       let artifact_client: Arc<dyn bd_artifact_upload::Client> = Arc::new(artifact_client);
+
+      // Create state-log correlator for uploading state snapshots alongside logs
+      let snapshot_creation_interval_ms =
+        *bd_runtime::runtime::state::SnapshotCreationIntervalMs::register(&runtime_loader)
+          .into_inner()
+          .borrow();
+      let (state_correlator_inner, state_upload_worker) = StateLogCorrelator::new(
+        Some(state_directory.clone()),
+        self.params.store.clone(),
+        Some(retention_registry.clone()),
+        Some(Arc::new(state_store.clone())),
+        snapshot_creation_interval_ms,
+        time_provider.clone(),
+        artifact_client.clone(),
+        &scope,
+      )
+      .await;
+      let state_correlator = Arc::new(state_correlator_inner);
+
+      // Set up state change listener to notify correlator when state changes
+      let correlator_for_listener = state_correlator.clone();
+      state_store.set_change_listener(Arc::new(move |timestamp| {
+        correlator_for_listener.on_state_change(timestamp);
+      }));
 
       let crash_monitor = Monitor::new(
         &self.params.sdk_directory,
@@ -385,9 +385,12 @@ impl LoggerBuilder {
       );
 
       let buffer_directory = Logger::initialize_buffer_directory(&self.params.sdk_directory)?;
-      let (buffer_manager, buffer_event_rx) =
-        bd_buffer::Manager::new(buffer_directory, &scope, &runtime_loader);
-      let session_strategy_for_uploader = self.params.session_strategy.clone();
+      let (buffer_manager, buffer_event_rx) = bd_buffer::Manager::new(
+        buffer_directory,
+        &scope,
+        &runtime_loader,
+        retention_registry,
+      );
       let buffer_uploader = BufferUploadManager::new(
         data_upload_tx_clone.clone(),
         &runtime_loader,
@@ -397,8 +400,6 @@ impl LoggerBuilder {
         &scope,
         log.clone(),
         Some(state_correlator),
-        artifact_client,
-        Arc::new(move || session_strategy_for_uploader.session_id()),
       );
 
       let updater = Arc::new(client_config::Config::new(
@@ -462,6 +463,10 @@ impl LoggerBuilder {
         },
         async move {
           artifact_uploader.run().await;
+          Ok(())
+        },
+        async move {
+          state_upload_worker.run().await;
           Ok(())
         }
       )

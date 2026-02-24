@@ -12,7 +12,11 @@
 //! trait implementations for `ProtoType`, `ProtoFieldSerialize`, and `ProtoFieldDeserialize`.
 
 use crate::struct_impl::FieldAttrs;
-use crate::validation::ValidationConfig;
+use crate::validation::{
+  ValidationConfig,
+  extract_enum_variant_info,
+  generate_enum_validation_tests,
+};
 use quote::quote;
 use syn::{Fields, Meta, Variant};
 
@@ -476,6 +480,8 @@ pub struct EnumProcessingResult {
   pub proto_type_impl: proc_macro2::TokenStream,
   pub serialize_impl: proc_macro2::TokenStream,
   pub deserialize_impl: proc_macro2::TokenStream,
+  pub message_serialize_impl: proc_macro2::TokenStream,
+  pub message_deserialize_impl: proc_macro2::TokenStream,
   pub validation_tests: proc_macro2::TokenStream,
 }
 
@@ -546,10 +552,13 @@ pub fn process_enum_variants(
     );
   }
 
-  // Build the deserialization match arms
-  let deserialize_match_arms = tag_to_variant.iter().map(|(tag, (code, ..))| {
-    quote! { #tag => { #code Ok(true) } }
-  });
+  // Build the deserialization match arms (collect to Vec so we can reuse in both impls)
+  let deserialize_match_arms: Vec<_> = tag_to_variant
+    .iter()
+    .map(|(tag, (code, ..))| {
+      quote! { #tag => { #code Ok(true) } }
+    })
+    .collect();
 
   // Generate trait implementations
   let proto_type_impl = quote! {
@@ -649,25 +658,88 @@ pub fn process_enum_variants(
     }
   };
 
-  // TODO: Add enum/oneof validation support
-  // Enum validation is more complex as it maps to protobuf oneof fields
-  let validation_tests = if validation_config.proto_path.is_some() {
-    // For now, generate a placeholder that indicates enum validation is not yet implemented
-    quote! {
-      #[cfg(test)]
-      mod __proto_validation {
-        // Enum validation against protobuf oneof is not yet implemented
-        // The struct fields within enum variants should still be validated
+  let validation_tests = validation_config.proto_path.as_ref().map_or_else(
+    || quote! {},
+    |proto_path| {
+      let variant_infos = extract_enum_variant_info(data_enum);
+      let tests = generate_enum_validation_tests(
+        name,
+        proto_path,
+        &variant_infos,
+        validation_config.validate_partial,
+        serialize_only,
+      );
+      quote! {
+        #[cfg(test)]
+        mod __proto_validation {
+          use super::*;
+          #tests
+        }
       }
-    }
-  } else {
+    },
+  );
+
+  let message_serialize_impl = quote! {
+      impl #impl_generics bd_proto_util::serialization::ProtoMessageSerialize
+          for #name #ty_generics #where_clause
+      {
+          fn compute_message_size(&self) -> u64 {
+              match self {
+                  #(#compute_size_arms)*
+              }
+          }
+
+          fn serialize_message(&self, os: &mut protobuf::CodedOutputStream) -> anyhow::Result<()> {
+              match self {
+                  #(#serialize_arms)*
+              }
+              Ok(())
+          }
+      }
+  };
+
+  let message_deserialize_impl = if serialize_only {
     quote! {}
+  } else {
+    quote! {
+        impl #impl_generics bd_proto_util::serialization::ProtoMessageDeserialize
+            for #name #ty_generics #where_clause
+        {
+            fn deserialize_message(is: &mut protobuf::CodedInputStream) -> anyhow::Result<Self> {
+                let mut result = None;
+
+                while !is.eof()? {
+                    let tag = is.read_raw_varint32()?;
+                    let tag = bd_proto_util::serialization::runtime::Tag::new(tag)?;
+
+                    let handled: bool = match tag.field_number {
+                        #(#deserialize_match_arms)*
+                        _ => Ok::<bool, anyhow::Error>(false),
+                    }?;
+
+                    if !handled {
+                        is.skip_field(tag.wire_type)?;
+                    }
+                }
+
+                result.ok_or_else(|| anyhow::anyhow!(concat!(
+                    "No variant set for enum ",
+                    stringify!(#name),
+                    ". Use Option<",
+                    stringify!(#name),
+                    "> if this field should be optional."
+                )))
+            }
+        }
+    }
   };
 
   EnumProcessingResult {
     proto_type_impl,
     serialize_impl,
     deserialize_impl,
+    message_serialize_impl,
+    message_deserialize_impl,
     validation_tests,
   }
 }

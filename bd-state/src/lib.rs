@@ -44,6 +44,9 @@ use tokio::sync::RwLock;
 /// The listener receives the timestamp of when the change occurred.
 pub type StateChangeListener = Arc<dyn Fn(OffsetDateTime) + Send + Sync>;
 
+/// The key used for storing the current system session ID in the state store.
+pub const SYSTEM_SESSION_ID_KEY: &str = "sid";
+
 /// Creates a `StateValue` from a string.
 #[must_use]
 pub fn string_value(s: impl Into<String>) -> Value {
@@ -102,8 +105,6 @@ pub enum StateChangeType {
   },
   /// A key was removed
   Removed { old_value: StateValue },
-  /// No change occurred (e.g., setting same value)
-  NoChange,
 }
 
 //
@@ -295,15 +296,26 @@ impl Store {
   /// users to re-set these values.
   ///
   /// The directory will be created if it doesn't exist.
+  ///
+  /// # Arguments
+  ///
+  /// * `directory` - Directory for persistent storage
+  /// * `config` - Configuration for persistent storage
+  /// * `time_provider` - Time provider for timestamps
+  /// * `runtime_loader` - Runtime configuration loader
+  /// * `stats` - Stats scope for metrics
   pub async fn persistent(
     directory: &Path,
     config: PersistentStoreConfig,
     time_provider: Arc<dyn TimeProvider>,
+    runtime_loader: &ConfigLoader,
     stats: &bd_client_stats_store::Scope,
   ) -> anyhow::Result<StoreInitResult> {
     std::fs::create_dir_all(directory)?;
 
-    let retention_registry = Arc::new(RetentionRegistry::new());
+    let retention_registry = Arc::new(RetentionRegistry::new(
+      bd_runtime::runtime::state::MaxSnapshotCount::register(runtime_loader),
+    ));
     let (inner, data_loss) = bd_resilient_kv::VersionedKVStore::new(
       directory,
       "state",
@@ -341,13 +353,30 @@ impl Store {
   ///
   /// This method never fails - if the persistent store cannot be initialized, it will
   /// return an in-memory store instead.
+  ///
+  /// # Arguments
+  ///
+  /// * `directory` - Directory for persistent storage
+  /// * `config` - Configuration for persistent storage
+  /// * `time_provider` - Time provider for timestamps
+  /// * `runtime_loader` - Runtime configuration loader
+  /// * `stats` - Stats scope for metrics
   pub async fn persistent_or_fallback(
     directory: &Path,
     config: PersistentStoreConfig,
     time_provider: Arc<dyn TimeProvider>,
+    runtime_loader: &ConfigLoader,
     stats: &bd_client_stats_store::Scope,
   ) -> StoreInitWithFallbackResult {
-    match Self::persistent(directory, config, time_provider.clone(), stats).await {
+    match Self::persistent(
+      directory,
+      config,
+      time_provider.clone(),
+      runtime_loader,
+      stats,
+    )
+    .await
+    {
       Ok(result) => StoreInitWithFallbackResult {
         store: result.store,
         data_loss: Some(result.data_loss),
@@ -359,7 +388,7 @@ impl Store {
         log::debug!(
           "Failed to initialize persistent state store: {e}, falling back to in-memory store"
         );
-        let store = Self::in_memory(time_provider, None, stats);
+        let store = Self::in_memory(time_provider, None, runtime_loader, stats);
         StoreInitWithFallbackResult {
           store,
           data_loss: None,
@@ -367,7 +396,9 @@ impl Store {
           fallback_occurred: true,
           // In-memory store doesn't have snapshots to retain, but we still provide a registry
           // so callers don't need to handle the Option case.
-          retention_registry: Arc::new(RetentionRegistry::new()),
+          retention_registry: Arc::new(RetentionRegistry::new(
+            bd_runtime::runtime::state::MaxSnapshotCount::register(runtime_loader),
+          )),
         }
       },
     }
@@ -380,25 +411,29 @@ impl Store {
   /// * `directory` - Directory for persistent storage
   /// * `config` - Configuration for persistent storage
   /// * `time_provider` - Time provider for timestamps
+  /// * `runtime_loader` - Runtime configuration loader
   /// * `strategy` - The initialization strategy to use
   /// * `stats` - Stats scope for metrics
   pub async fn from_strategy(
     directory: &Path,
     config: PersistentStoreConfig,
     time_provider: Arc<dyn TimeProvider>,
+    runtime_loader: &ConfigLoader,
     strategy: InitStrategy,
     stats: &bd_client_stats_store::Scope,
   ) -> StoreInitWithFallbackResult {
     match strategy {
       InitStrategy::PersistentWithFallback => {
-        Self::persistent_or_fallback(directory, config, time_provider, stats).await
+        Self::persistent_or_fallback(directory, config, time_provider, runtime_loader, stats).await
       },
       InitStrategy::InMemoryOnly => StoreInitWithFallbackResult {
-        store: Self::in_memory(time_provider, None, stats),
+        store: Self::in_memory(time_provider, None, runtime_loader, stats),
         data_loss: None,
         previous_state: ScopedMaps::default(),
         fallback_occurred: false,
-        retention_registry: Arc::new(RetentionRegistry::new()),
+        retention_registry: Arc::new(RetentionRegistry::new(
+          bd_runtime::runtime::state::MaxSnapshotCount::register(runtime_loader),
+        )),
       },
     }
   }
@@ -450,6 +485,7 @@ impl Store {
         directory,
         config,
         time_provider,
+        runtime_loader,
         InitStrategy::PersistentWithFallback,
         stats,
       )
@@ -457,11 +493,13 @@ impl Store {
     } else {
       // For in-memory, use max_capacity as the entry count limit
       StoreInitWithFallbackResult {
-        store: Self::in_memory(time_provider, Some(max_capacity), stats),
+        store: Self::in_memory(time_provider, Some(max_capacity), runtime_loader, stats),
         data_loss: None,
         previous_state: ScopedMaps::default(),
         fallback_occurred: false,
-        retention_registry: Arc::new(RetentionRegistry::new()),
+        retention_registry: Arc::new(RetentionRegistry::new(
+          bd_runtime::runtime::state::MaxSnapshotCount::register(runtime_loader),
+        )),
       }
     }
   }
@@ -475,16 +513,23 @@ impl Store {
   ///
   /// * `time_provider` - Time provider for timestamps
   /// * `capacity` - Optional maximum number of entries. If None, no limit is enforced.
+  /// * `runtime_loader` - Runtime configuration loader
   /// * `stats` - Stats scope for metrics
   #[must_use]
   pub fn in_memory(
     time_provider: Arc<dyn TimeProvider>,
     capacity: Option<usize>,
+    runtime_loader: &ConfigLoader,
     stats: &bd_client_stats_store::Scope,
   ) -> Self {
     Self {
       inner: Arc::new(RwLock::new(
-        bd_resilient_kv::VersionedKVStore::new_in_memory(time_provider, capacity, stats),
+        bd_resilient_kv::VersionedKVStore::new_in_memory(
+          time_provider,
+          capacity,
+          stats,
+          bd_runtime::runtime::state::MaxSnapshotCount::register(runtime_loader),
+        ),
       )),
       change_listener: Arc::new(Mutex::new(None)),
     }
@@ -517,7 +562,7 @@ impl Store {
     scope: Scope,
     key: String,
     value: StateValue,
-  ) -> anyhow::Result<StateChange> {
+  ) -> anyhow::Result<Option<StateChange>> {
     let mut locked = self.inner.write().await;
 
     // Perform the insert and get both timestamp and old value in one operation
@@ -530,7 +575,7 @@ impl Store {
 
     // Determine change type
     let change_type = match old_state_value {
-      Some(old) if old == value => StateChangeType::NoChange,
+      Some(old) if old == value => return Ok(None),
       Some(old) => StateChangeType::Updated {
         old_value: old,
         new_value: value,
@@ -539,16 +584,14 @@ impl Store {
     };
 
     // Notify the listener if state actually changed
-    if !matches!(change_type, StateChangeType::NoChange) {
-      self.notify_change(timestamp);
-    }
+    self.notify_change(timestamp);
 
-    Ok(StateChange {
+    Ok(Some(StateChange {
       scope,
       key,
       change_type,
       timestamp,
-    })
+    }))
   }
 
   // TODO(snowp): Extend should return StateChanges to track what was inserted/updated, but this
@@ -577,7 +620,7 @@ impl Store {
     Ok(())
   }
 
-  pub async fn remove(&self, scope: Scope, key: &str) -> anyhow::Result<StateChange> {
+  pub async fn remove(&self, scope: Scope, key: &str) -> anyhow::Result<Option<StateChange>> {
     let mut locked = self.inner.write().await;
 
     let result = locked.remove(scope, key).await?;
@@ -588,30 +631,29 @@ impl Store {
           OffsetDateTime::from_unix_timestamp_micros(timestamp_u64.try_into().unwrap_or_default())
             .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
-        let change_type = if old_state_value.value_type.is_some() {
-          StateChangeType::Removed {
-            old_value: old_state_value,
-          }
+        if old_state_value.value_type.is_some() {
+          (
+            StateChangeType::Removed {
+              old_value: old_state_value,
+            },
+            timestamp,
+          )
         } else {
-          StateChangeType::NoChange
-        };
-
-        (change_type, timestamp)
+          return Ok(None);
+        }
       },
-      None => (StateChangeType::NoChange, OffsetDateTime::now_utc()),
+      None => return Ok(None),
     };
 
     // Notify the listener if state actually changed
-    if !matches!(change_type, StateChangeType::NoChange) {
-      self.notify_change(timestamp);
-    }
+    self.notify_change(timestamp);
 
-    Ok(StateChange {
+    Ok(Some(StateChange {
       scope,
       key: key.to_string(),
       change_type,
       timestamp,
-    })
+    }))
   }
 
   pub async fn clear(&self, scope: Scope) -> anyhow::Result<StateChanges> {

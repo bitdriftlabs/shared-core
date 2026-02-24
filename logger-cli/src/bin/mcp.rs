@@ -11,7 +11,7 @@ use rmcp::handler::server::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
   CallToolResult,
-  InitializeRequestParam,
+  InitializeRequestParams,
   InitializeResult,
   ProtocolVersion,
   ServerCapabilities,
@@ -221,7 +221,7 @@ impl ServerHandler for Tool {
 
   async fn initialize(
     &self,
-    _request: InitializeRequestParam,
+    _request: InitializeRequestParams,
     context: RequestContext<RoleServer>,
   ) -> Result<InitializeResult, McpError> {
     if let Some(http_request_part) = context.extensions.get::<axum::http::request::Parts>() {

@@ -10,7 +10,6 @@ use crate::consumer::{BatchBuilder, StreamedBufferUpload};
 use assert_matches::assert_matches;
 use bd_api::upload::{Tracked, UploadResponse};
 use bd_api::{DataUpload, TriggerUpload};
-use bd_artifact_upload::MockClient;
 use bd_buffer::{Buffer, BufferEvent, BufferEventWithResponse, RingBuffer, RingBufferStats};
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter};
@@ -88,8 +87,6 @@ impl SetupSingleConsumer {
       shutdown_trigger.make_shutdown(),
       "buffer".to_string(),
       None,
-      Arc::new(MockClient::new()),
-      Arc::new(|| "test-session".to_string()),
     );
 
     tokio::spawn(async move { uploader.consume_continuous_logs().await });
@@ -631,8 +628,6 @@ impl SetupMultiConsumer {
         &collector_clone.scope("consumer"),
         bd_internal_logging::NoopLogger::new(),
         None,
-        Arc::new(MockClient::new()),
-        Arc::new(|| "test-session".to_string()),
       )
       .run()
       .await
@@ -888,6 +883,7 @@ async fn log_streaming() {
     "test".to_string(),
     1024 * 1024,
     Arc::new(RingBufferStats::default()),
+    |_| {},
   );
 
   let mut producer = buffer.clone().register_producer().unwrap();
@@ -912,8 +908,6 @@ async fn log_streaming() {
       shutdown: shutdown_trigger.make_shutdown(),
       batch_builder: BatchBuilder::new(make_flags(&runtime_loader)),
       state_correlator: None,
-      artifact_client: Arc::new(MockClient::new()),
-      session_id: Arc::new(|| "test-session".to_string()),
     }
     .start()
     .await
@@ -940,6 +934,7 @@ async fn streaming_batch_size_flag() {
     "test_stream_batch".to_string(),
     1024 * 1024,
     Arc::new(bd_buffer::RingBufferStats::default()),
+    |_| {},
   );
 
   let mut producer = buffer.clone().register_producer().unwrap();
@@ -970,8 +965,6 @@ async fn streaming_batch_size_flag() {
       batch_builder: BatchBuilder::new(make_flags(&runtime_loader)),
       shutdown: shutdown_trigger.make_shutdown(),
       state_correlator: None,
-      artifact_client: Arc::new(MockClient::new()),
-      session_id: Arc::new(|| "test-session".to_string()),
     }
     .start()
     .await
@@ -1000,6 +993,7 @@ async fn log_streaming_shutdown() {
     "test".to_string(),
     1024 * 1024,
     Arc::new(RingBufferStats::default()),
+    |_| {},
   );
 
   let mut producer = buffer.clone().register_producer().unwrap();
@@ -1029,8 +1023,6 @@ async fn log_streaming_shutdown() {
       shutdown,
       batch_builder: BatchBuilder::new(make_flags(&runtime_loader)),
       state_correlator: None,
-      artifact_client: Arc::new(MockClient::new()),
-      session_id: Arc::new(|| "test-session".to_string()),
     }
     .start()
     .await
@@ -1078,6 +1070,8 @@ fn create_buffer(
     Counter::default(),
     Counter::default(),
     Some(records_written),
+    None,
+    None,
   )
   .unwrap();
 

@@ -256,6 +256,9 @@ The library automatically manages journal files:
 - **Cleanup**: Archived journals can be deleted based on retention policies
 - **Decompression**: Archived journals are transparently decompressed during recovery
 
+For retention handle semantics and snapshot cleanup behavior, see
+`bd-resilient-kv/VERSIONED_FORMAT.md`.
+
 Example file structure:
 ```
 my_store.journal              # Active journal

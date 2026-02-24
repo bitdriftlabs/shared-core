@@ -695,6 +695,7 @@ async fn serve(
   if tls {
     use tokio_rustls::TlsAcceptor;
     use tokio_rustls::rustls::ServerConfig;
+    use tokio_rustls::rustls::pki_types::pem::PemObject;
     use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 
     // Embed the strings into the source file instead of reading from file - this works better
@@ -702,12 +703,10 @@ async fn serve(
     let cert = include_str!("certs/Bitdrift.crt");
     let key = include_str!("certs/Bitdrift.key");
 
-    let certs: Vec<CertificateDer<'_>> = rustls_pemfile::certs(&mut cert.as_bytes())
+    let certs: Vec<CertificateDer<'static>> = CertificateDer::pem_slice_iter(cert.as_bytes())
       .collect::<Result<_, _>>()
       .unwrap();
-    let key: PrivateKeyDer<'_> = rustls_pemfile::private_key(&mut key.as_bytes())
-      .unwrap()
-      .unwrap();
+    let key: PrivateKeyDer<'static> = PrivateKeyDer::from_pem_slice(key.as_bytes()).unwrap();
 
     let config = ServerConfig::builder()
       .with_no_client_auth()

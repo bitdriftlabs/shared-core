@@ -91,12 +91,20 @@ impl<T: ProtoType> ProtoType for Option<T> {
 
 impl<T: ProtoFieldSerialize> ProtoFieldSerialize for Option<T> {
   fn compute_size(&self, field_number: u32) -> u64 {
-    self.as_ref().map_or(0, |v| v.compute_size(field_number))
+    // Option has explicit presence via Some/None, so when Some, always compute size using
+    // serialize_explicit to preserve the "present but empty" vs "not present" distinction.
+    // This ensures Some(empty_struct) serializes differently than None.
+    self
+      .as_ref()
+      .map_or(0, |v| v.compute_size_explicit(field_number))
   }
 
   fn serialize(&self, field_number: u32, os: &mut CodedOutputStream<'_>) -> Result<()> {
+    // Option has explicit presence via Some/None, so when Some, always serialize using
+    // serialize_explicit to preserve the "present but empty" vs "not present" distinction.
+    // This ensures Some(empty_struct) serializes differently than None.
     if let Some(v) = self {
-      v.serialize(field_number, os)?;
+      v.serialize_explicit(field_number, os)?;
     }
     Ok(())
   }

@@ -934,6 +934,46 @@ async fn persistence_performed_if_match_is_found_without_advancing() {
   );
 }
 
+#[tokio::test]
+async fn workflow_matches_after_restart() {
+  let mut a = state("A");
+  let b = state("B");
+  let c = state("C");
+
+  a = a.declare_transition(&b, rule!(message_equals("foo"); times 2));
+  let b = b.declare_transition(&c, rule!(message_equals("bar")));
+
+  let workflows = vec![WorkflowBuilder::new("1", &[&a, &b, &c]).make_config()];
+  let setup = Setup::new();
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows.clone(),
+    ))
+    .await;
+
+  // First match, but do not advance.
+  workflows_engine.process_log(TestLog::new("foo"));
+  engine_assert_active_runs!(workflows_engine; 0; "A");
+
+  workflows_engine.maybe_persist(false).await;
+
+  // Simulate restart and reload cached state.
+  let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows.clone(),
+    ))
+    .await;
+
+  // Second match should advance after reload.
+  workflows_engine.process_log(TestLog::new("foo"));
+  engine_assert_active_runs!(workflows_engine; 0; "A", "B");
+
+  // Third match should advance to final state, completing the run.
+  workflows_engine.process_log(TestLog::new("bar"));
+  engine_assert_active_runs!(workflows_engine; 0; "A");
+}
+
 #[tokio::test(start_paused = true)]
 #[allow(clippy::many_single_char_names)]
 async fn persistence_to_disk_is_rate_limited() {
