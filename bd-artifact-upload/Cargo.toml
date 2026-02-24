@@ -11,8 +11,8 @@ doctest = false
 [dependencies]
 anyhow.workspace            = true
 async-trait.workspace       = true
-backoff.workspace           = true
 bd-api.path                 = "../bd-api"
+bd-backoff.path             = "../bd-backoff"
 bd-bounded-buffer.path      = "../bd-bounded-buffer"
 bd-client-common.path       = "../bd-client-common"
 bd-client-stats-store.path  = "../bd-client-stats-store"

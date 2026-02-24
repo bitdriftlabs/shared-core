@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "profiling",
+  "bd-backoff",
   "bd-api",
   "bd-artifact-upload",
   "bd-bonjson",
@@ -67,7 +68,6 @@ assert_no_alloc   = "1.1.2"
 async-compression = { version = "0.4.38", features = ["tokio", "zlib"] }
 async-trait       = "0.1.89"
 axum              = { version = "0.8.8", features = ["http2", "macros"] }
-backoff           = "0.4.0"
 base64            = "0.22.1"
 base64-url        = "3.0.2"
 base64ct          = { version = "1.8.3", features = ["alloc", "std"] }

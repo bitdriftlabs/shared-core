@@ -14,7 +14,7 @@ use bd_runtime::runtime::FeatureFlag;
 use bd_runtime::runtime::log_upload::RetryBackoffInitialFlag;
 use bd_time::TimeDurationExt;
 use std::task::Poll;
-use std::time::Duration;
+use time::Duration;
 use tokio_test::assert_pending;
 use tower::retry::Policy;
 
@@ -63,9 +63,11 @@ async fn test_retry_backoff() {
   assert_matches!(retry_task.poll(), Poll::Ready(()));
 
   assert_matches!(&retry.backoff, Some(backoff) => {
-    assert_eq!(backoff.initial_interval,
-               RetryBackoffInitialFlag::default().unsigned_abs());
-    assert_eq!(backoff.current_interval, Duration::from_secs(45));
+    let initial_interval =
+      Duration::try_from(RetryBackoffInitialFlag::default().unsigned_abs())
+        .unwrap_or(Duration::MAX);
+    assert_eq!(backoff.initial_interval(), initial_interval);
+    assert_eq!(backoff.current_interval(), Duration::seconds(45));
   });
 
   let mut second_retry = tokio_test::task::spawn(
@@ -83,6 +85,6 @@ async fn test_retry_backoff() {
   // After the second retry the interval should be 1.5^2 the initial.
   assert_matches!(second_retry.poll(), Poll::Ready(()));
   assert_matches!(retry.backoff, Some(backoff) => {
-      assert_eq!(backoff.current_interval, Duration::from_millis(67500));
+    assert_eq!(backoff.current_interval(), Duration::milliseconds(67500));
   });
 }

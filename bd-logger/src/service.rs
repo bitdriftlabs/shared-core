@@ -10,19 +10,19 @@
 mod service_test;
 
 use crate::service::ratelimit::RequestSized;
-use backoff::backoff::Backoff;
 use bd_api::DataUpload;
 use bd_api::upload::{LogBatch, TrackedLogBatch};
+use bd_backoff::InfiniteBackoff;
 use bd_client_stats_store::{Counter, Scope};
 use bd_proto::protos::client::api::LogUploadRequest;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::labels;
+use bd_time::TimeDurationExt;
 use futures_util::future::BoxFuture;
 use std::convert::Infallible;
 use std::sync::Arc;
 use std::task::Poll;
-use time::ext::NumericalStdDuration;
 use tokio::sync::mpsc::Sender;
 use tower::ServiceBuilder;
 use tower::util::BoxCloneService;
@@ -217,7 +217,7 @@ impl tower::Service<UploadRequest> for Uploader {
 struct RetryPolicy {
   attempts: u32,
   max_retries: IntWatch<bd_runtime::runtime::log_upload::RetryCountFlag>,
-  backoff: Option<backoff::ExponentialBackoff>,
+  backoff: Option<bd_backoff::ExponentialBackoff>,
   backoff_provider: BackoffProvider,
 
   // Tracks how often we give up on a request due to the retry limit being exceeded.
@@ -262,16 +262,16 @@ impl tower::retry::Policy<UploadRequest, UploadResult, Infallible> for RetryPoli
     let backoff = self
       .backoff
       .get_or_insert_with(|| self.backoff_provider.backoff());
-    let backoff_delay = backoff.next_backoff().unwrap_or_else(|| 1.std_minutes());
+    let backoff_delay = backoff.next_backoff();
     self.attempts += 1;
 
     match result {
       Ok(UploadResult::Failure) => Some(Box::pin(async move {
         log::trace!(
           "waiting for {}ms for next attempt",
-          backoff_delay.as_millis()
+          backoff_delay.whole_milliseconds()
         );
-        tokio::time::sleep(backoff_delay).await;
+        backoff_delay.sleep().await;
       })),
       _ => None,
     }
@@ -300,11 +300,16 @@ impl BackoffProvider {
     }
   }
 
-  fn backoff(&self) -> backoff::ExponentialBackoff {
-    backoff::ExponentialBackoffBuilder::new()
-      .with_initial_interval(self.initial_backoff.read().unsigned_abs())
-      .with_max_interval(self.max_backoff.read().unsigned_abs())
-      .with_max_elapsed_time(None)
+  fn backoff(&self) -> bd_backoff::ExponentialBackoff {
+    let initial_backoff_interval =
+      time::Duration::try_from(self.initial_backoff.read().unsigned_abs())
+        .unwrap_or(time::Duration::MAX);
+    let max_backoff_interval = time::Duration::try_from(self.max_backoff.read().unsigned_abs())
+      .unwrap_or(time::Duration::MAX);
+
+    bd_backoff::ExponentialBackoffBuilder::new_infinite()
+      .with_initial_interval(initial_backoff_interval)
+      .with_max_interval(max_backoff_interval)
       .build()
   }
 }
