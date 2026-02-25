@@ -483,6 +483,7 @@ impl Monitor {
 
     let Ok(artifact_id) = self.artifact_client.enqueue_upload(
       file,
+      "client_report".to_string(),
       state_fields.clone(),
       timestamp,
       session_id.clone(),

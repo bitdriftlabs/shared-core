@@ -166,12 +166,14 @@ pub mod artifact_upload_index {
         pub time: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.pending_intent_negotiation)
         pub pending_intent_negotiation: bool,
-        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.state_metadata)
-        pub state_metadata: ::std::collections::HashMap<::std::string::String, super::super::payload::Data>,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.metadata)
+        pub metadata: ::std::collections::HashMap<::std::string::String, super::super::payload::Data>,
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.session_id)
         pub session_id: ::std::string::String,
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.feature_flags)
         pub feature_flags: ::std::vec::Vec<super::super::feature_flag::FeatureFlag>,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.type_id)
+        pub type_id: ::std::option::Option<::std::string::String>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -189,7 +191,7 @@ pub mod artifact_upload_index {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(6);
+            let mut fields = ::std::vec::Vec::with_capacity(7);
             let mut oneofs = ::std::vec::Vec::with_capacity(0);
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "name",
@@ -207,9 +209,9 @@ pub mod artifact_upload_index {
                 |m: &mut Artifact| { &mut m.pending_intent_negotiation },
             ));
             fields.push(::protobuf::reflect::rt::v2::make_map_simpler_accessor_new::<_, _>(
-                "state_metadata",
-                |m: &Artifact| { &m.state_metadata },
-                |m: &mut Artifact| { &mut m.state_metadata },
+                "metadata",
+                |m: &Artifact| { &m.metadata },
+                |m: &mut Artifact| { &mut m.metadata },
             ));
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "session_id",
@@ -220,6 +222,11 @@ pub mod artifact_upload_index {
                 "feature_flags",
                 |m: &Artifact| { &m.feature_flags },
                 |m: &mut Artifact| { &mut m.feature_flags },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "type_id",
+                |m: &Artifact| { &m.type_id },
+                |m: &mut Artifact| { &mut m.type_id },
             ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Artifact>(
                 "ArtifactUploadIndex.Artifact",
@@ -261,13 +268,16 @@ pub mod artifact_upload_index {
                             };
                         }
                         is.pop_limit(old_limit);
-                        self.state_metadata.insert(key, value);
+                        self.metadata.insert(key, value);
                     },
                     50 => {
                         self.session_id = is.read_string()?;
                     },
                     58 => {
                         self.feature_flags.push(is.read_message()?);
+                    },
+                    66 => {
+                        self.type_id = ::std::option::Option::Some(is.read_string()?);
                     },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -291,7 +301,7 @@ pub mod artifact_upload_index {
             if self.pending_intent_negotiation != false {
                 my_size += 1 + 1;
             }
-            for (k, v) in &self.state_metadata {
+            for (k, v) in &self.metadata {
                 let mut entry_size = 0;
                 entry_size += ::protobuf::rt::string_size(1, &k);
                 let len = v.compute_size();
@@ -305,6 +315,9 @@ pub mod artifact_upload_index {
                 let len = value.compute_size();
                 my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
             };
+            if let Some(v) = self.type_id.as_ref() {
+                my_size += ::protobuf::rt::string_size(8, &v);
+            }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
             my_size
@@ -320,7 +333,7 @@ pub mod artifact_upload_index {
             if self.pending_intent_negotiation != false {
                 os.write_bool(3, self.pending_intent_negotiation)?;
             }
-            for (k, v) in &self.state_metadata {
+            for (k, v) in &self.metadata {
                 let mut entry_size = 0;
                 entry_size += ::protobuf::rt::string_size(1, &k);
                 let len = v.cached_size() as u64;
@@ -336,6 +349,9 @@ pub mod artifact_upload_index {
             for v in &self.feature_flags {
                 ::protobuf::rt::write_message_field_with_cached_size(7, v, os)?;
             };
+            if let Some(v) = self.type_id.as_ref() {
+                os.write_string(8, v)?;
+            }
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
         }
@@ -356,9 +372,10 @@ pub mod artifact_upload_index {
             self.name.clear();
             self.time.clear();
             self.pending_intent_negotiation = false;
-            self.state_metadata.clear();
+            self.metadata.clear();
             self.session_id.clear();
             self.feature_flags.clear();
+            self.type_id = ::std::option::Option::None;
             self.special_fields.clear();
         }
 
@@ -390,19 +407,20 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \n1bitdrift_public/protobuf/client/v1/artifact.proto\x12\"bitdrift_publi\
     c.protobuf.client.v1\x1a5bitdrift_public/protobuf/client/v1/feature_flag\
     .proto\x1a1bitdrift_public/protobuf/logging/v1/payload.proto\x1a\x1fgoog\
-    le/protobuf/timestamp.proto\"\xe0\x04\n\x13ArtifactUploadIndex\x12\\\n\
+    le/protobuf/timestamp.proto\"\xf5\x04\n\x13ArtifactUploadIndex\x12\\\n\
     \x08artifact\x18\x01\x20\x03(\x0b2@.bitdrift_public.protobuf.client.v1.A\
-    rtifactUploadIndex.ArtifactR\x08artifact\x1a\xea\x03\n\x08Artifact\x12\
+    rtifactUploadIndex.ArtifactR\x08artifact\x1a\xff\x03\n\x08Artifact\x12\
     \x12\n\x04name\x18\x01\x20\x01(\tR\x04name\x12.\n\x04time\x18\x02\x20\
     \x01(\x0b2\x1a.google.protobuf.TimestampR\x04time\x12<\n\x1apending_inte\
-    nt_negotiation\x18\x03\x20\x01(\x08R\x18pendingIntentNegotiation\x12z\n\
-    \x0estate_metadata\x18\x05\x20\x03(\x0b2S.bitdrift_public.protobuf.clien\
-    t.v1.ArtifactUploadIndex.Artifact.StateMetadataEntryR\rstateMetadata\x12\
-    \x1d\n\nsession_id\x18\x06\x20\x01(\tR\tsessionId\x12T\n\rfeature_flags\
-    \x18\x07\x20\x03(\x0b2/.bitdrift_public.protobuf.client.v1.FeatureFlagR\
-    \x0cfeatureFlags\x1ak\n\x12StateMetadataEntry\x12\x10\n\x03key\x18\x01\
-    \x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_publ\
-    ic.protobuf.logging.v1.DataR\x05value:\x028\x01b\x06proto3\
+    nt_negotiation\x18\x03\x20\x01(\x08R\x18pendingIntentNegotiation\x12j\n\
+    \x08metadata\x18\x05\x20\x03(\x0b2N.bitdrift_public.protobuf.client.v1.A\
+    rtifactUploadIndex.Artifact.MetadataEntryR\x08metadata\x12\x1d\n\nsessio\
+    n_id\x18\x06\x20\x01(\tR\tsessionId\x12T\n\rfeature_flags\x18\x07\x20\
+    \x03(\x0b2/.bitdrift_public.protobuf.client.v1.FeatureFlagR\x0cfeatureFl\
+    ags\x12\x1c\n\x07type_id\x18\x08\x20\x01(\tH\0R\x06typeId\x88\x01\x01\
+    \x1af\n\rMetadataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\
+    \n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.logging.v1.D\
+    ataR\x05value:\x028\x01B\n\n\x08_type_idb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
