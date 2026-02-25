@@ -8,6 +8,7 @@
 use crate::{InitStrategy, SYSTEM_SESSION_ID_KEY, Scope, StateReader, Store};
 use bd_client_stats_store::Collector;
 use bd_resilient_kv::PersistentStoreConfig;
+use bd_time::TimeProvider as _;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::macros::datetime;
@@ -921,4 +922,170 @@ async fn clear_empty_scope_returns_empty_changes() {
   let changes = setup.store.clear(Scope::FeatureFlagExposure).await.unwrap();
 
   assert_eq!(changes.changes.len(), 0);
+}
+
+#[tokio::test]
+async fn last_change_micros_starts_at_zero() {
+  let setup = Setup::new().await;
+
+  assert_eq!(setup.store.last_change_micros(), 0);
+}
+
+#[tokio::test]
+async fn last_change_micros_updated_on_insert() {
+  let temp_dir = tempfile::tempdir().unwrap();
+  let t1 = datetime!(2024-01-01 00:00:01 UTC);
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(t1));
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
+  let store = Store::persistent(
+    temp_dir.path(),
+    PersistentStoreConfig::default(),
+    time_provider.clone(),
+    &runtime_loader,
+    &Collector::default().scope("test"),
+  )
+  .await
+  .unwrap()
+  .store;
+
+  store
+    .insert(
+      Scope::GlobalState,
+      "k".to_string(),
+      crate::string_value("v"),
+    )
+    .await
+    .unwrap();
+
+  let expected_micros =
+    t1.unix_timestamp().cast_unsigned() * 1_000_000 + u64::from(t1.microsecond());
+  assert_eq!(store.last_change_micros(), expected_micros);
+}
+
+#[tokio::test]
+async fn last_change_micros_not_updated_on_noop_insert() {
+  let temp_dir = tempfile::tempdir().unwrap();
+  let t1 = datetime!(2024-01-01 00:00:01 UTC);
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(t1));
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
+  let store = Store::persistent(
+    temp_dir.path(),
+    PersistentStoreConfig::default(),
+    time_provider.clone(),
+    &runtime_loader,
+    &Collector::default().scope("test"),
+  )
+  .await
+  .unwrap()
+  .store;
+
+  store
+    .insert(
+      Scope::GlobalState,
+      "k".to_string(),
+      crate::string_value("v"),
+    )
+    .await
+    .unwrap();
+  let after_first = store.last_change_micros();
+
+  // Advance time so a real change would produce a different timestamp.
+  time_provider.advance(time::Duration::seconds(10));
+
+  // Inserting the same value is a no-op: last_change_micros must not advance.
+  store
+    .insert(
+      Scope::GlobalState,
+      "k".to_string(),
+      crate::string_value("v"),
+    )
+    .await
+    .unwrap();
+
+  assert_eq!(store.last_change_micros(), after_first);
+}
+
+#[tokio::test]
+async fn last_change_micros_updated_on_remove() {
+  let temp_dir = tempfile::tempdir().unwrap();
+  let t1 = datetime!(2024-06-15 12:00:00 UTC);
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(t1));
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
+  let store = Store::persistent(
+    temp_dir.path(),
+    PersistentStoreConfig::default(),
+    time_provider.clone(),
+    &runtime_loader,
+    &Collector::default().scope("test"),
+  )
+  .await
+  .unwrap()
+  .store;
+
+  store
+    .insert(
+      Scope::GlobalState,
+      "k".to_string(),
+      crate::string_value("v"),
+    )
+    .await
+    .unwrap();
+
+  // Advance time before the remove so we can distinguish insert vs remove timestamps.
+  time_provider.advance(time::Duration::seconds(5));
+  let t2 = time_provider.now();
+
+  store
+    .remove(Scope::GlobalState, "k")
+    .await
+    .unwrap()
+    .unwrap();
+
+  let expected_micros =
+    t2.unix_timestamp().cast_unsigned() * 1_000_000 + u64::from(t2.microsecond());
+  assert_eq!(store.last_change_micros(), expected_micros);
+}
+
+#[tokio::test]
+async fn last_change_micros_never_decreases() {
+  let temp_dir = tempfile::tempdir().unwrap();
+  let t2 = datetime!(2024-01-01 00:00:02 UTC);
+  let t1 = datetime!(2024-01-01 00:00:01 UTC);
+  let time_provider = Arc::new(bd_time::TestTimeProvider::new(t2));
+  let runtime_loader = bd_runtime::runtime::ConfigLoader::new(temp_dir.path());
+  let store = Store::persistent(
+    temp_dir.path(),
+    PersistentStoreConfig::default(),
+    time_provider.clone(),
+    &runtime_loader,
+    &Collector::default().scope("test"),
+  )
+  .await
+  .unwrap()
+  .store;
+
+  store
+    .insert(
+      Scope::GlobalState,
+      "k1".to_string(),
+      crate::string_value("v"),
+    )
+    .await
+    .unwrap();
+  let after_t2 = store.last_change_micros();
+
+  // Rewind the time provider to an earlier point.
+  time_provider.set_time(t1);
+
+  store
+    .insert(
+      Scope::GlobalState,
+      "k2".to_string(),
+      crate::string_value("v"),
+    )
+    .await
+    .unwrap();
+
+  // last_change_micros must not go backward.
+  assert_eq!(store.last_change_micros(), after_t2);
 }
