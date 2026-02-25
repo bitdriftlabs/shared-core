@@ -314,6 +314,7 @@ impl LoggerBuilder {
           )),
           "state initialization",
         );
+        log.log_internal("state store initialization failed, using in-memory fallback");
       }
 
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
