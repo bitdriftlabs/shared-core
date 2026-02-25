@@ -21,6 +21,7 @@ use bd_error_reporter::reporter::handle_unexpected_error_with_details;
 use bd_log_primitives::EncodableLog;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
+use bd_time::OffsetDateTimeExt;
 use futures_util::future::try_join_all;
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
@@ -413,7 +414,7 @@ impl BatchBuilder {
 
   fn add_log(&mut self, data: Vec<u8>) {
     if let Some(ts) = EncodableLog::extract_timestamp(&data) {
-      let ts_micros = ts.unix_timestamp().cast_unsigned() * 1_000_000 + u64::from(ts.microsecond());
+      let ts_micros = ts.unix_timestamp_micros().cast_unsigned();
       self.oldest_micros = Some(self.oldest_micros.map_or(ts_micros, |o| o.min(ts_micros)));
       self.newest_micros = Some(self.newest_micros.map_or(ts_micros, |n| n.max(ts_micros)));
     }
