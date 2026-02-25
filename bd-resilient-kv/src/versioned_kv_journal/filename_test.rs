@@ -12,19 +12,34 @@ use super::*;
 #[test]
 fn parse_valid_filename() {
   let result = SnapshotFilename::parse("state.jrn.g1.t1234567890.zz");
-  assert_eq!(result, Some(SnapshotFilename { timestamp_micros: 1_234_567_890 }));
+  assert_eq!(
+    result,
+    Some(SnapshotFilename {
+      timestamp_micros: 1_234_567_890
+    })
+  );
 }
 
 #[test]
 fn parse_large_values() {
   let result = SnapshotFilename::parse("state.jrn.g999.t1737933600000000.zz");
-  assert_eq!(result, Some(SnapshotFilename { timestamp_micros: 1_737_933_600_000_000 }));
+  assert_eq!(
+    result,
+    Some(SnapshotFilename {
+      timestamp_micros: 1_737_933_600_000_000
+    })
+  );
 }
 
 #[test]
 fn parse_different_journal_names() {
   let result = SnapshotFilename::parse("other.jrn.g5.t999999.zz");
-  assert_eq!(result, Some(SnapshotFilename { timestamp_micros: 999_999 }));
+  assert_eq!(
+    result,
+    Some(SnapshotFilename {
+      timestamp_micros: 999_999
+    })
+  );
 }
 
 #[test]
@@ -37,7 +52,9 @@ fn parse_missing_generation_still_parses() {
   // generation is not extracted — only timestamp matters
   assert_eq!(
     SnapshotFilename::parse("state.jrn.t1234567890.zz"),
-    Some(SnapshotFilename { timestamp_micros: 1_234_567_890 })
+    Some(SnapshotFilename {
+      timestamp_micros: 1_234_567_890
+    })
   );
 }
 
@@ -51,7 +68,9 @@ fn parse_non_numeric_generation_still_parses() {
   // generation is not extracted — only timestamp matters
   assert_eq!(
     SnapshotFilename::parse("state.jrn.gabc.t1234567890.zz"),
-    Some(SnapshotFilename { timestamp_micros: 1_234_567_890 })
+    Some(SnapshotFilename {
+      timestamp_micros: 1_234_567_890
+    })
   );
 }
 
