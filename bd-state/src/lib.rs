@@ -22,8 +22,15 @@ pub mod test;
 
 pub use self::InitStrategy::{InMemoryOnly, PersistentWithFallback};
 use ahash::AHashMap;
-use bd_resilient_kv::{DataLoss, RetentionRegistry, ScopedMaps, StateValue};
-pub use bd_resilient_kv::{PersistentStoreConfig, Scope, StateValue as Value, Value_type};
+use bd_resilient_kv::{DataLoss, ScopedMaps, StateValue};
+pub use bd_resilient_kv::{
+  PersistentStoreConfig,
+  RetentionHandle,
+  RetentionRegistry,
+  Scope,
+  StateValue as Value,
+  Value_type,
+};
 use bd_runtime::runtime::ConfigLoader;
 use bd_time::{OffsetDateTimeExt, TimeProvider};
 use itertools::Itertools as _;
@@ -31,6 +38,7 @@ use std::path::Path;
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::RwLock;
+
 
 /// The key used for storing the current system session ID in the state store.
 pub const SYSTEM_SESSION_ID_KEY: &str = "sid";
@@ -190,7 +198,9 @@ pub struct StoreInitResult {
   pub data_loss: DataLoss,
   /// Snapshot of state from the previous process, captured before clearing ephemeral scopes
   pub previous_state: ScopedMaps,
-  /// Retention registry used for snapshot retention
+  /// Registry for managing snapshot retention across buffers. Each buffer should create a
+  /// retention handle from this registry to prevent snapshots from being cleaned up while
+  /// logs that reference them are still in the buffer.
   pub retention_registry: Arc<RetentionRegistry>,
 }
 
@@ -211,7 +221,7 @@ pub struct StoreInitWithFallbackResult {
   pub previous_state: ScopedMaps,
   /// Whether fallback to in-memory storage occurred
   pub fallback_occurred: bool,
-  /// Retention registry used for snapshot retention
+  /// Registry for managing snapshot retention across buffers. Empty if fallback occurred.
   pub retention_registry: Arc<RetentionRegistry>,
 }
 
@@ -381,6 +391,8 @@ impl Store {
           data_loss: None,
           previous_state: ScopedMaps::default(),
           fallback_occurred: true,
+          // In-memory store doesn't have snapshots to retain, but we still provide a registry
+          // so callers don't need to handle the Option case.
           retention_registry: Arc::new(RetentionRegistry::new(
             bd_runtime::runtime::state::MaxSnapshotCount::register(runtime_loader),
           )),
@@ -648,6 +660,7 @@ impl Store {
       .collect_vec();
 
     let mut changes = Vec::new();
+    let mut latest_timestamp = None;
 
     // TODO(snowp): Ideally we should have built in support for batch deletions in the
     // underlying store. This leaves us open for partial deletions if something fails halfway
@@ -659,6 +672,10 @@ impl Store {
             .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
         if old_state_value.value_type.is_some() {
+          // Track the latest timestamp among all changes
+          if latest_timestamp.is_none() || timestamp > latest_timestamp.unwrap_or(timestamp) {
+            latest_timestamp = Some(timestamp);
+          }
           changes.push(StateChange {
             scope,
             key,
@@ -675,6 +692,11 @@ impl Store {
       self.record_change(ts);
     }
 
+    // Notify the listener once with the latest timestamp if any changes occurred
+    if let Some(ts) = latest_timestamp {
+      self.record_change(ts);
+    }
+
     Ok(StateChanges { changes })
   }
 
@@ -683,6 +705,28 @@ impl Store {
   /// The returned reader holds a read lock on the store for its lifetime.
   pub async fn read(&self) -> impl StateReader + '_ {
     self.inner.read().await
+  }
+
+  /// Triggers a journal rotation to create a snapshot.
+  ///
+  /// This is primarily used to create a state snapshot before uploading logs, ensuring the server
+  /// has the state context needed to hydrate those logs. The rotation creates a compressed `.zz`
+  /// snapshot file in the `state/snapshots/` directory.
+  ///
+  /// Returns the path to the created snapshot file, or `None` if:
+  /// - The store is in-memory only (no persistence)
+  /// - The rotation failed for some reason
+  ///
+  /// Note: For in-memory stores, this is a no-op that returns `None`.
+  pub async fn rotate_journal(&self) -> Option<std::path::PathBuf> {
+    let mut locked = self.inner.write().await;
+    match locked.rotate_journal().await {
+      Ok(rotation) => Some(rotation.snapshot_path),
+      Err(e) => {
+        log::debug!("Failed to rotate journal for snapshot: {e}");
+        None
+      },
+    }
   }
 }
 

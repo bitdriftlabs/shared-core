@@ -13,6 +13,7 @@ use crate::internal::InternalLogger;
 use crate::log_replay::LoggerReplay;
 use crate::logger::Logger;
 use crate::logging_state::UninitializedLoggingContext;
+use crate::state_upload::StateUploadHandle;
 use crate::{InitParams, LogAttributesOverrides};
 use bd_api::{
   AggregatedNetworkQualityProvider,
@@ -242,6 +243,9 @@ impl LoggerBuilder {
     let data_upload_tx_clone = data_upload_tx.clone();
     let collector_clone = collector;
 
+    let state_storage_fallback = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let state_storage_fallback_for_future = state_storage_fallback.clone();
+
     let logger = Logger::new(
       maybe_shutdown_trigger,
       runtime_loader.clone(),
@@ -253,6 +257,7 @@ impl LoggerBuilder {
       self.params.static_metadata.sdk_version(),
       self.params.store.clone(),
       sleep_mode_active_tx,
+      state_storage_fallback,
     );
     let log = if self.internal_logger {
       Arc::new(InternalLogger::new(
@@ -317,6 +322,11 @@ impl LoggerBuilder {
         log.log_internal("state store initialization failed, using in-memory fallback");
       }
 
+      state_storage_fallback_for_future.store(
+        result.fallback_occurred,
+        std::sync::atomic::Ordering::Relaxed,
+      );
+
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
         Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
         data_upload_tx_clone.clone(),
@@ -325,11 +335,30 @@ impl LoggerBuilder {
         &collector_clone,
         shutdown_handle.make_shutdown(),
       );
+      let artifact_client: Arc<dyn bd_artifact_upload::Client> = Arc::new(artifact_client);
+
+      // Create state-log correlator for uploading state snapshots alongside logs
+      let snapshot_creation_interval_ms =
+        *bd_runtime::runtime::state::SnapshotCreationIntervalMs::register(&runtime_loader)
+          .into_inner()
+          .borrow();
+      let (state_correlator_inner, state_upload_worker) = StateUploadHandle::new(
+        Some(state_directory.clone()),
+        self.params.store.clone(),
+        Some(retention_registry.clone()),
+        Some(Arc::new(state_store.clone())),
+        snapshot_creation_interval_ms,
+        time_provider.clone(),
+        artifact_client.clone(),
+        &scope,
+      )
+      .await;
+      let state_correlator = Arc::new(state_correlator_inner);
 
       let crash_monitor = Monitor::new(
         &self.params.sdk_directory,
         self.params.store.clone(),
-        Arc::new(artifact_client),
+        artifact_client.clone(),
         self.params.session_strategy.clone(),
         &init_lifecycle,
         state_store.clone(),
@@ -365,6 +394,7 @@ impl LoggerBuilder {
         trigger_upload_rx,
         &scope,
         log.clone(),
+        Some(state_correlator),
       );
 
       let updater = Arc::new(client_config::Config::new(
@@ -428,6 +458,10 @@ impl LoggerBuilder {
         },
         async move {
           artifact_uploader.run().await;
+          Ok(())
+        },
+        async move {
+          state_upload_worker.run().await;
           Ok(())
         }
       )

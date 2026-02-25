@@ -17,6 +17,7 @@ use bd_session::fixed::{self, UUIDCallbacks};
 use bd_test_helpers::session::in_memory_store;
 use futures_util::poll;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use tokio::pin;
 use tokio::sync::watch;
 use tokio_test::assert_pending;
@@ -39,6 +40,7 @@ async fn thread_local_logger_guard() {
     sdk_version: "1.0.0".into(),
     app_version_repo: Repository::new(store),
     sleep_mode_active: watch::channel(false).0,
+    state_storage_fallback: Arc::new(AtomicBool::new(false)),
   };
 
   with_thread_local_logger_guard(|| {

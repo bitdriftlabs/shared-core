@@ -141,6 +141,24 @@ impl Setup {
     })
   }
 
+  /// Creates a Setup with runtime values pre-cached to disk.
+  ///
+  /// This starts a temporary logger to cache the runtime, then restarts with the cached config.
+  /// Use this when runtime values must be present at logger initialization time (e.g.,
+  /// `state.use_persistent_storage` which determines state store type at startup).
+  pub fn new_with_cached_runtime(options: SetupOptions) -> Self {
+    {
+      let _primer = Self::new_with_options(SetupOptions {
+        sdk_directory: options.sdk_directory.clone(),
+        disk_storage: options.disk_storage,
+        extra_runtime_values: options.extra_runtime_values.clone(),
+        ..Default::default()
+      });
+      std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    Self::new_with_options(options)
+  }
+
   pub fn new_with_options(options: SetupOptions) -> Self {
     let mut server = bd_test_helpers::test_api_server::start_server(false, None);
     let shutdown = ComponentShutdownTrigger::default();

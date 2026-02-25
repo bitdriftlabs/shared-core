@@ -483,11 +483,13 @@ impl Monitor {
 
     let Ok(artifact_id) = self.artifact_client.enqueue_upload(
       file,
-      "client_report".to_string(),
       state_fields.clone(),
       timestamp,
       session_id.clone(),
       reporting_feature_flags.clone(),
+      "client_report".to_string(),
+      false, // Don't skip intent negotiation for crash reports
+      None,
     ) else {
       log::warn!(
         "Failed to enqueue issue report for upload: {}",

@@ -161,11 +161,13 @@ async fn basic_flow() {
     .client
     .enqueue_upload(
       setup.make_file(b"abc"),
-      "client_report".to_string(),
       [("foo".into(), "bar".into())].into(),
       Some(timestamp),
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
+      None,
     )
     .unwrap();
 
@@ -220,7 +222,6 @@ async fn feature_flags() {
     .client
     .enqueue_upload(
       setup.make_file(b"abc"),
-      "client_report".to_string(),
       [("foo".into(), "bar".into())].into(),
       Some(timestamp),
       "session_id".to_string(),
@@ -232,6 +233,9 @@ async fn feature_flags() {
         ),
         SnappedFeatureFlag::new("key2".to_string(), None, timestamp - 2.std_seconds()),
       ],
+      "client_report".to_string(),
+      false,
+      None,
     )
     .unwrap();
 
@@ -245,7 +249,6 @@ async fn feature_flags() {
           uuid: intent.uuid,
           decision: bd_api::upload::IntentDecision::UploadImmediately }).unwrap();
   });
-
 
   let upload = setup.data_upload_rx.recv().await.unwrap();
   assert_matches!(upload, DataUpload::ArtifactUpload(upload) => {
@@ -296,11 +299,13 @@ async fn pending_upload_limit() {
     .client
     .enqueue_upload(
       setup.make_file(b"1"),
-      "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -312,11 +317,13 @@ async fn pending_upload_limit() {
     .client
     .enqueue_upload(
       setup.make_file(b"2"),
-      "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -327,11 +334,13 @@ async fn pending_upload_limit() {
     .client
     .enqueue_upload(
       setup.make_file(b"3"),
-      "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -395,11 +404,13 @@ async fn inconsistent_state_missing_file() {
     .client
     .enqueue_upload(
       setup.make_file(b"1"),
-      "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -410,11 +421,13 @@ async fn inconsistent_state_missing_file() {
     .client
     .enqueue_upload(
       setup.make_file(b"2"),
-      "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -453,11 +466,13 @@ async fn inconsistent_state_extra_file() {
     .client
     .enqueue_upload(
       setup.make_file(b"1"),
-      "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -524,11 +539,13 @@ async fn disk_persistence() {
     .client
     .enqueue_upload(
       setup.make_file(b"1"),
-      "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -571,11 +588,13 @@ async fn inconsistent_state_missing_index() {
     .client
     .enqueue_upload(
       setup.make_file(b"1"),
-      "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -595,11 +614,13 @@ async fn inconsistent_state_missing_index() {
     .client
     .enqueue_upload(
       setup.make_file(b"2"),
-      "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -641,11 +662,13 @@ async fn new_entry_disk_full() {
     .client
     .enqueue_upload(
       setup.make_file(b"1"),
-      "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -670,11 +693,13 @@ async fn new_entry_disk_full_after_received() {
     .client
     .enqueue_upload(
       setup.make_file(b"1"),
-      "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -711,11 +736,13 @@ async fn intent_retries() {
     .client
     .enqueue_upload(
       setup.make_file(b"1"),
-      "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -746,11 +773,13 @@ async fn intent_drop() {
     .client
     .enqueue_upload(
       setup.make_file(b"1"),
-      "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -783,11 +812,13 @@ async fn upload_retries() {
     .client
     .enqueue_upload(
       setup.make_file(b"1"),
-      "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -835,11 +866,13 @@ async fn normalize_type_id_on_load() {
     .client
     .enqueue_upload(
       setup.make_file(b"abc"),
-      "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      "client_report".to_string(),
+      false,
+      None,
     )
     .unwrap();
   assert_eq!(

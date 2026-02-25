@@ -49,20 +49,6 @@ pub static REPORT_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| "report_upload
 /// The index file used for tracking all of the individual files.
 pub static REPORT_INDEX_FILE: LazyLock<PathBuf> = LazyLock::new(|| "report_index.pb".into());
 
-#[derive(Default, Clone, Copy)]
-pub enum ArtifactType {
-  #[default]
-  Report,
-}
-
-impl ArtifactType {
-  fn to_type_id(self) -> &'static str {
-    match self {
-      Self::Report => "client_report",
-    }
-  }
-}
-
 //
 // FeatureFlag
 //
@@ -110,11 +96,14 @@ impl SnappedFeatureFlag {
 struct NewUpload {
   uuid: Uuid,
   file: std::fs::File,
-  type_id: String,
   state: LogFields,
   timestamp: Option<OffsetDateTime>,
   session_id: String,
   feature_flags: Vec<SnappedFeatureFlag>,
+  type_id: String,
+  skip_intent: bool,
+  /// Optional oneshot sender to notify the caller when the upload completes or is dropped.
+  completion_tx: Option<tokio::sync::oneshot::Sender<bool>>,
 }
 
 // Used for bounded_buffer logs
@@ -140,11 +129,11 @@ impl MemorySized for SnappedFeatureFlag {
 impl MemorySized for NewUpload {
   fn size(&self) -> usize {
     std::mem::size_of::<Uuid>()
-      + self.type_id.len()
       + self.state.size()
       + std::mem::size_of::<Option<OffsetDateTime>>()
       + self.session_id.len()
       + self.feature_flags.size()
+      + self.type_id.len()
   }
 }
 
@@ -179,11 +168,13 @@ pub trait Client: Send + Sync {
   fn enqueue_upload(
     &self,
     file: std::fs::File,
-    type_id: String,
     state: LogFields,
     timestamp: Option<OffsetDateTime>,
     session_id: String,
     feature_flags: Vec<SnappedFeatureFlag>,
+    type_id: String,
+    skip_intent: bool,
+    completion_tx: Option<tokio::sync::oneshot::Sender<bool>>,
   ) -> anyhow::Result<Uuid>;
 }
 
@@ -193,15 +184,16 @@ pub struct UploadClient {
 }
 
 impl Client for UploadClient {
-  /// Dispatches a payload to be uploaded, returning the associated artifact UUID.
   fn enqueue_upload(
     &self,
     file: std::fs::File,
-    type_id: String,
     state: LogFields,
     timestamp: Option<OffsetDateTime>,
     session_id: String,
     feature_flags: Vec<SnappedFeatureFlag>,
+    type_id: String,
+    skip_intent: bool,
+    completion_tx: Option<tokio::sync::oneshot::Sender<bool>>,
   ) -> anyhow::Result<Uuid> {
     let uuid = uuid::Uuid::new_v4();
 
@@ -210,11 +202,13 @@ impl Client for UploadClient {
       .try_send(NewUpload {
         uuid,
         file,
-        type_id,
         state,
         timestamp,
         session_id,
         feature_flags,
+        type_id,
+        skip_intent,
+        completion_tx,
       })
       .inspect_err(|e| log::warn!("failed to enqueue artifact upload: {e:?}"));
 
@@ -262,6 +256,9 @@ pub struct Uploader {
 
   index: VecDeque<Artifact>,
 
+  /// Oneshot senders waiting for upload confirmation, keyed by artifact name (uuid string).
+  completion_senders: HashMap<String, tokio::sync::oneshot::Sender<bool>>,
+
   max_entries: IntWatch<bd_runtime::runtime::artifact_upload::MaxPendingEntries>,
   initial_backoff_interval: DurationWatch<bd_runtime::runtime::api::InitialBackoffInterval>,
   max_backoff_interval: DurationWatch<bd_runtime::runtime::api::MaxBackoffInterval>,
@@ -305,6 +302,7 @@ impl Uploader {
       time_provider,
       file_system,
       index: VecDeque::default(),
+      completion_senders: HashMap::default(),
       max_entries: runtime.register_int_watch(),
       initial_backoff_interval: runtime.register_duration_watch(),
       max_backoff_interval: runtime.register_duration_watch(),
@@ -345,13 +343,10 @@ impl Uploader {
       {
         if next.pending_intent_negotiation {
           log::debug!("starting intent negotiation for {:?}", next.name);
-
           self.intent_task_handle = Some(tokio::spawn(Self::perform_intent_negotiation(
             self.data_upload_tx.clone(),
             next.name.clone(),
-            next.type_id.clone().unwrap_or_default(),
             next.time.to_offset_date_time(),
-            next.metadata.clone(),
             bd_api::backoff_policy(
               &mut self.initial_backoff_interval,
               &mut self.max_backoff_interval,
@@ -385,12 +380,13 @@ impl Uploader {
 
           return Ok(());
         };
+
+
         log::debug!("starting file upload for {:?}", next.name);
         self.upload_task_handle = Some(tokio::spawn(Self::upload_artifact(
           self.data_upload_tx.clone(),
           contents,
           next.name.clone(),
-          next.type_id.clone().unwrap_or_default(),
           next.time.to_offset_date_time(),
           next.session_id.clone(),
           bd_api::backoff_policy(
@@ -417,22 +413,26 @@ impl Uploader {
         Some(NewUpload {
             uuid,
             file,
-            type_id,
             state,
             timestamp,
             session_id,
             feature_flags,
+            type_id,
+            skip_intent,
+            completion_tx,
         }) = self.upload_queued_rx.recv() => {
           log::debug!("tracking artifact: {uuid} for upload");
           self
             .track_new_upload(
               uuid,
               file,
-              type_id,
               state,
               session_id,
               timestamp,
               feature_flags,
+              type_id,
+              skip_intent,
+              completion_tx,
             )
             .await;
         }
@@ -489,7 +489,7 @@ impl Uploader {
     let mut modified = false;
     let mut new_index = VecDeque::default();
     let mut filenames = HashSet::new();
-    for mut entry in self.index.drain(..) {
+    for entry in self.index.drain(..) {
       let file_path = REPORT_DIRECTORY.join(&entry.name);
       if !self
         .file_system
@@ -503,13 +503,6 @@ impl Uploader {
         );
         modified = true;
         continue;
-      }
-      // Handle inserting a default type_id for entries that are missing it. This can happen for
-      // older versions of the uploader that didn't persist the type_id to disk.
-      // TODO(snowp): Remove this at some point in the future after.
-      if entry.type_id.as_deref().unwrap_or_default().is_empty() {
-        entry.type_id = Some(ArtifactType::default().to_type_id().to_string());
-        modified = true;
       }
       filenames.insert(entry.name.clone());
       new_index.push_back(entry);
@@ -553,6 +546,11 @@ impl Uploader {
         self.stats.dropped_intent.inc();
         let entry = &self.index.pop_front().ok_or(InvariantError::Invariant)?;
 
+        // Notify the caller that this upload was rejected.
+        if let Some(tx) = self.completion_senders.remove(&entry.name) {
+          let _ = tx.send(false);
+        }
+
         if let Err(e) = self
           .file_system
           .delete_file(&REPORT_DIRECTORY.join(&entry.name))
@@ -589,6 +587,11 @@ impl Uploader {
       log::warn!("failed to delete artifact {:?}: {}", entry.name, e);
     }
 
+    // Notify the caller that the upload succeeded.
+    if let Some(tx) = self.completion_senders.remove(&entry.name) {
+      let _ = tx.send(true);
+    }
+
     self.write_index().await;
 
     Ok(entry.name)
@@ -607,11 +610,13 @@ impl Uploader {
     &mut self,
     uuid: Uuid,
     file: std::fs::File,
-    type_id: String,
     state: LogFields,
     session_id: String,
     timestamp: Option<OffsetDateTime>,
     feature_flags: Vec<SnappedFeatureFlag>,
+    _type_id: String,
+    skip_intent: bool,
+    completion_tx: Option<tokio::sync::oneshot::Sender<bool>>,
   ) {
     // If we've reached our limit of entries, stop the entry currently being uploaded (the oldest
     // one) to make space for the newer one.
@@ -621,7 +626,12 @@ impl Uploader {
 
       self.stats.dropped.inc();
       self.stop_current_upload();
-      self.index.pop_front();
+      if let Some(evicted) = self.index.pop_front() {
+        // Notify any waiting caller that their upload was dropped.
+        if let Some(tx) = self.completion_senders.remove(&evicted.name) {
+          let _ = tx.send(false);
+        }
+      }
     }
 
     let uuid = uuid.to_string();
@@ -656,19 +666,13 @@ impl Uploader {
 
     // Only write the index after we've written the report file to disk to try to minimze the risk
     // of the file being written without a corresponding entry.
-    let type_id = if type_id.is_empty() {
-      ArtifactType::default().to_type_id().to_string()
-    } else {
-      type_id
-    };
     self.index.push_back(Artifact {
       name: uuid.clone(),
-      type_id: Some(type_id),
       time: timestamp
         .unwrap_or_else(|| self.time_provider.now())
         .into_proto(),
       session_id,
-      pending_intent_negotiation: true,
+      pending_intent_negotiation: !skip_intent,
       metadata: state
         .into_iter()
         .map(|(key, value)| (key.into(), value.into_proto()))
@@ -693,6 +697,11 @@ impl Uploader {
 
     self.write_index().await;
 
+
+    // Store the completion sender before returning so it fires on upload or rejection.
+    if let Some(tx) = completion_tx {
+      self.completion_senders.insert(uuid.clone(), tx);
+    }
 
     #[cfg(test)]
     if let Some(hooks) = &self.test_hooks {
@@ -727,7 +736,6 @@ impl Uploader {
     data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
     contents: Vec<u8>,
     name: String,
-    type_id: String,
     timestamp: OffsetDateTime,
     session_id: String,
     mut retry_policy: ExponentialBackoff,
@@ -747,7 +755,7 @@ impl Uploader {
         upload_uuid.clone(),
         UploadArtifactRequest {
           upload_uuid,
-          type_id: type_id.clone(),
+          type_id: "client_report".to_string(),
           contents: contents.clone(),
           artifact_id: name.clone(),
           time: timestamp.into_proto(),
@@ -780,9 +788,7 @@ impl Uploader {
   async fn perform_intent_negotiation(
     data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
     id: String,
-    type_id: String,
     timestamp: OffsetDateTime,
-    state_metadata: HashMap<String, Data>,
     mut retry_policy: ExponentialBackoff,
   ) -> Result<IntentDecision> {
     loop {
@@ -790,11 +796,12 @@ impl Uploader {
       let (tracked, response) = TrackedArtifactIntent::new(
         upload_uuid.clone(),
         UploadArtifactIntentRequest {
-          type_id: type_id.clone(),
+          type_id: "client_report".to_string(),
           artifact_id: id.clone(),
           intent_uuid: upload_uuid.clone(),
           time: timestamp.into_proto(),
-          metadata: state_metadata.clone(),
+          // TODO(snowp): Figure out how to send relevant metadata about the artifact here.
+          metadata: HashMap::new(),
           ..Default::default()
         },
       );

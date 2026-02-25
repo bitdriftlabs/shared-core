@@ -86,6 +86,7 @@ impl SetupSingleConsumer {
       make_flags(&runtime_loader),
       shutdown_trigger.make_shutdown(),
       "buffer".to_string(),
+      None,
     );
 
     tokio::spawn(async move { uploader.consume_continuous_logs().await });
@@ -626,6 +627,7 @@ impl SetupMultiConsumer {
         trigger_upload_rx,
         &collector_clone.scope("consumer"),
         bd_internal_logging::NoopLogger::new(),
+        None,
       )
       .run()
       .await
@@ -892,7 +894,6 @@ async fn log_streaming() {
   let runtime_loader = ConfigLoader::new(&PathBuf::from("."));
 
   let (log_upload_tx, mut log_upload_rx) = tokio::sync::mpsc::channel(1);
-
   let upload_service = service::new(
     log_upload_tx,
     shutdown_trigger.make_shutdown(),
@@ -906,6 +907,7 @@ async fn log_streaming() {
       log_upload_service: upload_service,
       shutdown: shutdown_trigger.make_shutdown(),
       batch_builder: BatchBuilder::new(make_flags(&runtime_loader)),
+      state_correlator: None,
     }
     .start()
     .await
@@ -962,6 +964,7 @@ async fn streaming_batch_size_flag() {
       log_upload_service: upload_service,
       batch_builder: BatchBuilder::new(make_flags(&runtime_loader)),
       shutdown: shutdown_trigger.make_shutdown(),
+      state_correlator: None,
     }
     .start()
     .await
@@ -1004,7 +1007,6 @@ async fn log_streaming_shutdown() {
   let runtime_loader = ConfigLoader::new(&PathBuf::from("."));
 
   let (log_upload_tx, mut log_upload_rx) = tokio::sync::mpsc::channel(1);
-
   let upload_service = service::new(
     log_upload_tx,
     global_shutdown_trigger.make_shutdown(),
@@ -1020,6 +1022,7 @@ async fn log_streaming_shutdown() {
       log_upload_service: upload_service,
       shutdown,
       batch_builder: BatchBuilder::new(make_flags(&runtime_loader)),
+      state_correlator: None,
     }
     .start()
     .await

@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::{Monitor, global_state};
+use bd_artifact_upload::SnappedFeatureFlag;
 use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_log_primitives::{AnnotatedLogFields, LogFields};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
@@ -176,7 +177,6 @@ impl Setup {
       &bd_client_stats_store::Collector::default().scope("test"),
       bd_runtime::runtime::IntWatch::new_for_testing(0),
     );
-
 
     for (name, value) in flags {
       store
@@ -374,11 +374,17 @@ impl Setup {
     make_mut(&mut self.upload_client)
       .expect_enqueue_upload()
       .withf(
-        move |mut file, ftype_id, fstate, ftimestamp, fsession_id, feature_flags| {
+        move |mut file,
+              fstate,
+              ftimestamp,
+              fsession_id,
+              feature_flags: &Vec<SnappedFeatureFlag>,
+              _type_id,
+              _skip_intent,
+              _completion_tx| {
           let mut output = vec![];
           file.read_to_end(&mut output).unwrap();
           let content_match = output == content;
-          let type_id_match = ftype_id == "client_report";
           let state_match = &state == fstate;
           let timestamp_match = &timestamp == ftimestamp;
           let session_match = session_id == *fsession_id;
@@ -397,15 +403,10 @@ impl Setup {
             feature_flags.is_empty()
           };
 
-          content_match
-            && type_id_match
-            && state_match
-            && timestamp_match
-            && session_match
-            && flags_match
+          content_match && state_match && timestamp_match && session_match && flags_match
         },
       )
-      .returning(move |_, _, _, _, _, _| Ok(uuid));
+      .returning(move |_, _, _, _, _, _, _, _| Ok(uuid));
   }
 }
 
@@ -786,12 +787,12 @@ async fn file_watcher_processes_multiple_reports() {
     .expect_enqueue_upload()
     .times(1)
     .in_sequence(&mut seq)
-    .returning(move |_, _, _, _, _, _| Ok(uuid1));
+    .returning(move |_, _, _, _, _, _, _, _| Ok(uuid1));
   make_mut(&mut setup.upload_client)
     .expect_enqueue_upload()
     .times(1)
     .in_sequence(&mut seq)
-    .returning(move |_, _, _, _, _, _| Ok(uuid2));
+    .returning(move |_, _, _, _, _, _, _, _| Ok(uuid2));
 
   // Create two crash reports
   let data1 = CrashReportBuilder::new("Crash1").reason("error1").build();
