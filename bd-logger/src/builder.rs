@@ -243,9 +243,6 @@ impl LoggerBuilder {
     let data_upload_tx_clone = data_upload_tx.clone();
     let collector_clone = collector;
 
-    let state_storage_fallback = Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let state_storage_fallback_for_future = state_storage_fallback.clone();
-
     let logger = Logger::new(
       maybe_shutdown_trigger,
       runtime_loader.clone(),
@@ -257,7 +254,6 @@ impl LoggerBuilder {
       self.params.static_metadata.sdk_version(),
       self.params.store.clone(),
       sleep_mode_active_tx,
-      state_storage_fallback,
     );
     let log = if self.internal_logger {
       Arc::new(InternalLogger::new(
@@ -321,11 +317,6 @@ impl LoggerBuilder {
         );
         log.log_internal("state store initialization failed, using in-memory fallback");
       }
-
-      state_storage_fallback_for_future.store(
-        result.fallback_occurred,
-        std::sync::atomic::Ordering::Relaxed,
-      );
 
       let (artifact_uploader, artifact_client) = bd_artifact_upload::Uploader::new(
         Arc::new(RealFileSystem::new(self.params.sdk_directory.clone())),
