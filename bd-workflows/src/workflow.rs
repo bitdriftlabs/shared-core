@@ -15,6 +15,8 @@ use crate::config::{
   ActionEmitSankey,
   ActionFlushBuffers,
   Config,
+  Execution,
+  FieldExtractionSource,
   Predicate,
   WorkflowDebugMode,
 };
@@ -260,10 +262,13 @@ impl WorkflowEvent<'_> {
 pub struct Workflow {
   #[field(id = 1)]
   id: String,
-  // The list of runs. Runs are organized in the following way: New runs are added to the beginning
-  // of the list and the maximum number of runs is equal to two. If runs list is non-empty then the
-  // first run in the list is guaranteed to be in an initial state. If there are two runs then the
-  // second run is guaranteed not to be in an initial state.
+  // The list of runs ordered from newest to oldest.
+  // New initial-state runs are inserted at index 0. If runs are non-empty, index 0 is guaranteed
+  // to be in an initial state. In exclusive mode we keep at most two runs (initial + active). In
+  // parallel mode we keep up to `max_active_runs`; when full and a new initial run is needed, the
+  // oldest run is evicted.
+  // TODO(mattklein123): Consider `VecDeque` if parallel run churn grows; front insertion + back
+  // eviction would be O(1) and match this access pattern.
   #[field(id = 2)]
   pub(crate) runs: Vec<Run>,
   // Persisted workflow debug state. This is only used for live debugging. Global debugging is
@@ -331,12 +336,36 @@ impl Workflow {
   ) -> WorkflowResult<'a> {
     let mut result = WorkflowResult::default();
 
+    let execution = config.inner().execution();
+    let parallel_max_active_runs = match execution {
+      Execution::Parallel { max_active_runs } => Some(max_active_runs as usize),
+      Execution::Exclusive => None,
+    };
+    let is_parallel_execution = parallel_max_active_runs.is_some();
+    let is_exclusive_execution = !is_parallel_execution;
+
+    // In parallel mode, we may temporarily exceed max runs by one while processing a new initial
+    // run. This allows us to decide whether that run should replace an existing run with the same
+    // SaveField-derived signature before evicting the oldest run.
+    let mut deferred_parallel_overflow_eviction = false;
+    let mut initial_run_replaced_by_signature = false;
+
     if self.needs_new_run() {
+      if let Some(max_active_runs) = parallel_max_active_runs
+        && self.runs.len() >= max_active_runs
+      {
+        deferred_parallel_overflow_eviction = true;
+      }
+
       log::trace!("workflow={}: creating a new run", self.id);
       // The timeout is only initialized here (if applicable) if this is the primary run. If this
       // is an initial state run it will not be initialized until the primary run is complete. If
       // the initial state run happens to progress beyond the timeout on its own that is fine.
-      let run = Run::new(config, now, self.runs.is_empty());
+      let initialize_timeout = match execution {
+        Execution::Exclusive => self.runs.is_empty(),
+        Execution::Parallel { .. } => true,
+      };
+      let run = Run::new(config, now, initialize_timeout);
       if run
         .traversals
         .first()
@@ -354,14 +383,25 @@ impl Workflow {
     for index in (0 .. self.runs.len()).rev() {
       log::trace!("processing run {index} for workflow {}", self.id);
       let is_initial_run = index == 0;
-      let Some(run) = self.runs.get_mut(index) else {
-        continue;
+      let (mut run_result, run_result_did_make_progress) = {
+        let Some(run) = self.runs.get_mut(index) else {
+          continue;
+        };
+        let mut run_result = run.process_event(config, event, state_reader, now);
+
+        // Parallel workflows may have multiple active runs that match the same event. We annotate
+        // emit-metric actions with run provenance so engine-level preparation can avoid collapsing
+        // those run-distinct emissions.
+        if is_parallel_execution {
+          run_result.mark_emit_metric_actions_parallel_run();
+        }
+
+        let run_did_make_progress = run_result.did_make_progress();
+
+        (run_result, run_did_make_progress)
       };
-      let mut run_result = run.process_event(config, event, state_reader, now);
 
       result.incorporate_run_result(&mut run_result);
-
-      let run_result_did_make_progress = run_result.did_make_progress();
 
       match run_result.state {
         RunState::Stopped => {
@@ -369,7 +409,10 @@ impl Workflow {
         },
         RunState::Completed => {
           debug_assert!(
-            run.traversals.is_empty(),
+            self
+              .runs
+              .get(index)
+              .is_some_and(|run| run.traversals.is_empty()),
             "completing a run with active traversals"
           );
 
@@ -381,7 +424,7 @@ impl Workflow {
           // run, we need to see if there is a timeout to initialize on the initial state run. In
           // this case by definition the initial state run should have a single traversal as it
           // has not progressed.
-          if !is_initial_run {
+          if is_exclusive_execution && !is_initial_run {
             debug_assert!(self.runs.first().map(|r| r.traversals.len()) == Some(1));
             if let Some(f) = self.runs.first_mut().and_then(|r| r.traversals.get_mut(0)) {
               f.initialize_timeout(config, now);
@@ -391,6 +434,37 @@ impl Workflow {
         RunState::Running => {
           if run_result_did_make_progress {
             did_make_progress = true;
+          }
+
+          let should_try_signature_replacement =
+            is_parallel_execution && is_initial_run && run_result_did_make_progress;
+
+          if should_try_signature_replacement
+            && let Some(initial_run) = self.runs.get(index)
+            && let Some(existing_run_index) =
+              self
+                .runs
+                .iter()
+                .enumerate()
+                .find_map(|(existing_run_index, existing_run)| {
+                  (existing_run_index != index
+                    && existing_run.has_matching_save_fields(initial_run))
+                  .then_some(existing_run_index)
+                })
+          {
+            log::trace!(
+              "parallel run for workflow {} matched existing SaveField signature, replacing run",
+              self.id
+            );
+
+            // Replace the existing run that shares the same SaveField signature with the new run
+            // state that just progressed from initial state, then drop the temporary initial run.
+            let replacement_run = self.runs.remove(index);
+            let existing_run_index_after_remove = existing_run_index - 1;
+            if let Some(existing_run) = self.runs.get_mut(existing_run_index_after_remove) {
+              *existing_run = replacement_run;
+            }
+            initial_run_replaced_by_signature = true;
           }
         },
       }
@@ -407,39 +481,51 @@ impl Workflow {
       //     "reset" the workflow by removing the previously evaluated run and replacing it with the
       //     continuation of the run matched in this second step. If this run does not match, we'll
       //     do nothing.
-      debug_assert!(
-        self.runs.len() <= 2,
-        "exclusive workflow should never have more than 2 runs"
-      );
+      if is_exclusive_execution {
+        debug_assert!(
+          self.runs.len() <= 2,
+          "exclusive workflow should never have more than 2 runs"
+        );
 
-      // An exclusive workflow can reset or potentially fork only if it has two runs, one that's
-      // in an initial state and another one that is not in an initial state.
-      let has_active_run = self.runs.len() > 1;
-      let has_active_run_and_can_reset = has_active_run && did_make_progress;
+        // An exclusive workflow can reset or potentially fork only if it has two runs, one that's
+        // in an initial state and another one that is not in an initial state.
+        let has_active_run = self.runs.len() > 1;
+        let has_active_run_and_can_reset = has_active_run && did_make_progress;
 
-      if !has_active_run_and_can_reset {
-        continue;
+        if !has_active_run_and_can_reset {
+          continue;
+        }
+
+        // There exists more than two runs and the index of the current run is 0.
+        if is_initial_run {
+          // Handling of "resetting" logic that's unique to exclusive workflows:
+          // * remove the workflow run processed in previous iteration of the loop (if any), the one
+          //   that was active at the time when the processing of the log started.
+          // * keep the run that advanced in the current iteration of the loop, it moved out of the
+          //   the initial state as result of processing the log.
+
+          // # Safety
+          // This is safe as `has_active_run == true means that there are at least two runs and
+          // `is_initial_run == true`` means that we are processing run with index == 0.
+          log::trace!("resetting workflow due to initial state transition");
+          self.runs.remove(index + 1);
+        } else {
+          // The active state run made progress and the next run to be processed (if there is any)
+          // is an initial state run that we do not want to expose to the log.
+          log::trace!("active state run made progress");
+          break;
+        }
       }
+    }
 
-      // There exists more than two runs and the index of the current run is 0.
-      if is_initial_run {
-        // Handling of "resetting" logic that's unique to exclusive workflows:
-        // * remove the workflow run processed in previous iteration of the loop (if any), the one
-        //   that was active at the time when the processing of the log started.
-        // * keep the run that advanced in the current iteration of the loop, it moved out of the
-        //   the initial state as result of processing the log.
-
-        // # Safety
-        // This is safe as `has_active_run == true means that there are at least two runs and
-        // `is_initial_run == true`` means that we are processing run with index == 0.
-        log::trace!("resetting workflow due to initial state transition");
-        self.runs.remove(index + 1);
-      } else {
-        // The active state run made progress and the next run to be processed (if there is any)
-        // is an initial state run that we do not want to expose to the log.
-        log::trace!("active state run made progress");
-        break;
-      }
+    // If we had to create an initial run while already at max capacity and did not replace an
+    // existing run by signature, evict the oldest run to restore the configured cap.
+    if deferred_parallel_overflow_eviction
+      && !initial_run_replaced_by_signature
+      && let Some(max_active_runs) = parallel_max_active_runs
+      && self.runs.len() > max_active_runs
+    {
+      self.runs.pop();
     }
 
     if self.needs_start_metric {
@@ -461,7 +547,15 @@ impl Workflow {
     }
 
     // If workflow doesn't have a run in an initial state.
-    !self.runs.iter().any(Run::is_in_initial_state)
+    if self.runs.iter().any(Run::is_in_initial_state) {
+      return false;
+    }
+
+    // We always create an initial run when one is missing.
+    // * Exclusive mode will maintain at most two runs through reset logic.
+    // * Parallel mode will evict the oldest run at capacity in `process_event` before inserting a
+    //   new initial run.
+    true
   }
 
   /// Returns workflow without these of its runs that are in initial state.
@@ -902,6 +996,45 @@ impl Run {
     }
   }
 
+  // SaveField signature matching for parallel replacement intentionally compares only the first
+  // traversal from each run.
+  //
+  // Rationale:
+  // * Replacement is considered when an initial run just made its first progress event.
+  // * At that point, the initial run's first traversal contains the SaveField values that define
+  //   the run identity we care about.
+  // * Other runs may have progressed to arbitrary workflow states, so matching by state index is
+  //   not stable or required for identity checks.
+  //
+  // Algorithm:
+  // 1) Read the first traversal from the newly-progressed initial run.
+  // 2) For each extracted SaveField ID in that traversal, perform a direct lookup in the first
+  //    traversal of the candidate existing run and require equal values.
+  //
+  // This is allocation-free and does not require sorting.
+  fn has_matching_save_fields(&self, initial_run: &Self) -> bool {
+    let Some(initial_traversal) = initial_run.traversals.first() else {
+      return false;
+    };
+    let initial_fields = &initial_traversal.extractions.fields;
+    if initial_fields.is_empty() {
+      return false;
+    }
+
+    let Some(existing_traversal) = self.traversals.first() else {
+      return false;
+    };
+    let existing_fields = &existing_traversal.extractions.fields;
+
+    // Every extraction ID from the initial run must be present with an identical value in the
+    // candidate existing run.
+    initial_fields.iter().all(|(extraction_id, initial_value)| {
+      existing_fields
+        .get(extraction_id.as_str())
+        .is_some_and(|existing_value| existing_value == initial_value)
+    })
+  }
+
   // Whether a given run is in its initial state meaning a state
   // that's equal to its state at a time of creation. While in theory the
   // implementation has to iterate over the list of all traversals to learn whether
@@ -969,6 +1102,16 @@ pub(crate) struct RunResult<'a> {
 }
 
 impl RunResult<'_> {
+  // Mark metric actions with workflow/run identity so downstream preparation can preserve
+  // duplicate emits that are intentionally caused by multiple parallel runs.
+  fn mark_emit_metric_actions_parallel_run(&mut self) {
+    for action in &mut self.triggered_actions {
+      if let TriggeredAction::EmitMetric(emit_metric_action) = action {
+        *action = TriggeredAction::EmitMetricParallelRun(emit_metric_action);
+      }
+    }
+  }
+
   /// Whether run made any progress.
   const fn did_make_progress(&self) -> bool {
     self.matched_logs_count > 0
@@ -1467,15 +1610,23 @@ impl Traversal {
     }
 
     for extraction in &extractions.field_extractions {
-      if let Some(value) = log.field_value(&extraction.field_name) {
+      let extracted_value = match &extraction.source {
+        FieldExtractionSource::FieldName(field_name) => log
+          .field_value(field_name)
+          .and_then(|value| extraction.extract_value(value.as_ref())),
+        FieldExtractionSource::Message => log
+          .message
+          .as_str()
+          .and_then(|value| extraction.extract_value(value)),
+      };
+
+      if let Some(value) = extracted_value {
         log::debug!(
           "extracted field value {} for extraction ID {}",
           value,
           extraction.id
         );
-        new_extractions
-          .fields
-          .insert(extraction.id.clone(), value.to_string());
+        new_extractions.fields.insert(extraction.id.clone(), value);
       }
     }
 
@@ -1536,15 +1687,21 @@ impl Traversal {
     // Field extractions: Can extract from fields (typically global metadata like device_id,
     // app_version, etc.)
     for extraction in &extractions.field_extractions {
-      if let Some(value) = fields.field_value(&extraction.field_name) {
+      let extracted_value = match &extraction.source {
+        FieldExtractionSource::FieldName(field_name) => fields
+          .field_value(field_name)
+          .and_then(|value| extraction.extract_value(value.as_ref())),
+        // State changes don't include log messages.
+        FieldExtractionSource::Message => None,
+      };
+
+      if let Some(value) = extracted_value {
         log::debug!(
           "extracted field value {} from state change for extraction ID {}",
           value,
           extraction.id
         );
-        new_extractions
-          .fields
-          .insert(extraction.id.clone(), value.to_string());
+        new_extractions.fields.insert(extraction.id.clone(), value);
       }
     }
 
@@ -1611,6 +1768,7 @@ impl Traversal {
 pub(crate) enum TriggeredAction<'a> {
   FlushBuffers(&'a ActionFlushBuffers),
   EmitMetric(&'a ActionEmitMetric),
+  EmitMetricParallelRun(&'a ActionEmitMetric),
   SankeyDiagram(TriggeredActionEmitSankey<'a>),
   TakeScreenshot,
 }

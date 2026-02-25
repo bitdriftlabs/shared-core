@@ -11,6 +11,7 @@ use bd_log_matcher::matcher::Tree;
 use bd_log_primitives::{FieldsRef, LogMessage};
 use bd_proto::protos::workflow::workflow;
 use bd_proto::protos::workflow::workflow::workflow::action::ActionGenerateLog;
+use bd_proto::protos::workflow::workflow::workflow::execution::Execution_type;
 use bd_proto::protos::workflow::workflow::workflow::transition_extension::Extension_type;
 use bd_proto::protos::workflow::workflow::workflow::{
   LimitDuration as LimitDurationProto,
@@ -19,6 +20,7 @@ use bd_proto::protos::workflow::workflow::workflow::{
 use bd_state::Scope;
 use bd_stats_common::MetricType;
 use protobuf::MessageField;
+use regex::Regex;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use time::Duration;
@@ -40,6 +42,26 @@ use workflow::workflow::{
 };
 
 pub(crate) type StateID = String;
+
+// Runtime-selected default for parallel workflows when max_active_runs is unset. This keeps
+// behavior explicit and centralized in config parsing.
+const DEFAULT_PARALLEL_MAX_ACTIVE_RUNS: u32 = 10;
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum Execution {
+  Exclusive,
+  Parallel { max_active_runs: u32 },
+}
+
+impl Execution {
+  #[must_use]
+  pub const fn max_active_runs(self) -> Option<u32> {
+    match self {
+      Self::Exclusive => None,
+      Self::Parallel { max_active_runs } => Some(max_active_runs),
+    }
+  }
+}
 
 //
 // WorkflowsConfiguration
@@ -169,6 +191,7 @@ impl Config {
       inner: InnerConfig {
         id: config.id.clone(),
         states,
+        execution: InnerConfig::try_execution_from_proto(&config.execution),
         duration_limit: InnerConfig::try_duration_limit_from_proto(&config.limit_duration)?,
         matched_logs_count_limit: InnerConfig::try_matched_logs_count_limit_from_proto(
           &config.limit_matched_logs_count,
@@ -203,6 +226,7 @@ impl Config {
 pub struct InnerConfig {
   id: String,
   states: Vec<State>,
+  execution: Execution,
   duration_limit: Option<Duration>,
   matched_logs_count_limit: Option<u32>,
 }
@@ -214,6 +238,10 @@ impl InnerConfig {
 
   pub(crate) fn states(&self) -> &[State] {
     &self.states
+  }
+
+  pub(crate) const fn execution(&self) -> Execution {
+    self.execution
   }
 
   pub(crate) const fn duration_limit(&self) -> Option<Duration> {
@@ -254,6 +282,30 @@ impl InnerConfig {
           ))
         }
       })
+  }
+
+  fn try_execution_from_proto(value: &MessageField<workflow::workflow::Execution>) -> Execution {
+    // Missing execution in older configs maps to exclusive mode for backward compatibility.
+    let Some(execution) = value.as_ref() else {
+      return Execution::Exclusive;
+    };
+
+    match execution.execution_type.as_ref() {
+      Some(Execution_type::ExecutionExclusive(_)) | None => Execution::Exclusive,
+      Some(Execution_type::ExecutionParallel(parallel)) => {
+        let max_active_runs = parallel
+          .max_active_runs
+          .unwrap_or(DEFAULT_PARALLEL_MAX_ACTIVE_RUNS);
+
+        let max_active_runs = if max_active_runs == 0 {
+          DEFAULT_PARALLEL_MAX_ACTIVE_RUNS
+        } else {
+          max_active_runs
+        };
+
+        Execution::Parallel { max_active_runs }
+      },
+    }
   }
 
   pub(crate) fn transitions_for_traversal(&self, traversal: &Traversal) -> Option<&[Transition]> {
@@ -434,10 +486,82 @@ impl SankeyExtraction {
 //
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum FieldExtractionSource {
+  FieldName(String),
+  Message,
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct FieldExtractionConfig {
-  pub(crate) field_name: String,
+  pub(crate) source: FieldExtractionSource,
+  pub(crate) regex_capture: Option<Regex>,
   pub(crate) id: String,
 }
+
+impl FieldExtractionConfig {
+  fn try_from_proto(
+    save_field: &workflow::workflow::transition_extension::SaveField,
+  ) -> anyhow::Result<Self> {
+    let source = match save_field.save_field_type.as_ref() {
+      Some(workflow::workflow::transition_extension::save_field::Save_field_type::FieldName(
+        field_name,
+      )) => FieldExtractionSource::FieldName(field_name.clone()),
+      Some(workflow::workflow::transition_extension::save_field::Save_field_type::Message(_)) => {
+        FieldExtractionSource::Message
+      },
+      None => {
+        bail!("invalid transition configuration: missing save field type");
+      },
+    };
+
+    let regex_capture = save_field
+      .regex_capture
+      .as_deref()
+      .map(|pattern| {
+        let regex = Regex::new(pattern).map_err(|error| {
+          anyhow!("invalid transition configuration: invalid regex capture ({error})")
+        })?;
+
+        if regex.captures_len() != 2 {
+          bail!(
+            "invalid transition configuration: regex capture must contain exactly one capture \
+             group"
+          );
+        }
+
+        Ok(regex)
+      })
+      .transpose()?;
+
+    Ok(Self {
+      source,
+      regex_capture,
+      id: save_field.id.clone(),
+    })
+  }
+
+  pub(crate) fn extract_value(&self, value: &str) -> Option<String> {
+    self.regex_capture.as_ref().map_or_else(
+      || Some(value.to_string()),
+      |regex| {
+        regex
+          .captures(value)
+          .and_then(|captures| captures.get(1).map(|capture| capture.as_str().to_string()))
+      },
+    )
+  }
+}
+
+impl PartialEq for FieldExtractionConfig {
+  fn eq(&self, other: &Self) -> bool {
+    self.id == other.id
+      && self.source == other.source
+      && self.regex_capture.as_ref().map(Regex::as_str)
+        == other.regex_capture.as_ref().map(Regex::as_str)
+  }
+}
+
+impl Eq for FieldExtractionConfig {}
 
 //
 // TransitionExtractions
@@ -520,10 +644,7 @@ impl Transition {
           sankey_extractions.push(SankeyExtraction::new(extension, limit)?);
         },
         Extension_type::SaveField(save_field) => {
-          field_extractions.push(FieldExtractionConfig {
-            field_name: save_field.field_name.clone(),
-            id: save_field.id.clone(),
-          });
+          field_extractions.push(FieldExtractionConfig::try_from_proto(save_field)?);
         },
         Extension_type::SaveTimestamp(save_timestamp) => {
           // There is no reason to have multiple timestamp extractions in a single transition.

@@ -33,14 +33,18 @@ impl MetricsCollector {
 
   pub(crate) fn emit_metrics(
     &self,
-    actions: &BTreeSet<&ActionEmitMetric>,
+    action_counts: &BTreeMap<&ActionEmitMetric, (usize, bool)>,
     event: WorkflowEvent<'_>,
     state_reader: &dyn bd_state::StateReader,
   ) {
     // TODO(Augustyniak): We dedupe stats in here too only when both their tags and the value of
     // If `counter_increment` values are identical, consider deduping metrics even if their
     // `counter_increment` fields have different values.
-    for action in actions {
+    for (action, (count, _is_parallel)) in action_counts {
+      if *count == 0 {
+        continue;
+      }
+
       let tags = Self::extract_tags(event, state_reader, &action.tags);
 
       #[allow(clippy::cast_precision_loss)]
@@ -68,11 +72,15 @@ impl MetricsCollector {
           #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
           self
             .stats
-            .record_dynamic_counter(tags, &action.id, value as u64);
+            .record_dynamic_counter(tags, &action.id, (value as u64) * (*count as u64));
         },
         MetricType::Histogram => {
           log::debug!("recording histogram value: {value}");
-          self.stats.record_dynamic_histogram(tags, &action.id, value);
+          for _ in 0 .. *count {
+            self
+              .stats
+              .record_dynamic_histogram(tags.clone(), &action.id, value);
+          }
         },
       }
     }

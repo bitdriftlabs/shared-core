@@ -29,8 +29,11 @@ use std::collections::HashMap;
 // Version 33: Added support for opaque client state in the mux handshake.
 // Version 34: Added support for data idle timeouts and reconnect delays.
 // Version 35: Added support for workflow matching and tag extraction against feature flags.
-// Version 36: Added support for state to the worfklow engine.
-const CONFIGURATION_VERSION: &str = "37";
+// Version 36: Added support for state to the workflow engine.
+// Version 37: Added support for map types and JSON matching.
+// Version 38: Added support for workflow parallel execution and message/regex transition
+//             extractions.
+const CONFIGURATION_VERSION: &str = "38";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]

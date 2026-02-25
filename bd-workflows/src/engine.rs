@@ -59,7 +59,7 @@ use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, session_capture
 use bd_stats_common::labels;
 use bd_stats_common::workflow::WorkflowDebugKey;
 use std::borrow::Cow;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -706,7 +706,7 @@ impl WorkflowsEngine {
 
     let PreparedActions {
       mut flush_buffers_actions,
-      emit_metric_actions,
+      emit_metric_action_counts,
       emit_sankey_diagrams_actions,
       capture_screenshot,
     } = Self::prepare_actions(actions);
@@ -775,7 +775,7 @@ impl WorkflowsEngine {
     // TODO(snowp): Implement generic state extractions in favor of the feature flag extraction.
     self
       .metrics_collector
-      .emit_metrics(&emit_metric_actions, event, state_reader);
+      .emit_metrics(&emit_metric_action_counts, event, state_reader);
     self
       .metrics_collector
       .emit_sankeys(&emit_sankey_diagrams_actions, event, state_reader);
@@ -836,9 +836,11 @@ impl WorkflowsEngine {
     self.needs_state_persistence = true;
   }
 
-  /// Handles deduping metrics based on their tags, ensuring that the same emit metric
-  /// action triggered multiple times as part of separate workflows processing the same log results
-  /// in only one metric emission.
+  /// Prepares actions for execution.
+  ///
+  /// Emit-metric actions use mixed behavior:
+  /// * default behavior dedupes identical actions for a single processed event,
+  /// * parallel-run annotated metric actions preserve one emission per distinct matching run.
   fn prepare_actions<'a>(actions: Vec<TriggeredAction<'a>>) -> PreparedActions<'a> {
     if actions.is_empty() {
       return PreparedActions::default();
@@ -855,17 +857,37 @@ impl WorkflowsEngine {
       })
       .collect();
 
-    let emit_metric_actions: BTreeSet<&ActionEmitMetric> = actions
-      .iter()
-      .filter_map(|action| {
-          if let TriggeredAction::EmitMetric(emit_metric_action) = action {
-              Some(*emit_metric_action)
-          } else {
-              None
-          }
-      })
-      // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
-      .collect();
+    // Assumption: server-generated action IDs partition exclusive and parallel metric actions
+    // (i.e., they do not conflict across execution modes).
+    // * map value .0 is emission count
+    // * map value .1 is whether the action is parallel (`true`) or exclusive (`false`)
+    let mut emit_metric_action_counts: BTreeMap<&ActionEmitMetric, (usize, bool)> = BTreeMap::new();
+
+    for action in &actions {
+      match action {
+        TriggeredAction::EmitMetric(emit_metric_action) => {
+          let (count, is_parallel) = emit_metric_action_counts
+            .entry(*emit_metric_action)
+            .or_insert((0, false));
+          debug_assert!(
+            !*is_parallel,
+            "metric action ID changed execution type from parallel to exclusive"
+          );
+          *count = 1;
+        },
+        TriggeredAction::EmitMetricParallelRun(action) => {
+          let (count, is_parallel) = emit_metric_action_counts
+            .entry(*action)
+            .or_insert((0, true));
+          debug_assert!(
+            *is_parallel,
+            "metric action ID changed execution type from exclusive to parallel"
+          );
+          *count += 1;
+        },
+        _ => {},
+      }
+    }
 
     let capture_screenshot = actions
       .iter()
@@ -885,7 +907,7 @@ impl WorkflowsEngine {
 
     PreparedActions {
       flush_buffers_actions,
-      emit_metric_actions,
+      emit_metric_action_counts,
       emit_sankey_diagrams_actions,
       capture_screenshot,
     }
@@ -902,7 +924,7 @@ impl Drop for WorkflowsEngine {
 #[derive(Default)]
 struct PreparedActions<'a> {
   flush_buffers_actions: BTreeSet<Cow<'a, ActionFlushBuffers>>,
-  emit_metric_actions: BTreeSet<&'a ActionEmitMetric>,
+  emit_metric_action_counts: BTreeMap<&'a ActionEmitMetric, (usize, bool)>,
   emit_sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>>,
   capture_screenshot: bool,
 }
