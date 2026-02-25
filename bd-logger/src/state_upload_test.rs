@@ -283,7 +283,6 @@ async fn uses_existing_snapshot_from_normal_rotation() {
   let snapshots = worker.find_snapshots_in_range(0, existing_timestamp);
   assert_eq!(snapshots.len(), 1);
   assert_eq!(snapshots[0].timestamp_micros, existing_timestamp);
-  assert_eq!(snapshots[0].generation, 0);
 }
 
 #[tokio::test]

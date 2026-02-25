@@ -59,8 +59,6 @@ static STATE_UPLOAD_KEY: bd_key_value::Key<String> =
 pub struct SnapshotRef {
   /// The timestamp of the snapshot (microseconds since epoch).
   pub timestamp_micros: u64,
-  /// The generation number of the snapshot file.
-  pub generation: u64,
   /// Path to the snapshot file.
   pub path: PathBuf,
 }
@@ -405,7 +403,6 @@ impl StateUploadWorker {
         if parsed.timestamp_micros > after_micros && parsed.timestamp_micros <= up_to_micros {
           Some(SnapshotRef {
             timestamp_micros: parsed.timestamp_micros,
-            generation: parsed.generation,
             path,
           })
         } else {
@@ -432,7 +429,6 @@ impl StateUploadWorker {
         if parsed.timestamp_micros <= up_to_micros {
           Some(SnapshotRef {
             timestamp_micros: parsed.timestamp_micros,
-            generation: parsed.generation,
             path,
           })
         } else {
@@ -494,7 +490,6 @@ impl StateUploadWorker {
 
     Some(SnapshotRef {
       timestamp_micros: parsed.timestamp_micros,
-      generation: parsed.generation,
       path: snapshot_path,
     })
   }
