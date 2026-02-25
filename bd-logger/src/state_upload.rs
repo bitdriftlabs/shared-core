@@ -96,12 +96,12 @@ impl Stats {
 ///
 /// All actual snapshot creation and upload logic is handled by the companion
 /// [`StateUploadWorker`], which runs as a single background task.
-pub struct StateLogCorrelator {
+pub struct StateUploadHandle {
   /// Channel for sending upload requests to the background worker.
   upload_tx: mpsc::Sender<StateUploadRequest>,
 }
 
-impl StateLogCorrelator {
+impl StateUploadHandle {
   /// Creates a new correlator and its companion worker.
   ///
   /// The returned [`StateUploadWorker`] must be spawned (e.g. via `tokio::spawn` or included in a

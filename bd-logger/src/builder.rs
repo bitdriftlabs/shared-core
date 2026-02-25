@@ -13,7 +13,7 @@ use crate::internal::InternalLogger;
 use crate::log_replay::LoggerReplay;
 use crate::logger::Logger;
 use crate::logging_state::UninitializedLoggingContext;
-use crate::state_upload::StateLogCorrelator;
+use crate::state_upload::StateUploadHandle;
 use crate::{InitParams, LogAttributesOverrides};
 use bd_api::{
   AggregatedNetworkQualityProvider,
@@ -341,7 +341,7 @@ impl LoggerBuilder {
         *bd_runtime::runtime::state::SnapshotCreationIntervalMs::register(&runtime_loader)
           .into_inner()
           .borrow();
-      let (state_correlator_inner, state_upload_worker) = StateLogCorrelator::new(
+      let (state_correlator_inner, state_upload_worker) = StateUploadHandle::new(
         Some(state_directory.clone()),
         self.params.store.clone(),
         Some(retention_registry.clone()),

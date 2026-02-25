@@ -10,7 +10,7 @@
 mod consumer_test;
 
 use crate::service::{self, UploadRequest};
-use crate::state_upload::StateLogCorrelator;
+use crate::state_upload::StateUploadHandle;
 use bd_api::TriggerUpload;
 use bd_api::upload::LogBatch;
 use bd_buffer::{AbslCode, Buffer, BufferEvent, BufferEventWithResponse, Consumer, Error};
@@ -95,7 +95,7 @@ pub struct BufferUploadManager {
   old_logs_dropped: Counter,
 
   // State-log correlator for uploading state snapshots before logs.
-  state_correlator: Option<Arc<StateLogCorrelator>>,
+  state_correlator: Option<Arc<StateUploadHandle>>,
 }
 
 impl BufferUploadManager {
@@ -107,7 +107,7 @@ impl BufferUploadManager {
     trigger_upload_rx: Receiver<TriggerUpload>,
     stats: &Scope,
     logging: Arc<dyn bd_internal_logging::Logger>,
-    state_correlator: Option<Arc<StateLogCorrelator>>,
+    state_correlator: Option<Arc<StateUploadHandle>>,
   ) -> Self {
     Self {
       log_upload_service: service::new(data_upload_tx, shutdown.clone(), runtime_loader, stats),
@@ -473,7 +473,7 @@ struct ContinuousBufferUploader {
   buffer_id: String,
 
   // State-log correlator for uploading state snapshots before logs.
-  state_correlator: Option<Arc<StateLogCorrelator>>,
+  state_correlator: Option<Arc<StateUploadHandle>>,
 }
 
 impl ContinuousBufferUploader {
@@ -483,7 +483,7 @@ impl ContinuousBufferUploader {
     feature_flags: Flags,
     shutdown: ComponentShutdown,
     buffer_id: String,
-    state_correlator: Option<Arc<StateLogCorrelator>>,
+    state_correlator: Option<Arc<StateUploadHandle>>,
   ) -> Self {
     Self {
       consumer,
@@ -607,7 +607,7 @@ struct StreamedBufferUpload {
   shutdown: ComponentShutdown,
 
   // State-log correlator for uploading state snapshots before logs.
-  state_correlator: Option<Arc<StateLogCorrelator>>,
+  state_correlator: Option<Arc<StateUploadHandle>>,
 }
 
 impl StreamedBufferUpload {
@@ -722,7 +722,7 @@ struct CompleteBufferUpload {
   old_logs_dropped: Counter,
 
   // State-log correlator for uploading state snapshots before logs.
-  state_correlator: Option<Arc<StateLogCorrelator>>,
+  state_correlator: Option<Arc<StateUploadHandle>>,
 }
 
 impl CompleteBufferUpload {
@@ -732,7 +732,7 @@ impl CompleteBufferUpload {
     log_upload_service: service::Upload,
     buffer_id: String,
     old_logs_dropped: Counter,
-    state_correlator: Option<Arc<StateLogCorrelator>>,
+    state_correlator: Option<Arc<StateUploadHandle>>,
   ) -> Self {
     let lookback_window_limit = *runtime_flags.upload_lookback_window_feature_flag.read();
 
