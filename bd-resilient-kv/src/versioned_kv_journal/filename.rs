@@ -13,12 +13,11 @@ mod tests;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SnapshotFilename {
-  pub generation: u64,
   pub timestamp_micros: u64,
 }
 
 impl SnapshotFilename {
-  /// Parses `{name}.jrn.g{generation}.t{timestamp}.zz` format.
+  /// Parses `{name}.jrn.g{generation}.t{timestamp}.zz` format, returning only the timestamp.
   #[must_use]
   pub fn parse(filename: &str) -> Option<Self> {
     if !std::path::Path::new(filename)
@@ -28,14 +27,6 @@ impl SnapshotFilename {
       return None;
     }
 
-    let generation = filename
-      .split('.')
-      .find(|part| {
-        part.starts_with('g') && part.len() > 1 && part[1 ..].chars().all(|c| c.is_ascii_digit())
-      })
-      .and_then(|part| part.strip_prefix('g'))
-      .and_then(|g| g.parse::<u64>().ok())?;
-
     let timestamp_micros = filename
       .split('.')
       .find(|part| {
@@ -44,9 +35,6 @@ impl SnapshotFilename {
       .and_then(|part| part.strip_prefix('t'))
       .and_then(|ts| ts.parse::<u64>().ok())?;
 
-    Some(Self {
-      generation,
-      timestamp_micros,
-    })
+    Some(Self { timestamp_micros })
   }
 }
