@@ -318,7 +318,7 @@ fn trigger_buffer_with_multiple_flushes_uploads_state_once() {
 }
 
 #[test]
-fn state_correlator_prevents_duplicate_uploads() {
+fn state_upload_handle_prevents_duplicate_uploads() {
   let sdk_directory = Arc::new(TempDir::with_prefix("sdk").unwrap());
 
   let mut setup = Setup::new_with_cached_runtime(SetupOptions {

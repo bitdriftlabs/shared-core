@@ -63,12 +63,12 @@ async fn make_state_store(
 }
 
 #[tokio::test]
-async fn correlator_no_state_changes() {
+async fn no_state_changes() {
   let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
   // Verify construction succeeds and notify_upload_needed is non-blocking.
-  let (correlator, _worker) = StateUploadHandle::new(
+  let (handle, _worker) = StateUploadHandle::new(
     None,
     store,
     None,
@@ -81,15 +81,15 @@ async fn correlator_no_state_changes() {
   .await;
 
   // With no state store, there are no state changes — channel send should succeed without blocking.
-  correlator.notify_upload_needed(0, 1_000_000);
+  handle.notify_upload_needed(0, 1_000_000);
 }
 
 #[tokio::test]
-async fn correlator_uploaded_coverage_prevents_reupload() {
+async fn uploaded_coverage_prevents_reupload() {
   let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
-  let (_correlator, worker) = StateUploadHandle::new(
+  let (_handle, worker) = StateUploadHandle::new(
     None,
     store,
     None,
@@ -119,7 +119,7 @@ async fn cooldown_prevents_rapid_snapshot_creation() {
 
   let (state_store, retention_registry) = make_state_store(&state_dir).await;
 
-  let (_correlator, worker) = StateUploadHandle::new(
+  let (_handle, worker) = StateUploadHandle::new(
     Some(state_dir),
     store,
     Some(retention_registry),
@@ -165,7 +165,7 @@ async fn cooldown_allows_snapshot_after_interval() {
   let (state_store, retention_registry) = make_state_store(&state_dir).await;
   let time_provider = Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc()));
 
-  let (_correlator, worker) = StateUploadHandle::new(
+  let (_handle, worker) = StateUploadHandle::new(
     Some(state_dir),
     store,
     Some(retention_registry),
@@ -214,7 +214,7 @@ async fn zero_cooldown_allows_immediate_snapshot_creation() {
 
   let (state_store, retention_registry) = make_state_store(&state_dir).await;
 
-  let (_correlator, worker) = StateUploadHandle::new(
+  let (_handle, worker) = StateUploadHandle::new(
     Some(state_dir),
     store,
     Some(retention_registry),
@@ -267,7 +267,7 @@ async fn uses_existing_snapshot_from_normal_rotation() {
   let existing_snapshot = snapshots_dir.join(format!("state.jrn.g0.t{existing_timestamp}.zz"));
   std::fs::write(&existing_snapshot, b"pre-existing snapshot from rotation").unwrap();
 
-  let (_correlator, worker) = StateUploadHandle::new(
+  let (_handle, worker) = StateUploadHandle::new(
     Some(state_dir),
     store,
     None,
@@ -295,7 +295,7 @@ async fn creates_on_demand_snapshot_when_none_exists() {
 
   let (state_store, retention_registry) = make_state_store(&state_dir).await;
 
-  let (_correlator, worker) = StateUploadHandle::new(
+  let (_handle, worker) = StateUploadHandle::new(
     Some(state_dir),
     store,
     Some(retention_registry),
@@ -337,7 +337,7 @@ async fn prefers_existing_snapshot_over_on_demand_creation() {
   let newer_snapshot = snapshots_dir.join(format!("state.jrn.g1.t{newer_snapshot_ts}.zz"));
   std::fs::write(&newer_snapshot, b"newer snapshot").unwrap();
 
-  let (_correlator, worker) = StateUploadHandle::new(
+  let (_handle, worker) = StateUploadHandle::new(
     Some(state_dir),
     store,
     None,

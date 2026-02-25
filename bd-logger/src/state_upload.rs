@@ -7,11 +7,11 @@
 
 //! State snapshot upload coordination for log uploads.
 //!
-//! This module provides the [`StateLogCorrelator`] which tracks the correlation between log uploads
-//! and state snapshots. The server correlates logs with state by timestamp - logs at time T use the
+//! This module provides the [`StateUploadHandle`] which tracks the coordination between log
+//! and state snapshots. The server associates logs with state by timestamp - logs at time T use the
 //! most recent state snapshot uploaded before time T.
 //!
-//! The correlator ensures that:
+//! The [`StateUploadHandle`] ensures that:
 //! - State snapshots are uploaded before logs that depend on them
 //! - Duplicate snapshot uploads are avoided across multiple buffers
 //! - Snapshot coverage is tracked across process restarts via persistence
@@ -20,8 +20,8 @@
 //!
 //! Upload coordination is split into two parts:
 //!
-//! - [`StateLogCorrelator`] — a cheap, cloneable handle held by each buffer uploader. Callers
-//!   fire-and-forget upload requests via [`StateLogCorrelator::notify_upload_needed`], which sends
+//! - [`StateUploadHandle`] — a cheap, cloneable handle held by each buffer uploader. Callers
+//!   fire-and-forget upload requests via [`StateUploadHandle::notify_upload_needed`], which sends
 //!   to a bounded channel without blocking.
 //!
 //! - [`StateUploadWorker`] — a single background task that owns all snapshot creation and upload
@@ -86,7 +86,7 @@ impl Stats {
   }
 }
 
-/// Tracks correlation between log uploads and state snapshot coverage.
+/// Coordinates state snapshot uploads before log uploads.
 ///
 /// This is a lightweight, cloneable sender handle. Buffer uploaders call
 /// [`notify_upload_needed`][Self::notify_upload_needed] in a fire-and-forget manner —
@@ -100,10 +100,10 @@ pub struct StateUploadHandle {
 }
 
 impl StateUploadHandle {
-  /// Creates a new correlator and its companion worker.
+  /// Creates a new handle and its companion worker.
   ///
   /// The returned [`StateUploadWorker`] must be spawned (e.g. via `tokio::spawn` or included in a
-  /// `try_join!`) for snapshot uploads to be processed. The correlator handle can be cloned and
+  /// `try_join!`) for snapshot uploads to be processed. The handle can be cloned and
   /// shared across multiple buffer uploaders.
   ///
   /// # Arguments
@@ -151,7 +151,7 @@ impl StateUploadHandle {
 
     let state_uploaded_through_micros = Arc::new(AtomicU64::new(uploaded_through));
 
-    let correlator = Self { upload_tx };
+    let handle = Self { upload_tx };
 
     let worker = StateUploadWorker {
       state_uploaded_through_micros,
@@ -167,7 +167,7 @@ impl StateUploadHandle {
       stats,
     };
 
-    (correlator, worker)
+    (handle, worker)
   }
 
   /// Notifies the background worker that a state snapshot upload may be needed for a log batch.
@@ -194,9 +194,9 @@ impl StateUploadHandle {
 /// There is exactly one worker per logger instance. Because all upload logic runs in a single
 /// task, deduplication and cooldown enforcement require no synchronization.
 ///
-/// Obtain via [`StateLogCorrelator::new`] and spawn with `tokio::spawn` or `try_join!`.
+/// Obtain via [`StateUploadHandle::new`] and spawn with `tokio::spawn` or `try_join!`.
 pub struct StateUploadWorker {
-  /// Shared with the correlator — updated after successful uploads.
+  /// Shared with the handle — updated after successful uploads.
   state_uploaded_through_micros: Arc<AtomicU64>,
 
   /// Timestamp of the last snapshot creation (microseconds since epoch).
@@ -222,7 +222,7 @@ pub struct StateUploadWorker {
   /// Artifact client for uploading snapshots.
   artifact_client: Arc<dyn ArtifactClient>,
 
-  /// Receiver for upload requests from correlator handles.
+  /// Receiver for upload requests from handle instances.
   upload_rx: mpsc::Receiver<StateUploadRequest>,
 
   stats: Stats,

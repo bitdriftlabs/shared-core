@@ -328,12 +328,12 @@ impl LoggerBuilder {
       );
       let artifact_client: Arc<dyn bd_artifact_upload::Client> = Arc::new(artifact_client);
 
-      // Create state-log correlator for uploading state snapshots alongside logs
+      // Create state upload handle for uploading state snapshots alongside logs
       let snapshot_creation_interval_ms =
         *bd_runtime::runtime::state::SnapshotCreationIntervalMs::register(&runtime_loader)
           .into_inner()
           .borrow();
-      let (state_correlator_inner, state_upload_worker) = StateUploadHandle::new(
+      let (state_upload_handle_inner, state_upload_worker) = StateUploadHandle::new(
         Some(state_directory.clone()),
         self.params.store.clone(),
         Some(retention_registry.clone()),
@@ -344,7 +344,7 @@ impl LoggerBuilder {
         &scope,
       )
       .await;
-      let state_correlator = Arc::new(state_correlator_inner);
+      let state_upload_handle = Arc::new(state_upload_handle_inner);
 
       let crash_monitor = Monitor::new(
         &self.params.sdk_directory,
@@ -385,7 +385,7 @@ impl LoggerBuilder {
         trigger_upload_rx,
         &scope,
         log.clone(),
-        Some(state_correlator),
+        Some(state_upload_handle),
       );
 
       let updater = Arc::new(client_config::Config::new(

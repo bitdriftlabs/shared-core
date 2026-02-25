@@ -94,8 +94,8 @@ pub struct BufferUploadManager {
 
   old_logs_dropped: Counter,
 
-  // State-log correlator for uploading state snapshots before logs.
-  state_correlator: Option<Arc<StateUploadHandle>>,
+  // State upload handle for uploading state snapshots before logs.
+  state_upload_handle: Option<Arc<StateUploadHandle>>,
 }
 
 impl BufferUploadManager {
@@ -107,7 +107,7 @@ impl BufferUploadManager {
     trigger_upload_rx: Receiver<TriggerUpload>,
     stats: &Scope,
     logging: Arc<dyn bd_internal_logging::Logger>,
-    state_correlator: Option<Arc<StateUploadHandle>>,
+    state_upload_handle: Option<Arc<StateUploadHandle>>,
   ) -> Self {
     Self {
       log_upload_service: service::new(data_upload_tx, shutdown.clone(), runtime_loader, stats),
@@ -127,7 +127,7 @@ impl BufferUploadManager {
       logging,
       stream_buffer_shutdown_trigger: None,
       old_logs_dropped: stats.counter("old_logs_dropped"),
-      state_correlator,
+      state_upload_handle,
     }
   }
 
@@ -311,14 +311,14 @@ impl BufferUploadManager {
         let consumer = buffer.clone().register_consumer()?;
 
         let batch_builder = BatchBuilder::new(self.feature_flags.clone());
-        let state_correlator = self.state_correlator.clone();
+        let state_upload_handle = self.state_upload_handle.clone();
         tokio::task::spawn(async move {
           StreamedBufferUpload {
             consumer,
             log_upload_service,
             batch_builder,
             shutdown,
-            state_correlator,
+            state_upload_handle,
           }
           .start()
           .await
@@ -362,7 +362,7 @@ impl BufferUploadManager {
         self.feature_flags.clone(),
         shutdown_trigger.make_shutdown(),
         buffer_name.to_string(),
-        self.state_correlator.clone(),
+        self.state_upload_handle.clone(),
       ),
       shutdown_trigger,
     ))
@@ -381,7 +381,7 @@ impl BufferUploadManager {
       self.log_upload_service.clone(),
       buffer_name.to_string(),
       self.old_logs_dropped.clone(),
-      self.state_correlator.clone(),
+      self.state_upload_handle.clone(),
     ))
   }
 }
@@ -396,6 +396,8 @@ struct BatchBuilder {
   flags: Flags,
   total_bytes: usize,
   logs: Vec<Vec<u8>>,
+  oldest_micros: Option<u64>,
+  newest_micros: Option<u64>,
 }
 
 impl BatchBuilder {
@@ -404,10 +406,17 @@ impl BatchBuilder {
       flags,
       total_bytes: 0,
       logs: Vec::new(),
+      oldest_micros: None,
+      newest_micros: None,
     }
   }
 
   fn add_log(&mut self, data: Vec<u8>) {
+    if let Some(ts) = EncodableLog::extract_timestamp(&data) {
+      let ts_micros = ts.unix_timestamp().cast_unsigned() * 1_000_000 + u64::from(ts.microsecond());
+      self.oldest_micros = Some(self.oldest_micros.map_or(ts_micros, |o| o.min(ts_micros)));
+      self.newest_micros = Some(self.newest_micros.map_or(ts_micros, |n| n.max(ts_micros)));
+    }
     self.total_bytes += data.len();
     self.logs.push(data);
   }
@@ -423,27 +432,17 @@ impl BatchBuilder {
     max_batch_size_bytes <= self.total_bytes || max_batch_size_logs <= self.logs.len()
   }
 
-  /// Extracts the timestamp range (oldest, newest) from the current batch of logs.
-  /// Returns None if there are no logs with extractable timestamps.
-  fn timestamp_range_micros(&self) -> Option<(u64, u64)> {
-    let mut oldest: Option<u64> = None;
-    let mut newest: Option<u64> = None;
-
-    for log_bytes in &self.logs {
-      if let Some(ts) = EncodableLog::extract_timestamp(log_bytes) {
-        let ts_micros =
-          ts.unix_timestamp().cast_unsigned() * 1_000_000 + u64::from(ts.microsecond());
-        oldest = Some(oldest.map_or(ts_micros, |o| o.min(ts_micros)));
-        newest = Some(newest.map_or(ts_micros, |n| n.max(ts_micros)));
-      }
-    }
-
-    oldest.zip(newest)
+  /// Returns the timestamp range (oldest, newest) of logs added to the current batch,
+  /// or `None` if no logs with extractable timestamps have been added.
+  fn timestamp_range(&self) -> Option<(u64, u64)> {
+    self.oldest_micros.zip(self.newest_micros)
   }
 
   /// Consumes the current batch, resetting all accounting.
   fn take(&mut self) -> Vec<Vec<u8>> {
     self.total_bytes = 0;
+    self.oldest_micros = None;
+    self.newest_micros = None;
     self.logs.drain(..).collect()
   }
 }
@@ -472,8 +471,8 @@ struct ContinuousBufferUploader {
 
   buffer_id: String,
 
-  // State-log correlator for uploading state snapshots before logs.
-  state_correlator: Option<Arc<StateUploadHandle>>,
+  // State upload handle for uploading state snapshots before logs.
+  state_upload_handle: Option<Arc<StateUploadHandle>>,
 }
 
 impl ContinuousBufferUploader {
@@ -483,7 +482,7 @@ impl ContinuousBufferUploader {
     feature_flags: Flags,
     shutdown: ComponentShutdown,
     buffer_id: String,
-    state_correlator: Option<Arc<StateUploadHandle>>,
+    state_upload_handle: Option<Arc<StateUploadHandle>>,
   ) -> Self {
     Self {
       consumer,
@@ -493,7 +492,7 @@ impl ContinuousBufferUploader {
       batch_builder: BatchBuilder::new(feature_flags.clone()),
       feature_flags,
       buffer_id,
-      state_correlator,
+      state_upload_handle,
     }
   }
   // Attempts to upload all logs in the provided buffer. For every polling interval we
@@ -539,17 +538,14 @@ impl ContinuousBufferUploader {
     // Disarm the deadline which forces a partial flush to fire.
     self.flush_batch_sleep = None;
 
-    // Extract timestamps before taking logs from the batch
-    let timestamp_range = self.batch_builder.timestamp_range_micros();
-
+    let timestamp_range = self.batch_builder.timestamp_range();
     let logs = self.batch_builder.take();
     let logs_len = logs.len();
-
     log::debug!("flushing {logs_len} logs");
 
     // Upload state snapshot if needed before uploading logs
-    if let (Some(correlator), Some((oldest, newest))) = (&self.state_correlator, timestamp_range) {
-      correlator.notify_upload_needed(oldest, newest);
+    if let (Some(handle), Some((oldest, newest))) = (&self.state_upload_handle, timestamp_range) {
+      handle.notify_upload_needed(oldest, newest);
     }
 
     // Attempt to perform an upload of these buffers, with retries ++. See logger/service.rs for
@@ -606,8 +602,8 @@ struct StreamedBufferUpload {
 
   shutdown: ComponentShutdown,
 
-  // State-log correlator for uploading state snapshots before logs.
-  state_correlator: Option<Arc<StateUploadHandle>>,
+  // State upload handle for uploading state snapshots before logs.
+  state_upload_handle: Option<Arc<StateUploadHandle>>,
 }
 
 impl StreamedBufferUpload {
@@ -665,13 +661,9 @@ impl StreamedBufferUpload {
         }
       }
 
-      // Extract timestamps before taking logs from the batch
-      let timestamp_range = self.batch_builder.timestamp_range_micros();
-
-      // Upload state snapshot if needed before uploading logs
-      if let (Some(correlator), Some((oldest, newest))) = (&self.state_correlator, timestamp_range)
-      {
-        correlator.notify_upload_needed(oldest, newest);
+      let timestamp_range = self.batch_builder.timestamp_range();
+      if let (Some(handle), Some((oldest, newest))) = (&self.state_upload_handle, timestamp_range) {
+        handle.notify_upload_needed(oldest, newest);
       }
 
       let upload_future = async {
@@ -721,8 +713,8 @@ struct CompleteBufferUpload {
 
   old_logs_dropped: Counter,
 
-  // State-log correlator for uploading state snapshots before logs.
-  state_correlator: Option<Arc<StateUploadHandle>>,
+  // State upload handle for uploading state snapshots before logs.
+  state_upload_handle: Option<Arc<StateUploadHandle>>,
 }
 
 impl CompleteBufferUpload {
@@ -732,7 +724,7 @@ impl CompleteBufferUpload {
     log_upload_service: service::Upload,
     buffer_id: String,
     old_logs_dropped: Counter,
-    state_correlator: Option<Arc<StateUploadHandle>>,
+    state_upload_handle: Option<Arc<StateUploadHandle>>,
   ) -> Self {
     let lookback_window_limit = *runtime_flags.upload_lookback_window_feature_flag.read();
 
@@ -749,7 +741,7 @@ impl CompleteBufferUpload {
       buffer_id,
       lookback_window,
       old_logs_dropped,
-      state_correlator,
+      state_upload_handle,
     }
   }
 
@@ -800,16 +792,13 @@ impl CompleteBufferUpload {
   }
 
   async fn flush_batch(&mut self) -> anyhow::Result<()> {
-    // Extract timestamps before taking logs from the batch
-    let timestamp_range = self.batch_builder.timestamp_range_micros();
-
+    let timestamp_range = self.batch_builder.timestamp_range();
     let logs = self.batch_builder.take();
-
     log::debug!("flushing {} logs", logs.len());
 
     // Upload state snapshot if needed before uploading logs
-    if let (Some(correlator), Some((oldest, newest))) = (&self.state_correlator, timestamp_range) {
-      correlator.notify_upload_needed(oldest, newest);
+    if let (Some(handle), Some((oldest, newest))) = (&self.state_upload_handle, timestamp_range) {
+      handle.notify_upload_needed(oldest, newest);
     }
 
     // Attempt to perform an upload of these buffers, with retries ++. See logger/service.rs for
