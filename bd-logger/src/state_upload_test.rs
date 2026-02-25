@@ -8,15 +8,37 @@
 #![allow(clippy::unwrap_used)]
 
 use super::*;
-use bd_runtime::runtime::ConfigLoader;
+use bd_runtime::runtime::{ConfigLoader, FeatureFlag as _};
 use bd_test_helpers::session::in_memory_store;
 use bd_time::{SystemTimeProvider, TestTimeProvider};
 use time::OffsetDateTime;
 
-/// Creates a persistent `bd_state::Store` backed by the given directory. Inserts a dummy entry so
-/// that `rotate_journal` produces a non-empty snapshot file.
-async fn make_state_store(dir: &std::path::Path) -> Arc<bd_state::Store> {
+/// Creates a persistent `bd_state::Store` backed by the given directory with snapshotting enabled.
+/// Inserts a dummy entry so that `rotate_journal` produces a non-empty snapshot file.
+async fn make_state_store(
+  dir: &std::path::Path,
+) -> (Arc<bd_state::Store>, Arc<bd_state::RetentionRegistry>) {
   let runtime_loader = ConfigLoader::new(dir);
+  // Enable snapshotting — the default (0) disables it.
+  runtime_loader
+    .update_snapshot(bd_proto::protos::client::api::RuntimeUpdate {
+      version_nonce: "test".to_string(),
+      runtime: Some(bd_proto::protos::client::runtime::Runtime {
+        values: std::iter::once((
+          bd_runtime::runtime::state::MaxSnapshotCount::path().to_string(),
+          bd_proto::protos::client::runtime::runtime::Value {
+            type_: Some(bd_proto::protos::client::runtime::runtime::value::Type::UintValue(10)),
+            ..Default::default()
+          },
+        ))
+        .collect(),
+        ..Default::default()
+      })
+      .into(),
+      ..Default::default()
+    })
+    .await
+    .unwrap();
   let stats = bd_client_stats_store::Collector::default().scope("test");
   let result = bd_state::Store::persistent(
     dir,
@@ -37,7 +59,7 @@ async fn make_state_store(dir: &std::path::Path) -> Arc<bd_state::Store> {
     )
     .await
     .unwrap();
-  Arc::new(result.store)
+  (Arc::new(result.store), result.retention_registry)
 }
 
 #[tokio::test]
@@ -95,12 +117,12 @@ async fn cooldown_prevents_rapid_snapshot_creation() {
   let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
-  let state_store = make_state_store(&state_dir).await;
+  let (state_store, retention_registry) = make_state_store(&state_dir).await;
 
   let (_correlator, worker) = StateUploadHandle::new(
     Some(state_dir),
     store,
-    None,
+    Some(retention_registry),
     Some(state_store),
     1000,
     Arc::new(SystemTimeProvider {}),
@@ -140,13 +162,13 @@ async fn cooldown_allows_snapshot_after_interval() {
   let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
-  let state_store = make_state_store(&state_dir).await;
+  let (state_store, retention_registry) = make_state_store(&state_dir).await;
   let time_provider = Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc()));
 
   let (_correlator, worker) = StateUploadHandle::new(
     Some(state_dir),
     store,
-    None,
+    Some(retention_registry),
     Some(state_store.clone()),
     1,
     time_provider.clone(),
@@ -190,12 +212,12 @@ async fn zero_cooldown_allows_immediate_snapshot_creation() {
   let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
-  let state_store = make_state_store(&state_dir).await;
+  let (state_store, retention_registry) = make_state_store(&state_dir).await;
 
   let (_correlator, worker) = StateUploadHandle::new(
     Some(state_dir),
     store,
-    None,
+    Some(retention_registry),
     Some(state_store.clone()),
     0,
     Arc::new(SystemTimeProvider {}),
@@ -212,9 +234,11 @@ async fn zero_cooldown_allows_immediate_snapshot_creation() {
 
   for i in 0 .. 3 {
     // Clear snapshots so each iteration forces a new creation.
-    for entry in std::fs::read_dir(&snapshots_dir).unwrap() {
-      let entry = entry.unwrap();
-      std::fs::remove_file(entry.path()).unwrap();
+    if let Ok(entries) = std::fs::read_dir(&snapshots_dir) {
+      for entry in entries {
+        let entry = entry.unwrap();
+        std::fs::remove_file(entry.path()).unwrap();
+      }
     }
 
     let snapshot = worker
@@ -270,12 +294,12 @@ async fn creates_on_demand_snapshot_when_none_exists() {
   let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
 
-  let state_store = make_state_store(&state_dir).await;
+  let (state_store, retention_registry) = make_state_store(&state_dir).await;
 
   let (_correlator, worker) = StateUploadHandle::new(
     Some(state_dir),
     store,
-    None,
+    Some(retention_registry),
     Some(state_store),
     0,
     Arc::new(SystemTimeProvider {}),

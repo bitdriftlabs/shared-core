@@ -536,7 +536,9 @@ impl Store {
   /// epoch. Returns zero if no changes have occurred.
   #[must_use]
   pub fn last_change_micros(&self) -> u64 {
-    self.last_change_micros.load(std::sync::atomic::Ordering::Relaxed)
+    self
+      .last_change_micros
+      .load(std::sync::atomic::Ordering::Relaxed)
   }
 
   fn record_change(&self, timestamp: OffsetDateTime) {

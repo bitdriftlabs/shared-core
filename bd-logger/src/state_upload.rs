@@ -153,9 +153,7 @@ impl StateUploadHandle {
 
     let state_uploaded_through_micros = Arc::new(AtomicU64::new(uploaded_through));
 
-    let correlator = Self {
-      upload_tx,
-    };
+    let correlator = Self { upload_tx };
 
     let worker = StateUploadWorker {
       state_uploaded_through_micros,
@@ -260,7 +258,10 @@ impl StateUploadWorker {
 
   async fn process_upload(&self, batch_oldest_micros: u64, batch_newest_micros: u64) {
     let uploaded_through = self.state_uploaded_through_micros.load(Ordering::Relaxed);
-    let last_change = self.state_store.as_ref().map_or(0, |s| s.last_change_micros());
+    let last_change = self
+      .state_store
+      .as_ref()
+      .map_or(0, |s| s.last_change_micros());
 
     // If we've never seen any state changes, no upload needed.
     if last_change == 0 {
@@ -498,4 +499,3 @@ impl StateUploadWorker {
     })
   }
 }
-
