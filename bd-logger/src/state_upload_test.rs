@@ -8,7 +8,6 @@
 #![allow(clippy::unwrap_used)]
 
 use super::*;
-use bd_resilient_kv::SnapshotFilename;
 use bd_test_helpers::session::in_memory_store;
 use bd_time::{SystemTimeProvider, TestTimeProvider};
 use std::sync::atomic::Ordering;
@@ -47,29 +46,6 @@ impl SnapshotCreator for MockSnapshotCreator {
   }
 }
 
-#[test]
-fn parse_snapshot_filename_valid() {
-  let parsed = SnapshotFilename::parse("state.jrn.g0.t1704067200000000.zz").unwrap();
-  assert_eq!(parsed.generation, 0);
-  assert_eq!(parsed.timestamp_micros, 1_704_067_200_000_000);
-
-  let parsed = SnapshotFilename::parse("state.jrn.g42.t9999999999999999.zz").unwrap();
-  assert_eq!(parsed.generation, 42);
-  assert_eq!(parsed.timestamp_micros, 9_999_999_999_999_999);
-
-  let parsed = SnapshotFilename::parse("other.jrn.g5.t123456.zz").unwrap();
-  assert_eq!(parsed.generation, 5);
-  assert_eq!(parsed.timestamp_micros, 123_456);
-}
-
-#[test]
-fn parse_snapshot_filename_invalid() {
-  assert!(SnapshotFilename::parse("invalid.zz").is_none());
-  assert!(SnapshotFilename::parse("state.jrn.g0.zz").is_none());
-  assert!(SnapshotFilename::parse("state.jrn.t123.zz").is_none());
-  assert!(SnapshotFilename::parse("state.jrn.g0.t123").is_none());
-}
-
 #[tokio::test]
 async fn correlator_no_state_changes() {
   let store = in_memory_store();
@@ -87,10 +63,10 @@ async fn correlator_no_state_changes() {
   )
   .await;
 
-  assert!(
-    correlator
-      .should_upload_state(1_000_000, 2_000_000)
-      .is_none()
+  // With no state changes recorded, the last_state_change_micros should be 0.
+  assert_eq!(
+    correlator.last_state_change_micros.load(Ordering::Relaxed),
+    0,
   );
 }
 
@@ -140,11 +116,10 @@ async fn correlator_uploaded_coverage_prevents_reupload() {
 
   worker.on_state_uploaded(1_704_067_300_000_000);
 
-  assert!(
-    correlator
-      .should_upload_state(1_704_067_100_000_000, 1_704_067_200_000_000)
-      .is_none()
-  );
+  // After uploading through a timestamp, find_snapshots_in_range should return nothing for
+  // ranges already covered.
+  let snapshots = worker.find_snapshots_in_range(1_704_067_200_000_000, 1_704_067_300_000_000);
+  assert!(snapshots.is_empty(), "no snapshots in covered range");
 }
 
 #[tokio::test]
@@ -302,7 +277,7 @@ async fn uses_existing_snapshot_from_normal_rotation() {
   let existing_snapshot = snapshots_dir.join(format!("state.jrn.g0.t{existing_timestamp}.zz"));
   std::fs::write(&existing_snapshot, b"pre-existing snapshot from rotation").unwrap();
 
-  let (correlator, worker) = StateLogCorrelator::new(
+  let (_correlator, worker) = StateLogCorrelator::new(
     Some(state_dir),
     store,
     None,
@@ -314,15 +289,11 @@ async fn uses_existing_snapshot_from_normal_rotation() {
   )
   .await;
 
-  correlator.on_state_change(OffsetDateTime::now_utc());
-
-  let batch_ts = existing_timestamp + 1_000_000;
-  let snapshot = worker.get_or_create_snapshot(batch_ts).await;
-
-  assert!(snapshot.is_some());
-  let snapshot_ref = snapshot.unwrap();
-  assert_eq!(snapshot_ref.timestamp_micros, existing_timestamp);
-  assert_eq!(snapshot_ref.generation, 0);
+  // find_snapshots_in_range should find the snapshot when it falls in range.
+  let snapshots = worker.find_snapshots_in_range(0, existing_timestamp);
+  assert_eq!(snapshots.len(), 1);
+  assert_eq!(snapshots[0].timestamp_micros, existing_timestamp);
+  assert_eq!(snapshots[0].generation, 0);
   assert_eq!(
     mock_creator.call_count(),
     0,
@@ -386,7 +357,7 @@ async fn prefers_existing_snapshot_over_on_demand_creation() {
   let newer_snapshot = snapshots_dir.join(format!("state.jrn.g1.t{newer_snapshot_ts}.zz"));
   std::fs::write(&newer_snapshot, b"newer snapshot").unwrap();
 
-  let (correlator, worker) = StateLogCorrelator::new(
+  let (_correlator, worker) = StateLogCorrelator::new(
     Some(state_dir),
     store,
     None,
@@ -398,21 +369,17 @@ async fn prefers_existing_snapshot_over_on_demand_creation() {
   )
   .await;
 
-  correlator.on_state_change(OffsetDateTime::now_utc());
-
-  let batch_ts = newer_snapshot_ts + 1_000_000;
-  let snapshot = worker.get_or_create_snapshot(batch_ts).await;
-
-  assert!(snapshot.is_some());
-  let snapshot_ref = snapshot.unwrap();
+  // find_snapshots_in_range returns both snapshots in the range, sorted oldest first.
+  let snapshots = worker.find_snapshots_in_range(0, newer_snapshot_ts + 1_000_000);
+  assert_eq!(snapshots.len(), 2);
   assert_eq!(
-    snapshot_ref.timestamp_micros, newer_snapshot_ts,
-    "should select the most recent snapshot before the batch timestamp"
+    snapshots[0].timestamp_micros, old_snapshot_ts,
+    "oldest snapshot first"
   );
-  assert_eq!(snapshot_ref.generation, 1);
+  assert_eq!(snapshots[1].timestamp_micros, newer_snapshot_ts);
   assert_eq!(
     mock_creator.call_count(),
     0,
-    "should not create snapshot when existing one is available"
+    "should not create snapshot when existing ones are available"
   );
 }

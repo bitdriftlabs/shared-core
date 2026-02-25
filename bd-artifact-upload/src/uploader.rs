@@ -102,6 +102,8 @@ struct NewUpload {
   feature_flags: Vec<SnappedFeatureFlag>,
   type_id: String,
   skip_intent: bool,
+  /// Optional oneshot sender to notify the caller when the upload completes or is dropped.
+  completion_tx: Option<tokio::sync::oneshot::Sender<bool>>,
 }
 
 // Used for bounded_buffer logs
@@ -172,6 +174,7 @@ pub trait Client: Send + Sync {
     feature_flags: Vec<SnappedFeatureFlag>,
     type_id: String,
     skip_intent: bool,
+    completion_tx: Option<tokio::sync::oneshot::Sender<bool>>,
   ) -> anyhow::Result<Uuid>;
 }
 
@@ -190,6 +193,7 @@ impl Client for UploadClient {
     feature_flags: Vec<SnappedFeatureFlag>,
     type_id: String,
     skip_intent: bool,
+    completion_tx: Option<tokio::sync::oneshot::Sender<bool>>,
   ) -> anyhow::Result<Uuid> {
     let uuid = uuid::Uuid::new_v4();
 
@@ -204,6 +208,7 @@ impl Client for UploadClient {
         feature_flags,
         type_id,
         skip_intent,
+        completion_tx,
       })
       .inspect_err(|e| log::warn!("failed to enqueue artifact upload: {e:?}"));
 
@@ -251,6 +256,9 @@ pub struct Uploader {
 
   index: VecDeque<Artifact>,
 
+  /// Oneshot senders waiting for upload confirmation, keyed by artifact name (uuid string).
+  completion_senders: HashMap<String, tokio::sync::oneshot::Sender<bool>>,
+
   max_entries: IntWatch<bd_runtime::runtime::artifact_upload::MaxPendingEntries>,
   initial_backoff_interval: DurationWatch<bd_runtime::runtime::api::InitialBackoffInterval>,
   max_backoff_interval: DurationWatch<bd_runtime::runtime::api::MaxBackoffInterval>,
@@ -294,6 +302,7 @@ impl Uploader {
       time_provider,
       file_system,
       index: VecDeque::default(),
+      completion_senders: HashMap::default(),
       max_entries: runtime.register_int_watch(),
       initial_backoff_interval: runtime.register_duration_watch(),
       max_backoff_interval: runtime.register_duration_watch(),
@@ -410,6 +419,7 @@ impl Uploader {
             feature_flags,
             type_id,
             skip_intent,
+            completion_tx,
         }) = self.upload_queued_rx.recv() => {
           log::debug!("tracking artifact: {uuid} for upload");
           self
@@ -422,6 +432,7 @@ impl Uploader {
               feature_flags,
               type_id,
               skip_intent,
+              completion_tx,
             )
             .await;
         }
@@ -535,6 +546,11 @@ impl Uploader {
         self.stats.dropped_intent.inc();
         let entry = &self.index.pop_front().ok_or(InvariantError::Invariant)?;
 
+        // Notify the caller that this upload was rejected.
+        if let Some(tx) = self.completion_senders.remove(&entry.name) {
+          let _ = tx.send(false);
+        }
+
         if let Err(e) = self
           .file_system
           .delete_file(&REPORT_DIRECTORY.join(&entry.name))
@@ -571,6 +587,11 @@ impl Uploader {
       log::warn!("failed to delete artifact {:?}: {}", entry.name, e);
     }
 
+    // Notify the caller that the upload succeeded.
+    if let Some(tx) = self.completion_senders.remove(&entry.name) {
+      let _ = tx.send(true);
+    }
+
     self.write_index().await;
 
     Ok(entry.name)
@@ -595,6 +616,7 @@ impl Uploader {
     feature_flags: Vec<SnappedFeatureFlag>,
     _type_id: String,
     skip_intent: bool,
+    completion_tx: Option<tokio::sync::oneshot::Sender<bool>>,
   ) {
     // If we've reached our limit of entries, stop the entry currently being uploaded (the oldest
     // one) to make space for the newer one.
@@ -604,7 +626,12 @@ impl Uploader {
 
       self.stats.dropped.inc();
       self.stop_current_upload();
-      self.index.pop_front();
+      if let Some(evicted) = self.index.pop_front() {
+        // Notify any waiting caller that their upload was dropped.
+        if let Some(tx) = self.completion_senders.remove(&evicted.name) {
+          let _ = tx.send(false);
+        }
+      }
     }
 
     let uuid = uuid.to_string();
@@ -670,6 +697,11 @@ impl Uploader {
 
     self.write_index().await;
 
+
+    // Store the completion sender before returning so it fires on upload or rejection.
+    if let Some(tx) = completion_tx {
+      self.completion_senders.insert(uuid.clone(), tx);
+    }
 
     #[cfg(test)]
     if let Some(hooks) = &self.test_hooks {

@@ -489,6 +489,7 @@ impl Monitor {
       reporting_feature_flags.clone(),
       "client_report".to_string(),
       false, // Don't skip intent negotiation for crash reports
+      None,
     ) else {
       log::warn!(
         "Failed to enqueue issue report for upload: {}",

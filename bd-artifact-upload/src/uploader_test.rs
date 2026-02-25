@@ -167,6 +167,7 @@ async fn basic_flow() {
       vec![],
       "client_report".to_string(),
       false,
+      None,
     )
     .unwrap();
 
@@ -230,6 +231,7 @@ async fn feature_flags() {
       ],
       "client_report".to_string(),
       false,
+      None,
     )
     .unwrap();
 
@@ -299,6 +301,7 @@ async fn pending_upload_limit() {
       vec![],
       "client_report".to_string(),
       false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -316,6 +319,7 @@ async fn pending_upload_limit() {
       vec![],
       "client_report".to_string(),
       false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -332,6 +336,7 @@ async fn pending_upload_limit() {
       vec![],
       "client_report".to_string(),
       false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -401,6 +406,7 @@ async fn inconsistent_state_missing_file() {
       vec![],
       "client_report".to_string(),
       false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -417,6 +423,7 @@ async fn inconsistent_state_missing_file() {
       vec![],
       "client_report".to_string(),
       false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -461,6 +468,7 @@ async fn inconsistent_state_extra_file() {
       vec![],
       "client_report".to_string(),
       false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -533,6 +541,7 @@ async fn disk_persistence() {
       vec![],
       "client_report".to_string(),
       false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -581,6 +590,7 @@ async fn inconsistent_state_missing_index() {
       vec![],
       "client_report".to_string(),
       false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -606,6 +616,7 @@ async fn inconsistent_state_missing_index() {
       vec![],
       "client_report".to_string(),
       false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -653,6 +664,7 @@ async fn new_entry_disk_full() {
       vec![],
       "client_report".to_string(),
       false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -683,6 +695,7 @@ async fn new_entry_disk_full_after_received() {
       vec![],
       "client_report".to_string(),
       false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -725,6 +738,7 @@ async fn intent_retries() {
       vec![],
       "client_report".to_string(),
       false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -761,6 +775,7 @@ async fn intent_drop() {
       vec![],
       "client_report".to_string(),
       false,
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -799,6 +814,7 @@ async fn upload_retries() {
       vec![],
       "client_report".to_string(),
       false,
+      None,
     )
     .unwrap();
   assert_eq!(

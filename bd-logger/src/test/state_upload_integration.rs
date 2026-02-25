@@ -46,6 +46,10 @@ fn continuous_buffer_creates_and_uploads_state_snapshot() {
         bd_runtime::runtime::state::SnapshotCreationIntervalMs::path(),
         ValueKind::Int(0),
       ),
+      (
+        bd_runtime::runtime::state::MaxSnapshotCount::path(),
+        ValueKind::Int(10),
+      ),
     ],
     ..Default::default()
   });
@@ -126,6 +130,10 @@ fn trigger_buffer_flush_creates_snapshot() {
       (
         bd_runtime::runtime::state::SnapshotCreationIntervalMs::path(),
         ValueKind::Int(0),
+      ),
+      (
+        bd_runtime::runtime::state::MaxSnapshotCount::path(),
+        ValueKind::Int(10),
       ),
     ],
     ..Default::default()
@@ -473,6 +481,10 @@ fn continuous_streaming_uploads_state_with_first_batch() {
       (
         bd_runtime::runtime::state::SnapshotCreationIntervalMs::path(),
         ValueKind::Int(0),
+      ),
+      (
+        bd_runtime::runtime::state::MaxSnapshotCount::path(),
+        ValueKind::Int(10),
       ),
     ],
     ..Default::default()

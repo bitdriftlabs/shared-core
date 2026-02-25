@@ -669,7 +669,8 @@ impl StreamedBufferUpload {
       let timestamp_range = self.batch_builder.timestamp_range_micros();
 
       // Upload state snapshot if needed before uploading logs
-      if let (Some(correlator), Some((oldest, newest))) = (&self.state_correlator, timestamp_range) {
+      if let (Some(correlator), Some((oldest, newest))) = (&self.state_correlator, timestamp_range)
+      {
         correlator.notify_upload_needed(oldest, newest);
       }
 
@@ -722,7 +723,6 @@ struct CompleteBufferUpload {
 
   // State-log correlator for uploading state snapshots before logs.
   state_correlator: Option<Arc<StateLogCorrelator>>,
-
 }
 
 impl CompleteBufferUpload {
