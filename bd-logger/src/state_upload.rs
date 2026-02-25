@@ -321,33 +321,20 @@ impl StateUploadWorker {
         OffsetDateTime::from_unix_timestamp_nanos(i128::from(snapshot_ref.timestamp_micros) * 1000)
           .ok();
 
-      // Create a oneshot channel so we know when the upload is confirmed or dropped.
-      let (completion_tx, completion_rx) = tokio::sync::oneshot::channel::<bool>();
-
-      // Enqueue the upload via artifact uploader (skip_intent=true for immediate upload).
       match self.artifact_client.enqueue_upload(
         file,
+        "state_snapshot".to_string(),
         LogFields::new(),
         timestamp,
         "state_snapshot".to_string(),
         vec![],
-        "state_snapshot".to_string(),
-        true,
-        Some(completion_tx),
       ) {
         Ok(_uuid) => {
           log::debug!(
             "state snapshot upload enqueued for timestamp {}",
             snapshot_ref.timestamp_micros
           );
-          if completion_rx.await == Ok(true) {
-            self.on_state_uploaded(snapshot_ref.timestamp_micros);
-          } else {
-            log::warn!("state snapshot upload failed or was dropped — watermark not advanced");
-            self.stats.upload_failures.inc();
-            // Watermark NOT advanced — will retry on next notify.
-            return;
-          }
+          self.on_state_uploaded(snapshot_ref.timestamp_micros);
         },
         Err(e) => {
           log::warn!("failed to enqueue state snapshot upload: {e}");

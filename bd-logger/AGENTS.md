@@ -93,7 +93,8 @@ pending requests into the widest range before acting, so no coverage is lost.
 
 - `uploaded_through_micros` is monotonically non-decreasing. It is only advanced via
   `fetch_max`, never set to a smaller value.
-- Snapshot uploads are confirmed via a oneshot channel before the watermark advances. If the
-  upload is dropped or fails, the watermark stays put and the next batch will retry.
+- Snapshot uploads are considered confirmed once they are successfully enqueued to the
+  `bd-artifact-upload` queue (which persists them to disk and retries the network upload). If the
+  enqueue fails, the watermark stays put and the next batch will retry.
 - All snapshot creation and deduplication logic runs in the single worker task. There is no
   concurrent access to the upload state.
