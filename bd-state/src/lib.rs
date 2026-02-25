@@ -267,6 +267,9 @@ pub trait StateReader {
 #[derive(Clone)]
 pub struct Store {
   inner: Arc<RwLock<bd_resilient_kv::VersionedKVStore>>,
+  /// Timestamp of the most recent state change (microseconds since epoch). Zero if no changes
+  /// have occurred.
+  last_change_micros: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl Store {
@@ -315,6 +318,7 @@ impl Store {
     let previous_snapshot = inner.as_hashmap().clone();
     let store = Self {
       inner: Arc::new(RwLock::new(inner)),
+      last_change_micros: Arc::new(std::sync::atomic::AtomicU64::new(0)),
     };
 
     // Clear ephemeral scopes so the current process starts with fresh state.
@@ -512,7 +516,25 @@ impl Store {
           bd_runtime::runtime::state::MaxSnapshotCount::register(runtime_loader),
         ),
       )),
+      last_change_micros: Arc::new(std::sync::atomic::AtomicU64::new(0)),
     }
+  }
+
+  /// Returns the timestamp of the most recent state change, in microseconds since the Unix
+  /// epoch. Returns zero if no changes have occurred.
+  #[must_use]
+  pub fn last_change_micros(&self) -> u64 {
+    self
+      .last_change_micros
+      .load(std::sync::atomic::Ordering::Relaxed)
+  }
+
+  fn record_change(&self, timestamp: OffsetDateTime) {
+    let micros =
+      timestamp.unix_timestamp().cast_unsigned() * 1_000_000 + u64::from(timestamp.microsecond());
+    self
+      .last_change_micros
+      .fetch_max(micros, std::sync::atomic::Ordering::Relaxed);
   }
 
   pub async fn insert(
@@ -541,6 +563,9 @@ impl Store {
       None => StateChangeType::Inserted { value },
     };
 
+    // Notify the listener if state actually changed
+    self.record_change(timestamp);
+
     Ok(Some(StateChange {
       scope,
       key,
@@ -556,17 +581,21 @@ impl Store {
     scope: Scope,
     entries: impl IntoIterator<Item = (String, StateValue)>,
   ) -> anyhow::Result<()> {
-    self
-      .inner
-      .write()
-      .await
-      .extend(
-        entries
-          .into_iter()
-          .map(|(key, value)| (scope, key, value))
-          .collect(),
-      )
-      .await?;
+    let entries_vec: Vec<_> = entries
+      .into_iter()
+      .map(|(key, value)| (scope, key, value))
+      .collect();
+
+    let has_entries = !entries_vec.is_empty();
+
+    self.inner.write().await.extend(entries_vec).await?;
+
+    // Notify the listener if any entries were inserted.
+    // Note: We can't tell if entries were actually new vs updates without tracking old values,
+    // so we conservatively notify on any non-empty extend.
+    if has_entries {
+      self.record_change(OffsetDateTime::now_utc());
+    }
 
     Ok(())
   }
@@ -595,6 +624,9 @@ impl Store {
       },
       None => return Ok(None),
     };
+
+    // Notify the listener if state actually changed
+    self.record_change(timestamp);
 
     Ok(Some(StateChange {
       scope,
@@ -637,6 +669,10 @@ impl Store {
           });
         }
       }
+    }
+    // Notify the listener once with the latest timestamp if any changes occurred
+    if let Some(ts) = changes.iter().map(|c| c.timestamp).max() {
+      self.record_change(ts);
     }
 
     Ok(StateChanges { changes })

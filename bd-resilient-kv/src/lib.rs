@@ -31,6 +31,7 @@ pub mod versioned_kv_journal;
 pub use bd_proto::protos::state::payload::StateValue;
 pub use bd_proto::protos::state::payload::state_value::Value_type;
 pub use scope::Scope;
+pub use versioned_kv_journal::filename::SnapshotFilename;
 pub use versioned_kv_journal::recovery::VersionedRecovery;
 pub use versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry};
 pub use versioned_kv_journal::store::{DataLoss, ScopedMaps, VersionedKVStore};
