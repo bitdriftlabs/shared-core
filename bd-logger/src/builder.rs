@@ -354,17 +354,6 @@ impl LoggerBuilder {
       .await;
       let state_correlator = Arc::new(state_correlator_inner);
 
-      // Set up state change listener to notify correlator when state changes. We use a Weak
-      // reference here to avoid a reference cycle: the worker holds the state_store as its
-      // snapshot creator, and the state_store would otherwise hold a strong Arc back to the
-      // correlator (which keeps the worker's upload channel open forever).
-      let correlator_weak = Arc::downgrade(&state_correlator);
-      state_store.set_change_listener(Arc::new(move |timestamp| {
-        if let Some(correlator) = correlator_weak.upgrade() {
-          correlator.on_state_change(timestamp);
-        }
-      }));
-
       let crash_monitor = Monitor::new(
         &self.params.sdk_directory,
         self.params.store.clone(),

@@ -35,14 +35,10 @@ use bd_runtime::runtime::ConfigLoader;
 use bd_time::{OffsetDateTimeExt, TimeProvider};
 use itertools::Itertools as _;
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::RwLock;
 
-/// A listener that gets notified when state changes occur.
-///
-/// The listener receives the timestamp of when the change occurred.
-pub type StateChangeListener = Arc<dyn Fn(OffsetDateTime) + Send + Sync>;
 
 /// The key used for storing the current system session ID in the state store.
 pub const SYSTEM_SESSION_ID_KEY: &str = "sid";
@@ -281,8 +277,9 @@ pub trait StateReader {
 #[derive(Clone)]
 pub struct Store {
   inner: Arc<RwLock<bd_resilient_kv::VersionedKVStore>>,
-  /// Optional listener that gets notified when state changes occur.
-  change_listener: Arc<Mutex<Option<StateChangeListener>>>,
+  /// Timestamp of the most recent state change (microseconds since epoch). Zero if no changes
+  /// have occurred.
+  last_change_micros: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl Store {
@@ -331,7 +328,7 @@ impl Store {
     let previous_snapshot = inner.as_hashmap().clone();
     let store = Self {
       inner: Arc::new(RwLock::new(inner)),
-      change_listener: Arc::new(Mutex::new(None)),
+      last_change_micros: Arc::new(std::sync::atomic::AtomicU64::new(0)),
     };
 
     // Clear ephemeral scopes so the current process starts with fresh state.
@@ -531,30 +528,23 @@ impl Store {
           bd_runtime::runtime::state::MaxSnapshotCount::register(runtime_loader),
         ),
       )),
-      change_listener: Arc::new(Mutex::new(None)),
+      last_change_micros: Arc::new(std::sync::atomic::AtomicU64::new(0)),
     }
   }
 
-  /// Sets a listener that will be notified whenever state changes.
-  ///
-  /// The listener receives the timestamp of the change. This is used for coordinating state
-  /// snapshot uploads with log uploads - the logger needs to know when state has changed so it can
-  /// upload the relevant snapshots before uploading logs.
-  ///
-  /// Only one listener can be active at a time; setting a new listener replaces any previous one.
-  pub fn set_change_listener(&self, listener: StateChangeListener) {
-    if let Ok(mut guard) = self.change_listener.lock() {
-      *guard = Some(listener);
-    }
+  /// Returns the timestamp of the most recent state change, in microseconds since the Unix
+  /// epoch. Returns zero if no changes have occurred.
+  #[must_use]
+  pub fn last_change_micros(&self) -> u64 {
+    self.last_change_micros.load(std::sync::atomic::Ordering::Relaxed)
   }
 
-  /// Notifies the change listener if one is set.
-  fn notify_change(&self, timestamp: OffsetDateTime) {
-    if let Ok(guard) = self.change_listener.lock()
-      && let Some(ref listener) = *guard
-    {
-      listener(timestamp);
-    }
+  fn record_change(&self, timestamp: OffsetDateTime) {
+    let micros =
+      timestamp.unix_timestamp().cast_unsigned() * 1_000_000 + u64::from(timestamp.microsecond());
+    self
+      .last_change_micros
+      .fetch_max(micros, std::sync::atomic::Ordering::Relaxed);
   }
 
   pub async fn insert(
@@ -584,7 +574,7 @@ impl Store {
     };
 
     // Notify the listener if state actually changed
-    self.notify_change(timestamp);
+    self.record_change(timestamp);
 
     Ok(Some(StateChange {
       scope,
@@ -614,7 +604,7 @@ impl Store {
     // Note: We can't tell if entries were actually new vs updates without tracking old values,
     // so we conservatively notify on any non-empty extend.
     if has_entries {
-      self.notify_change(OffsetDateTime::now_utc());
+      self.record_change(OffsetDateTime::now_utc());
     }
 
     Ok(())
@@ -646,7 +636,7 @@ impl Store {
     };
 
     // Notify the listener if state actually changed
-    self.notify_change(timestamp);
+    self.record_change(timestamp);
 
     Ok(Some(StateChange {
       scope,
@@ -698,7 +688,7 @@ impl Store {
 
     // Notify the listener once with the latest timestamp if any changes occurred
     if let Some(ts) = latest_timestamp {
-      self.notify_change(ts);
+      self.record_change(ts);
     }
 
     Ok(StateChanges { changes })
