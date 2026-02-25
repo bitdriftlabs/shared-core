@@ -37,7 +37,7 @@ use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::LogFields;
 use bd_resilient_kv::SnapshotFilename;
 use bd_state::{RetentionHandle, RetentionRegistry};
-use bd_time::TimeProvider;
+use bd_time::{OffsetDateTimeExt, TimeProvider};
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -451,7 +451,7 @@ impl StateUploadWorker {
 
     let now_micros = {
       let now = self.time_provider.now();
-      now.unix_timestamp().cast_unsigned() * 1_000_000 + u64::from(now.microsecond())
+      now.unix_timestamp_micros().cast_unsigned()
     };
     let last_creation = self.last_snapshot_creation_micros.load(Ordering::Relaxed);
     if last_creation > 0

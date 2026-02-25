@@ -542,8 +542,7 @@ impl Store {
   }
 
   fn record_change(&self, timestamp: OffsetDateTime) {
-    let micros =
-      timestamp.unix_timestamp().cast_unsigned() * 1_000_000 + u64::from(timestamp.microsecond());
+    let micros = timestamp.unix_timestamp_micros().cast_unsigned();
     self
       .last_change_micros
       .fetch_max(micros, std::sync::atomic::Ordering::Relaxed);
