@@ -17,6 +17,7 @@ use bd_log_primitives::{EncodableLog, Log, log_level};
 use bd_proto::protos::client::api::ApiRequest;
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::logging::payload::{Log as ProtoLog, LogType};
+use bd_resilient_kv::{RetentionHandle, RetentionRegistry};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
@@ -57,7 +58,7 @@ struct SetupSingleConsumer {
 }
 
 impl SetupSingleConsumer {
-  fn new() -> Self {
+  async fn new() -> Self {
     tokio::time::pause();
     let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
 
@@ -66,7 +67,8 @@ impl SetupSingleConsumer {
     let (buffer, producer) = create_continuous_buffer(
       sdk_directory.path().join("buffer").as_path(),
       records_written_counter.clone(),
-    );
+    )
+    .await;
 
     let (data_upload_tx, data_upload_rx) = tokio::sync::mpsc::channel(1);
 
@@ -75,8 +77,11 @@ impl SetupSingleConsumer {
     let runtime_loader = ConfigLoader::new(sdk_directory.path());
     let collector = Collector::default();
 
+    let consumer = buffer.create_continous_consumer().unwrap();
+    let retention_handle = consumer.retention_handle();
     let uploader = ContinuousBufferUploader::new(
-      buffer.create_continous_consumer().unwrap(),
+      consumer,
+      retention_handle,
       service::new(
         data_upload_tx,
         global_shutdown_trigger.make_shutdown(),
@@ -145,7 +150,7 @@ impl SetupSingleConsumer {
 
 #[tokio::test]
 async fn upload_retries() {
-  let mut setup = SetupSingleConsumer::new();
+  let mut setup = SetupSingleConsumer::new().await;
 
   // Set the batch size to 10 before writing 10 logs that should be uploaded.
   setup
@@ -253,7 +258,7 @@ async fn upload_retries() {
 // buffers.
 #[tokio::test]
 async fn continuous_buffer_upload_byte_limit() {
-  let mut setup = SetupSingleConsumer::new();
+  let mut setup = SetupSingleConsumer::new().await;
 
   // Set the byte limit per batch to 10. The log limit remains at the default of 1,000.
   setup
@@ -291,7 +296,7 @@ async fn continuous_buffer_upload_byte_limit() {
 // Verifies that we shut down the continuous buffer even if there is a pending log upload.
 #[tokio::test]
 async fn continuous_buffer_upload_shutdown() {
-  let mut setup = SetupSingleConsumer::new();
+  let mut setup = SetupSingleConsumer::new().await;
 
   // Set the byte limit per batch to 10. The log limit remains at the default of 1,000.
   setup
@@ -312,11 +317,92 @@ async fn continuous_buffer_upload_shutdown() {
   setup.shutdown().await;
 }
 
+#[tokio::test]
+async fn continuous_buffer_sets_retention_none_when_batch_drains_buffer() {
+  tokio::time::pause();
+  let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
+  let runtime_loader = Arc::new(ConfigLoader::new(sdk_directory.path()));
+  runtime_loader
+    .update_snapshot(make_simple_update(vec![(
+      bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
+      ValueKind::Int(1),
+    )]))
+    .await
+    .unwrap();
+
+  let retention_registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+  let retention_handle = retention_registry.create_handle().await;
+  retention_handle.update_retention_micros(RetentionHandle::RETENTION_NONE);
+
+  let (buffer, mut producer) = create_continuous_buffer_with_retention(
+    sdk_directory.path().join("buffer").as_path(),
+    Counter::default(),
+    retention_handle.clone(),
+  );
+
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let global_shutdown_trigger = ComponentShutdownTrigger::default();
+  let (data_upload_tx, mut data_upload_rx) = tokio::sync::mpsc::channel(1);
+  let consumer = buffer.create_continous_consumer().unwrap();
+  let uploader_retention_handle = consumer.retention_handle();
+  let uploader = ContinuousBufferUploader::new(
+    consumer,
+    uploader_retention_handle,
+    service::new(
+      data_upload_tx,
+      global_shutdown_trigger.make_shutdown(),
+      &runtime_loader,
+      &Collector::default().scope(""),
+    ),
+    make_flags(&runtime_loader),
+    shutdown_trigger.make_shutdown(),
+    "buffer".to_string(),
+  );
+  tokio::spawn(async move { uploader.consume_continuous_logs().await.unwrap() });
+
+  producer
+    .write(&make_test_log(time::OffsetDateTime::now_utc()))
+    .unwrap();
+  buffer.flush();
+
+  let upload = match data_upload_rx.recv().await.unwrap() {
+    DataUpload::LogsUpload(upload) => upload,
+    other => panic!("unexpected upload kind: {other:?}"),
+  };
+
+  assert_ne!(
+    retention_handle.get_retention(),
+    RetentionHandle::RETENTION_NONE
+  );
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+
+  for _ in 0 .. 20 {
+    if retention_handle.get_retention() == RetentionHandle::RETENTION_NONE {
+      break;
+    }
+    tokio::task::yield_now().await;
+  }
+  assert_eq!(
+    retention_handle.get_retention(),
+    RetentionHandle::RETENTION_NONE
+  );
+
+  shutdown_trigger.shutdown().await;
+}
+
 // Validates the behavior when the first upload is a full batch, followed
 // by a partial batch after the full batch retries once.
 #[tokio::test]
 async fn uploading_full_batch_failure() {
-  let mut setup = SetupSingleConsumer::new();
+  let mut setup = SetupSingleConsumer::new().await;
 
   // Set the batch size to 10 before writing 11 logs that should be uploaded.
   setup
@@ -391,7 +477,7 @@ async fn uploading_full_batch_failure() {
 
 #[tokio::test]
 async fn uploading_partial_batch_failure() {
-  let mut setup = SetupSingleConsumer::new();
+  let mut setup = SetupSingleConsumer::new().await;
 
   for i in 0 .. 4 {
     setup.producer.write(&[i]).unwrap();
@@ -439,7 +525,7 @@ async fn uploading_partial_batch_failure() {
 // Verifies that the batch deadline works as a total timeout, not an idle timeout.
 #[tokio::test]
 async fn total_batch_upload_timeout() {
-  let mut setup = SetupSingleConsumer::new();
+  let mut setup = SetupSingleConsumer::new().await;
 
   setup.producer.write(&[1]).unwrap();
 
@@ -457,7 +543,7 @@ async fn total_batch_upload_timeout() {
 
 #[tokio::test]
 async fn uploading_never_succeeds() {
-  let mut setup = SetupSingleConsumer::new();
+  let mut setup = SetupSingleConsumer::new().await;
 
   // Log a single log and advance time far enough to trigger a log upload of the single log.
   setup.producer.write(&[0]).unwrap();
@@ -492,7 +578,7 @@ async fn uploading_never_succeeds() {
 async fn age_limit_log_uploads() {
   let mut setup = SetupMultiConsumer::new(1, 1000).await;
   let (buffer, mut producer) =
-    create_trigger_buffer(setup.temp_directory.path().join("buffer").as_path());
+    create_trigger_buffer(setup.temp_directory.path().join("buffer").as_path()).await;
 
   setup
     .buffer_event_tx
@@ -674,12 +760,14 @@ async fn upload_multiple_continuous_buffers() {
   let (buffer_a, mut producer_a) = create_continuous_buffer(
     &directory.path().join(PathBuf::from("buffer.a")),
     Counter::default(),
-  );
+  )
+  .await;
 
   let (buffer_b, mut producer_b) = create_continuous_buffer(
     &directory.path().join(PathBuf::from("buffer.b")),
     Counter::default(),
-  );
+  )
+  .await;
 
   setup
     .buffer_event_tx
@@ -788,7 +876,7 @@ async fn trigger_upload_byte_size_limit() {
   // Allow 10 logs or 100 bytes per upload.
   let mut setup = SetupMultiConsumer::new(10, 100).await;
   let (buffer, mut producer) =
-    create_trigger_buffer(setup.temp_directory.path().join("buffer").as_path());
+    create_trigger_buffer(setup.temp_directory.path().join("buffer").as_path()).await;
 
   setup
     .buffer_event_tx
@@ -818,7 +906,7 @@ async fn trigger_upload_byte_size_limit() {
 async fn dropped_trigger() {
   let mut setup = SetupMultiConsumer::new(1, 1000).await;
   let (buffer, mut producer) =
-    create_trigger_buffer(setup.temp_directory.path().join("buffer").as_path());
+    create_trigger_buffer(setup.temp_directory.path().join("buffer").as_path()).await;
 
   setup
     .buffer_event_tx
@@ -848,7 +936,7 @@ async fn dropped_trigger() {
 async fn uploaded_trigger() {
   let mut setup = SetupMultiConsumer::new(2, 1000).await;
   let (buffer, mut producer) =
-    create_trigger_buffer(setup.temp_directory.path().join("buffer").as_path());
+    create_trigger_buffer(setup.temp_directory.path().join("buffer").as_path()).await;
 
   setup
     .buffer_event_tx
@@ -1039,21 +1127,43 @@ async fn log_streaming_shutdown() {
   task_handle.await.unwrap();
 }
 
-fn create_continuous_buffer(
+async fn create_continuous_buffer(
   buffer: &Path,
   records_written: Counter,
 ) -> (Arc<Buffer>, bd_buffer::Producer) {
-  create_buffer(false, buffer, records_written)
+  let retention_registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+  let retention_handle = retention_registry.create_handle().await;
+  retention_handle.update_retention_micros(RetentionHandle::RETENTION_NONE);
+  create_buffer(false, buffer, records_written, retention_handle)
 }
 
-fn create_trigger_buffer(buffer: &Path) -> (Arc<Buffer>, bd_buffer::Producer) {
-  create_buffer(true, buffer, Counter::default())
+fn create_continuous_buffer_with_retention(
+  buffer: &Path,
+  records_written: Counter,
+  retention_handle: RetentionHandle,
+) -> (Arc<Buffer>, bd_buffer::Producer) {
+  create_buffer(false, buffer, records_written, retention_handle)
+}
+
+async fn create_trigger_buffer(buffer: &Path) -> (Arc<Buffer>, bd_buffer::Producer) {
+  let retention_registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+  create_buffer(
+    true,
+    buffer,
+    Counter::default(),
+    retention_registry.create_handle().await,
+  )
 }
 
 fn create_buffer(
   trigger_buffer: bool,
   buffer: &Path,
   records_written: Counter,
+  retention_handle: RetentionHandle,
 ) -> (Arc<Buffer>, bd_buffer::Producer) {
   let (generic_ring_buffer, _) = Buffer::new(
     "test",
@@ -1068,7 +1178,7 @@ fn create_buffer(
     Counter::default(),
     Some(records_written),
     None,
-    None,
+    retention_handle,
   )
   .unwrap();
 

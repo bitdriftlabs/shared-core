@@ -18,6 +18,7 @@ use bd_client_common::maybe_await;
 use bd_client_stats_store::{Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected_error_with_details;
 use bd_log_primitives::EncodableLog;
+use bd_resilient_kv::RetentionHandle;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use futures_util::future::try_join_all;
@@ -347,10 +348,13 @@ impl BufferUploadManager {
     buffer: &Arc<Buffer>,
   ) -> anyhow::Result<(ContinuousBufferUploader, ComponentShutdownTrigger)> {
     let shutdown_trigger = ComponentShutdownTrigger::default();
+    let consumer = buffer.create_continous_consumer()?;
+    let retention_handle = consumer.retention_handle();
 
     Ok((
       ContinuousBufferUploader::new(
-        buffer.create_continous_consumer()?,
+        consumer,
+        retention_handle,
         self.log_upload_service.clone(),
         self.feature_flags.clone(),
         shutdown_trigger.make_shutdown(),
@@ -444,11 +448,14 @@ struct ContinuousBufferUploader {
   feature_flags: Flags,
 
   buffer_id: String,
+
+  retention_handle: RetentionHandle,
 }
 
 impl ContinuousBufferUploader {
   pub fn new(
     consumer: bd_buffer::CursorConsumer,
+    retention_handle: RetentionHandle,
     log_upload_service: service::Upload,
     feature_flags: Flags,
     shutdown: ComponentShutdown,
@@ -462,6 +469,7 @@ impl ContinuousBufferUploader {
       batch_builder: BatchBuilder::new(feature_flags.clone()),
       feature_flags,
       buffer_id,
+      retention_handle,
     }
   }
   // Attempts to upload all logs in the provided buffer. For every polling interval we
@@ -476,6 +484,9 @@ impl ContinuousBufferUploader {
         entry = self.consumer.read() => {
             debug_assert!(entry.is_ok(), "consumer should not fail");
             self.batch_builder.add_log(entry?.to_vec());
+            if let Some(oldest) = self.consumer.oldest_timestamp_micros() {
+              self.retention_handle.update_retention_micros(oldest);
+            }
         },
         () = maybe_await(&mut self.flush_batch_sleep) => {
             log::debug!("flushing logs due to deadline hit");
@@ -543,6 +554,12 @@ impl ContinuousBufferUploader {
     // written.
     for _ in 0 .. logs_len {
       self.consumer.advance_read_cursor()?;
+    }
+    match self.consumer.oldest_timestamp_micros() {
+      Some(oldest_micros) => self.retention_handle.update_retention_micros(oldest_micros),
+      None => self
+        .retention_handle
+        .update_retention_micros(RetentionHandle::RETENTION_NONE),
     }
 
     Ok(())
