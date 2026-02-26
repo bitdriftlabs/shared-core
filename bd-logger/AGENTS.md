@@ -19,17 +19,16 @@ uploaded so the server has them available when it processes those logs.
 
 State upload coordination is split into two types:
 
-- **`StateUploadHandle`** — a cheap, `Arc`-cloneable sender. Each buffer uploader holds one. When
+- **`StateUploadHandle`** — a cheap, `Arc`-cloneable coalescing handle. Each buffer uploader holds one. When
   a batch is about to be flushed, the uploader calls
   `handle.notify_upload_needed(batch_oldest_micros, batch_newest_micros)` in a fire-and-forget
-  manner. The call queues a request into a bounded channel and returns immediately — it never
-  blocks the log upload path.
+  manner. The call merges the range into shared pending state protected by a mutex, then
+  best-effort nudges the worker via a bounded wake channel; it never blocks the log upload path.
 
 - **`StateUploadWorker`** — a single background task that owns all snapshot creation and upload
-  logic. Because exactly one task processes requests, deduplication and cooldown enforcement
-  require no locks or atomics between callers. The worker drains the channel on each wakeup,
-  coalescing all queued requests into the widest possible timestamp range before deciding whether
-  to act.
+  logic. Because exactly one task processes requests, deduplication and cooldown enforcement are
+  centralized. On each wakeup (or retry tick), the worker drains/coalesces shared pending state,
+  then processes the widest pending range before deciding whether to act.
 
 The handle and worker are created together via `StateUploadHandle::new`, which also restores
 previously-persisted upload coverage from `bd-key-value`.
@@ -54,7 +53,7 @@ When the worker receives a batch's timestamp range `[oldest, newest]`, it evalua
 Creating a snapshot on every batch flush during high-volume streaming is wasteful. The worker
 tracks `last_snapshot_creation_micros` and will not create a new snapshot if one was created
 within `snapshot_creation_interval_micros` (a runtime-configurable value). During cooldown, the
-worker falls back to the most recent existing snapshot instead of creating a new one.
+worker defers on-demand creation and keeps pending work for retry.
 
 ### Coverage Persistence and Retention
 
@@ -82,12 +81,13 @@ The three flush paths that interact with state uploads are:
 All three follow the same pattern: read `timestamp_range()`, call `notify_upload_needed` if a
 range is available, then call `take()` to produce the log batch.
 
-### Channel Backpressure
+### Wake Channel Backpressure
 
-The upload request channel has capacity `UPLOAD_CHANNEL_CAPACITY` (8). If the channel is full,
-`notify_upload_needed` silently drops the request. This is intentional: the already-queued
-requests span a timestamp range that covers the dropped batch's range. The worker coalesces all
-pending requests into the widest range before acting, so no coverage is lost.
+The wake channel has capacity `UPLOAD_CHANNEL_CAPACITY` (8). If wake signaling is saturated,
+`notify_upload_needed` still records the requested range in shared pending state and returns. A
+missed wake does not lose coverage; the worker will observe pending state on the next wake/timer
+cycle, and version tracking forces immediate reprocessing when producers update pending state while
+the worker is active.
 
 ### Key Invariants
 
@@ -96,5 +96,5 @@ pending requests into the widest range before acting, so no coverage is lost.
 - Snapshot uploads are considered confirmed once they are successfully enqueued to the
   `bd-artifact-upload` queue (which persists them to disk and retries the network upload). If the
   enqueue fails, the watermark stays put and the next batch will retry.
-- All snapshot creation and deduplication logic runs in the single worker task. There is no
-  concurrent access to the upload state.
+- Snapshot creation and upload progress logic run in the single worker task. Producer-side range
+  coalescing is concurrent but synchronized via a mutex-backed accumulator.
