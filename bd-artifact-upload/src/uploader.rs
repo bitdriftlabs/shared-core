@@ -16,6 +16,7 @@ use bd_bounded_buffer::SendCounters;
 use bd_client_common::error::InvariantError;
 use bd_client_common::file::{
   async_write_checksummed_data,
+  is_zlib_data,
   read_checksummed_data,
   read_compressed_protobuf,
   write_compressed_protobuf,
@@ -112,7 +113,7 @@ impl SnappedFeatureFlag {
 #[derive(Debug)]
 struct NewUpload {
   uuid: Uuid,
-  file: std::fs::File,
+  source: UploadSource,
   type_id: String,
   state: LogFields,
   timestamp: Option<OffsetDateTime>,
@@ -121,13 +122,19 @@ struct NewUpload {
   persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
 }
 
+#[derive(Debug)]
+enum UploadSource {
+  File(std::fs::File),
+  Path(PathBuf),
+}
+
 // Used for bounded_buffer logs
 impl std::fmt::Display for NewUpload {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(
       f,
-      "NewUpload {{ uuid: {}, file: {:?} }}",
-      self.uuid, self.file
+      "NewUpload {{ uuid: {}, source: {:?} }}",
+      self.uuid, self.source
     )
   }
 }
@@ -200,6 +207,17 @@ pub trait Client: Send + Sync {
     feature_flags: Vec<SnappedFeatureFlag>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
   ) -> std::result::Result<Uuid, EnqueueError>;
+
+  fn enqueue_upload_from_path(
+    &self,
+    source_path: PathBuf,
+    type_id: String,
+    state: LogFields,
+    timestamp: Option<OffsetDateTime>,
+    session_id: String,
+    feature_flags: Vec<SnappedFeatureFlag>,
+    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+  ) -> std::result::Result<Uuid, EnqueueError>;
 }
 
 pub struct UploadClient {
@@ -225,7 +243,42 @@ impl Client for UploadClient {
       .upload_tx
       .try_send(NewUpload {
         uuid,
-        file,
+        source: UploadSource::File(file),
+        type_id,
+        state,
+        timestamp,
+        session_id,
+        feature_flags,
+        persisted_tx,
+      })
+      .inspect_err(|e| log::warn!("failed to enqueue artifact upload: {e:?}"));
+
+    self.counter_stats.record(&result);
+    result.map_err(|e| match e {
+      bd_bounded_buffer::TrySendError::FullSizeOverflow => EnqueueError::QueueFull,
+      bd_bounded_buffer::TrySendError::Closed => EnqueueError::Closed,
+    })?;
+
+    Ok(uuid)
+  }
+
+  fn enqueue_upload_from_path(
+    &self,
+    source_path: PathBuf,
+    type_id: String,
+    state: LogFields,
+    timestamp: Option<OffsetDateTime>,
+    session_id: String,
+    feature_flags: Vec<SnappedFeatureFlag>,
+    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+  ) -> std::result::Result<Uuid, EnqueueError> {
+    let uuid = uuid::Uuid::new_v4();
+
+    let result = self
+      .upload_tx
+      .try_send(NewUpload {
+        uuid,
+        source: UploadSource::Path(source_path),
         type_id,
         state,
         timestamp,
@@ -393,17 +446,22 @@ impl Uploader {
           return Ok(());
         };
 
-        let Ok(contents) = read_checksummed_data(&contents) else {
-          log::debug!(
-            "failed to validate CRC checksum for artifact {}, deleting and removing from index",
-            next.name
-          );
+        let contents = if is_zlib_data(&contents) {
+          contents
+        } else {
+          let Ok(contents) = read_checksummed_data(&contents) else {
+            log::debug!(
+              "failed to validate CRC checksum for artifact {}, deleting and removing from index",
+              next.name
+            );
 
-          self.file_system.delete_file(&file_path).await?;
-          self.index.pop_front();
-          self.write_index().await;
+            self.file_system.delete_file(&file_path).await?;
+            self.index.pop_front();
+            self.write_index().await;
 
-          return Ok(());
+            return Ok(());
+          };
+          contents
         };
         log::debug!("starting file upload for {:?}", next.name);
         self.upload_task_handle = Some(tokio::spawn(Self::upload_artifact(
@@ -436,7 +494,7 @@ impl Uploader {
         }
         Some(NewUpload {
             uuid,
-            file,
+            source,
             type_id,
             state,
             timestamp,
@@ -448,7 +506,7 @@ impl Uploader {
           self
             .track_new_upload(
               uuid,
-              file,
+              source,
               type_id,
               state,
               session_id,
@@ -628,7 +686,7 @@ impl Uploader {
   async fn track_new_upload(
     &mut self,
     uuid: Uuid,
-    file: std::fs::File,
+    source: UploadSource,
     type_id: String,
     state: LogFields,
     session_id: String,
@@ -670,30 +728,67 @@ impl Uploader {
 
     let uuid = uuid.to_string();
 
-    let target_file = match self
-      .file_system
-      .create_file(&REPORT_DIRECTORY.join(&uuid))
-      .await
-    {
-      Ok(file) => file,
-      Err(e) => {
-        log::warn!("failed to create file for artifact: {uuid} on disk: {e}");
-        if let Some(tx) = persisted_tx.take() {
-          let _ = tx.send(Err(EnqueueError::Other(anyhow::anyhow!(
-            "failed to create file for artifact {uuid}: {e}"
-          ))));
-        }
+    let target_path = REPORT_DIRECTORY.join(&uuid);
+    let write_result = match source {
+      UploadSource::File(file) => {
+        let target_file = match self.file_system.create_file(&target_path).await {
+          Ok(file) => file,
+          Err(e) => {
+            log::warn!("failed to create file for artifact: {uuid} on disk: {e}");
+            if let Some(tx) = persisted_tx.take() {
+              let _ = tx.send(Err(EnqueueError::Other(anyhow::anyhow!(
+                "failed to create file for artifact {uuid}: {e}"
+              ))));
+            }
 
-        #[cfg(test)]
-        if let Some(hooks) = &self.test_hooks {
-          hooks.entry_received_tx.send(uuid.clone()).await.unwrap();
+            #[cfg(test)]
+            if let Some(hooks) = &self.test_hooks {
+              hooks.entry_received_tx.send(uuid.clone()).await.unwrap();
+            }
+            return;
+          },
+        };
+
+        async_write_checksummed_data(tokio::fs::File::from_std(file), target_file).await
+      },
+      UploadSource::Path(source_path) => {
+        if let Err(e) = self
+          .file_system
+          .rename_file(&source_path, &target_path)
+          .await
+        {
+          log::debug!("failed to move artifact source, falling back to copy: {e}");
+          match std::fs::File::open(&source_path) {
+            Ok(source_file) => match self.file_system.create_file(&target_path).await {
+              Ok(target_file) => {
+                let result =
+                  async_write_checksummed_data(tokio::fs::File::from_std(source_file), target_file)
+                    .await;
+                if result.is_ok()
+                  && let Err(e) = self.file_system.delete_file(&source_path).await
+                {
+                  log::debug!(
+                    "failed to delete moved source file {}: {e}",
+                    source_path.display()
+                  );
+                }
+                result
+              },
+              Err(e) => Err(e),
+            },
+            Err(e) => Err(anyhow::anyhow!(
+              "failed to open file for artifact {} on disk: {}",
+              source_path.display(),
+              e
+            )),
+          }
+        } else {
+          Ok(())
         }
-        return;
       },
     };
 
-    if let Err(e) = async_write_checksummed_data(tokio::fs::File::from_std(file), target_file).await
-    {
+    if let Err(e) = write_result {
       log::warn!("failed to write artifact to disk: {uuid} to disk: {e}");
       if let Some(tx) = persisted_tx.take() {
         let _ = tx.send(Err(EnqueueError::Other(anyhow::anyhow!(

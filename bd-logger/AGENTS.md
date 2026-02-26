@@ -30,22 +30,16 @@ State upload coordination is split into two types:
   centralized. On each wakeup (or retry tick), the worker drains/coalesces shared pending state,
   then processes the widest pending range before deciding whether to act.
 
-The handle and worker are created together via `StateUploadHandle::new`, which also restores
-previously-persisted upload coverage from `bd-key-value`.
+The handle and worker are created together via `StateUploadHandle::new`.
 
 ### Upload Decision Logic
 
 When the worker receives a batch's timestamp range `[oldest, newest]`, it evaluates in order:
 
 1. **No state changes ever recorded** (`last_change_micros == 0`) → skip. Nothing to upload.
-2. **Coverage already sufficient** (`uploaded_through >= batch_oldest`) → skip. The server
-   already has state that covers this batch.
-3. **No new changes since last upload** (`last_change <= uploaded_through`) → skip. State hasn't
-   changed since we last uploaded.
-4. **Existing snapshots cover the gap** → upload those snapshot files. Snapshots are found by
-   scanning `{state_store_path}/snapshots/` for files whose parsed timestamp falls in
-   `(uploaded_through, batch_newest_micros]`.
-5. **No existing snapshots cover the gap** → create one on-demand via
+2. **Snapshot files exist** in `{state_store_path}/snapshots/` → upload every snapshot file found
+   there (oldest-first). File presence is the source of truth.
+3. **No snapshot files exist but state changed** (`last_change_micros > 0`) → create one on-demand via
    `state_store.rotate_journal()`, subject to a cooldown (see below).
 
 ### Snapshot Cooldown
@@ -55,16 +49,18 @@ tracks `last_snapshot_creation_micros` and will not create a new snapshot if one
 within `snapshot_creation_interval_micros` (a runtime-configurable value). During cooldown, the
 worker defers on-demand creation and keeps pending work for retry.
 
-### Coverage Persistence and Retention
+### Snapshot Move Semantics
 
-`uploaded_through_micros` — the watermark of what has been confirmed uploaded — is persisted via
-`bd-key-value` under the key `state_upload.uploaded_through.1`. It is loaded on startup and used
-immediately, so the worker never re-uploads state snapshots that were confirmed in a previous
-process run.
+State snapshot uploads are enqueued via `enqueue_upload_from_path`: the snapshot file is moved
+(renamed) from `state/snapshots/` into `bd-artifact-upload`'s `report_uploads/` directory. This
+means:
 
-The watermark is also fed into the `RetentionHandle` from `bd-resilient-kv`, which prevents the
-snapshot retention cleanup from deleting any snapshot that is still needed. This prevents a race
-where cleanup removes a snapshot before the logger has had a chance to upload it.
+- No re-copy/re-checksum pass is required for snapshot files (they are already zlib compressed).
+- Once the enqueue ack succeeds, the file has left `state/snapshots/`, so the worker will not
+  re-upload it.
+- If enqueue fails, the file remains in `state/snapshots/`, so the next retry still sees it.
+
+Upload selection is file-presence based; there is no separate uploaded watermark state.
 
 ### BatchBuilder Timestamp Tracking
 
@@ -83,7 +79,7 @@ range is available, then call `take()` to produce the log batch.
 
 ### Wake Channel Backpressure
 
-The wake channel has capacity `UPLOAD_CHANNEL_CAPACITY` (8). If wake signaling is saturated,
+The wake channel has capacity `UPLOAD_CHANNEL_CAPACITY` (1). If wake signaling is saturated,
 `notify_upload_needed` still records the requested range in shared pending state and returns. A
 missed wake does not lose coverage; the worker will observe pending state on the next wake/timer
 cycle, and version tracking forces immediate reprocessing when producers update pending state while
@@ -91,10 +87,9 @@ the worker is active.
 
 ### Key Invariants
 
-- `uploaded_through_micros` is monotonically non-decreasing. It is only advanced via
-  `fetch_max`, never set to a smaller value.
 - Snapshot uploads are considered confirmed once they are successfully enqueued to the
-  `bd-artifact-upload` queue (which persists them to disk and retries the network upload). If the
-  enqueue fails, the watermark stays put and the next batch will retry.
+  `bd-artifact-upload` queue (which persists them to disk and retries the network upload). If
+  enqueue fails, the source file is still present in `state/snapshots/` and the next batch will
+  retry.
 - Snapshot creation and upload progress logic run in the single worker task. Producer-side range
   coalescing is concurrent but synchronized via a mutex-backed accumulator.

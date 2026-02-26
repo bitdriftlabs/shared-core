@@ -38,3 +38,14 @@ fn invalid_checksum() {
     "crc mismatch"
   );
 }
+
+#[test]
+fn identifies_zlib_data() {
+  let compressed = super::write_compressed(b"hello").unwrap();
+  assert!(super::is_zlib_data(&compressed));
+}
+
+#[test]
+fn identifies_non_zlib_data() {
+  assert!(!super::is_zlib_data(b"not-zlib"));
+}

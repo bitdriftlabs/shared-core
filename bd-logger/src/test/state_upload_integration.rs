@@ -29,10 +29,8 @@ use tempfile::TempDir;
 
 #[test]
 fn continuous_buffer_creates_and_uploads_state_snapshot() {
-  let sdk_directory = Arc::new(TempDir::with_prefix("sdk").unwrap());
-
   let mut setup = Setup::new_with_cached_runtime(SetupOptions {
-    sdk_directory: sdk_directory.clone(),
+    sdk_directory: Arc::new(TempDir::with_prefix("sdk").unwrap()),
     disk_storage: true,
     extra_runtime_values: vec![
       (
@@ -103,17 +101,6 @@ fn continuous_buffer_creates_and_uploads_state_snapshot() {
         "state snapshot should have content"
       );
 
-      let snapshots_dir = sdk_directory.path().join("state/snapshots");
-      if snapshots_dir.exists() {
-        let entries: Vec<_> = std::fs::read_dir(&snapshots_dir)
-          .unwrap()
-          .filter_map(Result::ok)
-          .collect();
-        assert!(
-          !entries.is_empty(),
-          "snapshot files should exist in state/snapshots/"
-        );
-      }
       return;
     }
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -122,10 +109,8 @@ fn continuous_buffer_creates_and_uploads_state_snapshot() {
 
 #[test]
 fn trigger_buffer_flush_creates_snapshot() {
-  let sdk_directory = Arc::new(TempDir::with_prefix("sdk").unwrap());
-
   let mut setup = Setup::new_with_cached_runtime(SetupOptions {
-    sdk_directory: sdk_directory.clone(),
+    sdk_directory: Arc::new(TempDir::with_prefix("sdk").unwrap()),
     disk_storage: true,
     extra_runtime_values: vec![
       (
@@ -204,18 +189,6 @@ fn trigger_buffer_flush_creates_snapshot() {
         "state snapshot should have content"
       );
 
-      let snapshots_dir = sdk_directory.path().join("state/snapshots");
-      if snapshots_dir.exists() {
-        let snapshot_files: Vec<_> = std::fs::read_dir(&snapshots_dir)
-          .unwrap()
-          .filter_map(Result::ok)
-          .filter(|e| e.path().extension().is_some_and(|ext| ext == "zz"))
-          .collect();
-        assert!(
-          !snapshot_files.is_empty(),
-          "snapshot .zz files should exist after trigger flush"
-        );
-      }
       return;
     }
     std::thread::sleep(std::time::Duration::from_millis(100));

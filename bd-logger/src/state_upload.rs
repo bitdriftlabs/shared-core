@@ -38,7 +38,7 @@ use bd_log_primitives::LogFields;
 use bd_resilient_kv::SnapshotFilename;
 use bd_state::{RetentionHandle, RetentionRegistry};
 use bd_time::{OffsetDateTimeExt, TimeProvider};
-use std::fs::File;
+use protobuf::well_known_types::struct_::{Struct as ProtoStruct, Value as ProtoValue, value};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -49,10 +49,8 @@ use tokio::time::{Duration, sleep};
 /// Capacity of the worker wake channel used to nudge processing of coalesced pending ranges.
 const UPLOAD_CHANNEL_CAPACITY: usize = 1;
 const BACKPRESSURE_RETRY_INTERVAL: Duration = Duration::from_secs(1);
-
-/// Key for persisting the state upload index via bd-key-value.
-static STATE_UPLOAD_KEY: bd_key_value::Key<String> =
-  bd_key_value::Key::new("state_upload.uploaded_through.1");
+static PENDING_UPLOAD_RANGE_KEY: bd_key_value::Key<ProtoStruct> =
+  bd_key_value::Key::new("state_upload.pending_range.1");
 
 
 /// A reference to a state snapshot that should be uploaded.
@@ -135,30 +133,12 @@ impl StateUploadHandle {
   ) -> (Self, StateUploadWorker) {
     let stats = Stats::new(&stats_scope.scope("state_upload"));
 
+    let (wake_tx, wake_rx) = mpsc::channel(UPLOAD_CHANNEL_CAPACITY);
+    let pending_accumulator = Arc::new(parking_lot::Mutex::new(PendingAccumulator::default()));
     let retention_handle = match &retention_registry {
       Some(registry) => Some(registry.create_handle().await),
       None => None,
     };
-
-    let uploaded_through = store
-      .get_string(&STATE_UPLOAD_KEY)
-      .and_then(|s| s.parse::<u64>().ok())
-      .unwrap_or(0);
-
-    if uploaded_through > 0 {
-      log::debug!("loaded state upload coverage through {uploaded_through}");
-    }
-
-    if let Some(handle) = &retention_handle
-      && uploaded_through > 0
-    {
-      handle.update_retention_micros(uploaded_through);
-    }
-
-    let (wake_tx, wake_rx) = mpsc::channel(UPLOAD_CHANNEL_CAPACITY);
-    let pending_accumulator = Arc::new(parking_lot::Mutex::new(PendingAccumulator::default()));
-
-    let state_uploaded_through_micros = Arc::new(AtomicU64::new(uploaded_through));
 
     let handle = Self {
       wake_tx,
@@ -166,7 +146,6 @@ impl StateUploadHandle {
     };
 
     let worker = StateUploadWorker {
-      state_uploaded_through_micros,
       last_snapshot_creation_micros: AtomicU64::new(0),
       snapshot_creation_interval_micros: u64::from(snapshot_creation_interval_ms) * 1000,
       state_store_path,
@@ -232,8 +211,6 @@ impl StateUploadHandle {
 ///
 /// Obtain via [`StateUploadHandle::new`] and spawn with `tokio::spawn` or `try_join!`.
 pub struct StateUploadWorker {
-  /// Shared with the handle — updated after successful uploads.
-  state_uploaded_through_micros: Arc<AtomicU64>,
   /// Timestamp of the last snapshot creation (microseconds since epoch).
   last_snapshot_creation_micros: AtomicU64,
   /// Minimum interval between snapshot creations (microseconds).
@@ -281,6 +258,12 @@ impl StateUploadWorker {
   /// Runs the worker event loop, processing upload requests until the channel is closed.
   pub async fn run(mut self) {
     log::debug!("state upload worker started");
+    self.refresh_retention_handle();
+    self.pending_range = self.read_persisted_pending_range();
+    if self.pending_range.is_some() {
+      self.process_pending().await;
+    }
+
     loop {
       tokio::select! {
         Some(()) = self.wake_rx.recv() => {
@@ -311,6 +294,7 @@ impl StateUploadWorker {
     }
     self.pending_version_seen = pending.version;
     pending.wake_queued = false;
+    self.persist_pending_range();
   }
 
   fn pending_version_changed(&self) -> bool {
@@ -332,15 +316,11 @@ impl StateUploadWorker {
       self.stats.backpressure_pauses.inc();
     }
 
-    let uploaded_through = self.state_uploaded_through_micros.load(Ordering::Relaxed);
-    if uploaded_through >= pending.newest_micros {
+    if matches!(result, ProcessResult::Progress | ProcessResult::Skipped) {
       self.pending_range = None;
-    } else if uploaded_through >= pending.oldest_micros {
-      self.pending_range = Some(PendingRange {
-        oldest_micros: uploaded_through.saturating_add(1),
-        newest_micros: pending.newest_micros,
-      });
     }
+    self.persist_pending_range();
+    self.refresh_retention_handle();
   }
 
   // State upload flow:
@@ -351,34 +331,26 @@ impl StateUploadWorker {
   //    - `DeferredCooldown`: uncovered changes exist but snapshot creation is rate-limited.
   //    - `Ready`: concrete snapshots should be uploaded now.
   // 3) For each ready snapshot, enqueue and wait for persistence ack.
-  // 4) Advance `state_uploaded_through_micros` only after a successful persistence ack via
-  //    `on_state_uploaded`, so deferred/failed attempts never move the watermark.
-  // 5) `process_pending` narrows `pending_range.oldest_micros` from the persisted watermark after
-  //    each attempt and only clears pending once coverage reaches `pending.newest_micros`.
+  // 4) On success, count the snapshot upload and continue; on failure, keep pending work for retry.
   async fn process_upload(
     &self,
     batch_oldest_micros: u64,
     batch_newest_micros: u64,
   ) -> ProcessResult {
-    let uploaded_through = self.state_uploaded_through_micros.load(Ordering::Relaxed);
     let last_change = self
       .state_store
       .as_ref()
       .map_or(0, |s| s.last_change_micros());
 
     let snapshots = match self
-      .plan_upload_attempt(
-        batch_oldest_micros,
-        batch_newest_micros,
-        uploaded_through,
-        last_change,
-      )
+      .plan_upload_attempt(batch_oldest_micros, batch_newest_micros, last_change)
       .await
     {
       UploadPreflight::Skipped => return ProcessResult::Skipped,
       UploadPreflight::DeferredCooldown => return ProcessResult::DeferredCooldown,
       UploadPreflight::Ready(snapshots) => snapshots,
     };
+    self.refresh_retention_handle();
 
     // Upload each snapshot in order, advancing the watermark after each confirmed upload.
     for snapshot_ref in snapshots {
@@ -389,27 +361,14 @@ impl StateUploadWorker {
         batch_newest_micros
       );
 
-      // Open the snapshot file.
-      let file = match File::open(&snapshot_ref.path) {
-        Ok(f) => f,
-        Err(e) => {
-          log::warn!(
-            "failed to open snapshot file {}: {e}",
-            snapshot_ref.path.display()
-          );
-          self.stats.upload_failures.inc();
-          return ProcessResult::Error;
-        },
-      };
-
       let timestamp = OffsetDateTime::from_unix_timestamp_micros(
         snapshot_ref.timestamp_micros.try_into().unwrap_or_default(),
       )
       .ok();
 
       let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
-      match self.artifact_client.enqueue_upload(
-        file,
+      match self.artifact_client.enqueue_upload_from_path(
+        snapshot_ref.path.clone(),
         "state_snapshot".to_string(),
         LogFields::new(),
         timestamp,
@@ -423,7 +382,7 @@ impl StateUploadWorker {
               "state snapshot persisted to artifact queue for timestamp {}",
               snapshot_ref.timestamp_micros
             );
-            self.on_state_uploaded(snapshot_ref.timestamp_micros);
+            self.stats.snapshots_uploaded.inc();
           },
           Ok(Err(e)) => {
             log::warn!("failed to persist state snapshot upload entry: {e}");
@@ -456,91 +415,58 @@ impl StateUploadWorker {
     &self,
     batch_oldest_micros: u64,
     batch_newest_micros: u64,
-    uploaded_through: u64,
     last_change: u64,
   ) -> UploadPreflight {
     if last_change == 0 {
+      log::debug!("state upload: last_change=0, skipping (batch_newest={batch_newest_micros})");
+      return UploadPreflight::Skipped;
+    }
+
+    let snapshots = self.find_snapshots_in_range(batch_oldest_micros, batch_newest_micros);
+    if !snapshots.is_empty() {
+      return UploadPreflight::Ready(snapshots);
+    }
+
+    let now_micros = self
+      .time_provider
+      .now()
+      .unix_timestamp_micros()
+      .cast_unsigned();
+    if self.snapshot_creation_on_cooldown(now_micros) {
+      self.stats.snapshots_skipped.inc();
       log::debug!(
-        "state upload: last_change=0, skipping (uploaded_through={uploaded_through}, \
-         batch_oldest={batch_oldest_micros})"
+        "deferring snapshot creation due to cooldown (last={}, now={now_micros}, interval={})",
+        self.last_snapshot_creation_micros.load(Ordering::Relaxed),
+        self.snapshot_creation_interval_micros
       );
-      return UploadPreflight::Skipped;
+      return UploadPreflight::DeferredCooldown;
     }
 
-    if uploaded_through >= batch_oldest_micros {
-      self.stats.snapshots_skipped.inc();
-      return UploadPreflight::Skipped;
-    }
-
-    if last_change <= uploaded_through {
-      self.stats.snapshots_skipped.inc();
-      return UploadPreflight::Skipped;
-    }
-
-    let mut snapshots = self.find_snapshots_in_range(uploaded_through, batch_newest_micros);
-    let effective_coverage = snapshots
-      .last()
-      .map_or(uploaded_through, |snapshot| snapshot.timestamp_micros);
-
-    if last_change > effective_coverage {
-      let now_micros = self
-        .time_provider
-        .now()
-        .unix_timestamp_micros()
-        .cast_unsigned();
-      if self.snapshot_creation_on_cooldown(now_micros) {
-        self.stats.snapshots_skipped.inc();
-        log::debug!(
-          "deferring snapshot creation due to cooldown (last={}, now={now_micros}, interval={})",
-          self.last_snapshot_creation_micros.load(Ordering::Relaxed),
-          self.snapshot_creation_interval_micros
-        );
-        return UploadPreflight::DeferredCooldown;
-      }
-
-      if let Some(snapshot) = self
-        .create_snapshot_if_needed(effective_coverage.saturating_add(1))
-        .await
-        && snapshot.timestamp_micros > effective_coverage
-      {
-        snapshots.push(snapshot);
-      }
-    }
-
-    if snapshots.is_empty() {
-      UploadPreflight::Skipped
-    } else {
-      UploadPreflight::Ready(snapshots)
-    }
+    self
+      .create_snapshot_if_needed(last_change)
+      .await
+      .map_or(UploadPreflight::DeferredCooldown, |snapshot| {
+        UploadPreflight::Ready(vec![snapshot])
+      })
   }
 
-  /// Called after a state snapshot has been successfully uploaded.
-  fn on_state_uploaded(&self, snapshot_timestamp_micros: u64) {
-    self
-      .state_uploaded_through_micros
-      .fetch_max(snapshot_timestamp_micros, Ordering::Relaxed);
-    self.stats.snapshots_uploaded.inc();
-
-    // Update retention handle to allow cleanup of snapshots older than what we've uploaded.
-    if let Some(handle) = &self.retention_handle {
-      handle.update_retention_micros(snapshot_timestamp_micros);
-    }
-
-    // Persist the updated coverage.
-    self
-      .store
-      .set_string(&STATE_UPLOAD_KEY, &snapshot_timestamp_micros.to_string());
-  }
-
-  /// Finds all snapshot files in the range `(after_micros, up_to_micros]`, sorted oldest first.
-  ///
-  /// This ensures we upload every state change that occurred during the batch window, not just the
-  /// most recent one.
-  pub(crate) fn find_snapshots_in_range(
+  fn find_snapshots_in_range(
     &self,
-    after_micros: u64,
-    up_to_micros: u64,
+    batch_oldest_micros: u64,
+    batch_newest_micros: u64,
   ) -> Vec<SnapshotRef> {
+    self
+      .find_all_snapshots()
+      .into_iter()
+      .filter(|snapshot| {
+        snapshot.timestamp_micros >= batch_oldest_micros
+          && snapshot.timestamp_micros <= batch_newest_micros
+      })
+      .collect()
+  }
+
+  /// Finds all snapshot files, sorted oldest first.
+  pub(crate) fn find_all_snapshots(&self) -> Vec<SnapshotRef> {
     let Some(state_path) = self.state_store_path.as_ref() else {
       return vec![];
     };
@@ -556,14 +482,10 @@ impl StateUploadWorker {
         let path = entry.path();
         let filename = path.file_name().and_then(|f| f.to_str())?.to_owned();
         let parsed = SnapshotFilename::parse(&filename)?;
-        if parsed.timestamp_micros > after_micros && parsed.timestamp_micros <= up_to_micros {
-          Some(SnapshotRef {
-            timestamp_micros: parsed.timestamp_micros,
-            path,
-          })
-        } else {
-          None
-        }
+        Some(SnapshotRef {
+          timestamp_micros: parsed.timestamp_micros,
+          path,
+        })
       })
       .collect();
 
@@ -581,6 +503,11 @@ impl StateUploadWorker {
     min_uncovered_micros: u64,
   ) -> Option<SnapshotRef> {
     let state_store = self.state_store.as_ref()?;
+    if let Some(handle) = &self.retention_handle {
+      // Ensure cleanup during rotation doesn't remove the newly created snapshot before it can be
+      // enqueued for upload.
+      handle.update_retention_micros(min_uncovered_micros);
+    }
 
     let now_micros = {
       let now = self.time_provider.now();
@@ -628,4 +555,78 @@ impl StateUploadWorker {
     last_creation > 0
       && now_micros.saturating_sub(last_creation) < self.snapshot_creation_interval_micros
   }
+
+  fn persist_pending_range(&self) {
+    match self.pending_range {
+      Some(range) => self
+        .store
+        .set(&PENDING_UPLOAD_RANGE_KEY, &pending_range_to_proto(range)),
+      None => self
+        .store
+        .set(&PENDING_UPLOAD_RANGE_KEY, &ProtoStruct::default()),
+    }
+  }
+
+  fn read_persisted_pending_range(&self) -> Option<PendingRange> {
+    self
+      .store
+      .get(&PENDING_UPLOAD_RANGE_KEY)
+      .and_then(|proto| pending_range_from_proto(&proto))
+  }
+
+  fn refresh_retention_handle(&self) {
+    let Some(handle) = &self.retention_handle else {
+      return;
+    };
+    let oldest_snapshot = self
+      .find_all_snapshots()
+      .into_iter()
+      .map(|s| s.timestamp_micros)
+      .min();
+    match oldest_snapshot {
+      Some(oldest) => handle.update_retention_micros(oldest),
+      None => handle.update_retention_micros(RetentionHandle::RETENTION_NONE),
+    }
+  }
+}
+
+fn pending_range_to_proto(range: PendingRange) -> ProtoStruct {
+  let mut proto = ProtoStruct::new();
+  proto.fields.insert(
+    "oldest_micros".to_string(),
+    ProtoValue {
+      kind: Some(value::Kind::StringValue(range.oldest_micros.to_string())),
+      ..Default::default()
+    },
+  );
+  proto.fields.insert(
+    "newest_micros".to_string(),
+    ProtoValue {
+      kind: Some(value::Kind::StringValue(range.newest_micros.to_string())),
+      ..Default::default()
+    },
+  );
+  proto
+}
+
+fn pending_range_from_proto(proto: &ProtoStruct) -> Option<PendingRange> {
+  let oldest = proto
+    .fields
+    .get("oldest_micros")
+    .and_then(proto_string_value_to_u64)?;
+  let newest = proto
+    .fields
+    .get("newest_micros")
+    .and_then(proto_string_value_to_u64)?;
+  Some(PendingRange {
+    oldest_micros: oldest,
+    newest_micros: newest,
+  })
+}
+
+fn proto_string_value_to_u64(value: &ProtoValue) -> Option<u64> {
+  let value::Kind::StringValue(v) = value.kind.as_ref()? else {
+    return None;
+  };
+  v.parse::<u64>().ok()
 }

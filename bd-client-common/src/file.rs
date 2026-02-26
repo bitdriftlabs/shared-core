@@ -60,6 +60,16 @@ pub fn read_compressed_protobuf<T: protobuf::Message>(
   Ok(T::parse_from_tokio_bytes(&decompressed_bytes.into())?)
 }
 
+#[must_use]
+pub fn is_zlib_data(bytes: &[u8]) -> bool {
+  if bytes.len() < 2 || bytes[0] != 0x78 {
+    return false;
+  }
+
+  let cmf_flg = u16::from(bytes[0]) << 8 | u16::from(bytes[1]);
+  cmf_flg % 31 == 0
+}
+
 /// Writes the data and appends a CRC checksum at the end of the slice. The checksum is a 4-byte
 /// little-endian CRC32 checksum of the data.
 #[must_use]

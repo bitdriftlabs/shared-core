@@ -933,6 +933,39 @@ async fn enqueue_upload_acknowledges_after_disk_persist() {
 }
 
 #[tokio::test]
+async fn enqueue_upload_from_path_acknowledges_after_disk_persist_and_removes_source() {
+  let mut setup = Setup::new(2).await;
+
+  let source_path = std::path::PathBuf::from("source_snapshot.zz");
+  setup
+    .filesystem
+    .write_file(&source_path, b"snapshot")
+    .await
+    .unwrap();
+
+  let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
+  let id = setup
+    .client
+    .enqueue_upload_from_path(
+      source_path.clone(),
+      "state_snapshot".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      Some(persisted_tx),
+    )
+    .unwrap();
+
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id.to_string()
+  );
+  persisted_rx.await.unwrap().unwrap();
+  assert!(!setup.filesystem.exists(&source_path).await.unwrap());
+}
+
+#[tokio::test]
 async fn queue_full_with_only_state_snapshots_rejects_new_state_snapshot() {
   let mut setup = Setup::new(1).await;
 
