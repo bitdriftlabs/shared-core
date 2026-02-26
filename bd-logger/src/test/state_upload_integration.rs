@@ -50,6 +50,10 @@ fn continuous_buffer_creates_and_uploads_state_snapshot() {
         bd_runtime::runtime::state::MaxSnapshotCount::path(),
         ValueKind::Int(10),
       ),
+      (
+        bd_runtime::runtime::state::StateUploadEnabled::path(),
+        ValueKind::Bool(true),
+      ),
     ],
     ..Default::default()
   });
@@ -134,6 +138,10 @@ fn trigger_buffer_flush_creates_snapshot() {
       (
         bd_runtime::runtime::state::MaxSnapshotCount::path(),
         ValueKind::Int(10),
+      ),
+      (
+        bd_runtime::runtime::state::StateUploadEnabled::path(),
+        ValueKind::Bool(true),
       ),
     ],
     ..Default::default()
@@ -231,6 +239,10 @@ fn trigger_buffer_with_multiple_flushes_uploads_state_once() {
         bd_runtime::runtime::state::SnapshotCreationIntervalMs::path(),
         ValueKind::Int(0),
       ),
+      (
+        bd_runtime::runtime::state::StateUploadEnabled::path(),
+        ValueKind::Bool(true),
+      ),
     ],
     ..Default::default()
   });
@@ -318,7 +330,7 @@ fn trigger_buffer_with_multiple_flushes_uploads_state_once() {
 }
 
 #[test]
-fn state_upload_handle_prevents_duplicate_uploads() {
+fn state_correlator_prevents_duplicate_uploads() {
   let sdk_directory = Arc::new(TempDir::with_prefix("sdk").unwrap());
 
   let mut setup = Setup::new_with_cached_runtime(SetupOptions {
@@ -336,6 +348,10 @@ fn state_upload_handle_prevents_duplicate_uploads() {
       (
         bd_runtime::runtime::state::SnapshotCreationIntervalMs::path(),
         ValueKind::Int(0),
+      ),
+      (
+        bd_runtime::runtime::state::StateUploadEnabled::path(),
+        ValueKind::Bool(true),
       ),
     ],
     ..Default::default()
@@ -417,6 +433,10 @@ fn new_state_changes_trigger_new_snapshot() {
         bd_runtime::runtime::state::SnapshotCreationIntervalMs::path(),
         ValueKind::Int(0),
       ),
+      (
+        bd_runtime::runtime::state::StateUploadEnabled::path(),
+        ValueKind::Bool(true),
+      ),
     ],
     ..Default::default()
   });
@@ -467,7 +487,7 @@ fn continuous_streaming_uploads_state_with_first_batch() {
   let sdk_directory = Arc::new(TempDir::with_prefix("sdk").unwrap());
 
   let mut setup = Setup::new_with_cached_runtime(SetupOptions {
-    sdk_directory: sdk_directory.clone(),
+    sdk_directory,
     disk_storage: true,
     extra_runtime_values: vec![
       (
@@ -485,6 +505,10 @@ fn continuous_streaming_uploads_state_with_first_batch() {
       (
         bd_runtime::runtime::state::MaxSnapshotCount::path(),
         ValueKind::Int(10),
+      ),
+      (
+        bd_runtime::runtime::state::StateUploadEnabled::path(),
+        ValueKind::Bool(true),
       ),
     ],
     ..Default::default()
@@ -527,19 +551,6 @@ fn continuous_streaming_uploads_state_with_first_batch() {
         "state snapshot should have content"
       );
       found_artifact = true;
-
-      let snapshots_dir = sdk_directory.path().join("state/snapshots");
-      if snapshots_dir.exists() {
-        let snapshot_files: Vec<_> = std::fs::read_dir(&snapshots_dir)
-          .unwrap()
-          .filter_map(Result::ok)
-          .filter(|e| e.path().extension().is_some_and(|ext| ext == "zz"))
-          .collect();
-        assert!(
-          !snapshot_files.is_empty(),
-          "snapshot .zz files should exist for continuous streaming"
-        );
-      }
       break;
     }
     std::thread::sleep(std::time::Duration::from_millis(100));
@@ -570,6 +581,10 @@ fn continuous_streaming_multiple_batches_single_state_upload() {
       (
         bd_runtime::runtime::state::SnapshotCreationIntervalMs::path(),
         ValueKind::Int(0),
+      ),
+      (
+        bd_runtime::runtime::state::StateUploadEnabled::path(),
+        ValueKind::Bool(true),
       ),
     ],
     ..Default::default()

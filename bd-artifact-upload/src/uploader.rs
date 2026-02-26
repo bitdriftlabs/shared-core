@@ -41,6 +41,7 @@ use std::sync::{Arc, LazyLock};
 #[cfg(test)]
 use tests::TestHooks;
 use time::OffsetDateTime;
+use tokio::sync::oneshot;
 use uuid::Uuid;
 
 /// Root directory for all files used for storage and uploading.
@@ -48,6 +49,7 @@ pub static REPORT_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| "report_upload
 
 /// The index file used for tracking all of the individual files.
 pub static REPORT_INDEX_FILE: LazyLock<PathBuf> = LazyLock::new(|| "report_index.pb".into());
+const STATE_SNAPSHOT_TYPE_ID: &str = "state_snapshot";
 
 #[derive(Default, Clone, Copy)]
 pub enum ArtifactType {
@@ -115,6 +117,7 @@ struct NewUpload {
   timestamp: Option<OffsetDateTime>,
   session_id: String,
   feature_flags: Vec<SnappedFeatureFlag>,
+  persisted_tx: Option<oneshot::Sender<anyhow::Result<()>>>,
 }
 
 // Used for bounded_buffer logs
@@ -184,6 +187,7 @@ pub trait Client: Send + Sync {
     timestamp: Option<OffsetDateTime>,
     session_id: String,
     feature_flags: Vec<SnappedFeatureFlag>,
+    persisted_tx: Option<oneshot::Sender<anyhow::Result<()>>>,
   ) -> anyhow::Result<Uuid>;
 }
 
@@ -202,6 +206,7 @@ impl Client for UploadClient {
     timestamp: Option<OffsetDateTime>,
     session_id: String,
     feature_flags: Vec<SnappedFeatureFlag>,
+    persisted_tx: Option<oneshot::Sender<anyhow::Result<()>>>,
   ) -> anyhow::Result<Uuid> {
     let uuid = uuid::Uuid::new_v4();
 
@@ -215,6 +220,7 @@ impl Client for UploadClient {
         timestamp,
         session_id,
         feature_flags,
+        persisted_tx,
       })
       .inspect_err(|e| log::warn!("failed to enqueue artifact upload: {e:?}"));
 
@@ -422,6 +428,7 @@ impl Uploader {
             timestamp,
             session_id,
             feature_flags,
+            persisted_tx,
         }) = self.upload_queued_rx.recv() => {
           log::debug!("tracking artifact: {uuid} for upload");
           self
@@ -433,6 +440,7 @@ impl Uploader {
               session_id,
               timestamp,
               feature_flags,
+              persisted_tx,
             )
             .await;
         }
@@ -612,16 +620,38 @@ impl Uploader {
     session_id: String,
     timestamp: Option<OffsetDateTime>,
     feature_flags: Vec<SnappedFeatureFlag>,
+    mut persisted_tx: Option<oneshot::Sender<anyhow::Result<()>>>,
   ) {
     // If we've reached our limit of entries, stop the entry currently being uploaded (the oldest
     // one) to make space for the newer one.
     // TODO(snowp): Consider also having a bound on the size of the files persisted to disk.
     if self.index.len() == usize::try_from(*self.max_entries.read()).unwrap_or_default() {
-      log::debug!("upload queue is full, dropping current upload");
-
-      self.stats.dropped.inc();
-      self.stop_current_upload();
-      self.index.pop_front();
+      if let Some(index_to_drop) = self
+        .index
+        .iter()
+        .position(|entry| entry.type_id.as_deref() != Some(STATE_SNAPSHOT_TYPE_ID))
+      {
+        log::debug!("upload queue is full, dropping oldest non-state upload");
+        self.stats.dropped.inc();
+        if index_to_drop == 0 {
+          self.stop_current_upload();
+        }
+        if let Some(entry) = self.index.remove(index_to_drop) {
+          let file_path = REPORT_DIRECTORY.join(&entry.name);
+          if let Err(e) = self.file_system.delete_file(&file_path).await {
+            log::warn!("failed to delete artifact {:?}: {}", entry.name, e);
+          }
+        }
+        self.write_index().await;
+      } else {
+        self.stats.dropped.inc();
+        if let Some(tx) = persisted_tx.take() {
+          let _ = tx.send(Err(anyhow::anyhow!(
+            "upload queue full and all pending uploads are state snapshots"
+          )));
+        }
+        return;
+      }
     }
 
     let uuid = uuid.to_string();
@@ -634,6 +664,11 @@ impl Uploader {
       Ok(file) => file,
       Err(e) => {
         log::warn!("failed to create file for artifact: {uuid} on disk: {e}");
+        if let Some(tx) = persisted_tx.take() {
+          let _ = tx.send(Err(anyhow::anyhow!(
+            "failed to create file for artifact {uuid}: {e}"
+          )));
+        }
 
         #[cfg(test)]
         if let Some(hooks) = &self.test_hooks {
@@ -646,6 +681,11 @@ impl Uploader {
     if let Err(e) = async_write_checksummed_data(tokio::fs::File::from_std(file), target_file).await
     {
       log::warn!("failed to write artifact to disk: {uuid} to disk: {e}");
+      if let Some(tx) = persisted_tx.take() {
+        let _ = tx.send(Err(anyhow::anyhow!(
+          "failed to write artifact to disk {uuid}: {e}"
+        )));
+      }
 
       #[cfg(test)]
       if let Some(hooks) = &self.test_hooks {
@@ -692,6 +732,9 @@ impl Uploader {
     });
 
     self.write_index().await;
+    if let Some(tx) = persisted_tx {
+      let _ = tx.send(Ok(()));
+    }
 
 
     #[cfg(test)]

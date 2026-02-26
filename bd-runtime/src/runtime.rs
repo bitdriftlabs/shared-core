@@ -966,6 +966,10 @@ pub mod state {
     5000
   );
 
+  // Controls whether state snapshot uploads are enabled. When disabled, state snapshots are
+  // not uploaded alongside log uploads. Defaults to false as a safe rollout mechanism.
+  bool_feature_flag!(StateUploadEnabled, "state.upload_enabled", false);
+
   // Controls the maximum number of snapshots to retain for persistent state.
   // Snapshots will generally be cleaned up based on the retention window dictated by the active
   // retention handles, but this flag places an upper limit on the number of snapshots retained. The

@@ -312,7 +312,8 @@ impl BufferUploadManager {
         let consumer = buffer.clone().register_consumer()?;
 
         let batch_builder = BatchBuilder::new(self.feature_flags.clone());
-        let state_upload_handle = self.state_upload_handle.clone();
+        // Stream uploads are excluded from state snapshot uploads for now.
+        let state_upload_handle = None;
         tokio::task::spawn(async move {
           StreamedBufferUpload {
             consumer,

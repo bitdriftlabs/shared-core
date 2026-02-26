@@ -176,10 +176,13 @@ impl StateUploadHandle {
   /// asynchronously. If the channel is full, the request is silently dropped — the worker will
   /// still cover the needed state range via already-queued requests.
   pub fn notify_upload_needed(&self, batch_oldest_micros: u64, batch_newest_micros: u64) {
-    let _ = self.upload_tx.try_send(StateUploadRequest {
+    let result = self.upload_tx.try_send(StateUploadRequest {
       batch_oldest_micros,
       batch_newest_micros,
     });
+    if let Err(e) = result {
+      log::warn!("dropping state upload request due to full channel: {e}");
+    }
   }
 }
 
@@ -321,6 +324,7 @@ impl StateUploadWorker {
         OffsetDateTime::from_unix_timestamp_nanos(i128::from(snapshot_ref.timestamp_micros) * 1000)
           .ok();
 
+      let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
       match self.artifact_client.enqueue_upload(
         file,
         "state_snapshot".to_string(),
@@ -328,13 +332,26 @@ impl StateUploadWorker {
         timestamp,
         "state_snapshot".to_string(),
         vec![],
+        Some(persisted_tx),
       ) {
-        Ok(_uuid) => {
-          log::debug!(
-            "state snapshot upload enqueued for timestamp {}",
-            snapshot_ref.timestamp_micros
-          );
-          self.on_state_uploaded(snapshot_ref.timestamp_micros);
+        Ok(_uuid) => match persisted_rx.await {
+          Ok(Ok(())) => {
+            log::debug!(
+              "state snapshot persisted to artifact queue for timestamp {}",
+              snapshot_ref.timestamp_micros
+            );
+            self.on_state_uploaded(snapshot_ref.timestamp_micros);
+          },
+          Ok(Err(e)) => {
+            log::warn!("failed to persist state snapshot upload entry: {e}");
+            self.stats.upload_failures.inc();
+            return;
+          },
+          Err(e) => {
+            log::warn!("state snapshot persistence ack channel dropped: {e}");
+            self.stats.upload_failures.inc();
+            return;
+          },
         },
         Err(e) => {
           log::warn!("failed to enqueue state snapshot upload: {e}");

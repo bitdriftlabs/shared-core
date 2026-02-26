@@ -166,6 +166,7 @@ async fn basic_flow() {
       Some(timestamp),
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
 
@@ -232,6 +233,7 @@ async fn feature_flags() {
         ),
         SnappedFeatureFlag::new("key2".to_string(), None, timestamp - 2.std_seconds()),
       ],
+      None,
     )
     .unwrap();
 
@@ -301,6 +303,7 @@ async fn pending_upload_limit() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -317,6 +320,7 @@ async fn pending_upload_limit() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -332,6 +336,7 @@ async fn pending_upload_limit() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -400,6 +405,7 @@ async fn inconsistent_state_missing_file() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -415,6 +421,7 @@ async fn inconsistent_state_missing_file() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -458,6 +465,7 @@ async fn inconsistent_state_extra_file() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -529,6 +537,7 @@ async fn disk_persistence() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -576,6 +585,7 @@ async fn inconsistent_state_missing_index() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -600,6 +610,7 @@ async fn inconsistent_state_missing_index() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -646,6 +657,7 @@ async fn new_entry_disk_full() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -675,6 +687,7 @@ async fn new_entry_disk_full_after_received() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -716,6 +729,7 @@ async fn intent_retries() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -751,6 +765,7 @@ async fn intent_drop() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -788,6 +803,7 @@ async fn upload_retries() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -840,6 +856,7 @@ async fn normalize_type_id_on_load() {
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -882,4 +899,74 @@ async fn normalize_type_id_on_load() {
     assert_eq!(intent.payload.artifact_id, id.to_string());
     assert_eq!(intent.payload.type_id, "client_report");
   });
+}
+
+#[tokio::test]
+async fn enqueue_upload_acknowledges_after_disk_persist() {
+  let mut setup = Setup::new(2).await;
+
+  let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
+  let id = setup
+    .client
+    .enqueue_upload(
+      setup.make_file(b"snapshot"),
+      "state_snapshot".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      Some(persisted_tx),
+    )
+    .unwrap();
+
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id.to_string()
+  );
+  persisted_rx.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn queue_full_with_only_state_snapshots_rejects_new_state_snapshot() {
+  let mut setup = Setup::new(1).await;
+
+  let (persisted_tx1, persisted_rx1) = tokio::sync::oneshot::channel();
+  let id1 = setup
+    .client
+    .enqueue_upload(
+      setup.make_file(b"state-1"),
+      "state_snapshot".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      Some(persisted_tx1),
+    )
+    .unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id1.to_string()
+  );
+  persisted_rx1.await.unwrap().unwrap();
+
+  let (persisted_tx2, persisted_rx2) = tokio::sync::oneshot::channel();
+  let _id2 = setup
+    .client
+    .enqueue_upload(
+      setup.make_file(b"state-2"),
+      "state_snapshot".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      Some(persisted_tx2),
+    )
+    .unwrap();
+
+  assert!(persisted_rx2.await.unwrap().is_err());
+  assert!(
+    timeout(100.std_milliseconds(), setup.entry_received_rx.recv())
+      .await
+      .is_err()
+  );
 }

@@ -488,6 +488,7 @@ impl Monitor {
       timestamp,
       session_id.clone(),
       reporting_feature_flags.clone(),
+      None,
     ) else {
       log::warn!(
         "Failed to enqueue issue report for upload: {}",
