@@ -358,3 +358,27 @@ async fn prefers_existing_snapshot_over_on_demand_creation() {
   );
   assert_eq!(snapshots[1].timestamp_micros, newer_snapshot_ts);
 }
+
+#[test]
+fn pending_range_merge_widens_bounds() {
+  let mut pending = PendingRange {
+    oldest_micros: 100,
+    newest_micros: 200,
+  };
+  pending.merge(PendingRange {
+    oldest_micros: 50,
+    newest_micros: 250,
+  });
+  assert_eq!(pending.oldest_micros, 50);
+  assert_eq!(pending.newest_micros, 250);
+}
+
+#[test]
+fn backpressure_error_detection_matches_queue_full() {
+  assert!(StateUploadWorker::is_backpressure_error(
+    "upload queue full and all pending uploads are state snapshots"
+  ));
+  assert!(!StateUploadWorker::is_backpressure_error(
+    "failed to open snapshot file"
+  ));
+}

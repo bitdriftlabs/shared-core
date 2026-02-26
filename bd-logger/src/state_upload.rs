@@ -44,10 +44,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use time::OffsetDateTime;
 use tokio::sync::mpsc;
+use tokio::time::{Duration, sleep};
 
 /// Capacity of the upload request channel. Requests beyond this are silently dropped — the worker
 /// will process the queued requests which already cover the needed state range.
 const UPLOAD_CHANNEL_CAPACITY: usize = 8;
+const BACKPRESSURE_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Key for persisting the state upload index via bd-key-value.
 static STATE_UPLOAD_KEY: bd_key_value::Key<String> =
@@ -64,9 +66,30 @@ pub struct SnapshotRef {
 }
 
 /// A request from a buffer uploader to upload a state snapshot if needed.
+#[derive(Clone, Copy)]
 struct StateUploadRequest {
   batch_oldest_micros: u64,
   batch_newest_micros: u64,
+}
+
+#[derive(Clone, Copy)]
+struct PendingRange {
+  oldest_micros: u64,
+  newest_micros: u64,
+}
+
+impl PendingRange {
+  const fn from_request(request: &StateUploadRequest) -> Self {
+    Self {
+      oldest_micros: request.batch_oldest_micros,
+      newest_micros: request.batch_newest_micros,
+    }
+  }
+
+  fn merge(&mut self, other: Self) {
+    self.oldest_micros = self.oldest_micros.min(other.oldest_micros);
+    self.newest_micros = self.newest_micros.max(other.newest_micros);
+  }
 }
 
 /// Statistics for state upload operations.
@@ -74,6 +97,7 @@ struct Stats {
   snapshots_uploaded: Counter,
   snapshots_skipped: Counter,
   upload_failures: Counter,
+  backpressure_pauses: Counter,
 }
 
 impl Stats {
@@ -82,6 +106,7 @@ impl Stats {
       snapshots_uploaded: scope.counter("snapshots_uploaded"),
       snapshots_skipped: scope.counter("snapshots_skipped"),
       upload_failures: scope.counter("upload_failures"),
+      backpressure_pauses: scope.counter("backpressure_pauses"),
     }
   }
 }
@@ -164,6 +189,7 @@ impl StateUploadHandle {
       time_provider,
       artifact_client,
       upload_rx,
+      pending_range: None,
       stats,
     };
 
@@ -227,8 +253,16 @@ pub struct StateUploadWorker {
 
   /// Receiver for upload requests from handle instances.
   upload_rx: mpsc::Receiver<StateUploadRequest>,
+  pending_range: Option<PendingRange>,
 
   stats: Stats,
+}
+
+enum ProcessResult {
+  Progress,
+  Backpressure,
+  Skipped,
+  Error,
 }
 
 
@@ -242,22 +276,65 @@ impl StateUploadWorker {
   /// Runs the worker event loop, processing upload requests until the channel is closed.
   pub async fn run(mut self) {
     log::debug!("state upload worker started");
-    while let Some(request) = self.upload_rx.recv().await {
-      // Drain any additional pending requests to coalesce: keep the widest timestamp range
-      // across all queued requests so we do the minimum number of snapshots.
-      let mut oldest = request.batch_oldest_micros;
-      let mut newest = request.batch_newest_micros;
-
-      while let Ok(extra) = self.upload_rx.try_recv() {
-        oldest = oldest.min(extra.batch_oldest_micros);
-        newest = newest.max(extra.batch_newest_micros);
+    loop {
+      tokio::select! {
+        Some(request) = self.upload_rx.recv() => {
+          self.ingest_request(request);
+          self.drain_pending_requests();
+          self.process_pending().await;
+        }
+        () = sleep(BACKPRESSURE_RETRY_INTERVAL), if self.pending_range.is_some() => {
+          self.process_pending().await;
+        }
+        else => break,
       }
-
-      self.process_upload(oldest, newest).await;
     }
   }
 
-  async fn process_upload(&self, batch_oldest_micros: u64, batch_newest_micros: u64) {
+  fn ingest_request(&mut self, request: StateUploadRequest) {
+    let incoming = PendingRange::from_request(&request);
+    if let Some(existing) = &mut self.pending_range {
+      existing.merge(incoming);
+    } else {
+      self.pending_range = Some(incoming);
+    }
+  }
+
+  fn drain_pending_requests(&mut self) {
+    while let Ok(request) = self.upload_rx.try_recv() {
+      self.ingest_request(request);
+    }
+  }
+
+  async fn process_pending(&mut self) {
+    let Some(pending) = self.pending_range else {
+      return;
+    };
+    match self
+      .process_upload(pending.oldest_micros, pending.newest_micros)
+      .await
+    {
+      ProcessResult::Backpressure => {
+        self.stats.backpressure_pauses.inc();
+      },
+      _ => {
+        if self.pending_satisfied(pending.oldest_micros) {
+          self.pending_range = None;
+        }
+      },
+    }
+  }
+
+  fn pending_satisfied(&self, pending_oldest_micros: u64) -> bool {
+    let uploaded_through = self.state_uploaded_through_micros.load(Ordering::Relaxed);
+    uploaded_through >= pending_oldest_micros
+  }
+
+  async fn process_upload(
+    &self,
+    batch_oldest_micros: u64,
+    batch_newest_micros: u64,
+  ) -> ProcessResult {
     let uploaded_through = self.state_uploaded_through_micros.load(Ordering::Relaxed);
     let last_change = self
       .state_store
@@ -270,19 +347,19 @@ impl StateUploadWorker {
         "state upload: last_change=0, skipping (uploaded_through={uploaded_through}, \
          batch_oldest={batch_oldest_micros})"
       );
-      return;
+      return ProcessResult::Skipped;
     }
 
     // If we've already uploaded state that covers this batch, no upload needed.
     if uploaded_through >= batch_oldest_micros {
       self.stats.snapshots_skipped.inc();
-      return;
+      return ProcessResult::Skipped;
     }
 
     // If there are no pending state changes since our last upload, no upload needed.
     if last_change <= uploaded_through {
       self.stats.snapshots_skipped.inc();
-      return;
+      return ProcessResult::Skipped;
     }
 
     // Find all snapshot files in (uploaded_through, batch_newest_micros] that need uploading.
@@ -293,7 +370,7 @@ impl StateUploadWorker {
       if let Some(snapshot) = self.get_or_create_snapshot(batch_oldest_micros).await {
         snapshots.push(snapshot);
       } else {
-        return;
+        return ProcessResult::Skipped;
       }
     }
 
@@ -315,7 +392,7 @@ impl StateUploadWorker {
             snapshot_ref.path.display()
           );
           self.stats.upload_failures.inc();
-          return;
+          return ProcessResult::Error;
         },
       };
 
@@ -345,21 +422,32 @@ impl StateUploadWorker {
           Ok(Err(e)) => {
             log::warn!("failed to persist state snapshot upload entry: {e}");
             self.stats.upload_failures.inc();
-            return;
+            if Self::is_backpressure_error(&e.to_string()) {
+              return ProcessResult::Backpressure;
+            }
+            return ProcessResult::Error;
           },
           Err(e) => {
             log::warn!("state snapshot persistence ack channel dropped: {e}");
             self.stats.upload_failures.inc();
-            return;
+            return ProcessResult::Error;
           },
         },
         Err(e) => {
           log::warn!("failed to enqueue state snapshot upload: {e}");
           self.stats.upload_failures.inc();
-          return;
+          if Self::is_backpressure_error(&e.to_string()) {
+            return ProcessResult::Backpressure;
+          }
+          return ProcessResult::Error;
         },
       }
     }
+    ProcessResult::Progress
+  }
+
+  fn is_backpressure_error(error: &str) -> bool {
+    error.contains("queue full")
   }
 
   /// Called after a state snapshot has been successfully uploaded.

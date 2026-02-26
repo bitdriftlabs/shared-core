@@ -49,18 +49,19 @@ pub static REPORT_DIRECTORY: LazyLock<PathBuf> = LazyLock::new(|| "report_upload
 
 /// The index file used for tracking all of the individual files.
 pub static REPORT_INDEX_FILE: LazyLock<PathBuf> = LazyLock::new(|| "report_index.pb".into());
-const STATE_SNAPSHOT_TYPE_ID: &str = "state_snapshot";
 
 #[derive(Default, Clone, Copy)]
 pub enum ArtifactType {
   #[default]
   Report,
+  StateSnapshot,
 }
 
 impl ArtifactType {
   fn to_type_id(self) -> &'static str {
     match self {
       Self::Report => "client_report",
+      Self::StateSnapshot => "state_snapshot",
     }
   }
 }
@@ -626,11 +627,9 @@ impl Uploader {
     // one) to make space for the newer one.
     // TODO(snowp): Consider also having a bound on the size of the files persisted to disk.
     if self.index.len() == usize::try_from(*self.max_entries.read()).unwrap_or_default() {
-      if let Some(index_to_drop) = self
-        .index
-        .iter()
-        .position(|entry| entry.type_id.as_deref() != Some(STATE_SNAPSHOT_TYPE_ID))
-      {
+      if let Some(index_to_drop) = self.index.iter().position(|entry| {
+        entry.type_id.as_deref() != Some(ArtifactType::StateSnapshot.to_type_id())
+      }) {
         log::debug!("upload queue is full, dropping oldest non-state upload");
         self.stats.dropped.inc();
         if index_to_drop == 0 {
