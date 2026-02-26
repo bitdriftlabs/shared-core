@@ -10,6 +10,7 @@
 use super::setup::{Setup, SetupOptions};
 use crate::log_level;
 use bd_log_matcher::builder::message_equals;
+use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::config::v1::config::{BufferConfigList, buffer_config};
 use bd_proto::protos::logging::payload::LogType;
@@ -483,7 +484,7 @@ fn new_state_changes_trigger_new_snapshot() {
 }
 
 #[test]
-fn continuous_streaming_uploads_state_with_first_batch() {
+fn stream_only_buffer_does_not_upload_state_snapshot() {
   let sdk_directory = Arc::new(TempDir::with_prefix("sdk").unwrap());
 
   let mut setup = Setup::new_with_cached_runtime(SetupOptions {
@@ -514,7 +515,21 @@ fn continuous_streaming_uploads_state_with_first_batch() {
     ..Default::default()
   });
 
-  setup.configure_stream_all_logs();
+  setup.send_configuration_update(configuration_update(
+    "",
+    StateOfTheWorld {
+      bdtail_configuration: Some(BdTailConfigurations {
+        active_streams: vec![BdTailStream {
+          stream_id: "all".into(),
+          matcher: None.into(),
+          ..Default::default()
+        }],
+        ..Default::default()
+      })
+      .into(),
+      ..Default::default()
+    },
+  ));
 
   setup
     .logger_handle
@@ -538,18 +553,14 @@ fn continuous_streaming_uploads_state_with_first_batch() {
   );
 
   let log_upload = setup.server.blocking_next_log_upload();
-  assert!(log_upload.is_some(), "expected log upload");
+  assert!(log_upload.is_some(), "expected streamed log upload");
 
   let timeout = std::time::Duration::from_secs(2);
   let start = std::time::Instant::now();
   let mut found_artifact = false;
 
   while start.elapsed() < timeout {
-    if let Some(artifact) = setup.server.blocking_next_artifact_upload() {
-      assert!(
-        !artifact.contents.is_empty(),
-        "state snapshot should have content"
-      );
+    if setup.server.blocking_next_artifact_upload().is_some() {
       found_artifact = true;
       break;
     }
@@ -557,8 +568,8 @@ fn continuous_streaming_uploads_state_with_first_batch() {
   }
 
   assert!(
-    found_artifact,
-    "expected artifact upload for state snapshot with continuous streaming"
+    !found_artifact,
+    "stream-only buffers should not trigger state snapshot artifact upload"
   );
 }
 

@@ -258,11 +258,19 @@ pub struct StateUploadWorker {
   stats: Stats,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ProcessResult {
   Progress,
   Backpressure,
+  DeferredCooldown,
   Skipped,
   Error,
+}
+
+enum UploadPreflight {
+  Skipped,
+  DeferredCooldown,
+  Ready(Vec<SnapshotRef>),
 }
 
 
@@ -314,10 +322,14 @@ impl StateUploadWorker {
       .process_upload(pending.oldest_micros, pending.newest_micros)
       .await
     {
-      ProcessResult::Backpressure => {
+      ProcessResult::Backpressure | ProcessResult::DeferredCooldown => {
         self.stats.backpressure_pauses.inc();
       },
       _ => {
+        // A "Skipped" result can still mean we're done with this pending range:
+        // process_upload first recomputes current coverage from persisted state/upload watermark.
+        // If another earlier upload already advanced coverage past `pending.oldest_micros`, there
+        // is nothing left to do for this range and we clear it here.
         if self.pending_satisfied(pending.oldest_micros) {
           self.pending_range = None;
         }
@@ -325,11 +337,23 @@ impl StateUploadWorker {
     }
   }
 
+  /// Pending work is satisfied once uploaded coverage reaches the oldest timestamp that required
+  /// state; newer pending windows are merged before this check.
   fn pending_satisfied(&self, pending_oldest_micros: u64) -> bool {
     let uploaded_through = self.state_uploaded_through_micros.load(Ordering::Relaxed);
     uploaded_through >= pending_oldest_micros
   }
 
+  // State upload flow:
+  // 1) Build an upload plan in `plan_upload_attempt` by checking coverage/last-change state,
+  //    finding in-range snapshots, and deciding whether on-demand snapshot creation is needed.
+  // 2) Handle preflight outcomes:
+  //    - `Skipped`: no work required for current coverage.
+  //    - `DeferredCooldown`: uncovered changes exist but snapshot creation is rate-limited.
+  //    - `Ready`: concrete snapshots should be uploaded now.
+  // 3) For each ready snapshot, enqueue and wait for persistence ack.
+  // 4) Advance `state_uploaded_through_micros` only after a successful persistence ack via
+  //    `on_state_uploaded`, so deferred/failed attempts never move the watermark.
   async fn process_upload(
     &self,
     batch_oldest_micros: u64,
@@ -341,38 +365,19 @@ impl StateUploadWorker {
       .as_ref()
       .map_or(0, |s| s.last_change_micros());
 
-    // If we've never seen any state changes, no upload needed.
-    if last_change == 0 {
-      log::debug!(
-        "state upload: last_change=0, skipping (uploaded_through={uploaded_through}, \
-         batch_oldest={batch_oldest_micros})"
-      );
-      return ProcessResult::Skipped;
-    }
-
-    // If we've already uploaded state that covers this batch, no upload needed.
-    if uploaded_through >= batch_oldest_micros {
-      self.stats.snapshots_skipped.inc();
-      return ProcessResult::Skipped;
-    }
-
-    // If there are no pending state changes since our last upload, no upload needed.
-    if last_change <= uploaded_through {
-      self.stats.snapshots_skipped.inc();
-      return ProcessResult::Skipped;
-    }
-
-    // Find all snapshot files in (uploaded_through, batch_newest_micros] that need uploading.
-    let mut snapshots = self.find_snapshots_in_range(uploaded_through, batch_newest_micros);
-
-    // If no existing snapshots cover the range, create one on-demand.
-    if snapshots.is_empty() {
-      if let Some(snapshot) = self.get_or_create_snapshot(batch_oldest_micros).await {
-        snapshots.push(snapshot);
-      } else {
-        return ProcessResult::Skipped;
-      }
-    }
+    let snapshots = match self
+      .plan_upload_attempt(
+        batch_oldest_micros,
+        batch_newest_micros,
+        uploaded_through,
+        last_change,
+      )
+      .await
+    {
+      UploadPreflight::Skipped => return ProcessResult::Skipped,
+      UploadPreflight::DeferredCooldown => return ProcessResult::DeferredCooldown,
+      UploadPreflight::Ready(snapshots) => snapshots,
+    };
 
     // Upload each snapshot in order, advancing the watermark after each confirmed upload.
     for snapshot_ref in snapshots {
@@ -396,10 +401,10 @@ impl StateUploadWorker {
         },
       };
 
-      // Convert timestamp from microseconds to OffsetDateTime.
-      let timestamp =
-        OffsetDateTime::from_unix_timestamp_nanos(i128::from(snapshot_ref.timestamp_micros) * 1000)
-          .ok();
+      let timestamp = OffsetDateTime::from_unix_timestamp_micros(
+        snapshot_ref.timestamp_micros.try_into().unwrap_or_default(),
+      )
+      .ok();
 
       let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
       match self.artifact_client.enqueue_upload(
@@ -444,6 +449,68 @@ impl StateUploadWorker {
       }
     }
     ProcessResult::Progress
+  }
+
+  async fn plan_upload_attempt(
+    &self,
+    batch_oldest_micros: u64,
+    batch_newest_micros: u64,
+    uploaded_through: u64,
+    last_change: u64,
+  ) -> UploadPreflight {
+    if last_change == 0 {
+      log::debug!(
+        "state upload: last_change=0, skipping (uploaded_through={uploaded_through}, \
+         batch_oldest={batch_oldest_micros})"
+      );
+      return UploadPreflight::Skipped;
+    }
+
+    if uploaded_through >= batch_oldest_micros {
+      self.stats.snapshots_skipped.inc();
+      return UploadPreflight::Skipped;
+    }
+
+    if last_change <= uploaded_through {
+      self.stats.snapshots_skipped.inc();
+      return UploadPreflight::Skipped;
+    }
+
+    let mut snapshots = self.find_snapshots_in_range(uploaded_through, batch_newest_micros);
+    let effective_coverage = snapshots
+      .last()
+      .map_or(uploaded_through, |snapshot| snapshot.timestamp_micros);
+
+    if last_change > effective_coverage {
+      let now_micros = self
+        .time_provider
+        .now()
+        .unix_timestamp_micros()
+        .cast_unsigned();
+      if self.snapshot_creation_on_cooldown(now_micros) {
+        self.stats.snapshots_skipped.inc();
+        log::debug!(
+          "deferring snapshot creation due to cooldown (last={}, now={now_micros}, interval={})",
+          self.last_snapshot_creation_micros.load(Ordering::Relaxed),
+          self.snapshot_creation_interval_micros
+        );
+        return UploadPreflight::DeferredCooldown;
+      }
+
+      if let Some(snapshot) = self
+        .create_snapshot_if_needed(effective_coverage.saturating_add(1))
+        .await
+        && snapshot.timestamp_micros > effective_coverage
+      {
+        snapshots.push(snapshot);
+      }
+    }
+
+    if snapshots.is_empty() {
+      UploadPreflight::Skipped
+    } else {
+      UploadPreflight::Ready(snapshots)
+    }
   }
 
   fn is_backpressure_error(error: &str) -> bool {
@@ -507,37 +574,14 @@ impl StateUploadWorker {
     found
   }
 
-  /// Returns the most recently created snapshot with timestamp ≤ `up_to_micros`, if any.
-  fn find_most_recent_snapshot(&self, up_to_micros: u64) -> Option<SnapshotRef> {
-    let state_path = self.state_store_path.as_ref()?;
-    let snapshots_dir = state_path.join("snapshots");
-    let entries = std::fs::read_dir(&snapshots_dir).ok()?;
-    entries
-      .flatten()
-      .filter_map(|entry| {
-        let path = entry.path();
-        let filename = path.file_name().and_then(|f| f.to_str())?.to_owned();
-        let parsed = SnapshotFilename::parse(&filename)?;
-        if parsed.timestamp_micros <= up_to_micros {
-          Some(SnapshotRef {
-            timestamp_micros: parsed.timestamp_micros,
-            path,
-          })
-        } else {
-          None
-        }
-      })
-      .max_by_key(|s| s.timestamp_micros)
-  }
-
-  /// Finds an existing snapshot or creates a new one for the given timestamp.
+  /// Creates a new snapshot for uncovered state changes, if needed.
   ///
   /// Implements cooldown logic to prevent excessive snapshot creation during high-volume log
-  /// streaming. If a snapshot was created recently (within `snapshot_creation_interval_micros`),
-  /// returns `None` to skip this upload cycle.
-  pub(crate) async fn get_or_create_snapshot(
+  /// streaming. If a snapshot was created recently (within
+  /// `snapshot_creation_interval_micros`), returns `None` to defer creation for a later retry.
+  pub(crate) async fn create_snapshot_if_needed(
     &self,
-    batch_oldest_micros: u64,
+    min_uncovered_micros: u64,
   ) -> Option<SnapshotRef> {
     let state_store = self.state_store.as_ref()?;
 
@@ -545,22 +589,18 @@ impl StateUploadWorker {
       let now = self.time_provider.now();
       now.unix_timestamp_micros().cast_unsigned()
     };
-    let last_creation = self.last_snapshot_creation_micros.load(Ordering::Relaxed);
-    if last_creation > 0
-      && now_micros.saturating_sub(last_creation) < self.snapshot_creation_interval_micros
-    {
+    if self.snapshot_creation_on_cooldown(now_micros) {
       log::debug!(
-        "skipping snapshot creation due to cooldown (last={last_creation}, now={now_micros}, \
-         interval={})",
+        "skipping snapshot creation due to cooldown (last={}, now={now_micros}, interval={})",
+        self.last_snapshot_creation_micros.load(Ordering::Relaxed),
         self.snapshot_creation_interval_micros
       );
       self.stats.snapshots_skipped.inc();
-      // Return the most recent existing snapshot instead of creating a new one.
-      return self.find_most_recent_snapshot(now_micros);
+      return None;
     }
 
     log::debug!(
-      "no existing snapshot covers log batch (oldest={batch_oldest_micros}), creating new snapshot"
+      "creating snapshot for uncovered state changes (min_uncovered_micros={min_uncovered_micros})"
     );
 
     let Some(snapshot_path) = state_store.rotate_journal().await else {
@@ -584,5 +624,11 @@ impl StateUploadWorker {
       timestamp_micros: parsed.timestamp_micros,
       path: snapshot_path,
     })
+  }
+
+  fn snapshot_creation_on_cooldown(&self, now_micros: u64) -> bool {
+    let last_creation = self.last_snapshot_creation_micros.load(Ordering::Relaxed);
+    last_creation > 0
+      && now_micros.saturating_sub(last_creation) < self.snapshot_creation_interval_micros
   }
 }
