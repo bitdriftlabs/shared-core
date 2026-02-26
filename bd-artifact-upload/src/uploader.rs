@@ -639,6 +639,10 @@ impl Uploader {
     // If we've reached our limit of entries, stop the entry currently being uploaded (the oldest
     // one) to make space for the newer one.
     // TODO(snowp): Consider also having a bound on the size of the files persisted to disk.
+    // TODO(snowp): We should consider redoing how backpressure works for crash reports as well as
+    // there are cases in which we drop reports. For now limit the backpressure mechanism to
+    // StateSnapshots as we want stronger guarantees than what is currently provided for regular
+    // crash reports.
     if self.index.len() == usize::try_from(*self.max_entries.read()).unwrap_or_default() {
       if let Some(index_to_drop) = self.index.iter().position(|entry| {
         entry.type_id.as_deref() != Some(ArtifactType::StateSnapshot.to_type_id())
