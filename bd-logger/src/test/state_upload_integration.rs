@@ -574,6 +574,79 @@ fn stream_only_buffer_does_not_upload_state_snapshot() {
 }
 
 #[test]
+fn continuous_buffer_uploads_state_with_first_batch() {
+  let sdk_directory = Arc::new(TempDir::with_prefix("sdk").unwrap());
+
+  let mut setup = Setup::new_with_cached_runtime(SetupOptions {
+    sdk_directory,
+    disk_storage: true,
+    extra_runtime_values: vec![
+      (
+        bd_runtime::runtime::state::UsePersistentStorage::path(),
+        ValueKind::Bool(true),
+      ),
+      (
+        bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
+        ValueKind::Int(2),
+      ),
+      (
+        bd_runtime::runtime::state::SnapshotCreationIntervalMs::path(),
+        ValueKind::Int(0),
+      ),
+      (
+        bd_runtime::runtime::state::MaxSnapshotCount::path(),
+        ValueKind::Int(10),
+      ),
+      (
+        bd_runtime::runtime::state::StateUploadEnabled::path(),
+        ValueKind::Bool(true),
+      ),
+    ],
+    ..Default::default()
+  });
+
+  setup.configure_stream_all_logs();
+  setup
+    .logger_handle
+    .set_feature_flag_exposure("continuous_flag".to_string(), Some("active".to_string()));
+
+  setup.log(
+    log_level::INFO,
+    LogType::NORMAL,
+    "continuous log 1".into(),
+    [].into(),
+    [].into(),
+    None,
+  );
+  setup.log(
+    log_level::INFO,
+    LogType::NORMAL,
+    "continuous log 2".into(),
+    [].into(),
+    [].into(),
+    None,
+  );
+
+  let log_upload = setup.server.blocking_next_log_upload();
+  assert!(log_upload.is_some(), "expected continuous log upload");
+
+  let timeout = std::time::Duration::from_secs(2);
+  let start = std::time::Instant::now();
+  while start.elapsed() < timeout {
+    if let Some(artifact) = setup.server.blocking_next_artifact_upload() {
+      assert!(
+        !artifact.contents.is_empty(),
+        "continuous buffers should trigger state snapshot artifact upload"
+      );
+      return;
+    }
+    std::thread::sleep(std::time::Duration::from_millis(100));
+  }
+
+  panic!("expected artifact upload for state snapshot with continuous buffers");
+}
+
+#[test]
 fn continuous_streaming_multiple_batches_single_state_upload() {
   let sdk_directory = Arc::new(TempDir::with_prefix("sdk").unwrap());
 

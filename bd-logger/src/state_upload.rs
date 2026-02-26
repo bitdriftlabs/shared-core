@@ -32,7 +32,7 @@
 #[path = "./state_upload_test.rs"]
 mod tests;
 
-use bd_artifact_upload::Client as ArtifactClient;
+use bd_artifact_upload::{Client as ArtifactClient, EnqueueError};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::LogFields;
 use bd_resilient_kv::SnapshotFilename;
@@ -427,7 +427,7 @@ impl StateUploadWorker {
           Ok(Err(e)) => {
             log::warn!("failed to persist state snapshot upload entry: {e}");
             self.stats.upload_failures.inc();
-            if Self::is_backpressure_error(&e.to_string()) {
+            if matches!(e, EnqueueError::QueueFull) {
               return ProcessResult::Backpressure;
             }
             return ProcessResult::Error;
@@ -441,7 +441,7 @@ impl StateUploadWorker {
         Err(e) => {
           log::warn!("failed to enqueue state snapshot upload: {e}");
           self.stats.upload_failures.inc();
-          if Self::is_backpressure_error(&e.to_string()) {
+          if matches!(e, EnqueueError::QueueFull) {
             return ProcessResult::Backpressure;
           }
           return ProcessResult::Error;
@@ -511,10 +511,6 @@ impl StateUploadWorker {
     } else {
       UploadPreflight::Ready(snapshots)
     }
-  }
-
-  fn is_backpressure_error(error: &str) -> bool {
-    error.contains("queue full")
   }
 
   /// Called after a state snapshot has been successfully uploaded.

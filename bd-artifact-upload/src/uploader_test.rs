@@ -6,7 +6,13 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::UploadClient;
-use crate::uploader::{Client, REPORT_DIRECTORY, REPORT_INDEX_FILE, SnappedFeatureFlag};
+use crate::uploader::{
+  Client,
+  EnqueueError,
+  REPORT_DIRECTORY,
+  REPORT_INDEX_FILE,
+  SnappedFeatureFlag,
+};
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentResponse, UploadResponse};
@@ -963,7 +969,7 @@ async fn queue_full_with_only_state_snapshots_rejects_new_state_snapshot() {
     )
     .unwrap();
 
-  assert!(persisted_rx2.await.unwrap().is_err());
+  assert_matches!(persisted_rx2.await.unwrap(), Err(EnqueueError::QueueFull));
   assert!(
     timeout(100.std_milliseconds(), setup.entry_received_rx.recv())
       .await

@@ -118,7 +118,7 @@ struct NewUpload {
   timestamp: Option<OffsetDateTime>,
   session_id: String,
   feature_flags: Vec<SnappedFeatureFlag>,
-  persisted_tx: Option<oneshot::Sender<anyhow::Result<()>>>,
+  persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
 }
 
 // Used for bounded_buffer logs
@@ -178,6 +178,16 @@ impl Stats {
   }
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum EnqueueError {
+  #[error("upload queue full")]
+  QueueFull,
+  #[error("upload channel closed")]
+  Closed,
+  #[error(transparent)]
+  Other(#[from] anyhow::Error),
+}
+
 #[automock]
 pub trait Client: Send + Sync {
   fn enqueue_upload(
@@ -188,8 +198,8 @@ pub trait Client: Send + Sync {
     timestamp: Option<OffsetDateTime>,
     session_id: String,
     feature_flags: Vec<SnappedFeatureFlag>,
-    persisted_tx: Option<oneshot::Sender<anyhow::Result<()>>>,
-  ) -> anyhow::Result<Uuid>;
+    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+  ) -> std::result::Result<Uuid, EnqueueError>;
 }
 
 pub struct UploadClient {
@@ -207,8 +217,8 @@ impl Client for UploadClient {
     timestamp: Option<OffsetDateTime>,
     session_id: String,
     feature_flags: Vec<SnappedFeatureFlag>,
-    persisted_tx: Option<oneshot::Sender<anyhow::Result<()>>>,
-  ) -> anyhow::Result<Uuid> {
+    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+  ) -> std::result::Result<Uuid, EnqueueError> {
     let uuid = uuid::Uuid::new_v4();
 
     let result = self
@@ -226,7 +236,10 @@ impl Client for UploadClient {
       .inspect_err(|e| log::warn!("failed to enqueue artifact upload: {e:?}"));
 
     self.counter_stats.record(&result);
-    result?;
+    result.map_err(|e| match e {
+      bd_bounded_buffer::TrySendError::FullSizeOverflow => EnqueueError::QueueFull,
+      bd_bounded_buffer::TrySendError::Closed => EnqueueError::Closed,
+    })?;
 
     Ok(uuid)
   }
@@ -621,7 +634,7 @@ impl Uploader {
     session_id: String,
     timestamp: Option<OffsetDateTime>,
     feature_flags: Vec<SnappedFeatureFlag>,
-    mut persisted_tx: Option<oneshot::Sender<anyhow::Result<()>>>,
+    mut persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
   ) {
     // If we've reached our limit of entries, stop the entry currently being uploaded (the oldest
     // one) to make space for the newer one.
@@ -645,9 +658,7 @@ impl Uploader {
       } else {
         self.stats.dropped.inc();
         if let Some(tx) = persisted_tx.take() {
-          let _ = tx.send(Err(anyhow::anyhow!(
-            "upload queue full and all pending uploads are state snapshots"
-          )));
+          let _ = tx.send(Err(EnqueueError::QueueFull));
         }
         return;
       }
@@ -664,9 +675,9 @@ impl Uploader {
       Err(e) => {
         log::warn!("failed to create file for artifact: {uuid} on disk: {e}");
         if let Some(tx) = persisted_tx.take() {
-          let _ = tx.send(Err(anyhow::anyhow!(
+          let _ = tx.send(Err(EnqueueError::Other(anyhow::anyhow!(
             "failed to create file for artifact {uuid}: {e}"
-          )));
+          ))));
         }
 
         #[cfg(test)]
@@ -681,9 +692,9 @@ impl Uploader {
     {
       log::warn!("failed to write artifact to disk: {uuid} to disk: {e}");
       if let Some(tx) = persisted_tx.take() {
-        let _ = tx.send(Err(anyhow::anyhow!(
+        let _ = tx.send(Err(EnqueueError::Other(anyhow::anyhow!(
           "failed to write artifact to disk {uuid}: {e}"
-        )));
+        ))));
       }
 
       #[cfg(test)]

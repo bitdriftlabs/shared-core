@@ -376,16 +376,6 @@ fn pending_range_merge_widens_bounds() {
   assert_eq!(pending.newest_micros, 250);
 }
 
-#[test]
-fn backpressure_error_detection_matches_queue_full() {
-  assert!(StateUploadWorker::is_backpressure_error(
-    "upload queue full and all pending uploads are state snapshots"
-  ));
-  assert!(!StateUploadWorker::is_backpressure_error(
-    "failed to open snapshot file"
-  ));
-}
-
 #[tokio::test]
 async fn cooldown_defer_does_not_advance_watermark() {
   let temp_dir = tempfile::tempdir().unwrap();
@@ -454,7 +444,7 @@ async fn enqueue_backpressure_keeps_pending_range() {
   mock_client
     .expect_enqueue_upload()
     .times(1)
-    .returning(|_, _, _, _, _, _, _| Err(anyhow::anyhow!("queue full")));
+    .returning(|_, _, _, _, _, _, _| Err(bd_artifact_upload::EnqueueError::QueueFull));
 
   let (_handle, mut worker) = StateUploadHandle::new(
     Some(state_dir),
@@ -498,7 +488,7 @@ async fn persisted_ack_error_does_not_advance_watermark() {
     .times(1)
     .returning(|_, _, _, _, _, _, persisted_tx| {
       if let Some(tx) = persisted_tx {
-        let _ = tx.send(Err(anyhow::anyhow!("persistence failed")));
+        let _ = tx.send(Err(bd_artifact_upload::EnqueueError::Closed));
       }
       Ok(Uuid::new_v4())
     });
@@ -632,7 +622,7 @@ async fn multiple_snapshots_partial_backpressure_keeps_pending_with_partial_prog
         }
         Ok(Uuid::new_v4())
       } else {
-        Err(anyhow::anyhow!("queue full"))
+        Err(bd_artifact_upload::EnqueueError::QueueFull)
       }
     });
 
