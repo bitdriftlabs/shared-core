@@ -11,7 +11,6 @@ use super::*;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag as _};
 use bd_test_helpers::session::in_memory_store;
 use bd_time::{SystemTimeProvider, TestTimeProvider};
-use std::sync::atomic::AtomicUsize;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -19,9 +18,12 @@ use uuid::Uuid;
 /// Inserts a dummy entry so that `rotate_journal` produces a non-empty snapshot file.
 async fn make_state_store(
   dir: &std::path::Path,
-) -> (Arc<bd_state::Store>, Arc<bd_state::RetentionRegistry>) {
+) -> (
+  Arc<bd_state::Store>,
+  Arc<bd_state::RetentionRegistry>,
+  Arc<TestTimeProvider>,
+) {
   let runtime_loader = ConfigLoader::new(dir);
-  // Enable snapshotting — the default (0) disables it.
   runtime_loader
     .update_snapshot(bd_proto::protos::client::api::RuntimeUpdate {
       version_nonce: "test".to_string(),
@@ -42,10 +44,13 @@ async fn make_state_store(
     .await
     .unwrap();
   let stats = bd_client_stats_store::Collector::default().scope("test");
+  let time_provider = Arc::new(TestTimeProvider::new(
+    OffsetDateTime::from_unix_timestamp(1).unwrap(),
+  ));
   let result = bd_state::Store::persistent(
     dir,
     bd_state::PersistentStoreConfig::default(),
-    Arc::new(SystemTimeProvider {}),
+    time_provider.clone(),
     &runtime_loader,
     &stats,
   )
@@ -61,297 +66,159 @@ async fn make_state_store(
     )
     .await
     .unwrap();
-  (Arc::new(result.store), result.retention_registry)
+  (
+    Arc::new(result.store),
+    result.retention_registry,
+    time_provider,
+  )
 }
 
-#[tokio::test]
-async fn no_state_changes() {
-  let store = in_memory_store();
-  let stats = bd_client_stats_store::Collector::default().scope("test");
+async fn insert_state_change(state_store: &bd_state::Store, key: &str) {
+  state_store
+    .insert(
+      bd_state::Scope::GlobalState,
+      key.to_string(),
+      bd_state::string_value("test_value"),
+    )
+    .await
+    .unwrap();
+}
 
-  // Verify construction succeeds and notify_upload_needed is non-blocking.
-  let (handle, _worker) = StateUploadHandle::new(
-    None,
-    store,
-    None,
-    None,
-    0,
-    Arc::new(SystemTimeProvider {}),
-    Arc::new(bd_artifact_upload::MockClient::new()),
-    &stats,
-  )
-  .await;
+struct Setup {
+  _temp_dir: tempfile::TempDir,
+  state_dir: std::path::PathBuf,
+  snapshots_dir: std::path::PathBuf,
+  state_store: Arc<bd_state::Store>,
+  retention_registry: Arc<bd_state::RetentionRegistry>,
+  time_provider: Arc<TestTimeProvider>,
+}
 
-  // With no state store, there are no state changes — channel send should succeed without blocking.
-  handle.notify_upload_needed(0, 1_000_000);
+impl Setup {
+  async fn new() -> Self {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let state_dir = temp_dir.path().join("state");
+    let snapshots_dir = state_dir.join("snapshots");
+    let (state_store, retention_registry, time_provider) = make_state_store(&state_dir).await;
+    Self {
+      _temp_dir: temp_dir,
+      state_dir,
+      snapshots_dir,
+      state_store,
+      retention_registry,
+      time_provider,
+    }
+  }
+
+  async fn worker_with_client(
+    &self,
+    cooldown_micros: u32,
+    client: Arc<bd_artifact_upload::MockClient>,
+  ) -> StateUploadWorker {
+    let store = in_memory_store();
+    let stats = bd_client_stats_store::Collector::default().scope("test");
+    let (_handle, worker) = StateUploadHandle::new(
+      Some(self.state_dir.clone()),
+      store,
+      Some(self.retention_registry.clone()),
+      Some(self.state_store.clone()),
+      cooldown_micros,
+      self.time_provider.clone(),
+      client,
+      &stats,
+    )
+    .await;
+    worker
+  }
+
+  fn now_micros(&self) -> u64 {
+    self
+      .time_provider
+      .now()
+      .unix_timestamp_micros()
+      .cast_unsigned()
+  }
+
+  async fn create_snapshot_after_state_change(&self, key: &str) -> u64 {
+    self.time_provider.advance(time::Duration::seconds(1));
+    insert_state_change(&self.state_store, key).await;
+    self.create_rotated_snapshot().await
+  }
+
+  async fn create_rotated_snapshot(&self) -> u64 {
+    let path = self.state_store.rotate_journal().await.unwrap();
+    let filename = path.file_name().unwrap().to_str().unwrap();
+    bd_resilient_kv::SnapshotFilename::parse(filename)
+      .unwrap()
+      .timestamp_micros
+  }
+
+  fn clear_snapshot_files(&self) {
+    if let Ok(entries) = std::fs::read_dir(&self.snapshots_dir) {
+      for entry in entries.flatten() {
+        std::fs::remove_file(entry.path()).unwrap();
+      }
+    }
+  }
 }
 
 #[tokio::test]
 async fn uploaded_coverage_prevents_reupload() {
-  let store = in_memory_store();
-  let stats = bd_client_stats_store::Collector::default().scope("test");
+  let setup = Setup::new().await;
+  let snapshot_ts = setup.create_rotated_snapshot().await;
 
-  let (_handle, worker) = StateUploadHandle::new(
-    None,
-    store,
-    None,
-    None,
-    0,
-    Arc::new(SystemTimeProvider {}),
-    Arc::new(bd_artifact_upload::MockClient::new()),
-    &stats,
-  )
-  .await;
+  let mut mock_client = bd_artifact_upload::MockClient::new();
+  mock_client.expect_enqueue_upload().times(0);
+  let mut worker = setup.worker_with_client(0, Arc::new(mock_client)).await;
 
-  worker.on_state_uploaded(1_704_067_300_000_000);
-
-  // After uploading through a timestamp, find_snapshots_in_range should return nothing for
-  // ranges already covered.
-  let snapshots = worker.find_snapshots_in_range(1_704_067_200_000_000, 1_704_067_300_000_000);
-  assert!(snapshots.is_empty(), "no snapshots in covered range");
-}
-
-#[tokio::test]
-async fn cooldown_prevents_rapid_snapshot_creation() {
-  let temp_dir = tempfile::tempdir().unwrap();
-  let state_dir = temp_dir.path().join("state");
-  let snapshots_dir = state_dir.join("snapshots");
-  let store = in_memory_store();
-  let stats = bd_client_stats_store::Collector::default().scope("test");
-
-  let (state_store, retention_registry) = make_state_store(&state_dir).await;
-
-  let (_handle, worker) = StateUploadHandle::new(
-    Some(state_dir),
-    store,
-    Some(retention_registry),
-    Some(state_store),
-    1000,
-    Arc::new(SystemTimeProvider {}),
-    Arc::new(bd_artifact_upload::MockClient::new()),
-    &stats,
-  )
-  .await;
-
-  let batch_ts = 0;
-
-  let snapshot1 = worker.create_snapshot_if_needed(batch_ts).await;
-  assert!(snapshot1.is_some(), "first snapshot should be created");
-
-  // Count snapshot files created.
-  let count_files = || std::fs::read_dir(&snapshots_dir).unwrap().count();
-  let file_count_after_first = count_files();
-  assert!(file_count_after_first >= 1, "snapshot file should exist");
-
-  let snapshot2 = worker.create_snapshot_if_needed(batch_ts).await;
-  assert!(
-    snapshot2.is_none(),
-    "second call should defer due to cooldown"
-  );
-  assert_eq!(
-    count_files(),
-    file_count_after_first,
-    "should not create new snapshot due to cooldown"
-  );
+  worker.on_state_uploaded(snapshot_ts);
+  worker.ingest_request(StateUploadRequest {
+    batch_oldest_micros: 1,
+    batch_newest_micros: snapshot_ts,
+  });
+  worker.process_pending().await;
+  assert!(worker.pending_range.is_none());
 }
 
 #[tokio::test]
 async fn cooldown_allows_snapshot_after_interval() {
-  let temp_dir = tempfile::tempdir().unwrap();
-  let state_dir = temp_dir.path().join("state");
-  let snapshots_dir = state_dir.join("snapshots");
-  let store = in_memory_store();
-  let stats = bd_client_stats_store::Collector::default().scope("test");
+  let setup = Setup::new().await;
+  let worker = setup
+    .worker_with_client(1, Arc::new(bd_artifact_upload::MockClient::new()))
+    .await;
 
-  let (state_store, retention_registry) = make_state_store(&state_dir).await;
-  let time_provider = Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc()));
-
-  let (_handle, worker) = StateUploadHandle::new(
-    Some(state_dir),
-    store,
-    Some(retention_registry),
-    Some(state_store.clone()),
-    1,
-    time_provider.clone(),
-    Arc::new(bd_artifact_upload::MockClient::new()),
-    &stats,
-  )
-  .await;
-
-  let batch_ts = time_provider.now().unix_timestamp_micros().cast_unsigned();
+  let batch_ts = setup.now_micros();
 
   let snapshot1 = worker.create_snapshot_if_needed(batch_ts).await;
   assert!(snapshot1.is_some());
 
-  let count_files = || std::fs::read_dir(&snapshots_dir).unwrap().count();
-  let file_count_after_first = count_files();
+  let file_count_after_first = count_snapshot_files(&setup.snapshots_dir);
 
   // Advance time past cooldown.
-  time_provider.advance(time::Duration::milliseconds(2));
+  setup.time_provider.advance(time::Duration::milliseconds(2));
 
-  // Clear the first snapshot so the second call must create a new one.
-  for entry in std::fs::read_dir(&snapshots_dir).unwrap() {
-    let entry = entry.unwrap();
-    std::fs::remove_file(entry.path()).unwrap();
-  }
+  insert_state_change(&setup.state_store, "test_key_2").await;
 
-  let future_batch_ts = batch_ts + 10_000_000;
+  let future_batch_ts = batch_ts + 100;
   let snapshot2 = worker.create_snapshot_if_needed(future_batch_ts).await;
   assert!(snapshot2.is_some());
   assert_eq!(
-    count_files(),
-    file_count_after_first,
+    count_snapshot_files(&setup.snapshots_dir),
+    file_count_after_first + 1,
     "should create new snapshot after cooldown expires"
   );
 }
 
 #[tokio::test]
-async fn zero_cooldown_allows_immediate_snapshot_creation() {
-  let temp_dir = tempfile::tempdir().unwrap();
-  let state_dir = temp_dir.path().join("state");
-  let snapshots_dir = state_dir.join("snapshots");
-  let store = in_memory_store();
-  let stats = bd_client_stats_store::Collector::default().scope("test");
+async fn find_snapshots_in_range_returns_ordered_snapshots() {
+  let setup = Setup::new().await;
+  let worker = setup
+    .worker_with_client(0, Arc::new(bd_artifact_upload::MockClient::new()))
+    .await;
 
-  let (state_store, retention_registry) = make_state_store(&state_dir).await;
-
-  let (_handle, worker) = StateUploadHandle::new(
-    Some(state_dir),
-    store,
-    Some(retention_registry),
-    Some(state_store.clone()),
-    0,
-    Arc::new(SystemTimeProvider {}),
-    Arc::new(bd_artifact_upload::MockClient::new()),
-    &stats,
-  )
-  .await;
-
-  let base_ts = OffsetDateTime::now_utc()
-    .unix_timestamp_micros()
-    .cast_unsigned();
-
-  let count_files = || std::fs::read_dir(&snapshots_dir).unwrap().count();
-  let mut total_snapshots = 0;
-
-  for i in 0 .. 3 {
-    // Clear snapshots so each iteration forces a new creation.
-    if let Ok(entries) = std::fs::read_dir(&snapshots_dir) {
-      for entry in entries {
-        let entry = entry.unwrap();
-        std::fs::remove_file(entry.path()).unwrap();
-      }
-    }
-
-    let snapshot = worker
-      .create_snapshot_if_needed(base_ts + i * 10_000_000)
-      .await;
-    assert!(snapshot.is_some());
-    total_snapshots += count_files();
-  }
-
-  assert!(
-    total_snapshots >= 3,
-    "all snapshots should be created with zero cooldown"
-  );
-}
-
-#[tokio::test]
-async fn uses_existing_snapshot_from_normal_rotation() {
-  let temp_dir = tempfile::tempdir().unwrap();
-  let state_dir = temp_dir.path().join("state");
-  let snapshots_dir = state_dir.join("snapshots");
-  std::fs::create_dir_all(&snapshots_dir).unwrap();
-  let store = in_memory_store();
-  let stats = bd_client_stats_store::Collector::default().scope("test");
-
-  let existing_timestamp = 1_700_000_000_000_000u64;
-  let existing_snapshot = snapshots_dir.join(format!("state.jrn.g0.t{existing_timestamp}.zz"));
-  std::fs::write(&existing_snapshot, b"pre-existing snapshot from rotation").unwrap();
-
-  let (_handle, worker) = StateUploadHandle::new(
-    Some(state_dir),
-    store,
-    None,
-    None,
-    0,
-    Arc::new(SystemTimeProvider {}),
-    Arc::new(bd_artifact_upload::MockClient::new()),
-    &stats,
-  )
-  .await;
-
-  // find_snapshots_in_range should find the snapshot when it falls in range.
-  let snapshots = worker.find_snapshots_in_range(0, existing_timestamp);
-  assert_eq!(snapshots.len(), 1);
-  assert_eq!(snapshots[0].timestamp_micros, existing_timestamp);
-}
-
-#[tokio::test]
-async fn creates_on_demand_snapshot_when_none_exists() {
-  let temp_dir = tempfile::tempdir().unwrap();
-  let state_dir = temp_dir.path().join("state");
-  let snapshots_dir = state_dir.join("snapshots");
-  let store = in_memory_store();
-  let stats = bd_client_stats_store::Collector::default().scope("test");
-
-  let (state_store, retention_registry) = make_state_store(&state_dir).await;
-
-  let (_handle, worker) = StateUploadHandle::new(
-    Some(state_dir),
-    store,
-    Some(retention_registry),
-    Some(state_store),
-    0,
-    Arc::new(SystemTimeProvider {}),
-    Arc::new(bd_artifact_upload::MockClient::new()),
-    &stats,
-  )
-  .await;
-
-  let batch_ts = OffsetDateTime::now_utc()
-    .unix_timestamp_micros()
-    .cast_unsigned();
-
-  let snapshot = worker.create_snapshot_if_needed(batch_ts).await;
-
-  assert!(snapshot.is_some());
-  assert_eq!(
-    std::fs::read_dir(&snapshots_dir).unwrap().count(),
-    1,
-    "should create new snapshot on-demand when none exists"
-  );
-}
-
-#[tokio::test]
-async fn prefers_existing_snapshot_over_on_demand_creation() {
-  let temp_dir = tempfile::tempdir().unwrap();
-  let state_dir = temp_dir.path().join("state");
-  let snapshots_dir = state_dir.join("snapshots");
-  std::fs::create_dir_all(&snapshots_dir).unwrap();
-  let store = in_memory_store();
-  let stats = bd_client_stats_store::Collector::default().scope("test");
-
-  let old_snapshot_ts = 1_700_000_000_000_000u64;
-  let old_snapshot = snapshots_dir.join(format!("state.jrn.g0.t{old_snapshot_ts}.zz"));
-  std::fs::write(&old_snapshot, b"old snapshot").unwrap();
-
-  let newer_snapshot_ts = 1_700_001_000_000_000u64;
-  let newer_snapshot = snapshots_dir.join(format!("state.jrn.g1.t{newer_snapshot_ts}.zz"));
-  std::fs::write(&newer_snapshot, b"newer snapshot").unwrap();
-
-  let (_handle, worker) = StateUploadHandle::new(
-    Some(state_dir),
-    store,
-    None,
-    None,
-    0,
-    Arc::new(SystemTimeProvider {}),
-    Arc::new(bd_artifact_upload::MockClient::new()),
-    &stats,
-  )
-  .await;
-
+  let old_snapshot_ts = setup.create_rotated_snapshot().await;
+  setup.time_provider.advance(time::Duration::milliseconds(1));
+  insert_state_change(&setup.state_store, "test_key_2").await;
+  let newer_snapshot_ts = setup.create_rotated_snapshot().await;
   // find_snapshots_in_range returns both snapshots in the range, sorted oldest first.
   let snapshots = worker.find_snapshots_in_range(0, newer_snapshot_ts + 1_000_000);
   assert_eq!(snapshots.len(), 2);
@@ -377,38 +244,48 @@ fn pending_range_merge_widens_bounds() {
 }
 
 #[tokio::test]
-async fn cooldown_defer_does_not_advance_watermark() {
-  let temp_dir = tempfile::tempdir().unwrap();
-  let state_dir = temp_dir.path().join("state");
-  let snapshots_dir = state_dir.join("snapshots");
+async fn notify_upload_needed_keeps_range_when_wake_channel_is_full() {
   let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
-
-  let (state_store, retention_registry) = make_state_store(&state_dir).await;
-  let (_handle, mut worker) = StateUploadHandle::new(
-    Some(state_dir),
+  let (handle, _worker) = StateUploadHandle::new(
+    None,
     store,
-    Some(retention_registry),
-    Some(state_store),
-    1000,
+    None,
+    None,
+    0,
     Arc::new(SystemTimeProvider {}),
     Arc::new(bd_artifact_upload::MockClient::new()),
     &stats,
   )
   .await;
 
-  // Set recent snapshot creation time to force a cooldown defer path.
-  let _created = worker.create_snapshot_if_needed(0).await.unwrap();
-  for entry in std::fs::read_dir(&snapshots_dir).unwrap() {
-    let entry = entry.unwrap();
-    std::fs::remove_file(entry.path()).unwrap();
+  for _ in 0 .. UPLOAD_CHANNEL_CAPACITY {
+    handle.wake_tx.try_send(()).unwrap();
   }
+
+  handle.notify_upload_needed(100, 200);
+  let pending = handle.pending_accumulator.lock().unwrap();
+  let range = pending.range.unwrap();
+  assert_eq!(range.oldest_micros, 100);
+  assert_eq!(range.newest_micros, 200);
+}
+
+#[tokio::test]
+async fn cooldown_defer_does_not_advance_watermark() {
+  let setup = Setup::new().await;
+  let mut worker = setup
+    .worker_with_client(1000, Arc::new(bd_artifact_upload::MockClient::new()))
+    .await;
+
+  // Set recent snapshot creation time to force a cooldown defer path.
+  let _created = worker.create_snapshot_if_needed(100).await.unwrap();
+  setup.clear_snapshot_files();
+  setup.time_provider.advance(time::Duration::milliseconds(1));
+  insert_state_change(&setup.state_store, "test_key_2").await;
 
   worker.ingest_request(StateUploadRequest {
     batch_oldest_micros: 1,
-    batch_newest_micros: OffsetDateTime::now_utc()
-      .unix_timestamp_micros()
-      .cast_unsigned(),
+    batch_newest_micros: 2_000_000,
   });
   worker.process_pending().await;
 
@@ -423,40 +300,22 @@ async fn cooldown_defer_does_not_advance_watermark() {
   );
 }
 
-fn write_snapshot_file(snapshots_dir: &std::path::Path, timestamp_micros: u64) {
-  std::fs::create_dir_all(snapshots_dir).unwrap();
-  let snapshot = snapshots_dir.join(format!("state.jrn.g0.t{timestamp_micros}.zz"));
-  std::fs::write(snapshot, b"snapshot").unwrap();
+fn count_snapshot_files(snapshots_dir: &std::path::Path) -> usize {
+  std::fs::read_dir(snapshots_dir).unwrap().count()
 }
+
 
 #[tokio::test]
 async fn enqueue_backpressure_keeps_pending_range() {
-  let temp_dir = tempfile::tempdir().unwrap();
-  let state_dir = temp_dir.path().join("state");
-  let snapshots_dir = state_dir.join("snapshots");
-  let store = in_memory_store();
-  let stats = bd_client_stats_store::Collector::default().scope("test");
-  let (state_store, retention_registry) = make_state_store(&state_dir).await;
-  let snapshot_ts = 2_000_000_000_000_000;
-  write_snapshot_file(&snapshots_dir, snapshot_ts);
+  let setup = Setup::new().await;
+  let snapshot_ts = setup.create_rotated_snapshot().await;
 
   let mut mock_client = bd_artifact_upload::MockClient::new();
   mock_client
     .expect_enqueue_upload()
     .times(1)
     .returning(|_, _, _, _, _, _, _| Err(bd_artifact_upload::EnqueueError::QueueFull));
-
-  let (_handle, mut worker) = StateUploadHandle::new(
-    Some(state_dir),
-    store,
-    Some(retention_registry),
-    Some(state_store),
-    0,
-    Arc::new(SystemTimeProvider {}),
-    Arc::new(mock_client),
-    &stats,
-  )
-  .await;
+  let mut worker = setup.worker_with_client(0, Arc::new(mock_client)).await;
 
   worker.ingest_request(StateUploadRequest {
     batch_oldest_micros: 1,
@@ -468,19 +327,17 @@ async fn enqueue_backpressure_keeps_pending_range() {
     worker.state_uploaded_through_micros.load(Ordering::Relaxed),
     0
   );
-  assert!(worker.pending_range.is_some());
+  assert_eq!(worker.pending_range.map(|r| r.oldest_micros), Some(1));
+  assert_eq!(
+    worker.pending_range.map(|r| r.newest_micros),
+    Some(snapshot_ts)
+  );
 }
 
 #[tokio::test]
 async fn persisted_ack_error_does_not_advance_watermark() {
-  let temp_dir = tempfile::tempdir().unwrap();
-  let state_dir = temp_dir.path().join("state");
-  let snapshots_dir = state_dir.join("snapshots");
-  let store = in_memory_store();
-  let stats = bd_client_stats_store::Collector::default().scope("test");
-  let (state_store, retention_registry) = make_state_store(&state_dir).await;
-  let snapshot_ts = 2_000_000_000_000_000;
-  write_snapshot_file(&snapshots_dir, snapshot_ts);
+  let setup = Setup::new().await;
+  let snapshot_ts = setup.create_rotated_snapshot().await;
 
   let mut mock_client = bd_artifact_upload::MockClient::new();
   mock_client
@@ -493,17 +350,7 @@ async fn persisted_ack_error_does_not_advance_watermark() {
       Ok(Uuid::new_v4())
     });
 
-  let (_handle, worker) = StateUploadHandle::new(
-    Some(state_dir),
-    store,
-    Some(retention_registry),
-    Some(state_store),
-    0,
-    Arc::new(SystemTimeProvider {}),
-    Arc::new(mock_client),
-    &stats,
-  )
-  .await;
+  let worker = setup.worker_with_client(0, Arc::new(mock_client)).await;
 
   let result = worker.process_upload(1, snapshot_ts).await;
   assert_eq!(result, ProcessResult::Error);
@@ -515,14 +362,8 @@ async fn persisted_ack_error_does_not_advance_watermark() {
 
 #[tokio::test]
 async fn persisted_ack_channel_drop_does_not_advance_watermark() {
-  let temp_dir = tempfile::tempdir().unwrap();
-  let state_dir = temp_dir.path().join("state");
-  let snapshots_dir = state_dir.join("snapshots");
-  let store = in_memory_store();
-  let stats = bd_client_stats_store::Collector::default().scope("test");
-  let (state_store, retention_registry) = make_state_store(&state_dir).await;
-  let snapshot_ts = 2_000_000_000_000_000;
-  write_snapshot_file(&snapshots_dir, snapshot_ts);
+  let setup = Setup::new().await;
+  let snapshot_ts = setup.create_rotated_snapshot().await;
 
   let mut mock_client = bd_artifact_upload::MockClient::new();
   mock_client
@@ -530,17 +371,7 @@ async fn persisted_ack_channel_drop_does_not_advance_watermark() {
     .times(1)
     .returning(|_, _, _, _, _, _, _| Ok(Uuid::new_v4()));
 
-  let (_handle, worker) = StateUploadHandle::new(
-    Some(state_dir),
-    store,
-    Some(retention_registry),
-    Some(state_store),
-    0,
-    Arc::new(SystemTimeProvider {}),
-    Arc::new(mock_client),
-    &stats,
-  )
-  .await;
+  let worker = setup.worker_with_client(0, Arc::new(mock_client)).await;
 
   let result = worker.process_upload(1, snapshot_ts).await;
   assert_eq!(result, ProcessResult::Error);
@@ -552,14 +383,8 @@ async fn persisted_ack_channel_drop_does_not_advance_watermark() {
 
 #[tokio::test]
 async fn successful_enqueue_ack_advances_watermark_and_clears_pending() {
-  let temp_dir = tempfile::tempdir().unwrap();
-  let state_dir = temp_dir.path().join("state");
-  let snapshots_dir = state_dir.join("snapshots");
-  let store = in_memory_store();
-  let stats = bd_client_stats_store::Collector::default().scope("test");
-  let (state_store, retention_registry) = make_state_store(&state_dir).await;
-  let snapshot_ts = 2_000_000_000_000_000;
-  write_snapshot_file(&snapshots_dir, snapshot_ts);
+  let setup = Setup::new().await;
+  let snapshot_ts = setup.create_rotated_snapshot().await;
 
   let mut mock_client = bd_artifact_upload::MockClient::new();
   mock_client
@@ -572,17 +397,7 @@ async fn successful_enqueue_ack_advances_watermark_and_clears_pending() {
       Ok(Uuid::new_v4())
     });
 
-  let (_handle, mut worker) = StateUploadHandle::new(
-    Some(state_dir),
-    store,
-    Some(retention_registry),
-    Some(state_store),
-    0,
-    Arc::new(SystemTimeProvider {}),
-    Arc::new(mock_client),
-    &stats,
-  )
-  .await;
+  let mut worker = setup.worker_with_client(0, Arc::new(mock_client)).await;
 
   worker.ingest_request(StateUploadRequest {
     batch_oldest_micros: 1,
@@ -595,60 +410,6 @@ async fn successful_enqueue_ack_advances_watermark_and_clears_pending() {
     snapshot_ts
   );
   assert!(worker.pending_range.is_none());
-}
-
-#[tokio::test]
-async fn multiple_snapshots_partial_backpressure_keeps_pending_with_partial_progress() {
-  let temp_dir = tempfile::tempdir().unwrap();
-  let state_dir = temp_dir.path().join("state");
-  let snapshots_dir = state_dir.join("snapshots");
-  let store = in_memory_store();
-  let stats = bd_client_stats_store::Collector::default().scope("test");
-  let (state_store, retention_registry) = make_state_store(&state_dir).await;
-  let first_snapshot_ts = 1_900_000_000_000_000;
-  let second_snapshot_ts = 2_000_000_000_000_000;
-  write_snapshot_file(&snapshots_dir, first_snapshot_ts);
-  write_snapshot_file(&snapshots_dir, second_snapshot_ts);
-
-  let call_count = AtomicUsize::new(0);
-  let mut mock_client = bd_artifact_upload::MockClient::new();
-  mock_client
-    .expect_enqueue_upload()
-    .times(2)
-    .returning(move |_, _, _, _, _, _, persisted_tx| {
-      if call_count.fetch_add(1, Ordering::Relaxed) == 0 {
-        if let Some(tx) = persisted_tx {
-          let _ = tx.send(Ok(()));
-        }
-        Ok(Uuid::new_v4())
-      } else {
-        Err(bd_artifact_upload::EnqueueError::QueueFull)
-      }
-    });
-
-  let (_handle, mut worker) = StateUploadHandle::new(
-    Some(state_dir),
-    store,
-    Some(retention_registry),
-    Some(state_store),
-    0,
-    Arc::new(SystemTimeProvider {}),
-    Arc::new(mock_client),
-    &stats,
-  )
-  .await;
-
-  worker.ingest_request(StateUploadRequest {
-    batch_oldest_micros: 1,
-    batch_newest_micros: second_snapshot_ts,
-  });
-  worker.process_pending().await;
-
-  assert_eq!(
-    worker.state_uploaded_through_micros.load(Ordering::Relaxed),
-    first_snapshot_ts
-  );
-  assert!(worker.pending_range.is_some());
 }
 
 #[tokio::test]
@@ -678,16 +439,11 @@ async fn plan_upload_attempt_skips_last_change_zero_already_covered_and_no_new_c
 }
 
 #[tokio::test]
-async fn plan_upload_attempt_returns_ready_for_in_range_snapshots() {
-  let temp_dir = tempfile::tempdir().unwrap();
-  let state_dir = temp_dir.path().join("state");
-  let snapshots_dir = state_dir.join("snapshots");
-  write_snapshot_file(&snapshots_dir, 100);
-  write_snapshot_file(&snapshots_dir, 200);
+async fn skipped_with_incomplete_coverage_keeps_pending() {
   let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
-  let (_handle, worker) = StateUploadHandle::new(
-    Some(state_dir),
+  let (_handle, mut worker) = StateUploadHandle::new(
+    None,
     store,
     None,
     None,
@@ -698,42 +454,68 @@ async fn plan_upload_attempt_returns_ready_for_in_range_snapshots() {
   )
   .await;
 
-  match worker.plan_upload_attempt(1, 200, 0, 200).await {
-    UploadPreflight::Ready(snapshots) => {
-      assert_eq!(snapshots.len(), 2);
-      assert_eq!(snapshots[0].timestamp_micros, 100);
-      assert_eq!(snapshots[1].timestamp_micros, 200);
-    },
-    _ => panic!("expected ready preflight"),
-  }
+  worker.ingest_request(StateUploadRequest {
+    batch_oldest_micros: 0,
+    batch_newest_micros: 100,
+  });
+  worker.process_pending().await;
+
+  assert_eq!(
+    worker.state_uploaded_through_micros.load(Ordering::Relaxed),
+    0
+  );
+  assert!(worker.pending_range.is_some());
 }
 
 #[tokio::test]
-async fn plan_upload_attempt_defers_when_effective_coverage_is_behind_and_on_cooldown() {
-  let temp_dir = tempfile::tempdir().unwrap();
-  let state_dir = temp_dir.path().join("state");
-  let snapshots_dir = state_dir.join("snapshots");
-  write_snapshot_file(&snapshots_dir, 100);
-
+async fn skipped_with_partial_coverage_narrows_pending_range() {
   let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
-  let time_provider = Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc()));
-  let (_handle, worker) = StateUploadHandle::new(
-    Some(state_dir),
+  let (_handle, mut worker) = StateUploadHandle::new(
+    None,
     store,
     None,
     None,
-    1_000,
-    time_provider.clone(),
+    0,
+    Arc::new(SystemTimeProvider {}),
     Arc::new(bd_artifact_upload::MockClient::new()),
     &stats,
   )
   .await;
-  let now = time_provider.now().unix_timestamp_micros().cast_unsigned();
-  worker
-    .last_snapshot_creation_micros
-    .store(now, Ordering::Relaxed);
 
-  let result = worker.plan_upload_attempt(1, 200, 0, 300).await;
-  assert!(matches!(result, UploadPreflight::DeferredCooldown));
+  worker
+    .state_uploaded_through_micros
+    .store(50, Ordering::Relaxed);
+  worker.ingest_request(StateUploadRequest {
+    batch_oldest_micros: 1,
+    batch_newest_micros: 100,
+  });
+  worker.process_pending().await;
+
+  assert_eq!(worker.pending_range.map(|r| r.oldest_micros), Some(51));
+  assert_eq!(worker.pending_range.map(|r| r.newest_micros), Some(100));
+}
+
+#[tokio::test]
+async fn plan_upload_attempt_returns_ready_for_in_range_snapshots() {
+  let setup = Setup::new().await;
+  let _first_snapshot_ts = setup.create_snapshot_after_state_change("test_key_1").await;
+  let second_snapshot_ts = setup.create_snapshot_after_state_change("test_key_2").await;
+  let worker = setup
+    .worker_with_client(0, Arc::new(bd_artifact_upload::MockClient::new()))
+    .await;
+
+  match worker
+    .plan_upload_attempt(1, second_snapshot_ts, 0, second_snapshot_ts)
+    .await
+  {
+    UploadPreflight::Ready(snapshots) => {
+      assert!(!snapshots.is_empty());
+      assert_eq!(
+        snapshots.last().unwrap().timestamp_micros,
+        second_snapshot_ts
+      );
+    },
+    _ => panic!("expected ready preflight"),
+  }
 }

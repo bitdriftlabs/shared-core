@@ -21,8 +21,8 @@
 //! Upload coordination is split into two parts:
 //!
 //! - [`StateUploadHandle`] — a cheap, cloneable handle held by each buffer uploader. Callers
-//!   fire-and-forget upload requests via [`StateUploadHandle::notify_upload_needed`], which sends
-//!   to a bounded channel without blocking.
+//!   fire-and-forget upload requests via [`StateUploadHandle::notify_upload_needed`], which
+//!   coalesces ranges in shared state and emits best-effort wake signals without blocking.
 //!
 //! - [`StateUploadWorker`] — a single background task that owns all snapshot creation and upload
 //!   logic. Because only one task processes requests, deduplication and cooldown enforcement happen
@@ -46,9 +46,8 @@ use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, sleep};
 
-/// Capacity of the upload request channel. Requests beyond this are silently dropped — the worker
-/// will process the queued requests which already cover the needed state range.
-const UPLOAD_CHANNEL_CAPACITY: usize = 8;
+/// Capacity of the worker wake channel used to nudge processing of coalesced pending ranges.
+const UPLOAD_CHANNEL_CAPACITY: usize = 1;
 const BACKPRESSURE_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Key for persisting the state upload index via bd-key-value.
@@ -65,13 +64,6 @@ pub struct SnapshotRef {
   pub path: PathBuf,
 }
 
-/// A request from a buffer uploader to upload a state snapshot if needed.
-#[derive(Clone, Copy)]
-struct StateUploadRequest {
-  batch_oldest_micros: u64,
-  batch_newest_micros: u64,
-}
-
 #[derive(Clone, Copy)]
 struct PendingRange {
   oldest_micros: u64,
@@ -79,20 +71,19 @@ struct PendingRange {
 }
 
 impl PendingRange {
-  const fn from_request(request: &StateUploadRequest) -> Self {
-    Self {
-      oldest_micros: request.batch_oldest_micros,
-      newest_micros: request.batch_newest_micros,
-    }
-  }
-
   fn merge(&mut self, other: Self) {
     self.oldest_micros = self.oldest_micros.min(other.oldest_micros);
     self.newest_micros = self.newest_micros.max(other.newest_micros);
   }
 }
 
-/// Statistics for state upload operations.
+#[derive(Default)]
+struct PendingAccumulator {
+  range: Option<PendingRange>,
+  version: u64,
+  wake_queued: bool,
+}
+
 struct Stats {
   snapshots_uploaded: Counter,
   snapshots_skipped: Counter,
@@ -113,15 +104,17 @@ impl Stats {
 
 /// Coordinates state snapshot uploads before log uploads.
 ///
-/// This is a lightweight, cloneable sender handle. Buffer uploaders call
+/// This is a lightweight, cloneable coalescing handle. Buffer uploaders call
 /// [`notify_upload_needed`][Self::notify_upload_needed] in a fire-and-forget manner —
 /// the call is non-blocking and never waits for the snapshot to be created or uploaded.
 ///
 /// All actual snapshot creation and upload logic is handled by the companion
 /// [`StateUploadWorker`], which runs as a single background task.
 pub struct StateUploadHandle {
-  /// Channel for sending upload requests to the background worker.
-  upload_tx: mpsc::Sender<StateUploadRequest>,
+  /// Best-effort wake channel for nudging the background worker.
+  wake_tx: mpsc::Sender<()>,
+  /// Shared pending-range accumulator.
+  pending_accumulator: Arc<parking_lot::Mutex<PendingAccumulator>>,
 }
 
 impl StateUploadHandle {
@@ -130,16 +123,6 @@ impl StateUploadHandle {
   /// The returned [`StateUploadWorker`] must be spawned (e.g. via `tokio::spawn` or included in a
   /// `try_join!`) for snapshot uploads to be processed. The handle can be cloned and
   /// shared across multiple buffer uploaders.
-  ///
-  /// # Arguments
-  /// * `state_store_path` - Path to the state store directory containing snapshot files
-  /// * `store` - Key-value store for persisting upload index
-  /// * `retention_registry` - Registry for managing snapshot retention to prevent cleanup
-  /// * `state_store` - Optional state store for triggering on-demand snapshots
-  /// * `snapshot_creation_interval_ms` - Minimum interval between snapshot creations (ms)
-  /// * `time_provider` - Time provider for getting current time
-  /// * `artifact_client` - Client for uploading snapshot artifacts
-  /// * `stats_scope` - Stats scope for metrics
   pub async fn new(
     state_store_path: Option<PathBuf>,
     store: Arc<bd_key_value::Store>,
@@ -172,11 +155,15 @@ impl StateUploadHandle {
       handle.update_retention_micros(uploaded_through);
     }
 
-    let (upload_tx, upload_rx) = mpsc::channel(UPLOAD_CHANNEL_CAPACITY);
+    let (wake_tx, wake_rx) = mpsc::channel(UPLOAD_CHANNEL_CAPACITY);
+    let pending_accumulator = Arc::new(parking_lot::Mutex::new(PendingAccumulator::default()));
 
     let state_uploaded_through_micros = Arc::new(AtomicU64::new(uploaded_through));
 
-    let handle = Self { upload_tx };
+    let handle = Self {
+      wake_tx,
+      pending_accumulator: pending_accumulator.clone(),
+    };
 
     let worker = StateUploadWorker {
       state_uploaded_through_micros,
@@ -188,7 +175,9 @@ impl StateUploadHandle {
       state_store,
       time_provider,
       artifact_client,
-      upload_rx,
+      wake_rx,
+      pending_accumulator,
+      pending_version_seen: 0,
       pending_range: None,
       stats,
     };
@@ -198,16 +187,34 @@ impl StateUploadHandle {
 
   /// Notifies the background worker that a state snapshot upload may be needed for a log batch.
   ///
-  /// This is non-blocking: the request is queued in a bounded channel and the worker processes it
-  /// asynchronously. If the channel is full, the request is silently dropped — the worker will
-  /// still cover the needed state range via already-queued requests.
+  /// This is non-blocking. The range is first merged into a shared accumulator, then the worker is
+  /// nudged via a best-effort wake channel.
   pub fn notify_upload_needed(&self, batch_oldest_micros: u64, batch_newest_micros: u64) {
-    let result = self.upload_tx.try_send(StateUploadRequest {
-      batch_oldest_micros,
-      batch_newest_micros,
-    });
-    if let Err(e) = result {
-      log::warn!("dropping state upload request due to full channel: {e}");
+    let should_wake = {
+      let mut pending = self.pending_accumulator.lock();
+      let incoming = PendingRange {
+        oldest_micros: batch_oldest_micros,
+        newest_micros: batch_newest_micros,
+      };
+      if let Some(existing) = &mut pending.range {
+        existing.merge(incoming);
+      } else {
+        pending.range = Some(incoming);
+      }
+      pending.version = pending.version.wrapping_add(1);
+      if pending.wake_queued {
+        false
+      } else {
+        pending.wake_queued = true;
+        true
+      }
+    };
+
+    if should_wake {
+      // If this fails there is already a pending wake in the channel so we don't have to worry
+      // about nudging the worker later - it will process the updated pending range when it wakes
+      // up.
+      let _ = self.wake_tx.try_send(());
     }
   }
 }
@@ -227,32 +234,22 @@ impl StateUploadHandle {
 pub struct StateUploadWorker {
   /// Shared with the handle — updated after successful uploads.
   state_uploaded_through_micros: Arc<AtomicU64>,
-
   /// Timestamp of the last snapshot creation (microseconds since epoch).
   last_snapshot_creation_micros: AtomicU64,
-
   /// Minimum interval between snapshot creations (microseconds).
   snapshot_creation_interval_micros: u64,
 
-  /// Path to the state store directory (for finding snapshot files).
   state_store_path: Option<PathBuf>,
-
-  /// Key-value store for persisting upload index across restarts.
   store: Arc<bd_key_value::Store>,
-
-  /// Retention handle for preventing snapshot cleanup.
   retention_handle: Option<RetentionHandle>,
-
-  /// State store for triggering on-demand snapshot creation before uploads.
   state_store: Option<Arc<bd_state::Store>>,
-
   time_provider: Arc<dyn TimeProvider>,
-
-  /// Artifact client for uploading snapshots.
   artifact_client: Arc<dyn ArtifactClient>,
 
-  /// Receiver for upload requests from handle instances.
-  upload_rx: mpsc::Receiver<StateUploadRequest>,
+  /// Used to coordinate updates to the pending range and best-effort wake signals from the handle.
+  wake_rx: mpsc::Receiver<()>,
+  pending_accumulator: Arc<parking_lot::Mutex<PendingAccumulator>>,
+  pending_version_seen: u64,
   pending_range: Option<PendingRange>,
 
   stats: Stats,
@@ -286,12 +283,16 @@ impl StateUploadWorker {
     log::debug!("state upload worker started");
     loop {
       tokio::select! {
-        Some(request) = self.upload_rx.recv() => {
-          self.ingest_request(request);
-          self.drain_pending_requests();
+        Some(()) = self.wake_rx.recv() => {
+          self.drain_pending_accumulator();
           self.process_pending().await;
+          while self.pending_version_changed() {
+            self.drain_pending_accumulator();
+            self.process_pending().await;
+          }
         }
         () = sleep(BACKPRESSURE_RETRY_INTERVAL), if self.pending_range.is_some() => {
+          self.drain_pending_accumulator();
           self.process_pending().await;
         }
         else => break,
@@ -299,49 +300,47 @@ impl StateUploadWorker {
     }
   }
 
-  fn ingest_request(&mut self, request: StateUploadRequest) {
-    let incoming = PendingRange::from_request(&request);
-    if let Some(existing) = &mut self.pending_range {
-      existing.merge(incoming);
-    } else {
-      self.pending_range = Some(incoming);
+  fn drain_pending_accumulator(&mut self) {
+    let mut pending = self.pending_accumulator.lock();
+    if let Some(incoming) = pending.range.take() {
+      if let Some(existing) = &mut self.pending_range {
+        existing.merge(incoming);
+      } else {
+        self.pending_range = Some(incoming);
+      }
     }
+    self.pending_version_seen = pending.version;
+    pending.wake_queued = false;
   }
 
-  fn drain_pending_requests(&mut self) {
-    while let Ok(request) = self.upload_rx.try_recv() {
-      self.ingest_request(request);
-    }
+  fn pending_version_changed(&self) -> bool {
+    let pending = self.pending_accumulator.lock();
+    pending.version != self.pending_version_seen
   }
 
   async fn process_pending(&mut self) {
     let Some(pending) = self.pending_range else {
       return;
     };
-    match self
+    let result = self
       .process_upload(pending.oldest_micros, pending.newest_micros)
-      .await
-    {
-      ProcessResult::Backpressure | ProcessResult::DeferredCooldown => {
-        self.stats.backpressure_pauses.inc();
-      },
-      _ => {
-        // A "Skipped" result can still mean we're done with this pending range:
-        // process_upload first recomputes current coverage from persisted state/upload watermark.
-        // If another earlier upload already advanced coverage past `pending.oldest_micros`, there
-        // is nothing left to do for this range and we clear it here.
-        if self.pending_satisfied(pending.oldest_micros) {
-          self.pending_range = None;
-        }
-      },
+      .await;
+    if matches!(
+      result,
+      ProcessResult::Backpressure | ProcessResult::DeferredCooldown
+    ) {
+      self.stats.backpressure_pauses.inc();
     }
-  }
 
-  /// Pending work is satisfied once uploaded coverage reaches the oldest timestamp that required
-  /// state; newer pending windows are merged before this check.
-  fn pending_satisfied(&self, pending_oldest_micros: u64) -> bool {
     let uploaded_through = self.state_uploaded_through_micros.load(Ordering::Relaxed);
-    uploaded_through >= pending_oldest_micros
+    if uploaded_through >= pending.newest_micros {
+      self.pending_range = None;
+    } else if uploaded_through >= pending.oldest_micros {
+      self.pending_range = Some(PendingRange {
+        oldest_micros: uploaded_through.saturating_add(1),
+        newest_micros: pending.newest_micros,
+      });
+    }
   }
 
   // State upload flow:
@@ -354,6 +353,8 @@ impl StateUploadWorker {
   // 3) For each ready snapshot, enqueue and wait for persistence ack.
   // 4) Advance `state_uploaded_through_micros` only after a successful persistence ack via
   //    `on_state_uploaded`, so deferred/failed attempts never move the watermark.
+  // 5) `process_pending` narrows `pending_range.oldest_micros` from the persisted watermark after
+  //    each attempt and only clears pending once coverage reaches `pending.newest_micros`.
   async fn process_upload(
     &self,
     batch_oldest_micros: u64,
