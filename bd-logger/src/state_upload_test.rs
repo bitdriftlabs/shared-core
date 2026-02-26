@@ -171,9 +171,9 @@ async fn uploaded_coverage_prevents_reupload() {
   let mut worker = setup.worker_with_client(0, Arc::new(mock_client)).await;
 
   worker.on_state_uploaded(snapshot_ts);
-  worker.ingest_request(StateUploadRequest {
-    batch_oldest_micros: 1,
-    batch_newest_micros: snapshot_ts,
+  worker.pending_range = Some(PendingRange {
+    oldest_micros: 1,
+    newest_micros: snapshot_ts,
   });
   worker.process_pending().await;
   assert!(worker.pending_range.is_none());
@@ -264,7 +264,7 @@ async fn notify_upload_needed_keeps_range_when_wake_channel_is_full() {
   }
 
   handle.notify_upload_needed(100, 200);
-  let pending = handle.pending_accumulator.lock().unwrap();
+  let pending = handle.pending_accumulator.lock();
   let range = pending.range.unwrap();
   assert_eq!(range.oldest_micros, 100);
   assert_eq!(range.newest_micros, 200);
@@ -283,9 +283,9 @@ async fn cooldown_defer_does_not_advance_watermark() {
   setup.time_provider.advance(time::Duration::milliseconds(1));
   insert_state_change(&setup.state_store, "test_key_2").await;
 
-  worker.ingest_request(StateUploadRequest {
-    batch_oldest_micros: 1,
-    batch_newest_micros: 2_000_000,
+  worker.pending_range = Some(PendingRange {
+    oldest_micros: 1,
+    newest_micros: 2_000_000,
   });
   worker.process_pending().await;
 
@@ -317,9 +317,9 @@ async fn enqueue_backpressure_keeps_pending_range() {
     .returning(|_, _, _, _, _, _, _| Err(bd_artifact_upload::EnqueueError::QueueFull));
   let mut worker = setup.worker_with_client(0, Arc::new(mock_client)).await;
 
-  worker.ingest_request(StateUploadRequest {
-    batch_oldest_micros: 1,
-    batch_newest_micros: snapshot_ts,
+  worker.pending_range = Some(PendingRange {
+    oldest_micros: 1,
+    newest_micros: snapshot_ts,
   });
   worker.process_pending().await;
 
@@ -399,9 +399,9 @@ async fn successful_enqueue_ack_advances_watermark_and_clears_pending() {
 
   let mut worker = setup.worker_with_client(0, Arc::new(mock_client)).await;
 
-  worker.ingest_request(StateUploadRequest {
-    batch_oldest_micros: 1,
-    batch_newest_micros: snapshot_ts,
+  worker.pending_range = Some(PendingRange {
+    oldest_micros: 1,
+    newest_micros: snapshot_ts,
   });
   worker.process_pending().await;
 
@@ -454,9 +454,9 @@ async fn skipped_with_incomplete_coverage_keeps_pending() {
   )
   .await;
 
-  worker.ingest_request(StateUploadRequest {
-    batch_oldest_micros: 0,
-    batch_newest_micros: 100,
+  worker.pending_range = Some(PendingRange {
+    oldest_micros: 0,
+    newest_micros: 100,
   });
   worker.process_pending().await;
 
@@ -486,9 +486,9 @@ async fn skipped_with_partial_coverage_narrows_pending_range() {
   worker
     .state_uploaded_through_micros
     .store(50, Ordering::Relaxed);
-  worker.ingest_request(StateUploadRequest {
-    batch_oldest_micros: 1,
-    batch_newest_micros: 100,
+  worker.pending_range = Some(PendingRange {
+    oldest_micros: 1,
+    newest_micros: 100,
   });
   worker.process_pending().await;
 
