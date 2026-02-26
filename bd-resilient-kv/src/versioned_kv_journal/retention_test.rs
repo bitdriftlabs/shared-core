@@ -129,6 +129,32 @@ async fn registry_pending_handle_retains_all() {
 }
 
 #[tokio::test]
+async fn registry_none_handle_does_not_require_retention() {
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+  let handle = registry.create_handle().await;
+  handle.update_retention_micros(RetentionHandle::RETENTION_NONE);
+
+  let min_retention = registry.min_retention_timestamp().await;
+  assert_eq!(min_retention, None);
+}
+
+#[tokio::test]
+async fn registry_none_handle_is_ignored_when_others_require_retention() {
+  let registry = Arc::new(RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+  let none_handle = registry.create_handle().await;
+  none_handle.update_retention_micros(RetentionHandle::RETENTION_NONE);
+  let active_handle = registry.create_handle().await;
+  active_handle.update_retention_micros(1_234_567);
+
+  let min_retention = registry.min_retention_timestamp().await;
+  assert_eq!(min_retention, Some(1_234_567));
+}
+
+#[tokio::test]
 async fn handle_releases_on_drop() {
   let registry = Arc::new(RetentionRegistry::new(
     bd_runtime::runtime::IntWatch::new_for_testing(0),

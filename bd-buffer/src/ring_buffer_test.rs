@@ -385,8 +385,6 @@ async fn retention_handle_is_released_on_buffer_removal() {
     .await
     .unwrap();
 
-  assert!(retention_registry.min_retention_timestamp().await.is_some());
-
   let removed_config = BufferConfigList::default();
   ring_buffer_manager
     .update_from_config(&removed_config, false)
@@ -394,6 +392,23 @@ async fn retention_handle_is_released_on_buffer_removal() {
     .unwrap();
 
   assert!(retention_registry.min_retention_timestamp().await.is_none());
+}
+
+#[tokio::test]
+async fn empty_continuous_buffer_uses_retention_none() {
+  let directory = tmp_dir();
+  let retention_registry = Arc::new(bd_resilient_kv::RetentionRegistry::new(
+    bd_runtime::runtime::IntWatch::new_for_testing(0),
+  ));
+  let ring_buffer_manager = setup_manager(directory.path(), retention_registry.clone());
+
+  let config = single_buffer_with_size("continuous", 1_000, 100, buffer_config::Type::CONTINUOUS);
+  ring_buffer_manager
+    .update_from_config(&config, false)
+    .await
+    .unwrap();
+
+  assert_eq!(retention_registry.min_retention_timestamp().await, None);
 }
 
 #[tokio::test]

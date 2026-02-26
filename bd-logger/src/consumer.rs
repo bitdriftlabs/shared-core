@@ -19,6 +19,7 @@ use bd_client_common::maybe_await;
 use bd_client_stats_store::{Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected_error_with_details;
 use bd_log_primitives::EncodableLog;
+use bd_resilient_kv::RetentionHandle;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_time::OffsetDateTimeExt;
@@ -475,6 +476,7 @@ struct ContinuousBufferUploader {
 
   // State upload handle for uploading state snapshots before logs.
   state_upload_handle: Option<Arc<StateUploadHandle>>,
+  retention_handle: Option<RetentionHandle>,
 }
 
 impl ContinuousBufferUploader {
@@ -486,6 +488,7 @@ impl ContinuousBufferUploader {
     buffer_id: String,
     state_upload_handle: Option<Arc<StateUploadHandle>>,
   ) -> Self {
+    let retention_handle = consumer.retention_handle();
     Self {
       consumer,
       log_upload_service,
@@ -495,6 +498,7 @@ impl ContinuousBufferUploader {
       feature_flags,
       buffer_id,
       state_upload_handle,
+      retention_handle,
     }
   }
   // Attempts to upload all logs in the provided buffer. For every polling interval we
@@ -581,6 +585,9 @@ impl ContinuousBufferUploader {
     // written.
     for _ in 0 .. logs_len {
       self.consumer.advance_read_cursor()?;
+    }
+    if let (Some(handle), Some((oldest, _newest))) = (&self.retention_handle, timestamp_range) {
+      handle.update_retention_micros(oldest);
     }
 
     Ok(())

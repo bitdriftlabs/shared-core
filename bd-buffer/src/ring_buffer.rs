@@ -284,11 +284,7 @@ impl Manager {
 
         let retention_registry = self.retention_registry.clone();
         let allow_overwrite_for_cb = allow_overwrite;
-        let retention_handle = if allow_overwrite {
-          Some(retention_registry.create_handle().await)
-        } else {
-          None
-        };
+        let retention_handle = Some(retention_registry.create_handle().await);
         let retention_handle_for_cb = retention_handle.clone();
 
         // Only install the eviction callback if we are allowed to overwrite, as it's only
@@ -342,7 +338,9 @@ impl Manager {
               .and_then(|ts| u64::try_from(ts.unix_timestamp_micros()).ok())
           }) {
             Ok(Some(Some(micros))) => handle.update_retention_micros(micros),
-            Ok(Some(None) | None) => {},
+            Ok(Some(None) | None) => {
+              handle.update_retention_micros(RetentionHandle::RETENTION_NONE);
+            },
             Err(error) => {
               log::debug!("failed to peek oldest record for retention init: {error}");
             },
@@ -536,6 +534,7 @@ impl Manager {
 // Adapter for the new cursor impl. To be removed.
 pub struct CursorConsumer {
   cursor_consumer: Box<dyn RingBufferCursorConsumer>,
+  retention_handle: Option<RetentionHandle>,
 
   // TODO(mattklein123): This is not actually required in the new code but some tests seem to
   // depend on this. Clean this up during the old code purge.
@@ -556,6 +555,11 @@ impl CursorConsumer {
       .cursor_consumer
       .advance_read_pointer()
       .map_err(|e| anyhow!("cursor consumer buffer read error occurred: {e}"))
+  }
+
+  #[must_use]
+  pub fn retention_handle(&self) -> Option<RetentionHandle> {
+    self.retention_handle.clone()
   }
 }
 
@@ -599,7 +603,7 @@ pub struct RingBuffer {
   // The underlying buffer.
   buffer: Arc<AggregateRingBuffer>,
 
-  _retention_handle: Option<RetentionHandle>,
+  retention_handle: Option<RetentionHandle>,
 }
 
 impl Debug for RingBuffer {
@@ -738,7 +742,7 @@ impl RingBuffer {
             filename: non_volatile_filename,
             delete_on_drop: AtomicBool::new(false),
             buffer,
-            _retention_handle: retention_handle,
+            retention_handle,
           }),
           deleted,
         )
@@ -760,6 +764,7 @@ impl RingBuffer {
   pub fn create_continous_consumer(self: &Arc<Self>) -> anyhow::Result<CursorConsumer> {
     Ok(CursorConsumer {
       cursor_consumer: self.buffer.clone().register_cursor_consumer()?,
+      retention_handle: self.retention_handle.clone(),
       _buffer: self.clone(),
     })
   }
