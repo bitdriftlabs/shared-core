@@ -39,7 +39,6 @@ use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::RwLock;
 
-
 /// The key used for storing the current system session ID in the state store.
 pub const SYSTEM_SESSION_ID_KEY: &str = "sid";
 
@@ -198,9 +197,7 @@ pub struct StoreInitResult {
   pub data_loss: DataLoss,
   /// Snapshot of state from the previous process, captured before clearing ephemeral scopes
   pub previous_state: ScopedMaps,
-  /// Registry for managing snapshot retention across buffers. Each buffer should create a
-  /// retention handle from this registry to prevent snapshots from being cleaned up while
-  /// logs that reference them are still in the buffer.
+  /// Retention registry used for snapshot retention
   pub retention_registry: Arc<RetentionRegistry>,
 }
 
@@ -221,7 +218,7 @@ pub struct StoreInitWithFallbackResult {
   pub previous_state: ScopedMaps,
   /// Whether fallback to in-memory storage occurred
   pub fallback_occurred: bool,
-  /// Registry for managing snapshot retention across buffers. Empty if fallback occurred.
+  /// Retention registry used for snapshot retention
   pub retention_registry: Arc<RetentionRegistry>,
 }
 
@@ -391,8 +388,6 @@ impl Store {
           data_loss: None,
           previous_state: ScopedMaps::default(),
           fallback_occurred: true,
-          // In-memory store doesn't have snapshots to retain, but we still provide a registry
-          // so callers don't need to handle the Option case.
           retention_registry: Arc::new(RetentionRegistry::new(
             bd_runtime::runtime::state::MaxSnapshotCount::register(runtime_loader),
           )),
@@ -542,7 +537,8 @@ impl Store {
   }
 
   fn record_change(&self, timestamp: OffsetDateTime) {
-    let micros = timestamp.unix_timestamp_micros().cast_unsigned();
+    let micros =
+      timestamp.unix_timestamp().cast_unsigned() * 1_000_000 + u64::from(timestamp.microsecond());
     self
       .last_change_micros
       .fetch_max(micros, std::sync::atomic::Ordering::Relaxed);
@@ -659,7 +655,6 @@ impl Store {
       .collect_vec();
 
     let mut changes = Vec::new();
-    let mut latest_timestamp = None;
 
     // TODO(snowp): Ideally we should have built in support for batch deletions in the
     // underlying store. This leaves us open for partial deletions if something fails halfway
@@ -671,10 +666,6 @@ impl Store {
             .unwrap_or_else(|_| OffsetDateTime::now_utc());
 
         if old_state_value.value_type.is_some() {
-          // Track the latest timestamp among all changes
-          if latest_timestamp.is_none() || timestamp > latest_timestamp.unwrap_or(timestamp) {
-            latest_timestamp = Some(timestamp);
-          }
           changes.push(StateChange {
             scope,
             key,
@@ -688,11 +679,6 @@ impl Store {
     }
     // Notify the listener once with the latest timestamp if any changes occurred
     if let Some(ts) = changes.iter().map(|c| c.timestamp).max() {
-      self.record_change(ts);
-    }
-
-    // Notify the listener once with the latest timestamp if any changes occurred
-    if let Some(ts) = latest_timestamp {
       self.record_change(ts);
     }
 
