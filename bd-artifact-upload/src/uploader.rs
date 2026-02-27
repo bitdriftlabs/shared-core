@@ -123,7 +123,7 @@ struct NewUpload {
 }
 
 #[derive(Debug)]
-enum UploadSource {
+pub enum UploadSource {
   File(std::fs::File),
   Path(PathBuf),
 }
@@ -199,18 +199,7 @@ pub enum EnqueueError {
 pub trait Client: Send + Sync {
   fn enqueue_upload(
     &self,
-    file: std::fs::File,
-    type_id: String,
-    state: LogFields,
-    timestamp: Option<OffsetDateTime>,
-    session_id: String,
-    feature_flags: Vec<SnappedFeatureFlag>,
-    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
-  ) -> std::result::Result<Uuid, EnqueueError>;
-
-  fn enqueue_upload_from_path(
-    &self,
-    source_path: PathBuf,
+    source: UploadSource,
     type_id: String,
     state: LogFields,
     timestamp: Option<OffsetDateTime>,
@@ -229,7 +218,7 @@ impl Client for UploadClient {
   /// Dispatches a payload to be uploaded, returning the associated artifact UUID.
   fn enqueue_upload(
     &self,
-    file: std::fs::File,
+    source: UploadSource,
     type_id: String,
     state: LogFields,
     timestamp: Option<OffsetDateTime>,
@@ -243,42 +232,7 @@ impl Client for UploadClient {
       .upload_tx
       .try_send(NewUpload {
         uuid,
-        source: UploadSource::File(file),
-        type_id,
-        state,
-        timestamp,
-        session_id,
-        feature_flags,
-        persisted_tx,
-      })
-      .inspect_err(|e| log::warn!("failed to enqueue artifact upload: {e:?}"));
-
-    self.counter_stats.record(&result);
-    result.map_err(|e| match e {
-      bd_bounded_buffer::TrySendError::FullSizeOverflow => EnqueueError::QueueFull,
-      bd_bounded_buffer::TrySendError::Closed => EnqueueError::Closed,
-    })?;
-
-    Ok(uuid)
-  }
-
-  fn enqueue_upload_from_path(
-    &self,
-    source_path: PathBuf,
-    type_id: String,
-    state: LogFields,
-    timestamp: Option<OffsetDateTime>,
-    session_id: String,
-    feature_flags: Vec<SnappedFeatureFlag>,
-    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
-  ) -> std::result::Result<Uuid, EnqueueError> {
-    let uuid = uuid::Uuid::new_v4();
-
-    let result = self
-      .upload_tx
-      .try_send(NewUpload {
-        uuid,
-        source: UploadSource::Path(source_path),
+        source,
         type_id,
         state,
         timestamp,
@@ -447,6 +401,7 @@ impl Uploader {
         };
 
         let contents = if is_zlib_data(&contents) {
+          // TODO(snowp): Should we consider validating the file here?
           contents
         } else {
           let Ok(contents) = read_checksummed_data(&contents) else {

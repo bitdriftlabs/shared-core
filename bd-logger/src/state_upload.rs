@@ -32,7 +32,7 @@
 #[path = "./state_upload_test.rs"]
 mod tests;
 
-use bd_artifact_upload::{Client as ArtifactClient, EnqueueError};
+use bd_artifact_upload::{Client as ArtifactClient, EnqueueError, UploadSource};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::LogFields;
 use bd_resilient_kv::SnapshotFilename;
@@ -367,8 +367,8 @@ impl StateUploadWorker {
       .ok();
 
       let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
-      match self.artifact_client.enqueue_upload_from_path(
-        snapshot_ref.path.clone(),
+      match self.artifact_client.enqueue_upload(
+        UploadSource::Path(snapshot_ref.path.clone()),
         "state_snapshot".to_string(),
         LogFields::new(),
         timestamp,

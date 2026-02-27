@@ -22,7 +22,7 @@ pub mod config_writer;
 mod file_watcher;
 pub mod global_state;
 
-use bd_artifact_upload::SnappedFeatureFlag;
+use bd_artifact_upload::{SnappedFeatureFlag, UploadSource};
 use bd_client_common::debug_check_lifecycle_less_than;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_error_reporter::reporter::handle_unexpected;
@@ -482,7 +482,7 @@ impl Monitor {
     log::debug!("uploading report out of band");
 
     let Ok(artifact_id) = self.artifact_client.enqueue_upload(
-      file,
+      UploadSource::File(file),
       "client_report".to_string(),
       state_fields.clone(),
       timestamp,

@@ -12,6 +12,7 @@ use crate::uploader::{
   REPORT_DIRECTORY,
   REPORT_INDEX_FILE,
   SnappedFeatureFlag,
+  UploadSource,
 };
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
@@ -166,7 +167,7 @@ async fn basic_flow() {
   let id = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"abc"),
+      UploadSource::File(setup.make_file(b"abc")),
       "client_report".to_string(),
       [("foo".into(), "bar".into())].into(),
       Some(timestamp),
@@ -226,7 +227,7 @@ async fn feature_flags() {
   let id = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"abc"),
+      UploadSource::File(setup.make_file(b"abc")),
       "client_report".to_string(),
       [("foo".into(), "bar".into())].into(),
       Some(timestamp),
@@ -303,7 +304,7 @@ async fn pending_upload_limit() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
@@ -320,7 +321,7 @@ async fn pending_upload_limit() {
   let id2 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"2"),
+      UploadSource::File(setup.make_file(b"2")),
       "client_report".to_string(),
       [].into(),
       None,
@@ -336,7 +337,7 @@ async fn pending_upload_limit() {
   let id3 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"3"),
+      UploadSource::File(setup.make_file(b"3")),
       "client_report".to_string(),
       [].into(),
       None,
@@ -405,7 +406,7 @@ async fn inconsistent_state_missing_file() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
@@ -421,7 +422,7 @@ async fn inconsistent_state_missing_file() {
   let id2 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"2"),
+      UploadSource::File(setup.make_file(b"2")),
       "client_report".to_string(),
       [].into(),
       None,
@@ -465,7 +466,7 @@ async fn inconsistent_state_extra_file() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
@@ -537,7 +538,7 @@ async fn disk_persistence() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
@@ -585,7 +586,7 @@ async fn inconsistent_state_missing_index() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
@@ -610,7 +611,7 @@ async fn inconsistent_state_missing_index() {
   let id2 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"2"),
+      UploadSource::File(setup.make_file(b"2")),
       "client_report".to_string(),
       [].into(),
       None,
@@ -657,7 +658,7 @@ async fn new_entry_disk_full() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
@@ -687,7 +688,7 @@ async fn new_entry_disk_full_after_received() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
@@ -729,7 +730,7 @@ async fn intent_retries() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
@@ -765,7 +766,7 @@ async fn intent_drop() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
@@ -803,7 +804,7 @@ async fn upload_retries() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
@@ -856,7 +857,7 @@ async fn normalize_type_id_on_load() {
   let id = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"abc"),
+      UploadSource::File(setup.make_file(b"abc")),
       "client_report".to_string(),
       [].into(),
       None,
@@ -915,7 +916,7 @@ async fn enqueue_upload_acknowledges_after_disk_persist() {
   let id = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"snapshot"),
+      UploadSource::File(setup.make_file(b"snapshot")),
       "state_snapshot".to_string(),
       [].into(),
       None,
@@ -946,8 +947,8 @@ async fn enqueue_upload_from_path_acknowledges_after_disk_persist_and_removes_so
   let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
   let id = setup
     .client
-    .enqueue_upload_from_path(
-      source_path.clone(),
+    .enqueue_upload(
+      UploadSource::Path(source_path.clone()),
       "state_snapshot".to_string(),
       [].into(),
       None,
@@ -973,7 +974,7 @@ async fn queue_full_with_only_state_snapshots_rejects_new_state_snapshot() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"state-1"),
+      UploadSource::File(setup.make_file(b"state-1")),
       "state_snapshot".to_string(),
       [].into(),
       None,
@@ -992,7 +993,7 @@ async fn queue_full_with_only_state_snapshots_rejects_new_state_snapshot() {
   let _id2 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"state-2"),
+      UploadSource::File(setup.make_file(b"state-2")),
       "state_snapshot".to_string(),
       [].into(),
       None,

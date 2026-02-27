@@ -175,7 +175,7 @@ async fn no_snapshot_files_skips_upload() {
   let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
   let mut mock_client = bd_artifact_upload::MockClient::new();
-  mock_client.expect_enqueue_upload_from_path().times(0);
+  mock_client.expect_enqueue_upload().times(0);
   let (_handle, mut worker) = StateUploadHandle::new(
     None,
     store,
@@ -324,7 +324,7 @@ async fn enqueue_backpressure_keeps_pending_range() {
 
   let mut mock_client = bd_artifact_upload::MockClient::new();
   mock_client
-    .expect_enqueue_upload_from_path()
+    .expect_enqueue_upload()
     .times(1)
     .returning(|_, _, _, _, _, _, _| Err(bd_artifact_upload::EnqueueError::QueueFull));
   let mut worker = setup.worker_with_client(0, Arc::new(mock_client)).await;
@@ -349,7 +349,7 @@ async fn persisted_ack_error_does_not_advance_watermark() {
 
   let mut mock_client = bd_artifact_upload::MockClient::new();
   mock_client
-    .expect_enqueue_upload_from_path()
+    .expect_enqueue_upload()
     .times(1)
     .returning(|_, _, _, _, _, _, persisted_tx| {
       if let Some(tx) = persisted_tx {
@@ -371,7 +371,7 @@ async fn persisted_ack_channel_drop_does_not_advance_watermark() {
 
   let mut mock_client = bd_artifact_upload::MockClient::new();
   mock_client
-    .expect_enqueue_upload_from_path()
+    .expect_enqueue_upload()
     .times(1)
     .returning(|_, _, _, _, _, _, _| Ok(Uuid::new_v4()));
 
@@ -388,7 +388,7 @@ async fn successful_enqueue_ack_clears_pending() {
 
   let mut mock_client = bd_artifact_upload::MockClient::new();
   mock_client
-    .expect_enqueue_upload_from_path()
+    .expect_enqueue_upload()
     .times(1)
     .returning(|_, _, _, _, _, _, persisted_tx| {
       if let Some(tx) = persisted_tx {
@@ -519,7 +519,7 @@ async fn run_processes_persisted_pending_range_on_startup() {
 
   let mut mock_client = bd_artifact_upload::MockClient::new();
   mock_client
-    .expect_enqueue_upload_from_path()
+    .expect_enqueue_upload()
     .times(1)
     .returning(|_, _, _, _, _, _, persisted_tx| {
       if let Some(tx) = persisted_tx {

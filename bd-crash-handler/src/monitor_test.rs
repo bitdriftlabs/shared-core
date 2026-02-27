@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::{Monitor, global_state};
+use bd_artifact_upload::UploadSource;
 use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_log_primitives::{AnnotatedLogFields, LogFields};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
@@ -374,7 +375,10 @@ impl Setup {
     make_mut(&mut self.upload_client)
       .expect_enqueue_upload()
       .withf(
-        move |mut file, ftype_id, fstate, ftimestamp, fsession_id, feature_flags, _persisted_tx| {
+        move |source, ftype_id, fstate, ftimestamp, fsession_id, feature_flags, _persisted_tx| {
+          let UploadSource::File(mut file) = source else {
+            return false;
+          };
           let mut output = vec![];
           file.read_to_end(&mut output).unwrap();
           let content_match = output == content;
