@@ -284,7 +284,7 @@ impl Manager {
 
         let retention_registry = self.retention_registry.clone();
         let allow_overwrite_for_cb = allow_overwrite;
-        let retention_handle = Some(retention_registry.create_handle().await);
+        let retention_handle = retention_registry.create_handle().await;
         let retention_handle_for_cb = retention_handle.clone();
 
         // Only install the eviction callback if we are allowed to overwrite, as it's only
@@ -293,16 +293,14 @@ impl Manager {
         // case they must be updated. In the other mode the ring buffer serves more as an upload
         // queue and so old records are never evicted in normal operation.
         let on_record_evicted_cb = if allow_overwrite_for_cb {
-          retention_handle_for_cb.map(|handle| {
-            let callback: EvictedRecordCallback = Arc::new(move |record_data: &[u8]| {
-              if let Some(ts) = EncodableLog::extract_timestamp(record_data)
-                && let Some(micros) = u64::try_from(ts.unix_timestamp_micros()).ok()
-              {
-                handle.update_retention_micros(micros);
-              }
-            });
-            callback
-          })
+          let callback: EvictedRecordCallback = Arc::new(move |record_data: &[u8]| {
+            if let Some(ts) = EncodableLog::extract_timestamp(record_data)
+              && let Some(micros) = u64::try_from(ts.unix_timestamp_micros()).ok()
+            {
+              retention_handle_for_cb.update_retention_micros(micros);
+            }
+          });
+          Some(callback)
         } else {
           None
         };
@@ -332,19 +330,17 @@ impl Manager {
           retention_handle.clone(),
         )?;
 
-        if let Some(handle) = retention_handle.as_ref() {
-          match ring_buffer.buffer.peek_oldest_record(|record_data| {
-            EncodableLog::extract_timestamp(record_data)
-              .and_then(|ts| u64::try_from(ts.unix_timestamp_micros()).ok())
-          }) {
-            Ok(Some(Some(micros))) => handle.update_retention_micros(micros),
-            Ok(Some(None) | None) => {
-              handle.update_retention_micros(RetentionHandle::RETENTION_NONE);
-            },
-            Err(error) => {
-              log::debug!("failed to peek oldest record for retention init: {error}");
-            },
-          }
+        match ring_buffer.buffer.peek_oldest_record(|record_data| {
+          EncodableLog::extract_timestamp(record_data)
+            .and_then(|ts| u64::try_from(ts.unix_timestamp_micros()).ok())
+        }) {
+          Ok(Some(Some(micros))) => retention_handle.update_retention_micros(micros),
+          Ok(Some(None) | None) => {
+            retention_handle.update_retention_micros(RetentionHandle::RETENTION_NONE);
+          },
+          Err(error) => {
+            log::debug!("failed to peek oldest record for retention init: {error}");
+          },
         }
 
         updated_buffers.insert(buffer.id.clone(), (buffer_type, ring_buffer.clone()));
@@ -534,11 +530,9 @@ impl Manager {
 // Adapter for the new cursor impl. To be removed.
 pub struct CursorConsumer {
   cursor_consumer: Box<dyn RingBufferCursorConsumer>,
-  retention_handle: Option<RetentionHandle>,
+  retention_handle: RetentionHandle,
 
-  // TODO(mattklein123): This is not actually required in the new code but some tests seem to
-  // depend on this. Clean this up during the old code purge.
-  _buffer: Arc<RingBuffer>,
+  buffer: Arc<RingBuffer>,
 }
 
 impl CursorConsumer {
@@ -558,7 +552,22 @@ impl CursorConsumer {
   }
 
   #[must_use]
-  pub fn retention_handle(&self) -> Option<RetentionHandle> {
+  pub fn oldest_timestamp_micros(&self) -> Option<u64> {
+    match self.buffer.buffer.peek_oldest_record(|record_data| {
+      EncodableLog::extract_timestamp(record_data)
+        .and_then(|ts| u64::try_from(ts.unix_timestamp_micros()).ok())
+    }) {
+      Ok(Some(Some(micros))) => Some(micros),
+      Ok(Some(None) | None) => None,
+      Err(error) => {
+        log::debug!("failed to peek oldest record for retention update: {error}");
+        None
+      },
+    }
+  }
+
+  #[must_use]
+  pub fn retention_handle(&self) -> RetentionHandle {
     self.retention_handle.clone()
   }
 }
@@ -603,7 +612,7 @@ pub struct RingBuffer {
   // The underlying buffer.
   buffer: Arc<AggregateRingBuffer>,
 
-  retention_handle: Option<RetentionHandle>,
+  retention_handle: RetentionHandle,
 }
 
 impl Debug for RingBuffer {
@@ -679,7 +688,7 @@ impl RingBuffer {
     total_data_loss_counter: Counter,
     non_volatile_records_written: Option<Counter>,
     on_record_evicted_cb: Option<EvictedRecordCallback>,
-    retention_handle: Option<RetentionHandle>,
+    retention_handle: RetentionHandle,
   ) -> Result<(Arc<Self>, bool)> {
     let filename = non_volatile_filename
       .to_str()
@@ -765,7 +774,7 @@ impl RingBuffer {
     Ok(CursorConsumer {
       cursor_consumer: self.buffer.clone().register_cursor_consumer()?,
       retention_handle: self.retention_handle.clone(),
-      _buffer: self.clone(),
+      buffer: self.clone(),
     })
   }
 

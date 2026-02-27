@@ -37,6 +37,12 @@ fn tmp_dir() -> tempfile::TempDir {
   tempfile::TempDir::with_prefix("ring-buffer-").unwrap()
 }
 
+async fn test_retention_handle() -> RetentionHandle {
+  bd_resilient_kv::RetentionRegistry::new(bd_runtime::runtime::IntWatch::new_for_testing(0))
+    .create_handle()
+    .await
+}
+
 fn make_test_log_bytes(t: OffsetDateTime) -> Vec<u8> {
   let mut log = EncodableLog::new(
     Log {
@@ -75,7 +81,7 @@ async fn test_create_ring_buffer() {
     fake_counter(),
     None,
     None,
-    None,
+    test_retention_handle().await,
   )
   .unwrap();
 
@@ -87,8 +93,8 @@ async fn test_create_ring_buffer() {
   assert_eq!(b"hello", entry.unwrap());
 }
 
-#[test]
-fn test_create_ring_buffer_illegal_path() {
+#[tokio::test]
+async fn test_create_ring_buffer_illegal_path() {
   let buffer_path = PathBuf::from("/buffer");
   let buffer = RingBuffer::new(
     "test",
@@ -103,7 +109,7 @@ fn test_create_ring_buffer_illegal_path() {
     fake_counter(),
     None,
     None,
-    None,
+    test_retention_handle().await,
   );
 
   assert_matches!(
@@ -120,8 +126,8 @@ fn test_create_ring_buffer_illegal_path() {
   );
 }
 
-#[test]
-fn corrupted_buffer() {
+#[tokio::test]
+async fn corrupted_buffer() {
   let dir = tmp_dir();
   let path = dir.path().join(PathBuf::from("buffer"));
   let (_, deleted) = RingBuffer::new(
@@ -137,7 +143,7 @@ fn corrupted_buffer() {
     fake_counter(),
     None,
     None,
-    None,
+    test_retention_handle().await,
   )
   .unwrap();
   assert!(!deleted);
@@ -161,7 +167,7 @@ fn corrupted_buffer() {
     fake_counter(),
     None,
     None,
-    None,
+    test_retention_handle().await,
   )
   .unwrap();
   assert!(deleted);

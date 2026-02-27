@@ -357,10 +357,13 @@ impl BufferUploadManager {
     buffer: &Arc<Buffer>,
   ) -> anyhow::Result<(ContinuousBufferUploader, ComponentShutdownTrigger)> {
     let shutdown_trigger = ComponentShutdownTrigger::default();
+    let consumer = buffer.create_continous_consumer()?;
+    let retention_handle = consumer.retention_handle();
 
     Ok((
       ContinuousBufferUploader::new(
-        buffer.create_continous_consumer()?,
+        consumer,
+        retention_handle,
         self.log_upload_service.clone(),
         self.feature_flags.clone(),
         shutdown_trigger.make_shutdown(),
@@ -476,19 +479,19 @@ struct ContinuousBufferUploader {
 
   // State upload handle for uploading state snapshots before logs.
   state_upload_handle: Option<Arc<StateUploadHandle>>,
-  retention_handle: Option<RetentionHandle>,
+  retention_handle: RetentionHandle,
 }
 
 impl ContinuousBufferUploader {
   pub fn new(
     consumer: bd_buffer::CursorConsumer,
+    retention_handle: RetentionHandle,
     log_upload_service: service::Upload,
     feature_flags: Flags,
     shutdown: ComponentShutdown,
     buffer_id: String,
     state_upload_handle: Option<Arc<StateUploadHandle>>,
   ) -> Self {
-    let retention_handle = consumer.retention_handle();
     Self {
       consumer,
       log_upload_service,
@@ -513,6 +516,9 @@ impl ContinuousBufferUploader {
         entry = self.consumer.read() => {
             debug_assert!(entry.is_ok(), "consumer should not fail");
             self.batch_builder.add_log(entry?.to_vec());
+            if let Some(oldest) = self.consumer.oldest_timestamp_micros() {
+              self.retention_handle.update_retention_micros(oldest);
+            }
         },
         () = maybe_await(&mut self.flush_batch_sleep) => {
             log::debug!("flushing logs due to deadline hit");
@@ -586,8 +592,11 @@ impl ContinuousBufferUploader {
     for _ in 0 .. logs_len {
       self.consumer.advance_read_cursor()?;
     }
-    if let (Some(handle), Some((oldest, _newest))) = (&self.retention_handle, timestamp_range) {
-      handle.update_retention_micros(oldest);
+    match self.consumer.oldest_timestamp_micros() {
+      Some(oldest_micros) => self.retention_handle.update_retention_micros(oldest_micros),
+      None => self
+        .retention_handle
+        .update_retention_micros(RetentionHandle::RETENTION_NONE),
     }
 
     Ok(())
