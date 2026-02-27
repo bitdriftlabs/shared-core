@@ -164,7 +164,7 @@ impl StateUploadHandle {
     (handle, worker)
   }
 
-  /// Notifies the background worker that a state snapshot upload may be needed for a log batch.
+  /// Notifies the uploader that a state snapshot upload may be needed for a log batch.
   ///
   /// This is non-blocking. The range is first merged into a shared accumulator, then the worker is
   /// nudged via a best-effort wake channel.

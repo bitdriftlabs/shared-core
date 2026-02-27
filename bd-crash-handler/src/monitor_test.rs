@@ -376,9 +376,10 @@ impl Setup {
       .expect_enqueue_upload()
       .withf(
         move |source, ftype_id, fstate, ftimestamp, fsession_id, feature_flags, _persisted_tx| {
-          let UploadSource::File(mut file) = source else {
+          let UploadSource::File(file) = source else {
             return false;
           };
+          let mut file = file.try_clone().unwrap();
           let mut output = vec![];
           file.read_to_end(&mut output).unwrap();
           let content_match = output == content;

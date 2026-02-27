@@ -313,15 +313,12 @@ impl BufferUploadManager {
         let consumer = buffer.clone().register_consumer()?;
 
         let batch_builder = BatchBuilder::new(self.feature_flags.clone());
-        // Stream uploads are excluded from state snapshot uploads for now.
-        let state_upload_handle = None;
         tokio::task::spawn(async move {
           StreamedBufferUpload {
             consumer,
             log_upload_service,
             batch_builder,
             shutdown,
-            state_upload_handle,
           }
           .start()
           .await
@@ -555,7 +552,6 @@ impl ContinuousBufferUploader {
     let logs_len = logs.len();
     log::debug!("flushing {logs_len} logs");
 
-    // Upload state snapshot if needed before uploading logs
     if let (Some(handle), Some((oldest, newest))) = (&self.state_upload_handle, timestamp_range) {
       handle.notify_upload_needed(oldest, newest);
     }
@@ -619,9 +615,6 @@ struct StreamedBufferUpload {
   batch_builder: BatchBuilder,
 
   shutdown: ComponentShutdown,
-
-  // State upload handle for uploading state snapshots before logs.
-  state_upload_handle: Option<Arc<StateUploadHandle>>,
 }
 
 impl StreamedBufferUpload {
@@ -679,10 +672,7 @@ impl StreamedBufferUpload {
         }
       }
 
-      let timestamp_range = self.batch_builder.timestamp_range();
-      if let (Some(handle), Some((oldest, newest))) = (&self.state_upload_handle, timestamp_range) {
-        handle.notify_upload_needed(oldest, newest);
-      }
+      // TODO(snowp): Handle streaming state updates.
 
       let upload_future = async {
         self
