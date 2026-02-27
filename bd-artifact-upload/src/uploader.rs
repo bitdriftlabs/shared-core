@@ -16,7 +16,6 @@ use bd_bounded_buffer::SendCounters;
 use bd_client_common::error::InvariantError;
 use bd_client_common::file::{
   async_write_checksummed_data,
-  is_zlib_data,
   read_checksummed_data,
   read_compressed_protobuf,
   write_compressed_protobuf,
@@ -28,8 +27,8 @@ use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::LogFields;
 use bd_log_primitives::size::MemorySized;
 use bd_proto::protos::client::api::{UploadArtifactIntentRequest, UploadArtifactRequest};
-use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
+use bd_proto::protos::client::artifact::{ArtifactUploadIndex, StorageFormat};
 use bd_proto::protos::client::feature_flag::FeatureFlag;
 use bd_proto::protos::logging::payload::Data;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, artifact_upload};
@@ -124,7 +123,13 @@ struct NewUpload {
 
 #[derive(Debug)]
 pub enum UploadSource {
+  // When a file handle is provided the uploader will copy the contents of the file to disk and
+  // append a CRC checksum to the end of the file to allow for integrity checking when we later
+  // read.
   File(std::fs::File),
+  // For raw files they are directly moved to the target location without modification. This is
+  // intended for use cases where the data format is already self-validating (e.g. crc checksum or
+  // zlib compression).
   Path(PathBuf),
 }
 
@@ -400,8 +405,12 @@ impl Uploader {
           return Ok(());
         };
 
-        let contents = if is_zlib_data(&contents) {
-          // TODO(snowp): Should we consider validating the file here?
+        // For client reports we copy the file into a new file with a CRC checksum appended to allow
+        // for integrity checking. For state snapshot since they are already zlib encoded we bypass
+        // this check. TODO(snowp): Consider consolidating the behavior here, but keeping
+        // reports the same for now to avoid more changes than necessary.
+        let contents = if next.storage_format.enum_value_or_default() == StorageFormat::RAW {
+          // TODO(snowp): Should we consider validating the file here in some way?
           contents
         } else {
           let Ok(contents) = read_checksummed_data(&contents) else {
@@ -684,7 +693,7 @@ impl Uploader {
     let uuid = uuid.to_string();
 
     let target_path = REPORT_DIRECTORY.join(&uuid);
-    let write_result = match source {
+    let (write_result, storage_format) = match source {
       UploadSource::File(file) => {
         let target_file = match self.file_system.create_file(&target_path).await {
           Ok(file) => file,
@@ -704,10 +713,13 @@ impl Uploader {
           },
         };
 
-        async_write_checksummed_data(tokio::fs::File::from_std(file), target_file).await
+        (
+          async_write_checksummed_data(tokio::fs::File::from_std(file), target_file).await,
+          StorageFormat::CHECKSUMMED,
+        )
       },
       UploadSource::Path(source_path) => {
-        if let Err(e) = self
+        let result = if let Err(e) = self
           .file_system
           .rename_file(&source_path, &target_path)
           .await
@@ -739,7 +751,9 @@ impl Uploader {
           }
         } else {
           Ok(())
-        }
+        };
+
+        (result, StorageFormat::RAW)
       },
     };
 
@@ -777,6 +791,7 @@ impl Uploader {
         .into_iter()
         .map(|(key, value)| (key.into(), value.into_proto()))
         .collect(),
+      storage_format: storage_format.into(),
       feature_flags: feature_flags
         .into_iter()
         .map(

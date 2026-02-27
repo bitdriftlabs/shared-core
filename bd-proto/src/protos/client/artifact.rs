@@ -174,6 +174,8 @@ pub mod artifact_upload_index {
         pub feature_flags: ::std::vec::Vec<super::super::feature_flag::FeatureFlag>,
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.type_id)
         pub type_id: ::std::option::Option<::std::string::String>,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.storage_format)
+        pub storage_format: ::protobuf::EnumOrUnknown<super::StorageFormat>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -191,7 +193,7 @@ pub mod artifact_upload_index {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(7);
+            let mut fields = ::std::vec::Vec::with_capacity(8);
             let mut oneofs = ::std::vec::Vec::with_capacity(0);
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "name",
@@ -227,6 +229,11 @@ pub mod artifact_upload_index {
                 "type_id",
                 |m: &Artifact| { &m.type_id },
                 |m: &mut Artifact| { &mut m.type_id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "storage_format",
+                |m: &Artifact| { &m.storage_format },
+                |m: &mut Artifact| { &mut m.storage_format },
             ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Artifact>(
                 "ArtifactUploadIndex.Artifact",
@@ -279,6 +286,9 @@ pub mod artifact_upload_index {
                     66 => {
                         self.type_id = ::std::option::Option::Some(is.read_string()?);
                     },
+                    72 => {
+                        self.storage_format = is.read_enum_or_unknown()?;
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -318,6 +328,9 @@ pub mod artifact_upload_index {
             if let Some(v) = self.type_id.as_ref() {
                 my_size += ::protobuf::rt::string_size(8, &v);
             }
+            if self.storage_format != ::protobuf::EnumOrUnknown::new(super::StorageFormat::CHECKSUMMED) {
+                my_size += ::protobuf::rt::int32_size(9, self.storage_format.value());
+            }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
             my_size
@@ -352,6 +365,9 @@ pub mod artifact_upload_index {
             if let Some(v) = self.type_id.as_ref() {
                 os.write_string(8, v)?;
             }
+            if self.storage_format != ::protobuf::EnumOrUnknown::new(super::StorageFormat::CHECKSUMMED) {
+                os.write_enum(9, ::protobuf::EnumOrUnknown::value(&self.storage_format))?;
+            }
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
         }
@@ -376,6 +392,7 @@ pub mod artifact_upload_index {
             self.session_id.clear();
             self.feature_flags.clear();
             self.type_id = ::std::option::Option::None;
+            self.storage_format = ::protobuf::EnumOrUnknown::new(super::StorageFormat::CHECKSUMMED);
             self.special_fields.clear();
         }
 
@@ -403,13 +420,75 @@ pub mod artifact_upload_index {
     }
 }
 
+#[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
+// @@protoc_insertion_point(enum:bitdrift_public.protobuf.client.v1.StorageFormat)
+pub enum StorageFormat {
+    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.client.v1.StorageFormat.CHECKSUMMED)
+    CHECKSUMMED = 0,
+    // @@protoc_insertion_point(enum_value:bitdrift_public.protobuf.client.v1.StorageFormat.RAW)
+    RAW = 1,
+}
+
+impl ::protobuf::Enum for StorageFormat {
+    const NAME: &'static str = "StorageFormat";
+
+    fn value(&self) -> i32 {
+        *self as i32
+    }
+
+    fn from_i32(value: i32) -> ::std::option::Option<StorageFormat> {
+        match value {
+            0 => ::std::option::Option::Some(StorageFormat::CHECKSUMMED),
+            1 => ::std::option::Option::Some(StorageFormat::RAW),
+            _ => ::std::option::Option::None
+        }
+    }
+
+    fn from_str(str: &str) -> ::std::option::Option<StorageFormat> {
+        match str {
+            "CHECKSUMMED" => ::std::option::Option::Some(StorageFormat::CHECKSUMMED),
+            "RAW" => ::std::option::Option::Some(StorageFormat::RAW),
+            _ => ::std::option::Option::None
+        }
+    }
+
+    const VALUES: &'static [StorageFormat] = &[
+        StorageFormat::CHECKSUMMED,
+        StorageFormat::RAW,
+    ];
+}
+
+impl ::protobuf::EnumFull for StorageFormat {
+    fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().enum_by_package_relative_name("StorageFormat").unwrap()).clone()
+    }
+
+    fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
+        let index = *self as usize;
+        Self::enum_descriptor().value_by_index(index)
+    }
+}
+
+impl ::std::default::Default for StorageFormat {
+    fn default() -> Self {
+        StorageFormat::CHECKSUMMED
+    }
+}
+
+impl StorageFormat {
+    fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
+        ::protobuf::reflect::GeneratedEnumDescriptorData::new::<StorageFormat>("StorageFormat")
+    }
+}
+
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n1bitdrift_public/protobuf/client/v1/artifact.proto\x12\"bitdrift_publi\
     c.protobuf.client.v1\x1a5bitdrift_public/protobuf/client/v1/feature_flag\
     .proto\x1a1bitdrift_public/protobuf/logging/v1/payload.proto\x1a\x1fgoog\
-    le/protobuf/timestamp.proto\"\xf5\x04\n\x13ArtifactUploadIndex\x12\\\n\
+    le/protobuf/timestamp.proto\"\xcf\x05\n\x13ArtifactUploadIndex\x12\\\n\
     \x08artifact\x18\x01\x20\x03(\x0b2@.bitdrift_public.protobuf.client.v1.A\
-    rtifactUploadIndex.ArtifactR\x08artifact\x1a\xff\x03\n\x08Artifact\x12\
+    rtifactUploadIndex.ArtifactR\x08artifact\x1a\xd9\x04\n\x08Artifact\x12\
     \x12\n\x04name\x18\x01\x20\x01(\tR\x04name\x12.\n\x04time\x18\x02\x20\
     \x01(\x0b2\x1a.google.protobuf.TimestampR\x04time\x12<\n\x1apending_inte\
     nt_negotiation\x18\x03\x20\x01(\x08R\x18pendingIntentNegotiation\x12j\n\
@@ -418,9 +497,12 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     n_id\x18\x06\x20\x01(\tR\tsessionId\x12T\n\rfeature_flags\x18\x07\x20\
     \x03(\x0b2/.bitdrift_public.protobuf.client.v1.FeatureFlagR\x0cfeatureFl\
     ags\x12\x1c\n\x07type_id\x18\x08\x20\x01(\tH\0R\x06typeId\x88\x01\x01\
-    \x1af\n\rMetadataEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\
-    \n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.logging.v1.D\
-    ataR\x05value:\x028\x01B\n\n\x08_type_idb\x06proto3\
+    \x12X\n\x0estorage_format\x18\t\x20\x01(\x0e21.bitdrift_public.protobuf.\
+    client.v1.StorageFormatR\rstorageFormat\x1af\n\rMetadataEntry\x12\x10\n\
+    \x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2\
+    ).bitdrift_public.protobuf.logging.v1.DataR\x05value:\x028\x01B\n\n\x08_\
+    type_id*)\n\rStorageFormat\x12\x0f\n\x0bCHECKSUMMED\x10\0\x12\x07\n\x03R\
+    AW\x10\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -444,7 +526,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             let mut messages = ::std::vec::Vec::with_capacity(2);
             messages.push(ArtifactUploadIndex::generated_message_descriptor_data());
             messages.push(artifact_upload_index::Artifact::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(0);
+            let mut enums = ::std::vec::Vec::with_capacity(1);
+            enums.push(StorageFormat::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),
                 deps,
