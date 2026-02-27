@@ -320,7 +320,6 @@ impl LoggerHandle {
     );
   }
 
-
   #[must_use]
   pub fn should_log_app_update(
     &self,
