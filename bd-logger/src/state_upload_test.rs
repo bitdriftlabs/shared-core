@@ -168,6 +168,10 @@ impl Setup {
       }
     }
   }
+
+  fn count_snapshot_files(&self) -> usize {
+    std::fs::read_dir(&self.snapshots_dir).map_or(0, Iterator::count)
+  }
 }
 
 #[tokio::test]
@@ -208,7 +212,7 @@ async fn cooldown_allows_snapshot_after_interval() {
   let snapshot1 = worker.create_snapshot_if_needed(batch_ts).await;
   assert!(snapshot1.is_some());
 
-  let file_count_after_first = count_snapshot_files(&setup.snapshots_dir);
+  let file_count_after_first = setup.count_snapshot_files();
 
   // Advance time past cooldown.
   setup.time_provider.advance(time::Duration::milliseconds(2));
@@ -219,7 +223,7 @@ async fn cooldown_allows_snapshot_after_interval() {
   let snapshot2 = worker.create_snapshot_if_needed(future_batch_ts).await;
   assert!(snapshot2.is_some());
   assert_eq!(
-    count_snapshot_files(&setup.snapshots_dir),
+    setup.count_snapshot_files(),
     file_count_after_first + 1,
     "should create new snapshot after cooldown expires"
   );
@@ -276,9 +280,7 @@ async fn notify_upload_needed_keeps_range_when_wake_channel_is_full() {
   )
   .await;
 
-  for _ in 0 .. UPLOAD_CHANNEL_CAPACITY {
-    handle.wake_tx.try_send(()).unwrap();
-  }
+  handle.wake_tx.try_send(()).unwrap();
 
   handle.notify_upload_needed(100, 200);
   let pending = handle.pending_accumulator.lock();
@@ -312,10 +314,6 @@ async fn cooldown_defer_keeps_pending_for_retry() {
   );
 }
 
-fn count_snapshot_files(snapshots_dir: &std::path::Path) -> usize {
-  std::fs::read_dir(snapshots_dir).map_or(0, Iterator::count)
-}
-
 
 #[tokio::test]
 async fn enqueue_backpressure_keeps_pending_range() {
@@ -343,7 +341,7 @@ async fn enqueue_backpressure_keeps_pending_range() {
 }
 
 #[tokio::test]
-async fn persisted_ack_error_does_not_advance_watermark() {
+async fn persisted_ack_error_keeps_pending_range() {
   let setup = Setup::new().await;
   let snapshot_ts = setup.create_rotated_snapshot().await;
 
@@ -365,7 +363,7 @@ async fn persisted_ack_error_does_not_advance_watermark() {
 }
 
 #[tokio::test]
-async fn persisted_ack_channel_drop_does_not_advance_watermark() {
+async fn persisted_ack_channel_drop_keeps_pending_range() {
   let setup = Setup::new().await;
   let snapshot_ts = setup.create_rotated_snapshot().await;
 
@@ -409,7 +407,7 @@ async fn successful_enqueue_ack_clears_pending() {
 }
 
 #[tokio::test]
-async fn plan_upload_attempt_skips_last_change_zero_already_covered_and_no_new_changes() {
+async fn plan_upload_attempt_skips_when_no_state_changes_or_no_store() {
   let store = in_memory_store();
   let stats = bd_client_stats_store::Collector::default().scope("test");
   let (_handle, worker) = StateUploadHandle::new(

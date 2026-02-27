@@ -40,10 +40,10 @@ mod tests;
 use bd_artifact_upload::{Client as ArtifactClient, EnqueueError, UploadSource};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::LogFields;
+use bd_proto::protos::client::key_value::StateSnapshotRange;
 use bd_resilient_kv::SnapshotFilename;
 use bd_state::{RetentionHandle, RetentionRegistry};
 use bd_time::{OffsetDateTimeExt, TimeProvider};
-use protobuf::well_known_types::struct_::{Struct as ProtoStruct, Value as ProtoValue, value};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -51,9 +51,8 @@ use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, sleep};
 
-/// Capacity of the worker wake channel used to nudge processing of coalesced pending ranges.
-const BACKPRESSURE_RETRY_INTERVAL: Duration = Duration::from_secs(1);
-static PENDING_UPLOAD_RANGE_KEY: bd_key_value::Key<ProtoStruct> =
+const BACKPRESSURE_RETRY_INTERVAL: Duration = Duration::from_secs(30);
+static PENDING_UPLOAD_RANGE_KEY: bd_key_value::Key<StateSnapshotRange> =
   bd_key_value::Key::new("state_upload.pending_range.1");
 
 
@@ -567,7 +566,7 @@ impl StateUploadWorker {
         .set(&PENDING_UPLOAD_RANGE_KEY, &pending_range_to_proto(range)),
       None => self
         .store
-        .set(&PENDING_UPLOAD_RANGE_KEY, &ProtoStruct::default()),
+        .set(&PENDING_UPLOAD_RANGE_KEY, &StateSnapshotRange::default()),
     }
   }
 
@@ -594,43 +593,19 @@ impl StateUploadWorker {
   }
 }
 
-fn pending_range_to_proto(range: PendingRange) -> ProtoStruct {
-  let mut proto = ProtoStruct::new();
-  proto.fields.insert(
-    "oldest_micros".to_string(),
-    ProtoValue {
-      kind: Some(value::Kind::StringValue(range.oldest_micros.to_string())),
-      ..Default::default()
-    },
-  );
-  proto.fields.insert(
-    "newest_micros".to_string(),
-    ProtoValue {
-      kind: Some(value::Kind::StringValue(range.newest_micros.to_string())),
-      ..Default::default()
-    },
-  );
+fn pending_range_to_proto(range: PendingRange) -> StateSnapshotRange {
+  let mut proto = StateSnapshotRange::new();
+  proto.oldest_micros = range.oldest_micros;
+  proto.newest_micros = range.newest_micros;
   proto
 }
 
-fn pending_range_from_proto(proto: &ProtoStruct) -> Option<PendingRange> {
-  let oldest = proto
-    .fields
-    .get("oldest_micros")
-    .and_then(proto_string_value_to_u64)?;
-  let newest = proto
-    .fields
-    .get("newest_micros")
-    .and_then(proto_string_value_to_u64)?;
-  Some(PendingRange {
-    oldest_micros: oldest,
-    newest_micros: newest,
-  })
-}
-
-fn proto_string_value_to_u64(value: &ProtoValue) -> Option<u64> {
-  let value::Kind::StringValue(v) = value.kind.as_ref()? else {
+fn pending_range_from_proto(proto: &StateSnapshotRange) -> Option<PendingRange> {
+  if proto.oldest_micros == 0 && proto.newest_micros == 0 {
     return None;
-  };
-  v.parse::<u64>().ok()
+  }
+  Some(PendingRange {
+    oldest_micros: proto.oldest_micros,
+    newest_micros: proto.newest_micros,
+  })
 }

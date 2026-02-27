@@ -996,7 +996,6 @@ async fn log_streaming() {
       log_upload_service: upload_service,
       shutdown: shutdown_trigger.make_shutdown(),
       batch_builder: BatchBuilder::new(make_flags(&runtime_loader)),
-      state_upload_handle: None,
     }
     .start()
     .await
@@ -1053,7 +1052,6 @@ async fn streaming_batch_size_flag() {
       log_upload_service: upload_service,
       batch_builder: BatchBuilder::new(make_flags(&runtime_loader)),
       shutdown: shutdown_trigger.make_shutdown(),
-      state_upload_handle: None,
     }
     .start()
     .await
@@ -1111,7 +1109,6 @@ async fn log_streaming_shutdown() {
       log_upload_service: upload_service,
       shutdown,
       batch_builder: BatchBuilder::new(make_flags(&runtime_loader)),
-      state_upload_handle: None,
     }
     .start()
     .await
