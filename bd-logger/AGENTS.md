@@ -37,10 +37,10 @@ The handle and worker are created together via `StateUploadHandle::new`.
 When the worker receives a batch's timestamp range `[oldest, newest]`, it evaluates in order:
 
 1. **No state changes ever recorded** (`last_change_micros == 0`) → skip. Nothing to upload.
-2. **Snapshot files exist** in `{state_store_path}/snapshots/` → upload every snapshot file found
-   there (oldest-first). File presence is the source of truth.
+2. **Snapshot files exist** in `{state_store_path}/snapshots/` → upload snapshots whose filename
+   timestamp is within the current pending log range `[oldest, newest]` (oldest-first).
 3. **No snapshot files exist but state changed** (`last_change_micros > 0`) → create one on-demand via
-   `state_store.rotate_journal()`, subject to a cooldown (see below).
+    `state_store.rotate_journal()`, subject to a cooldown (see below).
 
 ### Snapshot Cooldown
 
@@ -51,7 +51,8 @@ worker defers on-demand creation and keeps pending work for retry.
 
 ### Snapshot Move Semantics
 
-State snapshot uploads are enqueued via `enqueue_upload_from_path`: the snapshot file is moved
+State snapshot uploads are enqueued via `enqueue_upload(UploadSource::Path(...))`: the snapshot
+file is moved
 (renamed) from `state/snapshots/` into `bd-artifact-upload`'s `report_uploads/` directory. This
 means:
 
@@ -60,7 +61,13 @@ means:
   re-upload it.
 - If enqueue fails, the file remains in `state/snapshots/`, so the next retry still sees it.
 
-Upload selection is file-presence based; there is no separate uploaded watermark state.
+Upload selection is range-based over file presence; there is no separate uploaded watermark state.
+
+### Pending Range Durability
+
+The worker persists pending coverage to key-value storage (`state_upload.pending_range.1`) whenever
+it drains/merges producer requests, and clears it after successful processing. On startup, it reads
+this key and immediately processes recovered pending work before entering the normal wake loop.
 
 ### BatchBuilder Timestamp Tracking
 

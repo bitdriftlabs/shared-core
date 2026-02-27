@@ -12,9 +12,10 @@
 //! most recent state snapshot uploaded before time T.
 //!
 //! The [`StateUploadHandle`] ensures that:
-//! - State snapshots are uploaded before logs that depend on them
+//! - State snapshots are marked for upload as logs that depend on them
 //! - Duplicate snapshot uploads are avoided across multiple buffers
 //! - Snapshot coverage is tracked across process restarts via persistence
+//! - Snapshot selection is scoped to the pending log timestamp range, avoiding unnecessary uploads
 //!
 //! ## Architecture
 //!
@@ -27,6 +28,10 @@
 //! - [`StateUploadWorker`] — a single background task that owns all snapshot creation and upload
 //!   logic. Because only one task processes requests, deduplication and cooldown enforcement happen
 //!   naturally without any locking between callers.
+//!
+//! The worker persists pending upload range coverage in key-value storage and recovers it on
+//! startup. Snapshot artifacts are enqueued with `enqueue_upload(UploadSource::Path(...))`, which
+//! preserves move semantics from `state/snapshots/` into artifact upload storage.
 
 #[cfg(test)]
 #[path = "./state_upload_test.rs"]
@@ -47,7 +52,6 @@ use tokio::sync::mpsc;
 use tokio::time::{Duration, sleep};
 
 /// Capacity of the worker wake channel used to nudge processing of coalesced pending ranges.
-const UPLOAD_CHANNEL_CAPACITY: usize = 1;
 const BACKPRESSURE_RETRY_INTERVAL: Duration = Duration::from_secs(1);
 static PENDING_UPLOAD_RANGE_KEY: bd_key_value::Key<ProtoStruct> =
   bd_key_value::Key::new("state_upload.pending_range.1");
@@ -133,7 +137,7 @@ impl StateUploadHandle {
   ) -> (Self, StateUploadWorker) {
     let stats = Stats::new(&stats_scope.scope("state_upload"));
 
-    let (wake_tx, wake_rx) = mpsc::channel(UPLOAD_CHANNEL_CAPACITY);
+    let (wake_tx, wake_rx) = mpsc::channel(1);
     let pending_accumulator = Arc::new(parking_lot::Mutex::new(PendingAccumulator::default()));
     let retention_handle = match &retention_registry {
       Some(registry) => Some(registry.create_handle().await),
