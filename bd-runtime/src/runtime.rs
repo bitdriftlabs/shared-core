@@ -958,12 +958,12 @@ pub mod state {
   int_feature_flag!(MaxCapacity, "state.max_capacity_bytes", 1024 * 1024);
 
   // Minimum interval between state snapshot creations in milliseconds. This batching is primarily
-  // necessary for log streaming configurations where all logs are streamed rapidly. Defaults to
-  // 5000ms (5 seconds).
+  // necessary for log streaming configurations where all logs are streamed rapidly and there are a
+  // lot of state changes. Defaults to 5 minutes.
   int_feature_flag!(
     SnapshotCreationIntervalMs,
     "state.snapshot_creation_interval_ms",
-    5000
+    5 * 60 * 1000
   );
 
   // Controls whether state snapshot uploads are enabled. When disabled, state snapshots are
