@@ -33,6 +33,7 @@ pub struct RetentionHandle {
 
 impl RetentionHandle {
   pub const RETENTION_PENDING: u64 = u64::MAX;
+  pub const RETENTION_NONE: u64 = u64::MAX - 1;
 
   /// Updates the retention requirement to retain data from the given timestamp (in microseconds).
   ///
@@ -114,13 +115,14 @@ impl RetentionRegistry {
     }
 
     let mut min_retention: Option<u64> = None;
-    let mut has_handles = false;
     let mut has_pending = false;
     for handle in handles.iter().filter_map(std::sync::Weak::upgrade) {
-      has_handles = true;
       let retention = handle.load(Ordering::Relaxed);
       if retention == RetentionHandle::RETENTION_PENDING {
         has_pending = true;
+        continue;
+      }
+      if retention == RetentionHandle::RETENTION_NONE {
         continue;
       }
       min_retention = Some(min_retention.map_or(retention, |min| min.min(retention)));
@@ -134,6 +136,6 @@ impl RetentionRegistry {
       return Some(min_retention);
     }
 
-    has_handles.then_some(0)
+    None
   }
 }
