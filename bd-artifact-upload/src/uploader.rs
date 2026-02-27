@@ -658,8 +658,14 @@ impl Uploader {
     feature_flags: Vec<SnappedFeatureFlag>,
     mut persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
   ) {
-    // If we've reached our limit of entries, stop the entry currently being uploaded (the oldest
-    // one) to make space for the newer one.
+    // Previously we would always drop the oldest entry when we hit capacity, but for state
+    // snapshots this would result in us dropping uploads that we know we need to hydrate logs
+    // that were scheduled for uploads. To mitigate this we treat state snapshots differently
+    // and avoid dropping them when we hit capacity, which means that in the worst case if we have a
+    // lot of state snapshots we might fill up this queue and apply backpressure to the state
+    // snapshot producer, deferring the snapshot limit enforcement to the producer instead of the
+    // uploader.
+
     // TODO(snowp): Consider also having a bound on the size of the files persisted to disk.
     // TODO(snowp): We should consider redoing how backpressure works for crash reports as well as
     // there are cases in which we drop reports. For now limit the backpressure mechanism to
