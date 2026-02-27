@@ -86,10 +86,8 @@ range is available, then call `take()` to produce the log batch.
 
 ### Wake Channel Backpressure
 
-The wake channel has capacity `UPLOAD_CHANNEL_CAPACITY` (1). If wake signaling is saturated,
-`notify_upload_needed` still records the requested range in shared pending state and returns. A
-missed wake does not lose coverage; the worker will observe pending state on the next wake/timer
-cycle, and version tracking forces immediate reprocessing when producers update pending state while
+The wake channel has capacity 1. If wake signaling is saturated,
+`notify_upload_needed` still records the requested range in shared pending state and returns. A missed wake does not lose coverage; the worker will observe pending state on the next wake/timer cycle, and version tracking forces immediate reprocessing when producers update pending state while
 the worker is active.
 
 ### Key Invariants
