@@ -866,9 +866,10 @@ fn blocking_flush_state() {
     None,
   );
 
-  setup
-    .logger_handle
-    .flush_state(Block::Yes(15.std_seconds()));
+  setup.logger_handle.flush_state(Block::Yes {
+    timeout: 15.std_seconds(),
+    poll_callback: None,
+  });
 
   assert!(setup.workflows_state_file_path().exists());
   assert!(setup.pending_aggregation_index_file_path().exists());
@@ -891,9 +892,10 @@ fn flush_state_uninitialized() {
 fn blocking_flush_state_uninitialized() {
   let setup = Setup::new();
 
-  setup
-    .logger_handle
-    .flush_state(Block::Yes(15.std_seconds()));
+  setup.logger_handle.flush_state(Block::Yes {
+    timeout: 15.std_seconds(),
+    poll_callback: None,
+  });
 
   assert!(!setup.workflows_state_file_path().exists());
   assert!(setup.pending_aggregation_index_file_path().exists());

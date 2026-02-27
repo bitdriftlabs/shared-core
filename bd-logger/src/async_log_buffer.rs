@@ -254,7 +254,7 @@ impl Sender {
   }
 
   pub fn flush_state(&self, block: Block) -> Result<(), TrySendError> {
-    let (completion_tx, completion_rx) = if matches!(block, Block::Yes(_)) {
+    let (completion_tx, completion_rx) = if matches!(block, Block::Yes { .. }) {
       let (tx, rx) = bd_completion::Sender::new();
       (Some(tx), Some(rx))
     } else {
@@ -265,10 +265,21 @@ impl Sender {
 
     // Wait for the processing to be completed only if passed `blocking` argument is equal to
     // `true`.
-    if let Some(completion_rx) = completion_rx
-      && let Block::Yes(block_timeout) = block
-    {
-      match &completion_rx.blocking_recv_with_timeout(block_timeout) {
+    let result = match (block, completion_rx) {
+      (
+        Block::Yes {
+          timeout,
+          poll_callback,
+        },
+        Some(rx),
+      ) => Some(rx.blocking_recv_with_timeout_and_callback(
+        timeout,
+        poll_callback.as_ref().map(AsRef::as_ref),
+      )),
+      _ => None,
+    };
+    if let Some(result) = result {
+      match &result {
         Ok(()) => {
           log::debug!("flush state: completion received");
         },
@@ -440,7 +451,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     capture_session: Option<&'static str>,
   ) -> Result<(), TrySendError> {
     let (log_processing_completed_tx_option, log_processing_completed_rx_option) =
-      if matches!(block, Block::Yes(_)) {
+      if matches!(block, Block::Yes { .. }) {
         // Create a (sender, receiver) pair only if the caller wants to wait on
         // on the log being pushed through the whole log processing pipeline.
         let (tx, rx) = tokio::sync::oneshot::channel::<()>();
@@ -478,10 +489,21 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     // Wait for log processing to be completed only if passed `blocking`
     // argument is equal to `true` and we created a relevant one shot Tokio channel.
-    if let Some(rx) = log_processing_completed_rx_option
-      && let Block::Yes(block_timeout) = block
-    {
-      match &rx.blocking_recv_with_timeout(block_timeout) {
+    let result = match (block, log_processing_completed_rx_option) {
+      (
+        Block::Yes {
+          timeout,
+          poll_callback,
+        },
+        Some(rx),
+      ) => Some(rx.blocking_recv_with_timeout_and_callback(
+        timeout,
+        poll_callback.as_ref().map(AsRef::as_ref),
+      )),
+      _ => None,
+    };
+    if let Some(result) = result {
+      match &result {
         Ok(()) => {
           log::debug!("enqueue_log: log processing completion received");
         },
@@ -1062,8 +1084,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       }
     }
   }
-
-
 
   async fn send_debug_data(&mut self) {
     log::debug!("sending workflow debug data");
