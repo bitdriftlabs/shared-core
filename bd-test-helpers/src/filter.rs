@@ -79,7 +79,11 @@ pub mod macros {
     };
   }
 
-  pub use {capture_field, field_value, regex_match_and_substitute_field, remove_field, set_field};
+  pub use capture_field;
+  pub use field_value;
+  pub use regex_match_and_substitute_field;
+  pub use remove_field;
+  pub use set_field;
 }
 
 #[must_use]
