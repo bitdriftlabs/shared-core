@@ -44,6 +44,10 @@ When the worker receives a batch's timestamp range `[oldest, newest]`, it evalua
 
 ### Snapshot Cooldown
 
+Typically snapshots are created in response to the state journal filling up due to state updates, but
+but when logs are streamed we may need to periodically create snapshots in order to upload state changes.
+The state uploader may trigger manual snapshot creation by calling into the state store.
+
 Creating a snapshot on every batch flush during high-volume streaming is wasteful. The worker
 tracks `last_snapshot_creation_micros` and will not create a new snapshot if one was created
 within `snapshot_creation_interval_micros` (a runtime-configurable value). During cooldown, the
