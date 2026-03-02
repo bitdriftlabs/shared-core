@@ -151,6 +151,7 @@ impl StateUploadHandle {
     let worker = StateUploadWorker {
       last_snapshot_creation_micros: AtomicU64::new(0),
       snapshot_creation_interval_micros: u64::from(snapshot_creation_interval_ms) * 1000,
+      last_change_at_rotation: None,
       state_store_path,
       store,
       retention_handle,
@@ -218,6 +219,10 @@ pub struct StateUploadWorker {
   last_snapshot_creation_micros: AtomicU64,
   /// Minimum interval between snapshot creations (microseconds).
   snapshot_creation_interval_micros: u64,
+  /// The value of `last_change_micros` at the time of the most recent worker-initiated rotation.
+  /// Used to avoid redundant rotations when nothing has changed since the last one. `None` means
+  /// the worker has not yet performed a rotation, so the first attempt always proceeds.
+  last_change_at_rotation: Option<u64>,
 
   state_store_path: Option<PathBuf>,
   store: Arc<bd_key_value::Store>,
@@ -261,8 +266,8 @@ impl StateUploadWorker {
   /// Runs the worker event loop, processing upload requests until the channel is closed.
   pub async fn run(mut self) {
     log::debug!("state upload worker started");
-    self.refresh_retention_handle();
     self.pending_range = self.read_persisted_pending_range();
+    self.refresh_retention_handle();
     if self.pending_range.is_some() {
       self.process_pending().await;
     }
@@ -336,7 +341,7 @@ impl StateUploadWorker {
   // 3) For each ready snapshot, enqueue and wait for persistence ack.
   // 4) On success, count the snapshot upload and continue; on failure, keep pending work for retry.
   async fn process_upload(
-    &self,
+    &mut self,
     batch_oldest_micros: u64,
     batch_newest_micros: u64,
   ) -> ProcessResult {
@@ -386,6 +391,7 @@ impl StateUploadWorker {
               snapshot_ref.timestamp_micros
             );
             self.stats.snapshots_uploaded.inc();
+            self.advance_pending_oldest_micros(snapshot_ref.timestamp_micros);
           },
           Ok(Err(e)) => {
             log::warn!("failed to persist state snapshot upload entry: {e}");
@@ -415,19 +421,25 @@ impl StateUploadWorker {
   }
 
   async fn plan_upload_attempt(
-    &self,
+    &mut self,
     batch_oldest_micros: u64,
     batch_newest_micros: u64,
     last_change: u64,
   ) -> UploadPreflight {
-    if last_change == 0 {
-      log::debug!("state upload: last_change=0, skipping (batch_newest={batch_newest_micros})");
-      return UploadPreflight::Skipped;
-    }
-
+    // Check for existing snapshots first — on restart, persisted pending ranges may reference
+    // snapshots created by the previous process that are still on disk.
     let snapshots = self.find_snapshots_in_range(batch_oldest_micros, batch_newest_micros);
     if !snapshots.is_empty() {
       return UploadPreflight::Ready(snapshots);
+    }
+
+    // Skip rotation if we've already rotated and nothing has changed since. This is purely an
+    // in-process optimization — `last_change_at_rotation` is not persisted across restarts.
+    if self.last_change_at_rotation == Some(last_change) {
+      log::debug!(
+        "state upload: no changes since last rotation (last_change={last_change}), skipping"
+      );
+      return UploadPreflight::Skipped;
     }
 
     let now_micros = self
@@ -445,12 +457,18 @@ impl StateUploadWorker {
       return UploadPreflight::DeferredCooldown;
     }
 
-    self
-      .create_snapshot_if_needed(last_change)
-      .await
-      .map_or(UploadPreflight::DeferredCooldown, |snapshot| {
-        UploadPreflight::Ready(vec![snapshot])
-      })
+    let Some(snapshot) = self.create_snapshot_if_needed(last_change).await else {
+      // No snapshot was created (no state store, or rotation produced nothing). Record the attempt
+      // so we don't retry until the state store records a new change.
+      self.last_change_at_rotation = Some(last_change);
+      return UploadPreflight::Skipped;
+    };
+
+    // Record that we've rotated at this last_change value, so we don't redundantly rotate again
+    // until the state store records a new change.
+    self.last_change_at_rotation = Some(last_change);
+
+    UploadPreflight::Ready(vec![snapshot])
   }
 
   fn find_snapshots_in_range(
@@ -581,15 +599,19 @@ impl StateUploadWorker {
     let Some(handle) = &self.retention_handle else {
       return;
     };
-    let oldest_snapshot = self
-      .find_all_snapshots()
-      .into_iter()
-      .map(|s| s.timestamp_micros)
-      .min();
-    match oldest_snapshot {
-      Some(oldest) => handle.update_retention_micros(oldest),
+    match self.pending_range {
+      Some(range) => handle.update_retention_micros(range.oldest_micros),
       None => handle.update_retention_micros(RetentionHandle::RETENTION_NONE),
     }
+  }
+
+  fn advance_pending_oldest_micros(&mut self, uploaded_snapshot_micros: u64) {
+    let Some(range) = &mut self.pending_range else {
+      return;
+    };
+    range.oldest_micros = range.oldest_micros.max(uploaded_snapshot_micros);
+    self.persist_pending_range();
+    self.refresh_retention_handle();
   }
 }
 

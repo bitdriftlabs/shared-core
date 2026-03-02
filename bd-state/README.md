@@ -91,6 +91,9 @@ Snapshot creation is retention-aware:
 - if no retention handle requests data, rotation may skip snapshot creation,
 - cleanup removes snapshots older than required retention and enforces max count safety cap.
 
+`Store::rotate_journal()` returns `Some(snapshot_path)` when rotation produces an archived snapshot
+file and returns `None` when rotation completes without archived snapshot output.
+
 ## 5) How snapshots are uploaded with logs
 
 State snapshots and logs are separate artifact streams; coordination lives in `bd-logger`.
@@ -121,11 +124,21 @@ Single background worker owns all decisions and retries:
 
 1. drains/coalesces pending range, persists it to key-value key `state_upload.pending_range.1`,
 2. computes preflight decision:
-   - if `last_change_micros == 0`: skip,
-   - else if snapshots exist in requested range: upload them oldest-first,
-   - else create an on-demand snapshot via `state_store.rotate_journal()` (subject to cooldown),
+   - if snapshots exist in requested range: upload them oldest-first,
+   - else create an on-demand snapshot via `state_store.rotate_journal()` (subject to cooldown and
+     in-process duplicate-rotation checks),
 3. enqueues each snapshot through `bd-artifact-upload` as `UploadSource::Path(...)`,
 4. waits for persistence ack from artifact queue.
+
+Retention ownership is split:
+
+- buffer consumer retention handles represent logs that may still be uploaded in the future,
+- uploader retention handle represents only uploader pending coverage.
+
+The uploader updates its retention from `pending_range.oldest_micros` while pending work exists and
+sets `RETENTION_NONE` when pending work is empty. As uploads succeed, it tightens
+`pending_range.oldest_micros` and persists the updated range so restart resumes with the same
+coverage.
 
 Queue semantics are move-based:
 

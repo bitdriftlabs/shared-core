@@ -36,11 +36,15 @@ The handle and worker are created together via `StateUploadHandle::new`.
 
 When the worker receives a batch's timestamp range `[oldest, newest]`, it evaluates in order:
 
-1. **No state changes ever recorded** (`last_change_micros == 0`) → skip. Nothing to upload.
-2. **Snapshot files exist** in `{state_store_path}/snapshots/` → upload snapshots whose filename
+1. **Snapshot files exist** in `{state_store_path}/snapshots/` → upload snapshots whose filename
    timestamp is within the current pending log range `[oldest, newest]` (oldest-first).
-3. **No snapshot files exist but state changed** (`last_change_micros > 0`) → create one on-demand via
-    `state_store.rotate_journal()`, subject to a cooldown (see below).
+2. **No in-range snapshots found** → decide whether to create one on-demand via
+   `state_store.rotate_journal()`, subject to cooldown and the in-process
+   `last_change_at_rotation` optimization (skip if no changes since last worker-triggered
+   rotation).
+
+Snapshot discovery runs before on-demand creation checks, so persisted pending coverage can match
+existing on-disk snapshots across restarts.
 
 ### Snapshot Cooldown
 
@@ -72,6 +76,21 @@ Upload selection is range-based over file presence; there is no separate uploade
 The worker persists pending coverage to key-value storage (`state_upload.pending_range.1`) whenever
 it drains/merges producer requests, and clears it after successful processing. On startup, it reads
 this key and immediately processes recovered pending work before entering the normal wake loop.
+
+During successful upload progress, the worker tightens pending coverage by advancing
+`pending_range.oldest_micros` after each snapshot enqueue persistence ack. This narrowed coverage is
+persisted immediately so restart resumes with the same tighter lower bound.
+
+### Retention Ownership
+
+Retention is split by responsibility:
+
+- **Buffer consumer retention handles** are the source of truth for logs that may still be uploaded
+  in the future.
+- **State upload worker retention handle** protects only the uploader's current pending coverage.
+
+The worker sets its retention handle from `pending_range.oldest_micros` while pending work exists
+and uses `RETENTION_NONE` when pending work is empty.
 
 ### BatchBuilder Timestamp Tracking
 

@@ -114,7 +114,9 @@ impl From<PartialDataLoss> for DataLoss {
 pub struct Rotation {
   pub new_journal_path: PathBuf,
   pub old_journal_path: PathBuf,
-  pub snapshot_path: PathBuf,
+  /// Path to the snapshot file, if one was created during rotation. `None` when snapshotting is
+  /// disabled or no retention handle requires the snapshot.
+  pub snapshot_path: Option<PathBuf>,
 }
 
 /// Result of opening a journal file, containing the journal, initial state, and data loss info.
@@ -837,7 +839,11 @@ impl PersistentStore {
     Ok(Rotation {
       new_journal_path,
       old_journal_path,
-      snapshot_path: archived_path,
+      snapshot_path: if should_create_snapshot {
+        Some(archived_path)
+      } else {
+        None
+      },
     })
   }
 }

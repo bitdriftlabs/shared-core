@@ -706,7 +706,7 @@ impl Store {
   pub async fn rotate_journal(&self) -> Option<std::path::PathBuf> {
     let mut locked = self.inner.write().await;
     match locked.rotate_journal().await {
-      Ok(rotation) => Some(rotation.snapshot_path),
+      Ok(rotation) => rotation.snapshot_path,
       Err(e) => {
         log::debug!("Failed to rotate journal for snapshot: {e}");
         None
