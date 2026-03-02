@@ -63,7 +63,7 @@ use bd_proto::protos::client::api::{
 };
 use bd_proto::protos::logging::payload::Data as ProtoData;
 use bd_proto::protos::logging::payload::data::Data_type;
-use bd_runtime::runtime::DurationWatch;
+use bd_runtime::runtime::{DurationWatch, ExponentialBackoffWatch};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, TimestampExt};
 use std::cmp::max;
 use std::collections::HashMap;
@@ -343,8 +343,11 @@ pub struct Api {
 
   static_metadata: Arc<dyn Metadata + Send + Sync>,
 
-  max_backoff_interval: DurationWatch<bd_runtime::runtime::api::MaxBackoffInterval>,
-  initial_backoff_interval: DurationWatch<bd_runtime::runtime::api::InitialBackoffInterval>,
+  backoff_runtime: ExponentialBackoffWatch<
+    bd_runtime::runtime::api::InitialBackoffInterval,
+    bd_runtime::runtime::api::MaxBackoffInterval,
+    bd_runtime::runtime::api::BackoffGrowthFactorBasisPoints,
+  >,
   backoff: ExponentialBackoffInfinite<SystemClock>,
   config_updater: Arc<dyn ClientConfigurationUpdate>,
   runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
@@ -399,8 +402,7 @@ impl Api {
     sleep_mode_active: watch::Receiver<bool>,
     store: Arc<bd_key_value::Store>,
   ) -> Self {
-    let mut max_backoff_interval = runtime_loader.register_duration_watch();
-    let mut initial_backoff_interval = runtime_loader.register_duration_watch();
+    let mut backoff_runtime = runtime_loader.register_exponential_backoff_watch();
     let generic_kill_duration = runtime_loader.register_duration_watch();
     let unauthenticated_kill_duration = runtime_loader.register_duration_watch();
     let data_idle_timeout_interval = runtime_loader.register_duration_watch();
@@ -408,7 +410,7 @@ impl Api {
     let min_reconnect_interval = runtime_loader.register_duration_watch();
     let sleep_mode_min_reconnect_interval = runtime_loader.register_duration_watch();
 
-    let backoff = crate::backoff_policy(&mut initial_backoff_interval, &mut max_backoff_interval);
+    let backoff = crate::backoff_policy(&mut backoff_runtime);
 
     let reconnect_state = crate::reconnect::ReconnectState::new(store, time_provider.clone());
     Self {
@@ -421,8 +423,7 @@ impl Api {
       time_provider,
       network_quality_monitor,
       runtime_loader,
-      max_backoff_interval,
-      initial_backoff_interval,
+      backoff_runtime,
       internal_logger: self_logger,
       config_updater,
       stats: Stats::new(stats),
@@ -681,12 +682,9 @@ impl Api {
       }
 
       // Construct a new backoff policy if the runtime values have changed since last time.
-      if self.max_backoff_interval.has_changed() || self.initial_backoff_interval.has_changed() {
+      if self.backoff_runtime.has_changed() {
         log::debug!("backoff policy has changed, recreating");
-        self.backoff = crate::backoff_policy(
-          &mut self.initial_backoff_interval,
-          &mut self.max_backoff_interval,
-        );
+        self.backoff = crate::backoff_policy(&mut self.backoff_runtime);
       }
 
       if let Err(e) = self

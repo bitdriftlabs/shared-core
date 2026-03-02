@@ -31,7 +31,7 @@ use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::feature_flag::FeatureFlag;
 use bd_proto::protos::logging::payload::Data;
-use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, artifact_upload};
+use bd_runtime::runtime::{ConfigLoader, ExponentialBackoffWatch, IntWatch, artifact_upload};
 use bd_shutdown::ComponentShutdown;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, TimestampExt};
 use mockall::automock;
@@ -263,8 +263,11 @@ pub struct Uploader {
   index: VecDeque<Artifact>,
 
   max_entries: IntWatch<bd_runtime::runtime::artifact_upload::MaxPendingEntries>,
-  initial_backoff_interval: DurationWatch<bd_runtime::runtime::api::InitialBackoffInterval>,
-  max_backoff_interval: DurationWatch<bd_runtime::runtime::api::MaxBackoffInterval>,
+  backoff_runtime: ExponentialBackoffWatch<
+    artifact_upload::InitialBackoffInterval,
+    artifact_upload::MaxBackoffInterval,
+    artifact_upload::BackoffGrowthFactorBasisPoints,
+  >,
 
   intent_task_handle: Option<tokio::task::JoinHandle<Result<IntentDecision>>>,
   upload_task_handle: Option<tokio::task::JoinHandle<Result<()>>>,
@@ -306,8 +309,7 @@ impl Uploader {
       file_system,
       index: VecDeque::default(),
       max_entries: runtime.register_int_watch(),
-      initial_backoff_interval: runtime.register_duration_watch(),
-      max_backoff_interval: runtime.register_duration_watch(),
+      backoff_runtime: runtime.register_exponential_backoff_watch(),
       upload_task_handle: None,
       intent_task_handle: None,
       stats: Stats::new(&scope),
@@ -352,10 +354,7 @@ impl Uploader {
             next.type_id.clone().unwrap_or_default(),
             next.time.to_offset_date_time(),
             next.metadata.clone(),
-            bd_api::backoff_policy(
-              &mut self.initial_backoff_interval,
-              &mut self.max_backoff_interval,
-            ),
+            bd_api::backoff_policy(&mut self.backoff_runtime),
           )));
           continue;
         }
@@ -393,10 +392,7 @@ impl Uploader {
           next.type_id.clone().unwrap_or_default(),
           next.time.to_offset_date_time(),
           next.session_id.clone(),
-          bd_api::backoff_policy(
-            &mut self.initial_backoff_interval,
-            &mut self.max_backoff_interval,
-          ),
+          bd_api::backoff_policy(&mut self.backoff_runtime),
           next.metadata.clone(),
           next.feature_flags.clone(),
         )));

@@ -11,7 +11,7 @@ use assert_matches::assert_matches;
 use bd_api::upload::LogBatch;
 use bd_client_stats_store::Counter;
 use bd_runtime::runtime::FeatureFlag;
-use bd_runtime::runtime::log_upload::RetryBackoffInitialFlag;
+use bd_runtime::runtime::log_upload::InitialBackoffInterval;
 use bd_time::TimeDurationExt;
 use std::task::Poll;
 use time::Duration;
@@ -27,8 +27,7 @@ async fn test_retry_backoff() {
   let retry_limit_exceeded = Counter::default();
 
   let provider = BackoffProvider {
-    initial_backoff: runtime.register_duration_watch(),
-    max_backoff: runtime.register_duration_watch(),
+    backoff_runtime: runtime.register_exponential_backoff_watch(),
   };
 
   let mut retry = RetryPolicy {
@@ -55,7 +54,7 @@ async fn test_retry_backoff() {
 
   assert_pending!(retry_task.poll());
 
-  bd_runtime::runtime::log_upload::RetryBackoffMaxFlag::default()
+  bd_runtime::runtime::log_upload::MaxBackoffInterval::default()
     .sleep()
     .await;
 
@@ -64,7 +63,7 @@ async fn test_retry_backoff() {
 
   assert_matches!(&retry.backoff, Some(backoff) => {
     let initial_interval =
-      Duration::try_from(RetryBackoffInitialFlag::default().unsigned_abs())
+      Duration::try_from(InitialBackoffInterval::default().unsigned_abs())
         .unwrap_or(Duration::MAX);
     assert_eq!(backoff.initial_interval(), initial_interval);
     assert_eq!(backoff.current_interval(), Duration::seconds(45));
@@ -78,7 +77,7 @@ async fn test_retry_backoff() {
 
   assert_pending!(second_retry.poll());
 
-  bd_runtime::runtime::log_upload::RetryBackoffMaxFlag::default()
+  bd_runtime::runtime::log_upload::MaxBackoffInterval::default()
     .sleep()
     .await;
 

@@ -207,6 +207,21 @@ impl ConfigLoader {
     Self::register_watch(&mut l.string_watches, &l.snapshot)
   }
 
+  pub fn register_exponential_backoff_watch<Initial, Max, GrowthFactorBasisPoints>(
+    &self,
+  ) -> ExponentialBackoffWatch<Initial, Max, GrowthFactorBasisPoints>
+  where
+    Initial: FeatureFlag<time::Duration>,
+    Max: FeatureFlag<time::Duration>,
+    GrowthFactorBasisPoints: FeatureFlag<u32>,
+  {
+    ExponentialBackoffWatch {
+      initial: self.register_duration_watch(),
+      max: self.register_duration_watch(),
+      growth_factor_basis_points: self.register_int_watch(),
+    }
+  }
+
   /// Registers a watch for the runtime flag given by the provided type.
   fn register_watch<T, C: FeatureFlag<T>>(
     watches: &mut HashMap<&'static str, InternalWatch<T>>,
@@ -396,6 +411,59 @@ pub type IntWatch<P> = Watch<u32, P>;
 pub type DurationWatch<P> = Watch<time::Duration, P>;
 pub type StringWatch<P> = Watch<String, P>;
 
+/// Typed exponential backoff values read from runtime.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ExponentialBackoffValues {
+  pub initial_interval: time::Duration,
+  pub max_interval: time::Duration,
+  pub growth_factor_basis_points: u32,
+}
+
+/// A typed runtime watch that aggregates all exponential backoff parameters.
+#[derive(Clone, Debug)]
+pub struct ExponentialBackoffWatch<Initial, Max, GrowthFactorBasisPoints>
+where
+  Initial: FeatureFlag<time::Duration>,
+  Max: FeatureFlag<time::Duration>,
+  GrowthFactorBasisPoints: FeatureFlag<u32>,
+{
+  initial: DurationWatch<Initial>,
+  max: DurationWatch<Max>,
+  growth_factor_basis_points: IntWatch<GrowthFactorBasisPoints>,
+}
+
+impl<Initial, Max, GrowthFactorBasisPoints>
+  ExponentialBackoffWatch<Initial, Max, GrowthFactorBasisPoints>
+where
+  Initial: FeatureFlag<time::Duration>,
+  Max: FeatureFlag<time::Duration>,
+  GrowthFactorBasisPoints: FeatureFlag<u32>,
+{
+  #[must_use]
+  pub fn read(&self) -> ExponentialBackoffValues {
+    ExponentialBackoffValues {
+      initial_interval: *self.initial.read(),
+      max_interval: *self.max.read(),
+      growth_factor_basis_points: *self.growth_factor_basis_points.read(),
+    }
+  }
+
+  pub fn read_mark_update(&mut self) -> ExponentialBackoffValues {
+    ExponentialBackoffValues {
+      initial_interval: *self.initial.read_mark_update(),
+      max_interval: *self.max.read_mark_update(),
+      growth_factor_basis_points: *self.growth_factor_basis_points.read_mark_update(),
+    }
+  }
+
+  #[must_use]
+  pub fn has_changed(&self) -> bool {
+    self.initial.has_changed()
+      || self.max.has_changed()
+      || self.growth_factor_basis_points.has_changed()
+  }
+}
+
 //
 // FeatureFlag
 //
@@ -524,6 +592,40 @@ macro_rules! duration_feature_flag {
   };
 }
 
+/// Defines a standard exponential-backoff runtime flag set with canonical names
+/// (`InitialBackoffInterval`, `MaxBackoffInterval`, `BackoffGrowthFactorBasisPoints`),
+/// plus `BackoffWatch` and `register_backoff_watch()`.
+#[macro_export]
+macro_rules! exponential_backoff_feature_flags {
+  (
+    $initial_path:literal,
+    $initial_default:expr,
+    $max_path:literal,
+    $max_default:expr,
+    $growth_path:literal,
+    $growth_default:expr
+  ) => {
+    $crate::duration_feature_flag!(InitialBackoffInterval, $initial_path, $initial_default);
+    $crate::duration_feature_flag!(MaxBackoffInterval, $max_path, $max_default);
+    $crate::int_feature_flag!(
+      BackoffGrowthFactorBasisPoints,
+      $growth_path,
+      $growth_default
+    );
+
+    pub type BackoffWatch = $crate::runtime::ExponentialBackoffWatch<
+      InitialBackoffInterval,
+      MaxBackoffInterval,
+      BackoffGrowthFactorBasisPoints,
+    >;
+
+    #[must_use]
+    pub fn register_backoff_watch(loader: &$crate::runtime::ConfigLoader) -> BackoffWatch {
+      loader.register_exponential_backoff_watch()
+    }
+  };
+}
+
 // Below we keep track of all the feature flags used by the SDK. While we could declare them where
 // they are used, this makes it easier to skim them at a glance and requiers less acrobatics in test
 // to refer to these constants.
@@ -631,23 +733,20 @@ pub mod log_upload {
     1.minutes()
   );
 
-  // Controls the initial backoff interval used by the uploader when attempting to retry an upload.
+  // Controls the uploader retry backoff policy:
+  // - initial interval: 30s
+  // - max interval: 30m
+  // - growth factor: 1500 basis points (1.5x)
   //
-  // Note that the backoff is implemented as jittered backoff, meaning the each attempt is executed
-  // in [0, current_backoff].
-  duration_feature_flag!(
-    RetryBackoffInitialFlag,
+  // Backoff is jittered, so each attempt executes in [0, current_backoff].
+  exponential_backoff_feature_flags!(
     "log_uploader.initial_retry_backoff_ms",
-    30.seconds()
-  );
-
-  // Controls the maximum backoff interval used by the uploader when attempting to retry an upload.
-  duration_feature_flag!(
-    RetryBackoffMaxFlag,
+    30.seconds(),
     "log_uploader.max_retry_backoff_ms",
-    30.minutes()
+    30.minutes(),
+    "log_uploader.retry_backoff_growth_factor_basis_points",
+    1500
   );
-
   // Normally when logs are flushed from the trigger buffer we upload all logs in the buffer. This
   // flag allows adding a maximum lookback period, which has us drop all logs older than the
   // specified time. This is useful for limiting the amount of logs uploaded per trigger upload.
@@ -743,23 +842,19 @@ pub mod network_quality {
 pub mod api {
   use time::ext::NumericalDuration;
 
-  // This controls the maximum backoff used when connecting to the API backend. The backoff delay
-  // will never exceed the value configured here, though note that if the client has not yet
-  // received a runtime configuration the default will always apply.
-  duration_feature_flag!(
-    MaxBackoffInterval,
-    "api.max_backoff_interval_ms",
-    20.minutes()
-  );
-
-  // This controls the initial backoff used when connecting to the API backend after a sucessful
-  // handshake or initial attempt. A handshake resets the exponential back off, starting at this
-  // value. Note that this is not the exact value it starts at, but the upper limit to the
-  // randomized interval used initially.
-  duration_feature_flag!(
-    InitialBackoffInterval,
+  // Controls API reconnect backoff policy:
+  // - initial interval upper bound: 500ms (after a successful handshake or first attempt)
+  // - max interval: 20m
+  // - growth factor: 1500 basis points (1.5x)
+  //
+  // Backoff is jittered, so the first delay is randomized up to the initial interval.
+  exponential_backoff_feature_flags!(
     "api.initial_backoff_interval_ms",
-    500.milliseconds()
+    500.milliseconds(),
+    "api.max_backoff_interval_ms",
+    20.minutes(),
+    "api.backoff_growth_factor_basis_points",
+    1500
   );
 
   // This controls the time we'll wait after the last received data upload before we close the API
@@ -898,6 +993,8 @@ pub mod platform_events {
 }
 
 pub mod artifact_upload {
+  use time::ext::NumericalDuration as _;
+
   int_feature_flag!(MaxPendingEntries, "artifact_upload.max_pending_entries", 10);
 
   static ONE_MEGABYTE: u32 = 1024 * 1024; // 1 MiB in bytes
@@ -906,6 +1003,15 @@ pub mod artifact_upload {
     BufferByteLimit,
     "artifact_upload.buffer_byte_limit",
     ONE_MEGABYTE
+  );
+
+  exponential_backoff_feature_flags!(
+    "artifact_upload.retry_backoff_initial_interval_ms",
+    500.milliseconds(),
+    "artifact_upload.retry_backoff_max_interval_ms",
+    20.minutes(),
+    "artifact_upload.retry_backoff_growth_factor_basis_points",
+    1500
   );
 }
 
