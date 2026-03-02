@@ -44,12 +44,18 @@ pub fn main() {
 
   if std::env::var("SKIP_PROTO_GEN").is_err() {
     let bindings = bindgen::Builder::default()
-        .header("src/glue.h")
-        // Tell cargo to invalidate the built crate whenever any of the
-        // included header files changed.
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
-        .generate()
-        .expect("Unable to generate bindings");
+      .header("src/glue.h")
+      // Generate a stable, minimal binding surface for our FFI.
+      .allowlist_function("bdrc_.*")
+      .allowlist_type("Schema")
+      .allowlist_type("BDReaderErr")
+      .allowlist_var("BDReaderErr_.*")
+      .layout_tests(false)
+      // Tell cargo to invalidate the built crate whenever any of the
+      // included header files changed.
+      .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+      .generate()
+      .expect("Unable to generate bindings");
 
     let out_path = PathBuf::from("src/generated");
     let _ = std::fs::create_dir_all(&out_path);
