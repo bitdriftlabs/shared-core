@@ -733,20 +733,6 @@ pub mod log_upload {
     1.minutes()
   );
 
-  // Controls the uploader retry backoff policy:
-  // - initial interval: 30s
-  // - max interval: 30m
-  // - growth factor: 1500 basis points (1.5x)
-  //
-  // Backoff is jittered, so each attempt executes in [0, current_backoff].
-  exponential_backoff_feature_flags!(
-    "log_uploader.initial_retry_backoff_ms",
-    30.seconds(),
-    "log_uploader.max_retry_backoff_ms",
-    30.minutes(),
-    "log_uploader.retry_backoff_growth_factor_basis_points",
-    1500
-  );
   // Normally when logs are flushed from the trigger buffer we upload all logs in the buffer. This
   // flag allows adding a maximum lookback period, which has us drop all logs older than the
   // specified time. This is useful for limiting the amount of logs uploaded per trigger upload.
@@ -842,21 +828,6 @@ pub mod network_quality {
 pub mod api {
   use time::ext::NumericalDuration;
 
-  // Controls API reconnect backoff policy:
-  // - initial interval upper bound: 500ms (after a successful handshake or first attempt)
-  // - max interval: 20m
-  // - growth factor: 1500 basis points (1.5x)
-  //
-  // Backoff is jittered, so the first delay is randomized up to the initial interval.
-  exponential_backoff_feature_flags!(
-    "api.initial_backoff_interval_ms",
-    500.milliseconds(),
-    "api.max_backoff_interval_ms",
-    20.minutes(),
-    "api.backoff_growth_factor_basis_points",
-    1500
-  );
-
   // This controls the time we'll wait after the last received data upload before we close the API
   // mux stream. This allows the stream to use a configurable amount of idle time before we close
   // it, allowing us to shut down idle streams/connections to reduce the amount of active streams.
@@ -888,6 +859,25 @@ pub mod api {
     MinReconnectInterval,
     "api.min_reconnect_interval_ms",
     0.seconds()
+  );
+}
+
+pub mod retry_backoff {
+  use time::ext::NumericalDuration;
+
+  // Shared retry backoff policy used by reconnect and upload retry loops:
+  // - initial interval upper bound: 500ms
+  // - max interval: 20m
+  // - growth factor: 5000 basis points (5.0x)
+  //
+  // Backoff is jittered, so each attempt executes in [0, current_backoff].
+  exponential_backoff_feature_flags!(
+    "retry.backoff_initial_interval_ms",
+    500.milliseconds(),
+    "retry.backoff_max_interval_ms",
+    20.minutes(),
+    "retry.backoff_growth_factor_basis_points",
+    5000
   );
 }
 
@@ -993,8 +983,6 @@ pub mod platform_events {
 }
 
 pub mod artifact_upload {
-  use time::ext::NumericalDuration as _;
-
   int_feature_flag!(MaxPendingEntries, "artifact_upload.max_pending_entries", 10);
 
   static ONE_MEGABYTE: u32 = 1024 * 1024; // 1 MiB in bytes
@@ -1003,15 +991,6 @@ pub mod artifact_upload {
     BufferByteLimit,
     "artifact_upload.buffer_byte_limit",
     ONE_MEGABYTE
-  );
-
-  exponential_backoff_feature_flags!(
-    "artifact_upload.retry_backoff_initial_interval_ms",
-    500.milliseconds(),
-    "artifact_upload.retry_backoff_max_interval_ms",
-    20.minutes(),
-    "artifact_upload.retry_backoff_growth_factor_basis_points",
-    1500
   );
 }
 
