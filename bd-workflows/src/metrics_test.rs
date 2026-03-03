@@ -88,6 +88,7 @@ fn metric_increment_value_extraction() {
         EmitMetricActionCount {
           emission_count: 1,
           is_parallel: false,
+          parallel_source_workflow_index: None,
         },
       )
     })
@@ -199,6 +200,7 @@ fn counter_label_extraction() {
     EmitMetricActionCount {
       emission_count: 1,
       is_parallel: false,
+      parallel_source_workflow_index: None,
     },
   )]);
 

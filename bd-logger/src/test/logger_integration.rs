@@ -1765,9 +1765,10 @@ fn workflow_emit_metric_action_parallel_same_save_field_reset_persists_across_re
     [].into(),
   );
 
-  setup
-    .logger_handle
-    .flush_state(Block::Yes(15.std_seconds()));
+  setup.logger_handle.flush_state(Block::Yes {
+    timeout: 15.std_seconds(),
+    poll_callback: None,
+  });
   assert!(setup.workflows_state_file_path().exists());
 
   let sdk_directory = setup.sdk_directory.clone();

@@ -1413,6 +1413,104 @@ async fn parallel_runs_matching_same_log_do_not_dedupe_emit_metric_actions() {
 }
 
 #[tokio::test]
+async fn parallel_metric_count_uses_first_matching_workflow_when_run_counts_are_equal() {
+  let make_parallel_metric_workflow = |id: &str, max_active_runs: u32| {
+    let a = state("A");
+    let mut b = state("B");
+    let c = state("C");
+
+    let a = a.declare_transition(&b, rule!(message_equals("start")));
+    b = b.declare_transition_with_actions(
+      &c,
+      rule!(message_equals("hit")),
+      &[make_emit_counter_action(
+        "parallel_metric",
+        metric_value(1),
+        vec![],
+      )],
+    );
+
+    WorkflowBuilder::new(id, &[&a, &b, &c])
+      .with_parallel_execution(Some(max_active_runs))
+      .make_config()
+  };
+
+  let workflows = vec![
+    make_parallel_metric_workflow("1", 3),
+    make_parallel_metric_workflow("2", 3),
+  ];
+
+  let setup = Setup::new();
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
+
+  workflows_engine.process_log(TestLog::new("start"));
+  workflows_engine.process_log(TestLog::new("start"));
+  workflows_engine.process_log(TestLog::new("start"));
+
+  engine_assert_active_runs!(workflows_engine; 0; "B", "B", "B");
+  engine_assert_active_runs!(workflows_engine; 1; "B", "B", "B");
+
+  workflows_engine.process_log(TestLog::new("hit"));
+
+  setup
+    .collector
+    .assert_workflow_counter_eq(3, "parallel_metric", labels! {});
+}
+
+#[tokio::test]
+async fn parallel_metric_count_uses_first_matching_workflow_when_run_counts_are_uneven() {
+  let make_parallel_metric_workflow = |id: &str, max_active_runs: u32| {
+    let a = state("A");
+    let mut b = state("B");
+    let c = state("C");
+
+    let a = a.declare_transition(&b, rule!(message_equals("start")));
+    b = b.declare_transition_with_actions(
+      &c,
+      rule!(message_equals("hit")),
+      &[make_emit_counter_action(
+        "parallel_metric",
+        metric_value(1),
+        vec![],
+      )],
+    );
+
+    WorkflowBuilder::new(id, &[&a, &b, &c])
+      .with_parallel_execution(Some(max_active_runs))
+      .make_config()
+  };
+
+  let workflows = vec![
+    make_parallel_metric_workflow("1", 2),
+    make_parallel_metric_workflow("2", 3),
+  ];
+
+  let setup = Setup::new();
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
+
+  workflows_engine.process_log(TestLog::new("start"));
+  workflows_engine.process_log(TestLog::new("start"));
+  workflows_engine.process_log(TestLog::new("start"));
+
+  engine_assert_active_runs!(workflows_engine; 0; "B", "B");
+  engine_assert_active_runs!(workflows_engine; 1; "B", "B", "B");
+
+  workflows_engine.process_log(TestLog::new("hit"));
+
+  setup
+    .collector
+    .assert_workflow_counter_eq(2, "parallel_metric", labels! {});
+}
+
+#[tokio::test]
 async fn exclusive_workflow_duration_limit() {
   let mut a = state("A");
   let mut b = state("B");

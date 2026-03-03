@@ -639,7 +639,7 @@ impl WorkflowsEngine {
       };
     }
 
-    let mut actions: Vec<TriggeredAction<'_>> = vec![];
+    let mut prepared_actions = PreparedActions::default();
     let mut logs_to_inject: TinyMap<&'a str, Log> = TinyMap::default();
     let mut all_cumulative_workflow_debug_state = vec![];
     let mut all_incremental_workflow_debug_state = vec![];
@@ -687,7 +687,7 @@ impl WorkflowsEngine {
         incremental_workflow_debug_state,
       ) = result.into_parts();
       if !matches!(config.mode(), WorkflowDebugMode::DebugOnly) {
-        actions.extend(triggered_actions);
+        prepared_actions.incorporate_workflow_actions(index, triggered_actions);
       }
       logs_to_inject.extend(workflow_logs_to_inject);
       if let Some(cumulative_workflow_debug_state) = cumulative_workflow_debug_state {
@@ -709,7 +709,7 @@ impl WorkflowsEngine {
       emit_metric_action_counts,
       emit_sankey_diagrams_actions,
       capture_screenshot,
-    } = Self::prepare_actions(actions);
+    } = prepared_actions;
 
     if let Some(capture_session) = event.capture_session() {
       log::debug!("event requested session capture, capturing session");
@@ -835,88 +835,6 @@ impl WorkflowsEngine {
     self.state.clear_ongoing_workflows_state();
     self.needs_state_persistence = true;
   }
-
-  /// Prepares actions for execution.
-  ///
-  /// Emit-metric actions use mixed behavior:
-  /// * default behavior dedupes identical actions for a single processed event,
-  /// * parallel-run annotated metric actions preserve one emission per distinct matching run.
-  fn prepare_actions<'a>(actions: Vec<TriggeredAction<'a>>) -> PreparedActions<'a> {
-    if actions.is_empty() {
-      return PreparedActions::default();
-    }
-
-    let flush_buffers_actions: BTreeSet<Cow<'_, ActionFlushBuffers>> = actions
-      .iter()
-      .filter_map(|action| {
-        if let TriggeredAction::FlushBuffers(flush_buffers_action) = action {
-          Some(Cow::Borrowed(*flush_buffers_action))
-        } else {
-          None
-        }
-      })
-      .collect();
-
-    // We key by the full `ActionEmitMetric` payload, not only action ID. This means two actions
-    // sharing the same ID but differing in tags/increment/type are tracked independently.
-    let mut emit_metric_action_counts: BTreeMap<&ActionEmitMetric, EmitMetricActionCount> =
-      BTreeMap::new();
-
-    for action in &actions {
-      match action {
-        TriggeredAction::EmitMetric(emit_metric_action) => {
-          let count = emit_metric_action_counts
-            .entry(*emit_metric_action)
-            .or_insert(EmitMetricActionCount {
-              emission_count: 0,
-              is_parallel: false,
-            });
-          debug_assert!(
-            !count.is_parallel,
-            "same metric action key changed execution type from parallel to exclusive"
-          );
-          count.emission_count = 1;
-        },
-        TriggeredAction::EmitMetricParallelRun(action) => {
-          let count = emit_metric_action_counts
-            .entry(*action)
-            .or_insert(EmitMetricActionCount {
-              emission_count: 0,
-              is_parallel: true,
-            });
-          debug_assert!(
-            count.is_parallel,
-            "same metric action key changed execution type from exclusive to parallel"
-          );
-          count.emission_count += 1;
-        },
-        _ => {},
-      }
-    }
-
-    let capture_screenshot = actions
-      .iter()
-      .any(|action| matches!(action, TriggeredAction::TakeScreenshot));
-
-    let emit_sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>> = actions
-      .into_iter()
-      .filter_map(|action| {
-          if let TriggeredAction::SankeyDiagram(action) = action {
-              Some(action)
-          } else {
-              None
-          }
-      })
-      // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
-      .collect();
-
-    PreparedActions {
-      flush_buffers_actions,
-      emit_metric_action_counts,
-      emit_sankey_diagrams_actions,
-      capture_screenshot,
-    }
-  }
 }
 
 impl Drop for WorkflowsEngine {
@@ -934,10 +852,87 @@ struct PreparedActions<'a> {
   capture_screenshot: bool,
 }
 
+impl<'a> PreparedActions<'a> {
+  /// Prepares workflow-triggered actions for execution while preserving first-workflow semantics
+  /// for parallel metric action counts.
+  fn incorporate_workflow_actions(
+    &mut self,
+    workflow_index: usize,
+    actions: Vec<TriggeredAction<'a>>,
+  ) {
+    for action in actions {
+      match action {
+        TriggeredAction::FlushBuffers(flush_buffers_action) => {
+          self
+            .flush_buffers_actions
+            .insert(Cow::Borrowed(flush_buffers_action));
+        },
+        TriggeredAction::EmitMetric(emit_metric_action) => {
+          let count = self
+            .emit_metric_action_counts
+            .entry(emit_metric_action)
+            .or_insert(EmitMetricActionCount {
+              emission_count: 0,
+              is_parallel: false,
+              parallel_source_workflow_index: None,
+            });
+          debug_assert!(
+            !count.is_parallel,
+            "same metric action key changed execution type from parallel to exclusive"
+          );
+          count.emission_count = 1;
+          count.parallel_source_workflow_index = None;
+        },
+        TriggeredAction::EmitMetricParallelRun(emit_metric_action) => {
+          // For parallel workflows, only count emissions from the first workflow that matched
+          // this specific metric action key. Subsequent workflows that emit the same metric action
+          // for the same event are ignored to avoid cross-workflow overcounting.
+          // TODO(mattklein123): This is actually broken in the case where we have 2 workflows with
+          //                     a common prefix that end up getting delivered to the device
+          //                     at different times. The counts would potentially be wrong in this
+          //                     case. We will ignore this edge case for the first version.
+          let count = self
+            .emit_metric_action_counts
+            .entry(emit_metric_action)
+            .or_insert(EmitMetricActionCount {
+              emission_count: 0,
+              is_parallel: true,
+              parallel_source_workflow_index: Some(workflow_index),
+            });
+          debug_assert!(
+            count.is_parallel,
+            "same metric action key changed execution type from exclusive to parallel"
+          );
+
+          match count.parallel_source_workflow_index {
+            Some(first_workflow_index) if first_workflow_index != workflow_index => {
+              continue;
+            },
+            Some(_) => {},
+            None => {
+              count.parallel_source_workflow_index = Some(workflow_index);
+            },
+          }
+
+          count.emission_count += 1;
+        },
+        TriggeredAction::SankeyDiagram(action) => {
+          // TODO(Augustyniak): Should we make sure that elements are unique by their ID *only*?
+          self.emit_sankey_diagrams_actions.insert(action);
+        },
+        TriggeredAction::TakeScreenshot => {
+          self.capture_screenshot = true;
+        },
+      }
+    }
+  }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct EmitMetricActionCount {
   pub(crate) emission_count: usize,
   pub(crate) is_parallel: bool,
+  pub(crate) parallel_source_workflow_index: Option<usize>,
 }
 
 //
