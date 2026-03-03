@@ -158,7 +158,10 @@ impl LoggerHolder {
         .collect(),
       [].into(),
       None,
-      bd_logger::Block::Yes(1.std_seconds()),
+      bd_logger::Block::Yes {
+        timeout: 1.std_seconds(),
+        poll_callback: None,
+      },
       &session_capture,
     );
   }

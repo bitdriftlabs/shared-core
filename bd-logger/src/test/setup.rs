@@ -348,7 +348,10 @@ impl Setup {
       fields,
       matching_fields,
       None,
-      Block::Yes(15.std_seconds()),
+      Block::Yes {
+        timeout: 15.std_seconds(),
+        poll_callback: None,
+      },
       &CaptureSession::default(),
     );
   }

@@ -72,9 +72,22 @@ impl<T: Debug> Receiver<T> {
     Ok(self.rx.blocking_recv()?)
   }
 
-  pub fn blocking_recv_with_timeout(
+  pub fn blocking_recv_with_timeout(self, timeout: Duration) -> Result<T, RecvWithTimeoutError> {
+    self.blocking_recv_with_timeout_and_callback(timeout, None)
+  }
+
+  /// Blocking receive with timeout and an optional poll callback.
+  ///
+  /// When `poll_callback` is `Some`, the callback is invoked repeatedly while waiting for a
+  /// value. The callback **replaces** the default `thread::sleep` behavior, so it must yield
+  /// or sleep briefly to avoid busy-spinning.
+  ///
+  /// This is useful for platforms like iOS where the caller needs to pump the run loop while
+  /// waiting, keeping the main thread responsive.
+  pub fn blocking_recv_with_timeout_and_callback(
     mut self,
     timeout: Duration,
+    poll_callback: Option<&dyn Fn()>,
   ) -> Result<T, RecvWithTimeoutError> {
     let deadline = Instant::now() + timeout;
 
@@ -89,7 +102,11 @@ impl<T: Debug> Receiver<T> {
           return Err(RecvWithTimeoutError::ChannelClosed);
         },
         Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {
-          std::thread::sleep(Duration::from_millis(5));
+          if let Some(callback) = poll_callback {
+            callback();
+          } else {
+            std::thread::sleep(Duration::from_millis(5));
+          }
         },
       }
     }
