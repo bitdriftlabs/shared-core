@@ -77,7 +77,10 @@ fn crash_report_upload() {
     setup.send_configuration_update(configuration_update("", StateOfTheWorld::default()));
 
     // Flush state to ensure feature flags are persisted before writing the crash report
-    setup.logger_handle.flush_state(Block::Yes(5.std_seconds()));
+    setup.logger_handle.flush_state(Block::Yes {
+      timeout: 5.std_seconds(),
+      poll_callback: None,
+    });
 
     // Log one log to trigger a global state update, blocking to make sure it gets processed.
     setup.logger_handle.log(
@@ -87,7 +90,10 @@ fn crash_report_upload() {
       [].into(),
       [].into(),
       None,
-      Block::Yes(5.std_seconds()),
+      Block::Yes {
+        timeout: 5.std_seconds(),
+        poll_callback: None,
+      },
       &CaptureSession::default(),
     );
 

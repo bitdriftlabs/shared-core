@@ -117,7 +117,6 @@ impl Setup {
     });
   }
 
-
   fn make_test_async_log_buffer(
     &mut self,
     config_update_rx: tokio::sync::mpsc::Receiver<ConfigUpdate>,
@@ -528,7 +527,10 @@ fn enqueuing_log_blocks() {
     [].into(),
     [].into(),
     None,
-    Block::Yes(15.std_seconds()),
+    Block::Yes {
+      timeout: 15.std_seconds(),
+      poll_callback: None,
+    },
     None,
   );
 
@@ -970,7 +972,12 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
   .unwrap();
 
   // 3. Flush state.
-  sender.flush_state(Block::Yes(5.std_seconds())).unwrap();
+  sender
+    .flush_state(Block::Yes {
+      timeout: 5.std_seconds(),
+      poll_callback: None,
+    })
+    .unwrap();
 
   // Wait a bit for file I/O to be sure
   500.milliseconds().sleep().await;

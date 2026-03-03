@@ -133,16 +133,29 @@ macro_rules! with_reentrancy_guard {
   };
 }
 
-#[derive(Clone, Copy)]
+/// Controls whether an operation should block until completion.
+#[derive(Default)]
 pub enum Block {
-  Yes(Duration),
+  /// Block until the operation completes or the timeout is reached.
+  Yes {
+    timeout: Duration,
+    /// An optional callback that is invoked repeatedly while waiting for the operation to
+    /// complete. When provided, this callback **replaces** the default sleep-based polling.
+    ///
+    /// The callback should yield or sleep briefly to avoid busy-spinning. For example, on iOS
+    /// this is used to pump the run loop, allowing the main thread to process events while
+    /// waiting. If the callback does not yield, it will spin at 100% CPU.
+    poll_callback: Option<Box<dyn Fn()>>,
+  },
+  /// Do not block; return immediately after initiating the operation.
+  #[default]
   No,
 }
 
 impl From<Block> for bool {
   fn from(block: Block) -> Self {
     match block {
-      Block::Yes(_) => true,
+      Block::Yes { .. } => true,
       Block::No => false,
     }
   }
