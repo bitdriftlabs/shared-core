@@ -22,8 +22,15 @@ pub mod test;
 
 pub use self::InitStrategy::{InMemoryOnly, PersistentWithFallback};
 use ahash::AHashMap;
-use bd_resilient_kv::{DataLoss, RetentionRegistry, ScopedMaps, StateValue};
-pub use bd_resilient_kv::{PersistentStoreConfig, Scope, StateValue as Value, Value_type};
+use bd_resilient_kv::{DataLoss, ScopedMaps, StateValue};
+pub use bd_resilient_kv::{
+  PersistentStoreConfig,
+  RetentionHandle,
+  RetentionRegistry,
+  Scope,
+  StateValue as Value,
+  Value_type,
+};
 use bd_runtime::runtime::ConfigLoader;
 use bd_time::{OffsetDateTimeExt, TimeProvider};
 use itertools::Itertools as _;
@@ -683,6 +690,28 @@ impl Store {
   /// The returned reader holds a read lock on the store for its lifetime.
   pub async fn read(&self) -> impl StateReader + '_ {
     self.inner.read().await
+  }
+
+  /// Triggers a journal rotation to create a snapshot.
+  ///
+  /// This is primarily used to create a state snapshot before uploading logs, ensuring the server
+  /// has the state context needed to hydrate those logs. The rotation creates a compressed `.zz`
+  /// snapshot file in the `state/snapshots/` directory.
+  ///
+  /// Returns the path to the created snapshot file, or `None` if:
+  /// - The store is in-memory only (no persistence)
+  /// - The rotation failed for some reason
+  ///
+  /// Note: For in-memory stores, this is a no-op that returns `None`.
+  pub async fn rotate_journal(&self) -> Option<std::path::PathBuf> {
+    let mut locked = self.inner.write().await;
+    match locked.rotate_journal().await {
+      Ok(rotation) => rotation.snapshot_path,
+      Err(e) => {
+        log::debug!("Failed to rotate journal for snapshot: {e}");
+        None
+      },
+    }
   }
 }
 

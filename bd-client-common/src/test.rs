@@ -85,6 +85,22 @@ impl FileSystem for TestFileSystem {
     Ok(())
   }
 
+  async fn rename_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
+    let from_path = self.directory.path().join(from);
+    let to_path = self.directory.path().join(to);
+
+    tokio::fs::rename(&from_path, &to_path).await.map_err(|e| {
+      anyhow::anyhow!(
+        "failed to rename file {} to {}: {}",
+        from_path.display(),
+        to_path.display(),
+        e
+      )
+    })?;
+
+    Ok(())
+  }
+
   async fn remove_dir(&self, path: &Path) -> anyhow::Result<()> {
     let dir_path = self.directory.path().join(path);
     if !dir_path.exists() {

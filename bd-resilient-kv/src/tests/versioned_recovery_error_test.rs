@@ -138,7 +138,7 @@ async fn test_recovery_with_deletions() -> anyhow::Result<()> {
   let rotation = store.rotate_journal().await?;
 
   // Read the snapshot
-  let compressed_data = std::fs::read(&rotation.snapshot_path)?;
+  let compressed_data = std::fs::read(rotation.snapshot_path.as_ref().unwrap())?;
   let decompressed_data = decompress_zlib(&compressed_data)?;
 
   // Use u64::MAX as snapshot timestamp since we're only checking the latest state

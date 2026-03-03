@@ -10,8 +10,9 @@
 mod consumer_test;
 
 use crate::service::{self, UploadRequest};
+use crate::state_upload::StateUploadHandle;
+use bd_api::TriggerUpload;
 use bd_api::upload::LogBatch;
-use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::{AbslCode, Buffer, BufferEvent, BufferEventWithResponse, Consumer, Error};
 use bd_client_common::error::InvariantError;
 use bd_client_common::maybe_await;
@@ -21,6 +22,7 @@ use bd_log_primitives::EncodableLog;
 use bd_resilient_kv::RetentionHandle;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
+use bd_time::OffsetDateTimeExt;
 use futures_util::future::try_join_all;
 use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
@@ -93,17 +95,21 @@ pub struct BufferUploadManager {
   stream_buffer_shutdown_trigger: Option<ComponentShutdownTrigger>,
 
   old_logs_dropped: Counter,
+
+  // State upload handle for uploading state snapshots before logs.
+  state_upload_handle: Option<Arc<StateUploadHandle>>,
 }
 
 impl BufferUploadManager {
   pub(crate) fn new(
-    data_upload_tx: Sender<DataUpload>,
+    data_upload_tx: tokio::sync::mpsc::Sender<bd_api::DataUpload>,
     runtime_loader: &Arc<ConfigLoader>,
     shutdown: ComponentShutdown,
     buffer_event_rx: Receiver<BufferEventWithResponse>,
     trigger_upload_rx: Receiver<TriggerUpload>,
     stats: &Scope,
     logging: Arc<dyn bd_internal_logging::Logger>,
+    state_upload_handle: Option<Arc<StateUploadHandle>>,
   ) -> Self {
     Self {
       log_upload_service: service::new(data_upload_tx, shutdown.clone(), runtime_loader, stats),
@@ -123,6 +129,7 @@ impl BufferUploadManager {
       logging,
       stream_buffer_shutdown_trigger: None,
       old_logs_dropped: stats.counter("old_logs_dropped"),
+      state_upload_handle,
     }
   }
 
@@ -163,7 +170,6 @@ impl BufferUploadManager {
     trigger_upload_complete_tx: &Sender<String>,
   ) -> anyhow::Result<()> {
     log::debug!("received trigger upload request");
-
 
     let mut buffer_upload_completions = vec![];
 
@@ -359,6 +365,7 @@ impl BufferUploadManager {
         self.feature_flags.clone(),
         shutdown_trigger.make_shutdown(),
         buffer_name.to_string(),
+        self.state_upload_handle.clone(),
       ),
       shutdown_trigger,
     ))
@@ -377,6 +384,7 @@ impl BufferUploadManager {
       self.log_upload_service.clone(),
       buffer_name.to_string(),
       self.old_logs_dropped.clone(),
+      self.state_upload_handle.clone(),
     ))
   }
 }
@@ -391,6 +399,8 @@ struct BatchBuilder {
   flags: Flags,
   total_bytes: usize,
   logs: Vec<Vec<u8>>,
+  oldest_micros: Option<u64>,
+  newest_micros: Option<u64>,
 }
 
 impl BatchBuilder {
@@ -399,10 +409,17 @@ impl BatchBuilder {
       flags,
       total_bytes: 0,
       logs: Vec::new(),
+      oldest_micros: None,
+      newest_micros: None,
     }
   }
 
   fn add_log(&mut self, data: Vec<u8>) {
+    if let Some(ts) = EncodableLog::extract_timestamp(&data) {
+      let ts_micros = ts.unix_timestamp_micros().cast_unsigned();
+      self.oldest_micros = Some(self.oldest_micros.map_or(ts_micros, |o| o.min(ts_micros)));
+      self.newest_micros = Some(self.newest_micros.map_or(ts_micros, |n| n.max(ts_micros)));
+    }
     self.total_bytes += data.len();
     self.logs.push(data);
   }
@@ -418,9 +435,17 @@ impl BatchBuilder {
     max_batch_size_bytes <= self.total_bytes || max_batch_size_logs <= self.logs.len()
   }
 
+  /// Returns the timestamp range (oldest, newest) of logs added to the current batch,
+  /// or `None` if no logs with extractable timestamps have been added.
+  fn timestamp_range(&self) -> Option<(u64, u64)> {
+    self.oldest_micros.zip(self.newest_micros)
+  }
+
   /// Consumes the current batch, resetting all accounting.
   fn take(&mut self) -> Vec<Vec<u8>> {
     self.total_bytes = 0;
+    self.oldest_micros = None;
+    self.newest_micros = None;
     self.logs.drain(..).collect()
   }
 }
@@ -449,6 +474,8 @@ struct ContinuousBufferUploader {
 
   buffer_id: String,
 
+  // State upload handle for uploading state snapshots before logs.
+  state_upload_handle: Option<Arc<StateUploadHandle>>,
   retention_handle: RetentionHandle,
 }
 
@@ -460,6 +487,7 @@ impl ContinuousBufferUploader {
     feature_flags: Flags,
     shutdown: ComponentShutdown,
     buffer_id: String,
+    state_upload_handle: Option<Arc<StateUploadHandle>>,
   ) -> Self {
     Self {
       consumer,
@@ -469,6 +497,7 @@ impl ContinuousBufferUploader {
       batch_builder: BatchBuilder::new(feature_flags.clone()),
       feature_flags,
       buffer_id,
+      state_upload_handle,
       retention_handle,
     }
   }
@@ -518,10 +547,14 @@ impl ContinuousBufferUploader {
     // Disarm the deadline which forces a partial flush to fire.
     self.flush_batch_sleep = None;
 
+    let timestamp_range = self.batch_builder.timestamp_range();
     let logs = self.batch_builder.take();
     let logs_len = logs.len();
-
     log::debug!("flushing {logs_len} logs");
+
+    if let (Some(handle), Some((oldest, newest))) = (&self.state_upload_handle, timestamp_range) {
+      handle.notify_upload_needed(oldest, newest);
+    }
 
     // Attempt to perform an upload of these buffers, with retries ++. See logger/service.rs for
     // details about retry policies etc.
@@ -639,6 +672,8 @@ impl StreamedBufferUpload {
         }
       }
 
+      // TODO(snowp): Handle streaming state updates.
+
       let upload_future = async {
         self
           .log_upload_service
@@ -685,6 +720,9 @@ struct CompleteBufferUpload {
   lookback_window: Option<time::OffsetDateTime>,
 
   old_logs_dropped: Counter,
+
+  // State upload handle for uploading state snapshots before logs.
+  state_upload_handle: Option<Arc<StateUploadHandle>>,
 }
 
 impl CompleteBufferUpload {
@@ -694,6 +732,7 @@ impl CompleteBufferUpload {
     log_upload_service: service::Upload,
     buffer_id: String,
     old_logs_dropped: Counter,
+    state_upload_handle: Option<Arc<StateUploadHandle>>,
   ) -> Self {
     let lookback_window_limit = *runtime_flags.upload_lookback_window_feature_flag.read();
 
@@ -710,6 +749,7 @@ impl CompleteBufferUpload {
       buffer_id,
       lookback_window,
       old_logs_dropped,
+      state_upload_handle,
     }
   }
 
@@ -760,9 +800,14 @@ impl CompleteBufferUpload {
   }
 
   async fn flush_batch(&mut self) -> anyhow::Result<()> {
+    let timestamp_range = self.batch_builder.timestamp_range();
     let logs = self.batch_builder.take();
-
     log::debug!("flushing {} logs", logs.len());
+
+    // Upload state snapshot if needed before uploading logs
+    if let (Some(handle), Some((oldest, newest))) = (&self.state_upload_handle, timestamp_range) {
+      handle.notify_upload_needed(oldest, newest);
+    }
 
     // Attempt to perform an upload of these buffers, with retries ++. See logger/service.rs for
     // details about retry policies etc.

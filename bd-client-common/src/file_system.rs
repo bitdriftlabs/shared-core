@@ -29,6 +29,9 @@ pub trait FileSystem: Send + Sync {
   /// Deletes the file if it exists.
   async fn delete_file(&self, path: &Path) -> anyhow::Result<()>;
 
+  /// Renames/moves a file relative to the SDK root.
+  async fn rename_file(&self, from: &Path, to: &Path) -> anyhow::Result<()>;
+
   /// Deletes the directory if it exists.
   async fn remove_dir(&self, path: &Path) -> anyhow::Result<()>;
 
@@ -96,6 +99,10 @@ impl FileSystem for RealFileSystem {
       Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
       Err(e) => Err(e.into()),
     }
+  }
+
+  async fn rename_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
+    Ok(tokio::fs::rename(self.directory.join(from), self.directory.join(to)).await?)
   }
 
   async fn remove_dir(&self, path: &Path) -> anyhow::Result<()> {

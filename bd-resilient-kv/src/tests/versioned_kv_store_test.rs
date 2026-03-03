@@ -785,7 +785,7 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
   let rotation = setup.store.rotate_journal().await?;
 
   // Verify archived file exists (compressed)
-  assert!(rotation.snapshot_path.exists());
+  assert!(rotation.snapshot_path.as_ref().unwrap().exists());
 
   // Verify active journal still works
   let (ts3, _) = setup
@@ -815,7 +815,7 @@ async fn test_manual_rotation() -> anyhow::Result<()> {
 
   // Decompress the archive and load it as a Store to verify that it contains the old state.
   let snapshot_store = setup
-    .make_store_from_snapshot_file(&rotation.snapshot_path)
+    .make_store_from_snapshot_file(rotation.snapshot_path.as_ref().unwrap())
     .await?;
   assert_eq!(
     snapshot_store.get(Scope::FeatureFlagExposure, "key1"),
@@ -993,7 +993,7 @@ async fn test_multiple_rotations() -> anyhow::Result<()> {
       .insert(Scope::FeatureFlagExposure, key, value)
       .await?;
     let rotation = setup.store.rotate_journal().await?;
-    snapshot_paths.push(rotation.snapshot_path.clone());
+    snapshot_paths.push(rotation.snapshot_path.clone().unwrap());
   }
 
   // Verify all compressed archives exist
@@ -1049,11 +1049,10 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
 
   // Rotate WITHOUT any retention handles - snapshot should NOT be created
   let rotation1 = store.rotate_journal().await?;
-  let snapshot_path1 = rotation1.snapshot_path;
 
-  // Snapshot file should NOT exist because no handles require it
+  // Snapshot should NOT be returned because no handles require it
   assert!(
-    !snapshot_path1.exists(),
+    rotation1.snapshot_path.is_none(),
     "Snapshot should not be created when no retention handles exist"
   );
 
@@ -1076,7 +1075,7 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
   time_provider.advance(1.seconds());
 
   let rotation2 = store.rotate_journal().await?;
-  let snapshot_path2 = rotation2.snapshot_path;
+  let snapshot_path2 = rotation2.snapshot_path.unwrap();
 
   // Snapshot file SHOULD exist because handle requires retention
   assert!(
@@ -1102,11 +1101,10 @@ async fn test_rotation_with_retention_registry() -> anyhow::Result<()> {
   time_provider.advance(1.seconds());
 
   let rotation3 = store.rotate_journal().await?;
-  let snapshot_path3 = rotation3.snapshot_path;
 
   // After handle is dropped, snapshot should not be created
   assert!(
-    !snapshot_path3.exists(),
+    rotation3.snapshot_path.is_none(),
     "Snapshot should not be created after handle is dropped"
   );
 
@@ -1150,38 +1148,26 @@ async fn test_multiple_rotations_with_same_timestamp() -> anyhow::Result<()> {
 
   // Perform first rotation
   let rotation1 = store.rotate_journal().await?;
-  assert!(
-    rotation1.snapshot_path.exists(),
-    "First rotation should create snapshot"
-  );
+  let snapshot_path1 = rotation1.snapshot_path.unwrap();
 
   // Perform second rotation WITHOUT inserting new data
   // This means both rotations will have the same max timestamp
   let rotation2 = store.rotate_journal().await?;
-  assert!(
-    rotation2.snapshot_path.exists(),
-    "Second rotation should create snapshot"
-  );
+  let snapshot_path2 = rotation2.snapshot_path.unwrap();
 
   // Verify both snapshots exist with different filenames (due to different generations)
-  assert!(
-    rotation1.snapshot_path.exists(),
-    "First snapshot should still exist"
-  );
-  assert!(
-    rotation2.snapshot_path.exists(),
-    "Second snapshot should exist"
-  );
+  assert!(snapshot_path1.exists(), "First snapshot should still exist");
+  assert!(snapshot_path2.exists(), "Second snapshot should exist");
 
   // Verify the paths are different (different generations prevent collision)
   assert_ne!(
-    rotation1.snapshot_path, rotation2.snapshot_path,
+    snapshot_path1, snapshot_path2,
     "Snapshots should have different paths despite same timestamp"
   );
 
   // Verify we can read both snapshots (they should be different files)
-  let snapshot1_data = std::fs::read(&rotation1.snapshot_path)?;
-  let snapshot2_data = std::fs::read(&rotation2.snapshot_path)?;
+  let snapshot1_data = std::fs::read(&snapshot_path1)?;
+  let snapshot2_data = std::fs::read(&snapshot_path2)?;
 
   // The files should exist and be valid
   assert!(

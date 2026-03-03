@@ -6,7 +6,14 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::UploadClient;
-use crate::uploader::{Client, REPORT_DIRECTORY, REPORT_INDEX_FILE, SnappedFeatureFlag};
+use crate::uploader::{
+  Client,
+  EnqueueError,
+  REPORT_DIRECTORY,
+  REPORT_INDEX_FILE,
+  SnappedFeatureFlag,
+  UploadSource,
+};
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
 use bd_api::upload::{IntentResponse, UploadResponse};
@@ -160,12 +167,13 @@ async fn basic_flow() {
   let id = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"abc"),
+      UploadSource::File(setup.make_file(b"abc")),
       "client_report".to_string(),
       [("foo".into(), "bar".into())].into(),
       Some(timestamp),
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
 
@@ -219,7 +227,7 @@ async fn feature_flags() {
   let id = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"abc"),
+      UploadSource::File(setup.make_file(b"abc")),
       "client_report".to_string(),
       [("foo".into(), "bar".into())].into(),
       Some(timestamp),
@@ -232,6 +240,7 @@ async fn feature_flags() {
         ),
         SnappedFeatureFlag::new("key2".to_string(), None, timestamp - 2.std_seconds()),
       ],
+      None,
     )
     .unwrap();
 
@@ -295,12 +304,13 @@ async fn pending_upload_limit() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -311,12 +321,13 @@ async fn pending_upload_limit() {
   let id2 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"2"),
+      UploadSource::File(setup.make_file(b"2")),
       "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -326,12 +337,13 @@ async fn pending_upload_limit() {
   let id3 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"3"),
+      UploadSource::File(setup.make_file(b"3")),
       "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -394,12 +406,13 @@ async fn inconsistent_state_missing_file() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -409,12 +422,13 @@ async fn inconsistent_state_missing_file() {
   let id2 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"2"),
+      UploadSource::File(setup.make_file(b"2")),
       "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -452,12 +466,13 @@ async fn inconsistent_state_extra_file() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -523,12 +538,13 @@ async fn disk_persistence() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -570,12 +586,13 @@ async fn inconsistent_state_missing_index() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -594,12 +611,13 @@ async fn inconsistent_state_missing_index() {
   let id2 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"2"),
+      UploadSource::File(setup.make_file(b"2")),
       "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -640,12 +658,13 @@ async fn new_entry_disk_full() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -669,12 +688,13 @@ async fn new_entry_disk_full_after_received() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -710,12 +730,13 @@ async fn intent_retries() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -745,12 +766,13 @@ async fn intent_drop() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -782,12 +804,13 @@ async fn upload_retries() {
   let id1 = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"1"),
+      UploadSource::File(setup.make_file(b"1")),
       "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -834,12 +857,13 @@ async fn normalize_type_id_on_load() {
   let id = setup
     .client
     .enqueue_upload(
-      setup.make_file(b"abc"),
+      UploadSource::File(setup.make_file(b"abc")),
       "client_report".to_string(),
       [].into(),
       None,
       "session_id".to_string(),
       vec![],
+      None,
     )
     .unwrap();
   assert_eq!(
@@ -882,4 +906,107 @@ async fn normalize_type_id_on_load() {
     assert_eq!(intent.payload.artifact_id, id.to_string());
     assert_eq!(intent.payload.type_id, "client_report");
   });
+}
+
+#[tokio::test]
+async fn enqueue_upload_acknowledges_after_disk_persist() {
+  let mut setup = Setup::new(2).await;
+
+  let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
+  let id = setup
+    .client
+    .enqueue_upload(
+      UploadSource::File(setup.make_file(b"snapshot")),
+      "state_snapshot".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      Some(persisted_tx),
+    )
+    .unwrap();
+
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id.to_string()
+  );
+  persisted_rx.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn enqueue_upload_from_path_acknowledges_after_disk_persist_and_removes_source() {
+  let mut setup = Setup::new(2).await;
+
+  let source_path = std::path::PathBuf::from("source_snapshot.zz");
+  setup
+    .filesystem
+    .write_file(&source_path, b"snapshot")
+    .await
+    .unwrap();
+
+  let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
+  let id = setup
+    .client
+    .enqueue_upload(
+      UploadSource::Path(source_path.clone()),
+      "state_snapshot".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      Some(persisted_tx),
+    )
+    .unwrap();
+
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id.to_string()
+  );
+  persisted_rx.await.unwrap().unwrap();
+  assert!(!setup.filesystem.exists(&source_path).await.unwrap());
+}
+
+#[tokio::test]
+async fn queue_full_with_only_state_snapshots_rejects_new_state_snapshot() {
+  let mut setup = Setup::new(1).await;
+
+  let (persisted_tx1, persisted_rx1) = tokio::sync::oneshot::channel();
+  let id1 = setup
+    .client
+    .enqueue_upload(
+      UploadSource::File(setup.make_file(b"state-1")),
+      "state_snapshot".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      Some(persisted_tx1),
+    )
+    .unwrap();
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id1.to_string()
+  );
+  persisted_rx1.await.unwrap().unwrap();
+
+  let (persisted_tx2, persisted_rx2) = tokio::sync::oneshot::channel();
+  let _id2 = setup
+    .client
+    .enqueue_upload(
+      UploadSource::File(setup.make_file(b"state-2")),
+      "state_snapshot".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      Some(persisted_tx2),
+    )
+    .unwrap();
+
+  assert_matches!(persisted_rx2.await.unwrap(), Err(EnqueueError::QueueFull));
+  assert!(
+    timeout(100.std_milliseconds(), setup.entry_received_rx.recv())
+      .await
+      .is_err()
+  );
 }
