@@ -10,6 +10,7 @@
 mod metrics_test;
 
 use crate::config::{ActionEmitMetric, TagValue};
+use crate::engine::EmitMetricActionCount;
 use crate::workflow::{TriggeredActionEmitSankey, WorkflowEvent};
 use bd_client_stats::Stats;
 use bd_stats_common::MetricType;
@@ -33,15 +34,15 @@ impl MetricsCollector {
 
   pub(crate) fn emit_metrics(
     &self,
-    action_counts: &BTreeMap<&ActionEmitMetric, (usize, bool)>,
+    action_counts: &BTreeMap<&ActionEmitMetric, EmitMetricActionCount>,
     event: WorkflowEvent<'_>,
     state_reader: &dyn bd_state::StateReader,
   ) {
     // TODO(Augustyniak): We dedupe stats in here too only when both their tags and the value of
     // If `counter_increment` values are identical, consider deduping metrics even if their
     // `counter_increment` fields have different values.
-    for (action, (count, _is_parallel)) in action_counts {
-      if *count == 0 {
+    for (action, count) in action_counts {
+      if count.emission_count == 0 {
         continue;
       }
 
@@ -70,17 +71,26 @@ impl MetricsCollector {
       match action.metric_type {
         MetricType::Counter => {
           #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+          let increment = (value as u64).saturating_mul(count.emission_count as u64);
+
+          #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
           self
             .stats
-            .record_dynamic_counter(tags, &action.id, (value as u64) * (*count as u64));
+            .record_dynamic_counter(tags, &action.id, increment);
         },
         MetricType::Histogram => {
           log::debug!("recording histogram value: {value}");
-          for _ in 0 .. *count {
+          if count.emission_count == 1 {
+            self.stats.record_dynamic_histogram(tags, &action.id, value);
+            continue;
+          }
+
+          for _ in 0 .. (count.emission_count - 1) {
             self
               .stats
               .record_dynamic_histogram(tags.clone(), &action.id, value);
           }
+          self.stats.record_dynamic_histogram(tags, &action.id, value);
         },
       }
     }

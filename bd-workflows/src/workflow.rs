@@ -263,10 +263,11 @@ pub struct Workflow {
   #[field(id = 1)]
   id: String,
   // The list of runs ordered from newest to oldest.
-  // New initial-state runs are inserted at index 0. If runs are non-empty, index 0 is guaranteed
-  // to be in an initial state. In exclusive mode we keep at most two runs (initial + active). In
-  // parallel mode we keep up to `max_active_runs`; when full and a new initial run is needed, the
-  // oldest run is evicted.
+  // New initial-state runs are inserted at index 0. At the start of event processing, after any
+  // `needs_new_run` handling, index 0 is guaranteed to be in an initial state when runs are
+  // non-empty. In exclusive mode we keep at most two runs (initial + active). In parallel mode we
+  // keep up to `max_active_runs`; when full and a new initial run is needed, the oldest run is
+  // evicted.
   // TODO(mattklein123): Consider `VecDeque` if parallel run churn grows; front insertion + back
   // eviction would be O(1) and match this access pattern.
   #[field(id = 2)]

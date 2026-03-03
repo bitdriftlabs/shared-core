@@ -857,33 +857,38 @@ impl WorkflowsEngine {
       })
       .collect();
 
-    // Assumption: server-generated action IDs partition exclusive and parallel metric actions
-    // (i.e., they do not conflict across execution modes).
-    // * map value .0 is emission count
-    // * map value .1 is whether the action is parallel (`true`) or exclusive (`false`)
-    let mut emit_metric_action_counts: BTreeMap<&ActionEmitMetric, (usize, bool)> = BTreeMap::new();
+    // We key by the full `ActionEmitMetric` payload, not only action ID. This means two actions
+    // sharing the same ID but differing in tags/increment/type are tracked independently.
+    let mut emit_metric_action_counts: BTreeMap<&ActionEmitMetric, EmitMetricActionCount> =
+      BTreeMap::new();
 
     for action in &actions {
       match action {
         TriggeredAction::EmitMetric(emit_metric_action) => {
-          let (count, is_parallel) = emit_metric_action_counts
+          let count = emit_metric_action_counts
             .entry(*emit_metric_action)
-            .or_insert((0, false));
+            .or_insert(EmitMetricActionCount {
+              emission_count: 0,
+              is_parallel: false,
+            });
           debug_assert!(
-            !*is_parallel,
-            "metric action ID changed execution type from parallel to exclusive"
+            !count.is_parallel,
+            "same metric action key changed execution type from parallel to exclusive"
           );
-          *count = 1;
+          count.emission_count = 1;
         },
         TriggeredAction::EmitMetricParallelRun(action) => {
-          let (count, is_parallel) = emit_metric_action_counts
+          let count = emit_metric_action_counts
             .entry(*action)
-            .or_insert((0, true));
+            .or_insert(EmitMetricActionCount {
+              emission_count: 0,
+              is_parallel: true,
+            });
           debug_assert!(
-            *is_parallel,
-            "metric action ID changed execution type from exclusive to parallel"
+            count.is_parallel,
+            "same metric action key changed execution type from exclusive to parallel"
           );
-          *count += 1;
+          count.emission_count += 1;
         },
         _ => {},
       }
@@ -924,9 +929,15 @@ impl Drop for WorkflowsEngine {
 #[derive(Default)]
 struct PreparedActions<'a> {
   flush_buffers_actions: BTreeSet<Cow<'a, ActionFlushBuffers>>,
-  emit_metric_action_counts: BTreeMap<&'a ActionEmitMetric, (usize, bool)>,
+  emit_metric_action_counts: BTreeMap<&'a ActionEmitMetric, EmitMetricActionCount>,
   emit_sankey_diagrams_actions: BTreeSet<TriggeredActionEmitSankey<'a>>,
   capture_screenshot: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct EmitMetricActionCount {
+  pub(crate) emission_count: usize,
+  pub(crate) is_parallel: bool,
 }
 
 //

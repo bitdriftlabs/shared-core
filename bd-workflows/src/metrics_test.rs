@@ -7,6 +7,7 @@
 
 use super::MetricsCollector;
 use crate::config::{ActionEmitMetric, TagValue};
+use crate::engine::EmitMetricActionCount;
 use crate::workflow::WorkflowEvent;
 use bd_client_stats::Stats;
 use bd_client_stats_store::Collector;
@@ -79,8 +80,18 @@ fn metric_increment_value_extraction() {
       metric_type: MetricType::Histogram,
     },
   ];
-  let action_counts: BTreeMap<&ActionEmitMetric, (usize, bool)> =
-    actions.iter().map(|action| (action, (1, false))).collect();
+  let action_counts: BTreeMap<&ActionEmitMetric, EmitMetricActionCount> = actions
+    .iter()
+    .map(|action| {
+      (
+        action,
+        EmitMetricActionCount {
+          emission_count: 1,
+          is_parallel: false,
+        },
+      )
+    })
+    .collect();
 
   metrics_collector.emit_metrics(
     &action_counts,
@@ -183,7 +194,13 @@ fn counter_label_extraction() {
     increment: crate::config::ValueIncrement::Fixed(1),
     metric_type: MetricType::Counter,
   };
-  let action_counts = BTreeMap::from([(&action, (1usize, false))]);
+  let action_counts = BTreeMap::from([(
+    &action,
+    EmitMetricActionCount {
+      emission_count: 1,
+      is_parallel: false,
+    },
+  )]);
 
   metrics_collector.emit_metrics(&action_counts, WorkflowEvent::Log(&log), &state_reader);
 
