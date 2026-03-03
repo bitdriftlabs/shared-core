@@ -91,6 +91,7 @@ impl SetupSingleConsumer {
       make_flags(&runtime_loader),
       shutdown_trigger.make_shutdown(),
       "buffer".to_string(),
+      None,
     );
 
     tokio::spawn(async move { uploader.consume_continuous_logs().await });
@@ -359,6 +360,7 @@ async fn continuous_buffer_sets_retention_none_when_batch_drains_buffer() {
     make_flags(&runtime_loader),
     shutdown_trigger.make_shutdown(),
     "buffer".to_string(),
+    None,
   );
   tokio::spawn(async move { uploader.consume_continuous_logs().await.unwrap() });
 
@@ -712,6 +714,7 @@ impl SetupMultiConsumer {
         trigger_upload_rx,
         &collector_clone.scope("consumer"),
         bd_internal_logging::NoopLogger::new(),
+        None,
       )
       .run()
       .await
@@ -980,7 +983,6 @@ async fn log_streaming() {
   let runtime_loader = ConfigLoader::new(&PathBuf::from("."));
 
   let (log_upload_tx, mut log_upload_rx) = tokio::sync::mpsc::channel(1);
-
   let upload_service = service::new(
     log_upload_tx,
     shutdown_trigger.make_shutdown(),
@@ -1092,7 +1094,6 @@ async fn log_streaming_shutdown() {
   let runtime_loader = ConfigLoader::new(&PathBuf::from("."));
 
   let (log_upload_tx, mut log_upload_rx) = tokio::sync::mpsc::channel(1);
-
   let upload_service = service::new(
     log_upload_tx,
     global_shutdown_trigger.make_shutdown(),

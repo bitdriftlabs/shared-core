@@ -255,10 +255,22 @@ required by downstream consumers.
 
 - Snapshot creation is gated by the **minimum retention timestamp**. If no handles are registered,
   snapshots are skipped.
+- A journal rotation may therefore complete without producing an archived snapshot file when
+  retention does not require one.
 - Snapshots older than the minimum retention timestamp are eligible for deletion.
 - While any handle is pending, cleanup keeps all snapshots (minimum retention treated as `0`).
 - A **max snapshot count** safety cap bounds the number of retained snapshots unless retention
   requires keeping everything.
+
+### Rotation Result Contract
+
+Rotation always creates a new active journal generation, but snapshot output is conditional:
+
+- if retention requires a snapshot, rotation returns a snapshot path and the archived `.zz` file is
+  created;
+- if retention does not require a snapshot, rotation returns no snapshot path.
+
+Callers must treat snapshot production as optional and handle the no-snapshot case explicitly.
 
 ### Runtime Controls
 

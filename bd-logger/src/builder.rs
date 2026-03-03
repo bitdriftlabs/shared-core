@@ -13,6 +13,7 @@ use crate::internal::InternalLogger;
 use crate::log_replay::LoggerReplay;
 use crate::logger::Logger;
 use crate::logging_state::UninitializedLoggingContext;
+use crate::state_upload::StateUploadHandle;
 use crate::{InitParams, LogAttributesOverrides};
 use bd_api::{
   AggregatedNetworkQualityProvider,
@@ -325,11 +326,40 @@ impl LoggerBuilder {
         &collector_clone,
         shutdown_handle.make_shutdown(),
       );
+      let artifact_client: Arc<dyn bd_artifact_upload::Client> = Arc::new(artifact_client);
+
+      // Create state upload handle for uploading state snapshots alongside logs.
+      // Gated by the `state.upload_enabled` runtime flag, which defaults to false as a
+      // safe rollout mechanism.
+      let state_upload_enabled =
+        *bd_runtime::runtime::state::StateUploadEnabled::register(&runtime_loader)
+          .into_inner()
+          .borrow();
+      let (state_upload_handle, state_upload_worker) = if state_upload_enabled {
+        let snapshot_creation_interval_ms =
+          *bd_runtime::runtime::state::SnapshotCreationIntervalMs::register(&runtime_loader)
+            .into_inner()
+            .borrow();
+        let (handle, worker) = StateUploadHandle::new(
+          Some(state_directory.clone()),
+          self.params.store.clone(),
+          Some(retention_registry.clone()),
+          Some(Arc::new(state_store.clone())),
+          snapshot_creation_interval_ms,
+          time_provider.clone(),
+          artifact_client.clone(),
+          &scope,
+        )
+        .await;
+        (Some(Arc::new(handle)), Some(worker))
+      } else {
+        (None, None)
+      };
 
       let crash_monitor = Monitor::new(
         &self.params.sdk_directory,
         self.params.store.clone(),
-        Arc::new(artifact_client),
+        artifact_client.clone(),
         self.params.session_strategy.clone(),
         &init_lifecycle,
         state_store.clone(),
@@ -365,6 +395,7 @@ impl LoggerBuilder {
         trigger_upload_rx,
         &scope,
         log.clone(),
+        state_upload_handle,
       );
 
       let updater = Arc::new(client_config::Config::new(
@@ -428,6 +459,12 @@ impl LoggerBuilder {
         },
         async move {
           artifact_uploader.run().await;
+          Ok(())
+        },
+        async move {
+          if let Some(worker) = state_upload_worker {
+            worker.run().await;
+          }
           Ok(())
         }
       )
