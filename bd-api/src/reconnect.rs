@@ -17,7 +17,10 @@ use time::{Duration, OffsetDateTime};
 
 const LAST_CONNECTED_AT_KEY: Key<Timestamp> = Key::new("api:reconnect:last_connected_at");
 const NEXT_TRY_NOT_BEFORE_KEY: Key<Timestamp> = Key::new("api:reconnect:next_try_not_before");
-const MAX_PERSISTED_RETRY_DELAY: Duration = Duration::days(365);
+// We persist reconnect delay so restart does not bypass server load-shedding / retry pacing.
+// Keep this bound relatively short to avoid carrying stale retry windows for too long if clock,
+// persisted state, or server input is pathological.
+const MAX_PERSISTED_RETRY_DELAY: Duration = Duration::days(1);
 
 pub struct ReconnectState {
   store: Arc<Store>,
@@ -52,6 +55,10 @@ impl ReconnectState {
       .last_connected_at
       .map(|last_connected_at| last_connected_at + min_reconnect_interval);
 
+    // There are two reconnect gates:
+    // 1) local pacing based on last known connectivity + min reconnect interval, and
+    // 2) an explicit persisted schedule (backoff/retry-after) that should survive restart.
+    // We must satisfy both, so we reconnect at the later timestamp.
     let next_reconnect_time = match (next_reconnect_from_connectivity, self.next_try_not_before) {
       (Some(a), Some(b)) => Some(std::cmp::max(a, b)),
       (Some(a), None) => Some(a),
@@ -72,8 +79,9 @@ impl ReconnectState {
       return None;
     }
 
-    // Cap the delay from last connectivity at the minimum reconnect interval to prevent
-    // excessively long waits due to clock skew. If explicit next_try_not_before is later, keep it.
+    // For the connectivity-derived delay, cap to min_reconnect_interval to avoid huge waits if
+    // wall clock moves backwards. Do not cap explicit persisted retry schedules here: those are
+    // already bounded on write by MAX_PERSISTED_RETRY_DELAY.
     let capped_delay = if let Some(next_reconnect_from_connectivity) =
       next_reconnect_from_connectivity
       && next_reconnect_time == next_reconnect_from_connectivity
@@ -91,6 +99,8 @@ impl ReconnectState {
   }
 
   pub fn record_next_try_after(&mut self, delay: Duration) {
+    // Keep persisted delay non-negative and bounded. This value may come from either server
+    // retry-after or local backoff and should never become an unbounded persisted block.
     let bounded_delay = if delay.is_negative() {
       Duration::ZERO
     } else {
@@ -98,6 +108,7 @@ impl ReconnectState {
     };
 
     let now = self.time_provider.now();
+    // checked_add avoids panic on pathological duration/date combinations.
     let next_try_not_before = now.checked_add(bounded_delay).unwrap_or(now);
 
     log::trace!(
@@ -111,6 +122,9 @@ impl ReconnectState {
   }
 
   pub fn clear_next_try_not_before_in_memory(&mut self) {
+    // Intentionally avoid persisting a "cleared" wall-clock timestamp; if the clock later moves
+    // backwards, that persisted value could become future-dated and reintroduce an artificial
+    // delay on restart.
     self.next_try_not_before = None;
   }
 

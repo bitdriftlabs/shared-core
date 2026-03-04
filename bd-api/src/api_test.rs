@@ -1218,6 +1218,13 @@ async fn retry_after_persists_across_restart() {
     .error_shutdown(Code::ResourceExhausted, "rate limited", Some(10.minutes()))
     .await;
 
+  // Ensure the ErrorShutdown has been observed and handled before restart, otherwise this test
+  // races with the API task and can restart before the retry window is persisted.
+  setup
+    .collector
+    .wait_for_counter_eq(1, "api:error_shutdown_total", labels! {})
+    .await;
+
   setup.restart().await;
 
   assert!(setup.next_stream(9.minutes()).await.is_none());

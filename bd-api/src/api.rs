@@ -772,6 +772,10 @@ impl Api {
           .handle_responses(remaining_responses, &mut stream_state)
           .await?
         {
+          if let Some(retry_after) = stream_closure_info.retry_after {
+            self.reconnect_state.record_next_try_after(retry_after);
+          }
+
           self.last_disconnect_reason = Some(stream_closure_info.reason);
           self.stats.remote_connect_failure.inc();
           return Err(ApiError::StreamClosure(stream_closure_info.retry_after));
@@ -795,6 +799,10 @@ impl Api {
       // The stream closed while waiting for the handshake. Move to the next loop iteration
       // to attempt to re-create a stream.
       HandshakeResult::StreamClosure(info) => {
+        if let Some(retry_after) = info.retry_after {
+          self.reconnect_state.record_next_try_after(retry_after);
+        }
+
         // The network manager API doesn't expose the underlying issue in a type-safe manner,
         // so just treat all failures to handshake as a connect failure.
         self.last_disconnect_reason = Some(info.reason);
@@ -898,6 +906,10 @@ impl Api {
       };
 
       if let Some(stream_closure_info) = stream_closure_info {
+        if let Some(retry_after) = stream_closure_info.retry_after {
+          self.reconnect_state.record_next_try_after(retry_after);
+        }
+
         // We want to avoid a case in which we spin on an error shutdown. We do this by just
         // checking to see if the stream lived for longer than 1 minute, and if so reset the
         // backoff. If the process restarts everything starts over again anyway.
