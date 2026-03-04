@@ -1146,6 +1146,122 @@ async fn rate_limited_response_before_handshake() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn rate_limited_response_before_handshake_marks_safe() {
+  let mut mock_updater = Arc::new(MockClientConfigurationUpdate::new());
+  make_mut(&mut mock_updater)
+    .expect_fill_handshake()
+    .times(..)
+    .returning(|_| ());
+  make_mut(&mut mock_updater)
+    .expect_try_load_persisted_config()
+    .times(..)
+    .returning(|| ());
+  make_mut(&mut mock_updater)
+    .expect_mark_safe()
+    .times(1..)
+    .returning(|| ());
+
+  let mut setup = Setup::new_ex(mock_updater, None, None, None).await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  setup
+    .error_shutdown(Code::ResourceExhausted, "rate limited", Some(1.minutes()))
+    .await;
+
+  assert!(setup.next_stream(2.minutes()).await.is_some());
+}
+
+#[tokio::test(start_paused = true)]
+async fn error_response_with_retry_after_after_handshake_marks_safe() {
+  let mut mock_updater = Arc::new(MockClientConfigurationUpdate::new());
+  make_mut(&mut mock_updater)
+    .expect_fill_handshake()
+    .times(..)
+    .returning(|_| ());
+  make_mut(&mut mock_updater)
+    .expect_try_load_persisted_config()
+    .times(..)
+    .returning(|| ());
+  make_mut(&mut mock_updater)
+    .expect_on_handshake_complete()
+    .times(..)
+    .returning(|_| ());
+  make_mut(&mut mock_updater)
+    .expect_mark_safe()
+    .times(1..)
+    .returning(|| ());
+
+  let mut setup = Setup::new_ex(mock_updater, None, None, None).await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
+    .await;
+
+  setup
+    .error_shutdown(Code::Internal, "some message", Some(1.minutes()))
+    .await;
+
+  assert!(setup.next_stream(2.minutes()).await.is_some());
+}
+
+#[tokio::test(start_paused = true)]
+async fn retry_after_persists_across_restart() {
+  let mut setup = Setup::new().await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
+    .await;
+
+  setup
+    .error_shutdown(Code::ResourceExhausted, "rate limited", Some(10.minutes()))
+    .await;
+
+  setup.restart().await;
+
+  assert!(setup.next_stream(9.minutes()).await.is_none());
+  assert!(setup.next_stream(2.minutes()).await.is_some());
+}
+
+#[tokio::test(start_paused = true)]
+async fn exponential_backoff_persists_across_restart() {
+  let mut setup = Setup::new_ex(
+    Setup::make_nice_mock_updater(),
+    RuntimeUpdate {
+      version_nonce: "test".to_string(),
+      runtime: Some(bd_test_helpers::runtime::make_proto(vec![
+        (
+          bd_runtime::runtime::retry_backoff::InitialBackoffInterval::path(),
+          bd_test_helpers::runtime::ValueKind::Int(20_000),
+        ),
+        (
+          bd_runtime::runtime::retry_backoff::MaxBackoffInterval::path(),
+          bd_test_helpers::runtime::ValueKind::Int(20_000),
+        ),
+      ]))
+      .into(),
+      ..Default::default()
+    }
+    .into(),
+    None,
+    None,
+  )
+  .await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+
+  // Close before handshake to drive reconnect through exponential backoff.
+  setup.close_stream().await;
+
+  setup.restart().await;
+
+  // With initial=max=20s and default 0.5 randomization, first retry is in [10s, 30s].
+  assert!(setup.next_stream(9.seconds()).await.is_none());
+  assert!(setup.next_stream(22.seconds()).await.is_some());
+}
+
+#[tokio::test(start_paused = true)]
 async fn unauthenticated_response_before_handshake() {
   let mut setup = Setup::new().await;
 

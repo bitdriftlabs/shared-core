@@ -85,3 +85,48 @@ fn excessive_delay_gets_capped() {
     Some(std::time::Duration::from_secs(30)) // Capped at min_reconnect_interval
   );
 }
+
+#[test]
+fn next_try_not_before_persisted_across_restart() {
+  let store = in_memory_store();
+  let time = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+
+  let mut state = ReconnectState::new(store.clone(), time.clone());
+  state.record_next_try_after(45.seconds());
+
+  assert_eq!(
+    state.next_reconnect_delay(time::Duration::ZERO),
+    Some(std::time::Duration::from_secs(45))
+  );
+
+  let new_state = ReconnectState::new(store, time.clone());
+  assert_eq!(
+    new_state.next_reconnect_delay(time::Duration::ZERO),
+    Some(std::time::Duration::from_secs(45))
+  );
+
+  time.advance(46.seconds());
+  assert_eq!(new_state.next_reconnect_delay(time::Duration::ZERO), None);
+}
+
+#[test]
+fn next_try_not_before_and_min_reconnect_interval_take_max() {
+  let store = in_memory_store();
+  let time = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+
+  let mut state = ReconnectState::new(store, time.clone());
+
+  state.record_connectivity_event();
+  state.record_next_try_after(45.seconds());
+
+  assert_eq!(
+    state.next_reconnect_delay(30.seconds()),
+    Some(std::time::Duration::from_secs(45))
+  );
+
+  time.advance(16.seconds());
+  assert_eq!(
+    state.next_reconnect_delay(30.seconds()),
+    Some(std::time::Duration::from_secs(29))
+  );
+}
