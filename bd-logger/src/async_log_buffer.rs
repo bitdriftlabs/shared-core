@@ -17,7 +17,7 @@ use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::ordered_receiver::{OrderedMessage, OrderedReceiver, SequencedMessage};
 use crate::pre_config_buffer::{PendingStateOperation, PreConfigBuffer, PreConfigItem};
-use crate::{Block, internal_report, network};
+use crate::{Block, battery, internal_report, network};
 use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_bounded_buffer::{TrySendError, channel};
@@ -381,6 +381,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       Arc::new(SystemTimeProvider),
       log_network_quality_monitor,
     ));
+    let battery_drain_tracker = Arc::new(battery::BatteryDrainTracker::new(Arc::new(
+      SystemTimeProvider,
+    )));
     let network_quality_interceptor =
       Arc::new(NetworkQualityInterceptor::new(network_quality_resolver));
     let device_id_interceptor = Arc::new(DeviceIdInterceptor::new(device_id));
@@ -411,6 +414,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         interceptors: vec![
           internal_periodic_fields_reporter,
           bandwidth_usage_tracker,
+          battery_drain_tracker,
           network_quality_interceptor,
           Arc::new(screenshot_log_interceptor),
           device_id_interceptor,
