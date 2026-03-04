@@ -565,6 +565,9 @@ impl Api {
     let reconnect_delay = self.backoff.next_backoff();
     let reconnect_delay =
       min_retry_after.map_or(reconnect_delay, |f| max(f.abs(), reconnect_delay));
+
+    self.reconnect_state.record_next_try_after(reconnect_delay);
+
     log::debug!(
       "reconnecting in {} ms",
       reconnect_delay.whole_milliseconds()
@@ -572,6 +575,7 @@ impl Api {
 
     // Pause execution until we are ready to reconnect.
     reconnect_delay.sleep().await;
+    self.reconnect_state.clear_next_try_not_before_in_memory();
   }
 
   fn get_data_idle_timeout(&mut self) -> Duration {
@@ -768,6 +772,10 @@ impl Api {
           .handle_responses(remaining_responses, &mut stream_state)
           .await?
         {
+          if let Some(retry_after) = stream_closure_info.retry_after {
+            self.reconnect_state.record_next_try_after(retry_after);
+          }
+
           self.last_disconnect_reason = Some(stream_closure_info.reason);
           self.stats.remote_connect_failure.inc();
           return Err(ApiError::StreamClosure(stream_closure_info.retry_after));
@@ -791,6 +799,10 @@ impl Api {
       // The stream closed while waiting for the handshake. Move to the next loop iteration
       // to attempt to re-create a stream.
       HandshakeResult::StreamClosure(info) => {
+        if let Some(retry_after) = info.retry_after {
+          self.reconnect_state.record_next_try_after(retry_after);
+        }
+
         // The network manager API doesn't expose the underlying issue in a type-safe manner,
         // so just treat all failures to handshake as a connect failure.
         self.last_disconnect_reason = Some(info.reason);
@@ -894,6 +906,10 @@ impl Api {
       };
 
       if let Some(stream_closure_info) = stream_closure_info {
+        if let Some(retry_after) = stream_closure_info.retry_after {
+          self.reconnect_state.record_next_try_after(retry_after);
+        }
+
         // We want to avoid a case in which we spin on an error shutdown. We do this by just
         // checking to see if the stream lived for longer than 1 minute, and if so reset the
         // backoff. If the process restarts everything starts over again anyway.
@@ -908,6 +924,26 @@ impl Api {
         return Err(ApiError::StreamClosure(stream_closure_info.retry_after));
       }
     }
+  }
+
+  async fn retry_after_and_maybe_mark_safe(
+    &self,
+    error: &bd_proto::protos::client::api::ErrorShutdown,
+  ) -> Option<Duration> {
+    let retry_after = error
+      .rate_limited
+      .retry_after
+      .as_ref()
+      .map(bd_time::ProtoDurationExt::to_time_duration);
+    if retry_after.is_some() {
+      // If we are being rate limited, we can consider the configuration to be safe since we
+      // were able to connect and receive a response from the server. This avoids config
+      // churning if we are rate limiting to shed load.
+      self.runtime_loader.mark_safe().await;
+      self.config_updater.mark_safe().await;
+    }
+
+    retry_after
   }
 
   /// Handles any number of non-handshake responses. Receiving a handshake response at this point
@@ -930,13 +966,11 @@ impl Api {
             error.grpc_message
           );
           self.stats.error_shutdown_total.inc();
+          let retry_after = self.retry_after_and_maybe_mark_safe(&error).await;
+
           return Ok(Some(StreamClosureInfo {
             reason: error.grpc_message,
-            retry_after: error
-              .rate_limited
-              .retry_after
-              .as_ref()
-              .map(bd_time::ProtoDurationExt::to_time_duration),
+            retry_after,
           }));
         },
         Some(Response_type::LogUpload(log_upload)) => {
@@ -1130,6 +1164,7 @@ impl Api {
               // Only count non-auth errors here as an auth error is effectively a misconfiguration
               // issue. We may consider tracking auth failures separately.
               self.stats.error_shutdown_total.inc();
+              let retry_after = self.retry_after_and_maybe_mark_safe(&error).await;
 
               // This might happen in production should the server shut down before it has
               // been able to respond with a handshake.
@@ -1140,11 +1175,7 @@ impl Api {
               );
               return Ok(HandshakeResult::StreamClosure(StreamClosureInfo {
                 reason: format!("error shutdown: {}", error.grpc_message),
-                retry_after: error
-                  .rate_limited
-                  .retry_after
-                  .as_ref()
-                  .map(bd_time::ProtoDurationExt::to_time_duration),
+                retry_after,
               }));
             },
             _ => anyhow::bail!("unexpected api response: spurious response before handshake"),
