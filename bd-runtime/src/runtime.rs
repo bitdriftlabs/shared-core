@@ -872,11 +872,11 @@ pub mod retry_backoff {
   //
   // Backoff is jittered, so each attempt executes in [0, current_backoff].
   exponential_backoff_feature_flags!(
-    "retry.backoff_initial_interval_ms",
+    "api.initial_backoff_interval_ms",
     500.milliseconds(),
-    "retry.backoff_max_interval_ms",
+    "api.max_backoff_interval_ms",
     20.minutes(),
-    "retry.backoff_growth_factor_basis_points",
+    "api.backoff_multiplier_basis_points",
     5000
   );
 }
