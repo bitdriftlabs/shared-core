@@ -710,13 +710,32 @@ pub fn make_unary_router<OutgoingType: MessageFull, IncomingType: MessageFull>(
   endpoint_stats: Option<&EndpointStats>,
   validate_request: bool,
 ) -> Router {
+  make_unary_router_at_path(
+    service_method,
+    &service_method.full_path(),
+    handler,
+    error_handler,
+    endpoint_stats,
+    validate_request,
+  )
+}
+
+// Create an axum router for a unary request and a handler at a provided path.
+pub fn make_unary_router_at_path<OutgoingType: MessageFull, IncomingType: MessageFull>(
+  service_method: &ServiceMethod<OutgoingType, IncomingType>,
+  full_path: &str,
+  handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
+  endpoint_stats: Option<&EndpointStats>,
+  validate_request: bool,
+) -> Router {
   let warn_tracker = Arc::new(WarnTracker::default());
-  let full_path = Arc::new(service_method.full_path());
+  let full_path = Arc::new(full_path.to_string());
   let resolved_stats = endpoint_stats
     .as_ref()
     .map(|stats| stats.resolve::<OutgoingType, IncomingType>(service_method));
   Router::new().route(
-    &service_method.full_path(),
+    full_path.clone().as_ref(),
     post(move |request: Request| async move {
       let connect_protocol_type = ConnectProtocolType::from_headers(request.headers());
       let result = unary_handler::<OutgoingType, IncomingType>(
