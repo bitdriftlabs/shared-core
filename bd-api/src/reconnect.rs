@@ -73,7 +73,8 @@ impl ReconnectState {
 
     // Cap the delay from last connectivity at the minimum reconnect interval to prevent
     // excessively long waits due to clock skew. If explicit next_try_not_before is later, keep it.
-    let capped_delay = if let Some(next_reconnect_from_connectivity) = next_reconnect_from_connectivity
+    let capped_delay = if let Some(next_reconnect_from_connectivity) =
+      next_reconnect_from_connectivity
       && next_reconnect_time == next_reconnect_from_connectivity
     {
       std::cmp::min(delay.unsigned_abs(), min_reconnect_interval.unsigned_abs())

@@ -1158,7 +1158,7 @@ async fn rate_limited_response_before_handshake_marks_safe() {
     .returning(|| ());
   make_mut(&mut mock_updater)
     .expect_mark_safe()
-    .times(1..)
+    .times(1 ..)
     .returning(|| ());
 
   let mut setup = Setup::new_ex(mock_updater, None, None, None).await;
@@ -1188,7 +1188,7 @@ async fn error_response_with_retry_after_after_handshake_marks_safe() {
     .returning(|_| ());
   make_mut(&mut mock_updater)
     .expect_mark_safe()
-    .times(1..)
+    .times(1 ..)
     .returning(|| ());
 
   let mut setup = Setup::new_ex(mock_updater, None, None, None).await;
