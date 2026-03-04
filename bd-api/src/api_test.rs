@@ -491,10 +491,16 @@ async fn api_retry_stream() {
     mock_updater.clone(),
     RuntimeUpdate {
       version_nonce: "test".to_string(),
-      runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
-        bd_runtime::runtime::api::DataIdleTimeoutInterval::path(),
-        bd_test_helpers::runtime::ValueKind::Int(0),
-      )]))
+      runtime: Some(bd_test_helpers::runtime::make_proto(vec![
+        (
+          bd_runtime::runtime::api::DataIdleTimeoutInterval::path(),
+          bd_test_helpers::runtime::ValueKind::Int(0),
+        ),
+        (
+          bd_runtime::runtime::retry_backoff::MaxBackoffInterval::path(),
+          bd_test_helpers::runtime::ValueKind::Int(70_000),
+        ),
+      ]))
       .into(),
       ..Default::default()
     }
@@ -1038,7 +1044,7 @@ async fn api_retry_stream_runtime_override() {
       response_type: Some(Response_type::RuntimeUpdate(RuntimeUpdate {
         version_nonce: "test".to_string(),
         runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
-          bd_runtime::runtime::api::MaxBackoffInterval::path(),
+          bd_runtime::runtime::retry_backoff::MaxBackoffInterval::path(),
           bd_test_helpers::runtime::ValueKind::Int(1000),
         )]))
         .into(),
@@ -1221,7 +1227,21 @@ async fn sleep_mode() {
 
 #[tokio::test(start_paused = true)]
 async fn opaque_client_state() {
-  let mut setup = Setup::new().await;
+  let mut setup = Setup::new_ex(
+    Setup::make_nice_mock_updater(),
+    Some(RuntimeUpdate {
+      version_nonce: "test".to_string(),
+      runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
+        bd_runtime::runtime::retry_backoff::BackoffGrowthFactorBasisPoints::path(),
+        bd_test_helpers::runtime::ValueKind::Int(1500),
+      )]))
+      .into(),
+      ..Default::default()
+    }),
+    None,
+    None,
+  )
+  .await;
   assert!(
     setup
       .next_stream(1.seconds())

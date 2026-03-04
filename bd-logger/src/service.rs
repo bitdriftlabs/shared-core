@@ -10,12 +10,12 @@
 mod service_test;
 
 use crate::service::ratelimit::RequestSized;
-use bd_api::DataUpload;
 use bd_api::upload::{LogBatch, TrackedLogBatch};
+use bd_api::{DataUpload, RuntimeBackoffPolicy};
 use bd_backoff::InfiniteBackoff;
 use bd_client_stats_store::{Counter, Scope};
 use bd_proto::protos::client::api::LogUploadRequest;
-use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch};
+use bd_runtime::runtime::{ConfigLoader, IntWatch};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::labels;
 use bd_time::TimeDurationExt;
@@ -288,28 +288,21 @@ impl tower::retry::Policy<UploadRequest, UploadResult, Infallible> for RetryPoli
 
 #[derive(Clone, Debug)]
 struct BackoffProvider {
-  initial_backoff: DurationWatch<bd_runtime::runtime::log_upload::RetryBackoffInitialFlag>,
-  max_backoff: DurationWatch<bd_runtime::runtime::log_upload::RetryBackoffMaxFlag>,
+  backoff_policy: RuntimeBackoffPolicy<
+    bd_runtime::runtime::retry_backoff::InitialBackoffInterval,
+    bd_runtime::runtime::retry_backoff::MaxBackoffInterval,
+    bd_runtime::runtime::retry_backoff::BackoffGrowthFactorBasisPoints,
+  >,
 }
 
 impl BackoffProvider {
   fn new(runtime: &ConfigLoader) -> Self {
     Self {
-      initial_backoff: runtime.register_duration_watch(),
-      max_backoff: runtime.register_duration_watch(),
+      backoff_policy: RuntimeBackoffPolicy::new(runtime),
     }
   }
 
   fn backoff(&self) -> bd_backoff::ExponentialBackoff {
-    let initial_backoff_interval =
-      time::Duration::try_from(self.initial_backoff.read().unsigned_abs())
-        .unwrap_or(time::Duration::MAX);
-    let max_backoff_interval = time::Duration::try_from(self.max_backoff.read().unsigned_abs())
-      .unwrap_or(time::Duration::MAX);
-
-    bd_backoff::ExponentialBackoffBuilder::new_infinite()
-      .with_initial_interval(initial_backoff_interval)
-      .with_max_interval(max_backoff_interval)
-      .build()
+    self.backoff_policy.backoff()
   }
 }

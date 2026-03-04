@@ -102,6 +102,64 @@ async fn duration_flag() {
   assert_eq!(*flag.borrow().read(), time::Duration::milliseconds(100));
 }
 
+#[tokio::test]
+async fn exponential_backoff_watch() {
+  use time::ext::NumericalDuration as _;
+
+  duration_feature_flag!(
+    BackoffInitialFlag,
+    "test.backoff.initial_ms",
+    100.milliseconds()
+  );
+  duration_feature_flag!(BackoffMaxFlag, "test.backoff.max_ms", 10.seconds());
+  int_feature_flag!(
+    BackoffGrowthFactorBasisPoints,
+    "test.backoff.growth_factor_basis_points",
+    1500
+  );
+
+  let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
+  let loader = ConfigLoader::new(sdk_directory.path());
+
+  let mut watch = loader.register_exponential_backoff_watch::<
+    BackoffInitialFlag,
+    BackoffMaxFlag,
+    BackoffGrowthFactorBasisPoints,
+  >();
+
+  assert_eq!(
+    watch.read_mark_update(),
+    crate::runtime::ExponentialBackoffValues {
+      initial_interval: 100.milliseconds(),
+      max_interval: 10.seconds(),
+      growth_factor_basis_points: 1500,
+    }
+  );
+  assert!(!watch.has_changed());
+
+  loader
+    .update_snapshot(make_update(
+      vec![
+        (BackoffInitialFlag::path(), ValueKind::Int(150)),
+        (BackoffMaxFlag::path(), ValueKind::Int(5000)),
+        (BackoffGrowthFactorBasisPoints::path(), ValueKind::Int(2000)),
+      ],
+      "1".to_string(),
+    ))
+    .await
+    .unwrap();
+
+  assert!(watch.has_changed());
+  assert_eq!(
+    watch.read_mark_update(),
+    crate::runtime::ExponentialBackoffValues {
+      initial_interval: 150.milliseconds(),
+      max_interval: 5.seconds(),
+      growth_factor_basis_points: 2000,
+    }
+  );
+}
+
 struct SetupDiskPersistence {
   directory: tempfile::TempDir,
 }

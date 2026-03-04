@@ -15,7 +15,7 @@
 )]
 
 use bd_backoff::SystemClock;
-use bd_backoff::exponential::{ExponentialBackoffBuilder, ExponentialBackoffInfinite, Finite};
+use bd_backoff::exponential::{ExponentialBackoffBuilder, ExponentialBackoffInfinite};
 use bd_proto::protos::client::api::{
   DebugDataRequest,
   LogUploadIntentRequest,
@@ -26,8 +26,7 @@ use bd_proto::protos::client::api::{
   UploadArtifactIntentRequest,
   UploadArtifactRequest,
 };
-use bd_runtime::runtime::DurationWatch;
-use bd_runtime::runtime::api::{InitialBackoffInterval, MaxBackoffInterval};
+use bd_runtime::runtime::{ExponentialBackoffValues, ExponentialBackoffWatch, FeatureFlag};
 pub use network_quality::{
   AggregatedNetworkQualityProvider,
   SimpleNetworkQualityProvider,
@@ -157,20 +156,72 @@ pub trait PlatformNetworkStream: Send {
 }
 
 /// Constructs a new `ExponentialBackoff` based on the current runtime values.
-pub fn backoff_policy(
-  initial_backoff_interval: &mut DurationWatch<InitialBackoffInterval>,
-  max_backoff_interval: &mut DurationWatch<MaxBackoffInterval>,
+#[must_use]
+pub fn exponential_backoff_from_values(
+  runtime_values: ExponentialBackoffValues,
 ) -> ExponentialBackoffInfinite<SystemClock> {
   let initial_backoff_interval =
-    Duration::try_from(initial_backoff_interval.read_mark_update().unsigned_abs())
-      .unwrap_or(Duration::MAX);
+    Duration::try_from(runtime_values.initial_interval.unsigned_abs()).unwrap_or(Duration::MAX);
   let max_backoff_interval =
-    Duration::try_from(max_backoff_interval.read_mark_update().unsigned_abs())
-      .unwrap_or(Duration::MAX);
+    Duration::try_from(runtime_values.max_interval.unsigned_abs()).unwrap_or(Duration::MAX);
+  let growth_factor = (f64::from(runtime_values.growth_factor_basis_points) / 1_000.0).max(1.0);
 
-  ExponentialBackoffBuilder::<SystemClock, Finite>::new()
+  ExponentialBackoffBuilder::<SystemClock, bd_backoff::Finite>::new_infinite()
     .with_initial_interval(initial_backoff_interval)
     .with_max_interval(max_backoff_interval)
-    .with_no_elapsed_time()
+    .with_multiplier(growth_factor)
     .build()
+}
+
+/// Wraps runtime-backed exponential backoff policy flags and builds typed backoff instances.
+#[derive(Clone, Debug)]
+pub struct RuntimeBackoffPolicy<Initial, Max, GrowthFactorBasisPoints>
+where
+  Initial: FeatureFlag<Duration>,
+  Max: FeatureFlag<Duration>,
+  GrowthFactorBasisPoints: FeatureFlag<u32>,
+{
+  watch: ExponentialBackoffWatch<Initial, Max, GrowthFactorBasisPoints>,
+}
+
+impl<Initial, Max, GrowthFactorBasisPoints>
+  RuntimeBackoffPolicy<Initial, Max, GrowthFactorBasisPoints>
+where
+  Initial: FeatureFlag<Duration>,
+  Max: FeatureFlag<Duration>,
+  GrowthFactorBasisPoints: FeatureFlag<u32>,
+{
+  #[must_use]
+  pub fn new(loader: &bd_runtime::runtime::ConfigLoader) -> Self {
+    Self {
+      watch: loader.register_exponential_backoff_watch(),
+    }
+  }
+
+  #[must_use]
+  pub fn has_changed(&self) -> bool {
+    self.watch.has_changed()
+  }
+
+  #[must_use]
+  pub fn backoff(&self) -> ExponentialBackoffInfinite<SystemClock> {
+    exponential_backoff_from_values(self.watch.read())
+  }
+
+  #[must_use]
+  pub fn backoff_mark_update(&mut self) -> ExponentialBackoffInfinite<SystemClock> {
+    exponential_backoff_from_values(self.watch.read_mark_update())
+  }
+}
+
+/// Constructs a new `ExponentialBackoff` based on the current runtime values.
+pub fn backoff_policy<Initial, Max, GrowthFactorBasisPoints>(
+  backoff_config: &mut ExponentialBackoffWatch<Initial, Max, GrowthFactorBasisPoints>,
+) -> ExponentialBackoffInfinite<SystemClock>
+where
+  Initial: FeatureFlag<Duration>,
+  Max: FeatureFlag<Duration>,
+  GrowthFactorBasisPoints: FeatureFlag<u32>,
+{
+  exponential_backoff_from_values(backoff_config.read_mark_update())
 }
