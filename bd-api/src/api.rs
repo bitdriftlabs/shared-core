@@ -575,7 +575,7 @@ impl Api {
 
     // Pause execution until we are ready to reconnect.
     reconnect_delay.sleep().await;
-    self.reconnect_state.clear_next_try_not_before();
+    self.reconnect_state.clear_next_try_not_before_in_memory();
   }
 
   fn get_data_idle_timeout(&mut self) -> Duration {

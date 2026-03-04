@@ -17,6 +17,7 @@ use time::{Duration, OffsetDateTime};
 
 const LAST_CONNECTED_AT_KEY: Key<Timestamp> = Key::new("api:reconnect:last_connected_at");
 const NEXT_TRY_NOT_BEFORE_KEY: Key<Timestamp> = Key::new("api:reconnect:next_try_not_before");
+const MAX_PERSISTED_RETRY_DELAY: Duration = Duration::days(365);
 
 pub struct ReconnectState {
   store: Arc<Store>,
@@ -93,9 +94,11 @@ impl ReconnectState {
     let bounded_delay = if delay.is_negative() {
       Duration::ZERO
     } else {
-      delay
+      std::cmp::min(delay, MAX_PERSISTED_RETRY_DELAY)
     };
-    let next_try_not_before = self.time_provider.now() + bounded_delay;
+
+    let now = self.time_provider.now();
+    let next_try_not_before = now.checked_add(bounded_delay).unwrap_or(now);
 
     log::trace!(
       "recording next reconnect try-not-before at {next_try_not_before} (delay: {bounded_delay:?})"
@@ -107,11 +110,8 @@ impl ReconnectState {
       .set(&NEXT_TRY_NOT_BEFORE_KEY, &next_try_not_before.into_proto());
   }
 
-  pub fn clear_next_try_not_before(&mut self) {
+  pub fn clear_next_try_not_before_in_memory(&mut self) {
     self.next_try_not_before = None;
-
-    let now = self.time_provider.now();
-    let () = self.store.set(&NEXT_TRY_NOT_BEFORE_KEY, &now.into_proto());
   }
 
   /// Updates the reconnection state with a connectivity event. The last seen connectivity event is
