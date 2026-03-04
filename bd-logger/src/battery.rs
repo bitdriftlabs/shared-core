@@ -11,7 +11,12 @@ mod battery_test;
 
 use crate::network::TimeProvider;
 use bd_log_primitives::{
-  AnnotatedLogField, AnnotatedLogFields, DataValue, LogInterceptor, LogLevel, LogMessage,
+  AnnotatedLogField,
+  AnnotatedLogFields,
+  DataValue,
+  LogInterceptor,
+  LogLevel,
+  LogMessage,
 };
 use bd_proto::protos::logging::payload::LogType;
 use std::collections::VecDeque;
@@ -126,7 +131,7 @@ impl BatteryMetricsContainer {
     if time_delta_mins < 0.5 {
       return None;
     }
-    
+
     // Positive means draining, negative means charging.
     Some(f64::from(oldest.battery_level - newest.battery_level) / time_delta_mins)
   }

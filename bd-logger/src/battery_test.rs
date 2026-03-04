@@ -10,7 +10,11 @@
 use crate::battery::BatteryDrainTracker;
 use crate::network::TimeProvider;
 use bd_log_primitives::{
-  AnnotatedLogField, AnnotatedLogFields, LogInterceptor, LogMessage, log_level,
+  AnnotatedLogField,
+  AnnotatedLogFields,
+  LogInterceptor,
+  LogMessage,
+  log_level,
 };
 use bd_proto::protos::logging::payload::LogType;
 use parking_lot::Mutex;
