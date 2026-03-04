@@ -613,8 +613,57 @@ pub mod log_matcher {
             }
         }
 
+        // .bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.SampledMatch sampled_match = 5;
+
+        pub fn sampled_match(&self) -> &base_log_matcher::SampledMatch {
+            match self.match_type {
+                ::std::option::Option::Some(base_log_matcher::Match_type::SampledMatch(ref v)) => v,
+                _ => <base_log_matcher::SampledMatch as ::protobuf::Message>::default_instance(),
+            }
+        }
+
+        pub fn clear_sampled_match(&mut self) {
+            self.match_type = ::std::option::Option::None;
+        }
+
+        pub fn has_sampled_match(&self) -> bool {
+            match self.match_type {
+                ::std::option::Option::Some(base_log_matcher::Match_type::SampledMatch(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_sampled_match(&mut self, v: base_log_matcher::SampledMatch) {
+            self.match_type = ::std::option::Option::Some(base_log_matcher::Match_type::SampledMatch(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_sampled_match(&mut self) -> &mut base_log_matcher::SampledMatch {
+            if let ::std::option::Option::Some(base_log_matcher::Match_type::SampledMatch(_)) = self.match_type {
+            } else {
+                self.match_type = ::std::option::Option::Some(base_log_matcher::Match_type::SampledMatch(base_log_matcher::SampledMatch::new()));
+            }
+            match self.match_type {
+                ::std::option::Option::Some(base_log_matcher::Match_type::SampledMatch(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_sampled_match(&mut self) -> base_log_matcher::SampledMatch {
+            if self.has_sampled_match() {
+                match self.match_type.take() {
+                    ::std::option::Option::Some(base_log_matcher::Match_type::SampledMatch(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                base_log_matcher::SampledMatch::new()
+            }
+        }
+
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(3);
+            let mut fields = ::std::vec::Vec::with_capacity(4);
             let mut oneofs = ::std::vec::Vec::with_capacity(1);
             fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, base_log_matcher::MessageMatch>(
                 "message_match",
@@ -636,6 +685,13 @@ pub mod log_matcher {
                 BaseLogMatcher::state_match,
                 BaseLogMatcher::mut_state_match,
                 BaseLogMatcher::set_state_match,
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, base_log_matcher::SampledMatch>(
+                "sampled_match",
+                BaseLogMatcher::has_sampled_match,
+                BaseLogMatcher::sampled_match,
+                BaseLogMatcher::mut_sampled_match,
+                BaseLogMatcher::set_sampled_match,
             ));
             oneofs.push(base_log_matcher::Match_type::generated_oneof_descriptor_data());
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<BaseLogMatcher>(
@@ -665,6 +721,9 @@ pub mod log_matcher {
                     34 => {
                         self.match_type = ::std::option::Option::Some(base_log_matcher::Match_type::StateMatch(is.read_message()?));
                     },
+                    42 => {
+                        self.match_type = ::std::option::Option::Some(base_log_matcher::Match_type::SampledMatch(is.read_message()?));
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -691,6 +750,10 @@ pub mod log_matcher {
                         let len = v.compute_size();
                         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                     },
+                    &base_log_matcher::Match_type::SampledMatch(ref v) => {
+                        let len = v.compute_size();
+                        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                    },
                 };
             }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -709,6 +772,9 @@ pub mod log_matcher {
                     },
                     &base_log_matcher::Match_type::StateMatch(ref v) => {
                         ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+                    },
+                    &base_log_matcher::Match_type::SampledMatch(ref v) => {
+                        ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
                     },
                 };
             }
@@ -729,6 +795,7 @@ pub mod log_matcher {
         }
 
         fn clear(&mut self) {
+            self.match_type = ::std::option::Option::None;
             self.match_type = ::std::option::Option::None;
             self.match_type = ::std::option::Option::None;
             self.match_type = ::std::option::Option::None;
@@ -773,6 +840,8 @@ pub mod log_matcher {
             TagMatch(TagMatch),
             // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.state_match)
             StateMatch(StateMatch),
+            // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.sampled_match)
+            SampledMatch(SampledMatch),
         }
 
         impl ::protobuf::Oneof for Match_type {
@@ -1644,6 +1713,128 @@ pub mod log_matcher {
         impl ::protobuf::reflect::ProtobufValue for StateMatch {
             type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
         }
+
+        // @@protoc_insertion_point(message:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.SampledMatch)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct SampledMatch {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.SampledMatch.sample_rate)
+            pub sample_rate: u32,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.SampledMatch.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a SampledMatch {
+            fn default() -> &'a SampledMatch {
+                <SampledMatch as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl SampledMatch {
+            pub fn new() -> SampledMatch {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(1);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "sample_rate",
+                    |m: &SampledMatch| { &m.sample_rate },
+                    |m: &mut SampledMatch| { &mut m.sample_rate },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SampledMatch>(
+                    "LogMatcher.BaseLogMatcher.SampledMatch",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for SampledMatch {
+            const NAME: &'static str = "SampledMatch";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        8 => {
+                            self.sample_rate = is.read_uint32()?;
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if self.sample_rate != 0 {
+                    my_size += ::protobuf::rt::uint32_size(1, self.sample_rate);
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if self.sample_rate != 0 {
+                    os.write_uint32(1, self.sample_rate)?;
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> SampledMatch {
+                SampledMatch::new()
+            }
+
+            fn clear(&mut self) {
+                self.sample_rate = 0;
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static SampledMatch {
+                static instance: SampledMatch = SampledMatch {
+                    sample_rate: 0,
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for SampledMatch {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("LogMatcher.BaseLogMatcher.SampledMatch").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for SampledMatch {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for SampledMatch {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
     }
 
     // @@protoc_insertion_point(message:bitdrift_public.protobuf.matcher.v1.LogMatcher.MatcherList)
@@ -1775,44 +1966,47 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     blic.protobuf.matcher.v1\x1a/bitdrift_public/protobuf/state/v1/matcher.p\
     roto\x1a-bitdrift_public/protobuf/state/v1/scope.proto\x1a=bitdrift_publ\
     ic/protobuf/value_matcher/v1/value_matcher.proto\x1a\x17validate/validat\
-    e.proto\"\x96\x0f\n\nLogMatcher\x12c\n\x0cbase_matcher\x18\x01\x20\x01(\
+    e.proto\"\xbb\x10\n\nLogMatcher\x12c\n\x0cbase_matcher\x18\x01\x20\x01(\
     \x0b2>.bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcherH\0R\
     \x0bbaseMatcher\x12\\\n\nor_matcher\x18\x02\x20\x01(\x0b2;.bitdrift_publ\
     ic.protobuf.matcher.v1.LogMatcher.MatcherListH\0R\torMatcher\x12^\n\x0ba\
     nd_matcher\x18\x03\x20\x01(\x0b2;.bitdrift_public.protobuf.matcher.v1.Lo\
     gMatcher.MatcherListH\0R\nandMatcher\x12R\n\x0bnot_matcher\x18\x04\x20\
     \x01(\x0b2/.bitdrift_public.protobuf.matcher.v1.LogMatcherH\0R\nnotMatch\
-    er\x1a\x93\x0b\n\x0eBaseLogMatcher\x12r\n\rmessage_match\x18\x01\x20\x01\
+    er\x1a\xb8\x0c\n\x0eBaseLogMatcher\x12r\n\rmessage_match\x18\x01\x20\x01\
     (\x0b2K.bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.Me\
     ssageMatchH\0R\x0cmessageMatch\x12f\n\ttag_match\x18\x02\x20\x01(\x0b2G.\
     bitdrift_public.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.TagMatchH\
     \0R\x08tagMatch\x12l\n\x0bstate_match\x18\x04\x20\x01(\x0b2I.bitdrift_pu\
     blic.protobuf.matcher.v1.LogMatcher.BaseLogMatcher.StateMatchH\0R\nstate\
-    Match\x1ay\n\x0cMessageMatch\x12i\n\x12string_value_match\x18\x01\x20\
-    \x01(\x0b2;.bitdrift_public.protobuf.value_matcher.v1.StringValueMatchR\
-    \x10stringValueMatch\x1a\xb4\x05\n\x08TagMatch\x12\"\n\x07tag_key\x18\
-    \x01\x20\x01(\tR\x06tagKeyB\t\xfaB\x06r\x04\x10\x01\x18@\x12k\n\x12strin\
-    g_value_match\x18\x02\x20\x01(\x0b2;.bitdrift_public.protobuf.value_matc\
-    her.v1.StringValueMatchH\0R\x10stringValueMatch\x12b\n\x0fint_value_matc\
-    h\x18\x03\x20\x01(\x0b28.bitdrift_public.protobuf.value_matcher.v1.IntVa\
-    lueMatchH\0R\rintValueMatch\x12l\n\x13sem_ver_value_match\x18\x04\x20\
-    \x01(\x0b2;.bitdrift_public.protobuf.value_matcher.v1.SemVerValueMatchH\
-    \0R\x10semVerValueMatch\x12Y\n\x0cis_set_match\x18\x05\x20\x01(\x0b25.bi\
-    tdrift_public.protobuf.value_matcher.v1.IsSetMatchH\0R\nisSetMatch\x12k\
-    \n\x12double_value_match\x18\x06\x20\x01(\x0b2;.bitdrift_public.protobuf\
-    .value_matcher.v1.DoubleValueMatchH\0R\x10doubleValueMatch\x12i\n\x10jso\
-    n_value_match\x18\x07\x20\x01(\x0b2=.bitdrift_public.protobuf.value_matc\
-    her.v1.JsonPathValueMatchH\0R\x0ejsonValueMatchB\x12\n\x0bvalue_match\
-    \x12\x03\xf8B\x01\x1a\xeb\x01\n\nStateMatch\x12M\n\x05scope\x18\x01\x20\
-    \x01(\x0e2-.bitdrift_public.protobuf.state.v1.StateScopeR\x05scopeB\x08\
-    \xfaB\x05\x82\x01\x02\x10\x01\x12$\n\tstate_key\x18\x02\x20\x01(\tR\x08s\
-    tateKeyB\x07\xfaB\x04r\x02\x10\x01\x12h\n\x11state_value_match\x18\x03\
-    \x20\x01(\x0b22.bitdrift_public.protobuf.state.v1.StateValueMatchR\x0fst\
-    ateValueMatchB\x08\xfaB\x05\x8a\x01\x02\x10\x01B\x11\n\nmatch_type\x12\
-    \x03\xf8B\x01J\x04\x08\x03\x10\x04\x1ak\n\x0bMatcherList\x12\\\n\x0clog_\
-    matchers\x18\x01\x20\x03(\x0b2/.bitdrift_public.protobuf.matcher.v1.LogM\
-    atcherR\x0blogMatchersB\x08\xfaB\x05\x92\x01\x02\x08\x02B\x0e\n\x07match\
-    er\x12\x03\xf8B\x01b\x06proto3\
+    Match\x12r\n\rsampled_match\x18\x05\x20\x01(\x0b2K.bitdrift_public.proto\
+    buf.matcher.v1.LogMatcher.BaseLogMatcher.SampledMatchH\0R\x0csampledMatc\
+    h\x1ay\n\x0cMessageMatch\x12i\n\x12string_value_match\x18\x01\x20\x01(\
+    \x0b2;.bitdrift_public.protobuf.value_matcher.v1.StringValueMatchR\x10st\
+    ringValueMatch\x1a\xb4\x05\n\x08TagMatch\x12\"\n\x07tag_key\x18\x01\x20\
+    \x01(\tR\x06tagKeyB\t\xfaB\x06r\x04\x10\x01\x18@\x12k\n\x12string_value_\
+    match\x18\x02\x20\x01(\x0b2;.bitdrift_public.protobuf.value_matcher.v1.S\
+    tringValueMatchH\0R\x10stringValueMatch\x12b\n\x0fint_value_match\x18\
+    \x03\x20\x01(\x0b28.bitdrift_public.protobuf.value_matcher.v1.IntValueMa\
+    tchH\0R\rintValueMatch\x12l\n\x13sem_ver_value_match\x18\x04\x20\x01(\
+    \x0b2;.bitdrift_public.protobuf.value_matcher.v1.SemVerValueMatchH\0R\
+    \x10semVerValueMatch\x12Y\n\x0cis_set_match\x18\x05\x20\x01(\x0b25.bitdr\
+    ift_public.protobuf.value_matcher.v1.IsSetMatchH\0R\nisSetMatch\x12k\n\
+    \x12double_value_match\x18\x06\x20\x01(\x0b2;.bitdrift_public.protobuf.v\
+    alue_matcher.v1.DoubleValueMatchH\0R\x10doubleValueMatch\x12i\n\x10json_\
+    value_match\x18\x07\x20\x01(\x0b2=.bitdrift_public.protobuf.value_matche\
+    r.v1.JsonPathValueMatchH\0R\x0ejsonValueMatchB\x12\n\x0bvalue_match\x12\
+    \x03\xf8B\x01\x1a\xeb\x01\n\nStateMatch\x12M\n\x05scope\x18\x01\x20\x01(\
+    \x0e2-.bitdrift_public.protobuf.state.v1.StateScopeR\x05scopeB\x08\xfaB\
+    \x05\x82\x01\x02\x10\x01\x12$\n\tstate_key\x18\x02\x20\x01(\tR\x08stateK\
+    eyB\x07\xfaB\x04r\x02\x10\x01\x12h\n\x11state_value_match\x18\x03\x20\
+    \x01(\x0b22.bitdrift_public.protobuf.state.v1.StateValueMatchR\x0fstateV\
+    alueMatchB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x1a/\n\x0cSampledMatch\x12\
+    \x1f\n\x0bsample_rate\x18\x01\x20\x01(\rR\nsampleRateB\x11\n\nmatch_type\
+    \x12\x03\xf8B\x01J\x04\x08\x03\x10\x04\x1ak\n\x0bMatcherList\x12\\\n\x0c\
+    log_matchers\x18\x01\x20\x03(\x0b2/.bitdrift_public.protobuf.matcher.v1.\
+    LogMatcherR\x0blogMatchersB\x08\xfaB\x05\x92\x01\x02\x08\x02B\x0e\n\x07m\
+    atcher\x12\x03\xf8B\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1834,13 +2028,14 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(super::scope::file_descriptor().clone());
             deps.push(super::value_matcher::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(6);
+            let mut messages = ::std::vec::Vec::with_capacity(7);
             messages.push(LogMatcher::generated_message_descriptor_data());
             messages.push(log_matcher::BaseLogMatcher::generated_message_descriptor_data());
             messages.push(log_matcher::MatcherList::generated_message_descriptor_data());
             messages.push(log_matcher::base_log_matcher::MessageMatch::generated_message_descriptor_data());
             messages.push(log_matcher::base_log_matcher::TagMatch::generated_message_descriptor_data());
             messages.push(log_matcher::base_log_matcher::StateMatch::generated_message_descriptor_data());
+            messages.push(log_matcher::base_log_matcher::SampledMatch::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(0);
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),

@@ -28,6 +28,7 @@ use protos::workflow::workflow::workflow::action::{
   ActionEmitMetric as ActionEmitMetricProto,
   ActionEmitSankeyDiagram as ActionEmitSankeyDiagramProto,
   ActionFlushBuffers as ActionFlushBuffersProto,
+  ActionStartTracing as ActionStartTracingProto,
   ActionTakeScreenshot as ActionTakeScreenshotProto,
   action_emit_metric,
 };
@@ -436,6 +437,11 @@ pub fn make_emit_sankey_action(id: &str, limit: u32, tags: Vec<Tag>) -> Action_t
 #[must_use]
 pub fn make_take_screenshot_action() -> Action_type {
   Action_type::ActionTakeScreenshot(ActionTakeScreenshotProto::default())
+}
+
+#[must_use]
+pub fn make_start_tracing_action() -> Action_type {
+  Action_type::ActionStartTracing(ActionStartTracingProto::default())
 }
 
 #[must_use]

@@ -76,6 +76,7 @@ use bd_test_helpers::workflow::{
   make_generate_log_action_proto,
   make_save_field_extraction,
   make_save_timestamp_extraction,
+  make_start_tracing_action,
   make_state_change_rule,
   make_take_screenshot_action,
   metric_tag,
@@ -1198,6 +1199,96 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
 
     assert_eq!("fire flush trigger buffer action!", log_upload.logs().last().unwrap().message());
   });
+}
+
+#[test]
+fn workflow_start_tracing_status_tracks_streaming_carryover() {
+  let b = state("B");
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    rule!(message_equals("start tracing with streaming")),
+    &[
+      make_start_tracing_action(),
+      make_flush_buffers_action(
+        &["trigger_buffer_id"],
+        Some((vec!["default"], 1)),
+        "trace_stream_action",
+      ),
+    ],
+  );
+
+  let mut setup = Setup::new();
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![
+        default_buffer_config(
+          Type::CONTINUOUS,
+          make_buffer_matcher_matching_resource_logs().into(),
+        ),
+        BufferConfigBuilder {
+          name: "trigger_buffer_id",
+          buffer_type: Type::TRIGGER,
+          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+          non_volatile_size: 100_000,
+          volatile_size: 10_000,
+        }
+        .build(),
+      ],
+      workflows: vec![WorkflowBuilder::new("workflow", &[&a, &b]).build()],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  assert!(!setup.logger_handle.is_tracing_active());
+
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "start tracing with streaming".into(),
+    [].into(),
+    [].into(),
+  );
+
+  wait_for!(setup.logger_handle.is_tracing_active());
+
+  // Streaming termination requires the originating flush to complete. Synchronize on the
+  // corresponding intent/upload so CI scheduling does not race the termination path.
+  assert_matches!(setup.server.next_log_intent(), Some(_intent));
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+  });
+
+  // While streaming is active, tracing remains enabled.
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "streamed once".into(),
+    [].into(),
+    [].into(),
+  );
+  wait_for!(setup.logger_handle.is_tracing_active());
+
+  // Streaming max_logs_count=1 is enforced on the next event loop iteration.
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "streaming should end".into(),
+    [].into(),
+    [].into(),
+  );
+
+  // Ensure one more engine pass after reaching max_logs_count so the action is removed.
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "post termination tick".into(),
+    [].into(),
+    [].into(),
+  );
+
+  wait_for!(!setup.logger_handle.is_tracing_active());
 }
 
 #[test]

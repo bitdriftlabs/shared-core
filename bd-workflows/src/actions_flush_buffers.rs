@@ -445,6 +445,7 @@ impl Resolver {
     session_id: &str,
   ) -> StreamingBuffersActionsProcessingResult<'a> {
     let mut has_changed_streaming_actions = false;
+    let mut terminated_tracing_streaming_actions_count = 0;
 
     // Remove streaming actions that should be terminated.
     streaming_actions.retain_mut(|(a, flush_completed)| {
@@ -479,6 +480,9 @@ impl Resolver {
         }
 
         has_changed_streaming_actions = true;
+        if a.has_tracing_lease() {
+          terminated_tracing_streaming_actions_count += 1;
+        }
         return false;
       }
 
@@ -541,6 +545,7 @@ impl Resolver {
       log_destination_buffer_ids: final_log_destination_buffer_ids,
       has_changed_streaming_actions,
       updated_streaming_actions: streaming_actions.into_iter().map(|(a, _)| a).collect(),
+      terminated_tracing_streaming_actions_count,
     }
   }
 
@@ -731,6 +736,7 @@ pub(crate) struct StreamingBuffersActionsProcessingResult<'a> {
   pub(crate) log_destination_buffer_ids: TinySet<Cow<'a, str>>,
   pub(crate) has_changed_streaming_actions: bool,
   pub(crate) updated_streaming_actions: Vec<StreamingBuffersAction>,
+  pub(crate) terminated_tracing_streaming_actions_count: u32,
 }
 
 //
@@ -753,6 +759,8 @@ pub(crate) struct PendingFlushBuffersAction {
 
   #[field(id = 4)]
   streaming: Option<Streaming>,
+  #[field(id = 5)]
+  pub(crate) tracing_lease: bool,
 }
 
 impl PartialEq for PendingFlushBuffersAction {
@@ -858,7 +866,12 @@ impl PendingFlushBuffersAction {
       session_id,
       trigger_buffer_ids,
       streaming,
+      tracing_lease: false,
     })
+  }
+
+  pub(crate) const fn has_tracing_lease(&self) -> bool {
+    self.tracing_lease
   }
 }
 
@@ -900,6 +913,8 @@ pub(crate) struct StreamingBuffersAction {
 
   #[field(id = 6)]
   logs_count: u64,
+  #[field(id = 7)]
+  pub(crate) tracing_lease: bool,
 }
 
 impl std::fmt::Debug for StreamingBuffersAction {
@@ -945,7 +960,12 @@ impl StreamingBuffersAction {
       destination_continuous_buffer_ids: streaming.destination_continuous_buffer_ids,
       max_logs_count: streaming.max_logs_count,
       logs_count: 0,
+      tracing_lease: action.tracing_lease,
     })
+  }
+
+  pub(crate) const fn has_tracing_lease(&self) -> bool {
+    self.tracing_lease
   }
 
   const fn meets_termination_criteria(&self) -> bool {

@@ -16,7 +16,7 @@ mod legacy_matcher_test;
 use crate::value_matcher::{DoubleMatch, IntMatch, StringMatch, ValueOrSavedFieldId};
 use crate::version;
 use anyhow::{Result, anyhow};
-use base_log_matcher::Match_type::{MessageMatch, StateMatch, TagMatch};
+use base_log_matcher::Match_type::{MessageMatch, SampledMatch, StateMatch, TagMatch};
 use base_log_matcher::tag_match::Value_match::{
   DoubleValueMatch,
   IntValueMatch,
@@ -47,10 +47,29 @@ use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{
 use bd_state::Scope;
 use log_matcher::LogMatcher;
 use log_matcher::log_matcher::{BaseLogMatcher, Matcher, base_log_matcher};
+use rand::Rng;
 use std::borrow::Cow;
 
 const LOG_LEVEL_KEY: &str = "log_level";
 const LOG_TYPE_KEY: &str = "log_type";
+const SAMPLE_RATE_DENOMINATOR: u32 = 1_000_000;
+
+pub trait RandomNumberGenerator {
+  fn random_u32(&mut self, upper_bound_exclusive: u32) -> u32;
+}
+
+//
+// ThreadRngGenerator
+//
+
+#[derive(Debug, Default)]
+struct ThreadRngGenerator;
+
+impl RandomNumberGenerator for ThreadRngGenerator {
+  fn random_u32(&mut self, upper_bound_exclusive: u32) -> u32 {
+    rand::rng().random_range(0 .. upper_bound_exclusive)
+  }
+}
 
 /// A compiled matching tree that supports evaluating an input log. Matching involves
 /// evaluating the match criteria starting from the top, possibly recursing into subtree matching.
@@ -138,6 +157,29 @@ impl Tree {
     state: &dyn bd_state::StateReader,
     extracted_fields: &TinyMap<String, String>,
   ) -> bool {
+    let mut rng = ThreadRngGenerator;
+    self.do_match_with_rng(
+      log_level,
+      log_type,
+      message,
+      fields,
+      state,
+      extracted_fields,
+      &mut rng,
+    )
+  }
+
+  #[must_use]
+  pub fn do_match_with_rng(
+    &self,
+    log_level: LogLevel,
+    log_type: LogType,
+    message: &LogMessage,
+    fields: FieldsRef<'_>,
+    state: &dyn bd_state::StateReader,
+    extracted_fields: &TinyMap<String, String>,
+    rng: &mut dyn RandomNumberGenerator,
+  ) -> bool {
     match self {
       Self::Base(base_matcher) => match base_matcher {
         Leaf::LogLevel(log_level_matcher) => log_level
@@ -165,38 +207,53 @@ impl Tree {
           .field(field_key)
           .and_then(|value| resolve_json_path(value, path))
           .is_some_and(|input| matcher.evaluate(input.as_ref(), extracted_fields)),
+        Leaf::Sampled(sample_rate) => sample_matches(*sample_rate, rng),
         Leaf::Any => true,
       },
       Self::Or(or_matchers) => or_matchers.iter().any(|matcher| {
-        matcher.do_match(
+        matcher.do_match_with_rng(
           log_level,
           log_type,
           message,
           fields,
           state,
           extracted_fields,
+          rng,
         )
       }),
       Self::And(and_matchers) => and_matchers.iter().all(|matcher| {
-        matcher.do_match(
+        matcher.do_match_with_rng(
           log_level,
           log_type,
           message,
           fields,
           state,
           extracted_fields,
+          rng,
         )
       }),
-      Self::Not(matcher) => !matcher.do_match(
+      Self::Not(matcher) => !matcher.do_match_with_rng(
         log_level,
         log_type,
         message,
         fields,
         state,
         extracted_fields,
+        rng,
       ),
     }
   }
+}
+
+fn sample_matches(sample_rate: u32, rng: &mut dyn RandomNumberGenerator) -> bool {
+  if sample_rate == 0 {
+    return false;
+  }
+  if sample_rate >= SAMPLE_RATE_DENOMINATOR {
+    return true;
+  }
+
+  rng.random_u32(SAMPLE_RATE_DENOMINATOR) < sample_rate
 }
 
 
@@ -348,6 +405,9 @@ pub enum Leaf {
     matcher: StringMatch,
   },
 
+  /// Match based on a pseudo-random sample decision.
+  Sampled(u32),
+
   /// Always true.
   Any,
 }
@@ -489,6 +549,7 @@ impl Leaf {
             ) => Self::DoubleValue(input_type, DoubleMatch::from_proto(double_value_match)?),
           }
         },
+        SampledMatch(sampled_match) => Self::Sampled(sampled_match.sample_rate),
         TagMatch(tag_match) => match tag_match
           .value_match
           .as_ref()

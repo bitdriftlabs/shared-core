@@ -33,6 +33,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use time::OffsetDateTime;
 use tokio::sync::mpsc::Sender;
 use tokio::sync::mpsc::error::TrySendError;
@@ -108,6 +109,7 @@ pub struct UninitializedLoggingContext<T: MemorySized + Debug> {
   sdk_directory: PathBuf,
   pub(crate) stats: UninitializedLoggingContextStats,
   runtime: Arc<ConfigLoader>,
+  is_tracing_active: Arc<AtomicBool>,
 }
 
 // Skip `stats` and `runtime` fields that does not implement `std::fmt::Debug`.
@@ -134,6 +136,7 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
     flush_buffers_tx: Sender<BuffersWithAck>,
     flush_stats_trigger: FlushTrigger,
     max_size: usize,
+    is_tracing_active: Arc<AtomicBool>,
   ) -> Self {
     Self {
       pre_config_log_buffer: PreConfigBuffer::new(max_size),
@@ -144,6 +147,7 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
       sdk_directory: sdk_directory.to_owned(),
       stats: UninitializedLoggingContextStats::new(scope, stats),
       runtime: runtime.clone(),
+      is_tracing_active,
     }
   }
 
@@ -162,6 +166,7 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
       &self.sdk_directory,
       &self.runtime,
       InitializedLoggingContextStats::new(&self.stats),
+      self.is_tracing_active,
     )
     .await;
 

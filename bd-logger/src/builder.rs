@@ -42,6 +42,7 @@ use bd_time::{SystemTimeProvider, Ticker, TimeProvider};
 use futures_util::{Future, try_join};
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use time::Duration;
 use tokio::sync::watch;
 
@@ -170,6 +171,7 @@ impl LoggerBuilder {
     let stats = bd_client_stats::Stats::new(collector.clone());
     let (sleep_mode_active_tx, sleep_mode_active_rx) =
       watch::channel(self.params.start_in_sleep_mode);
+    let is_tracing_active = Arc::new(AtomicBool::new(false));
     let time_provider = self
       .time_provider
       .unwrap_or_else(|| Arc::new(SystemTimeProvider));
@@ -220,6 +222,7 @@ impl LoggerBuilder {
         flush_buffers_tx,
         flusher_trigger.clone(),
         1024 * 1024,
+        is_tracing_active.clone(),
       ),
       LoggerReplay,
       self.params.session_strategy.clone(),
@@ -254,6 +257,7 @@ impl LoggerBuilder {
       self.params.static_metadata.sdk_version(),
       self.params.store.clone(),
       sleep_mode_active_tx,
+      is_tracing_active,
     );
     let log = if self.internal_logger {
       Arc::new(InternalLogger::new(

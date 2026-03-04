@@ -196,6 +196,7 @@ impl Setup {
       flush_buffers_tx,
       flush_stats_trigger,
       1_000_000,
+      Arc::new(AtomicBool::new(false)),
     )
   }
 
