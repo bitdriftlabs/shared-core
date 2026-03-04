@@ -34,6 +34,10 @@ use bd_test_helpers::workflow::{
   WorkflowBuilder,
   make_emit_counter_action,
   make_flush_buffers_action,
+  make_save_field_extraction,
+  make_save_field_extraction_with_regex,
+  make_save_message_extraction,
+  make_save_message_extraction_with_regex,
   metric_value,
   state,
 };
@@ -417,6 +421,373 @@ fn timeout_no_parallel_match() {
     }
   );
   assert_active_runs!(workflow; "B");
+}
+
+#[test]
+fn parallel_execution_resets_oldest_run_when_max_active_runs_reached() {
+  let a = state("A");
+  let mut b = state("B");
+  let c = state("C");
+
+  let a = a.declare_transition(&b, rule!(message_equals("start")));
+  b = b.declare_transition(&c, rule!(message_equals("finish")));
+
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c])
+    .with_parallel_execution(Some(3))
+    .make_config();
+  let mut workflow = AnnotatedWorkflow::new(config);
+
+  workflow.process_log(TestLog::new("start"));
+  assert_active_runs!(workflow; "B");
+
+  workflow.process_log(TestLog::new("start"));
+  assert_active_runs!(workflow; "B", "B");
+
+  workflow.process_log(TestLog::new("start"));
+  assert_active_runs!(workflow; "B", "B", "B");
+
+  // Max active runs is reached and there is no initial run, so the oldest run is reset
+  // and replaced by a fresh initial run.
+  workflow.process_log(TestLog::new("noop"));
+  assert_active_runs!(workflow; "A", "B", "B");
+}
+
+#[test]
+fn parallel_execution_replaces_existing_run_with_same_save_field_signature() {
+  let mut a = state("A");
+  let mut b = state("B");
+  let mut c = state("C");
+  let d = state("D");
+
+  a = a.declare_transition_with_extractions(
+    &b,
+    rule!(message_equals("start")),
+    &[make_save_field_extraction("saved_user", "user")],
+  );
+  b = b.declare_transition(&c, rule!(message_equals("finish")));
+  c = c.declare_transition(&d, rule!(message_equals("done")));
+
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d])
+    .with_parallel_execution(Some(3))
+    .make_config();
+  let mut workflow = AnnotatedWorkflow::new(config);
+
+  // Create the initial active run with signature user=u1.
+  workflow.process_log(TestLog::new("start").with_tags(labels! { "user" => "u1" }));
+  assert_active_runs!(workflow; "B");
+
+  // Create an initial run, then advance the existing run so we can verify replacement resets it.
+  workflow.process_log(TestLog::new("noop"));
+  assert_active_runs!(workflow; "A", "B");
+
+  workflow.process_log(TestLog::new("finish"));
+  assert_active_runs!(workflow; "A", "C");
+
+  // Matching the same SaveField signature should replace the existing run instead of creating
+  // another independent run.
+  workflow.process_log(TestLog::new("start").with_tags(labels! { "user" => "u1" }));
+  assert_active_runs!(workflow; "B");
+}
+
+#[test]
+fn parallel_execution_keeps_distinct_runs_for_different_save_field_signatures() {
+  let mut a = state("A");
+  let mut b = state("B");
+  let mut c = state("C");
+  let d = state("D");
+
+  a = a.declare_transition_with_extractions(
+    &b,
+    rule!(message_equals("start")),
+    &[make_save_field_extraction("saved_user", "user")],
+  );
+  b = b.declare_transition(&c, rule!(message_equals("finish")));
+  c = c.declare_transition(&d, rule!(message_equals("done")));
+
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d])
+    .with_parallel_execution(Some(3))
+    .make_config();
+  let mut workflow = AnnotatedWorkflow::new(config);
+
+  workflow.process_log(TestLog::new("start").with_tags(labels! { "user" => "u1" }));
+  workflow.process_log(TestLog::new("noop"));
+  workflow.process_log(TestLog::new("finish"));
+  assert_active_runs!(workflow; "A", "C");
+
+  // Different SaveField signatures should remain distinct parallel runs.
+  workflow.process_log(TestLog::new("start").with_tags(labels! { "user" => "u2" }));
+  assert_active_runs!(workflow; "B", "C");
+}
+
+#[test]
+fn parallel_execution_replaces_matching_run_at_capacity_without_evicting_other_run() {
+  let mut a = state("A");
+  let mut b = state("B");
+  let mut c = state("C");
+  let d = state("D");
+
+  a = a.declare_transition_with_extractions(
+    &b,
+    rule!(message_equals("start")),
+    &[make_save_field_extraction("saved_user", "user")],
+  );
+  b = b.declare_transition(&c, rule!(message_equals("finish")));
+  c = c.declare_transition(&d, rule!(message_equals("done")));
+
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c, &d])
+    .with_parallel_execution(Some(3))
+    .make_config();
+  let mut workflow = AnnotatedWorkflow::new(config);
+
+  // Build a run with signature user=u1 and move it to C.
+  workflow.process_log(TestLog::new("start").with_tags(labels! { "user" => "u1" }));
+  workflow.process_log(TestLog::new("noop"));
+  workflow.process_log(TestLog::new("finish"));
+  assert_active_runs!(workflow; "A", "C");
+
+  // Build a second run with signature user=u2 and move it to C.
+  workflow.process_log(TestLog::new("start").with_tags(labels! { "user" => "u2" }));
+  assert_active_runs!(workflow; "B", "C");
+
+  workflow.process_log(TestLog::new("noop"));
+  assert_active_runs!(workflow; "A", "B", "C");
+
+  workflow.process_log(TestLog::new("finish"));
+  assert_active_runs!(workflow; "A", "C", "C");
+
+  // Move the initial run to B so we are at max capacity with no initial run.
+  workflow.process_log(TestLog::new("start").with_tags(labels! { "user" => "u3" }));
+  assert_active_runs!(workflow; "B", "C", "C");
+
+  // At capacity and without an initial run, seeing user=u1 again should replace only the
+  // matching run (u1) back to B while preserving the other run (u2) in C.
+  workflow.process_log(TestLog::new("start").with_tags(labels! { "user" => "u1" }));
+  assert_active_runs!(workflow; "B", "C", "B");
+}
+
+#[test]
+fn parallel_execution_does_not_replace_without_initial_run_progress() {
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
+
+  a = a.declare_transition_with_extractions(
+    &b,
+    rule!(message_equals("start")),
+    &[make_save_field_extraction("saved_user", "user")],
+  );
+  b = b.declare_transition(&c, rule!(message_equals("finish")));
+
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c])
+    .with_parallel_execution(Some(3))
+    .make_config();
+
+  let now = datetime!(2026-01-01 00:00:00 UTC);
+  let mut initial_traversal = crate::workflow::Traversal::new(
+    &config,
+    0,
+    crate::workflow::TraversalExtractions::default(),
+    now,
+    false,
+  )
+  .unwrap();
+  initial_traversal
+    .extractions
+    .fields
+    .insert("saved_user".to_string(), "u1".to_string());
+
+  let mut active_traversal = crate::workflow::Traversal::new(
+    &config,
+    1,
+    crate::workflow::TraversalExtractions::default(),
+    now,
+    false,
+  )
+  .unwrap();
+  active_traversal
+    .extractions
+    .fields
+    .insert("saved_user".to_string(), "u1".to_string());
+
+  let initial_run = Run {
+    traversals: vec![initial_traversal],
+    matched_logs_count: 0,
+    first_progress_occurred_at: None,
+  };
+  let active_run = Run {
+    traversals: vec![active_traversal],
+    matched_logs_count: 0,
+    first_progress_occurred_at: None,
+  };
+
+  let workflow = Workflow::new_from_parts(
+    config.inner().id().to_string(),
+    vec![initial_run, active_run],
+    None,
+    false,
+  );
+  let mut workflow = AnnotatedWorkflow { config, workflow };
+
+  // The initial run does not match this event and should not replace the active run, even if the
+  // SaveField maps happen to normalize to the same values.
+  workflow.process_log(TestLog::new("noop"));
+  assert_active_runs!(workflow; "A", "B");
+}
+
+#[test]
+fn parallel_execution_uses_default_for_zero_max_active_runs() {
+  let a = state("A");
+  let b = state("B");
+  let a = a.declare_transition(&b, rule!(message_equals("foo")));
+
+  let config = WorkflowBuilder::new("1", &[&a, &b])
+    .with_parallel_execution(Some(0))
+    .build();
+
+  let config = Config::new(config, WorkflowDebugMode::None).unwrap();
+
+  assert_eq!(
+    config.inner().execution(),
+    crate::config::Execution::Parallel {
+      max_active_runs: 10,
+    }
+  );
+}
+
+#[test]
+fn save_field_extracts_from_message_body() {
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
+
+  a = a.declare_transition_with_extractions(
+    &b,
+    rule!(message_equals("start")),
+    &[make_save_message_extraction("saved_message")],
+  );
+  b = b.declare_transition(&c, rule!(message_equals("finish")));
+
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
+  let mut workflow = AnnotatedWorkflow::new(config);
+
+  workflow.process_log(TestLog::new("start"));
+  assert_active_runs!(workflow; "B");
+  assert_eq!(
+    workflow.workflow.runs()[0].traversals[0]
+      .extractions
+      .fields
+      .get("saved_message")
+      .unwrap(),
+    "start"
+  );
+}
+
+#[test]
+fn save_field_extracts_regex_capture_from_message_body() {
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
+
+  a = a.declare_transition_with_extractions(
+    &b,
+    rule!(message_equals("uid=u123")),
+    &[make_save_message_extraction_with_regex(
+      "saved_user",
+      Some(r"uid=(u\d+)"),
+    )],
+  );
+  b = b.declare_transition(&c, rule!(message_equals("finish")));
+
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
+  let mut workflow = AnnotatedWorkflow::new(config);
+
+  workflow.process_log(TestLog::new("uid=u123"));
+  assert_active_runs!(workflow; "B");
+  assert_eq!(
+    workflow.workflow.runs()[0].traversals[0]
+      .extractions
+      .fields
+      .get("saved_user")
+      .unwrap(),
+    "u123"
+  );
+}
+
+#[test]
+fn save_field_regex_capture_no_match_does_not_save_value() {
+  let mut a = state("A");
+  let mut b = state("B");
+  let c = state("C");
+
+  a = a.declare_transition_with_extractions(
+    &b,
+    rule!(message_equals("start")),
+    &[make_save_field_extraction_with_regex(
+      "saved_user",
+      "user",
+      Some(r"^id-(\d+)$"),
+    )],
+  );
+  b = b.declare_transition(&c, rule!(message_equals("finish")));
+
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
+  let mut workflow = AnnotatedWorkflow::new(config);
+
+  workflow.process_log(TestLog::new("start").with_tags(labels! { "user" => "u123" }));
+  assert_active_runs!(workflow; "B");
+  assert!(
+    workflow.workflow.runs()[0].traversals[0]
+      .extractions
+      .fields
+      .get("saved_user")
+      .is_none()
+  );
+}
+
+#[test]
+fn save_field_with_invalid_regex_capture_is_rejected() {
+  let mut a = state("A");
+  let b = state("B");
+
+  a = a.declare_transition_with_extractions(
+    &b,
+    rule!(message_equals("start")),
+    &[make_save_message_extraction_with_regex(
+      "saved_message",
+      Some("("),
+    )],
+  );
+
+  let config = WorkflowBuilder::new("1", &[&a, &b]).build();
+  let error = Config::new(config, WorkflowDebugMode::None)
+    .err()
+    .unwrap()
+    .to_string();
+  assert!(error.starts_with("invalid transition configuration: invalid regex capture"));
+}
+
+#[test]
+fn save_field_with_multiple_regex_capture_groups_is_rejected() {
+  let mut a = state("A");
+  let b = state("B");
+
+  a = a.declare_transition_with_extractions(
+    &b,
+    rule!(message_equals("start")),
+    &[make_save_message_extraction_with_regex(
+      "saved_message",
+      Some(r"(foo)-(bar)"),
+    )],
+  );
+
+  let config = WorkflowBuilder::new("1", &[&a, &b]).build();
+  assert_eq!(
+    Config::new(config, WorkflowDebugMode::None)
+      .err()
+      .unwrap()
+      .to_string(),
+    "invalid transition configuration: regex capture must contain exactly one capture group"
+  );
 }
 
 #[test]

@@ -7,6 +7,7 @@
 
 use super::MetricsCollector;
 use crate::config::{ActionEmitMetric, TagValue};
+use crate::engine::EmitMetricActionCount;
 use crate::workflow::WorkflowEvent;
 use bd_client_stats::Stats;
 use bd_client_stats_store::Collector;
@@ -41,46 +42,60 @@ fn metric_increment_value_extraction() {
     capture_session: None,
   };
 
+  let actions = [
+    ActionEmitMetric {
+      id: "action_id_1".to_string(),
+      tags: BTreeMap::new(),
+      increment: crate::config::ValueIncrement::Fixed(1),
+      metric_type: MetricType::Counter,
+    },
+    ActionEmitMetric {
+      id: "action_id_2".to_string(),
+      tags: BTreeMap::new(),
+      increment: crate::config::ValueIncrement::Extract("f2".to_string()),
+      metric_type: MetricType::Counter,
+    },
+    ActionEmitMetric {
+      id: "action_id_3".to_string(),
+      tags: BTreeMap::new(),
+      increment: crate::config::ValueIncrement::Extract("f1".to_string()),
+      metric_type: MetricType::Counter,
+    },
+    ActionEmitMetric {
+      id: "action_id_4".to_string(),
+      tags: BTreeMap::new(),
+      increment: crate::config::ValueIncrement::Extract("does not exist".to_string()),
+      metric_type: MetricType::Counter,
+    },
+    ActionEmitMetric {
+      id: "action_id_5".to_string(),
+      tags: BTreeMap::new(),
+      increment: crate::config::ValueIncrement::Extract("m1".to_string()),
+      metric_type: MetricType::Counter,
+    },
+    ActionEmitMetric {
+      id: "action_id_6".to_string(),
+      tags: BTreeMap::new(),
+      increment: crate::config::ValueIncrement::Extract("m1".to_string()),
+      metric_type: MetricType::Histogram,
+    },
+  ];
+  let action_counts: BTreeMap<&ActionEmitMetric, EmitMetricActionCount> = actions
+    .iter()
+    .map(|action| {
+      (
+        action,
+        EmitMetricActionCount {
+          emission_count: 1,
+          is_parallel: false,
+          parallel_source_workflow_index: None,
+        },
+      )
+    })
+    .collect();
+
   metrics_collector.emit_metrics(
-    &[
-      &ActionEmitMetric {
-        id: "action_id_1".to_string(),
-        tags: BTreeMap::new(),
-        increment: crate::config::ValueIncrement::Fixed(1),
-        metric_type: MetricType::Counter,
-      },
-      &ActionEmitMetric {
-        id: "action_id_2".to_string(),
-        tags: BTreeMap::new(),
-        increment: crate::config::ValueIncrement::Extract("f2".to_string()),
-        metric_type: MetricType::Counter,
-      },
-      &ActionEmitMetric {
-        id: "action_id_3".to_string(),
-        tags: BTreeMap::new(),
-        increment: crate::config::ValueIncrement::Extract("f1".to_string()),
-        metric_type: MetricType::Counter,
-      },
-      &ActionEmitMetric {
-        id: "action_id_4".to_string(),
-        tags: BTreeMap::new(),
-        increment: crate::config::ValueIncrement::Extract("does not exist".to_string()),
-        metric_type: MetricType::Counter,
-      },
-      &ActionEmitMetric {
-        id: "action_id_5".to_string(),
-        tags: BTreeMap::new(),
-        increment: crate::config::ValueIncrement::Extract("m1".to_string()),
-        metric_type: MetricType::Counter,
-      },
-      &ActionEmitMetric {
-        id: "action_id_6".to_string(),
-        tags: BTreeMap::new(),
-        increment: crate::config::ValueIncrement::Extract("m1".to_string()),
-        metric_type: MetricType::Histogram,
-      },
-    ]
-    .into(),
+    &action_counts,
     WorkflowEvent::Log(&log),
     &bd_state::test::TestStateReader::default(),
   );
@@ -129,62 +144,67 @@ fn counter_label_extraction() {
     capture_session: None,
   };
 
-  metrics_collector.emit_metrics(
-    &[&ActionEmitMetric {
-      id: "action_id_1".to_string(),
-      tags: [
-        (
-          "tag_1".to_string(),
-          TagValue::FieldExtract("f1".to_string()),
+  let action = ActionEmitMetric {
+    id: "action_id_1".to_string(),
+    tags: [
+      (
+        "tag_1".to_string(),
+        TagValue::FieldExtract("f1".to_string()),
+      ),
+      (
+        "tag_2".to_string(),
+        TagValue::FieldExtract("f2".to_string()),
+      ),
+      ("tag_3".to_string(), TagValue::Fixed("fixed".to_string())),
+      (
+        "tag_4".to_string(),
+        TagValue::FieldExtract("m1".to_string()),
+      ),
+      (
+        "tag_5".to_string(),
+        TagValue::FieldExtract("log_level".to_string()),
+      ),
+      (
+        "tag_6".to_string(),
+        TagValue::FieldExtract("log_type".to_string()),
+      ),
+      ("tag_7".to_string(), TagValue::LogBodyExtract),
+      (
+        "tag_8".to_string(),
+        TagValue::StateExtract(
+          bd_state::Scope::FeatureFlagExposure,
+          "enabled_flag".to_string(),
         ),
-        (
-          "tag_2".to_string(),
-          TagValue::FieldExtract("f2".to_string()),
+      ),
+      (
+        "tag_9".to_string(),
+        TagValue::StateExtract(
+          bd_state::Scope::FeatureFlagExposure,
+          "missing_flag".to_string(),
         ),
-        ("tag_3".to_string(), TagValue::Fixed("fixed".to_string())),
-        (
-          "tag_4".to_string(),
-          TagValue::FieldExtract("m1".to_string()),
+      ),
+      (
+        "tag_10".to_string(),
+        TagValue::StateExtract(
+          bd_state::Scope::FeatureFlagExposure,
+          "no variant flag".to_string(),
         ),
-        (
-          "tag_5".to_string(),
-          TagValue::FieldExtract("log_level".to_string()),
-        ),
-        (
-          "tag_6".to_string(),
-          TagValue::FieldExtract("log_type".to_string()),
-        ),
-        ("tag_7".to_string(), TagValue::LogBodyExtract),
-        (
-          "tag_8".to_string(),
-          TagValue::StateExtract(
-            bd_state::Scope::FeatureFlagExposure,
-            "enabled_flag".to_string(),
-          ),
-        ),
-        (
-          "tag_9".to_string(),
-          TagValue::StateExtract(
-            bd_state::Scope::FeatureFlagExposure,
-            "missing_flag".to_string(),
-          ),
-        ),
-        (
-          "tag_10".to_string(),
-          TagValue::StateExtract(
-            bd_state::Scope::FeatureFlagExposure,
-            "no variant flag".to_string(),
-          ),
-        ),
-      ]
-      .into(),
-      increment: crate::config::ValueIncrement::Fixed(1),
-      metric_type: MetricType::Counter,
-    }]
+      ),
+    ]
     .into(),
-    WorkflowEvent::Log(&log),
-    &state_reader,
-  );
+    increment: crate::config::ValueIncrement::Fixed(1),
+    metric_type: MetricType::Counter,
+  };
+  let action_counts = BTreeMap::from([(
+    &action,
+    EmitMetricActionCount {
+      emission_count: 1,
+      is_parallel: false,
+      parallel_source_workflow_index: None,
+    },
+  )]);
+
+  metrics_collector.emit_metrics(&action_counts, WorkflowEvent::Log(&log), &state_reader);
 
   collector.assert_workflow_counter_eq(
     1,

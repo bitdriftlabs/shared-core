@@ -74,6 +74,7 @@ use bd_test_helpers::workflow::{
   make_emit_histogram_action,
   make_flush_buffers_action,
   make_generate_log_action_proto,
+  make_save_field_extraction,
   make_save_timestamp_extraction,
   make_state_change_rule,
   make_take_screenshot_action,
@@ -1603,6 +1604,225 @@ fn workflow_emit_metric_action_emits_metric() {
       ),
     ]
     .into()
+  );
+}
+
+#[test]
+fn workflow_emit_metric_action_does_not_dedupe_across_parallel_runs() {
+  let mut setup = Setup::new();
+
+  setup.send_runtime_update();
+
+  let b = state("B");
+  let mut c = state("C");
+  let d = state("D");
+
+  let b = b.declare_transition(&c, rule!(message_equals("start parallel")));
+  c = c.declare_transition_with_actions(
+    &d,
+    rule!(message_equals("fire parallel metric")),
+    &[make_emit_counter_action(
+      "foo_parallel",
+      metric_value(123),
+      vec![
+        metric_tag("fixed_key", "fixed_value"),
+        extract_metric_tag("extraction_key_from", "extraction_key_to"),
+        extract_log_body_tag(),
+      ],
+    )],
+  );
+
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![config_helper::default_buffer_config(
+        Type::TRIGGER,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      workflows: vec![
+        WorkflowBuilder::new("workflow_parallel", &[&b, &c, &d])
+          .with_parallel_execution(Some(2))
+          .build(),
+      ],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  // Build two active runs at state C.
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "start parallel".into(),
+    [].into(),
+    [].into(),
+  );
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "start parallel".into(),
+    [].into(),
+    [].into(),
+  );
+
+  // One log matches both runs, so emit metric should execute twice.
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "fire parallel metric".into(),
+    std::iter::once((
+      "extraction_key_from".into(),
+      DataValue::String("extracted_value".into()),
+    ))
+    .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
+    .collect(),
+    [].into(),
+  );
+
+  setup.flush_and_upload_stats();
+  let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
+  assert_eq!(
+    stat_upload.get_workflow_counter(
+      "foo_parallel",
+      labels! {
+        "fixed_key" => "fixed_value",
+        "extraction_key_to" => "extracted_value",
+        "__log_body__" => "fire parallel metric",
+      }
+    ),
+    Some(246),
+  );
+}
+
+#[test]
+fn workflow_emit_metric_action_parallel_same_save_field_reset_persists_across_restart() {
+  let mut setup = Setup::new();
+
+  setup.send_runtime_update();
+
+  let mut a = state("A");
+  let mut b = state("B");
+  let mut c = state("C");
+  let d = state("D");
+
+  a = a.declare_transition_with_extractions(
+    &b,
+    rule!(message_equals("start parallel")),
+    &[make_save_field_extraction("saved_user", "user")],
+  );
+  b = b.declare_transition(&c, rule!(message_equals("promote parallel")));
+  b = b.declare_transition_with_actions(
+    &d,
+    rule!(message_equals("fire parallel reset metric")),
+    &[make_emit_counter_action(
+      "foo_parallel_reset",
+      metric_value(123),
+      vec![],
+    )],
+  );
+  c = c.declare_transition_with_actions(
+    &d,
+    rule!(message_equals("fire parallel reset metric")),
+    &[make_emit_counter_action(
+      "foo_parallel_reset",
+      metric_value(123),
+      vec![],
+    )],
+  );
+
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![config_helper::default_buffer_config(
+        Type::TRIGGER,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      workflows: vec![
+        WorkflowBuilder::new("workflow_parallel_persist", &[&a, &b, &c, &d])
+          .with_parallel_execution(Some(3))
+          .build(),
+      ],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  // Build a run and advance it so SaveField extraction state is persisted on a non-initial run.
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "start parallel".into(),
+    std::iter::once(("user".into(), DataValue::String("u1".into())))
+      .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
+      .collect(),
+    [].into(),
+  );
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "promote parallel".into(),
+    [].into(),
+    [].into(),
+  );
+
+  setup.logger_handle.flush_state(Block::Yes {
+    timeout: 15.std_seconds(),
+    poll_callback: None,
+  });
+  assert!(setup.workflows_state_file_path().exists());
+
+  let sdk_directory = setup.sdk_directory.clone();
+  std::mem::drop(setup);
+
+  let mut setup = Setup::new_with_options(SetupOptions {
+    sdk_directory,
+    ..Default::default()
+  });
+
+  setup.send_runtime_update();
+
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![config_helper::default_buffer_config(
+        Type::TRIGGER,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      workflows: vec![
+        WorkflowBuilder::new("workflow_parallel_persist", &[&a, &b, &c, &d])
+          .with_parallel_execution(Some(3))
+          .build(),
+      ],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  // Same SaveField values should reset the persisted matching run back to B instead of keeping
+  // both B and C active in parallel.
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "start parallel".into(),
+    std::iter::once(("user".into(), DataValue::String("u1".into())))
+      .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
+      .collect(),
+    [].into(),
+  );
+
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "fire parallel reset metric".into(),
+    [].into(),
+    [].into(),
+  );
+
+  setup.flush_and_upload_stats();
+  let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
+  assert_eq!(
+    stat_upload.get_workflow_counter("foo_parallel_reset", labels! {}),
+    Some(123),
   );
 }
 

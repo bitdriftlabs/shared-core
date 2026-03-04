@@ -11,35 +11,7 @@ use action_generate_log::{GeneratedField, ValueReference, ValueReferencePair};
 use bd_log_primitives::{DataValue, LogFields};
 use bd_proto::protos;
 use bd_proto::protos::logging::payload::LogType;
-use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::Streaming;
-use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::streaming::{
-  TerminationCriterion,
-  termination_criterion,
-};
-use bd_proto::protos::workflow::workflow::workflow::action::{
-  ActionGenerateLog,
-  Tag,
-  action_generate_log,
-};
-use bd_proto::protos::workflow::workflow::workflow::execution::{
-  Execution_type,
-  ExecutionExclusive,
-};
-use bd_proto::protos::workflow::workflow::workflow::field_extracted::{Exact, Extraction_type};
-use bd_proto::protos::workflow::workflow::workflow::transition_extension::{
-  Extension_type,
-  SankeyDiagramValueExtraction,
-  SaveField,
-  SaveTimestamp,
-  sankey_diagram_value_extraction,
-};
-use bd_proto::protos::workflow::workflow::workflow::{
-  FieldExtracted,
-  LimitDuration,
-  LimitMatchedLogsCount,
-  TransitionExtension,
-  TransitionTimeout,
-};
+use bd_proto::protos::workflow::workflow::workflow;
 use protobuf::MessageField;
 use protos::log_matcher::log_matcher::LogMatcher;
 use protos::log_matcher::log_matcher::log_matcher::base_log_matcher::Match_type::{
@@ -68,12 +40,36 @@ use protos::workflow::workflow::workflow::{
 };
 use std::collections::BTreeMap;
 use time::Duration;
+use workflow::action::action_flush_buffers::Streaming;
+use workflow::action::action_flush_buffers::streaming::{
+  TerminationCriterion,
+  termination_criterion,
+};
+use workflow::action::{ActionGenerateLog, Tag, action_generate_log};
+use workflow::execution::{Execution_type, ExecutionExclusive, ExecutionParallel};
+use workflow::field_extracted::{Exact, Extraction_type};
+use workflow::transition_extension::save_field::Save_field_type;
+use workflow::transition_extension::{
+  Extension_type,
+  SankeyDiagramValueExtraction,
+  SaveField,
+  SaveTimestamp,
+  sankey_diagram_value_extraction,
+};
+use workflow::{
+  FieldExtracted,
+  LimitDuration,
+  LimitMatchedLogsCount,
+  TransitionExtension,
+  TransitionTimeout,
+};
 
 pub struct WorkflowBuilder {
   id: String,
   states: Vec<StateBuilder>,
   log_limit: Option<u32>,
   duration_limit: Option<Duration>,
+  execution: Execution_type,
 }
 
 impl WorkflowBuilder {
@@ -84,6 +80,7 @@ impl WorkflowBuilder {
       states: states.iter().map(|s| (*s).clone()).collect(),
       log_limit: None,
       duration_limit: None,
+      execution: Execution_type::ExecutionExclusive(ExecutionExclusive::default()),
     }
   }
 
@@ -100,9 +97,20 @@ impl WorkflowBuilder {
   }
 
   #[must_use]
+  // Sets workflow execution to parallel mode for tests. `None` exercises runtime defaulting.
+  pub fn with_parallel_execution(mut self, max_active_runs: Option<u32>) -> Self {
+    self.execution = Execution_type::ExecutionParallel(ExecutionParallel {
+      max_active_runs,
+      ..Default::default()
+    });
+    self
+  }
+
+  #[must_use]
   pub fn build(self) -> protos::workflow::workflow::Workflow {
     make_workflow_config_proto(
       &self.id,
+      self.execution,
       self
         .log_limit
         .map(|count| LimitMatchedLogsCount {
@@ -340,6 +348,7 @@ pub fn extract_metric_value(from: &str) -> Value_extractor_type {
 #[must_use]
 pub fn make_workflow_config_proto(
   id: &str,
+  execution: Execution_type,
   matched_logs_count_limit: protobuf::MessageField<
     protos::workflow::workflow::workflow::LimitMatchedLogsCount,
   >,
@@ -350,9 +359,7 @@ pub fn make_workflow_config_proto(
     id: id.to_string(),
     states,
     execution: protobuf::MessageField::from_option(Some(ExecutionProto {
-      execution_type: Some(Execution_type::ExecutionExclusive(
-        ExecutionExclusive::default(),
-      )),
+      execution_type: Some(execution),
       ..Default::default()
     })),
     limit_matched_logs_count: matched_logs_count_limit,
@@ -433,10 +440,41 @@ pub fn make_take_screenshot_action() -> Action_type {
 
 #[must_use]
 pub fn make_save_field_extraction(id: &str, field_name: &str) -> TransitionExtension {
+  make_save_field_extraction_with_regex(id, field_name, None)
+}
+
+#[must_use]
+pub fn make_save_field_extraction_with_regex(
+  id: &str,
+  field_name: &str,
+  regex_capture: Option<&str>,
+) -> TransitionExtension {
   TransitionExtension {
     extension_type: Some(Extension_type::SaveField(SaveField {
       id: id.to_string(),
-      field_name: field_name.to_string(),
+      save_field_type: Some(Save_field_type::FieldName(field_name.to_string())),
+      regex_capture: regex_capture.map(ToString::to_string),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
+#[must_use]
+pub fn make_save_message_extraction(id: &str) -> TransitionExtension {
+  make_save_message_extraction_with_regex(id, None)
+}
+
+#[must_use]
+pub fn make_save_message_extraction_with_regex(
+  id: &str,
+  regex_capture: Option<&str>,
+) -> TransitionExtension {
+  TransitionExtension {
+    extension_type: Some(Extension_type::SaveField(SaveField {
+      id: id.to_string(),
+      save_field_type: Some(Save_field_type::Message(true)),
+      regex_capture: regex_capture.map(ToString::to_string),
       ..Default::default()
     })),
     ..Default::default()
