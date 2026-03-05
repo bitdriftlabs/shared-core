@@ -51,7 +51,7 @@ impl BatteryDrainTracker {
       guard.add_sample(battery_level);
     }
 
-    if let Some(drain_rate) = guard.get_drain_rate_per_minute() {
+    if let Some(drain_rate) = guard.get_level_change_per_minute() {
       fields.insert(
         "_battery_level_change_per_min".into(),
         AnnotatedLogField::new_ootb(format!("{drain_rate:.4}")),
@@ -101,12 +101,12 @@ impl BatteryMetricsContainer {
       timestamp: now,
       battery_level,
     });
-
-    self.prune_old_samples();
   }
 
-  fn prune_old_samples(&mut self) {
+  fn get_level_change_per_minute(&mut self) -> Option<f64> {
     let now = self.time_provider.now();
+    let count_before = self.samples.len();
+
     while self
       .samples
       .front()
@@ -114,26 +114,16 @@ impl BatteryMetricsContainer {
     {
       self.samples.pop_front();
     }
-  }
 
-  fn get_drain_rate_per_minute(&mut self) -> Option<f64> {
-    self.prune_old_samples();
+    if self.samples.len() >= count_before {
+      return None;
+    }
 
     let oldest = self.samples.front()?;
     let newest = self.samples.back()?;
 
-
-    let time_delta_mins = newest
-      .timestamp
-      .duration_since(oldest.timestamp)
-      .as_secs_f64()
-      / 60.0;
-    if time_delta_mins < 0.5 {
-      return None;
-    }
-
     // Positive means draining, negative means charging.
-    Some(f64::from(oldest.battery_level - newest.battery_level) / time_delta_mins)
+    Some(f64::from(oldest.battery_level - newest.battery_level))
   }
 }
 
