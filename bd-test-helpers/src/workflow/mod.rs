@@ -452,7 +452,6 @@ pub fn make_save_field_extraction_with_regex(
   TransitionExtension {
     extension_type: Some(Extension_type::SaveField(SaveField {
       id: id.to_string(),
-<<<<<<< HEAD
       save_field_type: Some(Save_field_type::FieldName(field_name.to_string())),
       regex_capture: regex_capture.map(ToString::to_string),
       ..Default::default()
@@ -476,7 +475,6 @@ pub fn make_save_message_extraction_with_regex(
       id: id.to_string(),
       save_field_type: Some(Save_field_type::Message(true)),
       regex_capture: regex_capture.map(ToString::to_string),
-      save_field_type: Some(protos::workflow::workflow::workflow::transition_extension::save_field::Save_field_type::FieldName(field_name.to_string())),
       ..Default::default()
     })),
     ..Default::default()
