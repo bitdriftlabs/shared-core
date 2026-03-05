@@ -8,6 +8,8 @@
 use std::fs;
 use std::os::unix::fs as os_fs;
 use std::sync::Arc;
+use tokio::sync::watch;
+use time::macros::datetime;
 
 #[tokio::test]
 async fn feature_flags() {
@@ -199,4 +201,59 @@ values:
   );
 
   loader.shutdown().await;
+}
+
+#[derive(Debug)]
+struct TestFeatureFlags {
+  poll_interval_s: u64,
+}
+
+impl crate::feature_flags::FeatureFlags for TestFeatureFlags {
+  fn feature_enabled(&self, _name: &str, default: bool) -> bool {
+    default
+  }
+
+  fn get_bool(&self, _name: &str, default: bool) -> bool {
+    default
+  }
+
+  fn get_integer(&self, name: &str, default: u64) -> u64 {
+    if name == "poll_interval_s" {
+      self.poll_interval_s
+    } else {
+      default
+    }
+  }
+
+  fn get_string(&self, _name: &str, default: &Arc<String>) -> Arc<String> {
+    default.clone()
+  }
+}
+
+#[tokio::test]
+async fn runtime_flag_ticker_reloads_each_tick() {
+  use bd_time::{TestTimeProvider, Ticker, TimeProvider};
+
+  let (tx, watch) =
+    watch::channel::<crate::loader::ConfigPtr<dyn crate::feature_flags::FeatureFlags>>(Some(
+      Arc::new(TestFeatureFlags {
+        poll_interval_s: 10,
+      }),
+    ));
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2026-01-01 00:00:00 UTC)));
+  let mut ticker = crate::feature_flags::RuntimeFlagTicker::new(watch, "poll_interval_s", 60)
+    .with_time_provider(time_provider.clone());
+
+  let first_now = time_provider.now();
+  ticker.tick().await;
+  assert_eq!(time_provider.now(), first_now + time::Duration::seconds(10));
+
+  tx.send(Some(Arc::new(TestFeatureFlags {
+    poll_interval_s: 1,
+  })))
+  .unwrap();
+
+  let second_now = time_provider.now();
+  ticker.tick().await;
+  assert_eq!(time_provider.now(), second_now + time::Duration::seconds(1));
 }

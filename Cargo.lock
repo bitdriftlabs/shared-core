@@ -1169,6 +1169,7 @@ dependencies = [
  "async-trait",
  "bd-server-stats",
  "bd-test-helpers",
+ "bd-time",
  "bd-workspace-hack",
  "ctor",
  "log",
@@ -1180,6 +1181,7 @@ dependencies = [
  "serde_yaml",
  "tempfile",
  "thiserror 2.0.18",
+ "time",
  "tokio",
 ]
 

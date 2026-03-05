@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::loader::{ConfigPtr, Loader, LoaderError, StatsCallbacks, WatchedFileLoader};
+use bd_time::{SystemTimeProvider, Ticker, TimeProvider};
 use rand::Rng;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -16,6 +17,70 @@ pub type FeatureFlagsLoader =
   Arc<dyn crate::loader::Loader<dyn crate::feature_flags::FeatureFlags>>;
 
 pub type FeatureFlagsWatch = watch::Receiver<ConfigPtr<dyn crate::feature_flags::FeatureFlags>>;
+
+#[must_use]
+pub fn get_integer_from_watch(
+  feature_flags: &FeatureFlagsWatch,
+  name: &str,
+  default: u64,
+) -> u64 {
+  feature_flags
+    .borrow()
+    .as_ref()
+    .map_or(default, |flags| flags.get_integer(name, default))
+}
+
+pub struct RuntimeFlagTicker {
+  feature_flags: FeatureFlagsWatch,
+  poll_interval_flag: String,
+  default_poll_interval_seconds: u64,
+  time_provider: Arc<dyn TimeProvider>,
+}
+
+impl RuntimeFlagTicker {
+  /// Creates a ticker that reloads `poll_interval_flag` before each tick.
+  ///
+  /// Values are interpreted as seconds. We clamp both the default and runtime value to at least
+  /// one second so an accidental `0` cannot create a tight polling loop.
+  #[must_use]
+  pub fn new(
+    feature_flags: FeatureFlagsWatch,
+    poll_interval_flag: impl Into<String>,
+    default_poll_interval_seconds: u64,
+  ) -> Self {
+    Self {
+      feature_flags,
+      poll_interval_flag: poll_interval_flag.into(),
+      default_poll_interval_seconds: default_poll_interval_seconds.max(1),
+      time_provider: Arc::new(SystemTimeProvider),
+    }
+  }
+
+  #[must_use]
+  pub fn with_time_provider(mut self, time_provider: Arc<dyn TimeProvider>) -> Self {
+    self.time_provider = time_provider;
+    self
+  }
+}
+
+#[async_trait::async_trait]
+impl Ticker for RuntimeFlagTicker {
+  async fn tick(&mut self) {
+    let poll_interval_seconds = get_integer_from_watch(
+      &self.feature_flags,
+      &self.poll_interval_flag,
+      self.default_poll_interval_seconds,
+    )
+    .max(1);
+    // Re-read the flag each time so interval updates are applied without restarting the poller.
+    self
+      .time_provider
+      .sleep(time::Duration::seconds(
+        i64::try_from(poll_interval_seconds).unwrap_or(i64::MAX),
+      ))
+      .await;
+  }
+}
 
 /// Feature flags with strongly typed defaults.
 pub trait FeatureFlags: std::fmt::Debug + Send + Sync {
@@ -169,4 +234,20 @@ fn feature_flag_enabled() {
   assert!(!feature_flags.feature_enabled("test_int", true, || 9_999));
   // Wraps around.
   assert!(feature_flags.feature_enabled("test_int", false, || 10_000));
+}
+
+#[test]
+fn get_integer_from_watch_uses_defaults_and_loaded_values() {
+  let (_, empty_watch) = watch::channel::<ConfigPtr<dyn FeatureFlags>>(None);
+  assert_eq!(get_integer_from_watch(&empty_watch, "poll_interval_s", 60), 60);
+
+  let mut values = HashMap::new();
+  values.insert(
+    "poll_interval_s".to_string(),
+    FeatureFlagValue::Integer(15),
+  );
+  let (_, loaded_watch) = watch::channel::<ConfigPtr<dyn FeatureFlags>>(Some(Arc::new(
+    MemoryFeatureFlags { values },
+  )));
+  assert_eq!(get_integer_from_watch(&loaded_watch, "poll_interval_s", 60), 15);
 }
