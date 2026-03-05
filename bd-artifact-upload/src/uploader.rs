@@ -384,6 +384,7 @@ impl Uploader {
             self.data_upload_tx.clone(),
             next.name.clone(),
             next.type_id.clone().unwrap_or_default(),
+            next.session_id.clone(),
             next.time.to_offset_date_time(),
             next.metadata.clone(),
             self.backoff_policy.backoff_mark_update(),
@@ -905,6 +906,7 @@ impl Uploader {
     data_upload_tx: tokio::sync::mpsc::Sender<DataUpload>,
     id: String,
     type_id: String,
+    session_id: String,
     timestamp: OffsetDateTime,
     state_metadata: HashMap<String, Data>,
     mut retry_policy: ExponentialBackoff,
@@ -917,6 +919,7 @@ impl Uploader {
           type_id: type_id.clone(),
           artifact_id: id.clone(),
           intent_uuid: upload_uuid.clone(),
+          session_id: Some(session_id.clone()),
           time: timestamp.into_proto(),
           metadata: state_metadata.clone(),
           ..Default::default()
