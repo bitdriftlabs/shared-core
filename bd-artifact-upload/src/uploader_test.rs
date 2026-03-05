@@ -182,6 +182,7 @@ async fn basic_flow() {
       assert_eq!(intent.payload.artifact_id, id.to_string());
       assert_eq!(intent.payload.type_id, "client_report");
       assert_eq!(intent.payload.time, timestamp.into_proto());
+      assert_eq!(intent.payload.session_id, Some("session_id".to_string()));
       assert_eq!(intent.payload.metadata, [("foo".into(), Data {
           data_type: Some(Data_type::StringData("bar".to_string())),
           ..Default::default()
