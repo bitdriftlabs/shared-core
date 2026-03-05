@@ -73,74 +73,110 @@ fn get_drain_rate(fields: &AnnotatedLogFields) -> Option<f64> {
 }
 
 #[test]
-fn returns_none_with_single_sample() {
+fn does_not_report_before_window_is_full() {
   let time_provider = Arc::new(MockTimeProvider::new());
-  let tracker = BatteryDrainTracker::new(time_provider);
+  let tracker = BatteryDrainTracker::new(time_provider.clone());
 
-  let mut fields = create_resource_log_fields(75);
+  let mut fields = create_resource_log_fields(100);
   process_resource_log(&tracker, &mut fields);
+  assert!(get_drain_rate(&fields).is_none());
 
+  // 30s later — still under 1 minute.
+  time_provider.advance(Duration::from_secs(30));
+  let mut fields = create_resource_log_fields(99);
+  process_resource_log(&tracker, &mut fields);
+  assert!(get_drain_rate(&fields).is_none());
+
+  // 59s total — still under 1 minute.
+  time_provider.advance(Duration::from_secs(29));
+  let mut fields = create_resource_log_fields(98);
+  process_resource_log(&tracker, &mut fields);
   assert!(get_drain_rate(&fields).is_none());
 }
 
 #[test]
-fn calculates_drain_with_two_samples() {
+fn reports_once_window_is_full() {
   let time_provider = Arc::new(MockTimeProvider::new());
   let tracker = BatteryDrainTracker::new(time_provider.clone());
 
-  let mut fields1 = create_resource_log_fields(75);
-  process_resource_log(&tracker, &mut fields1);
+  let mut fields = create_resource_log_fields(100);
+  process_resource_log(&tracker, &mut fields);
 
   time_provider.advance(Duration::from_secs(30));
+  let mut fields = create_resource_log_fields(99);
+  process_resource_log(&tracker, &mut fields);
 
-  let mut fields2 = create_resource_log_fields(74);
-  process_resource_log(&tracker, &mut fields2);
+  // Cross the 1-minute boundary — first sample gets pruned.
+  time_provider.advance(Duration::from_secs(31));
+  let mut fields = create_resource_log_fields(98);
+  process_resource_log(&tracker, &mut fields);
 
-  let drain = get_drain_rate(&fields2).unwrap();
-  // Battery dropped 1% over 30s = 2% per min.
-  assert!((drain - 2.0).abs() < 0.01);
+  // Oldest remaining is 99, newest is 98 → delta = 1.
+  let drain = get_drain_rate(&fields).unwrap();
+  assert!((drain - 1.0).abs() < 0.01);
 }
 
 #[test]
-fn reports_negative_change_when_battery_increases() {
+fn reports_negative_change_when_charging() {
   let time_provider = Arc::new(MockTimeProvider::new());
   let tracker = BatteryDrainTracker::new(time_provider.clone());
 
-  let mut fields1 = create_resource_log_fields(50);
-  process_resource_log(&tracker, &mut fields1);
+  let mut fields = create_resource_log_fields(50);
+  process_resource_log(&tracker, &mut fields);
 
-  time_provider.advance(Duration::from_secs(60));
+  time_provider.advance(Duration::from_secs(30));
+  let mut fields = create_resource_log_fields(51);
+  process_resource_log(&tracker, &mut fields);
 
-  let mut fields2 = create_resource_log_fields(54);
-  process_resource_log(&tracker, &mut fields2);
+  time_provider.advance(Duration::from_secs(31));
+  let mut fields = create_resource_log_fields(52);
+  process_resource_log(&tracker, &mut fields);
 
-  let change = get_drain_rate(&fields2).unwrap();
-  // Battery increased 4% over 60s = -4% per min.
-  assert!((change - (-4.0)).abs() < 0.01);
+  // Oldest remaining is 51, newest is 52 → delta = -1.
+  let drain = get_drain_rate(&fields).unwrap();
+  assert!((drain - (-1.0)).abs() < 0.01);
 }
 
 #[test]
-fn prunes_old_samples() {
+fn large_jump_settles_after_window_rolls_over() {
   let time_provider = Arc::new(MockTimeProvider::new());
   let tracker = BatteryDrainTracker::new(time_provider.clone());
 
-  let mut fields1 = create_resource_log_fields(80);
-  process_resource_log(&tracker, &mut fields1);
+  // Build up samples at 100 for >1 minute so window becomes full.
+  // First sample at t=6s, last at t=66s (11 samples).
+  for _ in 0 .. 11 {
+    time_provider.advance(Duration::from_secs(6));
+    let mut fields = create_resource_log_fields(100);
+    process_resource_log(&tracker, &mut fields);
+  }
 
-  time_provider.advance(Duration::from_secs(30));
+  // t=72s — first sample (t=6s) is now 66s old and gets pruned.
+  time_provider.advance(Duration::from_secs(6));
+  let mut fields = create_resource_log_fields(100);
+  process_resource_log(&tracker, &mut fields);
+  let drain = get_drain_rate(&fields).unwrap();
+  assert!(drain.abs() < 0.01);
 
-  let mut fields2 = create_resource_log_fields(79);
-  process_resource_log(&tracker, &mut fields2);
+  // Jump to 20 on next tick (t=78s).
+  time_provider.advance(Duration::from_secs(6));
+  let mut fields = create_resource_log_fields(20);
+  process_resource_log(&tracker, &mut fields);
+  // Oldest remaining is 100, newest is 20 → delta = 80.
+  let drain = get_drain_rate(&fields).unwrap();
+  assert!((drain - 80.0).abs() < 0.01);
 
-  time_provider.advance(Duration::from_secs(40));
+  // After the window fully rolls over with samples at 20, rate settles to 0.
+  for _ in 0 .. 11 {
+    time_provider.advance(Duration::from_secs(6));
+    let mut fields = create_resource_log_fields(20);
+    process_resource_log(&tracker, &mut fields);
+  }
 
-  let mut fields3 = create_resource_log_fields(78);
-  process_resource_log(&tracker, &mut fields3);
-
-  // Total time is 70 seconds, first sample should be pruned.
-  // Remaining: fields2 (79) to fields3 (78) = 1% over 40s = 1.5% per min.
-  let drain = get_drain_rate(&fields3).unwrap();
-  assert!((drain - 1.5).abs() < 0.01);
+  time_provider.advance(Duration::from_secs(6));
+  let mut fields = create_resource_log_fields(20);
+  process_resource_log(&tracker, &mut fields);
+  let drain = get_drain_rate(&fields).unwrap();
+  assert!(drain.abs() < 0.01, "expected ~0, got {drain:.4}");
 }
 
 #[test]
@@ -168,13 +204,34 @@ fn handles_missing_battery_fields() {
 
   let mut fields = AnnotatedLogFields::new();
   process_resource_log(&tracker, &mut fields);
-
   assert!(get_drain_rate(&fields).is_none());
 
-  time_provider.advance(Duration::from_secs(30));
+  time_provider.advance(Duration::from_secs(61));
 
-  let mut fields2 = AnnotatedLogFields::new();
-  process_resource_log(&tracker, &mut fields2);
+  let mut fields = AnnotatedLogFields::new();
+  process_resource_log(&tracker, &mut fields);
+  assert!(get_drain_rate(&fields).is_none());
+}
 
-  assert!(get_drain_rate(&fields2).is_none());
+#[test]
+fn steady_drain_reports_correct_rate() {
+  let time_provider = Arc::new(MockTimeProvider::new());
+  let tracker = BatteryDrainTracker::new(time_provider.clone());
+
+  // 1 point every 6 seconds for 66 seconds (11 ticks).
+  for i in 0 .. 11 {
+    time_provider.advance(Duration::from_secs(6));
+    let mut fields = create_resource_log_fields(100 - i);
+    process_resource_log(&tracker, &mut fields);
+  }
+
+  // Cross the 1-minute mark.
+  time_provider.advance(Duration::from_secs(6));
+  let mut fields = create_resource_log_fields(89);
+  process_resource_log(&tracker, &mut fields);
+
+  // Window spans ~60s of data, first sample (100) was pruned.
+  // Oldest remaining is 99, newest is 89 → delta = 10.
+  let drain = get_drain_rate(&fields).unwrap();
+  assert!((drain - 10.0).abs() < 0.5);
 }
