@@ -919,7 +919,7 @@ impl Uploader {
           type_id: type_id.clone(),
           artifact_id: id.clone(),
           intent_uuid: upload_uuid.clone(),
-          session_id: Some(session_id.clone()).into(),
+          session_id: Some(session_id.clone()),
           time: timestamp.into_proto(),
           metadata: state_metadata.clone(),
           ..Default::default()
