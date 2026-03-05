@@ -659,6 +659,9 @@ impl WorkflowsEngine {
     let mut all_cumulative_workflow_debug_state = vec![];
     let mut all_incremental_workflow_debug_state = vec![];
     let mut tracing_carryover_flush_action_ids: TinySet<FlushBufferId> = TinySet::default();
+    // Sampling decisions should be stable for a single event across every workflow/run that
+    // evaluates it. Roll once here and thread the same value through matcher evaluation.
+    let sampled_roll = bd_log_matcher::matcher::random_sample_roll();
     let mut has_debug_workflows = false;
     for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
       let Some(config) = self.configs.get(index) else {
@@ -666,7 +669,7 @@ impl WorkflowsEngine {
       };
 
       let was_in_initial_state = workflow.is_in_initial_state();
-      let result = workflow.process_event(config, event, state_reader, now);
+      let result = workflow.process_event(config, event, state_reader, now, sampled_roll);
 
       macro_rules! inc_by {
         ($field:ident, $value:ident) => {
@@ -835,6 +838,9 @@ impl WorkflowsEngine {
     }
 
     for mut action in flush_buffers_actions_processing_result.new_pending_actions_to_add {
+      // When a traced run ends on the same event that started a streaming flush action, we keep
+      // tracing active by attaching a lease to that flush action here. Tracing is then released
+      // only when streaming termination is observed in `process_streaming_actions`.
       if tracing_carryover_flush_action_ids.contains(&action.id) {
         action.tracing_lease = true;
         self.state.active_streaming_tracing_count =

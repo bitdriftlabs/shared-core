@@ -163,6 +163,7 @@ impl AnnotatedWorkflow {
       }),
       &bd_state::test::TestStateReader::default(),
       log.now,
+      0,
     )
   }
 }

@@ -52,7 +52,7 @@ use std::borrow::Cow;
 
 const LOG_LEVEL_KEY: &str = "log_level";
 const LOG_TYPE_KEY: &str = "log_type";
-const SAMPLE_RATE_DENOMINATOR: u32 = 1_000_000;
+pub const SAMPLE_RATE_DENOMINATOR: u32 = 1_000_000;
 
 pub trait RandomNumberGenerator {
   fn random_u32(&mut self, upper_bound_exclusive: u32) -> u32;
@@ -69,6 +69,12 @@ impl RandomNumberGenerator for ThreadRngGenerator {
   fn random_u32(&mut self, upper_bound_exclusive: u32) -> u32 {
     rand::rng().random_range(0 .. upper_bound_exclusive)
   }
+}
+
+#[must_use]
+pub fn random_sample_roll() -> u32 {
+  let mut rng = ThreadRngGenerator;
+  rng.random_u32(SAMPLE_RATE_DENOMINATOR)
 }
 
 /// A compiled matching tree that supports evaluating an input log. Matching involves
@@ -156,16 +162,16 @@ impl Tree {
     fields: FieldsRef<'_>,
     state: &dyn bd_state::StateReader,
     extracted_fields: &TinyMap<String, String>,
+    sampled_roll: u32,
   ) -> bool {
-    let mut rng = ThreadRngGenerator;
-    self.do_match_with_rng(
+    self.do_match_with_sampled_roll(
       log_level,
       log_type,
       message,
       fields,
       state,
       extracted_fields,
-      &mut rng,
+      sampled_roll,
     )
   }
 
@@ -179,6 +185,28 @@ impl Tree {
     state: &dyn bd_state::StateReader,
     extracted_fields: &TinyMap<String, String>,
     rng: &mut dyn RandomNumberGenerator,
+  ) -> bool {
+    let sampled_roll = rng.random_u32(SAMPLE_RATE_DENOMINATOR);
+    self.do_match_with_sampled_roll(
+      log_level,
+      log_type,
+      message,
+      fields,
+      state,
+      extracted_fields,
+      sampled_roll,
+    )
+  }
+
+  fn do_match_with_sampled_roll(
+    &self,
+    log_level: LogLevel,
+    log_type: LogType,
+    message: &LogMessage,
+    fields: FieldsRef<'_>,
+    state: &dyn bd_state::StateReader,
+    extracted_fields: &TinyMap<String, String>,
+    sampled_roll: u32,
   ) -> bool {
     match self {
       Self::Base(base_matcher) => match base_matcher {
@@ -207,45 +235,45 @@ impl Tree {
           .field(field_key)
           .and_then(|value| resolve_json_path(value, path))
           .is_some_and(|input| matcher.evaluate(input.as_ref(), extracted_fields)),
-        Leaf::Sampled(sample_rate) => sample_matches(*sample_rate, rng),
+        Leaf::Sampled(sample_rate) => sample_matches_with_roll(*sample_rate, sampled_roll),
         Leaf::Any => true,
       },
       Self::Or(or_matchers) => or_matchers.iter().any(|matcher| {
-        matcher.do_match_with_rng(
+        matcher.do_match_with_sampled_roll(
           log_level,
           log_type,
           message,
           fields,
           state,
           extracted_fields,
-          rng,
+          sampled_roll,
         )
       }),
       Self::And(and_matchers) => and_matchers.iter().all(|matcher| {
-        matcher.do_match_with_rng(
+        matcher.do_match_with_sampled_roll(
           log_level,
           log_type,
           message,
           fields,
           state,
           extracted_fields,
-          rng,
+          sampled_roll,
         )
       }),
-      Self::Not(matcher) => !matcher.do_match_with_rng(
+      Self::Not(matcher) => !matcher.do_match_with_sampled_roll(
         log_level,
         log_type,
         message,
         fields,
         state,
         extracted_fields,
-        rng,
+        sampled_roll,
       ),
     }
   }
 }
 
-fn sample_matches(sample_rate: u32, rng: &mut dyn RandomNumberGenerator) -> bool {
+fn sample_matches_with_roll(sample_rate: u32, roll: u32) -> bool {
   if sample_rate == 0 {
     return false;
   }
@@ -253,9 +281,9 @@ fn sample_matches(sample_rate: u32, rng: &mut dyn RandomNumberGenerator) -> bool
     return true;
   }
 
-  rng.random_u32(SAMPLE_RATE_DENOMINATOR) < sample_rate
+  debug_assert!(roll < SAMPLE_RATE_DENOMINATOR);
+  roll < sample_rate
 }
-
 
 /// Represents either the input type to match against.
 #[derive(Clone, Debug, PartialEq, Eq)]

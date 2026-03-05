@@ -181,7 +181,7 @@ fn sampled_match_zero_rate_never_matches() {
 #[test]
 fn sampled_match_full_rate_always_matches() {
   let config = sampled_matcher(1_000_000);
-  let mut rng = SequenceRng::new([]);
+  let mut rng = SequenceRng::new([0, 0]);
 
   match_test_runner_with_extractions_and_rng(
     config,

@@ -95,6 +95,7 @@ impl FilterChain {
         fields_ref,
         state,
         &TinyMap::default(),
+        0,
       ) {
         continue;
       }
@@ -397,7 +398,6 @@ fn set_field(fields: &mut LogFields, key: LogFieldKey, value: LogFieldValue) {
   // before adding it.
   fields.insert(key, value);
 }
-
 
 /// Extracts a value from the log using the convention that certain names map to the log messsage,
 /// type or log level while others map to an arbitrary field.
