@@ -60,6 +60,7 @@ fn test_global_init() {
 }
 
 const REPORTS_DIRECTORY: &str = "reports";
+const HOOK_EXCLUDED_FIELDS: &[&str] = &["report_type", "reason", "detail", "session_id"];
 
 pub use config_writer::ConfigWriter;
 
@@ -94,6 +95,31 @@ pub enum ReportOrigin {
 }
 
 //
+// CrashReportInfo
+//
+
+/// Information about a crash report exposed to the hook before submission.
+#[derive(Debug, Clone)]
+pub struct CrashReportInfo {
+  pub report_type: String,
+  pub crash_reason: Option<String>,
+  pub crash_details: Option<String>,
+  pub session_id: String,
+  pub fields: LogFields,
+}
+
+//
+// CrashReportHook
+//
+
+/// A hook invoked synchronously before a crash report upload is attempted.
+/// Implementations can inspect the report.
+pub trait CrashReportHook: Send + Sync {
+  /// Called synchronously before a crash report upload is attempted.
+  fn on_crash_report(&self, info: &CrashReportInfo);
+}
+
+//
 // Monitor
 //
 
@@ -107,6 +133,7 @@ pub enum ReportOrigin {
 ///   responsible for copying the raw files into this directory.
 /// - `reports/watcher/current_session/` - When watcher directory exists, native layer will scan for
 ///   added reports to be processed right away.
+
 #[derive(Clone)]
 pub struct Monitor {
   report_directory: PathBuf,
@@ -117,6 +144,7 @@ pub struct Monitor {
   global_state_reader: global_state::Reader,
   pub session: Arc<bd_session::Strategy>,
   monitor: Option<file_watcher::FileWatcher>,
+  crash_report_hook: Option<Arc<dyn CrashReportHook>>,
 }
 
 impl Monitor {
@@ -129,6 +157,7 @@ impl Monitor {
     state: bd_state::Store,
     previous_run_state: bd_resilient_kv::ScopedMaps,
     emit_log: impl Fn(CrashLog) -> anyhow::Result<()> + Send + Sync + 'static,
+    crash_report_hook: Option<Arc<dyn CrashReportHook>>,
   ) -> Self {
     debug_check_lifecycle_less_than!(
       init_lifecycle,
@@ -146,6 +175,7 @@ impl Monitor {
       global_state_reader,
       session,
       monitor: None,
+      crash_report_hook,
     };
 
     // Only enable the file watcher if the reports/watcher directory exists. This allows the
@@ -435,6 +465,40 @@ impl Monitor {
     }
   }
 
+  fn invoke_crash_hook(
+    &self,
+    bin_report: &Report<'_>,
+    crash_reason: Option<&String>,
+    crash_details: Option<&String>,
+    session_id: &str,
+    state_fields: &LogFields,
+  ) {
+    let Some(hook) = &self.crash_report_hook else {
+      return;
+    };
+
+    let filtered_fields: LogFields = state_fields
+      .iter()
+      .filter_map(|(field_key, value)| {
+        if HOOK_EXCLUDED_FIELDS.contains(&field_key.as_ref()) {
+          None
+        } else {
+          Some((field_key.clone(), value.clone()))
+        }
+      })
+      .collect();
+
+    let info = CrashReportInfo {
+      report_type: Self::report_type_to_reason(bin_report.type_()).to_string(),
+      crash_reason: crash_reason.cloned(),
+      crash_details: crash_details.cloned(),
+      session_id: session_id.to_string(),
+      fields: filtered_fields,
+    };
+
+    hook.on_crash_report(&info);
+  }
+
   async fn process_file(&self, file_path: &Path, origin: ReportOrigin) -> Option<CrashLog> {
     if !file_path.exists() || file_path.extension().and_then(OsStr::to_str) != Some("cap") {
       log::debug!("Skipping invalid report file: {}", file_path.display());
@@ -478,6 +542,14 @@ impl Monitor {
     let global_state_fields = self.get_global_state_fields(origin);
     let session_id = self.get_session_id(origin);
     let (timestamp, state_fields) = Self::read_log_fields(bin_report, &global_state_fields);
+
+    self.invoke_crash_hook(
+      &bin_report,
+      crash_reason.as_ref(),
+      crash_details.as_ref(),
+      &session_id,
+      &state_fields,
+    );
 
     log::debug!("uploading report out of band");
 

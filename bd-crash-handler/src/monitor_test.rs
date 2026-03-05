@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{Monitor, global_state};
+use crate::{CrashReportHook, CrashReportInfo, Monitor, global_state};
 use bd_artifact_upload::UploadSource;
 use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_log_primitives::{AnnotatedLogFields, LogFields};
@@ -86,7 +86,6 @@ impl CrashReportBuilder {
     self
   }
 
-  #[allow(dead_code)]
   fn report_type(mut self, report_type: ReportType) -> Self {
     self.report_type = report_type;
     self
@@ -178,7 +177,6 @@ impl Setup {
       bd_runtime::runtime::IntWatch::new_for_testing(0),
     );
 
-
     for (name, value) in flags {
       store
         .insert(
@@ -196,7 +194,11 @@ impl Setup {
     store.as_hashmap().clone()
   }
 
-  async fn new(maybe_global_state: Option<LogFields>, enable_file_watcher: bool) -> Self {
+  async fn new(
+    maybe_global_state: Option<LogFields>,
+    enable_file_watcher: bool,
+    crash_report_hook: Option<Arc<dyn CrashReportHook>>,
+  ) -> Self {
     let directory = TempDir::new().unwrap();
 
     let shutdown = ComponentShutdownTrigger::default();
@@ -281,6 +283,7 @@ impl Setup {
       (*state).clone(),
       previous_run_state,
       emit_log,
+      crash_report_hook,
     );
 
     Self {
@@ -492,6 +495,7 @@ async fn test_log_report_fields() {
       .into(),
     ),
     false,
+    None,
   )
   .await;
   setup.make_crash("report.cap", data);
@@ -617,7 +621,7 @@ async fn file_watcher_detects_current_session_report() {
     .timestamp(crash_timestamp)
     .build();
 
-  let mut setup = Setup::new(None, true).await;
+  let mut setup = Setup::new(None, true, None).await;
 
   let uuid = "12345678-1234-5678-1234-567812345678".parse().unwrap();
   setup.expect_artifact_upload_with_flags(
@@ -680,7 +684,7 @@ async fn file_watcher_detects_previous_session_report() {
     .reason("segmentation fault")
     .build();
 
-  let mut setup = Setup::new(None, true).await;
+  let mut setup = Setup::new(None, true, None).await;
 
   setup.expect_artifact_upload_with_flags(
     &data,
@@ -730,7 +734,7 @@ async fn file_watcher_detects_previous_session_report() {
 
 #[tokio::test]
 async fn file_watcher_ignores_non_cap_files() {
-  let mut setup = Setup::new(None, true).await;
+  let mut setup = Setup::new(None, true, None).await;
 
   // Write files with wrong extensions
   std::fs::write(
@@ -772,7 +776,7 @@ async fn file_watcher_ignores_non_cap_files() {
 
 #[tokio::test]
 async fn file_watcher_not_created_without_watcher_directory() {
-  let setup = Setup::new(None, false).await;
+  let setup = Setup::new(None, false, None).await;
 
   // The file watcher would typically hold this channel, so it being closed indicates no file
   // watcher was created.
@@ -781,7 +785,7 @@ async fn file_watcher_not_created_without_watcher_directory() {
 
 #[tokio::test]
 async fn file_watcher_processes_multiple_reports() {
-  let mut setup = Setup::new(None, true).await;
+  let mut setup = Setup::new(None, true, None).await;
 
   // Setup mock to return different UUIDs for each upload
   let uuid1 = "11111111-1111-1111-1111-111111111111".parse().unwrap();
@@ -863,7 +867,7 @@ async fn file_watcher_processes_multiple_reports() {
 async fn previous_session_crash_uses_previous_feature_flags() {
   let data = CrashReportBuilder::new("PreviousCrash").build();
 
-  let mut setup = Setup::new(None, true).await;
+  let mut setup = Setup::new(None, true, None).await;
 
   // Update feature flags after Monitor creation - these should NOT appear in previous session
   // crash
@@ -904,7 +908,7 @@ async fn current_session_crash_uses_current_feature_flags() {
     .timestamp(crash_timestamp)
     .build();
 
-  let mut setup = Setup::new(None, true).await;
+  let mut setup = Setup::new(None, true, None).await;
 
   // Update feature flags after Monitor creation - these SHOULD appear in current session crash
   setup.update_feature_flag("current_only_flag", "new").await;
@@ -938,4 +942,62 @@ async fn current_session_crash_uses_current_feature_flags() {
     .await
     .expect("Timeout waiting for crash log")
     .expect("Channel closed without receiving crash log");
+}
+
+struct RecordingHook {
+  captured: std::sync::Mutex<Vec<CrashReportInfo>>,
+}
+
+impl RecordingHook {
+  fn new() -> Self {
+    Self {
+      captured: std::sync::Mutex::new(Vec::new()),
+    }
+  }
+
+  fn captured(&self) -> Vec<CrashReportInfo> {
+    self.captured.lock().unwrap().clone()
+  }
+}
+
+impl CrashReportHook for RecordingHook {
+  fn on_crash_report(&self, info: &CrashReportInfo) {
+    self.captured.lock().unwrap().push(info.clone());
+  }
+}
+
+#[tokio::test]
+async fn crash_report_hook_is_invoked_with_correct_info() {
+  let hook = Arc::new(RecordingHook::new());
+  let data = CrashReportBuilder::new("NullPointerException")
+    .reason("index out of bounds")
+    .report_type(ReportType::JVMCrash)
+    .build();
+
+  let mut setup = Setup::new(None, false, Some(hook.clone())).await;
+  setup.make_crash("report.cap", &data);
+
+  let uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".parse().unwrap();
+  make_mut(&mut setup.upload_client)
+    .expect_enqueue_upload()
+    .returning(move |_, _, _, _, _, _, _| Ok(uuid));
+
+  setup.process_all_pending_reports().await;
+
+  let captured = hook.captured();
+  assert_eq!(1, captured.len());
+  assert_eq!("Crash", captured[0].report_type);
+  assert_eq!(
+    Some("NullPointerException".to_string()),
+    captured[0].crash_reason
+  );
+  assert_eq!(
+    Some("index out of bounds".to_string()),
+    captured[0].crash_details
+  );
+  assert_eq!("previous_session_id", captured[0].session_id);
+  assert!(!captured[0].fields.contains_key("report_type"));
+  assert!(!captured[0].fields.contains_key("reason"));
+  assert!(!captured[0].fields.contains_key("detail"));
+  assert!(!captured[0].fields.contains_key("session_id"));
 }
