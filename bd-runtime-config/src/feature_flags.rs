@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::loader::{ConfigPtr, Loader, LoaderError, StatsCallbacks, WatchedFileLoader};
-use rand::Rng;
+use rand::RngExt;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Arc;
