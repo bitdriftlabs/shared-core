@@ -5,7 +5,9 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::OffsetDateTimeExt as _;
+use crate::{DynamicIntervalTicker, OffsetDateTimeExt as _, TestTimeProvider, Ticker, TimeProvider};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 use time::ext::NumericalDuration;
 use time::macros::datetime;
 
@@ -111,4 +113,25 @@ fn from_unix_timestamp_micros() {
   let micros_2024 = 1_704_067_200_000_000_i64;
   let result = OffsetDateTime::from_unix_timestamp_micros(micros_2024).unwrap();
   assert_eq!(result.unix_timestamp(), 1_704_067_200);
+}
+
+#[tokio::test]
+async fn dynamic_interval_ticker_reloads_interval_provider() {
+  let interval_seconds = Arc::new(AtomicI64::new(10));
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2026-01-01 00:00:00 UTC)));
+
+  let mut ticker = DynamicIntervalTicker::new({
+    let interval_seconds = Arc::clone(&interval_seconds);
+    move || time::Duration::seconds(interval_seconds.load(Ordering::Relaxed))
+  })
+  .with_time_provider(time_provider.clone());
+
+  let first_now = time_provider.now();
+  ticker.tick().await;
+  assert_eq!(time_provider.now(), first_now + time::Duration::seconds(10));
+
+  interval_seconds.store(1, Ordering::Relaxed);
+  let second_now = time_provider.now();
+  ticker.tick().await;
+  assert_eq!(time_provider.now(), second_now + time::Duration::seconds(1));
 }
