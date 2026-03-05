@@ -5,7 +5,13 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{DynamicIntervalTicker, OffsetDateTimeExt as _, TestTimeProvider, Ticker, TimeProvider};
+use crate::{
+  DynamicIntervalTicker,
+  OffsetDateTimeExt as _,
+  TestTimeProvider,
+  Ticker,
+  TimeProvider,
+};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 use time::ext::NumericalDuration;
