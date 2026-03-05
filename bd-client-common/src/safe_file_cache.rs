@@ -11,17 +11,21 @@ mod safe_file_cache_test;
 
 use crate::file::{read_checksummed_data, read_compressed_protobuf, write_checksummed_data};
 use anyhow::bail;
+use bd_time::{SystemTimeProvider, TimeProvider};
 use parking_lot::Mutex;
 use protobuf::Message;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 const MAX_RETRY_COUNT: u8 = 5;
+const CRASH_LOOP_BYPASS_TIMEOUT_SECONDS: i64 = 4 * 60 * 60;
 
 pub struct SafeFileCache<T> {
   directory: PathBuf,
   locked_state: Mutex<LockedState>,
   name: &'static str,
+  time_provider: Arc<dyn TimeProvider>,
   phantom: PhantomData<T>,
 }
 #[derive(Default)]
@@ -29,11 +33,21 @@ struct LockedState {
   cached_config_validated: bool,
   cached_nonce: Vec<u8>,
   current_retry_count: u8,
+  last_successful_cache_at: Option<i64>,
 }
 
 impl<T: Message> SafeFileCache<T> {
   #[must_use]
   pub fn new(name: &'static str, sdk_directory: &Path) -> Self {
+    Self::new_with_time_provider(name, sdk_directory, Arc::new(SystemTimeProvider))
+  }
+
+  #[must_use]
+  pub fn new_with_time_provider(
+    name: &'static str,
+    sdk_directory: &Path,
+    time_provider: Arc<dyn TimeProvider>,
+  ) -> Self {
     // Create the directory if it doesn't exist.
     let directory = sdk_directory.join(name);
     log::debug!(
@@ -46,6 +60,7 @@ impl<T: Message> SafeFileCache<T> {
       name,
       directory,
       locked_state: Mutex::default(),
+      time_provider,
       phantom: PhantomData,
     }
   }
@@ -74,6 +89,10 @@ impl<T: Message> SafeFileCache<T> {
 
   fn last_nonce_file(&self) -> PathBuf {
     self.directory.join("last_nonce")
+  }
+
+  fn last_successful_cache_at_file(&self) -> PathBuf {
+    self.directory.join("last_successful_cache_at")
   }
 
   async fn persist_cache_load_retry_count(&self, retry_count: u8) -> anyhow::Result<()> {
@@ -166,10 +185,31 @@ impl<T: Message> SafeFileCache<T> {
       self.name
     );
 
+    // Legacy caches may not have this file; treat that as sufficiently old and allow bypass.
+    let last_successful_cache_at = if tokio::fs::try_exists(self.last_successful_cache_at_file())
+      .await
+      .is_ok_and(|e| e)
+    {
+      let Ok(last_successful_cache_at) = Self::parse_last_successful_cache_at(
+        &read_checksummed_data(&tokio::fs::read(&self.last_successful_cache_at_file()).await?)?,
+      ) else {
+        return Ok((true, None));
+      };
+
+      log::debug!(
+        "loaded last successful cache time {last_successful_cache_at} for {}",
+        self.name
+      );
+      Some(last_successful_cache_at)
+    } else {
+      None
+    };
+
     {
       let mut locked = self.locked_state.lock();
       locked.current_retry_count = retry_count;
       locked.cached_nonce = nonce;
+      locked.last_successful_cache_at = last_successful_cache_at;
     }
 
     // TODO(snowp): Should we read this from runtime as well? It would make it possible for a bad
@@ -211,23 +251,60 @@ impl<T: Message> SafeFileCache<T> {
     Ok(data[0])
   }
 
+  fn parse_last_successful_cache_at(data: &[u8]) -> anyhow::Result<i64> {
+    if data.len() != std::mem::size_of::<i64>() {
+      bail!("invalid cache timestamp file");
+    }
+
+    Ok(i64::from_le_bytes(data.try_into()?))
+  }
+
+  fn now_unix_seconds(&self) -> i64 {
+    self.time_provider.now().unix_timestamp()
+  }
+
+  fn is_bypass_elapsed(last_successful_cache_at: Option<i64>, now_unix_seconds: i64) -> bool {
+    let Some(last_successful_cache_at) = last_successful_cache_at else {
+      return true;
+    };
+
+    now_unix_seconds.saturating_sub(last_successful_cache_at) >= CRASH_LOOP_BYPASS_TIMEOUT_SECONDS
+  }
+
   pub async fn cache_update(
     &self,
     compressed_protobuf: Vec<u8>,
     version_nonce: &str,
     apply_fn: impl Future<Output = anyhow::Result<()>>,
   ) -> anyhow::Result<()> {
-    let res = {
+    let now_unix_seconds = self.now_unix_seconds();
+    let (refuse_update, bypassed_due_to_elapsed) = {
       let state = self.locked_state.lock();
-      state.current_retry_count >= MAX_RETRY_COUNT && state.cached_nonce == version_nonce.as_bytes()
+      let in_suspected_crash_loop = state.current_retry_count >= MAX_RETRY_COUNT;
+      let same_nonce = state.cached_nonce == version_nonce.as_bytes();
+      let bypassed_due_to_elapsed =
+        Self::is_bypass_elapsed(state.last_successful_cache_at, now_unix_seconds);
+
+      (
+        in_suspected_crash_loop && same_nonce && !bypassed_due_to_elapsed,
+        in_suspected_crash_loop && same_nonce && bypassed_due_to_elapsed,
+      )
     };
-    if res {
+    if refuse_update {
       log::debug!(
         "refusing to cache config for {} at nonce {version_nonce} since retry count is already at \
          max and nonce has not changed",
         self.name
       );
       bail!("refusing to cache config during suspected crash loop with no nonce change");
+    }
+
+    if bypassed_due_to_elapsed {
+      log::debug!(
+        "allowing cache update for {} at nonce {version_nonce} despite suspected crash loop due \
+         to elapsed timeout",
+        self.name
+      );
     }
 
     apply_fn.await?;
@@ -238,7 +315,13 @@ impl<T: Message> SafeFileCache<T> {
         write_checksummed_data(version_nonce.as_bytes()),
       )
       .await?;
-      Ok::<_, anyhow::Error>(tokio::fs::write(&self.protobuf_file(), compressed_protobuf).await?)
+      tokio::fs::write(&self.protobuf_file(), compressed_protobuf).await?;
+      tokio::fs::write(
+        &self.last_successful_cache_at_file(),
+        write_checksummed_data(&now_unix_seconds.to_le_bytes()),
+      )
+      .await?;
+      Ok::<_, anyhow::Error>(())
     }
     .await
     {
@@ -247,7 +330,13 @@ impl<T: Message> SafeFileCache<T> {
 
     // Failing here is fine, worst case we'll use an old retry count or leave it missing, which
     // will eventually disable caching.
-    self.locked_state.lock().cached_config_validated = true;
+    {
+      let mut state = self.locked_state.lock();
+      state.cached_config_validated = true;
+      state.cached_nonce = version_nonce.as_bytes().to_vec();
+      state.current_retry_count = 0;
+      state.last_successful_cache_at = Some(now_unix_seconds);
+    }
     if let Err(e) = self.persist_cache_load_retry_count(0).await {
       log::debug!("failed to write retry count for {}: {e}", self.name);
     }

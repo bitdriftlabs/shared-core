@@ -15,6 +15,7 @@ bd-log-primitives.path      = "../bd-log-primitives"
 bd-metadata.path            = "../bd-metadata"
 bd-proto.path               = "../bd-proto"
 bd-proto-util.path          = "../bd-proto-util"
+bd-time.path                = "../bd-time"
 bd-workspace-hack.workspace = true
 crc32fast.workspace         = true
 flatbuffers.workspace       = true
