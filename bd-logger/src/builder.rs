@@ -178,9 +178,6 @@ impl LoggerBuilder {
     let (sleep_mode_active_tx, sleep_mode_active_rx) =
       watch::channel(self.params.start_in_sleep_mode);
     let is_tracing_active = Arc::new(AtomicBool::new(false));
-    let time_provider = self
-      .time_provider
-      .unwrap_or_else(|| Arc::new(SystemTimeProvider));
 
     let (stats_flusher, flusher_trigger) = {
       let (flush_ticker, upload_ticker) =

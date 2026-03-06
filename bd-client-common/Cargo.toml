@@ -12,6 +12,7 @@ doctest = false
 anyhow.workspace            = true
 async-trait.workspace       = true
 bd-log-primitives.path      = "../bd-log-primitives"
+bd-macros.path              = "../bd-macros"
 bd-metadata.path            = "../bd-metadata"
 bd-proto.path               = "../bd-proto"
 bd-proto-util.path          = "../bd-proto-util"

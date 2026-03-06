@@ -5,9 +5,15 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::file::write_compressed_protobuf;
-use crate::safe_file_cache::{CRASH_LOOP_BYPASS_TIMEOUT_SECONDS, MAX_RETRY_COUNT, SafeFileCache};
+use crate::file::{read_checksummed_data, write_compressed_protobuf};
+use crate::safe_file_cache::{
+  CRASH_LOOP_BYPASS_TIMEOUT_SECONDS,
+  CacheState,
+  MAX_RETRY_COUNT,
+  SafeFileCache,
+};
 use bd_proto::protos::client::api::ClientKillFile;
+use bd_proto_util::serialization::ProtoMessageDeserialize;
 use bd_time::TestTimeProvider;
 use protobuf::Message;
 use std::sync::Arc;
@@ -137,10 +143,7 @@ async fn same_nonce_allowed_after_bypass_timeout() {
     .unwrap();
 
   // Persisted retry count should be reset to zero after a successful cache update.
-  assert_eq!(
-    vec![0],
-    tokio::fs::read(cache.retry_count_file()).await.unwrap()
-  );
+  assert_eq!(0, load_cache_state(&cache).await.retry_count);
 
   // After bypassing, the same nonce should be persisted and loadable again.
   let cache = SafeFileCache::<ClientKillFile>::new_with_time_provider(
@@ -193,4 +196,10 @@ async fn same_nonce_allowed_after_bypass_timeout() {
       .to_string(),
     "refusing to cache config during suspected crash loop with no nonce change"
   );
+}
+
+async fn load_cache_state(cache: &SafeFileCache<ClientKillFile>) -> CacheState {
+  let state_bytes = tokio::fs::read(cache.state_file()).await.unwrap();
+  let state_bytes = read_checksummed_data(&state_bytes).unwrap();
+  CacheState::deserialize_message_from_bytes(&state_bytes).unwrap()
 }
