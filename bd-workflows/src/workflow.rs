@@ -17,11 +17,12 @@ use crate::config::{
   Config,
   Execution,
   FieldExtractionSource,
+  FlushBufferId,
   Predicate,
   WorkflowDebugMode,
 };
 use crate::generate_log::generate_log_action;
-use bd_log_primitives::tiny_set::TinyMap;
+use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{FieldsRef, Log, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto_util::serialization::TimestampMicros;
@@ -181,6 +182,7 @@ mod fuzzing {
         traversals,
         matched_logs_count: u.arbitrary()?,
         first_progress_occurred_at: None,
+        tracing_active: u.arbitrary()?,
       })
     }
   }
@@ -334,6 +336,7 @@ impl Workflow {
     event: WorkflowEvent<'_>,
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
+    sampled_roll: u32,
   ) -> WorkflowResult<'a> {
     let mut result = WorkflowResult::default();
 
@@ -388,7 +391,7 @@ impl Workflow {
         let Some(run) = self.runs.get_mut(index) else {
           continue;
         };
-        let mut run_result = run.process_event(config, event, state_reader, now);
+        let mut run_result = run.process_event(config, event, state_reader, now, sampled_roll);
 
         // Parallel workflows may have multiple active runs that match the same event. We annotate
         // emit-metric actions with run provenance so engine-level preparation can avoid collapsing
@@ -659,22 +662,25 @@ pub(crate) struct WorkflowResult<'a> {
   cumulative_workflow_debug_state: OptWorkflowDebugStateMap,
   // Incremental debug data is always returned and is ultimately stored with stats snapshots.
   incremental_workflow_debug_state: Vec<WorkflowDebugStateKey>,
+  tracing_carryover_flush_action_ids: TinySet<FlushBufferId>,
 }
 
+type WorkflowResultParts<'a> = (
+  Vec<TriggeredAction<'a>>,
+  TinyMap<&'a str, Log>,
+  OptWorkflowDebugStateMap,
+  Vec<WorkflowDebugStateKey>,
+  TinySet<FlushBufferId>,
+);
+
 impl<'a> WorkflowResult<'a> {
-  pub fn into_parts(
-    self,
-  ) -> (
-    Vec<TriggeredAction<'a>>,
-    TinyMap<&'a str, Log>,
-    OptWorkflowDebugStateMap,
-    Vec<WorkflowDebugStateKey>,
-  ) {
+  pub fn into_parts(self) -> WorkflowResultParts<'a> {
     (
       self.triggered_actions,
       self.logs_to_inject,
       self.cumulative_workflow_debug_state,
       self.incremental_workflow_debug_state,
+      self.tracing_carryover_flush_action_ids,
     )
   }
 
@@ -689,6 +695,13 @@ impl<'a> WorkflowResult<'a> {
     self.logs_to_inject.append(&mut run_result.logs_to_inject);
     self.stats.matched_logs_count += run_result.matched_logs_count;
     self.stats.processed_timeout |= run_result.processed_timeout;
+    self.stats.tracing_starts += run_result.tracing_started;
+    self.stats.tracing_ends += run_result.tracing_ended;
+    let tracing_carryover_flush_action_ids =
+      std::mem::take(&mut run_result.tracing_carryover_flush_action_ids);
+    self
+      .tracing_carryover_flush_action_ids
+      .extend(tracing_carryover_flush_action_ids);
 
     self
       .incremental_workflow_debug_state
@@ -736,6 +749,8 @@ impl<'a> WorkflowResult<'a> {
 pub(crate) struct WorkflowResultStats {
   pub(crate) matched_logs_count: u32,
   processed_timeout: bool,
+  pub(crate) tracing_starts: u32,
+  pub(crate) tracing_ends: u32,
 }
 
 impl WorkflowResultStats {
@@ -853,6 +868,9 @@ pub(crate) struct Run {
   /// duration limit.
   #[field(skip)]
   first_progress_occurred_at: Option<OffsetDateTime>,
+  /// Whether this run currently contributes an active tracing lease.
+  #[field(id = 3)]
+  tracing_active: bool,
 }
 
 impl Run {
@@ -870,7 +888,12 @@ impl Run {
       traversals,
       matched_logs_count: 0,
       first_progress_occurred_at: None,
+      tracing_active: false,
     }
+  }
+
+  pub(crate) const fn tracing_active(&self) -> bool {
+    self.tracing_active
   }
 
   #[cfg(test)]
@@ -884,6 +907,7 @@ impl Run {
     event: WorkflowEvent<'_>,
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
+    sampled_roll: u32,
   ) -> RunResult<'a> {
     // Optimize for the case when no traversal is advanced as it's
     // the most common situation.
@@ -905,7 +929,8 @@ impl Run {
       let Some(traversal) = self.traversals.get_mut(index) else {
         continue;
       };
-      let mut traversal_result = traversal.process_event(config, event, state_reader, now);
+      let mut traversal_result =
+        traversal.process_event(config, event, state_reader, now, sampled_roll);
 
       run_triggered_actions.append(&mut traversal_result.triggered_actions);
       run_logs_to_inject.append(&mut traversal_result.log_to_inject);
@@ -929,6 +954,9 @@ impl Run {
             processed_timeout: run_processed_timeout,
             workflow_debug_state,
             logs_to_inject: TinyMap::default(),
+            tracing_started: 0,
+            tracing_ended: u32::from(self.tracing_active),
+            tracing_carryover_flush_action_ids: TinySet::default(),
           };
         }
       }
@@ -951,6 +979,9 @@ impl Run {
             processed_timeout: run_processed_timeout,
             workflow_debug_state,
             logs_to_inject: TinyMap::default(),
+            tracing_started: 0,
+            tracing_ended: u32::from(self.tracing_active),
+            tracing_carryover_flush_action_ids: TinySet::default(),
           };
         }
       }
@@ -987,6 +1018,37 @@ impl Run {
       RunState::Running
     };
 
+    let has_start_tracing_action = run_triggered_actions
+      .iter()
+      .any(|action| matches!(action, TriggeredAction::StartTracing));
+    let tracing_started = if has_start_tracing_action && !self.tracing_active {
+      self.tracing_active = true;
+      1
+    } else {
+      0
+    };
+
+    let traced_run_ended =
+      self.tracing_active && matches!(state, RunState::Completed | RunState::Stopped);
+    let mut tracing_carryover_flush_action_ids = TinySet::default();
+    // A run can end on the same event where it also starts a streaming flush action. In that
+    // case tracing should remain active until that streaming action has fully terminated.
+    // We mark the specific flush action ID here, and engine-level action preparation later turns
+    // that into a tracing lease on the corresponding pending/streaming action.
+    if traced_run_ended
+      && let Some(action_id) = run_triggered_actions.iter().find_map(|action| {
+        let TriggeredAction::FlushBuffers(flush_action) = action else {
+          return None;
+        };
+        flush_action
+          .streaming
+          .as_ref()
+          .map(|_| flush_action.id.clone())
+      })
+    {
+      tracing_carryover_flush_action_ids.insert(action_id);
+    }
+
     RunResult {
       state,
       triggered_actions: run_triggered_actions,
@@ -994,6 +1056,9 @@ impl Run {
       processed_timeout: run_processed_timeout,
       logs_to_inject: run_logs_to_inject,
       workflow_debug_state,
+      tracing_started,
+      tracing_ended: u32::from(traced_run_ended),
+      tracing_carryover_flush_action_ids,
     }
   }
 
@@ -1100,6 +1165,12 @@ pub(crate) struct RunResult<'a> {
   logs_to_inject: TinyMap<&'a str, Log>,
   /// Any debug state changes that occurred as a result of processing the traversal.
   workflow_debug_state: Vec<WorkflowDebugStateKey>,
+  /// Number of tracing leases started by this run during processing.
+  tracing_started: u32,
+  /// Number of tracing leases ended because this run ended.
+  tracing_ended: u32,
+  /// Flush action IDs that should receive tracing carryover when resolved.
+  tracing_carryover_flush_action_ids: TinySet<FlushBufferId>,
 }
 
 impl RunResult<'_> {
@@ -1259,6 +1330,7 @@ impl Traversal {
     event: WorkflowEvent<'_>,
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
+    sampled_roll: u32,
   ) -> TraversalResult<'a> {
     let transitions = config
       .inner()
@@ -1301,6 +1373,7 @@ impl Traversal {
             index,
             state_reader,
             now,
+            sampled_roll,
             &mut result,
           );
         },
@@ -1320,6 +1393,7 @@ impl Traversal {
             index,
             state_reader,
             now,
+            sampled_roll,
             &mut result,
           );
         },
@@ -1379,6 +1453,7 @@ impl Traversal {
     index: usize,
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
+    sampled_roll: u32,
     result: &mut TraversalResult<'a>,
   ) {
     if !log_match.do_match(
@@ -1388,6 +1463,7 @@ impl Traversal {
       FieldsRef::new(&log.fields, &log.matching_fields),
       state_reader,
       &self.extractions.fields,
+      sampled_roll,
     ) {
       return;
     }
@@ -1450,6 +1526,7 @@ impl Traversal {
     index: usize,
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
+    sampled_roll: u32,
     result: &mut TraversalResult<'a>,
   ) {
     use bd_state::Value_type;
@@ -1536,6 +1613,7 @@ impl Traversal {
         fields,
         state_reader,
         &self.extractions.fields,
+        sampled_roll,
       )
     {
       return;
@@ -1742,6 +1820,9 @@ impl Traversal {
         Action::TakeScreenshot => {
           triggered_actions.push(TriggeredAction::TakeScreenshot);
         },
+        Action::StartTracing => {
+          triggered_actions.push(TriggeredAction::StartTracing);
+        },
         Action::GenerateLog(action) => {
           if let Some(log) = generate_log_action(extractions, action, current_log_fields) {
             logs_to_inject.insert(action.id.as_str(), log);
@@ -1772,6 +1853,7 @@ pub(crate) enum TriggeredAction<'a> {
   EmitMetricParallelRun(&'a ActionEmitMetric),
   SankeyDiagram(TriggeredActionEmitSankey<'a>),
   TakeScreenshot,
+  StartTracing,
 }
 
 //

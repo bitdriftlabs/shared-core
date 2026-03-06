@@ -397,6 +397,7 @@ impl TailConfigurations {
               FieldsRef::new(&log.log.fields, &log.log.matching_fields),
               state,
               &TinyMap::default(),
+              0,
             )
           })
           .then_some(id.as_str())

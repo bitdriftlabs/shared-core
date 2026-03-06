@@ -6,8 +6,8 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::builder;
-use crate::matcher::Tree;
 use crate::matcher::base_log_matcher::tag_match::Value_match::DoubleValueMatch;
+use crate::matcher::{RandomNumberGenerator, Tree};
 use crate::test::TestMatcher;
 use ahash::AHashMap;
 use bd_log_primitives::tiny_set::TinyMap;
@@ -34,7 +34,7 @@ use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{
 use bd_proto::protos::value_matcher::value_matcher::string_value_match::String_value_match_type;
 use bd_proto::protos::value_matcher::value_matcher::{JsonPathValueMatch, Operator};
 use bd_state::StateReader;
-use log_matcher::base_log_matcher::Match_type::{MessageMatch, StateMatch, TagMatch};
+use log_matcher::base_log_matcher::Match_type::{MessageMatch, SampledMatch, StateMatch, TagMatch};
 use log_matcher::base_log_matcher::tag_match::Value_match::{
   IntValueMatch,
   IsSetMatch,
@@ -45,6 +45,7 @@ use log_matcher::{BaseLogMatcher, Matcher, MatcherList, base_log_matcher};
 use ordered_float::NotNan;
 use pretty_assertions::assert_eq;
 use protobuf::{Enum, MessageField};
+use std::collections::VecDeque;
 
 type Input<'a> = (LogType, LogLevel, LogMessage, LogFields);
 
@@ -124,6 +125,90 @@ fn log_level(log_level: LogLevel) -> Input<'static> {
     LogMessage::String("message".into()),
     [].into(),
   )
+}
+
+//
+// SequenceRng
+//
+
+struct SequenceRng {
+  values: VecDeque<u32>,
+}
+
+impl SequenceRng {
+  fn new(values: impl IntoIterator<Item = u32>) -> Self {
+    Self {
+      values: values.into_iter().collect(),
+    }
+  }
+}
+
+impl RandomNumberGenerator for SequenceRng {
+  fn random_u32(&mut self, upper_bound_exclusive: u32) -> u32 {
+    let next = self.values.pop_front().expect("test rng ran out of values");
+    assert!(
+      next < upper_bound_exclusive,
+      "rng value {next} must be < {upper_bound_exclusive}",
+    );
+    next
+  }
+}
+
+fn sampled_matcher(sample_rate: u32) -> LogMatcher {
+  simple_log_matcher(SampledMatch(base_log_matcher::SampledMatch {
+    sample_rate,
+    ..Default::default()
+  }))
+}
+
+#[test]
+fn sampled_match_zero_rate_never_matches() {
+  let config = sampled_matcher(0);
+  let mut rng = SequenceRng::new([0, 999_999]);
+
+  match_test_runner_with_extractions_and_rng(
+    config,
+    vec![
+      (log_msg("message"), false),
+      (log_tag("key", "value"), false),
+    ],
+    &TinyMap::default(),
+    &bd_state::test::TestStateReader::new(),
+    &mut rng,
+  );
+}
+
+#[test]
+fn sampled_match_full_rate_always_matches() {
+  let config = sampled_matcher(1_000_000);
+  let mut rng = SequenceRng::new([0, 0]);
+
+  match_test_runner_with_extractions_and_rng(
+    config,
+    vec![(log_msg("message"), true), (log_tag("key", "value"), true)],
+    &TinyMap::default(),
+    &bd_state::test::TestStateReader::new(),
+    &mut rng,
+  );
+}
+
+#[test]
+fn sampled_match_uses_threshold_comparison() {
+  let config = sampled_matcher(500_000);
+  let mut rng = SequenceRng::new([0, 499_999, 500_000, 999_999]);
+
+  match_test_runner_with_extractions_and_rng(
+    config,
+    vec![
+      (log_msg("first"), true),
+      (log_msg("second"), true),
+      (log_msg("third"), false),
+      (log_msg("fourth"), false),
+    ],
+    &TinyMap::default(),
+    &bd_state::test::TestStateReader::new(),
+    &mut rng,
+  );
 }
 
 #[test]
@@ -1566,6 +1651,18 @@ fn match_test_runner_with_extractions(
   extracted_fields: &TinyMap<String, String>,
   state: &dyn StateReader,
 ) {
+  let mut rng = SequenceRng::new((0 .. cases.len()).map(|_| 0));
+  match_test_runner_with_extractions_and_rng(config, cases, extracted_fields, state, &mut rng);
+}
+
+#[allow(clippy::needless_pass_by_value)]
+fn match_test_runner_with_extractions_and_rng(
+  config: LogMatcher,
+  cases: Vec<(Input<'_>, bool)>,
+  extracted_fields: &TinyMap<String, String>,
+  state: &dyn StateReader,
+  rng: &mut dyn RandomNumberGenerator,
+) {
   let match_tree = Tree::new(&config).unwrap();
 
   for (input, should_match) in cases {
@@ -1575,13 +1672,14 @@ fn match_test_runner_with_extractions(
 
     assert_eq!(
       should_match,
-      match_tree.do_match(
+      match_tree.do_match_with_rng(
         log_level,
         log_type,
         &message,
         fields,
         state,
-        extracted_fields
+        extracted_fields,
+        rng,
       ),
       "{input:?} should result in {should_match} but did not",
     );

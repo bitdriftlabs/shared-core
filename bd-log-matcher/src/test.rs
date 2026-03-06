@@ -46,6 +46,7 @@ impl TestMatcher {
       FieldsRef::new(&fields, &matching_fields),
       state,
       &TinyMap::default(),
+      0,
     )
   }
 

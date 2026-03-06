@@ -17,6 +17,7 @@ bd-state.path               = "../bd-state"
 bd-workspace-hack.workspace = true
 itertools.workspace         = true
 protobuf.workspace          = true
+rand.workspace              = true
 regex.workspace             = true
 tempfile.workspace          = true
 

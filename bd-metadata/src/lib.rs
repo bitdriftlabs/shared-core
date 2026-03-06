@@ -33,7 +33,8 @@ use std::collections::HashMap;
 // Version 37: Added support for map types and JSON matching.
 // Version 38: Added support for workflow parallel execution and message/regex transition
 //             extractions.
-const CONFIGURATION_VERSION: &str = "38";
+// Version 39: Added support for start tracing action and sampled log matcher.
+const CONFIGURATION_VERSION: &str = "39";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
