@@ -19,6 +19,7 @@ use crate::{
   wait_for,
 };
 use assert_matches::assert_matches;
+use bd_client_common::safe_file_cache::load_cache_retry_count_from_file;
 use bd_error_reporter::reporter::UnexpectedErrorHandler;
 use bd_log_matcher::builder::{field_equals, message_equals};
 use bd_log_metadata::LogFields;
@@ -2733,7 +2734,7 @@ fn runtime_caching() {
     setup.sdk_directory.clone()
   };
 
-  let retry_file = sdk_directory.path().join("runtime").join("retry_count");
+  let state_file = sdk_directory.path().join("runtime").join("state.pb");
   assert!(
     sdk_directory
       .path()
@@ -2741,8 +2742,8 @@ fn runtime_caching() {
       .join("protobuf.pb")
       .exists()
   );
-  assert!(retry_file.exists());
-  assert_eq!(std::fs::read(&retry_file).unwrap(), &[0]);
+  assert!(state_file.exists());
+  assert_eq!(load_cache_retry_count_from_file(&state_file).unwrap(), 0);
 
   let network = Box::new(NoopNetwork);
   let (_flush_tick_tx, flush_ticker) = TestTicker::new();
@@ -2796,7 +2797,7 @@ fn runtime_caching() {
     logger.shutdown(true);
   }
 
-  assert_eq!(std::fs::read(&retry_file).unwrap(), &[1]);
+  assert_eq!(load_cache_retry_count_from_file(&state_file).unwrap(), 1);
 
   // Now start another logger with the same directory, this time going through the standard
   // handshake initialization.
@@ -2807,7 +2808,7 @@ fn runtime_caching() {
 
   // At this point the retry count should have been reset since we were able to verify that we
   // can connect to the backend with this runtime configuration.
-  assert_eq!(std::fs::read(&retry_file).unwrap(), &[0]);
+  assert_eq!(load_cache_retry_count_from_file(&state_file).unwrap(), 0);
 }
 
 #[test]

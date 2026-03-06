@@ -8,6 +8,7 @@
 use crate::runtime::{ConfigLoader, FeatureFlag};
 use crate::{bool_feature_flag, duration_feature_flag, int_feature_flag};
 use bd_client_common::HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE;
+use bd_client_common::safe_file_cache::load_cache_retry_count_from_file;
 use bd_test_helpers::runtime::{ValueKind, make_update};
 use std::borrow::Borrow;
 use std::sync::Arc;
@@ -179,8 +180,12 @@ impl SetupDiskPersistence {
     self.directory.path().join("runtime").join("protobuf.pb")
   }
 
-  fn retry_file(&self) -> std::path::PathBuf {
-    self.directory.path().join("runtime").join("retry_count")
+  fn state_file(&self) -> std::path::PathBuf {
+    self.directory.path().join("runtime").join("state.pb")
+  }
+
+  fn retry_count(&self) -> u32 {
+    load_cache_retry_count_from_file(&self.state_file()).unwrap()
   }
 }
 
@@ -204,7 +209,7 @@ async fn disk_persistence_happy_path() {
 
   // At this point the value should be cached and we should see the previously set value on read.
   assert!(setup.protobuf_file().exists());
-  assert!(setup.retry_file().exists());
+  assert!(setup.state_file().exists());
 
   let loader = setup.new_loader();
 
@@ -215,17 +220,17 @@ async fn disk_persistence_happy_path() {
   assert_eq!(loader.snapshot().nonce, Some("1".to_string()));
 
   // With no safety marking, we should have a retry count of 1.
-  assert_eq!(std::fs::read(setup.retry_file()).unwrap(), &[1]);
+  assert_eq!(setup.retry_count(), 1);
 
   // Getting a handshake without runtime being up to date should not do anything.
   loader.on_handshake_complete(0).await;
-  assert_eq!(std::fs::read(setup.retry_file()).unwrap(), &[1]);
+  assert_eq!(setup.retry_count(), 1);
 
   // Getting a handshake with runtime being up to date should mark the config as safe.
   loader
     .on_handshake_complete(HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE)
     .await;
-  assert_eq!(std::fs::read(setup.retry_file()).unwrap(), &[0]);
+  assert_eq!(setup.retry_count(), 0);
 }
 
 #[tokio::test]
@@ -272,9 +277,9 @@ async fn disk_persistence_retry_corruption() {
       .unwrap();
   }
 
-  // Corrupt the retry file, verifying that we don't blow up when we read a bad file and fall back
+  // Corrupt the state file, verifying that we don't blow up when we read a bad file and fall back
   // to the default.
-  std::fs::write(setup.retry_file(), []).unwrap();
+  std::fs::write(setup.state_file(), []).unwrap();
 
   let loader = setup.new_loader();
   loader.handle_cached_config().await;
@@ -315,7 +320,7 @@ async fn disk_persistence_retry_limit() {
   let flag = TestFlag::register(&loader);
   assert_eq!(*flag.read(), 1);
   assert!(setup.protobuf_file().exists());
-  assert!(setup.retry_file().exists());
+  assert!(setup.state_file().exists());
 }
 
 #[tokio::test]
@@ -349,7 +354,7 @@ async fn disk_persistence_retry_marked_safe() {
   loader.handle_cached_config().await;
   let flag = TestFlag::register(&loader);
   assert_eq!(*flag.read(), 10);
-  assert_eq!(std::fs::read(setup.retry_file()).unwrap(), &[1]);
+  assert_eq!(setup.retry_count(), 1);
 }
 
 #[tokio::test]
@@ -369,7 +374,7 @@ async fn disk_persistence_missing_config_file() {
   }
 
   assert!(setup.protobuf_file().exists());
-  assert!(setup.retry_file().exists());
+  assert!(setup.state_file().exists());
 
   std::fs::remove_file(setup.protobuf_file()).unwrap();
 
@@ -380,11 +385,11 @@ async fn disk_persistence_missing_config_file() {
   let flag = TestFlag::register(&loader);
   assert_eq!(*flag.read(), 1);
 
-  assert!(!setup.retry_file().exists());
+  assert!(!setup.state_file().exists());
 }
 
 #[tokio::test]
-async fn disk_persistence_missing_retry_file() {
+async fn disk_persistence_missing_state_file() {
   let setup = SetupDiskPersistence::new();
 
   // First write some data to the cached file by setting a new snapshot.
@@ -400,11 +405,11 @@ async fn disk_persistence_missing_retry_file() {
   }
 
   assert!(setup.protobuf_file().exists());
-  assert!(setup.retry_file().exists());
+  assert!(setup.state_file().exists());
 
-  std::fs::remove_file(setup.retry_file()).unwrap();
+  std::fs::remove_file(setup.state_file()).unwrap();
 
-  // If the retry file is missing, we should handle this gracefully and clean up the other file,
+  // If the state file is missing, we should handle this gracefully and clean up the other file,
   // falling back to the default.
   let loader = setup.new_loader();
   loader.handle_cached_config().await;
@@ -431,12 +436,12 @@ async fn disk_persistence_cannot_update_retry() {
   }
 
   assert!(setup.protobuf_file().exists());
-  assert!(setup.retry_file().exists());
+  assert!(setup.state_file().exists());
 
   // Set readonly. We can read the retry value, but won't be able to update it.
-  let mut perms = std::fs::metadata(setup.retry_file()).unwrap().permissions();
+  let mut perms = std::fs::metadata(setup.state_file()).unwrap().permissions();
   perms.set_readonly(true);
-  std::fs::set_permissions(setup.retry_file(), perms).unwrap();
+  std::fs::set_permissions(setup.state_file(), perms).unwrap();
 
   let loader = setup.new_loader();
   loader.handle_cached_config().await;

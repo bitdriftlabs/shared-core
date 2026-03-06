@@ -34,6 +34,7 @@ use bd_proto::protos::client::api::{
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
+use bd_time::TimeProvider;
 use bd_workflows::config::WorkflowsConfiguration;
 use itertools::Itertools;
 use parking_lot::Mutex;
@@ -87,9 +88,22 @@ pub struct Config<A: ApplyConfig> {
 }
 
 impl<A: ApplyConfig> Config<A> {
+  #[cfg(test)]
   pub fn new(sdk_directory: &Path, apply_config: A) -> Self {
+    Self::new_with_time_provider(
+      sdk_directory,
+      apply_config,
+      Arc::new(bd_time::SystemTimeProvider),
+    )
+  }
+
+  pub fn new_with_time_provider(
+    sdk_directory: &Path,
+    apply_config: A,
+    time_provider: Arc<dyn TimeProvider>,
+  ) -> Self {
     Self {
-      file_cache: SafeFileCache::new("config", sdk_directory),
+      file_cache: SafeFileCache::new_with_time_provider("config", sdk_directory, time_provider),
       configuration_version_id: Mutex::default(),
       apply_config,
     }

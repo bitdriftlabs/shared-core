@@ -7,6 +7,7 @@
 
 use super::{Config, Configuration};
 use anyhow::anyhow;
+use bd_client_common::safe_file_cache::load_cache_retry_count_from_file;
 use bd_client_common::{ClientConfigurationUpdate, HANDSHAKE_FLAG_CONFIG_UP_TO_DATE};
 use bd_proto::protos::client::api::ConfigurationUpdate;
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
@@ -69,26 +70,21 @@ async fn process_and_load() {
   configuration_rx.recv().await;
 
   // With no safety marking, we should have a retry count of 1.
-  assert_eq!(
-    std::fs::read(directory.path().join("config").join("retry_count")).unwrap(),
-    &[1]
-  );
+  assert_eq!(retry_count(&directory, "config"), 1);
 
   // Getting a handshake without runtime being up to date should not do anything.
   config.on_handshake_complete(0).await;
-  assert_eq!(
-    std::fs::read(directory.path().join("config").join("retry_count")).unwrap(),
-    &[1]
-  );
+  assert_eq!(retry_count(&directory, "config"), 1);
 
   // Getting a handshake with runtime being up to date should mark the config as safe.
   config
     .on_handshake_complete(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE)
     .await;
-  assert_eq!(
-    std::fs::read(directory.path().join("config").join("retry_count")).unwrap(),
-    &[0]
-  );
+  assert_eq!(retry_count(&directory, "config"), 0);
+}
+
+fn retry_count(directory: &TempDir, cache_name: &str) -> u32 {
+  load_cache_retry_count_from_file(&directory.path().join(cache_name).join("state.pb")).unwrap()
 }
 
 #[tokio::test]

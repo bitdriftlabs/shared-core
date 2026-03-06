@@ -23,6 +23,7 @@ use bd_proto::protos::client::api::{
 };
 use bd_proto::protos::client::runtime::Runtime;
 use bd_proto::protos::client::runtime::runtime::Value;
+use bd_time::{SystemTimeProvider, TimeProvider};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::fmt::Display;
@@ -171,9 +172,17 @@ impl ConfigLoader {
 
   #[must_use]
   pub fn new(sdk_directory: &Path) -> Arc<Self> {
+    Self::new_with_time_provider(sdk_directory, Arc::new(SystemTimeProvider))
+  }
+
+  #[must_use]
+  pub fn new_with_time_provider(
+    sdk_directory: &Path,
+    time_provider: Arc<dyn TimeProvider>,
+  ) -> Arc<Self> {
     Arc::new(Self {
       state: Mutex::new(LoaderState::new(Runtime::default(), None)),
-      file_cache: SafeFileCache::new("runtime", sdk_directory),
+      file_cache: SafeFileCache::new_with_time_provider("runtime", sdk_directory, time_provider),
     })
   }
 

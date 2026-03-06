@@ -5,11 +5,20 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::file::write_compressed_protobuf;
-use crate::safe_file_cache::{MAX_RETRY_COUNT, SafeFileCache};
+use crate::file::{read_checksummed_data, write_compressed_protobuf};
+use crate::safe_file_cache::{
+  CRASH_LOOP_BYPASS_TIMEOUT_SECONDS,
+  CacheState,
+  MAX_RETRY_COUNT,
+  SafeFileCache,
+};
 use bd_proto::protos::client::api::ClientKillFile;
+use bd_proto_util::serialization::ProtoMessageDeserialize;
+use bd_time::TestTimeProvider;
 use protobuf::Message;
+use std::sync::Arc;
 use tempfile::tempdir;
+use time::{Duration, OffsetDateTime};
 
 #[tokio::test]
 async fn basic_flow() {
@@ -74,4 +83,123 @@ async fn basic_flow() {
     )
     .await
     .unwrap();
+}
+
+#[tokio::test]
+async fn same_nonce_allowed_after_bypass_timeout() {
+  let tempdir = tempdir().unwrap();
+  let time_provider = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let cache = SafeFileCache::<ClientKillFile>::new_with_time_provider(
+    "test",
+    tempdir.path(),
+    time_provider.clone(),
+  );
+  cache
+    .cache_update(
+      write_compressed_protobuf(ClientKillFile::default_instance()).unwrap(),
+      "123",
+      async { Ok(()) },
+    )
+    .await
+    .unwrap();
+
+  // We should read cached config successfully until we hit the retry limit.
+  for _i in 0 .. MAX_RETRY_COUNT {
+    let cache = SafeFileCache::<ClientKillFile>::new_with_time_provider(
+      "test",
+      tempdir.path(),
+      time_provider.clone(),
+    );
+    assert_eq!(
+      ClientKillFile::default(),
+      cache.handle_cached_config().await.unwrap()
+    );
+  }
+
+  let cache = SafeFileCache::<ClientKillFile>::new_with_time_provider(
+    "test",
+    tempdir.path(),
+    time_provider.clone(),
+  );
+  assert!(cache.handle_cached_config().await.is_none());
+
+  // Simulate enough wall-clock time passing since the last successful cache write.
+  time_provider.advance(Duration::seconds(CRASH_LOOP_BYPASS_TIMEOUT_SECONDS + 1));
+
+  let cache = SafeFileCache::<ClientKillFile>::new_with_time_provider(
+    "test",
+    tempdir.path(),
+    time_provider.clone(),
+  );
+  assert!(cache.handle_cached_config().await.is_none());
+
+  cache
+    .cache_update(
+      write_compressed_protobuf(ClientKillFile::default_instance()).unwrap(),
+      "123",
+      async { Ok(()) },
+    )
+    .await
+    .unwrap();
+
+  // Persisted retry count should be reset to zero after a successful cache update.
+  assert_eq!(0, load_cache_state(&cache).await.retry_count);
+
+  // After bypassing, the same nonce should be persisted and loadable again.
+  let cache = SafeFileCache::<ClientKillFile>::new_with_time_provider(
+    "test",
+    tempdir.path(),
+    time_provider.clone(),
+  );
+  assert_eq!(
+    ClientKillFile::default(),
+    cache.handle_cached_config().await.unwrap()
+  );
+
+  // A successful cache update should reset retry count, so same nonce updates should no longer be
+  // blocked by crash-loop protection.
+  cache
+    .cache_update(
+      write_compressed_protobuf(ClientKillFile::default_instance()).unwrap(),
+      "123",
+      async { Ok(()) },
+    )
+    .await
+    .unwrap();
+
+  // Drive retry count back to the maximum and verify the crash-loop guard blocks same nonce
+  // updates again.
+  for _i in 0 .. MAX_RETRY_COUNT {
+    let cache = SafeFileCache::<ClientKillFile>::new_with_time_provider(
+      "test",
+      tempdir.path(),
+      time_provider.clone(),
+    );
+    assert_eq!(
+      ClientKillFile::default(),
+      cache.handle_cached_config().await.unwrap()
+    );
+  }
+
+  let cache =
+    SafeFileCache::<ClientKillFile>::new_with_time_provider("test", tempdir.path(), time_provider);
+  assert!(cache.handle_cached_config().await.is_none());
+  assert_eq!(
+    cache
+      .cache_update(
+        write_compressed_protobuf(ClientKillFile::default_instance()).unwrap(),
+        "123",
+        async { Ok(()) },
+      )
+      .await
+      .unwrap_err()
+      .to_string(),
+    "refusing to cache config during suspected crash loop with no nonce change"
+  );
+}
+
+async fn load_cache_state(cache: &SafeFileCache<ClientKillFile>) -> CacheState {
+  let state_bytes = tokio::fs::read(cache.state_file()).await.unwrap();
+  let state_bytes = read_checksummed_data(&state_bytes).unwrap();
+  CacheState::deserialize_message_from_bytes(&state_bytes).unwrap()
 }

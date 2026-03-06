@@ -161,8 +161,14 @@ impl LoggerBuilder {
     );
 
     let (data_upload_tx, data_upload_rx) = tokio::sync::mpsc::channel(1);
-    let runtime_loader = runtime::ConfigLoader::new(&self.params.sdk_directory);
 
+    let time_provider = self
+      .time_provider
+      .unwrap_or_else(|| Arc::new(SystemTimeProvider));
+    let runtime_loader = runtime::ConfigLoader::new_with_time_provider(
+      &self.params.sdk_directory,
+      time_provider.clone(),
+    );
     let max_dynamic_stats =
       bd_runtime::runtime::stats::MaxDynamicCountersFlag::register(&runtime_loader).into_inner();
     let collector = Collector::new(Some(max_dynamic_stats));
@@ -172,9 +178,6 @@ impl LoggerBuilder {
     let (sleep_mode_active_tx, sleep_mode_active_rx) =
       watch::channel(self.params.start_in_sleep_mode);
     let is_tracing_active = Arc::new(AtomicBool::new(false));
-    let time_provider = self
-      .time_provider
-      .unwrap_or_else(|| Arc::new(SystemTimeProvider));
 
     let (stats_flusher, flusher_trigger) = {
       let (flush_ticker, upload_ticker) =
@@ -402,13 +405,14 @@ impl LoggerBuilder {
         state_upload_handle,
       );
 
-      let updater = Arc::new(client_config::Config::new(
+      let updater = Arc::new(client_config::Config::new_with_time_provider(
         &self.params.sdk_directory,
         LoggerUpdate::new(
           buffer_manager.clone(),
           config_update_tx,
           &scope.scope("config"),
         ),
+        time_provider.clone(),
       ));
 
       let api = bd_api::api::Api::new(

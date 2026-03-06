@@ -13,6 +13,7 @@ anyhow.workspace            = true
 async-trait.workspace       = true
 bd-client-common.path       = "../bd-client-common"
 bd-proto.path               = "../bd-proto"
+bd-time.path                = "../bd-time"
 bd-workspace-hack.workspace = true
 log.workspace               = true
 parking_lot.workspace       = true
@@ -23,5 +24,6 @@ tokio.workspace             = true
 
 [dev-dependencies]
 assert_matches.workspace = true
+bd-proto-util.path       = "../bd-proto-util"
 bd-test-helpers          = { path = "../bd-test-helpers", default-features = false }
 ctor.workspace           = true
