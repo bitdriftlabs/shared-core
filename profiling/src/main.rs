@@ -43,7 +43,7 @@ use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
 use bd_workflows::workflow::WorkflowEvent;
 use protobuf::Message;
-use rand::Rng;
+use rand::RngExt;
 use sha2::Digest;
 use std::collections::BTreeMap;
 use std::fs::{self};

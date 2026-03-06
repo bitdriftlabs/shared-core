@@ -24,7 +24,7 @@ use async_trait::async_trait;
 use parking_lot::Mutex;
 use protobuf::MessageField;
 use protobuf::well_known_types::timestamp::Timestamp;
-use rand::{Rng, rng};
+use rand::{RngExt, rng};
 use std::future::{Future, IntoFuture};
 use std::sync::Arc;
 use std::time::Duration;
