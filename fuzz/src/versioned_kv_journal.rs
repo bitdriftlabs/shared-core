@@ -457,7 +457,7 @@ impl VersionedKVJournalFuzzTest {
           key_strategy,
           value,
         } => {
-          log::info!("Inserting key with strategy {key_strategy:?} and value {value:?}",);
+          log::debug!("Inserting key with strategy {key_strategy:?} and value {value:?}",);
 
           let (scope, key_str) = self.keys.key_for_write(&key_strategy);
 
@@ -498,7 +498,7 @@ impl VersionedKVJournalFuzzTest {
                 self.max_capacity_bytes,
               ) {
                 CapacityErrorKind::OversizedEntry => {
-                  log::info!(
+                  log::debug!(
                     "Single entry too large (~{entry_size} bytes) for max capacity ({} bytes), \
                      skipping insert",
                     self.max_capacity_bytes
@@ -506,7 +506,7 @@ impl VersionedKVJournalFuzzTest {
                   continue;
                 },
                 CapacityErrorKind::BufferFull => {
-                  log::info!(
+                  log::debug!(
                     "Journal full (entry size ~{entry_size} bytes), cannot insert more entries"
                   );
                   continue;
@@ -548,7 +548,7 @@ impl VersionedKVJournalFuzzTest {
               // Classify the error (remove operations write small deletion markers)
               match Self::classify_error(&e, None, self.buffer_size, self.max_capacity_bytes) {
                 CapacityErrorKind::BufferFull | CapacityErrorKind::OversizedEntry => {
-                  log::info!("Journal full, cannot remove entries");
+                  log::debug!("Journal full, cannot remove entries");
                   continue;
                 },
                 CapacityErrorKind::Other => {
@@ -604,13 +604,13 @@ impl VersionedKVJournalFuzzTest {
           );
         },
         OperationType::ReopenWithCorruption { corruption, target } => {
-          log::info!("Reopening with corruption: {corruption:?} targeting {target:?}",);
+          log::debug!("Reopening with corruption: {corruption:?} targeting {target:?}",);
 
           // Sync to ensure all data is written before corruption
           let _ = store.sync();
 
           let Some(journal_path) = store.journal_path() else {
-            log::info!("Skipping corruption test for in-memory store");
+            log::debug!("Skipping corruption test for in-memory store");
             continue;
           };
 
@@ -669,7 +669,7 @@ impl VersionedKVJournalFuzzTest {
             continue;
           };
 
-          log::info!("Reopened store with data loss: {data_loss:?}");
+          log::debug!("Reopened store with data loss: {data_loss:?}");
 
           store = reopened_store;
 
@@ -745,14 +745,14 @@ impl VersionedKVJournalFuzzTest {
                   self.max_capacity_bytes,
                 ) {
                   CapacityErrorKind::OversizedEntry => {
-                    log::info!(
+                    log::debug!(
                       "Entry too large (~{entry_size} bytes) during bulk insert at entry {i}, \
                        stopping bulk insert"
                     );
                     break;
                   },
                   CapacityErrorKind::BufferFull => {
-                    log::info!(
+                    log::debug!(
                       "Journal full during bulk insert at entry {i}, stopping bulk insert"
                     );
                     break;
@@ -802,7 +802,7 @@ impl VersionedKVJournalFuzzTest {
             continue;
           }
 
-          log::info!("Extending {} entries", entries_to_insert.len());
+          log::debug!("Extending {} entries", entries_to_insert.len());
 
           let result = store.extend(entries_to_insert.clone()).await;
 
@@ -875,7 +875,7 @@ impl VersionedKVJournalFuzzTest {
                 self.max_capacity_bytes,
               ) {
                 CapacityErrorKind::OversizedEntry | CapacityErrorKind::BufferFull => {
-                  log::info!("Extend failed due to capacity (~{total_size} bytes), journal full");
+                  log::debug!("Extend failed due to capacity (~{total_size} bytes), journal full");
                   continue;
                 },
                 CapacityErrorKind::Other => {

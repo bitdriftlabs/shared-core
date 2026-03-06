@@ -30,6 +30,8 @@ use itertools::Itertools;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender};
 
@@ -144,6 +146,7 @@ pub struct ProcessingPipeline {
   // buffers.
   buffers_to_flush_rx: Receiver<BuffersToFlush>,
   capture_screenshot_handler: CaptureScreenshotHandler,
+  is_tracing_active: Arc<AtomicBool>,
 
   stats: InitializedLoggingContextStats,
 }
@@ -161,6 +164,7 @@ impl ProcessingPipeline {
     sdk_directory: &Path,
     runtime: &ConfigLoader,
     stats: InitializedLoggingContextStats,
+    is_tracing_active: Arc<AtomicBool>,
   ) -> Self {
     let (workflows_engine, buffers_to_flush_rx) = {
       let (mut workflows_engine, flush_buffers_tx) = WorkflowsEngine::new(
@@ -183,6 +187,8 @@ impl ProcessingPipeline {
         )
         .await;
 
+      is_tracing_active.store(workflows_engine.is_tracing_active(), Ordering::Relaxed);
+
       (workflows_engine, flush_buffers_tx)
     };
 
@@ -201,6 +207,7 @@ impl ProcessingPipeline {
       buffers_to_flush_rx,
 
       capture_screenshot_handler,
+      is_tracing_active,
 
       stats,
     }
@@ -262,6 +269,9 @@ impl ProcessingPipeline {
       &state_reader,
       now,
     );
+    self
+      .is_tracing_active
+      .store(result.is_tracing_active, Ordering::Relaxed);
     let log_replay_result = LogReplayResult {
       logs_to_inject: std::mem::take(&mut result.logs_to_inject)
         .into_values()
@@ -363,6 +373,9 @@ impl ProcessingPipeline {
       &state_reader,
       now,
     );
+    self
+      .is_tracing_active
+      .store(result.is_tracing_active, Ordering::Relaxed);
 
     let log_replay_result = LogReplayResult {
       logs_to_inject: std::mem::take(&mut result.logs_to_inject)

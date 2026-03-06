@@ -825,6 +825,7 @@ dependencies = [
  "ordered-float",
  "pretty_assertions",
  "protobuf 4.0.0-alpha.0",
+ "rand 0.10.0",
  "regex",
  "tempfile",
  "time",

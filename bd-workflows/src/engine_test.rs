@@ -45,6 +45,7 @@ use bd_test_helpers::workflow::{
   make_generate_log_action_proto,
   make_save_field_extraction,
   make_save_timestamp_extraction,
+  make_start_tracing_action,
   make_take_screenshot_action,
   metric_tag,
   metric_value,
@@ -1338,6 +1339,7 @@ async fn engine_processing_log() {
       ),]),
       triggered_flushes_buffer_ids: TinySet::from(["foo_buffer_id".into()]),
       capture_screenshot: false,
+      is_tracing_active: false,
       workflow_debug_state: vec![],
       has_debug_workflows: false,
       logs_to_inject: TinyMap::default(),
@@ -1594,6 +1596,7 @@ async fn log_without_destination() {
       ),]),
       triggered_flushes_buffer_ids: TinySet::from(["trigger_buffer_id".into()]),
       capture_screenshot: false,
+      is_tracing_active: false,
       workflow_debug_state: vec![],
       has_debug_workflows: false,
       logs_to_inject: TinyMap::default(),
@@ -3132,4 +3135,110 @@ async fn stats_flush_triggered_on_log_upload_approval() {
 
   // Verify that a stats flush was triggered when the upload was approved.
   assert_eq!(1, engine.stats_flush_requests_count());
+}
+
+#[tokio::test]
+async fn start_tracing_stacks_across_workflows() {
+  let b1 = state("B1");
+  let c1 = state("C1");
+  let b1 = b1.declare_transition(&c1, rule!(message_equals("stop-1")));
+  let a1 = state("A1").declare_transition_with_actions(
+    &b1,
+    rule!(message_equals("start-1")),
+    &[make_start_tracing_action()],
+  );
+
+  let b2 = state("B2");
+  let c2 = state("C2");
+  let b2 = b2.declare_transition(&c2, rule!(message_equals("stop-2")));
+  let a2 = state("A2").declare_transition_with_actions(
+    &b2,
+    rule!(message_equals("start-2")),
+    &[make_start_tracing_action()],
+  );
+
+  let workflows = vec![
+    WorkflowBuilder::new("wf-1", &[&a1, &b1, &c1]).make_config(),
+    WorkflowBuilder::new("wf-2", &[&a2, &b2, &c2]).make_config(),
+  ];
+
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      workflows,
+    ))
+    .await;
+
+  assert!(!engine.engine.is_tracing_active());
+
+  let result = engine.process_log(TestLog::new("start-1"));
+  assert!(result.is_tracing_active);
+  assert!(engine.engine.is_tracing_active());
+
+  let result = engine.process_log(TestLog::new("start-2"));
+  assert!(result.is_tracing_active);
+
+  let result = engine.process_log(TestLog::new("stop-1"));
+  assert!(result.is_tracing_active);
+
+  let result = engine.process_log(TestLog::new("stop-2"));
+  assert!(!result.is_tracing_active);
+  assert!(!engine.engine.is_tracing_active());
+}
+
+#[tokio::test]
+async fn start_tracing_carries_into_streaming_until_streaming_ends() {
+  let b = state("B");
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    rule!(message_equals("trigger-tracing-streaming")),
+    &[
+      make_start_tracing_action(),
+      make_flush_buffers_action(
+        &["trigger_buffer_id"],
+        Some((vec!["continuous_buffer_id"], 1)),
+        "trace_stream_action",
+      ),
+    ],
+  );
+
+  let workflow = WorkflowBuilder::new("wf", &[&a, &b]).make_config();
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new(
+      WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![workflow]),
+      TinySet::from(["trigger_buffer_id".into()]),
+      TinySet::from(["continuous_buffer_id".into()]),
+    ))
+    .await;
+  engine.log_destination_buffer_ids = TinySet::from(["trigger_buffer_id".into()]);
+
+  engine.set_awaiting_logs_upload_intent_decisions(vec![IntentDecision::UploadImmediately]);
+
+  let result = engine.process_log(TestLog::new("trigger-tracing-streaming"));
+  assert!(result.is_tracing_active);
+
+  // Approve the flush action and start streaming.
+  engine.run_once_for_test().await;
+
+  // Mark the initial flush as completed so streaming termination criteria can be evaluated.
+  let flush = engine
+    .hooks
+    .lock()
+    .flushed_buffers
+    .pop()
+    .expect("expected a pending flush to complete");
+  flush
+    .response_tx
+    .send(())
+    .expect("flush completion response channel should be open");
+
+  // First log is still streamed (termination is checked before incrementing streamed count).
+  let result = engine.process_log(TestLog::new("non-matching"));
+  assert!(result.is_tracing_active);
+
+  // Next event terminates streaming and tracing lease ends.
+  let result = engine.process_log(TestLog::new("non-matching-2"));
+  assert!(!result.is_tracing_active);
+  assert!(!engine.engine.is_tracing_active());
 }

@@ -73,6 +73,7 @@ impl BufferSelector {
           fields,
           state,
           &TinyMap::default(),
+          0,
         ) {
           buffers.insert(Cow::Borrowed(buffer.buffer_id.as_str()));
 

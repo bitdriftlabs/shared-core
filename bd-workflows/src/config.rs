@@ -750,6 +750,7 @@ pub enum Action {
   EmitMetric(ActionEmitMetric),
   EmitSankey(ActionEmitSankey),
   TakeScreenshot,
+  StartTracing,
   GenerateLog(ActionGenerateLog),
 }
 
@@ -776,6 +777,7 @@ impl Action {
         Ok(Self::EmitSankey(ActionEmitSankey::try_from_proto(diagram)?))
       },
       Action_type::ActionTakeScreenshot(_) => Ok(Self::TakeScreenshot),
+      Action_type::ActionStartTracing(_) => Ok(Self::StartTracing),
       Action_type::ActionGenerateLog(action) => Ok(Self::GenerateLog(action)),
     }
   }

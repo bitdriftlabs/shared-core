@@ -224,6 +224,8 @@ impl WorkflowsEngine {
       }
     }
 
+    self.state.refresh_tracing_counts_from_state();
+
     log::debug!(
       "started workflows engine with {} workflow(s); {} pending processing action(s); {} pending \
        sankey path uploads; {} streaming action(s); session ID: \"{}\"",
@@ -449,6 +451,11 @@ impl WorkflowsEngine {
     }
   }
 
+  #[must_use]
+  pub fn is_tracing_active(&self) -> bool {
+    self.state.is_tracing_active()
+  }
+
   pub async fn run(&mut self) {
     loop {
       self.run_once().await;
@@ -465,6 +472,12 @@ impl WorkflowsEngine {
               self.on_log_upload_approved(&action).await;
           },
           NegotiatorOutput::UploadRejected(action) => {
+            if action.has_tracing_lease() {
+              self.state.active_streaming_tracing_count = self
+                .state
+                .active_streaming_tracing_count
+                .saturating_sub(1);
+            }
             self.state.pending_flush_actions.remove(&action);
             self.needs_state_persistence = true;
           }
@@ -556,17 +569,18 @@ impl WorkflowsEngine {
       }
     }
 
-    match self
+    if let Some(streaming_action) = self
       .flush_buffers_actions_resolver
       .make_streaming_action(action.clone())
     {
-      Some(streaming_action) => {
-        log::debug!("streaming started: \"{streaming_action:?}\"");
-        self.state.streaming_actions.push(streaming_action);
-      },
-      None => {
-        log::debug!("no streaming configuration defined for action: \"{action:?}\"");
-      },
+      log::debug!("streaming started: \"{streaming_action:?}\"");
+      self.state.streaming_actions.push(streaming_action);
+    } else {
+      if action.has_tracing_lease() {
+        self.state.active_streaming_tracing_count =
+          self.state.active_streaming_tracing_count.saturating_sub(1);
+      }
+      log::debug!("no streaming configuration defined for action: \"{action:?}\"");
     }
 
     self.needs_state_persistence = true;
@@ -633,6 +647,7 @@ impl WorkflowsEngine {
         triggered_flushes_buffer_ids: TinySet::default(),
         triggered_flush_buffers_action_ids: BTreeSet::default(),
         capture_screenshot: false,
+        is_tracing_active: self.state.is_tracing_active(),
         logs_to_inject: TinyMap::default(),
         workflow_debug_state: vec![],
         has_debug_workflows: false,
@@ -643,6 +658,10 @@ impl WorkflowsEngine {
     let mut logs_to_inject: TinyMap<&'a str, Log> = TinyMap::default();
     let mut all_cumulative_workflow_debug_state = vec![];
     let mut all_incremental_workflow_debug_state = vec![];
+    let mut tracing_carryover_flush_action_ids: TinySet<FlushBufferId> = TinySet::default();
+    // Sampling decisions should be stable for a single event across every workflow/run that
+    // evaluates it. Roll once here and thread the same value through matcher evaluation.
+    let sampled_roll = bd_log_matcher::matcher::random_sample_roll();
     let mut has_debug_workflows = false;
     for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
       let Some(config) = self.configs.get(index) else {
@@ -650,7 +669,7 @@ impl WorkflowsEngine {
       };
 
       let was_in_initial_state = workflow.is_in_initial_state();
-      let result = workflow.process_event(config, event, state_reader, now);
+      let result = workflow.process_event(config, event, state_reader, now, sampled_roll);
 
       macro_rules! inc_by {
         ($field:ident, $value:ident) => {
@@ -659,6 +678,15 @@ impl WorkflowsEngine {
       }
 
       inc_by!(matched_logs_total, matched_logs_count);
+
+      self.state.active_run_tracing_count = self
+        .state
+        .active_run_tracing_count
+        .saturating_add(result.stats().tracing_starts);
+      self.state.active_run_tracing_count = self
+        .state
+        .active_run_tracing_count
+        .saturating_sub(result.stats().tracing_ends);
 
       // Not every case of a workflow making a progress needs a state persistence.
       // If the workflow was in an initial state prior to processing a log and is in
@@ -685,6 +713,7 @@ impl WorkflowsEngine {
         workflow_logs_to_inject,
         cumulative_workflow_debug_state,
         incremental_workflow_debug_state,
+        workflow_tracing_carryover_flush_action_ids,
       ) = result.into_parts();
       if !matches!(config.mode(), WorkflowDebugMode::DebugOnly) {
         prepared_actions.incorporate_workflow_actions(index, triggered_actions);
@@ -702,6 +731,7 @@ impl WorkflowsEngine {
             state_key,
           }),
       );
+      tracing_carryover_flush_action_ids.extend(workflow_tracing_carryover_flush_action_ids);
     }
 
     let PreparedActions {
@@ -752,6 +782,10 @@ impl WorkflowsEngine {
       );
 
     self.state.streaming_actions = result.updated_streaming_actions;
+    self.state.active_streaming_tracing_count = self
+      .state
+      .active_streaming_tracing_count
+      .saturating_sub(result.terminated_tracing_streaming_actions_count);
 
     self.needs_state_persistence |= result.has_changed_streaming_actions;
 
@@ -803,7 +837,16 @@ impl WorkflowsEngine {
       self.needs_state_persistence = true;
     }
 
-    for action in flush_buffers_actions_processing_result.new_pending_actions_to_add {
+    for mut action in flush_buffers_actions_processing_result.new_pending_actions_to_add {
+      // When a traced run ends on the same event that started a streaming flush action, we keep
+      // tracing active by attaching a lease to that flush action here. Tracing is then released
+      // only when streaming termination is observed in `process_streaming_actions`.
+      if tracing_carryover_flush_action_ids.contains(&action.id) {
+        action.tracing_lease = true;
+        self.state.active_streaming_tracing_count =
+          self.state.active_streaming_tracing_count.saturating_add(1);
+      }
+
       self.state.pending_flush_actions.insert(action.clone());
       if let Err(e) = self.flush_buffers_negotiator_input_tx.try_send(action) {
         log::debug!("failed to send flush buffers action intent for intent negotiation: {e}");
@@ -820,6 +863,7 @@ impl WorkflowsEngine {
       triggered_flushes_buffer_ids: flush_buffers_actions_processing_result
         .triggered_flushes_buffer_ids,
       capture_screenshot,
+      is_tracing_active: self.state.is_tracing_active(),
       logs_to_inject,
       workflow_debug_state: all_cumulative_workflow_debug_state,
       has_debug_workflows,
@@ -833,6 +877,19 @@ impl WorkflowsEngine {
     // * streaming actions after the session ID change are cleared on the next call to the
     //   Resolver's resolve method.
     self.state.clear_ongoing_workflows_state();
+    self.state.active_run_tracing_count = 0;
+    self.state.active_streaming_tracing_count = 0;
+    // TODO(mattklein123): Switch pending flush actions to a map.
+    self.state.pending_flush_actions = std::mem::take(&mut self.state.pending_flush_actions)
+      .into_iter()
+      .map(|mut action| {
+        action.tracing_lease = false;
+        action
+      })
+      .collect();
+    for action in &mut self.state.streaming_actions {
+      action.tracing_lease = false;
+    }
     self.needs_state_persistence = true;
   }
 }
@@ -923,6 +980,7 @@ impl<'a> PreparedActions<'a> {
         TriggeredAction::TakeScreenshot => {
           self.capture_screenshot = true;
         },
+        TriggeredAction::StartTracing => {},
       }
     }
   }
@@ -939,6 +997,7 @@ pub(crate) struct EmitMetricActionCount {
 // WorkflowsEngineResult
 //
 
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, PartialEq, Eq)]
 pub struct WorkflowsEngineResult<'a> {
   pub log_destination_buffer_ids: Cow<'a, TinySet<Cow<'a, str>>>,
@@ -950,6 +1009,9 @@ pub struct WorkflowsEngineResult<'a> {
 
   // Whether a screenshot should be taken in response to processing the log.
   pub capture_screenshot: bool,
+
+  // Whether tracing is currently active for this session.
+  pub is_tracing_active: bool,
 
   // Logs to be injected back into the workflow engine after field attachment and other processing.
   pub logs_to_inject: TinyMap<&'a str, Log>,
@@ -1163,12 +1225,18 @@ pub(crate) struct WorkflowsState {
   #[field(id = 2)]
   workflows: Vec<Workflow>,
 
+  // TODO(mattklein123): Consider storing pending actions as a map keyed by FlushBufferId so we
+  // can mutate per-action metadata (e.g. tracing_lease) in place without rebuilding a tree.
   #[field(id = 3)]
   pending_flush_actions: BTreeSet<PendingFlushBuffersAction>,
   #[field(id = 4)]
   pending_sankey_actions: BTreeSet<PendingSankeyPathUpload>,
   #[field(id = 5)]
   streaming_actions: Vec<StreamingBuffersAction>,
+  #[field(id = 6)]
+  active_run_tracing_count: u32,
+  #[field(id = 7)]
+  active_streaming_tracing_count: u32,
 }
 
 impl WorkflowsState {
@@ -1197,6 +1265,8 @@ impl WorkflowsState {
       pending_flush_actions: self.pending_flush_actions.clone(),
       pending_sankey_actions: self.pending_sankey_actions.clone(),
       streaming_actions: self.streaming_actions.clone(),
+      active_run_tracing_count: self.active_run_tracing_count,
+      active_streaming_tracing_count: self.active_streaming_tracing_count,
     }
   }
 
@@ -1206,6 +1276,40 @@ impl WorkflowsState {
       workflow.remove_all_runs();
     }
     self.session_id = String::new();
+  }
+
+  fn refresh_tracing_counts_from_state(&mut self) {
+    let active_run_tracing_count: usize = self
+      .workflows
+      .iter()
+      .flat_map(Workflow::runs)
+      .filter(|run| run.tracing_active())
+      .count();
+
+    let pending_tracing_actions_count: usize = self
+      .pending_flush_actions
+      .iter()
+      .filter(|action| action.has_tracing_lease())
+      .count();
+    let streaming_tracing_actions_count: usize = self
+      .streaming_actions
+      .iter()
+      .filter(|action| action.has_tracing_lease())
+      .count();
+
+    self.active_run_tracing_count = active_run_tracing_count.try_into().unwrap_or(u32::MAX);
+    self.active_streaming_tracing_count = pending_tracing_actions_count
+      .try_into()
+      .unwrap_or(u32::MAX)
+      .saturating_add(
+        streaming_tracing_actions_count
+          .try_into()
+          .unwrap_or(u32::MAX),
+      );
+  }
+
+  fn is_tracing_active(&self) -> bool {
+    self.active_run_tracing_count > 0 || self.active_streaming_tracing_count > 0
   }
 }
 

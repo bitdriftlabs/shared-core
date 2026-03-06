@@ -23,7 +23,7 @@ use crate::workflow::{
   WorkflowResultStats,
 };
 use bd_log_matcher::builder::{field_equals, message_equals};
-use bd_log_primitives::tiny_set::TinyMap;
+use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{LogFields, LogMessage, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto_util::serialization::{ProtoMessageDeserialize, ProtoMessageSerialize};
@@ -38,6 +38,7 @@ use bd_test_helpers::workflow::{
   make_save_field_extraction_with_regex,
   make_save_message_extraction,
   make_save_message_extraction_with_regex,
+  make_start_tracing_action,
   metric_value,
   state,
 };
@@ -84,6 +85,7 @@ fn traversal_matched_logs_counts_persisted() {
     traversals: vec![traversal],
     matched_logs_count: 0,
     first_progress_occurred_at: None,
+    tracing_active: false,
   };
 
   let workflow = Workflow::new_from_parts(
@@ -161,6 +163,7 @@ impl AnnotatedWorkflow {
       }),
       &bd_state::test::TestStateReader::default(),
       log.now,
+      0,
     )
   }
 }
@@ -331,8 +334,11 @@ fn timeout_no_parallel_match() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: true,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![
         WorkflowDebugStateKey::new_state_transition(
           "A".to_string(),
@@ -360,8 +366,11 @@ fn timeout_no_parallel_match() {
       stats: WorkflowResultStats {
         matched_logs_count: 0,
         processed_timeout: true,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "B".to_string(),
         WorkflowDebugTransitionType::Timeout
@@ -386,8 +395,11 @@ fn timeout_no_parallel_match() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: true,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "A".to_string(),
         WorkflowDebugTransitionType::Normal(0)
@@ -412,8 +424,11 @@ fn timeout_no_parallel_match() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: true,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "A".to_string(),
         WorkflowDebugTransitionType::Normal(0)
@@ -613,11 +628,13 @@ fn parallel_execution_does_not_replace_without_initial_run_progress() {
     traversals: vec![initial_traversal],
     matched_logs_count: 0,
     first_progress_occurred_at: None,
+    tracing_active: false,
   };
   let active_run = Run {
     traversals: vec![active_traversal],
     matched_logs_count: 0,
     first_progress_occurred_at: None,
+    tracing_active: false,
   };
 
   let workflow = Workflow::new_from_parts(
@@ -846,8 +863,11 @@ fn timeout_not_start() {
       stats: WorkflowResultStats {
         matched_logs_count: 0,
         processed_timeout: true,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "B".to_string(),
         WorkflowDebugTransitionType::Timeout
@@ -873,8 +893,11 @@ fn timeout_not_start() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "B".to_string(),
         WorkflowDebugTransitionType::Normal(0)
@@ -986,8 +1009,11 @@ fn timeout_from_start() {
       stats: WorkflowResultStats {
         matched_logs_count: 0,
         processed_timeout: true,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "A".to_string(),
         WorkflowDebugTransitionType::Timeout
@@ -1033,8 +1059,11 @@ fn multiple_start_nodes_initial_fork() {
       stats: WorkflowResultStats {
         matched_logs_count: 2,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![
         WorkflowDebugStateKey::new_state_transition(
           "A".to_string(),
@@ -1059,8 +1088,11 @@ fn multiple_start_nodes_initial_fork() {
       stats: WorkflowResultStats {
         matched_logs_count: 2,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![
         WorkflowDebugStateKey::new_state_transition(
           "A".to_string(),
@@ -1088,8 +1120,11 @@ fn multiple_start_nodes_initial_fork() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "C".to_string(),
         WorkflowDebugTransitionType::Normal(0)
@@ -1133,8 +1168,11 @@ fn multiple_start_nodes_initial_branching() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![
         WorkflowDebugStateKey::new_state_transition(
           "A".to_string(),
@@ -1156,8 +1194,11 @@ fn multiple_start_nodes_initial_branching() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "A".to_string(),
         WorkflowDebugTransitionType::Normal(1)
@@ -1179,8 +1220,11 @@ fn multiple_start_nodes_initial_branching() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "C".to_string(),
         WorkflowDebugTransitionType::Normal(0)
@@ -1240,8 +1284,11 @@ fn basic_exclusive_workflow() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![
         WorkflowDebugStateKey::new_state_transition(
           "A".to_string(),
@@ -1269,8 +1316,11 @@ fn basic_exclusive_workflow() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "B".to_string(),
         WorkflowDebugTransitionType::Normal(0)
@@ -1323,8 +1373,11 @@ fn exclusive_workflow_matched_logs_count_limit() {
       stats: WorkflowResultStats {
         matched_logs_count: 2,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![
         WorkflowDebugStateKey::new_state_transition(
           "A".to_string(),
@@ -1354,8 +1407,11 @@ fn exclusive_workflow_matched_logs_count_limit() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![],
     }
   );
@@ -1376,8 +1432,11 @@ fn exclusive_workflow_matched_logs_count_limit() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![],
     }
   );
@@ -1420,8 +1479,11 @@ fn exclusive_workflow_log_rule_count() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![WorkflowDebugStateKey::StartOrReset],
     }
   );
@@ -1443,8 +1505,11 @@ fn exclusive_workflow_log_rule_count() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "A".to_string(),
         WorkflowDebugTransitionType::Normal(0)
@@ -1475,8 +1540,11 @@ fn exclusive_workflow_log_rule_count() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "B".to_string(),
         WorkflowDebugTransitionType::Normal(0)
@@ -1530,8 +1598,11 @@ fn debug_with_fork() {
       stats: WorkflowResultStats {
         matched_logs_count: 2,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![
         WorkflowDebugStateKey::new_state_transition(
           "A".to_string(),
@@ -1562,8 +1633,11 @@ fn debug_with_fork() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "B".to_string(),
         WorkflowDebugTransitionType::Normal(0)
@@ -1587,8 +1661,11 @@ fn debug_with_fork() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "C".to_string(),
         WorkflowDebugTransitionType::Normal(0)
@@ -1612,8 +1689,11 @@ fn debug_with_fork() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "B".to_string(),
         WorkflowDebugTransitionType::Normal(0)
@@ -1680,8 +1760,11 @@ fn branching_exclusive_workflow() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![
         WorkflowDebugStateKey::new_state_transition(
           "A".to_string(),
@@ -1704,6 +1787,8 @@ fn branching_exclusive_workflow() {
     WorkflowResultStats {
       matched_logs_count: 0,
       processed_timeout: false,
+      tracing_starts: 0,
+      tracing_ends: 0,
     },
     result.stats
   );
@@ -1724,8 +1809,11 @@ fn branching_exclusive_workflow() {
       stats: WorkflowResultStats {
         matched_logs_count: 1,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![WorkflowDebugStateKey::new_state_transition(
         "B".to_string(),
         WorkflowDebugTransitionType::Normal(0)
@@ -1757,8 +1845,11 @@ fn branching_exclusive_workflow() {
       stats: WorkflowResultStats {
         matched_logs_count: 2,
         processed_timeout: false,
+        tracing_starts: 0,
+        tracing_ends: 0,
       },
       cumulative_workflow_debug_state: None,
+      tracing_carryover_flush_action_ids: TinySet::default(),
       incremental_workflow_debug_state: vec![
         WorkflowDebugStateKey::new_state_transition(
           "A".to_string(),
@@ -1774,4 +1865,92 @@ fn branching_exclusive_workflow() {
   assert_eq!(2, workflow.runs()[0].traversals.len());
   assert_active_run_traversals!(workflow; 0; "B", "C");
   assert!(!workflow.is_in_initial_state());
+}
+
+#[test]
+fn tracing_starts_once_per_run_and_ends_on_completion() {
+  let mut start = state("start");
+  let mut mid = state("mid");
+  let done = state("done");
+
+  start = start.declare_transition_with_actions(
+    &mid,
+    rule!(message_equals("start")),
+    &[make_start_tracing_action()],
+  );
+  let mid_loop_target = mid.clone();
+  mid = mid.declare_transition_with_actions(
+    &mid_loop_target,
+    rule!(message_equals("tick")),
+    &[make_start_tracing_action()],
+  );
+  mid = mid.declare_transition_with_actions(&done, rule!(message_equals("stop")), &[]);
+
+  let config = WorkflowBuilder::new("tracing-lifecycle", &[&start, &mid, &done]).make_config();
+  let mut workflow = AnnotatedWorkflow::new(config);
+
+  let start_result = workflow.process_log(TestLog::new("start"));
+  assert_eq!(1, start_result.stats.tracing_starts);
+  assert_eq!(0, start_result.stats.tracing_ends);
+  assert!(workflow.runs().iter().any(Run::tracing_active));
+
+  let tick_result = workflow.process_log(TestLog::new("tick"));
+  assert_eq!(0, tick_result.stats.tracing_starts);
+  assert_eq!(0, tick_result.stats.tracing_ends);
+  assert!(workflow.runs().iter().any(Run::tracing_active));
+
+  let stop_result = workflow.process_log(TestLog::new("stop"));
+  assert_eq!(0, stop_result.stats.tracing_starts);
+  assert_eq!(1, stop_result.stats.tracing_ends);
+  assert!(!workflow.runs().iter().any(Run::tracing_active));
+}
+
+#[test]
+fn tracing_run_end_with_streaming_flush_produces_carryover_id() {
+  let mut start = state("start");
+  let done = state("done");
+
+  start = start.declare_transition_with_actions(
+    &done,
+    rule!(message_equals("finish")),
+    &[
+      make_start_tracing_action(),
+      make_flush_buffers_action(&["trigger"], Some((vec!["continuous"], 2)), "streaming-id"),
+    ],
+  );
+
+  let config = WorkflowBuilder::new("tracing-carryover", &[&start, &done]).make_config();
+  let mut workflow = AnnotatedWorkflow::new(config);
+
+  let result = workflow.process_log(TestLog::new("finish"));
+  assert_eq!(1, result.stats.tracing_starts);
+  assert_eq!(1, result.stats.tracing_ends);
+  assert!(
+    result
+      .tracing_carryover_flush_action_ids
+      .contains(&FlushBufferId::WorkflowActionId("streaming-id".to_string()))
+  );
+}
+
+#[test]
+fn tracing_run_end_with_non_streaming_flush_has_no_carryover_id() {
+  let mut start = state("start");
+  let done = state("done");
+
+  start = start.declare_transition_with_actions(
+    &done,
+    rule!(message_equals("finish")),
+    &[
+      make_start_tracing_action(),
+      make_flush_buffers_action(&["trigger"], None, "non-streaming-id"),
+    ],
+  );
+
+  let config = WorkflowBuilder::new("tracing-no-carryover", &[&start, &done]).make_config();
+  let mut workflow = AnnotatedWorkflow::new(config);
+
+  let result = workflow.process_log(TestLog::new("finish"));
+  assert_eq!(1, result.stats.tracing_starts);
+  assert_eq!(1, result.stats.tracing_ends);
+  assert!(result.tracing_carryover_flush_action_ids.is_empty());
 }

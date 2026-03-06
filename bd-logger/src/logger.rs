@@ -35,6 +35,7 @@ use parking_lot::Mutex;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -189,6 +190,7 @@ pub struct LoggerHandle {
   stats: Stats,
 
   sleep_mode_active: watch::Sender<bool>,
+  is_tracing_active: Arc<AtomicBool>,
 }
 
 impl LoggerHandle {
@@ -263,6 +265,11 @@ impl LoggerHandle {
         true
       }
     });
+  }
+
+  #[must_use]
+  pub fn is_tracing_active(&self) -> bool {
+    self.is_tracing_active.load(Ordering::Relaxed)
   }
 
   pub fn log_session_replay_screen(&self, fields: AnnotatedLogFields, duration: time::Duration) {
@@ -546,6 +553,7 @@ pub struct Logger {
   stats_scope: Scope,
 
   sleep_mode_active: watch::Sender<bool>,
+  is_tracing_active: Arc<AtomicBool>,
 }
 
 impl Logger {
@@ -560,6 +568,7 @@ impl Logger {
     sdk_version: &str,
     store: Arc<bd_key_value::Store>,
     sleep_mode_active: watch::Sender<bool>,
+    is_tracing_active: Arc<AtomicBool>,
   ) -> Self {
     let stats = Stats::new(&stats_scope);
 
@@ -578,6 +587,7 @@ impl Logger {
       stats_scope,
       store,
       sleep_mode_active,
+      is_tracing_active,
     }
   }
 
@@ -632,6 +642,7 @@ impl Logger {
       app_version_repo: Repository::new(self.store.clone()),
       stats: self.stats.clone(),
       sleep_mode_active: self.sleep_mode_active.clone(),
+      is_tracing_active: self.is_tracing_active.clone(),
     }
   }
 }
