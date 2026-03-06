@@ -47,7 +47,7 @@ use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{
 use bd_state::Scope;
 use log_matcher::LogMatcher;
 use log_matcher::log_matcher::{BaseLogMatcher, Matcher, base_log_matcher};
-use rand::Rng;
+use rand::RngExt;
 use std::borrow::Cow;
 
 const LOG_LEVEL_KEY: &str = "log_level";
