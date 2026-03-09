@@ -263,7 +263,8 @@ impl<IncomingType: DecodingResult> StreamingApiReceiver<IncomingType> {
 
             let status = Status {
               code,
-              message: grpc_message.map(|v| v.to_str().unwrap_or_default().to_string()),
+              message: grpc_message
+                .map(|v| Status::decode_grpc_message(v.to_str().unwrap_or_default())),
             };
             return Err(Error::Grpc(status));
           }
