@@ -9,6 +9,8 @@ use crate::workflow::Traversal;
 use anyhow::{anyhow, bail};
 use bd_log_matcher::matcher::Tree;
 use bd_log_primitives::{FieldsRef, LogMessage};
+use bd_proto::protos::workflow::save_field::SaveField;
+use bd_proto::protos::workflow::save_field::save_field::Save_field_type;
 use bd_proto::protos::workflow::workflow;
 use bd_proto::protos::workflow::workflow::workflow::action::ActionGenerateLog;
 use bd_proto::protos::workflow::workflow::workflow::execution::Execution_type;
@@ -499,16 +501,12 @@ pub(crate) struct FieldExtractionConfig {
 }
 
 impl FieldExtractionConfig {
-  fn try_from_proto(
-    save_field: &workflow::workflow::transition_extension::SaveField,
-  ) -> anyhow::Result<Self> {
+  fn try_from_proto(save_field: &SaveField) -> anyhow::Result<Self> {
     let source = match save_field.save_field_type.as_ref() {
-      Some(workflow::workflow::transition_extension::save_field::Save_field_type::FieldName(
-        field_name,
-      )) => FieldExtractionSource::FieldName(field_name.clone()),
-      Some(workflow::workflow::transition_extension::save_field::Save_field_type::Message(_)) => {
-        FieldExtractionSource::Message
+      Some(Save_field_type::FieldName(field_name)) => {
+        FieldExtractionSource::FieldName(field_name.clone())
       },
+      Some(Save_field_type::Message(_)) => FieldExtractionSource::Message,
       None => {
         bail!("invalid transition configuration: missing save field type");
       },

@@ -11,6 +11,8 @@ use action_generate_log::{GeneratedField, ValueReference, ValueReferencePair};
 use bd_log_primitives::{DataValue, LogFields};
 use bd_proto::protos;
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::workflow::save_field::SaveField;
+use bd_proto::protos::workflow::save_field::save_field::Save_field_type;
 use bd_proto::protos::workflow::workflow::workflow;
 use protobuf::MessageField;
 use protos::log_matcher::log_matcher::LogMatcher;
@@ -49,11 +51,9 @@ use workflow::action::action_flush_buffers::streaming::{
 use workflow::action::{ActionGenerateLog, Tag, action_generate_log};
 use workflow::execution::{Execution_type, ExecutionExclusive, ExecutionParallel};
 use workflow::field_extracted::{Exact, Extraction_type};
-use workflow::transition_extension::save_field::Save_field_type;
 use workflow::transition_extension::{
   Extension_type,
   SankeyDiagramValueExtraction,
-  SaveField,
   SaveTimestamp,
   sankey_diagram_value_extraction,
 };
