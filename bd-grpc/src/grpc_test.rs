@@ -237,6 +237,27 @@ impl Handler<EchoRequest, EchoResponse> for ErrorHandler {
   }
 }
 
+//
+// EncodedErrorHandler
+//
+
+struct EncodedErrorHandler {}
+
+#[async_trait]
+impl Handler<EchoRequest, EchoResponse> for EncodedErrorHandler {
+  async fn handle(
+    &self,
+    _headers: HeaderMap,
+    _extensions: Extensions,
+    _request: EchoRequest,
+  ) -> Result<EchoResponse> {
+    Err(crate::Error::Grpc(crate::Status::new(
+      crate::Code::InvalidArgument,
+      "line 1\nline 2 % value",
+    )))
+  }
+}
+
 #[async_trait]
 impl ServerStreamingHandler<EchoResponse, EchoRequest> for ErrorHandler {
   async fn stream(
@@ -278,6 +299,9 @@ fn invalid_response_header() {
   let status = Status::new(Code::InvalidArgument, "\nhello");
   let response = status.into_response();
   assert_eq!(response.headers().get("grpc-message").unwrap(), "%0Ahello");
+
+  let round_tripped_status = Status::from_headers(response.headers());
+  assert_eq!(round_tripped_status.message, Some("\nhello".to_string()));
 }
 
 #[test]
@@ -387,7 +411,10 @@ async fn unary_error_handler() {
       .unary(
         &service_method(),
         None,
-        EchoRequest::default(),
+        EchoRequest {
+          echo: "ok".to_string(),
+          ..Default::default()
+        },
         1.seconds(),
         Compression::None,
       )
@@ -403,6 +430,30 @@ async fn unary_error_handler() {
       "endpoint" => "Echo",
       "result" => "failure"
     },
+  );
+}
+
+#[tokio::test]
+async fn unary_error_handler_decodes_grpc_message() {
+  let local_address = make_unary_server(Arc::new(EncodedErrorHandler {}), |_| {}, None).await;
+  let client = Client::new_http(local_address.to_string().as_str(), 1.minutes(), 1024).unwrap();
+  assert_matches!(
+    client
+      .unary(
+        &service_method(),
+        None,
+        EchoRequest {
+          echo: "ok".to_string(),
+          ..Default::default()
+        },
+        1.seconds(),
+        Compression::None,
+      )
+      .await,
+    Err(Error::Grpc(Status {
+      code: Code::InvalidArgument,
+      message
+    })) if message == Some("line 1\nline 2 % value".to_string())
   );
 }
 

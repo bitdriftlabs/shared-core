@@ -56,6 +56,13 @@ pub struct Status {
 }
 
 impl Status {
+  // Decode a gRPC message header/trailer value. The wire format uses URL encoding.
+  #[must_use]
+  pub fn decode_grpc_message(grpc_message: &str) -> String {
+    urlencoding::decode(grpc_message)
+      .map_or_else(|_| grpc_message.to_string(), std::borrow::Cow::into_owned)
+  }
+
   // Create a new status.
   #[must_use]
   pub fn new(code: Code, message: impl Into<String>) -> Self {
@@ -79,7 +86,7 @@ impl Status {
       ),
       message: headers
         .get(GRPC_MESSAGE)
-        .and_then(|value| value.to_str().ok().map(ToString::to_string)),
+        .and_then(|value| value.to_str().ok().map(Self::decode_grpc_message)),
     }
   }
 
