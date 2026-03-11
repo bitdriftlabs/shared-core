@@ -84,7 +84,7 @@ async fn register_opaque_user_id_persists_in_store() {
     is_tracing_active: Arc::new(AtomicBool::new(false)),
   };
 
-  handle.register_opaque_user_id("hashed-user-id".to_string());
+  handle.register_opaque_user_id("hashed-user-id");
   assert_eq!(
     store.get_string(&super::OPAQUE_USER_ID_KEY),
     Some("hashed-user-id".to_string())

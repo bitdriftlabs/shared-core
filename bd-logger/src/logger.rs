@@ -18,12 +18,7 @@ use bd_bounded_buffer::{self};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log::warn_every;
 use bd_log_primitives::{
-  AnnotatedLogField,
-  AnnotatedLogFields,
-  LogFieldValue,
-  LogLevel,
-  LogMessage,
-  log_level,
+  AnnotatedLogField, AnnotatedLogFields, LogFieldValue, LogLevel, LogMessage, log_level,
 };
 use bd_proto::protos::client::key_value::app_version::Extra as AppVersionExtra;
 use bd_proto::protos::logging::payload::LogType;
@@ -41,7 +36,7 @@ use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::watch;
 
-pub(crate) static OPAQUE_USER_ID_KEY: bd_key_value::Key<String> =
+static OPAQUE_USER_ID_KEY: bd_key_value::Key<String> =
   bd_key_value::Key::new("opaque_user_id.state.1");
 
 #[derive(Clone)]
@@ -271,8 +266,8 @@ impl LoggerHandle {
     });
   }
 
-  pub fn register_opaque_user_id(&self, opaque_user_id: String) {
-    self.store.set_string(&OPAQUE_USER_ID_KEY, &opaque_user_id);
+  pub fn register_opaque_user_id(&self, opaque_user_id: &str) {
+    self.store.set_string(&OPAQUE_USER_ID_KEY, opaque_user_id);
   }
 
   #[must_use]
