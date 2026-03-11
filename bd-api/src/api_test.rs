@@ -8,7 +8,7 @@
 use super::{Api, PlatformNetworkManager, PlatformNetworkStream};
 use crate::api::{DISCONNECTED_OFFLINE_GRACE_PERIOD, StreamEvent};
 use crate::upload::Tracked;
-use crate::{DataUpload, SimpleNetworkQualityProvider};
+use crate::{DataUpload, OPAQUE_USER_ID_KEY, SimpleNetworkQualityProvider};
 use anyhow::anyhow;
 use assert_matches::assert_matches;
 use bd_client_common::{
@@ -1421,4 +1421,45 @@ async fn opaque_client_state() {
       .opaque_client_state
       .is_none()
   );
+}
+
+#[tokio::test(start_paused = true)]
+async fn handshake_includes_opaque_user_id_from_store() {
+  let mut setup = Setup::new().await;
+  setup.store.set_string(&OPAQUE_USER_ID_KEY, "hashed-user-1");
+
+  let handshake = setup.next_stream(1.seconds()).await.unwrap();
+  let opaque_user_id = handshake
+    .static_device_metadata
+    .get("opaque_user_id")
+    .unwrap()
+    .string_data();
+  assert_eq!(opaque_user_id, "hashed-user-1");
+}
+
+#[tokio::test(start_paused = true)]
+async fn reconnect_handshake_picks_up_updated_opaque_user_id() {
+  let mut setup = Setup::new().await;
+
+  let handshake = setup.next_stream(1.seconds()).await.unwrap();
+  assert!(
+    !handshake
+      .static_device_metadata
+      .contains_key("opaque_user_id")
+  );
+
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
+    .await;
+
+  setup.store.set_string(&OPAQUE_USER_ID_KEY, "hashed-user-2");
+  setup.close_stream().await;
+
+  let reconnect_handshake = setup.next_stream(2.seconds()).await.unwrap();
+  let opaque_user_id = reconnect_handshake
+    .static_device_metadata
+    .get("opaque_user_id")
+    .unwrap()
+    .string_data();
+  assert_eq!(opaque_user_id, "hashed-user-2");
 }

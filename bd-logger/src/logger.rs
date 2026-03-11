@@ -13,7 +13,7 @@ use crate::app_version::{AppVersion, Repository};
 use crate::async_log_buffer::{self, AsyncLogBuffer, LogAttributesOverrides};
 use crate::log_replay::LoggerReplay;
 use crate::{MetadataProvider, app_version};
-use bd_api::Metadata;
+use bd_api::{Metadata, OPAQUE_USER_ID_KEY};
 use bd_bounded_buffer::{self};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log::warn_every;
@@ -186,6 +186,7 @@ pub struct LoggerHandle {
   sdk_version: String,
 
   app_version_repo: app_version::Repository,
+  store: Arc<bd_key_value::Store>,
 
   stats: Stats,
 
@@ -265,6 +266,10 @@ impl LoggerHandle {
         true
       }
     });
+  }
+
+  pub fn register_opaque_user_id(&self, opaque_user_id: &str) {
+    self.store.set_string(&OPAQUE_USER_ID_KEY, opaque_user_id);
   }
 
   #[must_use]
@@ -640,6 +645,7 @@ impl Logger {
       device: self.device.clone(),
       sdk_version: self.sdk_version.clone(),
       app_version_repo: Repository::new(self.store.clone()),
+      store: self.store.clone(),
       stats: self.stats.clone(),
       sleep_mode_active: self.sleep_mode_active.clone(),
       is_tracing_active: self.is_tracing_active.clone(),

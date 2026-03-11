@@ -13,6 +13,7 @@ use crate::network_quality::DISCONNECTED_OFFLINE_GRACE_PERIOD;
 use crate::upload::{self, StateTracker};
 use crate::{
   DataUpload,
+  OPAQUE_USER_ID_KEY,
   PlatformNetworkManager,
   PlatformNetworkStream,
   RuntimeBackoffPolicy,
@@ -77,7 +78,6 @@ use time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::watch;
 use tokio::time::{Instant, Sleep, sleep};
-
 
 //
 // StreamClosureInfo
@@ -341,6 +341,7 @@ pub struct Api {
   data_upload_rx: Receiver<DataUpload>,
   trigger_upload_tx: Sender<TriggerUpload>,
   sleep_mode_active: watch::Receiver<bool>,
+  store: Arc<bd_key_value::Store>,
 
   static_metadata: Arc<dyn Metadata + Send + Sync>,
 
@@ -413,7 +414,8 @@ impl Api {
 
     let backoff = backoff_policy.backoff_mark_update();
 
-    let reconnect_state = crate::reconnect::ReconnectState::new(store, time_provider.clone());
+    let reconnect_state =
+      crate::reconnect::ReconnectState::new(store.clone(), time_provider.clone());
     Self {
       sdk_directory,
       api_key,
@@ -421,6 +423,7 @@ impl Api {
       static_metadata,
       data_upload_rx,
       trigger_upload_tx,
+      store,
       time_provider,
       network_quality_monitor,
       runtime_loader,
@@ -466,6 +469,37 @@ impl Api {
 
   fn opaque_client_state_path(&self) -> PathBuf {
     self.sdk_directory.join("opaque_client_state")
+  }
+
+  fn handshake_metadata(&self) -> HashMap<String, ProtoData> {
+    let metadata = self.static_metadata.collect();
+
+    let mut handshake_metadata: HashMap<_, _> = metadata
+      .iter()
+      .map(|(k, v)| {
+        (
+          k.clone(),
+          ProtoData {
+            data_type: Some(Data_type::StringData(v.clone())),
+            ..Default::default()
+          },
+        )
+      })
+      .collect();
+
+    if let Some(opaque_user_id) = self.store.get_string(&OPAQUE_USER_ID_KEY)
+      && !opaque_user_id.is_empty()
+    {
+      handshake_metadata.insert(
+        "opaque_user_id".to_string(),
+        ProtoData {
+          data_type: Some(Data_type::StringData(opaque_user_id)),
+          ..Default::default()
+        },
+      );
+    }
+
+    handshake_metadata
   }
 
   fn hash_api_key(&self) -> Vec<u8> {
@@ -603,20 +637,8 @@ impl Api {
     let metadata = self.static_metadata.collect();
     let app_id = metadata.get("app_id").cloned().unwrap_or_default();
 
-    let handshake_metadata: HashMap<_, _> = metadata
-      .iter()
-      .map(|(k, v)| {
-        (
-          k.clone(),
-          ProtoData {
-            data_type: Some(Data_type::StringData(v.clone())),
-            ..Default::default()
-          },
-        )
-      })
-      .collect();
-
     loop {
+      let handshake_metadata = self.handshake_metadata();
       let elapsed_since_last_disconnect = self
         .disconnected_at
         .get_or_insert_with(Instant::now)
