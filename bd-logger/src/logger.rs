@@ -18,7 +18,12 @@ use bd_bounded_buffer::{self};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log::warn_every;
 use bd_log_primitives::{
-  AnnotatedLogField, AnnotatedLogFields, LogFieldValue, LogLevel, LogMessage, log_level,
+  AnnotatedLogField,
+  AnnotatedLogFields,
+  LogFieldValue,
+  LogLevel,
+  LogMessage,
+  log_level,
 };
 use bd_proto::protos::client::key_value::app_version::Extra as AppVersionExtra;
 use bd_proto::protos::logging::payload::LogType;
