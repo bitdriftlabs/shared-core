@@ -490,6 +490,7 @@ impl Api {
     if let Some(opaque_user_id) = self.store.get_string(&OPAQUE_USER_ID_KEY)
       && !opaque_user_id.is_empty()
     {
+      log::trace!("handshake_metadata includes value={opaque_user_id}");
       handshake_metadata.insert(
         "opaque_user_id".to_string(),
         ProtoData {
@@ -497,6 +498,8 @@ impl Api {
           ..Default::default()
         },
       );
+    } else {
+      log::trace!("handshake_metadata has no opaque_user_id");
     }
 
     handshake_metadata

@@ -269,6 +269,7 @@ impl LoggerHandle {
   }
 
   pub fn register_opaque_user_id(&self, opaque_user_id: &str) {
+    log::trace!("register_opaque_user_id called value={opaque_user_id}");
     self.store.set_string(&OPAQUE_USER_ID_KEY, opaque_user_id);
   }
 
