@@ -13,6 +13,7 @@ use crate::network_quality::DISCONNECTED_OFFLINE_GRACE_PERIOD;
 use crate::upload::{self, StateTracker};
 use crate::{
   DataUpload,
+  OPAQUE_USER_ID_KEY,
   PlatformNetworkManager,
   PlatformNetworkStream,
   RuntimeBackoffPolicy,
@@ -77,9 +78,6 @@ use time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::watch;
 use tokio::time::{Instant, Sleep, sleep};
-
-static OPAQUE_USER_ID_KEY: bd_key_value::Key<String> =
-  bd_key_value::Key::new("opaque_user_id.state.1");
 
 //
 // StreamClosureInfo

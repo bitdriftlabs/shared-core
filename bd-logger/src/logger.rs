@@ -13,7 +13,7 @@ use crate::app_version::{AppVersion, Repository};
 use crate::async_log_buffer::{self, AsyncLogBuffer, LogAttributesOverrides};
 use crate::log_replay::LoggerReplay;
 use crate::{MetadataProvider, app_version};
-use bd_api::Metadata;
+use bd_api::{Metadata, OPAQUE_USER_ID_KEY};
 use bd_bounded_buffer::{self};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log::warn_every;
@@ -40,9 +40,6 @@ use std::time::Duration;
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::watch;
-
-static OPAQUE_USER_ID_KEY: bd_key_value::Key<String> =
-  bd_key_value::Key::new("opaque_user_id.state.1");
 
 #[derive(Clone)]
 #[allow(clippy::struct_field_names)]

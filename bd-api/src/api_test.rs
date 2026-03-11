@@ -8,7 +8,7 @@
 use super::{Api, PlatformNetworkManager, PlatformNetworkStream};
 use crate::api::{DISCONNECTED_OFFLINE_GRACE_PERIOD, StreamEvent};
 use crate::upload::Tracked;
-use crate::{DataUpload, SimpleNetworkQualityProvider};
+use crate::{DataUpload, OPAQUE_USER_ID_KEY, SimpleNetworkQualityProvider};
 use anyhow::anyhow;
 use assert_matches::assert_matches;
 use bd_client_common::{
@@ -52,9 +52,6 @@ use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 use tokio::time::{Instant, timeout};
-
-static OPAQUE_USER_ID_KEY: bd_key_value::Key<String> =
-  bd_key_value::Key::new("opaque_user_id.state.1");
 
 //
 // EmptyMetadata
