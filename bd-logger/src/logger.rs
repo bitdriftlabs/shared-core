@@ -41,6 +41,9 @@ use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::watch;
 
+pub(crate) static OPAQUE_USER_ID_KEY: bd_key_value::Key<String> =
+  bd_key_value::Key::new("opaque_user_id.state.1");
+
 #[derive(Clone)]
 #[allow(clippy::struct_field_names)]
 pub struct Stats {
@@ -186,6 +189,7 @@ pub struct LoggerHandle {
   sdk_version: String,
 
   app_version_repo: app_version::Repository,
+  store: Arc<bd_key_value::Store>,
 
   stats: Stats,
 
@@ -265,6 +269,10 @@ impl LoggerHandle {
         true
       }
     });
+  }
+
+  pub fn register_opaque_user_id(&self, opaque_user_id: String) {
+    self.store.set_string(&OPAQUE_USER_ID_KEY, &opaque_user_id);
   }
 
   #[must_use]
@@ -640,6 +648,7 @@ impl Logger {
       device: self.device.clone(),
       sdk_version: self.sdk_version.clone(),
       app_version_repo: Repository::new(self.store.clone()),
+      store: self.store.clone(),
       stats: self.stats.clone(),
       sleep_mode_active: self.sleep_mode_active.clone(),
       is_tracing_active: self.is_tracing_active.clone(),

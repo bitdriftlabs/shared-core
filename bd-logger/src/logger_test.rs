@@ -38,7 +38,8 @@ async fn thread_local_logger_guard() {
     ))),
     device: Arc::new(bd_device::Device::new(store.clone())),
     sdk_version: "1.0.0".into(),
-    app_version_repo: Repository::new(store),
+    app_version_repo: Repository::new(store.clone()),
+    store,
     sleep_mode_active: watch::channel(false).0,
     is_tracing_active: Arc::new(AtomicBool::new(false)),
   };
@@ -59,4 +60,33 @@ async fn thread_local_logger_guard() {
   let recv = log_rx.recv();
   pin!(recv);
   assert_pending!(poll!(recv));
+}
+
+#[tokio::test]
+async fn register_opaque_user_id_persists_in_store() {
+  let (log_tx, _log_rx) = bd_bounded_buffer::channel(100);
+  let (state_tx, _state_rx) = bd_bounded_buffer::channel(100);
+  let sender = async_log_buffer::Sender::from_parts(log_tx, state_tx);
+
+  let store = in_memory_store();
+  let handle = LoggerHandle {
+    tx: sender,
+    stats: Stats::new(&Collector::default().scope("")),
+    session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
+      store.clone(),
+      Arc::new(UUIDCallbacks),
+    ))),
+    device: Arc::new(bd_device::Device::new(store.clone())),
+    sdk_version: "1.0.0".into(),
+    app_version_repo: Repository::new(store.clone()),
+    store: store.clone(),
+    sleep_mode_active: watch::channel(false).0,
+    is_tracing_active: Arc::new(AtomicBool::new(false)),
+  };
+
+  handle.register_opaque_user_id("hashed-user-id".to_string());
+  assert_eq!(
+    store.get_string(&super::OPAQUE_USER_ID_KEY),
+    Some("hashed-user-id".to_string())
+  );
 }
