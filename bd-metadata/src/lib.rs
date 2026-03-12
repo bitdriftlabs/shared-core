@@ -82,3 +82,24 @@ pub trait Metadata: Send {
     inner
   }
 }
+
+// SDK out-of-the-box field names populated by the platform's MetadataProvider.
+// These are filtered out from the crash report hook so only customer-set fields are exposed.
+// Fields prefixed with "_" are also considered SDK-internal.
+const OOTB_FIELDS: &[&str] = &[
+  "app_id",
+  "app_version",
+  "carrier",
+  "foreground",
+  "log_level",
+  "model",
+  "network_type",
+  "os",
+  "os_version",
+  "radio_type",
+];
+
+#[must_use]
+pub fn is_core_field(field: &str) -> bool {
+  field.starts_with('_') || OOTB_FIELDS.contains(&field)
+}
