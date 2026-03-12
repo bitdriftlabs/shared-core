@@ -134,8 +134,8 @@ impl LoggerBuilder {
     self
   }
 
-  /// Sets a hook that is invoked before each crash report upload attempt. The hook can inspect
-  /// the report.
+  /// Sets a hook that is invoked once per processed report, before the first upload enqueue
+  /// attempt. Retries of the same report do not invoke the hook again.
   #[must_use]
   pub fn with_crash_report_hook(
     mut self,

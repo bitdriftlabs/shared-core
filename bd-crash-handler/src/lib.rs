@@ -112,10 +112,12 @@ pub struct CrashReportInfo {
 // CrashReportHook
 //
 
-/// A hook invoked synchronously before a crash report upload is attempted.
+/// A hook invoked synchronously during crash processing before a report is first scheduled for
+/// upload.
 /// Implementations can inspect the report.
 pub trait CrashReportHook: Send + Sync {
-  /// Called synchronously before a crash report upload is attempted.
+  /// Called once per report during crash processing, before the first upload enqueue attempt.
+  /// Retries of the same report do not invoke the hook again.
   fn on_crash_report(&self, info: &CrashReportInfo);
 }
 
