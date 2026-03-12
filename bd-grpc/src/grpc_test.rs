@@ -41,6 +41,7 @@ use bd_time::TimeDurationExt;
 use bytes::Bytes;
 use futures::poll;
 use http::{Extensions, HeaderMap};
+use http_body::Frame;
 use http_body_util::StreamBody;
 use parking_lot::Mutex;
 use prometheus::labels;
@@ -452,6 +453,56 @@ async fn unary_error_handler_decodes_grpc_message() {
       .await,
     Err(Error::Grpc(Status {
       code: Code::InvalidArgument,
+      message
+    })) if message == Some("line 1\nline 2 % value".to_string())
+  );
+}
+
+#[tokio::test]
+async fn unary_error_from_response_trailers_decodes_grpc_message() {
+  let router = Router::new().route(
+    &service_method().full_path(),
+    post(move |_request: Request| async move {
+      let (response_sender, response_body): (crate::BodySender, _) = mpsc::channel(1);
+      let mut trailers = HeaderMap::new();
+      trailers.insert(crate::GRPC_STATUS, "13".try_into().unwrap());
+      trailers.insert(
+        crate::GRPC_MESSAGE,
+        "line%201%0Aline%202%20%25%20value".try_into().unwrap(),
+      );
+      response_sender
+        .send(Ok(Frame::trailers(trailers)))
+        .await
+        .unwrap();
+
+      new_grpc_response(
+        Body::new(StreamBody::new(ReceiverStream::new(response_body))),
+        None,
+        None,
+      )
+    }),
+  );
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let local_address = listener.local_addr().unwrap();
+  let server = axum::serve(listener, router.into_make_service());
+  tokio::spawn(async { server.await.unwrap() });
+  let client = Client::new_http(local_address.to_string().as_str(), 1.minutes(), 1024).unwrap();
+
+  assert_matches!(
+    client
+      .unary(
+        &service_method(),
+        None,
+        EchoRequest {
+          echo: "ok".to_string(),
+          ..Default::default()
+        },
+        1.seconds(),
+        Compression::None,
+      )
+      .await,
+    Err(Error::Grpc(Status {
+      code: Code::Internal,
       message
     })) if message == Some("line 1\nline 2 % value".to_string())
   );
