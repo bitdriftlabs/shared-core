@@ -318,12 +318,20 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
     };
     let mut decoder =
       Decoder::<IncomingType>::new(finalize_decompression(response.headers()), OptimizeFor::Cpu);
-    let body = response
+    let collected = response
       .into_body()
       .collect()
       .await
-      .map_err(|e| Error::BodyStream(e.into()))?
-      .to_bytes();
+      .map_err(|e| Error::BodyStream(e.into()))?;
+    if let Some(trailers) = collected.trailers()
+      && trailers.contains_key(GRPC_STATUS)
+    {
+      let status = Status::from_headers(trailers);
+      if status.code != Code::Ok {
+        return Err(status.into());
+      }
+    }
+    let body = collected.to_bytes();
     let mut messages = decoder.decode_data(&body)?;
 
     if messages.len() != 1 {
