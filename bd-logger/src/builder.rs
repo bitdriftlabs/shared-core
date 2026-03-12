@@ -79,6 +79,7 @@ pub struct LoggerBuilder {
   client_stats_tickers: Option<(Box<dyn Ticker>, Box<dyn Ticker>)>,
   internal_logger: bool,
   time_provider: Option<Arc<dyn TimeProvider>>,
+  crash_report_hook: Option<Arc<dyn bd_crash_handler::CrashReportHook>>,
 }
 
 impl LoggerBuilder {
@@ -91,6 +92,7 @@ impl LoggerBuilder {
       client_stats_tickers: None,
       internal_logger: false,
       time_provider: None,
+      crash_report_hook: None,
     }
   }
 
@@ -129,6 +131,17 @@ impl LoggerBuilder {
   #[must_use]
   pub fn with_time_provider(mut self, time_provider: Option<Arc<dyn TimeProvider>>) -> Self {
     self.time_provider = time_provider;
+    self
+  }
+
+  /// Sets a hook that is invoked once per processed report, before the first upload enqueue
+  /// attempt. Retries of the same report do not invoke the hook again.
+  #[must_use]
+  pub fn with_crash_report_hook(
+    mut self,
+    hook: Option<Arc<dyn bd_crash_handler::CrashReportHook>>,
+  ) -> Self {
+    self.crash_report_hook = hook;
     self
   }
 
@@ -385,6 +398,7 @@ impl LoggerBuilder {
           )
           .map_err(Into::into)
         },
+        self.crash_report_hook,
       );
 
       let buffer_directory = Logger::initialize_buffer_directory(&self.params.sdk_directory)?;

@@ -48,7 +48,6 @@ impl FileWatcher {
           },
         };
 
-
         // kqueue uses Modify events for new files so we need to watch for both Create and Modify
         // events.
         if !matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_)) {
