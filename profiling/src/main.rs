@@ -502,7 +502,7 @@ fn run_network_requests_profiling_with_request_count(network_request_count: u32)
       let mut rng = rand::rng();
 
       #[allow(clippy::cast_possible_truncation)]
-      let path_index: usize = (rng.random::<u32>() % (PATHS.len() as u32)) as usize;
+      let path_index: u32 = rng.random::<u32>() % (PATHS.len() as u32);
 
       engine.process_log(
         log_level::DEBUG,
