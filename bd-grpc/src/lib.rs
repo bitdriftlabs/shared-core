@@ -527,6 +527,7 @@ fn json_parse_options() -> ParseOptions {
 fn json_print_options() -> PrintOptions {
   PrintOptions {
     proto_field_name: true,
+    always_output_default_values: false,
     ..Default::default()
   }
 }
