@@ -986,7 +986,7 @@ async fn crash_report_hook_is_invoked_with_correct_info() {
 
   let captured = hook.captured();
   assert_eq!(1, captured.len());
-  assert_eq!("Crash", captured[0].report_type);
+  assert_eq!(ReportType::JVMCrash, captured[0].report_type);
   assert_eq!(
     Some("NullPointerException".to_string()),
     captured[0].crash_reason

@@ -101,7 +101,7 @@ pub enum ReportOrigin {
 /// Information about a crash report exposed to the hook before submission.
 #[derive(Debug, Clone)]
 pub struct CrashReportInfo {
-  pub report_type: String,
+  pub report_type: ReportType,
   pub crash_reason: Option<String>,
   pub crash_details: Option<String>,
   pub session_id: String,
@@ -491,7 +491,7 @@ impl Monitor {
       .collect();
 
     let info = CrashReportInfo {
-      report_type: Self::report_type_to_reason(bin_report.type_()).to_string(),
+      report_type: bin_report.type_(),
       crash_reason: crash_reason.cloned(),
       crash_details: crash_details.cloned(),
       session_id: session_id.to_string(),
