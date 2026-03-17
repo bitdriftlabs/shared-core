@@ -13,6 +13,7 @@ use crate::stats::EndpointStats;
 use crate::{
   CONNECT_PROTOCOL_VERSION,
   CONTENT_TYPE,
+  CONTENT_TYPE_JSON,
   CONTENT_TYPE_PROTO,
   Code,
   Error,
@@ -1024,6 +1025,44 @@ async fn connect_unary() {
       ..Default::default()
     }
   );
+}
+
+#[tokio::test]
+async fn unary_json_transcoding() {
+  let local_address = make_unary_server(Arc::new(EchoHandler::default()), |_| {}, None).await;
+  let client = reqwest::Client::builder().deflate(false).build().unwrap();
+  let address = AddressHelper::new(format!("http://{local_address}")).unwrap();
+  let response = client
+    .post(address.build(&service_method()).to_string())
+    .header(CONTENT_TYPE, CONTENT_TYPE_JSON)
+    .body("{\"echo\":\"json_echo\"}")
+    .send()
+    .await
+    .unwrap();
+  assert_eq!(response.status(), 200);
+  assert_eq!(
+    response.headers().get(CONTENT_TYPE).unwrap(),
+    CONTENT_TYPE_JSON
+  );
+  let body: serde_json::Value = serde_json::from_slice(&response.bytes().await.unwrap()).unwrap();
+  assert_eq!(body, serde_json::json!({ "echo": "json_echo" }));
+}
+
+#[tokio::test]
+async fn server_streaming_json_request() {
+  let local_address = make_server_streaming_server(Arc::new(EchoHandler::default()), |_| {})
+    .await
+    .0;
+  let client = reqwest::Client::builder().deflate(false).build().unwrap();
+  let address = AddressHelper::new(format!("http://{local_address}")).unwrap();
+  let response = client
+    .post(address.build(&service_method()).to_string())
+    .header(CONTENT_TYPE, CONTENT_TYPE_JSON)
+    .body("{\"echo\":\"json_echo\"}")
+    .send()
+    .await
+    .unwrap();
+  assert_eq!(response.status(), 200);
 }
 
 #[tokio::test]

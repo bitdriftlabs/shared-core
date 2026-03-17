@@ -50,6 +50,7 @@ use http::{Extensions, HeaderMap};
 use http_body::Frame;
 use http_body_util::{BodyExt, StreamBody};
 use protobuf::{Message, MessageFull};
+use protobuf_json_mapping::{ParseOptions, PrintOptions};
 use service::ServiceMethod;
 use stats::{BandwidthStatsSummary, EndpointStats, StreamStats};
 use status::Status;
@@ -486,6 +487,11 @@ async fn decode_request<Message: MessageFull>(
   let message = if matches!(connect_protocol_type, Some(ConnectProtocolType::Unary)) {
     Message::parse_from_tokio_bytes(&body_bytes)
       .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}")))?
+  } else if is_json_request_content_type(&parts.headers) {
+    let body_str = std::str::from_utf8(&body_bytes)
+      .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}")))?;
+    protobuf_json_mapping::parse_from_str_with_options(body_str, &json_parse_options())
+      .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}")))?
   } else {
     let mut grpc_decoder =
       Decoder::<Message>::new(finalize_decompression(&parts.headers), OptimizeFor::Cpu);
@@ -502,6 +508,25 @@ async fn decode_request<Message: MessageFull>(
   }
 
   Ok((parts.headers, parts.extensions, message))
+}
+
+fn is_json_request_content_type(headers: &HeaderMap) -> bool {
+  headers
+    .get(CONTENT_TYPE)
+    .and_then(|value| value.to_str().ok())
+    .and_then(|value| value.split(';').next())
+    .is_some_and(|value| value.trim().eq_ignore_ascii_case(CONTENT_TYPE_JSON))
+}
+
+fn json_parse_options() -> ParseOptions {
+  ParseOptions::default()
+}
+
+fn json_print_options() -> PrintOptions {
+  PrintOptions {
+    proto_field_name: true,
+    ..Default::default()
+  }
 }
 
 async fn unary_connect_handler<OutgoingType: MessageFull, IncomingType: MessageFull>(
@@ -527,6 +552,8 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
 ) -> Result<Response> {
   let (headers, extensions, message) =
     decode_request::<OutgoingType>(request, validate_request, connect_protocol_type).await?;
+  let json_transcoding = connect_protocol_type.is_none() && is_json_request_content_type(&headers);
+
   if matches!(connect_protocol_type, Some(ConnectProtocolType::Unary)) {
     return unary_connect_handler(headers, extensions, message, handler).await;
   }
@@ -537,6 +564,18 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
   );
 
   let response = handler.handle(headers, extensions, message).await?;
+
+  if json_transcoding {
+    let json =
+      protobuf_json_mapping::print_to_string_with_options(&response, &json_print_options())
+        .map_err(|e| Status::new(Code::Internal, format!("Failed to encode response: {e}")))?;
+    return Ok(
+      Response::builder()
+        .header(CONTENT_TYPE, CONTENT_TYPE_JSON)
+        .body(json.into())
+        .unwrap(),
+    );
+  }
 
   let (tx, rx) = mpsc::channel::<std::result::Result<_, Infallible>>(2);
 
