@@ -25,7 +25,7 @@ use crate::{
   StreamingApi,
   StreamingApiSender,
   make_server_streaming_router,
-  make_unary_router,
+  make_unary_router_with_response_mutator,
   new_grpc_response,
 };
 use assert_matches::assert_matches;
@@ -68,12 +68,22 @@ async fn make_unary_server(
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
   endpoint_stats: Option<&EndpointStats>,
 ) -> SocketAddr {
-  let router = make_unary_router(
+  make_unary_server_with_response_mutator(handler, error_handler, endpoint_stats, None).await
+}
+
+async fn make_unary_server_with_response_mutator(
+  handler: Arc<dyn Handler<EchoRequest, EchoResponse>>,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
+  endpoint_stats: Option<&EndpointStats>,
+  response_mutator: Option<crate::UnaryResponseMutator<EchoResponse>>,
+) -> SocketAddr {
+  let router = make_unary_router_with_response_mutator(
     &service_method(),
     handler,
-    error_handler,
     endpoint_stats,
     true,
+    response_mutator,
+    error_handler,
   )
   .layer(ConnectSafeCompressionLayer::new());
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1046,6 +1056,36 @@ async fn unary_json_transcoding() {
   );
   let body: serde_json::Value = serde_json::from_slice(&response.bytes().await.unwrap()).unwrap();
   assert_eq!(body, serde_json::json!({ "echo": "json_echo" }));
+}
+
+#[tokio::test]
+async fn unary_json_transcoding_applies_response_mutator() {
+  let local_address = make_unary_server_with_response_mutator(
+    Arc::new(EchoHandler::default()),
+    |_| {},
+    None,
+    Some(Arc::new(|response: &mut EchoResponse| {
+      response.echo = "mutated".to_string();
+      Ok(())
+    })),
+  )
+  .await;
+  let client = reqwest::Client::builder().deflate(false).build().unwrap();
+  let address = AddressHelper::new(format!("http://{local_address}")).unwrap();
+  let response = client
+    .post(address.build(&service_method()).to_string())
+    .header(CONTENT_TYPE, CONTENT_TYPE_JSON)
+    .body("{\"echo\":\"json_echo\"}")
+    .send()
+    .await
+    .unwrap();
+  assert_eq!(response.status(), 200);
+  assert_eq!(
+    response.headers().get(CONTENT_TYPE).unwrap(),
+    CONTENT_TYPE_JSON
+  );
+  let body: serde_json::Value = serde_json::from_slice(&response.bytes().await.unwrap()).unwrap();
+  assert_eq!(body, serde_json::json!({ "echo": "mutated" }));
 }
 
 #[tokio::test]
