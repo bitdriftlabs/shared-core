@@ -11,6 +11,11 @@ message EchoResponse {
   string echo = 1;
 }
 
+message EchoRepeatedResponse {
+  repeated string values = 1;
+}
+
 service Test {
   rpc Echo(EchoRequest) returns (EchoResponse);
+  rpc EchoRepeated(EchoRequest) returns (EchoRepeatedResponse);
 }

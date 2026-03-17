@@ -72,6 +72,8 @@ const TRANSFER_ENCODING_TRAILERS: &str = "trailers";
 const CONNECT_PROTOCOL_VERSION: &str = "connect-protocol-version";
 
 pub type BodySender = mpsc::Sender<std::result::Result<Frame<Bytes>, BoxError>>;
+pub type UnaryResponseMutator<IncomingType> =
+  Arc<dyn Fn(&mut IncomingType) -> Result<()> + Send + Sync>;
 
 //
 // StreamingApi
@@ -534,8 +536,12 @@ async fn unary_connect_handler<OutgoingType: MessageFull, IncomingType: MessageF
   extensions: Extensions,
   message: OutgoingType,
   handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
+  response_mutator: Option<UnaryResponseMutator<IncomingType>>,
 ) -> Result<Response> {
-  let response = handler.handle(headers, extensions, message).await?;
+  let mut response = handler.handle(headers, extensions, message).await?;
+  if let Some(response_mutator) = response_mutator {
+    response_mutator(&mut response)?;
+  }
   Ok(new_grpc_response(
     response.write_to_bytes().unwrap().into(),
     None,
@@ -549,13 +555,14 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
   handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
   validate_request: bool,
   connect_protocol_type: Option<ConnectProtocolType>,
+  response_mutator: Option<UnaryResponseMutator<IncomingType>>,
 ) -> Result<Response> {
   let (headers, extensions, message) =
     decode_request::<OutgoingType>(request, validate_request, connect_protocol_type).await?;
   let json_transcoding = connect_protocol_type.is_none() && is_json_request_content_type(&headers);
 
   if matches!(connect_protocol_type, Some(ConnectProtocolType::Unary)) {
-    return unary_connect_handler(headers, extensions, message, handler).await;
+    return unary_connect_handler(headers, extensions, message, handler, response_mutator).await;
   }
 
   let compression = finalize_response_compression(
@@ -563,7 +570,10 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
     &headers,
   );
 
-  let response = handler.handle(headers, extensions, message).await?;
+  let mut response = handler.handle(headers, extensions, message).await?;
+  if let Some(response_mutator) = response_mutator {
+    response_mutator(&mut response)?;
+  }
 
   if json_transcoding {
     let json =
@@ -750,13 +760,36 @@ pub fn make_unary_router<OutgoingType: MessageFull, IncomingType: MessageFull>(
   endpoint_stats: Option<&EndpointStats>,
   validate_request: bool,
 ) -> Router {
-  make_unary_router_at_path(
+  make_unary_router_with_response_mutator(
+    service_method,
+    handler,
+    endpoint_stats,
+    validate_request,
+    None,
+    error_handler,
+  )
+}
+
+// Create an axum router for a unary request and a handler with an optional response mutator.
+pub fn make_unary_router_with_response_mutator<
+  OutgoingType: MessageFull,
+  IncomingType: MessageFull,
+>(
+  service_method: &ServiceMethod<OutgoingType, IncomingType>,
+  handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
+  endpoint_stats: Option<&EndpointStats>,
+  validate_request: bool,
+  response_mutator: Option<UnaryResponseMutator<IncomingType>>,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
+) -> Router {
+  make_unary_router_at_path_with_response_mutator(
     service_method,
     &service_method.full_path(),
     handler,
-    error_handler,
     endpoint_stats,
     validate_request,
+    response_mutator,
+    error_handler,
   )
 }
 
@@ -768,6 +801,31 @@ pub fn make_unary_router_at_path<OutgoingType: MessageFull, IncomingType: Messag
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
   endpoint_stats: Option<&EndpointStats>,
   validate_request: bool,
+) -> Router {
+  make_unary_router_at_path_with_response_mutator(
+    service_method,
+    full_path,
+    handler,
+    endpoint_stats,
+    validate_request,
+    None,
+    error_handler,
+  )
+}
+
+// Create an axum router for a unary request and a handler at a provided path with an optional
+// response mutator.
+pub fn make_unary_router_at_path_with_response_mutator<
+  OutgoingType: MessageFull,
+  IncomingType: MessageFull,
+>(
+  service_method: &ServiceMethod<OutgoingType, IncomingType>,
+  full_path: &str,
+  handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
+  endpoint_stats: Option<&EndpointStats>,
+  validate_request: bool,
+  response_mutator: Option<UnaryResponseMutator<IncomingType>>,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
 ) -> Router {
   let warn_tracker = Arc::new(WarnTracker::default());
   let full_path = Arc::new(full_path.to_string());
@@ -783,6 +841,7 @@ pub fn make_unary_router_at_path<OutgoingType: MessageFull, IncomingType: Messag
         handler,
         validate_request,
         connect_protocol_type,
+        response_mutator.clone(),
       )
       .await;
 
