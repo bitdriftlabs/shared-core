@@ -12,6 +12,7 @@ use crate::generated::test_protos::test_validate::{Duration, Int32, Int64, Uint6
 use bd_time::ToProtoDuration;
 use protobuf::Message as ProtoMessage;
 use protobuf::well_known_types::duration::Duration as ProtoDuration;
+use protobuf::well_known_types::timestamp::Timestamp as ProtoTimestamp;
 use test_protos::test_validate::{
   Bool,
   EnumNew,
@@ -21,6 +22,7 @@ use test_protos::test_validate::{
   OneOf,
   Repeated,
   String,
+  Timestamp,
   Uint32,
   message,
   one_of,
@@ -55,6 +57,22 @@ fn duration() {
 
   let message = Duration {
     field: 1.seconds().into_proto(),
+    ..Default::default()
+  };
+  assert!(validate(&message).is_ok());
+}
+
+#[test]
+fn timestamp() {
+  let message = Timestamp::default();
+  matches::assert_matches!(
+    validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'proto_validate.test.Timestamp.field' in message 'proto_validate.test.Timestamp' is \
+    required");
+
+  let message = Timestamp {
+    field: Some(ProtoTimestamp::default()).into(),
     ..Default::default()
   };
   assert!(validate(&message).is_ok());
@@ -133,6 +151,35 @@ fn repeated() {
     strings: vec!["hello".to_string()],
     messages: vec![repeated::Inner::default()],
     limited: vec![1, 2],
+    non_empty_strings: vec![std::string::String::new()],
+    ..Default::default()
+  };
+  matches::assert_matches!(
+    validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'proto_validate.test.Repeated.non_empty_strings' in message 'proto_validate.test.Repeated' \
+    requires string length >= 1");
+
+  let message = Repeated {
+    strings: vec!["hello".to_string()],
+    messages: vec![repeated::Inner::default()],
+    limited: vec![1, 2],
+    non_empty_strings: vec!["hello".to_string()],
+    positive_numbers: vec![0],
+    ..Default::default()
+  };
+  matches::assert_matches!(
+    validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'proto_validate.test.Repeated.positive_numbers' in message 'proto_validate.test.Repeated' \
+    must be > 0");
+
+  let message = Repeated {
+    strings: vec!["hello".to_string()],
+    messages: vec![repeated::Inner::default()],
+    limited: vec![1, 2],
+    non_empty_strings: vec!["hello".to_string()],
+    positive_numbers: vec![1],
     ..Default::default()
   };
   assert!(validate(&message).is_ok());

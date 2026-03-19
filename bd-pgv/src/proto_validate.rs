@@ -21,13 +21,12 @@ use protobuf::reflect::{
   RuntimeType,
 };
 use protobuf::well_known_types::duration::Duration as ProtoDuration;
+use protobuf::well_known_types::timestamp::Timestamp as ProtoTimestamp;
 use protos::validate::{
-  BoolRules,
-  EnumRules,
+  FieldRules,
   Int32Rules,
   Int64Rules,
   RepeatedRules,
-  StringRules,
   UInt32Rules,
   UInt64Rules,
 };
@@ -62,55 +61,6 @@ fn get_singular_or_default<'a>(
     // tested.
     Some(field_descriptor.get_singular_field_or_default(message))
   }
-}
-
-// Validate enum rules.
-fn validate_enum(
-  rules: &EnumRules,
-  field_descriptor: &FieldDescriptor,
-  message_descriptor: &MessageDescriptor,
-  message: &dyn protobuf::MessageDyn,
-) -> error::Result<()> {
-  if let Some(ReflectValueRef::Enum(descriptor, value)) =
-    get_singular_or_default(field_descriptor, message)
-  {
-    if rules.defined_only() && descriptor.value_by_number(value).is_none() {
-      return Err(error::Error::ProtoValidation(format!(
-        "field '{}' in message '{}' must be a defined enum. Got {}",
-        field_descriptor.full_name(),
-        message_descriptor.full_name(),
-        value
-      )));
-    }
-
-    not_implemented(rules.has_const(), "enum rules const")?;
-    not_implemented(!rules.in_.is_empty(), "enum rules in")?;
-    not_implemented(!rules.not_in.is_empty(), "enum rules not_in")?;
-  }
-
-  Ok(())
-}
-
-// Validate bool rules.
-fn validate_bool(
-  rules: &BoolRules,
-  field_descriptor: &FieldDescriptor,
-  message_descriptor: &MessageDescriptor,
-  message: &dyn protobuf::MessageDyn,
-) -> error::Result<()> {
-  if let Some(ReflectValueRef::Bool(value)) = get_singular_or_default(field_descriptor, message)
-    && rules.has_const()
-    && rules.const_() != value
-  {
-    return Err(error::Error::ProtoValidation(format!(
-      "field '{}' in message '{}' must be constant {}",
-      field_descriptor.full_name(),
-      message_descriptor.full_name(),
-      rules.const_()
-    )));
-  }
-
-  Ok(())
 }
 
 trait IntHelper {
@@ -225,96 +175,6 @@ impl_int_helper!(UInt64Rules, u64);
 impl_int_helper!(Int32Rules, i32);
 impl_int_helper!(Int64Rules, i64);
 
-// Validate string rules.
-fn validate_string(
-  rules: &StringRules,
-  field_descriptor: &FieldDescriptor,
-  message_descriptor: &MessageDescriptor,
-  message: &dyn protobuf::MessageDyn,
-) -> error::Result<()> {
-  if let Some(ReflectValueRef::String(value)) = get_singular_or_default(field_descriptor, message) {
-    if rules.has_min_len() && rules.min_len() > value.len() as u64 {
-      return Err(error::Error::ProtoValidation(format!(
-        "field '{}' in message '{}' requires string length >= {}",
-        field_descriptor.full_name(),
-        message_descriptor.full_name(),
-        rules.min_len()
-      )));
-    }
-
-    if rules.has_max_len() && rules.max_len() < value.len() as u64 {
-      return Err(error::Error::ProtoValidation(format!(
-        "field '{}' in message '{}' requires string length <= {}",
-        field_descriptor.full_name(),
-        message_descriptor.full_name(),
-        rules.max_len()
-      )));
-    }
-
-    not_implemented(rules.has_const(), "string rules const")?;
-    not_implemented(rules.has_len(), "string rules len")?;
-    not_implemented(rules.has_len_bytes(), "string rules len_bytes")?;
-    not_implemented(rules.has_min_bytes(), "string rules min_bytes")?;
-    not_implemented(rules.has_max_bytes(), "string rules max_bytes")?;
-    not_implemented(rules.has_pattern(), "string rules pattern")?;
-    not_implemented(rules.has_prefix(), "string rules prefix")?;
-    not_implemented(rules.has_suffix(), "string rules suffix")?;
-    not_implemented(rules.has_contains(), "string rules contains")?;
-    not_implemented(rules.has_not_contains(), "string rules not_contains")?;
-    not_implemented(!rules.in_.is_empty(), "string rules in")?;
-    not_implemented(!rules.not_in.is_empty(), "string rules not_in")?;
-    not_implemented(rules.has_email(), "string rules email")?;
-    not_implemented(rules.has_hostname(), "string rules hostname")?;
-    not_implemented(rules.has_ip(), "string rules ip")?;
-    not_implemented(rules.has_ipv4(), "string rules ipv4")?;
-    not_implemented(rules.has_ipv6(), "string rules ipv6")?;
-    not_implemented(rules.has_uri(), "string rules uri")?;
-    not_implemented(rules.has_uri_ref(), "string rules uri_ref")?;
-    not_implemented(rules.has_address(), "string rules address")?;
-    not_implemented(rules.has_uuid(), "string rules uuid")?;
-    not_implemented(
-      rules.has_well_known_regex(),
-      "string rules well_known_regex",
-    )?;
-  }
-
-  Ok(())
-}
-
-// Validate repeated rules.
-fn validate_repeated(
-  rules: &RepeatedRules,
-  field_descriptor: &FieldDescriptor,
-  message_descriptor: &MessageDescriptor,
-  message: &dyn protobuf::MessageDyn,
-) -> error::Result<()> {
-  let repeated_len = field_descriptor.get_repeated(message).len();
-
-  if rules.has_min_items() && repeated_len < usize::try_from(rules.min_items()).unwrap() {
-    return Err(error::Error::ProtoValidation(format!(
-      "field '{}' in message '{}' requires repeated items >= {}",
-      field_descriptor.full_name(),
-      message_descriptor.full_name(),
-      rules.min_items()
-    )));
-  }
-
-  if rules.has_max_items() && repeated_len > usize::try_from(rules.max_items()).unwrap() {
-    return Err(error::Error::ProtoValidation(format!(
-      "field '{}' in message '{}' requires repeated items <= {}",
-      field_descriptor.full_name(),
-      message_descriptor.full_name(),
-      rules.max_items()
-    )));
-  }
-
-  not_implemented(rules.has_unique(), "repeated unique")?;
-  not_implemented(rules.items.is_some(), "repeated items")?;
-  not_implemented(rules.has_ignore_empty(), "repeated ignore_empty")?;
-
-  Ok(())
-}
-
 // Validate google.protobuf.Duration.
 fn validate_duration(
   rules: &DurationRules,
@@ -350,6 +210,281 @@ fn validate_duration(
   Ok(())
 }
 
+// Validate google.protobuf.Timestamp.
+fn validate_timestamp(
+  rules: &FieldRules,
+  field_descriptor: &FieldDescriptor,
+  message_descriptor: &MessageDescriptor,
+  value: Option<&ProtoTimestamp>,
+) -> error::Result<()> {
+  let rules = rules.timestamp();
+
+  if rules.required() && value.is_none() {
+    return Err(error::Error::ProtoValidation(format!(
+      "field '{}' in message '{}' is required",
+      field_descriptor.full_name(),
+      message_descriptor.full_name()
+    )));
+  }
+
+  not_implemented(rules.const_.is_some(), "timestamp const")?;
+  not_implemented(rules.lt.is_some(), "timestamp lt")?;
+  not_implemented(rules.lte.is_some(), "timestamp lte")?;
+  not_implemented(rules.gt.is_some(), "timestamp gt")?;
+  not_implemented(rules.gte.is_some(), "timestamp gte")?;
+  not_implemented(rules.has_lt_now(), "timestamp lt_now")?;
+  not_implemented(rules.has_gt_now(), "timestamp gt_now")?;
+  not_implemented(rules.within.is_some(), "timestamp within")?;
+
+  Ok(())
+}
+
+// Validate a reflected value against PGV field rules. The returned bool indicates whether message
+// recursion should continue for this value.
+fn validate_value(
+  rules: &FieldRules,
+  runtime_type: &RuntimeType,
+  field_descriptor: &FieldDescriptor,
+  message_descriptor: &MessageDescriptor,
+  value: Option<&ReflectValueRef<'_>>,
+) -> error::Result<bool> {
+  not_implemented(rules.has_any(), "field any")?;
+
+  // The following do not appear to be exposed by the Rust library and are probably not typically
+  // used anyway.
+  not_implemented(rules.has_fixed32(), "field fixed32")?;
+  not_implemented(rules.has_fixed64(), "field fixed64")?;
+  not_implemented(rules.has_sfixed32(), "field sfixed32")?;
+  not_implemented(rules.has_sfixed64(), "field sfixed64")?;
+
+  match runtime_type {
+    RuntimeType::Message(_) => {
+      if rules
+        .message
+        .0
+        .as_ref()
+        .and_then(|message_rules| message_rules.skip)
+        .unwrap_or(false)
+      {
+        return Ok(false);
+      }
+
+      if rules.has_duration()
+        && let Some(ReflectValueRef::Message(duration)) = value
+        && duration.descriptor_dyn().full_name() == "google.protobuf.Duration"
+      {
+        validate_duration(
+          rules.duration(),
+          field_descriptor,
+          message_descriptor,
+          duration.downcast_ref().unwrap(),
+        )?;
+        return Ok(false);
+      }
+
+      if rules.has_timestamp()
+        && let Some(ReflectValueRef::Message(timestamp)) = value
+        && timestamp.descriptor_dyn().full_name() == "google.protobuf.Timestamp"
+      {
+        validate_timestamp(
+          rules,
+          field_descriptor,
+          message_descriptor,
+          Some(timestamp.downcast_ref().unwrap()),
+        )?;
+        return Ok(false);
+      }
+
+      if rules.has_timestamp() && value.is_none() {
+        validate_timestamp(rules, field_descriptor, message_descriptor, None)?;
+        return Ok(false);
+      }
+    },
+    RuntimeType::String => {
+      if rules.has_string()
+        && let Some(ReflectValueRef::String(value)) = value
+      {
+        if rules.string().has_min_len() && rules.string().min_len() > value.len() as u64 {
+          return Err(error::Error::ProtoValidation(format!(
+            "field '{}' in message '{}' requires string length >= {}",
+            field_descriptor.full_name(),
+            message_descriptor.full_name(),
+            rules.string().min_len()
+          )));
+        }
+
+        if rules.string().has_max_len() && rules.string().max_len() < value.len() as u64 {
+          return Err(error::Error::ProtoValidation(format!(
+            "field '{}' in message '{}' requires string length <= {}",
+            field_descriptor.full_name(),
+            message_descriptor.full_name(),
+            rules.string().max_len()
+          )));
+        }
+
+        not_implemented(rules.string().has_const(), "string rules const")?;
+        not_implemented(rules.string().has_len(), "string rules len")?;
+        not_implemented(rules.string().has_len_bytes(), "string rules len_bytes")?;
+        not_implemented(rules.string().has_min_bytes(), "string rules min_bytes")?;
+        not_implemented(rules.string().has_max_bytes(), "string rules max_bytes")?;
+        not_implemented(rules.string().has_pattern(), "string rules pattern")?;
+        not_implemented(rules.string().has_prefix(), "string rules prefix")?;
+        not_implemented(rules.string().has_suffix(), "string rules suffix")?;
+        not_implemented(rules.string().has_contains(), "string rules contains")?;
+        not_implemented(
+          rules.string().has_not_contains(),
+          "string rules not_contains",
+        )?;
+        not_implemented(!rules.string().in_.is_empty(), "string rules in")?;
+        not_implemented(!rules.string().not_in.is_empty(), "string rules not_in")?;
+        not_implemented(rules.string().has_email(), "string rules email")?;
+        not_implemented(rules.string().has_hostname(), "string rules hostname")?;
+        not_implemented(rules.string().has_ip(), "string rules ip")?;
+        not_implemented(rules.string().has_ipv4(), "string rules ipv4")?;
+        not_implemented(rules.string().has_ipv6(), "string rules ipv6")?;
+        not_implemented(rules.string().has_uri(), "string rules uri")?;
+        not_implemented(rules.string().has_uri_ref(), "string rules uri_ref")?;
+        not_implemented(rules.string().has_address(), "string rules address")?;
+        not_implemented(rules.string().has_uuid(), "string rules uuid")?;
+        not_implemented(
+          rules.string().has_well_known_regex(),
+          "string rules well_known_regex",
+        )?;
+      }
+    },
+    RuntimeType::I32 => {
+      if rules.has_int32()
+        && let Some(ReflectValueRef::I32(value)) = value
+      {
+        rules
+          .int32()
+          .validate_all_int_rules(*value, field_descriptor, message_descriptor)?;
+      }
+    },
+    RuntimeType::I64 => {
+      if rules.has_int64()
+        && let Some(ReflectValueRef::I64(value)) = value
+      {
+        rules
+          .int64()
+          .validate_all_int_rules(*value, field_descriptor, message_descriptor)?;
+      }
+    },
+    RuntimeType::U32 => {
+      if rules.has_uint32()
+        && let Some(ReflectValueRef::U32(value)) = value
+      {
+        rules
+          .uint32()
+          .validate_all_int_rules(*value, field_descriptor, message_descriptor)?;
+      }
+    },
+    RuntimeType::U64 => {
+      if rules.has_uint64()
+        && let Some(ReflectValueRef::U64(value)) = value
+      {
+        rules
+          .uint64()
+          .validate_all_int_rules(*value, field_descriptor, message_descriptor)?;
+      }
+    },
+    RuntimeType::F32 => {
+      not_implemented(rules.has_float(), "float validation")?;
+    },
+    RuntimeType::F64 => {
+      not_implemented(rules.has_double(), "double validation")?;
+    },
+    RuntimeType::Bool => {
+      if rules.has_bool()
+        && let Some(ReflectValueRef::Bool(value)) = value
+        && rules.bool().has_const()
+        && rules.bool().const_() != *value
+      {
+        return Err(error::Error::ProtoValidation(format!(
+          "field '{}' in message '{}' must be constant {}",
+          field_descriptor.full_name(),
+          message_descriptor.full_name(),
+          rules.bool().const_()
+        )));
+      }
+    },
+    RuntimeType::VecU8 => {
+      not_implemented(rules.has_bytes(), "bytes validation")?;
+    },
+    RuntimeType::Enum(enum_descriptor) => {
+      if rules.has_enum()
+        && let Some(ReflectValueRef::Enum(_, value)) = value
+      {
+        if rules.enum_().defined_only() && enum_descriptor.value_by_number(*value).is_none() {
+          return Err(error::Error::ProtoValidation(format!(
+            "field '{}' in message '{}' must be a defined enum. Got {}",
+            field_descriptor.full_name(),
+            message_descriptor.full_name(),
+            value
+          )));
+        }
+
+        not_implemented(rules.enum_().has_const(), "enum rules const")?;
+        not_implemented(!rules.enum_().in_.is_empty(), "enum rules in")?;
+        not_implemented(!rules.enum_().not_in.is_empty(), "enum rules not_in")?;
+      }
+    },
+  }
+
+  Ok(true)
+}
+
+// Validate repeated rules.
+fn validate_repeated(
+  rules: &RepeatedRules,
+  repeated_type: &RuntimeType,
+  field_descriptor: &FieldDescriptor,
+  message_descriptor: &MessageDescriptor,
+  message: &dyn protobuf::MessageDyn,
+) -> error::Result<bool> {
+  let repeated = field_descriptor.get_repeated(message);
+  let repeated_len = repeated.len();
+
+  if rules.has_ignore_empty() && rules.ignore_empty() && repeated_len == 0 {
+    return Ok(true);
+  }
+
+  if rules.has_min_items() && repeated_len < usize::try_from(rules.min_items()).unwrap() {
+    return Err(error::Error::ProtoValidation(format!(
+      "field '{}' in message '{}' requires repeated items >= {}",
+      field_descriptor.full_name(),
+      message_descriptor.full_name(),
+      rules.min_items()
+    )));
+  }
+
+  if rules.has_max_items() && repeated_len > usize::try_from(rules.max_items()).unwrap() {
+    return Err(error::Error::ProtoValidation(format!(
+      "field '{}' in message '{}' requires repeated items <= {}",
+      field_descriptor.full_name(),
+      message_descriptor.full_name(),
+      rules.max_items()
+    )));
+  }
+
+  let mut recurse = true;
+  if let Some(item_rules) = rules.items.as_ref() {
+    for value in repeated {
+      recurse &= validate_value(
+        item_rules,
+        repeated_type,
+        field_descriptor,
+        message_descriptor,
+        Some(&value),
+      )?;
+    }
+  }
+
+  not_implemented(rules.has_unique(), "repeated unique")?;
+
+  Ok(recurse)
+}
+
 // Validate field rules.
 fn validate_field(
   field_descriptor: &FieldDescriptor,
@@ -367,137 +502,56 @@ fn validate_field(
   }
   let rules = rules.unwrap();
 
-  not_implemented(rules.has_any(), "field any")?;
-  not_implemented(rules.has_timestamp(), "field timestamp")?;
-
-  // The following do not appear to be exposed by the Rust library and are probably not typically
-  // used anyway.
-  not_implemented(rules.has_fixed32(), "field fixed32")?;
-  not_implemented(rules.has_fixed64(), "field fixed64")?;
-  not_implemented(rules.has_sfixed32(), "field sfixed32")?;
-  not_implemented(rules.has_sfixed64(), "field sfixed64")?;
-
   match field_descriptor.runtime_field_type() {
     RuntimeFieldType::Singular(singular) => {
-      match singular {
-        RuntimeType::Message(_) => {
-          // See if the field has `(validate.rules).message = {required: true}` on it.
-          if rules
-            .message
-            .0
-            .as_ref()
-            .and_then(|message_rules| message_rules.required)
-            .unwrap_or(false)
-            && field_descriptor.get_singular(message).is_none()
-          {
-            return Err(error::Error::ProtoValidation(format!(
-              "field '{}' in message '{}' is required",
-              field_descriptor.full_name(),
-              message_descriptor.full_name()
-            )));
-          }
-
-          // See if the field has duration rules, exists, and is the duration type.
-          if rules.has_duration()
-            && let Some(ReflectValueRef::Message(duration)) = field_descriptor.get_singular(message)
-            && duration.descriptor_dyn().full_name() == "google.protobuf.Duration"
-          {
-            validate_duration(
-              rules.duration(),
-              field_descriptor,
-              message_descriptor,
-              duration.downcast_ref().unwrap(),
-            )?;
-            return Ok(false); // Do not recurse.
-          }
-        },
-        RuntimeType::String => {
-          if rules.has_string() {
-            validate_string(
-              rules.string(),
-              field_descriptor,
-              message_descriptor,
-              message,
-            )?;
-          }
-        },
-        RuntimeType::I32 => {
-          if rules.has_int32()
-            && let Some(ReflectValueRef::I32(value)) =
-              get_singular_or_default(field_descriptor, message)
-          {
-            rules
-              .int32()
-              .validate_all_int_rules(value, field_descriptor, message_descriptor)?;
-          }
-        },
-        RuntimeType::I64 => {
-          if rules.has_int64()
-            && let Some(ReflectValueRef::I64(value)) =
-              get_singular_or_default(field_descriptor, message)
-          {
-            rules
-              .int64()
-              .validate_all_int_rules(value, field_descriptor, message_descriptor)?;
-          }
-        },
-        RuntimeType::U32 => {
-          if rules.has_uint32()
-            && let Some(ReflectValueRef::U32(value)) =
-              get_singular_or_default(field_descriptor, message)
-          {
-            rules
-              .uint32()
-              .validate_all_int_rules(value, field_descriptor, message_descriptor)?;
-          }
-        },
-        RuntimeType::U64 => {
-          if rules.has_uint64()
-            && let Some(ReflectValueRef::U64(value)) =
-              get_singular_or_default(field_descriptor, message)
-          {
-            rules
-              .uint64()
-              .validate_all_int_rules(value, field_descriptor, message_descriptor)?;
-          }
-        },
-        RuntimeType::F32 => {
-          not_implemented(rules.has_float(), "float validation")?;
-        },
-        RuntimeType::F64 => {
-          not_implemented(rules.has_double(), "double validation")?;
-        },
-        RuntimeType::Bool => {
-          if rules.has_bool() {
-            validate_bool(rules.bool(), field_descriptor, message_descriptor, message)?;
-          }
-        },
-        RuntimeType::VecU8 => {
-          not_implemented(rules.has_bytes(), "bytes validation")?;
-        },
-        RuntimeType::Enum(_) => {
-          if rules.has_enum() {
-            validate_enum(rules.enum_(), field_descriptor, message_descriptor, message)?;
-          }
-        },
+      if matches!(singular, RuntimeType::Message(_))
+        && rules
+          .message
+          .0
+          .as_ref()
+          .and_then(|message_rules| message_rules.required)
+          .unwrap_or(false)
+        && field_descriptor.get_singular(message).is_none()
+      {
+        return Err(error::Error::ProtoValidation(format!(
+          "field '{}' in message '{}' is required",
+          field_descriptor.full_name(),
+          message_descriptor.full_name()
+        )));
       }
+
+      let value = if matches!(singular, RuntimeType::Message(_)) {
+        field_descriptor.get_singular(message)
+      } else {
+        get_singular_or_default(field_descriptor, message)
+      };
+      let value = value.as_ref();
+      validate_value(
+        &rules,
+        &singular,
+        field_descriptor,
+        message_descriptor,
+        value,
+      )
     },
-    RuntimeFieldType::Repeated(_) => {
+    RuntimeFieldType::Repeated(repeated) => {
       if rules.has_repeated() {
         validate_repeated(
           rules.repeated(),
+          &repeated,
           field_descriptor,
           message_descriptor,
           message,
-        )?;
+        )
+      } else {
+        Ok(true)
       }
     },
     RuntimeFieldType::Map(..) => {
       not_implemented(rules.has_map(), "map validation")?;
+      Ok(true)
     },
   }
-
-  Ok(true)
 }
 
 // Validate a message using PGV annotations and reflection.
