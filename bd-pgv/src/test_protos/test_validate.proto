@@ -27,6 +27,7 @@ message Repeated {
 
   repeated string strings = 1 [(validate.rules).repeated.min_items = 1];
   repeated Inner messages = 2 [(validate.rules).repeated.min_items = 1];
+  repeated uint32 limited = 3 [(validate.rules).repeated.max_items = 2];
 }
 
 message Message {

@@ -120,6 +120,19 @@ fn repeated() {
   let message = Repeated {
     strings: vec!["hello".to_string()],
     messages: vec![repeated::Inner::default()],
+    limited: vec![1, 2, 3],
+    ..Default::default()
+  };
+  matches::assert_matches!(
+    validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'proto_validate.test.Repeated.limited' in message 'proto_validate.test.Repeated' \
+    requires repeated items <= 2");
+
+  let message = Repeated {
+    strings: vec!["hello".to_string()],
+    messages: vec![repeated::Inner::default()],
+    limited: vec![1, 2],
     ..Default::default()
   };
   assert!(validate(&message).is_ok());

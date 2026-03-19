@@ -497,6 +497,8 @@ pub struct Repeated {
     pub strings: ::std::vec::Vec<::std::string::String>,
     // @@protoc_insertion_point(field:proto_validate.test.Repeated.messages)
     pub messages: ::std::vec::Vec<repeated::Inner>,
+    // @@protoc_insertion_point(field:proto_validate.test.Repeated.limited)
+    pub limited: ::std::vec::Vec<u32>,
     // special fields
     // @@protoc_insertion_point(special_field:proto_validate.test.Repeated.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -514,7 +516,7 @@ impl Repeated {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut fields = ::std::vec::Vec::with_capacity(3);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
             "strings",
@@ -525,6 +527,11 @@ impl Repeated {
             "messages",
             |m: &Repeated| { &m.messages },
             |m: &mut Repeated| { &mut m.messages },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "limited",
+            |m: &Repeated| { &m.limited },
+            |m: &mut Repeated| { &mut m.limited },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Repeated>(
             "Repeated",
@@ -550,6 +557,12 @@ impl ::protobuf::Message for Repeated {
                 18 => {
                     self.messages.push(is.read_message()?);
                 },
+                26 => {
+                    is.read_repeated_packed_uint32_into(&mut self.limited)?;
+                },
+                24 => {
+                    self.limited.push(is.read_uint32()?);
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -569,6 +582,7 @@ impl ::protobuf::Message for Repeated {
             let len = value.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         };
+        my_size += ::protobuf::rt::vec_packed_uint32_size(3, &self.limited);
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -581,6 +595,7 @@ impl ::protobuf::Message for Repeated {
         for v in &self.messages {
             ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
         };
+        os.write_repeated_packed_uint32(3, &self.limited)?;
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -600,6 +615,7 @@ impl ::protobuf::Message for Repeated {
     fn clear(&mut self) {
         self.strings.clear();
         self.messages.clear();
+        self.limited.clear();
         self.special_fields.clear();
     }
 
@@ -607,6 +623,7 @@ impl ::protobuf::Message for Repeated {
         static instance: Repeated = Repeated {
             strings: ::std::vec::Vec::new(),
             messages: ::std::vec::Vec::new(),
+            limited: ::std::vec::Vec::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -2203,26 +2220,28 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x02\x20\x01(\x08H\0R\x06field2B\x07\xfaB\x04j\x02\x08\x01B\x06\n\x04tes\
     t\"H\n\x06String\x12\x1d\n\x05field\x18\x01\x20\x01(\tR\x05fieldB\x07\
     \xfaB\x04r\x02\x10\x01\x12\x1f\n\x06field2\x18\x02\x20\x01(\tR\x06field2\
-    B\x07\xfaB\x04r\x02\x18\x02\"\x82\x01\n\x08Repeated\x12\"\n\x07strings\
+    B\x07\xfaB\x04r\x02\x18\x02\"\xa6\x01\n\x08Repeated\x12\"\n\x07strings\
     \x18\x01\x20\x03(\tR\x07stringsB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12I\n\
     \x08messages\x18\x02\x20\x03(\x0b2#.proto_validate.test.Repeated.InnerR\
-    \x08messagesB\x08\xfaB\x05\x92\x01\x02\x08\x01\x1a\x07\n\x05Inner\"V\n\
-    \x07Message\x12B\n\x05inner\x18\x01\x20\x01(\x0b2\".proto_validate.test.\
-    Message.InnerR\x05innerB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x1a\x07\n\x05I\
-    nner\"Z\n\x05OneOf\x12!\n\x06field1\x18\x01\x20\x01(\x08H\0R\x06field1B\
-    \x07\xfaB\x04j\x02\x08\x01\x12!\n\x06field2\x18\x02\x20\x01(\tH\0R\x06fi\
-    eld2B\x07\xfaB\x04r\x02\x10\x01B\x0b\n\x04test\x12\x03\xf8B\x01\"/\n\x0e\
-    NotImplemented\x12\x1d\n\x05field\x18\x01\x20\x01(\tR\x05fieldB\x07\xfaB\
-    \x04r\x02(\n\"]\n\x07EnumOld\x12A\n\x05field\x18\x01\x20\x01(\x0e2!.prot\
-    o_validate.test.EnumOld.EnumR\x05fieldB\x08\xfaB\x05\x82\x01\x02\x10\x01\
-    \"\x0f\n\x04Enum\x12\x07\n\x03FOO\x10\0\"\\\n\x07EnumNew\x127\n\x05field\
-    \x18\x01\x20\x01(\x0e2!.proto_validate.test.EnumNew.EnumR\x05field\"\x18\
-    \n\x04Enum\x12\x07\n\x03FOO\x10\0\x12\x07\n\x03BAR\x10\x01\"'\n\x06Uint3\
-    2\x12\x1d\n\x05field\x18\x01\x20\x01(\rR\x05fieldB\x07\xfaB\x04*\x02\x20\
-    \0\"'\n\x06Uint64\x12\x1d\n\x05field\x18\x01\x20\x01(\x04R\x05fieldB\x07\
-    \xfaB\x042\x02\x20\0\"&\n\x05Int32\x12\x1d\n\x05field\x18\x01\x20\x01(\
-    \x05R\x05fieldB\x07\xfaB\x04\x1a\x02\x20\0\"&\n\x05Int64\x12\x1d\n\x05fi\
-    eld\x18\x01\x20\x01(\x03R\x05fieldB\x07\xfaB\x04\"\x02\x20\0b\x06proto3\
+    \x08messagesB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12\"\n\x07limited\x18\
+    \x03\x20\x03(\rR\x07limitedB\x08\xfaB\x05\x92\x01\x02\x10\x02\x1a\x07\n\
+    \x05Inner\"V\n\x07Message\x12B\n\x05inner\x18\x01\x20\x01(\x0b2\".proto_\
+    validate.test.Message.InnerR\x05innerB\x08\xfaB\x05\x8a\x01\x02\x10\x01\
+    \x1a\x07\n\x05Inner\"Z\n\x05OneOf\x12!\n\x06field1\x18\x01\x20\x01(\x08H\
+    \0R\x06field1B\x07\xfaB\x04j\x02\x08\x01\x12!\n\x06field2\x18\x02\x20\
+    \x01(\tH\0R\x06field2B\x07\xfaB\x04r\x02\x10\x01B\x0b\n\x04test\x12\x03\
+    \xf8B\x01\"/\n\x0eNotImplemented\x12\x1d\n\x05field\x18\x01\x20\x01(\tR\
+    \x05fieldB\x07\xfaB\x04r\x02(\n\"]\n\x07EnumOld\x12A\n\x05field\x18\x01\
+    \x20\x01(\x0e2!.proto_validate.test.EnumOld.EnumR\x05fieldB\x08\xfaB\x05\
+    \x82\x01\x02\x10\x01\"\x0f\n\x04Enum\x12\x07\n\x03FOO\x10\0\"\\\n\x07Enu\
+    mNew\x127\n\x05field\x18\x01\x20\x01(\x0e2!.proto_validate.test.EnumNew.\
+    EnumR\x05field\"\x18\n\x04Enum\x12\x07\n\x03FOO\x10\0\x12\x07\n\x03BAR\
+    \x10\x01\"'\n\x06Uint32\x12\x1d\n\x05field\x18\x01\x20\x01(\rR\x05fieldB\
+    \x07\xfaB\x04*\x02\x20\0\"'\n\x06Uint64\x12\x1d\n\x05field\x18\x01\x20\
+    \x01(\x04R\x05fieldB\x07\xfaB\x042\x02\x20\0\"&\n\x05Int32\x12\x1d\n\x05\
+    field\x18\x01\x20\x01(\x05R\x05fieldB\x07\xfaB\x04\x1a\x02\x20\0\"&\n\
+    \x05Int64\x12\x1d\n\x05field\x18\x01\x20\x01(\x03R\x05fieldB\x07\xfaB\
+    \x04\"\x02\x20\0b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

@@ -288,9 +288,9 @@ fn validate_repeated(
   message_descriptor: &MessageDescriptor,
   message: &dyn protobuf::MessageDyn,
 ) -> error::Result<()> {
-  if rules.has_min_items()
-    && field_descriptor.get_repeated(message).len() < usize::try_from(rules.min_items()).unwrap()
-  {
+  let repeated_len = field_descriptor.get_repeated(message).len();
+
+  if rules.has_min_items() && repeated_len < usize::try_from(rules.min_items()).unwrap() {
     return Err(error::Error::ProtoValidation(format!(
       "field '{}' in message '{}' requires repeated items >= {}",
       field_descriptor.full_name(),
@@ -299,7 +299,15 @@ fn validate_repeated(
     )));
   }
 
-  not_implemented(rules.has_max_items(), "repeated max_items")?;
+  if rules.has_max_items() && repeated_len > usize::try_from(rules.max_items()).unwrap() {
+    return Err(error::Error::ProtoValidation(format!(
+      "field '{}' in message '{}' requires repeated items <= {}",
+      field_descriptor.full_name(),
+      message_descriptor.full_name(),
+      rules.max_items()
+    )));
+  }
+
   not_implemented(rules.has_unique(), "repeated unique")?;
   not_implemented(rules.items.is_some(), "repeated items")?;
   not_implemented(rules.has_ignore_empty(), "repeated ignore_empty")?;
