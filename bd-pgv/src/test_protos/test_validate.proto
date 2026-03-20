@@ -1,12 +1,17 @@
 syntax = "proto3";
 
 import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
 import "validate/validate.proto";
 
 package proto_validate.test;
 
 message Duration {
   google.protobuf.Duration field = 1 [(validate.rules).duration.gt = {}];
+}
+
+message Timestamp {
+  google.protobuf.Timestamp field = 1 [(validate.rules).timestamp.required = true];
 }
 
 message Bool {
@@ -28,6 +33,8 @@ message Repeated {
   repeated string strings = 1 [(validate.rules).repeated.min_items = 1];
   repeated Inner messages = 2 [(validate.rules).repeated.min_items = 1];
   repeated uint32 limited = 3 [(validate.rules).repeated.max_items = 2];
+  repeated string non_empty_strings = 4 [(validate.rules).repeated.items.string.min_len = 1];
+  repeated uint32 positive_numbers = 5 [(validate.rules).repeated.items.uint32.gt = 0];
 }
 
 message Message {
@@ -47,6 +54,10 @@ message OneOf {
 
 message NotImplemented {
   string field = 1 [(validate.rules).string.max_bytes = 10];
+}
+
+message NestedNotImplemented {
+  NotImplemented field = 1;
 }
 
 message EnumOld {
