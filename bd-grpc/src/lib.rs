@@ -729,10 +729,11 @@ pub fn make_server_streaming_router<ResponseType: MessageFull, RequestType: Mess
   stream_stats: Option<&EndpointStats>,
   validate_request: bool,
   compression: Option<bd_grpc_codec::Compression>,
-) -> Router {
+) -> Result<Router> {
+  verify_request_support::<RequestType>(validate_request)?;
   let warn_tracker = Arc::new(WarnTracker::default());
   let stream_stats = stream_stats.map(|stats| stats.resolve_streaming(service_method));
-  Router::new().route(
+  Ok(Router::new().route(
     &service_method.full_path(),
     post(move |request: Request| async move {
       let connect_protocol_type = ConnectProtocolType::from_headers(request.headers());
@@ -749,7 +750,7 @@ pub fn make_server_streaming_router<ResponseType: MessageFull, RequestType: Mess
       .await
       .map_err(|e| e.to_response(connect_protocol_type))
     }),
-  )
+  ))
 }
 
 // Create an axum router for a unary request and a handler.
@@ -759,7 +760,7 @@ pub fn make_unary_router<OutgoingType: MessageFull, IncomingType: MessageFull>(
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
   endpoint_stats: Option<&EndpointStats>,
   validate_request: bool,
-) -> Router {
+) -> Result<Router> {
   make_unary_router_with_response_mutator(
     service_method,
     handler,
@@ -781,7 +782,7 @@ pub fn make_unary_router_with_response_mutator<
   validate_request: bool,
   response_mutator: Option<UnaryResponseMutator<IncomingType>>,
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
-) -> Router {
+) -> Result<Router> {
   make_unary_router_at_path_with_response_mutator(
     service_method,
     &service_method.full_path(),
@@ -801,7 +802,7 @@ pub fn make_unary_router_at_path<OutgoingType: MessageFull, IncomingType: Messag
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
   endpoint_stats: Option<&EndpointStats>,
   validate_request: bool,
-) -> Router {
+) -> Result<Router> {
   make_unary_router_at_path_with_response_mutator(
     service_method,
     full_path,
@@ -826,13 +827,14 @@ pub fn make_unary_router_at_path_with_response_mutator<
   validate_request: bool,
   response_mutator: Option<UnaryResponseMutator<IncomingType>>,
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
-) -> Router {
+) -> Result<Router> {
+  verify_request_support::<OutgoingType>(validate_request)?;
   let warn_tracker = Arc::new(WarnTracker::default());
   let full_path = Arc::new(full_path.to_string());
   let resolved_stats = endpoint_stats
     .as_ref()
     .map(|stats| stats.resolve::<OutgoingType, IncomingType>(service_method));
-  Router::new().route(
+  Ok(Router::new().route(
     full_path.clone().as_ref(),
     post(move |request: Request| async move {
       let connect_protocol_type = ConnectProtocolType::from_headers(request.headers());
@@ -862,7 +864,15 @@ pub fn make_unary_router_at_path_with_response_mutator<
 
       result.map_err(|e| e.to_response(connect_protocol_type))
     }),
-  )
+  ))
+}
+
+fn verify_request_support<RequestType: MessageFull>(validate_request: bool) -> Result<()> {
+  if validate_request {
+    bd_pgv::proto_validate::verify_descriptor_support(&RequestType::descriptor())?;
+  }
+
+  Ok(())
 }
 
 //

@@ -15,7 +15,12 @@ message EchoRepeatedResponse {
   repeated string values = 1;
 }
 
+message UnsupportedRequest {
+  string echo = 1 [(validate.rules).string.max_bytes = 1];
+}
+
 service Test {
   rpc Echo(EchoRequest) returns (EchoResponse);
   rpc EchoRepeated(EchoRequest) returns (EchoRepeatedResponse);
+  rpc UnsupportedEcho(UnsupportedRequest) returns (EchoResponse);
 }

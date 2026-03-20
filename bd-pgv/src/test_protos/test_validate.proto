@@ -56,6 +56,10 @@ message NotImplemented {
   string field = 1 [(validate.rules).string.max_bytes = 10];
 }
 
+message NestedNotImplemented {
+  NotImplemented field = 1;
+}
+
 message EnumOld {
   enum Enum {
     FOO = 0;

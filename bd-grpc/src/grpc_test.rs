@@ -8,7 +8,12 @@
 use crate::client::{AddressHelper, Client};
 use crate::compression::{Compression, ConnectSafeCompressionLayer};
 use crate::connect_protocol::ConnectProtocolType;
-use crate::generated::proto::test::{EchoRepeatedResponse, EchoRequest, EchoResponse};
+use crate::generated::proto::test::{
+  EchoRepeatedResponse,
+  EchoRequest,
+  EchoResponse,
+  UnsupportedRequest,
+};
 use crate::stats::EndpointStats;
 use crate::{
   CONNECT_PROTOCOL_VERSION,
@@ -67,6 +72,10 @@ fn repeated_service_method() -> ServiceMethod<EchoRequest, EchoRepeatedResponse>
   ServiceMethod::<EchoRequest, EchoRepeatedResponse>::new("Test", "EchoRepeated")
 }
 
+fn unsupported_service_method() -> ServiceMethod<UnsupportedRequest, EchoResponse> {
+  ServiceMethod::<UnsupportedRequest, EchoResponse>::new("Test", "UnsupportedEcho")
+}
+
 async fn make_unary_server(
   handler: Arc<dyn Handler<EchoRequest, EchoResponse>>,
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
@@ -89,6 +98,7 @@ async fn make_unary_server_with_response_mutator(
     response_mutator,
     error_handler,
   )
+  .unwrap()
   .layer(ConnectSafeCompressionLayer::new());
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let local_address = listener.local_addr().unwrap();
@@ -111,6 +121,7 @@ async fn make_server_streaming_server(
     true,
     None,
   )
+  .unwrap()
   .layer(ConnectSafeCompressionLayer::new());
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let local_address = listener.local_addr().unwrap();
@@ -169,6 +180,9 @@ struct EchoHandler {
 #[derive(Default)]
 struct EchoRepeatedHandler;
 
+#[derive(Default)]
+struct UnsupportedHandler;
+
 enum StreamingTestEvent {
   Message(EchoResponse),
   EndStreamOk,
@@ -203,6 +217,21 @@ impl Handler<EchoRequest, EchoRepeatedResponse> for EchoRepeatedHandler {
     _request: EchoRequest,
   ) -> Result<EchoRepeatedResponse> {
     Ok(EchoRepeatedResponse::default())
+  }
+}
+
+#[async_trait]
+impl Handler<UnsupportedRequest, EchoResponse> for UnsupportedHandler {
+  async fn handle(
+    &self,
+    _headers: HeaderMap,
+    _extensions: Extensions,
+    request: UnsupportedRequest,
+  ) -> Result<EchoResponse> {
+    Ok(EchoResponse {
+      echo: request.echo,
+      ..Default::default()
+    })
   }
 }
 
@@ -243,6 +272,26 @@ impl ServerStreamingHandler<EchoResponse, EchoRequest> for EchoHandler {
       }
     }
 
+    Ok(())
+  }
+}
+
+#[async_trait]
+impl ServerStreamingHandler<EchoResponse, UnsupportedRequest> for UnsupportedHandler {
+  async fn stream(
+    &self,
+    _headers: HeaderMap,
+    _extensions: Extensions,
+    request: UnsupportedRequest,
+    sender: &mut StreamingApiSender<EchoResponse>,
+  ) -> Result<()> {
+    sender
+      .send(EchoResponse {
+        echo: request.echo,
+        ..Default::default()
+      })
+      .await
+      .unwrap();
     Ok(())
   }
 }
@@ -996,6 +1045,53 @@ async fn connect_unary_error() {
   );
 }
 
+#[test]
+fn make_unary_router_rejects_unsupported_pgv_validation() {
+  assert_matches!(
+    make_unary_router_with_response_mutator(
+      &unsupported_service_method(),
+      Arc::new(UnsupportedHandler),
+      None,
+      true,
+      None,
+      |_| {},
+    ),
+    Err(Error::ProtoValidation(bd_pgv::error::Error::ProtoValidation(message)))
+      if message == "not implemented: string rules max_bytes"
+  );
+}
+
+#[test]
+fn make_unary_router_allows_unsupported_pgv_when_validation_disabled() {
+  assert!(
+    make_unary_router_with_response_mutator(
+      &unsupported_service_method(),
+      Arc::new(UnsupportedHandler),
+      None,
+      false,
+      None,
+      |_| {},
+    )
+    .is_ok()
+  );
+}
+
+#[test]
+fn make_server_streaming_router_rejects_unsupported_pgv_validation() {
+  assert_matches!(
+    make_server_streaming_router(
+      &unsupported_service_method(),
+      Arc::new(UnsupportedHandler),
+      |_| {},
+      None,
+      true,
+      None,
+    ),
+    Err(Error::ProtoValidation(bd_pgv::error::Error::ProtoValidation(message)))
+      if message == "not implemented: string rules max_bytes"
+  );
+}
+
 #[tokio::test]
 async fn connect_unary() {
   let local_address = make_unary_server(Arc::new(EchoHandler::default()), |_| {}, None).await;
@@ -1118,6 +1214,7 @@ async fn unary_json_transcoding_omits_empty_repeated_fields() {
     None,
     |_| {},
   )
+  .unwrap()
   .layer(ConnectSafeCompressionLayer::new());
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let local_address = listener.local_addr().unwrap();

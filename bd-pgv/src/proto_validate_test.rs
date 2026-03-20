@@ -5,19 +5,20 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::validate;
+use super::{validate, verify_descriptor_support};
 use crate::error;
 use crate::generated::test_protos;
 use crate::generated::test_protos::test_validate::{Duration, Int32, Int64, Uint64};
 use bd_time::ToProtoDuration;
-use protobuf::Message as ProtoMessage;
 use protobuf::well_known_types::duration::Duration as ProtoDuration;
 use protobuf::well_known_types::timestamp::Timestamp as ProtoTimestamp;
+use protobuf::{Message as ProtoMessage, MessageFull};
 use test_protos::test_validate::{
   Bool,
   EnumNew,
   EnumOld,
   Message,
+  NestedNotImplemented,
   NotImplemented,
   OneOf,
   Repeated,
@@ -223,6 +224,27 @@ fn not_implemented() {
   let message = NotImplemented::default();
   matches::assert_matches!(
     validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "not implemented: string rules max_bytes");
+}
+
+#[test]
+fn verify_descriptor_support_supported_message() {
+  assert!(verify_descriptor_support(&Repeated::descriptor()).is_ok());
+}
+
+#[test]
+fn verify_descriptor_support_rejects_unsupported_message() {
+  matches::assert_matches!(
+    verify_descriptor_support(&NotImplemented::descriptor()),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "not implemented: string rules max_bytes");
+}
+
+#[test]
+fn verify_descriptor_support_rejects_unsupported_nested_message() {
+  matches::assert_matches!(
+    verify_descriptor_support(&NestedNotImplemented::descriptor()),
     Err(error::Error::ProtoValidation(message)) if message ==
     "not implemented: string rules max_bytes");
 }

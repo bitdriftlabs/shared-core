@@ -31,6 +31,7 @@ use protos::validate::{
   UInt64Rules,
 };
 use std::any::type_name;
+use std::collections::HashSet;
 use std::fmt::Display;
 use std::time::Duration;
 
@@ -75,6 +76,26 @@ trait IntHelper {
   fn not_in(&self) -> &[Self::Item];
   fn has_ignore_empty(&self) -> bool;
 
+  fn verify_supported_int_rules(&self) -> error::Result<()> {
+    not_implemented(
+      self.has_const(),
+      &format!("{} rules const", type_name::<Self::Item>()),
+    )?;
+    not_implemented(
+      !self.in_().is_empty(),
+      &format!("{} rules in", type_name::<Self::Item>()),
+    )?;
+    not_implemented(
+      !self.not_in().is_empty(),
+      &format!("{} rules not_in", type_name::<Self::Item>()),
+    )?;
+    not_implemented(
+      self.has_ignore_empty(),
+      &format!("{} rules ignore_empty", type_name::<Self::Item>()),
+    )?;
+    Ok(())
+  }
+
   fn validate_all_int_rules(
     &self,
     value: Self::Item,
@@ -117,22 +138,7 @@ trait IntHelper {
       )));
     }
 
-    not_implemented(
-      self.has_const(),
-      &format!("{} rules const", type_name::<Self::Item>()),
-    )?;
-    not_implemented(
-      !self.in_().is_empty(),
-      &format!("{} rules in", type_name::<Self::Item>()),
-    )?;
-    not_implemented(
-      !self.not_in().is_empty(),
-      &format!("{} rules not_in", type_name::<Self::Item>()),
-    )?;
-    not_implemented(
-      self.has_ignore_empty(),
-      &format!("{} rules ignore_empty", type_name::<Self::Item>()),
-    )?;
+    self.verify_supported_int_rules()?;
     Ok(())
   }
 }
@@ -175,13 +181,7 @@ impl_int_helper!(UInt64Rules, u64);
 impl_int_helper!(Int32Rules, i32);
 impl_int_helper!(Int64Rules, i64);
 
-// Validate google.protobuf.Duration.
-fn validate_duration(
-  rules: &DurationRules,
-  field_descriptor: &FieldDescriptor,
-  message_descriptor: &MessageDescriptor,
-  duration: &ProtoDuration,
-) -> error::Result<()> {
+fn verify_duration_rules_supported(rules: &DurationRules) -> error::Result<()> {
   not_implemented(rules.has_required(), "duration required")?;
   not_implemented(rules.const_.is_some(), "duration const")?;
   not_implemented(rules.lt.is_some(), "duration lt")?;
@@ -189,6 +189,17 @@ fn validate_duration(
   not_implemented(rules.gte.is_some(), "duration gte")?;
   not_implemented(!rules.in_.is_empty(), "duration in")?;
   not_implemented(!rules.not_in.is_empty(), "duration not_in")?;
+  Ok(())
+}
+
+// Validate google.protobuf.Duration.
+fn validate_duration(
+  rules: &DurationRules,
+  field_descriptor: &FieldDescriptor,
+  message_descriptor: &MessageDescriptor,
+  duration: &ProtoDuration,
+) -> error::Result<()> {
+  verify_duration_rules_supported(rules)?;
 
   let duration: Duration = duration.clone().try_into().map_err(|_| {
     error::Error::ProtoValidation("negative proto duration not supported".to_string())
@@ -210,23 +221,8 @@ fn validate_duration(
   Ok(())
 }
 
-// Validate google.protobuf.Timestamp.
-fn validate_timestamp(
-  rules: &FieldRules,
-  field_descriptor: &FieldDescriptor,
-  message_descriptor: &MessageDescriptor,
-  value: Option<&ProtoTimestamp>,
-) -> error::Result<()> {
+fn verify_timestamp_rules_supported(rules: &FieldRules) -> error::Result<()> {
   let rules = rules.timestamp();
-
-  if rules.required() && value.is_none() {
-    return Err(error::Error::ProtoValidation(format!(
-      "field '{}' in message '{}' is required",
-      field_descriptor.full_name(),
-      message_descriptor.full_name()
-    )));
-  }
-
   not_implemented(rules.const_.is_some(), "timestamp const")?;
   not_implemented(rules.lt.is_some(), "timestamp lt")?;
   not_implemented(rules.lte.is_some(), "timestamp lte")?;
@@ -235,8 +231,161 @@ fn validate_timestamp(
   not_implemented(rules.has_lt_now(), "timestamp lt_now")?;
   not_implemented(rules.has_gt_now(), "timestamp gt_now")?;
   not_implemented(rules.within.is_some(), "timestamp within")?;
+  Ok(())
+}
+
+// Validate google.protobuf.Timestamp.
+fn validate_timestamp(
+  rules: &FieldRules,
+  field_descriptor: &FieldDescriptor,
+  message_descriptor: &MessageDescriptor,
+  value: Option<&ProtoTimestamp>,
+) -> error::Result<()> {
+  let timestamp_rules = rules.timestamp();
+
+  if timestamp_rules.required() && value.is_none() {
+    return Err(error::Error::ProtoValidation(format!(
+      "field '{}' in message '{}' is required",
+      field_descriptor.full_name(),
+      message_descriptor.full_name()
+    )));
+  }
+
+  verify_timestamp_rules_supported(rules)?;
 
   Ok(())
+}
+
+fn verify_string_rules_supported(rules: &FieldRules) -> error::Result<()> {
+  not_implemented(rules.string().has_const(), "string rules const")?;
+  not_implemented(rules.string().has_len(), "string rules len")?;
+  not_implemented(rules.string().has_len_bytes(), "string rules len_bytes")?;
+  not_implemented(rules.string().has_min_bytes(), "string rules min_bytes")?;
+  not_implemented(rules.string().has_max_bytes(), "string rules max_bytes")?;
+  not_implemented(rules.string().has_pattern(), "string rules pattern")?;
+  not_implemented(rules.string().has_prefix(), "string rules prefix")?;
+  not_implemented(rules.string().has_suffix(), "string rules suffix")?;
+  not_implemented(rules.string().has_contains(), "string rules contains")?;
+  not_implemented(
+    rules.string().has_not_contains(),
+    "string rules not_contains",
+  )?;
+  not_implemented(!rules.string().in_.is_empty(), "string rules in")?;
+  not_implemented(!rules.string().not_in.is_empty(), "string rules not_in")?;
+  not_implemented(rules.string().has_email(), "string rules email")?;
+  not_implemented(rules.string().has_hostname(), "string rules hostname")?;
+  not_implemented(rules.string().has_ip(), "string rules ip")?;
+  not_implemented(rules.string().has_ipv4(), "string rules ipv4")?;
+  not_implemented(rules.string().has_ipv6(), "string rules ipv6")?;
+  not_implemented(rules.string().has_uri(), "string rules uri")?;
+  not_implemented(rules.string().has_uri_ref(), "string rules uri_ref")?;
+  not_implemented(rules.string().has_address(), "string rules address")?;
+  not_implemented(rules.string().has_uuid(), "string rules uuid")?;
+  not_implemented(
+    rules.string().has_well_known_regex(),
+    "string rules well_known_regex",
+  )?;
+  Ok(())
+}
+
+fn verify_enum_rules_supported(rules: &FieldRules) -> error::Result<()> {
+  not_implemented(rules.enum_().has_const(), "enum rules const")?;
+  not_implemented(!rules.enum_().in_.is_empty(), "enum rules in")?;
+  not_implemented(!rules.enum_().not_in.is_empty(), "enum rules not_in")?;
+  Ok(())
+}
+
+// Verify that a reflected field rule set only uses validations we support. The returned bool
+// indicates whether descriptor recursion should continue for this field.
+fn verify_value_support(rules: &FieldRules, runtime_type: &RuntimeType) -> error::Result<bool> {
+  not_implemented(rules.has_any(), "field any")?;
+
+  // The following do not appear to be exposed by the Rust library and are probably not typically
+  // used anyway.
+  not_implemented(rules.has_fixed32(), "field fixed32")?;
+  not_implemented(rules.has_fixed64(), "field fixed64")?;
+  not_implemented(rules.has_sfixed32(), "field sfixed32")?;
+  not_implemented(rules.has_sfixed64(), "field sfixed64")?;
+
+  match runtime_type {
+    RuntimeType::Message(message_descriptor) => {
+      if rules
+        .message
+        .0
+        .as_ref()
+        .and_then(|message_rules| message_rules.skip)
+        .unwrap_or(false)
+      {
+        return Ok(false);
+      }
+
+      if rules.has_duration() {
+        if message_descriptor.full_name() != "google.protobuf.Duration" {
+          return Err(error::Error::ProtoValidation(format!(
+            "not implemented: duration rules on non-Duration field '{}'",
+            message_descriptor.full_name()
+          )));
+        }
+
+        verify_duration_rules_supported(rules.duration())?;
+        return Ok(false);
+      }
+
+      if rules.has_timestamp() {
+        if message_descriptor.full_name() != "google.protobuf.Timestamp" {
+          return Err(error::Error::ProtoValidation(format!(
+            "not implemented: timestamp rules on non-Timestamp field '{}'",
+            message_descriptor.full_name()
+          )));
+        }
+
+        verify_timestamp_rules_supported(rules)?;
+        return Ok(false);
+      }
+    },
+    RuntimeType::String => {
+      if rules.has_string() {
+        verify_string_rules_supported(rules)?;
+      }
+    },
+    RuntimeType::I32 => {
+      if rules.has_int32() {
+        rules.int32().verify_supported_int_rules()?;
+      }
+    },
+    RuntimeType::I64 => {
+      if rules.has_int64() {
+        rules.int64().verify_supported_int_rules()?;
+      }
+    },
+    RuntimeType::U32 => {
+      if rules.has_uint32() {
+        rules.uint32().verify_supported_int_rules()?;
+      }
+    },
+    RuntimeType::U64 => {
+      if rules.has_uint64() {
+        rules.uint64().verify_supported_int_rules()?;
+      }
+    },
+    RuntimeType::F32 => {
+      not_implemented(rules.has_float(), "float validation")?;
+    },
+    RuntimeType::F64 => {
+      not_implemented(rules.has_double(), "double validation")?;
+    },
+    RuntimeType::Bool => {},
+    RuntimeType::VecU8 => {
+      not_implemented(rules.has_bytes(), "bytes validation")?;
+    },
+    RuntimeType::Enum(_) => {
+      if rules.has_enum() {
+        verify_enum_rules_supported(rules)?;
+      }
+    },
+  }
+
+  Ok(true)
 }
 
 // Validate a reflected value against PGV field rules. The returned bool indicates whether message
@@ -248,27 +397,10 @@ fn validate_value(
   message_descriptor: &MessageDescriptor,
   value: Option<&ReflectValueRef<'_>>,
 ) -> error::Result<bool> {
-  not_implemented(rules.has_any(), "field any")?;
-
-  // The following do not appear to be exposed by the Rust library and are probably not typically
-  // used anyway.
-  not_implemented(rules.has_fixed32(), "field fixed32")?;
-  not_implemented(rules.has_fixed64(), "field fixed64")?;
-  not_implemented(rules.has_sfixed32(), "field sfixed32")?;
-  not_implemented(rules.has_sfixed64(), "field sfixed64")?;
+  let recurse = verify_value_support(rules, runtime_type)?;
 
   match runtime_type {
     RuntimeType::Message(_) => {
-      if rules
-        .message
-        .0
-        .as_ref()
-        .and_then(|message_rules| message_rules.skip)
-        .unwrap_or(false)
-      {
-        return Ok(false);
-      }
-
       if rules.has_duration()
         && let Some(ReflectValueRef::Message(duration)) = value
         && duration.descriptor_dyn().full_name() == "google.protobuf.Duration"
@@ -321,35 +453,6 @@ fn validate_value(
             rules.string().max_len()
           )));
         }
-
-        not_implemented(rules.string().has_const(), "string rules const")?;
-        not_implemented(rules.string().has_len(), "string rules len")?;
-        not_implemented(rules.string().has_len_bytes(), "string rules len_bytes")?;
-        not_implemented(rules.string().has_min_bytes(), "string rules min_bytes")?;
-        not_implemented(rules.string().has_max_bytes(), "string rules max_bytes")?;
-        not_implemented(rules.string().has_pattern(), "string rules pattern")?;
-        not_implemented(rules.string().has_prefix(), "string rules prefix")?;
-        not_implemented(rules.string().has_suffix(), "string rules suffix")?;
-        not_implemented(rules.string().has_contains(), "string rules contains")?;
-        not_implemented(
-          rules.string().has_not_contains(),
-          "string rules not_contains",
-        )?;
-        not_implemented(!rules.string().in_.is_empty(), "string rules in")?;
-        not_implemented(!rules.string().not_in.is_empty(), "string rules not_in")?;
-        not_implemented(rules.string().has_email(), "string rules email")?;
-        not_implemented(rules.string().has_hostname(), "string rules hostname")?;
-        not_implemented(rules.string().has_ip(), "string rules ip")?;
-        not_implemented(rules.string().has_ipv4(), "string rules ipv4")?;
-        not_implemented(rules.string().has_ipv6(), "string rules ipv6")?;
-        not_implemented(rules.string().has_uri(), "string rules uri")?;
-        not_implemented(rules.string().has_uri_ref(), "string rules uri_ref")?;
-        not_implemented(rules.string().has_address(), "string rules address")?;
-        not_implemented(rules.string().has_uuid(), "string rules uuid")?;
-        not_implemented(
-          rules.string().has_well_known_regex(),
-          "string rules well_known_regex",
-        )?;
       }
     },
     RuntimeType::I32 => {
@@ -414,24 +517,34 @@ fn validate_value(
     RuntimeType::Enum(enum_descriptor) => {
       if rules.has_enum()
         && let Some(ReflectValueRef::Enum(_, value)) = value
+        && rules.enum_().defined_only()
+        && enum_descriptor.value_by_number(*value).is_none()
       {
-        if rules.enum_().defined_only() && enum_descriptor.value_by_number(*value).is_none() {
-          return Err(error::Error::ProtoValidation(format!(
-            "field '{}' in message '{}' must be a defined enum. Got {}",
-            field_descriptor.full_name(),
-            message_descriptor.full_name(),
-            value
-          )));
-        }
-
-        not_implemented(rules.enum_().has_const(), "enum rules const")?;
-        not_implemented(!rules.enum_().in_.is_empty(), "enum rules in")?;
-        not_implemented(!rules.enum_().not_in.is_empty(), "enum rules not_in")?;
+        return Err(error::Error::ProtoValidation(format!(
+          "field '{}' in message '{}' must be a defined enum. Got {}",
+          field_descriptor.full_name(),
+          message_descriptor.full_name(),
+          value
+        )));
       }
     },
   }
 
-  Ok(true)
+  Ok(recurse)
+}
+
+fn verify_repeated_support(
+  rules: &RepeatedRules,
+  repeated_type: &RuntimeType,
+) -> error::Result<bool> {
+  let recurse = if let Some(item_rules) = rules.items.as_ref() {
+    verify_value_support(item_rules, repeated_type)?
+  } else {
+    true
+  };
+
+  not_implemented(rules.has_unique(), "repeated unique")?;
+  Ok(recurse)
 }
 
 // Validate repeated rules.
@@ -467,7 +580,7 @@ fn validate_repeated(
     )));
   }
 
-  let mut recurse = true;
+  let mut recurse = verify_repeated_support(rules, repeated_type)?;
   if let Some(item_rules) = rules.items.as_ref() {
     for value in repeated {
       recurse &= validate_value(
@@ -479,8 +592,6 @@ fn validate_repeated(
       )?;
     }
   }
-
-  not_implemented(rules.has_unique(), "repeated unique")?;
 
   Ok(recurse)
 }
@@ -552,6 +663,66 @@ fn validate_field(
       Ok(true)
     },
   }
+}
+
+fn verify_field_support(field_descriptor: &FieldDescriptor) -> error::Result<bool> {
+  let rules = field_descriptor
+    .proto()
+    .options
+    .as_ref()
+    .and_then(|options| protos::validate::exts::rules.get(options));
+  if rules.is_none() {
+    return Ok(true);
+  }
+  let rules = rules.unwrap();
+
+  match field_descriptor.runtime_field_type() {
+    RuntimeFieldType::Singular(singular) => verify_value_support(&rules, &singular),
+    RuntimeFieldType::Repeated(repeated) => {
+      if rules.has_repeated() {
+        verify_repeated_support(rules.repeated(), &repeated)
+      } else {
+        Ok(true)
+      }
+    },
+    RuntimeFieldType::Map(..) => {
+      not_implemented(rules.has_map(), "map validation")?;
+      Ok(true)
+    },
+  }
+}
+
+fn verify_descriptor_support_impl(
+  message_descriptor: &MessageDescriptor,
+  visited: &mut HashSet<String>,
+) -> error::Result<()> {
+  let descriptor_name = message_descriptor.full_name().to_string();
+  if !visited.insert(descriptor_name) {
+    return Ok(());
+  }
+
+  for field in message_descriptor.fields() {
+    if !verify_field_support(&field)? {
+      continue;
+    }
+
+    match field.runtime_field_type() {
+      RuntimeFieldType::Singular(RuntimeType::Message(message_descriptor))
+      | RuntimeFieldType::Repeated(RuntimeType::Message(message_descriptor))
+      | RuntimeFieldType::Map(_, RuntimeType::Message(message_descriptor)) => {
+        verify_descriptor_support_impl(&message_descriptor, visited)?;
+      },
+      RuntimeFieldType::Singular(_) | RuntimeFieldType::Repeated(_) | RuntimeFieldType::Map(..) => {
+      },
+    }
+  }
+
+  Ok(())
+}
+
+// Verify that all PGV rules used by a message descriptor are supported by the runtime validator.
+pub fn verify_descriptor_support(message_descriptor: &MessageDescriptor) -> error::Result<()> {
+  verify_descriptor_support_impl(message_descriptor, &mut HashSet::new())
 }
 
 // Validate a message using PGV annotations and reflection.
