@@ -21,6 +21,7 @@ use crate::{
   CONTENT_TYPE_JSON,
   CONTENT_TYPE_PROTO,
   Code,
+  DEFAULT_MAX_UNARY_REQUEST_BYTES,
   Error,
   Handler,
   Result,
@@ -29,7 +30,9 @@ use crate::{
   Status,
   StreamingApi,
   StreamingApiSender,
+  UnaryRequestConfig,
   make_server_streaming_router,
+  make_unary_router_with_config,
   make_unary_router_with_response_mutator,
   new_grpc_response,
 };
@@ -95,6 +98,7 @@ async fn make_unary_server_with_response_mutator(
     handler,
     endpoint_stats,
     true,
+    UnaryRequestConfig::default(),
     response_mutator,
     error_handler,
   )
@@ -1053,6 +1057,7 @@ fn make_unary_router_rejects_unsupported_pgv_validation() {
       Arc::new(UnsupportedHandler),
       None,
       true,
+      UnaryRequestConfig::default(),
       None,
       |_| {},
     ),
@@ -1069,6 +1074,7 @@ fn make_unary_router_allows_unsupported_pgv_when_validation_disabled() {
       Arc::new(UnsupportedHandler),
       None,
       false,
+      UnaryRequestConfig::default(),
       None,
       |_| {},
     )
@@ -1211,6 +1217,7 @@ async fn unary_json_transcoding_omits_empty_repeated_fields() {
     Arc::new(EchoRepeatedHandler),
     None,
     true,
+    UnaryRequestConfig::default(),
     None,
     |_| {},
   )
@@ -1237,6 +1244,82 @@ async fn unary_json_transcoding_omits_empty_repeated_fields() {
   );
   let body: serde_json::Value = serde_json::from_slice(&response.bytes().await.unwrap()).unwrap();
   assert_eq!(body, serde_json::json!({}));
+}
+
+#[tokio::test]
+async fn unary_request_over_limit_returns_resource_exhausted() {
+  let router = make_unary_router_with_config(
+    &service_method(),
+    Arc::new(EchoHandler::default()),
+    |_| {},
+    None,
+    true,
+    UnaryRequestConfig::default(),
+  )
+  .unwrap()
+  .layer(ConnectSafeCompressionLayer::new());
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let local_address = listener.local_addr().unwrap();
+  let server = axum::serve(listener, router.into_make_service());
+  tokio::spawn(async { server.await.unwrap() });
+
+  let client = Client::new_http(&local_address.to_string(), 10.seconds(), 1).unwrap();
+  let request = EchoRequest {
+    echo: "x".repeat(DEFAULT_MAX_UNARY_REQUEST_BYTES + 1024),
+    ..Default::default()
+  };
+
+  assert_matches!(
+    client
+      .unary(
+        &service_method(),
+        None,
+        request,
+        10.seconds(),
+        Compression::None,
+      )
+      .await,
+    Err(Error::Grpc(Status { code: Code::ResourceExhausted, message: Some(message) }))
+      if message == format!(
+        "Request body exceeds {DEFAULT_MAX_UNARY_REQUEST_BYTES} byte limit"
+      )
+  );
+}
+
+#[tokio::test]
+async fn unary_request_under_limit_succeeds() {
+  let router = make_unary_router_with_config(
+    &service_method(),
+    Arc::new(EchoHandler::default()),
+    |_| {},
+    None,
+    true,
+    UnaryRequestConfig::default(),
+  )
+  .unwrap()
+  .layer(ConnectSafeCompressionLayer::new());
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let local_address = listener.local_addr().unwrap();
+  let server = axum::serve(listener, router.into_make_service());
+  tokio::spawn(async { server.await.unwrap() });
+
+  let client = Client::new_http(&local_address.to_string(), 10.seconds(), 1).unwrap();
+  let request = EchoRequest {
+    echo: "x".repeat(DEFAULT_MAX_UNARY_REQUEST_BYTES - 1024),
+    ..Default::default()
+  };
+
+  let response = client
+    .unary(
+      &service_method(),
+      None,
+      request.clone(),
+      10.seconds(),
+      Compression::None,
+    )
+    .await
+    .unwrap();
+  assert_eq!(response.echo, request.echo);
 }
 
 #[tokio::test]

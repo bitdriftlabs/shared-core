@@ -48,13 +48,14 @@ use connect_protocol::{ConnectProtocolType, EndOfStreamResponse, ErrorResponse, 
 use http::header::{CONTENT_ENCODING, CONTENT_TYPE};
 use http::{Extensions, HeaderMap};
 use http_body::Frame;
-use http_body_util::{BodyExt, StreamBody};
+use http_body_util::{BodyExt, LengthLimitError, StreamBody};
 use protobuf::{Message, MessageFull};
 use protobuf_json_mapping::{ParseOptions, PrintOptions};
 use service::ServiceMethod;
 use stats::{BandwidthStatsSummary, EndpointStats, StreamStats};
 use status::Status;
 use std::convert::Infallible;
+use std::error::Error as StdError;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use time::ext::NumericalDuration;
@@ -70,10 +71,28 @@ const CONTENT_TYPE_CONNECT_STREAMING: &str = "application/connect+proto";
 const CONTENT_TYPE_JSON: &str = "application/json";
 const TRANSFER_ENCODING_TRAILERS: &str = "trailers";
 const CONNECT_PROTOCOL_VERSION: &str = "connect-protocol-version";
+pub const DEFAULT_MAX_UNARY_REQUEST_BYTES: usize = 10 * 1024 * 1024;
 
 pub type BodySender = mpsc::Sender<std::result::Result<Frame<Bytes>, BoxError>>;
 pub type UnaryResponseMutator<IncomingType> =
   Arc<dyn Fn(&mut IncomingType) -> Result<()> + Send + Sync>;
+
+//
+// UnaryRequestConfig
+//
+
+#[derive(Clone, Copy, Debug)]
+pub struct UnaryRequestConfig {
+  pub max_request_bytes: usize,
+}
+
+impl Default for UnaryRequestConfig {
+  fn default() -> Self {
+    Self {
+      max_request_bytes: DEFAULT_MAX_UNARY_REQUEST_BYTES,
+    }
+  }
+}
 
 //
 // StreamingApi
@@ -465,11 +484,25 @@ async fn decode_request<Message: MessageFull>(
   request: Request,
   validate_request: bool,
   connect_protocol_type: Option<ConnectProtocolType>,
+  request_config: UnaryRequestConfig,
 ) -> Result<(HeaderMap<HeaderValue>, Extensions, Message)> {
   let (parts, body) = request.into_parts();
-  let body_bytes = to_bytes(body, usize::MAX)
+  let body_bytes = to_bytes(body, request_config.max_request_bytes)
     .await
-    .map_err(|e| Error::BodyStream(e.into()))?;
+    .map_err(|e| {
+      if StdError::source(&e).is_some_and(<dyn std::error::Error>::is::<LengthLimitError>) {
+        Status::new(
+          Code::ResourceExhausted,
+          format!(
+            "Request body exceeds {} byte limit",
+            request_config.max_request_bytes
+          ),
+        )
+        .into()
+      } else {
+        Error::BodyStream(e.into())
+      }
+    })?;
   let body_bytes = if parts
     .headers
     .get(CONTENT_ENCODING)
@@ -555,10 +588,16 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
   handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
   validate_request: bool,
   connect_protocol_type: Option<ConnectProtocolType>,
+  request_config: UnaryRequestConfig,
   response_mutator: Option<UnaryResponseMutator<IncomingType>>,
 ) -> Result<Response> {
-  let (headers, extensions, message) =
-    decode_request::<OutgoingType>(request, validate_request, connect_protocol_type).await?;
+  let (headers, extensions, message) = decode_request::<OutgoingType>(
+    request,
+    validate_request,
+    connect_protocol_type,
+    request_config,
+  )
+  .await?;
   let json_transcoding = connect_protocol_type.is_none() && is_json_request_content_type(&headers);
 
   if matches!(connect_protocol_type, Some(ConnectProtocolType::Unary)) {
@@ -653,14 +692,18 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
   let path = request.uri().path().to_string();
 
   let (tx, rx) = mpsc::channel(1);
-  let (headers, extensions, message) =
-    decode_request::<RequestType>(request, validate_request, connect_protocol_type)
-      .await
-      .inspect_err(|_| {
-        if let Some(stream_stats) = &stream_stats {
-          stream_stats.rpc.failure.inc();
-        }
-      })?;
+  let (headers, extensions, message) = decode_request::<RequestType>(
+    request,
+    validate_request,
+    connect_protocol_type,
+    UnaryRequestConfig::default(),
+  )
+  .await
+  .inspect_err(|_| {
+    if let Some(stream_stats) = &stream_stats {
+      stream_stats.rpc.failure.inc();
+    }
+  })?;
 
   let compression = finalize_response_compression(compression, &headers);
   tokio::spawn(async move {
@@ -761,11 +804,30 @@ pub fn make_unary_router<OutgoingType: MessageFull, IncomingType: MessageFull>(
   endpoint_stats: Option<&EndpointStats>,
   validate_request: bool,
 ) -> Result<Router> {
+  make_unary_router_with_config(
+    service_method,
+    handler,
+    error_handler,
+    endpoint_stats,
+    validate_request,
+    UnaryRequestConfig::default(),
+  )
+}
+
+pub fn make_unary_router_with_config<OutgoingType: MessageFull, IncomingType: MessageFull>(
+  service_method: &ServiceMethod<OutgoingType, IncomingType>,
+  handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
+  endpoint_stats: Option<&EndpointStats>,
+  validate_request: bool,
+  request_config: UnaryRequestConfig,
+) -> Result<Router> {
   make_unary_router_with_response_mutator(
     service_method,
     handler,
     endpoint_stats,
     validate_request,
+    request_config,
     None,
     error_handler,
   )
@@ -780,6 +842,7 @@ pub fn make_unary_router_with_response_mutator<
   handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
   endpoint_stats: Option<&EndpointStats>,
   validate_request: bool,
+  request_config: UnaryRequestConfig,
   response_mutator: Option<UnaryResponseMutator<IncomingType>>,
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
 ) -> Result<Router> {
@@ -789,6 +852,7 @@ pub fn make_unary_router_with_response_mutator<
     handler,
     endpoint_stats,
     validate_request,
+    request_config,
     response_mutator,
     error_handler,
   )
@@ -803,12 +867,36 @@ pub fn make_unary_router_at_path<OutgoingType: MessageFull, IncomingType: Messag
   endpoint_stats: Option<&EndpointStats>,
   validate_request: bool,
 ) -> Result<Router> {
+  make_unary_router_at_path_with_config(
+    service_method,
+    full_path,
+    handler,
+    error_handler,
+    endpoint_stats,
+    validate_request,
+    UnaryRequestConfig::default(),
+  )
+}
+
+pub fn make_unary_router_at_path_with_config<
+  OutgoingType: MessageFull,
+  IncomingType: MessageFull,
+>(
+  service_method: &ServiceMethod<OutgoingType, IncomingType>,
+  full_path: &str,
+  handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
+  endpoint_stats: Option<&EndpointStats>,
+  validate_request: bool,
+  request_config: UnaryRequestConfig,
+) -> Result<Router> {
   make_unary_router_at_path_with_response_mutator(
     service_method,
     full_path,
     handler,
     endpoint_stats,
     validate_request,
+    request_config,
     None,
     error_handler,
   )
@@ -825,6 +913,7 @@ pub fn make_unary_router_at_path_with_response_mutator<
   handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
   endpoint_stats: Option<&EndpointStats>,
   validate_request: bool,
+  request_config: UnaryRequestConfig,
   response_mutator: Option<UnaryResponseMutator<IncomingType>>,
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
 ) -> Result<Router> {
@@ -843,6 +932,7 @@ pub fn make_unary_router_at_path_with_response_mutator<
         handler,
         validate_request,
         connect_protocol_type,
+        request_config,
         response_mutator.clone(),
       )
       .await;
