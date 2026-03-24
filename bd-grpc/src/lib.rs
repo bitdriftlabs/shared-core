@@ -23,10 +23,11 @@ pub mod status;
 
 use crate::error::{Error, Result};
 use axum::body::{Body, to_bytes};
-use axum::extract::Request;
+use axum::extract::{Request, State};
 use axum::http::HeaderValue;
-use axum::response::Response;
-use axum::routing::post;
+use axum::middleware::{Next, from_fn_with_state};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{Route, post};
 use axum::{BoxError, Router};
 use base64ct::Encoding;
 use bd_grpc_codec::code::Code;
@@ -51,7 +52,7 @@ use http_body::Frame;
 use http_body_util::{BodyExt, LengthLimitError, StreamBody};
 use protobuf::{Message, MessageFull};
 use protobuf_json_mapping::{ParseOptions, PrintOptions};
-use service::ServiceMethod;
+pub use service::{GrpcMethod, ServiceMethod};
 use stats::{BandwidthStatsSummary, EndpointStats, StreamStats};
 use status::Status;
 use std::convert::Infallible;
@@ -61,6 +62,8 @@ use std::sync::Arc;
 use time::ext::NumericalDuration;
 use tokio::sync::{mpsc, watch};
 use tokio_stream::wrappers::ReceiverStream;
+use tower::layer::util::Identity;
+use tower::{Layer, Service};
 
 const GRPC_STATUS: &str = "grpc-status";
 const GRPC_MESSAGE: &str = "grpc-message";
@@ -76,6 +79,20 @@ pub const DEFAULT_MAX_UNARY_REQUEST_BYTES: usize = 10 * 1024 * 1024;
 pub type BodySender = mpsc::Sender<std::result::Result<Frame<Bytes>, BoxError>>;
 pub type UnaryResponseMutator<IncomingType> =
   Arc<dyn Fn(&mut IncomingType) -> Result<()> + Send + Sync>;
+
+/// Inserts gRPC method metadata derived from `ServiceMethod` into request extensions.
+///
+/// Use this with `axum::middleware::from_fn_with_state(service_method.grpc_method(),
+/// grpc_method_extension_middleware)` so top-level Axum route assembly can apply ordinary
+/// middleware that depends on method annotations.
+pub async fn grpc_method_extension_middleware(
+  State(grpc_method): State<GrpcMethod>,
+  mut request: Request,
+  next: Next,
+) -> Response {
+  request.extensions_mut().insert(grpc_method);
+  next.run(request).await
+}
 
 //
 // UnaryRequestConfig
@@ -773,27 +790,78 @@ pub fn make_server_streaming_router<ResponseType: MessageFull, RequestType: Mess
   validate_request: bool,
   compression: Option<bd_grpc_codec::Compression>,
 ) -> Result<Router> {
+  make_server_streaming_router_with_route_layer(
+    service_method,
+    handler,
+    error_handler,
+    stream_stats,
+    validate_request,
+    compression,
+    Identity::new(),
+  )
+}
+
+/// Creates a server-streaming router and applies an additional per-route Axum layer inside
+/// `bd-grpc`.
+///
+/// The supplied `route_layer` runs after `bd-grpc` has inserted `GrpcMethod` into the request
+/// extensions and before the gRPC handler executes. This makes it the right seam for middleware
+/// that needs descriptor-derived route metadata, such as authz based on method annotations.
+///
+/// The route layer operates on the raw `axum::extract::Request`; the protobuf request body has not
+/// been decoded yet, so typed request messages are not available here. Middleware can rely on
+/// `GrpcMethod` being present in request extensions, along with any extensions added by outer Axum
+/// layers that have already run.
+pub fn make_server_streaming_router_with_route_layer<
+  ResponseType: MessageFull,
+  RequestType: MessageFull,
+  L,
+>(
+  service_method: &ServiceMethod<RequestType, ResponseType>,
+  handler: Arc<dyn ServerStreamingHandler<ResponseType, RequestType>>,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
+  stream_stats: Option<&EndpointStats>,
+  validate_request: bool,
+  compression: Option<bd_grpc_codec::Compression>,
+  route_layer: L,
+) -> Result<Router>
+where
+  L: Layer<Route> + Clone + Send + Sync + 'static,
+  L::Service: Service<Request> + Clone + Send + Sync + 'static,
+  <L::Service as Service<Request>>::Response: IntoResponse + 'static,
+  <L::Service as Service<Request>>::Error: Into<Infallible> + 'static,
+  <L::Service as Service<Request>>::Future: Send + 'static,
+{
   verify_request_support::<RequestType>(validate_request)?;
   let warn_tracker = Arc::new(WarnTracker::default());
   let stream_stats = stream_stats.map(|stats| stats.resolve_streaming(service_method));
-  Ok(Router::new().route(
-    &service_method.full_path(),
-    post(move |request: Request| async move {
-      let connect_protocol_type = ConnectProtocolType::from_headers(request.headers());
-      server_streaming_handler(
-        handler,
-        request,
-        error_handler,
-        stream_stats,
-        validate_request,
-        warn_tracker.clone(),
-        compression,
-        connect_protocol_type,
+  let grpc_method = service_method.grpc_method();
+  Ok(
+    Router::new()
+      .route(
+        &service_method.full_path(),
+        post(move |request: Request| async move {
+          let connect_protocol_type = ConnectProtocolType::from_headers(request.headers());
+          server_streaming_handler(
+            handler,
+            request,
+            error_handler,
+            stream_stats,
+            validate_request,
+            warn_tracker.clone(),
+            compression,
+            connect_protocol_type,
+          )
+          .await
+          .map_err(|e| e.to_response(connect_protocol_type))
+        }),
       )
-      .await
-      .map_err(|e| e.to_response(connect_protocol_type))
-    }),
-  ))
+      .route_layer(route_layer)
+      .route_layer(from_fn_with_state(
+        grpc_method,
+        grpc_method_extension_middleware,
+      )),
+  )
 }
 
 // Create an axum router for a unary request and a handler.
@@ -846,7 +914,50 @@ pub fn make_unary_router_with_response_mutator<
   response_mutator: Option<UnaryResponseMutator<IncomingType>>,
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
 ) -> Result<Router> {
-  make_unary_router_at_path_with_response_mutator(
+  make_unary_router_with_response_mutator_and_route_layer(
+    service_method,
+    handler,
+    endpoint_stats,
+    validate_request,
+    request_config,
+    response_mutator,
+    Identity::new(),
+    error_handler,
+  )
+}
+
+/// Creates a unary router with an additional per-route Axum layer inside `bd-grpc`.
+///
+/// The supplied `route_layer` runs after `bd-grpc` has inserted `GrpcMethod` into the request
+/// extensions and before the gRPC handler executes. This allows route-local middleware to consume
+/// descriptor-derived metadata without requiring top-level servers to maintain their own path
+/// registries.
+///
+/// The route layer sees the raw `axum::extract::Request`; protobuf decoding happens later inside
+/// the gRPC handler path. `GrpcMethod` is guaranteed to be present in request extensions, and any
+/// extensions populated by outer Axum middleware remain available as usual.
+pub fn make_unary_router_with_response_mutator_and_route_layer<
+  OutgoingType: MessageFull,
+  IncomingType: MessageFull,
+  L,
+>(
+  service_method: &ServiceMethod<OutgoingType, IncomingType>,
+  handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
+  endpoint_stats: Option<&EndpointStats>,
+  validate_request: bool,
+  request_config: UnaryRequestConfig,
+  response_mutator: Option<UnaryResponseMutator<IncomingType>>,
+  route_layer: L,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
+) -> Result<Router>
+where
+  L: Layer<Route> + Clone + Send + Sync + 'static,
+  L::Service: Service<Request> + Clone + Send + Sync + 'static,
+  <L::Service as Service<Request>>::Response: IntoResponse + 'static,
+  <L::Service as Service<Request>>::Error: Into<Infallible> + 'static,
+  <L::Service as Service<Request>>::Future: Send + 'static,
+{
+  make_unary_router_at_path_with_response_mutator_and_route_layer(
     service_method,
     &service_method.full_path(),
     handler,
@@ -854,6 +965,7 @@ pub fn make_unary_router_with_response_mutator<
     validate_request,
     request_config,
     response_mutator,
+    route_layer,
     error_handler,
   )
 }
@@ -917,44 +1029,95 @@ pub fn make_unary_router_at_path_with_response_mutator<
   response_mutator: Option<UnaryResponseMutator<IncomingType>>,
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
 ) -> Result<Router> {
+  make_unary_router_at_path_with_response_mutator_and_route_layer(
+    service_method,
+    full_path,
+    handler,
+    endpoint_stats,
+    validate_request,
+    request_config,
+    response_mutator,
+    Identity::new(),
+    error_handler,
+  )
+}
+
+/// Creates a unary router at an explicit path with an additional per-route Axum layer inside
+/// `bd-grpc`.
+///
+/// This has the same extension contract as
+/// [`make_unary_router_with_response_mutator_and_route_layer`]: `GrpcMethod` is already available
+/// in request extensions when `route_layer` runs, but the protobuf request body has not yet been
+/// decoded into a typed message.
+pub fn make_unary_router_at_path_with_response_mutator_and_route_layer<
+  OutgoingType: MessageFull,
+  IncomingType: MessageFull,
+  L,
+>(
+  service_method: &ServiceMethod<OutgoingType, IncomingType>,
+  full_path: &str,
+  handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
+  endpoint_stats: Option<&EndpointStats>,
+  validate_request: bool,
+  request_config: UnaryRequestConfig,
+  response_mutator: Option<UnaryResponseMutator<IncomingType>>,
+  route_layer: L,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
+) -> Result<Router>
+where
+  L: Layer<Route> + Clone + Send + Sync + 'static,
+  L::Service: Service<Request> + Clone + Send + Sync + 'static,
+  <L::Service as Service<Request>>::Response: IntoResponse + 'static,
+  <L::Service as Service<Request>>::Error: Into<Infallible> + 'static,
+  <L::Service as Service<Request>>::Future: Send + 'static,
+{
   verify_request_support::<OutgoingType>(validate_request)?;
   let warn_tracker = Arc::new(WarnTracker::default());
   let full_path = Arc::new(full_path.to_string());
   let resolved_stats = endpoint_stats
     .as_ref()
     .map(|stats| stats.resolve::<OutgoingType, IncomingType>(service_method));
-  Ok(Router::new().route(
-    full_path.clone().as_ref(),
-    post(move |request: Request| async move {
-      let connect_protocol_type = ConnectProtocolType::from_headers(request.headers());
-      let result = unary_handler::<OutgoingType, IncomingType>(
-        request,
-        handler,
-        validate_request,
-        connect_protocol_type,
-        request_config,
-        response_mutator.clone(),
+  let grpc_method = service_method.grpc_method();
+  Ok(
+    Router::new()
+      .route(
+        full_path.clone().as_ref(),
+        post(move |request: Request| async move {
+          let connect_protocol_type = ConnectProtocolType::from_headers(request.headers());
+          let result = unary_handler::<OutgoingType, IncomingType>(
+            request,
+            handler,
+            validate_request,
+            connect_protocol_type,
+            request_config,
+            response_mutator.clone(),
+          )
+          .await;
+
+          if let Err(e) = &result {
+            if let Some(warning) = e.warn_every_message()
+              && warn_tracker.should_warn(15.seconds())
+            {
+              log::warn!("{full_path} failed: {warning}");
+            }
+
+            error_handler(e);
+            if let Some(resolved_stats) = &resolved_stats {
+              resolved_stats.failure.inc();
+            }
+          } else if let Some(resolved_stats) = &resolved_stats {
+            resolved_stats.success.inc();
+          }
+
+          result.map_err(|e| e.to_response(connect_protocol_type))
+        }),
       )
-      .await;
-
-      if let Err(e) = &result {
-        if let Some(warning) = e.warn_every_message()
-          && warn_tracker.should_warn(15.seconds())
-        {
-          log::warn!("{full_path} failed: {warning}");
-        }
-
-        error_handler(e);
-        if let Some(resolved_stats) = &resolved_stats {
-          resolved_stats.failure.inc();
-        }
-      } else if let Some(resolved_stats) = &resolved_stats {
-        resolved_stats.success.inc();
-      }
-
-      result.map_err(|e| e.to_response(connect_protocol_type))
-    }),
-  ))
+      .route_layer(route_layer)
+      .route_layer(from_fn_with_state(
+        grpc_method,
+        grpc_method_extension_middleware,
+      )),
+  )
 }
 
 fn verify_request_support<RequestType: MessageFull>(validate_request: bool) -> Result<()> {
