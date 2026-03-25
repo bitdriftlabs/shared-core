@@ -6,8 +6,43 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use protobuf::MessageFull;
-use protobuf::reflect::FileDescriptor;
+use protobuf::reflect::{FileDescriptor, MethodDescriptor};
 use std::marker::PhantomData;
+use std::sync::Arc;
+
+//
+// GrpcMethod
+//
+
+#[derive(Clone)]
+pub struct GrpcMethod {
+  method_descriptor: Arc<MethodDescriptor>,
+  service: String,
+  method: String,
+  full_path: String,
+}
+
+impl GrpcMethod {
+  #[must_use]
+  pub fn service_name(&self) -> &str {
+    &self.service
+  }
+
+  #[must_use]
+  pub fn method_name(&self) -> &str {
+    &self.method
+  }
+
+  #[must_use]
+  pub fn full_path(&self) -> &str {
+    &self.full_path
+  }
+
+  #[must_use]
+  pub fn method_descriptor(&self) -> &MethodDescriptor {
+    &self.method_descriptor
+  }
+}
 
 //
 // ServiceMethod
@@ -15,8 +50,7 @@ use std::marker::PhantomData;
 
 // Wraps a gRPC service method after confirming the path matches the proto file.
 pub struct ServiceMethod<OutgoingType: MessageFull, IncomingType: MessageFull> {
-  service: String,
-  method: String,
+  grpc_method: GrpcMethod,
   outgoing_type: PhantomData<OutgoingType>,
   incoming_type: PhantomData<IncomingType>,
 }
@@ -43,13 +77,14 @@ impl<OutgoingType: MessageFull, IncomingType: MessageFull>
   ) -> Self {
     let mut service_descriptor = None;
     let mut method_descriptor = None;
+
     for service in file_descriptor.services() {
       if service.proto().name() != service_name {
         continue;
       }
 
-      service_descriptor = Some(service);
-      for method in service_descriptor.as_ref().unwrap().methods() {
+      service_descriptor = Some(service.clone());
+      for method in service.methods() {
         if method.proto().name() == method_name {
           method_descriptor = Some(method);
           break;
@@ -78,13 +113,20 @@ impl<OutgoingType: MessageFull, IncomingType: MessageFull>
       IncomingType::descriptor().full_name()
     );
 
+    let service = format!(
+      "{}.{}",
+      file_descriptor.package(),
+      service_descriptor.proto().name(),
+    );
+    let method = method_descriptor.proto().name().to_string();
+
     Self {
-      service: format!(
-        "{}.{}",
-        file_descriptor.package(),
-        service_descriptor.proto().name(),
-      ),
-      method: method_descriptor.proto().name().to_string(),
+      grpc_method: GrpcMethod {
+        method_descriptor: Arc::new(method_descriptor),
+        full_path: format!("/{service}/{method}"),
+        method,
+        service,
+      },
       outgoing_type: PhantomData,
       incoming_type: PhantomData,
     }
@@ -92,16 +134,21 @@ impl<OutgoingType: MessageFull, IncomingType: MessageFull>
 
   #[must_use]
   pub fn service_name(&self) -> &str {
-    &self.service
+    self.grpc_method.service_name()
   }
 
   #[must_use]
   pub fn method_name(&self) -> &str {
-    &self.method
+    self.grpc_method.method_name()
   }
 
   #[must_use]
   pub fn full_path(&self) -> String {
-    format!("/{}/{}", self.service, self.method)
+    self.grpc_method.full_path().to_string()
+  }
+
+  #[must_use]
+  pub fn grpc_method(&self) -> GrpcMethod {
+    self.grpc_method.clone()
   }
 }

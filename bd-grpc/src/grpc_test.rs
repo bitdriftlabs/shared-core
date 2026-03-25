@@ -34,6 +34,7 @@ use crate::{
   make_server_streaming_router,
   make_unary_router_with_config,
   make_unary_router_with_response_mutator,
+  make_unary_router_with_response_mutator_and_route_layer,
   new_grpc_response,
 };
 use assert_matches::assert_matches;
@@ -41,6 +42,7 @@ use async_trait::async_trait;
 use axum::Router;
 use axum::body::Body;
 use axum::extract::Request;
+use axum::middleware::{Next, from_fn};
 use axum::routing::post;
 use bd_grpc_codec::stats::DeferredCounter;
 use bd_grpc_codec::{DecodingResult, OptimizeFor};
@@ -358,6 +360,34 @@ impl ServerStreamingHandler<EchoResponse, EchoRequest> for ErrorHandler {
   }
 }
 
+//
+// ExtensionInspectingHandler
+//
+
+#[derive(Default)]
+struct ExtensionInspectingHandler {
+  grpc_method_path: Arc<Mutex<Option<String>>>,
+}
+
+#[async_trait]
+impl Handler<EchoRequest, EchoResponse> for ExtensionInspectingHandler {
+  async fn handle(
+    &self,
+    _headers: HeaderMap,
+    extensions: Extensions,
+    request: EchoRequest,
+  ) -> Result<EchoResponse> {
+    let grpc_method = extensions.get::<crate::GrpcMethod>().cloned();
+    *self.grpc_method_path.lock() =
+      grpc_method.map(|grpc_method| grpc_method.full_path().to_string());
+
+    Ok(EchoResponse {
+      echo: request.echo,
+      ..Default::default()
+    })
+  }
+}
+
 #[test]
 fn deferred_counter_stats() {
   let mut stats = DeferredCounter::default();
@@ -514,6 +544,103 @@ async fn unary_error_handler() {
       "endpoint" => "Echo",
       "result" => "failure"
     },
+  );
+}
+
+#[tokio::test]
+async fn unary_routers_insert_grpc_method_metadata_for_handlers() {
+  let handler = Arc::new(ExtensionInspectingHandler::default());
+  let grpc_method_path = handler.grpc_method_path.clone();
+  let router = make_unary_router_with_response_mutator(
+    &service_method(),
+    handler,
+    None,
+    true,
+    UnaryRequestConfig::default(),
+    None,
+    |_| {},
+  )
+  .unwrap()
+  .layer(ConnectSafeCompressionLayer::new());
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let local_address = listener.local_addr().unwrap();
+  let server = axum::serve(listener, router.into_make_service());
+  tokio::spawn(async { server.await.unwrap() });
+
+  let client = Client::new_http(local_address.to_string().as_str(), 1.minutes(), 1024).unwrap();
+  let response = client
+    .unary(
+      &service_method(),
+      None,
+      EchoRequest {
+        echo: "ok".to_string(),
+        ..Default::default()
+      },
+      1.seconds(),
+      Compression::None,
+    )
+    .await
+    .unwrap();
+
+  assert_eq!(response.echo, "ok");
+  assert_eq!(
+    grpc_method_path.lock().clone().unwrap(),
+    service_method().full_path()
+  );
+}
+
+#[tokio::test]
+async fn unary_route_layers_can_observe_grpc_method_metadata() {
+  let middleware_grpc_method_path = Arc::new(Mutex::new(None));
+  let route_layer = {
+    let middleware_grpc_method_path = middleware_grpc_method_path.clone();
+    from_fn(move |request: Request, next: Next| {
+      let middleware_grpc_method_path = middleware_grpc_method_path.clone();
+      async move {
+        *middleware_grpc_method_path.lock() = request
+          .extensions()
+          .get::<crate::GrpcMethod>()
+          .map(|grpc_method| grpc_method.full_path().to_string());
+        next.run(request).await
+      }
+    })
+  };
+  let router = make_unary_router_with_response_mutator_and_route_layer(
+    &service_method(),
+    Arc::new(EchoHandler::default()),
+    None,
+    true,
+    UnaryRequestConfig::default(),
+    None,
+    route_layer,
+    |_| {},
+  )
+  .unwrap()
+  .layer(ConnectSafeCompressionLayer::new());
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let local_address = listener.local_addr().unwrap();
+  let server = axum::serve(listener, router.into_make_service());
+  tokio::spawn(async { server.await.unwrap() });
+
+  let client = Client::new_http(local_address.to_string().as_str(), 1.minutes(), 1024).unwrap();
+  let response = client
+    .unary(
+      &service_method(),
+      None,
+      EchoRequest {
+        echo: "ok".to_string(),
+        ..Default::default()
+      },
+      1.seconds(),
+      Compression::None,
+    )
+    .await
+    .unwrap();
+
+  assert_eq!(response.echo, "ok");
+  assert_eq!(
+    middleware_grpc_method_path.lock().clone().unwrap(),
+    service_method().full_path()
   );
 }
 
