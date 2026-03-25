@@ -794,7 +794,11 @@ impl SankeyPath {
       hasher.update(node.value.as_bytes());
     }
 
-    format!("{:x}", hasher.finalize())
+    hasher.finalize().iter().fold(String::new(), |mut acc, b| {
+      use std::fmt::Write as _;
+      let _ = write!(acc, "{b:02x}");
+      acc
+    })
   }
 }
 
