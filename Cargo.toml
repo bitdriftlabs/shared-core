@@ -62,14 +62,14 @@ resolver = "2"
 android_logger    = "0.15.1"
 anyhow            = "1.0.102"
 arbitrary         = { version = "1.4.2", features = ["derive"] }
-arc-swap          = "1.8.2"
+arc-swap          = "1.9.0"
 assert_matches    = "1.5.0"
 assert_no_alloc   = "1.1.2"
 async-compression = { version = "0.4.41", features = ["tokio", "zlib"] }
 async-trait       = "0.1.89"
 axum              = { version = "0.8.8", features = ["http2", "macros"] }
 base64            = "0.22.1"
-base64-url        = "3.0.2"
+base64-url        = "3.0.3"
 base64ct          = { version = "1.8.3", features = ["alloc", "std"] }
 bd-workspace-hack = "0.1.0"
 num-traits        = "0.2.19"
@@ -81,8 +81,8 @@ bincode = { version = "=2.0.1", features = ["serde"] }
 bindgen         = "0.72.1"
 bytes           = "1.11.1"
 cbindgen        = "0.29.2"
-cc              = "1.2.56"
-clap            = { version = "4.5.60", features = ["derive", "env"] }
+cc              = "1.2.57"
+clap            = { version = "4.6.0", features = ["derive", "env"] }
 cmake           = "0.1.57"
 color-backtrace = "0.7.2"
 concat-string   = "1.0.1"
@@ -109,7 +109,7 @@ hyper-util            = { version = "0.1.20", features = ["client", "client-lega
 insta                 = "1.46.3"
 intrusive-collections = "0.10.0"
 itertools             = "0.14.0"
-jni                   = "0.22.3"
+jni                   = "0.22.4"
 libc                  = "0.2.183"
 libfuzzer-sys         = "0.4.12"
 log                   = "0.4.29"
@@ -124,11 +124,11 @@ parameterized         = "2.1.0"
 parking_lot           = "0.12.5"
 pretty_assertions     = "1.4.1"
 prometheus            = "0.14.0"
-rmcp                  = { version = "1.1.1", features = ["transport-io"] }
+rmcp                  = { version = "1.2.0", features = ["transport-io"] }
 thread_local          = "1.1"
 tracing               = "0.1.44"
 tracing-log           = "0.2.0"
-tracing-subscriber    = { version = "0.3.22", features = ["env-filter"] }
+tracing-subscriber    = { version = "0.3.23", features = ["env-filter"] }
 walkdir               = "2.5.0"
 
 protobuf = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", branch = "patch-stack", features = [
@@ -146,7 +146,7 @@ rstest_reuse = "0.7.0"
 serde        = { version = "1", features = ["derive", "rc"] }
 serde_json   = "1.0.149"
 serde_yaml   = "0.9.34"
-sha2         = "0.10.9"
+sha2         = "0.11.0"
 
 sketches-rust = { git = "https://github.com/mattklein123/sketches-rust.git", branch = "patch-stack2" }
 
@@ -155,7 +155,7 @@ sqlite            = "0.37.0"
 static_assertions = "1.1.0"
 strum             = { version = "0.28", features = ["derive"] }
 tarpc             = { version = "0.37.0", features = ["full"] }
-tempfile          = "3.26.0"
+tempfile          = "3.27.0"
 termcolor         = "1.4.1"
 thiserror         = "2.0.18"
 tikv-jemalloc-ctl = "0.6.1"
