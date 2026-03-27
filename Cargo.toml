@@ -81,9 +81,9 @@ bincode = { version = "=2.0.1", features = ["serde"] }
 bindgen         = "0.72.1"
 bytes           = "1.11.1"
 cbindgen        = "0.29.2"
-cc              = "1.2.57"
+cc              = "1.2.58"
 clap            = { version = "4.6.0", features = ["derive", "env"] }
-cmake           = "0.1.57"
+cmake           = "0.1.58"
 color-backtrace = "0.7.2"
 concat-string   = "1.0.1"
 crc32fast       = "1.5.0"
@@ -106,7 +106,7 @@ http-body-util        = "0.1.3"
 hyper                 = "1.8.1"
 hyper-rustls          = { version = "0.27.7", default-features = false }
 hyper-util            = { version = "0.1.20", features = ["client", "client-legacy"] }
-insta                 = "1.46.3"
+insta                 = "1.47.0"
 intrusive-collections = "0.10.0"
 itertools             = "0.14.0"
 jni                   = "0.22.4"
@@ -119,12 +119,12 @@ mockall               = "0.14.0"
 nom                   = "8.0.0"
 nom-language          = "0.1.0"
 notify                = "8.2.0"
-ordered-float         = { version = "5.1.0", features = ["serde"] }
+ordered-float         = { version = "5.2.0", features = ["serde"] }
 parameterized         = "2.1.0"
 parking_lot           = "0.12.5"
 pretty_assertions     = "1.4.1"
 prometheus            = "0.14.0"
-rmcp                  = { version = "1.2.0", features = ["transport-io"] }
+rmcp                  = { version = "1.3.0", features = ["transport-io"] }
 thread_local          = "1.1"
 tracing               = "0.1.44"
 tracing-log           = "0.2.0"
@@ -169,7 +169,7 @@ tower-http        = { version = "0.6.8", features = ["compression-deflate"] }
 tracing-error     = "0.2.1"
 unwrap-infallible = "1.0.0"
 urlencoding       = "2.1.3"
-uuid              = { version = "1.22.0", features = ["v4"] }
+uuid              = { version = "1.23.0", features = ["v4"] }
 
 [profile.bench]
 debug = true
