@@ -49,38 +49,6 @@ impl Ticker for Interval {
 }
 
 //
-// DynamicIntervalTicker
-//
-
-pub struct DynamicIntervalTicker {
-  interval_provider: Arc<dyn Fn() -> time::Duration + Send + Sync>,
-  time_provider: Arc<dyn TimeProvider>,
-}
-
-impl DynamicIntervalTicker {
-  #[must_use]
-  pub fn new(interval_provider: impl Fn() -> time::Duration + Send + Sync + 'static) -> Self {
-    Self {
-      interval_provider: Arc::new(interval_provider),
-      time_provider: Arc::new(SystemTimeProvider),
-    }
-  }
-
-  #[must_use]
-  pub fn with_time_provider(mut self, time_provider: Arc<dyn TimeProvider>) -> Self {
-    self.time_provider = time_provider;
-    self
-  }
-}
-
-#[async_trait]
-impl Ticker for DynamicIntervalTicker {
-  async fn tick(&mut self) {
-    self.time_provider.sleep((self.interval_provider)()).await;
-  }
-}
-
-//
 // OffsetDateTimeExt
 //
 
