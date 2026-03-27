@@ -27,22 +27,6 @@ fn main() {
   // TODO(mattklein123): This is manually split up into directories for sanity. This could be
   // done automatically by walking the input directories and mapping it to output directories.
   // This can be done later.
-  std::fs::create_dir_all("src/protos/pulse").unwrap();
-  protobuf_codegen::Codegen::new()
-    .protoc()
-    .customize(
-      Customize::default()
-        .gen_mod_rs(false)
-        .tokio_bytes(true)
-        .tokio_bytes_for_string(true)
-        .oneofs_non_exhaustive(false)
-        .file_header(GENERATED_HEADER.to_string()),
-    )
-    .includes(["../api/thirdparty", "../api/src"])
-    .inputs(["../api/src/bitdrift_public/protobuf/pulse/v1/pulse.proto"])
-    .out_dir("src/protos/pulse/")
-    .capture_stderr()
-    .run_from_script();
   std::fs::create_dir_all("src/protos/bdtail").unwrap();
   protobuf_codegen::Codegen::new()
     .protoc()
@@ -204,20 +188,6 @@ fn main() {
     .includes(["../api/thirdparty", "../api/src"])
     .inputs(["../api/src/bitdrift_public/protobuf/mme/v1/service.proto"])
     .out_dir("src/protos/mme/")
-    .capture_stderr()
-    .run_from_script();
-  std::fs::create_dir_all("src/protos/ingest").unwrap();
-  protobuf_codegen::Codegen::new()
-    .protoc()
-    .customize(
-      Customize::default()
-        .gen_mod_rs(false)
-        .oneofs_non_exhaustive(false)
-        .file_header(GENERATED_HEADER.to_string()),
-    )
-    .includes(["../api/thirdparty", "../api/src"])
-    .inputs(["../api/src/bitdrift_public/protobuf/ingest/v1/api.proto"])
-    .out_dir("src/protos/ingest/")
     .capture_stderr()
     .run_from_script();
 
