@@ -13,10 +13,13 @@ use bd_time::ToProtoDuration;
 use protobuf::well_known_types::duration::Duration as ProtoDuration;
 use protobuf::well_known_types::timestamp::Timestamp as ProtoTimestamp;
 use protobuf::{Message as ProtoMessage, MessageFull};
+use std::collections::HashMap;
 use test_protos::test_validate::{
   Bool,
   EnumNew,
   EnumOld,
+  Map,
+  MapNotImplemented,
   Message,
   NestedNotImplemented,
   NotImplemented,
@@ -187,6 +190,29 @@ fn repeated() {
 }
 
 #[test]
+fn map() {
+  let message = Map {
+    limited: HashMap::from([
+      ("one".to_string(), 1),
+      ("two".to_string(), 2),
+      ("three".to_string(), 3),
+    ]),
+    ..Default::default()
+  };
+  matches::assert_matches!(
+    validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'proto_validate.test.Map.limited' in message 'proto_validate.test.Map' requires map \
+    pairs <= 2");
+
+  let message = Map {
+    limited: HashMap::from([("one".to_string(), 1), ("two".to_string(), 2)]),
+    ..Default::default()
+  };
+  assert!(validate(&message).is_ok());
+}
+
+#[test]
 fn message() {
   let message = Message::default();
   matches::assert_matches!(
@@ -231,6 +257,7 @@ fn not_implemented() {
 #[test]
 fn verify_descriptor_support_supported_message() {
   assert!(verify_descriptor_support(&Repeated::descriptor()).is_ok());
+  assert!(verify_descriptor_support(&Map::descriptor()).is_ok());
 }
 
 #[test]
@@ -247,6 +274,14 @@ fn verify_descriptor_support_rejects_unsupported_nested_message() {
     verify_descriptor_support(&NestedNotImplemented::descriptor()),
     Err(error::Error::ProtoValidation(message)) if message ==
     "not implemented: string rules max_bytes");
+}
+
+#[test]
+fn verify_descriptor_support_rejects_unsupported_map_message() {
+  matches::assert_matches!(
+    verify_descriptor_support(&MapNotImplemented::descriptor()),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "not implemented: map no_sparse");
 }
 
 #[test]

@@ -26,6 +26,7 @@ use protos::validate::{
   FieldRules,
   Int32Rules,
   Int64Rules,
+  MapRules,
   RepeatedRules,
   UInt32Rules,
   UInt64Rules,
@@ -596,6 +597,69 @@ fn validate_repeated(
   Ok(recurse)
 }
 
+fn verify_map_support(rules: &MapRules, value_type: &RuntimeType) -> error::Result<bool> {
+  let recurse = if let Some(value_rules) = rules.values.as_ref() {
+    verify_value_support(value_rules, value_type)?
+  } else {
+    true
+  };
+
+  not_implemented(rules.has_no_sparse(), "map no_sparse")?;
+  not_implemented(rules.keys.is_some(), "map keys")?;
+  Ok(recurse)
+}
+
+// Validate map rules.
+fn validate_map(
+  rules: &MapRules,
+  value_type: &RuntimeType,
+  field_descriptor: &FieldDescriptor,
+  message_descriptor: &MessageDescriptor,
+  message: &dyn protobuf::MessageDyn,
+) -> error::Result<bool> {
+  let ReflectFieldRef::Map(map) = field_descriptor.get_reflect(message) else {
+    unreachable!("validated map field must reflect as map")
+  };
+  let map_len = map.len();
+
+  if rules.has_ignore_empty() && rules.ignore_empty() && map_len == 0 {
+    return Ok(true);
+  }
+
+  if rules.has_min_pairs() && map_len < usize::try_from(rules.min_pairs()).unwrap() {
+    return Err(error::Error::ProtoValidation(format!(
+      "field '{}' in message '{}' requires map pairs >= {}",
+      field_descriptor.full_name(),
+      message_descriptor.full_name(),
+      rules.min_pairs()
+    )));
+  }
+
+  if rules.has_max_pairs() && map_len > usize::try_from(rules.max_pairs()).unwrap() {
+    return Err(error::Error::ProtoValidation(format!(
+      "field '{}' in message '{}' requires map pairs <= {}",
+      field_descriptor.full_name(),
+      message_descriptor.full_name(),
+      rules.max_pairs()
+    )));
+  }
+
+  let mut recurse = verify_map_support(rules, value_type)?;
+  if let Some(value_rules) = rules.values.as_ref() {
+    for (_key, value) in &map {
+      recurse &= validate_value(
+        value_rules,
+        value_type,
+        field_descriptor,
+        message_descriptor,
+        Some(&value),
+      )?;
+    }
+  }
+
+  Ok(recurse)
+}
+
 // Validate field rules.
 fn validate_field(
   field_descriptor: &FieldDescriptor,
@@ -658,9 +722,18 @@ fn validate_field(
         Ok(true)
       }
     },
-    RuntimeFieldType::Map(..) => {
-      not_implemented(rules.has_map(), "map validation")?;
-      Ok(true)
+    RuntimeFieldType::Map(_key_type, value_type) => {
+      if rules.has_map() {
+        validate_map(
+          rules.map(),
+          &value_type,
+          field_descriptor,
+          message_descriptor,
+          message,
+        )
+      } else {
+        Ok(true)
+      }
     },
   }
 }
@@ -685,9 +758,12 @@ fn verify_field_support(field_descriptor: &FieldDescriptor) -> error::Result<boo
         Ok(true)
       }
     },
-    RuntimeFieldType::Map(..) => {
-      not_implemented(rules.has_map(), "map validation")?;
-      Ok(true)
+    RuntimeFieldType::Map(_key_type, value_type) => {
+      if rules.has_map() {
+        verify_map_support(rules.map(), &value_type)
+      } else {
+        Ok(true)
+      }
     },
   }
 }
