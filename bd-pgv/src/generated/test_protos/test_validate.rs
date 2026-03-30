@@ -911,6 +911,286 @@ pub mod repeated {
     }
 }
 
+// @@protoc_insertion_point(message:proto_validate.test.Map)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct Map {
+    // message fields
+    // @@protoc_insertion_point(field:proto_validate.test.Map.limited)
+    pub limited: ::std::collections::HashMap<::std::string::String, u32>,
+    // special fields
+    // @@protoc_insertion_point(special_field:proto_validate.test.Map.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a Map {
+    fn default() -> &'a Map {
+        <Map as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl Map {
+    pub fn new() -> Map {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_map_simpler_accessor_new::<_, _>(
+            "limited",
+            |m: &Map| { &m.limited },
+            |m: &mut Map| { &mut m.limited },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Map>(
+            "Map",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for Map {
+    const NAME: &'static str = "Map";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    let len = is.read_raw_varint32()?;
+                    let old_limit = is.push_limit(len as u64)?;
+                    let mut key = ::std::default::Default::default();
+                    let mut value = ::std::default::Default::default();
+                    while let Some(tag) = is.read_raw_tag_or_eof()? {
+                        match tag {
+                            10 => key = is.read_string()?,
+                            16 => value = is.read_uint32()?,
+                            _ => ::protobuf::rt::skip_field_for_tag(tag, is)?,
+                        };
+                    }
+                    is.pop_limit(old_limit);
+                    self.limited.insert(key, value);
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        for (k, v) in &self.limited {
+            let mut entry_size = 0;
+            entry_size += ::protobuf::rt::string_size(1, &k);
+            entry_size += ::protobuf::rt::uint32_size(2, *v);
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(entry_size) + entry_size
+        };
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        for (k, v) in &self.limited {
+            let mut entry_size = 0;
+            entry_size += ::protobuf::rt::string_size(1, &k);
+            entry_size += ::protobuf::rt::uint32_size(2, *v);
+            os.write_raw_varint32(10)?; // Tag.
+            os.write_raw_varint32(entry_size as u32)?;
+            os.write_string(1, &k)?;
+            os.write_uint32(2, *v)?;
+        };
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> Map {
+        Map::new()
+    }
+
+    fn clear(&mut self) {
+        self.limited.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static Map {
+        static instance: ::protobuf::rt::Lazy<Map> = ::protobuf::rt::Lazy::new();
+        instance.get(Map::new)
+    }
+}
+
+impl ::protobuf::MessageFull for Map {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("Map").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for Map {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for Map {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:proto_validate.test.MapNotImplemented)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct MapNotImplemented {
+    // message fields
+    // @@protoc_insertion_point(field:proto_validate.test.MapNotImplemented.field)
+    pub field: ::std::collections::HashMap<::std::string::String, u32>,
+    // special fields
+    // @@protoc_insertion_point(special_field:proto_validate.test.MapNotImplemented.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a MapNotImplemented {
+    fn default() -> &'a MapNotImplemented {
+        <MapNotImplemented as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl MapNotImplemented {
+    pub fn new() -> MapNotImplemented {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_map_simpler_accessor_new::<_, _>(
+            "field",
+            |m: &MapNotImplemented| { &m.field },
+            |m: &mut MapNotImplemented| { &mut m.field },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<MapNotImplemented>(
+            "MapNotImplemented",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for MapNotImplemented {
+    const NAME: &'static str = "MapNotImplemented";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    let len = is.read_raw_varint32()?;
+                    let old_limit = is.push_limit(len as u64)?;
+                    let mut key = ::std::default::Default::default();
+                    let mut value = ::std::default::Default::default();
+                    while let Some(tag) = is.read_raw_tag_or_eof()? {
+                        match tag {
+                            10 => key = is.read_string()?,
+                            16 => value = is.read_uint32()?,
+                            _ => ::protobuf::rt::skip_field_for_tag(tag, is)?,
+                        };
+                    }
+                    is.pop_limit(old_limit);
+                    self.field.insert(key, value);
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        for (k, v) in &self.field {
+            let mut entry_size = 0;
+            entry_size += ::protobuf::rt::string_size(1, &k);
+            entry_size += ::protobuf::rt::uint32_size(2, *v);
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(entry_size) + entry_size
+        };
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        for (k, v) in &self.field {
+            let mut entry_size = 0;
+            entry_size += ::protobuf::rt::string_size(1, &k);
+            entry_size += ::protobuf::rt::uint32_size(2, *v);
+            os.write_raw_varint32(10)?; // Tag.
+            os.write_raw_varint32(entry_size as u32)?;
+            os.write_string(1, &k)?;
+            os.write_uint32(2, *v)?;
+        };
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> MapNotImplemented {
+        MapNotImplemented::new()
+    }
+
+    fn clear(&mut self) {
+        self.field.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static MapNotImplemented {
+        static instance: ::protobuf::rt::Lazy<MapNotImplemented> = ::protobuf::rt::Lazy::new();
+        instance.get(MapNotImplemented::new)
+    }
+}
+
+impl ::protobuf::MessageFull for MapNotImplemented {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("MapNotImplemented").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for MapNotImplemented {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for MapNotImplemented {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
 // @@protoc_insertion_point(message:proto_validate.test.Message)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct Message {
@@ -2511,25 +2791,32 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x02\x10\x02\x128\n\x11non_empty_strings\x18\x04\x20\x03(\tR\x0fnonEmpty\
     StringsB\x0c\xfaB\t\x92\x01\x06\"\x04r\x02\x10\x01\x127\n\x10positive_nu\
     mbers\x18\x05\x20\x03(\rR\x0fpositiveNumbersB\x0c\xfaB\t\x92\x01\x06\"\
-    \x04*\x02\x20\0\x1a\x07\n\x05Inner\"V\n\x07Message\x12B\n\x05inner\x18\
-    \x01\x20\x01(\x0b2\".proto_validate.test.Message.InnerR\x05innerB\x08\
-    \xfaB\x05\x8a\x01\x02\x10\x01\x1a\x07\n\x05Inner\"Z\n\x05OneOf\x12!\n\
-    \x06field1\x18\x01\x20\x01(\x08H\0R\x06field1B\x07\xfaB\x04j\x02\x08\x01\
-    \x12!\n\x06field2\x18\x02\x20\x01(\tH\0R\x06field2B\x07\xfaB\x04r\x02\
-    \x10\x01B\x0b\n\x04test\x12\x03\xf8B\x01\"/\n\x0eNotImplemented\x12\x1d\
-    \n\x05field\x18\x01\x20\x01(\tR\x05fieldB\x07\xfaB\x04r\x02(\n\"Q\n\x14N\
-    estedNotImplemented\x129\n\x05field\x18\x01\x20\x01(\x0b2#.proto_validat\
-    e.test.NotImplementedR\x05field\"]\n\x07EnumOld\x12A\n\x05field\x18\x01\
-    \x20\x01(\x0e2!.proto_validate.test.EnumOld.EnumR\x05fieldB\x08\xfaB\x05\
-    \x82\x01\x02\x10\x01\"\x0f\n\x04Enum\x12\x07\n\x03FOO\x10\0\"\\\n\x07Enu\
-    mNew\x127\n\x05field\x18\x01\x20\x01(\x0e2!.proto_validate.test.EnumNew.\
-    EnumR\x05field\"\x18\n\x04Enum\x12\x07\n\x03FOO\x10\0\x12\x07\n\x03BAR\
-    \x10\x01\"'\n\x06Uint32\x12\x1d\n\x05field\x18\x01\x20\x01(\rR\x05fieldB\
-    \x07\xfaB\x04*\x02\x20\0\"'\n\x06Uint64\x12\x1d\n\x05field\x18\x01\x20\
-    \x01(\x04R\x05fieldB\x07\xfaB\x042\x02\x20\0\"&\n\x05Int32\x12\x1d\n\x05\
-    field\x18\x01\x20\x01(\x05R\x05fieldB\x07\xfaB\x04\x1a\x02\x20\0\"&\n\
-    \x05Int64\x12\x1d\n\x05field\x18\x01\x20\x01(\x03R\x05fieldB\x07\xfaB\
-    \x04\"\x02\x20\0b\x06proto3\
+    \x04*\x02\x20\0\x1a\x07\n\x05Inner\"\x8c\x01\n\x03Map\x12I\n\x07limited\
+    \x18\x01\x20\x03(\x0b2%.proto_validate.test.Map.LimitedEntryR\x07limited\
+    B\x08\xfaB\x05\x9a\x01\x02\x10\x02\x1a:\n\x0cLimitedEntry\x12\x10\n\x03k\
+    ey\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\rR\x05\
+    value:\x028\x01\"\xa0\x01\n\x11MapNotImplemented\x12Q\n\x05field\x18\x01\
+    \x20\x03(\x0b21.proto_validate.test.MapNotImplemented.FieldEntryR\x05fie\
+    ldB\x08\xfaB\x05\x9a\x01\x02\x18\x01\x1a8\n\nFieldEntry\x12\x10\n\x03key\
+    \x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\rR\x05va\
+    lue:\x028\x01\"V\n\x07Message\x12B\n\x05inner\x18\x01\x20\x01(\x0b2\".pr\
+    oto_validate.test.Message.InnerR\x05innerB\x08\xfaB\x05\x8a\x01\x02\x10\
+    \x01\x1a\x07\n\x05Inner\"Z\n\x05OneOf\x12!\n\x06field1\x18\x01\x20\x01(\
+    \x08H\0R\x06field1B\x07\xfaB\x04j\x02\x08\x01\x12!\n\x06field2\x18\x02\
+    \x20\x01(\tH\0R\x06field2B\x07\xfaB\x04r\x02\x10\x01B\x0b\n\x04test\x12\
+    \x03\xf8B\x01\"/\n\x0eNotImplemented\x12\x1d\n\x05field\x18\x01\x20\x01(\
+    \tR\x05fieldB\x07\xfaB\x04r\x02(\n\"Q\n\x14NestedNotImplemented\x129\n\
+    \x05field\x18\x01\x20\x01(\x0b2#.proto_validate.test.NotImplementedR\x05\
+    field\"]\n\x07EnumOld\x12A\n\x05field\x18\x01\x20\x01(\x0e2!.proto_valid\
+    ate.test.EnumOld.EnumR\x05fieldB\x08\xfaB\x05\x82\x01\x02\x10\x01\"\x0f\
+    \n\x04Enum\x12\x07\n\x03FOO\x10\0\"\\\n\x07EnumNew\x127\n\x05field\x18\
+    \x01\x20\x01(\x0e2!.proto_validate.test.EnumNew.EnumR\x05field\"\x18\n\
+    \x04Enum\x12\x07\n\x03FOO\x10\0\x12\x07\n\x03BAR\x10\x01\"'\n\x06Uint32\
+    \x12\x1d\n\x05field\x18\x01\x20\x01(\rR\x05fieldB\x07\xfaB\x04*\x02\x20\
+    \0\"'\n\x06Uint64\x12\x1d\n\x05field\x18\x01\x20\x01(\x04R\x05fieldB\x07\
+    \xfaB\x042\x02\x20\0\"&\n\x05Int32\x12\x1d\n\x05field\x18\x01\x20\x01(\
+    \x05R\x05fieldB\x07\xfaB\x04\x1a\x02\x20\0\"&\n\x05Int64\x12\x1d\n\x05fi\
+    eld\x18\x01\x20\x01(\x03R\x05fieldB\x07\xfaB\x04\"\x02\x20\0b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -2550,12 +2837,14 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(::protobuf::well_known_types::duration::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(17);
+            let mut messages = ::std::vec::Vec::with_capacity(19);
             messages.push(Duration::generated_message_descriptor_data());
             messages.push(Timestamp::generated_message_descriptor_data());
             messages.push(Bool::generated_message_descriptor_data());
             messages.push(String::generated_message_descriptor_data());
             messages.push(Repeated::generated_message_descriptor_data());
+            messages.push(Map::generated_message_descriptor_data());
+            messages.push(MapNotImplemented::generated_message_descriptor_data());
             messages.push(Message::generated_message_descriptor_data());
             messages.push(OneOf::generated_message_descriptor_data());
             messages.push(NotImplemented::generated_message_descriptor_data());

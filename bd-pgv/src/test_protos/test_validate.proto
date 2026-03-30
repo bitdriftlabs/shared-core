@@ -37,6 +37,14 @@ message Repeated {
   repeated uint32 positive_numbers = 5 [(validate.rules).repeated.items.uint32.gt = 0];
 }
 
+message Map {
+  map<string, uint32> limited = 1 [(validate.rules).map.max_pairs = 2];
+}
+
+message MapNotImplemented {
+  map<string, uint32> field = 1 [(validate.rules).map.no_sparse = true];
+}
+
 message Message {
   message Inner {}
 
