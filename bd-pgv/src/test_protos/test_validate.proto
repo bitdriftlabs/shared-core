@@ -85,6 +85,15 @@ message EnumNew {
   Enum field = 1;
 }
 
+message EnumNotIn {
+  enum Enum {
+    FOO = 0;
+    BAR = 1;
+  }
+
+  Enum field = 1 [(validate.rules).enum = {not_in: [1]}];
+}
+
 message Uint32 {
   uint32 field = 1 [(validate.rules).uint32.gt = 0];
 }

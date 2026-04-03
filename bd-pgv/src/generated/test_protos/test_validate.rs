@@ -2284,6 +2284,193 @@ pub mod enum_new {
     }
 }
 
+// @@protoc_insertion_point(message:proto_validate.test.EnumNotIn)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct EnumNotIn {
+    // message fields
+    // @@protoc_insertion_point(field:proto_validate.test.EnumNotIn.field)
+    pub field: ::protobuf::EnumOrUnknown<enum_not_in::Enum>,
+    // special fields
+    // @@protoc_insertion_point(special_field:proto_validate.test.EnumNotIn.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a EnumNotIn {
+    fn default() -> &'a EnumNotIn {
+        <EnumNotIn as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl EnumNotIn {
+    pub fn new() -> EnumNotIn {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "field",
+            |m: &EnumNotIn| { &m.field },
+            |m: &mut EnumNotIn| { &mut m.field },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<EnumNotIn>(
+            "EnumNotIn",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for EnumNotIn {
+    const NAME: &'static str = "EnumNotIn";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                8 => {
+                    self.field = is.read_enum_or_unknown()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if self.field != ::protobuf::EnumOrUnknown::new(enum_not_in::Enum::FOO) {
+            my_size += ::protobuf::rt::int32_size(1, self.field.value());
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if self.field != ::protobuf::EnumOrUnknown::new(enum_not_in::Enum::FOO) {
+            os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.field))?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> EnumNotIn {
+        EnumNotIn::new()
+    }
+
+    fn clear(&mut self) {
+        self.field = ::protobuf::EnumOrUnknown::new(enum_not_in::Enum::FOO);
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static EnumNotIn {
+        static instance: EnumNotIn = EnumNotIn {
+            field: ::protobuf::EnumOrUnknown::from_i32(0),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for EnumNotIn {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("EnumNotIn").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for EnumNotIn {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for EnumNotIn {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `EnumNotIn`
+pub mod enum_not_in {
+    #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
+    // @@protoc_insertion_point(enum:proto_validate.test.EnumNotIn.Enum)
+    pub enum Enum {
+        // @@protoc_insertion_point(enum_value:proto_validate.test.EnumNotIn.Enum.FOO)
+        FOO = 0,
+        // @@protoc_insertion_point(enum_value:proto_validate.test.EnumNotIn.Enum.BAR)
+        BAR = 1,
+    }
+
+    impl ::protobuf::Enum for Enum {
+        const NAME: &'static str = "Enum";
+
+        fn value(&self) -> i32 {
+            *self as i32
+        }
+
+        fn from_i32(value: i32) -> ::std::option::Option<Enum> {
+            match value {
+                0 => ::std::option::Option::Some(Enum::FOO),
+                1 => ::std::option::Option::Some(Enum::BAR),
+                _ => ::std::option::Option::None
+            }
+        }
+
+        fn from_str(str: &str) -> ::std::option::Option<Enum> {
+            match str {
+                "FOO" => ::std::option::Option::Some(Enum::FOO),
+                "BAR" => ::std::option::Option::Some(Enum::BAR),
+                _ => ::std::option::Option::None
+            }
+        }
+
+        const VALUES: &'static [Enum] = &[
+            Enum::FOO,
+            Enum::BAR,
+        ];
+    }
+
+    impl ::protobuf::EnumFull for Enum {
+        fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().enum_by_package_relative_name("EnumNotIn.Enum").unwrap()).clone()
+        }
+
+        fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
+            let index = *self as usize;
+            Self::enum_descriptor().value_by_index(index)
+        }
+    }
+
+    impl ::std::default::Default for Enum {
+        fn default() -> Self {
+            Enum::FOO
+        }
+    }
+
+    impl Enum {
+        pub(in super) fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
+            ::protobuf::reflect::GeneratedEnumDescriptorData::new::<Enum>("EnumNotIn.Enum")
+        }
+    }
+}
+
 // @@protoc_insertion_point(message:proto_validate.test.Uint32)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct Uint32 {
@@ -2811,12 +2998,15 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ate.test.EnumOld.EnumR\x05fieldB\x08\xfaB\x05\x82\x01\x02\x10\x01\"\x0f\
     \n\x04Enum\x12\x07\n\x03FOO\x10\0\"\\\n\x07EnumNew\x127\n\x05field\x18\
     \x01\x20\x01(\x0e2!.proto_validate.test.EnumNew.EnumR\x05field\"\x18\n\
-    \x04Enum\x12\x07\n\x03FOO\x10\0\x12\x07\n\x03BAR\x10\x01\"'\n\x06Uint32\
-    \x12\x1d\n\x05field\x18\x01\x20\x01(\rR\x05fieldB\x07\xfaB\x04*\x02\x20\
-    \0\"'\n\x06Uint64\x12\x1d\n\x05field\x18\x01\x20\x01(\x04R\x05fieldB\x07\
-    \xfaB\x042\x02\x20\0\"&\n\x05Int32\x12\x1d\n\x05field\x18\x01\x20\x01(\
-    \x05R\x05fieldB\x07\xfaB\x04\x1a\x02\x20\0\"&\n\x05Int64\x12\x1d\n\x05fi\
-    eld\x18\x01\x20\x01(\x03R\x05fieldB\x07\xfaB\x04\"\x02\x20\0b\x06proto3\
+    \x04Enum\x12\x07\n\x03FOO\x10\0\x12\x07\n\x03BAR\x10\x01\"j\n\tEnumNotIn\
+    \x12C\n\x05field\x18\x01\x20\x01(\x0e2#.proto_validate.test.EnumNotIn.En\
+    umR\x05fieldB\x08\xfaB\x05\x82\x01\x02\x20\x01\"\x18\n\x04Enum\x12\x07\n\
+    \x03FOO\x10\0\x12\x07\n\x03BAR\x10\x01\"'\n\x06Uint32\x12\x1d\n\x05field\
+    \x18\x01\x20\x01(\rR\x05fieldB\x07\xfaB\x04*\x02\x20\0\"'\n\x06Uint64\
+    \x12\x1d\n\x05field\x18\x01\x20\x01(\x04R\x05fieldB\x07\xfaB\x042\x02\
+    \x20\0\"&\n\x05Int32\x12\x1d\n\x05field\x18\x01\x20\x01(\x05R\x05fieldB\
+    \x07\xfaB\x04\x1a\x02\x20\0\"&\n\x05Int64\x12\x1d\n\x05field\x18\x01\x20\
+    \x01(\x03R\x05fieldB\x07\xfaB\x04\"\x02\x20\0b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -2837,7 +3027,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(::protobuf::well_known_types::duration::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(19);
+            let mut messages = ::std::vec::Vec::with_capacity(20);
             messages.push(Duration::generated_message_descriptor_data());
             messages.push(Timestamp::generated_message_descriptor_data());
             messages.push(Bool::generated_message_descriptor_data());
@@ -2851,15 +3041,17 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(NestedNotImplemented::generated_message_descriptor_data());
             messages.push(EnumOld::generated_message_descriptor_data());
             messages.push(EnumNew::generated_message_descriptor_data());
+            messages.push(EnumNotIn::generated_message_descriptor_data());
             messages.push(Uint32::generated_message_descriptor_data());
             messages.push(Uint64::generated_message_descriptor_data());
             messages.push(Int32::generated_message_descriptor_data());
             messages.push(Int64::generated_message_descriptor_data());
             messages.push(repeated::Inner::generated_message_descriptor_data());
             messages.push(message::Inner::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(2);
+            let mut enums = ::std::vec::Vec::with_capacity(3);
             enums.push(enum_old::Enum::generated_enum_descriptor_data());
             enums.push(enum_new::Enum::generated_enum_descriptor_data());
+            enums.push(enum_not_in::Enum::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),
                 deps,

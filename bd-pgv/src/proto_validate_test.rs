@@ -17,6 +17,7 @@ use std::collections::HashMap;
 use test_protos::test_validate::{
   Bool,
   EnumNew,
+  EnumNotIn,
   EnumOld,
   Map,
   MapNotImplemented,
@@ -258,6 +259,7 @@ fn not_implemented() {
 fn verify_descriptor_support_supported_message() {
   assert!(verify_descriptor_support(&Repeated::descriptor()).is_ok());
   assert!(verify_descriptor_support(&Map::descriptor()).is_ok());
+  assert!(verify_descriptor_support(&EnumNotIn::descriptor()).is_ok());
 }
 
 #[test]
@@ -300,6 +302,22 @@ fn enum_defined_only() {
       Err(error::Error::ProtoValidation(message)) if message ==
       "field 'proto_validate.test.EnumOld.field' in message 'proto_validate.test.EnumOld' must be \
       a defined enum. Got 1");
+}
+
+#[test]
+fn enum_not_in() {
+  let message = EnumNotIn::default();
+  assert!(validate(&message).is_ok());
+
+  let message = EnumNotIn {
+    field: test_protos::test_validate::enum_not_in::Enum::BAR.into(),
+    ..Default::default()
+  };
+  matches::assert_matches!(
+    validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'proto_validate.test.EnumNotIn.field' in message 'proto_validate.test.EnumNotIn' must \
+    not be one of [1]");
 }
 
 #[test]
