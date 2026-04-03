@@ -291,8 +291,6 @@ fn verify_string_rules_supported(rules: &FieldRules) -> error::Result<()> {
 
 fn verify_enum_rules_supported(rules: &FieldRules) -> error::Result<()> {
   not_implemented(rules.enum_().has_const(), "enum rules const")?;
-  not_implemented(!rules.enum_().in_.is_empty(), "enum rules in")?;
-  not_implemented(!rules.enum_().not_in.is_empty(), "enum rules not_in")?;
   Ok(())
 }
 
@@ -518,15 +516,35 @@ fn validate_value(
     RuntimeType::Enum(enum_descriptor) => {
       if rules.has_enum()
         && let Some(ReflectValueRef::Enum(_, value)) = value
-        && rules.enum_().defined_only()
-        && enum_descriptor.value_by_number(*value).is_none()
       {
-        return Err(error::Error::ProtoValidation(format!(
-          "field '{}' in message '{}' must be a defined enum. Got {}",
-          field_descriptor.full_name(),
-          message_descriptor.full_name(),
-          value
-        )));
+        if rules.enum_().defined_only() && enum_descriptor.value_by_number(*value).is_none() {
+          return Err(error::Error::ProtoValidation(format!(
+            "field '{}' in message '{}' must be a defined enum. Got {}",
+            field_descriptor.full_name(),
+            message_descriptor.full_name(),
+            value
+          )));
+        }
+
+        // Enum reflection exposes the numeric value, so membership rules operate on the raw
+        // discriminants declared in the PGV options.
+        if !rules.enum_().in_.is_empty() && !rules.enum_().in_.contains(value) {
+          return Err(error::Error::ProtoValidation(format!(
+            "field '{}' in message '{}' must be one of {:?}",
+            field_descriptor.full_name(),
+            message_descriptor.full_name(),
+            rules.enum_().in_
+          )));
+        }
+
+        if rules.enum_().not_in.contains(value) {
+          return Err(error::Error::ProtoValidation(format!(
+            "field '{}' in message '{}' must not be one of {:?}",
+            field_descriptor.full_name(),
+            message_descriptor.full_name(),
+            rules.enum_().not_in
+          )));
+        }
       }
     },
   }
