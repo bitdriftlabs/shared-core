@@ -54,7 +54,7 @@ use protobuf::{Message, MessageFull};
 use protobuf_json_mapping::{ParseOptions, PrintOptions};
 pub use service::{GrpcMethod, ServiceMethod};
 use stats::{BandwidthStatsSummary, EndpointStats, StreamStats};
-use status::Status;
+use status::{Status, code_to_connect_http_status};
 use std::convert::Infallible;
 use std::error::Error as StdError;
 use std::marker::PhantomData;
@@ -605,6 +605,7 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
   handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
   validate_request: bool,
   connect_protocol_type: Option<ConnectProtocolType>,
+  json_transcoding: bool,
   request_config: UnaryRequestConfig,
   response_mutator: Option<UnaryResponseMutator<IncomingType>>,
 ) -> Result<Response> {
@@ -615,7 +616,6 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
     request_config,
   )
   .await?;
-  let json_transcoding = connect_protocol_type.is_none() && is_json_request_content_type(&headers);
 
   if matches!(connect_protocol_type, Some(ConnectProtocolType::Unary)) {
     return unary_connect_handler(headers, extensions, message, handler, response_mutator).await;
@@ -637,6 +637,7 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
         .map_err(|e| Status::new(Code::Internal, format!("Failed to encode response: {e}")))?;
     return Ok(
       Response::builder()
+        .status(code_to_connect_http_status(Code::Ok))
         .header(CONTENT_TYPE, CONTENT_TYPE_JSON)
         .body(json.into())
         .unwrap(),
@@ -842,6 +843,8 @@ where
         &service_method.full_path(),
         post(move |request: Request| async move {
           let connect_protocol_type = ConnectProtocolType::from_headers(request.headers());
+          let json_transcoding =
+            connect_protocol_type.is_none() && is_json_request_content_type(request.headers());
           server_streaming_handler(
             handler,
             request,
@@ -853,7 +856,7 @@ where
             connect_protocol_type,
           )
           .await
-          .map_err(|e| e.to_response(connect_protocol_type))
+          .map_err(|e| e.to_response(connect_protocol_type, json_transcoding))
         }),
       )
       .route_layer(route_layer)
@@ -1084,11 +1087,14 @@ where
         full_path.clone().as_ref(),
         post(move |request: Request| async move {
           let connect_protocol_type = ConnectProtocolType::from_headers(request.headers());
+          let json_transcoding =
+            connect_protocol_type.is_none() && is_json_request_content_type(request.headers());
           let result = unary_handler::<OutgoingType, IncomingType>(
             request,
             handler,
             validate_request,
             connect_protocol_type,
+            json_transcoding,
             request_config,
             response_mutator.clone(),
           )
@@ -1109,7 +1115,7 @@ where
             resolved_stats.success.inc();
           }
 
-          result.map_err(|e| e.to_response(connect_protocol_type))
+          result.map_err(|e| e.to_response(connect_protocol_type, json_transcoding))
         }),
       )
       .route_layer(route_layer)
