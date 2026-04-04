@@ -1374,6 +1374,59 @@ async fn unary_json_transcoding_omits_empty_repeated_fields() {
 }
 
 #[tokio::test]
+async fn unary_json_transcoding_returns_json_error_body() {
+  let local_address = make_unary_server(Arc::new(ErrorHandler {}), |_| {}, None).await;
+  let client = reqwest::Client::builder().deflate(false).build().unwrap();
+  let address = AddressHelper::new(format!("http://{local_address}")).unwrap();
+  let response = client
+    .post(address.build(&service_method()).to_string())
+    .header(CONTENT_TYPE, CONTENT_TYPE_JSON)
+    .body("{\"echo\":\"json_echo\"}")
+    .send()
+    .await
+    .unwrap();
+
+  assert_eq!(response.status(), 500);
+  assert_eq!(
+    response.headers().get(CONTENT_TYPE).unwrap(),
+    CONTENT_TYPE_JSON
+  );
+  let body: serde_json::Value = serde_json::from_slice(&response.bytes().await.unwrap()).unwrap();
+  assert_eq!(
+    body,
+    serde_json::json!({ "code": "internal", "message": "foo" })
+  );
+}
+
+#[tokio::test]
+async fn unary_json_transcoding_decode_errors_return_json_error_body() {
+  let local_address = make_unary_server(Arc::new(EchoHandler::default()), |_| {}, None).await;
+  let client = reqwest::Client::builder().deflate(false).build().unwrap();
+  let address = AddressHelper::new(format!("http://{local_address}")).unwrap();
+  let response = client
+    .post(address.build(&service_method()).to_string())
+    .header(CONTENT_TYPE, CONTENT_TYPE_JSON)
+    .body("{\"echo\":1}")
+    .send()
+    .await
+    .unwrap();
+
+  assert_eq!(response.status(), 400);
+  assert_eq!(
+    response.headers().get(CONTENT_TYPE).unwrap(),
+    CONTENT_TYPE_JSON
+  );
+  let body: serde_json::Value = serde_json::from_slice(&response.bytes().await.unwrap()).unwrap();
+  assert_eq!(body["code"], "invalid_argument");
+  assert!(
+    body["message"]
+      .as_str()
+      .unwrap()
+      .starts_with("Invalid request:")
+  );
+}
+
+#[tokio::test]
 async fn unary_request_over_limit_returns_resource_exhausted() {
   let router = make_unary_router_with_config(
     &service_method(),

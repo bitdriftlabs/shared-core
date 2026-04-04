@@ -90,8 +90,12 @@ impl Error {
   }
 
   #[must_use]
-  pub fn to_response(self, connect_protocol: Option<ConnectProtocolType>) -> Response {
-    if connect_protocol.is_some() {
+  pub fn to_response(
+    self,
+    connect_protocol: Option<ConnectProtocolType>,
+    json_transcoding: bool,
+  ) -> Response {
+    if connect_protocol.is_some() || json_transcoding {
       self.to_connect_error_response()
     } else {
       self.into_status().into_response()
