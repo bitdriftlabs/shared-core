@@ -25,7 +25,6 @@ clap_builder = { version = "4", default-features = false, features = ["color", "
 either = { version = "1", features = ["use_std"] }
 flate2 = { version = "1", features = ["zlib", "zlib-ng"] }
 futures-channel = { version = "0.3", features = ["sink"] }
-futures-core = { version = "0.3" }
 futures-executor = { version = "0.3" }
 futures-sink = { version = "0.3" }
 futures-task = { version = "0.3", default-features = false, features = ["std"] }
@@ -63,7 +62,6 @@ clap_builder = { version = "4", default-features = false, features = ["color", "
 either = { version = "1", features = ["use_std"] }
 flate2 = { version = "1", features = ["zlib", "zlib-ng"] }
 futures-channel = { version = "0.3", features = ["sink"] }
-futures-core = { version = "0.3" }
 futures-executor = { version = "0.3" }
 futures-sink = { version = "0.3" }
 futures-task = { version = "0.3", default-features = false, features = ["std"] }
