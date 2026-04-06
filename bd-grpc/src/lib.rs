@@ -80,7 +80,7 @@ pub type BodySender = mpsc::Sender<std::result::Result<Frame<Bytes>, BoxError>>;
 pub type UnaryResponseMutator<IncomingType> =
   Arc<dyn Fn(&mut IncomingType) -> Result<()> + Send + Sync>;
 
-/// Inserts gRPC method metadata derived from `ServiceMethod` into request extensions.
+/// Inserts gRPC request metadata derived from `ServiceMethod` and request headers into extensions.
 ///
 /// Use this with `axum::middleware::from_fn_with_state(service_method.grpc_method(),
 /// grpc_method_extension_middleware)` so top-level Axum route assembly can apply ordinary
@@ -90,7 +90,10 @@ pub async fn grpc_method_extension_middleware(
   mut request: Request,
   next: Next,
 ) -> Response {
-  request.extensions_mut().insert(grpc_method);
+  let request_transport = RequestTransport::from_headers(request.headers());
+  let extensions = request.extensions_mut();
+  extensions.insert(grpc_method);
+  extensions.insert(request_transport);
   next.run(request).await
 }
 
@@ -604,12 +607,12 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
   request: Request,
   handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
   validate_request: bool,
-  connect_protocol_type: Option<ConnectProtocolType>,
-  json_transcoding: bool,
   request_config: UnaryRequestConfig,
   response_mutator: Option<UnaryResponseMutator<IncomingType>>,
   custom_json_print_options: Option<PrintOptions>,
 ) -> Result<Response> {
+  let request_transport = RequestTransport::from_extensions(request.extensions());
+  let connect_protocol_type = request_transport.connect_protocol();
   let (headers, extensions, message) = decode_request::<OutgoingType>(
     request,
     validate_request,
@@ -632,7 +635,7 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
     response_mutator(&mut response)?;
   }
 
-  if json_transcoding {
+  if request_transport.json_transcoding() {
     let options = custom_json_print_options.unwrap_or_else(json_print_options);
     let json = protobuf_json_mapping::print_to_string_with_options(&response, &options)
       .map_err(|e| Status::new(Code::Internal, format!("Failed to encode response: {e}")))?;
@@ -702,8 +705,9 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
   // This indicates if response compression is desired. It will still be gated on whether the
   // client sets the compression header.
   compression: Option<bd_grpc_codec::Compression>,
-  connect_protocol_type: Option<ConnectProtocolType>,
 ) -> Result<Response> {
+  let request_transport = RequestTransport::from_extensions(request.extensions());
+  let connect_protocol_type = request_transport.connect_protocol();
   if let Some(stream_stats) = &stream_stats {
     stream_stats.stream_initiations_total.inc();
   }
@@ -806,14 +810,15 @@ pub fn make_server_streaming_router<ResponseType: MessageFull, RequestType: Mess
 /// Creates a server-streaming router and applies an additional per-route Axum layer inside
 /// `bd-grpc`.
 ///
-/// The supplied `route_layer` runs after `bd-grpc` has inserted `GrpcMethod` into the request
-/// extensions and before the gRPC handler executes. This makes it the right seam for middleware
-/// that needs descriptor-derived route metadata, such as authz based on method annotations.
+/// The supplied `route_layer` runs after `bd-grpc` has inserted `GrpcMethod` and
+/// `status::RequestTransport` into the request extensions and before the gRPC handler executes.
+/// This makes it the right seam for middleware that needs descriptor-derived route metadata and the
+/// negotiated response transport.
 ///
 /// The route layer operates on the raw `axum::extract::Request`; the protobuf request body has not
 /// been decoded yet, so typed request messages are not available here. Middleware can rely on
-/// `GrpcMethod` being present in request extensions, along with any extensions added by outer Axum
-/// layers that have already run.
+/// `GrpcMethod` and `status::RequestTransport` being present in request extensions, along with any
+/// extensions added by outer Axum layers that have already run.
 pub fn make_server_streaming_router_with_route_layer<
   ResponseType: MessageFull,
   RequestType: MessageFull,
@@ -843,8 +848,7 @@ where
       .route(
         &service_method.full_path(),
         post(move |request: Request| async move {
-          let request_transport = RequestTransport::from_headers(request.headers());
-          let connect_protocol_type = request_transport.connect_protocol();
+          let request_transport = RequestTransport::from_extensions(request.extensions());
           server_streaming_handler(
             handler,
             request,
@@ -853,7 +857,6 @@ where
             validate_request,
             warn_tracker.clone(),
             compression,
-            connect_protocol_type,
           )
           .await
           .map_err(|e| e.to_response(request_transport))
@@ -1051,9 +1054,9 @@ pub fn make_unary_router_at_path_with_response_mutator<
 /// `bd-grpc`.
 ///
 /// This has the same extension contract as
-/// [`make_unary_router_with_response_mutator_and_route_layer`]: `GrpcMethod` is already available
-/// in request extensions when `route_layer` runs, but the protobuf request body has not yet been
-/// decoded into a typed message.
+/// [`make_unary_router_with_response_mutator_and_route_layer`]: `GrpcMethod` and
+/// `status::RequestTransport` are already available in request extensions when `route_layer` runs,
+/// but the protobuf request body has not yet been decoded into a typed message.
 pub fn make_unary_router_at_path_with_response_mutator_and_route_layer<
   OutgoingType: MessageFull,
   IncomingType: MessageFull,
@@ -1089,15 +1092,11 @@ where
       .route(
         full_path.clone().as_ref(),
         post(move |request: Request| async move {
-          let request_transport = RequestTransport::from_headers(request.headers());
-          let connect_protocol_type = request_transport.connect_protocol();
-          let json_transcoding = request_transport.json_transcoding();
+          let request_transport = RequestTransport::from_extensions(request.extensions());
           let result = unary_handler::<OutgoingType, IncomingType>(
             request,
             handler,
             validate_request,
-            connect_protocol_type,
-            json_transcoding,
             request_config,
             response_mutator.clone(),
             custom_json_print_options.clone(),

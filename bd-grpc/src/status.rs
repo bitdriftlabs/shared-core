@@ -11,7 +11,7 @@ use axum::body::Body;
 use axum::response::Response;
 use bd_grpc_codec::code::Code;
 use http::header::CONTENT_TYPE;
-use http::{HeaderMap, HeaderValue, StatusCode};
+use http::{Extensions, HeaderMap, HeaderValue, StatusCode};
 
 // https://connectrpc.com/docs/protocol#error-codes
 #[must_use]
@@ -69,6 +69,14 @@ impl RequestTransport {
       },
       Self::Connect,
     )
+  }
+
+  #[must_use]
+  pub fn from_extensions(extensions: &Extensions) -> Self {
+    extensions
+      .get::<Self>()
+      .copied()
+      .expect("bd-grpc should insert RequestTransport into request extensions")
   }
 
   #[must_use]

@@ -632,17 +632,29 @@ async fn unary_routers_insert_grpc_method_metadata_for_handlers() {
 }
 
 #[tokio::test]
-async fn unary_route_layers_can_observe_grpc_method_metadata() {
+async fn unary_route_layers_can_observe_grpc_request_metadata() {
   let middleware_grpc_method_path = Arc::new(Mutex::new(None));
+  let middleware_request_transport = Arc::new(Mutex::new(None));
   let route_layer = {
     let middleware_grpc_method_path = middleware_grpc_method_path.clone();
+    let middleware_request_transport = middleware_request_transport.clone();
     from_fn(move |request: Request, next: Next| {
       let middleware_grpc_method_path = middleware_grpc_method_path.clone();
+      let middleware_request_transport = middleware_request_transport.clone();
       async move {
         *middleware_grpc_method_path.lock() = request
           .extensions()
           .get::<crate::GrpcMethod>()
           .map(|grpc_method| grpc_method.full_path().to_string());
+        *middleware_request_transport.lock() = request
+          .extensions()
+          .get::<crate::status::RequestTransport>()
+          .map(|request_transport| {
+            (
+              request_transport.connect_protocol().is_some(),
+              request_transport.json_transcoding(),
+            )
+          });
         next.run(request).await
       }
     })
@@ -683,6 +695,10 @@ async fn unary_route_layers_can_observe_grpc_method_metadata() {
   assert_eq!(
     middleware_grpc_method_path.lock().clone().unwrap(),
     service_method().full_path()
+  );
+  assert_eq!(
+    (*middleware_request_transport.lock()).unwrap(),
+    (false, false)
   );
 }
 
