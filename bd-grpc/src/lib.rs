@@ -608,6 +608,7 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
   json_transcoding: bool,
   request_config: UnaryRequestConfig,
   response_mutator: Option<UnaryResponseMutator<IncomingType>>,
+  custom_json_print_options: Option<PrintOptions>,
 ) -> Result<Response> {
   let (headers, extensions, message) = decode_request::<OutgoingType>(
     request,
@@ -632,9 +633,9 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
   }
 
   if json_transcoding {
-    let json =
-      protobuf_json_mapping::print_to_string_with_options(&response, &json_print_options())
-        .map_err(|e| Status::new(Code::Internal, format!("Failed to encode response: {e}")))?;
+    let options = custom_json_print_options.unwrap_or_else(json_print_options);
+    let json = protobuf_json_mapping::print_to_string_with_options(&response, &options)
+      .map_err(|e| Status::new(Code::Internal, format!("Failed to encode response: {e}")))?;
     return Ok(
       Response::builder()
         .status(code_to_connect_http_status(Code::Ok))
@@ -970,6 +971,7 @@ where
     response_mutator,
     route_layer,
     error_handler,
+    None,
   )
 }
 
@@ -1042,6 +1044,7 @@ pub fn make_unary_router_at_path_with_response_mutator<
     response_mutator,
     Identity::new(),
     error_handler,
+    None,
   )
 }
 
@@ -1066,6 +1069,7 @@ pub fn make_unary_router_at_path_with_response_mutator_and_route_layer<
   response_mutator: Option<UnaryResponseMutator<IncomingType>>,
   route_layer: L,
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
+  custom_json_print_options: Option<PrintOptions>,
 ) -> Result<Router>
 where
   L: Layer<Route> + Clone + Send + Sync + 'static,
@@ -1097,6 +1101,7 @@ where
             json_transcoding,
             request_config,
             response_mutator.clone(),
+            custom_json_print_options.clone(),
           )
           .await;
 
