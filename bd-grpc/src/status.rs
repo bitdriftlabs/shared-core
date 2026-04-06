@@ -5,12 +5,13 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{CONTENT_TYPE_GRPC, GRPC_MESSAGE, GRPC_STATUS};
+use crate::connect_protocol::{ConnectProtocolType, ErrorResponse};
+use crate::{CONTENT_TYPE_GRPC, CONTENT_TYPE_JSON, GRPC_MESSAGE, GRPC_STATUS};
 use axum::body::Body;
 use axum::response::Response;
 use bd_grpc_codec::code::Code;
 use http::header::CONTENT_TYPE;
-use http::{HeaderMap, HeaderValue, StatusCode};
+use http::{Extensions, HeaderMap, HeaderValue, StatusCode};
 
 // https://connectrpc.com/docs/protocol#error-codes
 #[must_use]
@@ -41,6 +42,54 @@ pub const fn code_to_connect_code_string(code: Code) -> &'static str {
     Code::NotFound => "not_found",
     Code::PermissionDenied => "permission_denied",
     Code::ResourceExhausted => "resource_exhausted",
+  }
+}
+
+//
+// RequestTransport
+//
+
+#[derive(Clone, Copy)]
+pub enum RequestTransport {
+  Grpc,
+  Connect(ConnectProtocolType),
+  JsonTranscoding,
+}
+
+impl RequestTransport {
+  #[must_use]
+  pub fn from_headers(headers: &HeaderMap) -> Self {
+    ConnectProtocolType::from_headers(headers).map_or_else(
+      || {
+        if crate::is_json_request_content_type(headers) {
+          Self::JsonTranscoding
+        } else {
+          Self::Grpc
+        }
+      },
+      Self::Connect,
+    )
+  }
+
+  #[must_use]
+  pub fn from_extensions(extensions: &Extensions) -> Self {
+    extensions
+      .get::<Self>()
+      .copied()
+      .expect("bd-grpc should insert RequestTransport into request extensions")
+  }
+
+  #[must_use]
+  pub const fn connect_protocol(self) -> Option<ConnectProtocolType> {
+    match self {
+      Self::Connect(connect_protocol) => Some(connect_protocol),
+      Self::Grpc | Self::JsonTranscoding => None,
+    }
+  }
+
+  #[must_use]
+  pub const fn json_transcoding(self) -> bool {
+    matches!(self, Self::JsonTranscoding)
   }
 }
 
@@ -94,6 +143,33 @@ impl Status {
   #[must_use]
   pub fn into_response(self) -> Response {
     self.into_response_with_body(().into())
+  }
+
+  /// Converts a status into the response shape expected by the given transport.
+  #[must_use]
+  pub fn into_response_for_transport(self, transport: RequestTransport) -> Response {
+    if matches!(
+      transport,
+      RequestTransport::Connect(_) | RequestTransport::JsonTranscoding
+    ) {
+      return Response::builder()
+        .status(code_to_connect_http_status(self.code))
+        .header(CONTENT_TYPE, CONTENT_TYPE_JSON)
+        .body(
+          serde_json::to_vec(&ErrorResponse::new(self))
+            .unwrap()
+            .into(),
+        )
+        .unwrap();
+    }
+
+    self.into_response()
+  }
+
+  /// Converts a status into the response shape implied by request headers.
+  #[must_use]
+  pub fn into_response_for_request(self, headers: &HeaderMap) -> Response {
+    self.into_response_for_transport(RequestTransport::from_headers(headers))
   }
 
   // Convert a status into a response compatible with axum.

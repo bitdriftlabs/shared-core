@@ -40,7 +40,7 @@ use crate::{
 use assert_matches::assert_matches;
 use async_trait::async_trait;
 use axum::Router;
-use axum::body::Body;
+use axum::body::{Body, to_bytes};
 use axum::extract::Request;
 use axum::middleware::{Next, from_fn};
 use axum::routing::post;
@@ -51,7 +51,7 @@ use bd_server_stats::test::util::stats::{self, Helper};
 use bd_time::TimeDurationExt;
 use bytes::Bytes;
 use futures::poll;
-use http::{Extensions, HeaderMap};
+use http::{Extensions, HeaderMap, StatusCode};
 use http_body_util::StreamBody;
 use parking_lot::Mutex;
 use prometheus::labels;
@@ -418,6 +418,48 @@ fn invalid_response_header() {
   assert_eq!(round_tripped_status.message, Some("\nhello".to_string()));
 }
 
+#[tokio::test]
+async fn request_aware_status_uses_json_error_shape_for_json_requests() {
+  let status = Status::new(Code::PermissionDenied, "nope");
+  let headers = HeaderMap::from_iter([(CONTENT_TYPE, CONTENT_TYPE_JSON.parse().unwrap())]);
+  let response = status.into_response_for_request(&headers);
+
+  assert_eq!(response.status(), StatusCode::FORBIDDEN);
+  assert_eq!(
+    response.headers().get(CONTENT_TYPE).unwrap(),
+    CONTENT_TYPE_JSON
+  );
+  let body: serde_json::Value =
+    serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+  assert_eq!(
+    body,
+    serde_json::json!({ "code": "permission_denied", "message": "nope" })
+  );
+}
+
+#[tokio::test]
+async fn request_aware_status_uses_json_error_shape_for_connect_requests() {
+  let status = Status::new(Code::ResourceExhausted, "slow down");
+  let mut headers = HeaderMap::from_iter([(CONTENT_TYPE, CONTENT_TYPE_PROTO.parse().unwrap())]);
+  headers.insert(
+    http::header::HeaderName::from_static(CONNECT_PROTOCOL_VERSION),
+    http::HeaderValue::from_static("1"),
+  );
+  let response = status.into_response_for_request(&headers);
+
+  assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+  assert_eq!(
+    response.headers().get(CONTENT_TYPE).unwrap(),
+    CONTENT_TYPE_JSON
+  );
+  let body: serde_json::Value =
+    serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+  assert_eq!(
+    body,
+    serde_json::json!({ "code": "resource_exhausted", "message": "slow down" })
+  );
+}
+
 #[test]
 fn invalid_address() {
   assert_eq!(
@@ -590,17 +632,29 @@ async fn unary_routers_insert_grpc_method_metadata_for_handlers() {
 }
 
 #[tokio::test]
-async fn unary_route_layers_can_observe_grpc_method_metadata() {
+async fn unary_route_layers_can_observe_grpc_request_metadata() {
   let middleware_grpc_method_path = Arc::new(Mutex::new(None));
+  let middleware_request_transport = Arc::new(Mutex::new(None));
   let route_layer = {
     let middleware_grpc_method_path = middleware_grpc_method_path.clone();
+    let middleware_request_transport = middleware_request_transport.clone();
     from_fn(move |request: Request, next: Next| {
       let middleware_grpc_method_path = middleware_grpc_method_path.clone();
+      let middleware_request_transport = middleware_request_transport.clone();
       async move {
         *middleware_grpc_method_path.lock() = request
           .extensions()
           .get::<crate::GrpcMethod>()
           .map(|grpc_method| grpc_method.full_path().to_string());
+        *middleware_request_transport.lock() = request
+          .extensions()
+          .get::<crate::status::RequestTransport>()
+          .map(|request_transport| {
+            (
+              request_transport.connect_protocol().is_some(),
+              request_transport.json_transcoding(),
+            )
+          });
         next.run(request).await
       }
     })
@@ -641,6 +695,10 @@ async fn unary_route_layers_can_observe_grpc_method_metadata() {
   assert_eq!(
     middleware_grpc_method_path.lock().clone().unwrap(),
     service_method().full_path()
+  );
+  assert_eq!(
+    (*middleware_request_transport.lock()).unwrap(),
+    (false, false)
   );
 }
 

@@ -5,13 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::CONTENT_TYPE_JSON;
-use crate::connect_protocol::{ConnectProtocolType, ErrorResponse};
-use crate::status::{Status, code_to_connect_http_status};
+use crate::status::{RequestTransport, Status};
 use axum::BoxError;
 use axum::response::Response;
 use bd_grpc_codec::code::Code;
-use http::header::CONTENT_TYPE;
 
 //
 // Error
@@ -76,29 +73,8 @@ impl Error {
     }
   }
 
-  pub fn to_connect_error_response(self) -> Response {
-    let status = self.into_status();
-    Response::builder()
-      .status(code_to_connect_http_status(status.code))
-      .header(CONTENT_TYPE, CONTENT_TYPE_JSON)
-      .body(
-        serde_json::to_vec(&ErrorResponse::new(status))
-          .unwrap()
-          .into(),
-      )
-      .unwrap()
-  }
-
   #[must_use]
-  pub fn to_response(
-    self,
-    connect_protocol: Option<ConnectProtocolType>,
-    json_transcoding: bool,
-  ) -> Response {
-    if connect_protocol.is_some() || json_transcoding {
-      self.to_connect_error_response()
-    } else {
-      self.into_status().into_response()
-    }
+  pub fn to_response(self, transport: RequestTransport) -> Response {
+    self.into_status().into_response_for_transport(transport)
   }
 }
