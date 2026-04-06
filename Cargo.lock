@@ -1424,7 +1424,6 @@ dependencies = [
  "errno",
  "flate2",
  "futures-channel",
- "futures-core",
  "futures-executor",
  "futures-sink",
  "futures-task",
