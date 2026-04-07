@@ -104,12 +104,14 @@ pub async fn grpc_method_extension_middleware(
 #[derive(Clone, Copy, Debug)]
 pub struct UnaryRequestConfig {
   pub max_request_bytes: usize,
+  pub validation_options: bd_pgv::proto_validate::ValidationOptions,
 }
 
 impl Default for UnaryRequestConfig {
   fn default() -> Self {
     Self {
       max_request_bytes: DEFAULT_MAX_UNARY_REQUEST_BYTES,
+      validation_options: bd_pgv::proto_validate::ValidationOptions::default(),
     }
   }
 }
@@ -558,7 +560,7 @@ async fn decode_request<Message: MessageFull>(
   };
 
   if validate_request {
-    bd_pgv::proto_validate::validate(&message)
+    bd_pgv::proto_validate::validate_with_options(&message, request_config.validation_options)
       .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}")))?;
   }
 
@@ -839,7 +841,7 @@ where
   <L::Service as Service<Request>>::Error: Into<Infallible> + 'static,
   <L::Service as Service<Request>>::Future: Send + 'static,
 {
-  verify_request_support::<RequestType>(validate_request)?;
+  verify_request_support::<RequestType>(validate_request, UnaryRequestConfig::default())?;
   let warn_tracker = Arc::new(WarnTracker::default());
   let stream_stats = stream_stats.map(|stats| stats.resolve_streaming(service_method));
   let grpc_method = service_method.grpc_method();
@@ -1080,7 +1082,7 @@ where
   <L::Service as Service<Request>>::Error: Into<Infallible> + 'static,
   <L::Service as Service<Request>>::Future: Send + 'static,
 {
-  verify_request_support::<OutgoingType>(validate_request)?;
+  verify_request_support::<OutgoingType>(validate_request, request_config)?;
   let warn_tracker = Arc::new(WarnTracker::default());
   let full_path = Arc::new(full_path.to_string());
   let resolved_stats = endpoint_stats
@@ -1129,9 +1131,15 @@ where
   )
 }
 
-fn verify_request_support<RequestType: MessageFull>(validate_request: bool) -> Result<()> {
+fn verify_request_support<RequestType: MessageFull>(
+  validate_request: bool,
+  request_config: UnaryRequestConfig,
+) -> Result<()> {
   if validate_request {
-    bd_pgv::proto_validate::verify_descriptor_support(&RequestType::descriptor())?;
+    bd_pgv::proto_validate::verify_descriptor_support_with_options(
+      &RequestType::descriptor(),
+      request_config.validation_options,
+    )?;
   }
 
   Ok(())
