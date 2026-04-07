@@ -20,6 +20,8 @@ use crate::{
   CONTENT_TYPE,
   CONTENT_TYPE_JSON,
   CONTENT_TYPE_PROTO,
+  CONTENT_TYPE_CONNECT_STREAMING,
+  BidiStreamingHandler,
   Code,
   DEFAULT_MAX_UNARY_REQUEST_BYTES,
   Error,
@@ -31,6 +33,7 @@ use crate::{
   StreamingApi,
   StreamingApiSender,
   UnaryRequestConfig,
+  make_bidi_streaming_router,
   make_server_streaming_router,
   make_unary_router_with_config,
   make_unary_router_with_response_mutator,
@@ -152,6 +155,27 @@ async fn make_server_streaming_server(
   let server = axum::serve(listener, router.into_make_service());
   tokio::spawn(async { server.await.unwrap() });
   (local_address, stats_helper)
+}
+
+async fn make_bidi_streaming_server(
+  handler: Arc<dyn BidiStreamingHandler<EchoResponse, EchoRequest> + 'static>,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
+) -> SocketAddr {
+  let router = make_bidi_streaming_router(
+    &service_method(),
+    handler,
+    error_handler,
+    None,
+    true,
+    None,
+  )
+  .unwrap()
+  .layer(ConnectSafeCompressionLayer::new());
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let local_address = listener.local_addr().unwrap();
+  let server = axum::serve(listener, router.into_make_service());
+  tokio::spawn(async { server.await.unwrap() });
+  local_address
 }
 
 //
@@ -320,11 +344,36 @@ impl ServerStreamingHandler<EchoResponse, UnsupportedRequest> for UnsupportedHan
   }
 }
 
+#[async_trait]
+impl BidiStreamingHandler<EchoResponse, EchoRequest> for BidiEchoHandler {
+  async fn stream(
+    &self,
+    _headers: HeaderMap,
+    _extensions: Extensions,
+    api: &mut StreamingApi<EchoResponse, EchoRequest>,
+  ) -> Result<()> {
+    while let Some(requests) = api.next().await? {
+      for request in requests {
+        api
+          .send(EchoResponse {
+            echo: request.echo,
+            ..Default::default()
+          })
+          .await?;
+      }
+    }
+
+    Ok(())
+  }
+}
+
 //
 // ErrorHandler
 //
 
 struct ErrorHandler {}
+
+struct BidiEchoHandler;
 
 #[async_trait]
 impl Handler<EchoRequest, EchoResponse> for ErrorHandler {
@@ -1073,6 +1122,75 @@ async fn connect_server_streaming_error() {
     "{\"error\":{\"code\":\"internal\",\"message\":\"foo\"}}",
   );
   assert!(stream.next().await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn bidi_streaming() {
+  let local_address = make_bidi_streaming_server(Arc::new(BidiEchoHandler), |_| {}).await;
+  let client = Client::new_http(local_address.to_string().as_str(), 1.minutes(), 1024).unwrap();
+  let mut stream = client
+    .streaming(
+      &service_method(),
+      None,
+      vec![EchoRequest {
+        echo: "hello".to_string(),
+        ..Default::default()
+      }],
+      true,
+      None,
+      OptimizeFor::Memory,
+    )
+    .await
+    .unwrap();
+
+  assert_eq!(
+    stream.next().await.unwrap().unwrap()[0],
+    EchoResponse {
+      echo: "hello".to_string(),
+      ..Default::default()
+    }
+  );
+}
+
+#[tokio::test]
+async fn connect_bidi_streaming() {
+  let local_address = make_bidi_streaming_server(Arc::new(BidiEchoHandler), |_| {}).await;
+  let client = reqwest::Client::builder().deflate(false).build().unwrap();
+  let address = AddressHelper::new(format!("http://{local_address}")).unwrap();
+  let mut encoder = crate::Encoder::new(None);
+  let request_body = encoder
+    .encode(&EchoRequest {
+      echo: "hello".to_string(),
+      ..Default::default()
+    })
+    .unwrap();
+
+  let response = client
+    .post(address.build(&service_method()).to_string())
+    .header(CONTENT_TYPE, CONTENT_TYPE_CONNECT_STREAMING)
+    .header(CONNECT_PROTOCOL_VERSION, "1")
+    .body(request_body)
+    .send()
+    .await
+    .unwrap();
+  assert_eq!(response.status(), 200);
+  assert_eq!(
+    response
+      .headers()
+      .get(CONTENT_TYPE)
+      .unwrap()
+      .to_str()
+      .unwrap(),
+    CONTENT_TYPE_CONNECT_STREAMING
+  );
+
+  let response_body = response.bytes().await.unwrap();
+  let mut decoder =
+    bd_grpc_codec::Decoder::<ConnectMessageOrEndOfStream<EchoResponse>>::new(None, OptimizeFor::Cpu);
+  let frames = decoder.decode_data(&response_body).unwrap();
+
+  assert_eq!(frames[0].message().unwrap().echo, "hello");
+  assert_eq!(frames[1].end_of_stream().unwrap(), "{}");
 }
 
 #[tokio::test]

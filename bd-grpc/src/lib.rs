@@ -139,9 +139,14 @@ impl<OutgoingType: Message, IncomingType: MessageFull> StreamingApi<OutgoingType
     optimize_for: OptimizeFor,
     read_stop: Option<watch::Receiver<bool>>,
   ) -> Self {
-    // TODO(mattklein123): Support connect protocol for bidirectional streaming. We have no
-    // current use case for this right now.
-    let sender = StreamingApiSender::new(tx, compression, false);
+    let sender = StreamingApiSender::new(
+      tx,
+      compression,
+      matches!(
+        ConnectProtocolType::from_headers(&headers),
+        Some(ConnectProtocolType::Streaming)
+      ),
+    );
     Self {
       sender,
       receiver: StreamingApiReceiver::new(headers, body, validate, optimize_for, read_stop),
@@ -502,6 +507,17 @@ pub trait ServerStreamingHandler<ResponseType: Message, RequestType: Message>: S
   ) -> Result<()>;
 }
 
+#[cfg_attr(feature = "mock", mockall::automock)]
+#[async_trait::async_trait]
+pub trait BidiStreamingHandler<ResponseType: Message, RequestType: MessageFull>: Send + Sync {
+  async fn stream(
+    &self,
+    headers: HeaderMap,
+    extensions: Extensions,
+    api: &mut StreamingApi<ResponseType, RequestType>,
+  ) -> Result<()>;
+}
+
 async fn decode_request<Message: MessageFull>(
   request: Request,
   validate_request: bool,
@@ -789,6 +805,95 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
   ))
 }
 
+fn bidi_streaming_handler<ResponseType: MessageFull, RequestType: MessageFull>(
+  handler: Arc<dyn BidiStreamingHandler<ResponseType, RequestType>>,
+  request: Request,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + 'static,
+  stream_stats: Option<StreamStats>,
+  validate_request: bool,
+  warn_tracker: Arc<WarnTracker>,
+  compression: Option<bd_grpc_codec::Compression>,
+) -> Result<Response> {
+  let request_transport = RequestTransport::from_extensions(request.extensions());
+  let connect_protocol_type = request_transport.connect_protocol();
+  if matches!(request_transport, RequestTransport::JsonTranscoding)
+    || matches!(connect_protocol_type, Some(ConnectProtocolType::Unary))
+  {
+    return Err(Status::new(
+      Code::FailedPrecondition,
+      "bidirectional streaming only supports gRPC and Connect streaming",
+    )
+    .into());
+  }
+
+  if let Some(stream_stats) = &stream_stats {
+    stream_stats.stream_initiations_total.inc();
+  }
+
+  let path = request.uri().path().to_string();
+  let (tx, rx) = mpsc::channel(1);
+  let (parts, body) = request.into_parts();
+  let headers = parts.headers.clone();
+  let extensions = parts.extensions;
+  let compression = finalize_response_compression(compression, &headers);
+
+  tokio::spawn(async move {
+    let mut api = StreamingApi::<ResponseType, RequestType>::new(
+      tx,
+      parts.headers,
+      Body::new(body),
+      validate_request,
+      compression,
+      OptimizeFor::Cpu,
+      None,
+    );
+    if let Some(stream_stats) = &stream_stats {
+      api.sender.initialize_stats(
+        stream_stats.tx_messages_total.clone(),
+        stream_stats.tx_bytes_total.clone(),
+        stream_stats.tx_bytes_uncompressed_total.clone(),
+      );
+    }
+
+    match handler.stream(headers, extensions, &mut api).await {
+      Ok(()) => {
+        if let Some(stream_stats) = &stream_stats {
+          stream_stats.rpc.success.inc();
+        }
+        let _ignored = api.sender.send_ok_trailers().await;
+      },
+      Err(e) => {
+        if let Some(warning) = e.warn_every_message()
+          && warn_tracker.should_warn(15.seconds())
+        {
+          log::warn!("{path} failed: {warning}");
+        }
+
+        if let Some(stream_stats) = &stream_stats {
+          stream_stats.rpc.failure.inc();
+        }
+        error_handler(&e);
+
+        let status = match e {
+          Error::Grpc(status) => status,
+          e => Status::new(Code::Internal, format!("{e}")),
+        };
+
+        log::debug!("Stream {path} failed: {status}");
+
+        let _ignored = api.sender.send_error(status).await;
+      },
+    }
+  });
+
+  Ok(new_grpc_response(
+    Body::new(StreamBody::new(ReceiverStream::new(rx))),
+    compression,
+    connect_protocol_type,
+  ))
+}
+
+
 // Create an axum router for a one directional streaming handler.
 pub fn make_server_streaming_router<ResponseType: MessageFull, RequestType: MessageFull>(
   service_method: &ServiceMethod<RequestType, ResponseType>,
@@ -806,6 +911,75 @@ pub fn make_server_streaming_router<ResponseType: MessageFull, RequestType: Mess
     validate_request,
     compression,
     Identity::new(),
+  )
+}
+
+pub fn make_bidi_streaming_router<ResponseType: MessageFull, RequestType: MessageFull>(
+  service_method: &ServiceMethod<RequestType, ResponseType>,
+  handler: Arc<dyn BidiStreamingHandler<ResponseType, RequestType>>,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
+  stream_stats: Option<&EndpointStats>,
+  validate_request: bool,
+  compression: Option<bd_grpc_codec::Compression>,
+) -> Result<Router> {
+  make_bidi_streaming_router_with_route_layer(
+    service_method,
+    handler,
+    error_handler,
+    stream_stats,
+    validate_request,
+    compression,
+    Identity::new(),
+  )
+}
+
+pub fn make_bidi_streaming_router_with_route_layer<
+  ResponseType: MessageFull,
+  RequestType: MessageFull,
+  L,
+>(
+  service_method: &ServiceMethod<RequestType, ResponseType>,
+  handler: Arc<dyn BidiStreamingHandler<ResponseType, RequestType>>,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
+  stream_stats: Option<&EndpointStats>,
+  validate_request: bool,
+  compression: Option<bd_grpc_codec::Compression>,
+  route_layer: L,
+) -> Result<Router>
+where
+  L: Layer<Route> + Clone + Send + Sync + 'static,
+  L::Service: Service<Request> + Clone + Send + Sync + 'static,
+  <L::Service as Service<Request>>::Response: IntoResponse + 'static,
+  <L::Service as Service<Request>>::Error: Into<Infallible> + 'static,
+  <L::Service as Service<Request>>::Future: Send + 'static,
+{
+  verify_request_support::<RequestType>(validate_request, UnaryRequestConfig::default())?;
+  let warn_tracker = Arc::new(WarnTracker::default());
+  let stream_stats = stream_stats.map(|stats| stats.resolve_streaming(service_method));
+  let grpc_method = service_method.grpc_method();
+  Ok(
+    Router::new()
+      .route(
+        &service_method.full_path(),
+        post(move |request: Request| async move {
+          let request_transport = RequestTransport::from_extensions(request.extensions());
+          bidi_streaming_handler(
+            handler,
+            request,
+            error_handler,
+            stream_stats,
+            validate_request,
+            warn_tracker.clone(),
+            compression,
+          )
+          .map_err(|e| e.to_response(request_transport))
+        }),
+      )
+      .route_layer(route_layer)
+      .route_layer(from_fn_with_state(
+        grpc_method,
+        grpc_method_extension_middleware,
+      )),
   )
 }
 
