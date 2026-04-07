@@ -36,6 +36,78 @@ use std::collections::HashSet;
 use std::fmt::Display;
 use std::time::Duration;
 
+//
+// ValidationOptions
+//
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ProtoNameMode {
+  #[default]
+  FullyQualified,
+  PackageRelative,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ValidationOptions {
+  pub proto_name_mode: ProtoNameMode,
+}
+
+//
+// ErrorNameFormatter
+//
+
+// Formats descriptor names for user-facing PGV errors. Package-relative names hide the proto
+// package while still preserving nested message context.
+struct ErrorNameFormatter {
+  options: ValidationOptions,
+}
+
+impl ErrorNameFormatter {
+  const fn new(options: ValidationOptions) -> Self {
+    Self { options }
+  }
+
+  fn field_name(
+    &self,
+    field_descriptor: &FieldDescriptor,
+    message_descriptor: &MessageDescriptor,
+  ) -> String {
+    self.name(
+      message_descriptor.file_descriptor().package(),
+      &field_descriptor.full_name(),
+    )
+  }
+
+  fn message_name(&self, message_descriptor: &MessageDescriptor) -> String {
+    self.name(
+      message_descriptor.file_descriptor().package(),
+      message_descriptor.full_name(),
+    )
+  }
+
+  fn oneof_name(&self, message_descriptor: &MessageDescriptor, full_name: &str) -> String {
+    self.name(message_descriptor.file_descriptor().package(), full_name)
+  }
+
+  fn name(&self, package: &str, full_name: &str) -> String {
+    match self.options.proto_name_mode {
+      ProtoNameMode::FullyQualified => full_name.to_string(),
+      ProtoNameMode::PackageRelative => package_relative_name(package, full_name).to_string(),
+    }
+  }
+}
+
+fn package_relative_name<'a>(package: &str, full_name: &'a str) -> &'a str {
+  if package.is_empty() {
+    full_name
+  } else {
+    full_name
+      .strip_prefix(package)
+      .and_then(|name| name.strip_prefix('.'))
+      .unwrap_or(full_name)
+  }
+}
+
 // Helper for features that are not implemented so we don't silently fail.
 fn not_implemented(has_rule: bool, message: &str) -> error::Result<()> {
   if has_rule {
@@ -102,6 +174,7 @@ trait IntHelper {
     value: Self::Item,
     field_descriptor: &FieldDescriptor,
     message_descriptor: &MessageDescriptor,
+    formatter: &ErrorNameFormatter,
   ) -> error::Result<()>
   where
     <Self as IntHelper>::Item: PartialOrd + Display,
@@ -109,32 +182,32 @@ trait IntHelper {
     if self.gt().is_some_and(|gt| value <= gt) {
       return Err(error::Error::ProtoValidation(format!(
         "field '{}' in message '{}' must be > {}",
-        field_descriptor.full_name(),
-        message_descriptor.full_name(),
+        formatter.field_name(field_descriptor, message_descriptor),
+        formatter.message_name(message_descriptor),
         self.gt().unwrap()
       )));
     }
     if self.lt().is_some_and(|lt| value >= lt) {
       return Err(error::Error::ProtoValidation(format!(
         "field '{}' in message '{}' must be < {}",
-        field_descriptor.full_name(),
-        message_descriptor.full_name(),
+        formatter.field_name(field_descriptor, message_descriptor),
+        formatter.message_name(message_descriptor),
         self.lt().unwrap()
       )));
     }
     if self.lte().is_some_and(|lte| value > lte) {
       return Err(error::Error::ProtoValidation(format!(
         "field '{}' in message '{}' must be <= {}",
-        field_descriptor.full_name(),
-        message_descriptor.full_name(),
+        formatter.field_name(field_descriptor, message_descriptor),
+        formatter.message_name(message_descriptor),
         self.lte().unwrap()
       )));
     }
     if self.gte().is_some_and(|gte| value < gte) {
       return Err(error::Error::ProtoValidation(format!(
         "field '{}' in message '{}' must be >= {}",
-        field_descriptor.full_name(),
-        message_descriptor.full_name(),
+        formatter.field_name(field_descriptor, message_descriptor),
+        formatter.message_name(message_descriptor),
         self.gte().unwrap()
       )));
     }
@@ -199,6 +272,7 @@ fn validate_duration(
   field_descriptor: &FieldDescriptor,
   message_descriptor: &MessageDescriptor,
   duration: &ProtoDuration,
+  formatter: &ErrorNameFormatter,
 ) -> error::Result<()> {
   verify_duration_rules_supported(rules)?;
 
@@ -212,8 +286,8 @@ fn validate_duration(
     if duration <= gt {
       return Err(error::Error::ProtoValidation(format!(
         "duration '{}' in message '{}' requires > {:?}",
-        field_descriptor.full_name(),
-        message_descriptor.full_name(),
+        formatter.field_name(field_descriptor, message_descriptor),
+        formatter.message_name(message_descriptor),
         gt
       )));
     }
@@ -241,14 +315,15 @@ fn validate_timestamp(
   field_descriptor: &FieldDescriptor,
   message_descriptor: &MessageDescriptor,
   value: Option<&ProtoTimestamp>,
+  formatter: &ErrorNameFormatter,
 ) -> error::Result<()> {
   let timestamp_rules = rules.timestamp();
 
   if timestamp_rules.required() && value.is_none() {
     return Err(error::Error::ProtoValidation(format!(
       "field '{}' in message '{}' is required",
-      field_descriptor.full_name(),
-      message_descriptor.full_name()
+      formatter.field_name(field_descriptor, message_descriptor),
+      formatter.message_name(message_descriptor)
     )));
   }
 
@@ -296,7 +371,11 @@ fn verify_enum_rules_supported(rules: &FieldRules) -> error::Result<()> {
 
 // Verify that a reflected field rule set only uses validations we support. The returned bool
 // indicates whether descriptor recursion should continue for this field.
-fn verify_value_support(rules: &FieldRules, runtime_type: &RuntimeType) -> error::Result<bool> {
+fn verify_value_support(
+  rules: &FieldRules,
+  runtime_type: &RuntimeType,
+  formatter: &ErrorNameFormatter,
+) -> error::Result<bool> {
   not_implemented(rules.has_any(), "field any")?;
 
   // The following do not appear to be exposed by the Rust library and are probably not typically
@@ -322,7 +401,7 @@ fn verify_value_support(rules: &FieldRules, runtime_type: &RuntimeType) -> error
         if message_descriptor.full_name() != "google.protobuf.Duration" {
           return Err(error::Error::ProtoValidation(format!(
             "not implemented: duration rules on non-Duration field '{}'",
-            message_descriptor.full_name()
+            formatter.message_name(message_descriptor)
           )));
         }
 
@@ -334,7 +413,7 @@ fn verify_value_support(rules: &FieldRules, runtime_type: &RuntimeType) -> error
         if message_descriptor.full_name() != "google.protobuf.Timestamp" {
           return Err(error::Error::ProtoValidation(format!(
             "not implemented: timestamp rules on non-Timestamp field '{}'",
-            message_descriptor.full_name()
+            formatter.message_name(message_descriptor)
           )));
         }
 
@@ -395,8 +474,9 @@ fn validate_value(
   field_descriptor: &FieldDescriptor,
   message_descriptor: &MessageDescriptor,
   value: Option<&ReflectValueRef<'_>>,
+  formatter: &ErrorNameFormatter,
 ) -> error::Result<bool> {
-  let recurse = verify_value_support(rules, runtime_type)?;
+  let recurse = verify_value_support(rules, runtime_type, formatter)?;
 
   match runtime_type {
     RuntimeType::Message(_) => {
@@ -409,6 +489,7 @@ fn validate_value(
           field_descriptor,
           message_descriptor,
           duration.downcast_ref().unwrap(),
+          formatter,
         )?;
         return Ok(false);
       }
@@ -422,12 +503,13 @@ fn validate_value(
           field_descriptor,
           message_descriptor,
           Some(timestamp.downcast_ref().unwrap()),
+          formatter,
         )?;
         return Ok(false);
       }
 
       if rules.has_timestamp() && value.is_none() {
-        validate_timestamp(rules, field_descriptor, message_descriptor, None)?;
+        validate_timestamp(rules, field_descriptor, message_descriptor, None, formatter)?;
         return Ok(false);
       }
     },
@@ -438,8 +520,8 @@ fn validate_value(
         if rules.string().has_min_len() && rules.string().min_len() > value.len() as u64 {
           return Err(error::Error::ProtoValidation(format!(
             "field '{}' in message '{}' requires string length >= {}",
-            field_descriptor.full_name(),
-            message_descriptor.full_name(),
+            formatter.field_name(field_descriptor, message_descriptor),
+            formatter.message_name(message_descriptor),
             rules.string().min_len()
           )));
         }
@@ -447,8 +529,8 @@ fn validate_value(
         if rules.string().has_max_len() && rules.string().max_len() < value.len() as u64 {
           return Err(error::Error::ProtoValidation(format!(
             "field '{}' in message '{}' requires string length <= {}",
-            field_descriptor.full_name(),
-            message_descriptor.full_name(),
+            formatter.field_name(field_descriptor, message_descriptor),
+            formatter.message_name(message_descriptor),
             rules.string().max_len()
           )));
         }
@@ -458,36 +540,48 @@ fn validate_value(
       if rules.has_int32()
         && let Some(ReflectValueRef::I32(value)) = value
       {
-        rules
-          .int32()
-          .validate_all_int_rules(*value, field_descriptor, message_descriptor)?;
+        rules.int32().validate_all_int_rules(
+          *value,
+          field_descriptor,
+          message_descriptor,
+          formatter,
+        )?;
       }
     },
     RuntimeType::I64 => {
       if rules.has_int64()
         && let Some(ReflectValueRef::I64(value)) = value
       {
-        rules
-          .int64()
-          .validate_all_int_rules(*value, field_descriptor, message_descriptor)?;
+        rules.int64().validate_all_int_rules(
+          *value,
+          field_descriptor,
+          message_descriptor,
+          formatter,
+        )?;
       }
     },
     RuntimeType::U32 => {
       if rules.has_uint32()
         && let Some(ReflectValueRef::U32(value)) = value
       {
-        rules
-          .uint32()
-          .validate_all_int_rules(*value, field_descriptor, message_descriptor)?;
+        rules.uint32().validate_all_int_rules(
+          *value,
+          field_descriptor,
+          message_descriptor,
+          formatter,
+        )?;
       }
     },
     RuntimeType::U64 => {
       if rules.has_uint64()
         && let Some(ReflectValueRef::U64(value)) = value
       {
-        rules
-          .uint64()
-          .validate_all_int_rules(*value, field_descriptor, message_descriptor)?;
+        rules.uint64().validate_all_int_rules(
+          *value,
+          field_descriptor,
+          message_descriptor,
+          formatter,
+        )?;
       }
     },
     RuntimeType::F32 => {
@@ -504,8 +598,8 @@ fn validate_value(
       {
         return Err(error::Error::ProtoValidation(format!(
           "field '{}' in message '{}' must be constant {}",
-          field_descriptor.full_name(),
-          message_descriptor.full_name(),
+          formatter.field_name(field_descriptor, message_descriptor),
+          formatter.message_name(message_descriptor),
           rules.bool().const_()
         )));
       }
@@ -520,8 +614,8 @@ fn validate_value(
         if rules.enum_().defined_only() && enum_descriptor.value_by_number(*value).is_none() {
           return Err(error::Error::ProtoValidation(format!(
             "field '{}' in message '{}' must be a defined enum. Got {}",
-            field_descriptor.full_name(),
-            message_descriptor.full_name(),
+            formatter.field_name(field_descriptor, message_descriptor),
+            formatter.message_name(message_descriptor),
             value
           )));
         }
@@ -531,8 +625,8 @@ fn validate_value(
         if !rules.enum_().in_.is_empty() && !rules.enum_().in_.contains(value) {
           return Err(error::Error::ProtoValidation(format!(
             "field '{}' in message '{}' must be one of {:?}",
-            field_descriptor.full_name(),
-            message_descriptor.full_name(),
+            formatter.field_name(field_descriptor, message_descriptor),
+            formatter.message_name(message_descriptor),
             rules.enum_().in_
           )));
         }
@@ -540,8 +634,8 @@ fn validate_value(
         if rules.enum_().not_in.contains(value) {
           return Err(error::Error::ProtoValidation(format!(
             "field '{}' in message '{}' must not be one of {:?}",
-            field_descriptor.full_name(),
-            message_descriptor.full_name(),
+            formatter.field_name(field_descriptor, message_descriptor),
+            formatter.message_name(message_descriptor),
             rules.enum_().not_in
           )));
         }
@@ -555,9 +649,10 @@ fn validate_value(
 fn verify_repeated_support(
   rules: &RepeatedRules,
   repeated_type: &RuntimeType,
+  formatter: &ErrorNameFormatter,
 ) -> error::Result<bool> {
   let recurse = if let Some(item_rules) = rules.items.as_ref() {
-    verify_value_support(item_rules, repeated_type)?
+    verify_value_support(item_rules, repeated_type, formatter)?
   } else {
     true
   };
@@ -573,6 +668,7 @@ fn validate_repeated(
   field_descriptor: &FieldDescriptor,
   message_descriptor: &MessageDescriptor,
   message: &dyn protobuf::MessageDyn,
+  formatter: &ErrorNameFormatter,
 ) -> error::Result<bool> {
   let repeated = field_descriptor.get_repeated(message);
   let repeated_len = repeated.len();
@@ -584,8 +680,8 @@ fn validate_repeated(
   if rules.has_min_items() && repeated_len < usize::try_from(rules.min_items()).unwrap() {
     return Err(error::Error::ProtoValidation(format!(
       "field '{}' in message '{}' requires repeated items >= {}",
-      field_descriptor.full_name(),
-      message_descriptor.full_name(),
+      formatter.field_name(field_descriptor, message_descriptor),
+      formatter.message_name(message_descriptor),
       rules.min_items()
     )));
   }
@@ -593,13 +689,13 @@ fn validate_repeated(
   if rules.has_max_items() && repeated_len > usize::try_from(rules.max_items()).unwrap() {
     return Err(error::Error::ProtoValidation(format!(
       "field '{}' in message '{}' requires repeated items <= {}",
-      field_descriptor.full_name(),
-      message_descriptor.full_name(),
+      formatter.field_name(field_descriptor, message_descriptor),
+      formatter.message_name(message_descriptor),
       rules.max_items()
     )));
   }
 
-  let mut recurse = verify_repeated_support(rules, repeated_type)?;
+  let mut recurse = verify_repeated_support(rules, repeated_type, formatter)?;
   if let Some(item_rules) = rules.items.as_ref() {
     for value in repeated {
       recurse &= validate_value(
@@ -608,6 +704,7 @@ fn validate_repeated(
         field_descriptor,
         message_descriptor,
         Some(&value),
+        formatter,
       )?;
     }
   }
@@ -615,9 +712,13 @@ fn validate_repeated(
   Ok(recurse)
 }
 
-fn verify_map_support(rules: &MapRules, value_type: &RuntimeType) -> error::Result<bool> {
+fn verify_map_support(
+  rules: &MapRules,
+  value_type: &RuntimeType,
+  formatter: &ErrorNameFormatter,
+) -> error::Result<bool> {
   let recurse = if let Some(value_rules) = rules.values.as_ref() {
-    verify_value_support(value_rules, value_type)?
+    verify_value_support(value_rules, value_type, formatter)?
   } else {
     true
   };
@@ -634,6 +735,7 @@ fn validate_map(
   field_descriptor: &FieldDescriptor,
   message_descriptor: &MessageDescriptor,
   message: &dyn protobuf::MessageDyn,
+  formatter: &ErrorNameFormatter,
 ) -> error::Result<bool> {
   let ReflectFieldRef::Map(map) = field_descriptor.get_reflect(message) else {
     unreachable!("validated map field must reflect as map")
@@ -647,8 +749,8 @@ fn validate_map(
   if rules.has_min_pairs() && map_len < usize::try_from(rules.min_pairs()).unwrap() {
     return Err(error::Error::ProtoValidation(format!(
       "field '{}' in message '{}' requires map pairs >= {}",
-      field_descriptor.full_name(),
-      message_descriptor.full_name(),
+      formatter.field_name(field_descriptor, message_descriptor),
+      formatter.message_name(message_descriptor),
       rules.min_pairs()
     )));
   }
@@ -656,13 +758,13 @@ fn validate_map(
   if rules.has_max_pairs() && map_len > usize::try_from(rules.max_pairs()).unwrap() {
     return Err(error::Error::ProtoValidation(format!(
       "field '{}' in message '{}' requires map pairs <= {}",
-      field_descriptor.full_name(),
-      message_descriptor.full_name(),
+      formatter.field_name(field_descriptor, message_descriptor),
+      formatter.message_name(message_descriptor),
       rules.max_pairs()
     )));
   }
 
-  let mut recurse = verify_map_support(rules, value_type)?;
+  let mut recurse = verify_map_support(rules, value_type, formatter)?;
   if let Some(value_rules) = rules.values.as_ref() {
     for (_key, value) in &map {
       recurse &= validate_value(
@@ -671,6 +773,7 @@ fn validate_map(
         field_descriptor,
         message_descriptor,
         Some(&value),
+        formatter,
       )?;
     }
   }
@@ -683,6 +786,7 @@ fn validate_field(
   field_descriptor: &FieldDescriptor,
   message_descriptor: &MessageDescriptor,
   message: &dyn protobuf::MessageDyn,
+  formatter: &ErrorNameFormatter,
 ) -> error::Result<bool> {
   log::trace!("validating field: {}", field_descriptor.full_name());
   let rules = field_descriptor
@@ -708,8 +812,8 @@ fn validate_field(
       {
         return Err(error::Error::ProtoValidation(format!(
           "field '{}' in message '{}' is required",
-          field_descriptor.full_name(),
-          message_descriptor.full_name()
+          formatter.field_name(field_descriptor, message_descriptor),
+          formatter.message_name(message_descriptor)
         )));
       }
 
@@ -725,6 +829,7 @@ fn validate_field(
         field_descriptor,
         message_descriptor,
         value,
+        formatter,
       )
     },
     RuntimeFieldType::Repeated(repeated) => {
@@ -735,6 +840,7 @@ fn validate_field(
           field_descriptor,
           message_descriptor,
           message,
+          formatter,
         )
       } else {
         Ok(true)
@@ -748,6 +854,7 @@ fn validate_field(
           field_descriptor,
           message_descriptor,
           message,
+          formatter,
         )
       } else {
         Ok(true)
@@ -756,7 +863,10 @@ fn validate_field(
   }
 }
 
-fn verify_field_support(field_descriptor: &FieldDescriptor) -> error::Result<bool> {
+fn verify_field_support(
+  field_descriptor: &FieldDescriptor,
+  formatter: &ErrorNameFormatter,
+) -> error::Result<bool> {
   let rules = field_descriptor
     .proto()
     .options
@@ -768,17 +878,17 @@ fn verify_field_support(field_descriptor: &FieldDescriptor) -> error::Result<boo
   let rules = rules.unwrap();
 
   match field_descriptor.runtime_field_type() {
-    RuntimeFieldType::Singular(singular) => verify_value_support(&rules, &singular),
+    RuntimeFieldType::Singular(singular) => verify_value_support(&rules, &singular, formatter),
     RuntimeFieldType::Repeated(repeated) => {
       if rules.has_repeated() {
-        verify_repeated_support(rules.repeated(), &repeated)
+        verify_repeated_support(rules.repeated(), &repeated, formatter)
       } else {
         Ok(true)
       }
     },
     RuntimeFieldType::Map(_key_type, value_type) => {
       if rules.has_map() {
-        verify_map_support(rules.map(), &value_type)
+        verify_map_support(rules.map(), &value_type, formatter)
       } else {
         Ok(true)
       }
@@ -789,6 +899,7 @@ fn verify_field_support(field_descriptor: &FieldDescriptor) -> error::Result<boo
 fn verify_descriptor_support_impl(
   message_descriptor: &MessageDescriptor,
   visited: &mut HashSet<String>,
+  formatter: &ErrorNameFormatter,
 ) -> error::Result<()> {
   let descriptor_name = message_descriptor.full_name().to_string();
   if !visited.insert(descriptor_name) {
@@ -796,7 +907,7 @@ fn verify_descriptor_support_impl(
   }
 
   for field in message_descriptor.fields() {
-    if !verify_field_support(&field)? {
+    if !verify_field_support(&field, formatter)? {
       continue;
     }
 
@@ -804,7 +915,7 @@ fn verify_descriptor_support_impl(
       RuntimeFieldType::Singular(RuntimeType::Message(message_descriptor))
       | RuntimeFieldType::Repeated(RuntimeType::Message(message_descriptor))
       | RuntimeFieldType::Map(_, RuntimeType::Message(message_descriptor)) => {
-        verify_descriptor_support_impl(&message_descriptor, visited)?;
+        verify_descriptor_support_impl(&message_descriptor, visited, formatter)?;
       },
       RuntimeFieldType::Singular(_) | RuntimeFieldType::Repeated(_) | RuntimeFieldType::Map(..) => {
       },
@@ -816,11 +927,34 @@ fn verify_descriptor_support_impl(
 
 // Verify that all PGV rules used by a message descriptor are supported by the runtime validator.
 pub fn verify_descriptor_support(message_descriptor: &MessageDescriptor) -> error::Result<()> {
-  verify_descriptor_support_impl(message_descriptor, &mut HashSet::new())
+  verify_descriptor_support_with_options(message_descriptor, ValidationOptions::default())
+}
+
+pub fn verify_descriptor_support_with_options(
+  message_descriptor: &MessageDescriptor,
+  options: ValidationOptions,
+) -> error::Result<()> {
+  let formatter = ErrorNameFormatter::new(options);
+  verify_descriptor_support_impl(message_descriptor, &mut HashSet::new(), &formatter)
 }
 
 // Validate a message using PGV annotations and reflection.
 pub fn validate(message: &dyn protobuf::MessageDyn) -> error::Result<()> {
+  validate_with_options(message, ValidationOptions::default())
+}
+
+pub fn validate_with_options(
+  message: &dyn protobuf::MessageDyn,
+  options: ValidationOptions,
+) -> error::Result<()> {
+  let formatter = ErrorNameFormatter::new(options);
+  validate_impl(message, &formatter)
+}
+
+fn validate_impl(
+  message: &dyn protobuf::MessageDyn,
+  formatter: &ErrorNameFormatter,
+) -> error::Result<()> {
   let message_descriptor = message.descriptor_dyn();
   log::trace!("validating message: {}", message_descriptor.full_name());
 
@@ -836,15 +970,15 @@ pub fn validate(message: &dyn protobuf::MessageDyn) -> error::Result<()> {
     {
       return Err(error::Error::ProtoValidation(format!(
         "oneof '{}' in message '{}' is required to be set",
-        oneof.full_name(),
-        message_descriptor.full_name()
+        formatter.oneof_name(&message_descriptor, &oneof.full_name()),
+        formatter.message_name(&message_descriptor)
       )));
     }
   }
 
   for field in message_descriptor.fields() {
     // Check per-field rules.
-    if !validate_field(&field, &message_descriptor, message)? {
+    if !validate_field(&field, &message_descriptor, message, formatter)? {
       continue;
     }
 
@@ -852,20 +986,20 @@ pub fn validate(message: &dyn protobuf::MessageDyn) -> error::Result<()> {
     match field.get_reflect(message) {
       ReflectFieldRef::Optional(optional) => {
         if let Some(ReflectValueRef::Message(message)) = optional.value() {
-          validate(&*message)?;
+          validate_impl(&*message, formatter)?;
         }
       },
       ReflectFieldRef::Repeated(repeated) => {
         for value in repeated {
           if let ReflectValueRef::Message(message) = value {
-            validate(&*message)?;
+            validate_impl(&*message, formatter)?;
           }
         }
       },
       ReflectFieldRef::Map(map) => {
         for (_, value) in &map {
           if let ReflectValueRef::Message(message) = value {
-            validate(&*message)?;
+            validate_impl(&*message, formatter)?;
           }
         }
       },

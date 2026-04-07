@@ -46,6 +46,7 @@ use axum::middleware::{Next, from_fn};
 use axum::routing::post;
 use bd_grpc_codec::stats::DeferredCounter;
 use bd_grpc_codec::{DecodingResult, OptimizeFor};
+use bd_pgv::proto_validate::{ProtoNameMode, ValidationOptions};
 use bd_server_stats::stats::CounterWrapper;
 use bd_server_stats::test::util::stats::{self, Helper};
 use bd_time::TimeDurationExt;
@@ -95,12 +96,29 @@ async fn make_unary_server_with_response_mutator(
   endpoint_stats: Option<&EndpointStats>,
   response_mutator: Option<crate::UnaryResponseMutator<EchoResponse>>,
 ) -> SocketAddr {
+  make_unary_server_with_request_config(
+    handler,
+    error_handler,
+    endpoint_stats,
+    UnaryRequestConfig::default(),
+    response_mutator,
+  )
+  .await
+}
+
+async fn make_unary_server_with_request_config(
+  handler: Arc<dyn Handler<EchoRequest, EchoResponse>>,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
+  endpoint_stats: Option<&EndpointStats>,
+  request_config: UnaryRequestConfig,
+  response_mutator: Option<crate::UnaryResponseMutator<EchoResponse>>,
+) -> SocketAddr {
   let router = make_unary_router_with_response_mutator(
     &service_method(),
     handler,
     endpoint_stats,
     true,
-    UnaryRequestConfig::default(),
+    request_config,
     response_mutator,
     error_handler,
   )
@@ -1231,6 +1249,39 @@ async fn connect_unary_error() {
     "{\"code\":\"invalid_argument\",\"message\":\"Invalid request: A proto validation error \
      occurred: field 'test.EchoRequest.echo' in message 'test.EchoRequest' requires string length \
      >= 1\"}"
+  );
+}
+
+#[tokio::test]
+async fn connect_unary_error_uses_package_relative_proto_names() {
+  let local_address = make_unary_server_with_request_config(
+    Arc::new(EchoHandler::default()),
+    |_| {},
+    None,
+    UnaryRequestConfig {
+      validation_options: ValidationOptions {
+        proto_name_mode: ProtoNameMode::PackageRelative,
+      },
+      ..Default::default()
+    },
+    None,
+  )
+  .await;
+  let client = reqwest::Client::builder().deflate(false).build().unwrap();
+  let address = AddressHelper::new(format!("http://{local_address}")).unwrap();
+  let response = client
+    .post(address.build(&service_method()).to_string())
+    .header(CONTENT_TYPE, CONTENT_TYPE_PROTO)
+    .header(CONNECT_PROTOCOL_VERSION, "1")
+    .body(EchoRequest::default().write_to_bytes().unwrap())
+    .send()
+    .await
+    .unwrap();
+  assert_eq!(response.status(), 400);
+  assert_eq!(
+    response.bytes().await.unwrap(),
+    "{\"code\":\"invalid_argument\",\"message\":\"Invalid request: A proto validation error \
+     occurred: field 'EchoRequest.echo' in message 'EchoRequest' requires string length >= 1\"}"
   );
 }
 

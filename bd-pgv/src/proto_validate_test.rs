@@ -5,7 +5,13 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{validate, verify_descriptor_support};
+use super::{
+  ProtoNameMode,
+  ValidationOptions,
+  validate,
+  validate_with_options,
+  verify_descriptor_support,
+};
 use crate::error;
 use crate::generated::test_protos;
 use crate::generated::test_protos::test_validate::{Duration, Int32, Int64, Uint64};
@@ -81,6 +87,20 @@ fn timestamp() {
     ..Default::default()
   };
   assert!(validate(&message).is_ok());
+}
+
+#[test]
+fn package_relative_error_names() {
+  let message = String::default();
+  matches::assert_matches!(
+    validate_with_options(
+      &message,
+      ValidationOptions {
+        proto_name_mode: ProtoNameMode::PackageRelative,
+      },
+    ),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'String.field' in message 'String' requires string length >= 1");
 }
 
 #[test]
