@@ -16,12 +16,12 @@ use crate::generated::proto::test::{
 };
 use crate::stats::EndpointStats;
 use crate::{
+  BidiStreamingHandler,
   CONNECT_PROTOCOL_VERSION,
   CONTENT_TYPE,
+  CONTENT_TYPE_CONNECT_STREAMING,
   CONTENT_TYPE_JSON,
   CONTENT_TYPE_PROTO,
-  CONTENT_TYPE_CONNECT_STREAMING,
-  BidiStreamingHandler,
   Code,
   DEFAULT_MAX_UNARY_REQUEST_BYTES,
   Error,
@@ -161,16 +161,10 @@ async fn make_bidi_streaming_server(
   handler: Arc<dyn BidiStreamingHandler<EchoResponse, EchoRequest> + 'static>,
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
 ) -> SocketAddr {
-  let router = make_bidi_streaming_router(
-    &service_method(),
-    handler,
-    error_handler,
-    None,
-    true,
-    None,
-  )
-  .unwrap()
-  .layer(ConnectSafeCompressionLayer::new());
+  let router =
+    make_bidi_streaming_router(&service_method(), handler, error_handler, None, true, None)
+      .unwrap()
+      .layer(ConnectSafeCompressionLayer::new());
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let local_address = listener.local_addr().unwrap();
   let server = axum::serve(listener, router.into_make_service());
@@ -1185,8 +1179,10 @@ async fn connect_bidi_streaming() {
   );
 
   let response_body = response.bytes().await.unwrap();
-  let mut decoder =
-    bd_grpc_codec::Decoder::<ConnectMessageOrEndOfStream<EchoResponse>>::new(None, OptimizeFor::Cpu);
+  let mut decoder = bd_grpc_codec::Decoder::<ConnectMessageOrEndOfStream<EchoResponse>>::new(
+    None,
+    OptimizeFor::Cpu,
+  );
   let frames = decoder.decode_data(&response_body).unwrap();
 
   assert_eq!(frames[0].message().unwrap().echo, "hello");

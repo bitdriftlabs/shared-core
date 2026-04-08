@@ -509,7 +509,9 @@ pub trait ServerStreamingHandler<ResponseType: Message, RequestType: Message>: S
 
 #[cfg_attr(feature = "mock", mockall::automock)]
 #[async_trait::async_trait]
-pub trait BidiStreamingHandler<ResponseType: Message, RequestType: MessageFull>: Send + Sync {
+pub trait BidiStreamingHandler<ResponseType: Message, RequestType: MessageFull>:
+  Send + Sync
+{
   async fn stream(
     &self,
     headers: HeaderMap,
@@ -819,11 +821,13 @@ fn bidi_streaming_handler<ResponseType: MessageFull, RequestType: MessageFull>(
   if matches!(request_transport, RequestTransport::JsonTranscoding)
     || matches!(connect_protocol_type, Some(ConnectProtocolType::Unary))
   {
-    return Err(Status::new(
-      Code::FailedPrecondition,
-      "bidirectional streaming only supports gRPC and Connect streaming",
-    )
-    .into());
+    return Err(
+      Status::new(
+        Code::FailedPrecondition,
+        "bidirectional streaming only supports gRPC and Connect streaming",
+      )
+      .into(),
+    );
   }
 
   if let Some(stream_stats) = &stream_stats {
