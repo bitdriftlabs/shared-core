@@ -25,8 +25,6 @@ clap_builder = { version = "4", default-features = false, features = ["color", "
 either = { version = "1", features = ["use_std"] }
 flate2 = { version = "1", features = ["zlib", "zlib-ng"] }
 futures-channel = { version = "0.3", features = ["sink"] }
-futures-executor = { version = "0.3" }
-futures-sink = { version = "0.3" }
 futures-task = { version = "0.3", default-features = false, features = ["std"] }
 futures-util = { version = "0.3", features = ["channel", "io", "sink"] }
 getrandom-468e82937335b1c9 = { package = "getrandom", version = "0.3", default-features = false, features = ["std"] }
@@ -45,12 +43,13 @@ rustls-webpki = { version = "0.103", default-features = false, features = ["aws-
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
 serde_core = { version = "1", features = ["alloc", "rc"] }
 serde_json = { version = "1", features = ["alloc", "raw_value"] }
-slab = { version = "0.4" }
 smallvec = { version = "1", default-features = false, features = ["const_new"] }
 sync_wrapper = { version = "1", default-features = false, features = ["futures"] }
+thiserror = { version = "2" }
 tokio = { version = "1", features = ["full", "test-util"] }
+tokio-stream = { version = "0.1" }
 tokio-util = { version = "0.7", features = ["codec", "io", "time"] }
-tower = { version = "0.5", default-features = false, features = ["log", "make", "retry"] }
+tower = { version = "0.5", default-features = false, features = ["balance", "buffer", "limit", "load-shed", "log", "retry"] }
 tracing = { version = "0.1", features = ["log"] }
 tracing-core = { version = "0.1" }
 
@@ -62,8 +61,6 @@ clap_builder = { version = "4", default-features = false, features = ["color", "
 either = { version = "1", features = ["use_std"] }
 flate2 = { version = "1", features = ["zlib", "zlib-ng"] }
 futures-channel = { version = "0.3", features = ["sink"] }
-futures-executor = { version = "0.3" }
-futures-sink = { version = "0.3" }
 futures-task = { version = "0.3", default-features = false, features = ["std"] }
 futures-util = { version = "0.3", features = ["channel", "io", "sink"] }
 getrandom-468e82937335b1c9 = { package = "getrandom", version = "0.3", default-features = false, features = ["std"] }
@@ -83,14 +80,15 @@ rustls-webpki = { version = "0.103", default-features = false, features = ["aws-
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
 serde_core = { version = "1", features = ["alloc", "rc"] }
 serde_json = { version = "1", features = ["alloc", "raw_value"] }
-slab = { version = "0.4" }
 smallvec = { version = "1", default-features = false, features = ["const_new"] }
 syn = { version = "2", features = ["extra-traits", "fold", "full", "visit", "visit-mut"] }
 sync_wrapper = { version = "1", default-features = false, features = ["futures"] }
+thiserror = { version = "2" }
 tokio = { version = "1", features = ["full", "test-util"] }
+tokio-stream = { version = "0.1" }
 tokio-util = { version = "0.7", features = ["codec", "io", "time"] }
 toml_parser = { version = "1" }
-tower = { version = "0.5", default-features = false, features = ["log", "make", "retry"] }
+tower = { version = "0.5", default-features = false, features = ["balance", "buffer", "limit", "load-shed", "log", "retry"] }
 tracing = { version = "0.1", features = ["log"] }
 tracing-core = { version = "0.1" }
 winnow = { version = "1" }
