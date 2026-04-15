@@ -381,9 +381,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       Arc::new(SystemTimeProvider),
       log_network_quality_monitor,
     ));
-    let battery_drain_tracker = Arc::new(battery::BatteryDrainTracker::new(Arc::new(
-      SystemTimeProvider,
-    )));
+    let battery_drain_tracker = Arc::new(battery::BatteryDrainTracker::new(
+      Arc::new(SystemTimeProvider),
+      runtime_loader,
+    ));
     let network_quality_interceptor =
       Arc::new(NetworkQualityInterceptor::new(network_quality_resolver));
     let device_id_interceptor = Arc::new(DeviceIdInterceptor::new(device_id));
