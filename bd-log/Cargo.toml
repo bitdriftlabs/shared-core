@@ -9,16 +9,21 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
-anyhow.workspace             = true
-bd-workspace-hack.workspace  = true
-log.workspace                = true
-parking_lot.workspace        = true
-time.workspace               = true
-tokio.workspace              = true
-tracing.workspace            = true
-tracing-error.workspace      = true
-tracing-log.workspace        = true
-tracing-subscriber.workspace = true
+anyhow.workspace                = true
+bd-workspace-hack.workspace     = true
+http.workspace                  = true
+log.workspace                   = true
+opentelemetry.workspace         = true
+opentelemetry-otlp.workspace    = true
+opentelemetry_sdk.workspace     = true
+parking_lot.workspace           = true
+time.workspace                  = true
+tokio.workspace                 = true
+tracing.workspace               = true
+tracing-error.workspace         = true
+tracing-log.workspace           = true
+tracing-opentelemetry.workspace = true
+tracing-subscriber.workspace    = true
 
 [dev-dependencies]
 bd-time = { path = "../bd-time" }

@@ -89,6 +89,10 @@ struct SetFeatureFlagParameters {
 }
 
 struct Tool {
+  #[expect(
+    dead_code,
+    reason = "Stored for tool_router macro-generated registrations"
+  )]
   tool_router: ToolRouter<Self>,
 
   host: String,
