@@ -191,3 +191,61 @@ fn shared_target_routing_only_forwards_matching_targets() {
     vec![module_path!().to_string()]
   );
 }
+
+#[test]
+fn conditional_otel_span_returns_null_without_direct_otel_parent() {
+  let span_names = exported_span_names_after_two_stage_init(async {
+    let span = crate::otel_info_span_if_parent!("conditional_root");
+    assert!(span.metadata().is_none());
+
+    let plain_parent = tracing::info_span!("plain_parent");
+    let _plain_parent_entered = plain_parent.enter();
+    let nested_span = crate::otel_info_span_if_parent!("conditional_nested");
+    assert!(nested_span.metadata().is_none());
+  });
+
+  assert!(
+    span_names.is_empty(),
+    "unexpected exported spans: {span_names:?}"
+  );
+}
+
+#[test]
+fn conditional_otel_span_creates_child_for_direct_otel_parent() {
+  let span_names = exported_span_names_after_two_stage_init(async {
+    let parent = crate::otel_info_span!("direct_parent");
+    let _parent_entered = parent.enter();
+
+    let child = crate::otel_info_span_if_parent!("direct_child", answer = 42);
+    assert_eq!(
+      child.metadata().map(tracing::Metadata::target),
+      Some(crate::OTEL_TARGET)
+    );
+
+    let _child_entered = child.enter();
+  });
+
+  assert!(span_names.iter().any(|name| name == "direct_parent"));
+  assert!(span_names.iter().any(|name| name == "direct_child"));
+}
+
+#[test]
+fn conditional_otel_instrument_only_creates_span_for_direct_otel_parent() {
+  fn instrumented_work() -> impl Future<Output = ()> {
+    std::future::ready(())
+  }
+
+  let span_names = exported_span_names_after_two_stage_init(async {
+    crate::otel_instrument_if_parent!(instrumented_work(), tracing::Level::INFO, "without_parent")
+      .await;
+
+    let parent = crate::otel_info_span!("direct_parent");
+    let _parent_entered = parent.enter();
+    crate::otel_instrument_if_parent!(instrumented_work(), tracing::Level::INFO, "with_parent")
+      .await;
+  });
+
+  assert!(span_names.iter().any(|name| name == "direct_parent"));
+  assert!(span_names.iter().any(|name| name == "with_parent"));
+  assert!(!span_names.iter().any(|name| name == "without_parent"));
+}

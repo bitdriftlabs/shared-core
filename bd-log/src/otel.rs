@@ -126,6 +126,17 @@ pub(crate) fn is_not_direct_otel_target(metadata: &tracing::Metadata<'_>) -> boo
   !is_direct_otel_target(metadata)
 }
 
+// These conditional span helpers only need to inspect the currently entered span because that is
+// the implicit parent `tracing` will attach to a newly-created span.
+#[doc(hidden)]
+#[must_use]
+#[inline]
+pub fn current_span_is_direct_otel() -> bool {
+  tracing::Span::current()
+    .metadata()
+    .is_some_and(is_direct_otel_target)
+}
+
 pub(crate) fn global_filter_rules(base_rules: &str, enable_direct_otel: bool) -> String {
   if !enable_direct_otel {
     return base_rules.to_string();
@@ -257,6 +268,74 @@ macro_rules! otel_trace_span {
 }
 
 #[macro_export]
+macro_rules! otel_span_if_parent {
+  ($level:expr, $name:expr) => {{
+    if $crate::otel::current_span_is_direct_otel() {
+      $crate::otel_span!($level, $name)
+    } else {
+      tracing::Span::none()
+    }
+  }};
+  ($level:expr, $name:expr, $($fields:tt)*) => {{
+    if $crate::otel::current_span_is_direct_otel() {
+      $crate::otel_span!($level, $name, $($fields)*)
+    } else {
+      tracing::Span::none()
+    }
+  }};
+}
+
+#[macro_export]
+macro_rules! otel_trace_span_if_parent {
+  ($name:expr) => {
+    $crate::otel_span_if_parent!(tracing::Level::TRACE, $name)
+  };
+  ($name:expr, $($fields:tt)*) => {
+    $crate::otel_span_if_parent!(tracing::Level::TRACE, $name, $($fields)*)
+  };
+}
+
+#[macro_export]
+macro_rules! otel_debug_span_if_parent {
+  ($name:expr) => {
+    $crate::otel_span_if_parent!(tracing::Level::DEBUG, $name)
+  };
+  ($name:expr, $($fields:tt)*) => {
+    $crate::otel_span_if_parent!(tracing::Level::DEBUG, $name, $($fields)*)
+  };
+}
+
+#[macro_export]
+macro_rules! otel_info_span_if_parent {
+  ($name:expr) => {
+    $crate::otel_span_if_parent!(tracing::Level::INFO, $name)
+  };
+  ($name:expr, $($fields:tt)*) => {
+    $crate::otel_span_if_parent!(tracing::Level::INFO, $name, $($fields)*)
+  };
+}
+
+#[macro_export]
+macro_rules! otel_warn_span_if_parent {
+  ($name:expr) => {
+    $crate::otel_span_if_parent!(tracing::Level::WARN, $name)
+  };
+  ($name:expr, $($fields:tt)*) => {
+    $crate::otel_span_if_parent!(tracing::Level::WARN, $name, $($fields)*)
+  };
+}
+
+#[macro_export]
+macro_rules! otel_error_span_if_parent {
+  ($name:expr) => {
+    $crate::otel_span_if_parent!(tracing::Level::ERROR, $name)
+  };
+  ($name:expr, $($fields:tt)*) => {
+    $crate::otel_span_if_parent!(tracing::Level::ERROR, $name, $($fields)*)
+  };
+}
+
+#[macro_export]
 macro_rules! otel_debug_span {
   ($name:expr) => {
     $crate::otel_span!(tracing::Level::DEBUG, $name)
@@ -347,5 +426,17 @@ macro_rules! otel_instrument {
   ($future:expr, $level:expr, $name:expr, $($fields:tt)*) => {{
     use tracing::Instrument as _;
     ($future).instrument($crate::otel_span!($level, $name, $($fields)*))
+  }};
+}
+
+#[macro_export]
+macro_rules! otel_instrument_if_parent {
+  ($future:expr, $level:expr, $name:expr) => {{
+    use tracing::Instrument as _;
+    ($future).instrument($crate::otel_span_if_parent!($level, $name))
+  }};
+  ($future:expr, $level:expr, $name:expr, $($fields:tt)*) => {{
+    use tracing::Instrument as _;
+    ($future).instrument($crate::otel_span_if_parent!($level, $name, $($fields)*))
   }};
 }
