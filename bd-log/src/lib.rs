@@ -75,14 +75,17 @@ use anyhow::anyhow;
 use opentelemetry_sdk::trace::SdkTracerProvider;
 pub use otel::{LogConfig, LogOutput, OTEL_TARGET, OtelCollectorConfig, OtelCollectorProtocol};
 pub use parking_lot::Mutex as ParkingLotMutex;
-use std::fmt;
+use std::marker::PhantomData;
 use std::sync::Mutex;
+use std::{fmt, io};
+use tracing::span::{Attributes, Id, Record};
+use tracing::{Event, Metadata};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::field::RecordFields;
-use tracing_subscriber::filter::{LevelFilter, filter_fn};
+use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::fmt::FormatFields;
-use tracing_subscriber::fmt::format::{DefaultFields, FmtSpan, Writer};
-use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::fmt::format::{Compact, DefaultFields, FmtSpan, Writer};
+use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer, Registry};
 
@@ -92,6 +95,13 @@ pub const DEBUG_DIRECT_OTEL_SPANS_ENV: &str = "BD_LOG_DEBUG_DIRECT_OTEL_SPANS";
 type RegistryLayer = Box<dyn Layer<Registry> + Send + Sync + 'static>;
 type ReloadFilterFn = Box<dyn FnMut(EnvFilter) -> anyhow::Result<()> + Send>;
 type ReloadLayersFn = Box<dyn FnMut(Vec<RegistryLayer>) -> anyhow::Result<()> + Send>;
+type ConsoleFmtLayer = tracing_subscriber::fmt::Layer<
+  Registry,
+  DefaultFields,
+  tracing_subscriber::fmt::format::Format<Compact>,
+  ConsoleWriter,
+>;
+type MetadataPredicate = fn(&Metadata<'_>) -> bool;
 
 // The local debug-only OTEL span view uses a second fmt layer alongside the normal output layer.
 // `tracing-subscriber` stores formatted span fields in extensions keyed by the formatter type, so
@@ -105,6 +115,169 @@ impl<'writer> FormatFields<'writer> for DirectOtelDebugFields {
   fn format_fields<R: RecordFields>(&self, writer: Writer<'writer>, fields: R) -> fmt::Result {
     self.0.format_fields(writer, fields)
   }
+}
+
+//
+// ConsoleWriter
+//
+
+// Keep the console writer type stable so the fmt layer builder can be shared across stdout and
+// stderr. This lets the output destination change during reload without duplicating the rest of
+// the formatter configuration.
+#[derive(Clone, Copy, Debug)]
+enum ConsoleWriter {
+  Stdout,
+  Stderr,
+}
+
+enum ConsoleWriterGuard {
+  Stdout(io::Stdout),
+  Stderr(io::Stderr),
+}
+
+impl io::Write for ConsoleWriterGuard {
+  fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    match self {
+      Self::Stdout(writer) => writer.write(buf),
+      Self::Stderr(writer) => writer.write(buf),
+    }
+  }
+
+  fn flush(&mut self) -> io::Result<()> {
+    match self {
+      Self::Stdout(writer) => writer.flush(),
+      Self::Stderr(writer) => writer.flush(),
+    }
+  }
+}
+
+impl<'writer> tracing_subscriber::fmt::writer::MakeWriter<'writer> for ConsoleWriter {
+  type Writer = ConsoleWriterGuard;
+
+  fn make_writer(&'writer self) -> Self::Writer {
+    match self {
+      Self::Stdout => ConsoleWriterGuard::Stdout(io::stdout()),
+      Self::Stderr => ConsoleWriterGuard::Stderr(io::stderr()),
+    }
+  }
+}
+
+fn console_writer(output: LogOutput) -> ConsoleWriter {
+  match output {
+    LogOutput::Stdout => ConsoleWriter::Stdout,
+    LogOutput::Stderr => ConsoleWriter::Stderr,
+  }
+}
+
+//
+// TargetedLayer
+//
+
+// `tracing-subscriber` cannot safely reload a freshly-constructed `Filtered` layer because the
+// replacement never gets a new `FilterId`. See tokio-rs/tracing#1629 for the concrete panic and
+// tokio-rs/tracing#2101 for the upstream API limitation that makes this hard to fix before a
+// breaking release. We still want per-layer routing, so keep the routing predicate inside an
+// ordinary layer instead of relying on `.with_filter(...)`.
+//
+// This is intentionally small and mechanical: it delegates the lifecycle methods only for spans
+// and events whose metadata matched the predicate at creation time. The marker stored in span
+// extensions makes later callbacks cheap and avoids re-checking the span target string on every
+// enter/exit/record/close path.
+struct TargetedLayer<L, Marker> {
+  inner: L,
+  predicate: MetadataPredicate,
+  marker: PhantomData<fn() -> Marker>,
+}
+
+struct SpanRouteMarker<Marker>(PhantomData<fn() -> Marker>);
+
+struct DirectOtelRoute;
+struct NonDirectOtelRoute;
+
+impl<L, Marker> TargetedLayer<L, Marker> {
+  fn new(inner: L, predicate: MetadataPredicate) -> Self {
+    Self {
+      inner,
+      predicate,
+      marker: PhantomData,
+    }
+  }
+}
+
+impl<L, Marker> Layer<Registry> for TargetedLayer<L, Marker>
+where
+  L: Layer<Registry>,
+  Marker: 'static,
+{
+  fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, Registry>) {
+    if !(self.predicate)(attrs.metadata()) {
+      return;
+    }
+
+    if let Some(span) = ctx.span(id) {
+      span
+        .extensions_mut()
+        .insert(SpanRouteMarker::<Marker>(PhantomData));
+    }
+
+    self.inner.on_new_span(attrs, id, ctx);
+  }
+
+  fn on_record(&self, id: &Id, values: &Record<'_>, ctx: Context<'_, Registry>) {
+    if span_matches_route::<Marker>(&ctx, id) {
+      self.inner.on_record(id, values, ctx);
+    }
+  }
+
+  fn on_follows_from(&self, id: &Id, follows: &Id, ctx: Context<'_, Registry>) {
+    if span_matches_route::<Marker>(&ctx, id) {
+      self.inner.on_follows_from(id, follows, ctx);
+    }
+  }
+
+  fn on_event(&self, event: &Event<'_>, ctx: Context<'_, Registry>) {
+    if (self.predicate)(event.metadata()) {
+      self.inner.on_event(event, ctx);
+    }
+  }
+
+  fn on_enter(&self, id: &Id, ctx: Context<'_, Registry>) {
+    if span_matches_route::<Marker>(&ctx, id) {
+      self.inner.on_enter(id, ctx);
+    }
+  }
+
+  fn on_exit(&self, id: &Id, ctx: Context<'_, Registry>) {
+    if span_matches_route::<Marker>(&ctx, id) {
+      self.inner.on_exit(id, ctx);
+    }
+  }
+
+  fn on_close(&self, id: Id, ctx: Context<'_, Registry>) {
+    if span_matches_route::<Marker>(&ctx, &id) {
+      self.inner.on_close(id, ctx);
+    }
+  }
+}
+
+fn span_matches_route<Marker: 'static>(ctx: &Context<'_, Registry>, id: &Id) -> bool {
+  ctx
+    .span(id)
+    .is_some_and(|span| span.extensions().get::<SpanRouteMarker<Marker>>().is_some())
+}
+
+pub(crate) fn box_direct_otel_layer<L>(inner: L) -> RegistryLayer
+where
+  L: Layer<Registry> + Send + Sync + 'static,
+{
+  TargetedLayer::<L, DirectOtelRoute>::new(inner, otel::is_direct_otel_target).boxed()
+}
+
+fn box_non_direct_otel_layer<L>(inner: L) -> RegistryLayer
+where
+  L: Layer<Registry> + Send + Sync + 'static,
+{
+  TargetedLayer::<L, NonDirectOtelRoute>::new(inner, otel::is_not_direct_otel_target).boxed()
 }
 
 //
@@ -286,6 +459,9 @@ fn direct_otel_output_enabled(config: &LogConfig) -> bool {
 fn build_registry_layers(
   config: &LogConfig,
 ) -> anyhow::Result<(Vec<RegistryLayer>, Option<SdkTracerProvider>)> {
+  // The layer order stays stable across startup and later reconfiguration. We always keep local
+  // console logging first so early initialization has a usable human-readable sink, and later
+  // reloads only add or adjust the OTEL-related routing around that local output.
   let mut layers = vec![build_output_layer(config)];
   if direct_otel_span_debug_enabled() {
     layers.push(build_direct_otel_debug_layer(config));
@@ -302,35 +478,23 @@ fn build_registry_layers(
   Ok((layers, otel_provider))
 }
 
+fn build_console_fmt_layer(config: &LogConfig) -> ConsoleFmtLayer {
+  tracing_subscriber::fmt::layer()
+    .with_writer(console_writer(config.output))
+    .with_ansi(config.ansi)
+    .with_line_number(true)
+    .with_thread_ids(true)
+    .compact()
+}
+
 fn build_direct_otel_debug_layer(config: &LogConfig) -> RegistryLayer {
-  match config.output {
-    LogOutput::Stdout => tracing_subscriber::fmt::layer()
-      // This debug layer intentionally reuses the compact human-readable format, but it must not
-      // reuse the normal layer's `DefaultFields` storage or close events will print duplicated
-      // span attributes when both fmt layers observe the same OTEL-targeted span.
+  // Keep the debug-only span view isolated from the ordinary output layer: separate cached field
+  // storage avoids duplicated attributes in the synthesized `new`/`close` events.
+  box_direct_otel_layer(
+    build_console_fmt_layer(config)
       .fmt_fields(DirectOtelDebugFields::default())
-      .with_writer(std::io::stdout)
-      .with_ansi(config.ansi)
-      .with_line_number(true)
-      .with_thread_ids(true)
-      .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
-      .compact()
-      .with_filter(filter_fn(otel::is_direct_otel_target))
-      .boxed(),
-    LogOutput::Stderr => tracing_subscriber::fmt::layer()
-      // Keep the debug-only span view isolated from the ordinary output layer for the same reason
-      // as the stdout path above: separate cached field storage avoids duplicated attributes in the
-      // synthesized `new`/`close` events.
-      .fmt_fields(DirectOtelDebugFields::default())
-      .with_writer(std::io::stderr)
-      .with_ansi(config.ansi)
-      .with_line_number(true)
-      .with_thread_ids(true)
-      .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE)
-      .compact()
-      .with_filter(filter_fn(otel::is_direct_otel_target))
-      .boxed(),
-  }
+      .with_span_events(FmtSpan::NEW | FmtSpan::CLOSE),
+  )
 }
 
 fn build_output_layer(config: &LogConfig) -> RegistryLayer {
@@ -338,37 +502,11 @@ fn build_output_layer(config: &LogConfig) -> RegistryLayer {
     .otel
     .as_ref()
     .is_some_and(|otel| !otel.mirror_to_output);
+  let layer = build_console_fmt_layer(config);
 
-  match (config.output, exclude_direct_otel) {
-    (LogOutput::Stdout, true) => tracing_subscriber::fmt::layer()
-      .with_writer(std::io::stdout)
-      .with_ansi(config.ansi)
-      .with_line_number(true)
-      .with_thread_ids(true)
-      .compact()
-      .with_filter(filter_fn(otel::is_not_direct_otel_target))
-      .boxed(),
-    (LogOutput::Stdout, false) => tracing_subscriber::fmt::layer()
-      .with_writer(std::io::stdout)
-      .with_ansi(config.ansi)
-      .with_line_number(true)
-      .with_thread_ids(true)
-      .compact()
-      .boxed(),
-    (LogOutput::Stderr, true) => tracing_subscriber::fmt::layer()
-      .with_writer(std::io::stderr)
-      .with_ansi(config.ansi)
-      .with_line_number(true)
-      .with_thread_ids(true)
-      .compact()
-      .with_filter(filter_fn(otel::is_not_direct_otel_target))
-      .boxed(),
-    (LogOutput::Stderr, false) => tracing_subscriber::fmt::layer()
-      .with_writer(std::io::stderr)
-      .with_ansi(config.ansi)
-      .with_line_number(true)
-      .with_thread_ids(true)
-      .compact()
-      .boxed(),
+  if exclude_direct_otel {
+    box_non_direct_otel_layer(layer)
+  } else {
+    layer.boxed()
   }
 }

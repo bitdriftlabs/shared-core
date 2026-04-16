@@ -22,8 +22,6 @@ use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider};
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
-use tracing_subscriber::Layer;
-use tracing_subscriber::filter::filter_fn;
 
 pub const OTEL_TARGET: &str = "bd_log::otel";
 
@@ -155,13 +153,24 @@ pub(crate) fn build_otel_layer(
     .build();
   let tracer = provider.tracer(config.tracer_name.clone());
 
-  let layer = tracing_opentelemetry::layer()
-    .with_tracer(tracer)
-    .with_level(true)
-    .with_filter(filter_fn(is_direct_otel_target))
-    .boxed();
+  let layer = build_direct_otel_layer(tracer);
 
   Ok((layer, provider))
+}
+
+pub(crate) fn build_direct_otel_layer<T>(tracer: T) -> RegistryLayer
+where
+  T: opentelemetry::trace::Tracer + Send + Sync + 'static,
+  T::Span: Send + Sync,
+{
+  // Keep routing outside `tracing-opentelemetry`'s own `Filtered` wrapper so the layer can be
+  // replaced safely during the second-stage logger configuration. This is the same upstream reload
+  // limitation described in tokio-rs/tracing#1629 and tokio-rs/tracing#2101.
+  crate::box_direct_otel_layer(
+    tracing_opentelemetry::layer()
+      .with_tracer(tracer)
+      .with_level(true),
+  )
 }
 
 fn build_span_exporter(config: &OtelCollectorConfig) -> anyhow::Result<SpanExporter> {
