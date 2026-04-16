@@ -169,7 +169,10 @@ where
   crate::box_direct_otel_layer(
     tracing_opentelemetry::layer()
       .with_tracer(tracer)
-      .with_level(true),
+      .with_level(true)
+      .with_location(false)
+      .with_threads(false)
+      .with_target(false),
   )
 }
 
