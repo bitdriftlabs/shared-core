@@ -410,13 +410,13 @@ impl Resolver {
       triggered_flushes_buffer_ids.extend(action.trigger_buffer_ids.iter().cloned());
 
       if pending_actions.iter().any(|a| a.id == action.id) {
-        log::debug!("ignoring flush buffers action: \"{action:?}\", already uploading",);
+        log::debug!("ignoring flush buffers action: \"{action:?}\", already uploading");
         self.stats.action_initiations_already_uploading_drops.inc();
         continue;
       }
 
       if streaming_actions.iter().any(|a| a.id == action.id) {
-        log::debug!("ignoring flush buffers action: \"{action:?}\", already streaming",);
+        log::debug!("ignoring flush buffers action: \"{action:?}\", already streaming");
         self.stats.action_initiations_already_streaming_drops.inc();
         continue;
       }
@@ -857,7 +857,7 @@ impl PendingFlushBuffersAction {
     };
 
     if trigger_buffer_ids.is_empty() {
-      log::debug!("buffers flush action not activated: no eligible trigger buffers found",);
+      log::debug!("buffers flush action not activated: no eligible trigger buffers found");
       return None;
     }
 

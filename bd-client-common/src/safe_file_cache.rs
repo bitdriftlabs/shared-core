@@ -320,7 +320,7 @@ impl<T: Message> SafeFileCache<T> {
     }
     .await
     {
-      log::debug!("failed to write cached config for {}: {e}", self.name,);
+      log::debug!("failed to write cached config for {}: {e}", self.name);
     }
 
     // Failing here is fine, worst case we'll use an old retry count or leave it missing, which

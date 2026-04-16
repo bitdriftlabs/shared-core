@@ -188,10 +188,7 @@ impl RingBufferProducer for ProducerImpl {
     common_ring_buffer
       .finish_commit_common(&reservation_range.ok_or(InvariantError::Invariant)?)?;
 
-    loop {
-      let Some(front) = common_ring_buffer.extra_locked_data.reservations.front() else {
-        break;
-      };
+    while let Some(front) = common_ring_buffer.extra_locked_data.reservations.front() {
       if !front.committed {
         break;
       }

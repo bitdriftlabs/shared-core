@@ -457,7 +457,7 @@ impl VersionedKVJournalFuzzTest {
           key_strategy,
           value,
         } => {
-          log::debug!("Inserting key with strategy {key_strategy:?} and value {value:?}",);
+          log::debug!("Inserting key with strategy {key_strategy:?} and value {value:?}");
 
           let (scope, key_str) = self.keys.key_for_write(&key_strategy);
 
@@ -536,7 +536,7 @@ impl VersionedKVJournalFuzzTest {
                 // Verify the value was removed
                 assert!(store.get(scope, &key_str).is_none());
               } else {
-                panic!("Remove returned a value for a key that should not exist: {key:?}",);
+                panic!("Remove returned a value for a key that should not exist: {key:?}");
               }
             },
             Ok(None) => {
@@ -604,7 +604,7 @@ impl VersionedKVJournalFuzzTest {
           );
         },
         OperationType::ReopenWithCorruption { corruption, target } => {
-          log::debug!("Reopening with corruption: {corruption:?} targeting {target:?}",);
+          log::debug!("Reopening with corruption: {corruption:?} targeting {target:?}");
 
           // Sync to ensure all data is written before corruption
           let _ = store.sync();

@@ -226,14 +226,14 @@ impl<IncomingType: DecodingResult> StreamingApiReceiver<IncomingType> {
   ) -> Self {
     let decompression = if headers
       .get(GRPC_ENCODING_HEADER)
-      .filter(|v| *v == GRPC_ENCODING_DEFLATE)
-      .is_some()
+      .as_ref()
+      .is_some_and(|v| *v == GRPC_ENCODING_DEFLATE)
     {
       Some(bd_grpc_codec::Decompression::StatelessZlib)
     } else if headers
       .get(LEGACY_GRPC_ENCODING_HEADER)
-      .filter(|v| *v == GRPC_ENCODING_DEFLATE)
-      .is_some()
+      .as_ref()
+      .is_some_and(|v| *v == GRPC_ENCODING_DEFLATE)
     {
       // This is not to spec but is kept around for legacy clients.
       // TODO(mattklein123): Add a metric for this.

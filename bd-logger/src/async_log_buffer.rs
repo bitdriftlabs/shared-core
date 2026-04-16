@@ -663,11 +663,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           log_type: log.log_type,
           message: log.message,
           fields: if let Some(extra_fields) = extra_fields {
-            metadata
-              .fields
-              .into_iter()
-              .chain(extra_fields.into_iter())
-              .collect()
+            metadata.fields.into_iter().chain(extra_fields).collect()
           } else {
             metadata.fields
           },
