@@ -98,7 +98,7 @@ fn read_position(buffer: &[u8]) -> anyhow::Result<usize> {
     .map_err(|_| anyhow::anyhow!("Position {position_u64} too large for usize"))?;
   let buffer_len = buffer.len();
   if position > buffer_len {
-    anyhow::bail!("Invalid position: {position}, buffer size: {buffer_len}",);
+    anyhow::bail!("Invalid position: {position}, buffer size: {buffer_len}");
   }
   Ok(position)
 }

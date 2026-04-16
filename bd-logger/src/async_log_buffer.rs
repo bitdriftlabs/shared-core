@@ -666,7 +666,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             metadata
               .fields
               .into_iter()
-              .chain(extra_fields.into_iter())
+              .chain(extra_fields)
               .collect()
           } else {
             metadata.fields

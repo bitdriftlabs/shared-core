@@ -588,7 +588,7 @@ impl WorkflowsEngine {
 
   fn maybe_update_session(&mut self, incoming_session_id: &str) {
     if self.state.session_id.is_empty() {
-      log::debug!("workflows engine: moving from no session to session \"{incoming_session_id}\"",);
+      log::debug!("workflows engine: moving from no session to session \"{incoming_session_id}\"");
       // There was no state on a disk when workflows engine was started
       // and engine just observed first session ID.
       // We do not have to rush to persist it to disk until any of the

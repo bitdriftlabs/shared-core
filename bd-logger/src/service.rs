@@ -189,13 +189,12 @@ impl tower::Service<UploadRequest> for Uploader {
       let result = tokio::select! {
         () = shutdown.cancelled() => Ok(UploadResult::Canceled),
         response = response_rx => Ok(response
-          .map(|result|
+          .map_or(UploadResult::Failure, |result|
             if result.success {
               UploadResult::Success
             } else {
               UploadResult::Failure
-            })
-          .unwrap_or(UploadResult::Failure))
+            }))
       };
 
       if matches!(result, Ok(UploadResult::Failure)) {
