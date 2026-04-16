@@ -5,23 +5,39 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{DEBUG_DIRECT_OTEL_SPANS_ENV, LogConfig, LogOutput, OTEL_TARGET, otel};
-use std::collections::BTreeMap;
-use std::io;
+use crate::{LogConfig, otel};
+use opentelemetry::trace::TracerProvider as _;
+use opentelemetry_sdk::error::OTelSdkResult;
+use opentelemetry_sdk::trace::{SdkTracerProvider, SpanData, SpanExporter};
+use std::future::Future;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use tracing::span::{Attributes, Id};
-use tracing::{Event, Subscriber, field};
-use tracing_subscriber::filter::filter_fn;
-use tracing_subscriber::fmt::format::FmtSpan;
-use tracing_subscriber::fmt::writer::MakeWriter;
+use tracing::{Event, Subscriber};
+use tracing_subscriber::Registry;
 use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::registry::LookupSpan;
-use tracing_subscriber::{Layer, Registry};
 
-//
-// TargetCaptureLayer
-//
+#[derive(Clone, Default, Debug)]
+struct TestExporter(Arc<Mutex<Vec<SpanData>>>);
+
+impl TestExporter {
+  fn exported_span_names(&self) -> Vec<String> {
+    self
+      .0
+      .lock()
+      .unwrap()
+      .iter()
+      .map(|span| span.name.to_string())
+      .collect()
+  }
+}
+
+impl SpanExporter for TestExporter {
+  async fn export(&self, mut batch: Vec<SpanData>) -> OTelSdkResult {
+    self.0.lock().unwrap().append(&mut batch);
+    Ok(())
+  }
+}
 
 #[derive(Clone, Default)]
 struct TargetCaptureLayer {
@@ -30,16 +46,16 @@ struct TargetCaptureLayer {
 }
 
 impl TargetCaptureLayer {
-  fn recorded_spans(&self) -> Vec<String> {
+  fn span_targets(&self) -> Vec<String> {
     self.spans.lock().unwrap().clone()
   }
 
-  fn recorded_events(&self) -> Vec<String> {
+  fn event_targets(&self) -> Vec<String> {
     self.events.lock().unwrap().clone()
   }
 }
 
-impl<S> Layer<S> for TargetCaptureLayer
+impl<S> tracing_subscriber::Layer<S> for TargetCaptureLayer
 where
   S: Subscriber + for<'span> LookupSpan<'span>,
 {
@@ -60,218 +76,118 @@ where
   }
 }
 
-static ENV_LOCK: Mutex<()> = Mutex::new(());
+fn build_test_otel() -> (TestExporter, SdkTracerProvider, crate::RegistryLayer) {
+  let exporter = TestExporter::default();
+  let provider = SdkTracerProvider::builder()
+    .with_simple_exporter(exporter.clone())
+    .build();
+  let tracer = provider.tracer("bd-log-test");
 
-#[derive(Clone, Default)]
-struct CapturedWriter {
-  output: Arc<Mutex<Vec<u8>>>,
+  (exporter, provider, otel::build_direct_otel_layer(tracer))
 }
 
-impl CapturedWriter {
-  fn contents(&self) -> String {
-    String::from_utf8(self.output.lock().unwrap().clone()).unwrap()
+fn later_log_config() -> LogConfig {
+  LogConfig {
+    otel: Some(crate::OtelCollectorConfig::new(
+      "bd-log-test",
+      "http://127.0.0.1:4317",
+    )),
+    ..LogConfig::default()
   }
 }
 
-struct CapturedWriterGuard {
-  output: Arc<Mutex<Vec<u8>>>,
-}
-
-impl io::Write for CapturedWriterGuard {
-  fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-    self.output.lock().unwrap().extend_from_slice(buf);
-    Ok(buf.len())
-  }
-
-  fn flush(&mut self) -> io::Result<()> {
-    Ok(())
-  }
-}
-
-impl<'a> MakeWriter<'a> for CapturedWriter {
-  type Writer = CapturedWriterGuard;
-
-  fn make_writer(&'a self) -> Self::Writer {
-    CapturedWriterGuard {
-      output: self.output.clone(),
-    }
-  }
-}
-
-fn with_direct_otel_span_debug_env<T>(value: Option<&str>, f: impl FnOnce() -> T) -> T {
-  let _guard = ENV_LOCK.lock().unwrap();
-  let previous = std::env::var_os(DEBUG_DIRECT_OTEL_SPANS_ENV);
-
-  // Rust 2024 makes process environment mutation unsafe; serialize it for these tests.
-  unsafe {
-    match value {
-      Some(value) => std::env::set_var(DEBUG_DIRECT_OTEL_SPANS_ENV, value),
-      None => std::env::remove_var(DEBUG_DIRECT_OTEL_SPANS_ENV),
-    }
-  }
-
-  let result = f();
-
-  // Restore the original process environment before releasing the lock.
-  unsafe {
-    match previous {
-      Some(value) => std::env::set_var(DEBUG_DIRECT_OTEL_SPANS_ENV, value),
-      None => std::env::remove_var(DEBUG_DIRECT_OTEL_SPANS_ENV),
-    }
-  }
-
-  result
-}
-
-#[test]
-fn default_log_config_matches_existing_behavior() {
-  with_direct_otel_span_debug_env(None, || {
-    let config = LogConfig::default();
-
-    assert_eq!(config.output, LogOutput::Stderr);
-  });
-}
-
-#[test]
-fn global_filter_rules_force_the_direct_otel_target() {
-  let filter = otel::global_filter_rules("info", true);
-
-  assert_eq!(filter, format!("info,{OTEL_TARGET}=trace"));
-}
-
-#[test]
-fn build_registry_layers_supports_dual_stage_configuration() {
-  with_direct_otel_span_debug_env(None, || {
-    let early_config = LogConfig::default();
-    let (early_layers, early_provider) = crate::build_registry_layers(&early_config).unwrap();
-
-    assert_eq!(early_layers.len(), 1);
-    assert!(early_provider.is_none());
-
-    let later_config = LogConfig {
-      otel: Some(crate::OtelCollectorConfig {
-        endpoint: "http://127.0.0.1:4317".to_string(),
-        protocol: crate::OtelCollectorProtocol::Grpc,
-        service_name: "bd-log-test".to_string(),
-        tracer_name: "bd-log-test".to_string(),
-        headers: BTreeMap::default(),
-        resource_attributes: BTreeMap::default(),
-        timeout: Duration::from_secs(1),
-        mirror_to_output: false,
-        max_attributes_per_span: 16,
-        max_events_per_span: 64,
-      }),
-      ..LogConfig::default()
-    };
-    let runtime = tokio::runtime::Runtime::new().unwrap();
-    let (later_layers, later_provider) = runtime
-      .block_on(async {
-        let _entered = runtime.handle().enter();
-        crate::build_registry_layers(&later_config)
-      })
-      .unwrap();
-
-    assert_eq!(later_layers.len(), 2);
-    assert!(later_provider.is_some());
-  });
-}
-
-#[test]
-fn build_registry_layers_supports_local_direct_otel_span_debugging() {
-  with_direct_otel_span_debug_env(Some("1"), || {
-    let config = LogConfig::default();
-    let (layers, provider) = crate::build_registry_layers(&config).unwrap();
-
-    assert_eq!(layers.len(), 2);
-    assert!(provider.is_none());
-    assert!(crate::direct_otel_span_debug_enabled());
-  });
-}
-
-#[test]
-fn direct_otel_debug_formatter_does_not_duplicate_close_fields_with_two_fmt_layers() {
-  let output_capture = CapturedWriter::default();
-  let debug_capture = CapturedWriter::default();
+fn exported_span_names_after_two_stage_init(future: impl Future<Output = ()>) -> Vec<String> {
+  let initial_config = LogConfig::default();
+  let later_config = later_log_config();
+  let (layers, layers_handle) =
+    tracing_subscriber::reload::Layer::new(vec![crate::build_output_layer(&initial_config)]);
+  let (filter, filter_handle) =
+    tracing_subscriber::reload::Layer::new(tracing_subscriber::EnvFilter::new(
+      otel::global_filter_rules(&initial_config.log_filter, false),
+    ));
   let subscriber = Registry::default()
-    .with(
-      tracing_subscriber::fmt::layer()
-        .with_writer(output_capture)
-        .with_ansi(false)
-        .with_level(false)
-        .with_target(false)
-        .with_thread_ids(false)
-        .without_time(),
-    )
-    .with(
-      tracing_subscriber::fmt::layer()
-        .fmt_fields(crate::DirectOtelDebugFields::default())
-        .with_writer(debug_capture.clone())
-        .with_ansi(false)
-        .with_level(false)
-        .with_target(false)
-        .with_thread_ids(false)
-        .without_time()
-        .with_span_events(FmtSpan::CLOSE)
-        .compact()
-        .with_filter(filter_fn(otel::is_direct_otel_target)),
-    );
+    .with(layers)
+    .with(tracing_error::ErrorLayer::default())
+    .with(filter);
 
-  tracing::subscriber::with_default(subscriber, || {
-    let span = crate::otel_info_span!(
-      "clickhouse.query",
-      clickhouse.retry_count = field::Empty,
-      clickhouse.row_count = field::Empty,
-      clickhouse.duration_ms = field::Empty,
-      otel.status_code = field::Empty,
-    );
-    let _entered = span.enter();
-    span.record("clickhouse.retry_count", 0);
-    span.record("clickhouse.row_count", 0);
-    span.record("clickhouse.duration_ms", 9);
-    span.record("otel.status_code", "OK");
-  });
-
-  let output = debug_capture.contents();
-
-  assert_eq!(output.matches("clickhouse.retry_count=0").count(), 1);
-  assert_eq!(output.matches("clickhouse.row_count=0").count(), 1);
-  assert_eq!(output.matches("clickhouse.duration_ms=9").count(), 1);
-  assert_eq!(output.matches("otel.status_code=\"OK\"").count(), 1);
-}
-
-#[test]
-fn otel_helper_macros_emit_the_direct_target() {
-  let capture = TargetCaptureLayer::default();
-  let subscriber = Registry::default().with(capture.clone());
-
-  tracing::subscriber::with_default(subscriber, || {
-    let span = crate::otel_info_span!("collector_span", otel.kind = "client");
-    let _entered = span.enter();
-
-    crate::otel_info!(message = "collector_event");
-  });
-
-  assert_eq!(capture.recorded_spans(), vec![OTEL_TARGET.to_string()]);
-  assert_eq!(capture.recorded_events(), vec![OTEL_TARGET.to_string()]);
-}
-
-#[test]
-fn otel_instrument_wraps_an_async_future_in_the_direct_target() {
-  let capture = TargetCaptureLayer::default();
-  let subscriber = Registry::default().with(capture.clone());
+  let (exporter, provider, otel_layer) = build_test_otel();
   let runtime = tokio::runtime::Runtime::new().unwrap();
 
   tracing::subscriber::with_default(subscriber, || {
-    runtime.block_on(crate::otel_instrument!(
-      async {
-        crate::otel_info!(message = "inside_future");
-      },
-      tracing::Level::INFO,
-      "collector_future",
-      otel.kind = "internal"
-    ));
+    layers_handle
+      .reload(vec![crate::build_output_layer(&later_config), otel_layer])
+      .unwrap();
+    filter_handle
+      .reload(tracing_subscriber::EnvFilter::new(
+        otel::global_filter_rules(&later_config.log_filter, true),
+      ))
+      .unwrap();
+
+    runtime.block_on(future);
   });
 
-  assert_eq!(capture.recorded_spans(), vec![OTEL_TARGET.to_string()]);
-  assert_eq!(capture.recorded_events(), vec![OTEL_TARGET.to_string()]);
+  provider.force_flush().unwrap();
+
+  exporter.exported_span_names()
+}
+
+#[test]
+fn two_stage_init_keeps_plain_root_instrumented_spans_out_of_otel() {
+  #[tracing::instrument(skip_all)]
+  async fn plain_root_span() {}
+
+  let span_names = exported_span_names_after_two_stage_init(plain_root_span());
+
+  assert!(
+    span_names.is_empty(),
+    "unexpected exported spans: {span_names:?}"
+  );
+}
+
+#[test]
+fn two_stage_init_still_exports_direct_otel_spans() {
+  let span_names = exported_span_names_after_two_stage_init(async {
+    let span = crate::otel_info_span!("direct_otel_root");
+    let _entered = span.enter();
+  });
+
+  assert_eq!(span_names, vec!["direct_otel_root".to_string()]);
+}
+
+#[test]
+fn shared_target_routing_only_forwards_matching_targets() {
+  let direct_capture = TargetCaptureLayer::default();
+  let non_direct_capture = TargetCaptureLayer::default();
+  let (layers, _) = tracing_subscriber::reload::Layer::new(vec![
+    crate::box_direct_otel_layer(direct_capture.clone()),
+    crate::box_non_direct_otel_layer(non_direct_capture.clone()),
+  ]);
+  let subscriber = Registry::default().with(layers);
+
+  tracing::subscriber::with_default(subscriber, || {
+    let direct_span = crate::otel_info_span!("direct_span");
+    let _direct_entered = direct_span.enter();
+    crate::otel_info!(message = "direct_event");
+
+    let plain_span = tracing::info_span!("plain_span");
+    let _plain_entered = plain_span.enter();
+    tracing::info!("plain_event");
+  });
+
+  assert_eq!(
+    direct_capture.span_targets(),
+    vec![crate::OTEL_TARGET.to_string()]
+  );
+  assert_eq!(
+    direct_capture.event_targets(),
+    vec![crate::OTEL_TARGET.to_string()]
+  );
+  assert_eq!(
+    non_direct_capture.span_targets(),
+    vec![module_path!().to_string()]
+  );
+  assert_eq!(
+    non_direct_capture.event_targets(),
+    vec![module_path!().to_string()]
+  );
 }
