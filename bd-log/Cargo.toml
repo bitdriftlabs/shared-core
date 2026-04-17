@@ -20,7 +20,6 @@ parking_lot.workspace           = true
 time.workspace                  = true
 tokio.workspace                 = true
 tracing.workspace               = true
-tracing-error.workspace         = true
 tracing-log.workspace           = true
 tracing-opentelemetry.workspace = true
 tracing-subscriber.workspace    = true

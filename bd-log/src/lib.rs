@@ -80,7 +80,6 @@ use std::sync::Mutex;
 use std::{fmt, io};
 use tracing::span::{Attributes, Id, Record};
 use tracing::{Event, Metadata};
-use tracing_error::ErrorLayer;
 use tracing_subscriber::field::RecordFields;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::fmt::FormatFields;
@@ -352,11 +351,7 @@ impl SwapLogger {
     let (layers, otel_provider) = build_registry_layers(config)?;
     let (layers, layers_handle) = tracing_subscriber::reload::Layer::new(layers);
 
-    Registry::default()
-      .with(layers)
-      .with(ErrorLayer::default())
-      .with(filter)
-      .try_init()?;
+    Registry::default().with(layers).with(filter).try_init()?;
 
     {
       let mut state = Self::get().state.lock().unwrap();
