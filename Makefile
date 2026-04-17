@@ -1,6 +1,8 @@
 .PHONY: build
 build: setup
-  SKIP_PROTO_GEN=1 cargo build --workspace
+	SKIP_PROTO_GEN=1 cargo build --workspace
+	# `bd-proto` has feature-gated generated module trees that the workspace build does not exercise.
+	SKIP_PROTO_GEN=1 cargo build -p bd-proto --all-features
 
 .PHONY: setup
 setup:
