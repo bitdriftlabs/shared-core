@@ -175,7 +175,6 @@ tokio-stream          = "0.1.18"
 tokio-test            = "0.4.5"
 tower                 = { version = "0.5.3", features = ["retry", "util"] }
 tower-http            = { version = "0.6.8", features = ["compression-deflate"] }
-tracing-error         = "0.2.1"
 tracing-opentelemetry = "0.32.1"
 unwrap-infallible     = "1.0.0"
 urlencoding           = "2.1.3"

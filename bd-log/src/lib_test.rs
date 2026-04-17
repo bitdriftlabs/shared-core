@@ -105,10 +105,7 @@ fn exported_span_names_after_two_stage_init(future: impl Future<Output = ()>) ->
     tracing_subscriber::reload::Layer::new(tracing_subscriber::EnvFilter::new(
       otel::global_filter_rules(&initial_config.log_filter, false),
     ));
-  let subscriber = Registry::default()
-    .with(layers)
-    .with(tracing_error::ErrorLayer::default())
-    .with(filter);
+  let subscriber = Registry::default().with(layers).with(filter);
 
   let (exporter, provider, otel_layer) = build_test_otel();
   let runtime = tokio::runtime::Runtime::new().unwrap();
