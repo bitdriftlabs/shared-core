@@ -5,7 +5,16 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(not(feature = "with-source-info"))]
 pub mod bdtail_api;
+#[cfg(feature = "with-source-info")]
+#[path = "with_source/bdtail_api.rs"]
+pub mod bdtail_api;
+
+#[cfg(not(feature = "with-source-info"))]
+pub mod bdtail_config;
+#[cfg(feature = "with-source-info")]
+#[path = "with_source/bdtail_config.rs"]
 pub mod bdtail_config;
 
 use super::log_matcher::log_matcher;

@@ -92,7 +92,10 @@ pub fn get_proto_configs() -> Vec<ProtoConfig> {
     },
     ProtoConfig {
       output_dir: "src/protos/workflow",
-      inputs: &["../api/src/bitdrift_public/protobuf/workflow/v1/workflow.proto"],
+      inputs: &[
+        "../api/src/bitdrift_public/protobuf/workflow/v1/workflow.proto",
+        "../api/src/bitdrift_public/protobuf/workflow/v1/save_field.proto",
+      ],
       includes: PROTO_INCLUDES,
       use_tokio_bytes: false,
       file_header: true,
@@ -131,6 +134,76 @@ pub fn get_proto_configs() -> Vec<ProtoConfig> {
       includes: PROTO_INCLUDES,
       use_tokio_bytes: true,
       file_header: false,
+    },
+  ]
+}
+
+#[must_use]
+pub fn get_public_api_proto_configs() -> Vec<ProtoConfig> {
+  vec![
+    ProtoConfig {
+      output_dir: "src/protos/public_api",
+      inputs: &[
+        "../api/src/bitdrift/public/shared/workflows/v1/time_series.proto",
+        "../api/src/bitdrift/public/shared/platform/v1/platform.proto",
+        "../api/src/bitdrift/public/unary/issues/v1/api.proto",
+        "../api/src/bitdrift/public/unary/issues/v1/crash.proto",
+        "../api/src/bitdrift/public/unary/issues/v1/issues.proto",
+        "../api/src/bitdrift/public/unary/charts/v1/chart_id.proto",
+        "../api/src/bitdrift/public/unary/charts/v1/chart_metadata.proto",
+        "../api/src/bitdrift/public/unary/common/v1/common.proto",
+        "../api/src/bitdrift/public/unary/workflows/v1/workflow.proto",
+        "../api/src/bitdrift/public/unary/workflows/v1/workflow_metadata.proto",
+        "../api/src/bitdrift/public/unary/timeline/v1/hydration.proto",
+        "../api/src/bitdrift/public/unary/timeline/v1/info.proto",
+        "../api/src/bitdrift/public/unary/timeline/v1/logs.proto",
+      ],
+      includes: PROTO_INCLUDES,
+      use_tokio_bytes: false,
+      file_header: true,
+    },
+    ProtoConfig {
+      output_dir: "src/protos/public_api/admin",
+      inputs: &[
+        "../api/src/bitdrift/public/unary/admin/v1/api.proto",
+        "../api/src/bitdrift/public/unary/admin/v1/connector.proto",
+        "../api/src/bitdrift/public/unary/admin/v1/keys.proto",
+        "../api/src/bitdrift/public/unary/admin/v1/permission.proto",
+      ],
+      includes: PROTO_INCLUDES,
+      use_tokio_bytes: false,
+      file_header: true,
+    },
+    ProtoConfig {
+      output_dir: "src/protos/public_api/debug_files",
+      inputs: &[
+        "../api/src/bitdrift/public/unary/debug_files/v1/api.proto",
+        "../api/src/bitdrift/public/unary/debug_files/v1/debug_files.proto",
+      ],
+      includes: PROTO_INCLUDES,
+      use_tokio_bytes: false,
+      file_header: true,
+    },
+    ProtoConfig {
+      output_dir: "src/protos/public_api/explorations",
+      inputs: &["../api/src/bitdrift/public/unary/workflows/v1/api.proto"],
+      includes: PROTO_INCLUDES,
+      use_tokio_bytes: false,
+      file_header: true,
+    },
+    ProtoConfig {
+      output_dir: "src/protos/public_api/dashboards",
+      inputs: &["../api/src/bitdrift/public/unary/dashboards/v1/api.proto"],
+      includes: PROTO_INCLUDES,
+      use_tokio_bytes: false,
+      file_header: true,
+    },
+    ProtoConfig {
+      output_dir: "src/protos/public_api/timeline",
+      inputs: &["../api/src/bitdrift/public/unary/timeline/v1/api.proto"],
+      includes: PROTO_INCLUDES,
+      use_tokio_bytes: false,
+      file_header: true,
     },
   ]
 }

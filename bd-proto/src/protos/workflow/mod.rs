@@ -5,7 +5,16 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(not(feature = "with-source-info"))]
 pub mod save_field;
+#[cfg(feature = "with-source-info")]
+#[path = "with_source/save_field.rs"]
+pub mod save_field;
+
+#[cfg(not(feature = "with-source-info"))]
+pub mod workflow;
+#[cfg(feature = "with-source-info")]
+#[path = "with_source/workflow.rs"]
 pub mod workflow;
 
 use super::log_matcher::log_matcher;

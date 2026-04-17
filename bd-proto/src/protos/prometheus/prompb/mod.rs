@@ -5,5 +5,14 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(not(feature = "with-source-info"))]
 pub mod remote;
+#[cfg(feature = "with-source-info")]
+#[path = "with_source/remote.rs"]
+pub mod remote;
+
+#[cfg(not(feature = "with-source-info"))]
+pub mod types;
+#[cfg(feature = "with-source-info")]
+#[path = "with_source/types.rs"]
 pub mod types;

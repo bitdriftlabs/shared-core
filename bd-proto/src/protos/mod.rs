@@ -18,3 +18,10 @@ pub mod prometheus;
 pub mod state;
 pub mod value_matcher;
 pub mod workflow;
+
+#[cfg(all(feature = "public-api", not(feature = "with-source-info")))]
+pub mod public_api;
+
+#[cfg(feature = "with-source-info")]
+#[path = "public_api_with_source/mod.rs"]
+pub mod public_api;

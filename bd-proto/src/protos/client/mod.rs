@@ -5,12 +5,46 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(not(feature = "with-source-info"))]
 pub mod api;
+#[cfg(feature = "with-source-info")]
+#[path = "with_source/api.rs"]
+pub mod api;
+
+#[cfg(not(feature = "with-source-info"))]
 pub mod artifact;
+#[cfg(feature = "with-source-info")]
+#[path = "with_source/artifact.rs"]
+pub mod artifact;
+
+#[cfg(not(feature = "with-source-info"))]
 pub mod feature_flag;
+#[cfg(feature = "with-source-info")]
+#[path = "with_source/feature_flag.rs"]
+pub mod feature_flag;
+
+#[cfg(not(feature = "with-source-info"))]
 pub mod key_value;
+#[cfg(feature = "with-source-info")]
+#[path = "with_source/key_value.rs"]
+pub mod key_value;
+
+#[cfg(not(feature = "with-source-info"))]
 pub mod matcher;
+#[cfg(feature = "with-source-info")]
+#[path = "with_source/matcher.rs"]
+pub mod matcher;
+
+#[cfg(not(feature = "with-source-info"))]
 pub mod metric;
+#[cfg(feature = "with-source-info")]
+#[path = "with_source/metric.rs"]
+pub mod metric;
+
+#[cfg(not(feature = "with-source-info"))]
+pub mod runtime;
+#[cfg(feature = "with-source-info")]
+#[path = "with_source/runtime.rs"]
 pub mod runtime;
 
 use super::bdtail::bdtail_config;
