@@ -39,6 +39,8 @@ pub struct WorkflowMetadata {
     pub deployment_expiration: ::protobuf::MessageField<workflow_metadata::DeploymentExpiration>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.WorkflowMetadata.per_rule_metadata)
     pub per_rule_metadata: ::std::vec::Vec<workflow_metadata::PerRuleMetadata>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.WorkflowMetadata.description)
+    pub description: ::std::string::String,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift.public.unary.workflows.v1.WorkflowMetadata.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -56,7 +58,7 @@ impl WorkflowMetadata {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut fields = ::std::vec::Vec::with_capacity(3);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, workflow_metadata::DeploymentExpiration>(
             "deployment_expiration",
@@ -67,6 +69,11 @@ impl WorkflowMetadata {
             "per_rule_metadata",
             |m: &WorkflowMetadata| { &m.per_rule_metadata },
             |m: &mut WorkflowMetadata| { &mut m.per_rule_metadata },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "description",
+            |m: &WorkflowMetadata| { &m.description },
+            |m: &mut WorkflowMetadata| { &mut m.description },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<WorkflowMetadata>(
             "WorkflowMetadata",
@@ -92,6 +99,9 @@ impl ::protobuf::Message for WorkflowMetadata {
                 18 => {
                     self.per_rule_metadata.push(is.read_message()?);
                 },
+                258 => {
+                    self.description = is.read_string()?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -112,6 +122,9 @@ impl ::protobuf::Message for WorkflowMetadata {
             let len = value.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         };
+        if !self.description.is_empty() {
+            my_size += ::protobuf::rt::string_size(32, &self.description);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -124,6 +137,9 @@ impl ::protobuf::Message for WorkflowMetadata {
         for v in &self.per_rule_metadata {
             ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
         };
+        if !self.description.is_empty() {
+            os.write_string(32, &self.description)?;
+        }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -143,6 +159,7 @@ impl ::protobuf::Message for WorkflowMetadata {
     fn clear(&mut self) {
         self.deployment_expiration.clear();
         self.per_rule_metadata.clear();
+        self.description.clear();
         self.special_fields.clear();
     }
 
@@ -150,6 +167,7 @@ impl ::protobuf::Message for WorkflowMetadata {
         static instance: WorkflowMetadata = WorkflowMetadata {
             deployment_expiration: ::protobuf::MessageField::none(),
             per_rule_metadata: ::std::vec::Vec::new(),
+            description: ::std::string::String::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -1027,27 +1045,28 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \n:bitdrift/public/unary/workflows/v1/workflow_metadata.proto\x12\"bitdr\
     ift.public.unary.workflows.v1\x1a4bitdrift/public/unary/charts/v1/chart_\
     metadata.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x17validate/val\
-    idate.proto\"\xa0\x06\n\x10WorkflowMetadata\x12~\n\x15deployment_expirat\
+    idate.proto\"\xcc\x06\n\x10WorkflowMetadata\x12~\n\x15deployment_expirat\
     ion\x18\x01\x20\x01(\x0b2I.bitdrift.public.unary.workflows.v1.WorkflowMe\
     tadata.DeploymentExpirationR\x14deploymentExpiration\x12z\n\x11per_rule_\
     metadata\x18\x02\x20\x03(\x0b2D.bitdrift.public.unary.workflows.v1.Workf\
     lowMetadata.PerRuleMetadataR\x0fperRuleMetadataB\x08\xfaB\x05\x92\x01\
-    \x02\x10d\x1a\xba\x03\n\x14DeploymentExpiration\x12t\n\nfixed_time\x18\
-    \x01\x20\x01(\x0b2S.bitdrift.public.unary.workflows.v1.WorkflowMetadata.\
-    DeploymentExpiration.FixedTimeH\0R\tfixedTime\x12q\n\tlast_seen\x18\x02\
-    \x20\x01(\x0b2R.bitdrift.public.unary.workflows.v1.WorkflowMetadata.Depl\
-    oymentExpiration.LastSeenH\0R\x08lastSeen\x12\x1c\n\x08disabled\x18\x03\
-    \x20\x01(\x08H\0R\x08disabled\x1aD\n\tFixedTime\x127\n\x04time\x18\x01\
+    \x02\x10d\x12*\n\x0bdescription\x18\x20\x20\x01(\tR\x0bdescriptionB\x08\
+    \xfaB\x05r\x03\x18\xe8\x07\x1a\xba\x03\n\x14DeploymentExpiration\x12t\n\
+    \nfixed_time\x18\x01\x20\x01(\x0b2S.bitdrift.public.unary.workflows.v1.W\
+    orkflowMetadata.DeploymentExpiration.FixedTimeH\0R\tfixedTime\x12q\n\tla\
+    st_seen\x18\x02\x20\x01(\x0b2R.bitdrift.public.unary.workflows.v1.Workfl\
+    owMetadata.DeploymentExpiration.LastSeenH\0R\x08lastSeen\x12\x1c\n\x08di\
+    sabled\x18\x03\x20\x01(\x08H\0R\x08disabled\x1aD\n\tFixedTime\x127\n\x04\
+    time\x18\x01\x20\x01(\x0b2\x19.google.protobuf.DurationR\x04timeB\x08\
+    \xfaB\x05\x8a\x01\x02\x10\x01\x1aC\n\x08LastSeen\x127\n\x04time\x18\x01\
     \x20\x01(\x0b2\x19.google.protobuf.DurationR\x04timeB\x08\xfaB\x05\x8a\
-    \x01\x02\x10\x01\x1aC\n\x08LastSeen\x127\n\x04time\x18\x01\x20\x01(\x0b2\
-    \x19.google.protobuf.DurationR\x04timeB\x08\xfaB\x05\x8a\x01\x02\x10\x01\
-    B\x10\n\tcondition\x12\x03\xf8B\x01\x1aS\n\x0fPerRuleMetadata\x12\x20\n\
-    \x07rule_id\x18\x01\x20\x01(\tR\x06ruleIdB\x07\xfaB\x04r\x02\x18d\x12\
-    \x1e\n\x05title\x18\x02\x20\x01(\tR\x05titleB\x08\xfaB\x05r\x03\x18\xff\
-    \x01\"\x84\x01\n\x14PerRuleChartMetadata\x12\x20\n\x07rule_id\x18\x01\
-    \x20\x01(\tR\x06ruleIdB\x07\xfaB\x04r\x02\x18d\x12J\n\x08metadata\x18\
-    \x02\x20\x01(\x0b2..bitdrift.public.unary.charts.v1.ChartMetadataR\x08me\
-    tadatab\x06proto3\
+    \x01\x02\x10\x01B\x10\n\tcondition\x12\x03\xf8B\x01\x1aS\n\x0fPerRuleMet\
+    adata\x12\x20\n\x07rule_id\x18\x01\x20\x01(\tR\x06ruleIdB\x07\xfaB\x04r\
+    \x02\x18d\x12\x1e\n\x05title\x18\x02\x20\x01(\tR\x05titleB\x08\xfaB\x05r\
+    \x03\x18\xff\x01\"\x84\x01\n\x14PerRuleChartMetadata\x12\x20\n\x07rule_i\
+    d\x18\x01\x20\x01(\tR\x06ruleIdB\x07\xfaB\x04r\x02\x18d\x12J\n\x08metada\
+    ta\x18\x02\x20\x01(\x0b2..bitdrift.public.unary.charts.v1.ChartMetadataR\
+    \x08metadatab\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

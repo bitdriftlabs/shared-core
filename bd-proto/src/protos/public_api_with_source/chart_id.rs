@@ -101,8 +101,106 @@ impl ChartIdentifier {
         }
     }
 
+    // .bitdrift.public.unary.charts.v1.ChartIdentifier.WorkflowSankeyChart sankey_chart = 5;
+
+    pub fn sankey_chart(&self) -> &chart_identifier::WorkflowSankeyChart {
+        match self.type_ {
+            ::std::option::Option::Some(chart_identifier::Type::SankeyChart(ref v)) => v,
+            _ => <chart_identifier::WorkflowSankeyChart as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_sankey_chart(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_sankey_chart(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(chart_identifier::Type::SankeyChart(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_sankey_chart(&mut self, v: chart_identifier::WorkflowSankeyChart) {
+        self.type_ = ::std::option::Option::Some(chart_identifier::Type::SankeyChart(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_sankey_chart(&mut self) -> &mut chart_identifier::WorkflowSankeyChart {
+        if let ::std::option::Option::Some(chart_identifier::Type::SankeyChart(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(chart_identifier::Type::SankeyChart(chart_identifier::WorkflowSankeyChart::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(chart_identifier::Type::SankeyChart(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_sankey_chart(&mut self) -> chart_identifier::WorkflowSankeyChart {
+        if self.has_sankey_chart() {
+            match self.type_.take() {
+                ::std::option::Option::Some(chart_identifier::Type::SankeyChart(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            chart_identifier::WorkflowSankeyChart::new()
+        }
+    }
+
+    // .bitdrift.public.unary.charts.v1.ChartIdentifier.WorkflowFunnelChart workflow_funnel_chart = 7;
+
+    pub fn workflow_funnel_chart(&self) -> &chart_identifier::WorkflowFunnelChart {
+        match self.type_ {
+            ::std::option::Option::Some(chart_identifier::Type::WorkflowFunnelChart(ref v)) => v,
+            _ => <chart_identifier::WorkflowFunnelChart as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_workflow_funnel_chart(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_workflow_funnel_chart(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(chart_identifier::Type::WorkflowFunnelChart(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_workflow_funnel_chart(&mut self, v: chart_identifier::WorkflowFunnelChart) {
+        self.type_ = ::std::option::Option::Some(chart_identifier::Type::WorkflowFunnelChart(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_workflow_funnel_chart(&mut self) -> &mut chart_identifier::WorkflowFunnelChart {
+        if let ::std::option::Option::Some(chart_identifier::Type::WorkflowFunnelChart(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(chart_identifier::Type::WorkflowFunnelChart(chart_identifier::WorkflowFunnelChart::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(chart_identifier::Type::WorkflowFunnelChart(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_workflow_funnel_chart(&mut self) -> chart_identifier::WorkflowFunnelChart {
+        if self.has_workflow_funnel_chart() {
+            match self.type_.take() {
+                ::std::option::Option::Some(chart_identifier::Type::WorkflowFunnelChart(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            chart_identifier::WorkflowFunnelChart::new()
+        }
+    }
+
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut fields = ::std::vec::Vec::with_capacity(3);
         let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, chart_identifier::WorkflowChart>(
             "workflow",
@@ -110,6 +208,20 @@ impl ChartIdentifier {
             ChartIdentifier::workflow,
             ChartIdentifier::mut_workflow,
             ChartIdentifier::set_workflow,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, chart_identifier::WorkflowSankeyChart>(
+            "sankey_chart",
+            ChartIdentifier::has_sankey_chart,
+            ChartIdentifier::sankey_chart,
+            ChartIdentifier::mut_sankey_chart,
+            ChartIdentifier::set_sankey_chart,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, chart_identifier::WorkflowFunnelChart>(
+            "workflow_funnel_chart",
+            ChartIdentifier::has_workflow_funnel_chart,
+            ChartIdentifier::workflow_funnel_chart,
+            ChartIdentifier::mut_workflow_funnel_chart,
+            ChartIdentifier::set_workflow_funnel_chart,
         ));
         oneofs.push(chart_identifier::Type::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ChartIdentifier>(
@@ -133,6 +245,12 @@ impl ::protobuf::Message for ChartIdentifier {
                 10 => {
                     self.type_ = ::std::option::Option::Some(chart_identifier::Type::Workflow(is.read_message()?));
                 },
+                42 => {
+                    self.type_ = ::std::option::Option::Some(chart_identifier::Type::SankeyChart(is.read_message()?));
+                },
+                58 => {
+                    self.type_ = ::std::option::Option::Some(chart_identifier::Type::WorkflowFunnelChart(is.read_message()?));
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -151,6 +269,14 @@ impl ::protobuf::Message for ChartIdentifier {
                     let len = v.compute_size();
                     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 },
+                &chart_identifier::Type::SankeyChart(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &chart_identifier::Type::WorkflowFunnelChart(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
             };
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -163,6 +289,12 @@ impl ::protobuf::Message for ChartIdentifier {
             match v {
                 &chart_identifier::Type::Workflow(ref v) => {
                     ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+                },
+                &chart_identifier::Type::SankeyChart(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
+                },
+                &chart_identifier::Type::WorkflowFunnelChart(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(7, v, os)?;
                 },
             };
         }
@@ -183,6 +315,8 @@ impl ::protobuf::Message for ChartIdentifier {
     }
 
     fn clear(&mut self) {
+        self.type_ = ::std::option::Option::None;
+        self.type_ = ::std::option::Option::None;
         self.type_ = ::std::option::Option::None;
         self.special_fields.clear();
     }
@@ -221,6 +355,10 @@ pub mod chart_identifier {
     pub enum Type {
         // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.charts.v1.ChartIdentifier.workflow)
         Workflow(WorkflowChart),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.charts.v1.ChartIdentifier.sankey_chart)
+        SankeyChart(WorkflowSankeyChart),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.charts.v1.ChartIdentifier.workflow_funnel_chart)
+        WorkflowFunnelChart(WorkflowFunnelChart),
     }
 
     impl ::protobuf::Oneof for Type {
@@ -249,10 +387,9 @@ pub mod chart_identifier {
         ///  RuleChartConfiguration for this chart.
         // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.ChartIdentifier.WorkflowChart.chart_rule_id)
         pub chart_rule_id: ::std::string::String,
-        ///  Optional aggregated action ID to further resolve the chart to a specific time series.
-        ///  Currently this is only used (and required) when the FE is fetching example cardinality for
-        ///  a specific time series. In the future it might be used to filter the chart to a specific
-        ///  time series for generic display if desired when sent in the data request.
+        ///  Optionally narrows the chart to a specific time series within the chart
+        ///  definition. This is currently required when retrieving example
+        ///  cardinality for a specific time series.
         // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.ChartIdentifier.WorkflowChart.aggregated_action_id)
         pub aggregated_action_id: ::std::option::Option<::std::string::String>,
         // special fields
@@ -402,6 +539,290 @@ pub mod chart_identifier {
     impl ::protobuf::reflect::ProtobufValue for WorkflowChart {
         type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
     }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.charts.v1.ChartIdentifier.WorkflowFunnelChart)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct WorkflowFunnelChart {
+        // message fields
+        ///  The workflow that owns this funnel chart.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.ChartIdentifier.WorkflowFunnelChart.workflow_id)
+        pub workflow_id: ::std::string::String,
+        ///  The funnel rule that defines this chart.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.ChartIdentifier.WorkflowFunnelChart.funnel_rule_id)
+        pub funnel_rule_id: ::std::string::String,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.charts.v1.ChartIdentifier.WorkflowFunnelChart.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a WorkflowFunnelChart {
+        fn default() -> &'a WorkflowFunnelChart {
+            <WorkflowFunnelChart as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl WorkflowFunnelChart {
+        pub fn new() -> WorkflowFunnelChart {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "workflow_id",
+                |m: &WorkflowFunnelChart| { &m.workflow_id },
+                |m: &mut WorkflowFunnelChart| { &mut m.workflow_id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "funnel_rule_id",
+                |m: &WorkflowFunnelChart| { &m.funnel_rule_id },
+                |m: &mut WorkflowFunnelChart| { &mut m.funnel_rule_id },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<WorkflowFunnelChart>(
+                "ChartIdentifier.WorkflowFunnelChart",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for WorkflowFunnelChart {
+        const NAME: &'static str = "WorkflowFunnelChart";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    18 => {
+                        self.workflow_id = is.read_string()?;
+                    },
+                    26 => {
+                        self.funnel_rule_id = is.read_string()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if !self.workflow_id.is_empty() {
+                my_size += ::protobuf::rt::string_size(2, &self.workflow_id);
+            }
+            if !self.funnel_rule_id.is_empty() {
+                my_size += ::protobuf::rt::string_size(3, &self.funnel_rule_id);
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if !self.workflow_id.is_empty() {
+                os.write_string(2, &self.workflow_id)?;
+            }
+            if !self.funnel_rule_id.is_empty() {
+                os.write_string(3, &self.funnel_rule_id)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> WorkflowFunnelChart {
+            WorkflowFunnelChart::new()
+        }
+
+        fn clear(&mut self) {
+            self.workflow_id.clear();
+            self.funnel_rule_id.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static WorkflowFunnelChart {
+            static instance: WorkflowFunnelChart = WorkflowFunnelChart {
+                workflow_id: ::std::string::String::new(),
+                funnel_rule_id: ::std::string::String::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for WorkflowFunnelChart {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("ChartIdentifier.WorkflowFunnelChart").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for WorkflowFunnelChart {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for WorkflowFunnelChart {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.charts.v1.ChartIdentifier.WorkflowSankeyChart)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct WorkflowSankeyChart {
+        // message fields
+        ///  The workflow that owns this sankey chart.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.ChartIdentifier.WorkflowSankeyChart.workflow_id)
+        pub workflow_id: ::std::string::String,
+        ///  The rule that defines this sankey chart.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.ChartIdentifier.WorkflowSankeyChart.rule_id)
+        pub rule_id: ::std::string::String,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.charts.v1.ChartIdentifier.WorkflowSankeyChart.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a WorkflowSankeyChart {
+        fn default() -> &'a WorkflowSankeyChart {
+            <WorkflowSankeyChart as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl WorkflowSankeyChart {
+        pub fn new() -> WorkflowSankeyChart {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "workflow_id",
+                |m: &WorkflowSankeyChart| { &m.workflow_id },
+                |m: &mut WorkflowSankeyChart| { &mut m.workflow_id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "rule_id",
+                |m: &WorkflowSankeyChart| { &m.rule_id },
+                |m: &mut WorkflowSankeyChart| { &mut m.rule_id },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<WorkflowSankeyChart>(
+                "ChartIdentifier.WorkflowSankeyChart",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for WorkflowSankeyChart {
+        const NAME: &'static str = "WorkflowSankeyChart";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    18 => {
+                        self.workflow_id = is.read_string()?;
+                    },
+                    26 => {
+                        self.rule_id = is.read_string()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if !self.workflow_id.is_empty() {
+                my_size += ::protobuf::rt::string_size(2, &self.workflow_id);
+            }
+            if !self.rule_id.is_empty() {
+                my_size += ::protobuf::rt::string_size(3, &self.rule_id);
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if !self.workflow_id.is_empty() {
+                os.write_string(2, &self.workflow_id)?;
+            }
+            if !self.rule_id.is_empty() {
+                os.write_string(3, &self.rule_id)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> WorkflowSankeyChart {
+            WorkflowSankeyChart::new()
+        }
+
+        fn clear(&mut self) {
+            self.workflow_id.clear();
+            self.rule_id.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static WorkflowSankeyChart {
+            static instance: WorkflowSankeyChart = WorkflowSankeyChart {
+                workflow_id: ::std::string::String::new(),
+                rule_id: ::std::string::String::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for WorkflowSankeyChart {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("ChartIdentifier.WorkflowSankeyChart").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for WorkflowSankeyChart {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for WorkflowSankeyChart {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
 }
 
 // @@protoc_insertion_point(message:bitdrift.public.unary.charts.v1.LimitStrategy)
@@ -512,9 +933,9 @@ impl ::protobuf::reflect::ProtobufValue for LimitStrategy {
 pub struct HistogramConfiguration {
     // message fields
     ///  Pins the histograms within this chart to a specific percentile. This is
-    ///  required for charts that have histograms with a top K grouping as we don't
-    ///  support querying the cartestian product of (values, percentiles) with top
-    ///  K.
+    ///  required for charts that have histograms with a top-K grouping because we
+    ///  do not support querying the Cartesian product of (values, percentiles)
+    ///  with top-K.
     ///
     ///  This must be set to one of the percentiles in the ChartMetadata for the
     ///  chart if percentiles are defined.
@@ -654,6 +1075,148 @@ impl ::protobuf::reflect::ProtobufValue for HistogramConfiguration {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
+// @@protoc_insertion_point(message:bitdrift.public.unary.charts.v1.FunnelStep)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct FunnelStep {
+    // message fields
+    ///  The action ID associated with this step.
+    // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.FunnelStep.id)
+    pub id: ::std::string::String,
+    ///  The accumulated value of all collected data points for this metric.
+    // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.FunnelStep.value)
+    pub value: u64,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.charts.v1.FunnelStep.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a FunnelStep {
+    fn default() -> &'a FunnelStep {
+        <FunnelStep as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl FunnelStep {
+    pub fn new() -> FunnelStep {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "id",
+            |m: &FunnelStep| { &m.id },
+            |m: &mut FunnelStep| { &mut m.id },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "value",
+            |m: &FunnelStep| { &m.value },
+            |m: &mut FunnelStep| { &mut m.value },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<FunnelStep>(
+            "FunnelStep",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for FunnelStep {
+    const NAME: &'static str = "FunnelStep";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.id = is.read_string()?;
+                },
+                16 => {
+                    self.value = is.read_uint64()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.id.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.id);
+        }
+        if self.value != 0 {
+            my_size += ::protobuf::rt::uint64_size(2, self.value);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.id.is_empty() {
+            os.write_string(1, &self.id)?;
+        }
+        if self.value != 0 {
+            os.write_uint64(2, self.value)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> FunnelStep {
+        FunnelStep::new()
+    }
+
+    fn clear(&mut self) {
+        self.id.clear();
+        self.value = 0;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static FunnelStep {
+        static instance: FunnelStep = FunnelStep {
+            id: ::std::string::String::new(),
+            value: 0,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for FunnelStep {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("FunnelStep").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for FunnelStep {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for FunnelStep {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
 #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
 // @@protoc_insertion_point(enum:bitdrift.public.unary.charts.v1.SortOrder)
 pub enum SortOrder {
@@ -718,83 +1281,130 @@ impl SortOrder {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n.bitdrift/public/unary/charts/v1/chart_id.proto\x12\x1fbitdrift.public\
-    .unary.charts.v1\x1a\x17validate/validate.proto\"\xc5\x02\n\x0fChartIden\
+    .unary.charts.v1\x1a\x17validate/validate.proto\"\x8b\x06\n\x0fChartIden\
     tifier\x12\\\n\x08workflow\x18\x01\x20\x01(\x0b2>.bitdrift.public.unary.\
-    charts.v1.ChartIdentifier.WorkflowChartH\0R\x08workflow\x1a\xc6\x01\n\rW\
-    orkflowChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\
-    \xfaB\x07r\x05\x10\x01\x18\xff\x01\x12.\n\rchart_rule_id\x18\x03\x20\x01\
-    (\tR\x0bchartRuleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12?\n\x14aggre\
-    gated_action_id\x18\x04\x20\x01(\tH\0R\x12aggregatedActionIdB\x08\xfaB\
-    \x05r\x03\x18\xff\x01\x88\x01\x01B\x17\n\x15_aggregated_action_idB\x0b\n\
-    \x04type\x12\x03\xf8B\x01\"\x0f\n\rLimitStrategy\"d\n\x16HistogramConfig\
-    uration\x12\x1e\n\npercentile\x18\x02\x20\x01(\x02R\npercentile\x12*\n\
-    \x0bpercentiles\x18\x03\x20\x03(\x02R\x0bpercentilesB\x08\xfaB\x05\x92\
-    \x01\x02\x10\x14*\x1d\n\tSortOrder\x12\x07\n\x03MAX\x10\0\x12\x07\n\x03M\
-    IN\x10\x01J\xa2\x10\n\x06\x12\x04\x06\0<\x01\n\xb8\x02\n\x01\x0c\x12\x03\
-    \x06\0\x12\x1a\xad\x02\x20api\x20-\x20bitdrift's\x20client/server\x20API\
-    \x20definitions\n\x20Copyright\x20Bitdrift,\x20Inc.\x20All\x20rights\x20\
-    reserved.\n\n\x20Use\x20of\x20this\x20source\x20code\x20and\x20APIs\x20a\
-    re\x20governed\x20by\x20a\x20source\x20available\x20license\x20that\x20c\
-    an\x20be\x20found\x20in\n\x20the\x20LICENSE\x20file\x20or\x20at:\n\x20ht\
-    tps://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0\
-    .0.txt\n\n\x08\n\x01\x02\x12\x03\x08\0(\n\t\n\x02\x03\0\x12\x03\n\0!\n\n\
-    \n\x02\x04\0\x12\x04\x0c\0'\x01\n\n\n\x03\x04\0\x01\x12\x03\x0c\x08\x17\
-    \n\x0c\n\x04\x04\0\x03\0\x12\x04\r\x02\x20\x03\n\x0c\n\x05\x04\0\x03\0\
-    \x01\x12\x03\r\n\x17\n4\n\x06\x04\0\x03\0\x02\0\x12\x04\x0f\x04\x12\x07\
-    \x1a$\x20The\x20workflow\x20that\x20owns\x20this\x20chart.\n\n\x0e\n\x07\
-    \x04\0\x03\0\x02\0\x05\x12\x03\x0f\x04\n\n\x0e\n\x07\x04\0\x03\0\x02\0\
-    \x01\x12\x03\x0f\x0b\x16\n\x0e\n\x07\x04\0\x03\0\x02\0\x03\x12\x03\x0f\
-    \x19\x1a\n\x0f\n\x07\x04\0\x03\0\x02\0\x08\x12\x04\x0f\x1b\x12\x06\n\x12\
-    \n\n\x04\0\x03\0\x02\0\x08\xaf\x08\x0e\x12\x04\x0f\x1c\x12\x05\nt\n\x06\
-    \x04\0\x03\0\x02\x01\x12\x04\x16\x04\x19\x07\x1ad\x20The\x20ID\x20of\x20\
-    the\x20rule\x20node\x20within\x20the\x20workflow\x20that\x20holds\x20the\
-    \n\x20RuleChartConfiguration\x20for\x20this\x20chart.\n\n\x0e\n\x07\x04\
-    \0\x03\0\x02\x01\x05\x12\x03\x16\x04\n\n\x0e\n\x07\x04\0\x03\0\x02\x01\
-    \x01\x12\x03\x16\x0b\x18\n\x0e\n\x07\x04\0\x03\0\x02\x01\x03\x12\x03\x16\
-    \x1b\x1c\n\x0f\n\x07\x04\0\x03\0\x02\x01\x08\x12\x04\x16\x1d\x19\x06\n\
-    \x12\n\n\x04\0\x03\0\x02\x01\x08\xaf\x08\x0e\x12\x04\x16\x1e\x19\x05\n\
-    \xe8\x02\n\x06\x04\0\x03\0\x02\x02\x12\x03\x1f\x04X\x1a\xd8\x02\x20Optio\
-    nal\x20aggregated\x20action\x20ID\x20to\x20further\x20resolve\x20the\x20\
-    chart\x20to\x20a\x20specific\x20time\x20series.\n\x20Currently\x20this\
-    \x20is\x20only\x20used\x20(and\x20required)\x20when\x20the\x20FE\x20is\
-    \x20fetching\x20example\x20cardinality\x20for\n\x20a\x20specific\x20time\
-    \x20series.\x20In\x20the\x20future\x20it\x20might\x20be\x20used\x20to\
-    \x20filter\x20the\x20chart\x20to\x20a\x20specific\n\x20time\x20series\
-    \x20for\x20generic\x20display\x20if\x20desired\x20when\x20sent\x20in\x20\
-    the\x20data\x20request.\n\n\x0e\n\x07\x04\0\x03\0\x02\x02\x04\x12\x03\
-    \x1f\x04\x0c\n\x0e\n\x07\x04\0\x03\0\x02\x02\x05\x12\x03\x1f\r\x13\n\x0e\
-    \n\x07\x04\0\x03\0\x02\x02\x01\x12\x03\x1f\x14(\n\x0e\n\x07\x04\0\x03\0\
-    \x02\x02\x03\x12\x03\x1f+,\n\x0e\n\x07\x04\0\x03\0\x02\x02\x08\x12\x03\
-    \x1f-W\n\x11\n\n\x04\0\x03\0\x02\x02\x08\xaf\x08\x0e\x12\x03\x1f.V\n\x0c\
-    \n\x04\x04\0\x08\0\x12\x04\"\x02&\x03\n\x0c\n\x05\x04\0\x08\0\x01\x12\
-    \x03\"\x08\x0c\n\x0c\n\x05\x04\0\x08\0\x02\x12\x03#\x04&\n\x0e\n\x07\x04\
-    \0\x08\0\x02\xaf\x08\x12\x03#\x04&\n.\n\x04\x04\0\x02\0\x12\x03%\x04P\
-    \x1a!\x20A\x20workflow-backed\x20metric\x20chart.\n\n\x0c\n\x05\x04\0\
-    \x02\0\x06\x12\x03%\x04B\n\x0c\n\x05\x04\0\x02\0\x01\x12\x03%CK\n\x0c\n\
-    \x05\x04\0\x02\0\x03\x12\x03%NO\n\n\n\x02\x05\0\x12\x04)\0,\x01\n\n\n\
-    \x03\x05\0\x01\x12\x03)\x05\x0e\n\x0b\n\x04\x05\0\x02\0\x12\x03*\x02\n\n\
-    \x0c\n\x05\x05\0\x02\0\x01\x12\x03*\x02\x05\n\x0c\n\x05\x05\0\x02\0\x02\
-    \x12\x03*\x08\t\n\x0b\n\x04\x05\0\x02\x01\x12\x03+\x02\n\n\x0c\n\x05\x05\
-    \0\x02\x01\x01\x12\x03+\x02\x05\n\x0c\n\x05\x05\0\x02\x01\x02\x12\x03+\
-    \x08\t\n\t\n\x02\x04\x01\x12\x03.\0\x18\n\n\n\x03\x04\x01\x01\x12\x03.\
-    \x08\x15\n\n\n\x02\x04\x02\x12\x040\0<\x01\n\n\n\x03\x04\x02\x01\x12\x03\
-    0\x08\x1e\n\xdf\x02\n\x04\x04\x02\x02\0\x12\x038\x02\x17\x1a\xd1\x02\x20\
-    Pins\x20the\x20histograms\x20within\x20this\x20chart\x20to\x20a\x20speci\
-    fic\x20percentile.\x20This\x20is\n\x20required\x20for\x20charts\x20that\
-    \x20have\x20histograms\x20with\x20a\x20top\x20K\x20grouping\x20as\x20we\
-    \x20don't\n\x20support\x20querying\x20the\x20cartestian\x20product\x20of\
-    \x20(values,\x20percentiles)\x20with\x20top\n\x20K.\n\n\x20This\x20must\
-    \x20be\x20set\x20to\x20one\x20of\x20the\x20percentiles\x20in\x20the\x20C\
-    hartMetadata\x20for\x20the\n\x20chart\x20if\x20percentiles\x20are\x20def\
-    ined.\n\n\x0c\n\x05\x04\x02\x02\0\x05\x12\x038\x02\x07\n\x0c\n\x05\x04\
-    \x02\x02\0\x01\x12\x038\x08\x12\n\x0c\n\x05\x04\x02\x02\0\x03\x12\x038\
-    \x15\x16\n_\n\x04\x04\x02\x02\x01\x12\x03;\x02L\x1aR\x20Percentiles\x20t\
-    o\x20query\x20when\x20the\x20chart\x20supports\x20returning\x20multiple\
-    \x20histogram\x20lines.\n\n\x0c\n\x05\x04\x02\x02\x01\x04\x12\x03;\x02\n\
-    \n\x0c\n\x05\x04\x02\x02\x01\x05\x12\x03;\x0b\x10\n\x0c\n\x05\x04\x02\
-    \x02\x01\x01\x12\x03;\x11\x1c\n\x0c\n\x05\x04\x02\x02\x01\x03\x12\x03;\
-    \x1f\x20\n\x0c\n\x05\x04\x02\x02\x01\x08\x12\x03;!K\n\x10\n\t\x04\x02\
-    \x02\x01\x08\xaf\x08\x12\x02\x12\x03;\"Jb\x06proto3\
+    charts.v1.ChartIdentifier.WorkflowChartH\0R\x08workflow\x12i\n\x0csankey\
+    _chart\x18\x05\x20\x01(\x0b2D.bitdrift.public.unary.charts.v1.ChartIdent\
+    ifier.WorkflowSankeyChartH\0R\x0bsankeyChart\x12z\n\x15workflow_funnel_c\
+    hart\x18\x07\x20\x01(\x0b2D.bitdrift.public.unary.charts.v1.ChartIdentif\
+    ier.WorkflowFunnelChartH\0R\x13workflowFunnelChart\x1a\xc6\x01\n\rWorkfl\
+    owChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\
+    \x07r\x05\x10\x01\x18\xff\x01\x12.\n\rchart_rule_id\x18\x03\x20\x01(\tR\
+    \x0bchartRuleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12?\n\x14aggregate\
+    d_action_id\x18\x04\x20\x01(\tH\0R\x12aggregatedActionIdB\x08\xfaB\x05r\
+    \x03\x18\xff\x01\x88\x01\x01B\x17\n\x15_aggregated_action_id\x1at\n\x13W\
+    orkflowFunnelChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowId\
+    B\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x120\n\x0efunnel_rule_id\x18\x03\
+    \x20\x01(\tR\x0cfunnelRuleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x1ag\n\
+    \x13WorkflowSankeyChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkf\
+    lowIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12#\n\x07rule_id\x18\x03\x20\
+    \x01(\tR\x06ruleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01B\x0b\n\x04type\
+    \x12\x03\xf8B\x01\"\x0f\n\rLimitStrategy\"d\n\x16HistogramConfiguration\
+    \x12\x1e\n\npercentile\x18\x02\x20\x01(\x02R\npercentile\x12*\n\x0bperce\
+    ntiles\x18\x03\x20\x03(\x02R\x0bpercentilesB\x08\xfaB\x05\x92\x01\x02\
+    \x10\x14\"2\n\nFunnelStep\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\x12\
+    \x14\n\x05value\x18\x02\x20\x01(\x04R\x05value*\x1d\n\tSortOrder\x12\x07\
+    \n\x03MAX\x10\0\x12\x07\n\x03MIN\x10\x01J\xac\x17\n\x06\x12\x04\x06\0e\
+    \x01\n\xb8\x02\n\x01\x0c\x12\x03\x06\0\x12\x1a\xad\x02\x20api\x20-\x20bi\
+    tdrift's\x20client/server\x20API\x20definitions\n\x20Copyright\x20Bitdri\
+    ft,\x20Inc.\x20All\x20rights\x20reserved.\n\n\x20Use\x20of\x20this\x20so\
+    urce\x20code\x20and\x20APIs\x20are\x20governed\x20by\x20a\x20source\x20a\
+    vailable\x20license\x20that\x20can\x20be\x20found\x20in\n\x20the\x20LICE\
+    NSE\x20file\x20or\x20at:\n\x20https://polyformproject.org/wp-content/upl\
+    oads/2020/06/PolyForm-Shield-1.0.0.txt\n\n\x08\n\x01\x02\x12\x03\x08\0(\
+    \n\t\n\x02\x03\0\x12\x03\n\0!\n\n\n\x02\x04\0\x12\x04\x0c\0H\x01\n\n\n\
+    \x03\x04\0\x01\x12\x03\x0c\x08\x17\n\x0c\n\x04\x04\0\x03\0\x12\x04\r\x02\
+    \x1f\x03\n\x0c\n\x05\x04\0\x03\0\x01\x12\x03\r\n\x17\n4\n\x06\x04\0\x03\
+    \0\x02\0\x12\x04\x0f\x04\x12\x07\x1a$\x20The\x20workflow\x20that\x20owns\
+    \x20this\x20chart.\n\n\x0e\n\x07\x04\0\x03\0\x02\0\x05\x12\x03\x0f\x04\n\
+    \n\x0e\n\x07\x04\0\x03\0\x02\0\x01\x12\x03\x0f\x0b\x16\n\x0e\n\x07\x04\0\
+    \x03\0\x02\0\x03\x12\x03\x0f\x19\x1a\n\x0f\n\x07\x04\0\x03\0\x02\0\x08\
+    \x12\x04\x0f\x1b\x12\x06\n\x12\n\n\x04\0\x03\0\x02\0\x08\xaf\x08\x0e\x12\
+    \x04\x0f\x1c\x12\x05\nt\n\x06\x04\0\x03\0\x02\x01\x12\x04\x16\x04\x19\
+    \x07\x1ad\x20The\x20ID\x20of\x20the\x20rule\x20node\x20within\x20the\x20\
+    workflow\x20that\x20holds\x20the\n\x20RuleChartConfiguration\x20for\x20t\
+    his\x20chart.\n\n\x0e\n\x07\x04\0\x03\0\x02\x01\x05\x12\x03\x16\x04\n\n\
+    \x0e\n\x07\x04\0\x03\0\x02\x01\x01\x12\x03\x16\x0b\x18\n\x0e\n\x07\x04\0\
+    \x03\0\x02\x01\x03\x12\x03\x16\x1b\x1c\n\x0f\n\x07\x04\0\x03\0\x02\x01\
+    \x08\x12\x04\x16\x1d\x19\x06\n\x12\n\n\x04\0\x03\0\x02\x01\x08\xaf\x08\
+    \x0e\x12\x04\x16\x1e\x19\x05\n\xc2\x01\n\x06\x04\0\x03\0\x02\x02\x12\x03\
+    \x1e\x04X\x1a\xb2\x01\x20Optionally\x20narrows\x20the\x20chart\x20to\x20\
+    a\x20specific\x20time\x20series\x20within\x20the\x20chart\n\x20definitio\
+    n.\x20This\x20is\x20currently\x20required\x20when\x20retrieving\x20examp\
+    le\n\x20cardinality\x20for\x20a\x20specific\x20time\x20series.\n\n\x0e\n\
+    \x07\x04\0\x03\0\x02\x02\x04\x12\x03\x1e\x04\x0c\n\x0e\n\x07\x04\0\x03\0\
+    \x02\x02\x05\x12\x03\x1e\r\x13\n\x0e\n\x07\x04\0\x03\0\x02\x02\x01\x12\
+    \x03\x1e\x14(\n\x0e\n\x07\x04\0\x03\0\x02\x02\x03\x12\x03\x1e+,\n\x0e\n\
+    \x07\x04\0\x03\0\x02\x02\x08\x12\x03\x1e-W\n\x11\n\n\x04\0\x03\0\x02\x02\
+    \x08\xaf\x08\x0e\x12\x03\x1e.V\n\x0c\n\x04\x04\0\x03\x01\x12\x04!\x02-\
+    \x03\n\x0c\n\x05\x04\0\x03\x01\x01\x12\x03!\n\x1d\n;\n\x06\x04\0\x03\x01\
+    \x02\0\x12\x04#\x04&\x07\x1a+\x20The\x20workflow\x20that\x20owns\x20this\
+    \x20funnel\x20chart.\n\n\x0e\n\x07\x04\0\x03\x01\x02\0\x05\x12\x03#\x04\
+    \n\n\x0e\n\x07\x04\0\x03\x01\x02\0\x01\x12\x03#\x0b\x16\n\x0e\n\x07\x04\
+    \0\x03\x01\x02\0\x03\x12\x03#\x19\x1a\n\x0f\n\x07\x04\0\x03\x01\x02\0\
+    \x08\x12\x04#\x1b&\x06\n\x12\n\n\x04\0\x03\x01\x02\0\x08\xaf\x08\x0e\x12\
+    \x04#\x1c&\x05\n:\n\x06\x04\0\x03\x01\x02\x01\x12\x04)\x04,\x07\x1a*\x20\
+    The\x20funnel\x20rule\x20that\x20defines\x20this\x20chart.\n\n\x0e\n\x07\
+    \x04\0\x03\x01\x02\x01\x05\x12\x03)\x04\n\n\x0e\n\x07\x04\0\x03\x01\x02\
+    \x01\x01\x12\x03)\x0b\x19\n\x0e\n\x07\x04\0\x03\x01\x02\x01\x03\x12\x03)\
+    \x1c\x1d\n\x0f\n\x07\x04\0\x03\x01\x02\x01\x08\x12\x04)\x1e,\x06\n\x12\n\
+    \n\x04\0\x03\x01\x02\x01\x08\xaf\x08\x0e\x12\x04)\x1f,\x05\n\x0c\n\x04\
+    \x04\0\x03\x02\x12\x04/\x02;\x03\n\x0c\n\x05\x04\0\x03\x02\x01\x12\x03/\
+    \n\x1d\n;\n\x06\x04\0\x03\x02\x02\0\x12\x041\x044\x07\x1a+\x20The\x20wor\
+    kflow\x20that\x20owns\x20this\x20sankey\x20chart.\n\n\x0e\n\x07\x04\0\
+    \x03\x02\x02\0\x05\x12\x031\x04\n\n\x0e\n\x07\x04\0\x03\x02\x02\0\x01\
+    \x12\x031\x0b\x16\n\x0e\n\x07\x04\0\x03\x02\x02\0\x03\x12\x031\x19\x1a\n\
+    \x0f\n\x07\x04\0\x03\x02\x02\0\x08\x12\x041\x1b4\x06\n\x12\n\n\x04\0\x03\
+    \x02\x02\0\x08\xaf\x08\x0e\x12\x041\x1c4\x05\n:\n\x06\x04\0\x03\x02\x02\
+    \x01\x12\x047\x04:\x07\x1a*\x20The\x20rule\x20that\x20defines\x20this\
+    \x20sankey\x20chart.\n\n\x0e\n\x07\x04\0\x03\x02\x02\x01\x05\x12\x037\
+    \x04\n\n\x0e\n\x07\x04\0\x03\x02\x02\x01\x01\x12\x037\x0b\x12\n\x0e\n\
+    \x07\x04\0\x03\x02\x02\x01\x03\x12\x037\x15\x16\n\x0f\n\x07\x04\0\x03\
+    \x02\x02\x01\x08\x12\x047\x17:\x06\n\x12\n\n\x04\0\x03\x02\x02\x01\x08\
+    \xaf\x08\x0e\x12\x047\x18:\x05\n\x0c\n\x04\x04\0\x08\0\x12\x04=\x02G\x03\
+    \n\x0c\n\x05\x04\0\x08\0\x01\x12\x03=\x08\x0c\n\x0c\n\x05\x04\0\x08\0\
+    \x02\x12\x03>\x04&\n\x0e\n\x07\x04\0\x08\0\x02\xaf\x08\x12\x03>\x04&\n.\
+    \n\x04\x04\0\x02\0\x12\x03@\x04P\x1a!\x20A\x20workflow-backed\x20metric\
+    \x20chart.\n\n\x0c\n\x05\x04\0\x02\0\x06\x12\x03@\x04B\n\x0c\n\x05\x04\0\
+    \x02\0\x01\x12\x03@CK\n\x0c\n\x05\x04\0\x02\0\x03\x12\x03@NO\n.\n\x04\
+    \x04\0\x02\x01\x12\x03C\x04Z\x1a!\x20A\x20workflow-backed\x20sankey\x20c\
+    hart.\n\n\x0c\n\x05\x04\0\x02\x01\x06\x12\x03C\x04H\n\x0c\n\x05\x04\0\
+    \x02\x01\x01\x12\x03CIU\n\x0c\n\x05\x04\0\x02\x01\x03\x12\x03CXY\n.\n\
+    \x04\x04\0\x02\x02\x12\x03F\x04c\x1a!\x20A\x20workflow-backed\x20funnel\
+    \x20chart.\n\n\x0c\n\x05\x04\0\x02\x02\x06\x12\x03F\x04H\n\x0c\n\x05\x04\
+    \0\x02\x02\x01\x12\x03FI^\n\x0c\n\x05\x04\0\x02\x02\x03\x12\x03Fab\n\n\n\
+    \x02\x05\0\x12\x04J\0M\x01\n\n\n\x03\x05\0\x01\x12\x03J\x05\x0e\n\x0b\n\
+    \x04\x05\0\x02\0\x12\x03K\x02\n\n\x0c\n\x05\x05\0\x02\0\x01\x12\x03K\x02\
+    \x05\n\x0c\n\x05\x05\0\x02\0\x02\x12\x03K\x08\t\n\x0b\n\x04\x05\0\x02\
+    \x01\x12\x03L\x02\n\n\x0c\n\x05\x05\0\x02\x01\x01\x12\x03L\x02\x05\n\x0c\
+    \n\x05\x05\0\x02\x01\x02\x12\x03L\x08\t\n\t\n\x02\x04\x01\x12\x03O\0\x18\
+    \n\n\n\x03\x04\x01\x01\x12\x03O\x08\x15\n\n\n\x02\x04\x02\x12\x04Q\0]\
+    \x01\n\n\n\x03\x04\x02\x01\x12\x03Q\x08\x1e\n\xe4\x02\n\x04\x04\x02\x02\
+    \0\x12\x03Y\x02\x17\x1a\xd6\x02\x20Pins\x20the\x20histograms\x20within\
+    \x20this\x20chart\x20to\x20a\x20specific\x20percentile.\x20This\x20is\n\
+    \x20required\x20for\x20charts\x20that\x20have\x20histograms\x20with\x20a\
+    \x20top-K\x20grouping\x20because\x20we\n\x20do\x20not\x20support\x20quer\
+    ying\x20the\x20Cartesian\x20product\x20of\x20(values,\x20percentiles)\n\
+    \x20with\x20top-K.\n\n\x20This\x20must\x20be\x20set\x20to\x20one\x20of\
+    \x20the\x20percentiles\x20in\x20the\x20ChartMetadata\x20for\x20the\n\x20\
+    chart\x20if\x20percentiles\x20are\x20defined.\n\n\x0c\n\x05\x04\x02\x02\
+    \0\x05\x12\x03Y\x02\x07\n\x0c\n\x05\x04\x02\x02\0\x01\x12\x03Y\x08\x12\n\
+    \x0c\n\x05\x04\x02\x02\0\x03\x12\x03Y\x15\x16\n_\n\x04\x04\x02\x02\x01\
+    \x12\x03\\\x02L\x1aR\x20Percentiles\x20to\x20query\x20when\x20the\x20cha\
+    rt\x20supports\x20returning\x20multiple\x20histogram\x20lines.\n\n\x0c\n\
+    \x05\x04\x02\x02\x01\x04\x12\x03\\\x02\n\n\x0c\n\x05\x04\x02\x02\x01\x05\
+    \x12\x03\\\x0b\x10\n\x0c\n\x05\x04\x02\x02\x01\x01\x12\x03\\\x11\x1c\n\
+    \x0c\n\x05\x04\x02\x02\x01\x03\x12\x03\\\x1f\x20\n\x0c\n\x05\x04\x02\x02\
+    \x01\x08\x12\x03\\!K\n\x10\n\t\x04\x02\x02\x01\x08\xaf\x08\x12\x02\x12\
+    \x03\\\"J\n\n\n\x02\x04\x03\x12\x04_\0e\x01\n\n\n\x03\x04\x03\x01\x12\
+    \x03_\x08\x12\n7\n\x04\x04\x03\x02\0\x12\x03a\x02\x10\x1a*\x20The\x20act\
+    ion\x20ID\x20associated\x20with\x20this\x20step.\n\n\x0c\n\x05\x04\x03\
+    \x02\0\x05\x12\x03a\x02\x08\n\x0c\n\x05\x04\x03\x02\0\x01\x12\x03a\t\x0b\
+    \n\x0c\n\x05\x04\x03\x02\0\x03\x12\x03a\x0e\x0f\nR\n\x04\x04\x03\x02\x01\
+    \x12\x03d\x02\x13\x1aE\x20The\x20accumulated\x20value\x20of\x20all\x20co\
+    llected\x20data\x20points\x20for\x20this\x20metric.\n\n\x0c\n\x05\x04\
+    \x03\x02\x01\x05\x12\x03d\x02\x08\n\x0c\n\x05\x04\x03\x02\x01\x01\x12\
+    \x03d\t\x0e\n\x0c\n\x05\x04\x03\x02\x01\x03\x12\x03d\x11\x12b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -813,11 +1423,14 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
             let mut deps = ::std::vec::Vec::with_capacity(1);
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(4);
+            let mut messages = ::std::vec::Vec::with_capacity(7);
             messages.push(ChartIdentifier::generated_message_descriptor_data());
             messages.push(LimitStrategy::generated_message_descriptor_data());
             messages.push(HistogramConfiguration::generated_message_descriptor_data());
+            messages.push(FunnelStep::generated_message_descriptor_data());
             messages.push(chart_identifier::WorkflowChart::generated_message_descriptor_data());
+            messages.push(chart_identifier::WorkflowFunnelChart::generated_message_descriptor_data());
+            messages.push(chart_identifier::WorkflowSankeyChart::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(1);
             enums.push(SortOrder::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(

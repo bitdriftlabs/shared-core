@@ -802,8 +802,6 @@ pub enum HydrationStatus {
     HYDRATED = 2,
     // @@protoc_insertion_point(enum_value:bitdrift.public.unary.timeline.v1.HydrationStatus.FAILED)
     FAILED = 3,
-    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.timeline.v1.HydrationStatus.UNKNOWN)
-    UNKNOWN = 4,
 }
 
 impl ::protobuf::Enum for HydrationStatus {
@@ -819,7 +817,6 @@ impl ::protobuf::Enum for HydrationStatus {
             1 => ::std::option::Option::Some(HydrationStatus::HYDRATING),
             2 => ::std::option::Option::Some(HydrationStatus::HYDRATED),
             3 => ::std::option::Option::Some(HydrationStatus::FAILED),
-            4 => ::std::option::Option::Some(HydrationStatus::UNKNOWN),
             _ => ::std::option::Option::None
         }
     }
@@ -830,7 +827,6 @@ impl ::protobuf::Enum for HydrationStatus {
             "HYDRATING" => ::std::option::Option::Some(HydrationStatus::HYDRATING),
             "HYDRATED" => ::std::option::Option::Some(HydrationStatus::HYDRATED),
             "FAILED" => ::std::option::Option::Some(HydrationStatus::FAILED),
-            "UNKNOWN" => ::std::option::Option::Some(HydrationStatus::UNKNOWN),
             _ => ::std::option::Option::None
         }
     }
@@ -840,7 +836,6 @@ impl ::protobuf::Enum for HydrationStatus {
         HydrationStatus::HYDRATING,
         HydrationStatus::HYDRATED,
         HydrationStatus::FAILED,
-        HydrationStatus::UNKNOWN,
     ];
 }
 
@@ -888,10 +883,9 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     tHydrationState\"E\n\x19GetHydrationStatusRequest\x12(\n\nsession_id\x18\
     \x01\x20\x01(\tR\tsessionIdB\t\xfaB\x06r\x04\x10\x01\x18d\"g\n\x1aGetHyd\
     rationStatusResponse\x12I\n\x06status\x18\x01\x20\x01(\x0b21.bitdrift.pu\
-    blic.unary.timeline.v1.HydrationStateR\x06status*P\n\x0fHydrationStatus\
+    blic.unary.timeline.v1.HydrationStateR\x06status*C\n\x0fHydrationStatus\
     \x12\x07\n\x03DRY\x10\0\x12\r\n\tHYDRATING\x10\x01\x12\x0c\n\x08HYDRATED\
-    \x10\x02\x12\n\n\x06FAILED\x10\x03\x12\x0b\n\x07UNKNOWN\x10\x04b\x06prot\
-    o3\
+    \x10\x02\x12\n\n\x06FAILED\x10\x03b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

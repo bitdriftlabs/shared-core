@@ -39,6 +39,8 @@ pub struct FetchCapturedSessionsRequest {
     pub action_id: ::std::string::String,
     // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.FetchCapturedSessionsRequest.time_range)
     pub time_range: ::protobuf::MessageField<super::common::TimeRange>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.FetchCapturedSessionsRequest.or_filter)
+    pub or_filter: ::std::vec::Vec<super::time_series::AndFilter>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.FetchCapturedSessionsRequest.page)
     pub page: ::std::option::Option<u64>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.FetchCapturedSessionsRequest.per_page)
@@ -60,7 +62,7 @@ impl FetchCapturedSessionsRequest {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut fields = ::std::vec::Vec::with_capacity(5);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "action_id",
@@ -71,6 +73,11 @@ impl FetchCapturedSessionsRequest {
             "time_range",
             |m: &FetchCapturedSessionsRequest| { &m.time_range },
             |m: &mut FetchCapturedSessionsRequest| { &mut m.time_range },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "or_filter",
+            |m: &FetchCapturedSessionsRequest| { &m.or_filter },
+            |m: &mut FetchCapturedSessionsRequest| { &mut m.or_filter },
         ));
         fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
             "page",
@@ -106,6 +113,9 @@ impl ::protobuf::Message for FetchCapturedSessionsRequest {
                 66 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.time_range)?;
                 },
+                58 => {
+                    self.or_filter.push(is.read_message()?);
+                },
                 40 => {
                     self.page = ::std::option::Option::Some(is.read_uint64()?);
                 },
@@ -131,6 +141,10 @@ impl ::protobuf::Message for FetchCapturedSessionsRequest {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
+        for value in &self.or_filter {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
         if let Some(v) = self.page {
             my_size += ::protobuf::rt::uint64_size(5, v);
         }
@@ -149,6 +163,9 @@ impl ::protobuf::Message for FetchCapturedSessionsRequest {
         if let Some(v) = self.time_range.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(8, v, os)?;
         }
+        for v in &self.or_filter {
+            ::protobuf::rt::write_message_field_with_cached_size(7, v, os)?;
+        };
         if let Some(v) = self.page {
             os.write_uint64(5, v)?;
         }
@@ -174,6 +191,7 @@ impl ::protobuf::Message for FetchCapturedSessionsRequest {
     fn clear(&mut self) {
         self.action_id.clear();
         self.time_range.clear();
+        self.or_filter.clear();
         self.page = ::std::option::Option::None;
         self.per_page = ::std::option::Option::None;
         self.special_fields.clear();
@@ -183,6 +201,7 @@ impl ::protobuf::Message for FetchCapturedSessionsRequest {
         static instance: FetchCapturedSessionsRequest = FetchCapturedSessionsRequest {
             action_id: ::std::string::String::new(),
             time_range: ::protobuf::MessageField::none(),
+            or_filter: ::std::vec::Vec::new(),
             page: ::std::option::Option::None,
             per_page: ::std::option::Option::None,
             special_fields: ::protobuf::SpecialFields::new(),
@@ -564,52 +583,54 @@ pub mod fetch_captured_sessions_response {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n,bitdrift/public/unary/workflows/v1/api.proto\x12\"bitdrift.public.una\
-    ry.workflows.v1\x1a4bitdrift/public/unary/charts/v1/chart_metadata.proto\
-    \x1a,bitdrift/public/unary/common/v1/common.proto\x1a1bitdrift/public/un\
-    ary/workflows/v1/workflow.proto\x1a\x1fgoogle/protobuf/timestamp.proto\
-    \x1a\x17validate/validate.proto\"\xe9\x01\n\x1cFetchCapturedSessionsRequ\
-    est\x12$\n\taction_id\x18\x01\x20\x01(\tR\x08actionIdB\x07\xfaB\x04r\x02\
-    \x18d\x12I\n\ntime_range\x18\x08\x20\x01(\x0b2*.bitdrift.public.unary.co\
-    mmon.v1.TimeRangeR\ttimeRange\x12\x17\n\x04page\x18\x05\x20\x01(\x04H\0R\
-    \x04page\x88\x01\x01\x12)\n\x08per_page\x18\x06\x20\x01(\x04H\x01R\x07pe\
-    rPageB\t\xfaB\x062\x04\x18d(\x01\x88\x01\x01B\x07\n\x05_pageB\x0b\n\t_pe\
-    r_page\"\xca\x04\n\x1dFetchCapturedSessionsResponse\x12~\n\x11captured_s\
-    essions\x18\x02\x20\x03(\x0b2Q.bitdrift.public.unary.workflows.v1.FetchC\
-    apturedSessionsResponse.CapturedSessionR\x10capturedSessions\x12\x1d\n\n\
-    full_count\x18\x03\x20\x01(\rR\tfullCount\x1a\x89\x03\n\x0fCapturedSessi\
-    on\x12&\n\nsession_id\x18\x01\x20\x01(\tR\tsessionIdB\x07\xfaB\x04r\x02\
-    \x10\x01\x12C\n\nfirst_seen\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.Ti\
-    mestampR\tfirstSeenB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12A\n\tlast_seen\
-    \x18\x07\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x08lastSeenB\x08\
-    \xfaB\x05\x8a\x01\x02\x10\x01\x12\x14\n\x05count\x18\x04\x20\x01(\x04R\
-    \x05count\x12u\n\x06fields\x18\x05\x20\x03(\x0b2].bitdrift.public.unary.\
-    workflows.v1.FetchCapturedSessionsResponse.CapturedSession.FieldsEntryR\
-    \x06fields\x1a9\n\x0bFieldsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\
-    \x03key\x12\x14\n\x05value\x18\x02\x20\x01(\tR\x05value:\x028\x012\xf9\t\
-    \n\x0fWorkflowService\x12~\n\x0bGetWorkflow\x126.bitdrift.public.unary.w\
-    orkflows.v1.GetWorkflowRequest\x1a7.bitdrift.public.unary.workflows.v1.G\
-    etWorkflowResponse\x12\x84\x01\n\rListWorkflows\x128.bitdrift.public.una\
-    ry.workflows.v1.ListWorkflowsRequest\x1a9.bitdrift.public.unary.workflow\
-    s.v1.ListWorkflowsResponse\x12\x87\x01\n\x0eCreateWorkflow\x129.bitdrift\
-    .public.unary.workflows.v1.CreateWorkflowRequest\x1a:.bitdrift.public.un\
-    ary.workflows.v1.CreateWorkflowResponse\x12\x87\x01\n\x0eUpdateWorkflow\
-    \x129.bitdrift.public.unary.workflows.v1.UpdateWorkflowRequest\x1a:.bitd\
-    rift.public.unary.workflows.v1.UpdateWorkflowResponse\x12\x87\x01\n\x0eR\
-    enameWorkflow\x129.bitdrift.public.unary.workflows.v1.RenameWorkflowRequ\
-    est\x1a:.bitdrift.public.unary.workflows.v1.RenameWorkflowResponse\x12\
-    \x87\x01\n\x0eDeleteWorkflow\x129.bitdrift.public.unary.workflows.v1.Del\
-    eteWorkflowRequest\x1a:.bitdrift.public.unary.workflows.v1.DeleteWorkflo\
-    wResponse\x12\x87\x01\n\x0eDeployWorkflow\x129.bitdrift.public.unary.wor\
-    kflows.v1.DeployWorkflowRequest\x1a:.bitdrift.public.unary.workflows.v1.\
-    DeployWorkflowResponse\x12\x81\x01\n\x0cStopWorkflow\x127.bitdrift.publi\
-    c.unary.workflows.v1.StopWorkflowRequest\x1a8.bitdrift.public.unary.work\
-    flows.v1.StopWorkflowResponse\x12\xa8\x01\n\x1bUpsertWorkflowChartMetada\
-    ta\x12C.bitdrift.public.unary.charts.v1.UpsertWorkflowChartMetadataReque\
-    st\x1aD.bitdrift.public.unary.charts.v1.UpsertWorkflowChartMetadataRespo\
-    nse2\xb4\x01\n\x13WorkflowDataService\x12\x9c\x01\n\x15FetchCapturedSess\
-    ions\x12@.bitdrift.public.unary.workflows.v1.FetchCapturedSessionsReques\
-    t\x1aA.bitdrift.public.unary.workflows.v1.FetchCapturedSessionsResponseb\
-    \x06proto3\
+    ry.workflows.v1\x1a5bitdrift/public/shared/workflows/v1/time_series.prot\
+    o\x1a4bitdrift/public/unary/charts/v1/chart_metadata.proto\x1a,bitdrift/\
+    public/unary/common/v1/common.proto\x1a1bitdrift/public/unary/workflows/\
+    v1/workflow.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17validate\
+    /validate.proto\"\xc0\x02\n\x1cFetchCapturedSessionsRequest\x12$\n\tacti\
+    on_id\x18\x01\x20\x01(\tR\x08actionIdB\x07\xfaB\x04r\x02\x18d\x12I\n\nti\
+    me_range\x18\x08\x20\x01(\x0b2*.bitdrift.public.unary.common.v1.TimeRang\
+    eR\ttimeRange\x12U\n\tor_filter\x18\x07\x20\x03(\x0b2..bitdrift.public.s\
+    hared.workflows.v1.AndFilterR\x08orFilterB\x08\xfaB\x05\x92\x01\x02\x10\
+    \n\x12\x17\n\x04page\x18\x05\x20\x01(\x04H\0R\x04page\x88\x01\x01\x12)\n\
+    \x08per_page\x18\x06\x20\x01(\x04H\x01R\x07perPageB\t\xfaB\x062\x04\x18d\
+    (\x01\x88\x01\x01B\x07\n\x05_pageB\x0b\n\t_per_page\"\xca\x04\n\x1dFetch\
+    CapturedSessionsResponse\x12~\n\x11captured_sessions\x18\x02\x20\x03(\
+    \x0b2Q.bitdrift.public.unary.workflows.v1.FetchCapturedSessionsResponse.\
+    CapturedSessionR\x10capturedSessions\x12\x1d\n\nfull_count\x18\x03\x20\
+    \x01(\rR\tfullCount\x1a\x89\x03\n\x0fCapturedSession\x12&\n\nsession_id\
+    \x18\x01\x20\x01(\tR\tsessionIdB\x07\xfaB\x04r\x02\x10\x01\x12C\n\nfirst\
+    _seen\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tfirstSeenB\
+    \x08\xfaB\x05\x8a\x01\x02\x10\x01\x12A\n\tlast_seen\x18\x07\x20\x01(\x0b\
+    2\x1a.google.protobuf.TimestampR\x08lastSeenB\x08\xfaB\x05\x8a\x01\x02\
+    \x10\x01\x12\x14\n\x05count\x18\x04\x20\x01(\x04R\x05count\x12u\n\x06fie\
+    lds\x18\x05\x20\x03(\x0b2].bitdrift.public.unary.workflows.v1.FetchCaptu\
+    redSessionsResponse.CapturedSession.FieldsEntryR\x06fields\x1a9\n\x0bFie\
+    ldsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\
+    \x18\x02\x20\x01(\tR\x05value:\x028\x012\xf9\t\n\x0fWorkflowService\x12~\
+    \n\x0bGetWorkflow\x126.bitdrift.public.unary.workflows.v1.GetWorkflowReq\
+    uest\x1a7.bitdrift.public.unary.workflows.v1.GetWorkflowResponse\x12\x84\
+    \x01\n\rListWorkflows\x128.bitdrift.public.unary.workflows.v1.ListWorkfl\
+    owsRequest\x1a9.bitdrift.public.unary.workflows.v1.ListWorkflowsResponse\
+    \x12\x87\x01\n\x0eCreateWorkflow\x129.bitdrift.public.unary.workflows.v1\
+    .CreateWorkflowRequest\x1a:.bitdrift.public.unary.workflows.v1.CreateWor\
+    kflowResponse\x12\x87\x01\n\x0eUpdateWorkflow\x129.bitdrift.public.unary\
+    .workflows.v1.UpdateWorkflowRequest\x1a:.bitdrift.public.unary.workflows\
+    .v1.UpdateWorkflowResponse\x12\x87\x01\n\x0eRenameWorkflow\x129.bitdrift\
+    .public.unary.workflows.v1.RenameWorkflowRequest\x1a:.bitdrift.public.un\
+    ary.workflows.v1.RenameWorkflowResponse\x12\x87\x01\n\x0eDeleteWorkflow\
+    \x129.bitdrift.public.unary.workflows.v1.DeleteWorkflowRequest\x1a:.bitd\
+    rift.public.unary.workflows.v1.DeleteWorkflowResponse\x12\x87\x01\n\x0eD\
+    eployWorkflow\x129.bitdrift.public.unary.workflows.v1.DeployWorkflowRequ\
+    est\x1a:.bitdrift.public.unary.workflows.v1.DeployWorkflowResponse\x12\
+    \x81\x01\n\x0cStopWorkflow\x127.bitdrift.public.unary.workflows.v1.StopW\
+    orkflowRequest\x1a8.bitdrift.public.unary.workflows.v1.StopWorkflowRespo\
+    nse\x12\xa8\x01\n\x1bUpsertWorkflowChartMetadata\x12C.bitdrift.public.un\
+    ary.charts.v1.UpsertWorkflowChartMetadataRequest\x1aD.bitdrift.public.un\
+    ary.charts.v1.UpsertWorkflowChartMetadataResponse2\xb4\x01\n\x13Workflow\
+    DataService\x12\x9c\x01\n\x15FetchCapturedSessions\x12@.bitdrift.public.\
+    unary.workflows.v1.FetchCapturedSessionsRequest\x1aA.bitdrift.public.una\
+    ry.workflows.v1.FetchCapturedSessionsResponseb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -626,7 +647,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(5);
+            let mut deps = ::std::vec::Vec::with_capacity(6);
+            deps.push(super::time_series::file_descriptor().clone());
             deps.push(super::chart_metadata::file_descriptor().clone());
             deps.push(super::common::file_descriptor().clone());
             deps.push(super::workflow::file_descriptor().clone());

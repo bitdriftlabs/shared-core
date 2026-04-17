@@ -36,7 +36,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ary.debug_files.v1\x1a6bitdrift/public/unary/debug_files/v1/debug_files.\
     proto2\xa0\x01\n\x10DebugFileService\x12\x8b\x01\n\x0eListDebugFiles\x12\
     ;.bitdrift.public.unary.debug_files.v1.ListDebugFilesRequest\x1a<.bitdri\
-    ft.public.unary.debug_files.v1.ListDebugFilesResponseJ\xab\x04\n\x06\x12\
+    ft.public.unary.debug_files.v1.ListDebugFilesResponseJ\xa1\x04\n\x06\x12\
     \x04\x06\0\x10\x01\n\xb8\x02\n\x01\x0c\x12\x03\x06\0\x12\x1a\xad\x02\x20\
     api\x20-\x20bitdrift's\x20client/server\x20API\x20definitions\n\x20Copyr\
     ight\x20Bitdrift,\x20Inc.\x20All\x20rights\x20reserved.\n\n\x20Use\x20of\
@@ -44,14 +44,13 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x20source\x20available\x20license\x20that\x20can\x20be\x20found\x20in\n\
     \x20the\x20LICENSE\x20file\x20or\x20at:\n\x20https://polyformproject.org\
     /wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt\n\n\x08\n\x01\x02\
-    \x12\x03\x08\0-\n\t\n\x02\x03\0\x12\x03\n\0@\nO\n\x02\x06\0\x12\x04\r\0\
-    \x10\x01\x1aC\x20Manage\x20debug\x20files\x20that\x20belong\x20to\x20the\
-    \x20authenticated\x20organization.\n\n\n\n\x03\x06\0\x01\x12\x03\r\x08\
-    \x18\nI\n\x04\x06\0\x02\0\x12\x04\x0f\x02\x99\x01\x1a;\x20Lists\x20debug\
-    \x20files\x20matching\x20the\x20specified\x20filter\x20criteria.\n\n\x0c\
-    \n\x05\x06\0\x02\0\x01\x12\x03\x0f\x06\x14\n\x0c\n\x05\x06\0\x02\0\x02\
-    \x12\x03\x0f\x15P\n\r\n\x05\x06\0\x02\0\x03\x12\x04\x0f[\x97\x01b\x06pro\
-    to3\
+    \x12\x03\x08\0-\n\t\n\x02\x03\0\x12\x03\n\0@\nE\n\x02\x06\0\x12\x04\r\0\
+    \x10\x01\x1a9\x20Manages\x20debug\x20files\x20for\x20the\x20authenticate\
+    d\x20organization.\n\n\n\n\x03\x06\0\x01\x12\x03\r\x08\x18\nI\n\x04\x06\
+    \0\x02\0\x12\x04\x0f\x02\x99\x01\x1a;\x20Lists\x20debug\x20files\x20matc\
+    hing\x20the\x20specified\x20filter\x20criteria.\n\n\x0c\n\x05\x06\0\x02\
+    \0\x01\x12\x03\x0f\x06\x14\n\x0c\n\x05\x06\0\x02\0\x02\x12\x03\x0f\x15P\
+    \n\r\n\x05\x06\0\x02\0\x03\x12\x04\x0f[\x97\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

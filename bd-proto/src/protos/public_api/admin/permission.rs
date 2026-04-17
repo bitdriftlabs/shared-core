@@ -38,6 +38,8 @@ pub enum Permission {
     PERMISSION_UNSPECIFIED = 0,
     // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.SDK_KEY_ADMIN)
     SDK_KEY_ADMIN = 1,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.API_KEY_CREATOR)
+    API_KEY_CREATOR = 16,
     // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.WORKFLOW_ADMIN)
     WORKFLOW_ADMIN = 2,
     // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.WORKFLOW_READ)
@@ -73,6 +75,7 @@ impl ::protobuf::Enum for Permission {
         match value {
             0 => ::std::option::Option::Some(Permission::PERMISSION_UNSPECIFIED),
             1 => ::std::option::Option::Some(Permission::SDK_KEY_ADMIN),
+            16 => ::std::option::Option::Some(Permission::API_KEY_CREATOR),
             2 => ::std::option::Option::Some(Permission::WORKFLOW_ADMIN),
             3 => ::std::option::Option::Some(Permission::WORKFLOW_READ),
             4 => ::std::option::Option::Some(Permission::WORKFLOW_WRITE),
@@ -92,6 +95,7 @@ impl ::protobuf::Enum for Permission {
         match str {
             "PERMISSION_UNSPECIFIED" => ::std::option::Option::Some(Permission::PERMISSION_UNSPECIFIED),
             "SDK_KEY_ADMIN" => ::std::option::Option::Some(Permission::SDK_KEY_ADMIN),
+            "API_KEY_CREATOR" => ::std::option::Option::Some(Permission::API_KEY_CREATOR),
             "WORKFLOW_ADMIN" => ::std::option::Option::Some(Permission::WORKFLOW_ADMIN),
             "WORKFLOW_READ" => ::std::option::Option::Some(Permission::WORKFLOW_READ),
             "WORKFLOW_WRITE" => ::std::option::Option::Some(Permission::WORKFLOW_WRITE),
@@ -110,6 +114,7 @@ impl ::protobuf::Enum for Permission {
     const VALUES: &'static [Permission] = &[
         Permission::PERMISSION_UNSPECIFIED,
         Permission::SDK_KEY_ADMIN,
+        Permission::API_KEY_CREATOR,
         Permission::WORKFLOW_ADMIN,
         Permission::WORKFLOW_READ,
         Permission::WORKFLOW_WRITE,
@@ -134,17 +139,18 @@ impl ::protobuf::EnumFull for Permission {
         let index = match self {
             Permission::PERMISSION_UNSPECIFIED => 0,
             Permission::SDK_KEY_ADMIN => 1,
-            Permission::WORKFLOW_ADMIN => 2,
-            Permission::WORKFLOW_READ => 3,
-            Permission::WORKFLOW_WRITE => 4,
-            Permission::WORKFLOW_DEPLOY => 5,
-            Permission::SESSION_READ => 6,
-            Permission::ISSUE_READ => 7,
-            Permission::METRIC_READ => 8,
-            Permission::ISSUE_ADMIN => 9,
-            Permission::ISSUE_ASSIGN => 10,
-            Permission::CONNECTOR_ADMIN => 11,
-            Permission::DEBUG_FILE_READ => 12,
+            Permission::API_KEY_CREATOR => 2,
+            Permission::WORKFLOW_ADMIN => 3,
+            Permission::WORKFLOW_READ => 4,
+            Permission::WORKFLOW_WRITE => 5,
+            Permission::WORKFLOW_DEPLOY => 6,
+            Permission::SESSION_READ => 7,
+            Permission::ISSUE_READ => 8,
+            Permission::METRIC_READ => 9,
+            Permission::ISSUE_ADMIN => 10,
+            Permission::ISSUE_ASSIGN => 11,
+            Permission::CONNECTOR_ADMIN => 12,
+            Permission::DEBUG_FILE_READ => 13,
         };
         Self::enum_descriptor().value_by_index(index)
     }
@@ -164,14 +170,14 @@ impl Permission {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n/bitdrift/public/unary/admin/v1/permission.proto\x12\x1ebitdrift.publi\
-    c.unary.admin.v1*\x8b\x02\n\nPermission\x12\x1a\n\x16PERMISSION_UNSPECIF\
-    IED\x10\0\x12\x11\n\rSDK_KEY_ADMIN\x10\x01\x12\x12\n\x0eWORKFLOW_ADMIN\
-    \x10\x02\x12\x11\n\rWORKFLOW_READ\x10\x03\x12\x12\n\x0eWORKFLOW_WRITE\
-    \x10\x04\x12\x13\n\x0fWORKFLOW_DEPLOY\x10\x05\x12\x10\n\x0cSESSION_READ\
-    \x10\x07\x12\x0e\n\nISSUE_READ\x10\x08\x12\x0f\n\x0bMETRIC_READ\x10\t\
-    \x12\x0f\n\x0bISSUE_ADMIN\x10\x0b\x12\x10\n\x0cISSUE_ASSIGN\x10\x0c\x12\
-    \x13\n\x0fCONNECTOR_ADMIN\x10\x0e\x12\x13\n\x0fDEBUG_FILE_READ\x10\x0fb\
-    \x06proto3\
+    c.unary.admin.v1*\xa0\x02\n\nPermission\x12\x1a\n\x16PERMISSION_UNSPECIF\
+    IED\x10\0\x12\x11\n\rSDK_KEY_ADMIN\x10\x01\x12\x13\n\x0fAPI_KEY_CREATOR\
+    \x10\x10\x12\x12\n\x0eWORKFLOW_ADMIN\x10\x02\x12\x11\n\rWORKFLOW_READ\
+    \x10\x03\x12\x12\n\x0eWORKFLOW_WRITE\x10\x04\x12\x13\n\x0fWORKFLOW_DEPLO\
+    Y\x10\x05\x12\x10\n\x0cSESSION_READ\x10\x07\x12\x0e\n\nISSUE_READ\x10\
+    \x08\x12\x0f\n\x0bMETRIC_READ\x10\t\x12\x0f\n\x0bISSUE_ADMIN\x10\x0b\x12\
+    \x10\n\x0cISSUE_ASSIGN\x10\x0c\x12\x13\n\x0fCONNECTOR_ADMIN\x10\x0e\x12\
+    \x13\n\x0fDEBUG_FILE_READ\x10\x0fb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
