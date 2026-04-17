@@ -33,7 +33,7 @@ const _PROTOBUF_VERSION_CHECK: () = ::protobuf::VERSION_4_0_0_ALPHA_0;
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n)bitdrift/public/unary/issues/v1/api.proto\x12\x1fbitdrift.public.unar\
-    y.issues.v1\x1a,bitdrift/public/unary/issues/v1/issues.proto2\x93\x05\n\
+    y.issues.v1\x1a,bitdrift/public/unary/issues/v1/issues.proto2\xed\x08\n\
     \x0cIssueService\x12\x84\x01\n\x0fListIssueGroups\x127.bitdrift.public.u\
     nary.issues.v1.ListIssueGroupsRequest\x1a8.bitdrift.public.unary.issues.\
     v1.ListIssueGroupsResponse\x12~\n\rGetIssueGroup\x125.bitdrift.public.un\
@@ -44,7 +44,14 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     quest\x1a3.bitdrift.public.unary.issues.v1.ListIssuesResponse\x12\x93\
     \x01\n\x14GetIssueFeatureFlags\x12<.bitdrift.public.unary.issues.v1.GetI\
     ssueFeatureFlagsRequest\x1a=.bitdrift.public.unary.issues.v1.GetIssueFea\
-    tureFlagsResponseb\x06proto3\
+    tureFlagsResponse\x12\x99\x01\n\x16UpdateIssueGroupStatus\x12>.bitdrift.\
+    public.unary.issues.v1.UpdateIssueGroupStatusRequest\x1a?.bitdrift.publi\
+    c.unary.issues.v1.UpdateIssueGroupStatusResponse\x12\x96\x01\n\x15ListPo\
+    ssibleAssignees\x12=.bitdrift.public.unary.issues.v1.ListPossibleAssigne\
+    esRequest\x1a>.bitdrift.public.unary.issues.v1.ListPossibleAssigneesResp\
+    onse\x12\xa2\x01\n\x19UpdateIssueGroupAssignees\x12A.bitdrift.public.una\
+    ry.issues.v1.UpdateIssueGroupAssigneesRequest\x1aB.bitdrift.public.unary\
+    .issues.v1.UpdateIssueGroupAssigneesResponseb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
