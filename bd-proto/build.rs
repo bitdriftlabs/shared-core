@@ -8,6 +8,9 @@
 use protobuf_codegen::Customize;
 use std::path::Path;
 
+#[path = "src/proto_config.rs"]
+mod proto_config;
+
 const GENERATED_HEADER: &str = r"// proto - bitdrift's client/server API definitions
 // Copyright Bitdrift, Inc. All rights reserved.
 //
@@ -23,209 +26,41 @@ fn main() {
 
   println!("cargo:rerun-if-changed=../api/");
 
-  // Perform Rust protobuf compile.
-  // TODO(mattklein123): This is manually split up into directories for sanity. This could be
-  // done automatically by walking the input directories and mapping it to output directories.
-  // This can be done later.
-  std::fs::create_dir_all("src/protos/bdtail").unwrap();
-  protobuf_codegen::Codegen::new()
-    .protoc()
-    .customize(
-      Customize::default()
-        .gen_mod_rs(false)
-        .oneofs_non_exhaustive(false)
-        .file_header(GENERATED_HEADER.to_string()),
-    )
-    .includes(["../api/thirdparty", "../api/src"])
-    .inputs([
-      "../api/src/bitdrift_public/protobuf/bdtail/v1/bdtail_config.proto",
-      "../api/src/bitdrift_public/protobuf/bdtail/v1/bdtail_api.proto",
-    ])
-    .out_dir("src/protos/bdtail/")
-    .customize(
-      Customize::default()
-        .gen_mod_rs(false)
-        .tokio_bytes(true)
-        .tokio_bytes_for_string(true)
-        .oneofs_non_exhaustive(false)
-        .file_header(GENERATED_HEADER.to_string()),
-    )
-    .capture_stderr()
-    .run_from_script();
-  std::fs::create_dir_all("src/protos/client").unwrap();
-  protobuf_codegen::Codegen::new()
-    .protoc()
-    .customize(
-      Customize::default()
-        .gen_mod_rs(false)
-        .oneofs_non_exhaustive(false)
-        .file_header(GENERATED_HEADER.to_string()),
-    )
-    .includes(["../api/thirdparty", "../api/src"])
-    .inputs([
-      "../api/src/bitdrift_public/protobuf/client/v1/api.proto",
-      "../api/src/bitdrift_public/protobuf/client/v1/metric.proto",
-      "../api/src/bitdrift_public/protobuf/client/v1/artifact.proto",
-      "../api/src/bitdrift_public/protobuf/client/v1/feature_flag.proto",
-      "../api/src/bitdrift_public/protobuf/client/v1/key_value.proto",
-      "../api/src/bitdrift_public/protobuf/client/v1/runtime.proto",
-      "../api/src/bitdrift_public/protobuf/client/v1/matcher.proto",
-    ])
-    .out_dir("src/protos/client/")
-    .capture_stderr()
-    .run_from_script();
-  std::fs::create_dir_all("src/protos/config/v1").unwrap();
-  protobuf_codegen::Codegen::new()
-    .protoc()
-    .customize(
-      Customize::default()
-        .gen_mod_rs(false)
-        .oneofs_non_exhaustive(false)
-        .file_header(GENERATED_HEADER.to_string()),
-    )
-    .includes(["../api/thirdparty", "../api/src"])
-    .inputs(["../api/src/bitdrift_public/protobuf/config/v1/config.proto"])
-    .out_dir("src/protos/config/v1/")
-    .capture_stderr()
-    .run_from_script();
-  std::fs::create_dir_all("src/protos/logging").unwrap();
-  protobuf_codegen::Codegen::new()
-    .protoc()
-    .customize(
-      Customize::default()
-        .gen_mod_rs(false)
-        .oneofs_non_exhaustive(false)
-        .file_header(GENERATED_HEADER.to_string()),
-    )
-    .includes(["../api/thirdparty", "../api/src"])
-    .inputs(["../api/src/bitdrift_public/protobuf/logging/v1/payload.proto"])
-    .out_dir("src/protos/logging/")
-    .capture_stderr()
-    .run_from_script();
-  std::fs::create_dir_all("src/protos/value_matcher").unwrap();
-  protobuf_codegen::Codegen::new()
-    .protoc()
-    .customize(
-      Customize::default()
-        .gen_mod_rs(false)
-        .oneofs_non_exhaustive(false)
-        .file_header(GENERATED_HEADER.to_string()),
-    )
-    .includes(["../api/thirdparty", "../api/src"])
-    .inputs(["../api/src/bitdrift_public/protobuf/value_matcher/v1/value_matcher.proto"])
-    .out_dir("src/protos/value_matcher/")
-    .capture_stderr()
-    .run_from_script();
-  std::fs::create_dir_all("src/protos/value_matcher").unwrap();
-  protobuf_codegen::Codegen::new()
-    .protoc()
-    .customize(
-      Customize::default()
-        .gen_mod_rs(false)
-        .oneofs_non_exhaustive(false)
-        .file_header(GENERATED_HEADER.to_string()),
-    )
-    .includes(["../api/thirdparty", "../api/src"])
-    .inputs([
-      "../api/src/bitdrift_public/protobuf/state/v1/payload.proto",
-      "../api/src/bitdrift_public/protobuf/state/v1/scope.proto",
-      "../api/src/bitdrift_public/protobuf/state/v1/matcher.proto",
-    ])
-    .out_dir("src/protos/state/")
-    .capture_stderr()
-    .run_from_script();
-  std::fs::create_dir_all("src/protos/log_matcher").unwrap();
-  protobuf_codegen::Codegen::new()
-    .protoc()
-    .customize(
-      Customize::default()
-        .gen_mod_rs(false)
-        .oneofs_non_exhaustive(false)
-        .file_header(GENERATED_HEADER.to_string()),
-    )
-    .includes(["../api/thirdparty", "../api/src"])
-    .inputs(["../api/src/bitdrift_public/protobuf/matcher/v1/log_matcher.proto"])
-    .out_dir("src/protos/log_matcher/")
-    .capture_stderr()
-    .run_from_script();
-  std::fs::create_dir_all("src/protos/workflow").unwrap();
-  protobuf_codegen::Codegen::new()
-    .protoc()
-    .customize(
-      Customize::default()
-        .gen_mod_rs(false)
-        .oneofs_non_exhaustive(false)
-        .file_header(GENERATED_HEADER.to_string()),
-    )
-    .includes(["../api/thirdparty", "../api/src"])
-    .inputs(["../api/src/bitdrift_public/protobuf/workflow/v1/workflow.proto"])
-    .out_dir("src/protos/workflow/")
-    .capture_stderr()
-    .run_from_script();
-  std::fs::create_dir_all("src/protos/filter").unwrap();
-  protobuf_codegen::Codegen::new()
-    .protoc()
-    .customize(
-      Customize::default()
-        .gen_mod_rs(false)
-        .oneofs_non_exhaustive(false)
-        .file_header(GENERATED_HEADER.to_string()),
-    )
-    .includes(["../api/thirdparty", "../api/src"])
-    .inputs(["../api/src/bitdrift_public/protobuf/filter/v1/filter.proto"])
-    .out_dir("src/protos/filter/")
-    .capture_stderr()
-    .run_from_script();
-  std::fs::create_dir_all("src/protos/mme").unwrap();
-  protobuf_codegen::Codegen::new()
-    .protoc()
-    .customize(
-      Customize::default()
-        .gen_mod_rs(false)
-        .oneofs_non_exhaustive(false)
-        .file_header(GENERATED_HEADER.to_string()),
-    )
-    .includes(["../api/thirdparty", "../api/src"])
-    .inputs(["../api/src/bitdrift_public/protobuf/mme/v1/service.proto"])
-    .out_dir("src/protos/mme/")
-    .capture_stderr()
-    .run_from_script();
+  // Perform Rust protobuf compile using config-driven approach.
+  for config in proto_config::get_proto_configs() {
+    std::fs::create_dir_all(config.output_dir).unwrap();
 
-  // The following are vendored third-party protos and do not have file headers.
-  std::fs::create_dir_all("src/protos/google/api").unwrap();
-  protobuf_codegen::Codegen::new()
-    .protoc()
-    .customize(
-      Customize::default()
-        .gen_mod_rs(false)
-        .oneofs_non_exhaustive(false),
-    )
-    .includes(["../api/thirdparty"])
-    .inputs([
-      "../api/thirdparty/google/api/http.proto",
-      "../api/thirdparty/google/api/annotations.proto",
-    ])
-    .out_dir("src/protos/google/api/")
-    .capture_stderr()
-    .run_from_script();
-  std::fs::create_dir_all("src/protos/prometheus/prompb").unwrap();
-  protobuf_codegen::Codegen::new()
-    .protoc()
-    .customize(
-      Customize::default()
-        .gen_mod_rs(false)
-        .tokio_bytes(true)
-        .tokio_bytes_for_string(true)
-        .oneofs_non_exhaustive(false),
-    )
-    .includes(["../api/thirdparty", "../api/src"])
-    .inputs([
-      "../api/thirdparty/prometheus/prompb/remote.proto",
-      "../api/thirdparty/prometheus/prompb/types.proto",
-    ])
-    .out_dir("src/protos/prometheus/prompb/")
-    .capture_stderr()
-    .run_from_script();
+    let mut customize = Customize::default()
+      .gen_mod_rs(false)
+      .oneofs_non_exhaustive(false);
+
+    if config.use_tokio_bytes {
+      customize = customize.tokio_bytes(true).tokio_bytes_for_string(true);
+    }
+
+    if config.file_header {
+      customize = customize.file_header(GENERATED_HEADER.to_string());
+    }
+
+    protobuf_codegen::Codegen::new()
+      .protoc()
+      .customize(customize)
+      .includes(config.includes)
+      .inputs(config.inputs)
+      .out_dir(config.output_dir)
+      .capture_stderr()
+      .run()
+      .unwrap_or_else(|error| {
+        let error = format!("{error:#}")
+          .replace("\\n", "\n")
+          .replace("\\\"", "\"")
+          .replace("stderr: \"", "stderr:\n");
+        let error = error
+          .strip_suffix('"')
+          .map_or(error.as_str(), |value| value);
+        panic!("codegen failed:\n{error}");
+      });
+  }
 
   // Perform flatbuffer compile for Rust.
   std::fs::create_dir_all("src/flatbuffers").unwrap();
