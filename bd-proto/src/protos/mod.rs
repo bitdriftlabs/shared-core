@@ -5,6 +5,21 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+// Declares public modules with feature-gated source info support. When `with-source-info` is
+// enabled, each module is loaded from an alternate file path containing proto descriptors with
+// embedded source comments.
+macro_rules! source_info_gated_mod {
+  ($($name:ident => $path:literal),+ $(,)?) => {
+    $(
+      #[cfg(not(feature = "with-source-info"))]
+      pub mod $name;
+      #[cfg(feature = "with-source-info")]
+      #[path = $path]
+      pub mod $name;
+    )+
+  };
+}
+
 pub mod bdtail;
 pub mod client;
 pub mod config;

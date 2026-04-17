@@ -5,8 +5,4 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[cfg(not(feature = "with-source-info"))]
-pub mod payload;
-#[cfg(feature = "with-source-info")]
-#[path = "with_source/payload.rs"]
-pub mod payload;
+source_info_gated_mod!(payload => "with_source/payload.rs");

@@ -5,47 +5,15 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[cfg(not(feature = "with-source-info"))]
-pub mod api;
-#[cfg(feature = "with-source-info")]
-#[path = "with_source/api.rs"]
-pub mod api;
-
-#[cfg(not(feature = "with-source-info"))]
-pub mod artifact;
-#[cfg(feature = "with-source-info")]
-#[path = "with_source/artifact.rs"]
-pub mod artifact;
-
-#[cfg(not(feature = "with-source-info"))]
-pub mod feature_flag;
-#[cfg(feature = "with-source-info")]
-#[path = "with_source/feature_flag.rs"]
-pub mod feature_flag;
-
-#[cfg(not(feature = "with-source-info"))]
-pub mod key_value;
-#[cfg(feature = "with-source-info")]
-#[path = "with_source/key_value.rs"]
-pub mod key_value;
-
-#[cfg(not(feature = "with-source-info"))]
-pub mod matcher;
-#[cfg(feature = "with-source-info")]
-#[path = "with_source/matcher.rs"]
-pub mod matcher;
-
-#[cfg(not(feature = "with-source-info"))]
-pub mod metric;
-#[cfg(feature = "with-source-info")]
-#[path = "with_source/metric.rs"]
-pub mod metric;
-
-#[cfg(not(feature = "with-source-info"))]
-pub mod runtime;
-#[cfg(feature = "with-source-info")]
-#[path = "with_source/runtime.rs"]
-pub mod runtime;
+source_info_gated_mod! {
+  api => "with_source/api.rs",
+  artifact => "with_source/artifact.rs",
+  feature_flag => "with_source/feature_flag.rs",
+  key_value => "with_source/key_value.rs",
+  matcher => "with_source/matcher.rs",
+  metric => "with_source/metric.rs",
+  runtime => "with_source/runtime.rs",
+}
 
 use super::bdtail::bdtail_config;
 use super::config::v1::config;

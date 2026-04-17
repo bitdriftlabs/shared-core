@@ -5,11 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[cfg(not(feature = "with-source-info"))]
-pub mod log_matcher;
-#[cfg(feature = "with-source-info")]
-#[path = "with_source/log_matcher.rs"]
-pub mod log_matcher;
+source_info_gated_mod!(log_matcher => "with_source/log_matcher.rs");
 
 use super::state::{matcher, scope};
 use super::value_matcher::value_matcher;

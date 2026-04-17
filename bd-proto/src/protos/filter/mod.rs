@@ -5,11 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[cfg(not(feature = "with-source-info"))]
-pub mod filter;
-#[cfg(feature = "with-source-info")]
-#[path = "with_source/filter.rs"]
-pub mod filter;
+source_info_gated_mod!(filter => "with_source/filter.rs");
 
 use super::log_matcher::log_matcher;
 use bd_pgv::generated::protos::validate;

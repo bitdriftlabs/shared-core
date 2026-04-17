@@ -5,11 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[cfg(not(feature = "with-source-info"))]
-pub mod config;
-#[cfg(feature = "with-source-info")]
-#[path = "with_source/config.rs"]
-pub mod config;
+source_info_gated_mod!(config => "with_source/config.rs");
 
 use super::super::client::matcher;
 use bd_pgv::generated::protos::validate;

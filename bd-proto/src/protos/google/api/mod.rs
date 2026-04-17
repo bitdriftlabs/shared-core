@@ -5,14 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[cfg(not(feature = "with-source-info"))]
-pub mod annotations;
-#[cfg(feature = "with-source-info")]
-#[path = "with_source/annotations.rs"]
-pub mod annotations;
-
-#[cfg(not(feature = "with-source-info"))]
-pub mod http;
-#[cfg(feature = "with-source-info")]
-#[path = "with_source/http.rs"]
-pub mod http;
+source_info_gated_mod! {
+  annotations => "with_source/annotations.rs",
+  http => "with_source/http.rs",
+}
