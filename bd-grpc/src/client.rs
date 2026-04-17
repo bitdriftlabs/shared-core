@@ -239,6 +239,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
         Status::new(
           Code::Internal,
           format!("Non-200 response code: {}", response.status()),
+          None,
         )
         .into(),
       );
@@ -327,7 +328,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
     let mut messages = decoder.decode_data(&body)?;
 
     if messages.len() != 1 {
-      return Err(Status::new(Code::Internal, "Invalid response body").into());
+      return Err(Status::new(Code::Internal, "Invalid response body", None).into());
     }
 
     Ok(messages.remove(0))

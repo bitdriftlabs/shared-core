@@ -94,15 +94,43 @@ impl RequestTransport {
 }
 
 //
+// StatusTraceContext
+//
+
+#[derive(Clone, Debug)]
+struct StatusTraceContext {
+  error_message: String,
+}
+
+impl StatusTraceContext {
+  fn new(error_message: String) -> Self {
+    Self { error_message }
+  }
+
+  fn error_message(&self) -> &str {
+    &self.error_message
+  }
+}
+
+//
 // Status
 //
 
 // Wrapper for a gRPC status including a code and optional message.
-#[derive(PartialEq, Eq, Debug)]
+#[derive(Clone, Debug)]
 pub struct Status {
-  pub code: Code,
-  pub message: Option<String>,
+  code: Code,
+  message: Option<String>,
+  original_error: Option<String>,
 }
+
+impl PartialEq for Status {
+  fn eq(&self, other: &Self) -> bool {
+    self.code == other.code && self.message == other.message
+  }
+}
+
+impl Eq for Status {}
 
 impl Status {
   // Decode a gRPC message header/trailer value. The wire format uses URL encoding.
@@ -114,10 +142,63 @@ impl Status {
 
   // Create a new status.
   #[must_use]
-  pub fn new(code: Code, message: impl Into<String>) -> Self {
+  pub fn new(code: Code, message: impl Into<String>, original_error: Option<String>) -> Self {
     Self {
       code,
       message: Some(message.into()),
+      original_error,
+    }
+  }
+
+  #[must_use]
+  pub fn code(&self) -> Code {
+    self.code
+  }
+
+  #[must_use]
+  pub fn message(&self) -> Option<&str> {
+    self.message.as_deref()
+  }
+
+  #[must_use]
+  pub fn original_error_message(&self) -> Option<&str> {
+    self.original_error.as_deref()
+  }
+
+  #[must_use]
+  pub fn trace_error_message(&self) -> Option<&str> {
+    self.original_error_message().or_else(|| self.message())
+  }
+
+  #[must_use]
+  pub fn trace_error_message_from_response<T>(response: &http::Response<T>) -> Option<&str> {
+    response
+      .extensions()
+      .get::<StatusTraceContext>()
+      .map(StatusTraceContext::error_message)
+  }
+
+  pub(crate) fn from_wire(code: Code, message: Option<String>) -> Self {
+    Self {
+      code,
+      message,
+      original_error: None,
+    }
+  }
+
+  fn trace_context(&self) -> Option<StatusTraceContext> {
+    self
+      .trace_error_message()
+      .map(ToString::to_string)
+      .map(StatusTraceContext::new)
+  }
+
+  fn apply_trace_context<T>(
+    response: &mut http::Response<T>,
+    trace_context: Option<StatusTraceContext>,
+  ) {
+    if let Some(trace_context) = trace_context {
+      response.extensions_mut().insert(trace_context);
     }
   }
 
@@ -125,18 +206,18 @@ impl Status {
   // will panic otherwise.
   #[must_use]
   pub fn from_headers(headers: &HeaderMap) -> Self {
-    Self {
-      code: Code::from_str(
+    Self::from_wire(
+      Code::from_str(
         headers
           .get(GRPC_STATUS)
           .expect("caller should verify grpc-status exists")
           .to_str()
           .unwrap_or_default(),
       ),
-      message: headers
+      headers
         .get(GRPC_MESSAGE)
         .and_then(|value| value.to_str().ok().map(Self::decode_grpc_message)),
-    }
+    )
   }
 
   // Convert a status into a response compatible with axum.
@@ -148,22 +229,28 @@ impl Status {
   /// Converts a status into the response shape expected by the given transport.
   #[must_use]
   pub fn into_response_for_transport(self, transport: RequestTransport) -> Response {
+    let trace_context = self.trace_context();
+
     if matches!(
       transport,
       RequestTransport::Connect(_) | RequestTransport::JsonTranscoding
     ) {
-      return Response::builder()
+      let mut response = Response::builder()
         .status(code_to_connect_http_status(self.code))
         .header(CONTENT_TYPE, CONTENT_TYPE_JSON)
         .body(
-          serde_json::to_vec(&ErrorResponse::new(self))
+          serde_json::to_vec(&ErrorResponse::new(&self))
             .unwrap()
             .into(),
         )
         .unwrap();
+      Self::apply_trace_context(&mut response, trace_context);
+      return response;
     }
 
-    self.into_response()
+    let mut response = self.into_response();
+    Self::apply_trace_context(&mut response, trace_context);
+    response
   }
 
   /// Converts a status into the response shape implied by request headers.
@@ -175,6 +262,7 @@ impl Status {
   // Convert a status into a response compatible with axum.
   #[must_use]
   pub fn into_response_with_body(self, body: Body) -> Response {
+    let trace_context = self.trace_context();
     let mut builder = Response::builder()
       .header(CONTENT_TYPE, CONTENT_TYPE_GRPC)
       .header(GRPC_STATUS, self.code.to_int());
@@ -187,7 +275,9 @@ impl Status {
       builder = builder.header(GRPC_MESSAGE, header_value);
     }
 
-    builder.body(body).unwrap()
+    let mut response = builder.body(body).unwrap();
+    Self::apply_trace_context(&mut response, trace_context);
+    response
   }
 }
 
@@ -197,7 +287,7 @@ impl std::fmt::Display for Status {
       f,
       "code: {}, message: {}",
       self.code.to_int(),
-      self.message.as_ref().map_or("<none>", |s| s.as_str())
+      self.message().unwrap_or("<none>")
     )
   }
 }

@@ -73,10 +73,12 @@ pub struct ErrorResponse {
 
 impl ErrorResponse {
   #[must_use]
-  pub fn new(status: Status) -> Self {
+  pub fn new(status: &Status) -> Self {
+    let code = status.code();
+    let message = status.message().map(ToString::to_string);
     Self {
-      code: code_to_connect_code_string(status.code).to_string(),
-      message: status.message,
+      code: code_to_connect_code_string(code).to_string(),
+      message,
     }
   }
 }
