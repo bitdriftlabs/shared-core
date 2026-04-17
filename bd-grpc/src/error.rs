@@ -43,13 +43,21 @@ impl Error {
     match self {
       Self::Grpc(status) => status,
       Self::Codec(_) | Self::ProtoValidation(_) | Self::Snap(_) => {
-        Status::new(Code::InvalidArgument, self.to_string())
+        let error_message = self.to_string();
+        Status::new(
+          Code::InvalidArgument,
+          error_message.clone(),
+          Some(error_message),
+        )
       },
       Self::ConnectionTimeout
       | Self::RequestTimeout
       | Self::BodyStream(_)
       | Self::Closed
-      | Self::HyperClient(_) => Status::new(Code::Internal, self.to_string()),
+      | Self::HyperClient(_) => {
+        let error_message = self.to_string();
+        Status::new(Code::Internal, error_message.clone(), Some(error_message))
+      },
     }
   }
 
@@ -58,10 +66,10 @@ impl Error {
     match self {
       Self::ConnectionTimeout | Self::RequestTimeout => Some("upstream timeout".to_string()),
       Self::Grpc(status) => {
-        if status.code == Code::Internal {
+        if status.code() == Code::Internal {
           Some(format!(
             "gRPC internal error ({})",
-            status.message.as_ref().map_or_else(|| "", |s| s.as_str())
+            status.message().unwrap_or("")
           ))
         } else {
           None

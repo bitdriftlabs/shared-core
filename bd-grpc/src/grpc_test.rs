@@ -380,6 +380,7 @@ impl Handler<EchoRequest, EchoResponse> for ErrorHandler {
     Err(crate::Error::Grpc(crate::Status::new(
       crate::Code::Internal,
       "foo",
+      None,
     )))
   }
 }
@@ -401,6 +402,7 @@ impl Handler<EchoRequest, EchoResponse> for EncodedErrorHandler {
     Err(crate::Error::Grpc(crate::Status::new(
       crate::Code::InvalidArgument,
       "line 1\nline 2 % value",
+      None,
     )))
   }
 }
@@ -417,6 +419,7 @@ impl ServerStreamingHandler<EchoResponse, EchoRequest> for ErrorHandler {
     Err(crate::Error::Grpc(crate::Status::new(
       crate::Code::Internal,
       "foo",
+      None,
     )))
   }
 }
@@ -471,17 +474,17 @@ fn deferred_counter_stats() {
 
 #[test]
 fn invalid_response_header() {
-  let status = Status::new(Code::InvalidArgument, "\nhello");
+  let status = Status::new(Code::InvalidArgument, "\nhello", None);
   let response = status.into_response();
   assert_eq!(response.headers().get("grpc-message").unwrap(), "%0Ahello");
 
   let round_tripped_status = Status::from_headers(response.headers());
-  assert_eq!(round_tripped_status.message, Some("\nhello".to_string()));
+  assert_eq!(round_tripped_status.message(), Some("\nhello"));
 }
 
 #[tokio::test]
 async fn request_aware_status_uses_json_error_shape_for_json_requests() {
-  let status = Status::new(Code::PermissionDenied, "nope");
+  let status = Status::new(Code::PermissionDenied, "nope", None);
   let headers = HeaderMap::from_iter([(CONTENT_TYPE, CONTENT_TYPE_JSON.parse().unwrap())]);
   let response = status.into_response_for_request(&headers);
 
@@ -500,7 +503,7 @@ async fn request_aware_status_uses_json_error_shape_for_json_requests() {
 
 #[tokio::test]
 async fn request_aware_status_uses_json_error_shape_for_connect_requests() {
-  let status = Status::new(Code::ResourceExhausted, "slow down");
+  let status = Status::new(Code::ResourceExhausted, "slow down", None);
   let mut headers = HeaderMap::from_iter([(CONTENT_TYPE, CONTENT_TYPE_PROTO.parse().unwrap())]);
   headers.insert(
     http::header::HeaderName::from_static(CONNECT_PROTOCOL_VERSION),
@@ -780,10 +783,9 @@ async fn unary_error_handler_decodes_grpc_message() {
         Compression::None,
       )
       .await,
-    Err(Error::Grpc(Status {
-      code: Code::InvalidArgument,
-      message
-    })) if message == Some("line 1\nline 2 % value".to_string())
+    Err(Error::Grpc(status))
+      if status.code() == Code::InvalidArgument
+        && status.message() == Some("line 1\nline 2 % value")
   );
 }
 
@@ -1106,6 +1108,7 @@ async fn connect_server_streaming_error() {
     .send(StreamingTestEvent::EndStreamError(Status::new(
       Code::Internal,
       "foo",
+      None,
     )))
     .await
     .unwrap();
@@ -1219,8 +1222,8 @@ async fn server_streaming_error_handler() {
   assert_matches!(streaming.next().await,
     Err(Error::Grpc(status)) =>
     {
-        assert_eq!(status.code, Code::Internal);
-        assert_eq!(status.message.as_deref(), Some("foo"));
+        assert_eq!(status.code(), Code::Internal);
+        assert_eq!(status.message(), Some("foo"));
     }
   );
 
@@ -1682,10 +1685,11 @@ async fn unary_request_over_limit_returns_resource_exhausted() {
         Compression::None,
       )
       .await,
-    Err(Error::Grpc(Status { code: Code::ResourceExhausted, message: Some(message) }))
-      if message == format!(
+    Err(Error::Grpc(status))
+      if status.code() == Code::ResourceExhausted
+        && status.message() == Some(&format!(
         "Request body exceeds {DEFAULT_MAX_UNARY_REQUEST_BYTES} byte limit"
-      )
+      ))
   );
 }
 

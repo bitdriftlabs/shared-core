@@ -310,11 +310,11 @@ impl<IncomingType: DecodingResult> StreamingApiReceiver<IncomingType> {
               return Ok(None);
             }
 
-            let status = Status {
+            let status = Status::from_wire(
               code,
-              message: grpc_message
-                .map(|v| Status::decode_grpc_message(v.to_str().unwrap_or_default())),
-            };
+              grpc_message
+                .map(|value| Status::decode_grpc_message(value.to_str().unwrap_or_default())),
+            );
             return Err(Error::Grpc(status));
           }
 
@@ -404,7 +404,7 @@ impl<ResponseType: Message> StreamingApiSender<ResponseType> {
     if self.connect_protocol {
       return self
         .send_connect_end_of_stream(EndOfStreamResponse {
-          error: Some(ErrorResponse::new(status)),
+          error: Some(ErrorResponse::new(&status)),
         })
         .await;
     }
@@ -412,10 +412,10 @@ impl<ResponseType: Message> StreamingApiSender<ResponseType> {
     let mut trailers = HeaderMap::new();
     trailers.insert(
       GRPC_STATUS,
-      HeaderValue::from_str(&status.code.to_int().to_string()).unwrap(),
+      HeaderValue::from_str(&status.code().to_int().to_string()).unwrap(),
     );
-    if let Some(message) = status.message {
-      trailers.insert(GRPC_MESSAGE, HeaderValue::from_str(&message).unwrap());
+    if let Some(message) = status.message() {
+      trailers.insert(GRPC_MESSAGE, HeaderValue::from_str(message).unwrap());
     }
 
     self.send_trailers(trailers).await
@@ -537,6 +537,7 @@ async fn decode_request<Message: MessageFull>(
             "Request body exceeds {} byte limit",
             request_config.max_request_bytes
           ),
+          None,
         )
         .into()
       } else {
@@ -561,25 +562,25 @@ async fn decode_request<Message: MessageFull>(
 
   let message = if matches!(connect_protocol_type, Some(ConnectProtocolType::Unary)) {
     Message::parse_from_tokio_bytes(&body_bytes)
-      .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}")))?
+      .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}"), None))?
   } else if is_json_request_content_type(&parts.headers) {
     let body_str = std::str::from_utf8(&body_bytes)
-      .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}")))?;
+      .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}"), None))?;
     protobuf_json_mapping::parse_from_str_with_options(body_str, &json_parse_options())
-      .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}")))?
+      .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}"), None))?
   } else {
     let mut grpc_decoder =
       Decoder::<Message>::new(finalize_decompression(&parts.headers), OptimizeFor::Cpu);
     let mut messages = grpc_decoder.decode_data(&body_bytes)?;
     if messages.len() != 1 {
-      return Err(Status::new(Code::InvalidArgument, "Invalid request body").into());
+      return Err(Status::new(Code::InvalidArgument, "Invalid request body", None).into());
     }
     messages.remove(0)
   };
 
   if validate_request {
     bd_pgv::proto_validate::validate_with_options(&message, request_config.validation_options)
-      .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}")))?;
+      .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}"), None))?;
   }
 
   Ok((parts.headers, parts.extensions, message))
@@ -657,8 +658,14 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
 
   if request_transport.json_transcoding() {
     let options = custom_json_print_options.unwrap_or_else(json_print_options);
-    let json = protobuf_json_mapping::print_to_string_with_options(&response, &options)
-      .map_err(|e| Status::new(Code::Internal, format!("Failed to encode response: {e}")))?;
+    let json =
+      protobuf_json_mapping::print_to_string_with_options(&response, &options).map_err(|e| {
+        Status::new(
+          Code::Internal,
+          format!("Failed to encode response: {e}"),
+          None,
+        )
+      })?;
     return Ok(
       Response::builder()
         .status(code_to_connect_http_status(Code::Ok))
@@ -788,7 +795,7 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
 
         let status = match e {
           Error::Grpc(status) => status,
-          e => Status::new(Code::Internal, format!("{e}")),
+          e => Status::new(Code::Internal, format!("{e}"), None),
         };
 
         log::debug!("Stream {path} failed: {status}");
@@ -825,6 +832,7 @@ fn bidi_streaming_handler<ResponseType: MessageFull, RequestType: MessageFull>(
       Status::new(
         Code::FailedPrecondition,
         "bidirectional streaming only supports gRPC and Connect streaming",
+        None,
       )
       .into(),
     );
@@ -880,7 +888,7 @@ fn bidi_streaming_handler<ResponseType: MessageFull, RequestType: MessageFull>(
 
         let status = match e {
           Error::Grpc(status) => status,
-          e => Status::new(Code::Internal, format!("{e}")),
+          e => Status::new(Code::Internal, format!("{e}"), None),
         };
 
         log::debug!("Stream {path} failed: {status}");
