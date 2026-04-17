@@ -5,5 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-pub mod remote;
-pub mod types;
+source_info_gated_mod! {
+  remote => "with_source/remote.rs",
+  types => "with_source/types.rs",
+}

@@ -5,6 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-pub mod service;
+source_info_gated_mod!(service => "with_source/service.rs");
 
 use super::google::api::http;

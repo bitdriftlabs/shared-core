@@ -5,8 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-pub mod save_field;
-pub mod workflow;
+source_info_gated_mod! {
+  save_field => "with_source/save_field.rs",
+  workflow => "with_source/workflow.rs",
+}
 
 use super::log_matcher::log_matcher;
 use super::state::{matcher, scope};
