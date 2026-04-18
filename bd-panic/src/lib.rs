@@ -28,14 +28,14 @@ fn platform_default() {
   // we want panics to be on a single log line for easy searching.
   if std::env::var("LOG_PANIC").is_ok() {
     std::panic::set_hook(Box::new(move |info| {
-      let message = info.payload().downcast_ref::<String>().map_or_else(
+      let message = info.payload_as_str().map_or_else(
         || {
-          info
-            .payload()
-            .downcast_ref::<String>()
-            .map_or("<none>", |s| s.as_str())
+          format!(
+            "<non-string panic payload type_id={:?}>",
+            info.payload().type_id(),
+          )
         },
-        |s| s.as_str(),
+        str::to_owned,
       );
 
       let location = info.location().map_or_else(
