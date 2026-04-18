@@ -33,11 +33,9 @@ use crate::{
   StreamingApi,
   StreamingApiSender,
   UnaryRequestConfig,
+  UnaryRouterBuilder,
   make_bidi_streaming_router,
   make_server_streaming_router,
-  make_unary_router_with_config,
-  make_unary_router_with_response_mutator,
-  make_unary_router_with_response_mutator_and_route_layer,
   new_grpc_response,
 };
 use assert_matches::assert_matches;
@@ -116,17 +114,25 @@ async fn make_unary_server_with_request_config(
   request_config: UnaryRequestConfig,
   response_mutator: Option<crate::UnaryResponseMutator<EchoResponse>>,
 ) -> SocketAddr {
-  let router = make_unary_router_with_response_mutator(
-    &service_method(),
-    handler,
-    endpoint_stats,
-    true,
-    request_config,
-    response_mutator,
-    error_handler,
-  )
-  .unwrap()
-  .layer(ConnectSafeCompressionLayer::new());
+  let service_method = service_method();
+  let builder = UnaryRouterBuilder::new(&service_method, handler)
+    .validate_request(true)
+    .request_config(request_config)
+    .error_handler(error_handler);
+  let builder = if let Some(endpoint_stats) = endpoint_stats {
+    builder.endpoint_stats(endpoint_stats)
+  } else {
+    builder
+  };
+  let builder = if let Some(response_mutator) = response_mutator {
+    builder.response_mutator(response_mutator)
+  } else {
+    builder
+  };
+  let router = builder
+    .build()
+    .unwrap()
+    .layer(ConnectSafeCompressionLayer::new());
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let local_address = listener.local_addr().unwrap();
   let server = axum::serve(listener, router.into_make_service());
@@ -165,6 +171,50 @@ async fn make_bidi_streaming_server(
     make_bidi_streaming_router(&service_method(), handler, error_handler, None, true, None)
       .unwrap()
       .layer(ConnectSafeCompressionLayer::new());
+  let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+  let local_address = listener.local_addr().unwrap();
+  let server = axum::serve(listener, router.into_make_service());
+  tokio::spawn(async { server.await.unwrap() });
+  local_address
+}
+
+async fn make_unary_server_with_request_trace(
+  handler: Arc<dyn Handler<EchoRequest, EchoResponse>>,
+  previews: Arc<Mutex<Vec<String>>>,
+) -> SocketAddr {
+  make_unary_server_with_request_trace_and_limit(handler, previews, 1024).await
+}
+
+async fn make_unary_server_with_request_trace_and_limit(
+  handler: Arc<dyn Handler<EchoRequest, EchoResponse>>,
+  previews: Arc<Mutex<Vec<String>>>,
+  preview_bytes: usize,
+) -> SocketAddr {
+  let service_method = service_method();
+  let route_layer = {
+    let previews = previews.clone();
+    from_fn(move |mut request: Request, next: Next| {
+      let preview_bytes = preview_bytes;
+      let previews = previews.clone();
+      async move {
+        request
+          .extensions_mut()
+          .insert(crate::UnaryRequestTrace::new(
+            preview_bytes,
+            move |preview| {
+              previews.lock().push(preview);
+            },
+          ));
+        next.run(request).await
+      }
+    })
+  };
+  let router = UnaryRouterBuilder::new(&service_method, handler)
+    .validate_request(true)
+    .route_layer(route_layer)
+    .build()
+    .unwrap()
+    .layer(ConnectSafeCompressionLayer::new());
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let local_address = listener.local_addr().unwrap();
   let server = axum::serve(listener, router.into_make_service());
@@ -657,17 +707,12 @@ async fn unary_error_handler() {
 async fn unary_routers_insert_grpc_method_metadata_for_handlers() {
   let handler = Arc::new(ExtensionInspectingHandler::default());
   let grpc_method_path = handler.grpc_method_path.clone();
-  let router = make_unary_router_with_response_mutator(
-    &service_method(),
-    handler,
-    None,
-    true,
-    UnaryRequestConfig::default(),
-    None,
-    |_| {},
-  )
-  .unwrap()
-  .layer(ConnectSafeCompressionLayer::new());
+  let service_method = service_method();
+  let router = UnaryRouterBuilder::new(&service_method, handler)
+    .validate_request(true)
+    .build()
+    .unwrap()
+    .layer(ConnectSafeCompressionLayer::new());
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let local_address = listener.local_addr().unwrap();
   let server = axum::serve(listener, router.into_make_service());
@@ -676,7 +721,7 @@ async fn unary_routers_insert_grpc_method_metadata_for_handlers() {
   let client = Client::new_http(local_address.to_string().as_str(), 1.minutes(), 1024).unwrap();
   let response = client
     .unary(
-      &service_method(),
+      &service_method,
       None,
       EchoRequest {
         echo: "ok".to_string(),
@@ -691,7 +736,7 @@ async fn unary_routers_insert_grpc_method_metadata_for_handlers() {
   assert_eq!(response.echo, "ok");
   assert_eq!(
     grpc_method_path.lock().clone().unwrap(),
-    service_method().full_path()
+    service_method.full_path()
   );
 }
 
@@ -723,18 +768,13 @@ async fn unary_route_layers_can_observe_grpc_request_metadata() {
       }
     })
   };
-  let router = make_unary_router_with_response_mutator_and_route_layer(
-    &service_method(),
-    Arc::new(EchoHandler::default()),
-    None,
-    true,
-    UnaryRequestConfig::default(),
-    None,
-    route_layer,
-    |_| {},
-  )
-  .unwrap()
-  .layer(ConnectSafeCompressionLayer::new());
+  let service_method = service_method();
+  let router = UnaryRouterBuilder::new(&service_method, Arc::new(EchoHandler::default()))
+    .validate_request(true)
+    .route_layer(route_layer)
+    .build()
+    .unwrap()
+    .layer(ConnectSafeCompressionLayer::new());
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let local_address = listener.local_addr().unwrap();
   let server = axum::serve(listener, router.into_make_service());
@@ -743,7 +783,7 @@ async fn unary_route_layers_can_observe_grpc_request_metadata() {
   let client = Client::new_http(local_address.to_string().as_str(), 1.minutes(), 1024).unwrap();
   let response = client
     .unary(
-      &service_method(),
+      &service_method,
       None,
       EchoRequest {
         echo: "ok".to_string(),
@@ -758,7 +798,7 @@ async fn unary_route_layers_can_observe_grpc_request_metadata() {
   assert_eq!(response.echo, "ok");
   assert_eq!(
     middleware_grpc_method_path.lock().clone().unwrap(),
-    service_method().full_path()
+    service_method.full_path()
   );
   assert_eq!(
     (*middleware_request_transport.lock()).unwrap(),
@@ -1404,16 +1444,11 @@ async fn connect_unary_error_uses_package_relative_proto_names() {
 
 #[test]
 fn make_unary_router_rejects_unsupported_pgv_validation() {
+  let service_method = unsupported_service_method();
   assert_matches!(
-    make_unary_router_with_response_mutator(
-      &unsupported_service_method(),
-      Arc::new(UnsupportedHandler),
-      None,
-      true,
-      UnaryRequestConfig::default(),
-      None,
-      |_| {},
-    ),
+    UnaryRouterBuilder::new(&service_method, Arc::new(UnsupportedHandler))
+      .validate_request(true)
+      .build(),
     Err(Error::ProtoValidation(bd_pgv::error::Error::ProtoValidation(message)))
       if message == "not implemented: string rules max_bytes"
   );
@@ -1421,17 +1456,12 @@ fn make_unary_router_rejects_unsupported_pgv_validation() {
 
 #[test]
 fn make_unary_router_allows_unsupported_pgv_when_validation_disabled() {
+  let service_method = unsupported_service_method();
   assert!(
-    make_unary_router_with_response_mutator(
-      &unsupported_service_method(),
-      Arc::new(UnsupportedHandler),
-      None,
-      false,
-      UnaryRequestConfig::default(),
-      None,
-      |_| {},
-    )
-    .is_ok()
+    UnaryRouterBuilder::new(&service_method, Arc::new(UnsupportedHandler))
+      .validate_request(false)
+      .build()
+      .is_ok()
   );
 }
 
@@ -1565,17 +1595,12 @@ async fn unary_json_transcoding_applies_response_mutator() {
 
 #[tokio::test]
 async fn unary_json_transcoding_omits_empty_repeated_fields() {
-  let router = make_unary_router_with_response_mutator(
-    &repeated_service_method(),
-    Arc::new(EchoRepeatedHandler),
-    None,
-    true,
-    UnaryRequestConfig::default(),
-    None,
-    |_| {},
-  )
-  .unwrap()
-  .layer(ConnectSafeCompressionLayer::new());
+  let repeated_service_method = repeated_service_method();
+  let router = UnaryRouterBuilder::new(&repeated_service_method, Arc::new(EchoRepeatedHandler))
+    .validate_request(true)
+    .build()
+    .unwrap()
+    .layer(ConnectSafeCompressionLayer::new());
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let local_address = listener.local_addr().unwrap();
   let server = axum::serve(listener, router.into_make_service());
@@ -1584,7 +1609,7 @@ async fn unary_json_transcoding_omits_empty_repeated_fields() {
   let client = reqwest::Client::builder().deflate(false).build().unwrap();
   let address = AddressHelper::new(format!("http://{local_address}")).unwrap();
   let response = client
-    .post(address.build(&repeated_service_method()).to_string())
+    .post(address.build(&repeated_service_method).to_string())
     .header(CONTENT_TYPE, CONTENT_TYPE_JSON)
     .body("{\"echo\":\"json_echo\"}")
     .send()
@@ -1654,16 +1679,13 @@ async fn unary_json_transcoding_decode_errors_return_json_error_body() {
 
 #[tokio::test]
 async fn unary_request_over_limit_returns_resource_exhausted() {
-  let router = make_unary_router_with_config(
-    &service_method(),
-    Arc::new(EchoHandler::default()),
-    |_| {},
-    None,
-    true,
-    UnaryRequestConfig::default(),
-  )
-  .unwrap()
-  .layer(ConnectSafeCompressionLayer::new());
+  let service_method = service_method();
+  let router = UnaryRouterBuilder::new(&service_method, Arc::new(EchoHandler::default()))
+    .validate_request(true)
+    .request_config(UnaryRequestConfig::default())
+    .build()
+    .unwrap()
+    .layer(ConnectSafeCompressionLayer::new());
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let local_address = listener.local_addr().unwrap();
   let server = axum::serve(listener, router.into_make_service());
@@ -1678,7 +1700,7 @@ async fn unary_request_over_limit_returns_resource_exhausted() {
   assert_matches!(
     client
       .unary(
-        &service_method(),
+        &service_method,
         None,
         request,
         10.seconds(),
@@ -1695,16 +1717,13 @@ async fn unary_request_over_limit_returns_resource_exhausted() {
 
 #[tokio::test]
 async fn unary_request_under_limit_succeeds() {
-  let router = make_unary_router_with_config(
-    &service_method(),
-    Arc::new(EchoHandler::default()),
-    |_| {},
-    None,
-    true,
-    UnaryRequestConfig::default(),
-  )
-  .unwrap()
-  .layer(ConnectSafeCompressionLayer::new());
+  let service_method = service_method();
+  let router = UnaryRouterBuilder::new(&service_method, Arc::new(EchoHandler::default()))
+    .validate_request(true)
+    .request_config(UnaryRequestConfig::default())
+    .build()
+    .unwrap()
+    .layer(ConnectSafeCompressionLayer::new());
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let local_address = listener.local_addr().unwrap();
   let server = axum::serve(listener, router.into_make_service());
@@ -1718,7 +1737,7 @@ async fn unary_request_under_limit_succeeds() {
 
   let response = client
     .unary(
-      &service_method(),
+      &service_method,
       None,
       request.clone(),
       10.seconds(),
@@ -1727,6 +1746,121 @@ async fn unary_request_under_limit_succeeds() {
     .await
     .unwrap();
   assert_eq!(response.echo, request.echo);
+}
+
+#[tokio::test]
+async fn unary_json_transcoding_records_request_preview() {
+  let previews = Arc::new(Mutex::new(Vec::new()));
+  let local_address =
+    make_unary_server_with_request_trace(Arc::new(EchoHandler::default()), previews.clone()).await;
+  let client = reqwest::Client::builder().deflate(false).build().unwrap();
+  let address = AddressHelper::new(format!("http://{local_address}")).unwrap();
+
+  let response = client
+    .post(address.build(&service_method()).to_string())
+    .header(CONTENT_TYPE, CONTENT_TYPE_JSON)
+    .body("{\"echo\":\"json_echo\"}")
+    .send()
+    .await
+    .unwrap();
+
+  assert_eq!(response.status(), 200);
+  assert_eq!(previews.lock().as_slice(), ["{\"echo\":\"json_echo\"}"]);
+}
+
+#[tokio::test]
+async fn connect_unary_records_request_preview() {
+  let previews = Arc::new(Mutex::new(Vec::new()));
+  let local_address =
+    make_unary_server_with_request_trace(Arc::new(EchoHandler::default()), previews.clone()).await;
+  let client = reqwest::Client::builder().deflate(false).build().unwrap();
+  let address = AddressHelper::new(format!("http://{local_address}")).unwrap();
+
+  let response = client
+    .post(address.build(&service_method()).to_string())
+    .header(CONTENT_TYPE, CONTENT_TYPE_PROTO)
+    .header(CONNECT_PROTOCOL_VERSION, "1")
+    .body(
+      EchoRequest {
+        echo: "connect_echo".to_string(),
+        ..Default::default()
+      }
+      .write_to_bytes()
+      .unwrap(),
+    )
+    .send()
+    .await
+    .unwrap();
+
+  assert_eq!(response.status(), 200);
+  assert_eq!(previews.lock().as_slice(), ["{\"echo\": \"connect_echo\"}"]);
+}
+
+#[tokio::test]
+async fn grpc_unary_records_request_preview() {
+  let previews = Arc::new(Mutex::new(Vec::new()));
+  let local_address =
+    make_unary_server_with_request_trace(Arc::new(EchoHandler::default()), previews.clone()).await;
+  let client = Client::new_http(&local_address.to_string(), 10.seconds(), 1).unwrap();
+  let service_method = service_method();
+
+  let response = client
+    .unary(
+      &service_method,
+      None,
+      EchoRequest {
+        echo: "grpc_echo".to_string(),
+        ..Default::default()
+      },
+      10.seconds(),
+      Compression::None,
+    )
+    .await
+    .unwrap();
+
+  assert_eq!(response.echo, "grpc_echo");
+  assert_eq!(previews.lock().as_slice(), ["{\"echo\": \"grpc_echo\"}"]);
+}
+
+#[test]
+fn truncate_utf8_preview_appends_suffix_without_splitting_codepoints() {
+  assert_eq!(crate::truncate_utf8_preview("🙂🙂🙂", 11), "🙂🙂...");
+}
+
+#[test]
+fn truncate_utf8_preview_handles_limits_smaller_than_suffix() {
+  assert_eq!(crate::truncate_utf8_preview("abcdef", 2), "ab");
+  assert_eq!(crate::truncate_utf8_preview("🙂abc", 3), "");
+}
+
+#[tokio::test]
+async fn grpc_unary_request_preview_truncates_at_utf8_boundary() {
+  let previews = Arc::new(Mutex::new(Vec::new()));
+  let local_address = make_unary_server_with_request_trace_and_limit(
+    Arc::new(EchoHandler::default()),
+    previews.clone(),
+    17,
+  )
+  .await;
+  let client = Client::new_http(&local_address.to_string(), 10.seconds(), 1).unwrap();
+  let service_method = service_method();
+
+  let response = client
+    .unary(
+      &service_method,
+      None,
+      EchoRequest {
+        echo: "🙂🙂".to_string(),
+        ..Default::default()
+      },
+      10.seconds(),
+      Compression::None,
+    )
+    .await
+    .unwrap();
+
+  assert_eq!(response.echo, "🙂🙂");
+  assert_eq!(previews.lock().as_slice(), ["{\"echo\": \"🙂..."]);
 }
 
 #[tokio::test]

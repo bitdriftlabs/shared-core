@@ -79,6 +79,7 @@ pub const DEFAULT_MAX_UNARY_REQUEST_BYTES: usize = 10 * 1024 * 1024;
 pub type BodySender = mpsc::Sender<std::result::Result<Frame<Bytes>, BoxError>>;
 pub type UnaryResponseMutator<IncomingType> =
   Arc<dyn Fn(&mut IncomingType) -> Result<()> + Send + Sync>;
+type UnaryErrorHandler = Arc<dyn Fn(&crate::Error) + Send + Sync>;
 
 /// Inserts gRPC request metadata derived from `ServiceMethod` and request headers into extensions.
 ///
@@ -115,6 +116,218 @@ impl Default for UnaryRequestConfig {
     }
   }
 }
+
+//
+// UnaryRequestTrace
+//
+
+#[derive(Clone)]
+pub struct UnaryRequestTrace {
+  preview_bytes: usize,
+  recorder: Arc<dyn Fn(String) + Send + Sync>,
+}
+
+impl UnaryRequestTrace {
+  #[must_use]
+  pub fn new(preview_bytes: usize, recorder: impl Fn(String) + Send + Sync + 'static) -> Self {
+    Self {
+      preview_bytes,
+      recorder: Arc::new(recorder),
+    }
+  }
+
+  fn record_preview(&self, preview: &str) {
+    if self.preview_bytes == 0 {
+      return;
+    }
+
+    (self.recorder)(truncate_utf8_preview(preview, self.preview_bytes));
+  }
+}
+
+//
+// UnaryRouterBuilder
+//
+
+pub struct UnaryRouterBuilder<
+  'a,
+  OutgoingType: MessageFull,
+  IncomingType: MessageFull,
+  L = Identity,
+> {
+  service_method: &'a ServiceMethod<OutgoingType, IncomingType>,
+  handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
+  endpoint_stats: Option<&'a EndpointStats>,
+  validate_request: bool,
+  request_config: UnaryRequestConfig,
+  response_mutator: Option<UnaryResponseMutator<IncomingType>>,
+  route_layer: L,
+  error_handler: UnaryErrorHandler,
+  custom_json_print_options: Option<PrintOptions>,
+  path: Option<String>,
+}
+
+impl<'a, OutgoingType: MessageFull, IncomingType: MessageFull>
+  UnaryRouterBuilder<'a, OutgoingType, IncomingType>
+{
+  #[must_use]
+  pub fn new(
+    service_method: &'a ServiceMethod<OutgoingType, IncomingType>,
+    handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
+  ) -> Self {
+    Self {
+      service_method,
+      handler,
+      endpoint_stats: None,
+      validate_request: false,
+      request_config: UnaryRequestConfig::default(),
+      response_mutator: None,
+      route_layer: Identity::new(),
+      error_handler: Arc::new(noop_unary_error_handler),
+      custom_json_print_options: None,
+      path: None,
+    }
+  }
+}
+
+impl<'a, OutgoingType: MessageFull, IncomingType: MessageFull, L>
+  UnaryRouterBuilder<'a, OutgoingType, IncomingType, L>
+{
+  #[must_use]
+  pub fn path(mut self, path: impl Into<String>) -> Self {
+    self.path = Some(path.into());
+    self
+  }
+
+  #[must_use]
+  pub fn endpoint_stats(mut self, endpoint_stats: &'a EndpointStats) -> Self {
+    self.endpoint_stats = Some(endpoint_stats);
+    self
+  }
+
+  #[must_use]
+  pub fn validate_request(mut self, validate_request: bool) -> Self {
+    self.validate_request = validate_request;
+    self
+  }
+
+  #[must_use]
+  pub fn request_config(mut self, request_config: UnaryRequestConfig) -> Self {
+    self.request_config = request_config;
+    self
+  }
+
+  #[must_use]
+  pub fn response_mutator(mut self, response_mutator: UnaryResponseMutator<IncomingType>) -> Self {
+    self.response_mutator = Some(response_mutator);
+    self
+  }
+
+  #[must_use]
+  pub fn error_handler(
+    mut self,
+    error_handler: impl Fn(&crate::Error) + Send + Sync + 'static,
+  ) -> Self {
+    self.error_handler = Arc::new(error_handler);
+    self
+  }
+
+  #[must_use]
+  pub fn json_print_options(mut self, custom_json_print_options: PrintOptions) -> Self {
+    self.custom_json_print_options = Some(custom_json_print_options);
+    self
+  }
+
+  #[must_use]
+  pub fn route_layer<L2>(
+    self,
+    route_layer: L2,
+  ) -> UnaryRouterBuilder<'a, OutgoingType, IncomingType, L2> {
+    UnaryRouterBuilder {
+      service_method: self.service_method,
+      handler: self.handler,
+      endpoint_stats: self.endpoint_stats,
+      validate_request: self.validate_request,
+      request_config: self.request_config,
+      response_mutator: self.response_mutator,
+      route_layer,
+      error_handler: self.error_handler,
+      custom_json_print_options: self.custom_json_print_options,
+      path: self.path,
+    }
+  }
+}
+
+impl<OutgoingType: MessageFull, IncomingType: MessageFull, L>
+  UnaryRouterBuilder<'_, OutgoingType, IncomingType, L>
+where
+  L: Layer<Route> + Clone + Send + Sync + 'static,
+  L::Service: Service<Request> + Clone + Send + Sync + 'static,
+  <L::Service as Service<Request>>::Response: IntoResponse + 'static,
+  <L::Service as Service<Request>>::Error: Into<Infallible> + 'static,
+  <L::Service as Service<Request>>::Future: Send + 'static,
+{
+  pub fn build(self) -> Result<Router> {
+    verify_request_support::<OutgoingType>(self.validate_request, self.request_config)?;
+
+    let warn_tracker = Arc::new(WarnTracker::default());
+    let full_path = Arc::new(self.path.unwrap_or_else(|| self.service_method.full_path()));
+    let resolved_stats = self
+      .endpoint_stats
+      .map(|stats| stats.resolve::<OutgoingType, IncomingType>(self.service_method));
+    let grpc_method = self.service_method.grpc_method();
+    let handler = self.handler;
+    let response_mutator = self.response_mutator;
+    let error_handler = self.error_handler;
+    let custom_json_print_options = self.custom_json_print_options;
+    let route_layer = self.route_layer;
+    let validate_request = self.validate_request;
+    let request_config = self.request_config;
+
+    Ok(
+      Router::new()
+        .route(
+          full_path.clone().as_ref(),
+          post(move |request: Request| async move {
+            let request_transport = RequestTransport::from_extensions(request.extensions());
+            let result = unary_handler::<OutgoingType, IncomingType>(
+              request,
+              handler,
+              validate_request,
+              request_config,
+              response_mutator.clone(),
+              custom_json_print_options.clone(),
+            )
+            .await;
+
+            if let Err(e) = &result {
+              if let Some(warning) = e.warn_every_message()
+                && warn_tracker.should_warn(15.seconds())
+              {
+                log::warn!("{full_path} failed: {warning}");
+              }
+
+              error_handler(e);
+              if let Some(resolved_stats) = &resolved_stats {
+                resolved_stats.failure.inc();
+              }
+            } else if let Some(resolved_stats) = &resolved_stats {
+              resolved_stats.success.inc();
+            }
+
+            result.map_err(|e| e.to_response(request_transport))
+          }),
+        )
+        .route_layer(route_layer)
+        .route_layer(from_fn_with_state(
+          grpc_method,
+          grpc_method_extension_middleware,
+        )),
+    )
+  }
+}
+
+fn noop_unary_error_handler(_error: &crate::Error) {}
 
 //
 // StreamingApi
@@ -525,6 +738,7 @@ async fn decode_request<Message: MessageFull>(
   validate_request: bool,
   connect_protocol_type: Option<ConnectProtocolType>,
   request_config: UnaryRequestConfig,
+  request_trace: Option<&UnaryRequestTrace>,
 ) -> Result<(HeaderMap<HeaderValue>, Extensions, Message)> {
   let (parts, body) = request.into_parts();
   let body_bytes = to_bytes(body, request_config.max_request_bytes)
@@ -561,11 +775,16 @@ async fn decode_request<Message: MessageFull>(
   };
 
   let message = if matches!(connect_protocol_type, Some(ConnectProtocolType::Unary)) {
-    Message::parse_from_tokio_bytes(&body_bytes)
-      .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}"), None))?
+    let message = Message::parse_from_tokio_bytes(&body_bytes)
+      .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}"), None))?;
+    record_message_request_trace(request_trace, &message);
+    message
   } else if is_json_request_content_type(&parts.headers) {
     let body_str = std::str::from_utf8(&body_bytes)
       .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}"), None))?;
+    if let Some(request_trace) = request_trace {
+      request_trace.record_preview(body_str);
+    }
     protobuf_json_mapping::parse_from_str_with_options(body_str, &json_parse_options())
       .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}"), None))?
   } else {
@@ -575,7 +794,9 @@ async fn decode_request<Message: MessageFull>(
     if messages.len() != 1 {
       return Err(Status::new(Code::InvalidArgument, "Invalid request body", None).into());
     }
-    messages.remove(0)
+    let message = messages.remove(0);
+    record_message_request_trace(request_trace, &message);
+    message
   };
 
   if validate_request {
@@ -598,11 +819,72 @@ fn json_parse_options() -> ParseOptions {
   ParseOptions::default()
 }
 
-fn json_print_options() -> PrintOptions {
+fn response_json_print_options() -> PrintOptions {
   PrintOptions {
     proto_field_name: true,
     ..Default::default()
   }
+}
+
+fn request_trace_json_print_options() -> PrintOptions {
+  PrintOptions {
+    proto_field_name: true,
+    always_output_default_values: false,
+    ..Default::default()
+  }
+}
+
+fn record_message_request_trace<Message: MessageFull>(
+  request_trace: Option<&UnaryRequestTrace>,
+  message: &Message,
+) {
+  let Some(request_trace) = request_trace else {
+    return;
+  };
+
+  let options = request_trace_json_print_options();
+  match protobuf_json_mapping::print_to_string_with_options(message, &options) {
+    Ok(json) => request_trace.record_preview(&json),
+    Err(error) => log::warn!("failed to render unary request trace preview: {error}"),
+  }
+}
+
+fn truncate_utf8_preview(value: &str, max_bytes: usize) -> String {
+  const TRUNCATION_SUFFIX: &str = "...";
+
+  if value.len() <= max_bytes {
+    return value.to_string();
+  }
+
+  if max_bytes <= TRUNCATION_SUFFIX.len() {
+    return value
+      .chars()
+      .scan(0usize, |total_bytes, ch| {
+        let ch_bytes = ch.len_utf8();
+        if *total_bytes + ch_bytes > max_bytes {
+          return None;
+        }
+
+        *total_bytes += ch_bytes;
+        Some(ch)
+      })
+      .collect();
+  }
+
+  let preview_bytes = max_bytes - TRUNCATION_SUFFIX.len();
+  let mut preview = String::with_capacity(max_bytes);
+  let mut total_bytes = 0;
+  for ch in value.chars() {
+    let ch_bytes = ch.len_utf8();
+    if total_bytes + ch_bytes > preview_bytes {
+      break;
+    }
+
+    total_bytes += ch_bytes;
+    preview.push(ch);
+  }
+  preview.push_str(TRUNCATION_SUFFIX);
+  preview
 }
 
 async fn unary_connect_handler<OutgoingType: MessageFull, IncomingType: MessageFull>(
@@ -634,11 +916,13 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
 ) -> Result<Response> {
   let request_transport = RequestTransport::from_extensions(request.extensions());
   let connect_protocol_type = request_transport.connect_protocol();
+  let request_trace = request.extensions().get::<UnaryRequestTrace>().cloned();
   let (headers, extensions, message) = decode_request::<OutgoingType>(
     request,
     validate_request,
     connect_protocol_type,
     request_config,
+    request_trace.as_ref(),
   )
   .await?;
 
@@ -657,7 +941,7 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
   }
 
   if request_transport.json_transcoding() {
-    let options = custom_json_print_options.unwrap_or_else(json_print_options);
+    let options = custom_json_print_options.unwrap_or_else(response_json_print_options);
     let json =
       protobuf_json_mapping::print_to_string_with_options(&response, &options).map_err(|e| {
         Status::new(
@@ -747,6 +1031,7 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
     validate_request,
     connect_protocol_type,
     UnaryRequestConfig::default(),
+    None,
   )
   .await
   .inspect_err(|_| {
@@ -1048,265 +1333,6 @@ where
           )
           .await
           .map_err(|e| e.to_response(request_transport))
-        }),
-      )
-      .route_layer(route_layer)
-      .route_layer(from_fn_with_state(
-        grpc_method,
-        grpc_method_extension_middleware,
-      )),
-  )
-}
-
-// Create an axum router for a unary request and a handler.
-pub fn make_unary_router<OutgoingType: MessageFull, IncomingType: MessageFull>(
-  service_method: &ServiceMethod<OutgoingType, IncomingType>,
-  handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
-  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
-  endpoint_stats: Option<&EndpointStats>,
-  validate_request: bool,
-) -> Result<Router> {
-  make_unary_router_with_config(
-    service_method,
-    handler,
-    error_handler,
-    endpoint_stats,
-    validate_request,
-    UnaryRequestConfig::default(),
-  )
-}
-
-pub fn make_unary_router_with_config<OutgoingType: MessageFull, IncomingType: MessageFull>(
-  service_method: &ServiceMethod<OutgoingType, IncomingType>,
-  handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
-  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
-  endpoint_stats: Option<&EndpointStats>,
-  validate_request: bool,
-  request_config: UnaryRequestConfig,
-) -> Result<Router> {
-  make_unary_router_with_response_mutator(
-    service_method,
-    handler,
-    endpoint_stats,
-    validate_request,
-    request_config,
-    None,
-    error_handler,
-  )
-}
-
-// Create an axum router for a unary request and a handler with an optional response mutator.
-pub fn make_unary_router_with_response_mutator<
-  OutgoingType: MessageFull,
-  IncomingType: MessageFull,
->(
-  service_method: &ServiceMethod<OutgoingType, IncomingType>,
-  handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
-  endpoint_stats: Option<&EndpointStats>,
-  validate_request: bool,
-  request_config: UnaryRequestConfig,
-  response_mutator: Option<UnaryResponseMutator<IncomingType>>,
-  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
-) -> Result<Router> {
-  make_unary_router_with_response_mutator_and_route_layer(
-    service_method,
-    handler,
-    endpoint_stats,
-    validate_request,
-    request_config,
-    response_mutator,
-    Identity::new(),
-    error_handler,
-  )
-}
-
-/// Creates a unary router with an additional per-route Axum layer inside `bd-grpc`.
-///
-/// The supplied `route_layer` runs after `bd-grpc` has inserted `GrpcMethod` into the request
-/// extensions and before the gRPC handler executes. This allows route-local middleware to consume
-/// descriptor-derived metadata without requiring top-level servers to maintain their own path
-/// registries.
-///
-/// The route layer sees the raw `axum::extract::Request`; protobuf decoding happens later inside
-/// the gRPC handler path. `GrpcMethod` is guaranteed to be present in request extensions, and any
-/// extensions populated by outer Axum middleware remain available as usual.
-pub fn make_unary_router_with_response_mutator_and_route_layer<
-  OutgoingType: MessageFull,
-  IncomingType: MessageFull,
-  L,
->(
-  service_method: &ServiceMethod<OutgoingType, IncomingType>,
-  handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
-  endpoint_stats: Option<&EndpointStats>,
-  validate_request: bool,
-  request_config: UnaryRequestConfig,
-  response_mutator: Option<UnaryResponseMutator<IncomingType>>,
-  route_layer: L,
-  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
-) -> Result<Router>
-where
-  L: Layer<Route> + Clone + Send + Sync + 'static,
-  L::Service: Service<Request> + Clone + Send + Sync + 'static,
-  <L::Service as Service<Request>>::Response: IntoResponse + 'static,
-  <L::Service as Service<Request>>::Error: Into<Infallible> + 'static,
-  <L::Service as Service<Request>>::Future: Send + 'static,
-{
-  make_unary_router_at_path_with_response_mutator_and_route_layer(
-    service_method,
-    &service_method.full_path(),
-    handler,
-    endpoint_stats,
-    validate_request,
-    request_config,
-    response_mutator,
-    route_layer,
-    error_handler,
-    None,
-  )
-}
-
-// Create an axum router for a unary request and a handler at a provided path.
-pub fn make_unary_router_at_path<OutgoingType: MessageFull, IncomingType: MessageFull>(
-  service_method: &ServiceMethod<OutgoingType, IncomingType>,
-  full_path: &str,
-  handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
-  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
-  endpoint_stats: Option<&EndpointStats>,
-  validate_request: bool,
-) -> Result<Router> {
-  make_unary_router_at_path_with_config(
-    service_method,
-    full_path,
-    handler,
-    error_handler,
-    endpoint_stats,
-    validate_request,
-    UnaryRequestConfig::default(),
-  )
-}
-
-pub fn make_unary_router_at_path_with_config<
-  OutgoingType: MessageFull,
-  IncomingType: MessageFull,
->(
-  service_method: &ServiceMethod<OutgoingType, IncomingType>,
-  full_path: &str,
-  handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
-  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
-  endpoint_stats: Option<&EndpointStats>,
-  validate_request: bool,
-  request_config: UnaryRequestConfig,
-) -> Result<Router> {
-  make_unary_router_at_path_with_response_mutator(
-    service_method,
-    full_path,
-    handler,
-    endpoint_stats,
-    validate_request,
-    request_config,
-    None,
-    error_handler,
-  )
-}
-
-// Create an axum router for a unary request and a handler at a provided path with an optional
-// response mutator.
-pub fn make_unary_router_at_path_with_response_mutator<
-  OutgoingType: MessageFull,
-  IncomingType: MessageFull,
->(
-  service_method: &ServiceMethod<OutgoingType, IncomingType>,
-  full_path: &str,
-  handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
-  endpoint_stats: Option<&EndpointStats>,
-  validate_request: bool,
-  request_config: UnaryRequestConfig,
-  response_mutator: Option<UnaryResponseMutator<IncomingType>>,
-  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
-) -> Result<Router> {
-  make_unary_router_at_path_with_response_mutator_and_route_layer(
-    service_method,
-    full_path,
-    handler,
-    endpoint_stats,
-    validate_request,
-    request_config,
-    response_mutator,
-    Identity::new(),
-    error_handler,
-    None,
-  )
-}
-
-/// Creates a unary router at an explicit path with an additional per-route Axum layer inside
-/// `bd-grpc`.
-///
-/// This has the same extension contract as
-/// [`make_unary_router_with_response_mutator_and_route_layer`]: `GrpcMethod` and
-/// `status::RequestTransport` are already available in request extensions when `route_layer` runs,
-/// but the protobuf request body has not yet been decoded into a typed message.
-pub fn make_unary_router_at_path_with_response_mutator_and_route_layer<
-  OutgoingType: MessageFull,
-  IncomingType: MessageFull,
-  L,
->(
-  service_method: &ServiceMethod<OutgoingType, IncomingType>,
-  full_path: &str,
-  handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
-  endpoint_stats: Option<&EndpointStats>,
-  validate_request: bool,
-  request_config: UnaryRequestConfig,
-  response_mutator: Option<UnaryResponseMutator<IncomingType>>,
-  route_layer: L,
-  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
-  custom_json_print_options: Option<PrintOptions>,
-) -> Result<Router>
-where
-  L: Layer<Route> + Clone + Send + Sync + 'static,
-  L::Service: Service<Request> + Clone + Send + Sync + 'static,
-  <L::Service as Service<Request>>::Response: IntoResponse + 'static,
-  <L::Service as Service<Request>>::Error: Into<Infallible> + 'static,
-  <L::Service as Service<Request>>::Future: Send + 'static,
-{
-  verify_request_support::<OutgoingType>(validate_request, request_config)?;
-  let warn_tracker = Arc::new(WarnTracker::default());
-  let full_path = Arc::new(full_path.to_string());
-  let resolved_stats = endpoint_stats
-    .as_ref()
-    .map(|stats| stats.resolve::<OutgoingType, IncomingType>(service_method));
-  let grpc_method = service_method.grpc_method();
-  Ok(
-    Router::new()
-      .route(
-        full_path.clone().as_ref(),
-        post(move |request: Request| async move {
-          let request_transport = RequestTransport::from_extensions(request.extensions());
-          let result = unary_handler::<OutgoingType, IncomingType>(
-            request,
-            handler,
-            validate_request,
-            request_config,
-            response_mutator.clone(),
-            custom_json_print_options.clone(),
-          )
-          .await;
-
-          if let Err(e) = &result {
-            if let Some(warning) = e.warn_every_message()
-              && warn_tracker.should_warn(15.seconds())
-            {
-              log::warn!("{full_path} failed: {warning}");
-            }
-
-            error_handler(e);
-            if let Some(resolved_stats) = &resolved_stats {
-              resolved_stats.failure.inc();
-            }
-          } else if let Some(resolved_stats) = &resolved_stats {
-            resolved_stats.success.inc();
-          }
-
-          result.map_err(|e| e.to_response(request_transport))
         }),
       )
       .route_layer(route_layer)
