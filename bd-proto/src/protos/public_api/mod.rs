@@ -7,6 +7,7 @@
 
 pub mod admin;
 pub mod api;
+pub mod api_ootb_fields;
 pub mod chart_id;
 pub mod chart_metadata;
 pub mod common;
