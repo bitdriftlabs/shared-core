@@ -144,6 +144,7 @@ pub fn get_public_api_proto_configs() -> Vec<ProtoConfig> {
     ProtoConfig {
       output_dir: "src/protos/public_api",
       inputs: &[
+        "../api/src/bitdrift/public/shared/annotations/api_ootb_fields.proto",
         "../api/src/bitdrift/public/shared/workflows/v1/time_series.proto",
         "../api/src/bitdrift/public/shared/platform/v1/platform.proto",
         "../api/src/bitdrift/public/unary/issues/v1/api.proto",
