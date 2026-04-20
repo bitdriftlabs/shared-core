@@ -626,6 +626,8 @@ pub struct Repeated {
     pub non_empty_strings: ::std::vec::Vec<::std::string::String>,
     // @@protoc_insertion_point(field:proto_validate.test.Repeated.positive_numbers)
     pub positive_numbers: ::std::vec::Vec<u32>,
+    // @@protoc_insertion_point(field:proto_validate.test.Repeated.probabilities)
+    pub probabilities: ::std::vec::Vec<f32>,
     // special fields
     // @@protoc_insertion_point(special_field:proto_validate.test.Repeated.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -643,7 +645,7 @@ impl Repeated {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(5);
+        let mut fields = ::std::vec::Vec::with_capacity(6);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
             "strings",
@@ -669,6 +671,11 @@ impl Repeated {
             "positive_numbers",
             |m: &Repeated| { &m.positive_numbers },
             |m: &mut Repeated| { &mut m.positive_numbers },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "probabilities",
+            |m: &Repeated| { &m.probabilities },
+            |m: &mut Repeated| { &mut m.probabilities },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Repeated>(
             "Repeated",
@@ -709,6 +716,12 @@ impl ::protobuf::Message for Repeated {
                 40 => {
                     self.positive_numbers.push(is.read_uint32()?);
                 },
+                50 => {
+                    is.read_repeated_packed_float_into(&mut self.probabilities)?;
+                },
+                53 => {
+                    self.probabilities.push(is.read_float()?);
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -733,6 +746,7 @@ impl ::protobuf::Message for Repeated {
             my_size += ::protobuf::rt::string_size(4, &value);
         };
         my_size += ::protobuf::rt::vec_packed_uint32_size(5, &self.positive_numbers);
+        my_size += ::protobuf::rt::vec_packed_float_size(6, &self.probabilities);
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -750,6 +764,7 @@ impl ::protobuf::Message for Repeated {
             os.write_string(4, &v)?;
         };
         os.write_repeated_packed_uint32(5, &self.positive_numbers)?;
+        os.write_repeated_packed_float(6, &self.probabilities)?;
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -772,6 +787,7 @@ impl ::protobuf::Message for Repeated {
         self.limited.clear();
         self.non_empty_strings.clear();
         self.positive_numbers.clear();
+        self.probabilities.clear();
         self.special_fields.clear();
     }
 
@@ -782,6 +798,7 @@ impl ::protobuf::Message for Repeated {
             limited: ::std::vec::Vec::new(),
             non_empty_strings: ::std::vec::Vec::new(),
             positive_numbers: ::std::vec::Vec::new(),
+            probabilities: ::std::vec::Vec::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -2959,6 +2976,250 @@ impl ::protobuf::reflect::ProtobufValue for Int64 {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
+// @@protoc_insertion_point(message:proto_validate.test.Float)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct Float {
+    // message fields
+    // @@protoc_insertion_point(field:proto_validate.test.Float.field)
+    pub field: f32,
+    // special fields
+    // @@protoc_insertion_point(special_field:proto_validate.test.Float.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a Float {
+    fn default() -> &'a Float {
+        <Float as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl Float {
+    pub fn new() -> Float {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "field",
+            |m: &Float| { &m.field },
+            |m: &mut Float| { &mut m.field },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Float>(
+            "Float",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for Float {
+    const NAME: &'static str = "Float";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                13 => {
+                    self.field = is.read_float()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if self.field != 0. {
+            my_size += 1 + 4;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if self.field != 0. {
+            os.write_float(1, self.field)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> Float {
+        Float::new()
+    }
+
+    fn clear(&mut self) {
+        self.field = 0.;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static Float {
+        static instance: Float = Float {
+            field: 0.,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for Float {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("Float").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for Float {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for Float {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:proto_validate.test.Double)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct Double {
+    // message fields
+    // @@protoc_insertion_point(field:proto_validate.test.Double.field)
+    pub field: f64,
+    // special fields
+    // @@protoc_insertion_point(special_field:proto_validate.test.Double.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a Double {
+    fn default() -> &'a Double {
+        <Double as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl Double {
+    pub fn new() -> Double {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "field",
+            |m: &Double| { &m.field },
+            |m: &mut Double| { &mut m.field },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Double>(
+            "Double",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for Double {
+    const NAME: &'static str = "Double";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                9 => {
+                    self.field = is.read_double()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if self.field != 0. {
+            my_size += 1 + 8;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if self.field != 0. {
+            os.write_double(1, self.field)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> Double {
+        Double::new()
+    }
+
+    fn clear(&mut self) {
+        self.field = 0.;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static Double {
+        static instance: Double = Double {
+            field: 0.,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for Double {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("Double").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for Double {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for Double {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n\x13test_validate.proto\x12\x13proto_validate.test\x1a\x1egoogle/proto\
     buf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17validat\
@@ -2970,7 +3231,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01\x12!\n\x06field2\x18\x02\x20\x01(\x08H\0R\x06field2B\x07\xfaB\x04j\
     \x02\x08\x01B\x06\n\x04test\"H\n\x06String\x12\x1d\n\x05field\x18\x01\
     \x20\x01(\tR\x05fieldB\x07\xfaB\x04r\x02\x10\x01\x12\x1f\n\x06field2\x18\
-    \x02\x20\x01(\tR\x06field2B\x07\xfaB\x04r\x02\x18\x02\"\x99\x02\n\x08Rep\
+    \x02\x20\x01(\tR\x06field2B\x07\xfaB\x04r\x02\x18\x02\"\xd5\x02\n\x08Rep\
     eated\x12\"\n\x07strings\x18\x01\x20\x03(\tR\x07stringsB\x08\xfaB\x05\
     \x92\x01\x02\x08\x01\x12I\n\x08messages\x18\x02\x20\x03(\x0b2#.proto_val\
     idate.test.Repeated.InnerR\x08messagesB\x08\xfaB\x05\x92\x01\x02\x08\x01\
@@ -2978,35 +3239,40 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x02\x10\x02\x128\n\x11non_empty_strings\x18\x04\x20\x03(\tR\x0fnonEmpty\
     StringsB\x0c\xfaB\t\x92\x01\x06\"\x04r\x02\x10\x01\x127\n\x10positive_nu\
     mbers\x18\x05\x20\x03(\rR\x0fpositiveNumbersB\x0c\xfaB\t\x92\x01\x06\"\
-    \x04*\x02\x20\0\x1a\x07\n\x05Inner\"\x8c\x01\n\x03Map\x12I\n\x07limited\
-    \x18\x01\x20\x03(\x0b2%.proto_validate.test.Map.LimitedEntryR\x07limited\
-    B\x08\xfaB\x05\x9a\x01\x02\x10\x02\x1a:\n\x0cLimitedEntry\x12\x10\n\x03k\
-    ey\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\rR\x05\
-    value:\x028\x01\"\xa0\x01\n\x11MapNotImplemented\x12Q\n\x05field\x18\x01\
-    \x20\x03(\x0b21.proto_validate.test.MapNotImplemented.FieldEntryR\x05fie\
-    ldB\x08\xfaB\x05\x9a\x01\x02\x18\x01\x1a8\n\nFieldEntry\x12\x10\n\x03key\
-    \x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\rR\x05va\
-    lue:\x028\x01\"V\n\x07Message\x12B\n\x05inner\x18\x01\x20\x01(\x0b2\".pr\
-    oto_validate.test.Message.InnerR\x05innerB\x08\xfaB\x05\x8a\x01\x02\x10\
-    \x01\x1a\x07\n\x05Inner\"Z\n\x05OneOf\x12!\n\x06field1\x18\x01\x20\x01(\
-    \x08H\0R\x06field1B\x07\xfaB\x04j\x02\x08\x01\x12!\n\x06field2\x18\x02\
-    \x20\x01(\tH\0R\x06field2B\x07\xfaB\x04r\x02\x10\x01B\x0b\n\x04test\x12\
-    \x03\xf8B\x01\"/\n\x0eNotImplemented\x12\x1d\n\x05field\x18\x01\x20\x01(\
-    \tR\x05fieldB\x07\xfaB\x04r\x02(\n\"Q\n\x14NestedNotImplemented\x129\n\
-    \x05field\x18\x01\x20\x01(\x0b2#.proto_validate.test.NotImplementedR\x05\
-    field\"]\n\x07EnumOld\x12A\n\x05field\x18\x01\x20\x01(\x0e2!.proto_valid\
-    ate.test.EnumOld.EnumR\x05fieldB\x08\xfaB\x05\x82\x01\x02\x10\x01\"\x0f\
-    \n\x04Enum\x12\x07\n\x03FOO\x10\0\"\\\n\x07EnumNew\x127\n\x05field\x18\
-    \x01\x20\x01(\x0e2!.proto_validate.test.EnumNew.EnumR\x05field\"\x18\n\
-    \x04Enum\x12\x07\n\x03FOO\x10\0\x12\x07\n\x03BAR\x10\x01\"j\n\tEnumNotIn\
-    \x12C\n\x05field\x18\x01\x20\x01(\x0e2#.proto_validate.test.EnumNotIn.En\
-    umR\x05fieldB\x08\xfaB\x05\x82\x01\x02\x20\x01\"\x18\n\x04Enum\x12\x07\n\
-    \x03FOO\x10\0\x12\x07\n\x03BAR\x10\x01\"'\n\x06Uint32\x12\x1d\n\x05field\
-    \x18\x01\x20\x01(\rR\x05fieldB\x07\xfaB\x04*\x02\x20\0\"'\n\x06Uint64\
-    \x12\x1d\n\x05field\x18\x01\x20\x01(\x04R\x05fieldB\x07\xfaB\x042\x02\
-    \x20\0\"&\n\x05Int32\x12\x1d\n\x05field\x18\x01\x20\x01(\x05R\x05fieldB\
-    \x07\xfaB\x04\x1a\x02\x20\0\"&\n\x05Int64\x12\x1d\n\x05field\x18\x01\x20\
-    \x01(\x03R\x05fieldB\x07\xfaB\x04\"\x02\x20\0b\x06proto3\
+    \x04*\x02\x20\0\x12:\n\rprobabilities\x18\x06\x20\x03(\x02R\rprobabiliti\
+    esB\x14\xfaB\x11\x92\x01\x0e\"\x0c\n\n\x1d\0\0\x80?-\0\0\0\0\x1a\x07\n\
+    \x05Inner\"\x8c\x01\n\x03Map\x12I\n\x07limited\x18\x01\x20\x03(\x0b2%.pr\
+    oto_validate.test.Map.LimitedEntryR\x07limitedB\x08\xfaB\x05\x9a\x01\x02\
+    \x10\x02\x1a:\n\x0cLimitedEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03\
+    key\x12\x14\n\x05value\x18\x02\x20\x01(\rR\x05value:\x028\x01\"\xa0\x01\
+    \n\x11MapNotImplemented\x12Q\n\x05field\x18\x01\x20\x03(\x0b21.proto_val\
+    idate.test.MapNotImplemented.FieldEntryR\x05fieldB\x08\xfaB\x05\x9a\x01\
+    \x02\x18\x01\x1a8\n\nFieldEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03\
+    key\x12\x14\n\x05value\x18\x02\x20\x01(\rR\x05value:\x028\x01\"V\n\x07Me\
+    ssage\x12B\n\x05inner\x18\x01\x20\x01(\x0b2\".proto_validate.test.Messag\
+    e.InnerR\x05innerB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x1a\x07\n\x05Inner\"\
+    Z\n\x05OneOf\x12!\n\x06field1\x18\x01\x20\x01(\x08H\0R\x06field1B\x07\
+    \xfaB\x04j\x02\x08\x01\x12!\n\x06field2\x18\x02\x20\x01(\tH\0R\x06field2\
+    B\x07\xfaB\x04r\x02\x10\x01B\x0b\n\x04test\x12\x03\xf8B\x01\"/\n\x0eNotI\
+    mplemented\x12\x1d\n\x05field\x18\x01\x20\x01(\tR\x05fieldB\x07\xfaB\x04\
+    r\x02(\n\"Q\n\x14NestedNotImplemented\x129\n\x05field\x18\x01\x20\x01(\
+    \x0b2#.proto_validate.test.NotImplementedR\x05field\"]\n\x07EnumOld\x12A\
+    \n\x05field\x18\x01\x20\x01(\x0e2!.proto_validate.test.EnumOld.EnumR\x05\
+    fieldB\x08\xfaB\x05\x82\x01\x02\x10\x01\"\x0f\n\x04Enum\x12\x07\n\x03FOO\
+    \x10\0\"\\\n\x07EnumNew\x127\n\x05field\x18\x01\x20\x01(\x0e2!.proto_val\
+    idate.test.EnumNew.EnumR\x05field\"\x18\n\x04Enum\x12\x07\n\x03FOO\x10\0\
+    \x12\x07\n\x03BAR\x10\x01\"j\n\tEnumNotIn\x12C\n\x05field\x18\x01\x20\
+    \x01(\x0e2#.proto_validate.test.EnumNotIn.EnumR\x05fieldB\x08\xfaB\x05\
+    \x82\x01\x02\x20\x01\"\x18\n\x04Enum\x12\x07\n\x03FOO\x10\0\x12\x07\n\
+    \x03BAR\x10\x01\"'\n\x06Uint32\x12\x1d\n\x05field\x18\x01\x20\x01(\rR\
+    \x05fieldB\x07\xfaB\x04*\x02\x20\0\"'\n\x06Uint64\x12\x1d\n\x05field\x18\
+    \x01\x20\x01(\x04R\x05fieldB\x07\xfaB\x042\x02\x20\0\"&\n\x05Int32\x12\
+    \x1d\n\x05field\x18\x01\x20\x01(\x05R\x05fieldB\x07\xfaB\x04\x1a\x02\x20\
+    \0\"&\n\x05Int64\x12\x1d\n\x05field\x18\x01\x20\x01(\x03R\x05fieldB\x07\
+    \xfaB\x04\"\x02\x20\0\".\n\x05Float\x12%\n\x05field\x18\x01\x20\x01(\x02\
+    R\x05fieldB\x0f\xfaB\x0c\n\n\x1d\0\0\x80?-\0\0\0\0\"7\n\x06Double\x12-\n\
+    \x05field\x18\x01\x20\x01(\x01R\x05fieldB\x17\xfaB\x14\x12\x12\x11\0\0\0\
+    \0\0\0\xf0?!\0\0\0\0\0\0\0\0b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -3027,7 +3293,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(::protobuf::well_known_types::duration::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(20);
+            let mut messages = ::std::vec::Vec::with_capacity(22);
             messages.push(Duration::generated_message_descriptor_data());
             messages.push(Timestamp::generated_message_descriptor_data());
             messages.push(Bool::generated_message_descriptor_data());
@@ -3046,6 +3312,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(Uint64::generated_message_descriptor_data());
             messages.push(Int32::generated_message_descriptor_data());
             messages.push(Int64::generated_message_descriptor_data());
+            messages.push(Float::generated_message_descriptor_data());
+            messages.push(Double::generated_message_descriptor_data());
             messages.push(repeated::Inner::generated_message_descriptor_data());
             messages.push(message::Inner::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(3);
