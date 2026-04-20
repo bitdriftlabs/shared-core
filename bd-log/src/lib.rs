@@ -70,6 +70,8 @@ mod tests;
 
 pub mod otel;
 pub mod rate_limit_log;
+#[doc(hidden)]
+pub mod test;
 
 use anyhow::anyhow;
 use opentelemetry_sdk::trace::SdkTracerProvider;
@@ -82,15 +84,17 @@ pub use otel::{
   TRACEPARENT_HEADER,
   TRACESTATE_HEADER,
   TraceContextHeaders,
+  add_trace_link,
   current_trace_context_headers,
   current_trace_request_id,
   set_remote_parent,
 };
 pub use parking_lot::Mutex as ParkingLotMutex;
 use std::marker::PhantomData;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::{fmt, io};
 use tracing::span::{Attributes, Id, Record};
+use tracing::subscriber::Interest;
 use tracing::{Event, Metadata};
 use tracing_subscriber::field::RecordFields;
 use tracing_subscriber::filter::LevelFilter;
@@ -301,6 +305,181 @@ where
 }
 
 //
+// ReloadableLayerStack
+//
+
+// `tracing_opentelemetry::OpenTelemetrySpanExt` discovers the OTEL layer by downcasting the
+// current subscriber dispatch to tracing-opentelemetry's internal `WithContext` helper. That
+// works with ordinary `Layered` composition, but it breaks once the OTEL layer is hidden behind
+// `tracing_subscriber::reload::Layer`, because the upstream reload wrapper intentionally does not
+// forward general downcasts. The current docs call this out explicitly, and the underlying
+// constraints are the same ones described in tokio-rs/tracing#1629 and tokio-rs/tracing#2101.
+//
+// We still need two-stage logger configuration: services initialize local console logging early,
+// then attach OTEL once config is available. The global filter reload path can keep using
+// `tracing_subscriber::reload::Layer`, because it does not participate in `WithContext`
+// downcasting. The layer collection itself, however, must preserve downcasts to the *current*
+// inner OTEL layer so `current_trace_context_headers`, `set_remote_parent`, and `add_trace_link`
+// continue to work after reconfiguration.
+//
+// This wrapper is deliberately narrow:
+// - It preserves the current `Vec<Layer>`-style callback semantics for the layer set we build in
+//   `build_registry_layers`.
+// - It forwards `downcast_raw` to the active inner layers so the tracing-opentelemetry extension
+//   methods can reach `WithContext`.
+// - It does *not* attempt to solve the broader upstream `on_layer`/per-layer-filter registration
+//   problem during reload. We intentionally avoid reloadable `Filtered` layers elsewhere in this
+//   crate for that reason.
+#[derive(Clone)]
+struct ReloadableLayerStackHandle {
+  layers: Arc<parking_lot::RwLock<Vec<RegistryLayer>>>,
+}
+
+struct ReloadableLayerStack {
+  layers: Arc<parking_lot::RwLock<Vec<RegistryLayer>>>,
+}
+
+impl ReloadableLayerStack {
+  fn new(layers: Vec<RegistryLayer>) -> (Self, ReloadableLayerStackHandle) {
+    let layers = Arc::new(parking_lot::RwLock::new(layers));
+
+    (
+      Self {
+        layers: layers.clone(),
+      },
+      ReloadableLayerStackHandle { layers },
+    )
+  }
+}
+
+impl ReloadableLayerStackHandle {
+  fn reload(&self, layers: Vec<RegistryLayer>) {
+    *self.layers.write() = layers;
+  }
+}
+
+impl Layer<Registry> for ReloadableLayerStack {
+  fn on_layer(&mut self, subscriber: &mut Registry) {
+    for layer in self.layers.write().iter_mut() {
+      layer.on_layer(subscriber);
+    }
+  }
+
+  fn register_callsite(&self, metadata: &'static Metadata<'static>) -> Interest {
+    let mut interest = Interest::never();
+
+    for next in self
+      .layers
+      .read()
+      .iter()
+      .map(|layer| layer.register_callsite(metadata))
+    {
+      if next.is_always() {
+        interest = Interest::always();
+      } else if next.is_sometimes() && interest.is_never() {
+        interest = Interest::sometimes();
+      }
+    }
+
+    interest
+  }
+
+  fn enabled(&self, metadata: &Metadata<'_>, ctx: Context<'_, Registry>) -> bool {
+    self
+      .layers
+      .read()
+      .iter()
+      .all(|layer| layer.enabled(metadata, ctx.clone()))
+  }
+
+  fn event_enabled(&self, event: &Event<'_>, ctx: Context<'_, Registry>) -> bool {
+    self
+      .layers
+      .read()
+      .iter()
+      .all(|layer| layer.event_enabled(event, ctx.clone()))
+  }
+
+  fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, Registry>) {
+    for layer in self.layers.read().iter() {
+      layer.on_new_span(attrs, id, ctx.clone());
+    }
+  }
+
+  fn max_level_hint(&self) -> Option<LevelFilter> {
+    let mut max_level = Some(LevelFilter::OFF);
+
+    for layer in self.layers.read().iter() {
+      match (max_level, layer.max_level_hint()) {
+        (_, None) | (None, Some(_)) => return None,
+        (Some(current), Some(next)) => {
+          max_level = Some(std::cmp::max(current, next));
+        },
+      }
+    }
+
+    max_level
+  }
+
+  fn on_record(&self, id: &Id, values: &Record<'_>, ctx: Context<'_, Registry>) {
+    for layer in self.layers.read().iter() {
+      layer.on_record(id, values, ctx.clone());
+    }
+  }
+
+  fn on_follows_from(&self, id: &Id, follows: &Id, ctx: Context<'_, Registry>) {
+    for layer in self.layers.read().iter() {
+      layer.on_follows_from(id, follows, ctx.clone());
+    }
+  }
+
+  fn on_event(&self, event: &Event<'_>, ctx: Context<'_, Registry>) {
+    for layer in self.layers.read().iter() {
+      layer.on_event(event, ctx.clone());
+    }
+  }
+
+  fn on_enter(&self, id: &Id, ctx: Context<'_, Registry>) {
+    for layer in self.layers.read().iter() {
+      layer.on_enter(id, ctx.clone());
+    }
+  }
+
+  fn on_exit(&self, id: &Id, ctx: Context<'_, Registry>) {
+    for layer in self.layers.read().iter() {
+      layer.on_exit(id, ctx.clone());
+    }
+  }
+
+  fn on_close(&self, id: Id, ctx: Context<'_, Registry>) {
+    let layers = self.layers.read();
+    if let Some((last, rest)) = layers.split_last() {
+      for layer in rest {
+        layer.on_close(id.clone(), ctx.clone());
+      }
+      last.on_close(id, ctx);
+    }
+  }
+
+  unsafe fn downcast_raw(&self, id: TypeId) -> Option<*const ()> {
+    if id == TypeId::of::<Self>() {
+      return Some(std::ptr::from_ref(self).cast());
+    }
+
+    // Preserve the same "first matching child wins" lookup shape that ordinary layered
+    // composition uses. This is the key behavior `tracing-opentelemetry` relies on when it
+    // looks up its internal `WithContext` shim via `OpenTelemetrySpanExt`.
+    for layer in self.layers.read().iter() {
+      if let Some(raw) = unsafe { layer.downcast_raw(id) } {
+        return Some(raw);
+      }
+    }
+
+    None
+  }
+}
+
+//
 // LoggerState
 //
 
@@ -370,7 +549,7 @@ impl SwapLogger {
       otel::global_filter_rules(&config.log_filter, direct_otel_enabled),
     ));
     let (layers, otel_provider) = build_registry_layers(config)?;
-    let (layers, layers_handle) = tracing_subscriber::reload::Layer::new(layers);
+    let (layers, layers_handle) = ReloadableLayerStack::new(layers);
 
     Registry::default().with(layers).with(filter).try_init()?;
 
@@ -381,7 +560,7 @@ impl SwapLogger {
         Ok(())
       }));
       state.reload_layers = Some(Box::new(move |layers| {
-        layers_handle.reload(layers)?;
+        layers_handle.reload(layers);
         Ok(())
       }));
       state.otel_provider = otel_provider;

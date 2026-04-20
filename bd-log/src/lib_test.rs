@@ -5,10 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{LogConfig, otel};
-use opentelemetry::trace::TracerProvider as _;
-use opentelemetry_sdk::error::OTelSdkResult;
-use opentelemetry_sdk::trace::{SdkTracerProvider, SpanData, SpanExporter};
+use opentelemetry::trace::TraceContextExt;
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 use tracing::span::{Attributes, Id};
@@ -16,32 +13,6 @@ use tracing::{Event, Subscriber};
 use tracing_subscriber::Registry;
 use tracing_subscriber::layer::{Context, SubscriberExt};
 use tracing_subscriber::registry::LookupSpan;
-
-#[derive(Clone, Default, Debug)]
-struct TestExporter(Arc<Mutex<Vec<SpanData>>>);
-
-impl TestExporter {
-  fn exported_spans(&self) -> Vec<SpanData> {
-    self.0.lock().unwrap().clone()
-  }
-
-  fn exported_span_names(&self) -> Vec<String> {
-    self
-      .0
-      .lock()
-      .unwrap()
-      .iter()
-      .map(|span| span.name.to_string())
-      .collect()
-  }
-}
-
-impl SpanExporter for TestExporter {
-  async fn export(&self, mut batch: Vec<SpanData>) -> OTelSdkResult {
-    self.0.lock().unwrap().append(&mut batch);
-    Ok(())
-  }
-}
 
 #[derive(Clone, Default)]
 struct TargetCaptureLayer {
@@ -80,56 +51,9 @@ where
   }
 }
 
-fn build_test_otel() -> (TestExporter, SdkTracerProvider, crate::RegistryLayer) {
-  let exporter = TestExporter::default();
-  let provider = SdkTracerProvider::builder()
-    .with_simple_exporter(exporter.clone())
-    .build();
-  let tracer = provider.tracer("bd-log-test");
-
-  (exporter, provider, otel::build_direct_otel_layer(tracer))
-}
-
-fn later_log_config() -> LogConfig {
-  LogConfig {
-    otel: Some(crate::OtelCollectorConfig::new(
-      "bd-log-test",
-      "http://127.0.0.1:4317",
-    )),
-    ..LogConfig::default()
-  }
-}
-
 fn exported_span_names_after_two_stage_init(future: impl Future<Output = ()>) -> Vec<String> {
-  let initial_config = LogConfig::default();
-  let later_config = later_log_config();
-  let (layers, layers_handle) =
-    tracing_subscriber::reload::Layer::new(vec![crate::build_output_layer(&initial_config)]);
-  let (filter, filter_handle) =
-    tracing_subscriber::reload::Layer::new(tracing_subscriber::EnvFilter::new(
-      otel::global_filter_rules(&initial_config.log_filter, false),
-    ));
-  let subscriber = Registry::default().with(layers).with(filter);
-
-  let (exporter, provider, otel_layer) = build_test_otel();
-  let runtime = tokio::runtime::Runtime::new().unwrap();
-
-  tracing::subscriber::with_default(subscriber, || {
-    layers_handle
-      .reload(vec![crate::build_output_layer(&later_config), otel_layer])
-      .unwrap();
-    filter_handle
-      .reload(tracing_subscriber::EnvFilter::new(
-        otel::global_filter_rules(&later_config.log_filter, true),
-      ))
-      .unwrap();
-
-    runtime.block_on(future);
-  });
-
-  provider.force_flush().unwrap();
-
-  exporter.exported_span_names()
+  let (spans, ()) = crate::test::with_two_phase_test_otel("bd-log-test", future);
+  spans.iter().map(|span| span.name.to_string()).collect()
 }
 
 #[test]
@@ -159,7 +83,7 @@ fn two_stage_init_still_exports_direct_otel_spans() {
 fn shared_target_routing_only_forwards_matching_targets() {
   let direct_capture = TargetCaptureLayer::default();
   let non_direct_capture = TargetCaptureLayer::default();
-  let (layers, _) = tracing_subscriber::reload::Layer::new(vec![
+  let (layers, _) = crate::ReloadableLayerStack::new(vec![
     crate::box_direct_otel_layer(direct_capture.clone()),
     crate::box_non_direct_otel_layer(non_direct_capture.clone()),
   ]);
@@ -253,14 +177,7 @@ fn conditional_otel_instrument_only_creates_span_for_direct_otel_parent() {
 
 #[test]
 fn trace_context_headers_round_trip_remote_parent() {
-  let exporter = TestExporter::default();
-  let provider = SdkTracerProvider::builder()
-    .with_simple_exporter(exporter.clone())
-    .build();
-  let tracer = provider.tracer("bd-log-test");
-  let subscriber = Registry::default().with(otel::build_direct_otel_layer(tracer));
-
-  tracing::subscriber::with_default(subscriber, || {
+  let (spans, ()) = crate::test::with_two_phase_test_otel("bd-log-test", async {
     let headers = {
       let parent = crate::otel_info_span!("parent");
       let _parent_entered = parent.enter();
@@ -271,10 +188,6 @@ fn trace_context_headers_round_trip_remote_parent() {
     assert!(crate::set_remote_parent(&child, &headers));
     let _child_entered = child.enter();
   });
-
-  provider.force_flush().unwrap();
-
-  let spans = exporter.exported_spans();
   let parent = spans.iter().find(|span| span.name == "parent").unwrap();
   let child = spans.iter().find(|span| span.name == "child").unwrap();
 
@@ -283,4 +196,63 @@ fn trace_context_headers_round_trip_remote_parent() {
     child.span_context.trace_id(),
     parent.span_context.trace_id()
   );
+}
+
+#[test]
+fn trace_context_headers_round_trip_trace_link() {
+  let (spans, (parent_trace_id, parent_span_id, linked_trace_id)) =
+    crate::test::with_two_phase_test_otel("bd-log-test", async {
+      let (headers, parent_trace_id, parent_span_id) = {
+        let parent = crate::otel_info_span!("parent");
+        let _parent_entered = parent.enter();
+        let span_context = opentelemetry::Context::current()
+          .span()
+          .span_context()
+          .clone();
+
+        (
+          crate::current_trace_context_headers().unwrap(),
+          span_context.trace_id(),
+          span_context.span_id(),
+        )
+      };
+
+      let linked = crate::otel_info_span!("linked");
+      assert!(crate::add_trace_link(&linked, &headers));
+      let _linked_entered = linked.enter();
+
+      let invalid = crate::otel_info_span!("invalid");
+      assert!(!crate::add_trace_link(
+        &invalid,
+        &crate::TraceContextHeaders::default(),
+      ));
+      let _invalid_entered = invalid.enter();
+
+      assert_ne!(
+        opentelemetry::Context::current()
+          .span()
+          .span_context()
+          .trace_id(),
+        parent_trace_id
+      );
+      (
+        parent_trace_id,
+        parent_span_id,
+        opentelemetry::Context::current()
+          .span()
+          .span_context()
+          .trace_id(),
+      )
+    });
+  let linked = spans.iter().find(|span| span.name == "linked").unwrap();
+
+  assert_eq!(linked.links.len(), 1);
+  assert_eq!(linked.links[0].span_context.trace_id(), parent_trace_id);
+  assert_eq!(linked.links[0].span_context.span_id(), parent_span_id);
+  assert_eq!(linked.span_context.trace_id(), linked_trace_id);
+  assert_ne!(linked.span_context.trace_id(), parent_trace_id);
+  assert_ne!(linked.parent_span_id, parent_span_id);
+
+  let invalid = spans.iter().find(|span| span.name == "invalid").unwrap();
+  assert!(invalid.links.is_empty());
 }
