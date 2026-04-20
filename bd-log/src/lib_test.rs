@@ -21,6 +21,10 @@ use tracing_subscriber::registry::LookupSpan;
 struct TestExporter(Arc<Mutex<Vec<SpanData>>>);
 
 impl TestExporter {
+  fn exported_spans(&self) -> Vec<SpanData> {
+    self.0.lock().unwrap().clone()
+  }
+
   fn exported_span_names(&self) -> Vec<String> {
     self
       .0
@@ -245,4 +249,38 @@ fn conditional_otel_instrument_only_creates_span_for_direct_otel_parent() {
   assert!(span_names.iter().any(|name| name == "direct_parent"));
   assert!(span_names.iter().any(|name| name == "with_parent"));
   assert!(!span_names.iter().any(|name| name == "without_parent"));
+}
+
+#[test]
+fn trace_context_headers_round_trip_remote_parent() {
+  let exporter = TestExporter::default();
+  let provider = SdkTracerProvider::builder()
+    .with_simple_exporter(exporter.clone())
+    .build();
+  let tracer = provider.tracer("bd-log-test");
+  let subscriber = Registry::default().with(otel::build_direct_otel_layer(tracer));
+
+  tracing::subscriber::with_default(subscriber, || {
+    let headers = {
+      let parent = crate::otel_info_span!("parent");
+      let _parent_entered = parent.enter();
+      crate::current_trace_context_headers().unwrap()
+    };
+
+    let child = crate::otel_info_span!("child");
+    assert!(crate::set_remote_parent(&child, &headers));
+    let _child_entered = child.enter();
+  });
+
+  provider.force_flush().unwrap();
+
+  let spans = exporter.exported_spans();
+  let parent = spans.iter().find(|span| span.name == "parent").unwrap();
+  let child = spans.iter().find(|span| span.name == "child").unwrap();
+
+  assert_eq!(child.parent_span_id, parent.span_context.span_id());
+  assert_eq!(
+    child.span_context.trace_id(),
+    parent.span_context.trace_id()
+  );
 }
