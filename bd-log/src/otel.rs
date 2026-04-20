@@ -10,7 +10,7 @@ use anyhow::anyhow;
 use http::{HeaderMap, HeaderName, HeaderValue};
 use opentelemetry::KeyValue;
 use opentelemetry::propagation::{Extractor, Injector, TextMapPropagator};
-use opentelemetry::trace::{TraceContextExt, TracerProvider as _};
+use opentelemetry::trace::{SpanContext, TraceContextExt, TracerProvider as _};
 use opentelemetry_otlp::tonic_types::metadata::MetadataMap;
 use opentelemetry_otlp::{
   Protocol,
@@ -101,9 +101,21 @@ fn trace_context_propagator() -> TraceContextPropagator {
   TraceContextPropagator::new()
 }
 
+fn remote_span_context(headers: &TraceContextHeaders) -> Option<SpanContext> {
+  if headers.traceparent.is_empty() {
+    return None;
+  }
+
+  let extracted_context =
+    trace_context_propagator().extract(&TraceContextHeadersExtractor { headers });
+  let span_context = extracted_context.span().span_context().clone();
+
+  span_context.is_valid().then_some(span_context)
+}
+
 #[must_use]
 pub fn current_trace_context_headers() -> Option<TraceContextHeaders> {
-  let current_context = tracing::Span::current().context();
+  let current_context = opentelemetry::Context::current();
   let span_context = current_context.span().span_context().clone();
 
   if !span_context.is_valid() {
@@ -127,8 +139,7 @@ pub fn current_trace_context_headers() -> Option<TraceContextHeaders> {
 
 #[must_use]
 pub fn current_trace_request_id() -> Option<String> {
-  let span_context = tracing::Span::current()
-    .context()
+  let span_context = opentelemetry::Context::current()
     .span()
     .span_context()
     .clone();
@@ -146,18 +157,23 @@ pub fn current_trace_request_id() -> Option<String> {
 
 #[must_use]
 pub fn set_remote_parent(span: &tracing::Span, headers: &TraceContextHeaders) -> bool {
-  if headers.traceparent.is_empty() {
+  let Some(span_context) = remote_span_context(headers) else {
     return false;
-  }
+  };
 
-  let extracted_context =
-    trace_context_propagator().extract(&TraceContextHeadersExtractor { headers });
+  span
+    .set_parent(opentelemetry::Context::new().with_remote_span_context(span_context))
+    .is_ok()
+}
 
-  if !extracted_context.span().span_context().is_valid() {
+#[must_use]
+pub fn add_trace_link(span: &tracing::Span, headers: &TraceContextHeaders) -> bool {
+  let Some(span_context) = remote_span_context(headers) else {
     return false;
-  }
+  };
 
-  span.set_parent(extracted_context).is_ok()
+  span.add_link(span_context);
+  true
 }
 
 //
