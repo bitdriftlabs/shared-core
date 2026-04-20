@@ -22,9 +22,11 @@ use protobuf::{Message as ProtoMessage, MessageFull};
 use std::collections::HashMap;
 use test_protos::test_validate::{
   Bool,
+  Double,
   EnumNew,
   EnumNotIn,
   EnumOld,
+  Float,
   Map,
   MapNotImplemented,
   Message,
@@ -205,6 +207,39 @@ fn repeated() {
     limited: vec![1, 2],
     non_empty_strings: vec!["hello".to_string()],
     positive_numbers: vec![1],
+    probabilities: vec![-0.1],
+    ..Default::default()
+  };
+  matches::assert_matches!(
+    validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'proto_validate.test.Repeated.probabilities' in message 'proto_validate.test.Repeated' \
+    must be >= 0"
+  );
+
+  let message = Repeated {
+    strings: vec!["hello".to_string()],
+    messages: vec![repeated::Inner::default()],
+    limited: vec![1, 2],
+    non_empty_strings: vec!["hello".to_string()],
+    positive_numbers: vec![1],
+    probabilities: vec![1.1],
+    ..Default::default()
+  };
+  matches::assert_matches!(
+    validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'proto_validate.test.Repeated.probabilities' in message 'proto_validate.test.Repeated' \
+    must be <= 1"
+  );
+
+  let message = Repeated {
+    strings: vec!["hello".to_string()],
+    messages: vec![repeated::Inner::default()],
+    limited: vec![1, 2],
+    non_empty_strings: vec!["hello".to_string()],
+    positive_numbers: vec![1],
+    probabilities: vec![0.1, 1.0],
     ..Default::default()
   };
   assert!(validate(&message).is_ok());
@@ -376,5 +411,43 @@ fn int() {
     "field 'proto_validate.test.Int64.field' in message 'proto_validate.test.Int64' must be > 0");
 
   message.field = 1;
+  assert!(validate(&message).is_ok());
+}
+
+#[test]
+fn float() {
+  let mut message = Float::new();
+  message.field = 1.1;
+  matches::assert_matches!(
+    validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'proto_validate.test.Float.field' in message 'proto_validate.test.Float' must be <= 1"
+  );
+
+  message.field = -0.1;
+  matches::assert_matches!(
+    validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'proto_validate.test.Float.field' in message 'proto_validate.test.Float' must be >= 0"
+  );
+
+  message.field = 0.5;
+  assert!(validate(&message).is_ok());
+
+  let mut message = Double::new();
+  matches::assert_matches!(
+    validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'proto_validate.test.Double.field' in message 'proto_validate.test.Double' must be > 0"
+  );
+
+  message.field = 1.0;
+  matches::assert_matches!(
+    validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'proto_validate.test.Double.field' in message 'proto_validate.test.Double' must be < 1"
+  );
+
+  message.field = 0.5;
   assert!(validate(&message).is_ok());
 }

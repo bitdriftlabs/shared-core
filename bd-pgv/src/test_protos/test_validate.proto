@@ -35,6 +35,10 @@ message Repeated {
   repeated uint32 limited = 3 [(validate.rules).repeated.max_items = 2];
   repeated string non_empty_strings = 4 [(validate.rules).repeated.items.string.min_len = 1];
   repeated uint32 positive_numbers = 5 [(validate.rules).repeated.items.uint32.gt = 0];
+  repeated float probabilities = 6 [(validate.rules).repeated.items.float = {
+    gte: 0
+    lte: 1
+  }];
 }
 
 message Map {
@@ -108,4 +112,18 @@ message Int32 {
 
 message Int64 {
   int64 field = 1 [(validate.rules).int64.gt = 0];
+}
+
+message Float {
+  float field = 1 [(validate.rules).float = {
+    gte: 0
+    lte: 1
+  }];
+}
+
+message Double {
+  double field = 1 [(validate.rules).double = {
+    gt: 0
+    lt: 1
+  }];
 }

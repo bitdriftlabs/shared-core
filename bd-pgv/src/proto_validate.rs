@@ -23,7 +23,9 @@ use protobuf::reflect::{
 use protobuf::well_known_types::duration::Duration as ProtoDuration;
 use protobuf::well_known_types::timestamp::Timestamp as ProtoTimestamp;
 use protos::validate::{
+  DoubleRules,
   FieldRules,
+  FloatRules,
   Int32Rules,
   Int64Rules,
   MapRules,
@@ -31,7 +33,6 @@ use protos::validate::{
   UInt32Rules,
   UInt64Rules,
 };
-use std::any::type_name;
 use std::collections::HashSet;
 use std::fmt::Display;
 use std::time::Duration;
@@ -137,8 +138,10 @@ fn get_singular_or_default<'a>(
   }
 }
 
-trait IntHelper {
+trait NumericHelper {
   type Item;
+
+  fn rule_name() -> &'static str;
 
   fn gt(&self) -> Option<Self::Item>;
   fn gte(&self) -> Option<Self::Item>;
@@ -149,27 +152,27 @@ trait IntHelper {
   fn not_in(&self) -> &[Self::Item];
   fn has_ignore_empty(&self) -> bool;
 
-  fn verify_supported_int_rules(&self) -> error::Result<()> {
+  fn verify_supported_numeric_rules(&self) -> error::Result<()> {
     not_implemented(
       self.has_const(),
-      &format!("{} rules const", type_name::<Self::Item>()),
+      &format!("{} rules const", Self::rule_name()),
     )?;
     not_implemented(
       !self.in_().is_empty(),
-      &format!("{} rules in", type_name::<Self::Item>()),
+      &format!("{} rules in", Self::rule_name()),
     )?;
     not_implemented(
       !self.not_in().is_empty(),
-      &format!("{} rules not_in", type_name::<Self::Item>()),
+      &format!("{} rules not_in", Self::rule_name()),
     )?;
     not_implemented(
       self.has_ignore_empty(),
-      &format!("{} rules ignore_empty", type_name::<Self::Item>()),
+      &format!("{} rules ignore_empty", Self::rule_name()),
     )?;
     Ok(())
   }
 
-  fn validate_all_int_rules(
+  fn validate_all_numeric_rules(
     &self,
     value: Self::Item,
     field_descriptor: &FieldDescriptor,
@@ -177,7 +180,7 @@ trait IntHelper {
     formatter: &ErrorNameFormatter,
   ) -> error::Result<()>
   where
-    <Self as IntHelper>::Item: PartialOrd + Display,
+    <Self as NumericHelper>::Item: PartialOrd + Display,
   {
     if self.gt().is_some_and(|gt| value <= gt) {
       return Err(error::Error::ProtoValidation(format!(
@@ -212,15 +215,19 @@ trait IntHelper {
       )));
     }
 
-    self.verify_supported_int_rules()?;
+    self.verify_supported_numeric_rules()?;
     Ok(())
   }
 }
 
-macro_rules! impl_int_helper {
-  ($rule_type:ty, $item_type:ty) => {
-    impl IntHelper for $rule_type {
+macro_rules! impl_numeric_helper {
+  ($rule_type:ty, $item_type:ty, $rule_name:literal) => {
+    impl NumericHelper for $rule_type {
       type Item = $item_type;
+
+      fn rule_name() -> &'static str {
+        $rule_name
+      }
 
       fn gt(&self) -> Option<Self::Item> {
         self.gt
@@ -250,10 +257,12 @@ macro_rules! impl_int_helper {
   };
 }
 
-impl_int_helper!(UInt32Rules, u32);
-impl_int_helper!(UInt64Rules, u64);
-impl_int_helper!(Int32Rules, i32);
-impl_int_helper!(Int64Rules, i64);
+impl_numeric_helper!(UInt32Rules, u32, "uint32");
+impl_numeric_helper!(UInt64Rules, u64, "uint64");
+impl_numeric_helper!(Int32Rules, i32, "int32");
+impl_numeric_helper!(Int64Rules, i64, "int64");
+impl_numeric_helper!(FloatRules, f32, "float");
+impl_numeric_helper!(DoubleRules, f64, "double");
 
 fn verify_duration_rules_supported(rules: &DurationRules) -> error::Result<()> {
   not_implemented(rules.has_required(), "duration required")?;
@@ -428,29 +437,33 @@ fn verify_value_support(
     },
     RuntimeType::I32 => {
       if rules.has_int32() {
-        rules.int32().verify_supported_int_rules()?;
+        rules.int32().verify_supported_numeric_rules()?;
       }
     },
     RuntimeType::I64 => {
       if rules.has_int64() {
-        rules.int64().verify_supported_int_rules()?;
+        rules.int64().verify_supported_numeric_rules()?;
       }
     },
     RuntimeType::U32 => {
       if rules.has_uint32() {
-        rules.uint32().verify_supported_int_rules()?;
+        rules.uint32().verify_supported_numeric_rules()?;
       }
     },
     RuntimeType::U64 => {
       if rules.has_uint64() {
-        rules.uint64().verify_supported_int_rules()?;
+        rules.uint64().verify_supported_numeric_rules()?;
       }
     },
     RuntimeType::F32 => {
-      not_implemented(rules.has_float(), "float validation")?;
+      if rules.has_float() {
+        rules.float().verify_supported_numeric_rules()?;
+      }
     },
     RuntimeType::F64 => {
-      not_implemented(rules.has_double(), "double validation")?;
+      if rules.has_double() {
+        rules.double().verify_supported_numeric_rules()?;
+      }
     },
     RuntimeType::Bool => {},
     RuntimeType::VecU8 => {
@@ -540,7 +553,7 @@ fn validate_value(
       if rules.has_int32()
         && let Some(ReflectValueRef::I32(value)) = value
       {
-        rules.int32().validate_all_int_rules(
+        rules.int32().validate_all_numeric_rules(
           *value,
           field_descriptor,
           message_descriptor,
@@ -552,7 +565,7 @@ fn validate_value(
       if rules.has_int64()
         && let Some(ReflectValueRef::I64(value)) = value
       {
-        rules.int64().validate_all_int_rules(
+        rules.int64().validate_all_numeric_rules(
           *value,
           field_descriptor,
           message_descriptor,
@@ -564,7 +577,7 @@ fn validate_value(
       if rules.has_uint32()
         && let Some(ReflectValueRef::U32(value)) = value
       {
-        rules.uint32().validate_all_int_rules(
+        rules.uint32().validate_all_numeric_rules(
           *value,
           field_descriptor,
           message_descriptor,
@@ -576,7 +589,7 @@ fn validate_value(
       if rules.has_uint64()
         && let Some(ReflectValueRef::U64(value)) = value
       {
-        rules.uint64().validate_all_int_rules(
+        rules.uint64().validate_all_numeric_rules(
           *value,
           field_descriptor,
           message_descriptor,
@@ -585,10 +598,28 @@ fn validate_value(
       }
     },
     RuntimeType::F32 => {
-      not_implemented(rules.has_float(), "float validation")?;
+      if rules.has_float()
+        && let Some(ReflectValueRef::F32(value)) = value
+      {
+        rules.float().validate_all_numeric_rules(
+          *value,
+          field_descriptor,
+          message_descriptor,
+          formatter,
+        )?;
+      }
     },
     RuntimeType::F64 => {
-      not_implemented(rules.has_double(), "double validation")?;
+      if rules.has_double()
+        && let Some(ReflectValueRef::F64(value)) = value
+      {
+        rules.double().validate_all_numeric_rules(
+          *value,
+          field_descriptor,
+          message_descriptor,
+          formatter,
+        )?;
+      }
     },
     RuntimeType::Bool => {
       if rules.has_bool()
