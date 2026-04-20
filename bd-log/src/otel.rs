@@ -9,7 +9,8 @@ use crate::{DEFAULT_FILTER_RULES, RegistryLayer};
 use anyhow::anyhow;
 use http::{HeaderMap, HeaderName, HeaderValue};
 use opentelemetry::KeyValue;
-use opentelemetry::trace::TracerProvider as _;
+use opentelemetry::propagation::{Extractor, Injector, TextMapPropagator};
+use opentelemetry::trace::{TraceContextExt, TracerProvider as _};
 use opentelemetry_otlp::tonic_types::metadata::MetadataMap;
 use opentelemetry_otlp::{
   Protocol,
@@ -19,11 +20,145 @@ use opentelemetry_otlp::{
   WithTonicConfig,
 };
 use opentelemetry_sdk::Resource;
+use opentelemetry_sdk::propagation::TraceContextPropagator;
 use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider};
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 pub const OTEL_TARGET: &str = "bd_log::otel";
+pub const TRACEPARENT_HEADER: &str = "traceparent";
+pub const TRACESTATE_HEADER: &str = "tracestate";
+
+//
+// TraceContextHeaders
+//
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct TraceContextHeaders {
+  pub traceparent: String,
+  pub tracestate: Option<String>,
+}
+
+impl TraceContextHeaders {
+  #[must_use]
+  pub fn is_empty(&self) -> bool {
+    self.traceparent.is_empty() && self.tracestate.as_deref().unwrap_or_default().is_empty()
+  }
+}
+
+//
+// TraceContextHeadersInjector
+//
+
+struct TraceContextHeadersInjector<'a> {
+  headers: &'a mut TraceContextHeaders,
+}
+
+impl Injector for TraceContextHeadersInjector<'_> {
+  fn set(&mut self, key: &str, value: String) {
+    match key {
+      TRACEPARENT_HEADER => self.headers.traceparent = value,
+      TRACESTATE_HEADER => self.headers.tracestate = Some(value),
+      _ => {},
+    }
+  }
+}
+
+//
+// TraceContextHeadersExtractor
+//
+
+struct TraceContextHeadersExtractor<'a> {
+  headers: &'a TraceContextHeaders,
+}
+
+impl Extractor for TraceContextHeadersExtractor<'_> {
+  fn get(&self, key: &str) -> Option<&str> {
+    match key {
+      TRACEPARENT_HEADER if !self.headers.traceparent.is_empty() => Some(&self.headers.traceparent),
+      TRACESTATE_HEADER => self.headers.tracestate.as_deref(),
+      _ => None,
+    }
+  }
+
+  fn keys(&self) -> Vec<&str> {
+    let mut keys = vec![];
+
+    if !self.headers.traceparent.is_empty() {
+      keys.push(TRACEPARENT_HEADER);
+    }
+
+    if self.headers.tracestate.is_some() {
+      keys.push(TRACESTATE_HEADER);
+    }
+
+    keys
+  }
+}
+
+fn trace_context_propagator() -> TraceContextPropagator {
+  TraceContextPropagator::new()
+}
+
+#[must_use]
+pub fn current_trace_context_headers() -> Option<TraceContextHeaders> {
+  let current_context = tracing::Span::current().context();
+  let span_context = current_context.span().span_context().clone();
+
+  if !span_context.is_valid() {
+    return None;
+  }
+
+  let mut headers = TraceContextHeaders::default();
+  trace_context_propagator().inject_context(
+    &current_context,
+    &mut TraceContextHeadersInjector {
+      headers: &mut headers,
+    },
+  );
+
+  if headers.traceparent.is_empty() {
+    return None;
+  }
+
+  Some(headers)
+}
+
+#[must_use]
+pub fn current_trace_request_id() -> Option<String> {
+  let span_context = tracing::Span::current()
+    .context()
+    .span()
+    .span_context()
+    .clone();
+
+  if !span_context.is_valid() {
+    return None;
+  }
+
+  Some(format!(
+    "{}-{}",
+    span_context.trace_id(),
+    span_context.span_id()
+  ))
+}
+
+#[must_use]
+pub fn set_remote_parent(span: &tracing::Span, headers: &TraceContextHeaders) -> bool {
+  if headers.traceparent.is_empty() {
+    return false;
+  }
+
+  let extracted_context =
+    trace_context_propagator().extract(&TraceContextHeadersExtractor { headers });
+
+  if !extracted_context.span().span_context().is_valid() {
+    return false;
+  }
+
+  span.set_parent(extracted_context).is_ok()
+}
 
 //
 // LogOutput

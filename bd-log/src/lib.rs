@@ -73,7 +73,19 @@ pub mod rate_limit_log;
 
 use anyhow::anyhow;
 use opentelemetry_sdk::trace::SdkTracerProvider;
-pub use otel::{LogConfig, LogOutput, OTEL_TARGET, OtelCollectorConfig, OtelCollectorProtocol};
+pub use otel::{
+  LogConfig,
+  LogOutput,
+  OTEL_TARGET,
+  OtelCollectorConfig,
+  OtelCollectorProtocol,
+  TRACEPARENT_HEADER,
+  TRACESTATE_HEADER,
+  TraceContextHeaders,
+  current_trace_context_headers,
+  current_trace_request_id,
+  set_remote_parent,
+};
 pub use parking_lot::Mutex as ParkingLotMutex;
 use std::marker::PhantomData;
 use std::sync::Mutex;
@@ -101,6 +113,7 @@ type ConsoleFmtLayer = tracing_subscriber::fmt::Layer<
   ConsoleWriter,
 >;
 type MetadataPredicate = fn(&Metadata<'_>) -> bool;
+use std::any::TypeId;
 
 // The local debug-only OTEL span view uses a second fmt layer alongside the normal output layer.
 // `tracing-subscriber` stores formatted span fields in extensions keyed by the formatter type, so
@@ -255,6 +268,14 @@ where
   fn on_close(&self, id: Id, ctx: Context<'_, Registry>) {
     if span_matches_route::<Marker>(&ctx, &id) {
       self.inner.on_close(id, ctx);
+    }
+  }
+
+  unsafe fn downcast_raw(&self, id: TypeId) -> Option<*const ()> {
+    if id == TypeId::of::<Self>() {
+      Some(std::ptr::from_ref(self).cast())
+    } else {
+      unsafe { self.inner.downcast_raw(id) }
     }
   }
 }
