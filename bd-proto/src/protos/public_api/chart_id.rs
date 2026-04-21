@@ -818,6 +818,13 @@ pub mod chart_identifier {
 // @@protoc_insertion_point(message:bitdrift.public.unary.charts.v1.LimitStrategy)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct LimitStrategy {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.LimitStrategy.sort_order)
+    pub sort_order: ::protobuf::EnumOrUnknown<SortOrder>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.LimitStrategy.exclusions)
+    pub exclusions: ::protobuf::MessageField<limit_strategy::IdentifierMatch>,
+    // message oneof groups
+    pub limit_strategy: ::std::option::Option<limit_strategy::Limit_strategy>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift.public.unary.charts.v1.LimitStrategy.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -834,9 +841,132 @@ impl LimitStrategy {
         ::std::default::Default::default()
     }
 
+    // .bitdrift.public.unary.charts.v1.LimitStrategy.TopKLimit top_k_limit = 1;
+
+    pub fn top_k_limit(&self) -> &limit_strategy::TopKLimit {
+        match self.limit_strategy {
+            ::std::option::Option::Some(limit_strategy::Limit_strategy::TopKLimit(ref v)) => v,
+            _ => <limit_strategy::TopKLimit as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_top_k_limit(&mut self) {
+        self.limit_strategy = ::std::option::Option::None;
+    }
+
+    pub fn has_top_k_limit(&self) -> bool {
+        match self.limit_strategy {
+            ::std::option::Option::Some(limit_strategy::Limit_strategy::TopKLimit(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_top_k_limit(&mut self, v: limit_strategy::TopKLimit) {
+        self.limit_strategy = ::std::option::Option::Some(limit_strategy::Limit_strategy::TopKLimit(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_top_k_limit(&mut self) -> &mut limit_strategy::TopKLimit {
+        if let ::std::option::Option::Some(limit_strategy::Limit_strategy::TopKLimit(_)) = self.limit_strategy {
+        } else {
+            self.limit_strategy = ::std::option::Option::Some(limit_strategy::Limit_strategy::TopKLimit(limit_strategy::TopKLimit::new()));
+        }
+        match self.limit_strategy {
+            ::std::option::Option::Some(limit_strategy::Limit_strategy::TopKLimit(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_top_k_limit(&mut self) -> limit_strategy::TopKLimit {
+        if self.has_top_k_limit() {
+            match self.limit_strategy.take() {
+                ::std::option::Option::Some(limit_strategy::Limit_strategy::TopKLimit(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            limit_strategy::TopKLimit::new()
+        }
+    }
+
+    // .bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch identifier_match = 2;
+
+    pub fn identifier_match(&self) -> &limit_strategy::IdentifierMatch {
+        match self.limit_strategy {
+            ::std::option::Option::Some(limit_strategy::Limit_strategy::IdentifierMatch(ref v)) => v,
+            _ => <limit_strategy::IdentifierMatch as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_identifier_match(&mut self) {
+        self.limit_strategy = ::std::option::Option::None;
+    }
+
+    pub fn has_identifier_match(&self) -> bool {
+        match self.limit_strategy {
+            ::std::option::Option::Some(limit_strategy::Limit_strategy::IdentifierMatch(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_identifier_match(&mut self, v: limit_strategy::IdentifierMatch) {
+        self.limit_strategy = ::std::option::Option::Some(limit_strategy::Limit_strategy::IdentifierMatch(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_identifier_match(&mut self) -> &mut limit_strategy::IdentifierMatch {
+        if let ::std::option::Option::Some(limit_strategy::Limit_strategy::IdentifierMatch(_)) = self.limit_strategy {
+        } else {
+            self.limit_strategy = ::std::option::Option::Some(limit_strategy::Limit_strategy::IdentifierMatch(limit_strategy::IdentifierMatch::new()));
+        }
+        match self.limit_strategy {
+            ::std::option::Option::Some(limit_strategy::Limit_strategy::IdentifierMatch(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_identifier_match(&mut self) -> limit_strategy::IdentifierMatch {
+        if self.has_identifier_match() {
+            match self.limit_strategy.take() {
+                ::std::option::Option::Some(limit_strategy::Limit_strategy::IdentifierMatch(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            limit_strategy::IdentifierMatch::new()
+        }
+    }
+
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(0);
-        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, limit_strategy::TopKLimit>(
+            "top_k_limit",
+            LimitStrategy::has_top_k_limit,
+            LimitStrategy::top_k_limit,
+            LimitStrategy::mut_top_k_limit,
+            LimitStrategy::set_top_k_limit,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, limit_strategy::IdentifierMatch>(
+            "identifier_match",
+            LimitStrategy::has_identifier_match,
+            LimitStrategy::identifier_match,
+            LimitStrategy::mut_identifier_match,
+            LimitStrategy::set_identifier_match,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "sort_order",
+            |m: &LimitStrategy| { &m.sort_order },
+            |m: &mut LimitStrategy| { &mut m.sort_order },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, limit_strategy::IdentifierMatch>(
+            "exclusions",
+            |m: &LimitStrategy| { &m.exclusions },
+            |m: &mut LimitStrategy| { &mut m.exclusions },
+        ));
+        oneofs.push(limit_strategy::Limit_strategy::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<LimitStrategy>(
             "LimitStrategy",
             fields,
@@ -855,6 +985,18 @@ impl ::protobuf::Message for LimitStrategy {
     fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
         while let Some(tag) = is.read_raw_tag_or_eof()? {
             match tag {
+                10 => {
+                    self.limit_strategy = ::std::option::Option::Some(limit_strategy::Limit_strategy::TopKLimit(is.read_message()?));
+                },
+                18 => {
+                    self.limit_strategy = ::std::option::Option::Some(limit_strategy::Limit_strategy::IdentifierMatch(is.read_message()?));
+                },
+                24 => {
+                    self.sort_order = is.read_enum_or_unknown()?;
+                },
+                34 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.exclusions)?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -867,12 +1009,47 @@ impl ::protobuf::Message for LimitStrategy {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u64 {
         let mut my_size = 0;
+        if self.sort_order != ::protobuf::EnumOrUnknown::new(SortOrder::MAX) {
+            my_size += ::protobuf::rt::int32_size(3, self.sort_order.value());
+        }
+        if let Some(v) = self.exclusions.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let ::std::option::Option::Some(ref v) = self.limit_strategy {
+            match v {
+                &limit_strategy::Limit_strategy::TopKLimit(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &limit_strategy::Limit_strategy::IdentifierMatch(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+            };
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if self.sort_order != ::protobuf::EnumOrUnknown::new(SortOrder::MAX) {
+            os.write_enum(3, ::protobuf::EnumOrUnknown::value(&self.sort_order))?;
+        }
+        if let Some(v) = self.exclusions.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+        }
+        if let ::std::option::Option::Some(ref v) = self.limit_strategy {
+            match v {
+                &limit_strategy::Limit_strategy::TopKLimit(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+                },
+                &limit_strategy::Limit_strategy::IdentifierMatch(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                },
+            };
+        }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -890,11 +1067,18 @@ impl ::protobuf::Message for LimitStrategy {
     }
 
     fn clear(&mut self) {
+        self.limit_strategy = ::std::option::Option::None;
+        self.limit_strategy = ::std::option::Option::None;
+        self.sort_order = ::protobuf::EnumOrUnknown::new(SortOrder::MAX);
+        self.exclusions.clear();
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static LimitStrategy {
         static instance: LimitStrategy = LimitStrategy {
+            sort_order: ::protobuf::EnumOrUnknown::from_i32(0),
+            exclusions: ::protobuf::MessageField::none(),
+            limit_strategy: ::std::option::Option::None,
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -916,6 +1100,441 @@ impl ::std::fmt::Display for LimitStrategy {
 
 impl ::protobuf::reflect::ProtobufValue for LimitStrategy {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `LimitStrategy`
+pub mod limit_strategy {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift.public.unary.charts.v1.LimitStrategy.limit_strategy)
+    pub enum Limit_strategy {
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.charts.v1.LimitStrategy.top_k_limit)
+        TopKLimit(TopKLimit),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.charts.v1.LimitStrategy.identifier_match)
+        IdentifierMatch(IdentifierMatch),
+    }
+
+    impl ::protobuf::Oneof for Limit_strategy {
+    }
+
+    impl ::protobuf::OneofFull for Limit_strategy {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::LimitStrategy as ::protobuf::MessageFull>::descriptor().oneof_by_name("limit_strategy").unwrap()).clone()
+        }
+    }
+
+    impl Limit_strategy {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Limit_strategy>("limit_strategy")
+        }
+    }
+    // @@protoc_insertion_point(message:bitdrift.public.unary.charts.v1.LimitStrategy.TopKLimit)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct TopKLimit {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.LimitStrategy.TopKLimit.top_k)
+        pub top_k: u64,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.charts.v1.LimitStrategy.TopKLimit.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a TopKLimit {
+        fn default() -> &'a TopKLimit {
+            <TopKLimit as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl TopKLimit {
+        pub fn new() -> TopKLimit {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "top_k",
+                |m: &TopKLimit| { &m.top_k },
+                |m: &mut TopKLimit| { &mut m.top_k },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<TopKLimit>(
+                "LimitStrategy.TopKLimit",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for TopKLimit {
+        const NAME: &'static str = "TopKLimit";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    8 => {
+                        self.top_k = is.read_uint64()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if self.top_k != 0 {
+                my_size += ::protobuf::rt::uint64_size(1, self.top_k);
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if self.top_k != 0 {
+                os.write_uint64(1, self.top_k)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> TopKLimit {
+            TopKLimit::new()
+        }
+
+        fn clear(&mut self) {
+            self.top_k = 0;
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static TopKLimit {
+            static instance: TopKLimit = TopKLimit {
+                top_k: 0,
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for TopKLimit {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("LimitStrategy.TopKLimit").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for TopKLimit {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for TopKLimit {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct IdentifierMatch {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch.dimension_identifiers)
+        pub dimension_identifiers: ::std::vec::Vec<identifier_match::DimensionIdentifier>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch.return_other)
+        pub return_other: bool,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a IdentifierMatch {
+        fn default() -> &'a IdentifierMatch {
+            <IdentifierMatch as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl IdentifierMatch {
+        pub fn new() -> IdentifierMatch {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "dimension_identifiers",
+                |m: &IdentifierMatch| { &m.dimension_identifiers },
+                |m: &mut IdentifierMatch| { &mut m.dimension_identifiers },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "return_other",
+                |m: &IdentifierMatch| { &m.return_other },
+                |m: &mut IdentifierMatch| { &mut m.return_other },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<IdentifierMatch>(
+                "LimitStrategy.IdentifierMatch",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for IdentifierMatch {
+        const NAME: &'static str = "IdentifierMatch";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.dimension_identifiers.push(is.read_message()?);
+                    },
+                    16 => {
+                        self.return_other = is.read_bool()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            for value in &self.dimension_identifiers {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            if self.return_other != false {
+                my_size += 1 + 1;
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            for v in &self.dimension_identifiers {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            };
+            if self.return_other != false {
+                os.write_bool(2, self.return_other)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> IdentifierMatch {
+            IdentifierMatch::new()
+        }
+
+        fn clear(&mut self) {
+            self.dimension_identifiers.clear();
+            self.return_other = false;
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static IdentifierMatch {
+            static instance: IdentifierMatch = IdentifierMatch {
+                dimension_identifiers: ::std::vec::Vec::new(),
+                return_other: false,
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for IdentifierMatch {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("LimitStrategy.IdentifierMatch").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for IdentifierMatch {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for IdentifierMatch {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `IdentifierMatch`
+    pub mod identifier_match {
+        // @@protoc_insertion_point(message:bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch.DimensionIdentifier)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct DimensionIdentifier {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch.DimensionIdentifier.id)
+            pub id: ::std::string::String,
+            // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch.DimensionIdentifier.labels)
+            pub labels: ::std::vec::Vec<super::super::super::time_series::LabelPair>,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch.DimensionIdentifier.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a DimensionIdentifier {
+            fn default() -> &'a DimensionIdentifier {
+                <DimensionIdentifier as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl DimensionIdentifier {
+            pub fn new() -> DimensionIdentifier {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(2);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "id",
+                    |m: &DimensionIdentifier| { &m.id },
+                    |m: &mut DimensionIdentifier| { &mut m.id },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                    "labels",
+                    |m: &DimensionIdentifier| { &m.labels },
+                    |m: &mut DimensionIdentifier| { &mut m.labels },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DimensionIdentifier>(
+                    "LimitStrategy.IdentifierMatch.DimensionIdentifier",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for DimensionIdentifier {
+            const NAME: &'static str = "DimensionIdentifier";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.id = is.read_string()?;
+                        },
+                        18 => {
+                            self.labels.push(is.read_message()?);
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if !self.id.is_empty() {
+                    my_size += ::protobuf::rt::string_size(1, &self.id);
+                }
+                for value in &self.labels {
+                    let len = value.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                };
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if !self.id.is_empty() {
+                    os.write_string(1, &self.id)?;
+                }
+                for v in &self.labels {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                };
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> DimensionIdentifier {
+                DimensionIdentifier::new()
+            }
+
+            fn clear(&mut self) {
+                self.id.clear();
+                self.labels.clear();
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static DimensionIdentifier {
+                static instance: DimensionIdentifier = DimensionIdentifier {
+                    id: ::std::string::String::new(),
+                    labels: ::std::vec::Vec::new(),
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for DimensionIdentifier {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("LimitStrategy.IdentifierMatch.DimensionIdentifier").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for DimensionIdentifier {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for DimensionIdentifier {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+    }
 }
 
 // @@protoc_insertion_point(message:bitdrift.public.unary.charts.v1.HistogramConfiguration)
@@ -1261,30 +1880,49 @@ impl SortOrder {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n.bitdrift/public/unary/charts/v1/chart_id.proto\x12\x1fbitdrift.public\
-    .unary.charts.v1\x1a\x17validate/validate.proto\"\x8b\x06\n\x0fChartIden\
-    tifier\x12\\\n\x08workflow\x18\x01\x20\x01(\x0b2>.bitdrift.public.unary.\
-    charts.v1.ChartIdentifier.WorkflowChartH\0R\x08workflow\x12i\n\x0csankey\
-    _chart\x18\x05\x20\x01(\x0b2D.bitdrift.public.unary.charts.v1.ChartIdent\
-    ifier.WorkflowSankeyChartH\0R\x0bsankeyChart\x12z\n\x15workflow_funnel_c\
-    hart\x18\x07\x20\x01(\x0b2D.bitdrift.public.unary.charts.v1.ChartIdentif\
-    ier.WorkflowFunnelChartH\0R\x13workflowFunnelChart\x1a\xc6\x01\n\rWorkfl\
-    owChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\
-    \x07r\x05\x10\x01\x18\xff\x01\x12.\n\rchart_rule_id\x18\x03\x20\x01(\tR\
-    \x0bchartRuleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12?\n\x14aggregate\
-    d_action_id\x18\x04\x20\x01(\tH\0R\x12aggregatedActionIdB\x08\xfaB\x05r\
-    \x03\x18\xff\x01\x88\x01\x01B\x17\n\x15_aggregated_action_id\x1at\n\x13W\
-    orkflowFunnelChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowId\
-    B\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x120\n\x0efunnel_rule_id\x18\x03\
-    \x20\x01(\tR\x0cfunnelRuleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x1ag\n\
-    \x13WorkflowSankeyChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkf\
-    lowIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12#\n\x07rule_id\x18\x03\x20\
-    \x01(\tR\x06ruleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01B\x0b\n\x04type\
-    \x12\x03\xf8B\x01\"\x0f\n\rLimitStrategy\"d\n\x16HistogramConfiguration\
-    \x12\x1e\n\npercentile\x18\x02\x20\x01(\x02R\npercentile\x12*\n\x0bperce\
-    ntiles\x18\x03\x20\x03(\x02R\x0bpercentilesB\x08\xfaB\x05\x92\x01\x02\
-    \x10\x14\"2\n\nFunnelStep\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\x12\
-    \x14\n\x05value\x18\x02\x20\x01(\x04R\x05value*\x1d\n\tSortOrder\x12\x07\
-    \n\x03MAX\x10\0\x12\x07\n\x03MIN\x10\x01b\x06proto3\
+    .unary.charts.v1\x1a5bitdrift/public/shared/workflows/v1/time_series.pro\
+    to\x1a\x17validate/validate.proto\"\x8b\x06\n\x0fChartIdentifier\x12\\\n\
+    \x08workflow\x18\x01\x20\x01(\x0b2>.bitdrift.public.unary.charts.v1.Char\
+    tIdentifier.WorkflowChartH\0R\x08workflow\x12i\n\x0csankey_chart\x18\x05\
+    \x20\x01(\x0b2D.bitdrift.public.unary.charts.v1.ChartIdentifier.Workflow\
+    SankeyChartH\0R\x0bsankeyChart\x12z\n\x15workflow_funnel_chart\x18\x07\
+    \x20\x01(\x0b2D.bitdrift.public.unary.charts.v1.ChartIdentifier.Workflow\
+    FunnelChartH\0R\x13workflowFunnelChart\x1a\xc6\x01\n\rWorkflowChart\x12+\
+    \n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\x07r\x05\x10\
+    \x01\x18\xff\x01\x12.\n\rchart_rule_id\x18\x03\x20\x01(\tR\x0bchartRuleI\
+    dB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12?\n\x14aggregated_action_id\
+    \x18\x04\x20\x01(\tH\0R\x12aggregatedActionIdB\x08\xfaB\x05r\x03\x18\xff\
+    \x01\x88\x01\x01B\x17\n\x15_aggregated_action_id\x1at\n\x13WorkflowFunne\
+    lChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\x07\
+    r\x05\x10\x01\x18\xff\x01\x120\n\x0efunnel_rule_id\x18\x03\x20\x01(\tR\
+    \x0cfunnelRuleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x1ag\n\x13Workflow\
+    SankeyChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfa\
+    B\x07r\x05\x10\x01\x18\xff\x01\x12#\n\x07rule_id\x18\x03\x20\x01(\tR\x06\
+    ruleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01B\x0b\n\x04type\x12\x03\xf8B\
+    \x01\"\xa4\x06\n\rLimitStrategy\x12Z\n\x0btop_k_limit\x18\x01\x20\x01(\
+    \x0b28.bitdrift.public.unary.charts.v1.LimitStrategy.TopKLimitH\0R\ttopK\
+    Limit\x12k\n\x10identifier_match\x18\x02\x20\x01(\x0b2>.bitdrift.public.\
+    unary.charts.v1.LimitStrategy.IdentifierMatchH\0R\x0fidentifierMatch\x12\
+    S\n\nsort_order\x18\x03\x20\x01(\x0e2*.bitdrift.public.unary.charts.v1.S\
+    ortOrderR\tsortOrderB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12^\n\nexclusion\
+    s\x18\x04\x20\x01(\x0b2>.bitdrift.public.unary.charts.v1.LimitStrategy.I\
+    dentifierMatchR\nexclusions\x1a)\n\tTopKLimit\x12\x1c\n\x05top_k\x18\x01\
+    \x20\x01(\x04R\x04topKB\x07\xfaB\x042\x02\x20\0\x1a\xd7\x02\n\x0fIdentif\
+    ierMatch\x12\x93\x01\n\x15dimension_identifiers\x18\x01\x20\x03(\x0b2R.b\
+    itdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch.DimensionId\
+    entifierR\x14dimensionIdentifiersB\n\xfaB\x07\x92\x01\x04\x08\x01\x10d\
+    \x12!\n\x0creturn_other\x18\x02\x20\x01(\x08R\x0breturnOther\x1a\x8a\x01\
+    \n\x13DimensionIdentifier\x12\x1a\n\x02id\x18\x01\x20\x01(\tR\x02idB\n\
+    \xfaB\x07r\x05\x10\x01\x18\xff\x01\x12W\n\x06labels\x18\x02\x20\x03(\x0b\
+    2..bitdrift.public.shared.workflows.v1.LabelPairR\x06labelsB\x0f\xfaB\
+    \x0c\x92\x01\t\x10\n\"\x05\x8a\x01\x02\x10\x01B\x10\n\x0elimit_strategy\
+    \"\x83\x01\n\x16HistogramConfiguration\x12/\n\npercentile\x18\x02\x20\
+    \x01(\x02R\npercentileB\x0f\xfaB\x0c\n\n\x1d\0\0\x80?-\0\0\0\0\x128\n\
+    \x0bpercentiles\x18\x03\x20\x03(\x02R\x0bpercentilesB\x16\xfaB\x13\x92\
+    \x01\x10\x10\x14\"\x0c\n\n\x1d\0\0\x80?-\0\0\0\0\"2\n\nFunnelStep\x12\
+    \x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\x12\x14\n\x05value\x18\x02\x20\
+    \x01(\x04R\x05value*\x1d\n\tSortOrder\x12\x07\n\x03MAX\x10\0\x12\x07\n\
+    \x03MIN\x10\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1301,9 +1939,10 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(1);
+            let mut deps = ::std::vec::Vec::with_capacity(2);
+            deps.push(super::time_series::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(7);
+            let mut messages = ::std::vec::Vec::with_capacity(10);
             messages.push(ChartIdentifier::generated_message_descriptor_data());
             messages.push(LimitStrategy::generated_message_descriptor_data());
             messages.push(HistogramConfiguration::generated_message_descriptor_data());
@@ -1311,6 +1950,9 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(chart_identifier::WorkflowChart::generated_message_descriptor_data());
             messages.push(chart_identifier::WorkflowFunnelChart::generated_message_descriptor_data());
             messages.push(chart_identifier::WorkflowSankeyChart::generated_message_descriptor_data());
+            messages.push(limit_strategy::TopKLimit::generated_message_descriptor_data());
+            messages.push(limit_strategy::IdentifierMatch::generated_message_descriptor_data());
+            messages.push(limit_strategy::identifier_match::DimensionIdentifier::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(1);
             enums.push(SortOrder::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
