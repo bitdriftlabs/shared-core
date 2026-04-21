@@ -795,6 +795,12 @@ pub mod resource_utilization {
     "resource_utilization.reporting_interval_ms",
     6.seconds()
   );
+
+  duration_feature_flag!(
+    BatteryLevelChangeWindowFlag,
+    "resource_utilization.battery_level_change_window_ms",
+    1.minutes()
+  );
 }
 
 pub mod session_replay {

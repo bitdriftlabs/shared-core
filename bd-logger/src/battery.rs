@@ -19,23 +19,37 @@ use bd_log_primitives::{
   LogMessage,
 };
 use bd_proto::protos::logging::payload::LogType;
+use bd_runtime::runtime::resource_utilization::BatteryLevelChangeWindowFlag;
+use bd_runtime::runtime::{ConfigLoader, Watch};
 use std::collections::VecDeque;
 use std::sync::Arc;
-use time::ext::NumericalDuration;
 
 //
 // BatteryDrainTracker
 //
 
 /// Tracks battery level changes over time by monitoring battery level changes in RESOURCE logs.
-/// Calculates the percentage point change per minute and adds it to resource logs.
+/// Calculates the percentage point change over a configurable window and adds it to resource logs.
 pub struct BatteryDrainTracker {
+  battery_level_change_window: Watch<time::Duration, BatteryLevelChangeWindowFlag>,
   container: parking_lot::Mutex<BatteryMetricsContainer>,
 }
 
 impl BatteryDrainTracker {
-  pub fn new(time_provider: Arc<dyn TimeProvider>) -> Self {
+  pub fn new(time_provider: Arc<dyn TimeProvider>, runtime: &ConfigLoader) -> Self {
     Self {
+      battery_level_change_window: runtime.register_duration_watch(),
+      container: parking_lot::Mutex::new(BatteryMetricsContainer::new(time_provider)),
+    }
+  }
+
+  #[cfg(test)]
+  fn new_with_window(
+    time_provider: Arc<dyn TimeProvider>,
+    battery_level_change_window: time::Duration,
+  ) -> Self {
+    Self {
+      battery_level_change_window: Watch::new_for_testing(battery_level_change_window),
       container: parking_lot::Mutex::new(BatteryMetricsContainer::new(time_provider)),
     }
   }
@@ -44,6 +58,7 @@ impl BatteryDrainTracker {
 impl BatteryDrainTracker {
   fn process_resource_log(&self, fields: &mut AnnotatedLogFields) {
     let battery_level = get_field_as_i32(fields, "_battery_level");
+    let battery_level_change_window = *self.battery_level_change_window.read();
 
     let mut guard = self.container.lock();
 
@@ -51,10 +66,10 @@ impl BatteryDrainTracker {
       guard.add_sample(battery_level);
     }
 
-    if let Some(drain_rate) = guard.get_level_change_per_minute() {
+    if let Some(battery_level_change) = guard.get_level_change(battery_level_change_window) {
       fields.insert(
-        "_battery_level_change_per_min".into(),
-        AnnotatedLogField::new_ootb(format!("{drain_rate:.4}")),
+        "_battery_level_change".into(),
+        AnnotatedLogField::new_ootb(format!("{battery_level_change:.4}")),
       );
     }
   }
@@ -103,14 +118,14 @@ impl BatteryMetricsContainer {
     });
   }
 
-  fn get_level_change_per_minute(&mut self) -> Option<f64> {
+  fn get_level_change(&mut self, battery_level_change_window: time::Duration) -> Option<f64> {
     let now = self.time_provider.now();
     let count_before = self.samples.len();
 
     while self
       .samples
       .front()
-      .is_some_and(|sample| now.duration_since(sample.timestamp) > 1.minutes())
+      .is_some_and(|sample| now.duration_since(sample.timestamp) > battery_level_change_window)
     {
       self.samples.pop_front();
     }
