@@ -21,6 +21,8 @@ use opentelemetry_otlp::{
 };
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
+use opentelemetry_sdk::runtime::Tokio;
+use opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProcessor;
 use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider};
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
@@ -307,7 +309,9 @@ pub(crate) fn build_otel_layer(
 ) -> anyhow::Result<(RegistryLayer, SdkTracerProvider)> {
   let exporter = build_span_exporter(config)?;
   let provider = SdkTracerProvider::builder()
-    .with_batch_exporter(exporter)
+    // OTLP HTTP exporters run async reqwest work and need a Tokio-backed processor instead of
+    // the SDK's default dedicated thread, which has no reactor.
+    .with_span_processor(BatchSpanProcessor::builder(exporter, Tokio).build())
     .with_sampler(Sampler::AlwaysOn)
     .with_max_attributes_per_span(config.max_attributes_per_span)
     .with_max_events_per_span(config.max_events_per_span)
