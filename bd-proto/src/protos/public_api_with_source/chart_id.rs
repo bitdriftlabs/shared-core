@@ -828,6 +828,16 @@ pub mod chart_identifier {
 // @@protoc_insertion_point(message:bitdrift.public.unary.charts.v1.LimitStrategy)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct LimitStrategy {
+    // message fields
+    ///  The sort order to use when applying the limit strategy. By default the output returns the top K
+    ///  of maximum values, but can be switched to return the top K of minimum values (bottom K).
+    // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.LimitStrategy.sort_order)
+    pub sort_order: ::protobuf::EnumOrUnknown<SortOrder>,
+    ///  Optional exclusions to apply when limiting. This is used to exclude specific dimensions from the top K results
+    // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.LimitStrategy.exclusions)
+    pub exclusions: ::protobuf::MessageField<limit_strategy::IdentifierMatch>,
+    // message oneof groups
+    pub limit_strategy: ::std::option::Option<limit_strategy::Limit_strategy>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift.public.unary.charts.v1.LimitStrategy.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -844,9 +854,132 @@ impl LimitStrategy {
         ::std::default::Default::default()
     }
 
+    // .bitdrift.public.unary.charts.v1.LimitStrategy.TopKLimit top_k_limit = 1;
+
+    pub fn top_k_limit(&self) -> &limit_strategy::TopKLimit {
+        match self.limit_strategy {
+            ::std::option::Option::Some(limit_strategy::Limit_strategy::TopKLimit(ref v)) => v,
+            _ => <limit_strategy::TopKLimit as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_top_k_limit(&mut self) {
+        self.limit_strategy = ::std::option::Option::None;
+    }
+
+    pub fn has_top_k_limit(&self) -> bool {
+        match self.limit_strategy {
+            ::std::option::Option::Some(limit_strategy::Limit_strategy::TopKLimit(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_top_k_limit(&mut self, v: limit_strategy::TopKLimit) {
+        self.limit_strategy = ::std::option::Option::Some(limit_strategy::Limit_strategy::TopKLimit(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_top_k_limit(&mut self) -> &mut limit_strategy::TopKLimit {
+        if let ::std::option::Option::Some(limit_strategy::Limit_strategy::TopKLimit(_)) = self.limit_strategy {
+        } else {
+            self.limit_strategy = ::std::option::Option::Some(limit_strategy::Limit_strategy::TopKLimit(limit_strategy::TopKLimit::new()));
+        }
+        match self.limit_strategy {
+            ::std::option::Option::Some(limit_strategy::Limit_strategy::TopKLimit(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_top_k_limit(&mut self) -> limit_strategy::TopKLimit {
+        if self.has_top_k_limit() {
+            match self.limit_strategy.take() {
+                ::std::option::Option::Some(limit_strategy::Limit_strategy::TopKLimit(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            limit_strategy::TopKLimit::new()
+        }
+    }
+
+    // .bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch identifier_match = 2;
+
+    pub fn identifier_match(&self) -> &limit_strategy::IdentifierMatch {
+        match self.limit_strategy {
+            ::std::option::Option::Some(limit_strategy::Limit_strategy::IdentifierMatch(ref v)) => v,
+            _ => <limit_strategy::IdentifierMatch as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_identifier_match(&mut self) {
+        self.limit_strategy = ::std::option::Option::None;
+    }
+
+    pub fn has_identifier_match(&self) -> bool {
+        match self.limit_strategy {
+            ::std::option::Option::Some(limit_strategy::Limit_strategy::IdentifierMatch(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_identifier_match(&mut self, v: limit_strategy::IdentifierMatch) {
+        self.limit_strategy = ::std::option::Option::Some(limit_strategy::Limit_strategy::IdentifierMatch(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_identifier_match(&mut self) -> &mut limit_strategy::IdentifierMatch {
+        if let ::std::option::Option::Some(limit_strategy::Limit_strategy::IdentifierMatch(_)) = self.limit_strategy {
+        } else {
+            self.limit_strategy = ::std::option::Option::Some(limit_strategy::Limit_strategy::IdentifierMatch(limit_strategy::IdentifierMatch::new()));
+        }
+        match self.limit_strategy {
+            ::std::option::Option::Some(limit_strategy::Limit_strategy::IdentifierMatch(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_identifier_match(&mut self) -> limit_strategy::IdentifierMatch {
+        if self.has_identifier_match() {
+            match self.limit_strategy.take() {
+                ::std::option::Option::Some(limit_strategy::Limit_strategy::IdentifierMatch(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            limit_strategy::IdentifierMatch::new()
+        }
+    }
+
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(0);
-        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, limit_strategy::TopKLimit>(
+            "top_k_limit",
+            LimitStrategy::has_top_k_limit,
+            LimitStrategy::top_k_limit,
+            LimitStrategy::mut_top_k_limit,
+            LimitStrategy::set_top_k_limit,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, limit_strategy::IdentifierMatch>(
+            "identifier_match",
+            LimitStrategy::has_identifier_match,
+            LimitStrategy::identifier_match,
+            LimitStrategy::mut_identifier_match,
+            LimitStrategy::set_identifier_match,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "sort_order",
+            |m: &LimitStrategy| { &m.sort_order },
+            |m: &mut LimitStrategy| { &mut m.sort_order },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, limit_strategy::IdentifierMatch>(
+            "exclusions",
+            |m: &LimitStrategy| { &m.exclusions },
+            |m: &mut LimitStrategy| { &mut m.exclusions },
+        ));
+        oneofs.push(limit_strategy::Limit_strategy::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<LimitStrategy>(
             "LimitStrategy",
             fields,
@@ -865,6 +998,18 @@ impl ::protobuf::Message for LimitStrategy {
     fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
         while let Some(tag) = is.read_raw_tag_or_eof()? {
             match tag {
+                10 => {
+                    self.limit_strategy = ::std::option::Option::Some(limit_strategy::Limit_strategy::TopKLimit(is.read_message()?));
+                },
+                18 => {
+                    self.limit_strategy = ::std::option::Option::Some(limit_strategy::Limit_strategy::IdentifierMatch(is.read_message()?));
+                },
+                24 => {
+                    self.sort_order = is.read_enum_or_unknown()?;
+                },
+                34 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.exclusions)?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -877,12 +1022,47 @@ impl ::protobuf::Message for LimitStrategy {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u64 {
         let mut my_size = 0;
+        if self.sort_order != ::protobuf::EnumOrUnknown::new(SortOrder::MAX) {
+            my_size += ::protobuf::rt::int32_size(3, self.sort_order.value());
+        }
+        if let Some(v) = self.exclusions.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let ::std::option::Option::Some(ref v) = self.limit_strategy {
+            match v {
+                &limit_strategy::Limit_strategy::TopKLimit(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &limit_strategy::Limit_strategy::IdentifierMatch(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+            };
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if self.sort_order != ::protobuf::EnumOrUnknown::new(SortOrder::MAX) {
+            os.write_enum(3, ::protobuf::EnumOrUnknown::value(&self.sort_order))?;
+        }
+        if let Some(v) = self.exclusions.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+        }
+        if let ::std::option::Option::Some(ref v) = self.limit_strategy {
+            match v {
+                &limit_strategy::Limit_strategy::TopKLimit(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+                },
+                &limit_strategy::Limit_strategy::IdentifierMatch(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                },
+            };
+        }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -900,11 +1080,18 @@ impl ::protobuf::Message for LimitStrategy {
     }
 
     fn clear(&mut self) {
+        self.limit_strategy = ::std::option::Option::None;
+        self.limit_strategy = ::std::option::Option::None;
+        self.sort_order = ::protobuf::EnumOrUnknown::new(SortOrder::MAX);
+        self.exclusions.clear();
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static LimitStrategy {
         static instance: LimitStrategy = LimitStrategy {
+            sort_order: ::protobuf::EnumOrUnknown::from_i32(0),
+            exclusions: ::protobuf::MessageField::none(),
+            limit_strategy: ::std::option::Option::None,
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -926,6 +1113,452 @@ impl ::std::fmt::Display for LimitStrategy {
 
 impl ::protobuf::reflect::ProtobufValue for LimitStrategy {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `LimitStrategy`
+pub mod limit_strategy {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift.public.unary.charts.v1.LimitStrategy.limit_strategy)
+    pub enum Limit_strategy {
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.charts.v1.LimitStrategy.top_k_limit)
+        TopKLimit(TopKLimit),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.charts.v1.LimitStrategy.identifier_match)
+        IdentifierMatch(IdentifierMatch),
+    }
+
+    impl ::protobuf::Oneof for Limit_strategy {
+    }
+
+    impl ::protobuf::OneofFull for Limit_strategy {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::LimitStrategy as ::protobuf::MessageFull>::descriptor().oneof_by_name("limit_strategy").unwrap()).clone()
+        }
+    }
+
+    impl Limit_strategy {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Limit_strategy>("limit_strategy")
+        }
+    }
+    // @@protoc_insertion_point(message:bitdrift.public.unary.charts.v1.LimitStrategy.TopKLimit)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct TopKLimit {
+        // message fields
+        ///  The number of time series to return per chart dimension.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.LimitStrategy.TopKLimit.top_k)
+        pub top_k: u64,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.charts.v1.LimitStrategy.TopKLimit.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a TopKLimit {
+        fn default() -> &'a TopKLimit {
+            <TopKLimit as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl TopKLimit {
+        pub fn new() -> TopKLimit {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "top_k",
+                |m: &TopKLimit| { &m.top_k },
+                |m: &mut TopKLimit| { &mut m.top_k },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<TopKLimit>(
+                "LimitStrategy.TopKLimit",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for TopKLimit {
+        const NAME: &'static str = "TopKLimit";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    8 => {
+                        self.top_k = is.read_uint64()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if self.top_k != 0 {
+                my_size += ::protobuf::rt::uint64_size(1, self.top_k);
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if self.top_k != 0 {
+                os.write_uint64(1, self.top_k)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> TopKLimit {
+            TopKLimit::new()
+        }
+
+        fn clear(&mut self) {
+            self.top_k = 0;
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static TopKLimit {
+            static instance: TopKLimit = TopKLimit {
+                top_k: 0,
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for TopKLimit {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("LimitStrategy.TopKLimit").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for TopKLimit {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for TopKLimit {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    ///  Used to select specific time series from a chart instead of relying on a top-K algorithm.
+    ///
+    ///  This specifies the list of dimension values to include in the results. Only time series that match one of the sent
+    ///  dimension value combinations will be included in the results.
+    // @@protoc_insertion_point(message:bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct IdentifierMatch {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch.dimension_identifiers)
+        pub dimension_identifiers: ::std::vec::Vec<identifier_match::DimensionIdentifier>,
+        ///  If true, the rest of the dimensions will be returned as "other". This does not currently
+        ///  work for histograms.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch.return_other)
+        pub return_other: bool,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a IdentifierMatch {
+        fn default() -> &'a IdentifierMatch {
+            <IdentifierMatch as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl IdentifierMatch {
+        pub fn new() -> IdentifierMatch {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "dimension_identifiers",
+                |m: &IdentifierMatch| { &m.dimension_identifiers },
+                |m: &mut IdentifierMatch| { &mut m.dimension_identifiers },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "return_other",
+                |m: &IdentifierMatch| { &m.return_other },
+                |m: &mut IdentifierMatch| { &mut m.return_other },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<IdentifierMatch>(
+                "LimitStrategy.IdentifierMatch",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for IdentifierMatch {
+        const NAME: &'static str = "IdentifierMatch";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.dimension_identifiers.push(is.read_message()?);
+                    },
+                    16 => {
+                        self.return_other = is.read_bool()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            for value in &self.dimension_identifiers {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            if self.return_other != false {
+                my_size += 1 + 1;
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            for v in &self.dimension_identifiers {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            };
+            if self.return_other != false {
+                os.write_bool(2, self.return_other)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> IdentifierMatch {
+            IdentifierMatch::new()
+        }
+
+        fn clear(&mut self) {
+            self.dimension_identifiers.clear();
+            self.return_other = false;
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static IdentifierMatch {
+            static instance: IdentifierMatch = IdentifierMatch {
+                dimension_identifiers: ::std::vec::Vec::new(),
+                return_other: false,
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for IdentifierMatch {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("LimitStrategy.IdentifierMatch").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for IdentifierMatch {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for IdentifierMatch {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `IdentifierMatch`
+    pub mod identifier_match {
+        // @@protoc_insertion_point(message:bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch.DimensionIdentifier)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct DimensionIdentifier {
+            // message fields
+            ///  The rule id associated with this chart dimension. This is the ID returned on the ChartsID response for a given time series.
+            // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch.DimensionIdentifier.id)
+            pub id: ::std::string::String,
+            ///  The labels associated with this chart dimension. This is used to specify the dimensions of the time series to include in the results.
+            ///
+            ///  For multi-group by time series the labels must be sent in the same order as the dimension identifiers in the ChartMetadata for the chart. For single group by time series there is only one dimension and thus one label per identifier, and order does not matter.
+            // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch.DimensionIdentifier.labels)
+            pub labels: ::std::vec::Vec<super::super::super::time_series::LabelPair>,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch.DimensionIdentifier.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a DimensionIdentifier {
+            fn default() -> &'a DimensionIdentifier {
+                <DimensionIdentifier as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl DimensionIdentifier {
+            pub fn new() -> DimensionIdentifier {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(2);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "id",
+                    |m: &DimensionIdentifier| { &m.id },
+                    |m: &mut DimensionIdentifier| { &mut m.id },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                    "labels",
+                    |m: &DimensionIdentifier| { &m.labels },
+                    |m: &mut DimensionIdentifier| { &mut m.labels },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DimensionIdentifier>(
+                    "LimitStrategy.IdentifierMatch.DimensionIdentifier",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for DimensionIdentifier {
+            const NAME: &'static str = "DimensionIdentifier";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.id = is.read_string()?;
+                        },
+                        18 => {
+                            self.labels.push(is.read_message()?);
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if !self.id.is_empty() {
+                    my_size += ::protobuf::rt::string_size(1, &self.id);
+                }
+                for value in &self.labels {
+                    let len = value.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                };
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if !self.id.is_empty() {
+                    os.write_string(1, &self.id)?;
+                }
+                for v in &self.labels {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                };
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> DimensionIdentifier {
+                DimensionIdentifier::new()
+            }
+
+            fn clear(&mut self) {
+                self.id.clear();
+                self.labels.clear();
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static DimensionIdentifier {
+                static instance: DimensionIdentifier = DimensionIdentifier {
+                    id: ::std::string::String::new(),
+                    labels: ::std::vec::Vec::new(),
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for DimensionIdentifier {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("LimitStrategy.IdentifierMatch.DimensionIdentifier").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for DimensionIdentifier {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for DimensionIdentifier {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+    }
 }
 
 // @@protoc_insertion_point(message:bitdrift.public.unary.charts.v1.HistogramConfiguration)
@@ -1281,130 +1914,233 @@ impl SortOrder {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n.bitdrift/public/unary/charts/v1/chart_id.proto\x12\x1fbitdrift.public\
-    .unary.charts.v1\x1a\x17validate/validate.proto\"\x8b\x06\n\x0fChartIden\
-    tifier\x12\\\n\x08workflow\x18\x01\x20\x01(\x0b2>.bitdrift.public.unary.\
-    charts.v1.ChartIdentifier.WorkflowChartH\0R\x08workflow\x12i\n\x0csankey\
-    _chart\x18\x05\x20\x01(\x0b2D.bitdrift.public.unary.charts.v1.ChartIdent\
-    ifier.WorkflowSankeyChartH\0R\x0bsankeyChart\x12z\n\x15workflow_funnel_c\
-    hart\x18\x07\x20\x01(\x0b2D.bitdrift.public.unary.charts.v1.ChartIdentif\
-    ier.WorkflowFunnelChartH\0R\x13workflowFunnelChart\x1a\xc6\x01\n\rWorkfl\
-    owChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\
-    \x07r\x05\x10\x01\x18\xff\x01\x12.\n\rchart_rule_id\x18\x03\x20\x01(\tR\
-    \x0bchartRuleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12?\n\x14aggregate\
-    d_action_id\x18\x04\x20\x01(\tH\0R\x12aggregatedActionIdB\x08\xfaB\x05r\
-    \x03\x18\xff\x01\x88\x01\x01B\x17\n\x15_aggregated_action_id\x1at\n\x13W\
-    orkflowFunnelChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowId\
-    B\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x120\n\x0efunnel_rule_id\x18\x03\
-    \x20\x01(\tR\x0cfunnelRuleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x1ag\n\
-    \x13WorkflowSankeyChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkf\
-    lowIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12#\n\x07rule_id\x18\x03\x20\
-    \x01(\tR\x06ruleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01B\x0b\n\x04type\
-    \x12\x03\xf8B\x01\"\x0f\n\rLimitStrategy\"d\n\x16HistogramConfiguration\
-    \x12\x1e\n\npercentile\x18\x02\x20\x01(\x02R\npercentile\x12*\n\x0bperce\
-    ntiles\x18\x03\x20\x03(\x02R\x0bpercentilesB\x08\xfaB\x05\x92\x01\x02\
-    \x10\x14\"2\n\nFunnelStep\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\x12\
-    \x14\n\x05value\x18\x02\x20\x01(\x04R\x05value*\x1d\n\tSortOrder\x12\x07\
-    \n\x03MAX\x10\0\x12\x07\n\x03MIN\x10\x01J\xac\x17\n\x06\x12\x04\x06\0e\
-    \x01\n\xb8\x02\n\x01\x0c\x12\x03\x06\0\x12\x1a\xad\x02\x20api\x20-\x20bi\
-    tdrift's\x20client/server\x20API\x20definitions\n\x20Copyright\x20Bitdri\
-    ft,\x20Inc.\x20All\x20rights\x20reserved.\n\n\x20Use\x20of\x20this\x20so\
-    urce\x20code\x20and\x20APIs\x20are\x20governed\x20by\x20a\x20source\x20a\
-    vailable\x20license\x20that\x20can\x20be\x20found\x20in\n\x20the\x20LICE\
-    NSE\x20file\x20or\x20at:\n\x20https://polyformproject.org/wp-content/upl\
-    oads/2020/06/PolyForm-Shield-1.0.0.txt\n\n\x08\n\x01\x02\x12\x03\x08\0(\
-    \n\t\n\x02\x03\0\x12\x03\n\0!\n\n\n\x02\x04\0\x12\x04\x0c\0H\x01\n\n\n\
-    \x03\x04\0\x01\x12\x03\x0c\x08\x17\n\x0c\n\x04\x04\0\x03\0\x12\x04\r\x02\
-    \x1f\x03\n\x0c\n\x05\x04\0\x03\0\x01\x12\x03\r\n\x17\n4\n\x06\x04\0\x03\
-    \0\x02\0\x12\x04\x0f\x04\x12\x07\x1a$\x20The\x20workflow\x20that\x20owns\
-    \x20this\x20chart.\n\n\x0e\n\x07\x04\0\x03\0\x02\0\x05\x12\x03\x0f\x04\n\
-    \n\x0e\n\x07\x04\0\x03\0\x02\0\x01\x12\x03\x0f\x0b\x16\n\x0e\n\x07\x04\0\
-    \x03\0\x02\0\x03\x12\x03\x0f\x19\x1a\n\x0f\n\x07\x04\0\x03\0\x02\0\x08\
-    \x12\x04\x0f\x1b\x12\x06\n\x12\n\n\x04\0\x03\0\x02\0\x08\xaf\x08\x0e\x12\
-    \x04\x0f\x1c\x12\x05\nt\n\x06\x04\0\x03\0\x02\x01\x12\x04\x16\x04\x19\
-    \x07\x1ad\x20The\x20ID\x20of\x20the\x20rule\x20node\x20within\x20the\x20\
-    workflow\x20that\x20holds\x20the\n\x20RuleChartConfiguration\x20for\x20t\
-    his\x20chart.\n\n\x0e\n\x07\x04\0\x03\0\x02\x01\x05\x12\x03\x16\x04\n\n\
-    \x0e\n\x07\x04\0\x03\0\x02\x01\x01\x12\x03\x16\x0b\x18\n\x0e\n\x07\x04\0\
-    \x03\0\x02\x01\x03\x12\x03\x16\x1b\x1c\n\x0f\n\x07\x04\0\x03\0\x02\x01\
-    \x08\x12\x04\x16\x1d\x19\x06\n\x12\n\n\x04\0\x03\0\x02\x01\x08\xaf\x08\
-    \x0e\x12\x04\x16\x1e\x19\x05\n\xc2\x01\n\x06\x04\0\x03\0\x02\x02\x12\x03\
-    \x1e\x04X\x1a\xb2\x01\x20Optionally\x20narrows\x20the\x20chart\x20to\x20\
-    a\x20specific\x20time\x20series\x20within\x20the\x20chart\n\x20definitio\
-    n.\x20This\x20is\x20currently\x20required\x20when\x20retrieving\x20examp\
-    le\n\x20cardinality\x20for\x20a\x20specific\x20time\x20series.\n\n\x0e\n\
-    \x07\x04\0\x03\0\x02\x02\x04\x12\x03\x1e\x04\x0c\n\x0e\n\x07\x04\0\x03\0\
-    \x02\x02\x05\x12\x03\x1e\r\x13\n\x0e\n\x07\x04\0\x03\0\x02\x02\x01\x12\
-    \x03\x1e\x14(\n\x0e\n\x07\x04\0\x03\0\x02\x02\x03\x12\x03\x1e+,\n\x0e\n\
-    \x07\x04\0\x03\0\x02\x02\x08\x12\x03\x1e-W\n\x11\n\n\x04\0\x03\0\x02\x02\
-    \x08\xaf\x08\x0e\x12\x03\x1e.V\n\x0c\n\x04\x04\0\x03\x01\x12\x04!\x02-\
-    \x03\n\x0c\n\x05\x04\0\x03\x01\x01\x12\x03!\n\x1d\n;\n\x06\x04\0\x03\x01\
-    \x02\0\x12\x04#\x04&\x07\x1a+\x20The\x20workflow\x20that\x20owns\x20this\
-    \x20funnel\x20chart.\n\n\x0e\n\x07\x04\0\x03\x01\x02\0\x05\x12\x03#\x04\
-    \n\n\x0e\n\x07\x04\0\x03\x01\x02\0\x01\x12\x03#\x0b\x16\n\x0e\n\x07\x04\
-    \0\x03\x01\x02\0\x03\x12\x03#\x19\x1a\n\x0f\n\x07\x04\0\x03\x01\x02\0\
-    \x08\x12\x04#\x1b&\x06\n\x12\n\n\x04\0\x03\x01\x02\0\x08\xaf\x08\x0e\x12\
-    \x04#\x1c&\x05\n:\n\x06\x04\0\x03\x01\x02\x01\x12\x04)\x04,\x07\x1a*\x20\
-    The\x20funnel\x20rule\x20that\x20defines\x20this\x20chart.\n\n\x0e\n\x07\
-    \x04\0\x03\x01\x02\x01\x05\x12\x03)\x04\n\n\x0e\n\x07\x04\0\x03\x01\x02\
-    \x01\x01\x12\x03)\x0b\x19\n\x0e\n\x07\x04\0\x03\x01\x02\x01\x03\x12\x03)\
-    \x1c\x1d\n\x0f\n\x07\x04\0\x03\x01\x02\x01\x08\x12\x04)\x1e,\x06\n\x12\n\
-    \n\x04\0\x03\x01\x02\x01\x08\xaf\x08\x0e\x12\x04)\x1f,\x05\n\x0c\n\x04\
-    \x04\0\x03\x02\x12\x04/\x02;\x03\n\x0c\n\x05\x04\0\x03\x02\x01\x12\x03/\
-    \n\x1d\n;\n\x06\x04\0\x03\x02\x02\0\x12\x041\x044\x07\x1a+\x20The\x20wor\
-    kflow\x20that\x20owns\x20this\x20sankey\x20chart.\n\n\x0e\n\x07\x04\0\
-    \x03\x02\x02\0\x05\x12\x031\x04\n\n\x0e\n\x07\x04\0\x03\x02\x02\0\x01\
-    \x12\x031\x0b\x16\n\x0e\n\x07\x04\0\x03\x02\x02\0\x03\x12\x031\x19\x1a\n\
-    \x0f\n\x07\x04\0\x03\x02\x02\0\x08\x12\x041\x1b4\x06\n\x12\n\n\x04\0\x03\
-    \x02\x02\0\x08\xaf\x08\x0e\x12\x041\x1c4\x05\n:\n\x06\x04\0\x03\x02\x02\
-    \x01\x12\x047\x04:\x07\x1a*\x20The\x20rule\x20that\x20defines\x20this\
-    \x20sankey\x20chart.\n\n\x0e\n\x07\x04\0\x03\x02\x02\x01\x05\x12\x037\
-    \x04\n\n\x0e\n\x07\x04\0\x03\x02\x02\x01\x01\x12\x037\x0b\x12\n\x0e\n\
-    \x07\x04\0\x03\x02\x02\x01\x03\x12\x037\x15\x16\n\x0f\n\x07\x04\0\x03\
-    \x02\x02\x01\x08\x12\x047\x17:\x06\n\x12\n\n\x04\0\x03\x02\x02\x01\x08\
-    \xaf\x08\x0e\x12\x047\x18:\x05\n\x0c\n\x04\x04\0\x08\0\x12\x04=\x02G\x03\
-    \n\x0c\n\x05\x04\0\x08\0\x01\x12\x03=\x08\x0c\n\x0c\n\x05\x04\0\x08\0\
-    \x02\x12\x03>\x04&\n\x0e\n\x07\x04\0\x08\0\x02\xaf\x08\x12\x03>\x04&\n.\
-    \n\x04\x04\0\x02\0\x12\x03@\x04P\x1a!\x20A\x20workflow-backed\x20metric\
-    \x20chart.\n\n\x0c\n\x05\x04\0\x02\0\x06\x12\x03@\x04B\n\x0c\n\x05\x04\0\
-    \x02\0\x01\x12\x03@CK\n\x0c\n\x05\x04\0\x02\0\x03\x12\x03@NO\n.\n\x04\
-    \x04\0\x02\x01\x12\x03C\x04Z\x1a!\x20A\x20workflow-backed\x20sankey\x20c\
-    hart.\n\n\x0c\n\x05\x04\0\x02\x01\x06\x12\x03C\x04H\n\x0c\n\x05\x04\0\
-    \x02\x01\x01\x12\x03CIU\n\x0c\n\x05\x04\0\x02\x01\x03\x12\x03CXY\n.\n\
-    \x04\x04\0\x02\x02\x12\x03F\x04c\x1a!\x20A\x20workflow-backed\x20funnel\
-    \x20chart.\n\n\x0c\n\x05\x04\0\x02\x02\x06\x12\x03F\x04H\n\x0c\n\x05\x04\
-    \0\x02\x02\x01\x12\x03FI^\n\x0c\n\x05\x04\0\x02\x02\x03\x12\x03Fab\n\n\n\
-    \x02\x05\0\x12\x04J\0M\x01\n\n\n\x03\x05\0\x01\x12\x03J\x05\x0e\n\x0b\n\
-    \x04\x05\0\x02\0\x12\x03K\x02\n\n\x0c\n\x05\x05\0\x02\0\x01\x12\x03K\x02\
-    \x05\n\x0c\n\x05\x05\0\x02\0\x02\x12\x03K\x08\t\n\x0b\n\x04\x05\0\x02\
-    \x01\x12\x03L\x02\n\n\x0c\n\x05\x05\0\x02\x01\x01\x12\x03L\x02\x05\n\x0c\
-    \n\x05\x05\0\x02\x01\x02\x12\x03L\x08\t\n\t\n\x02\x04\x01\x12\x03O\0\x18\
-    \n\n\n\x03\x04\x01\x01\x12\x03O\x08\x15\n\n\n\x02\x04\x02\x12\x04Q\0]\
-    \x01\n\n\n\x03\x04\x02\x01\x12\x03Q\x08\x1e\n\xe4\x02\n\x04\x04\x02\x02\
-    \0\x12\x03Y\x02\x17\x1a\xd6\x02\x20Pins\x20the\x20histograms\x20within\
-    \x20this\x20chart\x20to\x20a\x20specific\x20percentile.\x20This\x20is\n\
-    \x20required\x20for\x20charts\x20that\x20have\x20histograms\x20with\x20a\
-    \x20top-K\x20grouping\x20because\x20we\n\x20do\x20not\x20support\x20quer\
-    ying\x20the\x20Cartesian\x20product\x20of\x20(values,\x20percentiles)\n\
-    \x20with\x20top-K.\n\n\x20This\x20must\x20be\x20set\x20to\x20one\x20of\
-    \x20the\x20percentiles\x20in\x20the\x20ChartMetadata\x20for\x20the\n\x20\
-    chart\x20if\x20percentiles\x20are\x20defined.\n\n\x0c\n\x05\x04\x02\x02\
-    \0\x05\x12\x03Y\x02\x07\n\x0c\n\x05\x04\x02\x02\0\x01\x12\x03Y\x08\x12\n\
-    \x0c\n\x05\x04\x02\x02\0\x03\x12\x03Y\x15\x16\n_\n\x04\x04\x02\x02\x01\
-    \x12\x03\\\x02L\x1aR\x20Percentiles\x20to\x20query\x20when\x20the\x20cha\
-    rt\x20supports\x20returning\x20multiple\x20histogram\x20lines.\n\n\x0c\n\
-    \x05\x04\x02\x02\x01\x04\x12\x03\\\x02\n\n\x0c\n\x05\x04\x02\x02\x01\x05\
-    \x12\x03\\\x0b\x10\n\x0c\n\x05\x04\x02\x02\x01\x01\x12\x03\\\x11\x1c\n\
-    \x0c\n\x05\x04\x02\x02\x01\x03\x12\x03\\\x1f\x20\n\x0c\n\x05\x04\x02\x02\
-    \x01\x08\x12\x03\\!K\n\x10\n\t\x04\x02\x02\x01\x08\xaf\x08\x12\x02\x12\
-    \x03\\\"J\n\n\n\x02\x04\x03\x12\x04_\0e\x01\n\n\n\x03\x04\x03\x01\x12\
-    \x03_\x08\x12\n7\n\x04\x04\x03\x02\0\x12\x03a\x02\x10\x1a*\x20The\x20act\
-    ion\x20ID\x20associated\x20with\x20this\x20step.\n\n\x0c\n\x05\x04\x03\
-    \x02\0\x05\x12\x03a\x02\x08\n\x0c\n\x05\x04\x03\x02\0\x01\x12\x03a\t\x0b\
-    \n\x0c\n\x05\x04\x03\x02\0\x03\x12\x03a\x0e\x0f\nR\n\x04\x04\x03\x02\x01\
-    \x12\x03d\x02\x13\x1aE\x20The\x20accumulated\x20value\x20of\x20all\x20co\
-    llected\x20data\x20points\x20for\x20this\x20metric.\n\n\x0c\n\x05\x04\
-    \x03\x02\x01\x05\x12\x03d\x02\x08\n\x0c\n\x05\x04\x03\x02\x01\x01\x12\
-    \x03d\t\x0e\n\x0c\n\x05\x04\x03\x02\x01\x03\x12\x03d\x11\x12b\x06proto3\
+    .unary.charts.v1\x1a5bitdrift/public/shared/workflows/v1/time_series.pro\
+    to\x1a\x17validate/validate.proto\"\x8b\x06\n\x0fChartIdentifier\x12\\\n\
+    \x08workflow\x18\x01\x20\x01(\x0b2>.bitdrift.public.unary.charts.v1.Char\
+    tIdentifier.WorkflowChartH\0R\x08workflow\x12i\n\x0csankey_chart\x18\x05\
+    \x20\x01(\x0b2D.bitdrift.public.unary.charts.v1.ChartIdentifier.Workflow\
+    SankeyChartH\0R\x0bsankeyChart\x12z\n\x15workflow_funnel_chart\x18\x07\
+    \x20\x01(\x0b2D.bitdrift.public.unary.charts.v1.ChartIdentifier.Workflow\
+    FunnelChartH\0R\x13workflowFunnelChart\x1a\xc6\x01\n\rWorkflowChart\x12+\
+    \n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\x07r\x05\x10\
+    \x01\x18\xff\x01\x12.\n\rchart_rule_id\x18\x03\x20\x01(\tR\x0bchartRuleI\
+    dB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12?\n\x14aggregated_action_id\
+    \x18\x04\x20\x01(\tH\0R\x12aggregatedActionIdB\x08\xfaB\x05r\x03\x18\xff\
+    \x01\x88\x01\x01B\x17\n\x15_aggregated_action_id\x1at\n\x13WorkflowFunne\
+    lChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\x07\
+    r\x05\x10\x01\x18\xff\x01\x120\n\x0efunnel_rule_id\x18\x03\x20\x01(\tR\
+    \x0cfunnelRuleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x1ag\n\x13Workflow\
+    SankeyChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfa\
+    B\x07r\x05\x10\x01\x18\xff\x01\x12#\n\x07rule_id\x18\x03\x20\x01(\tR\x06\
+    ruleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01B\x0b\n\x04type\x12\x03\xf8B\
+    \x01\"\xa4\x06\n\rLimitStrategy\x12Z\n\x0btop_k_limit\x18\x01\x20\x01(\
+    \x0b28.bitdrift.public.unary.charts.v1.LimitStrategy.TopKLimitH\0R\ttopK\
+    Limit\x12k\n\x10identifier_match\x18\x02\x20\x01(\x0b2>.bitdrift.public.\
+    unary.charts.v1.LimitStrategy.IdentifierMatchH\0R\x0fidentifierMatch\x12\
+    S\n\nsort_order\x18\x03\x20\x01(\x0e2*.bitdrift.public.unary.charts.v1.S\
+    ortOrderR\tsortOrderB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12^\n\nexclusion\
+    s\x18\x04\x20\x01(\x0b2>.bitdrift.public.unary.charts.v1.LimitStrategy.I\
+    dentifierMatchR\nexclusions\x1a)\n\tTopKLimit\x12\x1c\n\x05top_k\x18\x01\
+    \x20\x01(\x04R\x04topKB\x07\xfaB\x042\x02\x20\0\x1a\xd7\x02\n\x0fIdentif\
+    ierMatch\x12\x93\x01\n\x15dimension_identifiers\x18\x01\x20\x03(\x0b2R.b\
+    itdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch.DimensionId\
+    entifierR\x14dimensionIdentifiersB\n\xfaB\x07\x92\x01\x04\x08\x01\x10d\
+    \x12!\n\x0creturn_other\x18\x02\x20\x01(\x08R\x0breturnOther\x1a\x8a\x01\
+    \n\x13DimensionIdentifier\x12\x1a\n\x02id\x18\x01\x20\x01(\tR\x02idB\n\
+    \xfaB\x07r\x05\x10\x01\x18\xff\x01\x12W\n\x06labels\x18\x02\x20\x03(\x0b\
+    2..bitdrift.public.shared.workflows.v1.LabelPairR\x06labelsB\x0f\xfaB\
+    \x0c\x92\x01\t\x10\n\"\x05\x8a\x01\x02\x10\x01B\x10\n\x0elimit_strategy\
+    \"\x83\x01\n\x16HistogramConfiguration\x12/\n\npercentile\x18\x02\x20\
+    \x01(\x02R\npercentileB\x0f\xfaB\x0c\n\n\x1d\0\0\x80?-\0\0\0\0\x128\n\
+    \x0bpercentiles\x18\x03\x20\x03(\x02R\x0bpercentilesB\x16\xfaB\x13\x92\
+    \x01\x10\x10\x14\"\x0c\n\n\x1d\0\0\x80?-\0\0\0\0\"2\n\nFunnelStep\x12\
+    \x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\x12\x14\n\x05value\x18\x02\x20\
+    \x01(\x04R\x05value*\x1d\n\tSortOrder\x12\x07\n\x03MAX\x10\0\x12\x07\n\
+    \x03MIN\x10\x01J\xae,\n\x07\x12\x05\x06\0\xa6\x01\x01\n\xb8\x02\n\x01\
+    \x0c\x12\x03\x06\0\x12\x1a\xad\x02\x20api\x20-\x20bitdrift's\x20client/s\
+    erver\x20API\x20definitions\n\x20Copyright\x20Bitdrift,\x20Inc.\x20All\
+    \x20rights\x20reserved.\n\n\x20Use\x20of\x20this\x20source\x20code\x20an\
+    d\x20APIs\x20are\x20governed\x20by\x20a\x20source\x20available\x20licens\
+    e\x20that\x20can\x20be\x20found\x20in\n\x20the\x20LICENSE\x20file\x20or\
+    \x20at:\n\x20https://polyformproject.org/wp-content/uploads/2020/06/Poly\
+    Form-Shield-1.0.0.txt\n\n\x08\n\x01\x02\x12\x03\x08\0(\n\t\n\x02\x03\0\
+    \x12\x03\n\0?\n\t\n\x02\x03\x01\x12\x03\x0b\0!\n\n\n\x02\x04\0\x12\x04\r\
+    \0I\x01\n\n\n\x03\x04\0\x01\x12\x03\r\x08\x17\n\x0c\n\x04\x04\0\x03\0\
+    \x12\x04\x0e\x02\x20\x03\n\x0c\n\x05\x04\0\x03\0\x01\x12\x03\x0e\n\x17\n\
+    4\n\x06\x04\0\x03\0\x02\0\x12\x04\x10\x04\x13\x07\x1a$\x20The\x20workflo\
+    w\x20that\x20owns\x20this\x20chart.\n\n\x0e\n\x07\x04\0\x03\0\x02\0\x05\
+    \x12\x03\x10\x04\n\n\x0e\n\x07\x04\0\x03\0\x02\0\x01\x12\x03\x10\x0b\x16\
+    \n\x0e\n\x07\x04\0\x03\0\x02\0\x03\x12\x03\x10\x19\x1a\n\x0f\n\x07\x04\0\
+    \x03\0\x02\0\x08\x12\x04\x10\x1b\x13\x06\n\x12\n\n\x04\0\x03\0\x02\0\x08\
+    \xaf\x08\x0e\x12\x04\x10\x1c\x13\x05\nt\n\x06\x04\0\x03\0\x02\x01\x12\
+    \x04\x17\x04\x1a\x07\x1ad\x20The\x20ID\x20of\x20the\x20rule\x20node\x20w\
+    ithin\x20the\x20workflow\x20that\x20holds\x20the\n\x20RuleChartConfigura\
+    tion\x20for\x20this\x20chart.\n\n\x0e\n\x07\x04\0\x03\0\x02\x01\x05\x12\
+    \x03\x17\x04\n\n\x0e\n\x07\x04\0\x03\0\x02\x01\x01\x12\x03\x17\x0b\x18\n\
+    \x0e\n\x07\x04\0\x03\0\x02\x01\x03\x12\x03\x17\x1b\x1c\n\x0f\n\x07\x04\0\
+    \x03\0\x02\x01\x08\x12\x04\x17\x1d\x1a\x06\n\x12\n\n\x04\0\x03\0\x02\x01\
+    \x08\xaf\x08\x0e\x12\x04\x17\x1e\x1a\x05\n\xc2\x01\n\x06\x04\0\x03\0\x02\
+    \x02\x12\x03\x1f\x04X\x1a\xb2\x01\x20Optionally\x20narrows\x20the\x20cha\
+    rt\x20to\x20a\x20specific\x20time\x20series\x20within\x20the\x20chart\n\
+    \x20definition.\x20This\x20is\x20currently\x20required\x20when\x20retrie\
+    ving\x20example\n\x20cardinality\x20for\x20a\x20specific\x20time\x20seri\
+    es.\n\n\x0e\n\x07\x04\0\x03\0\x02\x02\x04\x12\x03\x1f\x04\x0c\n\x0e\n\
+    \x07\x04\0\x03\0\x02\x02\x05\x12\x03\x1f\r\x13\n\x0e\n\x07\x04\0\x03\0\
+    \x02\x02\x01\x12\x03\x1f\x14(\n\x0e\n\x07\x04\0\x03\0\x02\x02\x03\x12\
+    \x03\x1f+,\n\x0e\n\x07\x04\0\x03\0\x02\x02\x08\x12\x03\x1f-W\n\x11\n\n\
+    \x04\0\x03\0\x02\x02\x08\xaf\x08\x0e\x12\x03\x1f.V\n\x0c\n\x04\x04\0\x03\
+    \x01\x12\x04\"\x02.\x03\n\x0c\n\x05\x04\0\x03\x01\x01\x12\x03\"\n\x1d\n;\
+    \n\x06\x04\0\x03\x01\x02\0\x12\x04$\x04'\x07\x1a+\x20The\x20workflow\x20\
+    that\x20owns\x20this\x20funnel\x20chart.\n\n\x0e\n\x07\x04\0\x03\x01\x02\
+    \0\x05\x12\x03$\x04\n\n\x0e\n\x07\x04\0\x03\x01\x02\0\x01\x12\x03$\x0b\
+    \x16\n\x0e\n\x07\x04\0\x03\x01\x02\0\x03\x12\x03$\x19\x1a\n\x0f\n\x07\
+    \x04\0\x03\x01\x02\0\x08\x12\x04$\x1b'\x06\n\x12\n\n\x04\0\x03\x01\x02\0\
+    \x08\xaf\x08\x0e\x12\x04$\x1c'\x05\n:\n\x06\x04\0\x03\x01\x02\x01\x12\
+    \x04*\x04-\x07\x1a*\x20The\x20funnel\x20rule\x20that\x20defines\x20this\
+    \x20chart.\n\n\x0e\n\x07\x04\0\x03\x01\x02\x01\x05\x12\x03*\x04\n\n\x0e\
+    \n\x07\x04\0\x03\x01\x02\x01\x01\x12\x03*\x0b\x19\n\x0e\n\x07\x04\0\x03\
+    \x01\x02\x01\x03\x12\x03*\x1c\x1d\n\x0f\n\x07\x04\0\x03\x01\x02\x01\x08\
+    \x12\x04*\x1e-\x06\n\x12\n\n\x04\0\x03\x01\x02\x01\x08\xaf\x08\x0e\x12\
+    \x04*\x1f-\x05\n\x0c\n\x04\x04\0\x03\x02\x12\x040\x02<\x03\n\x0c\n\x05\
+    \x04\0\x03\x02\x01\x12\x030\n\x1d\n;\n\x06\x04\0\x03\x02\x02\0\x12\x042\
+    \x045\x07\x1a+\x20The\x20workflow\x20that\x20owns\x20this\x20sankey\x20c\
+    hart.\n\n\x0e\n\x07\x04\0\x03\x02\x02\0\x05\x12\x032\x04\n\n\x0e\n\x07\
+    \x04\0\x03\x02\x02\0\x01\x12\x032\x0b\x16\n\x0e\n\x07\x04\0\x03\x02\x02\
+    \0\x03\x12\x032\x19\x1a\n\x0f\n\x07\x04\0\x03\x02\x02\0\x08\x12\x042\x1b\
+    5\x06\n\x12\n\n\x04\0\x03\x02\x02\0\x08\xaf\x08\x0e\x12\x042\x1c5\x05\n:\
+    \n\x06\x04\0\x03\x02\x02\x01\x12\x048\x04;\x07\x1a*\x20The\x20rule\x20th\
+    at\x20defines\x20this\x20sankey\x20chart.\n\n\x0e\n\x07\x04\0\x03\x02\
+    \x02\x01\x05\x12\x038\x04\n\n\x0e\n\x07\x04\0\x03\x02\x02\x01\x01\x12\
+    \x038\x0b\x12\n\x0e\n\x07\x04\0\x03\x02\x02\x01\x03\x12\x038\x15\x16\n\
+    \x0f\n\x07\x04\0\x03\x02\x02\x01\x08\x12\x048\x17;\x06\n\x12\n\n\x04\0\
+    \x03\x02\x02\x01\x08\xaf\x08\x0e\x12\x048\x18;\x05\n\x0c\n\x04\x04\0\x08\
+    \0\x12\x04>\x02H\x03\n\x0c\n\x05\x04\0\x08\0\x01\x12\x03>\x08\x0c\n\x0c\
+    \n\x05\x04\0\x08\0\x02\x12\x03?\x04&\n\x0e\n\x07\x04\0\x08\0\x02\xaf\x08\
+    \x12\x03?\x04&\n.\n\x04\x04\0\x02\0\x12\x03A\x04P\x1a!\x20A\x20workflow-\
+    backed\x20metric\x20chart.\n\n\x0c\n\x05\x04\0\x02\0\x06\x12\x03A\x04B\n\
+    \x0c\n\x05\x04\0\x02\0\x01\x12\x03ACK\n\x0c\n\x05\x04\0\x02\0\x03\x12\
+    \x03ANO\n.\n\x04\x04\0\x02\x01\x12\x03D\x04Z\x1a!\x20A\x20workflow-backe\
+    d\x20sankey\x20chart.\n\n\x0c\n\x05\x04\0\x02\x01\x06\x12\x03D\x04H\n\
+    \x0c\n\x05\x04\0\x02\x01\x01\x12\x03DIU\n\x0c\n\x05\x04\0\x02\x01\x03\
+    \x12\x03DXY\n.\n\x04\x04\0\x02\x02\x12\x03G\x04c\x1a!\x20A\x20workflow-b\
+    acked\x20funnel\x20chart.\n\n\x0c\n\x05\x04\0\x02\x02\x06\x12\x03G\x04H\
+    \n\x0c\n\x05\x04\0\x02\x02\x01\x12\x03GI^\n\x0c\n\x05\x04\0\x02\x02\x03\
+    \x12\x03Gab\n\n\n\x02\x05\0\x12\x04K\0N\x01\n\n\n\x03\x05\0\x01\x12\x03K\
+    \x05\x0e\n\x0b\n\x04\x05\0\x02\0\x12\x03L\x02\n\n\x0c\n\x05\x05\0\x02\0\
+    \x01\x12\x03L\x02\x05\n\x0c\n\x05\x05\0\x02\0\x02\x12\x03L\x08\t\n\x0b\n\
+    \x04\x05\0\x02\x01\x12\x03M\x02\n\n\x0c\n\x05\x05\0\x02\x01\x01\x12\x03M\
+    \x02\x05\n\x0c\n\x05\x05\0\x02\x01\x02\x12\x03M\x08\t\n\x0b\n\x02\x04\
+    \x01\x12\x05P\0\x85\x01\x01\n\n\n\x03\x04\x01\x01\x12\x03P\x08\x15\n\x0c\
+    \n\x04\x04\x01\x03\0\x12\x04Q\x02T\x03\n\x0c\n\x05\x04\x01\x03\0\x01\x12\
+    \x03Q\n\x13\nI\n\x06\x04\x01\x03\0\x02\0\x12\x03S\x049\x1a:\x20The\x20nu\
+    mber\x20of\x20time\x20series\x20to\x20return\x20per\x20chart\x20dimensio\
+    n.\n\n\x0e\n\x07\x04\x01\x03\0\x02\0\x05\x12\x03S\x04\n\n\x0e\n\x07\x04\
+    \x01\x03\0\x02\0\x01\x12\x03S\x0b\x10\n\x0e\n\x07\x04\x01\x03\0\x02\0\
+    \x03\x12\x03S\x13\x14\n\x0e\n\x07\x04\x01\x03\0\x02\0\x08\x12\x03S\x158\
+    \n\x11\n\n\x04\x01\x03\0\x02\0\x08\xaf\x08\x06\x12\x03S\x167\n\x9e\x02\n\
+    \x04\x04\x01\x03\x01\x12\x04Z\x02u\x03\x1a\x8f\x02\x20Used\x20to\x20sele\
+    ct\x20specific\x20time\x20series\x20from\x20a\x20chart\x20instead\x20of\
+    \x20relying\x20on\x20a\x20top-K\x20algorithm.\n\n\x20This\x20specifies\
+    \x20the\x20list\x20of\x20dimension\x20values\x20to\x20include\x20in\x20t\
+    he\x20results.\x20Only\x20time\x20series\x20that\x20match\x20one\x20of\
+    \x20the\x20sent\n\x20dimension\x20value\x20combinations\x20will\x20be\
+    \x20included\x20in\x20the\x20results.\n\n\x0c\n\x05\x04\x01\x03\x01\x01\
+    \x12\x03Z\n\x19\n\x0e\n\x06\x04\x01\x03\x01\x03\0\x12\x04[\x04k\x05\n\
+    \x0e\n\x07\x04\x01\x03\x01\x03\0\x01\x12\x03[\x0c\x1f\n\x8f\x01\n\x08\
+    \x04\x01\x03\x01\x03\0\x02\0\x12\x04]\x06`\t\x1a}\x20The\x20rule\x20id\
+    \x20associated\x20with\x20this\x20chart\x20dimension.\x20This\x20is\x20t\
+    he\x20ID\x20returned\x20on\x20the\x20ChartsID\x20response\x20for\x20a\
+    \x20given\x20time\x20series.\n\n\x10\n\t\x04\x01\x03\x01\x03\0\x02\0\x05\
+    \x12\x03]\x06\x0c\n\x10\n\t\x04\x01\x03\x01\x03\0\x02\0\x01\x12\x03]\r\
+    \x0f\n\x10\n\t\x04\x01\x03\x01\x03\0\x02\0\x03\x12\x03]\x12\x13\n\x11\n\
+    \t\x04\x01\x03\x01\x03\0\x02\0\x08\x12\x04]\x14`\x08\n\x14\n\x0c\x04\x01\
+    \x03\x01\x03\0\x02\0\x08\xaf\x08\x0e\x12\x04]\x15`\x07\n\xa0\x03\n\x08\
+    \x04\x01\x03\x01\x03\0\x02\x01\x12\x04e\x06j\t\x1a\x8d\x03\x20The\x20lab\
+    els\x20associated\x20with\x20this\x20chart\x20dimension.\x20This\x20is\
+    \x20used\x20to\x20specify\x20the\x20dimensions\x20of\x20the\x20time\x20s\
+    eries\x20to\x20include\x20in\x20the\x20results.\n\n\x20For\x20multi-grou\
+    p\x20by\x20time\x20series\x20the\x20labels\x20must\x20be\x20sent\x20in\
+    \x20the\x20same\x20order\x20as\x20the\x20dimension\x20identifiers\x20in\
+    \x20the\x20ChartMetadata\x20for\x20the\x20chart.\x20For\x20single\x20gro\
+    up\x20by\x20time\x20series\x20there\x20is\x20only\x20one\x20dimension\
+    \x20and\x20thus\x20one\x20label\x20per\x20identifier,\x20and\x20order\
+    \x20does\x20not\x20matter.\n\n\x10\n\t\x04\x01\x03\x01\x03\0\x02\x01\x04\
+    \x12\x03e\x06\x0e\n\x10\n\t\x04\x01\x03\x01\x03\0\x02\x01\x06\x12\x03e\
+    \x0f=\n\x10\n\t\x04\x01\x03\x01\x03\0\x02\x01\x01\x12\x03e>D\n\x10\n\t\
+    \x04\x01\x03\x01\x03\0\x02\x01\x03\x12\x03eGH\n\x11\n\t\x04\x01\x03\x01\
+    \x03\0\x02\x01\x08\x12\x04eIj\x08\n\x14\n\x0c\x04\x01\x03\x01\x03\0\x02\
+    \x01\x08\xaf\x08\x12\x12\x04eJj\x07\n\x0e\n\x06\x04\x01\x03\x01\x02\0\
+    \x12\x04m\x04p\x07\n\x0e\n\x07\x04\x01\x03\x01\x02\0\x04\x12\x03m\x04\
+    \x0c\n\x0e\n\x07\x04\x01\x03\x01\x02\0\x06\x12\x03m\r_\n\x0e\n\x07\x04\
+    \x01\x03\x01\x02\0\x01\x12\x03m`u\n\x0e\n\x07\x04\x01\x03\x01\x02\0\x03\
+    \x12\x03mxy\n\x0f\n\x07\x04\x01\x03\x01\x02\0\x08\x12\x04mzp\x06\n\x12\n\
+    \n\x04\x01\x03\x01\x02\0\x08\xaf\x08\x12\x12\x04m{p\x05\n\x7f\n\x06\x04\
+    \x01\x03\x01\x02\x01\x12\x03t\x04\x1a\x1ap\x20If\x20true,\x20the\x20rest\
+    \x20of\x20the\x20dimensions\x20will\x20be\x20returned\x20as\x20\"other\"\
+    .\x20This\x20does\x20not\x20currently\n\x20work\x20for\x20histograms.\n\
+    \n\x0e\n\x07\x04\x01\x03\x01\x02\x01\x05\x12\x03t\x04\x08\n\x0e\n\x07\
+    \x04\x01\x03\x01\x02\x01\x01\x12\x03t\t\x15\n\x0e\n\x07\x04\x01\x03\x01\
+    \x02\x01\x03\x12\x03t\x18\x19\n\x0c\n\x04\x04\x01\x08\0\x12\x04w\x02}\
+    \x03\n\x0c\n\x05\x04\x01\x08\0\x01\x12\x03w\x08\x16\n\x82\x02\n\x04\x04\
+    \x01\x02\0\x12\x03y\x04M\x1a\xf4\x01\x20Select\x20the\x20top\x20K\x20gro\
+    ups\x20per\x20time\x20series\x20based\x20on\x20the\x20aggregated\x20valu\
+    e\x20for\x20the\x20chart\x20metric.\x20This\x20is\x20the\x20most\x20comm\
+    on\x20limit\x20strategy\x20and\x20is\x20used\x20when\x20there\x20are\x20\
+    too\x20many\x20groups\x20to\x20display\x20in\x20the\x20chart\x20and\x20w\
+    e\x20want\x20to\x20show\x20the\x20most\x20important\x20ones.\n\n\x0c\n\
+    \x05\x04\x01\x02\0\x06\x12\x03y\x04<\n\x0c\n\x05\x04\x01\x02\0\x01\x12\
+    \x03y=H\n\x0c\n\x05\x04\x01\x02\0\x03\x12\x03yKL\n\xbb\x01\n\x04\x04\x01\
+    \x02\x01\x12\x03|\x04X\x1a\xad\x01\x20Select\x20specific\x20groups\x20ba\
+    sed\x20on\x20their\x20dimension\x20values.\x20This\x20is\x20used\x20to\
+    \x20target\x20particular\x20groups\x20that\x20we\x20want\x20to\x20displa\
+    y\x20in\x20the\x20chart\x20regardless\x20of\x20their\x20aggregated\x20va\
+    lue.\n\n\x0c\n\x05\x04\x01\x02\x01\x06\x12\x03|\x04B\n\x0c\n\x05\x04\x01\
+    \x02\x01\x01\x12\x03|CS\n\x0c\n\x05\x04\x01\x02\x01\x03\x12\x03|VW\n\xca\
+    \x01\n\x04\x04\x01\x02\x02\x12\x04\x81\x01\x02k\x1a\xbb\x01\x20The\x20so\
+    rt\x20order\x20to\x20use\x20when\x20applying\x20the\x20limit\x20strategy\
+    .\x20By\x20default\x20the\x20output\x20returns\x20the\x20top\x20K\n\x20o\
+    f\x20maximum\x20values,\x20but\x20can\x20be\x20switched\x20to\x20return\
+    \x20the\x20top\x20K\x20of\x20minimum\x20values\x20(bottom\x20K).\n\n\r\n\
+    \x05\x04\x01\x02\x02\x06\x12\x04\x81\x01\x02,\n\r\n\x05\x04\x01\x02\x02\
+    \x01\x12\x04\x81\x01-7\n\r\n\x05\x04\x01\x02\x02\x03\x12\x04\x81\x01:;\n\
+    \r\n\x05\x04\x01\x02\x02\x08\x12\x04\x81\x01<j\n\x10\n\x08\x04\x01\x02\
+    \x02\x08\xaf\x08\x10\x12\x04\x81\x01=i\n~\n\x04\x04\x01\x02\x03\x12\x04\
+    \x84\x01\x02P\x1ap\x20Optional\x20exclusions\x20to\x20apply\x20when\x20l\
+    imiting.\x20This\x20is\x20used\x20to\x20exclude\x20specific\x20dimension\
+    s\x20from\x20the\x20top\x20K\x20results\n\n\r\n\x05\x04\x01\x02\x03\x06\
+    \x12\x04\x84\x01\x02@\n\r\n\x05\x04\x01\x02\x03\x01\x12\x04\x84\x01AK\n\
+    \r\n\x05\x04\x01\x02\x03\x03\x12\x04\x84\x01NO\n\x0c\n\x02\x04\x02\x12\
+    \x06\x87\x01\0\x9e\x01\x01\n\x0b\n\x03\x04\x02\x01\x12\x04\x87\x01\x08\
+    \x1e\n\xe7\x02\n\x04\x04\x02\x02\0\x12\x06\x8f\x01\x02\x92\x01\x05\x1a\
+    \xd6\x02\x20Pins\x20the\x20histograms\x20within\x20this\x20chart\x20to\
+    \x20a\x20specific\x20percentile.\x20This\x20is\n\x20required\x20for\x20c\
+    harts\x20that\x20have\x20histograms\x20with\x20a\x20top-K\x20grouping\
+    \x20because\x20we\n\x20do\x20not\x20support\x20querying\x20the\x20Cartes\
+    ian\x20product\x20of\x20(values,\x20percentiles)\n\x20with\x20top-K.\n\n\
+    \x20This\x20must\x20be\x20set\x20to\x20one\x20of\x20the\x20percentiles\
+    \x20in\x20the\x20ChartMetadata\x20for\x20the\n\x20chart\x20if\x20percent\
+    iles\x20are\x20defined.\n\n\r\n\x05\x04\x02\x02\0\x05\x12\x04\x8f\x01\
+    \x02\x07\n\r\n\x05\x04\x02\x02\0\x01\x12\x04\x8f\x01\x08\x12\n\r\n\x05\
+    \x04\x02\x02\0\x03\x12\x04\x8f\x01\x15\x16\n\x0f\n\x05\x04\x02\x02\0\x08\
+    \x12\x06\x8f\x01\x17\x92\x01\x04\n\x12\n\x08\x04\x02\x02\0\x08\xaf\x08\
+    \x01\x12\x06\x8f\x01\x18\x92\x01\x03\nb\n\x04\x04\x02\x02\x01\x12\x06\
+    \x95\x01\x02\x9d\x01\x05\x1aR\x20Percentiles\x20to\x20query\x20when\x20t\
+    he\x20chart\x20supports\x20returning\x20multiple\x20histogram\x20lines.\
+    \n\n\r\n\x05\x04\x02\x02\x01\x04\x12\x04\x95\x01\x02\n\n\r\n\x05\x04\x02\
+    \x02\x01\x05\x12\x04\x95\x01\x0b\x10\n\r\n\x05\x04\x02\x02\x01\x01\x12\
+    \x04\x95\x01\x11\x1c\n\r\n\x05\x04\x02\x02\x01\x03\x12\x04\x95\x01\x1f\
+    \x20\n\x0f\n\x05\x04\x02\x02\x01\x08\x12\x06\x95\x01!\x9d\x01\x04\n\x12\
+    \n\x08\x04\x02\x02\x01\x08\xaf\x08\x12\x12\x06\x95\x01\"\x9d\x01\x03\n\
+    \x0c\n\x02\x04\x03\x12\x06\xa0\x01\0\xa6\x01\x01\n\x0b\n\x03\x04\x03\x01\
+    \x12\x04\xa0\x01\x08\x12\n8\n\x04\x04\x03\x02\0\x12\x04\xa2\x01\x02\x10\
+    \x1a*\x20The\x20action\x20ID\x20associated\x20with\x20this\x20step.\n\n\
+    \r\n\x05\x04\x03\x02\0\x05\x12\x04\xa2\x01\x02\x08\n\r\n\x05\x04\x03\x02\
+    \0\x01\x12\x04\xa2\x01\t\x0b\n\r\n\x05\x04\x03\x02\0\x03\x12\x04\xa2\x01\
+    \x0e\x0f\nS\n\x04\x04\x03\x02\x01\x12\x04\xa5\x01\x02\x13\x1aE\x20The\
+    \x20accumulated\x20value\x20of\x20all\x20collected\x20data\x20points\x20\
+    for\x20this\x20metric.\n\n\r\n\x05\x04\x03\x02\x01\x05\x12\x04\xa5\x01\
+    \x02\x08\n\r\n\x05\x04\x03\x02\x01\x01\x12\x04\xa5\x01\t\x0e\n\r\n\x05\
+    \x04\x03\x02\x01\x03\x12\x04\xa5\x01\x11\x12b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1421,9 +2157,10 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(1);
+            let mut deps = ::std::vec::Vec::with_capacity(2);
+            deps.push(super::time_series::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(7);
+            let mut messages = ::std::vec::Vec::with_capacity(10);
             messages.push(ChartIdentifier::generated_message_descriptor_data());
             messages.push(LimitStrategy::generated_message_descriptor_data());
             messages.push(HistogramConfiguration::generated_message_descriptor_data());
@@ -1431,6 +2168,9 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(chart_identifier::WorkflowChart::generated_message_descriptor_data());
             messages.push(chart_identifier::WorkflowFunnelChart::generated_message_descriptor_data());
             messages.push(chart_identifier::WorkflowSankeyChart::generated_message_descriptor_data());
+            messages.push(limit_strategy::TopKLimit::generated_message_descriptor_data());
+            messages.push(limit_strategy::IdentifierMatch::generated_message_descriptor_data());
+            messages.push(limit_strategy::identifier_match::DimensionIdentifier::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(1);
             enums.push(SortOrder::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
