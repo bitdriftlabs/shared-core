@@ -5,6 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(test)]
+#[path = "./status_test.rs"]
+mod tests;
+
 use crate::connect_protocol::{ConnectProtocolType, ErrorResponse};
 use crate::{CONTENT_TYPE_GRPC, CONTENT_TYPE_JSON, GRPC_MESSAGE, GRPC_STATUS};
 use axum::body::Body;
@@ -176,6 +180,16 @@ impl Status {
       .extensions()
       .get::<StatusTraceContext>()
       .map(StatusTraceContext::error_message)
+  }
+
+  pub fn set_trace_error_message<T>(
+    response: &mut http::Response<T>,
+    error_message: impl Into<String>,
+  ) {
+    Self::apply_trace_context(
+      response,
+      Some(StatusTraceContext::new(error_message.into())),
+    );
   }
 
   pub(crate) fn from_wire(code: Code, message: Option<String>) -> Self {
