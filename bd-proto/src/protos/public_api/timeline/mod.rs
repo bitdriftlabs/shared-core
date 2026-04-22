@@ -8,4 +8,4 @@
 pub mod api;
 
 // Re-export proto dependencies referenced by generated code in this subdirectory.
-pub use super::{hydration, info, logs};
+pub use super::{hydration, info, logs, search};
