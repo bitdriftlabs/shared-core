@@ -158,6 +158,7 @@ pub fn get_public_api_proto_configs() -> Vec<ProtoConfig> {
         "../api/src/bitdrift/public/unary/timeline/v1/hydration.proto",
         "../api/src/bitdrift/public/unary/timeline/v1/info.proto",
         "../api/src/bitdrift/public/unary/timeline/v1/logs.proto",
+        "../api/src/bitdrift/public/unary/timeline/v1/search.proto",
       ],
       includes: PROTO_INCLUDES,
       use_tokio_bytes: false,

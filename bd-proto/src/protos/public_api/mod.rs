@@ -20,6 +20,7 @@ pub mod info;
 pub mod issues;
 pub mod logs;
 pub mod platform;
+pub mod search;
 pub mod time_series;
 pub mod timeline;
 pub mod workflow;
