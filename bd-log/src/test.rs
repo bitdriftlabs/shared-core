@@ -6,11 +6,12 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::{LogConfig, RegistryLayer, otel};
-use opentelemetry::trace::TracerProvider as _;
+use opentelemetry::trace::{TraceContextExt, TracerProvider as _};
 use opentelemetry_sdk::error::OTelSdkResult;
 use opentelemetry_sdk::trace::{SdkTracerProvider, SpanData, SpanExporter};
 use std::future::Future;
 use std::sync::{Arc, Mutex};
+use tracing_opentelemetry::OpenTelemetrySpanExt;
 use tracing_subscriber::Registry;
 use tracing_subscriber::layer::SubscriberExt;
 
@@ -38,6 +39,59 @@ fn build_test_otel(service_name: &str) -> (TestExporter, SdkTracerProvider, Regi
   let tracer = provider.tracer(service_name.to_string());
 
   (exporter, provider, otel::build_direct_otel_layer(tracer))
+}
+
+pub struct TestTraceContext {
+  exporter: TestExporter,
+  provider: SdkTracerProvider,
+  dispatch: tracing::Dispatch,
+}
+
+impl TestTraceContext {
+  #[must_use]
+  pub fn new(service_name: &str) -> Self {
+    let (exporter, provider, otel_layer) = build_test_otel(service_name);
+    let subscriber = Registry::default().with(otel_layer);
+
+    Self {
+      exporter,
+      provider,
+      dispatch: tracing::Dispatch::new(subscriber),
+    }
+  }
+
+  #[must_use]
+  pub fn dispatch(&self) -> tracing::Dispatch {
+    self.dispatch.clone()
+  }
+
+  #[must_use]
+  pub fn exported_spans(&self) -> Vec<SpanData> {
+    self.exporter.exported_spans()
+  }
+
+  pub fn request_span(&self) -> (tracing::dispatcher::DefaultGuard, tracing::Span, String) {
+    let guard = tracing::dispatcher::set_default(&self.dispatch);
+    let span = crate::otel_info_span!("test_request");
+    let span_context = {
+      let _enter = span.enter();
+      span.context().span().span_context().clone()
+    };
+
+    assert!(span_context.is_valid());
+
+    (
+      guard,
+      span,
+      format!("{}-{}", span_context.trace_id(), span_context.span_id()),
+    )
+  }
+}
+
+impl Drop for TestTraceContext {
+  fn drop(&mut self) {
+    self.provider.force_flush().unwrap();
+  }
 }
 
 fn test_layers(config: &LogConfig, otel_layer: Option<RegistryLayer>) -> Vec<RegistryLayer> {
