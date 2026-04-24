@@ -10,4 +10,4 @@ doctest = false
 
 [dependencies]
 bd-workspace-hack.workspace = true
-regex                       = { version = "1.12.3", default-features = false, features = ["std"] }
+regex-lite                  = "0.1.6"
