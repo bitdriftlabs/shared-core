@@ -68,7 +68,7 @@ impl BatteryDrainTracker {
 
     if let Some(battery_level_change) = guard.get_level_change(battery_level_change_window) {
       fields.insert(
-        "_battery_level_change".into(),
+        "_battery_level_change_per_min".into(),
         AnnotatedLogField::new_ootb(format!("{battery_level_change:.4}")),
       );
     }
