@@ -66,7 +66,7 @@ fn process_resource_log(tracker: &BatteryDrainTracker, fields: &mut AnnotatedLog
 
 fn get_drain_rate(fields: &AnnotatedLogFields) -> Option<f64> {
   fields
-    .get("_battery_level_change")
+    .get("_battery_level_change_per_min")
     .and_then(|f| match &f.value {
       bd_log_primitives::DataValue::String(s) => s.parse().ok(),
       _ => None,
