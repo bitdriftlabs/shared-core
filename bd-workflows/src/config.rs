@@ -605,7 +605,7 @@ impl Transition {
         required_matches: rule.count,
       },
       Rule_type::RuleStateChangeMatch(rule) => Predicate::StateChangeMatch {
-        state_change_match: StateChangeMatch::try_from_proto(rule)?,
+        state_change_match: Box::new(StateChangeMatch::try_from_proto(rule)?),
         extra_matcher: rule.log_matcher.as_ref().map(Tree::new).transpose()?,
       },
     };
@@ -684,7 +684,7 @@ pub(crate) enum Predicate {
     required_matches: u32,
   },
   StateChangeMatch {
-    state_change_match: StateChangeMatch,
+    state_change_match: Box<StateChangeMatch>,
     extra_matcher: Option<Tree>,
   },
 }
