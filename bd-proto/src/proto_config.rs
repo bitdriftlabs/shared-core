@@ -107,13 +107,6 @@ pub fn get_proto_configs() -> Vec<ProtoConfig> {
       use_tokio_bytes: false,
       file_header: true,
     },
-    ProtoConfig {
-      output_dir: "src/protos/mme",
-      inputs: &["../api/src/bitdrift_public/protobuf/mme/v1/service.proto"],
-      includes: PROTO_INCLUDES,
-      use_tokio_bytes: false,
-      file_header: true,
-    },
     // Vendored third-party protos without bitdrift file headers.
     ProtoConfig {
       output_dir: "src/protos/google/api",
