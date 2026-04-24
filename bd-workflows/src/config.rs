@@ -7,6 +7,7 @@
 
 use crate::workflow::Traversal;
 use anyhow::{anyhow, bail};
+use bd_client_regex::Regex;
 use bd_log_matcher::matcher::Tree;
 use bd_log_primitives::{FieldsRef, LogMessage};
 use bd_proto::protos::workflow::save_field::SaveField;
@@ -22,7 +23,6 @@ use bd_proto::protos::workflow::workflow::workflow::{
 use bd_state::Scope;
 use bd_stats_common::MetricType;
 use protobuf::MessageField;
-use bd_client_regex::Regex;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use time::Duration;

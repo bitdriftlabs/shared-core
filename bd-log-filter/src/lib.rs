@@ -19,6 +19,7 @@
 mod filter_chain_test;
 
 use anyhow::{Context, Result, anyhow};
+use bd_client_regex::Regex;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{
   FieldsRef,
@@ -34,7 +35,6 @@ use bd_proto::protos::filter::filter::filter::{self};
 use bd_proto::protos::filter::filter::{Filter as FilterProto, FiltersConfiguration};
 use filter::transform::Transform_type;
 use itertools::Itertools;
-use bd_client_regex::Regex;
 use std::borrow::Cow;
 
 #[cfg(test)]

@@ -10,10 +10,10 @@
 mod test;
 
 use anyhow::{Result, anyhow};
+use bd_client_regex::Regex;
 use bd_proto::protos::value_matcher::value_matcher::{Operator, SemVerValueMatch};
 use itertools::Itertools;
 use protobuf::EnumOrUnknown;
-use bd_client_regex::Regex;
 use std::cmp::Ordering;
 use std::fmt::Display;
 
