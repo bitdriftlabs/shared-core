@@ -18,7 +18,7 @@ bd-workspace-hack.workspace = true
 itertools.workspace         = true
 protobuf.workspace          = true
 rand.workspace              = true
-regex-lite.workspace        = true
+bd-client-regex.path        = "../bd-client-regex"
 tempfile.workspace          = true
 
 

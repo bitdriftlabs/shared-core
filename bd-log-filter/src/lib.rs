@@ -34,7 +34,7 @@ use bd_proto::protos::filter::filter::filter::{self};
 use bd_proto::protos::filter::filter::{Filter as FilterProto, FiltersConfiguration};
 use filter::transform::Transform_type;
 use itertools::Itertools;
-use regex_lite::Regex;
+use bd_client_regex::Regex;
 use std::borrow::Cow;
 
 #[cfg(test)]

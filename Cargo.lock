@@ -495,6 +495,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-client-regex"
+version = "1.0.0"
+dependencies = [
+ "regex-lite",
+]
+
+[[package]]
 name = "bd-client-stats"
 version = "1.0.0"
 dependencies = [
@@ -568,6 +575,7 @@ dependencies = [
  "bd-api",
  "bd-artifact-upload",
  "bd-client-common",
+ "bd-client-regex",
  "bd-client-stats-store",
  "bd-device",
  "bd-error-reporter",
@@ -591,7 +599,6 @@ dependencies = [
  "memmap2",
  "mockall",
  "notify",
- "regex-lite",
  "tempfile",
  "thiserror 2.0.18",
  "time",
@@ -799,6 +806,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "assert_matches",
+ "bd-client-regex",
  "bd-client-stats-store",
  "bd-log-matcher",
  "bd-log-primitives",
@@ -811,7 +819,6 @@ dependencies = [
  "itertools 0.14.0",
  "log",
  "pretty_assertions",
- "regex-lite",
  "time",
 ]
 
@@ -822,6 +829,7 @@ dependencies = [
  "ahash",
  "anyhow",
  "assert_matches",
+ "bd-client-regex",
  "bd-log-primitives",
  "bd-proto",
  "bd-state",
@@ -833,7 +841,6 @@ dependencies = [
  "pretty_assertions",
  "protobuf 4.0.0-alpha.0",
  "rand 0.10.1",
- "regex-lite",
  "tempfile",
  "time",
  "tokio",
@@ -1378,6 +1385,7 @@ dependencies = [
  "async-trait",
  "bd-api",
  "bd-client-common",
+ "bd-client-regex",
  "bd-client-stats",
  "bd-client-stats-store",
  "bd-completion",
@@ -1404,7 +1412,6 @@ dependencies = [
  "parking_lot",
  "pretty_assertions",
  "protobuf 4.0.0-alpha.0",
- "regex-lite",
  "serde",
  "sha2",
  "simplelog",

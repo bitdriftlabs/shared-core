@@ -22,7 +22,7 @@ use bd_proto::protos::workflow::workflow::workflow::{
 use bd_state::Scope;
 use bd_stats_common::MetricType;
 use protobuf::MessageField;
-use regex_lite::Regex;
+use bd_client_regex::Regex;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use time::Duration;

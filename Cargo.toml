@@ -10,6 +10,7 @@ members = [
   "bd-bounded-buffer",
   "bd-buffer",
   "bd-client-common",
+  "bd-client-regex",
   "bd-client-stats",
   "bd-client-stats-store",
   "bd-completion",
@@ -154,7 +155,6 @@ protobuf-json-mapping = { git = "https://github.com/bitdriftlabs/rust-protobuf.g
 
 rand         = "0.10.1"
 regex        = "1.12.3"
-regex-lite   = "0.1.6"
 reqwest      = { version = "0.13.2", features = ["deflate", "json"] }
 rstest       = "0.26.1"
 rstest_reuse = "0.7.0"

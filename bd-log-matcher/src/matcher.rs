@@ -454,7 +454,7 @@ impl Leaf {
           (value.to_string(), Operator::OPERATOR_EQUALS)
         },
         legacy_log_matcher::base_log_matcher::StringMatchType::PREFIX => (
-          format!("^{}.*", regex_lite::escape(value)),
+          format!("^{}.*", bd_client_regex::escape(value)),
           Operator::OPERATOR_REGEX,
         ),
         legacy_log_matcher::base_log_matcher::StringMatchType::REGEX => {

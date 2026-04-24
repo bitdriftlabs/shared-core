@@ -16,7 +16,7 @@ use bd_proto::protos::value_matcher::value_matcher::{
   StringValueMatch as StringValueMatch_type,
 };
 use protobuf::EnumOrUnknown;
-use regex_lite::Regex;
+use bd_client_regex::Regex;
 use std::ops::Deref;
 
 //
