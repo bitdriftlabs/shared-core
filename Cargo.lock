@@ -498,6 +498,7 @@ dependencies = [
 name = "bd-client-regex"
 version = "1.0.0"
 dependencies = [
+ "bd-workspace-hack",
  "regex-lite",
 ]
 
