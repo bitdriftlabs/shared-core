@@ -13,7 +13,7 @@ use anyhow::{Result, anyhow};
 use bd_proto::protos::value_matcher::value_matcher::{Operator, SemVerValueMatch};
 use itertools::Itertools;
 use protobuf::EnumOrUnknown;
-use regex::Regex;
+use regex_lite::Regex;
 use std::cmp::Ordering;
 use std::fmt::Display;
 

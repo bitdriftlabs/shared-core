@@ -591,7 +591,7 @@ dependencies = [
  "memmap2",
  "mockall",
  "notify",
- "regex",
+ "regex-lite",
  "tempfile",
  "thiserror 2.0.18",
  "time",
@@ -811,7 +811,7 @@ dependencies = [
  "itertools 0.14.0",
  "log",
  "pretty_assertions",
- "regex",
+ "regex-lite",
  "time",
 ]
 
@@ -833,7 +833,7 @@ dependencies = [
  "pretty_assertions",
  "protobuf 4.0.0-alpha.0",
  "rand 0.10.1",
- "regex",
+ "regex-lite",
  "tempfile",
  "time",
  "tokio",
@@ -1404,7 +1404,7 @@ dependencies = [
  "parking_lot",
  "pretty_assertions",
  "protobuf 4.0.0-alpha.0",
- "regex",
+ "regex-lite",
  "serde",
  "sha2",
  "simplelog",
@@ -3898,6 +3898,12 @@ dependencies = [
  "memchr",
  "regex-syntax",
 ]
+
+[[package]]
+name = "regex-lite"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cab834c73d247e67f4fae452806d17d3c7501756d98c8808d7c9c7aa7d18f973"
 
 [[package]]
 name = "regex-syntax"
