@@ -2771,7 +2771,7 @@ fn runtime_caching() {
       device,
       start_in_sleep_mode: false,
     })
-    .with_client_stats_tickers(Box::new(flush_ticker), Box::new(upload_ticker))
+    .with_client_stats_tickers_for_test(Box::new(flush_ticker), Box::new(upload_ticker))
     .build_dedicated_thread()
     .unwrap()
     .0;

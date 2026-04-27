@@ -6,9 +6,11 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::file_manager::{FileManager, PENDING_AGGREGATION_INDEX_FILE, STATS_DIRECTORY};
-use crate::stats::{IntervalCreator, SleepModeAwareRuntimeWatchTicker, Ticker};
+use crate::stats::{PeriodicAction, PeriodicSchedule, RuntimePeriodicSchedule};
+use crate::test::TestTickerBackedSchedule;
 use crate::{FlushTrigger, FlushTriggerRequest, Stats};
 use assert_matches::assert_matches;
+use async_trait::async_trait;
 use bd_api::DataUpload;
 use bd_api::upload::{Tracked, UploadResponse};
 use bd_client_common::file::write_compressed_protobuf;
@@ -34,8 +36,9 @@ use bd_stats_common::labels;
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_test_helpers::stats::StatsRequestHelper;
 use bd_time::test::TestTicker;
-use bd_time::{OffsetDateTimeExt, TestTimeProvider, TimeDurationExt, TimeProvider};
+use bd_time::{OffsetDateTimeExt, TestTimeProvider, TimeProvider};
 use futures_util::poll;
+use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -43,12 +46,21 @@ use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::{Duration, OffsetDateTime};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinError;
-use tokio::time::{MissedTickBehavior, sleep, timeout};
+use tokio::time::timeout;
 
 async fn write_test_index(fs: &dyn FileSystem, ready_to_upload: bool) {
+  write_test_index_with_start(fs, OffsetDateTime::UNIX_EPOCH, ready_to_upload).await;
+}
+
+async fn write_test_index_with_start(
+  fs: &dyn FileSystem,
+  period_start: OffsetDateTime,
+  ready_to_upload: bool,
+) {
   let index = PendingAggregationIndex {
     pending_files: vec![PendingFile {
       name: "test".to_string(),
+      period_start: period_start.into_proto(),
       period_end: if ready_to_upload {
         OffsetDateTime::UNIX_EPOCH.into_proto()
       } else {
@@ -66,6 +78,69 @@ async fn write_test_index(fs: &dyn FileSystem, ready_to_upload: bool) {
   )
   .await
   .unwrap();
+}
+
+async fn write_test_upload_request(fs: &dyn FileSystem, request: StatsUploadRequest) {
+  let compressed = write_compressed_protobuf(&request).unwrap();
+  fs.write_file(&STATS_DIRECTORY.join("test"), &compressed)
+    .await
+    .unwrap();
+}
+
+#[derive(Clone)]
+struct PausedScheduleTimeProvider {
+  now: Arc<Mutex<OffsetDateTime>>,
+}
+
+impl PausedScheduleTimeProvider {
+  fn new(now: OffsetDateTime) -> Self {
+    Self {
+      now: Arc::new(Mutex::new(now)),
+    }
+  }
+
+  async fn advance(&self, duration: Duration) {
+    *self.now.lock() += duration;
+    tokio::time::advance(duration.unsigned_abs()).await;
+  }
+}
+
+#[async_trait]
+impl TimeProvider for PausedScheduleTimeProvider {
+  fn now(&self) -> OffsetDateTime {
+    *self.now.lock()
+  }
+
+  async fn sleep(&self, duration: Duration) {
+    tokio::time::sleep(duration.unsigned_abs()).await;
+  }
+}
+
+fn runtime_periodic_schedule(
+  flush_interval: Duration,
+  live_upload_interval: Duration,
+  sleep_upload_interval: Duration,
+  sleep_mode_active: bool,
+  time_provider: Arc<dyn TimeProvider>,
+) -> (
+  RuntimePeriodicSchedule,
+  watch::Sender<Duration>,
+  watch::Sender<Duration>,
+  watch::Sender<Duration>,
+  watch::Sender<bool>,
+) {
+  let (flush_tx, flush_rx) = watch::channel(flush_interval);
+  let (live_tx, live_rx) = watch::channel(live_upload_interval);
+  let (sleep_tx, sleep_rx) = watch::channel(sleep_upload_interval);
+  let (sleep_mode_tx, sleep_mode_rx) = watch::channel(sleep_mode_active);
+
+  (
+    RuntimePeriodicSchedule::new(flush_rx, live_rx, sleep_rx, sleep_mode_rx, time_provider),
+    flush_tx,
+    live_tx,
+    sleep_tx,
+    sleep_mode_tx,
+  )
 }
 
 //
@@ -157,8 +232,10 @@ impl Setup {
     let (upload_tick_tx, upload_ticker) = TestTicker::new();
     let minimum_upload_interval = runtime_loader.register_duration_watch();
     let mut flush_handles = stats.flush_handle_helper(
-      Box::new(periodic_flush_ticker),
-      Box::new(upload_ticker),
+      Box::new(TestTickerBackedSchedule::new(
+        Box::new(periodic_flush_ticker),
+        Box::new(upload_ticker),
+      )),
       shutdown_trigger.make_shutdown(),
       data_tx,
       Arc::new(FileManager::new(fs, test_time.clone(), &runtime_loader)),
@@ -220,10 +297,11 @@ impl Setup {
   ) {
     // In order for the tests to be deterministic we have to do this dance carefully to make sure
     // that the events are fully complete before continuing. This is the basic sequence. Some tests
-    // use more complicated interleavings.
-    self.do_periodic_flush().await;
-
+    // use more complicated interleavings. Periodic upload ticks now flush to disk before they
+    // attempt the upload, so the helper only needs to drive the upload tick and wait for that
+    // embedded flush.
     self.upload_tick_tx.send(()).await.unwrap();
+    self.test_hooks.flush_complete_rx.recv().await.unwrap();
     let stats = self.next_stat_upload().await;
     f(StatsRequestHelper::new(stats.payload.clone()));
 
@@ -245,6 +323,156 @@ impl Setup {
     self.shutdown_trigger.shutdown().await;
     self.flush_handle.await
   }
+}
+
+#[tokio::test(start_paused = true)]
+async fn runtime_periodic_schedule_flushes_before_upload_when_divisible() {
+  let time_provider = Arc::new(PausedScheduleTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let (mut schedule, _flush_tx, _live_tx, _sleep_tx, _sleep_mode_tx) = runtime_periodic_schedule(
+    30.seconds(),
+    90.seconds(),
+    15.minutes(),
+    false,
+    time_provider.clone(),
+  );
+
+  let mut next_action = Box::pin(schedule.next_action());
+  assert!(poll!(&mut next_action).is_pending());
+  time_provider.advance(29.seconds()).await;
+  assert!(poll!(&mut next_action).is_pending());
+  time_provider.advance(1.seconds()).await;
+  assert_eq!(
+    poll!(next_action),
+    std::task::Poll::Ready(PeriodicAction::Flush)
+  );
+
+  let mut next_action = Box::pin(schedule.next_action());
+  time_provider.advance(29.seconds()).await;
+  assert!(poll!(&mut next_action).is_pending());
+  time_provider.advance(1.seconds()).await;
+  assert_eq!(
+    poll!(next_action),
+    std::task::Poll::Ready(PeriodicAction::Flush)
+  );
+
+  let mut next_action = Box::pin(schedule.next_action());
+  time_provider.advance(29.seconds()).await;
+  assert!(poll!(&mut next_action).is_pending());
+  time_provider.advance(1.seconds()).await;
+  assert_eq!(
+    poll!(next_action),
+    std::task::Poll::Ready(PeriodicAction::Upload)
+  );
+}
+
+#[tokio::test(start_paused = true)]
+async fn runtime_periodic_schedule_falls_back_to_upload_when_flush_is_not_divisor() {
+  let time_provider = Arc::new(PausedScheduleTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let (mut schedule, _flush_tx, _live_tx, _sleep_tx, _sleep_mode_tx) = runtime_periodic_schedule(
+    40.seconds(),
+    90.seconds(),
+    15.minutes(),
+    false,
+    time_provider.clone(),
+  );
+
+  let mut next_action = Box::pin(schedule.next_action());
+  assert!(poll!(&mut next_action).is_pending());
+  time_provider.advance(89.seconds()).await;
+  assert!(poll!(&mut next_action).is_pending());
+  time_provider.advance(1.seconds()).await;
+  assert_eq!(
+    poll!(next_action),
+    std::task::Poll::Ready(PeriodicAction::Upload)
+  );
+}
+
+#[tokio::test(start_paused = true)]
+async fn runtime_periodic_schedule_upload_interval_change_rebuilds_to_new_deadline() {
+  let time_provider = Arc::new(PausedScheduleTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let (mut schedule, _flush_tx, live_tx, _sleep_tx, _sleep_mode_tx) = runtime_periodic_schedule(
+    120.seconds(),
+    120.seconds(),
+    15.minutes(),
+    false,
+    time_provider.clone(),
+  );
+
+  let mut next_action = Box::pin(schedule.next_action());
+  assert!(poll!(&mut next_action).is_pending());
+  time_provider.advance(30.seconds()).await;
+  assert!(poll!(&mut next_action).is_pending());
+
+  live_tx.send(40.seconds()).unwrap();
+
+  match poll!(&mut next_action) {
+    std::task::Poll::Ready(action) => assert_eq!(action, PeriodicAction::Upload),
+    std::task::Poll::Pending => {
+      time_provider.advance(40.seconds()).await;
+      assert_eq!(
+        poll!(next_action),
+        std::task::Poll::Ready(PeriodicAction::Upload)
+      );
+    },
+  }
+}
+
+#[tokio::test(start_paused = true)]
+async fn runtime_periodic_schedule_sleep_mode_transition_uses_sleep_interval() {
+  let time_provider = Arc::new(PausedScheduleTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let (mut schedule, _flush_tx, _live_tx, _sleep_tx, sleep_mode_tx) = runtime_periodic_schedule(
+    120.seconds(),
+    120.seconds(),
+    50.seconds(),
+    false,
+    time_provider.clone(),
+  );
+
+  let mut next_action = Box::pin(schedule.next_action());
+  assert!(poll!(&mut next_action).is_pending());
+  time_provider.advance(30.seconds()).await;
+  assert!(poll!(&mut next_action).is_pending());
+
+  sleep_mode_tx.send(true).unwrap();
+
+  match poll!(&mut next_action) {
+    std::task::Poll::Ready(action) => assert_eq!(action, PeriodicAction::Upload),
+    std::task::Poll::Pending => {
+      time_provider.advance(50.seconds()).await;
+      assert_eq!(
+        poll!(next_action),
+        std::task::Poll::Ready(PeriodicAction::Upload)
+      );
+    },
+  }
+}
+
+#[tokio::test(start_paused = true)]
+async fn runtime_periodic_schedule_flush_only_change_keeps_upload_deadline() {
+  let time_provider = Arc::new(PausedScheduleTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let (mut schedule, flush_tx, _live_tx, _sleep_tx, _sleep_mode_tx) = runtime_periodic_schedule(
+    30.seconds(),
+    90.seconds(),
+    15.minutes(),
+    false,
+    time_provider.clone(),
+  );
+
+  let mut next_action = Box::pin(schedule.next_action());
+  assert!(poll!(&mut next_action).is_pending());
+  time_provider.advance(10.seconds()).await;
+  assert!(poll!(&mut next_action).is_pending());
+
+  flush_tx.send(200.seconds()).unwrap();
+  assert!(poll!(&mut next_action).is_pending());
+
+  time_provider.advance(79.seconds()).await;
+  assert!(poll!(&mut next_action).is_pending());
+  time_provider.advance(1.seconds()).await;
+  assert_eq!(
+    poll!(next_action),
+    std::task::Poll::Ready(PeriodicAction::Upload)
+  );
 }
 
 #[tokio::test(start_paused = true)]
@@ -416,6 +644,7 @@ async fn max_files_upload_race() {
 
   // Start the upload but don't complete it.
   setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
   let stats = setup.next_stat_upload().await;
 
   // Advance 5 minutes and flush. This will remove the file that is currently being uploaded.
@@ -587,6 +816,82 @@ async fn existing_pending_upload() {
       assert_eq!(upload.number_of_metrics(), 0);
     })
     .await;
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn existing_old_aggregated_file_uploads_immediately_on_startup() {
+  let directory = TempDir::new().unwrap();
+  let fs = RealFileSystem::new(directory.path().to_path_buf());
+  write_test_index_with_start(&fs, OffsetDateTime::UNIX_EPOCH - 10.minutes(), false).await;
+  write_test_upload_request(
+    &fs,
+    StatsUploadRequest {
+      upload_uuid: "test".to_string(),
+      snapshot: vec![StatsSnapshot::default()],
+      ..Default::default()
+    },
+  )
+  .await;
+
+  let mut setup = Setup::new_with_directory(directory).await;
+
+  let upload = timeout(1.std_seconds(), setup.next_stat_upload())
+    .await
+    .unwrap();
+  let helper = StatsRequestHelper::new(upload.payload.clone());
+  assert_eq!(upload.payload.upload_uuid, "test");
+  assert_eq!(helper.number_of_metrics(), 0);
+
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn fresh_pending_upload_does_not_start_on_startup() {
+  let directory = TempDir::new().unwrap();
+  let fs = RealFileSystem::new(directory.path().to_path_buf());
+  write_test_index_with_start(&fs, OffsetDateTime::UNIX_EPOCH, true).await;
+  write_test_upload_request(
+    &fs,
+    StatsUploadRequest {
+      upload_uuid: "test".to_string(),
+      snapshot: vec![StatsSnapshot::default()],
+      ..Default::default()
+    },
+  )
+  .await;
+
+  let mut setup = Setup::new_with_directory(directory).await;
+
+  assert!(
+    timeout(1.std_seconds(), setup.next_stat_upload())
+      .await
+      .is_err()
+  );
+
+  setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  let upload = setup.next_stat_upload().await;
+  assert_eq!(upload.payload.upload_uuid, "test");
+
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
   setup.shutdown().await.unwrap();
 }
 
@@ -968,81 +1273,6 @@ async fn dynamic_stats() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn sleep_mode_aware_runtime_watch_ticker() {
-  struct TestIntervalCreator;
-  impl IntervalCreator for TestIntervalCreator {
-    fn interval(duration: Duration) -> tokio::time::Interval {
-      duration.interval_at(MissedTickBehavior::Delay)
-    }
-  }
-
-  let (live_mode_tx, live_mode_rx) = watch::channel(60.seconds());
-  let (sleep_mode_tx, sleep_mode_rx) = watch::channel(15.minutes());
-  let (sleep_mode_active_tx, sleep_mode_active_rx) = watch::channel(false);
-
-  let mut ticker = SleepModeAwareRuntimeWatchTicker::<TestIntervalCreator>::new(
-    live_mode_rx,
-    sleep_mode_rx,
-    sleep_mode_active_rx,
-  );
-
-  let mut tick_future = ticker.tick();
-  assert!(poll!(&mut tick_future).is_pending());
-  sleep(59.std_seconds()).await;
-  assert!(poll!(&mut tick_future).is_pending());
-  sleep(1.std_seconds()).await;
-  assert!(poll!(tick_future).is_ready());
-
-  // Now switch to sleep mode outside of an active tick.
-  sleep_mode_active_tx.send(true).unwrap();
-  let mut tick_future = ticker.tick();
-  assert!(poll!(&mut tick_future).is_pending());
-  sleep(14.std_minutes()).await;
-  assert!(poll!(&mut tick_future).is_pending());
-  sleep(1.std_minutes()).await;
-  assert!(poll!(tick_future).is_ready());
-
-  // Start a new tick in sleep mode, and switch to live mode during the tick.
-  let mut tick_future = ticker.tick();
-  sleep(3.std_minutes()).await;
-  assert!(poll!(&mut tick_future).is_pending());
-  sleep_mode_active_tx.send(false).unwrap();
-  assert!(poll!(&mut tick_future).is_pending());
-  sleep(59.std_seconds()).await;
-  assert!(poll!(&mut tick_future).is_pending());
-  sleep(1.std_seconds()).await;
-  assert!(poll!(tick_future).is_ready());
-
-  // Start a new tick and update sleep mode time which shouldn't do anything until we switch to
-  // sleep mode.
-  let mut tick_future = ticker.tick();
-  sleep_mode_tx.send(30.minutes()).unwrap();
-  sleep(59.std_seconds()).await;
-  assert!(poll!(&mut tick_future).is_pending());
-  sleep(1.std_seconds()).await;
-  assert!(poll!(tick_future).is_ready());
-
-  // Start a tick, switch to sleep mode, and verify we get the new time.
-  let mut tick_future = ticker.tick();
-  sleep_mode_active_tx.send(true).unwrap();
-  assert!(poll!(&mut tick_future).is_pending());
-  sleep(29.std_minutes()).await;
-  assert!(poll!(&mut tick_future).is_pending());
-  sleep(1.std_minutes()).await;
-  assert!(poll!(tick_future).is_ready());
-
-  // Start a tick, change live mode duration, switch to live, and verify we get the new time.
-  let mut tick_future = ticker.tick();
-  live_mode_tx.send(30.seconds()).unwrap();
-  sleep_mode_active_tx.send(false).unwrap();
-  assert!(poll!(&mut tick_future).is_pending());
-  sleep(29.std_seconds()).await;
-  assert!(poll!(&mut tick_future).is_pending());
-  sleep(1.std_seconds()).await;
-  assert!(poll!(tick_future).is_ready());
-}
-
-#[tokio::test(start_paused = true)]
 async fn flush_during_periodic_upload() {
   let mut setup = Setup::new().await;
 
@@ -1056,6 +1286,7 @@ async fn flush_during_periodic_upload() {
 
   // 3. Trigger periodic upload
   setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
 
   // 4. Receive Upload 1
   let upload1 = setup.next_stat_upload().await;
@@ -1109,6 +1340,129 @@ async fn flush_during_periodic_upload() {
   setup.test_hooks.upload_complete_rx.recv().await.unwrap();
 
   rx.recv().await.unwrap();
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn periodic_upload_does_not_block_immediate_explicit_flush_upload() {
+  let mut setup = Setup::new().await;
+
+  setup
+    .runtime_loader
+    .update_snapshot(make_simple_update(vec![(
+      bd_runtime::runtime::stats::MinimumUploadIntervalFlag::path(),
+      ValueKind::Int(60_000),
+    )]))
+    .await
+    .unwrap();
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "periodic"), "id1", 1);
+
+  setup.do_periodic_flush().await;
+  setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  let periodic_upload = setup.next_stat_upload().await;
+  assert_eq!(
+    StatsRequestHelper::new(periodic_upload.payload.clone()).upload_reason(),
+    UploadReason::UPLOAD_REASON_PERIODIC
+  );
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "explicit"), "id1", 2);
+
+  let (tx, rx) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  let explicit_upload = setup.next_stat_upload().await;
+  let helper = StatsRequestHelper::new(explicit_upload.payload.clone());
+  assert_eq!(
+    helper.upload_reason(),
+    UploadReason::UPLOAD_REASON_EVENT_TRIGGERED
+  );
+  assert_eq!(
+    helper.get_workflow_counter("id1", labels!("foo" => "explicit")),
+    Some(2)
+  );
+
+  periodic_upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: periodic_upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  explicit_upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: explicit_upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  rx.recv().await.unwrap();
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn periodic_tick_while_upload_is_in_flight_flushes_without_starting_second_upload() {
+  let mut setup = Setup::new().await;
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "first"), "id1", 1);
+
+  setup.do_periodic_flush().await;
+  setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  let upload1 = setup.next_stat_upload().await;
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "second"), "id2", 2);
+
+  setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  assert!(poll!(Box::pin(setup.data_rx.recv())).is_pending());
+
+  upload1
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload1.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  assert!(poll!(Box::pin(setup.data_rx.recv())).is_pending());
+
+  setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  let upload2 = setup.next_stat_upload().await;
+  assert_eq!(
+    StatsRequestHelper::new(upload2.payload.clone())
+      .get_workflow_counter("id2", labels!("foo" => "second")),
+    Some(2)
+  );
+
+  upload2
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload2.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
 
   setup.shutdown().await.unwrap();
 }
@@ -1331,6 +1685,7 @@ async fn minimum_upload_interval() {
 
   // Trigger periodic upload tick - should also be skipped
   setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
 
   // Yield to let the background task process the upload tick
   tokio::task::yield_now().await;
@@ -1371,6 +1726,7 @@ async fn minimum_upload_interval() {
   setup.do_periodic_flush().await;
 
   setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
   let upload3 = setup.next_stat_upload().await;
   upload3
     .response_tx

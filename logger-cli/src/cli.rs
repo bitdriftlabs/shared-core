@@ -10,6 +10,7 @@ use logger_cli::logger::LoggerArgs;
 use logger_cli::types::{LogLevel, LogType, Platform, RuntimeValueType};
 use std::collections::HashMap;
 use std::hash::BuildHasher;
+use std::path::PathBuf;
 
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
@@ -26,6 +27,18 @@ pub struct Options {
   /// Server connection port
   #[clap(env = "LOGGER_PORT", long, required = false, default_value = "5501")]
   pub port: u16,
+
+  /// Override the SDK data directory used for local state.
+  #[clap(env = "LOGGER_SDK_DIRECTORY", long, global = true)]
+  pub sdk_directory: Option<PathBuf>,
+
+  /// Observe stats uploads for a single action ID and write matching events as JSONL.
+  #[clap(env = "LOGGER_OBSERVE_STATS_ACTION_ID", long, global = true)]
+  pub observe_stats_action_id: Option<String>,
+
+  /// Override the JSONL output path for observed stats events.
+  #[clap(env = "LOGGER_OBSERVE_STATS_OUTPUT", long, global = true)]
+  pub observe_stats_output: Option<PathBuf>,
 
   /// Command to run
   #[command(subcommand)]
@@ -68,11 +81,15 @@ pub enum Command {
   SetFeatureFlag(SetFeatureFlagCommand),
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Clone)]
 pub struct StartCommand {
   /// API key to use with emitted logs
   #[clap(env, long)]
   pub api_key: String,
+
+  /// Remove the existing logger data directory before starting
+  #[clap(long)]
+  pub clean_data_dir: bool,
 
   /// Bitdrift URL to connect
   #[clap(env, long, required = false, default_value = "https://api.bitdrift.io")]
@@ -142,6 +159,14 @@ pub struct LogCommand {
   /// Additional field(s) to send with the log
   #[clap(long, num_args=2, value_names=["key", "value"], action=ArgAction::Append)]
   pub field: Vec<String>,
+
+  /// Capture a session for this log.
+  #[clap(long, action = ArgAction::SetTrue)]
+  pub capture_session: bool,
+
+  /// Block until the log has been processed or the timeout expires.
+  #[clap(long, action = ArgAction::SetTrue)]
+  pub block: bool,
 
   /// Log message
   pub message: String,

@@ -196,7 +196,7 @@ impl Setup {
       static_metadata: Arc::new(EmptyMetadata),
       start_in_sleep_mode: options.start_in_sleep_mode,
     })
-    .with_client_stats_tickers(Box::new(flush_ticker), Box::new(upload_ticker))
+    .with_client_stats_tickers_for_test(Box::new(flush_ticker), Box::new(upload_ticker))
     .with_internal_logger(true)
     .with_time_provider(options.time_provider)
     .build_dedicated_thread()
