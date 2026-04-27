@@ -10,6 +10,7 @@ members = [
   "bd-bounded-buffer",
   "bd-buffer",
   "bd-client-common",
+  "bd-client-regex",
   "bd-client-stats",
   "bd-client-stats-store",
   "bd-completion",
@@ -84,6 +85,7 @@ cc              = "1.2.60"
 clap            = { version = "4.6.1", features = ["derive", "env"] }
 cmake           = "0.1.58"
 color-backtrace = "0.7.2"
+criterion       = { version = "0.5", features = ["html_reports"] }
 concat-string   = "1.0.1"
 crc32fast       = "1.5.0"
 ctor            = "0.10.0"
