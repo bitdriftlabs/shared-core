@@ -11,3 +11,11 @@ doctest = false
 [dependencies]
 bd-workspace-hack.workspace = true
 regex-lite                  = "0.1.6"
+
+[dev-dependencies]
+criterion.workspace = true
+regex               = "1.12.3"
+
+[[bench]]
+harness = false
+name    = "regex_comparison"
