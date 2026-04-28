@@ -64,7 +64,7 @@ arbitrary         = { version = "1.4.2", features = ["derive"] }
 arc-swap          = "1.9.1"
 assert_matches    = "1.5.0"
 assert_no_alloc   = "1.1.2"
-async-compression = { version = "0.4.41", features = ["tokio", "zlib"] }
+async-compression = { version = "0.4.42", features = ["tokio", "zlib"] }
 async-trait       = "0.1.89"
 axum              = { version = "0.8.9", features = ["http2", "macros"] }
 base64            = "0.22.1"
@@ -80,13 +80,13 @@ bincode = { version = "=2.0.1", features = ["serde"] }
 bindgen         = "0.72.1"
 bytes           = "1.11.1"
 cbindgen        = "0.29.2"
-cc              = "1.2.60"
+cc              = "1.2.61"
 clap            = { version = "4.6.1", features = ["derive", "env"] }
 cmake           = "0.1.58"
 color-backtrace = "0.7.2"
 concat-string   = "1.0.1"
 crc32fast       = "1.5.0"
-ctor            = "0.10.0"
+ctor            = "0.11.1"
 dashmap         = "6.1.0"
 
 # Pinned due to https://github.com/google/flatbuffers/issues/8876
@@ -109,7 +109,7 @@ insta                 = "1.47.2"
 intrusive-collections = "0.10.0"
 itertools             = "0.14.0"
 jni                   = "0.22.4"
-libc                  = "0.2.185"
+libc                  = "0.2.186"
 libfuzzer-sys         = "0.4.12"
 log                   = "0.4.29"
 matches               = "0.1.10"
@@ -130,6 +130,7 @@ opentelemetry-otlp = { version = "0.31.1", default-features = false, features = 
 opentelemetry_sdk = { version = "0.31.0", features = [
   "trace",
   "rt-tokio",
+  "rt-tokio-current-thread",
   "experimental_trace_batch_span_processor_with_async_runtime",
 ] }
 
@@ -154,7 +155,7 @@ protobuf-json-mapping = { git = "https://github.com/bitdriftlabs/rust-protobuf.g
 
 rand         = "0.10.1"
 regex        = "1.12.3"
-reqwest      = { version = "0.13.2", features = ["deflate", "json"] }
+reqwest      = { version = "0.13.3", features = ["deflate", "json"] }
 rstest       = "0.26.1"
 rstest_reuse = "0.7.0"
 serde        = { version = "1", features = ["derive", "rc"] }
