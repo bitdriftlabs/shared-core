@@ -657,6 +657,13 @@ pub mod debugging {
   );
 }
 
+pub mod crash_reporting {
+  // Enables or disables the detection and reporting of application crashes and
+  // other fatal events. This defaults to enabled so fresh installs still monitor
+  // crashes until runtime explicitly turns it off.
+  bool_feature_flag!(Enabled, "crash_reporting.enabled", true);
+}
+
 pub mod log_upload {
   use time::ext::NumericalDuration as _;
 

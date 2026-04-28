@@ -18,6 +18,7 @@
 #[path = "./monitor_test.rs"]
 mod tests;
 
+pub mod config_writer;
 mod file_watcher;
 pub mod global_state;
 
@@ -60,6 +61,8 @@ fn test_global_init() {
 
 const REPORTS_DIRECTORY: &str = "reports";
 const HOOK_EXCLUDED_FIELDS: &[&str] = &["report_type", "reason", "detail", "session_id"];
+
+pub use config_writer::ConfigWriter;
 
 //
 // CrashLog
@@ -122,9 +125,9 @@ pub trait CrashReportHook: Send + Sync {
 // Monitor
 //
 
-/// Monitors the reports directories for new crash reports.
-/// Pending reports in `reports/new/` are processed on startup, and current-session reports can be
-/// processed immediately when the platform layer enables file watching under `reports/watcher/`.
+/// Monitors the reports directories for new reports crashes and maintains the configuration file
+/// that tells the platform pre-init where to look for reports. Reports are only read on startup
+/// but the configuration file may be updated at any time in response to a runtime change.
 ///
 /// This uses the following directory layout (within the SDK directory):
 /// - `reports/` - The root directory for all all reports.

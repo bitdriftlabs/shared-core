@@ -446,6 +446,12 @@ impl LoggerBuilder {
         self.params.store.clone(),
       );
 
+      let mut config_writer = bd_crash_handler::ConfigWriter::new(
+        &runtime_loader,
+        &self.params.sdk_directory,
+        shutdown_handle.make_shutdown(),
+      );
+
       UnexpectedErrorHandler::register_stats(&scope);
 
       let mut api_shutdown = shutdown_handle.make_shutdown();
@@ -457,6 +463,10 @@ impl LoggerBuilder {
           }
         },
         async move { buffer_uploader.run().await },
+        async move {
+          config_writer.run().await;
+          Ok(())
+        },
         async move {
           async_log_buffer.run(state_store, crash_monitor).await;
           Ok(())
