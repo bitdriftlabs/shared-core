@@ -1308,6 +1308,8 @@ pub struct GetSessionLogsRequest {
     pub page: ::std::option::Option<u64>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.timeline.v1.GetSessionLogsRequest.per_page)
     pub per_page: ::std::option::Option<u64>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.timeline.v1.GetSessionLogsRequest.include_internal_logs)
+    pub include_internal_logs: bool,
     // @@protoc_insertion_point(field:bitdrift.public.unary.timeline.v1.GetSessionLogsRequest.session_id)
     pub session_id: ::std::string::String,
     // special fields
@@ -1327,7 +1329,7 @@ impl GetSessionLogsRequest {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(6);
+        let mut fields = ::std::vec::Vec::with_capacity(7);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, LogType>(
             "log_type",
@@ -1353,6 +1355,11 @@ impl GetSessionLogsRequest {
             "per_page",
             |m: &GetSessionLogsRequest| { &m.per_page },
             |m: &mut GetSessionLogsRequest| { &mut m.per_page },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "include_internal_logs",
+            |m: &GetSessionLogsRequest| { &m.include_internal_logs },
+            |m: &mut GetSessionLogsRequest| { &mut m.include_internal_logs },
         ));
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "session_id",
@@ -1392,6 +1399,9 @@ impl ::protobuf::Message for GetSessionLogsRequest {
                 48 => {
                     self.per_page = ::std::option::Option::Some(is.read_uint64()?);
                 },
+                64 => {
+                    self.include_internal_logs = is.read_bool()?;
+                },
                 74 => {
                     self.session_id = is.read_string()?;
                 },
@@ -1425,6 +1435,9 @@ impl ::protobuf::Message for GetSessionLogsRequest {
         if let Some(v) = self.per_page {
             my_size += ::protobuf::rt::uint64_size(6, v);
         }
+        if self.include_internal_logs != false {
+            my_size += 1 + 1;
+        }
         if !self.session_id.is_empty() {
             my_size += ::protobuf::rt::string_size(9, &self.session_id);
         }
@@ -1448,6 +1461,9 @@ impl ::protobuf::Message for GetSessionLogsRequest {
         }
         if let Some(v) = self.per_page {
             os.write_uint64(6, v)?;
+        }
+        if self.include_internal_logs != false {
+            os.write_bool(8, self.include_internal_logs)?;
         }
         if !self.session_id.is_empty() {
             os.write_string(9, &self.session_id)?;
@@ -1474,6 +1490,7 @@ impl ::protobuf::Message for GetSessionLogsRequest {
         self.end_time.clear();
         self.page = ::std::option::Option::None;
         self.per_page = ::std::option::Option::None;
+        self.include_internal_logs = false;
         self.session_id.clear();
         self.special_fields.clear();
     }
@@ -1485,6 +1502,7 @@ impl ::protobuf::Message for GetSessionLogsRequest {
             end_time: ::protobuf::MessageField::none(),
             page: ::std::option::Option::None,
             per_page: ::std::option::Option::None,
+            include_internal_logs: false,
             session_id: ::std::string::String::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
@@ -1675,17 +1693,18 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     erH\0R\x07trigger\x12H\n\x05error\x18\x04\x20\x01(\x0b20.bitdrift.public\
     .unary.timeline.v1.LogType.ErrorH\0R\x05error\x1a\x0f\n\rScreenCapture\
     \x1a\n\n\x08Resource\x1a\t\n\x07Trigger\x1a\x07\n\x05ErrorB\x0f\n\x08log\
-    _type\x12\x03\xf8B\x01\"\xd5\x02\n\x15GetSessionLogsRequest\x12E\n\x08lo\
+    _type\x12\x03\xf8B\x01\"\x89\x03\n\x15GetSessionLogsRequest\x12E\n\x08lo\
     g_type\x18\x01\x20\x01(\x0b2*.bitdrift.public.unary.timeline.v1.LogTypeR\
     \x07logType\x129\n\nstart_time\x18\x02\x20\x01(\x0b2\x1a.google.protobuf\
     .TimestampR\tstartTime\x125\n\x08end_time\x18\x03\x20\x01(\x0b2\x1a.goog\
     le.protobuf.TimestampR\x07endTime\x12\x17\n\x04page\x18\x05\x20\x01(\x04\
     H\0R\x04page\x88\x01\x01\x12*\n\x08per_page\x18\x06\x20\x01(\x04H\x01R\
-    \x07perPageB\n\xfaB\x072\x05\x18\x88'(\x01\x88\x01\x01\x12(\n\nsession_i\
-    d\x18\t\x20\x01(\tR\tsessionIdB\t\xfaB\x06r\x04\x10\x01\x18dB\x07\n\x05_\
-    pageB\x0b\n\t_per_page\"u\n\x16GetSessionLogsResponse\x12\x1f\n\x0btotal\
-    _pages\x18\x01\x20\x01(\x04R\ntotalPages\x12:\n\x04logs\x18\x02\x20\x03(\
-    \x0b2&.bitdrift.public.unary.timeline.v1.LogR\x04logsb\x06proto3\
+    \x07perPageB\n\xfaB\x072\x05\x18\x88'(\x01\x88\x01\x01\x122\n\x15include\
+    _internal_logs\x18\x08\x20\x01(\x08R\x13includeInternalLogs\x12(\n\nsess\
+    ion_id\x18\t\x20\x01(\tR\tsessionIdB\t\xfaB\x06r\x04\x10\x01\x18dB\x07\n\
+    \x05_pageB\x0b\n\t_per_page\"u\n\x16GetSessionLogsResponse\x12\x1f\n\x0b\
+    total_pages\x18\x01\x20\x01(\x04R\ntotalPages\x12:\n\x04logs\x18\x02\x20\
+    \x03(\x0b2&.bitdrift.public.unary.timeline.v1.LogR\x04logsb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

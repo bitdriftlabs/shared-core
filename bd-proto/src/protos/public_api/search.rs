@@ -45,6 +45,8 @@ pub struct SessionAdvancedSearchRequest {
     pub limit: ::std::option::Option<u32>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.timeline.v1.SessionAdvancedSearchRequest.offset)
     pub offset: ::std::option::Option<u32>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.timeline.v1.SessionAdvancedSearchRequest.include_internal_logs)
+    pub include_internal_logs: bool,
     // @@protoc_insertion_point(field:bitdrift.public.unary.timeline.v1.SessionAdvancedSearchRequest.or_query)
     pub or_query: ::std::vec::Vec<session_advanced_search_request::AndQuery>,
     // special fields
@@ -64,7 +66,7 @@ impl SessionAdvancedSearchRequest {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(6);
+        let mut fields = ::std::vec::Vec::with_capacity(7);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "session_id",
@@ -90,6 +92,11 @@ impl SessionAdvancedSearchRequest {
             "offset",
             |m: &SessionAdvancedSearchRequest| { &m.offset },
             |m: &mut SessionAdvancedSearchRequest| { &mut m.offset },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "include_internal_logs",
+            |m: &SessionAdvancedSearchRequest| { &m.include_internal_logs },
+            |m: &mut SessionAdvancedSearchRequest| { &mut m.include_internal_logs },
         ));
         fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
             "or_query",
@@ -129,6 +136,9 @@ impl ::protobuf::Message for SessionAdvancedSearchRequest {
                 40 => {
                     self.offset = ::std::option::Option::Some(is.read_uint32()?);
                 },
+                48 => {
+                    self.include_internal_logs = is.read_bool()?;
+                },
                 58 => {
                     self.or_query.push(is.read_message()?);
                 },
@@ -161,6 +171,9 @@ impl ::protobuf::Message for SessionAdvancedSearchRequest {
         if let Some(v) = self.offset {
             my_size += ::protobuf::rt::uint32_size(5, v);
         }
+        if self.include_internal_logs != false {
+            my_size += 1 + 1;
+        }
         for value in &self.or_query {
             let len = value.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
@@ -185,6 +198,9 @@ impl ::protobuf::Message for SessionAdvancedSearchRequest {
         }
         if let Some(v) = self.offset {
             os.write_uint32(5, v)?;
+        }
+        if self.include_internal_logs != false {
+            os.write_bool(6, self.include_internal_logs)?;
         }
         for v in &self.or_query {
             ::protobuf::rt::write_message_field_with_cached_size(7, v, os)?;
@@ -211,6 +227,7 @@ impl ::protobuf::Message for SessionAdvancedSearchRequest {
         self.end_time.clear();
         self.limit = ::std::option::Option::None;
         self.offset = ::std::option::Option::None;
+        self.include_internal_logs = false;
         self.or_query.clear();
         self.special_fields.clear();
     }
@@ -222,6 +239,7 @@ impl ::protobuf::Message for SessionAdvancedSearchRequest {
             end_time: ::protobuf::MessageField::none(),
             limit: ::std::option::Option::None,
             offset: ::std::option::Option::None,
+            include_internal_logs: false,
             or_query: ::std::vec::Vec::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
@@ -2032,18 +2050,19 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ary.timeline.v1\x1a,bitdrift/public/unary/common/v1/common.proto\x1a,bit\
     drift/public/unary/timeline/v1/logs.proto\x1a1bitdrift_public/protobuf/l\
     ogging/v1/payload.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17va\
-    lidate/validate.proto\"\x8e\r\n\x1cSessionAdvancedSearchRequest\x12(\n\n\
+    lidate/validate.proto\"\xc2\r\n\x1cSessionAdvancedSearchRequest\x12(\n\n\
     session_id\x18\x01\x20\x01(\tR\tsessionIdB\t\xfaB\x06r\x04\x10\x01\x18d\
     \x129\n\nstart_time\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\
     \tstartTime\x125\n\x08end_time\x18\x03\x20\x01(\x0b2\x1a.google.protobuf\
     .TimestampR\x07endTime\x12%\n\x05limit\x18\x04\x20\x01(\rH\0R\x05limitB\
     \n\xfaB\x07*\x05\x18\x88'(\x01\x88\x01\x01\x12\x1b\n\x06offset\x18\x05\
-    \x20\x01(\rH\x01R\x06offset\x88\x01\x01\x12o\n\x08or_query\x18\x07\x20\
-    \x03(\x0b2H.bitdrift.public.unary.timeline.v1.SessionAdvancedSearchReque\
-    st.AndQueryR\x07orQueryB\n\xfaB\x07\x92\x01\x04\x08\x01\x10\x14\x1a\xa8\
-    \x01\n\nFieldMatch\x12'\n\tjson_path\x18\x01\x20\x01(\tR\x08jsonPathB\n\
-    \xfaB\x07r\x05\x10\x01\x18\xf4\x03\x12O\n\x08operator\x18\x02\x20\x01(\
-    \x0e2).bitdrift.public.unary.common.v1.OperatorR\x08operatorB\x08\xfaB\
+    \x20\x01(\rH\x01R\x06offset\x88\x01\x01\x122\n\x15include_internal_logs\
+    \x18\x06\x20\x01(\x08R\x13includeInternalLogs\x12o\n\x08or_query\x18\x07\
+    \x20\x03(\x0b2H.bitdrift.public.unary.timeline.v1.SessionAdvancedSearchR\
+    equest.AndQueryR\x07orQueryB\n\xfaB\x07\x92\x01\x04\x08\x01\x10\x14\x1a\
+    \xa8\x01\n\nFieldMatch\x12'\n\tjson_path\x18\x01\x20\x01(\tR\x08jsonPath\
+    B\n\xfaB\x07r\x05\x10\x01\x18\xf4\x03\x12O\n\x08operator\x18\x02\x20\x01\
+    (\x0e2).bitdrift.public.unary.common.v1.OperatorR\x08operatorB\x08\xfaB\
     \x05\x82\x01\x02\x10\x01\x12\x20\n\x05value\x18\x03\x20\x01(\tR\x05value\
     B\n\xfaB\x07r\x05\x10\x01\x18\xe8\x07\x1a\xb2\x01\n\x0cLogTypeMatch\x12O\
     \n\x08operator\x18\x02\x20\x01(\x0e2).bitdrift.public.unary.common.v1.Op\
