@@ -1374,6 +1374,78 @@ async fn engine_processing_log() {
 }
 
 #[tokio::test]
+async fn timeout_processing_returns_flush_action_ids_for_log_tagging() {
+  let c = state("C");
+  let mut b = state("B");
+  let a = state("A").declare_transition(&b, rule!(message_equals("start")));
+  b = b.with_timeout(
+    &c,
+    1.seconds(),
+    &[make_flush_buffers_action(
+      &["trigger_buffer_id"],
+      None,
+      "timeout_action_id",
+    )],
+  );
+
+  let setup = Setup::new();
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new(
+      WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
+        WorkflowBuilder::new("1", &[&a, &b, &c]).make_config(),
+      ]),
+      TinySet::from(["trigger_buffer_id".into()]),
+      TinySet::default(),
+    ))
+    .await;
+  workflows_engine.log_destination_buffer_ids = TinySet::from(["trigger_buffer_id".into()]);
+
+  let started_at = datetime!(2023-01-01 00:00:00 UTC);
+  let result = workflows_engine.process_log(
+    TestLog::new("start")
+      .with_now(started_at)
+      .with_occurred_at(started_at),
+  );
+  assert_eq!(
+    WorkflowsEngineResult {
+      log_destination_buffer_ids: Cow::Owned(TinySet::from(["trigger_buffer_id".into()])),
+      triggered_flush_buffers_action_ids: BTreeSet::default(),
+      triggered_flushes_buffer_ids: TinySet::default(),
+      capture_screenshot: false,
+      is_tracing_active: false,
+      workflow_debug_state: vec![],
+      has_debug_workflows: false,
+      logs_to_inject: TinyMap::default(),
+    },
+    result
+  );
+
+  // Timeout actions should surface the same workflow action ID as normal transitions so the
+  // timeout-observing log can be tagged downstream for upload/session-capture attribution.
+  let timeout_at = datetime!(2023-01-01 00:00:02 UTC);
+  let result = workflows_engine.process_log(
+    TestLog::new("after-timeout")
+      .with_now(timeout_at)
+      .with_occurred_at(timeout_at),
+  );
+  assert_eq!(
+    WorkflowsEngineResult {
+      log_destination_buffer_ids: Cow::Owned(TinySet::from(["trigger_buffer_id".into()])),
+      triggered_flush_buffers_action_ids: BTreeSet::from([Cow::Owned(
+        FlushBufferId::WorkflowActionId("timeout_action_id".into())
+      )]),
+      triggered_flushes_buffer_ids: TinySet::from(["trigger_buffer_id".into()]),
+      capture_screenshot: false,
+      is_tracing_active: false,
+      workflow_debug_state: vec![],
+      has_debug_workflows: false,
+      logs_to_inject: TinyMap::default(),
+    },
+    result
+  );
+}
+
+#[tokio::test]
 async fn parallel_runs_matching_same_log_do_not_dedupe_emit_metric_actions() {
   let a = state("A");
   let mut b = state("B");
