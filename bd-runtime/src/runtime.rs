@@ -657,12 +657,6 @@ pub mod debugging {
   );
 }
 
-pub mod crash_reporting {
-  // Enables or disables the detection and reporting of application crashes and
-  // other fatal events
-  bool_feature_flag!(Enabled, "crash_reporting.enabled", false);
-}
-
 pub mod log_upload {
   use time::ext::NumericalDuration as _;
 
