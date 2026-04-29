@@ -5,6 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(test)]
+#[path = "./otel_test.rs"]
+mod tests;
+
 use crate::{DEFAULT_FILTER_RULES, RegistryLayer};
 use anyhow::anyhow;
 use http::{HeaderMap, HeaderName, HeaderValue};
@@ -21,11 +25,12 @@ use opentelemetry_otlp::{
 };
 use opentelemetry_sdk::Resource;
 use opentelemetry_sdk::propagation::TraceContextPropagator;
-use opentelemetry_sdk::runtime::Tokio;
+use opentelemetry_sdk::runtime::{Tokio, TokioCurrentThread};
 use opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProcessor;
 use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider};
 use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
+use tokio::runtime::{Handle, RuntimeFlavor};
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 pub const OTEL_TARGET: &str = "bd_log::otel";
@@ -308,20 +313,38 @@ pub(crate) fn build_otel_layer(
   config: &OtelCollectorConfig,
 ) -> anyhow::Result<(RegistryLayer, SdkTracerProvider)> {
   let exporter = build_span_exporter(config)?;
-  let provider = SdkTracerProvider::builder()
-    // OTLP HTTP exporters run async reqwest work and need a Tokio-backed processor instead of
+  let runtime_flavor = active_tokio_runtime_flavor()?;
+  let provider_builder = SdkTracerProvider::builder()
+    // OTLP exporters run async reqwest/tonic work and need a Tokio-backed processor instead of
     // the SDK's default dedicated thread, which has no reactor.
-    .with_span_processor(BatchSpanProcessor::builder(exporter, Tokio).build())
     .with_sampler(Sampler::AlwaysOn)
     .with_max_attributes_per_span(config.max_attributes_per_span)
     .with_max_events_per_span(config.max_events_per_span)
-    .with_resource(build_resource(config))
-    .build();
+    .with_resource(build_resource(config));
+  let provider = match runtime_flavor {
+    RuntimeFlavor::CurrentThread => provider_builder
+      // The upstream async batch processor blocks during shutdown. On a current-thread runtime it
+      // must move its background work to a separate thread or shutdown can deadlock.
+      .with_span_processor(BatchSpanProcessor::builder(exporter, TokioCurrentThread).build())
+      .build(),
+    RuntimeFlavor::MultiThread => provider_builder
+      .with_span_processor(BatchSpanProcessor::builder(exporter, Tokio).build())
+      .build(),
+    other => {
+      return Err(anyhow!(
+        "unsupported tokio runtime flavor for OTEL batch exporter: {other:?}"
+      ));
+    },
+  };
   let tracer = provider.tracer(config.tracer_name.clone());
 
   let layer = build_direct_otel_layer(tracer);
 
   Ok((layer, provider))
+}
+
+fn active_tokio_runtime_flavor() -> anyhow::Result<RuntimeFlavor> {
+  Ok(Handle::try_current()?.runtime_flavor())
 }
 
 pub(crate) fn build_direct_otel_layer<T>(tracer: T) -> RegistryLayer
