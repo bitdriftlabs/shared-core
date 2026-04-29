@@ -20,21 +20,11 @@ struct Setup {
 }
 
 impl Setup {
-  async fn new(crash_reporting_enabled: bool) -> Self {
+  async fn new() -> Self {
     let directory = TempDir::new().unwrap();
     let runtime_dir = directory.path().join("runtime");
     std::fs::create_dir_all(&runtime_dir).unwrap();
     let runtime = TestConfigLoader::new_in_directory(&runtime_dir).await;
-
-    if crash_reporting_enabled {
-      runtime
-        .update_snapshot(make_simple_update(vec![(
-          "crash_reporting.enabled",
-          ValueKind::Bool(crash_reporting_enabled),
-        )]))
-        .await
-        .unwrap();
-    }
 
     let shutdown = ComponentShutdownTrigger::default();
     let writer = ConfigWriter::new(&runtime, directory.path(), shutdown.make_shutdown());
@@ -67,7 +57,7 @@ impl Setup {
 
 #[tokio::test]
 async fn test_config_file_written() {
-  let setup = Setup::new(true).await;
+  let setup = Setup::new().await;
 
   setup.writer.write_config_file().await;
   assert_eq!("crash_reporting.enabled,true", setup.read_config_file());
