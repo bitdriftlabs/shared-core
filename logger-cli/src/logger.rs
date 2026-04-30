@@ -94,7 +94,7 @@ impl LoggerHolder {
 
   pub fn start_new_session(&self) {
     let handle = self.logger.lock().new_logger_handle();
-    handle.start_new_session();
+    handle.start_new_session().unwrap();
   }
 
   pub fn set_sleep_mode(&self, enabled: bool) {
@@ -290,10 +290,7 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
   let (logger, _, future, _) = bd_logger::LoggerBuilder::new(InitParams {
     sdk_directory: sdk_directory.to_path_buf(),
     api_key: args.api_key.clone(),
-    session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
-      store.clone(),
-      session_callbacks,
-    ))),
+    session_strategy: Arc::new(Strategy::fixed(sdk_directory, session_callbacks)),
     metadata_provider: Arc::new(LiveTimestampMetadata {
       ootb_fields: [(
         "_app_version_code".into(),

@@ -25,6 +25,7 @@ use bd_proto::protos::client::api::{
   PingRequest,
   SankeyIntentRequest,
   SankeyPathUploadRequest,
+  StateUpdateRequest,
   StatsUploadRequest,
   UploadArtifactIntentRequest,
   UploadArtifactRequest,
@@ -68,6 +69,7 @@ into_api_request!(HandshakeRequest, Request_type::Handshake);
 into_api_request!(LogUploadIntentRequest, Request_type::LogUploadIntent);
 into_api_request!(SankeyIntentRequest, Request_type::SankeyIntent);
 into_api_request!(SankeyPathUploadRequest, Request_type::SankeyPathUpload);
+into_api_request!(StateUpdateRequest, Request_type::StateUpdate);
 into_api_request!(UploadArtifactRequest, Request_type::ArtifactUpload);
 into_api_request!(UploadArtifactIntentRequest, Request_type::ArtifactIntent);
 into_api_request!(DebugDataRequest, Request_type::DebugData);

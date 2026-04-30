@@ -457,13 +457,15 @@ impl Monitor {
     }
   }
 
-  fn get_session_id(&self, origin: ReportOrigin) -> String {
+  async fn get_session_id(&self, origin: ReportOrigin) -> anyhow::Result<String> {
     match origin {
-      ReportOrigin::Current => self.session.session_id(),
-      ReportOrigin::Previous => self
-        .session
-        .previous_process_session_id()
-        .unwrap_or_default(),
+      ReportOrigin::Current => self.session.session_id().await,
+      ReportOrigin::Previous => Ok(
+        self
+          .session
+          .previous_process_session_id()
+          .unwrap_or_default(),
+      ),
     }
   }
 
@@ -542,7 +544,10 @@ impl Monitor {
 
     let reporting_feature_flags = self.get_feature_flags(origin).await;
     let global_state_fields = self.get_global_state_fields(origin);
-    let session_id = self.get_session_id(origin);
+    let session_id = self
+      .get_session_id(origin)
+      .await
+      .unwrap_or_else(|_| "unknown".to_string());
     let (timestamp, state_fields) = Self::read_log_fields(bin_report, &global_state_fields);
 
     self.invoke_crash_hook(

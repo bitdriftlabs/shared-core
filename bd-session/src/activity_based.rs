@@ -9,16 +9,12 @@
 #[path = "./activity_based_test.rs"]
 mod activity_based_test;
 
-use bd_key_value::{Key, Store};
-use bd_proto::protos::client::key_value::ActivitySessionStrategyState;
-use bd_time::{OffsetDateTimeExt as _, TimeProvider, TimestampExt};
+use crate::persistence::{BackendState, PersistedSessionState, StartedSessionRecord};
+use crate::{DeferredCallback, Initialization, LoadedState, Mutation};
+use bd_time::TimeProvider;
 use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
-
-/// The key used to store the state of the session strategy.
-pub(crate) static STATE_KEY: Key<ActivitySessionStrategyState> =
-  Key::new("session_strategy.activity_based.state.1");
 
 //
 // Strategy
@@ -32,14 +28,7 @@ pub(crate) static STATE_KEY: Key<ActivitySessionStrategyState> =
 pub struct Strategy {
   callbacks: Arc<dyn Callbacks>,
   inactivity_threshold: time::Duration,
-  store: Arc<Store>,
   time_provider: Arc<dyn TimeProvider>,
-
-  // The current state of the strategy. Starts off as `None` and is initialized lazily on the first
-  // access of the session identifier. This allows potentially heavy storage operations to be
-  // offloaded to a later time (which in practice can end up being handled by a background
-  // thread).
-  state: parking_lot::Mutex<Option<InMemoryState>>,
 
   // The minimum duration between consecutive writes of the last activity time.
   max_write_interval: time::Duration,
@@ -48,16 +37,13 @@ pub struct Strategy {
 impl Strategy {
   pub fn new(
     inactivity_threshold: time::Duration,
-    store: Arc<Store>,
     callbacks: Arc<dyn Callbacks>,
     time_provider: Arc<dyn bd_time::TimeProvider>,
   ) -> Self {
     Self {
       callbacks,
       inactivity_threshold,
-      store,
       time_provider,
-      state: parking_lot::Mutex::new(None),
       max_write_interval: Duration::seconds(15),
     }
   }
@@ -66,153 +52,156 @@ impl Strategy {
     Uuid::new_v4().to_string()
   }
 
-  pub(crate) fn session_id(&self) -> String {
-    let mut guard = self.state.lock();
-
+  pub(crate) fn initialize(
+    &self,
+    persisted: Option<PersistedSessionState>,
+    mut pending_started_sessions: Vec<StartedSessionRecord>,
+  ) -> Initialization {
     let now = self.time_provider.now();
+    if let Some(persisted) = persisted {
+      // Reuse the persisted session as input to the normal activity transition logic so restart
+      // behavior matches a normal foreground access.
+      let previous_process_session_id = Some(persisted.current_session_id.clone());
+      let mut state = LoadedState {
+        persisted: PersistedSessionState {
+          previous_process_session_id,
+          ..persisted
+        },
+        pending_started_sessions,
+        last_activity_write: None,
+      };
+      let mut mutation = self.on_session_id(&mut state);
+      // Handshake uploads must be able to announce the current session after a restart even if the
+      // process died before flushing a pending-started-sessions queue entry.
+      if !state
+        .pending_started_sessions
+        .iter()
+        .any(|started| started.session_id == state.persisted.current_session_id)
+      {
+        state
+          .pending_started_sessions
+          .push(StartedSessionRecord::new(
+            state.persisted.current_session_id.clone(),
+            OffsetDateTime::from(state.persisted.current_session_start),
+          ));
+        mutation.persist_pending = true;
+      }
+      Initialization { state, mutation }
+    } else {
+      let session_id = Self::generate_session_id();
+      let session_start = now;
+      pending_started_sessions.push(StartedSessionRecord::new(session_id.clone(), session_start));
 
-    let mut need_callback = false;
-    let mut state = guard.as_ref().map_or_else(
-      || {
-        if let Some(state) = self.store.get(&STATE_KEY) {
-          InMemoryState {
-            state: state.clone(),
-            previous_process_session_id: Some(state.session_id),
-            last_activity_write: None,
-          }
-        } else {
-          let state = InMemoryState {
-            state: ActivitySessionStrategyState {
-              session_id: Self::generate_session_id(),
-              last_activity_timestamp: now.into_proto(),
-              ..Default::default()
-            },
+      Initialization {
+        state: LoadedState {
+          persisted: PersistedSessionState {
+            current_session_id: session_id.clone(),
+            current_session_start: session_start.into(),
             previous_process_session_id: None,
-            last_activity_write: None,
-          };
+            backend: BackendState::ActivityBased {
+              last_activity: now.into(),
+            },
+          },
+          pending_started_sessions,
+          last_activity_write: Some(now),
+        },
+        mutation: Mutation {
+          persist_state: true,
+          persist_pending: true,
+          callback: Some(DeferredCallback::ActivitySessionChanged(session_id)),
+        },
+      }
+    }
+  }
 
-          need_callback = true;
+  pub(crate) fn on_session_id(&self, state: &mut LoadedState) -> Mutation {
+    let now = self.time_provider.now();
+    let BackendState::ActivityBased { last_activity } = &mut state.persisted.backend else {
+      return Mutation::default();
+    };
 
-          log::info!(
-            "bitdrift Capture initialized with session ID: {:?}",
-            state.state.session_id,
-          );
-
-          state
-        }
-      },
-      std::clone::Clone::clone,
-    );
-
-    let is_now_before_last_activity =
-      now < state.state.last_activity_timestamp.to_offset_date_time();
+    let previous_last_activity = OffsetDateTime::from(*last_activity);
+    let is_now_before_last_activity = now < previous_last_activity;
     let is_inactivity_threshold_exceeded =
-      now - state.state.last_activity_timestamp.to_offset_date_time() > self.inactivity_threshold;
-
-    // We debounce writes to the store to avoid excessive writes, so only perform a state write if
-    // we haven't written to the store yet or if the last write was more than `max_write_interval`
-    // ago. If the session changes we always write to the store.
+      (now - previous_last_activity) > self.inactivity_threshold;
     let last_activity_storage_needs_write = state
       .last_activity_write
       .is_none_or(|last_activity_write| now - last_activity_write > self.max_write_interval);
 
-    state.state.last_activity_timestamp = now.into_proto();
+    *last_activity = now.into();
 
     if is_now_before_last_activity || is_inactivity_threshold_exceeded {
+      // Either the clock moved backwards or the inactivity threshold expired. In both cases we
+      // rotate the session and enqueue a state update so the backend can observe the boundary.
       let session_id = Self::generate_session_id();
-
-      state.state.session_id.clone_from(&session_id);
+      state.persisted.current_session_id.clone_from(&session_id);
+      state.persisted.current_session_start = now.into();
+      state
+        .pending_started_sessions
+        .push(StartedSessionRecord::new(session_id.clone(), now));
       state.last_activity_write = Some(now);
 
-      self.store.set(&STATE_KEY, &state.state);
-
-      need_callback = true;
+      Mutation {
+        persist_state: true,
+        persist_pending: true,
+        callback: Some(DeferredCallback::ActivitySessionChanged(session_id)),
+      }
     } else if last_activity_storage_needs_write {
+      // The session itself is unchanged, but we periodically persist the last-activity timestamp so
+      // a restart can continue the inactivity window from roughly the right point in time.
       state.last_activity_write = Some(now);
-
-      self.store.set(&STATE_KEY, &state.state);
+      Mutation {
+        persist_state: true,
+        ..Default::default()
+      }
+    } else {
+      Mutation::default()
     }
-
-    let session_id = state.state.session_id.clone();
-    *guard = Some(state);
-
-    // Make sure we call the callback with the lock released. There are legitimate cases where
-    // this function may get called again from the context of the callback.
-    drop(guard);
-    if need_callback {
-      self.callbacks.session_id_changed(&session_id);
-    }
-
-    session_id
   }
 
-  pub(crate) fn start_new_session(&self) -> String {
-    let mut guard = self.state.lock();
-
+  pub(crate) fn start_new_session(
+    &self,
+    state: Option<&LoadedState>,
+    persisted: Option<PersistedSessionState>,
+    mut pending_started_sessions: Vec<StartedSessionRecord>,
+  ) -> Initialization {
+    // An explicit rotation behaves like a brand-new activity session, but it preserves the last
+    // previous-process session marker for post-restart reporting.
     let session_id = Self::generate_session_id();
     let now = self.time_provider.now();
-
-    let previous_process_session_id = guard.as_ref().map_or_else(
-      || {
-        if let Some(state) = self.store.get(&STATE_KEY) {
-          Some(state.session_id)
-        } else {
-          None
-        }
-      },
-      |state| state.previous_process_session_id.clone(),
+    let previous_process_session_id = state.as_ref().map_or_else(
+      || persisted.map(|state| state.current_session_id),
+      |state| state.persisted.previous_process_session_id.clone(),
     );
 
-    let state = InMemoryState {
-      previous_process_session_id,
-      state: ActivitySessionStrategyState {
-        session_id: session_id.clone(),
-        last_activity_timestamp: now.into_proto(),
-        ..Default::default()
+    pending_started_sessions.push(StartedSessionRecord::new(session_id.clone(), now));
+
+    Initialization {
+      state: LoadedState {
+        persisted: PersistedSessionState {
+          current_session_id: session_id,
+          current_session_start: now.into(),
+          previous_process_session_id,
+          backend: BackendState::ActivityBased {
+            last_activity: now.into(),
+          },
+        },
+        pending_started_sessions,
+        last_activity_write: Some(now),
       },
-      last_activity_write: Some(now),
-    };
-
-    self.store.set(&STATE_KEY, &state.state);
-
-    *guard = Some(state);
-
-    session_id
-  }
-
-  pub fn previous_process_session_id(&self) -> Option<String> {
-    self.state.lock().as_ref().map_or_else(
-      || self.store.get(&STATE_KEY).map(|state| state.session_id),
-      |state| state.previous_process_session_id.clone(),
-    )
-  }
-
-  pub(crate) fn flush(&self) {
-    log::debug!("flushing session state");
-    if let Some(state) = self.state.lock().as_ref() {
-      self.store.set(&STATE_KEY, &state.state);
-    } else {
-      log::debug!("no session state to flush");
+      mutation: Mutation {
+        persist_state: true,
+        persist_pending: true,
+        callback: None,
+      },
     }
   }
-}
 
-//
-// Callbacks
-//
+  pub(crate) fn run_callback(&self, session_id: &str) {
+    self.callbacks.session_id_changed(session_id);
+  }
+}
 
 pub trait Callbacks: Send + Sync {
   fn session_id_changed(&self, session_id: &str);
-}
-
-//
-// InMemoryState
-//
-
-#[derive(Clone)]
-struct InMemoryState {
-  state: ActivitySessionStrategyState,
-  /// The last active session ID from the previous SDK run.
-  previous_process_session_id: Option<String>,
-  last_activity_write: Option<OffsetDateTime>,
 }

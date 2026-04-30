@@ -256,7 +256,7 @@ dependencies = [
  "addr2line",
  "cfg-if",
  "libc",
- "miniz_oxide",
+ "miniz_oxide 0.8.9",
  "object",
  "rustc-demangle",
  "windows-link",
@@ -303,6 +303,7 @@ dependencies = [
  "bd-pgv",
  "bd-proto",
  "bd-runtime",
+ "bd-session",
  "bd-shutdown",
  "bd-stats-common",
  "bd-test-helpers",
@@ -1220,9 +1221,11 @@ name = "bd-session"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "bd-key-value",
+ "bd-client-common",
  "bd-log",
+ "bd-macros",
  "bd-proto",
+ "bd-proto-util",
  "bd-test-helpers",
  "bd-time",
  "bd-workspace-hack",
@@ -1230,7 +1233,8 @@ dependencies = [
  "log",
  "parking_lot",
  "pretty_assertions",
- "serde",
+ "protobuf 4.0.0-alpha.0",
+ "tempfile",
  "thread_local",
  "time",
  "tokio",
@@ -1438,7 +1442,7 @@ dependencies = [
  "libc",
  "log",
  "memchr",
- "miniz_oxide",
+ "miniz_oxide 0.9.1",
  "once_cell",
  "protobuf 4.0.0-alpha.0",
  "quote",
@@ -1809,20 +1813,13 @@ dependencies = [
 
 [[package]]
 name = "ctor"
-version = "0.11.1"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "400a21f1014a968ec518c7ccdf9b4a4ed0cac8c56ccb6d604f8b91f00110501e"
+checksum = "b8f521dd9c9e5f03986eb5c674b14b21e9ccf2eb9f98fecb681100214d5e9e4f"
 dependencies = [
- "ctor-proc-macro",
- "dtor",
  "link-section",
+ "linktime-proc-macro",
 ]
-
-[[package]]
-name = "ctor-proc-macro"
-version = "0.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a949c44fcacbbbb7ada007dc7acb34603dd97cd47de5d054f2b6493ecebb483"
 
 [[package]]
 name = "cty"
@@ -1955,21 +1952,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1435fa1053d8b2fbbe9be7e97eca7f33d37b28409959813daefc1446a14247f1"
 
 [[package]]
-name = "dtor"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96eb86b441d67a711e6e76b410de7135385fec1b8cd304e99d11c56ae542e2fc"
-dependencies = [
- "dtor-proc-macro",
-]
-
-[[package]]
-name = "dtor-proc-macro"
-version = "0.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2647271c92754afcb174e758003cfd1cbf1e43e5a7853d7b1813e63e19e39a73"
-
-[[package]]
 name = "dunce"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2090,7 +2072,7 @@ dependencies = [
  "crc32fast",
  "libz-ng-sys",
  "libz-sys",
- "miniz_oxide",
+ "miniz_oxide 0.8.9",
 ]
 
 [[package]]
@@ -2327,21 +2309,16 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "gungraun"
-version = "0.18.1"
+version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e2e7d17b75a18300d495a5e79970067b92d74e4858c28326e125f2d55b1b566"
+checksum = "3bfa183cef2c88324b20de9727befd262c35592d9885ffd93b8b102536a81cf2"
 dependencies = [
  "bincode 1.3.3",
- "bindgen",
- "cc",
- "cfg-if",
  "cty",
  "derive_more",
  "gungraun-macros",
  "gungraun-runner",
- "regex",
- "rustc_version",
- "strum",
+ "valgrind-requests",
 ]
 
 [[package]]
@@ -2362,9 +2339,9 @@ dependencies = [
 
 [[package]]
 name = "gungraun-runner"
-version = "0.18.1"
+version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c19bb4c552085f983300b11694022d7584810dca3500c220962ab2353327fb45"
+checksum = "2ebdac6d5fe0aa9d9623d690fbfdb759e0ed44115e0685b9abc4568fe47db364"
 dependencies = [
  "serde",
 ]
@@ -2950,9 +2927,15 @@ dependencies = [
 
 [[package]]
 name = "link-section"
-version = "0.11.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8acde40189b7f4b102f876f43a98ec1f5899f96e9a144945d36d9ce0be7f99c7"
+checksum = "0567ec9fe5ffdf9241cd90a7629f250a5f903d6ff4573cf7903308662d6fce40"
+
+[[package]]
+name = "linktime-proc-macro"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a44cd706ff0d503ee32b2071166510ca27e281228de10cd3aa8d35ff94560f81"
 
 [[package]]
 name = "linux-raw-sys"
@@ -3092,6 +3075,16 @@ name = "miniz_oxide"
 version = "0.8.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fa76a2c86f704bdb222d66965fb3d63269ce38518b83cb0575fca855ebb6316"
+dependencies = [
+ "adler2",
+ "simd-adler32",
+]
+
+[[package]]
+name = "miniz_oxide"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b63fbc4a50860e98e7b2aa7804ded1db5cbc3aff9193adaff57a6931bf7c4b4c"
 dependencies = [
  "adler2",
  "simd-adler32",
@@ -5267,6 +5260,21 @@ dependencies = [
  "getrandom 0.4.2",
  "js-sys",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "valgrind-requests"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4642006c721443df751b1ec49d88094395bef73496d100044ebf61880e291ea9"
+dependencies = [
+ "bindgen",
+ "cc",
+ "cfg-if",
+ "cty",
+ "regex",
+ "rustc_version",
+ "strum",
 ]
 
 [[package]]

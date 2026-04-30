@@ -608,6 +608,9 @@ impl Transition {
         state_change_match: StateChangeMatch::try_from_proto(rule)?,
         extra_matcher: rule.log_matcher.as_ref().map(Tree::new).transpose()?,
       },
+      Rule_type::OnNewSession(_) => {
+        anyhow::bail!("invalid transition configuration: on_new_session is not supported yet")
+      },
     };
 
     let actions = transition

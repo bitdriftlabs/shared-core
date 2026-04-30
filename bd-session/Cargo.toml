@@ -10,14 +10,16 @@ doctest = false
 
 [dependencies]
 anyhow.workspace            = true
-bd-key-value.path           = "../bd-key-value"
+bd-client-common.path       = "../bd-client-common"
 bd-log.path                 = "../bd-log"
+bd-macros.path              = "../bd-macros"
 bd-proto.path               = "../bd-proto"
+bd-proto-util.path          = "../bd-proto-util"
 bd-time.path                = "../bd-time"
 bd-workspace-hack.workspace = true
 log.workspace               = true
 parking_lot.workspace       = true
-serde.workspace             = true
+protobuf.workspace          = true
 thread_local.workspace      = true
 time.workspace              = true
 tokio.workspace             = true
@@ -27,3 +29,4 @@ uuid.workspace              = true
 bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
 ctor.workspace              = true
 pretty_assertions.workspace = true
+tempfile.workspace          = true

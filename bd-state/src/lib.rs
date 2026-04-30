@@ -42,6 +42,9 @@ use tokio::sync::RwLock;
 /// The key used for storing the current system session ID in the state store.
 pub const SYSTEM_SESSION_ID_KEY: &str = "sid";
 
+/// The key used for storing the current entity ID in the state store.
+pub const ENTITY_ID_KEY: &str = "entity_id";
+
 /// Creates a `StateValue` from a string.
 #[must_use]
 pub fn string_value(s: impl Into<String>) -> Value {

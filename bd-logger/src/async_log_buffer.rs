@@ -50,7 +50,7 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
-use bd_state::{SYSTEM_SESSION_ID_KEY, Scope, string_value};
+use bd_state::{ENTITY_ID_KEY, SYSTEM_SESSION_ID_KEY, Scope, string_value};
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::WorkflowDebugStateMap;
@@ -91,6 +91,9 @@ pub enum StateUpdateMessage {
   AddLogField(String, DataValue),
   RemoveLogField(String),
   SetFeatureFlagExposure(String, Option<String>),
+  SetEntityId(Option<String>),
+  RequestSessionId(bd_completion::Sender<anyhow::Result<String>>),
+  StartNewSession(bd_completion::Sender<()>),
   FlushState(Option<bd_completion::Sender<()>>),
 }
 
@@ -103,6 +106,9 @@ impl MemorySized for StateUpdateMessage {
         Self::SetFeatureFlagExposure(flag, variant) => {
           flag.len() + variant.as_ref().map_or(0, String::len)
         },
+        Self::SetEntityId(entity_id) => entity_id.as_ref().map_or(0, String::len),
+        Self::RequestSessionId(response_tx) => size_of_val(response_tx),
+        Self::StartNewSession(response_tx) => size_of_val(response_tx),
         Self::FlushState(sender) => size_of_val(sender),
       }
   }
@@ -289,6 +295,23 @@ impl Sender {
       }
     }
     Ok(())
+  }
+
+  pub fn request_session_id(&self) -> anyhow::Result<String> {
+    let (response_tx, response_rx) = bd_completion::Sender::new();
+    self.try_send_state_update(StateUpdateMessage::RequestSessionId(response_tx))?;
+
+    response_rx
+      .blocking_recv()
+      .map_err(|e| anyhow!("failed to receive session ID from async logger: {e}"))?
+  }
+
+  pub fn request_start_new_session(&self) -> anyhow::Result<()> {
+    let (response_tx, response_rx) = bd_completion::Sender::new();
+    self.try_send_state_update(StateUpdateMessage::StartNewSession(response_tx))?;
+    response_rx
+      .blocking_recv()
+      .map_err(|e| anyhow!("failed to receive start-new-session ack from async logger: {e}"))
   }
 }
 
@@ -621,11 +644,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         let (session_id, timestamp, extra_fields) = match log.attributes_overrides {
           Some(LogAttributesOverrides::PreviousRunSessionID(occurred_at)) => {
             // Use the previous session ID if available and the provided timestamp.
+            let session_id = match self.session_strategy.previous_process_session_id() {
+              Some(session_id) => session_id,
+              None => self.session_strategy.session_id().await?,
+            };
             (
-              self
-                .session_strategy
-                .previous_process_session_id()
-                .unwrap_or_else(|| self.session_strategy.session_id()),
+              session_id,
               occurred_at,
               Some(LogFields::from([(
                 "_logged_at".into(),
@@ -636,7 +660,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           Some(LogAttributesOverrides::OccurredAt(overridden_timestamp)) => {
             // Occurred at override provided. Emit log with overrides applied.
             (
-              self.session_strategy.session_id(),
+              self.session_strategy.session_id().await?,
               overridden_timestamp,
               Some(LogFields::from([(
                 "_logged_at".into(),
@@ -646,7 +670,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           },
           None => {
             // No overrides provided. Emit log without any overrides.
-            (self.session_strategy.session_id(), metadata.timestamp, None)
+            (
+              self.session_strategy.session_id().await?,
+              metadata.timestamp,
+              None,
+            )
           },
         };
 
@@ -965,7 +993,16 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                   self.metadata_collector.remove_field(&field_name);
                 },
                 StateUpdateMessage::SetFeatureFlagExposure(flag, variant) => {
-                  let session_id = self.session_strategy.session_id();
+                  let session_id = match self.session_strategy.session_id().await {
+                    Ok(session_id) => session_id,
+                    Err(e) => {
+                      log::debug!(
+                        "failed to record feature flag exposure because session ID resolution \
+                         failed: {e}"
+                      );
+                      continue;
+                    },
+                  };
                   if let LoggingState::Initialized(initialized_logging_context) =
                     &mut self.logging_state
                   {
@@ -1007,6 +1044,28 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                     }
                   }
                 },
+                StateUpdateMessage::SetEntityId(entity_id) => {
+                  let result = match entity_id {
+                    Some(entity_id) => {
+                      state_store
+                        .insert(Scope::System, ENTITY_ID_KEY.to_string(), string_value(entity_id))
+                        .await
+                        .map(|_| ())
+                    },
+                    None => state_store.remove(Scope::System, ENTITY_ID_KEY).await.map(|_| ()),
+                  };
+
+                  if let Err(e) = result {
+                    log::debug!("failed to persist entity ID state: {e}");
+                  }
+                },
+                StateUpdateMessage::RequestSessionId(response_tx) => {
+                  response_tx.send(self.session_strategy.session_id().await);
+                },
+                StateUpdateMessage::StartNewSession(response_tx) => {
+                  self.session_strategy.start_new_session().await;
+                  response_tx.send(());
+                },
                 StateUpdateMessage::FlushState(completion_tx) => {
                   let flush_stats_trigger = self.logging_state.flush_stats_trigger().clone();
                   let flush_stats = async move {
@@ -1039,13 +1098,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                     }
                   };
 
-                  // TODO(mattklein123): We need the store interfaces to be async so that this
-                  // flush can be async also. For now we do spawn blocking.
                   let session_strategy = self.session_strategy.clone();
                   let flush_session = async {
-                    let _ = tokio::task::spawn_blocking(move || {
-                      session_strategy.flush();
-                    }).await;
+                    session_strategy.flush().await;
                   };
 
                   let persist_workflows = async {
