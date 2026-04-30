@@ -9,6 +9,7 @@ version      = "1.0.0"
 anyhow.workspace             = true
 axum.workspace               = true
 bd-api.path                  = "../bd-api"
+bd-client-stats              = { path = "../bd-client-stats", features = ["logger-cli-observer"] }
 bd-device.path               = "../bd-device"
 bd-hyper-network.path        = "../bd-hyper-network"
 bd-key-value.path            = "../bd-key-value"

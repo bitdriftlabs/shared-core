@@ -2994,6 +2994,7 @@ dependencies = [
  "anyhow",
  "axum",
  "bd-api",
+ "bd-client-stats",
  "bd-device",
  "bd-hyper-network",
  "bd-key-value",

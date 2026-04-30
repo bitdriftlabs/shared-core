@@ -8,6 +8,9 @@ version      = "1.0.0"
 [lib]
 doctest = false
 
+[features]
+logger-cli-observer = []
+
 [dependencies]
 anyhow.workspace            = true
 async-trait.workspace       = true

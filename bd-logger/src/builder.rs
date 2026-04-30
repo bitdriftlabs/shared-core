@@ -24,11 +24,8 @@ use bd_api::{
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_client_stats::FlushTrigger;
-use bd_client_stats::stats::{
-  JitteredIntervalCreator,
-  RuntimeWatchTicker,
-  SleepModeAwareRuntimeWatchTicker,
-};
+use bd_client_stats::stats::{PeriodicSchedule, RuntimePeriodicSchedule};
+use bd_client_stats::test::TestTickerBackedSchedule;
 use bd_client_stats_store::Collector;
 use bd_crash_handler::Monitor;
 use bd_error_reporter::reporter::{UnexpectedErrorHandler, handle_unexpected};
@@ -49,25 +46,23 @@ use tokio::sync::watch;
 pub fn default_stats_flush_triggers(
   sleep_mode_active: watch::Receiver<bool>,
   runtime_loader: &ConfigLoader,
-) -> anyhow::Result<(Box<dyn Ticker>, Box<dyn Ticker>)> {
+  time_provider: Arc<dyn TimeProvider>,
+) -> anyhow::Result<Box<dyn PeriodicSchedule>> {
   let flush_interval_flag: Watch<Duration, DirectStatFlushIntervalFlag> =
     runtime_loader.register_duration_watch();
-  let flush_ticker = RuntimeWatchTicker::new(flush_interval_flag.into_inner());
 
   let live_mode_upload_interval_flag: Watch<Duration, UploadStatFlushIntervalFlag> =
     runtime_loader.register_duration_watch();
   let sleep_mode_upload_interval_flag: Watch<Duration, sleep_mode::UploadStatFlushIntervalFlag> =
     runtime_loader.register_duration_watch();
-  let upload_ticker = SleepModeAwareRuntimeWatchTicker::<JitteredIntervalCreator>::new(
+
+  Ok(Box::new(RuntimePeriodicSchedule::new(
+    flush_interval_flag.into_inner(),
     live_mode_upload_interval_flag.into_inner(),
     sleep_mode_upload_interval_flag.into_inner(),
     sleep_mode_active,
-  );
-
-  Ok((
-    Box::new(flush_ticker) as Box<dyn Ticker>,
-    Box::new(upload_ticker) as Box<dyn Ticker>,
-  ))
+    time_provider,
+  )))
 }
 
 /// A builder for the logger.
@@ -76,7 +71,7 @@ pub struct LoggerBuilder {
   params: InitParams,
 
   component_shutdown_handle: Option<ComponentShutdownTriggerHandle>,
-  client_stats_tickers: Option<(Box<dyn Ticker>, Box<dyn Ticker>)>,
+  client_stats_schedule: Option<Box<dyn PeriodicSchedule>>,
   internal_logger: bool,
   time_provider: Option<Arc<dyn TimeProvider>>,
   crash_report_hook: Option<Arc<dyn bd_crash_handler::CrashReportHook>>,
@@ -89,7 +84,7 @@ impl LoggerBuilder {
     Self {
       params,
       component_shutdown_handle: None,
-      client_stats_tickers: None,
+      client_stats_schedule: None,
       internal_logger: false,
       time_provider: None,
       crash_report_hook: None,
@@ -109,12 +104,15 @@ impl LoggerBuilder {
   /// Sets the tickers to be used for flushing client stats. If not set, the default tickers will
   /// be used.
   #[must_use]
-  pub fn with_client_stats_tickers(
+  pub fn with_client_stats_tickers_for_test(
     mut self,
     flush_ticker: Box<dyn Ticker>,
     upload_ticker: Box<dyn Ticker>,
   ) -> Self {
-    self.client_stats_tickers = Some((flush_ticker, upload_ticker));
+    self.client_stats_schedule = Some(Box::new(TestTickerBackedSchedule::new(
+      flush_ticker,
+      upload_ticker,
+    )));
     self
   }
 
@@ -193,19 +191,21 @@ impl LoggerBuilder {
     let is_tracing_active = Arc::new(AtomicBool::new(false));
 
     let (stats_flusher, flusher_trigger) = {
-      let (flush_ticker, upload_ticker) =
-        if let Some((flush_ticker, upload_ticker)) = self.client_stats_tickers {
-          (flush_ticker, upload_ticker)
-        } else {
-          default_stats_flush_triggers(sleep_mode_active_rx.clone(), &runtime_loader)?
-        };
+      let periodic_schedule = if let Some(periodic_schedule) = self.client_stats_schedule {
+        periodic_schedule
+      } else {
+        default_stats_flush_triggers(
+          sleep_mode_active_rx.clone(),
+          &runtime_loader,
+          time_provider.clone(),
+        )?
+      };
       let flush_handles = stats.flush_handle(
         &runtime_loader,
+        periodic_schedule,
         shutdown_handle.make_shutdown(),
         &self.params.sdk_directory,
         data_upload_tx.clone(),
-        flush_ticker,
-        upload_ticker,
         time_provider.clone(),
       );
 

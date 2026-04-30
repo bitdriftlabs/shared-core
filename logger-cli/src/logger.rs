@@ -9,7 +9,7 @@ use crate::metadata::Metadata;
 use crate::storage::SQLiteStorage;
 use crate::types::{Platform, RuntimeValueType};
 use bd_log_primitives::LogFields;
-use bd_logger::{CaptureSession, InitParams, Logger, MetadataProvider};
+use bd_logger::{Block, CaptureSession, InitParams, Logger, MetadataProvider};
 use bd_proto::protos::logging::payload::LogType as ProtoLogType;
 use bd_session::{Strategy, fixed};
 use parking_lot::Mutex;
@@ -112,6 +112,15 @@ impl LoggerHolder {
     self.logger.lock().shutdown(true);
   }
 
+  pub fn flush_and_stop(&self) {
+    let handle = self.logger.lock().new_logger_handle();
+    handle.flush_state(Block::Yes {
+      timeout: 1.std_seconds(),
+      poll_callback: None,
+    });
+    self.stop();
+  }
+
   pub fn get_runtime_value(&self, name: &str, value_type: RuntimeValueType) -> String {
     let snapshot = self.logger.lock().runtime_snapshot();
     match value_type {
@@ -134,12 +143,22 @@ impl LoggerHolder {
     message: String,
     fields: HashMap<String, String>,
     capture_session: bool,
+    block: bool,
   ) {
     let session_capture = if capture_session {
       CaptureSession::capture_with_id("cli command")
     } else {
       CaptureSession::default()
     };
+    let block = if block {
+      bd_logger::Block::Yes {
+        timeout: 1.std_seconds(),
+        poll_callback: None,
+      }
+    } else {
+      bd_logger::Block::No
+    };
+
     self.logger.lock().new_logger_handle().log(
       log_level,
       log_type,
@@ -158,10 +177,7 @@ impl LoggerHolder {
         .collect(),
       [].into(),
       None,
-      bd_logger::Block::Yes {
-        timeout: 1.std_seconds(),
-        poll_callback: None,
-      },
+      block,
       &session_capture,
     );
   }

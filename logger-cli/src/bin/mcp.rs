@@ -142,6 +142,7 @@ impl Tool {
               .map(|f| (f.name, f.value))
               .collect(),
             false,
+            false,
           )
           .await?;
 

@@ -15,16 +15,19 @@
 )]
 
 mod file_manager;
+#[cfg(feature = "logger-cli-observer")]
+pub mod observer;
 pub mod stats;
+pub mod test;
 
-use crate::stats::Flusher;
+use crate::stats::{Flusher, PeriodicSchedule};
 use bd_api::DataUpload;
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_stats_store::{Collector, Error as StatsError};
 use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::workflow::WorkflowDebugKey;
-use bd_time::{SystemTimeProvider, Ticker, TimeProvider};
+use bd_time::{SystemTimeProvider, TimeProvider};
 use file_manager::FileManager;
 use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap};
@@ -113,17 +116,15 @@ impl Stats {
   pub fn flush_handle(
     self: &Arc<Self>,
     runtime_loader: &Arc<ConfigLoader>,
+    periodic_schedule: Box<dyn PeriodicSchedule>,
     shutdown: ComponentShutdown,
     sdk_directory: &Path,
     data_flush_tx: tokio::sync::mpsc::Sender<DataUpload>,
-    flush_ticker: Box<dyn Ticker>,
-    upload_ticker: Box<dyn Ticker>,
     time_provider: Arc<dyn TimeProvider>,
   ) -> FlushHandles {
     let minimum_upload_interval = runtime_loader.register_duration_watch();
     self.flush_handle_helper(
-      flush_ticker,
-      upload_ticker,
+      periodic_schedule,
       shutdown,
       data_flush_tx,
       Arc::new(FileManager::new(
@@ -138,8 +139,7 @@ impl Stats {
 
   fn flush_handle_helper(
     self: &Arc<Self>,
-    flush_ticker: Box<dyn Ticker>,
-    upload_ticker: Box<dyn Ticker>,
+    periodic_schedule: Box<dyn PeriodicSchedule>,
     shutdown: ComponentShutdown,
     data_flush_tx: tokio::sync::mpsc::Sender<DataUpload>,
     fs: Arc<FileManager>,
@@ -155,10 +155,9 @@ impl Stats {
       flusher: Flusher::new(
         self.clone(),
         shutdown,
-        flush_ticker,
+        periodic_schedule,
         flush_rx,
         flush_time_histogram,
-        upload_ticker,
         data_flush_tx,
         fs,
         time_provider,

@@ -10,11 +10,19 @@
 mod stats_test;
 
 use crate::file_manager::FileManager;
+#[cfg(feature = "logger-cli-observer")]
+use crate::observer::{
+  ObservedMetric,
+  ObservedMetricValue,
+  SnapshotObservation,
+  UploadAckObservation,
+  UploadAttemptObservation,
+  with_observer,
+};
 use crate::{FlushTriggerRequest, Stats};
 use async_trait::async_trait;
 use bd_api::DataUpload;
 use bd_api::upload::{TrackedStatsUploadRequest, UploadResponse};
-use bd_client_common::maybe_await_interval;
 use bd_client_stats_store::{Collector, Histogram, MetricData, MetricsByNameCore};
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::Snapshot_type;
@@ -23,12 +31,14 @@ use bd_proto::protos::client::api::stats_upload_request::{
   UploadReason,
 };
 use bd_proto::protos::client::api::{StatsUploadRequest, debug_data_request};
+#[cfg(feature = "logger-cli-observer")]
+use bd_proto::protos::client::metric::metric::Data as ProtoMetricData;
 use bd_proto::protos::client::metric::metric::Metric_name_type;
 use bd_proto::protos::client::metric::{Metric as ProtoMetric, MetricsList};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{MetricType, NameType};
-use bd_time::{Ticker, TimeDurationExt, TimeProvider};
+use bd_time::{TimeDurationExt, TimeProvider};
 use debug_data_request::workflow_transition_debug_data::Transition_type;
 use debug_data_request::{WorkflowDebugData, WorkflowTransitionDebugData};
 use futures::StreamExt;
@@ -37,145 +47,331 @@ use itertools::Itertools;
 #[cfg(test)]
 use stats_test::{TestHooks, TestHooksReceiver};
 use std::collections::{BTreeMap, HashMap};
-use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
-use time::Duration;
+use time::{Duration, OffsetDateTime};
 use tokio::sync::{mpsc, oneshot, watch};
-use tokio::time::MissedTickBehavior;
 
 type UploadFuture =
   Pin<Box<dyn std::future::Future<Output = (UploadResponse, UploadContext)> + Send + Sync>>;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PeriodicAction {
+  Flush,
+  Upload,
+}
 
 enum UploadContext {
   Periodic,
   Flush(FlushTriggerRequest),
 }
 
-//
-// RuntimeWatchTicker
-//
-
-pub struct RuntimeWatchTicker {
-  receiver: watch::Receiver<Duration>,
-  interval: Option<tokio::time::Interval>,
+#[async_trait]
+pub trait PeriodicSchedule: Send + Sync {
+  async fn next_action(&mut self) -> PeriodicAction;
 }
 
-impl RuntimeWatchTicker {
+//
+// RuntimePeriodicSchedule
+//
+
+// Tracks a single periodic upload cycle. `next_flush_at` is omitted when the effective flush
+// cadence has collapsed to the upload cadence, which means the next interesting event is the
+// upload boundary itself.
+struct RuntimePeriodicScheduleState {
+  upload_interval: Duration,
+  effective_flush_interval: Duration,
+  next_flush_at: Option<OffsetDateTime>,
+  next_upload_at: OffsetDateTime,
+}
+
+// Couples the stats flush and upload timers into one schedule driven by the active upload
+// interval. The scheduler always reasons about one upload cycle at a time and may insert one or
+// more intermediate flush deadlines before the next upload deadline when the configured flush
+// interval is a clean divisor of the active upload interval.
+//
+// Startup is deterministic: the first cycle is scheduled immediately from the current runtime
+// values, but without jitter. That means we do not wait for some extra startup-only delay; we
+// simply avoid randomizing the initial deadline. We only re-jitter upload deadlines when the
+// active upload interval changes at runtime, which keeps reconnect storms from synchronizing.
+pub struct RuntimePeriodicSchedule {
+  flush_interval: watch::Receiver<Duration>,
+  live_upload_interval: watch::Receiver<Duration>,
+  sleep_upload_interval: watch::Receiver<Duration>,
+  sleep_mode_active: watch::Receiver<bool>,
+  time_provider: Arc<dyn TimeProvider>,
+  state: Option<RuntimePeriodicScheduleState>,
+}
+
+impl RuntimePeriodicSchedule {
   #[must_use]
-  pub const fn new(receiver: watch::Receiver<Duration>) -> Self {
+  pub fn new(
+    flush_interval: watch::Receiver<Duration>,
+    live_upload_interval: watch::Receiver<Duration>,
+    sleep_upload_interval: watch::Receiver<Duration>,
+    sleep_mode_active: watch::Receiver<bool>,
+    time_provider: Arc<dyn TimeProvider>,
+  ) -> Self {
     Self {
-      receiver,
-      interval: None,
+      flush_interval,
+      live_upload_interval,
+      sleep_upload_interval,
+      sleep_mode_active,
+      time_provider,
+      state: None,
     }
   }
-}
 
-#[async_trait]
-impl Ticker for RuntimeWatchTicker {
-  async fn tick(&mut self) {
-    // We use jittered_interval_at() to make sure we stagger the start time to avoid synchronization
-    // during mass reconnect.
-    if self.interval.is_none() {
-      self.interval = Some(
-        self
-          .receiver
-          .borrow_and_update()
-          .jittered_interval_at(MissedTickBehavior::Delay),
+  // Snap the current runtime inputs into a fresh cycle. This is called at startup and whenever a
+  // watched runtime value changes in a way that should re-plan future deadlines.
+  fn rebuild_schedule(&mut self, jitter_upload_deadline: bool) {
+    let now = self.time_provider.now();
+
+    // Flush cadence is always read directly from runtime, but upload cadence depends on whether
+    // we are currently in live mode or sleep mode.
+    let flush_interval = *self.flush_interval.borrow_and_update();
+    let upload_interval = self.active_upload_interval();
+    let effective_flush_interval = effective_flush_interval(flush_interval, upload_interval);
+
+    // An invalid flush cadence does not stop scheduling; it simply means we only flush at the
+    // upload boundary for this cycle.
+    if effective_flush_interval != flush_interval {
+      log::debug!(
+        "stats disk flush interval {flush_interval} does not cleanly divide active upload \
+         interval {upload_interval}; falling back to upload cadence"
       );
     }
 
-    loop {
-      tokio::select! {
-        () = maybe_await_interval(self.interval.as_mut()) => break,
-        _ = self.receiver.changed() => {
-          self.interval = Some(
-            self.receiver.borrow_and_update().jittered_interval_at(MissedTickBehavior::Delay)
-          );
-        },
-      }
+    // We only jitter when the upload interval itself changes. The steady-state schedule remains
+    // deterministic, but a runtime cadence change still gets a one-time spread to avoid herding.
+    //
+    // A flush-only config change should not move an already scheduled upload deadline. If the
+    // active upload cadence is unchanged and the previously scheduled upload is still in the
+    // future, preserve that absolute boundary and only recompute how many flushes can fit before
+    // it. Without this, a flush-interval tweak would effectively restart the upload timer from
+    // "now", which is not the behavior we want.
+    let preserved_upload_at = (!jitter_upload_deadline)
+      .then(|| {
+        self.state.as_ref().and_then(|state| {
+          (state.upload_interval == upload_interval && state.next_upload_at > now)
+            .then_some(state.next_upload_at)
+        })
+      })
+      .flatten();
+
+    // If we kept the previous upload deadline, derive the remaining delay from that fixed point.
+    // Otherwise schedule a brand new upload boundary, with optional jitter when the upload cadence
+    // itself changed.
+    let next_upload_delay = preserved_upload_at.map_or_else(
+      || {
+        if jitter_upload_deadline {
+          upload_interval
+            .jittered()
+            .try_into()
+            .unwrap_or(upload_interval)
+        } else {
+          upload_interval
+        }
+      },
+      |next_upload_at| next_upload_at - now,
+    );
+
+    // `next_upload_at` is either the preserved absolute deadline from the prior cycle or a newly
+    // computed deadline for the rebuilt cycle.
+    let next_upload_at = preserved_upload_at.unwrap_or(now + next_upload_delay);
+
+    // Only schedule an intermediate flush when there is actually time for one before the upload
+    // deadline. Otherwise the upload tick will perform the flush itself.
+    let next_flush_at =
+      (effective_flush_interval < next_upload_delay).then_some(now + effective_flush_interval);
+
+    self.state = Some(RuntimePeriodicScheduleState {
+      upload_interval,
+      effective_flush_interval,
+      next_flush_at,
+      next_upload_at,
+    });
+  }
+
+  // Reads the currently active upload interval and consumes any pending watch updates on that
+  // active source. This keeps later comparisons against `state.upload_interval` honest.
+  fn active_upload_interval(&mut self) -> Duration {
+    if *self.sleep_mode_active.borrow() {
+      *self.sleep_upload_interval.borrow_and_update()
+    } else {
+      *self.live_upload_interval.borrow_and_update()
     }
   }
-}
 
-//
-// SleepModeAwareRuntimeWatchTicker
-//
+  // Advances the in-memory schedule after we decide which action to run. Flushes preserve the
+  // current upload boundary, while uploads roll the entire cycle forward.
+  fn update_after_action(&mut self, action: PeriodicAction) {
+    let now = self.time_provider.now();
+    let Some(state) = self.state.as_mut() else {
+      return;
+    };
 
-pub trait IntervalCreator: Send + Sync {
-  fn interval(duration: Duration) -> tokio::time::Interval;
-}
-pub struct JitteredIntervalCreator;
-impl IntervalCreator for JitteredIntervalCreator {
-  fn interval(duration: Duration) -> tokio::time::Interval {
-    duration.jittered_interval_at(MissedTickBehavior::Delay)
-  }
-}
-pub struct SleepModeAwareRuntimeWatchTicker<T> {
-  live_mode_receiver: watch::Receiver<Duration>,
-  sleep_mode_receiver: watch::Receiver<Duration>,
-  sleep_mode_active: watch::Receiver<bool>,
-  interval: Option<tokio::time::Interval>,
-  phantom: PhantomData<T>,
-}
+    match action {
+      PeriodicAction::Flush => {
+        let Some(next_flush_at) = state.next_flush_at else {
+          return;
+        };
 
-impl<T: IntervalCreator> SleepModeAwareRuntimeWatchTicker<T> {
-  #[must_use]
-  pub const fn new(
-    live_mode_receiver: watch::Receiver<Duration>,
-    sleep_mode_receiver: watch::Receiver<Duration>,
-    sleep_mode_active: watch::Receiver<bool>,
-  ) -> Self {
-    Self {
-      live_mode_receiver,
-      sleep_mode_receiver,
-      sleep_mode_active,
-      interval: None,
-      phantom: PhantomData,
+        // Keep generating intermediate flushes until the next one would land on or after the
+        // upload deadline. At that point the upload tick owns the final flush for the cycle.
+        let candidate = next_flush_at + state.effective_flush_interval;
+        state.next_flush_at = (candidate < state.next_upload_at).then_some(candidate);
+      },
+      // Upload always performs a flush first, so the next cycle only needs intermediate flushes.
+      PeriodicAction::Upload => {
+        state.next_upload_at = now + state.upload_interval;
+        state.next_flush_at = (state.effective_flush_interval < state.upload_interval)
+          .then_some(now + state.effective_flush_interval);
+      },
     }
   }
 }
 
 #[async_trait]
-impl<T: IntervalCreator> Ticker for SleepModeAwareRuntimeWatchTicker<T> {
-  async fn tick(&mut self) {
+impl PeriodicSchedule for RuntimePeriodicSchedule {
+  async fn next_action(&mut self) -> PeriodicAction {
     loop {
-      // Initialize the interval if it doesn't exist
-      if self.interval.is_none() {
-        // Choose interval duration based on sleep mode status
-        let duration = if *self.sleep_mode_active.borrow() {
-          log::trace!("sleep mode active, using sleep mode duration");
-          *self.sleep_mode_receiver.borrow_and_update()
-        } else {
-          log::trace!("sleep mode inactive, using live mode duration");
-          *self.live_mode_receiver.borrow_and_update()
-        };
-
-        self.interval = Some(T::interval(duration));
+      // Lazily build the first cycle so construction stays cheap and so startup uses the latest
+      // runtime values at the first point we actually need to schedule work.
+      if self.state.is_none() {
+        self.rebuild_schedule(false);
       }
 
+      let now = self.time_provider.now();
+      let (next_flush_at, next_upload_at) = {
+        let Some(state) = self.state.as_ref() else {
+          continue;
+        };
+        (state.next_flush_at, state.next_upload_at)
+      };
+
+      // If either deadline is already in the past, return immediately instead of sleeping. Flush
+      // wins ties so we preserve the invariant that an upload cycle always flushes first.
+      let next_action = match next_flush_at {
+        Some(next_flush_at) if next_flush_at <= now => Some(PeriodicAction::Flush),
+        _ if next_upload_at <= now => Some(PeriodicAction::Upload),
+        _ => None,
+      };
+
+      if let Some(next_action) = next_action {
+        self.update_after_action(next_action);
+        return next_action;
+      }
+
+      // Otherwise wait for whichever deadline arrives first, but keep listening for runtime
+      // updates so we can rebuild the schedule without waiting for the old deadline to expire.
+      let next_deadline = next_flush_at.map_or(next_upload_at, |next_flush_at| {
+        next_flush_at.min(next_upload_at)
+      });
+      let sleep_duration = next_deadline - now;
+      let time_provider = self.time_provider.clone();
+      let sleep = time_provider.sleep(sleep_duration);
+      tokio::pin!(sleep);
+
+      // Clone the receivers used in the select so each branch can take ownership of the updated
+      // receiver and store it back onto `self` before rebuilding the schedule.
+      let mut flush_interval = self.flush_interval.clone();
+      let mut live_upload_interval = self.live_upload_interval.clone();
+      let mut sleep_upload_interval = self.sleep_upload_interval.clone();
+      let mut sleep_mode_active = self.sleep_mode_active.clone();
+
       tokio::select! {
-        () = maybe_await_interval(self.interval.as_mut()) => break,
-        _ = self.live_mode_receiver.changed() => {
-          if !*self.sleep_mode_active.borrow() {
-            // Only update if we're using live mode
-            self.interval = None;
+        // The current schedule reached its next deadline. Loop around to return the due action.
+        () = &mut sleep => {},
+        changed = flush_interval.changed() => {
+          if changed.is_err() {
+            continue;
           }
+
+          // A flush-only cadence change should not add jitter to the upload deadline; it only
+          // changes how many intermediate flushes fit before the same upload boundary.
+          self.flush_interval = flush_interval;
+          self.rebuild_schedule(false);
         },
-        _ = self.sleep_mode_receiver.changed() => {
-          if *self.sleep_mode_active.borrow() {
-            // Only update if we're using sleep mode
-            self.interval = None;
+        changed = live_upload_interval.changed() => {
+          if changed.is_err() {
+            continue;
           }
+          self.live_upload_interval = live_upload_interval;
+
+          // Only re-jitter if the active upload cadence actually changed. In sleep mode, a live
+          // mode update is just cached state for later.
+          let active_upload_interval = if *self.sleep_mode_active.borrow() {
+            *self.sleep_upload_interval.borrow()
+          } else {
+            *self.live_upload_interval.borrow()
+          };
+          let upload_interval_changed = self
+            .state
+            .as_ref()
+            .is_some_and(|state| state.upload_interval != active_upload_interval);
+          self.rebuild_schedule(upload_interval_changed);
         },
-        _ = self.sleep_mode_active.changed() => {
-          // TODO(mattklein123): Potentially we should consider firing immediately if we change
-          // from sleep mode to live mode, but given that we use a jittered interval it should
-          // happen soon enough so seems ok to just let it re-init.
-          self.interval = None;
+        changed = sleep_upload_interval.changed() => {
+          if changed.is_err() {
+            continue;
+          }
+          self.sleep_upload_interval = sleep_upload_interval;
+
+          // Symmetric to the live-mode branch: a sleep-mode update only matters immediately when
+          // sleep mode is active, otherwise it is just stored until we transition modes.
+          let active_upload_interval = if *self.sleep_mode_active.borrow() {
+            *self.sleep_upload_interval.borrow()
+          } else {
+            *self.live_upload_interval.borrow()
+          };
+          let upload_interval_changed = self
+            .state
+            .as_ref()
+            .is_some_and(|state| state.upload_interval != active_upload_interval);
+          self.rebuild_schedule(upload_interval_changed);
+        },
+        changed = sleep_mode_active.changed() => {
+          if changed.is_err() {
+            continue;
+          }
+          self.sleep_mode_active = sleep_mode_active;
+
+          // A mode transition can swap which upload watch is authoritative, so treat it like an
+          // upload cadence change when the newly active interval differs from the current cycle.
+          let active_upload_interval = if *self.sleep_mode_active.borrow() {
+            *self.sleep_upload_interval.borrow()
+          } else {
+            *self.live_upload_interval.borrow()
+          };
+          let upload_interval_changed = self
+            .state
+            .as_ref()
+            .is_some_and(|state| state.upload_interval != active_upload_interval);
+          self.rebuild_schedule(upload_interval_changed);
         },
       }
     }
+  }
+}
+
+// Only flush on a separate cadence when the configured flush interval cleanly partitions the
+// upload interval. Otherwise the scheduler collapses flushes to the upload boundary so the two
+// periodic loops cannot drift apart.
+fn effective_flush_interval(
+  configured_flush_interval: Duration,
+  upload_interval: Duration,
+) -> Duration {
+  let configured_flush_millis: i128 = configured_flush_interval.whole_milliseconds();
+  let upload_millis: i128 = upload_interval.whole_milliseconds();
+
+  if configured_flush_millis <= 0
+    || configured_flush_millis > upload_millis
+    || upload_millis % configured_flush_millis != 0
+  {
+    upload_interval
+  } else {
+    configured_flush_interval
   }
 }
 
@@ -187,17 +383,16 @@ impl<T: IntervalCreator> Ticker for SleepModeAwareRuntimeWatchTicker<T> {
 pub struct Flusher {
   stats: Arc<Stats>,
   shutdown: ComponentShutdown,
-  flush_ticker: Box<dyn Ticker>,
+  periodic_schedule: Box<dyn PeriodicSchedule>,
   flush_rx: tokio::sync::mpsc::Receiver<FlushTriggerRequest>,
   flush_time_histogram: Histogram,
-  upload_ticker: Box<dyn Ticker>,
   data_flush_tx: mpsc::Sender<DataUpload>,
   file_manager: Arc<FileManager>,
   uploads: FuturesUnordered<UploadFuture>,
   periodic_in_flight: bool,
   flush_in_flight: bool,
   // This uses system time to allow integration tests to work. It should really use monotonic time.
-  last_upload_time: Option<time::OffsetDateTime>,
+  last_flush_upload_time: Option<time::OffsetDateTime>,
   time_provider: Arc<dyn TimeProvider>,
   minimum_upload_interval:
     bd_runtime::runtime::DurationWatch<bd_runtime::runtime::stats::MinimumUploadIntervalFlag>,
@@ -210,10 +405,9 @@ impl Flusher {
   pub fn new(
     stats: Arc<Stats>,
     shutdown: ComponentShutdown,
-    flush_ticker: Box<dyn Ticker>,
+    periodic_schedule: Box<dyn PeriodicSchedule>,
     flush_rx: tokio::sync::mpsc::Receiver<FlushTriggerRequest>,
     flush_time_histogram: Histogram,
-    upload_ticker: Box<dyn Ticker>,
     data_flush_tx: mpsc::Sender<DataUpload>,
     file_manager: Arc<FileManager>,
     time_provider: Arc<dyn TimeProvider>,
@@ -224,16 +418,15 @@ impl Flusher {
     Self {
       stats,
       shutdown,
-      flush_ticker,
+      periodic_schedule,
       flush_rx,
       flush_time_histogram,
-      upload_ticker,
       data_flush_tx,
       file_manager,
       uploads: FuturesUnordered::new(),
       periodic_in_flight: false,
       flush_in_flight: false,
-      last_upload_time: None,
+      last_flush_upload_time: None,
       time_provider,
       minimum_upload_interval,
 
@@ -248,7 +441,7 @@ impl Flusher {
   }
 
   fn should_skip_upload(&self) -> bool {
-    self.last_upload_time.is_some_and(|last_upload| {
+    self.last_flush_upload_time.is_some_and(|last_upload| {
       let now = self.time_provider.now();
       let elapsed = (now - last_upload).unsigned_abs();
       let min_interval = self.minimum_upload_interval.read().unsigned_abs();
@@ -257,21 +450,42 @@ impl Flusher {
   }
 
   pub async fn periodic_flush(mut self) {
+    self.startup_upload_if_old().await;
+
     loop {
       tokio::select! {
         Some(request) = self.flush_rx.recv() => {
           self.handle_flush_request(request).await;
         },
         () = self.shutdown.cancelled() => return,
-        () = self.flush_ticker.tick() => self.flush_to_disk().await,
-        () = self.upload_ticker.tick() => {
-          self.handle_upload_tick().await;
+        action = self.periodic_schedule.next_action() => {
+          match action {
+            PeriodicAction::Flush => self.flush_to_disk().await,
+            PeriodicAction::Upload => self.handle_periodic_upload_tick().await,
+          }
         },
         Some((upload_response, context)) = self.uploads.next() => {
           self.handle_upload_completion(upload_response, context).await;
         },
       };
     }
+  }
+
+  async fn startup_upload_if_old(&mut self) {
+    if let Some((uuid, rx)) = self
+      .upload_from_disk(true, UploadReason::UPLOAD_REASON_PERIODIC)
+      .await
+    {
+      log::debug!("starting old-file stats upload during startup");
+      self.periodic_in_flight = true;
+      self.push_upload_future(uuid, rx, UploadContext::Periodic);
+    }
+  }
+
+  async fn handle_periodic_upload_tick(&mut self) {
+    self.flush_to_disk().await;
+
+    self.handle_upload_tick().await;
   }
 
   async fn handle_upload_tick(&mut self) {
@@ -289,7 +503,6 @@ impl Flusher {
       .upload_from_disk(false, UploadReason::UPLOAD_REASON_PERIODIC)
       .await
     {
-      self.last_upload_time = Some(self.time_provider.now());
       self.periodic_in_flight = true;
       self.push_upload_future(uuid, rx, UploadContext::Periodic);
     }
@@ -327,7 +540,7 @@ impl Flusher {
       .upload_from_disk(false, UploadReason::UPLOAD_REASON_EVENT_TRIGGERED)
       .await
     {
-      self.last_upload_time = Some(self.time_provider.now());
+      self.last_flush_upload_time = Some(self.time_provider.now());
       self.flush_in_flight = true;
       self.push_upload_future(uuid, rx, UploadContext::Flush(request));
     } else if let Some(tx) = request.completion_tx {
@@ -340,9 +553,9 @@ impl Flusher {
     upload_response: UploadResponse,
     context: UploadContext,
   ) {
-    // Clear last_upload_time on failure to allow immediate retry.
-    if !upload_response.success {
-      self.last_upload_time = None;
+    if matches!(context, UploadContext::Flush(_)) && !upload_response.success {
+      // Clear the flush upload gate on failure so a later background or explicit flush can retry.
+      self.last_flush_upload_time = None;
     }
 
     self
@@ -370,7 +583,7 @@ impl Flusher {
             .upload_from_disk(true, UploadReason::UPLOAD_REASON_PERIODIC)
             .await
           {
-            // Old file uploads bypass the minimum interval check, so don't check last_upload_time.
+            // Old file uploads bypass the minimum interval check, so don't consult the flush gate.
             self.push_upload_future(uuid, rx, UploadContext::Periodic);
           } else {
             self.periodic_in_flight = false;
@@ -532,6 +745,14 @@ impl Flusher {
     // 2. Attempt to write the new delta snapshot to disk.
     let delta_snapshot = self.create_delta_snapshot();
 
+    #[cfg(feature = "logger-cli-observer")]
+    with_observer(|observer| {
+      let metrics = snapshot_action_metrics(&delta_snapshot);
+      if !metrics.is_empty() {
+        observer.on_snapshot(SnapshotObservation { metrics });
+      }
+    });
+
     // Because we have snapped deltas out of the collectors, if we fail to write to disk we will
     // lose the stats. Given that we will lose the stats anyway if the process terminates, this
     // seems not completely terrible. If we want to slightly improve this in the future we could
@@ -655,6 +876,8 @@ impl Flusher {
     mut request: StatsUploadRequest,
     upload_reason: UploadReason,
   ) -> anyhow::Result<Option<(String, oneshot::Receiver<UploadResponse>)>> {
+    #[cfg(feature = "logger-cli-observer")]
+    let upload_reason_name = format!("{upload_reason:?}");
     request.upload_reason = upload_reason.into();
     let (stats, response_rx) = TrackedStatsUploadRequest::new(request.upload_uuid.clone(), request);
 
@@ -668,6 +891,18 @@ impl Flusher {
         .map(|s| s.metrics().metric.len())
         .sum::<usize>(),
     );
+
+    #[cfg(feature = "logger-cli-observer")]
+    with_observer(|observer| {
+      let metrics = request_action_metrics(&stats.payload);
+      if !metrics.is_empty() {
+        observer.on_upload_attempt(UploadAttemptObservation {
+          upload_uuid: stats.payload.upload_uuid.clone(),
+          upload_reason: upload_reason_name.clone(),
+          metrics,
+        });
+      }
+    });
 
     let uuid = stats.payload.upload_uuid.clone();
     let tracked_upload = DataUpload::StatsUpload(stats);
@@ -683,6 +918,15 @@ impl Flusher {
 
   async fn process_pending_upload_completion(&self, upload_response: &UploadResponse) {
     log::debug!("stat upload attempt complete: {upload_response:?}");
+
+    #[cfg(feature = "logger-cli-observer")]
+    with_observer(|observer| {
+      observer.on_upload_ack(UploadAckObservation {
+        upload_uuid: upload_response.uuid.clone(),
+        success: upload_response.success,
+      });
+    });
+
     // If this fails we are in a bad state and are likely going to end up double uploading, but
     // there is little we can do about it.
     handle_unexpected(
@@ -830,4 +1074,88 @@ impl SnapshotHelper {
       ..Default::default()
     })
   }
+}
+
+#[cfg(feature = "logger-cli-observer")]
+fn observed_metric_value(metric: &MetricData) -> Option<ObservedMetricValue> {
+  match metric.to_proto().ok()? {
+    ProtoMetricData::Counter(counter) => Some(ObservedMetricValue::Counter(counter.value)),
+    ProtoMetricData::InlineHistogramValues(values) => {
+      Some(ObservedMetricValue::InlineHistogram(values.values))
+    },
+    ProtoMetricData::DdsketchHistogram(histogram) => Some(ObservedMetricValue::DdSketchHistogram {
+      encoded_len: histogram.serialized.len(),
+    }),
+  }
+}
+
+#[cfg(feature = "logger-cli-observer")]
+fn proto_metric_value(data: &ProtoMetricData) -> ObservedMetricValue {
+  match data {
+    ProtoMetricData::Counter(counter) => ObservedMetricValue::Counter(counter.value),
+    ProtoMetricData::InlineHistogramValues(values) => {
+      ObservedMetricValue::InlineHistogram(values.values.clone())
+    },
+    ProtoMetricData::DdsketchHistogram(histogram) => ObservedMetricValue::DdSketchHistogram {
+      encoded_len: histogram.serialized.len(),
+    },
+  }
+}
+
+#[cfg(feature = "logger-cli-observer")]
+fn snapshot_action_metrics(snapshot: &SnapshotHelper) -> Vec<ObservedMetric> {
+  let mut observed_metrics = Vec::new();
+  for ((_, name), metrics) in &snapshot.metrics {
+    let NameType::ActionId(action_id) = name else {
+      continue;
+    };
+
+    for (labels, metric) in metrics {
+      if let Some(value) = observed_metric_value(metric) {
+        observed_metrics.push(ObservedMetric {
+          action_id: action_id.clone(),
+          labels: labels.clone(),
+          value,
+        });
+      }
+    }
+  }
+
+  observed_metrics.sort_by(|left, right| {
+    left
+      .action_id
+      .cmp(&right.action_id)
+      .then_with(|| left.labels.cmp(&right.labels))
+  });
+  observed_metrics
+}
+
+#[cfg(feature = "logger-cli-observer")]
+fn request_action_metrics(request: &StatsUploadRequest) -> Vec<ObservedMetric> {
+  let mut observed_metrics = Vec::new();
+  for snapshot in &request.snapshot {
+    for metric in &snapshot.metrics().metric {
+      let Some(Metric_name_type::MetricId(action_id)) = &metric.metric_name_type else {
+        continue;
+      };
+
+      let Some(data) = &metric.data else {
+        continue;
+      };
+
+      observed_metrics.push(ObservedMetric {
+        action_id: action_id.clone(),
+        labels: metric.tags.clone().into_iter().collect(),
+        value: proto_metric_value(data),
+      });
+    }
+  }
+
+  observed_metrics.sort_by(|left, right| {
+    left
+      .action_id
+      .cmp(&right.action_id)
+      .then_with(|| left.labels.cmp(&right.labels))
+  });
+  observed_metrics
 }

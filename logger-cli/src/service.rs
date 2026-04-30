@@ -7,6 +7,7 @@
 
 use crate::logger::{LoggerArgs, LoggerHolder};
 use crate::types::{LogLevel, LogType, RuntimeValueType};
+use bd_shutdown::real_graceful_shutdown;
 use futures::future;
 use futures::prelude::*;
 use std::collections::HashMap;
@@ -26,6 +27,7 @@ pub trait Remote {
     message: String,
     fields: HashMap<String, String>,
     capture_session: bool,
+    block: bool,
   );
   async fn process_crash_reports();
   async fn get_runtime_value(name: String, value_type: RuntimeValueType) -> String;
@@ -48,6 +50,12 @@ async fn spawn(fut: impl Future<Output = ()> + Send + 'static) {
 
 static LOGGER: parking_lot::Mutex<Option<LoggerHolder>> = parking_lot::Mutex::new(None);
 
+fn shutdown_logger() {
+  if let Some(logger) = LOGGER.lock().take() {
+    logger.flush_and_stop();
+  }
+}
+
 pub async fn start(sdk_directory: &Path, args: &LoggerArgs, port: u16) -> anyhow::Result<()> {
   let logger = crate::logger::make_logger(sdk_directory, args).await?;
   logger.start();
@@ -57,20 +65,33 @@ pub async fn start(sdk_directory: &Path, args: &LoggerArgs, port: u16) -> anyhow
   let mut listener = tarpc::serde_transport::tcp::listen(&server_addr, Json::default).await?;
 
   listener.config_mut().max_frame_length(usize::MAX);
-  listener
-      .filter_map(|r| future::ready(r.ok())) // Ignore accept errors.
-      .map(tarpc::server::BaseChannel::with_defaults)
-      .map(|channel| {
-          let server = Server {
-            addr: channel.transport().peer_addr().unwrap(),
-            api_url: args.api_url.clone(),
-          };
-          channel.execute(server.serve()).for_each(spawn)
-      })
-      // Max 10 channels.
-      .buffer_unordered(10)
-      .for_each(|()| async {})
-      .await;
+  let listener = listener
+    .filter_map(|r| future::ready(r.ok())) // Ignore accept errors.
+    .map(tarpc::server::BaseChannel::with_defaults)
+    .map(|channel| {
+      let server = Server {
+        addr: channel.transport().peer_addr().unwrap(),
+        api_url: args.api_url.clone(),
+      };
+      channel.execute(server.serve()).for_each(spawn)
+    })
+    // Max 10 channels.
+    .buffer_unordered(10)
+    .for_each(|()| async {});
+  tokio::pin!(listener);
+
+  // Mirror the SDK shutdown flow by racing the server loop against process termination and
+  // flushing buffered state before shutting the logger down.
+  let should_exit = tokio::select! {
+    () = &mut listener => false,
+    () = real_graceful_shutdown() => true,
+  };
+
+  shutdown_logger();
+
+  if should_exit {
+    exit(0);
+  }
 
   Ok(())
 }
@@ -86,10 +107,8 @@ impl Remote for Server {
   }
 
   async fn stop(self, _: tarpc::context::Context) {
-    if let Some(logger) = &*LOGGER.lock() {
-      logger.stop();
-      exit(0);
-    }
+    shutdown_logger();
+    exit(0);
   }
 
   async fn set_sleep_mode(self, _: tarpc::context::Context, enabled: bool) {
@@ -106,6 +125,7 @@ impl Remote for Server {
     message: String,
     fields: HashMap<String, String>,
     capture_session: bool,
+    block: bool,
   ) {
     if let Some(logger) = &*LOGGER.lock() {
       logger.log(
@@ -114,6 +134,7 @@ impl Remote for Server {
         message,
         fields,
         capture_session,
+        block,
       );
     }
   }

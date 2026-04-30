@@ -899,18 +899,20 @@ pub mod retry_backoff {
 
 pub mod stats {
   use time::ext::NumericalDuration as _;
-  // This controls how often we flush periodic stats to the local aggregate file. Stats will be
-  // aggregated to this file, pending an upload event controlled by the below flag.
+  // This controls the preferred periodic flush cadence for stats written to the local aggregate
+  // file. The stats scheduler only honors this value when it cleanly divides the active upload
+  // interval; otherwise periodic flushes fall back to the upload cadence so flush and upload stay
+  // aligned.
   duration_feature_flag!(
     DirectStatFlushIntervalFlag,
     "stats.disk_flush_interval_ms",
     60.seconds()
   );
 
-  // This controls how often we attempt to read from the aggregated file in order to prepare and
-  // send a stats upload request. Note that this only comes into play whenever we are not actively
-  // trying to upload a stats request (which can take longer if we are retrying or there is no
-  // active API stream)
+  // This controls how often we attempt to prepare and send a periodic stats upload request. Each
+  // periodic upload tick first flushes in-memory stats to disk before it reads the aggregated file
+  // for upload. Runtime changes to this value re-schedule the next upload boundary, while startup
+  // remains deterministic.
   duration_feature_flag!(
     UploadStatFlushIntervalFlag,
     "stats.upload_flush_interval_ms",
@@ -932,10 +934,9 @@ pub mod stats {
   // of memory.
   int_feature_flag!(MaxDynamicCountersFlag, "stats.max_dynamic_stats", 500);
 
-  // This controls the minimum time between stats uploads. If uploads are triggered more frequently
-  // than this interval (either through periodic uploads or force flushes), they will be skipped.
-  // This prevents excessive upload traffic when flushes happen frequently. Failed uploads do not
-  // count against this limit to allow immediate retries.
+  // This controls the minimum time between flush-triggered stats uploads. Periodic uploads do not
+  // start this timer, so a recent periodic upload does not suppress a later background or explicit
+  // flush upload. Failed flush-triggered uploads clear the timer to allow immediate retries.
   duration_feature_flag!(
     MinimumUploadIntervalFlag,
     "stats.minimum_upload_interval_ms",

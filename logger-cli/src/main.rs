@@ -5,13 +5,14 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::cli::{Command, EnableFlag, FieldPairs, Options};
+use crate::cli::{ColorMode, Command, EnableFlag, FieldPairs, Options};
 use bd_session::fixed::Callbacks;
 use clap::Parser;
 use logger_cli::logger::{MaybeStaticSessionGenerator, SESSION_FILE};
 use logger_cli::service::RemoteClient;
 use std::env;
-use std::path::Path;
+use std::io::IsTerminal;
+use std::path::{Path, PathBuf};
 use tarpc::tokio_serde::formats::Json;
 use tarpc::{client, context};
 use tracing_subscriber::layer::SubscriberExt;
@@ -19,15 +20,36 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
 mod cli;
+mod stats_observation;
+
+fn reset_sdk_directory(sdk_directory: &Path) -> anyhow::Result<()> {
+  if sdk_directory.exists() {
+    log::info!(
+      "removing existing logger-cli data directory: {}",
+      sdk_directory.display()
+    );
+    std::fs::remove_dir_all(sdk_directory)?;
+  }
+
+  std::fs::create_dir_all(sdk_directory)?;
+  Ok(())
+}
+
+fn resolve_sdk_directory(args: &Options) -> anyhow::Result<PathBuf> {
+  if let Some(sdk_directory) = args.sdk_directory.clone() {
+    return Ok(sdk_directory);
+  }
+
+  let home = env::var("HOME")?;
+  Ok(Path::new(&home).join(".local").join("bd-logger-cli"))
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-  // initialize console logging
-  init_tracing();
   let args = crate::cli::Options::parse();
+  init_tracing(args.log_color);
 
-  let home = env::var("HOME")?;
-  let sdk_directory = Path::new(&home).join(".local").join("bd-logger-cli");
+  let sdk_directory = resolve_sdk_directory(&args)?;
   std::fs::create_dir_all(&sdk_directory)?;
 
   match args.command {
@@ -42,10 +64,16 @@ async fn main() -> anyhow::Result<()> {
         )?;
       }
     },
-    Command::Start(cmd) => {
+    Command::Start(ref cmd) => {
+      if cmd.clean_data_dir {
+        reset_sdk_directory(&sdk_directory)?;
+      }
+
+      stats_observation::configure(&args, &sdk_directory)?;
+
       let port = args.port;
       eprintln!("starting server on :{port}");
-      logger_cli::service::start(&sdk_directory, &cmd.into(), port).await?;
+      logger_cli::service::start(&sdk_directory, &cmd.clone().into(), port).await?;
     },
     Command::Log(ref cmd) => {
       with_logger(&args, async |logger| {
@@ -56,7 +84,8 @@ async fn main() -> anyhow::Result<()> {
             cmd.log_type.clone(),
             cmd.message.clone(),
             FieldPairs(cmd.field.clone()).into(),
-            true,
+            cmd.capture_session,
+            cmd.block,
           )
           .await?;
         Ok(())
@@ -168,10 +197,12 @@ async fn get_session_url(logger: RemoteClient, session_id: String) -> anyhow::Re
   Ok(format!("{base_url}/session/{session_id}"))
 }
 
-fn init_tracing() {
+fn init_tracing(color_mode: ColorMode) {
+  // Default to terminal-aware logging so redirected output stays machine-readable,
+  // while still allowing explicit overrides for interactive use.
   let stderr = tracing_subscriber::fmt::layer()
     .with_writer(std::io::stderr)
-    .with_ansi(true)
+    .with_ansi(ansi_enabled(color_mode))
     .with_line_number(true)
     .with_thread_ids(true)
     .compact();
@@ -183,4 +214,12 @@ fn init_tracing() {
   );
 
   Registry::default().with(filter).with(stderr).init();
+}
+
+fn ansi_enabled(color_mode: ColorMode) -> bool {
+  match color_mode {
+    ColorMode::Always => true,
+    ColorMode::Never => false,
+    ColorMode::Auto => std::io::stderr().is_terminal() && env::var_os("NO_COLOR").is_none(),
+  }
 }

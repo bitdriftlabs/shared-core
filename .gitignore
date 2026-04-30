@@ -5,3 +5,4 @@ perf.data*
 /.idea
 .claude/settings.local.json
 .tmp/
+**/.venv
