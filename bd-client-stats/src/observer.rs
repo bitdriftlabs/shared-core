@@ -7,7 +7,7 @@
 
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, LazyLock};
 
 #[derive(Clone, Debug)]
 pub struct ObservedMetric {
@@ -49,18 +49,15 @@ pub trait StatsObserver: Send + Sync {
   fn on_upload_ack(&self, observation: UploadAckObservation);
 }
 
-static OBSERVER: OnceLock<RwLock<Option<Arc<dyn StatsObserver>>>> = OnceLock::new();
-
-fn observer_slot() -> &'static RwLock<Option<Arc<dyn StatsObserver>>> {
-  OBSERVER.get_or_init(|| RwLock::new(None))
-}
+static OBSERVER: LazyLock<RwLock<Option<Arc<dyn StatsObserver>>>> =
+  LazyLock::new(|| RwLock::new(None));
 
 pub fn set_observer(observer: Option<Arc<dyn StatsObserver>>) {
-  *observer_slot().write() = observer;
+  *OBSERVER.write() = observer;
 }
 
 pub(crate) fn with_observer(f: impl FnOnce(&dyn StatsObserver)) {
-  let observer = observer_slot().read().clone();
+  let observer = OBSERVER.read().clone();
   if let Some(observer) = observer {
     f(observer.as_ref());
   }

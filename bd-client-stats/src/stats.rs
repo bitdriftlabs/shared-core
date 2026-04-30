@@ -90,9 +90,10 @@ struct RuntimePeriodicScheduleState {
 // more intermediate flush deadlines before the next upload deadline when the configured flush
 // interval is a clean divisor of the active upload interval.
 //
-// Startup is deterministic: the first cycle is scheduled without jitter. We only re-jitter upload
-// deadlines when the active upload interval changes at runtime, which keeps reconnect storms from
-// synchronizing without making every process immediately flush or upload on boot.
+// Startup is deterministic: the first cycle is scheduled immediately from the current runtime
+// values, but without jitter. That means we do not wait for some extra startup-only delay; we
+// simply avoid randomizing the initial deadline. We only re-jitter upload deadlines when the
+// active upload interval changes at runtime, which keeps reconnect storms from synchronizing.
 pub struct RuntimePeriodicSchedule {
   flush_interval: watch::Receiver<Duration>,
   live_upload_interval: watch::Receiver<Duration>,
