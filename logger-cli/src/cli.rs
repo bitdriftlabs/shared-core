@@ -12,6 +12,13 @@ use std::collections::HashMap;
 use std::hash::BuildHasher;
 use std::path::PathBuf;
 
+#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorMode {
+  Auto,
+  Always,
+  Never,
+}
+
 #[derive(Debug, Parser)]
 #[command(version, about, long_about = None)]
 pub struct Options {
@@ -31,6 +38,16 @@ pub struct Options {
   /// Override the SDK data directory used for local state.
   #[clap(env = "LOGGER_SDK_DIRECTORY", long, global = true)]
   pub sdk_directory: Option<PathBuf>,
+
+  /// Control ANSI color in logger-cli output.
+  #[clap(
+    env = "LOGGER_LOG_COLOR",
+    long,
+    global = true,
+    value_enum,
+    default_value = "auto"
+  )]
+  pub log_color: ColorMode,
 
   /// Observe stats uploads for a single action ID and write matching events as JSONL.
   #[clap(env = "LOGGER_OBSERVE_STATS_ACTION_ID", long, global = true)]

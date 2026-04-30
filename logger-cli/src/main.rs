@@ -5,12 +5,13 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::cli::{Command, EnableFlag, FieldPairs, Options};
+use crate::cli::{ColorMode, Command, EnableFlag, FieldPairs, Options};
 use bd_session::fixed::Callbacks;
 use clap::Parser;
 use logger_cli::logger::{MaybeStaticSessionGenerator, SESSION_FILE};
 use logger_cli::service::RemoteClient;
 use std::env;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use tarpc::tokio_serde::formats::Json;
 use tarpc::{client, context};
@@ -45,9 +46,8 @@ fn resolve_sdk_directory(args: &Options) -> anyhow::Result<PathBuf> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-  // initialize console logging
-  init_tracing();
   let args = crate::cli::Options::parse();
+  init_tracing(args.log_color);
 
   let sdk_directory = resolve_sdk_directory(&args)?;
   std::fs::create_dir_all(&sdk_directory)?;
@@ -197,10 +197,12 @@ async fn get_session_url(logger: RemoteClient, session_id: String) -> anyhow::Re
   Ok(format!("{base_url}/session/{session_id}"))
 }
 
-fn init_tracing() {
+fn init_tracing(color_mode: ColorMode) {
+  // Default to terminal-aware logging so redirected output stays machine-readable,
+  // while still allowing explicit overrides for interactive use.
   let stderr = tracing_subscriber::fmt::layer()
     .with_writer(std::io::stderr)
-    .with_ansi(true)
+    .with_ansi(ansi_enabled(color_mode))
     .with_line_number(true)
     .with_thread_ids(true)
     .compact();
@@ -212,4 +214,12 @@ fn init_tracing() {
   );
 
   Registry::default().with(filter).with(stderr).init();
+}
+
+fn ansi_enabled(color_mode: ColorMode) -> bool {
+  match color_mode {
+    ColorMode::Always => true,
+    ColorMode::Never => false,
+    ColorMode::Auto => std::io::stderr().is_terminal() && env::var_os("NO_COLOR").is_none(),
+  }
 }
