@@ -11,6 +11,7 @@ concurrency:
 env:
   CARGO_NET_GIT_FETCH_WITH_CLI: true
   CARGO_TERM_COLOR: always
+  SKIP_FILE_GEN: true
 jobs:
   test:
     name: rust
