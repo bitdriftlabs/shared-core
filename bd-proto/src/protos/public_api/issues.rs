@@ -337,6 +337,10 @@ pub mod advanced_filter {
             LHS_TYPED_CONTEXT = 7,
             // @@protoc_insertion_point(enum_value:bitdrift.public.unary.issues.v1.AdvancedFilter.Condition.LhsTyped.LHS_TYPED_REPORT_TYPE)
             LHS_TYPED_REPORT_TYPE = 8,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.issues.v1.AdvancedFilter.Condition.LhsTyped.LHS_TYPED_BUILD_ID)
+            LHS_TYPED_BUILD_ID = 9,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.issues.v1.AdvancedFilter.Condition.LhsTyped.LHS_TYPED_VERSION_CODE)
+            LHS_TYPED_VERSION_CODE = 10,
         }
 
         impl ::protobuf::Enum for LhsTyped {
@@ -357,6 +361,8 @@ pub mod advanced_filter {
                     6 => ::std::option::Option::Some(LhsTyped::LHS_TYPED_REASON),
                     7 => ::std::option::Option::Some(LhsTyped::LHS_TYPED_CONTEXT),
                     8 => ::std::option::Option::Some(LhsTyped::LHS_TYPED_REPORT_TYPE),
+                    9 => ::std::option::Option::Some(LhsTyped::LHS_TYPED_BUILD_ID),
+                    10 => ::std::option::Option::Some(LhsTyped::LHS_TYPED_VERSION_CODE),
                     _ => ::std::option::Option::None
                 }
             }
@@ -372,6 +378,8 @@ pub mod advanced_filter {
                     "LHS_TYPED_REASON" => ::std::option::Option::Some(LhsTyped::LHS_TYPED_REASON),
                     "LHS_TYPED_CONTEXT" => ::std::option::Option::Some(LhsTyped::LHS_TYPED_CONTEXT),
                     "LHS_TYPED_REPORT_TYPE" => ::std::option::Option::Some(LhsTyped::LHS_TYPED_REPORT_TYPE),
+                    "LHS_TYPED_BUILD_ID" => ::std::option::Option::Some(LhsTyped::LHS_TYPED_BUILD_ID),
+                    "LHS_TYPED_VERSION_CODE" => ::std::option::Option::Some(LhsTyped::LHS_TYPED_VERSION_CODE),
                     _ => ::std::option::Option::None
                 }
             }
@@ -386,6 +394,8 @@ pub mod advanced_filter {
                 LhsTyped::LHS_TYPED_REASON,
                 LhsTyped::LHS_TYPED_CONTEXT,
                 LhsTyped::LHS_TYPED_REPORT_TYPE,
+                LhsTyped::LHS_TYPED_BUILD_ID,
+                LhsTyped::LHS_TYPED_VERSION_CODE,
             ];
         }
 
@@ -6223,164 +6233,165 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     nary.issues.v1\x1a1bitdrift/public/shared/platform/v1/platform.proto\x1a\
     ,bitdrift/public/unary/common/v1/common.proto\x1a+bitdrift/public/unary/\
     issues/v1/crash.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17vali\
-    date/validate.proto\"\xc5\x05\n\x0eAdvancedFilter\x12l\n\x0eand_conditio\
+    date/validate.proto\"\xf9\x05\n\x0eAdvancedFilter\x12l\n\x0eand_conditio\
     ns\x18\x01\x20\x03(\x0b2;.bitdrift.public.unary.issues.v1.AdvancedFilter\
-    .OrConditionR\randConditionsB\x08\xfaB\x05\x92\x01\x02\x10d\x1a\xcb\x03\
+    .OrConditionR\randConditionsB\x08\xfaB\x05\x92\x01\x02\x10d\x1a\xff\x03\
     \n\tCondition\x12i\n\tlhs_typed\x18\x04\x20\x01(\x0e2B.bitdrift.public.u\
     nary.issues.v1.AdvancedFilter.Condition.LhsTypedR\x08lhsTypedB\x08\xfaB\
     \x05\x82\x01\x02\x10\x01\x12O\n\x08operator\x18\x02\x20\x01(\x0e2).bitdr\
     ift.public.unary.common.v1.OperatorR\x08operatorB\x08\xfaB\x05\x82\x01\
     \x02\x10\x01\x12\x1a\n\x03rhs\x18\x03\x20\x01(\tR\x03rhsB\x08\xfaB\x05r\
-    \x03\x18\xff\x01\"\xe5\x01\n\x08LhsTyped\x12\x19\n\x15LHS_TYPED_UNSPECIF\
+    \x03\x18\xff\x01\"\x99\x02\n\x08LhsTyped\x12\x19\n\x15LHS_TYPED_UNSPECIF\
     IED\x10\0\x12\x14\n\x10LHS_TYPED_APP_ID\x10\x01\x12\x16\n\x12LHS_TYPED_P\
     LATFORM\x10\x02\x12\x19\n\x15LHS_TYPED_APP_VERSION\x10\x03\x12\x18\n\x14\
     LHS_TYPED_OS_VERSION\x10\x04\x12\x13\n\x0fLHS_TYPED_MODEL\x10\x05\x12\
     \x14\n\x10LHS_TYPED_REASON\x10\x06\x12\x15\n\x11LHS_TYPED_CONTEXT\x10\
-    \x07\x12\x19\n\x15LHS_TYPED_REPORT_TYPE\x10\x08\x1aw\n\x0bOrCondition\
-    \x12h\n\ror_conditions\x18\x01\x20\x03(\x0b29.bitdrift.public.unary.issu\
-    es.v1.AdvancedFilter.ConditionR\x0corConditionsB\x08\xfaB\x05\x92\x01\
-    \x02\x10d\"\x84\x01\n\x11FeatureFlagFilter\x12\x1d\n\x04name\x18\x01\x20\
-    \x01(\tR\x04nameB\t\xfaB\x06r\x04\x10\x01\x18d\x12&\n\x07variant\x18\x02\
-    \x20\x01(\tH\0R\x07variantB\x07\xfaB\x04r\x02\x18d\x88\x01\x01\x12\x1c\n\
-    \texclusive\x18\x03\x20\x01(\x08R\texclusiveB\n\n\x08_variant\"\xa6\x03\
-    \n\nIssueQuery\x12I\n\ntime_range\x18\x07\x20\x01(\x0b2*.bitdrift.public\
-    .unary.common.v1.TimeRangeR\ttimeRange\x12T\n\tplatforms\x18\x03\x20\x03\
-    (\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\tplatformsB\x08\xfa\
-    B\x05\x92\x01\x02\x10d\x12Z\n\x10advanced_filters\x18\x04\x20\x01(\x0b2/\
-    .bitdrift.public.unary.issues.v1.AdvancedFilterR\x0fadvancedFilters\x12+\
-    \n\x0cgrouping_key\x18\x05\x20\x03(\tR\x0bgroupingKeyB\x08\xfaB\x05\x92\
-    \x01\x02\x10d\x12n\n\x14feature_flag_filters\x18\x06\x20\x03(\x0b22.bitd\
-    rift.public.unary.issues.v1.FeatureFlagFilterR\x12featureFlagFiltersB\
-    \x08\xfaB\x05\x92\x01\x02\x10d\"\xd1\x01\n\x0fIssueGroupQuery\x12L\n\x08\
-    assignee\x18\x01\x20\x03(\x0b2&.bitdrift.public.unary.common.v1.OwnerR\
-    \x08assigneeB\x08\xfaB\x05\x92\x01\x02\x10d\x12p\n\x12issue_group_status\
-    \x18\x02\x20\x03(\x0e21.bitdrift.public.unary.issues.v1.IssueGroupStatus\
-    R\x10issueGroupStatusB\x0f\xfaB\x0c\x92\x01\t\x10d\"\x05\x82\x01\x02\x10\
-    \x01\"f\n\x05Event\x12G\n\x0cperiod_start\x18\x01\x20\x01(\x0b2\x1a.goog\
-    le.protobuf.TimestampR\x0bperiodStartB\x08\xfaB\x05\x8a\x01\x02\x10\x01\
-    \x12\x14\n\x05count\x18\x02\x20\x01(\x04R\x05count\"\x8e\t\n\nIssueGroup\
-    \x12\x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\x12P\n\x08metadata\x18\x02\
-    \x20\x01(\x0b24.bitdrift.public.unary.issues.v1.IssueGroup.MetadataR\x08\
-    metadata\x12H\n\x08platform\x18\x03\x20\x03(\x0b2,.bitdrift.public.share\
-    d.platform.v1.PlatformR\x08platform\x12G\n\x05stats\x18\x04\x20\x01(\x0b\
-    21.bitdrift.public.unary.issues.v1.IssueGroup.StatsR\x05stats\x12D\n\tas\
-    signees\x18\x05\x20\x03(\x0b2&.bitdrift.public.unary.common.v1.OwnerR\ta\
-    ssignees\x12I\n\x06status\x18\x06\x20\x01(\x0e21.bitdrift.public.unary.i\
-    ssues.v1.IssueGroupStatusR\x06status\x12X\n\x0efiltered_stats\x18\x07\
-    \x20\x01(\x0b21.bitdrift.public.unary.issues.v1.IssueGroup.StatsR\rfilte\
-    redStats\x12\x1a\n\x07version\x18\x08\x20\x01(\tH\0R\x07version\x12#\n\
-    \x0cversion_code\x18\t\x20\x01(\x03H\0R\x0bversionCode\x1a\xe0\x01\n\x08\
-    Metadata\x12\x12\n\x04type\x18\x01\x20\x01(\tR\x04type\x12\x16\n\x06reas\
-    on\x18\x02\x20\x01(\tR\x06reason\x12\x1d\n\x07context\x18\x03\x20\x01(\t\
-    H\0R\x07context\x88\x01\x01\x12\x1d\n\x07details\x18\x04\x20\x01(\tH\x01\
-    R\x07details\x88\x01\x01\x12R\n\x08platform\x18\x05\x20\x01(\x0b2,.bitdr\
-    ift.public.shared.platform.v1.PlatformR\x08platformB\x08\xfaB\x05\x8a\
-    \x01\x02\x10\x01B\n\n\x08_contextB\n\n\x08_details\x1a\xe5\x02\n\x05Stat\
-    s\x12C\n\nfirst_seen\x18\x01\x20\x01(\x0b2\x1a.google.protobuf.Timestamp\
-    R\tfirstSeenB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12A\n\tlast_seen\x18\x02\
-    \x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x08lastSeenB\x08\xfaB\x05\
-    \x8a\x01\x02\x10\x01\x12P\n\x11first_report_seen\x18\x06\x20\x01(\x0b2\
-    \x1a.google.protobuf.TimestampR\x0ffirstReportSeenB\x08\xfaB\x05\x8a\x01\
-    \x02\x10\x01\x12\x1d\n\nuser_count\x18\x03\x20\x01(\x04R\tuserCount\x12>\
-    \n\x06events\x18\x04\x20\x03(\x0b2&.bitdrift.public.unary.issues.v1.Even\
-    tR\x06events\x12#\n\rsession_count\x18\x05\x20\x01(\x04R\x0csessionCount\
-    B\x14\n\x12resolution_version\"\x7f\n\x14GetIssueGroupRequest\x12\x19\n\
-    \x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12L\n\
-    \x0bissue_query\x18\x06\x20\x01(\x0b2+.bitdrift.public.unary.issues.v1.I\
-    ssueQueryR\nissueQuery\"o\n\x15GetIssueGroupResponse\x12V\n\x0bissue_gro\
-    up\x18\x01\x20\x01(\x0b2+.bitdrift.public.unary.issues.v1.IssueGroupR\ni\
-    ssueGroupB\x08\xfaB\x05\x8a\x01\x02\x10\x01\"\xe7\x05\n\x16ListIssueGrou\
-    psRequest\x12\x1b\n\x06offset\x18\x01\x20\x01(\rH\0R\x06offset\x88\x01\
-    \x01\x12$\n\x05limit\x18\x02\x20\x01(\rH\x01R\x05limitB\t\xfaB\x06*\x04\
-    \x18d(\x01\x88\x01\x01\x12L\n\x0bissue_query\x18\x05\x20\x01(\x0b2+.bitd\
-    rift.public.unary.issues.v1.IssueQueryR\nissueQuery\x12\\\n\x11issue_gro\
-    up_query\x18\x06\x20\x01(\x0b20.bitdrift.public.unary.issues.v1.IssueGro\
-    upQueryR\x0fissueGroupQuery\x12Z\n\x04sort\x18\x07\x20\x03(\x0b2<.bitdri\
-    ft.public.unary.issues.v1.ListIssueGroupsRequest.SortR\x04sortB\x08\xfaB\
-    \x05\x92\x01\x02\x10d\x1a\xec\x02\n\x04Sort\x12`\n\x03key\x18\x01\x20\
-    \x01(\x0e2D.bitdrift.public.unary.issues.v1.ListIssueGroupsRequest.Sort.\
-    SortKeyR\x03keyB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12V\n\tdirection\x18\
-    \x02\x20\x01(\x0e2..bitdrift.public.unary.common.v1.SortDirectionR\tdire\
-    ctionB\x08\xfaB\x05\x82\x01\x02\x10\x01\"\xa9\x01\n\x07SortKey\x12\x18\n\
-    \x14SORT_KEY_UNSPECIFIED\x10\0\x12\x1a\n\x16MOST_RECENT_OCCURRENCE\x10\
-    \x01\x12\x17\n\x13EARLIEST_OCCURRENCE\x10\x02\x12\x12\n\x0eFIRST_REPORTE\
-    D\x10\x03\x12\x12\n\x0eIMPACTED_USERS\x10\x04\x12\x15\n\x11IMPACTED_SESS\
-    IONS\x10\x05\x12\x10\n\x0cISSUE_REASON\x10\x06B\t\n\x07_offsetB\x08\n\
-    \x06_limit\"\x97\x01\n\x17ListIssueGroupsResponse\x12N\n\x0cissue_groups\
-    \x18\x01\x20\x03(\x0b2+.bitdrift.public.unary.issues.v1.IssueGroupR\x0bi\
-    ssueGroups\x12,\n\x12total_issue_groups\x18\x02\x20\x01(\rR\x10totalIssu\
-    eGroups\"]\n\x0fGetIssueRequest\x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02i\
-    dB\t\xfaB\x06r\x04\x10\x01\x18d\x12/\n\x0eissue_group_id\x18\x02\x20\x01\
-    (\tR\x0cissueGroupIdB\t\xfaB\x06r\x04\x10\x01\x18d\"\xec\x05\n\x05Issue\
-    \x12\x1f\n\x06reason\x18\x01\x20\x01(\tR\x06reasonB\x07\xfaB\x04r\x02\
-    \x10\x01\x12!\n\x07context\x18\x02\x20\x01(\tR\x07contextB\x07\xfaB\x04r\
-    \x02\x10\x01\x12!\n\x07details\x18\x03\x20\x01(\tR\x07detailsB\x07\xfaB\
-    \x04r\x02\x10\x01\x128\n\x04time\x18\x04\x20\x01(\x0b2\x1a.google.protob\
-    uf.TimestampR\x04timeB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12R\n\x08platfo\
-    rm\x18\x05\x20\x01(\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\
-    \x08platformB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x1f\n\x06app_id\x18\
-    \x06\x20\x01(\tR\x05appIdB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12)\n\x0bap\
-    p_version\x18\x07\x20\x01(\tR\nappVersionB\x08\xfaB\x05\x8a\x01\x02\x10\
-    \x01\x12#\n\x08build_id\x18\x08\x20\x01(\tR\x07buildIdB\x08\xfaB\x05\x8a\
-    \x01\x02\x10\x01\x12\x1e\n\x05model\x18\t\x20\x01(\tR\x05modelB\x08\xfaB\
-    \x05\x8a\x01\x02\x10\x01\x12\x1e\n\nforeground\x18\x0f\x20\x01(\x08R\nfo\
-    reground\x12*\n\x0cnetwork_type\x18\x10\x20\x01(\tR\x0bnetworkTypeB\x07\
-    \xfaB\x04r\x02\x10\x01\x12&\n\nradio_type\x18\x11\x20\x01(\tR\tradioType\
-    B\x07\xfaB\x04r\x02\x10\x01\x12\x1f\n\x06locale\x18\x12\x20\x01(\tR\x06l\
-    ocaleB\x07\xfaB\x04r\x02\x10\x01\x12(\n\x0breport_type\x18\x13\x20\x01(\
-    \tR\nreportTypeB\x07\xfaB\x04r\x02\x10\x01\x12I\n\x06report\x18\x0c\x20\
-    \x01(\x0b2'.bitdrift.public.unary.issues.v1.ReportR\x06reportB\x08\xfaB\
-    \x05\x8a\x01\x02\x10\x01\x12\x17\n\x02id\x18\r\x20\x01(\tR\x02idB\x07\
-    \xfaB\x04r\x02\x10\x01\x12+\n\nsession_id\x18\x0e\x20\x01(\tH\0R\tsessio\
-    nIdB\x07\xfaB\x04r\x02\x10\x01\x88\x01\x01B\r\n\x0b_session_id\"\xe9\x01\
-    \n\x10GetIssueResponse\x12<\n\x05issue\x18\x0c\x20\x01(\x0b2&.bitdrift.p\
-    ublic.unary.issues.v1.IssueR\x05issue\x12Z\n\x06status\x18\r\x20\x01(\
-    \x0e28.bitdrift.public.unary.issues.v1.GetIssueResponse.StatusR\x06statu\
-    sB\x08\xfaB\x05\x82\x01\x02\x10\x01\";\n\x06Status\x12\t\n\x05FOUND\x10\
-    \0\x12\r\n\tNOT_FOUND\x10\x01\x12\x0b\n\x07PENDING\x10\x02\x12\n\n\x06FA\
-    ILED\x10\x03\"\xb2\t\n\x11ListIssuesRequest\x12/\n\x0eissue_group_id\x18\
-    \x01\x20\x01(\tR\x0cissueGroupIdB\t\xfaB\x06r\x04\x10\x01\x18d\x12\x16\n\
-    \x06offset\x18\x02\x20\x01(\rR\x06offset\x12$\n\x05limit\x18\x03\x20\x01\
-    (\rH\0R\x05limitB\t\xfaB\x06*\x04\x18d(\x01\x88\x01\x01\x12h\n\x07filter\
-    s\x18\x04\x20\x03(\x0b2D.bitdrift.public.unary.issues.v1.ListIssuesReque\
-    st.ListIssuesFiltersR\x07filtersB\x08\xfaB\x05\x92\x01\x02\x10d\x12L\n\
-    \x0bissue_query\x18\x06\x20\x01(\x0b2+.bitdrift.public.unary.issues.v1.I\
-    ssueQueryR\nissueQuery\x12U\n\x04sort\x18\x07\x20\x03(\x0b27.bitdrift.pu\
-    blic.unary.issues.v1.ListIssuesRequest.SortR\x04sortB\x08\xfaB\x05\x92\
-    \x01\x02\x10d\x1a\x83\x02\n\x04Sort\x12[\n\x03key\x18\x01\x20\x01(\x0e2?\
-    .bitdrift.public.unary.issues.v1.ListIssuesRequest.Sort.SortKeyR\x03keyB\
-    \x08\xfaB\x05\x82\x01\x02\x10\x01\x12V\n\tdirection\x18\x02\x20\x01(\x0e\
-    2..bitdrift.public.unary.common.v1.SortDirectionR\tdirectionB\x08\xfaB\
-    \x05\x82\x01\x02\x10\x01\"F\n\x07SortKey\x12\x18\n\x14SORT_KEY_UNSPECIFI\
-    ED\x10\0\x12\x0f\n\x0bOCCURRED_AT\x10\x01\x12\x10\n\x0cISSUE_REASON\x10\
-    \x02\x1a\x8e\x04\n\x11ListIssuesFilters\x12k\n\x08platform\x18\x01\x20\
-    \x01(\x0b2M.bitdrift.public.unary.issues.v1.ListIssuesRequest.ListIssues\
-    Filters.PlatformH\0R\x08platform\x12o\n\ntime_range\x18\x02\x20\x01(\x0b\
-    2N.bitdrift.public.unary.issues.v1.ListIssuesRequest.ListIssuesFilters.T\
-    imeRangeH\0R\ttimeRange\x12\\\n\x10advanced_filters\x18\x06\x20\x01(\x0b\
-    2/.bitdrift.public.unary.issues.v1.AdvancedFilterH\0R\x0fadvancedFilters\
-    \x1aX\n\x08Platform\x12L\n\x05value\x18\x01\x20\x03(\x0b2,.bitdrift.publ\
-    ic.shared.platform.v1.PlatformR\x05valueB\x08\xfaB\x05\x92\x01\x02\x10d\
-    \x1aV\n\tTimeRange\x12I\n\ntime_range\x18\x03\x20\x01(\x0b2*.bitdrift.pu\
-    blic.unary.common.v1.TimeRangeR\ttimeRangeB\x0b\n\x04type\x12\x03\xf8B\
-    \x01B\x08\n\x06_limit\"w\n\x12ListIssuesResponse\x12>\n\x06issues\x18\
-    \x01\x20\x03(\x0b2&.bitdrift.public.unary.issues.v1.IssueR\x06issues\x12\
-    !\n\x0ctotal_issues\x18\x02\x20\x01(\rR\x0btotalIssues\"C\n\x1bGetIssueF\
-    eatureFlagsRequest\x12$\n\x08issue_id\x18\x01\x20\x01(\tR\x07issueIdB\t\
-    \xfaB\x06r\x04\x10\x01\x18d\"\xb6\x02\n\x1cGetIssueFeatureFlagsResponse\
-    \x12n\n\rfeature_flags\x18\x01\x20\x03(\x0b2I.bitdrift.public.unary.issu\
-    es.v1.GetIssueFeatureFlagsResponse.FeatureFlagR\x0cfeatureFlags\x1a\xa5\
-    \x01\n\x0bFeatureFlag\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\
-    \xfaB\x04r\x02\x10\x01\x12&\n\x07variant\x18\x02\x20\x01(\tH\0R\x07varia\
-    ntB\x07\xfaB\x04r\x02\x10\x01\x88\x01\x01\x12E\n\x0bmodified_at\x18\x03\
-    \x20\x01(\x0b2\x1a.google.protobuf.TimestampR\nmodifiedAtB\x08\xfaB\x05\
-    \x8a\x01\x02\x10\x01B\n\n\x08_variant\"\x8f\x01\n\x1dUpdateIssueGroupSta\
-    tusRequest\x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\
-    \x10\x01\x18d\x12S\n\x06status\x18\x02\x20\x01(\x0e21.bitdrift.public.un\
-    ary.issues.v1.IssueGroupStatusR\x06statusB\x08\xfaB\x05\x82\x01\x02\x10\
-    \x01\"\xcc\x01\n\x1eUpdateIssueGroupStatusResponse\x12S\n\x06status\x18\
-    \x01\x20\x01(\x0e21.bitdrift.public.unary.issues.v1.IssueGroupStatusR\
-    \x06statusB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12\x1a\n\x07version\x18\
+    \x07\x12\x19\n\x15LHS_TYPED_REPORT_TYPE\x10\x08\x12\x16\n\x12LHS_TYPED_B\
+    UILD_ID\x10\t\x12\x1a\n\x16LHS_TYPED_VERSION_CODE\x10\n\x1aw\n\x0bOrCond\
+    ition\x12h\n\ror_conditions\x18\x01\x20\x03(\x0b29.bitdrift.public.unary\
+    .issues.v1.AdvancedFilter.ConditionR\x0corConditionsB\x08\xfaB\x05\x92\
+    \x01\x02\x10d\"\x84\x01\n\x11FeatureFlagFilter\x12\x1d\n\x04name\x18\x01\
+    \x20\x01(\tR\x04nameB\t\xfaB\x06r\x04\x10\x01\x18d\x12&\n\x07variant\x18\
+    \x02\x20\x01(\tH\0R\x07variantB\x07\xfaB\x04r\x02\x18d\x88\x01\x01\x12\
+    \x1c\n\texclusive\x18\x03\x20\x01(\x08R\texclusiveB\n\n\x08_variant\"\
+    \xa6\x03\n\nIssueQuery\x12I\n\ntime_range\x18\x07\x20\x01(\x0b2*.bitdrif\
+    t.public.unary.common.v1.TimeRangeR\ttimeRange\x12T\n\tplatforms\x18\x03\
+    \x20\x03(\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\tplatformsB\
+    \x08\xfaB\x05\x92\x01\x02\x10d\x12Z\n\x10advanced_filters\x18\x04\x20\
+    \x01(\x0b2/.bitdrift.public.unary.issues.v1.AdvancedFilterR\x0fadvancedF\
+    ilters\x12+\n\x0cgrouping_key\x18\x05\x20\x03(\tR\x0bgroupingKeyB\x08\
+    \xfaB\x05\x92\x01\x02\x10d\x12n\n\x14feature_flag_filters\x18\x06\x20\
+    \x03(\x0b22.bitdrift.public.unary.issues.v1.FeatureFlagFilterR\x12featur\
+    eFlagFiltersB\x08\xfaB\x05\x92\x01\x02\x10d\"\xd1\x01\n\x0fIssueGroupQue\
+    ry\x12L\n\x08assignee\x18\x01\x20\x03(\x0b2&.bitdrift.public.unary.commo\
+    n.v1.OwnerR\x08assigneeB\x08\xfaB\x05\x92\x01\x02\x10d\x12p\n\x12issue_g\
+    roup_status\x18\x02\x20\x03(\x0e21.bitdrift.public.unary.issues.v1.Issue\
+    GroupStatusR\x10issueGroupStatusB\x0f\xfaB\x0c\x92\x01\t\x10d\"\x05\x82\
+    \x01\x02\x10\x01\"f\n\x05Event\x12G\n\x0cperiod_start\x18\x01\x20\x01(\
+    \x0b2\x1a.google.protobuf.TimestampR\x0bperiodStartB\x08\xfaB\x05\x8a\
+    \x01\x02\x10\x01\x12\x14\n\x05count\x18\x02\x20\x01(\x04R\x05count\"\x8e\
+    \t\n\nIssueGroup\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\x12P\n\x08met\
+    adata\x18\x02\x20\x01(\x0b24.bitdrift.public.unary.issues.v1.IssueGroup.\
+    MetadataR\x08metadata\x12H\n\x08platform\x18\x03\x20\x03(\x0b2,.bitdrift\
+    .public.shared.platform.v1.PlatformR\x08platform\x12G\n\x05stats\x18\x04\
+    \x20\x01(\x0b21.bitdrift.public.unary.issues.v1.IssueGroup.StatsR\x05sta\
+    ts\x12D\n\tassignees\x18\x05\x20\x03(\x0b2&.bitdrift.public.unary.common\
+    .v1.OwnerR\tassignees\x12I\n\x06status\x18\x06\x20\x01(\x0e21.bitdrift.p\
+    ublic.unary.issues.v1.IssueGroupStatusR\x06status\x12X\n\x0efiltered_sta\
+    ts\x18\x07\x20\x01(\x0b21.bitdrift.public.unary.issues.v1.IssueGroup.Sta\
+    tsR\rfilteredStats\x12\x1a\n\x07version\x18\x08\x20\x01(\tH\0R\x07versio\
+    n\x12#\n\x0cversion_code\x18\t\x20\x01(\x03H\0R\x0bversionCode\x1a\xe0\
+    \x01\n\x08Metadata\x12\x12\n\x04type\x18\x01\x20\x01(\tR\x04type\x12\x16\
+    \n\x06reason\x18\x02\x20\x01(\tR\x06reason\x12\x1d\n\x07context\x18\x03\
+    \x20\x01(\tH\0R\x07context\x88\x01\x01\x12\x1d\n\x07details\x18\x04\x20\
+    \x01(\tH\x01R\x07details\x88\x01\x01\x12R\n\x08platform\x18\x05\x20\x01(\
+    \x0b2,.bitdrift.public.shared.platform.v1.PlatformR\x08platformB\x08\xfa\
+    B\x05\x8a\x01\x02\x10\x01B\n\n\x08_contextB\n\n\x08_details\x1a\xe5\x02\
+    \n\x05Stats\x12C\n\nfirst_seen\x18\x01\x20\x01(\x0b2\x1a.google.protobuf\
+    .TimestampR\tfirstSeenB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12A\n\tlast_se\
+    en\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x08lastSeenB\x08\
+    \xfaB\x05\x8a\x01\x02\x10\x01\x12P\n\x11first_report_seen\x18\x06\x20\
+    \x01(\x0b2\x1a.google.protobuf.TimestampR\x0ffirstReportSeenB\x08\xfaB\
+    \x05\x8a\x01\x02\x10\x01\x12\x1d\n\nuser_count\x18\x03\x20\x01(\x04R\tus\
+    erCount\x12>\n\x06events\x18\x04\x20\x03(\x0b2&.bitdrift.public.unary.is\
+    sues.v1.EventR\x06events\x12#\n\rsession_count\x18\x05\x20\x01(\x04R\x0c\
+    sessionCountB\x14\n\x12resolution_version\"\x7f\n\x14GetIssueGroupReques\
+    t\x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18\
+    d\x12L\n\x0bissue_query\x18\x06\x20\x01(\x0b2+.bitdrift.public.unary.iss\
+    ues.v1.IssueQueryR\nissueQuery\"o\n\x15GetIssueGroupResponse\x12V\n\x0bi\
+    ssue_group\x18\x01\x20\x01(\x0b2+.bitdrift.public.unary.issues.v1.IssueG\
+    roupR\nissueGroupB\x08\xfaB\x05\x8a\x01\x02\x10\x01\"\xe7\x05\n\x16ListI\
+    ssueGroupsRequest\x12\x1b\n\x06offset\x18\x01\x20\x01(\rH\0R\x06offset\
+    \x88\x01\x01\x12$\n\x05limit\x18\x02\x20\x01(\rH\x01R\x05limitB\t\xfaB\
+    \x06*\x04\x18d(\x01\x88\x01\x01\x12L\n\x0bissue_query\x18\x05\x20\x01(\
+    \x0b2+.bitdrift.public.unary.issues.v1.IssueQueryR\nissueQuery\x12\\\n\
+    \x11issue_group_query\x18\x06\x20\x01(\x0b20.bitdrift.public.unary.issue\
+    s.v1.IssueGroupQueryR\x0fissueGroupQuery\x12Z\n\x04sort\x18\x07\x20\x03(\
+    \x0b2<.bitdrift.public.unary.issues.v1.ListIssueGroupsRequest.SortR\x04s\
+    ortB\x08\xfaB\x05\x92\x01\x02\x10d\x1a\xec\x02\n\x04Sort\x12`\n\x03key\
+    \x18\x01\x20\x01(\x0e2D.bitdrift.public.unary.issues.v1.ListIssueGroupsR\
+    equest.Sort.SortKeyR\x03keyB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12V\n\tdi\
+    rection\x18\x02\x20\x01(\x0e2..bitdrift.public.unary.common.v1.SortDirec\
+    tionR\tdirectionB\x08\xfaB\x05\x82\x01\x02\x10\x01\"\xa9\x01\n\x07SortKe\
+    y\x12\x18\n\x14SORT_KEY_UNSPECIFIED\x10\0\x12\x1a\n\x16MOST_RECENT_OCCUR\
+    RENCE\x10\x01\x12\x17\n\x13EARLIEST_OCCURRENCE\x10\x02\x12\x12\n\x0eFIRS\
+    T_REPORTED\x10\x03\x12\x12\n\x0eIMPACTED_USERS\x10\x04\x12\x15\n\x11IMPA\
+    CTED_SESSIONS\x10\x05\x12\x10\n\x0cISSUE_REASON\x10\x06B\t\n\x07_offsetB\
+    \x08\n\x06_limit\"\x97\x01\n\x17ListIssueGroupsResponse\x12N\n\x0cissue_\
+    groups\x18\x01\x20\x03(\x0b2+.bitdrift.public.unary.issues.v1.IssueGroup\
+    R\x0bissueGroups\x12,\n\x12total_issue_groups\x18\x02\x20\x01(\rR\x10tot\
+    alIssueGroups\"]\n\x0fGetIssueRequest\x12\x19\n\x02id\x18\x01\x20\x01(\t\
+    R\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12/\n\x0eissue_group_id\x18\x02\
+    \x20\x01(\tR\x0cissueGroupIdB\t\xfaB\x06r\x04\x10\x01\x18d\"\xec\x05\n\
+    \x05Issue\x12\x1f\n\x06reason\x18\x01\x20\x01(\tR\x06reasonB\x07\xfaB\
+    \x04r\x02\x10\x01\x12!\n\x07context\x18\x02\x20\x01(\tR\x07contextB\x07\
+    \xfaB\x04r\x02\x10\x01\x12!\n\x07details\x18\x03\x20\x01(\tR\x07detailsB\
+    \x07\xfaB\x04r\x02\x10\x01\x128\n\x04time\x18\x04\x20\x01(\x0b2\x1a.goog\
+    le.protobuf.TimestampR\x04timeB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12R\n\
+    \x08platform\x18\x05\x20\x01(\x0b2,.bitdrift.public.shared.platform.v1.P\
+    latformR\x08platformB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x1f\n\x06app_\
+    id\x18\x06\x20\x01(\tR\x05appIdB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12)\n\
+    \x0bapp_version\x18\x07\x20\x01(\tR\nappVersionB\x08\xfaB\x05\x8a\x01\
+    \x02\x10\x01\x12#\n\x08build_id\x18\x08\x20\x01(\tR\x07buildIdB\x08\xfaB\
+    \x05\x8a\x01\x02\x10\x01\x12\x1e\n\x05model\x18\t\x20\x01(\tR\x05modelB\
+    \x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x1e\n\nforeground\x18\x0f\x20\x01(\
+    \x08R\nforeground\x12*\n\x0cnetwork_type\x18\x10\x20\x01(\tR\x0bnetworkT\
+    ypeB\x07\xfaB\x04r\x02\x10\x01\x12&\n\nradio_type\x18\x11\x20\x01(\tR\tr\
+    adioTypeB\x07\xfaB\x04r\x02\x10\x01\x12\x1f\n\x06locale\x18\x12\x20\x01(\
+    \tR\x06localeB\x07\xfaB\x04r\x02\x10\x01\x12(\n\x0breport_type\x18\x13\
+    \x20\x01(\tR\nreportTypeB\x07\xfaB\x04r\x02\x10\x01\x12I\n\x06report\x18\
+    \x0c\x20\x01(\x0b2'.bitdrift.public.unary.issues.v1.ReportR\x06reportB\
+    \x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x17\n\x02id\x18\r\x20\x01(\tR\x02i\
+    dB\x07\xfaB\x04r\x02\x10\x01\x12+\n\nsession_id\x18\x0e\x20\x01(\tH\0R\t\
+    sessionIdB\x07\xfaB\x04r\x02\x10\x01\x88\x01\x01B\r\n\x0b_session_id\"\
+    \xe9\x01\n\x10GetIssueResponse\x12<\n\x05issue\x18\x0c\x20\x01(\x0b2&.bi\
+    tdrift.public.unary.issues.v1.IssueR\x05issue\x12Z\n\x06status\x18\r\x20\
+    \x01(\x0e28.bitdrift.public.unary.issues.v1.GetIssueResponse.StatusR\x06\
+    statusB\x08\xfaB\x05\x82\x01\x02\x10\x01\";\n\x06Status\x12\t\n\x05FOUND\
+    \x10\0\x12\r\n\tNOT_FOUND\x10\x01\x12\x0b\n\x07PENDING\x10\x02\x12\n\n\
+    \x06FAILED\x10\x03\"\xb2\t\n\x11ListIssuesRequest\x12/\n\x0eissue_group_\
+    id\x18\x01\x20\x01(\tR\x0cissueGroupIdB\t\xfaB\x06r\x04\x10\x01\x18d\x12\
+    \x16\n\x06offset\x18\x02\x20\x01(\rR\x06offset\x12$\n\x05limit\x18\x03\
+    \x20\x01(\rH\0R\x05limitB\t\xfaB\x06*\x04\x18d(\x01\x88\x01\x01\x12h\n\
+    \x07filters\x18\x04\x20\x03(\x0b2D.bitdrift.public.unary.issues.v1.ListI\
+    ssuesRequest.ListIssuesFiltersR\x07filtersB\x08\xfaB\x05\x92\x01\x02\x10\
+    d\x12L\n\x0bissue_query\x18\x06\x20\x01(\x0b2+.bitdrift.public.unary.iss\
+    ues.v1.IssueQueryR\nissueQuery\x12U\n\x04sort\x18\x07\x20\x03(\x0b27.bit\
+    drift.public.unary.issues.v1.ListIssuesRequest.SortR\x04sortB\x08\xfaB\
+    \x05\x92\x01\x02\x10d\x1a\x83\x02\n\x04Sort\x12[\n\x03key\x18\x01\x20\
+    \x01(\x0e2?.bitdrift.public.unary.issues.v1.ListIssuesRequest.Sort.SortK\
+    eyR\x03keyB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12V\n\tdirection\x18\x02\
+    \x20\x01(\x0e2..bitdrift.public.unary.common.v1.SortDirectionR\tdirectio\
+    nB\x08\xfaB\x05\x82\x01\x02\x10\x01\"F\n\x07SortKey\x12\x18\n\x14SORT_KE\
+    Y_UNSPECIFIED\x10\0\x12\x0f\n\x0bOCCURRED_AT\x10\x01\x12\x10\n\x0cISSUE_\
+    REASON\x10\x02\x1a\x8e\x04\n\x11ListIssuesFilters\x12k\n\x08platform\x18\
+    \x01\x20\x01(\x0b2M.bitdrift.public.unary.issues.v1.ListIssuesRequest.Li\
+    stIssuesFilters.PlatformH\0R\x08platform\x12o\n\ntime_range\x18\x02\x20\
+    \x01(\x0b2N.bitdrift.public.unary.issues.v1.ListIssuesRequest.ListIssues\
+    Filters.TimeRangeH\0R\ttimeRange\x12\\\n\x10advanced_filters\x18\x06\x20\
+    \x01(\x0b2/.bitdrift.public.unary.issues.v1.AdvancedFilterH\0R\x0fadvanc\
+    edFilters\x1aX\n\x08Platform\x12L\n\x05value\x18\x01\x20\x03(\x0b2,.bitd\
+    rift.public.shared.platform.v1.PlatformR\x05valueB\x08\xfaB\x05\x92\x01\
+    \x02\x10d\x1aV\n\tTimeRange\x12I\n\ntime_range\x18\x03\x20\x01(\x0b2*.bi\
+    tdrift.public.unary.common.v1.TimeRangeR\ttimeRangeB\x0b\n\x04type\x12\
+    \x03\xf8B\x01B\x08\n\x06_limit\"w\n\x12ListIssuesResponse\x12>\n\x06issu\
+    es\x18\x01\x20\x03(\x0b2&.bitdrift.public.unary.issues.v1.IssueR\x06issu\
+    es\x12!\n\x0ctotal_issues\x18\x02\x20\x01(\rR\x0btotalIssues\"C\n\x1bGet\
+    IssueFeatureFlagsRequest\x12$\n\x08issue_id\x18\x01\x20\x01(\tR\x07issue\
+    IdB\t\xfaB\x06r\x04\x10\x01\x18d\"\xb6\x02\n\x1cGetIssueFeatureFlagsResp\
+    onse\x12n\n\rfeature_flags\x18\x01\x20\x03(\x0b2I.bitdrift.public.unary.\
+    issues.v1.GetIssueFeatureFlagsResponse.FeatureFlagR\x0cfeatureFlags\x1a\
+    \xa5\x01\n\x0bFeatureFlag\x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\
+    \x07\xfaB\x04r\x02\x10\x01\x12&\n\x07variant\x18\x02\x20\x01(\tH\0R\x07v\
+    ariantB\x07\xfaB\x04r\x02\x10\x01\x88\x01\x01\x12E\n\x0bmodified_at\x18\
+    \x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\nmodifiedAtB\x08\xfaB\
+    \x05\x8a\x01\x02\x10\x01B\n\n\x08_variant\"\x8f\x01\n\x1dUpdateIssueGrou\
+    pStatusRequest\x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\
+    \x04\x10\x01\x18d\x12S\n\x06status\x18\x02\x20\x01(\x0e21.bitdrift.publi\
+    c.unary.issues.v1.IssueGroupStatusR\x06statusB\x08\xfaB\x05\x82\x01\x02\
+    \x10\x01\"\xcc\x01\n\x1eUpdateIssueGroupStatusResponse\x12S\n\x06status\
+    \x18\x01\x20\x01(\x0e21.bitdrift.public.unary.issues.v1.IssueGroupStatus\
+    R\x06statusB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12\x1a\n\x07version\x18\
     \x02\x20\x01(\tH\0R\x07version\x12#\n\x0cversion_code\x18\x03\x20\x01(\
     \x03H\0R\x0bversionCodeB\x14\n\x12resolution_version\"\x8d\x01\n\x20Upda\
     teIssueGroupAssigneesRequest\x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02idB\
