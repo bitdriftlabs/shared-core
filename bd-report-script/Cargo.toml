@@ -1,0 +1,20 @@
+[package]
+name         = "bd-report-script"
+version      = "1.0.0"
+edition      = "2024"
+license-file = "../LICENSE"
+publish      = false
+
+[dependencies]
+anyhow.workspace            = true
+bd-workspace-hack.workspace = true
+serde_json.workspace        = true
+vrl.workspace               = true
+
+[dev-dependencies]
+rstest.workspace = true
+
+[build-dependencies]
+anyhow.workspace     = true
+bd-proto.path        = "../bd-proto"
+serde_json.workspace = true
