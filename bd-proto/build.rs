@@ -143,4 +143,16 @@ fn main() {
     ..flatc_rust::Args::default()
   })
   .unwrap();
+
+  // Perform JSON schema generation
+  flatc_rust::run(flatc_rust::Args {
+    lang: "jsonschema",
+    inputs: &[Path::new(
+      "../api/src/bitdrift_public/fbs/issue-reporting/v1/report.fbs",
+    )],
+    includes: &[Path::new("../api/src")],
+    out_dir: Path::new("src/flatbuffers"),
+    ..Default::default()
+  })
+  .unwrap();
 }
