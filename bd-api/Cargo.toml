@@ -24,6 +24,7 @@ bd-network-quality.path     = "../bd-network-quality"
 bd-pgv.path                 = "../bd-pgv"
 bd-proto.path               = "../bd-proto"
 bd-runtime.path             = "../bd-runtime"
+bd-session.path             = "../bd-session"
 bd-shutdown.path            = "../bd-shutdown"
 bd-time.path                = "../bd-time"
 bd-workspace-hack.workspace = true

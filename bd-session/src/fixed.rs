@@ -9,17 +9,11 @@
 #[path = "./fixed_test.rs"]
 mod fixed_test;
 
-use bd_key_value::{Key, Store};
-use bd_log::warn_every;
-use bd_proto::protos::client::key_value::FixedSessionStrategyState;
-use std::cell::Cell;
+use crate::persistence::{BackendState, PersistedSessionState, StartedSessionRecord};
+use crate::{Initialization, LoadedState, Mutation};
 use std::sync::Arc;
-use thread_local::ThreadLocal;
-use time::ext::NumericalDuration;
+use time::OffsetDateTime;
 use uuid::Uuid;
-
-/// The key used to store the state of the session strategy.
-pub static STATE_KEY: Key<FixedSessionStrategyState> = Key::new("session_strategy.fixed.state.1");
 
 //
 // Strategy
@@ -27,24 +21,12 @@ pub static STATE_KEY: Key<FixedSessionStrategyState> = Key::new("session_strateg
 
 /// A session strategy that generates a new session ID on each SDK launch.
 pub struct Strategy {
-  store: Arc<Store>,
   callbacks: Arc<dyn Callbacks>,
-
-  // Used to prevent a case where a Capture SDK customer calls into the logger to start a new
-  // session or obtain a session ID as part of the `generated_session_id` callback.
-  is_callback_in_progress: Box<ThreadLocal<Cell<bool>>>,
-
-  state: parking_lot::Mutex<Option<InMemoryState>>,
 }
 
 impl Strategy {
-  pub fn new(store: Arc<Store>, callbacks: Arc<dyn Callbacks>) -> Self {
-    Self {
-      store,
-      callbacks,
-      is_callback_in_progress: Box::new(ThreadLocal::new()),
-      state: parking_lot::Mutex::new(None),
-    }
+  pub fn new(callbacks: Arc<dyn Callbacks>) -> Self {
+    Self { callbacks }
   }
 
   /// Generates a new session ID using the provided callback or a random UUID if the callback
@@ -53,141 +35,90 @@ impl Strategy {
     // Cannot log anything using `handle_unexpected` or similar as it would cause a cycle between
     // `ErrorReporter` and `Strategy`. As a reminder, `ErrorReporter` calls into `SessionProvider`
     // as part of error reporting flow.
-    let cell = self.is_callback_in_progress.get_or_default();
-    cell.set(true);
-
-    let session_id = self.callbacks.generate_session_id().unwrap_or_else(|_| {
+    self.callbacks.generate_session_id().unwrap_or_else(|_| {
       let id = Self::generate_uuid();
 
       log::warn!("failed to generate a new session ID, using a random UUID instead {id:?}");
       id
-    });
-    cell.set(false);
-
-    session_id
+    })
   }
 
   fn generate_uuid() -> String {
     Uuid::new_v4().to_string()
   }
 
-  /// Returns the current session ID. If the session ID has not been generated yet we call through
-  /// to the provided callback to generate a new session ID.
-  ///
-  /// Note that if this is called from within the `generateSessionID` callback, we will return a
-  /// random UUID instead of the actual session ID to prevent deadlocks.
-  pub(crate) fn session_id(&self) -> String {
-    // Protect against cases where an attempt to read a session ID is made while already holding a
-    // lock. In practice, this happens when a customer of the SDK reads session ID from within a
-    // `generateSessionID` closure that they are allowed to provide to the SDK.
-    //
-    // In this case we cannot proceed to the logic below as we risk deadlocking, so we stand
-    // in a random UUID instead.
-    if self.is_callback_in_progress.get_or_default().get() {
-      warn_every!(
-        15.seconds(),
-        "cannot obtain session ID from within 'generatedSessionID' {}",
-        "callback"
-      );
+  pub(crate) fn initialize(
+    &self,
+    persisted: Option<PersistedSessionState>,
+    mut pending_started_sessions: Vec<StartedSessionRecord>,
+  ) -> Initialization {
+    // Fixed sessions always create a fresh session on startup. The persisted current session is
+    // only used to seed `previous_process_session_id` for crash/error attribution.
+    let session_id = self.generate_session_id();
+    let session_start = OffsetDateTime::now_utc();
+    let previous_process_session_id = persisted.map(|state| state.current_session_id);
 
-      // TODO(snowp): This probably never does what the user expects as this session ID is not a
-      // real session ID but a random UUID. We should probably return an error here or just rework
-      // how all this works.
-      return Self::generate_uuid();
-    }
+    pending_started_sessions.push(StartedSessionRecord::new(session_id.clone(), session_start));
 
-    let mut guard = self.state.lock();
-    // Clippy's proposal leads to code that doesn't compile.
-    #[allow(clippy::option_if_let_else)]
-    if let Some(state) = guard.as_ref() {
-      state.state.session_id.clone()
-    } else {
-      let previous_process_session_id = if let Some(state) = self.store.get(&STATE_KEY) {
-        Some(state.session_id)
-      } else {
-        None
-      };
-
-      let session_id = self.generate_session_id();
-
-      let state = InMemoryState {
-        state: FixedSessionStrategyState {
-          session_id: session_id.clone(),
-          ..Default::default()
+    Initialization {
+      state: LoadedState {
+        persisted: PersistedSessionState {
+          current_session_id: session_id,
+          current_session_start: session_start.into(),
+          previous_process_session_id,
+          backend: BackendState::Fixed,
         },
-        previous_process_session_id,
-      };
-
-      *guard = Some(state.clone());
-
-      self.store.set(&STATE_KEY, &state.state);
-
-      log::info!("bitdrift Capture initialized with session ID: {session_id:?}");
-
-      session_id
+        pending_started_sessions,
+        last_activity_write: None,
+      },
+      mutation: Mutation {
+        persist_state: true,
+        persist_pending: true,
+        callback: None,
+      },
     }
   }
 
-  /// Starts a new session by generating a new session ID and storing it in the state.
-  ///
-  /// Note that if this is called from within the `generateSessionID` callback, we will return an
-  /// error instead of starting a new session to prevent deadlocks.
-  pub(crate) fn start_new_session(&self) -> anyhow::Result<String> {
-    // Protect against cases where an attempt to start a new session is made while already holding a
-    // lock. In practice, this happens when a customer of the SDK starts a new session from
-    // within a `generateSessionID` closure that they are allowed to provide to the SDK.
-    if self.is_callback_in_progress.get_or_default().get() {
-      anyhow::bail!("cannot start new session from within 'generatedSessionID' callback");
-    }
+  pub(crate) fn on_session_id(_state: &mut LoadedState) -> Mutation {
+    Mutation::default()
+  }
 
-    let mut guard = self.state.lock();
-
+  pub(crate) fn start_new_session(
+    &self,
+    state: Option<&LoadedState>,
+    persisted: Option<PersistedSessionState>,
+    mut pending_started_sessions: Vec<StartedSessionRecord>,
+  ) -> Initialization {
+    // Explicit session starts should preserve whatever we already consider the previous-process
+    // session rather than replacing it with the session we are rotating away from in this run.
     let session_id = self.generate_session_id();
-
-    let state = guard.as_ref().map_or_else(
-      || match self.store.get(&STATE_KEY) {
-        Some(state) => InMemoryState {
-          state: FixedSessionStrategyState {
-            session_id: session_id.clone(),
-            ..Default::default()
-          },
-          previous_process_session_id: Some(state.session_id),
-        },
-        None => InMemoryState {
-          state: FixedSessionStrategyState {
-            session_id: session_id.clone(),
-            ..Default::default()
-          },
-          previous_process_session_id: None,
-        },
-      },
-      |state| InMemoryState {
-        state: FixedSessionStrategyState {
-          session_id: session_id.clone(),
-          ..Default::default()
-        },
-        previous_process_session_id: state.previous_process_session_id.clone(),
-      },
+    let session_start = OffsetDateTime::now_utc();
+    let previous_process_session_id = state.as_ref().map_or_else(
+      || persisted.map(|state| state.current_session_id),
+      |state| state.persisted.previous_process_session_id.clone(),
     );
 
-    self.store.set(&STATE_KEY, &state.state);
-    *guard = Some(state);
+    pending_started_sessions.push(StartedSessionRecord::new(session_id.clone(), session_start));
 
-    Ok(session_id)
-  }
-
-  /// Returns the last session ID from the previous SDK run.
-  pub fn previous_process_session_id(&self) -> Option<String> {
-    self.state.lock().as_ref().map_or_else(
-      || self.store.get(&STATE_KEY).map(|state| state.session_id),
-      |state| state.previous_process_session_id.clone(),
-    )
+    Initialization {
+      state: LoadedState {
+        persisted: PersistedSessionState {
+          current_session_id: session_id,
+          current_session_start: session_start.into(),
+          previous_process_session_id,
+          backend: BackendState::Fixed,
+        },
+        pending_started_sessions,
+        last_activity_write: None,
+      },
+      mutation: Mutation {
+        persist_state: true,
+        persist_pending: true,
+        callback: None,
+      },
+    }
   }
 }
-
-//
-// Callbacks
-//
 
 pub trait Callbacks: Send + Sync {
   fn generate_session_id(&self) -> anyhow::Result<String>;
@@ -204,15 +135,4 @@ impl Callbacks for UUIDCallbacks {
   fn generate_session_id(&self) -> anyhow::Result<String> {
     Ok(Uuid::new_v4().to_string())
   }
-}
-
-//
-// InMemoryState
-//
-
-#[derive(Clone, Debug)]
-struct InMemoryState {
-  state: FixedSessionStrategyState,
-  /// The last active session ID from the previous SDK run.
-  previous_process_session_id: Option<String>,
 }

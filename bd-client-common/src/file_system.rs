@@ -38,6 +38,36 @@ pub trait FileSystem: Send + Sync {
   async fn create_dir(&self, path: &Path) -> anyhow::Result<()>;
 }
 
+/// Writes a file through a sibling temporary path so readers never observe a partial write.
+pub async fn write_file_atomic(path: &Path, data: &[u8]) -> anyhow::Result<()> {
+  if let Some(parent) = path.parent() {
+    tokio::fs::create_dir_all(parent).await?;
+  }
+
+  let tmp_path = path.with_extension("tmp");
+  tokio::fs::write(&tmp_path, data).await?;
+  tokio::fs::rename(&tmp_path, path).await?;
+  Ok(())
+}
+
+/// Delete a file if it exists, treating a not found error as success.
+pub async fn delete_file_if_exists_async(path: &Path) -> anyhow::Result<()> {
+  match tokio::fs::remove_file(path).await {
+    Ok(()) => Ok(()),
+    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+    Err(e) => Err(e.into()),
+  }
+}
+
+/// Delete a directory tree while treating an absent directory as success.
+pub async fn remove_dir_if_exists_async(path: &Path) -> anyhow::Result<()> {
+  match tokio::fs::remove_dir_all(path).await {
+    Ok(()) => Ok(()),
+    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+    Err(e) => Err(e.into()),
+  }
+}
+
 //
 // RealFileSystem
 //
@@ -94,11 +124,7 @@ impl FileSystem for RealFileSystem {
   }
 
   async fn delete_file(&self, path: &Path) -> anyhow::Result<()> {
-    match tokio::fs::remove_file(self.directory.join(path)).await {
-      Ok(()) => Ok(()),
-      Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-      Err(e) => Err(e.into()),
-    }
+    delete_file_if_exists_async(&self.directory.join(path)).await
   }
 
   async fn rename_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
@@ -106,11 +132,7 @@ impl FileSystem for RealFileSystem {
   }
 
   async fn remove_dir(&self, path: &Path) -> anyhow::Result<()> {
-    match tokio::fs::remove_dir_all(self.directory.join(path)).await {
-      Ok(()) => Ok(()),
-      Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-      Err(e) => Err(e.into()),
-    }
+    remove_dir_if_exists_async(&self.directory.join(path)).await
   }
 
   async fn create_dir(&self, path: &Path) -> anyhow::Result<()> {

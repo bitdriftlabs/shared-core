@@ -13,7 +13,6 @@ use crate::network_quality::DISCONNECTED_OFFLINE_GRACE_PERIOD;
 use crate::upload::{self, StateTracker};
 use crate::{
   DataUpload,
-  OPAQUE_USER_ID_KEY,
   PlatformNetworkManager,
   PlatformNetworkStream,
   RuntimeBackoffPolicy,
@@ -51,6 +50,7 @@ pub use bd_proto::protos::client::api::sankey_intent_response::{
   Drop as SankeyPathUploadDecisionDrop,
   UploadImmediately as SankeyPathUploadDecisionImmediately,
 };
+use bd_proto::protos::client::api::state_update_request::OpaqueEntityUpdate;
 pub use bd_proto::protos::client::api::upload_artifact_intent_response::{
   Decision as ArtifactIntentDecision,
   Drop as ArtifactIntentDecisionDrop,
@@ -61,6 +61,7 @@ use bd_proto::protos::client::api::{
   ClientKillFile,
   HandshakeRequest,
   PingRequest,
+  StateUpdateRequest,
   handshake_response,
 };
 use bd_proto::protos::logging::payload::Data as ProtoData;
@@ -86,6 +87,14 @@ use tokio::time::{Instant, Sleep, sleep};
 struct StreamClosureInfo {
   reason: String,
   retry_after: Option<Duration>,
+}
+
+//
+// InFlightStateUpdate
+//
+
+struct InFlightStateUpdate {
+  session_update: Option<bd_session::PendingStateUpdate>,
 }
 
 //
@@ -341,7 +350,9 @@ pub struct Api {
   data_upload_rx: Receiver<DataUpload>,
   trigger_upload_tx: Sender<TriggerUpload>,
   sleep_mode_active: watch::Receiver<bool>,
-  store: Arc<bd_key_value::Store>,
+  session_strategy: Arc<bd_session::Strategy>,
+  session_updates: watch::Receiver<u64>,
+  opaque_entity_updates: watch::Receiver<Option<String>>,
 
   static_metadata: Arc<dyn Metadata + Send + Sync>,
 
@@ -403,6 +414,8 @@ impl Api {
     stats: &Scope,
     sleep_mode_active: watch::Receiver<bool>,
     store: Arc<bd_key_value::Store>,
+    session_strategy: Arc<bd_session::Strategy>,
+    opaque_entity_updates: watch::Receiver<Option<String>>,
   ) -> Self {
     let mut backoff_policy = RuntimeBackoffPolicy::new(runtime_loader.as_ref());
     let generic_kill_duration = runtime_loader.register_duration_watch();
@@ -414,8 +427,8 @@ impl Api {
 
     let backoff = backoff_policy.backoff_mark_update();
 
-    let reconnect_state =
-      crate::reconnect::ReconnectState::new(store.clone(), time_provider.clone());
+    let reconnect_state = crate::reconnect::ReconnectState::new(store, time_provider.clone());
+    let session_updates = session_strategy.subscribe_updates();
     Self {
       sdk_directory,
       api_key,
@@ -423,7 +436,9 @@ impl Api {
       static_metadata,
       data_upload_rx,
       trigger_upload_tx,
-      store,
+      session_strategy,
+      session_updates,
+      opaque_entity_updates,
       time_provider,
       network_quality_monitor,
       runtime_loader,
@@ -474,7 +489,7 @@ impl Api {
   fn handshake_metadata(&self) -> HashMap<String, ProtoData> {
     let metadata = self.static_metadata.collect();
 
-    let mut handshake_metadata: HashMap<_, _> = metadata
+    metadata
       .iter()
       .map(|(k, v)| {
         (
@@ -485,21 +500,31 @@ impl Api {
           },
         )
       })
-      .collect();
+      .collect()
+  }
 
-    if let Some(opaque_user_id) = self.store.get_string(&OPAQUE_USER_ID_KEY)
-      && !opaque_user_id.is_empty()
-    {
-      handshake_metadata.insert(
-        "opaque_user_id".to_string(),
-        ProtoData {
-          data_type: Some(Data_type::StringData(opaque_user_id)),
-          ..Default::default()
-        },
-      );
+  fn current_opaque_entity_update(&self) -> OpaqueEntityUpdate {
+    OpaqueEntityUpdate {
+      opaque_entity_id: self.opaque_entity_updates.borrow().clone(),
+      ..Default::default()
+    }
+  }
+
+  fn state_update_request(
+    &self,
+    session_update: Option<&StateUpdateRequest>,
+    include_opaque_entity: bool,
+  ) -> Option<StateUpdateRequest> {
+    if session_update.is_none() && !include_opaque_entity {
+      return None;
     }
 
-    handshake_metadata
+    let mut request = session_update.cloned().unwrap_or_default();
+    if include_opaque_entity {
+      request.opaque_entity_update = Some(self.current_opaque_entity_update()).into();
+    }
+
+    Some(request)
   }
 
   fn hash_api_key(&self) -> Vec<u8> {
@@ -770,13 +795,10 @@ impl Api {
     log::debug!("sending handshake");
 
     let last_disconnect_reason = self.last_disconnect_reason.take();
-    stream_state
-      .send_request(
-        self
-          .handshake_request(handshake_metadata, last_disconnect_reason)
-          .await,
-      )
-      .await?;
+    let (handshake_request, handshake_state_update) = self
+      .handshake_request(handshake_metadata, last_disconnect_reason)
+      .await;
+    stream_state.send_request(handshake_request).await?;
 
     log::debug!("waiting for handshake");
 
@@ -788,10 +810,20 @@ impl Api {
         configuration_update_status,
         remaining_responses,
       } => {
+        self
+          .session_strategy
+          .acknowledge_state_update(&handshake_state_update)
+          .await;
         stream_state.initialize_stream_settings(stream_settings);
 
+        let mut in_flight_state_update = None;
+
         if let Some(stream_closure_info) = self
-          .handle_responses(remaining_responses, &mut stream_state)
+          .handle_responses(
+            remaining_responses,
+            &mut stream_state,
+            &mut in_flight_state_update,
+          )
           .await?
         {
           if let Some(retry_after) = stream_closure_info.retry_after {
@@ -861,6 +893,7 @@ impl Api {
     // Consider the time we've processed the handshake or the spurious upload as the last
     // time we received data at the start. This is refreshed below whenever we upload data.
     let mut last_data_received_at = Instant::now();
+    let mut in_flight_state_update = None;
 
     // At this point we have established the stream, so we should start the general
     // request/response handling.
@@ -887,6 +920,30 @@ impl Api {
         _ = stream_state.sleep_mode_active.changed() => {
           // Sleep mode state has changed, we need to re-evaluate our data idle timeout.
           log::trace!("sleep mode state changed, re-evaluating data idle timeout");
+          continue;
+        }
+        _ = self.session_updates.changed(), if in_flight_state_update.is_none() => {
+          let _ = self.session_updates.borrow_and_update();
+          let Some(session_update) = self.session_strategy.pending_state_update().await else {
+            continue;
+          };
+          stream_state.send_request(session_update.request().clone()).await?;
+          in_flight_state_update = Some(InFlightStateUpdate {
+            session_update: Some(session_update),
+          });
+          self.reconnect_state.record_connectivity_event();
+          continue;
+        }
+        _ = self.opaque_entity_updates.changed(), if in_flight_state_update.is_none() => {
+          let _ = self.opaque_entity_updates.borrow_and_update();
+          let Some(request) = self.state_update_request(None, true) else {
+            continue;
+          };
+          stream_state.send_request(request).await?;
+          in_flight_state_update = Some(InFlightStateUpdate {
+            session_update: None,
+          });
+          self.reconnect_state.record_connectivity_event();
           continue;
         }
         Some(data_upload) = self.data_upload_rx.recv() => {
@@ -919,7 +976,9 @@ impl Api {
 
       let stream_closure_info = match stream_state.handle_upstream_event(upstream_event).await? {
         UpstreamEvent::UpstreamMessages(responses) => {
-          self.handle_responses(responses, &mut stream_state).await?
+          self
+            .handle_responses(responses, &mut stream_state, &mut in_flight_state_update)
+            .await?
         },
         UpstreamEvent::StreamClosed(reason) => Some(StreamClosureInfo {
           reason,
@@ -974,6 +1033,7 @@ impl Api {
     &self,
     responses: Vec<ApiResponse>,
     stream_state: &mut StreamState,
+    in_flight_state_update: &mut Option<InFlightStateUpdate>,
   ) -> anyhow::Result<Option<StreamClosureInfo>> {
     for response in responses {
       match response.response_type {
@@ -1088,6 +1148,16 @@ impl Api {
             stream_state.send_request(request).await?;
           }
         },
+        Some(Response_type::StateUpdate(_)) => {
+          if let Some(in_flight_state_update) = in_flight_state_update.take()
+            && let Some(session_update) = in_flight_state_update.session_update
+          {
+            self
+              .session_strategy
+              .acknowledge_state_update(&session_update)
+              .await;
+          }
+        },
         None => {
           debug_assert!(false, "not handled");
         },
@@ -1102,20 +1172,24 @@ impl Api {
     &self,
     metadata: &HashMap<String, ProtoData>,
     previous_disconnect_reason: Option<String>,
-  ) -> HandshakeRequest {
+  ) -> (HandshakeRequest, bd_session::PendingStateUpdate) {
     let opaque_client_state = tokio::fs::read(&self.opaque_client_state_path()).await.ok();
+    let session_update = self.session_strategy.handshake_state_update().await;
     let mut handshake = HandshakeRequest {
       static_device_metadata: metadata.clone(),
       previous_disconnect_reason: previous_disconnect_reason.unwrap_or_default(),
       sleep_mode: *self.sleep_mode_active.borrow(),
       opaque_client_state,
+      state_update: self
+        .state_update_request(Some(session_update.request()), true)
+        .into(),
       ..Default::default()
     };
 
     self.config_updater.fill_handshake(&mut handshake);
     self.runtime_loader.fill_handshake(&mut handshake);
 
-    handshake
+    (handshake, session_update)
   }
 
   async fn process_opaque_client_state(&self, state: Option<Vec<u8>>) {

@@ -6,36 +6,28 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::{Callbacks, UUIDCallbacks};
-use crate::fixed::{self, STATE_KEY};
-use bd_key_value::{Storage, Store};
-use bd_proto::protos::client::key_value::FixedSessionStrategyState;
+use crate::Strategy;
 use pretty_assertions::assert_eq;
-use std::collections::HashMap;
+use std::future::Future;
+use std::pin::pin;
 use std::sync::Arc;
+use std::task::{Context, Poll, Wake, Waker};
+use tempfile::TempDir;
 use uuid::Uuid;
 
-#[derive(Default)]
-pub struct MockStorage {
-  state: parking_lot::Mutex<HashMap<String, String>>,
+struct NoopWake;
+
+impl Wake for NoopWake {
+  fn wake(self: Arc<Self>) {}
 }
 
-impl Storage for MockStorage {
-  fn set_string(&self, key: &str, value: &str) -> anyhow::Result<()> {
-    let mut guard = self.state.lock();
-    let mut state = guard.clone();
-    state.insert(key.to_string(), value.to_string());
-    *guard = state;
-
-    Ok(())
-  }
-
-  fn get_string(&self, key: &str) -> anyhow::Result<Option<String>> {
-    Ok(self.state.lock().get(key).cloned())
-  }
-
-  fn delete(&self, key: &str) -> anyhow::Result<()> {
-    self.state.lock().remove(key);
-    Ok(())
+fn expect_ready<T>(future: impl Future<Output = T>) -> T {
+  let waker = Waker::from(Arc::new(NoopWake));
+  let mut context = Context::from_waker(&waker);
+  let mut future = pin!(future);
+  match future.as_mut().poll(&mut context) {
+    Poll::Ready(value) => value,
+    Poll::Pending => panic!("future unexpectedly pending"),
   }
 }
 
@@ -52,118 +44,93 @@ impl Callbacks for MockCallbacks {
   }
 }
 
-#[test]
-fn test_session_id() {
-  let store = Arc::new(Store::new(Box::<MockStorage>::default()));
+#[tokio::test]
+async fn test_session_id() {
+  let sdk_directory = TempDir::new().unwrap();
   let callbacks = Arc::new(MockCallbacks::default());
-  let strategy = fixed::Strategy::new(store.clone(), callbacks.clone());
+  let strategy = Strategy::fixed(sdk_directory.path(), callbacks.clone());
 
-  store.set(
-    &STATE_KEY,
-    &FixedSessionStrategyState {
-      session_id: "foo".to_string(),
-      ..Default::default()
-    },
-  );
-
-  let session_id = strategy.session_id();
+  let session_id = strategy.session_id().await.unwrap();
   let previous_session_id = strategy.previous_process_session_id();
 
   assert_eq!(1, callbacks.generated_session_ids.lock().len());
   assert_eq!(callbacks.generated_session_ids.lock()[0], session_id);
-  assert_eq!(Some("foo".to_string()), previous_session_id);
+  assert_eq!(None, previous_session_id);
 }
 
-#[test]
-fn test_start_new_session() {
-  let store = Arc::new(Store::new(Box::<MockStorage>::default()));
+#[tokio::test]
+async fn test_start_new_session() {
+  let sdk_directory = TempDir::new().unwrap();
   let callbacks = Arc::new(MockCallbacks::default());
-  let strategy = fixed::Strategy::new(store.clone(), callbacks.clone());
+  let strategy = Strategy::fixed(sdk_directory.path(), callbacks.clone());
 
-  store.set(
-    &STATE_KEY,
-    &FixedSessionStrategyState {
-      session_id: "foo".to_string(),
-      ..Default::default()
-    },
-  );
-
-  let session_id = strategy.session_id();
+  let session_id = strategy.session_id().await.unwrap();
 
   assert_eq!(1, callbacks.generated_session_ids.lock().len());
   assert_eq!(callbacks.generated_session_ids.lock()[0], session_id);
 
-  let next_session_id = strategy.start_new_session().unwrap();
+  strategy.start_new_session().await;
+  let next_session_id = strategy.session_id().await.unwrap();
 
-  assert_eq!(next_session_id, strategy.session_id());
+  assert_eq!(next_session_id, strategy.session_id().await.unwrap());
   assert_eq!(2, callbacks.generated_session_ids.lock().len());
   assert_eq!(callbacks.generated_session_ids.lock()[1], next_session_id);
-  assert_eq!(
-    Some("foo".to_string()),
-    strategy.previous_process_session_id()
-  );
+  assert_eq!(None, strategy.previous_process_session_id());
 }
 
-#[test]
-fn test_previous_process_session_id() {
-  let store = Arc::new(Store::new(Box::<MockStorage>::default()));
-  let strategy = fixed::Strategy::new(store.clone(), Arc::new(UUIDCallbacks));
+#[tokio::test]
+async fn test_previous_process_session_id() {
+  let sdk_directory = TempDir::new().unwrap();
+  let strategy = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
+  strategy.session_id().await.unwrap();
+  strategy.start_new_session().await;
+  let session_id = strategy.session_id().await.unwrap();
 
-  store.set(
-    &STATE_KEY,
-    &FixedSessionStrategyState {
-      session_id: "foo".to_string(),
-      ..Default::default()
-    },
-  );
+  assert!(strategy.previous_process_session_id().is_none());
 
-  assert_eq!(
-    Some("foo".to_string()),
-    strategy.previous_process_session_id()
-  );
-
-  strategy.start_new_session().unwrap();
-  let session_id = strategy.session_id();
-
-  assert_eq!(
-    Some("foo".to_string()),
-    strategy.previous_process_session_id()
-  );
-
-  let strategy = fixed::Strategy::new(store, Arc::new(UUIDCallbacks));
+  let strategy = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
   assert_eq!(Some(session_id), strategy.previous_process_session_id());
 }
 
 #[derive(Default)]
 struct ReEntryCallbacks {
-  session_strategy: parking_lot::Mutex<Option<Arc<fixed::Strategy>>>,
+  session_strategy: parking_lot::Mutex<Option<Arc<Strategy>>>,
+  inner_session_id_error: parking_lot::Mutex<Option<String>>,
 }
 
 impl Callbacks for ReEntryCallbacks {
   fn generate_session_id(&self) -> anyhow::Result<String> {
     if let Some(strategy) = &*self.session_strategy.lock() {
-      return strategy.start_new_session();
+      expect_ready(strategy.start_new_session());
+      let error = expect_ready(strategy.session_id()).unwrap_err();
+      *self.inner_session_id_error.lock() = Some(error.to_string());
+      anyhow::bail!(error);
     }
 
     Ok("should not happen".to_string())
   }
 }
 
-#[test]
-fn handles_re_entry() {
-  let store = Arc::new(Store::new(Box::<MockStorage>::default()));
+#[tokio::test]
+async fn handles_re_entry() {
+  let sdk_directory = TempDir::new().unwrap();
 
   let callbacks = Arc::new(ReEntryCallbacks::default());
-  let strategy = Arc::new(fixed::Strategy::new(store, callbacks.clone()));
+  let strategy = Arc::new(Strategy::fixed(sdk_directory.path(), callbacks.clone()));
 
   callbacks.session_strategy.lock().replace(strategy.clone());
 
   // Confirm that it doesn't deadlock and returns a reasonable ID.
-  let session_id = strategy.session_id();
+  let session_id = strategy.session_id().await.unwrap();
   assert_eq!(36, session_id.len());
+  assert_eq!(
+    Some("session_id cannot be called from within a session callback".to_string()),
+    callbacks.inner_session_id_error.lock().clone()
+  );
 
   // Confirm that it doesn't deadlock and returns a reasonable ID.
-  let new_session_id = strategy.start_new_session().unwrap();
+  strategy.start_new_session().await;
+  let new_session_id = strategy.session_id().await.unwrap();
   assert_eq!(36, new_session_id.len());
 
   assert_ne!(session_id, new_session_id);

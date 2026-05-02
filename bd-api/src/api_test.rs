@@ -8,7 +8,7 @@
 use super::{Api, PlatformNetworkManager, PlatformNetworkStream};
 use crate::api::{DISCONNECTED_OFFLINE_GRACE_PERIOD, StreamEvent};
 use crate::upload::Tracked;
-use crate::{DataUpload, OPAQUE_USER_ID_KEY, SimpleNetworkQualityProvider};
+use crate::{DataUpload, SimpleNetworkQualityProvider};
 use anyhow::anyhow;
 use assert_matches::assert_matches;
 use bd_client_common::{
@@ -35,6 +35,7 @@ use bd_proto::protos::client::api::{
   HandshakeResponse,
   RateLimited,
   RuntimeUpdate,
+  StateUpdateResponse,
   StatsUploadRequest,
 };
 use bd_proto::protos::logging::payload::LogType;
@@ -179,7 +180,9 @@ struct Setup {
   api_key: String,
   network_quality_provider: Arc<SimpleNetworkQualityProvider>,
   sleep_mode_active: watch::Sender<bool>,
+  opaque_entity_updates: watch::Sender<Option<String>>,
   store: Arc<Store>,
+  session_strategy: Arc<bd_session::Strategy>,
   config_updater: Arc<MockClientConfigurationUpdate>,
 }
 
@@ -207,6 +210,7 @@ impl Setup {
     let (data_tx, data_rx) = channel(1);
     let (trigger_upload_tx, _trigger_upload_rx) = channel(1);
     let (sleep_mode_active_tx, sleep_mode_active_rx) = watch::channel(false);
+    let (opaque_entity_updates_tx, opaque_entity_updates_rx) = watch::channel(None);
 
     let time_provider = Arc::new(bd_time::TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
 
@@ -224,6 +228,10 @@ impl Setup {
     let network_quality_provider = Arc::new(network_quality_provider.unwrap_or_default());
 
     let store = in_memory_store();
+    let session_strategy = Arc::new(bd_session::Strategy::fixed(
+      sdk_directory.path(),
+      Arc::new(bd_session::fixed::UUIDCallbacks),
+    ));
     let mut api = Api::new(
       sdk_directory.path().to_path_buf(),
       api_key.clone(),
@@ -239,6 +247,8 @@ impl Setup {
       &collector.scope("api"),
       sleep_mode_active_rx,
       store.clone(),
+      session_strategy.clone(),
+      opaque_entity_updates_rx,
     );
     api.data_idle_timeout_test_hook = idle_timeout_tx;
 
@@ -263,7 +273,9 @@ impl Setup {
       api_key,
       network_quality_provider,
       sleep_mode_active: sleep_mode_active_tx,
+      opaque_entity_updates: opaque_entity_updates_tx,
       store,
+      session_strategy,
       config_updater,
     }
   }
@@ -298,6 +310,8 @@ impl Setup {
       &self.collector.scope("api"),
       self.sleep_mode_active.subscribe(),
       self.store.clone(),
+      self.session_strategy.clone(),
+      self.opaque_entity_updates.subscribe(),
     );
 
     self.api_task = Some(tokio::task::spawn(api.start()));
@@ -359,6 +373,21 @@ impl Setup {
     self
       .send_response(Self::make_error_shutdown(code, message, retry_after))
       .await;
+  }
+
+  async fn state_update_response(&self) {
+    self
+      .send_response(ApiResponse {
+        response_type: Some(Response_type::StateUpdate(StateUpdateResponse::default())),
+        ..Default::default()
+      })
+      .await;
+  }
+
+  fn set_opaque_entity_id(&self, opaque_entity_id: Option<&str>) {
+    self
+      .opaque_entity_updates
+      .send_replace(opaque_entity_id.map(str::to_string));
   }
 
   async fn send_request(&self, data: DataUpload) {
@@ -427,6 +456,34 @@ impl Setup {
     };
 
     Some(request)
+  }
+
+  #[must_use]
+  async fn next_stream_allowing_state_updates(
+    &mut self,
+    wait: Duration,
+  ) -> Option<HandshakeRequest> {
+    tokio::select! {
+      _ = self.start_stream_rx.recv() => {},
+      () = wait.sleep() => {
+        return None;
+      }
+    };
+
+    let deadline = Instant::now() + wait.unsigned_abs();
+    loop {
+      let remaining = deadline.saturating_duration_since(Instant::now());
+      let data = timeout(remaining, self.send_data_rx.recv())
+        .await
+        .ok()
+        .flatten()?;
+      let request = self.decode(&data).unwrap();
+      match request.request_type {
+        Some(Request_type::Handshake(request)) => return Some(request),
+        Some(Request_type::StateUpdate(_)) => {},
+        _ => panic!("expected handshake request, got {request:?}"),
+      }
+    }
   }
 
   fn decode(&mut self, data: &[u8]) -> Option<ApiRequest> {
@@ -1424,42 +1481,153 @@ async fn opaque_client_state() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn handshake_includes_opaque_user_id_from_store() {
+async fn handshake_includes_opaque_entity_and_current_session() {
   let mut setup = Setup::new().await;
-  setup.store.set_string(&OPAQUE_USER_ID_KEY, "hashed-user-1");
+  setup.set_opaque_entity_id(Some("hashed-entity-1"));
 
   let handshake = setup.next_stream(1.seconds()).await.unwrap();
-  let opaque_user_id = handshake
-    .static_device_metadata
-    .get("opaque_user_id")
-    .unwrap()
-    .string_data();
-  assert_eq!(opaque_user_id, "hashed-user-1");
+  let state_update = handshake.state_update.as_ref().unwrap();
+
+  assert_eq!(
+    Some("hashed-entity-1"),
+    state_update
+      .opaque_entity_update
+      .as_ref()
+      .unwrap()
+      .opaque_entity_id
+      .as_deref()
+  );
+  assert_eq!(1, state_update.started_sessions.len());
+  assert_eq!(
+    setup.session_strategy.session_id().await.unwrap(),
+    state_update.started_sessions[0].session_id
+  );
 }
 
 #[tokio::test(start_paused = true)]
-async fn reconnect_handshake_picks_up_updated_opaque_user_id() {
+async fn reconnect_handshake_picks_up_updated_opaque_entity_id() {
   let mut setup = Setup::new().await;
 
   let handshake = setup.next_stream(1.seconds()).await.unwrap();
   assert!(
-    !handshake
-      .static_device_metadata
-      .contains_key("opaque_user_id")
+    handshake
+      .state_update
+      .as_ref()
+      .unwrap()
+      .opaque_entity_update
+      .as_ref()
+      .unwrap()
+      .opaque_entity_id
+      .is_none()
   );
 
   setup
     .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
     .await;
 
-  setup.store.set_string(&OPAQUE_USER_ID_KEY, "hashed-user-2");
+  setup.set_opaque_entity_id(Some("hashed-entity-2"));
   setup.close_stream().await;
 
+  // The old stream can enqueue a final opaque-entity state update before the close is observed.
+  // The reconnect assertion is about the handshake built for the new stream, so skip any
+  // intervening state-update frame and inspect the next handshake request.
+  let reconnect_handshake = setup
+    .next_stream_allowing_state_updates(2.seconds())
+    .await
+    .unwrap();
+  assert_eq!(
+    Some("hashed-entity-2"),
+    reconnect_handshake
+      .state_update
+      .as_ref()
+      .unwrap()
+      .opaque_entity_update
+      .as_ref()
+      .unwrap()
+      .opaque_entity_id
+      .as_deref()
+  );
+}
+
+#[tokio::test(start_paused = true)]
+async fn midstream_opaque_entity_updates_are_sent() {
+  let mut setup = Setup::new().await;
+
+  setup.next_stream(1.seconds()).await.unwrap();
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
+    .await;
+
+  setup.set_opaque_entity_id(Some("hashed-entity-3"));
+  let request = setup.next_request(1.seconds()).await.unwrap();
+  let Some(Request_type::StateUpdate(state_update)) = request.request_type else {
+    panic!("expected state update request, got {request:?}");
+  };
+
+  assert_eq!(
+    Some("hashed-entity-3"),
+    state_update
+      .opaque_entity_update
+      .as_ref()
+      .unwrap()
+      .opaque_entity_id
+      .as_deref()
+  );
+  assert!(state_update.started_sessions.is_empty());
+
+  setup.state_update_response().await;
+  setup.set_opaque_entity_id(None);
+  let request = setup.next_request(1.seconds()).await.unwrap();
+  let Some(Request_type::StateUpdate(state_update)) = request.request_type else {
+    panic!("expected state update request, got {request:?}");
+  };
+
+  assert!(
+    state_update
+      .opaque_entity_update
+      .as_ref()
+      .unwrap()
+      .opaque_entity_id
+      .is_none()
+  );
+}
+
+#[tokio::test(start_paused = true)]
+async fn session_state_update_is_resent_until_acked() {
+  let mut setup = Setup::new().await;
+
+  let handshake = setup.next_stream(1.seconds()).await.unwrap();
+  let initial_session_id = handshake.state_update.as_ref().unwrap().started_sessions[0]
+    .session_id
+    .clone();
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
+    .await;
+
+  setup.session_strategy.start_new_session().await;
+  let next_session_id = setup.session_strategy.session_id().await.unwrap();
+
+  let request = setup.next_request(1.seconds()).await.unwrap();
+  let Some(Request_type::StateUpdate(state_update)) = request.request_type else {
+    panic!("expected state update request, got {request:?}");
+  };
+
+  assert_eq!(1, state_update.started_sessions.len());
+  assert_eq!(next_session_id, state_update.started_sessions[0].session_id);
+
+  setup.close_stream().await;
   let reconnect_handshake = setup.next_stream(2.seconds()).await.unwrap();
-  let opaque_user_id = reconnect_handshake
-    .static_device_metadata
-    .get("opaque_user_id")
+  let reconnect_started_sessions = &reconnect_handshake
+    .state_update
+    .as_ref()
     .unwrap()
-    .string_data();
-  assert_eq!(opaque_user_id, "hashed-user-2");
+    .started_sessions;
+  assert_eq!(1, reconnect_started_sessions.len());
+  assert_eq!(next_session_id, reconnect_started_sessions[0].session_id);
+  assert_ne!(initial_session_id, reconnect_started_sessions[0].session_id);
+
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
+    .await;
+  setup.state_update_response().await;
 }

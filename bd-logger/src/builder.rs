@@ -35,8 +35,10 @@ use bd_runtime::runtime::network_quality::NetworkCallOnlineIndicatorTimeout;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
 use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
+use bd_state::{ENTITY_ID_KEY, Scope as StateScope, StateReader, Value_type};
 use bd_time::{SystemTimeProvider, Ticker, TimeProvider};
 use futures_util::{Future, try_join};
+use parking_lot::Mutex;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -261,6 +263,8 @@ impl LoggerBuilder {
 
     let data_upload_tx_clone = data_upload_tx.clone();
     let collector_clone = collector;
+    let (opaque_entity_updates_tx, opaque_entity_updates_rx) = watch::channel(None);
+    let pending_entity_id = Arc::new(Mutex::new(None));
 
     let logger = Logger::new(
       maybe_shutdown_trigger,
@@ -272,6 +276,8 @@ impl LoggerBuilder {
       self.params.device,
       self.params.static_metadata.sdk_version(),
       self.params.store.clone(),
+      opaque_entity_updates_tx.clone(),
+      pending_entity_id.clone(),
       sleep_mode_active_tx,
       is_tracing_active,
     );
@@ -327,6 +333,27 @@ impl LoggerBuilder {
         result.previous_state,
         result.retention_registry,
       );
+
+      // Preserve pre-start entity ID updates from the public logger handle. If nothing updated the
+      // watch channel yet, seed it from the persisted bd-state value before the API starts.
+      let pending_entity_id = pending_entity_id.lock().take();
+      if pending_entity_id.is_none() {
+        let initial_opaque_entity_id = {
+          let reader = state_store.read().await;
+          reader
+            .get(StateScope::System, ENTITY_ID_KEY)
+            .and_then(|value| {
+              let Value_type::StringValue(entity_id) = value.value_type.as_ref()? else {
+                return None;
+              };
+
+              (!entity_id.is_empty()).then(|| entity_id.clone())
+            })
+        };
+        if let Some(initial_opaque_entity_id) = initial_opaque_entity_id {
+          opaque_entity_updates_tx.send_replace(Some(initial_opaque_entity_id));
+        }
+      }
 
       if result.fallback_occurred {
         handle_unexpected(
@@ -444,6 +471,8 @@ impl LoggerBuilder {
         &scope.scope("api"),
         sleep_mode_active_rx,
         self.params.store.clone(),
+        self.params.session_strategy.clone(),
+        opaque_entity_updates_rx,
       );
 
       let mut config_writer = bd_crash_handler::ConfigWriter::new(

@@ -35,7 +35,7 @@ pub trait Reporter: Send + Sync {
 //
 
 pub trait SessionProvider {
-  fn session_id(&self) -> String;
+  fn session_id(&self) -> anyhow::Result<String>;
 }
 
 //
@@ -71,7 +71,10 @@ impl Reporter for MetadataErrorReporter {
   ) {
     let mut headers = headers.clone();
 
-    let session_id = self.session_strategy.session_id();
+    let session_id = self
+      .session_strategy
+      .session_id()
+      .unwrap_or_else(|_| "unknown".to_string());
     headers.insert("x-session-id".into(), session_id.into());
 
     for (key, value) in self.metadata.collect() {
