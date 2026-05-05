@@ -31,7 +31,7 @@ use time::Duration;
 use tokio::time::{Interval, MissedTickBehavior};
 
 #[cfg(test)]
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn test_global_init() {
   bd_test_helpers::test_global_init();
 }

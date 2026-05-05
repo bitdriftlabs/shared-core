@@ -20,7 +20,7 @@ pub mod fixed;
 pub use bd_key_value::Store;
 
 #[cfg(test)]
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn test_global_init() {
   bd_test_helpers::test_global_init();
 }

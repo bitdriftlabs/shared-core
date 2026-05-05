@@ -43,6 +43,7 @@ use bd_grpc_codec::{
   OptimizeFor,
 };
 use bd_log::rate_limit_log::WarnTracker;
+pub use bd_pgv::proto_validate::{ProtoNameMode, ValidationOptions};
 use bd_stats_common::DynCounter;
 use bytes::{BufMut, Bytes, BytesMut};
 use connect_protocol::{ConnectProtocolType, EndOfStreamResponse, ErrorResponse, ToContentType};
@@ -74,7 +75,7 @@ const CONTENT_TYPE_CONNECT_STREAMING: &str = "application/connect+proto";
 const CONTENT_TYPE_JSON: &str = "application/json";
 const TRANSFER_ENCODING_TRAILERS: &str = "trailers";
 const CONNECT_PROTOCOL_VERSION: &str = "connect-protocol-version";
-pub const DEFAULT_MAX_UNARY_REQUEST_BYTES: usize = 10 * 1024 * 1024;
+pub const DEFAULT_MAX_UNARY_REQUEST_BYTES: usize = bd_grpc_codec::DEFAULT_MAX_MESSAGE_BYTES;
 
 pub type BodySender = mpsc::Sender<std::result::Result<Frame<Bytes>, BoxError>>;
 pub type UnaryResponseMutator<IncomingType> =
@@ -105,15 +106,23 @@ pub async fn grpc_method_extension_middleware(
 #[derive(Clone, Copy, Debug)]
 pub struct UnaryRequestConfig {
   pub max_request_bytes: usize,
-  pub validation_options: bd_pgv::proto_validate::ValidationOptions,
+  pub validation: Option<ValidationOptions>,
 }
 
 impl Default for UnaryRequestConfig {
   fn default() -> Self {
     Self {
       max_request_bytes: DEFAULT_MAX_UNARY_REQUEST_BYTES,
-      validation_options: bd_pgv::proto_validate::ValidationOptions::default(),
+      validation: None,
     }
+  }
+}
+
+impl UnaryRequestConfig {
+  #[must_use]
+  pub fn with_validation_options(mut self, validation_options: ValidationOptions) -> Self {
+    self.validation = Some(validation_options);
+    self
   }
 }
 
@@ -158,7 +167,6 @@ pub struct UnaryRouterBuilder<
   service_method: &'a ServiceMethod<OutgoingType, IncomingType>,
   handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
   endpoint_stats: Option<&'a EndpointStats>,
-  validate_request: bool,
   request_config: UnaryRequestConfig,
   response_mutator: Option<UnaryResponseMutator<IncomingType>>,
   route_layer: L,
@@ -179,7 +187,6 @@ impl<'a, OutgoingType: MessageFull, IncomingType: MessageFull>
       service_method,
       handler,
       endpoint_stats: None,
-      validate_request: false,
       request_config: UnaryRequestConfig::default(),
       response_mutator: None,
       route_layer: Identity::new(),
@@ -202,12 +209,6 @@ impl<'a, OutgoingType: MessageFull, IncomingType: MessageFull, L>
   #[must_use]
   pub fn endpoint_stats(mut self, endpoint_stats: &'a EndpointStats) -> Self {
     self.endpoint_stats = Some(endpoint_stats);
-    self
-  }
-
-  #[must_use]
-  pub fn validate_request(mut self, validate_request: bool) -> Self {
-    self.validate_request = validate_request;
     self
   }
 
@@ -247,7 +248,6 @@ impl<'a, OutgoingType: MessageFull, IncomingType: MessageFull, L>
       service_method: self.service_method,
       handler: self.handler,
       endpoint_stats: self.endpoint_stats,
-      validate_request: self.validate_request,
       request_config: self.request_config,
       response_mutator: self.response_mutator,
       route_layer,
@@ -268,7 +268,7 @@ where
   <L::Service as Service<Request>>::Future: Send + 'static,
 {
   pub fn build(self) -> Result<Router> {
-    verify_request_support::<OutgoingType>(self.validate_request, self.request_config)?;
+    verify_request_support::<OutgoingType>(self.request_config)?;
 
     let warn_tracker = Arc::new(WarnTracker::default());
     let full_path = Arc::new(self.path.unwrap_or_else(|| self.service_method.full_path()));
@@ -281,7 +281,6 @@ where
     let error_handler = self.error_handler;
     let custom_json_print_options = self.custom_json_print_options;
     let route_layer = self.route_layer;
-    let validate_request = self.validate_request;
     let request_config = self.request_config;
 
     Ok(
@@ -293,7 +292,6 @@ where
             let result = unary_handler::<OutgoingType, IncomingType>(
               request,
               handler,
-              validate_request,
               request_config,
               response_mutator.clone(),
               custom_json_print_options.clone(),
@@ -347,7 +345,8 @@ impl<OutgoingType: Message, IncomingType: MessageFull> StreamingApi<OutgoingType
     tx: BodySender,
     headers: HeaderMap,
     body: Body,
-    validate: bool,
+    max_message_bytes: Option<usize>,
+    validation: Option<ValidationOptions>,
     compression: Option<bd_grpc_codec::Compression>,
     optimize_for: OptimizeFor,
     read_stop: Option<watch::Receiver<bool>>,
@@ -362,7 +361,14 @@ impl<OutgoingType: Message, IncomingType: MessageFull> StreamingApi<OutgoingType
     );
     Self {
       sender,
-      receiver: StreamingApiReceiver::new(headers, body, validate, optimize_for, read_stop),
+      receiver: StreamingApiReceiver::new(
+        headers,
+        body,
+        max_message_bytes,
+        validation,
+        optimize_for,
+        read_stop,
+      ),
     }
   }
 
@@ -423,7 +429,7 @@ pub struct StreamingApiReceiver<IncomingType: DecodingResult> {
   headers: HeaderMap,
   body: Body,
   decoder: Decoder<IncomingType>,
-  validate: bool,
+  validation: Option<ValidationOptions>,
   read_stop: Option<watch::Receiver<bool>>,
 }
 
@@ -433,7 +439,8 @@ impl<IncomingType: DecodingResult> StreamingApiReceiver<IncomingType> {
   pub fn new(
     headers: HeaderMap,
     body: Body,
-    validate: bool,
+    max_message_bytes: Option<usize>,
+    validation: Option<ValidationOptions>,
     optimize_for: OptimizeFor,
     read_stop: Option<watch::Receiver<bool>>,
   ) -> Self {
@@ -458,8 +465,8 @@ impl<IncomingType: DecodingResult> StreamingApiReceiver<IncomingType> {
     Self {
       headers,
       body,
-      decoder: Decoder::new(decompression, optimize_for),
-      validate,
+      decoder: Decoder::new(decompression, max_message_bytes, optimize_for),
+      validation,
       read_stop,
     }
   }
@@ -495,10 +502,10 @@ impl<IncomingType: DecodingResult> StreamingApiReceiver<IncomingType> {
         let frame = frame.map_err(|e| Error::BodyStream(e.into()))?;
         if frame.is_data() {
           let messages = self.decoder.decode_data(frame.data_ref().unwrap())?;
-          if self.validate {
+          if let Some(validation) = self.validation {
             for message in &messages {
               if let Some(message) = message.message() {
-                bd_pgv::proto_validate::validate(message)
+                bd_pgv::proto_validate::validate_with_options(message, validation)
                   .inspect_err(|e| log::debug!("validation failure: {e}"))?;
               }
             }
@@ -735,7 +742,6 @@ pub trait BidiStreamingHandler<ResponseType: Message, RequestType: MessageFull>:
 
 async fn decode_request<Message: MessageFull>(
   request: Request,
-  validate_request: bool,
   connect_protocol_type: Option<ConnectProtocolType>,
   request_config: UnaryRequestConfig,
   request_trace: Option<&UnaryRequestTrace>,
@@ -788,8 +794,11 @@ async fn decode_request<Message: MessageFull>(
     protobuf_json_mapping::parse_from_str_with_options(body_str, &json_parse_options())
       .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}"), None))?
   } else {
-    let mut grpc_decoder =
-      Decoder::<Message>::new(finalize_decompression(&parts.headers), OptimizeFor::Cpu);
+    let mut grpc_decoder = Decoder::<Message>::new(
+      finalize_decompression(&parts.headers),
+      Some(request_config.max_request_bytes),
+      OptimizeFor::Cpu,
+    );
     let mut messages = grpc_decoder.decode_data(&body_bytes)?;
     if messages.len() != 1 {
       return Err(Status::new(Code::InvalidArgument, "Invalid request body", None).into());
@@ -799,8 +808,8 @@ async fn decode_request<Message: MessageFull>(
     message
   };
 
-  if validate_request {
-    bd_pgv::proto_validate::validate_with_options(&message, request_config.validation_options)
+  if let Some(validation) = request_config.validation {
+    bd_pgv::proto_validate::validate_with_options(&message, validation)
       .map_err(|e| Status::new(Code::InvalidArgument, format!("Invalid request: {e}"), None))?;
   }
 
@@ -909,7 +918,6 @@ async fn unary_connect_handler<OutgoingType: MessageFull, IncomingType: MessageF
 pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>(
   request: Request,
   handler: Arc<dyn Handler<OutgoingType, IncomingType>>,
-  validate_request: bool,
   request_config: UnaryRequestConfig,
   response_mutator: Option<UnaryResponseMutator<IncomingType>>,
   custom_json_print_options: Option<PrintOptions>,
@@ -919,7 +927,6 @@ pub async fn unary_handler<OutgoingType: MessageFull, IncomingType: MessageFull>
   let request_trace = request.extensions().get::<UnaryRequestTrace>().cloned();
   let (headers, extensions, message) = decode_request::<OutgoingType>(
     request,
-    validate_request,
     connect_protocol_type,
     request_config,
     request_trace.as_ref(),
@@ -1011,7 +1018,8 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
   request: Request,
   error_handler: impl Fn(&crate::Error) + Clone + Send + 'static,
   stream_stats: Option<StreamStats>,
-  validate_request: bool,
+  max_request_bytes: usize,
+  validation: Option<ValidationOptions>,
   warn_tracker: Arc<WarnTracker>,
   // This indicates if response compression is desired. It will still be gated on whether the
   // client sets the compression header.
@@ -1028,9 +1036,11 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
   let (tx, rx) = mpsc::channel(1);
   let (headers, extensions, message) = decode_request::<RequestType>(
     request,
-    validate_request,
     connect_protocol_type,
-    UnaryRequestConfig::default(),
+    UnaryRequestConfig {
+      max_request_bytes,
+      validation,
+    },
     None,
   )
   .await
@@ -1104,7 +1114,8 @@ fn bidi_streaming_handler<ResponseType: MessageFull, RequestType: MessageFull>(
   request: Request,
   error_handler: impl Fn(&crate::Error) + Clone + Send + 'static,
   stream_stats: Option<StreamStats>,
-  validate_request: bool,
+  max_request_bytes: usize,
+  validation: Option<ValidationOptions>,
   warn_tracker: Arc<WarnTracker>,
   compression: Option<bd_grpc_codec::Compression>,
 ) -> Result<Response> {
@@ -1139,7 +1150,8 @@ fn bidi_streaming_handler<ResponseType: MessageFull, RequestType: MessageFull>(
       tx,
       parts.headers,
       Body::new(body),
-      validate_request,
+      Some(max_request_bytes),
+      validation,
       compression,
       OptimizeFor::Cpu,
       None,
@@ -1197,7 +1209,8 @@ pub fn make_server_streaming_router<ResponseType: MessageFull, RequestType: Mess
   handler: Arc<dyn ServerStreamingHandler<ResponseType, RequestType>>,
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
   stream_stats: Option<&EndpointStats>,
-  validate_request: bool,
+  max_request_bytes: usize,
+  validation: Option<ValidationOptions>,
   compression: Option<bd_grpc_codec::Compression>,
 ) -> Result<Router> {
   make_server_streaming_router_with_route_layer(
@@ -1205,7 +1218,8 @@ pub fn make_server_streaming_router<ResponseType: MessageFull, RequestType: Mess
     handler,
     error_handler,
     stream_stats,
-    validate_request,
+    max_request_bytes,
+    validation,
     compression,
     Identity::new(),
   )
@@ -1216,7 +1230,8 @@ pub fn make_bidi_streaming_router<ResponseType: MessageFull, RequestType: Messag
   handler: Arc<dyn BidiStreamingHandler<ResponseType, RequestType>>,
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
   stream_stats: Option<&EndpointStats>,
-  validate_request: bool,
+  max_request_bytes: usize,
+  validation: Option<ValidationOptions>,
   compression: Option<bd_grpc_codec::Compression>,
 ) -> Result<Router> {
   make_bidi_streaming_router_with_route_layer(
@@ -1224,7 +1239,8 @@ pub fn make_bidi_streaming_router<ResponseType: MessageFull, RequestType: Messag
     handler,
     error_handler,
     stream_stats,
-    validate_request,
+    max_request_bytes,
+    validation,
     compression,
     Identity::new(),
   )
@@ -1239,7 +1255,8 @@ pub fn make_bidi_streaming_router_with_route_layer<
   handler: Arc<dyn BidiStreamingHandler<ResponseType, RequestType>>,
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
   stream_stats: Option<&EndpointStats>,
-  validate_request: bool,
+  max_request_bytes: usize,
+  validation: Option<ValidationOptions>,
   compression: Option<bd_grpc_codec::Compression>,
   route_layer: L,
 ) -> Result<Router>
@@ -1250,7 +1267,10 @@ where
   <L::Service as Service<Request>>::Error: Into<Infallible> + 'static,
   <L::Service as Service<Request>>::Future: Send + 'static,
 {
-  verify_request_support::<RequestType>(validate_request, UnaryRequestConfig::default())?;
+  verify_request_support::<RequestType>(UnaryRequestConfig {
+    max_request_bytes,
+    validation,
+  })?;
   let warn_tracker = Arc::new(WarnTracker::default());
   let stream_stats = stream_stats.map(|stats| stats.resolve_streaming(service_method));
   let grpc_method = service_method.grpc_method();
@@ -1265,7 +1285,8 @@ where
             request,
             error_handler,
             stream_stats,
-            validate_request,
+            max_request_bytes,
+            validation,
             warn_tracker.clone(),
             compression,
           )
@@ -1301,7 +1322,8 @@ pub fn make_server_streaming_router_with_route_layer<
   handler: Arc<dyn ServerStreamingHandler<ResponseType, RequestType>>,
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
   stream_stats: Option<&EndpointStats>,
-  validate_request: bool,
+  max_request_bytes: usize,
+  validation: Option<ValidationOptions>,
   compression: Option<bd_grpc_codec::Compression>,
   route_layer: L,
 ) -> Result<Router>
@@ -1312,7 +1334,10 @@ where
   <L::Service as Service<Request>>::Error: Into<Infallible> + 'static,
   <L::Service as Service<Request>>::Future: Send + 'static,
 {
-  verify_request_support::<RequestType>(validate_request, UnaryRequestConfig::default())?;
+  verify_request_support::<RequestType>(UnaryRequestConfig {
+    max_request_bytes,
+    validation,
+  })?;
   let warn_tracker = Arc::new(WarnTracker::default());
   let stream_stats = stream_stats.map(|stats| stats.resolve_streaming(service_method));
   let grpc_method = service_method.grpc_method();
@@ -1327,7 +1352,8 @@ where
             request,
             error_handler,
             stream_stats,
-            validate_request,
+            max_request_bytes,
+            validation,
             warn_tracker.clone(),
             compression,
           )
@@ -1344,13 +1370,12 @@ where
 }
 
 fn verify_request_support<RequestType: MessageFull>(
-  validate_request: bool,
   request_config: UnaryRequestConfig,
 ) -> Result<()> {
-  if validate_request {
+  if let Some(validation) = request_config.validation {
     bd_pgv::proto_validate::verify_descriptor_support_with_options(
       &RequestType::descriptor(),
-      request_config.validation_options,
+      validation,
     )?;
   }
 

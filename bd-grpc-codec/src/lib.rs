@@ -56,6 +56,11 @@ pub enum Error {
   Protobuf(#[from] protobuf::Error),
   #[error("gRPC protocol error: {0}")]
   Protocol(&'static str),
+  #[error("gRPC message exceeds {max_bytes} byte limit: {message_bytes}")]
+  MessageTooLarge {
+    message_bytes: usize,
+    max_bytes: usize,
+  },
   #[error("An io error ocurred: {0}")]
   Io(#[from] std::io::Error),
 }
@@ -64,6 +69,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 // Compression byte + 4 message size bytes.
 const GRPC_MESSAGE_PREFIX_LEN: usize = 5;
+pub const DEFAULT_MAX_MESSAGE_BYTES: usize = 10 * 1024 * 1024;
 // Expressed in bytes, the minimum size of the message for it to be considered
 // compressable. Used to avoid compression of small messages whose compressed
 // version is often greater in size than orginal.
@@ -307,6 +313,7 @@ pub struct Decoder<MessageType: DecodingResult> {
   decompressor: Option<Decompressor>,
   current_message_flags: u8,
   current_message_size: Option<usize>,
+  max_message_bytes: Option<usize>,
   _type: PhantomData<MessageType>,
   rx: DeferredCounter,
   rx_decompressed: DeferredCounter,
@@ -315,7 +322,11 @@ pub struct Decoder<MessageType: DecodingResult> {
 
 impl<MessageType: DecodingResult> Decoder<MessageType> {
   #[must_use]
-  pub fn new(decompression: Option<Decompression>, optimize_for: OptimizeFor) -> Self {
+  pub fn new(
+    decompression: Option<Decompression>,
+    max_message_bytes: Option<usize>,
+    optimize_for: OptimizeFor,
+  ) -> Self {
     Self {
       input_buffer: BytesMut::new(),
       decompressor: decompression.map(|decompression| match decompression {
@@ -324,6 +335,7 @@ impl<MessageType: DecodingResult> Decoder<MessageType> {
       }),
       current_message_flags: 0,
       current_message_size: None,
+      max_message_bytes,
       rx: DeferredCounter::default(),
       rx_decompressed: DeferredCounter::default(),
       _type: PhantomData,
@@ -372,6 +384,14 @@ impl<MessageType: DecodingResult> Decoder<MessageType> {
               .get_u32()
               .try_into()
               .map_err(|_| Error::Protocol("invalid message size"))?;
+            if let Some(max_message_bytes) = self.max_message_bytes
+              && current_message_size > max_message_bytes
+            {
+              return Err(Error::MessageTooLarge {
+                message_bytes: current_message_size,
+                max_bytes: max_message_bytes,
+              });
+            }
             log::trace!("next message len={current_message_size}");
             self.current_message_size = Some(current_message_size);
 

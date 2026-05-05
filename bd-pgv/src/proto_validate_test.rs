@@ -99,10 +99,45 @@ fn package_relative_error_names() {
       &message,
       ValidationOptions {
         proto_name_mode: ProtoNameMode::PackageRelative,
+        ..Default::default()
       },
     ),
     Err(error::Error::ProtoValidation(message)) if message ==
     "field 'String.field' in message 'String' requires string length >= 1");
+}
+
+#[test]
+fn string_embedded_nuls() {
+  let message = String {
+    field: "hello\0world".to_string(),
+    ..Default::default()
+  };
+
+  assert!(validate(&message).is_ok());
+
+  matches::assert_matches!(
+    validate_with_options(
+      &message,
+      ValidationOptions {
+        reject_embedded_nuls: true,
+        ..Default::default()
+      },
+    ),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'proto_validate.test.String.field' in message 'proto_validate.test.String' must not contain embedded NULs"
+  );
+
+  matches::assert_matches!(
+    validate_with_options(
+      &message,
+      ValidationOptions {
+        proto_name_mode: ProtoNameMode::PackageRelative,
+        reject_embedded_nuls: true,
+      },
+    ),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'String.field' in message 'String' must not contain embedded NULs"
+  );
 }
 
 #[test]

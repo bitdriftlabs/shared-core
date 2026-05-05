@@ -257,6 +257,7 @@ impl Setup {
       time_provider,
       requests_decoder: bd_grpc_codec::Decoder::new(
         Some(Decompression::StatelessZlib),
+        None,
         OptimizeFor::Memory,
       ),
       api_task: Some(api_task),

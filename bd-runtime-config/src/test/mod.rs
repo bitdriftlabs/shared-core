@@ -9,7 +9,7 @@ use bd_server_stats::stats::Collector;
 use std::io::prelude::*;
 use tempfile::TempDir;
 
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn test_global_init() {
   bd_test_helpers::test_global_init();
 }

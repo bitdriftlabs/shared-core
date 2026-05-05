@@ -38,7 +38,7 @@ pub mod versioned_kv_journal;
 pub mod workflow_state;
 
 #[cfg(test)]
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn test_global_init() {
   bd_test_helpers::test_global_init();
 }

@@ -33,7 +33,7 @@ use tokio::time::{Interval, MissedTickBehavior};
 pub const SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE: &str = "Screenshot captured";
 
 #[cfg(test)]
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn test_global_init() {
   bd_test_helpers::test_global_init();
 }

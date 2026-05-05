@@ -51,6 +51,7 @@ pub enum ProtoNameMode {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct ValidationOptions {
   pub proto_name_mode: ProtoNameMode,
+  pub reject_embedded_nuls: bool,
 }
 
 //
@@ -66,6 +67,10 @@ struct ErrorNameFormatter {
 impl ErrorNameFormatter {
   const fn new(options: ValidationOptions) -> Self {
     Self { options }
+  }
+
+  const fn reject_embedded_nuls(&self) -> bool {
+    self.options.reject_embedded_nuls
   }
 
   fn field_name(
@@ -545,6 +550,14 @@ fn validate_value(
             formatter.field_name(field_descriptor, message_descriptor),
             formatter.message_name(message_descriptor),
             rules.string().max_len()
+          )));
+        }
+
+        if formatter.reject_embedded_nuls() && value.contains('\0') {
+          return Err(error::Error::ProtoValidation(format!(
+            "field '{}' in message '{}' must not contain embedded NULs",
+            formatter.field_name(field_descriptor, message_descriptor),
+            formatter.message_name(message_descriptor),
           )));
         }
       }

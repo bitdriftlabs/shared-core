@@ -22,7 +22,7 @@ use bd_log::warn_every;
 use time::ext::NumericalDuration;
 
 #[cfg(test)]
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn test_global_init() {
   bd_test_helpers::test_global_init();
 }

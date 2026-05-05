@@ -86,7 +86,7 @@ cmake           = "0.1.58"
 color-backtrace = "0.7.2"
 concat-string   = "1.0.1"
 crc32fast       = "1.5.0"
-ctor            = "0.11.1"
+ctor            = "1.0.1"
 dashmap         = "6.1.0"
 
 # Pinned due to https://github.com/google/flatbuffers/issues/8876
@@ -139,7 +139,7 @@ parameterized      = "2.1.0"
 parking_lot        = "0.12.5"
 pretty_assertions  = "1.4.1"
 prometheus         = "0.14.0"
-rmcp               = { version = "1.5.0", features = ["transport-io"] }
+rmcp               = { version = "1.6.0", features = ["transport-io"] }
 thread_local       = "1.1"
 tracing            = "0.1.44"
 tracing-log        = "0.2.0"
@@ -175,7 +175,7 @@ termcolor             = "1.4.1"
 thiserror             = "2.0.18"
 tikv-jemalloc-ctl     = "0.6.1"
 time                  = { version = "0.3.47", features = ["serde-well-known", "macros", "parsing"] }
-tokio                 = { version = "1.52.1", features = ["full", "test-util"] }
+tokio                 = { version = "1.52.2", features = ["full", "test-util"] }
 tokio-rustls          = { version = "0.26.4", default-features = false }
 tokio-stream          = "0.1.18"
 tokio-test            = "0.4.5"
