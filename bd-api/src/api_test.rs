@@ -7,6 +7,7 @@
 
 use super::{Api, PlatformNetworkManager, PlatformNetworkStream};
 use crate::api::{DISCONNECTED_OFFLINE_GRACE_PERIOD, StreamEvent};
+use crate::reconnect::ReconnectState;
 use crate::upload::Tracked;
 use crate::{DataUpload, OPAQUE_USER_ID_KEY, SimpleNetworkQualityProvider};
 use anyhow::anyhow;
@@ -411,6 +412,23 @@ impl Setup {
     tx.send(StreamEvent::StreamClosed("test".to_string()))
       .await
       .unwrap();
+  }
+
+  async fn wait_for_persisted_reconnect_delay(&self) {
+    // Restart-sensitive tests need to wait until the reconnect window is persisted, not merely
+    // until the disconnect has been observed by the API task.
+    for _ in 0 .. 100 {
+      if ReconnectState::new(self.store.clone(), self.time_provider.clone())
+        .next_reconnect_delay(Duration::ZERO)
+        .is_some()
+      {
+        return;
+      }
+
+      tokio::task::yield_now().await;
+    }
+
+    panic!("expected persisted reconnect delay");
   }
 
   #[must_use]
@@ -1261,6 +1279,7 @@ async fn exponential_backoff_persists_across_restart() {
 
   // Close before handshake to drive reconnect through exponential backoff.
   setup.close_stream().await;
+  setup.wait_for_persisted_reconnect_delay().await;
 
   setup.restart().await;
 
