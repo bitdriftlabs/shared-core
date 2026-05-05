@@ -42,6 +42,17 @@ impl Error {
   fn into_status(self) -> Status {
     match self {
       Self::Grpc(status) => status,
+      Self::Codec(bd_grpc_codec::Error::MessageTooLarge {
+        message_bytes,
+        max_bytes,
+      }) => {
+        let error_message = format!("gRPC message exceeds {max_bytes} byte limit: {message_bytes}");
+        Status::new(
+          Code::ResourceExhausted,
+          error_message.clone(),
+          Some(error_message),
+        )
+      },
       Self::Codec(_) | Self::ProtoValidation(_) | Self::Snap(_) => {
         let error_message = self.to_string();
         Status::new(

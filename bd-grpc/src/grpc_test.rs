@@ -54,7 +54,7 @@ use bd_time::TimeDurationExt;
 use bytes::Bytes;
 use futures::poll;
 use http::{Extensions, HeaderMap, StatusCode};
-use http_body_util::StreamBody;
+use http_body_util::{BodyExt, StreamBody};
 use parking_lot::Mutex;
 use prometheus::labels;
 use protobuf::{Message, MessageFull};
@@ -65,8 +65,9 @@ use time::ext::NumericalDuration;
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch};
 use tokio_stream::wrappers::ReceiverStream;
+use tower::ServiceExt;
 
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn test_global_init() {
   bd_test_helpers::test_global_init();
 }
@@ -81,6 +82,10 @@ fn repeated_service_method() -> ServiceMethod<EchoRequest, EchoRepeatedResponse>
 
 fn unsupported_service_method() -> ServiceMethod<UnsupportedRequest, EchoResponse> {
   ServiceMethod::<UnsupportedRequest, EchoResponse>::new("Test", "UnsupportedEcho")
+}
+
+fn validated_request_config() -> UnaryRequestConfig {
+  UnaryRequestConfig::default().with_validation_options(ValidationOptions::default())
 }
 
 async fn make_unary_server(
@@ -101,7 +106,7 @@ async fn make_unary_server_with_response_mutator(
     handler,
     error_handler,
     endpoint_stats,
-    UnaryRequestConfig::default(),
+    validated_request_config(),
     response_mutator,
   )
   .await
@@ -116,7 +121,6 @@ async fn make_unary_server_with_request_config(
 ) -> SocketAddr {
   let service_method = service_method();
   let builder = UnaryRouterBuilder::new(&service_method, handler)
-    .validate_request(true)
     .request_config(request_config)
     .error_handler(error_handler);
   let builder = if let Some(endpoint_stats) = endpoint_stats {
@@ -151,7 +155,8 @@ async fn make_server_streaming_server(
     handler,
     error_handler,
     Some(&endpoint_stats),
-    true,
+    DEFAULT_MAX_UNARY_REQUEST_BYTES,
+    Some(ValidationOptions::default()),
     None,
   )
   .unwrap()
@@ -167,10 +172,17 @@ async fn make_bidi_streaming_server(
   handler: Arc<dyn BidiStreamingHandler<EchoResponse, EchoRequest> + 'static>,
   error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
 ) -> SocketAddr {
-  let router =
-    make_bidi_streaming_router(&service_method(), handler, error_handler, None, true, None)
-      .unwrap()
-      .layer(ConnectSafeCompressionLayer::new());
+  let router = make_bidi_streaming_router(
+    &service_method(),
+    handler,
+    error_handler,
+    None,
+    DEFAULT_MAX_UNARY_REQUEST_BYTES,
+    Some(ValidationOptions::default()),
+    None,
+  )
+  .unwrap()
+  .layer(ConnectSafeCompressionLayer::new());
   let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
   let local_address = listener.local_addr().unwrap();
   let server = axum::serve(listener, router.into_make_service());
@@ -210,7 +222,7 @@ async fn make_unary_server_with_request_trace_and_limit(
     })
   };
   let router = UnaryRouterBuilder::new(&service_method, handler)
-    .validate_request(true)
+    .request_config(validated_request_config())
     .route_layer(route_layer)
     .build()
     .unwrap()
@@ -709,7 +721,7 @@ async fn unary_routers_insert_grpc_method_metadata_for_handlers() {
   let grpc_method_path = handler.grpc_method_path.clone();
   let service_method = service_method();
   let router = UnaryRouterBuilder::new(&service_method, handler)
-    .validate_request(true)
+    .request_config(validated_request_config())
     .build()
     .unwrap()
     .layer(ConnectSafeCompressionLayer::new());
@@ -770,7 +782,7 @@ async fn unary_route_layers_can_observe_grpc_request_metadata() {
   };
   let service_method = service_method();
   let router = UnaryRouterBuilder::new(&service_method, Arc::new(EchoHandler::default()))
-    .validate_request(true)
+    .request_config(validated_request_config())
     .route_layer(route_layer)
     .build()
     .unwrap()
@@ -848,7 +860,8 @@ async fn read_stop() {
         response_sender,
         parts.headers,
         body,
-        false,
+        Some(DEFAULT_MAX_UNARY_REQUEST_BYTES),
+        None,
         None,
         OptimizeFor::Memory,
         Some(read_stop_rx),
@@ -867,7 +880,7 @@ async fn read_stop() {
       &service_method(),
       None,
       vec![],
-      true,
+      Some(ValidationOptions::default()),
       None,
       OptimizeFor::Memory,
     )
@@ -925,7 +938,8 @@ async fn streaming_with_initial_requests() {
         response_sender,
         parts.headers,
         body,
-        false,
+        Some(DEFAULT_MAX_UNARY_REQUEST_BYTES),
+        None,
         None,
         OptimizeFor::Memory,
         None,
@@ -955,7 +969,7 @@ async fn streaming_with_initial_requests() {
       &service_method(),
       None,
       vec![initial_request_1.clone(), initial_request_2.clone()],
-      true,
+      Some(ValidationOptions::default()),
       None,
       OptimizeFor::Memory,
     )
@@ -1002,7 +1016,7 @@ async fn server_streaming() {
         echo: "a".repeat(1000),
         ..Default::default()
       },
-      false,
+      None,
       OptimizeFor::Memory,
       None,
     )
@@ -1075,7 +1089,7 @@ async fn connect_server_streaming() {
         echo: "a".repeat(1000),
         ..Default::default()
       },
-      false,
+      None,
       OptimizeFor::Memory,
       Some(ConnectProtocolType::Streaming),
     )
@@ -1130,7 +1144,7 @@ async fn connect_server_streaming_error() {
         echo: "a".repeat(1000),
         ..Default::default()
       },
-      false,
+      None,
       OptimizeFor::Memory,
       Some(ConnectProtocolType::Streaming),
     )
@@ -1173,7 +1187,7 @@ async fn bidi_streaming() {
         echo: "hello".to_string(),
         ..Default::default()
       }],
-      true,
+      Some(ValidationOptions::default()),
       None,
       OptimizeFor::Memory,
     )
@@ -1224,6 +1238,7 @@ async fn connect_bidi_streaming() {
   let response_body = response.bytes().await.unwrap();
   let mut decoder = bd_grpc_codec::Decoder::<ConnectMessageOrEndOfStream<EchoResponse>>::new(
     None,
+    None,
     OptimizeFor::Cpu,
   );
   let frames = decoder.decode_data(&response_body).unwrap();
@@ -1252,7 +1267,7 @@ async fn server_streaming_error_handler() {
         echo: "a".repeat(1000),
         ..Default::default()
       },
-      false,
+      None,
       OptimizeFor::Cpu,
       None,
     )
@@ -1416,9 +1431,10 @@ async fn connect_unary_error_uses_package_relative_proto_names() {
     |_| {},
     None,
     UnaryRequestConfig {
-      validation_options: ValidationOptions {
+      validation: Some(ValidationOptions {
         proto_name_mode: ProtoNameMode::PackageRelative,
-      },
+        ..Default::default()
+      }),
       ..Default::default()
     },
     None,
@@ -1447,7 +1463,7 @@ fn make_unary_router_rejects_unsupported_pgv_validation() {
   let service_method = unsupported_service_method();
   assert_matches!(
     UnaryRouterBuilder::new(&service_method, Arc::new(UnsupportedHandler))
-      .validate_request(true)
+      .request_config(validated_request_config())
       .build(),
     Err(Error::ProtoValidation(bd_pgv::error::Error::ProtoValidation(message)))
       if message == "not implemented: string rules max_bytes"
@@ -1459,7 +1475,6 @@ fn make_unary_router_allows_unsupported_pgv_when_validation_disabled() {
   let service_method = unsupported_service_method();
   assert!(
     UnaryRouterBuilder::new(&service_method, Arc::new(UnsupportedHandler))
-      .validate_request(false)
       .build()
       .is_ok()
   );
@@ -1473,7 +1488,8 @@ fn make_server_streaming_router_rejects_unsupported_pgv_validation() {
       Arc::new(UnsupportedHandler),
       |_| {},
       None,
-      true,
+      DEFAULT_MAX_UNARY_REQUEST_BYTES,
+      Some(ValidationOptions::default()),
       None,
     ),
     Err(Error::ProtoValidation(bd_pgv::error::Error::ProtoValidation(message)))
@@ -1597,7 +1613,7 @@ async fn unary_json_transcoding_applies_response_mutator() {
 async fn unary_json_transcoding_omits_empty_repeated_fields() {
   let repeated_service_method = repeated_service_method();
   let router = UnaryRouterBuilder::new(&repeated_service_method, Arc::new(EchoRepeatedHandler))
-    .validate_request(true)
+    .request_config(validated_request_config())
     .build()
     .unwrap()
     .layer(ConnectSafeCompressionLayer::new());
@@ -1681,8 +1697,7 @@ async fn unary_json_transcoding_decode_errors_return_json_error_body() {
 async fn unary_request_over_limit_returns_resource_exhausted() {
   let service_method = service_method();
   let router = UnaryRouterBuilder::new(&service_method, Arc::new(EchoHandler::default()))
-    .validate_request(true)
-    .request_config(UnaryRequestConfig::default())
+    .request_config(validated_request_config())
     .build()
     .unwrap()
     .layer(ConnectSafeCompressionLayer::new());
@@ -1719,8 +1734,7 @@ async fn unary_request_over_limit_returns_resource_exhausted() {
 async fn unary_request_under_limit_succeeds() {
   let service_method = service_method();
   let router = UnaryRouterBuilder::new(&service_method, Arc::new(EchoHandler::default()))
-    .validate_request(true)
-    .request_config(UnaryRequestConfig::default())
+    .request_config(validated_request_config())
     .build()
     .unwrap()
     .layer(ConnectSafeCompressionLayer::new());
@@ -1746,6 +1760,96 @@ async fn unary_request_under_limit_succeeds() {
     .await
     .unwrap();
   assert_eq!(response.echo, request.echo);
+}
+
+#[tokio::test]
+async fn server_streaming_request_over_limit_returns_resource_exhausted() {
+  let (local_address, _) =
+    make_server_streaming_server(Arc::new(EchoHandler::default()), |_| {}).await;
+  let client = Client::new_http(&local_address.to_string(), 10.seconds(), 1).unwrap();
+  let request = EchoRequest {
+    echo: "x".repeat(DEFAULT_MAX_UNARY_REQUEST_BYTES + 1024),
+    ..Default::default()
+  };
+
+  match client
+    .server_streaming::<EchoRequest, EchoResponse>(
+      &service_method(),
+      None,
+      request,
+      Some(ValidationOptions::default()),
+      OptimizeFor::Cpu,
+      None,
+    )
+    .await
+  {
+    Err(Error::Grpc(status)) => {
+      let expected_message =
+        format!("Request body exceeds {DEFAULT_MAX_UNARY_REQUEST_BYTES} byte limit");
+      assert_eq!(status.code(), Code::ResourceExhausted);
+      assert_eq!(status.message(), Some(expected_message.as_str()));
+    },
+    Ok(_) => panic!("expected resource exhausted error, got success"),
+    Err(error) => panic!("expected resource exhausted error, got {error}"),
+  }
+}
+
+#[tokio::test]
+async fn server_streaming_frame_length_over_limit_returns_resource_exhausted() {
+  let router = make_server_streaming_router(
+    &service_method(),
+    Arc::new(EchoHandler::default()),
+    |_| {},
+    None,
+    DEFAULT_MAX_UNARY_REQUEST_BYTES,
+    Some(ValidationOptions::default()),
+    None,
+  )
+  .unwrap()
+  .layer(ConnectSafeCompressionLayer::new());
+
+  let mut body = Vec::from([0]);
+  body.extend_from_slice(
+    &u32::try_from(DEFAULT_MAX_UNARY_REQUEST_BYTES + 1)
+      .unwrap()
+      .to_be_bytes(),
+  );
+
+  let response = router
+    .oneshot(
+      Request::builder()
+        .method("POST")
+        .uri(service_method().full_path())
+        .header(CONTENT_TYPE, crate::CONTENT_TYPE_GRPC)
+        .body(Body::from(body))
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+
+  let expected_message = format!(
+    "gRPC message exceeds {DEFAULT_MAX_UNARY_REQUEST_BYTES} byte limit: {}",
+    DEFAULT_MAX_UNARY_REQUEST_BYTES + 1
+  );
+  let header_status = Status::from_headers(response.headers());
+  if header_status.code() == Code::ResourceExhausted {
+    assert_eq!(header_status.message(), Some(expected_message.as_str()));
+    return;
+  }
+
+  let mut response_body = response.into_body();
+  while let Some(frame) = response_body.frame().await {
+    let frame = frame.unwrap();
+    if let Some(trailers) = frame.trailers_ref() {
+      let status = Status::from_headers(trailers);
+
+      assert_eq!(status.code(), Code::ResourceExhausted);
+      assert_eq!(status.message(), Some(expected_message.as_str()));
+      return;
+    }
+  }
+
+  panic!("expected grpc trailers");
 }
 
 #[tokio::test]

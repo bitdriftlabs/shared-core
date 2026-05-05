@@ -10,7 +10,7 @@ pub mod log_upload;
 use axum::body::Body;
 use axum::extract::{Request, State};
 use axum::routing::post;
-use bd_grpc::finalize_response_compression;
+use bd_grpc::{ValidationOptions, finalize_response_compression};
 use bd_grpc_codec::{Compression, OptimizeFor};
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::client::api::api_response::Response_type;
@@ -358,7 +358,8 @@ async fn mux(
     tx,
     request_parts.headers,
     request_body,
-    true,
+    Some(bd_grpc::DEFAULT_MAX_UNARY_REQUEST_BYTES),
+    Some(ValidationOptions::default()),
     compression,
     OptimizeFor::Memory,
     None,

@@ -24,7 +24,7 @@ use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use std::sync::Arc;
 
 #[cfg(test)]
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn test_global_init() {
   bd_test_helpers::test_global_init();
 }

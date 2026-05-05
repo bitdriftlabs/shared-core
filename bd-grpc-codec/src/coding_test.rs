@@ -5,12 +5,13 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{Compression, Decoder, Decompression, Encoder, OptimizeFor};
+use crate::{Compression, DEFAULT_MAX_MESSAGE_BYTES, Decoder, Decompression, Encoder, OptimizeFor};
+use protobuf::Message;
 use protobuf::well_known_types::any::Any;
 use protobuf::well_known_types::struct_::{Struct, Value};
 use rstest::rstest;
 
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn test_global_init() {
   bd_test_helpers::test_global_init();
 }
@@ -32,10 +33,56 @@ fn decoder_does_not_panic_on_invalid_input_data(
   let bytes = &encoder.encode(message).unwrap();
   let compressed_bytes = &compressing_encoder.encode(message).unwrap();
 
-  let mut decoder = Decoder::<Any>::new(Some(decompression), OptimizeFor::Cpu);
+  let mut decoder = Decoder::<Any>::new(
+    Some(decompression),
+    Some(DEFAULT_MAX_MESSAGE_BYTES),
+    OptimizeFor::Cpu,
+  );
 
   assert!(decoder.decode_data(bytes).is_err());
   assert!(decoder.decode_data(compressed_bytes).is_err());
+}
+
+#[test]
+fn frame_length_over_limit_returns_message_too_large() {
+  let max_message_bytes = 32;
+  let mut decoder = Decoder::<Struct>::new(None, Some(max_message_bytes), OptimizeFor::Cpu);
+  let mut bytes = Vec::from([0]);
+  bytes.extend_from_slice(&u32::try_from(max_message_bytes + 1).unwrap().to_be_bytes());
+
+  assert!(matches!(
+    decoder.decode_data(&bytes),
+    Err(crate::Error::MessageTooLarge {
+      message_bytes,
+      max_bytes,
+    }) if message_bytes == max_message_bytes + 1 && max_bytes == max_message_bytes
+  ));
+}
+
+#[test]
+fn decompressed_frame_over_limit_returns_message_too_large() {
+  let max_message_bytes = 1024;
+  let message = create_compressable_message();
+  let mut encoder = Encoder::<Struct>::new(Some(Compression::StatelessZlib { level: 3 }));
+  let compressed = encoder.encode(&message).unwrap();
+  let uncompressed = message.write_to_bytes().unwrap();
+
+  assert!(uncompressed.len() > max_message_bytes);
+  assert!(compressed.len() - 5 <= max_message_bytes);
+
+  let mut decoder = Decoder::<Struct>::new(
+    Some(Decompression::StatelessZlib),
+    Some(max_message_bytes),
+    OptimizeFor::Cpu,
+  );
+
+  assert!(matches!(
+    decoder.decode_data(&compressed),
+    Err(crate::Error::MessageTooLarge {
+      message_bytes,
+      max_bytes,
+    }) if message_bytes > max_message_bytes && max_bytes == max_message_bytes
+  ));
 }
 
 #[rstest]
@@ -49,7 +96,11 @@ fn encoding_decoding_flow(
   #[case] (compression, decompression, optimize_for): (Compression, Decompression, OptimizeFor),
 ) {
   let mut encoder = Encoder::<Struct>::new(Some(compression));
-  let mut decoder = Decoder::<Struct>::new(Some(decompression), optimize_for);
+  let mut decoder = Decoder::<Struct>::new(
+    Some(decompression),
+    Some(DEFAULT_MAX_MESSAGE_BYTES),
+    optimize_for,
+  );
 
   // Check various message sizes to make sure that compressor and decompressor
   // work with diff message lengths. Verify that buffering done internally by
@@ -78,7 +129,11 @@ fn encoding_decoding_flow(
 #[test]
 fn compression_decompression_is_stateful() {
   let mut encoder = Encoder::<Struct>::new(Some(Compression::StatefulZlib { level: 3 }));
-  let mut decoder = Decoder::<Struct>::new(Some(Decompression::StatefulZlib), OptimizeFor::Cpu);
+  let mut decoder = Decoder::<Struct>::new(
+    Some(Decompression::StatefulZlib),
+    Some(DEFAULT_MAX_MESSAGE_BYTES),
+    OptimizeFor::Cpu,
+  );
 
   let message1 = create_compressable_message();
   let message2 = create_compressable_message();

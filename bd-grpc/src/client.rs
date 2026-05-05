@@ -17,6 +17,7 @@ use crate::{
   StreamingApi,
   StreamingApiReceiver,
   TRANSFER_ENCODING_TRAILERS,
+  ValidationOptions,
   finalize_decompression,
 };
 use assert_matches::debug_assert_matches;
@@ -317,8 +318,11 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
       Ok(response) => response?,
       Err(_) => return Err(Error::RequestTimeout),
     };
-    let mut decoder =
-      Decoder::<IncomingType>::new(finalize_decompression(response.headers()), OptimizeFor::Cpu);
+    let mut decoder = Decoder::<IncomingType>::new(
+      finalize_decompression(response.headers()),
+      None,
+      OptimizeFor::Cpu,
+    );
     let body = response
       .into_body()
       .collect()
@@ -340,7 +344,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
     service_method: &ServiceMethod<OutgoingType, IncomingType>,
     mut extra_headers: Option<HeaderMap>,
     initial_requests: Vec<OutgoingType>,
-    validate: bool,
+    validation: Option<ValidationOptions>,
     compression: Option<bd_grpc_codec::Compression>,
     optimize_for: OptimizeFor,
   ) -> Result<StreamingApi<OutgoingType, IncomingType>> {
@@ -388,7 +392,8 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
       tx,
       parts.headers,
       Body::new(body),
-      validate,
+      None,
+      validation,
       compression,
       optimize_for,
       None,
@@ -402,7 +407,7 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
     service_method: &ServiceMethod<OutgoingType, IncomingType::Message>,
     extra_headers: Option<HeaderMap>,
     request: OutgoingType,
-    validate: bool,
+    validation: Option<ValidationOptions>,
     optimize_for: OptimizeFor,
     connect_protocol: Option<ConnectProtocolType>,
   ) -> Result<StreamingApiReceiver<IncomingType>> {
@@ -419,7 +424,8 @@ impl<C: Connect + Clone + Send + Sync + 'static> Client<C> {
     Ok(StreamingApiReceiver::new(
       parts.headers,
       Body::new(body),
-      validate,
+      None,
+      validation,
       optimize_for,
       None,
     ))

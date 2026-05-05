@@ -56,6 +56,11 @@ pub enum Error {
   Protobuf(#[from] protobuf::Error),
   #[error("gRPC protocol error: {0}")]
   Protocol(&'static str),
+  #[error("gRPC message exceeds {max_bytes} byte limit: {message_bytes}")]
+  MessageTooLarge {
+    message_bytes: usize,
+    max_bytes: usize,
+  },
   #[error("An io error ocurred: {0}")]
   Io(#[from] std::io::Error),
 }
@@ -64,6 +69,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 // Compression byte + 4 message size bytes.
 const GRPC_MESSAGE_PREFIX_LEN: usize = 5;
+pub const DEFAULT_MAX_MESSAGE_BYTES: usize = 10 * 1024 * 1024;
 // Expressed in bytes, the minimum size of the message for it to be considered
 // compressable. Used to avoid compression of small messages whose compressed
 // version is often greater in size than orginal.
@@ -251,9 +257,57 @@ impl<MessageType: protobuf::Message> Encoder<MessageType> {
 // Decompressor
 //
 
+// Bound decompression output incrementally so a small compressed frame cannot allocate an
+// arbitrarily large buffer before we notice it exceeded the configured message limit.
+struct LimitedWriter {
+  bytes: Vec<u8>,
+  max_bytes: Option<usize>,
+  exceeded_message_bytes: Option<usize>,
+}
+
+impl LimitedWriter {
+  const fn new(max_bytes: Option<usize>) -> Self {
+    Self {
+      bytes: Vec::new(),
+      max_bytes,
+      exceeded_message_bytes: None,
+    }
+  }
+
+  fn take_bytes(&mut self) -> Vec<u8> {
+    self.exceeded_message_bytes = None;
+    std::mem::take(&mut self.bytes)
+  }
+
+  const fn exceeded_message_bytes(&self) -> Option<usize> {
+    self.exceeded_message_bytes
+  }
+}
+
+impl Write for LimitedWriter {
+  fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+    let next_len = self.bytes.len().saturating_add(buf.len());
+    if let Some(max_bytes) = self.max_bytes
+      && next_len > max_bytes
+    {
+      self.exceeded_message_bytes = Some(next_len);
+      return Err(std::io::Error::other(
+        "gRPC message exceeds configured limit",
+      ));
+    }
+
+    self.bytes.extend_from_slice(buf);
+    Ok(buf.len())
+  }
+
+  fn flush(&mut self) -> std::io::Result<()> {
+    Ok(())
+  }
+}
+
 enum Decompressor {
   StatelessZlib,
-  StatefulZlib(ZlibDecoder<Vec<u8>>),
+  StatefulZlib(ZlibDecoder<LimitedWriter>),
 }
 
 //
@@ -307,6 +361,7 @@ pub struct Decoder<MessageType: DecodingResult> {
   decompressor: Option<Decompressor>,
   current_message_flags: u8,
   current_message_size: Option<usize>,
+  max_message_bytes: Option<usize>,
   _type: PhantomData<MessageType>,
   rx: DeferredCounter,
   rx_decompressed: DeferredCounter,
@@ -315,15 +370,22 @@ pub struct Decoder<MessageType: DecodingResult> {
 
 impl<MessageType: DecodingResult> Decoder<MessageType> {
   #[must_use]
-  pub fn new(decompression: Option<Decompression>, optimize_for: OptimizeFor) -> Self {
+  pub fn new(
+    decompression: Option<Decompression>,
+    max_message_bytes: Option<usize>,
+    optimize_for: OptimizeFor,
+  ) -> Self {
     Self {
       input_buffer: BytesMut::new(),
       decompressor: decompression.map(|decompression| match decompression {
-        Decompression::StatefulZlib => Decompressor::StatefulZlib(ZlibDecoder::new(Vec::new())),
+        Decompression::StatefulZlib => {
+          Decompressor::StatefulZlib(ZlibDecoder::new(LimitedWriter::new(max_message_bytes)))
+        },
         Decompression::StatelessZlib => Decompressor::StatelessZlib,
       }),
       current_message_flags: 0,
       current_message_size: None,
+      max_message_bytes,
       rx: DeferredCounter::default(),
       rx_decompressed: DeferredCounter::default(),
       _type: PhantomData,
@@ -372,6 +434,14 @@ impl<MessageType: DecodingResult> Decoder<MessageType> {
               .get_u32()
               .try_into()
               .map_err(|_| Error::Protocol("invalid message size"))?;
+            if let Some(max_message_bytes) = self.max_message_bytes
+              && current_message_size > max_message_bytes
+            {
+              return Err(Error::MessageTooLarge {
+                message_bytes: current_message_size,
+                max_bytes: max_message_bytes,
+              });
+            }
             log::trace!("next message len={current_message_size}");
             self.current_message_size = Some(current_message_size);
 
@@ -411,13 +481,26 @@ impl<MessageType: DecodingResult> Decoder<MessageType> {
 
   fn decompress(&mut self, message_size: usize) -> Result<Bytes> {
     let compressed = self.input_buffer.split_to(message_size);
+    let max_message_bytes = self.max_message_bytes;
 
     let bytes: Vec<u8> = match self.decompressor {
       None => return Err(Error::Protocol("compressed frame with no decompressor")),
       Some(Decompressor::StatefulZlib(ref mut decompressor)) => {
-        decompressor.write_all(&compressed)?;
-        decompressor.flush()?;
-        std::mem::take(decompressor.get_mut())
+        if let Err(error) = decompressor
+          .write_all(&compressed)
+          .and_then(|()| decompressor.flush())
+        {
+          if let Some(limit_error) = Self::decompression_limit_error(
+            max_message_bytes,
+            decompressor.get_ref().exceeded_message_bytes(),
+          ) {
+            return Err(limit_error);
+          }
+
+          return Err(error.into());
+        }
+
+        decompressor.get_mut().take_bytes()
       },
       Some(Decompressor::StatelessZlib) => {
         // TODO(mattklein123): At one point we tried to use a thread local to avoid re-allocating
@@ -427,10 +510,22 @@ impl<MessageType: DecodingResult> Decoder<MessageType> {
         // and moving back to thread local per the next TODO.
         // TODO(mattklein123): Using Decompress here directly should remove some copies that are
         // required by using the writer interface.
-        let mut decompressor = ZlibDecoder::new(Vec::new());
-        decompressor.write_all(&compressed)?;
-        decompressor.flush()?;
-        std::mem::take(decompressor.get_mut())
+        let mut decompressor = ZlibDecoder::new(LimitedWriter::new(self.max_message_bytes));
+        if let Err(error) = decompressor
+          .write_all(&compressed)
+          .and_then(|()| decompressor.flush())
+        {
+          if let Some(limit_error) = Self::decompression_limit_error(
+            max_message_bytes,
+            decompressor.get_ref().exceeded_message_bytes(),
+          ) {
+            return Err(limit_error);
+          }
+
+          return Err(error.into());
+        }
+
+        decompressor.get_mut().take_bytes()
       },
     };
 
@@ -444,6 +539,20 @@ impl<MessageType: DecodingResult> Decoder<MessageType> {
     );
 
     Ok(bytes.into())
+  }
+
+  fn decompression_limit_error(
+    max_message_bytes: Option<usize>,
+    message_bytes: Option<usize>,
+  ) -> Option<Error> {
+    let (Some(message_bytes), Some(max_bytes)) = (message_bytes, max_message_bytes) else {
+      return None;
+    };
+
+    Some(Error::MessageTooLarge {
+      message_bytes,
+      max_bytes,
+    })
   }
 
   pub fn initialize_stats(&mut self, rx: DynCounter, rx_decompressed: DynCounter) {

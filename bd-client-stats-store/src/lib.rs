@@ -39,7 +39,7 @@ use std::time::Instant;
 use tokio::sync::watch;
 
 #[cfg(test)]
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn test_global_init() {
   bd_test_helpers::test_global_init();
 }

@@ -19,7 +19,7 @@ mod uploader;
 pub use uploader::{Client, EnqueueError, MockClient, SnappedFeatureFlag, UploadSource, Uploader};
 
 #[cfg(test)]
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn global_init() {
   bd_test_helpers::test_global_init();
 }

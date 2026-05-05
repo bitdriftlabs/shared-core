@@ -146,6 +146,7 @@ impl StreamState {
     // future.
     let mut decoder = bd_grpc_codec::Decoder::new(
       Some(bd_grpc_codec::Decompression::StatelessZlib),
+      None,
       OptimizeFor::Cpu,
     );
     decoder.initialize_stats(

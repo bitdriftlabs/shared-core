@@ -12,7 +12,7 @@ use crate::buffer::{RingBuffer, RingBufferConsumer, RingBufferCursorConsumer, Ri
 use bd_log_primitives::LossyIntToU32;
 use std::sync::Arc;
 
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn test_global_init() {
   bd_test_helpers::test_global_init();
 }

@@ -18,7 +18,7 @@ pub mod runtime;
 pub mod test;
 
 #[cfg(test)]
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn test_global_init() {
   bd_test_helpers::test_global_init();
 }

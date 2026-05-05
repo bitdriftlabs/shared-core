@@ -15,7 +15,7 @@
 )]
 
 #[cfg(test)]
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn test_global_init() {
   // TODO(snowp): Ideally we'll depend on bd-test-helpers here, but that would create a cyclic
   // dependency.

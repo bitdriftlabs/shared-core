@@ -450,7 +450,7 @@ fn make_tls_connector() -> anyhow::Result<HttpsConnector<HttpConnector>> {
 }
 
 #[cfg(test)]
-#[ctor::ctor]
+#[ctor::ctor(unsafe)]
 fn init_logger() {
   bd_test_helpers::test_global_init();
 }
