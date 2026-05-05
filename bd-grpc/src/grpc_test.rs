@@ -54,7 +54,7 @@ use bd_time::TimeDurationExt;
 use bytes::Bytes;
 use futures::poll;
 use http::{Extensions, HeaderMap, StatusCode};
-use http_body_util::StreamBody;
+use http_body_util::{BodyExt, StreamBody};
 use parking_lot::Mutex;
 use prometheus::labels;
 use protobuf::{Message, MessageFull};
@@ -65,6 +65,7 @@ use time::ext::NumericalDuration;
 use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch};
 use tokio_stream::wrappers::ReceiverStream;
+use tower::ServiceExt;
 
 #[ctor::ctor(unsafe)]
 fn test_global_init() {
@@ -1791,6 +1792,64 @@ async fn server_streaming_request_over_limit_returns_resource_exhausted() {
     Ok(_) => panic!("expected resource exhausted error, got success"),
     Err(error) => panic!("expected resource exhausted error, got {error}"),
   }
+}
+
+#[tokio::test]
+async fn server_streaming_frame_length_over_limit_returns_resource_exhausted() {
+  let router = make_server_streaming_router(
+    &service_method(),
+    Arc::new(EchoHandler::default()),
+    |_| {},
+    None,
+    DEFAULT_MAX_UNARY_REQUEST_BYTES,
+    Some(ValidationOptions::default()),
+    None,
+  )
+  .unwrap()
+  .layer(ConnectSafeCompressionLayer::new());
+
+  let mut body = Vec::from([0]);
+  body.extend_from_slice(
+    &u32::try_from(DEFAULT_MAX_UNARY_REQUEST_BYTES + 1)
+      .unwrap()
+      .to_be_bytes(),
+  );
+
+  let response = router
+    .oneshot(
+      Request::builder()
+        .method("POST")
+        .uri(service_method().full_path())
+        .header(CONTENT_TYPE, crate::CONTENT_TYPE_GRPC)
+        .body(Body::from(body))
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+
+  let expected_message = format!(
+    "gRPC message exceeds {DEFAULT_MAX_UNARY_REQUEST_BYTES} byte limit: {}",
+    DEFAULT_MAX_UNARY_REQUEST_BYTES + 1
+  );
+  let header_status = Status::from_headers(response.headers());
+  if header_status.code() == Code::ResourceExhausted {
+    assert_eq!(header_status.message(), Some(expected_message.as_str()));
+    return;
+  }
+
+  let mut response_body = response.into_body();
+  while let Some(frame) = response_body.frame().await {
+    let frame = frame.unwrap();
+    if let Some(trailers) = frame.trailers_ref() {
+      let status = Status::from_headers(trailers);
+
+      assert_eq!(status.code(), Code::ResourceExhausted);
+      assert_eq!(status.message(), Some(expected_message.as_str()));
+      return;
+    }
+  }
+
+  panic!("expected grpc trailers");
 }
 
 #[tokio::test]

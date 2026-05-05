@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::{Compression, DEFAULT_MAX_MESSAGE_BYTES, Decoder, Decompression, Encoder, OptimizeFor};
+use protobuf::Message;
 use protobuf::well_known_types::any::Any;
 use protobuf::well_known_types::struct_::{Struct, Value};
 use rstest::rstest;
@@ -40,6 +41,48 @@ fn decoder_does_not_panic_on_invalid_input_data(
 
   assert!(decoder.decode_data(bytes).is_err());
   assert!(decoder.decode_data(compressed_bytes).is_err());
+}
+
+#[test]
+fn frame_length_over_limit_returns_message_too_large() {
+  let max_message_bytes = 32;
+  let mut decoder = Decoder::<Struct>::new(None, Some(max_message_bytes), OptimizeFor::Cpu);
+  let mut bytes = Vec::from([0]);
+  bytes.extend_from_slice(&u32::try_from(max_message_bytes + 1).unwrap().to_be_bytes());
+
+  assert!(matches!(
+    decoder.decode_data(&bytes),
+    Err(crate::Error::MessageTooLarge {
+      message_bytes,
+      max_bytes,
+    }) if message_bytes == max_message_bytes + 1 && max_bytes == max_message_bytes
+  ));
+}
+
+#[test]
+fn decompressed_frame_over_limit_returns_message_too_large() {
+  let max_message_bytes = 1024;
+  let message = create_compressable_message();
+  let mut encoder = Encoder::<Struct>::new(Some(Compression::StatelessZlib { level: 3 }));
+  let compressed = encoder.encode(&message).unwrap();
+  let uncompressed = message.write_to_bytes().unwrap();
+
+  assert!(uncompressed.len() > max_message_bytes);
+  assert!(compressed.len() - 5 <= max_message_bytes);
+
+  let mut decoder = Decoder::<Struct>::new(
+    Some(Decompression::StatelessZlib),
+    Some(max_message_bytes),
+    OptimizeFor::Cpu,
+  );
+
+  assert!(matches!(
+    decoder.decode_data(&compressed),
+    Err(crate::Error::MessageTooLarge {
+      message_bytes,
+      max_bytes,
+    }) if message_bytes > max_message_bytes && max_bytes == max_message_bytes
+  ));
 }
 
 #[rstest]
