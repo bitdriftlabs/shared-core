@@ -60,8 +60,12 @@ pub enum Permission {
     ISSUE_ASSIGN = 12,
     // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.CONNECTOR_ADMIN)
     CONNECTOR_ADMIN = 14,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.CONNECTOR_READ)
+    CONNECTOR_READ = 17,
     // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.DEBUG_FILE_READ)
     DEBUG_FILE_READ = 15,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.SYSTEM_STATUS_READ)
+    SYSTEM_STATUS_READ = 18,
 }
 
 impl ::protobuf::Enum for Permission {
@@ -86,7 +90,9 @@ impl ::protobuf::Enum for Permission {
             11 => ::std::option::Option::Some(Permission::ISSUE_ADMIN),
             12 => ::std::option::Option::Some(Permission::ISSUE_ASSIGN),
             14 => ::std::option::Option::Some(Permission::CONNECTOR_ADMIN),
+            17 => ::std::option::Option::Some(Permission::CONNECTOR_READ),
             15 => ::std::option::Option::Some(Permission::DEBUG_FILE_READ),
+            18 => ::std::option::Option::Some(Permission::SYSTEM_STATUS_READ),
             _ => ::std::option::Option::None
         }
     }
@@ -106,7 +112,9 @@ impl ::protobuf::Enum for Permission {
             "ISSUE_ADMIN" => ::std::option::Option::Some(Permission::ISSUE_ADMIN),
             "ISSUE_ASSIGN" => ::std::option::Option::Some(Permission::ISSUE_ASSIGN),
             "CONNECTOR_ADMIN" => ::std::option::Option::Some(Permission::CONNECTOR_ADMIN),
+            "CONNECTOR_READ" => ::std::option::Option::Some(Permission::CONNECTOR_READ),
             "DEBUG_FILE_READ" => ::std::option::Option::Some(Permission::DEBUG_FILE_READ),
+            "SYSTEM_STATUS_READ" => ::std::option::Option::Some(Permission::SYSTEM_STATUS_READ),
             _ => ::std::option::Option::None
         }
     }
@@ -125,7 +133,9 @@ impl ::protobuf::Enum for Permission {
         Permission::ISSUE_ADMIN,
         Permission::ISSUE_ASSIGN,
         Permission::CONNECTOR_ADMIN,
+        Permission::CONNECTOR_READ,
         Permission::DEBUG_FILE_READ,
+        Permission::SYSTEM_STATUS_READ,
     ];
 }
 
@@ -150,7 +160,9 @@ impl ::protobuf::EnumFull for Permission {
             Permission::ISSUE_ADMIN => 10,
             Permission::ISSUE_ASSIGN => 11,
             Permission::CONNECTOR_ADMIN => 12,
-            Permission::DEBUG_FILE_READ => 13,
+            Permission::CONNECTOR_READ => 13,
+            Permission::DEBUG_FILE_READ => 14,
+            Permission::SYSTEM_STATUS_READ => 15,
         };
         Self::enum_descriptor().value_by_index(index)
     }
@@ -170,23 +182,24 @@ impl Permission {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n/bitdrift/public/unary/admin/v1/permission.proto\x12\x1ebitdrift.publi\
-    c.unary.admin.v1*\xa0\x02\n\nPermission\x12\x1a\n\x16PERMISSION_UNSPECIF\
+    c.unary.admin.v1*\xcc\x02\n\nPermission\x12\x1a\n\x16PERMISSION_UNSPECIF\
     IED\x10\0\x12\x11\n\rSDK_KEY_ADMIN\x10\x01\x12\x13\n\x0fAPI_KEY_CREATOR\
     \x10\x10\x12\x12\n\x0eWORKFLOW_ADMIN\x10\x02\x12\x11\n\rWORKFLOW_READ\
     \x10\x03\x12\x12\n\x0eWORKFLOW_WRITE\x10\x04\x12\x13\n\x0fWORKFLOW_DEPLO\
     Y\x10\x05\x12\x10\n\x0cSESSION_READ\x10\x07\x12\x0e\n\nISSUE_READ\x10\
     \x08\x12\x0f\n\x0bMETRIC_READ\x10\t\x12\x0f\n\x0bISSUE_ADMIN\x10\x0b\x12\
     \x10\n\x0cISSUE_ASSIGN\x10\x0c\x12\x13\n\x0fCONNECTOR_ADMIN\x10\x0e\x12\
-    \x13\n\x0fDEBUG_FILE_READ\x10\x0fJ\xba\x0b\n\x06\x12\x04\x06\0&\x01\n\
-    \xb8\x02\n\x01\x0c\x12\x03\x06\0\x12\x1a\xad\x02\x20api\x20-\x20bitdrift\
-    's\x20client/server\x20API\x20definitions\n\x20Copyright\x20Bitdrift,\
-    \x20Inc.\x20All\x20rights\x20reserved.\n\n\x20Use\x20of\x20this\x20sourc\
-    e\x20code\x20and\x20APIs\x20are\x20governed\x20by\x20a\x20source\x20avai\
-    lable\x20license\x20that\x20can\x20be\x20found\x20in\n\x20the\x20LICENSE\
-    \x20file\x20or\x20at:\n\x20https://polyformproject.org/wp-content/upload\
-    s/2020/06/PolyForm-Shield-1.0.0.txt\n\n\x08\n\x01\x02\x12\x03\x08\0'\n\n\
-    \n\x02\x05\0\x12\x04\n\0&\x01\n\n\n\x03\x05\0\x01\x12\x03\n\x05\x0f\n\
-    \x0b\n\x04\x05\0\x02\0\x12\x03\x0b\x02\x1d\n\x0c\n\x05\x05\0\x02\0\x01\
+    \x12\n\x0eCONNECTOR_READ\x10\x11\x12\x13\n\x0fDEBUG_FILE_READ\x10\x0f\
+    \x12\x16\n\x12SYSTEM_STATUS_READ\x10\x12J\xd7\x0c\n\x06\x12\x04\x06\0*\
+    \x01\n\xb8\x02\n\x01\x0c\x12\x03\x06\0\x12\x1a\xad\x02\x20api\x20-\x20bi\
+    tdrift's\x20client/server\x20API\x20definitions\n\x20Copyright\x20Bitdri\
+    ft,\x20Inc.\x20All\x20rights\x20reserved.\n\n\x20Use\x20of\x20this\x20so\
+    urce\x20code\x20and\x20APIs\x20are\x20governed\x20by\x20a\x20source\x20a\
+    vailable\x20license\x20that\x20can\x20be\x20found\x20in\n\x20the\x20LICE\
+    NSE\x20file\x20or\x20at:\n\x20https://polyformproject.org/wp-content/upl\
+    oads/2020/06/PolyForm-Shield-1.0.0.txt\n\n\x08\n\x01\x02\x12\x03\x08\0'\
+    \n\n\n\x02\x05\0\x12\x04\n\0*\x01\n\n\n\x03\x05\0\x01\x12\x03\n\x05\x0f\
+    \n\x0b\n\x04\x05\0\x02\0\x12\x03\x0b\x02\x1d\n\x0c\n\x05\x05\0\x02\0\x01\
     \x12\x03\x0b\x02\x18\n\x0c\n\x05\x05\0\x02\0\x02\x12\x03\x0b\x1b\x1c\nG\
     \n\x04\x05\0\x02\x01\x12\x03\r\x02\x14\x1a:\x20Allows\x20creating,\x20re\
     voking,\x20and\x20listing\x20SDK\x20and\x20API\x20keys.\n\n\x0c\n\x05\
@@ -222,9 +235,15 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x05\0\x02\x0b\x02\x12\x03!\x11\x13\n*\n\x04\x05\0\x02\x0c\x12\x03#\x02\
     \x17\x1a\x1d\x20Allows\x20managing\x20connectors.\n\n\x0c\n\x05\x05\0\
     \x02\x0c\x01\x12\x03#\x02\x11\n\x0c\n\x05\x05\0\x02\x0c\x02\x12\x03#\x14\
-    \x16\n2\n\x04\x05\0\x02\r\x12\x03%\x02\x17\x1a%\x20Allows\x20reading\x20\
-    debug\x20file\x20metadata.\n\n\x0c\n\x05\x05\0\x02\r\x01\x12\x03%\x02\
-    \x11\n\x0c\n\x05\x05\0\x02\r\x02\x12\x03%\x14\x16b\x06proto3\
+    \x16\n)\n\x04\x05\0\x02\r\x12\x03%\x02\x16\x1a\x1c\x20Allows\x20reading\
+    \x20connectors.\n\n\x0c\n\x05\x05\0\x02\r\x01\x12\x03%\x02\x10\n\x0c\n\
+    \x05\x05\0\x02\r\x02\x12\x03%\x13\x15\n2\n\x04\x05\0\x02\x0e\x12\x03'\
+    \x02\x17\x1a%\x20Allows\x20reading\x20debug\x20file\x20metadata.\n\n\x0c\
+    \n\x05\x05\0\x02\x0e\x01\x12\x03'\x02\x11\n\x0c\n\x05\x05\0\x02\x0e\x02\
+    \x12\x03'\x14\x16\n8\n\x04\x05\0\x02\x0f\x12\x03)\x02\x1a\x1a+\x20Allows\
+    \x20reading\x20system\x20status\x20information.\n\n\x0c\n\x05\x05\0\x02\
+    \x0f\x01\x12\x03)\x02\x14\n\x0c\n\x05\x05\0\x02\x0f\x02\x12\x03)\x17\x19\
+    b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

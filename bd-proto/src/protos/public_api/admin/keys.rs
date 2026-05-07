@@ -39,8 +39,8 @@ pub struct SdkKeyResponse {
     pub key: ::std::string::String,
     // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.SdkKeyResponse.bundle_id_regex)
     pub bundle_id_regex: ::std::string::String,
-    // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.SdkKeyResponse.app_id_postfix)
-    pub app_id_postfix: ::std::option::Option<::std::string::String>,
+    // message oneof groups
+    pub app_id_transform: ::std::option::Option<sdk_key_response::App_id_transform>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.SdkKeyResponse.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -57,9 +57,107 @@ impl SdkKeyResponse {
         ::std::default::Default::default()
     }
 
+    // string app_id_postfix = 3;
+
+    pub fn app_id_postfix(&self) -> &str {
+        match self.app_id_transform {
+            ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdPostfix(ref v)) => v,
+            _ => "",
+        }
+    }
+
+    pub fn clear_app_id_postfix(&mut self) {
+        self.app_id_transform = ::std::option::Option::None;
+    }
+
+    pub fn has_app_id_postfix(&self) -> bool {
+        match self.app_id_transform {
+            ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdPostfix(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_app_id_postfix(&mut self, v: ::std::string::String) {
+        self.app_id_transform = ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdPostfix(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_app_id_postfix(&mut self) -> &mut ::std::string::String {
+        if let ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdPostfix(_)) = self.app_id_transform {
+        } else {
+            self.app_id_transform = ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdPostfix(::std::string::String::new()));
+        }
+        match self.app_id_transform {
+            ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdPostfix(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_app_id_postfix(&mut self) -> ::std::string::String {
+        if self.has_app_id_postfix() {
+            match self.app_id_transform.take() {
+                ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdPostfix(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            ::std::string::String::new()
+        }
+    }
+
+    // string app_id_replacement = 4;
+
+    pub fn app_id_replacement(&self) -> &str {
+        match self.app_id_transform {
+            ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdReplacement(ref v)) => v,
+            _ => "",
+        }
+    }
+
+    pub fn clear_app_id_replacement(&mut self) {
+        self.app_id_transform = ::std::option::Option::None;
+    }
+
+    pub fn has_app_id_replacement(&self) -> bool {
+        match self.app_id_transform {
+            ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdReplacement(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_app_id_replacement(&mut self, v: ::std::string::String) {
+        self.app_id_transform = ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdReplacement(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_app_id_replacement(&mut self) -> &mut ::std::string::String {
+        if let ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdReplacement(_)) = self.app_id_transform {
+        } else {
+            self.app_id_transform = ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdReplacement(::std::string::String::new()));
+        }
+        match self.app_id_transform {
+            ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdReplacement(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_app_id_replacement(&mut self) -> ::std::string::String {
+        if self.has_app_id_replacement() {
+            match self.app_id_transform.take() {
+                ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdReplacement(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            ::std::string::String::new()
+        }
+    }
+
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(3);
-        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "key",
             |m: &SdkKeyResponse| { &m.key },
@@ -70,11 +168,19 @@ impl SdkKeyResponse {
             |m: &SdkKeyResponse| { &m.bundle_id_regex },
             |m: &mut SdkKeyResponse| { &mut m.bundle_id_regex },
         ));
-        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
             "app_id_postfix",
-            |m: &SdkKeyResponse| { &m.app_id_postfix },
-            |m: &mut SdkKeyResponse| { &mut m.app_id_postfix },
+            SdkKeyResponse::has_app_id_postfix,
+            SdkKeyResponse::app_id_postfix,
+            SdkKeyResponse::set_app_id_postfix,
         ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+            "app_id_replacement",
+            SdkKeyResponse::has_app_id_replacement,
+            SdkKeyResponse::app_id_replacement,
+            SdkKeyResponse::set_app_id_replacement,
+        ));
+        oneofs.push(sdk_key_response::App_id_transform::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SdkKeyResponse>(
             "SdkKeyResponse",
             fields,
@@ -100,7 +206,10 @@ impl ::protobuf::Message for SdkKeyResponse {
                     self.bundle_id_regex = is.read_string()?;
                 },
                 26 => {
-                    self.app_id_postfix = ::std::option::Option::Some(is.read_string()?);
+                    self.app_id_transform = ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdPostfix(is.read_string()?));
+                },
+                34 => {
+                    self.app_id_transform = ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdReplacement(is.read_string()?));
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -120,8 +229,15 @@ impl ::protobuf::Message for SdkKeyResponse {
         if !self.bundle_id_regex.is_empty() {
             my_size += ::protobuf::rt::string_size(2, &self.bundle_id_regex);
         }
-        if let Some(v) = self.app_id_postfix.as_ref() {
-            my_size += ::protobuf::rt::string_size(3, &v);
+        if let ::std::option::Option::Some(ref v) = self.app_id_transform {
+            match v {
+                &sdk_key_response::App_id_transform::AppIdPostfix(ref v) => {
+                    my_size += ::protobuf::rt::string_size(3, &v);
+                },
+                &sdk_key_response::App_id_transform::AppIdReplacement(ref v) => {
+                    my_size += ::protobuf::rt::string_size(4, &v);
+                },
+            };
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
@@ -135,8 +251,15 @@ impl ::protobuf::Message for SdkKeyResponse {
         if !self.bundle_id_regex.is_empty() {
             os.write_string(2, &self.bundle_id_regex)?;
         }
-        if let Some(v) = self.app_id_postfix.as_ref() {
-            os.write_string(3, v)?;
+        if let ::std::option::Option::Some(ref v) = self.app_id_transform {
+            match v {
+                &sdk_key_response::App_id_transform::AppIdPostfix(ref v) => {
+                    os.write_string(3, v)?;
+                },
+                &sdk_key_response::App_id_transform::AppIdReplacement(ref v) => {
+                    os.write_string(4, v)?;
+                },
+            };
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -157,7 +280,8 @@ impl ::protobuf::Message for SdkKeyResponse {
     fn clear(&mut self) {
         self.key.clear();
         self.bundle_id_regex.clear();
-        self.app_id_postfix = ::std::option::Option::None;
+        self.app_id_transform = ::std::option::Option::None;
+        self.app_id_transform = ::std::option::Option::None;
         self.special_fields.clear();
     }
 
@@ -165,7 +289,7 @@ impl ::protobuf::Message for SdkKeyResponse {
         static instance: SdkKeyResponse = SdkKeyResponse {
             key: ::std::string::String::new(),
             bundle_id_regex: ::std::string::String::new(),
-            app_id_postfix: ::std::option::Option::None,
+            app_id_transform: ::std::option::Option::None,
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -187,6 +311,35 @@ impl ::std::fmt::Display for SdkKeyResponse {
 
 impl ::protobuf::reflect::ProtobufValue for SdkKeyResponse {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `SdkKeyResponse`
+pub mod sdk_key_response {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift.public.unary.admin.v1.SdkKeyResponse.app_id_transform)
+    pub enum App_id_transform {
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.admin.v1.SdkKeyResponse.app_id_postfix)
+        AppIdPostfix(::std::string::String),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.admin.v1.SdkKeyResponse.app_id_replacement)
+        AppIdReplacement(::std::string::String),
+    }
+
+    impl ::protobuf::Oneof for App_id_transform {
+    }
+
+    impl ::protobuf::OneofFull for App_id_transform {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::SdkKeyResponse as ::protobuf::MessageFull>::descriptor().oneof_by_name("app_id_transform").unwrap()).clone()
+        }
+    }
+
+    impl App_id_transform {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<App_id_transform>("app_id_transform")
+        }
+    }
 }
 
 // @@protoc_insertion_point(message:bitdrift.public.unary.admin.v1.ApiKeyResponse)
@@ -1244,8 +1397,8 @@ pub mod create_key_request {
         // message fields
         // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.CreateKeyRequest.SdkKeyRequest.bundle_id_regex)
         pub bundle_id_regex: ::std::string::String,
-        // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.CreateKeyRequest.SdkKeyRequest.app_id_postfix)
-        pub app_id_postfix: ::std::option::Option<::std::string::String>,
+        // message oneof groups
+        pub app_id_transform: ::std::option::Option<sdk_key_request::App_id_transform>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.CreateKeyRequest.SdkKeyRequest.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -1262,19 +1415,125 @@ pub mod create_key_request {
             ::std::default::Default::default()
         }
 
+        // string app_id_postfix = 2;
+
+        pub fn app_id_postfix(&self) -> &str {
+            match self.app_id_transform {
+                ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdPostfix(ref v)) => v,
+                _ => "",
+            }
+        }
+
+        pub fn clear_app_id_postfix(&mut self) {
+            self.app_id_transform = ::std::option::Option::None;
+        }
+
+        pub fn has_app_id_postfix(&self) -> bool {
+            match self.app_id_transform {
+                ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdPostfix(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_app_id_postfix(&mut self, v: ::std::string::String) {
+            self.app_id_transform = ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdPostfix(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_app_id_postfix(&mut self) -> &mut ::std::string::String {
+            if let ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdPostfix(_)) = self.app_id_transform {
+            } else {
+                self.app_id_transform = ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdPostfix(::std::string::String::new()));
+            }
+            match self.app_id_transform {
+                ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdPostfix(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_app_id_postfix(&mut self) -> ::std::string::String {
+            if self.has_app_id_postfix() {
+                match self.app_id_transform.take() {
+                    ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdPostfix(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                ::std::string::String::new()
+            }
+        }
+
+        // string app_id_replacement = 3;
+
+        pub fn app_id_replacement(&self) -> &str {
+            match self.app_id_transform {
+                ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdReplacement(ref v)) => v,
+                _ => "",
+            }
+        }
+
+        pub fn clear_app_id_replacement(&mut self) {
+            self.app_id_transform = ::std::option::Option::None;
+        }
+
+        pub fn has_app_id_replacement(&self) -> bool {
+            match self.app_id_transform {
+                ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdReplacement(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_app_id_replacement(&mut self, v: ::std::string::String) {
+            self.app_id_transform = ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdReplacement(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_app_id_replacement(&mut self) -> &mut ::std::string::String {
+            if let ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdReplacement(_)) = self.app_id_transform {
+            } else {
+                self.app_id_transform = ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdReplacement(::std::string::String::new()));
+            }
+            match self.app_id_transform {
+                ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdReplacement(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_app_id_replacement(&mut self) -> ::std::string::String {
+            if self.has_app_id_replacement() {
+                match self.app_id_transform.take() {
+                    ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdReplacement(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                ::std::string::String::new()
+            }
+        }
+
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(2);
-            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            let mut fields = ::std::vec::Vec::with_capacity(3);
+            let mut oneofs = ::std::vec::Vec::with_capacity(1);
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "bundle_id_regex",
                 |m: &SdkKeyRequest| { &m.bundle_id_regex },
                 |m: &mut SdkKeyRequest| { &mut m.bundle_id_regex },
             ));
-            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
                 "app_id_postfix",
-                |m: &SdkKeyRequest| { &m.app_id_postfix },
-                |m: &mut SdkKeyRequest| { &mut m.app_id_postfix },
+                SdkKeyRequest::has_app_id_postfix,
+                SdkKeyRequest::app_id_postfix,
+                SdkKeyRequest::set_app_id_postfix,
             ));
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+                "app_id_replacement",
+                SdkKeyRequest::has_app_id_replacement,
+                SdkKeyRequest::app_id_replacement,
+                SdkKeyRequest::set_app_id_replacement,
+            ));
+            oneofs.push(sdk_key_request::App_id_transform::generated_oneof_descriptor_data());
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SdkKeyRequest>(
                 "CreateKeyRequest.SdkKeyRequest",
                 fields,
@@ -1297,7 +1556,10 @@ pub mod create_key_request {
                         self.bundle_id_regex = is.read_string()?;
                     },
                     18 => {
-                        self.app_id_postfix = ::std::option::Option::Some(is.read_string()?);
+                        self.app_id_transform = ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdPostfix(is.read_string()?));
+                    },
+                    26 => {
+                        self.app_id_transform = ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdReplacement(is.read_string()?));
                     },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -1314,8 +1576,15 @@ pub mod create_key_request {
             if !self.bundle_id_regex.is_empty() {
                 my_size += ::protobuf::rt::string_size(1, &self.bundle_id_regex);
             }
-            if let Some(v) = self.app_id_postfix.as_ref() {
-                my_size += ::protobuf::rt::string_size(2, &v);
+            if let ::std::option::Option::Some(ref v) = self.app_id_transform {
+                match v {
+                    &sdk_key_request::App_id_transform::AppIdPostfix(ref v) => {
+                        my_size += ::protobuf::rt::string_size(2, &v);
+                    },
+                    &sdk_key_request::App_id_transform::AppIdReplacement(ref v) => {
+                        my_size += ::protobuf::rt::string_size(3, &v);
+                    },
+                };
             }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
@@ -1326,8 +1595,15 @@ pub mod create_key_request {
             if !self.bundle_id_regex.is_empty() {
                 os.write_string(1, &self.bundle_id_regex)?;
             }
-            if let Some(v) = self.app_id_postfix.as_ref() {
-                os.write_string(2, v)?;
+            if let ::std::option::Option::Some(ref v) = self.app_id_transform {
+                match v {
+                    &sdk_key_request::App_id_transform::AppIdPostfix(ref v) => {
+                        os.write_string(2, v)?;
+                    },
+                    &sdk_key_request::App_id_transform::AppIdReplacement(ref v) => {
+                        os.write_string(3, v)?;
+                    },
+                };
             }
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
@@ -1347,14 +1623,15 @@ pub mod create_key_request {
 
         fn clear(&mut self) {
             self.bundle_id_regex.clear();
-            self.app_id_postfix = ::std::option::Option::None;
+            self.app_id_transform = ::std::option::Option::None;
+            self.app_id_transform = ::std::option::Option::None;
             self.special_fields.clear();
         }
 
         fn default_instance() -> &'static SdkKeyRequest {
             static instance: SdkKeyRequest = SdkKeyRequest {
                 bundle_id_regex: ::std::string::String::new(),
-                app_id_postfix: ::std::option::Option::None,
+                app_id_transform: ::std::option::Option::None,
                 special_fields: ::protobuf::SpecialFields::new(),
             };
             &instance
@@ -1376,6 +1653,35 @@ pub mod create_key_request {
 
     impl ::protobuf::reflect::ProtobufValue for SdkKeyRequest {
         type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `SdkKeyRequest`
+    pub mod sdk_key_request {
+
+        #[derive(Clone,PartialEq,Debug)]
+        // @@protoc_insertion_point(oneof:bitdrift.public.unary.admin.v1.CreateKeyRequest.SdkKeyRequest.app_id_transform)
+        pub enum App_id_transform {
+            // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.admin.v1.CreateKeyRequest.SdkKeyRequest.app_id_postfix)
+            AppIdPostfix(::std::string::String),
+            // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.admin.v1.CreateKeyRequest.SdkKeyRequest.app_id_replacement)
+            AppIdReplacement(::std::string::String),
+        }
+
+        impl ::protobuf::Oneof for App_id_transform {
+        }
+
+        impl ::protobuf::OneofFull for App_id_transform {
+            fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| <super::SdkKeyRequest as ::protobuf::MessageFull>::descriptor().oneof_by_name("app_id_transform").unwrap()).clone()
+            }
+        }
+
+        impl App_id_transform {
+            pub(in super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+                ::protobuf::reflect::GeneratedOneofDescriptorData::new::<App_id_transform>("app_id_transform")
+            }
+        }
     }
 
     // @@protoc_insertion_point(message:bitdrift.public.unary.admin.v1.CreateKeyRequest.ApiKeyRequest)
@@ -1851,34 +2157,37 @@ impl ::protobuf::reflect::ProtobufValue for RevokeKeyResponse {
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n)bitdrift/public/unary/admin/v1/keys.proto\x12\x1ebitdrift.public.unar\
     y.admin.v1\x1a/bitdrift/public/unary/admin/v1/permission.proto\x1a\x1fgo\
-    ogle/protobuf/timestamp.proto\x1a\x17validate/validate.proto\"\x88\x01\n\
+    ogle/protobuf/timestamp.proto\x1a\x17validate/validate.proto\"\xca\x01\n\
     \x0eSdkKeyResponse\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12&\n\
-    \x0fbundle_id_regex\x18\x02\x20\x01(\tR\rbundleIdRegex\x12)\n\x0eapp_id_\
-    postfix\x18\x03\x20\x01(\tH\0R\x0cappIdPostfix\x88\x01\x01B\x11\n\x0f_ap\
-    p_id_postfix\"\x92\x01\n\x0eApiKeyResponse\x12\x20\n\x0bfingerprint\x18\
-    \x01\x20\x01(\tR\x0bfingerprint\x12\x10\n\x03key\x18\x02\x20\x01(\tR\x03\
-    key\x12L\n\x0bpermissions\x18\x04\x20\x03(\x0e2*.bitdrift.public.unary.a\
-    dmin.v1.PermissionR\x0bpermissions\"\xe3\x02\n\x0bKeyResponse\x12\x0e\n\
-    \x02id\x18\x01\x20\x01(\x04R\x02id\x129\n\ncreated_at\x18\x02\x20\x01(\
-    \x0b2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n\nexpires_at\x18\
-    \x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\texpiresAt\x12\x18\n\
-    \x07revoked\x18\x04\x20\x01(\x08R\x07revoked\x12I\n\x07sdk_key\x18\x05\
-    \x20\x01(\x0b2..bitdrift.public.unary.admin.v1.SdkKeyResponseH\0R\x06sdk\
-    Key\x12I\n\x07api_key\x18\x06\x20\x01(\x0b2..bitdrift.public.unary.admin\
-    .v1.ApiKeyResponseH\0R\x06apiKey\x12\x12\n\x04name\x18\x07\x20\x01(\tR\
-    \x04nameB\n\n\x08key_type\"\x10\n\x0eGetKeysRequest\"R\n\x0fGetKeysRespo\
-    nse\x12?\n\x04keys\x18\x01\x20\x03(\x0b2+.bitdrift.public.unary.admin.v1\
-    .KeyResponseR\x04keys\"\xf9\x03\n\x10CreateKeyRequest\x12Y\n\x07sdk_key\
-    \x18\x01\x20\x01(\x0b2>.bitdrift.public.unary.admin.v1.CreateKeyRequest.\
-    SdkKeyRequestH\0R\x06sdkKey\x12Y\n\x07api_key\x18\x02\x20\x01(\x0b2>.bit\
-    drift.public.unary.admin.v1.CreateKeyRequest.ApiKeyRequestH\0R\x06apiKey\
-    \x12\x1e\n\x04name\x18\x03\x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\
-    \x18\xff\x01\x1a\x8b\x01\n\rSdkKeyRequest\x122\n\x0fbundle_id_regex\x18\
-    \x01\x20\x01(\tR\rbundleIdRegexB\n\xfaB\x07r\x05\x10\x01\x18\x80\x10\x12\
-    3\n\x0eapp_id_postfix\x18\x02\x20\x01(\tH\0R\x0cappIdPostfixB\x08\xfaB\
-    \x05r\x03\x18\xff\x01\x88\x01\x01B\x11\n\x0f_app_id_postfix\x1ap\n\rApiK\
-    eyRequest\x12_\n\x0bpermissions\x18\x02\x20\x03(\x0e2*.bitdrift.public.u\
-    nary.admin.v1.PermissionR\x0bpermissionsB\x11\xfaB\x0e\x92\x01\x0b\x08\
+    \x0fbundle_id_regex\x18\x02\x20\x01(\tR\rbundleIdRegex\x120\n\x0eapp_id_\
+    postfix\x18\x03\x20\x01(\tH\0R\x0cappIdPostfixB\x08\xfaB\x05r\x03\x18\
+    \xff\x01\x128\n\x12app_id_replacement\x18\x04\x20\x01(\tH\0R\x10appIdRep\
+    lacementB\x08\xfaB\x05r\x03\x18\xff\x01B\x12\n\x10app_id_transform\"\x92\
+    \x01\n\x0eApiKeyResponse\x12\x20\n\x0bfingerprint\x18\x01\x20\x01(\tR\
+    \x0bfingerprint\x12\x10\n\x03key\x18\x02\x20\x01(\tR\x03key\x12L\n\x0bpe\
+    rmissions\x18\x04\x20\x03(\x0e2*.bitdrift.public.unary.admin.v1.Permissi\
+    onR\x0bpermissions\"\xe3\x02\n\x0bKeyResponse\x12\x0e\n\x02id\x18\x01\
+    \x20\x01(\x04R\x02id\x129\n\ncreated_at\x18\x02\x20\x01(\x0b2\x1a.google\
+    .protobuf.TimestampR\tcreatedAt\x129\n\nexpires_at\x18\x03\x20\x01(\x0b2\
+    \x1a.google.protobuf.TimestampR\texpiresAt\x12\x18\n\x07revoked\x18\x04\
+    \x20\x01(\x08R\x07revoked\x12I\n\x07sdk_key\x18\x05\x20\x01(\x0b2..bitdr\
+    ift.public.unary.admin.v1.SdkKeyResponseH\0R\x06sdkKey\x12I\n\x07api_key\
+    \x18\x06\x20\x01(\x0b2..bitdrift.public.unary.admin.v1.ApiKeyResponseH\0\
+    R\x06apiKey\x12\x12\n\x04name\x18\x07\x20\x01(\tR\x04nameB\n\n\x08key_ty\
+    pe\"\x10\n\x0eGetKeysRequest\"R\n\x0fGetKeysResponse\x12?\n\x04keys\x18\
+    \x01\x20\x03(\x0b2+.bitdrift.public.unary.admin.v1.KeyResponseR\x04keys\
+    \"\xb1\x04\n\x10CreateKeyRequest\x12Y\n\x07sdk_key\x18\x01\x20\x01(\x0b2\
+    >.bitdrift.public.unary.admin.v1.CreateKeyRequest.SdkKeyRequestH\0R\x06s\
+    dkKey\x12Y\n\x07api_key\x18\x02\x20\x01(\x0b2>.bitdrift.public.unary.adm\
+    in.v1.CreateKeyRequest.ApiKeyRequestH\0R\x06apiKey\x12\x1e\n\x04name\x18\
+    \x03\x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x1a\xc3\
+    \x01\n\rSdkKeyRequest\x122\n\x0fbundle_id_regex\x18\x01\x20\x01(\tR\rbun\
+    dleIdRegexB\n\xfaB\x07r\x05\x10\x01\x18\x80\x10\x120\n\x0eapp_id_postfix\
+    \x18\x02\x20\x01(\tH\0R\x0cappIdPostfixB\x08\xfaB\x05r\x03\x18\xff\x01\
+    \x128\n\x12app_id_replacement\x18\x03\x20\x01(\tH\0R\x10appIdReplacement\
+    B\x08\xfaB\x05r\x03\x18\xff\x01B\x12\n\x10app_id_transform\x1ap\n\rApiKe\
+    yRequest\x12_\n\x0bpermissions\x18\x02\x20\x03(\x0e2*.bitdrift.public.un\
+    ary.admin.v1.PermissionR\x0bpermissionsB\x11\xfaB\x0e\x92\x01\x0b\x08\
     \x01\x10d\"\x05\x82\x01\x02\x10\x01B\x0f\n\x08key_type\x12\x03\xf8B\x01\
     \"R\n\x11CreateKeyResponse\x12=\n\x03key\x18\x01\x20\x01(\x0b2+.bitdrift\
     .public.unary.admin.v1.KeyResponseR\x03key\"\"\n\x10RevokeKeyRequest\x12\
