@@ -140,6 +140,7 @@ pub fn get_public_api_proto_configs() -> Vec<ProtoConfig> {
         "../api/src/bitdrift/public/shared/annotations/api_ootb_fields.proto",
         "../api/src/bitdrift/public/shared/workflows/v1/time_series.proto",
         "../api/src/bitdrift/public/shared/platform/v1/platform.proto",
+        "../api/src/bitdrift/public/unary/health/v1/health.proto",
         "../api/src/bitdrift/public/unary/issues/v1/api.proto",
         "../api/src/bitdrift/public/unary/issues/v1/crash.proto",
         "../api/src/bitdrift/public/unary/issues/v1/issues.proto",
