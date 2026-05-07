@@ -60,8 +60,12 @@ pub enum Permission {
     ISSUE_ASSIGN = 12,
     // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.CONNECTOR_ADMIN)
     CONNECTOR_ADMIN = 14,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.CONNECTOR_READ)
+    CONNECTOR_READ = 17,
     // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.DEBUG_FILE_READ)
     DEBUG_FILE_READ = 15,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.SYSTEM_STATUS_READ)
+    SYSTEM_STATUS_READ = 18,
 }
 
 impl ::protobuf::Enum for Permission {
@@ -86,7 +90,9 @@ impl ::protobuf::Enum for Permission {
             11 => ::std::option::Option::Some(Permission::ISSUE_ADMIN),
             12 => ::std::option::Option::Some(Permission::ISSUE_ASSIGN),
             14 => ::std::option::Option::Some(Permission::CONNECTOR_ADMIN),
+            17 => ::std::option::Option::Some(Permission::CONNECTOR_READ),
             15 => ::std::option::Option::Some(Permission::DEBUG_FILE_READ),
+            18 => ::std::option::Option::Some(Permission::SYSTEM_STATUS_READ),
             _ => ::std::option::Option::None
         }
     }
@@ -106,7 +112,9 @@ impl ::protobuf::Enum for Permission {
             "ISSUE_ADMIN" => ::std::option::Option::Some(Permission::ISSUE_ADMIN),
             "ISSUE_ASSIGN" => ::std::option::Option::Some(Permission::ISSUE_ASSIGN),
             "CONNECTOR_ADMIN" => ::std::option::Option::Some(Permission::CONNECTOR_ADMIN),
+            "CONNECTOR_READ" => ::std::option::Option::Some(Permission::CONNECTOR_READ),
             "DEBUG_FILE_READ" => ::std::option::Option::Some(Permission::DEBUG_FILE_READ),
+            "SYSTEM_STATUS_READ" => ::std::option::Option::Some(Permission::SYSTEM_STATUS_READ),
             _ => ::std::option::Option::None
         }
     }
@@ -125,7 +133,9 @@ impl ::protobuf::Enum for Permission {
         Permission::ISSUE_ADMIN,
         Permission::ISSUE_ASSIGN,
         Permission::CONNECTOR_ADMIN,
+        Permission::CONNECTOR_READ,
         Permission::DEBUG_FILE_READ,
+        Permission::SYSTEM_STATUS_READ,
     ];
 }
 
@@ -150,7 +160,9 @@ impl ::protobuf::EnumFull for Permission {
             Permission::ISSUE_ADMIN => 10,
             Permission::ISSUE_ASSIGN => 11,
             Permission::CONNECTOR_ADMIN => 12,
-            Permission::DEBUG_FILE_READ => 13,
+            Permission::CONNECTOR_READ => 13,
+            Permission::DEBUG_FILE_READ => 14,
+            Permission::SYSTEM_STATUS_READ => 15,
         };
         Self::enum_descriptor().value_by_index(index)
     }
@@ -170,14 +182,15 @@ impl Permission {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n/bitdrift/public/unary/admin/v1/permission.proto\x12\x1ebitdrift.publi\
-    c.unary.admin.v1*\xa0\x02\n\nPermission\x12\x1a\n\x16PERMISSION_UNSPECIF\
+    c.unary.admin.v1*\xcc\x02\n\nPermission\x12\x1a\n\x16PERMISSION_UNSPECIF\
     IED\x10\0\x12\x11\n\rSDK_KEY_ADMIN\x10\x01\x12\x13\n\x0fAPI_KEY_CREATOR\
     \x10\x10\x12\x12\n\x0eWORKFLOW_ADMIN\x10\x02\x12\x11\n\rWORKFLOW_READ\
     \x10\x03\x12\x12\n\x0eWORKFLOW_WRITE\x10\x04\x12\x13\n\x0fWORKFLOW_DEPLO\
     Y\x10\x05\x12\x10\n\x0cSESSION_READ\x10\x07\x12\x0e\n\nISSUE_READ\x10\
     \x08\x12\x0f\n\x0bMETRIC_READ\x10\t\x12\x0f\n\x0bISSUE_ADMIN\x10\x0b\x12\
     \x10\n\x0cISSUE_ASSIGN\x10\x0c\x12\x13\n\x0fCONNECTOR_ADMIN\x10\x0e\x12\
-    \x13\n\x0fDEBUG_FILE_READ\x10\x0fb\x06proto3\
+    \x12\n\x0eCONNECTOR_READ\x10\x11\x12\x13\n\x0fDEBUG_FILE_READ\x10\x0f\
+    \x12\x16\n\x12SYSTEM_STATUS_READ\x10\x12b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

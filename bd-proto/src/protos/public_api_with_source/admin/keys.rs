@@ -41,10 +41,8 @@ pub struct SdkKeyResponse {
     ///  The app/bundle ID regex that the key is associated with.
     // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.SdkKeyResponse.bundle_id_regex)
     pub bundle_id_regex: ::std::string::String,
-    ///  An optional postfix for the app ID associated with the key. The server
-    ///  appends this to the base app ID during authentication.
-    // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.SdkKeyResponse.app_id_postfix)
-    pub app_id_postfix: ::std::option::Option<::std::string::String>,
+    // message oneof groups
+    pub app_id_transform: ::std::option::Option<sdk_key_response::App_id_transform>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.SdkKeyResponse.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -61,9 +59,107 @@ impl SdkKeyResponse {
         ::std::default::Default::default()
     }
 
+    // string app_id_postfix = 3;
+
+    pub fn app_id_postfix(&self) -> &str {
+        match self.app_id_transform {
+            ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdPostfix(ref v)) => v,
+            _ => "",
+        }
+    }
+
+    pub fn clear_app_id_postfix(&mut self) {
+        self.app_id_transform = ::std::option::Option::None;
+    }
+
+    pub fn has_app_id_postfix(&self) -> bool {
+        match self.app_id_transform {
+            ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdPostfix(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_app_id_postfix(&mut self, v: ::std::string::String) {
+        self.app_id_transform = ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdPostfix(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_app_id_postfix(&mut self) -> &mut ::std::string::String {
+        if let ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdPostfix(_)) = self.app_id_transform {
+        } else {
+            self.app_id_transform = ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdPostfix(::std::string::String::new()));
+        }
+        match self.app_id_transform {
+            ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdPostfix(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_app_id_postfix(&mut self) -> ::std::string::String {
+        if self.has_app_id_postfix() {
+            match self.app_id_transform.take() {
+                ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdPostfix(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            ::std::string::String::new()
+        }
+    }
+
+    // string app_id_replacement = 4;
+
+    pub fn app_id_replacement(&self) -> &str {
+        match self.app_id_transform {
+            ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdReplacement(ref v)) => v,
+            _ => "",
+        }
+    }
+
+    pub fn clear_app_id_replacement(&mut self) {
+        self.app_id_transform = ::std::option::Option::None;
+    }
+
+    pub fn has_app_id_replacement(&self) -> bool {
+        match self.app_id_transform {
+            ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdReplacement(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_app_id_replacement(&mut self, v: ::std::string::String) {
+        self.app_id_transform = ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdReplacement(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_app_id_replacement(&mut self) -> &mut ::std::string::String {
+        if let ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdReplacement(_)) = self.app_id_transform {
+        } else {
+            self.app_id_transform = ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdReplacement(::std::string::String::new()));
+        }
+        match self.app_id_transform {
+            ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdReplacement(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_app_id_replacement(&mut self) -> ::std::string::String {
+        if self.has_app_id_replacement() {
+            match self.app_id_transform.take() {
+                ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdReplacement(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            ::std::string::String::new()
+        }
+    }
+
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(3);
-        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "key",
             |m: &SdkKeyResponse| { &m.key },
@@ -74,11 +170,19 @@ impl SdkKeyResponse {
             |m: &SdkKeyResponse| { &m.bundle_id_regex },
             |m: &mut SdkKeyResponse| { &mut m.bundle_id_regex },
         ));
-        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
             "app_id_postfix",
-            |m: &SdkKeyResponse| { &m.app_id_postfix },
-            |m: &mut SdkKeyResponse| { &mut m.app_id_postfix },
+            SdkKeyResponse::has_app_id_postfix,
+            SdkKeyResponse::app_id_postfix,
+            SdkKeyResponse::set_app_id_postfix,
         ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+            "app_id_replacement",
+            SdkKeyResponse::has_app_id_replacement,
+            SdkKeyResponse::app_id_replacement,
+            SdkKeyResponse::set_app_id_replacement,
+        ));
+        oneofs.push(sdk_key_response::App_id_transform::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SdkKeyResponse>(
             "SdkKeyResponse",
             fields,
@@ -104,7 +208,10 @@ impl ::protobuf::Message for SdkKeyResponse {
                     self.bundle_id_regex = is.read_string()?;
                 },
                 26 => {
-                    self.app_id_postfix = ::std::option::Option::Some(is.read_string()?);
+                    self.app_id_transform = ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdPostfix(is.read_string()?));
+                },
+                34 => {
+                    self.app_id_transform = ::std::option::Option::Some(sdk_key_response::App_id_transform::AppIdReplacement(is.read_string()?));
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -124,8 +231,15 @@ impl ::protobuf::Message for SdkKeyResponse {
         if !self.bundle_id_regex.is_empty() {
             my_size += ::protobuf::rt::string_size(2, &self.bundle_id_regex);
         }
-        if let Some(v) = self.app_id_postfix.as_ref() {
-            my_size += ::protobuf::rt::string_size(3, &v);
+        if let ::std::option::Option::Some(ref v) = self.app_id_transform {
+            match v {
+                &sdk_key_response::App_id_transform::AppIdPostfix(ref v) => {
+                    my_size += ::protobuf::rt::string_size(3, &v);
+                },
+                &sdk_key_response::App_id_transform::AppIdReplacement(ref v) => {
+                    my_size += ::protobuf::rt::string_size(4, &v);
+                },
+            };
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
@@ -139,8 +253,15 @@ impl ::protobuf::Message for SdkKeyResponse {
         if !self.bundle_id_regex.is_empty() {
             os.write_string(2, &self.bundle_id_regex)?;
         }
-        if let Some(v) = self.app_id_postfix.as_ref() {
-            os.write_string(3, v)?;
+        if let ::std::option::Option::Some(ref v) = self.app_id_transform {
+            match v {
+                &sdk_key_response::App_id_transform::AppIdPostfix(ref v) => {
+                    os.write_string(3, v)?;
+                },
+                &sdk_key_response::App_id_transform::AppIdReplacement(ref v) => {
+                    os.write_string(4, v)?;
+                },
+            };
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -161,7 +282,8 @@ impl ::protobuf::Message for SdkKeyResponse {
     fn clear(&mut self) {
         self.key.clear();
         self.bundle_id_regex.clear();
-        self.app_id_postfix = ::std::option::Option::None;
+        self.app_id_transform = ::std::option::Option::None;
+        self.app_id_transform = ::std::option::Option::None;
         self.special_fields.clear();
     }
 
@@ -169,7 +291,7 @@ impl ::protobuf::Message for SdkKeyResponse {
         static instance: SdkKeyResponse = SdkKeyResponse {
             key: ::std::string::String::new(),
             bundle_id_regex: ::std::string::String::new(),
-            app_id_postfix: ::std::option::Option::None,
+            app_id_transform: ::std::option::Option::None,
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -191,6 +313,35 @@ impl ::std::fmt::Display for SdkKeyResponse {
 
 impl ::protobuf::reflect::ProtobufValue for SdkKeyResponse {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `SdkKeyResponse`
+pub mod sdk_key_response {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift.public.unary.admin.v1.SdkKeyResponse.app_id_transform)
+    pub enum App_id_transform {
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.admin.v1.SdkKeyResponse.app_id_postfix)
+        AppIdPostfix(::std::string::String),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.admin.v1.SdkKeyResponse.app_id_replacement)
+        AppIdReplacement(::std::string::String),
+    }
+
+    impl ::protobuf::Oneof for App_id_transform {
+    }
+
+    impl ::protobuf::OneofFull for App_id_transform {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::SdkKeyResponse as ::protobuf::MessageFull>::descriptor().oneof_by_name("app_id_transform").unwrap()).clone()
+        }
+    }
+
+    impl App_id_transform {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<App_id_transform>("app_id_transform")
+        }
+    }
 }
 
 // @@protoc_insertion_point(message:bitdrift.public.unary.admin.v1.ApiKeyResponse)
@@ -1262,10 +1413,8 @@ pub mod create_key_request {
         ///  The app/bundle ID regex that the key is associated with.
         // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.CreateKeyRequest.SdkKeyRequest.bundle_id_regex)
         pub bundle_id_regex: ::std::string::String,
-        ///  An optional postfix for the app ID associated with the key. The server
-        ///  appends this to the base app ID during authentication.
-        // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.CreateKeyRequest.SdkKeyRequest.app_id_postfix)
-        pub app_id_postfix: ::std::option::Option<::std::string::String>,
+        // message oneof groups
+        pub app_id_transform: ::std::option::Option<sdk_key_request::App_id_transform>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.CreateKeyRequest.SdkKeyRequest.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -1282,19 +1431,125 @@ pub mod create_key_request {
             ::std::default::Default::default()
         }
 
+        // string app_id_postfix = 2;
+
+        pub fn app_id_postfix(&self) -> &str {
+            match self.app_id_transform {
+                ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdPostfix(ref v)) => v,
+                _ => "",
+            }
+        }
+
+        pub fn clear_app_id_postfix(&mut self) {
+            self.app_id_transform = ::std::option::Option::None;
+        }
+
+        pub fn has_app_id_postfix(&self) -> bool {
+            match self.app_id_transform {
+                ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdPostfix(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_app_id_postfix(&mut self, v: ::std::string::String) {
+            self.app_id_transform = ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdPostfix(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_app_id_postfix(&mut self) -> &mut ::std::string::String {
+            if let ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdPostfix(_)) = self.app_id_transform {
+            } else {
+                self.app_id_transform = ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdPostfix(::std::string::String::new()));
+            }
+            match self.app_id_transform {
+                ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdPostfix(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_app_id_postfix(&mut self) -> ::std::string::String {
+            if self.has_app_id_postfix() {
+                match self.app_id_transform.take() {
+                    ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdPostfix(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                ::std::string::String::new()
+            }
+        }
+
+        // string app_id_replacement = 3;
+
+        pub fn app_id_replacement(&self) -> &str {
+            match self.app_id_transform {
+                ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdReplacement(ref v)) => v,
+                _ => "",
+            }
+        }
+
+        pub fn clear_app_id_replacement(&mut self) {
+            self.app_id_transform = ::std::option::Option::None;
+        }
+
+        pub fn has_app_id_replacement(&self) -> bool {
+            match self.app_id_transform {
+                ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdReplacement(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_app_id_replacement(&mut self, v: ::std::string::String) {
+            self.app_id_transform = ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdReplacement(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_app_id_replacement(&mut self) -> &mut ::std::string::String {
+            if let ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdReplacement(_)) = self.app_id_transform {
+            } else {
+                self.app_id_transform = ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdReplacement(::std::string::String::new()));
+            }
+            match self.app_id_transform {
+                ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdReplacement(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_app_id_replacement(&mut self) -> ::std::string::String {
+            if self.has_app_id_replacement() {
+                match self.app_id_transform.take() {
+                    ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdReplacement(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                ::std::string::String::new()
+            }
+        }
+
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(2);
-            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            let mut fields = ::std::vec::Vec::with_capacity(3);
+            let mut oneofs = ::std::vec::Vec::with_capacity(1);
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "bundle_id_regex",
                 |m: &SdkKeyRequest| { &m.bundle_id_regex },
                 |m: &mut SdkKeyRequest| { &mut m.bundle_id_regex },
             ));
-            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
                 "app_id_postfix",
-                |m: &SdkKeyRequest| { &m.app_id_postfix },
-                |m: &mut SdkKeyRequest| { &mut m.app_id_postfix },
+                SdkKeyRequest::has_app_id_postfix,
+                SdkKeyRequest::app_id_postfix,
+                SdkKeyRequest::set_app_id_postfix,
             ));
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+                "app_id_replacement",
+                SdkKeyRequest::has_app_id_replacement,
+                SdkKeyRequest::app_id_replacement,
+                SdkKeyRequest::set_app_id_replacement,
+            ));
+            oneofs.push(sdk_key_request::App_id_transform::generated_oneof_descriptor_data());
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SdkKeyRequest>(
                 "CreateKeyRequest.SdkKeyRequest",
                 fields,
@@ -1317,7 +1572,10 @@ pub mod create_key_request {
                         self.bundle_id_regex = is.read_string()?;
                     },
                     18 => {
-                        self.app_id_postfix = ::std::option::Option::Some(is.read_string()?);
+                        self.app_id_transform = ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdPostfix(is.read_string()?));
+                    },
+                    26 => {
+                        self.app_id_transform = ::std::option::Option::Some(sdk_key_request::App_id_transform::AppIdReplacement(is.read_string()?));
                     },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -1334,8 +1592,15 @@ pub mod create_key_request {
             if !self.bundle_id_regex.is_empty() {
                 my_size += ::protobuf::rt::string_size(1, &self.bundle_id_regex);
             }
-            if let Some(v) = self.app_id_postfix.as_ref() {
-                my_size += ::protobuf::rt::string_size(2, &v);
+            if let ::std::option::Option::Some(ref v) = self.app_id_transform {
+                match v {
+                    &sdk_key_request::App_id_transform::AppIdPostfix(ref v) => {
+                        my_size += ::protobuf::rt::string_size(2, &v);
+                    },
+                    &sdk_key_request::App_id_transform::AppIdReplacement(ref v) => {
+                        my_size += ::protobuf::rt::string_size(3, &v);
+                    },
+                };
             }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
@@ -1346,8 +1611,15 @@ pub mod create_key_request {
             if !self.bundle_id_regex.is_empty() {
                 os.write_string(1, &self.bundle_id_regex)?;
             }
-            if let Some(v) = self.app_id_postfix.as_ref() {
-                os.write_string(2, v)?;
+            if let ::std::option::Option::Some(ref v) = self.app_id_transform {
+                match v {
+                    &sdk_key_request::App_id_transform::AppIdPostfix(ref v) => {
+                        os.write_string(2, v)?;
+                    },
+                    &sdk_key_request::App_id_transform::AppIdReplacement(ref v) => {
+                        os.write_string(3, v)?;
+                    },
+                };
             }
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
@@ -1367,14 +1639,15 @@ pub mod create_key_request {
 
         fn clear(&mut self) {
             self.bundle_id_regex.clear();
-            self.app_id_postfix = ::std::option::Option::None;
+            self.app_id_transform = ::std::option::Option::None;
+            self.app_id_transform = ::std::option::Option::None;
             self.special_fields.clear();
         }
 
         fn default_instance() -> &'static SdkKeyRequest {
             static instance: SdkKeyRequest = SdkKeyRequest {
                 bundle_id_regex: ::std::string::String::new(),
-                app_id_postfix: ::std::option::Option::None,
+                app_id_transform: ::std::option::Option::None,
                 special_fields: ::protobuf::SpecialFields::new(),
             };
             &instance
@@ -1396,6 +1669,35 @@ pub mod create_key_request {
 
     impl ::protobuf::reflect::ProtobufValue for SdkKeyRequest {
         type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `SdkKeyRequest`
+    pub mod sdk_key_request {
+
+        #[derive(Clone,PartialEq,Debug)]
+        // @@protoc_insertion_point(oneof:bitdrift.public.unary.admin.v1.CreateKeyRequest.SdkKeyRequest.app_id_transform)
+        pub enum App_id_transform {
+            // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.admin.v1.CreateKeyRequest.SdkKeyRequest.app_id_postfix)
+            AppIdPostfix(::std::string::String),
+            // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.admin.v1.CreateKeyRequest.SdkKeyRequest.app_id_replacement)
+            AppIdReplacement(::std::string::String),
+        }
+
+        impl ::protobuf::Oneof for App_id_transform {
+        }
+
+        impl ::protobuf::OneofFull for App_id_transform {
+            fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| <super::SdkKeyRequest as ::protobuf::MessageFull>::descriptor().oneof_by_name("app_id_transform").unwrap()).clone()
+            }
+        }
+
+        impl App_id_transform {
+            pub(in super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+                ::protobuf::reflect::GeneratedOneofDescriptorData::new::<App_id_transform>("app_id_transform")
+            }
+        }
     }
 
     // @@protoc_insertion_point(message:bitdrift.public.unary.admin.v1.CreateKeyRequest.ApiKeyRequest)
@@ -1874,164 +2176,184 @@ impl ::protobuf::reflect::ProtobufValue for RevokeKeyResponse {
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n)bitdrift/public/unary/admin/v1/keys.proto\x12\x1ebitdrift.public.unar\
     y.admin.v1\x1a/bitdrift/public/unary/admin/v1/permission.proto\x1a\x1fgo\
-    ogle/protobuf/timestamp.proto\x1a\x17validate/validate.proto\"\x88\x01\n\
+    ogle/protobuf/timestamp.proto\x1a\x17validate/validate.proto\"\xca\x01\n\
     \x0eSdkKeyResponse\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12&\n\
-    \x0fbundle_id_regex\x18\x02\x20\x01(\tR\rbundleIdRegex\x12)\n\x0eapp_id_\
-    postfix\x18\x03\x20\x01(\tH\0R\x0cappIdPostfix\x88\x01\x01B\x11\n\x0f_ap\
-    p_id_postfix\"\x92\x01\n\x0eApiKeyResponse\x12\x20\n\x0bfingerprint\x18\
-    \x01\x20\x01(\tR\x0bfingerprint\x12\x10\n\x03key\x18\x02\x20\x01(\tR\x03\
-    key\x12L\n\x0bpermissions\x18\x04\x20\x03(\x0e2*.bitdrift.public.unary.a\
-    dmin.v1.PermissionR\x0bpermissions\"\xe3\x02\n\x0bKeyResponse\x12\x0e\n\
-    \x02id\x18\x01\x20\x01(\x04R\x02id\x129\n\ncreated_at\x18\x02\x20\x01(\
-    \x0b2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n\nexpires_at\x18\
-    \x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\texpiresAt\x12\x18\n\
-    \x07revoked\x18\x04\x20\x01(\x08R\x07revoked\x12I\n\x07sdk_key\x18\x05\
-    \x20\x01(\x0b2..bitdrift.public.unary.admin.v1.SdkKeyResponseH\0R\x06sdk\
-    Key\x12I\n\x07api_key\x18\x06\x20\x01(\x0b2..bitdrift.public.unary.admin\
-    .v1.ApiKeyResponseH\0R\x06apiKey\x12\x12\n\x04name\x18\x07\x20\x01(\tR\
-    \x04nameB\n\n\x08key_type\"\x10\n\x0eGetKeysRequest\"R\n\x0fGetKeysRespo\
-    nse\x12?\n\x04keys\x18\x01\x20\x03(\x0b2+.bitdrift.public.unary.admin.v1\
-    .KeyResponseR\x04keys\"\xf9\x03\n\x10CreateKeyRequest\x12Y\n\x07sdk_key\
-    \x18\x01\x20\x01(\x0b2>.bitdrift.public.unary.admin.v1.CreateKeyRequest.\
-    SdkKeyRequestH\0R\x06sdkKey\x12Y\n\x07api_key\x18\x02\x20\x01(\x0b2>.bit\
-    drift.public.unary.admin.v1.CreateKeyRequest.ApiKeyRequestH\0R\x06apiKey\
-    \x12\x1e\n\x04name\x18\x03\x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\
-    \x18\xff\x01\x1a\x8b\x01\n\rSdkKeyRequest\x122\n\x0fbundle_id_regex\x18\
-    \x01\x20\x01(\tR\rbundleIdRegexB\n\xfaB\x07r\x05\x10\x01\x18\x80\x10\x12\
-    3\n\x0eapp_id_postfix\x18\x02\x20\x01(\tH\0R\x0cappIdPostfixB\x08\xfaB\
-    \x05r\x03\x18\xff\x01\x88\x01\x01B\x11\n\x0f_app_id_postfix\x1ap\n\rApiK\
-    eyRequest\x12_\n\x0bpermissions\x18\x02\x20\x03(\x0e2*.bitdrift.public.u\
-    nary.admin.v1.PermissionR\x0bpermissionsB\x11\xfaB\x0e\x92\x01\x0b\x08\
+    \x0fbundle_id_regex\x18\x02\x20\x01(\tR\rbundleIdRegex\x120\n\x0eapp_id_\
+    postfix\x18\x03\x20\x01(\tH\0R\x0cappIdPostfixB\x08\xfaB\x05r\x03\x18\
+    \xff\x01\x128\n\x12app_id_replacement\x18\x04\x20\x01(\tH\0R\x10appIdRep\
+    lacementB\x08\xfaB\x05r\x03\x18\xff\x01B\x12\n\x10app_id_transform\"\x92\
+    \x01\n\x0eApiKeyResponse\x12\x20\n\x0bfingerprint\x18\x01\x20\x01(\tR\
+    \x0bfingerprint\x12\x10\n\x03key\x18\x02\x20\x01(\tR\x03key\x12L\n\x0bpe\
+    rmissions\x18\x04\x20\x03(\x0e2*.bitdrift.public.unary.admin.v1.Permissi\
+    onR\x0bpermissions\"\xe3\x02\n\x0bKeyResponse\x12\x0e\n\x02id\x18\x01\
+    \x20\x01(\x04R\x02id\x129\n\ncreated_at\x18\x02\x20\x01(\x0b2\x1a.google\
+    .protobuf.TimestampR\tcreatedAt\x129\n\nexpires_at\x18\x03\x20\x01(\x0b2\
+    \x1a.google.protobuf.TimestampR\texpiresAt\x12\x18\n\x07revoked\x18\x04\
+    \x20\x01(\x08R\x07revoked\x12I\n\x07sdk_key\x18\x05\x20\x01(\x0b2..bitdr\
+    ift.public.unary.admin.v1.SdkKeyResponseH\0R\x06sdkKey\x12I\n\x07api_key\
+    \x18\x06\x20\x01(\x0b2..bitdrift.public.unary.admin.v1.ApiKeyResponseH\0\
+    R\x06apiKey\x12\x12\n\x04name\x18\x07\x20\x01(\tR\x04nameB\n\n\x08key_ty\
+    pe\"\x10\n\x0eGetKeysRequest\"R\n\x0fGetKeysResponse\x12?\n\x04keys\x18\
+    \x01\x20\x03(\x0b2+.bitdrift.public.unary.admin.v1.KeyResponseR\x04keys\
+    \"\xb1\x04\n\x10CreateKeyRequest\x12Y\n\x07sdk_key\x18\x01\x20\x01(\x0b2\
+    >.bitdrift.public.unary.admin.v1.CreateKeyRequest.SdkKeyRequestH\0R\x06s\
+    dkKey\x12Y\n\x07api_key\x18\x02\x20\x01(\x0b2>.bitdrift.public.unary.adm\
+    in.v1.CreateKeyRequest.ApiKeyRequestH\0R\x06apiKey\x12\x1e\n\x04name\x18\
+    \x03\x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x1a\xc3\
+    \x01\n\rSdkKeyRequest\x122\n\x0fbundle_id_regex\x18\x01\x20\x01(\tR\rbun\
+    dleIdRegexB\n\xfaB\x07r\x05\x10\x01\x18\x80\x10\x120\n\x0eapp_id_postfix\
+    \x18\x02\x20\x01(\tH\0R\x0cappIdPostfixB\x08\xfaB\x05r\x03\x18\xff\x01\
+    \x128\n\x12app_id_replacement\x18\x03\x20\x01(\tH\0R\x10appIdReplacement\
+    B\x08\xfaB\x05r\x03\x18\xff\x01B\x12\n\x10app_id_transform\x1ap\n\rApiKe\
+    yRequest\x12_\n\x0bpermissions\x18\x02\x20\x03(\x0e2*.bitdrift.public.un\
+    ary.admin.v1.PermissionR\x0bpermissionsB\x11\xfaB\x0e\x92\x01\x0b\x08\
     \x01\x10d\"\x05\x82\x01\x02\x10\x01B\x0f\n\x08key_type\x12\x03\xf8B\x01\
     \"R\n\x11CreateKeyResponse\x12=\n\x03key\x18\x01\x20\x01(\x0b2+.bitdrift\
     .public.unary.admin.v1.KeyResponseR\x03key\"\"\n\x10RevokeKeyRequest\x12\
     \x0e\n\x02id\x18\x01\x20\x01(\x04R\x02id\"\x13\n\x11RevokeKeyResponseJ\
-    \xde\x1c\n\x06\x12\x04\x06\0z\x1c\n\xb8\x02\n\x01\x0c\x12\x03\x06\0\x12\
-    \x1a\xad\x02\x20api\x20-\x20bitdrift's\x20client/server\x20API\x20defini\
-    tions\n\x20Copyright\x20Bitdrift,\x20Inc.\x20All\x20rights\x20reserved.\
-    \n\n\x20Use\x20of\x20this\x20source\x20code\x20and\x20APIs\x20are\x20gov\
-    erned\x20by\x20a\x20source\x20available\x20license\x20that\x20can\x20be\
-    \x20found\x20in\n\x20the\x20LICENSE\x20file\x20or\x20at:\n\x20https://po\
-    lyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt\n\
-    \n\x08\n\x01\x02\x12\x03\x08\0'\n\t\n\x02\x03\0\x12\x03\n\09\n\t\n\x02\
-    \x03\x01\x12\x03\x0b\0)\n\t\n\x02\x03\x02\x12\x03\x0c\0!\n\n\n\x02\x04\0\
-    \x12\x04\x0e\0\x18\x01\n\n\n\x03\x04\0\x01\x12\x03\x0e\x08\x16\n1\n\x04\
-    \x04\0\x02\0\x12\x03\x10\x02\x11\x1a$\x20The\x20generated\x20key,\x20bas\
-    e64\x20encoded.\n\n\x0c\n\x05\x04\0\x02\0\x05\x12\x03\x10\x02\x08\n\x0c\
-    \n\x05\x04\0\x02\0\x01\x12\x03\x10\t\x0c\n\x0c\n\x05\x04\0\x02\0\x03\x12\
-    \x03\x10\x0f\x10\nG\n\x04\x04\0\x02\x01\x12\x03\x13\x02\x1d\x1a:\x20The\
-    \x20app/bundle\x20ID\x20regex\x20that\x20the\x20key\x20is\x20associated\
-    \x20with.\n\n\x0c\n\x05\x04\0\x02\x01\x05\x12\x03\x13\x02\x08\n\x0c\n\
-    \x05\x04\0\x02\x01\x01\x12\x03\x13\t\x18\n\x0c\n\x05\x04\0\x02\x01\x03\
-    \x12\x03\x13\x1b\x1c\n\x8e\x01\n\x04\x04\0\x02\x02\x12\x03\x17\x02%\x1a\
-    \x80\x01\x20An\x20optional\x20postfix\x20for\x20the\x20app\x20ID\x20asso\
-    ciated\x20with\x20the\x20key.\x20The\x20server\n\x20appends\x20this\x20t\
-    o\x20the\x20base\x20app\x20ID\x20during\x20authentication.\n\n\x0c\n\x05\
-    \x04\0\x02\x02\x04\x12\x03\x17\x02\n\n\x0c\n\x05\x04\0\x02\x02\x05\x12\
-    \x03\x17\x0b\x11\n\x0c\n\x05\x04\0\x02\x02\x01\x12\x03\x17\x12\x20\n\x0c\
-    \n\x05\x04\0\x02\x02\x03\x12\x03\x17#$\n\n\n\x02\x04\x01\x12\x04\x1a\0%\
-    \x01\n\n\n\x03\x04\x01\x01\x12\x03\x1a\x08\x16\n\x86\x01\n\x04\x04\x01\
-    \x02\0\x12\x03\x1d\x02\x19\x1ay\x20The\x20fingerprint\x20of\x20the\x20AP\
-    I\x20key,\x20base64\x20encoded.\x20API\x20keys\x20are\x20not\x20stored\
-    \x20by\x20the\x20server\x20and\n\x20cannot\x20be\x20recovered\x20if\x20l\
-    ost.\n\n\x0c\n\x05\x04\x01\x02\0\x05\x12\x03\x1d\x02\x08\n\x0c\n\x05\x04\
-    \x01\x02\0\x01\x12\x03\x1d\t\x14\n\x0c\n\x05\x04\x01\x02\0\x03\x12\x03\
-    \x1d\x17\x18\n\x8c\x01\n\x04\x04\x01\x02\x01\x12\x03!\x02\x11\x1a\x7f\
-    \x20The\x20generated\x20key,\x20base64\x20encoded.\x20This\x20value\x20i\
-    s\x20returned\x20only\x20when\x20the\n\x20key\x20is\x20created\x20and\
-    \x20is\x20empty\x20on\x20subsequent\x20responses.\n\n\x0c\n\x05\x04\x01\
-    \x02\x01\x05\x12\x03!\x02\x08\n\x0c\n\x05\x04\x01\x02\x01\x01\x12\x03!\t\
-    \x0c\n\x0c\n\x05\x04\x01\x02\x01\x03\x12\x03!\x0f\x10\n0\n\x04\x04\x01\
-    \x02\x02\x12\x03$\x02F\x1a#\x20The\x20permissions\x20that\x20the\x20key\
-    \x20has.\n\n\x0c\n\x05\x04\x01\x02\x02\x04\x12\x03$\x02\n\n\x0c\n\x05\
-    \x04\x01\x02\x02\x06\x12\x03$\x0b5\n\x0c\n\x05\x04\x01\x02\x02\x01\x12\
-    \x03$6A\n\x0c\n\x05\x04\x01\x02\x02\x03\x12\x03$DE\n\n\n\x02\x04\x02\x12\
-    \x04'\0?\x01\n\n\n\x03\x04\x02\x01\x12\x03'\x08\x13\nR\n\x04\x04\x02\x02\
-    \0\x12\x03)\x02\x10\x1aE\x20The\x20ID\x20of\x20the\x20key\x20to\x20be\
-    \x20used\x20for\x20revocation\x20and\x20further\x20operations.\n\n\x0c\n\
-    \x05\x04\x02\x02\0\x05\x12\x03)\x02\x08\n\x0c\n\x05\x04\x02\x02\0\x01\
-    \x12\x03)\t\x0b\n\x0c\n\x05\x04\x02\x02\0\x03\x12\x03)\x0e\x0f\n,\n\x04\
-    \x04\x02\x02\x01\x12\x03,\x02,\x1a\x1f\x20The\x20creation\x20time\x20of\
-    \x20the\x20key.\n\n\x0c\n\x05\x04\x02\x02\x01\x06\x12\x03,\x02\x1c\n\x0c\
-    \n\x05\x04\x02\x02\x01\x01\x12\x03,\x1d'\n\x0c\n\x05\x04\x02\x02\x01\x03\
-    \x12\x03,*+\n\xb4\x01\n\x04\x04\x02\x02\x02\x12\x030\x02,\x1a\xa6\x01\
-    \x20An\x20optional\x20expiration\x20time\x20for\x20the\x20key.\x20If\x20\
-    the\x20key\x20expires\x20the\x20behavior\x20will\x20be\x20similar\x20to\
-    \n\x20revocation\x20which\x20will\x20cause\x20an\x20unauthenticated\x20r\
-    esponse\x20to\x20be\x20returned.\n\n\x0c\n\x05\x04\x02\x02\x02\x06\x12\
-    \x030\x02\x1c\n\x0c\n\x05\x04\x02\x02\x02\x01\x12\x030\x1d'\n\x0c\n\x05\
-    \x04\x02\x02\x02\x03\x12\x030*+\n6\n\x04\x04\x02\x02\x03\x12\x033\x02\
-    \x13\x1a)\x20Whether\x20the\x20key\x20was\x20explicitly\x20revoked.\n\n\
-    \x0c\n\x05\x04\x02\x02\x03\x05\x12\x033\x02\x06\n\x0c\n\x05\x04\x02\x02\
-    \x03\x01\x12\x033\x07\x0e\n\x0c\n\x05\x04\x02\x02\x03\x03\x12\x033\x11\
-    \x12\n\x0c\n\x04\x04\x02\x08\0\x12\x045\x02;\x03\n\x0c\n\x05\x04\x02\x08\
-    \0\x01\x12\x035\x08\x10\n?\n\x04\x04\x02\x02\x04\x12\x037\x04?\x1a2\x20T\
-    he\x20SDK\x20key\x20details\x20when\x20this\x20key\x20is\x20an\x20SDK\
-    \x20key.\n\n\x0c\n\x05\x04\x02\x02\x04\x06\x12\x037\x042\n\x0c\n\x05\x04\
-    \x02\x02\x04\x01\x12\x0373:\n\x0c\n\x05\x04\x02\x02\x04\x03\x12\x037=>\n\
-    ?\n\x04\x04\x02\x02\x05\x12\x03:\x04?\x1a2\x20The\x20API\x20key\x20detai\
-    ls\x20when\x20this\x20key\x20is\x20an\x20API\x20key.\n\n\x0c\n\x05\x04\
-    \x02\x02\x05\x06\x12\x03:\x042\n\x0c\n\x05\x04\x02\x02\x05\x01\x12\x03:3\
-    :\n\x0c\n\x05\x04\x02\x02\x05\x03\x12\x03:=>\nM\n\x04\x04\x02\x02\x06\
-    \x12\x03>\x02\x12\x1a@\x20The\x20name\x20of\x20the\x20key,\x20used\x20fo\
-    r\x20(human)\x20identification\x20purposes.\n\n\x0c\n\x05\x04\x02\x02\
-    \x06\x05\x12\x03>\x02\x08\n\x0c\n\x05\x04\x02\x02\x06\x01\x12\x03>\t\r\n\
-    \x0c\n\x05\x04\x02\x02\x06\x03\x12\x03>\x10\x11\n\t\n\x02\x04\x03\x12\
-    \x03A\0\x19\n\n\n\x03\x04\x03\x01\x12\x03A\x08\x16\n\n\n\x02\x04\x04\x12\
-    \x04C\0F\x01\n\n\n\x03\x04\x04\x01\x12\x03C\x08\x17\nF\n\x04\x04\x04\x02\
-    \0\x12\x03E\x02@\x1a9\x20The\x20API\x20and\x20SDK\x20keys\x20visible\x20\
-    to\x20the\x20authenticated\x20user.\n\n\x0c\n\x05\x04\x04\x02\0\x04\x12\
-    \x03E\x02\n\n\x0c\n\x05\x04\x04\x02\0\x06\x12\x03E\x0b6\n\x0c\n\x05\x04\
-    \x04\x02\0\x01\x12\x03E7;\n\x0c\n\x05\x04\x04\x02\0\x03\x12\x03E>?\n\n\n\
-    \x02\x04\x05\x12\x04H\0n\x01\n\n\n\x03\x04\x05\x01\x12\x03H\x08\x18\n\
-    \x0c\n\x04\x04\x05\x03\0\x12\x04I\x02S\x03\n\x0c\n\x05\x04\x05\x03\0\x01\
-    \x12\x03I\n\x17\nJ\n\x06\x04\x05\x03\0\x02\0\x12\x04K\x04N\x07\x1a:\x20T\
-    he\x20app/bundle\x20ID\x20regex\x20that\x20the\x20key\x20is\x20associate\
-    d\x20with.\n\n\x0e\n\x07\x04\x05\x03\0\x02\0\x05\x12\x03K\x04\n\n\x0e\n\
-    \x07\x04\x05\x03\0\x02\0\x01\x12\x03K\x0b\x1a\n\x0e\n\x07\x04\x05\x03\0\
-    \x02\0\x03\x12\x03K\x1d\x1e\n\x0f\n\x07\x04\x05\x03\0\x02\0\x08\x12\x04K\
-    \x1fN\x06\n\x12\n\n\x04\x05\x03\0\x02\0\x08\xaf\x08\x0e\x12\x04K\x20N\
-    \x05\n\x90\x01\n\x06\x04\x05\x03\0\x02\x01\x12\x03R\x04R\x1a\x80\x01\x20\
-    An\x20optional\x20postfix\x20for\x20the\x20app\x20ID\x20associated\x20wi\
-    th\x20the\x20key.\x20The\x20server\n\x20appends\x20this\x20to\x20the\x20\
-    base\x20app\x20ID\x20during\x20authentication.\n\n\x0e\n\x07\x04\x05\x03\
-    \0\x02\x01\x04\x12\x03R\x04\x0c\n\x0e\n\x07\x04\x05\x03\0\x02\x01\x05\
-    \x12\x03R\r\x13\n\x0e\n\x07\x04\x05\x03\0\x02\x01\x01\x12\x03R\x14\"\n\
-    \x0e\n\x07\x04\x05\x03\0\x02\x01\x03\x12\x03R%&\n\x0e\n\x07\x04\x05\x03\
-    \0\x02\x01\x08\x12\x03R'Q\n\x11\n\n\x04\x05\x03\0\x02\x01\x08\xaf\x08\
-    \x0e\x12\x03R(P\n\x0c\n\x04\x04\x05\x03\x01\x12\x04U\x02^\x03\n\x0c\n\
-    \x05\x04\x05\x03\x01\x01\x12\x03U\n\x17\n^\n\x06\x04\x05\x03\x01\x02\0\
-    \x12\x04W\x04]\x07\x1aN\x20The\x20permissions\x20that\x20the\x20key\x20s\
-    hould\x20have.\x20Must\x20have\x20at\x20least\x20one\x20permission.\n\n\
-    \x0e\n\x07\x04\x05\x03\x01\x02\0\x04\x12\x03W\x04\x0c\n\x0e\n\x07\x04\
-    \x05\x03\x01\x02\0\x06\x12\x03W\r7\n\x0e\n\x07\x04\x05\x03\x01\x02\0\x01\
-    \x12\x03W8C\n\x0e\n\x07\x04\x05\x03\x01\x02\0\x03\x12\x03WFG\n\x0f\n\x07\
-    \x04\x05\x03\x01\x02\0\x08\x12\x04WH]\x06\n\x12\n\n\x04\x05\x03\x01\x02\
-    \0\x08\xaf\x08\x12\x12\x04WI]\x05\n\x0c\n\x04\x04\x05\x08\0\x12\x04`\x02\
-    g\x03\n\x0c\n\x05\x04\x05\x08\0\x01\x12\x03`\x08\x10\n\x0c\n\x05\x04\x05\
-    \x08\0\x02\x12\x03a\x04&\n\x0e\n\x07\x04\x05\x08\0\x02\xaf\x08\x12\x03a\
-    \x04&\n\"\n\x04\x04\x05\x02\0\x12\x03c\x04O\x1a\x15\x20Creates\x20an\x20\
-    SDK\x20key.\n\n\x0c\n\x05\x04\x05\x02\0\x06\x12\x03c\x04B\n\x0c\n\x05\
-    \x04\x05\x02\0\x01\x12\x03cCJ\n\x0c\n\x05\x04\x05\x02\0\x03\x12\x03cMN\n\
-    \"\n\x04\x04\x05\x02\x01\x12\x03f\x04O\x1a\x15\x20Creates\x20an\x20API\
-    \x20key.\n\n\x0c\n\x05\x04\x05\x02\x01\x06\x12\x03f\x04B\n\x0c\n\x05\x04\
-    \x05\x02\x01\x01\x12\x03fCJ\n\x0c\n\x05\x04\x05\x02\x01\x03\x12\x03fMN\n\
-    N\n\x04\x04\x05\x02\x02\x12\x04j\x02m\x05\x1a@\x20The\x20name\x20of\x20t\
-    he\x20key,\x20used\x20for\x20(human)\x20identification\x20purposes.\n\n\
-    \x0c\n\x05\x04\x05\x02\x02\x05\x12\x03j\x02\x08\n\x0c\n\x05\x04\x05\x02\
-    \x02\x01\x12\x03j\t\r\n\x0c\n\x05\x04\x05\x02\x02\x03\x12\x03j\x10\x11\n\
-    \r\n\x05\x04\x05\x02\x02\x08\x12\x04j\x12m\x04\n\x10\n\x08\x04\x05\x02\
-    \x02\x08\xaf\x08\x0e\x12\x04j\x13m\x03\n\n\n\x02\x04\x06\x12\x04p\0s\x01\
-    \n\n\n\x03\x04\x06\x01\x12\x03p\x08\x19\n\x1f\n\x04\x04\x06\x02\0\x12\
-    \x03r\x026\x1a\x12\x20The\x20created\x20key.\n\n\x0c\n\x05\x04\x06\x02\0\
-    \x06\x12\x03r\x02-\n\x0c\n\x05\x04\x06\x02\0\x01\x12\x03r.1\n\x0c\n\x05\
-    \x04\x06\x02\0\x03\x12\x03r45\n\n\n\x02\x04\x07\x12\x04u\0x\x01\n\n\n\
-    \x03\x04\x07\x01\x12\x03u\x08\x18\n+\n\x04\x04\x07\x02\0\x12\x03w\x02\
-    \x10\x1a\x1e\x20The\x20ID\x20of\x20the\x20key\x20to\x20revoke.\n\n\x0c\n\
-    \x05\x04\x07\x02\0\x05\x12\x03w\x02\x08\n\x0c\n\x05\x04\x07\x02\0\x01\
-    \x12\x03w\t\x0b\n\x0c\n\x05\x04\x07\x02\0\x03\x12\x03w\x0e\x0f\n\t\n\x02\
-    \x04\x08\x12\x03z\0\x1c\n\n\n\x03\x04\x08\x01\x12\x03z\x08\x19b\x06proto\
-    3\
+    \xdd\x20\n\x07\x12\x05\x06\0\x86\x01\x1c\n\xb8\x02\n\x01\x0c\x12\x03\x06\
+    \0\x12\x1a\xad\x02\x20api\x20-\x20bitdrift's\x20client/server\x20API\x20\
+    definitions\n\x20Copyright\x20Bitdrift,\x20Inc.\x20All\x20rights\x20rese\
+    rved.\n\n\x20Use\x20of\x20this\x20source\x20code\x20and\x20APIs\x20are\
+    \x20governed\x20by\x20a\x20source\x20available\x20license\x20that\x20can\
+    \x20be\x20found\x20in\n\x20the\x20LICENSE\x20file\x20or\x20at:\n\x20http\
+    s://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0\
+    .txt\n\n\x08\n\x01\x02\x12\x03\x08\0'\n\t\n\x02\x03\0\x12\x03\n\09\n\t\n\
+    \x02\x03\x01\x12\x03\x0b\0)\n\t\n\x02\x03\x02\x12\x03\x0c\0!\n\n\n\x02\
+    \x04\0\x12\x04\x0e\0\x1e\x01\n\n\n\x03\x04\0\x01\x12\x03\x0e\x08\x16\n1\
+    \n\x04\x04\0\x02\0\x12\x03\x10\x02\x11\x1a$\x20The\x20generated\x20key,\
+    \x20base64\x20encoded.\n\n\x0c\n\x05\x04\0\x02\0\x05\x12\x03\x10\x02\x08\
+    \n\x0c\n\x05\x04\0\x02\0\x01\x12\x03\x10\t\x0c\n\x0c\n\x05\x04\0\x02\0\
+    \x03\x12\x03\x10\x0f\x10\nG\n\x04\x04\0\x02\x01\x12\x03\x13\x02\x1d\x1a:\
+    \x20The\x20app/bundle\x20ID\x20regex\x20that\x20the\x20key\x20is\x20asso\
+    ciated\x20with.\n\n\x0c\n\x05\x04\0\x02\x01\x05\x12\x03\x13\x02\x08\n\
+    \x0c\n\x05\x04\0\x02\x01\x01\x12\x03\x13\t\x18\n\x0c\n\x05\x04\0\x02\x01\
+    \x03\x12\x03\x13\x1b\x1c\n\x0c\n\x04\x04\0\x08\0\x12\x04\x15\x02\x1d\x03\
+    \n\x0c\n\x05\x04\0\x08\0\x01\x12\x03\x15\x08\x18\n\x8e\x01\n\x04\x04\0\
+    \x02\x02\x12\x03\x18\x04I\x1a\x80\x01\x20An\x20optional\x20postfix\x20fo\
+    r\x20the\x20app\x20ID\x20associated\x20with\x20the\x20key.\x20The\x20ser\
+    ver\n\x20appends\x20this\x20to\x20the\x20base\x20app\x20ID\x20during\x20\
+    authentication.\n\n\x0c\n\x05\x04\0\x02\x02\x05\x12\x03\x18\x04\n\n\x0c\
+    \n\x05\x04\0\x02\x02\x01\x12\x03\x18\x0b\x19\n\x0c\n\x05\x04\0\x02\x02\
+    \x03\x12\x03\x18\x1c\x1d\n\x0c\n\x05\x04\0\x02\x02\x08\x12\x03\x18\x1eH\
+    \n\x0f\n\x08\x04\0\x02\x02\x08\xaf\x08\x0e\x12\x03\x18\x1fG\n\x8a\x01\n\
+    \x04\x04\0\x02\x03\x12\x03\x1c\x04M\x1a}\x20An\x20optional\x20replacemen\
+    t\x20for\x20the\x20app\x20ID\x20associated\x20with\x20the\x20key.\x20The\
+    \x20server\n\x20replaces\x20the\x20base\x20app\x20ID\x20during\x20authen\
+    tication.\n\n\x0c\n\x05\x04\0\x02\x03\x05\x12\x03\x1c\x04\n\n\x0c\n\x05\
+    \x04\0\x02\x03\x01\x12\x03\x1c\x0b\x1d\n\x0c\n\x05\x04\0\x02\x03\x03\x12\
+    \x03\x1c\x20!\n\x0c\n\x05\x04\0\x02\x03\x08\x12\x03\x1c\"L\n\x0f\n\x08\
+    \x04\0\x02\x03\x08\xaf\x08\x0e\x12\x03\x1c#K\n\n\n\x02\x04\x01\x12\x04\
+    \x20\0+\x01\n\n\n\x03\x04\x01\x01\x12\x03\x20\x08\x16\n\x86\x01\n\x04\
+    \x04\x01\x02\0\x12\x03#\x02\x19\x1ay\x20The\x20fingerprint\x20of\x20the\
+    \x20API\x20key,\x20base64\x20encoded.\x20API\x20keys\x20are\x20not\x20st\
+    ored\x20by\x20the\x20server\x20and\n\x20cannot\x20be\x20recovered\x20if\
+    \x20lost.\n\n\x0c\n\x05\x04\x01\x02\0\x05\x12\x03#\x02\x08\n\x0c\n\x05\
+    \x04\x01\x02\0\x01\x12\x03#\t\x14\n\x0c\n\x05\x04\x01\x02\0\x03\x12\x03#\
+    \x17\x18\n\x8c\x01\n\x04\x04\x01\x02\x01\x12\x03'\x02\x11\x1a\x7f\x20The\
+    \x20generated\x20key,\x20base64\x20encoded.\x20This\x20value\x20is\x20re\
+    turned\x20only\x20when\x20the\n\x20key\x20is\x20created\x20and\x20is\x20\
+    empty\x20on\x20subsequent\x20responses.\n\n\x0c\n\x05\x04\x01\x02\x01\
+    \x05\x12\x03'\x02\x08\n\x0c\n\x05\x04\x01\x02\x01\x01\x12\x03'\t\x0c\n\
+    \x0c\n\x05\x04\x01\x02\x01\x03\x12\x03'\x0f\x10\n0\n\x04\x04\x01\x02\x02\
+    \x12\x03*\x02F\x1a#\x20The\x20permissions\x20that\x20the\x20key\x20has.\
+    \n\n\x0c\n\x05\x04\x01\x02\x02\x04\x12\x03*\x02\n\n\x0c\n\x05\x04\x01\
+    \x02\x02\x06\x12\x03*\x0b5\n\x0c\n\x05\x04\x01\x02\x02\x01\x12\x03*6A\n\
+    \x0c\n\x05\x04\x01\x02\x02\x03\x12\x03*DE\n\n\n\x02\x04\x02\x12\x04-\0E\
+    \x01\n\n\n\x03\x04\x02\x01\x12\x03-\x08\x13\nR\n\x04\x04\x02\x02\0\x12\
+    \x03/\x02\x10\x1aE\x20The\x20ID\x20of\x20the\x20key\x20to\x20be\x20used\
+    \x20for\x20revocation\x20and\x20further\x20operations.\n\n\x0c\n\x05\x04\
+    \x02\x02\0\x05\x12\x03/\x02\x08\n\x0c\n\x05\x04\x02\x02\0\x01\x12\x03/\t\
+    \x0b\n\x0c\n\x05\x04\x02\x02\0\x03\x12\x03/\x0e\x0f\n,\n\x04\x04\x02\x02\
+    \x01\x12\x032\x02,\x1a\x1f\x20The\x20creation\x20time\x20of\x20the\x20ke\
+    y.\n\n\x0c\n\x05\x04\x02\x02\x01\x06\x12\x032\x02\x1c\n\x0c\n\x05\x04\
+    \x02\x02\x01\x01\x12\x032\x1d'\n\x0c\n\x05\x04\x02\x02\x01\x03\x12\x032*\
+    +\n\xb4\x01\n\x04\x04\x02\x02\x02\x12\x036\x02,\x1a\xa6\x01\x20An\x20opt\
+    ional\x20expiration\x20time\x20for\x20the\x20key.\x20If\x20the\x20key\
+    \x20expires\x20the\x20behavior\x20will\x20be\x20similar\x20to\n\x20revoc\
+    ation\x20which\x20will\x20cause\x20an\x20unauthenticated\x20response\x20\
+    to\x20be\x20returned.\n\n\x0c\n\x05\x04\x02\x02\x02\x06\x12\x036\x02\x1c\
+    \n\x0c\n\x05\x04\x02\x02\x02\x01\x12\x036\x1d'\n\x0c\n\x05\x04\x02\x02\
+    \x02\x03\x12\x036*+\n6\n\x04\x04\x02\x02\x03\x12\x039\x02\x13\x1a)\x20Wh\
+    ether\x20the\x20key\x20was\x20explicitly\x20revoked.\n\n\x0c\n\x05\x04\
+    \x02\x02\x03\x05\x12\x039\x02\x06\n\x0c\n\x05\x04\x02\x02\x03\x01\x12\
+    \x039\x07\x0e\n\x0c\n\x05\x04\x02\x02\x03\x03\x12\x039\x11\x12\n\x0c\n\
+    \x04\x04\x02\x08\0\x12\x04;\x02A\x03\n\x0c\n\x05\x04\x02\x08\0\x01\x12\
+    \x03;\x08\x10\n?\n\x04\x04\x02\x02\x04\x12\x03=\x04?\x1a2\x20The\x20SDK\
+    \x20key\x20details\x20when\x20this\x20key\x20is\x20an\x20SDK\x20key.\n\n\
+    \x0c\n\x05\x04\x02\x02\x04\x06\x12\x03=\x042\n\x0c\n\x05\x04\x02\x02\x04\
+    \x01\x12\x03=3:\n\x0c\n\x05\x04\x02\x02\x04\x03\x12\x03==>\n?\n\x04\x04\
+    \x02\x02\x05\x12\x03@\x04?\x1a2\x20The\x20API\x20key\x20details\x20when\
+    \x20this\x20key\x20is\x20an\x20API\x20key.\n\n\x0c\n\x05\x04\x02\x02\x05\
+    \x06\x12\x03@\x042\n\x0c\n\x05\x04\x02\x02\x05\x01\x12\x03@3:\n\x0c\n\
+    \x05\x04\x02\x02\x05\x03\x12\x03@=>\nM\n\x04\x04\x02\x02\x06\x12\x03D\
+    \x02\x12\x1a@\x20The\x20name\x20of\x20the\x20key,\x20used\x20for\x20(hum\
+    an)\x20identification\x20purposes.\n\n\x0c\n\x05\x04\x02\x02\x06\x05\x12\
+    \x03D\x02\x08\n\x0c\n\x05\x04\x02\x02\x06\x01\x12\x03D\t\r\n\x0c\n\x05\
+    \x04\x02\x02\x06\x03\x12\x03D\x10\x11\n\t\n\x02\x04\x03\x12\x03G\0\x19\n\
+    \n\n\x03\x04\x03\x01\x12\x03G\x08\x16\n\n\n\x02\x04\x04\x12\x04I\0L\x01\
+    \n\n\n\x03\x04\x04\x01\x12\x03I\x08\x17\nF\n\x04\x04\x04\x02\0\x12\x03K\
+    \x02@\x1a9\x20The\x20API\x20and\x20SDK\x20keys\x20visible\x20to\x20the\
+    \x20authenticated\x20user.\n\n\x0c\n\x05\x04\x04\x02\0\x04\x12\x03K\x02\
+    \n\n\x0c\n\x05\x04\x04\x02\0\x06\x12\x03K\x0b6\n\x0c\n\x05\x04\x04\x02\0\
+    \x01\x12\x03K7;\n\x0c\n\x05\x04\x04\x02\0\x03\x12\x03K>?\n\n\n\x02\x04\
+    \x05\x12\x04N\0z\x01\n\n\n\x03\x04\x05\x01\x12\x03N\x08\x18\n\x0c\n\x04\
+    \x04\x05\x03\0\x12\x04O\x02_\x03\n\x0c\n\x05\x04\x05\x03\0\x01\x12\x03O\
+    \n\x17\nJ\n\x06\x04\x05\x03\0\x02\0\x12\x04Q\x04T\x07\x1a:\x20The\x20app\
+    /bundle\x20ID\x20regex\x20that\x20the\x20key\x20is\x20associated\x20with\
+    .\n\n\x0e\n\x07\x04\x05\x03\0\x02\0\x05\x12\x03Q\x04\n\n\x0e\n\x07\x04\
+    \x05\x03\0\x02\0\x01\x12\x03Q\x0b\x1a\n\x0e\n\x07\x04\x05\x03\0\x02\0\
+    \x03\x12\x03Q\x1d\x1e\n\x0f\n\x07\x04\x05\x03\0\x02\0\x08\x12\x04Q\x1fT\
+    \x06\n\x12\n\n\x04\x05\x03\0\x02\0\x08\xaf\x08\x0e\x12\x04Q\x20T\x05\n\
+    \x0e\n\x06\x04\x05\x03\0\x08\0\x12\x04V\x04^\x05\n\x0e\n\x07\x04\x05\x03\
+    \0\x08\0\x01\x12\x03V\n\x1a\n\x90\x01\n\x06\x04\x05\x03\0\x02\x01\x12\
+    \x03Y\x06K\x1a\x80\x01\x20An\x20optional\x20postfix\x20for\x20the\x20app\
+    \x20ID\x20associated\x20with\x20the\x20key.\x20The\x20server\n\x20append\
+    s\x20this\x20to\x20the\x20base\x20app\x20ID\x20during\x20authentication.\
+    \n\n\x0e\n\x07\x04\x05\x03\0\x02\x01\x05\x12\x03Y\x06\x0c\n\x0e\n\x07\
+    \x04\x05\x03\0\x02\x01\x01\x12\x03Y\r\x1b\n\x0e\n\x07\x04\x05\x03\0\x02\
+    \x01\x03\x12\x03Y\x1e\x1f\n\x0e\n\x07\x04\x05\x03\0\x02\x01\x08\x12\x03Y\
+    \x20J\n\x11\n\n\x04\x05\x03\0\x02\x01\x08\xaf\x08\x0e\x12\x03Y!I\n\x8c\
+    \x01\n\x06\x04\x05\x03\0\x02\x02\x12\x03]\x06O\x1a}\x20An\x20optional\
+    \x20replacement\x20for\x20the\x20app\x20ID\x20associated\x20with\x20the\
+    \x20key.\x20The\x20server\n\x20replaces\x20the\x20base\x20app\x20ID\x20d\
+    uring\x20authentication.\n\n\x0e\n\x07\x04\x05\x03\0\x02\x02\x05\x12\x03\
+    ]\x06\x0c\n\x0e\n\x07\x04\x05\x03\0\x02\x02\x01\x12\x03]\r\x1f\n\x0e\n\
+    \x07\x04\x05\x03\0\x02\x02\x03\x12\x03]\"#\n\x0e\n\x07\x04\x05\x03\0\x02\
+    \x02\x08\x12\x03]$N\n\x11\n\n\x04\x05\x03\0\x02\x02\x08\xaf\x08\x0e\x12\
+    \x03]%M\n\x0c\n\x04\x04\x05\x03\x01\x12\x04a\x02j\x03\n\x0c\n\x05\x04\
+    \x05\x03\x01\x01\x12\x03a\n\x17\n^\n\x06\x04\x05\x03\x01\x02\0\x12\x04c\
+    \x04i\x07\x1aN\x20The\x20permissions\x20that\x20the\x20key\x20should\x20\
+    have.\x20Must\x20have\x20at\x20least\x20one\x20permission.\n\n\x0e\n\x07\
+    \x04\x05\x03\x01\x02\0\x04\x12\x03c\x04\x0c\n\x0e\n\x07\x04\x05\x03\x01\
+    \x02\0\x06\x12\x03c\r7\n\x0e\n\x07\x04\x05\x03\x01\x02\0\x01\x12\x03c8C\
+    \n\x0e\n\x07\x04\x05\x03\x01\x02\0\x03\x12\x03cFG\n\x0f\n\x07\x04\x05\
+    \x03\x01\x02\0\x08\x12\x04cHi\x06\n\x12\n\n\x04\x05\x03\x01\x02\0\x08\
+    \xaf\x08\x12\x12\x04cIi\x05\n\x0c\n\x04\x04\x05\x08\0\x12\x04l\x02s\x03\
+    \n\x0c\n\x05\x04\x05\x08\0\x01\x12\x03l\x08\x10\n\x0c\n\x05\x04\x05\x08\
+    \0\x02\x12\x03m\x04&\n\x0e\n\x07\x04\x05\x08\0\x02\xaf\x08\x12\x03m\x04&\
+    \n\"\n\x04\x04\x05\x02\0\x12\x03o\x04O\x1a\x15\x20Creates\x20an\x20SDK\
+    \x20key.\n\n\x0c\n\x05\x04\x05\x02\0\x06\x12\x03o\x04B\n\x0c\n\x05\x04\
+    \x05\x02\0\x01\x12\x03oCJ\n\x0c\n\x05\x04\x05\x02\0\x03\x12\x03oMN\n\"\n\
+    \x04\x04\x05\x02\x01\x12\x03r\x04O\x1a\x15\x20Creates\x20an\x20API\x20ke\
+    y.\n\n\x0c\n\x05\x04\x05\x02\x01\x06\x12\x03r\x04B\n\x0c\n\x05\x04\x05\
+    \x02\x01\x01\x12\x03rCJ\n\x0c\n\x05\x04\x05\x02\x01\x03\x12\x03rMN\nN\n\
+    \x04\x04\x05\x02\x02\x12\x04v\x02y\x05\x1a@\x20The\x20name\x20of\x20the\
+    \x20key,\x20used\x20for\x20(human)\x20identification\x20purposes.\n\n\
+    \x0c\n\x05\x04\x05\x02\x02\x05\x12\x03v\x02\x08\n\x0c\n\x05\x04\x05\x02\
+    \x02\x01\x12\x03v\t\r\n\x0c\n\x05\x04\x05\x02\x02\x03\x12\x03v\x10\x11\n\
+    \r\n\x05\x04\x05\x02\x02\x08\x12\x04v\x12y\x04\n\x10\n\x08\x04\x05\x02\
+    \x02\x08\xaf\x08\x0e\x12\x04v\x13y\x03\n\n\n\x02\x04\x06\x12\x04|\0\x7f\
+    \x01\n\n\n\x03\x04\x06\x01\x12\x03|\x08\x19\n\x1f\n\x04\x04\x06\x02\0\
+    \x12\x03~\x026\x1a\x12\x20The\x20created\x20key.\n\n\x0c\n\x05\x04\x06\
+    \x02\0\x06\x12\x03~\x02-\n\x0c\n\x05\x04\x06\x02\0\x01\x12\x03~.1\n\x0c\
+    \n\x05\x04\x06\x02\0\x03\x12\x03~45\n\x0c\n\x02\x04\x07\x12\x06\x81\x01\
+    \0\x84\x01\x01\n\x0b\n\x03\x04\x07\x01\x12\x04\x81\x01\x08\x18\n,\n\x04\
+    \x04\x07\x02\0\x12\x04\x83\x01\x02\x10\x1a\x1e\x20The\x20ID\x20of\x20the\
+    \x20key\x20to\x20revoke.\n\n\r\n\x05\x04\x07\x02\0\x05\x12\x04\x83\x01\
+    \x02\x08\n\r\n\x05\x04\x07\x02\0\x01\x12\x04\x83\x01\t\x0b\n\r\n\x05\x04\
+    \x07\x02\0\x03\x12\x04\x83\x01\x0e\x0f\n\n\n\x02\x04\x08\x12\x04\x86\x01\
+    \0\x1c\n\x0b\n\x03\x04\x08\x01\x12\x04\x86\x01\x08\x19b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
