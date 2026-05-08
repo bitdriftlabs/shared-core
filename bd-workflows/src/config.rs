@@ -24,9 +24,9 @@ use bd_stats_common::MetricType;
 use protobuf::MessageField;
 use regex::Regex;
 use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use time::Duration;
-use workflow::Workflow as WorkflowConfigProto;
 use workflow::workflow::action::action_emit_metric::Value_extractor_type;
 use workflow::workflow::action::action_flush_buffers::streaming::termination_criterion;
 use workflow::workflow::action::tag::Tag_type;
@@ -42,6 +42,7 @@ use workflow::workflow::{
   State as StateProto,
   Transition as TransitionProto,
 };
+use workflow::{MultiTag as MultiTagProto, Workflow as WorkflowConfigProto};
 
 pub(crate) type StateID = String;
 
@@ -876,6 +877,7 @@ impl Streaming {
 pub struct ActionEmitMetric {
   pub id: String,
   pub tags: BTreeMap<String, TagValue>,
+  pub multi_tag: Option<MetricMultiTag>,
   /// How much to increment the associated counter with when applying this metric.
   pub increment: ValueIncrement,
   pub metric_type: MetricType,
@@ -894,18 +896,7 @@ impl ActionEmitMetric {
           Some(Tag_type::FieldExtracted(extracted)) => TagValue::FieldExtract(extracted.field_name),
           Some(Tag_type::LogBodyExtracted(_)) => TagValue::LogBodyExtract,
           Some(Tag_type::StateExtracted(extracted)) => {
-            let scope = match extracted.scope.enum_value_or_default() {
-              bd_proto::protos::state::scope::StateScope::UNSPECIFIED => {
-                anyhow::bail!("invalid state scope: unspecified");
-              },
-              bd_proto::protos::state::scope::StateScope::FEATURE_FLAG => {
-                Scope::FeatureFlagExposure
-              },
-              bd_proto::protos::state::scope::StateScope::GLOBAL_STATE => Scope::GlobalState,
-              bd_proto::protos::state::scope::StateScope::SYSTEM => {
-                anyhow::bail!("invalid state scope: system");
-              },
-            };
+            let scope = parse_state_scope(extracted.scope.enum_value_or_default())?;
             TagValue::StateExtract(scope, extracted.key)
           },
           None => {
@@ -916,6 +907,12 @@ impl ActionEmitMetric {
         Ok((t.name, value))
       })
       .collect::<anyhow::Result<BTreeMap<String, TagValue>>>()?;
+
+    let multi_tag = proto
+      .multi_tag
+      .into_option()
+      .map(MetricMultiTag::new)
+      .transpose()?;
 
     let metric_type = match proto.metric_type {
       Some(proto) => match proto {
@@ -935,12 +932,14 @@ impl ActionEmitMetric {
       Some(Value_extractor_type::Fixed(value)) => Ok(Self {
         id: proto.id.clone(),
         tags,
+        multi_tag,
         increment: ValueIncrement::Fixed(u64::from(value)),
         metric_type,
       }),
       Some(Value_extractor_type::FieldExtracted(extracted)) => Ok(Self {
         id: proto.id,
         tags,
+        multi_tag,
         increment: ValueIncrement::Extract(extracted.field_name),
         metric_type,
       }),
@@ -948,6 +947,85 @@ impl ActionEmitMetric {
         "invalid action emit metric configuration: unknown value_extractor_type"
       )),
     }
+  }
+}
+
+//
+// MetricMultiTag
+//
+
+#[derive(Clone, Debug)]
+pub struct MetricMultiTag {
+  pub scope: Scope,
+  pub key_tag_name: String,
+  pub value_tag_name: String,
+  key_regex: Option<Regex>,
+  value_regex: Option<Regex>,
+}
+
+impl MetricMultiTag {
+  pub(crate) fn new(proto: MultiTagProto) -> anyhow::Result<Self> {
+    Ok(Self {
+      scope: parse_state_scope(proto.scope.enum_value_or_default())?,
+      key_tag_name: proto.key_tag_name,
+      value_tag_name: proto.value_tag_name,
+      key_regex: compile_optional_regex(proto.key_regex.as_deref(), "key")?,
+      value_regex: compile_optional_regex(proto.value_regex.as_deref(), "value")?,
+    })
+  }
+
+  #[must_use]
+  pub fn matches_key(&self, key: &str) -> bool {
+    self
+      .key_regex
+      .as_ref()
+      .is_none_or(|regex| regex.is_match(key))
+  }
+
+  #[must_use]
+  pub fn matches_value(&self, value: &str) -> bool {
+    self
+      .value_regex
+      .as_ref()
+      .is_none_or(|regex| regex.is_match(value))
+  }
+}
+
+impl PartialEq for MetricMultiTag {
+  fn eq(&self, other: &Self) -> bool {
+    self.scope == other.scope
+      && self.key_tag_name == other.key_tag_name
+      && self.value_tag_name == other.value_tag_name
+      && self.key_regex.as_ref().map(Regex::as_str) == other.key_regex.as_ref().map(Regex::as_str)
+      && self.value_regex.as_ref().map(Regex::as_str)
+        == other.value_regex.as_ref().map(Regex::as_str)
+  }
+}
+
+impl Eq for MetricMultiTag {}
+
+impl PartialOrd for MetricMultiTag {
+  fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
+impl Ord for MetricMultiTag {
+  fn cmp(&self, other: &Self) -> Ordering {
+    (
+      self.scope,
+      &self.key_tag_name,
+      &self.value_tag_name,
+      self.key_regex.as_ref().map(Regex::as_str),
+      self.value_regex.as_ref().map(Regex::as_str),
+    )
+      .cmp(&(
+        other.scope,
+        &other.key_tag_name,
+        &other.value_tag_name,
+        other.key_regex.as_ref().map(Regex::as_str),
+        other.value_regex.as_ref().map(Regex::as_str),
+      ))
   }
 }
 
@@ -977,18 +1055,7 @@ impl ActionEmitSankey {
               TagValue::FieldExtract(extracted.field_name)
             },
             Some(Tag_type::StateExtracted(extracted)) => {
-              let scope = match extracted.scope.enum_value_or_default() {
-                bd_proto::protos::state::scope::StateScope::UNSPECIFIED => {
-                  anyhow::bail!("invalid state scope: unspecified");
-                },
-                bd_proto::protos::state::scope::StateScope::FEATURE_FLAG => {
-                  Scope::FeatureFlagExposure
-                },
-                bd_proto::protos::state::scope::StateScope::GLOBAL_STATE => Scope::GlobalState,
-                bd_proto::protos::state::scope::StateScope::SYSTEM => {
-                  anyhow::bail!("invalid state scope: system");
-                },
-              };
+              let scope = parse_state_scope(extracted.scope.enum_value_or_default())?;
               TagValue::StateExtract(scope, extracted.key)
             },
             Some(Tag_type::LogBodyExtracted(_)) => TagValue::LogBodyExtract,
@@ -1075,4 +1142,25 @@ impl TagValue {
       Self::LogBodyExtract => message.as_str().map(Cow::Borrowed),
     }
   }
+}
+
+fn parse_state_scope(scope: bd_proto::protos::state::scope::StateScope) -> anyhow::Result<Scope> {
+  match scope {
+    bd_proto::protos::state::scope::StateScope::UNSPECIFIED => {
+      anyhow::bail!("invalid state scope: unspecified");
+    },
+    bd_proto::protos::state::scope::StateScope::FEATURE_FLAG => Ok(Scope::FeatureFlagExposure),
+    bd_proto::protos::state::scope::StateScope::GLOBAL_STATE => Ok(Scope::GlobalState),
+    bd_proto::protos::state::scope::StateScope::SYSTEM => {
+      anyhow::bail!("invalid state scope: system");
+    },
+  }
+}
+
+fn compile_optional_regex(pattern: Option<&str>, target: &str) -> anyhow::Result<Option<Regex>> {
+  pattern
+    .map(|pattern| {
+      Regex::new(pattern).map_err(|error| anyhow!("invalid multi tag {target} regex ({error})"))
+    })
+    .transpose()
 }

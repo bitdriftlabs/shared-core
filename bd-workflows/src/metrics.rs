@@ -9,7 +9,7 @@
 #[path = "./metrics_test.rs"]
 mod metrics_test;
 
-use crate::config::{ActionEmitMetric, TagValue};
+use crate::config::{ActionEmitMetric, MetricMultiTag, TagValue};
 use crate::engine::EmitMetricActionCount;
 use crate::workflow::{TriggeredActionEmitSankey, WorkflowEvent};
 use bd_client_stats::Stats;
@@ -32,6 +32,7 @@ impl MetricsCollector {
     Self { stats }
   }
 
+  #[allow(clippy::mutable_key_type)]
   pub(crate) fn emit_metrics(
     &self,
     action_counts: &BTreeMap<&ActionEmitMetric, EmitMetricActionCount>,
@@ -46,7 +47,7 @@ impl MetricsCollector {
         continue;
       }
 
-      let tags = Self::extract_tags(event, state_reader, &action.tags);
+      let base_tags = Self::extract_tags(event, state_reader, &action.tags);
 
       #[allow(clippy::cast_precision_loss)]
       let maybe_value: anyhow::Result<f64> = match &action.increment {
@@ -68,31 +69,52 @@ impl MetricsCollector {
         },
       };
 
-      match action.metric_type {
-        MetricType::Counter => {
-          #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-          let increment = (value as u64).saturating_mul(count.emission_count as u64);
+      // Multi-tag expansion happens after action aggregation so the engine keeps its current
+      // per-action dedupe semantics while still emitting one metric per matched state entry.
+      if let Some(multi_tag) = &action.multi_tag {
+        let scoped_maps = state_reader.as_scoped_maps();
+        let matched_any = match multi_tag.scope {
+          bd_state::Scope::FeatureFlagExposure => self.emit_multi_tag_matches(
+            action,
+            count,
+            &base_tags,
+            multi_tag,
+            scoped_maps.feature_flags.iter(),
+            value,
+            |timestamped| &timestamped.value,
+          ),
+          bd_state::Scope::GlobalState => self.emit_multi_tag_matches(
+            action,
+            count,
+            &base_tags,
+            multi_tag,
+            scoped_maps.global_state.iter(),
+            value,
+            |timestamped| &timestamped.value,
+          ),
+          bd_state::Scope::System => self.emit_multi_tag_matches(
+            action,
+            count,
+            &base_tags,
+            multi_tag,
+            scoped_maps.system.iter(),
+            value,
+            |timestamped| &timestamped.value,
+          ),
+        };
 
-          #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-          self
-            .stats
-            .record_dynamic_counter(tags, &action.id, increment);
-        },
-        MetricType::Histogram => {
-          log::debug!("recording histogram value: {value}");
-          if count.emission_count == 1 {
-            self.stats.record_dynamic_histogram(tags, &action.id, value);
-            continue;
-          }
+        if matched_any {
+          continue;
+        }
 
-          for _ in 0 .. (count.emission_count - 1) {
-            self
-              .stats
-              .record_dynamic_histogram(tags.clone(), &action.id, value);
-          }
-          self.stats.record_dynamic_histogram(tags, &action.id, value);
-        },
+        log::debug!(
+          "no multi_tag state entries matched for action {:?}",
+          action.id
+        );
+        continue;
       }
+
+      self.record_metric(action, count, base_tags, value);
     }
   }
 
@@ -128,17 +150,7 @@ impl MetricsCollector {
     key: &str,
     state_reader: &'a dyn bd_state::StateReader,
   ) -> Option<Cow<'a, str>> {
-    state_reader.get(scope, key).map(|v| {
-      use bd_state::Value_type;
-      match v.value_type {
-        Some(Value_type::StringValue(ref s)) => Cow::Borrowed(s.as_str()),
-        Some(Value_type::IntValue(i)) => Cow::Owned(i.to_string()),
-        Some(Value_type::DoubleValue(d)) => Cow::Owned(d.to_string()),
-        Some(Value_type::BoolValue(true)) => Cow::Borrowed("true"),
-        Some(Value_type::BoolValue(false)) => Cow::Borrowed("false"),
-        None => Cow::Borrowed(""),
-      }
-    })
+    state_reader.get(scope, key).map(Self::state_value_as_cow)
   }
 
   fn extract_tags(
@@ -165,5 +177,84 @@ impl MetricsCollector {
     }
 
     extracted_tags
+  }
+
+  fn record_metric(
+    &self,
+    action: &ActionEmitMetric,
+    count: &EmitMetricActionCount,
+    tags: BTreeMap<String, String>,
+    value: f64,
+  ) {
+    match action.metric_type {
+      MetricType::Counter => {
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        let increment = (value as u64).saturating_mul(count.emission_count as u64);
+
+        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+        if let Some(counter) = self.stats.workflow_dynamic_counter(tags, &action.id) {
+          counter.inc_by(increment);
+        }
+      },
+      MetricType::Histogram => {
+        log::debug!("recording histogram value: {value}");
+        if let Some(histogram) = self.stats.workflow_dynamic_histogram(tags, &action.id) {
+          for _ in 0 .. count.emission_count {
+            histogram.observe(value);
+          }
+        }
+      },
+    }
+  }
+
+  fn emit_multi_tag_matches<'a, T, I, F>(
+    &self,
+    action: &ActionEmitMetric,
+    count: &EmitMetricActionCount,
+    base_tags: &BTreeMap<String, String>,
+    multi_tag: &MetricMultiTag,
+    entries: I,
+    value: f64,
+    state_value: F,
+  ) -> bool
+  where
+    T: 'a,
+    I: Iterator<Item = (&'a String, &'a T)>,
+    F: Fn(&'a T) -> &'a bd_state::Value,
+  {
+    let mut matched_any = false;
+
+    for (state_key, entry) in entries {
+      if !multi_tag.matches_key(state_key) {
+        continue;
+      }
+
+      let state_value = Self::state_value_as_cow(state_value(entry));
+      if !multi_tag.matches_value(state_value.as_ref()) {
+        continue;
+      }
+
+      matched_any = true;
+
+      // TODO(mattklein123): Optimize this code to avoid so many clones.
+      let mut tags = base_tags.clone();
+      tags.insert(multi_tag.key_tag_name.clone(), state_key.clone());
+      tags.insert(multi_tag.value_tag_name.clone(), state_value.into_owned());
+      self.record_metric(action, count, tags, value);
+    }
+
+    matched_any
+  }
+
+  fn state_value_as_cow(value: &bd_state::Value) -> Cow<'_, str> {
+    use bd_state::Value_type;
+    match value.value_type {
+      Some(Value_type::StringValue(ref s)) => Cow::Borrowed(s.as_str()),
+      Some(Value_type::IntValue(i)) => Cow::Owned(i.to_string()),
+      Some(Value_type::DoubleValue(d)) => Cow::Owned(d.to_string()),
+      Some(Value_type::BoolValue(true)) => Cow::Borrowed("true"),
+      Some(Value_type::BoolValue(false)) => Cow::Borrowed("false"),
+      None => Cow::Borrowed(""),
+    }
   }
 }

@@ -26,6 +26,7 @@ use bd_log_matcher::builder::{field_equals, message_equals};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{LogFields, LogMessage, log_level};
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::workflow::workflow as workflow_proto;
 use bd_proto_util::serialization::{ProtoMessageDeserialize, ProtoMessageSerialize};
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{MetricType, labels};
@@ -327,6 +328,7 @@ fn timeout_no_parallel_match() {
       triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
         id: "foo_metric".to_string(),
         tags: BTreeMap::new(),
+        multi_tag: None,
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
@@ -359,6 +361,7 @@ fn timeout_no_parallel_match() {
       triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
         id: "timeout_metric".to_string(),
         tags: BTreeMap::new(),
+        multi_tag: None,
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
@@ -388,6 +391,7 @@ fn timeout_no_parallel_match() {
       triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
         id: "foo_metric".to_string(),
         tags: BTreeMap::new(),
+        multi_tag: None,
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
@@ -417,6 +421,7 @@ fn timeout_no_parallel_match() {
       triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
         id: "foo_metric".to_string(),
         tags: BTreeMap::new(),
+        multi_tag: None,
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
@@ -808,6 +813,48 @@ fn save_field_with_multiple_regex_capture_groups_is_rejected() {
 }
 
 #[test]
+fn metric_multi_tag_with_invalid_regex_is_rejected() {
+  let mut a = state("A");
+  let b = state("B");
+
+  a = a.declare_transition_with_actions(
+    &b,
+    rule!(message_equals("start")),
+    &[
+      workflow_proto::workflow::action::Action_type::ActionEmitMetric(
+        workflow_proto::workflow::action::ActionEmitMetric {
+          id: "metric".to_string(),
+          tags: vec![],
+          multi_tag: protobuf::MessageField::some(workflow_proto::MultiTag {
+            scope: bd_proto::protos::state::scope::StateScope::FEATURE_FLAG.into(),
+            key_tag_name: "experiment".to_string(),
+            value_tag_name: "variant".to_string(),
+            key_regex: Some("(".to_string()),
+            ..Default::default()
+          }),
+          metric_type: Some(
+            workflow_proto::workflow::action::action_emit_metric::Metric_type::Counter(
+              workflow_proto::workflow::action::action_emit_metric::Counter::default(),
+            ),
+          ),
+          value_extractor_type: Some(
+            workflow_proto::workflow::action::action_emit_metric::Value_extractor_type::Fixed(1),
+          ),
+          ..Default::default()
+        },
+      ),
+    ],
+  );
+
+  let config = WorkflowBuilder::new("1", &[&a, &b]).build();
+  let error = Config::new(config, WorkflowDebugMode::None)
+    .err()
+    .unwrap()
+    .to_string();
+  assert!(error.starts_with("invalid multi tag key regex"));
+}
+
+#[test]
 fn timeout_not_start() {
   let mut a = state("A");
   let mut b = state("B");
@@ -856,6 +903,7 @@ fn timeout_not_start() {
       triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
         id: "bar_metric".to_string(),
         tags: BTreeMap::new(),
+        multi_tag: None,
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
@@ -1002,6 +1050,7 @@ fn timeout_from_start() {
       triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
         id: "foo_metric".to_string(),
         tags: BTreeMap::new(),
+        multi_tag: None,
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
@@ -1276,6 +1325,7 @@ fn basic_exclusive_workflow() {
         TriggeredAction::EmitMetric(&ActionEmitMetric {
           id: "foo_metric".to_string(),
           tags: BTreeMap::new(),
+          multi_tag: None,
           increment: ValueIncrement::Fixed(123),
           metric_type: MetricType::Counter,
         })
@@ -1626,6 +1676,7 @@ fn debug_with_fork() {
       triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
         id: "bar_metric".to_string(),
         tags: BTreeMap::new(),
+        multi_tag: None,
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
@@ -1654,6 +1705,7 @@ fn debug_with_fork() {
       triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
         id: "baz_metric".to_string(),
         tags: BTreeMap::new(),
+        multi_tag: None,
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],
@@ -1682,6 +1734,7 @@ fn debug_with_fork() {
       triggered_actions: vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
         id: "bar_metric".to_string(),
         tags: BTreeMap::new(),
+        multi_tag: None,
         increment: ValueIncrement::Fixed(1),
         metric_type: MetricType::Counter,
       })],

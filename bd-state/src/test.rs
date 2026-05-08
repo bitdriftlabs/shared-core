@@ -8,7 +8,6 @@
 // Test code only.
 #![allow(clippy::unwrap_used, clippy::panic)]
 
-use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use time::macros::datetime;
@@ -34,7 +33,7 @@ use time::macros::datetime;
 /// ```
 #[derive(Default)]
 pub struct TestStateReader {
-  data: HashMap<(crate::Scope, String), bd_resilient_kv::StateValue>,
+  data: bd_resilient_kv::ScopedMaps,
 }
 
 impl TestStateReader {
@@ -51,13 +50,20 @@ impl TestStateReader {
     key: impl Into<String>,
     value: bd_resilient_kv::StateValue,
   ) {
-    self.data.insert((scope, key.into()), value);
+    self.data.insert(
+      scope,
+      key.into(),
+      bd_resilient_kv::TimestampedValue {
+        timestamp: 0,
+        value,
+      },
+    );
   }
 }
 
 impl crate::StateReader for TestStateReader {
   fn get(&self, scope: crate::Scope, key: &str) -> Option<&bd_resilient_kv::StateValue> {
-    self.data.get(&(scope, key.to_string()))
+    self.data.get(scope, key).map(|value| &value.value)
   }
 
   fn iter(&self) -> Box<dyn Iterator<Item = crate::StateEntry> + '_> {
@@ -65,20 +71,17 @@ impl crate::StateReader for TestStateReader {
       self
         .data
         .iter()
-        .map(|((scope, key), value)| crate::StateEntry {
-          scope: *scope,
+        .map(|(scope, key, value)| crate::StateEntry {
+          scope,
           key: key.clone(),
-          value: value.clone(),
+          value: value.value.clone(),
           timestamp: time::macros::datetime!(2024-01-01 00:00:00 UTC),
         }),
     )
   }
 
   fn as_scoped_maps(&self) -> &bd_resilient_kv::ScopedMaps {
-    // TestStateReader doesn't maintain ScopedMaps internally, so return an empty one.
-    // This is acceptable for tests that don't rely on as_scoped_maps.
-    static EMPTY: std::sync::OnceLock<bd_resilient_kv::ScopedMaps> = std::sync::OnceLock::new();
-    EMPTY.get_or_init(bd_resilient_kv::ScopedMaps::default)
+    &self.data
   }
 }
 

@@ -23,7 +23,7 @@ pub mod test;
 use crate::stats::{Flusher, PeriodicSchedule};
 use bd_api::DataUpload;
 use bd_client_common::file_system::RealFileSystem;
-use bd_client_stats_store::{Collector, Error as StatsError};
+use bd_client_stats_store::{Collector, Counter, Error as StatsError, Histogram};
 use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::workflow::WorkflowDebugKey;
@@ -190,20 +190,42 @@ impl Stats {
 
   pub fn record_dynamic_counter(&self, tags: BTreeMap<String, String>, id: &str, value: u64) {
     log::debug!("recording dynamic counter: id={id}, value={value}, tags={tags:?}");
-    match self.collector.dynamic_counter(tags, id) {
-      Ok(counter) => counter.inc_by(value),
-      Err(StatsError::Overflow) => {
-        self.handle_overflow(id);
-      },
+    if let Some(counter) = self.workflow_dynamic_counter(tags, id) {
+      counter.inc_by(value);
     }
   }
 
   pub fn record_dynamic_histogram(&self, tags: BTreeMap<String, String>, id: &str, value: f64) {
     log::debug!("recording dynamic histogram: id={id}, value={value}, tags={tags:?}");
-    match self.collector.dynamic_histogram(tags, id) {
-      Ok(histogram) => histogram.observe(value),
+    if let Some(histogram) = self.workflow_dynamic_histogram(tags, id) {
+      histogram.observe(value);
+    }
+  }
+
+  pub fn workflow_dynamic_counter(
+    &self,
+    tags: BTreeMap<String, String>,
+    id: &str,
+  ) -> Option<Counter> {
+    match self.collector.dynamic_counter(tags, id) {
+      Ok(counter) => Some(counter),
       Err(StatsError::Overflow) => {
         self.handle_overflow(id);
+        None
+      },
+    }
+  }
+
+  pub fn workflow_dynamic_histogram(
+    &self,
+    tags: BTreeMap<String, String>,
+    id: &str,
+  ) -> Option<Histogram> {
+    match self.collector.dynamic_histogram(tags, id) {
+      Ok(histogram) => Some(histogram),
+      Err(StatsError::Overflow) => {
+        self.handle_overflow(id);
+        None
       },
     }
   }
