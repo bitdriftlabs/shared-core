@@ -5,15 +5,18 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![allow(clippy::mutable_key_type)]
+
 use super::MetricsCollector;
-use crate::config::{ActionEmitMetric, TagValue};
+use crate::config::{ActionEmitMetric, MetricMultiTag, TagValue};
 use crate::engine::EmitMetricActionCount;
 use crate::workflow::WorkflowEvent;
 use bd_client_stats::Stats;
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
-use bd_log_primitives::{Log, log_level};
+use bd_log_primitives::{Log, LogFields, log_level};
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::workflow::workflow::MultiTag as MultiTagProto;
 use bd_stats_common::{MetricType, NameType, labels};
 use std::collections::BTreeMap;
 
@@ -46,36 +49,42 @@ fn metric_increment_value_extraction() {
     ActionEmitMetric {
       id: "action_id_1".to_string(),
       tags: BTreeMap::new(),
+      multi_tag: None,
       increment: crate::config::ValueIncrement::Fixed(1),
       metric_type: MetricType::Counter,
     },
     ActionEmitMetric {
       id: "action_id_2".to_string(),
       tags: BTreeMap::new(),
+      multi_tag: None,
       increment: crate::config::ValueIncrement::Extract("f2".to_string()),
       metric_type: MetricType::Counter,
     },
     ActionEmitMetric {
       id: "action_id_3".to_string(),
       tags: BTreeMap::new(),
+      multi_tag: None,
       increment: crate::config::ValueIncrement::Extract("f1".to_string()),
       metric_type: MetricType::Counter,
     },
     ActionEmitMetric {
       id: "action_id_4".to_string(),
       tags: BTreeMap::new(),
+      multi_tag: None,
       increment: crate::config::ValueIncrement::Extract("does not exist".to_string()),
       metric_type: MetricType::Counter,
     },
     ActionEmitMetric {
       id: "action_id_5".to_string(),
       tags: BTreeMap::new(),
+      multi_tag: None,
       increment: crate::config::ValueIncrement::Extract("m1".to_string()),
       metric_type: MetricType::Counter,
     },
     ActionEmitMetric {
       id: "action_id_6".to_string(),
       tags: BTreeMap::new(),
+      multi_tag: None,
       increment: crate::config::ValueIncrement::Extract("m1".to_string()),
       metric_type: MetricType::Histogram,
     },
@@ -192,6 +201,7 @@ fn counter_label_extraction() {
       ),
     ]
     .into(),
+    multi_tag: None,
     increment: crate::config::ValueIncrement::Fixed(1),
     metric_type: MetricType::Counter,
   };
@@ -219,5 +229,145 @@ fn counter_label_extraction() {
         "tag_7" => "message",
         "tag_8" => "variant_a",
     },
+  );
+}
+
+#[test]
+fn metric_multi_tag_fans_out_over_matching_state_entries() {
+  let (metrics_collector, collector) = make_metrics_collector();
+
+  let log = Log {
+    message: "message".into(),
+    session_id: "session_id".to_string(),
+    occurred_at: time::OffsetDateTime::now_utc(),
+    log_level: log_level::DEBUG,
+    log_type: LogType::NORMAL,
+    fields: LogFields::default(),
+    matching_fields: LogFields::default(),
+    capture_session: None,
+  };
+
+  let mut state_reader = bd_state::test::TestStateReader::default();
+  state_reader.insert(
+    bd_state::Scope::FeatureFlagExposure,
+    "experiment_checkout",
+    bd_state::string_value("variant_a"),
+  );
+  state_reader.insert(
+    bd_state::Scope::FeatureFlagExposure,
+    "experiment_search",
+    bd_state::string_value("control"),
+  );
+  state_reader.insert(
+    bd_state::Scope::FeatureFlagExposure,
+    "not_an_experiment",
+    bd_state::string_value("ignored"),
+  );
+
+  let action = ActionEmitMetric {
+    id: "action_id_multi".to_string(),
+    tags: [("static".to_string(), TagValue::Fixed("tag".to_string()))].into(),
+    multi_tag: Some(
+      MetricMultiTag::new(MultiTagProto {
+        scope: bd_proto::protos::state::scope::StateScope::FEATURE_FLAG.into(),
+        key_tag_name: "experiment".to_string(),
+        value_tag_name: "variant".to_string(),
+        key_regex: Some("^experiment_".to_string()),
+        value_regex: None,
+        ..Default::default()
+      })
+      .unwrap(),
+    ),
+    increment: crate::config::ValueIncrement::Fixed(1),
+    metric_type: MetricType::Counter,
+  };
+  let action_counts = BTreeMap::from([(
+    &action,
+    EmitMetricActionCount {
+      emission_count: 1,
+      is_parallel: false,
+      parallel_source_workflow_index: None,
+    },
+  )]);
+
+  metrics_collector.emit_metrics(&action_counts, WorkflowEvent::Log(&log), &state_reader);
+
+  collector.assert_workflow_counter_eq(
+    1,
+    "action_id_multi",
+    labels! {
+      "static" => "tag",
+      "experiment" => "experiment_checkout",
+      "variant" => "variant_a",
+    },
+  );
+  collector.assert_workflow_counter_eq(
+    1,
+    "action_id_multi",
+    labels! {
+      "static" => "tag",
+      "experiment" => "experiment_search",
+      "variant" => "control",
+    },
+  );
+}
+
+#[test]
+fn metric_multi_tag_with_no_matches_emits_nothing() {
+  let (metrics_collector, collector) = make_metrics_collector();
+
+  let log = Log {
+    message: "message".into(),
+    session_id: "session_id".to_string(),
+    occurred_at: time::OffsetDateTime::now_utc(),
+    log_level: log_level::DEBUG,
+    log_type: LogType::NORMAL,
+    fields: LogFields::default(),
+    matching_fields: LogFields::default(),
+    capture_session: None,
+  };
+
+  let mut state_reader = bd_state::test::TestStateReader::default();
+  state_reader.insert(
+    bd_state::Scope::FeatureFlagExposure,
+    "non_matching_flag",
+    bd_state::string_value("ignored"),
+  );
+
+  let action = ActionEmitMetric {
+    id: "action_id_no_match".to_string(),
+    tags: [("static".to_string(), TagValue::Fixed("tag".to_string()))].into(),
+    multi_tag: Some(
+      MetricMultiTag::new(MultiTagProto {
+        scope: bd_proto::protos::state::scope::StateScope::FEATURE_FLAG.into(),
+        key_tag_name: "experiment".to_string(),
+        value_tag_name: "variant".to_string(),
+        key_regex: Some("^experiment_".to_string()),
+        value_regex: None,
+        ..Default::default()
+      })
+      .unwrap(),
+    ),
+    increment: crate::config::ValueIncrement::Fixed(1),
+    metric_type: MetricType::Counter,
+  };
+  let action_counts = BTreeMap::from([(
+    &action,
+    EmitMetricActionCount {
+      emission_count: 1,
+      is_parallel: false,
+      parallel_source_workflow_index: None,
+    },
+  )]);
+
+  metrics_collector.emit_metrics(&action_counts, WorkflowEvent::Log(&log), &state_reader);
+
+  assert!(
+    collector
+      .find_counter(
+        &NameType::ActionId("action_id_no_match".to_string()),
+        &labels! { "static" => "tag" },
+      )
+      .is_none()
   );
 }

@@ -34,7 +34,8 @@ use std::collections::HashMap;
 // Version 38: Added support for workflow parallel execution and message/regex transition
 //             extractions.
 // Version 39: Added support for start tracing action and sampled log matcher.
-const CONFIGURATION_VERSION: &str = "39";
+// Version 40: Added multi-extract support on metrics.
+const CONFIGURATION_VERSION: &str = "40";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
