@@ -265,6 +265,14 @@ impl Monitor {
       ),
     ]);
 
+    if let Some(running_state) = report.app_metrics().and_then(|app| app.running_state()) {
+      let is_foreground = running_state.starts_with("foreground");
+      fields.insert(
+        "foreground".into(),
+        if is_foreground { "1" } else { "0" }.into(),
+      );
+    }
+
     if let Some(app_id) = app_id {
       fields.insert("app_id".into(), app_id.into());
     }

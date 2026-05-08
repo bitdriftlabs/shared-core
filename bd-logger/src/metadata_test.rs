@@ -301,17 +301,20 @@ fn metadata_from_fields_with_previous_global_state_includes_global_fields() {
   );
 
   // 3. Precedence check:
-  // Order: OOTB -> Global -> Custom
+  // Order: Global -> OOTB -> Custom
+  // Global state provides the baseline for previous run fields.
+  // Log OOTB fields can override global state when a more accurate
+  // source is available (e.g. foreground from ApplicationExitInfo).
 
   // shared_ootb_key: OOTB ("local_value") vs Global ("global_value")
-  // Global comes AFTER OOTB in chain, so Global should win.
+  // Log field overrides stale global state.
   assert_eq!(
-    "global_value",
+    "local_value",
     expected_field_value(&metadata.fields, "shared_ootb_key").unwrap()
   );
 
   // shared_custom_key: Custom ("local_value") vs Global ("global_value")
-  // Custom comes AFTER Global in chain, so Custom should win.
+  // Custom field overrides global state.
   assert_eq!(
     "local_value",
     expected_field_value(&metadata.fields, "shared_custom_key").unwrap()

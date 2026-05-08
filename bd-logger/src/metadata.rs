@@ -65,6 +65,10 @@ impl MetadataCollector {
   }
 
   /// Creates metadata from log fields without interpolating provider fields
+  /// Returns metadata for logs from the previous run (e.g. crash/exit logs).
+  /// Log OOTB fields take precedence over previous global state so that
+  /// callers can override potentially stale persisted values when a more
+  /// accurate source is available (e.g. foreground state from `ApplicationExitInfo`).
   pub(crate) fn metadata_from_fields_with_previous_global_state(
     &self,
     fields: AnnotatedLogFields,
@@ -78,10 +82,10 @@ impl MetadataCollector {
     {
       let log_fields = partition_fields(fields);
 
-      log_fields
-        .ootb
+      previous_global_state_fields
+        .clone()
         .into_iter()
-        .chain(previous_global_state_fields.clone())
+        .chain(log_fields.ootb)
         .chain(log_fields.custom)
         .collect()
     } else {
