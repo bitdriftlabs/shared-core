@@ -104,8 +104,15 @@ async fn initialize_opaque_entity_updates(
 
     match result {
       Ok(()) => {
-        if let PendingEntityIdUpdate::Set(entity_id) = pending_entity_id {
-          opaque_entity_updates_tx.send_replace(Some(entity_id));
+        match pending_entity_id {
+          PendingEntityIdUpdate::Set(entity_id) => {
+            opaque_entity_updates_tx.send_replace(Some(entity_id));
+          },
+          PendingEntityIdUpdate::Clear => {
+            // Keep the watch state aligned with durable state even if the sender was primed with
+            // a stale value before initialization ran.
+            opaque_entity_updates_tx.send_replace(None);
+          },
         }
       },
       Err(e) => {

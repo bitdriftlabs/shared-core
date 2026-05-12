@@ -66,6 +66,38 @@ async fn thread_local_logger_guard() {
 }
 
 #[tokio::test]
+async fn session_id_is_rejected_while_reentrancy_guard_is_held() {
+  let (log_tx, _log_rx) = bd_bounded_buffer::channel(100);
+  let (state_tx, _state_rx) = bd_bounded_buffer::channel(100);
+  let sender = async_log_buffer::Sender::from_parts(log_tx, state_tx);
+
+  let sdk_directory = TempDir::new().unwrap();
+  let store = in_memory_store();
+  let handle = LoggerHandle {
+    tx: sender,
+    stats: Stats::new(&Collector::default().scope("")),
+    session_strategy: Arc::new(Strategy::fixed(
+      sdk_directory.path(),
+      Arc::new(UUIDCallbacks),
+    )),
+    device: Arc::new(bd_device::Device::new(store.clone())),
+    sdk_version: "1.0.0".into(),
+    app_version_repo: Repository::new(store),
+    opaque_entity_updates: watch::channel(None).0,
+    pending_entity_id: Arc::new(parking_lot::Mutex::new(None)),
+    sleep_mode_active: watch::channel(false).0,
+    is_tracing_active: Arc::new(AtomicBool::new(false)),
+  };
+
+  let result = with_thread_local_logger_guard(|| handle.session_id());
+
+  assert_eq!(
+    "operation not allowed from within a field provider",
+    result.unwrap_err().to_string()
+  );
+}
+
+#[tokio::test]
 async fn register_opaque_entity_id_updates_queue_and_watch() {
   let (log_tx, _log_rx) = bd_bounded_buffer::channel(1024 * 1024);
   let (state_tx, mut state_rx) = bd_bounded_buffer::channel(1024 * 1024);

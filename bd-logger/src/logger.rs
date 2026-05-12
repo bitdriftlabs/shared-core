@@ -505,9 +505,17 @@ impl LoggerHandle {
   }
 
   pub fn session_id(&self) -> anyhow::Result<String> {
-    self
-      .tx
-      .request_session_id(async_log_buffer::SESSION_BRIDGE_TIMEOUT)
+    let is_allowed = LOGGER_GUARD.with(|cell| cell.try_borrow().is_ok());
+
+    if is_allowed {
+      self
+        .tx
+        .request_session_id(async_log_buffer::SESSION_BRIDGE_TIMEOUT)
+    } else {
+      Err(anyhow::anyhow!(
+        "operation not allowed from within a field provider"
+      ))
+    }
   }
 
   pub fn start_new_session(&self) -> anyhow::Result<()> {
