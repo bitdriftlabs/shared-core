@@ -162,8 +162,14 @@ impl Remote for Server {
   }
 
   async fn start_new_session(self, _: ::tarpc::context::Context) {
-    if let Some(logger) = &*LOGGER.lock() {
-      logger.start_new_session();
+    let logger = {
+      let guard = LOGGER.lock();
+      guard.as_ref().map(|logger| logger.logger.clone())
+    };
+
+    if let Some(logger) = logger {
+      let handle = logger.lock().new_logger_handle();
+      handle.start_new_session().unwrap();
     }
   }
 

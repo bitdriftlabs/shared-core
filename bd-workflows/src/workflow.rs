@@ -220,28 +220,26 @@ mod fuzzing {
 pub enum WorkflowEvent<'a> {
   /// A log message was received
   Log(&'a Log),
+  /// A new session started before the first log for that session is processed.
+  ///
+  /// This shares the triggering log payload so transition actions and extractions can reuse the
+  /// same fields and body without copying them.
+  SessionStart(&'a Log),
   /// A state change occurred, with optional global metadata fields
   StateChange(&'a bd_state::StateChange, FieldsRef<'a>),
 }
 
 impl WorkflowEvent<'_> {
-  pub(crate) fn session_id(&self) -> Option<&str> {
-    match self {
-      WorkflowEvent::Log(log) => Some(log.session_id.as_str()),
-      WorkflowEvent::StateChange(..) => None,
-    }
-  }
-
   pub(crate) fn capture_session(&self) -> Option<&'static str> {
     match self {
       WorkflowEvent::Log(log) => log.capture_session,
-      WorkflowEvent::StateChange(..) => None,
+      WorkflowEvent::SessionStart(_) | WorkflowEvent::StateChange(..) => None,
     }
   }
 
   pub(crate) fn occurred_at(&self) -> OffsetDateTime {
     match self {
-      WorkflowEvent::Log(log) => log.occurred_at,
+      WorkflowEvent::Log(log) | WorkflowEvent::SessionStart(log) => log.occurred_at,
       WorkflowEvent::StateChange(state_change, _) => state_change.timestamp,
     }
   }
@@ -354,7 +352,19 @@ impl Workflow {
     let mut deferred_parallel_overflow_eviction = false;
     let mut initial_run_replaced_by_signature = false;
 
-    if self.needs_new_run() {
+    let should_create_new_run = if matches!(event, WorkflowEvent::SessionStart(_)) {
+      self.needs_new_run()
+        && config.inner().states().first().is_some_and(|state| {
+          state
+            .transitions()
+            .iter()
+            .any(|transition| matches!(transition.rule(), Predicate::OnNewSession))
+        })
+    } else {
+      self.needs_new_run()
+    };
+
+    if should_create_new_run {
       if let Some(max_active_runs) = parallel_max_active_runs
         && self.runs.len() >= max_active_runs
       {
@@ -1381,6 +1391,9 @@ impl Traversal {
             &mut result,
           );
         },
+        (Predicate::OnNewSession, WorkflowEvent::SessionStart(log)) => {
+          self.process_session_start(config, log, index, state_reader, now, &mut result);
+        },
         (
           Predicate::StateChangeMatch {
             state_change_match,
@@ -1418,9 +1431,14 @@ impl Traversal {
     {
       // Timeout transitions use default extractions and pass appropriate fields based on event
       // type. For logs, we pass the log fields. For state changes, we pass the fields that were
-      // collected (typically global metadata).
+      // collected (typically global metadata). Session starts share the triggering log fields.
+      // TODO(mattklein123): Using the incoming log fields for session start timeout transitions
+      // is the same hack we are using at the top level. It should really only be using the fields
+      // provided by the installed field providers.
       let fields = match event {
-        WorkflowEvent::Log(log) => FieldsRef::new(&log.fields, &log.matching_fields),
+        WorkflowEvent::Log(log) | WorkflowEvent::SessionStart(log) => {
+          FieldsRef::new(&log.fields, &log.matching_fields)
+        },
         WorkflowEvent::StateChange(_, fields) => fields,
       };
 
@@ -1641,6 +1659,38 @@ impl Traversal {
 
       log::trace!(
         "traversal's transition {} matched state change and is advancing, workflow id={:?}",
+        index,
+        config.inner().id(),
+      );
+    }
+  }
+
+  fn process_session_start<'a>(
+    &self,
+    config: &'a Config,
+    log: &Log,
+    index: usize,
+    state_reader: &dyn bd_state::StateReader,
+    now: OffsetDateTime,
+    result: &mut TraversalResult<'a>,
+  ) {
+    if let Some(actions) = config.inner().actions_for_traversal(self, index)
+      && let Some(next_state_index) = config.inner().next_state_index_for_traversal(self, index)
+    {
+      process_transition(
+        result,
+        self.do_log_extractions(config, index, log, state_reader),
+        actions,
+        FieldsRef::new(&log.fields, &log.matching_fields),
+        self.state_index,
+        next_state_index,
+        WorkflowDebugTransitionType::Normal(index as u64),
+        config,
+        now,
+      );
+
+      log::trace!(
+        "traversal's transition {} matched session start and is advancing, workflow id={:?}",
         index,
         config.inner().id(),
       );

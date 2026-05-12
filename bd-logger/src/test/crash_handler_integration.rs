@@ -105,7 +105,7 @@ fn crash_report_upload() {
     )
     .unwrap();
 
-    setup.logger.new_logger_handle().session_id()
+    setup.logger.new_logger_handle().session_id().unwrap()
   };
 
   let mut setup = Setup::new_with_options(SetupOptions {
@@ -120,7 +120,7 @@ fn crash_report_upload() {
 
   assert_ne!(
     initial_session_id,
-    setup.logger.new_logger_handle().session_id()
+    setup.logger.new_logger_handle().session_id().unwrap()
   );
 
   setup.configure_stream_all_logs();

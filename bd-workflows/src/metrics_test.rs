@@ -17,8 +17,10 @@ use bd_client_stats_store::test::StatsHelper;
 use bd_log_primitives::{Log, LogFields, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow::MultiTag as MultiTagProto;
+use bd_state::Scope;
 use bd_stats_common::{MetricType, NameType, labels};
 use std::collections::BTreeMap;
+use time::OffsetDateTime;
 
 fn make_metrics_collector() -> (MetricsCollector, Collector) {
   let collector = Collector::default();
@@ -125,6 +127,73 @@ fn metric_increment_value_extraction() {
   collector.assert_workflow_counter_eq(5, "action_id_5", labels! {});
   // Values can be extracted from the matching_only_fields.
   collector.assert_workflow_histogram_observed(5.0, "action_id_6", labels! {});
+}
+
+#[test]
+fn session_start_metrics_use_triggering_log_payload() {
+  let (metrics_collector, collector) = make_metrics_collector();
+
+  let log = Log {
+    message: "message".into(),
+    session_id: "session_id".to_string(),
+    occurred_at: OffsetDateTime::now_utc(),
+    log_level: log_level::DEBUG,
+    log_type: LogType::NORMAL,
+    fields: [("device_id".into(), "ios".into())].into(),
+    matching_fields: LogFields::default(),
+    capture_session: None,
+  };
+
+  let action = ActionEmitMetric {
+    id: "action_id".to_string(),
+    tags: BTreeMap::from([
+      ("fixed".to_string(), TagValue::Fixed("always".to_string())),
+      (
+        "device_id".to_string(),
+        TagValue::FieldExtract("device_id".to_string()),
+      ),
+      ("message".to_string(), TagValue::LogBodyExtract),
+      (
+        "feature_flag".to_string(),
+        TagValue::StateExtract(Scope::FeatureFlagExposure, "flag_a".to_string()),
+      ),
+    ]),
+    multi_tag: None,
+    increment: crate::config::ValueIncrement::Fixed(1),
+    metric_type: MetricType::Counter,
+  };
+  let action_counts = BTreeMap::from([(
+    &action,
+    EmitMetricActionCount {
+      emission_count: 1,
+      is_parallel: false,
+      parallel_source_workflow_index: None,
+    },
+  )]);
+
+  let mut state_reader = bd_state::test::TestStateReader::default();
+  state_reader.insert(
+    Scope::FeatureFlagExposure,
+    "flag_a",
+    bd_state::string_value("enabled"),
+  );
+
+  metrics_collector.emit_metrics(
+    &action_counts,
+    WorkflowEvent::SessionStart(&log),
+    &state_reader,
+  );
+
+  collector.assert_workflow_counter_eq(
+    1,
+    "action_id",
+    labels! {
+      "device_id" => "ios",
+      "fixed" => "always",
+      "feature_flag" => "enabled",
+      "message" => "message",
+    },
+  );
 }
 
 #[test]

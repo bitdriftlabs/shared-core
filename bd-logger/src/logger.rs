@@ -13,7 +13,7 @@ use crate::app_version::{AppVersion, Repository};
 use crate::async_log_buffer::{self, AsyncLogBuffer, LogAttributesOverrides};
 use crate::log_replay::LoggerReplay;
 use crate::{MetadataProvider, app_version};
-use bd_api::{Metadata, OPAQUE_USER_ID_KEY};
+use bd_api::Metadata;
 use bd_bounded_buffer::{self};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log::warn_every;
@@ -176,6 +176,18 @@ impl CaptureSession {
   }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PendingEntityIdUpdate {
+  Set(String),
+  Clear,
+}
+
+impl PendingEntityIdUpdate {
+  fn from_entity_id(entity_id: Option<String>) -> Self {
+    entity_id.map_or(Self::Clear, Self::Set)
+  }
+}
+
 /// A handle to the logger that can be used to log messages. This is the primary interface for
 /// submitting logs into the system.
 pub struct LoggerHandle {
@@ -186,7 +198,8 @@ pub struct LoggerHandle {
   sdk_version: String,
 
   app_version_repo: app_version::Repository,
-  store: Arc<bd_key_value::Store>,
+  opaque_entity_updates: watch::Sender<Option<String>>,
+  pending_entity_id: Arc<Mutex<Option<PendingEntityIdUpdate>>>,
 
   stats: Stats,
 
@@ -268,8 +281,24 @@ impl LoggerHandle {
     });
   }
 
-  pub fn register_opaque_user_id(&self, opaque_user_id: &str) {
-    self.store.set_string(&OPAQUE_USER_ID_KEY, opaque_user_id);
+  pub fn register_opaque_entity_id(&self, opaque_entity_id: Option<&str>) {
+    let opaque_entity_id = opaque_entity_id.map(str::to_string);
+    *self.pending_entity_id.lock() = Some(PendingEntityIdUpdate::from_entity_id(
+      opaque_entity_id.clone(),
+    ));
+
+    if let Err(e) =
+      self
+        .tx
+        .try_send_state_update(async_log_buffer::StateUpdateMessage::SetEntityId(
+          opaque_entity_id.clone(),
+        ))
+    {
+      log::debug!("failed to queue entity ID state update: {e:?}");
+      return;
+    }
+
+    self.opaque_entity_updates.send_replace(opaque_entity_id);
   }
 
   #[must_use]
@@ -475,22 +504,24 @@ impl LoggerHandle {
     self.stats.state_flushing_counters.record(&result);
   }
 
-  #[must_use]
-  pub fn session_id(&self) -> String {
-    self.session_strategy.session_id()
+  pub fn session_id(&self) -> anyhow::Result<String> {
+    self
+      .tx
+      .request_session_id(async_log_buffer::SESSION_BRIDGE_TIMEOUT)
   }
 
-  pub fn start_new_session(&self) {
-    LOGGER_GUARD.with(|cell| {
-      if cell.try_borrow().is_ok() {
-        self.session_strategy.start_new_session();
-      } else {
-        log::warn!(
-          "failed to start a new session, the operation is not allowed from within a field \
-           provider"
-        );
-      }
-    });
+  pub fn start_new_session(&self) -> anyhow::Result<()> {
+    let is_allowed = LOGGER_GUARD.with(|cell| cell.try_borrow().is_ok());
+
+    if is_allowed {
+      self
+        .tx
+        .request_start_new_session(async_log_buffer::SESSION_BRIDGE_TIMEOUT)
+    } else {
+      Err(anyhow::anyhow!(
+        "operation not allowed from within a field provider"
+      ))
+    }
   }
 
   #[must_use]
@@ -552,6 +583,8 @@ pub struct Logger {
   sdk_version: String,
 
   store: Arc<bd_key_value::Store>,
+  opaque_entity_updates: watch::Sender<Option<String>>,
+  pending_entity_id: Arc<Mutex<Option<PendingEntityIdUpdate>>>,
 
   pub(crate) stats: Stats,
 
@@ -562,7 +595,7 @@ pub struct Logger {
 }
 
 impl Logger {
-  pub fn new(
+  pub(crate) fn new(
     shutdown_state: Option<ComponentShutdownTrigger>,
     runtime_loader: Arc<bd_runtime::runtime::ConfigLoader>,
     stats_scope: Scope,
@@ -572,6 +605,8 @@ impl Logger {
     device: Arc<bd_device::Device>,
     sdk_version: &str,
     store: Arc<bd_key_value::Store>,
+    opaque_entity_updates: watch::Sender<Option<String>>,
+    pending_entity_id: Arc<Mutex<Option<PendingEntityIdUpdate>>>,
     sleep_mode_active: watch::Sender<bool>,
     is_tracing_active: Arc<AtomicBool>,
   ) -> Self {
@@ -591,6 +626,8 @@ impl Logger {
       stats,
       stats_scope,
       store,
+      opaque_entity_updates,
+      pending_entity_id,
       sleep_mode_active,
       is_tracing_active,
     }
@@ -645,7 +682,8 @@ impl Logger {
       device: self.device.clone(),
       sdk_version: self.sdk_version.clone(),
       app_version_repo: Repository::new(self.store.clone()),
-      store: self.store.clone(),
+      opaque_entity_updates: self.opaque_entity_updates.clone(),
+      pending_entity_id: self.pending_entity_id.clone(),
       stats: self.stats.clone(),
       sleep_mode_active: self.sleep_mode_active.clone(),
       is_tracing_active: self.is_tracing_active.clone(),

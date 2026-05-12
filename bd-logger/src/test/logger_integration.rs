@@ -29,7 +29,6 @@ use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::client::api::debug_data_request::WorkflowTransitionDebugData;
 use bd_proto::protos::client::api::{DebugDataRequest, debug_data_request};
-use bd_proto::protos::client::key_value::FixedSessionStrategyState as State;
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::filter::filter::Filter;
@@ -37,8 +36,8 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::logging::payload::log::CompressedContents;
 use bd_runtime::runtime::FeatureFlag;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
+use bd_session::Strategy;
 use bd_session::fixed::UUIDCallbacks;
-use bd_session::{Strategy, fixed};
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
 use bd_stats_common::labels;
 use bd_test_helpers::config_helper::{
@@ -130,7 +129,7 @@ fn sleep_mode() {
 fn attributes_accessors() {
   let setup = Setup::new();
 
-  assert_eq!(36, setup.logger_handle.session_id().len());
+  assert_eq!(36, setup.logger_handle.session_id().unwrap().len());
   assert_eq!(36, setup.logger_handle.device_id().len());
 }
 
@@ -402,12 +401,34 @@ fn explicit_session_capture_disabled_streaming() {
 
 #[test]
 fn log_upload_attributes_override() {
+  struct StaticSessionId(String);
+
+  impl bd_session::fixed::Callbacks for StaticSessionId {
+    fn generate_session_id(&self) -> anyhow::Result<String> {
+      Ok(self.0.clone())
+    }
+  }
+
   let time_first = datetime!(2024-06-01 12:00:00 UTC);
-  let mut setup = Setup::new_with_metadata(Arc::new(LogMetadata {
-    timestamp: Mutex::new(time_first),
-    ootb_fields: LogFields::from([("_some_version".into(), "400".into())]),
+  let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
+  let previous_session = bd_session::Strategy::fixed(
+    sdk_directory.path(),
+    Arc::new(StaticSessionId("foo_overridden".to_string())),
+  );
+  assert_eq!(
+    tokio_test::block_on(previous_session.session_id()).unwrap(),
+    "foo_overridden"
+  );
+
+  let mut setup = Setup::new_with_options(SetupOptions {
+    sdk_directory,
+    metadata_provider: Arc::new(LogMetadata {
+      timestamp: Mutex::new(time_first),
+      ootb_fields: LogFields::from([("_some_version".into(), "400".into())]),
+      ..Default::default()
+    }),
     ..Default::default()
-  }));
+  });
 
   setup.send_configuration_update(
     make_configuration_update_with_workflow_flushing_buffer_on_anything(
@@ -420,14 +441,6 @@ fn log_upload_attributes_override() {
 
   let error_reporter = Arc::new(RecordingErrorReporter::default());
   UnexpectedErrorHandler::set_reporter(error_reporter);
-
-  setup.store.set(
-    &fixed::STATE_KEY,
-    &State {
-      session_id: "foo_overridden".to_string(),
-      ..Default::default()
-    },
-  );
 
   // This log should end up being emitted with an overridden session ID and timestamp,
   // and no fields associated with the current session
@@ -524,7 +537,12 @@ fn api_bandwidth_counters() {
       // If these numbers end up being too variable we do something more generic.
       let bandwidth_tx = upload.get_counter("api:bandwidth_tx", labels! {}).unwrap();
       let bandwidth_rx = upload.get_counter("api:bandwidth_rx", labels! {}).unwrap();
-      assert_eq!(upload.get_counter("api:bandwidth_tx_uncompressed", labels! {}), Some(119));
+      assert!(
+        matches!(
+          upload.get_counter("api:bandwidth_tx_uncompressed", labels! {}),
+          Some(177 | 178)
+        )
+      );
       assert!(bandwidth_tx > 100, "bandwidth_tx = {bandwidth_tx}");
       assert!(bandwidth_rx < 400, "bandwidth_rx = {bandwidth_rx}");
       assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(279));
@@ -2757,10 +2775,10 @@ fn runtime_caching() {
     let logger = crate::LoggerBuilder::new(InitParams {
       api_key: "foo-api-key".to_string(),
       network,
-      session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
-        store.clone(),
+      session_strategy: Arc::new(Strategy::fixed(
+        sdk_directory.path(),
         Arc::new(UUIDCallbacks),
-      ))),
+      )),
       static_metadata: Arc::new(EmptyMetadata),
       store,
       resource_utilization_target: Box::new(EmptyTarget),

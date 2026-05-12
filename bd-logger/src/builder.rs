@@ -5,13 +5,17 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(test)]
+#[path = "./builder_test.rs"]
+mod builder_test;
+
 use crate::async_log_buffer::AsyncLogBuffer;
 use crate::client_config::{self, LoggerUpdate};
 use crate::consumer::BufferUploadManager;
 use crate::directory_lock::DirectoryLock;
 use crate::internal::InternalLogger;
 use crate::log_replay::LoggerReplay;
-use crate::logger::Logger;
+use crate::logger::{Logger, PendingEntityIdUpdate};
 use crate::logging_state::UninitializedLoggingContext;
 use crate::state_upload::StateUploadHandle;
 use crate::{InitParams, LogAttributesOverrides};
@@ -35,8 +39,17 @@ use bd_runtime::runtime::network_quality::NetworkCallOnlineIndicatorTimeout;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
 use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
+use bd_state::{
+  ENTITY_ID_KEY,
+  Scope as StateScope,
+  StateReader,
+  Store as StateStore,
+  Value_type,
+  string_value,
+};
 use bd_time::{SystemTimeProvider, Ticker, TimeProvider};
 use futures_util::{Future, try_join};
+use parking_lot::Mutex;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -63,6 +76,61 @@ pub fn default_stats_flush_triggers(
     sleep_mode_active,
     time_provider,
   )))
+}
+
+async fn initialize_opaque_entity_updates(
+  state_store: &StateStore,
+  opaque_entity_updates_tx: &watch::Sender<Option<String>>,
+  pending_entity_id: Option<PendingEntityIdUpdate>,
+) {
+  // A pre-start entity update should win over any persisted value because it is the most recent
+  // caller intent. We replay it directly into bd-state so the API watch channel and durable state
+  // begin from the same value even if the ordered queue was unavailable earlier.
+  if let Some(pending_entity_id) = pending_entity_id {
+    let result = match &pending_entity_id {
+      PendingEntityIdUpdate::Set(entity_id) => state_store
+        .insert(
+          StateScope::System,
+          ENTITY_ID_KEY.to_string(),
+          string_value(entity_id.clone()),
+        )
+        .await
+        .map(|_| ()),
+      PendingEntityIdUpdate::Clear => state_store
+        .remove(StateScope::System, ENTITY_ID_KEY)
+        .await
+        .map(|_| ()),
+    };
+
+    match result {
+      Ok(()) => {
+        if let PendingEntityIdUpdate::Set(entity_id) = pending_entity_id {
+          opaque_entity_updates_tx.send_replace(Some(entity_id));
+        }
+      },
+      Err(e) => {
+        log::debug!("failed to persist pending entity ID state: {e}");
+      },
+    }
+
+    return;
+  }
+
+  let initial_opaque_entity_id = {
+    let reader = state_store.read().await;
+    reader
+      .get(StateScope::System, ENTITY_ID_KEY)
+      .and_then(|value| {
+        let Value_type::StringValue(entity_id) = value.value_type.as_ref()? else {
+          return None;
+        };
+
+        (!entity_id.is_empty()).then(|| entity_id.clone())
+      })
+  };
+  if let Some(initial_opaque_entity_id) = initial_opaque_entity_id {
+    opaque_entity_updates_tx.send_replace(Some(initial_opaque_entity_id));
+  }
 }
 
 /// A builder for the logger.
@@ -261,6 +329,8 @@ impl LoggerBuilder {
 
     let data_upload_tx_clone = data_upload_tx.clone();
     let collector_clone = collector;
+    let (opaque_entity_updates_tx, opaque_entity_updates_rx) = watch::channel(None);
+    let pending_entity_id = Arc::new(Mutex::new(None));
 
     let logger = Logger::new(
       maybe_shutdown_trigger,
@@ -272,6 +342,8 @@ impl LoggerBuilder {
       self.params.device,
       self.params.static_metadata.sdk_version(),
       self.params.store.clone(),
+      opaque_entity_updates_tx.clone(),
+      pending_entity_id.clone(),
       sleep_mode_active_tx,
       is_tracing_active,
     );
@@ -327,6 +399,10 @@ impl LoggerBuilder {
         result.previous_state,
         result.retention_registry,
       );
+
+      let pending_entity_id = pending_entity_id.lock().take();
+      initialize_opaque_entity_updates(&state_store, &opaque_entity_updates_tx, pending_entity_id)
+        .await;
 
       if result.fallback_occurred {
         handle_unexpected(
@@ -444,6 +520,8 @@ impl LoggerBuilder {
         &scope.scope("api"),
         sleep_mode_active_rx,
         self.params.store.clone(),
+        self.params.session_strategy.clone(),
+        opaque_entity_updates_rx,
       );
 
       let mut config_writer = bd_crash_handler::ConfigWriter::new(

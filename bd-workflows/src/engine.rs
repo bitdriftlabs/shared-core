@@ -586,7 +586,7 @@ impl WorkflowsEngine {
     self.needs_state_persistence = true;
   }
 
-  fn maybe_update_session(&mut self, incoming_session_id: &str) {
+  fn maybe_update_session(&mut self, incoming_session_id: &str) -> bool {
     if self.state.session_id.is_empty() {
       log::debug!("workflows engine: moving from no session to session \"{incoming_session_id}\"");
       // There was no state on a disk when workflows engine was started
@@ -598,6 +598,7 @@ impl WorkflowsEngine {
       // all workflows in their initial states.
       self.state.session_id = incoming_session_id.to_string();
       self.stats.sessions_total.inc();
+      return true;
     } else if self.state.session_id != incoming_session_id {
       log::debug!(
         "workflows engine: moving from \"{}\" to new session \"{}\", cleaning workflows state",
@@ -615,7 +616,10 @@ impl WorkflowsEngine {
       self.clean_state();
       self.state.session_id = incoming_session_id.to_string();
       self.stats.sessions_total.inc();
+      return true;
     }
+
+    false
   }
 
   /// Process a single workflow event against all managed workflows. This advances the active
@@ -630,10 +634,40 @@ impl WorkflowsEngine {
     // Measure duration in here even if the list of workflows is empty.
     let _timer = self.stats.process_log_duration.start_timer();
 
-    if let Some(session_id) = &event.session_id() {
-      self.maybe_update_session(session_id);
-    }
+    let session_start_result = if let WorkflowEvent::Log(log) = event
+      && self.maybe_update_session(&log.session_id)
+    {
+      let empty_buffer_ids = TinySet::default();
+      Some(PrecedingEventCarryover::from_result(
+        // TODO(mattklein123): Using the incoming log to provide the fields for this event is a
+        // hack. We should really only be providing the persisted field provider fields and OOTB
+        // fields. We can live with this for now as it's simpler.
+        self.process_event_inner(
+          WorkflowEvent::SessionStart(log),
+          &empty_buffer_ids,
+          state_reader,
+          now,
+        ),
+      ))
+    } else {
+      None
+    };
 
+    let result = self.process_event_inner(event, log_destination_buffer_ids, state_reader, now);
+
+    match session_start_result {
+      Some(session_start_result) => session_start_result.merge_into(result),
+      None => result,
+    }
+  }
+
+  fn process_event_inner<'a>(
+    &'a mut self,
+    event: WorkflowEvent<'_>,
+    log_destination_buffer_ids: &'a TinySet<Cow<'a, str>>,
+    state_reader: &dyn bd_state::StateReader,
+    now: OffsetDateTime,
+  ) -> WorkflowsEngineResult<'a> {
     // Return early if there's no work to avoid unnecessary copies.
     // In order to support explicit session capture even when there are no workflows we need to
     // proceed with the processing if either this is a log requesting a session capture or if there
@@ -864,7 +898,10 @@ impl WorkflowsEngine {
         .triggered_flushes_buffer_ids,
       capture_screenshot,
       is_tracing_active: self.state.is_tracing_active(),
-      logs_to_inject,
+      logs_to_inject: logs_to_inject
+        .into_iter()
+        .map(|(log_id, log)| (Cow::Borrowed(log_id), log))
+        .collect(),
       workflow_debug_state: all_cumulative_workflow_debug_state,
       has_debug_workflows,
     }
@@ -1014,7 +1051,7 @@ pub struct WorkflowsEngineResult<'a> {
   pub is_tracing_active: bool,
 
   // Logs to be injected back into the workflow engine after field attachment and other processing.
-  pub logs_to_inject: TinyMap<&'a str, Log>,
+  pub logs_to_inject: TinyMap<Cow<'a, str>, Log>,
 
   // If any workflows have debugging enabled, this will contain the *cumulative* debug state since
   // debugging started for each workflow. The state is persisted in the workflow state file to
@@ -1025,6 +1062,80 @@ pub struct WorkflowsEngineResult<'a> {
 }
 
 pub type AllWorkflowsDebugState = Vec<(String, WorkflowDebugStateMap)>;
+
+//
+// PrecedingEventCarryover
+//
+
+// This is only used when processing a SessionStart event to carry over relevant information from
+// the SessionStart processing to the subsequent processing of the Log event that triggered the
+// SessionStart. We can live with the copies here.
+#[derive(Default)]
+struct PrecedingEventCarryover {
+  triggered_flush_buffers_action_ids: BTreeSet<FlushBufferId>,
+  triggered_flushes_buffer_ids: TinySet<Cow<'static, str>>,
+  capture_screenshot: bool,
+  logs_to_inject: TinyMap<String, Log>,
+  workflow_debug_state: AllWorkflowsDebugState,
+  has_debug_workflows: bool,
+}
+
+impl PrecedingEventCarryover {
+  fn from_result(result: WorkflowsEngineResult<'_>) -> Self {
+    Self {
+      triggered_flush_buffers_action_ids: result
+        .triggered_flush_buffers_action_ids
+        .into_iter()
+        .map(Cow::into_owned)
+        .collect(),
+      triggered_flushes_buffer_ids: result.triggered_flushes_buffer_ids,
+      capture_screenshot: result.capture_screenshot,
+      logs_to_inject: result
+        .logs_to_inject
+        .into_iter()
+        .map(|(log_id, log)| (log_id.into_owned(), log))
+        .collect(),
+      workflow_debug_state: result.workflow_debug_state,
+      has_debug_workflows: result.has_debug_workflows,
+    }
+  }
+
+  fn merge_into(self, mut followup: WorkflowsEngineResult<'_>) -> WorkflowsEngineResult<'_> {
+    followup.triggered_flush_buffers_action_ids.extend(
+      self
+        .triggered_flush_buffers_action_ids
+        .into_iter()
+        .map(Cow::Owned),
+    );
+    followup
+      .triggered_flushes_buffer_ids
+      .extend(self.triggered_flushes_buffer_ids);
+    followup.capture_screenshot |= self.capture_screenshot;
+    followup.logs_to_inject.extend(
+      self
+        .logs_to_inject
+        .into_iter()
+        .map(|(log_id, log)| (Cow::Owned(log_id), log)),
+    );
+    followup.has_debug_workflows |= self.has_debug_workflows;
+
+    for (workflow_id, workflow_debug_state) in self.workflow_debug_state {
+      if followup
+        .workflow_debug_state
+        .iter()
+        .any(|(existing_workflow_id, _)| existing_workflow_id == &workflow_id)
+      {
+        continue;
+      }
+
+      followup
+        .workflow_debug_state
+        .push((workflow_id, workflow_debug_state));
+    }
+
+    followup
+  }
+}
 
 //
 // WorkflowsEngineConfig

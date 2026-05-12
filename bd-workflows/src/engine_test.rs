@@ -43,6 +43,7 @@ use bd_test_helpers::workflow::{
   make_emit_sankey_action,
   make_flush_buffers_action,
   make_generate_log_action_proto,
+  make_on_new_session_rule,
   make_save_field_extraction,
   make_save_timestamp_extraction,
   make_start_tracing_action,
@@ -450,6 +451,74 @@ async fn debug_mode() {
   setup
     .collector
     .assert_workflow_counter_eq(123, "baz_metric", labels! {});
+}
+
+#[tokio::test]
+async fn on_new_session_runs_before_first_log_in_session() {
+  let c = state("C");
+  let b = state("B").declare_transition_with_actions(
+    &c,
+    rule!(message_equals("foo")),
+    &[make_emit_counter_action(
+      "log_metric",
+      metric_value(1),
+      vec![],
+    )],
+  );
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    make_on_new_session_rule(),
+    &[make_emit_counter_action(
+      "session_metric",
+      metric_value(1),
+      vec![extract_metric_tag("device_id", "device_id")],
+    )],
+  );
+
+  let setup = Setup::new();
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("1", &[&a, &b, &c]).make_config()],
+    ))
+    .await;
+
+  workflows_engine.process_log(
+    TestLog::new("foo")
+      .with_session("session-1")
+      .with_tags(labels! { "device_id" => "ios" }),
+  );
+  setup
+    .collector
+    .assert_workflow_counter_eq(1, "session_metric", labels! { "device_id" => "ios" });
+  setup
+    .collector
+    .assert_workflow_counter_eq(1, "log_metric", labels! {});
+
+  workflows_engine.process_log(
+    TestLog::new("foo")
+      .with_session("session-1")
+      .with_tags(labels! { "device_id" => "android" }),
+  );
+  setup
+    .collector
+    .assert_workflow_counter_eq(1, "session_metric", labels! { "device_id" => "ios" });
+  setup
+    .collector
+    .assert_workflow_counter_eq(1, "log_metric", labels! {});
+
+  workflows_engine.process_log(
+    TestLog::new("foo")
+      .with_session("session-2")
+      .with_tags(labels! { "device_id" => "android" }),
+  );
+  setup.collector.assert_workflow_counter_eq(
+    1,
+    "session_metric",
+    labels! { "device_id" => "android" },
+  );
+  setup
+    .collector
+    .assert_workflow_counter_eq(2, "log_metric", labels! {});
 }
 
 #[tokio::test]

@@ -41,9 +41,6 @@ mod network_quality;
 mod reconnect;
 pub mod upload;
 
-pub static OPAQUE_USER_ID_KEY: bd_key_value::Key<String> =
-  bd_key_value::Key::new("opaque_user_id.state.1");
-
 pub use bd_metadata::{Metadata, Platform};
 
 #[cfg(test)]

@@ -609,6 +609,7 @@ impl Transition {
         state_change_match: StateChangeMatch::try_from_proto(rule)?,
         extra_matcher: rule.log_matcher.as_ref().map(Tree::new).transpose()?,
       },
+      Rule_type::OnNewSession(_) => Predicate::OnNewSession,
     };
 
     let actions = transition
@@ -684,6 +685,7 @@ pub(crate) enum Predicate {
     matcher: Tree,
     required_matches: u32,
   },
+  OnNewSession,
   StateChangeMatch {
     state_change_match: StateChangeMatch,
     extra_matcher: Option<Tree>,

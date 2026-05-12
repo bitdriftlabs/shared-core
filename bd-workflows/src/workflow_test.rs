@@ -35,10 +35,12 @@ use bd_test_helpers::workflow::{
   WorkflowBuilder,
   make_emit_counter_action,
   make_flush_buffers_action,
+  make_on_new_session_rule,
   make_save_field_extraction,
   make_save_field_extraction_with_regex,
   make_save_message_extraction,
   make_save_message_extraction_with_regex,
+  make_save_timestamp_extraction,
   make_start_tracing_action,
   metric_value,
   state,
@@ -153,6 +155,25 @@ impl AnnotatedWorkflow {
     self.workflow.process_event(
       &self.config,
       WorkflowEvent::Log(&bd_log_primitives::Log {
+        log_type: LogType::NORMAL,
+        log_level: log_level::DEBUG,
+        message: LogMessage::String(log.message),
+        session_id: log.session.unwrap_or_else(|| "foo".to_string()),
+        occurred_at: log.occurred_at,
+        fields: bd_test_helpers::workflow::make_tags(log.tags),
+        matching_fields: LogFields::new(),
+        capture_session: None,
+      }),
+      &bd_state::test::TestStateReader::default(),
+      log.now,
+      0,
+    )
+  }
+
+  fn process_session_start(&mut self, log: TestLog) -> WorkflowResult<'_> {
+    self.workflow.process_event(
+      &self.config,
+      WorkflowEvent::SessionStart(&bd_log_primitives::Log {
         log_type: LogType::NORMAL,
         log_level: log_level::DEBUG,
         message: LogMessage::String(log.message),
@@ -1386,6 +1407,82 @@ fn basic_exclusive_workflow() {
 
   assert_active_runs!(workflow; "A");
   assert!(workflow.is_in_initial_state());
+}
+
+#[test]
+fn on_new_session_transition_advances_workflow() {
+  let c = state("C");
+  let b = state("B").declare_transition(&c, rule!(message_equals("later")));
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    make_on_new_session_rule(),
+    &[make_emit_counter_action(
+      "session_start_metric",
+      metric_value(1),
+      vec![],
+    )],
+  );
+
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
+  let mut workflow = AnnotatedWorkflow::new(config);
+
+  let result = workflow.process_session_start(
+    TestLog::new("session-start").with_occurred_at(datetime!(2023-01-01 00:00:00 UTC)),
+  );
+
+  assert_eq!(
+    result.triggered_actions,
+    vec![TriggeredAction::EmitMetric(&ActionEmitMetric {
+      id: "session_start_metric".to_string(),
+      tags: BTreeMap::new(),
+      multi_tag: None,
+      increment: ValueIncrement::Fixed(1),
+      metric_type: MetricType::Counter,
+    })]
+  );
+  assert_active_runs!(workflow; "B");
+}
+
+#[test]
+fn on_new_session_extractions_use_triggering_log_payload() {
+  let c = state("C");
+  let b = state("B").declare_transition(&c, rule!(message_equals("later")));
+  let a = state("A").declare_transition_with_extractions(
+    &b,
+    make_on_new_session_rule(),
+    &[
+      make_save_timestamp_extraction("session_start_time"),
+      make_save_message_extraction("saved_message"),
+      make_save_field_extraction("saved_field", "device_id"),
+    ],
+  );
+
+  let config = WorkflowBuilder::new("1", &[&a, &b, &c]).make_config();
+  let mut workflow = AnnotatedWorkflow::new(config);
+
+  let occurred_at = datetime!(2023-01-01 00:00:00 UTC);
+  workflow.process_session_start(
+    TestLog::new("session-start-body")
+      .with_occurred_at(occurred_at)
+      .with_tags(labels! { "device_id" => "ios" }),
+  );
+
+  let extractions = &workflow.workflow.runs()[0].traversals[0].extractions;
+  assert_eq!(
+    extractions
+      .timestamps
+      .get("session_start_time")
+      .map(|timestamp| timestamp.0),
+    Some(occurred_at),
+  );
+  assert_eq!(
+    extractions.fields.get("saved_message").map(String::as_str),
+    Some("session-start-body"),
+  );
+  assert_eq!(
+    extractions.fields.get("saved_field").map(String::as_str),
+    Some("ios"),
+  );
 }
 
 #[test]

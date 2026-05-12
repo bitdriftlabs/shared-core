@@ -583,6 +583,14 @@ pub fn make_log_match_rule(matcher: LogMatcher, count: u32) -> Rule {
 }
 
 #[must_use]
+pub fn make_on_new_session_rule() -> Rule {
+  Rule {
+    rule_type: Some(Rule_type::OnNewSession(true)),
+    ..Default::default()
+  }
+}
+
+#[must_use]
 pub fn make_state_change_rule(
   scope: protos::state::scope::StateScope,
   key: &str,

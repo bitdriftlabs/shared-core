@@ -16,8 +16,8 @@ use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::FeatureFlag;
+use bd_session::Strategy;
 use bd_session::fixed::UUIDCallbacks;
-use bd_session::{Strategy, fixed};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::config_helper::{
   configuration_update,
@@ -70,10 +70,10 @@ impl Setup {
     let (logger, _, future, _) = crate::LoggerBuilder::new(InitParams {
       sdk_directory: sdk_directory.path().to_owned(),
       network: Box::new(handle),
-      session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
-        store.clone(),
+      session_strategy: Arc::new(Strategy::fixed(
+        sdk_directory.path(),
         Arc::new(UUIDCallbacks),
-      ))),
+      )),
       metadata_provider: Arc::new(TestMetadataProvider),
       store,
       resource_utilization_target: Box::new(EmptyTarget),
