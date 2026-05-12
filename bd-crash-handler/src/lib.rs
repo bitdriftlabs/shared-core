@@ -266,7 +266,7 @@ impl Monitor {
     ]);
 
     if let Some(running_state) = report.app_metrics().and_then(|app| app.running_state()) {
-      let is_foreground = running_state.starts_with("foreground");
+      let is_foreground = running_state == "foreground";
       fields.insert(
         "foreground".into(),
         if is_foreground { "1" } else { "0" }.into(),
