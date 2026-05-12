@@ -454,10 +454,24 @@ impl Setup {
         return;
       }
 
-      tokio::task::yield_now().await;
+      1.milliseconds().sleep().await;
     }
 
     panic!("expected persisted reconnect delay");
+  }
+
+  async fn wait_for_cleared_pending_session_update(&self) {
+    // Response injection only guarantees the frame is enqueued to the API task. Tests that depend
+    // on session-state side effects need to wait until the strategy queue reflects the ack.
+    for _ in 0 .. 100 {
+      if self.session_strategy.pending_state_update().await.is_none() {
+        return;
+      }
+
+      1.milliseconds().sleep().await;
+    }
+
+    panic!("expected pending session update to be acknowledged");
   }
 
   #[must_use]
@@ -1623,6 +1637,7 @@ async fn session_state_update_is_resent_until_acked() {
   setup
     .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
     .await;
+  setup.wait_for_cleared_pending_session_update().await;
 
   setup.session_strategy.start_new_session().await;
   let next_session_id = setup.session_strategy.session_id().await.unwrap();
