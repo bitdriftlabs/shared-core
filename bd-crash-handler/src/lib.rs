@@ -458,6 +458,29 @@ impl Monitor {
       .collect_vec()
   }
 
+  fn get_low_memory_state_fields(&self, origin: ReportOrigin) -> LogFields {
+    if !matches!(origin, ReportOrigin::Previous) {
+      return LogFields::default();
+    }
+    self
+      .previous_run_state
+      .iter()
+      .filter(|(scope, ..)| *scope == bd_resilient_kv::Scope::System)
+      .filter_map(|(_, name, TimestampedValue { value, .. })| {
+        if !value.has_string_value() {
+          return None;
+        }
+        let field_name: &str = match name.as_str() {
+          "low_memory_level" => "_low_memory_level",
+          "low_memory_used_kb" => "_low_memory_used_kb",
+          "low_memory_timestamp_us" => "_low_memory_timestamp_us",
+          _ => return None,
+        };
+        Some((field_name.into(), value.string_value().to_string().into()))
+      })
+      .collect()
+  }
+
   fn get_global_state_fields(&self, origin: ReportOrigin) -> LogFields {
     match origin {
       ReportOrigin::Current => self.global_state_reader.global_state_fields(),
@@ -560,7 +583,8 @@ impl Monitor {
       .get_session_id(origin)
       .await
       .unwrap_or_else(|_| "unknown".to_string());
-    let (timestamp, state_fields) = Self::read_log_fields(bin_report, &global_state_fields);
+    let (timestamp, mut state_fields) = Self::read_log_fields(bin_report, &global_state_fields);
+    state_fields.extend(self.get_low_memory_state_fields(origin));
 
     self.invoke_crash_hook(
       &bin_report,

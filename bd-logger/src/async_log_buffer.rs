@@ -96,6 +96,11 @@ pub enum StateUpdateMessage {
   AddLogField(String, DataValue),
   RemoveLogField(String),
   SetFeatureFlagExposure(String, Option<String>),
+  SetLowMemoryState {
+    level: String,
+    memory_used_kb: u64,
+    timestamp_us: u64,
+  },
   SetEntityId(Option<String>),
   RequestSessionId(bd_completion::Sender<anyhow::Result<String>>),
   StartNewSession(bd_completion::Sender<()>),
@@ -111,6 +116,7 @@ impl MemorySized for StateUpdateMessage {
         Self::SetFeatureFlagExposure(flag, variant) => {
           flag.len() + variant.as_ref().map_or(0, String::len)
         },
+        Self::SetLowMemoryState { level, .. } => level.len(),
         Self::SetEntityId(entity_id) => entity_id.as_ref().map_or(0, String::len),
         Self::RequestSessionId(response_tx) => size_of_val(response_tx),
         Self::StartNewSession(response_tx) => size_of_val(response_tx),
@@ -1046,6 +1052,24 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                       if let Err(e) = result {
                         log::debug!("failed to enqueue state operation to pre-config buffer: {e}");
                       }
+                    }
+                  }
+                },
+                StateUpdateMessage::SetLowMemoryState {
+                  level,
+                  memory_used_kb,
+                  timestamp_us,
+                } => {
+                  for (key, value) in [
+                    ("low_memory_level", level),
+                    ("low_memory_used_kb", memory_used_kb.to_string()),
+                    ("low_memory_timestamp_us", timestamp_us.to_string()),
+                  ] {
+                    if let Err(e) = state_store
+                      .insert(Scope::System, key.to_string(), string_value(value))
+                      .await
+                    {
+                      log::debug!("failed to persist low memory state key {key}: {e}");
                     }
                   }
                 },
