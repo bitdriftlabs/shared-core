@@ -240,6 +240,7 @@ impl Negotiator {
     let intent_request = LogUploadIntentRequest {
       log_count: 0,
       byte_count: 0,
+      session_id: action.session_id.clone(),
       // The API expects one buffer ID in here even though an action may be responsible for
       // uploading multiple buffers at once. Take the first buffer ID from the list in here to
       // make the API happy.

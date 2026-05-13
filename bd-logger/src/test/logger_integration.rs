@@ -1008,6 +1008,7 @@ fn log_tailing() {
 #[test]
 fn workflow_flush_buffers_action_uploads_buffer() {
   let mut setup = Setup::new();
+  let session_id = setup.logger_handle.session_id().unwrap();
 
   setup.send_runtime_update();
 
@@ -1049,6 +1050,10 @@ fn workflow_flush_buffers_action_uploads_buffer() {
     [].into(),
     None,
   );
+
+  assert_matches!(setup.server.next_log_intent(), Some(intent) => {
+    assert_eq!(intent.session_id, session_id);
+  });
 
   // Since there are 10 logs in the buffer at this point, we should now see an upload containing
   // 10 logs.
