@@ -170,10 +170,21 @@ impl Strategy {
     self.update_tx.subscribe()
   }
 
+  pub fn try_current_session_id(&self) -> anyhow::Result<String> {
+    self.ensure_not_in_callback("try_current_session_id")?;
+
+    let guard = self.state.lock();
+    let state = guard
+      .as_ref()
+      .ok_or_else(|| anyhow::anyhow!("current session ID is not loaded"))?;
+
+    Self::loaded_session_id(state)
+  }
+
   pub async fn session_id(&self) -> anyhow::Result<String> {
     self.ensure_not_in_callback("session_id")?;
 
-    let (session_id, state, mutation) = {
+    let result: anyhow::Result<(String, LoadedState, Mutation)> = {
       let mut guard = self.state.lock();
       if let Some(state) = guard.as_mut() {
         // Session reads and activity updates share the same mutation path so activity-based
@@ -182,17 +193,22 @@ impl Strategy {
           Backend::Fixed(_) => fixed::Strategy::on_session_id(state),
           Backend::ActivityBased(strategy) => strategy.on_session_id(state),
         };
-        let session_id = state.persisted.current_session_id.clone();
-        (session_id, state.clone(), mutation)
+
+        Ok((Self::loaded_session_id(state)?, state.clone(), mutation))
       } else {
         // The first read initializes from durable state and may enqueue a deferred callback if the
         // backend decides the current access should create or rotate a session.
         let initialization = self.initialize_state();
-        let session_id = initialization.state.persisted.current_session_id.clone();
         *guard = Some(initialization.state.clone());
-        (session_id, initialization.state, initialization.mutation)
+
+        Ok((
+          Self::loaded_session_id(&initialization.state)?,
+          initialization.state,
+          initialization.mutation,
+        ))
       }
     };
+    let (session_id, state, mutation) = result?;
 
     let callback = self.finish_mutation(state, mutation).await;
     self.run_callback(callback);
@@ -221,6 +237,14 @@ impl Strategy {
     }
 
     Ok(())
+  }
+
+  fn loaded_session_id(state: &LoadedState) -> anyhow::Result<String> {
+    if state.persisted.current_session_id.is_empty() {
+      anyhow::bail!("current session ID is unavailable");
+    }
+
+    Ok(state.persisted.current_session_id.clone())
   }
 
   fn with_callback_guard<T>(&self, f: impl FnOnce() -> T) -> T {

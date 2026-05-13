@@ -59,6 +59,28 @@ async fn test_session_id() {
 }
 
 #[tokio::test]
+async fn try_current_session_id_fails_before_initialization() {
+  let sdk_directory = TempDir::new().unwrap();
+  let callbacks = Arc::new(MockCallbacks::default());
+  let strategy = Strategy::fixed(sdk_directory.path(), callbacks.clone());
+
+  let error = strategy.try_current_session_id().unwrap_err();
+
+  assert_eq!("current session ID is not loaded", error.to_string());
+  assert!(callbacks.generated_session_ids.lock().is_empty());
+}
+
+#[tokio::test]
+async fn try_current_session_id_returns_loaded_session() {
+  let sdk_directory = TempDir::new().unwrap();
+  let strategy = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
+
+  let session_id = strategy.session_id().await.unwrap();
+
+  assert_eq!(session_id, strategy.try_current_session_id().unwrap());
+}
+
+#[tokio::test]
 async fn test_start_new_session() {
   let sdk_directory = TempDir::new().unwrap();
   let callbacks = Arc::new(MockCallbacks::default());
@@ -96,6 +118,7 @@ async fn test_previous_process_session_id() {
 struct ReEntryCallbacks {
   session_strategy: parking_lot::Mutex<Option<Arc<Strategy>>>,
   inner_session_id_error: parking_lot::Mutex<Option<String>>,
+  inner_try_current_session_id_error: parking_lot::Mutex<Option<String>>,
 }
 
 impl Callbacks for ReEntryCallbacks {
@@ -104,6 +127,8 @@ impl Callbacks for ReEntryCallbacks {
       expect_ready(strategy.start_new_session());
       let error = expect_ready(strategy.session_id()).unwrap_err();
       *self.inner_session_id_error.lock() = Some(error.to_string());
+      let error = strategy.try_current_session_id().unwrap_err();
+      *self.inner_try_current_session_id_error.lock() = Some(error.to_string());
       anyhow::bail!(error);
     }
 
@@ -126,6 +151,10 @@ async fn handles_re_entry() {
   assert_eq!(
     Some("session_id cannot be called from within a session callback".to_string()),
     callbacks.inner_session_id_error.lock().clone()
+  );
+  assert_eq!(
+    Some("try_current_session_id cannot be called from within a session callback".to_string()),
+    callbacks.inner_try_current_session_id_error.lock().clone()
   );
 
   // Confirm that it doesn't deadlock and returns a reasonable ID.
