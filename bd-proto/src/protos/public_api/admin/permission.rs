@@ -66,6 +66,8 @@ pub enum Permission {
     DEBUG_FILE_READ = 15,
     // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.SYSTEM_STATUS_READ)
     SYSTEM_STATUS_READ = 18,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.ISSUE_WORKFLOW_WRITE)
+    ISSUE_WORKFLOW_WRITE = 19,
 }
 
 impl ::protobuf::Enum for Permission {
@@ -93,6 +95,7 @@ impl ::protobuf::Enum for Permission {
             17 => ::std::option::Option::Some(Permission::CONNECTOR_READ),
             15 => ::std::option::Option::Some(Permission::DEBUG_FILE_READ),
             18 => ::std::option::Option::Some(Permission::SYSTEM_STATUS_READ),
+            19 => ::std::option::Option::Some(Permission::ISSUE_WORKFLOW_WRITE),
             _ => ::std::option::Option::None
         }
     }
@@ -115,6 +118,7 @@ impl ::protobuf::Enum for Permission {
             "CONNECTOR_READ" => ::std::option::Option::Some(Permission::CONNECTOR_READ),
             "DEBUG_FILE_READ" => ::std::option::Option::Some(Permission::DEBUG_FILE_READ),
             "SYSTEM_STATUS_READ" => ::std::option::Option::Some(Permission::SYSTEM_STATUS_READ),
+            "ISSUE_WORKFLOW_WRITE" => ::std::option::Option::Some(Permission::ISSUE_WORKFLOW_WRITE),
             _ => ::std::option::Option::None
         }
     }
@@ -136,6 +140,7 @@ impl ::protobuf::Enum for Permission {
         Permission::CONNECTOR_READ,
         Permission::DEBUG_FILE_READ,
         Permission::SYSTEM_STATUS_READ,
+        Permission::ISSUE_WORKFLOW_WRITE,
     ];
 }
 
@@ -163,6 +168,7 @@ impl ::protobuf::EnumFull for Permission {
             Permission::CONNECTOR_READ => 13,
             Permission::DEBUG_FILE_READ => 14,
             Permission::SYSTEM_STATUS_READ => 15,
+            Permission::ISSUE_WORKFLOW_WRITE => 16,
         };
         Self::enum_descriptor().value_by_index(index)
     }
@@ -182,7 +188,7 @@ impl Permission {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n/bitdrift/public/unary/admin/v1/permission.proto\x12\x1ebitdrift.publi\
-    c.unary.admin.v1*\xcc\x02\n\nPermission\x12\x1a\n\x16PERMISSION_UNSPECIF\
+    c.unary.admin.v1*\xe6\x02\n\nPermission\x12\x1a\n\x16PERMISSION_UNSPECIF\
     IED\x10\0\x12\x11\n\rSDK_KEY_ADMIN\x10\x01\x12\x13\n\x0fAPI_KEY_CREATOR\
     \x10\x10\x12\x12\n\x0eWORKFLOW_ADMIN\x10\x02\x12\x11\n\rWORKFLOW_READ\
     \x10\x03\x12\x12\n\x0eWORKFLOW_WRITE\x10\x04\x12\x13\n\x0fWORKFLOW_DEPLO\
@@ -190,7 +196,8 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x08\x12\x0f\n\x0bMETRIC_READ\x10\t\x12\x0f\n\x0bISSUE_ADMIN\x10\x0b\x12\
     \x10\n\x0cISSUE_ASSIGN\x10\x0c\x12\x13\n\x0fCONNECTOR_ADMIN\x10\x0e\x12\
     \x12\n\x0eCONNECTOR_READ\x10\x11\x12\x13\n\x0fDEBUG_FILE_READ\x10\x0f\
-    \x12\x16\n\x12SYSTEM_STATUS_READ\x10\x12b\x06proto3\
+    \x12\x16\n\x12SYSTEM_STATUS_READ\x10\x12\x12\x18\n\x14ISSUE_WORKFLOW_WRI\
+    TE\x10\x13b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

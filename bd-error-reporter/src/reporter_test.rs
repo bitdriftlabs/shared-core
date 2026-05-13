@@ -80,8 +80,8 @@ impl MockSessionProvider {
 }
 
 impl SessionProvider for MockSessionProvider {
-  fn session_id(&self) -> String {
-    self.session_id.clone()
+  fn session_id(&self) -> anyhow::Result<String> {
+    Ok(self.session_id.clone())
   }
 }
 
@@ -113,7 +113,10 @@ fn attach_error_handler() {
 
   assert_eq!(
     HashMap::from([
-      ("x-session-id".to_string(), session_strategy.session_id()),
+      (
+        "x-session-id".to_string(),
+        session_strategy.session_id().unwrap(),
+      ),
       ("x-sdk-version".to_string(), "1.2.3".to_string()),
       ("x-platform".to_string(), "apple".to_string()),
       ("x-os".to_string(), "ios".to_string()),

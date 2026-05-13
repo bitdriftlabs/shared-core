@@ -25,7 +25,7 @@ use bd_proto::protos::config::v1::config::{BufferConfigList, buffer_config};
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::FeatureFlag as _;
 use bd_session::Strategy;
-use bd_session::fixed::{self, UUIDCallbacks};
+use bd_session::fixed::UUIDCallbacks;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_test_helpers::config_helper::{
   configuration_update,
@@ -117,7 +117,6 @@ pub struct Setup {
   pub sdk_directory: Arc<TempDir>,
   pub server: Box<bd_test_helpers::test_api_server::ServerHandle>,
   pub current_api_stream: Option<StreamHandle>,
-  pub store: Arc<Store>,
 
   pub capture_screen_count: Arc<AtomicUsize>,
   pub capture_screenshot_count: Arc<AtomicUsize>,
@@ -182,16 +181,16 @@ impl Setup {
     let (logger, _, flush_trigger) = crate::LoggerBuilder::new(InitParams {
       sdk_directory: options.sdk_directory.path().into(),
       api_key: "foo-api-key".to_string(),
-      session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
-        store.clone(),
+      session_strategy: Arc::new(Strategy::fixed(
+        options.sdk_directory.path(),
         Arc::new(UUIDCallbacks),
-      ))),
+      )),
       metadata_provider: options.metadata_provider,
       resource_utilization_target: Box::new(EmptyTarget),
       session_replay_target,
       events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
       device,
-      store: store.clone(),
+      store,
       network: Box::new(Self::run_network(server.port, shutdown.make_shutdown())),
       static_metadata: Arc::new(EmptyMetadata),
       start_in_sleep_mode: options.start_in_sleep_mode,
@@ -214,7 +213,6 @@ impl Setup {
       sdk_directory: options.sdk_directory,
       server,
       current_api_stream: Some(current_api_stream),
-      store,
       capture_screen_count,
       capture_screenshot_count,
       _shutdown: shutdown,
@@ -464,7 +462,6 @@ impl Drop for Setup {
 /// Creates minimal `InitParams` for testing without a server connection.
 /// Useful for testing infrastructure-level concerns like directory locking.
 pub fn create_minimal_init_params(sdk_directory: &std::path::Path) -> InitParams {
-  let session_store = in_memory_store();
   let device_store = Arc::new(Store::new(Box::new(
     bd_test_helpers::session::InMemoryStorage::default(),
   )));
@@ -472,10 +469,7 @@ pub fn create_minimal_init_params(sdk_directory: &std::path::Path) -> InitParams
   InitParams {
     sdk_directory: sdk_directory.into(),
     api_key: "test-api-key".to_string(),
-    session_strategy: Arc::new(Strategy::Fixed(fixed::Strategy::new(
-      session_store,
-      Arc::new(UUIDCallbacks),
-    ))),
+    session_strategy: Arc::new(Strategy::fixed(sdk_directory, Arc::new(UUIDCallbacks))),
     metadata_provider: Arc::new(LogMetadata::default()),
     resource_utilization_target: Box::new(EmptyTarget),
     session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
