@@ -18,7 +18,7 @@ use crate::actions_flush_buffers::{
 use crate::config::{ActionFlushBuffers, FlushBufferId};
 use assert_matches::assert_matches;
 use bd_api::DataUpload;
-use bd_api::upload::{IntentDecision, IntentResponse};
+use bd_api::upload::{IntentDecision, IntentResponse, LogUploadIntentRequest};
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
 use bd_log_primitives::tiny_set::TinySet;
@@ -40,19 +40,23 @@ impl Setup {
   fn make_negotiator(&self, response_decision: IntentResponse) -> NegotiatorWrapper {
     let (input_tx, input_rx) = tokio::sync::mpsc::channel(1);
     let (data_upload_tx, data_upload_rx) = tokio::sync::mpsc::channel(1);
+    let (intent_tx, intent_rx) = tokio::sync::mpsc::channel(1);
 
     let (negotiator, output_rx) =
       Negotiator::new(input_rx, data_upload_tx, &self.collector.scope("test"));
 
     NegotiatorWrapper {
       input_tx,
+      intent_rx,
       output_rx,
       negotiator_task_handle: negotiator.run(),
       intent_server_task_handle: tokio::task::spawn(async move {
+        let intent_tx = intent_tx;
         let mut data_upload_rx = data_upload_rx;
         loop {
           if let Some(data_upload) = data_upload_rx.recv().await {
             if let DataUpload::LogsUploadIntent(intent) = data_upload {
+              intent_tx.send(intent.payload.clone()).await.unwrap();
               intent.response_tx.send(response_decision.clone()).unwrap();
             } else {
               panic!("unknown request type");
@@ -66,6 +70,7 @@ impl Setup {
 
 struct NegotiatorWrapper {
   input_tx: Sender<PendingFlushBuffersAction>,
+  intent_rx: Receiver<LogUploadIntentRequest>,
   output_rx: Receiver<NegotiatorOutput>,
 
   negotiator_task_handle: JoinHandle<()>,
@@ -513,6 +518,9 @@ async fn negotiator_upload_flow() {
     .input_tx
     .try_send(pending_action.clone())
     .unwrap();
+
+  let intent_request = negotiator.intent_rx.recv().await.unwrap();
+  assert_eq!(intent_request.session_id, pending_action.session_id);
 
   assert_matches!(
     negotiator.output_rx.recv().await.unwrap(),
