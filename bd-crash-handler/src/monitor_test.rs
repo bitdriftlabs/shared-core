@@ -68,6 +68,7 @@ struct CrashReportBuilder {
   app_version: Option<String>,
   timestamp: Option<OffsetDateTime>,
   running_state: Option<String>,
+  platform: Platform,
 }
 
 impl CrashReportBuilder {
@@ -80,6 +81,7 @@ impl CrashReportBuilder {
       app_version: None,
       timestamp: None,
       running_state: None,
+      platform: Platform::Unknown,
     }
   }
 
@@ -113,6 +115,11 @@ impl CrashReportBuilder {
     self
   }
 
+  fn platform(mut self, platform: Platform) -> Self {
+    self.platform = platform;
+    self
+  }
+
   fn build(self) -> Vec<u8> {
     use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
       AppMetricsT,
@@ -137,14 +144,17 @@ impl CrashReportBuilder {
       None
     };
 
-    let device_metrics = self.timestamp.map(|ts| {
+    let device_metrics = {
       let mut metrics = DeviceMetricsT::default();
-      metrics.time = Some(TimestampT {
-        seconds: ts.unix_timestamp().try_into().unwrap(),
-        nanos: 0,
-      });
-      Box::new(metrics)
-    });
+      metrics.platform = self.platform;
+      if let Some(ts) = self.timestamp {
+        metrics.time = Some(TimestampT {
+          seconds: ts.unix_timestamp().try_into().unwrap(),
+          nanos: 0,
+        });
+      }
+      Some(Box::new(metrics))
+    };
 
     let mut report_t = ReportT::default();
     report_t.type_ = self.report_type;
@@ -1014,6 +1024,7 @@ async fn assert_running_state_maps_to_foreground(running_state: &str, expected_f
   let data = CrashReportBuilder::new("SIGSEGV")
     .reason("segfault")
     .running_state(running_state)
+    .platform(Platform::Android)
     .build();
 
   let mut setup = Setup::new(None, false, None).await;
