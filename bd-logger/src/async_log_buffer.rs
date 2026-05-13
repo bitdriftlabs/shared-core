@@ -66,7 +66,9 @@ use time::ext::NumericalDuration;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::Sleep;
 
-pub const SESSION_BRIDGE_TIMEOUT: StdDuration = StdDuration::from_secs(5);
+// Synchronous callers may invoke these bridges from latency-sensitive threads, so keep the
+// timeout well below ANR territory if the async logger task stalls.
+pub const SESSION_BRIDGE_TIMEOUT: StdDuration = StdDuration::from_secs(1);
 
 //
 // ReportProcessor

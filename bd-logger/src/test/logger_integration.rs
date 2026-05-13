@@ -534,7 +534,9 @@ fn api_bandwidth_counters() {
   assert_matches!(setup.server.next_stat_upload(), Some(upload) => {
       let upload = StatsRequestHelper::new(upload);
 
-      // If these numbers end up being too variable we do something more generic.
+      // The handshake now carries a started-session state update with a real-time start
+      // timestamp. That protobuf timestamp can vary by 1 encoded byte across runs, so the
+      // uncompressed transmit counter legitimately flips between 177 and 178.
       let bandwidth_tx = upload.get_counter("api:bandwidth_tx", labels! {}).unwrap();
       let bandwidth_rx = upload.get_counter("api:bandwidth_rx", labels! {}).unwrap();
       assert!(
