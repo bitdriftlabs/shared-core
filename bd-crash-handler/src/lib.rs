@@ -271,6 +271,18 @@ impl Monitor {
 
     match platform {
       Platform::Android => {
+        // Override foreground field using running_state from the FBS report when available.
+        // On Android, running_state maps to ActivityManager.RunningAppProcessInfo importance:
+        // https://developer.android.com/reference/android/app/ActivityManager.RunningAppProcessInfo
+        // Only exact "foreground" importance maps to foreground=1.
+        if let Some(running_state) = report.app_metrics().and_then(|app| app.running_state()) {
+          let is_foreground = running_state == "foreground";
+          fields.insert(
+            "foreground".into(),
+            if is_foreground { "1" } else { "0" }.into(),
+          );
+        }
+
         let version_code =
           build_number.map_or_else(|| "unknown".to_string(), |b| b.version_code().to_string());
         fields.insert("_app_version_code".into(), version_code.into());

@@ -67,6 +67,8 @@ struct CrashReportBuilder {
   app_id: Option<String>,
   app_version: Option<String>,
   timestamp: Option<OffsetDateTime>,
+  running_state: Option<String>,
+  platform: Platform,
 }
 
 impl CrashReportBuilder {
@@ -78,6 +80,8 @@ impl CrashReportBuilder {
       app_id: None,
       app_version: None,
       timestamp: None,
+      running_state: None,
+      platform: Platform::Unknown,
     }
   }
 
@@ -106,6 +110,16 @@ impl CrashReportBuilder {
     self
   }
 
+  fn running_state(mut self, state: impl Into<String>) -> Self {
+    self.running_state = Some(state.into());
+    self
+  }
+
+  fn platform(mut self, platform: Platform) -> Self {
+    self.platform = platform;
+    self
+  }
+
   fn build(self) -> Vec<u8> {
     use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
       AppMetricsT,
@@ -120,23 +134,28 @@ impl CrashReportBuilder {
     error.reason = self.reason;
     error.relation_to_next = ErrorRelation::CausedBy;
 
-    let app_metrics = if self.app_id.is_some() || self.app_version.is_some() {
-      let mut metrics = AppMetricsT::default();
-      metrics.app_id = self.app_id;
-      metrics.version = self.app_version;
-      Some(Box::new(metrics))
-    } else {
-      None
-    };
+    let app_metrics =
+      if self.app_id.is_some() || self.app_version.is_some() || self.running_state.is_some() {
+        let mut metrics = AppMetricsT::default();
+        metrics.app_id = self.app_id;
+        metrics.version = self.app_version;
+        metrics.running_state = self.running_state;
+        Some(Box::new(metrics))
+      } else {
+        None
+      };
 
-    let device_metrics = self.timestamp.map(|ts| {
+    let device_metrics = {
       let mut metrics = DeviceMetricsT::default();
-      metrics.time = Some(TimestampT {
-        seconds: ts.unix_timestamp().try_into().unwrap(),
-        nanos: 0,
-      });
-      Box::new(metrics)
-    });
+      metrics.platform = self.platform;
+      if let Some(ts) = self.timestamp {
+        metrics.time = Some(TimestampT {
+          seconds: ts.unix_timestamp().try_into().unwrap(),
+          nanos: 0,
+        });
+      }
+      Some(Box::new(metrics))
+    };
 
     let mut report_t = ReportT::default();
     report_t.type_ = self.report_type;
@@ -1000,4 +1019,66 @@ async fn crash_report_hook_is_invoked_with_correct_info() {
   assert!(!captured[0].fields.contains_key("reason"));
   assert!(!captured[0].fields.contains_key("detail"));
   assert!(!captured[0].fields.contains_key("session_id"));
+}
+
+async fn assert_running_state_maps_to_foreground(running_state: &str, expected_foreground: &str) {
+  let data = CrashReportBuilder::new("SIGSEGV")
+    .reason("segfault")
+    .running_state(running_state)
+    .platform(Platform::Android)
+    .build();
+
+  let mut setup = Setup::new(None, false, None).await;
+  setup.make_crash("report.cap", &data);
+
+  let uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".parse().unwrap();
+  make_mut(&mut setup.upload_client)
+    .expect_enqueue_upload()
+    .returning(move |_, _, _, _, _, _, _| Ok(uuid));
+
+  let logs = setup.process_all_pending_reports().await;
+  assert_eq!(1, logs.len());
+  assert_eq!(
+    expected_foreground,
+    logs[0]["foreground"].value.as_str().unwrap()
+  );
+}
+
+#[tokio::test]
+async fn running_state_foreground_sets_foreground_field_to_one() {
+  assert_running_state_maps_to_foreground("foreground", "1").await;
+}
+
+#[tokio::test]
+async fn running_state_cached_sets_foreground_field_to_zero() {
+  assert_running_state_maps_to_foreground("cached", "0").await;
+}
+
+#[tokio::test]
+async fn running_state_foreground_service_sets_foreground_field_to_zero() {
+  assert_running_state_maps_to_foreground("foreground_service", "0").await;
+}
+
+#[tokio::test]
+async fn no_running_state_does_not_override_foreground() {
+  let data = CrashReportBuilder::new("SIGSEGV")
+    .reason("segfault")
+    .build();
+
+  let mut setup = Setup::new(
+    Some([("foreground".into(), "1".into())].into()),
+    false,
+    None,
+  )
+  .await;
+  setup.make_crash("report.cap", &data);
+
+  let uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".parse().unwrap();
+  make_mut(&mut setup.upload_client)
+    .expect_enqueue_upload()
+    .returning(move |_, _, _, _, _, _, _| Ok(uuid));
+
+  let logs = setup.process_all_pending_reports().await;
+  assert_eq!(1, logs.len());
+  assert_eq!("1", logs[0]["foreground"].value.as_str().unwrap());
 }

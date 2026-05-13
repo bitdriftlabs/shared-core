@@ -64,7 +64,12 @@ impl MetadataCollector {
     }
   }
 
-  /// Creates metadata from log fields without interpolating provider fields
+  /// Returns log metadata using the last active global state at the end of the last process run.
+  /// Log fields take precedence over persisted global state fields to allow the caller to
+  /// override values in global state, e.g. when the crash handler knows that the event happened
+  /// in the background.
+  /// Does *not* invoke the field providers as these would incorrectly reflect the state of the
+  /// current process.
   pub(crate) fn metadata_from_fields_with_previous_global_state(
     &self,
     fields: AnnotatedLogFields,
@@ -76,13 +81,10 @@ impl MetadataCollector {
     let fields = if let Some(previous_global_state_fields) =
       global_state_reader.previous_global_state_fields()
     {
-      let log_fields = partition_fields(fields);
-
-      log_fields
-        .ootb
+      previous_global_state_fields
+        .clone()
         .into_iter()
-        .chain(previous_global_state_fields.clone())
-        .chain(log_fields.custom)
+        .chain(fields.into_iter().map(|(k, v)| (k, v.value)))
         .collect()
     } else {
       fields.into_iter().map(|(k, v)| (k, v.value)).collect()
