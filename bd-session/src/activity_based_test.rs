@@ -35,6 +35,21 @@ impl Callbacks for MockCallbacks {
   }
 }
 
+#[derive(Default)]
+struct ReEntryCallbacks {
+  session_strategy: parking_lot::Mutex<Option<Arc<Strategy>>>,
+  inner_try_current_session_id_error: parking_lot::Mutex<Option<String>>,
+}
+
+impl Callbacks for ReEntryCallbacks {
+  fn session_id_changed(&self, _session_id: &str) {
+    if let Some(strategy) = &*self.session_strategy.lock() {
+      let error = strategy.try_current_session_id().unwrap_err();
+      *self.inner_try_current_session_id_error.lock() = Some(error.to_string());
+    }
+  }
+}
+
 //
 // MockStorage
 //
@@ -59,6 +74,64 @@ async fn generates_new_session_and_stores_it_if_none_exists() {
   assert_eq!(1, callbacks.session_id_changes.lock().len());
   assert_eq!(session_id, callbacks.session_id_changes.lock()[0]);
   assert!(strategy.previous_process_session_id().is_none());
+}
+
+#[tokio::test]
+async fn try_current_session_id_fails_before_initialization() {
+  let now = OffsetDateTime::now_utc();
+  let sdk_directory = TempDir::new().unwrap();
+  let callbacks = Arc::new(MockCallbacks::default());
+
+  let strategy = Strategy::activity_based(
+    sdk_directory.path(),
+    Duration::seconds(30),
+    callbacks.clone(),
+    Arc::new(TestTimeProvider::new(now)),
+  );
+
+  let error = strategy.try_current_session_id().unwrap_err();
+
+  assert_eq!("current session ID is not loaded", error.to_string());
+  assert!(callbacks.session_id_changes.lock().is_empty());
+}
+
+#[tokio::test]
+async fn try_current_session_id_returns_loaded_session() {
+  let now = OffsetDateTime::now_utc();
+  let sdk_directory = TempDir::new().unwrap();
+  let strategy = Strategy::activity_based(
+    sdk_directory.path(),
+    Duration::seconds(30),
+    Arc::new(MockCallbacks::default()),
+    Arc::new(TestTimeProvider::new(now)),
+  );
+
+  let session_id = strategy.session_id().await.unwrap();
+
+  assert_eq!(session_id, strategy.try_current_session_id().unwrap());
+}
+
+#[tokio::test]
+async fn try_current_session_id_rejects_callback_reentry() {
+  let now = OffsetDateTime::now_utc();
+  let sdk_directory = TempDir::new().unwrap();
+  let callbacks = Arc::new(ReEntryCallbacks::default());
+  let strategy = Arc::new(Strategy::activity_based(
+    sdk_directory.path(),
+    Duration::seconds(30),
+    callbacks.clone(),
+    Arc::new(TestTimeProvider::new(now)),
+  ));
+
+  callbacks.session_strategy.lock().replace(strategy.clone());
+
+  let session_id = strategy.session_id().await.unwrap();
+
+  assert_eq!(36, session_id.len());
+  assert_eq!(
+    Some("try_current_session_id cannot be called from within a session callback".to_string()),
+    callbacks.inner_try_current_session_id_error.lock().clone()
+  );
 }
 
 #[tokio::test]
