@@ -134,15 +134,16 @@ impl CrashReportBuilder {
     error.reason = self.reason;
     error.relation_to_next = ErrorRelation::CausedBy;
 
-    let app_metrics = if self.app_id.is_some() || self.app_version.is_some() || self.running_state.is_some() {
-      let mut metrics = AppMetricsT::default();
-      metrics.app_id = self.app_id;
-      metrics.version = self.app_version;
-      metrics.running_state = self.running_state;
-      Some(Box::new(metrics))
-    } else {
-      None
-    };
+    let app_metrics =
+      if self.app_id.is_some() || self.app_version.is_some() || self.running_state.is_some() {
+        let mut metrics = AppMetricsT::default();
+        metrics.app_id = self.app_id;
+        metrics.version = self.app_version;
+        metrics.running_state = self.running_state;
+        Some(Box::new(metrics))
+      } else {
+        None
+      };
 
     let device_metrics = {
       let mut metrics = DeviceMetricsT::default();
