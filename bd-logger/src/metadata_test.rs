@@ -257,8 +257,7 @@ fn metadata_from_fields_with_previous_global_state_includes_global_fields() {
   // Setup global state
   let global_fields = [
     ("global_key".into(), "global_value".into()),
-    ("shared_custom_key".into(), "global_value".into()),
-    ("shared_ootb_key".into(), "global_value".into()),
+    ("shared_key".into(), "global_value".into()),
   ]
   .into();
   tracker.maybe_update_global_state(&global_fields);
@@ -267,14 +266,10 @@ fn metadata_from_fields_with_previous_global_state_includes_global_fields() {
   let input_fields = [
     (
       "local_key".into(),
-      AnnotatedLogField::new_custom("local_value"),
+      AnnotatedLogField::new_ootb("local_value"),
     ),
     (
-      "shared_custom_key".into(),
-      AnnotatedLogField::new_custom("local_value"),
-    ),
-    (
-      "shared_ootb_key".into(),
+      "shared_key".into(),
       AnnotatedLogField::new_ootb("local_value"),
     ),
   ]
@@ -288,32 +283,22 @@ fn metadata_from_fields_with_previous_global_state_includes_global_fields() {
 
   // Verify fields
 
-  // 1. Unique global field should be present
+  // Unique global field should be present
   assert_eq!(
     "global_value",
     expected_field_value(&metadata.fields, "global_key").unwrap()
   );
 
-  // 2. Unique local field should be present
+  // Unique local field should be present
   assert_eq!(
     "local_value",
     expected_field_value(&metadata.fields, "local_key").unwrap()
   );
 
-  // 3. Precedence check:
-  // Order: OOTB -> Global -> Custom
-
-  // shared_ootb_key: OOTB ("local_value") vs Global ("global_value")
-  // Global comes AFTER OOTB in chain, so Global should win.
-  assert_eq!(
-    "global_value",
-    expected_field_value(&metadata.fields, "shared_ootb_key").unwrap()
-  );
-
-  // shared_custom_key: Custom ("local_value") vs Global ("global_value")
-  // Custom comes AFTER Global in chain, so Custom should win.
+  // Log fields override global state, allowing callers to provide
+  // authoritative values (e.g. foreground from ApplicationExitInfo).
   assert_eq!(
     "local_value",
-    expected_field_value(&metadata.fields, "shared_custom_key").unwrap()
+    expected_field_value(&metadata.fields, "shared_key").unwrap()
   );
 }
