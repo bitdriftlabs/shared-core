@@ -1,5 +1,5 @@
 [package]
-name         = "bd-report-script"
+name         = "bd-script"
 version      = "1.0.0"
 edition      = "2024"
 license-file = "../LICENSE"
@@ -8,15 +8,9 @@ publish      = false
 [dependencies]
 anyhow.workspace            = true
 bd-log-primitives.path      = "../bd-log-primitives"
+bd-proto.path               = "../bd-proto"
 bd-workspace-hack.workspace = true
 vrl.workspace               = true
 ordered-float.workspace     = true
 time.workspace              = true
-
-[dev-dependencies]
-serde_json.workspace = true
-
-[build-dependencies]
-anyhow.workspace     = true
-bd-proto.path        = "../bd-proto"
-serde_json.workspace = true
+flatbuffers.workspace       = true

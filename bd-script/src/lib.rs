@@ -7,26 +7,27 @@
 
 mod functions;
 mod generated;
+mod input;
+mod output;
 mod target;
 
 #[cfg(test)]
 #[path = "./script_test.rs"]
 mod test;
 
-use crate::generated::get_report_schema;
+pub use crate::input::{PathError, Scriptable};
+pub use crate::output::{GroupingHints, Output};
 use crate::target::ReportTarget;
 use anyhow::anyhow;
-use bd_log_primitives::LogFieldValue;
-use std::collections::BTreeMap;
 use vrl::compiler::{CompileConfig, Program, compile_with_external};
 use vrl::diagnostic::Formatter;
-pub use vrl::prelude::Value as ScriptValue;
 use vrl::prelude::state::{ExternalEnv, RuntimeState};
-use vrl::prelude::{Collection, Context, TimeZone};
+use vrl::prelude::{Collection, Context, TimeZone, Value};
 use vrl::value::Kind;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Script {
+  source: String,
   program: Program,
 }
 
@@ -34,41 +35,39 @@ pub struct Script {
 pub struct FeatureFlag {
   pub name: String,
   pub value: Option<String>,
-  pub last_updated: time::OffsetDateTime,
+  pub last_updated: Option<time::OffsetDateTime>,
 }
 
 #[derive(Debug)]
-pub struct Output {
-  pub grouping_key: Option<String>,
-  pub metrics: BTreeMap<String, LogFieldValue>,
-  /// mapping of error index to frame index to whether a frame is significant
-  /// for grouping
-  significant_frame_data: BTreeMap<isize, BTreeMap<isize, bool>>,
-}
+pub struct ScriptValue(Value);
 
-impl Output {
-  /// Check if a frame should be used for grouping, enhanced with script target
-  /// state. An existing value indicates the significance state has been set
-  /// explicitly in the script
-  #[must_use]
-  pub fn is_significant_frame(&self, error_index: isize, frame_index: isize) -> Option<bool> {
-    self
-      .significant_frame_data
-      .get(&error_index)
-      .and_then(|error| error.get(&frame_index))
-      .copied()
+impl From<Value> for ScriptValue {
+  fn from(value: Value) -> Self {
+    Self(value)
   }
 }
 
+impl From<ScriptValue> for Value {
+  fn from(value: ScriptValue) -> Self {
+    value.0
+  }
+}
+
+impl From<&str> for ScriptValue {
+  fn from(value: &str) -> Self {
+    Value::Bytes(value.to_owned().into()).into()
+  }
+}
+
+
 impl Script {
   /// Create a new script for querying report contents,
-  pub fn new(program_source: &str) -> anyhow::Result<Self> {
+  pub fn new<T: Scriptable>(program_source: &str) -> anyhow::Result<Self> {
     let mut functions = vrl::stdlib::all();
     functions.append(&mut crate::functions::all());
     let compile_config = CompileConfig::default();
 
-    let external =
-      ExternalEnv::new_with_kind(get_report_schema(), Kind::object(Collection::empty()));
+    let external = ExternalEnv::new_with_kind(T::schema(), Kind::object(Collection::empty()));
 
     let result = compile_with_external(program_source, &functions, &external, compile_config)
       .map_err(|e| anyhow!("Compilation error: {}", Formatter::new(program_source, e)))?;
@@ -77,21 +76,28 @@ impl Script {
     }
 
     Ok(Self {
+      source: program_source.to_owned(),
       program: result.program,
     })
   }
 
-  pub fn run<T: Into<ScriptValue>>(
+  pub fn run<T: Scriptable>(
     &self,
-    report: T,
+    object: &T,
     feature_flags: &[FeatureFlag],
   ) -> anyhow::Result<Output> {
     let mut state = RuntimeState::default();
     let timezone = TimeZone::default();
-    let mut target = ReportTarget::new(report, feature_flags);
+    let mut target = ReportTarget::new(object, feature_flags);
     let mut ctx = Context::new(&mut target, &mut state, &timezone);
     self.program.resolve(&mut ctx)?;
 
     Ok(target.into())
+  }
+}
+
+impl PartialEq for Script {
+  fn eq(&self, other: &Self) -> bool {
+    self.source == other.source
   }
 }

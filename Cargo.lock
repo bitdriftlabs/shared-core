@@ -1161,20 +1161,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bd-report-script"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "bd-log-primitives",
- "bd-proto",
- "bd-workspace-hack",
- "ordered-float 5.3.0",
- "serde_json",
- "time",
- "vrl",
-]
-
-[[package]]
 name = "bd-report-writer"
 version = "1.0.0"
 dependencies = [
@@ -1297,6 +1283,20 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+]
+
+[[package]]
+name = "bd-script"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "bd-log-primitives",
+ "bd-proto",
+ "bd-workspace-hack",
+ "flatbuffers",
+ "ordered-float 5.3.0",
+ "time",
+ "vrl",
 ]
 
 [[package]]

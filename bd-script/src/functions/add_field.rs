@@ -1,5 +1,11 @@
-use crate::ScriptValue;
-use crate::target::ReportTarget;
+// shared-core - bitdrift's common client/server libraries
+// Copyright Bitdrift, Inc. All rights reserved.
+//
+// Use of this source code is governed by a source available license that can be found in the
+// LICENSE file or at:
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
+
+use crate::target::metrics_path;
 use vrl::prelude::{
   Expression,
   ExpressionError,
@@ -7,6 +13,7 @@ use vrl::prelude::{
   FunctionExpression,
   Parameter,
   TypeDef,
+  Value,
   kind,
 };
 
@@ -68,8 +75,8 @@ impl FunctionExpression for FieldData {
     let value = self.value.resolve(ctx)?;
     ctx
       .target_mut()
-      .target_insert(&ReportTarget::metrics_path(&name), value)?;
-    Ok(ScriptValue::Null)
+      .target_insert(&metrics_path(&name), value)?;
+    Ok(Value::Null)
   }
 
   fn type_def(&self, _state: &vrl::prelude::TypeState) -> TypeDef {

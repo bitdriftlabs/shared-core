@@ -1,5 +1,11 @@
-use crate::ScriptValue;
-use crate::target::ReportTarget;
+// shared-core - bitdrift's common client/server libraries
+// Copyright Bitdrift, Inc. All rights reserved.
+//
+// Use of this source code is governed by a source available license that can be found in the
+// LICENSE file or at:
+// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
+
+use crate::target::significant_frame_path;
 use vrl::compiler::expression::Literal;
 use vrl::prelude::{
   Expression,
@@ -8,6 +14,7 @@ use vrl::prelude::{
   FunctionExpression,
   Parameter,
   TypeDef,
+  Value,
   kind,
 };
 
@@ -80,7 +87,7 @@ impl FunctionExpression for FrameData {
     let is_significant = self.is_significant.resolve(ctx)?;
     if is_significant.is_boolean() || is_significant.is_null() {
       ctx.target_mut().target_insert(
-        &ReportTarget::significant_frame_path(error_index, frame_index),
+        &significant_frame_path(error_index, frame_index),
         is_significant,
       )?;
     } else {
@@ -89,7 +96,7 @@ impl FunctionExpression for FrameData {
       ));
     }
 
-    Ok(ScriptValue::Null)
+    Ok(Value::Null)
   }
 
   fn type_def(&self, _: &vrl::prelude::TypeState) -> vrl::prelude::TypeDef {
