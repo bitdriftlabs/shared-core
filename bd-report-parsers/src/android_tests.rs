@@ -306,7 +306,7 @@ macro_rules! assert_parsed_anr_eq {
     };
     let mut device_info = DeviceMetricsArgs {
       model: Some(builder.create_string("Monaco")),
-      time: Some(&Timestamp::new(1756987272, 357156958)),
+      time: Some(&Timestamp::new(1_756_987_272, 357_156_958)),
       ..Default::default()
     };
     match build_anr(&mut builder, &mut app_info, &mut device_info, input, None) {
@@ -420,7 +420,7 @@ fn build_anr_to_bytes(filename: &str, description: Option<&str>) -> Vec<u8> {
   };
   let mut device_info = DeviceMetricsArgs {
     model: Some(builder.create_string("Monaco")),
-    time: Some(&Timestamp::new(1756987272, 357156958)),
+    time: Some(&Timestamp::new(1_756_987_272, 357_156_958)),
     ..Default::default()
   };
   let (_, offset) = build_anr(
