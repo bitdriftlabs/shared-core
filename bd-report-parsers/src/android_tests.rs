@@ -438,12 +438,15 @@ fn build_anr_to_bytes(filename: &str, description: Option<&str>) -> Vec<u8> {
 #[test]
 fn build_anr_with_app_exit_description() {
   let description =
-    "bg anr: Input dispatching timed out (Application does not have a focused window)";
+    "user request after error: Input dispatching timed out (Application does not have a focused window)";
   let bytes = build_anr_to_bytes("anr1.txt", Some(description));
   let report = flatbuffers::root::<Report<'_>>(&bytes).unwrap();
   let error = report.errors().unwrap().get(0);
-  assert_eq!(error.name(), Some("Background ANR"));
-  assert_eq!(error.reason(), Some(description));
+  assert_eq!(error.name(), Some("User Perceived ANR"));
+  assert_eq!(
+    error.reason(),
+    Some("Input dispatching timed out (Application does not have a focused window)")
+  );
 }
 
 #[test]

@@ -76,7 +76,9 @@ pub fn build_anr<'a, 'fbb>(
     let abi = builder.create_string(abi);
     builder.create_vector(&[abi])
   });
-  let description = app_exit_description.or(subject.as_deref());
+  let description = app_exit_description
+    .map(|d| d.split_once(": ").map_or(d, |(_, rest)| rest))
+    .or(subject.as_deref());
   let error_args = v_1::ErrorArgs {
     name: Some(builder.create_string(anr_name(description))),
     reason: description.map(|d| builder.create_string(d)),
