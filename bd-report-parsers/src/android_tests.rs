@@ -309,7 +309,7 @@ macro_rules! assert_parsed_anr_eq {
       time: Some(&Timestamp::new(1756987272, 357156958)),
       ..Default::default()
     };
-    match build_anr(&mut builder, &mut app_info, &mut device_info, input) {
+    match build_anr(&mut builder, &mut app_info, &mut device_info, input, None) {
       Ok((_, offset)) => {
         let report = get_table!(Report, builder, offset);
         insta::assert_debug_snapshot!(report);
@@ -407,4 +407,65 @@ fn anr_sleep_main_thread_test() {
 #[test]
 fn anr_latency_test() {
   assert_parsed_anr_eq!("anr_latency_test.txt");
+}
+
+fn build_anr_to_bytes(filename: &str, description: Option<&str>) -> Vec<u8> {
+  let mut builder = FlatBufferBuilder::new();
+  let file = open_fixture(filename);
+  let mmap = unsafe { memmap2::Mmap::map(&file).unwrap() };
+  let input = MemmapView::new(&mmap);
+  let mut app_info = AppMetricsArgs {
+    app_id: Some(builder.create_string("com.example.MyApp")),
+    ..Default::default()
+  };
+  let mut device_info = DeviceMetricsArgs {
+    model: Some(builder.create_string("Monaco")),
+    time: Some(&Timestamp::new(1756987272, 357156958)),
+    ..Default::default()
+  };
+  let (_, offset) = build_anr(
+    &mut builder,
+    &mut app_info,
+    &mut device_info,
+    input,
+    description,
+  )
+  .unwrap();
+  builder.finish(offset, None);
+  builder.finished_data().to_vec()
+}
+
+#[test]
+fn build_anr_with_app_exit_description() {
+  let description =
+    "bg anr: Input dispatching timed out (Application does not have a focused window)";
+  let bytes = build_anr_to_bytes("anr1.txt", Some(description));
+  let report = flatbuffers::root::<Report<'_>>(&bytes).unwrap();
+  let error = report.errors().unwrap().get(0);
+  assert_eq!(error.name(), Some("Background ANR"));
+  assert_eq!(error.reason(), Some(description));
+}
+
+#[test]
+fn build_anr_without_description_uses_subject() {
+  let bytes = build_anr_to_bytes("anr_broadcast_receiver.txt", None);
+  let report = flatbuffers::root::<Report<'_>>(&bytes).unwrap();
+  let error = report.errors().unwrap().get(0);
+  assert_eq!(error.name(), Some("User Perceived ANR"));
+  assert!(error.reason().is_some());
+  assert!(
+    error
+      .reason()
+      .unwrap()
+      .contains("Input dispatching timed out")
+  );
+}
+
+#[test]
+fn build_anr_without_description_or_subject() {
+  let bytes = build_anr_to_bytes("anr1.txt", None);
+  let report = flatbuffers::root::<Report<'_>>(&bytes).unwrap();
+  let error = report.errors().unwrap().get(0);
+  assert_eq!(error.name(), Some("Undetermined ANR"));
+  assert_eq!(error.reason(), None);
 }
