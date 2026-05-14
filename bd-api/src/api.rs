@@ -395,6 +395,8 @@ pub struct Api {
   disconnected_at: Option<Instant>,
   last_disconnect_reason: Option<String>,
 
+  sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
+
   #[cfg(test)]
   pub data_idle_timeout_test_hook: Option<tokio::sync::mpsc::Sender<()>>,
 }
@@ -417,6 +419,7 @@ impl Api {
     store: Arc<bd_key_value::Store>,
     session_strategy: Arc<bd_session::Strategy>,
     opaque_entity_updates: watch::Receiver<Option<String>>,
+    sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
   ) -> Self {
     let mut backoff_policy = RuntimeBackoffPolicy::new(runtime_loader.as_ref());
     let generic_kill_duration = runtime_loader.register_duration_watch();
@@ -460,6 +463,7 @@ impl Api {
       reconnect_state,
       disconnected_at: None,
       last_disconnect_reason: None,
+      sdk_status_tracker,
       #[cfg(test)]
       data_idle_timeout_test_hook: None,
     }
@@ -881,6 +885,9 @@ impl Api {
       .network_quality_monitor
       .set_network_quality(NetworkQuality::Online);
     self.reconnect_state.record_connectivity_event();
+    self
+      .sdk_status_tracker
+      .record_handshake(self.time_provider.now());
 
     self.disconnected_at = None;
 

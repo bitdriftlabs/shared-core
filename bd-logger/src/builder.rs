@@ -302,6 +302,8 @@ impl LoggerBuilder {
         log_network_quality_provider.clone(),
       ]));
 
+    let sdk_status_tracker = bd_client_common::sdk_status::SdkStatusTracker::new();
+
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
       UninitializedLoggingContext::new(
         &self.params.sdk_directory,
@@ -331,6 +333,7 @@ impl LoggerBuilder {
       &self.params.store,
       time_provider.clone(),
       init_lifecycle.clone(),
+      sdk_status_tracker.clone(),
       data_upload_tx.clone(),
     );
 
@@ -353,6 +356,7 @@ impl LoggerBuilder {
       pending_entity_id.clone(),
       sleep_mode_active_tx,
       is_tracing_active,
+      sdk_status_tracker.clone(),
     );
     let log = if self.internal_logger {
       Arc::new(InternalLogger::new(
@@ -510,6 +514,7 @@ impl LoggerBuilder {
           &scope.scope("config"),
         ),
         time_provider.clone(),
+        sdk_status_tracker.clone(),
       ));
 
       let api = bd_api::api::Api::new(
@@ -529,6 +534,7 @@ impl LoggerBuilder {
         self.params.store.clone(),
         self.params.session_strategy.clone(),
         opaque_entity_updates_rx,
+        sdk_status_tracker,
       );
 
       let mut config_writer = bd_crash_handler::ConfigWriter::new(

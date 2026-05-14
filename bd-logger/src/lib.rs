@@ -45,6 +45,7 @@ pub use crate::logger::{ChannelPair, InitParams};
 pub use async_log_buffer::LogAttributesOverrides;
 pub use bd_api::{PlatformNetworkManager, PlatformNetworkStream};
 use bd_buffer::AbslCode;
+pub use bd_client_common::sdk_status::{SdkState, SdkStatus, SdkStatusTracker};
 pub use bd_device::Device;
 pub use bd_events::ListenerTarget as EventsListenerTarget;
 pub use bd_log_metadata::MetadataProvider;

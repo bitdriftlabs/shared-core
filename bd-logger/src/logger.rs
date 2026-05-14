@@ -600,6 +600,8 @@ pub struct Logger {
 
   sleep_mode_active: watch::Sender<bool>,
   is_tracing_active: Arc<AtomicBool>,
+
+  sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
 }
 
 impl Logger {
@@ -617,6 +619,7 @@ impl Logger {
     pending_entity_id: Arc<Mutex<Option<PendingEntityIdUpdate>>>,
     sleep_mode_active: watch::Sender<bool>,
     is_tracing_active: Arc<AtomicBool>,
+    sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
   ) -> Self {
     let stats = Stats::new(&stats_scope);
 
@@ -638,7 +641,14 @@ impl Logger {
       pending_entity_id,
       sleep_mode_active,
       is_tracing_active,
+      sdk_status_tracker,
     }
+  }
+
+  /// Returns a point-in-time snapshot of the SDK's operational status.
+  #[must_use]
+  pub fn get_sdk_status(&self) -> bd_client_common::sdk_status::SdkStatus {
+    self.sdk_status_tracker.get()
   }
 
   /// Create the SDK and corresponding buffer directory if it doesn't already exist.

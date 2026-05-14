@@ -250,6 +250,7 @@ impl Setup {
       store.clone(),
       session_strategy.clone(),
       opaque_entity_updates_rx,
+      bd_client_common::sdk_status::SdkStatusTracker::new(),
     );
     api.data_idle_timeout_test_hook = idle_timeout_tx;
 
@@ -314,6 +315,7 @@ impl Setup {
       self.store.clone(),
       self.session_strategy.clone(),
       self.opaque_entity_updates.subscribe(),
+      bd_client_common::sdk_status::SdkStatusTracker::new(),
     );
 
     self.api_task = Some(tokio::task::spawn(api.start()));
