@@ -57,6 +57,7 @@ pub fn build_anr<'a, 'fbb>(
   app_info: &mut v_1::AppMetricsArgs<'fbb>,
   device_info: &mut v_1::DeviceMetricsArgs<'fbb>,
   input: MemmapView<'a>,
+  app_exit_description: Option<&str>,
 ) -> IResult<MemmapView<'a>, WIPOffset<v_1::Report<'fbb>>, nom::error::Error<MemmapView<'a>>> {
   let (remainder, (subject, (pid, _timestamp), metrics, _attached_count, stacks)) = (
     subject_parser,
@@ -75,9 +76,10 @@ pub fn build_anr<'a, 'fbb>(
     let abi = builder.create_string(abi);
     builder.create_vector(&[abi])
   });
+  let description = app_exit_description.or(subject.as_deref());
   let error_args = v_1::ErrorArgs {
-    name: Some(builder.create_string(anr_name(subject.as_deref()))),
-    reason: subject.map(|sub| builder.create_string(&sub)),
+    name: Some(builder.create_string(anr_name(description))),
+    reason: description.map(|d| builder.create_string(d)),
     stack_trace: stacks.main_stack,
     ..Default::default()
   };
