@@ -6,7 +6,6 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 pub mod feature_flag;
-mod functions;
 mod input;
 pub mod report;
 mod target;
@@ -46,7 +45,6 @@ impl Script {
     custom_functions: Vec<Box<dyn Function>>,
   ) -> anyhow::Result<Self> {
     let mut functions = vrl::stdlib::all();
-    functions.extend(crate::functions::stdlib());
     functions.extend(custom_functions);
     let compile_config = CompileConfig::default();
 
