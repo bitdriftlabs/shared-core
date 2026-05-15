@@ -284,6 +284,8 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
     app_version: Some(args.app_version.clone()),
     platform: args.platform.clone().into(),
     device: device.clone(),
+    os_version: None,
+    manufacturer: None,
     model: args.model.clone(),
   });
 

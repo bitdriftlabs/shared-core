@@ -40,6 +40,7 @@ use bd_proto::protos::client::api::{
   StatsUploadRequest,
 };
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::logging::payload::data::Data_type;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_stats_common::labels;
 use bd_test_helpers::make_mut;
@@ -80,6 +81,49 @@ impl Metadata for EmptyMetadata {
 
   fn collect_inner(&self) -> HashMap<String, String> {
     HashMap::new()
+  }
+}
+
+//
+// TestMetadata
+//
+
+struct TestMetadata {
+  platform: Platform,
+}
+
+impl Metadata for TestMetadata {
+  fn sdk_version(&self) -> &'static str {
+    "test"
+  }
+
+  fn platform(&self) -> &Platform {
+    &self.platform
+  }
+
+  fn os(&self) -> String {
+    match self.platform {
+      Platform::Android => "android".to_string(),
+      Platform::Apple => "ios".to_string(),
+      Platform::Electron => "electron".to_string(),
+    }
+  }
+
+  fn device_id(&self) -> String {
+    "device-id".to_string()
+  }
+
+  fn collect_inner(&self) -> HashMap<String, String> {
+    let mut metadata = HashMap::from([
+      ("model".to_string(), "test-model".to_string()),
+      ("os_version".to_string(), "14.4".to_string()),
+    ]);
+
+    if self.platform == Platform::Android {
+      metadata.insert("_manufacturer".to_string(), "Google".to_string());
+    }
+
+    metadata
   }
 }
 
@@ -185,11 +229,30 @@ struct Setup {
   store: Arc<Store>,
   session_strategy: Arc<bd_session::Strategy>,
   config_updater: Arc<MockClientConfigurationUpdate>,
+  static_metadata: Arc<dyn Metadata + Send + Sync>,
 }
 
 impl Setup {
   async fn new() -> Self {
-    Self::new_ex(Self::make_nice_mock_updater(), None, None, None).await
+    Self::new_ex(
+      Self::make_nice_mock_updater(),
+      None,
+      None,
+      None,
+      Arc::new(EmptyMetadata),
+    )
+    .await
+  }
+
+  async fn new_with_metadata(static_metadata: Arc<dyn Metadata + Send + Sync>) -> Self {
+    Self::new_ex(
+      Self::make_nice_mock_updater(),
+      None,
+      None,
+      None,
+      static_metadata,
+    )
+    .await
   }
 
   async fn new_ex(
@@ -197,6 +260,7 @@ impl Setup {
     initial_runtime: Option<RuntimeUpdate>,
     idle_timeout_tx: Option<Sender<()>>,
     network_quality_provider: Option<SimpleNetworkQualityProvider>,
+    static_metadata: Arc<dyn Metadata + Send + Sync>,
   ) -> Self {
     let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
 
@@ -239,7 +303,7 @@ impl Setup {
       manager,
       data_rx,
       trigger_upload_tx,
-      Arc::new(EmptyMetadata),
+      static_metadata.clone(),
       runtime_loader.clone(),
       config_updater.clone(),
       time_provider.clone(),
@@ -279,6 +343,7 @@ impl Setup {
       store,
       session_strategy,
       config_updater,
+      static_metadata,
     }
   }
 
@@ -303,7 +368,7 @@ impl Setup {
       manager,
       data_rx,
       trigger_upload_tx,
-      Arc::new(EmptyMetadata),
+      self.static_metadata.clone(),
       runtime_loader.clone(),
       self.config_updater.clone(),
       self.time_provider.clone(),
@@ -567,6 +632,45 @@ impl Setup {
 }
 
 #[tokio::test(start_paused = true)]
+async fn handshake_metadata_includes_os_version_and_android_manufacturer() {
+  let mut setup = Setup::new_with_metadata(Arc::new(TestMetadata {
+    platform: Platform::Android,
+  }))
+  .await;
+
+  let handshake = setup.next_stream(1.seconds()).await.unwrap();
+
+  assert_eq!(
+    handshake.static_device_metadata["os_version"].data_type,
+    Some(Data_type::StringData("14.4".to_string()))
+  );
+  assert_eq!(
+    handshake.static_device_metadata["_manufacturer"].data_type,
+    Some(Data_type::StringData("Google".to_string()))
+  );
+}
+
+#[tokio::test(start_paused = true)]
+async fn handshake_metadata_omits_manufacturer_for_non_android() {
+  let mut setup = Setup::new_with_metadata(Arc::new(TestMetadata {
+    platform: Platform::Apple,
+  }))
+  .await;
+
+  let handshake = setup.next_stream(1.seconds()).await.unwrap();
+
+  assert_eq!(
+    handshake.static_device_metadata["os_version"].data_type,
+    Some(Data_type::StringData("14.4".to_string()))
+  );
+  assert!(
+    !handshake
+      .static_device_metadata
+      .contains_key("_manufacturer")
+  );
+}
+
+#[tokio::test(start_paused = true)]
 async fn api_retry_stream() {
   let mut mock_updater = Arc::new(MockClientConfigurationUpdate::new());
   make_mut(&mut mock_updater)
@@ -597,6 +701,7 @@ async fn api_retry_stream() {
     .into(),
     None,
     None,
+    Arc::new(EmptyMetadata),
   )
   .await;
 
@@ -813,6 +918,7 @@ async fn data_idle_timeout() {
     }),
     None,
     None,
+    Arc::new(EmptyMetadata),
   )
   .await;
 
@@ -895,6 +1001,7 @@ async fn data_idle_timeout_fails_to_connect() {
     }),
     None,
     Some(network_quality),
+    Arc::new(EmptyMetadata),
   )
   .await;
 
@@ -969,6 +1076,7 @@ async fn data_idle_timeout_data_resets_timeout() {
     }),
     Some(idle_timeout_tx),
     None,
+    Arc::new(EmptyMetadata),
   )
   .await;
 
@@ -1062,6 +1170,7 @@ async fn data_idle_timeout_data_sent_during_reconnect_timeout() {
     }),
     Some(idle_timeout_tx),
     None,
+    Arc::new(EmptyMetadata),
   )
   .await;
 
@@ -1251,7 +1360,7 @@ async fn rate_limited_response_before_handshake_marks_safe() {
     .times(1 ..)
     .returning(|| ());
 
-  let mut setup = Setup::new_ex(mock_updater, None, None, None).await;
+  let mut setup = Setup::new_ex(mock_updater, None, None, None, Arc::new(EmptyMetadata)).await;
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
   setup
@@ -1281,7 +1390,7 @@ async fn error_response_with_retry_after_after_handshake_marks_safe() {
     .times(1 ..)
     .returning(|| ());
 
-  let mut setup = Setup::new_ex(mock_updater, None, None, None).await;
+  let mut setup = Setup::new_ex(mock_updater, None, None, None, Arc::new(EmptyMetadata)).await;
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
   setup
@@ -1343,6 +1452,7 @@ async fn exponential_backoff_persists_across_restart() {
     .into(),
     None,
     None,
+    Arc::new(EmptyMetadata),
   )
   .await;
 
@@ -1454,6 +1564,7 @@ async fn opaque_client_state() {
     }),
     None,
     None,
+    Arc::new(EmptyMetadata),
   )
   .await;
   assert!(
