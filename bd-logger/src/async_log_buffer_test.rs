@@ -7,7 +7,12 @@
 
 use crate::Block;
 use crate::async_log_buffer::{
-  AsyncLogBuffer, LogLine, LogReplay, PreConfigItem, Sender, StateUpdateMessage,
+  AsyncLogBuffer,
+  LogLine,
+  LogReplay,
+  PreConfigItem,
+  Sender,
+  StateUpdateMessage,
 };
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
@@ -22,7 +27,12 @@ use bd_log_filter::FilterChain;
 use bd_log_matcher::builder::message_equals;
 use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
-  AnnotatedLogField, AnnotatedLogFields, DataValue, Log, LogFields, log_level,
+  AnnotatedLogField,
+  AnnotatedLogFields,
+  DataValue,
+  Log,
+  LogFields,
+  log_level,
 };
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;
@@ -486,7 +496,7 @@ async fn logs_are_replayed_in_order() {
   let replayed_logs = setup.replayer_logs.lock();
   assert!(!replayed_logs.is_empty());
   let prefix_len = written_logs.len().min(replayed_logs.len());
-  for index in 0..prefix_len {
+  for index in 0 .. prefix_len {
     assert_eq!(written_logs[index], replayed_logs[index].as_str());
   }
 }

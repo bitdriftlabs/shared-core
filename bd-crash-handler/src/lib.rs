@@ -481,7 +481,7 @@ impl Monitor {
       .collect();
 
     // If the last recorded memory pressure level was "normal", memory pressure had resolved
-    // before the crash — don't include low memory fields in the report.
+    // before the crash so we don't include low memory fields in the report
     if fields
       .get("_low_memory_level")
       .is_some_and(|v| v.as_str() == Some("normal"))
