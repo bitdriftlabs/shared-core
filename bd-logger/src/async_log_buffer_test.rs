@@ -6,7 +6,9 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::Block;
-use crate::async_log_buffer::{AsyncLogBuffer, LogLine, LogReplay, PreConfigItem, Sender};
+use crate::async_log_buffer::{
+  AsyncLogBuffer, LogLine, LogReplay, PreConfigItem, Sender, StateUpdateMessage,
+};
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
@@ -20,12 +22,7 @@ use bd_log_filter::FilterChain;
 use bd_log_matcher::builder::message_equals;
 use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
-  AnnotatedLogField,
-  AnnotatedLogFields,
-  DataValue,
-  Log,
-  LogFields,
-  log_level,
+  AnnotatedLogField, AnnotatedLogFields, DataValue, Log, LogFields, log_level,
 };
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;
@@ -489,7 +486,7 @@ async fn logs_are_replayed_in_order() {
   let replayed_logs = setup.replayer_logs.lock();
   assert!(!replayed_logs.is_empty());
   let prefix_len = written_logs.len().min(replayed_logs.len());
-  for index in 0 .. prefix_len {
+  for index in 0..prefix_len {
     assert_eq!(written_logs[index], replayed_logs[index].as_str());
   }
 }
@@ -805,6 +802,68 @@ async fn updates_system_session_id_for_new_sessions() {
   }
 
   drop(test_store);
+  task.join().unwrap();
+}
+
+#[tokio::test]
+async fn set_low_memory_state_writes_to_system_scope() {
+  let mut setup = Setup::new();
+  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+
+  let task = std::thread::spawn(move || {
+    assert_ok!(
+      config_update_tx.blocking_send(setup.make_config_update(WorkflowsConfiguration::default()))
+    );
+  });
+
+  let test_store = TestStore::new().await;
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+    (*test_store).clone(),
+    (),
+    shutdown_trigger.make_shutdown(),
+  ));
+
+  sender
+    .try_send_state_update(StateUpdateMessage::SetLowMemoryState {
+      level: "warning".to_string(),
+      memory_used_kb: 111_000,
+      timestamp_us: 123_456_789,
+    })
+    .unwrap();
+
+  sender
+    .flush_state(Block::Yes {
+      timeout: 5.std_seconds(),
+      poll_callback: None,
+    })
+    .unwrap();
+
+  // Wait a bit for file I/O to be sure
+  500.milliseconds().sleep().await;
+
+  {
+    let reader = test_store.read().await;
+    assert!(
+      reader
+        .get(Scope::System, "low_memory_level")
+        .is_some_and(|v| v.has_string_value() && v.string_value() == "warning")
+    );
+    assert!(
+      reader
+        .get(Scope::System, "low_memory_used_kb")
+        .is_some_and(|v| v.has_string_value() && v.string_value() == "111000")
+    );
+    assert!(
+      reader
+        .get(Scope::System, "low_memory_timestamp_us")
+        .is_some_and(|v| v.has_string_value() && v.string_value() == "123456789")
+    );
+  }
+
+  shutdown_trigger.shutdown().await;
+  handle.await.unwrap();
   task.join().unwrap();
 }
 
