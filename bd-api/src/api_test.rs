@@ -39,8 +39,8 @@ use bd_proto::protos::client::api::{
   StateUpdateResponse,
   StatsUploadRequest,
 };
-use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::logging::payload::data::Data_type;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_stats_common::labels;
 use bd_test_helpers::make_mut;
@@ -245,7 +245,14 @@ impl Setup {
   }
 
   async fn new_with_metadata(static_metadata: Arc<dyn Metadata + Send + Sync>) -> Self {
-    Self::new_ex(Self::make_nice_mock_updater(), None, None, None, static_metadata).await
+    Self::new_ex(
+      Self::make_nice_mock_updater(),
+      None,
+      None,
+      None,
+      static_metadata,
+    )
+    .await
   }
 
   async fn new_ex(
@@ -656,7 +663,11 @@ async fn handshake_metadata_omits_manufacturer_for_non_android() {
     handshake.static_device_metadata["os_version"].data_type,
     Some(Data_type::StringData("14.4".to_string()))
   );
-  assert!(!handshake.static_device_metadata.contains_key("_manufacturer"));
+  assert!(
+    !handshake
+      .static_device_metadata
+      .contains_key("_manufacturer")
+  );
 }
 
 #[tokio::test(start_paused = true)]
@@ -1349,8 +1360,7 @@ async fn rate_limited_response_before_handshake_marks_safe() {
     .times(1 ..)
     .returning(|| ());
 
-  let mut setup =
-    Setup::new_ex(mock_updater, None, None, None, Arc::new(EmptyMetadata)).await;
+  let mut setup = Setup::new_ex(mock_updater, None, None, None, Arc::new(EmptyMetadata)).await;
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
   setup
@@ -1380,8 +1390,7 @@ async fn error_response_with_retry_after_after_handshake_marks_safe() {
     .times(1 ..)
     .returning(|| ());
 
-  let mut setup =
-    Setup::new_ex(mock_updater, None, None, None, Arc::new(EmptyMetadata)).await;
+  let mut setup = Setup::new_ex(mock_updater, None, None, None, Arc::new(EmptyMetadata)).await;
 
   assert!(setup.next_stream(1.seconds()).await.is_some());
   setup

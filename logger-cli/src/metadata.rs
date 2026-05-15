@@ -55,10 +55,10 @@ impl bd_api::Metadata for Metadata {
       metadata_map.insert("os_version".to_string(), os_version.clone());
     }
 
-    if self.platform == bd_api::Platform::Android {
-      if let Some(manufacturer) = self.manufacturer.as_ref() {
-        metadata_map.insert("_manufacturer".to_string(), manufacturer.clone());
-      }
+    if self.platform == bd_api::Platform::Android
+      && let Some(manufacturer) = self.manufacturer.as_ref()
+    {
+      metadata_map.insert("_manufacturer".to_string(), manufacturer.clone());
     }
 
     metadata_map.insert("model".to_string(), self.model.clone());
