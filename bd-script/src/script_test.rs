@@ -5,10 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::feature_flag::{FeatureFlag, FeatureFlagWrapper};
 use crate::input::{PathError, Scriptable};
-use crate::{FeatureFlag, Script, ScriptValue};
-use bd_log_primitives::{LogFieldValue, LogMapData};
-use ordered_float::NotNan;
+use crate::report::{ReportOutput, report_functions};
+use crate::{Script, ScriptValue};
 use std::collections::BTreeMap;
 use time::OffsetDateTime;
 use vrl::core::Value;
@@ -37,6 +37,7 @@ fn compute_interpolated_key() {
     frame = .errors[0].stacktrace[0]
     set_grouping_key(\"{{ app_id }}-{{ error_name }}-{{ frame }}\")
     ",
+    report_functions(),
   )
   .expect("is ok");
   let report = Report {
@@ -46,7 +47,7 @@ fn compute_interpolated_key() {
       stacktrace: vec!["Builder.build()".to_string(), "App.start()".to_string()],
     }],
   };
-  let output = script.run(&report, &[]).expect("can run");
+  let output: ReportOutput = script.run(&report).expect("can run");
   assert_eq!(
     Some("com.example.myapp-NullPointerException-Builder.build()".to_string()),
     output.grouping_hints.grouping_key
@@ -62,6 +63,7 @@ fn unset_grouping_key() {
     _key = set_grouping_key(\"{{ app_id }}-{{ error_name }}\")
     set_grouping_key(null)
     ",
+    report_functions(),
   )
   .expect("is ok");
   let report = Report {
@@ -71,7 +73,7 @@ fn unset_grouping_key() {
       stacktrace: vec!["Builder.build()".to_string(), "App.start()".to_string()],
     }],
   };
-  let output = script.run(&report, &[]).expect("can run");
+  let output: ReportOutput = script.run(&report).expect("can run");
   assert_eq!(None, output.grouping_hints.grouping_key);
 }
 
@@ -83,6 +85,7 @@ fn type_hints_are_working() {
     is_mine = contains(.app_id, \"myapp\")
     set_grouping_key(string!(is_mine))
     ",
+    report_functions(),
   )
   .expect("is ok");
 
@@ -92,6 +95,7 @@ fn type_hints_are_working() {
     has_unknown = contains(.unknown_field, \"thing\")
     set_grouping_key(string!(has_unknown))
     ",
+    report_functions(),
   )
   .expect_err("is not ok");
   assert!(script.to_string().contains("exact type"));
@@ -111,6 +115,7 @@ fn set_significant_frame() {
       }
     }
     ",
+    report_functions(),
   )
   .expect("is ok");
   let report = Report {
@@ -131,7 +136,7 @@ fn set_significant_frame() {
       },
     ],
   };
-  let output = script.run(&report, &[]).expect("can run");
+  let output: ReportOutput = script.run(&report).expect("can run");
   assert_eq!(
     Some(false),
     output.grouping_hints.is_significant_frame(0, 0)
@@ -157,6 +162,7 @@ fn combined_significant_frame() {
       }
     }
     ",
+    report_functions(),
   )
   .expect("is ok");
   let script2 = Script::new::<Report>(
@@ -169,6 +175,7 @@ fn combined_significant_frame() {
       }
     }
     ",
+    report_functions(),
   )
   .expect("is ok");
   let report = Report {
@@ -189,8 +196,8 @@ fn combined_significant_frame() {
       },
     ],
   };
-  let output1 = script1.run(&report, &[]).expect("can run");
-  let output2 = script2.run(&report, &[]).expect("can run");
+  let output1: ReportOutput = script1.run(&report).expect("can run");
+  let output2: ReportOutput = script2.run(&report).expect("can run");
   let combined = output1 + output2;
   assert_eq!(
     Some(false),
@@ -224,6 +231,7 @@ fn unset_significant_frame() {
       }
     }
     ",
+    report_functions(),
   )
   .expect("is ok");
   let report = Report {
@@ -238,7 +246,7 @@ fn unset_significant_frame() {
       ],
     }],
   };
-  let output = script.run(&report, &[]).expect("can run");
+  let output: ReportOutput = script.run(&report).expect("can run");
   assert_eq!(None, output.grouping_hints.is_significant_frame(0, 0));
 }
 
@@ -249,9 +257,9 @@ fn emit_fields() {
     app_id = .app_id
     error_name = .errors[0].name
     _a = add_field(\"some_tag\", \"{{ app_id }}-{{ error_name }}\")
-    _b = add_field(\"chain_len\", length(.errors))
-    add_field(\"stuff\", {\"x\": 1, \"y\": 15.0, \"z\": .feature_flags[0].name})
+    add_field(\"flag_name\", string!(.feature_flags[0].name))
     ",
+    report_functions(),
   )
   .expect("is ok");
   let report = Report {
@@ -266,37 +274,22 @@ fn emit_fields() {
       ],
     }],
   };
-  let output = script
-    .run(
-      &report,
-      &[FeatureFlag {
-        name: "in_slice".to_string(),
-        value: None,
-        last_updated: Some(OffsetDateTime::now_utc()),
-      }],
-    )
-    .expect("can run");
-  assert_eq!(3, output.metrics.len());
+  let object = FeatureFlagWrapper::new(
+    &report,
+    &[FeatureFlag {
+      name: "in_slice".to_string(),
+      value: None,
+      last_updated: Some(OffsetDateTime::now_utc()),
+    }],
+  );
+  let output: ReportOutput = script.run(&object).expect("can run");
+  assert_eq!(2, output.metrics.len());
   assert_eq!(
-    &LogFieldValue::I64(1),
-    output.metrics.get("chain_len").expect("has_value")
+    &"in_slice".to_string(),
+    output.metrics.get("flag_name").expect("has value")
   );
   assert_eq!(
-    &LogFieldValue::Map(LogMapData::new(
-      [
-        ("x".to_string(), LogFieldValue::I64(1)),
-        (
-          "y".to_string(),
-          LogFieldValue::Double(NotNan::new(15.0).unwrap())
-        ),
-        ("z".to_string(), LogFieldValue::String("in_slice".into())),
-      ]
-      .into()
-    )),
-    output.metrics.get("stuff").expect("has value")
-  );
-  assert_eq!(
-    &LogFieldValue::String("com.example.myapp-NullPointerException".to_owned()),
+    &"com.example.myapp-NullPointerException".to_string(),
     output.metrics.get("some_tag").expect("has value")
   );
 }
@@ -308,9 +301,9 @@ fn combine_script_output_fields() {
     app_id = .app_id
     error_name = .errors[0].name
     _a = add_field(\"some_tag\", \"{{ app_id }}-{{ error_name }}\")
-    _b = add_field(\"chain_len\", length(.errors))
-    add_field(\"stuff\", {\"x\": 1, \"y\": 15.0, \"z\": .feature_flags[0].name})
+    add_field(\"chain_len\", string!(.feature_flags[0].name))
     ",
+    report_functions(),
   )
   .expect("is ok");
   let script2 = Script::new::<Report>(
@@ -318,6 +311,7 @@ fn combine_script_output_fields() {
     _b = add_field(\"chain_len\", \"override\")
     add_field(\"new_field\", \"x\")
     ",
+    report_functions(),
   )
   .expect("is ok");
   let report = Report {
@@ -333,48 +327,39 @@ fn combine_script_output_fields() {
     }],
   };
 
-  let feature_flags = &[FeatureFlag {
-    name: "in_slice".to_string(),
-    value: None,
-    last_updated: Some(OffsetDateTime::now_utc()),
-  }];
-  let output1 = script1.run(&report, feature_flags).expect("can run");
-  let output2 = script2.run(&report, feature_flags).expect("can run");
+  let object = FeatureFlagWrapper::new(
+    &report,
+    &[FeatureFlag {
+      name: "in_slice".to_string(),
+      value: None,
+      last_updated: Some(OffsetDateTime::now_utc()),
+    }],
+  );
+  let output1: ReportOutput = script1.run(&object).expect("can run");
+  let output2: ReportOutput = script2.run(&object).expect("can run");
 
   let combined = output1 + output2;
-  assert_eq!(4, combined.metrics.len());
+  assert_eq!(3, combined.metrics.len());
   assert_eq!(
-    &LogFieldValue::String("override".to_string()),
+    &"override".to_string(),
     combined.metrics.get("chain_len").expect("has_value")
   );
   assert_eq!(
-    &LogFieldValue::Map(LogMapData::new(
-      [
-        ("x".to_string(), LogFieldValue::I64(1)),
-        (
-          "y".to_string(),
-          LogFieldValue::Double(NotNan::new(15.0).unwrap())
-        ),
-        ("z".to_string(), LogFieldValue::String("in_slice".into())),
-      ]
-      .into()
-    )),
-    combined.metrics.get("stuff").expect("has value")
-  );
-  assert_eq!(
-    &LogFieldValue::String("x".to_owned()),
+    &"x".to_string(),
     combined.metrics.get("new_field").expect("has value")
   );
   assert_eq!(
-    &LogFieldValue::String("com.example.myapp-NullPointerException".to_owned()),
+    &"com.example.myapp-NullPointerException".to_string(),
     combined.metrics.get("some_tag").expect("has value")
   );
 }
 
 #[test]
 fn override_set_value_for_script_output_grouping_key() {
-  let script1 = Script::new::<Report>("set_grouping_key(\"some value\")").expect("is ok");
-  let script2 = Script::new::<Report>("set_grouping_key(\"other value\")").expect("is ok");
+  let script1 =
+    Script::new::<Report>("set_grouping_key(\"some value\")", report_functions()).expect("is ok");
+  let script2 =
+    Script::new::<Report>("set_grouping_key(\"other value\")", report_functions()).expect("is ok");
   let report = Report {
     app_id: "com.example.myapp".to_string(),
     errors: vec![Error {
@@ -387,8 +372,8 @@ fn override_set_value_for_script_output_grouping_key() {
       ],
     }],
   };
-  let output1 = script1.run(&report, &[]).expect("can run");
-  let output2 = script2.run(&report, &[]).expect("can run");
+  let output1: ReportOutput = script1.run(&report).expect("can run");
+  let output2: ReportOutput = script2.run(&report).expect("can run");
 
   let combined = output1 + output2;
   assert_eq!(
@@ -399,8 +384,9 @@ fn override_set_value_for_script_output_grouping_key() {
 
 #[test]
 fn override_empty_value_for_script_output_grouping_key() {
-  let script1 = Script::new::<Report>("").expect("is ok");
-  let script2 = Script::new::<Report>("set_grouping_key(\"other value\")").expect("is ok");
+  let script1 = Script::new::<Report>("", vec![]).expect("is ok");
+  let script2 =
+    Script::new::<Report>("set_grouping_key(\"other value\")", report_functions()).expect("is ok");
   let report = Report {
     app_id: "com.example.myapp".to_string(),
     errors: vec![Error {
@@ -413,8 +399,8 @@ fn override_empty_value_for_script_output_grouping_key() {
       ],
     }],
   };
-  let output1 = script1.run(&report, &[]).expect("can run");
-  let output2 = script2.run(&report, &[]).expect("can run");
+  let output1: ReportOutput = script1.run(&report).expect("can run");
+  let output2: ReportOutput = script2.run(&report).expect("can run");
 
   let combined = output1 + output2;
   assert_eq!(
@@ -425,8 +411,9 @@ fn override_empty_value_for_script_output_grouping_key() {
 
 #[test]
 fn use_set_value_for_script_output_grouping_key() {
-  let script1 = Script::new::<Report>("set_grouping_key(\"set value\")").expect("is ok");
-  let script2 = Script::new::<Report>("").expect("is ok");
+  let script1 =
+    Script::new::<Report>("set_grouping_key(\"set value\")", report_functions()).expect("is ok");
+  let script2 = Script::new::<Report>("", vec![]).expect("is ok");
   let report = Report {
     app_id: "com.example.myapp".to_string(),
     errors: vec![Error {
@@ -439,8 +426,8 @@ fn use_set_value_for_script_output_grouping_key() {
       ],
     }],
   };
-  let output1 = script1.run(&report, &[]).expect("can run");
-  let output2 = script2.run(&report, &[]).expect("can run");
+  let output1: ReportOutput = script1.run(&report).expect("can run");
+  let output2: ReportOutput = script2.run(&report).expect("can run");
 
   let combined = output1 + output2;
   assert_eq!(

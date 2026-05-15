@@ -5,9 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{FeatureFlag, ScriptValue};
+use crate::ScriptValue;
 use flatbuffers::{Follow, ForwardsUOffset};
-use std::collections::BTreeMap;
 use std::fmt::Display;
 use vrl::core::Value;
 use vrl::path::{OwnedSegment, OwnedValuePath};
@@ -52,44 +51,6 @@ impl Display for PathError {
 impl From<time::OffsetDateTime> for ScriptValue {
   fn from(value: time::OffsetDateTime) -> Self {
     Value::Timestamp(std::time::SystemTime::from(value).into()).into()
-  }
-}
-
-impl From<&FeatureFlag> for Value {
-  fn from(flag: &FeatureFlag) -> Self {
-    let mut properties = BTreeMap::from([
-      ("name".into(), flag.name.clone().into()),
-      ("value".into(), flag.value.clone().into()),
-    ]);
-    if let Some(last_updated) = flag.last_updated {
-      properties.insert(
-        "last_updated".into(),
-        Into::<ScriptValue>::into(last_updated).0,
-      );
-    }
-    Self::Object(properties)
-  }
-}
-
-impl Scriptable for FeatureFlag {
-  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
-    if path.is_empty() {
-      return Ok(Some(ScriptValue(self.into())));
-    }
-    let joined_path = OwnedValuePath::from(path.to_vec());
-    let Some(OwnedSegment::Field(field)) = path.first() else {
-      return Err(PathError::NotAnArray(joined_path.to_string()));
-    };
-    match field.as_str() {
-      "name" => Ok(Some(self.name.clone().into())),
-      "last_updated" => Ok(Some(self.last_updated.into())),
-      "value" => Ok(self.value.clone().map(Into::into)),
-      _ => Err(PathError::UnknownKey(joined_path.into())),
-    }
-  }
-
-  fn schema() -> Kind {
-    todo!()
   }
 }
 

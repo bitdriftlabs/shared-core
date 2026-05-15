@@ -5,7 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::target::metrics_path;
+use crate::get_dynamic_data;
+use crate::report::ReportOutput;
 use vrl::prelude::{
   Expression,
   ExpressionError,
@@ -38,7 +39,7 @@ impl Function for AddField {
       },
       Parameter {
         keyword: "value",
-        kind: kind::ANY,
+        kind: kind::BYTES,
         required: true,
       },
     ]
@@ -73,9 +74,13 @@ impl FunctionExpression for FieldData {
       return Err(ExpressionError::from("name must be a string value"));
     };
     let value = self.value.resolve(ctx)?;
-    ctx
-      .target_mut()
-      .target_insert(&metrics_path(&name), value)?;
+    let Some(value) = value.as_str() else {
+      return Err(ExpressionError::from("value must be a string value"));
+    };
+    let Some(data) = get_dynamic_data::<ReportOutput>(ctx) else {
+      return Ok(Value::Null);
+    };
+    data.metrics.insert(name.to_string(), value.to_string());
     Ok(Value::Null)
   }
 

@@ -5,7 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::target::significant_frame_path;
+use crate::get_dynamic_data;
+use crate::report::ReportOutput;
 use vrl::compiler::expression::Literal;
 use vrl::prelude::{
   Expression,
@@ -86,17 +87,20 @@ impl FunctionExpression for FrameData {
     let frame_index = resolve_isize(ctx, &self.frame_index, "frame_index")?;
     let is_significant = self.is_significant.resolve(ctx)?;
     if is_significant.is_boolean() || is_significant.is_null() {
-      ctx.target_mut().target_insert(
-        &significant_frame_path(error_index, frame_index),
-        is_significant,
-      )?;
+      let Some(data) = get_dynamic_data::<ReportOutput>(ctx) else {
+        return Ok(Value::Null);
+      };
+      data.grouping_hints.set_significant_frame(
+        error_index,
+        frame_index,
+        is_significant.as_boolean(),
+      );
+      Ok(Value::Null)
     } else {
-      return Err(ExpressionError::from(
+      Err(ExpressionError::from(
         "is_significant must be null or a boolean value",
-      ));
+      ))
     }
-
-    Ok(Value::Null)
   }
 
   fn type_def(&self, _: &vrl::prelude::TypeState) -> vrl::prelude::TypeDef {

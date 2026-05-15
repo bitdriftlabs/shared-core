@@ -5,7 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::target::grouping_key_path;
+use crate::get_dynamic_data;
+use crate::report::ReportOutput;
 use vrl::prelude::{
   Expression,
   ExpressionError,
@@ -64,9 +65,11 @@ impl FunctionExpression for GroupingKey {
         "grouping key must be a string value or null",
       ));
     }
-    ctx
-      .target_mut()
-      .target_insert(&grouping_key_path(), key.clone())?;
+    let Some(data) = get_dynamic_data::<ReportOutput>(ctx) else {
+      return Ok(key);
+    };
+
+    data.grouping_hints.grouping_key = key.as_str().as_deref().map(ToString::to_string);
     Ok(key)
   }
 
