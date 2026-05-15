@@ -21,9 +21,9 @@ pub enum SdkState {
   NotStarted = 0,
   /// The SDK library has been loaded and the logger is being constructed,
   /// but log processing has not yet begun.
-  Loaded = 1,
+  Loaded     = 1,
   /// The SDK is fully running and processing logs.
-  Running = 2,
+  Running    = 2,
 }
 
 /// A point-in-time snapshot of the SDK's operational status.
