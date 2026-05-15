@@ -14,3 +14,7 @@ vrl.workspace               = true
 ordered-float.workspace     = true
 time.workspace              = true
 flatbuffers.workspace       = true
+
+[build-dependencies]
+anyhow.workspace            = true
+serde_json.workspace        = true

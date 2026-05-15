@@ -93,6 +93,133 @@ impl Scriptable for FeatureFlag {
   }
 }
 
+impl Scriptable for bool {
+  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
+    if path.is_empty() {
+      Ok(Some(Value::Boolean(*self).into()))
+    } else {
+      Err(PathError::UnknownKey(
+        OwnedValuePath::from(path.to_vec()).to_string(),
+      ))
+    }
+  }
+
+  fn schema() -> Kind {
+    Kind::boolean()
+  }
+}
+
+impl From<bool> for ScriptValue {
+  fn from(value: bool) -> Self {
+    Value::Boolean(value).into()
+  }
+}
+
+macro_rules! impl_scriptable_for_float {
+  ($float_type:ident) => {
+    impl Scriptable for $float_type {
+      fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
+        if path.is_empty() {
+          Ok(Some(
+            Value::Float(NotNan::new(f64::from(*self)).unwrap_or_default()).into(),
+          ))
+        } else {
+          Err(PathError::UnknownKey(
+            OwnedValuePath::from(path.to_vec()).to_string(),
+          ))
+        }
+      }
+
+      fn schema() -> Kind {
+        Kind::float()
+      }
+    }
+    impl From<$float_type> for ScriptValue {
+      fn from(value: $float_type) -> Self {
+        Value::Float(NotNan::new(f64::from(value)).unwrap_or_default()).into()
+      }
+    }
+  };
+}
+
+macro_rules! impl_scriptable_for_int {
+  ($int_type:ident) => {
+    impl Scriptable for $int_type {
+      fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
+        if path.is_empty() {
+          Ok(Some(
+            Value::Integer(i64::try_from(*self).unwrap_or_default()).into(),
+          ))
+        } else {
+          Err(PathError::UnknownKey(
+            OwnedValuePath::from(path.to_vec()).to_string(),
+          ))
+        }
+      }
+
+      fn schema() -> Kind {
+        Kind::integer()
+      }
+    }
+
+    impl From<$int_type> for ScriptValue {
+      fn from(value: $int_type) -> Self {
+        Value::Integer(i64::try_from(value).unwrap_or_default()).into()
+      }
+    }
+  };
+}
+
+impl_scriptable_for_float!(f32);
+impl_scriptable_for_float!(f64);
+
+impl_scriptable_for_int!(u8);
+impl_scriptable_for_int!(u16);
+impl_scriptable_for_int!(u32);
+impl_scriptable_for_int!(u64);
+impl_scriptable_for_int!(i8);
+impl_scriptable_for_int!(i16);
+impl_scriptable_for_int!(i32);
+impl_scriptable_for_int!(i64);
+
+impl<T: Scriptable> Scriptable for Option<T>
+where
+  ScriptValue: From<T>,
+{
+  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
+    let Some(inner) = self else {
+      return Ok(None);
+    };
+    inner.resolve(path)
+  }
+
+  fn schema() -> Kind {
+    T::schema()
+  }
+}
+
+impl<T> From<Option<T>> for ScriptValue
+where
+  Self: From<T>,
+{
+  fn from(value: Option<T>) -> Self {
+    value.map_or_else(|| Self(Value::Null), Into::<Self>::into)
+  }
+}
+
+impl<T> Scriptable for &T
+where
+  T: Scriptable,
+{
+  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
+    (*self).resolve(path)
+  }
+
+  fn schema() -> Kind {
+    T::schema()
+  }
+}
+
 impl Scriptable for ScriptValue {
   fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
     let joined_path = OwnedValuePath::from(path.to_vec());
@@ -126,263 +253,6 @@ impl Scriptable for String {
 impl From<String> for ScriptValue {
   fn from(value: String) -> Self {
     value.as_str().into()
-  }
-}
-
-impl Scriptable for bool {
-  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
-    if path.is_empty() {
-      Ok(Some(Value::Boolean(*self).into()))
-    } else {
-      Err(PathError::UnknownKey(
-        OwnedValuePath::from(path.to_vec()).to_string(),
-      ))
-    }
-  }
-
-  fn schema() -> Kind {
-    Kind::boolean()
-  }
-}
-
-impl Scriptable for f32 {
-  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
-    if path.is_empty() {
-      Ok(Some(
-        Value::Float(NotNan::new(f64::from(*self)).unwrap_or_default()).into(),
-      ))
-    } else {
-      Err(PathError::UnknownKey(
-        OwnedValuePath::from(path.to_vec()).to_string(),
-      ))
-    }
-  }
-
-  fn schema() -> Kind {
-    Kind::float()
-  }
-}
-
-impl Scriptable for f64 {
-  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
-    if path.is_empty() {
-      Ok(Some(
-        Value::Float(NotNan::new(*self).unwrap_or_default()).into(),
-      ))
-    } else {
-      Err(PathError::UnknownKey(
-        OwnedValuePath::from(path.to_vec()).to_string(),
-      ))
-    }
-  }
-
-  fn schema() -> Kind {
-    Kind::float()
-  }
-}
-
-impl Scriptable for u64 {
-  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
-    if path.is_empty() {
-      Ok(Some(
-        Value::Integer(i64::try_from(*self).unwrap_or_default()).into(),
-      ))
-    } else {
-      Err(PathError::UnknownKey(
-        OwnedValuePath::from(path.to_vec()).to_string(),
-      ))
-    }
-  }
-
-  fn schema() -> Kind {
-    Kind::integer()
-  }
-}
-
-impl Scriptable for u32 {
-  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
-    if path.is_empty() {
-      Ok(Some(Value::Integer(i64::from(*self)).into()))
-    } else {
-      Err(PathError::UnknownKey(
-        OwnedValuePath::from(path.to_vec()).to_string(),
-      ))
-    }
-  }
-
-  fn schema() -> Kind {
-    Kind::integer()
-  }
-}
-
-impl Scriptable for u16 {
-  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
-    if path.is_empty() {
-      Ok(Some(Value::Integer(i64::from(*self)).into()))
-    } else {
-      Err(PathError::UnknownKey(
-        OwnedValuePath::from(path.to_vec()).to_string(),
-      ))
-    }
-  }
-
-  fn schema() -> Kind {
-    Kind::integer()
-  }
-}
-
-impl Scriptable for u8 {
-  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
-    if path.is_empty() {
-      Ok(Some((*self).into()))
-    } else {
-      Err(PathError::UnknownKey(
-        OwnedValuePath::from(path.to_vec()).to_string(),
-      ))
-    }
-  }
-
-  fn schema() -> Kind {
-    Kind::integer()
-  }
-}
-
-impl From<u8> for ScriptValue {
-  fn from(value: u8) -> Self {
-    Value::Integer(i64::from(value)).into()
-  }
-}
-
-impl From<u16> for ScriptValue {
-  fn from(value: u16) -> Self {
-    Value::Integer(i64::from(value)).into()
-  }
-}
-
-impl From<u32> for ScriptValue {
-  fn from(value: u32) -> Self {
-    Value::Integer(i64::from(value)).into()
-  }
-}
-
-impl From<u64> for ScriptValue {
-  fn from(value: u64) -> Self {
-    Value::Integer(i64::try_from(value).unwrap_or_default()).into()
-  }
-}
-
-impl From<i8> for ScriptValue {
-  fn from(value: i8) -> Self {
-    Value::Integer(i64::from(value)).into()
-  }
-}
-
-impl From<i16> for ScriptValue {
-  fn from(value: i16) -> Self {
-    Value::Integer(i64::from(value)).into()
-  }
-}
-
-impl From<i32> for ScriptValue {
-  fn from(value: i32) -> Self {
-    Value::Integer(i64::from(value)).into()
-  }
-}
-
-impl From<i64> for ScriptValue {
-  fn from(value: i64) -> Self {
-    Value::Integer(value).into()
-  }
-}
-
-impl From<f32> for ScriptValue {
-  fn from(value: f32) -> Self {
-    Value::Float(NotNan::new(f64::from(value)).unwrap_or_default()).into()
-  }
-}
-
-impl From<f64> for ScriptValue {
-  fn from(value: f64) -> Self {
-    Value::Float(NotNan::new(value).unwrap_or_default()).into()
-  }
-}
-
-impl From<bool> for ScriptValue {
-  fn from(value: bool) -> Self {
-    Value::Boolean(value).into()
-  }
-}
-
-impl Scriptable for i8 {
-  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
-    if path.is_empty() {
-      Ok(Some(Value::Integer(i64::from(*self)).into()))
-    } else {
-      Err(PathError::UnknownKey(
-        OwnedValuePath::from(path.to_vec()).to_string(),
-      ))
-    }
-  }
-
-  fn schema() -> Kind {
-    Kind::integer()
-  }
-}
-
-impl Scriptable for i64 {
-  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
-    if path.is_empty() {
-      Ok(Some(Value::Integer(*self).into()))
-    } else {
-      Err(PathError::UnknownKey(
-        OwnedValuePath::from(path.to_vec()).to_string(),
-      ))
-    }
-  }
-
-  fn schema() -> Kind {
-    Kind::integer()
-  }
-}
-
-impl Scriptable for i32 {
-  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
-    if path.is_empty() {
-      Ok(Some(Value::Integer(i64::from(*self)).into()))
-    } else {
-      Err(PathError::UnknownKey(
-        OwnedValuePath::from(path.to_vec()).to_string(),
-      ))
-    }
-  }
-
-  fn schema() -> Kind {
-    Kind::integer()
-  }
-}
-
-impl<T: Scriptable> Scriptable for Option<T>
-where
-  ScriptValue: From<T>,
-{
-  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
-    let Some(inner) = self else {
-      return Ok(None);
-    };
-    inner.resolve(path)
-  }
-
-  fn schema() -> Kind {
-    T::schema()
-  }
-}
-
-impl<T> From<Option<T>> for ScriptValue
-where
-  Self: From<T>,
-{
-  fn from(value: Option<T>) -> Self {
-    value.map_or_else(|| Self(Value::Null), Into::<Self>::into)
   }
 }
 
