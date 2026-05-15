@@ -665,8 +665,10 @@ async fn api_retry_stream() {
   );
   setup.close_stream().await;
 
-  // Now ramp up the backoff again to 1m, do the handshake and immediate shutdown, and verify the
-  // backoff is not reset.
+  // Now ramp up the backoff again to 1m, do the handshake and immediate shutdown.
+  // Because the backoff was reset on the successful handshake, the next stream
+  // should arrive quickly (within a few seconds) instead of waiting for the
+  // previous high backoff.
   let now = Instant::now();
   while setup.next_stream(1.minutes()).await.is_some() {
     if now + DISCONNECTED_OFFLINE_GRACE_PERIOD > Instant::now() {
@@ -700,9 +702,10 @@ async fn api_retry_stream() {
     )
     .await;
   setup.close_stream().await;
-  assert!(setup.next_stream(10.seconds()).await.is_none());
+  // Backoff was reset on handshake, so next stream should arrive quickly.
+  assert!(setup.next_stream(10.seconds()).await.is_some());
   assert_eq!(
-    NetworkQuality::Online,
+    NetworkQuality::Unknown,
     setup.network_quality_provider.get_network_quality()
   );
 }

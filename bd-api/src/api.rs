@@ -882,6 +882,10 @@ impl Api {
       .set_network_quality(NetworkQuality::Online);
     self.reconnect_state.record_connectivity_event();
 
+    // Reset exponential backoff after a successful handshake so that past
+    // failures don't penalise future reconnects.
+    self.backoff.reset();
+
     self.disconnected_at = None;
 
     if let Some(spurious_upload) = upload_during_idle_timeout {
