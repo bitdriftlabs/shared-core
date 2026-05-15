@@ -20,7 +20,10 @@ fn new_tracker_starts_as_loaded() {
 fn record_running_transitions_to_running() {
   let tracker = SdkStatusTracker::new();
   tracker.record_running();
-  assert_eq!(tracker.get().initialization_state, InitializationState::Running);
+  assert_eq!(
+    tracker.get().initialization_state,
+    InitializationState::Running
+  );
 }
 
 #[test]
@@ -63,11 +66,17 @@ fn full_lifecycle() {
   let tracker = SdkStatusTracker::new();
 
   // Loaded.
-  assert_eq!(tracker.get().initialization_state, InitializationState::Loaded);
+  assert_eq!(
+    tracker.get().initialization_state,
+    InitializationState::Loaded
+  );
 
   // Running.
   tracker.record_running();
-  assert_eq!(tracker.get().initialization_state, InitializationState::Running);
+  assert_eq!(
+    tracker.get().initialization_state,
+    InitializationState::Running
+  );
 
   // Handshake.
   let t1 = OffsetDateTime::now_utc();
