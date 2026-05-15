@@ -462,7 +462,7 @@ impl Monitor {
     if !matches!(origin, ReportOrigin::Previous) {
       return LogFields::default();
     }
-    self
+    let fields: LogFields = self
       .previous_run_state
       .iter()
       .filter(|(scope, ..)| *scope == bd_resilient_kv::Scope::System)
@@ -478,7 +478,18 @@ impl Monitor {
         };
         Some((field_name.into(), value.string_value().to_string().into()))
       })
-      .collect()
+      .collect();
+
+    // If the last recorded memory pressure level was "normal", memory pressure had resolved
+    // before the crash — don't include low memory fields in the report.
+    if fields
+      .get("_low_memory_level")
+      .is_some_and(|v| v.as_str() == Some("normal"))
+    {
+      return LogFields::default();
+    }
+
+    fields
   }
 
   fn get_global_state_fields(&self, origin: ReportOrigin) -> LogFields {
