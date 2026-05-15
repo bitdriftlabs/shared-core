@@ -13,7 +13,7 @@ use assert_matches::assert_matches;
 use async_trait::async_trait;
 use bd_api::DataUpload;
 use bd_api::upload::{Tracked, UploadResponse};
-use bd_client_common::file::write_compressed_protobuf;
+use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_client_common::file_system::{FileSystem, RealFileSystem};
 use bd_client_common::test::TestFileSystem;
 use bd_client_stats_store::Collector;
@@ -40,6 +40,7 @@ use bd_time::{OffsetDateTimeExt, TestTimeProvider, TimeProvider};
 use futures_util::poll;
 use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap};
+use std::io::ErrorKind;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::ext::{NumericalDuration, NumericalStdDuration};
@@ -52,25 +53,29 @@ async fn write_test_index(fs: &dyn FileSystem, ready_to_upload: bool) {
   write_test_index_with_start(fs, OffsetDateTime::UNIX_EPOCH, ready_to_upload).await;
 }
 
-async fn write_test_index_with_start(
-  fs: &dyn FileSystem,
-  period_start: OffsetDateTime,
-  ready_to_upload: bool,
-) {
+async fn write_test_index_entries(fs: &dyn FileSystem, entries: Vec<(&str, OffsetDateTime, bool)>) {
   let index = PendingAggregationIndex {
-    pending_files: vec![PendingFile {
-      name: "test".to_string(),
-      period_start: period_start.into_proto(),
-      period_end: if ready_to_upload {
-        OffsetDateTime::UNIX_EPOCH.into_proto()
-      } else {
-        None.into()
-      },
-      ..Default::default()
-    }],
+    pending_files: entries
+      .into_iter()
+      .map(|(name, period_start, ready_to_upload)| PendingFile {
+        name: name.to_string(),
+        period_start: period_start.into_proto(),
+        period_end: if ready_to_upload {
+          OffsetDateTime::UNIX_EPOCH.into_proto()
+        } else {
+          None.into()
+        },
+        ..Default::default()
+      })
+      .collect(),
     ..Default::default()
   };
-  fs.create_dir(&STATS_DIRECTORY).await.unwrap();
+  if let Err(error) = fs.create_dir(&STATS_DIRECTORY).await {
+    let Some(io_error) = error.downcast_ref::<std::io::Error>() else {
+      panic!("unexpected create_dir error: {error}");
+    };
+    assert_eq!(io_error.kind(), ErrorKind::AlreadyExists);
+  }
   let compressed = write_compressed_protobuf(&index).unwrap();
   fs.write_file(
     &STATS_DIRECTORY.join(&*PENDING_AGGREGATION_INDEX_FILE),
@@ -80,11 +85,54 @@ async fn write_test_index_with_start(
   .unwrap();
 }
 
+async fn write_test_index_with_start(
+  fs: &dyn FileSystem,
+  period_start: OffsetDateTime,
+  ready_to_upload: bool,
+) {
+  write_test_index_entries(fs, vec![("test", period_start, ready_to_upload)]).await;
+}
+
 async fn write_test_upload_request(fs: &dyn FileSystem, request: StatsUploadRequest) {
+  write_named_test_upload_request(fs, "test", request).await;
+}
+
+async fn write_named_test_upload_request(
+  fs: &dyn FileSystem,
+  file_name: &str,
+  request: StatsUploadRequest,
+) {
   let compressed = write_compressed_protobuf(&request).unwrap();
-  fs.write_file(&STATS_DIRECTORY.join("test"), &compressed)
+  fs.write_file(&STATS_DIRECTORY.join(file_name), &compressed)
     .await
     .unwrap();
+}
+
+async fn read_test_index(fs: &dyn FileSystem) -> PendingAggregationIndex {
+  let contents = fs
+    .read_file(&STATS_DIRECTORY.join(&*PENDING_AGGREGATION_INDEX_FILE))
+    .await
+    .unwrap();
+  read_compressed_protobuf(&contents).unwrap()
+}
+
+fn counter_snapshot(metric_name: &str, value: u64) -> StatsSnapshot {
+  StatsSnapshot {
+    snapshot_type: Some(Snapshot_type::Metrics(MetricsList {
+      metric: vec![Metric {
+        metric_name_type: Some(Metric_name_type::Name(metric_name.to_string())),
+        tags: HashMap::new(),
+        data: Some(MetricData::Counter(Counter {
+          value,
+          ..Default::default()
+        })),
+        ..Default::default()
+      }],
+      ..Default::default()
+    })),
+    occurred_at: Some(Occurred_at::Aggregated(Aggregated::default())),
+    ..Default::default()
+  }
 }
 
 #[derive(Clone)]
@@ -851,6 +899,544 @@ async fn existing_old_aggregated_file_uploads_immediately_on_startup() {
     })
     .unwrap();
   setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn existing_old_aggregated_files_batch_into_single_startup_upload() {
+  let directory = TempDir::new().unwrap();
+  let directory_path = directory.path().to_path_buf();
+  let fs = RealFileSystem::new(directory_path.clone());
+  let first_start = OffsetDateTime::UNIX_EPOCH - 10.minutes();
+  let second_start = OffsetDateTime::UNIX_EPOCH - 9.minutes();
+  write_test_index_entries(
+    &fs,
+    vec![
+      ("first", first_start, false),
+      ("second", second_start, false),
+    ],
+  )
+  .await;
+  write_named_test_upload_request(
+    &fs,
+    "first",
+    StatsUploadRequest {
+      upload_uuid: "first".to_string(),
+      snapshot: vec![counter_snapshot("test:first", 1)],
+      ..Default::default()
+    },
+  )
+  .await;
+  write_named_test_upload_request(
+    &fs,
+    "second",
+    StatsUploadRequest {
+      upload_uuid: "second".to_string(),
+      snapshot: vec![counter_snapshot("test:second", 2)],
+      ..Default::default()
+    },
+  )
+  .await;
+
+  let mut setup = Setup::new_with_directory(directory).await;
+
+  let upload = timeout(1.std_seconds(), setup.next_stat_upload())
+    .await
+    .unwrap();
+  let helper = StatsRequestHelper::new(upload.payload.clone());
+  assert_eq!(helper.snapshot_count(), 2);
+  assert_eq!(helper.number_of_metrics_for_snapshot(0), 1);
+  assert_eq!(helper.number_of_metrics_for_snapshot(1), 1);
+  assert_eq!(
+    helper.get_counter_for_snapshot(0, "test:first", labels! {}),
+    Some(1)
+  );
+  assert_eq!(
+    helper.get_counter_for_snapshot(1, "test:second", labels! {}),
+    Some(2)
+  );
+  assert_eq!(helper.aggregation_window_start_for_snapshot(0), first_start);
+  assert_eq!(
+    helper.aggregation_window_end_for_snapshot(0),
+    OffsetDateTime::UNIX_EPOCH
+  );
+  assert_eq!(
+    helper.aggregation_window_start_for_snapshot(1),
+    second_start
+  );
+  assert_eq!(
+    helper.aggregation_window_end_for_snapshot(1),
+    OffsetDateTime::UNIX_EPOCH
+  );
+
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  assert!(
+    timeout(1.std_seconds(), setup.next_stat_upload())
+      .await
+      .is_err()
+  );
+
+  let fs = RealFileSystem::new(directory_path);
+  let index = read_test_index(&fs).await;
+  assert!(index.pending_files.is_empty());
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn corrupted_old_file_in_middle_of_startup_batch_is_dropped() {
+  let directory = TempDir::new().unwrap();
+  let directory_path = directory.path().to_path_buf();
+  let fs = RealFileSystem::new(directory_path.clone());
+  write_test_index_entries(
+    &fs,
+    vec![
+      ("first", OffsetDateTime::UNIX_EPOCH - 10.minutes(), false),
+      ("corrupt", OffsetDateTime::UNIX_EPOCH - 9.minutes(), false),
+      ("third", OffsetDateTime::UNIX_EPOCH - 8.minutes(), false),
+    ],
+  )
+  .await;
+  write_named_test_upload_request(
+    &fs,
+    "first",
+    StatsUploadRequest {
+      upload_uuid: "first".to_string(),
+      snapshot: vec![counter_snapshot("test:first", 1)],
+      ..Default::default()
+    },
+  )
+  .await;
+  fs.write_file(&STATS_DIRECTORY.join("corrupt"), b"not a proto")
+    .await
+    .unwrap();
+  write_named_test_upload_request(
+    &fs,
+    "third",
+    StatsUploadRequest {
+      upload_uuid: "third".to_string(),
+      snapshot: vec![counter_snapshot("test:third", 3)],
+      ..Default::default()
+    },
+  )
+  .await;
+
+  let mut setup = Setup::new_with_directory(directory).await;
+
+  let upload = timeout(1.std_seconds(), setup.next_stat_upload())
+    .await
+    .unwrap();
+  let helper = StatsRequestHelper::new(upload.payload.clone());
+  assert_eq!(helper.snapshot_count(), 2);
+  assert_eq!(
+    helper.get_counter_for_snapshot(0, "test:first", labels! {}),
+    Some(1)
+  );
+  assert_eq!(
+    helper.get_counter_for_snapshot(1, "test:third", labels! {}),
+    Some(3)
+  );
+
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  assert!(
+    timeout(1.std_seconds(), setup.next_stat_upload())
+      .await
+      .is_err()
+  );
+
+  let fs = RealFileSystem::new(directory_path);
+  let index = read_test_index(&fs).await;
+  assert!(index.pending_files.is_empty());
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn failed_startup_batch_keeps_old_files_pending() {
+  let directory = TempDir::new().unwrap();
+  let directory_path = directory.path().to_path_buf();
+  let fs = RealFileSystem::new(directory_path.clone());
+  write_test_index_entries(
+    &fs,
+    vec![
+      ("first", OffsetDateTime::UNIX_EPOCH - 10.minutes(), false),
+      ("second", OffsetDateTime::UNIX_EPOCH - 9.minutes(), false),
+    ],
+  )
+  .await;
+  for file_name in ["first", "second"] {
+    write_named_test_upload_request(
+      &fs,
+      file_name,
+      StatsUploadRequest {
+        upload_uuid: file_name.to_string(),
+        snapshot: vec![StatsSnapshot::default()],
+        ..Default::default()
+      },
+    )
+    .await;
+  }
+
+  let mut setup = Setup::new_with_directory(directory).await;
+
+  let upload = timeout(1.std_seconds(), setup.next_stat_upload())
+    .await
+    .unwrap();
+  assert_eq!(
+    StatsRequestHelper::new(upload.payload.clone()).snapshot_count(),
+    2
+  );
+
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: false,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  let fs = RealFileSystem::new(directory_path);
+  let index = read_test_index(&fs).await;
+  assert_eq!(
+    index
+      .pending_files
+      .iter()
+      .map(|file| file.name.clone())
+      .collect::<Vec<_>>(),
+    vec!["first".to_string(), "second".to_string()]
+  );
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn startup_batch_retry_keeps_transport_uuid_across_restart() {
+  let directory = TempDir::new().unwrap();
+  let directory_path = directory.path().to_path_buf();
+  let fs = RealFileSystem::new(directory_path.clone());
+  write_test_index_entries(
+    &fs,
+    vec![
+      ("first", OffsetDateTime::UNIX_EPOCH - 10.minutes(), false),
+      ("second", OffsetDateTime::UNIX_EPOCH - 9.minutes(), false),
+    ],
+  )
+  .await;
+  write_named_test_upload_request(
+    &fs,
+    "first",
+    StatsUploadRequest {
+      upload_uuid: "first".to_string(),
+      snapshot: vec![counter_snapshot("test:first", 1)],
+      ..Default::default()
+    },
+  )
+  .await;
+  write_named_test_upload_request(
+    &fs,
+    "second",
+    StatsUploadRequest {
+      upload_uuid: "second".to_string(),
+      snapshot: vec![counter_snapshot("test:second", 2)],
+      ..Default::default()
+    },
+  )
+  .await;
+
+  let mut setup = Setup::new_with_filesystem(
+    Box::new(RealFileSystem::new(directory_path.clone())),
+    None,
+    500,
+  )
+  .await;
+  let upload = timeout(1.std_seconds(), setup.next_stat_upload())
+    .await
+    .unwrap();
+  let first_attempt_uuid = upload.payload.upload_uuid.clone();
+  assert_eq!(StatsRequestHelper::new(upload.payload).snapshot_count(), 2);
+  setup.shutdown().await.unwrap();
+
+  let mut setup = Setup::new_with_filesystem(
+    Box::new(RealFileSystem::new(directory_path.clone())),
+    None,
+    500,
+  )
+  .await;
+  let upload = timeout(1.std_seconds(), setup.next_stat_upload())
+    .await
+    .unwrap();
+  assert_eq!(upload.payload.upload_uuid, first_attempt_uuid);
+  assert_eq!(
+    StatsRequestHelper::new(upload.payload.clone()).snapshot_count(),
+    2
+  );
+
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn startup_batch_transport_uuid_changes_when_composition_changes_across_restart() {
+  let directory = TempDir::new().unwrap();
+  let directory_path = directory.path().to_path_buf();
+  let fs = RealFileSystem::new(directory_path.clone());
+  write_test_index_entries(
+    &fs,
+    vec![
+      ("first", OffsetDateTime::UNIX_EPOCH - 10.minutes(), false),
+      ("second", OffsetDateTime::UNIX_EPOCH - 9.minutes(), false),
+    ],
+  )
+  .await;
+  write_named_test_upload_request(
+    &fs,
+    "first",
+    StatsUploadRequest {
+      upload_uuid: "first".to_string(),
+      snapshot: vec![counter_snapshot("test:first", 1)],
+      ..Default::default()
+    },
+  )
+  .await;
+  write_named_test_upload_request(
+    &fs,
+    "second",
+    StatsUploadRequest {
+      upload_uuid: "second".to_string(),
+      snapshot: vec![counter_snapshot("test:second", 2)],
+      ..Default::default()
+    },
+  )
+  .await;
+
+  let mut setup = Setup::new_with_filesystem(
+    Box::new(RealFileSystem::new(directory_path.clone())),
+    None,
+    500,
+  )
+  .await;
+  let upload = timeout(1.std_seconds(), setup.next_stat_upload())
+    .await
+    .unwrap();
+  let initial_uuid = upload.payload.upload_uuid.clone();
+  assert_eq!(StatsRequestHelper::new(upload.payload).snapshot_count(), 2);
+  setup.shutdown().await.unwrap();
+
+  let fs = RealFileSystem::new(directory_path.clone());
+  write_test_index_entries(
+    &fs,
+    vec![
+      ("first", OffsetDateTime::UNIX_EPOCH - 10.minutes(), false),
+      ("second", OffsetDateTime::UNIX_EPOCH - 9.minutes(), false),
+      ("third", OffsetDateTime::UNIX_EPOCH - 8.minutes(), false),
+    ],
+  )
+  .await;
+  write_named_test_upload_request(
+    &fs,
+    "third",
+    StatsUploadRequest {
+      upload_uuid: "third".to_string(),
+      snapshot: vec![counter_snapshot("test:third", 3)],
+      ..Default::default()
+    },
+  )
+  .await;
+
+  let mut setup = Setup::new_with_filesystem(
+    Box::new(RealFileSystem::new(directory_path.clone())),
+    None,
+    500,
+  )
+  .await;
+  let upload = timeout(1.std_seconds(), setup.next_stat_upload())
+    .await
+    .unwrap();
+  let helper = StatsRequestHelper::new(upload.payload.clone());
+  assert_ne!(upload.payload.upload_uuid, initial_uuid);
+  assert_eq!(helper.snapshot_count(), 3);
+  assert_eq!(
+    helper.get_counter_for_snapshot(0, "test:first", labels! {}),
+    Some(1)
+  );
+  assert_eq!(
+    helper.get_counter_for_snapshot(1, "test:second", labels! {}),
+    Some(2)
+  );
+  assert_eq!(
+    helper.get_counter_for_snapshot(2, "test:third", labels! {}),
+    Some(3)
+  );
+
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn fresh_pending_file_is_not_included_in_startup_old_file_batch() {
+  let directory = TempDir::new().unwrap();
+  let fs = RealFileSystem::new(directory.path().to_path_buf());
+  let old_start = OffsetDateTime::UNIX_EPOCH - 10.minutes();
+  let fresh_start = OffsetDateTime::UNIX_EPOCH;
+  write_test_index_entries(
+    &fs,
+    vec![("old", old_start, false), ("fresh", fresh_start, false)],
+  )
+  .await;
+  for file_name in ["old", "fresh"] {
+    write_named_test_upload_request(
+      &fs,
+      file_name,
+      StatsUploadRequest {
+        upload_uuid: file_name.to_string(),
+        snapshot: vec![StatsSnapshot::default()],
+        ..Default::default()
+      },
+    )
+    .await;
+  }
+
+  let mut setup = Setup::new_with_directory(directory).await;
+
+  let upload = timeout(1.std_seconds(), setup.next_stat_upload())
+    .await
+    .unwrap();
+  let helper = StatsRequestHelper::new(upload.payload.clone());
+  assert_eq!(helper.snapshot_count(), 1);
+  assert_eq!(helper.aggregation_window_start(), old_start);
+  assert_eq!(helper.aggregation_window_end(), OffsetDateTime::UNIX_EPOCH);
+
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  assert!(
+    timeout(1.std_seconds(), setup.next_stat_upload())
+      .await
+      .is_err()
+  );
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn successful_periodic_upload_batches_remaining_old_files() {
+  let mut setup = Setup::new().await;
+  setup
+    .runtime_loader
+    .update_snapshot(make_simple_update(vec![(
+      bd_runtime::runtime::stats::MaxAggregatedFilesFlag::path(),
+      ValueKind::Int(4),
+    )]))
+    .await
+    .unwrap();
+
+  let counter = setup.stats.collector.scope("test").counter("test");
+  counter.inc();
+  setup
+    .with_next_stats_upload_with_result(false, |upload| {
+      assert_eq!(upload.get_counter("test:test", labels! {}), Some(1));
+    })
+    .await;
+
+  setup.test_time.advance(5.minutes());
+  counter.inc_by(10);
+  setup.do_periodic_flush().await;
+
+  setup.test_time.advance(5.minutes());
+  counter.inc_by(100);
+  setup.do_periodic_flush().await;
+
+  setup.test_time.advance(5.minutes());
+  counter.inc_by(1000);
+  setup.do_periodic_flush().await;
+
+  setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  let upload = setup.next_stat_upload().await;
+  assert_eq!(
+    StatsRequestHelper::new(upload.payload.clone()).snapshot_count(),
+    1
+  );
+  assert_eq!(
+    StatsRequestHelper::new(upload.payload.clone()).get_counter("test:test", labels! {}),
+    Some(1)
+  );
+
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  let batched_upload = timeout(1.std_seconds(), setup.next_stat_upload())
+    .await
+    .unwrap();
+  let helper = StatsRequestHelper::new(batched_upload.payload.clone());
+  assert_eq!(helper.snapshot_count(), 2);
+  assert_eq!(
+    helper.get_counter_for_snapshot(0, "test:test", labels! {}),
+    Some(10)
+  );
+  assert_eq!(
+    helper.get_counter_for_snapshot(1, "test:test", labels! {}),
+    Some(100)
+  );
+
+  batched_upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: batched_upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  assert!(
+    timeout(1.std_seconds(), setup.next_stat_upload())
+      .await
+      .is_err()
+  );
 
   setup.shutdown().await.unwrap();
 }
