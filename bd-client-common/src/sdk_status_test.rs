@@ -11,7 +11,7 @@ use super::*;
 fn new_tracker_starts_as_loaded() {
   let tracker = SdkStatusTracker::new();
   let status = tracker.get();
-  assert_eq!(status.sdk_state, SdkState::Loaded);
+  assert_eq!(status.initialization_state, InitializationState::Loaded);
   assert!(status.last_handshake_time.is_none());
   assert!(status.last_config_delivery_time.is_none());
 }
@@ -20,7 +20,7 @@ fn new_tracker_starts_as_loaded() {
 fn record_running_transitions_to_running() {
   let tracker = SdkStatusTracker::new();
   tracker.record_running();
-  assert_eq!(tracker.get().sdk_state, SdkState::Running);
+  assert_eq!(tracker.get().initialization_state, InitializationState::Running);
 }
 
 #[test]
@@ -63,11 +63,11 @@ fn full_lifecycle() {
   let tracker = SdkStatusTracker::new();
 
   // Loaded.
-  assert_eq!(tracker.get().sdk_state, SdkState::Loaded);
+  assert_eq!(tracker.get().initialization_state, InitializationState::Loaded);
 
   // Running.
   tracker.record_running();
-  assert_eq!(tracker.get().sdk_state, SdkState::Running);
+  assert_eq!(tracker.get().initialization_state, InitializationState::Running);
 
   // Handshake.
   let t1 = OffsetDateTime::now_utc();
@@ -89,7 +89,7 @@ fn timestamps_ignored_before_running() {
   tracker.record_config_delivery(OffsetDateTime::now_utc());
 
   let status = tracker.get();
-  assert_eq!(status.sdk_state, SdkState::Loaded);
+  assert_eq!(status.initialization_state, InitializationState::Loaded);
   assert!(status.last_handshake_time.is_none());
   assert!(status.last_config_delivery_time.is_none());
 }

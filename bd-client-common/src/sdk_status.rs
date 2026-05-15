@@ -16,7 +16,7 @@ use time::OffsetDateTime;
 /// The SDK's initialization state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
-pub enum SdkState {
+pub enum InitializationState {
   /// The SDK has not been started yet.
   NotStarted = 0,
   /// The SDK library has been loaded and the logger is being constructed,
@@ -30,7 +30,7 @@ pub enum SdkState {
 #[derive(Debug, Clone)]
 pub struct SdkStatus {
   /// The current initialization state of the SDK.
-  pub sdk_state: SdkState,
+  pub initialization_state: InitializationState,
 
   /// The wall-clock time of the last successful handshake, if any.
   pub last_handshake_time: Option<OffsetDateTime>,
@@ -57,7 +57,7 @@ impl SdkStatusTracker {
   pub fn new() -> Self {
     Self {
       inner: Arc::new(RwLock::new(SdkStatus {
-        sdk_state: SdkState::Loaded,
+        initialization_state: InitializationState::Loaded,
         last_handshake_time: None,
         last_config_delivery_time: None,
       })),
@@ -73,13 +73,13 @@ impl SdkStatusTracker {
   /// Called when the SDK is fully running (log processing started).
   pub fn record_running(&self) {
     let mut status = self.inner.write();
-    status.sdk_state = SdkState::Running;
+    status.initialization_state = InitializationState::Running;
   }
 
   /// Called when a handshake with the backend completes successfully.
   pub fn record_handshake(&self, time: OffsetDateTime) {
     let mut status = self.inner.write();
-    if status.sdk_state == SdkState::Running {
+    if status.initialization_state == InitializationState::Running {
       status.last_handshake_time = Some(time);
     }
   }
@@ -88,7 +88,7 @@ impl SdkStatusTracker {
   /// (not from cache).
   pub fn record_config_delivery(&self, time: OffsetDateTime) {
     let mut status = self.inner.write();
-    if status.sdk_state == SdkState::Running {
+    if status.initialization_state == InitializationState::Running {
       status.last_config_delivery_time = Some(time);
     }
   }
