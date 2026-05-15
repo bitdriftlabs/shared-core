@@ -501,13 +501,14 @@ impl LoggerHandle {
   pub fn notify_low_memory(&self, level: String, memory_used_kb: u64, timestamp_us: u64) {
     with_reentrancy_guard!(
       {
-        let result = self.tx.try_send_state_update(
-          async_log_buffer::StateUpdateMessage::SetLowMemoryState {
-            level,
-            memory_used_kb,
-            timestamp_us,
-          },
-        );
+        let result =
+          self
+            .tx
+            .try_send_state_update(async_log_buffer::StateUpdateMessage::SetLowMemoryState {
+              level,
+              memory_used_kb,
+              timestamp_us,
+            });
         if let Err(e) = result {
           log::warn!("failed to notify low memory state: {e:?}");
         }
