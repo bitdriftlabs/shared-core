@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 pub mod feature_flag;
+mod functions;
 mod input;
 pub mod report;
 mod target;
@@ -21,7 +22,7 @@ use std::fmt::Debug;
 use vrl::compiler::{CompileConfig, Program, compile_with_external};
 use vrl::diagnostic::Formatter;
 use vrl::prelude::state::{ExternalEnv, RuntimeState};
-use vrl::prelude::{Collection, Context, Function, TimeZone, Value};
+use vrl::prelude::{Collection, Context, ExpressionError, Function, TimeZone, Value};
 use vrl::value::Kind;
 
 #[derive(Clone, Debug)]
@@ -33,6 +34,11 @@ pub struct Script {
 #[derive(Debug)]
 pub struct ScriptValue(Value);
 
+pub trait ScriptOutput: Default + Debug {
+  /// true if `abort()` was intentionally called and output still desired
+  fn did_abort(&self) -> bool;
+}
+
 impl Script {
   /// Create a new script
   pub fn new<T: Scriptable>(
@@ -40,6 +46,7 @@ impl Script {
     custom_functions: Vec<Box<dyn Function>>,
   ) -> anyhow::Result<Self> {
     let mut functions = vrl::stdlib::all();
+    functions.extend(crate::functions::stdlib());
     functions.extend(custom_functions);
     let compile_config = CompileConfig::default();
 
@@ -57,16 +64,24 @@ impl Script {
     })
   }
 
-  pub fn run<T: Scriptable, O: Default + Debug + 'static>(&self, object: &T) -> anyhow::Result<O> {
+  pub fn run<T: Scriptable, O: ScriptOutput + 'static>(&self, object: &T) -> anyhow::Result<O> {
     let mut state = RuntimeState::default();
     let timezone = TimeZone::default();
     let mut target = ScriptableTarget::new(object);
     let mut dynamic_data = O::default();
     let mut ctx =
       Context::new(&mut target, &mut state, &timezone).with_dynamic_state(&mut dynamic_data);
-    self.program.resolve(&mut ctx)?;
-
-    Ok(dynamic_data)
+    match self.program.resolve(&mut ctx) {
+      Ok(_) => Ok(dynamic_data),
+      Err(ExpressionError::Abort { span, message }) => {
+        if dynamic_data.did_abort() {
+          Ok(dynamic_data)
+        } else {
+          Err(ExpressionError::Abort { span, message }.into())
+        }
+      },
+      Err(other) => Err(other.into()),
+    }
   }
 }
 

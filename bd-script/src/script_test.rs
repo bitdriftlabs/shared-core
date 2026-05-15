@@ -78,6 +78,55 @@ fn unset_grouping_key() {
 }
 
 #[test]
+fn abort_execution() {
+  let script = Script::new::<Report>(
+    "
+    error_name = string!(.errors[0].name)
+    if contains(error_name, \"Null\") {
+      abort(\"skipping NPE\")
+    }
+    ",
+    report_functions(),
+  )
+  .expect("is ok");
+  let report = Report {
+    app_id: "com.example.myapp".to_string(),
+    errors: vec![Error {
+      name: "NullPointerException".to_string(),
+      stacktrace: vec!["Builder.build()".to_string(), "App.start()".to_string()],
+    }],
+  };
+  let output: ReportOutput = script.run(&report).expect("can run");
+  assert_eq!(Some("skipping NPE".to_string()), output.abort_message);
+}
+
+#[test]
+fn abort_execution_without_message() {
+  let script = Script::new::<Report>(
+    "
+    error_name = string!(.errors[0].name)
+    if contains(error_name, \"Null\") {
+      abort()
+    }
+    ",
+    report_functions(),
+  )
+  .expect("is ok");
+  let report = Report {
+    app_id: "com.example.myapp".to_string(),
+    errors: vec![Error {
+      name: "NullPointerException".to_string(),
+      stacktrace: vec!["Builder.build()".to_string(), "App.start()".to_string()],
+    }],
+  };
+  let output: ReportOutput = script.run(&report).expect("can run");
+  assert_eq!(
+    Some("ended execution using abort()".to_string()),
+    output.abort_message
+  );
+}
+
+#[test]
 fn type_hints_are_working() {
   // report.type is a known string key, so we can call contains()
   Script::new::<Report>(

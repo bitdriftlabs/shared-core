@@ -8,6 +8,7 @@
 mod functions;
 mod generated;
 
+use crate::ScriptOutput;
 pub use functions::all_functions as report_functions;
 use std::collections::BTreeMap;
 use std::ops::Add;
@@ -17,6 +18,8 @@ use std::ops::Add;
 pub struct ReportOutput {
   pub grouping_hints: GroupingHints,
   pub metrics: BTreeMap<String, String>,
+  /// Message set when `abort()` was called
+  pub abort_message: Option<String>,
 }
 
 type ErrorIndex = isize;
@@ -29,6 +32,12 @@ pub struct GroupingHints {
   /// mapping of error index to frame index to whether a frame is significant
   /// for grouping
   significant_frame_data: FrameData,
+}
+
+impl ScriptOutput for ReportOutput {
+  fn did_abort(&self) -> bool {
+    self.abort_message.is_some()
+  }
 }
 
 impl GroupingHints {
@@ -73,6 +82,7 @@ impl Add for ReportOutput {
     Self {
       grouping_hints: self.grouping_hints + rhs.grouping_hints,
       metrics,
+      abort_message: None,
     }
   }
 }
