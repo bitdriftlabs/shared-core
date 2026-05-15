@@ -11,14 +11,18 @@ feature-depth = 1
 allow = [
   "Apache-2.0",
   "BSD-3-Clause",
+  "0BSD",
+  "BSL-1.0",
   "CC0-1.0",
   "CDLA-Permissive-2.0",
   "ISC",
   "MIT",
+  "MIT-0",
   "MPL-2.0",
   "NCSA",
   "OpenSSL",
   "Unicode-3.0",
+  "Zlib",
 ]
 confidence-threshold = 0.8
 exceptions = []
