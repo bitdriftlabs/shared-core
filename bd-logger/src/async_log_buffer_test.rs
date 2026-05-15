@@ -821,10 +821,9 @@ async fn set_low_memory_state_writes_to_system_scope() {
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
   let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
 
+  let config_update = setup.make_config_update(WorkflowsConfiguration::default());
   let task = std::thread::spawn(move || {
-    assert_ok!(
-      config_update_tx.blocking_send(setup.make_config_update(WorkflowsConfiguration::default()))
-    );
+    assert_ok!(config_update_tx.blocking_send(config_update));
   });
 
   let test_store = TestStore::new().await;
