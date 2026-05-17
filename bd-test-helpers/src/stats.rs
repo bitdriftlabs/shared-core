@@ -248,7 +248,13 @@ impl StatsRequestHelper {
   }
 
   pub fn overflows(&self) -> &HashMap<String, u64> {
-    &self.request.snapshot.first().unwrap().metric_id_overflows
+    assert_eq!(self.request.snapshot.len(), 1);
+    self.overflows_for_snapshot(0)
+  }
+
+  pub fn overflows_for_snapshot(&self, index: usize) -> &HashMap<String, u64> {
+    assert!(index < self.request.snapshot.len());
+    &self.request.snapshot[index].metric_id_overflows
   }
 
   #[must_use]

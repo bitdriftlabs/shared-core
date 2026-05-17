@@ -63,12 +63,12 @@ impl StatsUploadRequestHandle {
 //
 
 struct InitializedInner {
-  file_system: Box<dyn FileSystem>,
+  file_system: Arc<dyn FileSystem>,
   index: VecDeque<PendingFile>,
   in_flight_uploads: HashSet<String>,
 }
 enum Inner {
-  NotInitialized(Option<Box<dyn FileSystem>>),
+  NotInitialized(Option<Arc<dyn FileSystem>>),
   Initialized(InitializedInner),
 }
 pub struct FileManager {
@@ -116,12 +116,28 @@ impl InitializedInner {
     Ok(())
   }
 
-  async fn delete_pending_upload(&mut self, index: usize) -> anyhow::Result<()> {
-    log::debug!("deleting pending upload: {}", self.index[index].name);
-    self.delete_snapshot(index).await?;
-    self.write_index().await?;
+  async fn delete_pending_uploads(&mut self, names: &[String]) -> anyhow::Result<()> {
+    let mut remaining_names: HashSet<String> = names.iter().cloned().collect();
+    let mut index = 0;
 
-    Ok(())
+    while index < self.index.len() {
+      let file_name = self.index[index].name.clone();
+      if remaining_names.remove(&file_name) {
+        log::debug!("deleting pending upload: {file_name}");
+        self.delete_snapshot(index).await?;
+      } else {
+        index += 1;
+      }
+    }
+
+    for name in remaining_names {
+      // A completion can race with max-files eviction removing an older in-flight entry before the
+      // upload ack arrives. We could teach eviction to preserve in-flight files, but that is more
+      // complicated than treating a missing entry here as an already-cleaned-up upload.
+      log::debug!("pending upload {name} not found in index");
+    }
+
+    self.write_index().await
   }
 
   fn eligible_pending_upload_ids(
@@ -203,7 +219,7 @@ impl FileManager {
     runtime_loader: &ConfigLoader,
   ) -> Self {
     Self {
-      inner: Mutex::new(Inner::NotInitialized(Some(file_system))),
+      inner: Mutex::new(Inner::NotInitialized(Some(Arc::from(file_system)))),
       time_provider,
       max_aggregated_files: runtime_loader.register_int_watch(),
       max_aggregation_window_per_file: runtime_loader.register_duration_watch(),
@@ -346,12 +362,13 @@ impl FileManager {
     &self,
     only_if_file_is_old: bool,
   ) -> anyhow::Result<Option<PendingUpload>> {
-    let mut inner = self.inner.lock().await;
-    let initialized_inner = inner.get_initialized().await?;
     let now = self.time_provider.now();
     let max_aggregation_window_per_file = *self.max_aggregation_window_per_file.read();
 
     loop {
+      let mut inner = self.inner.lock().await;
+      let initialized_inner = inner.get_initialized().await?;
+
       if initialized_inner.index.is_empty() {
         log::debug!("no pending upload: index is empty");
         return Ok(None);
@@ -380,8 +397,8 @@ impl FileManager {
       );
 
       let mut should_write_index = false;
-      let mut pending_request = StatsUploadRequest::default();
-      let mut source_file_ids = Vec::new();
+      let file_system = initialized_inner.file_system.clone();
+      let mut pending_files = Vec::new();
 
       for file_id in &eligible_file_ids {
         let Some(index) =
@@ -390,8 +407,7 @@ impl FileManager {
           continue;
         };
 
-        // If there is a pending upload, first attempt to re-upload. Otherwise, mark the entry as
-        // ready to upload before reading it back.
+        // Mark the selected files in flight under the lock before we release it for disk reads.
         if initialized_inner.index[index].period_end.is_none() {
           log::debug!(
             "marking entry as ready to upload: {}",
@@ -404,11 +420,21 @@ impl FileManager {
         initialized_inner
           .in_flight_uploads
           .insert(initialized_inner.index[index].name.clone());
+        pending_files.push(initialized_inner.index[index].clone());
+      }
 
-        let path = STATS_DIRECTORY.join(&initialized_inner.index[index].name);
+      if should_write_index {
+        initialized_inner.write_index().await?;
+      }
+      drop(inner);
 
-        match initialized_inner
-          .file_system
+      let mut pending_request = StatsUploadRequest::default();
+      let mut source_file_ids = Vec::new();
+      let mut bad_file_ids = Vec::new();
+
+      for pending_file in pending_files {
+        let path = STATS_DIRECTORY.join(&pending_file.name);
+        match file_system
           .read_file(&path)
           .await
           .and_then(|contents| read_compressed_protobuf::<StatsUploadRequest>(&contents))
@@ -419,34 +445,34 @@ impl FileManager {
             debug_assert_eq!(1, request_from_disk.snapshot.len());
             if let Some(snapshot) = request_from_disk.snapshot.first_mut() {
               snapshot.occurred_at = Some(Occurred_at::Aggregated(Aggregated {
-                period_start: initialized_inner.index[index].period_start.clone(),
-                period_end: initialized_inner.index[index].period_end.clone(),
+                period_start: pending_file.period_start.clone(),
+                period_end: pending_file.period_end.clone(),
                 ..Default::default()
               }));
             }
 
             pending_request.snapshot.extend(request_from_disk.snapshot);
-            source_file_ids.push(initialized_inner.index[index].name.clone());
+            source_file_ids.push(pending_file.name);
           },
           Err(e) => {
             // We failed to read the data, so the file must be bad. This could happen if we change
             // the schema in an incompatible way or if the file is corrupt. Delete the file and
             // accept the loss of this upload.
             log::debug!("unable to read pending upload {}: {e}", path.display());
-            initialized_inner
-              .in_flight_uploads
-              .remove(&initialized_inner.index[index].name);
-            initialized_inner.delete_pending_upload(index).await?;
-            if should_write_index {
-              initialized_inner.write_index().await?;
-              should_write_index = false;
-            }
+            bad_file_ids.push(pending_file.name);
           },
         }
       }
 
-      if should_write_index {
-        initialized_inner.write_index().await?;
+      if !bad_file_ids.is_empty() {
+        let mut inner = self.inner.lock().await;
+        let initialized_inner = inner.get_initialized().await?;
+        for file_id in &bad_file_ids {
+          initialized_inner.in_flight_uploads.remove(file_id);
+        }
+        initialized_inner
+          .delete_pending_uploads(&bad_file_ids)
+          .await?;
       }
 
       if source_file_ids.is_empty() {
@@ -483,25 +509,15 @@ impl FileManager {
     }
 
     for uuid in source_file_ids {
-      let found_index =
-        InitializedInner::find_index(&initialized_inner.index, |file| file.name == *uuid);
-
-      if let Some(index) = found_index {
-        log::debug!(
-          "completing pending upload: {}",
-          initialized_inner.index[index].name
-        );
+      if let Some(index) =
+        InitializedInner::find_index(&initialized_inner.index, |file| file.name == *uuid)
+      {
         debug_assert!(initialized_inner.index[index].period_end.is_some());
-        initialized_inner.delete_pending_upload(index).await?;
-      } else {
-        // There is a race condition in which we could theoretically have reached max files, but
-        // there is an upload in flight that comes back after we already popped the first entry.
-        // We could handle this by having the max file code not pop inflight uploads, but that is
-        // more complicated than just ignoring the response here.
-        log::debug!("pending upload {uuid} not found in index");
       }
     }
 
-    Ok(())
+    initialized_inner
+      .delete_pending_uploads(source_file_ids)
+      .await
   }
 }
