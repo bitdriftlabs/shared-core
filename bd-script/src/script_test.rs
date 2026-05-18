@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use time::OffsetDateTime;
 use vrl::core::Value;
 use vrl::path::OwnedSegment;
-use vrl::prelude::Collection;
+use vrl::prelude::{Collection, ExpressionError};
 use vrl::value::Kind;
 
 #[derive(Clone, Debug)]
@@ -83,7 +83,7 @@ fn abort_execution() {
     "
     error_name = string!(.errors[0].name)
     if contains(error_name, \"Null\") {
-      abort(\"skipping NPE\")
+      abort \"skipping NPE\"
     }
     ",
     report_functions(),
@@ -96,8 +96,13 @@ fn abort_execution() {
       stacktrace: vec!["Builder.build()".to_string(), "App.start()".to_string()],
     }],
   };
-  let output: ReportOutput = script.run(&report).expect("can run");
-  assert_eq!(Some("skipping NPE".to_string()), output.abort_message);
+  let err = script
+    .run::<Report, ReportOutput>(&report)
+    .expect_err("aborted");
+  let Some(ExpressionError::Abort { span: _, message }) = err.downcast_ref() else {
+    panic!("did not abort: {err:#?}");
+  };
+  assert_eq!(&Some("skipping NPE".to_string()), message);
 }
 
 #[test]
@@ -106,7 +111,7 @@ fn abort_execution_without_message() {
     "
     error_name = string!(.errors[0].name)
     if contains(error_name, \"Null\") {
-      abort()
+      abort
     }
     ",
     report_functions(),
@@ -119,11 +124,13 @@ fn abort_execution_without_message() {
       stacktrace: vec!["Builder.build()".to_string(), "App.start()".to_string()],
     }],
   };
-  let output: ReportOutput = script.run(&report).expect("can run");
-  assert_eq!(
-    Some("ended execution using abort()".to_string()),
-    output.abort_message
-  );
+  let err = script
+    .run::<Report, ReportOutput>(&report)
+    .expect_err("aborted");
+  let Some(ExpressionError::Abort { span: _, message }) = err.downcast_ref() else {
+    panic!("did not abort: {err:#?}");
+  };
+  assert_eq!(&None, message);
 }
 
 #[test]

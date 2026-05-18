@@ -21,7 +21,7 @@ use std::fmt::Debug;
 use vrl::compiler::{CompileConfig, Program, compile_with_external};
 use vrl::diagnostic::Formatter;
 use vrl::prelude::state::{ExternalEnv, RuntimeState};
-use vrl::prelude::{Collection, Context, ExpressionError, Function, TimeZone, Value};
+use vrl::prelude::{Collection, Context, Function, TimeZone, Value};
 use vrl::value::Kind;
 
 #[derive(Clone, Debug)]
@@ -33,10 +33,7 @@ pub struct Script {
 #[derive(Debug)]
 pub struct ScriptValue(Value);
 
-pub trait ScriptOutput: Default + Debug {
-  /// true if `abort()` was intentionally called and output still desired
-  fn did_abort(&self) -> bool;
-}
+pub trait ScriptOutput: Default + Debug {}
 
 impl Script {
   /// Create a new script
@@ -69,17 +66,8 @@ impl Script {
     let mut dynamic_data = O::default();
     let mut ctx =
       Context::new(&mut target, &mut state, &timezone).with_dynamic_state(&mut dynamic_data);
-    match self.program.resolve(&mut ctx) {
-      Ok(_) => Ok(dynamic_data),
-      Err(ExpressionError::Abort { span, message }) => {
-        if dynamic_data.did_abort() {
-          Ok(dynamic_data)
-        } else {
-          Err(ExpressionError::Abort { span, message }.into())
-        }
-      },
-      Err(other) => Err(other.into()),
-    }
+    self.program.resolve(&mut ctx)?;
+    Ok(dynamic_data)
   }
 }
 

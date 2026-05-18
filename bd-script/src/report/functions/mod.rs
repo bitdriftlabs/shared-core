@@ -5,12 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-mod abort;
 mod add_field;
 mod set_grouping_key;
 mod set_significant_frame;
 
-use crate::report::functions::abort::Abort;
 use crate::report::functions::add_field::AddField;
 use crate::report::functions::set_grouping_key::SetGroupingKey;
 use crate::report::functions::set_significant_frame::SetSignificantFrame;
@@ -19,7 +17,6 @@ use vrl::prelude::Function;
 #[must_use]
 pub fn all_functions() -> Vec<Box<dyn Function>> {
   vec![
-    Box::new(Abort),
     Box::new(AddField),
     Box::new(SetGroupingKey),
     Box::new(SetSignificantFrame),
