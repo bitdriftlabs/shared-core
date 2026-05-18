@@ -544,6 +544,7 @@ impl Api {
 
   async fn set_client_killed(&mut self) {
     self.client_killed = true;
+    self.sdk_status_tracker.record_disabled();
     UnexpectedErrorHandler::disable();
     // Make sure that we clear out cached config so that when we eventually come back online we
     // can accept new config if the server sends it.

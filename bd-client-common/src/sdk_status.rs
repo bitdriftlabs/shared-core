@@ -24,6 +24,8 @@ pub enum InitializationState {
   Loaded     = 1,
   /// The SDK is fully running and processing logs.
   Running    = 2,
+  /// The SDK has been force-disabled by the server (e.g., authentication failure).
+  Disabled   = 3,
 }
 
 /// A point-in-time snapshot of the SDK's operational status.
@@ -80,6 +82,12 @@ impl SdkStatusTracker {
   pub fn record_handshake(&self, time: OffsetDateTime) {
     let mut status = self.inner.write();
     status.last_handshake_time = Some(time);
+  }
+
+  /// Called when the SDK has been force-disabled by the server.
+  pub fn record_disabled(&self) {
+    let mut status = self.inner.write();
+    status.initialization_state = InitializationState::Disabled;
   }
 
   /// Called when a configuration update is successfully applied from the backend

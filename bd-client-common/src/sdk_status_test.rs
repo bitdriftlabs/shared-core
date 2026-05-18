@@ -104,3 +104,14 @@ fn timestamps_recorded_before_running() {
   assert_eq!(status.last_handshake_time, Some(now));
   assert_eq!(status.last_config_delivery_time, Some(now));
 }
+
+#[test]
+fn record_disabled_transitions_to_disabled() {
+  let tracker = SdkStatusTracker::new();
+  tracker.record_running();
+
+  tracker.record_disabled();
+
+  let status = tracker.get();
+  assert_eq!(status.initialization_state, InitializationState::Disabled);
+}
