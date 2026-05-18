@@ -7,6 +7,7 @@
 
 use crate::workflow::Traversal;
 use anyhow::{anyhow, bail};
+use bd_client_regex::Regex;
 use bd_log_matcher::matcher::Tree;
 use bd_log_primitives::{FieldsRef, LogMessage};
 use bd_proto::protos::workflow::save_field::SaveField;
@@ -22,7 +23,6 @@ use bd_proto::protos::workflow::workflow::workflow::{
 use bd_state::Scope;
 use bd_stats_common::MetricType;
 use protobuf::MessageField;
-use regex::Regex;
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -606,7 +606,7 @@ impl Transition {
         required_matches: rule.count,
       },
       Rule_type::RuleStateChangeMatch(rule) => Predicate::StateChangeMatch {
-        state_change_match: StateChangeMatch::try_from_proto(rule)?,
+        state_change_match: Box::new(StateChangeMatch::try_from_proto(rule)?),
         extra_matcher: rule.log_matcher.as_ref().map(Tree::new).transpose()?,
       },
       Rule_type::OnNewSession(_) => Predicate::OnNewSession,
@@ -687,7 +687,7 @@ pub(crate) enum Predicate {
   },
   OnNewSession,
   StateChangeMatch {
-    state_change_match: StateChangeMatch,
+    state_change_match: Box<StateChangeMatch>,
     extra_matcher: Option<Tree>,
   },
 }

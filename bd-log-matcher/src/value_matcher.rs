@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use anyhow::{Result, anyhow};
+use bd_client_regex::Regex;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_proto::protos::value_matcher::value_matcher::double_value_match::Double_value_match_type;
 use bd_proto::protos::value_matcher::value_matcher::int_value_match::Int_value_match_type;
@@ -16,7 +17,6 @@ use bd_proto::protos::value_matcher::value_matcher::{
   StringValueMatch as StringValueMatch_type,
 };
 use protobuf::EnumOrUnknown;
-use regex::Regex;
 use std::ops::Deref;
 
 //
