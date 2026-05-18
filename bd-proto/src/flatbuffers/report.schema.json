@@ -1,0 +1,494 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "definitions": {
+    "bitdrift_public_fbs_common_v1_Data" : {
+      "type" : "string",
+      "enum": ["NONE", "string_data", "binary_data"]
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_ReportType" : {
+      "type" : "string",
+      "enum": ["Unknown", "AppNotResponding", "HandledError", "JVMCrash", "MemoryTermination", "NativeCrash", "StrictModeViolation", "JavaScriptNonFatalError", "JavaScriptFatalError"]
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_Platform" : {
+      "type" : "string",
+      "enum": ["Unknown", "Android", "iOS", "macOS"]
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_Architecture" : {
+      "type" : "string",
+      "enum": ["Unknown", "arm32", "arm64", "x86", "x86_64"]
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_FrameType" : {
+      "type" : "string",
+      "enum": ["Unknown", "JVM", "DWARF", "AndroidNative", "JavaScript"]
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_ErrorRelation" : {
+      "type" : "string",
+      "enum": ["CausedBy"]
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_PowerState" : {
+      "type" : "string",
+      "enum": ["Unknown", "RunningOnBattery", "PluggedInNoBattery", "PluggedInCharging", "PluggedInCharged"]
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_NetworkState" : {
+      "type" : "string",
+      "enum": ["Unknown", "Disconnected", "Cellular", "WiFi"]
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_JavaScriptEngine" : {
+      "type" : "string",
+      "enum": ["UnknownJsEngine", "JavaScriptCore", "Hermes"]
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_Rotation" : {
+      "type" : "string",
+      "enum": ["Unknown", "Portrait", "LandscapeRight", "LandscapeLeft", "PortraitUpsideDown"]
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_FrameStatus" : {
+      "type" : "string",
+      "enum": ["Missing", "Symbolicated", "MissingSymbol", "UnknownImage", "Malformed"]
+    },
+    "bitdrift_public_fbs_common_v1_StringData" : {
+      "type" : "object",
+      "properties" : {
+        "data" : {
+                "type" : "string"
+              }
+      },
+      "required" : ["data"],
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_common_v1_BinaryData" : {
+      "type" : "object",
+      "properties" : {
+        "data_type" : {
+                "type" : "string"
+              },
+        "data" : {
+                "type" : "array", "items" : {"type" : "integer", "minimum" : 0, "maximum" :255}
+              }
+      },
+      "required" : ["data"],
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_common_v1_Field" : {
+      "type" : "object",
+      "properties" : {
+        "key" : {
+                "type" : "string"
+              },
+        "value_type" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_common_v1_Data"
+              },
+        "value" : {
+                "anyOf": [{ "$ref" : "#/definitions/bitdrift_public_fbs_common_v1_StringData" },{ "$ref" : "#/definitions/bitdrift_public_fbs_common_v1_BinaryData" }]
+              }
+      },
+      "required" : ["key", "value"],
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_common_v1_Timestamp" : {
+      "type" : "object",
+      "properties" : {
+        "seconds" : {
+                "type" : "integer", "minimum" : -9223372036854775808, "maximum" : 9223372036854775807
+              },
+        "nanos" : {
+                "type" : "integer", "minimum" : -2147483648, "maximum" : 2147483647
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_Timestamp" : {
+      "type" : "object",
+      "properties" : {
+        "seconds" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 18446744073709551615
+              },
+        "nanos" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 4294967295
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_Memory" : {
+      "type" : "object",
+      "properties" : {
+        "total" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 18446744073709551615
+              },
+        "free" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 18446744073709551615
+              },
+        "used" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 18446744073709551615
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_AppBuildNumber" : {
+      "type" : "object",
+      "properties" : {
+        "version_code" : {
+                "type" : "integer", "minimum" : -9223372036854775808, "maximum" : 9223372036854775807
+              },
+        "cf_bundle_version" : {
+                "type" : "string"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_ProcessorUsage" : {
+      "type" : "object",
+      "properties" : {
+        "duration_seconds" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 18446744073709551615
+              },
+        "used_percent" : {
+                "type" : "integer", "minimum" : 0, "maximum" :255
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_AppMetrics" : {
+      "type" : "object",
+      "properties" : {
+        "app_id" : {
+                "type" : "string"
+              },
+        "memory" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_Memory"
+              },
+        "version" : {
+                "type" : "string"
+              },
+        "build_number" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_AppBuildNumber"
+              },
+        "running_state" : {
+                "type" : "string"
+              },
+        "process_id" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 4294967295
+              },
+        "region_format" : {
+                "type" : "string"
+              },
+        "cpu_usage" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_ProcessorUsage"
+              },
+        "lifecycle_event" : {
+                "type" : "string"
+              },
+        "javascript_engine" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_JavaScriptEngine"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_OSBuild" : {
+      "type" : "object",
+      "properties" : {
+        "version" : {
+                "type" : "string"
+              },
+        "brand" : {
+                "type" : "string"
+              },
+        "fingerprint" : {
+                "type" : "string"
+              },
+        "kern_osversion" : {
+                "type" : "string"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_PowerMetrics" : {
+      "type" : "object",
+      "properties" : {
+        "power_state" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_PowerState"
+              },
+        "charge_percent" : {
+                "type" : "integer", "minimum" : 0, "maximum" :255
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_Display" : {
+      "type" : "object",
+      "properties" : {
+        "height" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 4294967295
+              },
+        "width" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 4294967295
+              },
+        "density_dpi" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 4294967295
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_DeviceMetrics" : {
+      "type" : "object",
+      "properties" : {
+        "time" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_Timestamp"
+              },
+        "timezone" : {
+                "type" : "string"
+              },
+        "power_metrics" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_PowerMetrics"
+              },
+        "network_state" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_NetworkState"
+              },
+        "rotation" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_Rotation"
+              },
+        "arch" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_Architecture"
+              },
+        "display" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_Display"
+              },
+        "manufacturer" : {
+                "type" : "string"
+              },
+        "model" : {
+                "type" : "string"
+              },
+        "os_build" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_OSBuild"
+              },
+        "platform" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_Platform"
+              },
+        "cpu_abis" : {
+                "type" : "array", "items" : {"type" : "string"}
+              },
+        "low_power_mode_enabled" : {
+                "type" : "boolean"
+              },
+        "cpu_usage" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_ProcessorUsage"
+              },
+        "thermal_state" : {
+                "type" : "integer", "minimum" : 0, "maximum" :255
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_SourceFile" : {
+      "type" : "object",
+      "properties" : {
+        "path" : {
+                "type" : "string"
+              },
+        "line" : {
+                "type" : "integer", "minimum" : -9223372036854775808, "maximum" : 9223372036854775807
+              },
+        "column" : {
+                "type" : "integer", "minimum" : -9223372036854775808, "maximum" : 9223372036854775807
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_CPURegister" : {
+      "type" : "object",
+      "properties" : {
+        "name" : {
+                "type" : "string"
+              },
+        "value" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 18446744073709551615
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_Frame" : {
+      "type" : "object",
+      "properties" : {
+        "type" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_FrameType"
+              },
+        "class_name" : {
+                "type" : "string"
+              },
+        "symbol_name" : {
+                "type" : "string"
+              },
+        "source_file" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_SourceFile"
+              },
+        "image_id" : {
+                "type" : "string"
+              },
+        "frame_address" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 18446744073709551615
+              },
+        "symbol_address" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 18446744073709551615
+              },
+        "registers" : {
+                "type" : "array", "items" : {"$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_CPURegister"}
+              },
+        "state" : {
+                "type" : "array", "items" : {"type" : "string"}
+              },
+        "frame_status" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_FrameStatus"
+              },
+        "original_index" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 18446744073709551615
+              },
+        "in_app" : {
+                "type" : "boolean"
+              },
+        "symbolicated_name" : {
+                "type" : "string"
+              },
+        "js_bundle_path" : {
+                "type" : "string"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_Thread" : {
+      "type" : "object",
+      "properties" : {
+        "name" : {
+                "type" : "string"
+              },
+        "active" : {
+                "type" : "boolean"
+              },
+        "index" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 4294967295
+              },
+        "state" : {
+                "type" : "string"
+              },
+        "priority" : {
+                "type" : "number"
+              },
+        "quality_of_service" : {
+                "type" : "integer", "minimum" : -128, "maximum" : 127
+              },
+        "stack_trace" : {
+                "type" : "array", "items" : {"$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_Frame"}
+              },
+        "summary" : {
+                "type" : "string"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_ThreadDetails" : {
+      "type" : "object",
+      "properties" : {
+        "count" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 65535
+              },
+        "threads" : {
+                "type" : "array", "items" : {"$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_Thread"}
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_Error" : {
+      "type" : "object",
+      "properties" : {
+        "name" : {
+                "type" : "string"
+              },
+        "reason" : {
+                "type" : "string"
+              },
+        "stack_trace" : {
+                "type" : "array", "items" : {"$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_Frame"}
+              },
+        "relation_to_next" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_ErrorRelation"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_BinaryImage" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+                "type" : "string"
+              },
+        "path" : {
+                "type" : "string"
+              },
+        "load_address" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 18446744073709551615
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_SDKInfo" : {
+      "type" : "object",
+      "properties" : {
+        "id" : {
+                "type" : "string"
+              },
+        "version" : {
+                "type" : "string"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_FeatureFlag" : {
+      "type" : "object",
+      "properties" : {
+        "name" : {
+                "type" : "string"
+              },
+        "value" : {
+                "type" : "string"
+              },
+        "timestamp" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_common_v1_Timestamp"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_Report" : {
+      "type" : "object",
+      "properties" : {
+        "sdk" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_SDKInfo"
+              },
+        "type" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_ReportType"
+              },
+        "app_metrics" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_AppMetrics"
+              },
+        "device_metrics" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_DeviceMetrics"
+              },
+        "errors" : {
+                "type" : "array", "items" : {"$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_Error"}
+              },
+        "thread_details" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_ThreadDetails"
+              },
+        "binary_images" : {
+                "type" : "array", "items" : {"$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_BinaryImage"}
+              },
+        "state" : {
+                "type" : "array", "items" : {"$ref" : "#/definitions/bitdrift_public_fbs_common_v1_Field"}
+              },
+        "feature_flags" : {
+                "type" : "array", "items" : {"$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_FeatureFlag"}
+              }
+      },
+      "additionalProperties" : false
+    }
+  },
+  "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_Report"
+}
