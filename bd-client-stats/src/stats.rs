@@ -9,7 +9,7 @@
 #[path = "./stats_test.rs"]
 mod stats_test;
 
-use crate::file_manager::FileManager;
+use crate::file_manager::{FileManager, PendingUpload};
 #[cfg(feature = "logger-cli-observer")]
 use crate::observer::{
   ObservedMetric,
@@ -25,12 +25,14 @@ use bd_api::DataUpload;
 use bd_api::upload::{TrackedStatsUploadRequest, UploadResponse};
 use bd_client_stats_store::{Collector, Histogram, MetricData, MetricsByNameCore};
 use bd_error_reporter::reporter::handle_unexpected;
+#[cfg(feature = "logger-cli-observer")]
+use bd_proto::protos::client::api::StatsUploadRequest;
+use bd_proto::protos::client::api::debug_data_request;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::Snapshot_type;
 use bd_proto::protos::client::api::stats_upload_request::{
   Snapshot as StatsSnapshot,
   UploadReason,
 };
-use bd_proto::protos::client::api::{StatsUploadRequest, debug_data_request};
 #[cfg(feature = "logger-cli-observer")]
 use bd_proto::protos::client::metric::metric::Data as ProtoMetricData;
 use bd_proto::protos::client::metric::metric::Metric_name_type;
@@ -44,6 +46,7 @@ use debug_data_request::{WorkflowDebugData, WorkflowTransitionDebugData};
 use futures::StreamExt;
 use futures::stream::FuturesUnordered;
 use itertools::Itertools;
+use sha2::{Digest, Sha256};
 #[cfg(test)]
 use stats_test::{TestHooks, TestHooksReceiver};
 use std::collections::{BTreeMap, HashMap};
@@ -55,6 +58,8 @@ use tokio::sync::{mpsc, oneshot, watch};
 type UploadFuture =
   Pin<Box<dyn std::future::Future<Output = (UploadResponse, UploadContext)> + Send + Sync>>;
 
+const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PeriodicAction {
   Flush,
@@ -62,8 +67,39 @@ pub enum PeriodicAction {
 }
 
 enum UploadContext {
-  Periodic,
-  Flush(FlushTriggerRequest),
+  Periodic(PendingUploadMetadata),
+  Flush(FlushTriggerRequest, PendingUploadMetadata),
+}
+
+struct PendingUploadMetadata {
+  transport_uuid: String,
+  source_file_ids: Vec<String>,
+}
+
+impl UploadContext {
+  const fn metadata(&self) -> &PendingUploadMetadata {
+    match self {
+      Self::Periodic(metadata) | Self::Flush(_, metadata) => metadata,
+    }
+  }
+}
+
+fn batch_transport_uuid(source_file_ids: &[String]) -> String {
+  if source_file_ids.len() == 1 {
+    return source_file_ids[0].clone();
+  }
+
+  // Retries must use the same transport UUID for the same logical batch, but the UUID also needs
+  // to change when the batch composition changes. A stable SHA-256 hex digest of the ordered
+  // source file IDs gives us both properties across retries and restarts, and `upload_uuid` is
+  // only treated as an opaque string in this path.
+  let digest = Sha256::digest(format!("stats-batch:{}", source_file_ids.join(",")));
+  let mut encoded = String::with_capacity(digest.len() * 2);
+  for byte in digest {
+    encoded.push(HEX_DIGITS[usize::from(byte >> 4)] as char);
+    encoded.push(HEX_DIGITS[usize::from(byte & 0x0f)] as char);
+  }
+  encoded
 }
 
 #[async_trait]
@@ -472,13 +508,16 @@ impl Flusher {
   }
 
   async fn startup_upload_if_old(&mut self) {
-    if let Some((uuid, rx)) = self
+    if let Some((metadata, rx)) = self
       .upload_from_disk(true, UploadReason::UPLOAD_REASON_PERIODIC)
       .await
     {
-      log::debug!("starting old-file stats upload during startup");
+      log::debug!(
+        "starting old-file stats upload during startup for {} pending files",
+        metadata.source_file_ids.len()
+      );
       self.periodic_in_flight = true;
-      self.push_upload_future(uuid, rx, UploadContext::Periodic);
+      self.push_upload_future(rx, UploadContext::Periodic(metadata));
     }
   }
 
@@ -499,12 +538,12 @@ impl Flusher {
       return;
     }
 
-    if let Some((uuid, rx)) = self
+    if let Some((metadata, rx)) = self
       .upload_from_disk(false, UploadReason::UPLOAD_REASON_PERIODIC)
       .await
     {
       self.periodic_in_flight = true;
-      self.push_upload_future(uuid, rx, UploadContext::Periodic);
+      self.push_upload_future(rx, UploadContext::Periodic(metadata));
     }
   }
 
@@ -536,13 +575,13 @@ impl Flusher {
       return;
     }
 
-    if let Some((uuid, rx)) = self
+    if let Some((metadata, rx)) = self
       .upload_from_disk(false, UploadReason::UPLOAD_REASON_EVENT_TRIGGERED)
       .await
     {
       self.last_flush_upload_time = Some(self.time_provider.now());
       self.flush_in_flight = true;
-      self.push_upload_future(uuid, rx, UploadContext::Flush(request));
+      self.push_upload_future(rx, UploadContext::Flush(request, metadata));
     } else if let Some(tx) = request.completion_tx {
       let () = tx.send(());
     }
@@ -553,13 +592,13 @@ impl Flusher {
     upload_response: UploadResponse,
     context: UploadContext,
   ) {
-    if matches!(context, UploadContext::Flush(_)) && !upload_response.success {
+    if matches!(context, UploadContext::Flush(..)) && !upload_response.success {
       // Clear the flush upload gate on failure so a later background or explicit flush can retry.
       self.last_flush_upload_time = None;
     }
 
     self
-      .process_pending_upload_completion(&upload_response)
+      .process_pending_upload_completion(&upload_response, context.metadata())
       .await;
 
     #[cfg(test)]
@@ -572,19 +611,15 @@ impl Flusher {
       .unwrap();
 
     match context {
-      UploadContext::Periodic => {
+      UploadContext::Periodic(..) => {
         if upload_response.success {
-          // During startup or after getting network connectivity back it's possible that we will
-          // have a number of pending uploads to process. Go ahead and see if we have an
-          // old file at the head of the list which we should upload immediately.
-          // TODO(mattklein123): It would be better to batch all of the "old" files into a single
-          // upload request. We can do this in the future.
-          if let Some((uuid, rx)) = self
+          if let Some((metadata, rx)) = self
             .upload_from_disk(true, UploadReason::UPLOAD_REASON_PERIODIC)
             .await
           {
-            // Old file uploads bypass the minimum interval check, so don't consult the flush gate.
-            self.push_upload_future(uuid, rx, UploadContext::Periodic);
+            // Old file uploads bypass the minimum interval check so we can drain backlog quickly
+            // after startup or once a periodic upload succeeds.
+            self.push_upload_future(rx, UploadContext::Periodic(metadata));
           } else {
             self.periodic_in_flight = false;
           }
@@ -592,7 +627,7 @@ impl Flusher {
           self.periodic_in_flight = false;
         }
       },
-      UploadContext::Flush(request) => {
+      UploadContext::Flush(request, ..) => {
         self.flush_in_flight = false;
         if let Some(tx) = request.completion_tx {
           let () = tx.send(());
@@ -601,16 +636,12 @@ impl Flusher {
     }
   }
 
-  fn push_upload_future(
-    &self,
-    uuid: String,
-    rx: oneshot::Receiver<UploadResponse>,
-    context: UploadContext,
-  ) {
+  fn push_upload_future(&self, rx: oneshot::Receiver<UploadResponse>, context: UploadContext) {
+    let transport_uuid = context.metadata().transport_uuid.clone();
     self.uploads.push(Box::pin(async move {
       let res = rx.await.unwrap_or(UploadResponse {
         success: false,
-        uuid,
+        uuid: transport_uuid,
       });
       (res, context)
     }));
@@ -836,12 +867,12 @@ impl Flusher {
     &self,
     only_if_file_is_old: bool,
     upload_reason: UploadReason,
-  ) -> Option<(String, oneshot::Receiver<UploadResponse>)> {
+  ) -> Option<(PendingUploadMetadata, oneshot::Receiver<UploadResponse>)> {
     async fn inner(
       flusher: &Flusher,
       only_if_file_is_old: bool,
       upload_reason: UploadReason,
-    ) -> anyhow::Result<Option<(String, oneshot::Receiver<UploadResponse>)>> {
+    ) -> anyhow::Result<Option<(PendingUploadMetadata, oneshot::Receiver<UploadResponse>)>> {
       if let Some(pending_upload) = flusher
         .file_manager
         .get_or_create_pending_upload(only_if_file_is_old)
@@ -873,11 +904,17 @@ impl Flusher {
   // request will be deleted.
   async fn process_pending_upload(
     &self,
-    mut request: StatsUploadRequest,
+    pending_upload: PendingUpload,
     upload_reason: UploadReason,
-  ) -> anyhow::Result<Option<(String, oneshot::Receiver<UploadResponse>)>> {
+  ) -> anyhow::Result<Option<(PendingUploadMetadata, oneshot::Receiver<UploadResponse>)>> {
     #[cfg(feature = "logger-cli-observer")]
     let upload_reason_name = format!("{upload_reason:?}");
+    let PendingUpload {
+      mut request,
+      source_file_ids,
+    } = pending_upload;
+    let transport_uuid = batch_transport_uuid(&source_file_ids);
+    request.upload_uuid = transport_uuid.clone();
     request.upload_reason = upload_reason.into();
     let (stats, response_rx) = TrackedStatsUploadRequest::new(request.upload_uuid.clone(), request);
 
@@ -904,7 +941,6 @@ impl Flusher {
       }
     });
 
-    let uuid = stats.payload.upload_uuid.clone();
     let tracked_upload = DataUpload::StatsUpload(stats);
 
     // If this errors out the other end of the channel has closed, indicating that we are shutting
@@ -913,10 +949,20 @@ impl Flusher {
       return Ok(None);
     }
 
-    Ok(Some((uuid, response_rx)))
+    Ok(Some((
+      PendingUploadMetadata {
+        transport_uuid,
+        source_file_ids,
+      },
+      response_rx,
+    )))
   }
 
-  async fn process_pending_upload_completion(&self, upload_response: &UploadResponse) {
+  async fn process_pending_upload_completion(
+    &self,
+    upload_response: &UploadResponse,
+    metadata: &PendingUploadMetadata,
+  ) {
     log::debug!("stat upload attempt complete: {upload_response:?}");
 
     #[cfg(feature = "logger-cli-observer")]
@@ -932,7 +978,7 @@ impl Flusher {
     handle_unexpected(
       self
         .file_manager
-        .complete_pending_upload(&upload_response.uuid, upload_response.success)
+        .complete_pending_upload(&metadata.source_file_ids, upload_response.success)
         .await,
       "complete pending upload",
     );
