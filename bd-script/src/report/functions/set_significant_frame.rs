@@ -31,22 +31,43 @@ impl Function for SetSignificantFrame {
     &[]
   }
 
+  fn usage(&self) -> &'static str {
+    ""
+  }
+
+  fn category(&self) -> &'static str {
+    ""
+  }
+
+  fn return_kind(&self) -> u16 {
+    kind::NULL
+  }
+
   fn parameters(&self) -> &'static [Parameter] {
     &[
       Parameter {
         keyword: "error_index",
         kind: kind::INTEGER,
         required: true,
+        description: "",
+        default: None,
+        enum_variants: None,
       },
       Parameter {
         keyword: "frame_index",
         kind: kind::INTEGER,
         required: true,
+        description: "",
+        default: None,
+        enum_variants: None,
       },
       Parameter {
         keyword: "is_significant",
         kind: kind::BOOLEAN | kind::NULL,
         required: false,
+        description: "",
+        default: None,
+        enum_variants: None,
       },
     ]
   }

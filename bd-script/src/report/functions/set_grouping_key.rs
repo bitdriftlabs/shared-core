@@ -29,11 +29,26 @@ impl Function for SetGroupingKey {
     &[]
   }
 
+  fn usage(&self) -> &'static str {
+    ""
+  }
+
+  fn category(&self) -> &'static str {
+    ""
+  }
+
+  fn return_kind(&self) -> u16 {
+    kind::NULL
+  }
+
   fn parameters(&self) -> &'static [Parameter] {
     &[Parameter {
       keyword: "key",
       kind: kind::BYTES | kind::NULL,
       required: true,
+      description: "",
+      default: None,
+      enum_variants: None,
     }]
   }
 

@@ -30,17 +30,35 @@ impl Function for AddField {
     &[]
   }
 
+  fn usage(&self) -> &'static str {
+    ""
+  }
+
+  fn category(&self) -> &'static str {
+    ""
+  }
+
+  fn return_kind(&self) -> u16 {
+    kind::NULL
+  }
+
   fn parameters(&self) -> &'static [Parameter] {
     &[
       Parameter {
         keyword: "name",
         kind: kind::BYTES,
         required: true,
+        description: "",
+        default: None,
+        enum_variants: None,
       },
       Parameter {
         keyword: "value",
         kind: kind::BYTES,
         required: true,
+        description: "",
+        default: None,
+        enum_variants: None,
       },
     ]
   }
