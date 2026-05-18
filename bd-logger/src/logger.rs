@@ -498,6 +498,26 @@ impl LoggerHandle {
     );
   }
 
+  pub fn notify_low_memory(&self, level: String, memory_used_kb: u64, timestamp_us: u64) {
+    with_reentrancy_guard!(
+      {
+        let result =
+          self
+            .tx
+            .try_send_state_update(async_log_buffer::StateUpdateMessage::SetLowMemoryState {
+              level,
+              memory_used_kb,
+              timestamp_us,
+            });
+        if let Err(e) = result {
+          log::warn!("failed to notify low memory state: {e:?}");
+        }
+      },
+      "failed to notify {:?} low memory state, calling from within a callback is not permitted",
+      level
+    );
+  }
+
   pub fn flush_state(&self, block: Block) {
     log::debug!("state flushing initiated");
     let result = self.tx.flush_state(block);
