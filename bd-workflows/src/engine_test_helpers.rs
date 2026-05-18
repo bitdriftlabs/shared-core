@@ -383,7 +383,7 @@ impl Setup {
 
     let (mut workflows_engine, buffers_to_flush_rx) = WorkflowsEngine::new(
       &self.collector.scope(""),
-      self.sdk_directory.path(),
+      Some(self.sdk_directory.path()),
       &self.runtime,
       data_upload_tx,
       stats.clone(),

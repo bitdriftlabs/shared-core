@@ -89,7 +89,7 @@ pub struct WorkflowsEngine {
   // at index `i`.
   configs: Vec<Config>,
   state: WorkflowsState,
-  state_store: StateStore,
+  state_store: Option<StateStore>,
   pending_buffer_flushes: HashMap<FlushBufferId, tokio::sync::oneshot::Receiver<()>>,
 
   needs_state_persistence: bool,
@@ -117,7 +117,7 @@ pub struct WorkflowsEngine {
 impl WorkflowsEngine {
   pub fn new(
     scope: &Scope,
-    sdk_directory: &Path,
+    sdk_directory: Option<&Path>,
     runtime: &ConfigLoader,
     data_upload_tx: Sender<DataUpload>,
     stats: Arc<Stats>,
@@ -152,7 +152,7 @@ impl WorkflowsEngine {
       configs: vec![],
       state: WorkflowsState::default(),
       stats: WorkflowsEngineStats::new(&scope),
-      state_store: StateStore::new(sdk_directory, &scope, runtime),
+      state_store: sdk_directory.map(|dir| StateStore::new(dir, &scope, runtime)),
       needs_state_persistence: false,
       flush_buffers_actions_resolver,
       flush_buffers_negotiator_join_handle,
@@ -180,9 +180,13 @@ impl WorkflowsEngine {
         config.continuous_buffer_ids,
       ));
 
-    let workflows_state = self.state_store.load();
+    let workflows_state = if let Some(store) = &self.state_store {
+      store.load().await
+    } else {
+      None
+    };
 
-    if let Some(state) = workflows_state.await {
+    if let Some(state) = workflows_state {
       self.state.pending_flush_actions = self
         .flush_buffers_actions_resolver
         .standardize_pending_actions(state.pending_flush_actions);
@@ -446,7 +450,11 @@ impl WorkflowsEngine {
       return;
     }
 
-    if self.state_store.maybe_store(&self.state, force).await {
+    let Some(store) = &mut self.state_store else {
+      return;
+    };
+
+    if store.maybe_store(&self.state, force).await {
       self.needs_state_persistence = false;
     }
   }

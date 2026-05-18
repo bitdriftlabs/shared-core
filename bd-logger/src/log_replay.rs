@@ -169,7 +169,7 @@ impl ProcessingPipeline {
     let (workflows_engine, buffers_to_flush_rx) = {
       let (mut workflows_engine, flush_buffers_tx) = WorkflowsEngine::new(
         &stats.root_scope,
-        sdk_directory,
+        Some(sdk_directory),
         runtime,
         data_upload_tx,
         stats.stats.clone(),

@@ -108,7 +108,7 @@ impl AnnotatedWorkflowsEngine {
 
     let (mut engine, _) = WorkflowsEngine::new(
       scope,
-      directory,
+      Some(directory),
       runtime_loader,
       data_tx,
       stats,
