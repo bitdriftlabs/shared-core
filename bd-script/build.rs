@@ -7,7 +7,7 @@
 
 use anyhow::{anyhow, bail};
 use serde_json::{Map, Value};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs::{File, read_to_string};
 use std::io::Write;
 use std::process::{Command, Stdio};
@@ -108,7 +108,7 @@ impl Typewriter {
           )
         })
         .filter(|(_, value)| !value.contains_key("anyOf"))
-        .collect::<HashMap<_, _>>(); // ignore anyOf
+        .collect::<BTreeMap<_, _>>(); // ignore anyOf
       self.write_from_impl(
         &resolved_name,
         &resolved_top_level_name,
@@ -208,7 +208,7 @@ impl Typewriter {
     &self,
     resolved_name: &str,
     resolved_top_level_name: &str,
-    properties: &HashMap<&String, &Map<String, Value>>,
+    properties: &BTreeMap<&String, &Map<String, Value>>,
     output: &mut T,
   ) -> anyhow::Result<()> {
     // impl From<{name}> for ScriptValue
@@ -236,7 +236,7 @@ impl Typewriter {
     resolved_top_level_name: &str,
     definition: &Map<String, Value>,
     raw_properties: &Map<String, Value>,
-    properties: &HashMap<&String, &Map<String, Value>>,
+    properties: &BTreeMap<&String, &Map<String, Value>>,
     output: &mut T,
   ) -> anyhow::Result<()> {
     // impl Scriptable for {name}
