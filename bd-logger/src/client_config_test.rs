@@ -135,7 +135,7 @@ async fn load_malformed_file() {
 }
 
 #[tokio::test]
-async fn load_persisted_config_records_config_delivery() {
+async fn load_persisted_config_does_not_record_config_delivery() {
   let directory = TempDir::with_prefix("sdk").unwrap();
 
   // Persist a config to disk.
@@ -166,5 +166,7 @@ async fn load_persisted_config_records_config_delivery() {
 
   assert!(tracker.get().last_config_delivery_time.is_none());
   config.try_load_persisted_config_helper().await;
-  assert!(tracker.get().last_config_delivery_time.is_some());
+  // Config delivery is only recorded when the server confirms via handshake
+  // or sends fresh config, not when loading from cache.
+  assert!(tracker.get().last_config_delivery_time.is_none());
 }

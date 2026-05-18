@@ -183,14 +183,6 @@ impl<A: ApplyConfig> Config<A> {
         .process_configuration_update_inner(configuration_update, true)
         .await;
 
-      if maybe_nack.is_ok() {
-        // Record config delivery so the SDK status reflects that we have
-        // a working config even if we never reach the server.
-        self
-          .sdk_status_tracker
-          .record_config_delivery(self.time_provider.now());
-      }
-
       // We should never persist config that results in a Nack, but if we do we effectively drop
       // the config on startup as the above function won't write it back.
       debug_assert!(maybe_nack.is_ok());
@@ -248,6 +240,9 @@ impl<A: ApplyConfig + Send + Sync> bd_client_common::ClientConfigurationUpdate f
   async fn on_handshake_complete(&self, configuration_update_status: u32) {
     if configuration_update_status & HANDSHAKE_FLAG_CONFIG_UP_TO_DATE != 0 {
       self.file_cache.mark_safe().await;
+      self
+        .sdk_status_tracker
+        .record_config_delivery(self.time_provider.now());
     }
   }
 
