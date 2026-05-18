@@ -90,15 +90,17 @@ fn full_lifecycle() {
 }
 
 #[test]
-fn timestamps_ignored_before_running() {
+fn timestamps_recorded_before_running() {
   let tracker = SdkStatusTracker::new();
 
-  // These should be no-ops since the SDK is only Loaded, not Running.
-  tracker.record_handshake(OffsetDateTime::now_utc());
-  tracker.record_config_delivery(OffsetDateTime::now_utc());
+  // Timestamps are recorded even when the SDK is still in the Loaded state
+  // (e.g., config loaded from cache before log processing starts).
+  let now = OffsetDateTime::now_utc();
+  tracker.record_handshake(now);
+  tracker.record_config_delivery(now);
 
   let status = tracker.get();
   assert_eq!(status.initialization_state, InitializationState::Loaded);
-  assert!(status.last_handshake_time.is_none());
-  assert!(status.last_config_delivery_time.is_none());
+  assert_eq!(status.last_handshake_time, Some(now));
+  assert_eq!(status.last_config_delivery_time, Some(now));
 }

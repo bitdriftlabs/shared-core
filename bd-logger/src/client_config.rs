@@ -183,6 +183,14 @@ impl<A: ApplyConfig> Config<A> {
         .process_configuration_update_inner(configuration_update, true)
         .await;
 
+      if maybe_nack.is_ok() {
+        // Record config delivery so the SDK status reflects that we have
+        // a working config even if we never reach the server.
+        self
+          .sdk_status_tracker
+          .record_config_delivery(self.time_provider.now());
+      }
+
       // We should never persist config that results in a Nack, but if we do we effectively drop
       // the config on startup as the above function won't write it back.
       debug_assert!(maybe_nack.is_ok());

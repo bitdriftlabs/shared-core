@@ -79,17 +79,13 @@ impl SdkStatusTracker {
   /// Called when a handshake with the backend completes successfully.
   pub fn record_handshake(&self, time: OffsetDateTime) {
     let mut status = self.inner.write();
-    if status.initialization_state == InitializationState::Running {
-      status.last_handshake_time = Some(time);
-    }
+    status.last_handshake_time = Some(time);
   }
 
   /// Called when a configuration update is successfully applied from the backend
   /// (not from cache).
   pub fn record_config_delivery(&self, time: OffsetDateTime) {
     let mut status = self.inner.write();
-    if status.initialization_state == InitializationState::Running {
-      status.last_config_delivery_time = Some(time);
-    }
+    status.last_config_delivery_time = Some(time);
   }
 }

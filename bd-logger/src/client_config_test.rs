@@ -8,6 +8,7 @@
 use super::{Config, Configuration};
 use anyhow::anyhow;
 use bd_client_common::safe_file_cache::load_cache_retry_count_from_file;
+use bd_client_common::sdk_status::SdkStatusTracker;
 use bd_client_common::{ClientConfigurationUpdate, HANDSHAKE_FLAG_CONFIG_UP_TO_DATE};
 use bd_proto::protos::client::api::ConfigurationUpdate;
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
@@ -131,4 +132,39 @@ async fn load_malformed_file() {
 
   // Validate that we remove the file if it fails decoding.
   assert!(!config_file.exists());
+}
+
+#[tokio::test]
+async fn load_persisted_config_records_config_delivery() {
+  let directory = TempDir::with_prefix("sdk").unwrap();
+
+  // Persist a config to disk.
+  let (tx, _rx) = channel(2);
+  let config = Config::new(
+    directory.path(),
+    TestUpdate {
+      configuration_tx: tx,
+    },
+  );
+  config
+    .process_configuration_update(configuration_update())
+    .await
+    .unwrap();
+
+  // Simulate restart: fresh tracker, load from cache.
+  let (tx, _rx) = channel(2);
+  let tracker = SdkStatusTracker::new();
+  tracker.record_running();
+  let config = Config::new_with_time_provider(
+    directory.path(),
+    TestUpdate {
+      configuration_tx: tx,
+    },
+    std::sync::Arc::new(bd_time::SystemTimeProvider),
+    tracker.clone(),
+  );
+
+  assert!(tracker.get().last_config_delivery_time.is_none());
+  config.try_load_persisted_config_helper().await;
+  assert!(tracker.get().last_config_delivery_time.is_some());
 }
