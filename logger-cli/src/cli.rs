@@ -12,6 +12,10 @@ use std::collections::HashMap;
 use std::hash::BuildHasher;
 use std::path::PathBuf;
 
+#[cfg(test)]
+#[path = "./cli_test.rs"]
+mod tests;
+
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColorMode {
   Auto,
@@ -96,6 +100,9 @@ pub enum Command {
 
   /// Set a feature flag exposure
   SetFeatureFlag(SetFeatureFlagCommand),
+
+  /// Set the current entity ID
+  SetEntityId(SetEntityIdCommand),
 }
 
 #[derive(Args, Debug, Clone)]
@@ -103,6 +110,10 @@ pub struct StartCommand {
   /// API key to use with emitted logs
   #[clap(env, long)]
   pub api_key: String,
+
+  /// Entity ID to set before the logger startup flow begins
+  #[clap(long)]
+  pub entity_id: Option<String>,
 
   /// Remove the existing logger data directory before starting
   #[clap(long)]
@@ -147,6 +158,7 @@ impl From<StartCommand> for LoggerArgs {
       app_version: cmd.app_version,
       app_version_code: cmd.app_version_code,
       model: cmd.model,
+      entity_id: cmd.entity_id,
     }
   }
 }
@@ -214,6 +226,12 @@ pub struct SetFeatureFlagCommand {
   /// Optional variant value for the feature flag
   #[clap(long)]
   pub variant: Option<String>,
+}
+
+#[derive(Args, Debug)]
+pub struct SetEntityIdCommand {
+  /// Entity ID to associate with subsequent logs
+  pub entity_id: String,
 }
 
 pub struct FieldPairs<T>(pub Vec<T>);
