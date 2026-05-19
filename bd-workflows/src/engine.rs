@@ -48,7 +48,7 @@ use crate::workflow::{
 use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_client_common::file::{compressed_reader, write_compressed};
-use bd_client_stats::{FlushTrigger, FlushTriggerRequest, Stats};
+use bd_client_stats::{FlushTrigger, FlushTriggerRequest};
 use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::Log;
@@ -56,8 +56,8 @@ use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_proto_util::serialization::{ProtoMessageDeserialize, ProtoMessageSerialize};
 use bd_runtime::runtime::workflows::PersistenceWriteIntervalFlag;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, session_capture};
-use bd_stats_common::labels;
 use bd_stats_common::workflow::WorkflowDebugKey;
+use bd_stats_common::{Counter as _, StatsCollector, labels};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::Cursor;
@@ -111,16 +111,17 @@ pub struct WorkflowsEngine {
 
   buffers_to_flush_tx: Sender<BuffersToFlush>,
 
-  explicit_session_capture_streaming_log_count: IntWatch<session_capture::StreamingLogCount>,
+  explicit_session_capture_streaming_log_count:
+    Option<IntWatch<session_capture::StreamingLogCount>>,
 }
 
 impl WorkflowsEngine {
   pub fn new(
     scope: &Scope,
     sdk_directory: Option<&Path>,
-    runtime: &ConfigLoader,
+    runtime: Option<&ConfigLoader>,
     data_upload_tx: Sender<DataUpload>,
-    stats: Arc<Stats>,
+    stats: Arc<dyn StatsCollector>,
     stats_flush_trigger: FlushTrigger,
   ) -> (Self, Receiver<BuffersToFlush>) {
     let scope = scope.scope("workflows");
@@ -148,11 +149,23 @@ impl WorkflowsEngine {
     );
     let sankey_processor_join_handle = sankey_diagram_processor.run();
 
+    let (state_store, explicit_session_capture_streaming_log_count) = if let Some(sdk_directory) =
+      sdk_directory
+      && let Some(runtime) = runtime
+    {
+      (
+        Some(StateStore::new(sdk_directory, &scope, runtime)),
+        Some(runtime.register_int_watch()),
+      )
+    } else {
+      (None, None)
+    };
+
     let workflows_engine = Self {
       configs: vec![],
       state: WorkflowsState::default(),
       stats: WorkflowsEngineStats::new(&scope),
-      state_store: sdk_directory.map(|dir| StateStore::new(dir, &scope, runtime)),
+      state_store,
       needs_state_persistence: false,
       flush_buffers_actions_resolver,
       flush_buffers_negotiator_join_handle,
@@ -165,8 +178,7 @@ impl WorkflowsEngine {
       stats_flush_trigger,
       buffers_to_flush_tx,
       pending_buffer_flushes: HashMap::new(),
-
-      explicit_session_capture_streaming_log_count: runtime.register_int_watch(),
+      explicit_session_capture_streaming_log_count,
     };
 
     (workflows_engine, buffers_to_flush_rx)
@@ -783,10 +795,12 @@ impl WorkflowsEngine {
       capture_screenshot,
     } = prepared_actions;
 
-    if let Some(capture_session) = event.capture_session() {
+    if let Some(capture_session) = event.capture_session()
+      && let Some(capture_count) = &self.explicit_session_capture_streaming_log_count
+    {
       log::debug!("event requested session capture, capturing session");
 
-      let streaming_log_count = self.explicit_session_capture_streaming_log_count.read();
+      let streaming_log_count = capture_count.read();
 
       let action = ActionFlushBuffers {
         id: FlushBufferId::ExplicitSessionCapture(capture_session.to_string()),

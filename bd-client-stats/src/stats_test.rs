@@ -29,10 +29,15 @@ use bd_proto::protos::client::api::stats_upload_request::{
 };
 use bd_proto::protos::client::metric::metric::{Data as MetricData, Metric_name_type};
 use bd_proto::protos::client::metric::pending_aggregation_index::PendingFile;
-use bd_proto::protos::client::metric::{Counter, Metric, MetricsList, PendingAggregationIndex};
+use bd_proto::protos::client::metric::{
+  Counter as CounterProto,
+  Metric,
+  MetricsList,
+  PendingAggregationIndex,
+};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
-use bd_stats_common::labels;
+use bd_stats_common::{Counter, Histogram, StatsCollector, labels};
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_test_helpers::stats::StatsRequestHelper;
 use bd_time::test::TestTicker;
@@ -954,7 +959,7 @@ async fn existing_aggregated_file() {
       metric: vec![Metric {
         metric_name_type: Some(Metric_name_type::Name("test:blah".to_string())),
         tags: HashMap::new(),
-        data: Some(MetricData::Counter(Counter {
+        data: Some(MetricData::Counter(CounterProto {
           value: 1,
           ..Default::default()
         })),

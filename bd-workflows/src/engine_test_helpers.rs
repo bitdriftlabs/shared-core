@@ -384,7 +384,7 @@ impl Setup {
     let (mut workflows_engine, buffers_to_flush_rx) = WorkflowsEngine::new(
       &self.collector.scope(""),
       Some(self.sdk_directory.path()),
-      &self.runtime,
+      Some(&self.runtime),
       data_upload_tx,
       stats.clone(),
       flush_trigger,

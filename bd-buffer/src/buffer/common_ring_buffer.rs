@@ -15,6 +15,7 @@ use super::test::thread_synchronizer::ThreadSynchronizer;
 use crate::{AbslCode, Error, Result};
 use bd_client_common::error::InvariantError;
 use bd_log_primitives::LossyIntToU32;
+use bd_stats_common::Counter;
 use parking_lot::{Condvar, Mutex, MutexGuard};
 use std::fmt::Display;
 use std::ptr::NonNull;

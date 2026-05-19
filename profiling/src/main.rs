@@ -109,7 +109,7 @@ impl AnnotatedWorkflowsEngine {
     let (mut engine, _) = WorkflowsEngine::new(
       scope,
       Some(directory),
-      runtime_loader,
+      Some(runtime_loader),
       data_tx,
       stats,
       FlushTrigger::new().0,

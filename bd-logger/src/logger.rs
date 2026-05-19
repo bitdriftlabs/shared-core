@@ -30,7 +30,7 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::Snapshot;
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
 use bd_shutdown::ComponentShutdownTrigger;
-use bd_stats_common::labels;
+use bd_stats_common::{Counter as _, Histogram as _, labels};
 use parking_lot::Mutex;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};

@@ -1279,7 +1279,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
   let (mut workflows_engine, _) = WorkflowsEngine::new(
     &collector.scope(""),
     Some(sdk_directory.as_path()),
-    &make_runtime(),
+    Some(&make_runtime()),
     tx,
     stats.clone(),
     FlushTrigger::new().0,
@@ -1332,7 +1332,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
   let (mut workflows_engine, _) = WorkflowsEngine::new(
     &collector.scope(""),
     Some(sdk_directory.as_path()),
-    &make_runtime(),
+    Some(&make_runtime()),
     rx,
     stats,
     FlushTrigger::new().0,
