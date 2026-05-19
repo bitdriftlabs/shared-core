@@ -464,7 +464,7 @@ async fn state_change_with_feature_flag_extraction() {
     .await;
 
   // Set up a state reader with a state value (feature flag) to extract
-  let mut state_reader = bd_state::test::TestStateReader::new();
+  let mut state_reader = bd_state::InMemoryStateReader::new();
   state_reader.insert(
     bd_state::Scope::FeatureFlagExposure,
     "extracted_flag",
@@ -530,7 +530,7 @@ async fn state_change_with_extra_state_matcher() {
     .await;
 
   // Set up a state reader with the required state value
-  let mut state_reader = bd_state::test::TestStateReader::new();
+  let mut state_reader = bd_state::InMemoryStateReader::new();
   state_reader.insert(
     bd_state::Scope::FeatureFlagExposure,
     "required_flag",
@@ -586,7 +586,7 @@ async fn state_change_with_extra_state_matcher_no_match() {
     .await;
 
   // Set up a state reader with the WRONG value for required_flag
-  let mut state_reader = bd_state::test::TestStateReader::new();
+  let mut state_reader = bd_state::InMemoryStateReader::new();
   state_reader.insert(
     bd_state::Scope::FeatureFlagExposure,
     "required_flag",
@@ -651,7 +651,7 @@ async fn state_change_with_multiple_state_conditions() {
     .await;
 
   // Set up state reader with secondary_flag = "ready"
-  let mut state_reader = bd_state::test::TestStateReader::new();
+  let mut state_reader = bd_state::InMemoryStateReader::new();
   state_reader.insert(
     bd_state::Scope::FeatureFlagExposure,
     "secondary_flag",
@@ -728,7 +728,7 @@ async fn state_change_compares_state_to_extracted_field() {
 
   // Step 2: B -> C via state change, where the extra matcher compares state to extracted field
   // Set state requirement="premium" (should match saved_tier="premium")
-  let mut state_reader = bd_state::test::TestStateReader::new();
+  let mut state_reader = bd_state::InMemoryStateReader::new();
   state_reader.insert(
     bd_state::Scope::FeatureFlagExposure,
     "requirement",
@@ -824,7 +824,7 @@ async fn state_change_matches_on_global_metadata_fields() {
   engine.engine.process_event(
     crate::workflow::WorkflowEvent::StateChange(&state_change, fields_ref),
     &super::engine_test_helpers::EMPTY_BUFFER_IDS,
-    &bd_state::test::TestStateReader::default(),
+    &bd_state::InMemoryStateReader::default(),
     state_change.timestamp,
   );
 
@@ -890,7 +890,7 @@ async fn state_change_extracts_global_metadata_fields() {
   engine.engine.process_event(
     crate::workflow::WorkflowEvent::StateChange(&state_change, fields_ref),
     &super::engine_test_helpers::EMPTY_BUFFER_IDS,
-    &bd_state::test::TestStateReader::default(),
+    &bd_state::InMemoryStateReader::default(),
     state_change.timestamp,
   );
 
@@ -971,7 +971,7 @@ async fn state_change_includes_fields_in_generated_log() {
   let result = engine.engine.process_event(
     crate::workflow::WorkflowEvent::StateChange(&state_change, fields_ref),
     &super::engine_test_helpers::EMPTY_BUFFER_IDS,
-    &bd_state::test::TestStateReader::default(),
+    &bd_state::InMemoryStateReader::default(),
     state_change.timestamp,
   );
 

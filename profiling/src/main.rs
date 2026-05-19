@@ -94,7 +94,7 @@ impl WorkflowConfigurationsInit {
 
 struct AnnotatedWorkflowsEngine {
   engine: WorkflowsEngine,
-  state_reader: bd_state::test::TestStateReader,
+  state_reader: bd_state::InMemoryStateReader,
 }
 
 impl AnnotatedWorkflowsEngine {
@@ -132,7 +132,7 @@ impl AnnotatedWorkflowsEngine {
 
     Self {
       engine,
-      state_reader: bd_state::test::TestStateReader::default(),
+      state_reader: bd_state::InMemoryStateReader::default(),
     }
   }
 

@@ -150,7 +150,7 @@ impl AnnotatedWorkflowsEngine {
         capture_session: None,
       }),
       &self.log_destination_buffer_ids,
-      &bd_state::test::TestStateReader::default(),
+      &bd_state::InMemoryStateReader::default(),
       log.now,
     )
   }
@@ -159,7 +159,7 @@ impl AnnotatedWorkflowsEngine {
     &mut self,
     state_change: &bd_state::StateChange,
   ) -> WorkflowsEngineResult<'_> {
-    self.process_state_change_with_reader(state_change, &bd_state::test::TestStateReader::default())
+    self.process_state_change_with_reader(state_change, &bd_state::InMemoryStateReader::default())
   }
 
   pub fn process_state_change_with_reader(

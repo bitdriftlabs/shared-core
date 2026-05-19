@@ -1313,7 +1313,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
       capture_session: None,
     }),
     &TinySet::default(),
-    &bd_state::test::TestStateReader::default(),
+    &bd_state::InMemoryStateReader::default(),
     OffsetDateTime::now_utc(),
   );
 
