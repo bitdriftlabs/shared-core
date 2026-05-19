@@ -139,6 +139,10 @@ async fn register_opaque_entity_id_updates_queue_and_watch() {
     Some("hashed-entity-id".to_string()),
     opaque_entity_updates_rx.borrow().clone()
   );
+  assert_eq!(
+    Some("hashed-entity-id".to_string()),
+    handle.current_opaque_entity_id()
+  );
 
   handle.register_opaque_entity_id(None);
   assert!(matches!(
@@ -154,6 +158,7 @@ async fn register_opaque_entity_id_updates_queue_and_watch() {
     handle.pending_entity_id.lock().clone()
   );
   assert_eq!(None, opaque_entity_updates_rx.borrow().clone());
+  assert_eq!(None, handle.current_opaque_entity_id());
 }
 
 #[tokio::test]

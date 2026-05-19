@@ -302,6 +302,11 @@ impl LoggerHandle {
   }
 
   #[must_use]
+  pub fn current_opaque_entity_id(&self) -> Option<String> {
+    self.opaque_entity_updates.borrow().clone()
+  }
+
+  #[must_use]
   pub fn is_tracing_active(&self) -> bool {
     self.is_tracing_active.load(Ordering::Relaxed)
   }

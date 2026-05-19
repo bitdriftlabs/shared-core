@@ -107,6 +107,17 @@ impl LoggerHolder {
     handle.set_feature_flag_exposure(name, variant);
   }
 
+  pub fn set_entity_id(&self, entity_id: &str) {
+    let handle = self.logger.lock().new_logger_handle();
+    handle.register_opaque_entity_id(Some(entity_id));
+  }
+
+  #[must_use]
+  pub fn current_entity_id(&self) -> Option<String> {
+    let handle = self.logger.lock().new_logger_handle();
+    handle.current_opaque_entity_id()
+  }
+
   pub fn stop(&self) {
     sleep(2.std_seconds());
     self.logger.lock().shutdown(true);
@@ -253,6 +264,7 @@ pub struct LoggerArgs {
   pub app_version: String,
   pub app_version_code: String,
   pub model: String,
+  pub entity_id: Option<String>,
 }
 
 pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Result<LoggerHolder> {
@@ -310,5 +322,13 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
     start_in_sleep_mode: false,
   })
   .build()?;
-  Ok(LoggerHolder::new(logger, future, shutdown_trigger))
+
+  let logger = LoggerHolder::new(logger, future, shutdown_trigger);
+  if let Some(entity_id) = args.entity_id.as_deref() {
+    // Queue the entity update before the async startup begins so builder initialization replays
+    // it into durable state ahead of the API init flow.
+    logger.set_entity_id(entity_id);
+  }
+
+  Ok(logger)
 }
