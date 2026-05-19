@@ -1282,7 +1282,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
     Some(&make_runtime()),
     tx,
     stats.clone(),
-    FlushTrigger::new().0,
+    Some(FlushTrigger::new().0),
   );
 
   workflows_engine
@@ -1335,7 +1335,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
     Some(&make_runtime()),
     rx,
     stats,
-    FlushTrigger::new().0,
+    Some(FlushTrigger::new().0),
   );
 
   workflows_engine

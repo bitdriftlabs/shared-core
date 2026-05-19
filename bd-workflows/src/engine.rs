@@ -107,7 +107,7 @@ pub struct WorkflowsEngine {
   sankey_processor_join_handle: JoinHandle<()>,
 
   metrics_collector: MetricsCollector,
-  stats_flush_trigger: FlushTrigger,
+  stats_flush_trigger: Option<FlushTrigger>,
 
   buffers_to_flush_tx: Sender<BuffersToFlush>,
 
@@ -122,7 +122,7 @@ impl WorkflowsEngine {
     runtime: Option<&ConfigLoader>,
     data_upload_tx: Sender<DataUpload>,
     stats: Arc<dyn StatsCollector>,
-    stats_flush_trigger: FlushTrigger,
+    stats_flush_trigger: Option<FlushTrigger>,
   ) -> (Self, Receiver<BuffersToFlush>) {
     let scope = scope.scope("workflows");
 
@@ -523,13 +523,13 @@ impl WorkflowsEngine {
     // TODO(mattklein123): This is a long standing issue but right now we don't block for any
     // upload to complete before starting log uploads. In general we need to spend more time
     // hardening this entire path.
-    if let Err(e) = self
-      .stats_flush_trigger
-      .flush(FlushTriggerRequest {
-        do_upload: true,
-        completion_tx: None,
-      })
-      .await
+    if let Some(flush_trigger) = &self.stats_flush_trigger
+      && let Err(e) = flush_trigger
+        .flush(FlushTriggerRequest {
+          do_upload: true,
+          completion_tx: None,
+        })
+        .await
     {
       log::debug!("failed to trigger stats flush on log upload approval: {e}");
     }

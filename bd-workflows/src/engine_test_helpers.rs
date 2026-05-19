@@ -387,7 +387,7 @@ impl Setup {
       Some(&self.runtime),
       data_upload_tx,
       stats.clone(),
-      flush_trigger,
+      Some(flush_trigger),
     );
 
     let task_handle = AnnotatedWorkflowsEngine::run_for_test(

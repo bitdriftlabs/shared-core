@@ -112,7 +112,7 @@ impl AnnotatedWorkflowsEngine {
       Some(runtime_loader),
       data_tx,
       stats,
-      FlushTrigger::new().0,
+      Some(FlushTrigger::new().0),
     );
 
     let mut workflow_configurations = WorkflowConfigurationsInit::new();

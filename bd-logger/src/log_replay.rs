@@ -174,7 +174,7 @@ impl ProcessingPipeline {
         Some(runtime),
         data_upload_tx,
         stats.stats.clone(),
-        flush_stats_trigger.clone(),
+        Some(flush_stats_trigger.clone()),
       );
 
       workflows_engine
