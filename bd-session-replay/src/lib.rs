@@ -24,7 +24,7 @@ use bd_error_reporter::reporter::handle_unexpected;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{BoolWatch, ConfigLoader, DurationWatch, session_replay};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
-use bd_stats_common::{Counter as _, labels};
+use bd_stats_common::{Counter as _, Scope as _, labels};
 use bd_time::TimeDurationExt;
 use std::sync::Arc;
 use tokio::sync::mpsc::{Receiver, Sender, channel};

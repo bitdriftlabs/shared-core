@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::{Collector, MetricDataRef, NameType};
-use bd_stats_common::labels;
+use bd_stats_common::{Scope as _, labels};
 use std::collections::BTreeMap;
 
 #[test]

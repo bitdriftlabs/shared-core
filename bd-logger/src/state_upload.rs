@@ -43,7 +43,7 @@ use bd_log_primitives::LogFields;
 use bd_proto::protos::client::key_value::StateSnapshotRange;
 use bd_resilient_kv::SnapshotFilename;
 use bd_state::{RetentionHandle, RetentionRegistry};
-use bd_stats_common::Counter as _;
+use bd_stats_common::{Counter as _, Scope as _};
 use bd_time::{OffsetDateTimeExt, TimeProvider};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

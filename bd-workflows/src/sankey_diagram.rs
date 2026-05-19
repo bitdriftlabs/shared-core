@@ -16,7 +16,7 @@ use bd_api::upload::{
 use bd_client_stats_store::{Counter, Scope};
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{SankeyIntentRequest, SankeyPathUploadRequest};
-use bd_stats_common::{Counter as _, labels};
+use bd_stats_common::{Counter as _, Scope as _, labels};
 use itertools::Itertools;
 use tokio::sync::mpsc::{Receiver, Sender};
 

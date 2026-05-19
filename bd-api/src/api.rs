@@ -67,7 +67,7 @@ use bd_proto::protos::client::api::{
 use bd_proto::protos::logging::payload::Data as ProtoData;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_runtime::runtime::DurationWatch;
-use bd_stats_common::Counter as _;
+use bd_stats_common::{Counter as _, Scope as _};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, TimestampExt};
 use std::cmp::max;
 use std::collections::HashMap;

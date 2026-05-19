@@ -47,6 +47,7 @@ use bd_state::{
   Value_type,
   string_value,
 };
+use bd_stats_common::Scope as _;
 use bd_time::{SystemTimeProvider, Ticker, TimeProvider};
 use futures_util::{Future, try_join};
 use parking_lot::Mutex;

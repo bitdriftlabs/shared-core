@@ -10,6 +10,7 @@
 
 use super::RingBufferStats;
 use bd_client_stats_store::{Counter, Scope};
+use bd_stats_common::Scope as _;
 use std::sync::Arc;
 use time::ext::NumericalStdDuration;
 

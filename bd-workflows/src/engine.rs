@@ -57,7 +57,7 @@ use bd_proto_util::serialization::{ProtoMessageDeserialize, ProtoMessageSerializ
 use bd_runtime::runtime::workflows::PersistenceWriteIntervalFlag;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, session_capture};
 use bd_stats_common::workflow::WorkflowDebugKey;
-use bd_stats_common::{Counter as _, StatsCollector, labels};
+use bd_stats_common::{Counter as _, Scope as _, StatsCollector, labels};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::Cursor;

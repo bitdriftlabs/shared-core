@@ -27,7 +27,7 @@ use bd_client_stats_store::{Collector, Error as StatsError};
 use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::workflow::WorkflowDebugKey;
-use bd_stats_common::{Histogram, StatsCollector};
+use bd_stats_common::{Histogram, Scope as _, StatsCollector};
 use bd_time::{SystemTimeProvider, TimeProvider};
 use file_manager::FileManager;
 use parking_lot::Mutex;

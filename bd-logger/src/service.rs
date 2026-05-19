@@ -17,7 +17,7 @@ use bd_client_stats_store::{Counter, Scope};
 use bd_proto::protos::client::api::LogUploadRequest;
 use bd_runtime::runtime::{ConfigLoader, IntWatch};
 use bd_shutdown::ComponentShutdown;
-use bd_stats_common::{Counter as _, labels};
+use bd_stats_common::{Counter as _, Scope as _, labels};
 use bd_time::TimeDurationExt;
 use futures_util::future::BoxFuture;
 use std::convert::Infallible;

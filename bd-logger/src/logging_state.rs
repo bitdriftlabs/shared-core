@@ -25,7 +25,7 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_resilient_kv::Scope as StateScope;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
-use bd_stats_common::{Counter as _, labels};
+use bd_stats_common::{Counter as _, Scope as _, labels};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::WorkflowsEngine;
 use std::borrow::Cow;

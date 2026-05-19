@@ -37,7 +37,7 @@ use bd_proto::protos::client::metric::{
 };
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
-use bd_stats_common::{Counter, Histogram, StatsCollector, labels};
+use bd_stats_common::{Counter, Histogram, Scope as _, StatsCollector, labels};
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_test_helpers::stats::StatsRequestHelper;
 use bd_time::test::TestTicker;

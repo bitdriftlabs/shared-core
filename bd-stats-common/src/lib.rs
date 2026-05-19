@@ -158,3 +158,30 @@ pub trait StatsCollector: Send + Sync {
     id: &str,
   ) -> Option<Box<dyn Histogram>>;
 }
+
+//
+// Scope
+//
+
+pub trait Scope {
+  type CounterType;
+  type HistogramType;
+  #[must_use]
+  fn counter(&self, name: &str) -> Self::CounterType;
+
+  #[must_use]
+  fn counter_with_labels(&self, name: &str, labels: BTreeMap<String, String>) -> Self::CounterType;
+
+  #[must_use]
+  fn histogram(&self, name: &str) -> Self::HistogramType;
+
+  #[must_use]
+  fn histogram_with_labels(
+    &self,
+    name: &str,
+    labels: BTreeMap<String, String>,
+  ) -> Self::HistogramType;
+
+  #[must_use]
+  fn scope(&self, name: &str) -> Self;
+}

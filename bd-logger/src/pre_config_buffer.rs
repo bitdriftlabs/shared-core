@@ -10,7 +10,7 @@
 mod pre_config_buffer_test;
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::size::MemorySized;
-use bd_stats_common::{Counter as _, labels};
+use bd_stats_common::{Counter as _, Scope as _, labels};
 
 #[derive(thiserror::Error, Debug, PartialEq, Eq)]
 pub enum Error {

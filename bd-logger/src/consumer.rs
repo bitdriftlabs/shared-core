@@ -22,7 +22,7 @@ use bd_log_primitives::EncodableLog;
 use bd_resilient_kv::RetentionHandle;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
-use bd_stats_common::Counter as _;
+use bd_stats_common::{Counter as _, Scope as _};
 use bd_time::OffsetDateTimeExt;
 use futures_util::future::try_join_all;
 use std::collections::{HashMap, HashSet};

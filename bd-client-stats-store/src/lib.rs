@@ -308,8 +308,21 @@ impl Scope {
     }
   }
 
-  #[must_use]
-  pub fn counter_with_labels(&self, name: &str, labels: BTreeMap<String, String>) -> Counter {
+  // Build the final metric name from the current scope.
+  fn metric_name(&self, name: &str) -> String {
+    if self.name.is_empty() {
+      name.to_string()
+    } else {
+      format!("{}{SEP}{name}", self.name)
+    }
+  }
+}
+
+impl bd_stats_common::Scope for Scope {
+  type CounterType = Counter;
+  type HistogramType = Histogram;
+
+  fn counter_with_labels(&self, name: &str, labels: BTreeMap<String, String>) -> Counter {
     let mut inner = self.collector.inner.lock();
     Self::get_common_global(
       &mut inner.counters_by_name,
@@ -322,18 +335,15 @@ impl Scope {
     .clone()
   }
 
-  #[must_use]
-  pub fn counter(&self, name: &str) -> Counter {
+  fn counter(&self, name: &str) -> Counter {
     self.counter_with_labels(name, BTreeMap::new())
   }
 
-  #[must_use]
-  pub fn histogram(&self, name: &str) -> Histogram {
+  fn histogram(&self, name: &str) -> Histogram {
     self.histogram_with_labels(name, BTreeMap::new())
   }
 
-  #[must_use]
-  pub fn histogram_with_labels(&self, name: &str, labels: BTreeMap<String, String>) -> Histogram {
+  fn histogram_with_labels(&self, name: &str, labels: BTreeMap<String, String>) -> Histogram {
     let mut inner = self.collector.inner.lock();
     Self::get_common_global(
       &mut inner.histograms_by_name,
@@ -344,20 +354,10 @@ impl Scope {
     .clone()
   }
 
-  #[must_use]
-  pub fn scope(&self, name: &str) -> Self {
+  fn scope(&self, name: &str) -> Self {
     Self {
       name: self.metric_name(name),
       collector: self.collector.clone(),
-    }
-  }
-
-  // Build the final metric name from the current scope.
-  fn metric_name(&self, name: &str) -> String {
-    if self.name.is_empty() {
-      name.to_string()
-    } else {
-      format!("{}{SEP}{name}", self.name)
     }
   }
 }

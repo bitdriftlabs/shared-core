@@ -34,7 +34,7 @@ use bd_proto::protos::client::api::{
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
-use bd_stats_common::Counter as _;
+use bd_stats_common::{Counter as _, Scope as _};
 use bd_time::TimeProvider;
 use bd_workflows::config::WorkflowsConfiguration;
 use itertools::Itertools;

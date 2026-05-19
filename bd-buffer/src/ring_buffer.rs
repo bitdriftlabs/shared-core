@@ -30,7 +30,7 @@ use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::EncodableLog;
 use bd_proto::protos::config::v1::config::{BufferConfigList, buffer_config};
 use bd_resilient_kv::{RetentionHandle, RetentionRegistry};
-use bd_stats_common::labels;
+use bd_stats_common::{Scope as _, labels};
 use bd_time::OffsetDateTimeExt as _;
 use futures::future::join_all;
 use std::collections::HashMap;

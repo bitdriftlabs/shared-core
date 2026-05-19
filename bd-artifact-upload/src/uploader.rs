@@ -33,7 +33,7 @@ use bd_proto::protos::client::feature_flag::FeatureFlag;
 use bd_proto::protos::logging::payload::Data;
 use bd_runtime::runtime::{ConfigLoader, IntWatch, artifact_upload};
 use bd_shutdown::ComponentShutdown;
-use bd_stats_common::Counter as _;
+use bd_stats_common::{Counter as _, Scope as _};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, TimestampExt};
 use mockall::automock;
 use std::collections::{HashMap, HashSet, VecDeque};

@@ -23,7 +23,7 @@ use bd_proto::protos::config::v1::config::buffer_config::BufferSizes;
 use bd_proto::protos::config::v1::config::{BufferConfig, BufferConfigList, buffer_config};
 use bd_proto::protos::logging::payload::LogType;
 use bd_resilient_kv::RetentionHandle;
-use bd_stats_common::{NameType, labels};
+use bd_stats_common::{NameType, Scope as _, labels};
 use bd_time::OffsetDateTimeExt as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

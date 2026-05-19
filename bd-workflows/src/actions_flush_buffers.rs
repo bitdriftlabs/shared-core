@@ -18,7 +18,7 @@ use bd_log_primitives::tiny_set::TinySet;
 use bd_macros::proto_serializable;
 use bd_proto::protos::client::api::LogUploadIntentRequest;
 use bd_proto::protos::client::api::log_upload_intent_request::ExplicitSessionCapture;
-use bd_stats_common::{Counter as _, labels};
+use bd_stats_common::{Counter as _, Scope as _, labels};
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::fmt::Debug;
