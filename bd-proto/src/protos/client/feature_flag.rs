@@ -193,11 +193,11 @@ impl ::protobuf::reflect::ProtobufValue for FeatureFlag {
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n5bitdrift_public/protobuf/client/v1/feature_flag.proto\x12\"bitdrift_p\
     ublic.protobuf.client.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17v\
-    alidate/validate.proto\"\x9e\x01\n\x0bFeatureFlag\x12\x1b\n\x04name\x18\
-    \x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x12\x1d\n\x07variant\
-    \x18\x02\x20\x01(\tH\0R\x07variant\x88\x01\x01\x12G\n\x0clast_updated\
-    \x18\x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x0blastUpdatedB\
-    \x08\xfaB\x05\x8a\x01\x02\x10\x01B\n\n\x08_variantb\x06proto3\
+    alidate/validate.proto\"\x95\x01\n\x0bFeatureFlag\x12\x12\n\x04name\x18\
+    \x01\x20\x01(\tR\x04name\x12\x1d\n\x07variant\x18\x02\x20\x01(\tH\0R\x07\
+    variant\x88\x01\x01\x12G\n\x0clast_updated\x18\x03\x20\x01(\x0b2\x1a.goo\
+    gle.protobuf.TimestampR\x0blastUpdatedB\x08\xfaB\x05\x8a\x01\x02\x10\x01\
+    B\n\n\x08_variantb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
