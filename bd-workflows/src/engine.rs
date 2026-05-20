@@ -48,7 +48,7 @@ use crate::workflow::{
 use anyhow::anyhow;
 use bd_api::DataUpload;
 use bd_client_common::file::{compressed_reader, write_compressed};
-use bd_client_stats::{FlushTrigger, FlushTriggerRequest, Stats};
+use bd_client_stats::{FlushTrigger, FlushTriggerRequest};
 use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::Log;
@@ -56,8 +56,8 @@ use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_proto_util::serialization::{ProtoMessageDeserialize, ProtoMessageSerialize};
 use bd_runtime::runtime::workflows::PersistenceWriteIntervalFlag;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, session_capture};
-use bd_stats_common::labels;
 use bd_stats_common::workflow::WorkflowDebugKey;
+use bd_stats_common::{Counter as _, StatsCollector, labels};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::Cursor;
@@ -89,7 +89,7 @@ pub struct WorkflowsEngine {
   // at index `i`.
   configs: Vec<Config>,
   state: WorkflowsState,
-  state_store: StateStore,
+  state_store: Option<StateStore>,
   pending_buffer_flushes: HashMap<FlushBufferId, tokio::sync::oneshot::Receiver<()>>,
 
   needs_state_persistence: bool,
@@ -107,21 +107,22 @@ pub struct WorkflowsEngine {
   sankey_processor_join_handle: JoinHandle<()>,
 
   metrics_collector: MetricsCollector,
-  stats_flush_trigger: FlushTrigger,
+  stats_flush_trigger: Option<FlushTrigger>,
 
   buffers_to_flush_tx: Sender<BuffersToFlush>,
 
-  explicit_session_capture_streaming_log_count: IntWatch<session_capture::StreamingLogCount>,
+  explicit_session_capture_streaming_log_count:
+    Option<IntWatch<session_capture::StreamingLogCount>>,
 }
 
 impl WorkflowsEngine {
   pub fn new(
     scope: &Scope,
-    sdk_directory: &Path,
-    runtime: &ConfigLoader,
+    sdk_directory: Option<&Path>,
+    runtime: Option<&ConfigLoader>,
     data_upload_tx: Sender<DataUpload>,
-    stats: Arc<Stats>,
-    stats_flush_trigger: FlushTrigger,
+    stats: Arc<dyn StatsCollector>,
+    stats_flush_trigger: Option<FlushTrigger>,
   ) -> (Self, Receiver<BuffersToFlush>) {
     let scope = scope.scope("workflows");
 
@@ -148,11 +149,23 @@ impl WorkflowsEngine {
     );
     let sankey_processor_join_handle = sankey_diagram_processor.run();
 
+    let (state_store, explicit_session_capture_streaming_log_count) = if let Some(sdk_directory) =
+      sdk_directory
+      && let Some(runtime) = runtime
+    {
+      (
+        Some(StateStore::new(sdk_directory, &scope, runtime)),
+        Some(runtime.register_int_watch()),
+      )
+    } else {
+      (None, None)
+    };
+
     let workflows_engine = Self {
       configs: vec![],
       state: WorkflowsState::default(),
       stats: WorkflowsEngineStats::new(&scope),
-      state_store: StateStore::new(sdk_directory, &scope, runtime),
+      state_store,
       needs_state_persistence: false,
       flush_buffers_actions_resolver,
       flush_buffers_negotiator_join_handle,
@@ -165,8 +178,7 @@ impl WorkflowsEngine {
       stats_flush_trigger,
       buffers_to_flush_tx,
       pending_buffer_flushes: HashMap::new(),
-
-      explicit_session_capture_streaming_log_count: runtime.register_int_watch(),
+      explicit_session_capture_streaming_log_count,
     };
 
     (workflows_engine, buffers_to_flush_rx)
@@ -180,9 +192,13 @@ impl WorkflowsEngine {
         config.continuous_buffer_ids,
       ));
 
-    let workflows_state = self.state_store.load();
+    let workflows_state = if let Some(store) = &self.state_store {
+      store.load().await
+    } else {
+      None
+    };
 
-    if let Some(state) = workflows_state.await {
+    if let Some(state) = workflows_state {
       self.state.pending_flush_actions = self
         .flush_buffers_actions_resolver
         .standardize_pending_actions(state.pending_flush_actions);
@@ -446,7 +462,11 @@ impl WorkflowsEngine {
       return;
     }
 
-    if self.state_store.maybe_store(&self.state, force).await {
+    let Some(store) = &mut self.state_store else {
+      return;
+    };
+
+    if store.maybe_store(&self.state, force).await {
       self.needs_state_persistence = false;
     }
   }
@@ -503,13 +523,13 @@ impl WorkflowsEngine {
     // TODO(mattklein123): This is a long standing issue but right now we don't block for any
     // upload to complete before starting log uploads. In general we need to spend more time
     // hardening this entire path.
-    if let Err(e) = self
-      .stats_flush_trigger
-      .flush(FlushTriggerRequest {
-        do_upload: true,
-        completion_tx: None,
-      })
-      .await
+    if let Some(flush_trigger) = &self.stats_flush_trigger
+      && let Err(e) = flush_trigger
+        .flush(FlushTriggerRequest {
+          do_upload: true,
+          completion_tx: None,
+        })
+        .await
     {
       log::debug!("failed to trigger stats flush on log upload approval: {e}");
     }
@@ -775,10 +795,12 @@ impl WorkflowsEngine {
       capture_screenshot,
     } = prepared_actions;
 
-    if let Some(capture_session) = event.capture_session() {
+    if let Some(capture_session) = event.capture_session()
+      && let Some(capture_count) = &self.explicit_session_capture_streaming_log_count
+    {
       log::debug!("event requested session capture, capturing session");
 
-      let streaming_log_count = self.explicit_session_capture_streaming_log_count.read();
+      let streaming_log_count = capture_count.read();
 
       let action = ActionFlushBuffers {
         id: FlushBufferId::ExplicitSessionCapture(capture_session.to_string()),
@@ -1164,7 +1186,6 @@ impl WorkflowsEngineConfig {
     }
   }
 
-  #[cfg(test)]
   #[must_use]
   pub fn new_with_workflow_configurations(workflow_configs: Vec<Config>) -> Self {
     Self::new(

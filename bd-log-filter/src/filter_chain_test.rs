@@ -395,6 +395,6 @@ fn make_log(message: &str, fields: LogFields, matching_fields: LogFields) -> Log
   }
 }
 
-fn state_reader() -> bd_state::test::TestStateReader {
-  bd_state::test::TestStateReader::default()
+fn state_reader() -> bd_state::InMemoryStateReader {
+  bd_state::InMemoryStateReader::default()
 }

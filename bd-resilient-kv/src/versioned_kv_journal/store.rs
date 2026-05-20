@@ -15,6 +15,7 @@ use ahash::AHashMap;
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_proto::protos::state::payload::StateValue;
 use bd_runtime::runtime::IntWatch;
+use bd_stats_common::Counter;
 use bd_time::TimeProvider;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

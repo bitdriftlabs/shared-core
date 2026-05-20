@@ -39,7 +39,7 @@ use bd_runtime::runtime::log_upload::MinLogCompressionSize;
 use bd_session::Strategy;
 use bd_session::fixed::UUIDCallbacks;
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
-use bd_stats_common::labels;
+use bd_stats_common::{Counter as _, labels};
 use bd_test_helpers::config_helper::{
   self,
   BufferConfigBuilder,

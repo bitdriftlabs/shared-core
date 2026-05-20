@@ -13,6 +13,7 @@ anyhow.workspace            = true
 bd-client-common            = { path = "../bd-client-common" }
 bd-client-stats-store       = { path = "../bd-client-stats-store" }
 bd-metadata                 = { path = "../bd-metadata" }
+bd-stats-common             = { path = "../bd-stats-common" }
 bd-workspace-hack.workspace = true
 log.workspace               = true
 parking_lot.workspace       = true

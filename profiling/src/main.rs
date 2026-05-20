@@ -94,7 +94,7 @@ impl WorkflowConfigurationsInit {
 
 struct AnnotatedWorkflowsEngine {
   engine: WorkflowsEngine,
-  state_reader: bd_state::test::TestStateReader,
+  state_reader: bd_state::InMemoryStateReader,
 }
 
 impl AnnotatedWorkflowsEngine {
@@ -108,11 +108,11 @@ impl AnnotatedWorkflowsEngine {
 
     let (mut engine, _) = WorkflowsEngine::new(
       scope,
-      directory,
-      runtime_loader,
+      Some(directory),
+      Some(runtime_loader),
       data_tx,
       stats,
-      FlushTrigger::new().0,
+      Some(FlushTrigger::new().0),
     );
 
     let mut workflow_configurations = WorkflowConfigurationsInit::new();
@@ -132,7 +132,7 @@ impl AnnotatedWorkflowsEngine {
 
     Self {
       engine,
-      state_reader: bd_state::test::TestStateReader::default(),
+      state_reader: bd_state::InMemoryStateReader::default(),
     }
   }
 

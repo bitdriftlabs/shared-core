@@ -20,7 +20,7 @@ mod tests;
 
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::size::MemorySized;
-use bd_stats_common::labels;
+use bd_stats_common::{Counter as _, labels};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::sync::mpsc::error::TryRecvError as TokioTryRecvError;

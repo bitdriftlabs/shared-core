@@ -57,7 +57,7 @@ impl TestMatcher {
     message: impl Into<LogMessage>,
     fields: impl Into<HashMap<&'a str, &'a str>>,
   ) -> bool {
-    let reader = bd_state::test::TestStateReader::default();
+    let reader = bd_state::InMemoryStateReader::default();
     self.match_log_with_state(log_level, log_type, message, fields, &reader)
   }
 }

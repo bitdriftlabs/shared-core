@@ -752,3 +752,76 @@ impl StateReader for tokio::sync::RwLockReadGuard<'_, bd_resilient_kv::Versioned
     self.as_hashmap()
   }
 }
+
+//
+// InMemoryStateReader
+//
+
+/// A simple in-memory state reader. This avoids the need for async,
+/// temporary directories, or complex setup.
+///
+/// # Example
+/// ```
+/// use bd_state::test::InMemoryStateReader;
+/// use bd_state::{Scope, StateReader};
+///
+/// let mut reader = InMemoryStateReader::default();
+/// reader.insert(Scope::FeatureFlagExposure, "my_flag", "true");
+/// assert_eq!(
+///   reader.get(Scope::FeatureFlagExposure, "my_flag"),
+///   Some("true")
+/// );
+/// ```
+#[derive(Default)]
+pub struct InMemoryStateReader {
+  data: bd_resilient_kv::ScopedMaps,
+}
+
+impl InMemoryStateReader {
+  #[must_use]
+  pub fn new() -> Self {
+    Self::default()
+  }
+
+  /// Inserts a value into the test state reader. This is synchronous and doesn't
+  /// require async, making it easy to use in tests.
+  pub fn insert(
+    &mut self,
+    scope: crate::Scope,
+    key: impl Into<String>,
+    value: bd_resilient_kv::StateValue,
+  ) {
+    self.data.insert(
+      scope,
+      key.into(),
+      bd_resilient_kv::TimestampedValue {
+        timestamp: 0,
+        value,
+      },
+    );
+  }
+}
+
+impl crate::StateReader for InMemoryStateReader {
+  fn get(&self, scope: crate::Scope, key: &str) -> Option<&bd_resilient_kv::StateValue> {
+    self.data.get(scope, key).map(|value| &value.value)
+  }
+
+  fn iter(&self) -> Box<dyn Iterator<Item = crate::StateEntry> + '_> {
+    Box::new(
+      self
+        .data
+        .iter()
+        .map(|(scope, key, value)| crate::StateEntry {
+          scope,
+          key: key.clone(),
+          value: value.value.clone(),
+          timestamp: time::macros::datetime!(2024-01-01 00:00:00 UTC),
+        }),
+    )
+  }
+
+  fn as_scoped_maps(&self) -> &bd_resilient_kv::ScopedMaps {
+    &self.data
+  }
+}

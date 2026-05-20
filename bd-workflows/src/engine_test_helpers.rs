@@ -150,7 +150,7 @@ impl AnnotatedWorkflowsEngine {
         capture_session: None,
       }),
       &self.log_destination_buffer_ids,
-      &bd_state::test::TestStateReader::default(),
+      &bd_state::InMemoryStateReader::default(),
       log.now,
     )
   }
@@ -159,7 +159,7 @@ impl AnnotatedWorkflowsEngine {
     &mut self,
     state_change: &bd_state::StateChange,
   ) -> WorkflowsEngineResult<'_> {
-    self.process_state_change_with_reader(state_change, &bd_state::test::TestStateReader::default())
+    self.process_state_change_with_reader(state_change, &bd_state::InMemoryStateReader::default())
   }
 
   pub fn process_state_change_with_reader(
@@ -383,11 +383,11 @@ impl Setup {
 
     let (mut workflows_engine, buffers_to_flush_rx) = WorkflowsEngine::new(
       &self.collector.scope(""),
-      self.sdk_directory.path(),
-      &self.runtime,
+      Some(self.sdk_directory.path()),
+      Some(&self.runtime),
       data_upload_tx,
       stats.clone(),
-      flush_trigger,
+      Some(flush_trigger),
     );
 
     let task_handle = AnnotatedWorkflowsEngine::run_for_test(
