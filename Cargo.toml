@@ -155,7 +155,7 @@ protobuf-codegen = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", 
 protobuf-json-mapping = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", branch = "patch-stack" }
 
 rand         = "0.10.1"
-regex        = "1.12.3"
+regex        = { version = "1.12.3", default-features = false, features = ["std", "perf"] }
 reqwest      = { version = "0.13.3", features = ["deflate", "json"] }
 rstest       = "0.26.1"
 rstest_reuse = "0.7.0"
