@@ -5,17 +5,26 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-#[cfg(test)]
+#[cfg(all(test, feature = "otel"))]
 #[path = "./otel_test.rs"]
 mod tests;
 
-use crate::{DEFAULT_FILTER_RULES, RegistryLayer};
+use crate::DEFAULT_FILTER_RULES;
+#[cfg(feature = "otel")]
+use crate::RegistryLayer;
+#[cfg(feature = "otel")]
 use anyhow::anyhow;
+#[cfg(feature = "otel")]
 use http::{HeaderMap, HeaderName, HeaderValue};
+#[cfg(feature = "otel")]
 use opentelemetry::KeyValue;
+#[cfg(feature = "otel")]
 use opentelemetry::propagation::{Extractor, Injector, TextMapPropagator};
+#[cfg(feature = "otel")]
 use opentelemetry::trace::{SpanContext, TraceContextExt, TracerProvider as _};
+#[cfg(feature = "otel")]
 use opentelemetry_otlp::tonic_types::metadata::MetadataMap;
+#[cfg(feature = "otel")]
 use opentelemetry_otlp::{
   Protocol,
   SpanExporter,
@@ -23,14 +32,21 @@ use opentelemetry_otlp::{
   WithHttpConfig,
   WithTonicConfig,
 };
+#[cfg(feature = "otel")]
 use opentelemetry_sdk::Resource;
+#[cfg(feature = "otel")]
 use opentelemetry_sdk::propagation::TraceContextPropagator;
+#[cfg(feature = "otel")]
 use opentelemetry_sdk::runtime::{Tokio, TokioCurrentThread};
+#[cfg(feature = "otel")]
 use opentelemetry_sdk::trace::span_processor_with_async_runtime::BatchSpanProcessor;
+#[cfg(feature = "otel")]
 use opentelemetry_sdk::trace::{Sampler, SdkTracerProvider};
+#[cfg(feature = "otel")]
 use std::collections::{BTreeMap, HashMap};
-use std::time::Duration;
+#[cfg(feature = "otel")]
 use tokio::runtime::{Handle, RuntimeFlavor};
+#[cfg(feature = "otel")]
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 
 pub const OTEL_TARGET: &str = "bd_log::otel";
@@ -52,135 +68,6 @@ impl TraceContextHeaders {
   pub fn is_empty(&self) -> bool {
     self.traceparent.is_empty() && self.tracestate.as_deref().unwrap_or_default().is_empty()
   }
-}
-
-//
-// TraceContextHeadersInjector
-//
-
-struct TraceContextHeadersInjector<'a> {
-  headers: &'a mut TraceContextHeaders,
-}
-
-impl Injector for TraceContextHeadersInjector<'_> {
-  fn set(&mut self, key: &str, value: String) {
-    match key {
-      TRACEPARENT_HEADER => self.headers.traceparent = value,
-      TRACESTATE_HEADER => self.headers.tracestate = Some(value),
-      _ => {},
-    }
-  }
-}
-
-//
-// TraceContextHeadersExtractor
-//
-
-struct TraceContextHeadersExtractor<'a> {
-  headers: &'a TraceContextHeaders,
-}
-
-impl Extractor for TraceContextHeadersExtractor<'_> {
-  fn get(&self, key: &str) -> Option<&str> {
-    match key {
-      TRACEPARENT_HEADER if !self.headers.traceparent.is_empty() => Some(&self.headers.traceparent),
-      TRACESTATE_HEADER => self.headers.tracestate.as_deref(),
-      _ => None,
-    }
-  }
-
-  fn keys(&self) -> Vec<&str> {
-    let mut keys = vec![];
-
-    if !self.headers.traceparent.is_empty() {
-      keys.push(TRACEPARENT_HEADER);
-    }
-
-    if self.headers.tracestate.is_some() {
-      keys.push(TRACESTATE_HEADER);
-    }
-
-    keys
-  }
-}
-
-fn trace_context_propagator() -> TraceContextPropagator {
-  TraceContextPropagator::new()
-}
-
-fn remote_span_context(headers: &TraceContextHeaders) -> Option<SpanContext> {
-  if headers.traceparent.is_empty() {
-    return None;
-  }
-
-  let extracted_context =
-    trace_context_propagator().extract(&TraceContextHeadersExtractor { headers });
-  let span_context = extracted_context.span().span_context().clone();
-
-  span_context.is_valid().then_some(span_context)
-}
-
-#[must_use]
-pub fn current_trace_context_headers() -> Option<TraceContextHeaders> {
-  let current_context = opentelemetry::Context::current();
-  let span_context = current_context.span().span_context().clone();
-
-  if !span_context.is_valid() {
-    return None;
-  }
-
-  let mut headers = TraceContextHeaders::default();
-  trace_context_propagator().inject_context(
-    &current_context,
-    &mut TraceContextHeadersInjector {
-      headers: &mut headers,
-    },
-  );
-
-  if headers.traceparent.is_empty() {
-    return None;
-  }
-
-  Some(headers)
-}
-
-#[must_use]
-pub fn current_trace_request_id() -> Option<String> {
-  let span_context = opentelemetry::Context::current()
-    .span()
-    .span_context()
-    .clone();
-
-  if !span_context.is_valid() {
-    return None;
-  }
-
-  Some(format!(
-    "{}-{}",
-    span_context.trace_id(),
-    span_context.span_id()
-  ))
-}
-
-#[must_use]
-pub fn set_remote_parent(span: &tracing::Span, headers: &TraceContextHeaders) -> bool {
-  let Some(span_context) = remote_span_context(headers) else {
-    return false;
-  };
-
-  span
-    .set_parent(opentelemetry::Context::new().with_remote_span_context(span_context))
-    .is_ok()
-}
-
-#[must_use]
-pub fn add_trace_link(span: &tracing::Span, headers: &TraceContextHeaders) -> bool {
-  let Some(span_context) = remote_span_context(headers) else {
-    return false;
-  };
-
-  span.add_link(span_context);
-  true
 }
 
 //
@@ -229,6 +116,7 @@ pub enum OtelCollectorProtocol {
   HttpJson,
 }
 
+#[cfg(feature = "otel")]
 impl OtelCollectorProtocol {
   fn export_protocol(self) -> Protocol {
     match self {
@@ -249,9 +137,15 @@ pub struct OtelCollectorConfig {
   pub protocol: OtelCollectorProtocol,
   pub service_name: String,
   pub tracer_name: String,
+  #[cfg(feature = "otel")]
   pub headers: BTreeMap<String, String>,
+  #[cfg(not(feature = "otel"))]
+  pub headers: std::collections::BTreeMap<String, String>,
+  #[cfg(feature = "otel")]
   pub resource_attributes: BTreeMap<String, String>,
-  pub timeout: Duration,
+  #[cfg(not(feature = "otel"))]
+  pub resource_attributes: std::collections::BTreeMap<String, String>,
+  pub timeout: std::time::Duration,
   pub mirror_to_output: bool,
   pub max_attributes_per_span: u32,
   pub max_events_per_span: u32,
@@ -266,9 +160,9 @@ impl OtelCollectorConfig {
       protocol: OtelCollectorProtocol::Grpc,
       tracer_name: service_name.clone(),
       service_name,
-      headers: BTreeMap::new(),
-      resource_attributes: BTreeMap::new(),
-      timeout: Duration::from_secs(3),
+      headers: Default::default(),
+      resource_attributes: Default::default(),
+      timeout: std::time::Duration::from_secs(3),
       mirror_to_output: false,
       max_attributes_per_span: 16,
       max_events_per_span: 64,
@@ -284,8 +178,6 @@ pub(crate) fn is_not_direct_otel_target(metadata: &tracing::Metadata<'_>) -> boo
   !is_direct_otel_target(metadata)
 }
 
-// These conditional span helpers only need to inspect the currently entered span because that is
-// the implicit parent `tracing` will attach to a newly-created span.
 #[doc(hidden)]
 #[must_use]
 #[inline]
@@ -303,28 +195,180 @@ pub(crate) fn global_filter_rules(base_rules: &str, enable_direct_otel: bool) ->
   if base_rules.is_empty() {
     format!("{OTEL_TARGET}=trace")
   } else {
-    // Force the dedicated OTEL target through the global gate so it reaches the collector even
-    // when the ordinary log filter is narrower.
     format!("{base_rules},{OTEL_TARGET}=trace")
   }
 }
 
+// --- OTel-only implementation ---
+
+#[cfg(feature = "otel")]
+struct TraceContextHeadersInjector<'a> {
+  headers: &'a mut TraceContextHeaders,
+}
+
+#[cfg(feature = "otel")]
+impl Injector for TraceContextHeadersInjector<'_> {
+  fn set(&mut self, key: &str, value: String) {
+    match key {
+      TRACEPARENT_HEADER => self.headers.traceparent = value,
+      TRACESTATE_HEADER => self.headers.tracestate = Some(value),
+      _ => {},
+    }
+  }
+}
+
+#[cfg(feature = "otel")]
+struct TraceContextHeadersExtractor<'a> {
+  headers: &'a TraceContextHeaders,
+}
+
+#[cfg(feature = "otel")]
+impl Extractor for TraceContextHeadersExtractor<'_> {
+  fn get(&self, key: &str) -> Option<&str> {
+    match key {
+      TRACEPARENT_HEADER if !self.headers.traceparent.is_empty() => Some(&self.headers.traceparent),
+      TRACESTATE_HEADER => self.headers.tracestate.as_deref(),
+      _ => None,
+    }
+  }
+
+  fn keys(&self) -> Vec<&str> {
+    let mut keys = vec![];
+
+    if !self.headers.traceparent.is_empty() {
+      keys.push(TRACEPARENT_HEADER);
+    }
+
+    if self.headers.tracestate.is_some() {
+      keys.push(TRACESTATE_HEADER);
+    }
+
+    keys
+  }
+}
+
+#[cfg(feature = "otel")]
+fn trace_context_propagator() -> TraceContextPropagator {
+  TraceContextPropagator::new()
+}
+
+#[cfg(feature = "otel")]
+fn remote_span_context(headers: &TraceContextHeaders) -> Option<SpanContext> {
+  if headers.traceparent.is_empty() {
+    return None;
+  }
+
+  let extracted_context =
+    trace_context_propagator().extract(&TraceContextHeadersExtractor { headers });
+  let span_context = extracted_context.span().span_context().clone();
+
+  span_context.is_valid().then_some(span_context)
+}
+
+#[cfg(feature = "otel")]
+#[must_use]
+pub fn current_trace_context_headers() -> Option<TraceContextHeaders> {
+  let current_context = opentelemetry::Context::current();
+  let span_context = current_context.span().span_context().clone();
+
+  if !span_context.is_valid() {
+    return None;
+  }
+
+  let mut headers = TraceContextHeaders::default();
+  trace_context_propagator().inject_context(
+    &current_context,
+    &mut TraceContextHeadersInjector {
+      headers: &mut headers,
+    },
+  );
+
+  if headers.traceparent.is_empty() {
+    return None;
+  }
+
+  Some(headers)
+}
+
+#[cfg(not(feature = "otel"))]
+#[must_use]
+pub fn current_trace_context_headers() -> Option<TraceContextHeaders> {
+  None
+}
+
+#[cfg(feature = "otel")]
+#[must_use]
+pub fn current_trace_request_id() -> Option<String> {
+  let span_context = opentelemetry::Context::current()
+    .span()
+    .span_context()
+    .clone();
+
+  if !span_context.is_valid() {
+    return None;
+  }
+
+  Some(format!(
+    "{}-{}",
+    span_context.trace_id(),
+    span_context.span_id()
+  ))
+}
+
+#[cfg(not(feature = "otel"))]
+#[must_use]
+pub fn current_trace_request_id() -> Option<String> {
+  None
+}
+
+#[cfg(feature = "otel")]
+#[must_use]
+pub fn set_remote_parent(span: &tracing::Span, headers: &TraceContextHeaders) -> bool {
+  let Some(span_context) = remote_span_context(headers) else {
+    return false;
+  };
+
+  span
+    .set_parent(opentelemetry::Context::new().with_remote_span_context(span_context))
+    .is_ok()
+}
+
+#[cfg(not(feature = "otel"))]
+#[must_use]
+pub fn set_remote_parent(_span: &tracing::Span, _headers: &TraceContextHeaders) -> bool {
+  false
+}
+
+#[cfg(feature = "otel")]
+#[must_use]
+pub fn add_trace_link(span: &tracing::Span, headers: &TraceContextHeaders) -> bool {
+  let Some(span_context) = remote_span_context(headers) else {
+    return false;
+  };
+
+  span.add_link(span_context);
+  true
+}
+
+#[cfg(not(feature = "otel"))]
+#[must_use]
+pub fn add_trace_link(_span: &tracing::Span, _headers: &TraceContextHeaders) -> bool {
+  false
+}
+
+#[cfg(feature = "otel")]
 pub(crate) fn build_otel_layer(
   config: &OtelCollectorConfig,
 ) -> anyhow::Result<(RegistryLayer, SdkTracerProvider)> {
   let exporter = build_span_exporter(config)?;
   let runtime_flavor = active_tokio_runtime_flavor()?;
   let provider_builder = SdkTracerProvider::builder()
-    // OTLP exporters run async reqwest/tonic work and need a Tokio-backed processor instead of
-    // the SDK's default dedicated thread, which has no reactor.
     .with_sampler(Sampler::AlwaysOn)
     .with_max_attributes_per_span(config.max_attributes_per_span)
     .with_max_events_per_span(config.max_events_per_span)
     .with_resource(build_resource(config));
   let provider = match runtime_flavor {
     RuntimeFlavor::CurrentThread => provider_builder
-      // The upstream async batch processor blocks during shutdown. On a current-thread runtime it
-      // must move its background work to a separate thread or shutdown can deadlock.
       .with_span_processor(BatchSpanProcessor::builder(exporter, TokioCurrentThread).build())
       .build(),
     RuntimeFlavor::MultiThread => provider_builder
@@ -343,18 +387,17 @@ pub(crate) fn build_otel_layer(
   Ok((layer, provider))
 }
 
+#[cfg(feature = "otel")]
 fn active_tokio_runtime_flavor() -> anyhow::Result<RuntimeFlavor> {
   Ok(Handle::try_current()?.runtime_flavor())
 }
 
+#[cfg(feature = "otel")]
 pub(crate) fn build_direct_otel_layer<T>(tracer: T) -> RegistryLayer
 where
   T: opentelemetry::trace::Tracer + Send + Sync + 'static,
   T::Span: Send + Sync,
 {
-  // Keep routing outside `tracing-opentelemetry`'s own `Filtered` wrapper so the layer can be
-  // replaced safely during the second-stage logger configuration. This is the same upstream reload
-  // limitation described in tokio-rs/tracing#1629 and tokio-rs/tracing#2101.
   crate::box_direct_otel_layer(
     tracing_opentelemetry::layer()
       .with_tracer(tracer)
@@ -365,6 +408,7 @@ where
   )
 }
 
+#[cfg(feature = "otel")]
 fn build_span_exporter(config: &OtelCollectorConfig) -> anyhow::Result<SpanExporter> {
   match config.protocol {
     OtelCollectorProtocol::Grpc => {
@@ -396,6 +440,7 @@ fn build_span_exporter(config: &OtelCollectorConfig) -> anyhow::Result<SpanExpor
   }
 }
 
+#[cfg(feature = "otel")]
 fn build_resource(config: &OtelCollectorConfig) -> Resource {
   let mut attributes = Vec::with_capacity(config.resource_attributes.len() + 1);
   attributes.push(KeyValue::new("service.name", config.service_name.clone()));
@@ -411,6 +456,7 @@ fn build_resource(config: &OtelCollectorConfig) -> Resource {
     .build()
 }
 
+#[cfg(feature = "otel")]
 fn build_tonic_metadata(headers: &BTreeMap<String, String>) -> anyhow::Result<MetadataMap> {
   let mut header_map = HeaderMap::with_capacity(headers.len());
 
@@ -424,6 +470,8 @@ fn build_tonic_metadata(headers: &BTreeMap<String, String>) -> anyhow::Result<Me
 
   Ok(MetadataMap::from_headers(header_map))
 }
+
+// --- Macros (always available, no OTel deps needed) ---
 
 #[macro_export]
 macro_rules! otel_span {

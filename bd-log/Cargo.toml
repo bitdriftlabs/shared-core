@@ -11,18 +11,25 @@ doctest = false
 [dependencies]
 anyhow.workspace                = true
 bd-workspace-hack.workspace     = true
-http.workspace                  = true
+http                            = { workspace = true, optional = true }
 log.workspace                   = true
-opentelemetry.workspace         = true
-opentelemetry-otlp.workspace    = true
-opentelemetry_sdk.workspace     = true
+opentelemetry                   = { workspace = true, optional = true }
+opentelemetry-otlp              = { workspace = true, optional = true }
+opentelemetry_sdk               = { workspace = true, optional = true }
 parking_lot.workspace           = true
 time.workspace                  = true
 tokio.workspace                 = true
 tracing.workspace               = true
 tracing-log.workspace           = true
-tracing-opentelemetry.workspace = true
+tracing-opentelemetry           = { workspace = true, optional = true }
 tracing-subscriber.workspace    = true
 
+[features]
+default = []
+otel    = ["dep:http", "dep:opentelemetry", "dep:opentelemetry-otlp", "dep:opentelemetry_sdk", "dep:tracing-opentelemetry"]
+
 [dev-dependencies]
-bd-time = { path = "../bd-time" }
+bd-time                         = { path = "../bd-time" }
+opentelemetry.workspace         = true
+opentelemetry_sdk               = { workspace = true, features = ["testing"] }
+tracing-opentelemetry.workspace = true

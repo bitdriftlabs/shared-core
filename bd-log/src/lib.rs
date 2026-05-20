@@ -64,16 +64,18 @@
 //! [`SwapLogger::swap`] is narrower than reconfiguration: it only updates the active filter string.
 //! It does not change the output destination or attach or detach the OTEL exporter.
 
-#[cfg(test)]
+#[cfg(all(test, feature = "otel"))]
 #[path = "./lib_test.rs"]
 mod tests;
 
 pub mod otel;
 pub mod rate_limit_log;
 #[doc(hidden)]
+#[cfg(feature = "otel")]
 pub mod test;
 
 use anyhow::anyhow;
+#[cfg(feature = "otel")]
 use opentelemetry_sdk::trace::SdkTracerProvider;
 pub use otel::{
   LogConfig,
@@ -487,6 +489,7 @@ impl Layer<Registry> for ReloadableLayerStack {
 struct LoggerState {
   reload_filter: Option<ReloadFilterFn>,
   reload_layers: Option<ReloadLayersFn>,
+  #[cfg(feature = "otel")]
   otel_provider: Option<SdkTracerProvider>,
   direct_otel_enabled: bool,
 }
@@ -507,6 +510,7 @@ impl SwapLogger {
       state: Mutex::new(LoggerState {
         reload_filter: None,
         reload_layers: None,
+        #[cfg(feature = "otel")]
         otel_provider: None,
         direct_otel_enabled: false,
       }),
@@ -548,7 +552,7 @@ impl SwapLogger {
     let (filter, reload_handle) = tracing_subscriber::reload::Layer::new(EnvFilter::new(
       otel::global_filter_rules(&config.log_filter, direct_otel_enabled),
     ));
-    let (layers, otel_provider) = build_registry_layers(config)?;
+    let (layers, _otel_provider) = build_registry_layers(config)?;
     let (layers, layers_handle) = ReloadableLayerStack::new(layers);
 
     Registry::default().with(layers).with(filter).try_init()?;
@@ -563,7 +567,10 @@ impl SwapLogger {
         layers_handle.reload(layers);
         Ok(())
       }));
-      state.otel_provider = otel_provider;
+      #[cfg(feature = "otel")]
+      {
+        state.otel_provider = _otel_provider;
+      }
       state.direct_otel_enabled = direct_otel_enabled;
     }
 
@@ -574,12 +581,13 @@ impl SwapLogger {
 
   fn reload_config(config: &LogConfig) -> anyhow::Result<()> {
     let direct_otel_enabled = direct_otel_output_enabled(config);
-    let (layers, new_otel_provider) = build_registry_layers(config)?;
+    let (layers, _new_otel_provider) = build_registry_layers(config)?;
     let filter = EnvFilter::new(otel::global_filter_rules(
       &config.log_filter,
       direct_otel_enabled,
     ));
 
+    #[cfg(feature = "otel")]
     let old_otel_provider = {
       let mut state = Self::get().state.lock().unwrap();
       state
@@ -592,11 +600,27 @@ impl SwapLogger {
         .ok_or_else(|| anyhow!("logger has not been initialized"))?(filter)?;
 
       state.direct_otel_enabled = direct_otel_enabled;
-      std::mem::replace(&mut state.otel_provider, new_otel_provider)
+      std::mem::replace(&mut state.otel_provider, _new_otel_provider)
     };
+
+    #[cfg(not(feature = "otel"))]
+    {
+      let mut state = Self::get().state.lock().unwrap();
+      state
+        .reload_layers
+        .as_mut()
+        .ok_or_else(|| anyhow!("logger has not been initialized"))?(layers)?;
+      state
+        .reload_filter
+        .as_mut()
+        .ok_or_else(|| anyhow!("logger has not been initialized"))?(filter)?;
+
+      state.direct_otel_enabled = direct_otel_enabled;
+    }
 
     Self::update_log_max_level(&config.log_filter);
 
+    #[cfg(feature = "otel")]
     if let Some(provider) = old_otel_provider {
       provider.shutdown()?;
     }
@@ -623,13 +647,16 @@ impl SwapLogger {
 
   // Flush and stop the OTEL exporter if one was installed.
   pub fn shutdown() -> anyhow::Result<()> {
-    let provider = {
-      let mut state = Self::get().state.lock().unwrap();
-      state.otel_provider.take()
-    };
+    #[cfg(feature = "otel")]
+    {
+      let provider = {
+        let mut state = Self::get().state.lock().unwrap();
+        state.otel_provider.take()
+      };
 
-    if let Some(provider) = provider {
-      provider.shutdown()?;
+      if let Some(provider) = provider {
+        provider.shutdown()?;
+      }
     }
 
     Ok(())
@@ -651,6 +678,7 @@ fn direct_otel_output_enabled(config: &LogConfig) -> bool {
   config.otel.is_some() || direct_otel_span_debug_enabled()
 }
 
+#[cfg(feature = "otel")]
 fn build_registry_layers(
   config: &LogConfig,
 ) -> anyhow::Result<(Vec<RegistryLayer>, Option<SdkTracerProvider>)> {
@@ -671,6 +699,18 @@ fn build_registry_layers(
   };
 
   Ok((layers, otel_provider))
+}
+
+#[cfg(not(feature = "otel"))]
+fn build_registry_layers(
+  config: &LogConfig,
+) -> anyhow::Result<(Vec<RegistryLayer>, Option<()>)> {
+  let mut layers = vec![build_output_layer(config)];
+  if direct_otel_span_debug_enabled() {
+    layers.push(build_direct_otel_debug_layer(config));
+  }
+
+  Ok((layers, None))
 }
 
 fn build_console_fmt_layer(config: &LogConfig) -> ConsoleFmtLayer {
