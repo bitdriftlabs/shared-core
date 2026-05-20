@@ -27,7 +27,7 @@ bd-runtime.path             = "../bd-runtime"
 bd-shutdown.path            = "../bd-shutdown"
 bd-state.path               = "../bd-state"
 bd-stats-common.path        = "../bd-stats-common"
-bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
+bd-test-helpers             = { path = "../bd-test-helpers", default-features = false, optional = true }
 bd-time.path                = "../bd-time"
 bd-workspace-hack.workspace = true
 bincode.workspace           = true
@@ -43,11 +43,13 @@ tokio.workspace             = true
 uuid.workspace              = true
 
 [features]
-fuzzing = ["dep:arbitrary", "bd-stats-common/fuzzing"]
+fuzzing    = ["dep:arbitrary", "bd-stats-common/fuzzing"]
+test-utils = ["dep:bd-test-helpers"]
 
 [dev-dependencies]
 assert_matches.workspace    = true
 bd-log                      = { path = "../bd-log" }
+bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
 bd-time                     = { path = "../bd-time" }
 ctor.workspace              = true
 futures-util.workspace      = true
