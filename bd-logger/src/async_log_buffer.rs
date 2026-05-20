@@ -96,11 +96,7 @@ pub enum StateUpdateMessage {
   AddLogField(String, DataValue),
   RemoveLogField(String),
   SetFeatureFlagExposure(String, Option<String>),
-  SetLowMemoryState {
-    level: String,
-    memory_used_kb: u64,
-    timestamp_us: u64,
-  },
+  SetLowMemoryState { level: String, memory_used_kb: u64 },
   SetEntityId(Option<String>),
   RequestSessionId(bd_completion::Sender<anyhow::Result<String>>),
   StartNewSession(bd_completion::Sender<()>),
@@ -1058,12 +1054,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 StateUpdateMessage::SetLowMemoryState {
                   level,
                   memory_used_kb,
-                  timestamp_us,
                 } => {
                   for (key, value) in [
                     ("low_memory_level", level),
                     ("low_memory_used_kb", memory_used_kb.to_string()),
-                    ("low_memory_timestamp_us", timestamp_us.to_string()),
                   ] {
                     if let Err(e) = state_store
                       .insert(Scope::System, key.to_string(), string_value(value))

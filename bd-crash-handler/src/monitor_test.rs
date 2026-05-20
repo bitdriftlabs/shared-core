@@ -190,7 +190,7 @@ impl Setup {
   /// before clearing ephemeral scopes. This helper allows tests to simulate that snapshot.
   async fn make_previous_run_state(
     flags: Vec<(&str, &str)>,
-    memory_state: Option<(&str, u64, u64)>,
+    memory_state: Option<(&str, u64)>,
   ) -> bd_resilient_kv::ScopedMaps {
     let mut store = bd_resilient_kv::VersionedKVStore::new_in_memory(
       Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00 UTC))),
@@ -213,11 +213,10 @@ impl Setup {
         .unwrap();
     }
 
-    if let Some((level, used_kb, ts)) = memory_state {
+    if let Some((level, used_kb)) = memory_state {
       for (name, value) in [
         ("low_memory_level", level.to_string()),
         ("low_memory_used_kb", used_kb.to_string()),
-        ("low_memory_timestamp_us", ts.to_string()),
       ] {
         store
           .insert(
@@ -240,7 +239,7 @@ impl Setup {
     maybe_global_state: Option<LogFields>,
     enable_file_watcher: bool,
     crash_report_hook: Option<Arc<dyn CrashReportHook>>,
-    memory_state: Option<(&str, u64, u64)>,
+    memory_state: Option<(&str, u64)>,
   ) -> Self {
     let directory = TempDir::new().unwrap();
 
@@ -348,11 +347,10 @@ impl Setup {
       .unwrap();
   }
 
-  async fn update_memory_state(&self, level: &str, used_kb: u64, timestamp: u64) {
+  async fn update_memory_state(&self, level: &str, used_kb: u64) {
     for (name, value) in [
       ("low_memory_level", level.to_string()),
       ("low_memory_used_kb", used_kb.to_string()),
-      ("low_memory_timestamp_us", timestamp.to_string()),
     ] {
       self
         .state
@@ -1003,19 +1001,11 @@ async fn previous_session_crash_uses_previous_feature_flags() {
 async fn previous_session_crash_uses_previous_memory_warning_data() {
   let data = CrashReportBuilder::new("PreviousCrash").build();
 
-  let mut setup = Setup::new(
-    None,
-    true,
-    None,
-    Some(("warning", 11_111_111, 1_770_000_000)),
-  )
-  .await;
+  let mut setup = Setup::new(None, true, None, Some(("warning", 11_111_111))).await;
 
   // Simulate a mem warning after Monitor creation (these should NOT appear in previous session
   // crash)
-  setup
-    .update_memory_state("critical", 9_999_999, 12_345_678)
-    .await;
+  setup.update_memory_state("critical", 9_999_999).await;
 
   // Expect upload with previous session memory warning data
   setup.expect_artifact_upload_with_flags(
@@ -1026,7 +1016,7 @@ async fn previous_session_crash_uses_previous_memory_warning_data() {
       ("os_version".into(), "unknown".into()),
       ("_low_memory_level".into(), "warning".into()),
       ("_low_memory_used_kb".into(), "11111111".into()),
-      ("_low_memory_timestamp_us".into(), "1770000000".into()),
+      ("_low_memory_timestamp_us".into(), "1704067200000000".into()),
     ]
     .into(),
     None,
@@ -1051,13 +1041,7 @@ async fn previous_session_crash_uses_previous_memory_warning_data() {
 async fn previous_session_crash_with_normal_memory_omits_low_memory_fields() {
   let data = CrashReportBuilder::new("PreviousCrash").build();
 
-  let mut setup = Setup::new(
-    None,
-    true,
-    None,
-    Some(("normal", 11_111_111, 1_770_000_000)),
-  )
-  .await;
+  let mut setup = Setup::new(None, true, None, Some(("normal", 11_111_111))).await;
 
   // Expect upload with previous session without memory warning data
   setup.expect_artifact_upload_with_flags(

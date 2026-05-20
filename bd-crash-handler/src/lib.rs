@@ -462,31 +462,45 @@ impl Monitor {
     if !matches!(origin, ReportOrigin::Previous) {
       return LogFields::default();
     }
-    let fields: LogFields = self
-      .previous_run_state
-      .iter()
-      .filter(|(scope, ..)| *scope == bd_resilient_kv::Scope::System)
-      .filter_map(|(_, name, TimestampedValue { value, .. })| {
-        if !value.has_string_value() {
-          return None;
-        }
-        let field_name: &str = match name.as_str() {
-          "low_memory_level" => "_low_memory_level",
-          "low_memory_used_kb" => "_low_memory_used_kb",
-          "low_memory_timestamp_us" => "_low_memory_timestamp_us",
-          _ => return None,
-        };
-        Some((field_name.into(), value.string_value().to_string().into()))
-      })
-      .collect();
+
+    let mut level_tv: Option<&TimestampedValue> = None;
+    let mut used_kb_tv: Option<&TimestampedValue> = None;
+
+    for (scope, name, tv) in self.previous_run_state.iter() {
+      if scope != bd_resilient_kv::Scope::System || !tv.value.has_string_value() {
+        continue;
+      }
+      match name.as_str() {
+        "low_memory_level" => level_tv = Some(tv),
+        "low_memory_used_kb" => used_kb_tv = Some(tv),
+        _ => {},
+      }
+    }
+
+    let Some(level_tv) = level_tv else {
+      return LogFields::default();
+    };
 
     // If the last recorded memory pressure level was "normal", memory pressure had resolved
     // before the crash so we don't include low memory fields in the report
-    if fields
-      .get("_low_memory_level")
-      .is_some_and(|v| v.as_str() == Some("normal"))
-    {
+    if level_tv.value.string_value() == "normal" {
       return LogFields::default();
+    }
+
+    let mut fields = LogFields::default();
+    fields.insert(
+      "_low_memory_level".into(),
+      level_tv.value.string_value().to_string().into(),
+    );
+    fields.insert(
+      "_low_memory_timestamp_us".into(),
+      level_tv.timestamp.to_string().into(),
+    );
+    if let Some(tv) = used_kb_tv {
+      fields.insert(
+        "_low_memory_used_kb".into(),
+        tv.value.string_value().to_string().into(),
+      );
     }
 
     fields

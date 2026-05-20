@@ -838,7 +838,6 @@ async fn set_low_memory_state_writes_to_system_scope() {
     .try_send_state_update(StateUpdateMessage::SetLowMemoryState {
       level: "warning".to_string(),
       memory_used_kb: 111_000,
-      timestamp_us: 123_456_789,
     })
     .unwrap();
 
@@ -863,11 +862,6 @@ async fn set_low_memory_state_writes_to_system_scope() {
       reader
         .get(Scope::System, "low_memory_used_kb")
         .is_some_and(|v| v.has_string_value() && v.string_value() == "111000")
-    );
-    assert!(
-      reader
-        .get(Scope::System, "low_memory_timestamp_us")
-        .is_some_and(|v| v.has_string_value() && v.string_value() == "123456789")
     );
   }
 
