@@ -22,5 +22,6 @@ pub mod engine;
 mod generate_log;
 pub mod metrics;
 mod sankey_diagram;
+#[cfg(any(test, feature = "test-utils"))]
 pub mod test;
 pub mod workflow;
