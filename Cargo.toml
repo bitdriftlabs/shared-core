@@ -34,6 +34,7 @@ members = [
   "bd-profile",
   "bd-proto",
   "bd-proto-util",
+  "bd-script",
   "bd-report-convert",
   "bd-report-parsers",
   "bd-report-writer",
@@ -185,6 +186,15 @@ tracing-opentelemetry = "0.32.1"
 unwrap-infallible     = "1.0.0"
 urlencoding           = "2.1.3"
 uuid                  = { version = "1.23.1", features = ["v4"] }
+vrl = { git = "https://github.com/mattklein123/vrl.git", branch = "performance-20260306", default-features = false, features = [
+  "compiler",
+  "value",
+  "diagnostic",
+  "path",
+  "parser",
+  "stdlib-base",
+  "core",
+] }
 
 [profile.bench]
 debug = true

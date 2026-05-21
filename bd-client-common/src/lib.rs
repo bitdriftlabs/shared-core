@@ -24,6 +24,7 @@ pub mod file_system;
 pub mod init_lifecycle;
 pub mod payload_conversion;
 pub mod safe_file_cache;
+pub mod sdk_status;
 pub mod test;
 
 #[cfg(test)]

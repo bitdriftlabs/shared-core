@@ -35,6 +35,7 @@ pub trait Remote {
   async fn start_new_session();
   async fn set_sleep_mode(enabled: bool);
   async fn set_feature_flag(name: String, variant: Option<String>);
+  async fn set_entity_id(entity_id: String);
 }
 
 #[derive(Clone)]
@@ -58,6 +59,9 @@ fn shutdown_logger() {
 
 pub async fn start(sdk_directory: &Path, args: &LoggerArgs, port: u16) -> anyhow::Result<()> {
   let logger = crate::logger::make_logger(sdk_directory, args).await?;
+  if let Some(entity_id) = logger.current_entity_id() {
+    log::info!("current entity ID: {entity_id}");
+  }
   logger.start();
   LOGGER.lock().replace(logger);
 
@@ -181,6 +185,12 @@ impl Remote for Server {
   ) {
     if let Some(logger) = &*LOGGER.lock() {
       logger.set_feature_flag(name, variant);
+    }
+  }
+
+  async fn set_entity_id(self, _: ::tarpc::context::Context, entity_id: String) {
+    if let Some(logger) = &*LOGGER.lock() {
+      logger.set_entity_id(&entity_id);
     }
   }
 }

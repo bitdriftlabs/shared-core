@@ -23,10 +23,11 @@ pub mod test;
 use crate::stats::{Flusher, PeriodicSchedule};
 use bd_api::DataUpload;
 use bd_client_common::file_system::RealFileSystem;
-use bd_client_stats_store::{Collector, Counter, Error as StatsError, Histogram};
+use bd_client_stats_store::{Collector, Error as StatsError};
 use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::workflow::WorkflowDebugKey;
+use bd_stats_common::{Histogram, StatsCollector};
 use bd_time::{SystemTimeProvider, TimeProvider};
 use file_manager::FileManager;
 use parking_lot::Mutex;
@@ -177,7 +178,17 @@ impl Stats {
       .or_insert(1);
   }
 
-  pub fn record_workflow_debug_state(&self, state: Vec<WorkflowDebugKey>) {
+  pub fn collector(&self) -> &Collector {
+    &self.collector
+  }
+
+  pub fn take_workflow_debug_data(&self) -> HashMap<WorkflowDebugKey, u64> {
+    std::mem::take(&mut *self.workflow_debug_data.lock())
+  }
+}
+
+impl StatsCollector for Stats {
+  fn record_workflow_debug_state(&self, state: Vec<WorkflowDebugKey>) {
     log::debug!("recording workflow debug state: {state:?}");
     let mut workflow_debug_data = self.workflow_debug_data.lock();
     for key in state {
@@ -188,27 +199,27 @@ impl Stats {
     }
   }
 
-  pub fn record_dynamic_counter(&self, tags: BTreeMap<String, String>, id: &str, value: u64) {
+  fn record_dynamic_counter(&self, tags: BTreeMap<String, String>, id: &str, value: u64) {
     log::debug!("recording dynamic counter: id={id}, value={value}, tags={tags:?}");
     if let Some(counter) = self.workflow_dynamic_counter(tags, id) {
       counter.inc_by(value);
     }
   }
 
-  pub fn record_dynamic_histogram(&self, tags: BTreeMap<String, String>, id: &str, value: f64) {
+  fn record_dynamic_histogram(&self, tags: BTreeMap<String, String>, id: &str, value: f64) {
     log::debug!("recording dynamic histogram: id={id}, value={value}, tags={tags:?}");
     if let Some(histogram) = self.workflow_dynamic_histogram(tags, id) {
       histogram.observe(value);
     }
   }
 
-  pub fn workflow_dynamic_counter(
+  fn workflow_dynamic_counter(
     &self,
     tags: BTreeMap<String, String>,
     id: &str,
-  ) -> Option<Counter> {
+  ) -> Option<Box<dyn bd_stats_common::Counter>> {
     match self.collector.dynamic_counter(tags, id) {
-      Ok(counter) => Some(counter),
+      Ok(counter) => Some(Box::new(counter)),
       Err(StatsError::Overflow) => {
         self.handle_overflow(id);
         None
@@ -216,25 +227,17 @@ impl Stats {
     }
   }
 
-  pub fn workflow_dynamic_histogram(
+  fn workflow_dynamic_histogram(
     &self,
     tags: BTreeMap<String, String>,
     id: &str,
-  ) -> Option<Histogram> {
+  ) -> Option<Box<dyn Histogram>> {
     match self.collector.dynamic_histogram(tags, id) {
-      Ok(histogram) => Some(histogram),
+      Ok(histogram) => Some(Box::new(histogram)),
       Err(StatsError::Overflow) => {
         self.handle_overflow(id);
         None
       },
     }
-  }
-
-  pub fn collector(&self) -> &Collector {
-    &self.collector
-  }
-
-  pub fn take_workflow_debug_data(&self) -> HashMap<WorkflowDebugKey, u64> {
-    std::mem::take(&mut *self.workflow_debug_data.lock())
   }
 }

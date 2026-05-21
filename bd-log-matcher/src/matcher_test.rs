@@ -173,7 +173,7 @@ fn sampled_match_zero_rate_never_matches() {
       (log_tag("key", "value"), false),
     ],
     &TinyMap::default(),
-    &bd_state::test::TestStateReader::new(),
+    &bd_state::InMemoryStateReader::new(),
     &mut rng,
   );
 }
@@ -187,7 +187,7 @@ fn sampled_match_full_rate_always_matches() {
     config,
     vec![(log_msg("message"), true), (log_tag("key", "value"), true)],
     &TinyMap::default(),
-    &bd_state::test::TestStateReader::new(),
+    &bd_state::InMemoryStateReader::new(),
     &mut rng,
   );
 }
@@ -206,7 +206,7 @@ fn sampled_match_uses_threshold_comparison() {
       (log_msg("fourth"), false),
     ],
     &TinyMap::default(),
-    &bd_state::test::TestStateReader::new(),
+    &bd_state::InMemoryStateReader::new(),
     &mut rng,
   );
 }
@@ -662,7 +662,7 @@ fn test_extracted_string_matcher() {
       (log_msg("no fields"), false),
     ],
     &TinyMap::default(),
-    &bd_state::test::TestStateReader::new(),
+    &bd_state::InMemoryStateReader::new(),
   );
 
   match_test_runner_with_extractions(
@@ -673,7 +673,7 @@ fn test_extracted_string_matcher() {
       (log_msg("no fields"), false),
     ],
     &[("id1".to_string(), "exact".to_string())].into(),
-    &bd_state::test::TestStateReader::new(),
+    &bd_state::InMemoryStateReader::new(),
   );
 }
 
@@ -727,7 +727,7 @@ fn test_extracted_double_matcher() {
       (log_tag("key", "13"), false),
     ],
     &TinyMap::default(),
-    &bd_state::test::TestStateReader::new(),
+    &bd_state::InMemoryStateReader::new(),
   );
   match_test_runner_with_extractions(
     config.clone(),
@@ -736,13 +736,13 @@ fn test_extracted_double_matcher() {
       (log_tag("key", "13"), false),
     ],
     &[("id1".to_string(), "bad".to_string())].into(),
-    &bd_state::test::TestStateReader::new(),
+    &bd_state::InMemoryStateReader::new(),
   );
   match_test_runner_with_extractions(
     config,
     vec![(log_tag("key", "13.0"), true), (log_tag("key", "13"), true)],
     &[("id1".to_string(), "13".to_string())].into(),
-    &bd_state::test::TestStateReader::new(),
+    &bd_state::InMemoryStateReader::new(),
   );
 }
 
@@ -844,14 +844,14 @@ fn test_extracted_int_matcher() {
       (log_tag("key", "13.0"), false),
     ],
     &TinyMap::default(),
-    &bd_state::test::TestStateReader::new(),
+    &bd_state::InMemoryStateReader::new(),
   );
 
   match_test_runner_with_extractions(
     config,
     vec![(log_tag("key", "13"), true), (log_tag("key", "13.0"), true)],
     &[("id1".to_string(), "13".to_string())].into(),
-    &bd_state::test::TestStateReader::new(),
+    &bd_state::InMemoryStateReader::new(),
   );
 }
 
@@ -1332,7 +1332,7 @@ fn feature_flag_matcher() {
   {
     let matcher = TestMatcher::new(&input.matcher).unwrap();
 
-    let mut state = bd_state::test::TestStateReader::default();
+    let mut state = bd_state::InMemoryStateReader::default();
     for (key, value) in input.flags {
       state.insert(
         bd_state::Scope::FeatureFlagExposure,
@@ -1392,7 +1392,7 @@ fn state_match_int_values() {
   {
     let matcher = TestMatcher::new(&input.matcher).unwrap();
 
-    let mut state = bd_state::test::TestStateReader::default();
+    let mut state = bd_state::InMemoryStateReader::default();
     for (key, value) in input.state_values {
       state.insert(
         bd_state::Scope::FeatureFlagExposure,
@@ -1447,7 +1447,7 @@ fn state_match_double_values() {
   {
     let matcher = TestMatcher::new(&input.matcher).unwrap();
 
-    let mut state = bd_state::test::TestStateReader::default();
+    let mut state = bd_state::InMemoryStateReader::default();
     for (key, value) in input.state_values {
       state.insert(
         bd_state::Scope::FeatureFlagExposure,
@@ -1497,7 +1497,7 @@ fn state_match_is_set() {
   {
     let matcher = TestMatcher::new(&input.matcher).unwrap();
 
-    let mut state = bd_state::test::TestStateReader::default();
+    let mut state = bd_state::InMemoryStateReader::default();
     for (key, value) in input.state_values {
       state.insert(
         bd_state::Scope::FeatureFlagExposure,
@@ -1640,7 +1640,7 @@ fn make_state_is_set_matcher(state_key: &str) -> LogMatcher {
 
 #[allow(clippy::needless_pass_by_value)]
 fn match_test_runner(config: LogMatcher, cases: Vec<(Input<'_>, bool)>) {
-  let state = bd_state::test::TestStateReader::new();
+  let state = bd_state::InMemoryStateReader::new();
   match_test_runner_with_extractions(config, cases, &TinyMap::default(), &state);
 }
 

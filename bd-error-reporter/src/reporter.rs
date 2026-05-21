@@ -10,6 +10,7 @@
 mod reporter_test;
 
 use bd_client_stats_store::{Counter, Scope};
+use bd_stats_common::Counter as _;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::HashMap;

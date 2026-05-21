@@ -33,6 +33,7 @@ use super::{
 use crate::{AbslCode, Error, Result};
 use bd_client_common::error::InvariantError;
 use bd_log_primitives::LossyIntToU32;
+use bd_stats_common::Counter;
 use crc32fast::Hasher;
 use fs2::FileExt;
 use intrusive_collections::offset_of;

@@ -16,6 +16,7 @@
 
 pub mod workflow;
 
+use crate::workflow::WorkflowDebugKey;
 use sketches_rust::DDSketch;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
@@ -125,3 +126,35 @@ pub trait Counter: Send + Sync + Debug {
 }
 
 pub type DynCounter = Arc<dyn Counter>;
+
+//
+// Histogram
+//
+
+pub trait Histogram {
+  fn observe(&self, value: f64);
+}
+
+//
+// StatsCollector
+//
+
+pub trait StatsCollector: Send + Sync {
+  fn record_dynamic_counter(&self, tags: BTreeMap<String, String>, id: &str, value: u64);
+
+  fn record_dynamic_histogram(&self, tags: BTreeMap<String, String>, id: &str, value: f64);
+
+  fn record_workflow_debug_state(&self, state: Vec<WorkflowDebugKey>);
+
+  fn workflow_dynamic_counter(
+    &self,
+    tags: BTreeMap<String, String>,
+    id: &str,
+  ) -> Option<Box<dyn Counter>>;
+
+  fn workflow_dynamic_histogram(
+    &self,
+    tags: BTreeMap<String, String>,
+    id: &str,
+  ) -> Option<Box<dyn Histogram>>;
+}

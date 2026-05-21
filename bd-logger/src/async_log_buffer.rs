@@ -354,6 +354,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   global_state_reader: global_state::Reader,
   time_provider: Arc<dyn TimeProvider>,
   lifecycle_state: InitLifecycleState,
+  sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
 
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
@@ -379,6 +380,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     store: &Arc<Store>,
     time_provider: Arc<dyn TimeProvider>,
     lifecycle_state: InitLifecycleState,
+    sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
     data_upload_tx: mpsc::Sender<DataUpload>,
   ) -> (Self, Sender) {
     let (log_tx, log_rx) = channel(
@@ -461,6 +463,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         global_state_reader: global_state::Reader::new(store.clone()),
         time_provider,
         lifecycle_state,
+        sdk_status_tracker,
 
         pending_workflow_debug_state: HashMap::new(),
         send_workflow_debug_state_delay: None,
@@ -918,6 +921,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           self = updated_self;
           if let Some(pre_config_buffer) = maybe_pre_config_buffer {
             self.lifecycle_state.set(InitLifecycle::LogProcessingStarted);
+            self.sdk_status_tracker.record_running();
             self
               .maybe_replay_pre_config_buffer(pre_config_buffer, &state_store)
               .await;

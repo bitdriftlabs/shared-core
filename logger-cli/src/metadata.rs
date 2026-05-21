@@ -13,6 +13,8 @@ pub struct Metadata {
   pub app_version: Option<String>,
   pub platform: bd_api::Platform,
   pub device: Arc<bd_logger::Device>,
+  pub os_version: Option<String>,
+  pub manufacturer: Option<String>,
   pub model: String,
 }
 
@@ -47,6 +49,16 @@ impl bd_api::Metadata for Metadata {
 
     if let Some(app_version) = self.app_version.as_ref() {
       metadata_map.insert("app_version".to_string(), app_version.clone());
+    }
+
+    if let Some(os_version) = self.os_version.as_ref() {
+      metadata_map.insert("os_version".to_string(), os_version.clone());
+    }
+
+    if self.platform == bd_api::Platform::Android
+      && let Some(manufacturer) = self.manufacturer.as_ref()
+    {
+      metadata_map.insert("_manufacturer".to_string(), manufacturer.clone());
     }
 
     metadata_map.insert("model".to_string(), self.model.clone());

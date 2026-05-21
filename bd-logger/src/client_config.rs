@@ -34,6 +34,7 @@ use bd_proto::protos::client::api::{
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_proto::protos::workflow::workflow::WorkflowsConfiguration as WorkflowsConfigurationProto;
+use bd_stats_common::Counter as _;
 use bd_time::TimeProvider;
 use bd_workflows::config::WorkflowsConfiguration;
 use itertools::Itertools;
@@ -85,6 +86,9 @@ pub struct Config<A: ApplyConfig> {
   // Delegate used to apply the configuration. This allows for easier testing.
   #[allow(clippy::struct_field_names)]
   apply_config: A,
+
+  time_provider: Arc<dyn TimeProvider>,
+  sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
 }
 
 impl<A: ApplyConfig> Config<A> {
@@ -94,6 +98,7 @@ impl<A: ApplyConfig> Config<A> {
       sdk_directory,
       apply_config,
       Arc::new(bd_time::SystemTimeProvider),
+      bd_client_common::sdk_status::SdkStatusTracker::new(),
     )
   }
 
@@ -101,11 +106,18 @@ impl<A: ApplyConfig> Config<A> {
     sdk_directory: &Path,
     apply_config: A,
     time_provider: Arc<dyn TimeProvider>,
+    sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
   ) -> Self {
     Self {
-      file_cache: SafeFileCache::new_with_time_provider("config", sdk_directory, time_provider),
+      file_cache: SafeFileCache::new_with_time_provider(
+        "config",
+        sdk_directory,
+        time_provider.clone(),
+      ),
       configuration_version_id: Mutex::default(),
       apply_config,
+      time_provider,
+      sdk_status_tracker,
     }
   }
 
@@ -148,12 +160,20 @@ impl<A: ApplyConfig> Config<A> {
     // TODO(snowp): Consider storing an intermediate format to avoid all the error checking
     // above on re-read.
     // If we fail writing to disk, move on. We'll continue to operate without disk caching.
-    self
+    let result = self
       .file_cache
       .cache_update(compressed_protobuf, &version_nonce, async move {
         self.process_configuration_update_inner(update, false).await
       })
-      .await
+      .await;
+
+    if result.is_ok() {
+      self
+        .sdk_status_tracker
+        .record_config_delivery(self.time_provider.now());
+    }
+
+    result
   }
 
   // Attempts to load persisted config and apply as if it was a newly received configuration.
@@ -221,6 +241,9 @@ impl<A: ApplyConfig + Send + Sync> bd_client_common::ClientConfigurationUpdate f
   async fn on_handshake_complete(&self, configuration_update_status: u32) {
     if configuration_update_status & HANDSHAKE_FLAG_CONFIG_UP_TO_DATE != 0 {
       self.file_cache.mark_safe().await;
+      self
+        .sdk_status_tracker
+        .record_config_delivery(self.time_provider.now());
     }
   }
 

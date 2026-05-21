@@ -70,7 +70,7 @@ fn match_test_runner(config: LegacyLogMatcher, cases: Vec<(Input<'_>, bool)>) {
     let (log_type, log_level, message, fields) = input.clone();
 
     let fields_ref = FieldsRef::new(&fields, &EMPTY_FIELDS);
-    let reader = bd_state::test::TestStateReader::default();
+    let reader = bd_state::InMemoryStateReader::default();
 
     assert_eq!(
       should_match,

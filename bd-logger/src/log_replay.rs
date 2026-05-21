@@ -21,6 +21,7 @@ use bd_proto_util::serialization::ProtoMessageSerialize;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
 use bd_runtime::runtime::{ConfigLoader, IntWatch};
 use bd_session_replay::CaptureScreenshotHandler;
+use bd_stats_common::Counter as _;
 use bd_time::OffsetDateTimeExt;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::config::FlushBufferId;
@@ -169,11 +170,11 @@ impl ProcessingPipeline {
     let (workflows_engine, buffers_to_flush_rx) = {
       let (mut workflows_engine, flush_buffers_tx) = WorkflowsEngine::new(
         &stats.root_scope,
-        sdk_directory,
-        runtime,
+        Some(sdk_directory),
+        Some(runtime),
         data_upload_tx,
         stats.stats.clone(),
-        flush_stats_trigger.clone(),
+        Some(flush_stats_trigger.clone()),
       );
 
       workflows_engine

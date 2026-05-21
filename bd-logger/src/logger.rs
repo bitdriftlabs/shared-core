@@ -30,7 +30,7 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::Snapshot;
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
 use bd_shutdown::ComponentShutdownTrigger;
-use bd_stats_common::labels;
+use bd_stats_common::{Counter as _, Histogram as _, labels};
 use parking_lot::Mutex;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -299,6 +299,11 @@ impl LoggerHandle {
     }
 
     self.opaque_entity_updates.send_replace(opaque_entity_id);
+  }
+
+  #[must_use]
+  pub fn current_opaque_entity_id(&self) -> Option<String> {
+    self.opaque_entity_updates.borrow().clone()
   }
 
   #[must_use]
@@ -619,6 +624,8 @@ pub struct Logger {
 
   sleep_mode_active: watch::Sender<bool>,
   is_tracing_active: Arc<AtomicBool>,
+
+  sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
 }
 
 impl Logger {
@@ -636,6 +643,7 @@ impl Logger {
     pending_entity_id: Arc<Mutex<Option<PendingEntityIdUpdate>>>,
     sleep_mode_active: watch::Sender<bool>,
     is_tracing_active: Arc<AtomicBool>,
+    sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
   ) -> Self {
     let stats = Stats::new(&stats_scope);
 
@@ -657,7 +665,14 @@ impl Logger {
       pending_entity_id,
       sleep_mode_active,
       is_tracing_active,
+      sdk_status_tracker,
     }
+  }
+
+  /// Returns a point-in-time snapshot of the SDK's operational status.
+  #[must_use]
+  pub fn get_sdk_status(&self) -> bd_client_common::sdk_status::SdkStatus {
+    self.sdk_status_tracker.get()
   }
 
   /// Create the SDK and corresponding buffer directory if it doesn't already exist.

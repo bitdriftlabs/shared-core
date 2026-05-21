@@ -152,6 +152,7 @@ impl Setup {
       &self.store,
       Arc::new(SystemTimeProvider),
       InitLifecycleState::new(),
+      bd_client_common::sdk_status::SdkStatusTracker::new(),
       self.data_upload_tx.clone(),
     )
   }
@@ -180,6 +181,7 @@ impl Setup {
       &self.store,
       Arc::new(SystemTimeProvider),
       InitLifecycleState::new(),
+      bd_client_common::sdk_status::SdkStatusTracker::new(),
       self.data_upload_tx.clone(),
     )
   }

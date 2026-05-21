@@ -1090,11 +1090,10 @@ async fn persistence_to_disk_is_rate_limited() {
   engine_assert_active_run_traversals!(other_workflows_engine; 0 => 0; "B", "D");
 
   // Advance clock to allow rate limiting to kick in.
-  let elapsed = *workflows_engine
-    .state_store
-    .persistence_write_interval_flag
-    .read()
-    + 50.milliseconds();
+  let Some(store) = &workflows_engine.state_store else {
+    panic!("no state store on engine");
+  };
+  let elapsed = *store.persistence_write_interval_flag.read() + 50.milliseconds();
   elapsed.advance().await;
 
   workflows_engine.maybe_persist(false).await;
@@ -1279,11 +1278,11 @@ async fn ignore_persisted_state_if_invalid_dir() {
   let (tx, _) = tokio::sync::mpsc::channel(1);
   let (mut workflows_engine, _) = WorkflowsEngine::new(
     &collector.scope(""),
-    sdk_directory.as_path(),
-    &make_runtime(),
+    Some(sdk_directory.as_path()),
+    Some(&make_runtime()),
     tx,
     stats.clone(),
-    FlushTrigger::new().0,
+    Some(FlushTrigger::new().0),
   );
 
   workflows_engine
@@ -1314,7 +1313,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
       capture_session: None,
     }),
     &TinySet::default(),
-    &bd_state::test::TestStateReader::default(),
+    &bd_state::InMemoryStateReader::default(),
     OffsetDateTime::now_utc(),
   );
 
@@ -1332,11 +1331,11 @@ async fn ignore_persisted_state_if_invalid_dir() {
   let (rx, _) = tokio::sync::mpsc::channel(1);
   let (mut workflows_engine, _) = WorkflowsEngine::new(
     &collector.scope(""),
-    sdk_directory.as_path(),
-    &make_runtime(),
+    Some(sdk_directory.as_path()),
+    Some(&make_runtime()),
     rx,
     stats,
-    FlushTrigger::new().0,
+    Some(FlushTrigger::new().0),
   );
 
   workflows_engine

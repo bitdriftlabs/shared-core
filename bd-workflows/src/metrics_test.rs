@@ -108,7 +108,7 @@ fn metric_increment_value_extraction() {
   metrics_collector.emit_metrics(
     &action_counts,
     WorkflowEvent::Log(&log),
-    &bd_state::test::TestStateReader::default(),
+    &bd_state::InMemoryStateReader::default(),
   );
 
   collector.assert_workflow_counter_eq(1, "action_id_1", labels! {});
@@ -171,7 +171,7 @@ fn session_start_metrics_use_triggering_log_payload() {
     },
   )]);
 
-  let mut state_reader = bd_state::test::TestStateReader::default();
+  let mut state_reader = bd_state::InMemoryStateReader::default();
   state_reader.insert(
     Scope::FeatureFlagExposure,
     "flag_a",
@@ -204,7 +204,7 @@ fn counter_label_extraction() {
 
   let (metrics_collector, collector) = make_metrics_collector();
 
-  let mut state_reader = bd_state::test::TestStateReader::default();
+  let mut state_reader = bd_state::InMemoryStateReader::default();
   state_reader.insert(
     bd_state::Scope::FeatureFlagExposure,
     "enabled_flag",
@@ -316,7 +316,7 @@ fn metric_multi_tag_fans_out_over_matching_state_entries() {
     capture_session: None,
   };
 
-  let mut state_reader = bd_state::test::TestStateReader::default();
+  let mut state_reader = bd_state::InMemoryStateReader::default();
   state_reader.insert(
     bd_state::Scope::FeatureFlagExposure,
     "experiment_checkout",
@@ -396,7 +396,7 @@ fn metric_multi_tag_with_no_matches_emits_nothing() {
     capture_session: None,
   };
 
-  let mut state_reader = bd_state::test::TestStateReader::default();
+  let mut state_reader = bd_state::InMemoryStateReader::default();
   state_reader.insert(
     bd_state::Scope::FeatureFlagExposure,
     "non_matching_flag",

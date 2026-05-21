@@ -56,7 +56,7 @@ impl Setup {
     let scope = &collector.scope("test");
     let (mut engine, _) = WorkflowsEngine::new(
       scope,
-      self.tmp_dir.path(),
+      Some(self.tmp_dir.path()),
       config_loader,
       self.data_upload_tx.clone(),
       Stats::new(collector),

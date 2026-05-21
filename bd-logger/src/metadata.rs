@@ -20,6 +20,7 @@ use time::ext::NumericalDuration;
 
 static RESERVED_FIELD_NAMES: LazyLock<BTreeSet<String>> = LazyLock::new(|| {
   BTreeSet::from([
+    "_manufacturer".to_string(),
     "app_id".to_string(),
     "app_version".to_string(),
     "carrier".to_string(),

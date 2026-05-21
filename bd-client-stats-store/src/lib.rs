@@ -99,14 +99,6 @@ pub struct Counter {
 }
 
 impl Counter {
-  pub fn inc(&self) {
-    self.value.fetch_add(1, Ordering::Relaxed);
-  }
-
-  pub fn inc_by(&self, value: u64) {
-    self.value.fetch_add(value, Ordering::Relaxed);
-  }
-
   #[must_use]
   pub fn get(&self) -> u64 {
     self.value.load(Ordering::Relaxed)
@@ -125,6 +117,16 @@ impl Counter {
 
   fn multiple_references(&self) -> bool {
     Arc::strong_count(&self.value) > 1
+  }
+}
+
+impl bd_stats_common::Counter for Counter {
+  fn inc(&self) {
+    self.value.fetch_add(1, Ordering::Relaxed);
+  }
+
+  fn inc_by(&self, value: u64) {
+    self.value.fetch_add(value, Ordering::Relaxed);
   }
 }
 
@@ -212,10 +214,6 @@ impl Histogram {
     }
   }
 
-  pub fn observe(&self, value: f64) {
-    self.inner.lock().accept(value);
-  }
-
   pub fn merge_from(&self, other: &Self) -> anyhow::Result<()> {
     let mut self_inner = self.inner.lock();
     let other = other.inner.lock();
@@ -276,6 +274,12 @@ impl Histogram {
 impl Debug for Histogram {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("Histogram").finish()
+  }
+}
+
+impl bd_stats_common::Histogram for Histogram {
+  fn observe(&self, value: f64) {
+    self.inner.lock().accept(value);
   }
 }
 
