@@ -232,7 +232,7 @@ impl ::protobuf::reflect::ProtobufValue for FetchCapturedSessionsRequest {
 pub struct FetchCapturedSessionsResponse {
     // message fields
     // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.FetchCapturedSessionsResponse.captured_sessions)
-    pub captured_sessions: ::std::vec::Vec<fetch_captured_sessions_response::CapturedSession>,
+    pub captured_sessions: ::std::vec::Vec<super::captured_sessions::CapturedSession>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.FetchCapturedSessionsResponse.full_count)
     pub full_count: u32,
     // special fields
@@ -368,269 +368,47 @@ impl ::protobuf::reflect::ProtobufValue for FetchCapturedSessionsResponse {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
-/// Nested message and enums of message `FetchCapturedSessionsResponse`
-pub mod fetch_captured_sessions_response {
-    // @@protoc_insertion_point(message:bitdrift.public.unary.workflows.v1.FetchCapturedSessionsResponse.CapturedSession)
-    #[derive(PartialEq,Clone,Default,Debug)]
-    pub struct CapturedSession {
-        // message fields
-        // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.FetchCapturedSessionsResponse.CapturedSession.session_id)
-        pub session_id: ::std::string::String,
-        // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.FetchCapturedSessionsResponse.CapturedSession.first_seen)
-        pub first_seen: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
-        // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.FetchCapturedSessionsResponse.CapturedSession.last_seen)
-        pub last_seen: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
-        // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.FetchCapturedSessionsResponse.CapturedSession.count)
-        pub count: u64,
-        // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.FetchCapturedSessionsResponse.CapturedSession.fields)
-        pub fields: ::std::collections::HashMap<::std::string::String, ::std::string::String>,
-        // special fields
-        // @@protoc_insertion_point(special_field:bitdrift.public.unary.workflows.v1.FetchCapturedSessionsResponse.CapturedSession.special_fields)
-        pub special_fields: ::protobuf::SpecialFields,
-    }
-
-    impl<'a> ::std::default::Default for &'a CapturedSession {
-        fn default() -> &'a CapturedSession {
-            <CapturedSession as ::protobuf::Message>::default_instance()
-        }
-    }
-
-    impl CapturedSession {
-        pub fn new() -> CapturedSession {
-            ::std::default::Default::default()
-        }
-
-        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(5);
-            let mut oneofs = ::std::vec::Vec::with_capacity(0);
-            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                "session_id",
-                |m: &CapturedSession| { &m.session_id },
-                |m: &mut CapturedSession| { &mut m.session_id },
-            ));
-            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::timestamp::Timestamp>(
-                "first_seen",
-                |m: &CapturedSession| { &m.first_seen },
-                |m: &mut CapturedSession| { &mut m.first_seen },
-            ));
-            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::timestamp::Timestamp>(
-                "last_seen",
-                |m: &CapturedSession| { &m.last_seen },
-                |m: &mut CapturedSession| { &mut m.last_seen },
-            ));
-            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-                "count",
-                |m: &CapturedSession| { &m.count },
-                |m: &mut CapturedSession| { &mut m.count },
-            ));
-            fields.push(::protobuf::reflect::rt::v2::make_map_simpler_accessor_new::<_, _>(
-                "fields",
-                |m: &CapturedSession| { &m.fields },
-                |m: &mut CapturedSession| { &mut m.fields },
-            ));
-            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<CapturedSession>(
-                "FetchCapturedSessionsResponse.CapturedSession",
-                fields,
-                oneofs,
-            )
-        }
-    }
-
-    impl ::protobuf::Message for CapturedSession {
-        const NAME: &'static str = "CapturedSession";
-
-        fn is_initialized(&self) -> bool {
-            true
-        }
-
-        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
-            while let Some(tag) = is.read_raw_tag_or_eof()? {
-                match tag {
-                    10 => {
-                        self.session_id = is.read_string()?;
-                    },
-                    18 => {
-                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.first_seen)?;
-                    },
-                    58 => {
-                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.last_seen)?;
-                    },
-                    32 => {
-                        self.count = is.read_uint64()?;
-                    },
-                    42 => {
-                        let len = is.read_raw_varint32()?;
-                        let old_limit = is.push_limit(len as u64)?;
-                        let mut key = ::std::default::Default::default();
-                        let mut value = ::std::default::Default::default();
-                        while let Some(tag) = is.read_raw_tag_or_eof()? {
-                            match tag {
-                                10 => key = is.read_string()?,
-                                18 => value = is.read_string()?,
-                                _ => ::protobuf::rt::skip_field_for_tag(tag, is)?,
-                            };
-                        }
-                        is.pop_limit(old_limit);
-                        self.fields.insert(key, value);
-                    },
-                    tag => {
-                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
-                    },
-                };
-            }
-            ::std::result::Result::Ok(())
-        }
-
-        // Compute sizes of nested messages
-        #[allow(unused_variables)]
-        fn compute_size(&self) -> u64 {
-            let mut my_size = 0;
-            if !self.session_id.is_empty() {
-                my_size += ::protobuf::rt::string_size(1, &self.session_id);
-            }
-            if let Some(v) = self.first_seen.as_ref() {
-                let len = v.compute_size();
-                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-            }
-            if let Some(v) = self.last_seen.as_ref() {
-                let len = v.compute_size();
-                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-            }
-            if self.count != 0 {
-                my_size += ::protobuf::rt::uint64_size(4, self.count);
-            }
-            for (k, v) in &self.fields {
-                let mut entry_size = 0;
-                entry_size += ::protobuf::rt::string_size(1, &k);
-                entry_size += ::protobuf::rt::string_size(2, &v);
-                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(entry_size) + entry_size
-            };
-            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
-            self.special_fields.cached_size().set(my_size as u32);
-            my_size
-        }
-
-        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-            if !self.session_id.is_empty() {
-                os.write_string(1, &self.session_id)?;
-            }
-            if let Some(v) = self.first_seen.as_ref() {
-                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
-            }
-            if let Some(v) = self.last_seen.as_ref() {
-                ::protobuf::rt::write_message_field_with_cached_size(7, v, os)?;
-            }
-            if self.count != 0 {
-                os.write_uint64(4, self.count)?;
-            }
-            for (k, v) in &self.fields {
-                let mut entry_size = 0;
-                entry_size += ::protobuf::rt::string_size(1, &k);
-                entry_size += ::protobuf::rt::string_size(2, &v);
-                os.write_raw_varint32(42)?; // Tag.
-                os.write_raw_varint32(entry_size as u32)?;
-                os.write_string(1, &k)?;
-                os.write_string(2, &v)?;
-            };
-            os.write_unknown_fields(self.special_fields.unknown_fields())?;
-            ::std::result::Result::Ok(())
-        }
-
-        fn special_fields(&self) -> &::protobuf::SpecialFields {
-            &self.special_fields
-        }
-
-        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
-            &mut self.special_fields
-        }
-
-        fn new() -> CapturedSession {
-            CapturedSession::new()
-        }
-
-        fn clear(&mut self) {
-            self.session_id.clear();
-            self.first_seen.clear();
-            self.last_seen.clear();
-            self.count = 0;
-            self.fields.clear();
-            self.special_fields.clear();
-        }
-
-        fn default_instance() -> &'static CapturedSession {
-            static instance: ::protobuf::rt::Lazy<CapturedSession> = ::protobuf::rt::Lazy::new();
-            instance.get(CapturedSession::new)
-        }
-    }
-
-    impl ::protobuf::MessageFull for CapturedSession {
-        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
-            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("FetchCapturedSessionsResponse.CapturedSession").unwrap()).clone()
-        }
-    }
-
-    impl ::std::fmt::Display for CapturedSession {
-        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
-            ::protobuf::text_format::fmt(self, f)
-        }
-    }
-
-    impl ::protobuf::reflect::ProtobufValue for CapturedSession {
-        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
-    }
-}
-
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n,bitdrift/public/unary/workflows/v1/api.proto\x12\"bitdrift.public.una\
     ry.workflows.v1\x1a5bitdrift/public/shared/workflows/v1/time_series.prot\
     o\x1a4bitdrift/public/unary/charts/v1/chart_metadata.proto\x1a,bitdrift/\
-    public/unary/common/v1/common.proto\x1a1bitdrift/public/unary/workflows/\
-    v1/workflow.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17validate\
-    /validate.proto\"\xc0\x02\n\x1cFetchCapturedSessionsRequest\x12$\n\tacti\
-    on_id\x18\x01\x20\x01(\tR\x08actionIdB\x07\xfaB\x04r\x02\x18d\x12I\n\nti\
-    me_range\x18\x08\x20\x01(\x0b2*.bitdrift.public.unary.common.v1.TimeRang\
-    eR\ttimeRange\x12U\n\tor_filter\x18\x07\x20\x03(\x0b2..bitdrift.public.s\
-    hared.workflows.v1.AndFilterR\x08orFilterB\x08\xfaB\x05\x92\x01\x02\x10\
-    \n\x12\x17\n\x04page\x18\x05\x20\x01(\x04H\0R\x04page\x88\x01\x01\x12)\n\
-    \x08per_page\x18\x06\x20\x01(\x04H\x01R\x07perPageB\t\xfaB\x062\x04\x18d\
-    (\x01\x88\x01\x01B\x07\n\x05_pageB\x0b\n\t_per_page\"\xca\x04\n\x1dFetch\
-    CapturedSessionsResponse\x12~\n\x11captured_sessions\x18\x02\x20\x03(\
-    \x0b2Q.bitdrift.public.unary.workflows.v1.FetchCapturedSessionsResponse.\
-    CapturedSessionR\x10capturedSessions\x12\x1d\n\nfull_count\x18\x03\x20\
-    \x01(\rR\tfullCount\x1a\x89\x03\n\x0fCapturedSession\x12&\n\nsession_id\
-    \x18\x01\x20\x01(\tR\tsessionIdB\x07\xfaB\x04r\x02\x10\x01\x12C\n\nfirst\
-    _seen\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tfirstSeenB\
-    \x08\xfaB\x05\x8a\x01\x02\x10\x01\x12A\n\tlast_seen\x18\x07\x20\x01(\x0b\
-    2\x1a.google.protobuf.TimestampR\x08lastSeenB\x08\xfaB\x05\x8a\x01\x02\
-    \x10\x01\x12\x14\n\x05count\x18\x04\x20\x01(\x04R\x05count\x12u\n\x06fie\
-    lds\x18\x05\x20\x03(\x0b2].bitdrift.public.unary.workflows.v1.FetchCaptu\
-    redSessionsResponse.CapturedSession.FieldsEntryR\x06fields\x1a9\n\x0bFie\
-    ldsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\
-    \x18\x02\x20\x01(\tR\x05value:\x028\x012\xf9\t\n\x0fWorkflowService\x12~\
-    \n\x0bGetWorkflow\x126.bitdrift.public.unary.workflows.v1.GetWorkflowReq\
-    uest\x1a7.bitdrift.public.unary.workflows.v1.GetWorkflowResponse\x12\x84\
-    \x01\n\rListWorkflows\x128.bitdrift.public.unary.workflows.v1.ListWorkfl\
-    owsRequest\x1a9.bitdrift.public.unary.workflows.v1.ListWorkflowsResponse\
-    \x12\x87\x01\n\x0eCreateWorkflow\x129.bitdrift.public.unary.workflows.v1\
-    .CreateWorkflowRequest\x1a:.bitdrift.public.unary.workflows.v1.CreateWor\
-    kflowResponse\x12\x87\x01\n\x0eUpdateWorkflow\x129.bitdrift.public.unary\
-    .workflows.v1.UpdateWorkflowRequest\x1a:.bitdrift.public.unary.workflows\
-    .v1.UpdateWorkflowResponse\x12\x87\x01\n\x0eRenameWorkflow\x129.bitdrift\
-    .public.unary.workflows.v1.RenameWorkflowRequest\x1a:.bitdrift.public.un\
-    ary.workflows.v1.RenameWorkflowResponse\x12\x87\x01\n\x0eDeleteWorkflow\
-    \x129.bitdrift.public.unary.workflows.v1.DeleteWorkflowRequest\x1a:.bitd\
-    rift.public.unary.workflows.v1.DeleteWorkflowResponse\x12\x87\x01\n\x0eD\
-    eployWorkflow\x129.bitdrift.public.unary.workflows.v1.DeployWorkflowRequ\
-    est\x1a:.bitdrift.public.unary.workflows.v1.DeployWorkflowResponse\x12\
-    \x81\x01\n\x0cStopWorkflow\x127.bitdrift.public.unary.workflows.v1.StopW\
-    orkflowRequest\x1a8.bitdrift.public.unary.workflows.v1.StopWorkflowRespo\
-    nse\x12\xa8\x01\n\x1bUpsertWorkflowChartMetadata\x12C.bitdrift.public.un\
-    ary.charts.v1.UpsertWorkflowChartMetadataRequest\x1aD.bitdrift.public.un\
-    ary.charts.v1.UpsertWorkflowChartMetadataResponse2\xb4\x01\n\x13Workflow\
-    DataService\x12\x9c\x01\n\x15FetchCapturedSessions\x12@.bitdrift.public.\
-    unary.workflows.v1.FetchCapturedSessionsRequest\x1aA.bitdrift.public.una\
-    ry.workflows.v1.FetchCapturedSessionsResponseb\x06proto3\
+    public/unary/common/v1/common.proto\x1a:bitdrift/public/unary/workflows/\
+    v1/captured_sessions.proto\x1a1bitdrift/public/unary/workflows/v1/workfl\
+    ow.proto\x1a\x17validate/validate.proto\"\xc0\x02\n\x1cFetchCapturedSess\
+    ionsRequest\x12$\n\taction_id\x18\x01\x20\x01(\tR\x08actionIdB\x07\xfaB\
+    \x04r\x02\x18d\x12I\n\ntime_range\x18\x08\x20\x01(\x0b2*.bitdrift.public\
+    .unary.common.v1.TimeRangeR\ttimeRange\x12U\n\tor_filter\x18\x07\x20\x03\
+    (\x0b2..bitdrift.public.shared.workflows.v1.AndFilterR\x08orFilterB\x08\
+    \xfaB\x05\x92\x01\x02\x10\n\x12\x17\n\x04page\x18\x05\x20\x01(\x04H\0R\
+    \x04page\x88\x01\x01\x12)\n\x08per_page\x18\x06\x20\x01(\x04H\x01R\x07pe\
+    rPageB\t\xfaB\x062\x04\x18d(\x01\x88\x01\x01B\x07\n\x05_pageB\x0b\n\t_pe\
+    r_page\"\xa0\x01\n\x1dFetchCapturedSessionsResponse\x12`\n\x11captured_s\
+    essions\x18\x02\x20\x03(\x0b23.bitdrift.public.unary.workflows.v1.Captur\
+    edSessionR\x10capturedSessions\x12\x1d\n\nfull_count\x18\x03\x20\x01(\rR\
+    \tfullCount2\xf9\t\n\x0fWorkflowService\x12~\n\x0bGetWorkflow\x126.bitdr\
+    ift.public.unary.workflows.v1.GetWorkflowRequest\x1a7.bitdrift.public.un\
+    ary.workflows.v1.GetWorkflowResponse\x12\x84\x01\n\rListWorkflows\x128.b\
+    itdrift.public.unary.workflows.v1.ListWorkflowsRequest\x1a9.bitdrift.pub\
+    lic.unary.workflows.v1.ListWorkflowsResponse\x12\x87\x01\n\x0eCreateWork\
+    flow\x129.bitdrift.public.unary.workflows.v1.CreateWorkflowRequest\x1a:.\
+    bitdrift.public.unary.workflows.v1.CreateWorkflowResponse\x12\x87\x01\n\
+    \x0eUpdateWorkflow\x129.bitdrift.public.unary.workflows.v1.UpdateWorkflo\
+    wRequest\x1a:.bitdrift.public.unary.workflows.v1.UpdateWorkflowResponse\
+    \x12\x87\x01\n\x0eRenameWorkflow\x129.bitdrift.public.unary.workflows.v1\
+    .RenameWorkflowRequest\x1a:.bitdrift.public.unary.workflows.v1.RenameWor\
+    kflowResponse\x12\x87\x01\n\x0eDeleteWorkflow\x129.bitdrift.public.unary\
+    .workflows.v1.DeleteWorkflowRequest\x1a:.bitdrift.public.unary.workflows\
+    .v1.DeleteWorkflowResponse\x12\x87\x01\n\x0eDeployWorkflow\x129.bitdrift\
+    .public.unary.workflows.v1.DeployWorkflowRequest\x1a:.bitdrift.public.un\
+    ary.workflows.v1.DeployWorkflowResponse\x12\x81\x01\n\x0cStopWorkflow\
+    \x127.bitdrift.public.unary.workflows.v1.StopWorkflowRequest\x1a8.bitdri\
+    ft.public.unary.workflows.v1.StopWorkflowResponse\x12\xa8\x01\n\x1bUpser\
+    tWorkflowChartMetadata\x12C.bitdrift.public.unary.charts.v1.UpsertWorkfl\
+    owChartMetadataRequest\x1aD.bitdrift.public.unary.charts.v1.UpsertWorkfl\
+    owChartMetadataResponse2\xb4\x01\n\x13WorkflowDataService\x12\x9c\x01\n\
+    \x15FetchCapturedSessions\x12@.bitdrift.public.unary.workflows.v1.FetchC\
+    apturedSessionsRequest\x1aA.bitdrift.public.unary.workflows.v1.FetchCapt\
+    uredSessionsResponseb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -651,13 +429,12 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(super::time_series::file_descriptor().clone());
             deps.push(super::chart_metadata::file_descriptor().clone());
             deps.push(super::common::file_descriptor().clone());
+            deps.push(super::captured_sessions::file_descriptor().clone());
             deps.push(super::workflow::file_descriptor().clone());
-            deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(3);
+            let mut messages = ::std::vec::Vec::with_capacity(2);
             messages.push(FetchCapturedSessionsRequest::generated_message_descriptor_data());
             messages.push(FetchCapturedSessionsResponse::generated_message_descriptor_data());
-            messages.push(fetch_captured_sessions_response::CapturedSession::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(0);
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),

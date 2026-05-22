@@ -34,53 +34,86 @@ const _PROTOBUF_VERSION_CHECK: () = ::protobuf::VERSION_4_0_0_ALPHA_0;
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n(bitdrift/public/unary/admin/v1/api.proto\x12\x1ebitdrift.public.unary\
     .admin.v1\x1a.bitdrift/public/unary/admin/v1/connector.proto\x1a)bitdrif\
-    t/public/unary/admin/v1/keys.proto2\xe6\x05\n\x0cAdminService\x12j\n\x07\
-    GetKeys\x12..bitdrift.public.unary.admin.v1.GetKeysRequest\x1a/.bitdrift\
-    .public.unary.admin.v1.GetKeysResponse\x12p\n\tCreateKey\x120.bitdrift.p\
-    ublic.unary.admin.v1.CreateKeyRequest\x1a1.bitdrift.public.unary.admin.v\
-    1.CreateKeyResponse\x12p\n\tRevokeKey\x120.bitdrift.public.unary.admin.v\
-    1.RevokeKeyRequest\x1a1.bitdrift.public.unary.admin.v1.RevokeKeyResponse\
-    \x12|\n\rGetConnectors\x124.bitdrift.public.unary.admin.v1.GetConnectors\
-    Request\x1a5.bitdrift.public.unary.admin.v1.GetConnectorsResponse\x12\
-    \x82\x01\n\x0fUpsertConnector\x126.bitdrift.public.unary.admin.v1.Upsert\
-    ConnectorRequest\x1a7.bitdrift.public.unary.admin.v1.UpsertConnectorResp\
-    onse\x12\x82\x01\n\x0fDeleteConnector\x126.bitdrift.public.unary.admin.v\
-    1.DeleteConnectorRequest\x1a7.bitdrift.public.unary.admin.v1.DeleteConne\
-    ctorResponseJ\x82\t\n\x06\x12\x04\x06\0\x20\x01\n\xb8\x02\n\x01\x0c\x12\
-    \x03\x06\0\x12\x1a\xad\x02\x20api\x20-\x20bitdrift's\x20client/server\
-    \x20API\x20definitions\n\x20Copyright\x20Bitdrift,\x20Inc.\x20All\x20rig\
-    hts\x20reserved.\n\n\x20Use\x20of\x20this\x20source\x20code\x20and\x20AP\
-    Is\x20are\x20governed\x20by\x20a\x20source\x20available\x20license\x20th\
-    at\x20can\x20be\x20found\x20in\n\x20the\x20LICENSE\x20file\x20or\x20at:\
-    \n\x20https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Sh\
-    ield-1.0.0.txt\n\n\x08\n\x01\x02\x12\x03\x08\0'\n\t\n\x02\x03\0\x12\x03\
-    \n\08\n\t\n\x02\x03\x01\x12\x03\x0b\03\n\x94\x01\n\x02\x06\0\x12\x04\x0e\
-    \0\x20\x01\x1a\x87\x01\x20Manages\x20administrative\x20settings\x20inclu\
-    ding\x20Slack\x20integrations,\x20notification\x20groups,\x20views,\x20A\
-    PI/SDK\x20keys,\x20users,\x20teams,\x20and\x20connectors.\n\n\n\n\x03\
-    \x06\0\x01\x12\x03\x0e\x08\x14\nN\n\x04\x06\0\x02\0\x12\x03\x10\x02x\x1a\
-    A\x20Lists\x20the\x20API\x20and\x20SDK\x20keys\x20available\x20to\x20the\
-    \x20authenticated\x20user.\n\n\x0c\n\x05\x06\0\x02\0\x01\x12\x03\x10\x06\
-    \r\n\x0c\n\x05\x06\0\x02\0\x02\x12\x03\x10\x0e<\n\x0c\n\x05\x06\0\x02\0\
-    \x03\x12\x03\x10Gv\nH\n\x04\x06\0\x02\x01\x12\x03\x13\x02~\x1a;\x20Creat\
-    es\x20an\x20API\x20key\x20or\x20SDK\x20key\x20for\x20the\x20authenticate\
-    d\x20user.\n\n\x0c\n\x05\x06\0\x02\x01\x01\x12\x03\x13\x06\x0f\n\x0c\n\
-    \x05\x06\0\x02\x01\x02\x12\x03\x13\x10@\n\x0c\n\x05\x06\0\x02\x01\x03\
-    \x12\x03\x13K|\n3\n\x04\x06\0\x02\x02\x12\x03\x16\x02~\x1a&\x20Revokes\
-    \x20an\x20API\x20key\x20or\x20SDK\x20key\x20by\x20ID.\n\n\x0c\n\x05\x06\
-    \0\x02\x02\x01\x12\x03\x16\x06\x0f\n\x0c\n\x05\x06\0\x02\x02\x02\x12\x03\
-    \x16\x10@\n\x0c\n\x05\x06\0\x02\x02\x03\x12\x03\x16K|\n:\n\x04\x06\0\x02\
-    \x03\x12\x04\x19\x02\x8a\x01\x1a,\x20Lists\x20all\x20connectors\x20for\
-    \x20the\x20organization.\n\n\x0c\n\x05\x06\0\x02\x03\x01\x12\x03\x19\x06\
-    \x13\n\x0c\n\x05\x06\0\x02\x03\x02\x12\x03\x19\x14H\n\r\n\x05\x06\0\x02\
-    \x03\x03\x12\x04\x19S\x88\x01\nD\n\x04\x06\0\x02\x04\x12\x04\x1c\x02\x90\
-    \x01\x1a6\x20Creates\x20or\x20updates\x20a\x20connector\x20for\x20the\
-    \x20organization.\n\n\x0c\n\x05\x06\0\x02\x04\x01\x12\x03\x1c\x06\x15\n\
-    \x0c\n\x05\x06\0\x02\x04\x02\x12\x03\x1c\x16L\n\r\n\x05\x06\0\x02\x04\
-    \x03\x12\x04\x1cW\x8e\x01\n*\n\x04\x06\0\x02\x05\x12\x04\x1f\x02\x90\x01\
-    \x1a\x1c\x20Deletes\x20a\x20connector\x20by\x20ID.\n\n\x0c\n\x05\x06\0\
-    \x02\x05\x01\x12\x03\x1f\x06\x15\n\x0c\n\x05\x06\0\x02\x05\x02\x12\x03\
-    \x1f\x16L\n\r\n\x05\x06\0\x02\x05\x03\x12\x04\x1fW\x8e\x01b\x06proto3\
+    t/public/unary/admin/v1/keys.proto\x1a2bitdrift/public/unary/admin/v1/no\
+    tifications.proto2\xe5\x0b\n\x0cAdminService\x12\x94\x01\n\x15GetNotific\
+    ationGroups\x12<.bitdrift.public.unary.admin.v1.GetNotificationGroupsReq\
+    uest\x1a=.bitdrift.public.unary.admin.v1.GetNotificationGroupsResponse\
+    \x12\x9a\x01\n\x17UpsertNotificationGroup\x12>.bitdrift.public.unary.adm\
+    in.v1.UpsertNotificationGroupRequest\x1a?.bitdrift.public.unary.admin.v1\
+    .UpsertNotificationGroupResponse\x12\x9a\x01\n\x17DeleteNotificationGrou\
+    p\x12>.bitdrift.public.unary.admin.v1.DeleteNotificationGroupRequest\x1a\
+    ?.bitdrift.public.unary.admin.v1.DeleteNotificationGroupResponse\x12\x94\
+    \x01\n\x15TestNotificationGroup\x12<.bitdrift.public.unary.admin.v1.Test\
+    NotificationGroupRequest\x1a=.bitdrift.public.unary.admin.v1.TestNotific\
+    ationGroupResponse\x12\x94\x01\n\x15TestAlertNotification\x12<.bitdrift.\
+    public.unary.admin.v1.TestAlertNotificationRequest\x1a=.bitdrift.public.\
+    unary.admin.v1.TestAlertNotificationResponse\x12j\n\x07GetKeys\x12..bitd\
+    rift.public.unary.admin.v1.GetKeysRequest\x1a/.bitdrift.public.unary.adm\
+    in.v1.GetKeysResponse\x12p\n\tCreateKey\x120.bitdrift.public.unary.admin\
+    .v1.CreateKeyRequest\x1a1.bitdrift.public.unary.admin.v1.CreateKeyRespon\
+    se\x12p\n\tRevokeKey\x120.bitdrift.public.unary.admin.v1.RevokeKeyReques\
+    t\x1a1.bitdrift.public.unary.admin.v1.RevokeKeyResponse\x12|\n\rGetConne\
+    ctors\x124.bitdrift.public.unary.admin.v1.GetConnectorsRequest\x1a5.bitd\
+    rift.public.unary.admin.v1.GetConnectorsResponse\x12\x82\x01\n\x0fUpsert\
+    Connector\x126.bitdrift.public.unary.admin.v1.UpsertConnectorRequest\x1a\
+    7.bitdrift.public.unary.admin.v1.UpsertConnectorResponse\x12\x82\x01\n\
+    \x0fDeleteConnector\x126.bitdrift.public.unary.admin.v1.DeleteConnectorR\
+    equest\x1a7.bitdrift.public.unary.admin.v1.DeleteConnectorResponseJ\xe5\
+    \r\n\x06\x12\x04\x06\00\x01\n\xb8\x02\n\x01\x0c\x12\x03\x06\0\x12\x1a\
+    \xad\x02\x20api\x20-\x20bitdrift's\x20client/server\x20API\x20definition\
+    s\n\x20Copyright\x20Bitdrift,\x20Inc.\x20All\x20rights\x20reserved.\n\n\
+    \x20Use\x20of\x20this\x20source\x20code\x20and\x20APIs\x20are\x20governe\
+    d\x20by\x20a\x20source\x20available\x20license\x20that\x20can\x20be\x20f\
+    ound\x20in\n\x20the\x20LICENSE\x20file\x20or\x20at:\n\x20https://polyfor\
+    mproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt\n\n\
+    \x08\n\x01\x02\x12\x03\x08\0'\n\t\n\x02\x03\0\x12\x03\n\08\n\t\n\x02\x03\
+    \x01\x12\x03\x0b\03\n\t\n\x02\x03\x02\x12\x03\x0c\0<\n\x94\x01\n\x02\x06\
+    \0\x12\x04\x0f\00\x01\x1a\x87\x01\x20Manages\x20administrative\x20settin\
+    gs\x20including\x20Slack\x20integrations,\x20notification\x20groups,\x20\
+    views,\x20API/SDK\x20keys,\x20users,\x20teams,\x20and\x20connectors.\n\n\
+    \n\n\x03\x06\0\x01\x12\x03\x0f\x08\x14\nC\n\x04\x06\0\x02\0\x12\x04\x11\
+    \x02\xa2\x01\x1a5\x20Lists\x20all\x20notification\x20groups\x20for\x20th\
+    e\x20organization.\n\n\x0c\n\x05\x06\0\x02\0\x01\x12\x03\x11\x06\x1b\n\
+    \x0c\n\x05\x06\0\x02\0\x02\x12\x03\x11\x1cX\n\r\n\x05\x06\0\x02\0\x03\
+    \x12\x04\x11c\xa0\x01\nM\n\x04\x06\0\x02\x01\x12\x04\x14\x02\xa8\x01\x1a\
+    ?\x20Creates\x20or\x20updates\x20a\x20notification\x20group\x20for\x20th\
+    e\x20organization.\n\n\x0c\n\x05\x06\0\x02\x01\x01\x12\x03\x14\x06\x1d\n\
+    \x0c\n\x05\x06\0\x02\x01\x02\x12\x03\x14\x1e\\\n\r\n\x05\x06\0\x02\x01\
+    \x03\x12\x04\x14g\xa6\x01\nB\n\x04\x06\0\x02\x02\x12\x04\x17\x02\xa8\x01\
+    \x1a4\x20Deletes\x20a\x20notification\x20group\x20for\x20the\x20organiza\
+    tion.\n\n\x0c\n\x05\x06\0\x02\x02\x01\x12\x03\x17\x06\x1d\n\x0c\n\x05\
+    \x06\0\x02\x02\x02\x12\x03\x17\x1e\\\n\r\n\x05\x06\0\x02\x02\x03\x12\x04\
+    \x17g\xa6\x01\nQ\n\x04\x06\0\x02\x03\x12\x04\x1a\x02\xa2\x01\x1aC\x20Sen\
+    ds\x20a\x20test\x20notification\x20to\x20all\x20targets\x20in\x20a\x20no\
+    tification\x20group.\n\n\x0c\n\x05\x06\0\x02\x03\x01\x12\x03\x1a\x06\x1b\
+    \n\x0c\n\x05\x06\0\x02\x03\x02\x12\x03\x1a\x1cX\n\r\n\x05\x06\0\x02\x03\
+    \x03\x12\x04\x1ac\xa0\x01\nT\n\x04\x06\0\x02\x04\x12\x04\x1d\x02\xa2\x01\
+    \x1aF\x20Sends\x20a\x20test\x20alert\x20notification\x20to\x20validate\
+    \x20formatting\x20and\x20mentions.\n\n\x0c\n\x05\x06\0\x02\x04\x01\x12\
+    \x03\x1d\x06\x1b\n\x0c\n\x05\x06\0\x02\x04\x02\x12\x03\x1d\x1cX\n\r\n\
+    \x05\x06\0\x02\x04\x03\x12\x04\x1dc\xa0\x01\nN\n\x04\x06\0\x02\x05\x12\
+    \x03\x20\x02x\x1aA\x20Lists\x20the\x20API\x20and\x20SDK\x20keys\x20avail\
+    able\x20to\x20the\x20authenticated\x20user.\n\n\x0c\n\x05\x06\0\x02\x05\
+    \x01\x12\x03\x20\x06\r\n\x0c\n\x05\x06\0\x02\x05\x02\x12\x03\x20\x0e<\n\
+    \x0c\n\x05\x06\0\x02\x05\x03\x12\x03\x20Gv\nH\n\x04\x06\0\x02\x06\x12\
+    \x03#\x02~\x1a;\x20Creates\x20an\x20API\x20key\x20or\x20SDK\x20key\x20fo\
+    r\x20the\x20authenticated\x20user.\n\n\x0c\n\x05\x06\0\x02\x06\x01\x12\
+    \x03#\x06\x0f\n\x0c\n\x05\x06\0\x02\x06\x02\x12\x03#\x10@\n\x0c\n\x05\
+    \x06\0\x02\x06\x03\x12\x03#K|\n3\n\x04\x06\0\x02\x07\x12\x03&\x02~\x1a&\
+    \x20Revokes\x20an\x20API\x20key\x20or\x20SDK\x20key\x20by\x20ID.\n\n\x0c\
+    \n\x05\x06\0\x02\x07\x01\x12\x03&\x06\x0f\n\x0c\n\x05\x06\0\x02\x07\x02\
+    \x12\x03&\x10@\n\x0c\n\x05\x06\0\x02\x07\x03\x12\x03&K|\n:\n\x04\x06\0\
+    \x02\x08\x12\x04)\x02\x8a\x01\x1a,\x20Lists\x20all\x20connectors\x20for\
+    \x20the\x20organization.\n\n\x0c\n\x05\x06\0\x02\x08\x01\x12\x03)\x06\
+    \x13\n\x0c\n\x05\x06\0\x02\x08\x02\x12\x03)\x14H\n\r\n\x05\x06\0\x02\x08\
+    \x03\x12\x04)S\x88\x01\nD\n\x04\x06\0\x02\t\x12\x04,\x02\x90\x01\x1a6\
+    \x20Creates\x20or\x20updates\x20a\x20connector\x20for\x20the\x20organiza\
+    tion.\n\n\x0c\n\x05\x06\0\x02\t\x01\x12\x03,\x06\x15\n\x0c\n\x05\x06\0\
+    \x02\t\x02\x12\x03,\x16L\n\r\n\x05\x06\0\x02\t\x03\x12\x04,W\x8e\x01\n*\
+    \n\x04\x06\0\x02\n\x12\x04/\x02\x90\x01\x1a\x1c\x20Deletes\x20a\x20conne\
+    ctor\x20by\x20ID.\n\n\x0c\n\x05\x06\0\x02\n\x01\x12\x03/\x06\x15\n\x0c\n\
+    \x05\x06\0\x02\n\x02\x12\x03/\x16L\n\r\n\x05\x06\0\x02\n\x03\x12\x04/W\
+    \x8e\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -97,9 +130,10 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(2);
+            let mut deps = ::std::vec::Vec::with_capacity(3);
             deps.push(super::connector::file_descriptor().clone());
             deps.push(super::keys::file_descriptor().clone());
+            deps.push(super::notifications::file_descriptor().clone());
             let mut messages = ::std::vec::Vec::with_capacity(0);
             let mut enums = ::std::vec::Vec::with_capacity(0);
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(

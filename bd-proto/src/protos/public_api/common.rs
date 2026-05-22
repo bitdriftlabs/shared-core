@@ -189,6 +189,109 @@ impl ::protobuf::reflect::ProtobufValue for Owner {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
+// @@protoc_insertion_point(message:bitdrift.public.unary.common.v1.Sort)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct Sort {
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.common.v1.Sort.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a Sort {
+    fn default() -> &'a Sort {
+        <Sort as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl Sort {
+    pub fn new() -> Sort {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(0);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Sort>(
+            "Sort",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for Sort {
+    const NAME: &'static str = "Sort";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> Sort {
+        Sort::new()
+    }
+
+    fn clear(&mut self) {
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static Sort {
+        static instance: Sort = Sort {
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for Sort {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("Sort").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for Sort {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for Sort {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
 // @@protoc_insertion_point(message:bitdrift.public.unary.common.v1.Pagination)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct Pagination {
@@ -1072,27 +1175,27 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \n\x05email\x18\x01\x20\x01(\tR\x05emailB\x08\xfaB\x05r\x03\x18\xff\x01\
     \x12\x17\n\x02id\x18\x02\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x18d\x12\
     \x20\n\x04name\x18\x03\x20\x01(\tH\0R\x04nameB\x07\xfaB\x04r\x02\x18d\
-    \x88\x01\x01B\x07\n\x05_name\"d\n\nPagination\x12\x1b\n\x06offset\x18\
-    \x01\x20\x01(\rH\0R\x06offset\x88\x01\x01\x12$\n\x05limit\x18\x02\x20\
-    \x01(\rH\x01R\x05limitB\t\xfaB\x06*\x04\x18d\x20\0\x88\x01\x01B\t\n\x07_\
-    offsetB\x08\n\x06_limit\"\x9d\x04\n\tTimeRange\x12e\n\x10fixed_time_rang\
-    e\x18\x01\x20\x01(\x0b29.bitdrift.public.unary.common.v1.TimeRange.Fixed\
-    TimeRangeH\0R\x0efixedTimeRange\x12n\n\x13relative_time_range\x18\x02\
-    \x20\x01(\x0b2<.bitdrift.public.unary.common.v1.TimeRange.RelativeTimeRa\
-    ngeH\0R\x11relativeTimeRange\x1a\x96\x01\n\x0eFixedTimeRange\x12C\n\nsta\
-    rt_time\x18\x01\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tstartTimeB\
-    \x08\xfaB\x05\x8a\x01\x02\x10\x01\x12?\n\x08end_time\x18\x02\x20\x01(\
-    \x0b2\x1a.google.protobuf.TimestampR\x07endTimeB\x08\xfaB\x05\x8a\x01\
-    \x02\x10\x01\x1a\x87\x01\n\x11RelativeTimeRange\x12?\n\x08duration\x18\
-    \x01\x20\x01(\x0b2\x19.google.protobuf.DurationR\x08durationB\x08\xfaB\
-    \x05\x8a\x01\x02\x10\x01\x121\n\x06offset\x18\x02\x20\x01(\x0b2\x19.goog\
-    le.protobuf.DurationR\x06offsetB\x16\n\x0ftime_range_type\x12\x03\xf8B\
-    \x01*.\n\rSortDirection\x12\r\n\tASCENDING\x10\0\x12\x0e\n\nDESCENDING\
-    \x10\x01*\xac\x01\n\x08Operator\x12\t\n\x05EQUAL\x10\0\x12\r\n\tNOT_EQUA\
-    L\x10\x01\x12\x10\n\x0cGREATER_THAN\x10\x02\x12\x19\n\x15GREATER_THAN_OR\
-    _EQUAL\x10\x03\x12\r\n\tLESS_THAN\x10\x04\x12\x16\n\x12LESS_THAN_OR_EQUA\
-    L\x10\x05\x12\x0c\n\x08WILDCARD\x10\x06\x12\x10\n\x0cNOT_WILDCARD\x10\
-    \x07\x12\x06\n\x02IN\x10\t\x12\n\n\x06NOT_IN\x10\nb\x06proto3\
+    \x88\x01\x01B\x07\n\x05_name\"\n\n\x04Sort:\x02\x18\x01\"d\n\nPagination\
+    \x12\x1b\n\x06offset\x18\x01\x20\x01(\rH\0R\x06offset\x88\x01\x01\x12$\n\
+    \x05limit\x18\x02\x20\x01(\rH\x01R\x05limitB\t\xfaB\x06*\x04\x18d\x20\0\
+    \x88\x01\x01B\t\n\x07_offsetB\x08\n\x06_limit\"\x9d\x04\n\tTimeRange\x12\
+    e\n\x10fixed_time_range\x18\x01\x20\x01(\x0b29.bitdrift.public.unary.com\
+    mon.v1.TimeRange.FixedTimeRangeH\0R\x0efixedTimeRange\x12n\n\x13relative\
+    _time_range\x18\x02\x20\x01(\x0b2<.bitdrift.public.unary.common.v1.TimeR\
+    ange.RelativeTimeRangeH\0R\x11relativeTimeRange\x1a\x96\x01\n\x0eFixedTi\
+    meRange\x12C\n\nstart_time\x18\x01\x20\x01(\x0b2\x1a.google.protobuf.Tim\
+    estampR\tstartTimeB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12?\n\x08end_time\
+    \x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x07endTimeB\x08\
+    \xfaB\x05\x8a\x01\x02\x10\x01\x1a\x87\x01\n\x11RelativeTimeRange\x12?\n\
+    \x08duration\x18\x01\x20\x01(\x0b2\x19.google.protobuf.DurationR\x08dura\
+    tionB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x121\n\x06offset\x18\x02\x20\x01(\
+    \x0b2\x19.google.protobuf.DurationR\x06offsetB\x16\n\x0ftime_range_type\
+    \x12\x03\xf8B\x01*.\n\rSortDirection\x12\r\n\tASCENDING\x10\0\x12\x0e\n\
+    \nDESCENDING\x10\x01*\xac\x01\n\x08Operator\x12\t\n\x05EQUAL\x10\0\x12\r\
+    \n\tNOT_EQUAL\x10\x01\x12\x10\n\x0cGREATER_THAN\x10\x02\x12\x19\n\x15GRE\
+    ATER_THAN_OR_EQUAL\x10\x03\x12\r\n\tLESS_THAN\x10\x04\x12\x16\n\x12LESS_\
+    THAN_OR_EQUAL\x10\x05\x12\x0c\n\x08WILDCARD\x10\x06\x12\x10\n\x0cNOT_WIL\
+    DCARD\x10\x07\x12\x06\n\x02IN\x10\t\x12\n\n\x06NOT_IN\x10\nb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1113,8 +1216,9 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(::protobuf::well_known_types::duration::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(5);
+            let mut messages = ::std::vec::Vec::with_capacity(6);
             messages.push(Owner::generated_message_descriptor_data());
+            messages.push(Sort::generated_message_descriptor_data());
             messages.push(Pagination::generated_message_descriptor_data());
             messages.push(TimeRange::generated_message_descriptor_data());
             messages.push(time_range::FixedTimeRange::generated_message_descriptor_data());

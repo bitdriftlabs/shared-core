@@ -9481,10 +9481,8 @@ impl ::protobuf::reflect::ProtobufValue for Violation {
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct GetWorkflowRequest {
     // message fields
-    // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.GetWorkflowRequest.exploration_slug_or_id)
-    pub exploration_slug_or_id: ::std::string::String,
-    // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.GetWorkflowRequest.workflow_slug_or_id)
-    pub workflow_slug_or_id: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.GetWorkflowRequest.workflow_id)
+    pub workflow_id: ::std::string::String,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift.public.unary.workflows.v1.GetWorkflowRequest.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -9502,17 +9500,12 @@ impl GetWorkflowRequest {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut fields = ::std::vec::Vec::with_capacity(1);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-            "exploration_slug_or_id",
-            |m: &GetWorkflowRequest| { &m.exploration_slug_or_id },
-            |m: &mut GetWorkflowRequest| { &mut m.exploration_slug_or_id },
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
-            "workflow_slug_or_id",
-            |m: &GetWorkflowRequest| { &m.workflow_slug_or_id },
-            |m: &mut GetWorkflowRequest| { &mut m.workflow_slug_or_id },
+            "workflow_id",
+            |m: &GetWorkflowRequest| { &m.workflow_id },
+            |m: &mut GetWorkflowRequest| { &mut m.workflow_id },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<GetWorkflowRequest>(
             "GetWorkflowRequest",
@@ -9532,11 +9525,8 @@ impl ::protobuf::Message for GetWorkflowRequest {
     fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
         while let Some(tag) = is.read_raw_tag_or_eof()? {
             match tag {
-                10 => {
-                    self.exploration_slug_or_id = is.read_string()?;
-                },
                 18 => {
-                    self.workflow_slug_or_id = is.read_string()?;
+                    self.workflow_id = is.read_string()?;
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -9550,11 +9540,8 @@ impl ::protobuf::Message for GetWorkflowRequest {
     #[allow(unused_variables)]
     fn compute_size(&self) -> u64 {
         let mut my_size = 0;
-        if !self.exploration_slug_or_id.is_empty() {
-            my_size += ::protobuf::rt::string_size(1, &self.exploration_slug_or_id);
-        }
-        if !self.workflow_slug_or_id.is_empty() {
-            my_size += ::protobuf::rt::string_size(2, &self.workflow_slug_or_id);
+        if !self.workflow_id.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.workflow_id);
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
@@ -9562,11 +9549,8 @@ impl ::protobuf::Message for GetWorkflowRequest {
     }
 
     fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-        if !self.exploration_slug_or_id.is_empty() {
-            os.write_string(1, &self.exploration_slug_or_id)?;
-        }
-        if !self.workflow_slug_or_id.is_empty() {
-            os.write_string(2, &self.workflow_slug_or_id)?;
+        if !self.workflow_id.is_empty() {
+            os.write_string(2, &self.workflow_id)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -9585,15 +9569,13 @@ impl ::protobuf::Message for GetWorkflowRequest {
     }
 
     fn clear(&mut self) {
-        self.exploration_slug_or_id.clear();
-        self.workflow_slug_or_id.clear();
+        self.workflow_id.clear();
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static GetWorkflowRequest {
         static instance: GetWorkflowRequest = GetWorkflowRequest {
-            exploration_slug_or_id: ::std::string::String::new(),
-            workflow_slug_or_id: ::std::string::String::new(),
+            workflow_id: ::std::string::String::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -14337,112 +14319,110 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     B\x08\xfaB\x05\x82\x01\x02\x10\x01\x12\x1e\n\x05value\x18\x03\x20\x01(\t\
     R\x05valueB\x08\xfaB\x05r\x03\x18\xff\x01\"N\n\tViolation\x12\x18\n\x07m\
     essage\x18\x01\x20\x01(\tR\x07message\x12'\n\x10match_or_rule_id\x18\x03\
-    \x20\x01(\tR\rmatchOrRuleId\"\x8a\x01\n\x12GetWorkflowRequest\x12<\n\x16\
-    exploration_slug_or_id\x18\x01\x20\x01(\tR\x13explorationSlugOrIdB\x07\
-    \xfaB\x04r\x02\x18d\x126\n\x13workflow_slug_or_id\x18\x02\x20\x01(\tR\
-    \x10workflowSlugOrIdB\x07\xfaB\x04r\x02\x18d\"\xa2\x02\n\x13GetWorkflowR\
-    esponse\x12H\n\x08workflow\x18\x01\x20\x01(\x0b2,.bitdrift.public.unary.\
-    workflows.v1.WorkflowR\x08workflow\x12P\n\x08metadata\x18\x03\x20\x01(\
-    \x0b24.bitdrift.public.unary.workflows.v1.WorkflowMetadataR\x08metadata\
-    \x12o\n\x17per_rule_chart_metadata\x18\x04\x20\x03(\x0b28.bitdrift.publi\
-    c.unary.workflows.v1.PerRuleChartMetadataR\x14perRuleChartMetadata\"\xfd\
-    \x02\n\x06Filter\x12H\n\x05owned\x18\x01\x20\x01(\x0b20.bitdrift.public.\
-    unary.workflows.v1.Filter.OwnedH\0R\x05owned\x12N\n\x07unowned\x18\x02\
-    \x20\x01(\x0b22.bitdrift.public.unary.workflows.v1.Filter.UnownedH\0R\
-    \x07unowned\x12T\n\tfavorites\x18\x03\x20\x01(\x0b24.bitdrift.public.una\
-    ry.workflows.v1.Filter.FavoritesH\0R\tfavorites\x12K\n\x06active\x18\x04\
-    \x20\x01(\x0b21.bitdrift.public.unary.workflows.v1.Filter.ActiveH\0R\x06\
-    active\x1a\x07\n\x05Owned\x1a\t\n\x07Unowned\x1a\x0b\n\tFavorites\x1a\
-    \x08\n\x06ActiveB\x0b\n\x04type\x12\x03\xf8B\x01\"\xb7\x05\n\x14ListWork\
-    flowsRequest\x12\x1b\n\x06offset\x18\x01\x20\x01(\rH\0R\x06offset\x88\
-    \x01\x01\x12$\n\x05limit\x18\x02\x20\x01(\rH\x01R\x05limitB\t\xfaB\x06*\
-    \x04\x18d(\x01\x88\x01\x01\x12N\n\x07filters\x18\x03\x20\x03(\x0b2*.bitd\
-    rift.public.unary.workflows.v1.FilterR\x07filtersB\x08\xfaB\x05\x92\x01\
-    \x02\x10d\x12a\n\x10platform_targets\x18\x05\x20\x03(\x0b2,.bitdrift.pub\
-    lic.shared.platform.v1.PlatformR\x0fplatformTargetsB\x08\xfaB\x05\x92\
-    \x01\x02\x10d\x12[\n\x04sort\x18\x07\x20\x03(\x0b2=.bitdrift.public.unar\
-    y.workflows.v1.ListWorkflowsRequest.SortR\x04sortB\x08\xfaB\x05\x92\x01\
-    \x02\x10d\x1a\xb6\x02\n\x04Sort\x12a\n\x03key\x18\x01\x20\x01(\x0e2E.bit\
-    drift.public.unary.workflows.v1.ListWorkflowsRequest.Sort.SortKeyR\x03ke\
-    yB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12V\n\tdirection\x18\x02\x20\x01(\
-    \x0e2..bitdrift.public.unary.common.v1.SortDirectionR\tdirectionB\x08\
-    \xfaB\x05\x82\x01\x02\x10\x01\"s\n\x07SortKey\x12\x18\n\x14SORT_KEY_UNSP\
-    ECIFIED\x10\0\x12\x10\n\x0cDISPLAY_NAME\x10\x01\x12\x11\n\rCREATION_TIME\
-    \x10\x02\x12\n\n\x06STATUS\x10\x03\x12\x0e\n\nOWNER_NAME\x10\x04\x12\r\n\
-    \tFAVORITED\x10\x05B\t\n\x07_offsetB\x08\n\x06_limit\"\xab\x03\n\x15List\
-    WorkflowsResponse\x12T\n\x05items\x18\x01\x20\x03(\x0b2>.bitdrift.public\
-    .unary.workflows.v1.ListWorkflowsResponse.ItemR\x05items\x12'\n\x0ftotal\
-    _workflows\x18\x02\x20\x01(\rR\x0etotalWorkflows\x124\n\x16total_active_\
-    workflows\x18\x03\x20\x01(\rR\x14totalActiveWorkflows\x128\n\x18total_fi\
-    ltered_workflows\x18\x04\x20\x01(\rR\x16totalFilteredWorkflows\x1a\xa2\
-    \x01\n\x04Item\x12H\n\x08workflow\x18\x01\x20\x01(\x0b2,.bitdrift.public\
-    .unary.workflows.v1.WorkflowR\x08workflow\x12P\n\x08metadata\x18\x05\x20\
-    \x01(\x0b24.bitdrift.public.unary.workflows.v1.WorkflowMetadataR\x08meta\
-    data\"\xde\x02\n\x15CreateWorkflowRequest\x12.\n\x0eexploration_id\x18\
-    \x01\x20\x01(\tR\rexplorationIdB\x07\xfaB\x04r\x02\x18d\x12H\n\x08workfl\
-    ow\x18\x02\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.WorkflowR\
-    \x08workflow\x12P\n\x08metadata\x18\x03\x20\x01(\x0b24.bitdrift.public.u\
-    nary.workflows.v1.WorkflowMetadataR\x08metadata\x12y\n\x17per_rule_chart\
-    _metadata\x18\x05\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.PerR\
-    uleChartMetadataR\x14perRuleChartMetadataB\x08\xfaB\x05\x92\x01\x02\x10d\
-    \"(\n\x16CreateWorkflowResponse\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\x02i\
-    d\"\xd8\x02\n\x15UpdateWorkflowRequest\x12(\n\x0bworkflow_id\x18\x02\x20\
-    \x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\x18d\x12H\n\x08workflow\x18\x03\
-    \x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.WorkflowR\x08workflow\
-    \x12P\n\x08metadata\x18\x04\x20\x01(\x0b24.bitdrift.public.unary.workflo\
-    ws.v1.WorkflowMetadataR\x08metadata\x12y\n\x17per_rule_chart_metadata\
-    \x18\x06\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.PerRuleChartM\
-    etadataR\x14perRuleChartMetadataB\x08\xfaB\x05\x92\x01\x02\x10d\"\xb2\
-    \x05\n\x16UpdateWorkflowResponse\x12H\n\x08workflow\x18\x01\x20\x01(\x0b\
-    2,.bitdrift.public.unary.workflows.v1.WorkflowR\x08workflow\x12P\n\x08me\
-    tadata\x18\x04\x20\x01(\x0b24.bitdrift.public.unary.workflows.v1.Workflo\
-    wMetadataR\x08metadata\x12o\n\x17per_rule_chart_metadata\x18\x06\x20\x03\
-    (\x0b28.bitdrift.public.unary.workflows.v1.PerRuleChartMetadataR\x14perR\
-    uleChartMetadata\x12l\n\nviolations\x18\x03\x20\x03(\x0b2L.bitdrift.publ\
-    ic.unary.workflows.v1.UpdateWorkflowResponse.BlockingViolationR\nviolati\
-    ons\x1a\x9c\x02\n\x11BlockingViolation\x12\x9d\x01\n\x18modified_chart_h\
-    as_alert\x18\x01\x20\x01(\x0b2b.bitdrift.public.unary.workflows.v1.Updat\
-    eWorkflowResponse.BlockingViolation.ModifiedChartHasAlertH\0R\x15modifie\
-    dChartHasAlert\x1aU\n\x15ModifiedChartHasAlert\x12\x17\n\x07rule_id\x18\
-    \x01\x20\x01(\tR\x06ruleId\x12#\n\raggregated_id\x18\x02\x20\x01(\tR\x0c\
-    aggregatedIdB\x10\n\x0eviolation_type\"_\n\x15RenameWorkflowRequest\x12(\
-    \n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\x18\
-    d\x12\x1c\n\x04name\x18\x03\x20\x01(\tR\x04nameB\x08\xfaB\x05r\x03\x18\
-    \xff\x01\"\xa5\x02\n\x16RenameWorkflowResponse\x12H\n\x08workflow\x18\
-    \x01\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.WorkflowR\x08work\
-    flow\x12P\n\x08metadata\x18\x03\x20\x01(\x0b24.bitdrift.public.unary.wor\
-    kflows.v1.WorkflowMetadataR\x08metadata\x12o\n\x17per_rule_chart_metadat\
-    a\x18\x04\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.PerRuleChart\
-    MetadataR\x14perRuleChartMetadata\"A\n\x15DeleteWorkflowRequest\x12(\n\
-    \x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\x18d\
-    \"\xa5\x01\n\x16DeleteWorkflowResponse\x12d\n\nviolations\x18\x01\x20\
-    \x03(\x0b2D.bitdrift.public.unary.workflows.v1.DeleteWorkflowResponse.Vi\
-    olationR\nviolations\x1a%\n\tViolation\x12\x18\n\x07message\x18\x01\x20\
-    \x01(\tR\x07message\"A\n\x15DeployWorkflowRequest\x12(\n\x0bworkflow_id\
-    \x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\x18d\"\xf4\x02\n\x16\
-    DeployWorkflowResponse\x12M\n\nviolations\x18\x01\x20\x03(\x0b2-.bitdrif\
-    t.public.unary.workflows.v1.ViolationR\nviolations\x12H\n\x08workflow\
-    \x18\x02\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.WorkflowR\x08\
-    workflow\x12P\n\x08metadata\x18\x03\x20\x01(\x0b24.bitdrift.public.unary\
-    .workflows.v1.WorkflowMetadataR\x08metadata\x12o\n\x17per_rule_chart_met\
-    adata\x18\x04\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.PerRuleC\
-    hartMetadataR\x14perRuleChartMetadata\"?\n\x13StopWorkflowRequest\x12(\n\
-    \x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\x18d\
-    \"\xa3\x02\n\x14StopWorkflowResponse\x12H\n\x08workflow\x18\x01\x20\x01(\
+    \x20\x01(\tR\rmatchOrRuleId\">\n\x12GetWorkflowRequest\x12(\n\x0bworkflo\
+    w_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\x18d\"\xa2\x02\n\
+    \x13GetWorkflowResponse\x12H\n\x08workflow\x18\x01\x20\x01(\x0b2,.bitdri\
+    ft.public.unary.workflows.v1.WorkflowR\x08workflow\x12P\n\x08metadata\
+    \x18\x03\x20\x01(\x0b24.bitdrift.public.unary.workflows.v1.WorkflowMetad\
+    ataR\x08metadata\x12o\n\x17per_rule_chart_metadata\x18\x04\x20\x03(\x0b2\
+    8.bitdrift.public.unary.workflows.v1.PerRuleChartMetadataR\x14perRuleCha\
+    rtMetadata\"\xfd\x02\n\x06Filter\x12H\n\x05owned\x18\x01\x20\x01(\x0b20.\
+    bitdrift.public.unary.workflows.v1.Filter.OwnedH\0R\x05owned\x12N\n\x07u\
+    nowned\x18\x02\x20\x01(\x0b22.bitdrift.public.unary.workflows.v1.Filter.\
+    UnownedH\0R\x07unowned\x12T\n\tfavorites\x18\x03\x20\x01(\x0b24.bitdrift\
+    .public.unary.workflows.v1.Filter.FavoritesH\0R\tfavorites\x12K\n\x06act\
+    ive\x18\x04\x20\x01(\x0b21.bitdrift.public.unary.workflows.v1.Filter.Act\
+    iveH\0R\x06active\x1a\x07\n\x05Owned\x1a\t\n\x07Unowned\x1a\x0b\n\tFavor\
+    ites\x1a\x08\n\x06ActiveB\x0b\n\x04type\x12\x03\xf8B\x01\"\xb7\x05\n\x14\
+    ListWorkflowsRequest\x12\x1b\n\x06offset\x18\x01\x20\x01(\rH\0R\x06offse\
+    t\x88\x01\x01\x12$\n\x05limit\x18\x02\x20\x01(\rH\x01R\x05limitB\t\xfaB\
+    \x06*\x04\x18d(\x01\x88\x01\x01\x12N\n\x07filters\x18\x03\x20\x03(\x0b2*\
+    .bitdrift.public.unary.workflows.v1.FilterR\x07filtersB\x08\xfaB\x05\x92\
+    \x01\x02\x10d\x12a\n\x10platform_targets\x18\x05\x20\x03(\x0b2,.bitdrift\
+    .public.shared.platform.v1.PlatformR\x0fplatformTargetsB\x08\xfaB\x05\
+    \x92\x01\x02\x10d\x12[\n\x04sort\x18\x07\x20\x03(\x0b2=.bitdrift.public.\
+    unary.workflows.v1.ListWorkflowsRequest.SortR\x04sortB\x08\xfaB\x05\x92\
+    \x01\x02\x10d\x1a\xb6\x02\n\x04Sort\x12a\n\x03key\x18\x01\x20\x01(\x0e2E\
+    .bitdrift.public.unary.workflows.v1.ListWorkflowsRequest.Sort.SortKeyR\
+    \x03keyB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12V\n\tdirection\x18\x02\x20\
+    \x01(\x0e2..bitdrift.public.unary.common.v1.SortDirectionR\tdirectionB\
+    \x08\xfaB\x05\x82\x01\x02\x10\x01\"s\n\x07SortKey\x12\x18\n\x14SORT_KEY_\
+    UNSPECIFIED\x10\0\x12\x10\n\x0cDISPLAY_NAME\x10\x01\x12\x11\n\rCREATION_\
+    TIME\x10\x02\x12\n\n\x06STATUS\x10\x03\x12\x0e\n\nOWNER_NAME\x10\x04\x12\
+    \r\n\tFAVORITED\x10\x05B\t\n\x07_offsetB\x08\n\x06_limit\"\xab\x03\n\x15\
+    ListWorkflowsResponse\x12T\n\x05items\x18\x01\x20\x03(\x0b2>.bitdrift.pu\
+    blic.unary.workflows.v1.ListWorkflowsResponse.ItemR\x05items\x12'\n\x0ft\
+    otal_workflows\x18\x02\x20\x01(\rR\x0etotalWorkflows\x124\n\x16total_act\
+    ive_workflows\x18\x03\x20\x01(\rR\x14totalActiveWorkflows\x128\n\x18tota\
+    l_filtered_workflows\x18\x04\x20\x01(\rR\x16totalFilteredWorkflows\x1a\
+    \xa2\x01\n\x04Item\x12H\n\x08workflow\x18\x01\x20\x01(\x0b2,.bitdrift.pu\
+    blic.unary.workflows.v1.WorkflowR\x08workflow\x12P\n\x08metadata\x18\x05\
+    \x20\x01(\x0b24.bitdrift.public.unary.workflows.v1.WorkflowMetadataR\x08\
+    metadata\"\xde\x02\n\x15CreateWorkflowRequest\x12.\n\x0eexploration_id\
+    \x18\x01\x20\x01(\tR\rexplorationIdB\x07\xfaB\x04r\x02\x18d\x12H\n\x08wo\
+    rkflow\x18\x02\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.Workflo\
+    wR\x08workflow\x12P\n\x08metadata\x18\x03\x20\x01(\x0b24.bitdrift.public\
+    .unary.workflows.v1.WorkflowMetadataR\x08metadata\x12y\n\x17per_rule_cha\
+    rt_metadata\x18\x05\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.Pe\
+    rRuleChartMetadataR\x14perRuleChartMetadataB\x08\xfaB\x05\x92\x01\x02\
+    \x10d\"(\n\x16CreateWorkflowResponse\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\
+    \x02id\"\xd8\x02\n\x15UpdateWorkflowRequest\x12(\n\x0bworkflow_id\x18\
+    \x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\x18d\x12H\n\x08workflow\
+    \x18\x03\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.WorkflowR\x08\
+    workflow\x12P\n\x08metadata\x18\x04\x20\x01(\x0b24.bitdrift.public.unary\
+    .workflows.v1.WorkflowMetadataR\x08metadata\x12y\n\x17per_rule_chart_met\
+    adata\x18\x06\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.PerRuleC\
+    hartMetadataR\x14perRuleChartMetadataB\x08\xfaB\x05\x92\x01\x02\x10d\"\
+    \xb2\x05\n\x16UpdateWorkflowResponse\x12H\n\x08workflow\x18\x01\x20\x01(\
     \x0b2,.bitdrift.public.unary.workflows.v1.WorkflowR\x08workflow\x12P\n\
-    \x08metadata\x18\x02\x20\x01(\x0b24.bitdrift.public.unary.workflows.v1.W\
-    orkflowMetadataR\x08metadata\x12o\n\x17per_rule_chart_metadata\x18\x03\
+    \x08metadata\x18\x04\x20\x01(\x0b24.bitdrift.public.unary.workflows.v1.W\
+    orkflowMetadataR\x08metadata\x12o\n\x17per_rule_chart_metadata\x18\x06\
     \x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.PerRuleChartMetadataR\
-    \x14perRuleChartMetadata*4\n\nStateScope\x12\x0b\n\x07UNKNOWN\x10\0\x12\
-    \x19\n\x15FEATURE_FLAG_EXPOSURE\x10\x01*8\n\tMatchType\x12\n\n\x06STRING\
-    \x10\0\x12\x07\n\x03INT\x10\x01\x12\n\n\x06SEMVER\x10\x02\x12\n\n\x06DOU\
-    BLE\x10\x03*\xdc\x01\n\x08Operator\x12\t\n\x05EQUAL\x10\0\x12\r\n\tNOT_E\
-    QUAL\x10\x01\x12\x10\n\x0cGREATER_THAN\x10\x02\x12\x19\n\x15GREATER_THAN\
-    _OR_EQUAL\x10\x03\x12\r\n\tLESS_THAN\x10\x04\x12\x16\n\x12LESS_THAN_OR_E\
-    QUAL\x10\x05\x12\t\n\x05REGEX\x10\x06\x12\x06\n\x02IN\x10\x07\x12\n\n\
-    \x06NOT_IN\x10\x08\x12\r\n\tNOT_REGEX\x10\t\x12\x0c\n\x08WILDCARD\x10\n\
-    \x12\x10\n\x0cNOT_WILDCARD\x10\x0b\x12\x07\n\x03SET\x10\x0c\x12\x0b\n\
-    \x07NOT_SET\x10\rb\x06proto3\
+    \x14perRuleChartMetadata\x12l\n\nviolations\x18\x03\x20\x03(\x0b2L.bitdr\
+    ift.public.unary.workflows.v1.UpdateWorkflowResponse.BlockingViolationR\
+    \nviolations\x1a\x9c\x02\n\x11BlockingViolation\x12\x9d\x01\n\x18modifie\
+    d_chart_has_alert\x18\x01\x20\x01(\x0b2b.bitdrift.public.unary.workflows\
+    .v1.UpdateWorkflowResponse.BlockingViolation.ModifiedChartHasAlertH\0R\
+    \x15modifiedChartHasAlert\x1aU\n\x15ModifiedChartHasAlert\x12\x17\n\x07r\
+    ule_id\x18\x01\x20\x01(\tR\x06ruleId\x12#\n\raggregated_id\x18\x02\x20\
+    \x01(\tR\x0caggregatedIdB\x10\n\x0eviolation_type\"_\n\x15RenameWorkflow\
+    Request\x12(\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\
+    \x04r\x02\x18d\x12\x1c\n\x04name\x18\x03\x20\x01(\tR\x04nameB\x08\xfaB\
+    \x05r\x03\x18\xff\x01\"\xa5\x02\n\x16RenameWorkflowResponse\x12H\n\x08wo\
+    rkflow\x18\x01\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.Workflo\
+    wR\x08workflow\x12P\n\x08metadata\x18\x03\x20\x01(\x0b24.bitdrift.public\
+    .unary.workflows.v1.WorkflowMetadataR\x08metadata\x12o\n\x17per_rule_cha\
+    rt_metadata\x18\x04\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.Pe\
+    rRuleChartMetadataR\x14perRuleChartMetadata\"A\n\x15DeleteWorkflowReques\
+    t\x12(\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\
+    \x02\x18d\"\xa5\x01\n\x16DeleteWorkflowResponse\x12d\n\nviolations\x18\
+    \x01\x20\x03(\x0b2D.bitdrift.public.unary.workflows.v1.DeleteWorkflowRes\
+    ponse.ViolationR\nviolations\x1a%\n\tViolation\x12\x18\n\x07message\x18\
+    \x01\x20\x01(\tR\x07message\"A\n\x15DeployWorkflowRequest\x12(\n\x0bwork\
+    flow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\x18d\"\xf4\
+    \x02\n\x16DeployWorkflowResponse\x12M\n\nviolations\x18\x01\x20\x03(\x0b\
+    2-.bitdrift.public.unary.workflows.v1.ViolationR\nviolations\x12H\n\x08w\
+    orkflow\x18\x02\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.Workfl\
+    owR\x08workflow\x12P\n\x08metadata\x18\x03\x20\x01(\x0b24.bitdrift.publi\
+    c.unary.workflows.v1.WorkflowMetadataR\x08metadata\x12o\n\x17per_rule_ch\
+    art_metadata\x18\x04\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.P\
+    erRuleChartMetadataR\x14perRuleChartMetadata\"?\n\x13StopWorkflowRequest\
+    \x12(\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\
+    \x02\x18d\"\xa3\x02\n\x14StopWorkflowResponse\x12H\n\x08workflow\x18\x01\
+    \x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.WorkflowR\x08workflow\
+    \x12P\n\x08metadata\x18\x02\x20\x01(\x0b24.bitdrift.public.unary.workflo\
+    ws.v1.WorkflowMetadataR\x08metadata\x12o\n\x17per_rule_chart_metadata\
+    \x18\x03\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.PerRuleChartM\
+    etadataR\x14perRuleChartMetadata*4\n\nStateScope\x12\x0b\n\x07UNKNOWN\
+    \x10\0\x12\x19\n\x15FEATURE_FLAG_EXPOSURE\x10\x01*8\n\tMatchType\x12\n\n\
+    \x06STRING\x10\0\x12\x07\n\x03INT\x10\x01\x12\n\n\x06SEMVER\x10\x02\x12\
+    \n\n\x06DOUBLE\x10\x03*\xdc\x01\n\x08Operator\x12\t\n\x05EQUAL\x10\0\x12\
+    \r\n\tNOT_EQUAL\x10\x01\x12\x10\n\x0cGREATER_THAN\x10\x02\x12\x19\n\x15G\
+    REATER_THAN_OR_EQUAL\x10\x03\x12\r\n\tLESS_THAN\x10\x04\x12\x16\n\x12LES\
+    S_THAN_OR_EQUAL\x10\x05\x12\t\n\x05REGEX\x10\x06\x12\x06\n\x02IN\x10\x07\
+    \x12\n\n\x06NOT_IN\x10\x08\x12\r\n\tNOT_REGEX\x10\t\x12\x0c\n\x08WILDCAR\
+    D\x10\n\x12\x10\n\x0cNOT_WILDCARD\x10\x0b\x12\x07\n\x03SET\x10\x0c\x12\
+    \x0b\n\x07NOT_SET\x10\rb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
