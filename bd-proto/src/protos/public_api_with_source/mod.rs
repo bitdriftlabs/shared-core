@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 pub mod admin;
+pub mod alerts;
 pub mod api;
 pub mod api_ootb_fields;
 pub mod chart_id;

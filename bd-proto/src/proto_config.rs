@@ -164,6 +164,7 @@ pub fn get_public_api_proto_configs() -> Vec<ProtoConfig> {
         "../api/src/bitdrift/public/unary/admin/v1/api.proto",
         "../api/src/bitdrift/public/unary/admin/v1/connector.proto",
         "../api/src/bitdrift/public/unary/admin/v1/keys.proto",
+        "../api/src/bitdrift/public/unary/admin/v1/notifications.proto",
         "../api/src/bitdrift/public/unary/admin/v1/permission.proto",
       ],
       includes: PROTO_INCLUDES,
@@ -182,7 +183,21 @@ pub fn get_public_api_proto_configs() -> Vec<ProtoConfig> {
     },
     ProtoConfig {
       output_dir: "src/protos/public_api/explorations",
-      inputs: &["../api/src/bitdrift/public/unary/workflows/v1/api.proto"],
+      inputs: &[
+        "../api/src/bitdrift/public/unary/workflows/v1/api.proto",
+        "../api/src/bitdrift/public/unary/workflows/v1/captured_sessions.proto",
+      ],
+      includes: PROTO_INCLUDES,
+      use_tokio_bytes: false,
+      file_header: true,
+    },
+    ProtoConfig {
+      output_dir: "src/protos/public_api/alerts",
+      inputs: &[
+        "../api/src/bitdrift/public/unary/alerts/v1/alerts.proto",
+        "../api/src/bitdrift/public/unary/alerts/v1/issue_alerts.proto",
+        "../api/src/bitdrift/public/unary/alerts/v1/notifications.proto",
+      ],
       includes: PROTO_INCLUDES,
       use_tokio_bytes: false,
       file_header: true,

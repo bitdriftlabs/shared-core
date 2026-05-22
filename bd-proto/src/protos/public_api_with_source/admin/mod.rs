@@ -8,6 +8,7 @@
 pub mod api;
 pub mod connector;
 pub mod keys;
+pub mod notifications;
 pub mod permission;
 
 // Re-export proto dependencies referenced by generated code in this subdirectory.
