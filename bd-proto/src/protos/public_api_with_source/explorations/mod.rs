@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 pub mod api;
+pub mod captured_sessions;
 
 // Re-export proto dependencies referenced by generated code in this subdirectory.
 pub use super::{chart_metadata, common, time_series, validate, workflow};
