@@ -3753,6 +3753,7 @@ dependencies = [
  "bd-test-helpers",
  "bd-workspace-hack",
  "clap",
+ "flatbuffers",
  "futures",
  "libc",
  "log",

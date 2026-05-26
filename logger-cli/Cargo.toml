@@ -22,6 +22,7 @@ bd-shutdown.path             = "../bd-shutdown"
 bd-test-helpers.path         = "../bd-test-helpers"
 bd-workspace-hack.workspace  = true
 clap.workspace               = true
+flatbuffers.workspace        = true
 futures.workspace            = true
 libc.workspace               = true
 log.workspace                = true

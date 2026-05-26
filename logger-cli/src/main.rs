@@ -6,9 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::cli::{ColorMode, Command, EnableFlag, FieldPairs, Options};
-use bd_session::fixed::Callbacks;
 use clap::Parser;
-use logger_cli::logger::{MaybeStaticSessionGenerator, SESSION_FILE};
 use logger_cli::service::RemoteClient;
 use std::env;
 use std::io::IsTerminal;
@@ -20,6 +18,7 @@ use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
 mod cli;
+mod fake_crash;
 mod stats_observation;
 
 fn reset_sdk_directory(sdk_directory: &Path) -> anyhow::Result<()> {
@@ -64,6 +63,18 @@ async fn main() -> anyhow::Result<()> {
         )?;
       }
     },
+    Command::EnqueueFakeCrash(ref cmd) => {
+      let path = fake_crash::write_pending_report(&sdk_directory, cmd)?;
+      eprintln!("queued fake crash report: {}", path.display());
+
+      if cmd.upload {
+        with_logger(&args, async |logger| {
+          logger.process_crash_reports(context::current()).await?;
+          Ok(())
+        })
+        .await?;
+      }
+    },
     Command::Start(ref cmd) => {
       if cmd.clean_data_dir {
         reset_sdk_directory(&sdk_directory)?;
@@ -93,33 +104,23 @@ async fn main() -> anyhow::Result<()> {
       .await?;
     },
     Command::NewSession => {
-      let config_path = sdk_directory.join(SESSION_FILE);
-      let _ = std::fs::remove_file(&config_path);
-      let generator = MaybeStaticSessionGenerator { config_path };
-      let session_id = generator.generate_session_id()?;
       with_logger(&args, async |logger| {
         logger.start_new_session(context::current()).await?;
-        let session_url = get_session_url(logger, session_id).await?;
+        let session_url = get_current_session_url(&logger).await?;
         eprintln!("new session: {session_url}");
         Ok(())
       })
       .await?;
     },
     Command::Timeline => {
-      let config_path = sdk_directory.join(SESSION_FILE);
-      let generator = MaybeStaticSessionGenerator { config_path };
-      if let Ok(session_id) = generator.cached_session_id() {
-        with_logger(&args, async |logger| {
-          let session_url = get_session_url(logger, session_id).await?;
-          std::process::Command::new("open")
-            .arg(session_url)
-            .output()?;
-          Ok(())
-        })
-        .await?;
-      } else {
-        eprintln!("No session ID set");
-      }
+      with_logger(&args, async |logger| {
+        let session_url = get_current_session_url(&logger).await?;
+        std::process::Command::new("open")
+          .arg(session_url)
+          .output()?;
+        Ok(())
+      })
+      .await?;
     },
     Command::Trap => {
       with_logger(&args, async |logger| {
@@ -200,7 +201,19 @@ where
   Ok(())
 }
 
-async fn get_session_url(logger: RemoteClient, session_id: String) -> anyhow::Result<String> {
+async fn get_current_session_id(logger: &RemoteClient) -> anyhow::Result<String> {
+  logger
+    .get_current_session_id(context::current())
+    .await?
+    .ok_or_else(|| anyhow::anyhow!("current session ID is unavailable"))
+}
+
+async fn get_current_session_url(logger: &RemoteClient) -> anyhow::Result<String> {
+  let session_id = get_current_session_id(logger).await?;
+  get_session_url(logger, &session_id).await
+}
+
+async fn get_session_url(logger: &RemoteClient, session_id: &str) -> anyhow::Result<String> {
   let api_url = logger.get_api_url(context::current()).await?;
   let base_url = api_url.replace("api.", "timeline.");
   Ok(format!("{base_url}/session/{session_id}"))

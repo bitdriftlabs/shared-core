@@ -14,6 +14,8 @@ use std::collections::HashMap;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::path::Path;
 use std::process::exit;
+use std::sync::Arc;
+use std::time::Instant;
 use tarpc::server::Channel;
 use tarpc::tokio_serde::formats::Json;
 
@@ -32,6 +34,7 @@ pub trait Remote {
   async fn process_crash_reports();
   async fn get_runtime_value(name: String, value_type: RuntimeValueType) -> String;
   async fn get_api_url() -> String;
+  async fn get_current_session_id() -> Option<String>;
   async fn start_new_session();
   async fn set_sleep_mode(enabled: bool);
   async fn set_feature_flag(name: String, variant: Option<String>);
@@ -49,7 +52,60 @@ async fn spawn(fut: impl Future<Output = ()> + Send + 'static) {
   tokio::spawn(fut);
 }
 
-static LOGGER: parking_lot::Mutex<Option<LoggerHolder>> = parking_lot::Mutex::new(None);
+static LOGGER: parking_lot::Mutex<Option<Arc<LoggerHolder>>> = parking_lot::Mutex::new(None);
+
+fn current_logger() -> Option<Arc<LoggerHolder>> {
+  LOGGER.lock().clone()
+}
+
+fn log_current_session(logger: &LoggerHolder) {
+  match logger.current_session_id() {
+    Ok(session_id) => {
+      log::info!("current session ID: {session_id}");
+    },
+    Err(e) => {
+      log::warn!("failed to load current session ID: {e}");
+    },
+  }
+}
+
+fn log_current_entity(logger: &LoggerHolder) {
+  match logger.current_entity_id() {
+    Some(entity_id) => {
+      log::info!("current entity ID: {entity_id}");
+    },
+    None => {
+      log::info!("current entity ID: <unset>");
+    },
+  }
+}
+
+fn log_previous_session(logger: &LoggerHolder) {
+  match logger.previous_process_session_id() {
+    Some(session_id) => {
+      log::info!("previous session ID: {session_id}");
+    },
+    None => {
+      log::info!("previous session ID: <unset>");
+    },
+  }
+}
+
+fn spawn_session_update_logging(logger: Arc<LoggerHolder>) {
+  let mut updates = logger.subscribe_session_updates();
+  tokio::spawn(async move {
+    while updates.changed().await.is_ok() {
+      match logger.try_current_session_id() {
+        Ok(session_id) => {
+          log::info!("current session ID: {session_id}");
+        },
+        Err(e) => {
+          log::warn!("failed to read current session ID after update: {e}");
+        },
+      }
+    }
+  });
+}
 
 fn shutdown_logger() {
   if let Some(logger) = LOGGER.lock().take() {
@@ -58,11 +114,14 @@ fn shutdown_logger() {
 }
 
 pub async fn start(sdk_directory: &Path, args: &LoggerArgs, port: u16) -> anyhow::Result<()> {
-  let logger = crate::logger::make_logger(sdk_directory, args).await?;
-  if let Some(entity_id) = logger.current_entity_id() {
-    log::info!("current entity ID: {entity_id}");
-  }
+  let startup_started_at = Instant::now();
+  let logger = Arc::new(crate::logger::make_logger(sdk_directory, args).await?);
   logger.start();
+  log_current_session(logger.as_ref());
+  logger.log_sdk_start(startup_started_at.elapsed().try_into().unwrap_or_default());
+  log_current_entity(logger.as_ref());
+  log_previous_session(logger.as_ref());
+  spawn_session_update_logging(logger.clone());
   LOGGER.lock().replace(logger);
 
   let server_addr = (IpAddr::V6(Ipv6Addr::LOCALHOST), port);
@@ -103,7 +162,7 @@ pub async fn start(sdk_directory: &Path, args: &LoggerArgs, port: u16) -> anyhow
 impl Remote for Server {
   async fn breakpoint(self, _: tarpc::context::Context) {
     #[allow(unused)]
-    if let Some(holder) = &*LOGGER.lock() {
+    if current_logger().is_some() {
       unsafe {
         libc::raise(libc::SIGTRAP);
       }
@@ -116,7 +175,7 @@ impl Remote for Server {
   }
 
   async fn set_sleep_mode(self, _: tarpc::context::Context, enabled: bool) {
-    if let Some(logger) = &*LOGGER.lock() {
+    if let Some(logger) = current_logger() {
       logger.set_sleep_mode(enabled);
     }
   }
@@ -131,7 +190,7 @@ impl Remote for Server {
     capture_session: bool,
     block: bool,
   ) {
-    if let Some(logger) = &*LOGGER.lock() {
+    if let Some(logger) = current_logger() {
       logger.log(
         log_level.into(),
         log_type.into(),
@@ -144,7 +203,7 @@ impl Remote for Server {
   }
 
   async fn process_crash_reports(self, _: ::tarpc::context::Context) {
-    if let Some(logger) = &mut *LOGGER.lock() {
+    if let Some(logger) = current_logger() {
       logger.process_crash_reports();
     }
   }
@@ -155,7 +214,7 @@ impl Remote for Server {
     name: String,
     value_type: RuntimeValueType,
   ) -> String {
-    (*LOGGER.lock()).as_ref().map_or_else(
+    current_logger().as_ref().map_or_else(
       || "<unset>".to_owned(),
       |logger| logger.get_runtime_value(&name, value_type),
     )
@@ -165,15 +224,19 @@ impl Remote for Server {
     self.api_url
   }
 
-  async fn start_new_session(self, _: ::tarpc::context::Context) {
-    let logger = {
-      let guard = LOGGER.lock();
-      guard.as_ref().map(|logger| logger.logger.clone())
-    };
+  async fn get_current_session_id(self, _: ::tarpc::context::Context) -> Option<String> {
+    current_logger().and_then(|logger| match logger.current_session_id() {
+      Ok(session_id) => Some(session_id),
+      Err(e) => {
+        log::warn!("failed to get current session ID: {e}");
+        None
+      },
+    })
+  }
 
-    if let Some(logger) = logger {
-      let handle = logger.lock().new_logger_handle();
-      handle.start_new_session().unwrap();
+  async fn start_new_session(self, _: ::tarpc::context::Context) {
+    if let Some(logger) = current_logger() {
+      logger.start_new_session();
     }
   }
 
@@ -183,14 +246,15 @@ impl Remote for Server {
     name: String,
     variant: Option<String>,
   ) {
-    if let Some(logger) = &*LOGGER.lock() {
+    if let Some(logger) = current_logger() {
       logger.set_feature_flag(name, variant);
     }
   }
 
   async fn set_entity_id(self, _: ::tarpc::context::Context, entity_id: String) {
-    if let Some(logger) = &*LOGGER.lock() {
+    if let Some(logger) = current_logger() {
       logger.set_entity_id(&entity_id);
+      log_current_entity(logger.as_ref());
     }
   }
 }
