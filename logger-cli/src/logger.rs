@@ -5,6 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(test)]
+#[path = "./logger_test.rs"]
+mod tests;
+
 use crate::metadata::Metadata;
 use crate::storage::SQLiteStorage;
 use crate::types::{Platform, RuntimeValueType};
@@ -14,16 +18,15 @@ use bd_proto::protos::logging::payload::LogType as ProtoLogType;
 use bd_session::{Strategy, fixed};
 use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::thread::sleep;
 use time::ext::NumericalStdDuration;
+use tokio::sync::watch;
 
 pub type LoggerFuture =
   Pin<Box<dyn Future<Output = anyhow::Result<()>> + 'static + std::marker::Send>>;
-
-pub const SESSION_FILE: &str = "session_id";
 
 /// A metadata provider that returns the current time on each call rather than a fixed timestamp.
 struct LiveTimestampMetadata {
@@ -42,6 +45,7 @@ impl MetadataProvider for LiveTimestampMetadata {
 
 pub struct LoggerHolder {
   pub logger: Arc<Mutex<Logger>>,
+  session_strategy: Arc<Strategy>,
   future: Mutex<Option<LoggerFuture>>,
   _shutdown_trigger: bd_shutdown::ComponentShutdownTrigger,
 }
@@ -49,11 +53,13 @@ pub struct LoggerHolder {
 impl LoggerHolder {
   pub fn new(
     logger: Logger,
+    session_strategy: Arc<Strategy>,
     future: LoggerFuture,
     shutdown_trigger: bd_shutdown::ComponentShutdownTrigger,
   ) -> Self {
     Self {
       logger: Arc::new(Mutex::new(logger)),
+      session_strategy,
       future: Mutex::new(Some(future)),
       _shutdown_trigger: shutdown_trigger,
     }
@@ -93,28 +99,52 @@ impl LoggerHolder {
   }
 
   pub fn start_new_session(&self) {
-    let handle = self.logger.lock().new_logger_handle();
+    let handle = { self.logger.lock().new_logger_handle() };
     handle.start_new_session().unwrap();
   }
 
+  pub fn current_session_id(&self) -> anyhow::Result<String> {
+    let handle = { self.logger.lock().new_logger_handle() };
+    handle.session_id()
+  }
+
+  pub fn log_sdk_start(&self, duration: time::Duration) {
+    let handle = { self.logger.lock().new_logger_handle() };
+    handle.log_sdk_start([].into(), duration);
+  }
+
+  pub fn try_current_session_id(&self) -> anyhow::Result<String> {
+    self.session_strategy.try_current_session_id()
+  }
+
+  #[must_use]
+  pub fn previous_process_session_id(&self) -> Option<String> {
+    self.session_strategy.previous_process_session_id()
+  }
+
+  #[must_use]
+  pub fn subscribe_session_updates(&self) -> watch::Receiver<u64> {
+    self.session_strategy.subscribe_updates()
+  }
+
   pub fn set_sleep_mode(&self, enabled: bool) {
-    let handle = self.logger.lock().new_logger_handle();
+    let handle = { self.logger.lock().new_logger_handle() };
     handle.transition_sleep_mode(enabled);
   }
 
   pub fn set_feature_flag(&self, name: String, variant: Option<String>) {
-    let handle = self.logger.lock().new_logger_handle();
+    let handle = { self.logger.lock().new_logger_handle() };
     handle.set_feature_flag_exposure(name, variant);
   }
 
   pub fn set_entity_id(&self, entity_id: &str) {
-    let handle = self.logger.lock().new_logger_handle();
+    let handle = { self.logger.lock().new_logger_handle() };
     handle.register_opaque_entity_id(Some(entity_id));
   }
 
   #[must_use]
   pub fn current_entity_id(&self) -> Option<String> {
-    let handle = self.logger.lock().new_logger_handle();
+    let handle = { self.logger.lock().new_logger_handle() };
     handle.current_opaque_entity_id()
   }
 
@@ -124,7 +154,7 @@ impl LoggerHolder {
   }
 
   pub fn flush_and_stop(&self) {
-    let handle = self.logger.lock().new_logger_handle();
+    let handle = { self.logger.lock().new_logger_handle() };
     handle.flush_state(Block::Yes {
       timeout: 1.std_seconds(),
       poll_callback: None,
@@ -194,31 +224,6 @@ impl LoggerHolder {
   }
 }
 
-pub struct MaybeStaticSessionGenerator {
-  pub config_path: PathBuf,
-}
-
-impl MaybeStaticSessionGenerator {
-  pub fn cached_session_id(&self) -> anyhow::Result<String> {
-    let contents = std::fs::read(self.config_path.clone())?;
-    Ok(String::from_utf8(contents)?)
-  }
-}
-
-impl fixed::Callbacks for MaybeStaticSessionGenerator {
-  fn generate_session_id(&self) -> anyhow::Result<String> {
-    if let Ok(id) = self.cached_session_id() {
-      Ok(id)
-    } else {
-      let id = fixed::UUIDCallbacks.generate_session_id()?;
-      if let Err(e) = std::fs::write(self.config_path.clone(), &id) {
-        log::warn!("failed to save session ID to disk: {e}");
-      }
-      Ok(id)
-    }
-  }
-}
-
 #[derive(serde::Serialize)]
 struct DeviceCodeRequest {
   device_id: String,
@@ -256,6 +261,13 @@ async fn fetch_device_code(args: &LoggerArgs, device_id: &str) -> anyhow::Result
   Ok(device_code_response.code)
 }
 
+fn make_session_strategy(sdk_directory: &Path) -> Arc<Strategy> {
+  Arc::new(Strategy::fixed(
+    sdk_directory,
+    Arc::new(fixed::UUIDCallbacks),
+  ))
+}
+
 pub struct LoggerArgs {
   pub api_url: String,
   pub api_key: String,
@@ -268,9 +280,7 @@ pub struct LoggerArgs {
 }
 
 pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Result<LoggerHolder> {
-  let session_callbacks = Arc::new(MaybeStaticSessionGenerator {
-    config_path: sdk_directory.join(SESSION_FILE),
-  });
+  let session_strategy = make_session_strategy(sdk_directory);
   let storage_db = sdk_directory.join("defaults.db");
   let storage = SQLiteStorage::new(&storage_db);
   let store = Arc::new(bd_key_value::Store::new(Box::new(storage)));
@@ -294,7 +304,7 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
   let static_metadata = Arc::new(Metadata {
     app_id: Some(args.app_id.clone()),
     app_version: Some(args.app_version.clone()),
-    platform: args.platform.clone().into(),
+    platform: args.platform.into(),
     device: device.clone(),
     os_version: None,
     manufacturer: None,
@@ -304,7 +314,7 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
   let (logger, _, future, _) = bd_logger::LoggerBuilder::new(InitParams {
     sdk_directory: sdk_directory.to_path_buf(),
     api_key: args.api_key.clone(),
-    session_strategy: Arc::new(Strategy::fixed(sdk_directory, session_callbacks)),
+    session_strategy: session_strategy.clone(),
     metadata_provider: Arc::new(LiveTimestampMetadata {
       ootb_fields: [(
         "_app_version_code".into(),
@@ -323,7 +333,7 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
   })
   .build()?;
 
-  let logger = LoggerHolder::new(logger, future, shutdown_trigger);
+  let logger = LoggerHolder::new(logger, session_strategy, future, shutdown_trigger);
   if let Some(entity_id) = args.entity_id.as_deref() {
     // Queue the entity update before the async startup begins so builder initialization replays
     // it into durable state ahead of the API init flow.

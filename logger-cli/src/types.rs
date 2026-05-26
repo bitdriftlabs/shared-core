@@ -97,7 +97,7 @@ impl From<LogLevel> for bd_logger::LogLevel {
 ///
 /// This matches the `Platform` enum defined in `bd_logger`, but is redeclared here to allow
 /// additional traits like `clap::ValueEnum`.
-#[derive(clap::ValueEnum, Debug, Clone)]
+#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Platform {
   Android,
   Apple,

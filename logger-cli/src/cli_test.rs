@@ -34,3 +34,38 @@ fn parses_start_entity_id_flag() {
     Command::Start(cmd) if cmd.entity_id.as_deref() == Some("entity-123")
   ));
 }
+
+#[test]
+fn parses_enqueue_fake_crash_command() {
+  let options = Options::parse_from([
+    "logger-cli",
+    "enqueue-fake-crash",
+    "--reason",
+    "SIGABRT",
+    "--detail",
+    "Generated in test",
+    "--platform",
+    "android",
+    "--app-id",
+    "com.example.app",
+    "--app-version",
+    "2.3.4",
+    "--app-build-id",
+    "42",
+    "--file-name",
+    "fake-report",
+    "--upload",
+  ]);
+
+  assert!(matches!(
+    options.command,
+    Command::EnqueueFakeCrash(cmd)
+      if cmd.reason == "SIGABRT"
+        && cmd.detail == "Generated in test"
+        && cmd.app_id == "com.example.app"
+        && cmd.app_version == "2.3.4"
+        && cmd.app_build_id == "42"
+        && cmd.file_name.as_deref() == Some("fake-report")
+        && cmd.upload
+  ));
+}
