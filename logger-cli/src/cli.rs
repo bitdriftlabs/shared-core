@@ -11,6 +11,7 @@ use logger_cli::types::{LogLevel, LogType, Platform, RuntimeValueType};
 use std::collections::HashMap;
 use std::hash::BuildHasher;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 #[cfg(test)]
 #[path = "./cli_test.rs"]
@@ -237,6 +238,10 @@ pub struct FakeCrashCommand {
   #[clap(long, required = false, default_value = "10")]
   pub app_build_id: String,
 
+  /// Fake feature flag exposure encoded into the generated client report.
+  #[clap(long = "feature-flag", action = ArgAction::Append, value_name = "name[=value]")]
+  pub feature_flags: Vec<FakeFeatureFlag>,
+
   /// Optional output file name inside reports/new
   #[clap(long)]
   pub file_name: Option<String>,
@@ -244,6 +249,32 @@ pub struct FakeCrashCommand {
   /// Immediately trigger upload of pending crash reports after writing the file
   #[clap(long, action = ArgAction::SetTrue)]
   pub upload: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FakeFeatureFlag {
+  pub name: String,
+  pub value: Option<String>,
+}
+
+impl FromStr for FakeFeatureFlag {
+  type Err = String;
+
+  fn from_str(value: &str) -> Result<Self, Self::Err> {
+    let (name, flag_value) = match value.split_once('=') {
+      Some((name, flag_value)) => (name, (!flag_value.is_empty()).then_some(flag_value)),
+      None => (value, None),
+    };
+
+    if name.is_empty() {
+      return Err("feature flag name cannot be empty".to_string());
+    }
+
+    Ok(Self {
+      name: name.to_string(),
+      value: flag_value.map(std::string::ToString::to_string),
+    })
+  }
 }
 
 
