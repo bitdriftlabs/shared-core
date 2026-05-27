@@ -226,7 +226,6 @@ pub enum OtelCollectorProtocol {
   #[default]
   Grpc,
   HttpBinary,
-  HttpJson,
 }
 
 impl OtelCollectorProtocol {
@@ -234,7 +233,6 @@ impl OtelCollectorProtocol {
     match self {
       Self::Grpc => Protocol::Grpc,
       Self::HttpBinary => Protocol::HttpBinary,
-      Self::HttpJson => Protocol::HttpJson,
     }
   }
 }
@@ -379,7 +377,7 @@ fn build_span_exporter(config: &OtelCollectorConfig) -> anyhow::Result<SpanExpor
 
       builder.build().map_err(Into::into)
     },
-    OtelCollectorProtocol::HttpBinary | OtelCollectorProtocol::HttpJson => SpanExporter::builder()
+    OtelCollectorProtocol::HttpBinary => SpanExporter::builder()
       .with_http()
       .with_protocol(config.protocol.export_protocol())
       .with_endpoint(config.endpoint.clone())
