@@ -5,6 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#[cfg(test)]
+#[path = "./test_api_server_test.rs"]
+mod test_api_server_test;
+
 pub mod log_upload;
 
 use axum::body::Body;
@@ -601,7 +605,8 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
 
   log::debug!("binding test server to {local_addr}");
 
-  std::thread::spawn(move || {
+  let server_shutdown_tx = shutdown_tx.clone();
+  let server_thread = std::thread::spawn(move || {
     tokio::runtime::Builder::new_current_thread()
       .enable_all()
       .build()
@@ -649,6 +654,8 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
   Box::new(ServerHandle {
     timed_event_wait_tx,
     stream_action_tx,
+    shutdown_tx: server_shutdown_tx,
+    server_thread: Some(server_thread),
     log_upload_rx,
     log_intent_rx,
     artifact_upload_rx,
@@ -764,12 +771,15 @@ async fn serve(
       }
     }
   } else {
+    // Subscribe before announcing readiness so a shutdown sent immediately after `start_server`
+    // returns is still observed by the graceful shutdown future.
+    let mut shutdown_rx = service_state.shutdown_tx.subscribe();
+
     let _ = ready_tx.send(());
 
     let _ignored = axum::serve(listener, router(service_state.clone()).into_make_service())
       .with_graceful_shutdown(async move {
-        let mut rx = service_state.shutdown_tx.subscribe();
-        let _ignored = rx.recv().await;
+        let _ignored = shutdown_rx.recv().await;
       })
       .await;
   }
@@ -797,6 +807,9 @@ pub struct ServerHandle {
   // Used to instruct a specific stream to perform an action.
   stream_action_tx: Sender<(i32, StreamAction)>,
 
+  shutdown_tx: broadcast::Sender<()>,
+  server_thread: Option<std::thread::JoinHandle<()>>,
+
   log_upload_rx: Receiver<LogUploadRequest>,
   artifact_upload_rx: Receiver<UploadArtifactRequest>,
   artifact_intent_rx: Receiver<UploadArtifactIntentRequest>,
@@ -809,6 +822,18 @@ pub struct ServerHandle {
 
   // The port this server is bound to.
   pub port: u16,
+}
+
+impl Drop for ServerHandle {
+  fn drop(&mut self) {
+    // Explicitly shut down the background server thread so tests do not leak listeners or
+    // accumulate detached runtimes across large nextest runs.
+    let _ignored = self.shutdown_tx.send(());
+
+    if let Some(server_thread) = self.server_thread.take() {
+      let _ignored = server_thread.join();
+    }
+  }
 }
 
 impl ServerHandle {

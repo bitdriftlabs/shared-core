@@ -1765,11 +1765,11 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     protobuf.filter.v1\x1a5bitdrift_public/protobuf/matcher/v1/log_matcher.p\
     roto\x1a\x17validate/validate.proto\"\\\n\x14FiltersConfiguration\x12D\n\
     \x07filters\x18\x01\x20\x03(\x0b2*.bitdrift_public.protobuf.filter.v1.Fi\
-    lterR\x07filters\"\xf9\x0b\n\x06Filter\x12S\n\x07matcher\x18\x01\x20\x01\
+    lterR\x07filters\"\xf0\x0b\n\x06Filter\x12S\n\x07matcher\x18\x01\x20\x01\
     (\x0b2/.bitdrift_public.protobuf.matcher.v1.LogMatcherR\x07matcherB\x08\
     \xfaB\x05\x8a\x01\x02\x10\x01\x12^\n\ntransforms\x18\x02\x20\x03(\x0b24.\
     bitdrift_public.protobuf.filter.v1.Filter.TransformR\ntransformsB\x08\
-    \xfaB\x05\x92\x01\x02\x08\x01\x1a\xb9\n\n\tTransform\x12h\n\rcapture_fie\
+    \xfaB\x05\x92\x01\x02\x08\x01\x1a\xb0\n\n\tTransform\x12h\n\rcapture_fie\
     ld\x18\x01\x20\x01(\x0b2A.bitdrift_public.protobuf.filter.v1.Filter.Tran\
     sform.CaptureFieldH\0R\x0ccaptureField\x12\\\n\tset_field\x18\x02\x20\
     \x01(\x0b2=.bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField\
@@ -1793,12 +1793,12 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \tR\x04nameB\x07\xfaB\x04r\x02\x10\x01B\x0c\n\x05value\x12\x03\xf8B\x01\
     \"9\n\tFieldType\x12\x0b\n\x07UNKNOWN\x10\0\x12\x0c\n\x08CAPTURED\x10\
     \x01\x12\x11\n\rMATCHING_ONLY\x10\x02\x1a*\n\x0bRemoveField\x12\x1b\n\
-    \x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x1a\x8b\
-    \x01\n\x1cRegexMatchAndSubstituteField\x12\x1b\n\x04name\x18\x01\x20\x01\
-    (\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x12!\n\x07pattern\x18\x02\x20\
-    \x01(\tR\x07patternB\x07\xfaB\x04r\x02\x10\x01\x12+\n\x0csubstitution\
-    \x18\x03\x20\x01(\tR\x0csubstitutionB\x07\xfaB\x04r\x02\x10\x01B\x15\n\
-    \x0etransform_type\x12\x03\xf8B\x01b\x06proto3\
+    \x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x1a\x82\
+    \x01\n\x1cRegexMatchAndSubstituteField\x12\x12\n\x04name\x18\x01\x20\x01\
+    (\tR\x04name\x12!\n\x07pattern\x18\x02\x20\x01(\tR\x07patternB\x07\xfaB\
+    \x04r\x02\x10\x01\x12+\n\x0csubstitution\x18\x03\x20\x01(\tR\x0csubstitu\
+    tionB\x07\xfaB\x04r\x02\x10\x01B\x15\n\x0etransform_type\x12\x03\xf8B\
+    \x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
