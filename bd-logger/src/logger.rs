@@ -514,7 +514,8 @@ impl LoggerHandle {
           log::warn!("failed to notify memory pressure level: {e:?}");
         }
       },
-      "failed to notify {:?} memory pressure level, calling from within a callback is not permitted",
+      "failed to notify {:?} memory pressure level, calling from within a callback is not \
+       permitted",
       level
     );
   }

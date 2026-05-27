@@ -999,7 +999,10 @@ async fn previous_session_crash_uses_previous_memory_pressure_data() {
       ("app_version".into(), "unknown".into()),
       ("os_version".into(), "unknown".into()),
       ("_memory_pressure_level".into(), "2".into()),
-      ("_memory_pressure_timestamp_us".into(), "1704067200000000".into()),
+      (
+        "_memory_pressure_timestamp_us".into(),
+        "1704067200000000".into(),
+      ),
     ]
     .into(),
     None,
@@ -1031,7 +1034,10 @@ async fn previous_session_crash_with_normal_memory_includes_pressure_field() {
       ("app_version".into(), "unknown".into()),
       ("os_version".into(), "unknown".into()),
       ("_memory_pressure_level".into(), "1".into()),
-      ("_memory_pressure_timestamp_us".into(), "1704067200000000".into()),
+      (
+        "_memory_pressure_timestamp_us".into(),
+        "1704067200000000".into(),
+      ),
     ]
     .into(),
     None,
