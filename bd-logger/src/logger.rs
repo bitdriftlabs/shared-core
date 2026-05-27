@@ -25,6 +25,7 @@ use bd_log_primitives::{
   LogMessage,
   log_level,
 };
+use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::client::key_value::app_version::Extra as AppVersionExtra;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::Snapshot;
@@ -35,7 +36,7 @@ use parking_lot::Mutex;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI8, Ordering};
 use std::time::Duration;
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -503,21 +504,17 @@ impl LoggerHandle {
     );
   }
 
-  pub fn notify_low_memory(&self, level: String, memory_used_kb: u64) {
+  pub fn notify_memory_pressure(&self, level: MemoryPressureLevel) {
     with_reentrancy_guard!(
       {
-        let result =
-          self
-            .tx
-            .try_send_state_update(async_log_buffer::StateUpdateMessage::SetLowMemoryState {
-              level,
-              memory_used_kb,
-            });
+        let result = self.tx.try_send_state_update(
+          async_log_buffer::StateUpdateMessage::SetMemoryPressureLevel { level },
+        );
         if let Err(e) = result {
-          log::warn!("failed to notify low memory state: {e:?}");
+          log::warn!("failed to notify memory pressure level: {e:?}");
         }
       },
-      "failed to notify {:?} low memory state, calling from within a callback is not permitted",
+      "failed to notify {:?} memory pressure level, calling from within a callback is not permitted",
       level
     );
   }
@@ -626,6 +623,8 @@ pub struct Logger {
   is_tracing_active: Arc<AtomicBool>,
 
   sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
+
+  previous_memory_pressure_level: Arc<AtomicI8>,
 }
 
 impl Logger {
@@ -644,6 +643,7 @@ impl Logger {
     sleep_mode_active: watch::Sender<bool>,
     is_tracing_active: Arc<AtomicBool>,
     sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
+    previous_memory_pressure_level: Arc<AtomicI8>,
   ) -> Self {
     let stats = Stats::new(&stats_scope);
 
@@ -666,6 +666,7 @@ impl Logger {
       sleep_mode_active,
       is_tracing_active,
       sdk_status_tracker,
+      previous_memory_pressure_level,
     }
   }
 
@@ -673,6 +674,11 @@ impl Logger {
   #[must_use]
   pub fn get_sdk_status(&self) -> bd_client_common::sdk_status::SdkStatus {
     self.sdk_status_tracker.get()
+  }
+
+  #[must_use]
+  pub fn previous_memory_pressure_level(&self) -> MemoryPressureLevel {
+    MemoryPressureLevel(self.previous_memory_pressure_level.load(Ordering::Relaxed))
   }
 
   /// Create the SDK and corresponding buffer directory if it doesn't already exist.

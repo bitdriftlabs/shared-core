@@ -41,6 +41,7 @@ use bd_log_primitives::{
   LogMessage,
 };
 use bd_network_quality::{NetworkQualityMonitor, NetworkQualityResolver};
+use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::client::api::debug_data_request::{
   WorkflowDebugData,
   WorkflowTransitionDebugData,
@@ -50,7 +51,7 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
-use bd_state::{ENTITY_ID_KEY, SYSTEM_SESSION_ID_KEY, Scope, string_value};
+use bd_state::{ENTITY_ID_KEY, SYSTEM_SESSION_ID_KEY, Scope, int_value, string_value};
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::WorkflowDebugStateMap;
@@ -96,7 +97,7 @@ pub enum StateUpdateMessage {
   AddLogField(String, DataValue),
   RemoveLogField(String),
   SetFeatureFlagExposure(String, Option<String>),
-  SetLowMemoryState { level: String, memory_used_kb: u64 },
+  SetMemoryPressureLevel { level: MemoryPressureLevel },
   SetEntityId(Option<String>),
   RequestSessionId(bd_completion::Sender<anyhow::Result<String>>),
   StartNewSession(bd_completion::Sender<()>),
@@ -112,7 +113,7 @@ impl MemorySized for StateUpdateMessage {
         Self::SetFeatureFlagExposure(flag, variant) => {
           flag.len() + variant.as_ref().map_or(0, String::len)
         },
-        Self::SetLowMemoryState { level, .. } => level.len(),
+        Self::SetMemoryPressureLevel { .. } => 0,
         Self::SetEntityId(entity_id) => entity_id.as_ref().map_or(0, String::len),
         Self::RequestSessionId(response_tx) => size_of_val(response_tx),
         Self::StartNewSession(response_tx) => size_of_val(response_tx),
@@ -1055,20 +1056,16 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                     }
                   }
                 },
-                StateUpdateMessage::SetLowMemoryState {
-                  level,
-                  memory_used_kb,
-                } => {
-                  for (key, value) in [
-                    ("low_memory_level", level),
-                    ("low_memory_used_kb", memory_used_kb.to_string()),
-                  ] {
-                    if let Err(e) = state_store
-                      .insert(Scope::System, key.to_string(), string_value(value))
-                      .await
-                    {
-                      log::debug!("failed to persist low memory state key {key}: {e}");
-                    }
+                StateUpdateMessage::SetMemoryPressureLevel { level } => {
+                  if let Err(e) = state_store
+                    .insert(
+                      Scope::System,
+                      "memory_pressure_level".to_string(),
+                      int_value(i64::from(level.0)),
+                    )
+                    .await
+                  {
+                    log::debug!("failed to persist memory pressure level: {e}");
                   }
                 },
                 StateUpdateMessage::SetEntityId(entity_id) => {

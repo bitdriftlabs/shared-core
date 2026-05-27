@@ -458,22 +458,20 @@ impl Monitor {
       .collect_vec()
   }
 
-  fn get_low_memory_state_fields(&self, origin: ReportOrigin) -> LogFields {
+  fn get_memory_pressure_fields(&self, origin: ReportOrigin) -> LogFields {
     if !matches!(origin, ReportOrigin::Previous) {
       return LogFields::default();
     }
 
     let mut level_tv: Option<&TimestampedValue> = None;
-    let mut used_kb_tv: Option<&TimestampedValue> = None;
 
     for (scope, name, tv) in self.previous_run_state.iter() {
-      if scope != bd_resilient_kv::Scope::System || !tv.value.has_string_value() {
+      if scope != bd_resilient_kv::Scope::System || !tv.value.has_int_value() {
         continue;
       }
-      match name.as_str() {
-        "low_memory_level" => level_tv = Some(tv),
-        "low_memory_used_kb" => used_kb_tv = Some(tv),
-        _ => {},
+      if name == "memory_pressure_level" {
+        level_tv = Some(tv);
+        break;
       }
     }
 
@@ -481,27 +479,19 @@ impl Monitor {
       return LogFields::default();
     };
 
-    // If the last recorded memory pressure level was "normal", memory pressure had resolved
-    // before the crash so we don't include low memory fields in the report
-    if level_tv.value.string_value() == "normal" {
+    let level = level_tv.value.int_value() as i8;
+
+    // Unknown (0): no data recorded, skip
+    if level == 0 {
       return LogFields::default();
     }
 
     let mut fields = LogFields::default();
+    fields.insert("_memory_pressure_level".into(), level.to_string().into());
     fields.insert(
-      "_low_memory_level".into(),
-      level_tv.value.string_value().to_string().into(),
-    );
-    fields.insert(
-      "_low_memory_timestamp_us".into(),
+      "_memory_pressure_timestamp_us".into(),
       level_tv.timestamp.to_string().into(),
     );
-    if let Some(tv) = used_kb_tv {
-      fields.insert(
-        "_low_memory_used_kb".into(),
-        tv.value.string_value().to_string().into(),
-      );
-    }
 
     fields
   }
@@ -609,7 +599,7 @@ impl Monitor {
       .await
       .unwrap_or_else(|_| "unknown".to_string());
     let (timestamp, mut state_fields) = Self::read_log_fields(bin_report, &global_state_fields);
-    state_fields.extend(self.get_low_memory_state_fields(origin));
+    state_fields.extend(self.get_memory_pressure_fields(origin));
 
     self.invoke_crash_hook(
       &bin_report,

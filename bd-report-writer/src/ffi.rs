@@ -70,6 +70,7 @@ pub struct BDAppMetrics {
   memory_used: u64,
   memory_free: u64,
   memory_total: u64,
+  memory_pressure_level: i8,
 }
 
 #[repr(C)]
@@ -492,6 +493,7 @@ extern "C-unwind" fn bdrw_add_app(handle: BDProcessorHandle, app_ptr: *const BDA
         region_format: None,
         cpu_usage: None,
         javascript_engine: JavaScriptEngine::UnknownJsEngine,
+        memory_pressure_level: MemoryPressureLevel(app.memory_pressure_level),
       },
     );
     processor.app = Some(metrics);

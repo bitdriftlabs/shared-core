@@ -281,6 +281,10 @@ impl From<AppMetrics<'_>> for ScriptValue {
       ("javascript_engine", value.javascript_engine().into()),
       ("lifecycle_event", value.lifecycle_event().into()),
       ("memory", value.memory().into()),
+      (
+        "memory_pressure_level",
+        value.memory_pressure_level().into(),
+      ),
       ("process_id", value.process_id().into()),
       ("region_format", value.region_format().into()),
       ("running_state", value.running_state().into()),
@@ -318,6 +322,7 @@ impl Scriptable for AppMetrics<'_> {
         .lifecycle_event()
         .map_or(Ok(None), |value| value.resolve(&path[1 ..])),
       "memory" => self.memory().resolve(&path[1 ..]),
+      "memory_pressure_level" => self.memory_pressure_level().resolve(&path[1 ..]),
       "process_id" => self.process_id().resolve(&path[1 ..]),
       "region_format" => self
         .region_format()
@@ -340,6 +345,7 @@ impl Scriptable for AppMetrics<'_> {
         .with_known("app_id", Kind::bytes())
         .with_known("javascript_engine", Kind::bytes())
         .with_known("lifecycle_event", Kind::bytes())
+        .with_known("memory_pressure_level", Kind::bytes())
         .with_known("process_id", Kind::integer())
         .with_known("region_format", Kind::bytes())
         .with_known("running_state", Kind::bytes())
@@ -983,6 +989,28 @@ impl Scriptable for Memory {
         .with_known("total", Kind::integer())
         .with_known("used", Kind::integer()),
     )
+  }
+}
+
+impl From<MemoryPressureLevel> for ScriptValue {
+  fn from(value: MemoryPressureLevel) -> Self {
+    value.variant_name().map_or(Value::Null.into(), Into::into)
+  }
+}
+
+impl Scriptable for MemoryPressureLevel {
+  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
+    if path.is_empty() {
+      Ok(Some((*self).into()))
+    } else {
+      Err(PathError::UnknownKey(
+        OwnedValuePath::from(path.to_vec()).to_string(),
+      ))
+    }
+  }
+
+  fn schema() -> Kind {
+    Kind::bytes()
   }
 }
 

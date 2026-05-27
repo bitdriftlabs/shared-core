@@ -52,7 +52,7 @@ use futures_util::{Future, try_join};
 use parking_lot::Mutex;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicI8, Ordering};
 use time::Duration;
 use tokio::sync::watch;
 
@@ -342,6 +342,8 @@ impl LoggerBuilder {
     let (opaque_entity_updates_tx, opaque_entity_updates_rx) = watch::channel(None);
     let pending_entity_id = Arc::new(Mutex::new(None));
 
+    let previous_memory_pressure_level = Arc::new(AtomicI8::new(0));
+
     let logger = Logger::new(
       maybe_shutdown_trigger,
       runtime_loader.clone(),
@@ -357,6 +359,7 @@ impl LoggerBuilder {
       sleep_mode_active_tx,
       is_tracing_active,
       sdk_status_tracker.clone(),
+      previous_memory_pressure_level.clone(),
     );
     let log = if self.internal_logger {
       Arc::new(InternalLogger::new(
@@ -414,6 +417,16 @@ impl LoggerBuilder {
       let pending_entity_id = pending_entity_id.lock().take();
       initialize_opaque_entity_updates(&state_store, &opaque_entity_updates_tx, pending_entity_id)
         .await;
+
+      if let Some(level) = previous_run_state
+        .iter()
+        .find(|(scope, name, _)| {
+          *scope == bd_resilient_kv::Scope::System && name.as_str() == "memory_pressure_level"
+        })
+        .and_then(|(_, _, tv)| tv.value.has_int_value().then(|| tv.value.int_value() as i8))
+      {
+        previous_memory_pressure_level.store(level, Ordering::Relaxed);
+      }
 
       if result.fallback_occurred {
         handle_unexpected(

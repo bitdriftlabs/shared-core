@@ -14,6 +14,7 @@ use crate::async_log_buffer::{
   Sender,
   StateUpdateMessage,
 };
+use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
@@ -818,7 +819,7 @@ async fn updates_system_session_id_for_new_sessions() {
 }
 
 #[tokio::test]
-async fn set_low_memory_state_writes_to_system_scope() {
+async fn set_memory_pressure_level_writes_to_system_scope() {
   let mut setup = Setup::new();
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
   let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
@@ -837,9 +838,8 @@ async fn set_low_memory_state_writes_to_system_scope() {
   ));
 
   sender
-    .try_send_state_update(StateUpdateMessage::SetLowMemoryState {
-      level: "warning".to_string(),
-      memory_used_kb: 111_000,
+    .try_send_state_update(StateUpdateMessage::SetMemoryPressureLevel {
+      level: MemoryPressureLevel::Warning,
     })
     .unwrap();
 
@@ -857,13 +857,8 @@ async fn set_low_memory_state_writes_to_system_scope() {
     let reader = test_store.read().await;
     assert!(
       reader
-        .get(Scope::System, "low_memory_level")
-        .is_some_and(|v| v.has_string_value() && v.string_value() == "warning")
-    );
-    assert!(
-      reader
-        .get(Scope::System, "low_memory_used_kb")
-        .is_some_and(|v| v.has_string_value() && v.string_value() == "111000")
+        .get(Scope::System, "memory_pressure_level")
+        .is_some_and(|v| v.has_int_value() && v.int_value() == 2)
     );
   }
 

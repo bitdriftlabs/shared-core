@@ -190,7 +190,7 @@ impl Setup {
   /// before clearing ephemeral scopes. This helper allows tests to simulate that snapshot.
   async fn make_previous_run_state(
     flags: Vec<(&str, &str)>,
-    memory_state: Option<(&str, u64)>,
+    memory_pressure_level: Option<i8>,
   ) -> bd_resilient_kv::ScopedMaps {
     let mut store = bd_resilient_kv::VersionedKVStore::new_in_memory(
       Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00 UTC))),
@@ -213,23 +213,18 @@ impl Setup {
         .unwrap();
     }
 
-    if let Some((level, used_kb)) = memory_state {
-      for (name, value) in [
-        ("low_memory_level", level.to_string()),
-        ("low_memory_used_kb", used_kb.to_string()),
-      ] {
-        store
-          .insert(
-            bd_resilient_kv::Scope::System,
-            name.to_string(),
-            StateValue {
-              value_type: Some(bd_resilient_kv::Value_type::StringValue(value)),
-              ..Default::default()
-            },
-          )
-          .await
-          .unwrap();
-      }
+    if let Some(level) = memory_pressure_level {
+      store
+        .insert(
+          bd_resilient_kv::Scope::System,
+          "memory_pressure_level".to_string(),
+          StateValue {
+            value_type: Some(bd_resilient_kv::Value_type::IntValue(i64::from(level))),
+            ..Default::default()
+          },
+        )
+        .await
+        .unwrap();
     }
 
     store.as_hashmap().clone()
@@ -239,7 +234,7 @@ impl Setup {
     maybe_global_state: Option<LogFields>,
     enable_file_watcher: bool,
     crash_report_hook: Option<Arc<dyn CrashReportHook>>,
-    memory_state: Option<(&str, u64)>,
+    memory_pressure_level: Option<i8>,
   ) -> Self {
     let directory = TempDir::new().unwrap();
 
@@ -290,7 +285,7 @@ impl Setup {
 
     let previous_run_state = Self::make_previous_run_state(
       vec![("initial_flag", "true"), ("previous_only_flag", "enabled")],
-      memory_state,
+      memory_pressure_level,
     )
     .await;
 
@@ -347,24 +342,19 @@ impl Setup {
       .unwrap();
   }
 
-  async fn update_memory_state(&self, level: &str, used_kb: u64) {
-    for (name, value) in [
-      ("low_memory_level", level.to_string()),
-      ("low_memory_used_kb", used_kb.to_string()),
-    ] {
-      self
-        .state
-        .insert(
-          bd_resilient_kv::Scope::System,
-          name.to_string(),
-          StateValue {
-            value_type: Some(bd_resilient_kv::Value_type::StringValue(value)),
-            ..Default::default()
-          },
-        )
-        .await
-        .unwrap();
-    }
+  async fn update_memory_pressure_level(&self, level: i8) {
+    self
+      .state
+      .insert(
+        bd_resilient_kv::Scope::System,
+        "memory_pressure_level".to_string(),
+        StateValue {
+          value_type: Some(bd_resilient_kv::Value_type::IntValue(i64::from(level))),
+          ..Default::default()
+        },
+      )
+      .await
+      .unwrap();
   }
 
   fn current_session_directory(&self) -> PathBuf {
@@ -924,13 +914,10 @@ async fn file_watcher_processes_multiple_reports() {
 }
 
 #[tokio::test]
-async fn previous_session_crash_without_any_memory_data_omits_low_memory_fields() {
+async fn previous_session_crash_without_any_memory_data_omits_memory_pressure_fields() {
   let data = CrashReportBuilder::new("PreviousCrash").build();
 
-  let mut setup = Setup::new(
-    None, true, None, None, // No memory warning data
-  )
-  .await;
+  let mut setup = Setup::new(None, true, None, None).await;
 
   // Expect upload with previous session and no low memory level data
   setup.expect_artifact_upload_with_flags(
@@ -998,25 +985,21 @@ async fn previous_session_crash_uses_previous_feature_flags() {
 }
 
 #[tokio::test]
-async fn previous_session_crash_uses_previous_memory_warning_data() {
+async fn previous_session_crash_uses_previous_memory_pressure_data() {
   let data = CrashReportBuilder::new("PreviousCrash").build();
 
-  let mut setup = Setup::new(None, true, None, Some(("warning", 11_111_111))).await;
+  let mut setup = Setup::new(None, true, None, Some(2)).await;
 
-  // Simulate a mem warning after Monitor creation (these should NOT appear in previous session
-  // crash)
-  setup.update_memory_state("critical", 9_999_999).await;
+  setup.update_memory_pressure_level(3).await;
 
-  // Expect upload with previous session memory warning data
   setup.expect_artifact_upload_with_flags(
     &data,
     "12345678-1234-5678-1234-567812345679".parse().unwrap(),
     [
       ("app_version".into(), "unknown".into()),
       ("os_version".into(), "unknown".into()),
-      ("_low_memory_level".into(), "warning".into()),
-      ("_low_memory_used_kb".into(), "11111111".into()),
-      ("_low_memory_timestamp_us".into(), "1704067200000000".into()),
+      ("_memory_pressure_level".into(), "2".into()),
+      ("_memory_pressure_timestamp_us".into(), "1704067200000000".into()),
     ]
     .into(),
     None,
@@ -1027,10 +1010,8 @@ async fn previous_session_crash_uses_previous_memory_warning_data() {
     ]),
   );
 
-  // Write a crash report to the previous_session directory
   std::fs::write(setup.previous_session_directory().join("crash.cap"), &data).unwrap();
 
-  // Wait for the crash to be processed
   tokio::time::timeout(2.std_seconds(), setup.emit_log_rx.recv())
     .await
     .expect("Timeout waiting for crash log")
@@ -1038,18 +1019,19 @@ async fn previous_session_crash_uses_previous_memory_warning_data() {
 }
 
 #[tokio::test]
-async fn previous_session_crash_with_normal_memory_omits_low_memory_fields() {
+async fn previous_session_crash_with_normal_memory_includes_pressure_field() {
   let data = CrashReportBuilder::new("PreviousCrash").build();
 
-  let mut setup = Setup::new(None, true, None, Some(("normal", 11_111_111))).await;
+  let mut setup = Setup::new(None, true, None, Some(1)).await;
 
-  // Expect upload with previous session without memory warning data
   setup.expect_artifact_upload_with_flags(
     &data,
     "12345678-1234-5678-1234-567812345679".parse().unwrap(),
     [
       ("app_version".into(), "unknown".into()),
       ("os_version".into(), "unknown".into()),
+      ("_memory_pressure_level".into(), "1".into()),
+      ("_memory_pressure_timestamp_us".into(), "1704067200000000".into()),
     ]
     .into(),
     None,

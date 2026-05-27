@@ -37,6 +37,10 @@
       "type" : "string",
       "enum": ["UnknownJsEngine", "JavaScriptCore", "Hermes"]
     },
+    "bitdrift_public_fbs_issue_reporting_v1_MemoryPressureLevel" : {
+      "type" : "string",
+      "enum": ["Unknown", "Normal", "Warning", "Critical"]
+    },
     "bitdrift_public_fbs_issue_reporting_v1_Rotation" : {
       "type" : "string",
       "enum": ["Unknown", "Portrait", "LandscapeRight", "LandscapeLeft", "PortraitUpsideDown"]
@@ -179,6 +183,9 @@
               },
         "javascript_engine" : {
                 "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_JavaScriptEngine"
+              },
+        "memory_pressure_level" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_MemoryPressureLevel"
               }
       },
       "additionalProperties" : false

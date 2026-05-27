@@ -4664,8 +4664,33 @@ impl ChartData {
         }
     }
 
+    // bool chart_not_found = 12;
+
+    pub fn chart_not_found(&self) -> bool {
+        match self.chart_response {
+            ::std::option::Option::Some(chart_data::Chart_response::ChartNotFound(v)) => v,
+            _ => false,
+        }
+    }
+
+    pub fn clear_chart_not_found(&mut self) {
+        self.chart_response = ::std::option::Option::None;
+    }
+
+    pub fn has_chart_not_found(&self) -> bool {
+        match self.chart_response {
+            ::std::option::Option::Some(chart_data::Chart_response::ChartNotFound(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_chart_not_found(&mut self, v: bool) {
+        self.chart_response = ::std::option::Option::Some(chart_data::Chart_response::ChartNotFound(v))
+    }
+
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(7);
+        let mut fields = ::std::vec::Vec::with_capacity(8);
         let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::chart_id::ChartIdentifier>(
             "chart_id",
@@ -4713,6 +4738,12 @@ impl ChartData {
             ChartData::error,
             ChartData::set_error,
         ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_copy_has_get_set_simpler_accessors::<_, _>(
+            "chart_not_found",
+            ChartData::has_chart_not_found,
+            ChartData::chart_not_found,
+            ChartData::set_chart_not_found,
+        ));
         oneofs.push(chart_data::Chart_response::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ChartData>(
             "ChartData",
@@ -4752,6 +4783,9 @@ impl ::protobuf::Message for ChartData {
                 },
                 50 => {
                     self.chart_response = ::std::option::Option::Some(chart_data::Chart_response::Error(is.read_string()?));
+                },
+                96 => {
+                    self.chart_response = ::std::option::Option::Some(chart_data::Chart_response::ChartNotFound(is.read_bool()?));
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -4794,6 +4828,9 @@ impl ::protobuf::Message for ChartData {
                 &chart_data::Chart_response::Error(ref v) => {
                     my_size += ::protobuf::rt::string_size(6, &v);
                 },
+                &chart_data::Chart_response::ChartNotFound(v) => {
+                    my_size += 1 + 1;
+                },
             };
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -4825,6 +4862,9 @@ impl ::protobuf::Message for ChartData {
                 &chart_data::Chart_response::Error(ref v) => {
                     os.write_string(6, v)?;
                 },
+                &chart_data::Chart_response::ChartNotFound(v) => {
+                    os.write_bool(12, v)?;
+                },
             };
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
@@ -4845,6 +4885,7 @@ impl ::protobuf::Message for ChartData {
 
     fn clear(&mut self) {
         self.chart_id.clear();
+        self.chart_response = ::std::option::Option::None;
         self.chart_response = ::std::option::Option::None;
         self.chart_response = ::std::option::Option::None;
         self.chart_response = ::std::option::Option::None;
@@ -4899,6 +4940,8 @@ pub mod chart_data {
         HistogramBarChartResponse(super::HistogramBarChartResponse),
         // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.ChartData.error)
         Error(::std::string::String),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.ChartData.chart_not_found)
+        ChartNotFound(bool),
     }
 
     impl ::protobuf::Oneof for Chart_response {
@@ -5434,7 +5477,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     R\x05title\x12n\n\x15cardinality_overflows\x18\x03\x20\x01(\x0b29.bitdri\
     ft.public.shared.workflows.v1.CardinalityOverflowsR\x14cardinalityOverfl\
     ows\x12k\n\x0cper_group_by\x18\x04\x20\x03(\x0b2I.bitdrift.public.unary.\
-    dashboards.v1.HistogramBarChartResponse.PerGroupByR\nperGroupBy\"\x80\
+    dashboards.v1.HistogramBarChartResponse.PerGroupByR\nperGroupBy\"\xb3\
     \x05\n\tChartData\x12U\n\x08chart_id\x18\x01\x20\x01(\x0b20.bitdrift.pub\
     lic.unary.charts.v1.ChartIdentifierR\x07chartIdB\x08\xfaB\x05\x8a\x01\
     \x02\x10\x01\x12U\n\tline_data\x18\x03\x20\x01(\x0b26.bitdrift.public.un\
@@ -5446,23 +5489,25 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     .FunnelChartResponseH\0R\nfunnelData\x12\x81\x01\n\x1chistogram_bar_char\
     t_response\x18\n\x20\x01(\x0b2>.bitdrift.public.unary.dashboards.v1.Hist\
     ogramBarChartResponseH\0R\x19histogramBarChartResponse\x12\x16\n\x05erro\
-    r\x18\x06\x20\x01(\tH\0R\x05errorB\x15\n\x0echart_response\x12\x03\xf8B\
-    \x01\"[\n\x15GetChartsDataResponse\x12B\n\x04data\x18\x01\x20\x03(\x0b2.\
-    .bitdrift.public.unary.dashboards.v1.ChartDataR\x04data\"\xeb\x01\n\x16G\
-    etUniqueAppIdsRequest\x129\n\nstart_time\x18\x01\x20\x01(\x0b2\x1a.googl\
-    e.protobuf.TimestampR\tstartTime\x125\n\x08end_time\x18\x02\x20\x01(\x0b\
-    2\x1a.google.protobuf.TimestampR\x07endTime\x12_\n\x0fplatform_filter\
-    \x18\x04\x20\x03(\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\x0e\
-    platformFilterB\x08\xfaB\x05\x92\x01\x02\x10\n\"e\n\x17GetUniqueAppIdsRe\
-    sponse\x12J\n\tplatforms\x18\x06\x20\x03(\x0b2,.bitdrift.public.shared.p\
-    latform.v1.PlatformR\tplatforms2\xbf\x03\n\x10DashboardService\x12\x92\
-    \x01\n\x11GetWorkflowCharts\x12=.bitdrift.public.unary.dashboards.v1.Get\
-    WorkflowChartsRequest\x1a>.bitdrift.public.unary.dashboards.v1.GetWorkfl\
-    owChartsResponse\x12\x86\x01\n\rGetChartsData\x129.bitdrift.public.unary\
-    .dashboards.v1.GetChartsDataRequest\x1a:.bitdrift.public.unary.dashboard\
-    s.v1.GetChartsDataResponse\x12\x8c\x01\n\x0fGetUniqueAppIds\x12;.bitdrif\
-    t.public.unary.dashboards.v1.GetUniqueAppIdsRequest\x1a<.bitdrift.public\
-    .unary.dashboards.v1.GetUniqueAppIdsResponseb\x06proto3\
+    r\x18\x06\x20\x01(\tH\0R\x05error\x121\n\x0fchart_not_found\x18\x0c\x20\
+    \x01(\x08H\0R\rchartNotFoundB\x07\xfaB\x04j\x02\x08\x01B\x15\n\x0echart_\
+    response\x12\x03\xf8B\x01\"[\n\x15GetChartsDataResponse\x12B\n\x04data\
+    \x18\x01\x20\x03(\x0b2..bitdrift.public.unary.dashboards.v1.ChartDataR\
+    \x04data\"\xeb\x01\n\x16GetUniqueAppIdsRequest\x129\n\nstart_time\x18\
+    \x01\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tstartTime\x125\n\x08e\
+    nd_time\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x07endTime\
+    \x12_\n\x0fplatform_filter\x18\x04\x20\x03(\x0b2,.bitdrift.public.shared\
+    .platform.v1.PlatformR\x0eplatformFilterB\x08\xfaB\x05\x92\x01\x02\x10\n\
+    \"e\n\x17GetUniqueAppIdsResponse\x12J\n\tplatforms\x18\x06\x20\x03(\x0b2\
+    ,.bitdrift.public.shared.platform.v1.PlatformR\tplatforms2\xbf\x03\n\x10\
+    DashboardService\x12\x92\x01\n\x11GetWorkflowCharts\x12=.bitdrift.public\
+    .unary.dashboards.v1.GetWorkflowChartsRequest\x1a>.bitdrift.public.unary\
+    .dashboards.v1.GetWorkflowChartsResponse\x12\x86\x01\n\rGetChartsData\
+    \x129.bitdrift.public.unary.dashboards.v1.GetChartsDataRequest\x1a:.bitd\
+    rift.public.unary.dashboards.v1.GetChartsDataResponse\x12\x8c\x01\n\x0fG\
+    etUniqueAppIds\x12;.bitdrift.public.unary.dashboards.v1.GetUniqueAppIdsR\
+    equest\x1a<.bitdrift.public.unary.dashboards.v1.GetUniqueAppIdsResponseb\
+    \x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
