@@ -19,7 +19,7 @@ use http_body::Frame;
 use http_body_util::{BodyExt, StreamBody};
 use hyper_rustls::{HttpsConnector, HttpsConnectorBuilder};
 use hyper_util::client::legacy::Client;
-use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::client::legacy::connect::{Connect, HttpConnector};
 use hyper_util::rt::TokioExecutor;
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -92,10 +92,27 @@ impl HyperNetwork {
   pub async fn start(mut self) -> anyhow::Result<()> {
     log::debug!("initializing hyper networking");
 
-    let client = Client::builder(TokioExecutor::new())
-      .http2_only(true)
-      .build(make_tls_connector()?);
+    if self.uri.starts_with("https://") {
+      let client = Client::builder(TokioExecutor::new())
+        .http2_only(true)
+        .build(make_tls_connector()?);
 
+      self.start_with_client(&client).await
+    } else {
+      // Test servers and local tooling use plain HTTP. Building the rustls/native-roots connector
+      // for those paths adds several seconds of startup latency before the first stream opens.
+      let client = Client::builder(TokioExecutor::new())
+        .http2_only(true)
+        .build(make_http_connector());
+
+      self.start_with_client(&client).await
+    }
+  }
+
+  async fn start_with_client<C>(&mut self, client: &Client<C, BoxBody>) -> anyhow::Result<()>
+  where
+    C: Connect + Clone + Send + Sync + 'static,
+  {
     loop {
       // Loop until we get a new start stream event. There might be stale data left from an
       // previous stream, so this serves to clear out the channel of events that
@@ -116,7 +133,7 @@ impl HyperNetwork {
 
       let event_tx = new_stream.event_tx.clone();
 
-      let Some(event) = self.process_stream(&client, new_stream).await else {
+      let Some(event) = self.process_stream(client, new_stream).await else {
         return Ok(());
       };
 
@@ -128,11 +145,14 @@ impl HyperNetwork {
     }
   }
 
-  async fn process_stream(
+  async fn process_stream<C>(
     &mut self,
-    client: &Client<HttpsConnector<HttpConnector>, BoxBody>,
+    client: &Client<C, BoxBody>,
     mut stream: NewStream,
-  ) -> Option<bd_api::StreamEvent> {
+  ) -> Option<bd_api::StreamEvent>
+  where
+    C: Connect + Clone + Send + Sync + 'static,
+  {
     log::debug!("received request for new stream: {}", self.uri.as_str());
 
     let (body_sender, request) = Self::create_request(self.uri.as_str(), stream.headers);
@@ -282,6 +302,22 @@ impl HyperNetwork {
 
     (tx, result.unwrap())
   }
+}
+
+fn make_http_connector() -> HttpConnector {
+  let mut connector = HttpConnector::new();
+  connector.enforce_http(false);
+  connector
+}
+
+fn make_tls_connector() -> anyhow::Result<HttpsConnector<HttpConnector>> {
+  Ok(
+    HttpsConnectorBuilder::new()
+      .with_native_roots()?
+      .https_or_http()
+      .enable_http2()
+      .wrap_connector(make_http_connector()),
+  )
 }
 
 #[async_trait::async_trait]
@@ -434,19 +470,6 @@ impl Reporter for ErrorReporterHandle {
       log::error!("failed to send error report: {e:?}");
     }
   }
-}
-
-fn make_tls_connector() -> anyhow::Result<HttpsConnector<HttpConnector>> {
-  let mut connector = HttpConnector::new();
-  connector.enforce_http(false);
-
-  Ok(
-    HttpsConnectorBuilder::new()
-      .with_native_roots()?
-      .https_or_http()
-      .enable_http2()
-      .wrap_connector(connector),
-  )
 }
 
 #[cfg(test)]

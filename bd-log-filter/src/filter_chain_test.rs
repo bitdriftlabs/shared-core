@@ -279,6 +279,86 @@ fn regex_match_and_substitute() {
 }
 
 #[test]
+fn regex_match_and_substitute_updates_named_field_in_all_field_sets() {
+  let filter_chain: FilterChain = make_filter_chain(
+    message_equals("matching"),
+    vec![regex_match_and_substitute_field!(
+      "foo",
+      "[0-9a-f]{8}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{12}",
+      "<id>"
+    )],
+  );
+
+  let mut log = make_log(
+    "matching",
+    [(
+      "foo".into(),
+      "/captured/885fa9b2-97f1-435b-8fe3-a461d3235924".into(),
+    )]
+    .into(),
+    [(
+      "foo".into(),
+      "/matching/885fa9b2-97f1-435b-8fe3-a461d3235924".into(),
+    )]
+    .into(),
+  );
+
+  filter_chain.process(&mut log, &state_reader());
+
+  assert_eq!(
+    LogFields::from([("foo".into(), "/captured/<id>".into(),)]),
+    log.fields
+  );
+  assert_eq!(
+    LogFields::from([("foo".into(), "/matching/<id>".into(),)]),
+    log.matching_fields
+  );
+}
+
+#[test]
+fn regex_match_and_substitute_with_empty_field_name_applies_to_all_fields() {
+  let filter_chain: FilterChain = make_filter_chain(
+    message_equals("matching"),
+    vec![regex_match_and_substitute_field!(
+      "",
+      "[0-9a-f]{8}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{12}",
+      "<id>"
+    )],
+  );
+
+  let mut log = make_log(
+    "matching",
+    [
+      (
+        "foo".into(),
+        "/foo/885fa9b2-97f1-435b-8fe3-a461d3235924/test".into(),
+      ),
+      ("untouched".into(), "plain-text".into()),
+    ]
+    .into(),
+    [(
+      "bar".into(),
+      "885fa9b2-97f1-435b-8fe3-a461d3235924/suffix".into(),
+    )]
+    .into(),
+  );
+
+  filter_chain.process(&mut log, &state_reader());
+
+  assert_eq!(
+    LogFields::from([
+      ("foo".into(), "/foo/<id>/test".into(),),
+      ("untouched".into(), "plain-text".into(),)
+    ]),
+    log.fields
+  );
+  assert_eq!(
+    LogFields::from([("bar".into(), "<id>/suffix".into(),)]),
+    log.matching_fields
+  );
+}
+
+#[test]
 fn regex_match_and_invalid_substitute() {
   let filter_chain = make_filter_chain(
     message_equals("matching"),
