@@ -22,6 +22,16 @@ fn builds_parseable_report() {
     app_id: "com.example.app".to_string(),
     app_version: "2.3.4".to_string(),
     app_build_id: "42".to_string(),
+    feature_flags: vec![
+      crate::cli::FakeFeatureFlag {
+        name: "experiment".to_string(),
+        value: Some("enabled".to_string()),
+      },
+      crate::cli::FakeFeatureFlag {
+        name: "holdback".to_string(),
+        value: None,
+      },
+    ],
     file_name: None,
     upload: false,
   })
@@ -50,6 +60,13 @@ fn builds_parseable_report() {
       .version_code(),
     42
   );
+  let feature_flags = parsed.feature_flags().unwrap();
+  assert_eq!(feature_flags.len(), 2);
+  assert_eq!(feature_flags.get(0).name().unwrap(), "experiment");
+  assert_eq!(feature_flags.get(0).value().unwrap(), "enabled");
+  assert!(feature_flags.get(0).timestamp().is_some());
+  assert_eq!(feature_flags.get(1).name().unwrap(), "holdback");
+  assert!(feature_flags.get(1).value().is_none());
 }
 
 #[test]
@@ -64,6 +81,7 @@ fn writes_pending_fake_crash_report() {
       app_id: "io.bitdrift.cli".to_string(),
       app_version: "1.0.0".to_string(),
       app_build_id: "10".to_string(),
+      feature_flags: Vec::new(),
       file_name: Some("queued-report".to_string()),
       upload: false,
     },

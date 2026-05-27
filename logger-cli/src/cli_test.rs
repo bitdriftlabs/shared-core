@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::{Command, Options};
+use crate::cli::FakeFeatureFlag;
 use clap::Parser;
 
 #[test]
@@ -52,6 +53,10 @@ fn parses_enqueue_fake_crash_command() {
     "2.3.4",
     "--app-build-id",
     "42",
+    "--feature-flag",
+    "experiment=enabled",
+    "--feature-flag",
+    "holdback",
     "--file-name",
     "fake-report",
     "--upload",
@@ -65,6 +70,16 @@ fn parses_enqueue_fake_crash_command() {
         && cmd.app_id == "com.example.app"
         && cmd.app_version == "2.3.4"
         && cmd.app_build_id == "42"
+        && cmd.feature_flags == vec![
+          FakeFeatureFlag {
+            name: "experiment".to_string(),
+            value: Some("enabled".to_string()),
+          },
+          FakeFeatureFlag {
+            name: "holdback".to_string(),
+            value: None,
+          },
+        ]
         && cmd.file_name.as_deref() == Some("fake-report")
         && cmd.upload
   ));

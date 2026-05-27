@@ -11,6 +11,7 @@ mod tests;
 
 use crate::cli::FakeCrashCommand;
 use anyhow::anyhow;
+use bd_proto::flatbuffers::common::bitdrift_public::fbs::common::v_1 as common_fbs;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   AppBuildNumber,
   AppBuildNumberArgs,
@@ -22,6 +23,8 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Error,
   ErrorArgs,
   ErrorRelation,
+  FeatureFlag,
+  FeatureFlagArgs,
   OSBuild,
   OSBuildArgs,
   Platform as ReportPlatform,
@@ -77,6 +80,7 @@ fn default_file_name() -> String {
 
 fn build_report(command: &FakeCrashCommand) -> anyhow::Result<Vec<u8>> {
   let mut builder = FlatBufferBuilder::new();
+  let report_timestamp = current_unix_timestamp();
 
   let sdk_id = builder.create_string("logger-cli");
   let sdk_version = builder.create_string(env!("CARGO_PKG_VERSION"));
@@ -147,7 +151,7 @@ fn build_report(command: &FakeCrashCommand) -> anyhow::Result<Vec<u8>> {
       ..Default::default()
     },
   ));
-  let timestamp = Timestamp::new(current_unix_timestamp(), 0);
+  let timestamp = Timestamp::new(report_timestamp, 0);
   let manufacturer = Some(builder.create_string(match command.platform {
     Platform::Android => "Google",
     Platform::Apple => "Apple",
@@ -168,6 +172,35 @@ fn build_report(command: &FakeCrashCommand) -> anyhow::Result<Vec<u8>> {
       ..Default::default()
     },
   ));
+
+  let feature_flags = if command.feature_flags.is_empty() {
+    None
+  } else {
+    let mut feature_flag_timestamp = common_fbs::TimestampT::default();
+    feature_flag_timestamp.seconds = report_timestamp.try_into().unwrap_or_default();
+    let flags = command
+      .feature_flags
+      .iter()
+      .map(|flag| {
+        let name = builder.create_string(&flag.name);
+        let value = flag
+          .value
+          .as_deref()
+          .map(|value| builder.create_string(value));
+        let timestamp = feature_flag_timestamp.pack(&mut builder);
+
+        FeatureFlag::create(
+          &mut builder,
+          &FeatureFlagArgs {
+            name: Some(name),
+            value,
+            timestamp: Some(timestamp),
+          },
+        )
+      })
+      .collect::<Vec<_>>();
+    Some(builder.create_vector(&flags))
+  };
 
   let thread_name = builder.create_string("main");
   let thread_state = builder.create_string("RUNNING");
@@ -196,6 +229,7 @@ fn build_report(command: &FakeCrashCommand) -> anyhow::Result<Vec<u8>> {
       app_metrics,
       device_metrics,
       errors,
+      feature_flags,
       thread_details,
       ..Default::default()
     },
