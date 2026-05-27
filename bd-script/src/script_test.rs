@@ -5,81 +5,121 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use crate::Script;
 use crate::feature_flag::{FeatureFlag, FeatureFlagWrapper};
-use crate::input::{PathError, Scriptable};
 use crate::report::{ReportOutput, report_functions};
-use crate::{Script, ScriptValue};
-use std::collections::BTreeMap;
+use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
+  AppMetricsT,
+  ErrorT,
+  FrameT,
+  FrameType,
+  Report as CrashReport,
+  ReportT,
+  ReportType,
+  root_as_report,
+};
+use flatbuffers::FlatBufferBuilder;
 use time::OffsetDateTime;
-use vrl::core::Value;
-use vrl::path::OwnedSegment;
-use vrl::prelude::{Collection, ExpressionError};
-use vrl::value::Kind;
+use vrl::prelude::ExpressionError;
 
-#[derive(Clone, Debug)]
-struct Error {
-  name: String,
-  stacktrace: Vec<String>,
+// These tests intentionally exercise the generated flatbuffer-backed report input instead of a
+// hand-rolled lookalike so the report_functions examples stay aligned with production BDRL shape.
+struct PackedReport {
+  bytes: Vec<u8>,
 }
 
-#[derive(Clone, Debug)]
-struct Report {
-  app_id: String,
-  errors: Vec<Error>,
+impl PackedReport {
+  fn report(&self) -> CrashReport<'_> {
+    root_as_report(&self.bytes).expect("valid report")
+  }
+}
+
+fn finish_report(report_t: &ReportT) -> PackedReport {
+  let mut builder = FlatBufferBuilder::new();
+  let report = report_t.pack(&mut builder);
+  builder.finish(report, None);
+
+  PackedReport {
+    bytes: builder.finished_data().to_vec(),
+  }
+}
+
+fn packed_report(errors: &[(&str, &[&str])]) -> PackedReport {
+  let mut app_metrics = AppMetricsT::default();
+  app_metrics.app_id = Some("com.example.myapp".to_string());
+
+  let mut report_t = ReportT::default();
+  report_t.type_ = ReportType::JVMCrash;
+  report_t.app_metrics = Some(Box::new(app_metrics));
+  report_t.errors = Some(
+    errors
+      .iter()
+      .map(|(name, frames)| {
+        let mut error = ErrorT::default();
+        error.name = Some((*name).to_string());
+        error.stack_trace = Some(
+          frames
+            .iter()
+            .map(|frame| {
+              let mut stack_frame = FrameT::default();
+              stack_frame.type_ = FrameType::JVM;
+              stack_frame.symbolicated_name = Some((*frame).to_string());
+              stack_frame
+            })
+            .collect(),
+        );
+        error
+      })
+      .collect(),
+  );
+
+  finish_report(&report_t)
 }
 
 #[test]
 fn compute_interpolated_key() {
-  let script = Script::new::<Report>(
+  let script = Script::new::<CrashReport<'_>>(
     "
-    app_id = .app_id
+    report_type = .type
     error_name = .errors[0].name
-    frame = .errors[0].stacktrace[0]
-    set_grouping_key(\"{{ app_id }}-{{ error_name }}-{{ frame }}\")
+    frame = string!(.errors[0].stack_trace[0].symbolicated_name)
+    set_grouping_key(\"{{ report_type }}-{{ error_name }}-{{ frame }}\")
     ",
     report_functions(),
   )
   .expect("is ok");
-  let report = Report {
-    app_id: "com.example.myapp".to_string(),
-    errors: vec![Error {
-      name: "NullPointerException".to_string(),
-      stacktrace: vec!["Builder.build()".to_string(), "App.start()".to_string()],
-    }],
-  };
+  let packed_report =
+    packed_report(&[("NullPointerException", &["Builder.build()", "App.start()"])]);
+  let report = packed_report.report();
   let output: ReportOutput = script.run(&report).expect("can run");
   assert_eq!(
-    Some("com.example.myapp-NullPointerException-Builder.build()".to_string()),
+    Some("JVMCrash-NullPointerException-Builder.build()".to_string()),
     output.grouping_hints.grouping_key
   );
 }
 
 #[test]
 fn unset_grouping_key() {
-  let script = Script::new::<Report>(
+  let script = Script::new::<CrashReport<'_>>(
     "
-    app_id = .app_metrics.app_id
+    report_type = .type
     error_name = .errors[0].name
-    _key = set_grouping_key(\"{{ app_id }}-{{ error_name }}\")
+    _key = set_grouping_key(\"{{ report_type }}-{{ error_name }}\")
     set_grouping_key(null)
     ",
     report_functions(),
   )
   .expect("is ok");
-  let report = Report {
-    app_id: "com.example.myapp".to_string(),
-    errors: vec![Error {
-      name: "NullPointerException".to_string(),
-      stacktrace: vec!["Builder.build()".to_string(), "App.start()".to_string()],
-    }],
-  };
+  let packed_report =
+    packed_report(&[("NullPointerException", &["Builder.build()", "App.start()"])]);
+  let report = packed_report.report();
   let output: ReportOutput = script.run(&report).expect("can run");
   assert_eq!(None, output.grouping_hints.grouping_key);
 }
 
 #[test]
 fn abort_execution() {
-  let script = Script::new::<Report>(
+  let script = Script::new::<CrashReport<'_>>(
     "
     error_name = string!(.errors[0].name)
     if contains(error_name, \"Null\") {
@@ -89,15 +129,11 @@ fn abort_execution() {
     report_functions(),
   )
   .expect("is ok");
-  let report = Report {
-    app_id: "com.example.myapp".to_string(),
-    errors: vec![Error {
-      name: "NullPointerException".to_string(),
-      stacktrace: vec!["Builder.build()".to_string(), "App.start()".to_string()],
-    }],
-  };
+  let packed_report =
+    packed_report(&[("NullPointerException", &["Builder.build()", "App.start()"])]);
+  let report = packed_report.report();
   let err = script
-    .run::<Report, ReportOutput>(&report)
+    .run::<CrashReport<'_>, ReportOutput>(&report)
     .expect_err("aborted");
   let Some(ExpressionError::Abort { span: _, message }) = err.downcast_ref() else {
     panic!("did not abort: {err:#?}");
@@ -107,7 +143,7 @@ fn abort_execution() {
 
 #[test]
 fn abort_execution_without_message() {
-  let script = Script::new::<Report>(
+  let script = Script::new::<CrashReport<'_>>(
     "
     error_name = string!(.errors[0].name)
     if contains(error_name, \"Null\") {
@@ -117,15 +153,11 @@ fn abort_execution_without_message() {
     report_functions(),
   )
   .expect("is ok");
-  let report = Report {
-    app_id: "com.example.myapp".to_string(),
-    errors: vec![Error {
-      name: "NullPointerException".to_string(),
-      stacktrace: vec!["Builder.build()".to_string(), "App.start()".to_string()],
-    }],
-  };
+  let packed_report =
+    packed_report(&[("NullPointerException", &["Builder.build()", "App.start()"])]);
+  let report = packed_report.report();
   let err = script
-    .run::<Report, ReportOutput>(&report)
+    .run::<CrashReport<'_>, ReportOutput>(&report)
     .expect_err("aborted");
   let Some(ExpressionError::Abort { span: _, message }) = err.downcast_ref() else {
     panic!("did not abort: {err:#?}");
@@ -136,9 +168,9 @@ fn abort_execution_without_message() {
 #[test]
 fn type_hints_are_working() {
   // report.type is a known string key, so we can call contains()
-  Script::new::<Report>(
+  Script::new::<CrashReport<'_>>(
     "
-    is_mine = contains(.app_id, \"myapp\")
+    is_mine = contains(.type, \"Crash\")
     set_grouping_key(string!(is_mine))
     ",
     report_functions(),
@@ -146,7 +178,7 @@ fn type_hints_are_working() {
   .expect("is ok");
 
   // unknown_field hasn't been declared anywhere, and needs to be type-cast
-  let script = Script::new::<Report>(
+  let script = Script::new::<CrashReport<'_>>(
     "
     has_unknown = contains(.unknown_field, \"thing\")
     set_grouping_key(string!(has_unknown))
@@ -158,14 +190,41 @@ fn type_hints_are_working() {
 }
 
 #[test]
-fn set_significant_frame() {
-  let script = Script::new::<Report>(
+fn iterate_real_report_errors() {
+  let script = Script::new::<CrashReport<'_>>(
     "
     for_each(.errors) -> |error_index, error| {
-      for_each(error.stacktrace) -> |frame_index, frame| {
-        if starts_with(frame, \"os.\") || contains(frame, \".rx.\") {
+      if error_index == 1 {
+        set_grouping_key(error.name)
+      }
+    }
+    ",
+    report_functions(),
+  )
+  .expect("is ok");
+  let packed_report = packed_report(&[
+    ("NullPointerException", &["Builder.build()", "App.start()"]),
+    ("SomeRxProblem", &["Layout.repaint()"]),
+  ]);
+  let report = packed_report.report();
+
+  let output: ReportOutput = script.run(&report).expect("can run");
+  assert_eq!(
+    Some("SomeRxProblem".to_string()),
+    output.grouping_hints.grouping_key
+  );
+}
+
+#[test]
+fn set_significant_frame() {
+  let script = Script::new::<CrashReport<'_>>(
+    "
+    for_each(.errors) -> |error_index, error| {
+      for_each(error.stack_trace) -> |frame_index, frame| {
+        frame_name = to_string(frame.symbolicated_name)
+        if starts_with(frame_name, \"os.\") || contains(frame_name, \".rx.\") {
           set_significant_frame(error_index, frame_index, false)
-        } else if starts_with(frame, \"com.myapp.\") {
+        } else if starts_with(frame_name, \"com.myapp.\") {
           set_significant_frame(error_index, frame_index)
         }
       }
@@ -174,24 +233,19 @@ fn set_significant_frame() {
     report_functions(),
   )
   .expect("is ok");
-  let report = Report {
-    app_id: "com.example.myapp".to_string(),
-    errors: vec![
-      Error {
-        name: "NullPointerException".to_string(),
-        stacktrace: vec![
-          "os.Builder.build()".to_string(),
-          "com.myapp.Layout.repaint()".to_string(),
-          "com.somelib.Engine.drawScreen()".to_string(),
-          "com.myapp.App.new()".to_string(),
-        ],
-      },
-      Error {
-        name: "SomeRxProblem".to_string(),
-        stacktrace: vec!["com.myapp.rx.Layout.repaint()".to_string()],
-      },
-    ],
-  };
+  let packed_report = packed_report(&[
+    (
+      "NullPointerException",
+      &[
+        "os.Builder.build()",
+        "com.myapp.Layout.repaint()",
+        "com.somelib.Engine.drawScreen()",
+        "com.myapp.App.new()",
+      ],
+    ),
+    ("SomeRxProblem", &["com.myapp.rx.Layout.repaint()"]),
+  ]);
+  let report = packed_report.report();
   let output: ReportOutput = script.run(&report).expect("can run");
   assert_eq!(
     Some(false),
@@ -208,11 +262,12 @@ fn set_significant_frame() {
 
 #[test]
 fn combined_significant_frame() {
-  let script1 = Script::new::<Report>(
+  let script1 = Script::new::<CrashReport<'_>>(
     "
     for_each(.errors) -> |error_index, error| {
-      for_each(error.stacktrace) -> |frame_index, frame| {
-        if starts_with(frame, \"com.myapp.\") {
+      for_each(error.stack_trace) -> |frame_index, frame| {
+        frame_name = to_string(frame.symbolicated_name)
+        if starts_with(frame_name, \"com.myapp.\") {
           set_significant_frame(error_index, frame_index, true)
         }
       }
@@ -221,11 +276,12 @@ fn combined_significant_frame() {
     report_functions(),
   )
   .expect("is ok");
-  let script2 = Script::new::<Report>(
+  let script2 = Script::new::<CrashReport<'_>>(
     "
     for_each(.errors) -> |error_index, error| {
-      for_each(error.stacktrace) -> |frame_index, frame| {
-        if starts_with(frame, \"os.\") || contains(frame, \".rx.\") {
+      for_each(error.stack_trace) -> |frame_index, frame| {
+        frame_name = to_string(frame.symbolicated_name)
+        if starts_with(frame_name, \"os.\") || contains(frame_name, \".rx.\") {
           set_significant_frame(error_index, frame_index, false)
         }
       }
@@ -234,24 +290,19 @@ fn combined_significant_frame() {
     report_functions(),
   )
   .expect("is ok");
-  let report = Report {
-    app_id: "com.example.myapp".to_string(),
-    errors: vec![
-      Error {
-        name: "NullPointerException".to_string(),
-        stacktrace: vec![
-          "os.Builder.build()".to_string(),
-          "com.myapp.Layout.repaint()".to_string(),
-          "com.somelib.Engine.drawScreen()".to_string(),
-          "com.myapp.App.new()".to_string(),
-        ],
-      },
-      Error {
-        name: "SomeRxProblem".to_string(),
-        stacktrace: vec!["com.myapp.rx.Layout.repaint()".to_string()],
-      },
-    ],
-  };
+  let packed_report = packed_report(&[
+    (
+      "NullPointerException",
+      &[
+        "os.Builder.build()",
+        "com.myapp.Layout.repaint()",
+        "com.somelib.Engine.drawScreen()",
+        "com.myapp.App.new()",
+      ],
+    ),
+    ("SomeRxProblem", &["com.myapp.rx.Layout.repaint()"]),
+  ]);
+  let report = packed_report.report();
   let output1: ReportOutput = script1.run(&report).expect("can run");
   let output2: ReportOutput = script2.run(&report).expect("can run");
   let combined = output1 + output2;
@@ -276,11 +327,12 @@ fn combined_significant_frame() {
 
 #[test]
 fn unset_significant_frame() {
-  let script = Script::new::<Report>(
+  let script = Script::new::<CrashReport<'_>>(
     "
     for_each(.errors) -> |error_index, error| {
-      for_each(error.stacktrace) -> |frame_index, frame| {
-        if starts_with(frame, \"os.\") {
+      for_each(error.stack_trace) -> |frame_index, frame| {
+        frame_name = to_string(frame.symbolicated_name)
+        if starts_with(frame_name, \"os.\") {
           set_significant_frame(error_index, frame_index, true)
           set_significant_frame(error_index, frame_index, null)
         }
@@ -290,46 +342,42 @@ fn unset_significant_frame() {
     report_functions(),
   )
   .expect("is ok");
-  let report = Report {
-    app_id: "com.example.myapp".to_string(),
-    errors: vec![Error {
-      name: "NullPointerException".to_string(),
-      stacktrace: vec![
-        "os.Builder.build()".to_string(),
-        "com.myapp.Layout.repaint()".to_string(),
-        "com.somelib.Engine.drawScreen()".to_string(),
-        "com.myapp.App.new()".to_string(),
-      ],
-    }],
-  };
+  let packed_report = packed_report(&[(
+    "NullPointerException",
+    &[
+      "os.Builder.build()",
+      "com.myapp.Layout.repaint()",
+      "com.somelib.Engine.drawScreen()",
+      "com.myapp.App.new()",
+    ],
+  )]);
+  let report = packed_report.report();
   let output: ReportOutput = script.run(&report).expect("can run");
   assert_eq!(None, output.grouping_hints.is_significant_frame(0, 0));
 }
 
 #[test]
 fn emit_fields() {
-  let script = Script::new::<Report>(
+  let script = Script::new::<CrashReport<'_>>(
     "
-    app_id = .app_id
+    report_type = .type
     error_name = .errors[0].name
-    _a = add_field(\"some_tag\", \"{{ app_id }}-{{ error_name }}\")
+    _a = add_field(\"some_tag\", \"{{ report_type }}-{{ error_name }}\")
     add_field(\"flag_name\", string!(.feature_flags[0].name))
     ",
     report_functions(),
   )
   .expect("is ok");
-  let report = Report {
-    app_id: "com.example.myapp".to_string(),
-    errors: vec![Error {
-      name: "NullPointerException".to_string(),
-      stacktrace: vec![
-        "os.Builder.build()".to_string(),
-        "com.myapp.Layout.repaint()".to_string(),
-        "com.somelib.Engine.drawScreen()".to_string(),
-        "com.myapp.App.new()".to_string(),
-      ],
-    }],
-  };
+  let packed_report = packed_report(&[(
+    "NullPointerException",
+    &[
+      "os.Builder.build()",
+      "com.myapp.Layout.repaint()",
+      "com.somelib.Engine.drawScreen()",
+      "com.myapp.App.new()",
+    ],
+  )]);
+  let report = packed_report.report();
   let object = FeatureFlagWrapper::new(
     &report,
     &[FeatureFlag {
@@ -345,24 +393,24 @@ fn emit_fields() {
     output.metrics.get("flag_name").expect("has value")
   );
   assert_eq!(
-    &"com.example.myapp-NullPointerException".to_string(),
+    &"JVMCrash-NullPointerException".to_string(),
     output.metrics.get("some_tag").expect("has value")
   );
 }
 
 #[test]
 fn combine_script_output_fields() {
-  let script1 = Script::new::<Report>(
+  let script1 = Script::new::<CrashReport<'_>>(
     "
-    app_id = .app_id
+    report_type = .type
     error_name = .errors[0].name
-    _a = add_field(\"some_tag\", \"{{ app_id }}-{{ error_name }}\")
+    _a = add_field(\"some_tag\", \"{{ report_type }}-{{ error_name }}\")
     add_field(\"chain_len\", string!(.feature_flags[0].name))
     ",
     report_functions(),
   )
   .expect("is ok");
-  let script2 = Script::new::<Report>(
+  let script2 = Script::new::<CrashReport<'_>>(
     "
     _b = add_field(\"chain_len\", \"override\")
     add_field(\"new_field\", \"x\")
@@ -370,18 +418,16 @@ fn combine_script_output_fields() {
     report_functions(),
   )
   .expect("is ok");
-  let report = Report {
-    app_id: "com.example.myapp".to_string(),
-    errors: vec![Error {
-      name: "NullPointerException".to_string(),
-      stacktrace: vec![
-        "os.Builder.build()".to_string(),
-        "com.myapp.Layout.repaint()".to_string(),
-        "com.somelib.Engine.drawScreen()".to_string(),
-        "com.myapp.App.new()".to_string(),
-      ],
-    }],
-  };
+  let packed_report = packed_report(&[(
+    "NullPointerException",
+    &[
+      "os.Builder.build()",
+      "com.myapp.Layout.repaint()",
+      "com.somelib.Engine.drawScreen()",
+      "com.myapp.App.new()",
+    ],
+  )]);
+  let report = packed_report.report();
 
   let object = FeatureFlagWrapper::new(
     &report,
@@ -405,29 +451,162 @@ fn combine_script_output_fields() {
     combined.metrics.get("new_field").expect("has value")
   );
   assert_eq!(
-    &"com.example.myapp-NullPointerException".to_string(),
+    &"JVMCrash-NullPointerException".to_string(),
     combined.metrics.get("some_tag").expect("has value")
+  );
+}
+
+#[test]
+fn coroutine_reason_script_matches_real_jvm_report() {
+  let script = Script::new::<CrashReport<'_>>(
+    r#"
+    found = false
+    name = ""
+    for_each(.errors) -> |_i, error| {
+      if !found {
+        for_each(error.stack_trace) -> |_j, frame| {
+          if !found {
+            name = to_string(frame.symbolicated_name)
+            if contains(name, "kotlinx.coroutines") {
+              found = true
+            }
+          }
+        }
+      }
+    }
+
+    if found {
+      add_field("coroutine_reason", name)
+    }
+    "#,
+    report_functions(),
+  )
+  .expect("is ok");
+
+  let packed_report = packed_report(&[(
+    "RuntimeException",
+    &[
+      "java.lang.Thread.run",
+      "kotlinx.coroutines.DispatchedTask.run",
+      "android.os.Looper.loopOnce",
+    ],
+  )]);
+  let report = packed_report.report();
+
+  let output: ReportOutput = script.run(&report).expect("can run");
+  assert_eq!(
+    Some(&"kotlinx.coroutines.DispatchedTask.run".to_string()),
+    output.metrics.get("coroutine_reason")
+  );
+}
+
+#[test]
+fn iterate_missing_errors_with_fallback_is_safe() {
+  let script = Script::new::<CrashReport<'_>>(
+    r#"
+    saw_error = false
+    for_each(.errors) -> |_i, _error| {
+      saw_error = true
+    }
+
+    if !saw_error {
+      add_field("status", "no-errors")
+    }
+    "#,
+    report_functions(),
+  )
+  .expect("is ok");
+
+  let mut app_metrics = AppMetricsT::default();
+  app_metrics.app_id = Some("com.example.myapp".to_string());
+
+  let mut report_t = ReportT::default();
+  report_t.type_ = ReportType::JVMCrash;
+  report_t.app_metrics = Some(Box::new(app_metrics));
+  report_t.errors = None;
+
+  let packed_report = finish_report(&report_t);
+  let report = packed_report.report();
+
+  let output: ReportOutput = script.run(&report).expect("can run");
+  assert_eq!(Some(&"no-errors".to_string()), output.metrics.get("status"));
+}
+
+#[test]
+fn coroutine_reason_script_skips_missing_symbolicated_name() {
+  let script = Script::new::<CrashReport<'_>>(
+    r#"
+    found = false
+    name = ""
+    for_each(.errors) -> |_i, error| {
+      if !found {
+        for_each(error.stack_trace) -> |_j, frame| {
+          if !found {
+            name = to_string(frame.symbolicated_name)
+            if contains(name, "kotlinx.coroutines") {
+              found = true
+            }
+          }
+        }
+      }
+    }
+
+    if found {
+      add_field("coroutine_reason", name)
+    }
+    "#,
+    report_functions(),
+  )
+  .expect("is ok");
+
+  let mut app_metrics = AppMetricsT::default();
+  app_metrics.app_id = Some("com.example.myapp".to_string());
+
+  let mut unnamed_frame = FrameT::default();
+  unnamed_frame.type_ = FrameType::JVM;
+
+  let mut coroutine_frame = FrameT::default();
+  coroutine_frame.type_ = FrameType::JVM;
+  coroutine_frame.symbolicated_name =
+    Some("kotlinx.coroutines.JobSupport.completeStateFinalization".to_string());
+
+  let mut error = ErrorT::default();
+  error.name = Some("RuntimeException".to_string());
+  error.stack_trace = Some(vec![unnamed_frame, coroutine_frame]);
+
+  let mut report_t = ReportT::default();
+  report_t.type_ = ReportType::JVMCrash;
+  report_t.app_metrics = Some(Box::new(app_metrics));
+  report_t.errors = Some(vec![error]);
+
+  let packed_report = finish_report(&report_t);
+  let report = packed_report.report();
+
+  let output: ReportOutput = script.run(&report).expect("can run");
+  assert_eq!(
+    Some(&"kotlinx.coroutines.JobSupport.completeStateFinalization".to_string()),
+    output.metrics.get("coroutine_reason")
   );
 }
 
 #[test]
 fn override_set_value_for_script_output_grouping_key() {
   let script1 =
-    Script::new::<Report>("set_grouping_key(\"some value\")", report_functions()).expect("is ok");
+    Script::new::<CrashReport<'_>>("set_grouping_key(\"some value\")", report_functions())
+      .expect("is ok");
   let script2 =
-    Script::new::<Report>("set_grouping_key(\"other value\")", report_functions()).expect("is ok");
-  let report = Report {
-    app_id: "com.example.myapp".to_string(),
-    errors: vec![Error {
-      name: "NullPointerException".to_string(),
-      stacktrace: vec![
-        "os.Builder.build()".to_string(),
-        "com.myapp.Layout.repaint()".to_string(),
-        "com.somelib.Engine.drawScreen()".to_string(),
-        "com.myapp.App.new()".to_string(),
-      ],
-    }],
-  };
+    Script::new::<CrashReport<'_>>("set_grouping_key(\"other value\")", report_functions())
+      .expect("is ok");
+  let packed_report = packed_report(&[(
+    "NullPointerException",
+    &[
+      "os.Builder.build()",
+      "com.myapp.Layout.repaint()",
+      "com.somelib.Engine.drawScreen()",
+      "com.myapp.App.new()",
+    ],
+  )]);
+  let report = packed_report.report();
   let output1: ReportOutput = script1.run(&report).expect("can run");
   let output2: ReportOutput = script2.run(&report).expect("can run");
 
@@ -440,21 +619,20 @@ fn override_set_value_for_script_output_grouping_key() {
 
 #[test]
 fn override_empty_value_for_script_output_grouping_key() {
-  let script1 = Script::new::<Report>("", vec![]).expect("is ok");
+  let script1 = Script::new::<CrashReport<'_>>("", vec![]).expect("is ok");
   let script2 =
-    Script::new::<Report>("set_grouping_key(\"other value\")", report_functions()).expect("is ok");
-  let report = Report {
-    app_id: "com.example.myapp".to_string(),
-    errors: vec![Error {
-      name: "NullPointerException".to_string(),
-      stacktrace: vec![
-        "os.Builder.build()".to_string(),
-        "com.myapp.Layout.repaint()".to_string(),
-        "com.somelib.Engine.drawScreen()".to_string(),
-        "com.myapp.App.new()".to_string(),
-      ],
-    }],
-  };
+    Script::new::<CrashReport<'_>>("set_grouping_key(\"other value\")", report_functions())
+      .expect("is ok");
+  let packed_report = packed_report(&[(
+    "NullPointerException",
+    &[
+      "os.Builder.build()",
+      "com.myapp.Layout.repaint()",
+      "com.somelib.Engine.drawScreen()",
+      "com.myapp.App.new()",
+    ],
+  )]);
+  let report = packed_report.report();
   let output1: ReportOutput = script1.run(&report).expect("can run");
   let output2: ReportOutput = script2.run(&report).expect("can run");
 
@@ -468,20 +646,19 @@ fn override_empty_value_for_script_output_grouping_key() {
 #[test]
 fn use_set_value_for_script_output_grouping_key() {
   let script1 =
-    Script::new::<Report>("set_grouping_key(\"set value\")", report_functions()).expect("is ok");
-  let script2 = Script::new::<Report>("", vec![]).expect("is ok");
-  let report = Report {
-    app_id: "com.example.myapp".to_string(),
-    errors: vec![Error {
-      name: "NullPointerException".to_string(),
-      stacktrace: vec![
-        "os.Builder.build()".to_string(),
-        "com.myapp.Layout.repaint()".to_string(),
-        "com.somelib.Engine.drawScreen()".to_string(),
-        "com.myapp.App.new()".to_string(),
-      ],
-    }],
-  };
+    Script::new::<CrashReport<'_>>("set_grouping_key(\"set value\")", report_functions())
+      .expect("is ok");
+  let script2 = Script::new::<CrashReport<'_>>("", vec![]).expect("is ok");
+  let packed_report = packed_report(&[(
+    "NullPointerException",
+    &[
+      "os.Builder.build()",
+      "com.myapp.Layout.repaint()",
+      "com.somelib.Engine.drawScreen()",
+      "com.myapp.App.new()",
+    ],
+  )]);
+  let report = packed_report.report();
   let output1: ReportOutput = script1.run(&report).expect("can run");
   let output2: ReportOutput = script2.run(&report).expect("can run");
 
@@ -490,95 +667,4 @@ fn use_set_value_for_script_output_grouping_key() {
     Some("set value".to_owned()),
     combined.grouping_hints.grouping_key
   );
-}
-
-impl Scriptable for Report {
-  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, crate::input::PathError> {
-    if path.is_empty() {
-      return Ok(Some(self.to_owned().into()));
-    }
-    let Some(OwnedSegment::Field(base)) = path.first() else {
-      return Err(PathError::NotAnArray(".".to_string()));
-    };
-
-    match base.as_str() {
-      "app_id" => self.app_id.resolve(&path[1 ..]),
-      "errors" => self.errors.resolve(&path[1 ..]),
-      _ => Err(PathError::UnknownKey(base.to_string())),
-    }
-  }
-
-  fn schema() -> vrl::prelude::Kind {
-    Kind::object(
-      Collection::empty()
-        .with_known("app_id", Kind::bytes())
-        .with_known(
-          "errors",
-          Kind::array(Collection::empty().with_unknown(Error::schema())),
-        ),
-    )
-  }
-}
-
-impl Scriptable for Error {
-  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, crate::input::PathError> {
-    if path.is_empty() {
-      return Ok(Some(self.to_owned().into()));
-    }
-    let Some(OwnedSegment::Field(base)) = path.first() else {
-      return Err(PathError::NotAnArray(".".to_string()));
-    };
-
-    match base.as_str() {
-      "name" => self.name.resolve(&path[1 ..]),
-      "stacktrace" => self.stacktrace.resolve(&path[1 ..]),
-      _ => Err(PathError::UnknownKey(base.to_string())),
-    }
-  }
-
-  fn schema() -> vrl::prelude::Kind {
-    Kind::object(
-      Collection::empty()
-        .with_known("name", Kind::bytes())
-        .with_known(
-          "stacktrace",
-          Kind::array(Collection::empty().with_unknown(Kind::bytes())),
-        ),
-    )
-  }
-}
-
-impl From<Report> for ScriptValue {
-  fn from(value: Report) -> Self {
-    let errors = value
-      .errors
-      .iter()
-      .map(|err| Into::<Self>::into(err.clone()).0)
-      .collect::<Vec<_>>();
-
-    Value::Object(BTreeMap::from([
-      ("app_id".into(), value.app_id.into()),
-      ("errors".into(), Value::Array(errors)),
-    ]))
-    .into()
-  }
-}
-
-impl From<Error> for ScriptValue {
-  fn from(value: Error) -> Self {
-    Value::Object(BTreeMap::from([
-      ("name".into(), value.name.clone().into()),
-      (
-        "stacktrace".into(),
-        Value::Array(
-          value
-            .stacktrace
-            .iter()
-            .map(|n| Value::Bytes(n.clone().into()))
-            .collect(),
-        ),
-      ),
-    ]))
-    .into()
-  }
 }
