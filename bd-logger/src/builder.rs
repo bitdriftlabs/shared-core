@@ -34,6 +34,7 @@ use bd_client_stats_store::Collector;
 use bd_crash_handler::Monitor;
 use bd_error_reporter::reporter::{UnexpectedErrorHandler, handle_unexpected};
 use bd_internal_logging::NoopLogger;
+use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::network_quality::NetworkCallOnlineIndicatorTimeout;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
@@ -423,7 +424,17 @@ impl LoggerBuilder {
         .find(|(scope, name, _)| {
           *scope == bd_resilient_kv::Scope::System && name.as_str() == "memory_pressure_level"
         })
-        .and_then(|(_, _, tv)| tv.value.has_int_value().then(|| tv.value.int_value() as i8))
+        .and_then(|(_, _, tv)| {
+          if !tv.value.has_string_value() {
+            return None;
+          }
+          match tv.value.string_value() {
+            "Normal" => Some(MemoryPressureLevel::Normal.0),
+            "Warning" => Some(MemoryPressureLevel::Warning.0),
+            "Critical" => Some(MemoryPressureLevel::Critical.0),
+            _ => None,
+          }
+        })
       {
         previous_memory_pressure_level.store(level, Ordering::Relaxed);
       }
