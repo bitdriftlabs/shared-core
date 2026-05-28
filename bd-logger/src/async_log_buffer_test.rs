@@ -858,7 +858,7 @@ async fn set_memory_pressure_level_writes_to_system_scope() {
     assert!(
       reader
         .get(Scope::System, "memory_pressure_level")
-        .is_some_and(|v| v.has_int_value() && v.int_value() == 2)
+        .is_some_and(|v| v.has_string_value() && v.string_value() == "Warning")
     );
   }
 

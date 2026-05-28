@@ -466,7 +466,7 @@ impl Monitor {
     let mut level_tv: Option<&TimestampedValue> = None;
 
     for (scope, name, tv) in self.previous_run_state.iter() {
-      if scope != bd_resilient_kv::Scope::System || !tv.value.has_int_value() {
+      if scope != bd_resilient_kv::Scope::System || !tv.value.has_string_value() {
         continue;
       }
       if name == "memory_pressure_level" {
@@ -479,15 +479,15 @@ impl Monitor {
       return LogFields::default();
     };
 
-    let level = level_tv.value.int_value() as i8;
+    let level = level_tv.value.string_value();
 
-    // Unknown (0): no data recorded, skip
-    if level == 0 {
+    // Unknown: no data recorded, skip
+    if level == "Unknown" || level.is_empty() {
       return LogFields::default();
     }
 
     let mut fields = LogFields::default();
-    fields.insert("_memory_pressure_level".into(), level.to_string().into());
+    fields.insert("_memory_pressure_level".into(), level.into());
     fields.insert(
       "_memory_pressure_timestamp_us".into(),
       level_tv.timestamp.to_string().into(),

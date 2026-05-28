@@ -19,6 +19,7 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Error,
   ErrorArgs,
   ErrorRelation,
+  MemoryPressureLevel,
   OSBuild,
   OSBuildArgs,
   Platform,
@@ -219,7 +220,12 @@ impl Setup {
           bd_resilient_kv::Scope::System,
           "memory_pressure_level".to_string(),
           StateValue {
-            value_type: Some(bd_resilient_kv::Value_type::IntValue(i64::from(level))),
+            value_type: Some(bd_resilient_kv::Value_type::StringValue(
+              MemoryPressureLevel(level)
+                .variant_name()
+                .unwrap_or("Unknown")
+                .to_string(),
+            )),
             ..Default::default()
           },
         )
@@ -349,7 +355,12 @@ impl Setup {
         bd_resilient_kv::Scope::System,
         "memory_pressure_level".to_string(),
         StateValue {
-          value_type: Some(bd_resilient_kv::Value_type::IntValue(i64::from(level))),
+          value_type: Some(bd_resilient_kv::Value_type::StringValue(
+            MemoryPressureLevel(level)
+              .variant_name()
+              .unwrap_or("Unknown")
+              .to_string(),
+          )),
           ..Default::default()
         },
       )
@@ -998,7 +1009,7 @@ async fn previous_session_crash_uses_previous_memory_pressure_data() {
     [
       ("app_version".into(), "unknown".into()),
       ("os_version".into(), "unknown".into()),
-      ("_memory_pressure_level".into(), "2".into()),
+      ("_memory_pressure_level".into(), "Warning".into()),
       (
         "_memory_pressure_timestamp_us".into(),
         "1704067200000000".into(),
@@ -1033,7 +1044,7 @@ async fn previous_session_crash_with_normal_memory_includes_pressure_field() {
     [
       ("app_version".into(), "unknown".into()),
       ("os_version".into(), "unknown".into()),
-      ("_memory_pressure_level".into(), "1".into()),
+      ("_memory_pressure_level".into(), "Normal".into()),
       (
         "_memory_pressure_timestamp_us".into(),
         "1704067200000000".into(),
