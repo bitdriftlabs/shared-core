@@ -20,9 +20,7 @@ use crate::logging_state::UninitializedLoggingContext;
 use crate::state_upload::StateUploadHandle;
 use crate::{InitParams, LogAttributesOverrides};
 use bd_api::{
-  AggregatedNetworkQualityProvider,
-  DataUpload,
-  SimpleNetworkQualityProvider,
+  AggregatedNetworkQualityProvider, DataUpload, SimpleNetworkQualityProvider,
   TimedNetworkQualityProvider,
 };
 use bd_client_common::file_system::RealFileSystem;
@@ -41,12 +39,7 @@ use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushInt
 use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_state::{
-  ENTITY_ID_KEY,
-  Scope as StateScope,
-  StateReader,
-  Store as StateStore,
-  Value_type,
-  string_value,
+  ENTITY_ID_KEY, Scope as StateScope, StateReader, Store as StateStore, Value_type, string_value,
 };
 use bd_time::{SystemTimeProvider, Ticker, TimeProvider};
 use futures_util::{Future, try_join};
@@ -77,6 +70,37 @@ pub fn default_stats_flush_triggers(
     sleep_mode_active,
     time_provider,
   )))
+}
+
+async fn initialize_memory_pressure(
+  previous_run_state: &bd_resilient_kv::ScopedMaps,
+  state_store: &StateStore,
+  previous_memory_pressure_level: &std::sync::atomic::AtomicI8,
+) {
+  let level = previous_run_state
+    .iter()
+    .find(|(scope, name, _)| {
+      *scope == bd_resilient_kv::Scope::System && name.as_str() == "memory_pressure_level"
+    })
+    .and_then(|(_, _, tv)| {
+      if !tv.value.has_string_value() {
+        return None;
+      }
+      match tv.value.string_value() {
+        "Normal" => Some(MemoryPressureLevel::Normal.0),
+        "Warning" => Some(MemoryPressureLevel::Warning.0),
+        "Critical" => Some(MemoryPressureLevel::Critical.0),
+        _ => None,
+      }
+    });
+
+  if let Some(level) = level {
+    previous_memory_pressure_level.store(level, Ordering::Relaxed);
+    // Clear the persisted value so it doesn't bleed into subsequent sessions
+    let _ = state_store
+      .remove(bd_state::Scope::System, "memory_pressure_level")
+      .await;
+  }
 }
 
 async fn initialize_opaque_entity_updates(
@@ -419,25 +443,12 @@ impl LoggerBuilder {
       initialize_opaque_entity_updates(&state_store, &opaque_entity_updates_tx, pending_entity_id)
         .await;
 
-      if let Some(level) = previous_run_state
-        .iter()
-        .find(|(scope, name, _)| {
-          *scope == bd_resilient_kv::Scope::System && name.as_str() == "memory_pressure_level"
-        })
-        .and_then(|(_, _, tv)| {
-          if !tv.value.has_string_value() {
-            return None;
-          }
-          match tv.value.string_value() {
-            "Normal" => Some(MemoryPressureLevel::Normal.0),
-            "Warning" => Some(MemoryPressureLevel::Warning.0),
-            "Critical" => Some(MemoryPressureLevel::Critical.0),
-            _ => None,
-          }
-        })
-      {
-        previous_memory_pressure_level.store(level, Ordering::Relaxed);
-      }
+      initialize_memory_pressure(
+        &previous_run_state,
+        &state_store,
+        &previous_memory_pressure_level,
+      )
+      .await;
 
       if result.fallback_occurred {
         handle_unexpected(
