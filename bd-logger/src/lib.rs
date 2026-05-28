@@ -66,6 +66,7 @@ pub use bd_resource_utilization::Target as ResourceUtilizationTarget;
 pub use bd_session_replay::Target as SessionReplayTarget;
 pub use builder::LoggerBuilder;
 pub use logger::{Block, CaptureSession, Logger, LoggerHandle, ReportProcessingSession};
+pub use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 pub use metadata::LogMetadata;
 
 #[cfg(test)]
