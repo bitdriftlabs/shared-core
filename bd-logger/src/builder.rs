@@ -313,6 +313,7 @@ impl LoggerBuilder {
       (flush_handles.flusher, flush_handles.flush_trigger)
     };
     let (trigger_upload_tx, trigger_upload_rx) = tokio::sync::mpsc::channel(1);
+    let (remote_flush_streaming_tx, remote_flush_streaming_rx) = tokio::sync::mpsc::channel(10);
     let (flush_buffers_tx, flush_buffers_rx) = tokio::sync::mpsc::channel(1);
     let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
     let (report_proc_tx, report_proc_rx) = tokio::sync::mpsc::channel(1);
@@ -337,6 +338,7 @@ impl LoggerBuilder {
         scope.clone(),
         stats,
         trigger_upload_tx.clone(),
+        remote_flush_streaming_rx,
         data_upload_tx.clone(),
         flush_buffers_tx,
         flusher_trigger.clone(),
@@ -537,6 +539,8 @@ impl LoggerBuilder {
         shutdown_handle.make_shutdown(),
         buffer_event_rx,
         trigger_upload_rx,
+        remote_flush_streaming_tx,
+        self.params.store.clone(),
         &scope,
         log.clone(),
         state_upload_handle,

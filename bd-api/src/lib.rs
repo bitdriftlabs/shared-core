@@ -26,6 +26,7 @@ use bd_proto::protos::client::api::{
   UploadArtifactIntentRequest,
   UploadArtifactRequest,
 };
+use bd_proto::protos::workflow::workflow;
 use bd_runtime::runtime::{ExponentialBackoffValues, ExponentialBackoffWatch, FeatureFlag};
 pub use network_quality::{
   AggregatedNetworkQualityProvider,
@@ -85,11 +86,35 @@ pub enum DataUpload {
 // TriggerUpload
 //
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TriggerUploadSource {
+  WorkflowAction(String),
+  ExplicitSessionCapture(String),
+  RemoteCommand(String),
+}
+
+impl TriggerUploadSource {
+  #[must_use]
+  pub fn logical_id(&self) -> &str {
+    match self {
+      Self::WorkflowAction(id) | Self::ExplicitSessionCapture(id) | Self::RemoteCommand(id) => {
+        id
+      },
+    }
+  }
+}
+
 /// A trigger upload.
 #[derive(Debug)]
 pub struct TriggerUpload {
   // The list of identifiers of the buffers whose content should be uploaded.
   pub buffer_ids: Vec<String>,
+
+  // Optional streaming configuration that should be activated alongside the flush.
+  pub streaming: Option<workflow::workflow::action::action_flush_buffers::Streaming>,
+
+  // Stable identifier for the logical trigger that scheduled the upload.
+  pub source: TriggerUploadSource,
 
   // A channel to notify the caller that the upload has been completed.
   pub response_tx: tokio::sync::oneshot::Sender<()>,
@@ -97,9 +122,16 @@ pub struct TriggerUpload {
 
 impl TriggerUpload {
   #[must_use]
-  pub const fn new(buffer_ids: Vec<String>, response_tx: tokio::sync::oneshot::Sender<()>) -> Self {
+  pub fn new(
+    buffer_ids: Vec<String>,
+    streaming: Option<workflow::workflow::action::action_flush_buffers::Streaming>,
+    source: TriggerUploadSource,
+    response_tx: tokio::sync::oneshot::Sender<()>,
+  ) -> Self {
     Self {
       buffer_ids,
+      streaming,
+      source,
       response_tx,
     }
   }

@@ -44,9 +44,11 @@ use bd_proto::protos::client::api::{
   upload_artifact_intent_response,
 };
 use bd_proto::protos::logging::payload::data::Data_type;
+use bd_proto::protos::workflow::workflow;
 use bd_time::{TimeDurationExt, ToProtoDuration};
 use http_body_util::StreamBody;
 use log_upload::LogUpload;
+use protobuf::MessageField;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};
@@ -412,6 +414,15 @@ async fn mux(
               ApiResponse {
                   response_type: Some(Response_type::FlushBuffers(FlushBuffers {
                       buffer_id_list: buffers,
+                      ..Default::default()
+                  })),
+                  ..Default::default()
+              },
+            StreamAction::FlushBuffersWithStreaming { buffers, streaming } =>
+              ApiResponse {
+                  response_type: Some(Response_type::FlushBuffers(FlushBuffers {
+                      buffer_id_list: buffers,
+                      streaming: MessageField::some(streaming),
                       ..Default::default()
                   })),
                   ..Default::default()
@@ -795,6 +806,13 @@ pub enum StreamAction {
 
   /// Sends a `FlushBuffers` response over the stream with the specified buffers.
   FlushBuffers(Vec<String>),
+
+  /// Sends a `FlushBuffers` response over the stream with the specified buffers and streaming
+  /// configuration.
+  FlushBuffersWithStreaming {
+    buffers: Vec<String>,
+    streaming: workflow::workflow::action::action_flush_buffers::Streaming,
+  },
 
   /// Closes the stream.
   CloseStream,

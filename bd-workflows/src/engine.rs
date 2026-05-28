@@ -184,6 +184,53 @@ impl WorkflowsEngine {
     (workflows_engine, buffers_to_flush_rx)
   }
 
+  pub fn start_remote_flush_streaming(
+    &mut self,
+    id: String,
+    buffer_ids: BTreeSet<String>,
+    streaming_proto:
+      bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::Streaming,
+    flush_complete_rx: tokio::sync::oneshot::Receiver<()>,
+  ) -> bool {
+    let Ok(streaming) = Streaming::new(streaming_proto) else {
+      log::debug!("failed to parse remote flush streaming configuration");
+      return false;
+    };
+
+    let action_id = FlushBufferId::RemoteCommand(id);
+    let Some(streaming_action) = self
+      .flush_buffers_actions_resolver
+      .make_remote_streaming_action(
+        action_id.clone(),
+        buffer_ids,
+        &self.state.session_id,
+        streaming,
+      )
+    else {
+      log::debug!("remote flush streaming not activated: no eligible buffers or destinations");
+      return false;
+    };
+
+    if self
+      .state
+      .streaming_actions
+      .iter()
+      .any(|action| action.has_equivalent_reroute(&streaming_action))
+    {
+      log::debug!(
+        "remote flush streaming not activated: equivalent streaming action already active"
+      );
+      return false;
+    }
+
+    self
+      .pending_buffer_flushes
+      .insert(action_id, flush_complete_rx);
+    self.state.streaming_actions.push(streaming_action);
+    self.needs_state_persistence = true;
+    true
+  }
+
   pub async fn start(&mut self, config: WorkflowsEngineConfig, config_from_cache: bool) {
     self
       .flush_buffers_actions_resolver

@@ -264,6 +264,11 @@ impl Negotiator {
             ..Default::default()
           })
         },
+        FlushBufferId::RemoteCommand(id) => {
+          return Err(anyhow!(
+            "remote flush command {id} should not enter intent negotiation"
+          ));
+        },
       }),
       ..Default::default()
     };
@@ -371,6 +376,29 @@ impl Resolver {
 
     self.trigger_buffer_ids = config.trigger_buffer_ids;
     self.continuous_buffer_ids = config.continuous_buffer_ids;
+  }
+
+  pub(crate) fn make_remote_streaming_action(
+    &self,
+    id: FlushBufferId,
+    source_trigger_buffer_ids: BTreeSet<String>,
+    session_id: &str,
+    streaming: crate::config::Streaming,
+  ) -> Option<StreamingBuffersAction> {
+    let action = ActionFlushBuffers {
+      id,
+      buffer_ids: source_trigger_buffer_ids,
+      streaming: Some(streaming),
+    };
+
+    let pending_action = PendingFlushBuffersAction::new(
+      action,
+      session_id.to_string(),
+      &self.trigger_buffer_ids,
+      &self.continuous_buffer_ids,
+    )?;
+
+    self.make_streaming_action(pending_action)
   }
 
   /// Process flush buffer actions. Create pending buffer action instances for those flush
@@ -969,6 +997,15 @@ impl StreamingBuffersAction {
     self.tracing_lease
   }
 
+  // Two streaming actions are equivalent if they reroute the same trigger buffers into the same
+  // destination buffers within the same session. A different termination count should not create
+  // a parallel stream because it would only prolong rerouting, not change where logs are emitted.
+  pub(crate) fn has_equivalent_reroute(&self, other: &Self) -> bool {
+    self.session_id == other.session_id
+      && self.source_trigger_buffer_ids == other.source_trigger_buffer_ids
+      && self.destination_continuous_buffer_ids == other.destination_continuous_buffer_ids
+  }
+
   const fn meets_termination_criteria(&self) -> bool {
     if let Some(max_logs_count) = self.max_logs_count
       && self.logs_count >= max_logs_count
@@ -986,6 +1023,8 @@ impl StreamingBuffersAction {
 
 #[derive(Debug)]
 pub struct BuffersToFlush {
+  // Stable ID for the logical flush action that requested this upload.
+  pub flush_id: FlushBufferId,
   // Unique IDs of buffers to flush.
   pub buffer_ids: TinySet<Cow<'static, str>>,
   // Channel to notify the caller that the flush has been completed.
@@ -1000,6 +1039,7 @@ impl BuffersToFlush {
 
     (
       Self {
+        flush_id: action.id.clone(),
         buffer_ids: action.trigger_buffer_ids.clone(),
         response_tx,
       },

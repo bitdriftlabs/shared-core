@@ -23,6 +23,7 @@ mod client_config;
 mod consumer;
 mod device_id;
 mod directory_lock;
+mod flush_registry;
 pub mod internal;
 mod internal_report;
 mod log_replay;

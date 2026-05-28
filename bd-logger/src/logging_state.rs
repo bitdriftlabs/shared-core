@@ -7,6 +7,7 @@
 
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
+use crate::consumer::RemoteFlushStreamingRequest;
 use crate::log_replay::{LogReplay, ProcessingPipeline};
 use crate::logger::with_thread_local_logger_guard;
 use crate::metadata::MetadataCollector;
@@ -35,8 +36,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use time::OffsetDateTime;
-use tokio::sync::mpsc::Sender;
 use tokio::sync::mpsc::error::TrySendError;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 //
 // LoggingState
@@ -103,6 +104,7 @@ pub struct UninitializedLoggingContext<T: MemorySized + Debug> {
 
   data_upload_tx: Sender<DataUpload>,
   trigger_upload_tx: Sender<TriggerUpload>,
+  remote_flush_streaming_rx: Receiver<RemoteFlushStreamingRequest>,
   flush_buffers_tx: Sender<BuffersWithAck>,
   flush_stats_trigger: FlushTrigger,
 
@@ -132,6 +134,7 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
     scope: Scope,
     stats: Arc<Stats>,
     trigger_upload_tx: Sender<TriggerUpload>,
+    remote_flush_streaming_rx: Receiver<RemoteFlushStreamingRequest>,
     data_upload_tx: Sender<DataUpload>,
     flush_buffers_tx: Sender<BuffersWithAck>,
     flush_stats_trigger: FlushTrigger,
@@ -142,6 +145,7 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
       pre_config_log_buffer: PreConfigBuffer::new(max_size),
       data_upload_tx,
       trigger_upload_tx,
+      remote_flush_streaming_rx,
       flush_buffers_tx,
       flush_stats_trigger,
       sdk_directory: sdk_directory.to_owned(),
@@ -161,6 +165,7 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
       self.flush_buffers_tx,
       self.flush_stats_trigger,
       self.trigger_upload_tx,
+      self.remote_flush_streaming_rx,
       capture_screenshot_handler,
       config,
       &self.sdk_directory,

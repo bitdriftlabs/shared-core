@@ -18,6 +18,7 @@ use crate::{
   RuntimeBackoffPolicy,
   StreamEvent,
   TriggerUpload,
+  TriggerUploadSource,
 };
 use anyhow::anyhow;
 use bd_backoff::exponential::ExponentialBackoffInfinite;
@@ -1159,7 +1160,12 @@ impl Api {
 
           self
             .trigger_upload_tx
-            .send(TriggerUpload::new(flush_buffers.buffer_id_list, tx))
+            .send(TriggerUpload::new(
+              flush_buffers.buffer_id_list,
+              flush_buffers.streaming.into_option(),
+              TriggerUploadSource::RemoteCommand(uuid::Uuid::new_v4().to_string()),
+              tx,
+            ))
             .await
             .map_err(|_| anyhow!("remote trigger upload tx"))?;
         },

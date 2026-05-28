@@ -794,6 +794,9 @@ pub enum FlushBufferId {
   /// identify the origin of the session capture request.
   #[field(id = 2)]
   ExplicitSessionCapture(String),
+  /// Flush the buffer in response to a remote command delivered over the API stream.
+  #[field(id = 3)]
+  RemoteCommand(String),
 }
 
 impl Default for FlushBufferId {
@@ -834,7 +837,7 @@ pub struct Streaming {
 }
 
 impl Streaming {
-  fn new(
+  pub(crate) fn new(
     streaming_proto: workflow::workflow::action::action_flush_buffers::Streaming,
   ) -> anyhow::Result<Self> {
     let destination_continuous_buffer_ids = streaming_proto

@@ -18,6 +18,8 @@ use crate::{
   log_level,
   wait_for,
 };
+use action_flush_buffers::Streaming as FlushStreaming;
+use action_flush_buffers::streaming::{TerminationCriterion, termination_criterion};
 use assert_matches::assert_matches;
 use bd_client_common::safe_file_cache::load_cache_retry_count_from_file;
 use bd_error_reporter::reporter::UnexpectedErrorHandler;
@@ -39,6 +41,7 @@ use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::filter::filter::Filter;
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::logging::payload::log::CompressedContents;
+use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
 use bd_runtime::runtime::FeatureFlag;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
 use bd_session::Strategy;
@@ -2159,14 +2162,236 @@ fn remote_buffer_upload() {
   // No logs should be uploaded at this point.
   assert_matches!(setup.server.blocking_next_log_upload(), None);
 
-  // Trigger a remote upload of the `default` buffer.
+  // Trigger a remote upload with an empty buffer list. This should flush all eligible trigger
+  // buffers, which in this test is only `default`.
   setup
     .current_api_stream()
-    .blocking_stream_action(StreamAction::FlushBuffers(vec!["default".to_string()]));
+    .blocking_stream_action(StreamAction::FlushBuffers(vec![]));
 
   // We receive a log upload without intent negotiation.
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
       assert_eq!(log_upload.logs().len(), 10);
+  });
+}
+
+#[test]
+fn remote_buffer_upload_with_streaming_matches_workflow_streaming_behavior() {
+  let mut setup = Setup::new();
+
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![
+        default_buffer_config(
+          Type::CONTINUOUS,
+          make_buffer_matcher_matching_resource_logs().into(),
+        ),
+        BufferConfigBuilder {
+          name: "trigger_buffer_id",
+          buffer_type: Type::TRIGGER,
+          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+          non_volatile_size: 100_000,
+          volatile_size: 10_000,
+        }
+        .build(),
+      ],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  setup.log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "buffered before remote flush".into(),
+    [].into(),
+    [].into(),
+    None,
+  );
+
+  assert_matches!(setup.server.blocking_next_log_upload(), None);
+
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffersWithStreaming {
+      buffers: vec!["trigger_buffer_id".to_string()],
+      streaming: FlushStreaming {
+        destination_streaming_buffer_ids: vec!["default".to_string()],
+        termination_criteria: vec![TerminationCriterion {
+          type_: Some(termination_criterion::Type::LogsCount(
+            termination_criterion::LogsCount {
+              max_logs_count: 10,
+              ..Default::default()
+            },
+          )),
+          ..Default::default()
+        }],
+        ..Default::default()
+      },
+    });
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.logs().len(), 1);
+  });
+
+  for _ in 0 .. 10 {
+    setup.log(
+      log_level::DEBUG,
+      LogType::NORMAL,
+      "message that should be remotely streamed".into(),
+      [].into(),
+      [].into(),
+      None,
+    );
+  }
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "default");
+    assert_eq!(log_upload.logs().len(), 10);
+  });
+
+  setup.log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "message after remote streaming termination".into(),
+    [].into(),
+    [].into(),
+    None,
+  );
+
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffers(vec![
+      "trigger_buffer_id".to_string(),
+    ]));
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.logs().len(), 1);
+  });
+}
+
+#[test]
+fn remote_buffer_upload_with_streaming_does_not_extend_active_workflow_streaming() {
+  let b = state("B");
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    rule!(message_equals("start workflow stream")),
+    &[make_flush_buffers_action(
+      &["trigger_buffer_id"],
+      Some((vec!["default"], 10)),
+      "workflow_stream_action_id",
+    )],
+  );
+
+  let mut setup = Setup::new();
+
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![
+        default_buffer_config(
+          Type::CONTINUOUS,
+          make_buffer_matcher_matching_resource_logs().into(),
+        ),
+        BufferConfigBuilder {
+          name: "trigger_buffer_id",
+          buffer_type: Type::TRIGGER,
+          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+          non_volatile_size: 100_000,
+          volatile_size: 10_000,
+        }
+        .build(),
+      ],
+      workflows: vec![WorkflowBuilder::new("workflow", &[&a, &b]).build()],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  setup.log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "start workflow stream".into(),
+    [].into(),
+    [].into(),
+    None,
+  );
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!(vec!["workflow_stream_action_id"], *log_upload.logs()[0].workflow_action_ids());
+  });
+
+  for _ in 0 .. 5 {
+    setup.log(
+      log_level::DEBUG,
+      LogType::NORMAL,
+      "message streamed before remote duplicate".into(),
+      [].into(),
+      [].into(),
+      None,
+    );
+  }
+
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffersWithStreaming {
+      buffers: vec!["trigger_buffer_id".to_string()],
+      streaming: FlushStreaming {
+        destination_streaming_buffer_ids: vec!["default".to_string()],
+        termination_criteria: vec![TerminationCriterion {
+          type_: Some(termination_criterion::Type::LogsCount(
+            termination_criterion::LogsCount {
+              max_logs_count: 50,
+              ..Default::default()
+            },
+          )),
+          ..Default::default()
+        }],
+        ..Default::default()
+      },
+    });
+
+  for _ in 0 .. 5 {
+    setup.log(
+      log_level::DEBUG,
+      LogType::NORMAL,
+      "message streamed after remote duplicate".into(),
+      [].into(),
+      [].into(),
+      None,
+    );
+  }
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "default");
+    assert_eq!(log_upload.logs().len(), 10);
+  });
+
+  for _ in 0 .. 5 {
+    setup.log(
+      log_level::DEBUG,
+      LogType::NORMAL,
+      "message after workflow streaming should end".into(),
+      [].into(),
+      [].into(),
+      None,
+    );
+  }
+
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffers(vec![
+      "trigger_buffer_id".to_string(),
+    ]));
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.logs().len(), 5, "{:?}", log_upload.logs());
+    assert!(log_upload.logs().iter().all(|log| log.message() == "message after workflow streaming should end"));
   });
 }
 

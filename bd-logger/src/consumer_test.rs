@@ -6,13 +6,20 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::{BufferUploadManager, ContinuousBufferUploader, Flags, service};
+use crate::flush_registry::{
+  PendingTriggerUploadsStore,
+  PersistedTriggerUpload,
+  PersistedTriggerUploadLifecycle,
+  PersistedTriggerUploadSource,
+};
 use crate::consumer::{BatchBuilder, StreamedBufferUpload};
 use assert_matches::assert_matches;
 use bd_api::upload::{Tracked, UploadResponse};
-use bd_api::{DataUpload, TriggerUpload};
+use bd_api::{DataUpload, TriggerUpload, TriggerUploadSource};
 use bd_buffer::{Buffer, BufferEvent, BufferEventWithResponse, RingBuffer, RingBufferStats};
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter};
+use bd_key_value::{Storage, Store};
 use bd_log_primitives::{EncodableLog, Log, log_level};
 use bd_proto::protos::client::api::ApiRequest;
 use bd_proto::protos::client::api::api_request::Request_type;
@@ -26,12 +33,37 @@ use bd_time::{OffsetDateTimeExt as _, TimeDurationExt};
 use core::panic;
 use futures_util::poll;
 use protobuf::{CodedOutputStream, Message};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::TempDir;
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
+
+#[derive(Default)]
+struct MockStorage {
+  state: Arc<parking_lot::Mutex<HashMap<String, String>>>,
+}
+
+impl Storage for MockStorage {
+  fn set_string(&self, key: &str, value: &str) -> anyhow::Result<()> {
+    self
+      .state
+      .lock()
+      .insert(key.to_string(), value.to_string());
+    Ok(())
+  }
+
+  fn get_string(&self, key: &str) -> anyhow::Result<Option<String>> {
+    Ok(self.state.lock().get(key).cloned())
+  }
+
+  fn delete(&self, key: &str) -> anyhow::Result<()> {
+    self.state.lock().remove(key);
+    Ok(())
+  }
+}
 
 fn make_flags(runtime_loader: &ConfigLoader) -> Flags {
   Flags {
@@ -671,21 +703,25 @@ struct SetupMultiConsumer {
   buffer_event_tx: Sender<BufferEventWithResponse>,
   trigger_upload_tx: Sender<TriggerUpload>,
   runtime_loader: Arc<ConfigLoader>,
+  store: Arc<Store>,
   stats: Collector,
 
   temp_directory: tempfile::TempDir,
 }
 
 impl SetupMultiConsumer {
-  async fn new(batch_size: u32, byte_limit: u32) -> Self {
-    tokio::time::pause();
-
+  async fn new_with_state(
+    batch_size: u32,
+    byte_limit: u32,
+    temp_directory: tempfile::TempDir,
+    store: Arc<Store>,
+  ) -> Self {
     let stats = Collector::default();
-    let temp_directory = TempDir::with_prefix("consumertest").unwrap();
     let (buffer_event_tx, buffer_event_rx) = channel(1);
 
     let (log_upload_tx, log_upload_rx) = tokio::sync::mpsc::channel(1);
     let (trigger_upload_tx, trigger_upload_rx) = tokio::sync::mpsc::channel(1);
+    let (remote_flush_streaming_tx, _remote_flush_streaming_rx) = tokio::sync::mpsc::channel(1);
 
     let shutdown_trigger = ComponentShutdownTrigger::default();
     let config_loader = ConfigLoader::new(temp_directory.path());
@@ -705,6 +741,7 @@ impl SetupMultiConsumer {
     let shutdown = shutdown_trigger.make_shutdown();
     let config_loader_clone = config_loader.clone();
     let collector_clone = stats.clone();
+    let store_clone = store.clone();
     tokio::spawn(async move {
       BufferUploadManager::new(
         log_upload_tx,
@@ -712,6 +749,8 @@ impl SetupMultiConsumer {
         shutdown,
         buffer_event_rx,
         trigger_upload_rx,
+        remote_flush_streaming_tx,
+        store_clone,
         &collector_clone.scope("consumer"),
         bd_internal_logging::NoopLogger::new(),
         None,
@@ -728,8 +767,21 @@ impl SetupMultiConsumer {
       trigger_upload_tx,
       temp_directory,
       runtime_loader: config_loader,
+      store,
       stats,
     }
+  }
+
+  async fn new(batch_size: u32, byte_limit: u32) -> Self {
+    tokio::time::pause();
+
+    Self::new_with_state(
+      batch_size,
+      byte_limit,
+      TempDir::with_prefix("consumertest").unwrap(),
+      Arc::new(Store::new(Box::<MockStorage>::default())),
+    )
+    .await
   }
 
   async fn shutdown(self) {
@@ -738,10 +790,19 @@ impl SetupMultiConsumer {
 
   async fn trigger_buffer_upload(&self, buffer: &str) -> tokio::sync::oneshot::Receiver<()> {
     let (tx, rx) = tokio::sync::oneshot::channel();
-    let upload = TriggerUpload::new(vec![buffer.to_string()], tx);
+    let upload = TriggerUpload::new(
+      vec![buffer.to_string()],
+      None,
+      TriggerUploadSource::ExplicitSessionCapture("session-capture".to_string()),
+      tx,
+    );
     self.trigger_upload_tx.send(upload).await.unwrap();
 
     rx
+  }
+
+  fn pending_trigger_uploads(&self) -> Vec<PersistedTriggerUpload> {
+    PendingTriggerUploadsStore::new(self.store.clone()).pending_uploads()
   }
 
   async fn next_upload(&mut self) -> Tracked<ApiRequest, UploadResponse> {
@@ -964,6 +1025,223 @@ async fn uploaded_trigger() {
   let upload = setup.next_upload().await;
 
   assert_eq!(upload.payload.log_upload().proto_logs.len(), 2);
+}
+
+#[tokio::test]
+async fn trigger_upload_with_empty_buffer_list_flushes_all_trigger_buffers() {
+  let mut setup = SetupMultiConsumer::new(1, 1000).await;
+  let (buffer_a, mut producer_a) =
+    create_trigger_buffer(setup.temp_directory.path().join("buffer_a").as_path()).await;
+  let (buffer_b, mut producer_b) =
+    create_trigger_buffer(setup.temp_directory.path().join("buffer_b").as_path()).await;
+
+  setup
+    .buffer_event_tx
+    .send(
+      BufferEventWithResponse::new(BufferEvent::TriggerBufferCreated(
+        "buffer_a".to_string(),
+        buffer_a,
+      ))
+      .0,
+    )
+    .await
+    .unwrap();
+  setup
+    .buffer_event_tx
+    .send(
+      BufferEventWithResponse::new(BufferEvent::TriggerBufferCreated(
+        "buffer_b".to_string(),
+        buffer_b,
+      ))
+      .0,
+    )
+    .await
+    .unwrap();
+
+  tokio::task::yield_now().await;
+
+  producer_a.write(b"a").unwrap();
+  producer_b.write(b"b").unwrap();
+
+  let (tx, _rx) = tokio::sync::oneshot::channel();
+  setup
+    .trigger_upload_tx
+    .send(TriggerUpload::new(
+      Vec::new(),
+      None,
+      TriggerUploadSource::ExplicitSessionCapture("session-capture".to_string()),
+      tx,
+    ))
+    .await
+    .unwrap();
+
+  let upload_a = setup.next_upload().await;
+  let upload_b = setup.next_upload().await;
+
+  let uploaded_payloads = [upload_a, upload_b]
+    .into_iter()
+    .map(|upload| upload.payload.log_upload().proto_logs[0].clone())
+    .collect::<std::collections::BTreeSet<_>>();
+
+  assert_eq!(
+    uploaded_payloads,
+    std::collections::BTreeSet::from([b"a".to_vec(), b"b".to_vec(),])
+  );
+}
+
+#[tokio::test]
+async fn trigger_upload_is_persisted_until_completion() {
+  let mut setup = SetupMultiConsumer::new(1, 1000).await;
+  let (buffer, mut producer) =
+    create_trigger_buffer(setup.temp_directory.path().join("buffer").as_path()).await;
+
+  setup
+    .buffer_event_tx
+    .send(
+      BufferEventWithResponse::new(BufferEvent::TriggerBufferCreated(
+        "buffer".to_string(),
+        buffer,
+      ))
+      .0,
+    )
+    .await
+    .unwrap();
+
+  tokio::task::yield_now().await;
+  producer.write(b"one").unwrap();
+
+  let (tx, rx) = tokio::sync::oneshot::channel();
+  setup
+    .trigger_upload_tx
+    .send(TriggerUpload::new(
+      vec!["buffer".to_string()],
+      None,
+      TriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
+      tx,
+    ))
+    .await
+    .unwrap();
+
+  let upload = setup.next_upload().await;
+  assert_eq!(
+    setup.pending_trigger_uploads(),
+    vec![PersistedTriggerUpload {
+      id: "flush-1".to_string(),
+      source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
+      buffer_ids: vec!["buffer".to_string()],
+      has_streaming: false,
+      lifecycle: PersistedTriggerUploadLifecycle::Uploading,
+    }]
+  );
+
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  rx.await.unwrap();
+
+  assert!(setup.pending_trigger_uploads().is_empty());
+}
+
+#[tokio::test]
+async fn persisted_trigger_upload_replays_after_restart() {
+  tokio::time::pause();
+
+  let temp_directory = TempDir::with_prefix("consumertest").unwrap();
+  let store = Arc::new(Store::new(Box::<MockStorage>::default()));
+  PendingTriggerUploadsStore::new(store.clone()).upsert(PersistedTriggerUpload {
+    id: "flush-1".to_string(),
+    source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
+    buffer_ids: vec!["buffer".to_string()],
+    has_streaming: false,
+    lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
+  });
+
+  let buffer_path = temp_directory.path().join("buffer");
+  let (buffer, mut producer) = create_trigger_buffer(buffer_path.as_path()).await;
+  producer.write(b"one").unwrap();
+
+  let mut setup = SetupMultiConsumer::new_with_state(1, 1000, temp_directory, store).await;
+  setup
+    .buffer_event_tx
+    .send(
+      BufferEventWithResponse::new(BufferEvent::TriggerBufferCreated(
+        "buffer".to_string(),
+        buffer,
+      ))
+      .0,
+    )
+    .await
+    .unwrap();
+
+  let recovered_upload = setup.next_upload().await;
+  assert_eq!(recovered_upload.payload.log_upload().proto_logs.len(), 1);
+
+  recovered_upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: recovered_upload.uuid,
+    })
+    .unwrap();
+
+  for _ in 0 .. 100 {
+    if setup.pending_trigger_uploads().is_empty() {
+      return;
+    }
+
+    tokio::task::yield_now().await;
+  }
+
+  panic!("expected recovered trigger upload to be cleared from persistence");
+}
+
+#[tokio::test]
+async fn uploading_trigger_upload_is_not_replayed_after_restart() {
+  tokio::time::pause();
+
+  let temp_directory = TempDir::with_prefix("consumertest").unwrap();
+  let store = Arc::new(Store::new(Box::<MockStorage>::default()));
+  PendingTriggerUploadsStore::new(store.clone()).upsert(PersistedTriggerUpload {
+    id: "flush-1".to_string(),
+    source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
+    buffer_ids: vec!["buffer".to_string()],
+    has_streaming: false,
+    lifecycle: PersistedTriggerUploadLifecycle::Uploading,
+  });
+
+  let buffer_path = temp_directory.path().join("buffer");
+  let (buffer, mut producer) = create_trigger_buffer(buffer_path.as_path()).await;
+  producer.write(b"one").unwrap();
+
+  let mut setup = SetupMultiConsumer::new_with_state(1, 1000, temp_directory, store).await;
+  setup
+    .buffer_event_tx
+    .send(
+      BufferEventWithResponse::new(BufferEvent::TriggerBufferCreated(
+        "buffer".to_string(),
+        buffer,
+      ))
+      .0,
+    )
+    .await
+    .unwrap();
+
+  let pinned = Box::pin(setup.log_upload_rx.recv());
+  assert!(poll!(pinned).is_pending());
+  assert_eq!(
+    setup.pending_trigger_uploads(),
+    vec![PersistedTriggerUpload {
+      id: "flush-1".to_string(),
+      source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
+      buffer_ids: vec!["buffer".to_string()],
+      has_streaming: false,
+      lifecycle: PersistedTriggerUploadLifecycle::Uploading,
+    }]
+  );
 }
 
 #[tokio::test]
