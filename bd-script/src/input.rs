@@ -287,8 +287,21 @@ where
 impl<'a, T: Follow<'a> + 'a> Scriptable for flatbuffers::Vector<'a, T>
 where
   T::Inner: Scriptable,
+  ScriptValue: From<T::Inner>,
 {
   fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
+    if path.is_empty() {
+      return Ok(Some(
+        Value::Array(
+          self
+            .iter()
+            .map(|item| Into::<ScriptValue>::into(item).0)
+            .collect(),
+        )
+        .into(),
+      ));
+    }
+
     let Some(OwnedSegment::Index(index)) = path.first() else {
       return Err(PathError::NotAnObject(
         OwnedValuePath::from(path.to_vec()).into(),

@@ -353,38 +353,26 @@ impl RegexMatchAndSubstitute {
   }
 
   fn apply(&self, log: &mut Log) {
-    for (key, value) in &mut log.fields {
-      if *key != self.field_name {
-        continue;
+    let apply_to_all_fields = self.field_name.is_empty();
+    let apply_to_field = |key: &LogFieldKey, value: &mut LogFieldValue| {
+      if !apply_to_all_fields && *key != self.field_name {
+        return;
       }
+
       if let Some(field_string_value) = value.as_str() {
         *value = self
           .produce_new_value(field_string_value)
           .to_string()
           .into();
       }
+    };
 
-      // TODO(Augustyniak): This makes an assumption that regex match and substitution applies to
-      // the first field with a given name only. This is going to be simplified once we
-      // change `LogFields` to be a map instead of a list.
-      return;
+    for (key, value) in &mut log.fields {
+      apply_to_field(key, value);
     }
 
     for (key, value) in &mut log.matching_fields {
-      if *key != self.field_name {
-        continue;
-      }
-      if let Some(field_string_value) = value.as_str() {
-        *value = self
-          .produce_new_value(field_string_value)
-          .to_string()
-          .into();
-      }
-
-      // TODO(Augustyniak): This makes an assumption that regex match and substitution applies to
-      // the first field with a given name only. This is going to be simplified once we
-      // change `LogFields`  to be a map instead of a list.
-      return;
+      apply_to_field(key, value);
     }
   }
 
