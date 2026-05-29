@@ -42,6 +42,7 @@ use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_state::{
   ENTITY_ID_KEY,
+  MEMORY_PRESSURE_LEVEL_KEY,
   Scope as StateScope,
   StateReader,
   Store as StateStore,
@@ -85,27 +86,20 @@ async fn initialize_memory_pressure(
   previous_memory_pressure_level: &std::sync::atomic::AtomicI8,
 ) {
   let level = previous_run_state
-    .iter()
-    .find(|(scope, name, _)| {
-      *scope == bd_resilient_kv::Scope::System && name.as_str() == "memory_pressure_level"
-    })
-    .and_then(|(_, _, tv)| {
-      if !tv.value.has_string_value() {
-        return None;
-      }
-      match tv.value.string_value() {
-        "Normal" => Some(MemoryPressureLevel::Normal.0),
-        "Warning" => Some(MemoryPressureLevel::Warning.0),
-        "Critical" => Some(MemoryPressureLevel::Critical.0),
-        _ => None,
-      }
+    .get(bd_resilient_kv::Scope::System, MEMORY_PRESSURE_LEVEL_KEY)
+    .filter(|tv| tv.value.has_string_value())
+    .and_then(|tv| match tv.value.string_value() {
+      "Normal" => Some(MemoryPressureLevel::Normal.0),
+      "Warning" => Some(MemoryPressureLevel::Warning.0),
+      "Critical" => Some(MemoryPressureLevel::Critical.0),
+      _ => None,
     });
 
   if let Some(level) = level {
     previous_memory_pressure_level.store(level, Ordering::Relaxed);
     // Clear the persisted value so it doesn't bleed into subsequent sessions
     let _ = state_store
-      .remove(bd_state::Scope::System, "memory_pressure_level")
+      .remove(bd_state::Scope::System, MEMORY_PRESSURE_LEVEL_KEY)
       .await;
   }
 }

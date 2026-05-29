@@ -42,7 +42,7 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   ReportType,
 };
 use bd_resilient_kv::TimestampedValue;
-use bd_state::StateReader;
+use bd_state::{MEMORY_PRESSURE_LEVEL_KEY, StateReader};
 use bd_time::OffsetDateTimeExt as _;
 use fbs::issue_reporting::v_1::root_as_report;
 use itertools::Itertools as _;
@@ -463,19 +463,11 @@ impl Monitor {
       return LogFields::default();
     }
 
-    let mut level_tv: Option<&TimestampedValue> = None;
-
-    for (scope, name, tv) in self.previous_run_state.iter() {
-      if scope != bd_resilient_kv::Scope::System || !tv.value.has_string_value() {
-        continue;
-      }
-      if name == "memory_pressure_level" {
-        level_tv = Some(tv);
-        break;
-      }
-    }
-
-    let Some(level_tv) = level_tv else {
+    let Some(level_tv) = self
+      .previous_run_state
+      .get(bd_resilient_kv::Scope::System, MEMORY_PRESSURE_LEVEL_KEY)
+      .filter(|tv| tv.value.has_string_value())
+    else {
       return LogFields::default();
     };
 

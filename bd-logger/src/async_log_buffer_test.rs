@@ -43,7 +43,7 @@ use bd_session::Strategy;
 use bd_session::fixed::UUIDCallbacks;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::test::TestStore;
-use bd_state::{SYSTEM_SESSION_ID_KEY, Scope, StateReader};
+use bd_state::{MEMORY_PRESSURE_LEVEL_KEY, SYSTEM_SESSION_ID_KEY, Scope, StateReader};
 use bd_stats_common::labels;
 use bd_test_helpers::events::NoOpListenerTarget;
 use bd_test_helpers::metadata_provider::LogMetadata;
@@ -857,7 +857,7 @@ async fn set_memory_pressure_level_writes_to_system_scope() {
     let reader = test_store.read().await;
     assert!(
       reader
-        .get(Scope::System, "memory_pressure_level")
+        .get(Scope::System, MEMORY_PRESSURE_LEVEL_KEY)
         .is_some_and(|v| v.has_string_value() && v.string_value() == "Warning")
     );
   }

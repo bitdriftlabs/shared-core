@@ -51,7 +51,13 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
-use bd_state::{ENTITY_ID_KEY, SYSTEM_SESSION_ID_KEY, Scope, string_value};
+use bd_state::{
+  ENTITY_ID_KEY,
+  MEMORY_PRESSURE_LEVEL_KEY,
+  SYSTEM_SESSION_ID_KEY,
+  Scope,
+  string_value,
+};
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::WorkflowDebugStateMap;
@@ -1060,7 +1066,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                   if let Err(e) = state_store
                     .insert(
                       Scope::System,
-                      "memory_pressure_level".to_string(),
+                      MEMORY_PRESSURE_LEVEL_KEY.to_string(),
                       string_value(
                         level.variant_name().unwrap_or("Unknown").to_string(),
                       ),

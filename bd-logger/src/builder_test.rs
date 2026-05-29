@@ -11,7 +11,14 @@ use bd_client_stats_store::Collector;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_resilient_kv::{Scope as KvScope, StateValue, VersionedKVStore};
 use bd_state::test::TestStore;
-use bd_state::{ENTITY_ID_KEY, Scope, StateReader, Value_type, string_value};
+use bd_state::{
+  ENTITY_ID_KEY,
+  MEMORY_PRESSURE_LEVEL_KEY,
+  Scope,
+  StateReader,
+  Value_type,
+  string_value,
+};
 use bd_time::TestTimeProvider;
 use pretty_assertions::assert_eq;
 use std::sync::Arc;
@@ -106,7 +113,7 @@ async fn make_previous_run_state_with_memory_pressure(
   store
     .insert(
       KvScope::System,
-      "memory_pressure_level".to_string(),
+      MEMORY_PRESSURE_LEVEL_KEY.to_string(),
       StateValue {
         value_type: Some(bd_resilient_kv::Value_type::StringValue(
           level.variant_name().unwrap_or("Unknown").to_string(),
@@ -127,7 +134,7 @@ async fn initialize_memory_pressure_loads_value_and_clears_store() {
   state_store
     .insert(
       Scope::System,
-      "memory_pressure_level".to_string(),
+      MEMORY_PRESSURE_LEVEL_KEY.to_string(),
       string_value("Warning".to_string()),
     )
     .await
@@ -142,7 +149,11 @@ async fn initialize_memory_pressure_loads_value_and_clears_store() {
   );
 
   let reader = state_store.read().await;
-  assert!(reader.get(Scope::System, "memory_pressure_level").is_none());
+  assert!(
+    reader
+      .get(Scope::System, MEMORY_PRESSURE_LEVEL_KEY)
+      .is_none()
+  );
 }
 
 #[tokio::test]
@@ -154,7 +165,7 @@ async fn initialize_memory_pressure_does_not_persist_to_next_session() {
   state_store
     .insert(
       Scope::System,
-      "memory_pressure_level".to_string(),
+      MEMORY_PRESSURE_LEVEL_KEY.to_string(),
       string_value("Warning".to_string()),
     )
     .await

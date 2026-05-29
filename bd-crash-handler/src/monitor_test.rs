@@ -33,6 +33,7 @@ use bd_resilient_kv::StateValue;
 use bd_runtime::runtime::{self};
 use bd_session::fixed::{self, UUIDCallbacks};
 use bd_shutdown::ComponentShutdownTrigger;
+use bd_state::MEMORY_PRESSURE_LEVEL_KEY;
 use bd_state::test::TestStore;
 use bd_test_helpers::make_mut;
 use bd_test_helpers::session::in_memory_store;
@@ -218,7 +219,7 @@ impl Setup {
       store
         .insert(
           bd_resilient_kv::Scope::System,
-          "memory_pressure_level".to_string(),
+          MEMORY_PRESSURE_LEVEL_KEY.to_string(),
           StateValue {
             value_type: Some(bd_resilient_kv::Value_type::StringValue(
               MemoryPressureLevel(level)
@@ -353,7 +354,7 @@ impl Setup {
       .state
       .insert(
         bd_resilient_kv::Scope::System,
-        "memory_pressure_level".to_string(),
+        MEMORY_PRESSURE_LEVEL_KEY.to_string(),
         StateValue {
           value_type: Some(bd_resilient_kv::Value_type::StringValue(
             MemoryPressureLevel(level)
