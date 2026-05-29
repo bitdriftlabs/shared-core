@@ -11,18 +11,12 @@ use pretty_assertions::assert_eq;
 use std::future::Future;
 use std::pin::pin;
 use std::sync::Arc;
-use std::task::{Context, Poll, Wake, Waker};
+use std::task::{Context, Poll};
 use tempfile::TempDir;
 use uuid::Uuid;
 
-struct NoopWake;
-
-impl Wake for NoopWake {
-  fn wake(self: Arc<Self>) {}
-}
-
 fn expect_ready<T>(future: impl Future<Output = T>) -> T {
-  let waker = Waker::from(Arc::new(NoopWake));
+  let waker = Arc::new(std::task::Waker::noop());
   let mut context = Context::from_waker(&waker);
   let mut future = pin!(future);
   match future.as_mut().poll(&mut context) {
