@@ -808,6 +808,99 @@ impl<'a> flatbuffers::Verifiable for JavaScriptEngine {
 
 impl flatbuffers::SimpleToVerifyInSlice for JavaScriptEngine {}
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MIN_MEMORY_PRESSURE_LEVEL: i8 = 0;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MAX_MEMORY_PRESSURE_LEVEL: i8 = 3;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+#[allow(non_camel_case_types)]
+pub const ENUM_VALUES_MEMORY_PRESSURE_LEVEL: [MemoryPressureLevel; 4] = [
+  MemoryPressureLevel::Unknown,
+  MemoryPressureLevel::Normal,
+  MemoryPressureLevel::Warning,
+  MemoryPressureLevel::Critical,
+];
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[repr(transparent)]
+pub struct MemoryPressureLevel(pub i8);
+#[allow(non_upper_case_globals)]
+impl MemoryPressureLevel {
+  pub const Unknown: Self = Self(0);
+  pub const Normal: Self = Self(1);
+  pub const Warning: Self = Self(2);
+  pub const Critical: Self = Self(3);
+
+  pub const ENUM_MIN: i8 = 0;
+  pub const ENUM_MAX: i8 = 3;
+  pub const ENUM_VALUES: &'static [Self] = &[
+    Self::Unknown,
+    Self::Normal,
+    Self::Warning,
+    Self::Critical,
+  ];
+  /// Returns the variant's name or "" if unknown.
+  pub fn variant_name(self) -> Option<&'static str> {
+    match self {
+      Self::Unknown => Some("Unknown"),
+      Self::Normal => Some("Normal"),
+      Self::Warning => Some("Warning"),
+      Self::Critical => Some("Critical"),
+      _ => None,
+    }
+  }
+}
+impl core::fmt::Debug for MemoryPressureLevel {
+  fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    if let Some(name) = self.variant_name() {
+      f.write_str(name)
+    } else {
+      f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+    }
+  }
+}
+impl<'a> flatbuffers::Follow<'a> for MemoryPressureLevel {
+  type Inner = Self;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    let b = unsafe { flatbuffers::read_scalar_at::<i8>(buf, loc) };
+    Self(b)
+  }
+}
+
+impl flatbuffers::Push for MemoryPressureLevel {
+    type Output = MemoryPressureLevel;
+    #[inline]
+    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+        unsafe { flatbuffers::emplace_scalar::<i8>(dst, self.0); }
+    }
+}
+
+impl flatbuffers::EndianScalar for MemoryPressureLevel {
+  type Scalar = i8;
+  #[inline]
+  fn to_little_endian(self) -> i8 {
+    self.0.to_le()
+  }
+  #[inline]
+  #[allow(clippy::wrong_self_convention)]
+  fn from_little_endian(v: i8) -> Self {
+    let b = i8::from_le(v);
+    Self(b)
+  }
+}
+
+impl<'a> flatbuffers::Verifiable for MemoryPressureLevel {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    i8::run_verifier(v, pos)
+  }
+}
+
+impl flatbuffers::SimpleToVerifyInSlice for MemoryPressureLevel {}
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 pub const ENUM_MIN_ROTATION: i8 = 0;
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 pub const ENUM_MAX_ROTATION: i8 = 4;
@@ -1660,6 +1753,7 @@ impl<'a> AppMetrics<'a> {
   pub const VT_CPU_USAGE: flatbuffers::VOffsetT = 18;
   pub const VT_LIFECYCLE_EVENT: flatbuffers::VOffsetT = 20;
   pub const VT_JAVASCRIPT_ENGINE: flatbuffers::VOffsetT = 22;
+  pub const VT_MEMORY_PRESSURE_LEVEL: flatbuffers::VOffsetT = 24;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -1680,6 +1774,7 @@ impl<'a> AppMetrics<'a> {
     if let Some(x) = args.version { builder.add_version(x); }
     if let Some(x) = args.memory { builder.add_memory(x); }
     if let Some(x) = args.app_id { builder.add_app_id(x); }
+    builder.add_memory_pressure_level(args.memory_pressure_level);
     builder.add_javascript_engine(args.javascript_engine);
     builder.finish()
   }
@@ -1711,6 +1806,7 @@ impl<'a> AppMetrics<'a> {
       x.to_string()
     });
     let javascript_engine = self.javascript_engine();
+    let memory_pressure_level = self.memory_pressure_level();
     AppMetricsT {
       app_id,
       memory,
@@ -1722,6 +1818,7 @@ impl<'a> AppMetrics<'a> {
       cpu_usage,
       lifecycle_event,
       javascript_engine,
+      memory_pressure_level,
     }
   }
 
@@ -1795,6 +1892,13 @@ impl<'a> AppMetrics<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<JavaScriptEngine>(AppMetrics::VT_JAVASCRIPT_ENGINE, Some(JavaScriptEngine::UnknownJsEngine)).unwrap()}
   }
+  #[inline]
+  pub fn memory_pressure_level(&self) -> MemoryPressureLevel {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<MemoryPressureLevel>(AppMetrics::VT_MEMORY_PRESSURE_LEVEL, Some(MemoryPressureLevel::Unknown)).unwrap()}
+  }
 }
 
 impl flatbuffers::Verifiable for AppMetrics<'_> {
@@ -1814,6 +1918,7 @@ impl flatbuffers::Verifiable for AppMetrics<'_> {
      .visit_field::<flatbuffers::ForwardsUOffset<ProcessorUsage>>("cpu_usage", Self::VT_CPU_USAGE, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("lifecycle_event", Self::VT_LIFECYCLE_EVENT, false)?
      .visit_field::<JavaScriptEngine>("javascript_engine", Self::VT_JAVASCRIPT_ENGINE, false)?
+     .visit_field::<MemoryPressureLevel>("memory_pressure_level", Self::VT_MEMORY_PRESSURE_LEVEL, false)?
      .finish();
     Ok(())
   }
@@ -1829,6 +1934,7 @@ pub struct AppMetricsArgs<'a> {
     pub cpu_usage: Option<flatbuffers::WIPOffset<ProcessorUsage<'a>>>,
     pub lifecycle_event: Option<flatbuffers::WIPOffset<&'a str>>,
     pub javascript_engine: JavaScriptEngine,
+    pub memory_pressure_level: MemoryPressureLevel,
 }
 impl<'a> Default for AppMetricsArgs<'a> {
   #[inline]
@@ -1844,6 +1950,7 @@ impl<'a> Default for AppMetricsArgs<'a> {
       cpu_usage: None,
       lifecycle_event: None,
       javascript_engine: JavaScriptEngine::UnknownJsEngine,
+      memory_pressure_level: MemoryPressureLevel::Unknown,
     }
   }
 }
@@ -1894,6 +2001,10 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> AppMetricsBuilder<'a, 'b, A> {
     self.fbb_.push_slot::<JavaScriptEngine>(AppMetrics::VT_JAVASCRIPT_ENGINE, javascript_engine, JavaScriptEngine::UnknownJsEngine);
   }
   #[inline]
+  pub fn add_memory_pressure_level(&mut self, memory_pressure_level: MemoryPressureLevel) {
+    self.fbb_.push_slot::<MemoryPressureLevel>(AppMetrics::VT_MEMORY_PRESSURE_LEVEL, memory_pressure_level, MemoryPressureLevel::Unknown);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> AppMetricsBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     AppMetricsBuilder {
@@ -1921,6 +2032,7 @@ impl core::fmt::Debug for AppMetrics<'_> {
       ds.field("cpu_usage", &self.cpu_usage());
       ds.field("lifecycle_event", &self.lifecycle_event());
       ds.field("javascript_engine", &self.javascript_engine());
+      ds.field("memory_pressure_level", &self.memory_pressure_level());
       ds.finish()
   }
 }
@@ -1937,6 +2049,7 @@ pub struct AppMetricsT {
   pub cpu_usage: Option<Box<ProcessorUsageT>>,
   pub lifecycle_event: Option<String>,
   pub javascript_engine: JavaScriptEngine,
+  pub memory_pressure_level: MemoryPressureLevel,
 }
 impl Default for AppMetricsT {
   fn default() -> Self {
@@ -1951,6 +2064,7 @@ impl Default for AppMetricsT {
       cpu_usage: None,
       lifecycle_event: None,
       javascript_engine: JavaScriptEngine::UnknownJsEngine,
+      memory_pressure_level: MemoryPressureLevel::Unknown,
     }
   }
 }
@@ -1984,6 +2098,7 @@ impl AppMetricsT {
       _fbb.create_string(x)
     });
     let javascript_engine = self.javascript_engine;
+    let memory_pressure_level = self.memory_pressure_level;
     AppMetrics::create(_fbb, &AppMetricsArgs{
       app_id,
       memory,
@@ -1995,6 +2110,7 @@ impl AppMetricsT {
       cpu_usage,
       lifecycle_event,
       javascript_engine,
+      memory_pressure_level,
     })
   }
 }

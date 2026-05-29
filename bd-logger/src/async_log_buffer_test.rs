@@ -6,7 +6,14 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::Block;
-use crate::async_log_buffer::{AsyncLogBuffer, LogLine, LogReplay, PreConfigItem, Sender};
+use crate::async_log_buffer::{
+  AsyncLogBuffer,
+  LogLine,
+  LogReplay,
+  PreConfigItem,
+  Sender,
+  StateUpdateMessage,
+};
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
@@ -27,6 +34,7 @@ use bd_log_primitives::{
   LogFields,
   log_level,
 };
+use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_proto::protos::logging::payload::LogType;
@@ -35,7 +43,7 @@ use bd_session::Strategy;
 use bd_session::fixed::UUIDCallbacks;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::test::TestStore;
-use bd_state::{SYSTEM_SESSION_ID_KEY, Scope, StateReader};
+use bd_state::{MEMORY_PRESSURE_LEVEL_KEY, SYSTEM_SESSION_ID_KEY, Scope, StateReader};
 use bd_stats_common::labels;
 use bd_test_helpers::events::NoOpListenerTarget;
 use bd_test_helpers::metadata_provider::LogMetadata;
@@ -807,6 +815,55 @@ async fn updates_system_session_id_for_new_sessions() {
   }
 
   drop(test_store);
+  task.join().unwrap();
+}
+
+#[tokio::test]
+async fn set_memory_pressure_level_writes_to_system_scope() {
+  let mut setup = Setup::new();
+  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+
+  let config_update = setup.make_config_update(WorkflowsConfiguration::default());
+  let task = std::thread::spawn(move || {
+    assert_ok!(config_update_tx.blocking_send(config_update));
+  });
+
+  let test_store = TestStore::new().await;
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+    (*test_store).clone(),
+    (),
+    shutdown_trigger.make_shutdown(),
+  ));
+
+  sender
+    .try_send_state_update(StateUpdateMessage::SetMemoryPressureLevel {
+      level: MemoryPressureLevel::Warning,
+    })
+    .unwrap();
+
+  sender
+    .flush_state(Block::Yes {
+      timeout: 5.std_seconds(),
+      poll_callback: None,
+    })
+    .unwrap();
+
+  // Wait a bit for file I/O to be sure
+  500.milliseconds().sleep().await;
+
+  {
+    let reader = test_store.read().await;
+    assert!(
+      reader
+        .get(Scope::System, MEMORY_PRESSURE_LEVEL_KEY)
+        .is_some_and(|v| v.has_string_value() && v.string_value() == "Warning")
+    );
+  }
+
+  shutdown_trigger.shutdown().await;
+  handle.await.unwrap();
   task.join().unwrap();
 }
 

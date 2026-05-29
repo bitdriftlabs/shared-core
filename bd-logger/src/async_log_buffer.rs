@@ -41,6 +41,7 @@ use bd_log_primitives::{
   LogMessage,
 };
 use bd_network_quality::{NetworkQualityMonitor, NetworkQualityResolver};
+use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::client::api::debug_data_request::{
   WorkflowDebugData,
   WorkflowTransitionDebugData,
@@ -50,7 +51,13 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
-use bd_state::{ENTITY_ID_KEY, SYSTEM_SESSION_ID_KEY, Scope, string_value};
+use bd_state::{
+  ENTITY_ID_KEY,
+  MEMORY_PRESSURE_LEVEL_KEY,
+  SYSTEM_SESSION_ID_KEY,
+  Scope,
+  string_value,
+};
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflows::workflow::WorkflowDebugStateMap;
@@ -96,6 +103,7 @@ pub enum StateUpdateMessage {
   AddLogField(String, DataValue),
   RemoveLogField(String),
   SetFeatureFlagExposure(String, Option<String>),
+  SetMemoryPressureLevel { level: MemoryPressureLevel },
   SetEntityId(Option<String>),
   RequestSessionId(bd_completion::Sender<anyhow::Result<String>>),
   StartNewSession(bd_completion::Sender<()>),
@@ -111,6 +119,7 @@ impl MemorySized for StateUpdateMessage {
         Self::SetFeatureFlagExposure(flag, variant) => {
           flag.len() + variant.as_ref().map_or(0, String::len)
         },
+        Self::SetMemoryPressureLevel { .. } => 0,
         Self::SetEntityId(entity_id) => entity_id.as_ref().map_or(0, String::len),
         Self::RequestSessionId(response_tx) => size_of_val(response_tx),
         Self::StartNewSession(response_tx) => size_of_val(response_tx),
@@ -1051,6 +1060,20 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                         log::debug!("failed to enqueue state operation to pre-config buffer: {e}");
                       }
                     }
+                  }
+                },
+                StateUpdateMessage::SetMemoryPressureLevel { level } => {
+                  if let Err(e) = state_store
+                    .insert(
+                      Scope::System,
+                      MEMORY_PRESSURE_LEVEL_KEY.to_string(),
+                      string_value(
+                        level.variant_name().unwrap_or("Unknown").to_string(),
+                      ),
+                    )
+                    .await
+                  {
+                    log::debug!("failed to persist memory pressure level: {e}");
                   }
                 },
                 StateUpdateMessage::SetEntityId(entity_id) => {

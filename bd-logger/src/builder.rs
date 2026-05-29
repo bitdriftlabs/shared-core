@@ -34,6 +34,7 @@ use bd_client_stats_store::Collector;
 use bd_crash_handler::Monitor;
 use bd_error_reporter::reporter::{UnexpectedErrorHandler, handle_unexpected};
 use bd_internal_logging::NoopLogger;
+use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::network_quality::NetworkCallOnlineIndicatorTimeout;
 use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
@@ -41,6 +42,7 @@ use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_state::{
   ENTITY_ID_KEY,
+  MEMORY_PRESSURE_LEVEL_KEY,
   Scope as StateScope,
   StateReader,
   Store as StateStore,
@@ -52,7 +54,7 @@ use futures_util::{Future, try_join};
 use parking_lot::Mutex;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicI8, Ordering};
 use time::Duration;
 use tokio::sync::watch;
 
@@ -76,6 +78,30 @@ pub fn default_stats_flush_triggers(
     sleep_mode_active,
     time_provider,
   )))
+}
+
+async fn initialize_memory_pressure(
+  previous_run_state: &bd_resilient_kv::ScopedMaps,
+  state_store: &StateStore,
+  previous_memory_pressure_level: &std::sync::atomic::AtomicI8,
+) {
+  let level = previous_run_state
+    .get(bd_resilient_kv::Scope::System, MEMORY_PRESSURE_LEVEL_KEY)
+    .filter(|tv| tv.value.has_string_value())
+    .and_then(|tv| match tv.value.string_value() {
+      "Normal" => Some(MemoryPressureLevel::Normal.0),
+      "Warning" => Some(MemoryPressureLevel::Warning.0),
+      "Critical" => Some(MemoryPressureLevel::Critical.0),
+      _ => None,
+    });
+
+  if let Some(level) = level {
+    previous_memory_pressure_level.store(level, Ordering::Relaxed);
+    // Clear the persisted value so it doesn't bleed into subsequent sessions
+    let _ = state_store
+      .remove(bd_state::Scope::System, MEMORY_PRESSURE_LEVEL_KEY)
+      .await;
+  }
 }
 
 async fn initialize_opaque_entity_updates(
@@ -342,6 +368,8 @@ impl LoggerBuilder {
     let (opaque_entity_updates_tx, opaque_entity_updates_rx) = watch::channel(None);
     let pending_entity_id = Arc::new(Mutex::new(None));
 
+    let previous_memory_pressure_level = Arc::new(AtomicI8::new(0));
+
     let logger = Logger::new(
       maybe_shutdown_trigger,
       runtime_loader.clone(),
@@ -357,6 +385,7 @@ impl LoggerBuilder {
       sleep_mode_active_tx,
       is_tracing_active,
       sdk_status_tracker.clone(),
+      previous_memory_pressure_level.clone(),
     );
     let log = if self.internal_logger {
       Arc::new(InternalLogger::new(
@@ -414,6 +443,13 @@ impl LoggerBuilder {
       let pending_entity_id = pending_entity_id.lock().take();
       initialize_opaque_entity_updates(&state_store, &opaque_entity_updates_tx, pending_entity_id)
         .await;
+
+      initialize_memory_pressure(
+        &previous_run_state,
+        &state_store,
+        &previous_memory_pressure_level,
+      )
+      .await;
 
       if result.fallback_occurred {
         handle_unexpected(

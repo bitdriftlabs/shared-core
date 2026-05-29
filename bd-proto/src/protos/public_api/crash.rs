@@ -1121,6 +1121,8 @@ pub mod report {
         pub app_id: ::std::string::String,
         // @@protoc_insertion_point(field:bitdrift.public.unary.issues.v1.Report.AppMetrics.version)
         pub version: ::std::string::String,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.issues.v1.Report.AppMetrics.memory_pressure_level)
+        pub memory_pressure_level: ::std::option::Option<::protobuf::EnumOrUnknown<app_metrics::MemoryPressureLevel>>,
         // message oneof groups
         pub build_number: ::std::option::Option<app_metrics::Build_number>,
         // special fields
@@ -1214,7 +1216,7 @@ pub mod report {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(4);
+            let mut fields = ::std::vec::Vec::with_capacity(5);
             let mut oneofs = ::std::vec::Vec::with_capacity(1);
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "app_id",
@@ -1237,6 +1239,11 @@ pub mod report {
                 AppMetrics::has_version_code,
                 AppMetrics::version_code,
                 AppMetrics::set_version_code,
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "memory_pressure_level",
+                |m: &AppMetrics| { &m.memory_pressure_level },
+                |m: &mut AppMetrics| { &mut m.memory_pressure_level },
             ));
             oneofs.push(app_metrics::Build_number::generated_oneof_descriptor_data());
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<AppMetrics>(
@@ -1269,6 +1276,9 @@ pub mod report {
                     32 => {
                         self.build_number = ::std::option::Option::Some(app_metrics::Build_number::VersionCode(is.read_int64()?));
                     },
+                    40 => {
+                        self.memory_pressure_level = ::std::option::Option::Some(is.read_enum_or_unknown()?);
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -1286,6 +1296,9 @@ pub mod report {
             }
             if !self.version.is_empty() {
                 my_size += ::protobuf::rt::string_size(2, &self.version);
+            }
+            if let Some(v) = self.memory_pressure_level {
+                my_size += ::protobuf::rt::int32_size(5, v.value());
             }
             if let ::std::option::Option::Some(ref v) = self.build_number {
                 match v {
@@ -1308,6 +1321,9 @@ pub mod report {
             }
             if !self.version.is_empty() {
                 os.write_string(2, &self.version)?;
+            }
+            if let Some(v) = self.memory_pressure_level {
+                os.write_enum(5, ::protobuf::EnumOrUnknown::value(&v))?;
             }
             if let ::std::option::Option::Some(ref v) = self.build_number {
                 match v {
@@ -1340,6 +1356,7 @@ pub mod report {
             self.version.clear();
             self.build_number = ::std::option::Option::None;
             self.build_number = ::std::option::Option::None;
+            self.memory_pressure_level = ::std::option::Option::None;
             self.special_fields.clear();
         }
 
@@ -1347,6 +1364,7 @@ pub mod report {
             static instance: AppMetrics = AppMetrics {
                 app_id: ::std::string::String::new(),
                 version: ::std::string::String::new(),
+                memory_pressure_level: ::std::option::Option::None,
                 build_number: ::std::option::Option::None,
                 special_fields: ::protobuf::SpecialFields::new(),
             };
@@ -1396,6 +1414,77 @@ pub mod report {
         impl Build_number {
             pub(in super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
                 ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Build_number>("build_number")
+            }
+        }
+        #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
+        // @@protoc_insertion_point(enum:bitdrift.public.unary.issues.v1.Report.AppMetrics.MemoryPressureLevel)
+        pub enum MemoryPressureLevel {
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.issues.v1.Report.AppMetrics.MemoryPressureLevel.MEMORY_PRESSURE_UNKNOWN)
+            MEMORY_PRESSURE_UNKNOWN = 0,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.issues.v1.Report.AppMetrics.MemoryPressureLevel.MEMORY_PRESSURE_NORMAL)
+            MEMORY_PRESSURE_NORMAL = 1,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.issues.v1.Report.AppMetrics.MemoryPressureLevel.MEMORY_PRESSURE_WARNING)
+            MEMORY_PRESSURE_WARNING = 2,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.issues.v1.Report.AppMetrics.MemoryPressureLevel.MEMORY_PRESSURE_CRITICAL)
+            MEMORY_PRESSURE_CRITICAL = 3,
+        }
+
+        impl ::protobuf::Enum for MemoryPressureLevel {
+            const NAME: &'static str = "MemoryPressureLevel";
+
+            fn value(&self) -> i32 {
+                *self as i32
+            }
+
+            fn from_i32(value: i32) -> ::std::option::Option<MemoryPressureLevel> {
+                match value {
+                    0 => ::std::option::Option::Some(MemoryPressureLevel::MEMORY_PRESSURE_UNKNOWN),
+                    1 => ::std::option::Option::Some(MemoryPressureLevel::MEMORY_PRESSURE_NORMAL),
+                    2 => ::std::option::Option::Some(MemoryPressureLevel::MEMORY_PRESSURE_WARNING),
+                    3 => ::std::option::Option::Some(MemoryPressureLevel::MEMORY_PRESSURE_CRITICAL),
+                    _ => ::std::option::Option::None
+                }
+            }
+
+            fn from_str(str: &str) -> ::std::option::Option<MemoryPressureLevel> {
+                match str {
+                    "MEMORY_PRESSURE_UNKNOWN" => ::std::option::Option::Some(MemoryPressureLevel::MEMORY_PRESSURE_UNKNOWN),
+                    "MEMORY_PRESSURE_NORMAL" => ::std::option::Option::Some(MemoryPressureLevel::MEMORY_PRESSURE_NORMAL),
+                    "MEMORY_PRESSURE_WARNING" => ::std::option::Option::Some(MemoryPressureLevel::MEMORY_PRESSURE_WARNING),
+                    "MEMORY_PRESSURE_CRITICAL" => ::std::option::Option::Some(MemoryPressureLevel::MEMORY_PRESSURE_CRITICAL),
+                    _ => ::std::option::Option::None
+                }
+            }
+
+            const VALUES: &'static [MemoryPressureLevel] = &[
+                MemoryPressureLevel::MEMORY_PRESSURE_UNKNOWN,
+                MemoryPressureLevel::MEMORY_PRESSURE_NORMAL,
+                MemoryPressureLevel::MEMORY_PRESSURE_WARNING,
+                MemoryPressureLevel::MEMORY_PRESSURE_CRITICAL,
+            ];
+        }
+
+        impl ::protobuf::EnumFull for MemoryPressureLevel {
+            fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().enum_by_package_relative_name("Report.AppMetrics.MemoryPressureLevel").unwrap()).clone()
+            }
+
+            fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
+                let index = *self as usize;
+                Self::enum_descriptor().value_by_index(index)
+            }
+        }
+
+        impl ::std::default::Default for MemoryPressureLevel {
+            fn default() -> Self {
+                MemoryPressureLevel::MEMORY_PRESSURE_UNKNOWN
+            }
+        }
+
+        impl MemoryPressureLevel {
+            pub(in super::super) fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
+                ::protobuf::reflect::GeneratedEnumDescriptorData::new::<MemoryPressureLevel>("Report.AppMetrics.MemoryPressureLevel")
             }
         }
     }
@@ -2303,7 +2392,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x12\x11\n\rUNKNOWN_IMAGE\x10\x04\x12\r\n\tMALFORMED\x10\x05B\x0e\n\x0c_\
     symbol_nameB\r\n\x0b_image_pathB\x10\n\x0e_frame_addressB\x11\n\x0f_symb\
     ol_addressB\x14\n\x12_symbolicated_nameB\x15\n\x13_image_load_addressB\
-    \x0b\n\t_image_id\"\xc5\x0f\n\x06Report\x12E\n\x06errors\x18\x01\x20\x03\
+    \x0b\n\t_image_id\"\xf7\x11\n\x06Report\x12E\n\x06errors\x18\x01\x20\x03\
     (\x0b2-.bitdrift.public.unary.issues.v1.Report.ErrorR\x06errors\x12\\\n\
     \x0edevice_metrics\x18\x02\x20\x01(\x0b25.bitdrift.public.unary.issues.v\
     1.Report.DeviceMetricsR\rdeviceMetrics\x12\\\n\x0ethread_details\x18\x03\
@@ -2317,43 +2406,49 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01\x20\x01(\tR\x06reasonB\x07\xfaB\x04r\x02\x10\x01\x12!\n\x07details\
     \x18\x02\x20\x01(\tR\x07detailsB\x07\xfaB\x04r\x02\x10\x01\x12H\n\x06fra\
     mes\x18\x03\x20\x03(\x0b2&.bitdrift.public.unary.issues.v1.FrameR\x06fra\
-    mesB\x08\xfaB\x05\x92\x01\x02\x08\x01\x1a\xad\x01\n\nAppMetrics\x12\x1e\
+    mesB\x08\xfaB\x05\x92\x01\x02\x08\x01\x1a\xdf\x03\n\nAppMetrics\x12\x1e\
     \n\x06app_id\x18\x01\x20\x01(\tR\x05appIdB\x07\xfaB\x04r\x02\x10\x01\x12\
     !\n\x07version\x18\x02\x20\x01(\tR\x07versionB\x07\xfaB\x04r\x02\x10\x01\
     \x12'\n\x0ebundle_version\x18\x03\x20\x01(\tH\0R\rbundleVersion\x12#\n\
-    \x0cversion_code\x18\x04\x20\x01(\x03H\0R\x0bversionCodeB\x0e\n\x0cbuild\
-    _number\x1a\xdf\x05\n\rDeviceMetrics\x127\n\x04time\x18\x01\x20\x01(\x0b\
-    2\x1a.google.protobuf.TimestampR\x04timeB\x07\xfaB\x04r\x02\x10\x01\x12+\
-    \n\x0cmanufacturer\x18\x02\x20\x01(\tR\x0cmanufacturerB\x07\xfaB\x04r\
-    \x02\x10\x01\x12\x1d\n\x05model\x18\x03\x20\x01(\tR\x05modelB\x07\xfaB\
-    \x04r\x02\x10\x01\x12p\n\x0carchitecture\x18\x04\x20\x01(\x0e2B.bitdrift\
-    .public.unary.issues.v1.Report.DeviceMetrics.ArchitectureR\x0carchitectu\
-    reB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12\x17\n\x02os\x18\x05\x20\x01(\tR\
-    \x02osB\x07\xfaB\x04r\x02\x10\x01\x12&\n\nos_version\x18\x06\x20\x01(\tR\
-    \tosVersionB\x07\xfaB\x04r\x02\x10\x01\x12k\n\x0bpower_state\x18\x07\x20\
-    \x01(\x0e2@.bitdrift.public.unary.issues.v1.Report.DeviceMetrics.PowerSt\
-    ateR\npowerStateB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12.\n\rbattery_level\
-    \x18\x08\x20\x01(\rR\x0cbatteryLevelB\t\xfaB\x06*\x04\x18d(\0\x12\x20\n\
-    \x07user_id\x18\t\x20\x01(\tR\x06userIdB\x07\xfaB\x04r\x02\x10\x01\"K\n\
-    \x0cArchitecture\x12\x10\n\x0cUNKNOWN_ARCH\x10\0\x12\t\n\x05ARM32\x10\
-    \x01\x12\t\n\x05ARM64\x10\x02\x12\x07\n\x03X86\x10\x03\x12\n\n\x06X86_64\
-    \x10\x04\"\x89\x01\n\nPowerState\x12\x17\n\x13UNKNOWN_POWER_STATE\x10\0\
-    \x12\x16\n\x12RUNNING_ON_BATTERY\x10\x01\x12\x19\n\x15PLUGGED_IN_NO_BATT\
-    ERY\x10\x02\x12\x17\n\x13PLUGGED_IN_CHARGING\x10\x03\x12\x16\n\x12PLUGGE\
-    D_IN_CHARGED\x10\x04\x1a\xae\x03\n\rThreadDetails\x12#\n\rtotal_threads\
-    \x18\x01\x20\x01(\rR\x0ctotalThreads\x12V\n\x07threads\x18\x02\x20\x03(\
-    \x0b2<.bitdrift.public.unary.issues.v1.Report.ThreadDetails.ThreadR\x07t\
-    hreads\x1a\x9f\x02\n\x06Thread\x12\x16\n\x06active\x18\x01\x20\x01(\x08R\
-    \x06active\x12\x12\n\x04name\x18\x02\x20\x01(\tR\x04name\x12\x19\n\x05in\
-    dex\x18\x03\x20\x01(\rH\0R\x05index\x88\x01\x01\x12\x14\n\x05state\x18\
-    \x04\x20\x01(\tR\x05state\x12\x1a\n\x08priority\x18\x05\x20\x01(\x02R\
-    \x08priority\x121\n\x12quality_of_service\x18\x06\x20\x01(\x05H\x01R\x10\
-    qualityOfService\x88\x01\x01\x12H\n\x06frames\x18\x07\x20\x03(\x0b2&.bit\
-    drift.public.unary.issues.v1.FrameR\x06framesB\x08\xfaB\x05\x8a\x01\x02\
-    \x10\x01B\x08\n\x06_indexB\x15\n\x13_quality_of_service*M\n\tFrameType\
-    \x12\x0b\n\x07UNKNOWN\x10\0\x12\t\n\x05DWARF\x10\x01\x12\x0f\n\x0bANDROI\
-    D_NDK\x10\x02\x12\x07\n\x03JVM\x10\x03\x12\x0e\n\nJAVASCRIPT\x10\x04b\
-    \x06proto3\
+    \x0cversion_code\x18\x04\x20\x01(\x03H\0R\x0bversionCode\x12\x89\x01\n\
+    \x15memory_pressure_level\x18\x05\x20\x01(\x0e2F.bitdrift.public.unary.i\
+    ssues.v1.Report.AppMetrics.MemoryPressureLevelH\x01R\x13memoryPressureLe\
+    velB\x08\xfaB\x05\x82\x01\x02\x10\x01\x88\x01\x01\"\x89\x01\n\x13MemoryP\
+    ressureLevel\x12\x1b\n\x17MEMORY_PRESSURE_UNKNOWN\x10\0\x12\x1a\n\x16MEM\
+    ORY_PRESSURE_NORMAL\x10\x01\x12\x1b\n\x17MEMORY_PRESSURE_WARNING\x10\x02\
+    \x12\x1c\n\x18MEMORY_PRESSURE_CRITICAL\x10\x03B\x0e\n\x0cbuild_numberB\
+    \x18\n\x16_memory_pressure_level\x1a\xdf\x05\n\rDeviceMetrics\x127\n\x04\
+    time\x18\x01\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x04timeB\x07\
+    \xfaB\x04r\x02\x10\x01\x12+\n\x0cmanufacturer\x18\x02\x20\x01(\tR\x0cman\
+    ufacturerB\x07\xfaB\x04r\x02\x10\x01\x12\x1d\n\x05model\x18\x03\x20\x01(\
+    \tR\x05modelB\x07\xfaB\x04r\x02\x10\x01\x12p\n\x0carchitecture\x18\x04\
+    \x20\x01(\x0e2B.bitdrift.public.unary.issues.v1.Report.DeviceMetrics.Arc\
+    hitectureR\x0carchitectureB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12\x17\n\
+    \x02os\x18\x05\x20\x01(\tR\x02osB\x07\xfaB\x04r\x02\x10\x01\x12&\n\nos_v\
+    ersion\x18\x06\x20\x01(\tR\tosVersionB\x07\xfaB\x04r\x02\x10\x01\x12k\n\
+    \x0bpower_state\x18\x07\x20\x01(\x0e2@.bitdrift.public.unary.issues.v1.R\
+    eport.DeviceMetrics.PowerStateR\npowerStateB\x08\xfaB\x05\x82\x01\x02\
+    \x10\x01\x12.\n\rbattery_level\x18\x08\x20\x01(\rR\x0cbatteryLevelB\t\
+    \xfaB\x06*\x04\x18d(\0\x12\x20\n\x07user_id\x18\t\x20\x01(\tR\x06userIdB\
+    \x07\xfaB\x04r\x02\x10\x01\"K\n\x0cArchitecture\x12\x10\n\x0cUNKNOWN_ARC\
+    H\x10\0\x12\t\n\x05ARM32\x10\x01\x12\t\n\x05ARM64\x10\x02\x12\x07\n\x03X\
+    86\x10\x03\x12\n\n\x06X86_64\x10\x04\"\x89\x01\n\nPowerState\x12\x17\n\
+    \x13UNKNOWN_POWER_STATE\x10\0\x12\x16\n\x12RUNNING_ON_BATTERY\x10\x01\
+    \x12\x19\n\x15PLUGGED_IN_NO_BATTERY\x10\x02\x12\x17\n\x13PLUGGED_IN_CHAR\
+    GING\x10\x03\x12\x16\n\x12PLUGGED_IN_CHARGED\x10\x04\x1a\xae\x03\n\rThre\
+    adDetails\x12#\n\rtotal_threads\x18\x01\x20\x01(\rR\x0ctotalThreads\x12V\
+    \n\x07threads\x18\x02\x20\x03(\x0b2<.bitdrift.public.unary.issues.v1.Rep\
+    ort.ThreadDetails.ThreadR\x07threads\x1a\x9f\x02\n\x06Thread\x12\x16\n\
+    \x06active\x18\x01\x20\x01(\x08R\x06active\x12\x12\n\x04name\x18\x02\x20\
+    \x01(\tR\x04name\x12\x19\n\x05index\x18\x03\x20\x01(\rH\0R\x05index\x88\
+    \x01\x01\x12\x14\n\x05state\x18\x04\x20\x01(\tR\x05state\x12\x1a\n\x08pr\
+    iority\x18\x05\x20\x01(\x02R\x08priority\x121\n\x12quality_of_service\
+    \x18\x06\x20\x01(\x05H\x01R\x10qualityOfService\x88\x01\x01\x12H\n\x06fr\
+    ames\x18\x07\x20\x03(\x0b2&.bitdrift.public.unary.issues.v1.FrameR\x06fr\
+    amesB\x08\xfaB\x05\x8a\x01\x02\x10\x01B\x08\n\x06_indexB\x15\n\x13_quali\
+    ty_of_service*M\n\tFrameType\x12\x0b\n\x07UNKNOWN\x10\0\x12\t\n\x05DWARF\
+    \x10\x01\x12\x0f\n\x0bANDROID_NDK\x10\x02\x12\x07\n\x03JVM\x10\x03\x12\
+    \x0e\n\nJAVASCRIPT\x10\x04b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -2383,9 +2478,10 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(report::DeviceMetrics::generated_message_descriptor_data());
             messages.push(report::ThreadDetails::generated_message_descriptor_data());
             messages.push(report::thread_details::Thread::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(4);
+            let mut enums = ::std::vec::Vec::with_capacity(5);
             enums.push(FrameType::generated_enum_descriptor_data());
             enums.push(frame::FrameStatus::generated_enum_descriptor_data());
+            enums.push(report::app_metrics::MemoryPressureLevel::generated_enum_descriptor_data());
             enums.push(report::device_metrics::Architecture::generated_enum_descriptor_data());
             enums.push(report::device_metrics::PowerState::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(

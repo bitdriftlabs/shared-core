@@ -19,6 +19,7 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Error,
   ErrorArgs,
   ErrorRelation,
+  MemoryPressureLevel,
   OSBuild,
   OSBuildArgs,
   Platform,
@@ -32,6 +33,7 @@ use bd_resilient_kv::StateValue;
 use bd_runtime::runtime::{self};
 use bd_session::fixed::{self, UUIDCallbacks};
 use bd_shutdown::ComponentShutdownTrigger;
+use bd_state::MEMORY_PRESSURE_LEVEL_KEY;
 use bd_state::test::TestStore;
 use bd_test_helpers::make_mut;
 use bd_test_helpers::session::in_memory_store;
@@ -188,7 +190,10 @@ impl Setup {
   ///
   /// In production, this snapshot is created by `Store::persistent()` which captures state
   /// before clearing ephemeral scopes. This helper allows tests to simulate that snapshot.
-  async fn make_previous_run_state(flags: Vec<(&str, &str)>) -> bd_resilient_kv::ScopedMaps {
+  async fn make_previous_run_state(
+    flags: Vec<(&str, &str)>,
+    memory_pressure_level: Option<i8>,
+  ) -> bd_resilient_kv::ScopedMaps {
     let mut store = bd_resilient_kv::VersionedKVStore::new_in_memory(
       Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00 UTC))),
       None,
@@ -210,6 +215,25 @@ impl Setup {
         .unwrap();
     }
 
+    if let Some(level) = memory_pressure_level {
+      store
+        .insert(
+          bd_resilient_kv::Scope::System,
+          MEMORY_PRESSURE_LEVEL_KEY.to_string(),
+          StateValue {
+            value_type: Some(bd_resilient_kv::Value_type::StringValue(
+              MemoryPressureLevel(level)
+                .variant_name()
+                .unwrap_or("Unknown")
+                .to_string(),
+            )),
+            ..Default::default()
+          },
+        )
+        .await
+        .unwrap();
+    }
+
     store.as_hashmap().clone()
   }
 
@@ -217,6 +241,7 @@ impl Setup {
     maybe_global_state: Option<LogFields>,
     enable_file_watcher: bool,
     crash_report_hook: Option<Arc<dyn CrashReportHook>>,
+    memory_pressure_level: Option<i8>,
   ) -> Self {
     let directory = TempDir::new().unwrap();
 
@@ -265,10 +290,10 @@ impl Setup {
     // We manually construct both to test that Monitor correctly routes previous session crashes
     // to use previous_run_state and current session crashes to use the live state.
 
-    let previous_run_state = Self::make_previous_run_state(vec![
-      ("initial_flag", "true"),
-      ("previous_only_flag", "enabled"),
-    ])
+    let previous_run_state = Self::make_previous_run_state(
+      vec![("initial_flag", "true"), ("previous_only_flag", "enabled")],
+      memory_pressure_level,
+    )
     .await;
 
     // Seed the current state with initial feature flags to represent the state at startup.
@@ -319,6 +344,26 @@ impl Setup {
         bd_state::Scope::FeatureFlagExposure,
         key.to_string(),
         bd_state::string_value(value),
+      )
+      .await
+      .unwrap();
+  }
+
+  async fn update_memory_pressure_level(&self, level: i8) {
+    self
+      .state
+      .insert(
+        bd_resilient_kv::Scope::System,
+        MEMORY_PRESSURE_LEVEL_KEY.to_string(),
+        StateValue {
+          value_type: Some(bd_resilient_kv::Value_type::StringValue(
+            MemoryPressureLevel(level)
+              .variant_name()
+              .unwrap_or("Unknown")
+              .to_string(),
+          )),
+          ..Default::default()
+        },
       )
       .await
       .unwrap();
@@ -512,6 +557,7 @@ async fn test_log_report_fields() {
     ),
     false,
     None,
+    None,
   )
   .await;
   setup.make_crash("report.cap", data);
@@ -637,7 +683,7 @@ async fn file_watcher_detects_current_session_report() {
     .timestamp(crash_timestamp)
     .build();
 
-  let mut setup = Setup::new(None, true, None).await;
+  let mut setup = Setup::new(None, true, None, None).await;
 
   let uuid = "12345678-1234-5678-1234-567812345678".parse().unwrap();
   setup.expect_artifact_upload_with_flags(
@@ -700,7 +746,7 @@ async fn file_watcher_detects_previous_session_report() {
     .reason("segmentation fault")
     .build();
 
-  let mut setup = Setup::new(None, true, None).await;
+  let mut setup = Setup::new(None, true, None, None).await;
 
   setup.expect_artifact_upload_with_flags(
     &data,
@@ -750,7 +796,7 @@ async fn file_watcher_detects_previous_session_report() {
 
 #[tokio::test]
 async fn file_watcher_ignores_non_cap_files() {
-  let mut setup = Setup::new(None, true, None).await;
+  let mut setup = Setup::new(None, true, None, None).await;
 
   // Write files with wrong extensions
   std::fs::write(
@@ -792,7 +838,7 @@ async fn file_watcher_ignores_non_cap_files() {
 
 #[tokio::test]
 async fn file_watcher_not_created_without_watcher_directory() {
-  let setup = Setup::new(None, false, None).await;
+  let setup = Setup::new(None, false, None, None).await;
 
   // The file watcher would typically hold this channel, so it being closed indicates no file
   // watcher was created.
@@ -801,7 +847,7 @@ async fn file_watcher_not_created_without_watcher_directory() {
 
 #[tokio::test]
 async fn file_watcher_processes_multiple_reports() {
-  let mut setup = Setup::new(None, true, None).await;
+  let mut setup = Setup::new(None, true, None, None).await;
 
   // Setup mock to return different UUIDs for each upload
   let uuid1 = "11111111-1111-1111-1111-111111111111".parse().unwrap();
@@ -880,10 +926,43 @@ async fn file_watcher_processes_multiple_reports() {
 }
 
 #[tokio::test]
+async fn previous_session_crash_without_any_memory_data_omits_memory_pressure_fields() {
+  let data = CrashReportBuilder::new("PreviousCrash").build();
+
+  let mut setup = Setup::new(None, true, None, None).await;
+
+  // Expect upload with previous session and no low memory level data
+  setup.expect_artifact_upload_with_flags(
+    &data,
+    "12345678-1234-5678-1234-567812345679".parse().unwrap(),
+    [
+      ("app_version".into(), "unknown".into()),
+      ("os_version".into(), "unknown".into()),
+    ]
+    .into(),
+    None,
+    "previous_session_id",
+    Some(vec![
+      ("initial_flag".to_string(), "true".to_string()),
+      ("previous_only_flag".to_string(), "enabled".to_string()),
+    ]),
+  );
+
+  // Write a crash report to the previous_session directory
+  std::fs::write(setup.previous_session_directory().join("crash.cap"), &data).unwrap();
+
+  // Wait for the crash to be processed
+  tokio::time::timeout(2.std_seconds(), setup.emit_log_rx.recv())
+    .await
+    .expect("Timeout waiting for crash log")
+    .expect("Channel closed without receiving crash log");
+}
+
+#[tokio::test]
 async fn previous_session_crash_uses_previous_feature_flags() {
   let data = CrashReportBuilder::new("PreviousCrash").build();
 
-  let mut setup = Setup::new(None, true, None).await;
+  let mut setup = Setup::new(None, true, None, None).await;
 
   // Update feature flags after Monitor creation - these should NOT appear in previous session
   // crash
@@ -918,13 +997,87 @@ async fn previous_session_crash_uses_previous_feature_flags() {
 }
 
 #[tokio::test]
+async fn previous_session_crash_uses_previous_memory_pressure_data() {
+  let data = CrashReportBuilder::new("PreviousCrash").build();
+
+  let mut setup = Setup::new(None, true, None, Some(2)).await;
+
+  setup.update_memory_pressure_level(3).await;
+
+  setup.expect_artifact_upload_with_flags(
+    &data,
+    "12345678-1234-5678-1234-567812345679".parse().unwrap(),
+    [
+      ("app_version".into(), "unknown".into()),
+      ("os_version".into(), "unknown".into()),
+      ("_memory_pressure_level".into(), "Warning".into()),
+      (
+        "_memory_pressure_timestamp_us".into(),
+        "1704067200000000".into(),
+      ),
+    ]
+    .into(),
+    None,
+    "previous_session_id",
+    Some(vec![
+      ("initial_flag".to_string(), "true".to_string()),
+      ("previous_only_flag".to_string(), "enabled".to_string()),
+    ]),
+  );
+
+  std::fs::write(setup.previous_session_directory().join("crash.cap"), &data).unwrap();
+
+  tokio::time::timeout(2.std_seconds(), setup.emit_log_rx.recv())
+    .await
+    .expect("Timeout waiting for crash log")
+    .expect("Channel closed without receiving crash log");
+}
+
+#[tokio::test]
+async fn previous_session_crash_with_normal_memory_includes_pressure_field() {
+  let data = CrashReportBuilder::new("PreviousCrash").build();
+
+  let mut setup = Setup::new(None, true, None, Some(1)).await;
+
+  setup.expect_artifact_upload_with_flags(
+    &data,
+    "12345678-1234-5678-1234-567812345679".parse().unwrap(),
+    [
+      ("app_version".into(), "unknown".into()),
+      ("os_version".into(), "unknown".into()),
+      ("_memory_pressure_level".into(), "Normal".into()),
+      (
+        "_memory_pressure_timestamp_us".into(),
+        "1704067200000000".into(),
+      ),
+    ]
+    .into(),
+    None,
+    "previous_session_id",
+    Some(vec![
+      ("initial_flag".to_string(), "true".to_string()),
+      ("previous_only_flag".to_string(), "enabled".to_string()),
+    ]),
+  );
+
+  // Write a crash report to the previous_session directory
+  std::fs::write(setup.previous_session_directory().join("crash.cap"), &data).unwrap();
+
+  // Wait for the crash to be processed
+  tokio::time::timeout(2.std_seconds(), setup.emit_log_rx.recv())
+    .await
+    .expect("Timeout waiting for crash log")
+    .expect("Channel closed without receiving crash log");
+}
+
+#[tokio::test]
 async fn current_session_crash_uses_current_feature_flags() {
   let crash_timestamp = datetime!(2024-01-15 12:34:56 UTC);
   let data = CrashReportBuilder::new("CurrentCrash")
     .timestamp(crash_timestamp)
     .build();
 
-  let mut setup = Setup::new(None, true, None).await;
+  let mut setup = Setup::new(None, true, None, None).await;
 
   // Update feature flags after Monitor creation - these SHOULD appear in current session crash
   setup.update_feature_flag("current_only_flag", "new").await;
@@ -990,7 +1143,7 @@ async fn crash_report_hook_is_invoked_with_correct_info() {
     .report_type(ReportType::JVMCrash)
     .build();
 
-  let mut setup = Setup::new(None, false, Some(hook.clone())).await;
+  let mut setup = Setup::new(None, false, Some(hook.clone()), None).await;
   setup.make_crash("report.cap", &data);
 
   let uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".parse().unwrap();
@@ -1025,7 +1178,7 @@ async fn assert_running_state_maps_to_foreground(running_state: &str, expected_f
     .platform(Platform::Android)
     .build();
 
-  let mut setup = Setup::new(None, false, None).await;
+  let mut setup = Setup::new(None, false, None, None).await;
   setup.make_crash("report.cap", &data);
 
   let uuid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee".parse().unwrap();
@@ -1065,6 +1218,7 @@ async fn no_running_state_does_not_override_foreground() {
   let mut setup = Setup::new(
     Some([("foreground".into(), "1".into())].into()),
     false,
+    None,
     None,
   )
   .await;

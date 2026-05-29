@@ -62,6 +62,8 @@ pub use bd_log_primitives::{
   LogMessage,
   log_level,
 };
+use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1 as bd_proto_v1;
+pub use bd_proto_v1::MemoryPressureLevel;
 pub use bd_resource_utilization::Target as ResourceUtilizationTarget;
 pub use bd_session_replay::Target as SessionReplayTarget;
 pub use builder::LoggerBuilder;

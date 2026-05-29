@@ -42,7 +42,7 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   ReportType,
 };
 use bd_resilient_kv::TimestampedValue;
-use bd_state::StateReader;
+use bd_state::{MEMORY_PRESSURE_LEVEL_KEY, StateReader};
 use bd_time::OffsetDateTimeExt as _;
 use fbs::issue_reporting::v_1::root_as_report;
 use itertools::Itertools as _;
@@ -458,6 +458,36 @@ impl Monitor {
       .collect_vec()
   }
 
+  fn get_memory_pressure_fields(&self, origin: ReportOrigin) -> LogFields {
+    if !matches!(origin, ReportOrigin::Previous) {
+      return LogFields::default();
+    }
+
+    let Some(level_tv) = self
+      .previous_run_state
+      .get(bd_resilient_kv::Scope::System, MEMORY_PRESSURE_LEVEL_KEY)
+      .filter(|tv| tv.value.has_string_value())
+    else {
+      return LogFields::default();
+    };
+
+    let level = level_tv.value.string_value();
+
+    // Unknown: no data recorded, skip
+    if level == "Unknown" || level.is_empty() {
+      return LogFields::default();
+    }
+
+    let mut fields = LogFields::default();
+    fields.insert("_memory_pressure_level".into(), level.into());
+    fields.insert(
+      "_memory_pressure_timestamp_us".into(),
+      level_tv.timestamp.to_string().into(),
+    );
+
+    fields
+  }
+
   fn get_global_state_fields(&self, origin: ReportOrigin) -> LogFields {
     match origin {
       ReportOrigin::Current => self.global_state_reader.global_state_fields(),
@@ -560,7 +590,8 @@ impl Monitor {
       .get_session_id(origin)
       .await
       .unwrap_or_else(|_| "unknown".to_string());
-    let (timestamp, state_fields) = Self::read_log_fields(bin_report, &global_state_fields);
+    let (timestamp, mut state_fields) = Self::read_log_fields(bin_report, &global_state_fields);
+    state_fields.extend(self.get_memory_pressure_fields(origin));
 
     self.invoke_crash_hook(
       &bin_report,

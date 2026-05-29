@@ -19,6 +19,7 @@ Report {
             cpu_usage: None,
             lifecycle_event: None,
             javascript_engine: UnknownJsEngine,
+            memory_pressure_level: Unknown,
         },
     ),
     device_metrics: Some(
