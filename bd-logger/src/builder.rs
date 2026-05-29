@@ -20,7 +20,9 @@ use crate::logging_state::UninitializedLoggingContext;
 use crate::state_upload::StateUploadHandle;
 use crate::{InitParams, LogAttributesOverrides};
 use bd_api::{
-  AggregatedNetworkQualityProvider, DataUpload, SimpleNetworkQualityProvider,
+  AggregatedNetworkQualityProvider,
+  DataUpload,
+  SimpleNetworkQualityProvider,
   TimedNetworkQualityProvider,
 };
 use bd_client_common::file_system::RealFileSystem;
@@ -39,7 +41,12 @@ use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushInt
 use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_state::{
-  ENTITY_ID_KEY, Scope as StateScope, StateReader, Store as StateStore, Value_type, string_value,
+  ENTITY_ID_KEY,
+  Scope as StateScope,
+  StateReader,
+  Store as StateStore,
+  Value_type,
+  string_value,
 };
 use bd_time::{SystemTimeProvider, Ticker, TimeProvider};
 use futures_util::{Future, try_join};

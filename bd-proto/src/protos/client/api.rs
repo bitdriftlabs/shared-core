@@ -7521,6 +7521,8 @@ pub struct FlushBuffers {
     // message fields
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.FlushBuffers.buffer_id_list)
     pub buffer_id_list: ::std::vec::Vec<::std::string::String>,
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.FlushBuffers.streaming)
+    pub streaming: ::protobuf::MessageField<super::workflow::workflow::action::action_flush_buffers::Streaming>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.FlushBuffers.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -7538,12 +7540,17 @@ impl FlushBuffers {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut fields = ::std::vec::Vec::with_capacity(2);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
             "buffer_id_list",
             |m: &FlushBuffers| { &m.buffer_id_list },
             |m: &mut FlushBuffers| { &mut m.buffer_id_list },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::workflow::workflow::action::action_flush_buffers::Streaming>(
+            "streaming",
+            |m: &FlushBuffers| { &m.streaming },
+            |m: &mut FlushBuffers| { &mut m.streaming },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<FlushBuffers>(
             "FlushBuffers",
@@ -7566,6 +7573,9 @@ impl ::protobuf::Message for FlushBuffers {
                 10 => {
                     self.buffer_id_list.push(is.read_string()?);
                 },
+                18 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.streaming)?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -7581,6 +7591,10 @@ impl ::protobuf::Message for FlushBuffers {
         for value in &self.buffer_id_list {
             my_size += ::protobuf::rt::string_size(1, &value);
         };
+        if let Some(v) = self.streaming.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -7590,6 +7604,9 @@ impl ::protobuf::Message for FlushBuffers {
         for v in &self.buffer_id_list {
             os.write_string(1, &v)?;
         };
+        if let Some(v) = self.streaming.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+        }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -7608,12 +7625,14 @@ impl ::protobuf::Message for FlushBuffers {
 
     fn clear(&mut self) {
         self.buffer_id_list.clear();
+        self.streaming.clear();
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static FlushBuffers {
         static instance: FlushBuffers = FlushBuffers {
             buffer_id_list: ::std::vec::Vec::new(),
+            streaming: ::protobuf::MessageField::none(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -10375,9 +10394,11 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \n\rErrorShutdown\x12\x1f\n\x0bgrpc_status\x18\x01\x20\x01(\x05R\ngrpcSt\
     atus\x12!\n\x0cgrpc_message\x18\x02\x20\x01(\tR\x0bgrpcMessage\x12R\n\
     \x0crate_limited\x18\x03\x20\x01(\x0b2/.bitdrift_public.protobuf.client.\
-    v1.RateLimitedR\x0brateLimited\"4\n\x0cFlushBuffers\x12$\n\x0ebuffer_id_\
-    list\x18\x01\x20\x03(\tR\x0cbufferIdList\"Z\n\x18SankeyPathUploadRespons\
-    e\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\
+    v1.RateLimitedR\x0brateLimited\"\xa6\x01\n\x0cFlushBuffers\x12$\n\x0ebuf\
+    fer_id_list\x18\x01\x20\x03(\tR\x0cbufferIdList\x12p\n\tstreaming\x18\
+    \x02\x20\x01(\x0b2R.bitdrift_public.protobuf.workflow.v1.Workflow.Action\
+    .ActionFlushBuffers.StreamingR\tstreaming\"Z\n\x18SankeyPathUploadRespon\
+    se\x12(\n\x0bupload_uuid\x18\x01\x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\
     \x02\x10\x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05error\"\xcb\x02\n\
     \x14SankeyIntentResponse\x12(\n\x0bintent_uuid\x18\x01\x20\x01(\tR\ninte\
     ntUuidB\x07\xfaB\x04r\x02\x10\x01\x12{\n\x12upload_immediately\x18\x03\

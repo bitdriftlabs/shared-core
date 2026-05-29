@@ -5,8 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::initialize_memory_pressure;
-use super::initialize_opaque_entity_updates;
+use super::{initialize_memory_pressure, initialize_opaque_entity_updates};
 use crate::logger::PendingEntityIdUpdate;
 use bd_client_stats_store::Collector;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
@@ -137,7 +136,10 @@ async fn initialize_memory_pressure_loads_value_and_clears_store() {
   let atomic = AtomicI8::new(0);
   initialize_memory_pressure(&previous_run_state, &state_store, &atomic).await;
 
-  assert_eq!(MemoryPressureLevel::Warning.0, atomic.load(Ordering::Relaxed));
+  assert_eq!(
+    MemoryPressureLevel::Warning.0,
+    atomic.load(Ordering::Relaxed)
+  );
 
   let reader = state_store.read().await;
   assert!(reader.get(Scope::System, "memory_pressure_level").is_none());
