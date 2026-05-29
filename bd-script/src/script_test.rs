@@ -668,3 +668,19 @@ fn use_set_value_for_script_output_grouping_key() {
     combined.grouping_hints.grouping_key
   );
 }
+
+#[test]
+fn scripts_with_differing_comments_or_whitespace_are_equal() {
+  use vrl::parser::ast::SyntaxEq;
+  let script1 =
+    Script::new::<CrashReport<'_>>(r#"set_grouping_key("set value")"#, report_functions())
+      .expect("is ok");
+  let script2 = Script::new::<CrashReport<'_>>(
+    r#"# setting the grouping key
+set_grouping_key("set value")"#,
+    report_functions(),
+  )
+  .expect("is ok");
+  assert!(script1.ast.syntax_eq(&script2.ast));
+  assert_eq!(script1, script2);
+}

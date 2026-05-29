@@ -20,14 +20,15 @@ use anyhow::anyhow;
 use std::fmt::Debug;
 use vrl::compiler::{CompileConfig, Program, compile_with_external};
 use vrl::diagnostic::Formatter;
+use vrl::parser::ast::{Program as AST, SyntaxEq};
 use vrl::prelude::state::{ExternalEnv, RuntimeState};
 use vrl::prelude::{Collection, Context, Function, TimeZone, Value};
 use vrl::value::Kind;
 
 #[derive(Clone, Debug)]
 pub struct Script {
-  source: String,
   program: Program,
+  ast: AST,
 }
 
 #[derive(Debug)]
@@ -54,8 +55,8 @@ impl Script {
     }
 
     Ok(Self {
-      source: program_source.to_owned(),
       program: result.program,
+      ast: result.ast,
     })
   }
 
@@ -73,9 +74,10 @@ impl Script {
 
 impl PartialEq for Script {
   fn eq(&self, other: &Self) -> bool {
-    self.source == other.source
+    self.ast.syntax_eq(&other.ast)
   }
 }
+
 
 impl From<Value> for ScriptValue {
   fn from(value: Value) -> Self {
