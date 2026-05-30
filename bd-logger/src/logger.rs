@@ -239,7 +239,7 @@ impl LoggerHandle {
         self.stats.log_emission_counters.record(&result);
 
         if let Err(e) = result {
-          warn_every!(15.seconds(), "dropping log: {:?}", e);
+          warn_every!(15.seconds(), "dropping log: {e:?}");
         }
       },
       "failed to log {:?}, emitting logs from within a field provider is not allowed",
