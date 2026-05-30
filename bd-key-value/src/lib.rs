@@ -58,9 +58,8 @@ impl Store {
     if let Err(e) = self.set_internal_string(key, value) {
       warn_every!(
         15.seconds(),
-        "failed to set value for {:?} key: {:?}",
+        "failed to set value for {:?} key: {e:?}",
         key.key,
-        e
       );
     }
   }
@@ -69,9 +68,8 @@ impl Store {
     if let Err(e) = self.set_internal(key, value) {
       warn_every!(
         15.seconds(),
-        "failed to set value for {:?} key: {:?}",
+        "failed to set value for {:?} key: {e:?}",
         key.key,
-        e
       );
     }
   }
@@ -83,17 +81,15 @@ impl Store {
       .map_err(|e| {
         warn_every!(
           15.seconds(),
-          "failed to get value for {:?} key: {:?}",
+          "failed to get value for {:?} key: {e:?}",
           key.key,
-          e
         );
 
         if let Err(e) = self.storage.delete(key.key()) {
           warn_every!(
             15.seconds(),
-            "failed to delete value for {:?} key: {:?}",
+            "failed to delete value for {:?} key: {e:?}",
             key.key,
-            e
           );
         }
       })
@@ -108,17 +104,15 @@ impl Store {
       .map_err(|e| {
         warn_every!(
           15.seconds(),
-          "failed to get value for {:?} key: {:?}",
+          "failed to get value for {:?} key: {e:?}",
           key.key,
-          e
         );
 
         if let Err(e) = self.storage.delete(key.key()) {
           warn_every!(
             15.seconds(),
-            "failed to delete value for {:?} key: {:?}",
+            "failed to delete value for {:?} key: {e:?}",
             key.key,
-            e
           );
         }
       })

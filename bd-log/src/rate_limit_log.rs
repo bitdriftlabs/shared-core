@@ -10,6 +10,8 @@
 mod rate_limit_log_test;
 
 use parking_lot::Mutex;
+use std::fmt;
+use std::sync::OnceLock;
 use time::Duration;
 use tokio::time::Instant;
 
@@ -31,7 +33,43 @@ impl WarnTracker {
   }
 }
 
+pub fn log_with_rate_limit(
+  tracker: &OnceLock<WarnTracker>,
+  level: log::Level,
+  duration: Duration,
+  args: fmt::Arguments<'_>,
+  target: &'static str,
+  module_path: &'static str,
+  file: &'static str,
+  line: u32,
+) {
+  let tracker = tracker.get_or_init(WarnTracker::default);
+  let level = if tracker.should_warn(duration) {
+    level
+  } else {
+    log::Level::Debug
+  };
+
+  if level > log::max_level() {
+    return;
+  }
+
+  // The macro captures call-site metadata and hands it to this helper so the emitted record still
+  // points at the caller while the tracker logic stays shared.
+  let mut record = log::Record::builder();
+  record
+    .args(args)
+    .level(level)
+    .target(target)
+    .module_path_static(Some(module_path))
+    .file_static(Some(file))
+    .line(Some(line));
+
+  log::logger().log(&record.build());
+}
+
 #[macro_export]
+#[clippy::format_args]
 macro_rules! warn_every_debug_assert {
   ($duration:expr, $condition:expr) => {
     debug_assert!($condition);
@@ -46,6 +84,7 @@ macro_rules! warn_every_debug_assert {
 }
 
 #[macro_export]
+#[clippy::format_args]
 macro_rules! warn_every_debug_panic {
   ($duration:expr, $message:expr) => {
     debug_assert!(false, $message);
@@ -54,39 +93,63 @@ macro_rules! warn_every_debug_panic {
 }
 
 #[macro_export]
+#[clippy::format_args]
 macro_rules! warn_every {
-  ($duration:expr, $first:tt) => {
-    $crate::log_every!(log::Level::Warn, $duration, "{}", $first);
-  };
-  ($duration:expr, $first:tt, $($arg:tt)+) => {
-    $crate::log_every!(log::Level::Warn, $duration, $first, $($arg)+);
-  };
+  ($duration:expr, $($arg:tt)+) => {{
+    static TRACKER: std::sync::OnceLock<$crate::rate_limit_log::WarnTracker> =
+      std::sync::OnceLock::new();
+
+    $crate::rate_limit_log::log_with_rate_limit(
+      &TRACKER,
+      log::Level::Warn,
+      $duration,
+      format_args!($($arg)+),
+      module_path!(),
+      module_path!(),
+      file!(),
+      line!(),
+    );
+  }};
 }
 
 #[macro_export]
+#[clippy::format_args]
 macro_rules! error_every {
-  ($duration:expr, $first:tt, $($arg:tt)+) => {
-    $crate::log_every!(log::Level::Error, $duration, $first, $($arg)+);
-  }
+  ($duration:expr, $($arg:tt)+) => {{
+    static TRACKER: std::sync::OnceLock<$crate::rate_limit_log::WarnTracker> =
+      std::sync::OnceLock::new();
+
+    $crate::rate_limit_log::log_with_rate_limit(
+      &TRACKER,
+      log::Level::Error,
+      $duration,
+      format_args!($($arg)+),
+      module_path!(),
+      module_path!(),
+      file!(),
+      line!(),
+    );
+  }};
 }
 
 #[macro_export]
+#[clippy::format_args]
 macro_rules! log_every {
-  ($level:expr, $duration:expr, $first:tt, $($arg:tt)+) => {
-    {
-      use $crate::rate_limit_log::WarnTracker;
-      use std::sync::OnceLock;
+  ($level:expr, $duration:expr, $($arg:tt)+) => {{
+    static TRACKER: std::sync::OnceLock<$crate::rate_limit_log::WarnTracker> =
+      std::sync::OnceLock::new();
 
-      static TRACKER: OnceLock<WarnTracker> = OnceLock::new();
-
-      let tracker = TRACKER.get_or_init(WarnTracker::default);
-      if tracker.should_warn($duration) {
-        log::log!($level, $first, $($arg)+);
-      } else {
-        log::debug!($first, $($arg)+);
-      }
-    }
-  };
+    $crate::rate_limit_log::log_with_rate_limit(
+      &TRACKER,
+      $level,
+      $duration,
+      format_args!($($arg)+),
+      module_path!(),
+      module_path!(),
+      file!(),
+      line!(),
+    );
+  }};
 }
 
 pub use error_every;
