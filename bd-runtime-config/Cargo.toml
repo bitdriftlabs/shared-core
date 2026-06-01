@@ -11,6 +11,7 @@ doctest = false
 [dependencies]
 async-trait.workspace       = true
 bd-server-stats.path        = "../bd-server-stats"
+bd-time.path                = "../bd-time"
 bd-workspace-hack.workspace = true
 log.workspace               = true
 notify.workspace            = true
@@ -20,9 +21,10 @@ rand.workspace              = true
 serde.workspace             = true
 serde_yaml.workspace        = true
 thiserror.workspace         = true
+time.workspace              = true
 tokio.workspace             = true
 
 [dev-dependencies]
-bd-test-helpers    = { path = "../bd-test-helpers", default-features = false }
+bd-test-helpers    = { path = "../bd-test-helpers", default-features = false, features = ["runtime"] }
 ctor.workspace     = true
 tempfile.workspace = true
