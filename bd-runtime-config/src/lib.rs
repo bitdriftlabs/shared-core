@@ -124,5 +124,8 @@ pub mod loader;
 /// Specific implementation of [`loader`] geared towards feature flags.
 pub mod feature_flags;
 
+/// Ticker implementation configured from runtime feature flags.
+pub mod runtime_ticker;
+
 #[cfg(test)]
 mod test;

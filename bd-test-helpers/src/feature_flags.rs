@@ -70,6 +70,7 @@ mockall::mock! {
 pub struct DefaultFeatureFlags {
   bool_flags: HashMap<String, bool>,
   integer_flags: HashMap<String, u64>,
+  string_flags: HashMap<String, Arc<String>>,
 }
 
 impl DefaultFeatureFlags {
@@ -82,6 +83,14 @@ impl DefaultFeatureFlags {
   #[must_use]
   pub fn with_integer_flag(mut self, name: &str, value: u64) -> Self {
     self.integer_flags.insert(name.to_string(), value);
+    self
+  }
+
+  #[must_use]
+  pub fn with_string_flag(mut self, name: &str, value: &str) -> Self {
+    self
+      .string_flags
+      .insert(name.to_string(), Arc::new(value.to_string()));
     self
   }
 }
@@ -99,7 +108,11 @@ impl FeatureFlags for DefaultFeatureFlags {
     *self.integer_flags.get(name).unwrap_or(&default)
   }
 
-  fn get_string(&self, _name: &str, default: &Arc<String>) -> Arc<String> {
-    default.clone()
+  fn get_string(&self, name: &str, default: &Arc<String>) -> Arc<String> {
+    self
+      .string_flags
+      .get(name)
+      .cloned()
+      .unwrap_or_else(|| default.clone())
   }
 }
