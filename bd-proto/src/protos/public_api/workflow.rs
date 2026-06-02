@@ -296,6 +296,200 @@ pub mod group_by {
         type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
     }
 
+    // @@protoc_insertion_point(message:bitdrift.public.unary.workflows.v1.GroupBy.MultiTag)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct MultiTag {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.GroupBy.MultiTag.scope)
+        pub scope: ::protobuf::EnumOrUnknown<super::StateScope>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.GroupBy.MultiTag.key_tag_name)
+        pub key_tag_name: ::std::string::String,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.GroupBy.MultiTag.value_tag_name)
+        pub value_tag_name: ::std::string::String,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.GroupBy.MultiTag.key_regex)
+        pub key_regex: ::std::option::Option<::std::string::String>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.GroupBy.MultiTag.value_regex)
+        pub value_regex: ::std::option::Option<::std::string::String>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.workflows.v1.GroupBy.MultiTag.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a MultiTag {
+        fn default() -> &'a MultiTag {
+            <MultiTag as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl MultiTag {
+        pub fn new() -> MultiTag {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(5);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "scope",
+                |m: &MultiTag| { &m.scope },
+                |m: &mut MultiTag| { &mut m.scope },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "key_tag_name",
+                |m: &MultiTag| { &m.key_tag_name },
+                |m: &mut MultiTag| { &mut m.key_tag_name },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "value_tag_name",
+                |m: &MultiTag| { &m.value_tag_name },
+                |m: &mut MultiTag| { &mut m.value_tag_name },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "key_regex",
+                |m: &MultiTag| { &m.key_regex },
+                |m: &mut MultiTag| { &mut m.key_regex },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "value_regex",
+                |m: &MultiTag| { &m.value_regex },
+                |m: &mut MultiTag| { &mut m.value_regex },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<MultiTag>(
+                "GroupBy.MultiTag",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for MultiTag {
+        const NAME: &'static str = "MultiTag";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    8 => {
+                        self.scope = is.read_enum_or_unknown()?;
+                    },
+                    18 => {
+                        self.key_tag_name = is.read_string()?;
+                    },
+                    26 => {
+                        self.value_tag_name = is.read_string()?;
+                    },
+                    34 => {
+                        self.key_regex = ::std::option::Option::Some(is.read_string()?);
+                    },
+                    42 => {
+                        self.value_regex = ::std::option::Option::Some(is.read_string()?);
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if self.scope != ::protobuf::EnumOrUnknown::new(super::StateScope::UNKNOWN) {
+                my_size += ::protobuf::rt::int32_size(1, self.scope.value());
+            }
+            if !self.key_tag_name.is_empty() {
+                my_size += ::protobuf::rt::string_size(2, &self.key_tag_name);
+            }
+            if !self.value_tag_name.is_empty() {
+                my_size += ::protobuf::rt::string_size(3, &self.value_tag_name);
+            }
+            if let Some(v) = self.key_regex.as_ref() {
+                my_size += ::protobuf::rt::string_size(4, &v);
+            }
+            if let Some(v) = self.value_regex.as_ref() {
+                my_size += ::protobuf::rt::string_size(5, &v);
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if self.scope != ::protobuf::EnumOrUnknown::new(super::StateScope::UNKNOWN) {
+                os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.scope))?;
+            }
+            if !self.key_tag_name.is_empty() {
+                os.write_string(2, &self.key_tag_name)?;
+            }
+            if !self.value_tag_name.is_empty() {
+                os.write_string(3, &self.value_tag_name)?;
+            }
+            if let Some(v) = self.key_regex.as_ref() {
+                os.write_string(4, v)?;
+            }
+            if let Some(v) = self.value_regex.as_ref() {
+                os.write_string(5, v)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> MultiTag {
+            MultiTag::new()
+        }
+
+        fn clear(&mut self) {
+            self.scope = ::protobuf::EnumOrUnknown::new(super::StateScope::UNKNOWN);
+            self.key_tag_name.clear();
+            self.value_tag_name.clear();
+            self.key_regex = ::std::option::Option::None;
+            self.value_regex = ::std::option::Option::None;
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static MultiTag {
+            static instance: MultiTag = MultiTag {
+                scope: ::protobuf::EnumOrUnknown::from_i32(0),
+                key_tag_name: ::std::string::String::new(),
+                value_tag_name: ::std::string::String::new(),
+                key_regex: ::std::option::Option::None,
+                value_regex: ::std::option::Option::None,
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for MultiTag {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("GroupBy.MultiTag").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for MultiTag {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for MultiTag {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
     // @@protoc_insertion_point(message:bitdrift.public.unary.workflows.v1.GroupBy.Value)
     #[derive(PartialEq,Clone,Default,Debug)]
     pub struct Value {
@@ -440,8 +634,57 @@ pub mod group_by {
             }
         }
 
+        // .bitdrift.public.unary.workflows.v1.GroupBy.MultiTag multi_tag = 4;
+
+        pub fn multi_tag(&self) -> &MultiTag {
+            match self.group_by_type {
+                ::std::option::Option::Some(value::Group_by_type::MultiTag(ref v)) => v,
+                _ => <MultiTag as ::protobuf::Message>::default_instance(),
+            }
+        }
+
+        pub fn clear_multi_tag(&mut self) {
+            self.group_by_type = ::std::option::Option::None;
+        }
+
+        pub fn has_multi_tag(&self) -> bool {
+            match self.group_by_type {
+                ::std::option::Option::Some(value::Group_by_type::MultiTag(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_multi_tag(&mut self, v: MultiTag) {
+            self.group_by_type = ::std::option::Option::Some(value::Group_by_type::MultiTag(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_multi_tag(&mut self) -> &mut MultiTag {
+            if let ::std::option::Option::Some(value::Group_by_type::MultiTag(_)) = self.group_by_type {
+            } else {
+                self.group_by_type = ::std::option::Option::Some(value::Group_by_type::MultiTag(MultiTag::new()));
+            }
+            match self.group_by_type {
+                ::std::option::Option::Some(value::Group_by_type::MultiTag(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_multi_tag(&mut self) -> MultiTag {
+            if self.has_multi_tag() {
+                match self.group_by_type.take() {
+                    ::std::option::Option::Some(value::Group_by_type::MultiTag(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                MultiTag::new()
+            }
+        }
+
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(3);
+            let mut fields = ::std::vec::Vec::with_capacity(4);
             let mut oneofs = ::std::vec::Vec::with_capacity(1);
             fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
                 "field_key",
@@ -461,6 +704,13 @@ pub mod group_by {
                 Value::state_value,
                 Value::mut_state_value,
                 Value::set_state_value,
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, MultiTag>(
+                "multi_tag",
+                Value::has_multi_tag,
+                Value::multi_tag,
+                Value::mut_multi_tag,
+                Value::set_multi_tag,
             ));
             oneofs.push(value::Group_by_type::generated_oneof_descriptor_data());
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Value>(
@@ -490,6 +740,9 @@ pub mod group_by {
                     26 => {
                         self.group_by_type = ::std::option::Option::Some(value::Group_by_type::StateValue(is.read_message()?));
                     },
+                    34 => {
+                        self.group_by_type = ::std::option::Option::Some(value::Group_by_type::MultiTag(is.read_message()?));
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -514,6 +767,10 @@ pub mod group_by {
                         let len = v.compute_size();
                         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                     },
+                    &value::Group_by_type::MultiTag(ref v) => {
+                        let len = v.compute_size();
+                        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                    },
                 };
             }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -532,6 +789,9 @@ pub mod group_by {
                     },
                     &value::Group_by_type::StateValue(ref v) => {
                         ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                    },
+                    &value::Group_by_type::MultiTag(ref v) => {
+                        ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
                     },
                 };
             }
@@ -552,6 +812,7 @@ pub mod group_by {
         }
 
         fn clear(&mut self) {
+            self.group_by_type = ::std::option::Option::None;
             self.group_by_type = ::std::option::Option::None;
             self.group_by_type = ::std::option::Option::None;
             self.group_by_type = ::std::option::Option::None;
@@ -596,6 +857,8 @@ pub mod group_by {
             LogBody(bool),
             // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.workflows.v1.GroupBy.Value.state_value)
             StateValue(super::StateValue),
+            // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.workflows.v1.GroupBy.Value.multi_tag)
+            MultiTag(super::MultiTag),
         }
 
         impl ::protobuf::Oneof for Group_by_type {
@@ -2314,8 +2577,57 @@ impl MatchRule {
         }
     }
 
+    // .bitdrift.public.unary.workflows.v1.IssueMatch issue_match = 6;
+
+    pub fn issue_match(&self) -> &IssueMatch {
+        match self.match_condition_type {
+            ::std::option::Option::Some(match_rule::Match_condition_type::IssueMatch(ref v)) => v,
+            _ => <IssueMatch as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_issue_match(&mut self) {
+        self.match_condition_type = ::std::option::Option::None;
+    }
+
+    pub fn has_issue_match(&self) -> bool {
+        match self.match_condition_type {
+            ::std::option::Option::Some(match_rule::Match_condition_type::IssueMatch(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_issue_match(&mut self, v: IssueMatch) {
+        self.match_condition_type = ::std::option::Option::Some(match_rule::Match_condition_type::IssueMatch(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_issue_match(&mut self) -> &mut IssueMatch {
+        if let ::std::option::Option::Some(match_rule::Match_condition_type::IssueMatch(_)) = self.match_condition_type {
+        } else {
+            self.match_condition_type = ::std::option::Option::Some(match_rule::Match_condition_type::IssueMatch(IssueMatch::new()));
+        }
+        match self.match_condition_type {
+            ::std::option::Option::Some(match_rule::Match_condition_type::IssueMatch(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_issue_match(&mut self) -> IssueMatch {
+        if self.has_issue_match() {
+            match self.match_condition_type.take() {
+                ::std::option::Option::Some(match_rule::Match_condition_type::IssueMatch(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            IssueMatch::new()
+        }
+    }
+
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(5);
+        let mut fields = ::std::vec::Vec::with_capacity(6);
         let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "match_id",
@@ -2342,6 +2654,13 @@ impl MatchRule {
             MatchRule::state_change_match,
             MatchRule::mut_state_change_match,
             MatchRule::set_state_change_match,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, IssueMatch>(
+            "issue_match",
+            MatchRule::has_issue_match,
+            MatchRule::issue_match,
+            MatchRule::mut_issue_match,
+            MatchRule::set_issue_match,
         ));
         fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
             "sample_rate",
@@ -2379,6 +2698,9 @@ impl ::protobuf::Message for MatchRule {
                 34 => {
                     self.match_condition_type = ::std::option::Option::Some(match_rule::Match_condition_type::StateChangeMatch(is.read_message()?));
                 },
+                50 => {
+                    self.match_condition_type = ::std::option::Option::Some(match_rule::Match_condition_type::IssueMatch(is.read_message()?));
+                },
                 40 => {
                     self.sample_rate = ::std::option::Option::Some(is.read_uint32()?);
                 },
@@ -2414,6 +2736,10 @@ impl ::protobuf::Message for MatchRule {
                     let len = v.compute_size();
                     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 },
+                &match_rule::Match_condition_type::IssueMatch(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
             };
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -2439,6 +2765,9 @@ impl ::protobuf::Message for MatchRule {
                 &match_rule::Match_condition_type::StateChangeMatch(ref v) => {
                     ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
                 },
+                &match_rule::Match_condition_type::IssueMatch(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(6, v, os)?;
+                },
             };
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
@@ -2459,6 +2788,7 @@ impl ::protobuf::Message for MatchRule {
 
     fn clear(&mut self) {
         self.match_id.clear();
+        self.match_condition_type = ::std::option::Option::None;
         self.match_condition_type = ::std::option::Option::None;
         self.match_condition_type = ::std::option::Option::None;
         self.match_condition_type = ::std::option::Option::None;
@@ -2506,6 +2836,8 @@ pub mod match_rule {
         OotbMatch(super::OotbMatch),
         // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.workflows.v1.MatchRule.state_change_match)
         StateChangeMatch(super::StateChangeMatch),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.workflows.v1.MatchRule.issue_match)
+        IssueMatch(super::IssueMatch),
     }
 
     impl ::protobuf::Oneof for Match_condition_type {
@@ -2523,6 +2855,128 @@ pub mod match_rule {
             ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Match_condition_type>("match_condition_type")
         }
     }
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.workflows.v1.IssueMatch)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct IssueMatch {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.IssueMatch.bdrl_program)
+    pub bdrl_program: ::std::string::String,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.workflows.v1.IssueMatch.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a IssueMatch {
+    fn default() -> &'a IssueMatch {
+        <IssueMatch as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl IssueMatch {
+    pub fn new() -> IssueMatch {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "bdrl_program",
+            |m: &IssueMatch| { &m.bdrl_program },
+            |m: &mut IssueMatch| { &mut m.bdrl_program },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<IssueMatch>(
+            "IssueMatch",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for IssueMatch {
+    const NAME: &'static str = "IssueMatch";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.bdrl_program = is.read_string()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.bdrl_program.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.bdrl_program);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.bdrl_program.is_empty() {
+            os.write_string(1, &self.bdrl_program)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> IssueMatch {
+        IssueMatch::new()
+    }
+
+    fn clear(&mut self) {
+        self.bdrl_program.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static IssueMatch {
+        static instance: IssueMatch = IssueMatch {
+            bdrl_program: ::std::string::String::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for IssueMatch {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("IssueMatch").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for IssueMatch {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for IssueMatch {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
 // @@protoc_insertion_point(message:bitdrift.public.unary.workflows.v1.StateChangeMatch)
@@ -13864,270 +14318,283 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     rift/public/unary/common/v1/common.proto\x1a:bitdrift/public/unary/workf\
     lows/v1/workflow_metadata.proto\x1a5bitdrift_public/protobuf/workflow/v1\
     /save_field.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/pr\
-    otobuf/timestamp.proto\x1a\x17validate/validate.proto\"\x99\x03\n\x07Gro\
+    otobuf/timestamp.proto\x1a\x17validate/validate.proto\"\xa3\x06\n\x07Gro\
     upBy\x12S\n\x06values\x18\x06\x20\x03(\x0b21.bitdrift.public.unary.workf\
     lows.v1.GroupBy.ValueR\x06valuesB\x08\xfaB\x05\x92\x01\x02\x10d\x1ay\n\n\
     StateValue\x12P\n\x05scope\x18\x01\x20\x01(\x0e2..bitdrift.public.unary.\
     workflows.v1.StateScopeR\x05scopeB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\
     \x12\x19\n\x03key\x18\x02\x20\x01(\tR\x03keyB\x07\xfaB\x04r\x02\x18d\x1a\
-    \xbd\x01\n\x05Value\x12&\n\tfield_key\x18\x01\x20\x01(\tH\0R\x08fieldKey\
-    B\x07\xfaB\x04r\x02\x18d\x12\x1b\n\x08log_body\x18\x02\x20\x01(\x08H\0R\
-    \x07logBody\x12Y\n\x0bstate_value\x18\x03\x20\x01(\x0b26.bitdrift.public\
-    .unary.workflows.v1.GroupBy.StateValueH\0R\nstateValueB\x14\n\rgroup_by_\
-    type\x12\x03\xf8B\x01\"\xdc\x06\n\x08Workflow\x12\x17\n\x02id\x18\x01\
-    \x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x18d\x12\x1c\n\x04name\x18\x03\x20\
-    \x01(\tR\x04nameB\x08\xfaB\x05r\x03\x18\xff\x01\x12H\n\x05flows\x18\x1b\
-    \x20\x03(\x0b2(.bitdrift.public.unary.workflows.v1.FlowR\x05flowsB\x08\
-    \xfaB\x05\x92\x01\x02\x10d\x12R\n\x07actions\x18\x1c\x20\x03(\x0b2..bitd\
-    rift.public.unary.workflows.v1.ActionRuleR\x07actionsB\x08\xfaB\x05\x92\
-    \x01\x02\x10d\x12Z\n\x05state\x18\x07\x20\x01(\x0e2:.bitdrift.public.una\
-    ry.workflows.v1.Workflow.WorkflowStateR\x05stateB\x08\xfaB\x05\x82\x01\
-    \x02\x10\x01\x129\n\ncreated_at\x18\x08\x20\x01(\x0b2\x1a.google.protobu\
-    f.TimestampR\tcreatedAt\x129\n\nupdated_at\x18\t\x20\x01(\x0b2\x1a.googl\
-    e.protobuf.TimestampR\tupdatedAt\x12<\n\x05owner\x18\x0c\x20\x01(\x0b2&.\
-    bitdrift.public.unary.common.v1.OwnerR\x05owner\x12;\n\x0bdeployed_at\
-    \x18\r\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\ndeployedAt\x12a\n\
-    \x10platform_targets\x18\x15\x20\x03(\x0b2,.bitdrift.public.shared.platf\
-    orm.v1.PlatformR\x0fplatformTargetsB\x08\xfaB\x05\x92\x01\x02\x10d\x120\
-    \n\x0fgroup_by_fields\x18\x16\x20\x03(\tR\rgroupByFieldsB\x08\xfaB\x05\
-    \x92\x01\x02\x10d\x12X\n\x1adeployment_expiration_time\x18\x18\x20\x01(\
-    \x0b2\x1a.google.protobuf.TimestampR\x18deploymentExpirationTime\"?\n\rW\
-    orkflowState\x12\x08\n\x04IDLE\x10\0\x12\x08\n\x04LIVE\x10\x01\x12\r\n\t\
-    DEPLOYING\x10\x02\x12\x0b\n\x07EXPIRED\x10\x03\"\xf8\x02\n\x04Flow\x12J\
-    \n\x05steps\x18\x01\x20\x03(\x0b2(.bitdrift.public.unary.workflows.v1.St\
-    epR\x05stepsB\n\xfaB\x07\x92\x01\x04\x08\x01\x10d\x12V\n\texclusive\x18\
-    \x02\x20\x01(\x0b26.bitdrift.public.unary.workflows.v1.Flow.ExclusiveFlo\
-    wH\0R\texclusive\x12S\n\x08parallel\x18\x03\x20\x01(\x0b25.bitdrift.publ\
-    ic.unary.workflows.v1.Flow.ParallelFlowH\0R\x08parallel\x1a\x0f\n\rExclu\
-    siveFlow\x1aO\n\x0cParallelFlow\x12+\n\x0fmax_active_runs\x18\x01\x20\
-    \x01(\rH\0R\rmaxActiveRuns\x88\x01\x01B\x12\n\x10_max_active_runsB\x15\n\
-    \x13flow_execution_type\"\xbc\x05\n\x04Step\x12L\n\nmatch_rule\x18\x01\
-    \x20\x01(\x0b2-.bitdrift.public.unary.workflows.v1.MatchRuleR\tmatchRule\
-    \x12i\n\x0fexit_conditions\x18\x02\x20\x03(\x0b26.bitdrift.public.unary.\
-    workflows.v1.Step.ExitConditionR\x0eexitConditionsB\x08\xfaB\x05\x92\x01\
-    \x02\x10d\x120\n\rloop_match_id\x18\x03\x20\x01(\tH\0R\x0bloopMatchIdB\
-    \x07\xfaB\x04r\x02\x18d\x88\x01\x01\x12Z\n\x0bsave_fields\x18\x04\x20\
-    \x03(\x0b2/.bitdrift_public.protobuf.workflow.v1.SaveFieldR\nsaveFieldsB\
-    \x08\xfaB\x05\x92\x01\x02\x10d\x1a\xda\x02\n\rExitCondition\x12N\n\nmatc\
-    h_rule\x18\x01\x20\x01(\x0b2-.bitdrift.public.unary.workflows.v1.MatchRu\
-    leH\0R\tmatchRule\x12^\n\x07timeout\x18\x02\x20\x01(\x0b2B.bitdrift.publ\
-    ic.unary.workflows.v1.Step.ExitCondition.TimeoutExitH\0R\x07timeout\x1a\
-    \x81\x01\n\x0bTimeoutExit\x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02idB\t\
-    \xfaB\x06r\x04\x10\x01\x18d\x12W\n\x0ctimeout_rule\x18\x02\x20\x01(\x0b2\
-    4.bitdrift.public.unary.workflows.v1.Rule.RuleTimeoutR\x0btimeoutRuleB\
-    \x15\n\x13exit_condition_typeB\x10\n\x0e_loop_match_id\"\x8e\x03\n\tMatc\
-    hRule\x12$\n\x08match_id\x18\x01\x20\x01(\tR\x07matchIdB\t\xfaB\x06r\x04\
-    \x10\x01\x18d\x12W\n\rgeneric_match\x18\x02\x20\x01(\x0b20.bitdrift.publ\
-    ic.unary.workflows.v1.GenericMatchH\0R\x0cgenericMatch\x12N\n\nootb_matc\
-    h\x18\x03\x20\x01(\x0b2-.bitdrift.public.unary.workflows.v1.OotbMatchH\0\
-    R\tootbMatch\x12d\n\x12state_change_match\x18\x04\x20\x01(\x0b24.bitdrif\
-    t.public.unary.workflows.v1.StateChangeMatchH\0R\x10stateChangeMatch\x12\
+    \xb2\x02\n\x08MultiTag\x12P\n\x05scope\x18\x01\x20\x01(\x0e2..bitdrift.p\
+    ublic.unary.workflows.v1.StateScopeR\x05scopeB\n\xfaB\x07\x82\x01\x04\
+    \x10\x01\x20\0\x12+\n\x0ckey_tag_name\x18\x02\x20\x01(\tR\nkeyTagNameB\t\
+    \xfaB\x06r\x04\x10\x01\x18d\x12/\n\x0evalue_tag_name\x18\x03\x20\x01(\tR\
+    \x0cvalueTagNameB\t\xfaB\x06r\x04\x10\x01\x18d\x12)\n\tkey_regex\x18\x04\
+    \x20\x01(\tH\0R\x08keyRegexB\x07\xfaB\x04r\x02\x18d\x88\x01\x01\x12-\n\
+    \x0bvalue_regex\x18\x05\x20\x01(\tH\x01R\nvalueRegexB\x07\xfaB\x04r\x02\
+    \x18d\x88\x01\x01B\x0c\n\n_key_regexB\x0e\n\x0c_value_regex\x1a\x92\x02\
+    \n\x05Value\x12&\n\tfield_key\x18\x01\x20\x01(\tH\0R\x08fieldKeyB\x07\
+    \xfaB\x04r\x02\x18d\x12\x1b\n\x08log_body\x18\x02\x20\x01(\x08H\0R\x07lo\
+    gBody\x12Y\n\x0bstate_value\x18\x03\x20\x01(\x0b26.bitdrift.public.unary\
+    .workflows.v1.GroupBy.StateValueH\0R\nstateValue\x12S\n\tmulti_tag\x18\
+    \x04\x20\x01(\x0b24.bitdrift.public.unary.workflows.v1.GroupBy.MultiTagH\
+    \0R\x08multiTagB\x14\n\rgroup_by_type\x12\x03\xf8B\x01\"\xdc\x06\n\x08Wo\
+    rkflow\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x18d\
+    \x12\x1c\n\x04name\x18\x03\x20\x01(\tR\x04nameB\x08\xfaB\x05r\x03\x18\
+    \xff\x01\x12H\n\x05flows\x18\x1b\x20\x03(\x0b2(.bitdrift.public.unary.wo\
+    rkflows.v1.FlowR\x05flowsB\x08\xfaB\x05\x92\x01\x02\x10d\x12R\n\x07actio\
+    ns\x18\x1c\x20\x03(\x0b2..bitdrift.public.unary.workflows.v1.ActionRuleR\
+    \x07actionsB\x08\xfaB\x05\x92\x01\x02\x10d\x12Z\n\x05state\x18\x07\x20\
+    \x01(\x0e2:.bitdrift.public.unary.workflows.v1.Workflow.WorkflowStateR\
+    \x05stateB\x08\xfaB\x05\x82\x01\x02\x10\x01\x129\n\ncreated_at\x18\x08\
+    \x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n\nupdated\
+    _at\x18\t\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tupdatedAt\x12<\n\
+    \x05owner\x18\x0c\x20\x01(\x0b2&.bitdrift.public.unary.common.v1.OwnerR\
+    \x05owner\x12;\n\x0bdeployed_at\x18\r\x20\x01(\x0b2\x1a.google.protobuf.\
+    TimestampR\ndeployedAt\x12a\n\x10platform_targets\x18\x15\x20\x03(\x0b2,\
+    .bitdrift.public.shared.platform.v1.PlatformR\x0fplatformTargetsB\x08\
+    \xfaB\x05\x92\x01\x02\x10d\x120\n\x0fgroup_by_fields\x18\x16\x20\x03(\tR\
+    \rgroupByFieldsB\x08\xfaB\x05\x92\x01\x02\x10d\x12X\n\x1adeployment_expi\
+    ration_time\x18\x18\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x18depl\
+    oymentExpirationTime\"?\n\rWorkflowState\x12\x08\n\x04IDLE\x10\0\x12\x08\
+    \n\x04LIVE\x10\x01\x12\r\n\tDEPLOYING\x10\x02\x12\x0b\n\x07EXPIRED\x10\
+    \x03\"\xf8\x02\n\x04Flow\x12J\n\x05steps\x18\x01\x20\x03(\x0b2(.bitdrift\
+    .public.unary.workflows.v1.StepR\x05stepsB\n\xfaB\x07\x92\x01\x04\x08\
+    \x01\x10d\x12V\n\texclusive\x18\x02\x20\x01(\x0b26.bitdrift.public.unary\
+    .workflows.v1.Flow.ExclusiveFlowH\0R\texclusive\x12S\n\x08parallel\x18\
+    \x03\x20\x01(\x0b25.bitdrift.public.unary.workflows.v1.Flow.ParallelFlow\
+    H\0R\x08parallel\x1a\x0f\n\rExclusiveFlow\x1aO\n\x0cParallelFlow\x12+\n\
+    \x0fmax_active_runs\x18\x01\x20\x01(\rH\0R\rmaxActiveRuns\x88\x01\x01B\
+    \x12\n\x10_max_active_runsB\x15\n\x13flow_execution_type\"\xbc\x05\n\x04\
+    Step\x12L\n\nmatch_rule\x18\x01\x20\x01(\x0b2-.bitdrift.public.unary.wor\
+    kflows.v1.MatchRuleR\tmatchRule\x12i\n\x0fexit_conditions\x18\x02\x20\
+    \x03(\x0b26.bitdrift.public.unary.workflows.v1.Step.ExitConditionR\x0eex\
+    itConditionsB\x08\xfaB\x05\x92\x01\x02\x10d\x120\n\rloop_match_id\x18\
+    \x03\x20\x01(\tH\0R\x0bloopMatchIdB\x07\xfaB\x04r\x02\x18d\x88\x01\x01\
+    \x12Z\n\x0bsave_fields\x18\x04\x20\x03(\x0b2/.bitdrift_public.protobuf.w\
+    orkflow.v1.SaveFieldR\nsaveFieldsB\x08\xfaB\x05\x92\x01\x02\x10d\x1a\xda\
+    \x02\n\rExitCondition\x12N\n\nmatch_rule\x18\x01\x20\x01(\x0b2-.bitdrift\
+    .public.unary.workflows.v1.MatchRuleH\0R\tmatchRule\x12^\n\x07timeout\
+    \x18\x02\x20\x01(\x0b2B.bitdrift.public.unary.workflows.v1.Step.ExitCond\
+    ition.TimeoutExitH\0R\x07timeout\x1a\x81\x01\n\x0bTimeoutExit\x12\x19\n\
+    \x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12W\n\
+    \x0ctimeout_rule\x18\x02\x20\x01(\x0b24.bitdrift.public.unary.workflows.\
+    v1.Rule.RuleTimeoutR\x0btimeoutRuleB\x15\n\x13exit_condition_typeB\x10\n\
+    \x0e_loop_match_id\"\xe1\x03\n\tMatchRule\x12$\n\x08match_id\x18\x01\x20\
+    \x01(\tR\x07matchIdB\t\xfaB\x06r\x04\x10\x01\x18d\x12W\n\rgeneric_match\
+    \x18\x02\x20\x01(\x0b20.bitdrift.public.unary.workflows.v1.GenericMatchH\
+    \0R\x0cgenericMatch\x12N\n\nootb_match\x18\x03\x20\x01(\x0b2-.bitdrift.p\
+    ublic.unary.workflows.v1.OotbMatchH\0R\tootbMatch\x12d\n\x12state_change\
+    _match\x18\x04\x20\x01(\x0b24.bitdrift.public.unary.workflows.v1.StateCh\
+    angeMatchH\0R\x10stateChangeMatch\x12Q\n\x0bissue_match\x18\x06\x20\x01(\
+    \x0b2..bitdrift.public.unary.workflows.v1.IssueMatchH\0R\nissueMatch\x12\
     $\n\x0bsample_rate\x18\x05\x20\x01(\rH\x01R\nsampleRate\x88\x01\x01B\x16\
-    \n\x14match_condition_typeB\x0e\n\x0c_sample_rate\"\xe0\x02\n\x10StateCh\
-    angeMatch\x12F\n\x04from\x18\x01\x20\x01(\x0b22.bitdrift.public.unary.wo\
-    rkflows.v1.StateConditionR\x04from\x12B\n\x02to\x18\x02\x20\x01(\x0b22.b\
-    itdrift.public.unary.workflows.v1.StateConditionR\x02to\x12N\n\x05scope\
-    \x18\x03\x20\x01(\x0e2..bitdrift.public.unary.workflows.v1.StateScopeR\
-    \x05scopeB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12\x19\n\x03key\x18\x04\x20\
-    \x01(\tR\x03keyB\x07\xfaB\x04r\x02\x18d\x12U\n\rgeneric_match\x18\x05\
-    \x20\x01(\x0b20.bitdrift.public.unary.workflows.v1.GenericMatchR\x0cgene\
-    ricMatch\"\x94_\n\tOotbMatch\x12\x98\x01\n\x11generic_condition\x18\x01\
-    \x20\x01(\x0e2_.bitdrift.public.unary.workflows.v1.OotbMatch.GenericOotb\
-    ConditionType.GenericOotbConditionTypeH\0R\x10genericConditionB\x08\xfaB\
-    \x05\x82\x01\x02\x10\x01\x12\x98\x01\n\x11android_condition\x18\x02\x20\
-    \x01(\x0e2_.bitdrift.public.unary.workflows.v1.OotbMatch.AndroidOotbCond\
-    itionType.AndroidOotbConditionTypeH\0R\x10androidConditionB\x08\xfaB\x05\
-    \x82\x01\x02\x10\x01\x12\x90\x01\n\x0fapple_condition\x18\x03\x20\x01(\
-    \x0e2[.bitdrift.public.unary.workflows.v1.OotbMatch.AppleOotbConditionTy\
-    pe.AppleOotbConditionTypeH\0R\x0eappleConditionB\x08\xfaB\x05\x82\x01\
-    \x02\x10\x01\x12U\n\rgeneric_match\x18\x04\x20\x01(\x0b20.bitdrift.publi\
-    c.unary.workflows.v1.GenericMatchR\x0cgenericMatch\x1a\xefG\n\x18Generic\
-    OotbConditionType\"\xd2G\n\x18GenericOotbConditionType\x12\x0b\n\x07UNKN\
-    OWN\x10\0\x12\x12\n\x0eAPP_BACKGROUND\x10\x01\x12\x1f\n\x1bAPP_BUILT_IN_\
-    JS_FATAL_ERROR\x10\x02\x12#\n\x1fAPP_BUILT_IN_JS_NON_FATAL_ERROR\x10\x03\
-    \x12\r\n\tAPP_CLOSE\x10\x04\x12\x12\n\x0eAPP_FOREGROUND\x10\x05\x12\xb5\
-    \x04\n\nAPP_LAUNCH\x10\x06\x1a\xa4\x04\x92\xb5\x18\x9f\x04\n%\n\x0cstart\
-    up_type\x12\x13COLD,\x20WARM,\x20or\x20HOT.(\x01\n-\n\x0estartup_reason\
-    \x12\x19Why\x20the\x20app\x20was\x20launched.(\x01\n0\n\rstartup_state\
-    \x12\x1dStartup\x20state\x20at\x20launch\x20time.(\x01\n.\n\x13startup_l\
-    aunch_mode\x12\x15Activity\x20launch\x20mode.(\x01\nM\n\x1astartup_was_f\
-    orced_stopped\x12-Whether\x20the\x20app\x20was\x20previously\x20force-st\
-    opped.(\x01\nc\n\"startup_time_to_initial_display_ms\x125Time\x20from\
-    \x20process\x20start\x20to\x20first\x20frame,\x20if\x20available.\x18\
-    \x01\"\x02ms(\x01\nO\n\x15startup_intent_action\x124Intent\x20action\x20\
-    that\x20triggered\x20the\x20launch,\x20if\x20present.(\x01\n:\n\x0c_laun\
-    ch_type\x12(Launch\x20type\x20(e.g.,\x20remote\x20notification).(\x02\n$\
-    \n\x06_scene\x12\x18Scene\x20that\x20is\x20activated.(\x02\x12\x12\n\x0e\
-    APP_LAUNCH_TTI\x10\x07\x12\x0c\n\x08APP_OPEN\x10\x08\x12{\n\x0fAPP_TERMI\
-    NATION\x10\t\x1af\x92\xb5\x18b\n`\n\x10_app_exit_reason\x12LiOS:\x20\"ap\
-    p_will_terminate_notification\".\x20Android:\x20ApplicationExitInfo\x20r\
-    eason.\x12\x0e\n\nAPP_UPDATE\x10\n\x12\xcf\x01\n\x14BATTERY_STATE_CHANGE\
-    \x10\x0b\x1a\xb4\x01\x92\xb5\x18\xaf\x01\nN\n\x06_state\x12DAndroid:\x20\
-    \"charging\"/\"unplugged\".\x20iOS:\x20UIDevice\x20battery\x20state\x20s\
-    tring.\n0\n\x0e_battery_level\x12\x13Battery\x20percentage.\x18\x01\"\
-    \x07percent\n+\n\x0c_battery_val\x12\x19Battery\x20level\x20as\x20a\x20f\
-    loat.\x18\x02\x12\xb5\x02\n\x0bGQL_REQUEST\x10\x0c\x1a\xa3\x02\x92\xb5\
-    \x18\x9e\x02\n\x17\n\x07_method\x12\x0cHTTP\x20method.\n\x16\n\x05_host\
-    \x12\rRequest\x20host.\n/\n\x0e_path_template\x12\x1dFormat:\x20gql-{ope\
-    ration_name}.\n*\n\x0f_operation_name\x12\x17GraphQL\x20operation\x20nam\
-    e.\nH\n\x0f_operation_type\x125GraphQL\x20operation\x20type\x20(query/mu\
-    tation/subscription).\n&\n\r_operation_id\x12\x15GraphQL\x20operation\
-    \x20ID.\n\x1c\n\x08_span_id\x12\x10Span\x20identifier.\x12\xab\x03\n\x0c\
-    GQL_RESPONSE\x10\r\x1a\x98\x03\x92\xb5\x18\x93\x03\n\x17\n\x07_method\
-    \x12\x0cHTTP\x20method.\n\x16\n\x05_host\x12\rRequest\x20host.\n/\n\x0e_\
-    path_template\x12\x1dFormat:\x20gql-{operation_name}.\n*\n\x0f_operation\
-    _name\x12\x17GraphQL\x20operation\x20name.\nH\n\x0f_operation_type\x125G\
-    raphQL\x20operation\x20type\x20(query/mutation/subscription).\n&\n\r_ope\
-    ration_id\x12\x15GraphQL\x20operation\x20ID.\n#\n\x0c_status_code\x12\
-    \x11HTTP\x20status\x20code.\x18\x01\n*\n\x0c_duration_ms\x12\x14Round-tr\
-    ip\x20duration.\x18\x01\"\x02ms\n\"\n\x07_result\x12\x17\"success\"\x20o\
-    r\x20\"failure\".\n\x1c\n\x08_span_id\x12\x10Span\x20identifier.\x12\x82\
-    \x02\n\x0eLOW_POWER_MODE\x10\x0e\x1a\xed\x01\x92\xb5\x18\xe8\x01\n0\n\
-    \x12_low_power_enabled\x12\x16Power\x20save\x20mode\x20state.\x18\x03(\
-    \x01\n,\n\x0f_low_power_mode\x12\x15Low\x20power\x20mode\x20state.\x18\
-    \x03(\x02\n-\n\x0c_battery_val\x12\x19Battery\x20level\x20as\x20a\x20flo\
-    at.\x18\x02(\x02\n#\n\x06_state\x12\x17Battery\x20charging\x20state.(\
-    \x02\n2\n\x0e_battery_level\x12\x13Battery\x20percentage.\x18\x01\"\x07p\
-    ercent(\x02\x12\xd9\x06\n\x0fMEMORY_PRESSURE\x10\x0f\x1a\xc3\x06\x92\xb5\
-    \x18\xbe\x06\n0\n\x0c_jvm_used_kb\x12\x18JVM\x20heap\x20currently\x20use\
-    d.\x18\x01\"\x02KB(\x01\n@\n\r_jvm_total_kb\x12'JVM\x20heap\x20currently\
-    \x20allocated/committed.\x18\x01\"\x02KB(\x01\n-\n\x0b_jvm_max_kb\x12\
-    \x16JVM\x20heap\x20maximum\x20size.\x18\x01\"\x02KB(\x01\n=\n\x11_jvm_us\
-    ed_percent\x12\x1bJVM\x20used\x20as\x20percent\x20of\x20max.\x18\x02\"\
-    \x07percent(\x01\n1\n\x0f_native_used_kb\x12\x16Native\x20heap\x20alloca\
-    ted.\x18\x01\"\x02KB(\x01\n3\n\x10_native_total_kb\x12\x17Native\x20heap\
-    \x20total\x20size.\x18\x01\"\x02KB(\x01\nB\n\r_memory_class\x12)Per-app\
-    \x20memory\x20class\x20reported\x20by\x20Android.\x18\x01\"\x02MB(\x01\n\
-    `\n\x0e_is_memory_low\x12LWhether\x20app\x20memory\x20usage\x20is\x20at\
-    \x20or\x20above\x20the\x20configured\x20low-memory\x20threshold.\x18\x03\
-    \n6\n\x0c_app_used_kb\x12\x1eApp\x20physical\x20memory\x20footprint.\x18\
-    \x01\"\x02KB(\x02\nG\n\r_app_limit_kb\x12.Estimated\x20app\x20memory\x20\
-    limit\x20before\x20termination.\x18\x01\"\x02KB(\x02\n'\n\n_device_kb\
-    \x12\x11Total\x20device\x20RAM.\x18\x01\"\x02KB(\x02\nV\n\x11_app_used_p\
-    ercent\x124App\x20used\x20memory\x20as\x20a\x20percent\x20of\x20the\x20e\
-    stimated\x20limit.\x18\x02\"\x07percent(\x02\nJ\n\n_mem_level\x12:Apple\
-    \x20memory\x20pressure\x20level:\x20normal,\x20warning,\x20or\x20critica\
-    l.(\x02\x12\xde\x02\n\x0fNETWORK_REQUEST\x10\x10\x1a\xc8\x02\x92\xb5\x18\
-    \xc3\x02\n\x17\n\x07_method\x12\x0cHTTP\x20method.\n\x16\n\x05_host\x12\
-    \rRequest\x20host.\n.\n\x05_path\x12%Full\x20request\x20path\x20(high\
-    \x20cardinality).\nA\n\x0e_path_template\x12/Normalized\x20path\x20templ\
-    ate\x20(prefer\x20for\x20group_by).\n\x17\n\x06_query\x12\rQuery\x20stri\
-    ng.\n\x1c\n\x08_span_id\x12\x10Span\x20identifier.\nf\n*_request_body_by\
-    tes_expected_to_send_count\x12/Expected\x20request\x20body\x20size\x20fr\
-    om\x20Content-Length.\x18\x01\"\x05bytes\x12\xcf\t\n\x10NETWORK_RESPONSE\
-    \x10\x11\x1a\xb8\t\x92\xb5\x18\xb3\t\n\x17\n\x07_method\x12\x0cHTTP\x20m\
-    ethod.\n\x16\n\x05_host\x12\rRequest\x20host.\n.\n\x05_path\x12%Full\x20\
-    request\x20path\x20(high\x20cardinality).\nA\n\x0e_path_template\x12/Nor\
-    malized\x20path\x20template\x20(prefer\x20for\x20group_by).\n\x17\n\x06_\
-    query\x12\rQuery\x20string.\n#\n\x0c_status_code\x12\x11HTTP\x20status\
-    \x20code.\x18\x01\nJ\n\x07_result\x12?\"success\"\x20or\x20\"failure\".\
-    \x20Prefer\x20over\x20_status_code\x20for\x20filtering.\n*\n\x0c_duratio\
-    n_ms\x12\x14Round-trip\x20duration.\x18\x01\"\x02ms\nL\n\x0b_error_type\
-    \x12;Error\x20type\x20string\x20(Android).\x20iOS\x20emits\x20_error_cod\
-    e\x20instead.(\x01\nO\n\x0b_error_code\x12<Numeric\x20error\x20code\x20(\
-    iOS).\x20Android\x20emits\x20_error_type\x20instead.\x18\x01(\x02\n3\n\
-    \x0e_error_message\x12!Human-readable\x20error\x20description.\nC\n\x1e_\
-    request_body_bytes_sent_count\x12\x18Request\x20body\x20bytes\x20sent.\
-    \x18\x01\"\x05bytes\nM\n#_response_body_bytes_received_count\x12\x1dResp\
-    onse\x20body\x20bytes\x20received.\x18\x01\"\x05bytes\n>\n\x1c_request_h\
-    eaders_bytes_count\x12\x15Request\x20header\x20bytes.\x18\x01\"\x05bytes\
-    \n@\n\x1d_response_headers_bytes_count\x12\x16Response\x20header\x20byte\
-    s.\x18\x01\"\x05bytes\n9\n\x1b_dns_resolution_duration_ms\x12\x14DNS\x20\
-    lookup\x20duration.\x18\x01\"\x02ms\n1\n\x10_tls_duration_ms\x12\x17TLS\
-    \x20handshake\x20duration.\x18\x01\"\x02ms\n2\n\x10_tcp_duration_ms\x12\
-    \x18TCP\x20connection\x20duration.\x18\x01\"\x02ms\n?\n\x17_fetch_init_d\
-    uration_ms\x12\x1eFetch\x20initialization\x20duration.\x18\x01\"\x02ms\n\
-    :\n\x14_response_latency_ms\x12\x1cTime\x20to\x20first\x20response\x20by\
-    te.\x18\x01\"\x02ms\n0\n\t_protocol\x12#Protocol\x20used\x20(e.g.,\x20h2\
-    ,\x20http/1.1).\n\x1c\n\x08_span_id\x12\x10Span\x20identifier.\x12\xae\
-    \x01\n\x12ORIENTATION_CHANGE\x10\x12\x1a\x95\x01\x92\xb5\x18\x90\x01\n\
-    \x8d\x01\n\x0c_orientation\x12}Android:\x20\"portrait\"/\"landscape\".\
-    \x20iOS:\x20portrait,\x20portraitUpsideDown,\x20landscapeLeft,\x20landsc\
-    apeRight,\x20faceUp,\x20faceDown,\x20unknown.\x12\x91\x1e\n\x08RESOURCE\
-    \x10\x13\x1a\x82\x1e\x92\xb5\x18\xfd\x1d\n]\n\x0c_jvm_used_kb\x12EJVM\
-    \x20heap\x20currently\x20used.\x20Included\x20on\x20every\x20Android\x20\
-    RESOURCE\x20snapshot.\x18\x01\"\x02KB(\x01\nZ\n\x0b_jvm_max_kb\x12CJVM\
-    \x20heap\x20maximum\x20size.\x20Included\x20on\x20every\x20Android\x20RE\
-    SOURCE\x20snapshot.\x18\x01\"\x02KB(\x01\np\n\r_jvm_total_kb\x12WJVM\x20\
-    heap\x20currently\x20allocated\x20or\x20committed.\x20Included\x20on\x20\
-    every\x20Android\x20RESOURCE\x20snapshot.\x18\x01\"\x02KB(\x01\nl\n\x11_\
-    jvm_used_percent\x12JJVM\x20used\x20as\x20a\x20percent\x20of\x20max.\x20\
-    Included\x20on\x20every\x20Android\x20RESOURCE\x20snapshot.\x18\x02\"\
-    \x07percent(\x01\n\x87\x01\n\x0e_is_memory_low\x12sWhether\x20the\x20con\
-    figured\x20low-memory\x20threshold\x20is\x20currently\x20met.\x20Present\
-    \x20only\x20when\x20low-memory\x20detection\x20is\x20configured.\x18\x03\
-    \n^\n\x0f_native_used_kb\x12CNative\x20heap\x20allocated.\x20Included\
-    \x20on\x20every\x20Android\x20RESOURCE\x20snapshot.\x18\x01\"\x02KB(\x01\
-    \n`\n\x10_native_total_kb\x12DNative\x20heap\x20total\x20size.\x20Includ\
-    ed\x20on\x20every\x20Android\x20RESOURCE\x20snapshot.\x18\x01\"\x02KB(\
-    \x01\no\n\r_memory_class\x12VPer-app\x20memory\x20class\x20reported\x20b\
-    y\x20Android.\x20Included\x20on\x20every\x20Android\x20RESOURCE\x20snaps\
-    hot.\x18\x01\"\x02MB(\x01\na\n\x0c_app_used_kb\x12IApp\x20physical\x20me\
-    mory\x20footprint.\x20Included\x20on\x20every\x20Apple\x20RESOURCE\x20sn\
-    apshot.\x18\x01\"\x02KB(\x02\nr\n\r_app_limit_kb\x12YEstimated\x20app\
-    \x20memory\x20limit\x20before\x20termination.\x20Included\x20on\x20every\
-    \x20Apple\x20RESOURCE\x20snapshot.\x18\x01\"\x02KB(\x02\n\x9b\x01\n\x11_\
-    app_used_percent\x12yApp\x20used\x20memory\x20as\x20a\x20percent\x20of\
-    \x20the\x20estimated\x20limit.\x20Included\x20on\x20Apple\x20snapshots\
-    \x20when\x20the\x20memory\x20limit\x20estimate\x20is\x20valid.\x18\x02\"\
-    \x07percent(\x02\nR\n\n_device_kb\x12<Total\x20device\x20RAM.\x20Include\
-    d\x20on\x20every\x20Apple\x20RESOURCE\x20snapshot.\x18\x01\"\x02KB(\x02\
-    \np\n\x0c_battery_val\x12^Battery\x20level\x20as\x20a\x20float.\x20Inclu\
-    ded\x20on\x20every\x20RESOURCE\x20snapshot.\x20May\x20be\x20-1.0\x20on\
-    \x20Apple\x20simulator.\x18\x02\n_\n\x0e_battery_level\x12@Battery\x20pe\
-    rcentage.\x20Included\x20on\x20every\x20Android\x20RESOURCE\x20snapshot.\
-    \x18\x01\"\x07percent(\x01\n\x8f\x01\n\x0e_battery_level\x12pBattery\x20\
-    percentage\x20when\x20the\x20battery\x20level\x20is\x20known.\x20Omitted\
-    \x20on\x20Apple\x20simulator\x20and\x20other\x20unknown\x20battery\x20st\
-    ates.\x18\x01\"\x07percent(\x02\nF\n\x06_state\x12<Battery\x20charging\
-    \x20state.\x20Included\x20on\x20every\x20RESOURCE\x20snapshot.\n\xc6\x01\
-    \n\x1d_battery_level_change_per_min\x12\xa2\x01Battery\x20percentage-poi\
-    nt\x20change\x20per\x20minute.\x20Positive\x20means\x20draining,\x20nega\
-    tive\x20means\x20charging.\x20Present\x20only\x20after\x20the\x20rolling\
-    \x201-minute\x20battery\x20window\x20is\x20populated.\x18\x02\nR\n\x12_l\
-    ow_power_enabled\x12:Low-power\x20mode\x20state.\x20Included\x20on\x20ev\
-    ery\x20RESOURCE\x20snapshot.\x18\x03\n\\\n\x15_cache_dir_size_bytes\x12:\
-    Cache\x20directory\x20size.\x20Sampled\x20at\x20most\x20once\x20every\
-    \x2024\x20hours.\x18\x01\"\x05bytes\nb\n\x15_files_dir_size_bytes\x12>Ap\
-    p\x20files\x20directory\x20size.\x20Sampled\x20at\x20most\x20once\x20eve\
-    ry\x2024\x20hours.\x18\x01\"\x05bytes(\x01\n\x80\x01\n\x1e_external_cach\
-    e_dir_size_bytes\x12SExternal\x20cache\x20directory\x20size,\x20when\x20\
-    available.\x20Sampled\x20at\x20most\x20once\x20every\x2024\x20hours.\x18\
-    \x01\"\x05bytes(\x01\n\x80\x01\n\x1e_external_files_dir_size_bytes\x12SE\
-    xternal\x20files\x20directory\x20size,\x20when\x20available.\x20Sampled\
-    \x20at\x20most\x20once\x20every\x2024\x20hours.\x18\x01\"\x05bytes(\x01\
-    \nf\n\x19_documents_dir_size_bytes\x12>Documents\x20directory\x20size.\
-    \x20Sampled\x20at\x20most\x20once\x20every\x2024\x20hours.\x18\x01\"\x05\
-    bytes(\x02\n`\n\x13_tmp_dir_size_bytes\x12>Temporary\x20directory\x20siz\
-    e.\x20Sampled\x20at\x20most\x20once\x20every\x2024\x20hours.\x18\x01\"\
-    \x05bytes(\x02\n\xb3\x01\n\x1c_request_bytes_per_min_count\x12\x85\x01To\
-    tal\x20outbound\x20bytes\x20over\x20the\x20preceding\x20minute\x20of\x20\
-    tracked\x20HTTP\x20traffic.\x20Present\x20once\x20the\x20rolling\x201-mi\
-    nute\x20tracker\x20has\x20enough\x20history.\x18\x01\"\tbytes/min\n\xbf\
-    \x01\n!_request_body_bytes_per_min_count\x12\x8c\x01Outbound\x20request-\
-    body\x20bytes\x20over\x20the\x20preceding\x20minute\x20of\x20tracked\x20\
-    HTTP\x20traffic.\x20Present\x20once\x20the\x20rolling\x201-minute\x20tra\
-    cker\x20has\x20enough\x20history.\x18\x01\"\tbytes/min\n\xc4\x01\n$_requ\
-    est_headers_bytes_per_min_count\x12\x8e\x01Outbound\x20request-header\
-    \x20bytes\x20over\x20the\x20preceding\x20minute\x20of\x20tracked\x20HTTP\
-    \x20traffic.\x20Present\x20once\x20the\x20rolling\x201-minute\x20tracker\
-    \x20has\x20enough\x20history.\x18\x01\"\tbytes/min\n\xb3\x01\n\x1d_respo\
-    nse_bytes_per_min_count\x12\x84\x01Total\x20inbound\x20bytes\x20over\x20\
-    the\x20preceding\x20minute\x20of\x20tracked\x20HTTP\x20traffic.\x20Prese\
-    nt\x20once\x20the\x20rolling\x201-minute\x20tracker\x20has\x20enough\x20\
-    history.\x18\x01\"\tbytes/min\n\xc0\x01\n\"_response_body_bytes_per_min_\
-    count\x12\x8c\x01Inbound\x20response-body\x20bytes\x20over\x20the\x20pre\
-    ceding\x20minute\x20of\x20tracked\x20HTTP\x20traffic.\x20Present\x20once\
+    \n\x14match_condition_typeB\x0e\n\x0c_sample_rate\";\n\nIssueMatch\x12-\
+    \n\x0cbdrl_program\x18\x01\x20\x01(\tR\x0bbdrlProgramB\n\xfaB\x07r\x05\
+    \x10\x01\x18\x80\x20\"\xe0\x02\n\x10StateChangeMatch\x12F\n\x04from\x18\
+    \x01\x20\x01(\x0b22.bitdrift.public.unary.workflows.v1.StateConditionR\
+    \x04from\x12B\n\x02to\x18\x02\x20\x01(\x0b22.bitdrift.public.unary.workf\
+    lows.v1.StateConditionR\x02to\x12N\n\x05scope\x18\x03\x20\x01(\x0e2..bit\
+    drift.public.unary.workflows.v1.StateScopeR\x05scopeB\x08\xfaB\x05\x82\
+    \x01\x02\x10\x01\x12\x19\n\x03key\x18\x04\x20\x01(\tR\x03keyB\x07\xfaB\
+    \x04r\x02\x18d\x12U\n\rgeneric_match\x18\x05\x20\x01(\x0b20.bitdrift.pub\
+    lic.unary.workflows.v1.GenericMatchR\x0cgenericMatch\"\x94_\n\tOotbMatch\
+    \x12\x98\x01\n\x11generic_condition\x18\x01\x20\x01(\x0e2_.bitdrift.publ\
+    ic.unary.workflows.v1.OotbMatch.GenericOotbConditionType.GenericOotbCond\
+    itionTypeH\0R\x10genericConditionB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12\
+    \x98\x01\n\x11android_condition\x18\x02\x20\x01(\x0e2_.bitdrift.public.u\
+    nary.workflows.v1.OotbMatch.AndroidOotbConditionType.AndroidOotbConditio\
+    nTypeH\0R\x10androidConditionB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12\x90\
+    \x01\n\x0fapple_condition\x18\x03\x20\x01(\x0e2[.bitdrift.public.unary.w\
+    orkflows.v1.OotbMatch.AppleOotbConditionType.AppleOotbConditionTypeH\0R\
+    \x0eappleConditionB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12U\n\rgeneric_mat\
+    ch\x18\x04\x20\x01(\x0b20.bitdrift.public.unary.workflows.v1.GenericMatc\
+    hR\x0cgenericMatch\x1a\xefG\n\x18GenericOotbConditionType\"\xd2G\n\x18Ge\
+    nericOotbConditionType\x12\x0b\n\x07UNKNOWN\x10\0\x12\x12\n\x0eAPP_BACKG\
+    ROUND\x10\x01\x12\x1f\n\x1bAPP_BUILT_IN_JS_FATAL_ERROR\x10\x02\x12#\n\
+    \x1fAPP_BUILT_IN_JS_NON_FATAL_ERROR\x10\x03\x12\r\n\tAPP_CLOSE\x10\x04\
+    \x12\x12\n\x0eAPP_FOREGROUND\x10\x05\x12\xb5\x04\n\nAPP_LAUNCH\x10\x06\
+    \x1a\xa4\x04\x92\xb5\x18\x9f\x04\n%\n\x0cstartup_type\x12\x13COLD,\x20WA\
+    RM,\x20or\x20HOT.(\x01\n-\n\x0estartup_reason\x12\x19Why\x20the\x20app\
+    \x20was\x20launched.(\x01\n0\n\rstartup_state\x12\x1dStartup\x20state\
+    \x20at\x20launch\x20time.(\x01\n.\n\x13startup_launch_mode\x12\x15Activi\
+    ty\x20launch\x20mode.(\x01\nM\n\x1astartup_was_forced_stopped\x12-Whethe\
+    r\x20the\x20app\x20was\x20previously\x20force-stopped.(\x01\nc\n\"startu\
+    p_time_to_initial_display_ms\x125Time\x20from\x20process\x20start\x20to\
+    \x20first\x20frame,\x20if\x20available.\x18\x01\"\x02ms(\x01\nO\n\x15sta\
+    rtup_intent_action\x124Intent\x20action\x20that\x20triggered\x20the\x20l\
+    aunch,\x20if\x20present.(\x01\n:\n\x0c_launch_type\x12(Launch\x20type\
+    \x20(e.g.,\x20remote\x20notification).(\x02\n$\n\x06_scene\x12\x18Scene\
+    \x20that\x20is\x20activated.(\x02\x12\x12\n\x0eAPP_LAUNCH_TTI\x10\x07\
+    \x12\x0c\n\x08APP_OPEN\x10\x08\x12{\n\x0fAPP_TERMINATION\x10\t\x1af\x92\
+    \xb5\x18b\n`\n\x10_app_exit_reason\x12LiOS:\x20\"app_will_terminate_noti\
+    fication\".\x20Android:\x20ApplicationExitInfo\x20reason.\x12\x0e\n\nAPP\
+    _UPDATE\x10\n\x12\xcf\x01\n\x14BATTERY_STATE_CHANGE\x10\x0b\x1a\xb4\x01\
+    \x92\xb5\x18\xaf\x01\nN\n\x06_state\x12DAndroid:\x20\"charging\"/\"unplu\
+    gged\".\x20iOS:\x20UIDevice\x20battery\x20state\x20string.\n0\n\x0e_batt\
+    ery_level\x12\x13Battery\x20percentage.\x18\x01\"\x07percent\n+\n\x0c_ba\
+    ttery_val\x12\x19Battery\x20level\x20as\x20a\x20float.\x18\x02\x12\xb5\
+    \x02\n\x0bGQL_REQUEST\x10\x0c\x1a\xa3\x02\x92\xb5\x18\x9e\x02\n\x17\n\
+    \x07_method\x12\x0cHTTP\x20method.\n\x16\n\x05_host\x12\rRequest\x20host\
+    .\n/\n\x0e_path_template\x12\x1dFormat:\x20gql-{operation_name}.\n*\n\
+    \x0f_operation_name\x12\x17GraphQL\x20operation\x20name.\nH\n\x0f_operat\
+    ion_type\x125GraphQL\x20operation\x20type\x20(query/mutation/subscriptio\
+    n).\n&\n\r_operation_id\x12\x15GraphQL\x20operation\x20ID.\n\x1c\n\x08_s\
+    pan_id\x12\x10Span\x20identifier.\x12\xab\x03\n\x0cGQL_RESPONSE\x10\r\
+    \x1a\x98\x03\x92\xb5\x18\x93\x03\n\x17\n\x07_method\x12\x0cHTTP\x20metho\
+    d.\n\x16\n\x05_host\x12\rRequest\x20host.\n/\n\x0e_path_template\x12\x1d\
+    Format:\x20gql-{operation_name}.\n*\n\x0f_operation_name\x12\x17GraphQL\
+    \x20operation\x20name.\nH\n\x0f_operation_type\x125GraphQL\x20operation\
+    \x20type\x20(query/mutation/subscription).\n&\n\r_operation_id\x12\x15Gr\
+    aphQL\x20operation\x20ID.\n#\n\x0c_status_code\x12\x11HTTP\x20status\x20\
+    code.\x18\x01\n*\n\x0c_duration_ms\x12\x14Round-trip\x20duration.\x18\
+    \x01\"\x02ms\n\"\n\x07_result\x12\x17\"success\"\x20or\x20\"failure\".\n\
+    \x1c\n\x08_span_id\x12\x10Span\x20identifier.\x12\x82\x02\n\x0eLOW_POWER\
+    _MODE\x10\x0e\x1a\xed\x01\x92\xb5\x18\xe8\x01\n0\n\x12_low_power_enabled\
+    \x12\x16Power\x20save\x20mode\x20state.\x18\x03(\x01\n,\n\x0f_low_power_\
+    mode\x12\x15Low\x20power\x20mode\x20state.\x18\x03(\x02\n-\n\x0c_battery\
+    _val\x12\x19Battery\x20level\x20as\x20a\x20float.\x18\x02(\x02\n#\n\x06_\
+    state\x12\x17Battery\x20charging\x20state.(\x02\n2\n\x0e_battery_level\
+    \x12\x13Battery\x20percentage.\x18\x01\"\x07percent(\x02\x12\xd9\x06\n\
+    \x0fMEMORY_PRESSURE\x10\x0f\x1a\xc3\x06\x92\xb5\x18\xbe\x06\n0\n\x0c_jvm\
+    _used_kb\x12\x18JVM\x20heap\x20currently\x20used.\x18\x01\"\x02KB(\x01\n\
+    @\n\r_jvm_total_kb\x12'JVM\x20heap\x20currently\x20allocated/committed.\
+    \x18\x01\"\x02KB(\x01\n-\n\x0b_jvm_max_kb\x12\x16JVM\x20heap\x20maximum\
+    \x20size.\x18\x01\"\x02KB(\x01\n=\n\x11_jvm_used_percent\x12\x1bJVM\x20u\
+    sed\x20as\x20percent\x20of\x20max.\x18\x02\"\x07percent(\x01\n1\n\x0f_na\
+    tive_used_kb\x12\x16Native\x20heap\x20allocated.\x18\x01\"\x02KB(\x01\n3\
+    \n\x10_native_total_kb\x12\x17Native\x20heap\x20total\x20size.\x18\x01\"\
+    \x02KB(\x01\nB\n\r_memory_class\x12)Per-app\x20memory\x20class\x20report\
+    ed\x20by\x20Android.\x18\x01\"\x02MB(\x01\n`\n\x0e_is_memory_low\x12LWhe\
+    ther\x20app\x20memory\x20usage\x20is\x20at\x20or\x20above\x20the\x20conf\
+    igured\x20low-memory\x20threshold.\x18\x03\n6\n\x0c_app_used_kb\x12\x1eA\
+    pp\x20physical\x20memory\x20footprint.\x18\x01\"\x02KB(\x02\nG\n\r_app_l\
+    imit_kb\x12.Estimated\x20app\x20memory\x20limit\x20before\x20termination\
+    .\x18\x01\"\x02KB(\x02\n'\n\n_device_kb\x12\x11Total\x20device\x20RAM.\
+    \x18\x01\"\x02KB(\x02\nV\n\x11_app_used_percent\x124App\x20used\x20memor\
+    y\x20as\x20a\x20percent\x20of\x20the\x20estimated\x20limit.\x18\x02\"\
+    \x07percent(\x02\nJ\n\n_mem_level\x12:Apple\x20memory\x20pressure\x20lev\
+    el:\x20normal,\x20warning,\x20or\x20critical.(\x02\x12\xde\x02\n\x0fNETW\
+    ORK_REQUEST\x10\x10\x1a\xc8\x02\x92\xb5\x18\xc3\x02\n\x17\n\x07_method\
+    \x12\x0cHTTP\x20method.\n\x16\n\x05_host\x12\rRequest\x20host.\n.\n\x05_\
+    path\x12%Full\x20request\x20path\x20(high\x20cardinality).\nA\n\x0e_path\
+    _template\x12/Normalized\x20path\x20template\x20(prefer\x20for\x20group_\
+    by).\n\x17\n\x06_query\x12\rQuery\x20string.\n\x1c\n\x08_span_id\x12\x10\
+    Span\x20identifier.\nf\n*_request_body_bytes_expected_to_send_count\x12/\
+    Expected\x20request\x20body\x20size\x20from\x20Content-Length.\x18\x01\"\
+    \x05bytes\x12\xcf\t\n\x10NETWORK_RESPONSE\x10\x11\x1a\xb8\t\x92\xb5\x18\
+    \xb3\t\n\x17\n\x07_method\x12\x0cHTTP\x20method.\n\x16\n\x05_host\x12\rR\
+    equest\x20host.\n.\n\x05_path\x12%Full\x20request\x20path\x20(high\x20ca\
+    rdinality).\nA\n\x0e_path_template\x12/Normalized\x20path\x20template\
+    \x20(prefer\x20for\x20group_by).\n\x17\n\x06_query\x12\rQuery\x20string.\
+    \n#\n\x0c_status_code\x12\x11HTTP\x20status\x20code.\x18\x01\nJ\n\x07_re\
+    sult\x12?\"success\"\x20or\x20\"failure\".\x20Prefer\x20over\x20_status_\
+    code\x20for\x20filtering.\n*\n\x0c_duration_ms\x12\x14Round-trip\x20dura\
+    tion.\x18\x01\"\x02ms\nL\n\x0b_error_type\x12;Error\x20type\x20string\
+    \x20(Android).\x20iOS\x20emits\x20_error_code\x20instead.(\x01\nO\n\x0b_\
+    error_code\x12<Numeric\x20error\x20code\x20(iOS).\x20Android\x20emits\
+    \x20_error_type\x20instead.\x18\x01(\x02\n3\n\x0e_error_message\x12!Huma\
+    n-readable\x20error\x20description.\nC\n\x1e_request_body_bytes_sent_cou\
+    nt\x12\x18Request\x20body\x20bytes\x20sent.\x18\x01\"\x05bytes\nM\n#_res\
+    ponse_body_bytes_received_count\x12\x1dResponse\x20body\x20bytes\x20rece\
+    ived.\x18\x01\"\x05bytes\n>\n\x1c_request_headers_bytes_count\x12\x15Req\
+    uest\x20header\x20bytes.\x18\x01\"\x05bytes\n@\n\x1d_response_headers_by\
+    tes_count\x12\x16Response\x20header\x20bytes.\x18\x01\"\x05bytes\n9\n\
+    \x1b_dns_resolution_duration_ms\x12\x14DNS\x20lookup\x20duration.\x18\
+    \x01\"\x02ms\n1\n\x10_tls_duration_ms\x12\x17TLS\x20handshake\x20duratio\
+    n.\x18\x01\"\x02ms\n2\n\x10_tcp_duration_ms\x12\x18TCP\x20connection\x20\
+    duration.\x18\x01\"\x02ms\n?\n\x17_fetch_init_duration_ms\x12\x1eFetch\
+    \x20initialization\x20duration.\x18\x01\"\x02ms\n:\n\x14_response_latenc\
+    y_ms\x12\x1cTime\x20to\x20first\x20response\x20byte.\x18\x01\"\x02ms\n0\
+    \n\t_protocol\x12#Protocol\x20used\x20(e.g.,\x20h2,\x20http/1.1).\n\x1c\
+    \n\x08_span_id\x12\x10Span\x20identifier.\x12\xae\x01\n\x12ORIENTATION_C\
+    HANGE\x10\x12\x1a\x95\x01\x92\xb5\x18\x90\x01\n\x8d\x01\n\x0c_orientatio\
+    n\x12}Android:\x20\"portrait\"/\"landscape\".\x20iOS:\x20portrait,\x20po\
+    rtraitUpsideDown,\x20landscapeLeft,\x20landscapeRight,\x20faceUp,\x20fac\
+    eDown,\x20unknown.\x12\x91\x1e\n\x08RESOURCE\x10\x13\x1a\x82\x1e\x92\xb5\
+    \x18\xfd\x1d\n]\n\x0c_jvm_used_kb\x12EJVM\x20heap\x20currently\x20used.\
+    \x20Included\x20on\x20every\x20Android\x20RESOURCE\x20snapshot.\x18\x01\
+    \"\x02KB(\x01\nZ\n\x0b_jvm_max_kb\x12CJVM\x20heap\x20maximum\x20size.\
+    \x20Included\x20on\x20every\x20Android\x20RESOURCE\x20snapshot.\x18\x01\
+    \"\x02KB(\x01\np\n\r_jvm_total_kb\x12WJVM\x20heap\x20currently\x20alloca\
+    ted\x20or\x20committed.\x20Included\x20on\x20every\x20Android\x20RESOURC\
+    E\x20snapshot.\x18\x01\"\x02KB(\x01\nl\n\x11_jvm_used_percent\x12JJVM\
+    \x20used\x20as\x20a\x20percent\x20of\x20max.\x20Included\x20on\x20every\
+    \x20Android\x20RESOURCE\x20snapshot.\x18\x02\"\x07percent(\x01\n\x87\x01\
+    \n\x0e_is_memory_low\x12sWhether\x20the\x20configured\x20low-memory\x20t\
+    hreshold\x20is\x20currently\x20met.\x20Present\x20only\x20when\x20low-me\
+    mory\x20detection\x20is\x20configured.\x18\x03\n^\n\x0f_native_used_kb\
+    \x12CNative\x20heap\x20allocated.\x20Included\x20on\x20every\x20Android\
+    \x20RESOURCE\x20snapshot.\x18\x01\"\x02KB(\x01\n`\n\x10_native_total_kb\
+    \x12DNative\x20heap\x20total\x20size.\x20Included\x20on\x20every\x20Andr\
+    oid\x20RESOURCE\x20snapshot.\x18\x01\"\x02KB(\x01\no\n\r_memory_class\
+    \x12VPer-app\x20memory\x20class\x20reported\x20by\x20Android.\x20Include\
+    d\x20on\x20every\x20Android\x20RESOURCE\x20snapshot.\x18\x01\"\x02MB(\
+    \x01\na\n\x0c_app_used_kb\x12IApp\x20physical\x20memory\x20footprint.\
+    \x20Included\x20on\x20every\x20Apple\x20RESOURCE\x20snapshot.\x18\x01\"\
+    \x02KB(\x02\nr\n\r_app_limit_kb\x12YEstimated\x20app\x20memory\x20limit\
+    \x20before\x20termination.\x20Included\x20on\x20every\x20Apple\x20RESOUR\
+    CE\x20snapshot.\x18\x01\"\x02KB(\x02\n\x9b\x01\n\x11_app_used_percent\
+    \x12yApp\x20used\x20memory\x20as\x20a\x20percent\x20of\x20the\x20estimat\
+    ed\x20limit.\x20Included\x20on\x20Apple\x20snapshots\x20when\x20the\x20m\
+    emory\x20limit\x20estimate\x20is\x20valid.\x18\x02\"\x07percent(\x02\nR\
+    \n\n_device_kb\x12<Total\x20device\x20RAM.\x20Included\x20on\x20every\
+    \x20Apple\x20RESOURCE\x20snapshot.\x18\x01\"\x02KB(\x02\np\n\x0c_battery\
+    _val\x12^Battery\x20level\x20as\x20a\x20float.\x20Included\x20on\x20ever\
+    y\x20RESOURCE\x20snapshot.\x20May\x20be\x20-1.0\x20on\x20Apple\x20simula\
+    tor.\x18\x02\n_\n\x0e_battery_level\x12@Battery\x20percentage.\x20Includ\
+    ed\x20on\x20every\x20Android\x20RESOURCE\x20snapshot.\x18\x01\"\x07perce\
+    nt(\x01\n\x8f\x01\n\x0e_battery_level\x12pBattery\x20percentage\x20when\
+    \x20the\x20battery\x20level\x20is\x20known.\x20Omitted\x20on\x20Apple\
+    \x20simulator\x20and\x20other\x20unknown\x20battery\x20states.\x18\x01\"\
+    \x07percent(\x02\nF\n\x06_state\x12<Battery\x20charging\x20state.\x20Inc\
+    luded\x20on\x20every\x20RESOURCE\x20snapshot.\n\xc6\x01\n\x1d_battery_le\
+    vel_change_per_min\x12\xa2\x01Battery\x20percentage-point\x20change\x20p\
+    er\x20minute.\x20Positive\x20means\x20draining,\x20negative\x20means\x20\
+    charging.\x20Present\x20only\x20after\x20the\x20rolling\x201-minute\x20b\
+    attery\x20window\x20is\x20populated.\x18\x02\nR\n\x12_low_power_enabled\
+    \x12:Low-power\x20mode\x20state.\x20Included\x20on\x20every\x20RESOURCE\
+    \x20snapshot.\x18\x03\n\\\n\x15_cache_dir_size_bytes\x12:Cache\x20direct\
+    ory\x20size.\x20Sampled\x20at\x20most\x20once\x20every\x2024\x20hours.\
+    \x18\x01\"\x05bytes\nb\n\x15_files_dir_size_bytes\x12>App\x20files\x20di\
+    rectory\x20size.\x20Sampled\x20at\x20most\x20once\x20every\x2024\x20hour\
+    s.\x18\x01\"\x05bytes(\x01\n\x80\x01\n\x1e_external_cache_dir_size_bytes\
+    \x12SExternal\x20cache\x20directory\x20size,\x20when\x20available.\x20Sa\
+    mpled\x20at\x20most\x20once\x20every\x2024\x20hours.\x18\x01\"\x05bytes(\
+    \x01\n\x80\x01\n\x1e_external_files_dir_size_bytes\x12SExternal\x20files\
+    \x20directory\x20size,\x20when\x20available.\x20Sampled\x20at\x20most\
+    \x20once\x20every\x2024\x20hours.\x18\x01\"\x05bytes(\x01\nf\n\x19_docum\
+    ents_dir_size_bytes\x12>Documents\x20directory\x20size.\x20Sampled\x20at\
+    \x20most\x20once\x20every\x2024\x20hours.\x18\x01\"\x05bytes(\x02\n`\n\
+    \x13_tmp_dir_size_bytes\x12>Temporary\x20directory\x20size.\x20Sampled\
+    \x20at\x20most\x20once\x20every\x2024\x20hours.\x18\x01\"\x05bytes(\x02\
+    \n\xb3\x01\n\x1c_request_bytes_per_min_count\x12\x85\x01Total\x20outboun\
+    d\x20bytes\x20over\x20the\x20preceding\x20minute\x20of\x20tracked\x20HTT\
+    P\x20traffic.\x20Present\x20once\x20the\x20rolling\x201-minute\x20tracke\
+    r\x20has\x20enough\x20history.\x18\x01\"\tbytes/min\n\xbf\x01\n!_request\
+    _body_bytes_per_min_count\x12\x8c\x01Outbound\x20request-body\x20bytes\
+    \x20over\x20the\x20preceding\x20minute\x20of\x20tracked\x20HTTP\x20traff\
+    ic.\x20Present\x20once\x20the\x20rolling\x201-minute\x20tracker\x20has\
+    \x20enough\x20history.\x18\x01\"\tbytes/min\n\xc4\x01\n$_request_headers\
+    _bytes_per_min_count\x12\x8e\x01Outbound\x20request-header\x20bytes\x20o\
+    ver\x20the\x20preceding\x20minute\x20of\x20tracked\x20HTTP\x20traffic.\
+    \x20Present\x20once\x20the\x20rolling\x201-minute\x20tracker\x20has\x20e\
+    nough\x20history.\x18\x01\"\tbytes/min\n\xb3\x01\n\x1d_response_bytes_pe\
+    r_min_count\x12\x84\x01Total\x20inbound\x20bytes\x20over\x20the\x20prece\
+    ding\x20minute\x20of\x20tracked\x20HTTP\x20traffic.\x20Present\x20once\
     \x20the\x20rolling\x201-minute\x20tracker\x20has\x20enough\x20history.\
-    \x18\x01\"\tbytes/min\n\xc5\x01\n%_response_headers_bytes_per_min_count\
-    \x12\x8e\x01Inbound\x20response-header\x20bytes\x20over\x20the\x20preced\
-    ing\x20minute\x20of\x20tracked\x20HTTP\x20traffic.\x20Present\x20once\
-    \x20the\x20rolling\x201-minute\x20tracker\x20has\x20enough\x20history.\
-    \x18\x01\"\tbytes/min\x12B\n\x0bSCREEN_VIEW\x10\x14\x1a1\x92\xb5\x18-\n+\
-    \n\x0c_screen_name\x12\x1bName\x20of\x20the\x20screen\x20or\x20view.\x12\
-    \x15\n\x11SDK_CONFIGURATION\x10\x15\x12\x12\n\x0eSESSION_REPLAY\x10\x16\
-    \x12\xb7\x01\n\x08SPAN_END\x10\x17\x1a\xa8\x01\x92\xb5\x18\xa3\x01\n\x1c\
-    \n\x08_span_id\x12\x10Span\x20identifier.\n\x18\n\n_span_name\x12\nSpan\
+    \x18\x01\"\tbytes/min\n\xc0\x01\n\"_response_body_bytes_per_min_count\
+    \x12\x8c\x01Inbound\x20response-body\x20bytes\x20over\x20the\x20precedin\
+    g\x20minute\x20of\x20tracked\x20HTTP\x20traffic.\x20Present\x20once\x20t\
+    he\x20rolling\x201-minute\x20tracker\x20has\x20enough\x20history.\x18\
+    \x01\"\tbytes/min\n\xc5\x01\n%_response_headers_bytes_per_min_count\x12\
+    \x8e\x01Inbound\x20response-header\x20bytes\x20over\x20the\x20preceding\
+    \x20minute\x20of\x20tracked\x20HTTP\x20traffic.\x20Present\x20once\x20th\
+    e\x20rolling\x201-minute\x20tracker\x20has\x20enough\x20history.\x18\x01\
+    \"\tbytes/min\x12B\n\x0bSCREEN_VIEW\x10\x14\x1a1\x92\xb5\x18-\n+\n\x0c_s\
+    creen_name\x12\x1bName\x20of\x20the\x20screen\x20or\x20view.\x12\x15\n\
+    \x11SDK_CONFIGURATION\x10\x15\x12\x12\n\x0eSESSION_REPLAY\x10\x16\x12\
+    \xb7\x01\n\x08SPAN_END\x10\x17\x1a\xa8\x01\x92\xb5\x18\xa3\x01\n\x1c\n\
+    \x08_span_id\x12\x10Span\x20identifier.\n\x18\n\n_span_name\x12\nSpan\
     \x20name.\n*\n\x0f_span_parent_id\x12\x17Parent\x20span\x20identifier.\n\
     $\n\x0c_duration_ms\x12\x0eSpan\x20duration.\x18\x01\"\x02ms\n\x17\n\x07\
     _result\x12\x0cSpan\x20result.\x12x\n\nSPAN_START\x10\x18\x1ah\x92\xb5\
@@ -14448,12 +14915,13 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(::protobuf::well_known_types::duration::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(66);
+            let mut messages = ::std::vec::Vec::with_capacity(68);
             messages.push(GroupBy::generated_message_descriptor_data());
             messages.push(Workflow::generated_message_descriptor_data());
             messages.push(Flow::generated_message_descriptor_data());
             messages.push(Step::generated_message_descriptor_data());
             messages.push(MatchRule::generated_message_descriptor_data());
+            messages.push(IssueMatch::generated_message_descriptor_data());
             messages.push(StateChangeMatch::generated_message_descriptor_data());
             messages.push(OotbMatch::generated_message_descriptor_data());
             messages.push(GenericMatch::generated_message_descriptor_data());
@@ -14480,6 +14948,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(StopWorkflowRequest::generated_message_descriptor_data());
             messages.push(StopWorkflowResponse::generated_message_descriptor_data());
             messages.push(group_by::StateValue::generated_message_descriptor_data());
+            messages.push(group_by::MultiTag::generated_message_descriptor_data());
             messages.push(group_by::Value::generated_message_descriptor_data());
             messages.push(flow::ExclusiveFlow::generated_message_descriptor_data());
             messages.push(flow::ParallelFlow::generated_message_descriptor_data());
