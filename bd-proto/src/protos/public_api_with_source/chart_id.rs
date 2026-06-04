@@ -150,6 +150,55 @@ impl ChartIdentifier {
         }
     }
 
+    // .bitdrift.public.unary.charts.v1.ChartIdentifier.ActiveDevicesChart active_devices_chart = 6;
+
+    pub fn active_devices_chart(&self) -> &chart_identifier::ActiveDevicesChart {
+        match self.type_ {
+            ::std::option::Option::Some(chart_identifier::Type::ActiveDevicesChart(ref v)) => v,
+            _ => <chart_identifier::ActiveDevicesChart as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_active_devices_chart(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_active_devices_chart(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(chart_identifier::Type::ActiveDevicesChart(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_active_devices_chart(&mut self, v: chart_identifier::ActiveDevicesChart) {
+        self.type_ = ::std::option::Option::Some(chart_identifier::Type::ActiveDevicesChart(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_active_devices_chart(&mut self) -> &mut chart_identifier::ActiveDevicesChart {
+        if let ::std::option::Option::Some(chart_identifier::Type::ActiveDevicesChart(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(chart_identifier::Type::ActiveDevicesChart(chart_identifier::ActiveDevicesChart::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(chart_identifier::Type::ActiveDevicesChart(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_active_devices_chart(&mut self) -> chart_identifier::ActiveDevicesChart {
+        if self.has_active_devices_chart() {
+            match self.type_.take() {
+                ::std::option::Option::Some(chart_identifier::Type::ActiveDevicesChart(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            chart_identifier::ActiveDevicesChart::new()
+        }
+    }
+
     // .bitdrift.public.unary.charts.v1.ChartIdentifier.WorkflowFunnelChart workflow_funnel_chart = 7;
 
     pub fn workflow_funnel_chart(&self) -> &chart_identifier::WorkflowFunnelChart {
@@ -199,8 +248,57 @@ impl ChartIdentifier {
         }
     }
 
+    // .bitdrift.public.unary.charts.v1.ChartIdentifier.IssueStabilityChart issue_stability_chart = 9;
+
+    pub fn issue_stability_chart(&self) -> &chart_identifier::IssueStabilityChart {
+        match self.type_ {
+            ::std::option::Option::Some(chart_identifier::Type::IssueStabilityChart(ref v)) => v,
+            _ => <chart_identifier::IssueStabilityChart as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_issue_stability_chart(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_issue_stability_chart(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(chart_identifier::Type::IssueStabilityChart(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_issue_stability_chart(&mut self, v: chart_identifier::IssueStabilityChart) {
+        self.type_ = ::std::option::Option::Some(chart_identifier::Type::IssueStabilityChart(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_issue_stability_chart(&mut self) -> &mut chart_identifier::IssueStabilityChart {
+        if let ::std::option::Option::Some(chart_identifier::Type::IssueStabilityChart(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(chart_identifier::Type::IssueStabilityChart(chart_identifier::IssueStabilityChart::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(chart_identifier::Type::IssueStabilityChart(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_issue_stability_chart(&mut self) -> chart_identifier::IssueStabilityChart {
+        if self.has_issue_stability_chart() {
+            match self.type_.take() {
+                ::std::option::Option::Some(chart_identifier::Type::IssueStabilityChart(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            chart_identifier::IssueStabilityChart::new()
+        }
+    }
+
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut fields = ::std::vec::Vec::with_capacity(5);
         let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, chart_identifier::WorkflowChart>(
             "workflow",
@@ -216,12 +314,26 @@ impl ChartIdentifier {
             ChartIdentifier::mut_sankey_chart,
             ChartIdentifier::set_sankey_chart,
         ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, chart_identifier::ActiveDevicesChart>(
+            "active_devices_chart",
+            ChartIdentifier::has_active_devices_chart,
+            ChartIdentifier::active_devices_chart,
+            ChartIdentifier::mut_active_devices_chart,
+            ChartIdentifier::set_active_devices_chart,
+        ));
         fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, chart_identifier::WorkflowFunnelChart>(
             "workflow_funnel_chart",
             ChartIdentifier::has_workflow_funnel_chart,
             ChartIdentifier::workflow_funnel_chart,
             ChartIdentifier::mut_workflow_funnel_chart,
             ChartIdentifier::set_workflow_funnel_chart,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, chart_identifier::IssueStabilityChart>(
+            "issue_stability_chart",
+            ChartIdentifier::has_issue_stability_chart,
+            ChartIdentifier::issue_stability_chart,
+            ChartIdentifier::mut_issue_stability_chart,
+            ChartIdentifier::set_issue_stability_chart,
         ));
         oneofs.push(chart_identifier::Type::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ChartIdentifier>(
@@ -248,8 +360,14 @@ impl ::protobuf::Message for ChartIdentifier {
                 42 => {
                     self.type_ = ::std::option::Option::Some(chart_identifier::Type::SankeyChart(is.read_message()?));
                 },
+                50 => {
+                    self.type_ = ::std::option::Option::Some(chart_identifier::Type::ActiveDevicesChart(is.read_message()?));
+                },
                 58 => {
                     self.type_ = ::std::option::Option::Some(chart_identifier::Type::WorkflowFunnelChart(is.read_message()?));
+                },
+                74 => {
+                    self.type_ = ::std::option::Option::Some(chart_identifier::Type::IssueStabilityChart(is.read_message()?));
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -273,7 +391,15 @@ impl ::protobuf::Message for ChartIdentifier {
                     let len = v.compute_size();
                     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 },
+                &chart_identifier::Type::ActiveDevicesChart(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
                 &chart_identifier::Type::WorkflowFunnelChart(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &chart_identifier::Type::IssueStabilityChart(ref v) => {
                     let len = v.compute_size();
                     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 },
@@ -293,8 +419,14 @@ impl ::protobuf::Message for ChartIdentifier {
                 &chart_identifier::Type::SankeyChart(ref v) => {
                     ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
                 },
+                &chart_identifier::Type::ActiveDevicesChart(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(6, v, os)?;
+                },
                 &chart_identifier::Type::WorkflowFunnelChart(ref v) => {
                     ::protobuf::rt::write_message_field_with_cached_size(7, v, os)?;
+                },
+                &chart_identifier::Type::IssueStabilityChart(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(9, v, os)?;
                 },
             };
         }
@@ -315,6 +447,8 @@ impl ::protobuf::Message for ChartIdentifier {
     }
 
     fn clear(&mut self) {
+        self.type_ = ::std::option::Option::None;
+        self.type_ = ::std::option::Option::None;
         self.type_ = ::std::option::Option::None;
         self.type_ = ::std::option::Option::None;
         self.type_ = ::std::option::Option::None;
@@ -357,8 +491,12 @@ pub mod chart_identifier {
         Workflow(WorkflowChart),
         // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.charts.v1.ChartIdentifier.sankey_chart)
         SankeyChart(WorkflowSankeyChart),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.charts.v1.ChartIdentifier.active_devices_chart)
+        ActiveDevicesChart(ActiveDevicesChart),
         // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.charts.v1.ChartIdentifier.workflow_funnel_chart)
         WorkflowFunnelChart(WorkflowFunnelChart),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.charts.v1.ChartIdentifier.issue_stability_chart)
+        IssueStabilityChart(IssueStabilityChart),
     }
 
     impl ::protobuf::Oneof for Type {
@@ -822,6 +960,403 @@ pub mod chart_identifier {
 
     impl ::protobuf::reflect::ProtobufValue for WorkflowSankeyChart {
         type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    ///  Active devices are global to an account and are not tied to an action ID. Use request-level
+    ///  platform filtering to narrow results. This chart returns line-chart data and resolves to a
+    ///  line chart in dashboard metadata. See the GetActiveDevices API for an explanation of what
+    ///  constitutes an active device.
+    // @@protoc_insertion_point(message:bitdrift.public.unary.charts.v1.ChartIdentifier.ActiveDevicesChart)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct ActiveDevicesChart {
+        // message fields
+        ///  The active-devices chart variant to query.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.ChartIdentifier.ActiveDevicesChart.type)
+        pub type_: ::protobuf::EnumOrUnknown<active_devices_chart::ActiveDevicesChartType>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.charts.v1.ChartIdentifier.ActiveDevicesChart.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a ActiveDevicesChart {
+        fn default() -> &'a ActiveDevicesChart {
+            <ActiveDevicesChart as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl ActiveDevicesChart {
+        pub fn new() -> ActiveDevicesChart {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "type",
+                |m: &ActiveDevicesChart| { &m.type_ },
+                |m: &mut ActiveDevicesChart| { &mut m.type_ },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ActiveDevicesChart>(
+                "ChartIdentifier.ActiveDevicesChart",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for ActiveDevicesChart {
+        const NAME: &'static str = "ActiveDevicesChart";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    8 => {
+                        self.type_ = is.read_enum_or_unknown()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if self.type_ != ::protobuf::EnumOrUnknown::new(active_devices_chart::ActiveDevicesChartType::NORMAL) {
+                my_size += ::protobuf::rt::int32_size(1, self.type_.value());
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if self.type_ != ::protobuf::EnumOrUnknown::new(active_devices_chart::ActiveDevicesChartType::NORMAL) {
+                os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.type_))?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> ActiveDevicesChart {
+            ActiveDevicesChart::new()
+        }
+
+        fn clear(&mut self) {
+            self.type_ = ::protobuf::EnumOrUnknown::new(active_devices_chart::ActiveDevicesChartType::NORMAL);
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static ActiveDevicesChart {
+            static instance: ActiveDevicesChart = ActiveDevicesChart {
+                type_: ::protobuf::EnumOrUnknown::from_i32(0),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for ActiveDevicesChart {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("ChartIdentifier.ActiveDevicesChart").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for ActiveDevicesChart {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for ActiveDevicesChart {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `ActiveDevicesChart`
+    pub mod active_devices_chart {
+        #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
+        // @@protoc_insertion_point(enum:bitdrift.public.unary.charts.v1.ChartIdentifier.ActiveDevicesChart.ActiveDevicesChartType)
+        pub enum ActiveDevicesChartType {
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.charts.v1.ChartIdentifier.ActiveDevicesChart.ActiveDevicesChartType.NORMAL)
+            NORMAL = 0,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.charts.v1.ChartIdentifier.ActiveDevicesChart.ActiveDevicesChartType.LONG_TERM)
+            LONG_TERM = 1,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.charts.v1.ChartIdentifier.ActiveDevicesChart.ActiveDevicesChartType.STICKINESS)
+            STICKINESS = 2,
+        }
+
+        impl ::protobuf::Enum for ActiveDevicesChartType {
+            const NAME: &'static str = "ActiveDevicesChartType";
+
+            fn value(&self) -> i32 {
+                *self as i32
+            }
+
+            fn from_i32(value: i32) -> ::std::option::Option<ActiveDevicesChartType> {
+                match value {
+                    0 => ::std::option::Option::Some(ActiveDevicesChartType::NORMAL),
+                    1 => ::std::option::Option::Some(ActiveDevicesChartType::LONG_TERM),
+                    2 => ::std::option::Option::Some(ActiveDevicesChartType::STICKINESS),
+                    _ => ::std::option::Option::None
+                }
+            }
+
+            fn from_str(str: &str) -> ::std::option::Option<ActiveDevicesChartType> {
+                match str {
+                    "NORMAL" => ::std::option::Option::Some(ActiveDevicesChartType::NORMAL),
+                    "LONG_TERM" => ::std::option::Option::Some(ActiveDevicesChartType::LONG_TERM),
+                    "STICKINESS" => ::std::option::Option::Some(ActiveDevicesChartType::STICKINESS),
+                    _ => ::std::option::Option::None
+                }
+            }
+
+            const VALUES: &'static [ActiveDevicesChartType] = &[
+                ActiveDevicesChartType::NORMAL,
+                ActiveDevicesChartType::LONG_TERM,
+                ActiveDevicesChartType::STICKINESS,
+            ];
+        }
+
+        impl ::protobuf::EnumFull for ActiveDevicesChartType {
+            fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().enum_by_package_relative_name("ChartIdentifier.ActiveDevicesChart.ActiveDevicesChartType").unwrap()).clone()
+            }
+
+            fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
+                let index = *self as usize;
+                Self::enum_descriptor().value_by_index(index)
+            }
+        }
+
+        impl ::std::default::Default for ActiveDevicesChartType {
+            fn default() -> Self {
+                ActiveDevicesChartType::NORMAL
+            }
+        }
+
+        impl ActiveDevicesChartType {
+            pub(in super::super) fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
+                ::protobuf::reflect::GeneratedEnumDescriptorData::new::<ActiveDevicesChartType>("ChartIdentifier.ActiveDevicesChart.ActiveDevicesChartType")
+            }
+        }
+    }
+
+    ///  Shows issue-stability metrics that are not tied to a specific action ID. Results are filtered
+    ///  by platform and app ID.
+    // @@protoc_insertion_point(message:bitdrift.public.unary.charts.v1.ChartIdentifier.IssueStabilityChart)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct IssueStabilityChart {
+        // message fields
+        ///  The issue-stability chart variant to query.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.charts.v1.ChartIdentifier.IssueStabilityChart.type)
+        pub type_: ::protobuf::EnumOrUnknown<issue_stability_chart::IssueStabilityChartType>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.charts.v1.ChartIdentifier.IssueStabilityChart.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a IssueStabilityChart {
+        fn default() -> &'a IssueStabilityChart {
+            <IssueStabilityChart as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl IssueStabilityChart {
+        pub fn new() -> IssueStabilityChart {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "type",
+                |m: &IssueStabilityChart| { &m.type_ },
+                |m: &mut IssueStabilityChart| { &mut m.type_ },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<IssueStabilityChart>(
+                "ChartIdentifier.IssueStabilityChart",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for IssueStabilityChart {
+        const NAME: &'static str = "IssueStabilityChart";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    8 => {
+                        self.type_ = is.read_enum_or_unknown()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if self.type_ != ::protobuf::EnumOrUnknown::new(issue_stability_chart::IssueStabilityChartType::GLOBAL) {
+                my_size += ::protobuf::rt::int32_size(1, self.type_.value());
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if self.type_ != ::protobuf::EnumOrUnknown::new(issue_stability_chart::IssueStabilityChartType::GLOBAL) {
+                os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.type_))?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> IssueStabilityChart {
+            IssueStabilityChart::new()
+        }
+
+        fn clear(&mut self) {
+            self.type_ = ::protobuf::EnumOrUnknown::new(issue_stability_chart::IssueStabilityChartType::GLOBAL);
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static IssueStabilityChart {
+            static instance: IssueStabilityChart = IssueStabilityChart {
+                type_: ::protobuf::EnumOrUnknown::from_i32(0),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for IssueStabilityChart {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("ChartIdentifier.IssueStabilityChart").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for IssueStabilityChart {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for IssueStabilityChart {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `IssueStabilityChart`
+    pub mod issue_stability_chart {
+        #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
+        // @@protoc_insertion_point(enum:bitdrift.public.unary.charts.v1.ChartIdentifier.IssueStabilityChart.IssueStabilityChartType)
+        pub enum IssueStabilityChartType {
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.charts.v1.ChartIdentifier.IssueStabilityChart.IssueStabilityChartType.GLOBAL)
+            GLOBAL = 0,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.charts.v1.ChartIdentifier.IssueStabilityChart.IssueStabilityChartType.DETAILED_CRASH_FREE_RATE)
+            DETAILED_CRASH_FREE_RATE = 1,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.charts.v1.ChartIdentifier.IssueStabilityChart.IssueStabilityChartType.DETAILED_CRASH_FREE_SESSION_RATE)
+            DETAILED_CRASH_FREE_SESSION_RATE = 2,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.charts.v1.ChartIdentifier.IssueStabilityChart.IssueStabilityChartType.DETAILED_CRASH_FREE_DEVICES)
+            DETAILED_CRASH_FREE_DEVICES = 3,
+        }
+
+        impl ::protobuf::Enum for IssueStabilityChartType {
+            const NAME: &'static str = "IssueStabilityChartType";
+
+            fn value(&self) -> i32 {
+                *self as i32
+            }
+
+            fn from_i32(value: i32) -> ::std::option::Option<IssueStabilityChartType> {
+                match value {
+                    0 => ::std::option::Option::Some(IssueStabilityChartType::GLOBAL),
+                    1 => ::std::option::Option::Some(IssueStabilityChartType::DETAILED_CRASH_FREE_RATE),
+                    2 => ::std::option::Option::Some(IssueStabilityChartType::DETAILED_CRASH_FREE_SESSION_RATE),
+                    3 => ::std::option::Option::Some(IssueStabilityChartType::DETAILED_CRASH_FREE_DEVICES),
+                    _ => ::std::option::Option::None
+                }
+            }
+
+            fn from_str(str: &str) -> ::std::option::Option<IssueStabilityChartType> {
+                match str {
+                    "GLOBAL" => ::std::option::Option::Some(IssueStabilityChartType::GLOBAL),
+                    "DETAILED_CRASH_FREE_RATE" => ::std::option::Option::Some(IssueStabilityChartType::DETAILED_CRASH_FREE_RATE),
+                    "DETAILED_CRASH_FREE_SESSION_RATE" => ::std::option::Option::Some(IssueStabilityChartType::DETAILED_CRASH_FREE_SESSION_RATE),
+                    "DETAILED_CRASH_FREE_DEVICES" => ::std::option::Option::Some(IssueStabilityChartType::DETAILED_CRASH_FREE_DEVICES),
+                    _ => ::std::option::Option::None
+                }
+            }
+
+            const VALUES: &'static [IssueStabilityChartType] = &[
+                IssueStabilityChartType::GLOBAL,
+                IssueStabilityChartType::DETAILED_CRASH_FREE_RATE,
+                IssueStabilityChartType::DETAILED_CRASH_FREE_SESSION_RATE,
+                IssueStabilityChartType::DETAILED_CRASH_FREE_DEVICES,
+            ];
+        }
+
+        impl ::protobuf::EnumFull for IssueStabilityChartType {
+            fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().enum_by_package_relative_name("ChartIdentifier.IssueStabilityChart.IssueStabilityChartType").unwrap()).clone()
+            }
+
+            fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
+                let index = *self as usize;
+                Self::enum_descriptor().value_by_index(index)
+            }
+        }
+
+        impl ::std::default::Default for IssueStabilityChartType {
+            fn default() -> Self {
+                IssueStabilityChartType::GLOBAL
+            }
+        }
+
+        impl IssueStabilityChartType {
+            pub(in super::super) fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
+                ::protobuf::reflect::GeneratedEnumDescriptorData::new::<IssueStabilityChartType>("ChartIdentifier.IssueStabilityChart.IssueStabilityChartType")
+            }
+        }
     }
 }
 
@@ -1925,240 +2460,326 @@ impl SortOrder {
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n.bitdrift/public/unary/charts/v1/chart_id.proto\x12\x1fbitdrift.public\
     .unary.charts.v1\x1a5bitdrift/public/shared/workflows/v1/time_series.pro\
-    to\x1a\x17validate/validate.proto\"\x8b\x06\n\x0fChartIdentifier\x12\\\n\
+    to\x1a\x17validate/validate.proto\"\xf7\x0b\n\x0fChartIdentifier\x12\\\n\
     \x08workflow\x18\x01\x20\x01(\x0b2>.bitdrift.public.unary.charts.v1.Char\
     tIdentifier.WorkflowChartH\0R\x08workflow\x12i\n\x0csankey_chart\x18\x05\
     \x20\x01(\x0b2D.bitdrift.public.unary.charts.v1.ChartIdentifier.Workflow\
-    SankeyChartH\0R\x0bsankeyChart\x12z\n\x15workflow_funnel_chart\x18\x07\
-    \x20\x01(\x0b2D.bitdrift.public.unary.charts.v1.ChartIdentifier.Workflow\
-    FunnelChartH\0R\x13workflowFunnelChart\x1a\xc6\x01\n\rWorkflowChart\x12+\
-    \n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\x07r\x05\x10\
-    \x01\x18\xff\x01\x12.\n\rchart_rule_id\x18\x03\x20\x01(\tR\x0bchartRuleI\
-    dB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12?\n\x14aggregated_action_id\
-    \x18\x04\x20\x01(\tH\0R\x12aggregatedActionIdB\x08\xfaB\x05r\x03\x18\xff\
-    \x01\x88\x01\x01B\x17\n\x15_aggregated_action_id\x1at\n\x13WorkflowFunne\
-    lChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\x07\
-    r\x05\x10\x01\x18\xff\x01\x120\n\x0efunnel_rule_id\x18\x03\x20\x01(\tR\
-    \x0cfunnelRuleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x1ag\n\x13Workflow\
-    SankeyChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfa\
-    B\x07r\x05\x10\x01\x18\xff\x01\x12#\n\x07rule_id\x18\x03\x20\x01(\tR\x06\
-    ruleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01B\x0b\n\x04type\x12\x03\xf8B\
-    \x01\"\xa4\x06\n\rLimitStrategy\x12Z\n\x0btop_k_limit\x18\x01\x20\x01(\
-    \x0b28.bitdrift.public.unary.charts.v1.LimitStrategy.TopKLimitH\0R\ttopK\
-    Limit\x12k\n\x10identifier_match\x18\x02\x20\x01(\x0b2>.bitdrift.public.\
-    unary.charts.v1.LimitStrategy.IdentifierMatchH\0R\x0fidentifierMatch\x12\
-    S\n\nsort_order\x18\x03\x20\x01(\x0e2*.bitdrift.public.unary.charts.v1.S\
-    ortOrderR\tsortOrderB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12^\n\nexclusion\
-    s\x18\x04\x20\x01(\x0b2>.bitdrift.public.unary.charts.v1.LimitStrategy.I\
-    dentifierMatchR\nexclusions\x1a)\n\tTopKLimit\x12\x1c\n\x05top_k\x18\x01\
-    \x20\x01(\x04R\x04topKB\x07\xfaB\x042\x02\x20\0\x1a\xd7\x02\n\x0fIdentif\
-    ierMatch\x12\x93\x01\n\x15dimension_identifiers\x18\x01\x20\x03(\x0b2R.b\
-    itdrift.public.unary.charts.v1.LimitStrategy.IdentifierMatch.DimensionId\
-    entifierR\x14dimensionIdentifiersB\n\xfaB\x07\x92\x01\x04\x08\x01\x10d\
-    \x12!\n\x0creturn_other\x18\x02\x20\x01(\x08R\x0breturnOther\x1a\x8a\x01\
-    \n\x13DimensionIdentifier\x12\x1a\n\x02id\x18\x01\x20\x01(\tR\x02idB\n\
-    \xfaB\x07r\x05\x10\x01\x18\xff\x01\x12W\n\x06labels\x18\x02\x20\x03(\x0b\
-    2..bitdrift.public.shared.workflows.v1.LabelPairR\x06labelsB\x0f\xfaB\
-    \x0c\x92\x01\t\x10\n\"\x05\x8a\x01\x02\x10\x01B\x10\n\x0elimit_strategy\
-    \"\x83\x01\n\x16HistogramConfiguration\x12/\n\npercentile\x18\x02\x20\
-    \x01(\x02R\npercentileB\x0f\xfaB\x0c\n\n\x1d\0\0\x80?-\0\0\0\0\x128\n\
-    \x0bpercentiles\x18\x03\x20\x03(\x02R\x0bpercentilesB\x16\xfaB\x13\x92\
-    \x01\x10\x10\x14\"\x0c\n\n\x1d\0\0\x80?-\0\0\0\0\"2\n\nFunnelStep\x12\
-    \x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\x12\x14\n\x05value\x18\x02\x20\
-    \x01(\x04R\x05value*\x1d\n\tSortOrder\x12\x07\n\x03MAX\x10\0\x12\x07\n\
-    \x03MIN\x10\x01J\xa1/\n\x07\x12\x05\x06\0\xb0\x01\x01\n\xb8\x02\n\x01\
-    \x0c\x12\x03\x06\0\x12\x1a\xad\x02\x20api\x20-\x20bitdrift's\x20client/s\
-    erver\x20API\x20definitions\n\x20Copyright\x20Bitdrift,\x20Inc.\x20All\
-    \x20rights\x20reserved.\n\n\x20Use\x20of\x20this\x20source\x20code\x20an\
-    d\x20APIs\x20are\x20governed\x20by\x20a\x20source\x20available\x20licens\
-    e\x20that\x20can\x20be\x20found\x20in\n\x20the\x20LICENSE\x20file\x20or\
-    \x20at:\n\x20https://polyformproject.org/wp-content/uploads/2020/06/Poly\
-    Form-Shield-1.0.0.txt\n\n\x08\n\x01\x02\x12\x03\x08\0(\n\t\n\x02\x03\0\
-    \x12\x03\n\0?\n\t\n\x02\x03\x01\x12\x03\x0b\0!\n\n\n\x02\x04\0\x12\x04\r\
-    \0I\x01\n\n\n\x03\x04\0\x01\x12\x03\r\x08\x17\n\x0c\n\x04\x04\0\x03\0\
-    \x12\x04\x0e\x02\x20\x03\n\x0c\n\x05\x04\0\x03\0\x01\x12\x03\x0e\n\x17\n\
-    4\n\x06\x04\0\x03\0\x02\0\x12\x04\x10\x04\x13\x07\x1a$\x20The\x20workflo\
-    w\x20that\x20owns\x20this\x20chart.\n\n\x0e\n\x07\x04\0\x03\0\x02\0\x05\
-    \x12\x03\x10\x04\n\n\x0e\n\x07\x04\0\x03\0\x02\0\x01\x12\x03\x10\x0b\x16\
-    \n\x0e\n\x07\x04\0\x03\0\x02\0\x03\x12\x03\x10\x19\x1a\n\x0f\n\x07\x04\0\
-    \x03\0\x02\0\x08\x12\x04\x10\x1b\x13\x06\n\x12\n\n\x04\0\x03\0\x02\0\x08\
-    \xaf\x08\x0e\x12\x04\x10\x1c\x13\x05\nt\n\x06\x04\0\x03\0\x02\x01\x12\
-    \x04\x17\x04\x1a\x07\x1ad\x20The\x20ID\x20of\x20the\x20rule\x20node\x20w\
-    ithin\x20the\x20workflow\x20that\x20holds\x20the\n\x20RuleChartConfigura\
-    tion\x20for\x20this\x20chart.\n\n\x0e\n\x07\x04\0\x03\0\x02\x01\x05\x12\
-    \x03\x17\x04\n\n\x0e\n\x07\x04\0\x03\0\x02\x01\x01\x12\x03\x17\x0b\x18\n\
-    \x0e\n\x07\x04\0\x03\0\x02\x01\x03\x12\x03\x17\x1b\x1c\n\x0f\n\x07\x04\0\
-    \x03\0\x02\x01\x08\x12\x04\x17\x1d\x1a\x06\n\x12\n\n\x04\0\x03\0\x02\x01\
-    \x08\xaf\x08\x0e\x12\x04\x17\x1e\x1a\x05\n\xc2\x01\n\x06\x04\0\x03\0\x02\
-    \x02\x12\x03\x1f\x04X\x1a\xb2\x01\x20Optionally\x20narrows\x20the\x20cha\
-    rt\x20to\x20a\x20specific\x20time\x20series\x20within\x20the\x20chart\n\
-    \x20definition.\x20This\x20is\x20currently\x20required\x20when\x20retrie\
-    ving\x20example\n\x20cardinality\x20for\x20a\x20specific\x20time\x20seri\
-    es.\n\n\x0e\n\x07\x04\0\x03\0\x02\x02\x04\x12\x03\x1f\x04\x0c\n\x0e\n\
-    \x07\x04\0\x03\0\x02\x02\x05\x12\x03\x1f\r\x13\n\x0e\n\x07\x04\0\x03\0\
-    \x02\x02\x01\x12\x03\x1f\x14(\n\x0e\n\x07\x04\0\x03\0\x02\x02\x03\x12\
-    \x03\x1f+,\n\x0e\n\x07\x04\0\x03\0\x02\x02\x08\x12\x03\x1f-W\n\x11\n\n\
-    \x04\0\x03\0\x02\x02\x08\xaf\x08\x0e\x12\x03\x1f.V\n\x0c\n\x04\x04\0\x03\
-    \x01\x12\x04\"\x02.\x03\n\x0c\n\x05\x04\0\x03\x01\x01\x12\x03\"\n\x1d\n;\
-    \n\x06\x04\0\x03\x01\x02\0\x12\x04$\x04'\x07\x1a+\x20The\x20workflow\x20\
-    that\x20owns\x20this\x20funnel\x20chart.\n\n\x0e\n\x07\x04\0\x03\x01\x02\
-    \0\x05\x12\x03$\x04\n\n\x0e\n\x07\x04\0\x03\x01\x02\0\x01\x12\x03$\x0b\
-    \x16\n\x0e\n\x07\x04\0\x03\x01\x02\0\x03\x12\x03$\x19\x1a\n\x0f\n\x07\
-    \x04\0\x03\x01\x02\0\x08\x12\x04$\x1b'\x06\n\x12\n\n\x04\0\x03\x01\x02\0\
-    \x08\xaf\x08\x0e\x12\x04$\x1c'\x05\n:\n\x06\x04\0\x03\x01\x02\x01\x12\
-    \x04*\x04-\x07\x1a*\x20The\x20funnel\x20rule\x20that\x20defines\x20this\
-    \x20chart.\n\n\x0e\n\x07\x04\0\x03\x01\x02\x01\x05\x12\x03*\x04\n\n\x0e\
-    \n\x07\x04\0\x03\x01\x02\x01\x01\x12\x03*\x0b\x19\n\x0e\n\x07\x04\0\x03\
-    \x01\x02\x01\x03\x12\x03*\x1c\x1d\n\x0f\n\x07\x04\0\x03\x01\x02\x01\x08\
-    \x12\x04*\x1e-\x06\n\x12\n\n\x04\0\x03\x01\x02\x01\x08\xaf\x08\x0e\x12\
-    \x04*\x1f-\x05\n\x0c\n\x04\x04\0\x03\x02\x12\x040\x02<\x03\n\x0c\n\x05\
-    \x04\0\x03\x02\x01\x12\x030\n\x1d\n;\n\x06\x04\0\x03\x02\x02\0\x12\x042\
-    \x045\x07\x1a+\x20The\x20workflow\x20that\x20owns\x20this\x20sankey\x20c\
-    hart.\n\n\x0e\n\x07\x04\0\x03\x02\x02\0\x05\x12\x032\x04\n\n\x0e\n\x07\
-    \x04\0\x03\x02\x02\0\x01\x12\x032\x0b\x16\n\x0e\n\x07\x04\0\x03\x02\x02\
-    \0\x03\x12\x032\x19\x1a\n\x0f\n\x07\x04\0\x03\x02\x02\0\x08\x12\x042\x1b\
-    5\x06\n\x12\n\n\x04\0\x03\x02\x02\0\x08\xaf\x08\x0e\x12\x042\x1c5\x05\n:\
-    \n\x06\x04\0\x03\x02\x02\x01\x12\x048\x04;\x07\x1a*\x20The\x20rule\x20th\
-    at\x20defines\x20this\x20sankey\x20chart.\n\n\x0e\n\x07\x04\0\x03\x02\
-    \x02\x01\x05\x12\x038\x04\n\n\x0e\n\x07\x04\0\x03\x02\x02\x01\x01\x12\
-    \x038\x0b\x12\n\x0e\n\x07\x04\0\x03\x02\x02\x01\x03\x12\x038\x15\x16\n\
-    \x0f\n\x07\x04\0\x03\x02\x02\x01\x08\x12\x048\x17;\x06\n\x12\n\n\x04\0\
-    \x03\x02\x02\x01\x08\xaf\x08\x0e\x12\x048\x18;\x05\n\x0c\n\x04\x04\0\x08\
-    \0\x12\x04>\x02H\x03\n\x0c\n\x05\x04\0\x08\0\x01\x12\x03>\x08\x0c\n\x0c\
-    \n\x05\x04\0\x08\0\x02\x12\x03?\x04&\n\x0e\n\x07\x04\0\x08\0\x02\xaf\x08\
-    \x12\x03?\x04&\n.\n\x04\x04\0\x02\0\x12\x03A\x04P\x1a!\x20A\x20workflow-\
-    backed\x20metric\x20chart.\n\n\x0c\n\x05\x04\0\x02\0\x06\x12\x03A\x04B\n\
-    \x0c\n\x05\x04\0\x02\0\x01\x12\x03ACK\n\x0c\n\x05\x04\0\x02\0\x03\x12\
-    \x03ANO\n.\n\x04\x04\0\x02\x01\x12\x03D\x04Z\x1a!\x20A\x20workflow-backe\
-    d\x20sankey\x20chart.\n\n\x0c\n\x05\x04\0\x02\x01\x06\x12\x03D\x04H\n\
-    \x0c\n\x05\x04\0\x02\x01\x01\x12\x03DIU\n\x0c\n\x05\x04\0\x02\x01\x03\
-    \x12\x03DXY\n.\n\x04\x04\0\x02\x02\x12\x03G\x04c\x1a!\x20A\x20workflow-b\
-    acked\x20funnel\x20chart.\n\n\x0c\n\x05\x04\0\x02\x02\x06\x12\x03G\x04H\
-    \n\x0c\n\x05\x04\0\x02\x02\x01\x12\x03GI^\n\x0c\n\x05\x04\0\x02\x02\x03\
-    \x12\x03Gab\n\n\n\x02\x05\0\x12\x04K\0N\x01\n\n\n\x03\x05\0\x01\x12\x03K\
-    \x05\x0e\n\x0b\n\x04\x05\0\x02\0\x12\x03L\x02\n\n\x0c\n\x05\x05\0\x02\0\
-    \x01\x12\x03L\x02\x05\n\x0c\n\x05\x05\0\x02\0\x02\x12\x03L\x08\t\n\x0b\n\
-    \x04\x05\0\x02\x01\x12\x03M\x02\n\n\x0c\n\x05\x05\0\x02\x01\x01\x12\x03M\
-    \x02\x05\n\x0c\n\x05\x05\0\x02\x01\x02\x12\x03M\x08\t\n\x0b\n\x02\x04\
-    \x01\x12\x05P\0\x8f\x01\x01\n\n\n\x03\x04\x01\x01\x12\x03P\x08\x15\n\x0c\
-    \n\x04\x04\x01\x03\0\x12\x04Q\x02T\x03\n\x0c\n\x05\x04\x01\x03\0\x01\x12\
-    \x03Q\n\x13\nI\n\x06\x04\x01\x03\0\x02\0\x12\x03S\x049\x1a:\x20The\x20nu\
-    mber\x20of\x20time\x20series\x20to\x20return\x20per\x20chart\x20dimensio\
-    n.\n\n\x0e\n\x07\x04\x01\x03\0\x02\0\x05\x12\x03S\x04\n\n\x0e\n\x07\x04\
-    \x01\x03\0\x02\0\x01\x12\x03S\x0b\x10\n\x0e\n\x07\x04\x01\x03\0\x02\0\
-    \x03\x12\x03S\x13\x14\n\x0e\n\x07\x04\x01\x03\0\x02\0\x08\x12\x03S\x158\
-    \n\x11\n\n\x04\x01\x03\0\x02\0\x08\xaf\x08\x06\x12\x03S\x167\n\x9e\x02\n\
-    \x04\x04\x01\x03\x01\x12\x04Z\x02\x7f\x03\x1a\x8f\x02\x20Used\x20to\x20s\
-    elect\x20specific\x20time\x20series\x20from\x20a\x20chart\x20instead\x20\
-    of\x20relying\x20on\x20a\x20top-K\x20algorithm.\n\n\x20This\x20specifies\
-    \x20the\x20list\x20of\x20dimension\x20values\x20to\x20include\x20in\x20t\
-    he\x20results.\x20Only\x20time\x20series\x20that\x20match\x20one\x20of\
-    \x20the\x20sent\n\x20dimension\x20value\x20combinations\x20will\x20be\
-    \x20included\x20in\x20the\x20results.\n\n\x0c\n\x05\x04\x01\x03\x01\x01\
-    \x12\x03Z\n\x19\n\x0e\n\x06\x04\x01\x03\x01\x03\0\x12\x04[\x04o\x05\n\
-    \x0e\n\x07\x04\x01\x03\x01\x03\0\x01\x12\x03[\x0c\x1f\n\xfe\x01\n\x08\
-    \x04\x01\x03\x01\x03\0\x02\0\x12\x04`\x06c\t\x1a\xeb\x01\x20The\x20`Time\
-    Series.id`\x20of\x20the\x20grouped\x20result\x20to\x20include.\n\n\x20Us\
-    e\x20the\x20`id`\x20returned\x20by\x20`GetChartsData`\x20together\x20wit\
-    h\x20the\x20matching\x20`labels`.\x20This\x20value\n\x20identifies\x20th\
-    e\x20backing\x20time-series\x20query\x20and\x20may\x20be\x20shared\x20by\
-    \x20multiple\x20grouped\x20results.\n\n\x10\n\t\x04\x01\x03\x01\x03\0\
-    \x02\0\x05\x12\x03`\x06\x0c\n\x10\n\t\x04\x01\x03\x01\x03\0\x02\0\x01\
-    \x12\x03`\r\x0f\n\x10\n\t\x04\x01\x03\x01\x03\0\x02\0\x03\x12\x03`\x12\
-    \x13\n\x11\n\t\x04\x01\x03\x01\x03\0\x02\0\x08\x12\x04`\x14c\x08\n\x14\n\
-    \x0c\x04\x01\x03\x01\x03\0\x02\0\x08\xaf\x08\x0e\x12\x04`\x15c\x07\n\xeb\
-    \x01\n\x08\x04\x01\x03\x01\x03\0\x02\x01\x12\x04i\x06n\t\x1a\xd8\x01\x20\
-    The\x20label\x20values\x20for\x20the\x20grouped\x20result.\n\n\x20These\
-    \x20labels\x20must\x20match\x20the\x20selected\x20grouped\x20result\x20e\
-    xactly\x20and\x20are\x20evaluated\x20together\x20with\n\x20`id`.\x20Labe\
-    ls\x20disambiguate\x20grouped\x20results\x20that\x20share\x20the\x20same\
-    \x20`TimeSeries.id`.\n\n\x10\n\t\x04\x01\x03\x01\x03\0\x02\x01\x04\x12\
-    \x03i\x06\x0e\n\x10\n\t\x04\x01\x03\x01\x03\0\x02\x01\x06\x12\x03i\x0f=\
-    \n\x10\n\t\x04\x01\x03\x01\x03\0\x02\x01\x01\x12\x03i>D\n\x10\n\t\x04\
-    \x01\x03\x01\x03\0\x02\x01\x03\x12\x03iGH\n\x11\n\t\x04\x01\x03\x01\x03\
-    \0\x02\x01\x08\x12\x04iIn\x08\n\x14\n\x0c\x04\x01\x03\x01\x03\0\x02\x01\
-    \x08\xaf\x08\x12\x12\x04iJn\x07\n\xbb\x03\n\x06\x04\x01\x03\x01\x02\0\
-    \x12\x04w\x04z\x07\x1a\xaa\x03\x20Selects\x20specific\x20grouped\x20resu\
-    lts\x20from\x20a\x20chart\x20response.\n\n\x20Callers\x20send\x20one\x20\
-    `DimensionIdentifier`\x20for\x20each\x20grouped\x20result\x20to\x20inclu\
-    de.\x20Callers\x20construct\n\x20each\x20entry\x20from\x20a\x20`GetChart\
-    sData`\x20result\x20by\x20copying\x20the\x20returned\x20`TimeSeries.id`\
-    \x20and\x20its\n\x20full\x20`labels`\x20set.\x20For\x20a\x20single\x20gr\
-    oup-by,\x20`labels`\x20contains\x20one\x20entry.\x20For\x20a\x20multi-gr\
-    oup-by,\n\x20`labels`\x20must\x20contain\x20one\x20entry\x20per\x20group\
-    \x20key\x20in\x20the\x20same\x20order\x20as\x20the\x20chart\x20definitio\
-    n.\n\n\x0e\n\x07\x04\x01\x03\x01\x02\0\x04\x12\x03w\x04\x0c\n\x0e\n\x07\
-    \x04\x01\x03\x01\x02\0\x06\x12\x03w\r_\n\x0e\n\x07\x04\x01\x03\x01\x02\0\
-    \x01\x12\x03w`u\n\x0e\n\x07\x04\x01\x03\x01\x02\0\x03\x12\x03wxy\n\x0f\n\
-    \x07\x04\x01\x03\x01\x02\0\x08\x12\x04wzz\x06\n\x12\n\n\x04\x01\x03\x01\
-    \x02\0\x08\xaf\x08\x12\x12\x04w{z\x05\n\x7f\n\x06\x04\x01\x03\x01\x02\
-    \x01\x12\x03~\x04\x1a\x1ap\x20If\x20true,\x20the\x20rest\x20of\x20the\
-    \x20dimensions\x20will\x20be\x20returned\x20as\x20\"other\".\x20This\x20\
-    does\x20not\x20currently\n\x20work\x20for\x20histograms.\n\n\x0e\n\x07\
-    \x04\x01\x03\x01\x02\x01\x05\x12\x03~\x04\x08\n\x0e\n\x07\x04\x01\x03\
-    \x01\x02\x01\x01\x12\x03~\t\x15\n\x0e\n\x07\x04\x01\x03\x01\x02\x01\x03\
-    \x12\x03~\x18\x19\n\x0e\n\x04\x04\x01\x08\0\x12\x06\x81\x01\x02\x87\x01\
-    \x03\n\r\n\x05\x04\x01\x08\0\x01\x12\x04\x81\x01\x08\x16\n\x83\x02\n\x04\
-    \x04\x01\x02\0\x12\x04\x83\x01\x04M\x1a\xf4\x01\x20Select\x20the\x20top\
-    \x20K\x20groups\x20per\x20time\x20series\x20based\x20on\x20the\x20aggreg\
-    ated\x20value\x20for\x20the\x20chart\x20metric.\x20This\x20is\x20the\x20\
-    most\x20common\x20limit\x20strategy\x20and\x20is\x20used\x20when\x20ther\
-    e\x20are\x20too\x20many\x20groups\x20to\x20display\x20in\x20the\x20chart\
-    \x20and\x20we\x20want\x20to\x20show\x20the\x20most\x20important\x20ones.\
-    \n\n\r\n\x05\x04\x01\x02\0\x06\x12\x04\x83\x01\x04<\n\r\n\x05\x04\x01\
-    \x02\0\x01\x12\x04\x83\x01=H\n\r\n\x05\x04\x01\x02\0\x03\x12\x04\x83\x01\
-    KL\n\xbc\x01\n\x04\x04\x01\x02\x01\x12\x04\x86\x01\x04X\x1a\xad\x01\x20S\
-    elect\x20specific\x20groups\x20based\x20on\x20their\x20dimension\x20valu\
-    es.\x20This\x20is\x20used\x20to\x20target\x20particular\x20groups\x20tha\
-    t\x20we\x20want\x20to\x20display\x20in\x20the\x20chart\x20regardless\x20\
-    of\x20their\x20aggregated\x20value.\n\n\r\n\x05\x04\x01\x02\x01\x06\x12\
-    \x04\x86\x01\x04B\n\r\n\x05\x04\x01\x02\x01\x01\x12\x04\x86\x01CS\n\r\n\
-    \x05\x04\x01\x02\x01\x03\x12\x04\x86\x01VW\n\xca\x01\n\x04\x04\x01\x02\
-    \x02\x12\x04\x8b\x01\x02k\x1a\xbb\x01\x20The\x20sort\x20order\x20to\x20u\
-    se\x20when\x20applying\x20the\x20limit\x20strategy.\x20By\x20default\x20\
-    the\x20output\x20returns\x20the\x20top\x20K\n\x20of\x20maximum\x20values\
-    ,\x20but\x20can\x20be\x20switched\x20to\x20return\x20the\x20top\x20K\x20\
-    of\x20minimum\x20values\x20(bottom\x20K).\n\n\r\n\x05\x04\x01\x02\x02\
-    \x06\x12\x04\x8b\x01\x02,\n\r\n\x05\x04\x01\x02\x02\x01\x12\x04\x8b\x01-\
-    7\n\r\n\x05\x04\x01\x02\x02\x03\x12\x04\x8b\x01:;\n\r\n\x05\x04\x01\x02\
-    \x02\x08\x12\x04\x8b\x01<j\n\x10\n\x08\x04\x01\x02\x02\x08\xaf\x08\x10\
-    \x12\x04\x8b\x01=i\n~\n\x04\x04\x01\x02\x03\x12\x04\x8e\x01\x02P\x1ap\
-    \x20Optional\x20exclusions\x20to\x20apply\x20when\x20limiting.\x20This\
-    \x20is\x20used\x20to\x20exclude\x20specific\x20dimensions\x20from\x20the\
-    \x20top\x20K\x20results\n\n\r\n\x05\x04\x01\x02\x03\x06\x12\x04\x8e\x01\
-    \x02@\n\r\n\x05\x04\x01\x02\x03\x01\x12\x04\x8e\x01AK\n\r\n\x05\x04\x01\
-    \x02\x03\x03\x12\x04\x8e\x01NO\n\x0c\n\x02\x04\x02\x12\x06\x91\x01\0\xa8\
-    \x01\x01\n\x0b\n\x03\x04\x02\x01\x12\x04\x91\x01\x08\x1e\n\xe7\x02\n\x04\
-    \x04\x02\x02\0\x12\x06\x99\x01\x02\x9c\x01\x05\x1a\xd6\x02\x20Pins\x20th\
-    e\x20histograms\x20within\x20this\x20chart\x20to\x20a\x20specific\x20per\
-    centile.\x20This\x20is\n\x20required\x20for\x20charts\x20that\x20have\
-    \x20histograms\x20with\x20a\x20top-K\x20grouping\x20because\x20we\n\x20d\
-    o\x20not\x20support\x20querying\x20the\x20Cartesian\x20product\x20of\x20\
-    (values,\x20percentiles)\n\x20with\x20top-K.\n\n\x20This\x20must\x20be\
-    \x20set\x20to\x20one\x20of\x20the\x20percentiles\x20in\x20the\x20ChartMe\
-    tadata\x20for\x20the\n\x20chart\x20if\x20percentiles\x20are\x20defined.\
-    \n\n\r\n\x05\x04\x02\x02\0\x05\x12\x04\x99\x01\x02\x07\n\r\n\x05\x04\x02\
-    \x02\0\x01\x12\x04\x99\x01\x08\x12\n\r\n\x05\x04\x02\x02\0\x03\x12\x04\
-    \x99\x01\x15\x16\n\x0f\n\x05\x04\x02\x02\0\x08\x12\x06\x99\x01\x17\x9c\
-    \x01\x04\n\x12\n\x08\x04\x02\x02\0\x08\xaf\x08\x01\x12\x06\x99\x01\x18\
-    \x9c\x01\x03\nb\n\x04\x04\x02\x02\x01\x12\x06\x9f\x01\x02\xa7\x01\x05\
-    \x1aR\x20Percentiles\x20to\x20query\x20when\x20the\x20chart\x20supports\
-    \x20returning\x20multiple\x20histogram\x20lines.\n\n\r\n\x05\x04\x02\x02\
-    \x01\x04\x12\x04\x9f\x01\x02\n\n\r\n\x05\x04\x02\x02\x01\x05\x12\x04\x9f\
-    \x01\x0b\x10\n\r\n\x05\x04\x02\x02\x01\x01\x12\x04\x9f\x01\x11\x1c\n\r\n\
-    \x05\x04\x02\x02\x01\x03\x12\x04\x9f\x01\x1f\x20\n\x0f\n\x05\x04\x02\x02\
-    \x01\x08\x12\x06\x9f\x01!\xa7\x01\x04\n\x12\n\x08\x04\x02\x02\x01\x08\
-    \xaf\x08\x12\x12\x06\x9f\x01\"\xa7\x01\x03\n\x0c\n\x02\x04\x03\x12\x06\
-    \xaa\x01\0\xb0\x01\x01\n\x0b\n\x03\x04\x03\x01\x12\x04\xaa\x01\x08\x12\n\
-    8\n\x04\x04\x03\x02\0\x12\x04\xac\x01\x02\x10\x1a*\x20The\x20action\x20I\
-    D\x20associated\x20with\x20this\x20step.\n\n\r\n\x05\x04\x03\x02\0\x05\
-    \x12\x04\xac\x01\x02\x08\n\r\n\x05\x04\x03\x02\0\x01\x12\x04\xac\x01\t\
-    \x0b\n\r\n\x05\x04\x03\x02\0\x03\x12\x04\xac\x01\x0e\x0f\nS\n\x04\x04\
-    \x03\x02\x01\x12\x04\xaf\x01\x02\x13\x1aE\x20The\x20accumulated\x20value\
-    \x20of\x20all\x20collected\x20data\x20points\x20for\x20this\x20metric.\n\
-    \n\r\n\x05\x04\x03\x02\x01\x05\x12\x04\xaf\x01\x02\x08\n\r\n\x05\x04\x03\
-    \x02\x01\x01\x12\x04\xaf\x01\t\x0e\n\r\n\x05\x04\x03\x02\x01\x03\x12\x04\
-    \xaf\x01\x11\x12b\x06proto3\
+    SankeyChartH\0R\x0bsankeyChart\x12w\n\x14active_devices_chart\x18\x06\
+    \x20\x01(\x0b2C.bitdrift.public.unary.charts.v1.ChartIdentifier.ActiveDe\
+    vicesChartH\0R\x12activeDevicesChart\x12z\n\x15workflow_funnel_chart\x18\
+    \x07\x20\x01(\x0b2D.bitdrift.public.unary.charts.v1.ChartIdentifier.Work\
+    flowFunnelChartH\0R\x13workflowFunnelChart\x12z\n\x15issue_stability_cha\
+    rt\x18\t\x20\x01(\x0b2D.bitdrift.public.unary.charts.v1.ChartIdentifier.\
+    IssueStabilityChartH\0R\x13issueStabilityChart\x1a\xc6\x01\n\rWorkflowCh\
+    art\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\x07r\
+    \x05\x10\x01\x18\xff\x01\x12.\n\rchart_rule_id\x18\x03\x20\x01(\tR\x0bch\
+    artRuleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12?\n\x14aggregated_acti\
+    on_id\x18\x04\x20\x01(\tH\0R\x12aggregatedActionIdB\x08\xfaB\x05r\x03\
+    \x18\xff\x01\x88\x01\x01B\x17\n\x15_aggregated_action_id\x1at\n\x13Workf\
+    lowFunnelChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\
+    \xfaB\x07r\x05\x10\x01\x18\xff\x01\x120\n\x0efunnel_rule_id\x18\x03\x20\
+    \x01(\tR\x0cfunnelRuleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x1ag\n\x13\
+    WorkflowSankeyChart\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowI\
+    dB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12#\n\x07rule_id\x18\x03\x20\x01\
+    (\tR\x06ruleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x1a\xd3\x01\n\x12Act\
+    iveDevicesChart\x12x\n\x04type\x18\x01\x20\x01(\x0e2Z.bitdrift.public.un\
+    ary.charts.v1.ChartIdentifier.ActiveDevicesChart.ActiveDevicesChartTypeR\
+    \x04typeB\x08\xfaB\x05\x82\x01\x02\x10\x01\"C\n\x16ActiveDevicesChartTyp\
+    e\x12\n\n\x06NORMAL\x10\0\x12\r\n\tLONG_TERM\x10\x01\x12\x0e\n\nSTICKINE\
+    SS\x10\x02\x1a\x9e\x02\n\x13IssueStabilityChart\x12z\n\x04type\x18\x01\
+    \x20\x01(\x0e2\\.bitdrift.public.unary.charts.v1.ChartIdentifier.IssueSt\
+    abilityChart.IssueStabilityChartTypeR\x04typeB\x08\xfaB\x05\x82\x01\x02\
+    \x10\x01\"\x8a\x01\n\x17IssueStabilityChartType\x12\n\n\x06GLOBAL\x10\0\
+    \x12\x1c\n\x18DETAILED_CRASH_FREE_RATE\x10\x01\x12$\n\x20DETAILED_CRASH_\
+    FREE_SESSION_RATE\x10\x02\x12\x1f\n\x1bDETAILED_CRASH_FREE_DEVICES\x10\
+    \x03B\x0b\n\x04type\x12\x03\xf8B\x01\"\xa4\x06\n\rLimitStrategy\x12Z\n\
+    \x0btop_k_limit\x18\x01\x20\x01(\x0b28.bitdrift.public.unary.charts.v1.L\
+    imitStrategy.TopKLimitH\0R\ttopKLimit\x12k\n\x10identifier_match\x18\x02\
+    \x20\x01(\x0b2>.bitdrift.public.unary.charts.v1.LimitStrategy.Identifier\
+    MatchH\0R\x0fidentifierMatch\x12S\n\nsort_order\x18\x03\x20\x01(\x0e2*.b\
+    itdrift.public.unary.charts.v1.SortOrderR\tsortOrderB\x08\xfaB\x05\x82\
+    \x01\x02\x10\x01\x12^\n\nexclusions\x18\x04\x20\x01(\x0b2>.bitdrift.publ\
+    ic.unary.charts.v1.LimitStrategy.IdentifierMatchR\nexclusions\x1a)\n\tTo\
+    pKLimit\x12\x1c\n\x05top_k\x18\x01\x20\x01(\x04R\x04topKB\x07\xfaB\x042\
+    \x02\x20\0\x1a\xd7\x02\n\x0fIdentifierMatch\x12\x93\x01\n\x15dimension_i\
+    dentifiers\x18\x01\x20\x03(\x0b2R.bitdrift.public.unary.charts.v1.LimitS\
+    trategy.IdentifierMatch.DimensionIdentifierR\x14dimensionIdentifiersB\n\
+    \xfaB\x07\x92\x01\x04\x08\x01\x10d\x12!\n\x0creturn_other\x18\x02\x20\
+    \x01(\x08R\x0breturnOther\x1a\x8a\x01\n\x13DimensionIdentifier\x12\x1a\n\
+    \x02id\x18\x01\x20\x01(\tR\x02idB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\
+    \x12W\n\x06labels\x18\x02\x20\x03(\x0b2..bitdrift.public.shared.workflow\
+    s.v1.LabelPairR\x06labelsB\x0f\xfaB\x0c\x92\x01\t\x10\n\"\x05\x8a\x01\
+    \x02\x10\x01B\x10\n\x0elimit_strategy\"\x83\x01\n\x16HistogramConfigurat\
+    ion\x12/\n\npercentile\x18\x02\x20\x01(\x02R\npercentileB\x0f\xfaB\x0c\n\
+    \n\x1d\0\0\x80?-\0\0\0\0\x128\n\x0bpercentiles\x18\x03\x20\x03(\x02R\x0b\
+    percentilesB\x16\xfaB\x13\x92\x01\x10\x10\x14\"\x0c\n\n\x1d\0\0\x80?-\0\
+    \0\0\0\"2\n\nFunnelStep\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\x12\
+    \x14\n\x05value\x18\x02\x20\x01(\x04R\x05value*\x1d\n\tSortOrder\x12\x07\
+    \n\x03MAX\x10\0\x12\x07\n\x03MIN\x10\x01J\xb6A\n\x07\x12\x05\x06\0\xde\
+    \x01\x01\n\xb8\x02\n\x01\x0c\x12\x03\x06\0\x12\x1a\xad\x02\x20api\x20-\
+    \x20bitdrift's\x20client/server\x20API\x20definitions\n\x20Copyright\x20\
+    Bitdrift,\x20Inc.\x20All\x20rights\x20reserved.\n\n\x20Use\x20of\x20this\
+    \x20source\x20code\x20and\x20APIs\x20are\x20governed\x20by\x20a\x20sourc\
+    e\x20available\x20license\x20that\x20can\x20be\x20found\x20in\n\x20the\
+    \x20LICENSE\x20file\x20or\x20at:\n\x20https://polyformproject.org/wp-con\
+    tent/uploads/2020/06/PolyForm-Shield-1.0.0.txt\n\n\x08\n\x01\x02\x12\x03\
+    \x08\0(\n\t\n\x02\x03\0\x12\x03\n\0?\n\t\n\x02\x03\x01\x12\x03\x0b\0!\n\
+    \n\n\x02\x04\0\x12\x04\r\0w\x01\n\n\n\x03\x04\0\x01\x12\x03\r\x08\x17\n\
+    \x0c\n\x04\x04\0\x03\0\x12\x04\x0e\x02\x20\x03\n\x0c\n\x05\x04\0\x03\0\
+    \x01\x12\x03\x0e\n\x17\n4\n\x06\x04\0\x03\0\x02\0\x12\x04\x10\x04\x13\
+    \x07\x1a$\x20The\x20workflow\x20that\x20owns\x20this\x20chart.\n\n\x0e\n\
+    \x07\x04\0\x03\0\x02\0\x05\x12\x03\x10\x04\n\n\x0e\n\x07\x04\0\x03\0\x02\
+    \0\x01\x12\x03\x10\x0b\x16\n\x0e\n\x07\x04\0\x03\0\x02\0\x03\x12\x03\x10\
+    \x19\x1a\n\x0f\n\x07\x04\0\x03\0\x02\0\x08\x12\x04\x10\x1b\x13\x06\n\x12\
+    \n\n\x04\0\x03\0\x02\0\x08\xaf\x08\x0e\x12\x04\x10\x1c\x13\x05\nt\n\x06\
+    \x04\0\x03\0\x02\x01\x12\x04\x17\x04\x1a\x07\x1ad\x20The\x20ID\x20of\x20\
+    the\x20rule\x20node\x20within\x20the\x20workflow\x20that\x20holds\x20the\
+    \n\x20RuleChartConfiguration\x20for\x20this\x20chart.\n\n\x0e\n\x07\x04\
+    \0\x03\0\x02\x01\x05\x12\x03\x17\x04\n\n\x0e\n\x07\x04\0\x03\0\x02\x01\
+    \x01\x12\x03\x17\x0b\x18\n\x0e\n\x07\x04\0\x03\0\x02\x01\x03\x12\x03\x17\
+    \x1b\x1c\n\x0f\n\x07\x04\0\x03\0\x02\x01\x08\x12\x04\x17\x1d\x1a\x06\n\
+    \x12\n\n\x04\0\x03\0\x02\x01\x08\xaf\x08\x0e\x12\x04\x17\x1e\x1a\x05\n\
+    \xc2\x01\n\x06\x04\0\x03\0\x02\x02\x12\x03\x1f\x04X\x1a\xb2\x01\x20Optio\
+    nally\x20narrows\x20the\x20chart\x20to\x20a\x20specific\x20time\x20serie\
+    s\x20within\x20the\x20chart\n\x20definition.\x20This\x20is\x20currently\
+    \x20required\x20when\x20retrieving\x20example\n\x20cardinality\x20for\
+    \x20a\x20specific\x20time\x20series.\n\n\x0e\n\x07\x04\0\x03\0\x02\x02\
+    \x04\x12\x03\x1f\x04\x0c\n\x0e\n\x07\x04\0\x03\0\x02\x02\x05\x12\x03\x1f\
+    \r\x13\n\x0e\n\x07\x04\0\x03\0\x02\x02\x01\x12\x03\x1f\x14(\n\x0e\n\x07\
+    \x04\0\x03\0\x02\x02\x03\x12\x03\x1f+,\n\x0e\n\x07\x04\0\x03\0\x02\x02\
+    \x08\x12\x03\x1f-W\n\x11\n\n\x04\0\x03\0\x02\x02\x08\xaf\x08\x0e\x12\x03\
+    \x1f.V\n\x0c\n\x04\x04\0\x03\x01\x12\x04\"\x02.\x03\n\x0c\n\x05\x04\0\
+    \x03\x01\x01\x12\x03\"\n\x1d\n;\n\x06\x04\0\x03\x01\x02\0\x12\x04$\x04'\
+    \x07\x1a+\x20The\x20workflow\x20that\x20owns\x20this\x20funnel\x20chart.\
+    \n\n\x0e\n\x07\x04\0\x03\x01\x02\0\x05\x12\x03$\x04\n\n\x0e\n\x07\x04\0\
+    \x03\x01\x02\0\x01\x12\x03$\x0b\x16\n\x0e\n\x07\x04\0\x03\x01\x02\0\x03\
+    \x12\x03$\x19\x1a\n\x0f\n\x07\x04\0\x03\x01\x02\0\x08\x12\x04$\x1b'\x06\
+    \n\x12\n\n\x04\0\x03\x01\x02\0\x08\xaf\x08\x0e\x12\x04$\x1c'\x05\n:\n\
+    \x06\x04\0\x03\x01\x02\x01\x12\x04*\x04-\x07\x1a*\x20The\x20funnel\x20ru\
+    le\x20that\x20defines\x20this\x20chart.\n\n\x0e\n\x07\x04\0\x03\x01\x02\
+    \x01\x05\x12\x03*\x04\n\n\x0e\n\x07\x04\0\x03\x01\x02\x01\x01\x12\x03*\
+    \x0b\x19\n\x0e\n\x07\x04\0\x03\x01\x02\x01\x03\x12\x03*\x1c\x1d\n\x0f\n\
+    \x07\x04\0\x03\x01\x02\x01\x08\x12\x04*\x1e-\x06\n\x12\n\n\x04\0\x03\x01\
+    \x02\x01\x08\xaf\x08\x0e\x12\x04*\x1f-\x05\n\x0c\n\x04\x04\0\x03\x02\x12\
+    \x040\x02<\x03\n\x0c\n\x05\x04\0\x03\x02\x01\x12\x030\n\x1d\n;\n\x06\x04\
+    \0\x03\x02\x02\0\x12\x042\x045\x07\x1a+\x20The\x20workflow\x20that\x20ow\
+    ns\x20this\x20sankey\x20chart.\n\n\x0e\n\x07\x04\0\x03\x02\x02\0\x05\x12\
+    \x032\x04\n\n\x0e\n\x07\x04\0\x03\x02\x02\0\x01\x12\x032\x0b\x16\n\x0e\n\
+    \x07\x04\0\x03\x02\x02\0\x03\x12\x032\x19\x1a\n\x0f\n\x07\x04\0\x03\x02\
+    \x02\0\x08\x12\x042\x1b5\x06\n\x12\n\n\x04\0\x03\x02\x02\0\x08\xaf\x08\
+    \x0e\x12\x042\x1c5\x05\n:\n\x06\x04\0\x03\x02\x02\x01\x12\x048\x04;\x07\
+    \x1a*\x20The\x20rule\x20that\x20defines\x20this\x20sankey\x20chart.\n\n\
+    \x0e\n\x07\x04\0\x03\x02\x02\x01\x05\x12\x038\x04\n\n\x0e\n\x07\x04\0\
+    \x03\x02\x02\x01\x01\x12\x038\x0b\x12\n\x0e\n\x07\x04\0\x03\x02\x02\x01\
+    \x03\x12\x038\x15\x16\n\x0f\n\x07\x04\0\x03\x02\x02\x01\x08\x12\x048\x17\
+    ;\x06\n\x12\n\n\x04\0\x03\x02\x02\x01\x08\xaf\x08\x0e\x12\x048\x18;\x05\
+    \n\xc2\x02\n\x04\x04\0\x03\x03\x12\x04B\x02P\x03\x1a\xb3\x02\x20Active\
+    \x20devices\x20are\x20global\x20to\x20an\x20account\x20and\x20are\x20not\
+    \x20tied\x20to\x20an\x20action\x20ID.\x20Use\x20request-level\n\x20platf\
+    orm\x20filtering\x20to\x20narrow\x20results.\x20This\x20chart\x20returns\
+    \x20line-chart\x20data\x20and\x20resolves\x20to\x20a\n\x20line\x20chart\
+    \x20in\x20dashboard\x20metadata.\x20See\x20the\x20GetActiveDevices\x20AP\
+    I\x20for\x20an\x20explanation\x20of\x20what\n\x20constitutes\x20an\x20ac\
+    tive\x20device.\n\n\x0c\n\x05\x04\0\x03\x03\x01\x12\x03B\n\x1c\n\x0e\n\
+    \x06\x04\0\x03\x03\x04\0\x12\x04C\x04L\x05\n\x0e\n\x07\x04\0\x03\x03\x04\
+    \0\x01\x12\x03C\t\x1f\nH\n\x08\x04\0\x03\x03\x04\0\x02\0\x12\x03E\x06\
+    \x11\x1a7\x20This\x20is\x20a\x20standard\x20chart\x20using\x201m/15m/2h\
+    \x20resolutions.\n\n\x10\n\t\x04\0\x03\x03\x04\0\x02\0\x01\x12\x03E\x06\
+    \x0c\n\x10\n\t\x04\0\x03\x03\x04\0\x02\0\x02\x12\x03E\x0f\x10\n\x84\x02\
+    \n\x08\x04\0\x03\x03\x04\0\x02\x01\x12\x03I\x06\x14\x1a\xf2\x01\x20Inclu\
+    des\x20three\x20daily\x20series:\x20DAU\x20for\x20that\x20day,\x20WAU\
+    \x20for\x20the\x20trailing\x207\x20days,\x20and\x20MAU\x20for\n\x20the\
+    \x20trailing\x2030\x20days.\x20This\x20chart\x20is\x20returned\x20in\x20\
+    a\x20dashboard\x20group\x20with\x20a\x20minimum\x20query\n\x20interval\
+    \x20of\x207\x20days,\x20so\x20smaller\x20time\x20windows\x20may\x20retur\
+    n\x20no\x20data.\n\n\x10\n\t\x04\0\x03\x03\x04\0\x02\x01\x01\x12\x03I\
+    \x06\x0f\n\x10\n\t\x04\0\x03\x03\x04\0\x02\x01\x02\x12\x03I\x12\x13\nl\n\
+    \x08\x04\0\x03\x03\x04\0\x02\x02\x12\x03K\x06\x15\x1a[\x20Shows\x20stick\
+    iness\x20as\x20DAU/MAU,\x20with\x20the\x20same\x20minimum\x20time-window\
+    \x20expectations\x20as\x20LONG_TERM.\n\n\x10\n\t\x04\0\x03\x03\x04\0\x02\
+    \x02\x01\x12\x03K\x06\x10\n\x10\n\t\x04\0\x03\x03\x04\0\x02\x02\x02\x12\
+    \x03K\x13\x14\n<\n\x06\x04\0\x03\x03\x02\0\x12\x04O\x04\x97\x01\x1a,\x20\
+    The\x20active-devices\x20chart\x20variant\x20to\x20query.\n\n\x0e\n\x07\
+    \x04\0\x03\x03\x02\0\x06\x12\x03O\x04^\n\x0e\n\x07\x04\0\x03\x03\x02\0\
+    \x01\x12\x03O_c\n\x0e\n\x07\x04\0\x03\x03\x02\0\x03\x12\x03Ofg\n\x0f\n\
+    \x07\x04\0\x03\x03\x02\0\x08\x12\x04Oh\x96\x01\n\x12\n\n\x04\0\x03\x03\
+    \x02\0\x08\xaf\x08\x10\x12\x04Oi\x95\x01\n\x86\x01\n\x04\x04\0\x03\x04\
+    \x12\x04T\x02d\x03\x1ax\x20Shows\x20issue-stability\x20metrics\x20that\
+    \x20are\x20not\x20tied\x20to\x20a\x20specific\x20action\x20ID.\x20Result\
+    s\x20are\x20filtered\n\x20by\x20platform\x20and\x20app\x20ID.\n\n\x0c\n\
+    \x05\x04\0\x03\x04\x01\x12\x03T\n\x1d\n\x0e\n\x06\x04\0\x03\x04\x04\0\
+    \x12\x04U\x04`\x05\n\x0e\n\x07\x04\0\x03\x04\x04\0\x01\x12\x03U\t\x20\n\
+    \x8f\x02\n\x08\x04\0\x03\x04\x04\0\x02\0\x12\x03Y\x06\x11\x1a\xfd\x01\
+    \x20Shows\x20three\x20series\x20on\x20the\x20same\x20chart:\x20Crash-Fre\
+    e\x20Rate\x20=\x20(1\x20-\x20(#\x20of\x20crashes\x20/\x20#\x20of\x20app\
+    \n\x20opens))\x20x\x20100;\x20Crash-Free\x20Session\x20Rate\x20=\x20(1\
+    \x20-\x20(#\x20of\x20crash\x20sessions\x20/\x20#\x20of\x20sessions))\x20\
+    x\n\x20100;\x20Crash-Free\x20Devices\x20=\x20(1\x20-\x20(#\x20of\x20cras\
+    hed\x20devices\x20/\x20#\x20of\x20devices))\x20x\x20100.\n\n\x10\n\t\x04\
+    \0\x03\x04\x04\0\x02\0\x01\x12\x03Y\x06\x0c\n\x10\n\t\x04\0\x03\x04\x04\
+    \0\x02\0\x02\x12\x03Y\x0f\x10\n:\n\x08\x04\0\x03\x04\x04\0\x02\x01\x12\
+    \x03[\x06#\x1a)\x20Crash-Free\x20Rate\x20grouped\x20by\x20report\x20type\
+    .\n\n\x10\n\t\x04\0\x03\x04\x04\0\x02\x01\x01\x12\x03[\x06\x1e\n\x10\n\t\
+    \x04\0\x03\x04\x04\0\x02\x01\x02\x12\x03[!\"\nB\n\x08\x04\0\x03\x04\x04\
+    \0\x02\x02\x12\x03]\x06+\x1a1\x20Crash-Free\x20Session\x20Rate\x20groupe\
+    d\x20by\x20report\x20type.\n\n\x10\n\t\x04\0\x03\x04\x04\0\x02\x02\x01\
+    \x12\x03]\x06&\n\x10\n\t\x04\0\x03\x04\x04\0\x02\x02\x02\x12\x03])*\n=\n\
+    \x08\x04\0\x03\x04\x04\0\x02\x03\x12\x03_\x06&\x1a,\x20Crash-Free\x20Dev\
+    ices\x20grouped\x20by\x20report\x20type.\n\n\x10\n\t\x04\0\x03\x04\x04\0\
+    \x02\x03\x01\x12\x03_\x06!\n\x10\n\t\x04\0\x03\x04\x04\0\x02\x03\x02\x12\
+    \x03_$%\n=\n\x06\x04\0\x03\x04\x02\0\x12\x04c\x04\x99\x01\x1a-\x20The\
+    \x20issue-stability\x20chart\x20variant\x20to\x20query.\n\n\x0e\n\x07\
+    \x04\0\x03\x04\x02\0\x06\x12\x03c\x04`\n\x0e\n\x07\x04\0\x03\x04\x02\0\
+    \x01\x12\x03cae\n\x0e\n\x07\x04\0\x03\x04\x02\0\x03\x12\x03chi\n\x0f\n\
+    \x07\x04\0\x03\x04\x02\0\x08\x12\x04cj\x98\x01\n\x12\n\n\x04\0\x03\x04\
+    \x02\0\x08\xaf\x08\x10\x12\x04ck\x97\x01\n\x0c\n\x04\x04\0\x08\0\x12\x04\
+    f\x02v\x03\n\x0c\n\x05\x04\0\x08\0\x01\x12\x03f\x08\x0c\n\x0c\n\x05\x04\
+    \0\x08\0\x02\x12\x03g\x04&\n\x0e\n\x07\x04\0\x08\0\x02\xaf\x08\x12\x03g\
+    \x04&\n.\n\x04\x04\0\x02\0\x12\x03i\x04P\x1a!\x20A\x20workflow-backed\
+    \x20metric\x20chart.\n\n\x0c\n\x05\x04\0\x02\0\x06\x12\x03i\x04B\n\x0c\n\
+    \x05\x04\0\x02\0\x01\x12\x03iCK\n\x0c\n\x05\x04\0\x02\0\x03\x12\x03iNO\n\
+    .\n\x04\x04\0\x02\x01\x12\x03l\x04Z\x1a!\x20A\x20workflow-backed\x20sank\
+    ey\x20chart.\n\n\x0c\n\x05\x04\0\x02\x01\x06\x12\x03l\x04H\n\x0c\n\x05\
+    \x04\0\x02\x01\x01\x12\x03lIU\n\x0c\n\x05\x04\0\x02\x01\x03\x12\x03lXY\n\
+    W\n\x04\x04\0\x02\x02\x12\x03o\x04a\x1aJ\x20An\x20active-devices\x20char\
+    t\x20as\x20found\x20on\x20the\x20devices\x20tab\x20in\x20Instant\x20Insi\
+    ghts.\n\n\x0c\n\x05\x04\0\x02\x02\x06\x12\x03o\x04G\n\x0c\n\x05\x04\0\
+    \x02\x02\x01\x12\x03oH\\\n\x0c\n\x05\x04\0\x02\x02\x03\x12\x03o_`\n.\n\
+    \x04\x04\0\x02\x03\x12\x03r\x04c\x1a!\x20A\x20workflow-backed\x20funnel\
+    \x20chart.\n\n\x0c\n\x05\x04\0\x02\x03\x06\x12\x03r\x04H\n\x0c\n\x05\x04\
+    \0\x02\x03\x01\x12\x03rI^\n\x0c\n\x05\x04\0\x02\x03\x03\x12\x03rab\nZ\n\
+    \x04\x04\0\x02\x04\x12\x03u\x04c\x1aM\x20An\x20issue-stability\x20chart\
+    \x20as\x20found\x20on\x20the\x20stability\x20tab\x20in\x20Instant\x20Ins\
+    ights.\n\n\x0c\n\x05\x04\0\x02\x04\x06\x12\x03u\x04H\n\x0c\n\x05\x04\0\
+    \x02\x04\x01\x12\x03uI^\n\x0c\n\x05\x04\0\x02\x04\x03\x12\x03uab\n\n\n\
+    \x02\x05\0\x12\x04y\0|\x01\n\n\n\x03\x05\0\x01\x12\x03y\x05\x0e\n\x0b\n\
+    \x04\x05\0\x02\0\x12\x03z\x02\n\n\x0c\n\x05\x05\0\x02\0\x01\x12\x03z\x02\
+    \x05\n\x0c\n\x05\x05\0\x02\0\x02\x12\x03z\x08\t\n\x0b\n\x04\x05\0\x02\
+    \x01\x12\x03{\x02\n\n\x0c\n\x05\x05\0\x02\x01\x01\x12\x03{\x02\x05\n\x0c\
+    \n\x05\x05\0\x02\x01\x02\x12\x03{\x08\t\n\x0b\n\x02\x04\x01\x12\x05~\0\
+    \xbd\x01\x01\n\n\n\x03\x04\x01\x01\x12\x03~\x08\x15\n\r\n\x04\x04\x01\
+    \x03\0\x12\x05\x7f\x02\x82\x01\x03\n\x0c\n\x05\x04\x01\x03\0\x01\x12\x03\
+    \x7f\n\x13\nJ\n\x06\x04\x01\x03\0\x02\0\x12\x04\x81\x01\x049\x1a:\x20The\
+    \x20number\x20of\x20time\x20series\x20to\x20return\x20per\x20chart\x20di\
+    mension.\n\n\x0f\n\x07\x04\x01\x03\0\x02\0\x05\x12\x04\x81\x01\x04\n\n\
+    \x0f\n\x07\x04\x01\x03\0\x02\0\x01\x12\x04\x81\x01\x0b\x10\n\x0f\n\x07\
+    \x04\x01\x03\0\x02\0\x03\x12\x04\x81\x01\x13\x14\n\x0f\n\x07\x04\x01\x03\
+    \0\x02\0\x08\x12\x04\x81\x01\x158\n\x12\n\n\x04\x01\x03\0\x02\0\x08\xaf\
+    \x08\x06\x12\x04\x81\x01\x167\n\xa0\x02\n\x04\x04\x01\x03\x01\x12\x06\
+    \x88\x01\x02\xad\x01\x03\x1a\x8f\x02\x20Used\x20to\x20select\x20specific\
+    \x20time\x20series\x20from\x20a\x20chart\x20instead\x20of\x20relying\x20\
+    on\x20a\x20top-K\x20algorithm.\n\n\x20This\x20specifies\x20the\x20list\
+    \x20of\x20dimension\x20values\x20to\x20include\x20in\x20the\x20results.\
+    \x20Only\x20time\x20series\x20that\x20match\x20one\x20of\x20the\x20sent\
+    \n\x20dimension\x20value\x20combinations\x20will\x20be\x20included\x20in\
+    \x20the\x20results.\n\n\r\n\x05\x04\x01\x03\x01\x01\x12\x04\x88\x01\n\
+    \x19\n\x10\n\x06\x04\x01\x03\x01\x03\0\x12\x06\x89\x01\x04\x9d\x01\x05\n\
+    \x0f\n\x07\x04\x01\x03\x01\x03\0\x01\x12\x04\x89\x01\x0c\x1f\n\x80\x02\n\
+    \x08\x04\x01\x03\x01\x03\0\x02\0\x12\x06\x8e\x01\x06\x91\x01\t\x1a\xeb\
+    \x01\x20The\x20`TimeSeries.id`\x20of\x20the\x20grouped\x20result\x20to\
+    \x20include.\n\n\x20Use\x20the\x20`id`\x20returned\x20by\x20`GetChartsDa\
+    ta`\x20together\x20with\x20the\x20matching\x20`labels`.\x20This\x20value\
+    \n\x20identifies\x20the\x20backing\x20time-series\x20query\x20and\x20may\
+    \x20be\x20shared\x20by\x20multiple\x20grouped\x20results.\n\n\x11\n\t\
+    \x04\x01\x03\x01\x03\0\x02\0\x05\x12\x04\x8e\x01\x06\x0c\n\x11\n\t\x04\
+    \x01\x03\x01\x03\0\x02\0\x01\x12\x04\x8e\x01\r\x0f\n\x11\n\t\x04\x01\x03\
+    \x01\x03\0\x02\0\x03\x12\x04\x8e\x01\x12\x13\n\x13\n\t\x04\x01\x03\x01\
+    \x03\0\x02\0\x08\x12\x06\x8e\x01\x14\x91\x01\x08\n\x16\n\x0c\x04\x01\x03\
+    \x01\x03\0\x02\0\x08\xaf\x08\x0e\x12\x06\x8e\x01\x15\x91\x01\x07\n\xed\
+    \x01\n\x08\x04\x01\x03\x01\x03\0\x02\x01\x12\x06\x97\x01\x06\x9c\x01\t\
+    \x1a\xd8\x01\x20The\x20label\x20values\x20for\x20the\x20grouped\x20resul\
+    t.\n\n\x20These\x20labels\x20must\x20match\x20the\x20selected\x20grouped\
+    \x20result\x20exactly\x20and\x20are\x20evaluated\x20together\x20with\n\
+    \x20`id`.\x20Labels\x20disambiguate\x20grouped\x20results\x20that\x20sha\
+    re\x20the\x20same\x20`TimeSeries.id`.\n\n\x11\n\t\x04\x01\x03\x01\x03\0\
+    \x02\x01\x04\x12\x04\x97\x01\x06\x0e\n\x11\n\t\x04\x01\x03\x01\x03\0\x02\
+    \x01\x06\x12\x04\x97\x01\x0f=\n\x11\n\t\x04\x01\x03\x01\x03\0\x02\x01\
+    \x01\x12\x04\x97\x01>D\n\x11\n\t\x04\x01\x03\x01\x03\0\x02\x01\x03\x12\
+    \x04\x97\x01GH\n\x13\n\t\x04\x01\x03\x01\x03\0\x02\x01\x08\x12\x06\x97\
+    \x01I\x9c\x01\x08\n\x16\n\x0c\x04\x01\x03\x01\x03\0\x02\x01\x08\xaf\x08\
+    \x12\x12\x06\x97\x01J\x9c\x01\x07\n\xbd\x03\n\x06\x04\x01\x03\x01\x02\0\
+    \x12\x06\xa5\x01\x04\xa8\x01\x07\x1a\xaa\x03\x20Selects\x20specific\x20g\
+    rouped\x20results\x20from\x20a\x20chart\x20response.\n\n\x20Callers\x20s\
+    end\x20one\x20`DimensionIdentifier`\x20for\x20each\x20grouped\x20result\
+    \x20to\x20include.\x20Callers\x20construct\n\x20each\x20entry\x20from\
+    \x20a\x20`GetChartsData`\x20result\x20by\x20copying\x20the\x20returned\
+    \x20`TimeSeries.id`\x20and\x20its\n\x20full\x20`labels`\x20set.\x20For\
+    \x20a\x20single\x20group-by,\x20`labels`\x20contains\x20one\x20entry.\
+    \x20For\x20a\x20multi-group-by,\n\x20`labels`\x20must\x20contain\x20one\
+    \x20entry\x20per\x20group\x20key\x20in\x20the\x20same\x20order\x20as\x20\
+    the\x20chart\x20definition.\n\n\x0f\n\x07\x04\x01\x03\x01\x02\0\x04\x12\
+    \x04\xa5\x01\x04\x0c\n\x0f\n\x07\x04\x01\x03\x01\x02\0\x06\x12\x04\xa5\
+    \x01\r_\n\x0f\n\x07\x04\x01\x03\x01\x02\0\x01\x12\x04\xa5\x01`u\n\x0f\n\
+    \x07\x04\x01\x03\x01\x02\0\x03\x12\x04\xa5\x01xy\n\x11\n\x07\x04\x01\x03\
+    \x01\x02\0\x08\x12\x06\xa5\x01z\xa8\x01\x06\n\x14\n\n\x04\x01\x03\x01\
+    \x02\0\x08\xaf\x08\x12\x12\x06\xa5\x01{\xa8\x01\x05\n\x80\x01\n\x06\x04\
+    \x01\x03\x01\x02\x01\x12\x04\xac\x01\x04\x1a\x1ap\x20If\x20true,\x20the\
+    \x20rest\x20of\x20the\x20dimensions\x20will\x20be\x20returned\x20as\x20\
+    \"other\".\x20This\x20does\x20not\x20currently\n\x20work\x20for\x20histo\
+    grams.\n\n\x0f\n\x07\x04\x01\x03\x01\x02\x01\x05\x12\x04\xac\x01\x04\x08\
+    \n\x0f\n\x07\x04\x01\x03\x01\x02\x01\x01\x12\x04\xac\x01\t\x15\n\x0f\n\
+    \x07\x04\x01\x03\x01\x02\x01\x03\x12\x04\xac\x01\x18\x19\n\x0e\n\x04\x04\
+    \x01\x08\0\x12\x06\xaf\x01\x02\xb5\x01\x03\n\r\n\x05\x04\x01\x08\0\x01\
+    \x12\x04\xaf\x01\x08\x16\n\x83\x02\n\x04\x04\x01\x02\0\x12\x04\xb1\x01\
+    \x04M\x1a\xf4\x01\x20Select\x20the\x20top\x20K\x20groups\x20per\x20time\
+    \x20series\x20based\x20on\x20the\x20aggregated\x20value\x20for\x20the\
+    \x20chart\x20metric.\x20This\x20is\x20the\x20most\x20common\x20limit\x20\
+    strategy\x20and\x20is\x20used\x20when\x20there\x20are\x20too\x20many\x20\
+    groups\x20to\x20display\x20in\x20the\x20chart\x20and\x20we\x20want\x20to\
+    \x20show\x20the\x20most\x20important\x20ones.\n\n\r\n\x05\x04\x01\x02\0\
+    \x06\x12\x04\xb1\x01\x04<\n\r\n\x05\x04\x01\x02\0\x01\x12\x04\xb1\x01=H\
+    \n\r\n\x05\x04\x01\x02\0\x03\x12\x04\xb1\x01KL\n\xbc\x01\n\x04\x04\x01\
+    \x02\x01\x12\x04\xb4\x01\x04X\x1a\xad\x01\x20Select\x20specific\x20group\
+    s\x20based\x20on\x20their\x20dimension\x20values.\x20This\x20is\x20used\
+    \x20to\x20target\x20particular\x20groups\x20that\x20we\x20want\x20to\x20\
+    display\x20in\x20the\x20chart\x20regardless\x20of\x20their\x20aggregated\
+    \x20value.\n\n\r\n\x05\x04\x01\x02\x01\x06\x12\x04\xb4\x01\x04B\n\r\n\
+    \x05\x04\x01\x02\x01\x01\x12\x04\xb4\x01CS\n\r\n\x05\x04\x01\x02\x01\x03\
+    \x12\x04\xb4\x01VW\n\xca\x01\n\x04\x04\x01\x02\x02\x12\x04\xb9\x01\x02k\
+    \x1a\xbb\x01\x20The\x20sort\x20order\x20to\x20use\x20when\x20applying\
+    \x20the\x20limit\x20strategy.\x20By\x20default\x20the\x20output\x20retur\
+    ns\x20the\x20top\x20K\n\x20of\x20maximum\x20values,\x20but\x20can\x20be\
+    \x20switched\x20to\x20return\x20the\x20top\x20K\x20of\x20minimum\x20valu\
+    es\x20(bottom\x20K).\n\n\r\n\x05\x04\x01\x02\x02\x06\x12\x04\xb9\x01\x02\
+    ,\n\r\n\x05\x04\x01\x02\x02\x01\x12\x04\xb9\x01-7\n\r\n\x05\x04\x01\x02\
+    \x02\x03\x12\x04\xb9\x01:;\n\r\n\x05\x04\x01\x02\x02\x08\x12\x04\xb9\x01\
+    <j\n\x10\n\x08\x04\x01\x02\x02\x08\xaf\x08\x10\x12\x04\xb9\x01=i\n~\n\
+    \x04\x04\x01\x02\x03\x12\x04\xbc\x01\x02P\x1ap\x20Optional\x20exclusions\
+    \x20to\x20apply\x20when\x20limiting.\x20This\x20is\x20used\x20to\x20excl\
+    ude\x20specific\x20dimensions\x20from\x20the\x20top\x20K\x20results\n\n\
+    \r\n\x05\x04\x01\x02\x03\x06\x12\x04\xbc\x01\x02@\n\r\n\x05\x04\x01\x02\
+    \x03\x01\x12\x04\xbc\x01AK\n\r\n\x05\x04\x01\x02\x03\x03\x12\x04\xbc\x01\
+    NO\n\x0c\n\x02\x04\x02\x12\x06\xbf\x01\0\xd6\x01\x01\n\x0b\n\x03\x04\x02\
+    \x01\x12\x04\xbf\x01\x08\x1e\n\xe7\x02\n\x04\x04\x02\x02\0\x12\x06\xc7\
+    \x01\x02\xca\x01\x05\x1a\xd6\x02\x20Pins\x20the\x20histograms\x20within\
+    \x20this\x20chart\x20to\x20a\x20specific\x20percentile.\x20This\x20is\n\
+    \x20required\x20for\x20charts\x20that\x20have\x20histograms\x20with\x20a\
+    \x20top-K\x20grouping\x20because\x20we\n\x20do\x20not\x20support\x20quer\
+    ying\x20the\x20Cartesian\x20product\x20of\x20(values,\x20percentiles)\n\
+    \x20with\x20top-K.\n\n\x20This\x20must\x20be\x20set\x20to\x20one\x20of\
+    \x20the\x20percentiles\x20in\x20the\x20ChartMetadata\x20for\x20the\n\x20\
+    chart\x20if\x20percentiles\x20are\x20defined.\n\n\r\n\x05\x04\x02\x02\0\
+    \x05\x12\x04\xc7\x01\x02\x07\n\r\n\x05\x04\x02\x02\0\x01\x12\x04\xc7\x01\
+    \x08\x12\n\r\n\x05\x04\x02\x02\0\x03\x12\x04\xc7\x01\x15\x16\n\x0f\n\x05\
+    \x04\x02\x02\0\x08\x12\x06\xc7\x01\x17\xca\x01\x04\n\x12\n\x08\x04\x02\
+    \x02\0\x08\xaf\x08\x01\x12\x06\xc7\x01\x18\xca\x01\x03\nb\n\x04\x04\x02\
+    \x02\x01\x12\x06\xcd\x01\x02\xd5\x01\x05\x1aR\x20Percentiles\x20to\x20qu\
+    ery\x20when\x20the\x20chart\x20supports\x20returning\x20multiple\x20hist\
+    ogram\x20lines.\n\n\r\n\x05\x04\x02\x02\x01\x04\x12\x04\xcd\x01\x02\n\n\
+    \r\n\x05\x04\x02\x02\x01\x05\x12\x04\xcd\x01\x0b\x10\n\r\n\x05\x04\x02\
+    \x02\x01\x01\x12\x04\xcd\x01\x11\x1c\n\r\n\x05\x04\x02\x02\x01\x03\x12\
+    \x04\xcd\x01\x1f\x20\n\x0f\n\x05\x04\x02\x02\x01\x08\x12\x06\xcd\x01!\
+    \xd5\x01\x04\n\x12\n\x08\x04\x02\x02\x01\x08\xaf\x08\x12\x12\x06\xcd\x01\
+    \"\xd5\x01\x03\n\x0c\n\x02\x04\x03\x12\x06\xd8\x01\0\xde\x01\x01\n\x0b\n\
+    \x03\x04\x03\x01\x12\x04\xd8\x01\x08\x12\n8\n\x04\x04\x03\x02\0\x12\x04\
+    \xda\x01\x02\x10\x1a*\x20The\x20action\x20ID\x20associated\x20with\x20th\
+    is\x20step.\n\n\r\n\x05\x04\x03\x02\0\x05\x12\x04\xda\x01\x02\x08\n\r\n\
+    \x05\x04\x03\x02\0\x01\x12\x04\xda\x01\t\x0b\n\r\n\x05\x04\x03\x02\0\x03\
+    \x12\x04\xda\x01\x0e\x0f\nS\n\x04\x04\x03\x02\x01\x12\x04\xdd\x01\x02\
+    \x13\x1aE\x20The\x20accumulated\x20value\x20of\x20all\x20collected\x20da\
+    ta\x20points\x20for\x20this\x20metric.\n\n\r\n\x05\x04\x03\x02\x01\x05\
+    \x12\x04\xdd\x01\x02\x08\n\r\n\x05\x04\x03\x02\x01\x01\x12\x04\xdd\x01\t\
+    \x0e\n\r\n\x05\x04\x03\x02\x01\x03\x12\x04\xdd\x01\x11\x12b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -2178,7 +2799,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             let mut deps = ::std::vec::Vec::with_capacity(2);
             deps.push(super::time_series::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(10);
+            let mut messages = ::std::vec::Vec::with_capacity(12);
             messages.push(ChartIdentifier::generated_message_descriptor_data());
             messages.push(LimitStrategy::generated_message_descriptor_data());
             messages.push(HistogramConfiguration::generated_message_descriptor_data());
@@ -2186,11 +2807,15 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(chart_identifier::WorkflowChart::generated_message_descriptor_data());
             messages.push(chart_identifier::WorkflowFunnelChart::generated_message_descriptor_data());
             messages.push(chart_identifier::WorkflowSankeyChart::generated_message_descriptor_data());
+            messages.push(chart_identifier::ActiveDevicesChart::generated_message_descriptor_data());
+            messages.push(chart_identifier::IssueStabilityChart::generated_message_descriptor_data());
             messages.push(limit_strategy::TopKLimit::generated_message_descriptor_data());
             messages.push(limit_strategy::IdentifierMatch::generated_message_descriptor_data());
             messages.push(limit_strategy::identifier_match::DimensionIdentifier::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(1);
+            let mut enums = ::std::vec::Vec::with_capacity(3);
             enums.push(SortOrder::generated_enum_descriptor_data());
+            enums.push(chart_identifier::active_devices_chart::ActiveDevicesChartType::generated_enum_descriptor_data());
+            enums.push(chart_identifier::issue_stability_chart::IssueStabilityChartType::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),
                 deps,

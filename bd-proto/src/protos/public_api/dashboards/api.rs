@@ -5084,6 +5084,270 @@ impl ::protobuf::reflect::ProtobufValue for GetChartsDataResponse {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.GetActiveDevicesRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct GetActiveDevicesRequest {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.GetActiveDevicesRequest.time_range)
+    pub time_range: ::protobuf::MessageField<super::common::TimeRange>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.GetActiveDevicesRequest.platform_filter)
+    pub platform_filter: ::std::vec::Vec<super::platform::Platform>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.GetActiveDevicesRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a GetActiveDevicesRequest {
+    fn default() -> &'a GetActiveDevicesRequest {
+        <GetActiveDevicesRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl GetActiveDevicesRequest {
+    pub fn new() -> GetActiveDevicesRequest {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::common::TimeRange>(
+            "time_range",
+            |m: &GetActiveDevicesRequest| { &m.time_range },
+            |m: &mut GetActiveDevicesRequest| { &mut m.time_range },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "platform_filter",
+            |m: &GetActiveDevicesRequest| { &m.platform_filter },
+            |m: &mut GetActiveDevicesRequest| { &mut m.platform_filter },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<GetActiveDevicesRequest>(
+            "GetActiveDevicesRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for GetActiveDevicesRequest {
+    const NAME: &'static str = "GetActiveDevicesRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                58 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.time_range)?;
+                },
+                50 => {
+                    self.platform_filter.push(is.read_message()?);
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.time_range.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        for value in &self.platform_filter {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.time_range.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(7, v, os)?;
+        }
+        for v in &self.platform_filter {
+            ::protobuf::rt::write_message_field_with_cached_size(6, v, os)?;
+        };
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> GetActiveDevicesRequest {
+        GetActiveDevicesRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.time_range.clear();
+        self.platform_filter.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static GetActiveDevicesRequest {
+        static instance: GetActiveDevicesRequest = GetActiveDevicesRequest {
+            time_range: ::protobuf::MessageField::none(),
+            platform_filter: ::std::vec::Vec::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for GetActiveDevicesRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("GetActiveDevicesRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for GetActiveDevicesRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for GetActiveDevicesRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.GetActiveDevicesResponse)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct GetActiveDevicesResponse {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.GetActiveDevicesResponse.devices)
+    pub devices: u64,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.GetActiveDevicesResponse.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a GetActiveDevicesResponse {
+    fn default() -> &'a GetActiveDevicesResponse {
+        <GetActiveDevicesResponse as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl GetActiveDevicesResponse {
+    pub fn new() -> GetActiveDevicesResponse {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "devices",
+            |m: &GetActiveDevicesResponse| { &m.devices },
+            |m: &mut GetActiveDevicesResponse| { &mut m.devices },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<GetActiveDevicesResponse>(
+            "GetActiveDevicesResponse",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for GetActiveDevicesResponse {
+    const NAME: &'static str = "GetActiveDevicesResponse";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                8 => {
+                    self.devices = is.read_uint64()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if self.devices != 0 {
+            my_size += ::protobuf::rt::uint64_size(1, self.devices);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if self.devices != 0 {
+            os.write_uint64(1, self.devices)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> GetActiveDevicesResponse {
+        GetActiveDevicesResponse::new()
+    }
+
+    fn clear(&mut self) {
+        self.devices = 0;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static GetActiveDevicesResponse {
+        static instance: GetActiveDevicesResponse = GetActiveDevicesResponse {
+            devices: 0,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for GetActiveDevicesResponse {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("GetActiveDevicesResponse").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for GetActiveDevicesResponse {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for GetActiveDevicesResponse {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
 // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.GetUniqueAppIdsRequest)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct GetUniqueAppIdsRequest {
@@ -5493,21 +5757,28 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01(\x08H\0R\rchartNotFoundB\x07\xfaB\x04j\x02\x08\x01B\x15\n\x0echart_\
     response\x12\x03\xf8B\x01\"[\n\x15GetChartsDataResponse\x12B\n\x04data\
     \x18\x01\x20\x03(\x0b2..bitdrift.public.unary.dashboards.v1.ChartDataR\
-    \x04data\"\xeb\x01\n\x16GetUniqueAppIdsRequest\x129\n\nstart_time\x18\
-    \x01\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tstartTime\x125\n\x08e\
-    nd_time\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x07endTime\
-    \x12_\n\x0fplatform_filter\x18\x04\x20\x03(\x0b2,.bitdrift.public.shared\
-    .platform.v1.PlatformR\x0eplatformFilterB\x08\xfaB\x05\x92\x01\x02\x10\n\
-    \"e\n\x17GetUniqueAppIdsResponse\x12J\n\tplatforms\x18\x06\x20\x03(\x0b2\
-    ,.bitdrift.public.shared.platform.v1.PlatformR\tplatforms2\xbf\x03\n\x10\
-    DashboardService\x12\x92\x01\n\x11GetWorkflowCharts\x12=.bitdrift.public\
-    .unary.dashboards.v1.GetWorkflowChartsRequest\x1a>.bitdrift.public.unary\
-    .dashboards.v1.GetWorkflowChartsResponse\x12\x86\x01\n\rGetChartsData\
-    \x129.bitdrift.public.unary.dashboards.v1.GetChartsDataRequest\x1a:.bitd\
-    rift.public.unary.dashboards.v1.GetChartsDataResponse\x12\x8c\x01\n\x0fG\
-    etUniqueAppIds\x12;.bitdrift.public.unary.dashboards.v1.GetUniqueAppIdsR\
-    equest\x1a<.bitdrift.public.unary.dashboards.v1.GetUniqueAppIdsResponseb\
-    \x06proto3\
+    \x04data\"\xc5\x01\n\x17GetActiveDevicesRequest\x12I\n\ntime_range\x18\
+    \x07\x20\x01(\x0b2*.bitdrift.public.unary.common.v1.TimeRangeR\ttimeRang\
+    e\x12_\n\x0fplatform_filter\x18\x06\x20\x03(\x0b2,.bitdrift.public.share\
+    d.platform.v1.PlatformR\x0eplatformFilterB\x08\xfaB\x05\x92\x01\x02\x10\
+    \n\"4\n\x18GetActiveDevicesResponse\x12\x18\n\x07devices\x18\x01\x20\x01\
+    (\x04R\x07devices\"\xeb\x01\n\x16GetUniqueAppIdsRequest\x129\n\nstart_ti\
+    me\x18\x01\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tstartTime\x125\
+    \n\x08end_time\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x07e\
+    ndTime\x12_\n\x0fplatform_filter\x18\x04\x20\x03(\x0b2,.bitdrift.public.\
+    shared.platform.v1.PlatformR\x0eplatformFilterB\x08\xfaB\x05\x92\x01\x02\
+    \x10\n\"e\n\x17GetUniqueAppIdsResponse\x12J\n\tplatforms\x18\x06\x20\x03\
+    (\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\tplatforms2\xd1\x04\
+    \n\x10DashboardService\x12\x92\x01\n\x11GetWorkflowCharts\x12=.bitdrift.\
+    public.unary.dashboards.v1.GetWorkflowChartsRequest\x1a>.bitdrift.public\
+    .unary.dashboards.v1.GetWorkflowChartsResponse\x12\x86\x01\n\rGetChartsD\
+    ata\x129.bitdrift.public.unary.dashboards.v1.GetChartsDataRequest\x1a:.b\
+    itdrift.public.unary.dashboards.v1.GetChartsDataResponse\x12\x8f\x01\n\
+    \x10GetActiveDevices\x12<.bitdrift.public.unary.dashboards.v1.GetActiveD\
+    evicesRequest\x1a=.bitdrift.public.unary.dashboards.v1.GetActiveDevicesR\
+    esponse\x12\x8c\x01\n\x0fGetUniqueAppIds\x12;.bitdrift.public.unary.dash\
+    boards.v1.GetUniqueAppIdsRequest\x1a<.bitdrift.public.unary.dashboards.v\
+    1.GetUniqueAppIdsResponseb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -5532,7 +5803,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(super::common::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(30);
+            let mut messages = ::std::vec::Vec::with_capacity(32);
             messages.push(ResolvedChart::generated_message_descriptor_data());
             messages.push(GetWorkflowChartsRequest::generated_message_descriptor_data());
             messages.push(GetWorkflowChartsResponse::generated_message_descriptor_data());
@@ -5552,6 +5823,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(HistogramBarChartResponse::generated_message_descriptor_data());
             messages.push(ChartData::generated_message_descriptor_data());
             messages.push(GetChartsDataResponse::generated_message_descriptor_data());
+            messages.push(GetActiveDevicesRequest::generated_message_descriptor_data());
+            messages.push(GetActiveDevicesResponse::generated_message_descriptor_data());
             messages.push(GetUniqueAppIdsRequest::generated_message_descriptor_data());
             messages.push(GetUniqueAppIdsResponse::generated_message_descriptor_data());
             messages.push(resolved_chart::Line::generated_message_descriptor_data());

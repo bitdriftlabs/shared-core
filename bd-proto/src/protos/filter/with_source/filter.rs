@@ -1629,10 +1629,6 @@ pub mod filter {
         #[derive(PartialEq,Clone,Default,Debug)]
         pub struct RegexMatchAndSubstituteField {
             // message fields
-            ///  The name of the field to scrub. If the field is empty, the scrubbing applies to all fields.
-            ///  If the field is not empty and doesn't exist, nothing happens.
-            // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.name)
-            pub name: ::std::string::String,
             ///  The regular expression used to find portions of a string that should be replaced.
             ///  It follows Rust's regular expression syntax. Capture groups can be used to extract portions
             ///  of the input string and reference them later in a `substitution` string.
@@ -1644,6 +1640,8 @@ pub mod filter {
             ///  expression.
             // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.substitution)
             pub substitution: ::std::string::String,
+            // message oneof groups
+            pub scrubbing_target: ::std::option::Option<regex_match_and_substitute_field::Scrubbing_target>,
             // special fields
             // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.special_fields)
             pub special_fields: ::protobuf::SpecialFields,
@@ -1660,13 +1658,150 @@ pub mod filter {
                 ::std::default::Default::default()
             }
 
+            // string name = 1;
+
+            pub fn name(&self) -> &str {
+                match self.scrubbing_target {
+                    ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::Name(ref v)) => v,
+                    _ => "",
+                }
+            }
+
+            pub fn clear_name(&mut self) {
+                self.scrubbing_target = ::std::option::Option::None;
+            }
+
+            pub fn has_name(&self) -> bool {
+                match self.scrubbing_target {
+                    ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::Name(..)) => true,
+                    _ => false,
+                }
+            }
+
+            // Param is passed by value, moved
+            pub fn set_name(&mut self, v: ::std::string::String) {
+                self.scrubbing_target = ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::Name(v))
+            }
+
+            // Mutable pointer to the field.
+            pub fn mut_name(&mut self) -> &mut ::std::string::String {
+                if let ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::Name(_)) = self.scrubbing_target {
+                } else {
+                    self.scrubbing_target = ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::Name(::std::string::String::new()));
+                }
+                match self.scrubbing_target {
+                    ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::Name(ref mut v)) => v,
+                    _ => panic!(),
+                }
+            }
+
+            // Take field
+            pub fn take_name(&mut self) -> ::std::string::String {
+                if self.has_name() {
+                    match self.scrubbing_target.take() {
+                        ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::Name(v)) => v,
+                        _ => panic!(),
+                    }
+                } else {
+                    ::std::string::String::new()
+                }
+            }
+
+            // bool message_body = 4;
+
+            pub fn message_body(&self) -> bool {
+                match self.scrubbing_target {
+                    ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::MessageBody(v)) => v,
+                    _ => false,
+                }
+            }
+
+            pub fn clear_message_body(&mut self) {
+                self.scrubbing_target = ::std::option::Option::None;
+            }
+
+            pub fn has_message_body(&self) -> bool {
+                match self.scrubbing_target {
+                    ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::MessageBody(..)) => true,
+                    _ => false,
+                }
+            }
+
+            // Param is passed by value, moved
+            pub fn set_message_body(&mut self, v: bool) {
+                self.scrubbing_target = ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::MessageBody(v))
+            }
+
+            // .bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.GlobalScrub global_scrub = 5;
+
+            pub fn global_scrub(&self) -> &regex_match_and_substitute_field::GlobalScrub {
+                match self.scrubbing_target {
+                    ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::GlobalScrub(ref v)) => v,
+                    _ => <regex_match_and_substitute_field::GlobalScrub as ::protobuf::Message>::default_instance(),
+                }
+            }
+
+            pub fn clear_global_scrub(&mut self) {
+                self.scrubbing_target = ::std::option::Option::None;
+            }
+
+            pub fn has_global_scrub(&self) -> bool {
+                match self.scrubbing_target {
+                    ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::GlobalScrub(..)) => true,
+                    _ => false,
+                }
+            }
+
+            // Param is passed by value, moved
+            pub fn set_global_scrub(&mut self, v: regex_match_and_substitute_field::GlobalScrub) {
+                self.scrubbing_target = ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::GlobalScrub(v))
+            }
+
+            // Mutable pointer to the field.
+            pub fn mut_global_scrub(&mut self) -> &mut regex_match_and_substitute_field::GlobalScrub {
+                if let ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::GlobalScrub(_)) = self.scrubbing_target {
+                } else {
+                    self.scrubbing_target = ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::GlobalScrub(regex_match_and_substitute_field::GlobalScrub::new()));
+                }
+                match self.scrubbing_target {
+                    ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::GlobalScrub(ref mut v)) => v,
+                    _ => panic!(),
+                }
+            }
+
+            // Take field
+            pub fn take_global_scrub(&mut self) -> regex_match_and_substitute_field::GlobalScrub {
+                if self.has_global_scrub() {
+                    match self.scrubbing_target.take() {
+                        ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::GlobalScrub(v)) => v,
+                        _ => panic!(),
+                    }
+                } else {
+                    regex_match_and_substitute_field::GlobalScrub::new()
+                }
+            }
+
             pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-                let mut fields = ::std::vec::Vec::with_capacity(3);
-                let mut oneofs = ::std::vec::Vec::with_capacity(0);
-                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                let mut fields = ::std::vec::Vec::with_capacity(5);
+                let mut oneofs = ::std::vec::Vec::with_capacity(1);
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
                     "name",
-                    |m: &RegexMatchAndSubstituteField| { &m.name },
-                    |m: &mut RegexMatchAndSubstituteField| { &mut m.name },
+                    RegexMatchAndSubstituteField::has_name,
+                    RegexMatchAndSubstituteField::name,
+                    RegexMatchAndSubstituteField::set_name,
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_copy_has_get_set_simpler_accessors::<_, _>(
+                    "message_body",
+                    RegexMatchAndSubstituteField::has_message_body,
+                    RegexMatchAndSubstituteField::message_body,
+                    RegexMatchAndSubstituteField::set_message_body,
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, regex_match_and_substitute_field::GlobalScrub>(
+                    "global_scrub",
+                    RegexMatchAndSubstituteField::has_global_scrub,
+                    RegexMatchAndSubstituteField::global_scrub,
+                    RegexMatchAndSubstituteField::mut_global_scrub,
+                    RegexMatchAndSubstituteField::set_global_scrub,
                 ));
                 fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                     "pattern",
@@ -1678,6 +1813,7 @@ pub mod filter {
                     |m: &RegexMatchAndSubstituteField| { &m.substitution },
                     |m: &mut RegexMatchAndSubstituteField| { &mut m.substitution },
                 ));
+                oneofs.push(regex_match_and_substitute_field::Scrubbing_target::generated_oneof_descriptor_data());
                 ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<RegexMatchAndSubstituteField>(
                     "Filter.Transform.RegexMatchAndSubstituteField",
                     fields,
@@ -1697,7 +1833,13 @@ pub mod filter {
                 while let Some(tag) = is.read_raw_tag_or_eof()? {
                     match tag {
                         10 => {
-                            self.name = is.read_string()?;
+                            self.scrubbing_target = ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::Name(is.read_string()?));
+                        },
+                        32 => {
+                            self.scrubbing_target = ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::MessageBody(is.read_bool()?));
+                        },
+                        42 => {
+                            self.scrubbing_target = ::std::option::Option::Some(regex_match_and_substitute_field::Scrubbing_target::GlobalScrub(is.read_message()?));
                         },
                         18 => {
                             self.pattern = is.read_string()?;
@@ -1717,14 +1859,25 @@ pub mod filter {
             #[allow(unused_variables)]
             fn compute_size(&self) -> u64 {
                 let mut my_size = 0;
-                if !self.name.is_empty() {
-                    my_size += ::protobuf::rt::string_size(1, &self.name);
-                }
                 if !self.pattern.is_empty() {
                     my_size += ::protobuf::rt::string_size(2, &self.pattern);
                 }
                 if !self.substitution.is_empty() {
                     my_size += ::protobuf::rt::string_size(3, &self.substitution);
+                }
+                if let ::std::option::Option::Some(ref v) = self.scrubbing_target {
+                    match v {
+                        &regex_match_and_substitute_field::Scrubbing_target::Name(ref v) => {
+                            my_size += ::protobuf::rt::string_size(1, &v);
+                        },
+                        &regex_match_and_substitute_field::Scrubbing_target::MessageBody(v) => {
+                            my_size += 1 + 1;
+                        },
+                        &regex_match_and_substitute_field::Scrubbing_target::GlobalScrub(ref v) => {
+                            let len = v.compute_size();
+                            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                        },
+                    };
                 }
                 my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
                 self.special_fields.cached_size().set(my_size as u32);
@@ -1732,14 +1885,24 @@ pub mod filter {
             }
 
             fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
-                if !self.name.is_empty() {
-                    os.write_string(1, &self.name)?;
-                }
                 if !self.pattern.is_empty() {
                     os.write_string(2, &self.pattern)?;
                 }
                 if !self.substitution.is_empty() {
                     os.write_string(3, &self.substitution)?;
+                }
+                if let ::std::option::Option::Some(ref v) = self.scrubbing_target {
+                    match v {
+                        &regex_match_and_substitute_field::Scrubbing_target::Name(ref v) => {
+                            os.write_string(1, v)?;
+                        },
+                        &regex_match_and_substitute_field::Scrubbing_target::MessageBody(v) => {
+                            os.write_bool(4, v)?;
+                        },
+                        &regex_match_and_substitute_field::Scrubbing_target::GlobalScrub(ref v) => {
+                            ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
+                        },
+                    };
                 }
                 os.write_unknown_fields(self.special_fields.unknown_fields())?;
                 ::std::result::Result::Ok(())
@@ -1758,7 +1921,9 @@ pub mod filter {
             }
 
             fn clear(&mut self) {
-                self.name.clear();
+                self.scrubbing_target = ::std::option::Option::None;
+                self.scrubbing_target = ::std::option::Option::None;
+                self.scrubbing_target = ::std::option::Option::None;
                 self.pattern.clear();
                 self.substitution.clear();
                 self.special_fields.clear();
@@ -1766,9 +1931,9 @@ pub mod filter {
 
             fn default_instance() -> &'static RegexMatchAndSubstituteField {
                 static instance: RegexMatchAndSubstituteField = RegexMatchAndSubstituteField {
-                    name: ::std::string::String::new(),
                     pattern: ::std::string::String::new(),
                     substitution: ::std::string::String::new(),
+                    scrubbing_target: ::std::option::Option::None,
                     special_fields: ::protobuf::SpecialFields::new(),
                 };
                 &instance
@@ -1791,6 +1956,161 @@ pub mod filter {
         impl ::protobuf::reflect::ProtobufValue for RegexMatchAndSubstituteField {
             type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
         }
+
+        /// Nested message and enums of message `RegexMatchAndSubstituteField`
+        pub mod regex_match_and_substitute_field {
+
+            #[derive(Clone,PartialEq,Debug)]
+            // @@protoc_insertion_point(oneof:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.scrubbing_target)
+            pub enum Scrubbing_target {
+                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.name)
+                Name(::std::string::String),
+                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.message_body)
+                MessageBody(bool),
+                // @@protoc_insertion_point(oneof_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.global_scrub)
+                GlobalScrub(GlobalScrub),
+            }
+
+            impl ::protobuf::Oneof for Scrubbing_target {
+            }
+
+            impl ::protobuf::OneofFull for Scrubbing_target {
+                fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+                    descriptor.get(|| <super::RegexMatchAndSubstituteField as ::protobuf::MessageFull>::descriptor().oneof_by_name("scrubbing_target").unwrap()).clone()
+                }
+            }
+
+            impl Scrubbing_target {
+                pub(in super::super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+                    ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Scrubbing_target>("scrubbing_target")
+                }
+            }
+            // @@protoc_insertion_point(message:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.GlobalScrub)
+            #[derive(PartialEq,Clone,Default,Debug)]
+            pub struct GlobalScrub {
+                // message fields
+                ///  The list of field names that should be ignored when applying the scrubbing transform. If
+                ///  a field is in this list, it won't be scrubbed even if it matches the regular expression
+                ///  pattern.
+                // @@protoc_insertion_point(field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.GlobalScrub.ignored_fields)
+                pub ignored_fields: ::std::vec::Vec<::std::string::String>,
+                // special fields
+                // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.GlobalScrub.special_fields)
+                pub special_fields: ::protobuf::SpecialFields,
+            }
+
+            impl<'a> ::std::default::Default for &'a GlobalScrub {
+                fn default() -> &'a GlobalScrub {
+                    <GlobalScrub as ::protobuf::Message>::default_instance()
+                }
+            }
+
+            impl GlobalScrub {
+                pub fn new() -> GlobalScrub {
+                    ::std::default::Default::default()
+                }
+
+                pub(in super::super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                    let mut fields = ::std::vec::Vec::with_capacity(1);
+                    let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                    fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                        "ignored_fields",
+                        |m: &GlobalScrub| { &m.ignored_fields },
+                        |m: &mut GlobalScrub| { &mut m.ignored_fields },
+                    ));
+                    ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<GlobalScrub>(
+                        "Filter.Transform.RegexMatchAndSubstituteField.GlobalScrub",
+                        fields,
+                        oneofs,
+                    )
+                }
+            }
+
+            impl ::protobuf::Message for GlobalScrub {
+                const NAME: &'static str = "GlobalScrub";
+
+                fn is_initialized(&self) -> bool {
+                    true
+                }
+
+                fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                    while let Some(tag) = is.read_raw_tag_or_eof()? {
+                        match tag {
+                            10 => {
+                                self.ignored_fields.push(is.read_string()?);
+                            },
+                            tag => {
+                                ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                            },
+                        };
+                    }
+                    ::std::result::Result::Ok(())
+                }
+
+                // Compute sizes of nested messages
+                #[allow(unused_variables)]
+                fn compute_size(&self) -> u64 {
+                    let mut my_size = 0;
+                    for value in &self.ignored_fields {
+                        my_size += ::protobuf::rt::string_size(1, &value);
+                    };
+                    my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                    self.special_fields.cached_size().set(my_size as u32);
+                    my_size
+                }
+
+                fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                    for v in &self.ignored_fields {
+                        os.write_string(1, &v)?;
+                    };
+                    os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                    ::std::result::Result::Ok(())
+                }
+
+                fn special_fields(&self) -> &::protobuf::SpecialFields {
+                    &self.special_fields
+                }
+
+                fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                    &mut self.special_fields
+                }
+
+                fn new() -> GlobalScrub {
+                    GlobalScrub::new()
+                }
+
+                fn clear(&mut self) {
+                    self.ignored_fields.clear();
+                    self.special_fields.clear();
+                }
+
+                fn default_instance() -> &'static GlobalScrub {
+                    static instance: GlobalScrub = GlobalScrub {
+                        ignored_fields: ::std::vec::Vec::new(),
+                        special_fields: ::protobuf::SpecialFields::new(),
+                    };
+                    &instance
+                }
+            }
+
+            impl ::protobuf::MessageFull for GlobalScrub {
+                fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                    descriptor.get(|| super::super::super::file_descriptor().message_by_package_relative_name("Filter.Transform.RegexMatchAndSubstituteField.GlobalScrub").unwrap()).clone()
+                }
+            }
+
+            impl ::std::fmt::Display for GlobalScrub {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    ::protobuf::text_format::fmt(self, f)
+                }
+            }
+
+            impl ::protobuf::reflect::ProtobufValue for GlobalScrub {
+                type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+            }
+        }
     }
 }
 
@@ -1799,13 +2119,13 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     protobuf.filter.v1\x1a5bitdrift_public/protobuf/matcher/v1/log_matcher.p\
     roto\x1a\x17validate/validate.proto\"\\\n\x14FiltersConfiguration\x12D\n\
     \x07filters\x18\x01\x20\x03(\x0b2*.bitdrift_public.protobuf.filter.v1.Fi\
-    lterR\x07filters\"\xf0\x0b\n\x06Filter\x12S\n\x07matcher\x18\x01\x20\x01\
-    (\x0b2/.bitdrift_public.protobuf.matcher.v1.LogMatcherR\x07matcherB\x08\
+    lterR\x07filters\"\xe6\r\n\x06Filter\x12S\n\x07matcher\x18\x01\x20\x01(\
+    \x0b2/.bitdrift_public.protobuf.matcher.v1.LogMatcherR\x07matcherB\x08\
     \xfaB\x05\x8a\x01\x02\x10\x01\x12^\n\ntransforms\x18\x02\x20\x03(\x0b24.\
     bitdrift_public.protobuf.filter.v1.Filter.TransformR\ntransformsB\x08\
-    \xfaB\x05\x92\x01\x02\x08\x01\x1a\xb0\n\n\tTransform\x12h\n\rcapture_fie\
-    ld\x18\x01\x20\x01(\x0b2A.bitdrift_public.protobuf.filter.v1.Filter.Tran\
-    sform.CaptureFieldH\0R\x0ccaptureField\x12\\\n\tset_field\x18\x02\x20\
+    \xfaB\x05\x92\x01\x02\x08\x01\x1a\xa6\x0c\n\tTransform\x12h\n\rcapture_f\
+    ield\x18\x01\x20\x01(\x0b2A.bitdrift_public.protobuf.filter.v1.Filter.Tr\
+    ansform.CaptureFieldH\0R\x0ccaptureField\x12\\\n\tset_field\x18\x02\x20\
     \x01(\x0b2=.bitdrift_public.protobuf.filter.v1.Filter.Transform.SetField\
     H\0R\x08setField\x12e\n\x0cremove_field\x18\x03\x20\x01(\x0b2@.bitdrift_\
     public.protobuf.filter.v1.Filter.Transform.RemoveFieldH\0R\x0bremoveFiel\
@@ -1827,181 +2147,207 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \tR\x04nameB\x07\xfaB\x04r\x02\x10\x01B\x0c\n\x05value\x12\x03\xf8B\x01\
     \"9\n\tFieldType\x12\x0b\n\x07UNKNOWN\x10\0\x12\x0c\n\x08CAPTURED\x10\
     \x01\x12\x11\n\rMATCHING_ONLY\x10\x02\x1a*\n\x0bRemoveField\x12\x1b\n\
-    \x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x1a\x82\
-    \x01\n\x1cRegexMatchAndSubstituteField\x12\x12\n\x04name\x18\x01\x20\x01\
-    (\tR\x04name\x12!\n\x07pattern\x18\x02\x20\x01(\tR\x07patternB\x07\xfaB\
-    \x04r\x02\x10\x01\x12+\n\x0csubstitution\x18\x03\x20\x01(\tR\x0csubstitu\
-    tionB\x07\xfaB\x04r\x02\x10\x01B\x15\n\x0etransform_type\x12\x03\xf8B\
-    \x01J\xc7'\n\x06\x12\x04\x07\0m\x01\n\xb8\x02\n\x01\x0c\x12\x03\x07\0\
-    \x122\xad\x02\x20api\x20-\x20bitdrift's\x20client/server\x20API\x20defin\
-    itions\n\x20Copyright\x20Bitdrift,\x20Inc.\x20All\x20rights\x20reserved.\
-    \n\n\x20Use\x20of\x20this\x20source\x20code\x20and\x20APIs\x20are\x20gov\
-    erned\x20by\x20a\x20source\x20available\x20license\x20that\x20can\x20be\
-    \x20found\x20in\n\x20the\x20LICENSE\x20file\x20or\x20at:\n\x20https://po\
-    lyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt\n\
-    \n\x08\n\x01\x02\x12\x03\t\0+\n\t\n\x02\x03\0\x12\x03\x0b\0?\n\t\n\x02\
-    \x03\x01\x12\x03\x0c\0!\nR\n\x02\x04\0\x12\x04\x0f\0\x11\x01\x1aF\x20The\
-    \x20configuration\x20of\x20filters\x20that\x20apply\x20transforms\x20to\
-    \x20selected\x20logs.\n\n\n\n\x03\x04\0\x01\x12\x03\x0f\x08\x1c\n\x0b\n\
-    \x04\x04\0\x02\0\x12\x03\x10\x02\x1e\n\x0c\n\x05\x04\0\x02\0\x04\x12\x03\
-    \x10\x02\n\n\x0c\n\x05\x04\0\x02\0\x06\x12\x03\x10\x0b\x11\n\x0c\n\x05\
-    \x04\0\x02\0\x01\x12\x03\x10\x12\x19\n\x0c\n\x05\x04\0\x02\0\x03\x12\x03\
-    \x10\x1c\x1d\n<\n\x02\x04\x01\x12\x04\x14\0m\x01\x1a0\x20Applies\x20conf\
-    igured\x20transform\x20to\x20selected\x20logs.\n\n\n\n\x03\x04\x01\x01\
-    \x12\x03\x14\x08\x0e\n^\n\x04\x04\x01\x02\0\x12\x03\x16\x02R\x1aQ\x20The\
-    \x20matcher\x20responsible\x20for\x20selecting\x20logs\x20to\x20apply\
-    \x20the\x20filter's\x20transforms\x20to.\n\n\x0c\n\x05\x04\x01\x02\0\x06\
-    \x12\x03\x16\x02\x17\n\x0c\n\x05\x04\x01\x02\0\x01\x12\x03\x16\x18\x1f\n\
-    \x0c\n\x05\x04\x01\x02\0\x03\x12\x03\x16\"#\n\x0c\n\x05\x04\x01\x02\0\
-    \x08\x12\x03\x16$Q\n\x0f\n\x08\x04\x01\x02\0\x08\xaf\x08\x11\x12\x03\x16\
-    %P\nZ\n\x04\x04\x01\x03\0\x12\x04\x19\x02h\x03\x1aL\x20Represents\x20a\
-    \x20transform\x20that\x20can\x20be\x20applied\x20to\x20a\x20log\x20in\
-    \x20order\x20to\x20modify\x20it.\n\n\x0c\n\x05\x04\x01\x03\0\x01\x12\x03\
-    \x19\n\x13\n\x0e\n\x06\x04\x01\x03\0\x08\0\x12\x04\x1a\x04!\x05\n\x0e\n\
-    \x07\x04\x01\x03\0\x08\0\x01\x12\x03\x1a\n\x18\n\x0e\n\x07\x04\x01\x03\0\
-    \x08\0\x02\x12\x03\x1b\x06(\n\x10\n\t\x04\x01\x03\0\x08\0\x02\xaf\x08\
-    \x12\x03\x1b\x06(\n\r\n\x06\x04\x01\x03\0\x02\0\x12\x03\x1d\x06%\n\x0e\n\
-    \x07\x04\x01\x03\0\x02\0\x06\x12\x03\x1d\x06\x12\n\x0e\n\x07\x04\x01\x03\
-    \0\x02\0\x01\x12\x03\x1d\x13\x20\n\x0e\n\x07\x04\x01\x03\0\x02\0\x03\x12\
-    \x03\x1d#$\n\r\n\x06\x04\x01\x03\0\x02\x01\x12\x03\x1e\x06\x1d\n\x0e\n\
-    \x07\x04\x01\x03\0\x02\x01\x06\x12\x03\x1e\x06\x0e\n\x0e\n\x07\x04\x01\
-    \x03\0\x02\x01\x01\x12\x03\x1e\x0f\x18\n\x0e\n\x07\x04\x01\x03\0\x02\x01\
-    \x03\x12\x03\x1e\x1b\x1c\n\r\n\x06\x04\x01\x03\0\x02\x02\x12\x03\x1f\x06\
-    #\n\x0e\n\x07\x04\x01\x03\0\x02\x02\x06\x12\x03\x1f\x06\x11\n\x0e\n\x07\
-    \x04\x01\x03\0\x02\x02\x01\x12\x03\x1f\x12\x1e\n\x0e\n\x07\x04\x01\x03\0\
-    \x02\x02\x03\x12\x03\x1f!\"\n\r\n\x06\x04\x01\x03\0\x02\x03\x12\x03\x20\
-    \x06H\n\x0e\n\x07\x04\x01\x03\0\x02\x03\x06\x12\x03\x20\x06\"\n\x0e\n\
-    \x07\x04\x01\x03\0\x02\x03\x01\x12\x03\x20#C\n\x0e\n\x07\x04\x01\x03\0\
-    \x02\x03\x03\x12\x03\x20FG\n\xb2\x03\n\x06\x04\x01\x03\0\x03\0\x12\x04(\
-    \x04+\x05\x1a\xa1\x03\x20Captures\x20specified\x20matching\x20field(s).\
-    \x20Capturing\x20a\x20field\x20means\x20storing\x20it\x20in\x20a\x20buff\
-    er\x20and\x20potentially\x20uploading\n\x20it\x20to\x20bitdrift\x20remot\
-    e\x20services.\x20The\x20final\x20decision\x20on\x20whether\x20a\x20fiel\
-    d\x20is\x20stored\x20and\x20uploaded\x20depends\n\x20on\x20various\x20fa\
-    ctors,\x20such\x20as\x20buffer\x20and\x20workflow\x20configurations.\n\
-    \x20*\x20If\x20the\x20specified\x20matching\x20field\x20doesn't\x20exist\
-    ,\x20nothing\x20happens.\n\x20*\x20If\x20the\x20field\x20exists\x20and\
-    \x20has\x20already\x20been\x20captured,\x20nothing\x20happens.\n\n\x0e\n\
-    \x07\x04\x01\x03\0\x03\0\x01\x12\x03(\x0c\x18\n4\n\x08\x04\x01\x03\0\x03\
-    \0\x02\0\x12\x03*\x06?\x1a#\x20The\x20name\x20of\x20the\x20field\x20to\
-    \x20capture.\n\n\x10\n\t\x04\x01\x03\0\x03\0\x02\0\x05\x12\x03*\x06\x0c\
-    \n\x10\n\t\x04\x01\x03\0\x03\0\x02\0\x01\x12\x03*\r\x11\n\x10\n\t\x04\
-    \x01\x03\0\x03\0\x02\0\x03\x12\x03*\x14\x15\n\x10\n\t\x04\x01\x03\0\x03\
-    \0\x02\0\x08\x12\x03*\x16>\n\x13\n\x0c\x04\x01\x03\0\x03\0\x02\0\x08\xaf\
-    \x08\x0e\x12\x03*\x17=\nS\n\x06\x04\x01\x03\0\x03\x01\x12\x04.\x04O\x05\
-    \x1aC\x20Sets\x20the\x20value\x20of\x20a\x20field\x20with\x20a\x20specif\
-    ied\x20name\x20to\x20a\x20given\x20value.\n\n\x0e\n\x07\x04\x01\x03\0\
-    \x03\x01\x01\x12\x03.\x0c\x14\n\x10\n\x08\x04\x01\x03\0\x03\x01\x04\0\
-    \x12\x04/\x063\x07\n\x10\n\t\x04\x01\x03\0\x03\x01\x04\0\x01\x12\x03/\
-    \x0b\x14\n\x11\n\n\x04\x01\x03\0\x03\x01\x04\0\x02\0\x12\x030\x08\x14\n\
-    \x12\n\x0b\x04\x01\x03\0\x03\x01\x04\0\x02\0\x01\x12\x030\x08\x0f\n\x12\
-    \n\x0b\x04\x01\x03\0\x03\x01\x04\0\x02\0\x02\x12\x030\x12\x13\n\x11\n\n\
-    \x04\x01\x03\0\x03\x01\x04\0\x02\x01\x12\x031\x08\x15\n\x12\n\x0b\x04\
-    \x01\x03\0\x03\x01\x04\0\x02\x01\x01\x12\x031\x08\x10\n\x12\n\x0b\x04\
-    \x01\x03\0\x03\x01\x04\0\x02\x01\x02\x12\x031\x13\x14\n\x11\n\n\x04\x01\
-    \x03\0\x03\x01\x04\0\x02\x02\x12\x032\x08\x1a\n\x12\n\x0b\x04\x01\x03\0\
-    \x03\x01\x04\0\x02\x02\x01\x12\x032\x08\x15\n\x12\n\x0b\x04\x01\x03\0\
-    \x03\x01\x04\0\x02\x02\x02\x12\x032\x18\x19\n\x10\n\x08\x04\x01\x03\0\
-    \x03\x01\x03\0\x12\x045\x06E\x07\n\x10\n\t\x04\x01\x03\0\x03\x01\x03\0\
-    \x01\x12\x035\x0e\x1b\n\x98\x01\n\n\x04\x01\x03\0\x03\x01\x03\0\x03\0\
-    \x12\x048\x08;\t\x1a\x83\x01\x20The\x20existing\x20field.\x20The\x20fiel\
-    d\x20can\x20be\x20either\x20a\x20captured\x20or\x20a\x20matching\x20fiel\
-    d.\x20Capture\x20fields\x20take\n\x20precedence\x20over\x20matching\x20f\
-    ields.\n\n\x12\n\x0b\x04\x01\x03\0\x03\x01\x03\0\x03\0\x01\x12\x038\x10\
-    \x1d\n5\n\x0c\x04\x01\x03\0\x03\x01\x03\0\x03\0\x02\0\x12\x03:\nC\x1a\
-    \x20\x20The\x20name\x20of\x20an\x20existing\x20field.\n\n\x14\n\r\x04\
-    \x01\x03\0\x03\x01\x03\0\x03\0\x02\0\x05\x12\x03:\n\x10\n\x14\n\r\x04\
-    \x01\x03\0\x03\x01\x03\0\x03\0\x02\0\x01\x12\x03:\x11\x15\n\x14\n\r\x04\
-    \x01\x03\0\x03\x01\x03\0\x03\0\x02\0\x03\x12\x03:\x18\x19\n\x14\n\r\x04\
-    \x01\x03\0\x03\x01\x03\0\x03\0\x02\0\x08\x12\x03:\x1aB\n\x17\n\x10\x04\
-    \x01\x03\0\x03\x01\x03\0\x03\0\x02\0\x08\xaf\x08\x0e\x12\x03:\x1bA\n\x12\
-    \n\n\x04\x01\x03\0\x03\x01\x03\0\x08\0\x12\x04=\x08D\t\n\x12\n\x0b\x04\
-    \x01\x03\0\x03\x01\x03\0\x08\0\x01\x12\x03=\x0e\x13\n\x12\n\x0b\x04\x01\
-    \x03\0\x03\x01\x03\0\x08\0\x02\x12\x03>\n,\n\x14\n\r\x04\x01\x03\0\x03\
-    \x01\x03\0\x08\0\x02\xaf\x08\x12\x03>\n,\n/\n\n\x04\x01\x03\0\x03\x01\
-    \x03\0\x02\0\x12\x03A\n\"\x1a\x1c\x20The\x20constant\x20string\x20value.\
-    \n\n\x12\n\x0b\x04\x01\x03\0\x03\x01\x03\0\x02\0\x05\x12\x03A\n\x10\n\
-    \x12\n\x0b\x04\x01\x03\0\x03\x01\x03\0\x02\0\x01\x12\x03A\x11\x1d\n\x12\
-    \n\x0b\x04\x01\x03\0\x03\x01\x03\0\x02\0\x03\x12\x03A\x20!\n4\n\n\x04\
-    \x01\x03\0\x03\x01\x03\0\x02\x01\x12\x03C\n+\x1a!\x20The\x20value\x20of\
-    \x20an\x20existing\x20field.\n\n\x12\n\x0b\x04\x01\x03\0\x03\x01\x03\0\
-    \x02\x01\x06\x12\x03C\n\x17\n\x12\n\x0b\x04\x01\x03\0\x03\x01\x03\0\x02\
-    \x01\x01\x12\x03C\x18&\n\x12\n\x0b\x04\x01\x03\0\x03\x01\x03\0\x02\x01\
-    \x03\x12\x03C)*\n\x0f\n\x08\x04\x01\x03\0\x03\x01\x02\0\x12\x03G\x06?\n\
-    \x10\n\t\x04\x01\x03\0\x03\x01\x02\0\x05\x12\x03G\x06\x0c\n\x10\n\t\x04\
-    \x01\x03\0\x03\x01\x02\0\x01\x12\x03G\r\x11\n\x10\n\t\x04\x01\x03\0\x03\
-    \x01\x02\0\x03\x12\x03G\x14\x15\n\x10\n\t\x04\x01\x03\0\x03\x01\x02\0\
-    \x08\x12\x03G\x16>\n\x13\n\x0c\x04\x01\x03\0\x03\x01\x02\0\x08\xaf\x08\
-    \x0e\x12\x03G\x17=\n1\n\x08\x04\x01\x03\0\x03\x01\x02\x01\x12\x03I\x06I\
-    \x1a\x20\x20The\x20value\x20to\x20set\x20the\x20field\x20to.\n\n\x10\n\t\
-    \x04\x01\x03\0\x03\x01\x02\x01\x06\x12\x03I\x06\x13\n\x10\n\t\x04\x01\
-    \x03\0\x03\x01\x02\x01\x01\x12\x03I\x14\x19\n\x10\n\t\x04\x01\x03\0\x03\
-    \x01\x02\x01\x03\x12\x03I\x1c\x1d\n\x10\n\t\x04\x01\x03\0\x03\x01\x02\
-    \x01\x08\x12\x03I\x1eH\n\x14\n\r\x04\x01\x03\0\x03\x01\x02\x01\x08\xaf\
-    \x08\x11\x02\x12\x03I\x1fG\n0\n\x08\x04\x01\x03\0\x03\x01\x02\x02\x12\
-    \x03K\x06N\x1a\x1f\x20The\x20type\x20of\x20the\x20field\x20to\x20set.\n\
-    \n\x10\n\t\x04\x01\x03\0\x03\x01\x02\x02\x06\x12\x03K\x06\x0f\n\x10\n\t\
-    \x04\x01\x03\0\x03\x01\x02\x02\x01\x12\x03K\x10\x1a\n\x10\n\t\x04\x01\
-    \x03\0\x03\x01\x02\x02\x03\x12\x03K\x1d\x1e\n\x10\n\t\x04\x01\x03\0\x03\
-    \x01\x02\x02\x08\x12\x03K\x1fM\n\x13\n\x0c\x04\x01\x03\0\x03\x01\x02\x02\
-    \x08\xaf\x08\x10\x12\x03K\x20L\n\x8f\x01\n\x08\x04\x01\x03\0\x03\x01\x02\
-    \x03\x12\x03N\x06\x1e\x1a~\x20Whether\x20a\x20transform\x20is\x20allowed\
-    \x20to\x20override\x20an\x20existing\x20field.\x20If\x20no\x20and\x20the\
-    \x20field\x20already\x20exists,\n\x20the\x20transform\x20is\x20a\x20no-o\
-    p.\n\n\x10\n\t\x04\x01\x03\0\x03\x01\x02\x03\x05\x12\x03N\x06\n\n\x10\n\
-    \t\x04\x01\x03\0\x03\x01\x02\x03\x01\x12\x03N\x0b\x19\n\x10\n\t\x04\x01\
-    \x03\0\x03\x01\x02\x03\x03\x12\x03N\x1c\x1d\n\x99\x01\n\x06\x04\x01\x03\
-    \0\x03\x02\x12\x04S\x04V\x05\x1a\x88\x01\x20Removes\x20a\x20field\x20wit\
-    h\x20the\x20specified\x20name\x20from\x20the\x20list\x20of\x20captured\
-    \x20or\x20matching\x20fields.\n\x20If\x20the\x20field\x20doesn't\x20exis\
-    t,\x20no\x20action\x20is\x20taken.\n\n\x0e\n\x07\x04\x01\x03\0\x03\x02\
-    \x01\x12\x03S\x0c\x17\n3\n\x08\x04\x01\x03\0\x03\x02\x02\0\x12\x03U\x06?\
-    \x1a\"\x20The\x20name\x20of\x20the\x20field\x20to\x20remove.\n\n\x10\n\t\
-    \x04\x01\x03\0\x03\x02\x02\0\x05\x12\x03U\x06\x0c\n\x10\n\t\x04\x01\x03\
-    \0\x03\x02\x02\0\x01\x12\x03U\r\x11\n\x10\n\t\x04\x01\x03\0\x03\x02\x02\
-    \0\x03\x12\x03U\x14\x15\n\x10\n\t\x04\x01\x03\0\x03\x02\x02\0\x08\x12\
-    \x03U\x16>\n\x13\n\x0c\x04\x01\x03\0\x03\x02\x02\0\x08\xaf\x08\x0e\x12\
-    \x03U\x17=\n\x94\x01\n\x06\x04\x01\x03\0\x03\x03\x12\x04Z\x04g\x05\x1a\
-    \x83\x01\x20Matches\x20the\x20processed\x20field\x20and\x20specifies\x20\
-    how\x20to\x20generate\x20a\x20new\x20string\x20using\x20a\x20given\x20re\
-    gular\n\x20expression\x20and\x20substitution\x20string.\n\n\x0e\n\x07\
-    \x04\x01\x03\0\x03\x03\x01\x12\x03Z\x0c(\n\xae\x01\n\x08\x04\x01\x03\0\
-    \x03\x03\x02\0\x12\x03]\x06\x16\x1a\x9c\x01\x20The\x20name\x20of\x20the\
-    \x20field\x20to\x20scrub.\x20If\x20the\x20field\x20is\x20empty,\x20the\
-    \x20scrubbing\x20applies\x20to\x20all\x20fields.\n\x20If\x20the\x20field\
-    \x20is\x20not\x20empty\x20and\x20doesn't\x20exist,\x20nothing\x20happens\
-    .\n\n\x10\n\t\x04\x01\x03\0\x03\x03\x02\0\x05\x12\x03]\x06\x0c\n\x10\n\t\
-    \x04\x01\x03\0\x03\x03\x02\0\x01\x12\x03]\r\x11\n\x10\n\t\x04\x01\x03\0\
-    \x03\x03\x02\0\x03\x12\x03]\x14\x15\n\x8c\x02\n\x08\x04\x01\x03\0\x03\
-    \x03\x02\x01\x12\x03a\x06B\x1a\xfa\x01\x20The\x20regular\x20expression\
-    \x20used\x20to\x20find\x20portions\x20of\x20a\x20string\x20that\x20shoul\
-    d\x20be\x20replaced.\n\x20It\x20follows\x20Rust's\x20regular\x20expressi\
-    on\x20syntax.\x20Capture\x20groups\x20can\x20be\x20used\x20to\x20extract\
-    \x20portions\n\x20of\x20the\x20input\x20string\x20and\x20reference\x20th\
-    em\x20later\x20in\x20a\x20`substitution`\x20string.\n\n\x10\n\t\x04\x01\
-    \x03\0\x03\x03\x02\x01\x05\x12\x03a\x06\x0c\n\x10\n\t\x04\x01\x03\0\x03\
-    \x03\x02\x01\x01\x12\x03a\r\x14\n\x10\n\t\x04\x01\x03\0\x03\x03\x02\x01\
-    \x03\x12\x03a\x17\x18\n\x10\n\t\x04\x01\x03\0\x03\x03\x02\x01\x08\x12\
-    \x03a\x19A\n\x13\n\x0c\x04\x01\x03\0\x03\x03\x02\x01\x08\xaf\x08\x0e\x12\
-    \x03a\x1a@\n\xae\x02\n\x08\x04\x01\x03\0\x03\x03\x02\x02\x12\x03f\x06G\
-    \x1a\x9c\x02\x20The\x20string\x20that\x20will\x20replace\x20the\x20match\
-    ing\x20portions\x20of\x20the\x20subject\x20string.\n\x20Capture\x20group\
-    s\x20from\x20the\x20`pattern`\x20regular\x20expression\x20can\x20be\x20r\
-    eferenced\x20in\x20this\x20string\x20using\x20Rust's\n\x20regex\x20synta\
-    x.\x20For\x20example,\x20`${1}`\x20refers\x20to\x20the\x20first\x20captu\
-    re\x20group\x20from\x20the\x20`pattern`\x20regular\n\x20expression.\n\n\
-    \x10\n\t\x04\x01\x03\0\x03\x03\x02\x02\x05\x12\x03f\x06\x0c\n\x10\n\t\
-    \x04\x01\x03\0\x03\x03\x02\x02\x01\x12\x03f\r\x19\n\x10\n\t\x04\x01\x03\
-    \0\x03\x03\x02\x02\x03\x12\x03f\x1c\x1d\n\x10\n\t\x04\x01\x03\0\x03\x03\
-    \x02\x02\x08\x12\x03f\x1eF\n\x13\n\x0c\x04\x01\x03\0\x03\x03\x02\x02\x08\
-    \xaf\x08\x0e\x12\x03f\x1fE\nq\n\x04\x04\x01\x02\x01\x12\x03l\x02Q\x1ad\
-    \x20The\x20list\x20of\x20transforms\x20to\x20apply\x20to\x20a\x20selecte\
-    d\x20log.\n\x20Transforms\x20are\x20applied\x20in\x20the\x20specified\
-    \x20order.\n\n\x0c\n\x05\x04\x01\x02\x01\x04\x12\x03l\x02\n\n\x0c\n\x05\
-    \x04\x01\x02\x01\x06\x12\x03l\x0b\x14\n\x0c\n\x05\x04\x01\x02\x01\x01\
-    \x12\x03l\x15\x1f\n\x0c\n\x05\x04\x01\x02\x01\x03\x12\x03l\"#\n\x0c\n\
-    \x05\x04\x01\x02\x01\x08\x12\x03l$P\n\x0f\n\x08\x04\x01\x02\x01\x08\xaf\
-    \x08\x12\x12\x03l%Ob\x06proto3\
+    \x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x1a\xf8\
+    \x02\n\x1cRegexMatchAndSubstituteField\x12\x14\n\x04name\x18\x01\x20\x01\
+    (\tH\0R\x04name\x12#\n\x0cmessage_body\x18\x04\x20\x01(\x08H\0R\x0bmessa\
+    geBody\x12\x82\x01\n\x0cglobal_scrub\x18\x05\x20\x01(\x0b2].bitdrift_pub\
+    lic.protobuf.filter.v1.Filter.Transform.RegexMatchAndSubstituteField.Glo\
+    balScrubH\0R\x0bglobalScrub\x12!\n\x07pattern\x18\x02\x20\x01(\tR\x07pat\
+    ternB\x07\xfaB\x04r\x02\x10\x01\x12+\n\x0csubstitution\x18\x03\x20\x01(\
+    \tR\x0csubstitutionB\x07\xfaB\x04r\x02\x10\x01\x1a4\n\x0bGlobalScrub\x12\
+    %\n\x0eignored_fields\x18\x01\x20\x03(\tR\rignoredFieldsB\x12\n\x10scrub\
+    bing_targetB\x15\n\x0etransform_type\x12\x03\xf8B\x01J\xb0,\n\x06\x12\
+    \x04\x07\0}\x01\n\xb8\x02\n\x01\x0c\x12\x03\x07\0\x122\xad\x02\x20api\
+    \x20-\x20bitdrift's\x20client/server\x20API\x20definitions\n\x20Copyrigh\
+    t\x20Bitdrift,\x20Inc.\x20All\x20rights\x20reserved.\n\n\x20Use\x20of\
+    \x20this\x20source\x20code\x20and\x20APIs\x20are\x20governed\x20by\x20a\
+    \x20source\x20available\x20license\x20that\x20can\x20be\x20found\x20in\n\
+    \x20the\x20LICENSE\x20file\x20or\x20at:\n\x20https://polyformproject.org\
+    /wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt\n\n\x08\n\x01\x02\
+    \x12\x03\t\0+\n\t\n\x02\x03\0\x12\x03\x0b\0?\n\t\n\x02\x03\x01\x12\x03\
+    \x0c\0!\nR\n\x02\x04\0\x12\x04\x0f\0\x11\x01\x1aF\x20The\x20configuratio\
+    n\x20of\x20filters\x20that\x20apply\x20transforms\x20to\x20selected\x20l\
+    ogs.\n\n\n\n\x03\x04\0\x01\x12\x03\x0f\x08\x1c\n\x0b\n\x04\x04\0\x02\0\
+    \x12\x03\x10\x02\x1e\n\x0c\n\x05\x04\0\x02\0\x04\x12\x03\x10\x02\n\n\x0c\
+    \n\x05\x04\0\x02\0\x06\x12\x03\x10\x0b\x11\n\x0c\n\x05\x04\0\x02\0\x01\
+    \x12\x03\x10\x12\x19\n\x0c\n\x05\x04\0\x02\0\x03\x12\x03\x10\x1c\x1d\n<\
+    \n\x02\x04\x01\x12\x04\x14\0}\x01\x1a0\x20Applies\x20configured\x20trans\
+    form\x20to\x20selected\x20logs.\n\n\n\n\x03\x04\x01\x01\x12\x03\x14\x08\
+    \x0e\n^\n\x04\x04\x01\x02\0\x12\x03\x16\x02R\x1aQ\x20The\x20matcher\x20r\
+    esponsible\x20for\x20selecting\x20logs\x20to\x20apply\x20the\x20filter's\
+    \x20transforms\x20to.\n\n\x0c\n\x05\x04\x01\x02\0\x06\x12\x03\x16\x02\
+    \x17\n\x0c\n\x05\x04\x01\x02\0\x01\x12\x03\x16\x18\x1f\n\x0c\n\x05\x04\
+    \x01\x02\0\x03\x12\x03\x16\"#\n\x0c\n\x05\x04\x01\x02\0\x08\x12\x03\x16$\
+    Q\n\x0f\n\x08\x04\x01\x02\0\x08\xaf\x08\x11\x12\x03\x16%P\nZ\n\x04\x04\
+    \x01\x03\0\x12\x04\x19\x02x\x03\x1aL\x20Represents\x20a\x20transform\x20\
+    that\x20can\x20be\x20applied\x20to\x20a\x20log\x20in\x20order\x20to\x20m\
+    odify\x20it.\n\n\x0c\n\x05\x04\x01\x03\0\x01\x12\x03\x19\n\x13\n\x0e\n\
+    \x06\x04\x01\x03\0\x08\0\x12\x04\x1a\x04!\x05\n\x0e\n\x07\x04\x01\x03\0\
+    \x08\0\x01\x12\x03\x1a\n\x18\n\x0e\n\x07\x04\x01\x03\0\x08\0\x02\x12\x03\
+    \x1b\x06(\n\x10\n\t\x04\x01\x03\0\x08\0\x02\xaf\x08\x12\x03\x1b\x06(\n\r\
+    \n\x06\x04\x01\x03\0\x02\0\x12\x03\x1d\x06%\n\x0e\n\x07\x04\x01\x03\0\
+    \x02\0\x06\x12\x03\x1d\x06\x12\n\x0e\n\x07\x04\x01\x03\0\x02\0\x01\x12\
+    \x03\x1d\x13\x20\n\x0e\n\x07\x04\x01\x03\0\x02\0\x03\x12\x03\x1d#$\n\r\n\
+    \x06\x04\x01\x03\0\x02\x01\x12\x03\x1e\x06\x1d\n\x0e\n\x07\x04\x01\x03\0\
+    \x02\x01\x06\x12\x03\x1e\x06\x0e\n\x0e\n\x07\x04\x01\x03\0\x02\x01\x01\
+    \x12\x03\x1e\x0f\x18\n\x0e\n\x07\x04\x01\x03\0\x02\x01\x03\x12\x03\x1e\
+    \x1b\x1c\n\r\n\x06\x04\x01\x03\0\x02\x02\x12\x03\x1f\x06#\n\x0e\n\x07\
+    \x04\x01\x03\0\x02\x02\x06\x12\x03\x1f\x06\x11\n\x0e\n\x07\x04\x01\x03\0\
+    \x02\x02\x01\x12\x03\x1f\x12\x1e\n\x0e\n\x07\x04\x01\x03\0\x02\x02\x03\
+    \x12\x03\x1f!\"\n\r\n\x06\x04\x01\x03\0\x02\x03\x12\x03\x20\x06H\n\x0e\n\
+    \x07\x04\x01\x03\0\x02\x03\x06\x12\x03\x20\x06\"\n\x0e\n\x07\x04\x01\x03\
+    \0\x02\x03\x01\x12\x03\x20#C\n\x0e\n\x07\x04\x01\x03\0\x02\x03\x03\x12\
+    \x03\x20FG\n\xb2\x03\n\x06\x04\x01\x03\0\x03\0\x12\x04(\x04+\x05\x1a\xa1\
+    \x03\x20Captures\x20specified\x20matching\x20field(s).\x20Capturing\x20a\
+    \x20field\x20means\x20storing\x20it\x20in\x20a\x20buffer\x20and\x20poten\
+    tially\x20uploading\n\x20it\x20to\x20bitdrift\x20remote\x20services.\x20\
+    The\x20final\x20decision\x20on\x20whether\x20a\x20field\x20is\x20stored\
+    \x20and\x20uploaded\x20depends\n\x20on\x20various\x20factors,\x20such\
+    \x20as\x20buffer\x20and\x20workflow\x20configurations.\n\x20*\x20If\x20t\
+    he\x20specified\x20matching\x20field\x20doesn't\x20exist,\x20nothing\x20\
+    happens.\n\x20*\x20If\x20the\x20field\x20exists\x20and\x20has\x20already\
+    \x20been\x20captured,\x20nothing\x20happens.\n\n\x0e\n\x07\x04\x01\x03\0\
+    \x03\0\x01\x12\x03(\x0c\x18\n4\n\x08\x04\x01\x03\0\x03\0\x02\0\x12\x03*\
+    \x06?\x1a#\x20The\x20name\x20of\x20the\x20field\x20to\x20capture.\n\n\
+    \x10\n\t\x04\x01\x03\0\x03\0\x02\0\x05\x12\x03*\x06\x0c\n\x10\n\t\x04\
+    \x01\x03\0\x03\0\x02\0\x01\x12\x03*\r\x11\n\x10\n\t\x04\x01\x03\0\x03\0\
+    \x02\0\x03\x12\x03*\x14\x15\n\x10\n\t\x04\x01\x03\0\x03\0\x02\0\x08\x12\
+    \x03*\x16>\n\x13\n\x0c\x04\x01\x03\0\x03\0\x02\0\x08\xaf\x08\x0e\x12\x03\
+    *\x17=\nS\n\x06\x04\x01\x03\0\x03\x01\x12\x04.\x04O\x05\x1aC\x20Sets\x20\
+    the\x20value\x20of\x20a\x20field\x20with\x20a\x20specified\x20name\x20to\
+    \x20a\x20given\x20value.\n\n\x0e\n\x07\x04\x01\x03\0\x03\x01\x01\x12\x03\
+    .\x0c\x14\n\x10\n\x08\x04\x01\x03\0\x03\x01\x04\0\x12\x04/\x063\x07\n\
+    \x10\n\t\x04\x01\x03\0\x03\x01\x04\0\x01\x12\x03/\x0b\x14\n\x11\n\n\x04\
+    \x01\x03\0\x03\x01\x04\0\x02\0\x12\x030\x08\x14\n\x12\n\x0b\x04\x01\x03\
+    \0\x03\x01\x04\0\x02\0\x01\x12\x030\x08\x0f\n\x12\n\x0b\x04\x01\x03\0\
+    \x03\x01\x04\0\x02\0\x02\x12\x030\x12\x13\n\x11\n\n\x04\x01\x03\0\x03\
+    \x01\x04\0\x02\x01\x12\x031\x08\x15\n\x12\n\x0b\x04\x01\x03\0\x03\x01\
+    \x04\0\x02\x01\x01\x12\x031\x08\x10\n\x12\n\x0b\x04\x01\x03\0\x03\x01\
+    \x04\0\x02\x01\x02\x12\x031\x13\x14\n\x11\n\n\x04\x01\x03\0\x03\x01\x04\
+    \0\x02\x02\x12\x032\x08\x1a\n\x12\n\x0b\x04\x01\x03\0\x03\x01\x04\0\x02\
+    \x02\x01\x12\x032\x08\x15\n\x12\n\x0b\x04\x01\x03\0\x03\x01\x04\0\x02\
+    \x02\x02\x12\x032\x18\x19\n\x10\n\x08\x04\x01\x03\0\x03\x01\x03\0\x12\
+    \x045\x06E\x07\n\x10\n\t\x04\x01\x03\0\x03\x01\x03\0\x01\x12\x035\x0e\
+    \x1b\n\x98\x01\n\n\x04\x01\x03\0\x03\x01\x03\0\x03\0\x12\x048\x08;\t\x1a\
+    \x83\x01\x20The\x20existing\x20field.\x20The\x20field\x20can\x20be\x20ei\
+    ther\x20a\x20captured\x20or\x20a\x20matching\x20field.\x20Capture\x20fie\
+    lds\x20take\n\x20precedence\x20over\x20matching\x20fields.\n\n\x12\n\x0b\
+    \x04\x01\x03\0\x03\x01\x03\0\x03\0\x01\x12\x038\x10\x1d\n5\n\x0c\x04\x01\
+    \x03\0\x03\x01\x03\0\x03\0\x02\0\x12\x03:\nC\x1a\x20\x20The\x20name\x20o\
+    f\x20an\x20existing\x20field.\n\n\x14\n\r\x04\x01\x03\0\x03\x01\x03\0\
+    \x03\0\x02\0\x05\x12\x03:\n\x10\n\x14\n\r\x04\x01\x03\0\x03\x01\x03\0\
+    \x03\0\x02\0\x01\x12\x03:\x11\x15\n\x14\n\r\x04\x01\x03\0\x03\x01\x03\0\
+    \x03\0\x02\0\x03\x12\x03:\x18\x19\n\x14\n\r\x04\x01\x03\0\x03\x01\x03\0\
+    \x03\0\x02\0\x08\x12\x03:\x1aB\n\x17\n\x10\x04\x01\x03\0\x03\x01\x03\0\
+    \x03\0\x02\0\x08\xaf\x08\x0e\x12\x03:\x1bA\n\x12\n\n\x04\x01\x03\0\x03\
+    \x01\x03\0\x08\0\x12\x04=\x08D\t\n\x12\n\x0b\x04\x01\x03\0\x03\x01\x03\0\
+    \x08\0\x01\x12\x03=\x0e\x13\n\x12\n\x0b\x04\x01\x03\0\x03\x01\x03\0\x08\
+    \0\x02\x12\x03>\n,\n\x14\n\r\x04\x01\x03\0\x03\x01\x03\0\x08\0\x02\xaf\
+    \x08\x12\x03>\n,\n/\n\n\x04\x01\x03\0\x03\x01\x03\0\x02\0\x12\x03A\n\"\
+    \x1a\x1c\x20The\x20constant\x20string\x20value.\n\n\x12\n\x0b\x04\x01\
+    \x03\0\x03\x01\x03\0\x02\0\x05\x12\x03A\n\x10\n\x12\n\x0b\x04\x01\x03\0\
+    \x03\x01\x03\0\x02\0\x01\x12\x03A\x11\x1d\n\x12\n\x0b\x04\x01\x03\0\x03\
+    \x01\x03\0\x02\0\x03\x12\x03A\x20!\n4\n\n\x04\x01\x03\0\x03\x01\x03\0\
+    \x02\x01\x12\x03C\n+\x1a!\x20The\x20value\x20of\x20an\x20existing\x20fie\
+    ld.\n\n\x12\n\x0b\x04\x01\x03\0\x03\x01\x03\0\x02\x01\x06\x12\x03C\n\x17\
+    \n\x12\n\x0b\x04\x01\x03\0\x03\x01\x03\0\x02\x01\x01\x12\x03C\x18&\n\x12\
+    \n\x0b\x04\x01\x03\0\x03\x01\x03\0\x02\x01\x03\x12\x03C)*\n\x0f\n\x08\
+    \x04\x01\x03\0\x03\x01\x02\0\x12\x03G\x06?\n\x10\n\t\x04\x01\x03\0\x03\
+    \x01\x02\0\x05\x12\x03G\x06\x0c\n\x10\n\t\x04\x01\x03\0\x03\x01\x02\0\
+    \x01\x12\x03G\r\x11\n\x10\n\t\x04\x01\x03\0\x03\x01\x02\0\x03\x12\x03G\
+    \x14\x15\n\x10\n\t\x04\x01\x03\0\x03\x01\x02\0\x08\x12\x03G\x16>\n\x13\n\
+    \x0c\x04\x01\x03\0\x03\x01\x02\0\x08\xaf\x08\x0e\x12\x03G\x17=\n1\n\x08\
+    \x04\x01\x03\0\x03\x01\x02\x01\x12\x03I\x06I\x1a\x20\x20The\x20value\x20\
+    to\x20set\x20the\x20field\x20to.\n\n\x10\n\t\x04\x01\x03\0\x03\x01\x02\
+    \x01\x06\x12\x03I\x06\x13\n\x10\n\t\x04\x01\x03\0\x03\x01\x02\x01\x01\
+    \x12\x03I\x14\x19\n\x10\n\t\x04\x01\x03\0\x03\x01\x02\x01\x03\x12\x03I\
+    \x1c\x1d\n\x10\n\t\x04\x01\x03\0\x03\x01\x02\x01\x08\x12\x03I\x1eH\n\x14\
+    \n\r\x04\x01\x03\0\x03\x01\x02\x01\x08\xaf\x08\x11\x02\x12\x03I\x1fG\n0\
+    \n\x08\x04\x01\x03\0\x03\x01\x02\x02\x12\x03K\x06N\x1a\x1f\x20The\x20typ\
+    e\x20of\x20the\x20field\x20to\x20set.\n\n\x10\n\t\x04\x01\x03\0\x03\x01\
+    \x02\x02\x06\x12\x03K\x06\x0f\n\x10\n\t\x04\x01\x03\0\x03\x01\x02\x02\
+    \x01\x12\x03K\x10\x1a\n\x10\n\t\x04\x01\x03\0\x03\x01\x02\x02\x03\x12\
+    \x03K\x1d\x1e\n\x10\n\t\x04\x01\x03\0\x03\x01\x02\x02\x08\x12\x03K\x1fM\
+    \n\x13\n\x0c\x04\x01\x03\0\x03\x01\x02\x02\x08\xaf\x08\x10\x12\x03K\x20L\
+    \n\x8f\x01\n\x08\x04\x01\x03\0\x03\x01\x02\x03\x12\x03N\x06\x1e\x1a~\x20\
+    Whether\x20a\x20transform\x20is\x20allowed\x20to\x20override\x20an\x20ex\
+    isting\x20field.\x20If\x20no\x20and\x20the\x20field\x20already\x20exists\
+    ,\n\x20the\x20transform\x20is\x20a\x20no-op.\n\n\x10\n\t\x04\x01\x03\0\
+    \x03\x01\x02\x03\x05\x12\x03N\x06\n\n\x10\n\t\x04\x01\x03\0\x03\x01\x02\
+    \x03\x01\x12\x03N\x0b\x19\n\x10\n\t\x04\x01\x03\0\x03\x01\x02\x03\x03\
+    \x12\x03N\x1c\x1d\n\x99\x01\n\x06\x04\x01\x03\0\x03\x02\x12\x04S\x04V\
+    \x05\x1a\x88\x01\x20Removes\x20a\x20field\x20with\x20the\x20specified\
+    \x20name\x20from\x20the\x20list\x20of\x20captured\x20or\x20matching\x20f\
+    ields.\n\x20If\x20the\x20field\x20doesn't\x20exist,\x20no\x20action\x20i\
+    s\x20taken.\n\n\x0e\n\x07\x04\x01\x03\0\x03\x02\x01\x12\x03S\x0c\x17\n3\
+    \n\x08\x04\x01\x03\0\x03\x02\x02\0\x12\x03U\x06?\x1a\"\x20The\x20name\
+    \x20of\x20the\x20field\x20to\x20remove.\n\n\x10\n\t\x04\x01\x03\0\x03\
+    \x02\x02\0\x05\x12\x03U\x06\x0c\n\x10\n\t\x04\x01\x03\0\x03\x02\x02\0\
+    \x01\x12\x03U\r\x11\n\x10\n\t\x04\x01\x03\0\x03\x02\x02\0\x03\x12\x03U\
+    \x14\x15\n\x10\n\t\x04\x01\x03\0\x03\x02\x02\0\x08\x12\x03U\x16>\n\x13\n\
+    \x0c\x04\x01\x03\0\x03\x02\x02\0\x08\xaf\x08\x0e\x12\x03U\x17=\n\x94\x01\
+    \n\x06\x04\x01\x03\0\x03\x03\x12\x04Z\x04w\x05\x1a\x83\x01\x20Matches\
+    \x20the\x20processed\x20field\x20and\x20specifies\x20how\x20to\x20genera\
+    te\x20a\x20new\x20string\x20using\x20a\x20given\x20regular\n\x20expressi\
+    on\x20and\x20substitution\x20string.\n\n\x0e\n\x07\x04\x01\x03\0\x03\x03\
+    \x01\x12\x03Z\x0c(\n\x10\n\x08\x04\x01\x03\0\x03\x03\x03\0\x12\x04[\x06`\
+    \x07\n\x10\n\t\x04\x01\x03\0\x03\x03\x03\0\x01\x12\x03[\x0e\x19\n\xd1\
+    \x01\n\n\x04\x01\x03\0\x03\x03\x03\0\x02\0\x12\x03_\x08+\x1a\xbd\x01\x20\
+    The\x20list\x20of\x20field\x20names\x20that\x20should\x20be\x20ignored\
+    \x20when\x20applying\x20the\x20scrubbing\x20transform.\x20If\n\x20a\x20f\
+    ield\x20is\x20in\x20this\x20list,\x20it\x20won't\x20be\x20scrubbed\x20ev\
+    en\x20if\x20it\x20matches\x20the\x20regular\x20expression\n\x20pattern.\
+    \n\n\x12\n\x0b\x04\x01\x03\0\x03\x03\x03\0\x02\0\x04\x12\x03_\x08\x10\n\
+    \x12\n\x0b\x04\x01\x03\0\x03\x03\x03\0\x02\0\x05\x12\x03_\x11\x17\n\x12\
+    \n\x0b\x04\x01\x03\0\x03\x03\x03\0\x02\0\x01\x12\x03_\x18&\n\x12\n\x0b\
+    \x04\x01\x03\0\x03\x03\x03\0\x02\0\x03\x12\x03_)*\n\x10\n\x08\x04\x01\
+    \x03\0\x03\x03\x08\0\x12\x04b\x06l\x07\n\x10\n\t\x04\x01\x03\0\x03\x03\
+    \x08\0\x01\x12\x03b\x0c\x1c\n_\n\x08\x04\x01\x03\0\x03\x03\x02\0\x12\x03\
+    d\x08\x18\x1aN\x20The\x20name\x20of\x20the\x20field\x20to\x20scrub.\x20I\
+    f\x20the\x20field\x20doesn't\x20exist,\x20nothing\x20happens.\n\n\x10\n\
+    \t\x04\x01\x03\0\x03\x03\x02\0\x05\x12\x03d\x08\x0e\n\x10\n\t\x04\x01\
+    \x03\0\x03\x03\x02\0\x01\x12\x03d\x0f\x13\n\x10\n\t\x04\x01\x03\0\x03\
+    \x03\x02\0\x03\x12\x03d\x16\x17\n<\n\x08\x04\x01\x03\0\x03\x03\x02\x01\
+    \x12\x03g\x08\x1e\x1a+\x20The\x20message\x20body\x20is\x20the\x20scrubbi\
+    ng\x20target.\n\n\x10\n\t\x04\x01\x03\0\x03\x03\x02\x01\x05\x12\x03g\x08\
+    \x0c\n\x10\n\t\x04\x01\x03\0\x03\x03\x02\x01\x01\x12\x03g\r\x19\n\x10\n\
+    \t\x04\x01\x03\0\x03\x03\x02\x01\x03\x12\x03g\x1c\x1d\n\xa0\x01\n\x08\
+    \x04\x01\x03\0\x03\x03\x02\x02\x12\x03k\x08%\x1a\x8e\x01\x20The\x20globa\
+    l\x20scrub\x20transform\x20applies\x20to\x20all\x20fields\x20of\x20a\x20\
+    log\x20AND\x20the\x20message\x20body,\x20except\n\x20for\x20the\x20ones\
+    \x20specified\x20in\x20the\x20`ignored_fields`\x20list.\n\n\x10\n\t\x04\
+    \x01\x03\0\x03\x03\x02\x02\x06\x12\x03k\x08\x13\n\x10\n\t\x04\x01\x03\0\
+    \x03\x03\x02\x02\x01\x12\x03k\x14\x20\n\x10\n\t\x04\x01\x03\0\x03\x03\
+    \x02\x02\x03\x12\x03k#$\n\x8c\x02\n\x08\x04\x01\x03\0\x03\x03\x02\x03\
+    \x12\x03q\x06B\x1a\xfa\x01\x20The\x20regular\x20expression\x20used\x20to\
+    \x20find\x20portions\x20of\x20a\x20string\x20that\x20should\x20be\x20rep\
+    laced.\n\x20It\x20follows\x20Rust's\x20regular\x20expression\x20syntax.\
+    \x20Capture\x20groups\x20can\x20be\x20used\x20to\x20extract\x20portions\
+    \n\x20of\x20the\x20input\x20string\x20and\x20reference\x20them\x20later\
+    \x20in\x20a\x20`substitution`\x20string.\n\n\x10\n\t\x04\x01\x03\0\x03\
+    \x03\x02\x03\x05\x12\x03q\x06\x0c\n\x10\n\t\x04\x01\x03\0\x03\x03\x02\
+    \x03\x01\x12\x03q\r\x14\n\x10\n\t\x04\x01\x03\0\x03\x03\x02\x03\x03\x12\
+    \x03q\x17\x18\n\x10\n\t\x04\x01\x03\0\x03\x03\x02\x03\x08\x12\x03q\x19A\
+    \n\x13\n\x0c\x04\x01\x03\0\x03\x03\x02\x03\x08\xaf\x08\x0e\x12\x03q\x1a@\
+    \n\xae\x02\n\x08\x04\x01\x03\0\x03\x03\x02\x04\x12\x03v\x06G\x1a\x9c\x02\
+    \x20The\x20string\x20that\x20will\x20replace\x20the\x20matching\x20porti\
+    ons\x20of\x20the\x20subject\x20string.\n\x20Capture\x20groups\x20from\
+    \x20the\x20`pattern`\x20regular\x20expression\x20can\x20be\x20referenced\
+    \x20in\x20this\x20string\x20using\x20Rust's\n\x20regex\x20syntax.\x20For\
+    \x20example,\x20`${1}`\x20refers\x20to\x20the\x20first\x20capture\x20gro\
+    up\x20from\x20the\x20`pattern`\x20regular\n\x20expression.\n\n\x10\n\t\
+    \x04\x01\x03\0\x03\x03\x02\x04\x05\x12\x03v\x06\x0c\n\x10\n\t\x04\x01\
+    \x03\0\x03\x03\x02\x04\x01\x12\x03v\r\x19\n\x10\n\t\x04\x01\x03\0\x03\
+    \x03\x02\x04\x03\x12\x03v\x1c\x1d\n\x10\n\t\x04\x01\x03\0\x03\x03\x02\
+    \x04\x08\x12\x03v\x1eF\n\x13\n\x0c\x04\x01\x03\0\x03\x03\x02\x04\x08\xaf\
+    \x08\x0e\x12\x03v\x1fE\nq\n\x04\x04\x01\x02\x01\x12\x03|\x02Q\x1ad\x20Th\
+    e\x20list\x20of\x20transforms\x20to\x20apply\x20to\x20a\x20selected\x20l\
+    og.\n\x20Transforms\x20are\x20applied\x20in\x20the\x20specified\x20order\
+    .\n\n\x0c\n\x05\x04\x01\x02\x01\x04\x12\x03|\x02\n\n\x0c\n\x05\x04\x01\
+    \x02\x01\x06\x12\x03|\x0b\x14\n\x0c\n\x05\x04\x01\x02\x01\x01\x12\x03|\
+    \x15\x1f\n\x0c\n\x05\x04\x01\x02\x01\x03\x12\x03|\"#\n\x0c\n\x05\x04\x01\
+    \x02\x01\x08\x12\x03|$P\n\x0f\n\x08\x04\x01\x02\x01\x08\xaf\x08\x12\x12\
+    \x03|%Ob\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -2021,7 +2367,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             let mut deps = ::std::vec::Vec::with_capacity(2);
             deps.push(super::log_matcher::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(9);
+            let mut messages = ::std::vec::Vec::with_capacity(10);
             messages.push(FiltersConfiguration::generated_message_descriptor_data());
             messages.push(Filter::generated_message_descriptor_data());
             messages.push(filter::Transform::generated_message_descriptor_data());
@@ -2031,6 +2377,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(filter::transform::RegexMatchAndSubstituteField::generated_message_descriptor_data());
             messages.push(filter::transform::set_field::SetFieldValue::generated_message_descriptor_data());
             messages.push(filter::transform::set_field::set_field_value::ExistingField::generated_message_descriptor_data());
+            messages.push(filter::transform::regex_match_and_substitute_field::GlobalScrub::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(1);
             enums.push(filter::transform::set_field::FieldType::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
