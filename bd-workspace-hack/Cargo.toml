@@ -79,7 +79,6 @@ getrandom-6f8ce4dd05d13bba = { package = "getrandom", version = "0.2", default-f
 hyper = { version = "1", features = ["client", "http1", "http2", "server"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "http2", "server", "service"] }
 idna = { version = "1" }
-itertools = { version = "0.13" }
 lalrpop-util = { version = "0.22" }
 libc = { version = "0.2" }
 log = { version = "0.4", default-features = false, features = ["std"] }
