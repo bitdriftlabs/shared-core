@@ -33,9 +33,11 @@ use bd_log_primitives::{
 use bd_proto::protos::filter::filter::filter::{self};
 use bd_proto::protos::filter::filter::{Filter as FilterProto, FiltersConfiguration};
 use filter::transform::Transform_type;
+use filter::transform::regex_match_and_substitute_field::Scrubbing_target;
 use itertools::Itertools;
 use regex::Regex;
 use std::borrow::Cow;
+use std::collections::HashSet;
 
 #[cfg(test)]
 #[ctor::ctor(unsafe)]
@@ -338,46 +340,125 @@ impl RemoveField {
 //
 
 struct RegexMatchAndSubstitute {
-  field_name: String,
+  target: RegexMatchAndSubstituteTarget,
   pattern: Regex,
   substitution: String,
 }
 
+enum RegexMatchAndSubstituteTarget {
+  Field(LogFieldKey),
+  MessageBody,
+  GlobalScrub {
+    ignored_fields: HashSet<LogFieldKey>,
+  },
+}
+
 impl RegexMatchAndSubstitute {
   fn new(config: filter::transform::RegexMatchAndSubstituteField) -> Result<Self> {
+    let target = match config.scrubbing_target {
+      Some(Scrubbing_target::Name(name)) => RegexMatchAndSubstituteTarget::Field(name.into()),
+      Some(Scrubbing_target::MessageBody(true)) => RegexMatchAndSubstituteTarget::MessageBody,
+      Some(Scrubbing_target::MessageBody(false)) => {
+        anyhow::bail!("message_body scrubbing target must be true")
+      },
+      Some(Scrubbing_target::GlobalScrub(global_scrub)) => {
+        RegexMatchAndSubstituteTarget::GlobalScrub {
+          ignored_fields: global_scrub
+            .ignored_fields
+            .into_iter()
+            .map(Into::into)
+            .collect(),
+        }
+      },
+      None => anyhow::bail!("no scrubbing_target set"),
+    };
+
+    log::debug!(
+      "creating RegexMatchAndSubstitute transform for target '{:?}', pattern '{}', substitution \
+       '{}'",
+      target,
+      config.pattern,
+      config.substitution
+    );
     Ok(Self {
-      field_name: config.name,
+      target,
       pattern: Regex::new(&config.pattern)?,
       substitution: config.substitution,
     })
   }
 
   fn apply(&self, log: &mut Log) {
-    let apply_to_all_fields = self.field_name.is_empty();
-    let apply_to_field = |key: &LogFieldKey, value: &mut LogFieldValue| {
-      if !apply_to_all_fields && *key != self.field_name {
-        return;
+    match &self.target {
+      RegexMatchAndSubstituteTarget::Field(field_name) => {
+        self.apply_to_field(&mut log.fields, field_name);
+        self.apply_to_field(&mut log.matching_fields, field_name);
+      },
+      RegexMatchAndSubstituteTarget::MessageBody => {
+        if let Some(message) = log.message.as_str()
+          && let Cow::Owned(new_message) = self.produce_new_value(message)
+        {
+          log.message = new_message.into();
+        }
+      },
+      RegexMatchAndSubstituteTarget::GlobalScrub { ignored_fields } => {
+        self.apply_to_field_set(&mut log.fields, |key| !ignored_fields.contains(key));
+        self.apply_to_field_set(&mut log.matching_fields, |key| {
+          !ignored_fields.contains(key)
+        });
+        if let Some(message) = log.message.as_str()
+          && let Cow::Owned(new_message) = self.produce_new_value(message)
+        {
+          log.message = new_message.into();
+        }
+      },
+    }
+  }
+
+  fn apply_to_field_set(
+    &self,
+    fields: &mut LogFields,
+    should_scrub: impl Fn(&LogFieldKey) -> bool,
+  ) {
+    for (key, value) in fields {
+      if !should_scrub(key) {
+        continue;
       }
 
-      if let Some(field_string_value) = value.as_str() {
-        *value = self
-          .produce_new_value(field_string_value)
-          .to_string()
-          .into();
+      if let Some(field_string_value) = value.as_str()
+        && let Cow::Owned(new_value) = self.produce_new_value(field_string_value)
+      {
+        *value = new_value.into();
       }
+    }
+  }
+
+  fn apply_to_field(&self, fields: &mut LogFields, field_name: &LogFieldKey) {
+    let Some(value) = fields.get_mut(field_name) else {
+      return;
     };
 
-    for (key, value) in &mut log.fields {
-      apply_to_field(key, value);
-    }
-
-    for (key, value) in &mut log.matching_fields {
-      apply_to_field(key, value);
+    if let Some(field_string_value) = value.as_str()
+      && let Cow::Owned(new_value) = self.produce_new_value(field_string_value)
+    {
+      *value = new_value.into();
     }
   }
 
   fn produce_new_value<'a>(&self, input: &'a str) -> Cow<'a, str> {
     self.pattern.replace_all(input, &self.substitution)
+  }
+}
+
+impl std::fmt::Debug for RegexMatchAndSubstituteTarget {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match self {
+      Self::Field(field_name) => f.debug_tuple("Field").field(field_name).finish(),
+      Self::MessageBody => f.write_str("MessageBody"),
+      Self::GlobalScrub { ignored_fields } => f
+        .debug_struct("GlobalScrub")
+        .field("ignored_fields", ignored_fields)
+        .finish(),
+    }
   }
 }
 

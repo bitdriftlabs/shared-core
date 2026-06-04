@@ -7,10 +7,14 @@
 
 use crate::FilterChain;
 use bd_log_matcher::builder::{message_equals, message_regex_matches};
-use bd_log_primitives::{Log, LogFields, log_level};
+use bd_log_primitives::{DataValue, Log, LogFields, log_level};
 use bd_proto::protos::filter::filter::{Filter, FiltersConfiguration};
 use bd_proto::protos::logging::payload::LogType;
-use bd_test_helpers::filter::macros::regex_match_and_substitute_field;
+use bd_test_helpers::filter::macros::{
+  regex_match_and_substitute_field,
+  regex_match_and_substitute_global,
+  regex_match_and_substitute_message,
+};
 use bd_test_helpers::{capture_field, field_value, remove_field, set_field};
 use pretty_assertions::assert_eq;
 use time::macros::datetime;
@@ -316,11 +320,42 @@ fn regex_match_and_substitute_updates_named_field_in_all_field_sets() {
 }
 
 #[test]
-fn regex_match_and_substitute_with_empty_field_name_applies_to_all_fields() {
+fn regex_match_and_substitute_named_field_reuses_storage_when_no_match() {
   let filter_chain: FilterChain = make_filter_chain(
     message_equals("matching"),
     vec![regex_match_and_substitute_field!(
-      "",
+      "foo",
+      "uuid-[0-9]+",
+      "<id>"
+    )],
+  );
+
+  let original = String::from("plain-text");
+  let original_ptr = original.as_ptr();
+  let mut log = make_log(
+    "matching",
+    [("foo".into(), DataValue::String(original))].into(),
+    [].into(),
+  );
+
+  filter_chain.process(&mut log, &state_reader());
+
+  let value = log.fields.get("foo").and_then(|value| match value {
+    DataValue::String(value) => Some(value),
+    _ => None,
+  });
+  assert_eq!(value.map(String::as_str), Some("plain-text"));
+  assert_eq!(
+    value.map(|value| value.as_str().as_ptr()),
+    Some(original_ptr)
+  );
+}
+
+#[test]
+fn regex_match_and_substitute_with_empty_field_name_applies_to_all_fields() {
+  let filter_chain: FilterChain = make_filter_chain(
+    message_equals("matching"),
+    vec![regex_match_and_substitute_global!(
       "[0-9a-f]{8}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{12}",
       "<id>"
     )],
@@ -355,6 +390,102 @@ fn regex_match_and_substitute_with_empty_field_name_applies_to_all_fields() {
   assert_eq!(
     LogFields::from([("bar".into(), "<id>/suffix".into(),)]),
     log.matching_fields
+  );
+}
+
+#[test]
+fn regex_match_and_substitute_global_respects_ignored_fields_and_message_body() {
+  let filter_chain: FilterChain = make_filter_chain(
+    message_equals("message 885fa9b2-97f1-435b-8fe3-a461d3235924"),
+    vec![regex_match_and_substitute_global!(
+      "[0-9a-f]{8}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{12}",
+      "<id>",
+      ignore = ["untouched"]
+    )],
+  );
+
+  let mut log = make_log(
+    "message 885fa9b2-97f1-435b-8fe3-a461d3235924",
+    [
+      (
+        "foo".into(),
+        "captured-885fa9b2-97f1-435b-8fe3-a461d3235924".into(),
+      ),
+      (
+        "untouched".into(),
+        "keep-885fa9b2-97f1-435b-8fe3-a461d3235924".into(),
+      ),
+    ]
+    .into(),
+    [(
+      "bar".into(),
+      "matching-885fa9b2-97f1-435b-8fe3-a461d3235924".into(),
+    )]
+    .into(),
+  );
+
+  filter_chain.process(&mut log, &state_reader());
+
+  assert_eq!(log.message, "message <id>".into());
+  assert_eq!(
+    log.fields,
+    [
+      ("foo".into(), "captured-<id>".into()),
+      (
+        "untouched".into(),
+        "keep-885fa9b2-97f1-435b-8fe3-a461d3235924".into(),
+      ),
+    ]
+    .into()
+  );
+  assert_eq!(
+    log.matching_fields,
+    [("bar".into(), "matching-<id>".into())].into()
+  );
+}
+
+#[test]
+fn regex_match_and_substitute_message_body_only_updates_message() {
+  let filter_chain: FilterChain = make_filter_chain(
+    message_equals("message 885fa9b2-97f1-435b-8fe3-a461d3235924"),
+    vec![regex_match_and_substitute_message!(
+      "[0-9a-f]{8}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{4}(?:-|_)?[0-9a-f]{12}",
+      "<id>"
+    )],
+  );
+
+  let mut log = make_log(
+    "message 885fa9b2-97f1-435b-8fe3-a461d3235924",
+    [(
+      "foo".into(),
+      "field-885fa9b2-97f1-435b-8fe3-a461d3235924".into(),
+    )]
+    .into(),
+    [(
+      "bar".into(),
+      "field-885fa9b2-97f1-435b-8fe3-a461d3235924".into(),
+    )]
+    .into(),
+  );
+
+  filter_chain.process(&mut log, &state_reader());
+
+  assert_eq!(log.message, "message <id>".into());
+  assert_eq!(
+    log.fields,
+    [(
+      "foo".into(),
+      "field-885fa9b2-97f1-435b-8fe3-a461d3235924".into()
+    )]
+    .into()
+  );
+  assert_eq!(
+    log.matching_fields,
+    [(
+      "bar".into(),
+      "field-885fa9b2-97f1-435b-8fe3-a461d3235924".into()
+    )]
+    .into()
   );
 }
 

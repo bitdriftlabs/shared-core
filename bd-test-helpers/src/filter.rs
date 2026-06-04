@@ -79,9 +79,32 @@ pub mod macros {
     };
   }
 
+  #[macro_export]
+  macro_rules! regex_match_and_substitute_message {
+    ($regex:expr, $replacement:expr) => {
+      $crate::filter::make_transform($crate::filter::make_regex_match_and_substitute_message(
+        $regex,
+        $replacement,
+      ))
+    };
+  }
+
+  #[macro_export]
+  macro_rules! regex_match_and_substitute_global {
+    ($regex:expr, $replacement:expr $(, ignore = [$($ignored_field:expr),* $(,)?])?) => {
+      $crate::filter::make_transform($crate::filter::make_regex_match_and_substitute_global(
+        $regex,
+        $replacement,
+        vec![$($($ignored_field),*)?],
+      ))
+    };
+  }
+
   pub use capture_field;
   pub use field_value;
   pub use regex_match_and_substitute_field;
+  pub use regex_match_and_substitute_global;
+  pub use regex_match_and_substitute_message;
   pub use remove_field;
   pub use set_field;
 }
@@ -152,13 +175,61 @@ pub fn make_regex_match_and_substitute_field(
   substitution: &str,
 ) -> filter::transform::Transform_type {
   filter::transform::Transform_type::RegexMatchAndSubstituteField(
-    filter::transform::RegexMatchAndSubstituteField {
-      name: field_name.to_string(),
-      pattern: pattern.to_string(),
-      substitution: substitution.to_string(),
-      ..Default::default()
-    },
+    make_regex_match_and_substitute_config(
+      filter::transform::regex_match_and_substitute_field::Scrubbing_target::Name(
+        field_name.to_string(),
+      ),
+      pattern,
+      substitution,
+    ),
   )
+}
+
+#[must_use]
+pub fn make_regex_match_and_substitute_message(
+  pattern: &str,
+  substitution: &str,
+) -> filter::transform::Transform_type {
+  filter::transform::Transform_type::RegexMatchAndSubstituteField(
+    make_regex_match_and_substitute_config(
+      filter::transform::regex_match_and_substitute_field::Scrubbing_target::MessageBody(true),
+      pattern,
+      substitution,
+    ),
+  )
+}
+
+#[must_use]
+pub fn make_regex_match_and_substitute_global(
+  pattern: &str,
+  substitution: &str,
+  ignored_fields: Vec<&str>,
+) -> filter::transform::Transform_type {
+  filter::transform::Transform_type::RegexMatchAndSubstituteField(
+    make_regex_match_and_substitute_config(
+      filter::transform::regex_match_and_substitute_field::Scrubbing_target::GlobalScrub(
+        filter::transform::regex_match_and_substitute_field::GlobalScrub {
+          ignored_fields: ignored_fields.into_iter().map(str::to_string).collect(),
+          ..Default::default()
+        },
+      ),
+      pattern,
+      substitution,
+    ),
+  )
+}
+
+fn make_regex_match_and_substitute_config(
+  scrubbing_target: filter::transform::regex_match_and_substitute_field::Scrubbing_target,
+  pattern: &str,
+  substitution: &str,
+) -> filter::transform::RegexMatchAndSubstituteField {
+  filter::transform::RegexMatchAndSubstituteField {
+    scrubbing_target: Some(scrubbing_target),
+    pattern: pattern.to_string(),
+    substitution: substitution.to_string(),
+    ..Default::default()
+  }
 }
 
 #[must_use]
