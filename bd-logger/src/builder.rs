@@ -568,6 +568,7 @@ impl LoggerBuilder {
         &scope.scope("api"),
         sleep_mode_active_rx,
         self.params.store.clone(),
+        state_store.clone(),
         self.params.session_strategy.clone(),
         opaque_entity_updates_rx,
         sdk_status_tracker,

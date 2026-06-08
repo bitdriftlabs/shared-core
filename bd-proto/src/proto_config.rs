@@ -75,7 +75,7 @@ pub fn get_proto_configs() -> Vec<ProtoConfig> {
     ProtoConfig {
       output_dir: "src/protos/state",
       inputs: &[
-        "../api/src/bitdrift_public/protobuf/state/v1/payload.proto",
+        "../api/src/bitdrift_public/protobuf/state/v1/state_payload.proto",
         "../api/src/bitdrift_public/protobuf/state/v1/scope.proto",
         "../api/src/bitdrift_public/protobuf/state/v1/matcher.proto",
       ],

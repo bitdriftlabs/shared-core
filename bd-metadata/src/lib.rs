@@ -35,8 +35,9 @@ use std::collections::HashMap;
 //             extractions.
 // Version 39: Added support for start tracing action and sampled log matcher.
 // Version 40: Added multi-extract support on metrics.
-// Version 41: Added support for state updates.
-const CONFIGURATION_VERSION: &str = "41";
+// Version 41: Added support for client driven state updates.
+// Version 42: Added support for server driven state updates.
+const CONFIGURATION_VERSION: &str = "42";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]

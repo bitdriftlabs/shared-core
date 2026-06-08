@@ -40,6 +40,7 @@ use bd_log_primitives::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use bd_metadata::Metadata;
 use bd_network_quality::{NetworkQuality, NetworkQualityMonitor};
 use bd_proto::protos::client::api::api_response::Response_type;
+use bd_proto::protos::client::api::client_state_update::Update_type as ClientStateUpdateType;
 pub use bd_proto::protos::client::api::log_upload_intent_response::{
   Decision as LogsUploadDecision,
   Drop as LogsUploadDecisionDrop,
@@ -59,6 +60,7 @@ use bd_proto::protos::client::api::{
   ApiRequest,
   ApiResponse,
   ClientKillFile,
+  ClientStateUpdate,
   HandshakeRequest,
   PingRequest,
   StateUpdateRequest,
@@ -66,6 +68,7 @@ use bd_proto::protos::client::api::{
 };
 use bd_proto::protos::logging::payload::Data as ProtoData;
 use bd_proto::protos::logging::payload::data::Data_type;
+use bd_proto::protos::state::scope::StateScope;
 use bd_runtime::runtime::DurationWatch;
 use bd_stats_common::Counter as _;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, TimestampExt};
@@ -109,6 +112,7 @@ enum HandshakeResult {
   Received {
     stream_settings: Option<handshake_response::StreamSettings>,
     configuration_update_status: u32,
+    client_state_updates: Vec<ClientStateUpdate>,
     remaining_responses: Vec<ApiResponse>,
   },
 
@@ -352,6 +356,7 @@ pub struct Api {
   data_upload_rx: Receiver<DataUpload>,
   trigger_upload_tx: Sender<TriggerUpload>,
   sleep_mode_active: watch::Receiver<bool>,
+  state_store: bd_state::Store,
   session_strategy: Arc<bd_session::Strategy>,
   session_updates: watch::Receiver<u64>,
   opaque_entity_updates: watch::Receiver<Option<String>>,
@@ -418,6 +423,7 @@ impl Api {
     stats: &Scope,
     sleep_mode_active: watch::Receiver<bool>,
     store: Arc<bd_key_value::Store>,
+    state_store: bd_state::Store,
     session_strategy: Arc<bd_session::Strategy>,
     opaque_entity_updates: watch::Receiver<Option<String>>,
     sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
@@ -441,6 +447,7 @@ impl Api {
       static_metadata,
       data_upload_rx,
       trigger_upload_tx,
+      state_store,
       session_strategy,
       session_updates,
       opaque_entity_updates,
@@ -531,6 +538,58 @@ impl Api {
     }
 
     Some(request)
+  }
+
+  fn map_state_scope(scope: protobuf::EnumOrUnknown<StateScope>) -> Option<bd_state::Scope> {
+    match scope.enum_value().ok()? {
+      StateScope::FEATURE_FLAG => Some(bd_state::Scope::FeatureFlagExposure),
+      StateScope::GLOBAL_STATE => Some(bd_state::Scope::GlobalState),
+      StateScope::SYSTEM => Some(bd_state::Scope::System),
+      StateScope::UNSPECIFIED => None,
+    }
+  }
+
+  // TODO: If server-pushed client state needs to trigger workflow StateChange events immediately,
+  // bridge these updates into the logger's async state-update path instead of only persisting
+  // them into the shared store here.
+  async fn apply_client_state_updates(&self, updates: &[ClientStateUpdate]) {
+    for update in updates {
+      match update.update_type.as_ref() {
+        Some(ClientStateUpdateType::ClearClientState(clear)) => {
+          let Some(scope) = Self::map_state_scope(clear.scope) else {
+            log::debug!("ignoring client state clear with invalid scope: {clear:?}");
+            continue;
+          };
+
+          if let Err(e) = self.state_store.remove(scope, &clear.state_key).await {
+            log::debug!("failed to clear server-pushed client state: {e}");
+          }
+        },
+        Some(ClientStateUpdateType::SetClientState(set)) => {
+          let Some(scope) = Self::map_state_scope(set.scope) else {
+            log::debug!("ignoring client state set with invalid scope: {set:?}");
+            continue;
+          };
+          let Some(state_value) = set.state_value.as_ref() else {
+            log::debug!("ignoring client state set without a value: {set:?}");
+            continue;
+          };
+          if state_value.value_type.is_none() {
+            log::debug!("ignoring client state set with an empty value: {set:?}");
+            continue;
+          }
+
+          if let Err(e) = self
+            .state_store
+            .insert(scope, set.state_key.clone(), state_value.clone())
+            .await
+          {
+            log::debug!("failed to persist server-pushed client state: {e}");
+          }
+        },
+        None => log::debug!("ignoring client state update without an update type"),
+      }
+    }
   }
 
   fn hash_api_key(&self) -> Vec<u8> {
@@ -815,12 +874,14 @@ impl Api {
       HandshakeResult::Received {
         stream_settings,
         configuration_update_status,
+        client_state_updates,
         remaining_responses,
       } => {
         self
           .session_strategy
           .acknowledge_state_update(&handshake_state_update)
           .await;
+        self.apply_client_state_updates(&client_state_updates).await;
         stream_state.initialize_stream_settings(stream_settings);
 
         let mut in_flight_state_update = None;
@@ -1149,9 +1210,12 @@ impl Api {
           )?;
         },
         Some(Response_type::ConfigurationUpdate(update)) => {
-          if let Some(request) = self.config_updater.try_apply_config(update).await {
-            stream_state.send_request(request).await?;
-          }
+          let mut update = update;
+          let client_state_updates = std::mem::take(&mut update.client_state_updates);
+
+          let request = self.config_updater.try_apply_config(update).await;
+          self.apply_client_state_updates(&client_state_updates).await;
+          stream_state.send_request(request).await?;
         },
         Some(Response_type::RuntimeUpdate(update)) => {
           if let Some(request) = self.runtime_loader.try_apply_config(update).await {
@@ -1251,6 +1315,7 @@ impl Api {
               return Ok(HandshakeResult::Received {
                 stream_settings: h.stream_settings.take(),
                 configuration_update_status: h.configuration_update_status,
+                client_state_updates: std::mem::take(&mut h.client_state_updates),
                 remaining_responses: responses.collect(),
               });
             },

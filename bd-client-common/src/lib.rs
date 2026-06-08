@@ -89,10 +89,7 @@ pub trait ClientConfigurationUpdate: Send + Sync {
   /// Unconditionally mark any cached config as "safe" to use.
   async fn mark_safe(&self);
 
-  async fn try_apply_config(
-    &self,
-    configuration_update: api::ConfigurationUpdate,
-  ) -> Option<ApiRequest>;
+  async fn try_apply_config(&self, configuration_update: api::ConfigurationUpdate) -> ApiRequest;
 
   async fn clear_cached_config(&self);
 }
