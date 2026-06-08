@@ -397,6 +397,8 @@ pub struct HydrateSessionResponse {
     pub success: bool,
     // @@protoc_insertion_point(field:bitdrift.public.unary.timeline.v1.HydrateSessionResponse.last_hydration_state)
     pub last_hydration_state: ::protobuf::MessageField<HydrationState>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.timeline.v1.HydrateSessionResponse.session_not_found_info)
+    pub session_not_found_info: ::protobuf::MessageField<super::common::SessionStatusInfo>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift.public.unary.timeline.v1.HydrateSessionResponse.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -414,7 +416,7 @@ impl HydrateSessionResponse {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut fields = ::std::vec::Vec::with_capacity(4);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "ignored",
@@ -430,6 +432,11 @@ impl HydrateSessionResponse {
             "last_hydration_state",
             |m: &HydrateSessionResponse| { &m.last_hydration_state },
             |m: &mut HydrateSessionResponse| { &mut m.last_hydration_state },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::common::SessionStatusInfo>(
+            "session_not_found_info",
+            |m: &HydrateSessionResponse| { &m.session_not_found_info },
+            |m: &mut HydrateSessionResponse| { &mut m.session_not_found_info },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<HydrateSessionResponse>(
             "HydrateSessionResponse",
@@ -458,6 +465,9 @@ impl ::protobuf::Message for HydrateSessionResponse {
                 26 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.last_hydration_state)?;
                 },
+                34 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.session_not_found_info)?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -480,6 +490,10 @@ impl ::protobuf::Message for HydrateSessionResponse {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
+        if let Some(v) = self.session_not_found_info.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -494,6 +508,9 @@ impl ::protobuf::Message for HydrateSessionResponse {
         }
         if let Some(v) = self.last_hydration_state.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        if let Some(v) = self.session_not_found_info.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -515,6 +532,7 @@ impl ::protobuf::Message for HydrateSessionResponse {
         self.ignored = false;
         self.success = false;
         self.last_hydration_state.clear();
+        self.session_not_found_info.clear();
         self.special_fields.clear();
     }
 
@@ -523,6 +541,7 @@ impl ::protobuf::Message for HydrateSessionResponse {
             ignored: false,
             success: false,
             last_hydration_state: ::protobuf::MessageField::none(),
+            session_not_found_info: ::protobuf::MessageField::none(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -865,27 +884,30 @@ impl HydrationStatus {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n1bitdrift/public/unary/timeline/v1/hydration.proto\x12!bitdrift.public\
-    .unary.timeline.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17validat\
-    e/validate.proto\"\x89\x03\n\x0eHydrationState\x129\n\ncreated_at\x18\
-    \x01\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tcreatedAt\x12C\n\x0fe\
-    xpiration_time\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x0ee\
-    xpirationTime\x129\n\nstarted_at\x18\x03\x20\x01(\x0b2\x1a.google.protob\
-    uf.TimestampR\tstartedAt\x12;\n\x0bfinished_at\x18\x04\x20\x01(\x0b2\x1a\
-    .google.protobuf.TimestampR\nfinishedAt\x12]\n\x10hydration_status\x18\
-    \x05\x20\x01(\x0e22.bitdrift.public.unary.timeline.v1.HydrationStatusR\
-    \x0fhydrationStatus\x12\x20\n\x0bincremental\x18\x06\x20\x01(\x08R\x0bin\
-    cremental\"W\n\x15HydrateSessionRequest\x12(\n\nsession_id\x18\x01\x20\
-    \x01(\tR\tsessionIdB\t\xfaB\x06r\x04\x10\x01\x18d\x12\x14\n\x05force\x18\
-    \x02\x20\x01(\x08R\x05force\"\xb1\x01\n\x16HydrateSessionResponse\x12\
-    \x18\n\x07ignored\x18\x01\x20\x01(\x08R\x07ignored\x12\x18\n\x07success\
-    \x18\x02\x20\x01(\x08R\x07success\x12c\n\x14last_hydration_state\x18\x03\
-    \x20\x01(\x0b21.bitdrift.public.unary.timeline.v1.HydrationStateR\x12las\
-    tHydrationState\"E\n\x19GetHydrationStatusRequest\x12(\n\nsession_id\x18\
-    \x01\x20\x01(\tR\tsessionIdB\t\xfaB\x06r\x04\x10\x01\x18d\"g\n\x1aGetHyd\
-    rationStatusResponse\x12I\n\x06status\x18\x01\x20\x01(\x0b21.bitdrift.pu\
-    blic.unary.timeline.v1.HydrationStateR\x06status*C\n\x0fHydrationStatus\
-    \x12\x07\n\x03DRY\x10\0\x12\r\n\tHYDRATING\x10\x01\x12\x0c\n\x08HYDRATED\
-    \x10\x02\x12\n\n\x06FAILED\x10\x03b\x06proto3\
+    .unary.timeline.v1\x1a,bitdrift/public/unary/common/v1/common.proto\x1a\
+    \x1fgoogle/protobuf/timestamp.proto\x1a\x17validate/validate.proto\"\x89\
+    \x03\n\x0eHydrationState\x129\n\ncreated_at\x18\x01\x20\x01(\x0b2\x1a.go\
+    ogle.protobuf.TimestampR\tcreatedAt\x12C\n\x0fexpiration_time\x18\x02\
+    \x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x0eexpirationTime\x129\n\n\
+    started_at\x18\x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tstarted\
+    At\x12;\n\x0bfinished_at\x18\x04\x20\x01(\x0b2\x1a.google.protobuf.Times\
+    tampR\nfinishedAt\x12]\n\x10hydration_status\x18\x05\x20\x01(\x0e22.bitd\
+    rift.public.unary.timeline.v1.HydrationStatusR\x0fhydrationStatus\x12\
+    \x20\n\x0bincremental\x18\x06\x20\x01(\x08R\x0bincremental\"W\n\x15Hydra\
+    teSessionRequest\x12(\n\nsession_id\x18\x01\x20\x01(\tR\tsessionIdB\t\
+    \xfaB\x06r\x04\x10\x01\x18d\x12\x14\n\x05force\x18\x02\x20\x01(\x08R\x05\
+    force\"\x9a\x02\n\x16HydrateSessionResponse\x12\x18\n\x07ignored\x18\x01\
+    \x20\x01(\x08R\x07ignored\x12\x18\n\x07success\x18\x02\x20\x01(\x08R\x07\
+    success\x12c\n\x14last_hydration_state\x18\x03\x20\x01(\x0b21.bitdrift.p\
+    ublic.unary.timeline.v1.HydrationStateR\x12lastHydrationState\x12g\n\x16\
+    session_not_found_info\x18\x04\x20\x01(\x0b22.bitdrift.public.unary.comm\
+    on.v1.SessionStatusInfoR\x13sessionNotFoundInfo\"E\n\x19GetHydrationStat\
+    usRequest\x12(\n\nsession_id\x18\x01\x20\x01(\tR\tsessionIdB\t\xfaB\x06r\
+    \x04\x10\x01\x18d\"g\n\x1aGetHydrationStatusResponse\x12I\n\x06status\
+    \x18\x01\x20\x01(\x0b21.bitdrift.public.unary.timeline.v1.HydrationState\
+    R\x06status*C\n\x0fHydrationStatus\x12\x07\n\x03DRY\x10\0\x12\r\n\tHYDRA\
+    TING\x10\x01\x12\x0c\n\x08HYDRATED\x10\x02\x12\n\n\x06FAILED\x10\x03b\
+    \x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -902,7 +924,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(2);
+            let mut deps = ::std::vec::Vec::with_capacity(3);
+            deps.push(super::common::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
             let mut messages = ::std::vec::Vec::with_capacity(5);
