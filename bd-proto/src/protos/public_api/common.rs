@@ -993,6 +993,200 @@ pub mod time_range {
     }
 }
 
+// @@protoc_insertion_point(message:bitdrift.public.unary.common.v1.SessionStatusInfo)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct SessionStatusInfo {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.common.v1.SessionStatusInfo.session_soft_deleted)
+    pub session_soft_deleted: bool,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.common.v1.SessionStatusInfo.session_seen_on_device)
+    pub session_seen_on_device: bool,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.common.v1.SessionStatusInfo.session_triggered_but_rejected)
+    pub session_triggered_but_rejected: bool,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.common.v1.SessionStatusInfo.session_triggered_and_accepted)
+    pub session_triggered_and_accepted: bool,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.common.v1.SessionStatusInfo.session_uploaded)
+    pub session_uploaded: bool,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.common.v1.SessionStatusInfo.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a SessionStatusInfo {
+    fn default() -> &'a SessionStatusInfo {
+        <SessionStatusInfo as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl SessionStatusInfo {
+    pub fn new() -> SessionStatusInfo {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(5);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "session_soft_deleted",
+            |m: &SessionStatusInfo| { &m.session_soft_deleted },
+            |m: &mut SessionStatusInfo| { &mut m.session_soft_deleted },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "session_seen_on_device",
+            |m: &SessionStatusInfo| { &m.session_seen_on_device },
+            |m: &mut SessionStatusInfo| { &mut m.session_seen_on_device },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "session_triggered_but_rejected",
+            |m: &SessionStatusInfo| { &m.session_triggered_but_rejected },
+            |m: &mut SessionStatusInfo| { &mut m.session_triggered_but_rejected },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "session_triggered_and_accepted",
+            |m: &SessionStatusInfo| { &m.session_triggered_and_accepted },
+            |m: &mut SessionStatusInfo| { &mut m.session_triggered_and_accepted },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "session_uploaded",
+            |m: &SessionStatusInfo| { &m.session_uploaded },
+            |m: &mut SessionStatusInfo| { &mut m.session_uploaded },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SessionStatusInfo>(
+            "SessionStatusInfo",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for SessionStatusInfo {
+    const NAME: &'static str = "SessionStatusInfo";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                8 => {
+                    self.session_soft_deleted = is.read_bool()?;
+                },
+                16 => {
+                    self.session_seen_on_device = is.read_bool()?;
+                },
+                24 => {
+                    self.session_triggered_but_rejected = is.read_bool()?;
+                },
+                32 => {
+                    self.session_triggered_and_accepted = is.read_bool()?;
+                },
+                40 => {
+                    self.session_uploaded = is.read_bool()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if self.session_soft_deleted != false {
+            my_size += 1 + 1;
+        }
+        if self.session_seen_on_device != false {
+            my_size += 1 + 1;
+        }
+        if self.session_triggered_but_rejected != false {
+            my_size += 1 + 1;
+        }
+        if self.session_triggered_and_accepted != false {
+            my_size += 1 + 1;
+        }
+        if self.session_uploaded != false {
+            my_size += 1 + 1;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if self.session_soft_deleted != false {
+            os.write_bool(1, self.session_soft_deleted)?;
+        }
+        if self.session_seen_on_device != false {
+            os.write_bool(2, self.session_seen_on_device)?;
+        }
+        if self.session_triggered_but_rejected != false {
+            os.write_bool(3, self.session_triggered_but_rejected)?;
+        }
+        if self.session_triggered_and_accepted != false {
+            os.write_bool(4, self.session_triggered_and_accepted)?;
+        }
+        if self.session_uploaded != false {
+            os.write_bool(5, self.session_uploaded)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> SessionStatusInfo {
+        SessionStatusInfo::new()
+    }
+
+    fn clear(&mut self) {
+        self.session_soft_deleted = false;
+        self.session_seen_on_device = false;
+        self.session_triggered_but_rejected = false;
+        self.session_triggered_and_accepted = false;
+        self.session_uploaded = false;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static SessionStatusInfo {
+        static instance: SessionStatusInfo = SessionStatusInfo {
+            session_soft_deleted: false,
+            session_seen_on_device: false,
+            session_triggered_but_rejected: false,
+            session_triggered_and_accepted: false,
+            session_uploaded: false,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for SessionStatusInfo {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("SessionStatusInfo").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for SessionStatusInfo {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for SessionStatusInfo {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
 #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
 // @@protoc_insertion_point(enum:bitdrift.public.unary.common.v1.SortDirection)
 pub enum SortDirection {
@@ -1078,6 +1272,10 @@ pub enum Operator {
     IN = 9,
     // @@protoc_insertion_point(enum_value:bitdrift.public.unary.common.v1.Operator.NOT_IN)
     NOT_IN = 10,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.common.v1.Operator.SEARCH)
+    SEARCH = 11,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.common.v1.Operator.NOT_SEARCH)
+    NOT_SEARCH = 12,
 }
 
 impl ::protobuf::Enum for Operator {
@@ -1099,6 +1297,8 @@ impl ::protobuf::Enum for Operator {
             7 => ::std::option::Option::Some(Operator::NOT_WILDCARD),
             9 => ::std::option::Option::Some(Operator::IN),
             10 => ::std::option::Option::Some(Operator::NOT_IN),
+            11 => ::std::option::Option::Some(Operator::SEARCH),
+            12 => ::std::option::Option::Some(Operator::NOT_SEARCH),
             _ => ::std::option::Option::None
         }
     }
@@ -1115,6 +1315,8 @@ impl ::protobuf::Enum for Operator {
             "NOT_WILDCARD" => ::std::option::Option::Some(Operator::NOT_WILDCARD),
             "IN" => ::std::option::Option::Some(Operator::IN),
             "NOT_IN" => ::std::option::Option::Some(Operator::NOT_IN),
+            "SEARCH" => ::std::option::Option::Some(Operator::SEARCH),
+            "NOT_SEARCH" => ::std::option::Option::Some(Operator::NOT_SEARCH),
             _ => ::std::option::Option::None
         }
     }
@@ -1130,6 +1332,8 @@ impl ::protobuf::Enum for Operator {
         Operator::NOT_WILDCARD,
         Operator::IN,
         Operator::NOT_IN,
+        Operator::SEARCH,
+        Operator::NOT_SEARCH,
     ];
 }
 
@@ -1151,6 +1355,8 @@ impl ::protobuf::EnumFull for Operator {
             Operator::NOT_WILDCARD => 7,
             Operator::IN => 8,
             Operator::NOT_IN => 9,
+            Operator::SEARCH => 10,
+            Operator::NOT_SEARCH => 11,
         };
         Self::enum_descriptor().value_by_index(index)
     }
@@ -1190,12 +1396,20 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x08duration\x18\x01\x20\x01(\x0b2\x19.google.protobuf.DurationR\x08dura\
     tionB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x121\n\x06offset\x18\x02\x20\x01(\
     \x0b2\x19.google.protobuf.DurationR\x06offsetB\x16\n\x0ftime_range_type\
-    \x12\x03\xf8B\x01*.\n\rSortDirection\x12\r\n\tASCENDING\x10\0\x12\x0e\n\
-    \nDESCENDING\x10\x01*\xac\x01\n\x08Operator\x12\t\n\x05EQUAL\x10\0\x12\r\
-    \n\tNOT_EQUAL\x10\x01\x12\x10\n\x0cGREATER_THAN\x10\x02\x12\x19\n\x15GRE\
-    ATER_THAN_OR_EQUAL\x10\x03\x12\r\n\tLESS_THAN\x10\x04\x12\x16\n\x12LESS_\
-    THAN_OR_EQUAL\x10\x05\x12\x0c\n\x08WILDCARD\x10\x06\x12\x10\n\x0cNOT_WIL\
-    DCARD\x10\x07\x12\x06\n\x02IN\x10\t\x12\n\n\x06NOT_IN\x10\nb\x06proto3\
+    \x12\x03\xf8B\x01\"\xaf\x02\n\x11SessionStatusInfo\x120\n\x14session_sof\
+    t_deleted\x18\x01\x20\x01(\x08R\x12sessionSoftDeleted\x123\n\x16session_\
+    seen_on_device\x18\x02\x20\x01(\x08R\x13sessionSeenOnDevice\x12C\n\x1ese\
+    ssion_triggered_but_rejected\x18\x03\x20\x01(\x08R\x1bsessionTriggeredBu\
+    tRejected\x12C\n\x1esession_triggered_and_accepted\x18\x04\x20\x01(\x08R\
+    \x1bsessionTriggeredAndAccepted\x12)\n\x10session_uploaded\x18\x05\x20\
+    \x01(\x08R\x0fsessionUploaded*.\n\rSortDirection\x12\r\n\tASCENDING\x10\
+    \0\x12\x0e\n\nDESCENDING\x10\x01*\xc8\x01\n\x08Operator\x12\t\n\x05EQUAL\
+    \x10\0\x12\r\n\tNOT_EQUAL\x10\x01\x12\x10\n\x0cGREATER_THAN\x10\x02\x12\
+    \x19\n\x15GREATER_THAN_OR_EQUAL\x10\x03\x12\r\n\tLESS_THAN\x10\x04\x12\
+    \x16\n\x12LESS_THAN_OR_EQUAL\x10\x05\x12\x0c\n\x08WILDCARD\x10\x06\x12\
+    \x10\n\x0cNOT_WILDCARD\x10\x07\x12\x06\n\x02IN\x10\t\x12\n\n\x06NOT_IN\
+    \x10\n\x12\n\n\x06SEARCH\x10\x0b\x12\x0e\n\nNOT_SEARCH\x10\x0cb\x06proto\
+    3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1216,11 +1430,12 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(::protobuf::well_known_types::duration::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(6);
+            let mut messages = ::std::vec::Vec::with_capacity(7);
             messages.push(Owner::generated_message_descriptor_data());
             messages.push(Sort::generated_message_descriptor_data());
             messages.push(Pagination::generated_message_descriptor_data());
             messages.push(TimeRange::generated_message_descriptor_data());
+            messages.push(SessionStatusInfo::generated_message_descriptor_data());
             messages.push(time_range::FixedTimeRange::generated_message_descriptor_data());
             messages.push(time_range::RelativeTimeRange::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(2);
