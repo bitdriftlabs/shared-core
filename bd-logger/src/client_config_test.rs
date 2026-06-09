@@ -162,6 +162,10 @@ async fn load_persisted_config_does_not_record_config_delivery() {
     },
     std::sync::Arc::new(bd_time::SystemTimeProvider),
     tracker.clone(),
+    tokio::sync::watch::channel(time::Duration::seconds(
+      bd_client_common::safe_file_cache::DEFAULT_CRASH_LOOP_BYPASS_TIMEOUT_SECONDS,
+    ))
+    .1,
   );
 
   assert!(tracker.get().last_config_delivery_time.is_none());

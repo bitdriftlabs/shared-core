@@ -782,6 +782,17 @@ pub mod client_kill {
   );
 }
 
+pub mod safe_file_cache {
+  use bd_client_common::safe_file_cache::DEFAULT_CRASH_LOOP_BYPASS_TIMEOUT_SECONDS;
+  use time::ext::NumericalDuration as _;
+
+  duration_feature_flag!(
+    CrashLoopBypassTimeout,
+    "safe_file_cache.crash_loop_bypass_timeout_ms",
+    DEFAULT_CRASH_LOOP_BYPASS_TIMEOUT_SECONDS.seconds()
+  );
+}
+
 pub mod resource_utilization {
   use time::ext::NumericalDuration as _;
 

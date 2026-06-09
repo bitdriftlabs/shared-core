@@ -42,7 +42,9 @@ use parking_lot::Mutex;
 use protobuf::Chars;
 use std::path::Path;
 use std::sync::Arc;
+use time::Duration;
 use tokio::sync::mpsc::Sender;
+use tokio::sync::watch;
 
 // Helper trait to make it easier to test the internals without having to broadcast to an actual
 // logger.
@@ -99,6 +101,10 @@ impl<A: ApplyConfig> Config<A> {
       apply_config,
       Arc::new(bd_time::SystemTimeProvider),
       bd_client_common::sdk_status::SdkStatusTracker::new(),
+      watch::channel(Duration::seconds(
+        bd_client_common::safe_file_cache::DEFAULT_CRASH_LOOP_BYPASS_TIMEOUT_SECONDS,
+      ))
+      .1,
     )
   }
 
@@ -107,12 +113,14 @@ impl<A: ApplyConfig> Config<A> {
     apply_config: A,
     time_provider: Arc<dyn TimeProvider>,
     sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
+    crash_loop_bypass_timeout: watch::Receiver<Duration>,
   ) -> Self {
     Self {
-      file_cache: SafeFileCache::new_with_time_provider(
+      file_cache: SafeFileCache::new_with_time_provider_and_crash_loop_bypass_timeout(
         "config",
         sdk_directory,
         time_provider.clone(),
+        crash_loop_bypass_timeout,
       ),
       configuration_version_id: Mutex::default(),
       apply_config,
