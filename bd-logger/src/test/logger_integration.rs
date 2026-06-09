@@ -21,14 +21,19 @@ use crate::{
 use assert_matches::assert_matches;
 use bd_client_common::safe_file_cache::load_cache_retry_count_from_file;
 use bd_error_reporter::reporter::UnexpectedErrorHandler;
-use bd_log_matcher::builder::{field_equals, message_equals};
+use bd_log_matcher::builder::{and, feature_flag_equals, field_equals, message_equals};
 use bd_log_metadata::LogFields;
 use bd_log_primitives::AnnotatedLogFields;
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::client::api::debug_data_request::WorkflowTransitionDebugData;
-use bd_proto::protos::client::api::{DebugDataRequest, debug_data_request};
+use bd_proto::protos::client::api::{
+  ClientStateUpdate,
+  DebugDataRequest,
+  client_state_update,
+  debug_data_request,
+};
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::filter::filter::Filter;
@@ -2899,6 +2904,74 @@ fn workflow_state_change_match_advances_workflow() {
   assert_eq!(
     stat_upload.get_workflow_counter("state_change_action", labels! {}),
     Some(42),
+  );
+}
+
+fn make_server_pushed_feature_flag_update(flag: &str, value: &str) -> ClientStateUpdate {
+  let mut update = ClientStateUpdate::new();
+  update.set_set_client_state(client_state_update::SetClientState {
+    scope: bd_proto::protos::state::scope::StateScope::FEATURE_FLAG.into(),
+    state_key: flag.to_string(),
+    state_value: Some(bd_state::string_value(value)).into(),
+    ..Default::default()
+  });
+  update
+}
+
+#[test]
+fn workflow_log_match_uses_server_pushed_feature_flag_state() {
+  let mut setup = Setup::new();
+
+  setup.send_runtime_update();
+
+  let b = state("B");
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    rule!(and(vec![
+      message_equals("server pushed state match"),
+      feature_flag_equals("server_flag", "enabled"),
+    ])),
+    &[make_emit_counter_action(
+      "server_pushed_state_action",
+      metric_value(1),
+      vec![],
+    )],
+  );
+
+  let mut config = configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![default_buffer_config(
+        Type::CONTINUOUS,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      workflows: vec![WorkflowBuilder::new("server_pushed_state_workflow", &[&a, &b]).build()],
+      ..Default::default()
+    },
+  );
+  config
+    .client_state_updates
+    .push(make_server_pushed_feature_flag_update(
+      "server_flag",
+      "enabled",
+    ));
+
+  let maybe_nack = setup.send_configuration_update(config);
+  assert!(maybe_nack.is_none());
+
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "server pushed state match".into(),
+    [].into(),
+    [].into(),
+  );
+
+  setup.flush_and_upload_stats();
+  let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
+  assert_eq!(
+    stat_upload.get_workflow_counter("server_pushed_state_action", labels! {}),
+    Some(1),
   );
 }
 

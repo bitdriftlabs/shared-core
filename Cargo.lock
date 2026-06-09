@@ -320,6 +320,7 @@ dependencies = [
  "bd-runtime",
  "bd-session",
  "bd-shutdown",
+ "bd-state",
  "bd-stats-common",
  "bd-test-helpers",
  "bd-time",

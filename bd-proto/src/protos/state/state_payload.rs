@@ -25,7 +25,7 @@
 #![allow(unused_results)]
 #![allow(unused_mut)]
 
-//! Generated file from `bitdrift_public/protobuf/state/v1/payload.proto`
+//! Generated file from `bitdrift_public/protobuf/state/v1/state_payload.proto`
 
 /// Generated files are compatible only with the same version
 /// of protobuf runtime.
@@ -368,12 +368,12 @@ pub mod state_value {
 }
 
 static file_descriptor_proto_data: &'static [u8] = b"\
-    \n/bitdrift_public/protobuf/state/v1/payload.proto\x12!bitdrift_public.p\
-    rotobuf.state.v1\"\xa4\x01\n\nStateValue\x12#\n\x0cstring_value\x18\x01\
-    \x20\x01(\tH\0R\x0bstringValue\x12\x1d\n\tint_value\x18\x02\x20\x01(\x03\
-    H\0R\x08intValue\x12#\n\x0cdouble_value\x18\x03\x20\x01(\x01H\0R\x0bdoub\
-    leValue\x12\x1f\n\nbool_value\x18\x04\x20\x01(\x08H\0R\tboolValueB\x0c\n\
-    \nvalue_typeb\x06proto3\
+    \n5bitdrift_public/protobuf/state/v1/state_payload.proto\x12!bitdrift_pu\
+    blic.protobuf.state.v1\"\xa4\x01\n\nStateValue\x12#\n\x0cstring_value\
+    \x18\x01\x20\x01(\tH\0R\x0bstringValue\x12\x1d\n\tint_value\x18\x02\x20\
+    \x01(\x03H\0R\x08intValue\x12#\n\x0cdouble_value\x18\x03\x20\x01(\x01H\0\
+    R\x0bdoubleValue\x12\x1f\n\nbool_value\x18\x04\x20\x01(\x08H\0R\tboolVal\
+    ueB\x0c\n\nvalue_typeb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

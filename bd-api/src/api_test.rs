@@ -31,6 +31,8 @@ use bd_proto::protos::client::api::handshake_response::StreamSettings;
 use bd_proto::protos::client::api::{
   ApiRequest,
   ApiResponse,
+  ClientStateUpdate,
+  ConfigurationUpdate,
   ErrorShutdown,
   HandshakeRequest,
   HandshakeResponse,
@@ -38,10 +40,12 @@ use bd_proto::protos::client::api::{
   RuntimeUpdate,
   StateUpdateResponse,
   StatsUploadRequest,
+  client_state_update,
 };
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
+use bd_state::StateReader;
 use bd_stats_common::labels;
 use bd_test_helpers::make_mut;
 use bd_test_helpers::session::in_memory_store;
@@ -227,6 +231,7 @@ struct Setup {
   sleep_mode_active: watch::Sender<bool>,
   opaque_entity_updates: watch::Sender<Option<String>>,
   store: Arc<Store>,
+  state_store: bd_state::Store,
   session_strategy: Arc<bd_session::Strategy>,
   config_updater: Arc<MockClientConfigurationUpdate>,
   static_metadata: Arc<dyn Metadata + Send + Sync>,
@@ -293,6 +298,12 @@ impl Setup {
     let network_quality_provider = Arc::new(network_quality_provider.unwrap_or_default());
 
     let store = in_memory_store();
+    let state_store = bd_state::Store::in_memory(
+      time_provider.clone(),
+      None,
+      &runtime_loader,
+      &collector.scope("state"),
+    );
     let session_strategy = Arc::new(bd_session::Strategy::fixed(
       sdk_directory.path(),
       Arc::new(bd_session::fixed::UUIDCallbacks),
@@ -312,6 +323,7 @@ impl Setup {
       &collector.scope("api"),
       sleep_mode_active_rx,
       store.clone(),
+      state_store.clone(),
       session_strategy.clone(),
       opaque_entity_updates_rx,
       bd_client_common::sdk_status::SdkStatusTracker::new(),
@@ -342,6 +354,7 @@ impl Setup {
       sleep_mode_active: sleep_mode_active_tx,
       opaque_entity_updates: opaque_entity_updates_tx,
       store,
+      state_store,
       session_strategy,
       config_updater,
       static_metadata,
@@ -378,6 +391,7 @@ impl Setup {
       &self.collector.scope("api"),
       self.sleep_mode_active.subscribe(),
       self.store.clone(),
+      self.state_store.clone(),
       self.session_strategy.clone(),
       self.opaque_entity_updates.subscribe(),
       bd_client_common::sdk_status::SdkStatusTracker::new(),
@@ -628,9 +642,63 @@ impl Setup {
       .expect_on_handshake_complete()
       .times(..)
       .returning(|_| ());
+    make_mut(&mut mock_updater)
+      .expect_try_apply_config()
+      .times(..)
+      .returning(|_| ApiRequest::default());
 
     mock_updater
   }
+}
+
+fn make_server_pushed_feature_flag_update(flag: &str, value: &str) -> ClientStateUpdate {
+  let mut update = ClientStateUpdate::new();
+  update.set_set_client_state(client_state_update::SetClientState {
+    scope: bd_proto::protos::state::scope::StateScope::FEATURE_FLAG.into(),
+    state_key: flag.to_string(),
+    state_value: Some(bd_state::string_value(value)).into(),
+    ..Default::default()
+  });
+  update
+}
+
+fn make_server_pushed_feature_flag_clear(flag: &str) -> ClientStateUpdate {
+  let mut update = ClientStateUpdate::new();
+  update.set_clear_client_state(client_state_update::ClearClientState {
+    scope: bd_proto::protos::state::scope::StateScope::FEATURE_FLAG.into(),
+    state_key: flag.to_string(),
+    ..Default::default()
+  });
+  update
+}
+
+async fn wait_for_feature_flag_value(setup: &Setup, key: &str, expected_value: Option<&str>) {
+  timeout(1.std_seconds(), async {
+    loop {
+      let reader = setup.state_store.read().await;
+      let matches = expected_value.map_or_else(
+        || {
+          reader
+            .get(bd_state::Scope::FeatureFlagExposure, key)
+            .is_none()
+        },
+        |expected_value| {
+          reader
+            .get(bd_state::Scope::FeatureFlagExposure, key)
+            .is_some_and(|value| value.has_string_value() && value.string_value() == expected_value)
+        },
+      );
+
+      if matches {
+        break;
+      }
+
+      drop(reader);
+      tokio::task::yield_now().await;
+    }
+  })
+  .await
+  .unwrap();
 }
 
 #[tokio::test(start_paused = true)]
@@ -1283,6 +1351,76 @@ async fn multiple_handshake_messages_with_error() {
 
   assert!(setup.next_stream(6.minutes()).await.is_some());
   assert!(now.elapsed() >= 5.minutes());
+}
+
+#[tokio::test(start_paused = true)]
+async fn handshake_applies_server_pushed_client_state() {
+  let mut setup = Setup::new().await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+
+  let mut handshake = HandshakeResponse {
+    configuration_update_status: HANDSHAKE_FLAG_CONFIG_UP_TO_DATE
+      | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+    ..Default::default()
+  };
+  handshake
+    .client_state_updates
+    .push(make_server_pushed_feature_flag_update(
+      "server_flag",
+      "enabled",
+    ));
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::Handshake(handshake)),
+      ..Default::default()
+    })
+    .await;
+
+  wait_for_feature_flag_value(&setup, "server_flag", Some("enabled")).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn configuration_update_applies_and_clears_server_pushed_client_state() {
+  let mut setup = Setup::new().await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+      None,
+    )
+    .await;
+
+  let mut set_update = ConfigurationUpdate::default();
+  set_update
+    .client_state_updates
+    .push(make_server_pushed_feature_flag_update(
+      "server_flag",
+      "enabled",
+    ));
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::ConfigurationUpdate(set_update)),
+      ..Default::default()
+    })
+    .await;
+
+  wait_for_feature_flag_value(&setup, "server_flag", Some("enabled")).await;
+
+  let mut clear_update = ConfigurationUpdate::default();
+  clear_update
+    .client_state_updates
+    .push(make_server_pushed_feature_flag_clear("server_flag"));
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::ConfigurationUpdate(clear_update)),
+      ..Default::default()
+    })
+    .await;
+
+  wait_for_feature_flag_value(&setup, "server_flag", None).await;
 }
 
 #[tokio::test(start_paused = true)]

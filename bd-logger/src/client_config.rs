@@ -197,10 +197,7 @@ impl<A: ApplyConfig + Send + Sync> bd_client_common::ClientConfigurationUpdate f
     self.file_cache.reset().await;
   }
 
-  async fn try_apply_config(
-    &self,
-    configuration_update: ConfigurationUpdate,
-  ) -> Option<ApiRequest> {
+  async fn try_apply_config(&self, configuration_update: ConfigurationUpdate) -> ApiRequest {
     let version_nonce = configuration_update.version_nonce.clone();
 
     let nack = if let Err(e) = self
@@ -216,14 +213,12 @@ impl<A: ApplyConfig + Send + Sync> bd_client_common::ClientConfigurationUpdate f
       None
     };
 
-    Some(
-      ClientConfigurationUpdateAck(ConfigurationUpdateAck {
-        nack: nack.into(),
-        last_applied_version_nonce: version_nonce,
-        ..Default::default()
-      })
-      .into_request(),
-    )
+    ClientConfigurationUpdateAck(ConfigurationUpdateAck {
+      nack: nack.into(),
+      last_applied_version_nonce: version_nonce,
+      ..Default::default()
+    })
+    .into_request()
   }
 
   async fn try_load_persisted_config(&self) {
