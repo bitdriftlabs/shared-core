@@ -2261,6 +2261,1172 @@ impl ::protobuf::reflect::ProtobufValue for GetIssueGroupResponse {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
+// @@protoc_insertion_point(message:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct ListIssueGroupsFilters {
+    // message oneof groups
+    pub type_: ::std::option::Option<list_issue_groups_filters::Type>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a ListIssueGroupsFilters {
+    fn default() -> &'a ListIssueGroupsFilters {
+        <ListIssueGroupsFilters as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl ListIssueGroupsFilters {
+    pub fn new() -> ListIssueGroupsFilters {
+        ::std::default::Default::default()
+    }
+
+    // .bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.Assignee assignees = 1;
+
+    pub fn assignees(&self) -> &list_issue_groups_filters::Assignee {
+        match self.type_ {
+            ::std::option::Option::Some(list_issue_groups_filters::Type::Assignees(ref v)) => v,
+            _ => <list_issue_groups_filters::Assignee as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_assignees(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_assignees(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(list_issue_groups_filters::Type::Assignees(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_assignees(&mut self, v: list_issue_groups_filters::Assignee) {
+        self.type_ = ::std::option::Option::Some(list_issue_groups_filters::Type::Assignees(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_assignees(&mut self) -> &mut list_issue_groups_filters::Assignee {
+        if let ::std::option::Option::Some(list_issue_groups_filters::Type::Assignees(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(list_issue_groups_filters::Type::Assignees(list_issue_groups_filters::Assignee::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(list_issue_groups_filters::Type::Assignees(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_assignees(&mut self) -> list_issue_groups_filters::Assignee {
+        if self.has_assignees() {
+            match self.type_.take() {
+                ::std::option::Option::Some(list_issue_groups_filters::Type::Assignees(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            list_issue_groups_filters::Assignee::new()
+        }
+    }
+
+    // .bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.Status status = 2;
+
+    pub fn status(&self) -> &list_issue_groups_filters::Status {
+        match self.type_ {
+            ::std::option::Option::Some(list_issue_groups_filters::Type::Status(ref v)) => v,
+            _ => <list_issue_groups_filters::Status as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_status(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_status(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(list_issue_groups_filters::Type::Status(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_status(&mut self, v: list_issue_groups_filters::Status) {
+        self.type_ = ::std::option::Option::Some(list_issue_groups_filters::Type::Status(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_status(&mut self) -> &mut list_issue_groups_filters::Status {
+        if let ::std::option::Option::Some(list_issue_groups_filters::Type::Status(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(list_issue_groups_filters::Type::Status(list_issue_groups_filters::Status::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(list_issue_groups_filters::Type::Status(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_status(&mut self) -> list_issue_groups_filters::Status {
+        if self.has_status() {
+            match self.type_.take() {
+                ::std::option::Option::Some(list_issue_groups_filters::Type::Status(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            list_issue_groups_filters::Status::new()
+        }
+    }
+
+    // .bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.Platform platform = 3;
+
+    pub fn platform(&self) -> &list_issue_groups_filters::Platform {
+        match self.type_ {
+            ::std::option::Option::Some(list_issue_groups_filters::Type::Platform(ref v)) => v,
+            _ => <list_issue_groups_filters::Platform as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_platform(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_platform(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(list_issue_groups_filters::Type::Platform(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_platform(&mut self, v: list_issue_groups_filters::Platform) {
+        self.type_ = ::std::option::Option::Some(list_issue_groups_filters::Type::Platform(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_platform(&mut self) -> &mut list_issue_groups_filters::Platform {
+        if let ::std::option::Option::Some(list_issue_groups_filters::Type::Platform(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(list_issue_groups_filters::Type::Platform(list_issue_groups_filters::Platform::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(list_issue_groups_filters::Type::Platform(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_platform(&mut self) -> list_issue_groups_filters::Platform {
+        if self.has_platform() {
+            match self.type_.take() {
+                ::std::option::Option::Some(list_issue_groups_filters::Type::Platform(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            list_issue_groups_filters::Platform::new()
+        }
+    }
+
+    // .bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.TimeRange time_range = 4;
+
+    pub fn time_range(&self) -> &list_issue_groups_filters::TimeRange {
+        match self.type_ {
+            ::std::option::Option::Some(list_issue_groups_filters::Type::TimeRange(ref v)) => v,
+            _ => <list_issue_groups_filters::TimeRange as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_time_range(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_time_range(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(list_issue_groups_filters::Type::TimeRange(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_time_range(&mut self, v: list_issue_groups_filters::TimeRange) {
+        self.type_ = ::std::option::Option::Some(list_issue_groups_filters::Type::TimeRange(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_time_range(&mut self) -> &mut list_issue_groups_filters::TimeRange {
+        if let ::std::option::Option::Some(list_issue_groups_filters::Type::TimeRange(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(list_issue_groups_filters::Type::TimeRange(list_issue_groups_filters::TimeRange::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(list_issue_groups_filters::Type::TimeRange(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_time_range(&mut self) -> list_issue_groups_filters::TimeRange {
+        if self.has_time_range() {
+            match self.type_.take() {
+                ::std::option::Option::Some(list_issue_groups_filters::Type::TimeRange(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            list_issue_groups_filters::TimeRange::new()
+        }
+    }
+
+    // .bitdrift.public.unary.issues.v1.AdvancedFilter advanced_filters = 6;
+
+    pub fn advanced_filters(&self) -> &AdvancedFilter {
+        match self.type_ {
+            ::std::option::Option::Some(list_issue_groups_filters::Type::AdvancedFilters(ref v)) => v,
+            _ => <AdvancedFilter as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_advanced_filters(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_advanced_filters(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(list_issue_groups_filters::Type::AdvancedFilters(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_advanced_filters(&mut self, v: AdvancedFilter) {
+        self.type_ = ::std::option::Option::Some(list_issue_groups_filters::Type::AdvancedFilters(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_advanced_filters(&mut self) -> &mut AdvancedFilter {
+        if let ::std::option::Option::Some(list_issue_groups_filters::Type::AdvancedFilters(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(list_issue_groups_filters::Type::AdvancedFilters(AdvancedFilter::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(list_issue_groups_filters::Type::AdvancedFilters(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_advanced_filters(&mut self) -> AdvancedFilter {
+        if self.has_advanced_filters() {
+            match self.type_.take() {
+                ::std::option::Option::Some(list_issue_groups_filters::Type::AdvancedFilters(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            AdvancedFilter::new()
+        }
+    }
+
+    // .bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.IdsFilters ids_filter = 7;
+
+    pub fn ids_filter(&self) -> &list_issue_groups_filters::IdsFilters {
+        match self.type_ {
+            ::std::option::Option::Some(list_issue_groups_filters::Type::IdsFilter(ref v)) => v,
+            _ => <list_issue_groups_filters::IdsFilters as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_ids_filter(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_ids_filter(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(list_issue_groups_filters::Type::IdsFilter(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_ids_filter(&mut self, v: list_issue_groups_filters::IdsFilters) {
+        self.type_ = ::std::option::Option::Some(list_issue_groups_filters::Type::IdsFilter(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_ids_filter(&mut self) -> &mut list_issue_groups_filters::IdsFilters {
+        if let ::std::option::Option::Some(list_issue_groups_filters::Type::IdsFilter(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(list_issue_groups_filters::Type::IdsFilter(list_issue_groups_filters::IdsFilters::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(list_issue_groups_filters::Type::IdsFilter(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_ids_filter(&mut self) -> list_issue_groups_filters::IdsFilters {
+        if self.has_ids_filter() {
+            match self.type_.take() {
+                ::std::option::Option::Some(list_issue_groups_filters::Type::IdsFilter(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            list_issue_groups_filters::IdsFilters::new()
+        }
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(6);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, list_issue_groups_filters::Assignee>(
+            "assignees",
+            ListIssueGroupsFilters::has_assignees,
+            ListIssueGroupsFilters::assignees,
+            ListIssueGroupsFilters::mut_assignees,
+            ListIssueGroupsFilters::set_assignees,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, list_issue_groups_filters::Status>(
+            "status",
+            ListIssueGroupsFilters::has_status,
+            ListIssueGroupsFilters::status,
+            ListIssueGroupsFilters::mut_status,
+            ListIssueGroupsFilters::set_status,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, list_issue_groups_filters::Platform>(
+            "platform",
+            ListIssueGroupsFilters::has_platform,
+            ListIssueGroupsFilters::platform,
+            ListIssueGroupsFilters::mut_platform,
+            ListIssueGroupsFilters::set_platform,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, list_issue_groups_filters::TimeRange>(
+            "time_range",
+            ListIssueGroupsFilters::has_time_range,
+            ListIssueGroupsFilters::time_range,
+            ListIssueGroupsFilters::mut_time_range,
+            ListIssueGroupsFilters::set_time_range,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, AdvancedFilter>(
+            "advanced_filters",
+            ListIssueGroupsFilters::has_advanced_filters,
+            ListIssueGroupsFilters::advanced_filters,
+            ListIssueGroupsFilters::mut_advanced_filters,
+            ListIssueGroupsFilters::set_advanced_filters,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, list_issue_groups_filters::IdsFilters>(
+            "ids_filter",
+            ListIssueGroupsFilters::has_ids_filter,
+            ListIssueGroupsFilters::ids_filter,
+            ListIssueGroupsFilters::mut_ids_filter,
+            ListIssueGroupsFilters::set_ids_filter,
+        ));
+        oneofs.push(list_issue_groups_filters::Type::generated_oneof_descriptor_data());
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ListIssueGroupsFilters>(
+            "ListIssueGroupsFilters",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for ListIssueGroupsFilters {
+    const NAME: &'static str = "ListIssueGroupsFilters";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.type_ = ::std::option::Option::Some(list_issue_groups_filters::Type::Assignees(is.read_message()?));
+                },
+                18 => {
+                    self.type_ = ::std::option::Option::Some(list_issue_groups_filters::Type::Status(is.read_message()?));
+                },
+                26 => {
+                    self.type_ = ::std::option::Option::Some(list_issue_groups_filters::Type::Platform(is.read_message()?));
+                },
+                34 => {
+                    self.type_ = ::std::option::Option::Some(list_issue_groups_filters::Type::TimeRange(is.read_message()?));
+                },
+                50 => {
+                    self.type_ = ::std::option::Option::Some(list_issue_groups_filters::Type::AdvancedFilters(is.read_message()?));
+                },
+                58 => {
+                    self.type_ = ::std::option::Option::Some(list_issue_groups_filters::Type::IdsFilter(is.read_message()?));
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let ::std::option::Option::Some(ref v) = self.type_ {
+            match v {
+                &list_issue_groups_filters::Type::Assignees(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &list_issue_groups_filters::Type::Status(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &list_issue_groups_filters::Type::Platform(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &list_issue_groups_filters::Type::TimeRange(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &list_issue_groups_filters::Type::AdvancedFilters(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &list_issue_groups_filters::Type::IdsFilter(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+            };
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let ::std::option::Option::Some(ref v) = self.type_ {
+            match v {
+                &list_issue_groups_filters::Type::Assignees(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+                },
+                &list_issue_groups_filters::Type::Status(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                },
+                &list_issue_groups_filters::Type::Platform(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                },
+                &list_issue_groups_filters::Type::TimeRange(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+                },
+                &list_issue_groups_filters::Type::AdvancedFilters(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(6, v, os)?;
+                },
+                &list_issue_groups_filters::Type::IdsFilter(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(7, v, os)?;
+                },
+            };
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> ListIssueGroupsFilters {
+        ListIssueGroupsFilters::new()
+    }
+
+    fn clear(&mut self) {
+        self.type_ = ::std::option::Option::None;
+        self.type_ = ::std::option::Option::None;
+        self.type_ = ::std::option::Option::None;
+        self.type_ = ::std::option::Option::None;
+        self.type_ = ::std::option::Option::None;
+        self.type_ = ::std::option::Option::None;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static ListIssueGroupsFilters {
+        static instance: ListIssueGroupsFilters = ListIssueGroupsFilters {
+            type_: ::std::option::Option::None,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for ListIssueGroupsFilters {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("ListIssueGroupsFilters").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for ListIssueGroupsFilters {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for ListIssueGroupsFilters {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `ListIssueGroupsFilters`
+pub mod list_issue_groups_filters {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.type)
+    pub enum Type {
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.assignees)
+        Assignees(Assignee),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.status)
+        Status(Status),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.platform)
+        Platform(Platform),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.time_range)
+        TimeRange(TimeRange),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.advanced_filters)
+        AdvancedFilters(super::AdvancedFilter),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.ids_filter)
+        IdsFilter(IdsFilters),
+    }
+
+    impl ::protobuf::Oneof for Type {
+    }
+
+    impl ::protobuf::OneofFull for Type {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::ListIssueGroupsFilters as ::protobuf::MessageFull>::descriptor().oneof_by_name("type").unwrap()).clone()
+        }
+    }
+
+    impl Type {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Type>("type")
+        }
+    }
+    // @@protoc_insertion_point(message:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.Assignee)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Assignee {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.Assignee.value)
+        pub value: ::std::vec::Vec<super::super::common::Owner>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.Assignee.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Assignee {
+        fn default() -> &'a Assignee {
+            <Assignee as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Assignee {
+        pub fn new() -> Assignee {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "value",
+                |m: &Assignee| { &m.value },
+                |m: &mut Assignee| { &mut m.value },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Assignee>(
+                "ListIssueGroupsFilters.Assignee",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Assignee {
+        const NAME: &'static str = "Assignee";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.value.push(is.read_message()?);
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            for value in &self.value {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            for v in &self.value {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            };
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Assignee {
+            Assignee::new()
+        }
+
+        fn clear(&mut self) {
+            self.value.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Assignee {
+            static instance: Assignee = Assignee {
+                value: ::std::vec::Vec::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Assignee {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("ListIssueGroupsFilters.Assignee").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Assignee {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Assignee {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.Status)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Status {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.Status.value)
+        pub value: ::protobuf::EnumOrUnknown<super::IssueGroupStatus>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.Status.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Status {
+        fn default() -> &'a Status {
+            <Status as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Status {
+        pub fn new() -> Status {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "value",
+                |m: &Status| { &m.value },
+                |m: &mut Status| { &mut m.value },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Status>(
+                "ListIssueGroupsFilters.Status",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Status {
+        const NAME: &'static str = "Status";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    8 => {
+                        self.value = is.read_enum_or_unknown()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if self.value != ::protobuf::EnumOrUnknown::new(super::IssueGroupStatus::NEW) {
+                my_size += ::protobuf::rt::int32_size(1, self.value.value());
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if self.value != ::protobuf::EnumOrUnknown::new(super::IssueGroupStatus::NEW) {
+                os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.value))?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Status {
+            Status::new()
+        }
+
+        fn clear(&mut self) {
+            self.value = ::protobuf::EnumOrUnknown::new(super::IssueGroupStatus::NEW);
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Status {
+            static instance: Status = Status {
+                value: ::protobuf::EnumOrUnknown::from_i32(0),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Status {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("ListIssueGroupsFilters.Status").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Status {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Status {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.Platform)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Platform {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.Platform.value)
+        pub value: ::std::vec::Vec<super::super::platform::Platform>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.Platform.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Platform {
+        fn default() -> &'a Platform {
+            <Platform as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Platform {
+        pub fn new() -> Platform {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "value",
+                |m: &Platform| { &m.value },
+                |m: &mut Platform| { &mut m.value },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Platform>(
+                "ListIssueGroupsFilters.Platform",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Platform {
+        const NAME: &'static str = "Platform";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.value.push(is.read_message()?);
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            for value in &self.value {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            for v in &self.value {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            };
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Platform {
+            Platform::new()
+        }
+
+        fn clear(&mut self) {
+            self.value.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Platform {
+            static instance: Platform = Platform {
+                value: ::std::vec::Vec::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Platform {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("ListIssueGroupsFilters.Platform").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Platform {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Platform {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.TimeRange)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct TimeRange {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.TimeRange.time_range)
+        pub time_range: ::protobuf::MessageField<super::super::common::TimeRange>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.TimeRange.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a TimeRange {
+        fn default() -> &'a TimeRange {
+            <TimeRange as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl TimeRange {
+        pub fn new() -> TimeRange {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::common::TimeRange>(
+                "time_range",
+                |m: &TimeRange| { &m.time_range },
+                |m: &mut TimeRange| { &mut m.time_range },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<TimeRange>(
+                "ListIssueGroupsFilters.TimeRange",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for TimeRange {
+        const NAME: &'static str = "TimeRange";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    26 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.time_range)?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.time_range.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.time_range.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> TimeRange {
+            TimeRange::new()
+        }
+
+        fn clear(&mut self) {
+            self.time_range.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static TimeRange {
+            static instance: TimeRange = TimeRange {
+                time_range: ::protobuf::MessageField::none(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for TimeRange {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("ListIssueGroupsFilters.TimeRange").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for TimeRange {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for TimeRange {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.IdsFilters)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct IdsFilters {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.IdsFilters.value)
+        pub value: ::std::vec::Vec<::std::string::String>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.IdsFilters.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a IdsFilters {
+        fn default() -> &'a IdsFilters {
+            <IdsFilters as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl IdsFilters {
+        pub fn new() -> IdsFilters {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "value",
+                |m: &IdsFilters| { &m.value },
+                |m: &mut IdsFilters| { &mut m.value },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<IdsFilters>(
+                "ListIssueGroupsFilters.IdsFilters",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for IdsFilters {
+        const NAME: &'static str = "IdsFilters";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.value.push(is.read_string()?);
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            for value in &self.value {
+                my_size += ::protobuf::rt::string_size(1, &value);
+            };
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            for v in &self.value {
+                os.write_string(1, &v)?;
+            };
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> IdsFilters {
+            IdsFilters::new()
+        }
+
+        fn clear(&mut self) {
+            self.value.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static IdsFilters {
+            static instance: IdsFilters = IdsFilters {
+                value: ::std::vec::Vec::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for IdsFilters {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("ListIssueGroupsFilters.IdsFilters").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for IdsFilters {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for IdsFilters {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+}
+
 // @@protoc_insertion_point(message:bitdrift.public.unary.issues.v1.ListIssueGroupsRequest)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct ListIssueGroupsRequest {
@@ -7186,135 +8352,155 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     rift.public.unary.issues.v1.IssueQueryR\nissueQuery\"o\n\x15GetIssueGrou\
     pResponse\x12V\n\x0bissue_group\x18\x01\x20\x01(\x0b2+.bitdrift.public.u\
     nary.issues.v1.IssueGroupR\nissueGroupB\x08\xfaB\x05\x8a\x01\x02\x10\x01\
-    \"\xe7\x05\n\x16ListIssueGroupsRequest\x12\x1b\n\x06offset\x18\x01\x20\
-    \x01(\rH\0R\x06offset\x88\x01\x01\x12$\n\x05limit\x18\x02\x20\x01(\rH\
-    \x01R\x05limitB\t\xfaB\x06*\x04\x18d(\x01\x88\x01\x01\x12L\n\x0bissue_qu\
-    ery\x18\x05\x20\x01(\x0b2+.bitdrift.public.unary.issues.v1.IssueQueryR\n\
-    issueQuery\x12\\\n\x11issue_group_query\x18\x06\x20\x01(\x0b20.bitdrift.\
-    public.unary.issues.v1.IssueGroupQueryR\x0fissueGroupQuery\x12Z\n\x04sor\
-    t\x18\x07\x20\x03(\x0b2<.bitdrift.public.unary.issues.v1.ListIssueGroups\
-    Request.SortR\x04sortB\x08\xfaB\x05\x92\x01\x02\x10d\x1a\xec\x02\n\x04So\
-    rt\x12`\n\x03key\x18\x01\x20\x01(\x0e2D.bitdrift.public.unary.issues.v1.\
-    ListIssueGroupsRequest.Sort.SortKeyR\x03keyB\x08\xfaB\x05\x82\x01\x02\
-    \x10\x01\x12V\n\tdirection\x18\x02\x20\x01(\x0e2..bitdrift.public.unary.\
-    common.v1.SortDirectionR\tdirectionB\x08\xfaB\x05\x82\x01\x02\x10\x01\"\
-    \xa9\x01\n\x07SortKey\x12\x18\n\x14SORT_KEY_UNSPECIFIED\x10\0\x12\x1a\n\
-    \x16MOST_RECENT_OCCURRENCE\x10\x01\x12\x17\n\x13EARLIEST_OCCURRENCE\x10\
-    \x02\x12\x12\n\x0eFIRST_REPORTED\x10\x03\x12\x12\n\x0eIMPACTED_USERS\x10\
-    \x04\x12\x15\n\x11IMPACTED_SESSIONS\x10\x05\x12\x10\n\x0cISSUE_REASON\
-    \x10\x06B\t\n\x07_offsetB\x08\n\x06_limit\"\x97\x01\n\x17ListIssueGroups\
-    Response\x12N\n\x0cissue_groups\x18\x01\x20\x03(\x0b2+.bitdrift.public.u\
-    nary.issues.v1.IssueGroupR\x0bissueGroups\x12,\n\x12total_issue_groups\
-    \x18\x02\x20\x01(\rR\x10totalIssueGroups\"]\n\x0fGetIssueRequest\x12\x19\
-    \n\x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12/\n\
-    \x0eissue_group_id\x18\x02\x20\x01(\tR\x0cissueGroupIdB\t\xfaB\x06r\x04\
-    \x10\x01\x18d\"\xec\x05\n\x05Issue\x12\x1f\n\x06reason\x18\x01\x20\x01(\
-    \tR\x06reasonB\x07\xfaB\x04r\x02\x10\x01\x12!\n\x07context\x18\x02\x20\
-    \x01(\tR\x07contextB\x07\xfaB\x04r\x02\x10\x01\x12!\n\x07details\x18\x03\
-    \x20\x01(\tR\x07detailsB\x07\xfaB\x04r\x02\x10\x01\x128\n\x04time\x18\
-    \x04\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x04timeB\x08\xfaB\x05\
-    \x8a\x01\x02\x10\x01\x12R\n\x08platform\x18\x05\x20\x01(\x0b2,.bitdrift.\
-    public.shared.platform.v1.PlatformR\x08platformB\x08\xfaB\x05\x8a\x01\
-    \x02\x10\x01\x12\x1f\n\x06app_id\x18\x06\x20\x01(\tR\x05appIdB\x08\xfaB\
-    \x05\x8a\x01\x02\x10\x01\x12)\n\x0bapp_version\x18\x07\x20\x01(\tR\nappV\
-    ersionB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12#\n\x08build_id\x18\x08\x20\
-    \x01(\tR\x07buildIdB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x1e\n\x05model\
-    \x18\t\x20\x01(\tR\x05modelB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x1e\n\
-    \nforeground\x18\x0f\x20\x01(\x08R\nforeground\x12*\n\x0cnetwork_type\
-    \x18\x10\x20\x01(\tR\x0bnetworkTypeB\x07\xfaB\x04r\x02\x10\x01\x12&\n\nr\
-    adio_type\x18\x11\x20\x01(\tR\tradioTypeB\x07\xfaB\x04r\x02\x10\x01\x12\
-    \x1f\n\x06locale\x18\x12\x20\x01(\tR\x06localeB\x07\xfaB\x04r\x02\x10\
-    \x01\x12(\n\x0breport_type\x18\x13\x20\x01(\tR\nreportTypeB\x07\xfaB\x04\
-    r\x02\x10\x01\x12I\n\x06report\x18\x0c\x20\x01(\x0b2'.bitdrift.public.un\
-    ary.issues.v1.ReportR\x06reportB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\
-    \x17\n\x02id\x18\r\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12+\n\n\
-    session_id\x18\x0e\x20\x01(\tH\0R\tsessionIdB\x07\xfaB\x04r\x02\x10\x01\
-    \x88\x01\x01B\r\n\x0b_session_id\"\xe9\x01\n\x10GetIssueResponse\x12<\n\
-    \x05issue\x18\x0c\x20\x01(\x0b2&.bitdrift.public.unary.issues.v1.IssueR\
-    \x05issue\x12Z\n\x06status\x18\r\x20\x01(\x0e28.bitdrift.public.unary.is\
-    sues.v1.GetIssueResponse.StatusR\x06statusB\x08\xfaB\x05\x82\x01\x02\x10\
-    \x01\";\n\x06Status\x12\t\n\x05FOUND\x10\0\x12\r\n\tNOT_FOUND\x10\x01\
-    \x12\x0b\n\x07PENDING\x10\x02\x12\n\n\x06FAILED\x10\x03\"\xb2\t\n\x11Lis\
-    tIssuesRequest\x12/\n\x0eissue_group_id\x18\x01\x20\x01(\tR\x0cissueGrou\
-    pIdB\t\xfaB\x06r\x04\x10\x01\x18d\x12\x16\n\x06offset\x18\x02\x20\x01(\r\
-    R\x06offset\x12$\n\x05limit\x18\x03\x20\x01(\rH\0R\x05limitB\t\xfaB\x06*\
-    \x04\x18d(\x01\x88\x01\x01\x12h\n\x07filters\x18\x04\x20\x03(\x0b2D.bitd\
-    rift.public.unary.issues.v1.ListIssuesRequest.ListIssuesFiltersR\x07filt\
-    ersB\x08\xfaB\x05\x92\x01\x02\x10d\x12L\n\x0bissue_query\x18\x06\x20\x01\
-    (\x0b2+.bitdrift.public.unary.issues.v1.IssueQueryR\nissueQuery\x12U\n\
-    \x04sort\x18\x07\x20\x03(\x0b27.bitdrift.public.unary.issues.v1.ListIssu\
-    esRequest.SortR\x04sortB\x08\xfaB\x05\x92\x01\x02\x10d\x1a\x83\x02\n\x04\
-    Sort\x12[\n\x03key\x18\x01\x20\x01(\x0e2?.bitdrift.public.unary.issues.v\
-    1.ListIssuesRequest.Sort.SortKeyR\x03keyB\x08\xfaB\x05\x82\x01\x02\x10\
-    \x01\x12V\n\tdirection\x18\x02\x20\x01(\x0e2..bitdrift.public.unary.comm\
-    on.v1.SortDirectionR\tdirectionB\x08\xfaB\x05\x82\x01\x02\x10\x01\"F\n\
-    \x07SortKey\x12\x18\n\x14SORT_KEY_UNSPECIFIED\x10\0\x12\x0f\n\x0bOCCURRE\
-    D_AT\x10\x01\x12\x10\n\x0cISSUE_REASON\x10\x02\x1a\x8e\x04\n\x11ListIssu\
-    esFilters\x12k\n\x08platform\x18\x01\x20\x01(\x0b2M.bitdrift.public.unar\
-    y.issues.v1.ListIssuesRequest.ListIssuesFilters.PlatformH\0R\x08platform\
-    \x12o\n\ntime_range\x18\x02\x20\x01(\x0b2N.bitdrift.public.unary.issues.\
-    v1.ListIssuesRequest.ListIssuesFilters.TimeRangeH\0R\ttimeRange\x12\\\n\
-    \x10advanced_filters\x18\x06\x20\x01(\x0b2/.bitdrift.public.unary.issues\
-    .v1.AdvancedFilterH\0R\x0fadvancedFilters\x1aX\n\x08Platform\x12L\n\x05v\
-    alue\x18\x01\x20\x03(\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\
-    \x05valueB\x08\xfaB\x05\x92\x01\x02\x10d\x1aV\n\tTimeRange\x12I\n\ntime_\
-    range\x18\x03\x20\x01(\x0b2*.bitdrift.public.unary.common.v1.TimeRangeR\
-    \ttimeRangeB\x0b\n\x04type\x12\x03\xf8B\x01B\x08\n\x06_limit\"w\n\x12Lis\
-    tIssuesResponse\x12>\n\x06issues\x18\x01\x20\x03(\x0b2&.bitdrift.public.\
-    unary.issues.v1.IssueR\x06issues\x12!\n\x0ctotal_issues\x18\x02\x20\x01(\
-    \rR\x0btotalIssues\"C\n\x1bGetIssueFeatureFlagsRequest\x12$\n\x08issue_i\
-    d\x18\x01\x20\x01(\tR\x07issueIdB\t\xfaB\x06r\x04\x10\x01\x18d\"\xb6\x02\
-    \n\x1cGetIssueFeatureFlagsResponse\x12n\n\rfeature_flags\x18\x01\x20\x03\
-    (\x0b2I.bitdrift.public.unary.issues.v1.GetIssueFeatureFlagsResponse.Fea\
-    tureFlagR\x0cfeatureFlags\x1a\xa5\x01\n\x0bFeatureFlag\x12\x1b\n\x04name\
-    \x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\x01\x12&\n\x07varian\
-    t\x18\x02\x20\x01(\tH\0R\x07variantB\x07\xfaB\x04r\x02\x10\x01\x88\x01\
-    \x01\x12E\n\x0bmodified_at\x18\x03\x20\x01(\x0b2\x1a.google.protobuf.Tim\
-    estampR\nmodifiedAtB\x08\xfaB\x05\x8a\x01\x02\x10\x01B\n\n\x08_variant\"\
-    \x8f\x01\n\x1dUpdateIssueGroupStatusRequest\x12\x19\n\x02id\x18\x01\x20\
-    \x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12S\n\x06status\x18\x02\
-    \x20\x01(\x0e21.bitdrift.public.unary.issues.v1.IssueGroupStatusR\x06sta\
-    tusB\x08\xfaB\x05\x82\x01\x02\x10\x01\"\xcc\x01\n\x1eUpdateIssueGroupSta\
-    tusResponse\x12S\n\x06status\x18\x01\x20\x01(\x0e21.bitdrift.public.unar\
-    y.issues.v1.IssueGroupStatusR\x06statusB\x08\xfaB\x05\x82\x01\x02\x10\
-    \x01\x12\x1a\n\x07version\x18\x02\x20\x01(\tH\0R\x07version\x12#\n\x0cve\
-    rsion_code\x18\x03\x20\x01(\x03H\0R\x0bversionCodeB\x14\n\x12resolution_\
-    version\"\x8d\x01\n\x20UpdateIssueGroupAssigneesRequest\x12\x19\n\x02id\
-    \x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12N\n\tassigne\
-    es\x18\x02\x20\x03(\x0b2&.bitdrift.public.unary.common.v1.OwnerR\tassign\
-    eesB\x08\xfaB\x05\x92\x01\x02\x10d\"i\n!UpdateIssueGroupAssigneesRespons\
-    e\x12D\n\tassignees\x18\x01\x20\x03(\x0b2&.bitdrift.public.unary.common.\
-    v1.OwnerR\tassignees\"\xd5\x01\n\x1cListPossibleAssigneesRequest\x12'\n\
-    \x06search\x18\x01\x20\x01(\tH\0R\x06searchB\n\xfaB\x07r\x05\x10\x01\x18\
-    \xff\x01\x88\x01\x01\x12)\n\x08user_ids\x18\x02\x20\x03(\tR\x07userIdsB\
-    \x0e\xfaB\x0b\x92\x01\x08\x10d\"\x04r\x02\x18d\x12\x1b\n\x06offset\x18\
-    \x03\x20\x01(\rH\x01R\x06offset\x88\x01\x01\x12$\n\x05limit\x18\x04\x20\
-    \x01(\rH\x02R\x05limitB\t\xfaB\x06*\x04\x18d(\x01\x88\x01\x01B\t\n\x07_s\
-    earchB\t\n\x07_offsetB\x08\n\x06_limit\"{\n\x1dListPossibleAssigneesResp\
-    onse\x12D\n\tassignees\x18\x01\x20\x03(\x0b2&.bitdrift.public.unary.comm\
-    on.v1.OwnerR\tassignees\x12\x14\n\x05total\x18\x02\x20\x01(\rR\x05total\
-    \"\x88\x04\n!UpdateIssueGroupAttributesRequest\x12\x19\n\x02id\x18\x01\
-    \x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12\x85\x01\n\noperatio\
-    ns\x18\x02\x20\x03(\x0b2[.bitdrift.public.unary.issues.v1.UpdateIssueGro\
-    upAttributesRequest.UpdateAttributeOperationR\noperationsB\x08\xfaB\x05\
-    \x92\x01\x02\x10d\x1a\xbf\x02\n\x18UpdateAttributeOperation\x12\x9c\x01\
-    \n\x0eoperation_type\x18\x01\x20\x01(\x0e2i.bitdrift.public.unary.issues\
-    .v1.UpdateIssueGroupAttributesRequest.UpdateAttributeOperation.Operation\
-    TypeR\roperationTypeB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\x12\x1b\n\x03\
-    key\x18\x02\x20\x01(\tR\x03keyB\t\xfaB\x06r\x04\x10\x01\x18d\x12\x1e\n\
-    \x05value\x18\x03\x20\x01(\tR\x05valueB\x08\xfaB\x05r\x03\x18\x80\x08\"G\
-    \n\rOperationType\x12\x1e\n\x1aOPERATION_TYPE_UNSPECIFIED\x10\0\x12\n\n\
-    \x06UPSERT\x10\x01\x12\n\n\x06REMOVE\x10\x02\"$\n\"UpdateIssueGroupAttri\
-    butesResponse\";\n\x1eGetIssueGroupAttributesRequest\x12\x19\n\x02id\x18\
-    \x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\"\xd4\x01\n\x1fGetI\
-    ssueGroupAttributesResponse\x12j\n\nattributes\x18\x01\x20\x03(\x0b2J.bi\
-    tdrift.public.unary.issues.v1.GetIssueGroupAttributesResponse.AttributeR\
-    \nattributes\x1aE\n\tAttribute\x12\x19\n\x03key\x18\x01\x20\x01(\tR\x03k\
-    eyB\x07\xfaB\x04r\x02\x10\x01\x12\x1d\n\x05value\x18\x02\x20\x01(\tR\x05\
-    valueB\x07\xfaB\x04r\x02\x10\x01*_\n\x10IssueGroupStatus\x12\x07\n\x03NE\
-    W\x10\0\x12\x0f\n\x0bIN_PROGRESS\x10\x03\x12\t\n\x05FIXED\x10\x04\x12\
-    \x0c\n\x08REOPENED\x10\x05\x12\x0b\n\x07IGNORED\x10\x06\x12\x0b\n\x07SNO\
-    OZED\x10\x07b\x06proto3\
+    \"\xff\x07\n\x16ListIssueGroupsFilters\x12`\n\tassignees\x18\x01\x20\x01\
+    (\x0b2@.bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.AssigneeH\
+    \0R\tassignees\x12X\n\x06status\x18\x02\x20\x01(\x0b2>.bitdrift.public.u\
+    nary.issues.v1.ListIssueGroupsFilters.StatusH\0R\x06status\x12^\n\x08pla\
+    tform\x18\x03\x20\x01(\x0b2@.bitdrift.public.unary.issues.v1.ListIssueGr\
+    oupsFilters.PlatformH\0R\x08platform\x12b\n\ntime_range\x18\x04\x20\x01(\
+    \x0b2A.bitdrift.public.unary.issues.v1.ListIssueGroupsFilters.TimeRangeH\
+    \0R\ttimeRange\x12\\\n\x10advanced_filters\x18\x06\x20\x01(\x0b2/.bitdri\
+    ft.public.unary.issues.v1.AdvancedFilterH\0R\x0fadvancedFilters\x12c\n\n\
+    ids_filter\x18\x07\x20\x01(\x0b2B.bitdrift.public.unary.issues.v1.ListIs\
+    sueGroupsFilters.IdsFiltersH\0R\tidsFilter\x1aR\n\x08Assignee\x12F\n\x05\
+    value\x18\x01\x20\x03(\x0b2&.bitdrift.public.unary.common.v1.OwnerR\x05v\
+    alueB\x08\xfaB\x05\x92\x01\x02\x10d\x1a[\n\x06Status\x12Q\n\x05value\x18\
+    \x01\x20\x01(\x0e21.bitdrift.public.unary.issues.v1.IssueGroupStatusR\
+    \x05valueB\x08\xfaB\x05\x82\x01\x02\x10\x01\x1aX\n\x08Platform\x12L\n\
+    \x05value\x18\x01\x20\x03(\x0b2,.bitdrift.public.shared.platform.v1.Plat\
+    formR\x05valueB\x08\xfaB\x05\x92\x01\x02\x10d\x1aV\n\tTimeRange\x12I\n\n\
+    time_range\x18\x03\x20\x01(\x0b2*.bitdrift.public.unary.common.v1.TimeRa\
+    ngeR\ttimeRange\x1a2\n\nIdsFilters\x12$\n\x05value\x18\x01\x20\x03(\tR\
+    \x05valueB\x0e\xfaB\x0b\x92\x01\x08\x10d\"\x04r\x02\x18dB\x0b\n\x04type\
+    \x12\x03\xf8B\x01\"\xe7\x05\n\x16ListIssueGroupsRequest\x12\x1b\n\x06off\
+    set\x18\x01\x20\x01(\rH\0R\x06offset\x88\x01\x01\x12$\n\x05limit\x18\x02\
+    \x20\x01(\rH\x01R\x05limitB\t\xfaB\x06*\x04\x18d(\x01\x88\x01\x01\x12L\n\
+    \x0bissue_query\x18\x05\x20\x01(\x0b2+.bitdrift.public.unary.issues.v1.I\
+    ssueQueryR\nissueQuery\x12\\\n\x11issue_group_query\x18\x06\x20\x01(\x0b\
+    20.bitdrift.public.unary.issues.v1.IssueGroupQueryR\x0fissueGroupQuery\
+    \x12Z\n\x04sort\x18\x07\x20\x03(\x0b2<.bitdrift.public.unary.issues.v1.L\
+    istIssueGroupsRequest.SortR\x04sortB\x08\xfaB\x05\x92\x01\x02\x10d\x1a\
+    \xec\x02\n\x04Sort\x12`\n\x03key\x18\x01\x20\x01(\x0e2D.bitdrift.public.\
+    unary.issues.v1.ListIssueGroupsRequest.Sort.SortKeyR\x03keyB\x08\xfaB\
+    \x05\x82\x01\x02\x10\x01\x12V\n\tdirection\x18\x02\x20\x01(\x0e2..bitdri\
+    ft.public.unary.common.v1.SortDirectionR\tdirectionB\x08\xfaB\x05\x82\
+    \x01\x02\x10\x01\"\xa9\x01\n\x07SortKey\x12\x18\n\x14SORT_KEY_UNSPECIFIE\
+    D\x10\0\x12\x1a\n\x16MOST_RECENT_OCCURRENCE\x10\x01\x12\x17\n\x13EARLIES\
+    T_OCCURRENCE\x10\x02\x12\x12\n\x0eFIRST_REPORTED\x10\x03\x12\x12\n\x0eIM\
+    PACTED_USERS\x10\x04\x12\x15\n\x11IMPACTED_SESSIONS\x10\x05\x12\x10\n\
+    \x0cISSUE_REASON\x10\x06B\t\n\x07_offsetB\x08\n\x06_limit\"\x97\x01\n\
+    \x17ListIssueGroupsResponse\x12N\n\x0cissue_groups\x18\x01\x20\x03(\x0b2\
+    +.bitdrift.public.unary.issues.v1.IssueGroupR\x0bissueGroups\x12,\n\x12t\
+    otal_issue_groups\x18\x02\x20\x01(\rR\x10totalIssueGroups\"]\n\x0fGetIss\
+    ueRequest\x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\
+    \x01\x18d\x12/\n\x0eissue_group_id\x18\x02\x20\x01(\tR\x0cissueGroupIdB\
+    \t\xfaB\x06r\x04\x10\x01\x18d\"\xec\x05\n\x05Issue\x12\x1f\n\x06reason\
+    \x18\x01\x20\x01(\tR\x06reasonB\x07\xfaB\x04r\x02\x10\x01\x12!\n\x07cont\
+    ext\x18\x02\x20\x01(\tR\x07contextB\x07\xfaB\x04r\x02\x10\x01\x12!\n\x07\
+    details\x18\x03\x20\x01(\tR\x07detailsB\x07\xfaB\x04r\x02\x10\x01\x128\n\
+    \x04time\x18\x04\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x04timeB\
+    \x08\xfaB\x05\x8a\x01\x02\x10\x01\x12R\n\x08platform\x18\x05\x20\x01(\
+    \x0b2,.bitdrift.public.shared.platform.v1.PlatformR\x08platformB\x08\xfa\
+    B\x05\x8a\x01\x02\x10\x01\x12\x1f\n\x06app_id\x18\x06\x20\x01(\tR\x05app\
+    IdB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12)\n\x0bapp_version\x18\x07\x20\
+    \x01(\tR\nappVersionB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12#\n\x08build_i\
+    d\x18\x08\x20\x01(\tR\x07buildIdB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\
+    \x1e\n\x05model\x18\t\x20\x01(\tR\x05modelB\x08\xfaB\x05\x8a\x01\x02\x10\
+    \x01\x12\x1e\n\nforeground\x18\x0f\x20\x01(\x08R\nforeground\x12*\n\x0cn\
+    etwork_type\x18\x10\x20\x01(\tR\x0bnetworkTypeB\x07\xfaB\x04r\x02\x10\
+    \x01\x12&\n\nradio_type\x18\x11\x20\x01(\tR\tradioTypeB\x07\xfaB\x04r\
+    \x02\x10\x01\x12\x1f\n\x06locale\x18\x12\x20\x01(\tR\x06localeB\x07\xfaB\
+    \x04r\x02\x10\x01\x12(\n\x0breport_type\x18\x13\x20\x01(\tR\nreportTypeB\
+    \x07\xfaB\x04r\x02\x10\x01\x12I\n\x06report\x18\x0c\x20\x01(\x0b2'.bitdr\
+    ift.public.unary.issues.v1.ReportR\x06reportB\x08\xfaB\x05\x8a\x01\x02\
+    \x10\x01\x12\x17\n\x02id\x18\r\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\
+    \x01\x12+\n\nsession_id\x18\x0e\x20\x01(\tH\0R\tsessionIdB\x07\xfaB\x04r\
+    \x02\x10\x01\x88\x01\x01B\r\n\x0b_session_id\"\xe9\x01\n\x10GetIssueResp\
+    onse\x12<\n\x05issue\x18\x0c\x20\x01(\x0b2&.bitdrift.public.unary.issues\
+    .v1.IssueR\x05issue\x12Z\n\x06status\x18\r\x20\x01(\x0e28.bitdrift.publi\
+    c.unary.issues.v1.GetIssueResponse.StatusR\x06statusB\x08\xfaB\x05\x82\
+    \x01\x02\x10\x01\";\n\x06Status\x12\t\n\x05FOUND\x10\0\x12\r\n\tNOT_FOUN\
+    D\x10\x01\x12\x0b\n\x07PENDING\x10\x02\x12\n\n\x06FAILED\x10\x03\"\xb2\t\
+    \n\x11ListIssuesRequest\x12/\n\x0eissue_group_id\x18\x01\x20\x01(\tR\x0c\
+    issueGroupIdB\t\xfaB\x06r\x04\x10\x01\x18d\x12\x16\n\x06offset\x18\x02\
+    \x20\x01(\rR\x06offset\x12$\n\x05limit\x18\x03\x20\x01(\rH\0R\x05limitB\
+    \t\xfaB\x06*\x04\x18d(\x01\x88\x01\x01\x12h\n\x07filters\x18\x04\x20\x03\
+    (\x0b2D.bitdrift.public.unary.issues.v1.ListIssuesRequest.ListIssuesFilt\
+    ersR\x07filtersB\x08\xfaB\x05\x92\x01\x02\x10d\x12L\n\x0bissue_query\x18\
+    \x06\x20\x01(\x0b2+.bitdrift.public.unary.issues.v1.IssueQueryR\nissueQu\
+    ery\x12U\n\x04sort\x18\x07\x20\x03(\x0b27.bitdrift.public.unary.issues.v\
+    1.ListIssuesRequest.SortR\x04sortB\x08\xfaB\x05\x92\x01\x02\x10d\x1a\x83\
+    \x02\n\x04Sort\x12[\n\x03key\x18\x01\x20\x01(\x0e2?.bitdrift.public.unar\
+    y.issues.v1.ListIssuesRequest.Sort.SortKeyR\x03keyB\x08\xfaB\x05\x82\x01\
+    \x02\x10\x01\x12V\n\tdirection\x18\x02\x20\x01(\x0e2..bitdrift.public.un\
+    ary.common.v1.SortDirectionR\tdirectionB\x08\xfaB\x05\x82\x01\x02\x10\
+    \x01\"F\n\x07SortKey\x12\x18\n\x14SORT_KEY_UNSPECIFIED\x10\0\x12\x0f\n\
+    \x0bOCCURRED_AT\x10\x01\x12\x10\n\x0cISSUE_REASON\x10\x02\x1a\x8e\x04\n\
+    \x11ListIssuesFilters\x12k\n\x08platform\x18\x01\x20\x01(\x0b2M.bitdrift\
+    .public.unary.issues.v1.ListIssuesRequest.ListIssuesFilters.PlatformH\0R\
+    \x08platform\x12o\n\ntime_range\x18\x02\x20\x01(\x0b2N.bitdrift.public.u\
+    nary.issues.v1.ListIssuesRequest.ListIssuesFilters.TimeRangeH\0R\ttimeRa\
+    nge\x12\\\n\x10advanced_filters\x18\x06\x20\x01(\x0b2/.bitdrift.public.u\
+    nary.issues.v1.AdvancedFilterH\0R\x0fadvancedFilters\x1aX\n\x08Platform\
+    \x12L\n\x05value\x18\x01\x20\x03(\x0b2,.bitdrift.public.shared.platform.\
+    v1.PlatformR\x05valueB\x08\xfaB\x05\x92\x01\x02\x10d\x1aV\n\tTimeRange\
+    \x12I\n\ntime_range\x18\x03\x20\x01(\x0b2*.bitdrift.public.unary.common.\
+    v1.TimeRangeR\ttimeRangeB\x0b\n\x04type\x12\x03\xf8B\x01B\x08\n\x06_limi\
+    t\"w\n\x12ListIssuesResponse\x12>\n\x06issues\x18\x01\x20\x03(\x0b2&.bit\
+    drift.public.unary.issues.v1.IssueR\x06issues\x12!\n\x0ctotal_issues\x18\
+    \x02\x20\x01(\rR\x0btotalIssues\"C\n\x1bGetIssueFeatureFlagsRequest\x12$\
+    \n\x08issue_id\x18\x01\x20\x01(\tR\x07issueIdB\t\xfaB\x06r\x04\x10\x01\
+    \x18d\"\xb6\x02\n\x1cGetIssueFeatureFlagsResponse\x12n\n\rfeature_flags\
+    \x18\x01\x20\x03(\x0b2I.bitdrift.public.unary.issues.v1.GetIssueFeatureF\
+    lagsResponse.FeatureFlagR\x0cfeatureFlags\x1a\xa5\x01\n\x0bFeatureFlag\
+    \x12\x1b\n\x04name\x18\x01\x20\x01(\tR\x04nameB\x07\xfaB\x04r\x02\x10\
+    \x01\x12&\n\x07variant\x18\x02\x20\x01(\tH\0R\x07variantB\x07\xfaB\x04r\
+    \x02\x10\x01\x88\x01\x01\x12E\n\x0bmodified_at\x18\x03\x20\x01(\x0b2\x1a\
+    .google.protobuf.TimestampR\nmodifiedAtB\x08\xfaB\x05\x8a\x01\x02\x10\
+    \x01B\n\n\x08_variant\"\x8f\x01\n\x1dUpdateIssueGroupStatusRequest\x12\
+    \x19\n\x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12\
+    S\n\x06status\x18\x02\x20\x01(\x0e21.bitdrift.public.unary.issues.v1.Iss\
+    ueGroupStatusR\x06statusB\x08\xfaB\x05\x82\x01\x02\x10\x01\"\xcc\x01\n\
+    \x1eUpdateIssueGroupStatusResponse\x12S\n\x06status\x18\x01\x20\x01(\x0e\
+    21.bitdrift.public.unary.issues.v1.IssueGroupStatusR\x06statusB\x08\xfaB\
+    \x05\x82\x01\x02\x10\x01\x12\x1a\n\x07version\x18\x02\x20\x01(\tH\0R\x07\
+    version\x12#\n\x0cversion_code\x18\x03\x20\x01(\x03H\0R\x0bversionCodeB\
+    \x14\n\x12resolution_version\"\x8d\x01\n\x20UpdateIssueGroupAssigneesReq\
+    uest\x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\
+    \x18d\x12N\n\tassignees\x18\x02\x20\x03(\x0b2&.bitdrift.public.unary.com\
+    mon.v1.OwnerR\tassigneesB\x08\xfaB\x05\x92\x01\x02\x10d\"i\n!UpdateIssue\
+    GroupAssigneesResponse\x12D\n\tassignees\x18\x01\x20\x03(\x0b2&.bitdrift\
+    .public.unary.common.v1.OwnerR\tassignees\"\xd5\x01\n\x1cListPossibleAss\
+    igneesRequest\x12'\n\x06search\x18\x01\x20\x01(\tH\0R\x06searchB\n\xfaB\
+    \x07r\x05\x10\x01\x18\xff\x01\x88\x01\x01\x12)\n\x08user_ids\x18\x02\x20\
+    \x03(\tR\x07userIdsB\x0e\xfaB\x0b\x92\x01\x08\x10d\"\x04r\x02\x18d\x12\
+    \x1b\n\x06offset\x18\x03\x20\x01(\rH\x01R\x06offset\x88\x01\x01\x12$\n\
+    \x05limit\x18\x04\x20\x01(\rH\x02R\x05limitB\t\xfaB\x06*\x04\x18d(\x01\
+    \x88\x01\x01B\t\n\x07_searchB\t\n\x07_offsetB\x08\n\x06_limit\"{\n\x1dLi\
+    stPossibleAssigneesResponse\x12D\n\tassignees\x18\x01\x20\x03(\x0b2&.bit\
+    drift.public.unary.common.v1.OwnerR\tassignees\x12\x14\n\x05total\x18\
+    \x02\x20\x01(\rR\x05total\"\x88\x04\n!UpdateIssueGroupAttributesRequest\
+    \x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\
+    \x12\x85\x01\n\noperations\x18\x02\x20\x03(\x0b2[.bitdrift.public.unary.\
+    issues.v1.UpdateIssueGroupAttributesRequest.UpdateAttributeOperationR\no\
+    perationsB\x08\xfaB\x05\x92\x01\x02\x10d\x1a\xbf\x02\n\x18UpdateAttribut\
+    eOperation\x12\x9c\x01\n\x0eoperation_type\x18\x01\x20\x01(\x0e2i.bitdri\
+    ft.public.unary.issues.v1.UpdateIssueGroupAttributesRequest.UpdateAttrib\
+    uteOperation.OperationTypeR\roperationTypeB\n\xfaB\x07\x82\x01\x04\x10\
+    \x01\x20\0\x12\x1b\n\x03key\x18\x02\x20\x01(\tR\x03keyB\t\xfaB\x06r\x04\
+    \x10\x01\x18d\x12\x1e\n\x05value\x18\x03\x20\x01(\tR\x05valueB\x08\xfaB\
+    \x05r\x03\x18\x80\x08\"G\n\rOperationType\x12\x1e\n\x1aOPERATION_TYPE_UN\
+    SPECIFIED\x10\0\x12\n\n\x06UPSERT\x10\x01\x12\n\n\x06REMOVE\x10\x02\"$\n\
+    \"UpdateIssueGroupAttributesResponse\";\n\x1eGetIssueGroupAttributesRequ\
+    est\x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\
+    \x18d\"\xd4\x01\n\x1fGetIssueGroupAttributesResponse\x12j\n\nattributes\
+    \x18\x01\x20\x03(\x0b2J.bitdrift.public.unary.issues.v1.GetIssueGroupAtt\
+    ributesResponse.AttributeR\nattributes\x1aE\n\tAttribute\x12\x19\n\x03ke\
+    y\x18\x01\x20\x01(\tR\x03keyB\x07\xfaB\x04r\x02\x10\x01\x12\x1d\n\x05val\
+    ue\x18\x02\x20\x01(\tR\x05valueB\x07\xfaB\x04r\x02\x10\x01*_\n\x10IssueG\
+    roupStatus\x12\x07\n\x03NEW\x10\0\x12\x0f\n\x0bIN_PROGRESS\x10\x03\x12\t\
+    \n\x05FIXED\x10\x04\x12\x0c\n\x08REOPENED\x10\x05\x12\x0b\n\x07IGNORED\
+    \x10\x06\x12\x0b\n\x07SNOOZED\x10\x07b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -7337,7 +8523,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(super::crash::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(39);
+            let mut messages = ::std::vec::Vec::with_capacity(45);
             messages.push(AdvancedFilter::generated_message_descriptor_data());
             messages.push(FeatureFlagFilter::generated_message_descriptor_data());
             messages.push(IssueQuery::generated_message_descriptor_data());
@@ -7346,6 +8532,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(IssueGroup::generated_message_descriptor_data());
             messages.push(GetIssueGroupRequest::generated_message_descriptor_data());
             messages.push(GetIssueGroupResponse::generated_message_descriptor_data());
+            messages.push(ListIssueGroupsFilters::generated_message_descriptor_data());
             messages.push(ListIssueGroupsRequest::generated_message_descriptor_data());
             messages.push(ListIssueGroupsResponse::generated_message_descriptor_data());
             messages.push(GetIssueRequest::generated_message_descriptor_data());
@@ -7369,6 +8556,11 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(advanced_filter::OrCondition::generated_message_descriptor_data());
             messages.push(issue_group::Metadata::generated_message_descriptor_data());
             messages.push(issue_group::Stats::generated_message_descriptor_data());
+            messages.push(list_issue_groups_filters::Assignee::generated_message_descriptor_data());
+            messages.push(list_issue_groups_filters::Status::generated_message_descriptor_data());
+            messages.push(list_issue_groups_filters::Platform::generated_message_descriptor_data());
+            messages.push(list_issue_groups_filters::TimeRange::generated_message_descriptor_data());
+            messages.push(list_issue_groups_filters::IdsFilters::generated_message_descriptor_data());
             messages.push(list_issue_groups_request::Sort::generated_message_descriptor_data());
             messages.push(list_issues_request::Sort::generated_message_descriptor_data());
             messages.push(list_issues_request::ListIssuesFilters::generated_message_descriptor_data());

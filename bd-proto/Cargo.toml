@@ -27,4 +27,4 @@ public-api = []
 with-source-info = ["public-api"]
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ["cfg(tarpaulin_include)", "cfg(feature, values(\"public-api\", \"with-source-info\"))"] }
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(tarpaulin_include)"] }

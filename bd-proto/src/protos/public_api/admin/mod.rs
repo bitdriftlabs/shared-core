@@ -10,6 +10,7 @@ pub mod connector;
 pub mod keys;
 pub mod notifications;
 pub mod permission;
+pub mod view;
 
 // Re-export proto dependencies referenced by generated code in this subdirectory.
-pub use super::validate;
+pub use super::{common, issues, validate};

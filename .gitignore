@@ -6,3 +6,4 @@ perf.data*
 .claude/settings.local.json
 .tmp/
 **/.venv
+.vscode/

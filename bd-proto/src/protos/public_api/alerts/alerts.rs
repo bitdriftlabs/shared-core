@@ -1545,57 +1545,8 @@ impl AlertConfig {
         }
     }
 
-    // .bitdrift.public.unary.alerts.v1.RateOfChangeAlertConfig rate_of_change_alert = 7;
-
-    pub fn rate_of_change_alert(&self) -> &RateOfChangeAlertConfig {
-        match self.alert_type {
-            ::std::option::Option::Some(alert_config::Alert_type::RateOfChangeAlert(ref v)) => v,
-            _ => <RateOfChangeAlertConfig as ::protobuf::Message>::default_instance(),
-        }
-    }
-
-    pub fn clear_rate_of_change_alert(&mut self) {
-        self.alert_type = ::std::option::Option::None;
-    }
-
-    pub fn has_rate_of_change_alert(&self) -> bool {
-        match self.alert_type {
-            ::std::option::Option::Some(alert_config::Alert_type::RateOfChangeAlert(..)) => true,
-            _ => false,
-        }
-    }
-
-    // Param is passed by value, moved
-    pub fn set_rate_of_change_alert(&mut self, v: RateOfChangeAlertConfig) {
-        self.alert_type = ::std::option::Option::Some(alert_config::Alert_type::RateOfChangeAlert(v))
-    }
-
-    // Mutable pointer to the field.
-    pub fn mut_rate_of_change_alert(&mut self) -> &mut RateOfChangeAlertConfig {
-        if let ::std::option::Option::Some(alert_config::Alert_type::RateOfChangeAlert(_)) = self.alert_type {
-        } else {
-            self.alert_type = ::std::option::Option::Some(alert_config::Alert_type::RateOfChangeAlert(RateOfChangeAlertConfig::new()));
-        }
-        match self.alert_type {
-            ::std::option::Option::Some(alert_config::Alert_type::RateOfChangeAlert(ref mut v)) => v,
-            _ => panic!(),
-        }
-    }
-
-    // Take field
-    pub fn take_rate_of_change_alert(&mut self) -> RateOfChangeAlertConfig {
-        if self.has_rate_of_change_alert() {
-            match self.alert_type.take() {
-                ::std::option::Option::Some(alert_config::Alert_type::RateOfChangeAlert(v)) => v,
-                _ => panic!(),
-            }
-        } else {
-            RateOfChangeAlertConfig::new()
-        }
-    }
-
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut fields = ::std::vec::Vec::with_capacity(3);
         let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, CommonAlertConfig>(
             "common_config",
@@ -1615,13 +1566,6 @@ impl AlertConfig {
             AlertConfig::slo_alert,
             AlertConfig::mut_slo_alert,
             AlertConfig::set_slo_alert,
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, RateOfChangeAlertConfig>(
-            "rate_of_change_alert",
-            AlertConfig::has_rate_of_change_alert,
-            AlertConfig::rate_of_change_alert,
-            AlertConfig::mut_rate_of_change_alert,
-            AlertConfig::set_rate_of_change_alert,
         ));
         oneofs.push(alert_config::Alert_type::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<AlertConfig>(
@@ -1651,9 +1595,6 @@ impl ::protobuf::Message for AlertConfig {
                 50 => {
                     self.alert_type = ::std::option::Option::Some(alert_config::Alert_type::SloAlert(is.read_message()?));
                 },
-                58 => {
-                    self.alert_type = ::std::option::Option::Some(alert_config::Alert_type::RateOfChangeAlert(is.read_message()?));
-                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -1680,10 +1621,6 @@ impl ::protobuf::Message for AlertConfig {
                     let len = v.compute_size();
                     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 },
-                &alert_config::Alert_type::RateOfChangeAlert(ref v) => {
-                    let len = v.compute_size();
-                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-                },
             };
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -1702,9 +1639,6 @@ impl ::protobuf::Message for AlertConfig {
                 },
                 &alert_config::Alert_type::SloAlert(ref v) => {
                     ::protobuf::rt::write_message_field_with_cached_size(6, v, os)?;
-                },
-                &alert_config::Alert_type::RateOfChangeAlert(ref v) => {
-                    ::protobuf::rt::write_message_field_with_cached_size(7, v, os)?;
                 },
             };
         }
@@ -1726,7 +1660,6 @@ impl ::protobuf::Message for AlertConfig {
 
     fn clear(&mut self) {
         self.common_config.clear();
-        self.alert_type = ::std::option::Option::None;
         self.alert_type = ::std::option::Option::None;
         self.alert_type = ::std::option::Option::None;
         self.special_fields.clear();
@@ -1769,8 +1702,6 @@ pub mod alert_config {
         BasicAlert(super::BasicAlertConfig),
         // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.alerts.v1.AlertConfig.slo_alert)
         SloAlert(super::SloAlertConfig),
-        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.alerts.v1.AlertConfig.rate_of_change_alert)
-        RateOfChangeAlert(super::RateOfChangeAlertConfig),
     }
 
     impl ::protobuf::Oneof for Alert_type {
@@ -5454,8 +5385,6 @@ pub enum WorkflowAlertType {
     BASIC = 0,
     // @@protoc_insertion_point(enum_value:bitdrift.public.unary.alerts.v1.WorkflowAlertType.SLO)
     SLO = 1,
-    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.alerts.v1.WorkflowAlertType.RATE_OF_CHANGE)
-    RATE_OF_CHANGE = 2,
 }
 
 impl ::protobuf::Enum for WorkflowAlertType {
@@ -5469,7 +5398,6 @@ impl ::protobuf::Enum for WorkflowAlertType {
         match value {
             0 => ::std::option::Option::Some(WorkflowAlertType::BASIC),
             1 => ::std::option::Option::Some(WorkflowAlertType::SLO),
-            2 => ::std::option::Option::Some(WorkflowAlertType::RATE_OF_CHANGE),
             _ => ::std::option::Option::None
         }
     }
@@ -5478,7 +5406,6 @@ impl ::protobuf::Enum for WorkflowAlertType {
         match str {
             "BASIC" => ::std::option::Option::Some(WorkflowAlertType::BASIC),
             "SLO" => ::std::option::Option::Some(WorkflowAlertType::SLO),
-            "RATE_OF_CHANGE" => ::std::option::Option::Some(WorkflowAlertType::RATE_OF_CHANGE),
             _ => ::std::option::Option::None
         }
     }
@@ -5486,7 +5413,6 @@ impl ::protobuf::Enum for WorkflowAlertType {
     const VALUES: &'static [WorkflowAlertType] = &[
         WorkflowAlertType::BASIC,
         WorkflowAlertType::SLO,
-        WorkflowAlertType::RATE_OF_CHANGE,
     ];
 }
 
@@ -5574,34 +5500,32 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x06labels\x18\x05\x20\x03(\x0b2>.bitdrift.public.unary.alerts.v1.Common\
     AlertConfig.LabelsEntryR\x06labelsB\x08\xfaB\x05\x9a\x01\x02\x10\x14\x1a\
     9\n\x0bLabelsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\
-    \x05value\x18\x02\x20\x01(\tR\x05value:\x028\x01\"\x96\x03\n\x0bAlertCon\
+    \x05value\x18\x02\x20\x01(\tR\x05value:\x028\x01\"\xa9\x02\n\x0bAlertCon\
     fig\x12a\n\rcommon_config\x18\x01\x20\x01(\x0b22.bitdrift.public.unary.a\
     lerts.v1.CommonAlertConfigR\x0ccommonConfigB\x08\xfaB\x05\x8a\x01\x02\
     \x10\x01\x12T\n\x0bbasic_alert\x18\x05\x20\x01(\x0b21.bitdrift.public.un\
     ary.alerts.v1.BasicAlertConfigH\0R\nbasicAlert\x12N\n\tslo_alert\x18\x06\
     \x20\x01(\x0b2/.bitdrift.public.unary.alerts.v1.SloAlertConfigH\0R\x08sl\
-    oAlert\x12k\n\x14rate_of_change_alert\x18\x07\x20\x01(\x0b28.bitdrift.pu\
-    blic.unary.alerts.v1.RateOfChangeAlertConfigH\0R\x11rateOfChangeAlertB\
-    \x11\n\nalert_type\x12\x03\xf8B\x01\"t\n\x15GetAlertConfigRequest\x12+\n\
-    \x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\x07r\x05\x10\x01\
-    \x18\xff\x01\x12.\n\rchart_rule_id\x18\x03\x20\x01(\tR\x0bchartRuleIdB\n\
-    \xfaB\x07r\x05\x10\x01\x18\xff\x01\"\x80\x03\n\x16GetAlertConfigResponse\
-    \x12n\n\ralert_configs\x18\x01\x20\x03(\x0b2I.bitdrift.public.unary.aler\
-    ts.v1.GetAlertConfigResponse.AlertConfigWithIdR\x0calertConfigs\x1a\xf5\
-    \x01\n\x11AlertConfigWithId\x12\x0e\n\x02id\x18\x01\x20\x01(\x04R\x02id\
-    \x12D\n\x06config\x18\x06\x20\x01(\x0b2,.bitdrift.public.unary.alerts.v1\
-    .AlertConfigR\x06config\x12\x1a\n\x08disabled\x18\x03\x20\x01(\x08R\x08d\
-    isabled\x120\n\x14aggregated_action_id\x18\x04\x20\x01(\tR\x12aggregated\
-    ActionId\x12<\n\x05owner\x18\x05\x20\x01(\x0b2&.bitdrift.public.unary.co\
-    mmon.v1.OwnerR\x05owner\"\xbe\x02\n\x18UpsertAlertConfigRequest\x12+\n\
-    \x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\x07r\x05\x10\x01\
-    \x18\xff\x01\x12.\n\rchart_rule_id\x18\x03\x20\x01(\tR\x0bchartRuleIdB\n\
-    \xfaB\x07r\x05\x10\x01\x18\xff\x01\x12<\n\x14aggregated_action_id\x18\
-    \x04\x20\x01(\tR\x12aggregatedActionIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\
-    \x01\x12\x13\n\x02id\x18\x05\x20\x01(\x04H\0R\x02id\x88\x01\x01\x12O\n\
-    \x0calert_config\x18\x08\x20\x01(\x0b2,.bitdrift.public.unary.alerts.v1.\
-    AlertConfigR\x0balertConfig\x12\x1a\n\x08disabled\x18\x07\x20\x01(\x08R\
-    \x08disabledB\x05\n\x03_id\"+\n\x19UpsertAlertConfigResponse\x12\x0e\n\
+    oAlertB\x11\n\nalert_type\x12\x03\xf8B\x01\"t\n\x15GetAlertConfigRequest\
+    \x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\x07r\x05\
+    \x10\x01\x18\xff\x01\x12.\n\rchart_rule_id\x18\x03\x20\x01(\tR\x0bchartR\
+    uleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\"\x80\x03\n\x16GetAlertConfig\
+    Response\x12n\n\ralert_configs\x18\x01\x20\x03(\x0b2I.bitdrift.public.un\
+    ary.alerts.v1.GetAlertConfigResponse.AlertConfigWithIdR\x0calertConfigs\
+    \x1a\xf5\x01\n\x11AlertConfigWithId\x12\x0e\n\x02id\x18\x01\x20\x01(\x04\
+    R\x02id\x12D\n\x06config\x18\x06\x20\x01(\x0b2,.bitdrift.public.unary.al\
+    erts.v1.AlertConfigR\x06config\x12\x1a\n\x08disabled\x18\x03\x20\x01(\
+    \x08R\x08disabled\x120\n\x14aggregated_action_id\x18\x04\x20\x01(\tR\x12\
+    aggregatedActionId\x12<\n\x05owner\x18\x05\x20\x01(\x0b2&.bitdrift.publi\
+    c.unary.common.v1.OwnerR\x05owner\"\xbe\x02\n\x18UpsertAlertConfigReques\
+    t\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\x07r\x05\
+    \x10\x01\x18\xff\x01\x12.\n\rchart_rule_id\x18\x03\x20\x01(\tR\x0bchartR\
+    uleIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12<\n\x14aggregated_action_i\
+    d\x18\x04\x20\x01(\tR\x12aggregatedActionIdB\n\xfaB\x07r\x05\x10\x01\x18\
+    \xff\x01\x12\x13\n\x02id\x18\x05\x20\x01(\x04H\0R\x02id\x88\x01\x01\x12O\
+    \n\x0calert_config\x18\x08\x20\x01(\x0b2,.bitdrift.public.unary.alerts.v\
+    1.AlertConfigR\x0balertConfig\x12\x1a\n\x08disabled\x18\x07\x20\x01(\x08\
+    R\x08disabledB\x05\n\x03_id\"+\n\x19UpsertAlertConfigResponse\x12\x0e\n\
     \x02id\x18\x01\x20\x01(\x04R\x02id\"\x9d\x03\n\x0fAllAlertsFilter\x12N\n\
     \x05owned\x18\x01\x20\x01(\x0b26.bitdrift.public.unary.alerts.v1.AllAler\
     tsFilter.OwnedH\0R\x05owned\x12Q\n\x06firing\x18\x02\x20\x01(\x0b27.bitd\
@@ -5673,18 +5597,17 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x0btriggeredAt\x12;\n\x0bresolved_at\x18\x02\x20\x01(\x0b2\x1a.google.p\
     rotobuf.TimestampR\nresolvedAt\x12N\n\x07details\x18\x03\x20\x01(\x0b24.\
     bitdrift.public.unary.alerts.v1.AlertHistoryDetailsR\x07details**\n\x12T\
-    hresholdCondition\x12\t\n\x05ABOVE\x10\0\x12\t\n\x05BELOW\x10\x01*;\n\
-    \x11WorkflowAlertType\x12\t\n\x05BASIC\x10\0\x12\x07\n\x03SLO\x10\x01\
-    \x12\x12\n\x0eRATE_OF_CHANGE\x10\x022\xa4\x04\n\rAlertsService\x12\x81\
-    \x01\n\x0eGetAlertConfig\x126.bitdrift.public.unary.alerts.v1.GetAlertCo\
-    nfigRequest\x1a7.bitdrift.public.unary.alerts.v1.GetAlertConfigResponse\
-    \x12\x8a\x01\n\x11UpsertAlertConfig\x129.bitdrift.public.unary.alerts.v1\
-    .UpsertAlertConfigRequest\x1a:.bitdrift.public.unary.alerts.v1.UpsertAle\
-    rtConfigResponse\x12{\n\x0cGetAllAlerts\x124.bitdrift.public.unary.alert\
-    s.v1.GetAllAlertsRequest\x1a5.bitdrift.public.unary.alerts.v1.GetAllAler\
-    tsResponse\x12\x84\x01\n\x0fGetAlertHistory\x127.bitdrift.public.unary.a\
-    lerts.v1.GetAlertHistoryRequest\x1a8.bitdrift.public.unary.alerts.v1.Get\
-    AlertHistoryResponseb\x06proto3\
+    hresholdCondition\x12\t\n\x05ABOVE\x10\0\x12\t\n\x05BELOW\x10\x01*'\n\
+    \x11WorkflowAlertType\x12\t\n\x05BASIC\x10\0\x12\x07\n\x03SLO\x10\x012\
+    \xa4\x04\n\rAlertsService\x12\x81\x01\n\x0eGetAlertConfig\x126.bitdrift.\
+    public.unary.alerts.v1.GetAlertConfigRequest\x1a7.bitdrift.public.unary.\
+    alerts.v1.GetAlertConfigResponse\x12\x8a\x01\n\x11UpsertAlertConfig\x129\
+    .bitdrift.public.unary.alerts.v1.UpsertAlertConfigRequest\x1a:.bitdrift.\
+    public.unary.alerts.v1.UpsertAlertConfigResponse\x12{\n\x0cGetAllAlerts\
+    \x124.bitdrift.public.unary.alerts.v1.GetAllAlertsRequest\x1a5.bitdrift.\
+    public.unary.alerts.v1.GetAllAlertsResponse\x12\x84\x01\n\x0fGetAlertHis\
+    tory\x127.bitdrift.public.unary.alerts.v1.GetAlertHistoryRequest\x1a8.bi\
+    tdrift.public.unary.alerts.v1.GetAlertHistoryResponseb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
