@@ -10,37 +10,34 @@
 mod flush_registry_test;
 
 use bd_api::TriggerUploadSource;
-use base64::Engine as _;
+use bd_client_common::file::{
+  read_compressed_protobuf_file_if_exists,
+  write_compressed_protobuf_file,
+};
+use bd_client_common::file_system::delete_file_if_exists_async;
+use bd_macros::proto_serializable;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
-static PENDING_TRIGGER_UPLOADS_KEY: bd_key_value::Key<String> =
-  bd_key_value::Key::new("logger.pending_trigger_uploads.1");
+const PENDING_TRIGGER_UPLOADS_FILE_NAME: &str = "pending_trigger_uploads_snapshot.1.pb";
+
+//
+// PersistedTriggerUploadLifecycle
+//
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PersistedTriggerUploadLifecycle {
+pub enum PersistedTriggerUploadLifecycle {
   ReadyToUpload,
   Uploading,
 }
 
-impl PersistedTriggerUploadLifecycle {
-  fn encode(self) -> &'static str {
-    match self {
-      Self::ReadyToUpload => "ready",
-      Self::Uploading => "uploading",
-    }
-  }
-
-  fn decode(value: &str) -> Option<Self> {
-    match value {
-      "ready" => Some(Self::ReadyToUpload),
-      "uploading" => Some(Self::Uploading),
-      _ => None,
-    }
-  }
-}
+//
+// PersistedTriggerUploadSource
+//
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum PersistedTriggerUploadSource {
+pub enum PersistedTriggerUploadSource {
   WorkflowAction(String),
   ExplicitSessionCapture(String),
   RemoteCommand(String),
@@ -57,7 +54,7 @@ impl From<&TriggerUploadSource> for PersistedTriggerUploadSource {
 }
 
 impl PersistedTriggerUploadSource {
-  pub(crate) fn to_trigger_upload_source(&self) -> TriggerUploadSource {
+  pub fn to_trigger_upload_source(&self) -> TriggerUploadSource {
     match self {
       Self::WorkflowAction(id) => TriggerUploadSource::WorkflowAction(id.clone()),
       Self::ExplicitSessionCapture(id) => TriggerUploadSource::ExplicitSessionCapture(id.clone()),
@@ -66,146 +63,268 @@ impl PersistedTriggerUploadSource {
   }
 }
 
+//
+// PersistedTriggerUpload
+//
+
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PersistedTriggerUpload {
-  pub(crate) id: String,
-  pub(crate) source: PersistedTriggerUploadSource,
-  pub(crate) buffer_ids: Vec<String>,
-  pub(crate) has_streaming: bool,
-  pub(crate) lifecycle: PersistedTriggerUploadLifecycle,
+pub struct PersistedTriggerUpload {
+  pub id: String,
+  pub source: PersistedTriggerUploadSource,
+  pub buffer_ids: Vec<String>,
+  pub has_streaming: bool,
+  pub lifecycle: PersistedTriggerUploadLifecycle,
 }
 
-impl PersistedTriggerUploadSource {
-  fn encode(&self) -> (&'static str, &str) {
-    match self {
-      Self::WorkflowAction(id) => ("workflow", id),
-      Self::ExplicitSessionCapture(id) => ("session_capture", id),
-      Self::RemoteCommand(id) => ("remote", id),
+//
+// PendingTriggerUploadsSnapshot
+//
+
+#[proto_serializable]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct PendingTriggerUploadsSnapshot {
+  #[field(id = 1)]
+  uploads: Vec<PersistedTriggerUploadRecord>,
+}
+
+//
+// PersistedTriggerUploadRecord
+//
+
+#[proto_serializable]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct PersistedTriggerUploadRecord {
+  #[field(id = 1)]
+  id: String,
+  #[field(id = 2)]
+  source: PersistedTriggerUploadSourceRecord,
+  #[field(id = 3)]
+  buffer_ids: Vec<String>,
+  #[field(id = 4)]
+  has_streaming: bool,
+  #[field(id = 5)]
+  lifecycle: PersistedTriggerUploadLifecycleRecord,
+}
+
+#[proto_serializable]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct PersistedTriggerUploadSourceRecord {
+  #[field(id = 1)]
+  kind: PersistedTriggerUploadSourceKindRecord,
+  #[field(id = 2)]
+  id: String,
+}
+
+#[proto_serializable]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum PersistedTriggerUploadSourceKindRecord {
+  #[field(id = 1)]
+  #[field(deserialize)]
+  WorkflowAction,
+  #[field(id = 2)]
+  #[field(deserialize)]
+  ExplicitSessionCapture,
+  #[field(id = 3)]
+  #[field(deserialize)]
+  #[default]
+  RemoteCommand,
+}
+
+#[proto_serializable]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum PersistedTriggerUploadLifecycleRecord {
+  #[field(id = 1)]
+  #[field(deserialize)]
+  #[default]
+  ReadyToUpload,
+  #[field(id = 2)]
+  #[field(deserialize)]
+  Uploading,
+}
+
+impl From<&PersistedTriggerUpload> for PersistedTriggerUploadRecord {
+  fn from(upload: &PersistedTriggerUpload) -> Self {
+    Self {
+      id: upload.id.clone(),
+      source: (&upload.source).into(),
+      buffer_ids: upload.buffer_ids.clone(),
+      has_streaming: upload.has_streaming,
+      lifecycle: upload.lifecycle.into(),
     }
   }
+}
 
-  fn decode(kind: &str, id: String) -> Option<Self> {
-    match kind {
-      "workflow" => Some(Self::WorkflowAction(id)),
-      "session_capture" => Some(Self::ExplicitSessionCapture(id)),
-      "remote" => Some(Self::RemoteCommand(id)),
-      _ => None,
+impl From<PersistedTriggerUploadRecord> for PersistedTriggerUpload {
+  fn from(upload: PersistedTriggerUploadRecord) -> Self {
+    Self {
+      id: upload.id,
+      source: upload.source.into(),
+      buffer_ids: upload.buffer_ids,
+      has_streaming: upload.has_streaming,
+      lifecycle: upload.lifecycle.into(),
     }
   }
 }
 
-impl PersistedTriggerUpload {
-  fn encode(&self) -> String {
-    let (source_kind, source_id) = self.source.encode();
-    let mut parts = vec![
-      encode_component(&self.id),
-      encode_component(source_kind),
-      encode_component(source_id),
-      if self.has_streaming { "1" } else { "0" }.to_string(),
-      self.lifecycle.encode().to_string(),
-      self.buffer_ids.len().to_string(),
-    ];
-    parts.extend(self.buffer_ids.iter().map(|buffer_id| encode_component(buffer_id)));
-    parts.join("\t")
-  }
-
-  fn decode(line: &str) -> Option<Self> {
-    let parts = line.split('\t').collect::<Vec<_>>();
-    if parts.len() < 6 {
-      return None;
+impl From<&PersistedTriggerUploadSource> for PersistedTriggerUploadSourceRecord {
+  fn from(source: &PersistedTriggerUploadSource) -> Self {
+    match source {
+      PersistedTriggerUploadSource::WorkflowAction(id) => Self {
+        kind: PersistedTriggerUploadSourceKindRecord::WorkflowAction,
+        id: id.clone(),
+      },
+      PersistedTriggerUploadSource::ExplicitSessionCapture(id) => Self {
+        kind: PersistedTriggerUploadSourceKindRecord::ExplicitSessionCapture,
+        id: id.clone(),
+      },
+      PersistedTriggerUploadSource::RemoteCommand(id) => Self {
+        kind: PersistedTriggerUploadSourceKindRecord::RemoteCommand,
+        id: id.clone(),
+      },
     }
-
-    let buffer_count = parts[5].parse::<usize>().ok()?;
-    if parts.len() != 6 + buffer_count {
-      return None;
-    }
-
-    let id = decode_component(parts[0])?;
-    let source_kind = decode_component(parts[1])?;
-    let source_id = decode_component(parts[2])?;
-    let has_streaming = match parts[3] {
-      "0" => false,
-      "1" => true,
-      _ => return None,
-    };
-    let lifecycle = PersistedTriggerUploadLifecycle::decode(parts[4])?;
-    let buffer_ids = parts[6 ..]
-      .iter()
-      .map(|buffer_id| decode_component(buffer_id))
-      .collect::<Option<Vec<_>>>()?;
-
-    Some(Self {
-      id,
-      source: PersistedTriggerUploadSource::decode(&source_kind, source_id)?,
-      buffer_ids,
-      has_streaming,
-      lifecycle,
-    })
   }
 }
 
-fn encode_component(value: &str) -> String {
-  base64::engine::general_purpose::STANDARD.encode(value.as_bytes())
+impl From<PersistedTriggerUploadSourceRecord> for PersistedTriggerUploadSource {
+  fn from(source: PersistedTriggerUploadSourceRecord) -> Self {
+    match source.kind {
+      PersistedTriggerUploadSourceKindRecord::WorkflowAction => Self::WorkflowAction(source.id),
+      PersistedTriggerUploadSourceKindRecord::ExplicitSessionCapture => {
+        Self::ExplicitSessionCapture(source.id)
+      },
+      PersistedTriggerUploadSourceKindRecord::RemoteCommand => Self::RemoteCommand(source.id),
+    }
+  }
 }
 
-fn decode_component(value: &str) -> Option<String> {
-  let bytes = base64::engine::general_purpose::STANDARD.decode(value).ok()?;
-  String::from_utf8(bytes).ok()
+impl From<PersistedTriggerUploadLifecycle> for PersistedTriggerUploadLifecycleRecord {
+  fn from(lifecycle: PersistedTriggerUploadLifecycle) -> Self {
+    match lifecycle {
+      PersistedTriggerUploadLifecycle::ReadyToUpload => Self::ReadyToUpload,
+      PersistedTriggerUploadLifecycle::Uploading => Self::Uploading,
+    }
+  }
 }
 
-fn encode_uploads(uploads: &[PersistedTriggerUpload]) -> String {
-  uploads
-    .iter()
-    .map(PersistedTriggerUpload::encode)
-    .collect::<Vec<_>>()
-    .join("\n")
+impl From<PersistedTriggerUploadLifecycleRecord> for PersistedTriggerUploadLifecycle {
+  fn from(lifecycle: PersistedTriggerUploadLifecycleRecord) -> Self {
+    match lifecycle {
+      PersistedTriggerUploadLifecycleRecord::ReadyToUpload => Self::ReadyToUpload,
+      PersistedTriggerUploadLifecycleRecord::Uploading => Self::Uploading,
+    }
+  }
 }
 
-fn decode_uploads(value: &str) -> Vec<PersistedTriggerUpload> {
-  value
-    .lines()
-    .filter(|line| !line.is_empty())
-    .filter_map(PersistedTriggerUpload::decode)
-    .collect()
+#[derive(Default)]
+struct Inner {
+  loaded: bool,
+  uploads: Vec<PersistedTriggerUpload>,
 }
+
+//
+// PendingTriggerUploadsStore
+//
 
 #[derive(Clone)]
-pub(crate) struct PendingTriggerUploadsStore {
-  store: Arc<bd_key_value::Store>,
+pub struct PendingTriggerUploadsStore {
+  inner: Arc<Mutex<Inner>>,
+  state_path: Arc<PathBuf>,
 }
 
 impl PendingTriggerUploadsStore {
-  pub(crate) fn new(store: Arc<bd_key_value::Store>) -> Self {
-    Self { store }
-  }
-
-  pub(crate) fn upsert(&self, upload: PersistedTriggerUpload) {
-    let mut uploads = self.pending_uploads();
-    uploads.retain(|existing| existing.id != upload.id);
-    uploads.push(upload);
-    self.store.set_string(&PENDING_TRIGGER_UPLOADS_KEY, &encode_uploads(&uploads));
-  }
-
-  pub(crate) fn remove(&self, id: &str) {
-    let mut uploads = self.pending_uploads();
-    uploads.retain(|existing| existing.id != id);
-    self.store.set_string(&PENDING_TRIGGER_UPLOADS_KEY, &encode_uploads(&uploads));
-  }
-
-  pub(crate) fn mark_uploading(&self, id: &str) {
-    let mut uploads = self.pending_uploads();
-    for upload in &mut uploads {
-      if upload.id == id {
-        upload.lifecycle = PersistedTriggerUploadLifecycle::Uploading;
-      }
+  pub fn new(sdk_directory: impl AsRef<Path>) -> Self {
+    Self {
+      inner: Arc::new(Mutex::new(Inner::default())),
+      state_path: Arc::new(
+        sdk_directory
+          .as_ref()
+          .join("state")
+          .join("logger")
+          .join(PENDING_TRIGGER_UPLOADS_FILE_NAME),
+      ),
     }
-    self.store.set_string(&PENDING_TRIGGER_UPLOADS_KEY, &encode_uploads(&uploads));
   }
 
-  pub(crate) fn pending_uploads(&self) -> Vec<PersistedTriggerUpload> {
+  pub async fn upsert(&self, upload: PersistedTriggerUpload) {
     self
-      .store
-      .get_string(&PENDING_TRIGGER_UPLOADS_KEY)
-      .map_or_else(Vec::new, |value| decode_uploads(&value))
+      .mutate(|uploads| {
+        uploads.retain(|existing| existing.id != upload.id);
+        uploads.push(upload);
+      })
+      .await;
+  }
+
+  pub async fn remove(&self, id: &str) {
+    self
+      .mutate(|uploads| uploads.retain(|existing| existing.id != id))
+      .await;
+  }
+
+  pub async fn mark_uploading(&self, id: &str) {
+    self
+      .mutate(|uploads| {
+        for upload in uploads {
+          if upload.id == id {
+            upload.lifecycle = PersistedTriggerUploadLifecycle::Uploading;
+          }
+        }
+      })
+      .await;
+  }
+
+  pub async fn pending_uploads(&self) -> Vec<PersistedTriggerUpload> {
+    let mut inner = self.inner.lock().await;
+    Self::ensure_loaded(&self.state_path, &mut inner).await;
+    inner.uploads.clone()
+  }
+
+  async fn mutate(&self, mutate: impl FnOnce(&mut Vec<PersistedTriggerUpload>)) {
+    let mut inner = self.inner.lock().await;
+    Self::ensure_loaded(&self.state_path, &mut inner).await;
+    mutate(&mut inner.uploads);
+
+    if let Err(e) = Self::persist(&self.state_path, &inner.uploads).await {
+      log::warn!(
+        "failed to persist pending trigger uploads to {}: {e}",
+        self.state_path.display()
+      );
+    }
+  }
+
+  async fn ensure_loaded(state_path: &Path, inner: &mut Inner) {
+    if !inner.loaded {
+      inner.uploads = Self::load(state_path).await;
+      inner.loaded = true;
+    }
+  }
+
+  async fn load(state_path: &Path) -> Vec<PersistedTriggerUpload> {
+    match read_compressed_protobuf_file_if_exists::<PendingTriggerUploadsSnapshot>(state_path).await
+    {
+      Ok(None) => Vec::new(),
+      Ok(Some(snapshot)) => snapshot.uploads.into_iter().map(Into::into).collect(),
+      Err(e) => {
+        log::warn!(
+          "failed to deserialize pending trigger uploads from {}: {e}",
+          state_path.display()
+        );
+        let _ignored = delete_file_if_exists_async(state_path).await;
+        Vec::new()
+      },
+    }
+  }
+
+  async fn persist(state_path: &Path, uploads: &[PersistedTriggerUpload]) -> anyhow::Result<()> {
+    if uploads.is_empty() {
+      return delete_file_if_exists_async(state_path).await;
+    }
+
+    write_compressed_protobuf_file(
+      state_path,
+      &PendingTriggerUploadsSnapshot {
+        uploads: uploads.iter().map(Into::into).collect(),
+      },
+    )
+    .await
   }
 }

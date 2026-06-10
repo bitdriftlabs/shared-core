@@ -33,6 +33,7 @@ use bd_stats_common::Counter as _;
 use bd_time::OffsetDateTimeExt;
 use futures_util::future::try_join_all;
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -142,22 +143,16 @@ impl BufferUploadManager {
   pub(crate) fn new(
     data_upload_tx: tokio::sync::mpsc::Sender<bd_api::DataUpload>,
     runtime_loader: &Arc<ConfigLoader>,
+    sdk_directory: &Path,
     shutdown: ComponentShutdown,
     buffer_event_rx: Receiver<BufferEventWithResponse>,
     trigger_upload_rx: Receiver<TriggerUpload>,
     remote_flush_streaming_tx: Sender<RemoteFlushStreamingRequest>,
-    store: Arc<bd_key_value::Store>,
     stats: &Scope,
     logging: Arc<dyn bd_internal_logging::Logger>,
     state_upload_handle: Option<Arc<StateUploadHandle>>,
   ) -> Self {
-    let pending_trigger_uploads = PendingTriggerUploadsStore::new(store);
-    let recovered_pending_trigger_uploads = pending_trigger_uploads.pending_uploads().len();
-    if recovered_pending_trigger_uploads != 0 {
-      log::debug!(
-        "found {recovered_pending_trigger_uploads} persisted trigger uploads pending recovery"
-      );
-    }
+    let pending_trigger_uploads = PendingTriggerUploadsStore::new(sdk_directory);
 
     Self {
       log_upload_service: service::new(data_upload_tx, shutdown.clone(), runtime_loader, stats),
@@ -185,6 +180,14 @@ impl BufferUploadManager {
 
   #[tracing::instrument(level = "debug", skip(self), name = "BufferUploadManager")]
   pub async fn run(mut self) -> anyhow::Result<()> {
+    let recovered_pending_trigger_uploads =
+      self.pending_trigger_uploads.pending_uploads().await.len();
+    if recovered_pending_trigger_uploads != 0 {
+      log::debug!(
+        "found {recovered_pending_trigger_uploads} persisted trigger uploads pending recovery"
+      );
+    }
+
     // For each spawned task, track the cancellation token and join handle,
     // allowing us to cancel the task when a buffer has been removed.
 
@@ -195,10 +198,10 @@ impl BufferUploadManager {
     loop {
       tokio::select! {
         Some(event) = self.buffer_event_rx.recv() => {
-          self.handle_buffer_event(event, &trigger_upload_complete_tx).await?
+          self.handle_buffer_event(event, &trigger_upload_complete_tx).await?;
         },
         Some(trigger) = self.trigger_upload_rx.recv() =>
-          self.handle_trigger_uploads(trigger, &trigger_upload_complete_tx)?,
+          self.handle_trigger_uploads(trigger, &trigger_upload_complete_tx).await?,
         Some(completed_trigger_buffer) = trigger_upload_complete_rx.recv() => {
           self.active_trigger_uploads.remove(&completed_trigger_buffer);
         },
@@ -216,7 +219,7 @@ impl BufferUploadManager {
 
   // Checks to see if the buffers we're trying to upload are already being uploaded, and if not
   // spawn a task to consume the entire buffer.
-  fn handle_trigger_uploads(
+  async fn handle_trigger_uploads(
     &mut self,
     trigger_upload: TriggerUpload,
     trigger_upload_complete_tx: &Sender<String>,
@@ -251,8 +254,7 @@ impl BufferUploadManager {
       // match configuration targets a buffer that doesn't have a corresponding buffer config,
       // which is not validated.
       if let Some(buffer) = self.trigger_buffers.get(&buffer_id) {
-        let trigger_consumer =
-          self.new_trigger_consumer(&buffer_id, &trigger_upload_id, buffer)?;
+        let trigger_consumer = self.new_trigger_consumer(&buffer_id, &trigger_upload_id, buffer)?;
 
         self.active_trigger_uploads.insert(buffer_id.clone());
         eligible_buffer_ids.push(buffer_id.clone());
@@ -268,61 +270,63 @@ impl BufferUploadManager {
     }
 
     if !eligible_buffer_ids.is_empty() {
-      self.pending_trigger_uploads.upsert(PersistedTriggerUpload {
-        id: trigger_upload_id.clone(),
-        source: trigger_upload_source,
-        buffer_ids: eligible_buffer_ids.clone(),
-        has_streaming: trigger_upload_has_streaming,
-        lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
-      });
+      self
+        .pending_trigger_uploads
+        .upsert(PersistedTriggerUpload {
+          id: trigger_upload_id.clone(),
+          source: trigger_upload_source,
+          buffer_ids: eligible_buffer_ids.clone(),
+          has_streaming: trigger_upload_has_streaming,
+          lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
+        })
+        .await;
     }
 
     for (buffer_id, trigger_consumer) in scheduled_consumers {
-        let upload_complete_tx = trigger_upload_complete_tx.clone();
-        let buffer_id_clone = buffer_id.clone();
-        let internal_logger = self.logging.clone();
-        let shutdown_trigger = ComponentShutdownTrigger::default();
-        let shutdown = shutdown_trigger.make_shutdown();
-        let (single_upload_complete_tx, single_upload_complete_rx) =
-          tokio::sync::oneshot::channel();
-        buffer_upload_completions.push(single_upload_complete_rx);
-        tokio::task::spawn(
-          async move {
-            // Handle the error here so that we can fire the complete message even on failure.
-            match trigger_consumer.run().await {
-              Ok(logs_count) => internal_logger.log_internal(&format!(
-                "completed trigger upload for buffer {buffer_id_clone:?}, uploaded logs count: \
-                 {logs_count:?}",
-              )),
-              Err(e) => {
-                internal_logger.log_internal(&format!(
-                  "failed trigger upload for buffer {buffer_id_clone:?}: {e:?}"
-                ));
-                handle_unexpected_error_with_details(e, "", || None);
-              },
-            }
-
-            single_upload_complete_tx
-              .send(())
-              .map_err(|()| InvariantError::Invariant)?;
-
-            // TODO(mattklein123): Should we pass this into the trigger consumer and actually
-            // try to bail quickly if it's taking a long time and we are trying to shutdown?
-            drop(shutdown);
-            upload_complete_tx
-              .send(buffer_id_clone)
-              .await
-              .map_err(|_| InvariantError::Invariant)
+      let upload_complete_tx = trigger_upload_complete_tx.clone();
+      let buffer_id_clone = buffer_id.clone();
+      let internal_logger = self.logging.clone();
+      let shutdown_trigger = ComponentShutdownTrigger::default();
+      let shutdown = shutdown_trigger.make_shutdown();
+      let (single_upload_complete_tx, single_upload_complete_rx) = tokio::sync::oneshot::channel();
+      buffer_upload_completions.push(single_upload_complete_rx);
+      tokio::task::spawn(
+        async move {
+          // Handle the error here so that we can fire the complete message even on failure.
+          match trigger_consumer.run().await {
+            Ok(logs_count) => internal_logger.log_internal(&format!(
+              "completed trigger upload for buffer {buffer_id_clone:?}, uploaded logs count: \
+               {logs_count:?}",
+            )),
+            Err(e) => {
+              internal_logger.log_internal(&format!(
+                "failed trigger upload for buffer {buffer_id_clone:?}: {e:?}"
+              ));
+              handle_unexpected_error_with_details(e, "", || None);
+            },
           }
-          .instrument(tracing::debug_span!(
-            "trigger_consumer",
-            buffer_id = &*buffer_id
-          )),
-        );
 
-        // We never cancel the trigger uploads directly, so just reuse the top level shutdown
-        // token.
-        self.shutdowns.insert(buffer_id.clone(), shutdown_trigger);
+          single_upload_complete_tx
+            .send(())
+            .map_err(|()| InvariantError::Invariant)?;
+
+          // TODO(mattklein123): Should we pass this into the trigger consumer and actually
+          // try to bail quickly if it's taking a long time and we are trying to shutdown?
+          drop(shutdown);
+          upload_complete_tx
+            .send(buffer_id_clone)
+            .await
+            .map_err(|_| InvariantError::Invariant)
+        }
+        .instrument(tracing::debug_span!(
+          "trigger_consumer",
+          buffer_id = &*buffer_id
+        )),
+      );
+
+      // We never cancel the trigger uploads directly, so just reuse the top level shutdown
+      // token.
+      self.shutdowns.insert(buffer_id.clone(), shutdown_trigger);
     }
 
     let remote_streaming_complete_tx = if let Some(streaming) = trigger_upload.streaming
@@ -357,7 +361,7 @@ impl BufferUploadManager {
         log::debug!("failed to wait for trigger uploads to complete: {e:?}");
       }
 
-      pending_trigger_uploads.remove(&trigger_upload_id);
+      pending_trigger_uploads.remove(&trigger_upload_id).await;
 
       if let Err(e) = trigger_upload.response_tx.send(()) {
         log::debug!("failed to send trigger upload response: {e:?}");
@@ -381,7 +385,8 @@ impl BufferUploadManager {
     event: BufferEventWithResponse,
     trigger_upload_complete_tx: &Sender<String>,
   ) -> anyhow::Result<()> {
-    let recover_pending_trigger_uploads = matches!(event.event, BufferEvent::TriggerBufferCreated(_, _));
+    let recover_pending_trigger_uploads =
+      matches!(event.event, BufferEvent::TriggerBufferCreated(_, _));
 
     match &event.event {
       // When a new buffer is created, spawn a new task which is responsible for
@@ -451,17 +456,19 @@ impl BufferUploadManager {
     }
 
     if recover_pending_trigger_uploads {
-      self.recover_pending_trigger_uploads(trigger_upload_complete_tx)?;
+      self
+        .recover_pending_trigger_uploads(trigger_upload_complete_tx)
+        .await?;
     }
 
     Ok(())
   }
 
-  fn recover_pending_trigger_uploads(
+  async fn recover_pending_trigger_uploads(
     &mut self,
     trigger_upload_complete_tx: &Sender<String>,
   ) -> anyhow::Result<()> {
-    for pending_upload in self.pending_trigger_uploads.pending_uploads() {
+    for pending_upload in self.pending_trigger_uploads.pending_uploads().await {
       if pending_upload
         .buffer_ids
         .iter()
@@ -494,15 +501,17 @@ impl BufferUploadManager {
       );
 
       let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
-      self.handle_trigger_uploads(
-        TriggerUpload::new(
-          pending_upload.buffer_ids.clone(),
-          None,
-          pending_upload.source.to_trigger_upload_source(),
-          response_tx,
-        ),
-        trigger_upload_complete_tx,
-      )?;
+      self
+        .handle_trigger_uploads(
+          TriggerUpload::new(
+            pending_upload.buffer_ids.clone(),
+            None,
+            pending_upload.source.to_trigger_upload_source(),
+            response_tx,
+          ),
+          trigger_upload_complete_tx,
+        )
+        .await?;
     }
 
     Ok(())
@@ -990,7 +999,8 @@ impl CompleteBufferUpload {
     if !self.has_persisted_uploading_state {
       self
         .pending_trigger_uploads
-        .mark_uploading(&self.pending_trigger_upload_id);
+        .mark_uploading(&self.pending_trigger_upload_id)
+        .await;
       self.has_persisted_uploading_state = true;
     }
 

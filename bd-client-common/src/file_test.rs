@@ -5,6 +5,16 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use bd_macros::proto_serializable;
+use tempfile::TempDir;
+
+#[proto_serializable]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct TestState {
+  #[field(id = 1)]
+  value: String,
+}
+
 #[test]
 fn write_checksummed_data() {
   let data = b"100";
@@ -36,5 +46,38 @@ fn invalid_checksum() {
   assert_eq!(
     super::read_checksummed_data(data).unwrap_err().to_string(),
     "crc mismatch"
+  );
+}
+
+#[tokio::test]
+async fn compressed_protobuf_file_round_trips() {
+  let temp_directory = TempDir::with_prefix("file-test").unwrap();
+  let path = temp_directory.path().join("state.pb");
+  let state = TestState {
+    value: "abc".to_string(),
+  };
+
+  super::write_compressed_protobuf_file(&path, &state)
+    .await
+    .unwrap();
+
+  assert_eq!(
+    super::read_compressed_protobuf_file_if_exists::<TestState>(&path)
+      .await
+      .unwrap(),
+    Some(state)
+  );
+}
+
+#[tokio::test]
+async fn missing_compressed_protobuf_file_returns_none() {
+  let temp_directory = TempDir::with_prefix("file-test").unwrap();
+  let path = temp_directory.path().join("missing.pb");
+
+  assert_eq!(
+    super::read_compressed_protobuf_file_if_exists::<TestState>(&path)
+      .await
+      .unwrap(),
+    None
   );
 }

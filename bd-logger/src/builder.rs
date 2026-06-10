@@ -536,11 +536,11 @@ impl LoggerBuilder {
       let buffer_uploader = BufferUploadManager::new(
         data_upload_tx_clone.clone(),
         &runtime_loader,
+        &self.params.sdk_directory,
         shutdown_handle.make_shutdown(),
         buffer_event_rx,
         trigger_upload_rx,
         remote_flush_streaming_tx,
-        self.params.store.clone(),
         &scope,
         log.clone(),
         state_upload_handle,

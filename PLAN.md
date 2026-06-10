@@ -23,12 +23,15 @@ The current branch already fixes several prerequisite behaviors:
 - Remote `FlushBuffers` now forwards streaming and matches workflow-triggered streaming behavior.
 - An empty remote `buffer_id_list` now means all eligible trigger buffers, matching workflow semantics.
 - Equivalent remote and workflow reroutes are deduped without depending on `max_logs_count`.
-- Logger-owned persistence exists for pending trigger uploads, with startup replay for `ReadyToUpload` entries.
+- Logger-owned persistence exists for pending trigger uploads, with a file-backed protobuf snapshot
+  and startup replay for `ReadyToUpload` entries.
 - The current persistence split between `ReadyToUpload` and `Uploading` makes the remaining gap explicit.
 
 The remaining work is to replace the persistence substrate, remove concurrency hazards, and define a crash-safe recovery model for uploads that have already started draining data.
 
 ## Milestone 1: Replace the Trigger Upload Registry
+
+Status: Implemented.
 
 Rewrite `bd-logger/src/flush_registry.rs` to use repo-native file-backed protobuf persistence.
 
@@ -52,6 +55,14 @@ Rewrite `bd-logger/src/flush_registry.rs` to use repo-native file-backed protobu
 - Concurrent registry updates cannot clobber each other.
 - Registry contents survive process restart through a file-backed protobuf snapshot.
 - The old manual encoding path is fully removed.
+
+### Implementation Notes
+
+- Landed as a versioned file-backed protobuf snapshot owned by `PendingTriggerUploadsStore`.
+- Registry mutation is now serialized through one in-process synchronized owner instead of shared
+  read-modify-write over `bd_key_value`.
+- The remaining milestones keep the current logical record shape and recovery semantics, and build
+  on top of this substrate.
 
 ## Milestone 2: Define the Durable Flush Model
 

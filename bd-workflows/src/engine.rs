@@ -47,20 +47,18 @@ use crate::workflow::{
 };
 use anyhow::anyhow;
 use bd_api::DataUpload;
-use bd_client_common::file::{compressed_reader, write_compressed};
+use bd_client_common::file::{read_compressed_protobuf_file, write_compressed_protobuf_file};
 use bd_client_stats::{FlushTrigger, FlushTriggerRequest};
 use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::Log;
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
-use bd_proto_util::serialization::{ProtoMessageDeserialize, ProtoMessageSerialize};
 use bd_runtime::runtime::workflows::PersistenceWriteIntervalFlag;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, session_capture};
 use bd_stats_common::workflow::WorkflowDebugKey;
 use bd_stats_common::{Counter as _, StatsCollector, labels};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::io::Cursor;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -1320,8 +1318,7 @@ impl StateStore {
   }
 
   pub(self) async fn load_state(&self) -> anyhow::Result<WorkflowsState> {
-    let mut reader = compressed_reader(Cursor::new(tokio::fs::read(&self.state_path).await?));
-    WorkflowsState::deserialize_message_from_reader(&mut reader)
+    read_compressed_protobuf_file(&self.state_path).await
   }
 
   /// Stores states of the passed workflows if all pre-conditions are met.
@@ -1369,15 +1366,7 @@ impl StateStore {
   }
 
   async fn store(state_path: &Path, state: &WorkflowsState) -> anyhow::Result<()> {
-    // TODO(snowp): Consider adding better support for async compression - this would let us use
-    // async between file I/O and compression layers. This should save some intermediate copies.
-    tokio::fs::write(
-      state_path,
-      write_compressed(&state.serialize_message_to_bytes()?)?,
-    )
-    .await?;
-
-    Ok(())
+    write_compressed_protobuf_file(state_path, state).await
   }
 
   async fn purge(&self) {

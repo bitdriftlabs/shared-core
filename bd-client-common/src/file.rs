@@ -9,10 +9,13 @@
 #[path = "./file_test.rs"]
 mod tests;
 
+use crate::file_system::write_file_atomic;
 use bd_log_primitives::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
+use bd_proto_util::serialization::{ProtoMessageDeserialize, ProtoMessageSerialize};
 use flate2::Compression;
 use flate2::read::{ZlibDecoder, ZlibEncoder};
 use std::io::Read;
+use std::path::Path;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub fn write_compressed_protobuf<T: protobuf::Message>(message: &T) -> anyhow::Result<Vec<u8>> {
@@ -58,6 +61,38 @@ pub fn read_compressed_protobuf<T: protobuf::Message>(
 ) -> anyhow::Result<T> {
   let decompressed_bytes = read_compressed(compressed_bytes)?;
   Ok(T::parse_from_tokio_bytes(&decompressed_bytes.into())?)
+}
+
+pub async fn read_compressed_protobuf_file<T: ProtoMessageDeserialize>(
+  path: &Path,
+) -> anyhow::Result<T> {
+  let compressed_bytes = tokio::fs::read(path).await?;
+  let decompressed_bytes = read_compressed(&compressed_bytes)?;
+  T::deserialize_message_from_bytes(&decompressed_bytes)
+}
+
+pub async fn read_compressed_protobuf_file_if_exists<T: ProtoMessageDeserialize>(
+  path: &Path,
+) -> anyhow::Result<Option<T>> {
+  match tokio::fs::read(path).await {
+    Ok(compressed_bytes) => {
+      let decompressed_bytes = read_compressed(&compressed_bytes)?;
+      Ok(Some(T::deserialize_message_from_bytes(
+        &decompressed_bytes,
+      )?))
+    },
+    Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+    Err(e) => Err(e.into()),
+  }
+}
+
+pub async fn write_compressed_protobuf_file<T: ProtoMessageSerialize>(
+  path: &Path,
+  message: &T,
+) -> anyhow::Result<()> {
+  let bytes = message.serialize_message_to_bytes()?;
+  let compressed = write_compressed(&bytes)?;
+  write_file_atomic(path, &compressed).await
 }
 
 /// Writes the data and appends a CRC checksum at the end of the slice. The checksum is a 4-byte

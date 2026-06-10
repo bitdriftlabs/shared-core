@@ -914,6 +914,7 @@ dependencies = [
  "bd-log-matcher",
  "bd-log-metadata",
  "bd-log-primitives",
+ "bd-macros",
  "bd-network-quality",
  "bd-noop-network",
  "bd-proto",

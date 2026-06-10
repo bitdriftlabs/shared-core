@@ -97,9 +97,7 @@ impl TriggerUploadSource {
   #[must_use]
   pub fn logical_id(&self) -> &str {
     match self {
-      Self::WorkflowAction(id) | Self::ExplicitSessionCapture(id) | Self::RemoteCommand(id) => {
-        id
-      },
+      Self::WorkflowAction(id) | Self::ExplicitSessionCapture(id) | Self::RemoteCommand(id) => id,
     }
   }
 }
