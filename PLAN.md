@@ -134,6 +134,8 @@ support.
 
 ## Milestone 3: Analyze Trigger Buffer Resume Semantics
 
+Status: Implemented.
+
 Analyze and harden the underlying buffer semantics before implementing resume for started uploads.
 
 ### Questions To Resolve
@@ -158,6 +160,37 @@ Analyze and harden the underlying buffer semantics before implementing resume fo
 - The recovery design names one authoritative persisted resume point.
 - Startup lock ordering is either proven safe or explicitly redesigned.
 - Offset invalidation cases are handled intentionally, not implicitly.
+
+### Findings
+
+- Trigger-upload exclusivity is established in `bd_buffer::RingBuffer::new_consumer()`, which
+  acquires the aggregate buffer lock before registering the one-off consumer. For aggregate trigger
+  buffers, that lock targets the volatile producer side and prevents new reservations.
+- Once the lock is held, `new_consumer()` waits for outstanding volatile reservations to drain and
+  then flushes volatile data into the non-volatile buffer before registering the upload consumer.
+  This means the actual upload drains a stable non-volatile snapshot after the producer side has
+  been frozen.
+- Startup recovery currently re-locks trigger buffers before normal producers resume writing.
+  `LoggerUpdate::apply_configuration()` awaits `buffer_manager.update_from_config()`, and that call
+  does not return until `TriggerBufferCreated` has been processed by `BufferUploadManager`. The
+  upload manager immediately attempts persisted trigger-upload recovery in that event path, while
+  `BufferProducers` are only rebuilt after the await returns.
+- The authoritative persisted resume primitive is not an existing cursor consumer. Overwrite-mode
+  trigger buffers explicitly reject cursor consumers today, and the persisted non-volatile
+  `next_read_start` is destructive global buffer state rather than an isolated per-upload resume
+  token.
+- Current per-buffer progress counters are descriptive only. They identify that upload crossed into
+  `UploadingFromBuffer`, but they do not yet define a crash-safe resume point inside the buffer.
+- Offset invalidation remains unresolved and must be addressed by the milestone 4 design. Because
+  trigger buffers operate in overwrite mode, any future persisted in-buffer position must define how
+  recovery detects wraparound or stale offsets after restart.
+
+### Outcome
+
+- No structural buffer code change is required to complete Milestone 3 itself.
+- The startup lock ordering question is resolved in favor of the current design.
+- Milestone 4 must introduce a new authoritative persisted resume primitive or a real durable
+  post-buffer handoff boundary; it cannot reuse the existing cursor-consumer persistence approach.
 
 ## Milestone 4: Add Crash-Safe Progress Persistence For Started Uploads
 

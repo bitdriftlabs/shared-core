@@ -285,6 +285,11 @@ impl ApplyConfig for LoggerUpdate {
       filters,
     } = configuration;
 
+    // This await is the ordering barrier for trigger-upload recovery. The buffer manager does not
+    // return until TriggerBufferCreated has been processed by BufferUploadManager, and that path
+    // immediately attempts persisted trigger-upload recovery. Because BufferProducers are only
+    // rebuilt after this await, recovered trigger uploads can re-lock trigger buffers before new
+    // thread-local producers are exposed to normal log writing.
     let maybe_stream_buffer = self
       .buffer_manager
       .update_from_config(&buffer, !bdtail.active_streams.is_empty())

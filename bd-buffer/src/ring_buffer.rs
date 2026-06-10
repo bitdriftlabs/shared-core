@@ -780,6 +780,10 @@ impl RingBuffer {
 
   // Creates a new consumer which can be used to consume all the logs in the buffer.
   pub fn new_consumer(self: &Arc<Self>) -> anyhow::Result<Consumer> {
+    // Trigger uploads rely on this lock to stop new writes before they begin draining the
+    // non-volatile buffer. The aggregate lock targets the volatile producer side, then flushes RAM
+    // to disk before the non-volatile consumer is registered, so the resulting consumer sees a
+    // stable snapshot for one-off upload.
     let lock_handle = self.buffer.clone().lock();
     lock_handle.await_reservations_drained();
     self.buffer.flush();
