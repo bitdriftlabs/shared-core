@@ -35,6 +35,7 @@ mod ordered_receiver;
 mod pre_config_buffer;
 mod service;
 mod state_upload;
+mod trigger_upload_artifact;
 
 pub use state_upload::{SnapshotRef, StateUploadHandle};
 

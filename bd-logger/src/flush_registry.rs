@@ -31,6 +31,7 @@ const PENDING_TRIGGER_UPLOADS_FILE_NAME: &str = "pending_trigger_uploads_snapsho
 pub enum PersistedTriggerUploadLifecycle {
   ReadyToUpload,
   UploadingFromBuffer,
+  UploadingFromArtifact,
   Completed,
   Failed,
 }
@@ -101,6 +102,7 @@ impl PersistedTriggerUpload {
 pub enum PersistedTriggerUploadBufferLifecycle {
   Pending,
   UploadingFromBuffer,
+  UploadingFromArtifact,
   Completed,
   Failed,
 }
@@ -239,8 +241,11 @@ enum PersistedTriggerUploadLifecycleRecord {
   UploadingFromBuffer,
   #[field(id = 3)]
   #[field(deserialize)]
-  Completed,
+  UploadingFromArtifact,
   #[field(id = 4)]
+  #[field(deserialize)]
+  Completed,
+  #[field(id = 5)]
   #[field(deserialize)]
   Failed,
 }
@@ -270,8 +275,11 @@ enum PersistedTriggerUploadBufferLifecycleRecord {
   UploadingFromBuffer,
   #[field(id = 3)]
   #[field(deserialize)]
-  Completed,
+  UploadingFromArtifact,
   #[field(id = 4)]
+  #[field(deserialize)]
+  Completed,
+  #[field(id = 5)]
   #[field(deserialize)]
   Failed,
 }
@@ -338,6 +346,7 @@ impl From<PersistedTriggerUploadBufferLifecycle> for PersistedTriggerUploadBuffe
     match lifecycle {
       PersistedTriggerUploadBufferLifecycle::Pending => Self::Pending,
       PersistedTriggerUploadBufferLifecycle::UploadingFromBuffer => Self::UploadingFromBuffer,
+      PersistedTriggerUploadBufferLifecycle::UploadingFromArtifact => Self::UploadingFromArtifact,
       PersistedTriggerUploadBufferLifecycle::Completed => Self::Completed,
       PersistedTriggerUploadBufferLifecycle::Failed => Self::Failed,
     }
@@ -349,6 +358,9 @@ impl From<PersistedTriggerUploadBufferLifecycleRecord> for PersistedTriggerUploa
     match lifecycle {
       PersistedTriggerUploadBufferLifecycleRecord::Pending => Self::Pending,
       PersistedTriggerUploadBufferLifecycleRecord::UploadingFromBuffer => Self::UploadingFromBuffer,
+      PersistedTriggerUploadBufferLifecycleRecord::UploadingFromArtifact => {
+        Self::UploadingFromArtifact
+      },
       PersistedTriggerUploadBufferLifecycleRecord::Completed => Self::Completed,
       PersistedTriggerUploadBufferLifecycleRecord::Failed => Self::Failed,
     }
@@ -409,6 +421,7 @@ impl From<PersistedTriggerUploadLifecycle> for PersistedTriggerUploadLifecycleRe
     match lifecycle {
       PersistedTriggerUploadLifecycle::ReadyToUpload => Self::ReadyToUpload,
       PersistedTriggerUploadLifecycle::UploadingFromBuffer => Self::UploadingFromBuffer,
+      PersistedTriggerUploadLifecycle::UploadingFromArtifact => Self::UploadingFromArtifact,
       PersistedTriggerUploadLifecycle::Completed => Self::Completed,
       PersistedTriggerUploadLifecycle::Failed => Self::Failed,
     }
@@ -420,6 +433,7 @@ impl From<PersistedTriggerUploadLifecycleRecord> for PersistedTriggerUploadLifec
     match lifecycle {
       PersistedTriggerUploadLifecycleRecord::ReadyToUpload => Self::ReadyToUpload,
       PersistedTriggerUploadLifecycleRecord::UploadingFromBuffer => Self::UploadingFromBuffer,
+      PersistedTriggerUploadLifecycleRecord::UploadingFromArtifact => Self::UploadingFromArtifact,
       PersistedTriggerUploadLifecycleRecord::Completed => Self::Completed,
       PersistedTriggerUploadLifecycleRecord::Failed => Self::Failed,
     }
@@ -490,18 +504,37 @@ impl PendingTriggerUploadsStore {
       .await;
   }
 
-  pub async fn record_uploaded_chunk(&self, id: &str, buffer_id: &str, uploaded_logs_count: u64) {
+  pub async fn mark_uploading_from_artifact(&self, id: &str, buffer_id: &str) {
     self
       .mutate(|uploads| {
         for upload in uploads {
           if upload.id == id {
-            upload.lifecycle = PersistedTriggerUploadLifecycle::UploadingFromBuffer;
+            upload.lifecycle = PersistedTriggerUploadLifecycle::UploadingFromArtifact;
             if let Some(buffer) = upload
               .buffers
               .iter_mut()
               .find(|buffer| buffer.buffer_id == buffer_id)
             {
-              buffer.lifecycle = PersistedTriggerUploadBufferLifecycle::UploadingFromBuffer;
+              buffer.lifecycle = PersistedTriggerUploadBufferLifecycle::UploadingFromArtifact;
+            }
+          }
+        }
+      })
+      .await;
+  }
+
+  pub async fn record_uploaded_chunk(&self, id: &str, buffer_id: &str, uploaded_logs_count: u64) {
+    self
+      .mutate(|uploads| {
+        for upload in uploads {
+          if upload.id == id {
+            upload.lifecycle = PersistedTriggerUploadLifecycle::UploadingFromArtifact;
+            if let Some(buffer) = upload
+              .buffers
+              .iter_mut()
+              .find(|buffer| buffer.buffer_id == buffer_id)
+            {
+              buffer.lifecycle = PersistedTriggerUploadBufferLifecycle::UploadingFromArtifact;
               buffer.uploaded_batches_count += 1;
               buffer.uploaded_logs_count += uploaded_logs_count;
             }

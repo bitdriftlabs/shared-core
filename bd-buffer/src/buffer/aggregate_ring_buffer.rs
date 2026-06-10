@@ -197,7 +197,7 @@ impl RingBufferImpl {
   }
 
   #[must_use]
-  pub fn non_volatile_buffer(&self) -> &NonVolatileRingBuffer {
+  pub fn non_volatile_buffer(&self) -> &Arc<NonVolatileRingBuffer> {
     &self.shared_data.non_volatile_buffer
   }
 

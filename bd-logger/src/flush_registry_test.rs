@@ -159,12 +159,12 @@ async fn record_uploaded_chunk_updates_per_buffer_progress() {
       session_id: "remote-session".to_string(),
       buffers: vec![PersistedTriggerUploadBufferProgress {
         buffer_id: "trigger".to_string(),
-        lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromBuffer,
+        lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromArtifact,
         uploaded_batches_count: 1,
         uploaded_logs_count: 3,
       }],
       streaming: None,
-      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromBuffer,
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromArtifact,
     }]
   );
 }

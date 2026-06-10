@@ -194,6 +194,8 @@ Analyze and harden the underlying buffer semantics before implementing resume fo
 
 ## Milestone 4: Add Crash-Safe Progress Persistence For Started Uploads
 
+Status: Implemented.
+
 Once the buffer semantics are settled, persist progress at the exact boundary where replay-from-the-start becomes incorrect.
 
 ### Requirements
@@ -214,6 +216,28 @@ concrete durable artifact or queue with well-defined recovery semantics.
 - Started trigger uploads can recover from the correct point after restart.
 - The system no longer permanently abandons in-flight uploads after a crash.
 - Duplicate emission is prevented by design, not best-effort heuristics.
+
+### Implementation Notes
+
+- Started trigger uploads now spill through a durable per-buffer artifact file under logger state
+  instead of relying on in-memory batch state after the trigger buffer begins draining.
+- The trigger-drain path now rebuilds full upload batches in memory, persists one whole queued batch
+  at a time, and only then bulk-advances the trigger-buffer read pointers for that batch. This
+  keeps the buffer copy authoritative until the durable handoff exists without paying one file
+  write per log.
+- Each persisted artifact can hold both one queued batch and a concrete persisted `inflight_batch`
+  carrying the exact upload UUID and log payload for the next remote upload attempt.
+- When recovery sees an `inflight_batch`, it resends that exact batch with the same upload UUID.
+  This matches the existing upload protocol's UUID reuse semantics and closes the previous
+  crash-after-ack gap without inventing a second local progress cursor.
+- Trigger-upload recovery no longer skips started work. It now replays both `ReadyToUpload` and
+  started non-terminal states, only skipping terminal `Completed` and `Failed` entries.
+- To close the crash window between artifact persistence and buffer advancement, recovery
+  reconciles any queued batch against the current oldest unread trigger-buffer records and drops a
+  queued batch that is still represented by the buffer. That makes the buffer copy the source of
+  truth until the batch has actually left the trigger buffer.
+- The persisted lifecycle now includes `UploadingFromArtifact`, which is the concrete durable
+  post-buffer handoff boundary Milestone 2 left intentionally undefined.
 
 ## Milestone 5: Reconnect Streaming To Durable Flush Completion
 

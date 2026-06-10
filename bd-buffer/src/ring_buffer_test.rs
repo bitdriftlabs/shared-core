@@ -94,6 +94,44 @@ async fn test_create_ring_buffer() {
 }
 
 #[tokio::test]
+async fn test_new_consumer_allows_bulk_one_off_reads_on_overwrite_buffers() {
+  let dir = tmp_dir();
+  let (buffer, _) = RingBuffer::new(
+    "test",
+    100,
+    dir.path().join(PathBuf::from("buffer")),
+    1000,
+    true,
+    fake_counter(),
+    fake_counter(),
+    fake_counter(),
+    fake_counter(),
+    fake_counter(),
+    None,
+    None,
+    test_retention_handle().await,
+  )
+  .unwrap();
+
+  let mut producer = buffer.new_thread_local_producer().unwrap();
+  producer.write(b"one").unwrap();
+  producer.write(b"two").unwrap();
+
+  let mut consumer = buffer.new_consumer().unwrap();
+  assert_eq!(consumer.start_read(false).unwrap(), b"one");
+  assert_eq!(consumer.start_read(false).unwrap(), b"two");
+  consumer.finish_reads(2).unwrap();
+  drop(consumer);
+
+  let mut drained_consumer = buffer.new_consumer().unwrap();
+  assert_matches!(
+    drained_consumer.start_read(false),
+    Err(Error::AbslStatus(code, message))
+      if code == AbslCode::Unavailable && message == "no data to read"
+  );
+}
+
+#[tokio::test]
 async fn test_create_ring_buffer_illegal_path() {
   let buffer_path = PathBuf::from("/buffer");
   let buffer = RingBuffer::new(

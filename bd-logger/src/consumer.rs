@@ -18,6 +18,10 @@ use crate::flush_registry::{
 };
 use crate::service::{self, UploadRequest};
 use crate::state_upload::StateUploadHandle;
+use crate::trigger_upload_artifact::{
+  PersistedTriggerUploadArtifactBatch,
+  TriggerUploadArtifactStore,
+};
 use bd_api::upload::LogBatch;
 use bd_api::{TriggerUpload, TriggerUploadSource};
 use bd_buffer::{AbslCode, Buffer, BufferEvent, BufferEventWithResponse, Consumer, Error};
@@ -34,7 +38,7 @@ use bd_stats_common::Counter as _;
 use bd_time::OffsetDateTimeExt;
 use futures_util::future::try_join_all;
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -138,6 +142,8 @@ pub struct BufferUploadManager {
 
   // Durable registry of trigger uploads that have been scheduled but not yet completed.
   pending_trigger_uploads: PendingTriggerUploadsStore,
+
+  logger_state_directory: Arc<PathBuf>,
 }
 
 impl BufferUploadManager {
@@ -154,6 +160,7 @@ impl BufferUploadManager {
     state_upload_handle: Option<Arc<StateUploadHandle>>,
   ) -> Self {
     let pending_trigger_uploads = PendingTriggerUploadsStore::new(sdk_directory);
+    let logger_state_directory = Arc::new(sdk_directory.join("state").join("logger"));
 
     Self {
       log_upload_service: service::new(data_upload_tx, shutdown.clone(), runtime_loader, stats),
@@ -176,6 +183,7 @@ impl BufferUploadManager {
       old_logs_dropped: stats.counter("old_logs_dropped"),
       state_upload_handle,
       pending_trigger_uploads,
+      logger_state_directory,
     }
   }
 
@@ -501,7 +509,10 @@ impl BufferUploadManager {
         continue;
       }
 
-      if pending_upload.lifecycle != PersistedTriggerUploadLifecycle::ReadyToUpload {
+      if matches!(
+        pending_upload.lifecycle,
+        PersistedTriggerUploadLifecycle::Completed | PersistedTriggerUploadLifecycle::Failed
+      ) {
         log::debug!(
           "skipping persisted trigger upload {} with lifecycle {:?}",
           pending_upload.id,
@@ -585,6 +596,12 @@ impl BufferUploadManager {
       self.state_upload_handle.clone(),
       self.pending_trigger_uploads.clone(),
       trigger_upload_id.to_string(),
+      TriggerUploadArtifactStore::new(
+        self.logger_state_directory.as_ref(),
+        trigger_upload_id,
+        buffer_name,
+      ),
+      buffer.clone(),
     ))
   }
 }
@@ -908,7 +925,7 @@ struct CompleteBufferUpload {
   // The ring buffer consumer to use to consume logs.
   consumer: Consumer,
 
-  // Used to construct the log payload and enforce batch limits.
+  // Used to construct the current trigger-upload batch before it is durably staged.
   batch_builder: BatchBuilder,
 
   // Service used to send logs to upload to the uploader.
@@ -926,7 +943,10 @@ struct CompleteBufferUpload {
 
   pending_trigger_uploads: PendingTriggerUploadsStore,
   pending_trigger_upload_id: String,
-  has_marked_uploading_state: bool,
+  has_marked_uploading_from_buffer: bool,
+  pending_batch_reads: usize,
+  artifact_store: TriggerUploadArtifactStore,
+  buffer: Arc<Buffer>,
 }
 
 impl CompleteBufferUpload {
@@ -939,6 +959,8 @@ impl CompleteBufferUpload {
     state_upload_handle: Option<Arc<StateUploadHandle>>,
     pending_trigger_uploads: PendingTriggerUploadsStore,
     pending_trigger_upload_id: String,
+    artifact_store: TriggerUploadArtifactStore,
+    buffer: Arc<Buffer>,
   ) -> Self {
     let lookback_window_limit = *runtime_flags.upload_lookback_window_feature_flag.read();
 
@@ -958,7 +980,10 @@ impl CompleteBufferUpload {
       state_upload_handle,
       pending_trigger_uploads,
       pending_trigger_upload_id,
-      has_marked_uploading_state: false,
+      has_marked_uploading_from_buffer: false,
+      pending_batch_reads: 0,
+      artifact_store,
+      buffer,
     }
   }
 
@@ -968,12 +993,16 @@ impl CompleteBufferUpload {
     // TODO(snowp): Consider tokio::task::yield_now to avoid starving other tasks if the batch size
     // is large.
 
+    self.discard_duplicate_queued_batch().await?;
+    self.flush_persisted_batches().await?;
+
     let mut total_logs = 0;
     loop {
-      let entry = self.consumer.try_read();
+      let entry = self.consumer.start_read(false);
 
       match entry {
-        // Log available, add to batch and flush if batch size hit.
+        // Accumulate a full trigger batch in memory, then persist it once before the buffer is
+        // advanced in bulk.
         Ok(log) => {
           if let Some(lookback_window) = self.lookback_window {
             // We are defensive here as we can't be sure the log is well formed.
@@ -982,18 +1011,31 @@ impl CompleteBufferUpload {
             {
               log::debug!("skipping log, outside lookback window");
               self.old_logs_dropped.inc();
+              self.consumer.finish_read()?;
               continue;
             }
           }
 
-          total_logs += 1;
-          self.batch_builder.add_log(log);
-        },
-        // No more logs available, flush current batch if there are any logs.
-        Err(Error::AbslStatus(AbslCode::Unavailable, _)) => {
-          if !self.batch_builder.logs.is_empty() {
-            self.flush_batch().await?;
+          if !self.has_marked_uploading_from_buffer {
+            self
+              .pending_trigger_uploads
+              .mark_uploading(&self.pending_trigger_upload_id, &self.buffer_id)
+              .await;
+            self.has_marked_uploading_from_buffer = true;
           }
+
+          self.batch_builder.add_log(log);
+          self.pending_batch_reads += 1;
+          total_logs += 1;
+
+          if self.batch_builder.limit_reached() {
+            self.persist_and_flush_current_batch().await?;
+          }
+        },
+        // No more logs available, flush any durable artifact backlog.
+        Err(Error::AbslStatus(AbslCode::Unavailable, _)) => {
+          self.persist_and_flush_current_batch().await?;
+          self.flush_persisted_batches().await?;
 
           log::debug!("trigger upload complete, sent {total_logs} logs");
           return Ok(total_logs);
@@ -1001,26 +1043,82 @@ impl CompleteBufferUpload {
         // Unexpected error, bubble up.
         Err(e) => return Err(e.into()),
       }
-
-      if self.batch_builder.limit_reached() {
-        self.flush_batch().await?;
-      }
     }
   }
 
-  async fn flush_batch(&mut self) -> anyhow::Result<()> {
-    let timestamp_range = self.batch_builder.timestamp_range();
-    let logs = self.batch_builder.take();
-    let logs_len = u64::try_from(logs.len()).unwrap_or(u64::MAX);
-    log::debug!("flushing {logs_len} logs");
+  #[allow(clippy::needless_pass_by_ref_mut)]
+  async fn discard_duplicate_queued_batch(&mut self) -> anyhow::Result<()> {
+    let Some(queued_batch) = self.artifact_store.queued_batch().await? else {
+      return Ok(());
+    };
+    let Some(buffer_log) = self.buffer.peek_oldest_record()? else {
+      return Ok(());
+    };
 
-    if !self.has_marked_uploading_state {
-      self
-        .pending_trigger_uploads
-        .mark_uploading(&self.pending_trigger_upload_id, &self.buffer_id)
-        .await;
-      self.has_marked_uploading_state = true;
+    if queued_batch
+      .logs
+      .first()
+      .is_some_and(|log| *log == buffer_log)
+    {
+      log::debug!(
+        "dropping recovered queued trigger batch that still exists in buffer {}",
+        self.buffer_id
+      );
+      self.artifact_store.remove_queued_batch().await?;
     }
+
+    Ok(())
+  }
+
+  async fn persist_and_flush_current_batch(&mut self) -> anyhow::Result<()> {
+    if self.batch_builder.logs.is_empty() {
+      return Ok(());
+    }
+
+    let batch = self
+      .artifact_store
+      .stage_batch(self.batch_builder.take())
+      .await?;
+    self.consumer.finish_reads(self.pending_batch_reads)?;
+    self.pending_batch_reads = 0;
+
+    log::debug!(
+      "staged trigger batch of {} logs before advancing buffer {}",
+      batch.logs.len(),
+      self.buffer_id
+    );
+
+    self.flush_persisted_batches().await
+  }
+
+  async fn flush_persisted_batches(&mut self) -> anyhow::Result<()> {
+    if let Some(batch) = self.artifact_store.inflight_batch().await? {
+      self.flush_batch(batch).await?;
+    }
+
+    while let Some(batch) = self
+      .artifact_store
+      .promote_queued_batch_to_inflight()
+      .await?
+    {
+      self.flush_batch(batch).await?;
+    }
+
+    Ok(())
+  }
+
+  async fn flush_batch(
+    &mut self,
+    batch: PersistedTriggerUploadArtifactBatch,
+  ) -> anyhow::Result<()> {
+    let logs_len = u64::try_from(batch.logs.len()).unwrap_or(u64::MAX);
+    let timestamp_range = timestamp_range_for_logs(&batch.logs);
+    log::debug!("flushing {logs_len} logs from trigger artifact");
+
+    self
+      .pending_trigger_uploads
+      .mark_uploading_from_artifact(&self.pending_trigger_upload_id, &self.buffer_id)
+      .await;
 
     // Upload state snapshot if needed before uploading logs
     if let (Some(handle), Some((oldest, newest))) = (&self.state_upload_handle, timestamp_range) {
@@ -1034,9 +1132,10 @@ impl CompleteBufferUpload {
       .ready()
       .await
       .unwrap_infallible()
-      .call(UploadRequest::new(
+      .call(UploadRequest::new_with_uuid(
+        batch.upload_uuid,
         LogBatch {
-          logs,
+          logs: batch.logs,
           buffer_id: self.buffer_id.clone(),
         },
         false,
@@ -1048,6 +1147,8 @@ impl CompleteBufferUpload {
     // cancel them, so we don't anything extra here to avoid deadlocking like in the other two
     // consumer tasks.
 
+    self.artifact_store.clear_inflight_batch().await?;
+
     self
       .pending_trigger_uploads
       .record_uploaded_chunk(&self.pending_trigger_upload_id, &self.buffer_id, logs_len)
@@ -1057,4 +1158,19 @@ impl CompleteBufferUpload {
 
     Ok(())
   }
+}
+
+fn timestamp_range_for_logs(logs: &[Vec<u8>]) -> Option<(u64, u64)> {
+  let mut oldest_micros = None;
+  let mut newest_micros = None;
+
+  for log in logs {
+    if let Some(ts) = EncodableLog::extract_timestamp(log) {
+      let ts_micros = ts.unix_timestamp_micros().cast_unsigned();
+      oldest_micros = Some(oldest_micros.map_or(ts_micros, |oldest: u64| oldest.min(ts_micros)));
+      newest_micros = Some(newest_micros.map_or(ts_micros, |newest: u64| newest.max(ts_micros)));
+    }
+  }
+
+  oldest_micros.zip(newest_micros)
 }

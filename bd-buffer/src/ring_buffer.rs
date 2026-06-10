@@ -16,7 +16,6 @@ use crate::buffer::{
   LockHandle,
   PerRecordCrc32Check,
   RingBuffer as RingBufferInterface,
-  RingBufferConsumer,
   RingBufferCursorConsumer,
   RingBufferProducer,
   RingBufferStats,
@@ -547,7 +546,7 @@ impl CursorConsumer {
   pub fn advance_read_cursor(&mut self) -> anyhow::Result<()> {
     self
       .cursor_consumer
-      .advance_read_pointer()
+      .advance_read_pointers(1)
       .map_err(|e| anyhow!("cursor consumer buffer read error occurred: {e}"))
   }
 
@@ -579,7 +578,7 @@ impl CursorConsumer {
 // Adapter for the new consumer. To be removed.
 #[allow(clippy::struct_field_names)]
 pub struct Consumer {
-  consumer: Box<dyn RingBufferConsumer>,
+  cursor_consumer: Box<dyn RingBufferCursorConsumer>,
   _lock_handle: Box<dyn LockHandle>,
 
   // TODO(mattklein123): This is not actually required in the new code but some tests seem to
@@ -588,15 +587,26 @@ pub struct Consumer {
 }
 
 impl Consumer {
+  pub fn start_read(&mut self, block: bool) -> Result<Vec<u8>> {
+    self.cursor_consumer.start_read(block).map(<[u8]>::to_vec)
+  }
+
+  pub fn finish_read(&mut self) -> Result<()> {
+    self.cursor_consumer.advance_read_pointers(1)
+  }
+
+  pub fn finish_reads(&mut self, count: usize) -> Result<()> {
+    self.cursor_consumer.advance_read_pointers(count)
+  }
+
   pub fn try_read(&mut self) -> Result<Vec<u8>> {
-    let reserved = self.consumer.start_read(false)?;
-    let result = reserved.to_vec();
-    self.consumer.finish_read()?;
+    let result = self.start_read(false)?;
+    self.finish_read()?;
     Ok(result)
   }
 
   pub async fn read(&mut self) -> Result<Vec<u8>> {
-    self.consumer.read().await.map(<[u8]>::to_vec)
+    self.cursor_consumer.read().await.map(<[u8]>::to_vec)
   }
 }
 
@@ -789,10 +799,21 @@ impl RingBuffer {
     self.buffer.flush();
 
     Ok(Consumer {
-      consumer: self.buffer.clone().register_consumer()?,
+      cursor_consumer: self
+        .buffer
+        .non_volatile_buffer()
+        .clone()
+        .register_locked_cursor_consumer()?,
       _lock_handle: lock_handle,
       _buffer: self.clone(),
     })
+  }
+
+  pub fn peek_oldest_record(&self) -> anyhow::Result<Option<Vec<u8>>> {
+    self
+      .buffer
+      .peek_oldest_record(<[u8]>::to_vec)
+      .map_err(|e| anyhow!("failed to peek oldest record: {e}"))
   }
 
   // Flush the underlying buffer.
