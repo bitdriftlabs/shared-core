@@ -54,6 +54,9 @@ pub enum BufferEvent {
   // added either via ContinousBufferCreated or TriggerBufferCreated.
   BufferRemoved(String),
 
+  // The full configured set of trigger buffers after a config update has been applied.
+  TriggerBufferConfigUpdated(Vec<String>),
+
   StreamBufferAdded(Arc<dyn buffer::RingBuffer>),
 
   StreamBufferRemoved(Arc<dyn buffer::RingBuffer>),
@@ -73,6 +76,10 @@ impl Debug for BufferEvent {
         .field(arg1)
         .finish(),
       Self::BufferRemoved(arg0) => f.debug_tuple("BufferRemoved").field(arg0).finish(),
+      Self::TriggerBufferConfigUpdated(arg0) => f
+        .debug_tuple("TriggerBufferConfigUpdated")
+        .field(arg0)
+        .finish(),
       Self::StreamBufferAdded(_) => f.debug_tuple("StreamBufferAdded").finish(),
       Self::StreamBufferRemoved(_) => f.debug_tuple("StreamBufferRemoved").finish(),
     }
@@ -348,8 +355,15 @@ impl Manager {
     }
 
     // First we resolve all the aggregate buffers based on the explicit config.
+    let configured_trigger_buffer_ids = updated_buffers
+      .iter()
+      .filter_map(|(id, (buffer_type, _))| {
+        (*buffer_type == buffer_config::Type::TRIGGER).then_some(id.clone())
+      })
+      .collect();
+
     let mut update_acks = self
-      .resolve_buffer_updates(current_buffers, new_buffers)
+      .resolve_buffer_updates(current_buffers, new_buffers, configured_trigger_buffer_ids)
       .await;
 
     // Add in an update for the streaming buffer if we end up creating/destroying the stream buffer
@@ -383,6 +397,7 @@ impl Manager {
     &self,
     current_buffers: HashMap<String, (buffer_config::Type, Arc<RingBuffer>)>,
     new_buffers: Vec<(String, (buffer_config::Type, Arc<RingBuffer>))>,
+    configured_trigger_buffer_ids: Vec<String>,
   ) -> Vec<tokio::sync::oneshot::Receiver<()>> {
     let mut update_acks = Vec::new();
 
@@ -441,6 +456,19 @@ impl Manager {
 
       update_acks.push(rx);
     }
+
+    let (event, rx) = BufferEventWithResponse::new(BufferEvent::TriggerBufferConfigUpdated(
+      configured_trigger_buffer_ids,
+    ));
+    handle_unexpected(
+      self
+        .buffer_event_tx
+        .send(event)
+        .await
+        .map_err(|_| anyhow!("buffer events")),
+      "trigger buffer config update",
+    );
+    update_acks.push(rx);
 
     update_acks
   }

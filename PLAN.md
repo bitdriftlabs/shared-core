@@ -270,6 +270,18 @@ Status: Implemented.
 
 Startup recovery must reconcile persisted work against the current trigger-buffer configuration.
 
+Status: Implemented.
+
+- Buffer config application now emits a summary `TriggerBufferConfigUpdated` event after all
+  trigger-buffer create and remove events have been processed, so logger recovery can reconcile
+  against the final configured trigger-buffer set instead of a partial creation prefix.
+- Recovery now prunes missing buffers out of persisted trigger uploads, rewrites the record when
+  eligible buffers remain, and drops the record entirely when none remain.
+- Dropped buffers are logged as abandonment, pruned buffers are logged distinctly, and stale
+  per-buffer artifact files are cleared when a buffer is removed from a persisted upload.
+- Persisted trigger context, including session ID, is retained for the eligible buffers that are
+  still recovered.
+
 ### Requirements
 
 - Reconcile each persisted flush against currently registered trigger buffers.

@@ -402,9 +402,6 @@ impl BufferUploadManager {
     event: BufferEventWithResponse,
     trigger_upload_complete_tx: &Sender<String>,
   ) -> anyhow::Result<()> {
-    let recover_pending_trigger_uploads =
-      matches!(event.event, BufferEvent::TriggerBufferCreated(_, _));
-
     match &event.event {
       // When a new buffer is created, spawn a new task which is responsible for
       // consuming logs from this buffer continuously.
@@ -470,12 +467,14 @@ impl BufferUploadManager {
           shutdown_trigger.shutdown().await;
         }
       },
-    }
-
-    if recover_pending_trigger_uploads {
-      self
-        .recover_pending_trigger_uploads(trigger_upload_complete_tx)
-        .await?;
+      BufferEvent::TriggerBufferConfigUpdated(configured_trigger_buffer_ids) => {
+        self
+          .recover_pending_trigger_uploads(
+            configured_trigger_buffer_ids.iter().cloned().collect(),
+            trigger_upload_complete_tx,
+          )
+          .await?;
+      },
     }
 
     Ok(())
@@ -483,16 +482,70 @@ impl BufferUploadManager {
 
   async fn recover_pending_trigger_uploads(
     &mut self,
+    configured_trigger_buffer_ids: HashSet<String>,
     trigger_upload_complete_tx: &Sender<String>,
   ) -> anyhow::Result<()> {
     for pending_upload in self.pending_trigger_uploads.pending_uploads().await {
-      if pending_upload
+      let missing_buffer_ids: Vec<_> = pending_upload
         .buffers
         .iter()
-        .any(|buffer| !self.trigger_buffers.contains_key(&buffer.buffer_id))
-      {
-        continue;
-      }
+        .filter(|buffer| !configured_trigger_buffer_ids.contains(&buffer.buffer_id))
+        .map(|buffer| buffer.buffer_id.clone())
+        .collect();
+
+      let pending_upload = if missing_buffer_ids.is_empty() {
+        pending_upload
+      } else {
+        let retained_buffers: Vec<_> = pending_upload
+          .buffers
+          .iter()
+          .filter(|buffer| configured_trigger_buffer_ids.contains(&buffer.buffer_id))
+          .cloned()
+          .collect();
+
+        Self::clear_trigger_upload_artifacts(
+          self.logger_state_directory.as_ref(),
+          &pending_upload.id,
+          &missing_buffer_ids,
+        )
+        .await;
+
+        if retained_buffers.is_empty() {
+          log::debug!(
+            "abandoning persisted trigger upload {} because configured trigger buffers are \
+             missing {:?}",
+            pending_upload.id,
+            missing_buffer_ids,
+          );
+          self
+            .pending_trigger_uploads
+            .remove(&pending_upload.id)
+            .await;
+          self
+            .flush_completion_tracker
+            .mark_completed(&pending_upload.source.to_flush_buffer_id());
+          continue;
+        }
+
+        log::debug!(
+          "pruning persisted trigger upload {} due to missing configured trigger buffers {:?}; \
+           retaining {:?}",
+          pending_upload.id,
+          missing_buffer_ids,
+          retained_buffers
+            .iter()
+            .map(|buffer| buffer.buffer_id.clone())
+            .collect::<Vec<_>>(),
+        );
+
+        let mut updated_upload = pending_upload;
+        updated_upload.buffers = retained_buffers;
+        self
+          .pending_trigger_uploads
+          .upsert(updated_upload.clone())
+          .await;
+        updated_upload
+      };
 
       if pending_upload
         .buffers
@@ -534,6 +587,31 @@ impl BufferUploadManager {
     }
 
     Ok(())
+  }
+
+  async fn clear_trigger_upload_artifacts(
+    logger_state_directory: &Path,
+    trigger_upload_id: &str,
+    buffer_ids: &[String],
+  ) {
+    for buffer_id in buffer_ids {
+      let artifact_store =
+        TriggerUploadArtifactStore::new(logger_state_directory, trigger_upload_id, buffer_id);
+
+      if let Err(e) = artifact_store.remove_queued_batch().await {
+        log::debug!(
+          "failed to clear queued artifact for abandoned trigger upload {trigger_upload_id} \
+           buffer {buffer_id}: {e}",
+        );
+      }
+
+      if let Err(e) = artifact_store.clear_inflight_batch().await {
+        log::debug!(
+          "failed to clear inflight artifact for abandoned trigger upload {trigger_upload_id} \
+           buffer {buffer_id}: {e}",
+        );
+      }
+    }
   }
 
   async fn shutdown(self) {
