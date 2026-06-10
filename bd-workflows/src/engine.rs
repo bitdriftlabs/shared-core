@@ -57,13 +57,13 @@ use bd_runtime::runtime::workflows::PersistenceWriteIntervalFlag;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, session_capture};
 use bd_stats_common::workflow::WorkflowDebugKey;
 use bd_stats_common::{Counter as _, StatsCollector, labels};
+use parking_lot::RwLock;
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::oneshot::error::TryRecvError;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
@@ -73,6 +73,37 @@ use tokio::time::Instant;
 // The state version was updated from 11 to 12 after a serialization bug was present in version 1
 // that would lose some data when serializing/deserializing.
 pub const WORKFLOWS_STATE_FILE_NAME: &str = "workflows_state_snapshot.12.bin";
+
+//
+// FlushCompletionTracker
+//
+
+/// Keeps a process-local mirror of flush IDs that are still pending in durable logger state.
+///
+/// The workflow engine uses this to preserve the pre-restart contract where streaming only
+/// terminates after its originating flush has actually completed.
+#[derive(Debug, Default)]
+pub struct FlushCompletionTracker {
+  pending_flushes: RwLock<HashSet<FlushBufferId>>,
+}
+
+impl FlushCompletionTracker {
+  pub fn replace_pending_flushes(&self, flush_ids: impl IntoIterator<Item = FlushBufferId>) {
+    *self.pending_flushes.write() = flush_ids.into_iter().collect();
+  }
+
+  pub fn mark_pending(&self, flush_id: FlushBufferId) {
+    self.pending_flushes.write().insert(flush_id);
+  }
+
+  pub fn mark_completed(&self, flush_id: &FlushBufferId) {
+    self.pending_flushes.write().remove(flush_id);
+  }
+
+  pub fn is_pending(&self, flush_id: &FlushBufferId) -> bool {
+    self.pending_flushes.read().contains(flush_id)
+  }
+}
 
 //
 // WorkflowsEngine
@@ -88,7 +119,7 @@ pub struct WorkflowsEngine {
   configs: Vec<Config>,
   state: WorkflowsState,
   state_store: Option<StateStore>,
-  pending_buffer_flushes: HashMap<FlushBufferId, tokio::sync::oneshot::Receiver<()>>,
+  flush_completion_tracker: Arc<FlushCompletionTracker>,
 
   needs_state_persistence: bool,
 
@@ -121,6 +152,26 @@ impl WorkflowsEngine {
     data_upload_tx: Sender<DataUpload>,
     stats: Arc<dyn StatsCollector>,
     stats_flush_trigger: Option<FlushTrigger>,
+  ) -> (Self, Receiver<BuffersToFlush>) {
+    Self::new_with_flush_completion_tracker(
+      scope,
+      sdk_directory,
+      runtime,
+      data_upload_tx,
+      stats,
+      stats_flush_trigger,
+      Arc::new(FlushCompletionTracker::default()),
+    )
+  }
+
+  pub fn new_with_flush_completion_tracker(
+    scope: &Scope,
+    sdk_directory: Option<&Path>,
+    runtime: Option<&ConfigLoader>,
+    data_upload_tx: Sender<DataUpload>,
+    stats: Arc<dyn StatsCollector>,
+    stats_flush_trigger: Option<FlushTrigger>,
+    flush_completion_tracker: Arc<FlushCompletionTracker>,
   ) -> (Self, Receiver<BuffersToFlush>) {
     let scope = scope.scope("workflows");
 
@@ -175,7 +226,7 @@ impl WorkflowsEngine {
       metrics_collector: MetricsCollector::new(stats),
       stats_flush_trigger,
       buffers_to_flush_tx,
-      pending_buffer_flushes: HashMap::new(),
+      flush_completion_tracker,
       explicit_session_capture_streaming_log_count,
     };
 
@@ -188,7 +239,6 @@ impl WorkflowsEngine {
     buffer_ids: BTreeSet<String>,
     streaming_proto:
       bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::Streaming,
-    flush_complete_rx: tokio::sync::oneshot::Receiver<()>,
   ) -> bool {
     let Ok(streaming) = Streaming::new(streaming_proto) else {
       log::debug!("failed to parse remote flush streaming configuration");
@@ -221,12 +271,14 @@ impl WorkflowsEngine {
       return false;
     }
 
-    self
-      .pending_buffer_flushes
-      .insert(action_id, flush_complete_rx);
+    self.flush_completion_tracker.mark_pending(action_id);
     self.state.streaming_actions.push(streaming_action);
     self.needs_state_persistence = true;
     true
+  }
+
+  pub fn mark_flush_completed(&self, action_id: &FlushBufferId) {
+    self.flush_completion_tracker.mark_completed(action_id);
   }
 
   pub async fn start(&mut self, config: WorkflowsEngineConfig, config_from_cache: bool) {
@@ -559,6 +611,10 @@ impl WorkflowsEngine {
     }
   }
 
+  fn flush_has_completed(&self, action_id: &FlushBufferId) -> bool {
+    !self.flush_completion_tracker.is_pending(action_id)
+  }
+
   async fn on_log_upload_approved(&mut self, action: &PendingFlushBuffersAction) {
     self.state.pending_flush_actions.remove(action);
 
@@ -581,38 +637,14 @@ impl WorkflowsEngine {
 
     // If there is already a pending buffer flush we don't want to signal another one, as
     // this would do nothing but mess up our tracking of the in-flight flush.
-    let flush_buffers =
-      if let Some(pending_buffer_flush) = self.pending_buffer_flushes.get_mut(&action.id) {
-        match pending_buffer_flush.try_recv() {
-          Ok(()) => {
-            self.pending_buffer_flushes.remove(&action.id);
-            log::debug!(
-              "allowing upload due to pending buffer flush completed: \"{:?}\"",
-              action.id
-            );
-            true
-          },
-          Err(TryRecvError::Empty) => {
-            log::debug!(
-              "not uploading due to pending buffer flush: \"{:?}\"",
-              action.id
-            );
-            false
-          },
-          Err(TryRecvError::Closed) => {
-            self.pending_buffer_flushes.remove(&action.id);
+    let flush_buffers = self.flush_has_completed(&action.id);
 
-            log::debug!(
-              "pending buffer flush receiver closed without response: \"{:?}\"",
-              action.id
-            );
-
-            true
-          },
-        }
-      } else {
-        true
-      };
+    if !flush_buffers {
+      log::debug!(
+        "not uploading due to pending durable buffer flush: \"{:?}\"",
+        action.id
+      );
+    }
 
     log::debug!(
       "uploading due to flush buffers action: \"{:?}\"; flush_buffers={}",
@@ -621,16 +653,15 @@ impl WorkflowsEngine {
     );
 
     if flush_buffers {
-      let (buffer_flush, rx) = BuffersToFlush::new(action);
+      let buffer_flush = BuffersToFlush::new(action);
 
-      match self.buffers_to_flush_tx.try_send(buffer_flush) {
-        Err(e) => {
-          self.stats.buffers_to_flush_channel_send_failures.inc();
-          log::debug!("failed to send information about buffers to flush: {e}");
-        },
-        Ok(()) => {
-          self.pending_buffer_flushes.insert(action.id.clone(), rx);
-        },
+      if let Err(e) = self.buffers_to_flush_tx.try_send(buffer_flush) {
+        self.stats.buffers_to_flush_channel_send_failures.inc();
+        log::debug!("failed to send information about buffers to flush: {e}");
+      } else {
+        self
+          .flush_completion_tracker
+          .mark_pending(action.id.clone());
       }
     }
 
@@ -859,25 +890,21 @@ impl WorkflowsEngine {
       flush_buffers_actions.insert(Cow::Owned(action));
     }
 
+    let flush_completion_tracker = self.flush_completion_tracker.clone();
+    let streaming_actions = self
+      .state
+      .streaming_actions
+      .drain(..)
+      .map(|action| {
+        let completed = !flush_completion_tracker.is_pending(&action.id);
+        (action, completed)
+      })
+      .collect();
+
     let result = self
       .flush_buffers_actions_resolver
       .process_streaming_actions(
-        self
-          .state
-          .streaming_actions
-          .drain(..)
-          .map(|action| {
-            // If there is no flush completion for this ID, we assume that no flush ever happened
-            // and we can happily terminate the streaming action.
-
-            let completed = self
-              .pending_buffer_flushes
-              .get_mut(&action.id)
-              .is_none_or(|rx| !matches!(rx.try_recv(), Err(TryRecvError::Empty)));
-
-            (action, completed)
-          })
-          .collect(),
+        streaming_actions,
         log_destination_buffer_ids,
         &self.state.session_id,
       );

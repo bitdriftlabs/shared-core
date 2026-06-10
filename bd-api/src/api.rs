@@ -1156,7 +1156,6 @@ impl Api {
             .resolve_pending_upload(&stats_upload.upload_uuid, &stats_upload.error)?;
         },
         Some(Response_type::FlushBuffers(flush_buffers)) => {
-          let (tx, _rx) = tokio::sync::oneshot::channel();
           let session_id = self
             .session_strategy
             .session_id()
@@ -1170,7 +1169,6 @@ impl Api {
               flush_buffers.streaming.into_option(),
               TriggerUploadSource::RemoteCommand(uuid::Uuid::new_v4().to_string()),
               session_id,
-              tx,
             ))
             .await
             .map_err(|_| anyhow!("remote trigger upload tx"))?;

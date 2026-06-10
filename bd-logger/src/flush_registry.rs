@@ -17,6 +17,7 @@ use bd_client_common::file::{
 use bd_client_common::file_system::delete_file_if_exists_async;
 use bd_macros::proto_serializable;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
+use bd_workflows::config::FlushBufferId;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -64,6 +65,24 @@ impl PersistedTriggerUploadSource {
       Self::ExplicitSessionCapture(id) => TriggerUploadSource::ExplicitSessionCapture(id.clone()),
       Self::RemoteCommand(id) => TriggerUploadSource::RemoteCommand(id.clone()),
     }
+  }
+
+  pub fn to_flush_buffer_id(&self) -> FlushBufferId {
+    match self {
+      Self::WorkflowAction(id) => FlushBufferId::WorkflowActionId(id.clone()),
+      Self::ExplicitSessionCapture(id) => FlushBufferId::ExplicitSessionCapture(id.clone()),
+      Self::RemoteCommand(id) => FlushBufferId::RemoteCommand(id.clone()),
+    }
+  }
+}
+
+pub fn flush_buffer_id_from_trigger_upload_source(source: &TriggerUploadSource) -> FlushBufferId {
+  match source {
+    TriggerUploadSource::WorkflowAction(id) => FlushBufferId::WorkflowActionId(id.clone()),
+    TriggerUploadSource::ExplicitSessionCapture(id) => {
+      FlushBufferId::ExplicitSessionCapture(id.clone())
+    },
+    TriggerUploadSource::RemoteCommand(id) => FlushBufferId::RemoteCommand(id.clone()),
   }
 }
 

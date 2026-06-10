@@ -243,6 +243,16 @@ concrete durable artifact or queue with well-defined recovery semantics.
 
 Make workflow and remote streaming restoration depend on durable flush state instead of runtime-only completion channels.
 
+Status: Implemented.
+
+- Added a shared `FlushCompletionTracker` in `bd-workflows` and wired it through `bd-logger` so
+  the workflow engine can distinguish a genuinely completed flush from a restart that merely lost
+  the in-memory `oneshot` receiver.
+- The tracker is hydrated from the persisted trigger-upload registry during logger startup and kept
+  up to date as trigger uploads are scheduled and completed.
+- Restart coverage now verifies both workflow-triggered and remote streaming actions keep rerouting
+  past their log-count threshold until the durable flush is marked complete.
+
 ### Requirements
 
 - Replace or wrap `pending_buffer_flushes` in `bd-workflows/src/engine.rs` so restart does not lose completion tracking.

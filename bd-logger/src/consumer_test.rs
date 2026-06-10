@@ -32,6 +32,7 @@ use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::labels;
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_time::{OffsetDateTimeExt as _, TimeDurationExt};
+use bd_workflows::engine::FlushCompletionTracker;
 use core::panic;
 use futures_util::poll;
 use protobuf::{CodedOutputStream, Message};
@@ -716,6 +717,8 @@ impl SetupMultiConsumer {
         &collector_clone.scope("consumer"),
         bd_internal_logging::NoopLogger::new(),
         None,
+        PendingTriggerUploadsStore::new(&sdk_directory),
+        Arc::new(FlushCompletionTracker::default()),
       )
       .run()
       .await
@@ -748,18 +751,14 @@ impl SetupMultiConsumer {
     self.shutdown_trigger.shutdown().await;
   }
 
-  async fn trigger_buffer_upload(&self, buffer: &str) -> tokio::sync::oneshot::Receiver<()> {
-    let (tx, rx) = tokio::sync::oneshot::channel();
+  async fn trigger_buffer_upload(&self, buffer: &str) {
     let upload = TriggerUpload::new(
       vec![buffer.to_string()],
       None,
       TriggerUploadSource::ExplicitSessionCapture("session-capture".to_string()),
       "session-1".to_string(),
-      tx,
     );
     self.trigger_upload_tx.send(upload).await.unwrap();
-
-    rx
   }
 
   async fn add_trigger_buffer(&self, buffer_id: &str, buffer: Arc<Buffer>) {
@@ -975,7 +974,6 @@ async fn trigger_upload_with_empty_buffer_list_flushes_all_trigger_buffers() {
   producer_a.write(b"a").unwrap();
   producer_b.write(b"b").unwrap();
 
-  let (tx, _rx) = tokio::sync::oneshot::channel();
   setup
     .trigger_upload_tx
     .send(TriggerUpload::new(
@@ -983,7 +981,6 @@ async fn trigger_upload_with_empty_buffer_list_flushes_all_trigger_buffers() {
       None,
       TriggerUploadSource::ExplicitSessionCapture("session-capture".to_string()),
       "session-1".to_string(),
-      tx,
     ))
     .await
     .unwrap();
@@ -1011,7 +1008,6 @@ async fn trigger_upload_is_persisted_until_completion() {
   setup.add_trigger_buffer("buffer", buffer).await;
   producer.write(b"one").unwrap();
 
-  let (tx, rx) = tokio::sync::oneshot::channel();
   setup
     .trigger_upload_tx
     .send(TriggerUpload::new(
@@ -1019,7 +1015,6 @@ async fn trigger_upload_is_persisted_until_completion() {
       None,
       TriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
       "session-1".to_string(),
-      tx,
     ))
     .await
     .unwrap();
@@ -1049,9 +1044,16 @@ async fn trigger_upload_is_persisted_until_completion() {
       uuid: upload.uuid,
     })
     .unwrap();
-  rx.await.unwrap();
 
-  assert!(setup.pending_trigger_uploads().await.is_empty());
+  for _ in 0 .. 100 {
+    if setup.pending_trigger_uploads().await.is_empty() {
+      return;
+    }
+
+    tokio::task::yield_now().await;
+  }
+
+  panic!("expected trigger upload persistence to clear after upload completion");
 }
 
 #[tokio::test]

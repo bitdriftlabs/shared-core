@@ -15,6 +15,7 @@ use crate::flush_registry::{
   PersistedTriggerUploadBufferProgress,
   PersistedTriggerUploadLifecycle,
   PersistedTriggerUploadSource,
+  flush_buffer_id_from_trigger_upload_source,
 };
 use crate::service::{self, UploadRequest};
 use crate::state_upload::StateUploadHandle;
@@ -36,6 +37,7 @@ use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_stats_common::Counter as _;
 use bd_time::OffsetDateTimeExt;
+use bd_workflows::engine::FlushCompletionTracker;
 use futures_util::future::try_join_all;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -74,7 +76,6 @@ pub struct RemoteFlushStreamingRequest {
   pub(crate) id: String,
   pub(crate) buffer_ids: Vec<String>,
   pub(crate) streaming: workflow::workflow::action::action_flush_buffers::Streaming,
-  pub(crate) flush_complete_rx: tokio::sync::oneshot::Receiver<()>,
 }
 
 impl RemoteFlushStreamingRequest {
@@ -82,13 +83,11 @@ impl RemoteFlushStreamingRequest {
     id: String,
     buffer_ids: Vec<String>,
     streaming: workflow::workflow::action::action_flush_buffers::Streaming,
-    flush_complete_rx: tokio::sync::oneshot::Receiver<()>,
   ) -> Self {
     Self {
       id,
       buffer_ids,
       streaming,
-      flush_complete_rx,
     }
   }
 }
@@ -143,6 +142,10 @@ pub struct BufferUploadManager {
   // Durable registry of trigger uploads that have been scheduled but not yet completed.
   pending_trigger_uploads: PendingTriggerUploadsStore,
 
+  // Shared tracker used by the workflows engine to preserve flush completion semantics across
+  // restart.
+  flush_completion_tracker: Arc<FlushCompletionTracker>,
+
   logger_state_directory: Arc<PathBuf>,
 }
 
@@ -158,8 +161,9 @@ impl BufferUploadManager {
     stats: &Scope,
     logging: Arc<dyn bd_internal_logging::Logger>,
     state_upload_handle: Option<Arc<StateUploadHandle>>,
+    pending_trigger_uploads: PendingTriggerUploadsStore,
+    flush_completion_tracker: Arc<FlushCompletionTracker>,
   ) -> Self {
-    let pending_trigger_uploads = PendingTriggerUploadsStore::new(sdk_directory);
     let logger_state_directory = Arc::new(sdk_directory.join("state").join("logger"));
 
     Self {
@@ -183,6 +187,7 @@ impl BufferUploadManager {
       old_logs_dropped: stats.counter("old_logs_dropped"),
       state_upload_handle,
       pending_trigger_uploads,
+      flush_completion_tracker,
       logger_state_directory,
     }
   }
@@ -240,7 +245,6 @@ impl BufferUploadManager {
       streaming,
       source,
       session_id,
-      response_tx,
     } = trigger_upload;
 
     let trigger_upload_id = source.logical_id().to_string();
@@ -303,6 +307,9 @@ impl BufferUploadManager {
           lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
         })
         .await;
+      self
+        .flush_completion_tracker
+        .mark_pending(flush_buffer_id_from_trigger_upload_source(&source));
     }
 
     for (buffer_id, trigger_consumer) in scheduled_consumers {
@@ -352,50 +359,36 @@ impl BufferUploadManager {
       self.shutdowns.insert(buffer_id.clone(), shutdown_trigger);
     }
 
-    let remote_streaming_complete_tx = if is_remote_streaming_activation
+    if is_remote_streaming_activation
       && let Some(streaming) = streaming
       && !eligible_buffer_ids.is_empty()
-    {
-      let (flush_complete_tx, flush_complete_rx) = tokio::sync::oneshot::channel();
-
-      match self
+      && let Err(e) = self
         .remote_flush_streaming_tx
         .try_send(RemoteFlushStreamingRequest::new(
           trigger_upload_id.clone(),
           eligible_buffer_ids,
           streaming,
-          flush_complete_rx,
-        )) {
-        Ok(()) => Some(flush_complete_tx),
-        Err(e) => {
-          log::debug!("failed to enqueue remote flush streaming request: {e:?}");
-          None
-        },
-      }
-    } else {
-      None
-    };
+        ))
+    {
+      log::debug!("failed to enqueue remote flush streaming request: {e:?}");
+      self
+        .flush_completion_tracker
+        .mark_completed(&flush_buffer_id_from_trigger_upload_source(&source));
+    }
 
     // Since we have one completion handler for the entire set of trigger uploads, we need to
     // spawn a task to wait for all of the individual trigger uploads to complete before we can
     // signal that the trigger uploads are complete.
     let pending_trigger_uploads = self.pending_trigger_uploads.clone();
+    let flush_completion_tracker = self.flush_completion_tracker.clone();
+    let tracked_flush_id = flush_buffer_id_from_trigger_upload_source(&source);
     tokio::spawn(async move {
       if let Err(e) = try_join_all(buffer_upload_completions).await {
         log::debug!("failed to wait for trigger uploads to complete: {e:?}");
       }
 
       pending_trigger_uploads.remove(&trigger_upload_id).await;
-
-      if let Err(e) = response_tx.send(()) {
-        log::debug!("failed to send trigger upload response: {e:?}");
-      }
-
-      if let Some(remote_streaming_complete_tx) = remote_streaming_complete_tx
-        && let Err(e) = remote_streaming_complete_tx.send(())
-      {
-        log::debug!("failed to send remote flush streaming completion: {e:?}");
-      }
+      flush_completion_tracker.mark_completed(&tracked_flush_id);
 
       log::debug!("signaling all trigger uploads complete");
     });
@@ -527,7 +520,6 @@ impl BufferUploadManager {
         pending_upload.buffer_ids()
       );
 
-      let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
       self
         .handle_trigger_uploads(
           TriggerUpload::new(
@@ -535,7 +527,6 @@ impl BufferUploadManager {
             pending_upload.streaming_proto(),
             pending_upload.source.to_trigger_upload_source(),
             pending_upload.session_id.clone(),
-            response_tx,
           ),
           trigger_upload_complete_tx,
         )

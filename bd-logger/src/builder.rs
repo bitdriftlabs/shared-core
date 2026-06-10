@@ -13,6 +13,7 @@ use crate::async_log_buffer::AsyncLogBuffer;
 use crate::client_config::{self, LoggerUpdate};
 use crate::consumer::BufferUploadManager;
 use crate::directory_lock::DirectoryLock;
+use crate::flush_registry::PendingTriggerUploadsStore;
 use crate::internal::InternalLogger;
 use crate::log_replay::LoggerReplay;
 use crate::logger::{Logger, PendingEntityIdUpdate};
@@ -50,6 +51,7 @@ use bd_state::{
   string_value,
 };
 use bd_time::{SystemTimeProvider, Ticker, TimeProvider};
+use bd_workflows::engine::FlushCompletionTracker;
 use futures_util::{Future, try_join};
 use parking_lot::Mutex;
 use std::pin::Pin;
@@ -330,6 +332,8 @@ impl LoggerBuilder {
       ]));
 
     let sdk_status_tracker = bd_client_common::sdk_status::SdkStatusTracker::new();
+    let pending_trigger_uploads = PendingTriggerUploadsStore::new(&self.params.sdk_directory);
+    let flush_completion_tracker = Arc::new(FlushCompletionTracker::default());
 
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
       UninitializedLoggingContext::new(
@@ -344,6 +348,7 @@ impl LoggerBuilder {
         flusher_trigger.clone(),
         1024 * 1024,
         is_tracing_active.clone(),
+        flush_completion_tracker.clone(),
       ),
       LoggerReplay,
       self.params.session_strategy.clone(),
@@ -544,6 +549,8 @@ impl LoggerBuilder {
         &scope,
         log.clone(),
         state_upload_handle,
+        pending_trigger_uploads,
+        flush_completion_tracker,
       );
 
       let updater = Arc::new(client_config::Config::new_with_time_provider(

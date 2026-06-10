@@ -9,7 +9,12 @@
 
 use super::{StateStore, WorkflowsEngine};
 use crate::actions_flush_buffers::BuffersToFlush;
-use crate::engine::{WORKFLOWS_STATE_FILE_NAME, WorkflowsEngineConfig, WorkflowsEngineResult};
+use crate::engine::{
+  FlushCompletionTracker,
+  WORKFLOWS_STATE_FILE_NAME,
+  WorkflowsEngineConfig,
+  WorkflowsEngineResult,
+};
 use crate::test::TestLog;
 use crate::workflow::{WorkflowDebugStateMap, WorkflowEvent, WorkflowTransitionDebugState};
 use bd_api::DataUpload;
@@ -105,6 +110,7 @@ pub struct Hooks {
 
 pub struct AnnotatedWorkflowsEngine {
   pub engine: WorkflowsEngine,
+  flush_completion_tracker: Arc<FlushCompletionTracker>,
 
   pub session_id: String,
   pub log_destination_buffer_ids: TinySet<Cow<'static, str>>,
@@ -119,12 +125,14 @@ pub struct AnnotatedWorkflowsEngine {
 impl AnnotatedWorkflowsEngine {
   pub fn new(
     engine: WorkflowsEngine,
+    flush_completion_tracker: Arc<FlushCompletionTracker>,
     hooks: Arc<parking_lot::Mutex<Hooks>>,
     client_stats: Arc<Stats>,
     task_handle: JoinHandle<()>,
   ) -> Self {
     Self {
       engine,
+      flush_completion_tracker,
 
       session_id: "foo_session".to_string(),
       log_destination_buffer_ids: TinySet::default(),
@@ -294,8 +302,8 @@ impl AnnotatedWorkflowsEngine {
   }
 
   pub fn complete_flushes(&self) {
-    for b in &mut self.hooks.lock().flushed_buffers.drain(..) {
-      b.response_tx.send(()).unwrap();
+    for b in self.hooks.lock().flushed_buffers.drain(..) {
+      self.flush_completion_tracker.mark_completed(&b.flush_id);
     }
   }
 
@@ -373,6 +381,20 @@ impl Setup {
     &self,
     workflows_engine_config: WorkflowsEngineConfig,
   ) -> AnnotatedWorkflowsEngine {
+    let flush_completion_tracker = Arc::new(FlushCompletionTracker::default());
+    self
+      .make_workflows_engine_with_flush_completion_tracker(
+        workflows_engine_config,
+        flush_completion_tracker,
+      )
+      .await
+  }
+
+  pub async fn make_workflows_engine_with_flush_completion_tracker(
+    &self,
+    workflows_engine_config: WorkflowsEngineConfig,
+    flush_completion_tracker: Arc<FlushCompletionTracker>,
+  ) -> AnnotatedWorkflowsEngine {
     let (data_upload_tx, data_upload_rx) = tokio::sync::mpsc::channel(1);
 
     let hooks = Arc::new(parking_lot::Mutex::new(Hooks::default()));
@@ -380,15 +402,18 @@ impl Setup {
     let stats = bd_client_stats::Stats::new(self.collector.clone());
 
     let (flush_trigger, stats_flush_rx) = FlushTrigger::new();
+    let workflows_flush_completion_tracker = Arc::clone(&flush_completion_tracker);
 
-    let (mut workflows_engine, buffers_to_flush_rx) = WorkflowsEngine::new(
-      &self.collector.scope(""),
-      Some(self.sdk_directory.path()),
-      Some(&self.runtime),
-      data_upload_tx,
-      stats.clone(),
-      Some(flush_trigger),
-    );
+    let (mut workflows_engine, buffers_to_flush_rx) =
+      WorkflowsEngine::new_with_flush_completion_tracker(
+        &self.collector.scope(""),
+        Some(self.sdk_directory.path()),
+        Some(&self.runtime),
+        data_upload_tx,
+        stats.clone(),
+        Some(flush_trigger),
+        workflows_flush_completion_tracker,
+      );
 
     let task_handle = AnnotatedWorkflowsEngine::run_for_test(
       buffers_to_flush_rx,
@@ -399,7 +424,13 @@ impl Setup {
 
     workflows_engine.start(workflows_engine_config, false).await;
 
-    AnnotatedWorkflowsEngine::new(workflows_engine, hooks, stats, task_handle)
+    AnnotatedWorkflowsEngine::new(
+      workflows_engine,
+      Arc::clone(&flush_completion_tracker),
+      hooks,
+      stats,
+      task_handle,
+    )
   }
 
   pub fn make_state_store(&self) -> StateStore {

@@ -9,8 +9,8 @@ version      = "0.1.0"
 doctest = false
 
 [dependencies]
-arbitrary                  = { workspace = true, optional = true }
 anyhow.workspace            = true
+arbitrary                   = { workspace = true, optional = true }
 async-trait.workspace       = true
 bd-api.path                 = "../bd-api"
 bd-client-common.path       = "../bd-client-common"
@@ -33,6 +33,7 @@ bd-workspace-hack.workspace = true
 bincode.workspace           = true
 itertools.workspace         = true
 log.workspace               = true
+parking_lot.workspace       = true
 protobuf.workspace          = true
 regex.workspace             = true
 serde.workspace             = true
@@ -51,7 +52,6 @@ bd-log                      = { path = "../bd-log" }
 bd-time                     = { path = "../bd-time" }
 ctor.workspace              = true
 futures-util.workspace      = true
-parking_lot.workspace       = true
 pretty_assertions.workspace = true
 tempfile.workspace          = true
 tokio-test.workspace        = true

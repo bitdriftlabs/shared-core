@@ -8,6 +8,7 @@
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::consumer::RemoteFlushStreamingRequest;
+use crate::flush_registry::PendingTriggerUploadsStore;
 use crate::logging_state::{BufferProducers, ConfigUpdate, InitializedLoggingContextStats};
 use crate::write_log_to_buffer;
 use bd_api::{DataUpload, TriggerUpload, TriggerUploadSource};
@@ -26,7 +27,7 @@ use bd_stats_common::Counter as _;
 use bd_time::OffsetDateTimeExt;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::config::FlushBufferId;
-use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
+use bd_workflows::engine::{FlushCompletionTracker, WorkflowsEngine, WorkflowsEngineConfig};
 use bd_workflows::workflow::{WorkflowDebugStateMap, WorkflowEvent};
 use itertools::Itertools;
 use std::borrow::Cow;
@@ -169,16 +170,27 @@ impl ProcessingPipeline {
     runtime: &ConfigLoader,
     stats: InitializedLoggingContextStats,
     is_tracing_active: Arc<AtomicBool>,
+    flush_completion_tracker: Arc<FlushCompletionTracker>,
   ) -> Self {
+    flush_completion_tracker.replace_pending_flushes(
+      PendingTriggerUploadsStore::new(sdk_directory)
+        .pending_uploads()
+        .await
+        .into_iter()
+        .map(|upload| upload.source.to_flush_buffer_id()),
+    );
+
     let (workflows_engine, buffers_to_flush_rx) = {
-      let (mut workflows_engine, flush_buffers_tx) = WorkflowsEngine::new(
-        &stats.root_scope,
-        Some(sdk_directory),
-        Some(runtime),
-        data_upload_tx,
-        stats.stats.clone(),
-        Some(flush_stats_trigger.clone()),
-      );
+      let (mut workflows_engine, flush_buffers_tx) =
+        WorkflowsEngine::new_with_flush_completion_tracker(
+          &stats.root_scope,
+          Some(sdk_directory),
+          Some(runtime),
+          data_upload_tx,
+          stats.stats.clone(),
+          Some(flush_stats_trigger.clone()),
+          flush_completion_tracker.clone(),
+        );
 
       workflows_engine
         .start(
@@ -611,7 +623,6 @@ impl ProcessingPipeline {
             FlushBufferId::RemoteCommand(id) => TriggerUploadSource::RemoteCommand(id.clone()),
           },
           buffers_to_flush.session_id,
-          buffers_to_flush.response_tx,
         );
 
         let result = self.trigger_upload_tx.try_send(trigger_upload);
@@ -621,6 +632,7 @@ impl ProcessingPipeline {
           },
           Err(e) => {
             log::debug!("failed to send trigger flush: {e}");
+            self.workflows_engine.mark_flush_completed(&buffers_to_flush.flush_id);
             self.stats.trigger_upload_stats.record(&e);
           }
         }
@@ -635,7 +647,6 @@ impl ProcessingPipeline {
           remote_flush_streaming.id,
           remote_flush_streaming.buffer_ids.into_iter().collect(),
           remote_flush_streaming.streaming,
-          remote_flush_streaming.flush_complete_rx,
         );
 
         if started {

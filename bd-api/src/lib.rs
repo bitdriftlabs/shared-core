@@ -116,9 +116,6 @@ pub struct TriggerUpload {
 
   // Session identifier active when the logical trigger was scheduled.
   pub session_id: String,
-
-  // A channel to notify the caller that the upload has been completed.
-  pub response_tx: tokio::sync::oneshot::Sender<()>,
 }
 
 impl TriggerUpload {
@@ -128,14 +125,12 @@ impl TriggerUpload {
     streaming: Option<workflow::workflow::action::action_flush_buffers::Streaming>,
     source: TriggerUploadSource,
     session_id: String,
-    response_tx: tokio::sync::oneshot::Sender<()>,
   ) -> Self {
     Self {
       buffer_ids,
       streaming,
       source,
       session_id,
-      response_tx,
     }
   }
 }

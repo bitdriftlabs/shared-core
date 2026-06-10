@@ -1060,25 +1060,15 @@ pub struct BuffersToFlush {
   pub buffer_ids: TinySet<Cow<'static, str>>,
   // Optional streaming configuration associated with the logical flush action.
   pub streaming: Option<flush_buffers_proto::Streaming>,
-  // Channel to notify the caller that the flush has been completed.
-  pub response_tx: tokio::sync::oneshot::Sender<()>,
 }
 
 impl BuffersToFlush {
-  pub(crate) fn new(
-    action: &PendingFlushBuffersAction,
-  ) -> (Self, tokio::sync::oneshot::Receiver<()>) {
-    let (response_tx, response_rx) = tokio::sync::oneshot::channel();
-
-    (
-      Self {
-        flush_id: action.id.clone(),
-        session_id: action.session_id.clone(),
-        buffer_ids: action.trigger_buffer_ids.clone(),
-        streaming: action.streaming.as_ref().map(Streaming::to_proto),
-        response_tx,
-      },
-      response_rx,
-    )
+  pub(crate) fn new(action: &PendingFlushBuffersAction) -> Self {
+    Self {
+      flush_id: action.id.clone(),
+      session_id: action.session_id.clone(),
+      buffer_ids: action.trigger_buffer_ids.clone(),
+      streaming: action.streaming.as_ref().map(Streaming::to_proto),
+    }
   }
 }
