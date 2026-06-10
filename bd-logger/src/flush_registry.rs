@@ -16,6 +16,7 @@ use bd_client_common::file::{
 };
 use bd_client_common::file_system::delete_file_if_exists_async;
 use bd_macros::proto_serializable;
+use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -29,7 +30,9 @@ const PENDING_TRIGGER_UPLOADS_FILE_NAME: &str = "pending_trigger_uploads_snapsho
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PersistedTriggerUploadLifecycle {
   ReadyToUpload,
-  Uploading,
+  UploadingFromBuffer,
+  Completed,
+  Failed,
 }
 
 //
@@ -71,9 +74,101 @@ impl PersistedTriggerUploadSource {
 pub struct PersistedTriggerUpload {
   pub id: String,
   pub source: PersistedTriggerUploadSource,
-  pub buffer_ids: Vec<String>,
-  pub has_streaming: bool,
+  pub session_id: String,
+  pub buffers: Vec<PersistedTriggerUploadBufferProgress>,
+  pub streaming: Option<PersistedTriggerUploadStreaming>,
   pub lifecycle: PersistedTriggerUploadLifecycle,
+}
+
+impl PersistedTriggerUpload {
+  pub fn buffer_ids(&self) -> Vec<String> {
+    self
+      .buffers
+      .iter()
+      .map(|buffer| buffer.buffer_id.clone())
+      .collect()
+  }
+
+  pub fn streaming_proto(&self) -> Option<action_flush_buffers::Streaming> {
+    self
+      .streaming
+      .as_ref()
+      .map(PersistedTriggerUploadStreaming::to_proto)
+  }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PersistedTriggerUploadBufferLifecycle {
+  Pending,
+  UploadingFromBuffer,
+  Completed,
+  Failed,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PersistedTriggerUploadBufferProgress {
+  pub buffer_id: String,
+  pub lifecycle: PersistedTriggerUploadBufferLifecycle,
+  pub uploaded_batches_count: u64,
+  pub uploaded_logs_count: u64,
+}
+
+impl PersistedTriggerUploadBufferProgress {
+  pub fn new(buffer_id: String) -> Self {
+    Self {
+      buffer_id,
+      lifecycle: PersistedTriggerUploadBufferLifecycle::Pending,
+      uploaded_batches_count: 0,
+      uploaded_logs_count: 0,
+    }
+  }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PersistedTriggerUploadStreaming {
+  pub destination_buffer_ids: Vec<String>,
+  pub max_logs_count: Option<u64>,
+}
+
+impl From<&action_flush_buffers::Streaming> for PersistedTriggerUploadStreaming {
+  fn from(streaming: &action_flush_buffers::Streaming) -> Self {
+    let max_logs_count = streaming.termination_criteria.iter().find_map(|criterion| {
+      criterion.type_.as_ref().map(
+        |action_flush_buffers::streaming::termination_criterion::Type::LogsCount(logs_count)| {
+          logs_count.max_logs_count
+        },
+      )
+    });
+
+    Self {
+      destination_buffer_ids: streaming.destination_streaming_buffer_ids.clone(),
+      max_logs_count,
+    }
+  }
+}
+
+impl PersistedTriggerUploadStreaming {
+  pub fn to_proto(&self) -> action_flush_buffers::Streaming {
+    let termination_criteria = self.max_logs_count.map_or_else(Vec::new, |max_logs_count| {
+      vec![action_flush_buffers::streaming::TerminationCriterion {
+        type_: Some(
+          action_flush_buffers::streaming::termination_criterion::Type::LogsCount(
+            action_flush_buffers::streaming::termination_criterion::LogsCount {
+              max_logs_count,
+              ..Default::default()
+            },
+          ),
+        ),
+        ..Default::default()
+      }]
+    });
+
+    action_flush_buffers::Streaming {
+      destination_streaming_buffer_ids: self.destination_buffer_ids.clone(),
+      termination_criteria,
+      ..Default::default()
+    }
+  }
 }
 
 //
@@ -99,10 +194,12 @@ struct PersistedTriggerUploadRecord {
   #[field(id = 2)]
   source: PersistedTriggerUploadSourceRecord,
   #[field(id = 3)]
-  buffer_ids: Vec<String>,
+  session_id: String,
   #[field(id = 4)]
-  has_streaming: bool,
+  streaming: Option<PersistedTriggerUploadStreamingRecord>,
   #[field(id = 5)]
+  buffers: Vec<PersistedTriggerUploadBufferProgressRecord>,
+  #[field(id = 6)]
   lifecycle: PersistedTriggerUploadLifecycleRecord,
 }
 
@@ -139,7 +236,53 @@ enum PersistedTriggerUploadLifecycleRecord {
   ReadyToUpload,
   #[field(id = 2)]
   #[field(deserialize)]
-  Uploading,
+  UploadingFromBuffer,
+  #[field(id = 3)]
+  #[field(deserialize)]
+  Completed,
+  #[field(id = 4)]
+  #[field(deserialize)]
+  Failed,
+}
+
+#[proto_serializable]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct PersistedTriggerUploadBufferProgressRecord {
+  #[field(id = 1)]
+  buffer_id: String,
+  #[field(id = 2)]
+  lifecycle: PersistedTriggerUploadBufferLifecycleRecord,
+  #[field(id = 3)]
+  uploaded_batches_count: u64,
+  #[field(id = 4)]
+  uploaded_logs_count: u64,
+}
+
+#[proto_serializable]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum PersistedTriggerUploadBufferLifecycleRecord {
+  #[field(id = 1)]
+  #[field(deserialize)]
+  #[default]
+  Pending,
+  #[field(id = 2)]
+  #[field(deserialize)]
+  UploadingFromBuffer,
+  #[field(id = 3)]
+  #[field(deserialize)]
+  Completed,
+  #[field(id = 4)]
+  #[field(deserialize)]
+  Failed,
+}
+
+#[proto_serializable]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct PersistedTriggerUploadStreamingRecord {
+  #[field(id = 1)]
+  destination_buffer_ids: Vec<String>,
+  #[field(id = 2)]
+  max_logs_count: Option<u64>,
 }
 
 impl From<&PersistedTriggerUpload> for PersistedTriggerUploadRecord {
@@ -147,8 +290,9 @@ impl From<&PersistedTriggerUpload> for PersistedTriggerUploadRecord {
     Self {
       id: upload.id.clone(),
       source: (&upload.source).into(),
-      buffer_ids: upload.buffer_ids.clone(),
-      has_streaming: upload.has_streaming,
+      session_id: upload.session_id.clone(),
+      streaming: upload.streaming.as_ref().map(Into::into),
+      buffers: upload.buffers.iter().map(Into::into).collect(),
       lifecycle: upload.lifecycle.into(),
     }
   }
@@ -159,9 +303,72 @@ impl From<PersistedTriggerUploadRecord> for PersistedTriggerUpload {
     Self {
       id: upload.id,
       source: upload.source.into(),
-      buffer_ids: upload.buffer_ids,
-      has_streaming: upload.has_streaming,
+      session_id: upload.session_id,
+      buffers: upload.buffers.into_iter().map(Into::into).collect(),
+      streaming: upload.streaming.map(Into::into),
       lifecycle: upload.lifecycle.into(),
+    }
+  }
+}
+
+impl From<&PersistedTriggerUploadBufferProgress> for PersistedTriggerUploadBufferProgressRecord {
+  fn from(buffer: &PersistedTriggerUploadBufferProgress) -> Self {
+    Self {
+      buffer_id: buffer.buffer_id.clone(),
+      lifecycle: buffer.lifecycle.into(),
+      uploaded_batches_count: buffer.uploaded_batches_count,
+      uploaded_logs_count: buffer.uploaded_logs_count,
+    }
+  }
+}
+
+impl From<PersistedTriggerUploadBufferProgressRecord> for PersistedTriggerUploadBufferProgress {
+  fn from(buffer: PersistedTriggerUploadBufferProgressRecord) -> Self {
+    Self {
+      buffer_id: buffer.buffer_id,
+      lifecycle: buffer.lifecycle.into(),
+      uploaded_batches_count: buffer.uploaded_batches_count,
+      uploaded_logs_count: buffer.uploaded_logs_count,
+    }
+  }
+}
+
+impl From<PersistedTriggerUploadBufferLifecycle> for PersistedTriggerUploadBufferLifecycleRecord {
+  fn from(lifecycle: PersistedTriggerUploadBufferLifecycle) -> Self {
+    match lifecycle {
+      PersistedTriggerUploadBufferLifecycle::Pending => Self::Pending,
+      PersistedTriggerUploadBufferLifecycle::UploadingFromBuffer => Self::UploadingFromBuffer,
+      PersistedTriggerUploadBufferLifecycle::Completed => Self::Completed,
+      PersistedTriggerUploadBufferLifecycle::Failed => Self::Failed,
+    }
+  }
+}
+
+impl From<PersistedTriggerUploadBufferLifecycleRecord> for PersistedTriggerUploadBufferLifecycle {
+  fn from(lifecycle: PersistedTriggerUploadBufferLifecycleRecord) -> Self {
+    match lifecycle {
+      PersistedTriggerUploadBufferLifecycleRecord::Pending => Self::Pending,
+      PersistedTriggerUploadBufferLifecycleRecord::UploadingFromBuffer => Self::UploadingFromBuffer,
+      PersistedTriggerUploadBufferLifecycleRecord::Completed => Self::Completed,
+      PersistedTriggerUploadBufferLifecycleRecord::Failed => Self::Failed,
+    }
+  }
+}
+
+impl From<&PersistedTriggerUploadStreaming> for PersistedTriggerUploadStreamingRecord {
+  fn from(streaming: &PersistedTriggerUploadStreaming) -> Self {
+    Self {
+      destination_buffer_ids: streaming.destination_buffer_ids.clone(),
+      max_logs_count: streaming.max_logs_count,
+    }
+  }
+}
+
+impl From<PersistedTriggerUploadStreamingRecord> for PersistedTriggerUploadStreaming {
+  fn from(streaming: PersistedTriggerUploadStreamingRecord) -> Self {
+    Self {
+      destination_buffer_ids: streaming.destination_buffer_ids,
+      max_logs_count: streaming.max_logs_count,
     }
   }
 }
@@ -201,7 +408,9 @@ impl From<PersistedTriggerUploadLifecycle> for PersistedTriggerUploadLifecycleRe
   fn from(lifecycle: PersistedTriggerUploadLifecycle) -> Self {
     match lifecycle {
       PersistedTriggerUploadLifecycle::ReadyToUpload => Self::ReadyToUpload,
-      PersistedTriggerUploadLifecycle::Uploading => Self::Uploading,
+      PersistedTriggerUploadLifecycle::UploadingFromBuffer => Self::UploadingFromBuffer,
+      PersistedTriggerUploadLifecycle::Completed => Self::Completed,
+      PersistedTriggerUploadLifecycle::Failed => Self::Failed,
     }
   }
 }
@@ -210,7 +419,9 @@ impl From<PersistedTriggerUploadLifecycleRecord> for PersistedTriggerUploadLifec
   fn from(lifecycle: PersistedTriggerUploadLifecycleRecord) -> Self {
     match lifecycle {
       PersistedTriggerUploadLifecycleRecord::ReadyToUpload => Self::ReadyToUpload,
-      PersistedTriggerUploadLifecycleRecord::Uploading => Self::Uploading,
+      PersistedTriggerUploadLifecycleRecord::UploadingFromBuffer => Self::UploadingFromBuffer,
+      PersistedTriggerUploadLifecycleRecord::Completed => Self::Completed,
+      PersistedTriggerUploadLifecycleRecord::Failed => Self::Failed,
     }
   }
 }
@@ -260,12 +471,40 @@ impl PendingTriggerUploadsStore {
       .await;
   }
 
-  pub async fn mark_uploading(&self, id: &str) {
+  pub async fn mark_uploading(&self, id: &str, buffer_id: &str) {
     self
       .mutate(|uploads| {
         for upload in uploads {
           if upload.id == id {
-            upload.lifecycle = PersistedTriggerUploadLifecycle::Uploading;
+            upload.lifecycle = PersistedTriggerUploadLifecycle::UploadingFromBuffer;
+            if let Some(buffer) = upload
+              .buffers
+              .iter_mut()
+              .find(|buffer| buffer.buffer_id == buffer_id)
+            {
+              buffer.lifecycle = PersistedTriggerUploadBufferLifecycle::UploadingFromBuffer;
+            }
+          }
+        }
+      })
+      .await;
+  }
+
+  pub async fn record_uploaded_chunk(&self, id: &str, buffer_id: &str, uploaded_logs_count: u64) {
+    self
+      .mutate(|uploads| {
+        for upload in uploads {
+          if upload.id == id {
+            upload.lifecycle = PersistedTriggerUploadLifecycle::UploadingFromBuffer;
+            if let Some(buffer) = upload
+              .buffers
+              .iter_mut()
+              .find(|buffer| buffer.buffer_id == buffer_id)
+            {
+              buffer.lifecycle = PersistedTriggerUploadBufferLifecycle::UploadingFromBuffer;
+              buffer.uploaded_batches_count += 1;
+              buffer.uploaded_logs_count += uploaded_logs_count;
+            }
           }
         }
       })

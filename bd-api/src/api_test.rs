@@ -1553,6 +1553,7 @@ async fn flush_buffers_response_forwards_streaming_to_trigger_upload() {
   let trigger_upload = setup.trigger_upload_rx.recv().await.unwrap();
   assert_eq!(trigger_upload.buffer_ids, vec!["trigger".to_string()]);
   assert_eq!(trigger_upload.streaming, Some(streaming));
+  assert!(!trigger_upload.session_id.is_empty());
   assert_matches!(
     trigger_upload.source,
     TriggerUploadSource::RemoteCommand(ref id) if !id.is_empty()

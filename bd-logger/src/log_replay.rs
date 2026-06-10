@@ -602,7 +602,7 @@ impl ProcessingPipeline {
             .iter()
             .map(std::string::ToString::to_string)
             .collect(),
-          None,
+          buffers_to_flush.streaming,
           match &buffers_to_flush.flush_id {
             FlushBufferId::WorkflowActionId(id) => TriggerUploadSource::WorkflowAction(id.clone()),
             FlushBufferId::ExplicitSessionCapture(id) => {
@@ -610,6 +610,7 @@ impl ProcessingPipeline {
             },
             FlushBufferId::RemoteCommand(id) => TriggerUploadSource::RemoteCommand(id.clone()),
           },
+          buffers_to_flush.session_id,
           buffers_to_flush.response_tx,
         );
 

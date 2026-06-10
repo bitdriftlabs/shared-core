@@ -12,13 +12,14 @@ mod consumer_test;
 use crate::flush_registry::{
   PendingTriggerUploadsStore,
   PersistedTriggerUpload,
+  PersistedTriggerUploadBufferProgress,
   PersistedTriggerUploadLifecycle,
   PersistedTriggerUploadSource,
 };
 use crate::service::{self, UploadRequest};
 use crate::state_upload::StateUploadHandle;
-use bd_api::TriggerUpload;
 use bd_api::upload::LogBatch;
+use bd_api::{TriggerUpload, TriggerUploadSource};
 use bd_buffer::{AbslCode, Buffer, BufferEvent, BufferEventWithResponse, Consumer, Error};
 use bd_client_common::error::InvariantError;
 use bd_client_common::maybe_await;
@@ -226,16 +227,25 @@ impl BufferUploadManager {
   ) -> anyhow::Result<()> {
     log::debug!("received trigger upload request");
 
-    let trigger_upload_id = trigger_upload.source.logical_id().to_string();
-    let trigger_upload_source = PersistedTriggerUploadSource::from(&trigger_upload.source);
-    let trigger_upload_has_streaming = trigger_upload.streaming.is_some();
+    let TriggerUpload {
+      buffer_ids,
+      streaming,
+      source,
+      session_id,
+      response_tx,
+    } = trigger_upload;
+
+    let trigger_upload_id = source.logical_id().to_string();
+    let trigger_upload_source = PersistedTriggerUploadSource::from(&source);
+    let trigger_upload_streaming = streaming.as_ref().map(Into::into);
+    let is_remote_streaming_activation = matches!(source, TriggerUploadSource::RemoteCommand(_));
     let mut buffer_upload_completions = vec![];
     let mut eligible_buffer_ids = vec![];
     let mut scheduled_consumers = vec![];
-    let buffer_ids = if trigger_upload.buffer_ids.is_empty() {
+    let buffer_ids = if buffer_ids.is_empty() {
       self.trigger_buffers.keys().cloned().collect::<Vec<_>>()
     } else {
-      trigger_upload.buffer_ids
+      buffer_ids
     };
 
     for buffer_id in buffer_ids {
@@ -275,8 +285,13 @@ impl BufferUploadManager {
         .upsert(PersistedTriggerUpload {
           id: trigger_upload_id.clone(),
           source: trigger_upload_source,
-          buffer_ids: eligible_buffer_ids.clone(),
-          has_streaming: trigger_upload_has_streaming,
+          session_id,
+          buffers: eligible_buffer_ids
+            .iter()
+            .cloned()
+            .map(PersistedTriggerUploadBufferProgress::new)
+            .collect(),
+          streaming: trigger_upload_streaming,
           lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
         })
         .await;
@@ -329,7 +344,8 @@ impl BufferUploadManager {
       self.shutdowns.insert(buffer_id.clone(), shutdown_trigger);
     }
 
-    let remote_streaming_complete_tx = if let Some(streaming) = trigger_upload.streaming
+    let remote_streaming_complete_tx = if is_remote_streaming_activation
+      && let Some(streaming) = streaming
       && !eligible_buffer_ids.is_empty()
     {
       let (flush_complete_tx, flush_complete_rx) = tokio::sync::oneshot::channel();
@@ -363,7 +379,7 @@ impl BufferUploadManager {
 
       pending_trigger_uploads.remove(&trigger_upload_id).await;
 
-      if let Err(e) = trigger_upload.response_tx.send(()) {
+      if let Err(e) = response_tx.send(()) {
         log::debug!("failed to send trigger upload response: {e:?}");
       }
 
@@ -470,17 +486,17 @@ impl BufferUploadManager {
   ) -> anyhow::Result<()> {
     for pending_upload in self.pending_trigger_uploads.pending_uploads().await {
       if pending_upload
-        .buffer_ids
+        .buffers
         .iter()
-        .any(|buffer_id| !self.trigger_buffers.contains_key(buffer_id))
+        .any(|buffer| !self.trigger_buffers.contains_key(&buffer.buffer_id))
       {
         continue;
       }
 
       if pending_upload
-        .buffer_ids
+        .buffers
         .iter()
-        .any(|buffer_id| self.active_trigger_uploads.contains(buffer_id))
+        .any(|buffer| self.active_trigger_uploads.contains(&buffer.buffer_id))
       {
         continue;
       }
@@ -497,16 +513,17 @@ impl BufferUploadManager {
       log::debug!(
         "recovering persisted trigger upload {} for buffers {:?}",
         pending_upload.id,
-        pending_upload.buffer_ids
+        pending_upload.buffer_ids()
       );
 
       let (response_tx, _response_rx) = tokio::sync::oneshot::channel();
       self
         .handle_trigger_uploads(
           TriggerUpload::new(
-            pending_upload.buffer_ids.clone(),
-            None,
+            pending_upload.buffer_ids(),
+            pending_upload.streaming_proto(),
             pending_upload.source.to_trigger_upload_source(),
+            pending_upload.session_id.clone(),
             response_tx,
           ),
           trigger_upload_complete_tx,
@@ -909,7 +926,7 @@ struct CompleteBufferUpload {
 
   pending_trigger_uploads: PendingTriggerUploadsStore,
   pending_trigger_upload_id: String,
-  has_persisted_uploading_state: bool,
+  has_marked_uploading_state: bool,
 }
 
 impl CompleteBufferUpload {
@@ -941,7 +958,7 @@ impl CompleteBufferUpload {
       state_upload_handle,
       pending_trigger_uploads,
       pending_trigger_upload_id,
-      has_persisted_uploading_state: false,
+      has_marked_uploading_state: false,
     }
   }
 
@@ -994,14 +1011,15 @@ impl CompleteBufferUpload {
   async fn flush_batch(&mut self) -> anyhow::Result<()> {
     let timestamp_range = self.batch_builder.timestamp_range();
     let logs = self.batch_builder.take();
-    log::debug!("flushing {} logs", logs.len());
+    let logs_len = u64::try_from(logs.len()).unwrap_or(u64::MAX);
+    log::debug!("flushing {logs_len} logs");
 
-    if !self.has_persisted_uploading_state {
+    if !self.has_marked_uploading_state {
       self
         .pending_trigger_uploads
-        .mark_uploading(&self.pending_trigger_upload_id)
+        .mark_uploading(&self.pending_trigger_upload_id, &self.buffer_id)
         .await;
-      self.has_persisted_uploading_state = true;
+      self.has_marked_uploading_state = true;
     }
 
     // Upload state snapshot if needed before uploading logs
@@ -1029,6 +1047,11 @@ impl CompleteBufferUpload {
     // Note that we don't keep a shutdown handle for trigger uploads since we don't ever try to
     // cancel them, so we don't anything extra here to avoid deadlocking like in the other two
     // consumer tasks.
+
+    self
+      .pending_trigger_uploads
+      .record_uploaded_chunk(&self.pending_trigger_upload_id, &self.buffer_id, logs_len)
+      .await;
 
     log::debug!("completed trigger batch upload with result: {result:?}");
 

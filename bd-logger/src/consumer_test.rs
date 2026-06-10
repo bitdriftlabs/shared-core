@@ -10,6 +10,8 @@ use crate::consumer::{BatchBuilder, StreamedBufferUpload};
 use crate::flush_registry::{
   PendingTriggerUploadsStore,
   PersistedTriggerUpload,
+  PersistedTriggerUploadBufferLifecycle,
+  PersistedTriggerUploadBufferProgress,
   PersistedTriggerUploadLifecycle,
   PersistedTriggerUploadSource,
 };
@@ -764,6 +766,7 @@ impl SetupMultiConsumer {
       vec![buffer.to_string()],
       None,
       TriggerUploadSource::ExplicitSessionCapture("session-capture".to_string()),
+      "session-1".to_string(),
       tx,
     );
     self.trigger_upload_tx.send(upload).await.unwrap();
@@ -1042,6 +1045,7 @@ async fn trigger_upload_with_empty_buffer_list_flushes_all_trigger_buffers() {
       Vec::new(),
       None,
       TriggerUploadSource::ExplicitSessionCapture("session-capture".to_string()),
+      "session-1".to_string(),
       tx,
     ))
     .await
@@ -1089,6 +1093,7 @@ async fn trigger_upload_is_persisted_until_completion() {
       vec!["buffer".to_string()],
       None,
       TriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
+      "session-1".to_string(),
       tx,
     ))
     .await
@@ -1100,9 +1105,15 @@ async fn trigger_upload_is_persisted_until_completion() {
     vec![PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
-      buffer_ids: vec!["buffer".to_string()],
-      has_streaming: false,
-      lifecycle: PersistedTriggerUploadLifecycle::Uploading,
+      session_id: "session-1".to_string(),
+      buffers: vec![PersistedTriggerUploadBufferProgress {
+        buffer_id: "buffer".to_string(),
+        lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromBuffer,
+        uploaded_batches_count: 0,
+        uploaded_logs_count: 0,
+      }],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromBuffer,
     }]
   );
 
@@ -1127,8 +1138,11 @@ async fn persisted_trigger_upload_replays_after_restart() {
     .upsert(PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
-      buffer_ids: vec!["buffer".to_string()],
-      has_streaming: false,
+      session_id: "session-1".to_string(),
+      buffers: vec![PersistedTriggerUploadBufferProgress::new(
+        "buffer".to_string(),
+      )],
+      streaming: None,
       lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
     })
     .await;
@@ -1181,9 +1195,15 @@ async fn uploading_trigger_upload_is_not_replayed_after_restart() {
     .upsert(PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
-      buffer_ids: vec!["buffer".to_string()],
-      has_streaming: false,
-      lifecycle: PersistedTriggerUploadLifecycle::Uploading,
+      session_id: "session-1".to_string(),
+      buffers: vec![PersistedTriggerUploadBufferProgress {
+        buffer_id: "buffer".to_string(),
+        lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromBuffer,
+        uploaded_batches_count: 1,
+        uploaded_logs_count: 1,
+      }],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromBuffer,
     })
     .await;
 
@@ -1211,9 +1231,15 @@ async fn uploading_trigger_upload_is_not_replayed_after_restart() {
     vec![PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
-      buffer_ids: vec!["buffer".to_string()],
-      has_streaming: false,
-      lifecycle: PersistedTriggerUploadLifecycle::Uploading,
+      session_id: "session-1".to_string(),
+      buffers: vec![PersistedTriggerUploadBufferProgress {
+        buffer_id: "buffer".to_string(),
+        lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromBuffer,
+        uploaded_batches_count: 1,
+        uploaded_logs_count: 1,
+      }],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromBuffer,
     }]
   );
 }

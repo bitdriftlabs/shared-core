@@ -61,8 +61,10 @@ Rewrite `bd-logger/src/flush_registry.rs` to use repo-native file-backed protobu
 - Landed as a versioned file-backed protobuf snapshot owned by `PendingTriggerUploadsStore`.
 - Registry mutation is now serialized through one in-process synchronized owner instead of shared
   read-modify-write over `bd_key_value`.
-- The remaining milestones keep the current logical record shape and recovery semantics, and build
-  on top of this substrate.
+- Because this feature is still new and unreleased, later milestones may directly change the
+  snapshot protobuf shape as needed. Do not preserve transitional fields just for branch-local
+  compatibility; reorder field IDs, rename fields, or remove obsolete fields when that produces the
+  clearest steady-state schema.
 
 ## Milestone 2: Define the Durable Flush Model
 
@@ -82,26 +84,53 @@ Persist the minimum information needed to recover one logical flush operation co
 
 ### Lifecycle Work
 
-Replace the current coarse lifecycle with explicit crash-boundary states. A likely shape is:
+Replace the current coarse lifecycle with explicit crash-boundary states, but do not assume a
+single global `Enqueued` phase exists in the current design. The trigger buffer is uploaded in
+chunks, and the current logger path moves directly from reading the trigger buffer into repeated
+upload calls. That means the durable model has to be chunk-aware and boundary-based rather than
+inventing a queue stage that does not yet exist.
+
+A likely near-term shape is:
 
 - `ReadyToUpload`
-- `Draining`
-- `Enqueued`
+- `UploadingFromBuffer`
 - `Completed`
 - `Failed`
+
+An additional post-buffer state should only be introduced if the architecture later gains a real
+durable handoff boundary after buffer drain. If that happens, the state name and semantics should
+be defined in terms of that concrete mechanism rather than a generic `Enqueued` label.
 
 The exact names can change, but the model must distinguish:
 
 - Work that has not yet consumed buffer data.
-- Work that has consumed some buffer data but is not yet durably recoverable elsewhere.
-- Work that has crossed into a durable post-buffer boundary.
+- Work that is actively reading and uploading one or more chunks from the trigger buffer.
+- Work whose resume point is determined by persisted per-buffer progress metadata, not just a
+  coarse lifecycle string.
+- Work that has crossed into a durable post-buffer boundary, but only if such a boundary is made
+  concrete in a later design.
 - Terminal success and terminal failure.
+
+The persisted model should therefore define lifecycle and progress together:
+
+- The lifecycle says which crash boundary the flush is in.
+- The progress metadata says, per buffer, how far chunked upload has advanced and what resume point
+  remains valid.
+- A lifecycle state alone is not sufficient once chunked upload has started.
+
+Because this work is still defining the feature rather than evolving a released format, adjust the
+snapshot protobuf directly when a later milestone needs a better structure. Do not add compatibility
+only fields or fallback decoding unless the feature has actually shipped and needs on-disk upgrade
+support.
 
 ### Exit Criteria
 
 - The persisted record contains enough information to recreate remote and workflow streaming intent.
-- The lifecycle model matches real crash boundaries instead of implementation convenience.
+- The lifecycle model matches real crash boundaries in the current chunked upload path instead of
+  implementation convenience.
 - The design eliminates the current `Uploading` dead-end.
+- The plan does not rely on a vague `Enqueued` state unless a real durable post-buffer handoff is
+  explicitly introduced and defined.
 
 ## Milestone 3: Analyze Trigger Buffer Resume Semantics
 
@@ -139,9 +168,13 @@ Once the buffer semantics are settled, persist progress at the exact boundary wh
 - Persist progress before the system crosses from replay-safe into replay-incorrect territory.
 - Either:
   - persist per-buffer consumer progress directly, or
-  - define a durable enqueue boundary after which recovery resumes from a durable artifact instead of the trigger buffer.
+  - define a real durable post-buffer handoff boundary after which recovery resumes from a durable
+    artifact instead of the trigger buffer.
 - Replace the current restart behavior that skips `Uploading` work.
 - Ensure recovery after a crash in the middle of an upload is deterministic and does not duplicate logs.
+
+Do not introduce an `Enqueued` lifecycle phase in this milestone unless that phase corresponds to a
+concrete durable artifact or queue with well-defined recovery semantics.
 
 ### Exit Criteria
 

@@ -8,13 +8,20 @@
 use super::{
   PendingTriggerUploadsStore,
   PersistedTriggerUpload,
+  PersistedTriggerUploadBufferLifecycle,
+  PersistedTriggerUploadBufferProgress,
   PersistedTriggerUploadLifecycle,
   PersistedTriggerUploadSource,
+  PersistedTriggerUploadStreaming,
 };
 use tempfile::TempDir;
 
 fn make_store(temp_directory: &TempDir) -> PendingTriggerUploadsStore {
   PendingTriggerUploadsStore::new(temp_directory.path())
+}
+
+fn buffer_progress(buffer_id: &str) -> PersistedTriggerUploadBufferProgress {
+  PersistedTriggerUploadBufferProgress::new(buffer_id.to_string())
 }
 
 #[tokio::test]
@@ -25,8 +32,9 @@ async fn upsert_replaces_existing_upload_with_same_id() {
     .upsert(PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::RemoteCommand("flush-1".to_string()),
-      buffer_ids: vec!["a".to_string()],
-      has_streaming: false,
+      session_id: "session-a".to_string(),
+      buffers: vec![buffer_progress("a")],
+      streaming: None,
       lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
     })
     .await;
@@ -34,9 +42,13 @@ async fn upsert_replaces_existing_upload_with_same_id() {
     .upsert(PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::RemoteCommand("flush-1".to_string()),
-      buffer_ids: vec!["b".to_string()],
-      has_streaming: true,
-      lifecycle: PersistedTriggerUploadLifecycle::Uploading,
+      session_id: "session-b".to_string(),
+      buffers: vec![buffer_progress("b")],
+      streaming: Some(PersistedTriggerUploadStreaming {
+        destination_buffer_ids: vec!["stream".to_string()],
+        max_logs_count: Some(10),
+      }),
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromBuffer,
     })
     .await;
 
@@ -45,9 +57,13 @@ async fn upsert_replaces_existing_upload_with_same_id() {
     vec![PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::RemoteCommand("flush-1".to_string()),
-      buffer_ids: vec!["b".to_string()],
-      has_streaming: true,
-      lifecycle: PersistedTriggerUploadLifecycle::Uploading,
+      session_id: "session-b".to_string(),
+      buffers: vec![buffer_progress("b")],
+      streaming: Some(PersistedTriggerUploadStreaming {
+        destination_buffer_ids: vec!["stream".to_string()],
+        max_logs_count: Some(10),
+      }),
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromBuffer,
     }]
   );
 }
@@ -60,8 +76,9 @@ async fn remove_clears_matching_upload() {
     .upsert(PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::WorkflowAction("flush-1".to_string()),
-      buffer_ids: vec!["trigger".to_string()],
-      has_streaming: false,
+      session_id: "workflow-session".to_string(),
+      buffers: vec![buffer_progress("trigger")],
+      streaming: None,
       lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
     })
     .await;
@@ -84,22 +101,70 @@ async fn mark_uploading_updates_lifecycle_without_replacing_other_fields() {
     .upsert(PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::RemoteCommand("flush-1".to_string()),
-      buffer_ids: vec!["trigger".to_string()],
-      has_streaming: true,
+      session_id: "remote-session".to_string(),
+      buffers: vec![buffer_progress("trigger")],
+      streaming: Some(PersistedTriggerUploadStreaming {
+        destination_buffer_ids: vec!["stream".to_string()],
+        max_logs_count: Some(10),
+      }),
       lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
     })
     .await;
 
-  store.mark_uploading("flush-1").await;
+  store.mark_uploading("flush-1", "trigger").await;
 
   assert_eq!(
     make_store(&temp_directory).pending_uploads().await,
     vec![PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::RemoteCommand("flush-1".to_string()),
-      buffer_ids: vec!["trigger".to_string()],
-      has_streaming: true,
-      lifecycle: PersistedTriggerUploadLifecycle::Uploading,
+      session_id: "remote-session".to_string(),
+      buffers: vec![PersistedTriggerUploadBufferProgress {
+        buffer_id: "trigger".to_string(),
+        lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromBuffer,
+        uploaded_batches_count: 0,
+        uploaded_logs_count: 0,
+      }],
+      streaming: Some(PersistedTriggerUploadStreaming {
+        destination_buffer_ids: vec!["stream".to_string()],
+        max_logs_count: Some(10),
+      }),
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromBuffer,
+    }]
+  );
+}
+
+#[tokio::test]
+async fn record_uploaded_chunk_updates_per_buffer_progress() {
+  let temp_directory = TempDir::with_prefix("flush-registry").unwrap();
+  let store = make_store(&temp_directory);
+  store
+    .upsert(PersistedTriggerUpload {
+      id: "flush-1".to_string(),
+      source: PersistedTriggerUploadSource::RemoteCommand("flush-1".to_string()),
+      session_id: "remote-session".to_string(),
+      buffers: vec![buffer_progress("trigger")],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
+    })
+    .await;
+
+  store.record_uploaded_chunk("flush-1", "trigger", 3).await;
+
+  assert_eq!(
+    make_store(&temp_directory).pending_uploads().await,
+    vec![PersistedTriggerUpload {
+      id: "flush-1".to_string(),
+      source: PersistedTriggerUploadSource::RemoteCommand("flush-1".to_string()),
+      session_id: "remote-session".to_string(),
+      buffers: vec![PersistedTriggerUploadBufferProgress {
+        buffer_id: "trigger".to_string(),
+        lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromBuffer,
+        uploaded_batches_count: 1,
+        uploaded_logs_count: 3,
+      }],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromBuffer,
     }]
   );
 }

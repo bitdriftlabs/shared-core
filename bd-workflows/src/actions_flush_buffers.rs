@@ -18,11 +18,14 @@ use bd_log_primitives::tiny_set::TinySet;
 use bd_macros::proto_serializable;
 use bd_proto::protos::client::api::LogUploadIntentRequest;
 use bd_proto::protos::client::api::log_upload_intent_request::ExplicitSessionCapture;
+use bd_proto::protos::workflow::workflow::workflow::action as workflow_action_proto;
 use bd_stats_common::{Counter as _, labels};
+use flush_buffers_proto::streaming::{TerminationCriterion, termination_criterion};
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
+use workflow_action_proto::action_flush_buffers as flush_buffers_proto;
 
 //
 // NegotiatorOutput
@@ -918,6 +921,32 @@ pub(crate) struct Streaming {
   max_logs_count: Option<u64>,
 }
 
+impl Streaming {
+  fn to_proto(&self) -> flush_buffers_proto::Streaming {
+    let termination_criteria = self.max_logs_count.map_or_else(Vec::new, |max_logs_count| {
+      vec![TerminationCriterion {
+        type_: Some(termination_criterion::Type::LogsCount(
+          termination_criterion::LogsCount {
+            max_logs_count,
+            ..Default::default()
+          },
+        )),
+        ..Default::default()
+      }]
+    });
+
+    flush_buffers_proto::Streaming {
+      destination_streaming_buffer_ids: self
+        .destination_continuous_buffer_ids
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect(),
+      termination_criteria,
+      ..Default::default()
+    }
+  }
+}
+
 //
 // StreamingBuffersAction
 //
@@ -1025,8 +1054,12 @@ impl StreamingBuffersAction {
 pub struct BuffersToFlush {
   // Stable ID for the logical flush action that requested this upload.
   pub flush_id: FlushBufferId,
+  // Session ID active when the flush action was scheduled.
+  pub session_id: String,
   // Unique IDs of buffers to flush.
   pub buffer_ids: TinySet<Cow<'static, str>>,
+  // Optional streaming configuration associated with the logical flush action.
+  pub streaming: Option<flush_buffers_proto::Streaming>,
   // Channel to notify the caller that the flush has been completed.
   pub response_tx: tokio::sync::oneshot::Sender<()>,
 }
@@ -1040,7 +1073,9 @@ impl BuffersToFlush {
     (
       Self {
         flush_id: action.id.clone(),
+        session_id: action.session_id.clone(),
         buffer_ids: action.trigger_buffer_ids.clone(),
+        streaming: action.streaming.as_ref().map(Streaming::to_proto),
         response_tx,
       },
       response_rx,
