@@ -2530,6 +2530,115 @@ fn remote_buffer_upload_replays_after_restart_with_blocked_response() {
 }
 
 #[test]
+fn replayed_remote_upload_does_not_resurrect_stale_trigger_payload_on_later_remote_flush() {
+  // This is the integration check for the restart contract behind the stale-cleanup work.
+  // The primary path is still: persist the remote upload, restart, replay it, and let that replay
+  // drain the old buffer contents normally. The buffer-scoped pruning we added is defense in
+  // depth for cases where stale durable state survives longer than it should, not the main way a
+  // healthy restart is expected to make progress.
+  //
+  // What this test proves:
+  // 1. a remote trigger upload survives process death and is replayed after restart,
+  // 2. that replay drains the pre-restart buffered data once, and
+  // 3. a later same-buffer remote flush does not resurrect that stale trigger payload.
+  //
+  // Gap: this test intentionally does not try to pin down the narrower race where a second remote
+  // flush arrives while the replayed upload is still in flight. That timing-sensitive active gate
+  // behavior is covered in the lower consumer tests where we can drive the state deterministically.
+  let mut setup = Setup::new();
+
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![
+        default_buffer_config(
+          Type::CONTINUOUS,
+          make_buffer_matcher_matching_resource_logs().into(),
+        ),
+        BufferConfigBuilder {
+          name: "trigger_buffer_id",
+          buffer_type: Type::TRIGGER,
+          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+          non_volatile_size: 100_000,
+          volatile_size: 10_000,
+        }
+        .build(),
+      ],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  setup.log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "buffered before remote flush".into(),
+    [].into(),
+    [].into(),
+    None,
+  );
+
+  assert_matches!(setup.server.blocking_next_log_upload(), None);
+
+  let _blocked_log_upload_response = setup.server.block_next_log_upload_response();
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffersWithStreaming {
+      buffers: vec!["trigger_buffer_id".to_string()],
+      streaming: FlushStreaming {
+        destination_streaming_buffer_ids: vec!["default".to_string()],
+        termination_criteria: vec![TerminationCriterion {
+          type_: Some(termination_criterion::Type::LogsCount(
+            termination_criterion::LogsCount {
+              max_logs_count: 10,
+              ..Default::default()
+            },
+          )),
+          ..Default::default()
+        }],
+        ..Default::default()
+      },
+    });
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!(log_upload.logs()[0].message(), "buffered before remote flush");
+  });
+
+  let sdk_directory = setup.sdk_directory.clone();
+  drop(setup);
+
+  let mut setup = Setup::new_with_options(SetupOptions {
+    sdk_directory,
+    ..Default::default()
+  });
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!(log_upload.logs()[0].message(), "buffered before remote flush");
+  });
+
+  setup.log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "buffered after restart".into(),
+    [].into(),
+    [].into(),
+    None,
+  );
+
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffers(vec![
+      "trigger_buffer_id".to_string(),
+    ]));
+
+  assert_matches!(setup.server.blocking_next_log_upload(), None);
+}
+
+#[test]
 fn remote_buffer_upload_with_streaming_does_not_extend_active_workflow_streaming() {
   let b = state("B");
   let a = state("A").declare_transition_with_actions(

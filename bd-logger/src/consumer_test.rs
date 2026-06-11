@@ -1746,15 +1746,22 @@ async fn active_trigger_upload_is_not_pruned_by_later_request_for_same_buffer() 
 
 #[tokio::test(start_paused = true)]
 async fn pruning_last_buffer_marks_old_flush_completed() {
-  let buffer_id = "replacement-buffer";
   let temp_directory = TempDir::with_prefix("consumertest").unwrap();
+  let buffer_id = format!(
+    "replacement-buffer-{}",
+    temp_directory
+      .path()
+      .file_name()
+      .and_then(|name| name.to_str())
+      .unwrap()
+  );
   PendingTriggerUploadsStore::new(temp_directory.path())
     .upsert(PersistedTriggerUpload {
       id: "old-upload".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("old-upload".to_string()),
       session_id: "old-session".to_string(),
       buffers: vec![PersistedTriggerUploadBufferProgress {
-        buffer_id: buffer_id.to_string(),
+        buffer_id: buffer_id.clone(),
         lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromArtifact,
         uploaded_batches_count: 1,
         uploaded_logs_count: 1,
@@ -1772,22 +1779,23 @@ async fn pruning_last_buffer_marks_old_flush_completed() {
     remote_flush_streaming_tx,
   )
   .await;
+  let buffer_directory = TempDir::with_prefix("replacement-buffer-sdk").unwrap();
   setup
     .process_local_pending_flush_state
     .mark_pending(FlushBufferId::ExplicitSessionCapture(
       "old-upload".to_string(),
     ));
   let (buffer, mut producer) =
-    create_trigger_buffer(setup.sdk_directory.join(buffer_id).as_path()).await;
+    create_trigger_buffer(buffer_directory.path().join(&buffer_id).as_path()).await;
 
-  setup.add_trigger_buffer(buffer_id, buffer).await;
-  setup.sync_trigger_buffer_config(&[buffer_id]).await;
+  setup.add_trigger_buffer(&buffer_id, buffer).await;
+  setup.sync_trigger_buffer_config(&[&buffer_id]).await;
   producer.write(b"fresh").unwrap();
 
   setup
     .trigger_upload_tx
     .send(TriggerUpload::new(
-      vec![buffer_id.to_string()],
+      vec![buffer_id.clone()],
       None,
       TriggerUploadSource::RemoteCommand("new-upload".to_string()),
       "new-session".to_string(),
