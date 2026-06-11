@@ -18,6 +18,7 @@ use crate::test::{MakeConfig, TestLog};
 use crate::workflow::{Workflow, WorkflowEvent, WorkflowTransitionDebugState};
 use crate::{engine_assert_active_run_traversals, engine_assert_active_runs};
 use assert_matches::assert_matches;
+use bd_api::TriggerUploadStreaming;
 use bd_api::upload::IntentDecision;
 use bd_client_stats::FlushTrigger;
 use bd_client_stats_store::Collector;
@@ -29,7 +30,6 @@ use bd_log_primitives::{Log, LogFields, LogMessage, log_level};
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{SankeyPathUploadRequest, log_upload_intent_request};
 use bd_proto::protos::logging::payload::LogType;
-use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
 use bd_stats_common::workflow::WorkflowDebugTransitionType;
 use bd_stats_common::{NameType, labels};
 use bd_test_helpers::sankey_value;
@@ -2170,20 +2170,9 @@ async fn restored_remote_streaming_waits_for_durable_flush_completion() {
     "remote_streaming".into(),
     BTreeSet::from(["trigger_buffer_id".to_string()]),
     "session-1",
-    action_flush_buffers::Streaming {
-      destination_streaming_buffer_ids: vec!["continuous_buffer_id".to_string()],
-      termination_criteria: vec![action_flush_buffers::streaming::TerminationCriterion {
-        type_: Some(
-          action_flush_buffers::streaming::termination_criterion::Type::LogsCount(
-            action_flush_buffers::streaming::termination_criterion::LogsCount {
-              max_logs_count: 1,
-              ..Default::default()
-            },
-          ),
-        ),
-        ..Default::default()
-      }],
-      ..Default::default()
+    TriggerUploadStreaming {
+      destination_buffer_ids: vec!["continuous_buffer_id".to_string()],
+      max_logs_count: Some(1),
     },
   ));
   workflows_engine.maybe_persist(false).await;

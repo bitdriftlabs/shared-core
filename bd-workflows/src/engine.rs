@@ -46,7 +46,7 @@ use crate::workflow::{
   WorkflowEvent,
 };
 use anyhow::anyhow;
-use bd_api::DataUpload;
+use bd_api::{DataUpload, TriggerUploadStreaming};
 use bd_client_common::file::{read_compressed_protobuf_file, write_compressed_protobuf_file};
 use bd_client_stats::{FlushTrigger, FlushTriggerRequest};
 use bd_client_stats_store::{Counter, Histogram, Scope};
@@ -239,18 +239,12 @@ impl WorkflowsEngine {
     id: String,
     buffer_ids: BTreeSet<String>,
     session_id: &str,
-    streaming_proto:
-      bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::Streaming,
+    streaming: TriggerUploadStreaming,
   ) -> bool {
-    let Ok(streaming) = Streaming::new(streaming_proto) else {
-      log::debug!("failed to parse remote flush streaming configuration");
-      return false;
-    };
-
     let action_id = FlushBufferId::RemoteCommand(id);
     let Some(streaming_action) = self
       .flush_buffers_actions_resolver
-      .make_remote_streaming_action(action_id.clone(), buffer_ids, session_id, streaming)
+      .make_remote_streaming_action(action_id.clone(), buffer_ids, session_id, streaming.into())
     else {
       log::debug!("remote flush streaming not activated: no eligible buffers or destinations");
       return false;

@@ -24,14 +24,13 @@ use crate::trigger_upload_artifact::{
   TriggerUploadArtifactStore,
 };
 use bd_api::upload::LogBatch;
-use bd_api::{TriggerUpload, TriggerUploadSource};
+use bd_api::{TriggerUpload, TriggerUploadSource, TriggerUploadStreaming};
 use bd_buffer::{AbslCode, Buffer, BufferEvent, BufferEventWithResponse, Consumer, Error};
 use bd_client_common::error::InvariantError;
 use bd_client_common::maybe_await;
 use bd_client_stats_store::{Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected_error_with_details;
 use bd_log_primitives::EncodableLog;
-use bd_proto::protos::workflow::workflow;
 use bd_resilient_kv::RetentionHandle;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
@@ -77,7 +76,7 @@ pub struct RemoteFlushStreamingRequest {
   pub(crate) id: String,
   pub(crate) buffer_ids: Vec<String>,
   pub(crate) session_id: String,
-  pub(crate) streaming: workflow::workflow::action::action_flush_buffers::Streaming,
+  pub(crate) streaming: TriggerUploadStreaming,
 }
 
 impl RemoteFlushStreamingRequest {
@@ -85,7 +84,7 @@ impl RemoteFlushStreamingRequest {
     id: String,
     buffer_ids: Vec<String>,
     session_id: String,
-    streaming: workflow::workflow::action::action_flush_buffers::Streaming,
+    streaming: TriggerUploadStreaming,
   ) -> Self {
     Self {
       id,
@@ -743,7 +742,7 @@ impl BufferUploadManager {
         .handle_trigger_uploads(
           TriggerUpload::new(
             pending_upload.buffer_ids(),
-            pending_upload.streaming_proto(),
+            pending_upload.streaming(),
             pending_upload.source.to_trigger_upload_source(),
             pending_upload.session_id.clone(),
           ),

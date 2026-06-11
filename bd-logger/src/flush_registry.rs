@@ -9,14 +9,13 @@
 #[path = "./flush_registry_test.rs"]
 mod flush_registry_test;
 
-use bd_api::TriggerUploadSource;
+use bd_api::{TriggerUploadSource, TriggerUploadStreaming};
 use bd_client_common::file::{
   read_compressed_protobuf_file_if_exists,
   write_compressed_protobuf_file,
 };
 use bd_client_common::file_system::delete_file_if_exists_async;
 use bd_macros::proto_serializable;
-use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
 use bd_workflows::config::FlushBufferId;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -116,14 +115,14 @@ impl PersistedTriggerUpload {
       .collect()
   }
 
-  pub fn streaming_proto(&self) -> Option<action_flush_buffers::Streaming> {
+  pub fn streaming(&self) -> Option<TriggerUploadStreaming> {
     // Streaming is stored in a persistence-friendly shape so the registry stays decoupled from the
     // full workflow proto surface. Recovery converts it back only when replay needs to re-issue
     // the upload request.
     self
       .streaming
       .as_ref()
-      .map(PersistedTriggerUploadStreaming::to_proto)
+      .map(PersistedTriggerUploadStreaming::to_trigger_upload_streaming)
   }
 }
 
@@ -177,46 +176,22 @@ pub struct PersistedTriggerUploadStreaming {
   pub max_logs_count: Option<u64>,
 }
 
-impl From<&action_flush_buffers::Streaming> for PersistedTriggerUploadStreaming {
-  fn from(streaming: &action_flush_buffers::Streaming) -> Self {
+impl From<&TriggerUploadStreaming> for PersistedTriggerUploadStreaming {
+  fn from(streaming: &TriggerUploadStreaming) -> Self {
     // The registry only needs the subset of streaming configuration required to reconstruct the
     // deferred activation after restart. Everything else stays in the workflow-side proto.
-    let max_logs_count = streaming.termination_criteria.iter().find_map(|criterion| {
-      criterion.type_.as_ref().map(
-        |action_flush_buffers::streaming::termination_criterion::Type::LogsCount(logs_count)| {
-          logs_count.max_logs_count
-        },
-      )
-    });
-
     Self {
-      destination_buffer_ids: streaming.destination_streaming_buffer_ids.clone(),
-      max_logs_count,
+      destination_buffer_ids: streaming.destination_buffer_ids.clone(),
+      max_logs_count: streaming.max_logs_count,
     }
   }
 }
 
 impl PersistedTriggerUploadStreaming {
-  pub fn to_proto(&self) -> action_flush_buffers::Streaming {
-    // Reconstruct just enough proto state for recovery to re-issue remote-streaming activation.
-    let termination_criteria = self.max_logs_count.map_or_else(Vec::new, |max_logs_count| {
-      vec![action_flush_buffers::streaming::TerminationCriterion {
-        type_: Some(
-          action_flush_buffers::streaming::termination_criterion::Type::LogsCount(
-            action_flush_buffers::streaming::termination_criterion::LogsCount {
-              max_logs_count,
-              ..Default::default()
-            },
-          ),
-        ),
-        ..Default::default()
-      }]
-    });
-
-    action_flush_buffers::Streaming {
-      destination_streaming_buffer_ids: self.destination_buffer_ids.clone(),
-      termination_criteria,
-      ..Default::default()
+  pub fn to_trigger_upload_streaming(&self) -> TriggerUploadStreaming {
+    TriggerUploadStreaming {
+      destination_buffer_ids: self.destination_buffer_ids.clone(),
+      max_logs_count: self.max_logs_count,
     }
   }
 }

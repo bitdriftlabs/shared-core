@@ -26,7 +26,7 @@ use bd_proto::protos::client::api::{
   UploadArtifactIntentRequest,
   UploadArtifactRequest,
 };
-use bd_proto::protos::workflow::workflow;
+use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
 use bd_runtime::runtime::{ExponentialBackoffValues, ExponentialBackoffWatch, FeatureFlag};
 pub use network_quality::{
   AggregatedNetworkQualityProvider,
@@ -105,6 +105,67 @@ impl TriggerUploadSource {
   }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TriggerUploadStreaming {
+  pub destination_buffer_ids: Vec<String>,
+  pub max_logs_count: Option<u64>,
+}
+
+impl From<action_flush_buffers::Streaming> for TriggerUploadStreaming {
+  fn from(streaming: action_flush_buffers::Streaming) -> Self {
+    Self::from(&streaming)
+  }
+}
+
+impl From<&action_flush_buffers::Streaming> for TriggerUploadStreaming {
+  fn from(streaming: &action_flush_buffers::Streaming) -> Self {
+    let max_logs_count = streaming.termination_criteria.iter().find_map(|criterion| {
+      criterion.type_.as_ref().map(
+        |action_flush_buffers::streaming::termination_criterion::Type::LogsCount(logs_count)| {
+          logs_count.max_logs_count
+        },
+      )
+    });
+
+    Self {
+      destination_buffer_ids: streaming.destination_streaming_buffer_ids.clone(),
+      max_logs_count,
+    }
+  }
+}
+
+impl From<TriggerUploadStreaming> for action_flush_buffers::Streaming {
+  fn from(streaming: TriggerUploadStreaming) -> Self {
+    Self::from(&streaming)
+  }
+}
+
+impl From<&TriggerUploadStreaming> for action_flush_buffers::Streaming {
+  fn from(streaming: &TriggerUploadStreaming) -> Self {
+    let termination_criteria = streaming
+      .max_logs_count
+      .map_or_else(Vec::new, |max_logs_count| {
+        vec![action_flush_buffers::streaming::TerminationCriterion {
+          type_: Some(
+            action_flush_buffers::streaming::termination_criterion::Type::LogsCount(
+              action_flush_buffers::streaming::termination_criterion::LogsCount {
+                max_logs_count,
+                ..Default::default()
+              },
+            ),
+          ),
+          ..Default::default()
+        }]
+      });
+
+    Self {
+      destination_streaming_buffer_ids: streaming.destination_buffer_ids.clone(),
+      termination_criteria,
+      ..Default::default()
+    }
+  }
+}
+
 //
 // TriggerUpload
 //
@@ -116,7 +177,7 @@ pub struct TriggerUpload {
   pub buffer_ids: Vec<String>,
 
   // Optional streaming configuration that should be activated alongside the flush.
-  pub streaming: Option<workflow::workflow::action::action_flush_buffers::Streaming>,
+  pub streaming: Option<TriggerUploadStreaming>,
 
   // Stable identifier for the logical trigger that scheduled the upload.
   pub source: TriggerUploadSource,
@@ -129,7 +190,7 @@ impl TriggerUpload {
   #[must_use]
   pub fn new(
     buffer_ids: Vec<String>,
-    streaming: Option<workflow::workflow::action::action_flush_buffers::Streaming>,
+    streaming: Option<TriggerUploadStreaming>,
     source: TriggerUploadSource,
     session_id: String,
   ) -> Self {

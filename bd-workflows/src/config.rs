@@ -7,6 +7,7 @@
 
 use crate::workflow::Traversal;
 use anyhow::{anyhow, bail};
+use bd_api::TriggerUploadStreaming;
 use bd_log_matcher::matcher::Tree;
 use bd_log_primitives::{FieldsRef, LogMessage};
 use bd_proto::protos::workflow::save_field::SaveField;
@@ -875,6 +876,15 @@ impl Streaming {
       destination_continuous_buffer_ids,
       max_logs_count,
     })
+  }
+}
+
+impl From<TriggerUploadStreaming> for Streaming {
+  fn from(streaming: TriggerUploadStreaming) -> Self {
+    Self {
+      destination_continuous_buffer_ids: streaming.destination_buffer_ids.into_iter().collect(),
+      max_logs_count: streaming.max_logs_count,
+    }
   }
 }
 

@@ -17,18 +17,24 @@ use crate::flush_registry::{
   PersistedTriggerUploadStreaming,
 };
 use crate::trigger_upload_artifact::TriggerUploadArtifactStore;
-use action_flush_buffers::Streaming as FlushStreaming;
 use assert_matches::assert_matches;
 use bd_api::upload::{Tracked, UploadResponse};
-use bd_api::{DataUpload, TriggerUpload, TriggerUploadSource};
-use bd_buffer::{Buffer, BufferEvent, BufferEventWithResponse, RingBuffer, RingBufferStats};
+use bd_api::{DataUpload, TriggerUpload, TriggerUploadSource, TriggerUploadStreaming};
+use bd_buffer::{
+  AbslCode,
+  Buffer,
+  BufferEvent,
+  BufferEventWithResponse,
+  Error,
+  RingBuffer,
+  RingBufferStats,
+};
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter};
 use bd_log_primitives::{EncodableLog, Log, log_level};
 use bd_proto::protos::client::api::ApiRequest;
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::logging::payload::{Log as ProtoLog, LogType};
-use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
 use bd_resilient_kv::{RetentionHandle, RetentionRegistry};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
@@ -1780,17 +1786,33 @@ async fn pruning_last_buffer_marks_old_flush_completed() {
   )
   .await;
   let buffer_directory = TempDir::with_prefix("replacement-buffer-sdk").unwrap();
+  let on_disk_buffer_path = buffer_directory.path().join(
+    buffer_directory
+      .path()
+      .file_name()
+      .and_then(|name| name.to_str())
+      .unwrap(),
+  );
   setup
     .process_local_pending_flush_state
     .mark_pending(FlushBufferId::ExplicitSessionCapture(
       "old-upload".to_string(),
     ));
-  let (buffer, mut producer) =
-    create_trigger_buffer(buffer_directory.path().join(&buffer_id).as_path()).await;
+  let (buffer, mut producer) = create_trigger_buffer(on_disk_buffer_path.as_path()).await;
 
   setup.add_trigger_buffer(&buffer_id, buffer).await;
   setup.sync_trigger_buffer_config(&[&buffer_id]).await;
-  producer.write(b"fresh").unwrap();
+  for _ in 0 .. 100 {
+    match producer.write(b"fresh") {
+      Ok(()) => break,
+      Err(Error::AbslStatus(AbslCode::FailedPrecondition, message))
+        if message == "buffer is locked" =>
+      {
+        tokio::task::yield_now().await;
+      },
+      Err(error) => panic!("failed to seed replacement buffer: {error:?}"),
+    }
+  }
 
   setup
     .trigger_upload_tx
@@ -1805,12 +1827,25 @@ async fn pruning_last_buffer_marks_old_flush_completed() {
 
   let upload = setup.next_upload().await;
   assert_eq!(upload.payload.log_upload().proto_logs[0], b"fresh");
-  assert!(
-    !setup.flush_is_pending(&FlushBufferId::ExplicitSessionCapture(
-      "old-upload".to_string()
-    ))
-  );
-  assert!(setup.flush_is_pending(&FlushBufferId::RemoteCommand("new-upload".to_string())));
+  let old_flush_id = FlushBufferId::ExplicitSessionCapture("old-upload".to_string());
+  for _ in 0 .. 100 {
+    if !setup.flush_is_pending(&old_flush_id) {
+      break;
+    }
+
+    tokio::task::yield_now().await;
+  }
+  assert!(!setup.flush_is_pending(&old_flush_id));
+
+  let new_flush_id = FlushBufferId::RemoteCommand("new-upload".to_string());
+  for _ in 0 .. 100 {
+    if setup.flush_is_pending(&new_flush_id) {
+      break;
+    }
+
+    tokio::task::yield_now().await;
+  }
+  assert!(setup.flush_is_pending(&new_flush_id));
 
   upload
     .response_tx
@@ -1947,9 +1982,9 @@ async fn live_remote_trigger_upload_persists_across_shutdown() {
     .trigger_upload_tx
     .send(TriggerUpload::new(
       vec!["buffer".to_string()],
-      Some(FlushStreaming {
-        destination_streaming_buffer_ids: vec!["default".to_string()],
-        ..Default::default()
+      Some(TriggerUploadStreaming {
+        destination_buffer_ids: vec!["default".to_string()],
+        max_logs_count: None,
       }),
       TriggerUploadSource::RemoteCommand("flush-1".to_string()),
       "session-1".to_string(),
@@ -2020,9 +2055,9 @@ async fn remote_streaming_activation_channel_closure_preserves_flush_completion(
     .trigger_upload_tx
     .send(TriggerUpload::new(
       vec!["buffer".to_string()],
-      Some(FlushStreaming {
-        destination_streaming_buffer_ids: vec!["default".to_string()],
-        ..Default::default()
+      Some(TriggerUploadStreaming {
+        destination_buffer_ids: vec!["default".to_string()],
+        max_logs_count: None,
       }),
       TriggerUploadSource::RemoteCommand("flush-1".to_string()),
       "session-1".to_string(),
@@ -2069,7 +2104,10 @@ async fn remote_streaming_activation_waits_for_channel_capacity_before_completin
       "existing-request".to_string(),
       vec!["prefill".to_string()],
       "session-0".to_string(),
-      FlushStreaming::default(),
+      TriggerUploadStreaming {
+        destination_buffer_ids: vec![],
+        max_logs_count: None,
+      },
     ))
     .await
     .unwrap();
@@ -2093,9 +2131,9 @@ async fn remote_streaming_activation_waits_for_channel_capacity_before_completin
     .trigger_upload_tx
     .send(TriggerUpload::new(
       vec!["buffer".to_string()],
-      Some(FlushStreaming {
-        destination_streaming_buffer_ids: vec!["default".to_string()],
-        ..Default::default()
+      Some(TriggerUploadStreaming {
+        destination_buffer_ids: vec!["default".to_string()],
+        max_logs_count: None,
       }),
       TriggerUploadSource::RemoteCommand("flush-1".to_string()),
       "session-1".to_string(),

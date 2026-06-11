@@ -11,21 +11,18 @@ mod actions_flush_buffers_test;
 
 use crate::config::{ActionFlushBuffers, FlushBufferId};
 use anyhow::anyhow;
-use bd_api::DataUpload;
 use bd_api::upload::{Intent_type, IntentDecision, TrackedLogUploadIntent, WorkflowActionUpload};
+use bd_api::{DataUpload, TriggerUploadStreaming};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::tiny_set::TinySet;
 use bd_macros::proto_serializable;
 use bd_proto::protos::client::api::LogUploadIntentRequest;
 use bd_proto::protos::client::api::log_upload_intent_request::ExplicitSessionCapture;
-use bd_proto::protos::workflow::workflow::workflow::action as workflow_action_proto;
 use bd_stats_common::{Counter as _, labels};
-use flush_buffers_proto::streaming::{TerminationCriterion, termination_criterion};
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::fmt::Debug;
 use tokio::sync::mpsc::{Receiver, Sender, channel};
-use workflow_action_proto::action_flush_buffers as flush_buffers_proto;
 
 //
 // NegotiatorOutput
@@ -923,29 +920,15 @@ pub(crate) struct Streaming {
   max_logs_count: Option<u64>,
 }
 
-// fixfix
 impl Streaming {
-  fn to_proto(&self) -> flush_buffers_proto::Streaming {
-    let termination_criteria = self.max_logs_count.map_or_else(Vec::new, |max_logs_count| {
-      vec![TerminationCriterion {
-        type_: Some(termination_criterion::Type::LogsCount(
-          termination_criterion::LogsCount {
-            max_logs_count,
-            ..Default::default()
-          },
-        )),
-        ..Default::default()
-      }]
-    });
-
-    flush_buffers_proto::Streaming {
-      destination_streaming_buffer_ids: self
+  fn to_trigger_upload_streaming(&self) -> TriggerUploadStreaming {
+    TriggerUploadStreaming {
+      destination_buffer_ids: self
         .destination_continuous_buffer_ids
         .iter()
         .map(std::string::ToString::to_string)
         .collect(),
-      termination_criteria,
-      ..Default::default()
+      max_logs_count: self.max_logs_count,
     }
   }
 }
@@ -1062,7 +1045,7 @@ pub struct BuffersToFlush {
   // Unique IDs of buffers to flush.
   pub buffer_ids: TinySet<Cow<'static, str>>,
   // Optional streaming configuration associated with the logical flush action.
-  pub streaming: Option<flush_buffers_proto::Streaming>,
+  pub streaming: Option<TriggerUploadStreaming>,
 }
 
 impl BuffersToFlush {
@@ -1071,7 +1054,10 @@ impl BuffersToFlush {
       flush_id: action.id.clone(),
       session_id: action.session_id.clone(),
       buffer_ids: action.trigger_buffer_ids.clone(),
-      streaming: action.streaming.as_ref().map(Streaming::to_proto),
+      streaming: action
+        .streaming
+        .as_ref()
+        .map(Streaming::to_trigger_upload_streaming),
     }
   }
 }

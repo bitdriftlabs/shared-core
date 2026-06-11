@@ -9,7 +9,12 @@ use super::{Api, PlatformNetworkManager, PlatformNetworkStream};
 use crate::api::{DISCONNECTED_OFFLINE_GRACE_PERIOD, StreamEvent};
 use crate::reconnect::ReconnectState;
 use crate::upload::Tracked;
-use crate::{DataUpload, SimpleNetworkQualityProvider, TriggerUploadSource};
+use crate::{
+  DataUpload,
+  SimpleNetworkQualityProvider,
+  TriggerUploadSource,
+  TriggerUploadStreaming,
+};
 use action_flush_buffers::Streaming as FlushStreaming;
 use action_flush_buffers::streaming::{TerminationCriterion, termination_criterion};
 use anyhow::anyhow;
@@ -1552,7 +1557,13 @@ async fn flush_buffers_response_forwards_streaming_to_trigger_upload() {
 
   let trigger_upload = setup.trigger_upload_rx.recv().await.unwrap();
   assert_eq!(trigger_upload.buffer_ids, vec!["trigger".to_string()]);
-  assert_eq!(trigger_upload.streaming, Some(streaming));
+  assert_eq!(
+    trigger_upload.streaming,
+    Some(TriggerUploadStreaming {
+      destination_buffer_ids: vec!["default".to_string()],
+      max_logs_count: Some(10),
+    })
+  );
   assert!(!trigger_upload.session_id.is_empty());
   assert_matches!(
     trigger_upload.source,

@@ -19,6 +19,7 @@ use crate::{
   StreamEvent,
   TriggerUpload,
   TriggerUploadSource,
+  TriggerUploadStreaming,
 };
 use anyhow::anyhow;
 use bd_backoff::exponential::ExponentialBackoffInfinite;
@@ -1166,7 +1167,10 @@ impl Api {
             .trigger_upload_tx
             .send(TriggerUpload::new(
               flush_buffers.buffer_id_list,
-              flush_buffers.streaming.into_option(),
+              flush_buffers
+                .streaming
+                .into_option()
+                .map(TriggerUploadStreaming::from),
               // TODO: If the server grows a stable remote command identifier, prefer threading it
               // through here instead of always minting a client-side UUID.
               // Remote commands intentionally use a fresh logical ID per command. Retries of a
