@@ -1187,12 +1187,18 @@ impl CompleteBufferUpload {
       return Ok(());
     }
 
-    let batch = self
+    self
       .artifact_store
       .stage_batch(self.batch_builder.take())
       .await?;
     self.consumer.finish_reads(self.pending_batch_reads)?;
     self.pending_batch_reads = 0;
+
+    let batch = self
+      .artifact_store
+      .promote_queued_batch_to_inflight()
+      .await?
+      .ok_or_else(|| anyhow::anyhow!("staged trigger batch missing from artifact store"))?;
 
     log::debug!(
       "staged trigger batch of {} logs before advancing buffer {}",
@@ -1200,12 +1206,12 @@ impl CompleteBufferUpload {
       self.buffer_id
     );
 
-    self.flush_persisted_batches().await
+    self.flush_batch(batch, false).await
   }
 
   async fn flush_persisted_batches(&mut self) -> anyhow::Result<()> {
     if let Some(batch) = self.artifact_store.inflight_batch().await? {
-      self.flush_batch(batch).await?;
+      self.flush_batch(batch, true).await?;
     }
 
     while let Some(batch) = self
@@ -1213,7 +1219,7 @@ impl CompleteBufferUpload {
       .promote_queued_batch_to_inflight()
       .await?
     {
-      self.flush_batch(batch).await?;
+      self.flush_batch(batch, true).await?;
     }
 
     Ok(())
@@ -1222,6 +1228,7 @@ impl CompleteBufferUpload {
   async fn flush_batch(
     &mut self,
     batch: PersistedTriggerUploadArtifactBatch,
+    discard_recovered_prefix: bool,
   ) -> anyhow::Result<()> {
     let logs_len = u64::try_from(batch.logs.len()).unwrap_or(u64::MAX);
     let uploaded_logs = batch.logs.clone();
@@ -1265,7 +1272,9 @@ impl CompleteBufferUpload {
           .record_uploaded_chunk(&self.pending_trigger_upload_id, &self.buffer_id, logs_len)
           .await;
 
-        self.discard_uploaded_buffer_prefix(&uploaded_logs)?;
+        if discard_recovered_prefix {
+          self.discard_uploaded_buffer_prefix(&uploaded_logs)?;
+        }
 
         log::debug!("completed trigger batch upload with result: {result:?}");
         Ok(())

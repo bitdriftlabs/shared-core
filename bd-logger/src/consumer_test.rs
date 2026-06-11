@@ -1030,6 +1030,34 @@ async fn uploaded_trigger() {
 }
 
 #[tokio::test]
+async fn uploaded_trigger_continues_after_full_first_batch() {
+  let mut setup = SetupMultiConsumer::new(10, 1000).await;
+  let (buffer, mut producer) =
+    create_trigger_buffer(setup.sdk_directory.join("buffer").as_path()).await;
+
+  setup.add_trigger_buffer("buffer", buffer).await;
+
+  for _ in 0 .. 11 {
+    producer.write(b"log").unwrap();
+  }
+
+  setup.trigger_buffer_upload("buffer").await;
+
+  let first_upload = setup.next_upload().await;
+  assert_eq!(first_upload.payload.log_upload().proto_logs.len(), 10);
+  first_upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: first_upload.uuid,
+    })
+    .unwrap();
+
+  let second_upload = setup.next_upload().await;
+  assert_eq!(second_upload.payload.log_upload().proto_logs.len(), 1);
+}
+
+#[tokio::test]
 async fn trigger_upload_with_empty_buffer_list_flushes_all_trigger_buffers() {
   let mut setup = SetupMultiConsumer::new(1, 1000).await;
   let (buffer_a, mut producer_a) =
