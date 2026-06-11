@@ -646,6 +646,7 @@ impl ProcessingPipeline {
         let started = self.workflows_engine.start_remote_flush_streaming(
           remote_flush_streaming.id,
           remote_flush_streaming.buffer_ids.into_iter().collect(),
+          &remote_flush_streaming.session_id,
           remote_flush_streaming.streaming,
         );
 

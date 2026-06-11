@@ -17,7 +17,7 @@ use crate::flush_registry::{
   PersistedTriggerUploadSource,
   flush_buffer_id_from_trigger_upload_source,
 };
-use crate::service::{self, UploadRequest};
+use crate::service::{self, UploadRequest, UploadResult};
 use crate::state_upload::StateUploadHandle;
 use crate::trigger_upload_artifact::{
   PersistedTriggerUploadArtifactBatch,
@@ -40,6 +40,7 @@ use bd_time::OffsetDateTimeExt;
 use bd_workflows::engine::FlushCompletionTracker;
 use futures_util::future::try_join_all;
 use std::collections::{HashMap, HashSet};
+use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -75,6 +76,7 @@ struct Flags {
 pub struct RemoteFlushStreamingRequest {
   pub(crate) id: String,
   pub(crate) buffer_ids: Vec<String>,
+  pub(crate) session_id: String,
   pub(crate) streaming: workflow::workflow::action::action_flush_buffers::Streaming,
 }
 
@@ -82,15 +84,28 @@ impl RemoteFlushStreamingRequest {
   fn new(
     id: String,
     buffer_ids: Vec<String>,
+    session_id: String,
     streaming: workflow::workflow::action::action_flush_buffers::Streaming,
   ) -> Self {
     Self {
       id,
       buffer_ids,
+      session_id,
       streaming,
     }
   }
 }
+
+#[derive(Debug)]
+struct TriggerBatchUploadCanceled;
+
+impl Display for TriggerBatchUploadCanceled {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    f.write_str("trigger batch upload canceled")
+  }
+}
+
+impl std::error::Error for TriggerBatchUploadCanceled {}
 
 // Responsible for managing the lifetime of upload tasks as buffers are added/removed via dynamic
 // reconfiguration. When continuous buffers are added, a new task is spawned which is responsible
@@ -297,7 +312,7 @@ impl BufferUploadManager {
         .upsert(PersistedTriggerUpload {
           id: trigger_upload_id.clone(),
           source: trigger_upload_source,
-          session_id,
+          session_id: session_id.clone(),
           buffers: eligible_buffer_ids
             .iter()
             .cloned()
@@ -312,6 +327,19 @@ impl BufferUploadManager {
         .mark_pending(flush_buffer_id_from_trigger_upload_source(&source));
     }
 
+    let remote_streaming_request = if is_remote_streaming_activation {
+      streaming.map(|streaming| {
+        RemoteFlushStreamingRequest::new(
+          trigger_upload_id.clone(),
+          eligible_buffer_ids.clone(),
+          session_id.clone(),
+          streaming,
+        )
+      })
+    } else {
+      None
+    };
+
     for (buffer_id, trigger_consumer) in scheduled_consumers {
       let upload_complete_tx = trigger_upload_complete_tx.clone();
       let buffer_id_clone = buffer_id.clone();
@@ -323,22 +351,28 @@ impl BufferUploadManager {
       tokio::task::spawn(
         async move {
           // Handle the error here so that we can fire the complete message even on failure.
-          match trigger_consumer.run().await {
-            Ok(logs_count) => internal_logger.log_internal(&format!(
-              "completed trigger upload for buffer {buffer_id_clone:?}, uploaded logs count: \
-               {logs_count:?}",
-            )),
+          let upload_completed = match trigger_consumer.run().await {
+            Ok(logs_count) => {
+              internal_logger.log_internal(&format!(
+                "completed trigger upload for buffer {buffer_id_clone:?}, uploaded logs count: \
+                 {logs_count:?}",
+              ));
+              true
+            },
             Err(e) => {
               internal_logger.log_internal(&format!(
                 "failed trigger upload for buffer {buffer_id_clone:?}: {e:?}"
               ));
-              handle_unexpected_error_with_details(e, "", || None);
+              if !e.is::<TriggerBatchUploadCanceled>() {
+                handle_unexpected_error_with_details(e, "", || None);
+              }
+              false
             },
-          }
+          };
 
           single_upload_complete_tx
-            .send(())
-            .map_err(|()| InvariantError::Invariant)?;
+            .send(upload_completed)
+            .map_err(|_| InvariantError::Invariant)?;
 
           // TODO(mattklein123): Should we pass this into the trigger consumer and actually
           // try to bail quickly if it's taking a long time and we are trying to shutdown?
@@ -359,32 +393,41 @@ impl BufferUploadManager {
       self.shutdowns.insert(buffer_id.clone(), shutdown_trigger);
     }
 
-    if is_remote_streaming_activation
-      && let Some(streaming) = streaming
-      && !eligible_buffer_ids.is_empty()
-      && let Err(e) = self
-        .remote_flush_streaming_tx
-        .try_send(RemoteFlushStreamingRequest::new(
-          trigger_upload_id.clone(),
-          eligible_buffer_ids,
-          streaming,
-        ))
-    {
-      log::debug!("failed to enqueue remote flush streaming request: {e:?}");
-      self
-        .flush_completion_tracker
-        .mark_completed(&flush_buffer_id_from_trigger_upload_source(&source));
-    }
-
     // Since we have one completion handler for the entire set of trigger uploads, we need to
     // spawn a task to wait for all of the individual trigger uploads to complete before we can
     // signal that the trigger uploads are complete.
     let pending_trigger_uploads = self.pending_trigger_uploads.clone();
     let flush_completion_tracker = self.flush_completion_tracker.clone();
+    let remote_flush_streaming_tx = self.remote_flush_streaming_tx.clone();
     let tracked_flush_id = flush_buffer_id_from_trigger_upload_source(&source);
     tokio::spawn(async move {
-      if let Err(e) = try_join_all(buffer_upload_completions).await {
-        log::debug!("failed to wait for trigger uploads to complete: {e:?}");
+      let completed_uploads = match try_join_all(buffer_upload_completions).await {
+        Ok(completed_uploads) => completed_uploads,
+        Err(e) => {
+          log::debug!("failed to wait for trigger uploads to complete: {e:?}");
+          return;
+        },
+      };
+
+      if completed_uploads.iter().any(|completed| !completed) {
+        log::debug!(
+          "preserving pending trigger upload state for {trigger_upload_id} because at least one \
+           buffer upload did not complete successfully",
+        );
+        return;
+      }
+
+      if let Some(remote_streaming_request) = remote_streaming_request
+        && remote_flush_streaming_tx
+          .send(remote_streaming_request)
+          .await
+          .is_err()
+      {
+        log::debug!(
+          "preserving pending trigger upload state for {trigger_upload_id} because remote \
+           streaming activation could not be delivered",
+        );
+        return;
       }
 
       pending_trigger_uploads.remove(&trigger_upload_id).await;
@@ -1181,6 +1224,7 @@ impl CompleteBufferUpload {
     batch: PersistedTriggerUploadArtifactBatch,
   ) -> anyhow::Result<()> {
     let logs_len = u64::try_from(batch.logs.len()).unwrap_or(u64::MAX);
+    let uploaded_logs = batch.logs.clone();
     let timestamp_range = timestamp_range_for_logs(&batch.logs);
     log::debug!("flushing {logs_len} logs from trigger artifact");
 
@@ -1212,18 +1256,61 @@ impl CompleteBufferUpload {
       .await
       .unwrap_infallible();
 
-    // Note that we don't keep a shutdown handle for trigger uploads since we don't ever try to
-    // cancel them, so we don't anything extra here to avoid deadlocking like in the other two
-    // consumer tasks.
+    match result {
+      UploadResult::Success => {
+        self.artifact_store.clear_inflight_batch().await?;
 
-    self.artifact_store.clear_inflight_batch().await?;
+        self
+          .pending_trigger_uploads
+          .record_uploaded_chunk(&self.pending_trigger_upload_id, &self.buffer_id, logs_len)
+          .await;
 
-    self
-      .pending_trigger_uploads
-      .record_uploaded_chunk(&self.pending_trigger_upload_id, &self.buffer_id, logs_len)
-      .await;
+        self.discard_uploaded_buffer_prefix(&uploaded_logs)?;
 
-    log::debug!("completed trigger batch upload with result: {result:?}");
+        log::debug!("completed trigger batch upload with result: {result:?}");
+        Ok(())
+      },
+      UploadResult::Failure => {
+        anyhow::bail!("trigger batch upload failed")
+      },
+      UploadResult::Canceled => Err(TriggerBatchUploadCanceled.into()),
+    }
+  }
+
+  fn discard_uploaded_buffer_prefix(&mut self, uploaded_logs: &[Vec<u8>]) -> anyhow::Result<()> {
+    if uploaded_logs.is_empty() {
+      return Ok(());
+    }
+
+    let mut matched_logs = 0;
+    for uploaded_log in uploaded_logs {
+      match self.consumer.start_read(false) {
+        Ok(buffer_log) if buffer_log == *uploaded_log => {
+          matched_logs += 1;
+        },
+        Ok(_) => {
+          log::debug!(
+            "stopped discarding recovered trigger artifact prefix for {} after {matched_logs} \
+             matched logs because the buffer diverged",
+            self.buffer_id,
+          );
+          break;
+        },
+        Err(Error::AbslStatus(AbslCode::Unavailable, _)) => {
+          break;
+        },
+        Err(e) => {
+          return Err(e.into());
+        },
+      }
+    }
+
+    if matched_logs != 0 {
+      self.consumer.finish_reads(matched_logs)?;
+      log::debug!(
+        "discarded {matched_logs} buffered logs already uploaded from recovered trigger artifact"
+      );
+    }
 
     Ok(())
   }

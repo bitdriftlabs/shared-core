@@ -237,6 +237,7 @@ impl WorkflowsEngine {
     &mut self,
     id: String,
     buffer_ids: BTreeSet<String>,
+    session_id: &str,
     streaming_proto:
       bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers::Streaming,
   ) -> bool {
@@ -248,12 +249,7 @@ impl WorkflowsEngine {
     let action_id = FlushBufferId::RemoteCommand(id);
     let Some(streaming_action) = self
       .flush_buffers_actions_resolver
-      .make_remote_streaming_action(
-        action_id.clone(),
-        buffer_ids,
-        &self.state.session_id,
-        streaming,
-      )
+      .make_remote_streaming_action(action_id.clone(), buffer_ids, session_id, streaming)
     else {
       log::debug!("remote flush streaming not activated: no eligible buffers or destinations");
       return false;

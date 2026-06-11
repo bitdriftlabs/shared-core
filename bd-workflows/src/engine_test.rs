@@ -2169,6 +2169,7 @@ async fn restored_remote_streaming_waits_for_durable_flush_completion() {
   assert!(workflows_engine.start_remote_flush_streaming(
     "remote_streaming".into(),
     BTreeSet::from(["trigger_buffer_id".to_string()]),
+    "session-1",
     action_flush_buffers::Streaming {
       destination_streaming_buffer_ids: vec!["continuous_buffer_id".to_string()],
       termination_criteria: vec![action_flush_buffers::streaming::TerminationCriterion {
