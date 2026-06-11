@@ -127,6 +127,17 @@ impl PersistedTriggerUpload {
   }
 }
 
+// Result of pruning one buffer out of older persisted uploads before a fresh attempt for that
+// same buffer is admitted. The consumer uses this to remove matching artifact files and, when an
+// upload loses its last remaining buffer, to complete the corresponding process-local flush ID.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PrunedTriggerUploadBuffer {
+  pub upload_id: String,
+  pub source: PersistedTriggerUploadSource,
+  pub buffer_id: String,
+  pub removed_upload: bool,
+}
+
 // This lifecycle is tracked per buffer so a single trigger upload can be partially progressed and
 // later resumed. That matters because a multi-buffer flush may stage and upload some buffers before
 // the process dies, leaving recovery to continue only the remaining work.
@@ -599,10 +610,79 @@ impl PendingTriggerUploadsStore {
       .await;
   }
 
+  pub async fn prune_buffer_from_other_uploads(
+    &self,
+    current_upload_id: &str,
+    buffer_id: &str,
+  ) -> Vec<PrunedTriggerUploadBuffer> {
+    // Before the logger admits a fresh non-active attempt for buffer B, it may need to evict any
+    // older durable upload state that still refers to B. We do that buffer-by-buffer rather than
+    // rekeying the whole registry by buffer ID because the surrounding upload model is still
+    // source-scoped: one logical upload can own multiple buffers, optional streaming state, and a
+    // single process-local flush ID. Pruning therefore removes only the conflicting buffer from
+    // older uploads, and only deletes the whole upload record when that buffer was its last
+    // member. That distinction is what lets us uphold both sides of the design at once:
+    // - buffer-scoped replacement ensures a fresh attempt for B does not coexist with stale durable
+    //   history for B;
+    // - source-scoped aggregate uploads still preserve any other buffers, deferred streaming
+    //   payloads, and completion semantics owned by the older upload.
+    //
+    // The caller is responsible for acting on the returned `PrunedTriggerUploadBuffer` records.
+    // Those records tell the consumer which artifact files must be deleted for the removed buffer,
+    // and whether pruning removed the upload's final buffer and therefore completed that upload's
+    // process-local flush ID entirely.
+    let mut pruned_buffers = Vec::new();
+    self
+      .mutate(|uploads| {
+        let mut index = 0;
+        while index < uploads.len() {
+          if uploads[index].id == current_upload_id {
+            index += 1;
+            continue;
+          }
+
+          let Some(buffer_index) = uploads[index]
+            .buffers
+            .iter()
+            .position(|buffer| buffer.buffer_id == buffer_id)
+          else {
+            index += 1;
+            continue;
+          };
+
+          let removed_upload = uploads[index].buffers.len() == 1;
+          let source = uploads[index].source.clone();
+          let upload_id = uploads[index].id.clone();
+
+          if removed_upload {
+            uploads.remove(index);
+          } else {
+            uploads[index].buffers.remove(buffer_index);
+            index += 1;
+          }
+
+          pruned_buffers.push(PrunedTriggerUploadBuffer {
+            upload_id,
+            source,
+            buffer_id: buffer_id.to_string(),
+            removed_upload,
+          });
+        }
+      })
+      .await;
+    pruned_buffers
+  }
+
   pub async fn pending_uploads(&self) -> Vec<PersistedTriggerUpload> {
     let mut inner = self.inner.lock().await;
     Self::ensure_loaded(&self.state_path, &mut inner).await;
     inner.uploads.clone()
+  }
+
+  pub async fn pending_upload(&self, id: &str) -> Option<PersistedTriggerUpload> {
+    let mut inner = self.inner.lock().await;
+    Self::ensure_loaded(&self.state_path, &mut inner).await;
+    inner.uploads.iter().find(|upload| upload.id == id).cloned()
   }
 
   async fn mutate(&self, mutate: impl FnOnce(&mut Vec<PersistedTriggerUpload>)) {

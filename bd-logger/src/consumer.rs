@@ -283,6 +283,14 @@ impl BufferUploadManager {
     // persist a single upload record describing the concrete buffer set. Persisting the filtered
     // set rather than the original request means restart recovery can replay exactly the work that
     // was scheduled in this process.
+    //
+    // There is one additional invariant layered on top of the source-scoped upload model: before a
+    // fresh non-active attempt for buffer B is admitted, we evict any older durable trigger-upload
+    // state that still refers to B. The overall registry remains keyed by logical source ID
+    // because aggregate completion, optional streaming activation, and restart replay are still
+    // tracked per logical flush. The cleanup is buffer-scoped because the correctness problem we
+    // are solving is narrower: once we are about to upload buffer B again, we should not preserve
+    // stale durable history that could cause B to be replayed twice from two different uploads.
 
     for buffer_id in buffer_ids {
       // Admission is also deduped by buffer while a trigger upload is already active. If buffer B
@@ -300,8 +308,23 @@ impl BufferUploadManager {
       // are not in sync with the state within the upload manager. This can also happen if the
       // match configuration targets a buffer that doesn't have a corresponding buffer config,
       // which is not validated.
-      if let Some(buffer) = self.trigger_buffers.get(&buffer_id) {
-        let trigger_consumer = self.new_trigger_consumer(&buffer_id, &trigger_upload_id, buffer)?;
+      if let Some(buffer) = self.trigger_buffers.get(&buffer_id).cloned() {
+        // At this point buffer_id is not currently active in memory, so it is safe to prune older
+        // durable references to that same buffer before we admit a fresh attempt. This does not
+        // collapse the entire upload model down to buffer IDs: older uploads can keep any other
+        // buffers they still own, and aggregate source-scoped completion remains intact unless the
+        // pruned buffer was their last member.
+        Self::prune_stale_trigger_upload_buffers(
+          self.pending_trigger_uploads.clone(),
+          self.logger_state_directory.clone(),
+          self.process_local_pending_flush_state.clone(),
+          &trigger_upload_id,
+          &buffer_id,
+        )
+        .await;
+
+        let trigger_consumer =
+          self.new_trigger_consumer(&buffer_id, &trigger_upload_id, &buffer)?;
 
         self.active_trigger_uploads.insert(buffer_id.clone());
         eligible_buffer_ids.push(buffer_id.clone());
@@ -413,8 +436,11 @@ impl BufferUploadManager {
 
     // Since we have one completion handler for the entire set of trigger uploads, we need to
     // spawn a task to wait for all of the individual trigger uploads to complete before we can
-    // signal that the trigger uploads are complete. The durable upload entry stays in place until
-    // every buffer upload succeeds and any remote-streaming activation has been handed off.
+    // signal that the trigger uploads are complete. The durable upload entry stays source-scoped
+    // even though stale replacement above happens buffer-by-buffer: one logical upload can still
+    // own multiple admitted buffers, one deferred remote-streaming payload, and one
+    // process-local flush ID that should only complete once every surviving buffer in that upload
+    // has succeeded or the entire upload has been pruned away.
     let pending_trigger_uploads = self.pending_trigger_uploads.clone();
     let process_local_pending_flush_state = self.process_local_pending_flush_state.clone();
     let remote_flush_streaming_tx = self.remote_flush_streaming_tx.clone();
@@ -544,6 +570,53 @@ impl BufferUploadManager {
     Ok(())
   }
 
+  async fn prune_stale_trigger_upload_buffers(
+    pending_trigger_uploads: PendingTriggerUploadsStore,
+    logger_state_directory: Arc<PathBuf>,
+    process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
+    current_upload_id: &str,
+    buffer_id: &str,
+  ) {
+    // This helper is deliberately static over owned clones rather than borrowing `self`. The
+    // upload manager runs inside a spawned task, so keeping this path free of long-lived borrows
+    // avoids making the manager future non-Send while still letting us share the same cleanup
+    // invariant between live scheduling and restart recovery.
+    let pruned_uploads = pending_trigger_uploads
+      .prune_buffer_from_other_uploads(current_upload_id, buffer_id)
+      .await;
+
+    if pruned_uploads.is_empty() {
+      return;
+    }
+
+    log::debug!(
+      "pruning stale trigger upload state for buffer {buffer_id} before admitting upload \
+       {current_upload_id}: {:?}",
+      pruned_uploads
+        .iter()
+        .map(|pruned| (&pruned.upload_id, pruned.removed_upload))
+        .collect::<Vec<_>>()
+    );
+
+    for pruned_upload in pruned_uploads {
+      Self::clear_trigger_upload_artifact(
+        logger_state_directory.as_ref(),
+        &pruned_upload.upload_id,
+        &pruned_upload.buffer_id,
+      )
+      .await;
+
+      if pruned_upload.removed_upload {
+        // Pruning the last remaining buffer out of an older upload means that logical flush no
+        // longer has any durable work left anywhere in the logger. At that point the old
+        // process-local pending ID must be completed as well so workflows and remote streaming do
+        // not wait forever on an upload whose final buffer has been intentionally replaced.
+        process_local_pending_flush_state
+          .mark_completed(&pruned_upload.source.to_flush_buffer_id());
+      }
+    }
+  }
+
   async fn recover_pending_trigger_uploads(
     &mut self,
     configured_trigger_buffer_ids: HashSet<String>,
@@ -552,7 +625,30 @@ impl BufferUploadManager {
     // Recovery treats the durable registry as authoritative. We first reconcile any persisted
     // upload against the current trigger-buffer config, then feed the surviving work back through
     // the normal scheduling path so live and recovered uploads share one execution path.
-    for pending_upload in self.pending_trigger_uploads.pending_uploads().await {
+    //
+    // Recovery iterates newest-first because admitting a newer upload for buffer B may prune older
+    // durable references to B before those older uploads are considered. By reloading the current
+    // upload record by ID on each iteration, recovery observes the post-prune truth instead of the
+    // stale snapshot captured at startup. This is what keeps restart replay aligned with the live
+    // invariant that a fresh non-active attempt for B replaces older durable state for B instead of
+    // letting multiple upload histories for B coexist.
+    let pending_upload_ids = self
+      .pending_trigger_uploads
+      .pending_uploads()
+      .await
+      .into_iter()
+      .map(|upload| upload.id)
+      .collect::<Vec<_>>();
+
+    for pending_upload_id in pending_upload_ids.into_iter().rev() {
+      let Some(pending_upload) = self
+        .pending_trigger_uploads
+        .pending_upload(&pending_upload_id)
+        .await
+      else {
+        continue;
+      };
+
       let missing_buffer_ids: Vec<_> = pending_upload
         .buffers
         .iter()
@@ -665,22 +761,31 @@ impl BufferUploadManager {
     buffer_ids: &[String],
   ) {
     for buffer_id in buffer_ids {
-      let artifact_store =
-        TriggerUploadArtifactStore::new(logger_state_directory, trigger_upload_id, buffer_id);
+      Self::clear_trigger_upload_artifact(logger_state_directory, trigger_upload_id, buffer_id)
+        .await;
+    }
+  }
 
-      if let Err(e) = artifact_store.remove_queued_batch().await {
-        log::debug!(
-          "failed to clear queued artifact for abandoned trigger upload {trigger_upload_id} \
-           buffer {buffer_id}: {e}",
-        );
-      }
+  async fn clear_trigger_upload_artifact(
+    logger_state_directory: &Path,
+    trigger_upload_id: &str,
+    buffer_id: &str,
+  ) {
+    let artifact_store =
+      TriggerUploadArtifactStore::new(logger_state_directory, trigger_upload_id, buffer_id);
 
-      if let Err(e) = artifact_store.clear_inflight_batch().await {
-        log::debug!(
-          "failed to clear inflight artifact for abandoned trigger upload {trigger_upload_id} \
-           buffer {buffer_id}: {e}",
-        );
-      }
+    if let Err(e) = artifact_store.remove_queued_batch().await {
+      log::debug!(
+        "failed to clear queued artifact for abandoned trigger upload {trigger_upload_id} buffer \
+         {buffer_id}: {e}",
+      );
+    }
+
+    if let Err(e) = artifact_store.clear_inflight_batch().await {
+      log::debug!(
+        "failed to clear inflight artifact for abandoned trigger upload {trigger_upload_id} \
+         buffer {buffer_id}: {e}",
+      );
     }
   }
 

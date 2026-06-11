@@ -68,7 +68,10 @@ impl TriggerUploadArtifactStore {
     // Each trigger-upload artifact file is keyed by logical upload ID and buffer ID so multi-buffer
     // flushes can recover each buffer independently without collisions. This means retries of the
     // same logical upload reuse one artifact file for that buffer, while a distinct source ID gets
-    // its own separate file. The identifiers are base64 encoded because logical IDs may contain
+    // its own separate file. Buffer-scoped stale cleanup may later delete an older file for buffer
+    // B when a fresh non-active attempt for B is admitted, but we still keep the on-disk naming
+    // source-scoped so restart replay can reconstruct which logical upload owned the surviving
+    // artifact backlog. The identifiers are base64 encoded because logical IDs may contain
     // filesystem-hostile characters.
     let encoded_trigger_upload_id = URL_SAFE_NO_PAD.encode(trigger_upload_id);
     let encoded_buffer_id = URL_SAFE_NO_PAD.encode(buffer_id);

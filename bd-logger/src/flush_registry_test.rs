@@ -13,6 +13,7 @@ use super::{
   PersistedTriggerUploadLifecycle,
   PersistedTriggerUploadSource,
   PersistedTriggerUploadStreaming,
+  PrunedTriggerUploadBuffer,
 };
 use tempfile::TempDir;
 
@@ -188,4 +189,117 @@ async fn corrupted_snapshot_is_dropped_and_treated_as_empty() {
   let store = make_store(&temp_directory);
   assert!(store.pending_uploads().await.is_empty());
   assert!(!tokio::fs::try_exists(&snapshot_path).await.unwrap());
+}
+
+#[tokio::test]
+async fn prune_buffer_from_other_uploads_only_removes_matching_buffer() {
+  let temp_directory = TempDir::with_prefix("flush-registry").unwrap();
+  let store = make_store(&temp_directory);
+  store
+    .upsert(PersistedTriggerUpload {
+      id: "current".to_string(),
+      source: PersistedTriggerUploadSource::RemoteCommand("current".to_string()),
+      session_id: "current-session".to_string(),
+      buffers: vec![buffer_progress("shared")],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
+    })
+    .await;
+  store
+    .upsert(PersistedTriggerUpload {
+      id: "old".to_string(),
+      source: PersistedTriggerUploadSource::WorkflowAction("old-action".to_string()),
+      session_id: "old-session".to_string(),
+      buffers: vec![buffer_progress("shared"), buffer_progress("other")],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromArtifact,
+    })
+    .await;
+
+  assert_eq!(
+    store
+      .prune_buffer_from_other_uploads("current", "shared")
+      .await,
+    vec![PrunedTriggerUploadBuffer {
+      upload_id: "old".to_string(),
+      source: PersistedTriggerUploadSource::WorkflowAction("old-action".to_string()),
+      buffer_id: "shared".to_string(),
+      removed_upload: false,
+    }]
+  );
+
+  assert_eq!(
+    make_store(&temp_directory).pending_uploads().await,
+    vec![
+      PersistedTriggerUpload {
+        id: "current".to_string(),
+        source: PersistedTriggerUploadSource::RemoteCommand("current".to_string()),
+        session_id: "current-session".to_string(),
+        buffers: vec![buffer_progress("shared")],
+        streaming: None,
+        lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
+      },
+      PersistedTriggerUpload {
+        id: "old".to_string(),
+        source: PersistedTriggerUploadSource::WorkflowAction("old-action".to_string()),
+        session_id: "old-session".to_string(),
+        buffers: vec![buffer_progress("other")],
+        streaming: None,
+        lifecycle: PersistedTriggerUploadLifecycle::UploadingFromArtifact,
+      }
+    ]
+  );
+}
+
+#[tokio::test]
+async fn prune_buffer_from_other_uploads_removes_upload_when_last_buffer_disappears() {
+  let temp_directory = TempDir::with_prefix("flush-registry").unwrap();
+  let store = make_store(&temp_directory);
+  store
+    .upsert(PersistedTriggerUpload {
+      id: "current".to_string(),
+      source: PersistedTriggerUploadSource::RemoteCommand("current".to_string()),
+      session_id: "current-session".to_string(),
+      buffers: vec![buffer_progress("shared")],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
+    })
+    .await;
+  store
+    .upsert(PersistedTriggerUpload {
+      id: "old".to_string(),
+      source: PersistedTriggerUploadSource::ExplicitSessionCapture("capture".to_string()),
+      session_id: "old-session".to_string(),
+      buffers: vec![buffer_progress("shared")],
+      streaming: Some(PersistedTriggerUploadStreaming {
+        destination_buffer_ids: vec!["stream".to_string()],
+        max_logs_count: Some(10),
+      }),
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromBuffer,
+    })
+    .await;
+
+  assert_eq!(
+    store
+      .prune_buffer_from_other_uploads("current", "shared")
+      .await,
+    vec![PrunedTriggerUploadBuffer {
+      upload_id: "old".to_string(),
+      source: PersistedTriggerUploadSource::ExplicitSessionCapture("capture".to_string()),
+      buffer_id: "shared".to_string(),
+      removed_upload: true,
+    }]
+  );
+
+  assert_eq!(
+    make_store(&temp_directory).pending_uploads().await,
+    vec![PersistedTriggerUpload {
+      id: "current".to_string(),
+      source: PersistedTriggerUploadSource::RemoteCommand("current".to_string()),
+      session_id: "current-session".to_string(),
+      buffers: vec![buffer_progress("shared")],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
+    }]
+  );
 }

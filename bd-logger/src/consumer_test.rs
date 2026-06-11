@@ -1489,6 +1489,434 @@ async fn persisted_trigger_upload_with_no_configured_buffers_is_abandoned() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn new_trigger_upload_prunes_stale_state_for_same_buffer() {
+  let temp_directory = TempDir::with_prefix("consumertest").unwrap();
+  PendingTriggerUploadsStore::new(temp_directory.path())
+    .upsert(PersistedTriggerUpload {
+      id: "old-upload".to_string(),
+      source: PersistedTriggerUploadSource::ExplicitSessionCapture("old-upload".to_string()),
+      session_id: "old-session".to_string(),
+      buffers: vec![PersistedTriggerUploadBufferProgress {
+        buffer_id: "buffer".to_string(),
+        lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromArtifact,
+        uploaded_batches_count: 1,
+        uploaded_logs_count: 1,
+      }],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromArtifact,
+    })
+    .await;
+
+  let old_artifact_store = TriggerUploadArtifactStore::new(
+    temp_directory.path().join("state").join("logger"),
+    "old-upload",
+    "buffer",
+  );
+  old_artifact_store
+    .stage_batch(vec![b"old".to_vec()])
+    .await
+    .unwrap();
+  old_artifact_store
+    .promote_queued_batch_to_inflight()
+    .await
+    .unwrap()
+    .unwrap();
+
+  let mut setup = SetupMultiConsumer::new_with_state(1, 1000, temp_directory).await;
+  let (buffer, mut producer) =
+    create_trigger_buffer(setup.sdk_directory.join("buffer").as_path()).await;
+  setup.add_trigger_buffer("buffer", buffer).await;
+  producer.write(b"new").unwrap();
+
+  setup
+    .trigger_upload_tx
+    .send(TriggerUpload::new(
+      vec!["buffer".to_string()],
+      None,
+      TriggerUploadSource::ExplicitSessionCapture("new-upload".to_string()),
+      "new-session".to_string(),
+    ))
+    .await
+    .unwrap();
+
+  let upload = setup.next_upload().await;
+  assert_eq!(upload.payload.log_upload().proto_logs.len(), 1);
+  assert_eq!(upload.payload.log_upload().proto_logs[0], b"new");
+
+  assert_eq!(
+    setup.pending_trigger_uploads().await,
+    vec![PersistedTriggerUpload {
+      id: "new-upload".to_string(),
+      source: PersistedTriggerUploadSource::ExplicitSessionCapture("new-upload".to_string()),
+      session_id: "new-session".to_string(),
+      buffers: vec![PersistedTriggerUploadBufferProgress {
+        buffer_id: "buffer".to_string(),
+        lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromArtifact,
+        uploaded_batches_count: 0,
+        uploaded_logs_count: 0,
+      }],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromArtifact,
+    }]
+  );
+
+  let old_artifact_store = TriggerUploadArtifactStore::new(
+    setup.sdk_directory.join("state").join("logger"),
+    "old-upload",
+    "buffer",
+  );
+  assert!(old_artifact_store.queued_batch().await.unwrap().is_none());
+  assert!(old_artifact_store.inflight_batch().await.unwrap().is_none());
+
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+
+  setup.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn new_trigger_upload_prunes_only_overlapping_buffer_from_older_upload() {
+  let temp_directory = TempDir::with_prefix("consumertest").unwrap();
+  PendingTriggerUploadsStore::new(temp_directory.path())
+    .upsert(PersistedTriggerUpload {
+      id: "old-upload".to_string(),
+      source: PersistedTriggerUploadSource::ExplicitSessionCapture("old-upload".to_string()),
+      session_id: "old-session".to_string(),
+      buffers: vec![
+        PersistedTriggerUploadBufferProgress {
+          buffer_id: "buffer".to_string(),
+          lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromArtifact,
+          uploaded_batches_count: 1,
+          uploaded_logs_count: 1,
+        },
+        PersistedTriggerUploadBufferProgress::new("other".to_string()),
+      ],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromArtifact,
+    })
+    .await;
+
+  let old_artifact_store = TriggerUploadArtifactStore::new(
+    temp_directory.path().join("state").join("logger"),
+    "old-upload",
+    "buffer",
+  );
+  old_artifact_store
+    .stage_batch(vec![b"old".to_vec()])
+    .await
+    .unwrap();
+  old_artifact_store
+    .promote_queued_batch_to_inflight()
+    .await
+    .unwrap()
+    .unwrap();
+
+  let mut setup = SetupMultiConsumer::new_with_state(1, 1000, temp_directory).await;
+  let (buffer, mut producer) =
+    create_trigger_buffer(setup.sdk_directory.join("buffer").as_path()).await;
+  setup.add_trigger_buffer("buffer", buffer).await;
+  producer.write(b"new").unwrap();
+
+  setup
+    .trigger_upload_tx
+    .send(TriggerUpload::new(
+      vec!["buffer".to_string()],
+      None,
+      TriggerUploadSource::ExplicitSessionCapture("new-upload".to_string()),
+      "new-session".to_string(),
+    ))
+    .await
+    .unwrap();
+
+  let upload = setup.next_upload().await;
+  assert_eq!(upload.payload.log_upload().proto_logs[0], b"new");
+
+  assert_eq!(
+    setup.pending_trigger_uploads().await,
+    vec![
+      PersistedTriggerUpload {
+        id: "old-upload".to_string(),
+        source: PersistedTriggerUploadSource::ExplicitSessionCapture("old-upload".to_string()),
+        session_id: "old-session".to_string(),
+        buffers: vec![PersistedTriggerUploadBufferProgress::new(
+          "other".to_string()
+        )],
+        streaming: None,
+        lifecycle: PersistedTriggerUploadLifecycle::UploadingFromArtifact,
+      },
+      PersistedTriggerUpload {
+        id: "new-upload".to_string(),
+        source: PersistedTriggerUploadSource::ExplicitSessionCapture("new-upload".to_string()),
+        session_id: "new-session".to_string(),
+        buffers: vec![PersistedTriggerUploadBufferProgress {
+          buffer_id: "buffer".to_string(),
+          lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromArtifact,
+          uploaded_batches_count: 0,
+          uploaded_logs_count: 0,
+        }],
+        streaming: None,
+        lifecycle: PersistedTriggerUploadLifecycle::UploadingFromArtifact,
+      }
+    ]
+  );
+
+  let old_artifact_store = TriggerUploadArtifactStore::new(
+    setup.sdk_directory.join("state").join("logger"),
+    "old-upload",
+    "buffer",
+  );
+  assert!(old_artifact_store.queued_batch().await.unwrap().is_none());
+  assert!(old_artifact_store.inflight_batch().await.unwrap().is_none());
+
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+
+  setup.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn active_trigger_upload_is_not_pruned_by_later_request_for_same_buffer() {
+  let mut setup = SetupMultiConsumer::new(1, 1000).await;
+  let (buffer, mut producer) =
+    create_trigger_buffer(setup.sdk_directory.join("buffer").as_path()).await;
+  setup.add_trigger_buffer("buffer", buffer).await;
+  producer.write(b"one").unwrap();
+
+  setup
+    .trigger_upload_tx
+    .send(TriggerUpload::new(
+      vec!["buffer".to_string()],
+      None,
+      TriggerUploadSource::ExplicitSessionCapture("old-upload".to_string()),
+      "session-1".to_string(),
+    ))
+    .await
+    .unwrap();
+
+  let upload = setup.next_upload().await;
+
+  setup
+    .trigger_upload_tx
+    .send(TriggerUpload::new(
+      vec!["buffer".to_string()],
+      None,
+      TriggerUploadSource::ExplicitSessionCapture("new-upload".to_string()),
+      "session-2".to_string(),
+    ))
+    .await
+    .unwrap();
+
+  for _ in 0 .. 50 {
+    tokio::task::yield_now().await;
+  }
+
+  assert_eq!(setup.pending_trigger_uploads().await.len(), 1);
+  assert_eq!(setup.pending_trigger_uploads().await[0].id, "old-upload");
+
+  let old_artifact_store = TriggerUploadArtifactStore::new(
+    setup.sdk_directory.join("state").join("logger"),
+    "old-upload",
+    "buffer",
+  );
+  assert!(old_artifact_store.inflight_batch().await.unwrap().is_some());
+
+  let pinned = Box::pin(setup.log_upload_rx.recv());
+  assert!(poll!(pinned).is_pending());
+
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+
+  setup.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn pruning_last_buffer_marks_old_flush_completed() {
+  let buffer_id = "replacement-buffer";
+  let temp_directory = TempDir::with_prefix("consumertest").unwrap();
+  PendingTriggerUploadsStore::new(temp_directory.path())
+    .upsert(PersistedTriggerUpload {
+      id: "old-upload".to_string(),
+      source: PersistedTriggerUploadSource::ExplicitSessionCapture("old-upload".to_string()),
+      session_id: "old-session".to_string(),
+      buffers: vec![PersistedTriggerUploadBufferProgress {
+        buffer_id: buffer_id.to_string(),
+        lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromArtifact,
+        uploaded_batches_count: 1,
+        uploaded_logs_count: 1,
+      }],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromArtifact,
+    })
+    .await;
+
+  let (remote_flush_streaming_tx, _remote_flush_streaming_rx) = tokio::sync::mpsc::channel(1);
+  let mut setup = SetupMultiConsumer::new_with_remote_streaming_channel(
+    1,
+    1000,
+    temp_directory,
+    remote_flush_streaming_tx,
+  )
+  .await;
+  setup
+    .process_local_pending_flush_state
+    .mark_pending(FlushBufferId::ExplicitSessionCapture(
+      "old-upload".to_string(),
+    ));
+  let (buffer, mut producer) =
+    create_trigger_buffer(setup.sdk_directory.join(buffer_id).as_path()).await;
+
+  setup.add_trigger_buffer(buffer_id, buffer).await;
+  setup.sync_trigger_buffer_config(&[buffer_id]).await;
+  producer.write(b"fresh").unwrap();
+
+  setup
+    .trigger_upload_tx
+    .send(TriggerUpload::new(
+      vec![buffer_id.to_string()],
+      None,
+      TriggerUploadSource::RemoteCommand("new-upload".to_string()),
+      "new-session".to_string(),
+    ))
+    .await
+    .unwrap();
+
+  let upload = setup.next_upload().await;
+  assert_eq!(upload.payload.log_upload().proto_logs[0], b"fresh");
+  assert!(
+    !setup.flush_is_pending(&FlushBufferId::ExplicitSessionCapture(
+      "old-upload".to_string()
+    ))
+  );
+  assert!(setup.flush_is_pending(&FlushBufferId::RemoteCommand("new-upload".to_string())));
+
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+
+  setup.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn recovery_prefers_newest_persisted_upload_for_same_buffer() {
+  let temp_directory = TempDir::with_prefix("consumertest").unwrap();
+  let store = PendingTriggerUploadsStore::new(temp_directory.path());
+  store
+    .upsert(PersistedTriggerUpload {
+      id: "old-upload".to_string(),
+      source: PersistedTriggerUploadSource::ExplicitSessionCapture("old-upload".to_string()),
+      session_id: "session-old".to_string(),
+      buffers: vec![PersistedTriggerUploadBufferProgress {
+        buffer_id: "buffer".to_string(),
+        lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromArtifact,
+        uploaded_batches_count: 1,
+        uploaded_logs_count: 1,
+      }],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromArtifact,
+    })
+    .await;
+  TriggerUploadArtifactStore::new(
+    temp_directory.path().join("state").join("logger"),
+    "old-upload",
+    "buffer",
+  )
+  .stage_batch(vec![b"old".to_vec()])
+  .await
+  .unwrap();
+  TriggerUploadArtifactStore::new(
+    temp_directory.path().join("state").join("logger"),
+    "old-upload",
+    "buffer",
+  )
+  .promote_queued_batch_to_inflight()
+  .await
+  .unwrap()
+  .unwrap();
+
+  store
+    .upsert(PersistedTriggerUpload {
+      id: "new-upload".to_string(),
+      source: PersistedTriggerUploadSource::ExplicitSessionCapture("new-upload".to_string()),
+      session_id: "session-new".to_string(),
+      buffers: vec![PersistedTriggerUploadBufferProgress {
+        buffer_id: "buffer".to_string(),
+        lifecycle: PersistedTriggerUploadBufferLifecycle::UploadingFromArtifact,
+        uploaded_batches_count: 1,
+        uploaded_logs_count: 1,
+      }],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::UploadingFromArtifact,
+    })
+    .await;
+  let new_artifact_store = TriggerUploadArtifactStore::new(
+    temp_directory.path().join("state").join("logger"),
+    "new-upload",
+    "buffer",
+  );
+  new_artifact_store
+    .stage_batch(vec![b"new".to_vec()])
+    .await
+    .unwrap();
+  let new_batch = new_artifact_store
+    .promote_queued_batch_to_inflight()
+    .await
+    .unwrap()
+    .unwrap();
+
+  let buffer_path = temp_directory.path().join("buffer");
+  let (buffer, _producer) = create_trigger_buffer(buffer_path.as_path()).await;
+
+  let mut setup = SetupMultiConsumer::new_with_state(1, 1000, temp_directory).await;
+  setup.add_trigger_buffer("buffer", buffer).await;
+  setup.sync_trigger_buffer_config(&["buffer"]).await;
+
+  let recovered_upload = setup.next_upload().await;
+  assert_eq!(recovered_upload.uuid, new_batch.upload_uuid);
+  assert_eq!(recovered_upload.payload.log_upload().proto_logs.len(), 1);
+  assert_eq!(recovered_upload.payload.log_upload().proto_logs[0], b"new");
+
+  assert_eq!(setup.pending_trigger_uploads().await.len(), 1);
+  assert_eq!(setup.pending_trigger_uploads().await[0].id, "new-upload");
+
+  let old_artifact_store = TriggerUploadArtifactStore::new(
+    setup.sdk_directory.join("state").join("logger"),
+    "old-upload",
+    "buffer",
+  );
+  assert!(old_artifact_store.queued_batch().await.unwrap().is_none());
+  assert!(old_artifact_store.inflight_batch().await.unwrap().is_none());
+
+  recovered_upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: recovered_upload.uuid,
+    })
+    .unwrap();
+
+  setup.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
 async fn live_remote_trigger_upload_persists_across_shutdown() {
   let temp_directory = TempDir::with_prefix("consumertest").unwrap();
   let (remote_flush_streaming_tx, mut remote_flush_streaming_rx) = tokio::sync::mpsc::channel(1);
@@ -1909,8 +2337,12 @@ fn create_buffer(
   records_written: Counter,
   retention_handle: RetentionHandle,
 ) -> (Arc<Buffer>, bd_buffer::Producer) {
+  let buffer_name = buffer
+    .file_name()
+    .and_then(|name| name.to_str())
+    .unwrap_or("test");
   let (generic_ring_buffer, _) = Buffer::new(
-    "test",
+    buffer_name,
     1000,
     buffer.to_path_buf(),
     100_000,
