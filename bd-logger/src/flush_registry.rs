@@ -28,6 +28,9 @@ const PENDING_TRIGGER_UPLOADS_FILE_NAME: &str = "pending_trigger_uploads_snapsho
 // PersistedTriggerUploadLifecycle
 //
 
+// This lifecycle tracks the upload as a whole. Individual buffers also carry their own lifecycle
+// so restart recovery can distinguish "the upload exists" from "which buffers have already moved
+// from live-buffer reads into durable artifact replay".
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PersistedTriggerUploadLifecycle {
   ReadyToUpload,
@@ -90,6 +93,10 @@ pub fn flush_buffer_id_from_trigger_upload_source(source: &TriggerUploadSource) 
 // PersistedTriggerUpload
 //
 
+// Durable description of a trigger upload that survives process restart. This is the source of
+// truth for logger-side recovery: it records which logical flush triggered the upload, which
+// buffers were admitted to it in this process, the originating session, any deferred streaming
+// activation, and per-buffer progress.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PersistedTriggerUpload {
   pub id: String,
@@ -110,6 +117,9 @@ impl PersistedTriggerUpload {
   }
 
   pub fn streaming_proto(&self) -> Option<action_flush_buffers::Streaming> {
+    // Streaming is stored in a persistence-friendly shape so the registry stays decoupled from the
+    // full workflow proto surface. Recovery converts it back only when replay needs to re-issue
+    // the upload request.
     self
       .streaming
       .as_ref()
@@ -117,6 +127,9 @@ impl PersistedTriggerUpload {
   }
 }
 
+// This lifecycle is tracked per buffer so a single trigger upload can be partially progressed and
+// later resumed. That matters because a multi-buffer flush may stage and upload some buffers before
+// the process dies, leaving recovery to continue only the remaining work.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PersistedTriggerUploadBufferLifecycle {
   Pending,
@@ -136,6 +149,8 @@ pub struct PersistedTriggerUploadBufferProgress {
 
 impl PersistedTriggerUploadBufferProgress {
   pub fn new(buffer_id: String) -> Self {
+    // Newly persisted uploads start with zero durable progress. The consumer updates these counts
+    // only after artifact-backed chunks have actually been uploaded successfully.
     Self {
       buffer_id,
       lifecycle: PersistedTriggerUploadBufferLifecycle::Pending,
@@ -153,6 +168,8 @@ pub struct PersistedTriggerUploadStreaming {
 
 impl From<&action_flush_buffers::Streaming> for PersistedTriggerUploadStreaming {
   fn from(streaming: &action_flush_buffers::Streaming) -> Self {
+    // The registry only needs the subset of streaming configuration required to reconstruct the
+    // deferred activation after restart. Everything else stays in the workflow-side proto.
     let max_logs_count = streaming.termination_criteria.iter().find_map(|criterion| {
       criterion.type_.as_ref().map(
         |action_flush_buffers::streaming::termination_criterion::Type::LogsCount(logs_count)| {
@@ -170,6 +187,7 @@ impl From<&action_flush_buffers::Streaming> for PersistedTriggerUploadStreaming 
 
 impl PersistedTriggerUploadStreaming {
   pub fn to_proto(&self) -> action_flush_buffers::Streaming {
+    // Reconstruct just enough proto state for recovery to re-issue remote-streaming activation.
     let termination_criteria = self.max_logs_count.map_or_else(Vec::new, |max_logs_count| {
       vec![action_flush_buffers::streaming::TerminationCriterion {
         type_: Some(
@@ -196,6 +214,9 @@ impl PersistedTriggerUploadStreaming {
 // PendingTriggerUploadsSnapshot
 //
 
+// The on-disk file contains one compressed protobuf snapshot holding every pending upload. We do
+// not shard by upload ID because the set is expected to stay small and recovery wants the full
+// picture at startup.
 #[proto_serializable]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct PendingTriggerUploadsSnapshot {
@@ -207,6 +228,9 @@ struct PendingTriggerUploadsSnapshot {
 // PersistedTriggerUploadRecord
 //
 
+// These `*Record` types are the protobuf serialization boundary for the registry. The higher-level
+// Rust types above are the in-memory API used by the logger; the record layer exists so we can
+// evolve storage without leaking protobuf concerns into the rest of the upload pipeline.
 #[proto_serializable]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct PersistedTriggerUploadRecord {
@@ -469,6 +493,9 @@ struct Inner {
 // PendingTriggerUploadsStore
 //
 
+// Durable registry of trigger uploads that have been admitted by the logger but not yet fully
+// completed. `ProcessLocalPendingFlushState` in bd-workflows is only an in-memory mirror of flush
+// IDs; this store is the authoritative restart-safe state that recovery reads back on startup.
 #[derive(Clone)]
 pub struct PendingTriggerUploadsStore {
   inner: Arc<Mutex<Inner>>,
@@ -490,6 +517,8 @@ impl PendingTriggerUploadsStore {
   }
 
   pub async fn upsert(&self, upload: PersistedTriggerUpload) {
+    // Upsert by logical upload ID so repeated scheduling/recovery rewrites the same durable entry
+    // instead of accumulating stale copies for the same flush.
     self
       .mutate(|uploads| {
         uploads.retain(|existing| existing.id != upload.id);
@@ -505,6 +534,8 @@ impl PendingTriggerUploadsStore {
   }
 
   pub async fn mark_uploading(&self, id: &str, buffer_id: &str) {
+    // This transition records that the consumer is still reading live buffer contents for the
+    // given buffer and has not yet switched over to replaying staged artifact batches.
     self
       .mutate(|uploads| {
         for upload in uploads {
@@ -524,6 +555,8 @@ impl PendingTriggerUploadsStore {
   }
 
   pub async fn mark_uploading_from_artifact(&self, id: &str, buffer_id: &str) {
+    // Once a batch is durably staged and replayed from artifact storage, restart recovery should
+    // resume from that artifact backlog first rather than from the raw ring buffer head.
     self
       .mutate(|uploads| {
         for upload in uploads {
@@ -543,6 +576,8 @@ impl PendingTriggerUploadsStore {
   }
 
   pub async fn record_uploaded_chunk(&self, id: &str, buffer_id: &str, uploaded_logs_count: u64) {
+    // Progress is recorded only for successfully uploaded artifact-backed chunks. This means the
+    // registry reflects durable upload history rather than speculative reads from the live buffer.
     self
       .mutate(|uploads| {
         for upload in uploads {
@@ -574,6 +609,8 @@ impl PendingTriggerUploadsStore {
     Self::ensure_loaded(&self.state_path, &mut inner).await;
     mutate(&mut inner.uploads);
 
+    // Keep the in-memory mirror and on-disk snapshot coupled under the same mutex so every public
+    // mutation either persists the new state or logs a warning about the failed durability step.
     if let Err(e) = Self::persist(&self.state_path, &inner.uploads).await {
       log::warn!(
         "failed to persist pending trigger uploads to {}: {e}",
@@ -584,6 +621,9 @@ impl PendingTriggerUploadsStore {
 
   async fn ensure_loaded(state_path: &Path, inner: &mut Inner) {
     if !inner.loaded {
+      // The store is lazy-loaded because most processes only need this state when recovery or a
+      // trigger upload first touches it. After the first load, the mutex-protected in-memory copy
+      // is treated as the working set for the remainder of the process.
       inner.uploads = Self::load(state_path).await;
       inner.loaded = true;
     }
@@ -595,6 +635,8 @@ impl PendingTriggerUploadsStore {
       Ok(None) => Vec::new(),
       Ok(Some(snapshot)) => snapshot.uploads.into_iter().map(Into::into).collect(),
       Err(e) => {
+        // A corrupt snapshot is treated as unrecoverable stale state. We delete it and proceed
+        // empty rather than trapping the logger in a permanent startup failure loop.
         log::warn!(
           "failed to deserialize pending trigger uploads from {}: {e}",
           state_path.display()
@@ -606,6 +648,8 @@ impl PendingTriggerUploadsStore {
   }
 
   async fn persist(state_path: &Path, uploads: &[PersistedTriggerUpload]) -> anyhow::Result<()> {
+    // An empty registry deletes the snapshot entirely so the absence of the file means "no pending
+    // uploads" without requiring a serialized empty protobuf.
     if uploads.is_empty() {
       return delete_file_if_exists_async(state_path).await;
     }

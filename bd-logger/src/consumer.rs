@@ -275,6 +275,12 @@ impl BufferUploadManager {
       buffer_ids
     };
 
+    // Trigger uploads are coordinated in two phases. First we decide which buffers can actually
+    // participate in this upload and register a consumer for each of them. Only after that do we
+    // persist a single upload record describing the concrete buffer set. Persisting the filtered
+    // set rather than the original request means restart recovery can replay exactly the work that
+    // was scheduled in this process.
+
     for buffer_id in buffer_ids {
       // If there is already an active upload for this buffer, do nothing. This may happen if an
       // aggressive workflow is used which can match a second (or more) log within the time it takes
@@ -307,6 +313,9 @@ impl BufferUploadManager {
     }
 
     if !eligible_buffer_ids.is_empty() {
+      // Persist the upload before any background worker can complete. That gives restart recovery
+      // a durable description of the upload even if the process dies after tasks are spawned but
+      // before any individual buffer batch has been uploaded.
       self
         .pending_trigger_uploads
         .upsert(PersistedTriggerUpload {
@@ -327,6 +336,9 @@ impl BufferUploadManager {
         .mark_pending(flush_buffer_id_from_trigger_upload_source(&source));
     }
 
+    // Remote-command streaming should only become visible once the associated trigger upload has
+    // actually completed. We therefore carry the activation request alongside the upload and only
+    // deliver it from the aggregate completion task below.
     let remote_streaming_request = if is_remote_streaming_activation {
       streaming.map(|streaming| {
         RemoteFlushStreamingRequest::new(
@@ -395,7 +407,8 @@ impl BufferUploadManager {
 
     // Since we have one completion handler for the entire set of trigger uploads, we need to
     // spawn a task to wait for all of the individual trigger uploads to complete before we can
-    // signal that the trigger uploads are complete.
+    // signal that the trigger uploads are complete. The durable upload entry stays in place until
+    // every buffer upload succeeds and any remote-streaming activation has been handed off.
     let pending_trigger_uploads = self.pending_trigger_uploads.clone();
     let process_local_pending_flush_state = self.process_local_pending_flush_state.clone();
     let remote_flush_streaming_tx = self.remote_flush_streaming_tx.clone();
@@ -530,6 +543,9 @@ impl BufferUploadManager {
     configured_trigger_buffer_ids: HashSet<String>,
     trigger_upload_complete_tx: &Sender<String>,
   ) -> anyhow::Result<()> {
+    // Recovery treats the durable registry as authoritative. We first reconcile any persisted
+    // upload against the current trigger-buffer config, then feed the surviving work back through
+    // the normal scheduling path so live and recovered uploads share one execution path.
     for pending_upload in self.pending_trigger_uploads.pending_uploads().await {
       let missing_buffer_ids: Vec<_> = pending_upload
         .buffers
@@ -572,6 +588,9 @@ impl BufferUploadManager {
           continue;
         }
 
+        // Rewrite the durable record with only the buffers that still exist in config. This keeps
+        // restart recovery from retrying buffers that can no longer be resolved in the current
+        // process.
         log::debug!(
           "pruning persisted trigger upload {} due to missing configured trigger buffers {:?}; \
            retaining {:?}",
@@ -1055,6 +1074,10 @@ struct CompleteBufferUpload {
   // State upload handle for uploading state snapshots before logs.
   state_upload_handle: Option<Arc<StateUploadHandle>>,
 
+  // The trigger upload persists in two layers while it is in flight: the registry tracks lifecycle
+  // and per-buffer progress, while the artifact store holds concrete log batches that are safe to
+  // replay after restart. The remaining fields track the live, not-yet-staged batch being built
+  // from the buffer in this process.
   pending_trigger_uploads: PendingTriggerUploadsStore,
   pending_trigger_upload_id: String,
   has_marked_uploading_from_buffer: bool,
@@ -1107,6 +1130,10 @@ impl CompleteBufferUpload {
     // TODO(snowp): Consider tokio::task::yield_now to avoid starving other tasks if the batch size
     // is large.
 
+    // A recovered upload may already have durable batches waiting in the artifact store. We first
+    // reconcile any queued artifact with the current buffer head, then flush persisted work before
+    // reading new logs. That ordering avoids re-uploading batches that were already staged before
+    // the previous process died.
     self.discard_duplicate_queued_batch().await?;
     self.flush_persisted_batches().await?;
 
@@ -1169,6 +1196,10 @@ impl CompleteBufferUpload {
       return Ok(());
     };
 
+    // A queued batch has been durably staged but has not yet been promoted to inflight. If the
+    // current buffer head still matches the first log in that artifact, we know this process has
+    // not advanced past the staged batch, so it is safe to drop the queued artifact and rebuild it
+    // from the live buffer instead of replaying a stale duplicate copy.
     if queued_batch
       .logs
       .first()
@@ -1189,6 +1220,10 @@ impl CompleteBufferUpload {
       return Ok(());
     }
 
+    // The critical ordering here is: stage the concrete logs durably, then advance the live buffer
+    // cursor, then promote the staged batch to the single inflight artifact. That guarantees a
+    // crash cannot lose logs silently: after restart we will either find them still readable in the
+    // buffer or recover them from the artifact store.
     self
       .artifact_store
       .stage_batch(self.batch_builder.take())
@@ -1212,6 +1247,9 @@ impl CompleteBufferUpload {
   }
 
   async fn flush_persisted_batches(&mut self) -> anyhow::Result<()> {
+    // Recovery may leave both an inflight artifact and additional queued artifacts on disk. We
+    // always flush the inflight batch first, then keep promoting queued batches until the durable
+    // backlog is empty before returning to live buffer reads.
     if let Some(batch) = self.artifact_store.inflight_batch().await? {
       self.flush_batch(batch, true).await?;
     }
@@ -1237,6 +1275,9 @@ impl CompleteBufferUpload {
     let timestamp_range = timestamp_range_for_logs(&batch.logs);
     log::debug!("flushing {logs_len} logs from trigger artifact");
 
+    // Once a batch is uploaded from durable artifact storage, the registry should reflect that the
+    // buffer is no longer being read directly from the live ring buffer. This distinction matters
+    // for restart because subsequent recovery should resume from the artifact backlog first.
     self
       .pending_trigger_uploads
       .mark_uploading_from_artifact(&self.pending_trigger_upload_id, &self.buffer_id)
@@ -1269,6 +1310,8 @@ impl CompleteBufferUpload {
       UploadResult::Success => {
         self.artifact_store.clear_inflight_batch().await?;
 
+        // Record progress before attempting any buffer-prefix cleanup. The uploaded batch is now
+        // durable history regardless of whether the current buffer still matches its contents.
         self
           .pending_trigger_uploads
           .record_uploaded_chunk(&self.pending_trigger_upload_id, &self.buffer_id, logs_len)
@@ -1293,6 +1336,10 @@ impl CompleteBufferUpload {
       return Ok(());
     }
 
+    // This path only runs for recovered artifact uploads. The previous process may have staged and
+    // even partially uploaded logs before dying, so the live buffer can contain a prefix that is
+    // now redundant. We only retire the longest matching prefix and stop on the first divergence so
+    // newly written logs behind the recovered artifact remain intact.
     let mut matched_logs = 0;
     for uploaded_log in uploaded_logs {
       match self.consumer.start_read(false) {
