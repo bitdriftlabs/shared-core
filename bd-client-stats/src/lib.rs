@@ -206,13 +206,6 @@ impl StatsCollector for Stats {
     }
   }
 
-  fn record_dynamic_histogram(&self, tags: BTreeMap<String, String>, id: &str, value: f64) {
-    log::debug!("recording dynamic histogram: id={id}, value={value}, tags={tags:?}");
-    if let Some(histogram) = self.workflow_dynamic_histogram(tags, id) {
-      histogram.observe(value);
-    }
-  }
-
   fn workflow_dynamic_counter(
     &self,
     tags: BTreeMap<String, String>,
