@@ -13,6 +13,7 @@ use crate::async_log_buffer::AsyncLogBuffer;
 use crate::client_config::{self, LoggerUpdate};
 use crate::consumer::BufferUploadManager;
 use crate::directory_lock::DirectoryLock;
+use crate::flush_registry::PendingTriggerUploadsStore;
 use crate::internal::InternalLogger;
 use crate::log_replay::LoggerReplay;
 use crate::logger::{Logger, PendingEntityIdUpdate};
@@ -50,6 +51,7 @@ use bd_state::{
   string_value,
 };
 use bd_time::{SystemTimeProvider, Ticker, TimeProvider};
+use bd_workflows::engine::ProcessLocalPendingFlushState;
 use futures_util::{Future, try_join};
 use parking_lot::Mutex;
 use std::pin::Pin;
@@ -313,6 +315,7 @@ impl LoggerBuilder {
       (flush_handles.flusher, flush_handles.flush_trigger)
     };
     let (trigger_upload_tx, trigger_upload_rx) = tokio::sync::mpsc::channel(1);
+    let (remote_flush_streaming_tx, remote_flush_streaming_rx) = tokio::sync::mpsc::channel(1);
     let (flush_buffers_tx, flush_buffers_rx) = tokio::sync::mpsc::channel(1);
     let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
     let (report_proc_tx, report_proc_rx) = tokio::sync::mpsc::channel(1);
@@ -329,6 +332,8 @@ impl LoggerBuilder {
       ]));
 
     let sdk_status_tracker = bd_client_common::sdk_status::SdkStatusTracker::new();
+    let pending_trigger_uploads = PendingTriggerUploadsStore::new(&self.params.sdk_directory);
+    let process_local_pending_flush_state = Arc::new(ProcessLocalPendingFlushState::default());
 
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
       UninitializedLoggingContext::new(
@@ -337,11 +342,13 @@ impl LoggerBuilder {
         scope.clone(),
         stats,
         trigger_upload_tx.clone(),
+        remote_flush_streaming_rx,
         data_upload_tx.clone(),
         flush_buffers_tx,
         flusher_trigger.clone(),
         1024 * 1024,
         is_tracing_active.clone(),
+        process_local_pending_flush_state.clone(),
       ),
       LoggerReplay,
       self.params.session_strategy.clone(),
@@ -534,12 +541,16 @@ impl LoggerBuilder {
       let buffer_uploader = BufferUploadManager::new(
         data_upload_tx_clone.clone(),
         &runtime_loader,
+        &self.params.sdk_directory,
         shutdown_handle.make_shutdown(),
         buffer_event_rx,
         trigger_upload_rx,
+        remote_flush_streaming_tx,
         &scope,
         log.clone(),
         state_upload_handle,
+        pending_trigger_uploads,
+        process_local_pending_flush_state,
       );
 
       let updater = Arc::new(client_config::Config::new_with_time_provider(

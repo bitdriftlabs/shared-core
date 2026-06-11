@@ -572,7 +572,7 @@ impl RingBufferCursorConsumer for CursorConsumerImpl {
     )
   }
 
-  fn advance_read_pointer(&mut self) -> Result<()> {
+  fn advance_read_pointers(&mut self, count: usize) -> Result<()> {
     let Some(parent) = self.buffer.upgrade() else {
       return Err(Error::AbslStatus(
         AbslCode::FailedPrecondition,
@@ -581,6 +581,10 @@ impl RingBufferCursorConsumer for CursorConsumerImpl {
     };
 
     let mut common_ring_buffer = parent.common_ring_buffer.locked_data.lock();
+    if count == 0 {
+      return Ok(());
+    }
+
     if Self::get_reservations(&common_ring_buffer)?.is_empty() {
       return Err(Error::AbslStatus(
         AbslCode::FailedPrecondition,
@@ -588,16 +592,19 @@ impl RingBufferCursorConsumer for CursorConsumerImpl {
       ));
     }
 
-    let next_reservation = Self::get_reservations(&common_ring_buffer)?
-      .front()
-      .ok_or(InvariantError::Invariant)?
-      .clone();
-    Self::get_reservations_mut(&mut common_ring_buffer)?.pop_front();
-    LockedData::finish_read_common(
-      &mut common_ring_buffer,
-      &parent.common_ring_buffer.conditions,
-      &next_reservation,
-    )?;
+    for _ in 0 .. count {
+      let next_reservation = Self::get_reservations(&common_ring_buffer)?
+        .front()
+        .ok_or(InvariantError::Invariant)?
+        .clone();
+      Self::get_reservations_mut(&mut common_ring_buffer)?.pop_front();
+      LockedData::finish_read_common(
+        &mut common_ring_buffer,
+        &parent.common_ring_buffer.conditions,
+        &next_reservation,
+      )?;
+    }
+
     write_header_crc32(&mut common_ring_buffer);
     parent.no_consumer_reservation_condition.notify_all();
     Ok(())
@@ -903,6 +910,49 @@ impl RingBufferImpl {
     }))
   }
 
+  fn register_cursor_consumer_inner(
+    self: &Arc<Self>,
+    reset_cursor_read_start: bool,
+    log_message: &str,
+  ) -> Result<Box<dyn RingBufferCursorConsumer>> {
+    let mut common_ring_buffer = self.common_ring_buffer.locked_data.lock();
+    if common_ring_buffer.extra_locked_data.consumer.is_some() {
+      return Err(Error::AbslStatus(
+        AbslCode::FailedPrecondition,
+        "consumer already registered".to_string(),
+      ));
+    }
+
+    if reset_cursor_read_start {
+      common_ring_buffer.reset_cursor_read_start();
+    }
+
+    log::trace!("({}) {log_message}", common_ring_buffer.name);
+    let cursor_consumer = Box::new(CursorConsumerImpl {
+      buffer: Arc::downgrade(self),
+      readable: common_ring_buffer.readable.subscribe(),
+    });
+    common_ring_buffer.extra_locked_data.consumer = Some(ConsumerType::CursorConsumer(
+      IntrusiveQueueWithFreeList::default(),
+    ));
+
+    Ok(cursor_consumer)
+  }
+
+  // This entry point is only for aggregate trigger uploads after the aggregate buffer has already
+  // taken its producer-side lock, drained any in-flight reservations, and flushed RAM into the
+  // non-volatile file. In normal overwrite mode we reject cursor consumers because a live producer
+  // can wrap the buffer and invalidate a long-lived cursor. Trigger uploads need cursor semantics
+  // anyway so they can queue multiple reads and then bulk-advance them only after a durable batch
+  // handoff has been persisted. The outer aggregate lock makes that safe here by freezing writes
+  // before the cursor is registered, and we reset the cursor start so restart recovery begins from
+  // the current unread head rather than any stale cursor position from a previous consumer.
+  pub fn register_locked_cursor_consumer(
+    self: Arc<Self>,
+  ) -> Result<Box<dyn RingBufferCursorConsumer>> {
+    self.register_cursor_consumer_inner(true, "registering locked trigger cursor consumer")
+  }
+
   /// Runs `f` against the oldest record while holding the buffer lock.
   ///
   /// The closure must be non-blocking and must not await.
@@ -965,14 +1015,7 @@ impl RingBuffer for RingBufferImpl {
   }
 
   fn register_cursor_consumer(self: Arc<Self>) -> Result<Box<dyn RingBufferCursorConsumer>> {
-    let mut common_ring_buffer = self.common_ring_buffer.locked_data.lock();
-    if common_ring_buffer.extra_locked_data.consumer.is_some() {
-      return Err(Error::AbslStatus(
-        AbslCode::FailedPrecondition,
-        "consumer already registered".to_string(),
-      ));
-    }
-
+    let common_ring_buffer = self.common_ring_buffer.locked_data.lock();
     if matches!(common_ring_buffer.allow_overwrite, AllowOverwrite::Yes) {
       return Err(Error::AbslStatus(
         AbslCode::FailedPrecondition,
@@ -984,18 +1027,8 @@ impl RingBuffer for RingBufferImpl {
     // back and forth between a cursor and regular consumer the cursor state is not reset and
     // incorrect results will be returned. This is not needed right now but potentially fix this
     // later and add tests for it.
-    log::trace!("({}) registering cursor consumer", common_ring_buffer.name);
-    let cursor_consumer = Box::new(CursorConsumerImpl {
-      buffer: Arc::downgrade(&self),
-      // We subscribe to the watch here to avoid having to lock the buffer just to clone out the
-      // watch on read.
-      readable: common_ring_buffer.readable.subscribe(),
-    });
-    common_ring_buffer.extra_locked_data.consumer = Some(ConsumerType::CursorConsumer(
-      IntrusiveQueueWithFreeList::default(),
-    ));
-
-    Ok(cursor_consumer)
+    drop(common_ring_buffer);
+    self.register_cursor_consumer_inner(false, "registering cursor consumer")
   }
 
   fn wait_for_drain(&self) {

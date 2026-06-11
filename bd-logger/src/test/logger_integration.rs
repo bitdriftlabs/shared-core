@@ -18,6 +18,8 @@ use crate::{
   log_level,
   wait_for,
 };
+use action_flush_buffers::Streaming as FlushStreaming;
+use action_flush_buffers::streaming::{TerminationCriterion, termination_criterion};
 use assert_matches::assert_matches;
 use bd_client_common::safe_file_cache::load_cache_retry_count_from_file;
 use bd_error_reporter::reporter::UnexpectedErrorHandler;
@@ -39,6 +41,7 @@ use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::filter::filter::Filter;
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::logging::payload::log::CompressedContents;
+use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
 use bd_runtime::runtime::FeatureFlag;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
 use bd_session::Strategy;
@@ -1323,6 +1326,148 @@ fn workflow_start_tracing_status_tracks_streaming_carryover() {
 }
 
 #[test]
+fn workflow_start_tracing_with_streaming_replays_before_new_session_after_restart() {
+  // This restart integration covers the workflow-owned path, not the remote-command path.
+  // The contract we care about is:
+  // 1. a workflow-triggered flush-with-streaming that has reached durable pending state survives a
+  //    process restart,
+  // 2. tracing/streaming carry over long enough for the replayed upload to be observed after
+  //    restart, and
+  // 3. the first post-restart event can still run through the carried-over stream before the new
+  //    session tears that stream down.
+  //
+  // Gaps: this test does not try to prove every ordering detail of replay completion versus
+  // streaming teardown. The logger integration harness cannot currently wait on an explicit
+  // "replayed workflow stream fully removed" signal, so we validate the externally visible
+  // contract instead of overfitting to a particular internal schedule.
+  //
+  // Inherent instability: once the replayed stream is active again, the exact point where the new
+  // session clears it is one event-loop boundary later. That means the first post-restart log may
+  // or may not still be present in the later trigger-buffer flush, depending on whether it was
+  // retired before the explicit flush below. We document and accept that race instead of masking
+  // it with sleeps.
+  //
+  // Future work for restart safety: expose a deterministic hook from the logging/workflow engine
+  // for "replayed streaming action installed" and "replayed streaming action removed on session
+  // rollover" so the integration can assert those transitions directly.
+  let b = state("B");
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    rule!(message_equals("start tracing with streaming")),
+    &[
+      make_start_tracing_action(),
+      make_flush_buffers_action(
+        &["trigger_buffer_id"],
+        Some((vec!["default"], 10)),
+        "trace_stream_action",
+      ),
+    ],
+  );
+
+  let mut setup = Setup::new();
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![
+        default_buffer_config(
+          Type::CONTINUOUS,
+          make_buffer_matcher_matching_resource_logs().into(),
+        ),
+        BufferConfigBuilder {
+          name: "trigger_buffer_id",
+          buffer_type: Type::TRIGGER,
+          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+          non_volatile_size: 100_000,
+          volatile_size: 10_000,
+        }
+        .build(),
+      ],
+      workflows: vec![WorkflowBuilder::new("workflow", &[&a, &b]).build()],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  assert!(!setup.logger_handle.is_tracing_active());
+
+  setup.server.suppress_next_log_upload_response();
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "start tracing with streaming".into(),
+    [].into(),
+    [].into(),
+  );
+
+  wait_for!(setup.logger_handle.is_tracing_active());
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!(vec!["trace_stream_action"], *log_upload.logs()[0].workflow_action_ids());
+  });
+
+  let sdk_directory = setup.sdk_directory.clone();
+  drop(setup);
+
+  let mut setup = Setup::new_with_options(SetupOptions {
+    sdk_directory,
+    ..Default::default()
+  });
+
+  wait_for!(setup.logger_handle.is_tracing_active());
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!(vec!["trace_stream_action"], *log_upload.logs()[0].workflow_action_ids());
+  });
+
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "message streamed after restart".into(),
+    [].into(),
+    [].into(),
+  );
+
+  wait_for!(!setup.logger_handle.is_tracing_active());
+
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "message after streaming termination".into(),
+    [].into(),
+    [].into(),
+  );
+
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffers(vec![
+      "trigger_buffer_id".to_string(),
+    ]));
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    let messages: Vec<_> = log_upload
+      .logs()
+      .iter()
+      .map(|log| log.message().to_string())
+      .collect();
+    // Both outcomes are valid here. The replayed stream is guaranteed to survive long enough for
+    // the first post-restart event to observe it, but by the time we explicitly flush the trigger
+    // buffer the replayed event may already have been retired.
+    assert!(
+      messages
+        == vec!["message after streaming termination".to_string()]
+        || messages
+          == vec![
+            "message streamed after restart".to_string(),
+            "message after streaming termination".to_string(),
+          ]
+    );
+  });
+}
+
+#[test]
 fn workflow_generate_log_to_histogram() {
   let metadata = Arc::new(LogMetadata {
     timestamp: Mutex::new(datetime!(2023-10-01 00:00:00 UTC)),
@@ -2159,14 +2304,459 @@ fn remote_buffer_upload() {
   // No logs should be uploaded at this point.
   assert_matches!(setup.server.blocking_next_log_upload(), None);
 
-  // Trigger a remote upload of the `default` buffer.
+  // Trigger a remote upload with an empty buffer list. This should flush all eligible trigger
+  // buffers, which in this test is only `default`.
   setup
     .current_api_stream()
-    .blocking_stream_action(StreamAction::FlushBuffers(vec!["default".to_string()]));
+    .blocking_stream_action(StreamAction::FlushBuffers(vec![]));
 
   // We receive a log upload without intent negotiation.
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
       assert_eq!(log_upload.logs().len(), 10);
+  });
+}
+
+#[test]
+fn remote_buffer_upload_with_streaming_matches_workflow_streaming_behavior() {
+  // This is the same-process semantic baseline for the remote-command path. It proves that a
+  // server-initiated flush-with-streaming behaves like the workflow-owned streaming feature in the
+  // steady state: the trigger buffer is uploaded immediately, later logs are rerouted into the
+  // destination continuous buffer, and the stream terminates once its log-count criterion is met.
+  //
+  // Gaps: this test intentionally stays away from restart recovery, multi-buffer partial success,
+  // and mpsc backpressure. Those cases are covered elsewhere because they are difficult to make
+  // truthful at this layer without asserting on unstable scheduling details.
+  //
+  // Future work for restart safety: if the harness gains a deterministic way to observe the moment
+  // a remote streaming action becomes active, we can add a higher-level restart integration that
+  // checks post-restart rerouting here rather than only at the lower consumer/workflow layers.
+  let mut setup = Setup::new();
+
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![
+        default_buffer_config(
+          Type::CONTINUOUS,
+          make_buffer_matcher_matching_resource_logs().into(),
+        ),
+        BufferConfigBuilder {
+          name: "trigger_buffer_id",
+          buffer_type: Type::TRIGGER,
+          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+          non_volatile_size: 100_000,
+          volatile_size: 10_000,
+        }
+        .build(),
+      ],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  setup.log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "buffered before remote flush".into(),
+    [].into(),
+    [].into(),
+    None,
+  );
+
+  assert_matches!(setup.server.blocking_next_log_upload(), None);
+
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffersWithStreaming {
+      buffers: vec!["trigger_buffer_id".to_string()],
+      streaming: FlushStreaming {
+        destination_streaming_buffer_ids: vec!["default".to_string()],
+        termination_criteria: vec![TerminationCriterion {
+          type_: Some(termination_criterion::Type::LogsCount(
+            termination_criterion::LogsCount {
+              max_logs_count: 10,
+              ..Default::default()
+            },
+          )),
+          ..Default::default()
+        }],
+        ..Default::default()
+      },
+    });
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.logs().len(), 1);
+  });
+
+  for _ in 0 .. 10 {
+    setup.log(
+      log_level::DEBUG,
+      LogType::NORMAL,
+      "message that should be remotely streamed".into(),
+      [].into(),
+      [].into(),
+      None,
+    );
+  }
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "default");
+    assert_eq!(log_upload.logs().len(), 10);
+  });
+
+  setup.log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "message after remote streaming termination".into(),
+    [].into(),
+    [].into(),
+    None,
+  );
+
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffers(vec![
+      "trigger_buffer_id".to_string(),
+    ]));
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.logs().len(), 1);
+  });
+}
+
+#[test]
+fn remote_buffer_upload_replays_after_restart_with_blocked_response() {
+  // This restart integration exercises the durable in-flight remote-upload window.
+  //
+  // What is being tested:
+  // 1. the remote-command trigger upload is durably recorded once the server has received the log
+  //    upload request but before the response comes back,
+  // 2. dropping the logger in that state leaves enough on disk for a fresh process to replay the
+  //    trigger upload after restart, and
+  // 3. the replayed upload is visible at logger-integration level without re-sending config.
+  //
+  // Why the test uses a blocked response instead of a suppressed response: a blocked response
+  // proves the request really made it to the server and then stalled in the in-flight state. That
+  // is the narrow restart-safety window we care about here.
+  //
+  // Gaps: we intentionally do not assert that remote log streaming is already active after the
+  // replayed upload in this integration. At this layer the replay upload, trigger-buffer unlock,
+  // and remote streaming activation all happen on neighboring async boundaries, which makes a
+  // post-restart streaming assertion noisy and timing-sensitive. The durable replay semantics for
+  // remote streaming itself are covered below this layer by consumer/workflow tests.
+  //
+  // Future work for restart safety: add an explicit test hook that waits for "replayed remote
+  // stream activated" after the replayed upload completes, so logger_integration can cover the
+  // full end-to-end remote restart path without sleeps or scheduler assumptions.
+  let mut setup = Setup::new();
+
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![
+        default_buffer_config(
+          Type::CONTINUOUS,
+          make_buffer_matcher_matching_resource_logs().into(),
+        ),
+        BufferConfigBuilder {
+          name: "trigger_buffer_id",
+          buffer_type: Type::TRIGGER,
+          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+          non_volatile_size: 100_000,
+          volatile_size: 10_000,
+        }
+        .build(),
+      ],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  setup.log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "buffered before remote flush".into(),
+    [].into(),
+    [].into(),
+    None,
+  );
+
+  assert_matches!(setup.server.blocking_next_log_upload(), None);
+
+  let _blocked_log_upload_response = setup.server.block_next_log_upload_response();
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffersWithStreaming {
+      buffers: vec!["trigger_buffer_id".to_string()],
+      streaming: FlushStreaming {
+        destination_streaming_buffer_ids: vec!["default".to_string()],
+        termination_criteria: vec![TerminationCriterion {
+          type_: Some(termination_criterion::Type::LogsCount(
+            termination_criterion::LogsCount {
+              max_logs_count: 10,
+              ..Default::default()
+            },
+          )),
+          ..Default::default()
+        }],
+        ..Default::default()
+      },
+    });
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!(log_upload.logs()[0].message(), "buffered before remote flush");
+  });
+
+  let sdk_directory = setup.sdk_directory.clone();
+  drop(setup);
+
+  let mut setup = Setup::new_with_options(SetupOptions {
+    sdk_directory,
+    ..Default::default()
+  });
+
+  // The stable contract at this layer is the replayed upload itself. Streaming re-activation after
+  // that replay is intentionally left to lower-level tests until the harness can observe it
+  // deterministically.
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!(log_upload.logs()[0].message(), "buffered before remote flush");
+  });
+}
+
+#[test]
+fn replayed_remote_upload_does_not_resurrect_stale_trigger_payload_on_later_remote_flush() {
+  // This is the integration check for the restart contract behind the stale-cleanup work.
+  // The primary path is still: persist the remote upload, restart, replay it, and let that replay
+  // drain the old buffer contents normally. The buffer-scoped pruning we added is defense in
+  // depth for cases where stale durable state survives longer than it should, not the main way a
+  // healthy restart is expected to make progress.
+  //
+  // What this test proves:
+  // 1. a remote trigger upload survives process death and is replayed after restart,
+  // 2. that replay drains the pre-restart buffered data once, and
+  // 3. a later same-buffer remote flush does not resurrect that stale trigger payload.
+  //
+  // Gap: this test intentionally does not try to pin down the narrower race where a second remote
+  // flush arrives while the replayed upload is still in flight. That timing-sensitive active gate
+  // behavior is covered in the lower consumer tests where we can drive the state deterministically.
+  let mut setup = Setup::new();
+
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![
+        default_buffer_config(
+          Type::CONTINUOUS,
+          make_buffer_matcher_matching_resource_logs().into(),
+        ),
+        BufferConfigBuilder {
+          name: "trigger_buffer_id",
+          buffer_type: Type::TRIGGER,
+          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+          non_volatile_size: 100_000,
+          volatile_size: 10_000,
+        }
+        .build(),
+      ],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  setup.log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "buffered before remote flush".into(),
+    [].into(),
+    [].into(),
+    None,
+  );
+
+  assert_matches!(setup.server.blocking_next_log_upload(), None);
+
+  let _blocked_log_upload_response = setup.server.block_next_log_upload_response();
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffersWithStreaming {
+      buffers: vec!["trigger_buffer_id".to_string()],
+      streaming: FlushStreaming {
+        destination_streaming_buffer_ids: vec!["default".to_string()],
+        termination_criteria: vec![TerminationCriterion {
+          type_: Some(termination_criterion::Type::LogsCount(
+            termination_criterion::LogsCount {
+              max_logs_count: 10,
+              ..Default::default()
+            },
+          )),
+          ..Default::default()
+        }],
+        ..Default::default()
+      },
+    });
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!(log_upload.logs()[0].message(), "buffered before remote flush");
+  });
+
+  let sdk_directory = setup.sdk_directory.clone();
+  drop(setup);
+
+  let mut setup = Setup::new_with_options(SetupOptions {
+    sdk_directory,
+    ..Default::default()
+  });
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!(log_upload.logs()[0].message(), "buffered before remote flush");
+  });
+
+  setup.log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "buffered after restart".into(),
+    [].into(),
+    [].into(),
+    None,
+  );
+
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffers(vec![
+      "trigger_buffer_id".to_string(),
+    ]));
+
+  assert_matches!(setup.server.blocking_next_log_upload(), None);
+}
+
+#[test]
+fn remote_buffer_upload_with_streaming_does_not_extend_active_workflow_streaming() {
+  let b = state("B");
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    rule!(message_equals("start workflow stream")),
+    &[make_flush_buffers_action(
+      &["trigger_buffer_id"],
+      Some((vec!["default"], 10)),
+      "workflow_stream_action_id",
+    )],
+  );
+
+  let mut setup = Setup::new();
+
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![
+        default_buffer_config(
+          Type::CONTINUOUS,
+          make_buffer_matcher_matching_resource_logs().into(),
+        ),
+        BufferConfigBuilder {
+          name: "trigger_buffer_id",
+          buffer_type: Type::TRIGGER,
+          filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+          non_volatile_size: 100_000,
+          volatile_size: 10_000,
+        }
+        .build(),
+      ],
+      workflows: vec![WorkflowBuilder::new("workflow", &[&a, &b]).build()],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  setup.log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "start workflow stream".into(),
+    [].into(),
+    [].into(),
+    None,
+  );
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!(vec!["workflow_stream_action_id"], *log_upload.logs()[0].workflow_action_ids());
+  });
+
+  for _ in 0 .. 5 {
+    setup.log(
+      log_level::DEBUG,
+      LogType::NORMAL,
+      "message streamed before remote duplicate".into(),
+      [].into(),
+      [].into(),
+      None,
+    );
+  }
+
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffersWithStreaming {
+      buffers: vec!["trigger_buffer_id".to_string()],
+      streaming: FlushStreaming {
+        destination_streaming_buffer_ids: vec!["default".to_string()],
+        termination_criteria: vec![TerminationCriterion {
+          type_: Some(termination_criterion::Type::LogsCount(
+            termination_criterion::LogsCount {
+              max_logs_count: 50,
+              ..Default::default()
+            },
+          )),
+          ..Default::default()
+        }],
+        ..Default::default()
+      },
+    });
+
+  for _ in 0 .. 5 {
+    setup.log(
+      log_level::DEBUG,
+      LogType::NORMAL,
+      "message streamed after remote duplicate".into(),
+      [].into(),
+      [].into(),
+      None,
+    );
+  }
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "default");
+    assert_eq!(log_upload.logs().len(), 10);
+  });
+  for _ in 0 .. 5 {
+    setup.log(
+      log_level::DEBUG,
+      LogType::NORMAL,
+      "message after workflow streaming should end".into(),
+      [].into(),
+      [].into(),
+      None,
+    );
+  }
+
+  setup
+    .current_api_stream()
+    .blocking_stream_action(StreamAction::FlushBuffers(vec![
+      "trigger_buffer_id".to_string(),
+    ]));
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.logs().len(), 5, "{:?}", log_upload.logs());
+    assert!(log_upload.logs().iter().all(|log| log.message() == "message after workflow streaming should end"));
   });
 }
 

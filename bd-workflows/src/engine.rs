@@ -46,26 +46,24 @@ use crate::workflow::{
   WorkflowEvent,
 };
 use anyhow::anyhow;
-use bd_api::DataUpload;
-use bd_client_common::file::{compressed_reader, write_compressed};
+use bd_api::{DataUpload, TriggerUploadStreaming};
+use bd_client_common::file::{read_compressed_protobuf_file, write_compressed_protobuf_file};
 use bd_client_stats::{FlushTrigger, FlushTriggerRequest};
 use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::Log;
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
-use bd_proto_util::serialization::{ProtoMessageDeserialize, ProtoMessageSerialize};
 use bd_runtime::runtime::workflows::PersistenceWriteIntervalFlag;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, session_capture};
 use bd_stats_common::workflow::WorkflowDebugKey;
 use bd_stats_common::{Counter as _, StatsCollector, labels};
+use parking_lot::RwLock;
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::io::Cursor;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::oneshot::error::TryRecvError;
 use tokio::task::JoinHandle;
 use tokio::time::Instant;
 
@@ -75,6 +73,38 @@ use tokio::time::Instant;
 // The state version was updated from 11 to 12 after a serialization bug was present in version 1
 // that would lose some data when serializing/deserializing.
 pub const WORKFLOWS_STATE_FILE_NAME: &str = "workflows_state_snapshot.12.bin";
+
+//
+// ProcessLocalPendingFlushState
+//
+
+/// Keeps a process-local mirror of flush IDs that are still pending in durable logger state.
+///
+/// `PendingTriggerUploadsStore` remains the durable source of truth across restart. The logger
+/// projects that persisted state into this in-memory set during startup so the workflow engine can
+/// cheaply decide whether streaming is still waiting on its originating flush to complete.
+#[derive(Debug, Default)]
+pub struct ProcessLocalPendingFlushState {
+  pending_flushes: RwLock<HashSet<FlushBufferId>>,
+}
+
+impl ProcessLocalPendingFlushState {
+  pub fn replace_pending_flushes(&self, flush_ids: impl IntoIterator<Item = FlushBufferId>) {
+    *self.pending_flushes.write() = flush_ids.into_iter().collect();
+  }
+
+  pub fn mark_pending(&self, flush_id: FlushBufferId) {
+    self.pending_flushes.write().insert(flush_id);
+  }
+
+  pub fn mark_completed(&self, flush_id: &FlushBufferId) {
+    self.pending_flushes.write().remove(flush_id);
+  }
+
+  pub fn is_pending(&self, flush_id: &FlushBufferId) -> bool {
+    self.pending_flushes.read().contains(flush_id)
+  }
+}
 
 //
 // WorkflowsEngine
@@ -90,7 +120,7 @@ pub struct WorkflowsEngine {
   configs: Vec<Config>,
   state: WorkflowsState,
   state_store: Option<StateStore>,
-  pending_buffer_flushes: HashMap<FlushBufferId, tokio::sync::oneshot::Receiver<()>>,
+  process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
 
   needs_state_persistence: bool,
 
@@ -123,6 +153,26 @@ impl WorkflowsEngine {
     data_upload_tx: Sender<DataUpload>,
     stats: Arc<dyn StatsCollector>,
     stats_flush_trigger: Option<FlushTrigger>,
+  ) -> (Self, Receiver<BuffersToFlush>) {
+    Self::new_with_flush_completion_tracker(
+      scope,
+      sdk_directory,
+      runtime,
+      data_upload_tx,
+      stats,
+      stats_flush_trigger,
+      Arc::new(ProcessLocalPendingFlushState::default()),
+    )
+  }
+
+  pub fn new_with_flush_completion_tracker(
+    scope: &Scope,
+    sdk_directory: Option<&Path>,
+    runtime: Option<&ConfigLoader>,
+    data_upload_tx: Sender<DataUpload>,
+    stats: Arc<dyn StatsCollector>,
+    stats_flush_trigger: Option<FlushTrigger>,
+    process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
   ) -> (Self, Receiver<BuffersToFlush>) {
     let scope = scope.scope("workflows");
 
@@ -177,11 +227,53 @@ impl WorkflowsEngine {
       metrics_collector: MetricsCollector::new(stats),
       stats_flush_trigger,
       buffers_to_flush_tx,
-      pending_buffer_flushes: HashMap::new(),
+      process_local_pending_flush_state,
       explicit_session_capture_streaming_log_count,
     };
 
     (workflows_engine, buffers_to_flush_rx)
+  }
+
+  pub fn start_remote_flush_streaming(
+    &mut self,
+    id: String,
+    buffer_ids: BTreeSet<String>,
+    session_id: &str,
+    streaming: TriggerUploadStreaming,
+  ) -> bool {
+    let action_id = FlushBufferId::RemoteCommand(id);
+    let Some(streaming_action) = self
+      .flush_buffers_actions_resolver
+      .make_remote_streaming_action(action_id.clone(), buffer_ids, session_id, streaming.into())
+    else {
+      log::debug!("remote flush streaming not activated: no eligible buffers or destinations");
+      return false;
+    };
+
+    if self
+      .state
+      .streaming_actions
+      .iter()
+      .any(|action| action.has_equivalent_reroute(&streaming_action))
+    {
+      log::debug!(
+        "remote flush streaming not activated: equivalent streaming action already active"
+      );
+      return false;
+    }
+
+    self
+      .process_local_pending_flush_state
+      .mark_pending(action_id);
+    self.state.streaming_actions.push(streaming_action);
+    self.needs_state_persistence = true;
+    true
+  }
+
+  pub fn mark_flush_completed(&self, action_id: &FlushBufferId) {
+    self
+      .process_local_pending_flush_state
+      .mark_completed(action_id);
   }
 
   pub async fn start(&mut self, config: WorkflowsEngineConfig, config_from_cache: bool) {
@@ -514,6 +606,10 @@ impl WorkflowsEngine {
     }
   }
 
+  fn flush_has_completed(&self, action_id: &FlushBufferId) -> bool {
+    !self.process_local_pending_flush_state.is_pending(action_id)
+  }
+
   async fn on_log_upload_approved(&mut self, action: &PendingFlushBuffersAction) {
     self.state.pending_flush_actions.remove(action);
 
@@ -536,38 +632,14 @@ impl WorkflowsEngine {
 
     // If there is already a pending buffer flush we don't want to signal another one, as
     // this would do nothing but mess up our tracking of the in-flight flush.
-    let flush_buffers =
-      if let Some(pending_buffer_flush) = self.pending_buffer_flushes.get_mut(&action.id) {
-        match pending_buffer_flush.try_recv() {
-          Ok(()) => {
-            self.pending_buffer_flushes.remove(&action.id);
-            log::debug!(
-              "allowing upload due to pending buffer flush completed: \"{:?}\"",
-              action.id
-            );
-            true
-          },
-          Err(TryRecvError::Empty) => {
-            log::debug!(
-              "not uploading due to pending buffer flush: \"{:?}\"",
-              action.id
-            );
-            false
-          },
-          Err(TryRecvError::Closed) => {
-            self.pending_buffer_flushes.remove(&action.id);
+    let flush_buffers = self.flush_has_completed(&action.id);
 
-            log::debug!(
-              "pending buffer flush receiver closed without response: \"{:?}\"",
-              action.id
-            );
-
-            true
-          },
-        }
-      } else {
-        true
-      };
+    if !flush_buffers {
+      log::debug!(
+        "not uploading due to pending durable buffer flush: \"{:?}\"",
+        action.id
+      );
+    }
 
     log::debug!(
       "uploading due to flush buffers action: \"{:?}\"; flush_buffers={}",
@@ -576,16 +648,15 @@ impl WorkflowsEngine {
     );
 
     if flush_buffers {
-      let (buffer_flush, rx) = BuffersToFlush::new(action);
+      let buffer_flush = BuffersToFlush::new(action);
 
-      match self.buffers_to_flush_tx.try_send(buffer_flush) {
-        Err(e) => {
-          self.stats.buffers_to_flush_channel_send_failures.inc();
-          log::debug!("failed to send information about buffers to flush: {e}");
-        },
-        Ok(()) => {
-          self.pending_buffer_flushes.insert(action.id.clone(), rx);
-        },
+      if let Err(e) = self.buffers_to_flush_tx.try_send(buffer_flush) {
+        self.stats.buffers_to_flush_channel_send_failures.inc();
+        log::debug!("failed to send information about buffers to flush: {e}");
+      } else {
+        self
+          .process_local_pending_flush_state
+          .mark_pending(action.id.clone());
       }
     }
 
@@ -803,6 +874,8 @@ impl WorkflowsEngine {
       let streaming_log_count = capture_count.read();
 
       let action = ActionFlushBuffers {
+        // Explicit session capture forwards the event's capture identifier directly. Repeated
+        // captures only dedupe if upstream reuses this same value.
         id: FlushBufferId::ExplicitSessionCapture(capture_session.to_string()),
         buffer_ids: BTreeSet::new(),
         streaming: (*streaming_log_count > 0).then_some(Streaming {
@@ -814,25 +887,21 @@ impl WorkflowsEngine {
       flush_buffers_actions.insert(Cow::Owned(action));
     }
 
+    let process_local_pending_flush_state = self.process_local_pending_flush_state.clone();
+    let streaming_actions = self
+      .state
+      .streaming_actions
+      .drain(..)
+      .map(|action| {
+        let completed = !process_local_pending_flush_state.is_pending(&action.id);
+        (action, completed)
+      })
+      .collect();
+
     let result = self
       .flush_buffers_actions_resolver
       .process_streaming_actions(
-        self
-          .state
-          .streaming_actions
-          .drain(..)
-          .map(|action| {
-            // If there is no flush completion for this ID, we assume that no flush ever happened
-            // and we can happily terminate the streaming action.
-
-            let completed = self
-              .pending_buffer_flushes
-              .get_mut(&action.id)
-              .is_none_or(|rx| !matches!(rx.try_recv(), Err(TryRecvError::Empty)));
-
-            (action, completed)
-          })
-          .collect(),
+        streaming_actions,
         log_destination_buffer_ids,
         &self.state.session_id,
       );
@@ -1273,8 +1342,7 @@ impl StateStore {
   }
 
   pub(self) async fn load_state(&self) -> anyhow::Result<WorkflowsState> {
-    let mut reader = compressed_reader(Cursor::new(tokio::fs::read(&self.state_path).await?));
-    WorkflowsState::deserialize_message_from_reader(&mut reader)
+    read_compressed_protobuf_file(&self.state_path).await
   }
 
   /// Stores states of the passed workflows if all pre-conditions are met.
@@ -1322,15 +1390,7 @@ impl StateStore {
   }
 
   async fn store(state_path: &Path, state: &WorkflowsState) -> anyhow::Result<()> {
-    // TODO(snowp): Consider adding better support for async compression - this would let us use
-    // async between file I/O and compression layers. This should save some intermediate copies.
-    tokio::fs::write(
-      state_path,
-      write_compressed(&state.serialize_message_to_bytes()?)?,
-    )
-    .await?;
-
-    Ok(())
+    write_compressed_protobuf_file(state_path, state).await
   }
 
   async fn purge(&self) {

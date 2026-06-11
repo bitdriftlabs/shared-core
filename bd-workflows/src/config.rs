@@ -7,6 +7,7 @@
 
 use crate::workflow::Traversal;
 use anyhow::{anyhow, bail};
+use bd_api::TriggerUploadStreaming;
 use bd_log_matcher::matcher::Tree;
 use bd_log_primitives::{FieldsRef, LogMessage};
 use bd_proto::protos::workflow::save_field::SaveField;
@@ -768,6 +769,9 @@ impl Action {
         };
 
         Ok(Self::FlushBuffers(ActionFlushBuffers {
+          // Workflow-triggered flushes use the configured action ID as their logical flush ID.
+          // Repeated triggers of the same action therefore converge on one pending upload record
+          // in the logger instead of minting a new ID each time.
           id: FlushBufferId::WorkflowActionId(action.id.clone()),
           buffer_ids: action.buffer_ids.into_iter().collect::<BTreeSet<_>>(),
           streaming,
@@ -787,13 +791,19 @@ impl Action {
 #[bd_macros::proto_serializable]
 #[derive(Hash, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FlushBufferId {
-  /// Flush the buffer due to a workflow action triggering.
+  /// Flush the buffer due to a workflow action triggering. This ID comes from config, so the same
+  /// workflow action reuses the same logical flush ID across repeated triggers.
   #[field(id = 1)]
   WorkflowActionId(String),
   /// Flush the buffer in response to an explicit session capture request. The ID is provided to
-  /// identify the origin of the session capture request.
+  /// identify the origin of the session capture request, so dedupe depends on upstream reusing the
+  /// same capture identifier.
   #[field(id = 2)]
   ExplicitSessionCapture(String),
+  /// Flush the buffer in response to a remote command delivered over the API stream. Remote
+  /// commands intentionally mint fresh IDs, so separate commands remain distinct logical flushes.
+  #[field(id = 3)]
+  RemoteCommand(String),
 }
 
 impl Default for FlushBufferId {
@@ -834,7 +844,7 @@ pub struct Streaming {
 }
 
 impl Streaming {
-  fn new(
+  pub(crate) fn new(
     streaming_proto: workflow::workflow::action::action_flush_buffers::Streaming,
   ) -> anyhow::Result<Self> {
     let destination_continuous_buffer_ids = streaming_proto
@@ -866,6 +876,15 @@ impl Streaming {
       destination_continuous_buffer_ids,
       max_logs_count,
     })
+  }
+}
+
+impl From<TriggerUploadStreaming> for Streaming {
+  fn from(streaming: TriggerUploadStreaming) -> Self {
+    Self {
+      destination_continuous_buffer_ids: streaming.destination_buffer_ids.into_iter().collect(),
+      max_logs_count: streaming.max_logs_count,
+    }
   }
 }
 

@@ -18,6 +18,8 @@ use crate::{
   RuntimeBackoffPolicy,
   StreamEvent,
   TriggerUpload,
+  TriggerUploadSource,
+  TriggerUploadStreaming,
 };
 use anyhow::anyhow;
 use bd_backoff::exponential::ExponentialBackoffInfinite;
@@ -1155,11 +1157,28 @@ impl Api {
             .resolve_pending_upload(&stats_upload.upload_uuid, &stats_upload.error)?;
         },
         Some(Response_type::FlushBuffers(flush_buffers)) => {
-          let (tx, _rx) = tokio::sync::oneshot::channel();
+          let session_id = self
+            .session_strategy
+            .session_id()
+            .await
+            .map_err(|_| anyhow!("remote trigger upload session id"))?;
 
           self
             .trigger_upload_tx
-            .send(TriggerUpload::new(flush_buffers.buffer_id_list, tx))
+            .send(TriggerUpload::new(
+              flush_buffers.buffer_id_list,
+              flush_buffers
+                .streaming
+                .into_option()
+                .map(TriggerUploadStreaming::from),
+              // TODO: If the server grows a stable remote command identifier, prefer threading it
+              // through here instead of always minting a client-side UUID.
+              // Remote commands intentionally use a fresh logical ID per command. Retries of a
+              // single command stay deduped under that ID, but separate commands remain distinct
+              // pending uploads even if they target the same buffers.
+              TriggerUploadSource::RemoteCommand(uuid::Uuid::new_v4().to_string()),
+              session_id,
+            ))
             .await
             .map_err(|_| anyhow!("remote trigger upload tx"))?;
         },

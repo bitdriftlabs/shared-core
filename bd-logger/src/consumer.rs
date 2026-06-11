@@ -9,10 +9,22 @@
 #[path = "./consumer_test.rs"]
 mod consumer_test;
 
-use crate::service::{self, UploadRequest};
+use crate::flush_registry::{
+  PendingTriggerUploadsStore,
+  PersistedTriggerUpload,
+  PersistedTriggerUploadBufferProgress,
+  PersistedTriggerUploadLifecycle,
+  PersistedTriggerUploadSource,
+  flush_buffer_id_from_trigger_upload_source,
+};
+use crate::service::{self, UploadRequest, UploadResult};
 use crate::state_upload::StateUploadHandle;
-use bd_api::TriggerUpload;
+use crate::trigger_upload_artifact::{
+  PersistedTriggerUploadArtifactBatch,
+  TriggerUploadArtifactStore,
+};
 use bd_api::upload::LogBatch;
+use bd_api::{TriggerUpload, TriggerUploadSource, TriggerUploadStreaming};
 use bd_buffer::{AbslCode, Buffer, BufferEvent, BufferEventWithResponse, Consumer, Error};
 use bd_client_common::error::InvariantError;
 use bd_client_common::maybe_await;
@@ -24,8 +36,11 @@ use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_stats_common::Counter as _;
 use bd_time::OffsetDateTimeExt;
+use bd_workflows::engine::ProcessLocalPendingFlushState;
 use futures_util::future::try_join_all;
 use std::collections::{HashMap, HashSet};
+use std::fmt::{Display, Formatter};
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -57,6 +72,40 @@ struct Flags {
     Watch<time::Duration, bd_runtime::runtime::log_upload::FlushBufferLookbackWindow>,
 }
 
+pub struct RemoteFlushStreamingRequest {
+  pub(crate) id: String,
+  pub(crate) buffer_ids: Vec<String>,
+  pub(crate) session_id: String,
+  pub(crate) streaming: TriggerUploadStreaming,
+}
+
+impl RemoteFlushStreamingRequest {
+  fn new(
+    id: String,
+    buffer_ids: Vec<String>,
+    session_id: String,
+    streaming: TriggerUploadStreaming,
+  ) -> Self {
+    Self {
+      id,
+      buffer_ids,
+      session_id,
+      streaming,
+    }
+  }
+}
+
+#[derive(Debug)]
+struct TriggerBatchUploadCanceled;
+
+impl Display for TriggerBatchUploadCanceled {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    f.write_str("trigger batch upload canceled")
+  }
+}
+
+impl std::error::Error for TriggerBatchUploadCanceled {}
+
 // Responsible for managing the lifetime of upload tasks as buffers are added/removed via dynamic
 // reconfiguration. When continuous buffers are added, a new task is spawned which is responsible
 // for performing continuous uploads of said buffer. On removal or on shutdown, these tasks are
@@ -75,6 +124,10 @@ pub struct BufferUploadManager {
 
   // Receiver for a request to upload the contents of a specific ring buffer.
   trigger_upload_rx: Receiver<TriggerUpload>,
+
+  // Sender for remote flush streaming requests that should be activated in the processing
+  // pipeline once a concrete set of trigger buffers has been scheduled.
+  remote_flush_streaming_tx: Sender<RemoteFlushStreamingRequest>,
 
   // The map of active trigger buffers. The uploader receives a request to upload a buffer by name,
   // which is looked up in this map and initiated if the buffer is found.
@@ -99,19 +152,34 @@ pub struct BufferUploadManager {
 
   // State upload handle for uploading state snapshots before logs.
   state_upload_handle: Option<Arc<StateUploadHandle>>,
+
+  // Durable registry of trigger uploads that have been scheduled but not yet completed.
+  pending_trigger_uploads: PendingTriggerUploadsStore,
+
+  // Process-local workflow mirror of pending flush IDs. `PendingTriggerUploadsStore` remains the
+  // durable source of truth across restart.
+  process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
+
+  logger_state_directory: Arc<PathBuf>,
 }
 
 impl BufferUploadManager {
   pub(crate) fn new(
     data_upload_tx: tokio::sync::mpsc::Sender<bd_api::DataUpload>,
     runtime_loader: &Arc<ConfigLoader>,
+    sdk_directory: &Path,
     shutdown: ComponentShutdown,
     buffer_event_rx: Receiver<BufferEventWithResponse>,
     trigger_upload_rx: Receiver<TriggerUpload>,
+    remote_flush_streaming_tx: Sender<RemoteFlushStreamingRequest>,
     stats: &Scope,
     logging: Arc<dyn bd_internal_logging::Logger>,
     state_upload_handle: Option<Arc<StateUploadHandle>>,
+    pending_trigger_uploads: PendingTriggerUploadsStore,
+    process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
   ) -> Self {
+    let logger_state_directory = Arc::new(sdk_directory.join("state").join("logger"));
+
     Self {
       log_upload_service: service::new(data_upload_tx, shutdown.clone(), runtime_loader, stats),
       feature_flags: Flags {
@@ -124,6 +192,7 @@ impl BufferUploadManager {
       shutdown,
       buffer_event_rx,
       trigger_upload_rx,
+      remote_flush_streaming_tx,
       trigger_buffers: HashMap::new(),
       shutdowns: HashMap::new(),
       active_trigger_uploads: HashSet::new(),
@@ -131,11 +200,22 @@ impl BufferUploadManager {
       stream_buffer_shutdown_trigger: None,
       old_logs_dropped: stats.counter("old_logs_dropped"),
       state_upload_handle,
+      pending_trigger_uploads,
+      process_local_pending_flush_state,
+      logger_state_directory,
     }
   }
 
   #[tracing::instrument(level = "debug", skip(self), name = "BufferUploadManager")]
   pub async fn run(mut self) -> anyhow::Result<()> {
+    let recovered_pending_trigger_uploads =
+      self.pending_trigger_uploads.pending_uploads().await.len();
+    if recovered_pending_trigger_uploads != 0 {
+      log::debug!(
+        "found {recovered_pending_trigger_uploads} persisted trigger uploads pending recovery"
+      );
+    }
+
     // For each spawned task, track the cancellation token and join handle,
     // allowing us to cancel the task when a buffer has been removed.
 
@@ -145,9 +225,11 @@ impl BufferUploadManager {
 
     loop {
       tokio::select! {
-        Some(event) = self.buffer_event_rx.recv() => self.handle_buffer_event(event).await?,
+        Some(event) = self.buffer_event_rx.recv() => {
+          self.handle_buffer_event(event, &trigger_upload_complete_tx).await?;
+        },
         Some(trigger) = self.trigger_upload_rx.recv() =>
-          self.handle_trigger_uploads(trigger, &trigger_upload_complete_tx)?,
+          self.handle_trigger_uploads(trigger, &trigger_upload_complete_tx).await?,
         Some(completed_trigger_buffer) = trigger_upload_complete_rx.recv() => {
           self.active_trigger_uploads.remove(&completed_trigger_buffer);
         },
@@ -165,20 +247,56 @@ impl BufferUploadManager {
 
   // Checks to see if the buffers we're trying to upload are already being uploaded, and if not
   // spawn a task to consume the entire buffer.
-  fn handle_trigger_uploads(
+  async fn handle_trigger_uploads(
     &mut self,
     trigger_upload: TriggerUpload,
     trigger_upload_complete_tx: &Sender<String>,
   ) -> anyhow::Result<()> {
     log::debug!("received trigger upload request");
 
-    let mut buffer_upload_completions = vec![];
+    let TriggerUpload {
+      buffer_ids,
+      streaming,
+      source,
+      session_id,
+    } = trigger_upload;
 
-    for buffer_id in trigger_upload.buffer_ids {
-      // If there is already an active upload for this buffer, do nothing. This may happen if an
-      // aggressive workflow is used which can match a second (or more) log within the time it takes
-      // to upload the log in response to the first trigger. Because we lock the buffer, this log
-      // likely didn't even make it into the buffer so we just drop it here.
+    // The source's logical ID is the durable key for this trigger upload. Replays and retries of
+    // the same logical flush rewrite one registry entry; a different source ID creates a distinct
+    // pending upload record.
+    let trigger_upload_id = source.logical_id().to_string();
+    let trigger_upload_source = PersistedTriggerUploadSource::from(&source);
+    let trigger_upload_streaming = streaming.as_ref().map(Into::into);
+    let is_remote_streaming_activation = matches!(source, TriggerUploadSource::RemoteCommand(_));
+    let mut buffer_upload_completions = vec![];
+    let mut eligible_buffer_ids = vec![];
+    let mut scheduled_consumers = vec![];
+    let buffer_ids = if buffer_ids.is_empty() {
+      self.trigger_buffers.keys().cloned().collect::<Vec<_>>()
+    } else {
+      buffer_ids
+    };
+
+    // Trigger uploads are coordinated in two phases. First we decide which buffers can actually
+    // participate in this upload and register a consumer for each of them. Only after that do we
+    // persist a single upload record describing the concrete buffer set. Persisting the filtered
+    // set rather than the original request means restart recovery can replay exactly the work that
+    // was scheduled in this process.
+    //
+    // There is one additional invariant layered on top of the source-scoped upload model: before a
+    // fresh non-active attempt for buffer B is admitted, we evict any older durable trigger-upload
+    // state that still refers to B. The overall registry remains keyed by logical source ID
+    // because aggregate completion, optional streaming activation, and restart replay are still
+    // tracked per logical flush. The cleanup is buffer-scoped because the correctness problem we
+    // are solving is narrower: once we are about to upload buffer B again, we should not preserve
+    // stale durable history that could cause B to be replayed twice from two different uploads.
+
+    for buffer_id in buffer_ids {
+      // Admission is also deduped by buffer while a trigger upload is already active. If buffer B
+      // is currently flushing because some earlier source ID admitted it, a later request for B is
+      // dropped here before persistence rather than stacking up a second pending upload for that
+      // same buffer. A partially overlapping request can still proceed for any other buffers that
+      // are not already active.
       if self.active_trigger_uploads.contains(&buffer_id) {
         log::debug!("ignoring upload for {buffer_id}, already in progress");
         continue;
@@ -189,76 +307,177 @@ impl BufferUploadManager {
       // are not in sync with the state within the upload manager. This can also happen if the
       // match configuration targets a buffer that doesn't have a corresponding buffer config,
       // which is not validated.
-      if let Some(buffer) = self.trigger_buffers.get(&buffer_id) {
-        let trigger_consumer = self.new_trigger_consumer(&buffer_id, buffer)?;
+      if let Some(buffer) = self.trigger_buffers.get(&buffer_id).cloned() {
+        // At this point buffer_id is not currently active in memory, so it is safe to prune older
+        // durable references to that same buffer before we admit a fresh attempt. This does not
+        // collapse the entire upload model down to buffer IDs: older uploads can keep any other
+        // buffers they still own, and aggregate source-scoped completion remains intact unless the
+        // pruned buffer was their last member.
+        Self::prune_stale_trigger_upload_buffers(
+          self.pending_trigger_uploads.clone(),
+          self.logger_state_directory.clone(),
+          self.process_local_pending_flush_state.clone(),
+          &trigger_upload_id,
+          &buffer_id,
+        )
+        .await;
+
+        let trigger_consumer =
+          self.new_trigger_consumer(&buffer_id, &trigger_upload_id, &buffer)?;
 
         self.active_trigger_uploads.insert(buffer_id.clone());
+        eligible_buffer_ids.push(buffer_id.clone());
 
         self
           .logging
           .log_internal(&format!("starting trigger upload for buffer {buffer_id:?}"));
 
-        let upload_complete_tx = trigger_upload_complete_tx.clone();
-        let buffer_id_clone = buffer_id.clone();
-        let internal_logger = self.logging.clone();
-        let shutdown_trigger = ComponentShutdownTrigger::default();
-        let shutdown = shutdown_trigger.make_shutdown();
-        let (single_upload_complete_tx, single_upload_complete_rx) =
-          tokio::sync::oneshot::channel();
-        buffer_upload_completions.push(single_upload_complete_rx);
-        tokio::task::spawn(
-          async move {
-            // Handle the error here so that we can fire the complete message even on failure.
-            match trigger_consumer.run().await {
-              Ok(logs_count) => internal_logger.log_internal(&format!(
-                "completed trigger upload for buffer {buffer_id_clone:?}, uploaded logs count: \
-                 {logs_count:?}",
-              )),
-              Err(e) => {
-                internal_logger.log_internal(&format!(
-                  "failed trigger upload for buffer {buffer_id_clone:?}: {e:?}"
-                ));
-                handle_unexpected_error_with_details(e, "", || None);
-              },
-            }
-
-            single_upload_complete_tx
-              .send(())
-              .map_err(|()| InvariantError::Invariant)?;
-
-            // TODO(mattklein123): Should we pass this into the trigger consumer and actually
-            // try to bail quickly if it's taking a long time and we are trying to shutdown?
-            drop(shutdown);
-            upload_complete_tx
-              .send(buffer_id_clone)
-              .await
-              .map_err(|_| InvariantError::Invariant)
-          }
-          .instrument(tracing::debug_span!(
-            "trigger_consumer",
-            buffer_id = &*buffer_id
-          )),
-        );
-
-        // We never cancel the trigger uploads directly, so just reuse the top level shutdown
-        // token.
-        self.shutdowns.insert(buffer_id.clone(), shutdown_trigger);
+        scheduled_consumers.push((buffer_id, trigger_consumer));
       } else {
         log::debug!("ignoring upload for {buffer_id}, unknown buffer");
       }
     }
 
+    if !eligible_buffer_ids.is_empty() {
+      // Persist the upload before any background worker can complete. That gives restart recovery
+      // a durable description of the upload even if the process dies after tasks are spawned but
+      // before any individual buffer batch has been uploaded. If an overlapping request was
+      // filtered by the active-buffer gate above, this durable record only contains the eligible
+      // subset that this process actually admitted.
+      self
+        .pending_trigger_uploads
+        .upsert(PersistedTriggerUpload {
+          id: trigger_upload_id.clone(),
+          source: trigger_upload_source,
+          session_id: session_id.clone(),
+          buffers: eligible_buffer_ids
+            .iter()
+            .cloned()
+            .map(PersistedTriggerUploadBufferProgress::new)
+            .collect(),
+          streaming: trigger_upload_streaming,
+          lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
+        })
+        .await;
+      self
+        .process_local_pending_flush_state
+        .mark_pending(flush_buffer_id_from_trigger_upload_source(&source));
+    }
+
+    // Remote-command streaming should only become visible once the associated trigger upload has
+    // actually completed. We therefore carry the activation request alongside the upload and only
+    // deliver it from the aggregate completion task below.
+    let remote_streaming_request = if is_remote_streaming_activation {
+      streaming.map(|streaming| {
+        RemoteFlushStreamingRequest::new(
+          trigger_upload_id.clone(),
+          eligible_buffer_ids.clone(),
+          session_id.clone(),
+          streaming,
+        )
+      })
+    } else {
+      None
+    };
+
+    for (buffer_id, trigger_consumer) in scheduled_consumers {
+      let upload_complete_tx = trigger_upload_complete_tx.clone();
+      let buffer_id_clone = buffer_id.clone();
+      let internal_logger = self.logging.clone();
+      let shutdown_trigger = ComponentShutdownTrigger::default();
+      let shutdown = shutdown_trigger.make_shutdown();
+      let (single_upload_complete_tx, single_upload_complete_rx) = tokio::sync::oneshot::channel();
+      buffer_upload_completions.push(single_upload_complete_rx);
+      tokio::task::spawn(
+        async move {
+          // Handle the error here so that we can fire the complete message even on failure.
+          let upload_completed = match trigger_consumer.run().await {
+            Ok(logs_count) => {
+              internal_logger.log_internal(&format!(
+                "completed trigger upload for buffer {buffer_id_clone:?}, uploaded logs count: \
+                 {logs_count:?}",
+              ));
+              true
+            },
+            Err(e) => {
+              internal_logger.log_internal(&format!(
+                "failed trigger upload for buffer {buffer_id_clone:?}: {e:?}"
+              ));
+              if !e.is::<TriggerBatchUploadCanceled>() {
+                handle_unexpected_error_with_details(e, "", || None);
+              }
+              false
+            },
+          };
+
+          single_upload_complete_tx
+            .send(upload_completed)
+            .map_err(|_| InvariantError::Invariant)?;
+
+          // TODO(mattklein123): Should we pass this into the trigger consumer and actually
+          // try to bail quickly if it's taking a long time and we are trying to shutdown?
+          drop(shutdown);
+          upload_complete_tx
+            .send(buffer_id_clone)
+            .await
+            .map_err(|_| InvariantError::Invariant)
+        }
+        .instrument(tracing::debug_span!(
+          "trigger_consumer",
+          buffer_id = &*buffer_id
+        )),
+      );
+
+      // We never cancel the trigger uploads directly, so just reuse the top level shutdown
+      // token.
+      self.shutdowns.insert(buffer_id.clone(), shutdown_trigger);
+    }
+
     // Since we have one completion handler for the entire set of trigger uploads, we need to
     // spawn a task to wait for all of the individual trigger uploads to complete before we can
-    // signal that the trigger uploads are complete.
+    // signal that the trigger uploads are complete. The durable upload entry stays source-scoped
+    // even though stale replacement above happens buffer-by-buffer: one logical upload can still
+    // own multiple admitted buffers, one deferred remote-streaming payload, and one
+    // process-local flush ID that should only complete once every surviving buffer in that upload
+    // has succeeded or the entire upload has been pruned away.
+    let pending_trigger_uploads = self.pending_trigger_uploads.clone();
+    let process_local_pending_flush_state = self.process_local_pending_flush_state.clone();
+    let remote_flush_streaming_tx = self.remote_flush_streaming_tx.clone();
+    let tracked_flush_id = flush_buffer_id_from_trigger_upload_source(&source);
     tokio::spawn(async move {
-      if let Err(e) = try_join_all(buffer_upload_completions).await {
-        log::debug!("failed to wait for trigger uploads to complete: {e:?}");
+      let completed_uploads = match try_join_all(buffer_upload_completions).await {
+        Ok(completed_uploads) => completed_uploads,
+        Err(e) => {
+          log::debug!("failed to wait for trigger uploads to complete: {e:?}");
+          return;
+        },
+      };
+
+      if completed_uploads.iter().any(|completed| !completed) {
+        log::debug!(
+          "preserving pending trigger upload state for {trigger_upload_id} because at least one \
+           buffer upload did not complete successfully",
+        );
+        return;
       }
 
-      if let Err(e) = trigger_upload.response_tx.send(()) {
-        log::debug!("failed to send trigger upload response: {e:?}");
+      if let Some(remote_streaming_request) = remote_streaming_request
+        && remote_flush_streaming_tx
+          .send(remote_streaming_request)
+          .await
+          .is_err()
+      {
+        log::debug!(
+          "preserving pending trigger upload state for {trigger_upload_id} because remote \
+           streaming activation could not be delivered",
+        );
+        return;
       }
+
+      // Make completion visible to workflows only after the durable registry entry is gone. That
+      // keeps the process-local pending set aligned with the persisted source of truth.
+      pending_trigger_uploads.remove(&trigger_upload_id).await;
+      process_local_pending_flush_state.mark_completed(&tracked_flush_id);
 
       log::debug!("signaling all trigger uploads complete");
     });
@@ -267,7 +486,11 @@ impl BufferUploadManager {
   }
 
   // Handles a single buffer event, where a buffer is either added or removed.
-  async fn handle_buffer_event(&mut self, event: BufferEventWithResponse) -> anyhow::Result<()> {
+  async fn handle_buffer_event(
+    &mut self,
+    event: BufferEventWithResponse,
+    trigger_upload_complete_tx: &Sender<String>,
+  ) -> anyhow::Result<()> {
     match &event.event {
       // When a new buffer is created, spawn a new task which is responsible for
       // consuming logs from this buffer continuously.
@@ -333,9 +556,236 @@ impl BufferUploadManager {
           shutdown_trigger.shutdown().await;
         }
       },
+      BufferEvent::TriggerBufferConfigUpdated(configured_trigger_buffer_ids) => {
+        self
+          .recover_pending_trigger_uploads(
+            configured_trigger_buffer_ids.iter().cloned().collect(),
+            trigger_upload_complete_tx,
+          )
+          .await?;
+      },
     }
 
     Ok(())
+  }
+
+  async fn prune_stale_trigger_upload_buffers(
+    pending_trigger_uploads: PendingTriggerUploadsStore,
+    logger_state_directory: Arc<PathBuf>,
+    process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
+    current_upload_id: &str,
+    buffer_id: &str,
+  ) {
+    // This helper is deliberately static over owned clones rather than borrowing `self`. The
+    // upload manager runs inside a spawned task, so keeping this path free of long-lived borrows
+    // avoids making the manager future non-Send while still letting us share the same cleanup
+    // invariant between live scheduling and restart recovery.
+    let pruned_uploads = pending_trigger_uploads
+      .prune_buffer_from_other_uploads(current_upload_id, buffer_id)
+      .await;
+
+    if pruned_uploads.is_empty() {
+      return;
+    }
+
+    log::debug!(
+      "pruning stale trigger upload state for buffer {buffer_id} before admitting upload \
+       {current_upload_id}: {:?}",
+      pruned_uploads
+        .iter()
+        .map(|pruned| (&pruned.upload_id, pruned.removed_upload))
+        .collect::<Vec<_>>()
+    );
+
+    for pruned_upload in pruned_uploads {
+      Self::clear_trigger_upload_artifact(
+        logger_state_directory.as_ref(),
+        &pruned_upload.upload_id,
+        &pruned_upload.buffer_id,
+      )
+      .await;
+
+      if pruned_upload.removed_upload {
+        // Pruning the last remaining buffer out of an older upload means that logical flush no
+        // longer has any durable work left anywhere in the logger. At that point the old
+        // process-local pending ID must be completed as well so workflows and remote streaming do
+        // not wait forever on an upload whose final buffer has been intentionally replaced.
+        process_local_pending_flush_state
+          .mark_completed(&pruned_upload.source.to_flush_buffer_id());
+      }
+    }
+  }
+
+  async fn recover_pending_trigger_uploads(
+    &mut self,
+    configured_trigger_buffer_ids: HashSet<String>,
+    trigger_upload_complete_tx: &Sender<String>,
+  ) -> anyhow::Result<()> {
+    // Recovery treats the durable registry as authoritative. We first reconcile any persisted
+    // upload against the current trigger-buffer config, then feed the surviving work back through
+    // the normal scheduling path so live and recovered uploads share one execution path.
+    //
+    // Recovery iterates newest-first because admitting a newer upload for buffer B may prune older
+    // durable references to B before those older uploads are considered. By reloading the current
+    // upload record by ID on each iteration, recovery observes the post-prune truth instead of the
+    // stale snapshot captured at startup. This is what keeps restart replay aligned with the live
+    // invariant that a fresh non-active attempt for B replaces older durable state for B instead of
+    // letting multiple upload histories for B coexist.
+    let pending_upload_ids = self
+      .pending_trigger_uploads
+      .pending_uploads()
+      .await
+      .into_iter()
+      .map(|upload| upload.id)
+      .collect::<Vec<_>>();
+
+    for pending_upload_id in pending_upload_ids.into_iter().rev() {
+      let Some(pending_upload) = self
+        .pending_trigger_uploads
+        .pending_upload(&pending_upload_id)
+        .await
+      else {
+        continue;
+      };
+
+      let missing_buffer_ids: Vec<_> = pending_upload
+        .buffers
+        .iter()
+        .filter(|buffer| !configured_trigger_buffer_ids.contains(&buffer.buffer_id))
+        .map(|buffer| buffer.buffer_id.clone())
+        .collect();
+
+      let pending_upload = if missing_buffer_ids.is_empty() {
+        pending_upload
+      } else {
+        let retained_buffers: Vec<_> = pending_upload
+          .buffers
+          .iter()
+          .filter(|buffer| configured_trigger_buffer_ids.contains(&buffer.buffer_id))
+          .cloned()
+          .collect();
+
+        Self::clear_trigger_upload_artifacts(
+          self.logger_state_directory.as_ref(),
+          &pending_upload.id,
+          &missing_buffer_ids,
+        )
+        .await;
+
+        if retained_buffers.is_empty() {
+          log::debug!(
+            "abandoning persisted trigger upload {} because configured trigger buffers are \
+             missing {:?}",
+            pending_upload.id,
+            missing_buffer_ids,
+          );
+          self
+            .pending_trigger_uploads
+            .remove(&pending_upload.id)
+            .await;
+          self
+            .process_local_pending_flush_state
+            .mark_completed(&pending_upload.source.to_flush_buffer_id());
+          continue;
+        }
+
+        // Rewrite the durable record with only the buffers that still exist in config. This keeps
+        // restart recovery from retrying buffers that can no longer be resolved in the current
+        // process.
+        log::debug!(
+          "pruning persisted trigger upload {} due to missing configured trigger buffers {:?}; \
+           retaining {:?}",
+          pending_upload.id,
+          missing_buffer_ids,
+          retained_buffers
+            .iter()
+            .map(|buffer| buffer.buffer_id.clone())
+            .collect::<Vec<_>>(),
+        );
+
+        let mut updated_upload = pending_upload;
+        updated_upload.buffers = retained_buffers;
+        self
+          .pending_trigger_uploads
+          .upsert(updated_upload.clone())
+          .await;
+        updated_upload
+      };
+
+      if pending_upload
+        .buffers
+        .iter()
+        .any(|buffer| self.active_trigger_uploads.contains(&buffer.buffer_id))
+      {
+        continue;
+      }
+
+      if matches!(
+        pending_upload.lifecycle,
+        PersistedTriggerUploadLifecycle::Completed | PersistedTriggerUploadLifecycle::Failed
+      ) {
+        log::debug!(
+          "skipping persisted trigger upload {} with lifecycle {:?}",
+          pending_upload.id,
+          pending_upload.lifecycle
+        );
+        continue;
+      }
+
+      log::debug!(
+        "recovering persisted trigger upload {} for buffers {:?}",
+        pending_upload.id,
+        pending_upload.buffer_ids()
+      );
+
+      self
+        .handle_trigger_uploads(
+          TriggerUpload::new(
+            pending_upload.buffer_ids(),
+            pending_upload.streaming(),
+            pending_upload.source.to_trigger_upload_source(),
+            pending_upload.session_id.clone(),
+          ),
+          trigger_upload_complete_tx,
+        )
+        .await?;
+    }
+
+    Ok(())
+  }
+
+  async fn clear_trigger_upload_artifacts(
+    logger_state_directory: &Path,
+    trigger_upload_id: &str,
+    buffer_ids: &[String],
+  ) {
+    for buffer_id in buffer_ids {
+      Self::clear_trigger_upload_artifact(logger_state_directory, trigger_upload_id, buffer_id)
+        .await;
+    }
+  }
+
+  async fn clear_trigger_upload_artifact(
+    logger_state_directory: &Path,
+    trigger_upload_id: &str,
+    buffer_id: &str,
+  ) {
+    let artifact_store =
+      TriggerUploadArtifactStore::new(logger_state_directory, trigger_upload_id, buffer_id);
+
+    if let Err(e) = artifact_store.remove_queued_batch().await {
+      log::debug!(
+        "failed to clear queued artifact for abandoned trigger upload {trigger_upload_id} buffer \
+         {buffer_id}: {e}",
+      );
+    }
+
+    if let Err(e) = artifact_store.clear_inflight_batch().await {
+      log::debug!(
+        "failed to clear inflight artifact for abandoned trigger upload {trigger_upload_id} \
+         buffer {buffer_id}: {e}",
+      );
+    }
   }
 
   async fn shutdown(self) {
@@ -377,6 +827,7 @@ impl BufferUploadManager {
   fn new_trigger_consumer(
     &self,
     buffer_name: &str,
+    trigger_upload_id: &str,
     buffer: &Arc<Buffer>,
   ) -> anyhow::Result<CompleteBufferUpload> {
     Ok(CompleteBufferUpload::new(
@@ -386,6 +837,14 @@ impl BufferUploadManager {
       buffer_name.to_string(),
       self.old_logs_dropped.clone(),
       self.state_upload_handle.clone(),
+      self.pending_trigger_uploads.clone(),
+      trigger_upload_id.to_string(),
+      TriggerUploadArtifactStore::new(
+        self.logger_state_directory.as_ref(),
+        trigger_upload_id,
+        buffer_name,
+      ),
+      buffer.clone(),
     ))
   }
 }
@@ -709,7 +1168,7 @@ struct CompleteBufferUpload {
   // The ring buffer consumer to use to consume logs.
   consumer: Consumer,
 
-  // Used to construct the log payload and enforce batch limits.
+  // Used to construct the current trigger-upload batch before it is durably staged.
   batch_builder: BatchBuilder,
 
   // Service used to send logs to upload to the uploader.
@@ -724,6 +1183,17 @@ struct CompleteBufferUpload {
 
   // State upload handle for uploading state snapshots before logs.
   state_upload_handle: Option<Arc<StateUploadHandle>>,
+
+  // The trigger upload persists in two layers while it is in flight: the registry tracks lifecycle
+  // and per-buffer progress, while the artifact store holds concrete log batches that are safe to
+  // replay after restart. The remaining fields track the live, not-yet-staged batch being built
+  // from the buffer in this process.
+  pending_trigger_uploads: PendingTriggerUploadsStore,
+  pending_trigger_upload_id: String,
+  has_marked_uploading_from_buffer: bool,
+  pending_batch_reads: usize,
+  artifact_store: TriggerUploadArtifactStore,
+  buffer: Arc<Buffer>,
 }
 
 impl CompleteBufferUpload {
@@ -734,6 +1204,10 @@ impl CompleteBufferUpload {
     buffer_id: String,
     old_logs_dropped: Counter,
     state_upload_handle: Option<Arc<StateUploadHandle>>,
+    pending_trigger_uploads: PendingTriggerUploadsStore,
+    pending_trigger_upload_id: String,
+    artifact_store: TriggerUploadArtifactStore,
+    buffer: Arc<Buffer>,
   ) -> Self {
     let lookback_window_limit = *runtime_flags.upload_lookback_window_feature_flag.read();
 
@@ -751,6 +1225,12 @@ impl CompleteBufferUpload {
       lookback_window,
       old_logs_dropped,
       state_upload_handle,
+      pending_trigger_uploads,
+      pending_trigger_upload_id,
+      has_marked_uploading_from_buffer: false,
+      pending_batch_reads: 0,
+      artifact_store,
+      buffer,
     }
   }
 
@@ -760,12 +1240,20 @@ impl CompleteBufferUpload {
     // TODO(snowp): Consider tokio::task::yield_now to avoid starving other tasks if the batch size
     // is large.
 
+    // A recovered upload may already have durable batches waiting in the artifact store. We first
+    // reconcile any queued artifact with the current buffer head, then flush persisted work before
+    // reading new logs. That ordering avoids re-uploading batches that were already staged before
+    // the previous process died.
+    self.discard_duplicate_queued_batch().await?;
+    self.flush_persisted_batches().await?;
+
     let mut total_logs = 0;
     loop {
-      let entry = self.consumer.try_read();
+      let entry = self.consumer.start_read(false);
 
       match entry {
-        // Log available, add to batch and flush if batch size hit.
+        // Accumulate a full trigger batch in memory, then persist it once before the buffer is
+        // advanced in bulk.
         Ok(log) => {
           if let Some(lookback_window) = self.lookback_window {
             // We are defensive here as we can't be sure the log is well formed.
@@ -774,18 +1262,31 @@ impl CompleteBufferUpload {
             {
               log::debug!("skipping log, outside lookback window");
               self.old_logs_dropped.inc();
+              self.consumer.finish_read()?;
               continue;
             }
           }
 
-          total_logs += 1;
-          self.batch_builder.add_log(log);
-        },
-        // No more logs available, flush current batch if there are any logs.
-        Err(Error::AbslStatus(AbslCode::Unavailable, _)) => {
-          if !self.batch_builder.logs.is_empty() {
-            self.flush_batch().await?;
+          if !self.has_marked_uploading_from_buffer {
+            self
+              .pending_trigger_uploads
+              .mark_uploading(&self.pending_trigger_upload_id, &self.buffer_id)
+              .await;
+            self.has_marked_uploading_from_buffer = true;
           }
+
+          self.batch_builder.add_log(log);
+          self.pending_batch_reads += 1;
+          total_logs += 1;
+
+          if self.batch_builder.limit_reached() {
+            self.persist_and_flush_current_batch().await?;
+          }
+        },
+        // No more logs available, flush any durable artifact backlog.
+        Err(Error::AbslStatus(AbslCode::Unavailable, _)) => {
+          self.persist_and_flush_current_batch().await?;
+          self.flush_persisted_batches().await?;
 
           log::debug!("trigger upload complete, sent {total_logs} logs");
           return Ok(total_logs);
@@ -793,17 +1294,104 @@ impl CompleteBufferUpload {
         // Unexpected error, bubble up.
         Err(e) => return Err(e.into()),
       }
-
-      if self.batch_builder.limit_reached() {
-        self.flush_batch().await?;
-      }
     }
   }
 
-  async fn flush_batch(&mut self) -> anyhow::Result<()> {
-    let timestamp_range = self.batch_builder.timestamp_range();
-    let logs = self.batch_builder.take();
-    log::debug!("flushing {} logs", logs.len());
+  #[allow(clippy::needless_pass_by_ref_mut)]
+  async fn discard_duplicate_queued_batch(&mut self) -> anyhow::Result<()> {
+    let Some(queued_batch) = self.artifact_store.queued_batch().await? else {
+      return Ok(());
+    };
+    let Some(buffer_log) = self.buffer.peek_oldest_record()? else {
+      return Ok(());
+    };
+
+    // A queued batch has been durably staged but has not yet been promoted to inflight. If the
+    // current buffer head still matches the first log in that artifact, we know this process has
+    // not advanced past the staged batch, so it is safe to drop the queued artifact and rebuild it
+    // from the live buffer instead of replaying a stale duplicate copy.
+    if queued_batch
+      .logs
+      .first()
+      .is_some_and(|log| *log == buffer_log)
+    {
+      log::debug!(
+        "dropping recovered queued trigger batch that still exists in buffer {}",
+        self.buffer_id
+      );
+      self.artifact_store.remove_queued_batch().await?;
+    }
+
+    Ok(())
+  }
+
+  async fn persist_and_flush_current_batch(&mut self) -> anyhow::Result<()> {
+    if self.batch_builder.logs.is_empty() {
+      return Ok(());
+    }
+
+    // The critical ordering here is: stage the concrete logs durably, then advance the live buffer
+    // cursor, then promote the staged batch to the single inflight artifact. That guarantees a
+    // crash cannot lose logs silently: after restart we will either find them still readable in the
+    // buffer or recover them from the artifact store.
+    self
+      .artifact_store
+      .stage_batch(self.batch_builder.take())
+      .await?;
+    self.consumer.finish_reads(self.pending_batch_reads)?;
+    self.pending_batch_reads = 0;
+
+    let batch = self
+      .artifact_store
+      .promote_queued_batch_to_inflight()
+      .await?
+      .ok_or_else(|| anyhow::anyhow!("staged trigger batch missing from artifact store"))?;
+
+    log::debug!(
+      "staged trigger batch of {} logs before advancing buffer {}",
+      batch.logs.len(),
+      self.buffer_id
+    );
+
+    self.flush_batch(batch, false).await
+  }
+
+  async fn flush_persisted_batches(&mut self) -> anyhow::Result<()> {
+    // Recovery may leave both an inflight artifact and additional queued artifacts on disk. We
+    // always flush the inflight batch first, then keep promoting queued batches until the durable
+    // backlog is empty before returning to live buffer reads.
+    if let Some(batch) = self.artifact_store.inflight_batch().await? {
+      self.flush_batch(batch, true).await?;
+    }
+
+    while let Some(batch) = self
+      .artifact_store
+      .promote_queued_batch_to_inflight()
+      .await?
+    {
+      self.flush_batch(batch, true).await?;
+    }
+
+    Ok(())
+  }
+
+  async fn flush_batch(
+    &mut self,
+    batch: PersistedTriggerUploadArtifactBatch,
+    discard_recovered_prefix: bool,
+  ) -> anyhow::Result<()> {
+    let logs_len = u64::try_from(batch.logs.len()).unwrap_or(u64::MAX);
+    let uploaded_logs = batch.logs.clone();
+    let timestamp_range = timestamp_range_for_logs(&batch.logs);
+    log::debug!("flushing {logs_len} logs from trigger artifact");
+
+    // Once a batch is uploaded from durable artifact storage, the registry should reflect that the
+    // buffer is no longer being read directly from the live ring buffer. This distinction matters
+    // for restart because subsequent recovery should resume from the artifact backlog first.
+    self
+      .pending_trigger_uploads
+      .mark_uploading_from_artifact(&self.pending_trigger_upload_id, &self.buffer_id)
+      .await;
 
     // Upload state snapshot if needed before uploading logs
     if let (Some(handle), Some((oldest, newest))) = (&self.state_upload_handle, timestamp_range) {
@@ -817,9 +1405,10 @@ impl CompleteBufferUpload {
       .ready()
       .await
       .unwrap_infallible()
-      .call(UploadRequest::new(
+      .call(UploadRequest::new_with_uuid(
+        batch.upload_uuid,
         LogBatch {
-          logs,
+          logs: batch.logs,
           buffer_id: self.buffer_id.clone(),
         },
         false,
@@ -827,12 +1416,85 @@ impl CompleteBufferUpload {
       .await
       .unwrap_infallible();
 
-    // Note that we don't keep a shutdown handle for trigger uploads since we don't ever try to
-    // cancel them, so we don't anything extra here to avoid deadlocking like in the other two
-    // consumer tasks.
+    match result {
+      UploadResult::Success => {
+        self.artifact_store.clear_inflight_batch().await?;
 
-    log::debug!("completed trigger batch upload with result: {result:?}");
+        // Record progress before attempting any buffer-prefix cleanup. The uploaded batch is now
+        // durable history regardless of whether the current buffer still matches its contents.
+        self
+          .pending_trigger_uploads
+          .record_uploaded_chunk(&self.pending_trigger_upload_id, &self.buffer_id, logs_len)
+          .await;
+
+        if discard_recovered_prefix {
+          self.discard_uploaded_buffer_prefix(&uploaded_logs)?;
+        }
+
+        log::debug!("completed trigger batch upload with result: {result:?}");
+        Ok(())
+      },
+      UploadResult::Failure => {
+        anyhow::bail!("trigger batch upload failed")
+      },
+      UploadResult::Canceled => Err(TriggerBatchUploadCanceled.into()),
+    }
+  }
+
+  fn discard_uploaded_buffer_prefix(&mut self, uploaded_logs: &[Vec<u8>]) -> anyhow::Result<()> {
+    if uploaded_logs.is_empty() {
+      return Ok(());
+    }
+
+    // This path only runs for recovered artifact uploads. The previous process may have staged and
+    // even partially uploaded logs before dying, so the live buffer can contain a prefix that is
+    // now redundant. We only retire the longest matching prefix and stop on the first divergence so
+    // newly written logs behind the recovered artifact remain intact.
+    let mut matched_logs = 0;
+    for uploaded_log in uploaded_logs {
+      match self.consumer.start_read(false) {
+        Ok(buffer_log) if buffer_log == *uploaded_log => {
+          matched_logs += 1;
+        },
+        Ok(_) => {
+          log::debug!(
+            "stopped discarding recovered trigger artifact prefix for {} after {matched_logs} \
+             matched logs because the buffer diverged",
+            self.buffer_id,
+          );
+          break;
+        },
+        Err(Error::AbslStatus(AbslCode::Unavailable, _)) => {
+          break;
+        },
+        Err(e) => {
+          return Err(e.into());
+        },
+      }
+    }
+
+    if matched_logs != 0 {
+      self.consumer.finish_reads(matched_logs)?;
+      log::debug!(
+        "discarded {matched_logs} buffered logs already uploaded from recovered trigger artifact"
+      );
+    }
 
     Ok(())
   }
+}
+
+fn timestamp_range_for_logs(logs: &[Vec<u8>]) -> Option<(u64, u64)> {
+  let mut oldest_micros = None;
+  let mut newest_micros = None;
+
+  for log in logs {
+    if let Some(ts) = EncodableLog::extract_timestamp(log) {
+      let ts_micros = ts.unix_timestamp_micros().cast_unsigned();
+      oldest_micros = Some(oldest_micros.map_or(ts_micros, |oldest: u64| oldest.min(ts_micros)));
+      newest_micros = Some(newest_micros.map_or(ts_micros, |newest: u64| newest.max(ts_micros)));
+    }
+  }
+
+  oldest_micros.zip(newest_micros)
 }

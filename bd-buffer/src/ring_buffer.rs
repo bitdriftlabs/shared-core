@@ -16,7 +16,6 @@ use crate::buffer::{
   LockHandle,
   PerRecordCrc32Check,
   RingBuffer as RingBufferInterface,
-  RingBufferConsumer,
   RingBufferCursorConsumer,
   RingBufferProducer,
   RingBufferStats,
@@ -55,6 +54,9 @@ pub enum BufferEvent {
   // added either via ContinousBufferCreated or TriggerBufferCreated.
   BufferRemoved(String),
 
+  // The full configured set of trigger buffers after a config update has been applied.
+  TriggerBufferConfigUpdated(Vec<String>),
+
   StreamBufferAdded(Arc<dyn buffer::RingBuffer>),
 
   StreamBufferRemoved(Arc<dyn buffer::RingBuffer>),
@@ -74,6 +76,10 @@ impl Debug for BufferEvent {
         .field(arg1)
         .finish(),
       Self::BufferRemoved(arg0) => f.debug_tuple("BufferRemoved").field(arg0).finish(),
+      Self::TriggerBufferConfigUpdated(arg0) => f
+        .debug_tuple("TriggerBufferConfigUpdated")
+        .field(arg0)
+        .finish(),
       Self::StreamBufferAdded(_) => f.debug_tuple("StreamBufferAdded").finish(),
       Self::StreamBufferRemoved(_) => f.debug_tuple("StreamBufferRemoved").finish(),
     }
@@ -349,8 +355,15 @@ impl Manager {
     }
 
     // First we resolve all the aggregate buffers based on the explicit config.
+    let configured_trigger_buffer_ids = updated_buffers
+      .iter()
+      .filter_map(|(id, (buffer_type, _))| {
+        (*buffer_type == buffer_config::Type::TRIGGER).then_some(id.clone())
+      })
+      .collect();
+
     let mut update_acks = self
-      .resolve_buffer_updates(current_buffers, new_buffers)
+      .resolve_buffer_updates(current_buffers, new_buffers, configured_trigger_buffer_ids)
       .await;
 
     // Add in an update for the streaming buffer if we end up creating/destroying the stream buffer
@@ -384,6 +397,7 @@ impl Manager {
     &self,
     current_buffers: HashMap<String, (buffer_config::Type, Arc<RingBuffer>)>,
     new_buffers: Vec<(String, (buffer_config::Type, Arc<RingBuffer>))>,
+    configured_trigger_buffer_ids: Vec<String>,
   ) -> Vec<tokio::sync::oneshot::Receiver<()>> {
     let mut update_acks = Vec::new();
 
@@ -442,6 +456,19 @@ impl Manager {
 
       update_acks.push(rx);
     }
+
+    let (event, rx) = BufferEventWithResponse::new(BufferEvent::TriggerBufferConfigUpdated(
+      configured_trigger_buffer_ids,
+    ));
+    handle_unexpected(
+      self
+        .buffer_event_tx
+        .send(event)
+        .await
+        .map_err(|_| anyhow!("buffer events")),
+      "trigger buffer config update",
+    );
+    update_acks.push(rx);
 
     update_acks
   }
@@ -547,7 +574,7 @@ impl CursorConsumer {
   pub fn advance_read_cursor(&mut self) -> anyhow::Result<()> {
     self
       .cursor_consumer
-      .advance_read_pointer()
+      .advance_read_pointers(1)
       .map_err(|e| anyhow!("cursor consumer buffer read error occurred: {e}"))
   }
 
@@ -579,7 +606,7 @@ impl CursorConsumer {
 // Adapter for the new consumer. To be removed.
 #[allow(clippy::struct_field_names)]
 pub struct Consumer {
-  consumer: Box<dyn RingBufferConsumer>,
+  cursor_consumer: Box<dyn RingBufferCursorConsumer>,
   _lock_handle: Box<dyn LockHandle>,
 
   // TODO(mattklein123): This is not actually required in the new code but some tests seem to
@@ -588,15 +615,26 @@ pub struct Consumer {
 }
 
 impl Consumer {
+  pub fn start_read(&mut self, block: bool) -> Result<Vec<u8>> {
+    self.cursor_consumer.start_read(block).map(<[u8]>::to_vec)
+  }
+
+  pub fn finish_read(&mut self) -> Result<()> {
+    self.cursor_consumer.advance_read_pointers(1)
+  }
+
+  pub fn finish_reads(&mut self, count: usize) -> Result<()> {
+    self.cursor_consumer.advance_read_pointers(count)
+  }
+
   pub fn try_read(&mut self) -> Result<Vec<u8>> {
-    let reserved = self.consumer.start_read(false)?;
-    let result = reserved.to_vec();
-    self.consumer.finish_read()?;
+    let result = self.start_read(false)?;
+    self.finish_read()?;
     Ok(result)
   }
 
   pub async fn read(&mut self) -> Result<Vec<u8>> {
-    self.consumer.read().await.map(<[u8]>::to_vec)
+    self.cursor_consumer.read().await.map(<[u8]>::to_vec)
   }
 }
 
@@ -780,15 +818,30 @@ impl RingBuffer {
 
   // Creates a new consumer which can be used to consume all the logs in the buffer.
   pub fn new_consumer(self: &Arc<Self>) -> anyhow::Result<Consumer> {
+    // Trigger uploads rely on this lock to stop new writes before they begin draining the
+    // non-volatile buffer. The aggregate lock targets the volatile producer side, then flushes RAM
+    // to disk before the non-volatile consumer is registered, so the resulting consumer sees a
+    // stable snapshot for one-off upload.
     let lock_handle = self.buffer.clone().lock();
     lock_handle.await_reservations_drained();
     self.buffer.flush();
 
     Ok(Consumer {
-      consumer: self.buffer.clone().register_consumer()?,
+      cursor_consumer: self
+        .buffer
+        .non_volatile_buffer()
+        .clone()
+        .register_locked_cursor_consumer()?,
       _lock_handle: lock_handle,
       _buffer: self.clone(),
     })
+  }
+
+  pub fn peek_oldest_record(&self) -> anyhow::Result<Option<Vec<u8>>> {
+    self
+      .buffer
+      .peek_oldest_record(<[u8]>::to_vec)
+      .map_err(|e| anyhow!("failed to peek oldest record: {e}"))
   }
 
   // Flush the underlying buffer.

@@ -26,6 +26,7 @@ use bd_proto::protos::client::api::{
   UploadArtifactIntentRequest,
   UploadArtifactRequest,
 };
+use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
 use bd_runtime::runtime::{ExponentialBackoffValues, ExponentialBackoffWatch, FeatureFlag};
 pub use network_quality::{
   AggregatedNetworkQualityProvider,
@@ -82,6 +83,90 @@ pub enum DataUpload {
 }
 
 //
+// TriggerUploadSource
+//
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TriggerUploadSource {
+  WorkflowAction(String),
+  ExplicitSessionCapture(String),
+  RemoteCommand(String),
+}
+
+impl TriggerUploadSource {
+  #[must_use]
+  pub fn logical_id(&self) -> &str {
+    // This string is the logger's durable trigger-upload key. Reusing the same logical ID causes
+    // recovery/rescheduling to rewrite one pending upload entry; minting a fresh ID creates a
+    // distinct pending upload record.
+    match self {
+      Self::WorkflowAction(id) | Self::ExplicitSessionCapture(id) | Self::RemoteCommand(id) => id,
+    }
+  }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TriggerUploadStreaming {
+  pub destination_buffer_ids: Vec<String>,
+  pub max_logs_count: Option<u64>,
+}
+
+impl From<action_flush_buffers::Streaming> for TriggerUploadStreaming {
+  fn from(streaming: action_flush_buffers::Streaming) -> Self {
+    Self::from(&streaming)
+  }
+}
+
+impl From<&action_flush_buffers::Streaming> for TriggerUploadStreaming {
+  fn from(streaming: &action_flush_buffers::Streaming) -> Self {
+    let max_logs_count = streaming.termination_criteria.iter().find_map(|criterion| {
+      criterion.type_.as_ref().map(
+        |action_flush_buffers::streaming::termination_criterion::Type::LogsCount(logs_count)| {
+          logs_count.max_logs_count
+        },
+      )
+    });
+
+    Self {
+      destination_buffer_ids: streaming.destination_streaming_buffer_ids.clone(),
+      max_logs_count,
+    }
+  }
+}
+
+impl From<TriggerUploadStreaming> for action_flush_buffers::Streaming {
+  fn from(streaming: TriggerUploadStreaming) -> Self {
+    Self::from(&streaming)
+  }
+}
+
+impl From<&TriggerUploadStreaming> for action_flush_buffers::Streaming {
+  fn from(streaming: &TriggerUploadStreaming) -> Self {
+    let termination_criteria = streaming
+      .max_logs_count
+      .map_or_else(Vec::new, |max_logs_count| {
+        vec![action_flush_buffers::streaming::TerminationCriterion {
+          type_: Some(
+            action_flush_buffers::streaming::termination_criterion::Type::LogsCount(
+              action_flush_buffers::streaming::termination_criterion::LogsCount {
+                max_logs_count,
+                ..Default::default()
+              },
+            ),
+          ),
+          ..Default::default()
+        }]
+      });
+
+    Self {
+      destination_streaming_buffer_ids: streaming.destination_buffer_ids.clone(),
+      termination_criteria,
+      ..Default::default()
+    }
+  }
+}
+
+//
 // TriggerUpload
 //
 
@@ -91,16 +176,29 @@ pub struct TriggerUpload {
   // The list of identifiers of the buffers whose content should be uploaded.
   pub buffer_ids: Vec<String>,
 
-  // A channel to notify the caller that the upload has been completed.
-  pub response_tx: tokio::sync::oneshot::Sender<()>,
+  // Optional streaming configuration that should be activated alongside the flush.
+  pub streaming: Option<TriggerUploadStreaming>,
+
+  // Stable identifier for the logical trigger that scheduled the upload.
+  pub source: TriggerUploadSource,
+
+  // Session identifier active when the logical trigger was scheduled.
+  pub session_id: String,
 }
 
 impl TriggerUpload {
   #[must_use]
-  pub const fn new(buffer_ids: Vec<String>, response_tx: tokio::sync::oneshot::Sender<()>) -> Self {
+  pub fn new(
+    buffer_ids: Vec<String>,
+    streaming: Option<TriggerUploadStreaming>,
+    source: TriggerUploadSource,
+    session_id: String,
+  ) -> Self {
     Self {
       buffer_ids,
-      response_tx,
+      streaming,
+      source,
+      session_id,
     }
   }
 }

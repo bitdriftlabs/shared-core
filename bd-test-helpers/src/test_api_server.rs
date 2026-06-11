@@ -44,10 +44,12 @@ use bd_proto::protos::client::api::{
   upload_artifact_intent_response,
 };
 use bd_proto::protos::logging::payload::data::Data_type;
+use bd_proto::protos::workflow::workflow;
 use bd_time::{TimeDurationExt, ToProtoDuration};
 use http_body_util::StreamBody;
 use log_upload::LogUpload;
-use std::collections::HashMap;
+use protobuf::MessageField;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};
 use time::Duration;
@@ -102,6 +104,7 @@ enum ObservedEvent {
 struct ServiceState {
   ping_interval: Option<Duration>,
   stream_id_generator: Arc<AtomicI32>,
+  log_upload_response_control: LogUploadResponseControl,
 
   event_tx: Sender<ObservedEvent>,
   per_stream_action_txs: Arc<Mutex<HashMap<i32, Arc<Sender<StreamAction>>>>>,
@@ -115,6 +118,62 @@ struct ServiceState {
   debug_data_tx: Sender<DebugDataRequest>,
 
   shutdown_tx: broadcast::Sender<()>,
+}
+
+//
+// LogUploadResponseControl
+//
+
+enum PendingLogUploadResponse {
+  Suppress,
+  Block(oneshot::Receiver<()>),
+}
+
+#[derive(Clone, Default)]
+struct LogUploadResponseControl {
+  pending_responses: Arc<Mutex<VecDeque<PendingLogUploadResponse>>>,
+}
+
+impl LogUploadResponseControl {
+  fn suppress_next(&self) {
+    self
+      .pending_responses
+      .lock()
+      .unwrap()
+      .push_back(PendingLogUploadResponse::Suppress);
+  }
+
+  fn block_next(&self) -> BlockedLogUploadResponse {
+    let (release_tx, release_rx) = oneshot::channel();
+    self
+      .pending_responses
+      .lock()
+      .unwrap()
+      .push_back(PendingLogUploadResponse::Block(release_rx));
+    BlockedLogUploadResponse {
+      release_tx: Some(release_tx),
+    }
+  }
+
+  fn next(&self) -> Option<PendingLogUploadResponse> {
+    self.pending_responses.lock().unwrap().pop_front()
+  }
+}
+
+//
+// BlockedLogUploadResponse
+//
+
+pub struct BlockedLogUploadResponse {
+  release_tx: Option<oneshot::Sender<()>>,
+}
+
+impl BlockedLogUploadResponse {
+  pub fn release(mut self) {
+    if let Some(release_tx) = self.release_tx.take() {
+      let _ignored = release_tx.send(());
+    }
+  }
 }
 
 //
@@ -298,16 +357,36 @@ impl RequestProcessor {
         if log_upload.ackless {
           return None;
         }
-        Some(ApiResponse {
-          response_type: Some(Response_type::LogUpload(LogUploadResponse {
-            upload_uuid,
-            rate_limited: None.into(),
-            error: String::new(),
-            logs_dropped: 0,
-            ..Default::default()
-          })),
-          ..Default::default()
-        })
+
+        match self.stream_state.log_upload_response_control.next() {
+          Some(PendingLogUploadResponse::Suppress) => {
+            log::debug!(
+              "[S{}] suppressing log upload response {}",
+              self.stream_id,
+              upload_uuid
+            );
+            None
+          },
+          Some(PendingLogUploadResponse::Block(release_rx)) => {
+            log::debug!(
+              "[S{}] blocking log upload response {} until released",
+              self.stream_id,
+              upload_uuid
+            );
+
+            if release_rx.await.is_err() {
+              log::debug!(
+                "[S{}] blocked log upload response {} dropped before release",
+                self.stream_id,
+                upload_uuid
+              );
+              return None;
+            }
+
+            Some(Self::log_upload_response(upload_uuid))
+          },
+          None => Some(Self::log_upload_response(upload_uuid)),
+        }
       },
       Some(Request_type::StatsUpload(stat_upload)) => {
         let upload_uuid = stat_upload.upload_uuid.clone();
@@ -335,6 +414,19 @@ impl RequestProcessor {
         None
       },
       r => panic!("received unknown reqest type: {r:?}"),
+    }
+  }
+
+  fn log_upload_response(upload_uuid: String) -> ApiResponse {
+    ApiResponse {
+      response_type: Some(Response_type::LogUpload(LogUploadResponse {
+        upload_uuid,
+        rate_limited: None.into(),
+        error: String::new(),
+        logs_dropped: 0,
+        ..Default::default()
+      })),
+      ..Default::default()
     }
   }
 }
@@ -412,6 +504,15 @@ async fn mux(
               ApiResponse {
                   response_type: Some(Response_type::FlushBuffers(FlushBuffers {
                       buffer_id_list: buffers,
+                      ..Default::default()
+                  })),
+                  ..Default::default()
+              },
+            StreamAction::FlushBuffersWithStreaming { buffers, streaming } =>
+              ApiResponse {
+                  response_type: Some(Response_type::FlushBuffers(FlushBuffers {
+                      buffer_id_list: buffers,
+                      streaming: MessageField::some(streaming),
                       ..Default::default()
                   })),
                   ..Default::default()
@@ -596,6 +697,8 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
   let (configuration_ack_tx, configuration_ack_rx) = channel(1);
   let (runtime_ack_tx, runtime_ack_rx) = channel(256);
   let (debug_data_tx, debug_data_rx) = channel(256);
+  let log_upload_response_control = LogUploadResponseControl::default();
+  let server_log_upload_response_control = log_upload_response_control.clone();
 
   let (stream_action_tx, stream_action_rx) = channel(1);
   let (ready_tx, ready_rx) = oneshot::channel::<()>();
@@ -617,6 +720,7 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
         let service_state = Arc::new(ServiceState {
           ping_interval,
           stream_id_generator: Arc::new(AtomicI32::new(0)),
+          log_upload_response_control: server_log_upload_response_control.clone(),
           event_tx,
           shutdown_tx,
           per_stream_action_txs: per_stream_action_txs.clone(),
@@ -657,6 +761,7 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
     shutdown_tx: server_shutdown_tx,
     server_thread: Some(server_thread),
     log_upload_rx,
+    log_upload_response_control,
     log_intent_rx,
     artifact_upload_rx,
     artifact_intent_rx,
@@ -796,6 +901,13 @@ pub enum StreamAction {
   /// Sends a `FlushBuffers` response over the stream with the specified buffers.
   FlushBuffers(Vec<String>),
 
+  /// Sends a `FlushBuffers` response over the stream with the specified buffers and streaming
+  /// configuration.
+  FlushBuffersWithStreaming {
+    buffers: Vec<String>,
+    streaming: workflow::workflow::action::action_flush_buffers::Streaming,
+  },
+
   /// Closes the stream.
   CloseStream,
 }
@@ -811,6 +923,7 @@ pub struct ServerHandle {
   server_thread: Option<std::thread::JoinHandle<()>>,
 
   log_upload_rx: Receiver<LogUploadRequest>,
+  log_upload_response_control: LogUploadResponseControl,
   artifact_upload_rx: Receiver<UploadArtifactRequest>,
   artifact_intent_rx: Receiver<UploadArtifactIntentRequest>,
   log_intent_rx: Receiver<LogUploadIntentRequest>,
@@ -973,6 +1086,15 @@ impl ServerHandle {
 
   pub async fn next_log_upload(&mut self) -> Option<LogUploadRequest> {
     Self::next_request_with_timeout(&mut self.log_upload_rx).await
+  }
+
+  pub fn suppress_next_log_upload_response(&self) {
+    self.log_upload_response_control.suppress_next();
+  }
+
+  #[must_use]
+  pub fn block_next_log_upload_response(&self) -> BlockedLogUploadResponse {
+    self.log_upload_response_control.block_next()
   }
 
   pub fn blocking_next_log_upload(&mut self) -> Option<LogUpload> {

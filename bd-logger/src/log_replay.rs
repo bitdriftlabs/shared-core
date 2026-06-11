@@ -7,9 +7,11 @@
 
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
+use crate::consumer::RemoteFlushStreamingRequest;
+use crate::flush_registry::PendingTriggerUploadsStore;
 use crate::logging_state::{BufferProducers, ConfigUpdate, InitializedLoggingContextStats};
 use crate::write_log_to_buffer;
-use bd_api::{DataUpload, TriggerUpload};
+use bd_api::{DataUpload, TriggerUpload, TriggerUploadSource};
 use bd_buffer::BuffersWithAck;
 use bd_client_stats::{FlushTrigger, FlushTriggerRequest};
 use bd_log_filter::FilterChain;
@@ -25,7 +27,7 @@ use bd_stats_common::Counter as _;
 use bd_time::OffsetDateTimeExt;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::config::FlushBufferId;
-use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig};
+use bd_workflows::engine::{ProcessLocalPendingFlushState, WorkflowsEngine, WorkflowsEngineConfig};
 use bd_workflows::workflow::{WorkflowDebugStateMap, WorkflowEvent};
 use itertools::Itertools;
 use std::borrow::Cow;
@@ -146,6 +148,7 @@ pub struct ProcessingPipeline {
   // The channel used to receive a signal from the workflows engine that it should flush the
   // buffers.
   buffers_to_flush_rx: Receiver<BuffersToFlush>,
+  remote_flush_streaming_rx: Receiver<RemoteFlushStreamingRequest>,
   capture_screenshot_handler: CaptureScreenshotHandler,
   is_tracing_active: Arc<AtomicBool>,
 
@@ -158,6 +161,7 @@ impl ProcessingPipeline {
     flush_buffers_tx: Sender<BuffersWithAck>,
     flush_stats_trigger: FlushTrigger,
     trigger_upload_tx: Sender<TriggerUpload>,
+    remote_flush_streaming_rx: Receiver<RemoteFlushStreamingRequest>,
     capture_screenshot_handler: CaptureScreenshotHandler,
 
     config: ConfigUpdate,
@@ -166,16 +170,30 @@ impl ProcessingPipeline {
     runtime: &ConfigLoader,
     stats: InitializedLoggingContextStats,
     is_tracing_active: Arc<AtomicBool>,
+    process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
   ) -> Self {
+    // Startup rebuilds the workflow-side pending set by projecting the durable logger registry
+    // down to flush IDs. The registry stays authoritative across restart; workflows only need the
+    // in-memory membership check.
+    process_local_pending_flush_state.replace_pending_flushes(
+      PendingTriggerUploadsStore::new(sdk_directory)
+        .pending_uploads()
+        .await
+        .into_iter()
+        .map(|upload| upload.source.to_flush_buffer_id()),
+    );
+
     let (workflows_engine, buffers_to_flush_rx) = {
-      let (mut workflows_engine, flush_buffers_tx) = WorkflowsEngine::new(
-        &stats.root_scope,
-        Some(sdk_directory),
-        Some(runtime),
-        data_upload_tx,
-        stats.stats.clone(),
-        Some(flush_stats_trigger.clone()),
-      );
+      let (mut workflows_engine, flush_buffers_tx) =
+        WorkflowsEngine::new_with_flush_completion_tracker(
+          &stats.root_scope,
+          Some(sdk_directory),
+          Some(runtime),
+          data_upload_tx,
+          stats.stats.clone(),
+          Some(flush_stats_trigger.clone()),
+          process_local_pending_flush_state.clone(),
+        );
 
       workflows_engine
         .start(
@@ -206,6 +224,7 @@ impl ProcessingPipeline {
 
       trigger_upload_tx,
       buffers_to_flush_rx,
+      remote_flush_streaming_rx,
 
       capture_screenshot_handler,
       is_tracing_active,
@@ -303,7 +322,8 @@ impl ProcessingPipeline {
         .iter()
         .filter_map(|id| match id.as_ref() {
           bd_workflows::config::FlushBufferId::WorkflowActionId(workflow) => Some(workflow),
-          bd_workflows::config::FlushBufferId::ExplicitSessionCapture(_) => None,
+          bd_workflows::config::FlushBufferId::ExplicitSessionCapture(_)
+          | bd_workflows::config::FlushBufferId::RemoteCommand(_) => None,
         })
         .map(std::convert::AsRef::as_ref)
         .collect_vec(),
@@ -550,7 +570,8 @@ impl ProcessingPipeline {
             .iter()
             .filter_map(|id| match id.as_ref() {
               bd_workflows::config::FlushBufferId::WorkflowActionId(workflow) => Some(workflow),
-              bd_workflows::config::FlushBufferId::ExplicitSessionCapture(_) => None,
+              bd_workflows::config::FlushBufferId::ExplicitSessionCapture(_)
+              | bd_workflows::config::FlushBufferId::RemoteCommand(_) => None,
             })
             .map(std::convert::AsRef::as_ref)
             .collect();
@@ -596,8 +617,16 @@ impl ProcessingPipeline {
             .iter()
             .map(std::string::ToString::to_string)
             .collect(),
-            buffers_to_flush.response_tx,
-          );
+          buffers_to_flush.streaming,
+          match &buffers_to_flush.flush_id {
+            FlushBufferId::WorkflowActionId(id) => TriggerUploadSource::WorkflowAction(id.clone()),
+            FlushBufferId::ExplicitSessionCapture(id) => {
+              TriggerUploadSource::ExplicitSessionCapture(id.clone())
+            },
+            FlushBufferId::RemoteCommand(id) => TriggerUploadSource::RemoteCommand(id.clone()),
+          },
+          buffers_to_flush.session_id,
+        );
 
         let result = self.trigger_upload_tx.try_send(trigger_upload);
         match result {
@@ -606,8 +635,28 @@ impl ProcessingPipeline {
           },
           Err(e) => {
             log::debug!("failed to send trigger flush: {e}");
+            self.workflows_engine.mark_flush_completed(&buffers_to_flush.flush_id);
             self.stats.trigger_upload_stats.record(&e);
           }
+        }
+      },
+      Some(remote_flush_streaming) = self.remote_flush_streaming_rx.recv() => {
+        log::debug!(
+          "received remote flush streaming request, buffer IDs: \"{:?}\"",
+          remote_flush_streaming.buffer_ids
+        );
+
+        let started = self.workflows_engine.start_remote_flush_streaming(
+          remote_flush_streaming.id,
+          remote_flush_streaming.buffer_ids.into_iter().collect(),
+          &remote_flush_streaming.session_id,
+          remote_flush_streaming.streaming,
+        );
+
+        if started {
+          self
+            .is_tracing_active
+            .store(self.workflows_engine.is_tracing_active(), Ordering::Relaxed);
         }
       },
     }
