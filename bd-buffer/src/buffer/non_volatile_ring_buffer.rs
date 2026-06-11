@@ -572,10 +572,6 @@ impl RingBufferCursorConsumer for CursorConsumerImpl {
     )
   }
 
-  fn advance_read_pointer(&mut self) -> Result<()> {
-    self.advance_read_pointers(1)
-  }
-
   fn advance_read_pointers(&mut self, count: usize) -> Result<()> {
     let Some(parent) = self.buffer.upgrade() else {
       return Err(Error::AbslStatus(

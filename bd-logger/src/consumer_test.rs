@@ -73,7 +73,6 @@ struct SetupSingleConsumer {
 
 impl SetupSingleConsumer {
   async fn new() -> Self {
-    tokio::time::pause();
     let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
 
     let records_written_counter = Counter::default();
@@ -163,7 +162,7 @@ impl SetupSingleConsumer {
   }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn upload_retries() {
   let mut setup = SetupSingleConsumer::new().await;
 
@@ -271,7 +270,7 @@ async fn upload_retries() {
 
 // Validates that we are limiting the total byte size of the batch upload for the continuous
 // buffers.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn continuous_buffer_upload_byte_limit() {
   let mut setup = SetupSingleConsumer::new().await;
 
@@ -309,7 +308,7 @@ async fn continuous_buffer_upload_byte_limit() {
 }
 
 // Verifies that we shut down the continuous buffer even if there is a pending log upload.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn continuous_buffer_upload_shutdown() {
   let mut setup = SetupSingleConsumer::new().await;
 
@@ -332,9 +331,8 @@ async fn continuous_buffer_upload_shutdown() {
   setup.shutdown().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn continuous_buffer_sets_retention_none_when_batch_drains_buffer() {
-  tokio::time::pause();
   let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
   let runtime_loader = Arc::new(ConfigLoader::new(sdk_directory.path()));
   runtime_loader
@@ -416,7 +414,7 @@ async fn continuous_buffer_sets_retention_none_when_batch_drains_buffer() {
 
 // Validates the behavior when the first upload is a full batch, followed
 // by a partial batch after the full batch retries once.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn uploading_full_batch_failure() {
   let mut setup = SetupSingleConsumer::new().await;
 
@@ -491,7 +489,7 @@ async fn uploading_full_batch_failure() {
   setup.shutdown().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn uploading_partial_batch_failure() {
   let mut setup = SetupSingleConsumer::new().await;
 
@@ -539,7 +537,7 @@ async fn uploading_partial_batch_failure() {
 }
 
 // Verifies that the batch deadline works as a total timeout, not an idle timeout.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn total_batch_upload_timeout() {
   let mut setup = SetupSingleConsumer::new().await;
 
@@ -557,7 +555,7 @@ async fn total_batch_upload_timeout() {
   setup.shutdown().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn uploading_never_succeeds() {
   let mut setup = SetupSingleConsumer::new().await;
 
@@ -590,7 +588,7 @@ async fn uploading_never_succeeds() {
   setup.shutdown().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn age_limit_log_uploads() {
   let mut setup = SetupMultiConsumer::new(1, 1000).await;
   let (buffer, mut producer) =
@@ -781,8 +779,6 @@ impl SetupMultiConsumer {
   }
 
   async fn new(batch_size: u32, byte_limit: u32) -> Self {
-    tokio::time::pause();
-
     Self::new_with_state(
       batch_size,
       byte_limit,
@@ -856,7 +852,7 @@ impl SetupMultiConsumer {
   }
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn upload_multiple_continuous_buffers() {
   let directory = tempfile::TempDir::with_prefix("consumer-").unwrap();
   let mut setup = SetupMultiConsumer::new(1, 1000).await;
@@ -960,7 +956,7 @@ async fn upload_multiple_continuous_buffers() {
   setup.shutdown().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn remove_trigger_buffer() {
   let setup = SetupMultiConsumer::new(1, 1000).await;
 
@@ -975,7 +971,7 @@ async fn remove_trigger_buffer() {
   setup.shutdown().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn trigger_upload_byte_size_limit() {
   // Allow 10 logs or 100 bytes per upload.
   let mut setup = SetupMultiConsumer::new(10, 100).await;
@@ -994,7 +990,7 @@ async fn trigger_upload_byte_size_limit() {
   assert_eq!(upload.payload.log_upload().proto_logs.len(), 1);
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn dropped_trigger() {
   let mut setup = SetupMultiConsumer::new(1, 1000).await;
   let (buffer, mut producer) =
@@ -1011,7 +1007,7 @@ async fn dropped_trigger() {
   assert!(poll!(pinned).is_pending());
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn uploaded_trigger() {
   let mut setup = SetupMultiConsumer::new(2, 1000).await;
   let (buffer, mut producer) =
@@ -1029,7 +1025,7 @@ async fn uploaded_trigger() {
   assert_eq!(upload.payload.log_upload().proto_logs.len(), 2);
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn uploaded_trigger_continues_after_full_first_batch() {
   let mut setup = SetupMultiConsumer::new(10, 1000).await;
   let (buffer, mut producer) =
@@ -1057,7 +1053,7 @@ async fn uploaded_trigger_continues_after_full_first_batch() {
   assert_eq!(second_upload.payload.log_upload().proto_logs.len(), 1);
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn trigger_upload_with_empty_buffer_list_flushes_all_trigger_buffers() {
   let mut setup = SetupMultiConsumer::new(1, 1000).await;
   let (buffer_a, mut producer_a) =
@@ -1096,7 +1092,7 @@ async fn trigger_upload_with_empty_buffer_list_flushes_all_trigger_buffers() {
   );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn trigger_upload_is_persisted_until_completion() {
   let mut setup = SetupMultiConsumer::new(1, 1000).await;
   let (buffer, mut producer) =
@@ -1153,10 +1149,8 @@ async fn trigger_upload_is_persisted_until_completion() {
   panic!("expected trigger upload persistence to clear after upload completion");
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn persisted_trigger_upload_replays_after_restart() {
-  tokio::time::pause();
-
   let temp_directory = TempDir::with_prefix("consumertest").unwrap();
   PendingTriggerUploadsStore::new(temp_directory.path())
     .upsert(PersistedTriggerUpload {
@@ -1201,10 +1195,8 @@ async fn persisted_trigger_upload_replays_after_restart() {
   panic!("expected recovered trigger upload to be cleared from persistence");
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn in_flight_trigger_upload_replays_after_restart() {
-  tokio::time::pause();
-
   let temp_directory = TempDir::with_prefix("consumertest").unwrap();
   PendingTriggerUploadsStore::new(temp_directory.path())
     .upsert(PersistedTriggerUpload {
@@ -1271,10 +1263,8 @@ async fn in_flight_trigger_upload_replays_after_restart() {
   panic!("expected recovered in-flight trigger upload to be cleared from persistence");
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn queued_trigger_upload_artifact_prefix_is_deduped_against_buffer_on_restart() {
-  tokio::time::pause();
-
   let temp_directory = TempDir::with_prefix("consumertest").unwrap();
   PendingTriggerUploadsStore::new(temp_directory.path())
     .upsert(PersistedTriggerUpload {
@@ -1325,10 +1315,8 @@ async fn queued_trigger_upload_artifact_prefix_is_deduped_against_buffer_on_rest
   assert!(poll!(pinned).is_pending());
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn recovered_trigger_upload_only_discards_matching_buffer_prefix_on_restart() {
-  tokio::time::pause();
-
   let temp_directory = TempDir::with_prefix("consumertest").unwrap();
   PendingTriggerUploadsStore::new(temp_directory.path())
     .upsert(PersistedTriggerUpload {
@@ -1401,10 +1389,8 @@ async fn recovered_trigger_upload_only_discards_matching_buffer_prefix_on_restar
   assert_eq!(later_upload.payload.log_upload().proto_logs[0], b"three");
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn persisted_trigger_upload_prunes_missing_buffers_on_recovery() {
-  tokio::time::pause();
-
   let temp_directory = TempDir::with_prefix("consumertest").unwrap();
   PendingTriggerUploadsStore::new(temp_directory.path())
     .upsert(PersistedTriggerUpload {
@@ -1459,10 +1445,8 @@ async fn persisted_trigger_upload_prunes_missing_buffers_on_recovery() {
   panic!("expected pruned trigger upload to be cleared from persistence");
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn persisted_trigger_upload_with_no_configured_buffers_is_abandoned() {
-  tokio::time::pause();
-
   let temp_directory = TempDir::with_prefix("consumertest").unwrap();
   PendingTriggerUploadsStore::new(temp_directory.path())
     .upsert(PersistedTriggerUpload {
@@ -1504,10 +1488,8 @@ async fn persisted_trigger_upload_with_no_configured_buffers_is_abandoned() {
   assert!(poll!(pinned).is_pending());
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn live_remote_trigger_upload_persists_across_shutdown() {
-  tokio::time::pause();
-
   let temp_directory = TempDir::with_prefix("consumertest").unwrap();
   let (remote_flush_streaming_tx, mut remote_flush_streaming_rx) = tokio::sync::mpsc::channel(1);
 
@@ -1577,10 +1559,8 @@ async fn live_remote_trigger_upload_persists_across_shutdown() {
   std::fs::remove_dir_all(&sdk_directory).unwrap();
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn remote_streaming_activation_channel_closure_preserves_flush_completion() {
-  tokio::time::pause();
-
   let temp_directory = TempDir::with_prefix("consumertest").unwrap();
   let (remote_flush_streaming_tx, remote_flush_streaming_rx) = tokio::sync::mpsc::channel(1);
   drop(remote_flush_streaming_rx);
@@ -1644,10 +1624,8 @@ async fn remote_streaming_activation_channel_closure_preserves_flush_completion(
   setup.shutdown().await;
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn remote_streaming_activation_waits_for_channel_capacity_before_completing_flush() {
-  tokio::time::pause();
-
   let temp_directory = TempDir::with_prefix("consumertest").unwrap();
   let (remote_flush_streaming_tx, mut remote_flush_streaming_rx) = tokio::sync::mpsc::channel(1);
   remote_flush_streaming_tx

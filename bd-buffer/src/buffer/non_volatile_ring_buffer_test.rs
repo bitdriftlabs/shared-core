@@ -397,7 +397,7 @@ fn cursor_consumer() {
       if code == AbslCode::FailedPrecondition && message.starts_with("consumer already registered")
   );
   assert_matches!(
-    helper.helper().cursor_consumer().advance_read_pointer(),
+    helper.helper().cursor_consumer().advance_read_pointers(1),
     Err(Error::AbslStatus(code, message))
       if code == AbslCode::FailedPrecondition && message.starts_with("no previous read to advance")
   );

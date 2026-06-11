@@ -83,7 +83,7 @@ pub enum DataUpload {
 }
 
 //
-// TriggerUpload
+// TriggerUploadSource
 //
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -101,6 +101,10 @@ impl TriggerUploadSource {
     }
   }
 }
+
+//
+// TriggerUpload
+//
 
 /// A trigger upload.
 #[derive(Debug)]

@@ -778,7 +778,7 @@ fn session_replay_actions() {
   );
   // TODO(snowp): This is a bit of a brittle test as it relies on the timing of the screenshot
   // handling.
-  std::thread::sleep(500.std_milliseconds());
+  std::thread::sleep(100.std_milliseconds());
   assert_eq!(
     0,
     setup

@@ -76,7 +76,7 @@ pub fn cursor_read_and_verify(
 }
 
 pub fn cursor_read_advance(consumer: &mut dyn RingBufferCursorConsumer) {
-  consumer.advance_read_pointer().unwrap();
+  consumer.advance_read_pointers(1).unwrap();
 }
 
 pub fn cursor_read_and_verify_and_advance(consumer: &mut dyn RingBufferCursorConsumer, data: &str) {
