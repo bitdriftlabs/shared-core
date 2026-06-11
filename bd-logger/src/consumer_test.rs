@@ -36,7 +36,7 @@ use bd_stats_common::labels;
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_time::{OffsetDateTimeExt as _, TimeDurationExt};
 use bd_workflows::config::FlushBufferId;
-use bd_workflows::engine::FlushCompletionTracker;
+use bd_workflows::engine::ProcessLocalPendingFlushState;
 use core::panic;
 use futures_util::poll;
 use protobuf::{CodedOutputStream, Message};
@@ -669,7 +669,7 @@ struct SetupMultiConsumer {
   shutdown_trigger: ComponentShutdownTrigger,
   buffer_event_tx: Sender<BufferEventWithResponse>,
   trigger_upload_tx: Sender<TriggerUpload>,
-  flush_completion_tracker: Arc<FlushCompletionTracker>,
+  process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
   runtime_loader: Arc<ConfigLoader>,
   stats: Collector,
   sdk_directory: PathBuf,
@@ -690,7 +690,7 @@ impl SetupMultiConsumer {
 
     let (log_upload_tx, log_upload_rx) = tokio::sync::mpsc::channel(1);
     let (trigger_upload_tx, trigger_upload_rx) = tokio::sync::mpsc::channel(1);
-    let flush_completion_tracker = Arc::new(FlushCompletionTracker::default());
+    let process_local_pending_flush_state = Arc::new(ProcessLocalPendingFlushState::default());
 
     let shutdown_trigger = ComponentShutdownTrigger::default();
     let config_loader = ConfigLoader::new(&sdk_directory);
@@ -711,7 +711,7 @@ impl SetupMultiConsumer {
     let config_loader_clone = config_loader.clone();
     let collector_clone = stats.clone();
     let sdk_directory_clone = sdk_directory.clone();
-    let flush_completion_tracker_clone = flush_completion_tracker.clone();
+    let process_local_pending_flush_state_clone = process_local_pending_flush_state.clone();
     tokio::spawn(async move {
       BufferUploadManager::new(
         log_upload_tx,
@@ -725,7 +725,7 @@ impl SetupMultiConsumer {
         bd_internal_logging::NoopLogger::new(),
         None,
         PendingTriggerUploadsStore::new(&sdk_directory_clone),
-        flush_completion_tracker_clone,
+        process_local_pending_flush_state_clone,
       )
       .run()
       .await
@@ -737,7 +737,7 @@ impl SetupMultiConsumer {
       shutdown_trigger,
       buffer_event_tx,
       trigger_upload_tx,
-      flush_completion_tracker,
+      process_local_pending_flush_state,
       runtime_loader: config_loader,
       stats,
       sdk_directory,
@@ -838,7 +838,7 @@ impl SetupMultiConsumer {
   }
 
   fn flush_is_pending(&self, flush_id: &FlushBufferId) -> bool {
-    self.flush_completion_tracker.is_pending(flush_id)
+    self.process_local_pending_flush_state.is_pending(flush_id)
   }
 
   async fn next_upload(&mut self) -> Tracked<ApiRequest, UploadResponse> {

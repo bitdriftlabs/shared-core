@@ -51,7 +51,7 @@ use bd_state::{
   string_value,
 };
 use bd_time::{SystemTimeProvider, Ticker, TimeProvider};
-use bd_workflows::engine::FlushCompletionTracker;
+use bd_workflows::engine::ProcessLocalPendingFlushState;
 use futures_util::{Future, try_join};
 use parking_lot::Mutex;
 use std::pin::Pin;
@@ -333,7 +333,7 @@ impl LoggerBuilder {
 
     let sdk_status_tracker = bd_client_common::sdk_status::SdkStatusTracker::new();
     let pending_trigger_uploads = PendingTriggerUploadsStore::new(&self.params.sdk_directory);
-    let flush_completion_tracker = Arc::new(FlushCompletionTracker::default());
+    let process_local_pending_flush_state = Arc::new(ProcessLocalPendingFlushState::default());
 
     let (async_log_buffer, async_log_buffer_communication_tx) = AsyncLogBuffer::<LoggerReplay>::new(
       UninitializedLoggingContext::new(
@@ -348,7 +348,7 @@ impl LoggerBuilder {
         flusher_trigger.clone(),
         1024 * 1024,
         is_tracing_active.clone(),
-        flush_completion_tracker.clone(),
+        process_local_pending_flush_state.clone(),
       ),
       LoggerReplay,
       self.params.session_strategy.clone(),
@@ -550,7 +550,7 @@ impl LoggerBuilder {
         log.clone(),
         state_upload_handle,
         pending_trigger_uploads,
-        flush_completion_tracker,
+        process_local_pending_flush_state,
       );
 
       let updater = Arc::new(client_config::Config::new_with_time_provider(

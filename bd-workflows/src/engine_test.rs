@@ -13,7 +13,7 @@ use super::engine_test_helpers::{
   make_runtime,
 };
 use crate::config::{Action, FlushBufferId, WorkflowDebugMode, WorkflowsConfiguration};
-use crate::engine::{FlushCompletionTracker, WorkflowsEngineConfig, WorkflowsEngineResult};
+use crate::engine::{ProcessLocalPendingFlushState, WorkflowsEngineConfig, WorkflowsEngineResult};
 use crate::test::{MakeConfig, TestLog};
 use crate::workflow::{Workflow, WorkflowEvent, WorkflowTransitionDebugState};
 use crate::{engine_assert_active_run_traversals, engine_assert_active_runs};
@@ -2114,15 +2114,15 @@ async fn restored_workflow_streaming_waits_for_durable_flush_completion() {
   workflows_engine.run_once_for_test().await;
   workflows_engine.maybe_persist(false).await;
 
-  let restored_tracker = Arc::new(FlushCompletionTracker::default());
+  let restored_pending_flush_state = Arc::new(ProcessLocalPendingFlushState::default());
   let flush_id = FlushBufferId::WorkflowActionId("workflow_streaming".into());
-  restored_tracker.mark_pending(flush_id.clone());
+  restored_pending_flush_state.mark_pending(flush_id.clone());
 
   let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
   let mut workflows_engine = setup
     .make_workflows_engine_with_flush_completion_tracker(
       workflows_engine_config,
-      restored_tracker.clone(),
+      restored_pending_flush_state.clone(),
     )
     .await;
   workflows_engine.log_destination_buffer_ids = TinySet::from(["trigger_buffer_id".into()]);
@@ -2141,7 +2141,7 @@ async fn restored_workflow_streaming_waits_for_durable_flush_completion() {
   );
   assert_eq!(1, workflows_engine.state.streaming_actions.len());
 
-  restored_tracker.mark_completed(&flush_id);
+  restored_pending_flush_state.mark_completed(&flush_id);
 
   let result = workflows_engine.process_log(TestLog::new("ordinary log"));
   assert_eq!(
@@ -2188,15 +2188,15 @@ async fn restored_remote_streaming_waits_for_durable_flush_completion() {
   ));
   workflows_engine.maybe_persist(false).await;
 
-  let restored_tracker = Arc::new(FlushCompletionTracker::default());
+  let restored_pending_flush_state = Arc::new(ProcessLocalPendingFlushState::default());
   let flush_id = FlushBufferId::RemoteCommand("remote_streaming".into());
-  restored_tracker.mark_pending(flush_id.clone());
+  restored_pending_flush_state.mark_pending(flush_id.clone());
 
   let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
   let mut workflows_engine = setup
     .make_workflows_engine_with_flush_completion_tracker(
       workflows_engine_config,
-      restored_tracker.clone(),
+      restored_pending_flush_state.clone(),
     )
     .await;
   workflows_engine.log_destination_buffer_ids = TinySet::from(["trigger_buffer_id".into()]);
@@ -2215,7 +2215,7 @@ async fn restored_remote_streaming_waits_for_durable_flush_completion() {
   );
   assert_eq!(1, workflows_engine.state.streaming_actions.len());
 
-  restored_tracker.mark_completed(&flush_id);
+  restored_pending_flush_state.mark_completed(&flush_id);
 
   let result = workflows_engine.process_log(TestLog::new("ordinary log"));
   assert_eq!(

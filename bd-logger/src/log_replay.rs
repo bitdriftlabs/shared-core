@@ -27,7 +27,7 @@ use bd_stats_common::Counter as _;
 use bd_time::OffsetDateTimeExt;
 use bd_workflows::actions_flush_buffers::BuffersToFlush;
 use bd_workflows::config::FlushBufferId;
-use bd_workflows::engine::{FlushCompletionTracker, WorkflowsEngine, WorkflowsEngineConfig};
+use bd_workflows::engine::{ProcessLocalPendingFlushState, WorkflowsEngine, WorkflowsEngineConfig};
 use bd_workflows::workflow::{WorkflowDebugStateMap, WorkflowEvent};
 use itertools::Itertools;
 use std::borrow::Cow;
@@ -170,9 +170,12 @@ impl ProcessingPipeline {
     runtime: &ConfigLoader,
     stats: InitializedLoggingContextStats,
     is_tracing_active: Arc<AtomicBool>,
-    flush_completion_tracker: Arc<FlushCompletionTracker>,
+    process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
   ) -> Self {
-    flush_completion_tracker.replace_pending_flushes(
+    // Startup rebuilds the workflow-side pending set by projecting the durable logger registry
+    // down to flush IDs. The registry stays authoritative across restart; workflows only need the
+    // in-memory membership check.
+    process_local_pending_flush_state.replace_pending_flushes(
       PendingTriggerUploadsStore::new(sdk_directory)
         .pending_uploads()
         .await
@@ -189,7 +192,7 @@ impl ProcessingPipeline {
           data_upload_tx,
           stats.stats.clone(),
           Some(flush_stats_trigger.clone()),
-          flush_completion_tracker.clone(),
+          process_local_pending_flush_state.clone(),
         );
 
       workflows_engine

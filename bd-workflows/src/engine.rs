@@ -75,19 +75,20 @@ use tokio::time::Instant;
 pub const WORKFLOWS_STATE_FILE_NAME: &str = "workflows_state_snapshot.12.bin";
 
 //
-// FlushCompletionTracker
+// ProcessLocalPendingFlushState
 //
 
 /// Keeps a process-local mirror of flush IDs that are still pending in durable logger state.
 ///
-/// The workflow engine uses this to preserve the pre-restart contract where streaming only
-/// terminates after its originating flush has actually completed.
+/// `PendingTriggerUploadsStore` remains the durable source of truth across restart. The logger
+/// projects that persisted state into this in-memory set during startup so the workflow engine can
+/// cheaply decide whether streaming is still waiting on its originating flush to complete.
 #[derive(Debug, Default)]
-pub struct FlushCompletionTracker {
+pub struct ProcessLocalPendingFlushState {
   pending_flushes: RwLock<HashSet<FlushBufferId>>,
 }
 
-impl FlushCompletionTracker {
+impl ProcessLocalPendingFlushState {
   pub fn replace_pending_flushes(&self, flush_ids: impl IntoIterator<Item = FlushBufferId>) {
     *self.pending_flushes.write() = flush_ids.into_iter().collect();
   }
@@ -119,7 +120,7 @@ pub struct WorkflowsEngine {
   configs: Vec<Config>,
   state: WorkflowsState,
   state_store: Option<StateStore>,
-  flush_completion_tracker: Arc<FlushCompletionTracker>,
+  process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
 
   needs_state_persistence: bool,
 
@@ -160,7 +161,7 @@ impl WorkflowsEngine {
       data_upload_tx,
       stats,
       stats_flush_trigger,
-      Arc::new(FlushCompletionTracker::default()),
+      Arc::new(ProcessLocalPendingFlushState::default()),
     )
   }
 
@@ -171,7 +172,7 @@ impl WorkflowsEngine {
     data_upload_tx: Sender<DataUpload>,
     stats: Arc<dyn StatsCollector>,
     stats_flush_trigger: Option<FlushTrigger>,
-    flush_completion_tracker: Arc<FlushCompletionTracker>,
+    process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
   ) -> (Self, Receiver<BuffersToFlush>) {
     let scope = scope.scope("workflows");
 
@@ -226,7 +227,7 @@ impl WorkflowsEngine {
       metrics_collector: MetricsCollector::new(stats),
       stats_flush_trigger,
       buffers_to_flush_tx,
-      flush_completion_tracker,
+      process_local_pending_flush_state,
       explicit_session_capture_streaming_log_count,
     };
 
@@ -267,14 +268,18 @@ impl WorkflowsEngine {
       return false;
     }
 
-    self.flush_completion_tracker.mark_pending(action_id);
+    self
+      .process_local_pending_flush_state
+      .mark_pending(action_id);
     self.state.streaming_actions.push(streaming_action);
     self.needs_state_persistence = true;
     true
   }
 
   pub fn mark_flush_completed(&self, action_id: &FlushBufferId) {
-    self.flush_completion_tracker.mark_completed(action_id);
+    self
+      .process_local_pending_flush_state
+      .mark_completed(action_id);
   }
 
   pub async fn start(&mut self, config: WorkflowsEngineConfig, config_from_cache: bool) {
@@ -608,7 +613,7 @@ impl WorkflowsEngine {
   }
 
   fn flush_has_completed(&self, action_id: &FlushBufferId) -> bool {
-    !self.flush_completion_tracker.is_pending(action_id)
+    !self.process_local_pending_flush_state.is_pending(action_id)
   }
 
   async fn on_log_upload_approved(&mut self, action: &PendingFlushBuffersAction) {
@@ -656,7 +661,7 @@ impl WorkflowsEngine {
         log::debug!("failed to send information about buffers to flush: {e}");
       } else {
         self
-          .flush_completion_tracker
+          .process_local_pending_flush_state
           .mark_pending(action.id.clone());
       }
     }
@@ -886,13 +891,13 @@ impl WorkflowsEngine {
       flush_buffers_actions.insert(Cow::Owned(action));
     }
 
-    let flush_completion_tracker = self.flush_completion_tracker.clone();
+    let process_local_pending_flush_state = self.process_local_pending_flush_state.clone();
     let streaming_actions = self
       .state
       .streaming_actions
       .drain(..)
       .map(|action| {
-        let completed = !flush_completion_tracker.is_pending(&action.id);
+        let completed = !process_local_pending_flush_state.is_pending(&action.id);
         (action, completed)
       })
       .collect();

@@ -37,7 +37,7 @@ use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, Watch};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_stats_common::Counter as _;
 use bd_time::OffsetDateTimeExt;
-use bd_workflows::engine::FlushCompletionTracker;
+use bd_workflows::engine::ProcessLocalPendingFlushState;
 use futures_util::future::try_join_all;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
@@ -157,9 +157,9 @@ pub struct BufferUploadManager {
   // Durable registry of trigger uploads that have been scheduled but not yet completed.
   pending_trigger_uploads: PendingTriggerUploadsStore,
 
-  // Shared tracker used by the workflows engine to preserve flush completion semantics across
-  // restart.
-  flush_completion_tracker: Arc<FlushCompletionTracker>,
+  // Process-local workflow mirror of pending flush IDs. `PendingTriggerUploadsStore` remains the
+  // durable source of truth across restart.
+  process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
 
   logger_state_directory: Arc<PathBuf>,
 }
@@ -177,7 +177,7 @@ impl BufferUploadManager {
     logging: Arc<dyn bd_internal_logging::Logger>,
     state_upload_handle: Option<Arc<StateUploadHandle>>,
     pending_trigger_uploads: PendingTriggerUploadsStore,
-    flush_completion_tracker: Arc<FlushCompletionTracker>,
+    process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
   ) -> Self {
     let logger_state_directory = Arc::new(sdk_directory.join("state").join("logger"));
 
@@ -202,7 +202,7 @@ impl BufferUploadManager {
       old_logs_dropped: stats.counter("old_logs_dropped"),
       state_upload_handle,
       pending_trigger_uploads,
-      flush_completion_tracker,
+      process_local_pending_flush_state,
       logger_state_directory,
     }
   }
@@ -323,7 +323,7 @@ impl BufferUploadManager {
         })
         .await;
       self
-        .flush_completion_tracker
+        .process_local_pending_flush_state
         .mark_pending(flush_buffer_id_from_trigger_upload_source(&source));
     }
 
@@ -397,7 +397,7 @@ impl BufferUploadManager {
     // spawn a task to wait for all of the individual trigger uploads to complete before we can
     // signal that the trigger uploads are complete.
     let pending_trigger_uploads = self.pending_trigger_uploads.clone();
-    let flush_completion_tracker = self.flush_completion_tracker.clone();
+    let process_local_pending_flush_state = self.process_local_pending_flush_state.clone();
     let remote_flush_streaming_tx = self.remote_flush_streaming_tx.clone();
     let tracked_flush_id = flush_buffer_id_from_trigger_upload_source(&source);
     tokio::spawn(async move {
@@ -430,8 +430,10 @@ impl BufferUploadManager {
         return;
       }
 
+      // Make completion visible to workflows only after the durable registry entry is gone. That
+      // keeps the process-local pending set aligned with the persisted source of truth.
       pending_trigger_uploads.remove(&trigger_upload_id).await;
-      flush_completion_tracker.mark_completed(&tracked_flush_id);
+      process_local_pending_flush_state.mark_completed(&tracked_flush_id);
 
       log::debug!("signaling all trigger uploads complete");
     });
@@ -565,7 +567,7 @@ impl BufferUploadManager {
             .remove(&pending_upload.id)
             .await;
           self
-            .flush_completion_tracker
+            .process_local_pending_flush_state
             .mark_completed(&pending_upload.source.to_flush_buffer_id());
           continue;
         }

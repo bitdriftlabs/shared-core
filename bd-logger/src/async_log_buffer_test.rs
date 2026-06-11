@@ -54,7 +54,7 @@ use bd_test_helpers::session::in_memory_store;
 use bd_test_helpers::workflow::{WorkflowBuilder, state};
 use bd_time::{SystemTimeProvider, TimeDurationExt};
 use bd_workflows::config::WorkflowsConfiguration;
-use bd_workflows::engine::FlushCompletionTracker;
+use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -207,7 +207,7 @@ impl Setup {
       flush_stats_trigger,
       1_000_000,
       Arc::new(AtomicBool::new(false)),
-      Arc::new(FlushCompletionTracker::default()),
+      Arc::new(ProcessLocalPendingFlushState::default()),
     )
   }
 

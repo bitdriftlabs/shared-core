@@ -28,7 +28,7 @@ use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_stats_common::{Counter as _, labels};
 use bd_workflows::config::WorkflowsConfiguration;
-use bd_workflows::engine::{FlushCompletionTracker, WorkflowsEngine};
+use bd_workflows::engine::{ProcessLocalPendingFlushState, WorkflowsEngine};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -112,7 +112,7 @@ pub struct UninitializedLoggingContext<T: MemorySized + Debug> {
   pub(crate) stats: UninitializedLoggingContextStats,
   runtime: Arc<ConfigLoader>,
   is_tracing_active: Arc<AtomicBool>,
-  flush_completion_tracker: Arc<FlushCompletionTracker>,
+  process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
 }
 
 // Skip `stats` and `runtime` fields that does not implement `std::fmt::Debug`.
@@ -141,7 +141,7 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
     flush_stats_trigger: FlushTrigger,
     max_size: usize,
     is_tracing_active: Arc<AtomicBool>,
-    flush_completion_tracker: Arc<FlushCompletionTracker>,
+    process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
   ) -> Self {
     Self {
       pre_config_log_buffer: PreConfigBuffer::new(max_size),
@@ -154,7 +154,7 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
       stats: UninitializedLoggingContextStats::new(scope, stats),
       runtime: runtime.clone(),
       is_tracing_active,
-      flush_completion_tracker,
+      process_local_pending_flush_state,
     }
   }
 
@@ -175,7 +175,7 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
       &self.runtime,
       InitializedLoggingContextStats::new(&self.stats),
       self.is_tracing_active,
-      self.flush_completion_tracker,
+      self.process_local_pending_flush_state,
     )
     .await;
 
