@@ -96,6 +96,9 @@ pub enum TriggerUploadSource {
 impl TriggerUploadSource {
   #[must_use]
   pub fn logical_id(&self) -> &str {
+    // This string is the logger's durable trigger-upload key. Reusing the same logical ID causes
+    // recovery/rescheduling to rewrite one pending upload entry; minting a fresh ID creates a
+    // distinct pending upload record.
     match self {
       Self::WorkflowAction(id) | Self::ExplicitSessionCapture(id) | Self::RemoteCommand(id) => id,
     }

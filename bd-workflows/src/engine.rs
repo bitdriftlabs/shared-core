@@ -880,6 +880,8 @@ impl WorkflowsEngine {
       let streaming_log_count = capture_count.read();
 
       let action = ActionFlushBuffers {
+        // Explicit session capture forwards the event's capture identifier directly. Repeated
+        // captures only dedupe if upstream reuses this same value.
         id: FlushBufferId::ExplicitSessionCapture(capture_session.to_string()),
         buffer_ids: BTreeSet::new(),
         streaming: (*streaming_log_count > 0).then_some(Streaming {

@@ -517,8 +517,9 @@ impl PendingTriggerUploadsStore {
   }
 
   pub async fn upsert(&self, upload: PersistedTriggerUpload) {
-    // Upsert by logical upload ID so repeated scheduling/recovery rewrites the same durable entry
-    // instead of accumulating stale copies for the same flush.
+    // Upsert by logical upload ID so there is at most one durable registry entry for a given
+    // source ID. Repeated scheduling/recovery of that same logical flush rewrites this one record
+    // instead of accumulating stale copies, while distinct source IDs still remain distinct.
     self
       .mutate(|uploads| {
         uploads.retain(|existing| existing.id != upload.id);

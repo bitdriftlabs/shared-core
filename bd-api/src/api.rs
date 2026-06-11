@@ -1167,6 +1167,9 @@ impl Api {
             .send(TriggerUpload::new(
               flush_buffers.buffer_id_list,
               flush_buffers.streaming.into_option(),
+              // Remote commands intentionally use a fresh logical ID per command. Retries of a
+              // single command stay deduped under that ID, but separate commands remain distinct
+              // pending uploads even if they target the same buffers.
               TriggerUploadSource::RemoteCommand(uuid::Uuid::new_v4().to_string()),
               session_id,
             ))

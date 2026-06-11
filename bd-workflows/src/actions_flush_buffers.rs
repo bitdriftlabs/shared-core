@@ -90,10 +90,12 @@ pub(crate) struct Negotiator {
   /// The identifiers of actions for which the intent negotiation process returned a "drop"
   /// response. Used to avoid attempting to negotiate the intent for the same action multiple
   /// times, as the first rejection likely means that all subsequent attempts for the same action
-  /// ID will also be rejected. Note: Although this optimization should have a net positive
-  /// impact on customers, it's worth noting that in the case of long-lived sessions spanning
-  /// multiple days (measured in UTC timezone), some upload actions may be rejected prematurely
-  /// compared to if the requests to the server were made.
+  /// ID will also be rejected. This is an action-ID dedupe layer before a flush ever reaches the
+  /// logger; once a flush is admitted, the logger applies a separate per-buffer active-upload
+  /// gate. Note: Although this optimization should have a net positive impact on customers, it's
+  /// worth noting that in the case of long-lived sessions spanning multiple days (measured in
+  /// UTC timezone), some upload actions may be rejected prematurely compared to if the requests
+  /// to the server were made.
   rejected_intent_action_ids: BTreeSet<FlushBufferId>,
 
   stats: NegotiatorStats,
@@ -921,6 +923,7 @@ pub(crate) struct Streaming {
   max_logs_count: Option<u64>,
 }
 
+// fixfix
 impl Streaming {
   fn to_proto(&self) -> flush_buffers_proto::Streaming {
     let termination_criteria = self.max_logs_count.map_or_else(Vec::new, |max_logs_count| {

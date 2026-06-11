@@ -262,6 +262,9 @@ impl BufferUploadManager {
       session_id,
     } = trigger_upload;
 
+    // The source's logical ID is the durable key for this trigger upload. Replays and retries of
+    // the same logical flush rewrite one registry entry; a different source ID creates a distinct
+    // pending upload record.
     let trigger_upload_id = source.logical_id().to_string();
     let trigger_upload_source = PersistedTriggerUploadSource::from(&source);
     let trigger_upload_streaming = streaming.as_ref().map(Into::into);
@@ -282,10 +285,11 @@ impl BufferUploadManager {
     // was scheduled in this process.
 
     for buffer_id in buffer_ids {
-      // If there is already an active upload for this buffer, do nothing. This may happen if an
-      // aggressive workflow is used which can match a second (or more) log within the time it takes
-      // to upload the log in response to the first trigger. Because we lock the buffer, this log
-      // likely didn't even make it into the buffer so we just drop it here.
+      // Admission is also deduped by buffer while a trigger upload is already active. If buffer B
+      // is currently flushing because some earlier source ID admitted it, a later request for B is
+      // dropped here before persistence rather than stacking up a second pending upload for that
+      // same buffer. A partially overlapping request can still proceed for any other buffers that
+      // are not already active.
       if self.active_trigger_uploads.contains(&buffer_id) {
         log::debug!("ignoring upload for {buffer_id}, already in progress");
         continue;
@@ -315,7 +319,9 @@ impl BufferUploadManager {
     if !eligible_buffer_ids.is_empty() {
       // Persist the upload before any background worker can complete. That gives restart recovery
       // a durable description of the upload even if the process dies after tasks are spawned but
-      // before any individual buffer batch has been uploaded.
+      // before any individual buffer batch has been uploaded. If an overlapping request was
+      // filtered by the active-buffer gate above, this durable record only contains the eligible
+      // subset that this process actually admitted.
       self
         .pending_trigger_uploads
         .upsert(PersistedTriggerUpload {

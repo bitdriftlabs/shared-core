@@ -41,7 +41,8 @@ pub struct PersistedTriggerUploadArtifactBatch {
 // TriggerUploadArtifactStore
 //
 
-// The store keeps at most two artifact states per trigger upload buffer:
+// The store keeps at most two artifact states per trigger upload buffer, so artifact retention is
+// bounded per logical trigger-upload ID plus buffer ID even if that one upload keeps retrying:
 // - `queued_batch`: durably staged but not yet promoted to the currently replayed batch
 // - `inflight_batch`: the batch the consumer should upload or resume uploading first
 // This split lets the consumer stage a batch before advancing the live buffer cursor, then promote
@@ -65,8 +66,10 @@ impl TriggerUploadArtifactStore {
     buffer_id: &str,
   ) -> Self {
     // Each trigger-upload artifact file is keyed by logical upload ID and buffer ID so multi-buffer
-    // flushes can recover each buffer independently without collisions. The identifiers are base64
-    // encoded because logical IDs may contain filesystem-hostile characters.
+    // flushes can recover each buffer independently without collisions. This means retries of the
+    // same logical upload reuse one artifact file for that buffer, while a distinct source ID gets
+    // its own separate file. The identifiers are base64 encoded because logical IDs may contain
+    // filesystem-hostile characters.
     let encoded_trigger_upload_id = URL_SAFE_NO_PAD.encode(trigger_upload_id);
     let encoded_buffer_id = URL_SAFE_NO_PAD.encode(buffer_id);
     let state_path = logger_state_directory
