@@ -93,14 +93,24 @@ impl StatsRequestHelper {
   #[allow(clippy::needless_pass_by_value)]
   fn get_metric(&self, name: NameType, fields: BTreeMap<&str, &str>) -> Option<&Metric> {
     assert_eq!(self.request.snapshot.len(), 1);
+    self.get_metric_for_snapshot(0, name, fields)
+  }
 
+  #[allow(clippy::needless_pass_by_value)]
+  fn get_metric_for_snapshot(
+    &self,
+    index: usize,
+    name: NameType,
+    fields: BTreeMap<&str, &str>,
+  ) -> Option<&Metric> {
+    assert!(index < self.request.snapshot.len());
     let fields_str = fields
       .iter()
       .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
       .collect();
 
     self
-      .metrics()
+      .snapshot_metrics(index)
       .metric
       .iter()
       .find(|metric| match &name {
@@ -170,27 +180,62 @@ impl StatsRequestHelper {
 
   #[allow(clippy::needless_pass_by_value)]
   #[must_use]
+  pub fn get_counter_for_snapshot(
+    &self,
+    index: usize,
+    name: &str,
+    fields: BTreeMap<&str, &str>,
+  ) -> Option<u64> {
+    self.get_counter_inner_for_snapshot(index, NameType::Global(name.to_string()), fields)
+  }
+
+  #[allow(clippy::needless_pass_by_value)]
+  #[must_use]
   pub fn get_workflow_counter(&self, id: &str, fields: BTreeMap<&str, &str>) -> Option<u64> {
     self.get_counter_inner(NameType::ActionId(id.to_string()), fields)
   }
 
   #[allow(clippy::needless_pass_by_value)]
-  fn get_counter_inner(&self, name: NameType, fields: BTreeMap<&str, &str>) -> Option<u64> {
-    self.get_metric(name, fields).and_then(|metric| {
-      metric.data.as_ref().map(|data| match data {
-        Data::Counter(c) => c.value,
-        Data::DdsketchHistogram(_) | Data::InlineHistogramValues(_) => {
-          panic!("not a counter")
-        },
-      })
-    })
+  #[must_use]
+  pub fn get_workflow_counter_for_snapshot(
+    &self,
+    index: usize,
+    id: &str,
+    fields: BTreeMap<&str, &str>,
+  ) -> Option<u64> {
+    self.get_counter_inner_for_snapshot(index, NameType::ActionId(id.to_string()), fields)
   }
 
-  fn metrics(&self) -> &MetricsList {
+  #[allow(clippy::needless_pass_by_value)]
+  fn get_counter_inner(&self, name: NameType, fields: BTreeMap<&str, &str>) -> Option<u64> {
+    assert_eq!(self.request.snapshot.len(), 1);
+    self.get_counter_inner_for_snapshot(0, name, fields)
+  }
+
+  #[allow(clippy::needless_pass_by_value)]
+  fn get_counter_inner_for_snapshot(
+    &self,
+    index: usize,
+    name: NameType,
+    fields: BTreeMap<&str, &str>,
+  ) -> Option<u64> {
+    self
+      .get_metric_for_snapshot(index, name, fields)
+      .and_then(|metric| {
+        metric.data.as_ref().map(|data| match data {
+          Data::Counter(c) => c.value,
+          Data::DdsketchHistogram(_) | Data::InlineHistogramValues(_) => {
+            panic!("not a counter")
+          },
+        })
+      })
+  }
+
+  fn snapshot_metrics(&self, index: usize) -> &MetricsList {
     self
       .request
       .snapshot
-      .first()
+      .get(index)
       .and_then(|snapshot| {
         snapshot
           .snapshot_type
@@ -203,13 +248,28 @@ impl StatsRequestHelper {
   }
 
   pub fn overflows(&self) -> &HashMap<String, u64> {
-    &self.request.snapshot.first().unwrap().metric_id_overflows
+    assert_eq!(self.request.snapshot.len(), 1);
+    self.overflows_for_snapshot(0)
+  }
+
+  pub fn overflows_for_snapshot(&self, index: usize) -> &HashMap<String, u64> {
+    assert!(index < self.request.snapshot.len());
+    &self.request.snapshot[index].metric_id_overflows
+  }
+
+  #[must_use]
+  pub fn snapshot_count(&self) -> usize {
+    self.request.snapshot.len()
   }
 
   pub fn aggregation_window_start(&self) -> OffsetDateTime {
-    assert_eq!(self.request.snapshot.len(), 1);
+    self.aggregation_window_start_for_snapshot(0)
+  }
+
+  pub fn aggregation_window_start_for_snapshot(&self, index: usize) -> OffsetDateTime {
+    assert!(index < self.request.snapshot.len());
     assert_matches!(
-      &self.request.snapshot[0].occurred_at,
+      &self.request.snapshot[index].occurred_at,
       Some(Occurred_at::Aggregated(Aggregated {
         period_start,
         ..
@@ -218,9 +278,13 @@ impl StatsRequestHelper {
   }
 
   pub fn aggregation_window_end(&self) -> OffsetDateTime {
-    assert_eq!(self.request.snapshot.len(), 1);
+    self.aggregation_window_end_for_snapshot(0)
+  }
+
+  pub fn aggregation_window_end_for_snapshot(&self, index: usize) -> OffsetDateTime {
+    assert!(index < self.request.snapshot.len());
     assert_matches!(
-      &self.request.snapshot[0].occurred_at,
+      &self.request.snapshot[index].occurred_at,
       Some(Occurred_at::Aggregated(Aggregated {
         period_end,
         ..
@@ -230,11 +294,16 @@ impl StatsRequestHelper {
 
   pub fn number_of_metrics(&self) -> usize {
     assert!(self.request.snapshot.len() <= 1);
-    if self.request.snapshot.is_empty() {
-      return 0;
-    }
+    self.number_of_metrics_for_snapshot(0)
+  }
 
-    self.request.snapshot[0].metrics().metric.len()
+  #[must_use]
+  pub fn number_of_metrics_for_snapshot(&self, index: usize) -> usize {
+    self
+      .request
+      .snapshot
+      .get(index)
+      .map_or(0, |snapshot| snapshot.metrics().metric.len())
   }
 
   #[must_use]
