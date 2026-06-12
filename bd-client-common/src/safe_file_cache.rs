@@ -18,9 +18,11 @@ use protobuf::Message;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use time::Duration;
+use tokio::sync::watch;
 
 const MAX_RETRY_COUNT: u8 = 5;
-const CRASH_LOOP_BYPASS_TIMEOUT_SECONDS: i64 = 4 * 60 * 60;
+pub const DEFAULT_CRASH_LOOP_BYPASS_TIMEOUT_SECONDS: i64 = 4 * 60 * 60;
 
 #[bd_macros::proto_serializable]
 #[derive(Debug, Clone, Default)]
@@ -55,6 +57,7 @@ pub struct SafeFileCache<T> {
   locked_state: Mutex<LockedState>,
   name: &'static str,
   time_provider: Arc<dyn TimeProvider>,
+  crash_loop_bypass_timeout: watch::Receiver<Duration>,
   phantom: PhantomData<T>,
 }
 #[derive(Default)]
@@ -75,6 +78,21 @@ impl<T: Message> SafeFileCache<T> {
     sdk_directory: &Path,
     time_provider: Arc<dyn TimeProvider>,
   ) -> Self {
+    Self::new_with_time_provider_and_crash_loop_bypass_timeout(
+      name,
+      sdk_directory,
+      time_provider,
+      watch::channel(Duration::seconds(DEFAULT_CRASH_LOOP_BYPASS_TIMEOUT_SECONDS)).1,
+    )
+  }
+
+  #[must_use]
+  pub fn new_with_time_provider_and_crash_loop_bypass_timeout(
+    name: &'static str,
+    sdk_directory: &Path,
+    time_provider: Arc<dyn TimeProvider>,
+    crash_loop_bypass_timeout: watch::Receiver<Duration>,
+  ) -> Self {
     // Create the directory if it doesn't exist.
     let directory = sdk_directory.join(name);
     log::debug!(
@@ -88,6 +106,7 @@ impl<T: Message> SafeFileCache<T> {
       directory,
       locked_state: Mutex::default(),
       time_provider,
+      crash_loop_bypass_timeout,
       phantom: PhantomData,
     }
   }
@@ -272,8 +291,9 @@ impl<T: Message> SafeFileCache<T> {
     self.time_provider.now().unix_timestamp()
   }
 
-  fn is_bypass_elapsed(last_successful_cache_at: i64, now_unix_seconds: i64) -> bool {
-    now_unix_seconds.saturating_sub(last_successful_cache_at) >= CRASH_LOOP_BYPASS_TIMEOUT_SECONDS
+  fn is_bypass_elapsed(&self, last_successful_cache_at: i64, now_unix_seconds: i64) -> bool {
+    now_unix_seconds.saturating_sub(last_successful_cache_at)
+      >= self.crash_loop_bypass_timeout.borrow().whole_seconds()
   }
 
   pub async fn cache_update(
@@ -288,7 +308,7 @@ impl<T: Message> SafeFileCache<T> {
       let in_suspected_crash_loop = state.state.retry_count >= MAX_RETRY_COUNT.into();
       let same_nonce = state.state.last_nonce == version_nonce.as_bytes();
       let bypassed_due_to_elapsed =
-        Self::is_bypass_elapsed(state.state.last_successful_cache_at, now_unix_seconds);
+        self.is_bypass_elapsed(state.state.last_successful_cache_at, now_unix_seconds);
 
       (
         in_suspected_crash_loop && same_nonce && !bypassed_due_to_elapsed,
