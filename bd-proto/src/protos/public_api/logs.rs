@@ -402,6 +402,8 @@ pub mod log {
         WARN = 3,
         // @@protoc_insertion_point(enum_value:bitdrift.public.unary.timeline.v1.Log.LogLevel.ERROR)
         ERROR = 4,
+        // @@protoc_insertion_point(enum_value:bitdrift.public.unary.timeline.v1.Log.LogLevel.CRITICAL)
+        CRITICAL = 5,
     }
 
     impl ::protobuf::Enum for LogLevel {
@@ -418,6 +420,7 @@ pub mod log {
                 2 => ::std::option::Option::Some(LogLevel::INFO),
                 3 => ::std::option::Option::Some(LogLevel::WARN),
                 4 => ::std::option::Option::Some(LogLevel::ERROR),
+                5 => ::std::option::Option::Some(LogLevel::CRITICAL),
                 _ => ::std::option::Option::None
             }
         }
@@ -429,6 +432,7 @@ pub mod log {
                 "INFO" => ::std::option::Option::Some(LogLevel::INFO),
                 "WARN" => ::std::option::Option::Some(LogLevel::WARN),
                 "ERROR" => ::std::option::Option::Some(LogLevel::ERROR),
+                "CRITICAL" => ::std::option::Option::Some(LogLevel::CRITICAL),
                 _ => ::std::option::Option::None
             }
         }
@@ -439,6 +443,7 @@ pub mod log {
             LogLevel::INFO,
             LogLevel::WARN,
             LogLevel::ERROR,
+            LogLevel::CRITICAL,
         ];
     }
 
@@ -1671,7 +1676,7 @@ impl ::protobuf::reflect::ProtobufValue for GetSessionLogsResponse {
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n,bitdrift/public/unary/timeline/v1/logs.proto\x12!bitdrift.public.unar\
     y.timeline.v1\x1a1bitdrift_public/protobuf/logging/v1/payload.proto\x1a\
-    \x1fgoogle/protobuf/timestamp.proto\x1a\x17validate/validate.proto\"\xe8\
+    \x1fgoogle/protobuf/timestamp.proto\x1a\x17validate/validate.proto\"\xf6\
     \x04\n\x03Log\x12H\n\x06fields\x18\x03\x20\x01(\x0b20.bitdrift.public.un\
     ary.timeline.v1.Log.LogFieldsR\x06fields\x12!\n\x0clistener_ids\x18\x05\
     \x20\x03(\tR\x0blistenerIds\x12L\n\tlog_level\x18\x06\x20\x01(\x0e2/.bit\
@@ -1683,28 +1688,29 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ift.public.unary.timeline.v1.Log.LogFields.FieldsEntryR\x06fields\x1ad\n\
     \x0bFieldsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05va\
     lue\x18\x02\x20\x01(\x0b2).bitdrift_public.protobuf.logging.v1.DataR\x05\
-    value:\x028\x01\"?\n\x08LogLevel\x12\t\n\x05TRACE\x10\0\x12\t\n\x05DEBUG\
+    value:\x028\x01\"M\n\x08LogLevel\x12\t\n\x05TRACE\x10\0\x12\t\n\x05DEBUG\
     \x10\x01\x12\x08\n\x04INFO\x10\x02\x12\x08\n\x04WARN\x10\x03\x12\t\n\x05\
-    ERROR\x10\x04\"\x9b\x03\n\x07LogType\x12a\n\x0escreen_capture\x18\x01\
-    \x20\x01(\x0b28.bitdrift.public.unary.timeline.v1.LogType.ScreenCaptureH\
-    \0R\rscreenCapture\x12Q\n\x08resource\x18\x02\x20\x01(\x0b23.bitdrift.pu\
-    blic.unary.timeline.v1.LogType.ResourceH\0R\x08resource\x12N\n\x07trigge\
-    r\x18\x03\x20\x01(\x0b22.bitdrift.public.unary.timeline.v1.LogType.Trigg\
-    erH\0R\x07trigger\x12H\n\x05error\x18\x04\x20\x01(\x0b20.bitdrift.public\
-    .unary.timeline.v1.LogType.ErrorH\0R\x05error\x1a\x0f\n\rScreenCapture\
-    \x1a\n\n\x08Resource\x1a\t\n\x07Trigger\x1a\x07\n\x05ErrorB\x0f\n\x08log\
-    _type\x12\x03\xf8B\x01\"\x89\x03\n\x15GetSessionLogsRequest\x12E\n\x08lo\
-    g_type\x18\x01\x20\x01(\x0b2*.bitdrift.public.unary.timeline.v1.LogTypeR\
-    \x07logType\x129\n\nstart_time\x18\x02\x20\x01(\x0b2\x1a.google.protobuf\
-    .TimestampR\tstartTime\x125\n\x08end_time\x18\x03\x20\x01(\x0b2\x1a.goog\
-    le.protobuf.TimestampR\x07endTime\x12\x17\n\x04page\x18\x05\x20\x01(\x04\
-    H\0R\x04page\x88\x01\x01\x12*\n\x08per_page\x18\x06\x20\x01(\x04H\x01R\
-    \x07perPageB\n\xfaB\x072\x05\x18\x88'(\x01\x88\x01\x01\x122\n\x15include\
-    _internal_logs\x18\x08\x20\x01(\x08R\x13includeInternalLogs\x12(\n\nsess\
-    ion_id\x18\t\x20\x01(\tR\tsessionIdB\t\xfaB\x06r\x04\x10\x01\x18dB\x07\n\
-    \x05_pageB\x0b\n\t_per_page\"u\n\x16GetSessionLogsResponse\x12\x1f\n\x0b\
-    total_pages\x18\x01\x20\x01(\x04R\ntotalPages\x12:\n\x04logs\x18\x02\x20\
-    \x03(\x0b2&.bitdrift.public.unary.timeline.v1.LogR\x04logsb\x06proto3\
+    ERROR\x10\x04\x12\x0c\n\x08CRITICAL\x10\x05\"\x9b\x03\n\x07LogType\x12a\
+    \n\x0escreen_capture\x18\x01\x20\x01(\x0b28.bitdrift.public.unary.timeli\
+    ne.v1.LogType.ScreenCaptureH\0R\rscreenCapture\x12Q\n\x08resource\x18\
+    \x02\x20\x01(\x0b23.bitdrift.public.unary.timeline.v1.LogType.ResourceH\
+    \0R\x08resource\x12N\n\x07trigger\x18\x03\x20\x01(\x0b22.bitdrift.public\
+    .unary.timeline.v1.LogType.TriggerH\0R\x07trigger\x12H\n\x05error\x18\
+    \x04\x20\x01(\x0b20.bitdrift.public.unary.timeline.v1.LogType.ErrorH\0R\
+    \x05error\x1a\x0f\n\rScreenCapture\x1a\n\n\x08Resource\x1a\t\n\x07Trigge\
+    r\x1a\x07\n\x05ErrorB\x0f\n\x08log_type\x12\x03\xf8B\x01\"\x89\x03\n\x15\
+    GetSessionLogsRequest\x12E\n\x08log_type\x18\x01\x20\x01(\x0b2*.bitdrift\
+    .public.unary.timeline.v1.LogTypeR\x07logType\x129\n\nstart_time\x18\x02\
+    \x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tstartTime\x125\n\x08end_t\
+    ime\x18\x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x07endTime\x12\
+    \x17\n\x04page\x18\x05\x20\x01(\x04H\0R\x04page\x88\x01\x01\x12*\n\x08pe\
+    r_page\x18\x06\x20\x01(\x04H\x01R\x07perPageB\n\xfaB\x072\x05\x18\x88'(\
+    \x01\x88\x01\x01\x122\n\x15include_internal_logs\x18\x08\x20\x01(\x08R\
+    \x13includeInternalLogs\x12(\n\nsession_id\x18\t\x20\x01(\tR\tsessionIdB\
+    \t\xfaB\x06r\x04\x10\x01\x18dB\x07\n\x05_pageB\x0b\n\t_per_page\"u\n\x16\
+    GetSessionLogsResponse\x12\x1f\n\x0btotal_pages\x18\x01\x20\x01(\x04R\nt\
+    otalPages\x12:\n\x04logs\x18\x02\x20\x03(\x0b2&.bitdrift.public.unary.ti\
+    meline.v1.LogR\x04logsb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

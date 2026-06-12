@@ -79,11 +79,13 @@ pub enum LogLevel {
   Info,
   Warn,
   Error,
+  Critical,
 }
 
 impl From<LogLevel> for bd_logger::LogLevel {
   fn from(value: LogLevel) -> Self {
     match value {
+      LogLevel::Critical => log_level::CRITICAL,
       LogLevel::Error => log_level::ERROR,
       LogLevel::Warn => log_level::WARNING,
       LogLevel::Info => log_level::INFO,
