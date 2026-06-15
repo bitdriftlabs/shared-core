@@ -142,8 +142,6 @@ pub trait Histogram {
 pub trait StatsCollector: Send + Sync {
   fn record_dynamic_counter(&self, tags: BTreeMap<String, String>, id: &str, value: u64);
 
-  fn record_dynamic_histogram(&self, tags: BTreeMap<String, String>, id: &str, value: f64);
-
   fn record_workflow_debug_state(&self, state: Vec<WorkflowDebugKey>);
 
   fn workflow_dynamic_counter(
