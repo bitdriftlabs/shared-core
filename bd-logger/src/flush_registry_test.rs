@@ -5,7 +5,6 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::TRIGGER_UPLOAD_ARTIFACTS_DIRECTORY;
 use super::{
   PendingTriggerUploadsStore,
   PersistedTriggerUpload,
@@ -15,6 +14,7 @@ use super::{
   PersistedTriggerUploadSource,
   PersistedTriggerUploadStreaming,
   PrunedTriggerUploadBuffer,
+  TRIGGER_UPLOAD_ARTIFACTS_DIRECTORY,
 };
 use tempfile::TempDir;
 
