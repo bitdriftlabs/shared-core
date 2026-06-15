@@ -580,10 +580,11 @@ impl RingBufferCursorConsumer for CursorConsumerImpl {
       ));
     };
 
-    let mut common_ring_buffer = parent.common_ring_buffer.locked_data.lock();
     if count == 0 {
       return Ok(());
     }
+
+    let mut common_ring_buffer = parent.common_ring_buffer.locked_data.lock();
 
     if Self::get_reservations(&common_ring_buffer)?.is_empty() {
       return Err(Error::AbslStatus(

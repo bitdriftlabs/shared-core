@@ -5,7 +5,11 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{PersistedTriggerUploadArtifactBatch, TriggerUploadArtifactStore};
+use super::{
+  PersistedTriggerUploadArtifactBatch,
+  TRIGGER_UPLOAD_ARTIFACTS_DIRECTORY,
+  TriggerUploadArtifactStore,
+};
 use std::io::ErrorKind;
 use std::path::PathBuf;
 use tempfile::TempDir;
@@ -15,7 +19,7 @@ fn logger_state_directory(temp_dir: &TempDir) -> PathBuf {
 }
 
 fn artifact_directory(temp_dir: &TempDir) -> PathBuf {
-  logger_state_directory(temp_dir).join("trigger_upload_artifacts")
+  logger_state_directory(temp_dir).join(TRIGGER_UPLOAD_ARTIFACTS_DIRECTORY)
 }
 
 fn make_store(temp_dir: &TempDir) -> TriggerUploadArtifactStore {

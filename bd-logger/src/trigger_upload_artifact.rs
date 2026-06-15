@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-const TRIGGER_UPLOAD_ARTIFACTS_DIRECTORY: &str = "trigger_upload_artifacts";
+pub(crate) const TRIGGER_UPLOAD_ARTIFACTS_DIRECTORY: &str = "trigger_upload_artifacts";
 
 //
 // PersistedTriggerUploadArtifactBatch

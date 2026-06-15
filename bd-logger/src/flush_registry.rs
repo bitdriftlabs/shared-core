@@ -9,12 +9,13 @@
 #[path = "./flush_registry_test.rs"]
 mod flush_registry_test;
 
+use crate::trigger_upload_artifact::TRIGGER_UPLOAD_ARTIFACTS_DIRECTORY;
 use bd_api::{TriggerUploadSource, TriggerUploadStreaming};
 use bd_client_common::file::{
   read_compressed_protobuf_file_if_exists,
   write_compressed_protobuf_file,
 };
-use bd_client_common::file_system::delete_file_if_exists_async;
+use bd_client_common::file_system::{delete_file_if_exists_async, remove_dir_if_exists_async};
 use bd_macros::proto_serializable;
 use bd_workflows::config::FlushBufferId;
 use std::path::{Path, PathBuf};
@@ -698,6 +699,13 @@ impl PendingTriggerUploadsStore {
           state_path.display()
         );
         let _ignored = delete_file_if_exists_async(state_path).await;
+        let _ignored = remove_dir_if_exists_async(
+          &state_path
+            .parent()
+            .unwrap_or_else(|| Path::new(""))
+            .join(TRIGGER_UPLOAD_ARTIFACTS_DIRECTORY),
+        )
+        .await;
         Vec::new()
       },
     }

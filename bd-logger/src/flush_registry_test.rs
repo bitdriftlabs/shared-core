@@ -5,6 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use super::TRIGGER_UPLOAD_ARTIFACTS_DIRECTORY;
 use super::{
   PendingTriggerUploadsStore,
   PersistedTriggerUpload,
@@ -173,6 +174,10 @@ async fn record_uploaded_chunk_updates_per_buffer_progress() {
 #[tokio::test]
 async fn corrupted_snapshot_is_dropped_and_treated_as_empty() {
   let temp_directory = TempDir::with_prefix("flush-registry").unwrap();
+  let logger_state_directory = temp_directory.path().join("state").join("logger");
+  let artifact_path = logger_state_directory
+    .join(TRIGGER_UPLOAD_ARTIFACTS_DIRECTORY)
+    .join("orphaned.1.pb");
   let snapshot_path = temp_directory
     .path()
     .join("state")
@@ -182,13 +187,25 @@ async fn corrupted_snapshot_is_dropped_and_treated_as_empty() {
   tokio::fs::create_dir_all(snapshot_path.parent().unwrap())
     .await
     .unwrap();
+  tokio::fs::create_dir_all(artifact_path.parent().unwrap())
+    .await
+    .unwrap();
   tokio::fs::write(&snapshot_path, b"not-a-valid-protobuf")
+    .await
+    .unwrap();
+  tokio::fs::write(&artifact_path, b"orphaned-artifact")
     .await
     .unwrap();
 
   let store = make_store(&temp_directory);
   assert!(store.pending_uploads().await.is_empty());
   assert!(!tokio::fs::try_exists(&snapshot_path).await.unwrap());
+  assert!(!tokio::fs::try_exists(&artifact_path).await.unwrap());
+  assert!(
+    !tokio::fs::try_exists(logger_state_directory.join(TRIGGER_UPLOAD_ARTIFACTS_DIRECTORY))
+      .await
+      .unwrap()
+  );
 }
 
 #[tokio::test]

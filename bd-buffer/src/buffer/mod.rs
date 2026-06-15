@@ -158,9 +158,9 @@ pub trait RingBufferCursorConsumer: Send {
   // Advance the read pointer forward and thus allow the advanced record to be overwritten. In
   // practice, this API is paired with startRead() and can only be called after a successful call to
   // startRead(), but does not have to interleave back and forth with that API. I.e., it is possible
-  // to call startRead(), startRead(), advanceReadPointer(), startRead(), etc. Calling this releases
-  // the oldest read data acquired with startRead(). Count specifies how many records to advance the
-  // read pointer forward.
+  // to call startRead(), startRead(), advance_read_pointers(1), startRead(), etc. Calling this
+  // releases the oldest read data acquired with startRead(). Count specifies how many records to
+  // advance the read pointer forward.
   fn advance_read_pointers(&mut self, count: usize) -> Result<()>;
 }
 
