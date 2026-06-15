@@ -351,7 +351,7 @@ impl BufferFuzzTest {
       },
       CursorRead::Advance => {
         if self.state().cursor_read_count > 0 {
-          self.cursor_consumer().advance_read_pointer().unwrap();
+          self.cursor_consumer().advance_read_pointers(1).unwrap();
           self.state().cursor_read_count -= 1;
         }
       },

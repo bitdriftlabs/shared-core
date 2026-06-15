@@ -11,8 +11,8 @@ mod actions_flush_buffers_test;
 
 use crate::config::{ActionFlushBuffers, FlushBufferId};
 use anyhow::anyhow;
-use bd_api::DataUpload;
 use bd_api::upload::{Intent_type, IntentDecision, TrackedLogUploadIntent, WorkflowActionUpload};
+use bd_api::{DataUpload, TriggerUploadStreaming};
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::tiny_set::TinySet;
 use bd_macros::proto_serializable;
@@ -87,10 +87,12 @@ pub(crate) struct Negotiator {
   /// The identifiers of actions for which the intent negotiation process returned a "drop"
   /// response. Used to avoid attempting to negotiate the intent for the same action multiple
   /// times, as the first rejection likely means that all subsequent attempts for the same action
-  /// ID will also be rejected. Note: Although this optimization should have a net positive
-  /// impact on customers, it's worth noting that in the case of long-lived sessions spanning
-  /// multiple days (measured in UTC timezone), some upload actions may be rejected prematurely
-  /// compared to if the requests to the server were made.
+  /// ID will also be rejected. This is an action-ID dedupe layer before a flush ever reaches the
+  /// logger; once a flush is admitted, the logger applies a separate per-buffer active-upload
+  /// gate. Note: Although this optimization should have a net positive impact on customers, it's
+  /// worth noting that in the case of long-lived sessions spanning multiple days (measured in
+  /// UTC timezone), some upload actions may be rejected prematurely compared to if the requests
+  /// to the server were made.
   rejected_intent_action_ids: BTreeSet<FlushBufferId>,
 
   stats: NegotiatorStats,
@@ -264,6 +266,11 @@ impl Negotiator {
             ..Default::default()
           })
         },
+        FlushBufferId::RemoteCommand(id) => {
+          return Err(anyhow!(
+            "remote flush command {id} should not enter intent negotiation"
+          ));
+        },
       }),
       ..Default::default()
     };
@@ -371,6 +378,29 @@ impl Resolver {
 
     self.trigger_buffer_ids = config.trigger_buffer_ids;
     self.continuous_buffer_ids = config.continuous_buffer_ids;
+  }
+
+  pub(crate) fn make_remote_streaming_action(
+    &self,
+    id: FlushBufferId,
+    source_trigger_buffer_ids: BTreeSet<String>,
+    session_id: &str,
+    streaming: crate::config::Streaming,
+  ) -> Option<StreamingBuffersAction> {
+    let action = ActionFlushBuffers {
+      id,
+      buffer_ids: source_trigger_buffer_ids,
+      streaming: Some(streaming),
+    };
+
+    let pending_action = PendingFlushBuffersAction::new(
+      action,
+      session_id.to_string(),
+      &self.trigger_buffer_ids,
+      &self.continuous_buffer_ids,
+    )?;
+
+    self.make_streaming_action(pending_action)
   }
 
   /// Process flush buffer actions. Create pending buffer action instances for those flush
@@ -890,6 +920,19 @@ pub(crate) struct Streaming {
   max_logs_count: Option<u64>,
 }
 
+impl Streaming {
+  fn to_trigger_upload_streaming(&self) -> TriggerUploadStreaming {
+    TriggerUploadStreaming {
+      destination_buffer_ids: self
+        .destination_continuous_buffer_ids
+        .iter()
+        .map(std::string::ToString::to_string)
+        .collect(),
+      max_logs_count: self.max_logs_count,
+    }
+  }
+}
+
 //
 // StreamingBuffersAction
 //
@@ -969,6 +1012,15 @@ impl StreamingBuffersAction {
     self.tracing_lease
   }
 
+  // Two streaming actions are equivalent if they reroute the same trigger buffers into the same
+  // destination buffers within the same session. A different termination count should not create
+  // a parallel stream because it would only prolong rerouting, not change where logs are emitted.
+  pub(crate) fn has_equivalent_reroute(&self, other: &Self) -> bool {
+    self.session_id == other.session_id
+      && self.source_trigger_buffer_ids == other.source_trigger_buffer_ids
+      && self.destination_continuous_buffer_ids == other.destination_continuous_buffer_ids
+  }
+
   const fn meets_termination_criteria(&self) -> bool {
     if let Some(max_logs_count) = self.max_logs_count
       && self.logs_count >= max_logs_count
@@ -986,24 +1038,26 @@ impl StreamingBuffersAction {
 
 #[derive(Debug)]
 pub struct BuffersToFlush {
+  // Stable ID for the logical flush action that requested this upload.
+  pub flush_id: FlushBufferId,
+  // Session ID active when the flush action was scheduled.
+  pub session_id: String,
   // Unique IDs of buffers to flush.
   pub buffer_ids: TinySet<Cow<'static, str>>,
-  // Channel to notify the caller that the flush has been completed.
-  pub response_tx: tokio::sync::oneshot::Sender<()>,
+  // Optional streaming configuration associated with the logical flush action.
+  pub streaming: Option<TriggerUploadStreaming>,
 }
 
 impl BuffersToFlush {
-  pub(crate) fn new(
-    action: &PendingFlushBuffersAction,
-  ) -> (Self, tokio::sync::oneshot::Receiver<()>) {
-    let (response_tx, response_rx) = tokio::sync::oneshot::channel();
-
-    (
-      Self {
-        buffer_ids: action.trigger_buffer_ids.clone(),
-        response_tx,
-      },
-      response_rx,
-    )
+  pub(crate) fn new(action: &PendingFlushBuffersAction) -> Self {
+    Self {
+      flush_id: action.id.clone(),
+      session_id: action.session_id.clone(),
+      buffer_ids: action.trigger_buffer_ids.clone(),
+      streaming: action
+        .streaming
+        .as_ref()
+        .map(Streaming::to_trigger_upload_streaming),
+    }
   }
 }

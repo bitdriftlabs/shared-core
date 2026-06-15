@@ -182,6 +182,11 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     self.shutdown_lock.is_some()
   }
 
+  // Reset the cursor read position to the current unread head.
+  pub fn reset_cursor_read_start(&mut self) {
+    self.next_cursor_read_start = *self.next_read_start();
+  }
+
   // Add an arbitrary number of numbers, checking for overflow.
   fn overflow_add(addends: &[u32]) -> Option<u32> {
     let mut total: u32 = 0;

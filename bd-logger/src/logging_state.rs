@@ -7,6 +7,7 @@
 
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
+use crate::consumer::RemoteFlushStreamingRequest;
 use crate::log_replay::{LogReplay, ProcessingPipeline};
 use crate::logger::with_thread_local_logger_guard;
 use crate::metadata::MetadataCollector;
@@ -27,7 +28,7 @@ use bd_runtime::runtime::ConfigLoader;
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_stats_common::{Counter as _, labels};
 use bd_workflows::config::WorkflowsConfiguration;
-use bd_workflows::engine::WorkflowsEngine;
+use bd_workflows::engine::{ProcessLocalPendingFlushState, WorkflowsEngine};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -35,8 +36,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use time::OffsetDateTime;
-use tokio::sync::mpsc::Sender;
 use tokio::sync::mpsc::error::TrySendError;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 //
 // LoggingState
@@ -103,6 +104,7 @@ pub struct UninitializedLoggingContext<T: MemorySized + Debug> {
 
   data_upload_tx: Sender<DataUpload>,
   trigger_upload_tx: Sender<TriggerUpload>,
+  remote_flush_streaming_rx: Receiver<RemoteFlushStreamingRequest>,
   flush_buffers_tx: Sender<BuffersWithAck>,
   flush_stats_trigger: FlushTrigger,
 
@@ -110,6 +112,7 @@ pub struct UninitializedLoggingContext<T: MemorySized + Debug> {
   pub(crate) stats: UninitializedLoggingContextStats,
   runtime: Arc<ConfigLoader>,
   is_tracing_active: Arc<AtomicBool>,
+  process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
 }
 
 // Skip `stats` and `runtime` fields that does not implement `std::fmt::Debug`.
@@ -132,22 +135,26 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
     scope: Scope,
     stats: Arc<Stats>,
     trigger_upload_tx: Sender<TriggerUpload>,
+    remote_flush_streaming_rx: Receiver<RemoteFlushStreamingRequest>,
     data_upload_tx: Sender<DataUpload>,
     flush_buffers_tx: Sender<BuffersWithAck>,
     flush_stats_trigger: FlushTrigger,
     max_size: usize,
     is_tracing_active: Arc<AtomicBool>,
+    process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
   ) -> Self {
     Self {
       pre_config_log_buffer: PreConfigBuffer::new(max_size),
       data_upload_tx,
       trigger_upload_tx,
+      remote_flush_streaming_rx,
       flush_buffers_tx,
       flush_stats_trigger,
       sdk_directory: sdk_directory.to_owned(),
       stats: UninitializedLoggingContextStats::new(scope, stats),
       runtime: runtime.clone(),
       is_tracing_active,
+      process_local_pending_flush_state,
     }
   }
 
@@ -161,12 +168,14 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
       self.flush_buffers_tx,
       self.flush_stats_trigger,
       self.trigger_upload_tx,
+      self.remote_flush_streaming_rx,
       capture_screenshot_handler,
       config,
       &self.sdk_directory,
       &self.runtime,
       InitializedLoggingContextStats::new(&self.stats),
       self.is_tracing_active,
+      self.process_local_pending_flush_state,
     )
     .await;
 

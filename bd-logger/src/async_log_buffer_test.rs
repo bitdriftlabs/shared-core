@@ -54,6 +54,7 @@ use bd_test_helpers::session::in_memory_store;
 use bd_test_helpers::workflow::{WorkflowBuilder, state};
 use bd_time::{SystemTimeProvider, TimeDurationExt};
 use bd_workflows::config::WorkflowsConfiguration;
+use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -189,6 +190,7 @@ impl Setup {
 
   fn make_logging_context(&self) -> UninitializedLoggingContext<PreConfigItem> {
     let (trigger_upload_tx, _) = tokio::sync::mpsc::channel(1);
+    let (_remote_flush_streaming_tx, remote_flush_streaming_rx) = tokio::sync::mpsc::channel(1);
     let (data_upload_tx, _) = tokio::sync::mpsc::channel(1);
     let (flush_buffers_tx, _) = tokio::sync::mpsc::channel(1);
     let (flush_stats_trigger, _) = FlushTrigger::new();
@@ -199,11 +201,13 @@ impl Setup {
       self.collector.scope(""),
       self.stats.clone(),
       trigger_upload_tx,
+      remote_flush_streaming_rx,
       data_upload_tx,
       flush_buffers_tx,
       flush_stats_trigger,
       1_000_000,
       Arc::new(AtomicBool::new(false)),
+      Arc::new(ProcessLocalPendingFlushState::default()),
     )
   }
 

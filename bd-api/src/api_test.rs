@@ -9,7 +9,14 @@ use super::{Api, PlatformNetworkManager, PlatformNetworkStream};
 use crate::api::{DISCONNECTED_OFFLINE_GRACE_PERIOD, StreamEvent};
 use crate::reconnect::ReconnectState;
 use crate::upload::Tracked;
-use crate::{DataUpload, SimpleNetworkQualityProvider};
+use crate::{
+  DataUpload,
+  SimpleNetworkQualityProvider,
+  TriggerUploadSource,
+  TriggerUploadStreaming,
+};
+use action_flush_buffers::Streaming as FlushStreaming;
+use action_flush_buffers::streaming::{TerminationCriterion, termination_criterion};
 use anyhow::anyhow;
 use assert_matches::assert_matches;
 use bd_client_common::{
@@ -34,6 +41,7 @@ use bd_proto::protos::client::api::{
   ClientStateUpdate,
   ConfigurationUpdate,
   ErrorShutdown,
+  FlushBuffers,
   HandshakeRequest,
   HandshakeResponse,
   RateLimited,
@@ -44,6 +52,7 @@ use bd_proto::protos::client::api::{
 };
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::logging::payload::data::Data_type;
+use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_state::StateReader;
 use bd_stats_common::labels;
@@ -51,6 +60,7 @@ use bd_test_helpers::make_mut;
 use bd_test_helpers::session::in_memory_store;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, ToProtoDuration};
 use mockall::predicate::eq;
+use protobuf::MessageField;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 use time::ext::{NumericalDuration, NumericalStdDuration};
@@ -219,6 +229,7 @@ impl bd_internal_logging::Logger for TestLog {
 struct Setup {
   sdk_directory: tempfile::TempDir,
   data_tx: Sender<DataUpload>,
+  trigger_upload_rx: Receiver<crate::TriggerUpload>,
   send_data_rx: Receiver<Vec<u8>>,
   start_stream_rx: Receiver<()>,
   collector: Collector,
@@ -278,7 +289,7 @@ impl Setup {
       current_stream_tx.clone(),
     ));
     let (data_tx, data_rx) = channel(1);
-    let (trigger_upload_tx, _trigger_upload_rx) = channel(1);
+    let (trigger_upload_tx, trigger_upload_rx) = channel(1);
     let (sleep_mode_active_tx, sleep_mode_active_rx) = watch::channel(false);
     let (opaque_entity_updates_tx, opaque_entity_updates_rx) = watch::channel(None);
 
@@ -340,6 +351,7 @@ impl Setup {
       sdk_directory,
       start_stream_rx,
       data_tx,
+      trigger_upload_rx,
       send_data_rx,
       collector,
       time_provider,
@@ -372,7 +384,7 @@ impl Setup {
       current_stream_tx.clone(),
     ));
     let (data_tx, data_rx) = channel(1);
-    let (trigger_upload_tx, _trigger_upload_rx) = channel(1);
+    let (trigger_upload_tx, trigger_upload_rx) = channel(1);
 
     let runtime_loader = ConfigLoader::new(self.sdk_directory.path());
     runtime_loader.try_load_persisted_config().await;
@@ -400,6 +412,7 @@ impl Setup {
     self.api_task = Some(tokio::task::spawn(api.start()));
     self.start_stream_rx = start_stream_rx;
     self.data_tx = data_tx;
+    self.trigger_upload_rx = trigger_upload_rx;
     self.send_data_rx = send_data_rx;
     self.current_stream_tx = current_stream_tx;
   }
@@ -1508,6 +1521,54 @@ async fn rate_limited_response_before_handshake_marks_safe() {
     .await;
 
   assert!(setup.next_stream(2.minutes()).await.is_some());
+}
+
+#[tokio::test]
+async fn flush_buffers_response_forwards_streaming_to_trigger_upload() {
+  let mut setup = Setup::new().await;
+
+  assert_matches!(setup.next_stream(1.seconds()).await, Some(_));
+  setup.handshake_response(0, None, None).await;
+
+  let streaming = FlushStreaming {
+    destination_streaming_buffer_ids: vec!["default".to_string()],
+    termination_criteria: vec![TerminationCriterion {
+      type_: Some(termination_criterion::Type::LogsCount(
+        termination_criterion::LogsCount {
+          max_logs_count: 10,
+          ..Default::default()
+        },
+      )),
+      ..Default::default()
+    }],
+    ..Default::default()
+  };
+
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::FlushBuffers(FlushBuffers {
+        buffer_id_list: vec!["trigger".to_string()],
+        streaming: MessageField::some(streaming.clone()),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })
+    .await;
+
+  let trigger_upload = setup.trigger_upload_rx.recv().await.unwrap();
+  assert_eq!(trigger_upload.buffer_ids, vec!["trigger".to_string()]);
+  assert_eq!(
+    trigger_upload.streaming,
+    Some(TriggerUploadStreaming {
+      destination_buffer_ids: vec!["default".to_string()],
+      max_logs_count: Some(10),
+    })
+  );
+  assert!(!trigger_upload.session_id.is_empty());
+  assert_matches!(
+    trigger_upload.source,
+    TriggerUploadSource::RemoteCommand(ref id) if !id.is_empty()
+  );
 }
 
 #[tokio::test(start_paused = true)]

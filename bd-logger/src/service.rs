@@ -77,8 +77,12 @@ pub struct UploadRequest {
 
 impl UploadRequest {
   pub(crate) fn new(log_upload: LogBatch, ackless: bool) -> Self {
+    Self::new_with_uuid(TrackedLogBatch::upload_uuid(), log_upload, ackless)
+  }
+
+  pub(crate) fn new_with_uuid(uuid: String, log_upload: LogBatch, ackless: bool) -> Self {
     Self {
-      uuid: TrackedLogBatch::upload_uuid(),
+      uuid,
       log_upload: Arc::new(log_upload),
       ackless,
     }

@@ -13,11 +13,12 @@ use super::engine_test_helpers::{
   make_runtime,
 };
 use crate::config::{Action, FlushBufferId, WorkflowDebugMode, WorkflowsConfiguration};
-use crate::engine::{WorkflowsEngineConfig, WorkflowsEngineResult};
+use crate::engine::{ProcessLocalPendingFlushState, WorkflowsEngineConfig, WorkflowsEngineResult};
 use crate::test::{MakeConfig, TestLog};
 use crate::workflow::{Workflow, WorkflowEvent, WorkflowTransitionDebugState};
 use crate::{engine_assert_active_run_traversals, engine_assert_active_runs};
 use assert_matches::assert_matches;
+use bd_api::TriggerUploadStreaming;
 use bd_api::upload::IntentDecision;
 use bd_client_stats::FlushTrigger;
 use bd_client_stats_store::Collector;
@@ -58,6 +59,7 @@ use pretty_assertions::assert_eq;
 use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 use std::vec;
 use time::OffsetDateTime;
@@ -2077,6 +2079,142 @@ async fn logs_streaming() {
 }
 
 #[tokio::test]
+async fn restored_workflow_streaming_waits_for_durable_flush_completion() {
+  let mut a = state("A");
+  let b = state("B");
+
+  a = a.declare_transition_with_actions(
+    &b,
+    rule!(message_equals("start_streaming")),
+    &[make_flush_buffers_action(
+      &["trigger_buffer_id"],
+      Some((vec!["continuous_buffer_id"], 1)),
+      "workflow_streaming",
+    )],
+  );
+
+  let workflows_engine_config = WorkflowsEngineConfig::new(
+    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
+      WorkflowBuilder::new("1", &[&a, &b]).make_config(),
+    ]),
+    TinySet::from(["trigger_buffer_id".into()]),
+    TinySet::from(["continuous_buffer_id".into()]),
+  );
+
+  let setup = Setup::new();
+
+  let mut workflows_engine = setup
+    .make_workflows_engine(workflows_engine_config.clone())
+    .await;
+  workflows_engine.log_destination_buffer_ids = TinySet::from(["trigger_buffer_id".into()]);
+  workflows_engine
+    .set_awaiting_logs_upload_intent_decisions(vec![IntentDecision::UploadImmediately]);
+
+  workflows_engine.process_log(TestLog::new("start_streaming"));
+  workflows_engine.run_once_for_test().await;
+  workflows_engine.maybe_persist(false).await;
+
+  let restored_pending_flush_state = Arc::new(ProcessLocalPendingFlushState::default());
+  let flush_id = FlushBufferId::WorkflowActionId("workflow_streaming".into());
+  restored_pending_flush_state.mark_pending(flush_id.clone());
+
+  let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
+  let mut workflows_engine = setup
+    .make_workflows_engine_with_flush_completion_tracker(
+      workflows_engine_config,
+      restored_pending_flush_state.clone(),
+    )
+    .await;
+  workflows_engine.log_destination_buffer_ids = TinySet::from(["trigger_buffer_id".into()]);
+
+  let result = workflows_engine.process_log(TestLog::new("ordinary log"));
+  assert_eq!(
+    result.log_destination_buffer_ids,
+    Cow::Owned(TinySet::from(["continuous_buffer_id".into()]))
+  );
+  assert_eq!(1, workflows_engine.state.streaming_actions.len());
+
+  let result = workflows_engine.process_log(TestLog::new("ordinary log"));
+  assert_eq!(
+    result.log_destination_buffer_ids,
+    Cow::Owned(TinySet::from(["continuous_buffer_id".into()]))
+  );
+  assert_eq!(1, workflows_engine.state.streaming_actions.len());
+
+  restored_pending_flush_state.mark_completed(&flush_id);
+
+  let result = workflows_engine.process_log(TestLog::new("ordinary log"));
+  assert_eq!(
+    result.log_destination_buffer_ids,
+    Cow::Owned(TinySet::from(["trigger_buffer_id".into()]))
+  );
+  assert!(workflows_engine.state.streaming_actions.is_empty());
+}
+
+#[tokio::test]
+async fn restored_remote_streaming_waits_for_durable_flush_completion() {
+  let workflows_engine_config = WorkflowsEngineConfig::new(
+    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![]),
+    TinySet::from(["trigger_buffer_id".into()]),
+    TinySet::from(["continuous_buffer_id".into()]),
+  );
+
+  let setup = Setup::new();
+
+  let mut workflows_engine = setup
+    .make_workflows_engine(workflows_engine_config.clone())
+    .await;
+  workflows_engine.log_destination_buffer_ids = TinySet::from(["trigger_buffer_id".into()]);
+
+  assert!(workflows_engine.start_remote_flush_streaming(
+    "remote_streaming".into(),
+    BTreeSet::from(["trigger_buffer_id".to_string()]),
+    "session-1",
+    TriggerUploadStreaming {
+      destination_buffer_ids: vec!["continuous_buffer_id".to_string()],
+      max_logs_count: Some(1),
+    },
+  ));
+  workflows_engine.maybe_persist(false).await;
+
+  let restored_pending_flush_state = Arc::new(ProcessLocalPendingFlushState::default());
+  let flush_id = FlushBufferId::RemoteCommand("remote_streaming".into());
+  restored_pending_flush_state.mark_pending(flush_id.clone());
+
+  let setup = Setup::new_with_sdk_directory(&setup.sdk_directory);
+  let mut workflows_engine = setup
+    .make_workflows_engine_with_flush_completion_tracker(
+      workflows_engine_config,
+      restored_pending_flush_state.clone(),
+    )
+    .await;
+  workflows_engine.log_destination_buffer_ids = TinySet::from(["trigger_buffer_id".into()]);
+
+  let result = workflows_engine.process_log(TestLog::new("ordinary log"));
+  assert_eq!(
+    result.log_destination_buffer_ids,
+    Cow::Owned(TinySet::from(["continuous_buffer_id".into()]))
+  );
+  assert_eq!(1, workflows_engine.state.streaming_actions.len());
+
+  let result = workflows_engine.process_log(TestLog::new("ordinary log"));
+  assert_eq!(
+    result.log_destination_buffer_ids,
+    Cow::Owned(TinySet::from(["continuous_buffer_id".into()]))
+  );
+  assert_eq!(1, workflows_engine.state.streaming_actions.len());
+
+  restored_pending_flush_state.mark_completed(&flush_id);
+
+  let result = workflows_engine.process_log(TestLog::new("ordinary log"));
+  assert_eq!(
+    result.log_destination_buffer_ids,
+    Cow::Owned(TinySet::from(["trigger_buffer_id".into()]))
+  );
+  assert!(workflows_engine.state.streaming_actions.is_empty());
+}
+
+#[tokio::test]
 async fn engine_tracks_new_sessions() {
   let setup = Setup::new();
 
@@ -3296,10 +3434,7 @@ async fn start_tracing_carries_into_streaming_until_streaming_ends() {
     .flushed_buffers
     .pop()
     .expect("expected a pending flush to complete");
-  flush
-    .response_tx
-    .send(())
-    .expect("flush completion response channel should be open");
+  engine.mark_flush_completed(&flush.flush_id);
 
   // First log is still streamed (termination is checked before incrementing streamed count).
   let result = engine.process_log(TestLog::new("non-matching"));

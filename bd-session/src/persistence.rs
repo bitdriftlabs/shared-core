@@ -5,8 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_client_common::file::{read_compressed, write_compressed};
-use bd_client_common::file_system::{delete_file_if_exists_async, write_file_atomic};
+use bd_client_common::file::{read_compressed, write_compressed_protobuf_file};
+use bd_client_common::file_system::delete_file_if_exists_async;
 use bd_macros::proto_serializable;
 use bd_proto_util::serialization::{
   ProtoMessageDeserialize,
@@ -160,8 +160,6 @@ impl Store {
   }
 
   async fn write_message<T: ProtoMessageSerialize>(path: &Path, message: &T) -> anyhow::Result<()> {
-    let bytes = message.serialize_message_to_bytes()?;
-    let compressed = write_compressed(&bytes)?;
-    write_file_atomic(path, &compressed).await
+    write_compressed_protobuf_file(path, message).await
   }
 }
