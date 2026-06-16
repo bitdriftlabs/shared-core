@@ -204,6 +204,13 @@ pub fn get_public_api_proto_configs() -> Vec<ProtoConfig> {
       file_header: true,
     },
     ProtoConfig {
+      output_dir: "src/protos/public_api/entity",
+      inputs: &["../api/src/bitdrift/public/unary/entity/v1/api.proto"],
+      includes: PROTO_INCLUDES,
+      use_tokio_bytes: false,
+      file_header: true,
+    },
+    ProtoConfig {
       output_dir: "src/protos/public_api/dashboards",
       inputs: &["../api/src/bitdrift/public/unary/dashboards/v1/api.proto"],
       includes: PROTO_INCLUDES,

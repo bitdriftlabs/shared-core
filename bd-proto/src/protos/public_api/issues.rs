@@ -349,6 +349,8 @@ pub mod advanced_filter {
             LHS_TYPED_FILE = 13,
             // @@protoc_insertion_point(enum_value:bitdrift.public.unary.issues.v1.AdvancedFilter.Condition.LhsTyped.LHS_TYPED_MODULE)
             LHS_TYPED_MODULE = 14,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.issues.v1.AdvancedFilter.Condition.LhsTyped.LHS_TYPED_MANUFACTURER)
+            LHS_TYPED_MANUFACTURER = 15,
         }
 
         impl ::protobuf::Enum for LhsTyped {
@@ -375,6 +377,7 @@ pub mod advanced_filter {
                     12 => ::std::option::Option::Some(LhsTyped::LHS_TYPED_FUNCTION),
                     13 => ::std::option::Option::Some(LhsTyped::LHS_TYPED_FILE),
                     14 => ::std::option::Option::Some(LhsTyped::LHS_TYPED_MODULE),
+                    15 => ::std::option::Option::Some(LhsTyped::LHS_TYPED_MANUFACTURER),
                     _ => ::std::option::Option::None
                 }
             }
@@ -396,6 +399,7 @@ pub mod advanced_filter {
                     "LHS_TYPED_FUNCTION" => ::std::option::Option::Some(LhsTyped::LHS_TYPED_FUNCTION),
                     "LHS_TYPED_FILE" => ::std::option::Option::Some(LhsTyped::LHS_TYPED_FILE),
                     "LHS_TYPED_MODULE" => ::std::option::Option::Some(LhsTyped::LHS_TYPED_MODULE),
+                    "LHS_TYPED_MANUFACTURER" => ::std::option::Option::Some(LhsTyped::LHS_TYPED_MANUFACTURER),
                     _ => ::std::option::Option::None
                 }
             }
@@ -416,6 +420,7 @@ pub mod advanced_filter {
                 LhsTyped::LHS_TYPED_FUNCTION,
                 LhsTyped::LHS_TYPED_FILE,
                 LhsTyped::LHS_TYPED_MODULE,
+                LhsTyped::LHS_TYPED_MANUFACTURER,
             ];
         }
 
@@ -1221,8 +1226,6 @@ pub struct IssueGroup {
     pub assignees: ::std::vec::Vec<super::common::Owner>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.issues.v1.IssueGroup.status)
     pub status: ::protobuf::EnumOrUnknown<IssueGroupStatus>,
-    // @@protoc_insertion_point(field:bitdrift.public.unary.issues.v1.IssueGroup.filtered_stats)
-    pub filtered_stats: ::protobuf::MessageField<issue_group::Stats>,
     // message oneof groups
     pub resolution_version: ::std::option::Option<issue_group::Resolution_version>,
     // special fields
@@ -1316,7 +1319,7 @@ impl IssueGroup {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(9);
+        let mut fields = ::std::vec::Vec::with_capacity(8);
         let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "id",
@@ -1347,11 +1350,6 @@ impl IssueGroup {
             "status",
             |m: &IssueGroup| { &m.status },
             |m: &mut IssueGroup| { &mut m.status },
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, issue_group::Stats>(
-            "filtered_stats",
-            |m: &IssueGroup| { &m.filtered_stats },
-            |m: &mut IssueGroup| { &mut m.filtered_stats },
         ));
         fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
             "version",
@@ -1402,9 +1400,6 @@ impl ::protobuf::Message for IssueGroup {
                 48 => {
                     self.status = is.read_enum_or_unknown()?;
                 },
-                58 => {
-                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.filtered_stats)?;
-                },
                 66 => {
                     self.resolution_version = ::std::option::Option::Some(issue_group::Resolution_version::Version(is.read_string()?));
                 },
@@ -1445,10 +1440,6 @@ impl ::protobuf::Message for IssueGroup {
         if self.status != ::protobuf::EnumOrUnknown::new(IssueGroupStatus::NEW) {
             my_size += ::protobuf::rt::int32_size(6, self.status.value());
         }
-        if let Some(v) = self.filtered_stats.as_ref() {
-            let len = v.compute_size();
-            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
-        }
         if let ::std::option::Option::Some(ref v) = self.resolution_version {
             match v {
                 &issue_group::Resolution_version::Version(ref v) => {
@@ -1483,9 +1474,6 @@ impl ::protobuf::Message for IssueGroup {
         if self.status != ::protobuf::EnumOrUnknown::new(IssueGroupStatus::NEW) {
             os.write_enum(6, ::protobuf::EnumOrUnknown::value(&self.status))?;
         }
-        if let Some(v) = self.filtered_stats.as_ref() {
-            ::protobuf::rt::write_message_field_with_cached_size(7, v, os)?;
-        }
         if let ::std::option::Option::Some(ref v) = self.resolution_version {
             match v {
                 &issue_group::Resolution_version::Version(ref v) => {
@@ -1519,7 +1507,6 @@ impl ::protobuf::Message for IssueGroup {
         self.stats.clear();
         self.assignees.clear();
         self.status = ::protobuf::EnumOrUnknown::new(IssueGroupStatus::NEW);
-        self.filtered_stats.clear();
         self.resolution_version = ::std::option::Option::None;
         self.resolution_version = ::std::option::Option::None;
         self.special_fields.clear();
@@ -1533,7 +1520,6 @@ impl ::protobuf::Message for IssueGroup {
             stats: ::protobuf::MessageField::none(),
             assignees: ::std::vec::Vec::new(),
             status: ::protobuf::EnumOrUnknown::from_i32(0),
-            filtered_stats: ::protobuf::MessageField::none(),
             resolution_version: ::std::option::Option::None,
             special_fields: ::protobuf::SpecialFields::new(),
         };
@@ -8282,15 +8268,15 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     nary.issues.v1\x1a1bitdrift/public/shared/platform/v1/platform.proto\x1a\
     ,bitdrift/public/unary/common/v1/common.proto\x1a+bitdrift/public/unary/\
     issues/v1/crash.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17vali\
-    date/validate.proto\"\xe0\x06\n\x0eAdvancedFilter\x12l\n\x0eand_conditio\
+    date/validate.proto\"\xfc\x06\n\x0eAdvancedFilter\x12l\n\x0eand_conditio\
     ns\x18\x01\x20\x03(\x0b2;.bitdrift.public.unary.issues.v1.AdvancedFilter\
-    .OrConditionR\randConditionsB\x08\xfaB\x05\x92\x01\x02\x10d\x1a\xe6\x04\
+    .OrConditionR\randConditionsB\x08\xfaB\x05\x92\x01\x02\x10d\x1a\x82\x05\
     \n\tCondition\x12i\n\tlhs_typed\x18\x04\x20\x01(\x0e2B.bitdrift.public.u\
     nary.issues.v1.AdvancedFilter.Condition.LhsTypedR\x08lhsTypedB\x08\xfaB\
     \x05\x82\x01\x02\x10\x01\x12O\n\x08operator\x18\x02\x20\x01(\x0e2).bitdr\
     ift.public.unary.common.v1.OperatorR\x08operatorB\x08\xfaB\x05\x82\x01\
     \x02\x10\x01\x12\x1a\n\x03rhs\x18\x03\x20\x01(\tR\x03rhsB\x08\xfaB\x05r\
-    \x03\x18\xff\x01\"\x80\x03\n\x08LhsTyped\x12\x19\n\x15LHS_TYPED_UNSPECIF\
+    \x03\x18\xff\x01\"\x9c\x03\n\x08LhsTyped\x12\x19\n\x15LHS_TYPED_UNSPECIF\
     IED\x10\0\x12\x14\n\x10LHS_TYPED_APP_ID\x10\x01\x12\x16\n\x12LHS_TYPED_P\
     LATFORM\x10\x02\x12\x19\n\x15LHS_TYPED_APP_VERSION\x10\x03\x12\x18\n\x14\
     LHS_TYPED_OS_VERSION\x10\x04\x12\x13\n\x0fLHS_TYPED_MODEL\x10\x05\x12\
@@ -8299,38 +8285,37 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     UILD_ID\x10\t\x12\x1a\n\x16LHS_TYPED_VERSION_CODE\x10\n\x12#\n\x1fLHS_TY\
     PED_MEMORY_PRESSURE_LEVEL\x10\x0b\x12\x16\n\x12LHS_TYPED_FUNCTION\x10\
     \x0c\x12\x12\n\x0eLHS_TYPED_FILE\x10\r\x12\x14\n\x10LHS_TYPED_MODULE\x10\
-    \x0e\x1aw\n\x0bOrCondition\x12h\n\ror_conditions\x18\x01\x20\x03(\x0b29.\
-    bitdrift.public.unary.issues.v1.AdvancedFilter.ConditionR\x0corCondition\
-    sB\x08\xfaB\x05\x92\x01\x02\x10d\"\x84\x01\n\x11FeatureFlagFilter\x12\
-    \x1d\n\x04name\x18\x01\x20\x01(\tR\x04nameB\t\xfaB\x06r\x04\x10\x01\x18d\
-    \x12&\n\x07variant\x18\x02\x20\x01(\tH\0R\x07variantB\x07\xfaB\x04r\x02\
-    \x18d\x88\x01\x01\x12\x1c\n\texclusive\x18\x03\x20\x01(\x08R\texclusiveB\
-    \n\n\x08_variant\"\xa6\x03\n\nIssueQuery\x12I\n\ntime_range\x18\x07\x20\
-    \x01(\x0b2*.bitdrift.public.unary.common.v1.TimeRangeR\ttimeRange\x12T\n\
-    \tplatforms\x18\x03\x20\x03(\x0b2,.bitdrift.public.shared.platform.v1.Pl\
-    atformR\tplatformsB\x08\xfaB\x05\x92\x01\x02\x10d\x12Z\n\x10advanced_fil\
-    ters\x18\x04\x20\x01(\x0b2/.bitdrift.public.unary.issues.v1.AdvancedFilt\
-    erR\x0fadvancedFilters\x12+\n\x0cgrouping_key\x18\x05\x20\x03(\tR\x0bgro\
-    upingKeyB\x08\xfaB\x05\x92\x01\x02\x10d\x12n\n\x14feature_flag_filters\
-    \x18\x06\x20\x03(\x0b22.bitdrift.public.unary.issues.v1.FeatureFlagFilte\
-    rR\x12featureFlagFiltersB\x08\xfaB\x05\x92\x01\x02\x10d\"\xd1\x01\n\x0fI\
-    ssueGroupQuery\x12L\n\x08assignee\x18\x01\x20\x03(\x0b2&.bitdrift.public\
-    .unary.common.v1.OwnerR\x08assigneeB\x08\xfaB\x05\x92\x01\x02\x10d\x12p\
-    \n\x12issue_group_status\x18\x02\x20\x03(\x0e21.bitdrift.public.unary.is\
-    sues.v1.IssueGroupStatusR\x10issueGroupStatusB\x0f\xfaB\x0c\x92\x01\t\
-    \x10d\"\x05\x82\x01\x02\x10\x01\"f\n\x05Event\x12G\n\x0cperiod_start\x18\
-    \x01\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x0bperiodStartB\x08\
-    \xfaB\x05\x8a\x01\x02\x10\x01\x12\x14\n\x05count\x18\x02\x20\x01(\x04R\
-    \x05count\"\x8e\t\n\nIssueGroup\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\x02i\
-    d\x12P\n\x08metadata\x18\x02\x20\x01(\x0b24.bitdrift.public.unary.issues\
-    .v1.IssueGroup.MetadataR\x08metadata\x12H\n\x08platform\x18\x03\x20\x03(\
-    \x0b2,.bitdrift.public.shared.platform.v1.PlatformR\x08platform\x12G\n\
-    \x05stats\x18\x04\x20\x01(\x0b21.bitdrift.public.unary.issues.v1.IssueGr\
-    oup.StatsR\x05stats\x12D\n\tassignees\x18\x05\x20\x03(\x0b2&.bitdrift.pu\
-    blic.unary.common.v1.OwnerR\tassignees\x12I\n\x06status\x18\x06\x20\x01(\
-    \x0e21.bitdrift.public.unary.issues.v1.IssueGroupStatusR\x06status\x12X\
-    \n\x0efiltered_stats\x18\x07\x20\x01(\x0b21.bitdrift.public.unary.issues\
-    .v1.IssueGroup.StatsR\rfilteredStats\x12\x1a\n\x07version\x18\x08\x20\
+    \x0e\x12\x1a\n\x16LHS_TYPED_MANUFACTURER\x10\x0f\x1aw\n\x0bOrCondition\
+    \x12h\n\ror_conditions\x18\x01\x20\x03(\x0b29.bitdrift.public.unary.issu\
+    es.v1.AdvancedFilter.ConditionR\x0corConditionsB\x08\xfaB\x05\x92\x01\
+    \x02\x10d\"\x84\x01\n\x11FeatureFlagFilter\x12\x1d\n\x04name\x18\x01\x20\
+    \x01(\tR\x04nameB\t\xfaB\x06r\x04\x10\x01\x18d\x12&\n\x07variant\x18\x02\
+    \x20\x01(\tH\0R\x07variantB\x07\xfaB\x04r\x02\x18d\x88\x01\x01\x12\x1c\n\
+    \texclusive\x18\x03\x20\x01(\x08R\texclusiveB\n\n\x08_variant\"\xa6\x03\
+    \n\nIssueQuery\x12I\n\ntime_range\x18\x07\x20\x01(\x0b2*.bitdrift.public\
+    .unary.common.v1.TimeRangeR\ttimeRange\x12T\n\tplatforms\x18\x03\x20\x03\
+    (\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\tplatformsB\x08\xfa\
+    B\x05\x92\x01\x02\x10d\x12Z\n\x10advanced_filters\x18\x04\x20\x01(\x0b2/\
+    .bitdrift.public.unary.issues.v1.AdvancedFilterR\x0fadvancedFilters\x12+\
+    \n\x0cgrouping_key\x18\x05\x20\x03(\tR\x0bgroupingKeyB\x08\xfaB\x05\x92\
+    \x01\x02\x10d\x12n\n\x14feature_flag_filters\x18\x06\x20\x03(\x0b22.bitd\
+    rift.public.unary.issues.v1.FeatureFlagFilterR\x12featureFlagFiltersB\
+    \x08\xfaB\x05\x92\x01\x02\x10d\"\xd1\x01\n\x0fIssueGroupQuery\x12L\n\x08\
+    assignee\x18\x01\x20\x03(\x0b2&.bitdrift.public.unary.common.v1.OwnerR\
+    \x08assigneeB\x08\xfaB\x05\x92\x01\x02\x10d\x12p\n\x12issue_group_status\
+    \x18\x02\x20\x03(\x0e21.bitdrift.public.unary.issues.v1.IssueGroupStatus\
+    R\x10issueGroupStatusB\x0f\xfaB\x0c\x92\x01\t\x10d\"\x05\x82\x01\x02\x10\
+    \x01\"f\n\x05Event\x12G\n\x0cperiod_start\x18\x01\x20\x01(\x0b2\x1a.goog\
+    le.protobuf.TimestampR\x0bperiodStartB\x08\xfaB\x05\x8a\x01\x02\x10\x01\
+    \x12\x14\n\x05count\x18\x02\x20\x01(\x04R\x05count\"\xb4\x08\n\nIssueGro\
+    up\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\x12P\n\x08metadata\x18\x02\
+    \x20\x01(\x0b24.bitdrift.public.unary.issues.v1.IssueGroup.MetadataR\x08\
+    metadata\x12H\n\x08platform\x18\x03\x20\x03(\x0b2,.bitdrift.public.share\
+    d.platform.v1.PlatformR\x08platform\x12G\n\x05stats\x18\x04\x20\x01(\x0b\
+    21.bitdrift.public.unary.issues.v1.IssueGroup.StatsR\x05stats\x12D\n\tas\
+    signees\x18\x05\x20\x03(\x0b2&.bitdrift.public.unary.common.v1.OwnerR\ta\
+    ssignees\x12I\n\x06status\x18\x06\x20\x01(\x0e21.bitdrift.public.unary.i\
+    ssues.v1.IssueGroupStatusR\x06status\x12\x1a\n\x07version\x18\x08\x20\
     \x01(\tH\0R\x07version\x12#\n\x0cversion_code\x18\t\x20\x01(\x03H\0R\x0b\
     versionCode\x1a\xe0\x01\n\x08Metadata\x12\x12\n\x04type\x18\x01\x20\x01(\
     \tR\x04type\x12\x16\n\x06reason\x18\x02\x20\x01(\tR\x06reason\x12\x1d\n\

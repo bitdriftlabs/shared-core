@@ -15,6 +15,7 @@ pub mod common;
 pub mod crash;
 pub mod dashboards;
 pub mod debug_files;
+pub mod entity;
 pub mod explorations;
 pub mod health;
 pub mod hydration;

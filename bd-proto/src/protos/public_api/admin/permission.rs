@@ -82,6 +82,16 @@ pub enum Permission {
     VIEW_READ = 25,
     // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.VIEW_WRITE)
     VIEW_WRITE = 26,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.TEAMS_ADMIN)
+    TEAMS_ADMIN = 27,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.TEAMS_WRITE)
+    TEAMS_WRITE = 28,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.TEAMS_READ)
+    TEAMS_READ = 29,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.ENTITY_READ)
+    ENTITY_READ = 30,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.ENTITY_WRITE)
+    ENTITY_WRITE = 31,
 }
 
 impl ::protobuf::Enum for Permission {
@@ -117,6 +127,11 @@ impl ::protobuf::Enum for Permission {
             24 => ::std::option::Option::Some(Permission::NOTIFICATION_GROUP_ADMIN),
             25 => ::std::option::Option::Some(Permission::VIEW_READ),
             26 => ::std::option::Option::Some(Permission::VIEW_WRITE),
+            27 => ::std::option::Option::Some(Permission::TEAMS_ADMIN),
+            28 => ::std::option::Option::Some(Permission::TEAMS_WRITE),
+            29 => ::std::option::Option::Some(Permission::TEAMS_READ),
+            30 => ::std::option::Option::Some(Permission::ENTITY_READ),
+            31 => ::std::option::Option::Some(Permission::ENTITY_WRITE),
             _ => ::std::option::Option::None
         }
     }
@@ -147,6 +162,11 @@ impl ::protobuf::Enum for Permission {
             "NOTIFICATION_GROUP_ADMIN" => ::std::option::Option::Some(Permission::NOTIFICATION_GROUP_ADMIN),
             "VIEW_READ" => ::std::option::Option::Some(Permission::VIEW_READ),
             "VIEW_WRITE" => ::std::option::Option::Some(Permission::VIEW_WRITE),
+            "TEAMS_ADMIN" => ::std::option::Option::Some(Permission::TEAMS_ADMIN),
+            "TEAMS_WRITE" => ::std::option::Option::Some(Permission::TEAMS_WRITE),
+            "TEAMS_READ" => ::std::option::Option::Some(Permission::TEAMS_READ),
+            "ENTITY_READ" => ::std::option::Option::Some(Permission::ENTITY_READ),
+            "ENTITY_WRITE" => ::std::option::Option::Some(Permission::ENTITY_WRITE),
             _ => ::std::option::Option::None
         }
     }
@@ -176,6 +196,11 @@ impl ::protobuf::Enum for Permission {
         Permission::NOTIFICATION_GROUP_ADMIN,
         Permission::VIEW_READ,
         Permission::VIEW_WRITE,
+        Permission::TEAMS_ADMIN,
+        Permission::TEAMS_WRITE,
+        Permission::TEAMS_READ,
+        Permission::ENTITY_READ,
+        Permission::ENTITY_WRITE,
     ];
 }
 
@@ -211,6 +236,11 @@ impl ::protobuf::EnumFull for Permission {
             Permission::NOTIFICATION_GROUP_ADMIN => 21,
             Permission::VIEW_READ => 22,
             Permission::VIEW_WRITE => 23,
+            Permission::TEAMS_ADMIN => 24,
+            Permission::TEAMS_WRITE => 25,
+            Permission::TEAMS_READ => 26,
+            Permission::ENTITY_READ => 27,
+            Permission::ENTITY_WRITE => 28,
         };
         Self::enum_descriptor().value_by_index(index)
     }
@@ -230,7 +260,7 @@ impl Permission {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n/bitdrift/public/unary/admin/v1/permission.proto\x12\x1ebitdrift.publi\
-    c.unary.admin.v1*\xf2\x03\n\nPermission\x12\x1a\n\x16PERMISSION_UNSPECIF\
+    c.unary.admin.v1*\xc7\x04\n\nPermission\x12\x1a\n\x16PERMISSION_UNSPECIF\
     IED\x10\0\x12\x11\n\rSDK_KEY_ADMIN\x10\x01\x12\x13\n\x0fAPI_KEY_CREATOR\
     \x10\x10\x12\x12\n\x0eWORKFLOW_ADMIN\x10\x02\x12\x11\n\rWORKFLOW_READ\
     \x10\x03\x12\x12\n\x0eWORKFLOW_WRITE\x10\x04\x12\x13\n\x0fWORKFLOW_DEPLO\
@@ -242,7 +272,10 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     TE\x10\x13\x12\x0f\n\x0bALERT_ADMIN\x10\x14\x12\x0e\n\nALERT_READ\x10\
     \x15\x12\x0f\n\x0bALERT_WRITE\x10\x16\x12\x1b\n\x17NOTIFICATION_GROUP_RE\
     AD\x10\x17\x12\x1c\n\x18NOTIFICATION_GROUP_ADMIN\x10\x18\x12\r\n\tVIEW_R\
-    EAD\x10\x19\x12\x0e\n\nVIEW_WRITE\x10\x1ab\x06proto3\
+    EAD\x10\x19\x12\x0e\n\nVIEW_WRITE\x10\x1a\x12\x0f\n\x0bTEAMS_ADMIN\x10\
+    \x1b\x12\x0f\n\x0bTEAMS_WRITE\x10\x1c\x12\x0e\n\nTEAMS_READ\x10\x1d\x12\
+    \x0f\n\x0bENTITY_READ\x10\x1e\x12\x10\n\x0cENTITY_WRITE\x10\x1fb\x06prot\
+    o3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
