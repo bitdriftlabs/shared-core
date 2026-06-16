@@ -7,6 +7,9 @@ use crate::common_generated::*;
 use core::mem;
 use core::cmp::Ordering;
 
+extern crate serde;
+use self::serde::ser::{Serialize, Serializer, SerializeStruct};
+
 extern crate flatbuffers;
 use self::flatbuffers::{EndianScalar, Follow};
 
@@ -17,6 +20,9 @@ pub mod bitdrift_public {
   use core::mem;
   use core::cmp::Ordering;
 
+  extern crate serde;
+  use self::serde::ser::{Serialize, Serializer, SerializeStruct};
+
   extern crate flatbuffers;
   use self::flatbuffers::{EndianScalar, Follow};
 #[allow(unused_imports, dead_code)]
@@ -25,6 +31,9 @@ pub mod fbs {
   use crate::common_generated::*;
   use core::mem;
   use core::cmp::Ordering;
+
+  extern crate serde;
+  use self::serde::ser::{Serialize, Serializer, SerializeStruct};
 
   extern crate flatbuffers;
   use self::flatbuffers::{EndianScalar, Follow};
@@ -35,6 +44,9 @@ pub mod logging {
   use core::mem;
   use core::cmp::Ordering;
 
+  extern crate serde;
+  use self::serde::ser::{Serialize, Serializer, SerializeStruct};
+
   extern crate flatbuffers;
   use self::flatbuffers::{EndianScalar, Follow};
 #[allow(unused_imports, dead_code)]
@@ -43,6 +55,9 @@ pub mod v_1 {
   use crate::common_generated::*;
   use core::mem;
   use core::cmp::Ordering;
+
+  extern crate serde;
+  use self::serde::ser::{Serialize, Serializer, SerializeStruct};
 
   extern crate flatbuffers;
   use self::flatbuffers::{EndianScalar, Follow};
@@ -118,6 +133,15 @@ impl core::fmt::Debug for LogType {
     }
   }
 }
+impl Serialize for LogType {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    serializer.serialize_unit_variant("LogType", self.0 as u32, self.variant_name().unwrap())
+  }
+}
+
 impl<'a> flatbuffers::Follow<'a> for LogType {
   type Inner = Self;
   #[inline]
@@ -395,6 +419,58 @@ impl<'a> Default for LogArgs<'a> {
       log_type: LogType::Normal,
       stream_ids: None,
     }
+  }
+}
+
+impl Serialize for Log<'_> {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let mut s = serializer.serialize_struct("Log", 9)?;
+      s.serialize_field("log_level", &self.log_level())?;
+      s.serialize_field("message_type", &self.message_type())?;
+      match self.message_type() {
+        super::super::common::v_1::Data::NONE => (),
+          super::super::common::v_1::Data::string_data => {
+            let f = self.message_as_string_data()
+              .expect("Invalid union table, expected `super::super::common::v_1::Data::string_data`.");
+            s.serialize_field("message", &f)?;
+          }
+          super::super::common::v_1::Data::binary_data => {
+            let f = self.message_as_binary_data()
+              .expect("Invalid union table, expected `super::super::common::v_1::Data::binary_data`.");
+            s.serialize_field("message", &f)?;
+          }
+        _ => unimplemented!(),
+      }
+      if let Some(f) = self.fields() {
+        s.serialize_field("fields", &f)?;
+      } else {
+        s.skip_field("fields")?;
+      }
+      if let Some(f) = self.session_id() {
+        s.serialize_field("session_id", &f)?;
+      } else {
+        s.skip_field("session_id")?;
+      }
+      if let Some(f) = self.timestamp() {
+        s.serialize_field("timestamp", &f)?;
+      } else {
+        s.skip_field("timestamp")?;
+      }
+      if let Some(f) = self.workflow_action_ids() {
+        s.serialize_field("workflow_action_ids", &f)?;
+      } else {
+        s.skip_field("workflow_action_ids")?;
+      }
+      s.serialize_field("log_type", &self.log_type())?;
+      if let Some(f) = self.stream_ids() {
+        s.serialize_field("stream_ids", &f)?;
+      } else {
+        s.skip_field("stream_ids")?;
+      }
+    s.end()
   }
 }
 

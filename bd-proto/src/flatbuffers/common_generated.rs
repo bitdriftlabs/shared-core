@@ -6,6 +6,9 @@
 use core::mem;
 use core::cmp::Ordering;
 
+extern crate serde;
+use self::serde::ser::{Serialize, Serializer, SerializeStruct};
+
 extern crate flatbuffers;
 use self::flatbuffers::{EndianScalar, Follow};
 
@@ -15,6 +18,9 @@ pub mod bitdrift_public {
   use core::mem;
   use core::cmp::Ordering;
 
+  extern crate serde;
+  use self::serde::ser::{Serialize, Serializer, SerializeStruct};
+
   extern crate flatbuffers;
   use self::flatbuffers::{EndianScalar, Follow};
 #[allow(unused_imports, dead_code)]
@@ -22,6 +28,9 @@ pub mod fbs {
 
   use core::mem;
   use core::cmp::Ordering;
+
+  extern crate serde;
+  use self::serde::ser::{Serialize, Serializer, SerializeStruct};
 
   extern crate flatbuffers;
   use self::flatbuffers::{EndianScalar, Follow};
@@ -31,6 +40,9 @@ pub mod common {
   use core::mem;
   use core::cmp::Ordering;
 
+  extern crate serde;
+  use self::serde::ser::{Serialize, Serializer, SerializeStruct};
+
   extern crate flatbuffers;
   use self::flatbuffers::{EndianScalar, Follow};
 #[allow(unused_imports, dead_code)]
@@ -38,6 +50,9 @@ pub mod v_1 {
 
   use core::mem;
   use core::cmp::Ordering;
+
+  extern crate serde;
+  use self::serde::ser::{Serialize, Serializer, SerializeStruct};
 
   extern crate flatbuffers;
   use self::flatbuffers::{EndianScalar, Follow};
@@ -89,6 +104,15 @@ impl core::fmt::Debug for Data {
     }
   }
 }
+impl Serialize for Data {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    serializer.serialize_unit_variant("Data", self.0 as u32, self.variant_name().unwrap())
+  }
+}
+
 impl<'a> flatbuffers::Follow<'a> for Data {
   type Inner = Self;
   #[inline]
@@ -279,6 +303,17 @@ impl<'a> Default for StringDataArgs<'a> {
   }
 }
 
+impl Serialize for StringData<'_> {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let mut s = serializer.serialize_struct("StringData", 1)?;
+      s.serialize_field("data", &self.data())?;
+    s.end()
+  }
+}
+
 pub struct StringDataBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
   fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
   start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
@@ -425,6 +460,22 @@ impl<'a> Default for BinaryDataArgs<'a> {
       data_type: None,
       data: None, // required field
     }
+  }
+}
+
+impl Serialize for BinaryData<'_> {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let mut s = serializer.serialize_struct("BinaryData", 2)?;
+      if let Some(f) = self.data_type() {
+        s.serialize_field("data_type", &f)?;
+      } else {
+        s.skip_field("data_type")?;
+      }
+      s.serialize_field("data", &self.data())?;
+    s.end()
   }
 }
 
@@ -644,6 +695,32 @@ impl<'a> Default for FieldArgs<'a> {
   }
 }
 
+impl Serialize for Field<'_> {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let mut s = serializer.serialize_struct("Field", 3)?;
+      s.serialize_field("key", &self.key())?;
+      s.serialize_field("value_type", &self.value_type())?;
+      match self.value_type() {
+        Data::NONE => (),
+          Data::string_data => {
+            let f = self.value_as_string_data()
+              .expect("Invalid union table, expected `Data::string_data`.");
+            s.serialize_field("value", &f)?;
+          }
+          Data::binary_data => {
+            let f = self.value_as_binary_data()
+              .expect("Invalid union table, expected `Data::binary_data`.");
+            s.serialize_field("value", &f)?;
+          }
+        _ => unimplemented!(),
+      }
+    s.end()
+  }
+}
+
 pub struct FieldBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
   fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
   start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
@@ -821,6 +898,18 @@ impl<'a> Default for TimestampArgs {
       seconds: 0,
       nanos: 0,
     }
+  }
+}
+
+impl Serialize for Timestamp<'_> {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let mut s = serializer.serialize_struct("Timestamp", 2)?;
+      s.serialize_field("seconds", &self.seconds())?;
+      s.serialize_field("nanos", &self.nanos())?;
+    s.end()
   }
 }
 

@@ -1037,6 +1037,7 @@ dependencies = [
  "matches",
  "protobuf 4.0.0-alpha.0",
  "protobuf-codegen",
+ "serde",
 ]
 
 [[package]]
@@ -2199,6 +2200,7 @@ checksum = "09b6620799e7340ebd9968d2e0708eb82cf1971e9a16821e2091b6d6e475eed5"
 dependencies = [
  "bitflags",
  "rustc_version",
+ "serde",
 ]
 
 [[package]]

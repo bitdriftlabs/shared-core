@@ -91,7 +91,7 @@ ctor            = "1.0.7"
 dashmap         = "6.2.1"
 
 # Pinned due to https://github.com/google/flatbuffers/issues/8876
-flatbuffers = "=25.9.23"
+flatbuffers = { version = "=25.9.23", features = ["serialize"] }
 
 ahash                 = { version = "0.8.12", features = ["serde"] }
 flatc-rust            = "0.2.0"
