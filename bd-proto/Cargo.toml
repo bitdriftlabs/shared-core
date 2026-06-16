@@ -14,6 +14,7 @@ bd-workspace-hack.workspace = true
 bytes.workspace             = true
 flatbuffers.workspace       = true
 protobuf.workspace          = true
+serde.workspace             = true
 
 [dev-dependencies]
 matches.workspace = true
