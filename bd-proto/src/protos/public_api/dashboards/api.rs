@@ -39,6 +39,8 @@ pub struct ResolvedChart {
     pub id: ::protobuf::MessageField<super::chart_id::ChartIdentifier>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ResolvedChart.metadata)
     pub metadata: ::protobuf::MessageField<super::chart_metadata::ChartMetadata>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ResolvedChart.backing_workflow_deployment_history)
+    pub backing_workflow_deployment_history: ::protobuf::MessageField<resolved_chart::BackingWorkflowDeploymentHistory>,
     // message oneof groups
     pub type_: ::std::option::Option<resolved_chart::Type>,
     // special fields
@@ -254,7 +256,7 @@ impl ResolvedChart {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(6);
+        let mut fields = ::std::vec::Vec::with_capacity(7);
         let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::chart_id::ChartIdentifier>(
             "id",
@@ -294,6 +296,11 @@ impl ResolvedChart {
             |m: &ResolvedChart| { &m.metadata },
             |m: &mut ResolvedChart| { &mut m.metadata },
         ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, resolved_chart::BackingWorkflowDeploymentHistory>(
+            "backing_workflow_deployment_history",
+            |m: &ResolvedChart| { &m.backing_workflow_deployment_history },
+            |m: &mut ResolvedChart| { &mut m.backing_workflow_deployment_history },
+        ));
         oneofs.push(resolved_chart::Type::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ResolvedChart>(
             "ResolvedChart",
@@ -331,6 +338,9 @@ impl ::protobuf::Message for ResolvedChart {
                 170 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.metadata)?;
                 },
+                178 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.backing_workflow_deployment_history)?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -348,6 +358,10 @@ impl ::protobuf::Message for ResolvedChart {
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
         if let Some(v) = self.metadata.as_ref() {
+            let len = v.compute_size();
+            my_size += 2 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let Some(v) = self.backing_workflow_deployment_history.as_ref() {
             let len = v.compute_size();
             my_size += 2 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
@@ -382,6 +396,9 @@ impl ::protobuf::Message for ResolvedChart {
         }
         if let Some(v) = self.metadata.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(21, v, os)?;
+        }
+        if let Some(v) = self.backing_workflow_deployment_history.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(22, v, os)?;
         }
         if let ::std::option::Option::Some(ref v) = self.type_ {
             match v {
@@ -422,6 +439,7 @@ impl ::protobuf::Message for ResolvedChart {
         self.type_ = ::std::option::Option::None;
         self.type_ = ::std::option::Option::None;
         self.metadata.clear();
+        self.backing_workflow_deployment_history.clear();
         self.special_fields.clear();
     }
 
@@ -429,6 +447,7 @@ impl ::protobuf::Message for ResolvedChart {
         static instance: ResolvedChart = ResolvedChart {
             id: ::protobuf::MessageField::none(),
             metadata: ::protobuf::MessageField::none(),
+            backing_workflow_deployment_history: ::protobuf::MessageField::none(),
             type_: ::std::option::Option::None,
             special_fields: ::protobuf::SpecialFields::new(),
         };
@@ -966,6 +985,311 @@ pub mod resolved_chart {
 
     impl ::protobuf::reflect::ProtobufValue for Table {
         type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.ResolvedChart.BackingWorkflowDeploymentHistory)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct BackingWorkflowDeploymentHistory {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ResolvedChart.BackingWorkflowDeploymentHistory.deployments)
+        pub deployments: ::std::vec::Vec<backing_workflow_deployment_history::Deployment>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.ResolvedChart.BackingWorkflowDeploymentHistory.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a BackingWorkflowDeploymentHistory {
+        fn default() -> &'a BackingWorkflowDeploymentHistory {
+            <BackingWorkflowDeploymentHistory as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl BackingWorkflowDeploymentHistory {
+        pub fn new() -> BackingWorkflowDeploymentHistory {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "deployments",
+                |m: &BackingWorkflowDeploymentHistory| { &m.deployments },
+                |m: &mut BackingWorkflowDeploymentHistory| { &mut m.deployments },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<BackingWorkflowDeploymentHistory>(
+                "ResolvedChart.BackingWorkflowDeploymentHistory",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for BackingWorkflowDeploymentHistory {
+        const NAME: &'static str = "BackingWorkflowDeploymentHistory";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.deployments.push(is.read_message()?);
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            for value in &self.deployments {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            for v in &self.deployments {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            };
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> BackingWorkflowDeploymentHistory {
+            BackingWorkflowDeploymentHistory::new()
+        }
+
+        fn clear(&mut self) {
+            self.deployments.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static BackingWorkflowDeploymentHistory {
+            static instance: BackingWorkflowDeploymentHistory = BackingWorkflowDeploymentHistory {
+                deployments: ::std::vec::Vec::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for BackingWorkflowDeploymentHistory {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("ResolvedChart.BackingWorkflowDeploymentHistory").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for BackingWorkflowDeploymentHistory {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for BackingWorkflowDeploymentHistory {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `BackingWorkflowDeploymentHistory`
+    pub mod backing_workflow_deployment_history {
+        // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.ResolvedChart.BackingWorkflowDeploymentHistory.Deployment)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct Deployment {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ResolvedChart.BackingWorkflowDeploymentHistory.Deployment.version)
+            pub version: u64,
+            // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ResolvedChart.BackingWorkflowDeploymentHistory.Deployment.deployed_at)
+            pub deployed_at: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
+            // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ResolvedChart.BackingWorkflowDeploymentHistory.Deployment.stopped_at)
+            pub stopped_at: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
+            // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ResolvedChart.BackingWorkflowDeploymentHistory.Deployment.deployed_by_user)
+            pub deployed_by_user: ::protobuf::MessageField<super::super::super::common::Owner>,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.ResolvedChart.BackingWorkflowDeploymentHistory.Deployment.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a Deployment {
+            fn default() -> &'a Deployment {
+                <Deployment as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl Deployment {
+            pub fn new() -> Deployment {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(4);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "version",
+                    |m: &Deployment| { &m.version },
+                    |m: &mut Deployment| { &mut m.version },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::timestamp::Timestamp>(
+                    "deployed_at",
+                    |m: &Deployment| { &m.deployed_at },
+                    |m: &mut Deployment| { &mut m.deployed_at },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::timestamp::Timestamp>(
+                    "stopped_at",
+                    |m: &Deployment| { &m.stopped_at },
+                    |m: &mut Deployment| { &mut m.stopped_at },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::super::common::Owner>(
+                    "deployed_by_user",
+                    |m: &Deployment| { &m.deployed_by_user },
+                    |m: &mut Deployment| { &mut m.deployed_by_user },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Deployment>(
+                    "ResolvedChart.BackingWorkflowDeploymentHistory.Deployment",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for Deployment {
+            const NAME: &'static str = "Deployment";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        8 => {
+                            self.version = is.read_uint64()?;
+                        },
+                        18 => {
+                            ::protobuf::rt::read_singular_message_into_field(is, &mut self.deployed_at)?;
+                        },
+                        26 => {
+                            ::protobuf::rt::read_singular_message_into_field(is, &mut self.stopped_at)?;
+                        },
+                        34 => {
+                            ::protobuf::rt::read_singular_message_into_field(is, &mut self.deployed_by_user)?;
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if self.version != 0 {
+                    my_size += ::protobuf::rt::uint64_size(1, self.version);
+                }
+                if let Some(v) = self.deployed_at.as_ref() {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                }
+                if let Some(v) = self.stopped_at.as_ref() {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                }
+                if let Some(v) = self.deployed_by_user.as_ref() {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if self.version != 0 {
+                    os.write_uint64(1, self.version)?;
+                }
+                if let Some(v) = self.deployed_at.as_ref() {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                }
+                if let Some(v) = self.stopped_at.as_ref() {
+                    ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                }
+                if let Some(v) = self.deployed_by_user.as_ref() {
+                    ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> Deployment {
+                Deployment::new()
+            }
+
+            fn clear(&mut self) {
+                self.version = 0;
+                self.deployed_at.clear();
+                self.stopped_at.clear();
+                self.deployed_by_user.clear();
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static Deployment {
+                static instance: Deployment = Deployment {
+                    version: 0,
+                    deployed_at: ::protobuf::MessageField::none(),
+                    stopped_at: ::protobuf::MessageField::none(),
+                    deployed_by_user: ::protobuf::MessageField::none(),
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for Deployment {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("ResolvedChart.BackingWorkflowDeploymentHistory.Deployment").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for Deployment {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for Deployment {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
     }
 }
 
@@ -5639,146 +5963,157 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     public/unary/charts/v1/chart_id.proto\x1a4bitdrift/public/unary/charts/v\
     1/chart_metadata.proto\x1a,bitdrift/public/unary/common/v1/common.proto\
     \x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17validate/validate.proto\"\
-    \xa4\x06\n\rResolvedChart\x12J\n\x02id\x18\x01\x20\x01(\x0b20.bitdrift.p\
-    ublic.unary.charts.v1.ChartIdentifierR\x02idB\x08\xfaB\x05\x8a\x01\x02\
-    \x10\x01\x12M\n\x04line\x18\x02\x20\x01(\x0b27.bitdrift.public.unary.das\
-    hboards.v1.ResolvedChart.LineH\0R\x04line\x12S\n\x06funnel\x18\n\x20\x01\
-    (\x0b29.bitdrift.public.unary.dashboards.v1.ResolvedChart.FunnelH\0R\x06\
-    funnel\x12S\n\x06sankey\x18\x0e\x20\x01(\x0b29.bitdrift.public.unary.das\
-    hboards.v1.ResolvedChart.SankeyH\0R\x06sankey\x12P\n\x05table\x18\x10\
-    \x20\x01(\x0b28.bitdrift.public.unary.dashboards.v1.ResolvedChart.TableH\
-    \0R\x05table\x12J\n\x08metadata\x18\x15\x20\x01(\x0b2..bitdrift.public.u\
-    nary.charts.v1.ChartMetadataR\x08metadata\x1a\x85\x01\n\x04Line\x129\n\
+    \xe4\n\n\rResolvedChart\x12J\n\x02id\x18\x01\x20\x01(\x0b20.bitdrift.pub\
+    lic.unary.charts.v1.ChartIdentifierR\x02idB\x08\xfaB\x05\x8a\x01\x02\x10\
+    \x01\x12M\n\x04line\x18\x02\x20\x01(\x0b27.bitdrift.public.unary.dashboa\
+    rds.v1.ResolvedChart.LineH\0R\x04line\x12S\n\x06funnel\x18\n\x20\x01(\
+    \x0b29.bitdrift.public.unary.dashboards.v1.ResolvedChart.FunnelH\0R\x06f\
+    unnel\x12S\n\x06sankey\x18\x0e\x20\x01(\x0b29.bitdrift.public.unary.dash\
+    boards.v1.ResolvedChart.SankeyH\0R\x06sankey\x12P\n\x05table\x18\x10\x20\
+    \x01(\x0b28.bitdrift.public.unary.dashboards.v1.ResolvedChart.TableH\0R\
+    \x05table\x12J\n\x08metadata\x18\x15\x20\x01(\x0b2..bitdrift.public.unar\
+    y.charts.v1.ChartMetadataR\x08metadata\x12\xa2\x01\n#backing_workflow_de\
+    ployment_history\x18\x16\x20\x01(\x0b2S.bitdrift.public.unary.dashboards\
+    .v1.ResolvedChart.BackingWorkflowDeploymentHistoryR\x20backingWorkflowDe\
+    ploymentHistory\x1a\x85\x01\n\x04Line\x129\n\x18configurable_percentiles\
+    \x18\x01\x20\x03(\x02R\x17configurablePercentiles\x12B\n\x1dsupports_mul\
+    tiple_percentiles\x18\x03\x20\x01(\x08R\x1bsupportsMultiplePercentiles\
+    \x1a\x08\n\x06Funnel\x1a\x08\n\x06Sankey\x1a\x86\x01\n\x05Table\x129\n\
     \x18configurable_percentiles\x18\x01\x20\x03(\x02R\x17configurablePercen\
-    tiles\x12B\n\x1dsupports_multiple_percentiles\x18\x03\x20\x01(\x08R\x1bs\
-    upportsMultiplePercentiles\x1a\x08\n\x06Funnel\x1a\x08\n\x06Sankey\x1a\
-    \x86\x01\n\x05Table\x129\n\x18configurable_percentiles\x18\x01\x20\x03(\
-    \x02R\x17configurablePercentiles\x12B\n\x1dsupports_multiple_percentiles\
-    \x18\x02\x20\x01(\x08R\x1bsupportsMultiplePercentilesB\x0b\n\x04type\x12\
-    \x03\xf8B\x01\"G\n\x18GetWorkflowChartsRequest\x12+\n\x0bworkflow_id\x18\
-    \x02\x20\x01(\tR\nworkflowIdB\n\xfaB\x07r\x05\x10\x01\x18\x80\x20\"g\n\
-    \x19GetWorkflowChartsResponse\x12J\n\x06charts\x18\x01\x20\x03(\x0b22.bi\
-    tdrift.public.unary.dashboards.v1.ResolvedChartR\x06charts\"f\n\x1eInsig\
-    htComparisonConfiguration\x12!\n\x06lhs_id\x18\x01\x20\x01(\tR\x05lhsIdB\
-    \n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12!\n\x06rhs_id\x18\x02\x20\x01(\t\
-    R\x05rhsIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\"b\n\x13SankeyConfigurat\
-    ion\x12\x1e\n\x0btop_k_paths\x18\x01\x20\x01(\x04R\ttopKPaths\x12+\n\x11\
-    compaction_target\x18\x02\x20\x01(\x04R\x10compactionTarget\"\x90\x01\n\
-    \x14CounterConfiguration\x12x\n\x10aggregation_type\x18\x01\x20\x01(\x0e\
-    2C.bitdrift.public.shared.workflows.v1.Counter.CounterAggregationTypeR\
-    \x0faggregationTypeB\x08\xfaB\x05\x82\x01\x02\x10\x01\"\x87\x01\n\x11Rat\
-    eConfiguration\x12r\n\x10aggregation_type\x18\x01\x20\x01(\x0e2=.bitdrif\
-    t.public.shared.workflows.v1.Rate.RateAggregationTypeR\x0faggregationTyp\
-    eB\x08\xfaB\x05\x82\x01\x02\x10\x01\"\xda\t\n\x0cChartRequest\x12U\n\x08\
-    chart_id\x18\x01\x20\x01(\x0b20.bitdrift.public.unary.charts.v1.ChartIde\
-    ntifierR\x07chartIdB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12p\n\x17histogra\
-    m_configuration\x18\x02\x20\x01(\x0b27.bitdrift.public.unary.charts.v1.H\
-    istogramConfigurationR\x16histogramConfiguration\x12\x8d\x01\n\x20insigh\
-    t_comparison_configuration\x18\x03\x20\x01(\x0b2C.bitdrift.public.unary.\
-    dashboards.v1.InsightComparisonConfigurationR\x1einsightComparisonConfig\
-    uration\x12U\n\x0elimit_strategy\x18\x06\x20\x01(\x0b2..bitdrift.public.\
-    unary.charts.v1.LimitStrategyR\rlimitStrategy\x12k\n\x14sankey_configura\
-    tion\x18\x07\x20\x01(\x0b28.bitdrift.public.unary.dashboards.v1.SankeyCo\
-    nfigurationR\x13sankeyConfiguration\x12n\n\x15counter_configuration\x18\
-    \x08\x20\x01(\x0b29.bitdrift.public.unary.dashboards.v1.CounterConfigura\
-    tionR\x14counterConfiguration\x12e\n\x12rate_configuration\x18\t\x20\x01\
-    (\x0b26.bitdrift.public.unary.dashboards.v1.RateConfigurationR\x11rateCo\
-    nfiguration\x12\x93\x01\n\x18time_series_display_mode\x18\n\x20\x01(\x0b\
-    2X.bitdrift.public.unary.charts.v1.ChartMetadata.MetricChartMetadata.Tim\
-    eSeriesDisplayModeH\0R\x15timeSeriesDisplayMode\x12\x83\x01\n\x12table_d\
-    isplay_mode\x18\x0b\x20\x01(\x0b2S.bitdrift.public.unary.charts.v1.Chart\
-    Metadata.MetricChartMetadata.TableDisplayModeH\0R\x10tableDisplayMode\
-    \x12\xa9\x01\n\x20histogram_bar_chart_display_mode\x18\x0c\x20\x01(\x0b2\
-    _.bitdrift.public.unary.charts.v1.ChartMetadata.MetricChartMetadata.Hist\
-    ogramBarChartDisplayModeH\0R\x1chistogramBarChartDisplayModeB\x0e\n\x0cd\
-    isplay_mode\"\xe8\x02\n\x14GetChartsDataRequest\x12U\n\x06charts\x18\x01\
-    \x20\x03(\x0b21.bitdrift.public.unary.dashboards.v1.ChartRequestR\x06cha\
-    rtsB\n\xfaB\x07\x92\x01\x04\x08\x01\x10d\x12I\n\ntime_range\x18\x08\x20\
-    \x01(\x0b2*.bitdrift.public.unary.common.v1.TimeRangeR\ttimeRange\x12_\n\
-    \x0fplatform_filter\x18\x06\x20\x03(\x0b2,.bitdrift.public.shared.platfo\
-    rm.v1.PlatformR\x0eplatformFilterB\x08\xfaB\x05\x92\x01\x02\x10\x19\x12M\
-    \n\nand_filter\x18\x07\x20\x01(\x0b2..bitdrift.public.shared.workflows.v\
-    1.AndFilterR\tandFilter\"e\n\x11LineChartResponse\x12P\n\x0btime_series\
-    \x18\x01\x20\x03(\x0b2/.bitdrift.public.shared.workflows.v1.TimeSeriesR\
-    \ntimeSeries\"\xf0\x02\n\x13SankeyChartResponse\x12S\n\x05nodes\x18\x01\
-    \x20\x03(\x0b2=.bitdrift.public.unary.dashboards.v1.SankeyChartResponse.\
-    NodeR\x05nodes\x12S\n\x05links\x18\x02\x20\x03(\x0b2=.bitdrift.public.un\
-    ary.dashboards.v1.SankeyChartResponse.LinkR\x05links\x1a3\n\x04Node\x12\
-    \x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12\
-    \x12\n\x04name\x18\x02\x20\x01(\tR\x04name\x1az\n\x04Link\x12-\n\x0esour\
-    ce_node_id\x18\x01\x20\x01(\tR\x0csourceNodeIdB\x07\xfaB\x04r\x02\x10\
-    \x01\x12-\n\x0etarget_node_id\x18\x02\x20\x01(\tR\x0ctargetNodeIdB\x07\
-    \xfaB\x04r\x02\x10\x01\x12\x14\n\x05value\x18\x03\x20\x01(\x04R\x05value\
-    \"X\n\x12TableChartResponse\x12B\n\x06tables\x18\x01\x20\x03(\x0b2*.bitd\
-    rift.public.unary.dashboards.v1.TableR\x06tables\"\xf9\x02\n\x05Table\
-    \x123\n\x16group_column_key_names\x18\x01\x20\x03(\tR\x13groupColumnKeyN\
-    ames\x123\n\x16value_column_key_names\x18\x02\x20\x03(\tR\x13valueColumn\
-    KeyNames\x12A\n\x04rows\x18\x03\x20\x03(\x0b2-.bitdrift.public.unary.das\
-    hboards.v1.TableRowR\x04rows\x12*\n\x0eunique_devices\x18\x04\x20\x01(\
-    \x04H\0R\runiqueDevices\x88\x01\x01\x12\x14\n\x05title\x18\x05\x20\x01(\
-    \tR\x05title\x12n\n\x15cardinality_overflows\x18\x06\x20\x01(\x0b29.bitd\
-    rift.public.shared.workflows.v1.CardinalityOverflowsR\x14cardinalityOver\
-    flowsB\x11\n\x0f_unique_devices\"w\n\nTableValue\x12\x14\n\x05value\x18\
-    \x01\x20\x01(\x01R\x05value\x12S\n\x0crate_details\x18\x02\x20\x01(\x0b2\
-    0.bitdrift.public.shared.workflows.v1.RateDetailsR\x0brateDetails\"\xd7\
-    \x01\n\x08TableRow\x12.\n\x13group_column_values\x18\x01\x20\x03(\tR\x11\
-    groupColumnValues\x12\\\n\x11aggregated_values\x18\x02\x20\x03(\x0b2/.bi\
-    tdrift.public.unary.dashboards.v1.TableValueR\x10aggregatedValues\x12*\n\
-    \x0eunique_devices\x18\x03\x20\x01(\x04H\0R\runiqueDevices\x88\x01\x01B\
-    \x11\n\x0f_unique_devices\"X\n\x13FunnelChartResponse\x12A\n\x05steps\
-    \x18\x01\x20\x03(\x0b2+.bitdrift.public.unary.charts.v1.FunnelStepR\x05s\
-    teps\"\xd6\x05\n\x19HistogramBarChartResponse\x12t\n\x0fper_time_series\
-    \x18\x01\x20\x03(\x0b2L.bitdrift.public.unary.dashboards.v1.HistogramBar\
-    ChartResponse.PerTimeSeriesR\rperTimeSeries\x1aF\n\x06Bucket\x12\x14\n\
-    \x05begin\x18\x01\x20\x01(\x01R\x05begin\x12\x10\n\x03end\x18\x02\x20\
-    \x01(\x01R\x03end\x12\x14\n\x05count\x18\x03\x20\x01(\x04R\x05count\x1a\
-    \xcc\x01\n\nPerGroupBy\x12\x1e\n\ndimensions\x18\x01\x20\x03(\tR\ndimens\
-    ions\x12_\n\x07buckets\x18\x02\x20\x03(\x0b2E.bitdrift.public.unary.dash\
-    boards.v1.HistogramBarChartResponse.BucketR\x07buckets\x12*\n\x0eunique_\
-    devices\x18\x03\x20\x01(\x04H\0R\runiqueDevices\x88\x01\x01B\x11\n\x0f_u\
-    nique_devices\x1a\xab\x02\n\rPerTimeSeries\x12'\n\x0fdimension_names\x18\
-    \x01\x20\x03(\tR\x0edimensionNames\x12\x14\n\x05title\x18\x02\x20\x01(\t\
-    R\x05title\x12n\n\x15cardinality_overflows\x18\x03\x20\x01(\x0b29.bitdri\
-    ft.public.shared.workflows.v1.CardinalityOverflowsR\x14cardinalityOverfl\
-    ows\x12k\n\x0cper_group_by\x18\x04\x20\x03(\x0b2I.bitdrift.public.unary.\
-    dashboards.v1.HistogramBarChartResponse.PerGroupByR\nperGroupBy\"\xb3\
-    \x05\n\tChartData\x12U\n\x08chart_id\x18\x01\x20\x01(\x0b20.bitdrift.pub\
-    lic.unary.charts.v1.ChartIdentifierR\x07chartIdB\x08\xfaB\x05\x8a\x01\
-    \x02\x10\x01\x12U\n\tline_data\x18\x03\x20\x01(\x0b26.bitdrift.public.un\
-    ary.dashboards.v1.LineChartResponseH\0R\x08lineData\x12[\n\x0bsankey_dat\
-    a\x18\x07\x20\x01(\x0b28.bitdrift.public.unary.dashboards.v1.SankeyChart\
-    ResponseH\0R\nsankeyData\x12X\n\ntable_data\x18\x08\x20\x01(\x0b27.bitdr\
-    ift.public.unary.dashboards.v1.TableChartResponseH\0R\ttableData\x12[\n\
-    \x0bfunnel_data\x18\t\x20\x01(\x0b28.bitdrift.public.unary.dashboards.v1\
-    .FunnelChartResponseH\0R\nfunnelData\x12\x81\x01\n\x1chistogram_bar_char\
-    t_response\x18\n\x20\x01(\x0b2>.bitdrift.public.unary.dashboards.v1.Hist\
-    ogramBarChartResponseH\0R\x19histogramBarChartResponse\x12\x16\n\x05erro\
-    r\x18\x06\x20\x01(\tH\0R\x05error\x121\n\x0fchart_not_found\x18\x0c\x20\
-    \x01(\x08H\0R\rchartNotFoundB\x07\xfaB\x04j\x02\x08\x01B\x15\n\x0echart_\
-    response\x12\x03\xf8B\x01\"[\n\x15GetChartsDataResponse\x12B\n\x04data\
-    \x18\x01\x20\x03(\x0b2..bitdrift.public.unary.dashboards.v1.ChartDataR\
-    \x04data\"\xc5\x01\n\x17GetActiveDevicesRequest\x12I\n\ntime_range\x18\
-    \x07\x20\x01(\x0b2*.bitdrift.public.unary.common.v1.TimeRangeR\ttimeRang\
-    e\x12_\n\x0fplatform_filter\x18\x06\x20\x03(\x0b2,.bitdrift.public.share\
-    d.platform.v1.PlatformR\x0eplatformFilterB\x08\xfaB\x05\x92\x01\x02\x10\
-    \n\"4\n\x18GetActiveDevicesResponse\x12\x18\n\x07devices\x18\x01\x20\x01\
-    (\x04R\x07devices\"\xeb\x01\n\x16GetUniqueAppIdsRequest\x129\n\nstart_ti\
-    me\x18\x01\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tstartTime\x125\
-    \n\x08end_time\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x07e\
-    ndTime\x12_\n\x0fplatform_filter\x18\x04\x20\x03(\x0b2,.bitdrift.public.\
-    shared.platform.v1.PlatformR\x0eplatformFilterB\x08\xfaB\x05\x92\x01\x02\
-    \x10\n\"e\n\x17GetUniqueAppIdsResponse\x12J\n\tplatforms\x18\x06\x20\x03\
-    (\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\tplatforms2\xd1\x04\
-    \n\x10DashboardService\x12\x92\x01\n\x11GetWorkflowCharts\x12=.bitdrift.\
-    public.unary.dashboards.v1.GetWorkflowChartsRequest\x1a>.bitdrift.public\
-    .unary.dashboards.v1.GetWorkflowChartsResponse\x12\x86\x01\n\rGetChartsD\
-    ata\x129.bitdrift.public.unary.dashboards.v1.GetChartsDataRequest\x1a:.b\
-    itdrift.public.unary.dashboards.v1.GetChartsDataResponse\x12\x8f\x01\n\
-    \x10GetActiveDevices\x12<.bitdrift.public.unary.dashboards.v1.GetActiveD\
-    evicesRequest\x1a=.bitdrift.public.unary.dashboards.v1.GetActiveDevicesR\
-    esponse\x12\x8c\x01\n\x0fGetUniqueAppIds\x12;.bitdrift.public.unary.dash\
-    boards.v1.GetUniqueAppIdsRequest\x1a<.bitdrift.public.unary.dashboards.v\
-    1.GetUniqueAppIdsResponseb\x06proto3\
+    tiles\x12B\n\x1dsupports_multiple_percentiles\x18\x02\x20\x01(\x08R\x1bs\
+    upportsMultiplePercentiles\x1a\x98\x03\n\x20BackingWorkflowDeploymentHis\
+    tory\x12\x80\x01\n\x0bdeployments\x18\x01\x20\x03(\x0b2^.bitdrift.public\
+    .unary.dashboards.v1.ResolvedChart.BackingWorkflowDeploymentHistory.Depl\
+    oymentR\x0bdeployments\x1a\xf0\x01\n\nDeployment\x12\x18\n\x07version\
+    \x18\x01\x20\x01(\x04R\x07version\x12;\n\x0bdeployed_at\x18\x02\x20\x01(\
+    \x0b2\x1a.google.protobuf.TimestampR\ndeployedAt\x129\n\nstopped_at\x18\
+    \x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tstoppedAt\x12P\n\x10d\
+    eployed_by_user\x18\x04\x20\x01(\x0b2&.bitdrift.public.unary.common.v1.O\
+    wnerR\x0edeployedByUserB\x0b\n\x04type\x12\x03\xf8B\x01\"G\n\x18GetWorkf\
+    lowChartsRequest\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\
+    \n\xfaB\x07r\x05\x10\x01\x18\x80\x20\"g\n\x19GetWorkflowChartsResponse\
+    \x12J\n\x06charts\x18\x01\x20\x03(\x0b22.bitdrift.public.unary.dashboard\
+    s.v1.ResolvedChartR\x06charts\"f\n\x1eInsightComparisonConfiguration\x12\
+    !\n\x06lhs_id\x18\x01\x20\x01(\tR\x05lhsIdB\n\xfaB\x07r\x05\x10\x01\x18\
+    \xff\x01\x12!\n\x06rhs_id\x18\x02\x20\x01(\tR\x05rhsIdB\n\xfaB\x07r\x05\
+    \x10\x01\x18\xff\x01\"b\n\x13SankeyConfiguration\x12\x1e\n\x0btop_k_path\
+    s\x18\x01\x20\x01(\x04R\ttopKPaths\x12+\n\x11compaction_target\x18\x02\
+    \x20\x01(\x04R\x10compactionTarget\"\x90\x01\n\x14CounterConfiguration\
+    \x12x\n\x10aggregation_type\x18\x01\x20\x01(\x0e2C.bitdrift.public.share\
+    d.workflows.v1.Counter.CounterAggregationTypeR\x0faggregationTypeB\x08\
+    \xfaB\x05\x82\x01\x02\x10\x01\"\x87\x01\n\x11RateConfiguration\x12r\n\
+    \x10aggregation_type\x18\x01\x20\x01(\x0e2=.bitdrift.public.shared.workf\
+    lows.v1.Rate.RateAggregationTypeR\x0faggregationTypeB\x08\xfaB\x05\x82\
+    \x01\x02\x10\x01\"\xda\t\n\x0cChartRequest\x12U\n\x08chart_id\x18\x01\
+    \x20\x01(\x0b20.bitdrift.public.unary.charts.v1.ChartIdentifierR\x07char\
+    tIdB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12p\n\x17histogram_configuration\
+    \x18\x02\x20\x01(\x0b27.bitdrift.public.unary.charts.v1.HistogramConfigu\
+    rationR\x16histogramConfiguration\x12\x8d\x01\n\x20insight_comparison_co\
+    nfiguration\x18\x03\x20\x01(\x0b2C.bitdrift.public.unary.dashboards.v1.I\
+    nsightComparisonConfigurationR\x1einsightComparisonConfiguration\x12U\n\
+    \x0elimit_strategy\x18\x06\x20\x01(\x0b2..bitdrift.public.unary.charts.v\
+    1.LimitStrategyR\rlimitStrategy\x12k\n\x14sankey_configuration\x18\x07\
+    \x20\x01(\x0b28.bitdrift.public.unary.dashboards.v1.SankeyConfigurationR\
+    \x13sankeyConfiguration\x12n\n\x15counter_configuration\x18\x08\x20\x01(\
+    \x0b29.bitdrift.public.unary.dashboards.v1.CounterConfigurationR\x14coun\
+    terConfiguration\x12e\n\x12rate_configuration\x18\t\x20\x01(\x0b26.bitdr\
+    ift.public.unary.dashboards.v1.RateConfigurationR\x11rateConfiguration\
+    \x12\x93\x01\n\x18time_series_display_mode\x18\n\x20\x01(\x0b2X.bitdrift\
+    .public.unary.charts.v1.ChartMetadata.MetricChartMetadata.TimeSeriesDisp\
+    layModeH\0R\x15timeSeriesDisplayMode\x12\x83\x01\n\x12table_display_mode\
+    \x18\x0b\x20\x01(\x0b2S.bitdrift.public.unary.charts.v1.ChartMetadata.Me\
+    tricChartMetadata.TableDisplayModeH\0R\x10tableDisplayMode\x12\xa9\x01\n\
+    \x20histogram_bar_chart_display_mode\x18\x0c\x20\x01(\x0b2_.bitdrift.pub\
+    lic.unary.charts.v1.ChartMetadata.MetricChartMetadata.HistogramBarChartD\
+    isplayModeH\0R\x1chistogramBarChartDisplayModeB\x0e\n\x0cdisplay_mode\"\
+    \xe8\x02\n\x14GetChartsDataRequest\x12U\n\x06charts\x18\x01\x20\x03(\x0b\
+    21.bitdrift.public.unary.dashboards.v1.ChartRequestR\x06chartsB\n\xfaB\
+    \x07\x92\x01\x04\x08\x01\x10d\x12I\n\ntime_range\x18\x08\x20\x01(\x0b2*.\
+    bitdrift.public.unary.common.v1.TimeRangeR\ttimeRange\x12_\n\x0fplatform\
+    _filter\x18\x06\x20\x03(\x0b2,.bitdrift.public.shared.platform.v1.Platfo\
+    rmR\x0eplatformFilterB\x08\xfaB\x05\x92\x01\x02\x10\x19\x12M\n\nand_filt\
+    er\x18\x07\x20\x01(\x0b2..bitdrift.public.shared.workflows.v1.AndFilterR\
+    \tandFilter\"e\n\x11LineChartResponse\x12P\n\x0btime_series\x18\x01\x20\
+    \x03(\x0b2/.bitdrift.public.shared.workflows.v1.TimeSeriesR\ntimeSeries\
+    \"\xf0\x02\n\x13SankeyChartResponse\x12S\n\x05nodes\x18\x01\x20\x03(\x0b\
+    2=.bitdrift.public.unary.dashboards.v1.SankeyChartResponse.NodeR\x05node\
+    s\x12S\n\x05links\x18\x02\x20\x03(\x0b2=.bitdrift.public.unary.dashboard\
+    s.v1.SankeyChartResponse.LinkR\x05links\x1a3\n\x04Node\x12\x17\n\x02id\
+    \x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12\x12\n\x04name\
+    \x18\x02\x20\x01(\tR\x04name\x1az\n\x04Link\x12-\n\x0esource_node_id\x18\
+    \x01\x20\x01(\tR\x0csourceNodeIdB\x07\xfaB\x04r\x02\x10\x01\x12-\n\x0eta\
+    rget_node_id\x18\x02\x20\x01(\tR\x0ctargetNodeIdB\x07\xfaB\x04r\x02\x10\
+    \x01\x12\x14\n\x05value\x18\x03\x20\x01(\x04R\x05value\"X\n\x12TableChar\
+    tResponse\x12B\n\x06tables\x18\x01\x20\x03(\x0b2*.bitdrift.public.unary.\
+    dashboards.v1.TableR\x06tables\"\xf9\x02\n\x05Table\x123\n\x16group_colu\
+    mn_key_names\x18\x01\x20\x03(\tR\x13groupColumnKeyNames\x123\n\x16value_\
+    column_key_names\x18\x02\x20\x03(\tR\x13valueColumnKeyNames\x12A\n\x04ro\
+    ws\x18\x03\x20\x03(\x0b2-.bitdrift.public.unary.dashboards.v1.TableRowR\
+    \x04rows\x12*\n\x0eunique_devices\x18\x04\x20\x01(\x04H\0R\runiqueDevice\
+    s\x88\x01\x01\x12\x14\n\x05title\x18\x05\x20\x01(\tR\x05title\x12n\n\x15\
+    cardinality_overflows\x18\x06\x20\x01(\x0b29.bitdrift.public.shared.work\
+    flows.v1.CardinalityOverflowsR\x14cardinalityOverflowsB\x11\n\x0f_unique\
+    _devices\"w\n\nTableValue\x12\x14\n\x05value\x18\x01\x20\x01(\x01R\x05va\
+    lue\x12S\n\x0crate_details\x18\x02\x20\x01(\x0b20.bitdrift.public.shared\
+    .workflows.v1.RateDetailsR\x0brateDetails\"\xd7\x01\n\x08TableRow\x12.\n\
+    \x13group_column_values\x18\x01\x20\x03(\tR\x11groupColumnValues\x12\\\n\
+    \x11aggregated_values\x18\x02\x20\x03(\x0b2/.bitdrift.public.unary.dashb\
+    oards.v1.TableValueR\x10aggregatedValues\x12*\n\x0eunique_devices\x18\
+    \x03\x20\x01(\x04H\0R\runiqueDevices\x88\x01\x01B\x11\n\x0f_unique_devic\
+    es\"X\n\x13FunnelChartResponse\x12A\n\x05steps\x18\x01\x20\x03(\x0b2+.bi\
+    tdrift.public.unary.charts.v1.FunnelStepR\x05steps\"\xd6\x05\n\x19Histog\
+    ramBarChartResponse\x12t\n\x0fper_time_series\x18\x01\x20\x03(\x0b2L.bit\
+    drift.public.unary.dashboards.v1.HistogramBarChartResponse.PerTimeSeries\
+    R\rperTimeSeries\x1aF\n\x06Bucket\x12\x14\n\x05begin\x18\x01\x20\x01(\
+    \x01R\x05begin\x12\x10\n\x03end\x18\x02\x20\x01(\x01R\x03end\x12\x14\n\
+    \x05count\x18\x03\x20\x01(\x04R\x05count\x1a\xcc\x01\n\nPerGroupBy\x12\
+    \x1e\n\ndimensions\x18\x01\x20\x03(\tR\ndimensions\x12_\n\x07buckets\x18\
+    \x02\x20\x03(\x0b2E.bitdrift.public.unary.dashboards.v1.HistogramBarChar\
+    tResponse.BucketR\x07buckets\x12*\n\x0eunique_devices\x18\x03\x20\x01(\
+    \x04H\0R\runiqueDevices\x88\x01\x01B\x11\n\x0f_unique_devices\x1a\xab\
+    \x02\n\rPerTimeSeries\x12'\n\x0fdimension_names\x18\x01\x20\x03(\tR\x0ed\
+    imensionNames\x12\x14\n\x05title\x18\x02\x20\x01(\tR\x05title\x12n\n\x15\
+    cardinality_overflows\x18\x03\x20\x01(\x0b29.bitdrift.public.shared.work\
+    flows.v1.CardinalityOverflowsR\x14cardinalityOverflows\x12k\n\x0cper_gro\
+    up_by\x18\x04\x20\x03(\x0b2I.bitdrift.public.unary.dashboards.v1.Histogr\
+    amBarChartResponse.PerGroupByR\nperGroupBy\"\xb3\x05\n\tChartData\x12U\n\
+    \x08chart_id\x18\x01\x20\x01(\x0b20.bitdrift.public.unary.charts.v1.Char\
+    tIdentifierR\x07chartIdB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12U\n\tline_d\
+    ata\x18\x03\x20\x01(\x0b26.bitdrift.public.unary.dashboards.v1.LineChart\
+    ResponseH\0R\x08lineData\x12[\n\x0bsankey_data\x18\x07\x20\x01(\x0b28.bi\
+    tdrift.public.unary.dashboards.v1.SankeyChartResponseH\0R\nsankeyData\
+    \x12X\n\ntable_data\x18\x08\x20\x01(\x0b27.bitdrift.public.unary.dashboa\
+    rds.v1.TableChartResponseH\0R\ttableData\x12[\n\x0bfunnel_data\x18\t\x20\
+    \x01(\x0b28.bitdrift.public.unary.dashboards.v1.FunnelChartResponseH\0R\
+    \nfunnelData\x12\x81\x01\n\x1chistogram_bar_chart_response\x18\n\x20\x01\
+    (\x0b2>.bitdrift.public.unary.dashboards.v1.HistogramBarChartResponseH\0\
+    R\x19histogramBarChartResponse\x12\x16\n\x05error\x18\x06\x20\x01(\tH\0R\
+    \x05error\x121\n\x0fchart_not_found\x18\x0c\x20\x01(\x08H\0R\rchartNotFo\
+    undB\x07\xfaB\x04j\x02\x08\x01B\x15\n\x0echart_response\x12\x03\xf8B\x01\
+    \"[\n\x15GetChartsDataResponse\x12B\n\x04data\x18\x01\x20\x03(\x0b2..bit\
+    drift.public.unary.dashboards.v1.ChartDataR\x04data\"\xc5\x01\n\x17GetAc\
+    tiveDevicesRequest\x12I\n\ntime_range\x18\x07\x20\x01(\x0b2*.bitdrift.pu\
+    blic.unary.common.v1.TimeRangeR\ttimeRange\x12_\n\x0fplatform_filter\x18\
+    \x06\x20\x03(\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\x0eplat\
+    formFilterB\x08\xfaB\x05\x92\x01\x02\x10\n\"4\n\x18GetActiveDevicesRespo\
+    nse\x12\x18\n\x07devices\x18\x01\x20\x01(\x04R\x07devices\"\xeb\x01\n\
+    \x16GetUniqueAppIdsRequest\x129\n\nstart_time\x18\x01\x20\x01(\x0b2\x1a.\
+    google.protobuf.TimestampR\tstartTime\x125\n\x08end_time\x18\x02\x20\x01\
+    (\x0b2\x1a.google.protobuf.TimestampR\x07endTime\x12_\n\x0fplatform_filt\
+    er\x18\x04\x20\x03(\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\
+    \x0eplatformFilterB\x08\xfaB\x05\x92\x01\x02\x10\n\"e\n\x17GetUniqueAppI\
+    dsResponse\x12J\n\tplatforms\x18\x06\x20\x03(\x0b2,.bitdrift.public.shar\
+    ed.platform.v1.PlatformR\tplatforms2\xd1\x04\n\x10DashboardService\x12\
+    \x92\x01\n\x11GetWorkflowCharts\x12=.bitdrift.public.unary.dashboards.v1\
+    .GetWorkflowChartsRequest\x1a>.bitdrift.public.unary.dashboards.v1.GetWo\
+    rkflowChartsResponse\x12\x86\x01\n\rGetChartsData\x129.bitdrift.public.u\
+    nary.dashboards.v1.GetChartsDataRequest\x1a:.bitdrift.public.unary.dashb\
+    oards.v1.GetChartsDataResponse\x12\x8f\x01\n\x10GetActiveDevices\x12<.bi\
+    tdrift.public.unary.dashboards.v1.GetActiveDevicesRequest\x1a=.bitdrift.\
+    public.unary.dashboards.v1.GetActiveDevicesResponse\x12\x8c\x01\n\x0fGet\
+    UniqueAppIds\x12;.bitdrift.public.unary.dashboards.v1.GetUniqueAppIdsReq\
+    uest\x1a<.bitdrift.public.unary.dashboards.v1.GetUniqueAppIdsResponseb\
+    \x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -5803,7 +6138,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(super::common::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(32);
+            let mut messages = ::std::vec::Vec::with_capacity(34);
             messages.push(ResolvedChart::generated_message_descriptor_data());
             messages.push(GetWorkflowChartsRequest::generated_message_descriptor_data());
             messages.push(GetWorkflowChartsResponse::generated_message_descriptor_data());
@@ -5831,6 +6166,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(resolved_chart::Funnel::generated_message_descriptor_data());
             messages.push(resolved_chart::Sankey::generated_message_descriptor_data());
             messages.push(resolved_chart::Table::generated_message_descriptor_data());
+            messages.push(resolved_chart::BackingWorkflowDeploymentHistory::generated_message_descriptor_data());
+            messages.push(resolved_chart::backing_workflow_deployment_history::Deployment::generated_message_descriptor_data());
             messages.push(sankey_chart_response::Node::generated_message_descriptor_data());
             messages.push(sankey_chart_response::Link::generated_message_descriptor_data());
             messages.push(histogram_bar_chart_response::Bucket::generated_message_descriptor_data());
