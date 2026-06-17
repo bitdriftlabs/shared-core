@@ -1607,12 +1607,12 @@ pub mod get_entity_info_response {
             }
         }
 
-        // bool is_currently_online = 3;
+        // .bitdrift.public.unary.entity.v1.GetEntityInfoResponse.OnlineSummary.CurrentlyOnlineInfo is_currently_online = 3;
 
-        pub fn is_currently_online(&self) -> bool {
+        pub fn is_currently_online(&self) -> &online_summary::CurrentlyOnlineInfo {
             match self.last_online_info {
-                ::std::option::Option::Some(online_summary::Last_online_info::IsCurrentlyOnline(v)) => v,
-                _ => false,
+                ::std::option::Option::Some(online_summary::Last_online_info::IsCurrentlyOnline(ref v)) => v,
+                _ => <online_summary::CurrentlyOnlineInfo as ::protobuf::Message>::default_instance(),
             }
         }
 
@@ -1628,8 +1628,32 @@ pub mod get_entity_info_response {
         }
 
         // Param is passed by value, moved
-        pub fn set_is_currently_online(&mut self, v: bool) {
+        pub fn set_is_currently_online(&mut self, v: online_summary::CurrentlyOnlineInfo) {
             self.last_online_info = ::std::option::Option::Some(online_summary::Last_online_info::IsCurrentlyOnline(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_is_currently_online(&mut self) -> &mut online_summary::CurrentlyOnlineInfo {
+            if let ::std::option::Option::Some(online_summary::Last_online_info::IsCurrentlyOnline(_)) = self.last_online_info {
+            } else {
+                self.last_online_info = ::std::option::Option::Some(online_summary::Last_online_info::IsCurrentlyOnline(online_summary::CurrentlyOnlineInfo::new()));
+            }
+            match self.last_online_info {
+                ::std::option::Option::Some(online_summary::Last_online_info::IsCurrentlyOnline(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_is_currently_online(&mut self) -> online_summary::CurrentlyOnlineInfo {
+            if self.has_is_currently_online() {
+                match self.last_online_info.take() {
+                    ::std::option::Option::Some(online_summary::Last_online_info::IsCurrentlyOnline(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                online_summary::CurrentlyOnlineInfo::new()
+            }
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
@@ -1647,10 +1671,11 @@ pub mod get_entity_info_response {
                 OnlineSummary::mut_last_online_time,
                 OnlineSummary::set_last_online_time,
             ));
-            fields.push(::protobuf::reflect::rt::v2::make_oneof_copy_has_get_set_simpler_accessors::<_, _>(
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, online_summary::CurrentlyOnlineInfo>(
                 "is_currently_online",
                 OnlineSummary::has_is_currently_online,
                 OnlineSummary::is_currently_online,
+                OnlineSummary::mut_is_currently_online,
                 OnlineSummary::set_is_currently_online,
             ));
             fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, online_summary::NextOnlineTimePrediction>(
@@ -1683,8 +1708,8 @@ pub mod get_entity_info_response {
                     18 => {
                         self.last_online_info = ::std::option::Option::Some(online_summary::Last_online_info::LastOnlineTime(is.read_message()?));
                     },
-                    24 => {
-                        self.last_online_info = ::std::option::Option::Some(online_summary::Last_online_info::IsCurrentlyOnline(is.read_bool()?));
+                    26 => {
+                        self.last_online_info = ::std::option::Option::Some(online_summary::Last_online_info::IsCurrentlyOnline(is.read_message()?));
                     },
                     34 => {
                         ::protobuf::rt::read_singular_message_into_field(is, &mut self.next_online_time)?;
@@ -1715,8 +1740,9 @@ pub mod get_entity_info_response {
                         let len = v.compute_size();
                         my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                     },
-                    &online_summary::Last_online_info::IsCurrentlyOnline(v) => {
-                        my_size += 1 + 1;
+                    &online_summary::Last_online_info::IsCurrentlyOnline(ref v) => {
+                        let len = v.compute_size();
+                        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                     },
                 };
             }
@@ -1737,8 +1763,8 @@ pub mod get_entity_info_response {
                     &online_summary::Last_online_info::LastOnlineTime(ref v) => {
                         ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
                     },
-                    &online_summary::Last_online_info::IsCurrentlyOnline(v) => {
-                        os.write_bool(3, v)?;
+                    &online_summary::Last_online_info::IsCurrentlyOnline(ref v) => {
+                        ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
                     },
                 };
             }
@@ -1803,7 +1829,7 @@ pub mod get_entity_info_response {
             // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.entity.v1.GetEntityInfoResponse.OnlineSummary.last_online_time)
             LastOnlineTime(::protobuf::well_known_types::timestamp::Timestamp),
             // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.entity.v1.GetEntityInfoResponse.OnlineSummary.is_currently_online)
-            IsCurrentlyOnline(bool),
+            IsCurrentlyOnline(CurrentlyOnlineInfo),
         }
 
         impl ::protobuf::Oneof for Last_online_info {
@@ -1959,6 +1985,128 @@ pub mod get_entity_info_response {
         }
 
         impl ::protobuf::reflect::ProtobufValue for NextOnlineTimePrediction {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+
+        // @@protoc_insertion_point(message:bitdrift.public.unary.entity.v1.GetEntityInfoResponse.OnlineSummary.CurrentlyOnlineInfo)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct CurrentlyOnlineInfo {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift.public.unary.entity.v1.GetEntityInfoResponse.OnlineSummary.CurrentlyOnlineInfo.device_ids)
+            pub device_ids: ::std::vec::Vec<::std::string::String>,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift.public.unary.entity.v1.GetEntityInfoResponse.OnlineSummary.CurrentlyOnlineInfo.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a CurrentlyOnlineInfo {
+            fn default() -> &'a CurrentlyOnlineInfo {
+                <CurrentlyOnlineInfo as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl CurrentlyOnlineInfo {
+            pub fn new() -> CurrentlyOnlineInfo {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(1);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                    "device_ids",
+                    |m: &CurrentlyOnlineInfo| { &m.device_ids },
+                    |m: &mut CurrentlyOnlineInfo| { &mut m.device_ids },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<CurrentlyOnlineInfo>(
+                    "GetEntityInfoResponse.OnlineSummary.CurrentlyOnlineInfo",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for CurrentlyOnlineInfo {
+            const NAME: &'static str = "CurrentlyOnlineInfo";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.device_ids.push(is.read_string()?);
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                for value in &self.device_ids {
+                    my_size += ::protobuf::rt::string_size(1, &value);
+                };
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                for v in &self.device_ids {
+                    os.write_string(1, &v)?;
+                };
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> CurrentlyOnlineInfo {
+                CurrentlyOnlineInfo::new()
+            }
+
+            fn clear(&mut self) {
+                self.device_ids.clear();
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static CurrentlyOnlineInfo {
+                static instance: CurrentlyOnlineInfo = CurrentlyOnlineInfo {
+                    device_ids: ::std::vec::Vec::new(),
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for CurrentlyOnlineInfo {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("GetEntityInfoResponse.OnlineSummary.CurrentlyOnlineInfo").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for CurrentlyOnlineInfo {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for CurrentlyOnlineInfo {
             type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
         }
     }
@@ -6554,7 +6702,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x04R\x18maxSessionSummaryBucketsB\x07\xfaB\x04*\x02\x20\0\x88\x01\x01B\
     \x15\n\x0eentity_id_type\x12\x03\xf8B\x01B\x16\n\x14_max_recent_sessions\
     B\x11\n\x0f_max_top_issuesB\x17\n\x15_max_recent_locationsB\x1e\n\x1c_ma\
-    x_session_summary_buckets\"\xdb\x17\n\x15GetEntityInfoResponse\x12q\n\
+    x_session_summary_buckets\"\xec\x18\n\x15GetEntityInfoResponse\x12q\n\
     \x10sessions_summary\x18\x01\x20\x01(\x0b2F.bitdrift.public.unary.entity\
     .v1.GetEntityInfoResponse.SessionsSummaryR\x0fsessionsSummary\x12k\n\x0e\
     online_summary\x18\x02\x20\x01(\x0b2D.bitdrift.public.unary.entity.v1.Ge\
@@ -6575,176 +6723,179 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     ntityInfoResponse.SessionsSummary.SessionsSummaryBucketR\x07buckets\x1av\
     \n\x15SessionsSummaryBucket\x12\x1d\n\nstart_time\x18\x01\x20\x01(\x04R\
     \tstartTime\x12\x19\n\x08end_time\x18\x02\x20\x01(\x04R\x07endTime\x12#\
-    \n\rsession_count\x18\x03\x20\x01(\rR\x0csessionCount\x1a\xf9\x03\n\rOnl\
+    \n\rsession_count\x18\x03\x20\x01(\rR\x0csessionCount\x1a\x8a\x05\n\rOnl\
     ineSummary\x12M\n\x15total_online_duration\x18\x01\x20\x01(\x0b2\x19.goo\
     gle.protobuf.DurationR\x13totalOnlineDuration\x12F\n\x10last_online_time\
     \x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampH\0R\x0elastOnlineTi\
-    me\x120\n\x13is_currently_online\x18\x03\x20\x01(\x08H\0R\x11isCurrently\
-    Online\x12\x87\x01\n\x10next_online_time\x18\x04\x20\x01(\x0b2].bitdrift\
-    .public.unary.entity.v1.GetEntityInfoResponse.OnlineSummary.NextOnlineTi\
-    mePredictionR\x0enextOnlineTime\x1a\x80\x01\n\x18NextOnlineTimePredictio\
-    n\x12D\n\x10next_online_time\x18\x01\x20\x01(\x0b2\x1a.google.protobuf.T\
-    imestampR\x0enextOnlineTime\x12\x1e\n\nconfidence\x18\x02\x20\x01(\x02R\
-    \nconfidenceB\x12\n\x10last_online_info\x1a\xab\x03\n\rRecentSession\x12\
-    \x1d\n\nsession_id\x18\x01\x20\x01(\tR\tsessionId\x129\n\nfirst_seen\x18\
-    \x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tfirstSeen\x127\n\tlas\
-    t_seen\x18\x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x08lastSeen\
-    \x12h\n\x06fields\x18\x04\x20\x03(\x0b2P.bitdrift.public.unary.entity.v1\
-    .GetEntityInfoResponse.RecentSession.FieldsEntryR\x06fields\x12b\n\x13se\
-    ssion_status_info\x18\x05\x20\x01(\x0b22.bitdrift.public.unary.common.v1\
-    .SessionStatusInfoR\x11sessionStatusInfo\x1a9\n\x0bFieldsEntry\x12\x10\n\
-    \x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\t\
-    R\x05value:\x028\x01\x1a\xce\x01\n\x0cLocationInfo\x12;\n\x0bobserved_at\
-    \x18\x01\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\nobservedAt\x12\
-    \x10\n\x03asn\x18\x02\x20\x01(\tR\x03asn\x12!\n\x0ccountry_code\x18\x03\
-    \x20\x01(\tR\x0bcountryCode\x12\x1a\n\x08latitude\x18\x04\x20\x01(\x02R\
-    \x08latitude\x12\x1c\n\tlongitude\x18\x05\x20\x01(\x02R\tlongitude\x12\
-    \x12\n\x04city\x18\x06\x20\x01(\tR\x04city\x1a\xb2\x02\n\x06Device\x129\
-    \n\nfirst_seen\x18\x01\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tfir\
-    stSeen\x127\n\tlast_seen\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.Times\
-    tampR\x08lastSeen\x12\x1b\n\tdevice_id\x18\x03\x20\x01(\tR\x08deviceId\
-    \x12\x1a\n\x08platform\x18\x04\x20\x01(\tR\x08platform\x12\x15\n\x06app_\
-    id\x18\x05\x20\x01(\tR\x05appId\x12\x1f\n\x0bapp_version\x18\x06\x20\x01\
-    (\tR\nappVersion\x12\x0e\n\x02os\x18\x07\x20\x01(\tR\x02os\x12\x1d\n\nos\
-    _version\x18\x08\x20\x01(\tR\tosVersion\x12\x14\n\x05model\x18\t\x20\x01\
-    (\tR\x05model\x1a\x91\x03\n\x0cIssueSummary\x12#\n\rtotal_crashes\x18\
-    \x01\x20\x01(\x04R\x0ctotalCrashes\x129\n\nlast_crash\x18\x02\x20\x01(\
-    \x0b2\x1a.google.protobuf.TimestampR\tlastCrash\x12m\n\x0btop_crashes\
-    \x18\x03\x20\x03(\x0b2L.bitdrift.public.unary.entity.v1.GetEntityInfoRes\
-    ponse.IssueSummary.TopCrashR\ntopCrashes\x1a\xb1\x01\n\x08TopCrash\x12$\
-    \n\x0eissue_group_id\x18\x01\x20\x01(\tR\x0cissueGroupId\x12\x16\n\x06re\
-    ason\x18\x02\x20\x01(\tR\x06reason\x12\x16\n\x06detail\x18\x03\x20\x01(\
-    \tR\x06detail\x129\n\nfirst_seen\x18\x04\x20\x01(\x0b2\x1a.google.protob\
-    uf.TimestampR\tfirstSeen\x12\x14\n\x05count\x18\x05\x20\x01(\x04R\x05cou\
-    nt\"\xbf\x01\n'UpsertEntityRecordNextOnlineTimeRequest\x12P\n\tentity_id\
-    \x18\x01\x20\x01(\x0b2).bitdrift.public.unary.entity.v1.EntityIdR\x08ent\
-    ityIdB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12B\n\x18notification_group_nam\
-    es\x18\x02\x20\x03(\tR\x16notificationGroupNamesB\x08\xfaB\x05\x92\x01\
-    \x02\x10d\"\xad\x03\n\x1aEntityRecordNextOnlineTime\x12Z\n\tentity_id\
-    \x18\x01\x20\x01(\x0b23.bitdrift.public.unary.entity.v1.ObfuscatedEntity\
-    IdR\x08entityIdB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12e\n\x06status\x18\
-    \x02\x20\x01(\x0e2A.bitdrift.public.unary.entity.v1.EntityRecordNextOnli\
-    neTimeStatusR\x06statusB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\x12C\n\ncr\
-    eated_at\x18\x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tcreatedAt\
-    B\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12C\n\nupdated_at\x18\x04\x20\x01(\
-    \x0b2\x1a.google.protobuf.TimestampR\tupdatedAtB\x08\xfaB\x05\x8a\x01\
-    \x02\x10\x01\x12B\n\x18notification_group_names\x18\x05\x20\x03(\tR\x16n\
-    otificationGroupNamesB\x08\xfaB\x05\x92\x01\x02\x10d\"\xab\x01\n(UpsertE\
-    ntityRecordNextOnlineTimeResponse\x12\x7f\n\x1eentity_record_next_online\
-    _time\x18\x01\x20\x01(\x0b2;.bitdrift.public.unary.entity.v1.EntityRecor\
-    dNextOnlineTimeR\x1aentityRecordNextOnlineTime\"{\n'CancelEntityRecordNe\
-    xtOnlineTimeRequest\x12P\n\tentity_id\x18\x01\x20\x01(\x0b2).bitdrift.pu\
-    blic.unary.entity.v1.EntityIdR\x08entityIdB\x08\xfaB\x05\x8a\x01\x02\x10\
-    \x01\"\xab\x01\n(CancelEntityRecordNextOnlineTimeResponse\x12\x7f\n\x1ee\
-    ntity_record_next_online_time\x18\x01\x20\x01(\x0b2;.bitdrift.public.una\
-    ry.entity.v1.EntityRecordNextOnlineTimeR\x1aentityRecordNextOnlineTime\"\
-    \x83\x08\n&ListEntityRecordNextOnlineTimesRequest\x12K\n\npagination\x18\
-    \x01\x20\x01(\x0b2+.bitdrift.public.unary.common.v1.PaginationR\npaginat\
-    ion\x12x\n\x0call_entities\x18\x02\x20\x01(\x0b2S.bitdrift.public.unary.\
-    entity.v1.ListEntityRecordNextOnlineTimesRequest.AllEntitiesH\0R\x0ballE\
-    ntities\x12{\n\rsingle_entity\x18\x03\x20\x01(\x0b2T.bitdrift.public.una\
-    ry.entity.v1.ListEntityRecordNextOnlineTimesRequest.SingleEntityH\0R\x0c\
-    singleEntity\x12j\n\x06status\x18\x04\x20\x01(\x0e2A.bitdrift.public.una\
-    ry.entity.v1.EntityRecordNextOnlineTimeStatusH\x01R\x06statusB\n\xfaB\
-    \x07\x82\x01\x04\x10\x01\x20\0\x88\x01\x01\x12j\n\x04sort\x18\x06\x20\
-    \x03(\x0b2L.bitdrift.public.unary.entity.v1.ListEntityRecordNextOnlineTi\
-    mesRequest.SortR\x04sortB\x08\xfaB\x05\x92\x01\x02\x10\n\x1a\r\n\x0bAllE\
-    ntities\x1a`\n\x0cSingleEntity\x12P\n\tentity_id\x18\x01\x20\x01(\x0b2).\
+    me\x12\x8a\x01\n\x13is_currently_online\x18\x03\x20\x01(\x0b2X.bitdrift.\
+    public.unary.entity.v1.GetEntityInfoResponse.OnlineSummary.CurrentlyOnli\
+    neInfoH\0R\x11isCurrentlyOnline\x12\x87\x01\n\x10next_online_time\x18\
+    \x04\x20\x01(\x0b2].bitdrift.public.unary.entity.v1.GetEntityInfoRespons\
+    e.OnlineSummary.NextOnlineTimePredictionR\x0enextOnlineTime\x1a\x80\x01\
+    \n\x18NextOnlineTimePrediction\x12D\n\x10next_online_time\x18\x01\x20\
+    \x01(\x0b2\x1a.google.protobuf.TimestampR\x0enextOnlineTime\x12\x1e\n\nc\
+    onfidence\x18\x02\x20\x01(\x02R\nconfidence\x1a4\n\x13CurrentlyOnlineInf\
+    o\x12\x1d\n\ndevice_ids\x18\x01\x20\x03(\tR\tdeviceIdsB\x12\n\x10last_on\
+    line_info\x1a\xab\x03\n\rRecentSession\x12\x1d\n\nsession_id\x18\x01\x20\
+    \x01(\tR\tsessionId\x129\n\nfirst_seen\x18\x02\x20\x01(\x0b2\x1a.google.\
+    protobuf.TimestampR\tfirstSeen\x127\n\tlast_seen\x18\x03\x20\x01(\x0b2\
+    \x1a.google.protobuf.TimestampR\x08lastSeen\x12h\n\x06fields\x18\x04\x20\
+    \x03(\x0b2P.bitdrift.public.unary.entity.v1.GetEntityInfoResponse.Recent\
+    Session.FieldsEntryR\x06fields\x12b\n\x13session_status_info\x18\x05\x20\
+    \x01(\x0b22.bitdrift.public.unary.common.v1.SessionStatusInfoR\x11sessio\
+    nStatusInfo\x1a9\n\x0bFieldsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\
+    \x03key\x12\x14\n\x05value\x18\x02\x20\x01(\tR\x05value:\x028\x01\x1a\
+    \xce\x01\n\x0cLocationInfo\x12;\n\x0bobserved_at\x18\x01\x20\x01(\x0b2\
+    \x1a.google.protobuf.TimestampR\nobservedAt\x12\x10\n\x03asn\x18\x02\x20\
+    \x01(\tR\x03asn\x12!\n\x0ccountry_code\x18\x03\x20\x01(\tR\x0bcountryCod\
+    e\x12\x1a\n\x08latitude\x18\x04\x20\x01(\x02R\x08latitude\x12\x1c\n\tlon\
+    gitude\x18\x05\x20\x01(\x02R\tlongitude\x12\x12\n\x04city\x18\x06\x20\
+    \x01(\tR\x04city\x1a\xb2\x02\n\x06Device\x129\n\nfirst_seen\x18\x01\x20\
+    \x01(\x0b2\x1a.google.protobuf.TimestampR\tfirstSeen\x127\n\tlast_seen\
+    \x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x08lastSeen\x12\
+    \x1b\n\tdevice_id\x18\x03\x20\x01(\tR\x08deviceId\x12\x1a\n\x08platform\
+    \x18\x04\x20\x01(\tR\x08platform\x12\x15\n\x06app_id\x18\x05\x20\x01(\tR\
+    \x05appId\x12\x1f\n\x0bapp_version\x18\x06\x20\x01(\tR\nappVersion\x12\
+    \x0e\n\x02os\x18\x07\x20\x01(\tR\x02os\x12\x1d\n\nos_version\x18\x08\x20\
+    \x01(\tR\tosVersion\x12\x14\n\x05model\x18\t\x20\x01(\tR\x05model\x1a\
+    \x91\x03\n\x0cIssueSummary\x12#\n\rtotal_crashes\x18\x01\x20\x01(\x04R\
+    \x0ctotalCrashes\x129\n\nlast_crash\x18\x02\x20\x01(\x0b2\x1a.google.pro\
+    tobuf.TimestampR\tlastCrash\x12m\n\x0btop_crashes\x18\x03\x20\x03(\x0b2L\
+    .bitdrift.public.unary.entity.v1.GetEntityInfoResponse.IssueSummary.TopC\
+    rashR\ntopCrashes\x1a\xb1\x01\n\x08TopCrash\x12$\n\x0eissue_group_id\x18\
+    \x01\x20\x01(\tR\x0cissueGroupId\x12\x16\n\x06reason\x18\x02\x20\x01(\tR\
+    \x06reason\x12\x16\n\x06detail\x18\x03\x20\x01(\tR\x06detail\x129\n\nfir\
+    st_seen\x18\x04\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tfirstSeen\
+    \x12\x14\n\x05count\x18\x05\x20\x01(\x04R\x05count\"\xbf\x01\n'UpsertEnt\
+    ityRecordNextOnlineTimeRequest\x12P\n\tentity_id\x18\x01\x20\x01(\x0b2).\
     bitdrift.public.unary.entity.v1.EntityIdR\x08entityIdB\x08\xfaB\x05\x8a\
-    \x01\x02\x10\x01\x1a\xb2\x02\n\x04Sort\x12r\n\x03key\x18\x01\x20\x01(\
-    \x0e2T.bitdrift.public.unary.entity.v1.ListEntityRecordNextOnlineTimesRe\
-    quest.Sort.SortKeyR\x03keyB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\x12V\n\
-    \tdirection\x18\x02\x20\x01(\x0e2..bitdrift.public.unary.common.v1.SortD\
-    irectionR\tdirectionB\x08\xfaB\x05\x82\x01\x02\x10\x01\"^\n\x07SortKey\
-    \x12\x18\n\x14SORT_KEY_UNSPECIFIED\x10\0\x12\r\n\tENTITY_ID\x10\x01\x12\
-    \n\n\x06STATUS\x10\x02\x12\x0e\n\nCREATED_AT\x10\x03\x12\x0e\n\nUPDATED_\
-    AT\x10\x04B\x0c\n\x05scope\x12\x03\xf8B\x01B\t\n\x07_status\"\xce\x01\n'\
-    ListEntityRecordNextOnlineTimesResponse\x12\x81\x01\n\x1fentity_record_n\
-    ext_online_times\x18\x01\x20\x03(\x0b2;.bitdrift.public.unary.entity.v1.\
-    EntityRecordNextOnlineTimeR\x1bentityRecordNextOnlineTimes\x12\x1f\n\x0b\
-    total_count\x18\x02\x20\x01(\rR\ntotalCount\"\xb8\x01\n\x18UpsertKnownEn\
-    tityRequest\x12P\n\tentity_id\x18\x01\x20\x01(\x0b2).bitdrift.public.una\
-    ry.entity.v1.EntityIdR\x08entityIdB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\
-    J\n\x04info\x18\x02\x20\x01(\x0b2,.bitdrift.public.unary.entity.v1.Known\
-    EntityR\x04infoB\x08\xfaB\x05\x8a\x01\x02\x10\x01\"s\n\x19UpsertKnownEnt\
-    ityResponse\x12V\n\x0cknown_entity\x18\x01\x20\x01(\x0b23.bitdrift.publi\
-    c.unary.entity.v1.ObfuscatedEntityIdR\x0bknownEntity\"l\n\x18DeleteKnown\
-    EntityRequest\x12P\n\tentity_id\x18\x01\x20\x01(\x0b2).bitdrift.public.u\
-    nary.entity.v1.EntityIdR\x08entityIdB\x08\xfaB\x05\x8a\x01\x02\x10\x01\"\
-    \x1b\n\x19DeleteKnownEntityResponse\"\xbb\x05\n\x0eEntityListItem\x12Z\n\
-    \tentity_id\x18\x01\x20\x01(\x0b23.bitdrift.public.unary.entity.v1.Obfus\
-    catedEntityIdR\x08entityIdB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12<\n\tlas\
-    t_seen\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampH\0R\x08lastSe\
-    en\x88\x01\x01\x12Q\n\x14last_session_capture\x18\x03\x20\x01(\x0b2\x1a.\
-    google.protobuf.TimestampH\x01R\x12lastSessionCapture\x88\x01\x01\x12b\n\
-    \rknown_devices\x18\x04\x20\x03(\x0b2=.bitdrift.public.unary.entity.v1.G\
-    etEntityInfoResponse.DeviceR\x0cknownDevices\x12\x80\x01\n\x18pending_re\
-    cording_status\x18\x05\x20\x01(\x0e2A.bitdrift.public.unary.entity.v1.En\
-    tityRecordNextOnlineTimeStatusH\x02R\x16pendingRecordingStatus\x88\x01\
-    \x01\x125\n\x05added\x18\x06\x20\x01(\x0b2\x1a.google.protobuf.Timestamp\
-    H\x03R\x05added\x88\x01\x01\x12@\n\x0blast_viewed\x18\x07\x20\x01(\x0b2\
-    \x1a.google.protobuf.TimestampH\x04R\nlastViewed\x88\x01\x01B\x0c\n\n_la\
-    st_seenB\x17\n\x15_last_session_captureB\x1b\n\x19_pending_recording_sta\
-    tusB\x08\n\x06_addedB\x0e\n\x0c_last_viewed\"\xa7\x05\n\x18ListKnownEnti\
-    tiesRequest\x12K\n\npagination\x18\x01\x20\x01(\x0b2+.bitdrift.public.un\
-    ary.common.v1.PaginationR\npagination\x12:\n\x11known_entity_name\x18\
-    \x02\x20\x01(\tH\0R\x0fknownEntityNameB\t\xfaB\x06r\x04\x10\x01\x18d\x88\
-    \x01\x01\x12\\\n\x04sort\x18\x03\x20\x03(\x0b2>.bitdrift.public.unary.en\
-    tity.v1.ListKnownEntitiesRequest.SortR\x04sortB\x08\xfaB\x05\x92\x01\x02\
-    \x10\n\x12j\n\x06status\x18\x04\x20\x01(\x0e2A.bitdrift.public.unary.ent\
-    ity.v1.EntityRecordNextOnlineTimeStatusH\x01R\x06statusB\n\xfaB\x07\x82\
-    \x01\x04\x10\x01\x20\0\x88\x01\x01\x1a\x96\x02\n\x04Sort\x12d\n\x03key\
-    \x18\x01\x20\x01(\x0e2F.bitdrift.public.unary.entity.v1.ListKnownEntitie\
-    sRequest.Sort.SortKeyR\x03keyB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\x12V\
-    \n\tdirection\x18\x02\x20\x01(\x0e2..bitdrift.public.unary.common.v1.Sor\
-    tDirectionR\tdirectionB\x08\xfaB\x05\x82\x01\x02\x10\x01\"P\n\x07SortKey\
-    \x12\x18\n\x14SORT_KEY_UNSPECIFIED\x10\0\x12\x08\n\x04NAME\x10\x01\x12\n\
-    \n\x06STATUS\x10\x02\x12\t\n\x05ADDED\x10\x03\x12\n\n\x06VIEWED\x10\x04B\
-    \x14\n\x12_known_entity_nameB\t\n\x07_status\"\x94\x01\n\x19ListKnownEnt\
-    itiesResponse\x12V\n\x0eknown_entities\x18\x01\x20\x03(\x0b2/.bitdrift.p\
-    ublic.unary.entity.v1.EntityListItemR\rknownEntities\x12\x1f\n\x0btotal_\
-    count\x18\x02\x20\x01(\rR\ntotalCount\"\xb2\x05\n!ListRecentlyViewedEnti\
-    tiesRequest\x12K\n\npagination\x18\x01\x20\x01(\x0b2+.bitdrift.public.un\
-    ary.common.v1.PaginationR\npagination\x12F\n\tentity_id\x18\x02\x20\x01(\
-    \x0b2).bitdrift.public.unary.entity.v1.EntityIdR\x08entityId\x12e\n\x04s\
-    ort\x18\x03\x20\x03(\x0b2G.bitdrift.public.unary.entity.v1.ListRecentlyV\
-    iewedEntitiesRequest.SortR\x04sortB\x08\xfaB\x05\x92\x01\x02\x10\n\x12j\
-    \n\x06status\x18\x04\x20\x01(\x0e2A.bitdrift.public.unary.entity.v1.Enti\
-    tyRecordNextOnlineTimeStatusH\0R\x06statusB\n\xfaB\x07\x82\x01\x04\x10\
-    \x01\x20\0\x88\x01\x01\x1a\x99\x02\n\x04Sort\x12m\n\x03key\x18\x01\x20\
-    \x01(\x0e2O.bitdrift.public.unary.entity.v1.ListRecentlyViewedEntitiesRe\
-    quest.Sort.SortKeyR\x03keyB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\x12V\n\
-    \tdirection\x18\x02\x20\x01(\x0e2..bitdrift.public.unary.common.v1.SortD\
-    irectionR\tdirectionB\x08\xfaB\x05\x82\x01\x02\x10\x01\"J\n\x07SortKey\
-    \x12\x18\n\x14SORT_KEY_UNSPECIFIED\x10\0\x12\x08\n\x04NAME\x10\x01\x12\n\
-    \n\x06STATUS\x10\x02\x12\x0f\n\x0bLAST_VIEWED\x10\x03B\t\n\x07_status\"\
-    \xb0\x01\n\"ListRecentlyViewedEntitiesResponse\x12i\n\x18recently_viewed\
-    _entities\x18\x01\x20\x03(\x0b2/.bitdrift.public.unary.entity.v1.EntityL\
-    istItemR\x16recentlyViewedEntities\x12\x1f\n\x0btotal_count\x18\x02\x20\
-    \x01(\rR\ntotalCount*\x8e\x01\n\x20EntityRecordNextOnlineTimeStatus\x125\
-    \n1ENTITY_RECORD_NEXT_ONLINE_TIME_STATUS_UNSPECIFIED\x10\0\x12\x0b\n\x07\
-    PENDING\x10\x01\x12\x0c\n\x08RECORDED\x10\x02\x12\x0c\n\x08CANCELED\x10\
-    \x03\x12\n\n\x06FAILED\x10\x042\x89\n\n\rEntityService\x12~\n\rGetEntity\
-    Info\x125.bitdrift.public.unary.entity.v1.GetEntityInfoRequest\x1a6.bitd\
-    rift.public.unary.entity.v1.GetEntityInfoResponse\x12\xb7\x01\n\x20Upser\
-    tEntityRecordNextOnlineTime\x12H.bitdrift.public.unary.entity.v1.UpsertE\
-    ntityRecordNextOnlineTimeRequest\x1aI.bitdrift.public.unary.entity.v1.Up\
-    sertEntityRecordNextOnlineTimeResponse\x12\xb7\x01\n\x20CancelEntityReco\
-    rdNextOnlineTime\x12H.bitdrift.public.unary.entity.v1.CancelEntityRecord\
-    NextOnlineTimeRequest\x1aI.bitdrift.public.unary.entity.v1.CancelEntityR\
-    ecordNextOnlineTimeResponse\x12\xb4\x01\n\x1fListEntityRecordNextOnlineT\
-    imes\x12G.bitdrift.public.unary.entity.v1.ListEntityRecordNextOnlineTime\
-    sRequest\x1aH.bitdrift.public.unary.entity.v1.ListEntityRecordNextOnline\
-    TimesResponse\x12\x8a\x01\n\x11UpsertKnownEntity\x129.bitdrift.public.un\
-    ary.entity.v1.UpsertKnownEntityRequest\x1a:.bitdrift.public.unary.entity\
-    .v1.UpsertKnownEntityResponse\x12\x8a\x01\n\x11DeleteKnownEntity\x129.bi\
-    tdrift.public.unary.entity.v1.DeleteKnownEntityRequest\x1a:.bitdrift.pub\
-    lic.unary.entity.v1.DeleteKnownEntityResponse\x12\x8a\x01\n\x11ListKnown\
-    Entities\x129.bitdrift.public.unary.entity.v1.ListKnownEntitiesRequest\
-    \x1a:.bitdrift.public.unary.entity.v1.ListKnownEntitiesResponse\x12\xa5\
-    \x01\n\x1aListRecentlyViewedEntities\x12B.bitdrift.public.unary.entity.v\
-    1.ListRecentlyViewedEntitiesRequest\x1aC.bitdrift.public.unary.entity.v1\
-    .ListRecentlyViewedEntitiesResponseb\x06proto3\
+    \x01\x02\x10\x01\x12B\n\x18notification_group_names\x18\x02\x20\x03(\tR\
+    \x16notificationGroupNamesB\x08\xfaB\x05\x92\x01\x02\x10d\"\xad\x03\n\
+    \x1aEntityRecordNextOnlineTime\x12Z\n\tentity_id\x18\x01\x20\x01(\x0b23.\
+    bitdrift.public.unary.entity.v1.ObfuscatedEntityIdR\x08entityIdB\x08\xfa\
+    B\x05\x8a\x01\x02\x10\x01\x12e\n\x06status\x18\x02\x20\x01(\x0e2A.bitdri\
+    ft.public.unary.entity.v1.EntityRecordNextOnlineTimeStatusR\x06statusB\n\
+    \xfaB\x07\x82\x01\x04\x10\x01\x20\0\x12C\n\ncreated_at\x18\x03\x20\x01(\
+    \x0b2\x1a.google.protobuf.TimestampR\tcreatedAtB\x08\xfaB\x05\x8a\x01\
+    \x02\x10\x01\x12C\n\nupdated_at\x18\x04\x20\x01(\x0b2\x1a.google.protobu\
+    f.TimestampR\tupdatedAtB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12B\n\x18noti\
+    fication_group_names\x18\x05\x20\x03(\tR\x16notificationGroupNamesB\x08\
+    \xfaB\x05\x92\x01\x02\x10d\"\xab\x01\n(UpsertEntityRecordNextOnlineTimeR\
+    esponse\x12\x7f\n\x1eentity_record_next_online_time\x18\x01\x20\x01(\x0b\
+    2;.bitdrift.public.unary.entity.v1.EntityRecordNextOnlineTimeR\x1aentity\
+    RecordNextOnlineTime\"{\n'CancelEntityRecordNextOnlineTimeRequest\x12P\n\
+    \tentity_id\x18\x01\x20\x01(\x0b2).bitdrift.public.unary.entity.v1.Entit\
+    yIdR\x08entityIdB\x08\xfaB\x05\x8a\x01\x02\x10\x01\"\xab\x01\n(CancelEnt\
+    ityRecordNextOnlineTimeResponse\x12\x7f\n\x1eentity_record_next_online_t\
+    ime\x18\x01\x20\x01(\x0b2;.bitdrift.public.unary.entity.v1.EntityRecordN\
+    extOnlineTimeR\x1aentityRecordNextOnlineTime\"\x83\x08\n&ListEntityRecor\
+    dNextOnlineTimesRequest\x12K\n\npagination\x18\x01\x20\x01(\x0b2+.bitdri\
+    ft.public.unary.common.v1.PaginationR\npagination\x12x\n\x0call_entities\
+    \x18\x02\x20\x01(\x0b2S.bitdrift.public.unary.entity.v1.ListEntityRecord\
+    NextOnlineTimesRequest.AllEntitiesH\0R\x0ballEntities\x12{\n\rsingle_ent\
+    ity\x18\x03\x20\x01(\x0b2T.bitdrift.public.unary.entity.v1.ListEntityRec\
+    ordNextOnlineTimesRequest.SingleEntityH\0R\x0csingleEntity\x12j\n\x06sta\
+    tus\x18\x04\x20\x01(\x0e2A.bitdrift.public.unary.entity.v1.EntityRecordN\
+    extOnlineTimeStatusH\x01R\x06statusB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\
+    \0\x88\x01\x01\x12j\n\x04sort\x18\x06\x20\x03(\x0b2L.bitdrift.public.una\
+    ry.entity.v1.ListEntityRecordNextOnlineTimesRequest.SortR\x04sortB\x08\
+    \xfaB\x05\x92\x01\x02\x10\n\x1a\r\n\x0bAllEntities\x1a`\n\x0cSingleEntit\
+    y\x12P\n\tentity_id\x18\x01\x20\x01(\x0b2).bitdrift.public.unary.entity.\
+    v1.EntityIdR\x08entityIdB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x1a\xb2\x02\n\
+    \x04Sort\x12r\n\x03key\x18\x01\x20\x01(\x0e2T.bitdrift.public.unary.enti\
+    ty.v1.ListEntityRecordNextOnlineTimesRequest.Sort.SortKeyR\x03keyB\n\xfa\
+    B\x07\x82\x01\x04\x10\x01\x20\0\x12V\n\tdirection\x18\x02\x20\x01(\x0e2.\
+    .bitdrift.public.unary.common.v1.SortDirectionR\tdirectionB\x08\xfaB\x05\
+    \x82\x01\x02\x10\x01\"^\n\x07SortKey\x12\x18\n\x14SORT_KEY_UNSPECIFIED\
+    \x10\0\x12\r\n\tENTITY_ID\x10\x01\x12\n\n\x06STATUS\x10\x02\x12\x0e\n\nC\
+    REATED_AT\x10\x03\x12\x0e\n\nUPDATED_AT\x10\x04B\x0c\n\x05scope\x12\x03\
+    \xf8B\x01B\t\n\x07_status\"\xce\x01\n'ListEntityRecordNextOnlineTimesRes\
+    ponse\x12\x81\x01\n\x1fentity_record_next_online_times\x18\x01\x20\x03(\
+    \x0b2;.bitdrift.public.unary.entity.v1.EntityRecordNextOnlineTimeR\x1ben\
+    tityRecordNextOnlineTimes\x12\x1f\n\x0btotal_count\x18\x02\x20\x01(\rR\n\
+    totalCount\"\xb8\x01\n\x18UpsertKnownEntityRequest\x12P\n\tentity_id\x18\
+    \x01\x20\x01(\x0b2).bitdrift.public.unary.entity.v1.EntityIdR\x08entityI\
+    dB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12J\n\x04info\x18\x02\x20\x01(\x0b2\
+    ,.bitdrift.public.unary.entity.v1.KnownEntityR\x04infoB\x08\xfaB\x05\x8a\
+    \x01\x02\x10\x01\"s\n\x19UpsertKnownEntityResponse\x12V\n\x0cknown_entit\
+    y\x18\x01\x20\x01(\x0b23.bitdrift.public.unary.entity.v1.ObfuscatedEntit\
+    yIdR\x0bknownEntity\"l\n\x18DeleteKnownEntityRequest\x12P\n\tentity_id\
+    \x18\x01\x20\x01(\x0b2).bitdrift.public.unary.entity.v1.EntityIdR\x08ent\
+    ityIdB\x08\xfaB\x05\x8a\x01\x02\x10\x01\"\x1b\n\x19DeleteKnownEntityResp\
+    onse\"\xbb\x05\n\x0eEntityListItem\x12Z\n\tentity_id\x18\x01\x20\x01(\
+    \x0b23.bitdrift.public.unary.entity.v1.ObfuscatedEntityIdR\x08entityIdB\
+    \x08\xfaB\x05\x8a\x01\x02\x10\x01\x12<\n\tlast_seen\x18\x02\x20\x01(\x0b\
+    2\x1a.google.protobuf.TimestampH\0R\x08lastSeen\x88\x01\x01\x12Q\n\x14la\
+    st_session_capture\x18\x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampH\
+    \x01R\x12lastSessionCapture\x88\x01\x01\x12b\n\rknown_devices\x18\x04\
+    \x20\x03(\x0b2=.bitdrift.public.unary.entity.v1.GetEntityInfoResponse.De\
+    viceR\x0cknownDevices\x12\x80\x01\n\x18pending_recording_status\x18\x05\
+    \x20\x01(\x0e2A.bitdrift.public.unary.entity.v1.EntityRecordNextOnlineTi\
+    meStatusH\x02R\x16pendingRecordingStatus\x88\x01\x01\x125\n\x05added\x18\
+    \x06\x20\x01(\x0b2\x1a.google.protobuf.TimestampH\x03R\x05added\x88\x01\
+    \x01\x12@\n\x0blast_viewed\x18\x07\x20\x01(\x0b2\x1a.google.protobuf.Tim\
+    estampH\x04R\nlastViewed\x88\x01\x01B\x0c\n\n_last_seenB\x17\n\x15_last_\
+    session_captureB\x1b\n\x19_pending_recording_statusB\x08\n\x06_addedB\
+    \x0e\n\x0c_last_viewed\"\xa7\x05\n\x18ListKnownEntitiesRequest\x12K\n\np\
+    agination\x18\x01\x20\x01(\x0b2+.bitdrift.public.unary.common.v1.Paginat\
+    ionR\npagination\x12:\n\x11known_entity_name\x18\x02\x20\x01(\tH\0R\x0fk\
+    nownEntityNameB\t\xfaB\x06r\x04\x10\x01\x18d\x88\x01\x01\x12\\\n\x04sort\
+    \x18\x03\x20\x03(\x0b2>.bitdrift.public.unary.entity.v1.ListKnownEntitie\
+    sRequest.SortR\x04sortB\x08\xfaB\x05\x92\x01\x02\x10\n\x12j\n\x06status\
+    \x18\x04\x20\x01(\x0e2A.bitdrift.public.unary.entity.v1.EntityRecordNext\
+    OnlineTimeStatusH\x01R\x06statusB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\
+    \x88\x01\x01\x1a\x96\x02\n\x04Sort\x12d\n\x03key\x18\x01\x20\x01(\x0e2F.\
+    bitdrift.public.unary.entity.v1.ListKnownEntitiesRequest.Sort.SortKeyR\
+    \x03keyB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\x12V\n\tdirection\x18\x02\
+    \x20\x01(\x0e2..bitdrift.public.unary.common.v1.SortDirectionR\tdirectio\
+    nB\x08\xfaB\x05\x82\x01\x02\x10\x01\"P\n\x07SortKey\x12\x18\n\x14SORT_KE\
+    Y_UNSPECIFIED\x10\0\x12\x08\n\x04NAME\x10\x01\x12\n\n\x06STATUS\x10\x02\
+    \x12\t\n\x05ADDED\x10\x03\x12\n\n\x06VIEWED\x10\x04B\x14\n\x12_known_ent\
+    ity_nameB\t\n\x07_status\"\x94\x01\n\x19ListKnownEntitiesResponse\x12V\n\
+    \x0eknown_entities\x18\x01\x20\x03(\x0b2/.bitdrift.public.unary.entity.v\
+    1.EntityListItemR\rknownEntities\x12\x1f\n\x0btotal_count\x18\x02\x20\
+    \x01(\rR\ntotalCount\"\xb2\x05\n!ListRecentlyViewedEntitiesRequest\x12K\
+    \n\npagination\x18\x01\x20\x01(\x0b2+.bitdrift.public.unary.common.v1.Pa\
+    ginationR\npagination\x12F\n\tentity_id\x18\x02\x20\x01(\x0b2).bitdrift.\
+    public.unary.entity.v1.EntityIdR\x08entityId\x12e\n\x04sort\x18\x03\x20\
+    \x03(\x0b2G.bitdrift.public.unary.entity.v1.ListRecentlyViewedEntitiesRe\
+    quest.SortR\x04sortB\x08\xfaB\x05\x92\x01\x02\x10\n\x12j\n\x06status\x18\
+    \x04\x20\x01(\x0e2A.bitdrift.public.unary.entity.v1.EntityRecordNextOnli\
+    neTimeStatusH\0R\x06statusB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\x88\x01\
+    \x01\x1a\x99\x02\n\x04Sort\x12m\n\x03key\x18\x01\x20\x01(\x0e2O.bitdrift\
+    .public.unary.entity.v1.ListRecentlyViewedEntitiesRequest.Sort.SortKeyR\
+    \x03keyB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\x12V\n\tdirection\x18\x02\
+    \x20\x01(\x0e2..bitdrift.public.unary.common.v1.SortDirectionR\tdirectio\
+    nB\x08\xfaB\x05\x82\x01\x02\x10\x01\"J\n\x07SortKey\x12\x18\n\x14SORT_KE\
+    Y_UNSPECIFIED\x10\0\x12\x08\n\x04NAME\x10\x01\x12\n\n\x06STATUS\x10\x02\
+    \x12\x0f\n\x0bLAST_VIEWED\x10\x03B\t\n\x07_status\"\xb0\x01\n\"ListRecen\
+    tlyViewedEntitiesResponse\x12i\n\x18recently_viewed_entities\x18\x01\x20\
+    \x03(\x0b2/.bitdrift.public.unary.entity.v1.EntityListItemR\x16recentlyV\
+    iewedEntities\x12\x1f\n\x0btotal_count\x18\x02\x20\x01(\rR\ntotalCount*\
+    \x8e\x01\n\x20EntityRecordNextOnlineTimeStatus\x125\n1ENTITY_RECORD_NEXT\
+    _ONLINE_TIME_STATUS_UNSPECIFIED\x10\0\x12\x0b\n\x07PENDING\x10\x01\x12\
+    \x0c\n\x08RECORDED\x10\x02\x12\x0c\n\x08CANCELED\x10\x03\x12\n\n\x06FAIL\
+    ED\x10\x042\x89\n\n\rEntityService\x12~\n\rGetEntityInfo\x125.bitdrift.p\
+    ublic.unary.entity.v1.GetEntityInfoRequest\x1a6.bitdrift.public.unary.en\
+    tity.v1.GetEntityInfoResponse\x12\xb7\x01\n\x20UpsertEntityRecordNextOnl\
+    ineTime\x12H.bitdrift.public.unary.entity.v1.UpsertEntityRecordNextOnlin\
+    eTimeRequest\x1aI.bitdrift.public.unary.entity.v1.UpsertEntityRecordNext\
+    OnlineTimeResponse\x12\xb7\x01\n\x20CancelEntityRecordNextOnlineTime\x12\
+    H.bitdrift.public.unary.entity.v1.CancelEntityRecordNextOnlineTimeReques\
+    t\x1aI.bitdrift.public.unary.entity.v1.CancelEntityRecordNextOnlineTimeR\
+    esponse\x12\xb4\x01\n\x1fListEntityRecordNextOnlineTimes\x12G.bitdrift.p\
+    ublic.unary.entity.v1.ListEntityRecordNextOnlineTimesRequest\x1aH.bitdri\
+    ft.public.unary.entity.v1.ListEntityRecordNextOnlineTimesResponse\x12\
+    \x8a\x01\n\x11UpsertKnownEntity\x129.bitdrift.public.unary.entity.v1.Ups\
+    ertKnownEntityRequest\x1a:.bitdrift.public.unary.entity.v1.UpsertKnownEn\
+    tityResponse\x12\x8a\x01\n\x11DeleteKnownEntity\x129.bitdrift.public.una\
+    ry.entity.v1.DeleteKnownEntityRequest\x1a:.bitdrift.public.unary.entity.\
+    v1.DeleteKnownEntityResponse\x12\x8a\x01\n\x11ListKnownEntities\x129.bit\
+    drift.public.unary.entity.v1.ListKnownEntitiesRequest\x1a:.bitdrift.publ\
+    ic.unary.entity.v1.ListKnownEntitiesResponse\x12\xa5\x01\n\x1aListRecent\
+    lyViewedEntities\x12B.bitdrift.public.unary.entity.v1.ListRecentlyViewed\
+    EntitiesRequest\x1aC.bitdrift.public.unary.entity.v1.ListRecentlyViewedE\
+    ntitiesResponseb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -6766,7 +6917,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(::protobuf::well_known_types::duration::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(35);
+            let mut messages = ::std::vec::Vec::with_capacity(36);
             messages.push(KnownEntity::generated_message_descriptor_data());
             messages.push(EntityId::generated_message_descriptor_data());
             messages.push(ObfuscatedEntityId::generated_message_descriptor_data());
@@ -6796,6 +6947,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(get_entity_info_response::IssueSummary::generated_message_descriptor_data());
             messages.push(get_entity_info_response::sessions_summary::SessionsSummaryBucket::generated_message_descriptor_data());
             messages.push(get_entity_info_response::online_summary::NextOnlineTimePrediction::generated_message_descriptor_data());
+            messages.push(get_entity_info_response::online_summary::CurrentlyOnlineInfo::generated_message_descriptor_data());
             messages.push(get_entity_info_response::issue_summary::TopCrash::generated_message_descriptor_data());
             messages.push(list_entity_record_next_online_times_request::AllEntities::generated_message_descriptor_data());
             messages.push(list_entity_record_next_online_times_request::SingleEntity::generated_message_descriptor_data());
