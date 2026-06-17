@@ -92,6 +92,12 @@ pub enum Permission {
     ENTITY_READ = 30,
     // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.ENTITY_WRITE)
     ENTITY_WRITE = 31,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.DASHBOARDS_ADMIN)
+    DASHBOARDS_ADMIN = 32,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.DASHBOARDS_WRITE)
+    DASHBOARDS_WRITE = 33,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.DASHBOARDS_READ)
+    DASHBOARDS_READ = 34,
 }
 
 impl ::protobuf::Enum for Permission {
@@ -132,6 +138,9 @@ impl ::protobuf::Enum for Permission {
             29 => ::std::option::Option::Some(Permission::TEAMS_READ),
             30 => ::std::option::Option::Some(Permission::ENTITY_READ),
             31 => ::std::option::Option::Some(Permission::ENTITY_WRITE),
+            32 => ::std::option::Option::Some(Permission::DASHBOARDS_ADMIN),
+            33 => ::std::option::Option::Some(Permission::DASHBOARDS_WRITE),
+            34 => ::std::option::Option::Some(Permission::DASHBOARDS_READ),
             _ => ::std::option::Option::None
         }
     }
@@ -167,6 +176,9 @@ impl ::protobuf::Enum for Permission {
             "TEAMS_READ" => ::std::option::Option::Some(Permission::TEAMS_READ),
             "ENTITY_READ" => ::std::option::Option::Some(Permission::ENTITY_READ),
             "ENTITY_WRITE" => ::std::option::Option::Some(Permission::ENTITY_WRITE),
+            "DASHBOARDS_ADMIN" => ::std::option::Option::Some(Permission::DASHBOARDS_ADMIN),
+            "DASHBOARDS_WRITE" => ::std::option::Option::Some(Permission::DASHBOARDS_WRITE),
+            "DASHBOARDS_READ" => ::std::option::Option::Some(Permission::DASHBOARDS_READ),
             _ => ::std::option::Option::None
         }
     }
@@ -201,6 +213,9 @@ impl ::protobuf::Enum for Permission {
         Permission::TEAMS_READ,
         Permission::ENTITY_READ,
         Permission::ENTITY_WRITE,
+        Permission::DASHBOARDS_ADMIN,
+        Permission::DASHBOARDS_WRITE,
+        Permission::DASHBOARDS_READ,
     ];
 }
 
@@ -241,6 +256,9 @@ impl ::protobuf::EnumFull for Permission {
             Permission::TEAMS_READ => 26,
             Permission::ENTITY_READ => 27,
             Permission::ENTITY_WRITE => 28,
+            Permission::DASHBOARDS_ADMIN => 29,
+            Permission::DASHBOARDS_WRITE => 30,
+            Permission::DASHBOARDS_READ => 31,
         };
         Self::enum_descriptor().value_by_index(index)
     }
@@ -260,7 +278,7 @@ impl Permission {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n/bitdrift/public/unary/admin/v1/permission.proto\x12\x1ebitdrift.publi\
-    c.unary.admin.v1*\xc7\x04\n\nPermission\x12\x1a\n\x16PERMISSION_UNSPECIF\
+    c.unary.admin.v1*\x88\x05\n\nPermission\x12\x1a\n\x16PERMISSION_UNSPECIF\
     IED\x10\0\x12\x11\n\rSDK_KEY_ADMIN\x10\x01\x12\x13\n\x0fAPI_KEY_CREATOR\
     \x10\x10\x12\x12\n\x0eWORKFLOW_ADMIN\x10\x02\x12\x11\n\rWORKFLOW_READ\
     \x10\x03\x12\x12\n\x0eWORKFLOW_WRITE\x10\x04\x12\x13\n\x0fWORKFLOW_DEPLO\
@@ -274,8 +292,9 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     AD\x10\x17\x12\x1c\n\x18NOTIFICATION_GROUP_ADMIN\x10\x18\x12\r\n\tVIEW_R\
     EAD\x10\x19\x12\x0e\n\nVIEW_WRITE\x10\x1a\x12\x0f\n\x0bTEAMS_ADMIN\x10\
     \x1b\x12\x0f\n\x0bTEAMS_WRITE\x10\x1c\x12\x0e\n\nTEAMS_READ\x10\x1d\x12\
-    \x0f\n\x0bENTITY_READ\x10\x1e\x12\x10\n\x0cENTITY_WRITE\x10\x1fb\x06prot\
-    o3\
+    \x0f\n\x0bENTITY_READ\x10\x1e\x12\x10\n\x0cENTITY_WRITE\x10\x1f\x12\x14\
+    \n\x10DASHBOARDS_ADMIN\x10\x20\x12\x14\n\x10DASHBOARDS_WRITE\x10!\x12\
+    \x13\n\x0fDASHBOARDS_READ\x10\"b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
