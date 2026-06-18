@@ -1374,6 +1374,93 @@ impl Operator {
     }
 }
 
+#[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
+// @@protoc_insertion_point(enum:bitdrift.public.unary.common.v1.Permission)
+pub enum Permission {
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.common.v1.Permission.UNKNOWN)
+    UNKNOWN = 0,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.common.v1.Permission.YES_IS_OWNER)
+    YES_IS_OWNER = 1,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.common.v1.Permission.YES_SHARED_EXPLICITLY)
+    YES_SHARED_EXPLICITLY = 2,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.common.v1.Permission.YES_SHARED_WITH_TEAM)
+    YES_SHARED_WITH_TEAM = 3,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.common.v1.Permission.YES_SHARED_WITH_ORG)
+    YES_SHARED_WITH_ORG = 4,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.common.v1.Permission.NO)
+    NO = 5,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.common.v1.Permission.YES_IS_ADMIN)
+    YES_IS_ADMIN = 6,
+}
+
+impl ::protobuf::Enum for Permission {
+    const NAME: &'static str = "Permission";
+
+    fn value(&self) -> i32 {
+        *self as i32
+    }
+
+    fn from_i32(value: i32) -> ::std::option::Option<Permission> {
+        match value {
+            0 => ::std::option::Option::Some(Permission::UNKNOWN),
+            1 => ::std::option::Option::Some(Permission::YES_IS_OWNER),
+            2 => ::std::option::Option::Some(Permission::YES_SHARED_EXPLICITLY),
+            3 => ::std::option::Option::Some(Permission::YES_SHARED_WITH_TEAM),
+            4 => ::std::option::Option::Some(Permission::YES_SHARED_WITH_ORG),
+            5 => ::std::option::Option::Some(Permission::NO),
+            6 => ::std::option::Option::Some(Permission::YES_IS_ADMIN),
+            _ => ::std::option::Option::None
+        }
+    }
+
+    fn from_str(str: &str) -> ::std::option::Option<Permission> {
+        match str {
+            "UNKNOWN" => ::std::option::Option::Some(Permission::UNKNOWN),
+            "YES_IS_OWNER" => ::std::option::Option::Some(Permission::YES_IS_OWNER),
+            "YES_SHARED_EXPLICITLY" => ::std::option::Option::Some(Permission::YES_SHARED_EXPLICITLY),
+            "YES_SHARED_WITH_TEAM" => ::std::option::Option::Some(Permission::YES_SHARED_WITH_TEAM),
+            "YES_SHARED_WITH_ORG" => ::std::option::Option::Some(Permission::YES_SHARED_WITH_ORG),
+            "NO" => ::std::option::Option::Some(Permission::NO),
+            "YES_IS_ADMIN" => ::std::option::Option::Some(Permission::YES_IS_ADMIN),
+            _ => ::std::option::Option::None
+        }
+    }
+
+    const VALUES: &'static [Permission] = &[
+        Permission::UNKNOWN,
+        Permission::YES_IS_OWNER,
+        Permission::YES_SHARED_EXPLICITLY,
+        Permission::YES_SHARED_WITH_TEAM,
+        Permission::YES_SHARED_WITH_ORG,
+        Permission::NO,
+        Permission::YES_IS_ADMIN,
+    ];
+}
+
+impl ::protobuf::EnumFull for Permission {
+    fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().enum_by_package_relative_name("Permission").unwrap()).clone()
+    }
+
+    fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
+        let index = *self as usize;
+        Self::enum_descriptor().value_by_index(index)
+    }
+}
+
+impl ::std::default::Default for Permission {
+    fn default() -> Self {
+        Permission::UNKNOWN
+    }
+}
+
+impl Permission {
+    fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
+        ::protobuf::reflect::GeneratedEnumDescriptorData::new::<Permission>("Permission")
+    }
+}
+
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n,bitdrift/public/unary/common/v1/common.proto\x12\x1fbitdrift.public.u\
     nary.common.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/proto\
@@ -1408,8 +1495,11 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x19\n\x15GREATER_THAN_OR_EQUAL\x10\x03\x12\r\n\tLESS_THAN\x10\x04\x12\
     \x16\n\x12LESS_THAN_OR_EQUAL\x10\x05\x12\x0c\n\x08WILDCARD\x10\x06\x12\
     \x10\n\x0cNOT_WILDCARD\x10\x07\x12\x06\n\x02IN\x10\t\x12\n\n\x06NOT_IN\
-    \x10\n\x12\n\n\x06SEARCH\x10\x0b\x12\x0e\n\nNOT_SEARCH\x10\x0cb\x06proto\
-    3\
+    \x10\n\x12\n\n\x06SEARCH\x10\x0b\x12\x0e\n\nNOT_SEARCH\x10\x0c*\x93\x01\
+    \n\nPermission\x12\x0b\n\x07UNKNOWN\x10\0\x12\x10\n\x0cYES_IS_OWNER\x10\
+    \x01\x12\x19\n\x15YES_SHARED_EXPLICITLY\x10\x02\x12\x18\n\x14YES_SHARED_\
+    WITH_TEAM\x10\x03\x12\x17\n\x13YES_SHARED_WITH_ORG\x10\x04\x12\x06\n\x02\
+    NO\x10\x05\x12\x10\n\x0cYES_IS_ADMIN\x10\x06b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1438,9 +1528,10 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(SessionStatusInfo::generated_message_descriptor_data());
             messages.push(time_range::FixedTimeRange::generated_message_descriptor_data());
             messages.push(time_range::RelativeTimeRange::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(2);
+            let mut enums = ::std::vec::Vec::with_capacity(3);
             enums.push(SortDirection::generated_enum_descriptor_data());
             enums.push(Operator::generated_enum_descriptor_data());
+            enums.push(Permission::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),
                 deps,

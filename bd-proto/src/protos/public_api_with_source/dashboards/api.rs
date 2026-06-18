@@ -1327,6 +1327,3002 @@ pub mod resolved_chart {
     }
 }
 
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DashboardLayoutSettings)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DashboardLayoutSettings {
+    // message fields
+    ///  The number of columns this chart/component should span in the dashboard.
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardLayoutSettings.column_span)
+    pub column_span: ::std::option::Option<u32>,
+    ///  The number of rows this chart/component should span in the dashboard.
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardLayoutSettings.row_span)
+    pub row_span: ::std::option::Option<u32>,
+    ///  If true, the chart should be hidden from the dashboard.
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardLayoutSettings.is_hidden)
+    pub is_hidden: bool,
+    ///  The x/y position of the component within the dashboard. This, combined with the
+    ///  positions in the stylistic components, define the layout order of the dashboard. If not set,
+    ///  the chart will be placed at the end of the dashboard.
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardLayoutSettings.x)
+    pub x: ::std::option::Option<u32>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardLayoutSettings.y)
+    pub y: ::std::option::Option<u32>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DashboardLayoutSettings.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DashboardLayoutSettings {
+    fn default() -> &'a DashboardLayoutSettings {
+        <DashboardLayoutSettings as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DashboardLayoutSettings {
+    pub fn new() -> DashboardLayoutSettings {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(5);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "column_span",
+            |m: &DashboardLayoutSettings| { &m.column_span },
+            |m: &mut DashboardLayoutSettings| { &mut m.column_span },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "row_span",
+            |m: &DashboardLayoutSettings| { &m.row_span },
+            |m: &mut DashboardLayoutSettings| { &mut m.row_span },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "is_hidden",
+            |m: &DashboardLayoutSettings| { &m.is_hidden },
+            |m: &mut DashboardLayoutSettings| { &mut m.is_hidden },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "x",
+            |m: &DashboardLayoutSettings| { &m.x },
+            |m: &mut DashboardLayoutSettings| { &mut m.x },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "y",
+            |m: &DashboardLayoutSettings| { &m.y },
+            |m: &mut DashboardLayoutSettings| { &mut m.y },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DashboardLayoutSettings>(
+            "DashboardLayoutSettings",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DashboardLayoutSettings {
+    const NAME: &'static str = "DashboardLayoutSettings";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                8 => {
+                    self.column_span = ::std::option::Option::Some(is.read_uint32()?);
+                },
+                16 => {
+                    self.row_span = ::std::option::Option::Some(is.read_uint32()?);
+                },
+                24 => {
+                    self.is_hidden = is.read_bool()?;
+                },
+                32 => {
+                    self.x = ::std::option::Option::Some(is.read_uint32()?);
+                },
+                40 => {
+                    self.y = ::std::option::Option::Some(is.read_uint32()?);
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.column_span {
+            my_size += ::protobuf::rt::uint32_size(1, v);
+        }
+        if let Some(v) = self.row_span {
+            my_size += ::protobuf::rt::uint32_size(2, v);
+        }
+        if self.is_hidden != false {
+            my_size += 1 + 1;
+        }
+        if let Some(v) = self.x {
+            my_size += ::protobuf::rt::uint32_size(4, v);
+        }
+        if let Some(v) = self.y {
+            my_size += ::protobuf::rt::uint32_size(5, v);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.column_span {
+            os.write_uint32(1, v)?;
+        }
+        if let Some(v) = self.row_span {
+            os.write_uint32(2, v)?;
+        }
+        if self.is_hidden != false {
+            os.write_bool(3, self.is_hidden)?;
+        }
+        if let Some(v) = self.x {
+            os.write_uint32(4, v)?;
+        }
+        if let Some(v) = self.y {
+            os.write_uint32(5, v)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DashboardLayoutSettings {
+        DashboardLayoutSettings::new()
+    }
+
+    fn clear(&mut self) {
+        self.column_span = ::std::option::Option::None;
+        self.row_span = ::std::option::Option::None;
+        self.is_hidden = false;
+        self.x = ::std::option::Option::None;
+        self.y = ::std::option::Option::None;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DashboardLayoutSettings {
+        static instance: DashboardLayoutSettings = DashboardLayoutSettings {
+            column_span: ::std::option::Option::None,
+            row_span: ::std::option::Option::None,
+            is_hidden: false,
+            x: ::std::option::Option::None,
+            y: ::std::option::Option::None,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DashboardLayoutSettings {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DashboardLayoutSettings").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DashboardLayoutSettings {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DashboardLayoutSettings {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DashboardGroup)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DashboardGroup {
+    // message fields
+    ///  All the charts that should be displayed on this dashboard.
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardGroup.charts)
+    pub charts: ::std::vec::Vec<ResolvedChart>,
+    ///  The category corresponding to this dashboard group.
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardGroup.category)
+    pub category: ::std::string::String,
+    ///  The minimum query interval for this group. For example, if this is set to
+    ///  7 days, the default viewing window should be at least 7 days.
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardGroup.minimum_query_interval)
+    pub minimum_query_interval: ::protobuf::MessageField<::protobuf::well_known_types::duration::Duration>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DashboardGroup.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DashboardGroup {
+    fn default() -> &'a DashboardGroup {
+        <DashboardGroup as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DashboardGroup {
+    pub fn new() -> DashboardGroup {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "charts",
+            |m: &DashboardGroup| { &m.charts },
+            |m: &mut DashboardGroup| { &mut m.charts },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "category",
+            |m: &DashboardGroup| { &m.category },
+            |m: &mut DashboardGroup| { &mut m.category },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::duration::Duration>(
+            "minimum_query_interval",
+            |m: &DashboardGroup| { &m.minimum_query_interval },
+            |m: &mut DashboardGroup| { &mut m.minimum_query_interval },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DashboardGroup>(
+            "DashboardGroup",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DashboardGroup {
+    const NAME: &'static str = "DashboardGroup";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.charts.push(is.read_message()?);
+                },
+                18 => {
+                    self.category = is.read_string()?;
+                },
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.minimum_query_interval)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        for value in &self.charts {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        if !self.category.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.category);
+        }
+        if let Some(v) = self.minimum_query_interval.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        for v in &self.charts {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        };
+        if !self.category.is_empty() {
+            os.write_string(2, &self.category)?;
+        }
+        if let Some(v) = self.minimum_query_interval.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DashboardGroup {
+        DashboardGroup::new()
+    }
+
+    fn clear(&mut self) {
+        self.charts.clear();
+        self.category.clear();
+        self.minimum_query_interval.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DashboardGroup {
+        static instance: DashboardGroup = DashboardGroup {
+            charts: ::std::vec::Vec::new(),
+            category: ::std::string::String::new(),
+            minimum_query_interval: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DashboardGroup {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DashboardGroup").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DashboardGroup {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DashboardGroup {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DashboardIdentifier)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DashboardIdentifier {
+    // message oneof groups
+    pub type_: ::std::option::Option<dashboard_identifier::Type>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DashboardIdentifier {
+    fn default() -> &'a DashboardIdentifier {
+        <DashboardIdentifier as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DashboardIdentifier {
+    pub fn new() -> DashboardIdentifier {
+        ::std::default::Default::default()
+    }
+
+    // .bitdrift.public.unary.dashboards.v1.DashboardIdentifier.HealthDashboard health_dashboard = 1;
+
+    pub fn health_dashboard(&self) -> &dashboard_identifier::HealthDashboard {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_identifier::Type::HealthDashboard(ref v)) => v,
+            _ => <dashboard_identifier::HealthDashboard as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_health_dashboard(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_health_dashboard(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_identifier::Type::HealthDashboard(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_health_dashboard(&mut self, v: dashboard_identifier::HealthDashboard) {
+        self.type_ = ::std::option::Option::Some(dashboard_identifier::Type::HealthDashboard(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_health_dashboard(&mut self) -> &mut dashboard_identifier::HealthDashboard {
+        if let ::std::option::Option::Some(dashboard_identifier::Type::HealthDashboard(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(dashboard_identifier::Type::HealthDashboard(dashboard_identifier::HealthDashboard::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_identifier::Type::HealthDashboard(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_health_dashboard(&mut self) -> dashboard_identifier::HealthDashboard {
+        if self.has_health_dashboard() {
+            match self.type_.take() {
+                ::std::option::Option::Some(dashboard_identifier::Type::HealthDashboard(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            dashboard_identifier::HealthDashboard::new()
+        }
+    }
+
+    // .bitdrift.public.unary.dashboards.v1.DashboardIdentifier.CustomDashboard custom_dashboard = 2;
+
+    pub fn custom_dashboard(&self) -> &dashboard_identifier::CustomDashboard {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_identifier::Type::CustomDashboard(ref v)) => v,
+            _ => <dashboard_identifier::CustomDashboard as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_custom_dashboard(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_custom_dashboard(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_identifier::Type::CustomDashboard(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_custom_dashboard(&mut self, v: dashboard_identifier::CustomDashboard) {
+        self.type_ = ::std::option::Option::Some(dashboard_identifier::Type::CustomDashboard(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_custom_dashboard(&mut self) -> &mut dashboard_identifier::CustomDashboard {
+        if let ::std::option::Option::Some(dashboard_identifier::Type::CustomDashboard(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(dashboard_identifier::Type::CustomDashboard(dashboard_identifier::CustomDashboard::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_identifier::Type::CustomDashboard(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_custom_dashboard(&mut self) -> dashboard_identifier::CustomDashboard {
+        if self.has_custom_dashboard() {
+            match self.type_.take() {
+                ::std::option::Option::Some(dashboard_identifier::Type::CustomDashboard(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            dashboard_identifier::CustomDashboard::new()
+        }
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, dashboard_identifier::HealthDashboard>(
+            "health_dashboard",
+            DashboardIdentifier::has_health_dashboard,
+            DashboardIdentifier::health_dashboard,
+            DashboardIdentifier::mut_health_dashboard,
+            DashboardIdentifier::set_health_dashboard,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, dashboard_identifier::CustomDashboard>(
+            "custom_dashboard",
+            DashboardIdentifier::has_custom_dashboard,
+            DashboardIdentifier::custom_dashboard,
+            DashboardIdentifier::mut_custom_dashboard,
+            DashboardIdentifier::set_custom_dashboard,
+        ));
+        oneofs.push(dashboard_identifier::Type::generated_oneof_descriptor_data());
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DashboardIdentifier>(
+            "DashboardIdentifier",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DashboardIdentifier {
+    const NAME: &'static str = "DashboardIdentifier";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.type_ = ::std::option::Option::Some(dashboard_identifier::Type::HealthDashboard(is.read_message()?));
+                },
+                18 => {
+                    self.type_ = ::std::option::Option::Some(dashboard_identifier::Type::CustomDashboard(is.read_message()?));
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let ::std::option::Option::Some(ref v) = self.type_ {
+            match v {
+                &dashboard_identifier::Type::HealthDashboard(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &dashboard_identifier::Type::CustomDashboard(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+            };
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let ::std::option::Option::Some(ref v) = self.type_ {
+            match v {
+                &dashboard_identifier::Type::HealthDashboard(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+                },
+                &dashboard_identifier::Type::CustomDashboard(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                },
+            };
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DashboardIdentifier {
+        DashboardIdentifier::new()
+    }
+
+    fn clear(&mut self) {
+        self.type_ = ::std::option::Option::None;
+        self.type_ = ::std::option::Option::None;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DashboardIdentifier {
+        static instance: DashboardIdentifier = DashboardIdentifier {
+            type_: ::std::option::Option::None,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DashboardIdentifier {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DashboardIdentifier").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DashboardIdentifier {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DashboardIdentifier {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `DashboardIdentifier`
+pub mod dashboard_identifier {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.type)
+    pub enum Type {
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.health_dashboard)
+        HealthDashboard(HealthDashboard),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.custom_dashboard)
+        CustomDashboard(CustomDashboard),
+    }
+
+    impl ::protobuf::Oneof for Type {
+    }
+
+    impl ::protobuf::OneofFull for Type {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::DashboardIdentifier as ::protobuf::MessageFull>::descriptor().oneof_by_name("type").unwrap()).clone()
+        }
+    }
+
+    impl Type {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Type>("type")
+        }
+    }
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.HealthDashboard)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct HealthDashboard {
+        // message fields
+        ///  An optional target platform. If not provided, the dashboard groups for the default app will be
+        ///  returned. The default app is the first element in the list of apps returned by the
+        ///  GetDashboardResponse.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.HealthDashboard.platform_target)
+        pub platform_target: ::protobuf::MessageField<super::super::platform::Platform>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.HealthDashboard.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a HealthDashboard {
+        fn default() -> &'a HealthDashboard {
+            <HealthDashboard as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl HealthDashboard {
+        pub fn new() -> HealthDashboard {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::platform::Platform>(
+                "platform_target",
+                |m: &HealthDashboard| { &m.platform_target },
+                |m: &mut HealthDashboard| { &mut m.platform_target },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<HealthDashboard>(
+                "DashboardIdentifier.HealthDashboard",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for HealthDashboard {
+        const NAME: &'static str = "HealthDashboard";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.platform_target)?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.platform_target.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.platform_target.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> HealthDashboard {
+            HealthDashboard::new()
+        }
+
+        fn clear(&mut self) {
+            self.platform_target.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static HealthDashboard {
+            static instance: HealthDashboard = HealthDashboard {
+                platform_target: ::protobuf::MessageField::none(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for HealthDashboard {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("DashboardIdentifier.HealthDashboard").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for HealthDashboard {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for HealthDashboard {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.CustomDashboard)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct CustomDashboard {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.CustomDashboard.id)
+        pub id: ::std::string::String,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.CustomDashboard.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a CustomDashboard {
+        fn default() -> &'a CustomDashboard {
+            <CustomDashboard as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl CustomDashboard {
+        pub fn new() -> CustomDashboard {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "id",
+                |m: &CustomDashboard| { &m.id },
+                |m: &mut CustomDashboard| { &mut m.id },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<CustomDashboard>(
+                "DashboardIdentifier.CustomDashboard",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for CustomDashboard {
+        const NAME: &'static str = "CustomDashboard";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.id = is.read_string()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if !self.id.is_empty() {
+                my_size += ::protobuf::rt::string_size(1, &self.id);
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if !self.id.is_empty() {
+                os.write_string(1, &self.id)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> CustomDashboard {
+            CustomDashboard::new()
+        }
+
+        fn clear(&mut self) {
+            self.id.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static CustomDashboard {
+            static instance: CustomDashboard = CustomDashboard {
+                id: ::std::string::String::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for CustomDashboard {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("DashboardIdentifier.CustomDashboard").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for CustomDashboard {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for CustomDashboard {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.GetDashboardRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct GetDashboardRequest {
+    // message fields
+    ///  The identifier of the dashboard to fetch.
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.GetDashboardRequest.id)
+    pub id: ::protobuf::MessageField<DashboardIdentifier>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.GetDashboardRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a GetDashboardRequest {
+    fn default() -> &'a GetDashboardRequest {
+        <GetDashboardRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl GetDashboardRequest {
+    pub fn new() -> GetDashboardRequest {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, DashboardIdentifier>(
+            "id",
+            |m: &GetDashboardRequest| { &m.id },
+            |m: &mut GetDashboardRequest| { &mut m.id },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<GetDashboardRequest>(
+            "GetDashboardRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for GetDashboardRequest {
+    const NAME: &'static str = "GetDashboardRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.id)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.id.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.id.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> GetDashboardRequest {
+        GetDashboardRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.id.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static GetDashboardRequest {
+        static instance: GetDashboardRequest = GetDashboardRequest {
+            id: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for GetDashboardRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("GetDashboardRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for GetDashboardRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for GetDashboardRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.GetDashboardResponse)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct GetDashboardResponse {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.GetDashboardResponse.dashboard)
+    pub dashboard: ::protobuf::MessageField<Dashboard>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.GetDashboardResponse.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a GetDashboardResponse {
+    fn default() -> &'a GetDashboardResponse {
+        <GetDashboardResponse as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl GetDashboardResponse {
+    pub fn new() -> GetDashboardResponse {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, Dashboard>(
+            "dashboard",
+            |m: &GetDashboardResponse| { &m.dashboard },
+            |m: &mut GetDashboardResponse| { &mut m.dashboard },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<GetDashboardResponse>(
+            "GetDashboardResponse",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for GetDashboardResponse {
+    const NAME: &'static str = "GetDashboardResponse";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                42 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.dashboard)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.dashboard.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.dashboard.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> GetDashboardResponse {
+        GetDashboardResponse::new()
+    }
+
+    fn clear(&mut self) {
+        self.dashboard.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static GetDashboardResponse {
+        static instance: GetDashboardResponse = GetDashboardResponse {
+            dashboard: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for GetDashboardResponse {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("GetDashboardResponse").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for GetDashboardResponse {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for GetDashboardResponse {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.Dashboard)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct Dashboard {
+    // message oneof groups
+    pub type_: ::std::option::Option<dashboard::Type>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.Dashboard.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a Dashboard {
+    fn default() -> &'a Dashboard {
+        <Dashboard as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl Dashboard {
+    pub fn new() -> Dashboard {
+        ::std::default::Default::default()
+    }
+
+    // .bitdrift.public.unary.dashboards.v1.Dashboard.HealthDashboard health_dashboard = 2;
+
+    pub fn health_dashboard(&self) -> &dashboard::HealthDashboard {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard::Type::HealthDashboard(ref v)) => v,
+            _ => <dashboard::HealthDashboard as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_health_dashboard(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_health_dashboard(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard::Type::HealthDashboard(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_health_dashboard(&mut self, v: dashboard::HealthDashboard) {
+        self.type_ = ::std::option::Option::Some(dashboard::Type::HealthDashboard(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_health_dashboard(&mut self) -> &mut dashboard::HealthDashboard {
+        if let ::std::option::Option::Some(dashboard::Type::HealthDashboard(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(dashboard::Type::HealthDashboard(dashboard::HealthDashboard::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(dashboard::Type::HealthDashboard(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_health_dashboard(&mut self) -> dashboard::HealthDashboard {
+        if self.has_health_dashboard() {
+            match self.type_.take() {
+                ::std::option::Option::Some(dashboard::Type::HealthDashboard(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            dashboard::HealthDashboard::new()
+        }
+    }
+
+    // .bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard custom_dashboard = 3;
+
+    pub fn custom_dashboard(&self) -> &dashboard::CustomDashboard {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard::Type::CustomDashboard(ref v)) => v,
+            _ => <dashboard::CustomDashboard as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_custom_dashboard(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_custom_dashboard(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard::Type::CustomDashboard(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_custom_dashboard(&mut self, v: dashboard::CustomDashboard) {
+        self.type_ = ::std::option::Option::Some(dashboard::Type::CustomDashboard(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_custom_dashboard(&mut self) -> &mut dashboard::CustomDashboard {
+        if let ::std::option::Option::Some(dashboard::Type::CustomDashboard(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(dashboard::Type::CustomDashboard(dashboard::CustomDashboard::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(dashboard::Type::CustomDashboard(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_custom_dashboard(&mut self) -> dashboard::CustomDashboard {
+        if self.has_custom_dashboard() {
+            match self.type_.take() {
+                ::std::option::Option::Some(dashboard::Type::CustomDashboard(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            dashboard::CustomDashboard::new()
+        }
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, dashboard::HealthDashboard>(
+            "health_dashboard",
+            Dashboard::has_health_dashboard,
+            Dashboard::health_dashboard,
+            Dashboard::mut_health_dashboard,
+            Dashboard::set_health_dashboard,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, dashboard::CustomDashboard>(
+            "custom_dashboard",
+            Dashboard::has_custom_dashboard,
+            Dashboard::custom_dashboard,
+            Dashboard::mut_custom_dashboard,
+            Dashboard::set_custom_dashboard,
+        ));
+        oneofs.push(dashboard::Type::generated_oneof_descriptor_data());
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Dashboard>(
+            "Dashboard",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for Dashboard {
+    const NAME: &'static str = "Dashboard";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                18 => {
+                    self.type_ = ::std::option::Option::Some(dashboard::Type::HealthDashboard(is.read_message()?));
+                },
+                26 => {
+                    self.type_ = ::std::option::Option::Some(dashboard::Type::CustomDashboard(is.read_message()?));
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let ::std::option::Option::Some(ref v) = self.type_ {
+            match v {
+                &dashboard::Type::HealthDashboard(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &dashboard::Type::CustomDashboard(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+            };
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let ::std::option::Option::Some(ref v) = self.type_ {
+            match v {
+                &dashboard::Type::HealthDashboard(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                },
+                &dashboard::Type::CustomDashboard(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                },
+            };
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> Dashboard {
+        Dashboard::new()
+    }
+
+    fn clear(&mut self) {
+        self.type_ = ::std::option::Option::None;
+        self.type_ = ::std::option::Option::None;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static Dashboard {
+        static instance: Dashboard = Dashboard {
+            type_: ::std::option::Option::None,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for Dashboard {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("Dashboard").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for Dashboard {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for Dashboard {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `Dashboard`
+pub mod dashboard {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift.public.unary.dashboards.v1.Dashboard.type)
+    pub enum Type {
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.Dashboard.health_dashboard)
+        HealthDashboard(HealthDashboard),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.Dashboard.custom_dashboard)
+        CustomDashboard(CustomDashboard),
+    }
+
+    impl ::protobuf::Oneof for Type {
+    }
+
+    impl ::protobuf::OneofFull for Type {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::Dashboard as ::protobuf::MessageFull>::descriptor().oneof_by_name("type").unwrap()).clone()
+        }
+    }
+
+    impl Type {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Type>("type")
+        }
+    }
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.Dashboard.HealthDashboard)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct HealthDashboard {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.HealthDashboard.id)
+        pub id: ::protobuf::MessageField<super::dashboard_identifier::HealthDashboard>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.HealthDashboard.dashboard_group)
+        pub dashboard_group: ::std::vec::Vec<super::DashboardGroup>,
+        ///  The possible platforms for this dashboard.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.HealthDashboard.platforms)
+        pub platforms: ::std::vec::Vec<super::super::platform::Platform>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.Dashboard.HealthDashboard.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a HealthDashboard {
+        fn default() -> &'a HealthDashboard {
+            <HealthDashboard as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl HealthDashboard {
+        pub fn new() -> HealthDashboard {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(3);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::dashboard_identifier::HealthDashboard>(
+                "id",
+                |m: &HealthDashboard| { &m.id },
+                |m: &mut HealthDashboard| { &mut m.id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "dashboard_group",
+                |m: &HealthDashboard| { &m.dashboard_group },
+                |m: &mut HealthDashboard| { &mut m.dashboard_group },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "platforms",
+                |m: &HealthDashboard| { &m.platforms },
+                |m: &mut HealthDashboard| { &mut m.platforms },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<HealthDashboard>(
+                "Dashboard.HealthDashboard",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for HealthDashboard {
+        const NAME: &'static str = "HealthDashboard";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.id)?;
+                    },
+                    18 => {
+                        self.dashboard_group.push(is.read_message()?);
+                    },
+                    26 => {
+                        self.platforms.push(is.read_message()?);
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.id.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            for value in &self.dashboard_group {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            for value in &self.platforms {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.id.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            }
+            for v in &self.dashboard_group {
+                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+            };
+            for v in &self.platforms {
+                ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+            };
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> HealthDashboard {
+            HealthDashboard::new()
+        }
+
+        fn clear(&mut self) {
+            self.id.clear();
+            self.dashboard_group.clear();
+            self.platforms.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static HealthDashboard {
+            static instance: HealthDashboard = HealthDashboard {
+                id: ::protobuf::MessageField::none(),
+                dashboard_group: ::std::vec::Vec::new(),
+                platforms: ::std::vec::Vec::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for HealthDashboard {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("Dashboard.HealthDashboard").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for HealthDashboard {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for HealthDashboard {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct CustomDashboard {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.id)
+        pub id: ::std::string::String,
+        ///  The display title for this dashboard.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.title)
+        pub title: ::std::option::Option<::std::string::String>,
+        ///  The last time this dashboard was viewed by the current user.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.current_user_last_viewed)
+        pub current_user_last_viewed: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.tabs)
+        pub tabs: ::std::vec::Vec<custom_dashboard::DashboardTab>,
+        ///  The variables that can be used to filter the dashboard. These variables are the intersection
+        ///  of all common variables across the workflows that the charts belong to.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.common_variables)
+        pub common_variables: ::std::vec::Vec<super::DashboardVariable>,
+        ///  The owner of the dashboard. This refers to the user who created the dashboard.
+        ///  A dashboard may be editable by multiple users, if editing permissions are shared with an individual, team, or org.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.owner)
+        pub owner: ::protobuf::MessageField<super::super::common::Owner>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.current_user_favorited)
+        pub current_user_favorited: bool,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.current_user_can_edit)
+        pub current_user_can_edit: ::protobuf::EnumOrUnknown<super::super::common::Permission>,
+        ///  The variables that are applied to every chart referenced in this dashboard.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.dashboard_variables)
+        pub dashboard_variables: ::std::vec::Vec<super::super::workflow::group_by::Value>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a CustomDashboard {
+        fn default() -> &'a CustomDashboard {
+            <CustomDashboard as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl CustomDashboard {
+        pub fn new() -> CustomDashboard {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(9);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "id",
+                |m: &CustomDashboard| { &m.id },
+                |m: &mut CustomDashboard| { &mut m.id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "title",
+                |m: &CustomDashboard| { &m.title },
+                |m: &mut CustomDashboard| { &mut m.title },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::timestamp::Timestamp>(
+                "current_user_last_viewed",
+                |m: &CustomDashboard| { &m.current_user_last_viewed },
+                |m: &mut CustomDashboard| { &mut m.current_user_last_viewed },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "tabs",
+                |m: &CustomDashboard| { &m.tabs },
+                |m: &mut CustomDashboard| { &mut m.tabs },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "common_variables",
+                |m: &CustomDashboard| { &m.common_variables },
+                |m: &mut CustomDashboard| { &mut m.common_variables },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::common::Owner>(
+                "owner",
+                |m: &CustomDashboard| { &m.owner },
+                |m: &mut CustomDashboard| { &mut m.owner },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "current_user_favorited",
+                |m: &CustomDashboard| { &m.current_user_favorited },
+                |m: &mut CustomDashboard| { &mut m.current_user_favorited },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "current_user_can_edit",
+                |m: &CustomDashboard| { &m.current_user_can_edit },
+                |m: &mut CustomDashboard| { &mut m.current_user_can_edit },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "dashboard_variables",
+                |m: &CustomDashboard| { &m.dashboard_variables },
+                |m: &mut CustomDashboard| { &mut m.dashboard_variables },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<CustomDashboard>(
+                "Dashboard.CustomDashboard",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for CustomDashboard {
+        const NAME: &'static str = "CustomDashboard";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.id = is.read_string()?;
+                    },
+                    58 => {
+                        self.title = ::std::option::Option::Some(is.read_string()?);
+                    },
+                    66 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.current_user_last_viewed)?;
+                    },
+                    18 => {
+                        self.tabs.push(is.read_message()?);
+                    },
+                    26 => {
+                        self.common_variables.push(is.read_message()?);
+                    },
+                    34 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.owner)?;
+                    },
+                    40 => {
+                        self.current_user_favorited = is.read_bool()?;
+                    },
+                    48 => {
+                        self.current_user_can_edit = is.read_enum_or_unknown()?;
+                    },
+                    74 => {
+                        self.dashboard_variables.push(is.read_message()?);
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if !self.id.is_empty() {
+                my_size += ::protobuf::rt::string_size(1, &self.id);
+            }
+            if let Some(v) = self.title.as_ref() {
+                my_size += ::protobuf::rt::string_size(7, &v);
+            }
+            if let Some(v) = self.current_user_last_viewed.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            for value in &self.tabs {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            for value in &self.common_variables {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            if let Some(v) = self.owner.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            if self.current_user_favorited != false {
+                my_size += 1 + 1;
+            }
+            if self.current_user_can_edit != ::protobuf::EnumOrUnknown::new(super::super::common::Permission::UNKNOWN) {
+                my_size += ::protobuf::rt::int32_size(6, self.current_user_can_edit.value());
+            }
+            for value in &self.dashboard_variables {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if !self.id.is_empty() {
+                os.write_string(1, &self.id)?;
+            }
+            if let Some(v) = self.title.as_ref() {
+                os.write_string(7, v)?;
+            }
+            if let Some(v) = self.current_user_last_viewed.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(8, v, os)?;
+            }
+            for v in &self.tabs {
+                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+            };
+            for v in &self.common_variables {
+                ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+            };
+            if let Some(v) = self.owner.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+            }
+            if self.current_user_favorited != false {
+                os.write_bool(5, self.current_user_favorited)?;
+            }
+            if self.current_user_can_edit != ::protobuf::EnumOrUnknown::new(super::super::common::Permission::UNKNOWN) {
+                os.write_enum(6, ::protobuf::EnumOrUnknown::value(&self.current_user_can_edit))?;
+            }
+            for v in &self.dashboard_variables {
+                ::protobuf::rt::write_message_field_with_cached_size(9, v, os)?;
+            };
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> CustomDashboard {
+            CustomDashboard::new()
+        }
+
+        fn clear(&mut self) {
+            self.id.clear();
+            self.title = ::std::option::Option::None;
+            self.current_user_last_viewed.clear();
+            self.tabs.clear();
+            self.common_variables.clear();
+            self.owner.clear();
+            self.current_user_favorited = false;
+            self.current_user_can_edit = ::protobuf::EnumOrUnknown::new(super::super::common::Permission::UNKNOWN);
+            self.dashboard_variables.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static CustomDashboard {
+            static instance: CustomDashboard = CustomDashboard {
+                id: ::std::string::String::new(),
+                title: ::std::option::Option::None,
+                current_user_last_viewed: ::protobuf::MessageField::none(),
+                tabs: ::std::vec::Vec::new(),
+                common_variables: ::std::vec::Vec::new(),
+                owner: ::protobuf::MessageField::none(),
+                current_user_favorited: false,
+                current_user_can_edit: ::protobuf::EnumOrUnknown::from_i32(0),
+                dashboard_variables: ::std::vec::Vec::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for CustomDashboard {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("Dashboard.CustomDashboard").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for CustomDashboard {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for CustomDashboard {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `CustomDashboard`
+    pub mod custom_dashboard {
+        // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct DashboardTab {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.id)
+            pub id: ::std::string::String,
+            // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.name)
+            pub name: ::std::string::String,
+            ///  All the charts that should be displayed on this dashboard.
+            // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.charts)
+            pub charts: ::std::vec::Vec<dashboard_tab::Chart>,
+            ///  Stylistic components that should be displayed alongside the charts in this group.
+            ///  These components can be used to add dividers, text, or other stylistic elements to the dashboard.
+            // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.components)
+            pub components: ::std::vec::Vec<super::super::DashboardStylisticComponent>,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a DashboardTab {
+            fn default() -> &'a DashboardTab {
+                <DashboardTab as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl DashboardTab {
+            pub fn new() -> DashboardTab {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(4);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "id",
+                    |m: &DashboardTab| { &m.id },
+                    |m: &mut DashboardTab| { &mut m.id },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "name",
+                    |m: &DashboardTab| { &m.name },
+                    |m: &mut DashboardTab| { &mut m.name },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                    "charts",
+                    |m: &DashboardTab| { &m.charts },
+                    |m: &mut DashboardTab| { &mut m.charts },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                    "components",
+                    |m: &DashboardTab| { &m.components },
+                    |m: &mut DashboardTab| { &mut m.components },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DashboardTab>(
+                    "Dashboard.CustomDashboard.DashboardTab",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for DashboardTab {
+            const NAME: &'static str = "DashboardTab";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.id = is.read_string()?;
+                        },
+                        18 => {
+                            self.name = is.read_string()?;
+                        },
+                        26 => {
+                            self.charts.push(is.read_message()?);
+                        },
+                        34 => {
+                            self.components.push(is.read_message()?);
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if !self.id.is_empty() {
+                    my_size += ::protobuf::rt::string_size(1, &self.id);
+                }
+                if !self.name.is_empty() {
+                    my_size += ::protobuf::rt::string_size(2, &self.name);
+                }
+                for value in &self.charts {
+                    let len = value.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                };
+                for value in &self.components {
+                    let len = value.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                };
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if !self.id.is_empty() {
+                    os.write_string(1, &self.id)?;
+                }
+                if !self.name.is_empty() {
+                    os.write_string(2, &self.name)?;
+                }
+                for v in &self.charts {
+                    ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                };
+                for v in &self.components {
+                    ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+                };
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> DashboardTab {
+                DashboardTab::new()
+            }
+
+            fn clear(&mut self) {
+                self.id.clear();
+                self.name.clear();
+                self.charts.clear();
+                self.components.clear();
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static DashboardTab {
+                static instance: DashboardTab = DashboardTab {
+                    id: ::std::string::String::new(),
+                    name: ::std::string::String::new(),
+                    charts: ::std::vec::Vec::new(),
+                    components: ::std::vec::Vec::new(),
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for DashboardTab {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Dashboard.CustomDashboard.DashboardTab").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for DashboardTab {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for DashboardTab {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+
+        /// Nested message and enums of message `DashboardTab`
+        pub mod dashboard_tab {
+            // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.Chart)
+            #[derive(PartialEq,Clone,Default,Debug)]
+            pub struct Chart {
+                // message fields
+                // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.Chart.id)
+                pub id: ::std::string::String,
+                // message oneof groups
+                pub resolved_chart: ::std::option::Option<chart::Resolved_chart>,
+                // special fields
+                // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.Chart.special_fields)
+                pub special_fields: ::protobuf::SpecialFields,
+            }
+
+            impl<'a> ::std::default::Default for &'a Chart {
+                fn default() -> &'a Chart {
+                    <Chart as ::protobuf::Message>::default_instance()
+                }
+            }
+
+            impl Chart {
+                pub fn new() -> Chart {
+                    ::std::default::Default::default()
+                }
+
+                // .bitdrift.public.unary.dashboards.v1.ResolvedChart chart = 2;
+
+                pub fn chart(&self) -> &super::super::super::ResolvedChart {
+                    match self.resolved_chart {
+                        ::std::option::Option::Some(chart::Resolved_chart::Chart(ref v)) => v,
+                        _ => <super::super::super::ResolvedChart as ::protobuf::Message>::default_instance(),
+                    }
+                }
+
+                pub fn clear_chart(&mut self) {
+                    self.resolved_chart = ::std::option::Option::None;
+                }
+
+                pub fn has_chart(&self) -> bool {
+                    match self.resolved_chart {
+                        ::std::option::Option::Some(chart::Resolved_chart::Chart(..)) => true,
+                        _ => false,
+                    }
+                }
+
+                // Param is passed by value, moved
+                pub fn set_chart(&mut self, v: super::super::super::ResolvedChart) {
+                    self.resolved_chart = ::std::option::Option::Some(chart::Resolved_chart::Chart(v))
+                }
+
+                // Mutable pointer to the field.
+                pub fn mut_chart(&mut self) -> &mut super::super::super::ResolvedChart {
+                    if let ::std::option::Option::Some(chart::Resolved_chart::Chart(_)) = self.resolved_chart {
+                    } else {
+                        self.resolved_chart = ::std::option::Option::Some(chart::Resolved_chart::Chart(super::super::super::ResolvedChart::new()));
+                    }
+                    match self.resolved_chart {
+                        ::std::option::Option::Some(chart::Resolved_chart::Chart(ref mut v)) => v,
+                        _ => panic!(),
+                    }
+                }
+
+                // Take field
+                pub fn take_chart(&mut self) -> super::super::super::ResolvedChart {
+                    if self.has_chart() {
+                        match self.resolved_chart.take() {
+                            ::std::option::Option::Some(chart::Resolved_chart::Chart(v)) => v,
+                            _ => panic!(),
+                        }
+                    } else {
+                        super::super::super::ResolvedChart::new()
+                    }
+                }
+
+                // bool chart_not_found = 3;
+
+                pub fn chart_not_found(&self) -> bool {
+                    match self.resolved_chart {
+                        ::std::option::Option::Some(chart::Resolved_chart::ChartNotFound(v)) => v,
+                        _ => false,
+                    }
+                }
+
+                pub fn clear_chart_not_found(&mut self) {
+                    self.resolved_chart = ::std::option::Option::None;
+                }
+
+                pub fn has_chart_not_found(&self) -> bool {
+                    match self.resolved_chart {
+                        ::std::option::Option::Some(chart::Resolved_chart::ChartNotFound(..)) => true,
+                        _ => false,
+                    }
+                }
+
+                // Param is passed by value, moved
+                pub fn set_chart_not_found(&mut self, v: bool) {
+                    self.resolved_chart = ::std::option::Option::Some(chart::Resolved_chart::ChartNotFound(v))
+                }
+
+                pub(in super::super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                    let mut fields = ::std::vec::Vec::with_capacity(3);
+                    let mut oneofs = ::std::vec::Vec::with_capacity(1);
+                    fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                        "id",
+                        |m: &Chart| { &m.id },
+                        |m: &mut Chart| { &mut m.id },
+                    ));
+                    fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::super::super::ResolvedChart>(
+                        "chart",
+                        Chart::has_chart,
+                        Chart::chart,
+                        Chart::mut_chart,
+                        Chart::set_chart,
+                    ));
+                    fields.push(::protobuf::reflect::rt::v2::make_oneof_copy_has_get_set_simpler_accessors::<_, _>(
+                        "chart_not_found",
+                        Chart::has_chart_not_found,
+                        Chart::chart_not_found,
+                        Chart::set_chart_not_found,
+                    ));
+                    oneofs.push(chart::Resolved_chart::generated_oneof_descriptor_data());
+                    ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Chart>(
+                        "Dashboard.CustomDashboard.DashboardTab.Chart",
+                        fields,
+                        oneofs,
+                    )
+                }
+            }
+
+            impl ::protobuf::Message for Chart {
+                const NAME: &'static str = "Chart";
+
+                fn is_initialized(&self) -> bool {
+                    true
+                }
+
+                fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                    while let Some(tag) = is.read_raw_tag_or_eof()? {
+                        match tag {
+                            10 => {
+                                self.id = is.read_string()?;
+                            },
+                            18 => {
+                                self.resolved_chart = ::std::option::Option::Some(chart::Resolved_chart::Chart(is.read_message()?));
+                            },
+                            24 => {
+                                self.resolved_chart = ::std::option::Option::Some(chart::Resolved_chart::ChartNotFound(is.read_bool()?));
+                            },
+                            tag => {
+                                ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                            },
+                        };
+                    }
+                    ::std::result::Result::Ok(())
+                }
+
+                // Compute sizes of nested messages
+                #[allow(unused_variables)]
+                fn compute_size(&self) -> u64 {
+                    let mut my_size = 0;
+                    if !self.id.is_empty() {
+                        my_size += ::protobuf::rt::string_size(1, &self.id);
+                    }
+                    if let ::std::option::Option::Some(ref v) = self.resolved_chart {
+                        match v {
+                            &chart::Resolved_chart::Chart(ref v) => {
+                                let len = v.compute_size();
+                                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                            },
+                            &chart::Resolved_chart::ChartNotFound(v) => {
+                                my_size += 1 + 1;
+                            },
+                        };
+                    }
+                    my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                    self.special_fields.cached_size().set(my_size as u32);
+                    my_size
+                }
+
+                fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                    if !self.id.is_empty() {
+                        os.write_string(1, &self.id)?;
+                    }
+                    if let ::std::option::Option::Some(ref v) = self.resolved_chart {
+                        match v {
+                            &chart::Resolved_chart::Chart(ref v) => {
+                                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                            },
+                            &chart::Resolved_chart::ChartNotFound(v) => {
+                                os.write_bool(3, v)?;
+                            },
+                        };
+                    }
+                    os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                    ::std::result::Result::Ok(())
+                }
+
+                fn special_fields(&self) -> &::protobuf::SpecialFields {
+                    &self.special_fields
+                }
+
+                fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                    &mut self.special_fields
+                }
+
+                fn new() -> Chart {
+                    Chart::new()
+                }
+
+                fn clear(&mut self) {
+                    self.id.clear();
+                    self.resolved_chart = ::std::option::Option::None;
+                    self.resolved_chart = ::std::option::Option::None;
+                    self.special_fields.clear();
+                }
+
+                fn default_instance() -> &'static Chart {
+                    static instance: Chart = Chart {
+                        id: ::std::string::String::new(),
+                        resolved_chart: ::std::option::Option::None,
+                        special_fields: ::protobuf::SpecialFields::new(),
+                    };
+                    &instance
+                }
+            }
+
+            impl ::protobuf::MessageFull for Chart {
+                fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                    descriptor.get(|| super::super::super::file_descriptor().message_by_package_relative_name("Dashboard.CustomDashboard.DashboardTab.Chart").unwrap()).clone()
+                }
+            }
+
+            impl ::std::fmt::Display for Chart {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    ::protobuf::text_format::fmt(self, f)
+                }
+            }
+
+            impl ::protobuf::reflect::ProtobufValue for Chart {
+                type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+            }
+
+            /// Nested message and enums of message `Chart`
+            pub mod chart {
+
+                #[derive(Clone,PartialEq,Debug)]
+                // @@protoc_insertion_point(oneof:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.Chart.resolved_chart)
+                pub enum Resolved_chart {
+                    // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.Chart.chart)
+                    Chart(super::super::super::super::ResolvedChart),
+                    // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.Chart.chart_not_found)
+                    ChartNotFound(bool),
+                }
+
+                impl ::protobuf::Oneof for Resolved_chart {
+                }
+
+                impl ::protobuf::OneofFull for Resolved_chart {
+                    fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+                        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+                        descriptor.get(|| <super::Chart as ::protobuf::MessageFull>::descriptor().oneof_by_name("resolved_chart").unwrap()).clone()
+                    }
+                }
+
+                impl Resolved_chart {
+                    pub(in super::super::super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+                        ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Resolved_chart>("resolved_chart")
+                    }
+                }
+            }
+        }
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct ListDashboardsRequest {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.pagination)
+    pub pagination: ::protobuf::MessageField<super::common::Pagination>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.filters)
+    pub filters: ::protobuf::MessageField<list_dashboards_request::Filters>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.sort)
+    pub sort: ::std::vec::Vec<list_dashboards_request::Sort>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a ListDashboardsRequest {
+    fn default() -> &'a ListDashboardsRequest {
+        <ListDashboardsRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl ListDashboardsRequest {
+    pub fn new() -> ListDashboardsRequest {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::common::Pagination>(
+            "pagination",
+            |m: &ListDashboardsRequest| { &m.pagination },
+            |m: &mut ListDashboardsRequest| { &mut m.pagination },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, list_dashboards_request::Filters>(
+            "filters",
+            |m: &ListDashboardsRequest| { &m.filters },
+            |m: &mut ListDashboardsRequest| { &mut m.filters },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "sort",
+            |m: &ListDashboardsRequest| { &m.sort },
+            |m: &mut ListDashboardsRequest| { &mut m.sort },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ListDashboardsRequest>(
+            "ListDashboardsRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for ListDashboardsRequest {
+    const NAME: &'static str = "ListDashboardsRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.pagination)?;
+                },
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.filters)?;
+                },
+                34 => {
+                    self.sort.push(is.read_message()?);
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.pagination.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let Some(v) = self.filters.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        for value in &self.sort {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.pagination.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        }
+        if let Some(v) = self.filters.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        for v in &self.sort {
+            ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+        };
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> ListDashboardsRequest {
+        ListDashboardsRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.pagination.clear();
+        self.filters.clear();
+        self.sort.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static ListDashboardsRequest {
+        static instance: ListDashboardsRequest = ListDashboardsRequest {
+            pagination: ::protobuf::MessageField::none(),
+            filters: ::protobuf::MessageField::none(),
+            sort: ::std::vec::Vec::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for ListDashboardsRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("ListDashboardsRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for ListDashboardsRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for ListDashboardsRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `ListDashboardsRequest`
+pub mod list_dashboards_request {
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Filters)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Filters {
+        // message fields
+        ///  Filters dashboards by access permission levels for a specified user.
+        ///  For example, callers can request dashboards where a user has EDIT access.
+        ///  Callers can also exclude dashboards where a user has OWNER access.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Filters.access)
+        pub access: ::protobuf::MessageField<super::super::access::AccessPermissionQuery>,
+        ///  A free text entry to filter dashboards by name or other metadata, including names of charts contained within the dashboard.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Filters.free_entry)
+        pub free_entry: ::std::option::Option<::std::string::String>,
+        ///  Whether to filter dashboards by those that are marked as favorites.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Filters.favorites)
+        pub favorites: ::std::option::Option<bool>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Filters.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Filters {
+        fn default() -> &'a Filters {
+            <Filters as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Filters {
+        pub fn new() -> Filters {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(3);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::access::AccessPermissionQuery>(
+                "access",
+                |m: &Filters| { &m.access },
+                |m: &mut Filters| { &mut m.access },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "free_entry",
+                |m: &Filters| { &m.free_entry },
+                |m: &mut Filters| { &mut m.free_entry },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "favorites",
+                |m: &Filters| { &m.favorites },
+                |m: &mut Filters| { &mut m.favorites },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Filters>(
+                "ListDashboardsRequest.Filters",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Filters {
+        const NAME: &'static str = "Filters";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.access)?;
+                    },
+                    18 => {
+                        self.free_entry = ::std::option::Option::Some(is.read_string()?);
+                    },
+                    24 => {
+                        self.favorites = ::std::option::Option::Some(is.read_bool()?);
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.access.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            if let Some(v) = self.free_entry.as_ref() {
+                my_size += ::protobuf::rt::string_size(2, &v);
+            }
+            if let Some(v) = self.favorites {
+                my_size += 1 + 1;
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.access.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            }
+            if let Some(v) = self.free_entry.as_ref() {
+                os.write_string(2, v)?;
+            }
+            if let Some(v) = self.favorites {
+                os.write_bool(3, v)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Filters {
+            Filters::new()
+        }
+
+        fn clear(&mut self) {
+            self.access.clear();
+            self.free_entry = ::std::option::Option::None;
+            self.favorites = ::std::option::Option::None;
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Filters {
+            static instance: Filters = Filters {
+                access: ::protobuf::MessageField::none(),
+                free_entry: ::std::option::Option::None,
+                favorites: ::std::option::Option::None,
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Filters {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("ListDashboardsRequest.Filters").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Filters {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Filters {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Sort)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Sort {
+        // message fields
+        ///  Selects which caller-visible dashboard attribute to order by.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Sort.key)
+        pub key: ::protobuf::EnumOrUnknown<sort::SortKey>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Sort.direction)
+        pub direction: ::protobuf::EnumOrUnknown<super::super::common::SortDirection>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Sort.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Sort {
+        fn default() -> &'a Sort {
+            <Sort as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Sort {
+        pub fn new() -> Sort {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "key",
+                |m: &Sort| { &m.key },
+                |m: &mut Sort| { &mut m.key },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "direction",
+                |m: &Sort| { &m.direction },
+                |m: &mut Sort| { &mut m.direction },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Sort>(
+                "ListDashboardsRequest.Sort",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Sort {
+        const NAME: &'static str = "Sort";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    8 => {
+                        self.key = is.read_enum_or_unknown()?;
+                    },
+                    16 => {
+                        self.direction = is.read_enum_or_unknown()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if self.key != ::protobuf::EnumOrUnknown::new(sort::SortKey::SORT_KEY_UNSPECIFIED) {
+                my_size += ::protobuf::rt::int32_size(1, self.key.value());
+            }
+            if self.direction != ::protobuf::EnumOrUnknown::new(super::super::common::SortDirection::ASCENDING) {
+                my_size += ::protobuf::rt::int32_size(2, self.direction.value());
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if self.key != ::protobuf::EnumOrUnknown::new(sort::SortKey::SORT_KEY_UNSPECIFIED) {
+                os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.key))?;
+            }
+            if self.direction != ::protobuf::EnumOrUnknown::new(super::super::common::SortDirection::ASCENDING) {
+                os.write_enum(2, ::protobuf::EnumOrUnknown::value(&self.direction))?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Sort {
+            Sort::new()
+        }
+
+        fn clear(&mut self) {
+            self.key = ::protobuf::EnumOrUnknown::new(sort::SortKey::SORT_KEY_UNSPECIFIED);
+            self.direction = ::protobuf::EnumOrUnknown::new(super::super::common::SortDirection::ASCENDING);
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Sort {
+            static instance: Sort = Sort {
+                key: ::protobuf::EnumOrUnknown::from_i32(0),
+                direction: ::protobuf::EnumOrUnknown::from_i32(0),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Sort {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("ListDashboardsRequest.Sort").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Sort {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Sort {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `Sort`
+    pub mod sort {
+        #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
+        // @@protoc_insertion_point(enum:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Sort.SortKey)
+        pub enum SortKey {
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Sort.SortKey.SORT_KEY_UNSPECIFIED)
+            SORT_KEY_UNSPECIFIED = 0,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Sort.SortKey.DASHBOARD_NAME)
+            DASHBOARD_NAME = 1,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Sort.SortKey.OWNER_NAME)
+            OWNER_NAME = 2,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Sort.SortKey.LAST_VIEWED)
+            LAST_VIEWED = 3,
+        }
+
+        impl ::protobuf::Enum for SortKey {
+            const NAME: &'static str = "SortKey";
+
+            fn value(&self) -> i32 {
+                *self as i32
+            }
+
+            fn from_i32(value: i32) -> ::std::option::Option<SortKey> {
+                match value {
+                    0 => ::std::option::Option::Some(SortKey::SORT_KEY_UNSPECIFIED),
+                    1 => ::std::option::Option::Some(SortKey::DASHBOARD_NAME),
+                    2 => ::std::option::Option::Some(SortKey::OWNER_NAME),
+                    3 => ::std::option::Option::Some(SortKey::LAST_VIEWED),
+                    _ => ::std::option::Option::None
+                }
+            }
+
+            fn from_str(str: &str) -> ::std::option::Option<SortKey> {
+                match str {
+                    "SORT_KEY_UNSPECIFIED" => ::std::option::Option::Some(SortKey::SORT_KEY_UNSPECIFIED),
+                    "DASHBOARD_NAME" => ::std::option::Option::Some(SortKey::DASHBOARD_NAME),
+                    "OWNER_NAME" => ::std::option::Option::Some(SortKey::OWNER_NAME),
+                    "LAST_VIEWED" => ::std::option::Option::Some(SortKey::LAST_VIEWED),
+                    _ => ::std::option::Option::None
+                }
+            }
+
+            const VALUES: &'static [SortKey] = &[
+                SortKey::SORT_KEY_UNSPECIFIED,
+                SortKey::DASHBOARD_NAME,
+                SortKey::OWNER_NAME,
+                SortKey::LAST_VIEWED,
+            ];
+        }
+
+        impl ::protobuf::EnumFull for SortKey {
+            fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().enum_by_package_relative_name("ListDashboardsRequest.Sort.SortKey").unwrap()).clone()
+            }
+
+            fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
+                let index = *self as usize;
+                Self::enum_descriptor().value_by_index(index)
+            }
+        }
+
+        impl ::std::default::Default for SortKey {
+            fn default() -> Self {
+                SortKey::SORT_KEY_UNSPECIFIED
+            }
+        }
+
+        impl SortKey {
+            pub(in super::super) fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
+                ::protobuf::reflect::GeneratedEnumDescriptorData::new::<SortKey>("ListDashboardsRequest.Sort.SortKey")
+            }
+        }
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.ListDashboardsResponse)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct ListDashboardsResponse {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsResponse.dashboards)
+    pub dashboards: ::std::vec::Vec<Dashboard>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsResponse.total)
+    pub total: u64,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.ListDashboardsResponse.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a ListDashboardsResponse {
+    fn default() -> &'a ListDashboardsResponse {
+        <ListDashboardsResponse as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl ListDashboardsResponse {
+    pub fn new() -> ListDashboardsResponse {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "dashboards",
+            |m: &ListDashboardsResponse| { &m.dashboards },
+            |m: &mut ListDashboardsResponse| { &mut m.dashboards },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "total",
+            |m: &ListDashboardsResponse| { &m.total },
+            |m: &mut ListDashboardsResponse| { &mut m.total },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ListDashboardsResponse>(
+            "ListDashboardsResponse",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for ListDashboardsResponse {
+    const NAME: &'static str = "ListDashboardsResponse";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.dashboards.push(is.read_message()?);
+                },
+                16 => {
+                    self.total = is.read_uint64()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        for value in &self.dashboards {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        if self.total != 0 {
+            my_size += ::protobuf::rt::uint64_size(2, self.total);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        for v in &self.dashboards {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        };
+        if self.total != 0 {
+            os.write_uint64(2, self.total)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> ListDashboardsResponse {
+        ListDashboardsResponse::new()
+    }
+
+    fn clear(&mut self) {
+        self.dashboards.clear();
+        self.total = 0;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static ListDashboardsResponse {
+        static instance: ListDashboardsResponse = ListDashboardsResponse {
+            dashboards: ::std::vec::Vec::new(),
+            total: 0,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for ListDashboardsResponse {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("ListDashboardsResponse").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for ListDashboardsResponse {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for ListDashboardsResponse {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
 // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.GetWorkflowChartsRequest)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct GetWorkflowChartsRequest {
@@ -6077,12 +9073,2530 @@ impl ::protobuf::reflect::ProtobufValue for GetUniqueAppIdsResponse {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DashboardStylisticComponent {
+    // message fields
+    ///  The ID of the component. This is used to uniquely identify the component
+    ///  within the dashboard. It is not required to be globally unique, but it must
+    ///  be unique within the dashboard. Generated by the server when the component is created.
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.id)
+    pub id: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.dashboard_layout_settings)
+    pub dashboard_layout_settings: ::protobuf::MessageField<DashboardLayoutSettings>,
+    // message oneof groups
+    pub type_: ::std::option::Option<dashboard_stylistic_component::Type>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DashboardStylisticComponent {
+    fn default() -> &'a DashboardStylisticComponent {
+        <DashboardStylisticComponent as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DashboardStylisticComponent {
+    pub fn new() -> DashboardStylisticComponent {
+        ::std::default::Default::default()
+    }
+
+    // .bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.TextComponent text_component = 1;
+
+    pub fn text_component(&self) -> &dashboard_stylistic_component::TextComponent {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_stylistic_component::Type::TextComponent(ref v)) => v,
+            _ => <dashboard_stylistic_component::TextComponent as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_text_component(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_text_component(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_stylistic_component::Type::TextComponent(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_text_component(&mut self, v: dashboard_stylistic_component::TextComponent) {
+        self.type_ = ::std::option::Option::Some(dashboard_stylistic_component::Type::TextComponent(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_text_component(&mut self) -> &mut dashboard_stylistic_component::TextComponent {
+        if let ::std::option::Option::Some(dashboard_stylistic_component::Type::TextComponent(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(dashboard_stylistic_component::Type::TextComponent(dashboard_stylistic_component::TextComponent::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_stylistic_component::Type::TextComponent(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_text_component(&mut self) -> dashboard_stylistic_component::TextComponent {
+        if self.has_text_component() {
+            match self.type_.take() {
+                ::std::option::Option::Some(dashboard_stylistic_component::Type::TextComponent(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            dashboard_stylistic_component::TextComponent::new()
+        }
+    }
+
+    // .bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.Divider divider = 2;
+
+    pub fn divider(&self) -> &dashboard_stylistic_component::Divider {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_stylistic_component::Type::Divider(ref v)) => v,
+            _ => <dashboard_stylistic_component::Divider as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_divider(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_divider(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_stylistic_component::Type::Divider(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_divider(&mut self, v: dashboard_stylistic_component::Divider) {
+        self.type_ = ::std::option::Option::Some(dashboard_stylistic_component::Type::Divider(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_divider(&mut self) -> &mut dashboard_stylistic_component::Divider {
+        if let ::std::option::Option::Some(dashboard_stylistic_component::Type::Divider(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(dashboard_stylistic_component::Type::Divider(dashboard_stylistic_component::Divider::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_stylistic_component::Type::Divider(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_divider(&mut self) -> dashboard_stylistic_component::Divider {
+        if self.has_divider() {
+            match self.type_.take() {
+                ::std::option::Option::Some(dashboard_stylistic_component::Type::Divider(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            dashboard_stylistic_component::Divider::new()
+        }
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, dashboard_stylistic_component::TextComponent>(
+            "text_component",
+            DashboardStylisticComponent::has_text_component,
+            DashboardStylisticComponent::text_component,
+            DashboardStylisticComponent::mut_text_component,
+            DashboardStylisticComponent::set_text_component,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, dashboard_stylistic_component::Divider>(
+            "divider",
+            DashboardStylisticComponent::has_divider,
+            DashboardStylisticComponent::divider,
+            DashboardStylisticComponent::mut_divider,
+            DashboardStylisticComponent::set_divider,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "id",
+            |m: &DashboardStylisticComponent| { &m.id },
+            |m: &mut DashboardStylisticComponent| { &mut m.id },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, DashboardLayoutSettings>(
+            "dashboard_layout_settings",
+            |m: &DashboardStylisticComponent| { &m.dashboard_layout_settings },
+            |m: &mut DashboardStylisticComponent| { &mut m.dashboard_layout_settings },
+        ));
+        oneofs.push(dashboard_stylistic_component::Type::generated_oneof_descriptor_data());
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DashboardStylisticComponent>(
+            "DashboardStylisticComponent",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DashboardStylisticComponent {
+    const NAME: &'static str = "DashboardStylisticComponent";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.type_ = ::std::option::Option::Some(dashboard_stylistic_component::Type::TextComponent(is.read_message()?));
+                },
+                18 => {
+                    self.type_ = ::std::option::Option::Some(dashboard_stylistic_component::Type::Divider(is.read_message()?));
+                },
+                26 => {
+                    self.id = is.read_string()?;
+                },
+                34 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.dashboard_layout_settings)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.id.is_empty() {
+            my_size += ::protobuf::rt::string_size(3, &self.id);
+        }
+        if let Some(v) = self.dashboard_layout_settings.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let ::std::option::Option::Some(ref v) = self.type_ {
+            match v {
+                &dashboard_stylistic_component::Type::TextComponent(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &dashboard_stylistic_component::Type::Divider(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+            };
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.id.is_empty() {
+            os.write_string(3, &self.id)?;
+        }
+        if let Some(v) = self.dashboard_layout_settings.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+        }
+        if let ::std::option::Option::Some(ref v) = self.type_ {
+            match v {
+                &dashboard_stylistic_component::Type::TextComponent(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+                },
+                &dashboard_stylistic_component::Type::Divider(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                },
+            };
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DashboardStylisticComponent {
+        DashboardStylisticComponent::new()
+    }
+
+    fn clear(&mut self) {
+        self.type_ = ::std::option::Option::None;
+        self.type_ = ::std::option::Option::None;
+        self.id.clear();
+        self.dashboard_layout_settings.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DashboardStylisticComponent {
+        static instance: DashboardStylisticComponent = DashboardStylisticComponent {
+            id: ::std::string::String::new(),
+            dashboard_layout_settings: ::protobuf::MessageField::none(),
+            type_: ::std::option::Option::None,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DashboardStylisticComponent {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DashboardStylisticComponent").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DashboardStylisticComponent {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DashboardStylisticComponent {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `DashboardStylisticComponent`
+pub mod dashboard_stylistic_component {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.type)
+    pub enum Type {
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.text_component)
+        TextComponent(TextComponent),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.divider)
+        Divider(Divider),
+    }
+
+    impl ::protobuf::Oneof for Type {
+    }
+
+    impl ::protobuf::OneofFull for Type {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::DashboardStylisticComponent as ::protobuf::MessageFull>::descriptor().oneof_by_name("type").unwrap()).clone()
+        }
+    }
+
+    impl Type {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Type>("type")
+        }
+    }
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.Divider)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Divider {
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.Divider.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Divider {
+        fn default() -> &'a Divider {
+            <Divider as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Divider {
+        pub fn new() -> Divider {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(0);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Divider>(
+                "DashboardStylisticComponent.Divider",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Divider {
+        const NAME: &'static str = "Divider";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Divider {
+            Divider::new()
+        }
+
+        fn clear(&mut self) {
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Divider {
+            static instance: Divider = Divider {
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Divider {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("DashboardStylisticComponent.Divider").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Divider {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Divider {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.TextComponent)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct TextComponent {
+        // message fields
+        ///  The text to display in the component.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.TextComponent.text)
+        pub text: ::std::string::String,
+        ///  The variant of the text component, e.g. "h1", "h2", "p", etc.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.TextComponent.variant)
+        pub variant: ::std::string::String,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.TextComponent.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a TextComponent {
+        fn default() -> &'a TextComponent {
+            <TextComponent as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl TextComponent {
+        pub fn new() -> TextComponent {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "text",
+                |m: &TextComponent| { &m.text },
+                |m: &mut TextComponent| { &mut m.text },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "variant",
+                |m: &TextComponent| { &m.variant },
+                |m: &mut TextComponent| { &mut m.variant },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<TextComponent>(
+                "DashboardStylisticComponent.TextComponent",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for TextComponent {
+        const NAME: &'static str = "TextComponent";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.text = is.read_string()?;
+                    },
+                    18 => {
+                        self.variant = is.read_string()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if !self.text.is_empty() {
+                my_size += ::protobuf::rt::string_size(1, &self.text);
+            }
+            if !self.variant.is_empty() {
+                my_size += ::protobuf::rt::string_size(2, &self.variant);
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if !self.text.is_empty() {
+                os.write_string(1, &self.text)?;
+            }
+            if !self.variant.is_empty() {
+                os.write_string(2, &self.variant)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> TextComponent {
+            TextComponent::new()
+        }
+
+        fn clear(&mut self) {
+            self.text.clear();
+            self.variant.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static TextComponent {
+            static instance: TextComponent = TextComponent {
+                text: ::std::string::String::new(),
+                variant: ::std::string::String::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for TextComponent {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("DashboardStylisticComponent.TextComponent").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for TextComponent {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for TextComponent {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DashboardVariable)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DashboardVariable {
+    // message fields
+    ///  The earliest time this variable was continuously deployed across all workflows.
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardVariable.earliest_contiguous_deployed_time)
+    pub earliest_contiguous_deployed_time: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
+    // message oneof groups
+    pub variable_type: ::std::option::Option<dashboard_variable::Variable_type>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DashboardVariable.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DashboardVariable {
+    fn default() -> &'a DashboardVariable {
+        <DashboardVariable as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DashboardVariable {
+    pub fn new() -> DashboardVariable {
+        ::std::default::Default::default()
+    }
+
+    // .bitdrift.public.unary.workflows.v1.GroupBy.Value value = 3;
+
+    pub fn value(&self) -> &super::workflow::group_by::Value {
+        match self.variable_type {
+            ::std::option::Option::Some(dashboard_variable::Variable_type::Value(ref v)) => v,
+            _ => <super::workflow::group_by::Value as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_value(&mut self) {
+        self.variable_type = ::std::option::Option::None;
+    }
+
+    pub fn has_value(&self) -> bool {
+        match self.variable_type {
+            ::std::option::Option::Some(dashboard_variable::Variable_type::Value(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_value(&mut self, v: super::workflow::group_by::Value) {
+        self.variable_type = ::std::option::Option::Some(dashboard_variable::Variable_type::Value(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_value(&mut self) -> &mut super::workflow::group_by::Value {
+        if let ::std::option::Option::Some(dashboard_variable::Variable_type::Value(_)) = self.variable_type {
+        } else {
+            self.variable_type = ::std::option::Option::Some(dashboard_variable::Variable_type::Value(super::workflow::group_by::Value::new()));
+        }
+        match self.variable_type {
+            ::std::option::Option::Some(dashboard_variable::Variable_type::Value(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_value(&mut self) -> super::workflow::group_by::Value {
+        if self.has_value() {
+            match self.variable_type.take() {
+                ::std::option::Option::Some(dashboard_variable::Variable_type::Value(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            super::workflow::group_by::Value::new()
+        }
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::workflow::group_by::Value>(
+            "value",
+            DashboardVariable::has_value,
+            DashboardVariable::value,
+            DashboardVariable::mut_value,
+            DashboardVariable::set_value,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::timestamp::Timestamp>(
+            "earliest_contiguous_deployed_time",
+            |m: &DashboardVariable| { &m.earliest_contiguous_deployed_time },
+            |m: &mut DashboardVariable| { &mut m.earliest_contiguous_deployed_time },
+        ));
+        oneofs.push(dashboard_variable::Variable_type::generated_oneof_descriptor_data());
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DashboardVariable>(
+            "DashboardVariable",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DashboardVariable {
+    const NAME: &'static str = "DashboardVariable";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                26 => {
+                    self.variable_type = ::std::option::Option::Some(dashboard_variable::Variable_type::Value(is.read_message()?));
+                },
+                18 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.earliest_contiguous_deployed_time)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.earliest_contiguous_deployed_time.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let ::std::option::Option::Some(ref v) = self.variable_type {
+            match v {
+                &dashboard_variable::Variable_type::Value(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+            };
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.earliest_contiguous_deployed_time.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+        }
+        if let ::std::option::Option::Some(ref v) = self.variable_type {
+            match v {
+                &dashboard_variable::Variable_type::Value(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                },
+            };
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DashboardVariable {
+        DashboardVariable::new()
+    }
+
+    fn clear(&mut self) {
+        self.variable_type = ::std::option::Option::None;
+        self.earliest_contiguous_deployed_time.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DashboardVariable {
+        static instance: DashboardVariable = DashboardVariable {
+            earliest_contiguous_deployed_time: ::protobuf::MessageField::none(),
+            variable_type: ::std::option::Option::None,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DashboardVariable {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DashboardVariable").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DashboardVariable {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DashboardVariable {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `DashboardVariable`
+pub mod dashboard_variable {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift.public.unary.dashboards.v1.DashboardVariable.variable_type)
+    pub enum Variable_type {
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.DashboardVariable.value)
+        Value(super::super::workflow::group_by::Value),
+    }
+
+    impl ::protobuf::Oneof for Variable_type {
+    }
+
+    impl ::protobuf::OneofFull for Variable_type {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::DashboardVariable as ::protobuf::MessageFull>::descriptor().oneof_by_name("variable_type").unwrap()).clone()
+        }
+    }
+
+    impl Variable_type {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Variable_type>("variable_type")
+        }
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.ChartComponentLayout)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct ChartComponentLayout {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ChartComponentLayout.chart_id)
+    pub chart_id: ::protobuf::MessageField<super::chart_id::ChartIdentifier>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ChartComponentLayout.layout_settings)
+    pub layout_settings: ::protobuf::MessageField<DashboardLayoutSettings>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ChartComponentLayout.chart_metadata)
+    pub chart_metadata: ::protobuf::MessageField<super::chart_metadata::ChartMetadata>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.ChartComponentLayout.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a ChartComponentLayout {
+    fn default() -> &'a ChartComponentLayout {
+        <ChartComponentLayout as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl ChartComponentLayout {
+    pub fn new() -> ChartComponentLayout {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::chart_id::ChartIdentifier>(
+            "chart_id",
+            |m: &ChartComponentLayout| { &m.chart_id },
+            |m: &mut ChartComponentLayout| { &mut m.chart_id },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, DashboardLayoutSettings>(
+            "layout_settings",
+            |m: &ChartComponentLayout| { &m.layout_settings },
+            |m: &mut ChartComponentLayout| { &mut m.layout_settings },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::chart_metadata::ChartMetadata>(
+            "chart_metadata",
+            |m: &ChartComponentLayout| { &m.chart_metadata },
+            |m: &mut ChartComponentLayout| { &mut m.chart_metadata },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ChartComponentLayout>(
+            "ChartComponentLayout",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for ChartComponentLayout {
+    const NAME: &'static str = "ChartComponentLayout";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.chart_id)?;
+                },
+                18 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.layout_settings)?;
+                },
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.chart_metadata)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.chart_id.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let Some(v) = self.layout_settings.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let Some(v) = self.chart_metadata.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.chart_id.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        }
+        if let Some(v) = self.layout_settings.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+        }
+        if let Some(v) = self.chart_metadata.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> ChartComponentLayout {
+        ChartComponentLayout::new()
+    }
+
+    fn clear(&mut self) {
+        self.chart_id.clear();
+        self.layout_settings.clear();
+        self.chart_metadata.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static ChartComponentLayout {
+        static instance: ChartComponentLayout = ChartComponentLayout {
+            chart_id: ::protobuf::MessageField::none(),
+            layout_settings: ::protobuf::MessageField::none(),
+            chart_metadata: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for ChartComponentLayout {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("ChartComponentLayout").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for ChartComponentLayout {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for ChartComponentLayout {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.FavoriteCustomDashboardRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct FavoriteCustomDashboardRequest {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.FavoriteCustomDashboardRequest.identifier)
+    pub identifier: ::protobuf::MessageField<DashboardIdentifier>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.FavoriteCustomDashboardRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a FavoriteCustomDashboardRequest {
+    fn default() -> &'a FavoriteCustomDashboardRequest {
+        <FavoriteCustomDashboardRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl FavoriteCustomDashboardRequest {
+    pub fn new() -> FavoriteCustomDashboardRequest {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, DashboardIdentifier>(
+            "identifier",
+            |m: &FavoriteCustomDashboardRequest| { &m.identifier },
+            |m: &mut FavoriteCustomDashboardRequest| { &mut m.identifier },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<FavoriteCustomDashboardRequest>(
+            "FavoriteCustomDashboardRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for FavoriteCustomDashboardRequest {
+    const NAME: &'static str = "FavoriteCustomDashboardRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.identifier)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.identifier.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.identifier.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> FavoriteCustomDashboardRequest {
+        FavoriteCustomDashboardRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.identifier.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static FavoriteCustomDashboardRequest {
+        static instance: FavoriteCustomDashboardRequest = FavoriteCustomDashboardRequest {
+            identifier: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for FavoriteCustomDashboardRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("FavoriteCustomDashboardRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for FavoriteCustomDashboardRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for FavoriteCustomDashboardRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.FavoriteCustomDashboardResponse)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct FavoriteCustomDashboardResponse {
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.FavoriteCustomDashboardResponse.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a FavoriteCustomDashboardResponse {
+    fn default() -> &'a FavoriteCustomDashboardResponse {
+        <FavoriteCustomDashboardResponse as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl FavoriteCustomDashboardResponse {
+    pub fn new() -> FavoriteCustomDashboardResponse {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(0);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<FavoriteCustomDashboardResponse>(
+            "FavoriteCustomDashboardResponse",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for FavoriteCustomDashboardResponse {
+    const NAME: &'static str = "FavoriteCustomDashboardResponse";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> FavoriteCustomDashboardResponse {
+        FavoriteCustomDashboardResponse::new()
+    }
+
+    fn clear(&mut self) {
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static FavoriteCustomDashboardResponse {
+        static instance: FavoriteCustomDashboardResponse = FavoriteCustomDashboardResponse {
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for FavoriteCustomDashboardResponse {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("FavoriteCustomDashboardResponse").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for FavoriteCustomDashboardResponse {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for FavoriteCustomDashboardResponse {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct UpsertCustomDashboardRequest {
+    // message fields
+    ///  If id is provided, the existing dashboard with this ID will be updated. If not provided, a new dashboard will be created.
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.id)
+    pub id: ::std::option::Option<::std::string::String>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.name)
+    pub name: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.tabs)
+    pub tabs: ::std::vec::Vec<upsert_custom_dashboard_request::DashboardTab>,
+    ///  The variables that are applied to every chart referenced in this dashboard.
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.dashboard_variables)
+    pub dashboard_variables: ::std::vec::Vec<super::workflow::group_by::Value>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a UpsertCustomDashboardRequest {
+    fn default() -> &'a UpsertCustomDashboardRequest {
+        <UpsertCustomDashboardRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl UpsertCustomDashboardRequest {
+    pub fn new() -> UpsertCustomDashboardRequest {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "id",
+            |m: &UpsertCustomDashboardRequest| { &m.id },
+            |m: &mut UpsertCustomDashboardRequest| { &mut m.id },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "name",
+            |m: &UpsertCustomDashboardRequest| { &m.name },
+            |m: &mut UpsertCustomDashboardRequest| { &mut m.name },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "tabs",
+            |m: &UpsertCustomDashboardRequest| { &m.tabs },
+            |m: &mut UpsertCustomDashboardRequest| { &mut m.tabs },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "dashboard_variables",
+            |m: &UpsertCustomDashboardRequest| { &m.dashboard_variables },
+            |m: &mut UpsertCustomDashboardRequest| { &mut m.dashboard_variables },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<UpsertCustomDashboardRequest>(
+            "UpsertCustomDashboardRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for UpsertCustomDashboardRequest {
+    const NAME: &'static str = "UpsertCustomDashboardRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.id = ::std::option::Option::Some(is.read_string()?);
+                },
+                18 => {
+                    self.name = is.read_string()?;
+                },
+                26 => {
+                    self.tabs.push(is.read_message()?);
+                },
+                42 => {
+                    self.dashboard_variables.push(is.read_message()?);
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.id.as_ref() {
+            my_size += ::protobuf::rt::string_size(1, &v);
+        }
+        if !self.name.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.name);
+        }
+        for value in &self.tabs {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        for value in &self.dashboard_variables {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.id.as_ref() {
+            os.write_string(1, v)?;
+        }
+        if !self.name.is_empty() {
+            os.write_string(2, &self.name)?;
+        }
+        for v in &self.tabs {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        };
+        for v in &self.dashboard_variables {
+            ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
+        };
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> UpsertCustomDashboardRequest {
+        UpsertCustomDashboardRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.id = ::std::option::Option::None;
+        self.name.clear();
+        self.tabs.clear();
+        self.dashboard_variables.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static UpsertCustomDashboardRequest {
+        static instance: UpsertCustomDashboardRequest = UpsertCustomDashboardRequest {
+            id: ::std::option::Option::None,
+            name: ::std::string::String::new(),
+            tabs: ::std::vec::Vec::new(),
+            dashboard_variables: ::std::vec::Vec::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for UpsertCustomDashboardRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("UpsertCustomDashboardRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for UpsertCustomDashboardRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for UpsertCustomDashboardRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `UpsertCustomDashboardRequest`
+pub mod upsert_custom_dashboard_request {
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct DashboardTab {
+        // message fields
+        ///  Optional ID of the tab being upsert. If not provided, the API will assume the tab needs to be created.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.id)
+        pub id: ::std::option::Option<::std::string::String>,
+        ///  The overlay of layout information for the charts in the dashboard. This array *MUST
+        ///  include all components, whether they are being updated or not.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.charts)
+        pub charts: ::std::vec::Vec<dashboard_tab::Chart>,
+        ///  List of all stylistic components that should be rendered on the dashboard. The array *MUST*
+        ///  include all components, whether they are being updated or not.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.stylistic_components)
+        pub stylistic_components: ::std::vec::Vec<super::DashboardStylisticComponent>,
+        ///  Optional display name/title for this dashboard tab. If unset, the tab will not have an explicit
+        ///  stored name and clients may derive an appropriate default label when rendering.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.name)
+        pub name: ::std::option::Option<::std::string::String>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a DashboardTab {
+        fn default() -> &'a DashboardTab {
+            <DashboardTab as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl DashboardTab {
+        pub fn new() -> DashboardTab {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(4);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "id",
+                |m: &DashboardTab| { &m.id },
+                |m: &mut DashboardTab| { &mut m.id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "charts",
+                |m: &DashboardTab| { &m.charts },
+                |m: &mut DashboardTab| { &mut m.charts },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "stylistic_components",
+                |m: &DashboardTab| { &m.stylistic_components },
+                |m: &mut DashboardTab| { &mut m.stylistic_components },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "name",
+                |m: &DashboardTab| { &m.name },
+                |m: &mut DashboardTab| { &mut m.name },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DashboardTab>(
+                "UpsertCustomDashboardRequest.DashboardTab",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for DashboardTab {
+        const NAME: &'static str = "DashboardTab";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.id = ::std::option::Option::Some(is.read_string()?);
+                    },
+                    18 => {
+                        self.charts.push(is.read_message()?);
+                    },
+                    26 => {
+                        self.stylistic_components.push(is.read_message()?);
+                    },
+                    34 => {
+                        self.name = ::std::option::Option::Some(is.read_string()?);
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.id.as_ref() {
+                my_size += ::protobuf::rt::string_size(1, &v);
+            }
+            for value in &self.charts {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            for value in &self.stylistic_components {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            if let Some(v) = self.name.as_ref() {
+                my_size += ::protobuf::rt::string_size(4, &v);
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.id.as_ref() {
+                os.write_string(1, v)?;
+            }
+            for v in &self.charts {
+                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+            };
+            for v in &self.stylistic_components {
+                ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+            };
+            if let Some(v) = self.name.as_ref() {
+                os.write_string(4, v)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> DashboardTab {
+            DashboardTab::new()
+        }
+
+        fn clear(&mut self) {
+            self.id = ::std::option::Option::None;
+            self.charts.clear();
+            self.stylistic_components.clear();
+            self.name = ::std::option::Option::None;
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static DashboardTab {
+            static instance: DashboardTab = DashboardTab {
+                id: ::std::option::Option::None,
+                charts: ::std::vec::Vec::new(),
+                stylistic_components: ::std::vec::Vec::new(),
+                name: ::std::option::Option::None,
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for DashboardTab {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("UpsertCustomDashboardRequest.DashboardTab").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for DashboardTab {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for DashboardTab {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `DashboardTab`
+    pub mod dashboard_tab {
+        // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.Chart)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct Chart {
+            // message fields
+            ///  Optional ID of the chart being upsert. If not provided, the API will assume the chart needs to be created.
+            // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.Chart.id)
+            pub id: ::std::option::Option<::std::string::String>,
+            ///  The combination of chart identifier, layout, and metadata
+            // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.Chart.chart_component_layout)
+            pub chart_component_layout: ::protobuf::MessageField<super::super::ChartComponentLayout>,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.Chart.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a Chart {
+            fn default() -> &'a Chart {
+                <Chart as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl Chart {
+            pub fn new() -> Chart {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(2);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                    "id",
+                    |m: &Chart| { &m.id },
+                    |m: &mut Chart| { &mut m.id },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::ChartComponentLayout>(
+                    "chart_component_layout",
+                    |m: &Chart| { &m.chart_component_layout },
+                    |m: &mut Chart| { &mut m.chart_component_layout },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Chart>(
+                    "UpsertCustomDashboardRequest.DashboardTab.Chart",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for Chart {
+            const NAME: &'static str = "Chart";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.id = ::std::option::Option::Some(is.read_string()?);
+                        },
+                        18 => {
+                            ::protobuf::rt::read_singular_message_into_field(is, &mut self.chart_component_layout)?;
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if let Some(v) = self.id.as_ref() {
+                    my_size += ::protobuf::rt::string_size(1, &v);
+                }
+                if let Some(v) = self.chart_component_layout.as_ref() {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if let Some(v) = self.id.as_ref() {
+                    os.write_string(1, v)?;
+                }
+                if let Some(v) = self.chart_component_layout.as_ref() {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> Chart {
+                Chart::new()
+            }
+
+            fn clear(&mut self) {
+                self.id = ::std::option::Option::None;
+                self.chart_component_layout.clear();
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static Chart {
+                static instance: Chart = Chart {
+                    id: ::std::option::Option::None,
+                    chart_component_layout: ::protobuf::MessageField::none(),
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for Chart {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("UpsertCustomDashboardRequest.DashboardTab.Chart").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for Chart {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for Chart {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardResponse)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct UpsertCustomDashboardResponse {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardResponse.dashboard)
+    pub dashboard: ::protobuf::MessageField<dashboard::CustomDashboard>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardResponse.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a UpsertCustomDashboardResponse {
+    fn default() -> &'a UpsertCustomDashboardResponse {
+        <UpsertCustomDashboardResponse as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl UpsertCustomDashboardResponse {
+    pub fn new() -> UpsertCustomDashboardResponse {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, dashboard::CustomDashboard>(
+            "dashboard",
+            |m: &UpsertCustomDashboardResponse| { &m.dashboard },
+            |m: &mut UpsertCustomDashboardResponse| { &mut m.dashboard },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<UpsertCustomDashboardResponse>(
+            "UpsertCustomDashboardResponse",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for UpsertCustomDashboardResponse {
+    const NAME: &'static str = "UpsertCustomDashboardResponse";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.dashboard)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.dashboard.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.dashboard.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> UpsertCustomDashboardResponse {
+        UpsertCustomDashboardResponse::new()
+    }
+
+    fn clear(&mut self) {
+        self.dashboard.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static UpsertCustomDashboardResponse {
+        static instance: UpsertCustomDashboardResponse = UpsertCustomDashboardResponse {
+            dashboard: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for UpsertCustomDashboardResponse {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("UpsertCustomDashboardResponse").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for UpsertCustomDashboardResponse {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for UpsertCustomDashboardResponse {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DeleteCustomDashboardRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DeleteCustomDashboardRequest {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DeleteCustomDashboardRequest.id)
+    pub id: ::std::string::String,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DeleteCustomDashboardRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DeleteCustomDashboardRequest {
+    fn default() -> &'a DeleteCustomDashboardRequest {
+        <DeleteCustomDashboardRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DeleteCustomDashboardRequest {
+    pub fn new() -> DeleteCustomDashboardRequest {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "id",
+            |m: &DeleteCustomDashboardRequest| { &m.id },
+            |m: &mut DeleteCustomDashboardRequest| { &mut m.id },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DeleteCustomDashboardRequest>(
+            "DeleteCustomDashboardRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DeleteCustomDashboardRequest {
+    const NAME: &'static str = "DeleteCustomDashboardRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.id = is.read_string()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.id.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.id);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.id.is_empty() {
+            os.write_string(1, &self.id)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DeleteCustomDashboardRequest {
+        DeleteCustomDashboardRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.id.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DeleteCustomDashboardRequest {
+        static instance: DeleteCustomDashboardRequest = DeleteCustomDashboardRequest {
+            id: ::std::string::String::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DeleteCustomDashboardRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DeleteCustomDashboardRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DeleteCustomDashboardRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DeleteCustomDashboardRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DeleteCustomDashboardResponse)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DeleteCustomDashboardResponse {
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DeleteCustomDashboardResponse.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DeleteCustomDashboardResponse {
+    fn default() -> &'a DeleteCustomDashboardResponse {
+        <DeleteCustomDashboardResponse as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DeleteCustomDashboardResponse {
+    pub fn new() -> DeleteCustomDashboardResponse {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(0);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DeleteCustomDashboardResponse>(
+            "DeleteCustomDashboardResponse",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DeleteCustomDashboardResponse {
+    const NAME: &'static str = "DeleteCustomDashboardResponse";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DeleteCustomDashboardResponse {
+        DeleteCustomDashboardResponse::new()
+    }
+
+    fn clear(&mut self) {
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DeleteCustomDashboardResponse {
+        static instance: DeleteCustomDashboardResponse = DeleteCustomDashboardResponse {
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DeleteCustomDashboardResponse {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DeleteCustomDashboardResponse").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DeleteCustomDashboardResponse {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DeleteCustomDashboardResponse {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.ListChartsRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct ListChartsRequest {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListChartsRequest.pagination)
+    pub pagination: ::protobuf::MessageField<super::common::Pagination>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListChartsRequest.filters)
+    pub filters: ::protobuf::MessageField<list_charts_request::Filters>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.ListChartsRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a ListChartsRequest {
+    fn default() -> &'a ListChartsRequest {
+        <ListChartsRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl ListChartsRequest {
+    pub fn new() -> ListChartsRequest {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::common::Pagination>(
+            "pagination",
+            |m: &ListChartsRequest| { &m.pagination },
+            |m: &mut ListChartsRequest| { &mut m.pagination },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, list_charts_request::Filters>(
+            "filters",
+            |m: &ListChartsRequest| { &m.filters },
+            |m: &mut ListChartsRequest| { &mut m.filters },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ListChartsRequest>(
+            "ListChartsRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for ListChartsRequest {
+    const NAME: &'static str = "ListChartsRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.pagination)?;
+                },
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.filters)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.pagination.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let Some(v) = self.filters.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.pagination.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        }
+        if let Some(v) = self.filters.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> ListChartsRequest {
+        ListChartsRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.pagination.clear();
+        self.filters.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static ListChartsRequest {
+        static instance: ListChartsRequest = ListChartsRequest {
+            pagination: ::protobuf::MessageField::none(),
+            filters: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for ListChartsRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("ListChartsRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for ListChartsRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for ListChartsRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `ListChartsRequest`
+pub mod list_charts_request {
+    ///  Filters to apply when listing charts.
+    ///  Filters are additive; only charts that match all specified filters will be returned.
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.ListChartsRequest.Filters)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Filters {
+        // message fields
+        ///  Filters charts by access permission levels for a specified user.
+        ///  For example, callers can request charts where a user has EDIT access.
+        ///  Callers can also exclude charts where a user has OWNER access.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListChartsRequest.Filters.access)
+        pub access: ::protobuf::MessageField<super::super::access::AccessPermissionQuery>,
+        ///  An optional view ID to filter charts by. Filtering by view ID will return
+        ///  all charts contained within workflows that belong to that view.
+        ///  If workflow_id is also provided, it will take precedence over view_id.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListChartsRequest.Filters.view_id)
+        pub view_id: ::std::option::Option<::std::string::String>,
+        ///  An optional workflow ID to filter charts by. If provided, it will take precedence over view_id.
+        ///  Filtering by workflow ID will return all charts contained within the specified workflow.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListChartsRequest.Filters.workflow_id)
+        pub workflow_id: ::std::option::Option<::std::string::String>,
+        ///  An optional partial chart name to filter charts by. This will return all charts whose names contain the provided string, case-insensitively.
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListChartsRequest.Filters.chart_name)
+        pub chart_name: ::std::option::Option<::std::string::String>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.ListChartsRequest.Filters.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Filters {
+        fn default() -> &'a Filters {
+            <Filters as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Filters {
+        pub fn new() -> Filters {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(4);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::access::AccessPermissionQuery>(
+                "access",
+                |m: &Filters| { &m.access },
+                |m: &mut Filters| { &mut m.access },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "view_id",
+                |m: &Filters| { &m.view_id },
+                |m: &mut Filters| { &mut m.view_id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "workflow_id",
+                |m: &Filters| { &m.workflow_id },
+                |m: &mut Filters| { &mut m.workflow_id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "chart_name",
+                |m: &Filters| { &m.chart_name },
+                |m: &mut Filters| { &mut m.chart_name },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Filters>(
+                "ListChartsRequest.Filters",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Filters {
+        const NAME: &'static str = "Filters";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.access)?;
+                    },
+                    18 => {
+                        self.view_id = ::std::option::Option::Some(is.read_string()?);
+                    },
+                    26 => {
+                        self.workflow_id = ::std::option::Option::Some(is.read_string()?);
+                    },
+                    34 => {
+                        self.chart_name = ::std::option::Option::Some(is.read_string()?);
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.access.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            if let Some(v) = self.view_id.as_ref() {
+                my_size += ::protobuf::rt::string_size(2, &v);
+            }
+            if let Some(v) = self.workflow_id.as_ref() {
+                my_size += ::protobuf::rt::string_size(3, &v);
+            }
+            if let Some(v) = self.chart_name.as_ref() {
+                my_size += ::protobuf::rt::string_size(4, &v);
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.access.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            }
+            if let Some(v) = self.view_id.as_ref() {
+                os.write_string(2, v)?;
+            }
+            if let Some(v) = self.workflow_id.as_ref() {
+                os.write_string(3, v)?;
+            }
+            if let Some(v) = self.chart_name.as_ref() {
+                os.write_string(4, v)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Filters {
+            Filters::new()
+        }
+
+        fn clear(&mut self) {
+            self.access.clear();
+            self.view_id = ::std::option::Option::None;
+            self.workflow_id = ::std::option::Option::None;
+            self.chart_name = ::std::option::Option::None;
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Filters {
+            static instance: Filters = Filters {
+                access: ::protobuf::MessageField::none(),
+                view_id: ::std::option::Option::None,
+                workflow_id: ::std::option::Option::None,
+                chart_name: ::std::option::Option::None,
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Filters {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("ListChartsRequest.Filters").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Filters {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Filters {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.ListChartsResponse)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct ListChartsResponse {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListChartsResponse.charts)
+    pub charts: ::std::vec::Vec<ResolvedChart>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListChartsResponse.total_count)
+    pub total_count: u32,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.ListChartsResponse.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a ListChartsResponse {
+    fn default() -> &'a ListChartsResponse {
+        <ListChartsResponse as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl ListChartsResponse {
+    pub fn new() -> ListChartsResponse {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "charts",
+            |m: &ListChartsResponse| { &m.charts },
+            |m: &mut ListChartsResponse| { &mut m.charts },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "total_count",
+            |m: &ListChartsResponse| { &m.total_count },
+            |m: &mut ListChartsResponse| { &mut m.total_count },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ListChartsResponse>(
+            "ListChartsResponse",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for ListChartsResponse {
+    const NAME: &'static str = "ListChartsResponse";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.charts.push(is.read_message()?);
+                },
+                16 => {
+                    self.total_count = is.read_uint32()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        for value in &self.charts {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        if self.total_count != 0 {
+            my_size += ::protobuf::rt::uint32_size(2, self.total_count);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        for v in &self.charts {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        };
+        if self.total_count != 0 {
+            os.write_uint32(2, self.total_count)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> ListChartsResponse {
+        ListChartsResponse::new()
+    }
+
+    fn clear(&mut self) {
+        self.charts.clear();
+        self.total_count = 0;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static ListChartsResponse {
+        static instance: ListChartsResponse = ListChartsResponse {
+            charts: ::std::vec::Vec::new(),
+            total_count: 0,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for ListChartsResponse {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("ListChartsResponse").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for ListChartsResponse {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for ListChartsResponse {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n-bitdrift/public/unary/dashboards/v1/api.proto\x12#bitdrift.public.una\
     ry.dashboards.v1\x1a1bitdrift/public/shared/platform/v1/platform.proto\
-    \x1a5bitdrift/public/shared/workflows/v1/time_series.proto\x1a.bitdrift/\
-    public/unary/charts/v1/chart_id.proto\x1a4bitdrift/public/unary/charts/v\
-    1/chart_metadata.proto\x1a,bitdrift/public/unary/common/v1/common.proto\
+    \x1a5bitdrift/public/shared/workflows/v1/time_series.proto\x1a+bitdrift/\
+    public/unary/admin/v1/access.proto\x1a.bitdrift/public/unary/charts/v1/c\
+    hart_id.proto\x1a4bitdrift/public/unary/charts/v1/chart_metadata.proto\
+    \x1a,bitdrift/public/unary/common/v1/common.proto\x1a1bitdrift/public/un\
+    ary/workflows/v1/workflow.proto\x1a\x1egoogle/protobuf/duration.proto\
     \x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17validate/validate.proto\"\
     \xe4\n\n\rResolvedChart\x12J\n\x02id\x18\x01\x20\x01(\x0b20.bitdrift.pub\
     lic.unary.charts.v1.ChartIdentifierR\x02idB\x08\xfaB\x05\x8a\x01\x02\x10\
@@ -6110,18 +11624,95 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x0b2\x1a.google.protobuf.TimestampR\ndeployedAt\x129\n\nstopped_at\x18\
     \x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tstoppedAt\x12P\n\x10d\
     eployed_by_user\x18\x04\x20\x01(\x0b2&.bitdrift.public.unary.common.v1.O\
-    wnerR\x0edeployedByUserB\x0b\n\x04type\x12\x03\xf8B\x01\"G\n\x18GetWorkf\
-    lowChartsRequest\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\
-    \n\xfaB\x07r\x05\x10\x01\x18\x80\x20\"g\n\x19GetWorkflowChartsResponse\
-    \x12J\n\x06charts\x18\x01\x20\x03(\x0b22.bitdrift.public.unary.dashboard\
-    s.v1.ResolvedChartR\x06charts\"f\n\x1eInsightComparisonConfiguration\x12\
-    !\n\x06lhs_id\x18\x01\x20\x01(\tR\x05lhsIdB\n\xfaB\x07r\x05\x10\x01\x18\
-    \xff\x01\x12!\n\x06rhs_id\x18\x02\x20\x01(\tR\x05rhsIdB\n\xfaB\x07r\x05\
-    \x10\x01\x18\xff\x01\"b\n\x13SankeyConfiguration\x12\x1e\n\x0btop_k_path\
-    s\x18\x01\x20\x01(\x04R\ttopKPaths\x12+\n\x11compaction_target\x18\x02\
-    \x20\x01(\x04R\x10compactionTarget\"\x90\x01\n\x14CounterConfiguration\
-    \x12x\n\x10aggregation_type\x18\x01\x20\x01(\x0e2C.bitdrift.public.share\
-    d.workflows.v1.Counter.CounterAggregationTypeR\x0faggregationTypeB\x08\
+    wnerR\x0edeployedByUserB\x0b\n\x04type\x12\x03\xf8B\x01\"\xdd\x01\n\x17D\
+    ashboardLayoutSettings\x12-\n\x0bcolumn_span\x18\x01\x20\x01(\rH\0R\ncol\
+    umnSpanB\x07\xfaB\x04*\x02\x20\0\x88\x01\x01\x12'\n\x08row_span\x18\x02\
+    \x20\x01(\rH\x01R\x07rowSpanB\x07\xfaB\x04*\x02\x20\0\x88\x01\x01\x12\
+    \x1b\n\tis_hidden\x18\x03\x20\x01(\x08R\x08isHidden\x12\x11\n\x01x\x18\
+    \x04\x20\x01(\rH\x02R\x01x\x88\x01\x01\x12\x11\n\x01y\x18\x05\x20\x01(\r\
+    H\x03R\x01y\x88\x01\x01B\x0e\n\x0c_column_spanB\x0b\n\t_row_spanB\x04\n\
+    \x02_xB\x04\n\x02_y\"\xd5\x01\n\x0eDashboardGroup\x12J\n\x06charts\x18\
+    \x01\x20\x03(\x0b22.bitdrift.public.unary.dashboards.v1.ResolvedChartR\
+    \x06charts\x12&\n\x08category\x18\x02\x20\x01(\tR\x08categoryB\n\xfaB\
+    \x07r\x05\x10\x01\x18\xff\x01\x12O\n\x16minimum_query_interval\x18\x03\
+    \x20\x01(\x0b2\x19.google.protobuf.DurationR\x14minimumQueryInterval\"\
+    \xa8\x03\n\x13DashboardIdentifier\x12u\n\x10health_dashboard\x18\x01\x20\
+    \x01(\x0b2H.bitdrift.public.unary.dashboards.v1.DashboardIdentifier.Heal\
+    thDashboardH\0R\x0fhealthDashboard\x12u\n\x10custom_dashboard\x18\x02\
+    \x20\x01(\x0b2H.bitdrift.public.unary.dashboards.v1.DashboardIdentifier.\
+    CustomDashboardH\0R\x0fcustomDashboard\x1ah\n\x0fHealthDashboard\x12U\n\
+    \x0fplatform_target\x18\x01\x20\x01(\x0b2,.bitdrift.public.shared.platfo\
+    rm.v1.PlatformR\x0eplatformTarget\x1a,\n\x0fCustomDashboard\x12\x19\n\
+    \x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18dB\x0b\n\
+    \x04type\x12\x03\xf8B\x01\"_\n\x13GetDashboardRequest\x12H\n\x02id\x18\
+    \x03\x20\x01(\x0b28.bitdrift.public.unary.dashboards.v1.DashboardIdentif\
+    ierR\x02id\"d\n\x14GetDashboardResponse\x12L\n\tdashboard\x18\x05\x20\
+    \x01(\x0b2..bitdrift.public.unary.dashboards.v1.DashboardR\tdashboard\"\
+    \x99\r\n\tDashboard\x12k\n\x10health_dashboard\x18\x02\x20\x01(\x0b2>.bi\
+    tdrift.public.unary.dashboards.v1.Dashboard.HealthDashboardH\0R\x0fhealt\
+    hDashboard\x12k\n\x10custom_dashboard\x18\x03\x20\x01(\x0b2>.bitdrift.pu\
+    blic.unary.dashboards.v1.Dashboard.CustomDashboardH\0R\x0fcustomDashboar\
+    d\x1a\x95\x02\n\x0fHealthDashboard\x12X\n\x02id\x18\x01\x20\x01(\x0b2H.b\
+    itdrift.public.unary.dashboards.v1.DashboardIdentifier.HealthDashboardR\
+    \x02id\x12\\\n\x0fdashboard_group\x18\x02\x20\x03(\x0b23.bitdrift.public\
+    .unary.dashboards.v1.DashboardGroupR\x0edashboardGroup\x12J\n\tplatforms\
+    \x18\x03\x20\x03(\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\tpl\
+    atforms\x1a\x8c\t\n\x0fCustomDashboard\x12\x19\n\x02id\x18\x01\x20\x01(\
+    \tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12%\n\x05title\x18\x07\x20\x01(\
+    \tH\0R\x05titleB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x88\x01\x01\x12S\n\
+    \x18current_user_last_viewed\x18\x08\x20\x01(\x0b2\x1a.google.protobuf.T\
+    imestampR\x15currentUserLastViewed\x12_\n\x04tabs\x18\x02\x20\x03(\x0b2K\
+    .bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.Dashboard\
+    TabR\x04tabs\x12a\n\x10common_variables\x18\x03\x20\x03(\x0b26.bitdrift.\
+    public.unary.dashboards.v1.DashboardVariableR\x0fcommonVariables\x12<\n\
+    \x05owner\x18\x04\x20\x01(\x0b2&.bitdrift.public.unary.common.v1.OwnerR\
+    \x05owner\x124\n\x16current_user_favorited\x18\x05\x20\x01(\x08R\x14curr\
+    entUserFavorited\x12^\n\x15current_user_can_edit\x18\x06\x20\x01(\x0e2+.\
+    bitdrift.public.unary.common.v1.PermissionR\x12currentUserCanEdit\x12l\n\
+    \x13dashboard_variables\x18\t\x20\x03(\x0b21.bitdrift.public.unary.workf\
+    lows.v1.GroupBy.ValueR\x12dashboardVariablesB\x08\xfaB\x05\x92\x01\x02\
+    \x10\n\x1a\xd1\x03\n\x0cDashboardTab\x12\x19\n\x02id\x18\x01\x20\x01(\tR\
+    \x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12\x1e\n\x04name\x18\x02\x20\x01(\
+    \tR\x04nameB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12i\n\x06charts\x18\
+    \x03\x20\x03(\x0b2Q.bitdrift.public.unary.dashboards.v1.Dashboard.Custom\
+    Dashboard.DashboardTab.ChartR\x06charts\x12`\n\ncomponents\x18\x04\x20\
+    \x03(\x0b2@.bitdrift.public.unary.dashboards.v1.DashboardStylisticCompon\
+    entR\ncomponents\x1a\xb8\x01\n\x05Chart\x12\x19\n\x02id\x18\x01\x20\x01(\
+    \tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12J\n\x05chart\x18\x02\x20\x01(\
+    \x0b22.bitdrift.public.unary.dashboards.v1.ResolvedChartH\0R\x05chart\
+    \x121\n\x0fchart_not_found\x18\x03\x20\x01(\x08H\0R\rchartNotFoundB\x07\
+    \xfaB\x04j\x02\x08\x01B\x15\n\x0eresolved_chart\x12\x03\xf8B\x01B\x08\n\
+    \x06_titleB\x0b\n\x04type\x12\x03\xf8B\x01\"\x8c\x06\n\x15ListDashboards\
+    Request\x12K\n\npagination\x18\x01\x20\x01(\x0b2+.bitdrift.public.unary.\
+    common.v1.PaginationR\npagination\x12\\\n\x07filters\x18\x03\x20\x01(\
+    \x0b2B.bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Filters\
+    R\x07filters\x12]\n\x04sort\x18\x04\x20\x03(\x0b2?.bitdrift.public.unary\
+    .dashboards.v1.ListDashboardsRequest.SortR\x04sortB\x08\xfaB\x05\x92\x01\
+    \x02\x10d\x1a\xc6\x01\n\x07Filters\x12M\n\x06access\x18\x01\x20\x01(\x0b\
+    25.bitdrift.public.unary.admin.v1.AccessPermissionQueryR\x06access\x12,\
+    \n\nfree_entry\x18\x02\x20\x01(\tH\0R\tfreeEntryB\x08\xfaB\x05r\x03\x18\
+    \xff\x01\x88\x01\x01\x12!\n\tfavorites\x18\x03\x20\x01(\x08H\x01R\tfavor\
+    ites\x88\x01\x01B\r\n\x0b_free_entryB\x0c\n\n_favorites\x1a\x9f\x02\n\
+    \x04Sort\x12e\n\x03key\x18\x01\x20\x01(\x0e2G.bitdrift.public.unary.dash\
+    boards.v1.ListDashboardsRequest.Sort.SortKeyR\x03keyB\n\xfaB\x07\x82\x01\
+    \x04\x10\x01\x20\0\x12V\n\tdirection\x18\x02\x20\x01(\x0e2..bitdrift.pub\
+    lic.unary.common.v1.SortDirectionR\tdirectionB\x08\xfaB\x05\x82\x01\x02\
+    \x10\x01\"X\n\x07SortKey\x12\x18\n\x14SORT_KEY_UNSPECIFIED\x10\0\x12\x12\
+    \n\x0eDASHBOARD_NAME\x10\x01\x12\x0e\n\nOWNER_NAME\x10\x02\x12\x0f\n\x0b\
+    LAST_VIEWED\x10\x03\"~\n\x16ListDashboardsResponse\x12N\n\ndashboards\
+    \x18\x01\x20\x03(\x0b2..bitdrift.public.unary.dashboards.v1.DashboardR\n\
+    dashboards\x12\x14\n\x05total\x18\x02\x20\x01(\x04R\x05total\"G\n\x18Get\
+    WorkflowChartsRequest\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflo\
+    wIdB\n\xfaB\x07r\x05\x10\x01\x18\x80\x20\"g\n\x19GetWorkflowChartsRespon\
+    se\x12J\n\x06charts\x18\x01\x20\x03(\x0b22.bitdrift.public.unary.dashboa\
+    rds.v1.ResolvedChartR\x06charts\"f\n\x1eInsightComparisonConfiguration\
+    \x12!\n\x06lhs_id\x18\x01\x20\x01(\tR\x05lhsIdB\n\xfaB\x07r\x05\x10\x01\
+    \x18\xff\x01\x12!\n\x06rhs_id\x18\x02\x20\x01(\tR\x05rhsIdB\n\xfaB\x07r\
+    \x05\x10\x01\x18\xff\x01\"b\n\x13SankeyConfiguration\x12\x1e\n\x0btop_k_\
+    paths\x18\x01\x20\x01(\x04R\ttopKPaths\x12+\n\x11compaction_target\x18\
+    \x02\x20\x01(\x04R\x10compactionTarget\"\x90\x01\n\x14CounterConfigurati\
+    on\x12x\n\x10aggregation_type\x18\x01\x20\x01(\x0e2C.bitdrift.public.sha\
+    red.workflows.v1.Counter.CounterAggregationTypeR\x0faggregationTypeB\x08\
     \xfaB\x05\x82\x01\x02\x10\x01\"\x87\x01\n\x11RateConfiguration\x12r\n\
     \x10aggregation_type\x18\x01\x20\x01(\x0e2=.bitdrift.public.shared.workf\
     lows.v1.Rate.RateAggregationTypeR\x0faggregationTypeB\x08\xfaB\x05\x82\
@@ -6224,60 +11815,135 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     er\x18\x04\x20\x03(\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\
     \x0eplatformFilterB\x08\xfaB\x05\x92\x01\x02\x10\n\"e\n\x17GetUniqueAppI\
     dsResponse\x12J\n\tplatforms\x18\x06\x20\x03(\x0b2,.bitdrift.public.shar\
-    ed.platform.v1.PlatformR\tplatforms2\xd1\x04\n\x10DashboardService\x12\
-    \x92\x01\n\x11GetWorkflowCharts\x12=.bitdrift.public.unary.dashboards.v1\
-    .GetWorkflowChartsRequest\x1a>.bitdrift.public.unary.dashboards.v1.GetWo\
-    rkflowChartsResponse\x12\x86\x01\n\rGetChartsData\x129.bitdrift.public.u\
-    nary.dashboards.v1.GetChartsDataRequest\x1a:.bitdrift.public.unary.dashb\
-    oards.v1.GetChartsDataResponse\x12\x8f\x01\n\x10GetActiveDevices\x12<.bi\
-    tdrift.public.unary.dashboards.v1.GetActiveDevicesRequest\x1a=.bitdrift.\
-    public.unary.dashboards.v1.GetActiveDevicesResponse\x12\x8c\x01\n\x0fGet\
-    UniqueAppIds\x12;.bitdrift.public.unary.dashboards.v1.GetUniqueAppIdsReq\
-    uest\x1a<.bitdrift.public.unary.dashboards.v1.GetUniqueAppIdsResponseJ\
-    \xbd\x83\x01\n\x07\x12\x05\x06\0\xb8\x03\x01\n\xb8\x02\n\x01\x0c\x12\x03\
-    \x06\0\x12\x1a\xad\x02\x20api\x20-\x20bitdrift's\x20client/server\x20API\
-    \x20definitions\n\x20Copyright\x20Bitdrift,\x20Inc.\x20All\x20rights\x20\
-    reserved.\n\n\x20Use\x20of\x20this\x20source\x20code\x20and\x20APIs\x20a\
-    re\x20governed\x20by\x20a\x20source\x20available\x20license\x20that\x20c\
-    an\x20be\x20found\x20in\n\x20the\x20LICENSE\x20file\x20or\x20at:\n\x20ht\
-    tps://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0\
-    .0.txt\n\n\x08\n\x01\x02\x12\x03\x08\0,\n\t\n\x02\x03\0\x12\x03\n\0;\n\t\
-    \n\x02\x03\x01\x12\x03\x0b\0?\n\t\n\x02\x03\x02\x12\x03\x0c\08\n\t\n\x02\
-    \x03\x03\x12\x03\r\0>\n\t\n\x02\x03\x04\x12\x03\x0e\06\n\t\n\x02\x03\x05\
-    \x12\x03\x0f\0)\n\t\n\x02\x03\x06\x12\x03\x10\0!\n;\n\x02\x04\0\x12\x04\
-    \x13\0h\x01\x1a/\x20Metadata\x20sufficient\x20to\x20render\x20a\x20singl\
-    e\x20chart.\n\n\n\n\x03\x04\0\x01\x12\x03\x13\x08\x15\n\x85\x01\n\x04\
-    \x04\0\x02\0\x12\x03\x16\x02h\x1ax\x20An\x20opaque\x20identifier\x20obje\
-    ct\x20for\x20the\x20chart.\x20This\x20should\x20be\x20provided\x20to\x20\
-    the\n\x20data\x20API\x20in\x20order\x20to\x20fetch/stream\x20the\x20data\
-    .\n\n\x0c\n\x05\x04\0\x02\0\x06\x12\x03\x16\x022\n\x0c\n\x05\x04\0\x02\0\
-    \x01\x12\x03\x1635\n\x0c\n\x05\x04\0\x02\0\x03\x12\x03\x1689\n\x0c\n\x05\
-    \x04\0\x02\0\x08\x12\x03\x16:g\n\x0f\n\x08\x04\0\x02\0\x08\xaf\x08\x11\
-    \x12\x03\x16;f\n\x0c\n\x04\x04\0\x03\0\x12\x04\x18\x02&\x03\n\x0c\n\x05\
-    \x04\0\x03\0\x01\x12\x03\x18\n\x0e\n\x91\x03\n\x06\x04\0\x03\0\x02\0\x12\
-    \x03!\x040\x1a\x81\x03\x20If\x20the\x20line\x20chart\x20contains\x20hist\
-    ograms\x20with\x20a\x20top-K\x20grouping,\x20this\n\x20provides\x20a\x20\
-    best-effort\x20list\x20of\x20suggested\x20percentiles.\x20The\x20chart\
-    \x20should\n\x20default\x20to\x20the\x200th\x20element\x20in\x20the\x20l\
-    ist,\x20and\x20callers\x20may\x20override\x20that\n\x20value\x20via\x20t\
-    he\x20chart\x20API.\n\n\x20If\x20this\x20list\x20is\x20empty,\x20the\x20\
-    chart\x20does\x20not\x20have\x20suggested\x20default\n\x20percentile\x20\
-    values,\x20but\x20callers\x20may\x20still\x20choose\x20a\x20percentile\
-    \x20via\x20the\n\x20chart\x20API.\n\n\x0e\n\x07\x04\0\x03\0\x02\0\x04\
-    \x12\x03!\x04\x0c\n\x0e\n\x07\x04\0\x03\0\x02\0\x05\x12\x03!\r\x12\n\x0e\
-    \n\x07\x04\0\x03\0\x02\0\x01\x12\x03!\x13+\n\x0e\n\x07\x04\0\x03\0\x02\0\
-    \x03\x12\x03!./\n\xe0\x01\n\x06\x04\0\x03\0\x02\x01\x12\x03%\x04+\x1a\
+    ed.platform.v1.PlatformR\tplatforms\"\xff\x03\n\x1bDashboardStylisticCom\
+    ponent\x12w\n\x0etext_component\x18\x01\x20\x01(\x0b2N.bitdrift.public.u\
+    nary.dashboards.v1.DashboardStylisticComponent.TextComponentH\0R\rtextCo\
+    mponent\x12d\n\x07divider\x18\x02\x20\x01(\x0b2H.bitdrift.public.unary.d\
+    ashboards.v1.DashboardStylisticComponent.DividerH\0R\x07divider\x12\x19\
+    \n\x02id\x18\x03\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12x\n\
+    \x19dashboard_layout_settings\x18\x04\x20\x01(\x0b2<.bitdrift.public.una\
+    ry.dashboards.v1.DashboardLayoutSettingsR\x17dashboardLayoutSettings\x1a\
+    \t\n\x07Divider\x1aT\n\rTextComponent\x12\x1e\n\x04text\x18\x01\x20\x01(\
+    \tR\x04textB\n\xfaB\x07r\x05\x10\x01\x18\x88'\x12#\n\x07variant\x18\x02\
+    \x20\x01(\tR\x07variantB\t\xfaB\x06r\x04\x10\x01\x182B\x0b\n\x04type\x12\
+    \x03\xf8B\x01\"\xdb\x01\n\x11DashboardVariable\x12I\n\x05value\x18\x03\
+    \x20\x01(\x0b21.bitdrift.public.unary.workflows.v1.GroupBy.ValueH\0R\x05\
+    value\x12e\n!earliest_contiguous_deployed_time\x18\x02\x20\x01(\x0b2\x1a\
+    .google.protobuf.TimestampR\x1eearliestContiguousDeployedTimeB\x14\n\rva\
+    riable_type\x12\x03\xf8B\x01\"\xa1\x02\n\x14ChartComponentLayout\x12K\n\
+    \x08chart_id\x18\x01\x20\x01(\x0b20.bitdrift.public.unary.charts.v1.Char\
+    tIdentifierR\x07chartId\x12e\n\x0flayout_settings\x18\x02\x20\x01(\x0b2<\
+    .bitdrift.public.unary.dashboards.v1.DashboardLayoutSettingsR\x0elayoutS\
+    ettings\x12U\n\x0echart_metadata\x18\x03\x20\x01(\x0b2..bitdrift.public.\
+    unary.charts.v1.ChartMetadataR\rchartMetadata\"z\n\x1eFavoriteCustomDash\
+    boardRequest\x12X\n\nidentifier\x18\x01\x20\x01(\x0b28.bitdrift.public.u\
+    nary.dashboards.v1.DashboardIdentifierR\nidentifier\"!\n\x1fFavoriteCust\
+    omDashboardResponse\"\xc2\x06\n\x1cUpsertCustomDashboardRequest\x12\x1e\
+    \n\x02id\x18\x01\x20\x01(\tH\0R\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x88\
+    \x01\x01\x12\x1e\n\x04name\x18\x02\x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\
+    \x10\x01\x18\xff\x01\x12l\n\x04tabs\x18\x03\x20\x03(\x0b2N.bitdrift.publ\
+    ic.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTabR\x04tab\
+    sB\x08\xfaB\x05\x92\x01\x02\x10d\x12l\n\x13dashboard_variables\x18\x05\
+    \x20\x03(\x0b21.bitdrift.public.unary.workflows.v1.GroupBy.ValueR\x12das\
+    hboardVariablesB\x08\xfaB\x05\x92\x01\x02\x10\n\x1a\xfe\x03\n\x0cDashboa\
+    rdTab\x12\x1e\n\x02id\x18\x01\x20\x01(\tH\0R\x02idB\t\xfaB\x06r\x04\x10\
+    \x01\x18d\x88\x01\x01\x12w\n\x06charts\x18\x02\x20\x03(\x0b2T.bitdrift.p\
+    ublic.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.Char\
+    tR\x06chartsB\t\xfaB\x06\x92\x01\x03\x10\xf4\x03\x12~\n\x14stylistic_com\
+    ponents\x18\x03\x20\x03(\x0b2@.bitdrift.public.unary.dashboards.v1.Dashb\
+    oardStylisticComponentR\x13stylisticComponentsB\t\xfaB\x06\x92\x01\x03\
+    \x10\xf4\x03\x12#\n\x04name\x18\x04\x20\x01(\tH\x01R\x04nameB\n\xfaB\x07\
+    r\x05\x10\x01\x18\xff\x01\x88\x01\x01\x1a\x9f\x01\n\x05Chart\x12\x1e\n\
+    \x02id\x18\x01\x20\x01(\tH\0R\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x88\
+    \x01\x01\x12o\n\x16chart_component_layout\x18\x02\x20\x01(\x0b29.bitdrif\
+    t.public.unary.dashboards.v1.ChartComponentLayoutR\x14chartComponentLayo\
+    utB\x05\n\x03_idB\x05\n\x03_idB\x07\n\x05_nameB\x05\n\x03_id\"}\n\x1dUps\
+    ertCustomDashboardResponse\x12\\\n\tdashboard\x18\x01\x20\x01(\x0b2>.bit\
+    drift.public.unary.dashboards.v1.Dashboard.CustomDashboardR\tdashboard\"\
+    9\n\x1cDeleteCustomDashboardRequest\x12\x19\n\x02id\x18\x01\x20\x01(\tR\
+    \x02idB\t\xfaB\x06r\x04\x10\x01\x18d\"\x1f\n\x1dDeleteCustomDashboardRes\
+    ponse\"\xc9\x03\n\x11ListChartsRequest\x12K\n\npagination\x18\x01\x20\
+    \x01(\x0b2+.bitdrift.public.unary.common.v1.PaginationR\npagination\x12X\
+    \n\x07filters\x18\x03\x20\x01(\x0b2>.bitdrift.public.unary.dashboards.v1\
+    .ListChartsRequest.FiltersR\x07filters\x1a\x8c\x02\n\x07Filters\x12M\n\
+    \x06access\x18\x01\x20\x01(\x0b25.bitdrift.public.unary.admin.v1.AccessP\
+    ermissionQueryR\x06access\x12'\n\x07view_id\x18\x02\x20\x01(\tH\0R\x06vi\
+    ewIdB\t\xfaB\x06r\x04\x10\x01\x18d\x88\x01\x01\x120\n\x0bworkflow_id\x18\
+    \x03\x20\x01(\tH\x01R\nworkflowIdB\n\xfaB\x07r\x05\x10\x01\x18\x80\x20\
+    \x88\x01\x01\x12,\n\nchart_name\x18\x04\x20\x01(\tH\x02R\tchartNameB\x08\
+    \xfaB\x05r\x03\x18\xff\x01\x88\x01\x01B\n\n\x08_view_idB\x0e\n\x0c_workf\
+    low_idB\r\n\x0b_chart_name\"\x81\x01\n\x12ListChartsResponse\x12J\n\x06c\
+    harts\x18\x01\x20\x03(\x0b22.bitdrift.public.unary.dashboards.v1.Resolve\
+    dChartR\x06charts\x12\x1f\n\x0btotal_count\x18\x02\x20\x01(\rR\ntotalCou\
+    nt2\xcb\x0b\n\x10DashboardService\x12\x83\x01\n\x0cGetDashboard\x128.bit\
+    drift.public.unary.dashboards.v1.GetDashboardRequest\x1a9.bitdrift.publi\
+    c.unary.dashboards.v1.GetDashboardResponse\x12\x89\x01\n\x0eListDashboar\
+    ds\x12:.bitdrift.public.unary.dashboards.v1.ListDashboardsRequest\x1a;.b\
+    itdrift.public.unary.dashboards.v1.ListDashboardsResponse\x12\x92\x01\n\
+    \x11GetWorkflowCharts\x12=.bitdrift.public.unary.dashboards.v1.GetWorkfl\
+    owChartsRequest\x1a>.bitdrift.public.unary.dashboards.v1.GetWorkflowChar\
+    tsResponse\x12\x86\x01\n\rGetChartsData\x129.bitdrift.public.unary.dashb\
+    oards.v1.GetChartsDataRequest\x1a:.bitdrift.public.unary.dashboards.v1.G\
+    etChartsDataResponse\x12\x8f\x01\n\x10GetActiveDevices\x12<.bitdrift.pub\
+    lic.unary.dashboards.v1.GetActiveDevicesRequest\x1a=.bitdrift.public.una\
+    ry.dashboards.v1.GetActiveDevicesResponse\x12\x8c\x01\n\x0fGetUniqueAppI\
+    ds\x12;.bitdrift.public.unary.dashboards.v1.GetUniqueAppIdsRequest\x1a<.\
+    bitdrift.public.unary.dashboards.v1.GetUniqueAppIdsResponse\x12\xa4\x01\
+    \n\x17FavoriteCustomDashboard\x12C.bitdrift.public.unary.dashboards.v1.F\
+    avoriteCustomDashboardRequest\x1aD.bitdrift.public.unary.dashboards.v1.F\
+    avoriteCustomDashboardResponse\x12\x9e\x01\n\x15UpsertCustomDashboard\
+    \x12A.bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest\
+    \x1aB.bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardResponse\
+    \x12\x9e\x01\n\x15DeleteCustomDashboard\x12A.bitdrift.public.unary.dashb\
+    oards.v1.DeleteCustomDashboardRequest\x1aB.bitdrift.public.unary.dashboa\
+    rds.v1.DeleteCustomDashboardResponse\x12}\n\nListCharts\x126.bitdrift.pu\
+    blic.unary.dashboards.v1.ListChartsRequest\x1a7.bitdrift.public.unary.da\
+    shboards.v1.ListChartsResponseJ\xed\xf0\x01\n\x07\x12\x05\x06\0\xbb\x06\
+    \x01\n\xb8\x02\n\x01\x0c\x12\x03\x06\0\x12\x1a\xad\x02\x20api\x20-\x20bi\
+    tdrift's\x20client/server\x20API\x20definitions\n\x20Copyright\x20Bitdri\
+    ft,\x20Inc.\x20All\x20rights\x20reserved.\n\n\x20Use\x20of\x20this\x20so\
+    urce\x20code\x20and\x20APIs\x20are\x20governed\x20by\x20a\x20source\x20a\
+    vailable\x20license\x20that\x20can\x20be\x20found\x20in\n\x20the\x20LICE\
+    NSE\x20file\x20or\x20at:\n\x20https://polyformproject.org/wp-content/upl\
+    oads/2020/06/PolyForm-Shield-1.0.0.txt\n\n\x08\n\x01\x02\x12\x03\x08\0,\
+    \n\t\n\x02\x03\0\x12\x03\n\0;\n\t\n\x02\x03\x01\x12\x03\x0b\0?\n\t\n\x02\
+    \x03\x02\x12\x03\x0c\05\n\t\n\x02\x03\x03\x12\x03\r\08\n\t\n\x02\x03\x04\
+    \x12\x03\x0e\0>\n\t\n\x02\x03\x05\x12\x03\x0f\06\n\t\n\x02\x03\x06\x12\
+    \x03\x10\0;\n\t\n\x02\x03\x07\x12\x03\x11\0(\n\t\n\x02\x03\x08\x12\x03\
+    \x12\0)\n\t\n\x02\x03\t\x12\x03\x13\0!\n;\n\x02\x04\0\x12\x04\x16\0k\x01\
+    \x1a/\x20Metadata\x20sufficient\x20to\x20render\x20a\x20single\x20chart.\
+    \n\n\n\n\x03\x04\0\x01\x12\x03\x16\x08\x15\n\x85\x01\n\x04\x04\0\x02\0\
+    \x12\x03\x19\x02h\x1ax\x20An\x20opaque\x20identifier\x20object\x20for\
+    \x20the\x20chart.\x20This\x20should\x20be\x20provided\x20to\x20the\n\x20\
+    data\x20API\x20in\x20order\x20to\x20fetch/stream\x20the\x20data.\n\n\x0c\
+    \n\x05\x04\0\x02\0\x06\x12\x03\x19\x022\n\x0c\n\x05\x04\0\x02\0\x01\x12\
+    \x03\x1935\n\x0c\n\x05\x04\0\x02\0\x03\x12\x03\x1989\n\x0c\n\x05\x04\0\
+    \x02\0\x08\x12\x03\x19:g\n\x0f\n\x08\x04\0\x02\0\x08\xaf\x08\x11\x12\x03\
+    \x19;f\n\x0c\n\x04\x04\0\x03\0\x12\x04\x1b\x02)\x03\n\x0c\n\x05\x04\0\
+    \x03\0\x01\x12\x03\x1b\n\x0e\n\x91\x03\n\x06\x04\0\x03\0\x02\0\x12\x03$\
+    \x040\x1a\x81\x03\x20If\x20the\x20line\x20chart\x20contains\x20histogram\
+    s\x20with\x20a\x20top-K\x20grouping,\x20this\n\x20provides\x20a\x20best-\
+    effort\x20list\x20of\x20suggested\x20percentiles.\x20The\x20chart\x20sho\
+    uld\n\x20default\x20to\x20the\x200th\x20element\x20in\x20the\x20list,\
+    \x20and\x20callers\x20may\x20override\x20that\n\x20value\x20via\x20the\
+    \x20chart\x20API.\n\n\x20If\x20this\x20list\x20is\x20empty,\x20the\x20ch\
+    art\x20does\x20not\x20have\x20suggested\x20default\n\x20percentile\x20va\
+    lues,\x20but\x20callers\x20may\x20still\x20choose\x20a\x20percentile\x20\
+    via\x20the\n\x20chart\x20API.\n\n\x0e\n\x07\x04\0\x03\0\x02\0\x04\x12\
+    \x03$\x04\x0c\n\x0e\n\x07\x04\0\x03\0\x02\0\x05\x12\x03$\r\x12\n\x0e\n\
+    \x07\x04\0\x03\0\x02\0\x01\x12\x03$\x13+\n\x0e\n\x07\x04\0\x03\0\x02\0\
+    \x03\x12\x03$./\n\xe0\x01\n\x06\x04\0\x03\0\x02\x01\x12\x03(\x04+\x1a\
     \xd0\x01\x20Whether\x20or\x20not\x20the\x20chart\x20supports\x20selectin\
     g\x20multiple\x20percentiles\x20at\x20once.\x20This\x20will\x20be\x20fal\
     se\x20for\n\x20charts\x20which\x20contain\x20grouped\x20histograms\x20or\
     \x20multiple\x20histograms,\x20and\x20true\x20for\x20charts\x20with\x20a\
-    \x20single\x20histogram.\n\n\x0e\n\x07\x04\0\x03\0\x02\x01\x05\x12\x03%\
-    \x04\x08\n\x0e\n\x07\x04\0\x03\0\x02\x01\x01\x12\x03%\t&\n\x0e\n\x07\x04\
-    \0\x03\0\x02\x01\x03\x12\x03%)*\n\x0b\n\x04\x04\0\x03\x01\x12\x03(\x02\
-    \x13\n\x0c\n\x05\x04\0\x03\x01\x01\x12\x03(\n\x10\n\x0b\n\x04\x04\0\x03\
-    \x02\x12\x03*\x02\x13\n\x0c\n\x05\x04\0\x03\x02\x01\x12\x03*\n\x10\n\x0c\
-    \n\x04\x04\0\x03\x03\x12\x04,\x02:\x03\n\x0c\n\x05\x04\0\x03\x03\x01\x12\
-    \x03,\n\x0f\n\xad\x03\n\x06\x04\0\x03\x03\x02\0\x12\x035\x040\x1a\x9d\
+    \x20single\x20histogram.\n\n\x0e\n\x07\x04\0\x03\0\x02\x01\x05\x12\x03(\
+    \x04\x08\n\x0e\n\x07\x04\0\x03\0\x02\x01\x01\x12\x03(\t&\n\x0e\n\x07\x04\
+    \0\x03\0\x02\x01\x03\x12\x03()*\n\x0b\n\x04\x04\0\x03\x01\x12\x03+\x02\
+    \x13\n\x0c\n\x05\x04\0\x03\x01\x01\x12\x03+\n\x10\n\x0b\n\x04\x04\0\x03\
+    \x02\x12\x03-\x02\x13\n\x0c\n\x05\x04\0\x03\x02\x01\x12\x03-\n\x10\n\x0c\
+    \n\x04\x04\0\x03\x03\x12\x04/\x02=\x03\n\x0c\n\x05\x04\0\x03\x03\x01\x12\
+    \x03/\n\x0f\n\xad\x03\n\x06\x04\0\x03\x03\x02\0\x12\x038\x040\x1a\x9d\
     \x03\x20If\x20the\x20line\x20chart\x20corresponding\x20to\x20this\x20tab\
     le\x20contains\x20histograms\x20with\x20a\n\x20top-K\x20grouping,\x20thi\
     s\x20provides\x20a\x20best-effort\x20list\x20of\x20suggested\n\x20percen\
@@ -6287,512 +11953,1044 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x20empty,\x20the\x20chart\x20does\x20not\x20have\x20suggested\x20defaul\
     t\n\x20percentile\x20values,\x20but\x20callers\x20may\x20still\x20choose\
     \x20a\x20percentile\x20via\x20the\n\x20chart\x20API.\n\n\x0e\n\x07\x04\0\
-    \x03\x03\x02\0\x04\x12\x035\x04\x0c\n\x0e\n\x07\x04\0\x03\x03\x02\0\x05\
-    \x12\x035\r\x12\n\x0e\n\x07\x04\0\x03\x03\x02\0\x01\x12\x035\x13+\n\x0e\
-    \n\x07\x04\0\x03\x03\x02\0\x03\x12\x035./\n\xe0\x01\n\x06\x04\0\x03\x03\
-    \x02\x01\x12\x039\x04+\x1a\xd0\x01\x20Whether\x20or\x20not\x20the\x20cha\
+    \x03\x03\x02\0\x04\x12\x038\x04\x0c\n\x0e\n\x07\x04\0\x03\x03\x02\0\x05\
+    \x12\x038\r\x12\n\x0e\n\x07\x04\0\x03\x03\x02\0\x01\x12\x038\x13+\n\x0e\
+    \n\x07\x04\0\x03\x03\x02\0\x03\x12\x038./\n\xe0\x01\n\x06\x04\0\x03\x03\
+    \x02\x01\x12\x03<\x04+\x1a\xd0\x01\x20Whether\x20or\x20not\x20the\x20cha\
     rt\x20supports\x20selecting\x20multiple\x20percentiles\x20at\x20once.\
     \x20This\x20will\x20be\x20false\x20for\n\x20charts\x20which\x20contain\
     \x20grouped\x20histograms\x20or\x20multiple\x20histograms,\x20and\x20tru\
     e\x20for\x20charts\x20with\x20a\x20single\x20histogram.\n\n\x0e\n\x07\
-    \x04\0\x03\x03\x02\x01\x05\x12\x039\x04\x08\n\x0e\n\x07\x04\0\x03\x03\
-    \x02\x01\x01\x12\x039\t&\n\x0e\n\x07\x04\0\x03\x03\x02\x01\x03\x12\x039)\
-    *\n\x0c\n\x04\x04\0\x03\x04\x12\x04<\x02Q\x03\n\x0c\n\x05\x04\0\x03\x04\
-    \x01\x12\x03<\n*\n\x0e\n\x06\x04\0\x03\x04\x03\0\x12\x04=\x04K\x05\n\x0e\
-    \n\x07\x04\0\x03\x04\x03\0\x01\x12\x03=\x0c\x16\nA\n\x08\x04\0\x03\x04\
-    \x03\0\x02\0\x12\x03?\x06\x19\x1a0\x20The\x20version\x20number\x20of\x20\
+    \x04\0\x03\x03\x02\x01\x05\x12\x03<\x04\x08\n\x0e\n\x07\x04\0\x03\x03\
+    \x02\x01\x01\x12\x03<\t&\n\x0e\n\x07\x04\0\x03\x03\x02\x01\x03\x12\x03<)\
+    *\n\x0c\n\x04\x04\0\x03\x04\x12\x04?\x02T\x03\n\x0c\n\x05\x04\0\x03\x04\
+    \x01\x12\x03?\n*\n\x0e\n\x06\x04\0\x03\x04\x03\0\x12\x04@\x04N\x05\n\x0e\
+    \n\x07\x04\0\x03\x04\x03\0\x01\x12\x03@\x0c\x16\nA\n\x08\x04\0\x03\x04\
+    \x03\0\x02\0\x12\x03B\x06\x19\x1a0\x20The\x20version\x20number\x20of\x20\
     the\x20workflow\x20deployment.\n\n\x10\n\t\x04\0\x03\x04\x03\0\x02\0\x05\
-    \x12\x03?\x06\x0c\n\x10\n\t\x04\0\x03\x04\x03\0\x02\0\x01\x12\x03?\r\x14\
-    \n\x10\n\t\x04\0\x03\x04\x03\0\x02\0\x03\x12\x03?\x17\x18\nD\n\x08\x04\0\
-    \x03\x04\x03\0\x02\x01\x12\x03B\x061\x1a3\x20The\x20time\x20when\x20this\
+    \x12\x03B\x06\x0c\n\x10\n\t\x04\0\x03\x04\x03\0\x02\0\x01\x12\x03B\r\x14\
+    \n\x10\n\t\x04\0\x03\x04\x03\0\x02\0\x03\x12\x03B\x17\x18\nD\n\x08\x04\0\
+    \x03\x04\x03\0\x02\x01\x12\x03E\x061\x1a3\x20The\x20time\x20when\x20this\
     \x20workflow\x20version\x20was\x20deployed.\n\n\x10\n\t\x04\0\x03\x04\
-    \x03\0\x02\x01\x06\x12\x03B\x06\x20\n\x10\n\t\x04\0\x03\x04\x03\0\x02\
-    \x01\x01\x12\x03B!,\n\x10\n\t\x04\0\x03\x04\x03\0\x02\x01\x03\x12\x03B/0\
-    \n|\n\x08\x04\0\x03\x04\x03\0\x02\x02\x12\x03G\x060\x1ak\x20The\x20time\
+    \x03\0\x02\x01\x06\x12\x03E\x06\x20\n\x10\n\t\x04\0\x03\x04\x03\0\x02\
+    \x01\x01\x12\x03E!,\n\x10\n\t\x04\0\x03\x04\x03\0\x02\x01\x03\x12\x03E/0\
+    \n|\n\x08\x04\0\x03\x04\x03\0\x02\x02\x12\x03J\x060\x1ak\x20The\x20time\
     \x20when\x20this\x20deployment\x20stopped\x20being\x20active.\n\n\x20If\
     \x20this\x20is\x20not\x20set,\x20the\x20deployment\x20is\x20still\x20act\
-    ive.\n\n\x10\n\t\x04\0\x03\x04\x03\0\x02\x02\x06\x12\x03G\x06\x20\n\x10\
-    \n\t\x04\0\x03\x04\x03\0\x02\x02\x01\x12\x03G!+\n\x10\n\t\x04\0\x03\x04\
-    \x03\0\x02\x02\x03\x12\x03G./\n?\n\x08\x04\0\x03\x04\x03\0\x02\x03\x12\
-    \x03J\x06B\x1a.\x20The\x20user\x20who\x20deployed\x20this\x20workflow\
-    \x20version.\n\n\x10\n\t\x04\0\x03\x04\x03\0\x02\x03\x06\x12\x03J\x06,\n\
-    \x10\n\t\x04\0\x03\x04\x03\0\x02\x03\x01\x12\x03J-=\n\x10\n\t\x04\0\x03\
-    \x04\x03\0\x02\x03\x03\x12\x03J@A\nx\n\x06\x04\0\x03\x04\x02\0\x12\x03P\
+    ive.\n\n\x10\n\t\x04\0\x03\x04\x03\0\x02\x02\x06\x12\x03J\x06\x20\n\x10\
+    \n\t\x04\0\x03\x04\x03\0\x02\x02\x01\x12\x03J!+\n\x10\n\t\x04\0\x03\x04\
+    \x03\0\x02\x02\x03\x12\x03J./\n?\n\x08\x04\0\x03\x04\x03\0\x02\x03\x12\
+    \x03M\x06B\x1a.\x20The\x20user\x20who\x20deployed\x20this\x20workflow\
+    \x20version.\n\n\x10\n\t\x04\0\x03\x04\x03\0\x02\x03\x06\x12\x03M\x06,\n\
+    \x10\n\t\x04\0\x03\x04\x03\0\x02\x03\x01\x12\x03M-=\n\x10\n\t\x04\0\x03\
+    \x04\x03\0\x02\x03\x03\x12\x03M@A\nx\n\x06\x04\0\x03\x04\x02\0\x12\x03S\
     \x04|\x1ai\x20The\x20deployment\x20history\x20of\x20the\x20workflow\x20b\
     acking\x20this\x20chart.\n\n\x20Entries\x20are\x20ordered\x20from\x20new\
-    est\x20to\x20oldest.\n\n\x0e\n\x07\x04\0\x03\x04\x02\0\x04\x12\x03P\x04\
-    \x0c\n\x0e\n\x07\x04\0\x03\x04\x02\0\x06\x12\x03P\rk\n\x0e\n\x07\x04\0\
-    \x03\x04\x02\0\x01\x12\x03Plw\n\x0e\n\x07\x04\0\x03\x04\x02\0\x03\x12\
-    \x03Pz{\n\"\n\x04\x04\0\x08\0\x12\x04T\x02a\x03\x1a\x14\x20The\x20type\
-    \x20of\x20chart.\n\n\x0c\n\x05\x04\0\x08\0\x01\x12\x03T\x08\x0c\n\x0c\n\
-    \x05\x04\0\x08\0\x02\x12\x03U\x04&\n\x0e\n\x07\x04\0\x08\0\x02\xaf\x08\
-    \x12\x03U\x04&\nL\n\x04\x04\0\x02\x01\x12\x03W\x04E\x1a?\x20The\x20chart\
+    est\x20to\x20oldest.\n\n\x0e\n\x07\x04\0\x03\x04\x02\0\x04\x12\x03S\x04\
+    \x0c\n\x0e\n\x07\x04\0\x03\x04\x02\0\x06\x12\x03S\rk\n\x0e\n\x07\x04\0\
+    \x03\x04\x02\0\x01\x12\x03Slw\n\x0e\n\x07\x04\0\x03\x04\x02\0\x03\x12\
+    \x03Sz{\n\"\n\x04\x04\0\x08\0\x12\x04W\x02d\x03\x1a\x14\x20The\x20type\
+    \x20of\x20chart.\n\n\x0c\n\x05\x04\0\x08\0\x01\x12\x03W\x08\x0c\n\x0c\n\
+    \x05\x04\0\x08\0\x02\x12\x03X\x04&\n\x0e\n\x07\x04\0\x08\0\x02\xaf\x08\
+    \x12\x03X\x04&\nL\n\x04\x04\0\x02\x01\x12\x03Z\x04E\x1a?\x20The\x20chart\
     \x20is\x20a\x20line\x20chart,\x20rendering\x20one\x20or\x20more\x20time\
-    \x20series.\n\n\x0c\n\x05\x04\0\x02\x01\x06\x12\x03W\x04;\n\x0c\n\x05\
-    \x04\0\x02\x01\x01\x12\x03W<@\n\x0c\n\x05\x04\0\x02\x01\x03\x12\x03WCD\n\
-    Q\n\x04\x04\0\x02\x02\x12\x03Z\x04J\x1aD\x20The\x20chart\x20is\x20a\x20f\
+    \x20series.\n\n\x0c\n\x05\x04\0\x02\x01\x06\x12\x03Z\x04;\n\x0c\n\x05\
+    \x04\0\x02\x01\x01\x12\x03Z<@\n\x0c\n\x05\x04\0\x02\x01\x03\x12\x03ZCD\n\
+    Q\n\x04\x04\0\x02\x02\x12\x03]\x04J\x1aD\x20The\x20chart\x20is\x20a\x20f\
     unnel\x20chart,\x20rendering\x20the\x20data\x20as\x20a\x20set\x20of\x20s\
-    teps.\n\n\x0c\n\x05\x04\0\x02\x02\x06\x12\x03Z\x04=\n\x0c\n\x05\x04\0\
-    \x02\x02\x01\x12\x03Z>D\n\x0c\n\x05\x04\0\x02\x02\x03\x12\x03ZGI\n[\n\
-    \x04\x04\0\x02\x03\x12\x03]\x04J\x1aN\x20The\x20chart\x20is\x20a\x20sank\
+    teps.\n\n\x0c\n\x05\x04\0\x02\x02\x06\x12\x03]\x04=\n\x0c\n\x05\x04\0\
+    \x02\x02\x01\x12\x03]>D\n\x0c\n\x05\x04\0\x02\x02\x03\x12\x03]GI\n[\n\
+    \x04\x04\0\x02\x03\x12\x03`\x04J\x1aN\x20The\x20chart\x20is\x20a\x20sank\
     ey\x20chart,\x20rendering\x20the\x20data\x20as\x20a\x20set\x20of\x20conn\
-    ected\x20nodes.\n\n\x0c\n\x05\x04\0\x02\x03\x06\x12\x03]\x04=\n\x0c\n\
-    \x05\x04\0\x02\x03\x01\x12\x03]>D\n\x0c\n\x05\x04\0\x02\x03\x03\x12\x03]\
-    GI\n[\n\x04\x04\0\x02\x04\x12\x03`\x04H\x1aN\x20The\x20chart\x20is\x20a\
+    ected\x20nodes.\n\n\x0c\n\x05\x04\0\x02\x03\x06\x12\x03`\x04=\n\x0c\n\
+    \x05\x04\0\x02\x03\x01\x12\x03`>D\n\x0c\n\x05\x04\0\x02\x03\x03\x12\x03`\
+    GI\n[\n\x04\x04\0\x02\x04\x12\x03c\x04H\x1aN\x20The\x20chart\x20is\x20a\
     \x20table\x20chart,\x20rendering\x20the\x20data\x20as\x20a\x20set\x20of\
-    \x20rows\x20and\x20columns.\n\n\x0c\n\x05\x04\0\x02\x04\x06\x12\x03`\x04\
-    <\n\x0c\n\x05\x04\0\x02\x04\x01\x12\x03`=B\n\x0c\n\x05\x04\0\x02\x04\x03\
-    \x12\x03`EG\n2\n\x04\x04\0\x02\x05\x12\x03d\x02?\x1a%\x20The\x20display\
+    \x20rows\x20and\x20columns.\n\n\x0c\n\x05\x04\0\x02\x04\x06\x12\x03c\x04\
+    <\n\x0c\n\x05\x04\0\x02\x04\x01\x12\x03c=B\n\x0c\n\x05\x04\0\x02\x04\x03\
+    \x12\x03cEG\n2\n\x04\x04\0\x02\x05\x12\x03g\x02?\x1a%\x20The\x20display\
     \x20metadata\x20for\x20the\x20chart.\n\n\x0c\n\x05\x04\0\x02\x05\x06\x12\
-    \x03d\x020\n\x0c\n\x05\x04\0\x02\x05\x01\x12\x03d19\n\x0c\n\x05\x04\0\
-    \x02\x05\x03\x12\x03d<>\nX\n\x04\x04\0\x02\x06\x12\x03g\x02\x7f\x1aK\x20\
+    \x03g\x020\n\x0c\n\x05\x04\0\x02\x05\x01\x12\x03g19\n\x0c\n\x05\x04\0\
+    \x02\x05\x03\x12\x03g<>\nX\n\x04\x04\0\x02\x06\x12\x03j\x02\x7f\x1aK\x20\
     The\x20deployment\x20history\x20of\x20the\x20workflow\x20backing\x20this\
-    \x20chart,\x20if\x20applicable.\n\n\x0c\n\x05\x04\0\x02\x06\x06\x12\x03g\
-    \x02U\n\x0c\n\x05\x04\0\x02\x06\x01\x12\x03gVy\n\x0c\n\x05\x04\0\x02\x06\
-    \x03\x12\x03g|~\n\n\n\x02\x04\x01\x12\x04j\0p\x01\n\n\n\x03\x04\x01\x01\
-    \x12\x03j\x08\x20\n?\n\x04\x04\x01\x02\0\x12\x04l\x02o\x04\x1a1\x20The\
-    \x20ID\x20of\x20the\x20workflow\x20to\x20fetch\x20the\x20charts\x20for.\
-    \n\n\x0c\n\x05\x04\x01\x02\0\x05\x12\x03l\x02\x08\n\x0c\n\x05\x04\x01\
-    \x02\0\x01\x12\x03l\t\x14\n\x0c\n\x05\x04\x01\x02\0\x03\x12\x03l\x17\x18\
-    \n\r\n\x05\x04\x01\x02\0\x08\x12\x04l\x19o\x03\n\x10\n\t\x04\x01\x02\0\
-    \x08\xaf\x08\x0e\x02\x12\x03m\x04'\n\x10\n\t\x04\x01\x02\0\x08\xaf\x08\
-    \x0e\x03\x12\x03n\x04*\n\n\n\x02\x04\x02\x12\x04r\0t\x01\n\n\n\x03\x04\
-    \x02\x01\x12\x03r\x08!\n\x0b\n\x04\x04\x02\x02\0\x12\x03s\x02I\n\x0c\n\
-    \x05\x04\x02\x02\0\x04\x12\x03s\x02\n\n\x0c\n\x05\x04\x02\x02\0\x06\x12\
-    \x03s\x0b=\n\x0c\n\x05\x04\x02\x02\0\x01\x12\x03s>D\n\x0c\n\x05\x04\x02\
-    \x02\0\x03\x12\x03sGH\n\x0b\n\x02\x04\x03\x12\x05v\0\x82\x01\x01\n\n\n\
-    \x03\x04\x03\x01\x12\x03v\x08&\nC\n\x04\x04\x03\x02\0\x12\x04x\x02{\x05\
-    \x1a5\x20The\x20id\x20of\x20the\x20first\x20time\x20series\x20to\x20comp\
-    are\x20against.\n\n\x0c\n\x05\x04\x03\x02\0\x05\x12\x03x\x02\x08\n\x0c\n\
-    \x05\x04\x03\x02\0\x01\x12\x03x\t\x0f\n\x0c\n\x05\x04\x03\x02\0\x03\x12\
-    \x03x\x12\x13\n\r\n\x05\x04\x03\x02\0\x08\x12\x04x\x14{\x04\n\x10\n\x08\
-    \x04\x03\x02\0\x08\xaf\x08\x0e\x12\x04x\x15{\x03\nE\n\x04\x04\x03\x02\
-    \x01\x12\x05~\x02\x81\x01\x05\x1a6\x20The\x20id\x20of\x20the\x20second\
-    \x20time\x20series\x20to\x20compare\x20against.\n\n\x0c\n\x05\x04\x03\
-    \x02\x01\x05\x12\x03~\x02\x08\n\x0c\n\x05\x04\x03\x02\x01\x01\x12\x03~\t\
-    \x0f\n\x0c\n\x05\x04\x03\x02\x01\x03\x12\x03~\x12\x13\n\x0e\n\x05\x04\
-    \x03\x02\x01\x08\x12\x05~\x14\x81\x01\x04\n\x11\n\x08\x04\x03\x02\x01\
-    \x08\xaf\x08\x0e\x12\x05~\x15\x81\x01\x03\n\x0c\n\x02\x04\x04\x12\x06\
-    \x84\x01\0\x8d\x01\x01\n\x0b\n\x03\x04\x04\x01\x12\x04\x84\x01\x08\x1b\n\
-    s\n\x04\x04\x04\x02\0\x12\x04\x87\x01\x02\x19\x1ae\x20The\x20number\x20o\
-    f\x20top-K\x20paths\x20to\x20use\x20when\x20rendering\x20the\x20Sankey\
+    \x20chart,\x20if\x20applicable.\n\n\x0c\n\x05\x04\0\x02\x06\x06\x12\x03j\
+    \x02U\n\x0c\n\x05\x04\0\x02\x06\x01\x12\x03jVy\n\x0c\n\x05\x04\0\x02\x06\
+    \x03\x12\x03j|~\n\n\n\x02\x04\x01\x12\x04m\0}\x01\n\n\n\x03\x04\x01\x01\
+    \x12\x03m\x08\x1f\nW\n\x04\x04\x01\x02\0\x12\x03o\x02F\x1aJ\x20The\x20nu\
+    mber\x20of\x20columns\x20this\x20chart/component\x20should\x20span\x20in\
+    \x20the\x20dashboard.\n\n\x0c\n\x05\x04\x01\x02\0\x04\x12\x03o\x02\n\n\
+    \x0c\n\x05\x04\x01\x02\0\x05\x12\x03o\x0b\x11\n\x0c\n\x05\x04\x01\x02\0\
+    \x01\x12\x03o\x12\x1d\n\x0c\n\x05\x04\x01\x02\0\x03\x12\x03o\x20!\n\x0c\
+    \n\x05\x04\x01\x02\0\x08\x12\x03o\"E\n\x0f\n\x08\x04\x01\x02\0\x08\xaf\
+    \x08\x05\x12\x03o#D\nT\n\x04\x04\x01\x02\x01\x12\x03r\x02C\x1aG\x20The\
+    \x20number\x20of\x20rows\x20this\x20chart/component\x20should\x20span\
+    \x20in\x20the\x20dashboard.\n\n\x0c\n\x05\x04\x01\x02\x01\x04\x12\x03r\
+    \x02\n\n\x0c\n\x05\x04\x01\x02\x01\x05\x12\x03r\x0b\x11\n\x0c\n\x05\x04\
+    \x01\x02\x01\x01\x12\x03r\x12\x1a\n\x0c\n\x05\x04\x01\x02\x01\x03\x12\
+    \x03r\x1d\x1e\n\x0c\n\x05\x04\x01\x02\x01\x08\x12\x03r\x1fB\n\x0f\n\x08\
+    \x04\x01\x02\x01\x08\xaf\x08\x05\x12\x03r\x20A\nF\n\x04\x04\x01\x02\x02\
+    \x12\x03u\x02\x15\x1a9\x20If\x20true,\x20the\x20chart\x20should\x20be\
+    \x20hidden\x20from\x20the\x20dashboard.\n\n\x0c\n\x05\x04\x01\x02\x02\
+    \x05\x12\x03u\x02\x06\n\x0c\n\x05\x04\x01\x02\x02\x01\x12\x03u\x07\x10\n\
+    \x0c\n\x05\x04\x01\x02\x02\x03\x12\x03u\x13\x14\n\xf4\x01\n\x04\x04\x01\
+    \x02\x03\x12\x03z\x02\x18\x1a\xe6\x01\x20The\x20x/y\x20position\x20of\
+    \x20the\x20component\x20within\x20the\x20dashboard.\x20This,\x20combined\
+    \x20with\x20the\n\x20positions\x20in\x20the\x20stylistic\x20components,\
+    \x20define\x20the\x20layout\x20order\x20of\x20the\x20dashboard.\x20If\
+    \x20not\x20set,\n\x20the\x20chart\x20will\x20be\x20placed\x20at\x20the\
+    \x20end\x20of\x20the\x20dashboard.\n\n\x0c\n\x05\x04\x01\x02\x03\x04\x12\
+    \x03z\x02\n\n\x0c\n\x05\x04\x01\x02\x03\x05\x12\x03z\x0b\x11\n\x0c\n\x05\
+    \x04\x01\x02\x03\x01\x12\x03z\x12\x13\n\x0c\n\x05\x04\x01\x02\x03\x03\
+    \x12\x03z\x16\x17\n\x0b\n\x04\x04\x01\x02\x04\x12\x03|\x02\x18\n\x0c\n\
+    \x05\x04\x01\x02\x04\x04\x12\x03|\x02\n\n\x0c\n\x05\x04\x01\x02\x04\x05\
+    \x12\x03|\x0b\x11\n\x0c\n\x05\x04\x01\x02\x04\x01\x12\x03|\x12\x13\n\x0c\
+    \n\x05\x04\x01\x02\x04\x03\x12\x03|\x16\x17\n\x0b\n\x02\x04\x02\x12\x05\
+    \x7f\0\x8c\x01\x01\n\n\n\x03\x04\x02\x01\x12\x03\x7f\x08\x16\nJ\n\x04\
+    \x04\x02\x02\0\x12\x04\x81\x01\x02I\x1a<\x20All\x20the\x20charts\x20that\
+    \x20should\x20be\x20displayed\x20on\x20this\x20dashboard.\n\n\r\n\x05\
+    \x04\x02\x02\0\x04\x12\x04\x81\x01\x02\n\n\r\n\x05\x04\x02\x02\0\x06\x12\
+    \x04\x81\x01\x0b=\n\r\n\x05\x04\x02\x02\0\x01\x12\x04\x81\x01>D\n\r\n\
+    \x05\x04\x02\x02\0\x03\x12\x04\x81\x01GH\nE\n\x04\x04\x02\x02\x01\x12\
+    \x06\x84\x01\x02\x87\x01\x05\x1a5\x20The\x20category\x20corresponding\
+    \x20to\x20this\x20dashboard\x20group.\n\n\r\n\x05\x04\x02\x02\x01\x05\
+    \x12\x04\x84\x01\x02\x08\n\r\n\x05\x04\x02\x02\x01\x01\x12\x04\x84\x01\t\
+    \x11\n\r\n\x05\x04\x02\x02\x01\x03\x12\x04\x84\x01\x14\x15\n\x0f\n\x05\
+    \x04\x02\x02\x01\x08\x12\x06\x84\x01\x16\x87\x01\x04\n\x12\n\x08\x04\x02\
+    \x02\x01\x08\xaf\x08\x0e\x12\x06\x84\x01\x17\x87\x01\x03\n\x99\x01\n\x04\
+    \x04\x02\x02\x02\x12\x04\x8b\x01\x027\x1a\x8a\x01\x20The\x20minimum\x20q\
+    uery\x20interval\x20for\x20this\x20group.\x20For\x20example,\x20if\x20th\
+    is\x20is\x20set\x20to\n\x207\x20days,\x20the\x20default\x20viewing\x20wi\
+    ndow\x20should\x20be\x20at\x20least\x207\x20days.\n\n\r\n\x05\x04\x02\
+    \x02\x02\x06\x12\x04\x8b\x01\x02\x1b\n\r\n\x05\x04\x02\x02\x02\x01\x12\
+    \x04\x8b\x01\x1c2\n\r\n\x05\x04\x02\x02\x02\x03\x12\x04\x8b\x0156\n\x0c\
+    \n\x02\x04\x03\x12\x06\x8e\x01\0\xa3\x01\x01\n\x0b\n\x03\x04\x03\x01\x12\
+    \x04\x8e\x01\x08\x1b\n\x0e\n\x04\x04\x03\x03\0\x12\x06\x8f\x01\x02\x94\
+    \x01\x03\n\r\n\x05\x04\x03\x03\0\x01\x12\x04\x8f\x01\n\x19\n\xdc\x01\n\
+    \x06\x04\x03\x03\0\x02\0\x12\x04\x93\x01\x04E\x1a\xcb\x01\x20An\x20optio\
+    nal\x20target\x20platform.\x20If\x20not\x20provided,\x20the\x20dashboard\
+    \x20groups\x20for\x20the\x20default\x20app\x20will\x20be\n\x20returned.\
+    \x20The\x20default\x20app\x20is\x20the\x20first\x20element\x20in\x20the\
+    \x20list\x20of\x20apps\x20returned\x20by\x20the\n\x20GetDashboardRespons\
+    e.\n\n\x0f\n\x07\x04\x03\x03\0\x02\0\x06\x12\x04\x93\x01\x040\n\x0f\n\
+    \x07\x04\x03\x03\0\x02\0\x01\x12\x04\x93\x011@\n\x0f\n\x07\x04\x03\x03\0\
+    \x02\0\x03\x12\x04\x93\x01CD\n\x0e\n\x04\x04\x03\x03\x01\x12\x06\x96\x01\
+    \x02\x9b\x01\x03\n\r\n\x05\x04\x03\x03\x01\x01\x12\x04\x96\x01\n\x19\n\
+    \x10\n\x06\x04\x03\x03\x01\x02\0\x12\x06\x97\x01\x04\x9a\x01\x07\n\x0f\n\
+    \x07\x04\x03\x03\x01\x02\0\x05\x12\x04\x97\x01\x04\n\n\x0f\n\x07\x04\x03\
+    \x03\x01\x02\0\x01\x12\x04\x97\x01\x0b\r\n\x0f\n\x07\x04\x03\x03\x01\x02\
+    \0\x03\x12\x04\x97\x01\x10\x11\n\x11\n\x07\x04\x03\x03\x01\x02\0\x08\x12\
+    \x06\x97\x01\x12\x9a\x01\x06\n\x14\n\n\x04\x03\x03\x01\x02\0\x08\xaf\x08\
+    \x0e\x12\x06\x97\x01\x13\x9a\x01\x05\n\x0e\n\x04\x04\x03\x08\0\x12\x06\
+    \x9d\x01\x02\xa2\x01\x03\n\r\n\x05\x04\x03\x08\0\x01\x12\x04\x9d\x01\x08\
+    \x0c\n\r\n\x05\x04\x03\x08\0\x02\x12\x04\x9e\x01\x04&\n\x0f\n\x07\x04\
+    \x03\x08\0\x02\xaf\x08\x12\x04\x9e\x01\x04&\n\x0c\n\x04\x04\x03\x02\0\
+    \x12\x04\x9f\x01\x04b\n\r\n\x05\x04\x03\x02\0\x06\x12\x04\x9f\x01\x04L\n\
+    \r\n\x05\x04\x03\x02\0\x01\x12\x04\x9f\x01M]\n\r\n\x05\x04\x03\x02\0\x03\
+    \x12\x04\x9f\x01`a\n\x0c\n\x04\x04\x03\x02\x01\x12\x04\xa1\x01\x04b\n\r\
+    \n\x05\x04\x03\x02\x01\x06\x12\x04\xa1\x01\x04L\n\r\n\x05\x04\x03\x02\
+    \x01\x01\x12\x04\xa1\x01M]\n\r\n\x05\x04\x03\x02\x01\x03\x12\x04\xa1\x01\
+    `a\n\x0c\n\x02\x04\x04\x12\x06\xa5\x01\0\xa8\x01\x01\n\x0b\n\x03\x04\x04\
+    \x01\x12\x04\xa5\x01\x08\x1b\n9\n\x04\x04\x04\x02\0\x12\x04\xa7\x01\x02B\
+    \x1a+\x20The\x20identifier\x20of\x20the\x20dashboard\x20to\x20fetch.\n\n\
+    \r\n\x05\x04\x04\x02\0\x06\x12\x04\xa7\x01\x02:\n\r\n\x05\x04\x04\x02\0\
+    \x01\x12\x04\xa7\x01;=\n\r\n\x05\x04\x04\x02\0\x03\x12\x04\xa7\x01@A\n\
+    \x0c\n\x02\x04\x05\x12\x06\xaa\x01\0\xac\x01\x01\n\x0b\n\x03\x04\x05\x01\
+    \x12\x04\xaa\x01\x08\x1c\n\x0c\n\x04\x04\x05\x02\0\x12\x04\xab\x01\x02?\
+    \n\r\n\x05\x04\x05\x02\0\x06\x12\x04\xab\x01\x020\n\r\n\x05\x04\x05\x02\
+    \0\x01\x12\x04\xab\x011:\n\r\n\x05\x04\x05\x02\0\x03\x12\x04\xab\x01=>\n\
+    \x0c\n\x02\x04\x06\x12\x06\xae\x01\0\x83\x02\x01\n\x0b\n\x03\x04\x06\x01\
+    \x12\x04\xae\x01\x08\x11\n\x0e\n\x04\x04\x06\x03\0\x12\x06\xaf\x01\x02\
+    \xb6\x01\x03\n\r\n\x05\x04\x06\x03\0\x01\x12\x04\xaf\x01\n\x19\n\x0e\n\
+    \x06\x04\x06\x03\0\x02\0\x12\x04\xb0\x01\x04T\n\x0f\n\x07\x04\x06\x03\0\
+    \x02\0\x06\x12\x04\xb0\x01\x04L\n\x0f\n\x07\x04\x06\x03\0\x02\0\x01\x12\
+    \x04\xb0\x01MO\n\x0f\n\x07\x04\x06\x03\0\x02\0\x03\x12\x04\xb0\x01RS\n\
+    \x0e\n\x06\x04\x06\x03\0\x02\x01\x12\x04\xb2\x01\x04U\n\x0f\n\x07\x04\
+    \x06\x03\0\x02\x01\x04\x12\x04\xb2\x01\x04\x0c\n\x0f\n\x07\x04\x06\x03\0\
+    \x02\x01\x06\x12\x04\xb2\x01\r@\n\x0f\n\x07\x04\x06\x03\0\x02\x01\x01\
+    \x12\x04\xb2\x01AP\n\x0f\n\x07\x04\x06\x03\0\x02\x01\x03\x12\x04\xb2\x01\
+    ST\n<\n\x06\x04\x06\x03\0\x02\x02\x12\x04\xb5\x01\x04H\x1a,\x20The\x20po\
+    ssible\x20platforms\x20for\x20this\x20dashboard.\n\n\x0f\n\x07\x04\x06\
+    \x03\0\x02\x02\x04\x12\x04\xb5\x01\x04\x0c\n\x0f\n\x07\x04\x06\x03\0\x02\
+    \x02\x06\x12\x04\xb5\x01\r9\n\x0f\n\x07\x04\x06\x03\0\x02\x02\x01\x12\
+    \x04\xb5\x01:C\n\x0f\n\x07\x04\x06\x03\0\x02\x02\x03\x12\x04\xb5\x01FG\n\
+    \x0e\n\x04\x04\x06\x03\x01\x12\x06\xb8\x01\x02\xfb\x01\x03\n\r\n\x05\x04\
+    \x06\x03\x01\x01\x12\x04\xb8\x01\n\x19\n\x10\n\x06\x04\x06\x03\x01\x02\0\
+    \x12\x06\xb9\x01\x04\xbc\x01\x07\n\x0f\n\x07\x04\x06\x03\x01\x02\0\x05\
+    \x12\x04\xb9\x01\x04\n\n\x0f\n\x07\x04\x06\x03\x01\x02\0\x01\x12\x04\xb9\
+    \x01\x0b\r\n\x0f\n\x07\x04\x06\x03\x01\x02\0\x03\x12\x04\xb9\x01\x10\x11\
+    \n\x11\n\x07\x04\x06\x03\x01\x02\0\x08\x12\x06\xb9\x01\x12\xbc\x01\x06\n\
+    \x14\n\n\x04\x06\x03\x01\x02\0\x08\xaf\x08\x0e\x12\x06\xb9\x01\x13\xbc\
+    \x01\x05\n9\n\x06\x04\x06\x03\x01\x02\x01\x12\x06\xbf\x01\x04\xc2\x01\
+    \x07\x1a'\x20The\x20display\x20title\x20for\x20this\x20dashboard.\n\n\
+    \x0f\n\x07\x04\x06\x03\x01\x02\x01\x04\x12\x04\xbf\x01\x04\x0c\n\x0f\n\
+    \x07\x04\x06\x03\x01\x02\x01\x05\x12\x04\xbf\x01\r\x13\n\x0f\n\x07\x04\
+    \x06\x03\x01\x02\x01\x01\x12\x04\xbf\x01\x14\x19\n\x0f\n\x07\x04\x06\x03\
+    \x01\x02\x01\x03\x12\x04\xbf\x01\x1c\x1d\n\x11\n\x07\x04\x06\x03\x01\x02\
+    \x01\x08\x12\x06\xbf\x01\x1e\xc2\x01\x06\n\x14\n\n\x04\x06\x03\x01\x02\
+    \x01\x08\xaf\x08\x0e\x12\x06\xbf\x01\x1f\xc2\x01\x05\nN\n\x06\x04\x06\
+    \x03\x01\x02\x02\x12\x04\xc5\x01\x04<\x1a>\x20The\x20last\x20time\x20thi\
+    s\x20dashboard\x20was\x20viewed\x20by\x20the\x20current\x20user.\n\n\x0f\
+    \n\x07\x04\x06\x03\x01\x02\x02\x06\x12\x04\xc5\x01\x04\x1e\n\x0f\n\x07\
+    \x04\x06\x03\x01\x02\x02\x01\x12\x04\xc5\x01\x1f7\n\x0f\n\x07\x04\x06\
+    \x03\x01\x02\x02\x03\x12\x04\xc5\x01:;\n\x10\n\x06\x04\x06\x03\x01\x03\0\
+    \x12\x06\xc7\x01\x04\xe9\x01\x05\n\x0f\n\x07\x04\x06\x03\x01\x03\0\x01\
+    \x12\x04\xc7\x01\x0c\x18\n\x12\n\x08\x04\x06\x03\x01\x03\0\x03\0\x12\x06\
+    \xc8\x01\x06\xd7\x01\x07\n\x11\n\t\x04\x06\x03\x01\x03\0\x03\0\x01\x12\
+    \x04\xc8\x01\x0e\x13\n\x14\n\n\x04\x06\x03\x01\x03\0\x03\0\x02\0\x12\x06\
+    \xc9\x01\x08\xcc\x01\x0b\n\x13\n\x0b\x04\x06\x03\x01\x03\0\x03\0\x02\0\
+    \x05\x12\x04\xc9\x01\x08\x0e\n\x13\n\x0b\x04\x06\x03\x01\x03\0\x03\0\x02\
+    \0\x01\x12\x04\xc9\x01\x0f\x11\n\x13\n\x0b\x04\x06\x03\x01\x03\0\x03\0\
+    \x02\0\x03\x12\x04\xc9\x01\x14\x15\n\x15\n\x0b\x04\x06\x03\x01\x03\0\x03\
+    \0\x02\0\x08\x12\x06\xc9\x01\x16\xcc\x01\n\n\x18\n\x0e\x04\x06\x03\x01\
+    \x03\0\x03\0\x02\0\x08\xaf\x08\x0e\x12\x06\xc9\x01\x17\xcc\x01\t\n\x14\n\
+    \n\x04\x06\x03\x01\x03\0\x03\0\x08\0\x12\x06\xce\x01\x08\xd6\x01\t\n\x13\
+    \n\x0b\x04\x06\x03\x01\x03\0\x03\0\x08\0\x01\x12\x04\xce\x01\x0e\x1c\n\
+    \x13\n\x0b\x04\x06\x03\x01\x03\0\x03\0\x08\0\x02\x12\x04\xcf\x01\n,\n\
+    \x15\n\r\x04\x06\x03\x01\x03\0\x03\0\x08\0\x02\xaf\x08\x12\x04\xcf\x01\n\
+    ,\nN\n\n\x04\x06\x03\x01\x03\0\x03\0\x02\x01\x12\x04\xd1\x01\nG\x1a:\x20\
+    The\x20resolved\x20chart\x20information\x20for\x20this\x20chart\x20refer\
+    ence.\n\n\x13\n\x0b\x04\x06\x03\x01\x03\0\x03\0\x02\x01\x06\x12\x04\xd1\
+    \x01\n<\n\x13\n\x0b\x04\x06\x03\x01\x03\0\x03\0\x02\x01\x01\x12\x04\xd1\
+    \x01=B\n\x13\n\x0b\x04\x06\x03\x01\x03\0\x03\0\x02\x01\x03\x12\x04\xd1\
+    \x01EF\n\x85\x01\n\n\x04\x06\x03\x01\x03\0\x03\0\x02\x02\x12\x04\xd5\x01\
+    \nK\x1aq\x20Set\x20to\x20true\x20if\x20the\x20backing\x20chart\x20no\x20\
+    longer\x20exists.\x20For\x20example,\x20if\x20the\x20workflow\n\x20backi\
+    ng\x20the\x20chart\x20was\x20deleted.\n\n\x13\n\x0b\x04\x06\x03\x01\x03\
+    \0\x03\0\x02\x02\x05\x12\x04\xd5\x01\n\x0e\n\x13\n\x0b\x04\x06\x03\x01\
+    \x03\0\x03\0\x02\x02\x01\x12\x04\xd5\x01\x0f\x1e\n\x13\n\x0b\x04\x06\x03\
+    \x01\x03\0\x03\0\x02\x02\x03\x12\x04\xd5\x01!\"\n\x13\n\x0b\x04\x06\x03\
+    \x01\x03\0\x03\0\x02\x02\x08\x12\x04\xd5\x01#J\n\x16\n\x0e\x04\x06\x03\
+    \x01\x03\0\x03\0\x02\x02\x08\xaf\x08\r\x12\x04\xd5\x01$I\n\x12\n\x08\x04\
+    \x06\x03\x01\x03\0\x02\0\x12\x06\xd9\x01\x06\xdc\x01\t\n\x11\n\t\x04\x06\
+    \x03\x01\x03\0\x02\0\x05\x12\x04\xd9\x01\x06\x0c\n\x11\n\t\x04\x06\x03\
+    \x01\x03\0\x02\0\x01\x12\x04\xd9\x01\r\x0f\n\x11\n\t\x04\x06\x03\x01\x03\
+    \0\x02\0\x03\x12\x04\xd9\x01\x12\x13\n\x13\n\t\x04\x06\x03\x01\x03\0\x02\
+    \0\x08\x12\x06\xd9\x01\x14\xdc\x01\x08\n\x16\n\x0c\x04\x06\x03\x01\x03\0\
+    \x02\0\x08\xaf\x08\x0e\x12\x06\xd9\x01\x15\xdc\x01\x07\n\x12\n\x08\x04\
+    \x06\x03\x01\x03\0\x02\x01\x12\x06\xde\x01\x06\xe1\x01\t\n\x11\n\t\x04\
+    \x06\x03\x01\x03\0\x02\x01\x05\x12\x04\xde\x01\x06\x0c\n\x11\n\t\x04\x06\
+    \x03\x01\x03\0\x02\x01\x01\x12\x04\xde\x01\r\x11\n\x11\n\t\x04\x06\x03\
+    \x01\x03\0\x02\x01\x03\x12\x04\xde\x01\x14\x15\n\x13\n\t\x04\x06\x03\x01\
+    \x03\0\x02\x01\x08\x12\x06\xde\x01\x16\xe1\x01\x08\n\x16\n\x0c\x04\x06\
+    \x03\x01\x03\0\x02\x01\x08\xaf\x08\x0e\x12\x06\xde\x01\x17\xe1\x01\x07\n\
+    N\n\x08\x04\x06\x03\x01\x03\0\x02\x02\x12\x04\xe4\x01\x06l\x1a<\x20All\
+    \x20the\x20charts\x20that\x20should\x20be\x20displayed\x20on\x20this\x20\
+    dashboard.\n\n\x11\n\t\x04\x06\x03\x01\x03\0\x02\x02\x04\x12\x04\xe4\x01\
+    \x06\x0e\n\x11\n\t\x04\x06\x03\x01\x03\0\x02\x02\x06\x12\x04\xe4\x01\x0f\
+    `\n\x11\n\t\x04\x06\x03\x01\x03\0\x02\x02\x01\x12\x04\xe4\x01ag\n\x11\n\
+    \t\x04\x06\x03\x01\x03\0\x02\x02\x03\x12\x04\xe4\x01jk\n\xc9\x01\n\x08\
+    \x04\x06\x03\x01\x03\0\x02\x03\x12\x04\xe8\x01\x06_\x1a\xb6\x01\x20Styli\
+    stic\x20components\x20that\x20should\x20be\x20displayed\x20alongside\x20\
+    the\x20charts\x20in\x20this\x20group.\n\x20These\x20components\x20can\
+    \x20be\x20used\x20to\x20add\x20dividers,\x20text,\x20or\x20other\x20styl\
+    istic\x20elements\x20to\x20the\x20dashboard.\n\n\x11\n\t\x04\x06\x03\x01\
+    \x03\0\x02\x03\x04\x12\x04\xe8\x01\x06\x0e\n\x11\n\t\x04\x06\x03\x01\x03\
+    \0\x02\x03\x06\x12\x04\xe8\x01\x0fO\n\x11\n\t\x04\x06\x03\x01\x03\0\x02\
+    \x03\x01\x12\x04\xe8\x01PZ\n\x11\n\t\x04\x06\x03\x01\x03\0\x02\x03\x03\
+    \x12\x04\xe8\x01]^\n\x0e\n\x06\x04\x06\x03\x01\x02\x03\x12\x04\xeb\x01\
+    \x04b\n\x0f\n\x07\x04\x06\x03\x01\x02\x03\x04\x12\x04\xeb\x01\x04\x0c\n\
+    \x0f\n\x07\x04\x06\x03\x01\x02\x03\x06\x12\x04\xeb\x01\rX\n\x0f\n\x07\
+    \x04\x06\x03\x01\x02\x03\x01\x12\x04\xeb\x01Y]\n\x0f\n\x07\x04\x06\x03\
+    \x01\x02\x03\x03\x12\x04\xeb\x01`a\n\xb8\x01\n\x06\x04\x06\x03\x01\x02\
+    \x04\x12\x04\xef\x01\x04Y\x1a\xa7\x01\x20The\x20variables\x20that\x20can\
+    \x20be\x20used\x20to\x20filter\x20the\x20dashboard.\x20These\x20variable\
+    s\x20are\x20the\x20intersection\n\x20of\x20all\x20common\x20variables\
+    \x20across\x20the\x20workflows\x20that\x20the\x20charts\x20belong\x20to.\
+    \n\n\x0f\n\x07\x04\x06\x03\x01\x02\x04\x04\x12\x04\xef\x01\x04\x0c\n\x0f\
+    \n\x07\x04\x06\x03\x01\x02\x04\x06\x12\x04\xef\x01\rC\n\x0f\n\x07\x04\
+    \x06\x03\x01\x02\x04\x01\x12\x04\xef\x01DT\n\x0f\n\x07\x04\x06\x03\x01\
+    \x02\x04\x03\x12\x04\xef\x01WX\n\xd5\x01\n\x06\x04\x06\x03\x01\x02\x05\
+    \x12\x04\xf3\x01\x045\x1a\xc4\x01\x20The\x20owner\x20of\x20the\x20dashbo\
+    ard.\x20This\x20refers\x20to\x20the\x20user\x20who\x20created\x20the\x20\
+    dashboard.\n\x20A\x20dashboard\x20may\x20be\x20editable\x20by\x20multipl\
+    e\x20users,\x20if\x20editing\x20permissions\x20are\x20shared\x20with\x20\
+    an\x20individual,\x20team,\x20or\x20org.\n\n\x0f\n\x07\x04\x06\x03\x01\
+    \x02\x05\x06\x12\x04\xf3\x01\x04*\n\x0f\n\x07\x04\x06\x03\x01\x02\x05\
+    \x01\x12\x04\xf3\x01+0\n\x0f\n\x07\x04\x06\x03\x01\x02\x05\x03\x12\x04\
+    \xf3\x0134\n\x0e\n\x06\x04\x06\x03\x01\x02\x06\x12\x04\xf5\x01\x04$\n\
+    \x0f\n\x07\x04\x06\x03\x01\x02\x06\x05\x12\x04\xf5\x01\x04\x08\n\x0f\n\
+    \x07\x04\x06\x03\x01\x02\x06\x01\x12\x04\xf5\x01\t\x1f\n\x0f\n\x07\x04\
+    \x06\x03\x01\x02\x06\x03\x12\x04\xf5\x01\"#\n\x0e\n\x06\x04\x06\x03\x01\
+    \x02\x07\x12\x04\xf7\x01\x04J\n\x0f\n\x07\x04\x06\x03\x01\x02\x07\x06\
+    \x12\x04\xf7\x01\x04/\n\x0f\n\x07\x04\x06\x03\x01\x02\x07\x01\x12\x04\
+    \xf7\x010E\n\x0f\n\x07\x04\x06\x03\x01\x02\x07\x03\x12\x04\xf7\x01HI\n^\
+    \n\x06\x04\x06\x03\x01\x02\x08\x12\x05\xfa\x01\x04\x85\x01\x1aM\x20The\
+    \x20variables\x20that\x20are\x20applied\x20to\x20every\x20chart\x20refer\
+    enced\x20in\x20this\x20dashboard.\n\n\x0f\n\x07\x04\x06\x03\x01\x02\x08\
+    \x04\x12\x04\xfa\x01\x04\x0c\n\x0f\n\x07\x04\x06\x03\x01\x02\x08\x06\x12\
+    \x04\xfa\x01\r>\n\x0f\n\x07\x04\x06\x03\x01\x02\x08\x01\x12\x04\xfa\x01?\
+    R\n\x0f\n\x07\x04\x06\x03\x01\x02\x08\x03\x12\x04\xfa\x01UV\n\x10\n\x07\
+    \x04\x06\x03\x01\x02\x08\x08\x12\x05\xfa\x01W\x84\x01\n\x13\n\n\x04\x06\
+    \x03\x01\x02\x08\x08\xaf\x08\x12\x12\x05\xfa\x01X\x83\x01\n\x0e\n\x04\
+    \x04\x06\x08\0\x12\x06\xfd\x01\x02\x82\x02\x03\n\r\n\x05\x04\x06\x08\0\
+    \x01\x12\x04\xfd\x01\x08\x0c\n\r\n\x05\x04\x06\x08\0\x02\x12\x04\xfe\x01\
+    \x04&\n\x0f\n\x07\x04\x06\x08\0\x02\xaf\x08\x12\x04\xfe\x01\x04&\n\x0c\n\
+    \x04\x04\x06\x02\0\x12\x04\xff\x01\x04X\n\r\n\x05\x04\x06\x02\0\x06\x12\
+    \x04\xff\x01\x04B\n\r\n\x05\x04\x06\x02\0\x01\x12\x04\xff\x01CS\n\r\n\
+    \x05\x04\x06\x02\0\x03\x12\x04\xff\x01VW\n\x0c\n\x04\x04\x06\x02\x01\x12\
+    \x04\x81\x02\x04X\n\r\n\x05\x04\x06\x02\x01\x06\x12\x04\x81\x02\x04B\n\r\
+    \n\x05\x04\x06\x02\x01\x01\x12\x04\x81\x02CS\n\r\n\x05\x04\x06\x02\x01\
+    \x03\x12\x04\x81\x02VW\n\x0c\n\x02\x04\x07\x12\x06\x85\x02\0\xa9\x02\x01\
+    \n\x0b\n\x03\x04\x07\x01\x12\x04\x85\x02\x08\x1d\n\x0e\n\x04\x04\x07\x03\
+    \0\x12\x06\x86\x02\x02\x91\x02\x03\n\r\n\x05\x04\x07\x03\0\x01\x12\x04\
+    \x86\x02\n\x11\n\xe6\x01\n\x06\x04\x07\x03\0\x02\0\x12\x04\x8a\x02\x04E\
+    \x1a\xd5\x01\x20Filters\x20dashboards\x20by\x20access\x20permission\x20l\
+    evels\x20for\x20a\x20specified\x20user.\n\x20For\x20example,\x20callers\
+    \x20can\x20request\x20dashboards\x20where\x20a\x20user\x20has\x20EDIT\
+    \x20access.\n\x20Callers\x20can\x20also\x20exclude\x20dashboards\x20wher\
+    e\x20a\x20user\x20has\x20OWNER\x20access.\n\n\x0f\n\x07\x04\x07\x03\0\
+    \x02\0\x06\x12\x04\x8a\x02\x049\n\x0f\n\x07\x04\x07\x03\0\x02\0\x01\x12\
+    \x04\x8a\x02:@\n\x0f\n\x07\x04\x07\x03\0\x02\0\x03\x12\x04\x8a\x02CD\n\
+    \x8d\x01\n\x06\x04\x07\x03\0\x02\x01\x12\x04\x8d\x02\x04N\x1a}\x20A\x20f\
+    ree\x20text\x20entry\x20to\x20filter\x20dashboards\x20by\x20name\x20or\
+    \x20other\x20metadata,\x20including\x20names\x20of\x20charts\x20containe\
+    d\x20within\x20the\x20dashboard.\n\n\x0f\n\x07\x04\x07\x03\0\x02\x01\x04\
+    \x12\x04\x8d\x02\x04\x0c\n\x0f\n\x07\x04\x07\x03\0\x02\x01\x05\x12\x04\
+    \x8d\x02\r\x13\n\x0f\n\x07\x04\x07\x03\0\x02\x01\x01\x12\x04\x8d\x02\x14\
+    \x1e\n\x0f\n\x07\x04\x07\x03\0\x02\x01\x03\x12\x04\x8d\x02!\"\n\x0f\n\
+    \x07\x04\x07\x03\0\x02\x01\x08\x12\x04\x8d\x02#M\n\x12\n\n\x04\x07\x03\0\
+    \x02\x01\x08\xaf\x08\x0e\x12\x04\x8d\x02$L\nU\n\x06\x04\x07\x03\0\x02\
+    \x02\x12\x04\x90\x02\x04\x20\x1aE\x20Whether\x20to\x20filter\x20dashboar\
+    ds\x20by\x20those\x20that\x20are\x20marked\x20as\x20favorites.\n\n\x0f\n\
+    \x07\x04\x07\x03\0\x02\x02\x04\x12\x04\x90\x02\x04\x0c\n\x0f\n\x07\x04\
+    \x07\x03\0\x02\x02\x05\x12\x04\x90\x02\r\x11\n\x0f\n\x07\x04\x07\x03\0\
+    \x02\x02\x01\x12\x04\x90\x02\x12\x1b\n\x0f\n\x07\x04\x07\x03\0\x02\x02\
+    \x03\x12\x04\x90\x02\x1e\x1f\n\x0e\n\x04\x04\x07\x03\x01\x12\x06\x93\x02\
+    \x02\xa2\x02\x03\n\r\n\x05\x04\x07\x03\x01\x01\x12\x04\x93\x02\n\x0e\n\
+    \x10\n\x06\x04\x07\x03\x01\x04\0\x12\x06\x94\x02\x04\x99\x02\x05\n\x0f\n\
+    \x07\x04\x07\x03\x01\x04\0\x01\x12\x04\x94\x02\t\x10\n\x10\n\x08\x04\x07\
+    \x03\x01\x04\0\x02\0\x12\x04\x95\x02\x06\x1f\n\x11\n\t\x04\x07\x03\x01\
+    \x04\0\x02\0\x01\x12\x04\x95\x02\x06\x1a\n\x11\n\t\x04\x07\x03\x01\x04\0\
+    \x02\0\x02\x12\x04\x95\x02\x1d\x1e\n\x10\n\x08\x04\x07\x03\x01\x04\0\x02\
+    \x01\x12\x04\x96\x02\x06\x19\n\x11\n\t\x04\x07\x03\x01\x04\0\x02\x01\x01\
+    \x12\x04\x96\x02\x06\x14\n\x11\n\t\x04\x07\x03\x01\x04\0\x02\x01\x02\x12\
+    \x04\x96\x02\x17\x18\n\x10\n\x08\x04\x07\x03\x01\x04\0\x02\x02\x12\x04\
+    \x97\x02\x06\x15\n\x11\n\t\x04\x07\x03\x01\x04\0\x02\x02\x01\x12\x04\x97\
+    \x02\x06\x10\n\x11\n\t\x04\x07\x03\x01\x04\0\x02\x02\x02\x12\x04\x97\x02\
+    \x13\x14\n\x10\n\x08\x04\x07\x03\x01\x04\0\x02\x03\x12\x04\x98\x02\x06\
+    \x16\n\x11\n\t\x04\x07\x03\x01\x04\0\x02\x03\x01\x12\x04\x98\x02\x06\x11\
+    \n\x11\n\t\x04\x07\x03\x01\x04\0\x02\x03\x02\x12\x04\x98\x02\x14\x15\nQ\
+    \n\x06\x04\x07\x03\x01\x02\0\x12\x06\x9c\x02\x04\x9f\x02\x07\x1a?\x20Sel\
+    ects\x20which\x20caller-visible\x20dashboard\x20attribute\x20to\x20order\
+    \x20by.\n\n\x0f\n\x07\x04\x07\x03\x01\x02\0\x06\x12\x04\x9c\x02\x04K\n\
+    \x0f\n\x07\x04\x07\x03\x01\x02\0\x01\x12\x04\x9c\x02LO\n\x0f\n\x07\x04\
+    \x07\x03\x01\x02\0\x03\x12\x04\x9c\x02RS\n\x11\n\x07\x04\x07\x03\x01\x02\
+    \0\x08\x12\x06\x9c\x02T\x9f\x02\x06\n\x14\n\n\x04\x07\x03\x01\x02\0\x08\
+    \xaf\x08\x10\x12\x06\x9c\x02U\x9f\x02\x05\n\x0e\n\x06\x04\x07\x03\x01\
+    \x02\x01\x12\x04\xa1\x02\x04p\n\x0f\n\x07\x04\x07\x03\x01\x02\x01\x06\
+    \x12\x04\xa1\x02\x042\n\x0f\n\x07\x04\x07\x03\x01\x02\x01\x01\x12\x04\
+    \xa1\x023<\n\x0f\n\x07\x04\x07\x03\x01\x02\x01\x03\x12\x04\xa1\x02?@\n\
+    \x0f\n\x07\x04\x07\x03\x01\x02\x01\x08\x12\x04\xa1\x02Ao\n\x12\n\n\x04\
+    \x07\x03\x01\x02\x01\x08\xaf\x08\x10\x12\x04\xa1\x02Bn\n\x0c\n\x04\x04\
+    \x07\x02\0\x12\x04\xa4\x02\x02=\n\r\n\x05\x04\x07\x02\0\x06\x12\x04\xa4\
+    \x02\x02-\n\r\n\x05\x04\x07\x02\0\x01\x12\x04\xa4\x02.8\n\r\n\x05\x04\
+    \x07\x02\0\x03\x12\x04\xa4\x02;<\n\x0c\n\x04\x04\x07\x02\x01\x12\x04\xa6\
+    \x02\x02Q\n\r\n\x05\x04\x07\x02\x01\x06\x12\x04\xa6\x02\x02D\n\r\n\x05\
+    \x04\x07\x02\x01\x01\x12\x04\xa6\x02EL\n\r\n\x05\x04\x07\x02\x01\x03\x12\
+    \x04\xa6\x02OP\n\r\n\x04\x04\x07\x02\x02\x12\x05\xa8\x02\x02\x83\x01\n\r\
+    \n\x05\x04\x07\x02\x02\x04\x12\x04\xa8\x02\x02\n\n\r\n\x05\x04\x07\x02\
+    \x02\x06\x12\x04\xa8\x02\x0bJ\n\r\n\x05\x04\x07\x02\x02\x01\x12\x04\xa8\
+    \x02KO\n\r\n\x05\x04\x07\x02\x02\x03\x12\x04\xa8\x02RS\n\x0e\n\x05\x04\
+    \x07\x02\x02\x08\x12\x05\xa8\x02T\x82\x01\n\x11\n\x08\x04\x07\x02\x02\
+    \x08\xaf\x08\x12\x12\x05\xa8\x02U\x81\x01\n\x0c\n\x02\x04\x08\x12\x06\
+    \xab\x02\0\xaf\x02\x01\n\x0b\n\x03\x04\x08\x01\x12\x04\xab\x02\x08\x1e\n\
+    \x0c\n\x04\x04\x08\x02\0\x12\x04\xac\x02\x02I\n\r\n\x05\x04\x08\x02\0\
+    \x04\x12\x04\xac\x02\x02\n\n\r\n\x05\x04\x08\x02\0\x06\x12\x04\xac\x02\
+    \x0b9\n\r\n\x05\x04\x08\x02\0\x01\x12\x04\xac\x02:D\n\r\n\x05\x04\x08\
+    \x02\0\x03\x12\x04\xac\x02GH\n\x0c\n\x04\x04\x08\x02\x01\x12\x04\xae\x02\
+    \x02\x13\n\r\n\x05\x04\x08\x02\x01\x05\x12\x04\xae\x02\x02\x08\n\r\n\x05\
+    \x04\x08\x02\x01\x01\x12\x04\xae\x02\t\x0e\n\r\n\x05\x04\x08\x02\x01\x03\
+    \x12\x04\xae\x02\x11\x12\n\x0c\n\x02\x04\t\x12\x06\xb1\x02\0\xb7\x02\x01\
+    \n\x0b\n\x03\x04\t\x01\x12\x04\xb1\x02\x08\x20\nA\n\x04\x04\t\x02\0\x12\
+    \x06\xb3\x02\x02\xb6\x02\x04\x1a1\x20The\x20ID\x20of\x20the\x20workflow\
+    \x20to\x20fetch\x20the\x20charts\x20for.\n\n\r\n\x05\x04\t\x02\0\x05\x12\
+    \x04\xb3\x02\x02\x08\n\r\n\x05\x04\t\x02\0\x01\x12\x04\xb3\x02\t\x14\n\r\
+    \n\x05\x04\t\x02\0\x03\x12\x04\xb3\x02\x17\x18\n\x0f\n\x05\x04\t\x02\0\
+    \x08\x12\x06\xb3\x02\x19\xb6\x02\x03\n\x11\n\t\x04\t\x02\0\x08\xaf\x08\
+    \x0e\x02\x12\x04\xb4\x02\x04'\n\x11\n\t\x04\t\x02\0\x08\xaf\x08\x0e\x03\
+    \x12\x04\xb5\x02\x04*\n\x0c\n\x02\x04\n\x12\x06\xb9\x02\0\xbb\x02\x01\n\
+    \x0b\n\x03\x04\n\x01\x12\x04\xb9\x02\x08!\n\x0c\n\x04\x04\n\x02\0\x12\
+    \x04\xba\x02\x02I\n\r\n\x05\x04\n\x02\0\x04\x12\x04\xba\x02\x02\n\n\r\n\
+    \x05\x04\n\x02\0\x06\x12\x04\xba\x02\x0b=\n\r\n\x05\x04\n\x02\0\x01\x12\
+    \x04\xba\x02>D\n\r\n\x05\x04\n\x02\0\x03\x12\x04\xba\x02GH\n\x0c\n\x02\
+    \x04\x0b\x12\x06\xbd\x02\0\xc9\x02\x01\n\x0b\n\x03\x04\x0b\x01\x12\x04\
+    \xbd\x02\x08&\nE\n\x04\x04\x0b\x02\0\x12\x06\xbf\x02\x02\xc2\x02\x05\x1a\
+    5\x20The\x20id\x20of\x20the\x20first\x20time\x20series\x20to\x20compare\
+    \x20against.\n\n\r\n\x05\x04\x0b\x02\0\x05\x12\x04\xbf\x02\x02\x08\n\r\n\
+    \x05\x04\x0b\x02\0\x01\x12\x04\xbf\x02\t\x0f\n\r\n\x05\x04\x0b\x02\0\x03\
+    \x12\x04\xbf\x02\x12\x13\n\x0f\n\x05\x04\x0b\x02\0\x08\x12\x06\xbf\x02\
+    \x14\xc2\x02\x04\n\x12\n\x08\x04\x0b\x02\0\x08\xaf\x08\x0e\x12\x06\xbf\
+    \x02\x15\xc2\x02\x03\nF\n\x04\x04\x0b\x02\x01\x12\x06\xc5\x02\x02\xc8\
+    \x02\x05\x1a6\x20The\x20id\x20of\x20the\x20second\x20time\x20series\x20t\
+    o\x20compare\x20against.\n\n\r\n\x05\x04\x0b\x02\x01\x05\x12\x04\xc5\x02\
+    \x02\x08\n\r\n\x05\x04\x0b\x02\x01\x01\x12\x04\xc5\x02\t\x0f\n\r\n\x05\
+    \x04\x0b\x02\x01\x03\x12\x04\xc5\x02\x12\x13\n\x0f\n\x05\x04\x0b\x02\x01\
+    \x08\x12\x06\xc5\x02\x14\xc8\x02\x04\n\x12\n\x08\x04\x0b\x02\x01\x08\xaf\
+    \x08\x0e\x12\x06\xc5\x02\x15\xc8\x02\x03\n\x0c\n\x02\x04\x0c\x12\x06\xcb\
+    \x02\0\xd4\x02\x01\n\x0b\n\x03\x04\x0c\x01\x12\x04\xcb\x02\x08\x1b\ns\n\
+    \x04\x04\x0c\x02\0\x12\x04\xce\x02\x02\x19\x1ae\x20The\x20number\x20of\
+    \x20top-K\x20paths\x20to\x20use\x20when\x20rendering\x20the\x20Sankey\
     \x20chart.\n\x20Defaults\x20to\x20100\x20if\x20not\x20provided.\n\n\r\n\
-    \x05\x04\x04\x02\0\x05\x12\x04\x87\x01\x02\x08\n\r\n\x05\x04\x04\x02\0\
-    \x01\x12\x04\x87\x01\t\x14\n\r\n\x05\x04\x04\x02\0\x03\x12\x04\x87\x01\
-    \x17\x18\n\xb9\x01\n\x04\x04\x04\x02\x01\x12\x04\x8c\x01\x02\x1f\x1a\xaa\
+    \x05\x04\x0c\x02\0\x05\x12\x04\xce\x02\x02\x08\n\r\n\x05\x04\x0c\x02\0\
+    \x01\x12\x04\xce\x02\t\x14\n\r\n\x05\x04\x0c\x02\0\x03\x12\x04\xce\x02\
+    \x17\x18\n\xb9\x01\n\x04\x04\x0c\x02\x01\x12\x04\xd3\x02\x02\x1f\x1a\xaa\
     \x01\x20The\x20compaction\x20target\x20size\x20for\x20the\x20Sankey\x20c\
     hart.\x20If\x20the\x20chart\x20exceeds\x20this\n\x20value,\x20`other`\
     \x20nodes\x20are\x20inserted\x20to\x20reduce\x20the\x20chart\x20size.\
-    \x20Defaults\x20to\x2020\n\x20if\x20not\x20provided.\n\n\r\n\x05\x04\x04\
-    \x02\x01\x05\x12\x04\x8c\x01\x02\x08\n\r\n\x05\x04\x04\x02\x01\x01\x12\
-    \x04\x8c\x01\t\x1a\n\r\n\x05\x04\x04\x02\x01\x03\x12\x04\x8c\x01\x1d\x1e\
-    \n\x0c\n\x02\x04\x05\x12\x06\x8f\x01\0\x92\x01\x01\n\x0b\n\x03\x04\x05\
-    \x01\x12\x04\x8f\x01\x08\x1c\nR\n\x04\x04\x05\x02\0\x12\x05\x91\x01\x02\
-    \x8a\x01\x1aC\x20The\x20aggregation\x20to\x20use\x20when\x20presenting\
-    \x20counter\x20values\x20in\x20a\x20table.\n\n\r\n\x05\x04\x05\x02\0\x06\
-    \x12\x04\x91\x01\x02E\n\r\n\x05\x04\x05\x02\0\x01\x12\x04\x91\x01FV\n\r\
-    \n\x05\x04\x05\x02\0\x03\x12\x04\x91\x01YZ\n\x0e\n\x05\x04\x05\x02\0\x08\
-    \x12\x05\x91\x01[\x89\x01\n\x11\n\x08\x04\x05\x02\0\x08\xaf\x08\x10\x12\
-    \x05\x91\x01\\\x88\x01\n\x0c\n\x02\x04\x06\x12\x06\x94\x01\0\x97\x01\x01\
-    \n\x0b\n\x03\x04\x06\x01\x12\x04\x94\x01\x08\x19\nO\n\x04\x04\x06\x02\0\
-    \x12\x05\x96\x01\x02\x84\x01\x1a@\x20The\x20aggregation\x20to\x20use\x20\
-    when\x20presenting\x20rate\x20values\x20in\x20a\x20table.\n\n\r\n\x05\
-    \x04\x06\x02\0\x06\x12\x04\x96\x01\x02?\n\r\n\x05\x04\x06\x02\0\x01\x12\
-    \x04\x96\x01@P\n\r\n\x05\x04\x06\x02\0\x03\x12\x04\x96\x01ST\n\x0e\n\x05\
-    \x04\x06\x02\0\x08\x12\x05\x96\x01U\x83\x01\n\x11\n\x08\x04\x06\x02\0\
-    \x08\xaf\x08\x10\x12\x05\x96\x01V\x82\x01\n\x0c\n\x02\x04\x07\x12\x06\
-    \x99\x01\0\xbe\x01\x01\n\x0b\n\x03\x04\x07\x01\x12\x04\x99\x01\x08\x14\n\
-    >\n\x04\x04\x07\x02\0\x12\x04\x9b\x01\x02n\x1a0\x20The\x20identifier\x20\
-    of\x20the\x20chart\x20to\x20fetch\x20data\x20for.\n\n\r\n\x05\x04\x07\
-    \x02\0\x06\x12\x04\x9b\x01\x022\n\r\n\x05\x04\x07\x02\0\x01\x12\x04\x9b\
-    \x013;\n\r\n\x05\x04\x07\x02\0\x03\x12\x04\x9b\x01>?\n\r\n\x05\x04\x07\
-    \x02\0\x08\x12\x04\x9b\x01@m\n\x10\n\x08\x04\x07\x02\0\x08\xaf\x08\x11\
-    \x12\x04\x9b\x01Al\nQ\n\x04\x04\x07\x02\x01\x12\x04\x9e\x01\x02V\x1aC\
-    \x20Optional\x20configuration\x20for\x20any\x20histogram\x20values\x20wi\
-    thin\x20the\x20chart.\n\n\r\n\x05\x04\x07\x02\x01\x06\x12\x04\x9e\x01\
-    \x029\n\r\n\x05\x04\x07\x02\x01\x01\x12\x04\x9e\x01:Q\n\r\n\x05\x04\x07\
-    \x02\x01\x03\x12\x04\x9e\x01TU\nl\n\x04\x04\x07\x02\x02\x12\x04\xa2\x01\
-    \x02k\x1a^\x20Optional\x20configuration\x20to\x20indicate\x20that\x20thi\
-    s\x20chart\x20should\x20compare\x20two\n\x20insights\x20time\x20series.\
-    \n\n\r\n\x05\x04\x07\x02\x02\x06\x12\x04\xa2\x01\x02E\n\r\n\x05\x04\x07\
-    \x02\x02\x01\x12\x04\xa2\x01Ff\n\r\n\x05\x04\x07\x02\x02\x03\x12\x04\xa2\
-    \x01ij\n\xa2\x01\n\x04\x04\x07\x02\x03\x12\x04\xa6\x01\x02D\x1a\x93\x01\
-    \x20Optional\x20limit\x20strategy\x20to\x20use\x20for\x20this\x20chart.\
-    \x20Currently\x20supported\x20only\n\x20for\x20line\x20charts.\x20If\x20\
-    omitted,\x20a\x20default\x20top-K\x20limit\x20of\x205\x20entries\x20is\
-    \x20used.\n\n\r\n\x05\x04\x07\x02\x03\x06\x12\x04\xa6\x01\x020\n\r\n\x05\
-    \x04\x07\x02\x03\x01\x12\x04\xa6\x011?\n\r\n\x05\x04\x07\x02\x03\x03\x12\
-    \x04\xa6\x01BC\n<\n\x04\x04\x07\x02\x04\x12\x04\xa9\x01\x02T\x1a.\x20Opt\
-    ional\x20configuration\x20for\x20the\x20sankey\x20chart.\n\n\r\n\x05\x04\
-    \x07\x02\x04\x06\x12\x04\xa9\x01\x02:\n\r\n\x05\x04\x07\x02\x04\x01\x12\
-    \x04\xa9\x01;O\n\r\n\x05\x04\x07\x02\x04\x03\x12\x04\xa9\x01RS\n\x9a\x01\
-    \n\x04\x04\x07\x02\x05\x12\x04\xad\x01\x02V\x1a\x8b\x01\x20Counter\x20co\
-    nfiguration\x20for\x20the\x20chart.\x20Currently\x20this\x20is\x20only\
-    \x20used\x20for\x20resolving\x20which\x20table\n\x20type\x20to\x20show\
-    \x20in\x20the\x20case\x20of\x20a\x20group\x20by\x20query.\n\n\r\n\x05\
-    \x04\x07\x02\x05\x06\x12\x04\xad\x01\x02;\n\r\n\x05\x04\x07\x02\x05\x01\
-    \x12\x04\xad\x01<Q\n\r\n\x05\x04\x07\x02\x05\x03\x12\x04\xad\x01TU\n\x97\
-    \x01\n\x04\x04\x07\x02\x06\x12\x04\xb1\x01\x02P\x1a\x88\x01\x20Rate\x20c\
-    onfiguration\x20for\x20the\x20chart.\x20Currently\x20this\x20is\x20only\
-    \x20used\x20for\x20resolving\x20which\x20table\n\x20type\x20to\x20show\
-    \x20in\x20the\x20case\x20of\x20a\x20group\x20by\x20query.\n\n\r\n\x05\
-    \x04\x07\x02\x06\x06\x12\x04\xb1\x01\x028\n\r\n\x05\x04\x07\x02\x06\x01\
-    \x12\x04\xb1\x019K\n\r\n\x05\x04\x07\x02\x06\x03\x12\x04\xb1\x01NO\n\xde\
-    \x01\n\x04\x04\x07\x08\0\x12\x06\xb6\x01\x02\xbd\x01\x03\x1a\xcd\x01\x20\
-    Override\x20the\x20display\x20mode\x20for\x20this\x20chart.\n\x20Uses\
-    \x20the\x20same\x20oneof\x20structure\x20as\x20RuleChartConfiguration.di\
-    splay_mode.\n\x20If\x20unset\x20it\x20will\x20use\x20the\x20display\x20m\
-    ode\x20defined\x20in\x20the\x20workflow's\x20rule\x20chart\x20configurat\
-    ion.\n\n\r\n\x05\x04\x07\x08\0\x01\x12\x04\xb6\x01\x08\x14\n\x0c\n\x04\
-    \x04\x07\x02\x07\x12\x04\xb7\x01\x04{\n\r\n\x05\x04\x07\x02\x07\x06\x12\
-    \x04\xb7\x01\x04\\\n\r\n\x05\x04\x07\x02\x07\x01\x12\x04\xb7\x01]u\n\r\n\
-    \x05\x04\x07\x02\x07\x03\x12\x04\xb7\x01xz\n\x0c\n\x04\x04\x07\x02\x08\
-    \x12\x04\xb9\x01\x04p\n\r\n\x05\x04\x07\x02\x08\x06\x12\x04\xb9\x01\x04W\
-    \n\r\n\x05\x04\x07\x02\x08\x01\x12\x04\xb9\x01Xj\n\r\n\x05\x04\x07\x02\
-    \x08\x03\x12\x04\xb9\x01mo\nS\n\x04\x04\x07\x02\t\x12\x05\xbc\x01\x04\
-    \x8a\x01\x1aD\x20This\x20is\x20only\x20valid\x20if\x20all\x20time\x20ser\
-    ies\x20in\x20the\x20chart\x20are\x20histograms.\n\n\r\n\x05\x04\x07\x02\
-    \t\x06\x12\x04\xbc\x01\x04c\n\x0e\n\x05\x04\x07\x02\t\x01\x12\x05\xbc\
-    \x01d\x84\x01\n\x0f\n\x05\x04\x07\x02\t\x03\x12\x06\xbc\x01\x87\x01\x89\
-    \x01\n\x0c\n\x02\x04\x08\x12\x06\xc0\x01\0\xcf\x01\x01\n\x0b\n\x03\x04\
-    \x08\x01\x12\x04\xc0\x01\x08\x1c\n7\n\x04\x04\x08\x02\0\x12\x06\xc2\x01\
-    \x02\xc5\x01\x05\x1a'\x20List\x20of\x20all\x20charts\x20to\x20fetch\x20d\
-    ata\x20for.\n\n\r\n\x05\x04\x08\x02\0\x04\x12\x04\xc2\x01\x02\n\n\r\n\
-    \x05\x04\x08\x02\0\x06\x12\x04\xc2\x01\x0b<\n\r\n\x05\x04\x08\x02\0\x01\
-    \x12\x04\xc2\x01=C\n\r\n\x05\x04\x08\x02\0\x03\x12\x04\xc2\x01FG\n\x0f\n\
-    \x05\x04\x08\x02\0\x08\x12\x06\xc2\x01H\xc5\x01\x04\n\x12\n\x08\x04\x08\
-    \x02\0\x08\xaf\x08\x12\x12\x06\xc2\x01I\xc5\x01\x03\n\x0c\n\x04\x04\x08\
-    \x02\x01\x12\x04\xc7\x01\x02<\n\r\n\x05\x04\x08\x02\x01\x06\x12\x04\xc7\
-    \x01\x02,\n\r\n\x05\x04\x08\x02\x01\x01\x12\x04\xc7\x01-7\n\r\n\x05\x04\
-    \x08\x02\x01\x03\x12\x04\xc7\x01:;\ng\n\x04\x04\x08\x02\x02\x12\x04\xca\
-    \x01\x02w\x1aY\x20If\x20this\x20is\x20empty,\x20the\x20platform\x20filte\
-    r\x20for\x20the\x20workflow\x20backing\x20each\x20chart\x20will\x20be\
-    \x20used.\n\n\r\n\x05\x04\x08\x02\x02\x04\x12\x04\xca\x01\x02\n\n\r\n\
-    \x05\x04\x08\x02\x02\x06\x12\x04\xca\x01\x0b7\n\r\n\x05\x04\x08\x02\x02\
-    \x01\x12\x04\xca\x018G\n\r\n\x05\x04\x08\x02\x02\x03\x12\x04\xca\x01JK\n\
-    \r\n\x05\x04\x08\x02\x02\x08\x12\x04\xca\x01Lv\n\x11\n\t\x04\x08\x02\x02\
-    \x08\xaf\x08\x12\x02\x12\x04\xca\x01Mu\n\x8f\x01\n\x04\x04\x08\x02\x03\
-    \x12\x04\xce\x01\x02@\x1a\x80\x01\x20Optional\x20filter\x20to\x20apply\
-    \x20on\x20top\x20of\x20the\x20platform\x20filter.\x20This\x20filter\x20i\
-    s\n\x20combined\x20with\x20the\x20platform\x20filter\x20using\x20a\x20lo\
-    gical\x20AND.\n\n\r\n\x05\x04\x08\x02\x03\x06\x12\x04\xce\x01\x020\n\r\n\
-    \x05\x04\x08\x02\x03\x01\x12\x04\xce\x011;\n\r\n\x05\x04\x08\x02\x03\x03\
-    \x12\x04\xce\x01>?\n\x9e\x02\n\x02\x04\t\x12\x06\xd6\x01\0\xd9\x01\x01\
-    \x1a\x8f\x02\x20Used\x20for\x20line\x20charts.\x20Each\x20entry\x20is\
-    \x20a\x20rendered\x20time\x20series\x20for\x20the\x20request.\n\n\x20For\
-    \x20grouped\x20charts,\x20this\x20response\x20returns\x20the\x20visible\
-    \x20grouped\x20results,\x20including\x20the\n\x20`TimeSeries.id`\x20and\
-    \x20`labels`\x20pair\x20that\x20callers\x20can\x20reuse\x20with\n\x20`ch\
-    arts.v1.LimitStrategy.IdentifierMatch`.\n\n\x0b\n\x03\x04\t\x01\x12\x04\
-    \xd6\x01\x08\x19\n7\n\x04\x04\t\x02\0\x12\x04\xd8\x01\x02K\x1a)\x20The\
-    \x20time\x20series\x20to\x20render\x20in\x20the\x20chart.\n\n\r\n\x05\
-    \x04\t\x02\0\x04\x12\x04\xd8\x01\x02\n\n\r\n\x05\x04\t\x02\0\x06\x12\x04\
-    \xd8\x01\x0b:\n\r\n\x05\x04\t\x02\0\x01\x12\x04\xd8\x01;F\n\r\n\x05\x04\
-    \t\x02\0\x03\x12\x04\xd8\x01IJ\n\x0c\n\x02\x04\n\x12\x06\xdb\x01\0\xf6\
-    \x01\x01\n\x0b\n\x03\x04\n\x01\x12\x04\xdb\x01\x08\x1b\n0\n\x04\x04\n\
-    \x03\0\x12\x06\xdd\x01\x02\xe3\x01\x03\x1a\x20\x20A\x20single\x20state\
-    \x20in\x20the\x20diagram.\n\n\r\n\x05\x04\n\x03\0\x01\x12\x04\xdd\x01\n\
-    \x0e\n%\n\x06\x04\n\x03\0\x02\0\x12\x04\xdf\x01\x048\x1a\x15\x20The\x20I\
-    D\x20of\x20the\x20node.\n\n\x0f\n\x07\x04\n\x03\0\x02\0\x05\x12\x04\xdf\
-    \x01\x04\n\n\x0f\n\x07\x04\n\x03\0\x02\0\x01\x12\x04\xdf\x01\x0b\r\n\x0f\
-    \n\x07\x04\n\x03\0\x02\0\x03\x12\x04\xdf\x01\x10\x11\n\x0f\n\x07\x04\n\
-    \x03\0\x02\0\x08\x12\x04\xdf\x01\x127\n\x13\n\x0b\x04\n\x03\0\x02\0\x08\
-    \xaf\x08\x0e\x02\x12\x04\xdf\x01\x136\n'\n\x06\x04\n\x03\0\x02\x01\x12\
-    \x04\xe2\x01\x04\x14\x1a\x17\x20The\x20name\x20of\x20the\x20node.\n\n\
-    \x0f\n\x07\x04\n\x03\0\x02\x01\x05\x12\x04\xe2\x01\x04\n\n\x0f\n\x07\x04\
-    \n\x03\0\x02\x01\x01\x12\x04\xe2\x01\x0b\x0f\n\x0f\n\x07\x04\n\x03\0\x02\
-    \x01\x03\x12\x04\xe2\x01\x12\x13\n>\n\x04\x04\n\x03\x01\x12\x06\xe6\x01\
-    \x02\xef\x01\x03\x1a.\x20A\x20connection\x20between\x20two\x20nodes\x20i\
-    n\x20a\x20diagram.\n\n\r\n\x05\x04\n\x03\x01\x01\x12\x04\xe6\x01\n\x0e\n\
-    ,\n\x06\x04\n\x03\x01\x02\0\x12\x04\xe8\x01\x04D\x1a\x1c\x20The\x20ID\
-    \x20of\x20the\x20source\x20node.\n\n\x0f\n\x07\x04\n\x03\x01\x02\0\x05\
-    \x12\x04\xe8\x01\x04\n\n\x0f\n\x07\x04\n\x03\x01\x02\0\x01\x12\x04\xe8\
-    \x01\x0b\x19\n\x0f\n\x07\x04\n\x03\x01\x02\0\x03\x12\x04\xe8\x01\x1c\x1d\
-    \n\x0f\n\x07\x04\n\x03\x01\x02\0\x08\x12\x04\xe8\x01\x1eC\n\x13\n\x0b\
-    \x04\n\x03\x01\x02\0\x08\xaf\x08\x0e\x02\x12\x04\xe8\x01\x1fB\n,\n\x06\
-    \x04\n\x03\x01\x02\x01\x12\x04\xeb\x01\x04D\x1a\x1c\x20The\x20ID\x20of\
-    \x20the\x20target\x20node.\n\n\x0f\n\x07\x04\n\x03\x01\x02\x01\x05\x12\
-    \x04\xeb\x01\x04\n\n\x0f\n\x07\x04\n\x03\x01\x02\x01\x01\x12\x04\xeb\x01\
-    \x0b\x19\n\x0f\n\x07\x04\n\x03\x01\x02\x01\x03\x12\x04\xeb\x01\x1c\x1d\n\
-    \x0f\n\x07\x04\n\x03\x01\x02\x01\x08\x12\x04\xeb\x01\x1eC\n\x13\n\x0b\
-    \x04\n\x03\x01\x02\x01\x08\xaf\x08\x0e\x02\x12\x04\xeb\x01\x1fB\n(\n\x06\
-    \x04\n\x03\x01\x02\x02\x12\x04\xee\x01\x04\x15\x1a\x18\x20The\x20value\
-    \x20of\x20the\x20link.\n\n\x0f\n\x07\x04\n\x03\x01\x02\x02\x05\x12\x04\
-    \xee\x01\x04\n\n\x0f\n\x07\x04\n\x03\x01\x02\x02\x01\x12\x04\xee\x01\x0b\
-    \x10\n\x0f\n\x07\x04\n\x03\x01\x02\x02\x03\x12\x04\xee\x01\x13\x14\n)\n\
-    \x04\x04\n\x02\0\x12\x04\xf2\x01\x02S\x1a\x1b\x20The\x20nodes\x20of\x20t\
-    he\x20diagram.\n\n\r\n\x05\x04\n\x02\0\x04\x12\x04\xf2\x01\x02\n\n\r\n\
-    \x05\x04\n\x02\0\x06\x12\x04\xf2\x01\x0bH\n\r\n\x05\x04\n\x02\0\x01\x12\
-    \x04\xf2\x01IN\n\r\n\x05\x04\n\x02\0\x03\x12\x04\xf2\x01QR\n)\n\x04\x04\
-    \n\x02\x01\x12\x04\xf5\x01\x02S\x1a\x1b\x20The\x20links\x20of\x20the\x20\
-    diagram.\n\n\r\n\x05\x04\n\x02\x01\x04\x12\x04\xf5\x01\x02\n\n\r\n\x05\
-    \x04\n\x02\x01\x06\x12\x04\xf5\x01\x0bH\n\r\n\x05\x04\n\x02\x01\x01\x12\
-    \x04\xf5\x01IN\n\r\n\x05\x04\n\x02\x01\x03\x12\x04\xf5\x01QR\n\x0c\n\x02\
-    \x04\x0b\x12\x06\xf8\x01\0\xfb\x01\x01\n\x0b\n\x03\x04\x0b\x01\x12\x04\
-    \xf8\x01\x08\x1a\n4\n\x04\x04\x0b\x02\0\x12\x04\xfa\x01\x02A\x1a&\x20The\
-    \x20tables\x20to\x20render\x20for\x20this\x20chart.\n\n\r\n\x05\x04\x0b\
-    \x02\0\x04\x12\x04\xfa\x01\x02\n\n\r\n\x05\x04\x0b\x02\0\x06\x12\x04\xfa\
-    \x01\x0b5\n\r\n\x05\x04\x0b\x02\0\x01\x12\x04\xfa\x016<\n\r\n\x05\x04\
-    \x0b\x02\0\x03\x12\x04\xfa\x01?@\n\x0c\n\x02\x04\x0c\x12\x06\xfd\x01\0\
-    \x91\x02\x01\n\x0b\n\x03\x04\x0c\x01\x12\x04\xfd\x01\x08\r\n\xa3\x01\n\
-    \x04\x04\x0c\x02\0\x12\x04\x80\x02\x02-\x1a\x94\x01\x20Headers\x20for\
+    \x20Defaults\x20to\x2020\n\x20if\x20not\x20provided.\n\n\r\n\x05\x04\x0c\
+    \x02\x01\x05\x12\x04\xd3\x02\x02\x08\n\r\n\x05\x04\x0c\x02\x01\x01\x12\
+    \x04\xd3\x02\t\x1a\n\r\n\x05\x04\x0c\x02\x01\x03\x12\x04\xd3\x02\x1d\x1e\
+    \n\x0c\n\x02\x04\r\x12\x06\xd6\x02\0\xd9\x02\x01\n\x0b\n\x03\x04\r\x01\
+    \x12\x04\xd6\x02\x08\x1c\nR\n\x04\x04\r\x02\0\x12\x05\xd8\x02\x02\x8a\
+    \x01\x1aC\x20The\x20aggregation\x20to\x20use\x20when\x20presenting\x20co\
+    unter\x20values\x20in\x20a\x20table.\n\n\r\n\x05\x04\r\x02\0\x06\x12\x04\
+    \xd8\x02\x02E\n\r\n\x05\x04\r\x02\0\x01\x12\x04\xd8\x02FV\n\r\n\x05\x04\
+    \r\x02\0\x03\x12\x04\xd8\x02YZ\n\x0e\n\x05\x04\r\x02\0\x08\x12\x05\xd8\
+    \x02[\x89\x01\n\x11\n\x08\x04\r\x02\0\x08\xaf\x08\x10\x12\x05\xd8\x02\\\
+    \x88\x01\n\x0c\n\x02\x04\x0e\x12\x06\xdb\x02\0\xde\x02\x01\n\x0b\n\x03\
+    \x04\x0e\x01\x12\x04\xdb\x02\x08\x19\nO\n\x04\x04\x0e\x02\0\x12\x05\xdd\
+    \x02\x02\x84\x01\x1a@\x20The\x20aggregation\x20to\x20use\x20when\x20pres\
+    enting\x20rate\x20values\x20in\x20a\x20table.\n\n\r\n\x05\x04\x0e\x02\0\
+    \x06\x12\x04\xdd\x02\x02?\n\r\n\x05\x04\x0e\x02\0\x01\x12\x04\xdd\x02@P\
+    \n\r\n\x05\x04\x0e\x02\0\x03\x12\x04\xdd\x02ST\n\x0e\n\x05\x04\x0e\x02\0\
+    \x08\x12\x05\xdd\x02U\x83\x01\n\x11\n\x08\x04\x0e\x02\0\x08\xaf\x08\x10\
+    \x12\x05\xdd\x02V\x82\x01\n\x0c\n\x02\x04\x0f\x12\x06\xe0\x02\0\x85\x03\
+    \x01\n\x0b\n\x03\x04\x0f\x01\x12\x04\xe0\x02\x08\x14\n>\n\x04\x04\x0f\
+    \x02\0\x12\x04\xe2\x02\x02n\x1a0\x20The\x20identifier\x20of\x20the\x20ch\
+    art\x20to\x20fetch\x20data\x20for.\n\n\r\n\x05\x04\x0f\x02\0\x06\x12\x04\
+    \xe2\x02\x022\n\r\n\x05\x04\x0f\x02\0\x01\x12\x04\xe2\x023;\n\r\n\x05\
+    \x04\x0f\x02\0\x03\x12\x04\xe2\x02>?\n\r\n\x05\x04\x0f\x02\0\x08\x12\x04\
+    \xe2\x02@m\n\x10\n\x08\x04\x0f\x02\0\x08\xaf\x08\x11\x12\x04\xe2\x02Al\n\
+    Q\n\x04\x04\x0f\x02\x01\x12\x04\xe5\x02\x02V\x1aC\x20Optional\x20configu\
+    ration\x20for\x20any\x20histogram\x20values\x20within\x20the\x20chart.\n\
+    \n\r\n\x05\x04\x0f\x02\x01\x06\x12\x04\xe5\x02\x029\n\r\n\x05\x04\x0f\
+    \x02\x01\x01\x12\x04\xe5\x02:Q\n\r\n\x05\x04\x0f\x02\x01\x03\x12\x04\xe5\
+    \x02TU\nl\n\x04\x04\x0f\x02\x02\x12\x04\xe9\x02\x02k\x1a^\x20Optional\
+    \x20configuration\x20to\x20indicate\x20that\x20this\x20chart\x20should\
+    \x20compare\x20two\n\x20insights\x20time\x20series.\n\n\r\n\x05\x04\x0f\
+    \x02\x02\x06\x12\x04\xe9\x02\x02E\n\r\n\x05\x04\x0f\x02\x02\x01\x12\x04\
+    \xe9\x02Ff\n\r\n\x05\x04\x0f\x02\x02\x03\x12\x04\xe9\x02ij\n\xa2\x01\n\
+    \x04\x04\x0f\x02\x03\x12\x04\xed\x02\x02D\x1a\x93\x01\x20Optional\x20lim\
+    it\x20strategy\x20to\x20use\x20for\x20this\x20chart.\x20Currently\x20sup\
+    ported\x20only\n\x20for\x20line\x20charts.\x20If\x20omitted,\x20a\x20def\
+    ault\x20top-K\x20limit\x20of\x205\x20entries\x20is\x20used.\n\n\r\n\x05\
+    \x04\x0f\x02\x03\x06\x12\x04\xed\x02\x020\n\r\n\x05\x04\x0f\x02\x03\x01\
+    \x12\x04\xed\x021?\n\r\n\x05\x04\x0f\x02\x03\x03\x12\x04\xed\x02BC\n<\n\
+    \x04\x04\x0f\x02\x04\x12\x04\xf0\x02\x02T\x1a.\x20Optional\x20configurat\
+    ion\x20for\x20the\x20sankey\x20chart.\n\n\r\n\x05\x04\x0f\x02\x04\x06\
+    \x12\x04\xf0\x02\x02:\n\r\n\x05\x04\x0f\x02\x04\x01\x12\x04\xf0\x02;O\n\
+    \r\n\x05\x04\x0f\x02\x04\x03\x12\x04\xf0\x02RS\n\x9a\x01\n\x04\x04\x0f\
+    \x02\x05\x12\x04\xf4\x02\x02V\x1a\x8b\x01\x20Counter\x20configuration\
+    \x20for\x20the\x20chart.\x20Currently\x20this\x20is\x20only\x20used\x20f\
+    or\x20resolving\x20which\x20table\n\x20type\x20to\x20show\x20in\x20the\
+    \x20case\x20of\x20a\x20group\x20by\x20query.\n\n\r\n\x05\x04\x0f\x02\x05\
+    \x06\x12\x04\xf4\x02\x02;\n\r\n\x05\x04\x0f\x02\x05\x01\x12\x04\xf4\x02<\
+    Q\n\r\n\x05\x04\x0f\x02\x05\x03\x12\x04\xf4\x02TU\n\x97\x01\n\x04\x04\
+    \x0f\x02\x06\x12\x04\xf8\x02\x02P\x1a\x88\x01\x20Rate\x20configuration\
+    \x20for\x20the\x20chart.\x20Currently\x20this\x20is\x20only\x20used\x20f\
+    or\x20resolving\x20which\x20table\n\x20type\x20to\x20show\x20in\x20the\
+    \x20case\x20of\x20a\x20group\x20by\x20query.\n\n\r\n\x05\x04\x0f\x02\x06\
+    \x06\x12\x04\xf8\x02\x028\n\r\n\x05\x04\x0f\x02\x06\x01\x12\x04\xf8\x029\
+    K\n\r\n\x05\x04\x0f\x02\x06\x03\x12\x04\xf8\x02NO\n\xde\x01\n\x04\x04\
+    \x0f\x08\0\x12\x06\xfd\x02\x02\x84\x03\x03\x1a\xcd\x01\x20Override\x20th\
+    e\x20display\x20mode\x20for\x20this\x20chart.\n\x20Uses\x20the\x20same\
+    \x20oneof\x20structure\x20as\x20RuleChartConfiguration.display_mode.\n\
+    \x20If\x20unset\x20it\x20will\x20use\x20the\x20display\x20mode\x20define\
+    d\x20in\x20the\x20workflow's\x20rule\x20chart\x20configuration.\n\n\r\n\
+    \x05\x04\x0f\x08\0\x01\x12\x04\xfd\x02\x08\x14\n\x0c\n\x04\x04\x0f\x02\
+    \x07\x12\x04\xfe\x02\x04{\n\r\n\x05\x04\x0f\x02\x07\x06\x12\x04\xfe\x02\
+    \x04\\\n\r\n\x05\x04\x0f\x02\x07\x01\x12\x04\xfe\x02]u\n\r\n\x05\x04\x0f\
+    \x02\x07\x03\x12\x04\xfe\x02xz\n\x0c\n\x04\x04\x0f\x02\x08\x12\x04\x80\
+    \x03\x04p\n\r\n\x05\x04\x0f\x02\x08\x06\x12\x04\x80\x03\x04W\n\r\n\x05\
+    \x04\x0f\x02\x08\x01\x12\x04\x80\x03Xj\n\r\n\x05\x04\x0f\x02\x08\x03\x12\
+    \x04\x80\x03mo\nS\n\x04\x04\x0f\x02\t\x12\x05\x83\x03\x04\x8a\x01\x1aD\
+    \x20This\x20is\x20only\x20valid\x20if\x20all\x20time\x20series\x20in\x20\
+    the\x20chart\x20are\x20histograms.\n\n\r\n\x05\x04\x0f\x02\t\x06\x12\x04\
+    \x83\x03\x04c\n\x0e\n\x05\x04\x0f\x02\t\x01\x12\x05\x83\x03d\x84\x01\n\
+    \x0f\n\x05\x04\x0f\x02\t\x03\x12\x06\x83\x03\x87\x01\x89\x01\n\x0c\n\x02\
+    \x04\x10\x12\x06\x87\x03\0\x96\x03\x01\n\x0b\n\x03\x04\x10\x01\x12\x04\
+    \x87\x03\x08\x1c\n7\n\x04\x04\x10\x02\0\x12\x06\x89\x03\x02\x8c\x03\x05\
+    \x1a'\x20List\x20of\x20all\x20charts\x20to\x20fetch\x20data\x20for.\n\n\
+    \r\n\x05\x04\x10\x02\0\x04\x12\x04\x89\x03\x02\n\n\r\n\x05\x04\x10\x02\0\
+    \x06\x12\x04\x89\x03\x0b<\n\r\n\x05\x04\x10\x02\0\x01\x12\x04\x89\x03=C\
+    \n\r\n\x05\x04\x10\x02\0\x03\x12\x04\x89\x03FG\n\x0f\n\x05\x04\x10\x02\0\
+    \x08\x12\x06\x89\x03H\x8c\x03\x04\n\x12\n\x08\x04\x10\x02\0\x08\xaf\x08\
+    \x12\x12\x06\x89\x03I\x8c\x03\x03\n\x0c\n\x04\x04\x10\x02\x01\x12\x04\
+    \x8e\x03\x02<\n\r\n\x05\x04\x10\x02\x01\x06\x12\x04\x8e\x03\x02,\n\r\n\
+    \x05\x04\x10\x02\x01\x01\x12\x04\x8e\x03-7\n\r\n\x05\x04\x10\x02\x01\x03\
+    \x12\x04\x8e\x03:;\ng\n\x04\x04\x10\x02\x02\x12\x04\x91\x03\x02w\x1aY\
+    \x20If\x20this\x20is\x20empty,\x20the\x20platform\x20filter\x20for\x20th\
+    e\x20workflow\x20backing\x20each\x20chart\x20will\x20be\x20used.\n\n\r\n\
+    \x05\x04\x10\x02\x02\x04\x12\x04\x91\x03\x02\n\n\r\n\x05\x04\x10\x02\x02\
+    \x06\x12\x04\x91\x03\x0b7\n\r\n\x05\x04\x10\x02\x02\x01\x12\x04\x91\x038\
+    G\n\r\n\x05\x04\x10\x02\x02\x03\x12\x04\x91\x03JK\n\r\n\x05\x04\x10\x02\
+    \x02\x08\x12\x04\x91\x03Lv\n\x11\n\t\x04\x10\x02\x02\x08\xaf\x08\x12\x02\
+    \x12\x04\x91\x03Mu\n\x8f\x01\n\x04\x04\x10\x02\x03\x12\x04\x95\x03\x02@\
+    \x1a\x80\x01\x20Optional\x20filter\x20to\x20apply\x20on\x20top\x20of\x20\
+    the\x20platform\x20filter.\x20This\x20filter\x20is\n\x20combined\x20with\
+    \x20the\x20platform\x20filter\x20using\x20a\x20logical\x20AND.\n\n\r\n\
+    \x05\x04\x10\x02\x03\x06\x12\x04\x95\x03\x020\n\r\n\x05\x04\x10\x02\x03\
+    \x01\x12\x04\x95\x031;\n\r\n\x05\x04\x10\x02\x03\x03\x12\x04\x95\x03>?\n\
+    \x9e\x02\n\x02\x04\x11\x12\x06\x9d\x03\0\xa0\x03\x01\x1a\x8f\x02\x20Used\
+    \x20for\x20line\x20charts.\x20Each\x20entry\x20is\x20a\x20rendered\x20ti\
+    me\x20series\x20for\x20the\x20request.\n\n\x20For\x20grouped\x20charts,\
+    \x20this\x20response\x20returns\x20the\x20visible\x20grouped\x20results,\
+    \x20including\x20the\n\x20`TimeSeries.id`\x20and\x20`labels`\x20pair\x20\
+    that\x20callers\x20can\x20reuse\x20with\n\x20`charts.v1.LimitStrategy.Id\
+    entifierMatch`.\n\n\x0b\n\x03\x04\x11\x01\x12\x04\x9d\x03\x08\x19\n7\n\
+    \x04\x04\x11\x02\0\x12\x04\x9f\x03\x02K\x1a)\x20The\x20time\x20series\
+    \x20to\x20render\x20in\x20the\x20chart.\n\n\r\n\x05\x04\x11\x02\0\x04\
+    \x12\x04\x9f\x03\x02\n\n\r\n\x05\x04\x11\x02\0\x06\x12\x04\x9f\x03\x0b:\
+    \n\r\n\x05\x04\x11\x02\0\x01\x12\x04\x9f\x03;F\n\r\n\x05\x04\x11\x02\0\
+    \x03\x12\x04\x9f\x03IJ\n\x0c\n\x02\x04\x12\x12\x06\xa2\x03\0\xbd\x03\x01\
+    \n\x0b\n\x03\x04\x12\x01\x12\x04\xa2\x03\x08\x1b\n0\n\x04\x04\x12\x03\0\
+    \x12\x06\xa4\x03\x02\xaa\x03\x03\x1a\x20\x20A\x20single\x20state\x20in\
+    \x20the\x20diagram.\n\n\r\n\x05\x04\x12\x03\0\x01\x12\x04\xa4\x03\n\x0e\
+    \n%\n\x06\x04\x12\x03\0\x02\0\x12\x04\xa6\x03\x048\x1a\x15\x20The\x20ID\
+    \x20of\x20the\x20node.\n\n\x0f\n\x07\x04\x12\x03\0\x02\0\x05\x12\x04\xa6\
+    \x03\x04\n\n\x0f\n\x07\x04\x12\x03\0\x02\0\x01\x12\x04\xa6\x03\x0b\r\n\
+    \x0f\n\x07\x04\x12\x03\0\x02\0\x03\x12\x04\xa6\x03\x10\x11\n\x0f\n\x07\
+    \x04\x12\x03\0\x02\0\x08\x12\x04\xa6\x03\x127\n\x13\n\x0b\x04\x12\x03\0\
+    \x02\0\x08\xaf\x08\x0e\x02\x12\x04\xa6\x03\x136\n'\n\x06\x04\x12\x03\0\
+    \x02\x01\x12\x04\xa9\x03\x04\x14\x1a\x17\x20The\x20name\x20of\x20the\x20\
+    node.\n\n\x0f\n\x07\x04\x12\x03\0\x02\x01\x05\x12\x04\xa9\x03\x04\n\n\
+    \x0f\n\x07\x04\x12\x03\0\x02\x01\x01\x12\x04\xa9\x03\x0b\x0f\n\x0f\n\x07\
+    \x04\x12\x03\0\x02\x01\x03\x12\x04\xa9\x03\x12\x13\n>\n\x04\x04\x12\x03\
+    \x01\x12\x06\xad\x03\x02\xb6\x03\x03\x1a.\x20A\x20connection\x20between\
+    \x20two\x20nodes\x20in\x20a\x20diagram.\n\n\r\n\x05\x04\x12\x03\x01\x01\
+    \x12\x04\xad\x03\n\x0e\n,\n\x06\x04\x12\x03\x01\x02\0\x12\x04\xaf\x03\
+    \x04D\x1a\x1c\x20The\x20ID\x20of\x20the\x20source\x20node.\n\n\x0f\n\x07\
+    \x04\x12\x03\x01\x02\0\x05\x12\x04\xaf\x03\x04\n\n\x0f\n\x07\x04\x12\x03\
+    \x01\x02\0\x01\x12\x04\xaf\x03\x0b\x19\n\x0f\n\x07\x04\x12\x03\x01\x02\0\
+    \x03\x12\x04\xaf\x03\x1c\x1d\n\x0f\n\x07\x04\x12\x03\x01\x02\0\x08\x12\
+    \x04\xaf\x03\x1eC\n\x13\n\x0b\x04\x12\x03\x01\x02\0\x08\xaf\x08\x0e\x02\
+    \x12\x04\xaf\x03\x1fB\n,\n\x06\x04\x12\x03\x01\x02\x01\x12\x04\xb2\x03\
+    \x04D\x1a\x1c\x20The\x20ID\x20of\x20the\x20target\x20node.\n\n\x0f\n\x07\
+    \x04\x12\x03\x01\x02\x01\x05\x12\x04\xb2\x03\x04\n\n\x0f\n\x07\x04\x12\
+    \x03\x01\x02\x01\x01\x12\x04\xb2\x03\x0b\x19\n\x0f\n\x07\x04\x12\x03\x01\
+    \x02\x01\x03\x12\x04\xb2\x03\x1c\x1d\n\x0f\n\x07\x04\x12\x03\x01\x02\x01\
+    \x08\x12\x04\xb2\x03\x1eC\n\x13\n\x0b\x04\x12\x03\x01\x02\x01\x08\xaf\
+    \x08\x0e\x02\x12\x04\xb2\x03\x1fB\n(\n\x06\x04\x12\x03\x01\x02\x02\x12\
+    \x04\xb5\x03\x04\x15\x1a\x18\x20The\x20value\x20of\x20the\x20link.\n\n\
+    \x0f\n\x07\x04\x12\x03\x01\x02\x02\x05\x12\x04\xb5\x03\x04\n\n\x0f\n\x07\
+    \x04\x12\x03\x01\x02\x02\x01\x12\x04\xb5\x03\x0b\x10\n\x0f\n\x07\x04\x12\
+    \x03\x01\x02\x02\x03\x12\x04\xb5\x03\x13\x14\n)\n\x04\x04\x12\x02\0\x12\
+    \x04\xb9\x03\x02S\x1a\x1b\x20The\x20nodes\x20of\x20the\x20diagram.\n\n\r\
+    \n\x05\x04\x12\x02\0\x04\x12\x04\xb9\x03\x02\n\n\r\n\x05\x04\x12\x02\0\
+    \x06\x12\x04\xb9\x03\x0bH\n\r\n\x05\x04\x12\x02\0\x01\x12\x04\xb9\x03IN\
+    \n\r\n\x05\x04\x12\x02\0\x03\x12\x04\xb9\x03QR\n)\n\x04\x04\x12\x02\x01\
+    \x12\x04\xbc\x03\x02S\x1a\x1b\x20The\x20links\x20of\x20the\x20diagram.\n\
+    \n\r\n\x05\x04\x12\x02\x01\x04\x12\x04\xbc\x03\x02\n\n\r\n\x05\x04\x12\
+    \x02\x01\x06\x12\x04\xbc\x03\x0bH\n\r\n\x05\x04\x12\x02\x01\x01\x12\x04\
+    \xbc\x03IN\n\r\n\x05\x04\x12\x02\x01\x03\x12\x04\xbc\x03QR\n\x0c\n\x02\
+    \x04\x13\x12\x06\xbf\x03\0\xc2\x03\x01\n\x0b\n\x03\x04\x13\x01\x12\x04\
+    \xbf\x03\x08\x1a\n4\n\x04\x04\x13\x02\0\x12\x04\xc1\x03\x02A\x1a&\x20The\
+    \x20tables\x20to\x20render\x20for\x20this\x20chart.\n\n\r\n\x05\x04\x13\
+    \x02\0\x04\x12\x04\xc1\x03\x02\n\n\r\n\x05\x04\x13\x02\0\x06\x12\x04\xc1\
+    \x03\x0b5\n\r\n\x05\x04\x13\x02\0\x01\x12\x04\xc1\x036<\n\r\n\x05\x04\
+    \x13\x02\0\x03\x12\x04\xc1\x03?@\n\x0c\n\x02\x04\x14\x12\x06\xc4\x03\0\
+    \xd8\x03\x01\n\x0b\n\x03\x04\x14\x01\x12\x04\xc4\x03\x08\r\n\xa3\x01\n\
+    \x04\x04\x14\x02\0\x12\x04\xc7\x03\x02-\x1a\x94\x01\x20Headers\x20for\
     \x20the\x20columns\x20of\x20each\x20group\x20by\x20field\x20(for\x20exam\
     ple,\x20\"country\",\x20\"device_type\",\n\x20etc.).\x20If\x20there\x20a\
     re\x20no\x20group\x20by\x20fields\x20this\x20will\x20be\x20empty.\n\n\r\
-    \n\x05\x04\x0c\x02\0\x04\x12\x04\x80\x02\x02\n\n\r\n\x05\x04\x0c\x02\0\
-    \x05\x12\x04\x80\x02\x0b\x11\n\r\n\x05\x04\x0c\x02\0\x01\x12\x04\x80\x02\
-    \x12(\n\r\n\x05\x04\x0c\x02\0\x03\x12\x04\x80\x02+,\nd\n\x04\x04\x0c\x02\
-    \x01\x12\x04\x83\x02\x02-\x1aV\x20Headers\x20for\x20the\x20columns\x20th\
+    \n\x05\x04\x14\x02\0\x04\x12\x04\xc7\x03\x02\n\n\r\n\x05\x04\x14\x02\0\
+    \x05\x12\x04\xc7\x03\x0b\x11\n\r\n\x05\x04\x14\x02\0\x01\x12\x04\xc7\x03\
+    \x12(\n\r\n\x05\x04\x14\x02\0\x03\x12\x04\xc7\x03+,\nd\n\x04\x04\x14\x02\
+    \x01\x12\x04\xca\x03\x02-\x1aV\x20Headers\x20for\x20the\x20columns\x20th\
     at\x20contain\x20aggregated\x20values\x20(for\x20example\x20P99,\x20Min,\
-    \x20etc.).\n\n\r\n\x05\x04\x0c\x02\x01\x04\x12\x04\x83\x02\x02\n\n\r\n\
-    \x05\x04\x0c\x02\x01\x05\x12\x04\x83\x02\x0b\x11\n\r\n\x05\x04\x0c\x02\
-    \x01\x01\x12\x04\x83\x02\x12(\n\r\n\x05\x04\x0c\x02\x01\x03\x12\x04\x83\
-    \x02+,\n\\\n\x04\x04\x0c\x02\x02\x12\x04\x86\x02\x02B\x1aN\x20Each\x20ro\
+    \x20etc.).\n\n\r\n\x05\x04\x14\x02\x01\x04\x12\x04\xca\x03\x02\n\n\r\n\
+    \x05\x04\x14\x02\x01\x05\x12\x04\xca\x03\x0b\x11\n\r\n\x05\x04\x14\x02\
+    \x01\x01\x12\x04\xca\x03\x12(\n\r\n\x05\x04\x14\x02\x01\x03\x12\x04\xca\
+    \x03+,\n\\\n\x04\x04\x14\x02\x02\x12\x04\xcd\x03\x02B\x1aN\x20Each\x20ro\
     w\x20in\x20the\x20table\x20represents\x20one\x20unique\x20combination\
-    \x20of\x20group-by\x20columns.\n\n\r\n\x05\x04\x0c\x02\x02\x04\x12\x04\
-    \x86\x02\x02\n\n\r\n\x05\x04\x0c\x02\x02\x06\x12\x04\x86\x02\x0b8\n\r\n\
-    \x05\x04\x0c\x02\x02\x01\x12\x04\x86\x029=\n\r\n\x05\x04\x0c\x02\x02\x03\
-    \x12\x04\x86\x02@A\n_\n\x04\x04\x0c\x02\x03\x12\x04\x89\x02\x02%\x1aQ\
+    \x20of\x20group-by\x20columns.\n\n\r\n\x05\x04\x14\x02\x02\x04\x12\x04\
+    \xcd\x03\x02\n\n\r\n\x05\x04\x14\x02\x02\x06\x12\x04\xcd\x03\x0b8\n\r\n\
+    \x05\x04\x14\x02\x02\x01\x12\x04\xcd\x039=\n\r\n\x05\x04\x14\x02\x02\x03\
+    \x12\x04\xcd\x03@A\n_\n\x04\x04\x14\x02\x03\x12\x04\xd0\x03\x02%\x1aQ\
     \x20The\x20unique\x20devices\x20for\x20the\x20entire\x20table\x20based\
-    \x20on\x20the\x20TrackUnique\x20configuration.\n\n\r\n\x05\x04\x0c\x02\
-    \x03\x04\x12\x04\x89\x02\x02\n\n\r\n\x05\x04\x0c\x02\x03\x05\x12\x04\x89\
-    \x02\x0b\x11\n\r\n\x05\x04\x0c\x02\x03\x01\x12\x04\x89\x02\x12\x20\n\r\n\
-    \x05\x04\x0c\x02\x03\x03\x12\x04\x89\x02#$\nh\n\x04\x04\x0c\x02\x04\x12\
-    \x04\x8c\x02\x02\x13\x1aZ\x20The\x20title\x20of\x20table,\x20which\x20is\
+    \x20on\x20the\x20TrackUnique\x20configuration.\n\n\r\n\x05\x04\x14\x02\
+    \x03\x04\x12\x04\xd0\x03\x02\n\n\r\n\x05\x04\x14\x02\x03\x05\x12\x04\xd0\
+    \x03\x0b\x11\n\r\n\x05\x04\x14\x02\x03\x01\x12\x04\xd0\x03\x12\x20\n\r\n\
+    \x05\x04\x14\x02\x03\x03\x12\x04\xd0\x03#$\nh\n\x04\x04\x14\x02\x04\x12\
+    \x04\xd3\x03\x02\x13\x1aZ\x20The\x20title\x20of\x20table,\x20which\x20is\
     \x20derived\x20from\x20the\x20TimeSeries\x20title\x20in\x20the\x20rule\
-    \x20chart\x20config.\n\n\r\n\x05\x04\x0c\x02\x04\x05\x12\x04\x8c\x02\x02\
-    \x08\n\r\n\x05\x04\x0c\x02\x04\x01\x12\x04\x8c\x02\t\x0e\n\r\n\x05\x04\
-    \x0c\x02\x04\x03\x12\x04\x8c\x02\x11\x12\nz\n\x04\x04\x0c\x02\x05\x12\
-    \x04\x90\x02\x02V\x1al\x20The\x20total\x20count\x20of\x20cardinality\x20\
+    \x20chart\x20config.\n\n\r\n\x05\x04\x14\x02\x04\x05\x12\x04\xd3\x03\x02\
+    \x08\n\r\n\x05\x04\x14\x02\x04\x01\x12\x04\xd3\x03\t\x0e\n\r\n\x05\x04\
+    \x14\x02\x04\x03\x12\x04\xd3\x03\x11\x12\nz\n\x04\x04\x14\x02\x05\x12\
+    \x04\xd7\x03\x02V\x1al\x20The\x20total\x20count\x20of\x20cardinality\x20\
     overflows\x20for\x20this\x20time\x20series\x20that\x20occurred\x20during\
-    \x20the\n\x20query\x20time\x20period.\n\n\r\n\x05\x04\x0c\x02\x05\x06\
-    \x12\x04\x90\x02\x02;\n\r\n\x05\x04\x0c\x02\x05\x01\x12\x04\x90\x02<Q\n\
-    \r\n\x05\x04\x0c\x02\x05\x03\x12\x04\x90\x02TU\n\x0c\n\x02\x04\r\x12\x06\
-    \x93\x02\0\x99\x02\x01\n\x0b\n\x03\x04\r\x01\x12\x04\x93\x02\x08\x12\n0\
-    \n\x04\x04\r\x02\0\x12\x04\x95\x02\x02\x13\x1a\"\x20The\x20numeric\x20va\
-    lue\x20for\x20this\x20cell.\n\n\r\n\x05\x04\r\x02\0\x05\x12\x04\x95\x02\
-    \x02\x08\n\r\n\x05\x04\r\x02\0\x01\x12\x04\x95\x02\t\x0e\n\r\n\x05\x04\r\
-    \x02\0\x03\x12\x04\x95\x02\x11\x12\nf\n\x04\x04\r\x02\x01\x12\x04\x98\
-    \x02\x02D\x1aX\x20For\x20rate\x20tables,\x20returns\x20the\x20numerator\
-    \x20and\x20denominator\x20values\x20that\x20yielded\x20this\x20value.\n\
-    \n\r\n\x05\x04\r\x02\x01\x06\x12\x04\x98\x02\x022\n\r\n\x05\x04\r\x02\
-    \x01\x01\x12\x04\x98\x023?\n\r\n\x05\x04\r\x02\x01\x03\x12\x04\x98\x02BC\
-    \n\x0c\n\x02\x04\x0e\x12\x06\x9b\x02\0\xa4\x02\x01\n\x0b\n\x03\x04\x0e\
-    \x01\x12\x04\x9b\x02\x08\x10\n;\n\x04\x04\x0e\x02\0\x12\x04\x9d\x02\x02*\
-    \x1a-\x20Values\x20that\x20match\x20`group_column_key_names`.\n\n\r\n\
-    \x05\x04\x0e\x02\0\x04\x12\x04\x9d\x02\x02\n\n\r\n\x05\x04\x0e\x02\0\x05\
-    \x12\x04\x9d\x02\x0b\x11\n\r\n\x05\x04\x0e\x02\0\x01\x12\x04\x9d\x02\x12\
-    %\n\r\n\x05\x04\x0e\x02\0\x03\x12\x04\x9d\x02()\n;\n\x04\x04\x0e\x02\x01\
-    \x12\x04\xa0\x02\x02Q\x1a-\x20Values\x20that\x20match\x20`value_column_k\
-    ey_names`.\n\n\r\n\x05\x04\x0e\x02\x01\x04\x12\x04\xa0\x02\x02\n\n\r\n\
-    \x05\x04\x0e\x02\x01\x06\x12\x04\xa0\x02\x0b:\n\r\n\x05\x04\x0e\x02\x01\
-    \x01\x12\x04\xa0\x02;L\n\r\n\x05\x04\x0e\x02\x01\x03\x12\x04\xa0\x02OP\n\
-    P\n\x04\x04\x0e\x02\x02\x12\x04\xa3\x02\x02%\x1aB\x20The\x20unique\x20de\
-    vices\x20count\x20based\x20on\x20the\x20TrackUnique\x20configuration.\n\
-    \n\r\n\x05\x04\x0e\x02\x02\x04\x12\x04\xa3\x02\x02\n\n\r\n\x05\x04\x0e\
-    \x02\x02\x05\x12\x04\xa3\x02\x0b\x11\n\r\n\x05\x04\x0e\x02\x02\x01\x12\
-    \x04\xa3\x02\x12\x20\n\r\n\x05\x04\x0e\x02\x02\x03\x12\x04\xa3\x02#$\n\
-    \x0c\n\x02\x04\x0f\x12\x06\xa6\x02\0\xac\x02\x01\n\x0b\n\x03\x04\x0f\x01\
-    \x12\x04\xa6\x02\x08\x1b\n\xfc\x01\n\x04\x04\x0f\x02\0\x12\x04\xab\x02\
-    \x02A\x1a\xed\x01\x20The\x20funnel's\x20steps.\n\x20The\x20order\x20of\
-    \x20steps\x20in\x20the\x20list\x20corresponds\x20to\x20the\x20order\x20o\
-    f\x20metric\x20IDs\x20in\n\x20the\x20stream\x20funnels\x20request.\x20If\
-    \x20there\x20is\x20no\x20data\x20available\x20for\x20any\x20of\x20the\n\
-    \x20metrics\x20associated\x20with\x20a\x20given\x20funnel,\x20the\x20`st\
-    eps`\x20list\x20is\x20empty.\n\n\r\n\x05\x04\x0f\x02\0\x04\x12\x04\xab\
-    \x02\x02\n\n\r\n\x05\x04\x0f\x02\0\x06\x12\x04\xab\x02\x0b6\n\r\n\x05\
-    \x04\x0f\x02\0\x01\x12\x04\xab\x027<\n\r\n\x05\x04\x0f\x02\0\x03\x12\x04\
-    \xab\x02?@\n\x0c\n\x02\x04\x10\x12\x06\xae\x02\0\xd9\x02\x01\n\x0b\n\x03\
-    \x04\x10\x01\x12\x04\xae\x02\x08!\n\x0e\n\x04\x04\x10\x03\0\x12\x06\xaf\
-    \x02\x02\xb8\x02\x03\n\r\n\x05\x04\x10\x03\0\x01\x12\x04\xaf\x02\n\x10\n\
-    H\n\x06\x04\x10\x03\0\x02\0\x12\x04\xb1\x02\x04\x15\x1a8\x20The\x20begin\
-    ning\x20of\x20the\x20range\x20for\x20this\x20bucket,\x20inclusive.\n\n\
-    \x0f\n\x07\x04\x10\x03\0\x02\0\x05\x12\x04\xb1\x02\x04\n\n\x0f\n\x07\x04\
-    \x10\x03\0\x02\0\x01\x12\x04\xb1\x02\x0b\x10\n\x0f\n\x07\x04\x10\x03\0\
-    \x02\0\x03\x12\x04\xb1\x02\x13\x14\nB\n\x06\x04\x10\x03\0\x02\x01\x12\
-    \x04\xb4\x02\x04\x13\x1a2\x20The\x20end\x20of\x20the\x20range\x20for\x20\
-    this\x20bucket,\x20exclusive.\n\n\x0f\n\x07\x04\x10\x03\0\x02\x01\x05\
-    \x12\x04\xb4\x02\x04\n\n\x0f\n\x07\x04\x10\x03\0\x02\x01\x01\x12\x04\xb4\
-    \x02\x0b\x0e\n\x0f\n\x07\x04\x10\x03\0\x02\x01\x03\x12\x04\xb4\x02\x11\
-    \x12\nK\n\x06\x04\x10\x03\0\x02\x02\x12\x04\xb7\x02\x04\x15\x1a;\x20The\
-    \x20count\x20of\x20values\x20that\x20fall\x20within\x20this\x20bucket's\
-    \x20range.\n\n\x0f\n\x07\x04\x10\x03\0\x02\x02\x05\x12\x04\xb7\x02\x04\n\
-    \n\x0f\n\x07\x04\x10\x03\0\x02\x02\x01\x12\x04\xb7\x02\x0b\x10\n\x0f\n\
-    \x07\x04\x10\x03\0\x02\x02\x03\x12\x04\xb7\x02\x13\x14\n\x0e\n\x04\x04\
-    \x10\x03\x01\x12\x06\xba\x02\x02\xc3\x02\x03\n\r\n\x05\x04\x10\x03\x01\
-    \x01\x12\x04\xba\x02\n\x14\nH\n\x06\x04\x10\x03\x01\x02\0\x12\x04\xbc\
-    \x02\x04#\x1a8\x20The\x20value\x20of\x20the\x20dimension\x20that\x20this\
-    \x20group\x20represents.\n\n\x0f\n\x07\x04\x10\x03\x01\x02\0\x04\x12\x04\
-    \xbc\x02\x04\x0c\n\x0f\n\x07\x04\x10\x03\x01\x02\0\x05\x12\x04\xbc\x02\r\
-    \x13\n\x0f\n\x07\x04\x10\x03\x01\x02\0\x01\x12\x04\xbc\x02\x14\x1e\n\x0f\
-    \n\x07\x04\x10\x03\x01\x02\0\x03\x12\x04\xbc\x02!\"\nC\n\x06\x04\x10\x03\
-    \x01\x02\x01\x12\x04\xbf\x02\x04_\x1a3\x20The\x20list\x20of\x20buckets\
-    \x20for\x20this\x20histogram\x20bar\x20chart.\n\n\x0f\n\x07\x04\x10\x03\
-    \x01\x02\x01\x04\x12\x04\xbf\x02\x04\x0c\n\x0f\n\x07\x04\x10\x03\x01\x02\
-    \x01\x06\x12\x04\xbf\x02\rR\n\x0f\n\x07\x04\x10\x03\x01\x02\x01\x01\x12\
-    \x04\xbf\x02SZ\n\x0f\n\x07\x04\x10\x03\x01\x02\x01\x03\x12\x04\xbf\x02]^\
-    \na\n\x06\x04\x10\x03\x01\x02\x02\x12\x04\xc2\x02\x04'\x1aQ\x20The\x20un\
-    ique\x20devices\x20for\x20the\x20entire\x20table\x20based\x20on\x20the\
-    \x20TrackUnique\x20configuration.\n\n\x0f\n\x07\x04\x10\x03\x01\x02\x02\
-    \x04\x12\x04\xc2\x02\x04\x0c\n\x0f\n\x07\x04\x10\x03\x01\x02\x02\x05\x12\
-    \x04\xc2\x02\r\x13\n\x0f\n\x07\x04\x10\x03\x01\x02\x02\x01\x12\x04\xc2\
-    \x02\x14\"\n\x0f\n\x07\x04\x10\x03\x01\x02\x02\x03\x12\x04\xc2\x02%&\n\
-    \x0e\n\x04\x04\x10\x03\x02\x12\x06\xc5\x02\x02\xd5\x02\x03\n\r\n\x05\x04\
-    \x10\x03\x02\x01\x12\x04\xc5\x02\n\x17\n\xa5\x01\n\x06\x04\x10\x03\x02\
-    \x02\0\x12\x04\xc8\x02\x04(\x1a\x94\x01\x20Headers\x20for\x20the\x20colu\
-    mns\x20of\x20each\x20group\x20by\x20field\x20(for\x20example,\x20\"count\
-    ry\",\x20\"device_type\",\n\x20etc.).\x20If\x20there\x20are\x20no\x20gro\
-    up\x20by\x20fields\x20this\x20will\x20be\x20empty.\n\n\x0f\n\x07\x04\x10\
-    \x03\x02\x02\0\x04\x12\x04\xc8\x02\x04\x0c\n\x0f\n\x07\x04\x10\x03\x02\
-    \x02\0\x05\x12\x04\xc8\x02\r\x13\n\x0f\n\x07\x04\x10\x03\x02\x02\0\x01\
-    \x12\x04\xc8\x02\x14#\n\x0f\n\x07\x04\x10\x03\x02\x02\0\x03\x12\x04\xc8\
-    \x02&'\nx\n\x06\x04\x10\x03\x02\x02\x01\x12\x04\xcc\x02\x04\x15\x1ah\x20\
-    The\x20title\x20of\x20the\x20histogram\x20data,\x20which\x20is\x20derive\
-    d\x20from\x20the\x20TimeSeries\x20title\x20in\x20the\x20rule\x20chart\n\
-    \x20config.\n\n\x0f\n\x07\x04\x10\x03\x02\x02\x01\x05\x12\x04\xcc\x02\
-    \x04\n\n\x0f\n\x07\x04\x10\x03\x02\x02\x01\x01\x12\x04\xcc\x02\x0b\x10\n\
-    \x0f\n\x07\x04\x10\x03\x02\x02\x01\x03\x12\x04\xcc\x02\x13\x14\n|\n\x06\
-    \x04\x10\x03\x02\x02\x02\x12\x04\xd0\x02\x04X\x1al\x20The\x20total\x20co\
-    unt\x20of\x20cardinality\x20overflows\x20for\x20this\x20time\x20series\
-    \x20that\x20occurred\x20during\x20the\n\x20query\x20time\x20period.\n\n\
-    \x0f\n\x07\x04\x10\x03\x02\x02\x02\x06\x12\x04\xd0\x02\x04=\n\x0f\n\x07\
-    \x04\x10\x03\x02\x02\x02\x01\x12\x04\xd0\x02>S\n\x0f\n\x07\x04\x10\x03\
-    \x02\x02\x02\x03\x12\x04\xd0\x02VW\n\xa5\x01\n\x06\x04\x10\x03\x02\x02\
-    \x03\x12\x04\xd4\x02\x04h\x1a\x94\x01\x20A\x20set\x20of\x20buckets\x20fo\
-    r\x20every\x20group\x20by\x20combination\x20for\x20this\x20time\x20serie\
-    s.\x20If\x20there\x20are\x20no\x20group\n\x20by\x20fields,\x20there\x20w\
-    ill\x20be\x20a\x20single\x20entry\x20in\x20this\x20list.\n\n\x0f\n\x07\
-    \x04\x10\x03\x02\x02\x03\x04\x12\x04\xd4\x02\x04\x0c\n\x0f\n\x07\x04\x10\
-    \x03\x02\x02\x03\x06\x12\x04\xd4\x02\rV\n\x0f\n\x07\x04\x10\x03\x02\x02\
-    \x03\x01\x12\x04\xd4\x02Wc\n\x0f\n\x07\x04\x10\x03\x02\x02\x03\x03\x12\
-    \x04\xd4\x02fg\nA\n\x04\x04\x10\x02\0\x12\x04\xd8\x02\x02l\x1a3\x20Histo\
-    gram\x20data\x20for\x20each\x20time\x20series\x20in\x20the\x20chart.\n\n\
-    \r\n\x05\x04\x10\x02\0\x04\x12\x04\xd8\x02\x02\n\n\r\n\x05\x04\x10\x02\0\
-    \x06\x12\x04\xd8\x02\x0bW\n\r\n\x05\x04\x10\x02\0\x01\x12\x04\xd8\x02Xg\
-    \n\r\n\x05\x04\x10\x02\0\x03\x12\x04\xd8\x02jk\n\x0c\n\x02\x04\x11\x12\
-    \x06\xdb\x02\0\xf6\x02\x01\n\x0b\n\x03\x04\x11\x01\x12\x04\xdb\x02\x08\
-    \x11\n4\n\x04\x04\x11\x02\0\x12\x04\xdd\x02\x02n\x1a&\x20The\x20chart\
-    \x20that\x20this\x20data\x20belongs\x20to.\n\n\r\n\x05\x04\x11\x02\0\x06\
-    \x12\x04\xdd\x02\x022\n\r\n\x05\x04\x11\x02\0\x01\x12\x04\xdd\x023;\n\r\
-    \n\x05\x04\x11\x02\0\x03\x12\x04\xdd\x02>?\n\r\n\x05\x04\x11\x02\0\x08\
-    \x12\x04\xdd\x02@m\n\x10\n\x08\x04\x11\x02\0\x08\xaf\x08\x11\x12\x04\xdd\
-    \x02Al\n\x0e\n\x04\x04\x11\x08\0\x12\x06\xdf\x02\x02\xf5\x02\x03\n\r\n\
-    \x05\x04\x11\x08\0\x01\x12\x04\xdf\x02\x08\x16\n\r\n\x05\x04\x11\x08\0\
-    \x02\x12\x04\xe0\x02\x04&\n\x0f\n\x07\x04\x11\x08\0\x02\xaf\x08\x12\x04\
-    \xe0\x02\x04&\n.\n\x04\x04\x11\x02\x01\x12\x04\xe2\x02\x04I\x1a\x20\x20L\
-    ine-chart\x20data\x20for\x20the\x20chart.\n\n\r\n\x05\x04\x11\x02\x01\
-    \x06\x12\x04\xe2\x02\x04:\n\r\n\x05\x04\x11\x02\x01\x01\x12\x04\xe2\x02;\
-    D\n\r\n\x05\x04\x11\x02\x01\x03\x12\x04\xe2\x02GH\n0\n\x04\x04\x11\x02\
-    \x02\x12\x04\xe5\x02\x04M\x1a\"\x20Sankey-chart\x20data\x20for\x20the\
-    \x20chart.\n\n\r\n\x05\x04\x11\x02\x02\x06\x12\x04\xe5\x02\x04<\n\r\n\
-    \x05\x04\x11\x02\x02\x01\x12\x04\xe5\x02=H\n\r\n\x05\x04\x11\x02\x02\x03\
-    \x12\x04\xe5\x02KL\n)\n\x04\x04\x11\x02\x03\x12\x04\xe8\x02\x04K\x1a\x1b\
-    \x20Table\x20data\x20for\x20the\x20chart.\n\n\r\n\x05\x04\x11\x02\x03\
-    \x06\x12\x04\xe8\x02\x04;\n\r\n\x05\x04\x11\x02\x03\x01\x12\x04\xe8\x02<\
-    F\n\r\n\x05\x04\x11\x02\x03\x03\x12\x04\xe8\x02IJ\n*\n\x04\x04\x11\x02\
-    \x04\x12\x04\xeb\x02\x04M\x1a\x1c\x20Funnel\x20data\x20for\x20the\x20cha\
-    rt.\n\n\r\n\x05\x04\x11\x02\x04\x06\x12\x04\xeb\x02\x04<\n\r\n\x05\x04\
-    \x11\x02\x04\x01\x12\x04\xeb\x02=H\n\r\n\x05\x04\x11\x02\x04\x03\x12\x04\
-    \xeb\x02KL\n7\n\x04\x04\x11\x02\x05\x12\x04\xee\x02\x04e\x1a)\x20Histogr\
-    am-bar-chart\x20data\x20for\x20the\x20chart.\n\n\r\n\x05\x04\x11\x02\x05\
-    \x06\x12\x04\xee\x02\x04B\n\r\n\x05\x04\x11\x02\x05\x01\x12\x04\xee\x02C\
-    _\n\r\n\x05\x04\x11\x02\x05\x03\x12\x04\xee\x02bd\nQ\n\x04\x04\x11\x02\
-    \x06\x12\x04\xf1\x02\x04\x15\x1aC\x20Contains\x20an\x20error\x20message\
-    \x20when\x20chart\x20data\x20could\x20not\x20be\x20retrieved.\n\n\r\n\
-    \x05\x04\x11\x02\x06\x05\x12\x04\xf1\x02\x04\n\n\r\n\x05\x04\x11\x02\x06\
-    \x01\x12\x04\xf1\x02\x0b\x10\n\r\n\x05\x04\x11\x02\x06\x03\x12\x04\xf1\
-    \x02\x13\x14\n6\n\x04\x04\x11\x02\x07\x12\x04\xf4\x02\x04F\x1a(\x20Set\
-    \x20to\x20true\x20if\x20the\x20chart\x20is\x20not\x20found.\n\n\r\n\x05\
-    \x04\x11\x02\x07\x05\x12\x04\xf4\x02\x04\x08\n\r\n\x05\x04\x11\x02\x07\
-    \x01\x12\x04\xf4\x02\t\x18\n\r\n\x05\x04\x11\x02\x07\x03\x12\x04\xf4\x02\
-    \x1b\x1d\n\r\n\x05\x04\x11\x02\x07\x08\x12\x04\xf4\x02\x1eE\n\x10\n\x08\
-    \x04\x11\x02\x07\x08\xaf\x08\r\x12\x04\xf4\x02\x1fD\n\x0c\n\x02\x04\x12\
-    \x12\x06\xf8\x02\0\xfc\x02\x01\n\x0b\n\x03\x04\x12\x01\x12\x04\xf8\x02\
-    \x08\x1d\n\x81\x01\n\x04\x04\x12\x02\0\x12\x04\xfb\x02\x02C\x1as\x20Data\
-    \x20for\x20each\x20of\x20the\x20requested\x20data.\x20The\x20order\x20of\
-    \x20the\x20data\x20will\x20match\x20the\n\x20order\x20of\x20the\x20chart\
-    \x20ids\x20in\x20the\x20request.\n\n\r\n\x05\x04\x12\x02\0\x04\x12\x04\
-    \xfb\x02\x02\n\n\r\n\x05\x04\x12\x02\0\x06\x12\x04\xfb\x02\x0b9\n\r\n\
-    \x05\x04\x12\x02\0\x01\x12\x04\xfb\x02:>\n\r\n\x05\x04\x12\x02\0\x03\x12\
-    \x04\xfb\x02AB\n\x0c\n\x02\x04\x13\x12\x06\xfe\x02\0\x84\x03\x01\n\x0b\n\
-    \x03\x04\x13\x01\x12\x04\xfe\x02\x08\x1f\n=\n\x04\x04\x13\x02\0\x12\x04\
-    \x80\x03\x02<\x1a/\x20The\x20time\x20range\x20to\x20inspect\x20for\x20ac\
-    tive\x20devices.\n\n\r\n\x05\x04\x13\x02\0\x06\x12\x04\x80\x03\x02,\n\r\
-    \n\x05\x04\x13\x02\0\x01\x12\x04\x80\x03-7\n\r\n\x05\x04\x13\x02\0\x03\
-    \x12\x04\x80\x03:;\nQ\n\x04\x04\x13\x02\x01\x12\x04\x83\x03\x02w\x1aC\
-    \x20Optional\x20platform\x20filters\x20used\x20to\x20narrow\x20the\x20ac\
-    tive-device\x20count.\n\n\r\n\x05\x04\x13\x02\x01\x04\x12\x04\x83\x03\
-    \x02\n\n\r\n\x05\x04\x13\x02\x01\x06\x12\x04\x83\x03\x0b7\n\r\n\x05\x04\
-    \x13\x02\x01\x01\x12\x04\x83\x038G\n\r\n\x05\x04\x13\x02\x01\x03\x12\x04\
-    \x83\x03JK\n\r\n\x05\x04\x13\x02\x01\x08\x12\x04\x83\x03Lv\n\x11\n\t\x04\
-    \x13\x02\x01\x08\xaf\x08\x12\x02\x12\x04\x83\x03Mu\n\x0c\n\x02\x04\x14\
-    \x12\x06\x86\x03\0\x89\x03\x01\n\x0b\n\x03\x04\x14\x01\x12\x04\x86\x03\
-    \x08\x20\n[\n\x04\x04\x14\x02\0\x12\x04\x88\x03\x02\x15\x1aM\x20The\x20n\
-    umber\x20of\x20distinct\x20active\x20devices\x20observed\x20in\x20the\
-    \x20requested\x20time\x20range.\n\n\r\n\x05\x04\x14\x02\0\x05\x12\x04\
-    \x88\x03\x02\x08\n\r\n\x05\x04\x14\x02\0\x01\x12\x04\x88\x03\t\x10\n\r\n\
-    \x05\x04\x14\x02\0\x03\x12\x04\x88\x03\x13\x14\n\x0c\n\x02\x04\x15\x12\
-    \x06\x8b\x03\0\x97\x03\x01\n\x0b\n\x03\x04\x15\x01\x12\x04\x8b\x03\x08\
-    \x1e\np\n\x04\x04\x15\x02\0\x12\x04\x8e\x03\x02,\x1ab\x20The\x20start\
-    \x20of\x20the\x20time\x20range\x20to\x20inspect.\x20Defaults\x20to\x2030\
-    \x20days\x20before\x20the\n\x20current\x20time\x20when\x20unset.\n\n\r\n\
-    \x05\x04\x15\x02\0\x06\x12\x04\x8e\x03\x02\x1c\n\r\n\x05\x04\x15\x02\0\
-    \x01\x12\x04\x8e\x03\x1d'\n\r\n\x05\x04\x15\x02\0\x03\x12\x04\x8e\x03*+\
-    \n_\n\x04\x04\x15\x02\x01\x12\x04\x92\x03\x02*\x1aQ\x20The\x20end\x20of\
-    \x20the\x20time\x20range\x20to\x20inspect.\x20Defaults\x20to\x20the\x20c\
-    urrent\x20time\x20when\n\x20unset.\n\n\r\n\x05\x04\x15\x02\x01\x06\x12\
-    \x04\x92\x03\x02\x1c\n\r\n\x05\x04\x15\x02\x01\x01\x12\x04\x92\x03\x1d%\
-    \n\r\n\x05\x04\x15\x02\x01\x03\x12\x04\x92\x03()\nz\n\x04\x04\x15\x02\
-    \x02\x12\x04\x96\x03\x02w\x1al\x20Optional\x20platform\x20selection\x20c\
-    riteria\x20used\x20to\x20limit\x20which\x20platforms\x20and\x20apps\n\
-    \x20are\x20included\x20in\x20the\x20response.\n\n\r\n\x05\x04\x15\x02\
-    \x02\x04\x12\x04\x96\x03\x02\n\n\r\n\x05\x04\x15\x02\x02\x06\x12\x04\x96\
-    \x03\x0b7\n\r\n\x05\x04\x15\x02\x02\x01\x12\x04\x96\x038G\n\r\n\x05\x04\
-    \x15\x02\x02\x03\x12\x04\x96\x03JK\n\r\n\x05\x04\x15\x02\x02\x08\x12\x04\
-    \x96\x03Lv\n\x11\n\t\x04\x15\x02\x02\x08\xaf\x08\x12\x02\x12\x04\x96\x03\
-    Mu\n\x0c\n\x02\x04\x16\x12\x06\x99\x03\0\x9d\x03\x01\n\x0b\n\x03\x04\x16\
-    \x01\x12\x04\x99\x03\x08\x1f\nr\n\x04\x04\x16\x02\0\x12\x04\x9c\x03\x02F\
-    \x1ad\x20The\x20distinct\x20platform,\x20app\x20ID,\x20and\x20app\x20ver\
-    sion\x20combinations\x20observed\x20in\x20the\n\x20requested\x20time\x20\
-    range.\n\n\r\n\x05\x04\x16\x02\0\x04\x12\x04\x9c\x03\x02\n\n\r\n\x05\x04\
-    \x16\x02\0\x06\x12\x04\x9c\x03\x0b7\n\r\n\x05\x04\x16\x02\0\x01\x12\x04\
-    \x9c\x038A\n\r\n\x05\x04\x16\x02\0\x03\x12\x04\x9c\x03DE\ng\n\x02\x06\0\
-    \x12\x06\xa0\x03\0\xb8\x03\x01\x1aY\x20Provides\x20access\x20to\x20dashb\
-    oards\x20and\x20chart\x20data,\x20including\x20layout\x20and\x20time\x20\
-    series\x20metrics.\n\n\x0b\n\x03\x06\0\x01\x12\x04\xa0\x03\x08\x18\n\xbd\
-    \x01\n\x04\x06\0\x02\0\x12\x05\xa5\x03\x02\xa0\x01\x1a\xad\x01\x20Retrie\
-    ves\x20the\x20chart\x20configuration\x20for\x20a\x20single\x20workflow.\
-    \n\n\x20Returns\x20a\x20list\x20of\x20all\x20charts\x20to\x20be\x20displ\
-    ayed\x20for\x20this\x20workflow.\x20The\x20chart\n\x20IDs\x20should\x20b\
-    e\x20used\x20to\x20fetch\x20the\x20data.\n\n\r\n\x05\x06\0\x02\0\x01\x12\
-    \x04\xa5\x03\x06\x17\n\r\n\x05\x06\0\x02\0\x02\x12\x04\xa5\x03\x18U\n\
-    \x0e\n\x05\x06\0\x02\0\x03\x12\x05\xa5\x03`\x9e\x01\n\xc3\x02\n\x04\x06\
-    \0\x02\x01\x12\x05\xac\x03\x02\x94\x01\x1a\xb3\x02\x20Retrieves\x20chart\
-    \x20data\x20for\x20one\x20or\x20more\x20charts.\n\n\x20Returns\x20render\
-    ed\x20chart\x20output\x20such\x20as\x20time-series\x20values,\x20labels,\
-    \x20and\x20table\x20rows.\x20For\x20grouped\n\x20charts,\x20callers\x20c\
-    an\x20reuse\x20each\x20returned\x20`TimeSeries.id`\x20together\x20with\
-    \x20its\x20full\x20`labels`\x20set\x20to\n\x20build\x20`charts.v1.LimitS\
-    trategy.IdentifierMatch`\x20in\x20a\x20later\x20request.\n\n\r\n\x05\x06\
-    \0\x02\x01\x01\x12\x04\xac\x03\x06\x13\n\r\n\x05\x06\0\x02\x01\x02\x12\
-    \x04\xac\x03\x14M\n\x0e\n\x05\x06\0\x02\x01\x03\x12\x05\xac\x03X\x92\x01\
-    \n\x90\x03\n\x04\x06\0\x02\x02\x12\x05\xb3\x03\x02\x9d\x01\x1a\x80\x03\
-    \x20Gets\x20the\x20unique\x20active\x20devices\x20for\x20a\x20given\x20t\
-    ime\x20range\x20and\x20filter\x20conditions.\x20Active\x20devices\x20in\
-    \n\x20this\x20context\x20are\x20*any*\x20devices\x20that\x20connected\
-    \x20to\x20the\x20platform,\x20regardless\x20of\x20whether\x20they\x20sen\
-    t\n\x20any\x20metrics,\x20were\x20freshly\x20started,\x20moved\x20to\x20\
-    foreground,\x20etc.\x20This\x20includes\x20devices\x20that\n\x20connecte\
-    d\x20as\x20part\x20of\x20background\x20activity\x20so\x20the\x20number\
-    \x20will\x20be\x20higher\x20than\x20\"app\x20open\"\x20based\n\x20number\
-    s.\n\n\r\n\x05\x06\0\x02\x02\x01\x12\x04\xb3\x03\x06\x16\n\r\n\x05\x06\0\
-    \x02\x02\x02\x12\x04\xb3\x03\x17S\n\x0e\n\x05\x06\0\x02\x02\x03\x12\x05\
-    \xb3\x03^\x9b\x01\nw\n\x04\x06\0\x02\x03\x12\x05\xb7\x03\x02\x9a\x01\x1a\
-    h\x20Returns\x20the\x20distinct\x20platform,\x20app\x20ID,\x20and\x20app\
-    \x20version\x20combinations\x20seen\x20in\n\x20the\x20specified\x20time\
-    \x20range.\n\n\r\n\x05\x06\0\x02\x03\x01\x12\x04\xb7\x03\x06\x15\n\r\n\
-    \x05\x06\0\x02\x03\x02\x12\x04\xb7\x03\x16Q\n\x0e\n\x05\x06\0\x02\x03\
-    \x03\x12\x05\xb7\x03\\\x98\x01b\x06proto3\
+    \x20the\n\x20query\x20time\x20period.\n\n\r\n\x05\x04\x14\x02\x05\x06\
+    \x12\x04\xd7\x03\x02;\n\r\n\x05\x04\x14\x02\x05\x01\x12\x04\xd7\x03<Q\n\
+    \r\n\x05\x04\x14\x02\x05\x03\x12\x04\xd7\x03TU\n\x0c\n\x02\x04\x15\x12\
+    \x06\xda\x03\0\xe0\x03\x01\n\x0b\n\x03\x04\x15\x01\x12\x04\xda\x03\x08\
+    \x12\n0\n\x04\x04\x15\x02\0\x12\x04\xdc\x03\x02\x13\x1a\"\x20The\x20nume\
+    ric\x20value\x20for\x20this\x20cell.\n\n\r\n\x05\x04\x15\x02\0\x05\x12\
+    \x04\xdc\x03\x02\x08\n\r\n\x05\x04\x15\x02\0\x01\x12\x04\xdc\x03\t\x0e\n\
+    \r\n\x05\x04\x15\x02\0\x03\x12\x04\xdc\x03\x11\x12\nf\n\x04\x04\x15\x02\
+    \x01\x12\x04\xdf\x03\x02D\x1aX\x20For\x20rate\x20tables,\x20returns\x20t\
+    he\x20numerator\x20and\x20denominator\x20values\x20that\x20yielded\x20th\
+    is\x20value.\n\n\r\n\x05\x04\x15\x02\x01\x06\x12\x04\xdf\x03\x022\n\r\n\
+    \x05\x04\x15\x02\x01\x01\x12\x04\xdf\x033?\n\r\n\x05\x04\x15\x02\x01\x03\
+    \x12\x04\xdf\x03BC\n\x0c\n\x02\x04\x16\x12\x06\xe2\x03\0\xeb\x03\x01\n\
+    \x0b\n\x03\x04\x16\x01\x12\x04\xe2\x03\x08\x10\n;\n\x04\x04\x16\x02\0\
+    \x12\x04\xe4\x03\x02*\x1a-\x20Values\x20that\x20match\x20`group_column_k\
+    ey_names`.\n\n\r\n\x05\x04\x16\x02\0\x04\x12\x04\xe4\x03\x02\n\n\r\n\x05\
+    \x04\x16\x02\0\x05\x12\x04\xe4\x03\x0b\x11\n\r\n\x05\x04\x16\x02\0\x01\
+    \x12\x04\xe4\x03\x12%\n\r\n\x05\x04\x16\x02\0\x03\x12\x04\xe4\x03()\n;\n\
+    \x04\x04\x16\x02\x01\x12\x04\xe7\x03\x02Q\x1a-\x20Values\x20that\x20matc\
+    h\x20`value_column_key_names`.\n\n\r\n\x05\x04\x16\x02\x01\x04\x12\x04\
+    \xe7\x03\x02\n\n\r\n\x05\x04\x16\x02\x01\x06\x12\x04\xe7\x03\x0b:\n\r\n\
+    \x05\x04\x16\x02\x01\x01\x12\x04\xe7\x03;L\n\r\n\x05\x04\x16\x02\x01\x03\
+    \x12\x04\xe7\x03OP\nP\n\x04\x04\x16\x02\x02\x12\x04\xea\x03\x02%\x1aB\
+    \x20The\x20unique\x20devices\x20count\x20based\x20on\x20the\x20TrackUniq\
+    ue\x20configuration.\n\n\r\n\x05\x04\x16\x02\x02\x04\x12\x04\xea\x03\x02\
+    \n\n\r\n\x05\x04\x16\x02\x02\x05\x12\x04\xea\x03\x0b\x11\n\r\n\x05\x04\
+    \x16\x02\x02\x01\x12\x04\xea\x03\x12\x20\n\r\n\x05\x04\x16\x02\x02\x03\
+    \x12\x04\xea\x03#$\n\x0c\n\x02\x04\x17\x12\x06\xed\x03\0\xf3\x03\x01\n\
+    \x0b\n\x03\x04\x17\x01\x12\x04\xed\x03\x08\x1b\n\xfc\x01\n\x04\x04\x17\
+    \x02\0\x12\x04\xf2\x03\x02A\x1a\xed\x01\x20The\x20funnel's\x20steps.\n\
+    \x20The\x20order\x20of\x20steps\x20in\x20the\x20list\x20corresponds\x20t\
+    o\x20the\x20order\x20of\x20metric\x20IDs\x20in\n\x20the\x20stream\x20fun\
+    nels\x20request.\x20If\x20there\x20is\x20no\x20data\x20available\x20for\
+    \x20any\x20of\x20the\n\x20metrics\x20associated\x20with\x20a\x20given\
+    \x20funnel,\x20the\x20`steps`\x20list\x20is\x20empty.\n\n\r\n\x05\x04\
+    \x17\x02\0\x04\x12\x04\xf2\x03\x02\n\n\r\n\x05\x04\x17\x02\0\x06\x12\x04\
+    \xf2\x03\x0b6\n\r\n\x05\x04\x17\x02\0\x01\x12\x04\xf2\x037<\n\r\n\x05\
+    \x04\x17\x02\0\x03\x12\x04\xf2\x03?@\n\x0c\n\x02\x04\x18\x12\x06\xf5\x03\
+    \0\xa0\x04\x01\n\x0b\n\x03\x04\x18\x01\x12\x04\xf5\x03\x08!\n\x0e\n\x04\
+    \x04\x18\x03\0\x12\x06\xf6\x03\x02\xff\x03\x03\n\r\n\x05\x04\x18\x03\0\
+    \x01\x12\x04\xf6\x03\n\x10\nH\n\x06\x04\x18\x03\0\x02\0\x12\x04\xf8\x03\
+    \x04\x15\x1a8\x20The\x20beginning\x20of\x20the\x20range\x20for\x20this\
+    \x20bucket,\x20inclusive.\n\n\x0f\n\x07\x04\x18\x03\0\x02\0\x05\x12\x04\
+    \xf8\x03\x04\n\n\x0f\n\x07\x04\x18\x03\0\x02\0\x01\x12\x04\xf8\x03\x0b\
+    \x10\n\x0f\n\x07\x04\x18\x03\0\x02\0\x03\x12\x04\xf8\x03\x13\x14\nB\n\
+    \x06\x04\x18\x03\0\x02\x01\x12\x04\xfb\x03\x04\x13\x1a2\x20The\x20end\
+    \x20of\x20the\x20range\x20for\x20this\x20bucket,\x20exclusive.\n\n\x0f\n\
+    \x07\x04\x18\x03\0\x02\x01\x05\x12\x04\xfb\x03\x04\n\n\x0f\n\x07\x04\x18\
+    \x03\0\x02\x01\x01\x12\x04\xfb\x03\x0b\x0e\n\x0f\n\x07\x04\x18\x03\0\x02\
+    \x01\x03\x12\x04\xfb\x03\x11\x12\nK\n\x06\x04\x18\x03\0\x02\x02\x12\x04\
+    \xfe\x03\x04\x15\x1a;\x20The\x20count\x20of\x20values\x20that\x20fall\
+    \x20within\x20this\x20bucket's\x20range.\n\n\x0f\n\x07\x04\x18\x03\0\x02\
+    \x02\x05\x12\x04\xfe\x03\x04\n\n\x0f\n\x07\x04\x18\x03\0\x02\x02\x01\x12\
+    \x04\xfe\x03\x0b\x10\n\x0f\n\x07\x04\x18\x03\0\x02\x02\x03\x12\x04\xfe\
+    \x03\x13\x14\n\x0e\n\x04\x04\x18\x03\x01\x12\x06\x81\x04\x02\x8a\x04\x03\
+    \n\r\n\x05\x04\x18\x03\x01\x01\x12\x04\x81\x04\n\x14\nH\n\x06\x04\x18\
+    \x03\x01\x02\0\x12\x04\x83\x04\x04#\x1a8\x20The\x20value\x20of\x20the\
+    \x20dimension\x20that\x20this\x20group\x20represents.\n\n\x0f\n\x07\x04\
+    \x18\x03\x01\x02\0\x04\x12\x04\x83\x04\x04\x0c\n\x0f\n\x07\x04\x18\x03\
+    \x01\x02\0\x05\x12\x04\x83\x04\r\x13\n\x0f\n\x07\x04\x18\x03\x01\x02\0\
+    \x01\x12\x04\x83\x04\x14\x1e\n\x0f\n\x07\x04\x18\x03\x01\x02\0\x03\x12\
+    \x04\x83\x04!\"\nC\n\x06\x04\x18\x03\x01\x02\x01\x12\x04\x86\x04\x04_\
+    \x1a3\x20The\x20list\x20of\x20buckets\x20for\x20this\x20histogram\x20bar\
+    \x20chart.\n\n\x0f\n\x07\x04\x18\x03\x01\x02\x01\x04\x12\x04\x86\x04\x04\
+    \x0c\n\x0f\n\x07\x04\x18\x03\x01\x02\x01\x06\x12\x04\x86\x04\rR\n\x0f\n\
+    \x07\x04\x18\x03\x01\x02\x01\x01\x12\x04\x86\x04SZ\n\x0f\n\x07\x04\x18\
+    \x03\x01\x02\x01\x03\x12\x04\x86\x04]^\na\n\x06\x04\x18\x03\x01\x02\x02\
+    \x12\x04\x89\x04\x04'\x1aQ\x20The\x20unique\x20devices\x20for\x20the\x20\
+    entire\x20table\x20based\x20on\x20the\x20TrackUnique\x20configuration.\n\
+    \n\x0f\n\x07\x04\x18\x03\x01\x02\x02\x04\x12\x04\x89\x04\x04\x0c\n\x0f\n\
+    \x07\x04\x18\x03\x01\x02\x02\x05\x12\x04\x89\x04\r\x13\n\x0f\n\x07\x04\
+    \x18\x03\x01\x02\x02\x01\x12\x04\x89\x04\x14\"\n\x0f\n\x07\x04\x18\x03\
+    \x01\x02\x02\x03\x12\x04\x89\x04%&\n\x0e\n\x04\x04\x18\x03\x02\x12\x06\
+    \x8c\x04\x02\x9c\x04\x03\n\r\n\x05\x04\x18\x03\x02\x01\x12\x04\x8c\x04\n\
+    \x17\n\xa5\x01\n\x06\x04\x18\x03\x02\x02\0\x12\x04\x8f\x04\x04(\x1a\x94\
+    \x01\x20Headers\x20for\x20the\x20columns\x20of\x20each\x20group\x20by\
+    \x20field\x20(for\x20example,\x20\"country\",\x20\"device_type\",\n\x20e\
+    tc.).\x20If\x20there\x20are\x20no\x20group\x20by\x20fields\x20this\x20wi\
+    ll\x20be\x20empty.\n\n\x0f\n\x07\x04\x18\x03\x02\x02\0\x04\x12\x04\x8f\
+    \x04\x04\x0c\n\x0f\n\x07\x04\x18\x03\x02\x02\0\x05\x12\x04\x8f\x04\r\x13\
+    \n\x0f\n\x07\x04\x18\x03\x02\x02\0\x01\x12\x04\x8f\x04\x14#\n\x0f\n\x07\
+    \x04\x18\x03\x02\x02\0\x03\x12\x04\x8f\x04&'\nx\n\x06\x04\x18\x03\x02\
+    \x02\x01\x12\x04\x93\x04\x04\x15\x1ah\x20The\x20title\x20of\x20the\x20hi\
+    stogram\x20data,\x20which\x20is\x20derived\x20from\x20the\x20TimeSeries\
+    \x20title\x20in\x20the\x20rule\x20chart\n\x20config.\n\n\x0f\n\x07\x04\
+    \x18\x03\x02\x02\x01\x05\x12\x04\x93\x04\x04\n\n\x0f\n\x07\x04\x18\x03\
+    \x02\x02\x01\x01\x12\x04\x93\x04\x0b\x10\n\x0f\n\x07\x04\x18\x03\x02\x02\
+    \x01\x03\x12\x04\x93\x04\x13\x14\n|\n\x06\x04\x18\x03\x02\x02\x02\x12\
+    \x04\x97\x04\x04X\x1al\x20The\x20total\x20count\x20of\x20cardinality\x20\
+    overflows\x20for\x20this\x20time\x20series\x20that\x20occurred\x20during\
+    \x20the\n\x20query\x20time\x20period.\n\n\x0f\n\x07\x04\x18\x03\x02\x02\
+    \x02\x06\x12\x04\x97\x04\x04=\n\x0f\n\x07\x04\x18\x03\x02\x02\x02\x01\
+    \x12\x04\x97\x04>S\n\x0f\n\x07\x04\x18\x03\x02\x02\x02\x03\x12\x04\x97\
+    \x04VW\n\xa5\x01\n\x06\x04\x18\x03\x02\x02\x03\x12\x04\x9b\x04\x04h\x1a\
+    \x94\x01\x20A\x20set\x20of\x20buckets\x20for\x20every\x20group\x20by\x20\
+    combination\x20for\x20this\x20time\x20series.\x20If\x20there\x20are\x20n\
+    o\x20group\n\x20by\x20fields,\x20there\x20will\x20be\x20a\x20single\x20e\
+    ntry\x20in\x20this\x20list.\n\n\x0f\n\x07\x04\x18\x03\x02\x02\x03\x04\
+    \x12\x04\x9b\x04\x04\x0c\n\x0f\n\x07\x04\x18\x03\x02\x02\x03\x06\x12\x04\
+    \x9b\x04\rV\n\x0f\n\x07\x04\x18\x03\x02\x02\x03\x01\x12\x04\x9b\x04Wc\n\
+    \x0f\n\x07\x04\x18\x03\x02\x02\x03\x03\x12\x04\x9b\x04fg\nA\n\x04\x04\
+    \x18\x02\0\x12\x04\x9f\x04\x02l\x1a3\x20Histogram\x20data\x20for\x20each\
+    \x20time\x20series\x20in\x20the\x20chart.\n\n\r\n\x05\x04\x18\x02\0\x04\
+    \x12\x04\x9f\x04\x02\n\n\r\n\x05\x04\x18\x02\0\x06\x12\x04\x9f\x04\x0bW\
+    \n\r\n\x05\x04\x18\x02\0\x01\x12\x04\x9f\x04Xg\n\r\n\x05\x04\x18\x02\0\
+    \x03\x12\x04\x9f\x04jk\n\x0c\n\x02\x04\x19\x12\x06\xa2\x04\0\xbd\x04\x01\
+    \n\x0b\n\x03\x04\x19\x01\x12\x04\xa2\x04\x08\x11\n4\n\x04\x04\x19\x02\0\
+    \x12\x04\xa4\x04\x02n\x1a&\x20The\x20chart\x20that\x20this\x20data\x20be\
+    longs\x20to.\n\n\r\n\x05\x04\x19\x02\0\x06\x12\x04\xa4\x04\x022\n\r\n\
+    \x05\x04\x19\x02\0\x01\x12\x04\xa4\x043;\n\r\n\x05\x04\x19\x02\0\x03\x12\
+    \x04\xa4\x04>?\n\r\n\x05\x04\x19\x02\0\x08\x12\x04\xa4\x04@m\n\x10\n\x08\
+    \x04\x19\x02\0\x08\xaf\x08\x11\x12\x04\xa4\x04Al\n\x0e\n\x04\x04\x19\x08\
+    \0\x12\x06\xa6\x04\x02\xbc\x04\x03\n\r\n\x05\x04\x19\x08\0\x01\x12\x04\
+    \xa6\x04\x08\x16\n\r\n\x05\x04\x19\x08\0\x02\x12\x04\xa7\x04\x04&\n\x0f\
+    \n\x07\x04\x19\x08\0\x02\xaf\x08\x12\x04\xa7\x04\x04&\n.\n\x04\x04\x19\
+    \x02\x01\x12\x04\xa9\x04\x04I\x1a\x20\x20Line-chart\x20data\x20for\x20th\
+    e\x20chart.\n\n\r\n\x05\x04\x19\x02\x01\x06\x12\x04\xa9\x04\x04:\n\r\n\
+    \x05\x04\x19\x02\x01\x01\x12\x04\xa9\x04;D\n\r\n\x05\x04\x19\x02\x01\x03\
+    \x12\x04\xa9\x04GH\n0\n\x04\x04\x19\x02\x02\x12\x04\xac\x04\x04M\x1a\"\
+    \x20Sankey-chart\x20data\x20for\x20the\x20chart.\n\n\r\n\x05\x04\x19\x02\
+    \x02\x06\x12\x04\xac\x04\x04<\n\r\n\x05\x04\x19\x02\x02\x01\x12\x04\xac\
+    \x04=H\n\r\n\x05\x04\x19\x02\x02\x03\x12\x04\xac\x04KL\n)\n\x04\x04\x19\
+    \x02\x03\x12\x04\xaf\x04\x04K\x1a\x1b\x20Table\x20data\x20for\x20the\x20\
+    chart.\n\n\r\n\x05\x04\x19\x02\x03\x06\x12\x04\xaf\x04\x04;\n\r\n\x05\
+    \x04\x19\x02\x03\x01\x12\x04\xaf\x04<F\n\r\n\x05\x04\x19\x02\x03\x03\x12\
+    \x04\xaf\x04IJ\n*\n\x04\x04\x19\x02\x04\x12\x04\xb2\x04\x04M\x1a\x1c\x20\
+    Funnel\x20data\x20for\x20the\x20chart.\n\n\r\n\x05\x04\x19\x02\x04\x06\
+    \x12\x04\xb2\x04\x04<\n\r\n\x05\x04\x19\x02\x04\x01\x12\x04\xb2\x04=H\n\
+    \r\n\x05\x04\x19\x02\x04\x03\x12\x04\xb2\x04KL\n7\n\x04\x04\x19\x02\x05\
+    \x12\x04\xb5\x04\x04e\x1a)\x20Histogram-bar-chart\x20data\x20for\x20the\
+    \x20chart.\n\n\r\n\x05\x04\x19\x02\x05\x06\x12\x04\xb5\x04\x04B\n\r\n\
+    \x05\x04\x19\x02\x05\x01\x12\x04\xb5\x04C_\n\r\n\x05\x04\x19\x02\x05\x03\
+    \x12\x04\xb5\x04bd\nQ\n\x04\x04\x19\x02\x06\x12\x04\xb8\x04\x04\x15\x1aC\
+    \x20Contains\x20an\x20error\x20message\x20when\x20chart\x20data\x20could\
+    \x20not\x20be\x20retrieved.\n\n\r\n\x05\x04\x19\x02\x06\x05\x12\x04\xb8\
+    \x04\x04\n\n\r\n\x05\x04\x19\x02\x06\x01\x12\x04\xb8\x04\x0b\x10\n\r\n\
+    \x05\x04\x19\x02\x06\x03\x12\x04\xb8\x04\x13\x14\n6\n\x04\x04\x19\x02\
+    \x07\x12\x04\xbb\x04\x04F\x1a(\x20Set\x20to\x20true\x20if\x20the\x20char\
+    t\x20is\x20not\x20found.\n\n\r\n\x05\x04\x19\x02\x07\x05\x12\x04\xbb\x04\
+    \x04\x08\n\r\n\x05\x04\x19\x02\x07\x01\x12\x04\xbb\x04\t\x18\n\r\n\x05\
+    \x04\x19\x02\x07\x03\x12\x04\xbb\x04\x1b\x1d\n\r\n\x05\x04\x19\x02\x07\
+    \x08\x12\x04\xbb\x04\x1eE\n\x10\n\x08\x04\x19\x02\x07\x08\xaf\x08\r\x12\
+    \x04\xbb\x04\x1fD\n\x0c\n\x02\x04\x1a\x12\x06\xbf\x04\0\xc3\x04\x01\n\
+    \x0b\n\x03\x04\x1a\x01\x12\x04\xbf\x04\x08\x1d\n\x81\x01\n\x04\x04\x1a\
+    \x02\0\x12\x04\xc2\x04\x02C\x1as\x20Data\x20for\x20each\x20of\x20the\x20\
+    requested\x20data.\x20The\x20order\x20of\x20the\x20data\x20will\x20match\
+    \x20the\n\x20order\x20of\x20the\x20chart\x20ids\x20in\x20the\x20request.\
+    \n\n\r\n\x05\x04\x1a\x02\0\x04\x12\x04\xc2\x04\x02\n\n\r\n\x05\x04\x1a\
+    \x02\0\x06\x12\x04\xc2\x04\x0b9\n\r\n\x05\x04\x1a\x02\0\x01\x12\x04\xc2\
+    \x04:>\n\r\n\x05\x04\x1a\x02\0\x03\x12\x04\xc2\x04AB\n\x0c\n\x02\x04\x1b\
+    \x12\x06\xc5\x04\0\xcb\x04\x01\n\x0b\n\x03\x04\x1b\x01\x12\x04\xc5\x04\
+    \x08\x1f\n=\n\x04\x04\x1b\x02\0\x12\x04\xc7\x04\x02<\x1a/\x20The\x20time\
+    \x20range\x20to\x20inspect\x20for\x20active\x20devices.\n\n\r\n\x05\x04\
+    \x1b\x02\0\x06\x12\x04\xc7\x04\x02,\n\r\n\x05\x04\x1b\x02\0\x01\x12\x04\
+    \xc7\x04-7\n\r\n\x05\x04\x1b\x02\0\x03\x12\x04\xc7\x04:;\nQ\n\x04\x04\
+    \x1b\x02\x01\x12\x04\xca\x04\x02w\x1aC\x20Optional\x20platform\x20filter\
+    s\x20used\x20to\x20narrow\x20the\x20active-device\x20count.\n\n\r\n\x05\
+    \x04\x1b\x02\x01\x04\x12\x04\xca\x04\x02\n\n\r\n\x05\x04\x1b\x02\x01\x06\
+    \x12\x04\xca\x04\x0b7\n\r\n\x05\x04\x1b\x02\x01\x01\x12\x04\xca\x048G\n\
+    \r\n\x05\x04\x1b\x02\x01\x03\x12\x04\xca\x04JK\n\r\n\x05\x04\x1b\x02\x01\
+    \x08\x12\x04\xca\x04Lv\n\x11\n\t\x04\x1b\x02\x01\x08\xaf\x08\x12\x02\x12\
+    \x04\xca\x04Mu\n\x0c\n\x02\x04\x1c\x12\x06\xcd\x04\0\xd0\x04\x01\n\x0b\n\
+    \x03\x04\x1c\x01\x12\x04\xcd\x04\x08\x20\n[\n\x04\x04\x1c\x02\0\x12\x04\
+    \xcf\x04\x02\x15\x1aM\x20The\x20number\x20of\x20distinct\x20active\x20de\
+    vices\x20observed\x20in\x20the\x20requested\x20time\x20range.\n\n\r\n\
+    \x05\x04\x1c\x02\0\x05\x12\x04\xcf\x04\x02\x08\n\r\n\x05\x04\x1c\x02\0\
+    \x01\x12\x04\xcf\x04\t\x10\n\r\n\x05\x04\x1c\x02\0\x03\x12\x04\xcf\x04\
+    \x13\x14\n\x0c\n\x02\x04\x1d\x12\x06\xd2\x04\0\xde\x04\x01\n\x0b\n\x03\
+    \x04\x1d\x01\x12\x04\xd2\x04\x08\x1e\np\n\x04\x04\x1d\x02\0\x12\x04\xd5\
+    \x04\x02,\x1ab\x20The\x20start\x20of\x20the\x20time\x20range\x20to\x20in\
+    spect.\x20Defaults\x20to\x2030\x20days\x20before\x20the\n\x20current\x20\
+    time\x20when\x20unset.\n\n\r\n\x05\x04\x1d\x02\0\x06\x12\x04\xd5\x04\x02\
+    \x1c\n\r\n\x05\x04\x1d\x02\0\x01\x12\x04\xd5\x04\x1d'\n\r\n\x05\x04\x1d\
+    \x02\0\x03\x12\x04\xd5\x04*+\n_\n\x04\x04\x1d\x02\x01\x12\x04\xd9\x04\
+    \x02*\x1aQ\x20The\x20end\x20of\x20the\x20time\x20range\x20to\x20inspect.\
+    \x20Defaults\x20to\x20the\x20current\x20time\x20when\n\x20unset.\n\n\r\n\
+    \x05\x04\x1d\x02\x01\x06\x12\x04\xd9\x04\x02\x1c\n\r\n\x05\x04\x1d\x02\
+    \x01\x01\x12\x04\xd9\x04\x1d%\n\r\n\x05\x04\x1d\x02\x01\x03\x12\x04\xd9\
+    \x04()\nz\n\x04\x04\x1d\x02\x02\x12\x04\xdd\x04\x02w\x1al\x20Optional\
+    \x20platform\x20selection\x20criteria\x20used\x20to\x20limit\x20which\
+    \x20platforms\x20and\x20apps\n\x20are\x20included\x20in\x20the\x20respon\
+    se.\n\n\r\n\x05\x04\x1d\x02\x02\x04\x12\x04\xdd\x04\x02\n\n\r\n\x05\x04\
+    \x1d\x02\x02\x06\x12\x04\xdd\x04\x0b7\n\r\n\x05\x04\x1d\x02\x02\x01\x12\
+    \x04\xdd\x048G\n\r\n\x05\x04\x1d\x02\x02\x03\x12\x04\xdd\x04JK\n\r\n\x05\
+    \x04\x1d\x02\x02\x08\x12\x04\xdd\x04Lv\n\x11\n\t\x04\x1d\x02\x02\x08\xaf\
+    \x08\x12\x02\x12\x04\xdd\x04Mu\n\x0c\n\x02\x04\x1e\x12\x06\xe0\x04\0\xe4\
+    \x04\x01\n\x0b\n\x03\x04\x1e\x01\x12\x04\xe0\x04\x08\x1f\nr\n\x04\x04\
+    \x1e\x02\0\x12\x04\xe3\x04\x02F\x1ad\x20The\x20distinct\x20platform,\x20\
+    app\x20ID,\x20and\x20app\x20version\x20combinations\x20observed\x20in\
+    \x20the\n\x20requested\x20time\x20range.\n\n\r\n\x05\x04\x1e\x02\0\x04\
+    \x12\x04\xe3\x04\x02\n\n\r\n\x05\x04\x1e\x02\0\x06\x12\x04\xe3\x04\x0b7\
+    \n\r\n\x05\x04\x1e\x02\0\x01\x12\x04\xe3\x048A\n\r\n\x05\x04\x1e\x02\0\
+    \x03\x12\x04\xe3\x04DE\n\x0c\n\x02\x04\x1f\x12\x06\xe6\x04\0\x89\x05\x01\
+    \n\x0b\n\x03\x04\x1f\x01\x12\x04\xe6\x04\x08#\n\x0c\n\x04\x04\x1f\x03\0\
+    \x12\x04\xe7\x04\x02\x14\n\r\n\x05\x04\x1f\x03\0\x01\x12\x04\xe7\x04\n\
+    \x11\n\x0e\n\x04\x04\x1f\x03\x01\x12\x06\xe9\x04\x02\xf5\x04\x03\n\r\n\
+    \x05\x04\x1f\x03\x01\x01\x12\x04\xe9\x04\n\x17\n9\n\x06\x04\x1f\x03\x01\
+    \x02\0\x12\x06\xeb\x04\x04\xee\x04\x07\x1a'\x20The\x20text\x20to\x20disp\
+    lay\x20in\x20the\x20component.\n\n\x0f\n\x07\x04\x1f\x03\x01\x02\0\x05\
+    \x12\x04\xeb\x04\x04\n\n\x0f\n\x07\x04\x1f\x03\x01\x02\0\x01\x12\x04\xeb\
+    \x04\x0b\x0f\n\x0f\n\x07\x04\x1f\x03\x01\x02\0\x03\x12\x04\xeb\x04\x12\
+    \x13\n\x11\n\x07\x04\x1f\x03\x01\x02\0\x08\x12\x06\xeb\x04\x14\xee\x04\
+    \x06\n\x14\n\n\x04\x1f\x03\x01\x02\0\x08\xaf\x08\x0e\x12\x06\xeb\x04\x15\
+    \xee\x04\x05\nQ\n\x06\x04\x1f\x03\x01\x02\x01\x12\x06\xf1\x04\x04\xf4\
+    \x04\x07\x1a?\x20The\x20variant\x20of\x20the\x20text\x20component,\x20e.\
+    g.\x20\"h1\",\x20\"h2\",\x20\"p\",\x20etc.\n\n\x0f\n\x07\x04\x1f\x03\x01\
+    \x02\x01\x05\x12\x04\xf1\x04\x04\n\n\x0f\n\x07\x04\x1f\x03\x01\x02\x01\
+    \x01\x12\x04\xf1\x04\x0b\x12\n\x0f\n\x07\x04\x1f\x03\x01\x02\x01\x03\x12\
+    \x04\xf1\x04\x15\x16\n\x11\n\x07\x04\x1f\x03\x01\x02\x01\x08\x12\x06\xf1\
+    \x04\x17\xf4\x04\x06\n\x14\n\n\x04\x1f\x03\x01\x02\x01\x08\xaf\x08\x0e\
+    \x12\x06\xf1\x04\x18\xf4\x04\x05\n\x0e\n\x04\x04\x1f\x08\0\x12\x06\xf7\
+    \x04\x02\xfe\x04\x03\n\r\n\x05\x04\x1f\x08\0\x01\x12\x04\xf7\x04\x08\x0c\
+    \n\r\n\x05\x04\x1f\x08\0\x02\x12\x04\xf8\x04\x04&\n\x0f\n\x07\x04\x1f\
+    \x08\0\x02\xaf\x08\x12\x04\xf8\x04\x04&\n?\n\x04\x04\x1f\x02\0\x12\x04\
+    \xfa\x04\x04f\x1a1\x20A\x20text\x20component\x20that\x20displays\x20a\
+    \x20piece\x20of\x20text.\n\n\r\n\x05\x04\x1f\x02\0\x06\x12\x04\xfa\x04\
+    \x04R\n\r\n\x05\x04\x1f\x02\0\x01\x12\x04\xfa\x04Sa\n\r\n\x05\x04\x1f\
+    \x02\0\x03\x12\x04\xfa\x04de\n[\n\x04\x04\x1f\x02\x01\x12\x04\xfd\x04\
+    \x04Y\x1aM\x20A\x20divider\x20component\x20that\x20can\x20be\x20used\x20\
+    to\x20separate\x20sections\x20of\x20the\x20dashboard.\n\n\r\n\x05\x04\
+    \x1f\x02\x01\x06\x12\x04\xfd\x04\x04L\n\r\n\x05\x04\x1f\x02\x01\x01\x12\
+    \x04\xfd\x04MT\n\r\n\x05\x04\x1f\x02\x01\x03\x12\x04\xfd\x04WX\n\x80\x02\
+    \n\x04\x04\x1f\x02\x02\x12\x06\x83\x05\x02\x86\x05\x05\x1a\xef\x01\x20Th\
+    e\x20ID\x20of\x20the\x20component.\x20This\x20is\x20used\x20to\x20unique\
+    ly\x20identify\x20the\x20component\n\x20within\x20the\x20dashboard.\x20I\
+    t\x20is\x20not\x20required\x20to\x20be\x20globally\x20unique,\x20but\x20\
+    it\x20must\n\x20be\x20unique\x20within\x20the\x20dashboard.\x20Generated\
+    \x20by\x20the\x20server\x20when\x20the\x20component\x20is\x20created.\n\
+    \n\r\n\x05\x04\x1f\x02\x02\x05\x12\x04\x83\x05\x02\x08\n\r\n\x05\x04\x1f\
+    \x02\x02\x01\x12\x04\x83\x05\t\x0b\n\r\n\x05\x04\x1f\x02\x02\x03\x12\x04\
+    \x83\x05\x0e\x0f\n\x0f\n\x05\x04\x1f\x02\x02\x08\x12\x06\x83\x05\x10\x86\
+    \x05\x04\n\x12\n\x08\x04\x1f\x02\x02\x08\xaf\x08\x0e\x12\x06\x83\x05\x11\
+    \x86\x05\x03\n\x0c\n\x04\x04\x1f\x02\x03\x12\x04\x88\x05\x02]\n\r\n\x05\
+    \x04\x1f\x02\x03\x06\x12\x04\x88\x05\x02>\n\r\n\x05\x04\x1f\x02\x03\x01\
+    \x12\x04\x88\x05?X\n\r\n\x05\x04\x1f\x02\x03\x03\x12\x04\x88\x05[\\\n\
+    \x0c\n\x02\x04\x20\x12\x06\x8b\x05\0\x94\x05\x01\n\x0b\n\x03\x04\x20\x01\
+    \x12\x04\x8b\x05\x08\x19\n\x0e\n\x04\x04\x20\x08\0\x12\x06\x8c\x05\x02\
+    \x90\x05\x03\n\r\n\x05\x04\x20\x08\0\x01\x12\x04\x8c\x05\x08\x15\n\r\n\
+    \x05\x04\x20\x08\0\x02\x12\x04\x8d\x05\x04&\n\x0f\n\x07\x04\x20\x08\0\
+    \x02\xaf\x08\x12\x04\x8d\x05\x04&\n*\n\x04\x04\x20\x02\0\x12\x04\x8f\x05\
+    \x04@\x1a\x1c\x20The\x20value\x20of\x20the\x20variable.\n\n\r\n\x05\x04\
+    \x20\x02\0\x06\x12\x04\x8f\x05\x045\n\r\n\x05\x04\x20\x02\0\x01\x12\x04\
+    \x8f\x056;\n\r\n\x05\x04\x20\x02\0\x03\x12\x04\x8f\x05>?\n_\n\x04\x04\
+    \x20\x02\x01\x12\x04\x93\x05\x02C\x1aQ\x20The\x20earliest\x20time\x20thi\
+    s\x20variable\x20was\x20continuously\x20deployed\x20across\x20all\x20wor\
+    kflows.\n\n\r\n\x05\x04\x20\x02\x01\x06\x12\x04\x93\x05\x02\x1c\n\r\n\
+    \x05\x04\x20\x02\x01\x01\x12\x04\x93\x05\x1d>\n\r\n\x05\x04\x20\x02\x01\
+    \x03\x12\x04\x93\x05AB\n\x0c\n\x02\x04!\x12\x06\x96\x05\0\x9c\x05\x01\n\
+    \x0b\n\x03\x04!\x01\x12\x04\x96\x05\x08\x1c\n\x0c\n\x04\x04!\x02\0\x12\
+    \x04\x97\x05\x02@\n\r\n\x05\x04!\x02\0\x06\x12\x04\x97\x05\x022\n\r\n\
+    \x05\x04!\x02\0\x01\x12\x04\x97\x053;\n\r\n\x05\x04!\x02\0\x03\x12\x04\
+    \x97\x05>?\n\x0c\n\x04\x04!\x02\x01\x12\x04\x99\x05\x02S\n\r\n\x05\x04!\
+    \x02\x01\x06\x12\x04\x99\x05\x02>\n\r\n\x05\x04!\x02\x01\x01\x12\x04\x99\
+    \x05?N\n\r\n\x05\x04!\x02\x01\x03\x12\x04\x99\x05QR\n\x0c\n\x04\x04!\x02\
+    \x02\x12\x04\x9b\x05\x02D\n\r\n\x05\x04!\x02\x02\x06\x12\x04\x9b\x05\x02\
+    0\n\r\n\x05\x04!\x02\x02\x01\x12\x04\x9b\x051?\n\r\n\x05\x04!\x02\x02\
+    \x03\x12\x04\x9b\x05BC\n\x0c\n\x02\x04\"\x12\x06\x9e\x05\0\xa0\x05\x01\n\
+    \x0b\n\x03\x04\"\x01\x12\x04\x9e\x05\x08&\n\x0c\n\x04\x04\"\x02\0\x12\
+    \x04\x9f\x05\x02J\n\r\n\x05\x04\"\x02\0\x06\x12\x04\x9f\x05\x02:\n\r\n\
+    \x05\x04\"\x02\0\x01\x12\x04\x9f\x05;E\n\r\n\x05\x04\"\x02\0\x03\x12\x04\
+    \x9f\x05HI\n\n\n\x02\x04#\x12\x04\xa2\x05\0*\n\x0b\n\x03\x04#\x01\x12\
+    \x04\xa2\x05\x08'\n\x0c\n\x02\x04$\x12\x06\xa4\x05\0\xd6\x05\x01\n\x0b\n\
+    \x03\x04$\x01\x12\x04\xa4\x05\x08$\n\x0e\n\x04\x04$\x03\0\x12\x06\xa5\
+    \x05\x02\xc5\x05\x03\n\r\n\x05\x04$\x03\0\x01\x12\x04\xa5\x05\n\x16\n\
+    \x10\n\x06\x04$\x03\0\x03\0\x12\x06\xa6\x05\x04\xaf\x05\x05\n\x0f\n\x07\
+    \x04$\x03\0\x03\0\x01\x12\x04\xa6\x05\x0c\x11\n\x80\x01\n\x08\x04$\x03\0\
+    \x03\0\x02\0\x12\x06\xa8\x05\x06\xab\x05\t\x1al\x20Optional\x20ID\x20of\
+    \x20the\x20chart\x20being\x20upsert.\x20If\x20not\x20provided,\x20the\
+    \x20API\x20will\x20assume\x20the\x20chart\x20needs\x20to\x20be\x20create\
+    d.\n\n\x11\n\t\x04$\x03\0\x03\0\x02\0\x04\x12\x04\xa8\x05\x06\x0e\n\x11\
+    \n\t\x04$\x03\0\x03\0\x02\0\x05\x12\x04\xa8\x05\x0f\x15\n\x11\n\t\x04$\
+    \x03\0\x03\0\x02\0\x01\x12\x04\xa8\x05\x16\x18\n\x11\n\t\x04$\x03\0\x03\
+    \0\x02\0\x03\x12\x04\xa8\x05\x1b\x1c\n\x13\n\t\x04$\x03\0\x03\0\x02\0\
+    \x08\x12\x06\xa8\x05\x1d\xab\x05\x08\n\x16\n\x0c\x04$\x03\0\x03\0\x02\0\
+    \x08\xaf\x08\x0e\x12\x06\xa8\x05\x1e\xab\x05\x07\nM\n\x08\x04$\x03\0\x03\
+    \0\x02\x01\x12\x04\xae\x05\x06[\x1a;\x20The\x20combination\x20of\x20char\
+    t\x20identifier,\x20layout,\x20and\x20metadata\n\n\x11\n\t\x04$\x03\0\
+    \x03\0\x02\x01\x06\x12\x04\xae\x05\x06?\n\x11\n\t\x04$\x03\0\x03\0\x02\
+    \x01\x01\x12\x04\xae\x05@V\n\x11\n\t\x04$\x03\0\x03\0\x02\x01\x03\x12\
+    \x04\xae\x05YZ\nz\n\x06\x04$\x03\0\x02\0\x12\x06\xb2\x05\x04\xb5\x05\x07\
+    \x1ah\x20Optional\x20ID\x20of\x20the\x20tab\x20being\x20upsert.\x20If\
+    \x20not\x20provided,\x20the\x20API\x20will\x20assume\x20the\x20tab\x20ne\
+    eds\x20to\x20be\x20created.\n\n\x0f\n\x07\x04$\x03\0\x02\0\x04\x12\x04\
+    \xb2\x05\x04\x0c\n\x0f\n\x07\x04$\x03\0\x02\0\x05\x12\x04\xb2\x05\r\x13\
+    \n\x0f\n\x07\x04$\x03\0\x02\0\x01\x12\x04\xb2\x05\x14\x16\n\x0f\n\x07\
+    \x04$\x03\0\x02\0\x03\x12\x04\xb2\x05\x19\x1a\n\x11\n\x07\x04$\x03\0\x02\
+    \0\x08\x12\x06\xb2\x05\x1b\xb5\x05\x06\n\x14\n\n\x04$\x03\0\x02\0\x08\
+    \xaf\x08\x0e\x12\x06\xb2\x05\x1c\xb5\x05\x05\n\xa7\x01\n\x06\x04$\x03\0\
+    \x02\x01\x12\x05\xb9\x05\x04\x9c\x01\x1a\x95\x01\x20The\x20overlay\x20of\
+    \x20layout\x20information\x20for\x20the\x20charts\x20in\x20the\x20dashbo\
+    ard.\x20This\x20array\x20*MUST\n\x20include\x20all\x20components,\x20whe\
+    ther\x20they\x20are\x20being\x20updated\x20or\x20not.\n\n\x0f\n\x07\x04$\
+    \x03\0\x02\x01\x04\x12\x04\xb9\x05\x04\x0c\n\x0f\n\x07\x04$\x03\0\x02\
+    \x01\x06\x12\x04\xb9\x05\ra\n\x0f\n\x07\x04$\x03\0\x02\x01\x01\x12\x04\
+    \xb9\x05bh\n\x0f\n\x07\x04$\x03\0\x02\x01\x03\x12\x04\xb9\x05kl\n\x10\n\
+    \x07\x04$\x03\0\x02\x01\x08\x12\x05\xb9\x05m\x9b\x01\n\x13\n\n\x04$\x03\
+    \0\x02\x01\x08\xaf\x08\x12\x12\x05\xb9\x05n\x9a\x01\n\xaf\x01\n\x06\x04$\
+    \x03\0\x02\x02\x12\x05\xbd\x05\x04\x96\x01\x1a\x9d\x01\x20List\x20of\x20\
+    all\x20stylistic\x20components\x20that\x20should\x20be\x20rendered\x20on\
+    \x20the\x20dashboard.\x20The\x20array\x20*MUST*\n\x20include\x20all\x20c\
+    omponents,\x20whether\x20they\x20are\x20being\x20updated\x20or\x20not.\n\
+    \n\x0f\n\x07\x04$\x03\0\x02\x02\x04\x12\x04\xbd\x05\x04\x0c\n\x0f\n\x07\
+    \x04$\x03\0\x02\x02\x06\x12\x04\xbd\x05\rM\n\x0f\n\x07\x04$\x03\0\x02\
+    \x02\x01\x12\x04\xbd\x05Nb\n\x0f\n\x07\x04$\x03\0\x02\x02\x03\x12\x04\
+    \xbd\x05ef\n\x10\n\x07\x04$\x03\0\x02\x02\x08\x12\x05\xbd\x05g\x95\x01\n\
+    \x13\n\n\x04$\x03\0\x02\x02\x08\xaf\x08\x12\x12\x05\xbd\x05h\x94\x01\n\
+    \xc5\x01\n\x06\x04$\x03\0\x02\x03\x12\x06\xc1\x05\x04\xc4\x05\x07\x1a\
+    \xb2\x01\x20Optional\x20display\x20name/title\x20for\x20this\x20dashboar\
+    d\x20tab.\x20If\x20unset,\x20the\x20tab\x20will\x20not\x20have\x20an\x20\
+    explicit\n\x20stored\x20name\x20and\x20clients\x20may\x20derive\x20an\
+    \x20appropriate\x20default\x20label\x20when\x20rendering.\n\n\x0f\n\x07\
+    \x04$\x03\0\x02\x03\x04\x12\x04\xc1\x05\x04\x0c\n\x0f\n\x07\x04$\x03\0\
+    \x02\x03\x05\x12\x04\xc1\x05\r\x13\n\x0f\n\x07\x04$\x03\0\x02\x03\x01\
+    \x12\x04\xc1\x05\x14\x18\n\x0f\n\x07\x04$\x03\0\x02\x03\x03\x12\x04\xc1\
+    \x05\x1b\x1c\n\x11\n\x07\x04$\x03\0\x02\x03\x08\x12\x06\xc1\x05\x1d\xc4\
+    \x05\x06\n\x14\n\n\x04$\x03\0\x02\x03\x08\xaf\x08\x0e\x12\x06\xc1\x05\
+    \x1e\xc4\x05\x05\n\x8b\x01\n\x04\x04$\x02\0\x12\x06\xc8\x05\x02\xcb\x05\
+    \x05\x1a{\x20If\x20id\x20is\x20provided,\x20the\x20existing\x20dashboard\
+    \x20with\x20this\x20ID\x20will\x20be\x20updated.\x20If\x20not\x20provide\
+    d,\x20a\x20new\x20dashboard\x20will\x20be\x20created.\n\n\r\n\x05\x04$\
+    \x02\0\x04\x12\x04\xc8\x05\x02\n\n\r\n\x05\x04$\x02\0\x05\x12\x04\xc8\
+    \x05\x0b\x11\n\r\n\x05\x04$\x02\0\x01\x12\x04\xc8\x05\x12\x14\n\r\n\x05\
+    \x04$\x02\0\x03\x12\x04\xc8\x05\x17\x18\n\x0f\n\x05\x04$\x02\0\x08\x12\
+    \x06\xc8\x05\x19\xcb\x05\x04\n\x12\n\x08\x04$\x02\0\x08\xaf\x08\x0e\x12\
+    \x06\xc8\x05\x1a\xcb\x05\x03\n\x0e\n\x04\x04$\x02\x01\x12\x06\xcd\x05\
+    \x02\xd0\x05\x05\n\r\n\x05\x04$\x02\x01\x05\x12\x04\xcd\x05\x02\x08\n\r\
+    \n\x05\x04$\x02\x01\x01\x12\x04\xcd\x05\t\r\n\r\n\x05\x04$\x02\x01\x03\
+    \x12\x04\xcd\x05\x10\x11\n\x0f\n\x05\x04$\x02\x01\x08\x12\x06\xcd\x05\
+    \x12\xd0\x05\x04\n\x12\n\x08\x04$\x02\x01\x08\xaf\x08\x0e\x12\x06\xcd\
+    \x05\x13\xd0\x05\x03\n\r\n\x04\x04$\x02\x02\x12\x05\xd2\x05\x02\x92\x01\
+    \n\r\n\x05\x04$\x02\x02\x04\x12\x04\xd2\x05\x02\n\n\r\n\x05\x04$\x02\x02\
+    \x06\x12\x04\xd2\x05\x0bY\n\r\n\x05\x04$\x02\x02\x01\x12\x04\xd2\x05Z^\n\
+    \r\n\x05\x04$\x02\x02\x03\x12\x04\xd2\x05ab\n\x0e\n\x05\x04$\x02\x02\x08\
+    \x12\x05\xd2\x05c\x91\x01\n\x11\n\x08\x04$\x02\x02\x08\xaf\x08\x12\x12\
+    \x05\xd2\x05d\x90\x01\n\\\n\x04\x04$\x02\x03\x12\x05\xd5\x05\x02\x83\x01\
+    \x1aM\x20The\x20variables\x20that\x20are\x20applied\x20to\x20every\x20ch\
+    art\x20referenced\x20in\x20this\x20dashboard.\n\n\r\n\x05\x04$\x02\x03\
+    \x04\x12\x04\xd5\x05\x02\n\n\r\n\x05\x04$\x02\x03\x06\x12\x04\xd5\x05\
+    \x0b<\n\r\n\x05\x04$\x02\x03\x01\x12\x04\xd5\x05=P\n\r\n\x05\x04$\x02\
+    \x03\x03\x12\x04\xd5\x05ST\n\x0e\n\x05\x04$\x02\x03\x08\x12\x05\xd5\x05U\
+    \x82\x01\n\x11\n\x08\x04$\x02\x03\x08\xaf\x08\x12\x12\x05\xd5\x05V\x81\
+    \x01\n\x0c\n\x02\x04%\x12\x06\xd8\x05\0\xda\x05\x01\n\x0b\n\x03\x04%\x01\
+    \x12\x04\xd8\x05\x08%\n\x0c\n\x04\x04%\x02\0\x12\x04\xd9\x05\x02O\n\r\n\
+    \x05\x04%\x02\0\x06\x12\x04\xd9\x05\x02@\n\r\n\x05\x04%\x02\0\x01\x12\
+    \x04\xd9\x05AJ\n\r\n\x05\x04%\x02\0\x03\x12\x04\xd9\x05MN\n\x0c\n\x02\
+    \x04&\x12\x06\xdc\x05\0\xe1\x05\x01\n\x0b\n\x03\x04&\x01\x12\x04\xdc\x05\
+    \x08$\n\x0e\n\x04\x04&\x02\0\x12\x06\xdd\x05\x02\xe0\x05\x05\n\r\n\x05\
+    \x04&\x02\0\x05\x12\x04\xdd\x05\x02\x08\n\r\n\x05\x04&\x02\0\x01\x12\x04\
+    \xdd\x05\t\x0b\n\r\n\x05\x04&\x02\0\x03\x12\x04\xdd\x05\x0e\x0f\n\x0f\n\
+    \x05\x04&\x02\0\x08\x12\x06\xdd\x05\x10\xe0\x05\x04\n\x12\n\x08\x04&\x02\
+    \0\x08\xaf\x08\x0e\x12\x06\xdd\x05\x11\xe0\x05\x03\n\n\n\x02\x04'\x12\
+    \x04\xe3\x05\0(\n\x0b\n\x03\x04'\x01\x12\x04\xe3\x05\x08%\n\x0c\n\x02\
+    \x04(\x12\x06\xe5\x05\0\x84\x06\x01\n\x0b\n\x03\x04(\x01\x12\x04\xe5\x05\
+    \x08\x19\n\x8d\x01\n\x04\x04(\x03\0\x12\x06\xe8\x05\x02\xff\x05\x03\x1a}\
+    \x20Filters\x20to\x20apply\x20when\x20listing\x20charts.\n\x20Filters\
+    \x20are\x20additive;\x20only\x20charts\x20that\x20match\x20all\x20specif\
+    ied\x20filters\x20will\x20be\x20returned.\n\n\r\n\x05\x04(\x03\0\x01\x12\
+    \x04\xe8\x05\n\x11\n\xda\x01\n\x06\x04(\x03\0\x02\0\x12\x04\xec\x05\x04E\
+    \x1a\xc9\x01\x20Filters\x20charts\x20by\x20access\x20permission\x20level\
+    s\x20for\x20a\x20specified\x20user.\n\x20For\x20example,\x20callers\x20c\
+    an\x20request\x20charts\x20where\x20a\x20user\x20has\x20EDIT\x20access.\
+    \n\x20Callers\x20can\x20also\x20exclude\x20charts\x20where\x20a\x20user\
+    \x20has\x20OWNER\x20access.\n\n\x0f\n\x07\x04(\x03\0\x02\0\x06\x12\x04\
+    \xec\x05\x049\n\x0f\n\x07\x04(\x03\0\x02\0\x01\x12\x04\xec\x05:@\n\x0f\n\
+    \x07\x04(\x03\0\x02\0\x03\x12\x04\xec\x05CD\n\xe7\x01\n\x06\x04(\x03\0\
+    \x02\x01\x12\x06\xf1\x05\x04\xf4\x05\x07\x1a\xd4\x01\x20An\x20optional\
+    \x20view\x20ID\x20to\x20filter\x20charts\x20by.\x20Filtering\x20by\x20vi\
+    ew\x20ID\x20will\x20return\n\x20all\x20charts\x20contained\x20within\x20\
+    workflows\x20that\x20belong\x20to\x20that\x20view.\n\x20If\x20workflow_i\
+    d\x20is\x20also\x20provided,\x20it\x20will\x20take\x20precedence\x20over\
+    \x20view_id.\n\n\x0f\n\x07\x04(\x03\0\x02\x01\x04\x12\x04\xf1\x05\x04\
+    \x0c\n\x0f\n\x07\x04(\x03\0\x02\x01\x05\x12\x04\xf1\x05\r\x13\n\x0f\n\
+    \x07\x04(\x03\0\x02\x01\x01\x12\x04\xf1\x05\x14\x1b\n\x0f\n\x07\x04(\x03\
+    \0\x02\x01\x03\x12\x04\xf1\x05\x1e\x1f\n\x11\n\x07\x04(\x03\0\x02\x01\
+    \x08\x12\x06\xf1\x05\x20\xf4\x05\x06\n\x14\n\n\x04(\x03\0\x02\x01\x08\
+    \xaf\x08\x0e\x12\x06\xf1\x05!\xf4\x05\x05\n\xce\x01\n\x06\x04(\x03\0\x02\
+    \x02\x12\x06\xf8\x05\x04\xfb\x05\x07\x1a\xbb\x01\x20An\x20optional\x20wo\
+    rkflow\x20ID\x20to\x20filter\x20charts\x20by.\x20If\x20provided,\x20it\
+    \x20will\x20take\x20precedence\x20over\x20view_id.\n\x20Filtering\x20by\
+    \x20workflow\x20ID\x20will\x20return\x20all\x20charts\x20contained\x20wi\
+    thin\x20the\x20specified\x20workflow.\n\n\x0f\n\x07\x04(\x03\0\x02\x02\
+    \x04\x12\x04\xf8\x05\x04\x0c\n\x0f\n\x07\x04(\x03\0\x02\x02\x05\x12\x04\
+    \xf8\x05\r\x13\n\x0f\n\x07\x04(\x03\0\x02\x02\x01\x12\x04\xf8\x05\x14\
+    \x1f\n\x0f\n\x07\x04(\x03\0\x02\x02\x03\x12\x04\xf8\x05\"#\n\x11\n\x07\
+    \x04(\x03\0\x02\x02\x08\x12\x06\xf8\x05$\xfb\x05\x06\n\x14\n\n\x04(\x03\
+    \0\x02\x02\x08\xaf\x08\x0e\x12\x06\xf8\x05%\xfb\x05\x05\n\x9f\x01\n\x06\
+    \x04(\x03\0\x02\x03\x12\x04\xfe\x05\x04N\x1a\x8e\x01\x20An\x20optional\
+    \x20partial\x20chart\x20name\x20to\x20filter\x20charts\x20by.\x20This\
+    \x20will\x20return\x20all\x20charts\x20whose\x20names\x20contain\x20the\
+    \x20provided\x20string,\x20case-insensitively.\n\n\x0f\n\x07\x04(\x03\0\
+    \x02\x03\x04\x12\x04\xfe\x05\x04\x0c\n\x0f\n\x07\x04(\x03\0\x02\x03\x05\
+    \x12\x04\xfe\x05\r\x13\n\x0f\n\x07\x04(\x03\0\x02\x03\x01\x12\x04\xfe\
+    \x05\x14\x1e\n\x0f\n\x07\x04(\x03\0\x02\x03\x03\x12\x04\xfe\x05!\"\n\x0f\
+    \n\x07\x04(\x03\0\x02\x03\x08\x12\x04\xfe\x05#M\n\x12\n\n\x04(\x03\0\x02\
+    \x03\x08\xaf\x08\x0e\x12\x04\xfe\x05$L\n\x0c\n\x04\x04(\x02\0\x12\x04\
+    \x81\x06\x02=\n\r\n\x05\x04(\x02\0\x06\x12\x04\x81\x06\x02-\n\r\n\x05\
+    \x04(\x02\0\x01\x12\x04\x81\x06.8\n\r\n\x05\x04(\x02\0\x03\x12\x04\x81\
+    \x06;<\n\x0c\n\x04\x04(\x02\x01\x12\x04\x83\x06\x02M\n\r\n\x05\x04(\x02\
+    \x01\x06\x12\x04\x83\x06\x02@\n\r\n\x05\x04(\x02\x01\x01\x12\x04\x83\x06\
+    AH\n\r\n\x05\x04(\x02\x01\x03\x12\x04\x83\x06KL\n\x0c\n\x02\x04)\x12\x06\
+    \x86\x06\0\x8a\x06\x01\n\x0b\n\x03\x04)\x01\x12\x04\x86\x06\x08\x1a\n\
+    \x0c\n\x04\x04)\x02\0\x12\x04\x87\x06\x02I\n\r\n\x05\x04)\x02\0\x04\x12\
+    \x04\x87\x06\x02\n\n\r\n\x05\x04)\x02\0\x06\x12\x04\x87\x06\x0b=\n\r\n\
+    \x05\x04)\x02\0\x01\x12\x04\x87\x06>D\n\r\n\x05\x04)\x02\0\x03\x12\x04\
+    \x87\x06GH\n\x0c\n\x04\x04)\x02\x01\x12\x04\x89\x06\x02\x19\n\r\n\x05\
+    \x04)\x02\x01\x05\x12\x04\x89\x06\x02\x08\n\r\n\x05\x04)\x02\x01\x01\x12\
+    \x04\x89\x06\t\x14\n\r\n\x05\x04)\x02\x01\x03\x12\x04\x89\x06\x17\x18\ng\
+    \n\x02\x06\0\x12\x06\x8d\x06\0\xbb\x06\x01\x1aY\x20Provides\x20access\
+    \x20to\x20dashboards\x20and\x20chart\x20data,\x20including\x20layout\x20\
+    and\x20time\x20series\x20metrics.\n\n\x0b\n\x03\x06\0\x01\x12\x04\x8d\
+    \x06\x08\x18\n\xf1\x01\n\x04\x06\0\x02\0\x12\x05\x93\x06\x02\x91\x01\x1a\
+    \xe1\x01\x20Retrieves\x20a\x20single\x20dashboard\x20by\x20its\x20unique\
+    \x20identifier.\n\n\x20Returns\x20a\x20list\x20of\x20charts\x20that\x20s\
+    hould\x20be\x20displayed\x20on\x20the\x20dashboard,\x20along\n\x20with\
+    \x20the\x20metadata\x20required\x20to\x20render\x20them.\x20The\x20chart\
+    \x20IDs\x20should\x20be\x20used\x20to\n\x20fetch\x20the\x20data.\n\n\r\n\
+    \x05\x06\0\x02\0\x01\x12\x04\x93\x06\x06\x12\n\r\n\x05\x06\0\x02\0\x02\
+    \x12\x04\x93\x06\x13K\n\x0e\n\x05\x06\0\x02\0\x03\x12\x05\x93\x06V\x8f\
+    \x01\nJ\n\x04\x06\0\x02\x01\x12\x05\x96\x06\x02\x97\x01\x1a;\x20Lists\
+    \x20all\x20dashboards\x20available\x20to\x20the\x20authenticated\x20user\
+    .\n\n\r\n\x05\x06\0\x02\x01\x01\x12\x04\x96\x06\x06\x14\n\r\n\x05\x06\0\
+    \x02\x01\x02\x12\x04\x96\x06\x15O\n\x0e\n\x05\x06\0\x02\x01\x03\x12\x05\
+    \x96\x06Z\x95\x01\n\xbd\x01\n\x04\x06\0\x02\x02\x12\x05\x9c\x06\x02\xa0\
+    \x01\x1a\xad\x01\x20Retrieves\x20the\x20chart\x20configuration\x20for\
+    \x20a\x20single\x20workflow.\n\n\x20Returns\x20a\x20list\x20of\x20all\
+    \x20charts\x20to\x20be\x20displayed\x20for\x20this\x20workflow.\x20The\
+    \x20chart\n\x20IDs\x20should\x20be\x20used\x20to\x20fetch\x20the\x20data\
+    .\n\n\r\n\x05\x06\0\x02\x02\x01\x12\x04\x9c\x06\x06\x17\n\r\n\x05\x06\0\
+    \x02\x02\x02\x12\x04\x9c\x06\x18U\n\x0e\n\x05\x06\0\x02\x02\x03\x12\x05\
+    \x9c\x06`\x9e\x01\n\xc3\x02\n\x04\x06\0\x02\x03\x12\x05\xa3\x06\x02\x94\
+    \x01\x1a\xb3\x02\x20Retrieves\x20chart\x20data\x20for\x20one\x20or\x20mo\
+    re\x20charts.\n\n\x20Returns\x20rendered\x20chart\x20output\x20such\x20a\
+    s\x20time-series\x20values,\x20labels,\x20and\x20table\x20rows.\x20For\
+    \x20grouped\n\x20charts,\x20callers\x20can\x20reuse\x20each\x20returned\
+    \x20`TimeSeries.id`\x20together\x20with\x20its\x20full\x20`labels`\x20se\
+    t\x20to\n\x20build\x20`charts.v1.LimitStrategy.IdentifierMatch`\x20in\
+    \x20a\x20later\x20request.\n\n\r\n\x05\x06\0\x02\x03\x01\x12\x04\xa3\x06\
+    \x06\x13\n\r\n\x05\x06\0\x02\x03\x02\x12\x04\xa3\x06\x14M\n\x0e\n\x05\
+    \x06\0\x02\x03\x03\x12\x05\xa3\x06X\x92\x01\n\x90\x03\n\x04\x06\0\x02\
+    \x04\x12\x05\xaa\x06\x02\x9d\x01\x1a\x80\x03\x20Gets\x20the\x20unique\
+    \x20active\x20devices\x20for\x20a\x20given\x20time\x20range\x20and\x20fi\
+    lter\x20conditions.\x20Active\x20devices\x20in\n\x20this\x20context\x20a\
+    re\x20*any*\x20devices\x20that\x20connected\x20to\x20the\x20platform,\
+    \x20regardless\x20of\x20whether\x20they\x20sent\n\x20any\x20metrics,\x20\
+    were\x20freshly\x20started,\x20moved\x20to\x20foreground,\x20etc.\x20Thi\
+    s\x20includes\x20devices\x20that\n\x20connected\x20as\x20part\x20of\x20b\
+    ackground\x20activity\x20so\x20the\x20number\x20will\x20be\x20higher\x20\
+    than\x20\"app\x20open\"\x20based\n\x20numbers.\n\n\r\n\x05\x06\0\x02\x04\
+    \x01\x12\x04\xaa\x06\x06\x16\n\r\n\x05\x06\0\x02\x04\x02\x12\x04\xaa\x06\
+    \x17S\n\x0e\n\x05\x06\0\x02\x04\x03\x12\x05\xaa\x06^\x9b\x01\nw\n\x04\
+    \x06\0\x02\x05\x12\x05\xae\x06\x02\x9a\x01\x1ah\x20Returns\x20the\x20dis\
+    tinct\x20platform,\x20app\x20ID,\x20and\x20app\x20version\x20combination\
+    s\x20seen\x20in\n\x20the\x20specified\x20time\x20range.\n\n\r\n\x05\x06\
+    \0\x02\x05\x01\x12\x04\xae\x06\x06\x15\n\r\n\x05\x06\0\x02\x05\x02\x12\
+    \x04\xae\x06\x16Q\n\x0e\n\x05\x06\0\x02\x05\x03\x12\x05\xae\x06\\\x98\
+    \x01\nX\n\x04\x06\0\x02\x06\x12\x05\xb1\x06\x02\xb2\x01\x1aI\x20Toggles\
+    \x20the\x20favorite\x20status\x20of\x20a\x20custom\x20dashboard\x20for\
+    \x20the\x20current\x20user.\n\n\r\n\x05\x06\0\x02\x06\x01\x12\x04\xb1\
+    \x06\x06\x1d\n\r\n\x05\x06\0\x02\x06\x02\x12\x04\xb1\x06\x1ea\n\x0e\n\
+    \x05\x06\0\x02\x06\x03\x12\x05\xb1\x06l\xb0\x01\n,\n\x04\x06\0\x02\x07\
+    \x12\x05\xb4\x06\x02\xac\x01\x1a\x1d\x20Upserts\x20a\x20custom\x20dashbo\
+    ard.\n\n\r\n\x05\x06\0\x02\x07\x01\x12\x04\xb4\x06\x06\x1b\n\r\n\x05\x06\
+    \0\x02\x07\x02\x12\x04\xb4\x06\x1c]\n\x0e\n\x05\x06\0\x02\x07\x03\x12\
+    \x05\xb4\x06h\xaa\x01\n,\n\x04\x06\0\x02\x08\x12\x05\xb7\x06\x02\xac\x01\
+    \x1a\x1d\x20Deletes\x20a\x20custom\x20dashboard.\n\n\r\n\x05\x06\0\x02\
+    \x08\x01\x12\x04\xb7\x06\x06\x1b\n\r\n\x05\x06\0\x02\x08\x02\x12\x04\xb7\
+    \x06\x1c]\n\x0e\n\x05\x06\0\x02\x08\x03\x12\x05\xb7\x06h\xaa\x01\n8\n\
+    \x04\x06\0\x02\t\x12\x05\xba\x06\x02\x8b\x01\x1a)\x20Lists\x20all\x20cha\
+    rts\x20available\x20to\x20the\x20user.\n\n\r\n\x05\x06\0\x02\t\x01\x12\
+    \x04\xba\x06\x06\x10\n\r\n\x05\x06\0\x02\t\x02\x12\x04\xba\x06\x11G\n\
+    \x0e\n\x05\x06\0\x02\t\x03\x12\x05\xba\x06R\x89\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -6809,16 +13007,27 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(7);
+            let mut deps = ::std::vec::Vec::with_capacity(10);
             deps.push(super::platform::file_descriptor().clone());
             deps.push(super::time_series::file_descriptor().clone());
+            deps.push(super::access::file_descriptor().clone());
             deps.push(super::chart_id::file_descriptor().clone());
             deps.push(super::chart_metadata::file_descriptor().clone());
             deps.push(super::common::file_descriptor().clone());
+            deps.push(super::workflow::file_descriptor().clone());
+            deps.push(::protobuf::well_known_types::duration::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(34);
+            let mut messages = ::std::vec::Vec::with_capacity(66);
             messages.push(ResolvedChart::generated_message_descriptor_data());
+            messages.push(DashboardLayoutSettings::generated_message_descriptor_data());
+            messages.push(DashboardGroup::generated_message_descriptor_data());
+            messages.push(DashboardIdentifier::generated_message_descriptor_data());
+            messages.push(GetDashboardRequest::generated_message_descriptor_data());
+            messages.push(GetDashboardResponse::generated_message_descriptor_data());
+            messages.push(Dashboard::generated_message_descriptor_data());
+            messages.push(ListDashboardsRequest::generated_message_descriptor_data());
+            messages.push(ListDashboardsResponse::generated_message_descriptor_data());
             messages.push(GetWorkflowChartsRequest::generated_message_descriptor_data());
             messages.push(GetWorkflowChartsResponse::generated_message_descriptor_data());
             messages.push(InsightComparisonConfiguration::generated_message_descriptor_data());
@@ -6841,18 +13050,43 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(GetActiveDevicesResponse::generated_message_descriptor_data());
             messages.push(GetUniqueAppIdsRequest::generated_message_descriptor_data());
             messages.push(GetUniqueAppIdsResponse::generated_message_descriptor_data());
+            messages.push(DashboardStylisticComponent::generated_message_descriptor_data());
+            messages.push(DashboardVariable::generated_message_descriptor_data());
+            messages.push(ChartComponentLayout::generated_message_descriptor_data());
+            messages.push(FavoriteCustomDashboardRequest::generated_message_descriptor_data());
+            messages.push(FavoriteCustomDashboardResponse::generated_message_descriptor_data());
+            messages.push(UpsertCustomDashboardRequest::generated_message_descriptor_data());
+            messages.push(UpsertCustomDashboardResponse::generated_message_descriptor_data());
+            messages.push(DeleteCustomDashboardRequest::generated_message_descriptor_data());
+            messages.push(DeleteCustomDashboardResponse::generated_message_descriptor_data());
+            messages.push(ListChartsRequest::generated_message_descriptor_data());
+            messages.push(ListChartsResponse::generated_message_descriptor_data());
             messages.push(resolved_chart::Line::generated_message_descriptor_data());
             messages.push(resolved_chart::Funnel::generated_message_descriptor_data());
             messages.push(resolved_chart::Sankey::generated_message_descriptor_data());
             messages.push(resolved_chart::Table::generated_message_descriptor_data());
             messages.push(resolved_chart::BackingWorkflowDeploymentHistory::generated_message_descriptor_data());
             messages.push(resolved_chart::backing_workflow_deployment_history::Deployment::generated_message_descriptor_data());
+            messages.push(dashboard_identifier::HealthDashboard::generated_message_descriptor_data());
+            messages.push(dashboard_identifier::CustomDashboard::generated_message_descriptor_data());
+            messages.push(dashboard::HealthDashboard::generated_message_descriptor_data());
+            messages.push(dashboard::CustomDashboard::generated_message_descriptor_data());
+            messages.push(dashboard::custom_dashboard::DashboardTab::generated_message_descriptor_data());
+            messages.push(dashboard::custom_dashboard::dashboard_tab::Chart::generated_message_descriptor_data());
+            messages.push(list_dashboards_request::Filters::generated_message_descriptor_data());
+            messages.push(list_dashboards_request::Sort::generated_message_descriptor_data());
             messages.push(sankey_chart_response::Node::generated_message_descriptor_data());
             messages.push(sankey_chart_response::Link::generated_message_descriptor_data());
             messages.push(histogram_bar_chart_response::Bucket::generated_message_descriptor_data());
             messages.push(histogram_bar_chart_response::PerGroupBy::generated_message_descriptor_data());
             messages.push(histogram_bar_chart_response::PerTimeSeries::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(0);
+            messages.push(dashboard_stylistic_component::Divider::generated_message_descriptor_data());
+            messages.push(dashboard_stylistic_component::TextComponent::generated_message_descriptor_data());
+            messages.push(upsert_custom_dashboard_request::DashboardTab::generated_message_descriptor_data());
+            messages.push(upsert_custom_dashboard_request::dashboard_tab::Chart::generated_message_descriptor_data());
+            messages.push(list_charts_request::Filters::generated_message_descriptor_data());
+            let mut enums = ::std::vec::Vec::with_capacity(1);
+            enums.push(list_dashboards_request::sort::SortKey::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),
                 deps,
