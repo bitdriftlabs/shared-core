@@ -35,63 +35,72 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \n+bitdrift/public/unary/timeline/v1/api.proto\x12!bitdrift.public.unary\
     .timeline.v1\x1a1bitdrift/public/unary/timeline/v1/hydration.proto\x1a,b\
     itdrift/public/unary/timeline/v1/info.proto\x1a,bitdrift/public/unary/ti\
-    meline/v1/logs.proto\x1a.bitdrift/public/unary/timeline/v1/search.proto2\
-    \xda\x05\n\x0fTimelineService\x12\x85\x01\n\x0eGetSessionLogs\x128.bitdr\
-    ift.public.unary.timeline.v1.GetSessionLogsRequest\x1a9.bitdrift.public.\
-    unary.timeline.v1.GetSessionLogsResponse\x12\x85\x01\n\x0eGetSessionInfo\
-    \x128.bitdrift.public.unary.timeline.v1.GetSessionInfoRequest\x1a9.bitdr\
-    ift.public.unary.timeline.v1.GetSessionInfoResponse\x12\x85\x01\n\x0eHyd\
-    rateSession\x128.bitdrift.public.unary.timeline.v1.HydrateSessionRequest\
-    \x1a9.bitdrift.public.unary.timeline.v1.HydrateSessionResponse\x12\x91\
-    \x01\n\x12GetHydrationStatus\x12<.bitdrift.public.unary.timeline.v1.GetH\
-    ydrationStatusRequest\x1a=.bitdrift.public.unary.timeline.v1.GetHydratio\
-    nStatusResponse\x12\x9a\x01\n\x15AdvancedSearchSession\x12?.bitdrift.pub\
-    lic.unary.timeline.v1.SessionAdvancedSearchRequest\x1a@.bitdrift.public.\
-    unary.timeline.v1.SessionAdvancedSearchResponseJ\xbc\x0c\n\x06\x12\x04\
-    \x06\0.\x01\n\xb8\x02\n\x01\x0c\x12\x03\x06\0\x12\x1a\xad\x02\x20api\x20\
-    -\x20bitdrift's\x20client/server\x20API\x20definitions\n\x20Copyright\
-    \x20Bitdrift,\x20Inc.\x20All\x20rights\x20reserved.\n\n\x20Use\x20of\x20\
-    this\x20source\x20code\x20and\x20APIs\x20are\x20governed\x20by\x20a\x20s\
-    ource\x20available\x20license\x20that\x20can\x20be\x20found\x20in\n\x20t\
-    he\x20LICENSE\x20file\x20or\x20at:\n\x20https://polyformproject.org/wp-c\
-    ontent/uploads/2020/06/PolyForm-Shield-1.0.0.txt\n\n\x08\n\x01\x02\x12\
-    \x03\x08\0*\n\t\n\x02\x03\0\x12\x03\n\0;\n\t\n\x02\x03\x01\x12\x03\x0b\0\
-    6\n\t\n\x02\x03\x02\x12\x03\x0c\06\n\t\n\x02\x03\x03\x12\x03\r\08\nf\n\
-    \x02\x06\0\x12\x04\x10\0.\x01\x1aZ\x20Provides\x20access\x20to\x20sessio\
-    n\x20timeline\x20data,\x20including\x20logs,\x20metadata,\x20and\x20hydr\
-    ation\x20state.\n\n\n\n\x03\x06\0\x01\x12\x03\x10\x08\x17\n\x7f\n\x04\
-    \x06\0\x02\0\x12\x04\x14\x02\x93\x01\x1aq\x20Retrieves\x20the\x20logs\
-    \x20for\x20a\x20session.\n\n\x20Returns\x20the\x20gRPC\x20NOT_FOUND\x20s\
-    tatus\x20if\x20the\x20session\x20has\x20not\x20been\x20hydrated\x20yet.\
-    \n\n\x0c\n\x05\x06\0\x02\0\x01\x12\x03\x14\x06\x14\n\x0c\n\x05\x06\0\x02\
-    \0\x02\x12\x03\x14\x15M\n\r\n\x05\x06\0\x02\0\x03\x12\x04\x14X\x91\x01\n\
-    \x8f\x01\n\x04\x06\0\x02\x01\x12\x04\x19\x02\x93\x01\x1a\x80\x01\x20Retr\
-    ieves\x20metadata\x20and\x20attributes\x20for\x20a\x20session.\n\n\x20Re\
-    turns\x20the\x20gRPC\x20NOT_FOUND\x20status\x20if\x20the\x20session\x20h\
-    as\x20not\x20been\x20hydrated\x20yet.\n\n\x0c\n\x05\x06\0\x02\x01\x01\
-    \x12\x03\x19\x06\x14\n\x0c\n\x05\x06\0\x02\x01\x02\x12\x03\x19\x15M\n\r\
-    \n\x05\x06\0\x02\x01\x03\x12\x04\x19X\x91\x01\n\xa9\x01\n\x04\x06\0\x02\
-    \x02\x12\x04\x1f\x02\x93\x01\x1a\x9a\x01\x20Triggers\x20hydration\x20of\
-    \x20a\x20session.\n\n\x20Hydration\x20prepares\x20session\x20data\x20for\
-    \x20querying.\x20Can\x20also\x20be\x20used\x20to\x20force\n\x20re-hydrat\
-    ion\x20of\x20an\x20already\x20hydrated\x20session.\n\n\x0c\n\x05\x06\0\
-    \x02\x02\x01\x12\x03\x1f\x06\x14\n\x0c\n\x05\x06\0\x02\x02\x02\x12\x03\
-    \x1f\x15M\n\r\n\x05\x06\0\x02\x02\x03\x12\x04\x1fX\x91\x01\n\x9b\x01\n\
-    \x04\x06\0\x02\x03\x12\x04%\x02\x9f\x01\x1a\x8c\x01\x20Retrieves\x20the\
-    \x20hydration\x20status\x20of\x20a\x20session.\n\n\x20Returns\x20the\x20\
-    gRPC\x20NOT_FOUND\x20status\x20if\x20hydration\x20has\x20not\x20been\x20\
-    triggered\x20for\x20the\n\x20session\x20yet.\n\n\x0c\n\x05\x06\0\x02\x03\
-    \x01\x12\x03%\x06\x18\n\x0c\n\x05\x06\0\x02\x03\x02\x12\x03%\x19U\n\r\n\
-    \x05\x06\0\x02\x03\x03\x12\x04%`\x9d\x01\n\x98\x02\n\x04\x06\0\x02\x04\
-    \x12\x04-\x02\xa8\x01\x1a\x89\x02\x20Performs\x20an\x20advanced\x20searc\
-    h\x20across\x20logs\x20in\x20a\x20session.\n\n\x20Supports\x20filtering\
-    \x20by\x20field\x20values,\x20log\x20types,\x20log\x20levels,\x20and\x20\
-    full-text\n\x20content\x20using\x20a\x20flexible\x20query\x20model\x20wi\
-    th\x20AND/OR\x20logic.\n\n\x20Returns\x20the\x20gRPC\x20NOT_FOUND\x20sta\
-    tus\x20if\x20the\x20session\x20has\x20not\x20been\x20hydrated\x20yet.\n\
-    \n\x0c\n\x05\x06\0\x02\x04\x01\x12\x03-\x06\x1b\n\x0c\n\x05\x06\0\x02\
-    \x04\x02\x12\x03-\x1c[\n\r\n\x05\x06\0\x02\x04\x03\x12\x04-f\xa6\x01b\
-    \x06proto3\
+    meline/v1/logs.proto\x1a.bitdrift/public/unary/timeline/v1/search.proto\
+    \x1a-bitdrift/public/unary/timeline/v1/spans.proto2\xe5\x06\n\x0fTimelin\
+    eService\x12\x85\x01\n\x0eGetSessionLogs\x128.bitdrift.public.unary.time\
+    line.v1.GetSessionLogsRequest\x1a9.bitdrift.public.unary.timeline.v1.Get\
+    SessionLogsResponse\x12\x85\x01\n\x0eGetSessionInfo\x128.bitdrift.public\
+    .unary.timeline.v1.GetSessionInfoRequest\x1a9.bitdrift.public.unary.time\
+    line.v1.GetSessionInfoResponse\x12\x85\x01\n\x0eHydrateSession\x128.bitd\
+    rift.public.unary.timeline.v1.HydrateSessionRequest\x1a9.bitdrift.public\
+    .unary.timeline.v1.HydrateSessionResponse\x12\x91\x01\n\x12GetHydrationS\
+    tatus\x12<.bitdrift.public.unary.timeline.v1.GetHydrationStatusRequest\
+    \x1a=.bitdrift.public.unary.timeline.v1.GetHydrationStatusResponse\x12\
+    \x88\x01\n\x0bSearchSpans\x12;.bitdrift.public.unary.timeline.v1.Session\
+    SearchSpanRequest\x1a<.bitdrift.public.unary.timeline.v1.SessionSearchSp\
+    anResponse\x12\x9a\x01\n\x15AdvancedSearchSession\x12?.bitdrift.public.u\
+    nary.timeline.v1.SessionAdvancedSearchRequest\x1a@.bitdrift.public.unary\
+    .timeline.v1.SessionAdvancedSearchResponseJ\x90\x0e\n\x06\x12\x04\x06\04\
+    \x01\n\xb8\x02\n\x01\x0c\x12\x03\x06\0\x12\x1a\xad\x02\x20api\x20-\x20bi\
+    tdrift's\x20client/server\x20API\x20definitions\n\x20Copyright\x20Bitdri\
+    ft,\x20Inc.\x20All\x20rights\x20reserved.\n\n\x20Use\x20of\x20this\x20so\
+    urce\x20code\x20and\x20APIs\x20are\x20governed\x20by\x20a\x20source\x20a\
+    vailable\x20license\x20that\x20can\x20be\x20found\x20in\n\x20the\x20LICE\
+    NSE\x20file\x20or\x20at:\n\x20https://polyformproject.org/wp-content/upl\
+    oads/2020/06/PolyForm-Shield-1.0.0.txt\n\n\x08\n\x01\x02\x12\x03\x08\0*\
+    \n\t\n\x02\x03\0\x12\x03\n\0;\n\t\n\x02\x03\x01\x12\x03\x0b\06\n\t\n\x02\
+    \x03\x02\x12\x03\x0c\06\n\t\n\x02\x03\x03\x12\x03\r\08\n\t\n\x02\x03\x04\
+    \x12\x03\x0e\07\nf\n\x02\x06\0\x12\x04\x11\04\x01\x1aZ\x20Provides\x20ac\
+    cess\x20to\x20session\x20timeline\x20data,\x20including\x20logs,\x20meta\
+    data,\x20and\x20hydration\x20state.\n\n\n\n\x03\x06\0\x01\x12\x03\x11\
+    \x08\x17\n\x7f\n\x04\x06\0\x02\0\x12\x04\x15\x02\x93\x01\x1aq\x20Retriev\
+    es\x20the\x20logs\x20for\x20a\x20session.\n\n\x20Returns\x20the\x20gRPC\
+    \x20NOT_FOUND\x20status\x20if\x20the\x20session\x20has\x20not\x20been\
+    \x20hydrated\x20yet.\n\n\x0c\n\x05\x06\0\x02\0\x01\x12\x03\x15\x06\x14\n\
+    \x0c\n\x05\x06\0\x02\0\x02\x12\x03\x15\x15M\n\r\n\x05\x06\0\x02\0\x03\
+    \x12\x04\x15X\x91\x01\n\x8f\x01\n\x04\x06\0\x02\x01\x12\x04\x1a\x02\x93\
+    \x01\x1a\x80\x01\x20Retrieves\x20metadata\x20and\x20attributes\x20for\
+    \x20a\x20session.\n\n\x20Returns\x20the\x20gRPC\x20NOT_FOUND\x20status\
+    \x20if\x20the\x20session\x20has\x20not\x20been\x20hydrated\x20yet.\n\n\
+    \x0c\n\x05\x06\0\x02\x01\x01\x12\x03\x1a\x06\x14\n\x0c\n\x05\x06\0\x02\
+    \x01\x02\x12\x03\x1a\x15M\n\r\n\x05\x06\0\x02\x01\x03\x12\x04\x1aX\x91\
+    \x01\n\xa9\x01\n\x04\x06\0\x02\x02\x12\x04\x20\x02\x93\x01\x1a\x9a\x01\
+    \x20Triggers\x20hydration\x20of\x20a\x20session.\n\n\x20Hydration\x20pre\
+    pares\x20session\x20data\x20for\x20querying.\x20Can\x20also\x20be\x20use\
+    d\x20to\x20force\n\x20re-hydration\x20of\x20an\x20already\x20hydrated\
+    \x20session.\n\n\x0c\n\x05\x06\0\x02\x02\x01\x12\x03\x20\x06\x14\n\x0c\n\
+    \x05\x06\0\x02\x02\x02\x12\x03\x20\x15M\n\r\n\x05\x06\0\x02\x02\x03\x12\
+    \x04\x20X\x91\x01\n\x9b\x01\n\x04\x06\0\x02\x03\x12\x04&\x02\x9f\x01\x1a\
+    \x8c\x01\x20Retrieves\x20the\x20hydration\x20status\x20of\x20a\x20sessio\
+    n.\n\n\x20Returns\x20the\x20gRPC\x20NOT_FOUND\x20status\x20if\x20hydrati\
+    on\x20has\x20not\x20been\x20triggered\x20for\x20the\n\x20session\x20yet.\
+    \n\n\x0c\n\x05\x06\0\x02\x03\x01\x12\x03&\x06\x18\n\x0c\n\x05\x06\0\x02\
+    \x03\x02\x12\x03&\x19U\n\r\n\x05\x06\0\x02\x03\x03\x12\x04&`\x9d\x01\n\
+    \x9b\x01\n\x04\x06\0\x02\x04\x12\x04+\x02\x96\x01\x1a\x8c\x01\x20Searche\
+    s\x20spans\x20within\x20a\x20session.\n\n\x20Supports\x20filtering\x20by\
+    \x20span\x20name\x20or\x20span\x20ID\x20and\x20can\x20limit\x20returned\
+    \x20child\x20depth\x20and\x20top-level\x20pagination.\n\n\x0c\n\x05\x06\
+    \0\x02\x04\x01\x12\x03+\x06\x11\n\x0c\n\x05\x06\0\x02\x04\x02\x12\x03+\
+    \x12M\n\r\n\x05\x06\0\x02\x04\x03\x12\x04+X\x94\x01\n\x98\x02\n\x04\x06\
+    \0\x02\x05\x12\x043\x02\xa8\x01\x1a\x89\x02\x20Performs\x20an\x20advance\
+    d\x20search\x20across\x20logs\x20in\x20a\x20session.\n\n\x20Supports\x20\
+    filtering\x20by\x20field\x20values,\x20log\x20types,\x20log\x20levels,\
+    \x20and\x20full-text\n\x20content\x20using\x20a\x20flexible\x20query\x20\
+    model\x20with\x20AND/OR\x20logic.\n\n\x20Returns\x20the\x20gRPC\x20NOT_F\
+    OUND\x20status\x20if\x20the\x20session\x20has\x20not\x20been\x20hydrated\
+    \x20yet.\n\n\x0c\n\x05\x06\0\x02\x05\x01\x12\x033\x06\x1b\n\x0c\n\x05\
+    \x06\0\x02\x05\x02\x12\x033\x1c[\n\r\n\x05\x06\0\x02\x05\x03\x12\x043f\
+    \xa6\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -108,11 +117,12 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(4);
+            let mut deps = ::std::vec::Vec::with_capacity(5);
             deps.push(super::hydration::file_descriptor().clone());
             deps.push(super::info::file_descriptor().clone());
             deps.push(super::logs::file_descriptor().clone());
             deps.push(super::search::file_descriptor().clone());
+            deps.push(super::spans::file_descriptor().clone());
             let mut messages = ::std::vec::Vec::with_capacity(0);
             let mut enums = ::std::vec::Vec::with_capacity(0);
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(

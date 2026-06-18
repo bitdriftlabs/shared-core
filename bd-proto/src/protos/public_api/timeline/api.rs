@@ -35,19 +35,22 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \n+bitdrift/public/unary/timeline/v1/api.proto\x12!bitdrift.public.unary\
     .timeline.v1\x1a1bitdrift/public/unary/timeline/v1/hydration.proto\x1a,b\
     itdrift/public/unary/timeline/v1/info.proto\x1a,bitdrift/public/unary/ti\
-    meline/v1/logs.proto\x1a.bitdrift/public/unary/timeline/v1/search.proto2\
-    \xda\x05\n\x0fTimelineService\x12\x85\x01\n\x0eGetSessionLogs\x128.bitdr\
-    ift.public.unary.timeline.v1.GetSessionLogsRequest\x1a9.bitdrift.public.\
-    unary.timeline.v1.GetSessionLogsResponse\x12\x85\x01\n\x0eGetSessionInfo\
-    \x128.bitdrift.public.unary.timeline.v1.GetSessionInfoRequest\x1a9.bitdr\
-    ift.public.unary.timeline.v1.GetSessionInfoResponse\x12\x85\x01\n\x0eHyd\
-    rateSession\x128.bitdrift.public.unary.timeline.v1.HydrateSessionRequest\
-    \x1a9.bitdrift.public.unary.timeline.v1.HydrateSessionResponse\x12\x91\
-    \x01\n\x12GetHydrationStatus\x12<.bitdrift.public.unary.timeline.v1.GetH\
-    ydrationStatusRequest\x1a=.bitdrift.public.unary.timeline.v1.GetHydratio\
-    nStatusResponse\x12\x9a\x01\n\x15AdvancedSearchSession\x12?.bitdrift.pub\
-    lic.unary.timeline.v1.SessionAdvancedSearchRequest\x1a@.bitdrift.public.\
-    unary.timeline.v1.SessionAdvancedSearchResponseb\x06proto3\
+    meline/v1/logs.proto\x1a.bitdrift/public/unary/timeline/v1/search.proto\
+    \x1a-bitdrift/public/unary/timeline/v1/spans.proto2\xe5\x06\n\x0fTimelin\
+    eService\x12\x85\x01\n\x0eGetSessionLogs\x128.bitdrift.public.unary.time\
+    line.v1.GetSessionLogsRequest\x1a9.bitdrift.public.unary.timeline.v1.Get\
+    SessionLogsResponse\x12\x85\x01\n\x0eGetSessionInfo\x128.bitdrift.public\
+    .unary.timeline.v1.GetSessionInfoRequest\x1a9.bitdrift.public.unary.time\
+    line.v1.GetSessionInfoResponse\x12\x85\x01\n\x0eHydrateSession\x128.bitd\
+    rift.public.unary.timeline.v1.HydrateSessionRequest\x1a9.bitdrift.public\
+    .unary.timeline.v1.HydrateSessionResponse\x12\x91\x01\n\x12GetHydrationS\
+    tatus\x12<.bitdrift.public.unary.timeline.v1.GetHydrationStatusRequest\
+    \x1a=.bitdrift.public.unary.timeline.v1.GetHydrationStatusResponse\x12\
+    \x88\x01\n\x0bSearchSpans\x12;.bitdrift.public.unary.timeline.v1.Session\
+    SearchSpanRequest\x1a<.bitdrift.public.unary.timeline.v1.SessionSearchSp\
+    anResponse\x12\x9a\x01\n\x15AdvancedSearchSession\x12?.bitdrift.public.u\
+    nary.timeline.v1.SessionAdvancedSearchRequest\x1a@.bitdrift.public.unary\
+    .timeline.v1.SessionAdvancedSearchResponseb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -64,11 +67,12 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(4);
+            let mut deps = ::std::vec::Vec::with_capacity(5);
             deps.push(super::hydration::file_descriptor().clone());
             deps.push(super::info::file_descriptor().clone());
             deps.push(super::logs::file_descriptor().clone());
             deps.push(super::search::file_descriptor().clone());
+            deps.push(super::spans::file_descriptor().clone());
             let mut messages = ::std::vec::Vec::with_capacity(0);
             let mut enums = ::std::vec::Vec::with_capacity(0);
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(

@@ -1293,6 +1293,2971 @@ pub mod resolved_chart {
     }
 }
 
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DashboardLayoutSettings)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DashboardLayoutSettings {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardLayoutSettings.column_span)
+    pub column_span: ::std::option::Option<u32>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardLayoutSettings.row_span)
+    pub row_span: ::std::option::Option<u32>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardLayoutSettings.is_hidden)
+    pub is_hidden: bool,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardLayoutSettings.x)
+    pub x: ::std::option::Option<u32>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardLayoutSettings.y)
+    pub y: ::std::option::Option<u32>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DashboardLayoutSettings.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DashboardLayoutSettings {
+    fn default() -> &'a DashboardLayoutSettings {
+        <DashboardLayoutSettings as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DashboardLayoutSettings {
+    pub fn new() -> DashboardLayoutSettings {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(5);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "column_span",
+            |m: &DashboardLayoutSettings| { &m.column_span },
+            |m: &mut DashboardLayoutSettings| { &mut m.column_span },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "row_span",
+            |m: &DashboardLayoutSettings| { &m.row_span },
+            |m: &mut DashboardLayoutSettings| { &mut m.row_span },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "is_hidden",
+            |m: &DashboardLayoutSettings| { &m.is_hidden },
+            |m: &mut DashboardLayoutSettings| { &mut m.is_hidden },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "x",
+            |m: &DashboardLayoutSettings| { &m.x },
+            |m: &mut DashboardLayoutSettings| { &mut m.x },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "y",
+            |m: &DashboardLayoutSettings| { &m.y },
+            |m: &mut DashboardLayoutSettings| { &mut m.y },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DashboardLayoutSettings>(
+            "DashboardLayoutSettings",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DashboardLayoutSettings {
+    const NAME: &'static str = "DashboardLayoutSettings";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                8 => {
+                    self.column_span = ::std::option::Option::Some(is.read_uint32()?);
+                },
+                16 => {
+                    self.row_span = ::std::option::Option::Some(is.read_uint32()?);
+                },
+                24 => {
+                    self.is_hidden = is.read_bool()?;
+                },
+                32 => {
+                    self.x = ::std::option::Option::Some(is.read_uint32()?);
+                },
+                40 => {
+                    self.y = ::std::option::Option::Some(is.read_uint32()?);
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.column_span {
+            my_size += ::protobuf::rt::uint32_size(1, v);
+        }
+        if let Some(v) = self.row_span {
+            my_size += ::protobuf::rt::uint32_size(2, v);
+        }
+        if self.is_hidden != false {
+            my_size += 1 + 1;
+        }
+        if let Some(v) = self.x {
+            my_size += ::protobuf::rt::uint32_size(4, v);
+        }
+        if let Some(v) = self.y {
+            my_size += ::protobuf::rt::uint32_size(5, v);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.column_span {
+            os.write_uint32(1, v)?;
+        }
+        if let Some(v) = self.row_span {
+            os.write_uint32(2, v)?;
+        }
+        if self.is_hidden != false {
+            os.write_bool(3, self.is_hidden)?;
+        }
+        if let Some(v) = self.x {
+            os.write_uint32(4, v)?;
+        }
+        if let Some(v) = self.y {
+            os.write_uint32(5, v)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DashboardLayoutSettings {
+        DashboardLayoutSettings::new()
+    }
+
+    fn clear(&mut self) {
+        self.column_span = ::std::option::Option::None;
+        self.row_span = ::std::option::Option::None;
+        self.is_hidden = false;
+        self.x = ::std::option::Option::None;
+        self.y = ::std::option::Option::None;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DashboardLayoutSettings {
+        static instance: DashboardLayoutSettings = DashboardLayoutSettings {
+            column_span: ::std::option::Option::None,
+            row_span: ::std::option::Option::None,
+            is_hidden: false,
+            x: ::std::option::Option::None,
+            y: ::std::option::Option::None,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DashboardLayoutSettings {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DashboardLayoutSettings").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DashboardLayoutSettings {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DashboardLayoutSettings {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DashboardGroup)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DashboardGroup {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardGroup.charts)
+    pub charts: ::std::vec::Vec<ResolvedChart>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardGroup.category)
+    pub category: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardGroup.minimum_query_interval)
+    pub minimum_query_interval: ::protobuf::MessageField<::protobuf::well_known_types::duration::Duration>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DashboardGroup.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DashboardGroup {
+    fn default() -> &'a DashboardGroup {
+        <DashboardGroup as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DashboardGroup {
+    pub fn new() -> DashboardGroup {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "charts",
+            |m: &DashboardGroup| { &m.charts },
+            |m: &mut DashboardGroup| { &mut m.charts },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "category",
+            |m: &DashboardGroup| { &m.category },
+            |m: &mut DashboardGroup| { &mut m.category },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::duration::Duration>(
+            "minimum_query_interval",
+            |m: &DashboardGroup| { &m.minimum_query_interval },
+            |m: &mut DashboardGroup| { &mut m.minimum_query_interval },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DashboardGroup>(
+            "DashboardGroup",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DashboardGroup {
+    const NAME: &'static str = "DashboardGroup";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.charts.push(is.read_message()?);
+                },
+                18 => {
+                    self.category = is.read_string()?;
+                },
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.minimum_query_interval)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        for value in &self.charts {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        if !self.category.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.category);
+        }
+        if let Some(v) = self.minimum_query_interval.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        for v in &self.charts {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        };
+        if !self.category.is_empty() {
+            os.write_string(2, &self.category)?;
+        }
+        if let Some(v) = self.minimum_query_interval.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DashboardGroup {
+        DashboardGroup::new()
+    }
+
+    fn clear(&mut self) {
+        self.charts.clear();
+        self.category.clear();
+        self.minimum_query_interval.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DashboardGroup {
+        static instance: DashboardGroup = DashboardGroup {
+            charts: ::std::vec::Vec::new(),
+            category: ::std::string::String::new(),
+            minimum_query_interval: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DashboardGroup {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DashboardGroup").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DashboardGroup {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DashboardGroup {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DashboardIdentifier)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DashboardIdentifier {
+    // message oneof groups
+    pub type_: ::std::option::Option<dashboard_identifier::Type>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DashboardIdentifier {
+    fn default() -> &'a DashboardIdentifier {
+        <DashboardIdentifier as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DashboardIdentifier {
+    pub fn new() -> DashboardIdentifier {
+        ::std::default::Default::default()
+    }
+
+    // .bitdrift.public.unary.dashboards.v1.DashboardIdentifier.HealthDashboard health_dashboard = 1;
+
+    pub fn health_dashboard(&self) -> &dashboard_identifier::HealthDashboard {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_identifier::Type::HealthDashboard(ref v)) => v,
+            _ => <dashboard_identifier::HealthDashboard as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_health_dashboard(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_health_dashboard(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_identifier::Type::HealthDashboard(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_health_dashboard(&mut self, v: dashboard_identifier::HealthDashboard) {
+        self.type_ = ::std::option::Option::Some(dashboard_identifier::Type::HealthDashboard(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_health_dashboard(&mut self) -> &mut dashboard_identifier::HealthDashboard {
+        if let ::std::option::Option::Some(dashboard_identifier::Type::HealthDashboard(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(dashboard_identifier::Type::HealthDashboard(dashboard_identifier::HealthDashboard::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_identifier::Type::HealthDashboard(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_health_dashboard(&mut self) -> dashboard_identifier::HealthDashboard {
+        if self.has_health_dashboard() {
+            match self.type_.take() {
+                ::std::option::Option::Some(dashboard_identifier::Type::HealthDashboard(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            dashboard_identifier::HealthDashboard::new()
+        }
+    }
+
+    // .bitdrift.public.unary.dashboards.v1.DashboardIdentifier.CustomDashboard custom_dashboard = 2;
+
+    pub fn custom_dashboard(&self) -> &dashboard_identifier::CustomDashboard {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_identifier::Type::CustomDashboard(ref v)) => v,
+            _ => <dashboard_identifier::CustomDashboard as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_custom_dashboard(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_custom_dashboard(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_identifier::Type::CustomDashboard(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_custom_dashboard(&mut self, v: dashboard_identifier::CustomDashboard) {
+        self.type_ = ::std::option::Option::Some(dashboard_identifier::Type::CustomDashboard(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_custom_dashboard(&mut self) -> &mut dashboard_identifier::CustomDashboard {
+        if let ::std::option::Option::Some(dashboard_identifier::Type::CustomDashboard(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(dashboard_identifier::Type::CustomDashboard(dashboard_identifier::CustomDashboard::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_identifier::Type::CustomDashboard(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_custom_dashboard(&mut self) -> dashboard_identifier::CustomDashboard {
+        if self.has_custom_dashboard() {
+            match self.type_.take() {
+                ::std::option::Option::Some(dashboard_identifier::Type::CustomDashboard(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            dashboard_identifier::CustomDashboard::new()
+        }
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, dashboard_identifier::HealthDashboard>(
+            "health_dashboard",
+            DashboardIdentifier::has_health_dashboard,
+            DashboardIdentifier::health_dashboard,
+            DashboardIdentifier::mut_health_dashboard,
+            DashboardIdentifier::set_health_dashboard,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, dashboard_identifier::CustomDashboard>(
+            "custom_dashboard",
+            DashboardIdentifier::has_custom_dashboard,
+            DashboardIdentifier::custom_dashboard,
+            DashboardIdentifier::mut_custom_dashboard,
+            DashboardIdentifier::set_custom_dashboard,
+        ));
+        oneofs.push(dashboard_identifier::Type::generated_oneof_descriptor_data());
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DashboardIdentifier>(
+            "DashboardIdentifier",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DashboardIdentifier {
+    const NAME: &'static str = "DashboardIdentifier";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.type_ = ::std::option::Option::Some(dashboard_identifier::Type::HealthDashboard(is.read_message()?));
+                },
+                18 => {
+                    self.type_ = ::std::option::Option::Some(dashboard_identifier::Type::CustomDashboard(is.read_message()?));
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let ::std::option::Option::Some(ref v) = self.type_ {
+            match v {
+                &dashboard_identifier::Type::HealthDashboard(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &dashboard_identifier::Type::CustomDashboard(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+            };
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let ::std::option::Option::Some(ref v) = self.type_ {
+            match v {
+                &dashboard_identifier::Type::HealthDashboard(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+                },
+                &dashboard_identifier::Type::CustomDashboard(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                },
+            };
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DashboardIdentifier {
+        DashboardIdentifier::new()
+    }
+
+    fn clear(&mut self) {
+        self.type_ = ::std::option::Option::None;
+        self.type_ = ::std::option::Option::None;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DashboardIdentifier {
+        static instance: DashboardIdentifier = DashboardIdentifier {
+            type_: ::std::option::Option::None,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DashboardIdentifier {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DashboardIdentifier").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DashboardIdentifier {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DashboardIdentifier {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `DashboardIdentifier`
+pub mod dashboard_identifier {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.type)
+    pub enum Type {
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.health_dashboard)
+        HealthDashboard(HealthDashboard),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.custom_dashboard)
+        CustomDashboard(CustomDashboard),
+    }
+
+    impl ::protobuf::Oneof for Type {
+    }
+
+    impl ::protobuf::OneofFull for Type {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::DashboardIdentifier as ::protobuf::MessageFull>::descriptor().oneof_by_name("type").unwrap()).clone()
+        }
+    }
+
+    impl Type {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Type>("type")
+        }
+    }
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.HealthDashboard)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct HealthDashboard {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.HealthDashboard.platform_target)
+        pub platform_target: ::protobuf::MessageField<super::super::platform::Platform>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.HealthDashboard.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a HealthDashboard {
+        fn default() -> &'a HealthDashboard {
+            <HealthDashboard as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl HealthDashboard {
+        pub fn new() -> HealthDashboard {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::platform::Platform>(
+                "platform_target",
+                |m: &HealthDashboard| { &m.platform_target },
+                |m: &mut HealthDashboard| { &mut m.platform_target },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<HealthDashboard>(
+                "DashboardIdentifier.HealthDashboard",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for HealthDashboard {
+        const NAME: &'static str = "HealthDashboard";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.platform_target)?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.platform_target.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.platform_target.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> HealthDashboard {
+            HealthDashboard::new()
+        }
+
+        fn clear(&mut self) {
+            self.platform_target.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static HealthDashboard {
+            static instance: HealthDashboard = HealthDashboard {
+                platform_target: ::protobuf::MessageField::none(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for HealthDashboard {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("DashboardIdentifier.HealthDashboard").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for HealthDashboard {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for HealthDashboard {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.CustomDashboard)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct CustomDashboard {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.CustomDashboard.id)
+        pub id: ::std::string::String,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DashboardIdentifier.CustomDashboard.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a CustomDashboard {
+        fn default() -> &'a CustomDashboard {
+            <CustomDashboard as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl CustomDashboard {
+        pub fn new() -> CustomDashboard {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "id",
+                |m: &CustomDashboard| { &m.id },
+                |m: &mut CustomDashboard| { &mut m.id },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<CustomDashboard>(
+                "DashboardIdentifier.CustomDashboard",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for CustomDashboard {
+        const NAME: &'static str = "CustomDashboard";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.id = is.read_string()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if !self.id.is_empty() {
+                my_size += ::protobuf::rt::string_size(1, &self.id);
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if !self.id.is_empty() {
+                os.write_string(1, &self.id)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> CustomDashboard {
+            CustomDashboard::new()
+        }
+
+        fn clear(&mut self) {
+            self.id.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static CustomDashboard {
+            static instance: CustomDashboard = CustomDashboard {
+                id: ::std::string::String::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for CustomDashboard {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("DashboardIdentifier.CustomDashboard").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for CustomDashboard {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for CustomDashboard {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.GetDashboardRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct GetDashboardRequest {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.GetDashboardRequest.id)
+    pub id: ::protobuf::MessageField<DashboardIdentifier>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.GetDashboardRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a GetDashboardRequest {
+    fn default() -> &'a GetDashboardRequest {
+        <GetDashboardRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl GetDashboardRequest {
+    pub fn new() -> GetDashboardRequest {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, DashboardIdentifier>(
+            "id",
+            |m: &GetDashboardRequest| { &m.id },
+            |m: &mut GetDashboardRequest| { &mut m.id },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<GetDashboardRequest>(
+            "GetDashboardRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for GetDashboardRequest {
+    const NAME: &'static str = "GetDashboardRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.id)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.id.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.id.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> GetDashboardRequest {
+        GetDashboardRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.id.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static GetDashboardRequest {
+        static instance: GetDashboardRequest = GetDashboardRequest {
+            id: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for GetDashboardRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("GetDashboardRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for GetDashboardRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for GetDashboardRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.GetDashboardResponse)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct GetDashboardResponse {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.GetDashboardResponse.dashboard)
+    pub dashboard: ::protobuf::MessageField<Dashboard>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.GetDashboardResponse.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a GetDashboardResponse {
+    fn default() -> &'a GetDashboardResponse {
+        <GetDashboardResponse as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl GetDashboardResponse {
+    pub fn new() -> GetDashboardResponse {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, Dashboard>(
+            "dashboard",
+            |m: &GetDashboardResponse| { &m.dashboard },
+            |m: &mut GetDashboardResponse| { &mut m.dashboard },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<GetDashboardResponse>(
+            "GetDashboardResponse",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for GetDashboardResponse {
+    const NAME: &'static str = "GetDashboardResponse";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                42 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.dashboard)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.dashboard.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.dashboard.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> GetDashboardResponse {
+        GetDashboardResponse::new()
+    }
+
+    fn clear(&mut self) {
+        self.dashboard.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static GetDashboardResponse {
+        static instance: GetDashboardResponse = GetDashboardResponse {
+            dashboard: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for GetDashboardResponse {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("GetDashboardResponse").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for GetDashboardResponse {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for GetDashboardResponse {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.Dashboard)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct Dashboard {
+    // message oneof groups
+    pub type_: ::std::option::Option<dashboard::Type>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.Dashboard.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a Dashboard {
+    fn default() -> &'a Dashboard {
+        <Dashboard as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl Dashboard {
+    pub fn new() -> Dashboard {
+        ::std::default::Default::default()
+    }
+
+    // .bitdrift.public.unary.dashboards.v1.Dashboard.HealthDashboard health_dashboard = 2;
+
+    pub fn health_dashboard(&self) -> &dashboard::HealthDashboard {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard::Type::HealthDashboard(ref v)) => v,
+            _ => <dashboard::HealthDashboard as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_health_dashboard(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_health_dashboard(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard::Type::HealthDashboard(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_health_dashboard(&mut self, v: dashboard::HealthDashboard) {
+        self.type_ = ::std::option::Option::Some(dashboard::Type::HealthDashboard(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_health_dashboard(&mut self) -> &mut dashboard::HealthDashboard {
+        if let ::std::option::Option::Some(dashboard::Type::HealthDashboard(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(dashboard::Type::HealthDashboard(dashboard::HealthDashboard::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(dashboard::Type::HealthDashboard(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_health_dashboard(&mut self) -> dashboard::HealthDashboard {
+        if self.has_health_dashboard() {
+            match self.type_.take() {
+                ::std::option::Option::Some(dashboard::Type::HealthDashboard(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            dashboard::HealthDashboard::new()
+        }
+    }
+
+    // .bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard custom_dashboard = 3;
+
+    pub fn custom_dashboard(&self) -> &dashboard::CustomDashboard {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard::Type::CustomDashboard(ref v)) => v,
+            _ => <dashboard::CustomDashboard as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_custom_dashboard(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_custom_dashboard(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard::Type::CustomDashboard(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_custom_dashboard(&mut self, v: dashboard::CustomDashboard) {
+        self.type_ = ::std::option::Option::Some(dashboard::Type::CustomDashboard(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_custom_dashboard(&mut self) -> &mut dashboard::CustomDashboard {
+        if let ::std::option::Option::Some(dashboard::Type::CustomDashboard(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(dashboard::Type::CustomDashboard(dashboard::CustomDashboard::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(dashboard::Type::CustomDashboard(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_custom_dashboard(&mut self) -> dashboard::CustomDashboard {
+        if self.has_custom_dashboard() {
+            match self.type_.take() {
+                ::std::option::Option::Some(dashboard::Type::CustomDashboard(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            dashboard::CustomDashboard::new()
+        }
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, dashboard::HealthDashboard>(
+            "health_dashboard",
+            Dashboard::has_health_dashboard,
+            Dashboard::health_dashboard,
+            Dashboard::mut_health_dashboard,
+            Dashboard::set_health_dashboard,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, dashboard::CustomDashboard>(
+            "custom_dashboard",
+            Dashboard::has_custom_dashboard,
+            Dashboard::custom_dashboard,
+            Dashboard::mut_custom_dashboard,
+            Dashboard::set_custom_dashboard,
+        ));
+        oneofs.push(dashboard::Type::generated_oneof_descriptor_data());
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Dashboard>(
+            "Dashboard",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for Dashboard {
+    const NAME: &'static str = "Dashboard";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                18 => {
+                    self.type_ = ::std::option::Option::Some(dashboard::Type::HealthDashboard(is.read_message()?));
+                },
+                26 => {
+                    self.type_ = ::std::option::Option::Some(dashboard::Type::CustomDashboard(is.read_message()?));
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let ::std::option::Option::Some(ref v) = self.type_ {
+            match v {
+                &dashboard::Type::HealthDashboard(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &dashboard::Type::CustomDashboard(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+            };
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let ::std::option::Option::Some(ref v) = self.type_ {
+            match v {
+                &dashboard::Type::HealthDashboard(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                },
+                &dashboard::Type::CustomDashboard(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                },
+            };
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> Dashboard {
+        Dashboard::new()
+    }
+
+    fn clear(&mut self) {
+        self.type_ = ::std::option::Option::None;
+        self.type_ = ::std::option::Option::None;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static Dashboard {
+        static instance: Dashboard = Dashboard {
+            type_: ::std::option::Option::None,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for Dashboard {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("Dashboard").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for Dashboard {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for Dashboard {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `Dashboard`
+pub mod dashboard {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift.public.unary.dashboards.v1.Dashboard.type)
+    pub enum Type {
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.Dashboard.health_dashboard)
+        HealthDashboard(HealthDashboard),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.Dashboard.custom_dashboard)
+        CustomDashboard(CustomDashboard),
+    }
+
+    impl ::protobuf::Oneof for Type {
+    }
+
+    impl ::protobuf::OneofFull for Type {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::Dashboard as ::protobuf::MessageFull>::descriptor().oneof_by_name("type").unwrap()).clone()
+        }
+    }
+
+    impl Type {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Type>("type")
+        }
+    }
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.Dashboard.HealthDashboard)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct HealthDashboard {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.HealthDashboard.id)
+        pub id: ::protobuf::MessageField<super::dashboard_identifier::HealthDashboard>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.HealthDashboard.dashboard_group)
+        pub dashboard_group: ::std::vec::Vec<super::DashboardGroup>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.HealthDashboard.platforms)
+        pub platforms: ::std::vec::Vec<super::super::platform::Platform>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.Dashboard.HealthDashboard.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a HealthDashboard {
+        fn default() -> &'a HealthDashboard {
+            <HealthDashboard as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl HealthDashboard {
+        pub fn new() -> HealthDashboard {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(3);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::dashboard_identifier::HealthDashboard>(
+                "id",
+                |m: &HealthDashboard| { &m.id },
+                |m: &mut HealthDashboard| { &mut m.id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "dashboard_group",
+                |m: &HealthDashboard| { &m.dashboard_group },
+                |m: &mut HealthDashboard| { &mut m.dashboard_group },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "platforms",
+                |m: &HealthDashboard| { &m.platforms },
+                |m: &mut HealthDashboard| { &mut m.platforms },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<HealthDashboard>(
+                "Dashboard.HealthDashboard",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for HealthDashboard {
+        const NAME: &'static str = "HealthDashboard";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.id)?;
+                    },
+                    18 => {
+                        self.dashboard_group.push(is.read_message()?);
+                    },
+                    26 => {
+                        self.platforms.push(is.read_message()?);
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.id.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            for value in &self.dashboard_group {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            for value in &self.platforms {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.id.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            }
+            for v in &self.dashboard_group {
+                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+            };
+            for v in &self.platforms {
+                ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+            };
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> HealthDashboard {
+            HealthDashboard::new()
+        }
+
+        fn clear(&mut self) {
+            self.id.clear();
+            self.dashboard_group.clear();
+            self.platforms.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static HealthDashboard {
+            static instance: HealthDashboard = HealthDashboard {
+                id: ::protobuf::MessageField::none(),
+                dashboard_group: ::std::vec::Vec::new(),
+                platforms: ::std::vec::Vec::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for HealthDashboard {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("Dashboard.HealthDashboard").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for HealthDashboard {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for HealthDashboard {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct CustomDashboard {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.id)
+        pub id: ::std::string::String,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.title)
+        pub title: ::std::option::Option<::std::string::String>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.current_user_last_viewed)
+        pub current_user_last_viewed: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.tabs)
+        pub tabs: ::std::vec::Vec<custom_dashboard::DashboardTab>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.common_variables)
+        pub common_variables: ::std::vec::Vec<super::DashboardVariable>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.owner)
+        pub owner: ::protobuf::MessageField<super::super::common::Owner>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.current_user_favorited)
+        pub current_user_favorited: bool,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.current_user_can_edit)
+        pub current_user_can_edit: ::protobuf::EnumOrUnknown<super::super::common::Permission>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.dashboard_variables)
+        pub dashboard_variables: ::std::vec::Vec<super::super::workflow::group_by::Value>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a CustomDashboard {
+        fn default() -> &'a CustomDashboard {
+            <CustomDashboard as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl CustomDashboard {
+        pub fn new() -> CustomDashboard {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(9);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "id",
+                |m: &CustomDashboard| { &m.id },
+                |m: &mut CustomDashboard| { &mut m.id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "title",
+                |m: &CustomDashboard| { &m.title },
+                |m: &mut CustomDashboard| { &mut m.title },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::timestamp::Timestamp>(
+                "current_user_last_viewed",
+                |m: &CustomDashboard| { &m.current_user_last_viewed },
+                |m: &mut CustomDashboard| { &mut m.current_user_last_viewed },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "tabs",
+                |m: &CustomDashboard| { &m.tabs },
+                |m: &mut CustomDashboard| { &mut m.tabs },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "common_variables",
+                |m: &CustomDashboard| { &m.common_variables },
+                |m: &mut CustomDashboard| { &mut m.common_variables },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::common::Owner>(
+                "owner",
+                |m: &CustomDashboard| { &m.owner },
+                |m: &mut CustomDashboard| { &mut m.owner },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "current_user_favorited",
+                |m: &CustomDashboard| { &m.current_user_favorited },
+                |m: &mut CustomDashboard| { &mut m.current_user_favorited },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "current_user_can_edit",
+                |m: &CustomDashboard| { &m.current_user_can_edit },
+                |m: &mut CustomDashboard| { &mut m.current_user_can_edit },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "dashboard_variables",
+                |m: &CustomDashboard| { &m.dashboard_variables },
+                |m: &mut CustomDashboard| { &mut m.dashboard_variables },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<CustomDashboard>(
+                "Dashboard.CustomDashboard",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for CustomDashboard {
+        const NAME: &'static str = "CustomDashboard";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.id = is.read_string()?;
+                    },
+                    58 => {
+                        self.title = ::std::option::Option::Some(is.read_string()?);
+                    },
+                    66 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.current_user_last_viewed)?;
+                    },
+                    18 => {
+                        self.tabs.push(is.read_message()?);
+                    },
+                    26 => {
+                        self.common_variables.push(is.read_message()?);
+                    },
+                    34 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.owner)?;
+                    },
+                    40 => {
+                        self.current_user_favorited = is.read_bool()?;
+                    },
+                    48 => {
+                        self.current_user_can_edit = is.read_enum_or_unknown()?;
+                    },
+                    74 => {
+                        self.dashboard_variables.push(is.read_message()?);
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if !self.id.is_empty() {
+                my_size += ::protobuf::rt::string_size(1, &self.id);
+            }
+            if let Some(v) = self.title.as_ref() {
+                my_size += ::protobuf::rt::string_size(7, &v);
+            }
+            if let Some(v) = self.current_user_last_viewed.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            for value in &self.tabs {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            for value in &self.common_variables {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            if let Some(v) = self.owner.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            if self.current_user_favorited != false {
+                my_size += 1 + 1;
+            }
+            if self.current_user_can_edit != ::protobuf::EnumOrUnknown::new(super::super::common::Permission::UNKNOWN) {
+                my_size += ::protobuf::rt::int32_size(6, self.current_user_can_edit.value());
+            }
+            for value in &self.dashboard_variables {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if !self.id.is_empty() {
+                os.write_string(1, &self.id)?;
+            }
+            if let Some(v) = self.title.as_ref() {
+                os.write_string(7, v)?;
+            }
+            if let Some(v) = self.current_user_last_viewed.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(8, v, os)?;
+            }
+            for v in &self.tabs {
+                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+            };
+            for v in &self.common_variables {
+                ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+            };
+            if let Some(v) = self.owner.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+            }
+            if self.current_user_favorited != false {
+                os.write_bool(5, self.current_user_favorited)?;
+            }
+            if self.current_user_can_edit != ::protobuf::EnumOrUnknown::new(super::super::common::Permission::UNKNOWN) {
+                os.write_enum(6, ::protobuf::EnumOrUnknown::value(&self.current_user_can_edit))?;
+            }
+            for v in &self.dashboard_variables {
+                ::protobuf::rt::write_message_field_with_cached_size(9, v, os)?;
+            };
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> CustomDashboard {
+            CustomDashboard::new()
+        }
+
+        fn clear(&mut self) {
+            self.id.clear();
+            self.title = ::std::option::Option::None;
+            self.current_user_last_viewed.clear();
+            self.tabs.clear();
+            self.common_variables.clear();
+            self.owner.clear();
+            self.current_user_favorited = false;
+            self.current_user_can_edit = ::protobuf::EnumOrUnknown::new(super::super::common::Permission::UNKNOWN);
+            self.dashboard_variables.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static CustomDashboard {
+            static instance: CustomDashboard = CustomDashboard {
+                id: ::std::string::String::new(),
+                title: ::std::option::Option::None,
+                current_user_last_viewed: ::protobuf::MessageField::none(),
+                tabs: ::std::vec::Vec::new(),
+                common_variables: ::std::vec::Vec::new(),
+                owner: ::protobuf::MessageField::none(),
+                current_user_favorited: false,
+                current_user_can_edit: ::protobuf::EnumOrUnknown::from_i32(0),
+                dashboard_variables: ::std::vec::Vec::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for CustomDashboard {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("Dashboard.CustomDashboard").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for CustomDashboard {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for CustomDashboard {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `CustomDashboard`
+    pub mod custom_dashboard {
+        // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct DashboardTab {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.id)
+            pub id: ::std::string::String,
+            // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.name)
+            pub name: ::std::string::String,
+            // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.charts)
+            pub charts: ::std::vec::Vec<dashboard_tab::Chart>,
+            // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.components)
+            pub components: ::std::vec::Vec<super::super::DashboardStylisticComponent>,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a DashboardTab {
+            fn default() -> &'a DashboardTab {
+                <DashboardTab as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl DashboardTab {
+            pub fn new() -> DashboardTab {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(4);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "id",
+                    |m: &DashboardTab| { &m.id },
+                    |m: &mut DashboardTab| { &mut m.id },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "name",
+                    |m: &DashboardTab| { &m.name },
+                    |m: &mut DashboardTab| { &mut m.name },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                    "charts",
+                    |m: &DashboardTab| { &m.charts },
+                    |m: &mut DashboardTab| { &mut m.charts },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                    "components",
+                    |m: &DashboardTab| { &m.components },
+                    |m: &mut DashboardTab| { &mut m.components },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DashboardTab>(
+                    "Dashboard.CustomDashboard.DashboardTab",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for DashboardTab {
+            const NAME: &'static str = "DashboardTab";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.id = is.read_string()?;
+                        },
+                        18 => {
+                            self.name = is.read_string()?;
+                        },
+                        26 => {
+                            self.charts.push(is.read_message()?);
+                        },
+                        34 => {
+                            self.components.push(is.read_message()?);
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if !self.id.is_empty() {
+                    my_size += ::protobuf::rt::string_size(1, &self.id);
+                }
+                if !self.name.is_empty() {
+                    my_size += ::protobuf::rt::string_size(2, &self.name);
+                }
+                for value in &self.charts {
+                    let len = value.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                };
+                for value in &self.components {
+                    let len = value.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                };
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if !self.id.is_empty() {
+                    os.write_string(1, &self.id)?;
+                }
+                if !self.name.is_empty() {
+                    os.write_string(2, &self.name)?;
+                }
+                for v in &self.charts {
+                    ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                };
+                for v in &self.components {
+                    ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+                };
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> DashboardTab {
+                DashboardTab::new()
+            }
+
+            fn clear(&mut self) {
+                self.id.clear();
+                self.name.clear();
+                self.charts.clear();
+                self.components.clear();
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static DashboardTab {
+                static instance: DashboardTab = DashboardTab {
+                    id: ::std::string::String::new(),
+                    name: ::std::string::String::new(),
+                    charts: ::std::vec::Vec::new(),
+                    components: ::std::vec::Vec::new(),
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for DashboardTab {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("Dashboard.CustomDashboard.DashboardTab").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for DashboardTab {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for DashboardTab {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+
+        /// Nested message and enums of message `DashboardTab`
+        pub mod dashboard_tab {
+            // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.Chart)
+            #[derive(PartialEq,Clone,Default,Debug)]
+            pub struct Chart {
+                // message fields
+                // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.Chart.id)
+                pub id: ::std::string::String,
+                // message oneof groups
+                pub resolved_chart: ::std::option::Option<chart::Resolved_chart>,
+                // special fields
+                // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.Chart.special_fields)
+                pub special_fields: ::protobuf::SpecialFields,
+            }
+
+            impl<'a> ::std::default::Default for &'a Chart {
+                fn default() -> &'a Chart {
+                    <Chart as ::protobuf::Message>::default_instance()
+                }
+            }
+
+            impl Chart {
+                pub fn new() -> Chart {
+                    ::std::default::Default::default()
+                }
+
+                // .bitdrift.public.unary.dashboards.v1.ResolvedChart chart = 2;
+
+                pub fn chart(&self) -> &super::super::super::ResolvedChart {
+                    match self.resolved_chart {
+                        ::std::option::Option::Some(chart::Resolved_chart::Chart(ref v)) => v,
+                        _ => <super::super::super::ResolvedChart as ::protobuf::Message>::default_instance(),
+                    }
+                }
+
+                pub fn clear_chart(&mut self) {
+                    self.resolved_chart = ::std::option::Option::None;
+                }
+
+                pub fn has_chart(&self) -> bool {
+                    match self.resolved_chart {
+                        ::std::option::Option::Some(chart::Resolved_chart::Chart(..)) => true,
+                        _ => false,
+                    }
+                }
+
+                // Param is passed by value, moved
+                pub fn set_chart(&mut self, v: super::super::super::ResolvedChart) {
+                    self.resolved_chart = ::std::option::Option::Some(chart::Resolved_chart::Chart(v))
+                }
+
+                // Mutable pointer to the field.
+                pub fn mut_chart(&mut self) -> &mut super::super::super::ResolvedChart {
+                    if let ::std::option::Option::Some(chart::Resolved_chart::Chart(_)) = self.resolved_chart {
+                    } else {
+                        self.resolved_chart = ::std::option::Option::Some(chart::Resolved_chart::Chart(super::super::super::ResolvedChart::new()));
+                    }
+                    match self.resolved_chart {
+                        ::std::option::Option::Some(chart::Resolved_chart::Chart(ref mut v)) => v,
+                        _ => panic!(),
+                    }
+                }
+
+                // Take field
+                pub fn take_chart(&mut self) -> super::super::super::ResolvedChart {
+                    if self.has_chart() {
+                        match self.resolved_chart.take() {
+                            ::std::option::Option::Some(chart::Resolved_chart::Chart(v)) => v,
+                            _ => panic!(),
+                        }
+                    } else {
+                        super::super::super::ResolvedChart::new()
+                    }
+                }
+
+                // bool chart_not_found = 3;
+
+                pub fn chart_not_found(&self) -> bool {
+                    match self.resolved_chart {
+                        ::std::option::Option::Some(chart::Resolved_chart::ChartNotFound(v)) => v,
+                        _ => false,
+                    }
+                }
+
+                pub fn clear_chart_not_found(&mut self) {
+                    self.resolved_chart = ::std::option::Option::None;
+                }
+
+                pub fn has_chart_not_found(&self) -> bool {
+                    match self.resolved_chart {
+                        ::std::option::Option::Some(chart::Resolved_chart::ChartNotFound(..)) => true,
+                        _ => false,
+                    }
+                }
+
+                // Param is passed by value, moved
+                pub fn set_chart_not_found(&mut self, v: bool) {
+                    self.resolved_chart = ::std::option::Option::Some(chart::Resolved_chart::ChartNotFound(v))
+                }
+
+                pub(in super::super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                    let mut fields = ::std::vec::Vec::with_capacity(3);
+                    let mut oneofs = ::std::vec::Vec::with_capacity(1);
+                    fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                        "id",
+                        |m: &Chart| { &m.id },
+                        |m: &mut Chart| { &mut m.id },
+                    ));
+                    fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::super::super::ResolvedChart>(
+                        "chart",
+                        Chart::has_chart,
+                        Chart::chart,
+                        Chart::mut_chart,
+                        Chart::set_chart,
+                    ));
+                    fields.push(::protobuf::reflect::rt::v2::make_oneof_copy_has_get_set_simpler_accessors::<_, _>(
+                        "chart_not_found",
+                        Chart::has_chart_not_found,
+                        Chart::chart_not_found,
+                        Chart::set_chart_not_found,
+                    ));
+                    oneofs.push(chart::Resolved_chart::generated_oneof_descriptor_data());
+                    ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Chart>(
+                        "Dashboard.CustomDashboard.DashboardTab.Chart",
+                        fields,
+                        oneofs,
+                    )
+                }
+            }
+
+            impl ::protobuf::Message for Chart {
+                const NAME: &'static str = "Chart";
+
+                fn is_initialized(&self) -> bool {
+                    true
+                }
+
+                fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                    while let Some(tag) = is.read_raw_tag_or_eof()? {
+                        match tag {
+                            10 => {
+                                self.id = is.read_string()?;
+                            },
+                            18 => {
+                                self.resolved_chart = ::std::option::Option::Some(chart::Resolved_chart::Chart(is.read_message()?));
+                            },
+                            24 => {
+                                self.resolved_chart = ::std::option::Option::Some(chart::Resolved_chart::ChartNotFound(is.read_bool()?));
+                            },
+                            tag => {
+                                ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                            },
+                        };
+                    }
+                    ::std::result::Result::Ok(())
+                }
+
+                // Compute sizes of nested messages
+                #[allow(unused_variables)]
+                fn compute_size(&self) -> u64 {
+                    let mut my_size = 0;
+                    if !self.id.is_empty() {
+                        my_size += ::protobuf::rt::string_size(1, &self.id);
+                    }
+                    if let ::std::option::Option::Some(ref v) = self.resolved_chart {
+                        match v {
+                            &chart::Resolved_chart::Chart(ref v) => {
+                                let len = v.compute_size();
+                                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                            },
+                            &chart::Resolved_chart::ChartNotFound(v) => {
+                                my_size += 1 + 1;
+                            },
+                        };
+                    }
+                    my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                    self.special_fields.cached_size().set(my_size as u32);
+                    my_size
+                }
+
+                fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                    if !self.id.is_empty() {
+                        os.write_string(1, &self.id)?;
+                    }
+                    if let ::std::option::Option::Some(ref v) = self.resolved_chart {
+                        match v {
+                            &chart::Resolved_chart::Chart(ref v) => {
+                                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                            },
+                            &chart::Resolved_chart::ChartNotFound(v) => {
+                                os.write_bool(3, v)?;
+                            },
+                        };
+                    }
+                    os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                    ::std::result::Result::Ok(())
+                }
+
+                fn special_fields(&self) -> &::protobuf::SpecialFields {
+                    &self.special_fields
+                }
+
+                fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                    &mut self.special_fields
+                }
+
+                fn new() -> Chart {
+                    Chart::new()
+                }
+
+                fn clear(&mut self) {
+                    self.id.clear();
+                    self.resolved_chart = ::std::option::Option::None;
+                    self.resolved_chart = ::std::option::Option::None;
+                    self.special_fields.clear();
+                }
+
+                fn default_instance() -> &'static Chart {
+                    static instance: Chart = Chart {
+                        id: ::std::string::String::new(),
+                        resolved_chart: ::std::option::Option::None,
+                        special_fields: ::protobuf::SpecialFields::new(),
+                    };
+                    &instance
+                }
+            }
+
+            impl ::protobuf::MessageFull for Chart {
+                fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                    descriptor.get(|| super::super::super::file_descriptor().message_by_package_relative_name("Dashboard.CustomDashboard.DashboardTab.Chart").unwrap()).clone()
+                }
+            }
+
+            impl ::std::fmt::Display for Chart {
+                fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                    ::protobuf::text_format::fmt(self, f)
+                }
+            }
+
+            impl ::protobuf::reflect::ProtobufValue for Chart {
+                type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+            }
+
+            /// Nested message and enums of message `Chart`
+            pub mod chart {
+
+                #[derive(Clone,PartialEq,Debug)]
+                // @@protoc_insertion_point(oneof:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.Chart.resolved_chart)
+                pub enum Resolved_chart {
+                    // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.Chart.chart)
+                    Chart(super::super::super::super::ResolvedChart),
+                    // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.DashboardTab.Chart.chart_not_found)
+                    ChartNotFound(bool),
+                }
+
+                impl ::protobuf::Oneof for Resolved_chart {
+                }
+
+                impl ::protobuf::OneofFull for Resolved_chart {
+                    fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+                        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+                        descriptor.get(|| <super::Chart as ::protobuf::MessageFull>::descriptor().oneof_by_name("resolved_chart").unwrap()).clone()
+                    }
+                }
+
+                impl Resolved_chart {
+                    pub(in super::super::super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+                        ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Resolved_chart>("resolved_chart")
+                    }
+                }
+            }
+        }
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct ListDashboardsRequest {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.pagination)
+    pub pagination: ::protobuf::MessageField<super::common::Pagination>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.filters)
+    pub filters: ::protobuf::MessageField<list_dashboards_request::Filters>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.sort)
+    pub sort: ::std::vec::Vec<list_dashboards_request::Sort>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a ListDashboardsRequest {
+    fn default() -> &'a ListDashboardsRequest {
+        <ListDashboardsRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl ListDashboardsRequest {
+    pub fn new() -> ListDashboardsRequest {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::common::Pagination>(
+            "pagination",
+            |m: &ListDashboardsRequest| { &m.pagination },
+            |m: &mut ListDashboardsRequest| { &mut m.pagination },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, list_dashboards_request::Filters>(
+            "filters",
+            |m: &ListDashboardsRequest| { &m.filters },
+            |m: &mut ListDashboardsRequest| { &mut m.filters },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "sort",
+            |m: &ListDashboardsRequest| { &m.sort },
+            |m: &mut ListDashboardsRequest| { &mut m.sort },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ListDashboardsRequest>(
+            "ListDashboardsRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for ListDashboardsRequest {
+    const NAME: &'static str = "ListDashboardsRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.pagination)?;
+                },
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.filters)?;
+                },
+                34 => {
+                    self.sort.push(is.read_message()?);
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.pagination.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let Some(v) = self.filters.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        for value in &self.sort {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.pagination.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        }
+        if let Some(v) = self.filters.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        for v in &self.sort {
+            ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+        };
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> ListDashboardsRequest {
+        ListDashboardsRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.pagination.clear();
+        self.filters.clear();
+        self.sort.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static ListDashboardsRequest {
+        static instance: ListDashboardsRequest = ListDashboardsRequest {
+            pagination: ::protobuf::MessageField::none(),
+            filters: ::protobuf::MessageField::none(),
+            sort: ::std::vec::Vec::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for ListDashboardsRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("ListDashboardsRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for ListDashboardsRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for ListDashboardsRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `ListDashboardsRequest`
+pub mod list_dashboards_request {
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Filters)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Filters {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Filters.access)
+        pub access: ::protobuf::MessageField<super::super::access::AccessPermissionQuery>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Filters.free_entry)
+        pub free_entry: ::std::option::Option<::std::string::String>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Filters.favorites)
+        pub favorites: ::std::option::Option<bool>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Filters.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Filters {
+        fn default() -> &'a Filters {
+            <Filters as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Filters {
+        pub fn new() -> Filters {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(3);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::access::AccessPermissionQuery>(
+                "access",
+                |m: &Filters| { &m.access },
+                |m: &mut Filters| { &mut m.access },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "free_entry",
+                |m: &Filters| { &m.free_entry },
+                |m: &mut Filters| { &mut m.free_entry },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "favorites",
+                |m: &Filters| { &m.favorites },
+                |m: &mut Filters| { &mut m.favorites },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Filters>(
+                "ListDashboardsRequest.Filters",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Filters {
+        const NAME: &'static str = "Filters";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.access)?;
+                    },
+                    18 => {
+                        self.free_entry = ::std::option::Option::Some(is.read_string()?);
+                    },
+                    24 => {
+                        self.favorites = ::std::option::Option::Some(is.read_bool()?);
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.access.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            if let Some(v) = self.free_entry.as_ref() {
+                my_size += ::protobuf::rt::string_size(2, &v);
+            }
+            if let Some(v) = self.favorites {
+                my_size += 1 + 1;
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.access.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            }
+            if let Some(v) = self.free_entry.as_ref() {
+                os.write_string(2, v)?;
+            }
+            if let Some(v) = self.favorites {
+                os.write_bool(3, v)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Filters {
+            Filters::new()
+        }
+
+        fn clear(&mut self) {
+            self.access.clear();
+            self.free_entry = ::std::option::Option::None;
+            self.favorites = ::std::option::Option::None;
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Filters {
+            static instance: Filters = Filters {
+                access: ::protobuf::MessageField::none(),
+                free_entry: ::std::option::Option::None,
+                favorites: ::std::option::Option::None,
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Filters {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("ListDashboardsRequest.Filters").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Filters {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Filters {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Sort)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Sort {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Sort.key)
+        pub key: ::protobuf::EnumOrUnknown<sort::SortKey>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Sort.direction)
+        pub direction: ::protobuf::EnumOrUnknown<super::super::common::SortDirection>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Sort.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Sort {
+        fn default() -> &'a Sort {
+            <Sort as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Sort {
+        pub fn new() -> Sort {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "key",
+                |m: &Sort| { &m.key },
+                |m: &mut Sort| { &mut m.key },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "direction",
+                |m: &Sort| { &m.direction },
+                |m: &mut Sort| { &mut m.direction },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Sort>(
+                "ListDashboardsRequest.Sort",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Sort {
+        const NAME: &'static str = "Sort";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    8 => {
+                        self.key = is.read_enum_or_unknown()?;
+                    },
+                    16 => {
+                        self.direction = is.read_enum_or_unknown()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if self.key != ::protobuf::EnumOrUnknown::new(sort::SortKey::SORT_KEY_UNSPECIFIED) {
+                my_size += ::protobuf::rt::int32_size(1, self.key.value());
+            }
+            if self.direction != ::protobuf::EnumOrUnknown::new(super::super::common::SortDirection::ASCENDING) {
+                my_size += ::protobuf::rt::int32_size(2, self.direction.value());
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if self.key != ::protobuf::EnumOrUnknown::new(sort::SortKey::SORT_KEY_UNSPECIFIED) {
+                os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.key))?;
+            }
+            if self.direction != ::protobuf::EnumOrUnknown::new(super::super::common::SortDirection::ASCENDING) {
+                os.write_enum(2, ::protobuf::EnumOrUnknown::value(&self.direction))?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Sort {
+            Sort::new()
+        }
+
+        fn clear(&mut self) {
+            self.key = ::protobuf::EnumOrUnknown::new(sort::SortKey::SORT_KEY_UNSPECIFIED);
+            self.direction = ::protobuf::EnumOrUnknown::new(super::super::common::SortDirection::ASCENDING);
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Sort {
+            static instance: Sort = Sort {
+                key: ::protobuf::EnumOrUnknown::from_i32(0),
+                direction: ::protobuf::EnumOrUnknown::from_i32(0),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Sort {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("ListDashboardsRequest.Sort").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Sort {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Sort {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `Sort`
+    pub mod sort {
+        #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
+        // @@protoc_insertion_point(enum:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Sort.SortKey)
+        pub enum SortKey {
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Sort.SortKey.SORT_KEY_UNSPECIFIED)
+            SORT_KEY_UNSPECIFIED = 0,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Sort.SortKey.DASHBOARD_NAME)
+            DASHBOARD_NAME = 1,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Sort.SortKey.OWNER_NAME)
+            OWNER_NAME = 2,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Sort.SortKey.LAST_VIEWED)
+            LAST_VIEWED = 3,
+        }
+
+        impl ::protobuf::Enum for SortKey {
+            const NAME: &'static str = "SortKey";
+
+            fn value(&self) -> i32 {
+                *self as i32
+            }
+
+            fn from_i32(value: i32) -> ::std::option::Option<SortKey> {
+                match value {
+                    0 => ::std::option::Option::Some(SortKey::SORT_KEY_UNSPECIFIED),
+                    1 => ::std::option::Option::Some(SortKey::DASHBOARD_NAME),
+                    2 => ::std::option::Option::Some(SortKey::OWNER_NAME),
+                    3 => ::std::option::Option::Some(SortKey::LAST_VIEWED),
+                    _ => ::std::option::Option::None
+                }
+            }
+
+            fn from_str(str: &str) -> ::std::option::Option<SortKey> {
+                match str {
+                    "SORT_KEY_UNSPECIFIED" => ::std::option::Option::Some(SortKey::SORT_KEY_UNSPECIFIED),
+                    "DASHBOARD_NAME" => ::std::option::Option::Some(SortKey::DASHBOARD_NAME),
+                    "OWNER_NAME" => ::std::option::Option::Some(SortKey::OWNER_NAME),
+                    "LAST_VIEWED" => ::std::option::Option::Some(SortKey::LAST_VIEWED),
+                    _ => ::std::option::Option::None
+                }
+            }
+
+            const VALUES: &'static [SortKey] = &[
+                SortKey::SORT_KEY_UNSPECIFIED,
+                SortKey::DASHBOARD_NAME,
+                SortKey::OWNER_NAME,
+                SortKey::LAST_VIEWED,
+            ];
+        }
+
+        impl ::protobuf::EnumFull for SortKey {
+            fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().enum_by_package_relative_name("ListDashboardsRequest.Sort.SortKey").unwrap()).clone()
+            }
+
+            fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
+                let index = *self as usize;
+                Self::enum_descriptor().value_by_index(index)
+            }
+        }
+
+        impl ::std::default::Default for SortKey {
+            fn default() -> Self {
+                SortKey::SORT_KEY_UNSPECIFIED
+            }
+        }
+
+        impl SortKey {
+            pub(in super::super) fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
+                ::protobuf::reflect::GeneratedEnumDescriptorData::new::<SortKey>("ListDashboardsRequest.Sort.SortKey")
+            }
+        }
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.ListDashboardsResponse)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct ListDashboardsResponse {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsResponse.dashboards)
+    pub dashboards: ::std::vec::Vec<Dashboard>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListDashboardsResponse.total)
+    pub total: u64,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.ListDashboardsResponse.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a ListDashboardsResponse {
+    fn default() -> &'a ListDashboardsResponse {
+        <ListDashboardsResponse as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl ListDashboardsResponse {
+    pub fn new() -> ListDashboardsResponse {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "dashboards",
+            |m: &ListDashboardsResponse| { &m.dashboards },
+            |m: &mut ListDashboardsResponse| { &mut m.dashboards },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "total",
+            |m: &ListDashboardsResponse| { &m.total },
+            |m: &mut ListDashboardsResponse| { &mut m.total },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ListDashboardsResponse>(
+            "ListDashboardsResponse",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for ListDashboardsResponse {
+    const NAME: &'static str = "ListDashboardsResponse";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.dashboards.push(is.read_message()?);
+                },
+                16 => {
+                    self.total = is.read_uint64()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        for value in &self.dashboards {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        if self.total != 0 {
+            my_size += ::protobuf::rt::uint64_size(2, self.total);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        for v in &self.dashboards {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        };
+        if self.total != 0 {
+            os.write_uint64(2, self.total)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> ListDashboardsResponse {
+        ListDashboardsResponse::new()
+    }
+
+    fn clear(&mut self) {
+        self.dashboards.clear();
+        self.total = 0;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static ListDashboardsResponse {
+        static instance: ListDashboardsResponse = ListDashboardsResponse {
+            dashboards: ::std::vec::Vec::new(),
+            total: 0,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for ListDashboardsResponse {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("ListDashboardsResponse").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for ListDashboardsResponse {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for ListDashboardsResponse {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
 // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.GetWorkflowChartsRequest)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct GetWorkflowChartsRequest {
@@ -5956,12 +8921,2502 @@ impl ::protobuf::reflect::ProtobufValue for GetUniqueAppIdsResponse {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DashboardStylisticComponent {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.id)
+    pub id: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.dashboard_layout_settings)
+    pub dashboard_layout_settings: ::protobuf::MessageField<DashboardLayoutSettings>,
+    // message oneof groups
+    pub type_: ::std::option::Option<dashboard_stylistic_component::Type>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DashboardStylisticComponent {
+    fn default() -> &'a DashboardStylisticComponent {
+        <DashboardStylisticComponent as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DashboardStylisticComponent {
+    pub fn new() -> DashboardStylisticComponent {
+        ::std::default::Default::default()
+    }
+
+    // .bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.TextComponent text_component = 1;
+
+    pub fn text_component(&self) -> &dashboard_stylistic_component::TextComponent {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_stylistic_component::Type::TextComponent(ref v)) => v,
+            _ => <dashboard_stylistic_component::TextComponent as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_text_component(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_text_component(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_stylistic_component::Type::TextComponent(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_text_component(&mut self, v: dashboard_stylistic_component::TextComponent) {
+        self.type_ = ::std::option::Option::Some(dashboard_stylistic_component::Type::TextComponent(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_text_component(&mut self) -> &mut dashboard_stylistic_component::TextComponent {
+        if let ::std::option::Option::Some(dashboard_stylistic_component::Type::TextComponent(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(dashboard_stylistic_component::Type::TextComponent(dashboard_stylistic_component::TextComponent::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_stylistic_component::Type::TextComponent(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_text_component(&mut self) -> dashboard_stylistic_component::TextComponent {
+        if self.has_text_component() {
+            match self.type_.take() {
+                ::std::option::Option::Some(dashboard_stylistic_component::Type::TextComponent(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            dashboard_stylistic_component::TextComponent::new()
+        }
+    }
+
+    // .bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.Divider divider = 2;
+
+    pub fn divider(&self) -> &dashboard_stylistic_component::Divider {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_stylistic_component::Type::Divider(ref v)) => v,
+            _ => <dashboard_stylistic_component::Divider as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_divider(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_divider(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_stylistic_component::Type::Divider(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_divider(&mut self, v: dashboard_stylistic_component::Divider) {
+        self.type_ = ::std::option::Option::Some(dashboard_stylistic_component::Type::Divider(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_divider(&mut self) -> &mut dashboard_stylistic_component::Divider {
+        if let ::std::option::Option::Some(dashboard_stylistic_component::Type::Divider(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(dashboard_stylistic_component::Type::Divider(dashboard_stylistic_component::Divider::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(dashboard_stylistic_component::Type::Divider(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_divider(&mut self) -> dashboard_stylistic_component::Divider {
+        if self.has_divider() {
+            match self.type_.take() {
+                ::std::option::Option::Some(dashboard_stylistic_component::Type::Divider(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            dashboard_stylistic_component::Divider::new()
+        }
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, dashboard_stylistic_component::TextComponent>(
+            "text_component",
+            DashboardStylisticComponent::has_text_component,
+            DashboardStylisticComponent::text_component,
+            DashboardStylisticComponent::mut_text_component,
+            DashboardStylisticComponent::set_text_component,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, dashboard_stylistic_component::Divider>(
+            "divider",
+            DashboardStylisticComponent::has_divider,
+            DashboardStylisticComponent::divider,
+            DashboardStylisticComponent::mut_divider,
+            DashboardStylisticComponent::set_divider,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "id",
+            |m: &DashboardStylisticComponent| { &m.id },
+            |m: &mut DashboardStylisticComponent| { &mut m.id },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, DashboardLayoutSettings>(
+            "dashboard_layout_settings",
+            |m: &DashboardStylisticComponent| { &m.dashboard_layout_settings },
+            |m: &mut DashboardStylisticComponent| { &mut m.dashboard_layout_settings },
+        ));
+        oneofs.push(dashboard_stylistic_component::Type::generated_oneof_descriptor_data());
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DashboardStylisticComponent>(
+            "DashboardStylisticComponent",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DashboardStylisticComponent {
+    const NAME: &'static str = "DashboardStylisticComponent";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.type_ = ::std::option::Option::Some(dashboard_stylistic_component::Type::TextComponent(is.read_message()?));
+                },
+                18 => {
+                    self.type_ = ::std::option::Option::Some(dashboard_stylistic_component::Type::Divider(is.read_message()?));
+                },
+                26 => {
+                    self.id = is.read_string()?;
+                },
+                34 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.dashboard_layout_settings)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.id.is_empty() {
+            my_size += ::protobuf::rt::string_size(3, &self.id);
+        }
+        if let Some(v) = self.dashboard_layout_settings.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let ::std::option::Option::Some(ref v) = self.type_ {
+            match v {
+                &dashboard_stylistic_component::Type::TextComponent(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+                &dashboard_stylistic_component::Type::Divider(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+            };
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.id.is_empty() {
+            os.write_string(3, &self.id)?;
+        }
+        if let Some(v) = self.dashboard_layout_settings.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+        }
+        if let ::std::option::Option::Some(ref v) = self.type_ {
+            match v {
+                &dashboard_stylistic_component::Type::TextComponent(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+                },
+                &dashboard_stylistic_component::Type::Divider(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                },
+            };
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DashboardStylisticComponent {
+        DashboardStylisticComponent::new()
+    }
+
+    fn clear(&mut self) {
+        self.type_ = ::std::option::Option::None;
+        self.type_ = ::std::option::Option::None;
+        self.id.clear();
+        self.dashboard_layout_settings.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DashboardStylisticComponent {
+        static instance: DashboardStylisticComponent = DashboardStylisticComponent {
+            id: ::std::string::String::new(),
+            dashboard_layout_settings: ::protobuf::MessageField::none(),
+            type_: ::std::option::Option::None,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DashboardStylisticComponent {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DashboardStylisticComponent").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DashboardStylisticComponent {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DashboardStylisticComponent {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `DashboardStylisticComponent`
+pub mod dashboard_stylistic_component {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.type)
+    pub enum Type {
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.text_component)
+        TextComponent(TextComponent),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.divider)
+        Divider(Divider),
+    }
+
+    impl ::protobuf::Oneof for Type {
+    }
+
+    impl ::protobuf::OneofFull for Type {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::DashboardStylisticComponent as ::protobuf::MessageFull>::descriptor().oneof_by_name("type").unwrap()).clone()
+        }
+    }
+
+    impl Type {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Type>("type")
+        }
+    }
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.Divider)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Divider {
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.Divider.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Divider {
+        fn default() -> &'a Divider {
+            <Divider as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Divider {
+        pub fn new() -> Divider {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(0);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Divider>(
+                "DashboardStylisticComponent.Divider",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Divider {
+        const NAME: &'static str = "Divider";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Divider {
+            Divider::new()
+        }
+
+        fn clear(&mut self) {
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Divider {
+            static instance: Divider = Divider {
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Divider {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("DashboardStylisticComponent.Divider").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Divider {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Divider {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.TextComponent)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct TextComponent {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.TextComponent.text)
+        pub text: ::std::string::String,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.TextComponent.variant)
+        pub variant: ::std::string::String,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.TextComponent.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a TextComponent {
+        fn default() -> &'a TextComponent {
+            <TextComponent as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl TextComponent {
+        pub fn new() -> TextComponent {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "text",
+                |m: &TextComponent| { &m.text },
+                |m: &mut TextComponent| { &mut m.text },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "variant",
+                |m: &TextComponent| { &m.variant },
+                |m: &mut TextComponent| { &mut m.variant },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<TextComponent>(
+                "DashboardStylisticComponent.TextComponent",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for TextComponent {
+        const NAME: &'static str = "TextComponent";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.text = is.read_string()?;
+                    },
+                    18 => {
+                        self.variant = is.read_string()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if !self.text.is_empty() {
+                my_size += ::protobuf::rt::string_size(1, &self.text);
+            }
+            if !self.variant.is_empty() {
+                my_size += ::protobuf::rt::string_size(2, &self.variant);
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if !self.text.is_empty() {
+                os.write_string(1, &self.text)?;
+            }
+            if !self.variant.is_empty() {
+                os.write_string(2, &self.variant)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> TextComponent {
+            TextComponent::new()
+        }
+
+        fn clear(&mut self) {
+            self.text.clear();
+            self.variant.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static TextComponent {
+            static instance: TextComponent = TextComponent {
+                text: ::std::string::String::new(),
+                variant: ::std::string::String::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for TextComponent {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("DashboardStylisticComponent.TextComponent").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for TextComponent {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for TextComponent {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DashboardVariable)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DashboardVariable {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DashboardVariable.earliest_contiguous_deployed_time)
+    pub earliest_contiguous_deployed_time: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
+    // message oneof groups
+    pub variable_type: ::std::option::Option<dashboard_variable::Variable_type>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DashboardVariable.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DashboardVariable {
+    fn default() -> &'a DashboardVariable {
+        <DashboardVariable as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DashboardVariable {
+    pub fn new() -> DashboardVariable {
+        ::std::default::Default::default()
+    }
+
+    // .bitdrift.public.unary.workflows.v1.GroupBy.Value value = 3;
+
+    pub fn value(&self) -> &super::workflow::group_by::Value {
+        match self.variable_type {
+            ::std::option::Option::Some(dashboard_variable::Variable_type::Value(ref v)) => v,
+            _ => <super::workflow::group_by::Value as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_value(&mut self) {
+        self.variable_type = ::std::option::Option::None;
+    }
+
+    pub fn has_value(&self) -> bool {
+        match self.variable_type {
+            ::std::option::Option::Some(dashboard_variable::Variable_type::Value(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_value(&mut self, v: super::workflow::group_by::Value) {
+        self.variable_type = ::std::option::Option::Some(dashboard_variable::Variable_type::Value(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_value(&mut self) -> &mut super::workflow::group_by::Value {
+        if let ::std::option::Option::Some(dashboard_variable::Variable_type::Value(_)) = self.variable_type {
+        } else {
+            self.variable_type = ::std::option::Option::Some(dashboard_variable::Variable_type::Value(super::workflow::group_by::Value::new()));
+        }
+        match self.variable_type {
+            ::std::option::Option::Some(dashboard_variable::Variable_type::Value(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_value(&mut self) -> super::workflow::group_by::Value {
+        if self.has_value() {
+            match self.variable_type.take() {
+                ::std::option::Option::Some(dashboard_variable::Variable_type::Value(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            super::workflow::group_by::Value::new()
+        }
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::workflow::group_by::Value>(
+            "value",
+            DashboardVariable::has_value,
+            DashboardVariable::value,
+            DashboardVariable::mut_value,
+            DashboardVariable::set_value,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::timestamp::Timestamp>(
+            "earliest_contiguous_deployed_time",
+            |m: &DashboardVariable| { &m.earliest_contiguous_deployed_time },
+            |m: &mut DashboardVariable| { &mut m.earliest_contiguous_deployed_time },
+        ));
+        oneofs.push(dashboard_variable::Variable_type::generated_oneof_descriptor_data());
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DashboardVariable>(
+            "DashboardVariable",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DashboardVariable {
+    const NAME: &'static str = "DashboardVariable";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                26 => {
+                    self.variable_type = ::std::option::Option::Some(dashboard_variable::Variable_type::Value(is.read_message()?));
+                },
+                18 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.earliest_contiguous_deployed_time)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.earliest_contiguous_deployed_time.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let ::std::option::Option::Some(ref v) = self.variable_type {
+            match v {
+                &dashboard_variable::Variable_type::Value(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
+            };
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.earliest_contiguous_deployed_time.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+        }
+        if let ::std::option::Option::Some(ref v) = self.variable_type {
+            match v {
+                &dashboard_variable::Variable_type::Value(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+                },
+            };
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DashboardVariable {
+        DashboardVariable::new()
+    }
+
+    fn clear(&mut self) {
+        self.variable_type = ::std::option::Option::None;
+        self.earliest_contiguous_deployed_time.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DashboardVariable {
+        static instance: DashboardVariable = DashboardVariable {
+            earliest_contiguous_deployed_time: ::protobuf::MessageField::none(),
+            variable_type: ::std::option::Option::None,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DashboardVariable {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DashboardVariable").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DashboardVariable {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DashboardVariable {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `DashboardVariable`
+pub mod dashboard_variable {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift.public.unary.dashboards.v1.DashboardVariable.variable_type)
+    pub enum Variable_type {
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.dashboards.v1.DashboardVariable.value)
+        Value(super::super::workflow::group_by::Value),
+    }
+
+    impl ::protobuf::Oneof for Variable_type {
+    }
+
+    impl ::protobuf::OneofFull for Variable_type {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::DashboardVariable as ::protobuf::MessageFull>::descriptor().oneof_by_name("variable_type").unwrap()).clone()
+        }
+    }
+
+    impl Variable_type {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Variable_type>("variable_type")
+        }
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.ChartComponentLayout)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct ChartComponentLayout {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ChartComponentLayout.chart_id)
+    pub chart_id: ::protobuf::MessageField<super::chart_id::ChartIdentifier>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ChartComponentLayout.layout_settings)
+    pub layout_settings: ::protobuf::MessageField<DashboardLayoutSettings>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ChartComponentLayout.chart_metadata)
+    pub chart_metadata: ::protobuf::MessageField<super::chart_metadata::ChartMetadata>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.ChartComponentLayout.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a ChartComponentLayout {
+    fn default() -> &'a ChartComponentLayout {
+        <ChartComponentLayout as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl ChartComponentLayout {
+    pub fn new() -> ChartComponentLayout {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(3);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::chart_id::ChartIdentifier>(
+            "chart_id",
+            |m: &ChartComponentLayout| { &m.chart_id },
+            |m: &mut ChartComponentLayout| { &mut m.chart_id },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, DashboardLayoutSettings>(
+            "layout_settings",
+            |m: &ChartComponentLayout| { &m.layout_settings },
+            |m: &mut ChartComponentLayout| { &mut m.layout_settings },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::chart_metadata::ChartMetadata>(
+            "chart_metadata",
+            |m: &ChartComponentLayout| { &m.chart_metadata },
+            |m: &mut ChartComponentLayout| { &mut m.chart_metadata },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ChartComponentLayout>(
+            "ChartComponentLayout",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for ChartComponentLayout {
+    const NAME: &'static str = "ChartComponentLayout";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.chart_id)?;
+                },
+                18 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.layout_settings)?;
+                },
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.chart_metadata)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.chart_id.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let Some(v) = self.layout_settings.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let Some(v) = self.chart_metadata.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.chart_id.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        }
+        if let Some(v) = self.layout_settings.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+        }
+        if let Some(v) = self.chart_metadata.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> ChartComponentLayout {
+        ChartComponentLayout::new()
+    }
+
+    fn clear(&mut self) {
+        self.chart_id.clear();
+        self.layout_settings.clear();
+        self.chart_metadata.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static ChartComponentLayout {
+        static instance: ChartComponentLayout = ChartComponentLayout {
+            chart_id: ::protobuf::MessageField::none(),
+            layout_settings: ::protobuf::MessageField::none(),
+            chart_metadata: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for ChartComponentLayout {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("ChartComponentLayout").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for ChartComponentLayout {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for ChartComponentLayout {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.FavoriteCustomDashboardRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct FavoriteCustomDashboardRequest {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.FavoriteCustomDashboardRequest.identifier)
+    pub identifier: ::protobuf::MessageField<DashboardIdentifier>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.FavoriteCustomDashboardRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a FavoriteCustomDashboardRequest {
+    fn default() -> &'a FavoriteCustomDashboardRequest {
+        <FavoriteCustomDashboardRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl FavoriteCustomDashboardRequest {
+    pub fn new() -> FavoriteCustomDashboardRequest {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, DashboardIdentifier>(
+            "identifier",
+            |m: &FavoriteCustomDashboardRequest| { &m.identifier },
+            |m: &mut FavoriteCustomDashboardRequest| { &mut m.identifier },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<FavoriteCustomDashboardRequest>(
+            "FavoriteCustomDashboardRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for FavoriteCustomDashboardRequest {
+    const NAME: &'static str = "FavoriteCustomDashboardRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.identifier)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.identifier.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.identifier.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> FavoriteCustomDashboardRequest {
+        FavoriteCustomDashboardRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.identifier.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static FavoriteCustomDashboardRequest {
+        static instance: FavoriteCustomDashboardRequest = FavoriteCustomDashboardRequest {
+            identifier: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for FavoriteCustomDashboardRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("FavoriteCustomDashboardRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for FavoriteCustomDashboardRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for FavoriteCustomDashboardRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.FavoriteCustomDashboardResponse)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct FavoriteCustomDashboardResponse {
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.FavoriteCustomDashboardResponse.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a FavoriteCustomDashboardResponse {
+    fn default() -> &'a FavoriteCustomDashboardResponse {
+        <FavoriteCustomDashboardResponse as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl FavoriteCustomDashboardResponse {
+    pub fn new() -> FavoriteCustomDashboardResponse {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(0);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<FavoriteCustomDashboardResponse>(
+            "FavoriteCustomDashboardResponse",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for FavoriteCustomDashboardResponse {
+    const NAME: &'static str = "FavoriteCustomDashboardResponse";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> FavoriteCustomDashboardResponse {
+        FavoriteCustomDashboardResponse::new()
+    }
+
+    fn clear(&mut self) {
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static FavoriteCustomDashboardResponse {
+        static instance: FavoriteCustomDashboardResponse = FavoriteCustomDashboardResponse {
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for FavoriteCustomDashboardResponse {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("FavoriteCustomDashboardResponse").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for FavoriteCustomDashboardResponse {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for FavoriteCustomDashboardResponse {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct UpsertCustomDashboardRequest {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.id)
+    pub id: ::std::option::Option<::std::string::String>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.name)
+    pub name: ::std::string::String,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.tabs)
+    pub tabs: ::std::vec::Vec<upsert_custom_dashboard_request::DashboardTab>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.dashboard_variables)
+    pub dashboard_variables: ::std::vec::Vec<super::workflow::group_by::Value>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a UpsertCustomDashboardRequest {
+    fn default() -> &'a UpsertCustomDashboardRequest {
+        <UpsertCustomDashboardRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl UpsertCustomDashboardRequest {
+    pub fn new() -> UpsertCustomDashboardRequest {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "id",
+            |m: &UpsertCustomDashboardRequest| { &m.id },
+            |m: &mut UpsertCustomDashboardRequest| { &mut m.id },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "name",
+            |m: &UpsertCustomDashboardRequest| { &m.name },
+            |m: &mut UpsertCustomDashboardRequest| { &mut m.name },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "tabs",
+            |m: &UpsertCustomDashboardRequest| { &m.tabs },
+            |m: &mut UpsertCustomDashboardRequest| { &mut m.tabs },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "dashboard_variables",
+            |m: &UpsertCustomDashboardRequest| { &m.dashboard_variables },
+            |m: &mut UpsertCustomDashboardRequest| { &mut m.dashboard_variables },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<UpsertCustomDashboardRequest>(
+            "UpsertCustomDashboardRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for UpsertCustomDashboardRequest {
+    const NAME: &'static str = "UpsertCustomDashboardRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.id = ::std::option::Option::Some(is.read_string()?);
+                },
+                18 => {
+                    self.name = is.read_string()?;
+                },
+                26 => {
+                    self.tabs.push(is.read_message()?);
+                },
+                42 => {
+                    self.dashboard_variables.push(is.read_message()?);
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.id.as_ref() {
+            my_size += ::protobuf::rt::string_size(1, &v);
+        }
+        if !self.name.is_empty() {
+            my_size += ::protobuf::rt::string_size(2, &self.name);
+        }
+        for value in &self.tabs {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        for value in &self.dashboard_variables {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.id.as_ref() {
+            os.write_string(1, v)?;
+        }
+        if !self.name.is_empty() {
+            os.write_string(2, &self.name)?;
+        }
+        for v in &self.tabs {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        };
+        for v in &self.dashboard_variables {
+            ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
+        };
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> UpsertCustomDashboardRequest {
+        UpsertCustomDashboardRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.id = ::std::option::Option::None;
+        self.name.clear();
+        self.tabs.clear();
+        self.dashboard_variables.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static UpsertCustomDashboardRequest {
+        static instance: UpsertCustomDashboardRequest = UpsertCustomDashboardRequest {
+            id: ::std::option::Option::None,
+            name: ::std::string::String::new(),
+            tabs: ::std::vec::Vec::new(),
+            dashboard_variables: ::std::vec::Vec::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for UpsertCustomDashboardRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("UpsertCustomDashboardRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for UpsertCustomDashboardRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for UpsertCustomDashboardRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `UpsertCustomDashboardRequest`
+pub mod upsert_custom_dashboard_request {
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct DashboardTab {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.id)
+        pub id: ::std::option::Option<::std::string::String>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.charts)
+        pub charts: ::std::vec::Vec<dashboard_tab::Chart>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.stylistic_components)
+        pub stylistic_components: ::std::vec::Vec<super::DashboardStylisticComponent>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.name)
+        pub name: ::std::option::Option<::std::string::String>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a DashboardTab {
+        fn default() -> &'a DashboardTab {
+            <DashboardTab as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl DashboardTab {
+        pub fn new() -> DashboardTab {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(4);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "id",
+                |m: &DashboardTab| { &m.id },
+                |m: &mut DashboardTab| { &mut m.id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "charts",
+                |m: &DashboardTab| { &m.charts },
+                |m: &mut DashboardTab| { &mut m.charts },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "stylistic_components",
+                |m: &DashboardTab| { &m.stylistic_components },
+                |m: &mut DashboardTab| { &mut m.stylistic_components },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "name",
+                |m: &DashboardTab| { &m.name },
+                |m: &mut DashboardTab| { &mut m.name },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DashboardTab>(
+                "UpsertCustomDashboardRequest.DashboardTab",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for DashboardTab {
+        const NAME: &'static str = "DashboardTab";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.id = ::std::option::Option::Some(is.read_string()?);
+                    },
+                    18 => {
+                        self.charts.push(is.read_message()?);
+                    },
+                    26 => {
+                        self.stylistic_components.push(is.read_message()?);
+                    },
+                    34 => {
+                        self.name = ::std::option::Option::Some(is.read_string()?);
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.id.as_ref() {
+                my_size += ::protobuf::rt::string_size(1, &v);
+            }
+            for value in &self.charts {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            for value in &self.stylistic_components {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            if let Some(v) = self.name.as_ref() {
+                my_size += ::protobuf::rt::string_size(4, &v);
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.id.as_ref() {
+                os.write_string(1, v)?;
+            }
+            for v in &self.charts {
+                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+            };
+            for v in &self.stylistic_components {
+                ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+            };
+            if let Some(v) = self.name.as_ref() {
+                os.write_string(4, v)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> DashboardTab {
+            DashboardTab::new()
+        }
+
+        fn clear(&mut self) {
+            self.id = ::std::option::Option::None;
+            self.charts.clear();
+            self.stylistic_components.clear();
+            self.name = ::std::option::Option::None;
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static DashboardTab {
+            static instance: DashboardTab = DashboardTab {
+                id: ::std::option::Option::None,
+                charts: ::std::vec::Vec::new(),
+                stylistic_components: ::std::vec::Vec::new(),
+                name: ::std::option::Option::None,
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for DashboardTab {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("UpsertCustomDashboardRequest.DashboardTab").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for DashboardTab {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for DashboardTab {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `DashboardTab`
+    pub mod dashboard_tab {
+        // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.Chart)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct Chart {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.Chart.id)
+            pub id: ::std::option::Option<::std::string::String>,
+            // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.Chart.chart_component_layout)
+            pub chart_component_layout: ::protobuf::MessageField<super::super::ChartComponentLayout>,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.Chart.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a Chart {
+            fn default() -> &'a Chart {
+                <Chart as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl Chart {
+            pub fn new() -> Chart {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(2);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                    "id",
+                    |m: &Chart| { &m.id },
+                    |m: &mut Chart| { &mut m.id },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::ChartComponentLayout>(
+                    "chart_component_layout",
+                    |m: &Chart| { &m.chart_component_layout },
+                    |m: &mut Chart| { &mut m.chart_component_layout },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Chart>(
+                    "UpsertCustomDashboardRequest.DashboardTab.Chart",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for Chart {
+            const NAME: &'static str = "Chart";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.id = ::std::option::Option::Some(is.read_string()?);
+                        },
+                        18 => {
+                            ::protobuf::rt::read_singular_message_into_field(is, &mut self.chart_component_layout)?;
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if let Some(v) = self.id.as_ref() {
+                    my_size += ::protobuf::rt::string_size(1, &v);
+                }
+                if let Some(v) = self.chart_component_layout.as_ref() {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if let Some(v) = self.id.as_ref() {
+                    os.write_string(1, v)?;
+                }
+                if let Some(v) = self.chart_component_layout.as_ref() {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> Chart {
+                Chart::new()
+            }
+
+            fn clear(&mut self) {
+                self.id = ::std::option::Option::None;
+                self.chart_component_layout.clear();
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static Chart {
+                static instance: Chart = Chart {
+                    id: ::std::option::Option::None,
+                    chart_component_layout: ::protobuf::MessageField::none(),
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for Chart {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("UpsertCustomDashboardRequest.DashboardTab.Chart").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for Chart {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for Chart {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardResponse)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct UpsertCustomDashboardResponse {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardResponse.dashboard)
+    pub dashboard: ::protobuf::MessageField<dashboard::CustomDashboard>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardResponse.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a UpsertCustomDashboardResponse {
+    fn default() -> &'a UpsertCustomDashboardResponse {
+        <UpsertCustomDashboardResponse as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl UpsertCustomDashboardResponse {
+    pub fn new() -> UpsertCustomDashboardResponse {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, dashboard::CustomDashboard>(
+            "dashboard",
+            |m: &UpsertCustomDashboardResponse| { &m.dashboard },
+            |m: &mut UpsertCustomDashboardResponse| { &mut m.dashboard },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<UpsertCustomDashboardResponse>(
+            "UpsertCustomDashboardResponse",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for UpsertCustomDashboardResponse {
+    const NAME: &'static str = "UpsertCustomDashboardResponse";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.dashboard)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.dashboard.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.dashboard.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> UpsertCustomDashboardResponse {
+        UpsertCustomDashboardResponse::new()
+    }
+
+    fn clear(&mut self) {
+        self.dashboard.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static UpsertCustomDashboardResponse {
+        static instance: UpsertCustomDashboardResponse = UpsertCustomDashboardResponse {
+            dashboard: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for UpsertCustomDashboardResponse {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("UpsertCustomDashboardResponse").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for UpsertCustomDashboardResponse {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for UpsertCustomDashboardResponse {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DeleteCustomDashboardRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DeleteCustomDashboardRequest {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DeleteCustomDashboardRequest.id)
+    pub id: ::std::string::String,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DeleteCustomDashboardRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DeleteCustomDashboardRequest {
+    fn default() -> &'a DeleteCustomDashboardRequest {
+        <DeleteCustomDashboardRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DeleteCustomDashboardRequest {
+    pub fn new() -> DeleteCustomDashboardRequest {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "id",
+            |m: &DeleteCustomDashboardRequest| { &m.id },
+            |m: &mut DeleteCustomDashboardRequest| { &mut m.id },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DeleteCustomDashboardRequest>(
+            "DeleteCustomDashboardRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DeleteCustomDashboardRequest {
+    const NAME: &'static str = "DeleteCustomDashboardRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.id = is.read_string()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.id.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.id);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.id.is_empty() {
+            os.write_string(1, &self.id)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DeleteCustomDashboardRequest {
+        DeleteCustomDashboardRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.id.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DeleteCustomDashboardRequest {
+        static instance: DeleteCustomDashboardRequest = DeleteCustomDashboardRequest {
+            id: ::std::string::String::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DeleteCustomDashboardRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DeleteCustomDashboardRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DeleteCustomDashboardRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DeleteCustomDashboardRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DeleteCustomDashboardResponse)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DeleteCustomDashboardResponse {
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DeleteCustomDashboardResponse.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DeleteCustomDashboardResponse {
+    fn default() -> &'a DeleteCustomDashboardResponse {
+        <DeleteCustomDashboardResponse as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DeleteCustomDashboardResponse {
+    pub fn new() -> DeleteCustomDashboardResponse {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(0);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DeleteCustomDashboardResponse>(
+            "DeleteCustomDashboardResponse",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DeleteCustomDashboardResponse {
+    const NAME: &'static str = "DeleteCustomDashboardResponse";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DeleteCustomDashboardResponse {
+        DeleteCustomDashboardResponse::new()
+    }
+
+    fn clear(&mut self) {
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DeleteCustomDashboardResponse {
+        static instance: DeleteCustomDashboardResponse = DeleteCustomDashboardResponse {
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DeleteCustomDashboardResponse {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DeleteCustomDashboardResponse").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DeleteCustomDashboardResponse {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DeleteCustomDashboardResponse {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.ListChartsRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct ListChartsRequest {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListChartsRequest.pagination)
+    pub pagination: ::protobuf::MessageField<super::common::Pagination>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListChartsRequest.filters)
+    pub filters: ::protobuf::MessageField<list_charts_request::Filters>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.ListChartsRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a ListChartsRequest {
+    fn default() -> &'a ListChartsRequest {
+        <ListChartsRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl ListChartsRequest {
+    pub fn new() -> ListChartsRequest {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::common::Pagination>(
+            "pagination",
+            |m: &ListChartsRequest| { &m.pagination },
+            |m: &mut ListChartsRequest| { &mut m.pagination },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, list_charts_request::Filters>(
+            "filters",
+            |m: &ListChartsRequest| { &m.filters },
+            |m: &mut ListChartsRequest| { &mut m.filters },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ListChartsRequest>(
+            "ListChartsRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for ListChartsRequest {
+    const NAME: &'static str = "ListChartsRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.pagination)?;
+                },
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.filters)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.pagination.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let Some(v) = self.filters.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.pagination.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        }
+        if let Some(v) = self.filters.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> ListChartsRequest {
+        ListChartsRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.pagination.clear();
+        self.filters.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static ListChartsRequest {
+        static instance: ListChartsRequest = ListChartsRequest {
+            pagination: ::protobuf::MessageField::none(),
+            filters: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for ListChartsRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("ListChartsRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for ListChartsRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for ListChartsRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `ListChartsRequest`
+pub mod list_charts_request {
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.ListChartsRequest.Filters)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Filters {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListChartsRequest.Filters.access)
+        pub access: ::protobuf::MessageField<super::super::access::AccessPermissionQuery>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListChartsRequest.Filters.view_id)
+        pub view_id: ::std::option::Option<::std::string::String>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListChartsRequest.Filters.workflow_id)
+        pub workflow_id: ::std::option::Option<::std::string::String>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListChartsRequest.Filters.chart_name)
+        pub chart_name: ::std::option::Option<::std::string::String>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.ListChartsRequest.Filters.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Filters {
+        fn default() -> &'a Filters {
+            <Filters as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Filters {
+        pub fn new() -> Filters {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(4);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::access::AccessPermissionQuery>(
+                "access",
+                |m: &Filters| { &m.access },
+                |m: &mut Filters| { &mut m.access },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "view_id",
+                |m: &Filters| { &m.view_id },
+                |m: &mut Filters| { &mut m.view_id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "workflow_id",
+                |m: &Filters| { &m.workflow_id },
+                |m: &mut Filters| { &mut m.workflow_id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+                "chart_name",
+                |m: &Filters| { &m.chart_name },
+                |m: &mut Filters| { &mut m.chart_name },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Filters>(
+                "ListChartsRequest.Filters",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Filters {
+        const NAME: &'static str = "Filters";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.access)?;
+                    },
+                    18 => {
+                        self.view_id = ::std::option::Option::Some(is.read_string()?);
+                    },
+                    26 => {
+                        self.workflow_id = ::std::option::Option::Some(is.read_string()?);
+                    },
+                    34 => {
+                        self.chart_name = ::std::option::Option::Some(is.read_string()?);
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.access.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            if let Some(v) = self.view_id.as_ref() {
+                my_size += ::protobuf::rt::string_size(2, &v);
+            }
+            if let Some(v) = self.workflow_id.as_ref() {
+                my_size += ::protobuf::rt::string_size(3, &v);
+            }
+            if let Some(v) = self.chart_name.as_ref() {
+                my_size += ::protobuf::rt::string_size(4, &v);
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.access.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            }
+            if let Some(v) = self.view_id.as_ref() {
+                os.write_string(2, v)?;
+            }
+            if let Some(v) = self.workflow_id.as_ref() {
+                os.write_string(3, v)?;
+            }
+            if let Some(v) = self.chart_name.as_ref() {
+                os.write_string(4, v)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Filters {
+            Filters::new()
+        }
+
+        fn clear(&mut self) {
+            self.access.clear();
+            self.view_id = ::std::option::Option::None;
+            self.workflow_id = ::std::option::Option::None;
+            self.chart_name = ::std::option::Option::None;
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Filters {
+            static instance: Filters = Filters {
+                access: ::protobuf::MessageField::none(),
+                view_id: ::std::option::Option::None,
+                workflow_id: ::std::option::Option::None,
+                chart_name: ::std::option::Option::None,
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Filters {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("ListChartsRequest.Filters").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Filters {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Filters {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.ListChartsResponse)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct ListChartsResponse {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListChartsResponse.charts)
+    pub charts: ::std::vec::Vec<ResolvedChart>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ListChartsResponse.total_count)
+    pub total_count: u32,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.ListChartsResponse.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a ListChartsResponse {
+    fn default() -> &'a ListChartsResponse {
+        <ListChartsResponse as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl ListChartsResponse {
+    pub fn new() -> ListChartsResponse {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "charts",
+            |m: &ListChartsResponse| { &m.charts },
+            |m: &mut ListChartsResponse| { &mut m.charts },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "total_count",
+            |m: &ListChartsResponse| { &m.total_count },
+            |m: &mut ListChartsResponse| { &mut m.total_count },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ListChartsResponse>(
+            "ListChartsResponse",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for ListChartsResponse {
+    const NAME: &'static str = "ListChartsResponse";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.charts.push(is.read_message()?);
+                },
+                16 => {
+                    self.total_count = is.read_uint32()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        for value in &self.charts {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        if self.total_count != 0 {
+            my_size += ::protobuf::rt::uint32_size(2, self.total_count);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        for v in &self.charts {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        };
+        if self.total_count != 0 {
+            os.write_uint32(2, self.total_count)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> ListChartsResponse {
+        ListChartsResponse::new()
+    }
+
+    fn clear(&mut self) {
+        self.charts.clear();
+        self.total_count = 0;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static ListChartsResponse {
+        static instance: ListChartsResponse = ListChartsResponse {
+            charts: ::std::vec::Vec::new(),
+            total_count: 0,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for ListChartsResponse {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("ListChartsResponse").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for ListChartsResponse {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for ListChartsResponse {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n-bitdrift/public/unary/dashboards/v1/api.proto\x12#bitdrift.public.una\
     ry.dashboards.v1\x1a1bitdrift/public/shared/platform/v1/platform.proto\
-    \x1a5bitdrift/public/shared/workflows/v1/time_series.proto\x1a.bitdrift/\
-    public/unary/charts/v1/chart_id.proto\x1a4bitdrift/public/unary/charts/v\
-    1/chart_metadata.proto\x1a,bitdrift/public/unary/common/v1/common.proto\
+    \x1a5bitdrift/public/shared/workflows/v1/time_series.proto\x1a+bitdrift/\
+    public/unary/admin/v1/access.proto\x1a.bitdrift/public/unary/charts/v1/c\
+    hart_id.proto\x1a4bitdrift/public/unary/charts/v1/chart_metadata.proto\
+    \x1a,bitdrift/public/unary/common/v1/common.proto\x1a1bitdrift/public/un\
+    ary/workflows/v1/workflow.proto\x1a\x1egoogle/protobuf/duration.proto\
     \x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17validate/validate.proto\"\
     \xe4\n\n\rResolvedChart\x12J\n\x02id\x18\x01\x20\x01(\x0b20.bitdrift.pub\
     lic.unary.charts.v1.ChartIdentifierR\x02idB\x08\xfaB\x05\x8a\x01\x02\x10\
@@ -5989,18 +11444,95 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x0b2\x1a.google.protobuf.TimestampR\ndeployedAt\x129\n\nstopped_at\x18\
     \x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tstoppedAt\x12P\n\x10d\
     eployed_by_user\x18\x04\x20\x01(\x0b2&.bitdrift.public.unary.common.v1.O\
-    wnerR\x0edeployedByUserB\x0b\n\x04type\x12\x03\xf8B\x01\"G\n\x18GetWorkf\
-    lowChartsRequest\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\
-    \n\xfaB\x07r\x05\x10\x01\x18\x80\x20\"g\n\x19GetWorkflowChartsResponse\
-    \x12J\n\x06charts\x18\x01\x20\x03(\x0b22.bitdrift.public.unary.dashboard\
-    s.v1.ResolvedChartR\x06charts\"f\n\x1eInsightComparisonConfiguration\x12\
-    !\n\x06lhs_id\x18\x01\x20\x01(\tR\x05lhsIdB\n\xfaB\x07r\x05\x10\x01\x18\
-    \xff\x01\x12!\n\x06rhs_id\x18\x02\x20\x01(\tR\x05rhsIdB\n\xfaB\x07r\x05\
-    \x10\x01\x18\xff\x01\"b\n\x13SankeyConfiguration\x12\x1e\n\x0btop_k_path\
-    s\x18\x01\x20\x01(\x04R\ttopKPaths\x12+\n\x11compaction_target\x18\x02\
-    \x20\x01(\x04R\x10compactionTarget\"\x90\x01\n\x14CounterConfiguration\
-    \x12x\n\x10aggregation_type\x18\x01\x20\x01(\x0e2C.bitdrift.public.share\
-    d.workflows.v1.Counter.CounterAggregationTypeR\x0faggregationTypeB\x08\
+    wnerR\x0edeployedByUserB\x0b\n\x04type\x12\x03\xf8B\x01\"\xdd\x01\n\x17D\
+    ashboardLayoutSettings\x12-\n\x0bcolumn_span\x18\x01\x20\x01(\rH\0R\ncol\
+    umnSpanB\x07\xfaB\x04*\x02\x20\0\x88\x01\x01\x12'\n\x08row_span\x18\x02\
+    \x20\x01(\rH\x01R\x07rowSpanB\x07\xfaB\x04*\x02\x20\0\x88\x01\x01\x12\
+    \x1b\n\tis_hidden\x18\x03\x20\x01(\x08R\x08isHidden\x12\x11\n\x01x\x18\
+    \x04\x20\x01(\rH\x02R\x01x\x88\x01\x01\x12\x11\n\x01y\x18\x05\x20\x01(\r\
+    H\x03R\x01y\x88\x01\x01B\x0e\n\x0c_column_spanB\x0b\n\t_row_spanB\x04\n\
+    \x02_xB\x04\n\x02_y\"\xd5\x01\n\x0eDashboardGroup\x12J\n\x06charts\x18\
+    \x01\x20\x03(\x0b22.bitdrift.public.unary.dashboards.v1.ResolvedChartR\
+    \x06charts\x12&\n\x08category\x18\x02\x20\x01(\tR\x08categoryB\n\xfaB\
+    \x07r\x05\x10\x01\x18\xff\x01\x12O\n\x16minimum_query_interval\x18\x03\
+    \x20\x01(\x0b2\x19.google.protobuf.DurationR\x14minimumQueryInterval\"\
+    \xa8\x03\n\x13DashboardIdentifier\x12u\n\x10health_dashboard\x18\x01\x20\
+    \x01(\x0b2H.bitdrift.public.unary.dashboards.v1.DashboardIdentifier.Heal\
+    thDashboardH\0R\x0fhealthDashboard\x12u\n\x10custom_dashboard\x18\x02\
+    \x20\x01(\x0b2H.bitdrift.public.unary.dashboards.v1.DashboardIdentifier.\
+    CustomDashboardH\0R\x0fcustomDashboard\x1ah\n\x0fHealthDashboard\x12U\n\
+    \x0fplatform_target\x18\x01\x20\x01(\x0b2,.bitdrift.public.shared.platfo\
+    rm.v1.PlatformR\x0eplatformTarget\x1a,\n\x0fCustomDashboard\x12\x19\n\
+    \x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18dB\x0b\n\
+    \x04type\x12\x03\xf8B\x01\"_\n\x13GetDashboardRequest\x12H\n\x02id\x18\
+    \x03\x20\x01(\x0b28.bitdrift.public.unary.dashboards.v1.DashboardIdentif\
+    ierR\x02id\"d\n\x14GetDashboardResponse\x12L\n\tdashboard\x18\x05\x20\
+    \x01(\x0b2..bitdrift.public.unary.dashboards.v1.DashboardR\tdashboard\"\
+    \x99\r\n\tDashboard\x12k\n\x10health_dashboard\x18\x02\x20\x01(\x0b2>.bi\
+    tdrift.public.unary.dashboards.v1.Dashboard.HealthDashboardH\0R\x0fhealt\
+    hDashboard\x12k\n\x10custom_dashboard\x18\x03\x20\x01(\x0b2>.bitdrift.pu\
+    blic.unary.dashboards.v1.Dashboard.CustomDashboardH\0R\x0fcustomDashboar\
+    d\x1a\x95\x02\n\x0fHealthDashboard\x12X\n\x02id\x18\x01\x20\x01(\x0b2H.b\
+    itdrift.public.unary.dashboards.v1.DashboardIdentifier.HealthDashboardR\
+    \x02id\x12\\\n\x0fdashboard_group\x18\x02\x20\x03(\x0b23.bitdrift.public\
+    .unary.dashboards.v1.DashboardGroupR\x0edashboardGroup\x12J\n\tplatforms\
+    \x18\x03\x20\x03(\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\tpl\
+    atforms\x1a\x8c\t\n\x0fCustomDashboard\x12\x19\n\x02id\x18\x01\x20\x01(\
+    \tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12%\n\x05title\x18\x07\x20\x01(\
+    \tH\0R\x05titleB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x88\x01\x01\x12S\n\
+    \x18current_user_last_viewed\x18\x08\x20\x01(\x0b2\x1a.google.protobuf.T\
+    imestampR\x15currentUserLastViewed\x12_\n\x04tabs\x18\x02\x20\x03(\x0b2K\
+    .bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.Dashboard\
+    TabR\x04tabs\x12a\n\x10common_variables\x18\x03\x20\x03(\x0b26.bitdrift.\
+    public.unary.dashboards.v1.DashboardVariableR\x0fcommonVariables\x12<\n\
+    \x05owner\x18\x04\x20\x01(\x0b2&.bitdrift.public.unary.common.v1.OwnerR\
+    \x05owner\x124\n\x16current_user_favorited\x18\x05\x20\x01(\x08R\x14curr\
+    entUserFavorited\x12^\n\x15current_user_can_edit\x18\x06\x20\x01(\x0e2+.\
+    bitdrift.public.unary.common.v1.PermissionR\x12currentUserCanEdit\x12l\n\
+    \x13dashboard_variables\x18\t\x20\x03(\x0b21.bitdrift.public.unary.workf\
+    lows.v1.GroupBy.ValueR\x12dashboardVariablesB\x08\xfaB\x05\x92\x01\x02\
+    \x10\n\x1a\xd1\x03\n\x0cDashboardTab\x12\x19\n\x02id\x18\x01\x20\x01(\tR\
+    \x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12\x1e\n\x04name\x18\x02\x20\x01(\
+    \tR\x04nameB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12i\n\x06charts\x18\
+    \x03\x20\x03(\x0b2Q.bitdrift.public.unary.dashboards.v1.Dashboard.Custom\
+    Dashboard.DashboardTab.ChartR\x06charts\x12`\n\ncomponents\x18\x04\x20\
+    \x03(\x0b2@.bitdrift.public.unary.dashboards.v1.DashboardStylisticCompon\
+    entR\ncomponents\x1a\xb8\x01\n\x05Chart\x12\x19\n\x02id\x18\x01\x20\x01(\
+    \tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12J\n\x05chart\x18\x02\x20\x01(\
+    \x0b22.bitdrift.public.unary.dashboards.v1.ResolvedChartH\0R\x05chart\
+    \x121\n\x0fchart_not_found\x18\x03\x20\x01(\x08H\0R\rchartNotFoundB\x07\
+    \xfaB\x04j\x02\x08\x01B\x15\n\x0eresolved_chart\x12\x03\xf8B\x01B\x08\n\
+    \x06_titleB\x0b\n\x04type\x12\x03\xf8B\x01\"\x8c\x06\n\x15ListDashboards\
+    Request\x12K\n\npagination\x18\x01\x20\x01(\x0b2+.bitdrift.public.unary.\
+    common.v1.PaginationR\npagination\x12\\\n\x07filters\x18\x03\x20\x01(\
+    \x0b2B.bitdrift.public.unary.dashboards.v1.ListDashboardsRequest.Filters\
+    R\x07filters\x12]\n\x04sort\x18\x04\x20\x03(\x0b2?.bitdrift.public.unary\
+    .dashboards.v1.ListDashboardsRequest.SortR\x04sortB\x08\xfaB\x05\x92\x01\
+    \x02\x10d\x1a\xc6\x01\n\x07Filters\x12M\n\x06access\x18\x01\x20\x01(\x0b\
+    25.bitdrift.public.unary.admin.v1.AccessPermissionQueryR\x06access\x12,\
+    \n\nfree_entry\x18\x02\x20\x01(\tH\0R\tfreeEntryB\x08\xfaB\x05r\x03\x18\
+    \xff\x01\x88\x01\x01\x12!\n\tfavorites\x18\x03\x20\x01(\x08H\x01R\tfavor\
+    ites\x88\x01\x01B\r\n\x0b_free_entryB\x0c\n\n_favorites\x1a\x9f\x02\n\
+    \x04Sort\x12e\n\x03key\x18\x01\x20\x01(\x0e2G.bitdrift.public.unary.dash\
+    boards.v1.ListDashboardsRequest.Sort.SortKeyR\x03keyB\n\xfaB\x07\x82\x01\
+    \x04\x10\x01\x20\0\x12V\n\tdirection\x18\x02\x20\x01(\x0e2..bitdrift.pub\
+    lic.unary.common.v1.SortDirectionR\tdirectionB\x08\xfaB\x05\x82\x01\x02\
+    \x10\x01\"X\n\x07SortKey\x12\x18\n\x14SORT_KEY_UNSPECIFIED\x10\0\x12\x12\
+    \n\x0eDASHBOARD_NAME\x10\x01\x12\x0e\n\nOWNER_NAME\x10\x02\x12\x0f\n\x0b\
+    LAST_VIEWED\x10\x03\"~\n\x16ListDashboardsResponse\x12N\n\ndashboards\
+    \x18\x01\x20\x03(\x0b2..bitdrift.public.unary.dashboards.v1.DashboardR\n\
+    dashboards\x12\x14\n\x05total\x18\x02\x20\x01(\x04R\x05total\"G\n\x18Get\
+    WorkflowChartsRequest\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflo\
+    wIdB\n\xfaB\x07r\x05\x10\x01\x18\x80\x20\"g\n\x19GetWorkflowChartsRespon\
+    se\x12J\n\x06charts\x18\x01\x20\x03(\x0b22.bitdrift.public.unary.dashboa\
+    rds.v1.ResolvedChartR\x06charts\"f\n\x1eInsightComparisonConfiguration\
+    \x12!\n\x06lhs_id\x18\x01\x20\x01(\tR\x05lhsIdB\n\xfaB\x07r\x05\x10\x01\
+    \x18\xff\x01\x12!\n\x06rhs_id\x18\x02\x20\x01(\tR\x05rhsIdB\n\xfaB\x07r\
+    \x05\x10\x01\x18\xff\x01\"b\n\x13SankeyConfiguration\x12\x1e\n\x0btop_k_\
+    paths\x18\x01\x20\x01(\x04R\ttopKPaths\x12+\n\x11compaction_target\x18\
+    \x02\x20\x01(\x04R\x10compactionTarget\"\x90\x01\n\x14CounterConfigurati\
+    on\x12x\n\x10aggregation_type\x18\x01\x20\x01(\x0e2C.bitdrift.public.sha\
+    red.workflows.v1.Counter.CounterAggregationTypeR\x0faggregationTypeB\x08\
     \xfaB\x05\x82\x01\x02\x10\x01\"\x87\x01\n\x11RateConfiguration\x12r\n\
     \x10aggregation_type\x18\x01\x20\x01(\x0e2=.bitdrift.public.shared.workf\
     lows.v1.Rate.RateAggregationTypeR\x0faggregationTypeB\x08\xfaB\x05\x82\
@@ -6103,17 +11635,90 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     er\x18\x04\x20\x03(\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\
     \x0eplatformFilterB\x08\xfaB\x05\x92\x01\x02\x10\n\"e\n\x17GetUniqueAppI\
     dsResponse\x12J\n\tplatforms\x18\x06\x20\x03(\x0b2,.bitdrift.public.shar\
-    ed.platform.v1.PlatformR\tplatforms2\xd1\x04\n\x10DashboardService\x12\
-    \x92\x01\n\x11GetWorkflowCharts\x12=.bitdrift.public.unary.dashboards.v1\
-    .GetWorkflowChartsRequest\x1a>.bitdrift.public.unary.dashboards.v1.GetWo\
-    rkflowChartsResponse\x12\x86\x01\n\rGetChartsData\x129.bitdrift.public.u\
-    nary.dashboards.v1.GetChartsDataRequest\x1a:.bitdrift.public.unary.dashb\
-    oards.v1.GetChartsDataResponse\x12\x8f\x01\n\x10GetActiveDevices\x12<.bi\
-    tdrift.public.unary.dashboards.v1.GetActiveDevicesRequest\x1a=.bitdrift.\
-    public.unary.dashboards.v1.GetActiveDevicesResponse\x12\x8c\x01\n\x0fGet\
-    UniqueAppIds\x12;.bitdrift.public.unary.dashboards.v1.GetUniqueAppIdsReq\
-    uest\x1a<.bitdrift.public.unary.dashboards.v1.GetUniqueAppIdsResponseb\
-    \x06proto3\
+    ed.platform.v1.PlatformR\tplatforms\"\xff\x03\n\x1bDashboardStylisticCom\
+    ponent\x12w\n\x0etext_component\x18\x01\x20\x01(\x0b2N.bitdrift.public.u\
+    nary.dashboards.v1.DashboardStylisticComponent.TextComponentH\0R\rtextCo\
+    mponent\x12d\n\x07divider\x18\x02\x20\x01(\x0b2H.bitdrift.public.unary.d\
+    ashboards.v1.DashboardStylisticComponent.DividerH\0R\x07divider\x12\x19\
+    \n\x02id\x18\x03\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12x\n\
+    \x19dashboard_layout_settings\x18\x04\x20\x01(\x0b2<.bitdrift.public.una\
+    ry.dashboards.v1.DashboardLayoutSettingsR\x17dashboardLayoutSettings\x1a\
+    \t\n\x07Divider\x1aT\n\rTextComponent\x12\x1e\n\x04text\x18\x01\x20\x01(\
+    \tR\x04textB\n\xfaB\x07r\x05\x10\x01\x18\x88'\x12#\n\x07variant\x18\x02\
+    \x20\x01(\tR\x07variantB\t\xfaB\x06r\x04\x10\x01\x182B\x0b\n\x04type\x12\
+    \x03\xf8B\x01\"\xdb\x01\n\x11DashboardVariable\x12I\n\x05value\x18\x03\
+    \x20\x01(\x0b21.bitdrift.public.unary.workflows.v1.GroupBy.ValueH\0R\x05\
+    value\x12e\n!earliest_contiguous_deployed_time\x18\x02\x20\x01(\x0b2\x1a\
+    .google.protobuf.TimestampR\x1eearliestContiguousDeployedTimeB\x14\n\rva\
+    riable_type\x12\x03\xf8B\x01\"\xa1\x02\n\x14ChartComponentLayout\x12K\n\
+    \x08chart_id\x18\x01\x20\x01(\x0b20.bitdrift.public.unary.charts.v1.Char\
+    tIdentifierR\x07chartId\x12e\n\x0flayout_settings\x18\x02\x20\x01(\x0b2<\
+    .bitdrift.public.unary.dashboards.v1.DashboardLayoutSettingsR\x0elayoutS\
+    ettings\x12U\n\x0echart_metadata\x18\x03\x20\x01(\x0b2..bitdrift.public.\
+    unary.charts.v1.ChartMetadataR\rchartMetadata\"z\n\x1eFavoriteCustomDash\
+    boardRequest\x12X\n\nidentifier\x18\x01\x20\x01(\x0b28.bitdrift.public.u\
+    nary.dashboards.v1.DashboardIdentifierR\nidentifier\"!\n\x1fFavoriteCust\
+    omDashboardResponse\"\xc2\x06\n\x1cUpsertCustomDashboardRequest\x12\x1e\
+    \n\x02id\x18\x01\x20\x01(\tH\0R\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x88\
+    \x01\x01\x12\x1e\n\x04name\x18\x02\x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\
+    \x10\x01\x18\xff\x01\x12l\n\x04tabs\x18\x03\x20\x03(\x0b2N.bitdrift.publ\
+    ic.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTabR\x04tab\
+    sB\x08\xfaB\x05\x92\x01\x02\x10d\x12l\n\x13dashboard_variables\x18\x05\
+    \x20\x03(\x0b21.bitdrift.public.unary.workflows.v1.GroupBy.ValueR\x12das\
+    hboardVariablesB\x08\xfaB\x05\x92\x01\x02\x10\n\x1a\xfe\x03\n\x0cDashboa\
+    rdTab\x12\x1e\n\x02id\x18\x01\x20\x01(\tH\0R\x02idB\t\xfaB\x06r\x04\x10\
+    \x01\x18d\x88\x01\x01\x12w\n\x06charts\x18\x02\x20\x03(\x0b2T.bitdrift.p\
+    ublic.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.Char\
+    tR\x06chartsB\t\xfaB\x06\x92\x01\x03\x10\xf4\x03\x12~\n\x14stylistic_com\
+    ponents\x18\x03\x20\x03(\x0b2@.bitdrift.public.unary.dashboards.v1.Dashb\
+    oardStylisticComponentR\x13stylisticComponentsB\t\xfaB\x06\x92\x01\x03\
+    \x10\xf4\x03\x12#\n\x04name\x18\x04\x20\x01(\tH\x01R\x04nameB\n\xfaB\x07\
+    r\x05\x10\x01\x18\xff\x01\x88\x01\x01\x1a\x9f\x01\n\x05Chart\x12\x1e\n\
+    \x02id\x18\x01\x20\x01(\tH\0R\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x88\
+    \x01\x01\x12o\n\x16chart_component_layout\x18\x02\x20\x01(\x0b29.bitdrif\
+    t.public.unary.dashboards.v1.ChartComponentLayoutR\x14chartComponentLayo\
+    utB\x05\n\x03_idB\x05\n\x03_idB\x07\n\x05_nameB\x05\n\x03_id\"}\n\x1dUps\
+    ertCustomDashboardResponse\x12\\\n\tdashboard\x18\x01\x20\x01(\x0b2>.bit\
+    drift.public.unary.dashboards.v1.Dashboard.CustomDashboardR\tdashboard\"\
+    9\n\x1cDeleteCustomDashboardRequest\x12\x19\n\x02id\x18\x01\x20\x01(\tR\
+    \x02idB\t\xfaB\x06r\x04\x10\x01\x18d\"\x1f\n\x1dDeleteCustomDashboardRes\
+    ponse\"\xc9\x03\n\x11ListChartsRequest\x12K\n\npagination\x18\x01\x20\
+    \x01(\x0b2+.bitdrift.public.unary.common.v1.PaginationR\npagination\x12X\
+    \n\x07filters\x18\x03\x20\x01(\x0b2>.bitdrift.public.unary.dashboards.v1\
+    .ListChartsRequest.FiltersR\x07filters\x1a\x8c\x02\n\x07Filters\x12M\n\
+    \x06access\x18\x01\x20\x01(\x0b25.bitdrift.public.unary.admin.v1.AccessP\
+    ermissionQueryR\x06access\x12'\n\x07view_id\x18\x02\x20\x01(\tH\0R\x06vi\
+    ewIdB\t\xfaB\x06r\x04\x10\x01\x18d\x88\x01\x01\x120\n\x0bworkflow_id\x18\
+    \x03\x20\x01(\tH\x01R\nworkflowIdB\n\xfaB\x07r\x05\x10\x01\x18\x80\x20\
+    \x88\x01\x01\x12,\n\nchart_name\x18\x04\x20\x01(\tH\x02R\tchartNameB\x08\
+    \xfaB\x05r\x03\x18\xff\x01\x88\x01\x01B\n\n\x08_view_idB\x0e\n\x0c_workf\
+    low_idB\r\n\x0b_chart_name\"\x81\x01\n\x12ListChartsResponse\x12J\n\x06c\
+    harts\x18\x01\x20\x03(\x0b22.bitdrift.public.unary.dashboards.v1.Resolve\
+    dChartR\x06charts\x12\x1f\n\x0btotal_count\x18\x02\x20\x01(\rR\ntotalCou\
+    nt2\xcb\x0b\n\x10DashboardService\x12\x83\x01\n\x0cGetDashboard\x128.bit\
+    drift.public.unary.dashboards.v1.GetDashboardRequest\x1a9.bitdrift.publi\
+    c.unary.dashboards.v1.GetDashboardResponse\x12\x89\x01\n\x0eListDashboar\
+    ds\x12:.bitdrift.public.unary.dashboards.v1.ListDashboardsRequest\x1a;.b\
+    itdrift.public.unary.dashboards.v1.ListDashboardsResponse\x12\x92\x01\n\
+    \x11GetWorkflowCharts\x12=.bitdrift.public.unary.dashboards.v1.GetWorkfl\
+    owChartsRequest\x1a>.bitdrift.public.unary.dashboards.v1.GetWorkflowChar\
+    tsResponse\x12\x86\x01\n\rGetChartsData\x129.bitdrift.public.unary.dashb\
+    oards.v1.GetChartsDataRequest\x1a:.bitdrift.public.unary.dashboards.v1.G\
+    etChartsDataResponse\x12\x8f\x01\n\x10GetActiveDevices\x12<.bitdrift.pub\
+    lic.unary.dashboards.v1.GetActiveDevicesRequest\x1a=.bitdrift.public.una\
+    ry.dashboards.v1.GetActiveDevicesResponse\x12\x8c\x01\n\x0fGetUniqueAppI\
+    ds\x12;.bitdrift.public.unary.dashboards.v1.GetUniqueAppIdsRequest\x1a<.\
+    bitdrift.public.unary.dashboards.v1.GetUniqueAppIdsResponse\x12\xa4\x01\
+    \n\x17FavoriteCustomDashboard\x12C.bitdrift.public.unary.dashboards.v1.F\
+    avoriteCustomDashboardRequest\x1aD.bitdrift.public.unary.dashboards.v1.F\
+    avoriteCustomDashboardResponse\x12\x9e\x01\n\x15UpsertCustomDashboard\
+    \x12A.bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest\
+    \x1aB.bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardResponse\
+    \x12\x9e\x01\n\x15DeleteCustomDashboard\x12A.bitdrift.public.unary.dashb\
+    oards.v1.DeleteCustomDashboardRequest\x1aB.bitdrift.public.unary.dashboa\
+    rds.v1.DeleteCustomDashboardResponse\x12}\n\nListCharts\x126.bitdrift.pu\
+    blic.unary.dashboards.v1.ListChartsRequest\x1a7.bitdrift.public.unary.da\
+    shboards.v1.ListChartsResponseb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -6130,16 +11735,27 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(7);
+            let mut deps = ::std::vec::Vec::with_capacity(10);
             deps.push(super::platform::file_descriptor().clone());
             deps.push(super::time_series::file_descriptor().clone());
+            deps.push(super::access::file_descriptor().clone());
             deps.push(super::chart_id::file_descriptor().clone());
             deps.push(super::chart_metadata::file_descriptor().clone());
             deps.push(super::common::file_descriptor().clone());
+            deps.push(super::workflow::file_descriptor().clone());
+            deps.push(::protobuf::well_known_types::duration::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(34);
+            let mut messages = ::std::vec::Vec::with_capacity(66);
             messages.push(ResolvedChart::generated_message_descriptor_data());
+            messages.push(DashboardLayoutSettings::generated_message_descriptor_data());
+            messages.push(DashboardGroup::generated_message_descriptor_data());
+            messages.push(DashboardIdentifier::generated_message_descriptor_data());
+            messages.push(GetDashboardRequest::generated_message_descriptor_data());
+            messages.push(GetDashboardResponse::generated_message_descriptor_data());
+            messages.push(Dashboard::generated_message_descriptor_data());
+            messages.push(ListDashboardsRequest::generated_message_descriptor_data());
+            messages.push(ListDashboardsResponse::generated_message_descriptor_data());
             messages.push(GetWorkflowChartsRequest::generated_message_descriptor_data());
             messages.push(GetWorkflowChartsResponse::generated_message_descriptor_data());
             messages.push(InsightComparisonConfiguration::generated_message_descriptor_data());
@@ -6162,18 +11778,43 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(GetActiveDevicesResponse::generated_message_descriptor_data());
             messages.push(GetUniqueAppIdsRequest::generated_message_descriptor_data());
             messages.push(GetUniqueAppIdsResponse::generated_message_descriptor_data());
+            messages.push(DashboardStylisticComponent::generated_message_descriptor_data());
+            messages.push(DashboardVariable::generated_message_descriptor_data());
+            messages.push(ChartComponentLayout::generated_message_descriptor_data());
+            messages.push(FavoriteCustomDashboardRequest::generated_message_descriptor_data());
+            messages.push(FavoriteCustomDashboardResponse::generated_message_descriptor_data());
+            messages.push(UpsertCustomDashboardRequest::generated_message_descriptor_data());
+            messages.push(UpsertCustomDashboardResponse::generated_message_descriptor_data());
+            messages.push(DeleteCustomDashboardRequest::generated_message_descriptor_data());
+            messages.push(DeleteCustomDashboardResponse::generated_message_descriptor_data());
+            messages.push(ListChartsRequest::generated_message_descriptor_data());
+            messages.push(ListChartsResponse::generated_message_descriptor_data());
             messages.push(resolved_chart::Line::generated_message_descriptor_data());
             messages.push(resolved_chart::Funnel::generated_message_descriptor_data());
             messages.push(resolved_chart::Sankey::generated_message_descriptor_data());
             messages.push(resolved_chart::Table::generated_message_descriptor_data());
             messages.push(resolved_chart::BackingWorkflowDeploymentHistory::generated_message_descriptor_data());
             messages.push(resolved_chart::backing_workflow_deployment_history::Deployment::generated_message_descriptor_data());
+            messages.push(dashboard_identifier::HealthDashboard::generated_message_descriptor_data());
+            messages.push(dashboard_identifier::CustomDashboard::generated_message_descriptor_data());
+            messages.push(dashboard::HealthDashboard::generated_message_descriptor_data());
+            messages.push(dashboard::CustomDashboard::generated_message_descriptor_data());
+            messages.push(dashboard::custom_dashboard::DashboardTab::generated_message_descriptor_data());
+            messages.push(dashboard::custom_dashboard::dashboard_tab::Chart::generated_message_descriptor_data());
+            messages.push(list_dashboards_request::Filters::generated_message_descriptor_data());
+            messages.push(list_dashboards_request::Sort::generated_message_descriptor_data());
             messages.push(sankey_chart_response::Node::generated_message_descriptor_data());
             messages.push(sankey_chart_response::Link::generated_message_descriptor_data());
             messages.push(histogram_bar_chart_response::Bucket::generated_message_descriptor_data());
             messages.push(histogram_bar_chart_response::PerGroupBy::generated_message_descriptor_data());
             messages.push(histogram_bar_chart_response::PerTimeSeries::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(0);
+            messages.push(dashboard_stylistic_component::Divider::generated_message_descriptor_data());
+            messages.push(dashboard_stylistic_component::TextComponent::generated_message_descriptor_data());
+            messages.push(upsert_custom_dashboard_request::DashboardTab::generated_message_descriptor_data());
+            messages.push(upsert_custom_dashboard_request::dashboard_tab::Chart::generated_message_descriptor_data());
+            messages.push(list_charts_request::Filters::generated_message_descriptor_data());
+            let mut enums = ::std::vec::Vec::with_capacity(1);
+            enums.push(list_dashboards_request::sort::SortKey::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),
                 deps,

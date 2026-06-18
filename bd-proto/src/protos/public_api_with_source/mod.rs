@@ -5,6 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+pub mod access;
 pub mod admin;
 pub mod alerts;
 pub mod api;
@@ -24,6 +25,7 @@ pub mod issues;
 pub mod logs;
 pub mod platform;
 pub mod search;
+pub mod spans;
 pub mod time_series;
 pub mod timeline;
 pub mod workflow;
