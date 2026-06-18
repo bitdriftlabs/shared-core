@@ -148,6 +148,7 @@ static void add_app(BDProcessorHandle handle) {
     .memory_used = 640,
     .memory_total = 23872786,
     .running_state = "inactive",
+    .region_format = "US",
   };
   bdrw_add_app(handle, &app);
 }
@@ -164,6 +165,7 @@ static void add_device(BDProcessorHandle handle) {
     .display_width = 480,
     .display_density_dpi = 300,
     .network_state = 3,
+    .low_power_mode_enabled = true,
     .manufacturer = "DynaTouch",
     .model = "Mini II",
     .os_brand = "waveOS",

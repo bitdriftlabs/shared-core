@@ -144,6 +144,7 @@ fn full_report_app_test() {
     app.build_number().unwrap().cf_bundle_version()
   );
   assert_eq!(Some("5.0.2"), app.version());
+  assert_eq!(Some("US"), app.region_format());
   assert_eq!(Some("inactive"), app.running_state());
   assert_eq!(3_627, app.memory().unwrap().free());
   assert_eq!(640, app.memory().unwrap().used());
@@ -173,6 +174,7 @@ fn full_report_device_test() {
   check_errors(&report);
 
   let device = report.device_metrics().unwrap();
+  assert!(device.low_power_mode_enabled());
   assert_eq!(Some("TVT"), device.timezone());
   assert_eq!(1_746_205_766, device.time().unwrap().seconds());
   assert_eq!(3_278, device.time().unwrap().nanos());
