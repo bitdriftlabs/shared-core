@@ -71,6 +71,7 @@ pub struct BDAppMetrics {
   memory_free: u64,
   memory_total: u64,
   memory_pressure_level: i8,
+  region_format: *const c_char,
 }
 
 #[repr(C)]
@@ -470,6 +471,7 @@ extern "C-unwind" fn bdrw_add_app(handle: BDProcessorHandle, app_ptr: *const BDA
     let version = append_string(&mut processor.builder, app.version);
     let cf_bundle_version = append_string(&mut processor.builder, app.cf_bundle_version);
     let running_state = append_string(&mut processor.builder, app.running_state);
+    let region_format = append_string(&mut processor.builder, app.region_format);
     let build_number = AppBuildNumber::create(
       &mut processor.builder,
       &AppBuildNumberArgs {
@@ -490,7 +492,7 @@ extern "C-unwind" fn bdrw_add_app(handle: BDProcessorHandle, app_ptr: *const BDA
         running_state,
         process_id: 0,
         lifecycle_event: None,
-        region_format: None,
+        region_format,
         cpu_usage: None,
         javascript_engine: JavaScriptEngine::UnknownJsEngine,
         memory_pressure_level: MemoryPressureLevel(app.memory_pressure_level),

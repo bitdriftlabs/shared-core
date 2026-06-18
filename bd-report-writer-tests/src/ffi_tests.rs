@@ -144,6 +144,7 @@ fn full_report_app_test() {
     app.build_number().unwrap().cf_bundle_version()
   );
   assert_eq!(Some("5.0.2"), app.version());
+  assert_eq!(Some("US"), app.region_format());
   assert_eq!(Some("inactive"), app.running_state());
   assert_eq!(3_627, app.memory().unwrap().free());
   assert_eq!(640, app.memory().unwrap().used());
