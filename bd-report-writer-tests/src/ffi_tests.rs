@@ -174,6 +174,7 @@ fn full_report_device_test() {
   check_errors(&report);
 
   let device = report.device_metrics().unwrap();
+  assert!(device.low_power_mode_enabled());
   assert_eq!(Some("TVT"), device.timezone());
   assert_eq!(1_746_205_766, device.time().unwrap().seconds());
   assert_eq!(3_278, device.time().unwrap().nanos());

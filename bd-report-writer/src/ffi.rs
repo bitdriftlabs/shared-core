@@ -96,6 +96,7 @@ pub struct BDDeviceMetrics {
   rotation: i8,
   cpu_abi_count: u8,
   cpu_abis: *const *const c_char,
+  low_power_mode_enabled: bool,
 }
 
 #[repr(C)]
@@ -447,7 +448,7 @@ extern "C-unwind" fn bdrw_add_device(
         os_build: Some(os_build),
         platform: Platform(device.platform),
         cpu_abis,
-        low_power_mode_enabled: false,
+        low_power_mode_enabled: device.low_power_mode_enabled,
         cpu_usage: None,
         thermal_state: 0,
       },

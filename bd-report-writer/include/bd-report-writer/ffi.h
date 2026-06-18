@@ -73,6 +73,7 @@ typedef struct BDDeviceMetrics {
   int8_t rotation;
   uint8_t cpu_abi_count;
   const char *const *cpu_abis;
+  bool low_power_mode_enabled;
 } BDDeviceMetrics;
 
 typedef struct BDAppMetrics {
