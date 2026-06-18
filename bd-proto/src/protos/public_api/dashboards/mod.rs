@@ -8,4 +8,13 @@
 pub mod api;
 
 // Re-export proto dependencies referenced by generated code in this subdirectory.
-pub use super::{chart_id, chart_metadata, common, platform, time_series, validate};
+pub use super::{
+  access,
+  chart_id,
+  chart_metadata,
+  common,
+  platform,
+  time_series,
+  validate,
+  workflow,
+};

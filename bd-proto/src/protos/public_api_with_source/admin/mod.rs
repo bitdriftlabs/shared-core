@@ -13,4 +13,4 @@ pub mod permission;
 pub mod view;
 
 // Re-export proto dependencies referenced by generated code in this subdirectory.
-pub use super::{common, issues, validate};
+pub use super::{common, issues, validate, workflow};
