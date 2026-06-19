@@ -432,6 +432,146 @@ impl ::protobuf::reflect::ProtobufValue for Pagination {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
+// @@protoc_insertion_point(message:bitdrift.public.unary.common.v1.TokenPagination)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct TokenPagination {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.common.v1.TokenPagination.limit)
+    pub limit: ::std::option::Option<u32>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.common.v1.TokenPagination.page_token)
+    pub page_token: ::std::option::Option<::std::string::String>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.common.v1.TokenPagination.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a TokenPagination {
+    fn default() -> &'a TokenPagination {
+        <TokenPagination as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl TokenPagination {
+    pub fn new() -> TokenPagination {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(2);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "limit",
+            |m: &TokenPagination| { &m.limit },
+            |m: &mut TokenPagination| { &mut m.limit },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_option_accessor::<_, _>(
+            "page_token",
+            |m: &TokenPagination| { &m.page_token },
+            |m: &mut TokenPagination| { &mut m.page_token },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<TokenPagination>(
+            "TokenPagination",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for TokenPagination {
+    const NAME: &'static str = "TokenPagination";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                8 => {
+                    self.limit = ::std::option::Option::Some(is.read_uint32()?);
+                },
+                18 => {
+                    self.page_token = ::std::option::Option::Some(is.read_string()?);
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.limit {
+            my_size += ::protobuf::rt::uint32_size(1, v);
+        }
+        if let Some(v) = self.page_token.as_ref() {
+            my_size += ::protobuf::rt::string_size(2, &v);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.limit {
+            os.write_uint32(1, v)?;
+        }
+        if let Some(v) = self.page_token.as_ref() {
+            os.write_string(2, v)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> TokenPagination {
+        TokenPagination::new()
+    }
+
+    fn clear(&mut self) {
+        self.limit = ::std::option::Option::None;
+        self.page_token = ::std::option::Option::None;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static TokenPagination {
+        static instance: TokenPagination = TokenPagination {
+            limit: ::std::option::Option::None,
+            page_token: ::std::option::Option::None,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for TokenPagination {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("TokenPagination").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for TokenPagination {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for TokenPagination {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
 // @@protoc_insertion_point(message:bitdrift.public.unary.common.v1.TimeRange)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct TimeRange {
@@ -1471,35 +1611,39 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x88\x01\x01B\x07\n\x05_name\"\n\n\x04Sort:\x02\x18\x01\"d\n\nPagination\
     \x12\x1b\n\x06offset\x18\x01\x20\x01(\rH\0R\x06offset\x88\x01\x01\x12$\n\
     \x05limit\x18\x02\x20\x01(\rH\x01R\x05limitB\t\xfaB\x06*\x04\x18d\x20\0\
-    \x88\x01\x01B\t\n\x07_offsetB\x08\n\x06_limit\"\x9d\x04\n\tTimeRange\x12\
-    e\n\x10fixed_time_range\x18\x01\x20\x01(\x0b29.bitdrift.public.unary.com\
-    mon.v1.TimeRange.FixedTimeRangeH\0R\x0efixedTimeRange\x12n\n\x13relative\
-    _time_range\x18\x02\x20\x01(\x0b2<.bitdrift.public.unary.common.v1.TimeR\
-    ange.RelativeTimeRangeH\0R\x11relativeTimeRange\x1a\x96\x01\n\x0eFixedTi\
-    meRange\x12C\n\nstart_time\x18\x01\x20\x01(\x0b2\x1a.google.protobuf.Tim\
-    estampR\tstartTimeB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12?\n\x08end_time\
-    \x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x07endTimeB\x08\
-    \xfaB\x05\x8a\x01\x02\x10\x01\x1a\x87\x01\n\x11RelativeTimeRange\x12?\n\
-    \x08duration\x18\x01\x20\x01(\x0b2\x19.google.protobuf.DurationR\x08dura\
-    tionB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x121\n\x06offset\x18\x02\x20\x01(\
-    \x0b2\x19.google.protobuf.DurationR\x06offsetB\x16\n\x0ftime_range_type\
-    \x12\x03\xf8B\x01\"\xaf\x02\n\x11SessionStatusInfo\x120\n\x14session_sof\
-    t_deleted\x18\x01\x20\x01(\x08R\x12sessionSoftDeleted\x123\n\x16session_\
-    seen_on_device\x18\x02\x20\x01(\x08R\x13sessionSeenOnDevice\x12C\n\x1ese\
-    ssion_triggered_but_rejected\x18\x03\x20\x01(\x08R\x1bsessionTriggeredBu\
-    tRejected\x12C\n\x1esession_triggered_and_accepted\x18\x04\x20\x01(\x08R\
-    \x1bsessionTriggeredAndAccepted\x12)\n\x10session_uploaded\x18\x05\x20\
-    \x01(\x08R\x0fsessionUploaded*.\n\rSortDirection\x12\r\n\tASCENDING\x10\
-    \0\x12\x0e\n\nDESCENDING\x10\x01*\xc8\x01\n\x08Operator\x12\t\n\x05EQUAL\
-    \x10\0\x12\r\n\tNOT_EQUAL\x10\x01\x12\x10\n\x0cGREATER_THAN\x10\x02\x12\
-    \x19\n\x15GREATER_THAN_OR_EQUAL\x10\x03\x12\r\n\tLESS_THAN\x10\x04\x12\
-    \x16\n\x12LESS_THAN_OR_EQUAL\x10\x05\x12\x0c\n\x08WILDCARD\x10\x06\x12\
-    \x10\n\x0cNOT_WILDCARD\x10\x07\x12\x06\n\x02IN\x10\t\x12\n\n\x06NOT_IN\
-    \x10\n\x12\n\n\x06SEARCH\x10\x0b\x12\x0e\n\nNOT_SEARCH\x10\x0c*\x93\x01\
-    \n\nPermission\x12\x0b\n\x07UNKNOWN\x10\0\x12\x10\n\x0cYES_IS_OWNER\x10\
-    \x01\x12\x19\n\x15YES_SHARED_EXPLICITLY\x10\x02\x12\x18\n\x14YES_SHARED_\
-    WITH_TEAM\x10\x03\x12\x17\n\x13YES_SHARED_WITH_ORG\x10\x04\x12\x06\n\x02\
-    NO\x10\x05\x12\x10\n\x0cYES_IS_ADMIN\x10\x06b\x06proto3\
+    \x88\x01\x01B\t\n\x07_offsetB\x08\n\x06_limit\"~\n\x0fTokenPagination\
+    \x12$\n\x05limit\x18\x01\x20\x01(\rH\0R\x05limitB\t\xfaB\x06*\x04\x18d\
+    \x20\0\x88\x01\x01\x12,\n\npage_token\x18\x02\x20\x01(\tH\x01R\tpageToke\
+    nB\x08\xfaB\x05r\x03\x18\x80\x20\x88\x01\x01B\x08\n\x06_limitB\r\n\x0b_p\
+    age_token\"\x9d\x04\n\tTimeRange\x12e\n\x10fixed_time_range\x18\x01\x20\
+    \x01(\x0b29.bitdrift.public.unary.common.v1.TimeRange.FixedTimeRangeH\0R\
+    \x0efixedTimeRange\x12n\n\x13relative_time_range\x18\x02\x20\x01(\x0b2<.\
+    bitdrift.public.unary.common.v1.TimeRange.RelativeTimeRangeH\0R\x11relat\
+    iveTimeRange\x1a\x96\x01\n\x0eFixedTimeRange\x12C\n\nstart_time\x18\x01\
+    \x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tstartTimeB\x08\xfaB\x05\
+    \x8a\x01\x02\x10\x01\x12?\n\x08end_time\x18\x02\x20\x01(\x0b2\x1a.google\
+    .protobuf.TimestampR\x07endTimeB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x1a\
+    \x87\x01\n\x11RelativeTimeRange\x12?\n\x08duration\x18\x01\x20\x01(\x0b2\
+    \x19.google.protobuf.DurationR\x08durationB\x08\xfaB\x05\x8a\x01\x02\x10\
+    \x01\x121\n\x06offset\x18\x02\x20\x01(\x0b2\x19.google.protobuf.Duration\
+    R\x06offsetB\x16\n\x0ftime_range_type\x12\x03\xf8B\x01\"\xaf\x02\n\x11Se\
+    ssionStatusInfo\x120\n\x14session_soft_deleted\x18\x01\x20\x01(\x08R\x12\
+    sessionSoftDeleted\x123\n\x16session_seen_on_device\x18\x02\x20\x01(\x08\
+    R\x13sessionSeenOnDevice\x12C\n\x1esession_triggered_but_rejected\x18\
+    \x03\x20\x01(\x08R\x1bsessionTriggeredButRejected\x12C\n\x1esession_trig\
+    gered_and_accepted\x18\x04\x20\x01(\x08R\x1bsessionTriggeredAndAccepted\
+    \x12)\n\x10session_uploaded\x18\x05\x20\x01(\x08R\x0fsessionUploaded*.\n\
+    \rSortDirection\x12\r\n\tASCENDING\x10\0\x12\x0e\n\nDESCENDING\x10\x01*\
+    \xc8\x01\n\x08Operator\x12\t\n\x05EQUAL\x10\0\x12\r\n\tNOT_EQUAL\x10\x01\
+    \x12\x10\n\x0cGREATER_THAN\x10\x02\x12\x19\n\x15GREATER_THAN_OR_EQUAL\
+    \x10\x03\x12\r\n\tLESS_THAN\x10\x04\x12\x16\n\x12LESS_THAN_OR_EQUAL\x10\
+    \x05\x12\x0c\n\x08WILDCARD\x10\x06\x12\x10\n\x0cNOT_WILDCARD\x10\x07\x12\
+    \x06\n\x02IN\x10\t\x12\n\n\x06NOT_IN\x10\n\x12\n\n\x06SEARCH\x10\x0b\x12\
+    \x0e\n\nNOT_SEARCH\x10\x0c*\x93\x01\n\nPermission\x12\x0b\n\x07UNKNOWN\
+    \x10\0\x12\x10\n\x0cYES_IS_OWNER\x10\x01\x12\x19\n\x15YES_SHARED_EXPLICI\
+    TLY\x10\x02\x12\x18\n\x14YES_SHARED_WITH_TEAM\x10\x03\x12\x17\n\x13YES_S\
+    HARED_WITH_ORG\x10\x04\x12\x06\n\x02NO\x10\x05\x12\x10\n\x0cYES_IS_ADMIN\
+    \x10\x06b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1520,10 +1664,11 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(::protobuf::well_known_types::duration::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(7);
+            let mut messages = ::std::vec::Vec::with_capacity(8);
             messages.push(Owner::generated_message_descriptor_data());
             messages.push(Sort::generated_message_descriptor_data());
             messages.push(Pagination::generated_message_descriptor_data());
+            messages.push(TokenPagination::generated_message_descriptor_data());
             messages.push(TimeRange::generated_message_descriptor_data());
             messages.push(SessionStatusInfo::generated_message_descriptor_data());
             messages.push(time_range::FixedTimeRange::generated_message_descriptor_data());
