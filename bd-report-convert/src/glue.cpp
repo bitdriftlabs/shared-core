@@ -7,7 +7,6 @@
 
 #include <cstdint>
 #include <cstdlib>
-#include <fstream>
 #include <string>
 
 #include <flatbuffers/idl.h>
@@ -20,23 +19,7 @@
 
 using namespace bitdrift_public::fbs::issue_reporting::v1;
 
-extern "C" {
-char *bdrc_alloc_json(const char *bin_data_path) {
-  std::ifstream data_file(bin_data_path);
-  std::string contents((std::istreambuf_iterator<char>(data_file)),
-                       (std::istreambuf_iterator<char>()));
-  char *bin_data = (char *)contents.c_str();
-
-  auto output =
-      flatbuffers::FlatBufferToString(reinterpret_cast<uint8_t *>(bin_data),
-                                      ReportTypeTable(), false, true, "", true);
-
-  return strdup(output.c_str());
-}
-
-void bdrc_json_free(char *json) { free(json); }
-
-/**
+extern "C" {/**
  * Create a buffer containing the binary representation of a flatbuffer file
  *
  * @param schemas     an array of schema definitions. Includes must be listed

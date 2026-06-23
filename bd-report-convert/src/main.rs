@@ -5,11 +5,14 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_report_convert::{bin_to_json, json_to_bin};
-use std::io::Write;
+use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::root_as_report;
+use bd_report_convert::json_to_bin;
+use std::io::{Cursor, Write};
 use std::path::Path;
 use std::process::ExitCode;
 use std::{env, fs};
+
+const ZSTD_MAGIC_BYTES: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
 
 fn print_usage(program: &str) -> ExitCode {
   eprintln!("converter for the bd issue report format\n");
@@ -21,7 +24,7 @@ fn print_usage(program: &str) -> ExitCode {
   ExitCode::from(64) // EX_USAGE error
 }
 
-pub fn main() -> Result<ExitCode, std::io::Error> {
+pub fn main() -> anyhow::Result<ExitCode> {
   let args: Vec<String> = env::args().collect();
   if args.len() < 3 {
     return Ok(print_usage(&args[0]));
@@ -38,26 +41,31 @@ pub fn main() -> Result<ExitCode, std::io::Error> {
     input_path
   };
   match (args.len(), action.as_str()) {
-    (3, "to-json") => Ok(print_json(input_path)),
+    (3, "to-json") => Ok(print_json(input_path)?),
     (4, "to-bin") => write_bin(input_path, &args[3]),
     _ => Ok(print_usage(&args[0])),
   }
 }
 
-fn print_json(input_path: &str) -> ExitCode {
-  match bin_to_json(input_path) {
-    Ok(json) => {
-      println!("{json}");
-      ExitCode::SUCCESS
-    },
-    Err(result) => {
-      eprintln!("failed to convert file: {result}");
-      ExitCode::FAILURE
-    },
+fn read_report_bin(input_path: &str) -> anyhow::Result<Vec<u8>> {
+  let data = fs::read(input_path)?;
+  if data.len() < ZSTD_MAGIC_BYTES.len() || data[.. ZSTD_MAGIC_BYTES.len()] != ZSTD_MAGIC_BYTES {
+    return Ok(data);
   }
+
+  Ok(zstd::stream::decode_all(Cursor::new(data))?)
 }
 
-fn write_bin(input_path: &str, output_path: &str) -> Result<ExitCode, std::io::Error> {
+fn print_json(input_path: &str) -> anyhow::Result<ExitCode> {
+  let data = read_report_bin(input_path)?;
+  let report = root_as_report(&data)?;
+  let json = serde_json::to_string(&report)?;
+
+  println!("{json}");
+  Ok(ExitCode::SUCCESS)
+}
+
+fn write_bin(input_path: &str, output_path: &str) -> anyhow::Result<ExitCode> {
   match json_to_bin(input_path) {
     Ok(data) => {
       let mut file = fs::OpenOptions::new()

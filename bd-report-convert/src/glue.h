@@ -12,9 +12,6 @@ enum BDReaderErr {
   BDReaderErrCouldNotValidateOutput = -4,
 };
 
-char *bdrc_alloc_json(const char *bin_data_path);
-void bdrc_json_free(char *json);
-
 struct Schema {
   const char *data;
   const char *path;

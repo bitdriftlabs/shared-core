@@ -5,14 +5,6 @@ pub const BDReaderErr_BDReaderErrCouldNotParseSpec: BDReaderErr = -2;
 pub const BDReaderErr_BDReaderErrCouldNotParseInputData: BDReaderErr = -3;
 pub const BDReaderErr_BDReaderErrCouldNotValidateOutput: BDReaderErr = -4;
 pub type BDReaderErr = ::std::os::raw::c_int;
-unsafe extern "C" {
-  pub fn bdrc_alloc_json(
-    bin_data_path: *const ::std::os::raw::c_char,
-  ) -> *mut ::std::os::raw::c_char;
-}
-unsafe extern "C" {
-  pub fn bdrc_json_free(json: *mut ::std::os::raw::c_char);
-}
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct Schema {

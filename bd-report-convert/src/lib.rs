@@ -5,8 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use anyhow::anyhow;
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::slice;
 
 #[allow(
@@ -18,19 +17,7 @@ use std::slice;
   dead_code
 )]
 mod generated;
-use generated::{Schema, bdrc_alloc_json, bdrc_json_free, bdrc_make_bin_from_json};
-
-pub fn bin_to_json(input_path: &str) -> anyhow::Result<String> {
-  let data_path = CString::new(input_path)?;
-  let text = unsafe { bdrc_alloc_json(data_path.as_c_str().as_ptr()) };
-  let text_ptr = unsafe { CStr::from_ptr(text) };
-
-  let output = text_ptr.to_str().map(ToOwned::to_owned);
-  unsafe {
-    bdrc_json_free(text);
-  }
-  output.map_err(|err| anyhow!(err))
-}
+use generated::{Schema, bdrc_make_bin_from_json};
 
 pub fn json_to_bin<'a>(input_path: &str) -> anyhow::Result<&'a [u8]> {
   let owned_schemas = &[
