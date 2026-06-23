@@ -94,11 +94,13 @@ pub fn flush_buffer_id_from_trigger_upload_source(source: &TriggerUploadSource) 
 //
 
 // Durable description of a trigger upload that survives process restart. This is the source of
-// truth for logger-side recovery: it records which logical flush triggered the upload, which
-// buffers were admitted to it in this process, the originating session, any deferred streaming
-// activation, and per-buffer progress.
+// truth for logger-side recovery: it records the per-trigger instance ID used for replay and
+// completion deduplication, which logical flush triggered the upload, which buffers were admitted
+// to it in this process, the originating session, any deferred streaming activation, and per-
+// buffer progress.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PersistedTriggerUpload {
+  // Per-trigger instance UUID.
   pub id: String,
   pub source: PersistedTriggerUploadSource,
   pub session_id: String,

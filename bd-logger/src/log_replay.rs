@@ -612,7 +612,7 @@ impl ProcessingPipeline {
       Some(buffers_to_flush) =  self.buffers_to_flush_rx.recv() => {
         log::debug!("received flush buffers action signal, buffer IDs to flush: \"{:?}\"", buffers_to_flush.buffer_ids);
 
-        let trigger_upload = TriggerUpload::new(
+        let trigger_upload = TriggerUpload::new_with_request_trigger_uuid(
           buffers_to_flush.buffer_ids
             .iter()
             .map(std::string::ToString::to_string)
@@ -625,6 +625,7 @@ impl ProcessingPipeline {
             },
             FlushBufferId::RemoteCommand(id) => TriggerUploadSource::RemoteCommand(id.clone()),
           },
+          buffers_to_flush.request_trigger_uuid,
           buffers_to_flush.session_id,
         );
 

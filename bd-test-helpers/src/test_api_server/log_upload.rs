@@ -30,6 +30,14 @@ impl LogUpload {
   pub fn buffer_id(&self) -> &str {
     &self.0.buffer_uuid
   }
+
+  pub fn trigger_uuids(&self) -> &[String] {
+    &self.0.trigger_uuids
+  }
+
+  pub fn trigger_uuid(&self) -> Option<&str> {
+    self.0.trigger_uuids.first().map(String::as_str)
+  }
 }
 
 #[derive(Debug)]
