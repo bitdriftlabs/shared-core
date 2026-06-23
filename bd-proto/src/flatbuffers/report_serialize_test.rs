@@ -2,6 +2,21 @@ use crate::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::*;
 use serde::Serialize;
 use serde_json::json;
 
+// Quick and dirty means to determining whether the structures have changed
+// since the last time the serialization logic was updated to avoid breakage
+macro_rules! assert_struct_size {
+  ($name:ident, $value:expr) => {
+    assert_eq!(
+      core::mem::size_of::<$name>(),
+      $value,
+      concat!(
+        "src/flatbuffers/report_serialize.rs needs to be updated for ",
+        stringify!($name),
+      )
+    )
+  };
+}
+
 fn serialization_loop<T: Sized + Serialize>(object: &T) -> serde_json::Value {
   let serialized = serde_json::to_string(&object).unwrap();
   serde_json::from_str(&serialized).unwrap()
@@ -83,6 +98,7 @@ fn serialize_timestamp() {
 fn serialize_memory() {
   let object = serialization_loop(&Memory::new(256, 19, 237));
   assert_eq!(json!({"total": 256, "free": 19, "used": 237}), object);
+  assert_struct_size!(Memory, 24);
 }
 
 macro_rules! build_table {
@@ -107,6 +123,7 @@ fn serialize_version_code() {
   );
   let object = serialization_loop(&input);
   assert_eq!(json!({"version_code": 56}), object);
+  assert_struct_size!(AppBuildNumberArgs, 16);
 }
 
 #[test]
@@ -136,6 +153,7 @@ fn serialize_feature_flag() {
     }
   ));
   assert_eq!(json!({"name": "option_a", "value": "variant b"}), object);
+  assert_struct_size!(FeatureFlagArgs, 24);
 }
 
 #[test]
@@ -150,6 +168,7 @@ fn serialize_proc_usage() {
     }
   ));
   assert_eq!(json!({"duration_seconds": 367, "used_percent": 81}), object);
+  assert_struct_size!(ProcessorUsageArgs, 16);
 }
 
 #[test]
@@ -176,6 +195,7 @@ fn serialize_app_metrics() {
     }),
     object
   );
+  assert_struct_size!(AppMetricsArgs, 72);
 }
 
 #[test]
@@ -218,6 +238,7 @@ fn serialize_error() {
     }),
     object
   );
+  assert_struct_size!(ErrorArgs, 28);
 }
 
 #[test]
@@ -240,6 +261,7 @@ fn serialize_source_file() {
     }),
     object
   );
+  assert_struct_size!(SourceFileArgs, 24);
 }
 
 #[test]
@@ -269,6 +291,7 @@ fn serialize_frame() {
     }),
     object
   );
+  assert_struct_size!(FrameArgs, 96);
 }
 
 #[test]
@@ -354,6 +377,7 @@ fn serialize_report() {
     }),
     object
   );
+  assert_struct_size!(ReportArgs, 68);
 }
 
 #[test]
@@ -383,6 +407,7 @@ fn serialize_thread() {
     }),
     object
   );
+  assert_struct_size!(ThreadArgs, 44);
 }
 
 #[test]
@@ -420,6 +445,7 @@ fn serialize_thread_details() {
     }),
     object
   );
+  assert_struct_size!(ThreadDetailsArgs, 12);
 }
 
 #[test]
@@ -458,4 +484,5 @@ fn serialize_device_metrics() {
     }),
     object
   );
+  assert_struct_size!(DeviceMetricsArgs, 80);
 }
