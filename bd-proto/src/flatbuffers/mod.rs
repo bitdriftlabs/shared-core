@@ -28,6 +28,7 @@ pub mod buffer_log;
   clippy::empty_line_after_outer_attr
 )]
 pub mod report;
+mod report_serialize;
 
 #[path = "common_generated.rs"]
 #[allow(clippy::all, clippy::use_self)]
@@ -40,3 +41,19 @@ pub mod report;
   clippy::empty_line_after_outer_attr
 )]
 pub mod common;
+mod common_serialize;
+
+macro_rules! serialize_enum {
+  ($name:ident) => {
+    impl Serialize for $name {
+      fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+      where
+        S: Serializer,
+      {
+        serializer.serialize_u32(self.0 as u32)
+      }
+    }
+  };
+}
+
+pub(crate) use serialize_enum;
