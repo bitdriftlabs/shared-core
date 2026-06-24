@@ -1,4 +1,5 @@
 import os
+import re
 
 # Define the header you want to check for and insert
 rust_header = """
@@ -16,20 +17,25 @@ headers = {
 
 exclude_dirs = (
     './.git',
-    './bd-grpc/src/generated',
-    './bd-pgv/src/generated',
-    './bd-report-convert/src/generated',
-    './bd-proto/',
+    './bd-proto/src/protos/',
     './fuzz/corpus/',
     './proto/',
     './target/',
     './thirdparty/',
 )
 
+exclude_patterns = (
+    re.compile('generated'),
+)
+
 extensions_to_check = ('.rs', '.toml')
 
 
-def check_file(file_path):
+def check_file(file_path: str):
+    for pattern in exclude_patterns:
+        if pattern.findall(file_path):
+            return
+
     for dir in exclude_dirs:
         if file_path.startswith(dir):
             return

@@ -17,7 +17,8 @@ protobuf.workspace          = true
 serde.workspace             = true
 
 [dev-dependencies]
-matches.workspace = true
+matches.workspace           = true
+serde_json.workspace        = true
 
 [build-dependencies]
 flatc-rust.workspace       = true

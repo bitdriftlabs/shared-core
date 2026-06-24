@@ -7,9 +7,6 @@ use crate::common_generated::*;
 use core::mem;
 use core::cmp::Ordering;
 
-extern crate serde;
-use self::serde::ser::{Serialize, Serializer, SerializeStruct};
-
 extern crate flatbuffers;
 use self::flatbuffers::{EndianScalar, Follow};
 
@@ -20,9 +17,6 @@ pub mod bitdrift_public {
   use core::mem;
   use core::cmp::Ordering;
 
-  extern crate serde;
-  use self::serde::ser::{Serialize, Serializer, SerializeStruct};
-
   extern crate flatbuffers;
   use self::flatbuffers::{EndianScalar, Follow};
 #[allow(unused_imports, dead_code)]
@@ -31,9 +25,6 @@ pub mod fbs {
   use crate::common_generated::*;
   use core::mem;
   use core::cmp::Ordering;
-
-  extern crate serde;
-  use self::serde::ser::{Serialize, Serializer, SerializeStruct};
 
   extern crate flatbuffers;
   use self::flatbuffers::{EndianScalar, Follow};
@@ -44,9 +35,6 @@ pub mod issue_reporting {
   use core::mem;
   use core::cmp::Ordering;
 
-  extern crate serde;
-  use self::serde::ser::{Serialize, Serializer, SerializeStruct};
-
   extern crate flatbuffers;
   use self::flatbuffers::{EndianScalar, Follow};
 #[allow(unused_imports, dead_code)]
@@ -55,9 +43,6 @@ pub mod v_1 {
   use crate::common_generated::*;
   use core::mem;
   use core::cmp::Ordering;
-
-  extern crate serde;
-  use self::serde::ser::{Serialize, Serializer, SerializeStruct};
 
   extern crate flatbuffers;
   use self::flatbuffers::{EndianScalar, Follow};
@@ -133,15 +118,6 @@ impl core::fmt::Debug for ReportType {
     }
   }
 }
-impl Serialize for ReportType {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    serializer.serialize_unit_variant("ReportType", self.0 as u32, self.variant_name().unwrap())
-  }
-}
-
 impl<'a> flatbuffers::Follow<'a> for ReportType {
   type Inner = Self;
   #[inline]
@@ -235,15 +211,6 @@ impl core::fmt::Debug for Platform {
     }
   }
 }
-impl Serialize for Platform {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    serializer.serialize_unit_variant("Platform", self.0 as u32, self.variant_name().unwrap())
-  }
-}
-
 impl<'a> flatbuffers::Follow<'a> for Platform {
   type Inner = Self;
   #[inline]
@@ -341,15 +308,6 @@ impl core::fmt::Debug for Architecture {
     }
   }
 }
-impl Serialize for Architecture {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    serializer.serialize_unit_variant("Architecture", self.0 as u32, self.variant_name().unwrap())
-  }
-}
-
 impl<'a> flatbuffers::Follow<'a> for Architecture {
   type Inner = Self;
   #[inline]
@@ -447,15 +405,6 @@ impl core::fmt::Debug for FrameType {
     }
   }
 }
-impl Serialize for FrameType {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    serializer.serialize_unit_variant("FrameType", self.0 as u32, self.variant_name().unwrap())
-  }
-}
-
 impl<'a> flatbuffers::Follow<'a> for FrameType {
   type Inner = Self;
   #[inline]
@@ -537,15 +486,6 @@ impl core::fmt::Debug for ErrorRelation {
     }
   }
 }
-impl Serialize for ErrorRelation {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    serializer.serialize_unit_variant("ErrorRelation", self.0 as u32, self.variant_name().unwrap())
-  }
-}
-
 impl<'a> flatbuffers::Follow<'a> for ErrorRelation {
   type Inner = Self;
   #[inline]
@@ -643,15 +583,6 @@ impl core::fmt::Debug for PowerState {
     }
   }
 }
-impl Serialize for PowerState {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    serializer.serialize_unit_variant("PowerState", self.0 as u32, self.variant_name().unwrap())
-  }
-}
-
 impl<'a> flatbuffers::Follow<'a> for PowerState {
   type Inner = Self;
   #[inline]
@@ -745,15 +676,6 @@ impl core::fmt::Debug for NetworkState {
     }
   }
 }
-impl Serialize for NetworkState {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    serializer.serialize_unit_variant("NetworkState", self.0 as u32, self.variant_name().unwrap())
-  }
-}
-
 impl<'a> flatbuffers::Follow<'a> for NetworkState {
   type Inner = Self;
   #[inline]
@@ -843,15 +765,6 @@ impl core::fmt::Debug for JavaScriptEngine {
     }
   }
 }
-impl Serialize for JavaScriptEngine {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    serializer.serialize_unit_variant("JavaScriptEngine", self.0 as u32, self.variant_name().unwrap())
-  }
-}
-
 impl<'a> flatbuffers::Follow<'a> for JavaScriptEngine {
   type Inner = Self;
   #[inline]
@@ -945,15 +858,6 @@ impl core::fmt::Debug for MemoryPressureLevel {
     }
   }
 }
-impl Serialize for MemoryPressureLevel {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    serializer.serialize_unit_variant("MemoryPressureLevel", self.0 as u32, self.variant_name().unwrap())
-  }
-}
-
 impl<'a> flatbuffers::Follow<'a> for MemoryPressureLevel {
   type Inner = Self;
   #[inline]
@@ -1051,15 +955,6 @@ impl core::fmt::Debug for Rotation {
     }
   }
 }
-impl Serialize for Rotation {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    serializer.serialize_unit_variant("Rotation", self.0 as u32, self.variant_name().unwrap())
-  }
-}
-
 impl<'a> flatbuffers::Follow<'a> for Rotation {
   type Inner = Self;
   #[inline]
@@ -1157,15 +1052,6 @@ impl core::fmt::Debug for FrameStatus {
     }
   }
 }
-impl Serialize for FrameStatus {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    serializer.serialize_unit_variant("FrameStatus", self.0 as u32, self.variant_name().unwrap())
-  }
-}
-
 impl<'a> flatbuffers::Follow<'a> for FrameStatus {
   type Inner = Self;
   #[inline]
@@ -1261,18 +1147,6 @@ impl<'a> flatbuffers::Verifiable for Timestamp {
   ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
     use self::flatbuffers::Verifiable;
     v.in_buffer::<Self>(pos)
-  }
-}
-
-impl Serialize for Timestamp {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("Timestamp", 2)?;
-      s.serialize_field("seconds", &self.seconds())?;
-      s.serialize_field("nanos", &self.nanos())?;
-    s.end()
   }
 }
 
@@ -1422,19 +1296,6 @@ impl<'a> flatbuffers::Verifiable for Memory {
   ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
     use self::flatbuffers::Verifiable;
     v.in_buffer::<Self>(pos)
-  }
-}
-
-impl Serialize for Memory {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("Memory", 3)?;
-      s.serialize_field("total", &self.total())?;
-      s.serialize_field("free", &self.free())?;
-      s.serialize_field("used", &self.used())?;
-    s.end()
   }
 }
 
@@ -1652,22 +1513,6 @@ impl<'a> Default for AppBuildNumberArgs<'a> {
   }
 }
 
-impl Serialize for AppBuildNumber<'_> {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("AppBuildNumber", 2)?;
-      s.serialize_field("version_code", &self.version_code())?;
-      if let Some(f) = self.cf_bundle_version() {
-        s.serialize_field("cf_bundle_version", &f)?;
-      } else {
-        s.skip_field("cf_bundle_version")?;
-      }
-    s.end()
-  }
-}
-
 pub struct AppBuildNumberBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
   fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
   start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
@@ -1816,18 +1661,6 @@ impl<'a> Default for ProcessorUsageArgs {
       duration_seconds: 0,
       used_percent: 0,
     }
-  }
-}
-
-impl Serialize for ProcessorUsage<'_> {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("ProcessorUsage", 2)?;
-      s.serialize_field("duration_seconds", &self.duration_seconds())?;
-      s.serialize_field("used_percent", &self.used_percent())?;
-    s.end()
   }
 }
 
@@ -2122,59 +1955,6 @@ impl<'a> Default for AppMetricsArgs<'a> {
   }
 }
 
-impl Serialize for AppMetrics<'_> {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("AppMetrics", 11)?;
-      if let Some(f) = self.app_id() {
-        s.serialize_field("app_id", &f)?;
-      } else {
-        s.skip_field("app_id")?;
-      }
-      if let Some(f) = self.memory() {
-        s.serialize_field("memory", &f)?;
-      } else {
-        s.skip_field("memory")?;
-      }
-      if let Some(f) = self.version() {
-        s.serialize_field("version", &f)?;
-      } else {
-        s.skip_field("version")?;
-      }
-      if let Some(f) = self.build_number() {
-        s.serialize_field("build_number", &f)?;
-      } else {
-        s.skip_field("build_number")?;
-      }
-      if let Some(f) = self.running_state() {
-        s.serialize_field("running_state", &f)?;
-      } else {
-        s.skip_field("running_state")?;
-      }
-      s.serialize_field("process_id", &self.process_id())?;
-      if let Some(f) = self.region_format() {
-        s.serialize_field("region_format", &f)?;
-      } else {
-        s.skip_field("region_format")?;
-      }
-      if let Some(f) = self.cpu_usage() {
-        s.serialize_field("cpu_usage", &f)?;
-      } else {
-        s.skip_field("cpu_usage")?;
-      }
-      if let Some(f) = self.lifecycle_event() {
-        s.serialize_field("lifecycle_event", &f)?;
-      } else {
-        s.skip_field("lifecycle_event")?;
-      }
-      s.serialize_field("javascript_engine", &self.javascript_engine())?;
-      s.serialize_field("memory_pressure_level", &self.memory_pressure_level())?;
-    s.end()
-  }
-}
-
 pub struct AppMetricsBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
   fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
   start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
@@ -2456,36 +2236,6 @@ impl<'a> Default for OSBuildArgs<'a> {
   }
 }
 
-impl Serialize for OSBuild<'_> {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("OSBuild", 4)?;
-      if let Some(f) = self.version() {
-        s.serialize_field("version", &f)?;
-      } else {
-        s.skip_field("version")?;
-      }
-      if let Some(f) = self.brand() {
-        s.serialize_field("brand", &f)?;
-      } else {
-        s.skip_field("brand")?;
-      }
-      if let Some(f) = self.fingerprint() {
-        s.serialize_field("fingerprint", &f)?;
-      } else {
-        s.skip_field("fingerprint")?;
-      }
-      if let Some(f) = self.kern_osversion() {
-        s.serialize_field("kern_osversion", &f)?;
-      } else {
-        s.skip_field("kern_osversion")?;
-      }
-    s.end()
-  }
-}
-
 pub struct OSBuildBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
   fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
   start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
@@ -2661,18 +2411,6 @@ impl<'a> Default for PowerMetricsArgs {
   }
 }
 
-impl Serialize for PowerMetrics<'_> {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("PowerMetrics", 2)?;
-      s.serialize_field("power_state", &self.power_state())?;
-      s.serialize_field("charge_percent", &self.charge_percent())?;
-    s.end()
-  }
-}
-
 pub struct PowerMetricsBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
   fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
   start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
@@ -2833,19 +2571,6 @@ impl<'a> Default for DisplayArgs {
       width: 0,
       density_dpi: 0,
     }
-  }
-}
-
-impl Serialize for Display<'_> {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("Display", 3)?;
-      s.serialize_field("height", &self.height())?;
-      s.serialize_field("width", &self.width())?;
-      s.serialize_field("density_dpi", &self.density_dpi())?;
-    s.end()
   }
 }
 
@@ -3207,67 +2932,6 @@ impl<'a> Default for DeviceMetricsArgs<'a> {
   }
 }
 
-impl Serialize for DeviceMetrics<'_> {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("DeviceMetrics", 15)?;
-      if let Some(f) = self.time() {
-        s.serialize_field("time", &f)?;
-      } else {
-        s.skip_field("time")?;
-      }
-      if let Some(f) = self.timezone() {
-        s.serialize_field("timezone", &f)?;
-      } else {
-        s.skip_field("timezone")?;
-      }
-      if let Some(f) = self.power_metrics() {
-        s.serialize_field("power_metrics", &f)?;
-      } else {
-        s.skip_field("power_metrics")?;
-      }
-      s.serialize_field("network_state", &self.network_state())?;
-      s.serialize_field("rotation", &self.rotation())?;
-      s.serialize_field("arch", &self.arch())?;
-      if let Some(f) = self.display() {
-        s.serialize_field("display", &f)?;
-      } else {
-        s.skip_field("display")?;
-      }
-      if let Some(f) = self.manufacturer() {
-        s.serialize_field("manufacturer", &f)?;
-      } else {
-        s.skip_field("manufacturer")?;
-      }
-      if let Some(f) = self.model() {
-        s.serialize_field("model", &f)?;
-      } else {
-        s.skip_field("model")?;
-      }
-      if let Some(f) = self.os_build() {
-        s.serialize_field("os_build", &f)?;
-      } else {
-        s.skip_field("os_build")?;
-      }
-      s.serialize_field("platform", &self.platform())?;
-      if let Some(f) = self.cpu_abis() {
-        s.serialize_field("cpu_abis", &f)?;
-      } else {
-        s.skip_field("cpu_abis")?;
-      }
-      s.serialize_field("low_power_mode_enabled", &self.low_power_mode_enabled())?;
-      if let Some(f) = self.cpu_usage() {
-        s.serialize_field("cpu_usage", &f)?;
-      } else {
-        s.skip_field("cpu_usage")?;
-      }
-      s.serialize_field("thermal_state", &self.thermal_state())?;
-    s.end()
-  }
-}
-
 pub struct DeviceMetricsBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
   fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
   start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
@@ -3567,23 +3231,6 @@ impl<'a> Default for SourceFileArgs<'a> {
   }
 }
 
-impl Serialize for SourceFile<'_> {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("SourceFile", 3)?;
-      if let Some(f) = self.path() {
-        s.serialize_field("path", &f)?;
-      } else {
-        s.skip_field("path")?;
-      }
-      s.serialize_field("line", &self.line())?;
-      s.serialize_field("column", &self.column())?;
-    s.end()
-  }
-}
-
 pub struct SourceFileBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
   fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
   start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
@@ -3743,22 +3390,6 @@ impl<'a> Default for CPURegisterArgs<'a> {
       name: None,
       value: 0,
     }
-  }
-}
-
-impl Serialize for CPURegister<'_> {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("CPURegister", 2)?;
-      if let Some(f) = self.name() {
-        s.serialize_field("name", &f)?;
-      } else {
-        s.skip_field("name")?;
-      }
-      s.serialize_field("value", &self.value())?;
-    s.end()
   }
 }
 
@@ -4094,62 +3725,6 @@ impl<'a> Default for FrameArgs<'a> {
       symbolicated_name: None,
       js_bundle_path: None,
     }
-  }
-}
-
-impl Serialize for Frame<'_> {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("Frame", 14)?;
-      s.serialize_field("type_", &self.type_())?;
-      if let Some(f) = self.class_name() {
-        s.serialize_field("class_name", &f)?;
-      } else {
-        s.skip_field("class_name")?;
-      }
-      if let Some(f) = self.symbol_name() {
-        s.serialize_field("symbol_name", &f)?;
-      } else {
-        s.skip_field("symbol_name")?;
-      }
-      if let Some(f) = self.source_file() {
-        s.serialize_field("source_file", &f)?;
-      } else {
-        s.skip_field("source_file")?;
-      }
-      if let Some(f) = self.image_id() {
-        s.serialize_field("image_id", &f)?;
-      } else {
-        s.skip_field("image_id")?;
-      }
-      s.serialize_field("frame_address", &self.frame_address())?;
-      s.serialize_field("symbol_address", &self.symbol_address())?;
-      if let Some(f) = self.registers() {
-        s.serialize_field("registers", &f)?;
-      } else {
-        s.skip_field("registers")?;
-      }
-      if let Some(f) = self.state() {
-        s.serialize_field("state", &f)?;
-      } else {
-        s.skip_field("state")?;
-      }
-      s.serialize_field("frame_status", &self.frame_status())?;
-      s.serialize_field("original_index", &self.original_index())?;
-      s.serialize_field("in_app", &self.in_app())?;
-      if let Some(f) = self.symbolicated_name() {
-        s.serialize_field("symbolicated_name", &f)?;
-      } else {
-        s.skip_field("symbolicated_name")?;
-      }
-      if let Some(f) = self.js_bundle_path() {
-        s.serialize_field("js_bundle_path", &f)?;
-      } else {
-        s.skip_field("js_bundle_path")?;
-      }
-    s.end()
   }
 }
 
@@ -4518,40 +4093,6 @@ impl<'a> Default for ThreadArgs<'a> {
   }
 }
 
-impl Serialize for Thread<'_> {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("Thread", 8)?;
-      if let Some(f) = self.name() {
-        s.serialize_field("name", &f)?;
-      } else {
-        s.skip_field("name")?;
-      }
-      s.serialize_field("active", &self.active())?;
-      s.serialize_field("index", &self.index())?;
-      if let Some(f) = self.state() {
-        s.serialize_field("state", &f)?;
-      } else {
-        s.skip_field("state")?;
-      }
-      s.serialize_field("priority", &self.priority())?;
-      s.serialize_field("quality_of_service", &self.quality_of_service())?;
-      if let Some(f) = self.stack_trace() {
-        s.serialize_field("stack_trace", &f)?;
-      } else {
-        s.skip_field("stack_trace")?;
-      }
-      if let Some(f) = self.summary() {
-        s.serialize_field("summary", &f)?;
-      } else {
-        s.skip_field("summary")?;
-      }
-    s.end()
-  }
-}
-
 pub struct ThreadBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
   fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
   start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
@@ -4765,22 +4306,6 @@ impl<'a> Default for ThreadDetailsArgs<'a> {
   }
 }
 
-impl Serialize for ThreadDetails<'_> {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("ThreadDetails", 2)?;
-      s.serialize_field("count", &self.count())?;
-      if let Some(f) = self.threads() {
-        s.serialize_field("threads", &f)?;
-      } else {
-        s.skip_field("threads")?;
-      }
-    s.end()
-  }
-}
-
 pub struct ThreadDetailsBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
   fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
   start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
@@ -4963,32 +4488,6 @@ impl<'a> Default for ErrorArgs<'a> {
       stack_trace: None,
       relation_to_next: ErrorRelation::CausedBy,
     }
-  }
-}
-
-impl Serialize for Error<'_> {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("Error", 4)?;
-      if let Some(f) = self.name() {
-        s.serialize_field("name", &f)?;
-      } else {
-        s.skip_field("name")?;
-      }
-      if let Some(f) = self.reason() {
-        s.serialize_field("reason", &f)?;
-      } else {
-        s.skip_field("reason")?;
-      }
-      if let Some(f) = self.stack_trace() {
-        s.serialize_field("stack_trace", &f)?;
-      } else {
-        s.skip_field("stack_trace")?;
-      }
-      s.serialize_field("relation_to_next", &self.relation_to_next())?;
-    s.end()
   }
 }
 
@@ -5183,27 +4682,6 @@ impl<'a> Default for BinaryImageArgs<'a> {
   }
 }
 
-impl Serialize for BinaryImage<'_> {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("BinaryImage", 3)?;
-      if let Some(f) = self.id() {
-        s.serialize_field("id", &f)?;
-      } else {
-        s.skip_field("id")?;
-      }
-      if let Some(f) = self.path() {
-        s.serialize_field("path", &f)?;
-      } else {
-        s.skip_field("path")?;
-      }
-      s.serialize_field("load_address", &self.load_address())?;
-    s.end()
-  }
-}
-
 pub struct BinaryImageBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
   fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
   start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
@@ -5367,26 +4845,6 @@ impl<'a> Default for SDKInfoArgs<'a> {
       id: None,
       version: None,
     }
-  }
-}
-
-impl Serialize for SDKInfo<'_> {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("SDKInfo", 2)?;
-      if let Some(f) = self.id() {
-        s.serialize_field("id", &f)?;
-      } else {
-        s.skip_field("id")?;
-      }
-      if let Some(f) = self.version() {
-        s.serialize_field("version", &f)?;
-      } else {
-        s.skip_field("version")?;
-      }
-    s.end()
   }
 }
 
@@ -5560,31 +5018,6 @@ impl<'a> Default for FeatureFlagArgs<'a> {
       value: None,
       timestamp: None,
     }
-  }
-}
-
-impl Serialize for FeatureFlag<'_> {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("FeatureFlag", 3)?;
-      if let Some(f) = self.name() {
-        s.serialize_field("name", &f)?;
-      } else {
-        s.skip_field("name")?;
-      }
-      if let Some(f) = self.value() {
-        s.serialize_field("value", &f)?;
-      } else {
-        s.skip_field("value")?;
-      }
-      if let Some(f) = self.timestamp() {
-        s.serialize_field("timestamp", &f)?;
-      } else {
-        s.skip_field("timestamp")?;
-      }
-    s.end()
   }
 }
 
@@ -5863,57 +5296,6 @@ impl<'a> Default for ReportArgs<'a> {
       state: None,
       feature_flags: None,
     }
-  }
-}
-
-impl Serialize for Report<'_> {
-  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-  where
-    S: Serializer,
-  {
-    let mut s = serializer.serialize_struct("Report", 9)?;
-      if let Some(f) = self.sdk() {
-        s.serialize_field("sdk", &f)?;
-      } else {
-        s.skip_field("sdk")?;
-      }
-      s.serialize_field("type_", &self.type_())?;
-      if let Some(f) = self.app_metrics() {
-        s.serialize_field("app_metrics", &f)?;
-      } else {
-        s.skip_field("app_metrics")?;
-      }
-      if let Some(f) = self.device_metrics() {
-        s.serialize_field("device_metrics", &f)?;
-      } else {
-        s.skip_field("device_metrics")?;
-      }
-      if let Some(f) = self.errors() {
-        s.serialize_field("errors", &f)?;
-      } else {
-        s.skip_field("errors")?;
-      }
-      if let Some(f) = self.thread_details() {
-        s.serialize_field("thread_details", &f)?;
-      } else {
-        s.skip_field("thread_details")?;
-      }
-      if let Some(f) = self.binary_images() {
-        s.serialize_field("binary_images", &f)?;
-      } else {
-        s.skip_field("binary_images")?;
-      }
-      if let Some(f) = self.state() {
-        s.serialize_field("state", &f)?;
-      } else {
-        s.skip_field("state")?;
-      }
-      if let Some(f) = self.feature_flags() {
-        s.serialize_field("feature_flags", &f)?;
-      } else {
-        s.skip_field("feature_flags")?;
-      }
-    s.end()
   }
 }
 

@@ -1038,6 +1038,7 @@ dependencies = [
  "protobuf 4.0.0-alpha.0",
  "protobuf-codegen",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
