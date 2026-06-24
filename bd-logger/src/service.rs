@@ -73,6 +73,7 @@ pub struct UploadRequest {
   uuid: String,
   log_upload: Arc<LogBatch>,
   ackless: bool,
+  request_trigger_uuid: Option<String>,
 }
 
 impl UploadRequest {
@@ -85,7 +86,16 @@ impl UploadRequest {
       uuid,
       log_upload: Arc::new(log_upload),
       ackless,
+      request_trigger_uuid: None,
     }
+  }
+
+  #[must_use]
+  pub(crate) fn with_request_trigger_uuid(mut self, request_trigger_uuid: Option<String>) -> Self {
+    // Only intent-negotiated trigger uploads carry the outward-facing trigger UUID. All other
+    // uploads keep this unset so the API contract stays explicit.
+    self.request_trigger_uuid = request_trigger_uuid;
+    self
   }
 }
 
@@ -149,6 +159,7 @@ impl tower::Service<UploadRequest> for Uploader {
       upload_uuid: request.uuid.clone(),
       proto_logs: request.log_upload.logs.clone(),
       buffer_uuid: request.log_upload.buffer_id.clone(),
+      trigger_uuids: request.request_trigger_uuid.iter().cloned().collect(),
       ackless: request.ackless,
       ..Default::default()
     };

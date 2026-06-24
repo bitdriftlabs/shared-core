@@ -23,7 +23,7 @@ use crate::trigger_upload_artifact::{
   PersistedTriggerUploadArtifactBatch,
   TriggerUploadArtifactStore,
 };
-use bd_api::upload::LogBatch;
+use bd_api::upload::{LogBatch, TrackedLogUploadIntent};
 use bd_api::{TriggerUpload, TriggerUploadSource, TriggerUploadStreaming};
 use bd_buffer::{AbslCode, Buffer, BufferEvent, BufferEventWithResponse, Consumer, Error};
 use bd_client_common::error::InvariantError;
@@ -105,6 +105,35 @@ impl Display for TriggerBatchUploadCanceled {
 }
 
 impl std::error::Error for TriggerBatchUploadCanceled {}
+
+//
+// TriggerUploadIdentity
+//
+
+#[derive(Clone, Debug)]
+struct TriggerUploadIdentity {
+  // Durable local identifier used for persistence, artifact naming, and restart replay.
+  durable_upload_id: String,
+
+  // Optional outward-facing identifier copied onto LogUploadRequest for intent-negotiated trigger
+  // uploads.
+  request_trigger_uuid: Option<String>,
+}
+
+impl TriggerUploadIdentity {
+  fn new(source: &TriggerUploadSource, request_trigger_uuid: Option<String>) -> Self {
+    let durable_upload_id = source.logical_id().to_string();
+
+    Self {
+      durable_upload_id,
+      request_trigger_uuid,
+    }
+  }
+
+  fn durable_upload_id(&self) -> &str {
+    &self.durable_upload_id
+  }
+}
 
 // Responsible for managing the lifetime of upload tasks as buffers are added/removed via dynamic
 // reconfiguration. When continuous buffers are added, a new task is spawned which is responsible
@@ -258,13 +287,14 @@ impl BufferUploadManager {
       buffer_ids,
       streaming,
       source,
+      request_trigger_uuid,
       session_id,
     } = trigger_upload;
 
-    // The source's logical ID is the durable key for this trigger upload. Replays and retries of
-    // the same logical flush rewrite one registry entry; a different source ID creates a distinct
-    // pending upload record.
-    let trigger_upload_id = source.logical_id().to_string();
+    // Intent-negotiated trigger uploads have a per-trigger UUID that the server can use for
+    // completion deduplication. Trigger uploads without intent negotiation still need a durable
+    // internal key for retries and replay, so they fall back to the logical trigger ID.
+    let trigger_upload_identity = TriggerUploadIdentity::new(&source, request_trigger_uuid);
     let trigger_upload_source = PersistedTriggerUploadSource::from(&source);
     let trigger_upload_streaming = streaming.as_ref().map(Into::into);
     let is_remote_streaming_activation = matches!(source, TriggerUploadSource::RemoteCommand(_));
@@ -317,13 +347,13 @@ impl BufferUploadManager {
           self.pending_trigger_uploads.clone(),
           self.logger_state_directory.clone(),
           self.process_local_pending_flush_state.clone(),
-          &trigger_upload_id,
+          trigger_upload_identity.durable_upload_id(),
           &buffer_id,
         )
         .await;
 
         let trigger_consumer =
-          self.new_trigger_consumer(&buffer_id, &trigger_upload_id, &buffer)?;
+          self.new_trigger_consumer(&buffer_id, trigger_upload_identity.clone(), &buffer)?;
 
         self.active_trigger_uploads.insert(buffer_id.clone());
         eligible_buffer_ids.push(buffer_id.clone());
@@ -347,8 +377,9 @@ impl BufferUploadManager {
       self
         .pending_trigger_uploads
         .upsert(PersistedTriggerUpload {
-          id: trigger_upload_id.clone(),
+          id: trigger_upload_identity.durable_upload_id.clone(),
           source: trigger_upload_source,
+          request_trigger_uuid: trigger_upload_identity.request_trigger_uuid.clone(),
           session_id: session_id.clone(),
           buffers: eligible_buffer_ids
             .iter()
@@ -370,7 +401,7 @@ impl BufferUploadManager {
     let remote_streaming_request = if is_remote_streaming_activation {
       streaming.map(|streaming| {
         RemoteFlushStreamingRequest::new(
-          trigger_upload_id.clone(),
+          trigger_upload_identity.durable_upload_id.clone(),
           eligible_buffer_ids.clone(),
           session_id.clone(),
           streaming,
@@ -455,8 +486,9 @@ impl BufferUploadManager {
 
       if completed_uploads.iter().any(|completed| !completed) {
         log::debug!(
-          "preserving pending trigger upload state for {trigger_upload_id} because at least one \
-           buffer upload did not complete successfully",
+          "preserving pending trigger upload state for {durable_trigger_upload_id} because at \
+           least one buffer upload did not complete successfully",
+          durable_trigger_upload_id = trigger_upload_identity.durable_upload_id,
         );
         return;
       }
@@ -468,15 +500,18 @@ impl BufferUploadManager {
           .is_err()
       {
         log::debug!(
-          "preserving pending trigger upload state for {trigger_upload_id} because remote \
+          "preserving pending trigger upload state for {durable_trigger_upload_id} because remote \
            streaming activation could not be delivered",
+          durable_trigger_upload_id = trigger_upload_identity.durable_upload_id,
         );
         return;
       }
 
       // Make completion visible to workflows only after the durable registry entry is gone. That
       // keeps the process-local pending set aligned with the persisted source of truth.
-      pending_trigger_uploads.remove(&trigger_upload_id).await;
+      pending_trigger_uploads
+        .remove(&trigger_upload_identity.durable_upload_id)
+        .await;
       process_local_pending_flush_state.mark_completed(&tracked_flush_id);
 
       log::debug!("signaling all trigger uploads complete");
@@ -740,12 +775,29 @@ impl BufferUploadManager {
 
       self
         .handle_trigger_uploads(
-          TriggerUpload::new(
-            pending_upload.buffer_ids(),
-            pending_upload.streaming(),
-            pending_upload.source.to_trigger_upload_source(),
-            pending_upload.session_id.clone(),
-          ),
+          match pending_upload.source {
+            PersistedTriggerUploadSource::RemoteCommand(_) => TriggerUpload::new(
+              pending_upload.buffer_ids(),
+              pending_upload.streaming(),
+              pending_upload.source.to_trigger_upload_source(),
+              pending_upload.session_id.clone(),
+            ),
+            PersistedTriggerUploadSource::WorkflowAction(_)
+            | PersistedTriggerUploadSource::ExplicitSessionCapture(_) => {
+              let request_trigger_uuid = pending_upload
+                .request_trigger_uuid
+                .clone()
+                .unwrap_or_else(TrackedLogUploadIntent::upload_uuid);
+
+              TriggerUpload::new_with_request_trigger_uuid(
+                pending_upload.buffer_ids(),
+                pending_upload.streaming(),
+                pending_upload.source.to_trigger_upload_source(),
+                request_trigger_uuid,
+                pending_upload.session_id.clone(),
+              )
+            },
+          },
           trigger_upload_complete_tx,
         )
         .await?;
@@ -827,9 +879,15 @@ impl BufferUploadManager {
   fn new_trigger_consumer(
     &self,
     buffer_name: &str,
-    trigger_upload_id: &str,
+    trigger_upload_identity: TriggerUploadIdentity,
     buffer: &Arc<Buffer>,
   ) -> anyhow::Result<CompleteBufferUpload> {
+    let artifact_store = TriggerUploadArtifactStore::new(
+      self.logger_state_directory.as_ref(),
+      trigger_upload_identity.durable_upload_id(),
+      buffer_name,
+    );
+
     Ok(CompleteBufferUpload::new(
       buffer.new_consumer()?,
       self.feature_flags.clone(),
@@ -838,12 +896,8 @@ impl BufferUploadManager {
       self.old_logs_dropped.clone(),
       self.state_upload_handle.clone(),
       self.pending_trigger_uploads.clone(),
-      trigger_upload_id.to_string(),
-      TriggerUploadArtifactStore::new(
-        self.logger_state_directory.as_ref(),
-        trigger_upload_id,
-        buffer_name,
-      ),
+      trigger_upload_identity,
+      artifact_store,
       buffer.clone(),
     ))
   }
@@ -1189,7 +1243,7 @@ struct CompleteBufferUpload {
   // replay after restart. The remaining fields track the live, not-yet-staged batch being built
   // from the buffer in this process.
   pending_trigger_uploads: PendingTriggerUploadsStore,
-  pending_trigger_upload_id: String,
+  trigger_upload_identity: TriggerUploadIdentity,
   has_marked_uploading_from_buffer: bool,
   pending_batch_reads: usize,
   artifact_store: TriggerUploadArtifactStore,
@@ -1205,7 +1259,7 @@ impl CompleteBufferUpload {
     old_logs_dropped: Counter,
     state_upload_handle: Option<Arc<StateUploadHandle>>,
     pending_trigger_uploads: PendingTriggerUploadsStore,
-    pending_trigger_upload_id: String,
+    trigger_upload_identity: TriggerUploadIdentity,
     artifact_store: TriggerUploadArtifactStore,
     buffer: Arc<Buffer>,
   ) -> Self {
@@ -1226,7 +1280,7 @@ impl CompleteBufferUpload {
       old_logs_dropped,
       state_upload_handle,
       pending_trigger_uploads,
-      pending_trigger_upload_id,
+      trigger_upload_identity,
       has_marked_uploading_from_buffer: false,
       pending_batch_reads: 0,
       artifact_store,
@@ -1270,7 +1324,10 @@ impl CompleteBufferUpload {
           if !self.has_marked_uploading_from_buffer {
             self
               .pending_trigger_uploads
-              .mark_uploading(&self.pending_trigger_upload_id, &self.buffer_id)
+              .mark_uploading(
+                self.trigger_upload_identity.durable_upload_id(),
+                &self.buffer_id,
+              )
               .await;
             self.has_marked_uploading_from_buffer = true;
           }
@@ -1390,7 +1447,10 @@ impl CompleteBufferUpload {
     // for restart because subsequent recovery should resume from the artifact backlog first.
     self
       .pending_trigger_uploads
-      .mark_uploading_from_artifact(&self.pending_trigger_upload_id, &self.buffer_id)
+      .mark_uploading_from_artifact(
+        self.trigger_upload_identity.durable_upload_id(),
+        &self.buffer_id,
+      )
       .await;
 
     // Upload state snapshot if needed before uploading logs
@@ -1405,14 +1465,17 @@ impl CompleteBufferUpload {
       .ready()
       .await
       .unwrap_infallible()
-      .call(UploadRequest::new_with_uuid(
-        batch.upload_uuid,
-        LogBatch {
-          logs: batch.logs,
-          buffer_id: self.buffer_id.clone(),
-        },
-        false,
-      ))
+      .call(
+        UploadRequest::new_with_uuid(
+          batch.upload_uuid,
+          LogBatch {
+            logs: batch.logs,
+            buffer_id: self.buffer_id.clone(),
+          },
+          false,
+        )
+        .with_request_trigger_uuid(self.trigger_upload_identity.request_trigger_uuid.clone()),
+      )
       .await
       .unwrap_infallible();
 
@@ -1424,7 +1487,11 @@ impl CompleteBufferUpload {
         // durable history regardless of whether the current buffer still matches its contents.
         self
           .pending_trigger_uploads
-          .record_uploaded_chunk(&self.pending_trigger_upload_id, &self.buffer_id, logs_len)
+          .record_uploaded_chunk(
+            self.trigger_upload_identity.durable_upload_id(),
+            &self.buffer_id,
+            logs_len,
+          )
           .await;
 
         if discard_recovered_prefix {

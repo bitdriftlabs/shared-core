@@ -612,21 +612,37 @@ impl ProcessingPipeline {
       Some(buffers_to_flush) =  self.buffers_to_flush_rx.recv() => {
         log::debug!("received flush buffers action signal, buffer IDs to flush: \"{:?}\"", buffers_to_flush.buffer_ids);
 
-        let trigger_upload = TriggerUpload::new(
-          buffers_to_flush.buffer_ids
-            .iter()
-            .map(std::string::ToString::to_string)
-            .collect(),
-          buffers_to_flush.streaming,
-          match &buffers_to_flush.flush_id {
-            FlushBufferId::WorkflowActionId(id) => TriggerUploadSource::WorkflowAction(id.clone()),
-            FlushBufferId::ExplicitSessionCapture(id) => {
-              TriggerUploadSource::ExplicitSessionCapture(id.clone())
-            },
-            FlushBufferId::RemoteCommand(id) => TriggerUploadSource::RemoteCommand(id.clone()),
+        let trigger_upload_source = match &buffers_to_flush.flush_id {
+          FlushBufferId::WorkflowActionId(id) => TriggerUploadSource::WorkflowAction(id.clone()),
+          FlushBufferId::ExplicitSessionCapture(id) => {
+            TriggerUploadSource::ExplicitSessionCapture(id.clone())
           },
-          buffers_to_flush.session_id,
-        );
+          FlushBufferId::RemoteCommand(id) => TriggerUploadSource::RemoteCommand(id.clone()),
+        };
+
+        let trigger_upload =
+          if let Some(request_trigger_uuid) = buffers_to_flush.request_trigger_uuid {
+          TriggerUpload::new_with_request_trigger_uuid(
+            buffers_to_flush.buffer_ids
+              .iter()
+              .map(std::string::ToString::to_string)
+              .collect(),
+            buffers_to_flush.streaming,
+            trigger_upload_source,
+            request_trigger_uuid,
+            buffers_to_flush.session_id,
+          )
+        } else {
+          TriggerUpload::new(
+            buffers_to_flush.buffer_ids
+              .iter()
+              .map(std::string::ToString::to_string)
+              .collect(),
+            buffers_to_flush.streaming,
+            trigger_upload_source,
+            buffers_to_flush.session_id,
+          )
+        };
 
         let result = self.trigger_upload_tx.try_send(trigger_upload);
         match result {

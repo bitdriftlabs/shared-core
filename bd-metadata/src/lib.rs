@@ -37,7 +37,9 @@ use std::collections::HashMap;
 // Version 40: Added multi-extract support on metrics.
 // Version 41: Added support for client driven state updates.
 // Version 42: Added support for server driven state updates.
-const CONFIGURATION_VERSION: &str = "42";
+// Version 43: Added support for sending trigger UUIDs in log uploads to allow the server to
+//             associate logs with the flush that generated them.
+const CONFIGURATION_VERSION: &str = "43";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]

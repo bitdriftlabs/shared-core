@@ -96,9 +96,8 @@ pub enum TriggerUploadSource {
 impl TriggerUploadSource {
   #[must_use]
   pub fn logical_id(&self) -> &str {
-    // This string is the logger's durable trigger-upload key. Reusing the same logical ID causes
-    // recovery/rescheduling to rewrite one pending upload entry; minting a fresh ID creates a
-    // distinct pending upload record.
+    // This string identifies the logical trigger configuration that scheduled the upload. Callers
+    // that need a unique per-trigger instance ID must provide that separately.
     match self {
       Self::WorkflowAction(id) | Self::ExplicitSessionCapture(id) | Self::RemoteCommand(id) => id,
     }
@@ -182,6 +181,10 @@ pub struct TriggerUpload {
   // Stable identifier for the logical trigger that scheduled the upload.
   pub source: TriggerUploadSource,
 
+  // Stable identifier to copy onto the outward log upload request when the trigger came through
+  // intent negotiation.
+  pub request_trigger_uuid: Option<String>,
+
   // Session identifier active when the logical trigger was scheduled.
   pub session_id: String,
 }
@@ -198,6 +201,24 @@ impl TriggerUpload {
       buffer_ids,
       streaming,
       source,
+      request_trigger_uuid: None,
+      session_id,
+    }
+  }
+
+  #[must_use]
+  pub fn new_with_request_trigger_uuid(
+    buffer_ids: Vec<String>,
+    streaming: Option<TriggerUploadStreaming>,
+    source: TriggerUploadSource,
+    request_trigger_uuid: String,
+    session_id: String,
+  ) -> Self {
+    Self {
+      buffer_ids,
+      streaming,
+      source,
+      request_trigger_uuid: Some(request_trigger_uuid),
       session_id,
     }
   }

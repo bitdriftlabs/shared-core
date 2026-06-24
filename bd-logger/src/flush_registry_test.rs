@@ -34,6 +34,7 @@ async fn upsert_replaces_existing_upload_with_same_id() {
     .upsert(PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::RemoteCommand("flush-1".to_string()),
+      request_trigger_uuid: None,
       session_id: "session-a".to_string(),
       buffers: vec![buffer_progress("a")],
       streaming: None,
@@ -44,6 +45,7 @@ async fn upsert_replaces_existing_upload_with_same_id() {
     .upsert(PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::RemoteCommand("flush-1".to_string()),
+      request_trigger_uuid: None,
       session_id: "session-b".to_string(),
       buffers: vec![buffer_progress("b")],
       streaming: Some(PersistedTriggerUploadStreaming {
@@ -59,6 +61,7 @@ async fn upsert_replaces_existing_upload_with_same_id() {
     vec![PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::RemoteCommand("flush-1".to_string()),
+      request_trigger_uuid: None,
       session_id: "session-b".to_string(),
       buffers: vec![buffer_progress("b")],
       streaming: Some(PersistedTriggerUploadStreaming {
@@ -78,6 +81,7 @@ async fn remove_clears_matching_upload() {
     .upsert(PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::WorkflowAction("flush-1".to_string()),
+      request_trigger_uuid: None,
       session_id: "workflow-session".to_string(),
       buffers: vec![buffer_progress("trigger")],
       streaming: None,
@@ -103,6 +107,7 @@ async fn mark_uploading_updates_lifecycle_without_replacing_other_fields() {
     .upsert(PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::RemoteCommand("flush-1".to_string()),
+      request_trigger_uuid: None,
       session_id: "remote-session".to_string(),
       buffers: vec![buffer_progress("trigger")],
       streaming: Some(PersistedTriggerUploadStreaming {
@@ -120,6 +125,7 @@ async fn mark_uploading_updates_lifecycle_without_replacing_other_fields() {
     vec![PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::RemoteCommand("flush-1".to_string()),
+      request_trigger_uuid: None,
       session_id: "remote-session".to_string(),
       buffers: vec![PersistedTriggerUploadBufferProgress {
         buffer_id: "trigger".to_string(),
@@ -144,6 +150,7 @@ async fn record_uploaded_chunk_updates_per_buffer_progress() {
     .upsert(PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::RemoteCommand("flush-1".to_string()),
+      request_trigger_uuid: None,
       session_id: "remote-session".to_string(),
       buffers: vec![buffer_progress("trigger")],
       streaming: None,
@@ -158,6 +165,7 @@ async fn record_uploaded_chunk_updates_per_buffer_progress() {
     vec![PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::RemoteCommand("flush-1".to_string()),
+      request_trigger_uuid: None,
       session_id: "remote-session".to_string(),
       buffers: vec![PersistedTriggerUploadBufferProgress {
         buffer_id: "trigger".to_string(),
@@ -167,6 +175,36 @@ async fn record_uploaded_chunk_updates_per_buffer_progress() {
       }],
       streaming: None,
       lifecycle: PersistedTriggerUploadLifecycle::UploadingFromArtifact,
+    }]
+  );
+}
+
+#[tokio::test]
+async fn request_trigger_uuid_round_trips_when_present() {
+  let temp_directory = TempDir::with_prefix("flush-registry").unwrap();
+  let store = make_store(&temp_directory);
+  store
+    .upsert(PersistedTriggerUpload {
+      id: "flush-1".to_string(),
+      source: PersistedTriggerUploadSource::WorkflowAction("workflow-action".to_string()),
+      request_trigger_uuid: Some("shared-trigger".to_string()),
+      session_id: "workflow-session".to_string(),
+      buffers: vec![buffer_progress("trigger")],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
+    })
+    .await;
+
+  assert_eq!(
+    make_store(&temp_directory).pending_uploads().await,
+    vec![PersistedTriggerUpload {
+      id: "flush-1".to_string(),
+      source: PersistedTriggerUploadSource::WorkflowAction("workflow-action".to_string()),
+      request_trigger_uuid: Some("shared-trigger".to_string()),
+      session_id: "workflow-session".to_string(),
+      buffers: vec![buffer_progress("trigger")],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
     }]
   );
 }
@@ -216,6 +254,7 @@ async fn prune_buffer_from_other_uploads_only_removes_matching_buffer() {
     .upsert(PersistedTriggerUpload {
       id: "current".to_string(),
       source: PersistedTriggerUploadSource::RemoteCommand("current".to_string()),
+      request_trigger_uuid: None,
       session_id: "current-session".to_string(),
       buffers: vec![buffer_progress("shared")],
       streaming: None,
@@ -226,6 +265,7 @@ async fn prune_buffer_from_other_uploads_only_removes_matching_buffer() {
     .upsert(PersistedTriggerUpload {
       id: "old".to_string(),
       source: PersistedTriggerUploadSource::WorkflowAction("old-action".to_string()),
+      request_trigger_uuid: None,
       session_id: "old-session".to_string(),
       buffers: vec![buffer_progress("shared"), buffer_progress("other")],
       streaming: None,
@@ -251,6 +291,7 @@ async fn prune_buffer_from_other_uploads_only_removes_matching_buffer() {
       PersistedTriggerUpload {
         id: "current".to_string(),
         source: PersistedTriggerUploadSource::RemoteCommand("current".to_string()),
+        request_trigger_uuid: None,
         session_id: "current-session".to_string(),
         buffers: vec![buffer_progress("shared")],
         streaming: None,
@@ -259,6 +300,7 @@ async fn prune_buffer_from_other_uploads_only_removes_matching_buffer() {
       PersistedTriggerUpload {
         id: "old".to_string(),
         source: PersistedTriggerUploadSource::WorkflowAction("old-action".to_string()),
+        request_trigger_uuid: None,
         session_id: "old-session".to_string(),
         buffers: vec![buffer_progress("other")],
         streaming: None,
@@ -276,6 +318,7 @@ async fn prune_buffer_from_other_uploads_removes_upload_when_last_buffer_disappe
     .upsert(PersistedTriggerUpload {
       id: "current".to_string(),
       source: PersistedTriggerUploadSource::RemoteCommand("current".to_string()),
+      request_trigger_uuid: None,
       session_id: "current-session".to_string(),
       buffers: vec![buffer_progress("shared")],
       streaming: None,
@@ -286,6 +329,7 @@ async fn prune_buffer_from_other_uploads_removes_upload_when_last_buffer_disappe
     .upsert(PersistedTriggerUpload {
       id: "old".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("capture".to_string()),
+      request_trigger_uuid: None,
       session_id: "old-session".to_string(),
       buffers: vec![buffer_progress("shared")],
       streaming: Some(PersistedTriggerUploadStreaming {
@@ -313,6 +357,7 @@ async fn prune_buffer_from_other_uploads_removes_upload_when_last_buffer_disappe
     vec![PersistedTriggerUpload {
       id: "current".to_string(),
       source: PersistedTriggerUploadSource::RemoteCommand("current".to_string()),
+      request_trigger_uuid: None,
       session_id: "current-session".to_string(),
       buffers: vec![buffer_progress("shared")],
       streaming: None,

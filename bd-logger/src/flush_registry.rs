@@ -94,13 +94,16 @@ pub fn flush_buffer_id_from_trigger_upload_source(source: &TriggerUploadSource) 
 //
 
 // Durable description of a trigger upload that survives process restart. This is the source of
-// truth for logger-side recovery: it records which logical flush triggered the upload, which
-// buffers were admitted to it in this process, the originating session, any deferred streaming
-// activation, and per-buffer progress.
+// truth for logger-side recovery: it records the durable local upload ID used for replay, the
+// optional outward-facing request trigger UUID used for completion deduplication, which logical
+// flush triggered the upload, which buffers were admitted to it in this process, the originating
+// session, any deferred streaming activation, and per-buffer progress.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PersistedTriggerUpload {
+  // Durable local upload identifier used for persistence and replay.
   pub id: String,
   pub source: PersistedTriggerUploadSource,
+  pub request_trigger_uuid: Option<String>,
   pub session_id: String,
   pub buffers: Vec<PersistedTriggerUploadBufferProgress>,
   pub streaming: Option<PersistedTriggerUploadStreaming>,
@@ -233,6 +236,8 @@ struct PersistedTriggerUploadRecord {
   buffers: Vec<PersistedTriggerUploadBufferProgressRecord>,
   #[field(id = 6)]
   lifecycle: PersistedTriggerUploadLifecycleRecord,
+  #[field(id = 7)]
+  request_trigger_uuid: Option<String>,
 }
 
 #[proto_serializable]
@@ -328,6 +333,7 @@ impl From<&PersistedTriggerUpload> for PersistedTriggerUploadRecord {
     Self {
       id: upload.id.clone(),
       source: (&upload.source).into(),
+      request_trigger_uuid: upload.request_trigger_uuid.clone(),
       session_id: upload.session_id.clone(),
       streaming: upload.streaming.as_ref().map(Into::into),
       buffers: upload.buffers.iter().map(Into::into).collect(),
@@ -341,6 +347,9 @@ impl From<PersistedTriggerUploadRecord> for PersistedTriggerUpload {
     Self {
       id: upload.id,
       source: upload.source.into(),
+      request_trigger_uuid: upload
+        .request_trigger_uuid
+        .filter(|request_trigger_uuid| !request_trigger_uuid.is_empty()),
       session_id: upload.session_id,
       buffers: upload.buffers.into_iter().map(Into::into).collect(),
       streaming: upload.streaming.map(Into::into),

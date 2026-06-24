@@ -30,6 +30,7 @@ use bd_noop_network::NoopNetwork;
 use bd_proto::protos::bdtail::bdtail_config::{BdTailConfigurations, BdTailStream};
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::client::api::debug_data_request::WorkflowTransitionDebugData;
+use bd_proto::protos::client::api::log_upload_intent_request::Intent_type;
 use bd_proto::protos::client::api::{
   ClientStateUpdate,
   DebugDataRequest,
@@ -305,9 +306,15 @@ fn explicit_session_capture() {
     [].into(),
   );
 
+  let intent_uuid = match setup.server.next_log_intent() {
+    Some(intent) => intent.intent_uuid,
+    None => panic!("expected log upload intent"),
+  };
+
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
     assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
     uuid::Uuid::parse_str(log_upload.upload_uuid()).unwrap();
+    assert_eq!(log_upload.trigger_uuid(), Some(intent_uuid.as_str()));
     assert_eq!(log_upload.logs().len(), 10);
 
     assert_eq!(log_upload.logs()[0].message(), "some log");
@@ -328,6 +335,7 @@ fn explicit_session_capture() {
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
     assert_eq!(log_upload.buffer_id(), "default");
     uuid::Uuid::parse_str(log_upload.upload_uuid()).unwrap();
+    assert_eq!(log_upload.trigger_uuid(), None);
     assert_eq!(log_upload.logs().len(), 10);
 
     assert_eq!(log_upload.logs()[0].message(), "some log");
@@ -1059,16 +1067,221 @@ fn workflow_flush_buffers_action_uploads_buffer() {
     None,
   );
 
-  assert_matches!(setup.server.next_log_intent(), Some(intent) => {
-    assert_eq!(intent.session_id, session_id);
-  });
+  let intent_uuid = match setup.server.next_log_intent() {
+    Some(intent) => {
+      assert_eq!(intent.session_id, session_id);
+      intent.intent_uuid
+    },
+    None => panic!("expected log upload intent"),
+  };
 
   // Since there are 10 logs in the buffer at this point, we should now see an upload containing
   // 10 logs.
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
     assert_eq!(log_upload.buffer_id(), "default");
+    assert_eq!(log_upload.trigger_uuid(), Some(intent_uuid.as_str()));
     assert_eq!(log_upload.logs().len(), 10);
     assert_eq!(vec!["flush_action_id"], *log_upload.logs()[9].workflow_action_ids());
+  });
+}
+
+#[test]
+fn one_log_matching_multiple_flush_actions_shares_one_intent_uuid_and_one_upload() {
+  let mut setup = Setup::new();
+  let session_id = setup.logger_handle.session_id().unwrap();
+
+  let workflow_one_b = state("workflow_one_b");
+  let workflow_one_a = state("workflow_one_a").declare_transition(
+    &workflow_one_b,
+    rule!(message_equals("advance workflow one")),
+  );
+  let workflow_one_c = state("workflow_one_c");
+  let workflow_one_b = workflow_one_b.declare_transition_with_actions(
+    &workflow_one_c,
+    rule!(message_equals("fan out flush actions")),
+    &[make_flush_buffers_action(
+      &["default"],
+      None,
+      "workflow_one_flush",
+    )],
+  );
+
+  let workflow_two_b = state("workflow_two_b");
+  let workflow_two_a = state("workflow_two_a").declare_transition_with_actions(
+    &workflow_two_b,
+    rule!(message_equals("fan out flush actions")),
+    &[make_flush_buffers_action(
+      &["default"],
+      None,
+      "workflow_two_flush",
+    )],
+  );
+
+  let maybe_nack = setup.send_configuration_update(config_helper::configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      buffer_config: vec![config_helper::default_buffer_config(
+        Type::TRIGGER,
+        make_buffer_matcher_matching_everything().into(),
+      )],
+      workflows: vec![
+        WorkflowBuilder::new(
+          "workflow_one",
+          &[&workflow_one_a, &workflow_one_b, &workflow_one_c],
+        )
+        .build(),
+        WorkflowBuilder::new("workflow_two", &[&workflow_two_a, &workflow_two_b]).build(),
+      ],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+
+  for _ in 0 .. 8 {
+    setup.log(
+      log_level::DEBUG,
+      LogType::NORMAL,
+      "something".into(),
+      [].into(),
+      [].into(),
+      None,
+    );
+  }
+
+  setup.log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "advance workflow one".into(),
+    [].into(),
+    [].into(),
+    None,
+  );
+
+  setup.log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "fan out flush actions".into(),
+    [].into(),
+    [].into(),
+    None,
+  );
+
+  let first_intent_uuid = match setup.server.next_log_intent() {
+    Some(intent) => {
+      assert_eq!(intent.session_id, session_id);
+      let workflow_action_ids = match intent.intent_type.as_ref() {
+        Some(Intent_type::WorkflowActionUpload(upload)) => upload.workflow_action_ids.clone(),
+        other => panic!("expected workflow action upload intent, got {other:?}"),
+      };
+      assert_eq!(vec!["workflow_one_flush".to_string()], workflow_action_ids);
+      intent.intent_uuid
+    },
+    None => panic!("expected first log upload intent"),
+  };
+
+  let second_intent_uuid = match setup.server.next_log_intent() {
+    Some(intent) => {
+      assert_eq!(intent.session_id, session_id);
+      let workflow_action_ids = match intent.intent_type.as_ref() {
+        Some(Intent_type::WorkflowActionUpload(upload)) => upload.workflow_action_ids.clone(),
+        other => panic!("expected workflow action upload intent, got {other:?}"),
+      };
+      assert_eq!(vec!["workflow_two_flush".to_string()], workflow_action_ids);
+      intent.intent_uuid
+    },
+    None => panic!("expected second log upload intent"),
+  };
+
+  assert_eq!(first_intent_uuid, second_intent_uuid);
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "default");
+    assert_eq!(log_upload.trigger_uuid(), Some(first_intent_uuid.as_str()));
+    assert_eq!(log_upload.logs().len(), 10);
+    assert_eq!(
+      vec!["workflow_one_flush", "workflow_two_flush"],
+      *log_upload.logs()[9].workflow_action_ids(),
+    );
+    assert_eq!("fan out flush actions", log_upload.logs()[9].message());
+  });
+
+  assert_matches!(setup.server.blocking_next_log_upload(), None);
+}
+
+#[test]
+fn explicit_session_capture_reuses_intent_uuid_after_restart_replay() {
+  let mut setup = Setup::new();
+  assert!(
+    setup
+      .send_configuration_update(config_helper::configuration_update_from_parts(
+        "",
+        ConfigurationUpdateParts {
+          buffer_config: vec![
+            default_buffer_config(
+              Type::CONTINUOUS,
+              make_buffer_matcher_matching_resource_logs().into(),
+            ),
+            BufferConfigBuilder {
+              name: "trigger_buffer_id",
+              buffer_type: Type::TRIGGER,
+              filter: make_buffer_matcher_matching_everything_except_internal_logs().into(),
+              non_volatile_size: 100_000,
+              volatile_size: 10_000,
+            }
+            .build(),
+          ],
+          workflows: vec![],
+          ..Default::default()
+        },
+      ))
+      .is_none()
+  );
+
+  setup.send_runtime_update();
+
+  for _ in 0 .. 9 {
+    setup.log(
+      log_level::DEBUG,
+      LogType::NORMAL,
+      "some log".into(),
+      [].into(),
+      [].into(),
+      None,
+    );
+  }
+
+  let _blocked_log_upload_response = setup.server.block_next_log_upload_response();
+  setup.log_with_session_capture(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "some log".into(),
+    [].into(),
+    [].into(),
+  );
+
+  let intent_uuid = match setup.server.next_log_intent() {
+    Some(intent) => intent.intent_uuid,
+    None => panic!("expected log upload intent"),
+  };
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.trigger_uuid(), Some(intent_uuid.as_str()));
+    assert_eq!(log_upload.logs().len(), 10);
+  });
+
+  let sdk_directory = setup.sdk_directory.clone();
+  drop(setup);
+
+  let mut setup = Setup::new_with_options(SetupOptions {
+    sdk_directory,
+    ..Default::default()
+  });
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+    assert_eq!(log_upload.trigger_uuid(), Some(intent_uuid.as_str()));
+    assert_eq!(log_upload.logs().len(), 10);
   });
 }
 
@@ -2509,6 +2722,7 @@ fn remote_buffer_upload_replays_after_restart_with_blocked_response() {
     assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
     assert_eq!(log_upload.logs().len(), 1);
     assert_eq!(log_upload.logs()[0].message(), "buffered before remote flush");
+    assert_eq!(log_upload.trigger_uuid(), None);
   });
 
   let sdk_directory = setup.sdk_directory.clone();
@@ -2526,6 +2740,7 @@ fn remote_buffer_upload_replays_after_restart_with_blocked_response() {
     assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
     assert_eq!(log_upload.logs().len(), 1);
     assert_eq!(log_upload.logs()[0].message(), "buffered before remote flush");
+    assert_eq!(log_upload.trigger_uuid(), None);
   });
 }
 
