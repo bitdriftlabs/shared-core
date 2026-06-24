@@ -1493,7 +1493,6 @@ dependencies = [
  "once_cell",
  "percent-encoding",
  "protobuf 4.0.0-alpha.0",
- "quote",
  "regex",
  "regex-automata",
  "regex-syntax",

@@ -87,7 +87,6 @@ num-traits = { version = "0.2", features = ["i128"] }
 once_cell = { version = "1" }
 percent-encoding = { version = "2" }
 protobuf = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", branch = "patch-stack", features = ["with-bytes"] }
-quote = { version = "1" }
 regex = { version = "1" }
 regex-automata = { version = "0.4", default-features = false, features = ["dfa-build", "dfa-onepass", "hybrid", "meta", "nfa-backtrack", "perf", "std", "unicode"] }
 regex-syntax = { version = "0.8" }
