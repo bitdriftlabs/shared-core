@@ -44,13 +44,13 @@ pub mod common;
 mod common_serialize;
 
 macro_rules! serialize_enum {
-  ($name:ident) => {
+  ($name:ident, $serializer:ident) => {
     impl Serialize for $name {
       fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
       where
         S: Serializer,
       {
-        serializer.serialize_u32(self.0 as u32)
+        serializer.$serializer(self.0)
       }
     }
   };

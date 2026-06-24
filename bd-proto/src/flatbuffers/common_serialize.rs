@@ -10,7 +10,7 @@ use crate::flatbuffers::serialize_enum;
 extern crate serde;
 use self::serde::ser::{Serialize, SerializeStruct, Serializer};
 
-serialize_enum!(Data);
+serialize_enum!(Data, serialize_u8);
 
 impl Serialize for StringData<'_> {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>

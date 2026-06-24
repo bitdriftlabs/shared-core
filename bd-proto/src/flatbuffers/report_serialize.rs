@@ -14,17 +14,17 @@ use crate::flatbuffers::serialize_enum;
 extern crate serde;
 use self::serde::ser::{Serialize, SerializeStruct, Serializer};
 
-serialize_enum!(ReportType);
-serialize_enum!(Platform);
-serialize_enum!(Architecture);
-serialize_enum!(FrameType);
-serialize_enum!(ErrorRelation);
-serialize_enum!(PowerState);
-serialize_enum!(NetworkState);
-serialize_enum!(JavaScriptEngine);
-serialize_enum!(MemoryPressureLevel);
-serialize_enum!(Rotation);
-serialize_enum!(FrameStatus);
+serialize_enum!(ReportType, serialize_i8);
+serialize_enum!(Platform, serialize_i8);
+serialize_enum!(Architecture, serialize_i8);
+serialize_enum!(FrameType, serialize_i8);
+serialize_enum!(ErrorRelation, serialize_i8);
+serialize_enum!(PowerState, serialize_i8);
+serialize_enum!(NetworkState, serialize_i8);
+serialize_enum!(JavaScriptEngine, serialize_i8);
+serialize_enum!(MemoryPressureLevel, serialize_i8);
+serialize_enum!(Rotation, serialize_i8);
+serialize_enum!(FrameStatus, serialize_i8);
 
 impl Serialize for Timestamp {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
