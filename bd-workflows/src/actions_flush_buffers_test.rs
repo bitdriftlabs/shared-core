@@ -99,7 +99,7 @@ async fn pending_buffers_standardization_removes_references_to_non_existing_trig
     PendingFlushBuffersAction {
       tracing_lease: false,
       id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
-      request_trigger_uuid: "trigger".to_string(),
+      request_trigger_uuid: Some("trigger".to_string()),
       session_id: "foo_session_id".to_string(),
       trigger_buffer_ids: TinySet::from([
         "existing_trigger_buffer_id_1".into(),
@@ -110,7 +110,7 @@ async fn pending_buffers_standardization_removes_references_to_non_existing_trig
     PendingFlushBuffersAction {
       tracing_lease: false,
       id: FlushBufferId::WorkflowActionId("action_id_2".to_string()),
-      request_trigger_uuid: "trigger".to_string(),
+      request_trigger_uuid: Some("trigger".to_string()),
       session_id: "foo_session_id".to_string(),
       trigger_buffer_ids: TinySet::from(["unknown_trigger_buffer_id".into()]),
       streaming: None,
@@ -118,7 +118,7 @@ async fn pending_buffers_standardization_removes_references_to_non_existing_trig
     PendingFlushBuffersAction {
       tracing_lease: false,
       id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
-      request_trigger_uuid: "trigger".to_string(),
+      request_trigger_uuid: Some("trigger".to_string()),
       session_id: "bar_session_id".to_string(),
       trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id_2".into()]),
       streaming: Some(Streaming {
@@ -133,7 +133,7 @@ async fn pending_buffers_standardization_removes_references_to_non_existing_trig
       PendingFlushBuffersAction {
         tracing_lease: false,
         id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
-        request_trigger_uuid: "trigger".to_string(),
+        request_trigger_uuid: Some("trigger".to_string()),
         session_id: "foo_session_id".to_string(),
         trigger_buffer_ids: TinySet::from([
           // The unknown trigger buffer ID present in the original flush buffers action is no
@@ -147,7 +147,7 @@ async fn pending_buffers_standardization_removes_references_to_non_existing_trig
       PendingFlushBuffersAction {
         tracing_lease: false,
         id: FlushBufferId::WorkflowActionId("action_id_3".to_string()),
-        request_trigger_uuid: "trigger".to_string(),
+        request_trigger_uuid: Some("trigger".to_string()),
         session_id: "bar_session_id".to_string(),
         trigger_buffer_ids: TinySet::from([
           // The unknown continuous buffer ID present in the original flush buffers action is
@@ -326,7 +326,7 @@ fn process_flush_buffers_actions() {
     &BTreeSet::from([PendingFlushBuffersAction {
       tracing_lease: false,
       id: FlushBufferId::WorkflowActionId("action_id_2".to_string()),
-      request_trigger_uuid: "trigger".to_string(),
+      request_trigger_uuid: Some("trigger".to_string()),
       session_id: "foo_session_id".to_string(),
       trigger_buffer_ids: TinySet::default(),
       streaming: None,
@@ -347,7 +347,7 @@ fn process_flush_buffers_actions() {
       new_pending_actions_to_add: BTreeSet::from([PendingFlushBuffersAction {
         tracing_lease: false,
         id: FlushBufferId::WorkflowActionId("action_id_1".to_string()),
-        request_trigger_uuid: "trigger".to_string(),
+        request_trigger_uuid: Some("trigger".to_string()),
         session_id: "foo_session_id".to_string(),
         trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id".into(),]),
         streaming: None,
@@ -416,7 +416,7 @@ fn process_flush_buffer_action_with_no_buffers() {
       new_pending_actions_to_add: BTreeSet::from([PendingFlushBuffersAction {
         tracing_lease: false,
         id: FlushBufferId::WorkflowActionId("action_id".to_string()),
-        request_trigger_uuid: "trigger".to_string(),
+        request_trigger_uuid: Some("trigger".to_string()),
         session_id: "foo_session_id".to_string(),
         trigger_buffer_ids: TinySet::from(["existing_trigger_buffer_id".into(),]),
         streaming: Some(Streaming {
@@ -517,7 +517,7 @@ async fn negotiator_upload_flow() {
   let pending_action = PendingFlushBuffersAction {
     tracing_lease: false,
     id: FlushBufferId::WorkflowActionId("action_id".to_string()),
-    request_trigger_uuid: "trigger".to_string(),
+    request_trigger_uuid: Some("trigger".to_string()),
     session_id: "session_id".to_string(),
     trigger_buffer_ids: TinySet::default(),
     streaming: None,
@@ -582,7 +582,7 @@ async fn negotiator_drop_flow() {
   let pending_action = PendingFlushBuffersAction {
     tracing_lease: false,
     id: FlushBufferId::WorkflowActionId("action_id".to_string()),
-    request_trigger_uuid: "trigger".to_string(),
+    request_trigger_uuid: Some("trigger".to_string()),
     session_id: "session_id".to_string(),
     trigger_buffer_ids: TinySet::default(),
     streaming: None,

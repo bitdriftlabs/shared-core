@@ -128,8 +128,10 @@ impl Negotiator {
     })
   }
 
-  async fn process_pending_action(&mut self, pending_action: PendingFlushBuffersAction) {
+  async fn process_pending_action(&mut self, mut pending_action: PendingFlushBuffersAction) {
     log::debug!("processing pending action: {:?}", pending_action.id);
+    pending_action.ensure_request_trigger_uuid();
+
 
     self.stats.intent_initiations_total.inc();
 
@@ -237,7 +239,10 @@ impl Negotiator {
     &self,
     action: &PendingFlushBuffersAction,
   ) -> anyhow::Result<bool> {
-    let intent_uuid = action.request_trigger_uuid.clone();
+    let intent_uuid = action
+      .request_trigger_uuid
+      .clone()
+      .ok_or_else(|| anyhow!("missing request trigger UUID"))?;
 
     let intent_request = LogUploadIntentRequest {
       log_count: 0,
@@ -396,7 +401,7 @@ impl Resolver {
     let pending_action = PendingFlushBuffersAction::new(
       action,
       session_id.to_string(),
-      TrackedLogUploadIntent::upload_uuid(),
+      None,
       &self.trigger_buffer_ids,
       &self.continuous_buffer_ids,
     )?;
@@ -427,7 +432,7 @@ impl Resolver {
       let Some(action) = PendingFlushBuffersAction::new(
         (*action).clone(),
         session_id.to_string(),
-        shared_request_trigger_uuid.clone(),
+        Some(shared_request_trigger_uuid.clone()),
         &self.trigger_buffer_ids,
         &self.continuous_buffer_ids,
       ) else {
@@ -796,7 +801,7 @@ pub(crate) struct PendingFlushBuffersAction {
   #[field(id = 5)]
   pub(crate) tracing_lease: bool,
   #[field(id = 6)]
-  pub(crate) request_trigger_uuid: String,
+  pub(crate) request_trigger_uuid: Option<String>,
 }
 
 impl PartialEq for PendingFlushBuffersAction {
@@ -838,7 +843,7 @@ impl PendingFlushBuffersAction {
   fn new(
     action: ActionFlushBuffers,
     session_id: String,
-    request_trigger_uuid: String,
+    request_trigger_uuid: Option<String>,
     trigger_buffer_ids: &TinySet<Cow<'static, str>>,
     continuous_buffer_ids: &TinySet<Cow<'static, str>>,
   ) -> Option<Self> {
@@ -906,6 +911,16 @@ impl PendingFlushBuffersAction {
       tracing_lease: false,
       request_trigger_uuid,
     })
+  }
+
+  fn ensure_request_trigger_uuid(&mut self) {
+    if self
+      .request_trigger_uuid
+      .as_ref()
+      .is_none_or(String::is_empty)
+    {
+      self.request_trigger_uuid = Some(TrackedLogUploadIntent::upload_uuid());
+    }
   }
 
   pub(crate) const fn has_tracing_lease(&self) -> bool {
@@ -1048,7 +1063,7 @@ pub struct BuffersToFlush {
   // Stable ID for the logical flush action that requested this upload.
   pub flush_id: FlushBufferId,
   // Stable ID for this specific trigger instance.
-  pub request_trigger_uuid: String,
+  pub request_trigger_uuid: Option<String>,
   // Session ID active when the flush action was scheduled.
   pub session_id: String,
   // Unique IDs of buffers to flush.

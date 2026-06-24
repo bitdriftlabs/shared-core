@@ -1124,6 +1124,7 @@ async fn trigger_upload_is_persisted_until_completion() {
     vec![PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
+      request_trigger_uuid: None,
       session_id: "session-1".to_string(),
       buffers: vec![PersistedTriggerUploadBufferProgress {
         buffer_id: "buffer".to_string(),
@@ -1162,6 +1163,7 @@ async fn persisted_trigger_upload_replays_after_restart() {
     .upsert(PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
+      request_trigger_uuid: None,
       session_id: "session-1".to_string(),
       buffers: vec![PersistedTriggerUploadBufferProgress::new(
         "buffer".to_string(),
@@ -1208,6 +1210,7 @@ async fn in_flight_trigger_upload_replays_after_restart() {
     .upsert(PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
+      request_trigger_uuid: None,
       session_id: "session-1".to_string(),
       buffers: vec![PersistedTriggerUploadBufferProgress {
         buffer_id: "buffer".to_string(),
@@ -1276,6 +1279,7 @@ async fn queued_trigger_upload_artifact_prefix_is_deduped_against_buffer_on_rest
     .upsert(PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
+      request_trigger_uuid: None,
       session_id: "session-1".to_string(),
       buffers: vec![PersistedTriggerUploadBufferProgress {
         buffer_id: "buffer".to_string(),
@@ -1322,12 +1326,49 @@ async fn queued_trigger_upload_artifact_prefix_is_deduped_against_buffer_on_rest
 }
 
 #[tokio::test(start_paused = true)]
+async fn recovered_trigger_upload_without_request_trigger_uuid_mints_new_upload_uuid() {
+  let temp_directory = TempDir::with_prefix("consumertest").unwrap();
+  PendingTriggerUploadsStore::new(temp_directory.path())
+    .upsert(PersistedTriggerUpload {
+      id: "flush-1".to_string(),
+      source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
+      request_trigger_uuid: None,
+      session_id: "session-1".to_string(),
+      buffers: vec![PersistedTriggerUploadBufferProgress::new(
+        "buffer".to_string(),
+      )],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
+    })
+    .await;
+
+  let buffer_path = temp_directory.path().join("buffer");
+  let (buffer, mut producer) = create_trigger_buffer(buffer_path.as_path()).await;
+  producer.write(b"one").unwrap();
+
+  let mut setup = SetupMultiConsumer::new_with_state(1, 1000, temp_directory).await;
+  setup.add_trigger_buffer("buffer", buffer).await;
+  setup.sync_trigger_buffer_config(&["buffer"]).await;
+
+  let recovered_upload = setup.next_upload().await;
+  assert_eq!(recovered_upload.payload.log_upload().proto_logs.len(), 1);
+  assert_eq!(recovered_upload.payload.log_upload().proto_logs[0], b"one");
+  assert_eq!(1, recovered_upload.payload.log_upload().trigger_uuids.len());
+  assert!(!recovered_upload.payload.log_upload().trigger_uuids[0].is_empty());
+  assert_ne!(
+    recovered_upload.payload.log_upload().trigger_uuids[0],
+    "flush-1"
+  );
+}
+
+#[tokio::test(start_paused = true)]
 async fn recovered_trigger_upload_only_discards_matching_buffer_prefix_on_restart() {
   let temp_directory = TempDir::with_prefix("consumertest").unwrap();
   PendingTriggerUploadsStore::new(temp_directory.path())
     .upsert(PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
+      request_trigger_uuid: None,
       session_id: "session-1".to_string(),
       buffers: vec![PersistedTriggerUploadBufferProgress {
         buffer_id: "buffer".to_string(),
@@ -1402,6 +1443,7 @@ async fn persisted_trigger_upload_prunes_missing_buffers_on_recovery() {
     .upsert(PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
+      request_trigger_uuid: None,
       session_id: "stale-session".to_string(),
       buffers: vec![
         PersistedTriggerUploadBufferProgress::new("buffer-a".to_string()),
@@ -1458,6 +1500,7 @@ async fn persisted_trigger_upload_with_no_configured_buffers_is_abandoned() {
     .upsert(PersistedTriggerUpload {
       id: "flush-1".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("flush-1".to_string()),
+      request_trigger_uuid: None,
       session_id: "session-1".to_string(),
       buffers: vec![PersistedTriggerUploadBufferProgress::new(
         "missing-buffer".to_string(),
@@ -1501,6 +1544,7 @@ async fn new_trigger_upload_prunes_stale_state_for_same_buffer() {
     .upsert(PersistedTriggerUpload {
       id: "old-upload".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("old-upload".to_string()),
+      request_trigger_uuid: None,
       session_id: "old-session".to_string(),
       buffers: vec![PersistedTriggerUploadBufferProgress {
         buffer_id: "buffer".to_string(),
@@ -1554,6 +1598,7 @@ async fn new_trigger_upload_prunes_stale_state_for_same_buffer() {
     vec![PersistedTriggerUpload {
       id: "new-upload".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("new-upload".to_string()),
+      request_trigger_uuid: None,
       session_id: "new-session".to_string(),
       buffers: vec![PersistedTriggerUploadBufferProgress {
         buffer_id: "buffer".to_string(),
@@ -1592,6 +1637,7 @@ async fn new_trigger_upload_prunes_only_overlapping_buffer_from_older_upload() {
     .upsert(PersistedTriggerUpload {
       id: "old-upload".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("old-upload".to_string()),
+      request_trigger_uuid: None,
       session_id: "old-session".to_string(),
       buffers: vec![
         PersistedTriggerUploadBufferProgress {
@@ -1648,6 +1694,7 @@ async fn new_trigger_upload_prunes_only_overlapping_buffer_from_older_upload() {
       PersistedTriggerUpload {
         id: "old-upload".to_string(),
         source: PersistedTriggerUploadSource::ExplicitSessionCapture("old-upload".to_string()),
+        request_trigger_uuid: None,
         session_id: "old-session".to_string(),
         buffers: vec![PersistedTriggerUploadBufferProgress::new(
           "other".to_string()
@@ -1658,6 +1705,7 @@ async fn new_trigger_upload_prunes_only_overlapping_buffer_from_older_upload() {
       PersistedTriggerUpload {
         id: "new-upload".to_string(),
         source: PersistedTriggerUploadSource::ExplicitSessionCapture("new-upload".to_string()),
+        request_trigger_uuid: None,
         session_id: "new-session".to_string(),
         buffers: vec![PersistedTriggerUploadBufferProgress {
           buffer_id: "buffer".to_string(),
@@ -1765,6 +1813,7 @@ async fn pruning_last_buffer_marks_old_flush_completed() {
     .upsert(PersistedTriggerUpload {
       id: "old-upload".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("old-upload".to_string()),
+      request_trigger_uuid: None,
       session_id: "old-session".to_string(),
       buffers: vec![PersistedTriggerUploadBufferProgress {
         buffer_id: buffer_id.clone(),
@@ -1866,6 +1915,7 @@ async fn recovery_prefers_newest_persisted_upload_for_same_buffer() {
     .upsert(PersistedTriggerUpload {
       id: "old-upload".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("old-upload".to_string()),
+      request_trigger_uuid: None,
       session_id: "session-old".to_string(),
       buffers: vec![PersistedTriggerUploadBufferProgress {
         buffer_id: "buffer".to_string(),
@@ -1899,6 +1949,7 @@ async fn recovery_prefers_newest_persisted_upload_for_same_buffer() {
     .upsert(PersistedTriggerUpload {
       id: "new-upload".to_string(),
       source: PersistedTriggerUploadSource::ExplicitSessionCapture("new-upload".to_string()),
+      request_trigger_uuid: None,
       session_id: "session-new".to_string(),
       buffers: vec![PersistedTriggerUploadBufferProgress {
         buffer_id: "buffer".to_string(),
@@ -1957,6 +2008,65 @@ async fn recovery_prefers_newest_persisted_upload_for_same_buffer() {
     .unwrap();
 
   setup.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn shared_request_trigger_uuid_does_not_replace_durable_local_upload_id() {
+  let mut setup = SetupMultiConsumer::new(1, 1000).await;
+  let (buffer_a, mut producer_a) =
+    create_trigger_buffer(setup.sdk_directory.join("buffer-a").as_path()).await;
+  let (buffer_b, mut producer_b) =
+    create_trigger_buffer(setup.sdk_directory.join("buffer-b").as_path()).await;
+  setup.add_trigger_buffer("buffer-a", buffer_a).await;
+  setup.add_trigger_buffer("buffer-b", buffer_b).await;
+  setup
+    .sync_trigger_buffer_config(&["buffer-a", "buffer-b"])
+    .await;
+  producer_a.write(b"one").unwrap();
+  producer_b.write(b"two").unwrap();
+
+  let shared_request_trigger_uuid = "shared-trigger".to_string();
+  setup
+    .trigger_upload_tx
+    .send(TriggerUpload::new_with_request_trigger_uuid(
+      vec!["buffer-a".to_string()],
+      None,
+      TriggerUploadSource::WorkflowAction("workflow-action-a".to_string()),
+      shared_request_trigger_uuid.clone(),
+      "session-a".to_string(),
+    ))
+    .await
+    .unwrap();
+  setup.next_upload().await;
+
+  setup
+    .trigger_upload_tx
+    .send(TriggerUpload::new_with_request_trigger_uuid(
+      vec!["buffer-b".to_string()],
+      None,
+      TriggerUploadSource::WorkflowAction("workflow-action-b".to_string()),
+      shared_request_trigger_uuid.clone(),
+      "session-b".to_string(),
+    ))
+    .await
+    .unwrap();
+  setup.next_upload().await;
+
+  let pending_uploads = setup.pending_trigger_uploads().await;
+  assert_eq!(2, pending_uploads.len());
+  assert_eq!(
+    vec![
+      "workflow-action-a".to_string(),
+      "workflow-action-b".to_string()
+    ],
+    pending_uploads
+      .iter()
+      .map(|upload| upload.id.clone())
+      .collect::<Vec<_>>()
+  );
+  assert!(pending_uploads.iter().all(|upload| {
+    upload.request_trigger_uuid.as_deref() == Some(shared_request_trigger_uuid.as_str())
+  }));
 }
 
 #[tokio::test(start_paused = true)]
@@ -2093,6 +2203,50 @@ async fn remote_streaming_activation_channel_closure_preserves_flush_completion(
   assert_eq!(setup.pending_trigger_uploads().await.len(), 1);
 
   setup.shutdown().await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn remote_command_upload_does_not_emit_request_trigger_uuid_on_recovery() {
+  let temp_directory = TempDir::with_prefix("consumertest").unwrap();
+  let (remote_flush_streaming_tx, _remote_flush_streaming_rx) = tokio::sync::mpsc::channel(1);
+
+  PendingTriggerUploadsStore::new(temp_directory.path())
+    .upsert(PersistedTriggerUpload {
+      id: "flush-1".to_string(),
+      source: PersistedTriggerUploadSource::RemoteCommand("flush-1".to_string()),
+      request_trigger_uuid: None,
+      session_id: "session-1".to_string(),
+      buffers: vec![PersistedTriggerUploadBufferProgress::new(
+        "buffer".to_string(),
+      )],
+      streaming: None,
+      lifecycle: PersistedTriggerUploadLifecycle::ReadyToUpload,
+    })
+    .await;
+
+  let buffer_path = temp_directory.path().join("buffer");
+  let (buffer, mut producer) = create_trigger_buffer(buffer_path.as_path()).await;
+  producer.write(b"one").unwrap();
+
+  let mut setup = SetupMultiConsumer::new_with_remote_streaming_channel(
+    1,
+    1000,
+    temp_directory,
+    remote_flush_streaming_tx,
+  )
+  .await;
+  setup.add_trigger_buffer("buffer", buffer).await;
+  setup.sync_trigger_buffer_config(&["buffer"]).await;
+
+  let recovered_upload = setup.next_upload().await;
+  assert_eq!(recovered_upload.payload.log_upload().proto_logs.len(), 1);
+  assert!(
+    recovered_upload
+      .payload
+      .log_upload()
+      .trigger_uuids
+      .is_empty()
+  );
 }
 
 #[tokio::test(start_paused = true)]

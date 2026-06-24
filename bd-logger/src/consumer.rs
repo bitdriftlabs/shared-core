@@ -23,7 +23,7 @@ use crate::trigger_upload_artifact::{
   PersistedTriggerUploadArtifactBatch,
   TriggerUploadArtifactStore,
 };
-use bd_api::upload::LogBatch;
+use bd_api::upload::{LogBatch, TrackedLogUploadIntent};
 use bd_api::{TriggerUpload, TriggerUploadSource, TriggerUploadStreaming};
 use bd_buffer::{AbslCode, Buffer, BufferEvent, BufferEventWithResponse, Consumer, Error};
 use bd_client_common::error::InvariantError;
@@ -122,9 +122,7 @@ struct TriggerUploadIdentity {
 
 impl TriggerUploadIdentity {
   fn new(source: &TriggerUploadSource, request_trigger_uuid: Option<String>) -> Self {
-    let durable_upload_id = request_trigger_uuid
-      .clone()
-      .unwrap_or_else(|| source.logical_id().to_string());
+    let durable_upload_id = source.logical_id().to_string();
 
     Self {
       durable_upload_id,
@@ -381,6 +379,7 @@ impl BufferUploadManager {
         .upsert(PersistedTriggerUpload {
           id: trigger_upload_identity.durable_upload_id.clone(),
           source: trigger_upload_source,
+          request_trigger_uuid: trigger_upload_identity.request_trigger_uuid.clone(),
           session_id: session_id.clone(),
           buffers: eligible_buffer_ids
             .iter()
@@ -785,11 +784,16 @@ impl BufferUploadManager {
             ),
             PersistedTriggerUploadSource::WorkflowAction(_)
             | PersistedTriggerUploadSource::ExplicitSessionCapture(_) => {
+              let request_trigger_uuid = pending_upload
+                .request_trigger_uuid
+                .clone()
+                .unwrap_or_else(TrackedLogUploadIntent::upload_uuid);
+
               TriggerUpload::new_with_request_trigger_uuid(
                 pending_upload.buffer_ids(),
                 pending_upload.streaming(),
                 pending_upload.source.to_trigger_upload_source(),
-                pending_upload.id.clone(),
+                request_trigger_uuid,
                 pending_upload.session_id.clone(),
               )
             },
