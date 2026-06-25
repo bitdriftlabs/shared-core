@@ -72,6 +72,9 @@ struct SDKInfoBuilder;
 struct FeatureFlag;
 struct FeatureFlagBuilder;
 
+struct ProcessingResult;
+struct ProcessingResultBuilder;
+
 struct Report;
 struct ReportBuilder;
 
@@ -110,6 +113,8 @@ inline const ::flatbuffers::TypeTable *BinaryImageTypeTable();
 inline const ::flatbuffers::TypeTable *SDKInfoTypeTable();
 
 inline const ::flatbuffers::TypeTable *FeatureFlagTypeTable();
+
+inline const ::flatbuffers::TypeTable *ProcessingResultTypeTable();
 
 inline const ::flatbuffers::TypeTable *ReportTypeTable();
 
@@ -2246,6 +2251,50 @@ inline ::flatbuffers::Offset<FeatureFlag> CreateFeatureFlagDirect(
       timestamp);
 }
 
+struct ProcessingResult FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef ProcessingResultBuilder Builder;
+  static const ::flatbuffers::TypeTable *MiniReflectTypeTable() {
+    return ProcessingResultTypeTable();
+  }
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_GROUPING_KEY = 4
+  };
+  uint64_t grouping_key() const {
+    return GetField<uint64_t>(VT_GROUPING_KEY, 0);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<uint64_t>(verifier, VT_GROUPING_KEY, 8) &&
+           verifier.EndTable();
+  }
+};
+
+struct ProcessingResultBuilder {
+  typedef ProcessingResult Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_grouping_key(uint64_t grouping_key) {
+    fbb_.AddElement<uint64_t>(ProcessingResult::VT_GROUPING_KEY, grouping_key, 0);
+  }
+  explicit ProcessingResultBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<ProcessingResult> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<ProcessingResult>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<ProcessingResult> CreateProcessingResult(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    uint64_t grouping_key = 0) {
+  ProcessingResultBuilder builder_(_fbb);
+  builder_.add_grouping_key(grouping_key);
+  return builder_.Finish();
+}
+
 struct Report FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef ReportBuilder Builder;
   static const ::flatbuffers::TypeTable *MiniReflectTypeTable() {
@@ -2259,8 +2308,9 @@ struct Report FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_ERRORS = 12,
     VT_THREAD_DETAILS = 14,
     VT_BINARY_IMAGES = 16,
-    VT_STATE = 18,
-    VT_FEATURE_FLAGS = 20
+    VT_FIELDS = 18,
+    VT_FEATURE_FLAGS = 20,
+    VT_PROCESSING_RESULT = 22
   };
   const bitdrift_public::fbs::issue_reporting::v1::SDKInfo *sdk() const {
     return GetPointer<const bitdrift_public::fbs::issue_reporting::v1::SDKInfo *>(VT_SDK);
@@ -2283,11 +2333,14 @@ struct Report FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::BinaryImage>> *binary_images() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::BinaryImage>> *>(VT_BINARY_IMAGES);
   }
-  const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>> *state() const {
-    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>> *>(VT_STATE);
+  const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>> *fields() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>> *>(VT_FIELDS);
   }
   const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>> *feature_flags() const {
     return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>> *>(VT_FEATURE_FLAGS);
+  }
+  const bitdrift_public::fbs::issue_reporting::v1::ProcessingResult *processing_result() const {
+    return GetPointer<const bitdrift_public::fbs::issue_reporting::v1::ProcessingResult *>(VT_PROCESSING_RESULT);
   }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
@@ -2306,12 +2359,14 @@ struct Report FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyOffset(verifier, VT_BINARY_IMAGES) &&
            verifier.VerifyVector(binary_images()) &&
            verifier.VerifyVectorOfTables(binary_images()) &&
-           VerifyOffset(verifier, VT_STATE) &&
-           verifier.VerifyVector(state()) &&
-           verifier.VerifyVectorOfTables(state()) &&
+           VerifyOffset(verifier, VT_FIELDS) &&
+           verifier.VerifyVector(fields()) &&
+           verifier.VerifyVectorOfTables(fields()) &&
            VerifyOffset(verifier, VT_FEATURE_FLAGS) &&
            verifier.VerifyVector(feature_flags()) &&
            verifier.VerifyVectorOfTables(feature_flags()) &&
+           VerifyOffset(verifier, VT_PROCESSING_RESULT) &&
+           verifier.VerifyTable(processing_result()) &&
            verifier.EndTable();
   }
 };
@@ -2341,11 +2396,14 @@ struct ReportBuilder {
   void add_binary_images(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::BinaryImage>>> binary_images) {
     fbb_.AddOffset(Report::VT_BINARY_IMAGES, binary_images);
   }
-  void add_state(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>> state) {
-    fbb_.AddOffset(Report::VT_STATE, state);
+  void add_fields(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>> fields) {
+    fbb_.AddOffset(Report::VT_FIELDS, fields);
   }
   void add_feature_flags(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>>> feature_flags) {
     fbb_.AddOffset(Report::VT_FEATURE_FLAGS, feature_flags);
+  }
+  void add_processing_result(::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessingResult> processing_result) {
+    fbb_.AddOffset(Report::VT_PROCESSING_RESULT, processing_result);
   }
   explicit ReportBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -2367,11 +2425,13 @@ inline ::flatbuffers::Offset<Report> CreateReport(
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::Error>>> errors = 0,
     ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ThreadDetails> thread_details = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::BinaryImage>>> binary_images = 0,
-    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>> state = 0,
-    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>>> feature_flags = 0) {
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>> fields = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>>> feature_flags = 0,
+    ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessingResult> processing_result = 0) {
   ReportBuilder builder_(_fbb);
+  builder_.add_processing_result(processing_result);
   builder_.add_feature_flags(feature_flags);
-  builder_.add_state(state);
+  builder_.add_fields(fields);
   builder_.add_binary_images(binary_images);
   builder_.add_thread_details(thread_details);
   builder_.add_errors(errors);
@@ -2391,11 +2451,12 @@ inline ::flatbuffers::Offset<Report> CreateReportDirect(
     const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::Error>> *errors = nullptr,
     ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ThreadDetails> thread_details = 0,
     const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::BinaryImage>> *binary_images = nullptr,
-    const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>> *state = nullptr,
-    const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>> *feature_flags = nullptr) {
+    const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>> *fields = nullptr,
+    const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>> *feature_flags = nullptr,
+    ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessingResult> processing_result = 0) {
   auto errors__ = errors ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::Error>>(*errors) : 0;
   auto binary_images__ = binary_images ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::BinaryImage>>(*binary_images) : 0;
-  auto state__ = state ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>(*state) : 0;
+  auto fields__ = fields ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>(*fields) : 0;
   auto feature_flags__ = feature_flags ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>>(*feature_flags) : 0;
   return bitdrift_public::fbs::issue_reporting::v1::CreateReport(
       _fbb,
@@ -2406,8 +2467,9 @@ inline ::flatbuffers::Offset<Report> CreateReportDirect(
       errors__,
       thread_details,
       binary_images__,
-      state__,
-      feature_flags__);
+      fields__,
+      feature_flags__,
+      processing_result);
 }
 
 inline const ::flatbuffers::TypeTable *ReportTypeTypeTable() {
@@ -3075,6 +3137,19 @@ inline const ::flatbuffers::TypeTable *FeatureFlagTypeTable() {
   return &tt;
 }
 
+inline const ::flatbuffers::TypeTable *ProcessingResultTypeTable() {
+  static const ::flatbuffers::TypeCode type_codes[] = {
+    { ::flatbuffers::ET_ULONG, 0, -1 }
+  };
+  static const char * const names[] = {
+    "grouping_key"
+  };
+  static const ::flatbuffers::TypeTable tt = {
+    ::flatbuffers::ST_TABLE, 1, type_codes, nullptr, nullptr, nullptr, names
+  };
+  return &tt;
+}
+
 inline const ::flatbuffers::TypeTable *ReportTypeTable() {
   static const ::flatbuffers::TypeCode type_codes[] = {
     { ::flatbuffers::ET_SEQUENCE, 0, 0 },
@@ -3085,7 +3160,8 @@ inline const ::flatbuffers::TypeTable *ReportTypeTable() {
     { ::flatbuffers::ET_SEQUENCE, 0, 5 },
     { ::flatbuffers::ET_SEQUENCE, 1, 6 },
     { ::flatbuffers::ET_SEQUENCE, 1, 7 },
-    { ::flatbuffers::ET_SEQUENCE, 1, 8 }
+    { ::flatbuffers::ET_SEQUENCE, 1, 8 },
+    { ::flatbuffers::ET_SEQUENCE, 0, 9 }
   };
   static const ::flatbuffers::TypeFunction type_refs[] = {
     bitdrift_public::fbs::issue_reporting::v1::SDKInfoTypeTable,
@@ -3096,7 +3172,8 @@ inline const ::flatbuffers::TypeTable *ReportTypeTable() {
     bitdrift_public::fbs::issue_reporting::v1::ThreadDetailsTypeTable,
     bitdrift_public::fbs::issue_reporting::v1::BinaryImageTypeTable,
     bitdrift_public::fbs::common::v1::FieldTypeTable,
-    bitdrift_public::fbs::issue_reporting::v1::FeatureFlagTypeTable
+    bitdrift_public::fbs::issue_reporting::v1::FeatureFlagTypeTable,
+    bitdrift_public::fbs::issue_reporting::v1::ProcessingResultTypeTable
   };
   static const char * const names[] = {
     "sdk",
@@ -3106,11 +3183,12 @@ inline const ::flatbuffers::TypeTable *ReportTypeTable() {
     "errors",
     "thread_details",
     "binary_images",
-    "state",
-    "feature_flags"
+    "fields",
+    "feature_flags",
+    "processing_result"
   };
   static const ::flatbuffers::TypeTable tt = {
-    ::flatbuffers::ST_TABLE, 9, type_codes, type_refs, nullptr, nullptr, names
+    ::flatbuffers::ST_TABLE, 10, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }

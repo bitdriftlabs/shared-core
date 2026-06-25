@@ -463,6 +463,15 @@
       },
       "additionalProperties" : false
     },
+    "bitdrift_public_fbs_issue_reporting_v1_ProcessingResult" : {
+      "type" : "object",
+      "properties" : {
+        "grouping_key" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 18446744073709551615
+              }
+      },
+      "additionalProperties" : false
+    },
     "bitdrift_public_fbs_issue_reporting_v1_Report" : {
       "type" : "object",
       "properties" : {
@@ -487,11 +496,14 @@
         "binary_images" : {
                 "type" : "array", "items" : {"$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_BinaryImage"}
               },
-        "state" : {
+        "fields" : {
                 "type" : "array", "items" : {"$ref" : "#/definitions/bitdrift_public_fbs_common_v1_Field"}
               },
         "feature_flags" : {
                 "type" : "array", "items" : {"$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_FeatureFlag"}
+              },
+        "processing_result" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_ProcessingResult"
               }
       },
       "additionalProperties" : false

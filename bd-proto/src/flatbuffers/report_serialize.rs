@@ -516,10 +516,10 @@ impl Serialize for Report<'_> {
     } else {
       s.skip_field("binary_images")?;
     }
-    if let Some(f) = self.state() {
-      s.serialize_field("state", &f)?;
+    if let Some(f) = self.fields() {
+      s.serialize_field("fields", &f)?;
     } else {
-      s.skip_field("state")?;
+      s.skip_field("fields")?;
     }
     if let Some(f) = self.feature_flags() {
       s.serialize_field("feature_flags", &f)?;
