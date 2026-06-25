@@ -32,67 +32,73 @@ fn serialization_loop<T: Sized + Serialize>(object: &T) -> serde_json::Value {
 #[test]
 fn serialize_report_type() {
   let object = serialization_loop(&ReportType::JVMCrash);
-  assert_eq!(json!(3), object);
+  assert_eq!(json!("JVMCrash"), object);
 }
 
 #[test]
 fn serialize_platform() {
   let object = serialization_loop(&Platform::Android);
-  assert_eq!(json!(1), object);
+  assert_eq!(json!("Android"), object);
 }
 
 #[test]
 fn serialize_arch() {
   let object = serialization_loop(&Architecture::arm64);
-  assert_eq!(json!(2), object);
+  assert_eq!(json!("arm64"), object);
 }
 
 #[test]
 fn serialize_frame_type() {
   let object = serialization_loop(&FrameType::AndroidNative);
-  assert_eq!(json!(3), object);
+  assert_eq!(json!("AndroidNative"), object);
 }
 
 #[test]
 fn serialize_error_relation() {
   let object = serialization_loop(&ErrorRelation::CausedBy);
-  assert_eq!(json!(1), object);
+  assert_eq!(json!("CausedBy"), object);
 }
 
 #[test]
 fn serialize_power_state() {
   let object = serialization_loop(&PowerState::PluggedInCharged);
-  assert_eq!(json!(4), object);
+  assert_eq!(json!("PluggedInCharged"), object);
 }
 
 #[test]
 fn serialize_network_state() {
   let object = serialization_loop(&NetworkState::Disconnected);
-  assert_eq!(json!(1), object);
+  assert_eq!(json!("Disconnected"), object);
 }
 
 #[test]
 fn serialize_js_engine() {
   let object = serialization_loop(&JavaScriptEngine::Hermes);
-  assert_eq!(json!(2), object);
+  assert_eq!(json!("Hermes"), object);
 }
 
 #[test]
 fn serialize_mem_pressure_level() {
   let object = serialization_loop(&MemoryPressureLevel::Critical);
-  assert_eq!(json!(3), object);
+  assert_eq!(json!("Critical"), object);
 }
 
 #[test]
 fn serialize_rotation() {
-  let object = serialization_loop(&Rotation::LandscapeLeft);
-  assert_eq!(json!(3), object);
+  let object = serialization_loop(&Rotation::LandscapeRight);
+  assert_eq!(json!("LandscapeRight"), object);
 }
 
 #[test]
 fn serialize_frame_status() {
   let object = serialization_loop(&FrameStatus::Symbolicated);
-  assert_eq!(json!(1), object);
+  assert_eq!(json!("Symbolicated"), object);
+}
+
+#[test]
+fn serialize_unknown_enum_value() {
+  let object = serialization_loop(&FrameStatus(9));
+  assert_eq!(json!(null), object);
 }
 
 #[test]
@@ -208,8 +214,8 @@ fn serialize_app_metrics() {
       "app_id":"co.example.someapp",
       "region_format": "MQ",
       "memory": {"total": 256, "free": 19, "used": 237},
-      "javascript_engine": 0,
-      "memory_pressure_level": 0,
+      "javascript_engine": "UnknownJsEngine",
+      "memory_pressure_level": "Unknown",
       "process_id": 0,
     }),
     object
@@ -244,14 +250,14 @@ fn serialize_error() {
     json!({
       "name": "MissingArgumentError",
       "reason": "required argument 'x' was unset",
-      "relation_to_next": 1,
+      "relation_to_next": "CausedBy",
       "stack_trace": [{
-        "type": 1,
+        "type": "JVM",
         "symbol_name": "Builder.make",
         "in_app": true,
         "frame_address": 81716715,
         "symbol_address": 961261,
-        "frame_status": 0,
+        "frame_status": "Missing",
         "original_index": 1,
       }],
     }),
@@ -300,12 +306,12 @@ fn serialize_frame() {
   ));
   assert_eq!(
     json!({
-      "type": 1,
+      "type": "JVM",
       "symbol_name": "Builder.make",
       "in_app": true,
       "frame_address": 81716715,
       "symbol_address": 961261,
-      "frame_status": 0,
+      "frame_status": "Missing",
       "original_index": 0,
     }),
     object
@@ -329,7 +335,7 @@ fn serialize_report() {
     &DeviceMetricsArgs {
       network_state: NetworkState::Disconnected,
       thermal_state: 5,
-      platform: Platform::macOS,
+      platform: Platform::iOS,
       rotation: Rotation::LandscapeLeft,
       ..Default::default()
     },
@@ -342,6 +348,7 @@ fn serialize_report() {
       frame_address: 81716715,
       symbol_address: 961261,
       original_index: 1,
+      frame_status: FrameStatus::Symbolicated,
       ..Default::default()
     },
   );
@@ -372,29 +379,29 @@ fn serialize_report() {
   ));
   assert_eq!(
     json!({
-      "type": 1,
+      "type": "AppNotResponding",
       "app_metrics": {
         "app_id": "co.example.someapp",
-        "javascript_engine": 0,
-        "memory_pressure_level": 0,
+        "javascript_engine": "UnknownJsEngine",
+        "memory_pressure_level": "Unknown",
         "process_id": 0,
       },
       "device_metrics": {
         "thermal_state": 5,
-        "rotation": 3,
-        "network_state": 1,
-        "arch": 0,
-        "platform": 3,
+        "rotation": "LandscapeLeft",
+        "network_state": "Disconnected",
+        "arch": "Unknown",
+        "platform": "iOS",
         "low_power_mode_enabled": false,
       },
       "errors": [{
-        "relation_to_next": 1,
+        "relation_to_next": "CausedBy",
         "stack_trace": [{
-          "type": 1,
+          "type": "JVM",
           "in_app": true,
           "frame_address": 81716715,
           "symbol_address": 961261,
-          "frame_status": 0,
+          "frame_status": "Symbolicated",
           "original_index": 1,
         }],
       }],
@@ -501,12 +508,12 @@ fn serialize_device_metrics() {
   assert_eq!(
     json!({
       "timezone":"AS",
-      "power_metrics": {"power_state": 3, "charge_percent": 15},
+      "power_metrics": {"power_state": "PluggedInCharging", "charge_percent": 15},
       "thermal_state": 5,
-      "rotation": 3,
-      "network_state": 1,
-      "arch": 0,
-      "platform": 3,
+      "rotation": "LandscapeLeft",
+      "network_state": "Disconnected",
+      "arch": "Unknown",
+      "platform": "macOS",
       "low_power_mode_enabled": false,
     }),
     object
