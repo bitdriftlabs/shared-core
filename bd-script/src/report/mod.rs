@@ -10,6 +10,8 @@ mod generated;
 
 use crate::ScriptOutput;
 pub use functions::all_functions as report_functions;
+#[cfg(test)]
+pub use functions::all_functions_for_test;
 use std::collections::BTreeMap;
 use std::ops::Add;
 

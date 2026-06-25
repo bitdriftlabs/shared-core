@@ -19,6 +19,7 @@ use vrl::prelude::{
   kind,
 };
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct SetSignificantFrame;
 
@@ -99,6 +100,7 @@ impl Function for SetSignificantFrame {
   }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 struct FrameData {
   error_index: Box<dyn Expression>,
