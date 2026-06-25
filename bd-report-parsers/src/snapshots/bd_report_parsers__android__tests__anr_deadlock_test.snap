@@ -17652,6 +17652,7 @@ Report {
             },
         ],
     ),
-    state: None,
+    fields: None,
     feature_flags: None,
+    processing_result: None,
 }
