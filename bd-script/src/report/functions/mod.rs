@@ -10,12 +10,18 @@ mod set_grouping_key;
 mod set_significant_frame;
 
 use crate::report::functions::add_field::AddField;
-use crate::report::functions::set_grouping_key::SetGroupingKey;
-use crate::report::functions::set_significant_frame::SetSignificantFrame;
 use vrl::prelude::Function;
 
 #[must_use]
 pub fn all_functions() -> Vec<Box<dyn Function>> {
+  vec![Box::new(AddField)]
+}
+
+#[cfg(test)]
+#[must_use]
+pub fn all_functions_for_test() -> Vec<Box<dyn Function>> {
+  use crate::report::functions::set_grouping_key::SetGroupingKey;
+  use crate::report::functions::set_significant_frame::SetSignificantFrame;
   vec![
     Box::new(AddField),
     Box::new(SetGroupingKey),

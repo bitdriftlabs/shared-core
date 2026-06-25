@@ -7,7 +7,7 @@
 
 use crate::Script;
 use crate::feature_flag::{FeatureFlag, FeatureFlagWrapper};
-use crate::report::{ReportOutput, report_functions};
+use crate::report::{ReportOutput, all_functions_for_test as report_functions};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   AppMetricsT,
   ErrorT,

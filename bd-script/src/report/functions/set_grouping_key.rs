@@ -17,6 +17,7 @@ use vrl::prelude::{
   kind,
 };
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct SetGroupingKey;
 
@@ -39,6 +40,10 @@ impl Function for SetGroupingKey {
 
   fn return_kind(&self) -> u16 {
     kind::NULL
+  }
+
+  fn pure(&self) -> bool {
+    false
   }
 
   fn parameters(&self) -> &'static [Parameter] {
