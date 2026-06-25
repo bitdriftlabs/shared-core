@@ -41,6 +41,10 @@ impl Function for SetGroupingKey {
     kind::NULL
   }
 
+  fn pure(&self) -> bool {
+    false
+  }
+
   fn parameters(&self) -> &'static [Parameter] {
     &[Parameter {
       keyword: "key",

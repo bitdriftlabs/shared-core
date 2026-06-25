@@ -39,6 +39,10 @@ impl Function for SetSignificantFrame {
     ""
   }
 
+  fn pure(&self) -> bool {
+    false
+  }
+
   fn return_kind(&self) -> u16 {
     kind::NULL
   }

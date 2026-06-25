@@ -42,6 +42,10 @@ impl Function for AddField {
     kind::NULL
   }
 
+  fn pure(&self) -> bool {
+    false
+  }
+
   fn parameters(&self) -> &'static [Parameter] {
     &[
       Parameter {
