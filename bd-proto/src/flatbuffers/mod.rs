@@ -44,13 +44,17 @@ pub mod common;
 mod common_serialize;
 
 macro_rules! serialize_enum {
-  ($name:ident, $serializer:ident) => {
+  ($name:ident) => {
     impl Serialize for $name {
       fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
       where
         S: Serializer,
       {
-        serializer.$serializer(self.0)
+        if let Some(name) = self.variant_name() {
+          serializer.serialize_str(name)
+        } else {
+          serializer.serialize_none()
+        }
       }
     }
   };
