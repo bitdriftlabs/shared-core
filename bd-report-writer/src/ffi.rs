@@ -234,7 +234,8 @@ extern "C-unwind" fn bdrw_get_completed_buffer(
       errors: Some(errors),
       thread_details,
       feature_flags: None,
-      state: None,
+      fields: None,
+      processing_result: None,
     },
   );
   processor.builder.finish(report, None);

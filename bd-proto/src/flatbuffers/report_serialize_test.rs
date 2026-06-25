@@ -164,6 +164,18 @@ fn serialize_feature_flag() {
 }
 
 #[test]
+fn serialize_processing_result() {
+  let mut builder = flatbuffers::FlatBufferBuilder::new();
+  let object = serialization_loop(&build_table!(
+    builder,
+    ProcessingResult,
+    &ProcessingResultArgs { grouping_key: 42 }
+  ));
+  assert_eq!(json!({"grouping_key": 42}), object);
+  assert_struct_size!(ProcessingResultArgs, 8);
+}
+
+#[test]
 fn serialize_proc_usage() {
   let mut builder = flatbuffers::FlatBufferBuilder::new();
   let object = serialization_loop(&build_table!(
@@ -342,6 +354,10 @@ fn serialize_report() {
       ..Default::default()
     },
   );
+  let processing_result = Some(ProcessingResult::create(
+    &mut builder,
+    &ProcessingResultArgs { grouping_key: 42 },
+  ));
   let object = serialization_loop(&build_table!(
     builder,
     Report,
@@ -350,6 +366,7 @@ fn serialize_report() {
       app_metrics,
       device_metrics,
       errors: Some(builder.create_vector(&[error])),
+      processing_result,
       ..Default::default()
     }
   ));
@@ -381,10 +398,13 @@ fn serialize_report() {
           "original_index": 1,
         }],
       }],
+      "processing_result": {
+        "grouping_key": 42,
+      },
     }),
     object
   );
-  assert_struct_size!(ReportArgs, 68);
+  assert_struct_size!(ReportArgs, 76);
 }
 
 #[test]

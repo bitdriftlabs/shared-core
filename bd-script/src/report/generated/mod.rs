@@ -1184,6 +1184,43 @@ impl Scriptable for PowerState {
   }
 }
 
+impl From<ProcessingResult<'_>> for ScriptValue {
+  fn from(value: ProcessingResult<'_>) -> Self {
+    let script_values: Vec<(&str, Self)> = vec![("grouping_key", value.grouping_key().into())];
+    Value::Object(
+      script_values
+        .iter()
+        .map(|(key, value)| (key.to_string().into(), value.0.clone()))
+        .collect::<BTreeMap<KeyString, Value>>(),
+    )
+    .into()
+  }
+}
+
+impl Scriptable for ProcessingResult<'_> {
+  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
+    if path.is_empty() {
+      return Ok(Some((*self).into()));
+    }
+    let Some(OwnedSegment::Field(base)) = path.first() else {
+      return Err(PathError::NotAnArray(
+        OwnedValuePath::from(path.to_vec()).to_string(),
+      ));
+    };
+
+    match base.as_str() {
+      "grouping_key" => self.grouping_key().resolve(&path[1 ..]),
+      _ => Err(PathError::UnknownKey(
+        OwnedValuePath::from(path.to_vec()).into(),
+      )),
+    }
+  }
+
+  fn schema() -> Kind {
+    Kind::object(Collection::empty().with_known("grouping_key", Kind::integer()))
+  }
+}
+
 impl From<ProcessorUsage<'_>> for ScriptValue {
   fn from(value: ProcessorUsage<'_>) -> Self {
     let script_values: Vec<(&str, Self)> = vec![
@@ -1237,8 +1274,9 @@ impl From<Report<'_>> for ScriptValue {
       ("device_metrics", value.device_metrics().into()),
       ("errors", value.errors().into()),
       ("feature_flags", value.feature_flags().into()),
+      ("fields", value.fields().into()),
+      ("processing_result", value.processing_result().into()),
       ("sdk", value.sdk().into()),
-      ("state", value.state().into()),
       ("thread_details", value.thread_details().into()),
       ("type", value.type_().into()),
     ];
@@ -1284,13 +1322,14 @@ impl Scriptable for Report<'_> {
         };
         values.resolve(&path[1 ..])
       },
-      "sdk" => self.sdk().resolve(&path[1 ..]),
-      "state" => {
-        let Some(values) = self.state() else {
+      "fields" => {
+        let Some(values) = self.fields() else {
           return Ok(None);
         };
         values.resolve(&path[1 ..])
       },
+      "processing_result" => self.processing_result().resolve(&path[1 ..]),
+      "sdk" => self.sdk().resolve(&path[1 ..]),
       "thread_details" => self.thread_details().resolve(&path[1 ..]),
       "type" => self.type_().resolve(&path[1 ..]),
       _ => Err(PathError::UnknownKey(
@@ -1315,7 +1354,7 @@ impl Scriptable for Report<'_> {
           Kind::array(Collection::empty().with_unknown(FeatureFlag::schema())),
         )
         .with_known(
-          "state",
+          "fields",
           Kind::array(Collection::empty().with_unknown(Field::schema())),
         )
         .with_known("type", Kind::bytes()),

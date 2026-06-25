@@ -479,12 +479,23 @@ impl Serialize for FeatureFlag<'_> {
   }
 }
 
+impl Serialize for ProcessingResult<'_> {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let mut s = serializer.serialize_struct("ProcessingResult", 1)?;
+    s.serialize_field("grouping_key", &self.grouping_key())?;
+    s.end()
+  }
+}
+
 impl Serialize for Report<'_> {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where
     S: Serializer,
   {
-    let mut s = serializer.serialize_struct("Report", 9)?;
+    let mut s = serializer.serialize_struct("Report", 10)?;
     if let Some(f) = self.sdk() {
       s.serialize_field("sdk", &f)?;
     } else {
@@ -516,15 +527,20 @@ impl Serialize for Report<'_> {
     } else {
       s.skip_field("binary_images")?;
     }
-    if let Some(f) = self.state() {
-      s.serialize_field("state", &f)?;
+    if let Some(f) = self.fields() {
+      s.serialize_field("fields", &f)?;
     } else {
-      s.skip_field("state")?;
+      s.skip_field("fields")?;
     }
     if let Some(f) = self.feature_flags() {
       s.serialize_field("feature_flags", &f)?;
     } else {
       s.skip_field("feature_flags")?;
+    }
+    if let Some(f) = self.processing_result() {
+      s.serialize_field("processing_result", &f)?;
+    } else {
+      s.skip_field("processing_result")?;
     }
     s.end()
   }

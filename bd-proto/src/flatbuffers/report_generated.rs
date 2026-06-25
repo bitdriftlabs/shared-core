@@ -5099,6 +5099,132 @@ impl FeatureFlagT {
     })
   }
 }
+pub enum ProcessingResultOffset {}
+#[derive(Copy, Clone, PartialEq)]
+
+pub struct ProcessingResult<'a> {
+  pub _tab: flatbuffers::Table<'a>,
+}
+
+impl<'a> flatbuffers::Follow<'a> for ProcessingResult<'a> {
+  type Inner = ProcessingResult<'a>;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    Self { _tab: unsafe { flatbuffers::Table::new(buf, loc) } }
+  }
+}
+
+impl<'a> ProcessingResult<'a> {
+  pub const VT_GROUPING_KEY: flatbuffers::VOffsetT = 4;
+
+  #[inline]
+  pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
+    ProcessingResult { _tab: table }
+  }
+  #[allow(unused_mut)]
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
+    args: &'args ProcessingResultArgs
+  ) -> flatbuffers::WIPOffset<ProcessingResult<'bldr>> {
+    let mut builder = ProcessingResultBuilder::new(_fbb);
+    builder.add_grouping_key(args.grouping_key);
+    builder.finish()
+  }
+
+  pub fn unpack(&self) -> ProcessingResultT {
+    let grouping_key = self.grouping_key();
+    ProcessingResultT {
+      grouping_key,
+    }
+  }
+
+  #[inline]
+  pub fn grouping_key(&self) -> u64 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u64>(ProcessingResult::VT_GROUPING_KEY, Some(0)).unwrap()}
+  }
+}
+
+impl flatbuffers::Verifiable for ProcessingResult<'_> {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    v.visit_table(pos)?
+     .visit_field::<u64>("grouping_key", Self::VT_GROUPING_KEY, false)?
+     .finish();
+    Ok(())
+  }
+}
+pub struct ProcessingResultArgs {
+    pub grouping_key: u64,
+}
+impl<'a> Default for ProcessingResultArgs {
+  #[inline]
+  fn default() -> Self {
+    ProcessingResultArgs {
+      grouping_key: 0,
+    }
+  }
+}
+
+pub struct ProcessingResultBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
+  start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
+}
+impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> ProcessingResultBuilder<'a, 'b, A> {
+  #[inline]
+  pub fn add_grouping_key(&mut self, grouping_key: u64) {
+    self.fbb_.push_slot::<u64>(ProcessingResult::VT_GROUPING_KEY, grouping_key, 0);
+  }
+  #[inline]
+  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> ProcessingResultBuilder<'a, 'b, A> {
+    let start = _fbb.start_table();
+    ProcessingResultBuilder {
+      fbb_: _fbb,
+      start_: start,
+    }
+  }
+  #[inline]
+  pub fn finish(self) -> flatbuffers::WIPOffset<ProcessingResult<'a>> {
+    let o = self.fbb_.end_table(self.start_);
+    flatbuffers::WIPOffset::new(o.value())
+  }
+}
+
+impl core::fmt::Debug for ProcessingResult<'_> {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    let mut ds = f.debug_struct("ProcessingResult");
+      ds.field("grouping_key", &self.grouping_key());
+      ds.finish()
+  }
+}
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProcessingResultT {
+  pub grouping_key: u64,
+}
+impl Default for ProcessingResultT {
+  fn default() -> Self {
+    Self {
+      grouping_key: 0,
+    }
+  }
+}
+impl ProcessingResultT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<ProcessingResult<'b>> {
+    let grouping_key = self.grouping_key;
+    ProcessingResult::create(_fbb, &ProcessingResultArgs{
+      grouping_key,
+    })
+  }
+}
 pub enum ReportOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -5122,8 +5248,9 @@ impl<'a> Report<'a> {
   pub const VT_ERRORS: flatbuffers::VOffsetT = 12;
   pub const VT_THREAD_DETAILS: flatbuffers::VOffsetT = 14;
   pub const VT_BINARY_IMAGES: flatbuffers::VOffsetT = 16;
-  pub const VT_STATE: flatbuffers::VOffsetT = 18;
+  pub const VT_FIELDS: flatbuffers::VOffsetT = 18;
   pub const VT_FEATURE_FLAGS: flatbuffers::VOffsetT = 20;
+  pub const VT_PROCESSING_RESULT: flatbuffers::VOffsetT = 22;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -5135,8 +5262,9 @@ impl<'a> Report<'a> {
     args: &'args ReportArgs<'args>
   ) -> flatbuffers::WIPOffset<Report<'bldr>> {
     let mut builder = ReportBuilder::new(_fbb);
+    if let Some(x) = args.processing_result { builder.add_processing_result(x); }
     if let Some(x) = args.feature_flags { builder.add_feature_flags(x); }
-    if let Some(x) = args.state { builder.add_state(x); }
+    if let Some(x) = args.fields { builder.add_fields(x); }
     if let Some(x) = args.binary_images { builder.add_binary_images(x); }
     if let Some(x) = args.thread_details { builder.add_thread_details(x); }
     if let Some(x) = args.errors { builder.add_errors(x); }
@@ -5167,11 +5295,14 @@ impl<'a> Report<'a> {
     let binary_images = self.binary_images().map(|x| {
       x.iter().map(|t| t.unpack()).collect()
     });
-    let state = self.state().map(|x| {
+    let fields = self.fields().map(|x| {
       x.iter().map(|t| t.unpack()).collect()
     });
     let feature_flags = self.feature_flags().map(|x| {
       x.iter().map(|t| t.unpack()).collect()
+    });
+    let processing_result = self.processing_result().map(|x| {
+      Box::new(x.unpack())
     });
     ReportT {
       sdk,
@@ -5181,8 +5312,9 @@ impl<'a> Report<'a> {
       errors,
       thread_details,
       binary_images,
-      state,
+      fields,
       feature_flags,
+      processing_result,
     }
   }
 
@@ -5236,11 +5368,11 @@ impl<'a> Report<'a> {
     unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<BinaryImage>>>>(Report::VT_BINARY_IMAGES, None)}
   }
   #[inline]
-  pub fn state(&self) -> Option<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field<'a>>>> {
+  pub fn fields(&self) -> Option<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field<'a>>>> {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field>>>>(Report::VT_STATE, None)}
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field>>>>(Report::VT_FIELDS, None)}
   }
   #[inline]
   pub fn feature_flags(&self) -> Option<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<FeatureFlag<'a>>>> {
@@ -5248,6 +5380,13 @@ impl<'a> Report<'a> {
     // Created from valid Table for this object
     // which contains a valid value in this slot
     unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<FeatureFlag>>>>(Report::VT_FEATURE_FLAGS, None)}
+  }
+  #[inline]
+  pub fn processing_result(&self) -> Option<ProcessingResult<'a>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<ProcessingResult>>(Report::VT_PROCESSING_RESULT, None)}
   }
 }
 
@@ -5265,8 +5404,9 @@ impl flatbuffers::Verifiable for Report<'_> {
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<Error>>>>("errors", Self::VT_ERRORS, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<ThreadDetails>>("thread_details", Self::VT_THREAD_DETAILS, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<BinaryImage>>>>("binary_images", Self::VT_BINARY_IMAGES, false)?
-     .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field>>>>("state", Self::VT_STATE, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field>>>>("fields", Self::VT_FIELDS, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<FeatureFlag>>>>("feature_flags", Self::VT_FEATURE_FLAGS, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<ProcessingResult>>("processing_result", Self::VT_PROCESSING_RESULT, false)?
      .finish();
     Ok(())
   }
@@ -5279,8 +5419,9 @@ pub struct ReportArgs<'a> {
     pub errors: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<Error<'a>>>>>,
     pub thread_details: Option<flatbuffers::WIPOffset<ThreadDetails<'a>>>,
     pub binary_images: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<BinaryImage<'a>>>>>,
-    pub state: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field<'a>>>>>,
+    pub fields: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field<'a>>>>>,
     pub feature_flags: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<FeatureFlag<'a>>>>>,
+    pub processing_result: Option<flatbuffers::WIPOffset<ProcessingResult<'a>>>,
 }
 impl<'a> Default for ReportArgs<'a> {
   #[inline]
@@ -5293,8 +5434,9 @@ impl<'a> Default for ReportArgs<'a> {
       errors: None,
       thread_details: None,
       binary_images: None,
-      state: None,
+      fields: None,
       feature_flags: None,
+      processing_result: None,
     }
   }
 }
@@ -5333,12 +5475,16 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> ReportBuilder<'a, 'b, A> {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Report::VT_BINARY_IMAGES, binary_images);
   }
   #[inline]
-  pub fn add_state(&mut self, state: flatbuffers::WIPOffset<flatbuffers::Vector<'b , flatbuffers::ForwardsUOffset<super::super::common::v_1::Field<'b >>>>) {
-    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Report::VT_STATE, state);
+  pub fn add_fields(&mut self, fields: flatbuffers::WIPOffset<flatbuffers::Vector<'b , flatbuffers::ForwardsUOffset<super::super::common::v_1::Field<'b >>>>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Report::VT_FIELDS, fields);
   }
   #[inline]
   pub fn add_feature_flags(&mut self, feature_flags: flatbuffers::WIPOffset<flatbuffers::Vector<'b , flatbuffers::ForwardsUOffset<FeatureFlag<'b >>>>) {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Report::VT_FEATURE_FLAGS, feature_flags);
+  }
+  #[inline]
+  pub fn add_processing_result(&mut self, processing_result: flatbuffers::WIPOffset<ProcessingResult<'b >>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<ProcessingResult>>(Report::VT_PROCESSING_RESULT, processing_result);
   }
   #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> ReportBuilder<'a, 'b, A> {
@@ -5365,8 +5511,9 @@ impl core::fmt::Debug for Report<'_> {
       ds.field("errors", &self.errors());
       ds.field("thread_details", &self.thread_details());
       ds.field("binary_images", &self.binary_images());
-      ds.field("state", &self.state());
+      ds.field("fields", &self.fields());
       ds.field("feature_flags", &self.feature_flags());
+      ds.field("processing_result", &self.processing_result());
       ds.finish()
   }
 }
@@ -5380,8 +5527,9 @@ pub struct ReportT {
   pub errors: Option<Vec<ErrorT>>,
   pub thread_details: Option<Box<ThreadDetailsT>>,
   pub binary_images: Option<Vec<BinaryImageT>>,
-  pub state: Option<Vec<super::super::common::v_1::FieldT>>,
+  pub fields: Option<Vec<super::super::common::v_1::FieldT>>,
   pub feature_flags: Option<Vec<FeatureFlagT>>,
+  pub processing_result: Option<Box<ProcessingResultT>>,
 }
 impl Default for ReportT {
   fn default() -> Self {
@@ -5393,8 +5541,9 @@ impl Default for ReportT {
       errors: None,
       thread_details: None,
       binary_images: None,
-      state: None,
+      fields: None,
       feature_flags: None,
+      processing_result: None,
     }
   }
 }
@@ -5422,11 +5571,14 @@ impl ReportT {
     let binary_images = self.binary_images.as_ref().map(|x|{
       let w: Vec<_> = x.iter().map(|t| t.pack(_fbb)).collect();_fbb.create_vector(&w)
     });
-    let state = self.state.as_ref().map(|x|{
+    let fields = self.fields.as_ref().map(|x|{
       let w: Vec<_> = x.iter().map(|t| t.pack(_fbb)).collect();_fbb.create_vector(&w)
     });
     let feature_flags = self.feature_flags.as_ref().map(|x|{
       let w: Vec<_> = x.iter().map(|t| t.pack(_fbb)).collect();_fbb.create_vector(&w)
+    });
+    let processing_result = self.processing_result.as_ref().map(|x|{
+      x.pack(_fbb)
     });
     Report::create(_fbb, &ReportArgs{
       sdk,
@@ -5436,8 +5588,9 @@ impl ReportT {
       errors,
       thread_details,
       binary_images,
-      state,
+      fields,
       feature_flags,
+      processing_result,
     })
   }
 }
