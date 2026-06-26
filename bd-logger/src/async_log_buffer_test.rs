@@ -228,33 +228,20 @@ impl Setup {
 }
 
 #[test]
-fn request_session_id_times_out_when_async_logger_is_stalled() {
+fn persist_prepared_session_times_out_when_async_logger_is_stalled() {
   let (log_tx, _log_rx) = bd_bounded_buffer::channel(1024 * 1024);
   let (state_tx, _state_rx) = bd_bounded_buffer::channel(1024 * 1024);
   let sender = Sender::from_parts(log_tx, state_tx);
+  let sdk_directory = tempfile::TempDir::new().unwrap();
+  let strategy = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
+  let prepared = strategy.prepare_session_id().unwrap();
 
   let error = sender
-    .request_session_id(StdDuration::from_millis(20))
+    .persist_prepared_session(prepared, StdDuration::from_millis(20))
     .unwrap_err();
 
   assert_eq!(
-    "failed to receive session ID from async logger: timeout duration reached",
-    error.to_string()
-  );
-}
-
-#[test]
-fn request_start_new_session_times_out_when_async_logger_is_stalled() {
-  let (log_tx, _log_rx) = bd_bounded_buffer::channel(1024 * 1024);
-  let (state_tx, _state_rx) = bd_bounded_buffer::channel(1024 * 1024);
-  let sender = Sender::from_parts(log_tx, state_tx);
-
-  let error = sender
-    .request_start_new_session(StdDuration::from_millis(20))
-    .unwrap_err();
-
-  assert_eq!(
-    "failed to receive start-new-session ack from async logger: timeout duration reached",
+    "failed to receive prepared session ack from async logger: timeout duration reached",
     error.to_string()
   );
 }

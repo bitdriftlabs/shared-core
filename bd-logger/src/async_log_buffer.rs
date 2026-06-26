@@ -49,6 +49,7 @@ use bd_proto::protos::client::api::debug_data_request::{
 use bd_proto::protos::client::api::{DebugDataRequest, debug_data_request};
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
+use bd_session::{PreparedSessionCallback, PreparedSessionOperation};
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_state::{
@@ -103,10 +104,14 @@ pub enum StateUpdateMessage {
   AddLogField(String, DataValue),
   RemoveLogField(String),
   SetFeatureFlagExposure(String, Option<String>),
-  SetMemoryPressureLevel { level: MemoryPressureLevel },
+  SetMemoryPressureLevel {
+    level: MemoryPressureLevel,
+  },
   SetEntityId(Option<String>),
-  RequestSessionId(bd_completion::Sender<anyhow::Result<String>>),
-  StartNewSession(bd_completion::Sender<()>),
+  PersistPreparedSession(
+    PreparedSessionOperation,
+    bd_completion::Sender<PreparedSessionCallback>,
+  ),
   FlushState(Option<bd_completion::Sender<()>>),
 }
 
@@ -121,8 +126,9 @@ impl MemorySized for StateUpdateMessage {
         },
         Self::SetMemoryPressureLevel { .. } => 0,
         Self::SetEntityId(entity_id) => entity_id.as_ref().map_or(0, String::len),
-        Self::RequestSessionId(response_tx) => size_of_val(response_tx),
-        Self::StartNewSession(response_tx) => size_of_val(response_tx),
+        Self::PersistPreparedSession(operation, response_tx) => {
+          operation.estimated_size() + size_of_val(response_tx)
+        },
         Self::FlushState(sender) => size_of_val(sender),
       }
   }
@@ -311,21 +317,20 @@ impl Sender {
     Ok(())
   }
 
-  pub fn request_session_id(&self, timeout: StdDuration) -> anyhow::Result<String> {
+  pub fn persist_prepared_session(
+    &self,
+    prepared: PreparedSessionOperation,
+    timeout: StdDuration,
+  ) -> anyhow::Result<PreparedSessionCallback> {
     let (response_tx, response_rx) = bd_completion::Sender::new();
-    self.try_send_state_update(StateUpdateMessage::RequestSessionId(response_tx))?;
+    self.try_send_state_update(StateUpdateMessage::PersistPreparedSession(
+      prepared,
+      response_tx,
+    ))?;
 
     response_rx
       .blocking_recv_with_timeout(timeout)
-      .map_err(|e| anyhow!("failed to receive session ID from async logger: {e}"))?
-  }
-
-  pub fn request_start_new_session(&self, timeout: StdDuration) -> anyhow::Result<()> {
-    let (response_tx, response_rx) = bd_completion::Sender::new();
-    self.try_send_state_update(StateUpdateMessage::StartNewSession(response_tx))?;
-    response_rx
-      .blocking_recv_with_timeout(timeout)
-      .map_err(|e| anyhow!("failed to receive start-new-session ack from async logger: {e}"))
+      .map_err(|e| anyhow!("failed to receive prepared session ack from async logger: {e}"))
   }
 }
 
@@ -1091,12 +1096,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                     log::debug!("failed to persist entity ID state: {e}");
                   }
                 },
-                StateUpdateMessage::RequestSessionId(response_tx) => {
-                  response_tx.send(self.session_strategy.session_id().await);
-                },
-                StateUpdateMessage::StartNewSession(response_tx) => {
-                  self.session_strategy.start_new_session().await;
-                  response_tx.send(());
+                StateUpdateMessage::PersistPreparedSession(prepared, response_tx) => {
+                  let callback = self.session_strategy.persist_prepared(prepared).await;
+                  response_tx.send(callback);
                 },
                 StateUpdateMessage::FlushState(completion_tx) => {
                   let flush_stats_trigger = self.logging_state.flush_stats_trigger().clone();

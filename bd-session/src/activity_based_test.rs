@@ -135,6 +135,35 @@ async fn try_current_session_id_rejects_callback_reentry() {
 }
 
 #[tokio::test]
+async fn prepared_session_id_runs_callback_only_after_apply() {
+  let now = OffsetDateTime::now_utc();
+  let sdk_directory = TempDir::new().unwrap();
+  let callbacks = Arc::new(MockCallbacks::default());
+
+  let strategy = Strategy::activity_based(
+    sdk_directory.path(),
+    Duration::seconds(30),
+    callbacks.clone(),
+    Arc::new(TestTimeProvider::new(now)),
+  );
+
+  let prepared = strategy.prepare_session_id().unwrap();
+  let session_id = prepared.current_session_id().to_string();
+
+  assert_eq!(session_id, strategy.try_current_session_id().unwrap());
+  assert!(callbacks.session_id_changes.lock().is_empty());
+
+  let callback = strategy.persist_prepared(prepared).await;
+  assert!(callbacks.session_id_changes.lock().is_empty());
+
+  strategy.run_prepared_callback(callback);
+  assert_eq!(
+    vec![session_id],
+    callbacks.session_id_changes.lock().clone()
+  );
+}
+
+#[tokio::test]
 async fn generates_new_session_and_stores_it_if_old_exceeded_inactivity_threshold() {
   let now = OffsetDateTime::now_utc();
   let sdk_directory = TempDir::new().unwrap();

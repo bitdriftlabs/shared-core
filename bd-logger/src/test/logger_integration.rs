@@ -98,16 +98,60 @@ use bd_time::{OffsetDateTimeExt, TestTimeProvider};
 use debug_data_request::workflow_transition_debug_data::Transition_type;
 use debug_data_request::{WorkflowDebugData, WorkflowStateDebugData};
 use flate2::write::ZlibDecoder;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, ReentrantMutex};
 use pretty_assertions::assert_eq;
 use protobuf::Message;
 use std::io::Write;
 use std::ops::Add;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::macros::datetime;
+
+struct LockingFixedCallbacks {
+  app_lock: Arc<ReentrantMutex<()>>,
+  call_count: AtomicUsize,
+}
+
+impl LockingFixedCallbacks {
+  fn new(app_lock: Arc<ReentrantMutex<()>>) -> Self {
+    Self {
+      app_lock,
+      call_count: AtomicUsize::new(0),
+    }
+  }
+}
+
+impl bd_session::fixed::Callbacks for LockingFixedCallbacks {
+  fn generate_session_id(&self) -> anyhow::Result<String> {
+    let _guard = self.app_lock.lock();
+    let call_count = self.call_count.fetch_add(1, Ordering::SeqCst) + 1;
+    Ok(format!("fixed-session-{call_count}"))
+  }
+}
+
+struct LockingActivityCallbacks {
+  app_lock: Arc<ReentrantMutex<()>>,
+  call_count: AtomicUsize,
+}
+
+impl LockingActivityCallbacks {
+  fn new(app_lock: Arc<ReentrantMutex<()>>) -> Self {
+    Self {
+      app_lock,
+      call_count: AtomicUsize::new(0),
+    }
+  }
+}
+
+impl bd_session::activity_based::Callbacks for LockingActivityCallbacks {
+  fn session_id_changed(&self, _session_id: &str) {
+    let _guard = self.app_lock.lock();
+    self.call_count.fetch_add(1, Ordering::SeqCst);
+  }
+}
 
 #[test]
 fn sleep_mode() {
@@ -140,6 +184,85 @@ fn attributes_accessors() {
 
   assert_eq!(36, setup.logger_handle.session_id().unwrap().len());
   assert_eq!(36, setup.logger_handle.device_id().len());
+}
+
+#[test]
+fn session_id_runs_fixed_strategy_callback_on_calling_thread() {
+  let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
+  let app_lock = Arc::new(ReentrantMutex::new(()));
+  let callbacks = Arc::new(LockingFixedCallbacks::new(app_lock.clone()));
+  let session_strategy = Arc::new(Strategy::fixed(sdk_directory.path(), callbacks.clone()));
+
+  let setup = Setup::new_with_options(SetupOptions {
+    sdk_directory,
+    session_strategy: Some(session_strategy),
+    ..Default::default()
+  });
+
+  let _guard = app_lock.lock();
+  let session_id = setup.logger_handle.session_id().unwrap();
+
+  assert_eq!("fixed-session-1", session_id);
+  assert_eq!(1, callbacks.call_count.load(Ordering::SeqCst));
+}
+
+#[test]
+fn start_new_session_runs_fixed_strategy_callback_on_calling_thread() {
+  let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
+  let app_lock = Arc::new(ReentrantMutex::new(()));
+  let callbacks = Arc::new(LockingFixedCallbacks::new(app_lock.clone()));
+  let session_strategy = Arc::new(Strategy::fixed(sdk_directory.path(), callbacks.clone()));
+
+  let mut init_params = crate::test::setup::create_minimal_init_params(sdk_directory.path());
+  init_params.session_strategy = session_strategy;
+
+  let logger = crate::LoggerBuilder::new(init_params)
+    .build_dedicated_thread()
+    .unwrap()
+    .0;
+  let logger_handle = logger.new_logger_handle();
+
+  let initial_session_id = logger_handle.session_id().unwrap();
+  let callback_count_before = callbacks.call_count.load(Ordering::SeqCst);
+
+  let _guard = app_lock.lock();
+  logger_handle.start_new_session().unwrap();
+
+  assert_eq!(
+    callback_count_before + 1,
+    callbacks.call_count.load(Ordering::SeqCst)
+  );
+  let next_session_id = logger_handle.session_id().unwrap();
+  assert_ne!(initial_session_id, next_session_id);
+
+  logger.shutdown(true);
+}
+
+#[test]
+fn session_id_runs_activity_callback_on_calling_thread() {
+  let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
+  let time_provider = Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc()));
+  let app_lock = Arc::new(ReentrantMutex::new(()));
+  let callbacks = Arc::new(LockingActivityCallbacks::new(app_lock.clone()));
+  let session_strategy = Arc::new(Strategy::activity_based(
+    sdk_directory.path(),
+    30.seconds(),
+    callbacks.clone(),
+    time_provider.clone(),
+  ));
+
+  let setup = Setup::new_with_options(SetupOptions {
+    sdk_directory,
+    time_provider: Some(time_provider),
+    session_strategy: Some(session_strategy),
+    ..Default::default()
+  });
+
+  let _guard = app_lock.lock();
+  let session_id = setup.logger_handle.session_id().unwrap();
+
+  assert_eq!(36, session_id.len());
+  assert_eq!(1, callbacks.call_count.load(Ordering::SeqCst));
 }
 
 #[test]

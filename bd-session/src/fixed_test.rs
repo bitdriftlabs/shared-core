@@ -108,6 +108,27 @@ async fn test_previous_process_session_id() {
   assert_eq!(Some(session_id), strategy.previous_process_session_id());
 }
 
+#[tokio::test]
+async fn prepared_session_id_persists_only_after_apply() {
+  let sdk_directory = TempDir::new().unwrap();
+  let callbacks = Arc::new(MockCallbacks::default());
+  let strategy = Strategy::fixed(sdk_directory.path(), callbacks);
+
+  let prepared = strategy.prepare_session_id().unwrap();
+  let session_id = prepared.current_session_id().to_string();
+
+  assert_eq!(session_id, strategy.try_current_session_id().unwrap());
+
+  let restarted = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
+  assert_eq!(None, restarted.previous_process_session_id());
+
+  let callback = strategy.persist_prepared(prepared).await;
+  strategy.run_prepared_callback(callback);
+
+  let restarted = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
+  assert_eq!(Some(session_id), restarted.previous_process_session_id());
+}
+
 #[derive(Default)]
 struct ReEntryCallbacks {
   session_strategy: parking_lot::Mutex<Option<Arc<Strategy>>>,

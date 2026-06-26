@@ -91,6 +91,7 @@ pub struct SetupOptions {
   pub disk_storage: bool,
   pub start_in_sleep_mode: bool,
   pub time_provider: Option<Arc<dyn TimeProvider>>,
+  pub session_strategy: Option<Arc<Strategy>>,
   pub extra_runtime_values: Vec<(&'static str, ValueKind)>,
 }
 
@@ -102,6 +103,7 @@ impl Default for SetupOptions {
       disk_storage: false,
       start_in_sleep_mode: false,
       time_provider: None,
+      session_strategy: None,
       extra_runtime_values: vec![],
     }
   }
@@ -177,14 +179,17 @@ impl Setup {
 
     let (flush_tick_tx, flush_ticker) = TestTicker::new();
     let (upload_tick_tx, upload_ticker) = TestTicker::new();
+    let session_strategy = options.session_strategy.unwrap_or_else(|| {
+      Arc::new(Strategy::fixed(
+        options.sdk_directory.path(),
+        Arc::new(UUIDCallbacks),
+      ))
+    });
 
     let (logger, _, flush_trigger) = crate::LoggerBuilder::new(InitParams {
       sdk_directory: options.sdk_directory.path().into(),
       api_key: "foo-api-key".to_string(),
-      session_strategy: Arc::new(Strategy::fixed(
-        options.sdk_directory.path(),
-        Arc::new(UUIDCallbacks),
-      )),
+      session_strategy,
       metadata_provider: options.metadata_provider,
       resource_utilization_target: Box::new(EmptyTarget),
       session_replay_target,
