@@ -286,11 +286,7 @@ impl Strategy {
 
     {
       let mut guard = self.state.lock();
-      if guard.is_some() {
-        let state = guard
-          .as_mut()
-          .ok_or_else(|| anyhow::anyhow!("session state unexpectedly missing"))?;
-
+      if let Some(state) = guard.as_mut() {
         // Session reads and activity updates share the same mutation path so activity-based
         // sessions can rotate or persist last-activity state while fixed sessions stay unchanged.
         let mutation = match &self.backend {
