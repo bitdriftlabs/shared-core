@@ -75,6 +75,12 @@ pub(crate) struct Mutation {
   callback: Option<DeferredCallback>,
 }
 
+impl Mutation {
+  fn has_follow_up_work(&self) -> bool {
+    self.persist_state || self.persist_pending || self.callback.is_some()
+  }
+}
+
 //
 // Initialization
 //
@@ -103,47 +109,77 @@ pub(crate) enum DeferredCallback {
 /// Callers can inspect the resulting session ID immediately, persist the durable mutation on a
 /// different thread, and then run any deferred callback back on the originating thread.
 #[derive(Debug)]
-pub struct PreparedSessionOperation {
-  current_session_id: String,
-  state: LoadedState,
-  mutation: Mutation,
+enum PreparedSessionOperationInner {
+  Noop {
+    current_session_id: String,
+  },
+  FollowUp {
+    state: LoadedState,
+    mutation: Mutation,
+  },
 }
 
+#[derive(Debug)]
+pub struct PreparedSessionOperation(PreparedSessionOperationInner);
+
 impl PreparedSessionOperation {
+  fn noop(current_session_id: String) -> Self {
+    Self(PreparedSessionOperationInner::Noop { current_session_id })
+  }
+
+  fn follow_up(state: LoadedState, mutation: Mutation) -> Self {
+    Self(PreparedSessionOperationInner::FollowUp { state, mutation })
+  }
+
   #[must_use]
   pub fn current_session_id(&self) -> &str {
-    &self.current_session_id
+    match &self.0 {
+      PreparedSessionOperationInner::Noop { current_session_id } => current_session_id,
+      PreparedSessionOperationInner::FollowUp { state, .. } => &state.persisted.current_session_id,
+    }
+  }
+
+  #[must_use]
+  pub fn into_current_session_id(self) -> String {
+    match self.0 {
+      PreparedSessionOperationInner::Noop { current_session_id } => current_session_id,
+      PreparedSessionOperationInner::FollowUp { state, .. } => state.persisted.current_session_id,
+    }
   }
 
   #[must_use]
   pub fn has_follow_up_work(&self) -> bool {
-    self.mutation.persist_state || self.mutation.persist_pending || self.mutation.callback.is_some()
+    matches!(self.0, PreparedSessionOperationInner::FollowUp { .. })
   }
 
   #[must_use]
   pub fn estimated_size(&self) -> usize {
-    let pending_started_sessions_size = self
-      .state
-      .pending_started_sessions
-      .iter()
-      .map(|started| started.session_id.len())
-      .sum::<usize>();
-    let callback_size = match &self.mutation.callback {
-      Some(DeferredCallback::ActivitySessionChanged(session_id)) => session_id.len(),
-      None => 0,
-    };
+    match &self.0 {
+      PreparedSessionOperationInner::Noop { current_session_id } => {
+        std::mem::size_of_val(self) + current_session_id.len()
+      },
+      PreparedSessionOperationInner::FollowUp { state, mutation } => {
+        let pending_started_sessions_size = state
+          .pending_started_sessions
+          .iter()
+          .map(|started| started.session_id.len())
+          .sum::<usize>();
+        let callback_size = match &mutation.callback {
+          Some(DeferredCallback::ActivitySessionChanged(session_id)) => session_id.len(),
+          None => 0,
+        };
 
-    std::mem::size_of_val(self)
-      + self.current_session_id.len()
-      + self.state.persisted.current_session_id.len()
-      + self
-        .state
-        .persisted
-        .previous_process_session_id
-        .as_ref()
-        .map_or(0, String::len)
-      + pending_started_sessions_size
-      + callback_size
+        std::mem::size_of_val(self)
+          + state.persisted.current_session_id.len()
+          + state
+            .persisted
+            .previous_process_session_id
+            .as_ref()
+            .map_or(0, String::len)
+          + pending_started_sessions_size
+          + callback_size
+      },
+    }
   }
 }
 
@@ -248,7 +284,7 @@ impl Strategy {
   pub fn prepare_session_id(&self) -> anyhow::Result<PreparedSessionOperation> {
     self.ensure_not_in_callback("session_id")?;
 
-    let result: anyhow::Result<(LoadedState, Mutation)> = {
+    {
       let mut guard = self.state.lock();
       if guard.is_some() {
         let state = guard
@@ -262,48 +298,50 @@ impl Strategy {
           Backend::ActivityBased(strategy) => strategy.on_session_id(state),
         };
 
-        Ok((state.clone(), mutation))
+        let current_session_id = Self::loaded_session_id(state)?;
+        if mutation.has_follow_up_work() {
+          Ok(PreparedSessionOperation::follow_up(state.clone(), mutation))
+        } else {
+          Ok(PreparedSessionOperation::noop(current_session_id))
+        }
       } else {
         // The first read initializes from durable state and may enqueue a deferred callback if the
         // backend decides the current access should create or rotate a session.
         let initialization = self.initialize_state();
         *guard = Some(initialization.state.clone());
-        Ok((initialization.state, initialization.mutation))
-      }
-    };
-    let (state, mutation) = result?;
-    let current_session_id = Self::loaded_session_id(&state)?;
 
-    Ok(PreparedSessionOperation {
-      current_session_id,
-      state,
-      mutation,
-    })
+        let current_session_id = Self::loaded_session_id(&initialization.state)?;
+        if initialization.mutation.has_follow_up_work() {
+          Ok(PreparedSessionOperation::follow_up(
+            initialization.state,
+            initialization.mutation,
+          ))
+        } else {
+          Ok(PreparedSessionOperation::noop(current_session_id))
+        }
+      }
+    }
   }
 
   pub fn prepare_start_new_session(&self) -> anyhow::Result<PreparedSessionOperation> {
     self.ensure_not_in_callback("start_new_session")?;
 
-    let (current_session_id, state, mutation) = {
+    let (state, mutation) = {
       let mut guard = self.state.lock();
       self.start_new_session_locked(&mut guard)
     };
 
-    Ok(PreparedSessionOperation {
-      current_session_id,
-      state,
-      mutation,
-    })
+    Ok(PreparedSessionOperation::follow_up(state, mutation))
   }
 
   pub async fn session_id(&self) -> anyhow::Result<String> {
     let prepared = self.prepare_session_id()?;
-    let session_id = prepared.current_session_id().to_string();
 
     if !prepared.has_follow_up_work() {
-      return Ok(session_id);
+      return Ok(prepared.into_current_session_id());
     }
 
+    let session_id = prepared.current_session_id().to_string();
     let callback = self.persist_prepared(prepared).await;
     self.run_prepared_callback(callback);
     Ok(session_id)
@@ -493,7 +531,7 @@ impl Strategy {
   fn start_new_session_locked(
     &self,
     guard: &mut parking_lot::MutexGuard<'_, Option<LoadedState>>,
-  ) -> (String, LoadedState, Mutation) {
+  ) -> (LoadedState, Mutation) {
     // Explicit session rotation re-reads persisted state so the durable queue remains the source
     // of truth even if this process has not initialized the in-memory cache yet.
     let initialization = match &self.backend {
@@ -511,19 +549,20 @@ impl Strategy {
       ),
     };
 
-    let session_id = initialization.state.persisted.current_session_id.clone();
     **guard = Some(initialization.state.clone());
-    (session_id, initialization.state, initialization.mutation)
+    (initialization.state, initialization.mutation)
   }
 
   pub async fn persist_prepared(
     &self,
     prepared: PreparedSessionOperation,
   ) -> PreparedSessionCallback {
-    let PreparedSessionOperation {
-      state, mutation, ..
-    } = prepared;
-    let callback = self.finish_mutation(state, mutation).await;
+    let callback = match prepared.0 {
+      PreparedSessionOperationInner::Noop { .. } => None,
+      PreparedSessionOperationInner::FollowUp { state, mutation } => {
+        self.finish_mutation(state, mutation).await
+      },
+    };
     PreparedSessionCallback { callback }
   }
 

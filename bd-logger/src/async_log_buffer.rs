@@ -1098,6 +1098,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 },
                 StateUpdateMessage::PersistPreparedSession(prepared, response_tx) => {
                   let callback = self.session_strategy.persist_prepared(prepared).await;
+                  // TODO: If the synchronous caller has already timed out or dropped its receiver,
+                  // this callback token is lost. Fixing that requires a recoverable completion
+                  // path or a deliberate fallback that does not reintroduce cross-thread callback
+                  // execution and the deadlock risk this change set is avoiding.
                   response_tx.send(callback);
                 },
                 StateUpdateMessage::FlushState(completion_tx) => {
