@@ -41,6 +41,7 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::Strategy;
 use bd_session::fixed::UUIDCallbacks;
+use bd_session::test::start_new_session;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::test::TestStore;
 use bd_state::{MEMORY_PRESSURE_LEVEL_KEY, SYSTEM_SESSION_ID_KEY, Scope, StateReader};
@@ -228,33 +229,20 @@ impl Setup {
 }
 
 #[test]
-fn request_session_id_times_out_when_async_logger_is_stalled() {
+fn persist_prepared_session_times_out_when_async_logger_is_stalled() {
   let (log_tx, _log_rx) = bd_bounded_buffer::channel(1024 * 1024);
   let (state_tx, _state_rx) = bd_bounded_buffer::channel(1024 * 1024);
   let sender = Sender::from_parts(log_tx, state_tx);
+  let sdk_directory = tempfile::TempDir::new().unwrap();
+  let strategy = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
+  let prepared = strategy.prepare_session_id().unwrap();
 
   let error = sender
-    .request_session_id(StdDuration::from_millis(20))
+    .persist_prepared_session(prepared, StdDuration::from_millis(20))
     .unwrap_err();
 
   assert_eq!(
-    "failed to receive session ID from async logger: timeout duration reached",
-    error.to_string()
-  );
-}
-
-#[test]
-fn request_start_new_session_times_out_when_async_logger_is_stalled() {
-  let (log_tx, _log_rx) = bd_bounded_buffer::channel(1024 * 1024);
-  let (state_tx, _state_rx) = bd_bounded_buffer::channel(1024 * 1024);
-  let sender = Sender::from_parts(log_tx, state_tx);
-
-  let error = sender
-    .request_start_new_session(StdDuration::from_millis(20))
-    .unwrap_err();
-
-  assert_eq!(
-    "failed to receive start-new-session ack from async logger: timeout duration reached",
+    "failed to receive prepared session ack from async logger: timeout duration reached",
     error.to_string()
   );
 }
@@ -790,7 +778,7 @@ async fn updates_system_session_id_for_new_sessions() {
     None,
   ));
 
-  setup.session_strategy.start_new_session().await;
+  start_new_session(&setup.session_strategy).await;
   let second_session_id = setup.session_strategy.session_id().await.unwrap();
   assert_ne!(first_session_id, second_session_id);
 
@@ -902,7 +890,7 @@ async fn previous_run_log_does_not_override_system_session_id() {
     None,
   ));
 
-  setup.session_strategy.start_new_session().await;
+  start_new_session(&setup.session_strategy).await;
   let next_session_id = setup.session_strategy.session_id().await.unwrap();
   assert_ne!(current_session_id, next_session_id);
 
@@ -961,7 +949,7 @@ async fn pre_config_logs_trigger_session_id_update() {
     None,
   ));
 
-  setup.session_strategy.start_new_session().await;
+  start_new_session(&setup.session_strategy).await;
   let second_session_id = setup.session_strategy.session_id().await.unwrap();
   assert_ne!(first_session_id, second_session_id);
 

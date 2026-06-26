@@ -5,6 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use super::test::start_new_session;
 use super::{PendingStateUpdate, Strategy};
 use crate::fixed;
 use bd_proto::protos::client::api::StateUpdateRequest;
@@ -87,7 +88,7 @@ async fn acknowledge_state_update_ignores_non_prefix_updates() {
   let strategy = fixed_strategy(&sdk_directory, &["session-1", "session-2"]);
 
   strategy.session_id().await.unwrap();
-  strategy.start_new_session().await;
+  start_new_session(&strategy).await;
 
   let pending = strategy.pending_state_update().await.unwrap();
   assert_eq!(

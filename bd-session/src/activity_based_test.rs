@@ -7,6 +7,7 @@
 
 use crate::Strategy;
 use crate::activity_based::Callbacks;
+use crate::test::start_new_session;
 use bd_time::TestTimeProvider;
 use pretty_assertions::assert_eq;
 use std::sync::Arc;
@@ -131,6 +132,35 @@ async fn try_current_session_id_rejects_callback_reentry() {
   assert_eq!(
     Some("try_current_session_id cannot be called from within a session callback".to_string()),
     callbacks.inner_try_current_session_id_error.lock().clone()
+  );
+}
+
+#[tokio::test]
+async fn prepared_session_id_runs_callback_only_after_apply() {
+  let now = OffsetDateTime::now_utc();
+  let sdk_directory = TempDir::new().unwrap();
+  let callbacks = Arc::new(MockCallbacks::default());
+
+  let strategy = Strategy::activity_based(
+    sdk_directory.path(),
+    Duration::seconds(30),
+    callbacks.clone(),
+    Arc::new(TestTimeProvider::new(now)),
+  );
+
+  let prepared = strategy.prepare_session_id().unwrap();
+  let session_id = prepared.current_session_id().to_string();
+
+  assert_eq!(session_id, strategy.try_current_session_id().unwrap());
+  assert!(callbacks.session_id_changes.lock().is_empty());
+
+  let callback = strategy.persist_prepared(prepared).await;
+  assert!(callbacks.session_id_changes.lock().is_empty());
+
+  strategy.run_prepared_callback(callback);
+  assert_eq!(
+    vec![session_id],
+    callbacks.session_id_changes.lock().clone()
   );
 }
 
@@ -278,7 +308,7 @@ async fn starts_new_session() {
   let advanced_time = now + 1.seconds();
   time_provider.set_time(advanced_time);
 
-  strategy.start_new_session().await;
+  start_new_session(&strategy).await;
 
   let next_session_id = strategy.session_id().await.unwrap();
 
@@ -301,7 +331,7 @@ async fn previous_session_id() {
     time_provider,
   );
 
-  strategy.start_new_session().await;
+  start_new_session(&strategy).await;
 
   assert!(strategy.previous_process_session_id().is_none());
 
