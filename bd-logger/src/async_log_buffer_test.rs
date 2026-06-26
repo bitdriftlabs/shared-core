@@ -41,6 +41,7 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::Strategy;
 use bd_session::fixed::UUIDCallbacks;
+use bd_session::test::start_new_session;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::test::TestStore;
 use bd_state::{MEMORY_PRESSURE_LEVEL_KEY, SYSTEM_SESSION_ID_KEY, Scope, StateReader};
@@ -777,7 +778,7 @@ async fn updates_system_session_id_for_new_sessions() {
     None,
   ));
 
-  setup.session_strategy.start_new_session().await;
+  start_new_session(&setup.session_strategy).await;
   let second_session_id = setup.session_strategy.session_id().await.unwrap();
   assert_ne!(first_session_id, second_session_id);
 
@@ -889,7 +890,7 @@ async fn previous_run_log_does_not_override_system_session_id() {
     None,
   ));
 
-  setup.session_strategy.start_new_session().await;
+  start_new_session(&setup.session_strategy).await;
   let next_session_id = setup.session_strategy.session_id().await.unwrap();
   assert_ne!(current_session_id, next_session_id);
 
@@ -948,7 +949,7 @@ async fn pre_config_logs_trigger_session_id_update() {
     None,
   ));
 
-  setup.session_strategy.start_new_session().await;
+  start_new_session(&setup.session_strategy).await;
   let second_session_id = setup.session_strategy.session_id().await.unwrap();
   assert_ne!(first_session_id, second_session_id);
 

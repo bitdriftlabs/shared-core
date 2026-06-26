@@ -532,6 +532,11 @@ impl LoggerHandle {
     if is_allowed {
       let prepared = self.session_strategy.prepare_session_id()?;
       let session_id = prepared.current_session_id().to_string();
+
+      if !prepared.has_follow_up_work() {
+        return Ok(session_id);
+      }
+
       let callback = self
         .tx
         .persist_prepared_session(prepared, async_log_buffer::SESSION_BRIDGE_TIMEOUT)?;

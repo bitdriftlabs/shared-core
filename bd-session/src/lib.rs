@@ -28,6 +28,7 @@
 pub mod activity_based;
 pub mod fixed;
 mod persistence;
+pub mod test;
 
 #[cfg(test)]
 #[path = "./lib_test.rs"]
@@ -112,6 +113,11 @@ impl PreparedSessionOperation {
   #[must_use]
   pub fn current_session_id(&self) -> &str {
     &self.current_session_id
+  }
+
+  #[must_use]
+  pub fn has_follow_up_work(&self) -> bool {
+    self.mutation.persist_state || self.mutation.persist_pending || self.mutation.callback.is_some()
   }
 
   #[must_use]
@@ -293,24 +299,14 @@ impl Strategy {
   pub async fn session_id(&self) -> anyhow::Result<String> {
     let prepared = self.prepare_session_id()?;
     let session_id = prepared.current_session_id().to_string();
+
+    if !prepared.has_follow_up_work() {
+      return Ok(session_id);
+    }
+
     let callback = self.persist_prepared(prepared).await;
     self.run_prepared_callback(callback);
     Ok(session_id)
-  }
-
-  pub async fn start_new_session(&self) {
-    let prepared = match self.prepare_start_new_session() {
-      Ok(prepared) => prepared,
-      Err(e) => {
-        log::error!("bitdrift Capture failed to start new session: {e:?}");
-        return;
-      },
-    };
-
-    let session_id = prepared.current_session_id().to_string();
-    let callback = self.persist_prepared(prepared).await;
-    self.run_prepared_callback(callback);
-    log::info!("bitdrift Capture started new session: {session_id:?}");
   }
 
   fn ensure_not_in_callback(&self, operation: &str) -> anyhow::Result<()> {

@@ -7,6 +7,7 @@
 
 use super::{Callbacks, UUIDCallbacks};
 use crate::Strategy;
+use crate::test::start_new_session;
 use pretty_assertions::assert_eq;
 use std::future::Future;
 use std::pin::pin;
@@ -85,7 +86,7 @@ async fn test_start_new_session() {
   assert_eq!(1, callbacks.generated_session_ids.lock().len());
   assert_eq!(callbacks.generated_session_ids.lock()[0], session_id);
 
-  strategy.start_new_session().await;
+  start_new_session(&strategy).await;
   let next_session_id = strategy.session_id().await.unwrap();
 
   assert_eq!(next_session_id, strategy.session_id().await.unwrap());
@@ -99,7 +100,7 @@ async fn test_previous_process_session_id() {
   let sdk_directory = TempDir::new().unwrap();
   let strategy = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
   strategy.session_id().await.unwrap();
-  strategy.start_new_session().await;
+  start_new_session(&strategy).await;
   let session_id = strategy.session_id().await.unwrap();
 
   assert!(strategy.previous_process_session_id().is_none());
@@ -139,7 +140,7 @@ struct ReEntryCallbacks {
 impl Callbacks for ReEntryCallbacks {
   fn generate_session_id(&self) -> anyhow::Result<String> {
     if let Some(strategy) = &*self.session_strategy.lock() {
-      expect_ready(strategy.start_new_session());
+      expect_ready(start_new_session(strategy));
       let error = expect_ready(strategy.session_id()).unwrap_err();
       *self.inner_session_id_error.lock() = Some(error.to_string());
       let error = strategy.try_current_session_id().unwrap_err();
@@ -173,7 +174,7 @@ async fn handles_re_entry() {
   );
 
   // Confirm that it doesn't deadlock and returns a reasonable ID.
-  strategy.start_new_session().await;
+  start_new_session(&strategy).await;
   let new_session_id = strategy.session_id().await.unwrap();
   assert_eq!(36, new_session_id.len());
 

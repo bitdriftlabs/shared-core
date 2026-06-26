@@ -54,6 +54,7 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
+use bd_session::test::start_new_session;
 use bd_state::StateReader;
 use bd_stats_common::labels;
 use bd_test_helpers::make_mut;
@@ -1951,7 +1952,7 @@ async fn session_state_update_is_resent_until_acked() {
     .await;
   setup.wait_for_cleared_pending_session_update().await;
 
-  setup.session_strategy.start_new_session().await;
+  start_new_session(&setup.session_strategy).await;
   let next_session_id = setup.session_strategy.session_id().await.unwrap();
 
   let request = setup.next_request(1.seconds()).await.unwrap();

@@ -7,6 +7,7 @@
 
 use crate::Strategy;
 use crate::activity_based::Callbacks;
+use crate::test::start_new_session;
 use bd_time::TestTimeProvider;
 use pretty_assertions::assert_eq;
 use std::sync::Arc;
@@ -307,7 +308,7 @@ async fn starts_new_session() {
   let advanced_time = now + 1.seconds();
   time_provider.set_time(advanced_time);
 
-  strategy.start_new_session().await;
+  start_new_session(&strategy).await;
 
   let next_session_id = strategy.session_id().await.unwrap();
 
@@ -330,7 +331,7 @@ async fn previous_session_id() {
     time_provider,
   );
 
-  strategy.start_new_session().await;
+  start_new_session(&strategy).await;
 
   assert!(strategy.previous_process_session_id().is_none());
 
