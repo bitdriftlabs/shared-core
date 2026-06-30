@@ -7,12 +7,16 @@
 
 use crate::input::PathError;
 use crate::{ScriptValue, Scriptable};
+use bd_log_primitives::{DataValue, LogFields, LogMapData};
 use std::collections::BTreeMap;
 use vrl::core::Value;
 use vrl::path::{OwnedSegment, OwnedValuePath};
-use vrl::prelude::Collection;
+use vrl::prelude::{Collection, NotNan};
 use vrl::value::Kind;
 use vrl::value::kind::merge::{CollisionStrategy, Strategy};
+
+const FEATURE_FLAGS: &str = "feature_flags";
+const FIELDS: &str = "fields";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FeatureFlag {
@@ -21,23 +25,70 @@ pub struct FeatureFlag {
   pub last_updated: Option<time::OffsetDateTime>,
 }
 
-// Container for overriding feature flag values on a nested object
-pub struct FeatureFlagWrapper<'a, T: Scriptable> {
+// Container for overriding feature flag and field values on a nested object
+pub struct ScriptableWrapper<'a, T: Scriptable> {
   object: &'a T,
-  feature_flags: ScriptValue,
+  overrides: BTreeMap<String, ScriptValue>,
 }
 
-impl<'a, T: Scriptable> FeatureFlagWrapper<'a, T> {
+impl<'a, T: Scriptable> ScriptableWrapper<'a, T> {
   #[must_use]
-  pub fn new(object: &'a T, feature_flags: &[FeatureFlag]) -> Self {
-    Self {
+  pub fn new(object: &'a T, feature_flags: &[FeatureFlag], fields: Option<LogFields>) -> Self {
+    let fields_value = Into::<Value>::into(DataValueWrapper(DataValue::Map(LogMapData::new(
+      fields
+        .unwrap_or_default()
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_owned()))
+        .collect(),
+    ))));
+    Self::new_with_overrides(
       object,
-      feature_flags: Value::Array(feature_flags.iter().map(Into::into).collect()).into(),
+      BTreeMap::from([
+        (
+          FEATURE_FLAGS.to_string(),
+          Value::Array(feature_flags.iter().map(Into::into).collect()).into(),
+        ),
+        (FIELDS.to_string(), fields_value.into()),
+      ]),
+    )
+  }
+
+  #[must_use]
+  pub fn new_with_overrides(object: &'a T, overrides: BTreeMap<String, ScriptValue>) -> Self {
+    Self { object, overrides }
+  }
+}
+
+struct DataValueWrapper(DataValue);
+
+impl From<DataValueWrapper> for Value {
+  fn from(value: DataValueWrapper) -> Self {
+    match value.0 {
+      DataValue::U64(v) => v.into(),
+      DataValue::I64(v) => v.into(),
+      DataValue::Double(v) => Self::Float(NotNan::new(v.into_inner()).unwrap_or_default()),
+      DataValue::Boolean(v) => v.into(),
+      DataValue::String(s) => s.into(),
+      DataValue::SharedString(s) => s.to_string().into(),
+      DataValue::StaticString(s) => s.into(),
+      DataValue::Bytes(b) => b.into_payload().into(),
+      DataValue::Array(array_data) => array_data
+        .items()
+        .iter()
+        .map(|v| DataValueWrapper(v.to_owned()).into())
+        .collect::<Vec<Self>>()
+        .into(),
+      DataValue::Map(map_data) => map_data
+        .entries()
+        .iter()
+        .map(|(k, v)| (k.to_owned().into(), DataValueWrapper(v.to_owned()).into()))
+        .collect::<BTreeMap<_, Self>>()
+        .into(),
     }
   }
 }
 
-impl<T: Scriptable> Scriptable for FeatureFlagWrapper<'_, T> {
+impl<T: Scriptable> Scriptable for ScriptableWrapper<'_, T> {
   fn resolve(
     &self,
     path: &[vrl::path::OwnedSegment],
@@ -49,19 +100,23 @@ impl<T: Scriptable> Scriptable for FeatureFlagWrapper<'_, T> {
       let joined_path = OwnedValuePath::from(path.to_vec()).to_string();
       return Err(PathError::NotAnArray(joined_path));
     };
-    match name.as_str() {
-      "feature_flags" => self.feature_flags.resolve(&path[1 ..]),
-      _ => self.object.resolve(path),
+    if let Some(container) = self.overrides.get(name.as_str()) {
+      return container.resolve(&path[1 ..]);
     }
+    self.object.resolve(path)
   }
 
   fn schema() -> vrl::prelude::Kind {
     let mut schema = T::schema();
     schema.merge(
-      Kind::object(Collection::empty().with_known(
-        "feature_flags",
-        Kind::array(Collection::empty().with_unknown(FeatureFlag::schema())),
-      )),
+      Kind::object(
+        Collection::empty()
+          .with_known(
+            FEATURE_FLAGS,
+            Kind::array(Collection::empty().with_unknown(FeatureFlag::schema())),
+          )
+          .with_known(FIELDS, Kind::any_object()),
+      ),
       Strategy {
         collisions: CollisionStrategy::Union,
       },

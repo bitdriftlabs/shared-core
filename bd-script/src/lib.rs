@@ -5,10 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-pub mod feature_flag;
 mod input;
 pub mod report;
 mod target;
+pub mod wrapper;
 
 #[cfg(test)]
 #[path = "./script_test.rs"]

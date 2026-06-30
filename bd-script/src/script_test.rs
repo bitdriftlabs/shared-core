@@ -6,8 +6,9 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::Script;
-use crate::feature_flag::{FeatureFlag, FeatureFlagWrapper};
 use crate::report::{ReportOutput, all_functions_for_test as report_functions};
+use crate::wrapper::{FeatureFlag, ScriptableWrapper};
+use bd_log_primitives::{DataValue, LogFields};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   AppMetricsT,
   ErrorT,
@@ -359,12 +360,13 @@ fn unset_significant_frame() {
 #[test]
 fn emit_fields() {
   let script = Script::new::<CrashReport<'_>>(
-    "
+    r#"
     report_type = .type
     error_name = .errors[0].name
-    _a = add_field(\"some_tag\", \"{{ report_type }}-{{ error_name }}\")
-    add_field(\"flag_name\", string!(.feature_flags[0].name))
-    ",
+    _t = add_field("some_tag", "{{ report_type }}-{{ error_name }}")
+    _f = add_field("flag_name", string!(.feature_flags[0].name))
+    add_field("my_field", string!(.fields.bean))
+    "#,
     report_functions(),
   )
   .expect("is ok");
@@ -378,16 +380,20 @@ fn emit_fields() {
     ],
   )]);
   let report = packed_report.report();
-  let object = FeatureFlagWrapper::new(
+  let object = ScriptableWrapper::new(
     &report,
     &[FeatureFlag {
       name: "in_slice".to_string(),
       value: None,
       last_updated: Some(OffsetDateTime::now_utc()),
     }],
+    Some(LogFields::from([(
+      "bean".into(),
+      DataValue::String("carolina".into()),
+    )])),
   );
   let output: ReportOutput = script.run(&object).expect("can run");
-  assert_eq!(2, output.metrics.len());
+  assert_eq!(3, output.metrics.len());
   assert_eq!(
     &"in_slice".to_string(),
     output.metrics.get("flag_name").expect("has value")
@@ -395,6 +401,10 @@ fn emit_fields() {
   assert_eq!(
     &"JVMCrash-NullPointerException".to_string(),
     output.metrics.get("some_tag").expect("has value")
+  );
+  assert_eq!(
+    &"carolina".to_string(),
+    output.metrics.get("my_field").expect("has value")
   );
 }
 
@@ -429,13 +439,14 @@ fn combine_script_output_fields() {
   )]);
   let report = packed_report.report();
 
-  let object = FeatureFlagWrapper::new(
+  let object = ScriptableWrapper::new(
     &report,
     &[FeatureFlag {
       name: "in_slice".to_string(),
       value: None,
       last_updated: Some(OffsetDateTime::now_utc()),
     }],
+    None,
   );
   let output1: ReportOutput = script1.run(&object).expect("can run");
   let output2: ReportOutput = script2.run(&object).expect("can run");
