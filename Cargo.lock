@@ -1226,7 +1226,6 @@ name = "bd-script"
 version = "1.0.0"
 dependencies = [
  "anyhow",
- "bd-log-primitives",
  "bd-proto",
  "bd-workspace-hack",
  "flatbuffers",
