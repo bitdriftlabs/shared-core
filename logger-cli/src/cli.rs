@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use clap::{ArgAction, Args, Parser, Subcommand};
-use logger_cli::logger::LoggerArgs;
+use logger_cli::logger::{LoggerArgs, SessionStrategyConfig};
 use logger_cli::types::{LogLevel, LogType, Platform, RuntimeValueType};
 use std::collections::HashMap;
 use std::hash::BuildHasher;
@@ -67,6 +67,12 @@ pub struct Options {
   pub command: Command,
 }
 
+#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionStrategy {
+  Fixed,
+  ActivityBased,
+}
+
 #[derive(Subcommand, Debug)]
 pub enum Command {
   /// Emit a log
@@ -123,6 +129,14 @@ pub struct StartCommand {
   #[clap(long)]
   pub clean_data_dir: bool,
 
+  /// Session strategy used for logger sessions
+  #[clap(long, required = false, value_enum, default_value = "fixed")]
+  pub session_strategy: SessionStrategy,
+
+  /// Minutes of inactivity before rotating an activity-based session
+  #[clap(long, required = false, default_value_t = 30)]
+  pub inactivity_threshold_mins: i64,
+
   /// Bitdrift URL to connect
   #[clap(env, long, required = false, default_value = "https://api.bitdrift.io")]
   pub api_url: String,
@@ -150,6 +164,13 @@ pub struct StartCommand {
 
 impl From<StartCommand> for LoggerArgs {
   fn from(cmd: StartCommand) -> Self {
+    let session_strategy = match cmd.session_strategy {
+      SessionStrategy::Fixed => SessionStrategyConfig::Fixed,
+      SessionStrategy::ActivityBased => SessionStrategyConfig::ActivityBased {
+        inactivity_threshold_mins: cmd.inactivity_threshold_mins,
+      },
+    };
+
     Self {
       api_url: if cmd.api_url.contains("://") {
         cmd.api_url
@@ -163,6 +184,7 @@ impl From<StartCommand> for LoggerArgs {
       app_version_code: cmd.app_version_code,
       model: cmd.model,
       entity_id: cmd.entity_id,
+      session_strategy,
     }
   }
 }

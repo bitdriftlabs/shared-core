@@ -20,6 +20,7 @@ bd-proto.path                = "../bd-proto"
 bd-session.path              = "../bd-session"
 bd-shutdown.path             = "../bd-shutdown"
 bd-test-helpers.path         = "../bd-test-helpers"
+bd-time.path                 = "../bd-time"
 bd-workspace-hack.workspace  = true
 clap.workspace               = true
 flatbuffers.workspace        = true

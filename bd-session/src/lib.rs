@@ -43,7 +43,7 @@ fn test_global_init() {
 use bd_proto::protos::client::api::StateUpdateRequest;
 use bd_proto::protos::client::api::state_update_request::StartedSession;
 use bd_time::{OffsetDateTimeExt as _, TimeProvider};
-use persistence::{PersistedSessionState, StartedSessionRecord, Store};
+use persistence::{BackendState, PersistedSessionState, StartedSessionRecord, Store};
 use std::cell::Cell;
 use std::path::Path;
 use std::sync::Arc;
@@ -214,9 +214,46 @@ impl PendingStateUpdate {
 // Backend
 //
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BackendKind {
+  Fixed,
+  ActivityBased,
+}
+
+impl BackendKind {
+  const fn type_name(self) -> &'static str {
+    match self {
+      Self::Fixed => "fixed",
+      Self::ActivityBased => "activity_based",
+    }
+  }
+}
+
 enum Backend {
   Fixed(fixed::Strategy),
   ActivityBased(activity_based::Strategy),
+}
+
+impl Backend {
+  const fn kind(&self) -> BackendKind {
+    match self {
+      Self::Fixed(_) => BackendKind::Fixed,
+      Self::ActivityBased(_) => BackendKind::ActivityBased,
+    }
+  }
+
+  fn matches_persisted_backend(&self, persisted_backend: &BackendState) -> bool {
+    self.kind() == persisted_backend.kind()
+  }
+}
+
+impl BackendState {
+  const fn kind(&self) -> BackendKind {
+    match self {
+      Self::Fixed => BackendKind::Fixed,
+      Self::ActivityBased { .. } => BackendKind::ActivityBased,
+    }
+  }
 }
 
 //
@@ -296,6 +333,16 @@ impl Strategy {
 
         let current_session_id = Self::loaded_session_id(state)?;
         if mutation.has_follow_up_work() {
+          log::debug!(
+            "session read requires follow-up work: backend={}, current_session_id={}, \
+             persist_state={}, persist_pending={}, callback={}",
+            self.type_name(),
+            current_session_id,
+            mutation.persist_state,
+            mutation.persist_pending,
+            mutation.callback.is_some()
+          );
+
           Ok(PreparedSessionOperation::follow_up(state.clone(), mutation))
         } else {
           Ok(PreparedSessionOperation::noop(current_session_id))
@@ -307,6 +354,17 @@ impl Strategy {
         *guard = Some(initialization.state.clone());
 
         let current_session_id = Self::loaded_session_id(&initialization.state)?;
+        log::debug!(
+          "initialized session state on first read: backend={}, current_session_id={}, \
+           persist_state={}, persist_pending={}, callback={}, pending_started_sessions={}",
+          self.type_name(),
+          current_session_id,
+          initialization.mutation.persist_state,
+          initialization.mutation.persist_pending,
+          initialization.mutation.callback.is_some(),
+          initialization.state.pending_started_sessions.len()
+        );
+
         if initialization.mutation.has_follow_up_work() {
           Ok(PreparedSessionOperation::follow_up(
             initialization.state,
@@ -401,6 +459,14 @@ impl Strategy {
       .iter()
       .any(|started| started.session_id == state.persisted.current_session_id)
     {
+      log::debug!(
+        "synthesizing current session into handshake: backend={}, current_session_id={}, \
+         pending_started_sessions={}",
+        self.type_name(),
+        state.persisted.current_session_id,
+        state.pending_started_sessions.len()
+      );
+
       request_started_sessions.push(StartedSessionRecord {
         session_id: state.persisted.current_session_id.clone(),
         start_time: state.persisted.current_session_start,
@@ -425,10 +491,23 @@ impl Strategy {
     let state = self.load_state_for_update().await;
 
     if state.pending_started_sessions.is_empty() {
+      log::debug!(
+        "no pending state update to emit: backend={}, current_session_id={}",
+        self.type_name(),
+        state.persisted.current_session_id
+      );
       return None;
     }
 
     let started_sessions = state.pending_started_sessions;
+    log::debug!(
+      "emitting pending state update: backend={}, current_session_id={}, \
+       pending_started_sessions={}",
+      self.type_name(),
+      state.persisted.current_session_id,
+      started_sessions.len()
+    );
+
     Some(PendingStateUpdate {
       request: StateUpdateRequest {
         started_sessions: started_sessions
@@ -463,6 +542,13 @@ impl Strategy {
       // Responses are not correlated, so we only advance the durable queue when the acknowledged
       // set matches the prefix we most recently sent.
       if !starts_with_sessions(&state.pending_started_sessions, &update.started_sessions) {
+        log::debug!(
+          "ignoring non-prefix state update acknowledgement: backend={}, current_pending={}, \
+           acknowledged={}",
+          self.type_name(),
+          state.pending_started_sessions.len(),
+          update.started_sessions.len()
+        );
         return;
       }
 
@@ -479,16 +565,18 @@ impl Strategy {
     {
       log::warn!("failed to persist acknowledged started sessions: {e}");
     } else {
+      log::debug!(
+        "acknowledged pending started sessions: backend={}, remaining_pending={}",
+        self.type_name(),
+        pending_started_sessions.len()
+      );
       self.notify_update();
     }
   }
 
   /// Pretty name of the strategy.
   pub const fn type_name(&self) -> &'static str {
-    match self.backend {
-      Backend::Fixed(_) => "fixed",
-      Backend::ActivityBased(_) => "activity_based",
-    }
+    self.backend.kind().type_name()
   }
 
   fn initialize_state(&self) -> Initialization {
@@ -496,6 +584,29 @@ impl Strategy {
     // backend makes decisions from a consistent snapshot of durable state.
     let persisted = self.store.load_state();
     let pending_started_sessions = self.store.load_pending_started_sessions();
+
+    log::debug!(
+      "loading session state snapshot: active_backend={}, has_persisted_state={}, \
+       pending_started_sessions={}",
+      self.type_name(),
+      persisted.is_some(),
+      pending_started_sessions.len()
+    );
+
+    if let Some(persisted) = persisted.as_ref()
+      && !self.backend.matches_persisted_backend(&persisted.backend)
+    {
+      log::debug!(
+        "resyncing session state after backend switch: persisted_backend={}, active_backend={}, \
+         previous_current_session_id={}, pending_started_sessions={}",
+        persisted.backend.kind().type_name(),
+        self.type_name(),
+        persisted.current_session_id,
+        pending_started_sessions.len()
+      );
+
+      return self.initialize_after_backend_switch(persisted.clone(), pending_started_sessions);
+    }
 
     match &self.backend {
       Backend::Fixed(strategy) => {
@@ -505,10 +616,35 @@ impl Strategy {
     }
   }
 
+  fn initialize_after_backend_switch(
+    &self,
+    persisted: PersistedSessionState,
+    pending_started_sessions: Vec<StartedSessionRecord>,
+  ) -> Initialization {
+    // Backend-specific durable fields are not portable, so a strategy switch is treated as a
+    // fresh session boundary. We still preserve the old current session as previous-process state
+    // by routing through the existing explicit-rotation path.
+    match &self.backend {
+      Backend::Fixed(strategy) => self.with_callback_guard(|| {
+        strategy.start_new_session(None, Some(persisted), pending_started_sessions)
+      }),
+      Backend::ActivityBased(strategy) => {
+        strategy.start_new_session(None, Some(persisted), pending_started_sessions)
+      },
+    }
+  }
+
   async fn load_state_for_update(&self) -> LoadedState {
     let (state, mutation) = {
       let mut guard = self.state.lock();
       if let Some(state) = guard.clone() {
+        log::debug!(
+          "serving state update from cached session state: backend={}, current_session_id={}, \
+           pending_started_sessions={}",
+          self.type_name(),
+          state.persisted.current_session_id,
+          state.pending_started_sessions.len()
+        );
         return state;
       }
 
@@ -516,6 +652,16 @@ impl Strategy {
       // then drop the lock before invoking any deferred callback.
       let initialization = self.initialize_state();
       *guard = Some(initialization.state.clone());
+      log::debug!(
+        "initialized session state for update flow: backend={}, current_session_id={}, \
+         persist_state={}, persist_pending={}, callback={}, pending_started_sessions={}",
+        self.type_name(),
+        initialization.state.persisted.current_session_id,
+        initialization.mutation.persist_state,
+        initialization.mutation.persist_pending,
+        initialization.mutation.callback.is_some(),
+        initialization.state.pending_started_sessions.len()
+      );
       (initialization.state, initialization.mutation)
     };
 
@@ -530,20 +676,36 @@ impl Strategy {
   ) -> (LoadedState, Mutation) {
     // Explicit session rotation re-reads persisted state so the durable queue remains the source
     // of truth even if this process has not initialized the in-memory cache yet.
+    let persisted = self.store.load_state();
+    let pending_started_sessions = self.store.load_pending_started_sessions();
+    log::debug!(
+      "starting explicit session rotation: backend={}, cached_state={}, has_persisted_state={}, \
+       pending_started_sessions={}",
+      self.type_name(),
+      guard.is_some(),
+      persisted.is_some(),
+      pending_started_sessions.len()
+    );
+
     let initialization = match &self.backend {
       Backend::Fixed(strategy) => self.with_callback_guard(|| {
-        strategy.start_new_session(
-          guard.as_ref(),
-          self.store.load_state(),
-          self.store.load_pending_started_sessions(),
-        )
+        strategy.start_new_session(guard.as_ref(), persisted, pending_started_sessions)
       }),
-      Backend::ActivityBased(strategy) => strategy.start_new_session(
-        guard.as_ref(),
-        self.store.load_state(),
-        self.store.load_pending_started_sessions(),
-      ),
+      Backend::ActivityBased(strategy) => {
+        strategy.start_new_session(guard.as_ref(), persisted, pending_started_sessions)
+      },
     };
+
+    log::debug!(
+      "computed explicit session rotation: backend={}, current_session_id={}, persist_state={}, \
+       persist_pending={}, callback={}, pending_started_sessions={}",
+      self.type_name(),
+      initialization.state.persisted.current_session_id,
+      initialization.mutation.persist_state,
+      initialization.mutation.persist_pending,
+      initialization.mutation.callback.is_some(),
+      initialization.state.pending_started_sessions.len()
+    );
 
     **guard = Some(initialization.state.clone());
     (initialization.state, initialization.mutation)
@@ -571,6 +733,17 @@ impl Strategy {
     state: LoadedState,
     mutation: Mutation,
   ) -> Option<DeferredCallback> {
+    log::debug!(
+      "finishing session mutation: backend={}, current_session_id={}, persist_state={}, \
+       persist_pending={}, callback={}, pending_started_sessions={}",
+      self.type_name(),
+      state.persisted.current_session_id,
+      mutation.persist_state,
+      mutation.persist_pending,
+      mutation.callback.is_some(),
+      state.pending_started_sessions.len()
+    );
+
     let pending_changed = mutation.persist_pending;
     let callback = mutation.callback.clone();
     self.persist_loaded_state(&state, &mutation).await;
@@ -583,6 +756,18 @@ impl Strategy {
   async fn persist_loaded_state(&self, state: &LoadedState, mutation: &Mutation) {
     // The strategy returns a mutation describing which durable pieces changed. Persist only those
     // pieces so reads can stay cheap while the on-disk view remains crash-safe.
+    if mutation.persist_state || mutation.persist_pending {
+      log::debug!(
+        "persisting durable session state: backend={}, current_session_id={}, persist_state={}, \
+         persist_pending={}, pending_started_sessions={}",
+        self.type_name(),
+        state.persisted.current_session_id,
+        mutation.persist_state,
+        mutation.persist_pending,
+        state.pending_started_sessions.len()
+      );
+    }
+
     if mutation.persist_state
       && let Err(e) = self.store.persist_state(&state.persisted).await
     {
@@ -604,6 +789,9 @@ impl Strategy {
     // observe half-applied transitions or deadlock against session APIs.
     match callback {
       Some(DeferredCallback::ActivitySessionChanged(session_id)) => {
+        log::debug!(
+          "dispatching deferred activity session callback: current_session_id={session_id}"
+        );
         if let Backend::ActivityBased(strategy) = &self.backend {
           self.with_callback_guard(|| strategy.run_callback(&session_id));
         }
@@ -613,9 +801,19 @@ impl Strategy {
   }
 
   fn notify_update(&self) {
-    self
-      .update_tx
-      .send_modify(|version| *version = version.wrapping_add(1));
+    let mut old_version = 0;
+    let mut new_version = 0;
+    self.update_tx.send_modify(|version| {
+      old_version = *version;
+      *version = version.wrapping_add(1);
+      new_version = *version;
+    });
+    log::debug!(
+      "advanced session update version: backend={}, old_version={}, new_version={}",
+      self.type_name(),
+      old_version,
+      new_version
+    );
   }
 }
 

@@ -3193,6 +3193,7 @@ dependencies = [
  "bd-session",
  "bd-shutdown",
  "bd-test-helpers",
+ "bd-time",
  "bd-workspace-hack",
  "clap",
  "flatbuffers",

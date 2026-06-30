@@ -60,6 +60,14 @@ impl Strategy {
 
     pending_started_sessions.push(StartedSessionRecord::new(session_id.clone(), session_start));
 
+    log::debug!(
+      "initializing fixed session: new_session_id={}, previous_process_session_id={:?}, \
+       pending_started_sessions={}",
+      session_id,
+      previous_process_session_id,
+      pending_started_sessions.len()
+    );
+
     Initialization {
       state: LoadedState {
         persisted: PersistedSessionState {
@@ -99,6 +107,13 @@ impl Strategy {
     );
 
     pending_started_sessions.push(StartedSessionRecord::new(session_id.clone(), session_start));
+
+    log::debug!(
+      "starting explicit new fixed session: new_session_id={}, \
+       previous_process_session_id={previous_process_session_id:?}, pending_started_sessions={}",
+      session_id,
+      pending_started_sessions.len()
+    );
 
     Initialization {
       state: LoadedState {

@@ -40,6 +40,12 @@ impl Strategy {
     callbacks: Arc<dyn Callbacks>,
     time_provider: Arc<dyn bd_time::TimeProvider>,
   ) -> Self {
+    log::debug!(
+      "configured activity-based session strategy: inactivity_threshold={inactivity_threshold:?}, \
+       max_write_interval={:?}",
+      Duration::seconds(15)
+    );
+
     Self {
       callbacks,
       inactivity_threshold,
@@ -59,6 +65,14 @@ impl Strategy {
   ) -> Initialization {
     let now = self.time_provider.now();
     if let Some(persisted) = persisted {
+      log::debug!(
+        "initializing activity-based session from persisted state: current_session_id={}, \
+         pending_started_sessions={}, current_session_start={:?}",
+        persisted.current_session_id,
+        pending_started_sessions.len(),
+        OffsetDateTime::from(persisted.current_session_start)
+      );
+
       // Reuse the persisted session as input to the normal activity transition logic so restart
       // behavior matches a normal foreground access.
       let previous_process_session_id = Some(persisted.current_session_id.clone());
@@ -78,6 +92,11 @@ impl Strategy {
         .iter()
         .any(|started| started.session_id == state.persisted.current_session_id)
       {
+        log::debug!(
+          "re-queueing current activity session for handshake upload after restart: session_id={}",
+          state.persisted.current_session_id
+        );
+
         state
           .pending_started_sessions
           .push(StartedSessionRecord::new(
@@ -86,11 +105,29 @@ impl Strategy {
           ));
         mutation.persist_pending = true;
       }
+
+      log::debug!(
+        "initialized activity-based session from persisted state: current_session_id={}, \
+         previous_process_session_id={:?}, persist_state={}, persist_pending={}, \
+         pending_started_sessions={}",
+        state.persisted.current_session_id,
+        state.persisted.previous_process_session_id,
+        mutation.persist_state,
+        mutation.persist_pending,
+        state.pending_started_sessions.len()
+      );
+
       Initialization { state, mutation }
     } else {
       let session_id = Self::generate_session_id();
       let session_start = now;
       pending_started_sessions.push(StartedSessionRecord::new(session_id.clone(), session_start));
+
+      log::debug!(
+        "initializing new activity-based session: session_id={session_id}, \
+         session_start={session_start:?}, pending_started_sessions={}",
+        pending_started_sessions.len()
+      );
 
       Initialization {
         state: LoadedState {
@@ -117,16 +154,39 @@ impl Strategy {
   pub(crate) fn on_session_id(&self, state: &mut LoadedState) -> Mutation {
     let now = self.time_provider.now();
     let BackendState::ActivityBased { last_activity } = &mut state.persisted.backend else {
+      // `initialize_state()` should already resync any persisted backend mismatch before an
+      // activity-based strategy reaches its steady-state access path. Keep the branch as a
+      // defensive fallback so debug builds catch any future invariant drift immediately.
+      debug_assert!(
+        false,
+        "activity-based session observed incompatible backend state after initialization"
+      );
+      log::debug!(
+        "activity-based session observed incompatible backend state after initialization; leaving \
+         state unchanged"
+      );
       return Mutation::default();
     };
 
+    let previous_session_id = state.persisted.current_session_id.clone();
     let previous_last_activity = OffsetDateTime::from(*last_activity);
+    let inactivity_elapsed = now - previous_last_activity;
     let is_now_before_last_activity = now < previous_last_activity;
-    let is_inactivity_threshold_exceeded =
-      (now - previous_last_activity) > self.inactivity_threshold;
+    let is_inactivity_threshold_exceeded = inactivity_elapsed > self.inactivity_threshold;
     let last_activity_storage_needs_write = state
       .last_activity_write
       .is_none_or(|last_activity_write| now - last_activity_write > self.max_write_interval);
+
+    log::debug!(
+      "evaluating activity-based session access: current_session_id={}, now={now:?}, \
+       previous_last_activity={previous_last_activity:?}, \
+       inactivity_elapsed={inactivity_elapsed:?}, threshold={:?}, clock_moved_backwards={}, \
+       persist_last_activity={}",
+      previous_session_id,
+      self.inactivity_threshold,
+      is_now_before_last_activity,
+      last_activity_storage_needs_write
+    );
 
     *last_activity = now.into();
 
@@ -141,6 +201,19 @@ impl Strategy {
         .push(StartedSessionRecord::new(session_id.clone(), now));
       state.last_activity_write = Some(now);
 
+      log::debug!(
+        "rotating activity-based session: previous_session_id={}, new_session_id={}, reason={}, \
+         pending_started_sessions={}",
+        previous_session_id,
+        session_id,
+        if is_now_before_last_activity {
+          "clock_moved_backwards"
+        } else {
+          "inactivity_threshold_exceeded"
+        },
+        state.pending_started_sessions.len()
+      );
+
       Mutation {
         persist_state: true,
         persist_pending: true,
@@ -150,11 +223,22 @@ impl Strategy {
       // The session itself is unchanged, but we periodically persist the last-activity timestamp so
       // a restart can continue the inactivity window from roughly the right point in time.
       state.last_activity_write = Some(now);
+
+      log::debug!(
+        "persisting activity-based last-activity without session rotation: \
+         current_session_id={previous_session_id}, last_activity={now:?}"
+      );
+
       Mutation {
         persist_state: true,
         ..Default::default()
       }
     } else {
+      log::debug!(
+        "leaving activity-based session unchanged: current_session_id={previous_session_id}, no \
+         durable write required"
+      );
+
       Mutation::default()
     }
   }
@@ -175,6 +259,13 @@ impl Strategy {
     );
 
     pending_started_sessions.push(StartedSessionRecord::new(session_id.clone(), now));
+
+    log::debug!(
+      "starting explicit new activity-based session: new_session_id={}, \
+       previous_process_session_id={previous_process_session_id:?}, pending_started_sessions={}",
+      session_id,
+      pending_started_sessions.len()
+    );
 
     Initialization {
       state: LoadedState {
@@ -198,6 +289,7 @@ impl Strategy {
   }
 
   pub(crate) fn run_callback(&self, session_id: &str) {
+    log::debug!("dispatching activity-based session callback: session_id={session_id}");
     self.callbacks.session_id_changed(session_id);
   }
 }
