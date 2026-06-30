@@ -8,13 +8,12 @@
 mod input;
 pub mod report;
 mod target;
-pub mod wrapper;
 
 #[cfg(test)]
 #[path = "./script_test.rs"]
 mod test;
 
-pub use crate::input::Scriptable;
+pub use crate::input::{PathError, Scriptable};
 use crate::target::ScriptableTarget;
 use anyhow::anyhow;
 use std::fmt::Debug;
@@ -32,7 +31,7 @@ pub struct Script {
 }
 
 #[derive(Debug)]
-pub struct ScriptValue(Value);
+pub struct ScriptValue(pub Value);
 
 pub trait ScriptOutput: Default + Debug {}
 
@@ -95,9 +94,4 @@ impl From<&str> for ScriptValue {
   fn from(value: &str) -> Self {
     Value::Bytes(value.to_owned().into()).into()
   }
-}
-
-/// Downcast the dynamic state in a context to a particular type, if possible
-pub fn get_dynamic_data<'a, 'b, T: 'b + 'static>(ctx: &'a mut Context<'b>) -> Option<&'a mut T> {
-  ctx.dynamic_state().and_then(|d| d.downcast_mut::<T>())
 }
