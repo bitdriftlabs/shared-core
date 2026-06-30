@@ -8,6 +8,7 @@
 pub mod api;
 
 // Re-export proto dependencies referenced by generated code in this subdirectory.
+pub use super::explorations::captured_sessions;
 pub use super::{
   access,
   chart_id,
