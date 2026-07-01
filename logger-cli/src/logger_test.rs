@@ -14,32 +14,32 @@ use super::{
 };
 use bd_time::TestTimeProvider;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
+use tempfile::{Builder, TempDir};
 use time::{Duration, OffsetDateTime};
 
 struct TestSdkDirectory {
-  path: PathBuf,
+  temp_dir: TempDir,
 }
 
 impl TestSdkDirectory {
   fn new() -> Self {
-    let path = std::env::current_dir().unwrap().join(".tmp").join(format!(
-      "logger-cli-session-{}",
-      OffsetDateTime::now_utc().unix_timestamp_nanos()
-    ));
-    fs::create_dir_all(&path).unwrap();
-    Self { path }
+    let temp_root = std::env::current_dir().unwrap().join(".tmp");
+    fs::create_dir_all(&temp_root).unwrap();
+
+    // Keep test scratch space inside the workspace, but let tempfile provide a collision-resistant
+    // per-test directory for the concurrently executed restart tests.
+    let temp_dir = Builder::new()
+      .prefix("logger-cli-session-")
+      .tempdir_in(temp_root)
+      .unwrap();
+
+    Self { temp_dir }
   }
 
   fn path(&self) -> &Path {
-    &self.path
-  }
-}
-
-impl Drop for TestSdkDirectory {
-  fn drop(&mut self) {
-    let _ignored = fs::remove_dir_all(&self.path);
+    self.temp_dir.path()
   }
 }
 
