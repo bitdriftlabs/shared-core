@@ -5,9 +5,10 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{Command, Options};
+use super::{Command, Options, SessionStrategy};
 use crate::cli::FakeFeatureFlag;
 use clap::Parser;
+use logger_cli::logger::SessionStrategyConfig;
 
 #[test]
 fn parses_set_entity_id_command() {
@@ -34,6 +35,44 @@ fn parses_start_entity_id_flag() {
     options.command,
     Command::Start(cmd) if cmd.entity_id.as_deref() == Some("entity-123")
   ));
+}
+
+#[test]
+fn start_uses_fixed_session_strategy_by_default() {
+  let options = Options::parse_from(["logger-cli", "start", "--api-key", "test-key"]);
+
+  assert!(matches!(
+    options.command,
+    Command::Start(cmd)
+      if cmd.session_strategy == SessionStrategy::Fixed && cmd.inactivity_threshold_mins == 30
+  ));
+}
+
+#[test]
+fn parses_activity_based_session_strategy() {
+  let options = Options::parse_from([
+    "logger-cli",
+    "start",
+    "--api-key",
+    "test-key",
+    "--session-strategy",
+    "activity-based",
+    "--inactivity-threshold-mins",
+    "45",
+  ]);
+
+  let Command::Start(cmd) = options.command else {
+    panic!("expected start command");
+  };
+
+  let logger_args: logger_cli::logger::LoggerArgs = cmd.into();
+
+  assert_eq!(
+    SessionStrategyConfig::ActivityBased {
+      inactivity_threshold_mins: 45,
+    },
+    logger_args.session_strategy
+  );
 }
 
 #[test]

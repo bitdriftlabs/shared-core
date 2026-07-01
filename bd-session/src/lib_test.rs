@@ -7,12 +7,15 @@
 
 use super::test::start_new_session;
 use super::{PendingStateUpdate, Strategy};
-use crate::fixed;
+use crate::persistence::{BackendState, PersistedSessionState, Store};
+use crate::{activity_based, fixed};
 use bd_proto::protos::client::api::StateUpdateRequest;
+use bd_time::TestTimeProvider;
 use pretty_assertions::assert_eq;
 use std::collections::VecDeque;
 use std::sync::Arc;
 use tempfile::TempDir;
+use time::{Duration, OffsetDateTime};
 
 //
 // FixedCallbacks
@@ -45,11 +48,30 @@ impl fixed::Callbacks for FixedCallbacks {
   }
 }
 
+struct ActivityCallbacks;
+
+impl activity_based::Callbacks for ActivityCallbacks {
+  fn session_id_changed(&self, _session_id: &str) {}
+}
+
 fn fixed_strategy(sdk_directory: &TempDir, session_ids: &[&str]) -> Strategy {
   Strategy::fixed(
     sdk_directory.path(),
     Arc::new(FixedCallbacks::new(session_ids)),
   )
+}
+
+fn activity_strategy(sdk_directory: &TempDir, now: OffsetDateTime) -> Strategy {
+  Strategy::activity_based(
+    sdk_directory.path(),
+    Duration::minutes(30),
+    Arc::new(ActivityCallbacks),
+    Arc::new(TestTimeProvider::new(now)),
+  )
+}
+
+fn persisted_state(sdk_directory: &TempDir) -> PersistedSessionState {
+  Store::new(sdk_directory.path()).load_state().unwrap()
 }
 
 fn started_session_ids(request: &StateUpdateRequest) -> Vec<String> {
@@ -159,4 +181,58 @@ async fn handshake_does_not_duplicate_current_session_when_queue_already_contain
     started_session_ids(handshake.request())
   );
   assert_eq!(1, handshake.started_sessions.len());
+}
+
+#[tokio::test]
+async fn switching_from_fixed_to_activity_resyncs_persisted_backend() {
+  let sdk_directory = TempDir::new().unwrap();
+
+  let first_strategy = fixed_strategy(&sdk_directory, &["fixed-session"]);
+  let first_session_id = first_strategy.session_id().await.unwrap();
+  drop(first_strategy);
+
+  let restarted_strategy = activity_strategy(&sdk_directory, OffsetDateTime::now_utc());
+  let pending = restarted_strategy.pending_state_update().await.unwrap();
+  let restarted_session_id = restarted_strategy.try_current_session_id().unwrap();
+
+  assert_ne!(first_session_id, restarted_session_id);
+  assert_eq!(
+    Some(first_session_id.clone()),
+    restarted_strategy.previous_process_session_id()
+  );
+  assert_eq!(
+    vec![first_session_id.clone(), restarted_session_id],
+    started_session_ids(pending.request())
+  );
+  assert!(matches!(
+    persisted_state(&sdk_directory).backend,
+    BackendState::ActivityBased { .. }
+  ));
+}
+
+#[tokio::test]
+async fn switching_from_activity_to_fixed_resyncs_persisted_backend() {
+  let sdk_directory = TempDir::new().unwrap();
+
+  let first_strategy = activity_strategy(&sdk_directory, OffsetDateTime::now_utc());
+  let first_session_id = first_strategy.session_id().await.unwrap();
+  drop(first_strategy);
+
+  let restarted_strategy = fixed_strategy(&sdk_directory, &["fixed-session"]);
+  let pending = restarted_strategy.pending_state_update().await.unwrap();
+  let restarted_session_id = restarted_strategy.try_current_session_id().unwrap();
+
+  assert_ne!(first_session_id, restarted_session_id);
+  assert_eq!(
+    Some(first_session_id.clone()),
+    restarted_strategy.previous_process_session_id()
+  );
+  assert_eq!(
+    vec![first_session_id.clone(), restarted_session_id],
+    started_session_ids(pending.request())
+  );
+  assert!(matches!(
+    persisted_state(&sdk_directory).backend,
+    BackendState::Fixed
+  ));
 }
