@@ -2973,7 +2973,22 @@ fn replayed_remote_upload_does_not_resurrect_stale_trigger_payload_on_later_remo
       "trigger_buffer_id".to_string(),
     ]));
 
-  assert_matches!(setup.server.blocking_next_log_upload(), None);
+  assert_matches!(setup.server.blocking_next_log_upload(), maybe_log_upload => {
+    // Both outcomes are valid here. Once the replayed upload has drained the pre-restart
+    // payload, the carried-over remote stream may or may not reactivate before the post-restart
+    // log is written. If it does, the later explicit flush sees nothing. If it does not, the
+    // later flush uploads only the post-restart payload. What must never happen is re-uploading
+    // the stale pre-restart log.
+    if let Some(log_upload) = maybe_log_upload {
+      assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
+      let messages: Vec<_> = log_upload
+        .logs()
+        .iter()
+        .map(|log| log.message().to_string())
+        .collect();
+      assert_eq!(messages, vec!["buffered after restart".to_string()]);
+    }
+  });
 }
 
 #[test]
