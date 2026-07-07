@@ -18,6 +18,7 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
 };
 use flatbuffers::FlatBufferBuilder;
 use nom_language::error::VerboseError;
+use std::collections::HashMap;
 
 /// Run a parser and either return the successful value or print a verbose
 /// description of where the parser failed
@@ -71,6 +72,15 @@ fn open_fixture(path: &str) -> std::fs::File {
     full_path.display()
   );
   std::fs::File::open(full_path).unwrap()
+}
+
+fn build_thread<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
+  builder: &mut FlatBufferBuilder<'fbb>,
+  images: &mut BTreeMap<BinaryImageKey, Option<String>>,
+  input: MemmapView<'a>,
+) -> IResult<MemmapView<'a>, v_1::ThreadArgs<'fbb>, E> {
+  let mut stack_trace_offsets = HashMap::new();
+  super::build_thread(builder, images, &mut stack_trace_offsets, input)
 }
 
 #[test]

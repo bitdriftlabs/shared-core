@@ -19,7 +19,7 @@ use nom::multi::{many0, many1, separated_list0, separated_list1};
 use nom::sequence::{delimited, pair, preceded, separated_pair, terminated};
 use nom::{AsChar, FindSubstring, IResult, Input, Parser};
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 #[cfg(test)]
@@ -49,6 +49,8 @@ struct Stacks<'a> {
 
 type BinaryImagePath = String;
 type BinaryImageKey = (BinaryImagePath, Option<u64>);
+type FrameVectorOffset<'fbb> = WIPOffset<Vector<'fbb, ForwardsUOffset<v_1::Frame<'fbb>>>>;
+type FrameOffsetSequence = Vec<u32>;
 
 const MAIN_THREAD: &str = "main";
 
@@ -102,8 +104,12 @@ fn build_threads<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
   input: MemmapView<'a>,
 ) -> IResult<MemmapView<'a>, Stacks<'fbb>, E> {
   let mut images = BTreeMap::new();
-  let (remainder, thread_infos) =
-    separated_list1(tag("\n"), |text| build_thread(builder, &mut images, text)).parse(input)?;
+  let mut stack_trace_offsets: HashMap<FrameOffsetSequence, FrameVectorOffset<'fbb>> =
+    HashMap::new();
+  let (remainder, thread_infos) = separated_list1(tag("\n"), |text| {
+    build_thread(builder, &mut images, &mut stack_trace_offsets, text)
+  })
+  .parse(input)?;
   let thread_offsets = thread_infos
     .iter()
     .map(|args| v_1::Thread::create(builder, args))
@@ -142,6 +148,7 @@ fn build_threads<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
 fn build_thread<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
   builder: &mut FlatBufferBuilder<'fbb>,
   images: &mut BTreeMap<BinaryImageKey, Option<String>>,
+  stack_trace_offsets: &mut HashMap<FrameOffsetSequence, FrameVectorOffset<'fbb>>,
   input: MemmapView<'a>,
 ) -> IResult<MemmapView<'a>, v_1::ThreadArgs<'fbb>, E> {
   let (remainder, (header, _props, frames)) = terminated(
@@ -157,15 +164,26 @@ fn build_thread<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
   )
   .parse(input)?;
 
+  let frame_offset_key = frames.iter().map(|frame| frame.value()).collect_vec();
+  let stack_trace = stack_trace_offsets
+    .get(&frame_offset_key)
+    .copied()
+    .unwrap_or_else(|| {
+      let stack_trace = builder.create_vector(frames.as_slice());
+      stack_trace_offsets.insert(frame_offset_key, stack_trace);
+      stack_trace
+    });
+
   let args = v_1::ThreadArgs {
     active: header.name == MAIN_THREAD,
     name: Some(builder.create_string(&header.name)),
     index: header.tid.unwrap_or_default(),
     priority: header.priority.unwrap_or_default(),
-    state: Some(builder.create_string(&header.state)),
-    stack_trace: Some(builder.create_vector(frames.as_slice())),
+    state: Some(builder.create_shared_string(&header.state)),
+    stack_trace: Some(stack_trace),
     ..Default::default()
   };
+
   Ok((remainder, args))
 }
 
@@ -221,13 +239,15 @@ fn build_native_frame<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
       images.insert((path.clone(), offset), build_id.clone());
       let args = v_1::FrameArgs {
         type_: v_1::FrameType::AndroidNative,
-        symbol_name: symbol_name.map(|name| builder.create_string(&name)),
+        symbol_name: symbol_name
+          .as_ref()
+          .map(|name| builder.create_shared_string(name)),
         symbol_address: symbol_offset
           .flatten()
           .map(|off| address - off)
           .unwrap_or_default(),
         frame_address: address,
-        image_id: Some(builder.create_string(&build_id.unwrap_or(path))),
+        image_id: Some(builder.create_shared_string(&build_id.unwrap_or(path))),
         ..Default::default()
       };
       v_1::Frame::create(builder, &args)
@@ -252,7 +272,7 @@ fn build_java_frame<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
     ),
     |(symbol, source, state)| {
       let source_file_args = v_1::SourceFileArgs {
-        path: Some(builder.create_string(&source.path)),
+        path: Some(builder.create_shared_string(&source.path)),
         line: source.lineno.unwrap_or_default(),
         column: 0,
       };
@@ -263,7 +283,7 @@ fn build_java_frame<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
         .collect_vec();
       let args = v_1::FrameArgs {
         type_: v_1::FrameType::JVM,
-        symbol_name: Some(builder.create_string(symbol.as_str())),
+        symbol_name: Some(builder.create_shared_string(symbol.as_str())),
         source_file,
         state: (!state.is_empty()).then(|| builder.create_vector(state.as_slice())),
         ..Default::default()
