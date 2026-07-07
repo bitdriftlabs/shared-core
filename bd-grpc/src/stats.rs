@@ -6,6 +6,8 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::service::ServiceMethod;
+use crate::status::code_to_connect_http_status;
+use bd_grpc_codec::code::Code;
 use bd_server_stats::stats::{CounterWrapper, Scope};
 use bd_stats_common::DynCounter;
 use prometheus::{IntCounter, IntCounterVec};
@@ -23,7 +25,18 @@ pub struct EndpointStats {
 #[derive(Clone)]
 pub struct ResolvedEndpointStats {
   pub success: IntCounter,
-  pub failure: IntCounter,
+  pub client_error: IntCounter,
+  pub server_error: IntCounter,
+}
+
+impl ResolvedEndpointStats {
+  pub fn inc_error(&self, code: Code) {
+    if code_to_connect_http_status(code).is_client_error() {
+      self.client_error.inc();
+    } else {
+      self.server_error.inc();
+    }
+  }
 }
 
 impl EndpointStats {
@@ -45,10 +58,15 @@ impl EndpointStats {
         service.method_name(),
         "success",
       ]),
-      failure: self.rpc.with_label_values(&[
+      client_error: self.rpc.with_label_values(&[
         service.service_name().replace('.', "_").as_str(),
         service.method_name(),
-        "failure",
+        "client_error",
+      ]),
+      server_error: self.rpc.with_label_values(&[
+        service.service_name().replace('.', "_").as_str(),
+        service.method_name(),
+        "server_error",
       ]),
     }
   }
