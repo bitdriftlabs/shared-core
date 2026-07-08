@@ -109,7 +109,13 @@ fn build_threads<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
   let mut stack_trace_offsets: HashMap<FrameOffsetSequence, FrameVectorOffset<'fbb>> =
     HashMap::new();
   let (remainder, thread_infos) = separated_list1(tag("\n"), |text| {
-    build_thread(builder, &mut images, &mut stack_trace_offsets, text, is_file_size_optimization_enabled)
+    build_thread(
+      builder,
+      &mut images,
+      &mut stack_trace_offsets,
+      text,
+      is_file_size_optimization_enabled,
+    )
   })
   .parse(input)?;
   let thread_offsets = thread_infos
@@ -167,31 +173,32 @@ fn build_thread<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
   )
   .parse(input)?;
 
-  let stack_trace =
-    if is_file_size_optimization_enabled {
-      let frame_offset_key = frames.iter().map(|frame| frame.value()).collect_vec();
-      stack_trace_offsets
-        .get(&frame_offset_key)
-        .copied()
-        .unwrap_or_else(|| {
-          let stack_trace = builder.create_vector(frames.as_slice());
-          stack_trace_offsets.insert(frame_offset_key, stack_trace);
-          stack_trace
-        })
-    } else {
-      builder.create_vector(frames.as_slice())
-    };
+  let stack_trace = if is_file_size_optimization_enabled {
+    let frame_offset_key = frames.iter().map(|frame| frame.value()).collect_vec();
+    stack_trace_offsets
+      .get(&frame_offset_key)
+      .copied()
+      .unwrap_or_else(|| {
+        let stack_trace = builder.create_vector(frames.as_slice());
+        stack_trace_offsets.insert(frame_offset_key, stack_trace);
+        stack_trace
+      })
+  } else {
+    builder.create_vector(frames.as_slice())
+  };
 
   let args = v_1::ThreadArgs {
     active: header.name == MAIN_THREAD,
     name: Some(builder.create_string(&header.name)),
     index: header.tid.unwrap_or_default(),
     priority: header.priority.unwrap_or_default(),
-    state: Some(if is_file_size_optimization_enabled {
-      builder.create_shared_string(&header.state)
-    } else {
-      builder.create_string(&header.state)
-    }),
+    state: Some(
+      if is_file_size_optimization_enabled {
+        builder.create_shared_string(&header.state)
+      } else {
+        builder.create_string(&header.state)
+      },
+    ),
     stack_trace: Some(stack_trace),
     ..Default::default()
   };
