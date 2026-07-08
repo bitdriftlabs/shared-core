@@ -48,7 +48,7 @@ const uint8_t *load_full_report(BDProcessorHandle handle, uint64_t *len) {
 }
 
 void create_handle(BDProcessorHandle handle) {
-  bdrw_create_buffer_handle(handle, NATIVE_CRASH, "com.example.core-tests", "1.0.2x");
+  bdrw_create_buffer_handle(handle, NATIVE_CRASH, "com.example.core-tests", "1.0.2x", true);
 }
 
 void dispose_handle(BDProcessorHandle handle) {
