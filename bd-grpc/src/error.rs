@@ -39,6 +39,20 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl Error {
+  #[must_use]
+  pub fn grpc_code(&self) -> Code {
+    match self {
+      Self::Grpc(status) => status.code(),
+      Self::Codec(bd_grpc_codec::Error::MessageTooLarge { .. }) => Code::ResourceExhausted,
+      Self::Codec(_) | Self::ProtoValidation(_) | Self::Snap(_) => Code::InvalidArgument,
+      Self::ConnectionTimeout
+      | Self::RequestTimeout
+      | Self::BodyStream(_)
+      | Self::Closed
+      | Self::HyperClient(_) => Code::Internal,
+    }
+  }
+
   fn into_status(self) -> Status {
     match self {
       Self::Grpc(status) => status,

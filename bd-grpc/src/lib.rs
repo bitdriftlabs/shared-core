@@ -307,7 +307,7 @@ where
 
               error_handler(e);
               if let Some(resolved_stats) = &resolved_stats {
-                resolved_stats.failure.inc();
+                resolved_stats.inc_error(e.grpc_code());
               }
             } else if let Some(resolved_stats) = &resolved_stats {
               resolved_stats.success.inc();
@@ -1046,7 +1046,7 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
   .await
   .inspect_err(|_| {
     if let Some(stream_stats) = &stream_stats {
-      stream_stats.rpc.failure.inc();
+      stream_stats.rpc.inc_error(Code::InvalidArgument);
     }
   })?;
 
@@ -1084,7 +1084,7 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
         }
 
         if let Some(stream_stats) = &stream_stats {
-          stream_stats.rpc.failure.inc();
+          stream_stats.rpc.inc_error(e.grpc_code());
         }
         error_handler(&e);
 
@@ -1179,7 +1179,7 @@ fn bidi_streaming_handler<ResponseType: MessageFull, RequestType: MessageFull>(
         }
 
         if let Some(stream_stats) = &stream_stats {
-          stream_stats.rpc.failure.inc();
+          stream_stats.rpc.inc_error(e.grpc_code());
         }
         error_handler(&e);
 

@@ -710,7 +710,44 @@ async fn unary_error_handler() {
     &labels! {
       "service" => "test_Test",
       "endpoint" => "Echo",
-      "result" => "failure"
+      "result" => "server_error"
+    },
+  );
+}
+
+#[tokio::test]
+async fn unary_error_handler_classifies_client_errors() {
+  let stats = Helper::new();
+  let endpoints_stats = EndpointStats::new(stats.collector().scope("test"));
+  let local_address = make_unary_server(
+    Arc::new(EncodedErrorHandler {}),
+    |_| {},
+    Some(&endpoints_stats),
+  )
+  .await;
+  let client = Client::new_http(local_address.to_string().as_str(), 1.minutes(), 1024).unwrap();
+  assert_matches!(
+    client
+      .unary(
+        &service_method(),
+        None,
+        EchoRequest {
+          echo: "ok".to_string(),
+          ..Default::default()
+        },
+        1.seconds(),
+        Compression::None,
+      )
+      .await,
+    Err(Error::Grpc(_))
+  );
+  stats.assert_counter_eq(
+    1,
+    "test:rpc",
+    &labels! {
+      "service" => "test_Test",
+      "endpoint" => "Echo",
+      "result" => "client_error"
     },
   );
 }
@@ -1298,7 +1335,7 @@ async fn server_streaming_error_handler() {
     &labels! {
       "service" => "test_Test",
       "endpoint" => "Echo",
-      "result" => "failure"
+      "result" => "server_error"
     },
   );
   stats_helper.assert_counter_eq(
@@ -2028,7 +2065,7 @@ async fn connect_unary_error_stats() {
     &labels! {
       "service" => "test_Test",
       "endpoint" => "Echo",
-      "result" => "failure"
+      "result" => "server_error"
     },
   );
 }
