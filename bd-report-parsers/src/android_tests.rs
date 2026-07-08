@@ -80,7 +80,13 @@ fn build_thread<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
   input: MemmapView<'a>,
 ) -> IResult<MemmapView<'a>, v_1::ThreadArgs<'fbb>, E> {
   let mut stack_trace_offsets = HashMap::new();
-  super::build_thread(builder, images, &mut stack_trace_offsets, input)
+  super::build_thread(
+    builder,
+    images,
+    &mut stack_trace_offsets,
+    input,
+    true,
+  )
 }
 
 #[test]
@@ -319,7 +325,7 @@ macro_rules! assert_parsed_anr_eq {
       time: Some(&Timestamp::new(1_756_987_272, 357_156_958)),
       ..Default::default()
     };
-    match build_anr(&mut builder, &mut app_info, &mut device_info, input, None) {
+    match build_anr(&mut builder, &mut app_info, &mut device_info, input, None, true) {
       Ok((_, offset)) => {
         let report = get_table!(Report, builder, offset);
         insta::assert_debug_snapshot!(report);
@@ -439,6 +445,7 @@ fn build_anr_to_bytes(filename: &str, description: Option<&str>) -> Vec<u8> {
     &mut device_info,
     input,
     description,
+    true,
   )
   .unwrap();
   builder.finish(offset, None);

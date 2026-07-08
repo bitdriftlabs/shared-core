@@ -60,13 +60,14 @@ pub fn build_anr<'a, 'fbb>(
   device_info: &mut v_1::DeviceMetricsArgs<'fbb>,
   input: MemmapView<'a>,
   app_exit_description: Option<&str>,
+  is_file_size_optimization_enabled: bool,
 ) -> IResult<MemmapView<'a>, WIPOffset<v_1::Report<'fbb>>, nom::error::Error<MemmapView<'a>>> {
   let (remainder, (subject, (pid, _timestamp), metrics, _attached_count, stacks)) = (
     subject_parser,
     process_start_parser,
     process_properties,
     thread_counter,
-    |text| build_threads(builder, text),
+    |text| build_threads(builder, text, is_file_size_optimization_enabled),
   )
     .parse(input)?;
 
@@ -102,12 +103,13 @@ pub fn build_anr<'a, 'fbb>(
 fn build_threads<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
   builder: &mut FlatBufferBuilder<'fbb>,
   input: MemmapView<'a>,
+  is_file_size_optimization_enabled: bool,
 ) -> IResult<MemmapView<'a>, Stacks<'fbb>, E> {
   let mut images = BTreeMap::new();
   let mut stack_trace_offsets: HashMap<FrameOffsetSequence, FrameVectorOffset<'fbb>> =
     HashMap::new();
   let (remainder, thread_infos) = separated_list1(tag("\n"), |text| {
-    build_thread(builder, &mut images, &mut stack_trace_offsets, text)
+    build_thread(builder, &mut images, &mut stack_trace_offsets, text, is_file_size_optimization_enabled)
   })
   .parse(input)?;
   let thread_offsets = thread_infos
@@ -150,6 +152,7 @@ fn build_thread<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
   images: &mut BTreeMap<BinaryImageKey, Option<String>>,
   stack_trace_offsets: &mut HashMap<FrameOffsetSequence, FrameVectorOffset<'fbb>>,
   input: MemmapView<'a>,
+  is_file_size_optimization_enabled: bool,
 ) -> IResult<MemmapView<'a>, v_1::ThreadArgs<'fbb>, E> {
   let (remainder, (header, _props, frames)) = terminated(
     terminated(
@@ -164,22 +167,31 @@ fn build_thread<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
   )
   .parse(input)?;
 
-  let frame_offset_key = frames.iter().map(|frame| frame.value()).collect_vec();
-  let stack_trace = stack_trace_offsets
-    .get(&frame_offset_key)
-    .copied()
-    .unwrap_or_else(|| {
-      let stack_trace = builder.create_vector(frames.as_slice());
-      stack_trace_offsets.insert(frame_offset_key, stack_trace);
-      stack_trace
-    });
+  let stack_trace =
+    if is_file_size_optimization_enabled {
+      let frame_offset_key = frames.iter().map(|frame| frame.value()).collect_vec();
+      stack_trace_offsets
+        .get(&frame_offset_key)
+        .copied()
+        .unwrap_or_else(|| {
+          let stack_trace = builder.create_vector(frames.as_slice());
+          stack_trace_offsets.insert(frame_offset_key, stack_trace);
+          stack_trace
+        })
+    } else {
+      builder.create_vector(frames.as_slice())
+    };
 
   let args = v_1::ThreadArgs {
     active: header.name == MAIN_THREAD,
     name: Some(builder.create_string(&header.name)),
     index: header.tid.unwrap_or_default(),
     priority: header.priority.unwrap_or_default(),
-    state: Some(builder.create_shared_string(&header.state)),
+    state: Some(if is_file_size_optimization_enabled {
+      builder.create_shared_string(&header.state)
+    } else {
+      builder.create_string(&header.state)
+    }),
     stack_trace: Some(stack_trace),
     ..Default::default()
   };
