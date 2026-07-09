@@ -25,7 +25,6 @@ use vrl::path::{OwnedSegment, OwnedValuePath};
 use vrl::prelude::Collection;
 use vrl::value::{KeyString, Kind};
 
-
 impl From<BinaryData<'_>> for ScriptValue {
   fn from(value: BinaryData<'_>) -> Self {
     let script_values: Vec<(&str, Self)> = vec![

@@ -659,7 +659,6 @@ fn test_enum_message_variant_with_empty_message() -> Result<()> {
   Ok(())
 }
 
-
 #[test]
 #[allow(clippy::enum_variant_names)] // Test enum intentionally uses uniform naming
 fn test_enum_multiple_tuple_variants_with_defaults() -> Result<()> {

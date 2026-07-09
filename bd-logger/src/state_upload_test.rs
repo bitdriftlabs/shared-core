@@ -431,7 +431,6 @@ async fn cooldown_defer_keeps_pending_for_retry() {
   );
 }
 
-
 #[tokio::test]
 async fn enqueue_backpressure_keeps_pending_range() {
   let setup = Setup::new().await;

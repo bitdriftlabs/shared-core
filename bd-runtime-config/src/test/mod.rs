@@ -33,11 +33,11 @@ impl Helper {
 
   pub fn create_file_and_data_dir(&self, dir_name: &str, file_name: &str, file_contents: &[u8]) {
     let data_dir_path = self.temp_dir.path().join(dir_name);
-    log::info!("test data dir={:?}", &data_dir_path);
+    log::info!("test data dir={data_dir_path:?}");
     std::fs::create_dir(&data_dir_path).unwrap();
 
     let data_file_path = data_dir_path.join(file_name);
-    log::info!("test data file={:?}", &data_file_path);
+    log::info!("test data file={data_file_path:?}");
     let mut data_file = std::fs::File::create(&data_file_path).unwrap();
     data_file.write_all(file_contents).unwrap();
   }

@@ -64,7 +64,6 @@ fn create_binary_images_in_order_test() {
   check_sdk_data(&report);
   check_binary_images(&report);
 
-
   unsafe {
     dispose_handle(&raw mut handle);
   }

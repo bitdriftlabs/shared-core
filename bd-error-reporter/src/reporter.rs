@@ -180,7 +180,7 @@ impl UnexpectedErrorHandler {
   fn report(&mut self, message: &str, description: &str, details: impl FnOnce() -> Option<String>) {
     let formatted = format!("{description}: {message}");
 
-    log::warn!("unexpected error: {}", &formatted);
+    log::warn!("unexpected error: {formatted}");
 
     if self.remaining_reports == 0 {
       log::warn!("not reporting error, limit hit");

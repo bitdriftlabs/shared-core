@@ -193,7 +193,6 @@ async fn collects_bandwidth_sample() {
     );
   }
 
-
   // Advancing by 3s removes the only measured bytes from the rolling window that's used to report
   // downloaded/uploaded bytes per minute => reported field values are equal to 0.
   time_provider.advance_by(std::time::Duration::from_secs(3));

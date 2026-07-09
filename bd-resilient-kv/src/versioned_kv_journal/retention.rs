@@ -30,7 +30,6 @@ pub struct RetentionHandle {
   retain_from: Arc<AtomicU64>,
 }
 
-
 impl RetentionHandle {
   pub const RETENTION_PENDING: u64 = u64::MAX;
   pub const RETENTION_NONE: u64 = u64::MAX - 1;

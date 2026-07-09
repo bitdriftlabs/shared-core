@@ -358,7 +358,7 @@ fn log_upload_with_compression() {
     for i in 0.. 10 {
       if i < 3 {
         assert_eq!(log_upload.logs()[i].message(), "some log");
-        assert!(log_upload.logs()[i].field("super_long") == "A".repeat((i + 1) * 1024));
+        assert_eq!(log_upload.logs()[i].field("super_long"), "A".repeat((i + 1) * 1024));
       } else {
         assert!(!log_upload.logs()[i].has_message());
         assert!(!log_upload.logs()[i].has_field("super_long"));

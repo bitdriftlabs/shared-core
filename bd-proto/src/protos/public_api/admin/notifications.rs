@@ -41,12 +41,12 @@ pub struct NotificationGroup {
     pub slack_channels: ::std::vec::Vec<::std::string::String>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.NotificationGroup.pager_duty_notifications)
     pub pager_duty_notifications: ::std::vec::Vec<notification_group::PagerDutyNotification>,
-    // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.NotificationGroup.email_addresses)
-    pub email_addresses: ::std::vec::Vec<::std::string::String>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.NotificationGroup.sns_topic_arns)
     pub sns_topic_arns: ::std::vec::Vec<::std::string::String>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.NotificationGroup.datadog_notifications)
     pub datadog_notifications: ::std::vec::Vec<notification_group::DataDogNotification>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.NotificationGroup.https_webhooks)
+    pub https_webhooks: ::std::vec::Vec<notification_group::HttpsWebhook>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.NotificationGroup.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -82,11 +82,6 @@ impl NotificationGroup {
             |m: &mut NotificationGroup| { &mut m.pager_duty_notifications },
         ));
         fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
-            "email_addresses",
-            |m: &NotificationGroup| { &m.email_addresses },
-            |m: &mut NotificationGroup| { &mut m.email_addresses },
-        ));
-        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
             "sns_topic_arns",
             |m: &NotificationGroup| { &m.sns_topic_arns },
             |m: &mut NotificationGroup| { &mut m.sns_topic_arns },
@@ -95,6 +90,11 @@ impl NotificationGroup {
             "datadog_notifications",
             |m: &NotificationGroup| { &m.datadog_notifications },
             |m: &mut NotificationGroup| { &mut m.datadog_notifications },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "https_webhooks",
+            |m: &NotificationGroup| { &m.https_webhooks },
+            |m: &mut NotificationGroup| { &mut m.https_webhooks },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<NotificationGroup>(
             "NotificationGroup",
@@ -123,14 +123,14 @@ impl ::protobuf::Message for NotificationGroup {
                 26 => {
                     self.pager_duty_notifications.push(is.read_message()?);
                 },
-                34 => {
-                    self.email_addresses.push(is.read_string()?);
-                },
                 42 => {
                     self.sns_topic_arns.push(is.read_string()?);
                 },
                 50 => {
                     self.datadog_notifications.push(is.read_message()?);
+                },
+                58 => {
+                    self.https_webhooks.push(is.read_message()?);
                 },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
@@ -154,13 +154,14 @@ impl ::protobuf::Message for NotificationGroup {
             let len = value.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         };
-        for value in &self.email_addresses {
-            my_size += ::protobuf::rt::string_size(4, &value);
-        };
         for value in &self.sns_topic_arns {
             my_size += ::protobuf::rt::string_size(5, &value);
         };
         for value in &self.datadog_notifications {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        for value in &self.https_webhooks {
             let len = value.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         };
@@ -179,14 +180,14 @@ impl ::protobuf::Message for NotificationGroup {
         for v in &self.pager_duty_notifications {
             ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
         };
-        for v in &self.email_addresses {
-            os.write_string(4, &v)?;
-        };
         for v in &self.sns_topic_arns {
             os.write_string(5, &v)?;
         };
         for v in &self.datadog_notifications {
             ::protobuf::rt::write_message_field_with_cached_size(6, v, os)?;
+        };
+        for v in &self.https_webhooks {
+            ::protobuf::rt::write_message_field_with_cached_size(7, v, os)?;
         };
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -208,9 +209,9 @@ impl ::protobuf::Message for NotificationGroup {
         self.name.clear();
         self.slack_channels.clear();
         self.pager_duty_notifications.clear();
-        self.email_addresses.clear();
         self.sns_topic_arns.clear();
         self.datadog_notifications.clear();
+        self.https_webhooks.clear();
         self.special_fields.clear();
     }
 
@@ -219,9 +220,9 @@ impl ::protobuf::Message for NotificationGroup {
             name: ::std::string::String::new(),
             slack_channels: ::std::vec::Vec::new(),
             pager_duty_notifications: ::std::vec::Vec::new(),
-            email_addresses: ::std::vec::Vec::new(),
             sns_topic_arns: ::std::vec::Vec::new(),
             datadog_notifications: ::std::vec::Vec::new(),
+            https_webhooks: ::std::vec::Vec::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -724,6 +725,128 @@ pub mod notification_group {
                 ::protobuf::reflect::GeneratedEnumDescriptorData::new::<DataDogSeverity>("NotificationGroup.DataDogNotification.DataDogSeverity")
             }
         }
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.admin.v1.NotificationGroup.HttpsWebhook)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct HttpsWebhook {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.NotificationGroup.HttpsWebhook.url)
+        pub url: ::std::string::String,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.NotificationGroup.HttpsWebhook.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a HttpsWebhook {
+        fn default() -> &'a HttpsWebhook {
+            <HttpsWebhook as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl HttpsWebhook {
+        pub fn new() -> HttpsWebhook {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "url",
+                |m: &HttpsWebhook| { &m.url },
+                |m: &mut HttpsWebhook| { &mut m.url },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<HttpsWebhook>(
+                "NotificationGroup.HttpsWebhook",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for HttpsWebhook {
+        const NAME: &'static str = "HttpsWebhook";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.url = is.read_string()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if !self.url.is_empty() {
+                my_size += ::protobuf::rt::string_size(1, &self.url);
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if !self.url.is_empty() {
+                os.write_string(1, &self.url)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> HttpsWebhook {
+            HttpsWebhook::new()
+        }
+
+        fn clear(&mut self) {
+            self.url.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static HttpsWebhook {
+            static instance: HttpsWebhook = HttpsWebhook {
+                url: ::std::string::String::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for HttpsWebhook {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("NotificationGroup.HttpsWebhook").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for HttpsWebhook {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for HttpsWebhook {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
     }
 }
 
@@ -2514,64 +2637,66 @@ impl ::protobuf::reflect::ProtobufValue for TestAlertNotificationResponse {
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n2bitdrift/public/unary/admin/v1/notifications.proto\x12\x1ebitdrift.pu\
     blic.unary.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17valida\
-    te/validate.proto\"\xf3\x08\n\x11NotificationGroup\x12\x1e\n\x04name\x18\
+    te/validate.proto\"\xdf\t\n\x11NotificationGroup\x12\x1e\n\x04name\x18\
     \x01\x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12/\n\x0e\
     slack_channels\x18\x02\x20\x03(\tR\rslackChannelsB\x08\xfaB\x05\x92\x01\
     \x02\x10d\x12\x8b\x01\n\x18pager_duty_notifications\x18\x03\x20\x03(\x0b\
     2G.bitdrift.public.unary.admin.v1.NotificationGroup.PagerDutyNotificatio\
-    nR\x16pagerDutyNotificationsB\x08\xfaB\x05\x92\x01\x02\x10d\x121\n\x0fem\
-    ail_addresses\x18\x04\x20\x03(\tR\x0eemailAddressesB\x08\xfaB\x05\x92\
-    \x01\x02\x10d\x12.\n\x0esns_topic_arns\x18\x05\x20\x03(\tR\x0csnsTopicAr\
-    nsB\x08\xfaB\x05\x92\x01\x02\x10d\x12\x84\x01\n\x15datadog_notifications\
-    \x18\x06\x20\x03(\x0b2E.bitdrift.public.unary.admin.v1.NotificationGroup\
-    .DataDogNotificationR\x14datadogNotificationsB\x08\xfaB\x05\x92\x01\x02\
-    \x10d\x1a\x8a\x02\n\x15PagerDutyNotification\x12+\n\x0brouting_key\x18\
-    \x01\x20\x01(\tR\nroutingKeyB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12\
-    \x7f\n\x08severity\x18\x02\x20\x01(\x0e2Y.bitdrift.public.unary.admin.v1\
-    .NotificationGroup.PagerDutyNotification.PagerDutySeverityR\x08severityB\
-    \x08\xfaB\x05\x82\x01\x02\x10\x01\"C\n\x11PagerDutySeverity\x12\x0c\n\
-    \x08CRITICAL\x10\0\x12\t\n\x05ERROR\x10\x01\x12\x0b\n\x07WARNING\x10\x02\
-    \x12\x08\n\x04INFO\x10\x03\x1a\x87\x03\n\x13DataDogNotification\x12,\n\
-    \x0capi_base_url\x18\x01\x20\x01(\tR\napiBaseUrlB\n\xfaB\x07r\x05\x10\
-    \x01\x18\xff\x01\x12#\n\x07api_key\x18\x02\x20\x01(\tR\x06apiKeyB\n\xfaB\
-    \x07r\x05\x10\x01\x18\xff\x01\x123\n\x0fapplication_key\x18\x03\x20\x01(\
-    \tR\x0eapplicationKeyB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12+\n\x0btea\
-    m_handle\x18\x04\x20\x01(\tR\nteamHandleB\n\xfaB\x07r\x05\x10\x01\x18\
-    \xff\x01\x12{\n\x08severity\x18\x05\x20\x01(\x0e2U.bitdrift.public.unary\
-    .admin.v1.NotificationGroup.DataDogNotification.DataDogSeverityR\x08seve\
-    rityB\x08\xfaB\x05\x82\x01\x02\x10\x01\">\n\x0fDataDogSeverity\x12\x18\n\
-    \x14SEVERITY_UNSPECIFIED\x10\0\x12\x07\n\x03LOW\x10\x01\x12\x08\n\x04HIG\
-    H\x10\x02\"\x1e\n\x1cGetNotificationGroupsRequest\"\xa2\x03\n\x1dGetNoti\
-    ficationGroupsResponse\x12\x8c\x01\n\x13notification_groups\x18\x01\x20\
-    \x03(\x0b2[.bitdrift.public.unary.admin.v1.GetNotificationGroupsResponse\
-    .NotificationGroupWithMetadataR\x12notificationGroups\x1a\xf1\x01\n\x1dN\
-    otificationGroupWithMetadata\x12`\n\x12notification_group\x18\x01\x20\
-    \x01(\x0b21.bitdrift.public.unary.admin.v1.NotificationGroupR\x11notific\
-    ationGroup\x129\n\ncreated_at\x18\x02\x20\x01(\x0b2\x1a.google.protobuf.\
-    TimestampR\tcreatedAt\x123\n\x07used_at\x18\x03\x20\x01(\x0b2\x1a.google\
-    .protobuf.TimestampR\x06usedAt\"\x8c\x01\n\x1eUpsertNotificationGroupReq\
-    uest\x12j\n\x12notification_group\x18\x01\x20\x01(\x0b21.bitdrift.public\
-    .unary.admin.v1.NotificationGroupR\x11notificationGroupB\x08\xfaB\x05\
-    \x8a\x01\x02\x10\x01\"!\n\x1fUpsertNotificationGroupResponse\"@\n\x1eDel\
-    eteNotificationGroupRequest\x12\x1e\n\x04name\x18\x01\x20\x01(\tR\x04nam\
-    eB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\"!\n\x1fDeleteNotificationGroupRe\
-    sponse\">\n\x1cTestNotificationGroupRequest\x12\x1e\n\x04name\x18\x01\
-    \x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\"7\n\x1dTestNo\
-    tificationGroupResponse\x12\x16\n\x06errors\x18\x01\x20\x03(\tR\x06error\
-    s\"@\n\x11WorkflowAlertTest\x12+\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nw\
-    orkflowIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\"r\n\x0fIssuesAlertTest\
-    \x12\x20\n\x07view_id\x18\x01\x20\x01(\x03R\x06viewIdB\x07\xfaB\x04\"\
-    \x02\x20\0\x12.\n\nalert_uuid\x18\x02\x20\x01(\tH\0R\talertUuidB\n\xfaB\
-    \x07r\x05\x10\x01\x18\xff\x01\x88\x01\x01B\r\n\x0b_alert_uuid\"\xeb\x02\
-    \n\x1cTestAlertNotificationRequest\x12Z\n\x0eworkflow_alert\x18\x01\x20\
-    \x01(\x0b21.bitdrift.public.unary.admin.v1.WorkflowAlertTestH\0R\rworkfl\
-    owAlert\x12T\n\x0cissues_alert\x18\x02\x20\x01(\x0b2/.bitdrift.public.un\
-    ary.admin.v1.IssuesAlertTestH\0R\x0bissuesAlert\x12B\n\x18custom_notific\
-    ation_text\x18\x03\x20\x01(\tR\x16customNotificationTextB\x08\xfaB\x05r\
-    \x03\x18\x80\x10\x12B\n\x18notification_group_names\x18\x04\x20\x03(\tR\
-    \x16notificationGroupNamesB\x08\xfaB\x05\x92\x01\x02\x10dB\x11\n\nalert_\
-    kind\x12\x03\xf8B\x01\"7\n\x1dTestAlertNotificationResponse\x12\x16\n\
-    \x06errors\x18\x01\x20\x03(\tR\x06errorsb\x06proto3\
+    nR\x16pagerDutyNotificationsB\x08\xfaB\x05\x92\x01\x02\x10d\x12.\n\x0esn\
+    s_topic_arns\x18\x05\x20\x03(\tR\x0csnsTopicArnsB\x08\xfaB\x05\x92\x01\
+    \x02\x10d\x12\x84\x01\n\x15datadog_notifications\x18\x06\x20\x03(\x0b2E.\
+    bitdrift.public.unary.admin.v1.NotificationGroup.DataDogNotificationR\
+    \x14datadogNotificationsB\x08\xfaB\x05\x92\x01\x02\x10d\x12o\n\x0ehttps_\
+    webhooks\x18\x07\x20\x03(\x0b2>.bitdrift.public.unary.admin.v1.Notificat\
+    ionGroup.HttpsWebhookR\rhttpsWebhooksB\x08\xfaB\x05\x92\x01\x02\x10\x05\
+    \x1a\x8a\x02\n\x15PagerDutyNotification\x12+\n\x0brouting_key\x18\x01\
+    \x20\x01(\tR\nroutingKeyB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12\x7f\n\
+    \x08severity\x18\x02\x20\x01(\x0e2Y.bitdrift.public.unary.admin.v1.Notif\
+    icationGroup.PagerDutyNotification.PagerDutySeverityR\x08severityB\x08\
+    \xfaB\x05\x82\x01\x02\x10\x01\"C\n\x11PagerDutySeverity\x12\x0c\n\x08CRI\
+    TICAL\x10\0\x12\t\n\x05ERROR\x10\x01\x12\x0b\n\x07WARNING\x10\x02\x12\
+    \x08\n\x04INFO\x10\x03\x1a\x87\x03\n\x13DataDogNotification\x12,\n\x0cap\
+    i_base_url\x18\x01\x20\x01(\tR\napiBaseUrlB\n\xfaB\x07r\x05\x10\x01\x18\
+    \xff\x01\x12#\n\x07api_key\x18\x02\x20\x01(\tR\x06apiKeyB\n\xfaB\x07r\
+    \x05\x10\x01\x18\xff\x01\x123\n\x0fapplication_key\x18\x03\x20\x01(\tR\
+    \x0eapplicationKeyB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12+\n\x0bteam_h\
+    andle\x18\x04\x20\x01(\tR\nteamHandleB\n\xfaB\x07r\x05\x10\x01\x18\xff\
+    \x01\x12{\n\x08severity\x18\x05\x20\x01(\x0e2U.bitdrift.public.unary.adm\
+    in.v1.NotificationGroup.DataDogNotification.DataDogSeverityR\x08severity\
+    B\x08\xfaB\x05\x82\x01\x02\x10\x01\">\n\x0fDataDogSeverity\x12\x18\n\x14\
+    SEVERITY_UNSPECIFIED\x10\0\x12\x07\n\x03LOW\x10\x01\x12\x08\n\x04HIGH\
+    \x10\x02\x1a,\n\x0cHttpsWebhook\x12\x1c\n\x03url\x18\x01\x20\x01(\tR\x03\
+    urlB\n\xfaB\x07r\x05\x10\x01\x18\x80\x10\"\x1e\n\x1cGetNotificationGroup\
+    sRequest\"\xa2\x03\n\x1dGetNotificationGroupsResponse\x12\x8c\x01\n\x13n\
+    otification_groups\x18\x01\x20\x03(\x0b2[.bitdrift.public.unary.admin.v1\
+    .GetNotificationGroupsResponse.NotificationGroupWithMetadataR\x12notific\
+    ationGroups\x1a\xf1\x01\n\x1dNotificationGroupWithMetadata\x12`\n\x12not\
+    ification_group\x18\x01\x20\x01(\x0b21.bitdrift.public.unary.admin.v1.No\
+    tificationGroupR\x11notificationGroup\x129\n\ncreated_at\x18\x02\x20\x01\
+    (\x0b2\x1a.google.protobuf.TimestampR\tcreatedAt\x123\n\x07used_at\x18\
+    \x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x06usedAt\"\x8c\x01\n\
+    \x1eUpsertNotificationGroupRequest\x12j\n\x12notification_group\x18\x01\
+    \x20\x01(\x0b21.bitdrift.public.unary.admin.v1.NotificationGroupR\x11not\
+    ificationGroupB\x08\xfaB\x05\x8a\x01\x02\x10\x01\"!\n\x1fUpsertNotificat\
+    ionGroupResponse\"@\n\x1eDeleteNotificationGroupRequest\x12\x1e\n\x04nam\
+    e\x18\x01\x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\"!\n\
+    \x1fDeleteNotificationGroupResponse\">\n\x1cTestNotificationGroupRequest\
+    \x12\x1e\n\x04name\x18\x01\x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\
+    \x18\xff\x01\"7\n\x1dTestNotificationGroupResponse\x12\x16\n\x06errors\
+    \x18\x01\x20\x03(\tR\x06errors\"@\n\x11WorkflowAlertTest\x12+\n\x0bworkf\
+    low_id\x18\x02\x20\x01(\tR\nworkflowIdB\n\xfaB\x07r\x05\x10\x01\x18\xff\
+    \x01\"r\n\x0fIssuesAlertTest\x12\x20\n\x07view_id\x18\x01\x20\x01(\x03R\
+    \x06viewIdB\x07\xfaB\x04\"\x02\x20\0\x12.\n\nalert_uuid\x18\x02\x20\x01(\
+    \tH\0R\talertUuidB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x88\x01\x01B\r\n\
+    \x0b_alert_uuid\"\xeb\x02\n\x1cTestAlertNotificationRequest\x12Z\n\x0ewo\
+    rkflow_alert\x18\x01\x20\x01(\x0b21.bitdrift.public.unary.admin.v1.Workf\
+    lowAlertTestH\0R\rworkflowAlert\x12T\n\x0cissues_alert\x18\x02\x20\x01(\
+    \x0b2/.bitdrift.public.unary.admin.v1.IssuesAlertTestH\0R\x0bissuesAlert\
+    \x12B\n\x18custom_notification_text\x18\x03\x20\x01(\tR\x16customNotific\
+    ationTextB\x08\xfaB\x05r\x03\x18\x80\x10\x12B\n\x18notification_group_na\
+    mes\x18\x04\x20\x03(\tR\x16notificationGroupNamesB\x08\xfaB\x05\x92\x01\
+    \x02\x10dB\x11\n\nalert_kind\x12\x03\xf8B\x01\"7\n\x1dTestAlertNotificat\
+    ionResponse\x12\x16\n\x06errors\x18\x01\x20\x03(\tR\x06errorsb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -2591,7 +2716,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             let mut deps = ::std::vec::Vec::with_capacity(2);
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(16);
+            let mut messages = ::std::vec::Vec::with_capacity(17);
             messages.push(NotificationGroup::generated_message_descriptor_data());
             messages.push(GetNotificationGroupsRequest::generated_message_descriptor_data());
             messages.push(GetNotificationGroupsResponse::generated_message_descriptor_data());
@@ -2607,6 +2732,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(TestAlertNotificationResponse::generated_message_descriptor_data());
             messages.push(notification_group::PagerDutyNotification::generated_message_descriptor_data());
             messages.push(notification_group::DataDogNotification::generated_message_descriptor_data());
+            messages.push(notification_group::HttpsWebhook::generated_message_descriptor_data());
             messages.push(get_notification_groups_response::NotificationGroupWithMetadata::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(2);
             enums.push(notification_group::pager_duty_notification::PagerDutySeverity::generated_enum_descriptor_data());

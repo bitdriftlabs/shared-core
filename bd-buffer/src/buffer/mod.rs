@@ -15,7 +15,6 @@ mod volatile_ring_buffer;
 #[cfg(test)]
 pub(crate) mod test;
 
-
 use bd_client_stats_store::Counter;
 use bd_log_primitives::LossyIntToU32;
 #[cfg(test)]

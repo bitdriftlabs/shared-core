@@ -2876,6 +2876,8 @@ pub mod dashboard {
         pub dashboard_variables: ::std::vec::Vec<super::super::workflow::group_by::Value>,
         // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.description)
         pub description: ::std::option::Option<::std::string::String>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.workflow_tags)
+        pub workflow_tags: ::std::vec::Vec<super::super::workflow::workflow::WorkflowTag>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.Dashboard.CustomDashboard.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -2893,7 +2895,7 @@ pub mod dashboard {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(10);
+            let mut fields = ::std::vec::Vec::with_capacity(11);
             let mut oneofs = ::std::vec::Vec::with_capacity(0);
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "id",
@@ -2945,6 +2947,11 @@ pub mod dashboard {
                 |m: &CustomDashboard| { &m.description },
                 |m: &mut CustomDashboard| { &mut m.description },
             ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "workflow_tags",
+                |m: &CustomDashboard| { &m.workflow_tags },
+                |m: &mut CustomDashboard| { &mut m.workflow_tags },
+            ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<CustomDashboard>(
                 "Dashboard.CustomDashboard",
                 fields,
@@ -2993,6 +3000,9 @@ pub mod dashboard {
                     82 => {
                         self.description = ::std::option::Option::Some(is.read_string()?);
                     },
+                    90 => {
+                        self.workflow_tags.push(is.read_message()?);
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -3040,6 +3050,10 @@ pub mod dashboard {
             if let Some(v) = self.description.as_ref() {
                 my_size += ::protobuf::rt::string_size(10, &v);
             }
+            for value in &self.workflow_tags {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
             my_size
@@ -3076,6 +3090,9 @@ pub mod dashboard {
             if let Some(v) = self.description.as_ref() {
                 os.write_string(10, v)?;
             }
+            for v in &self.workflow_tags {
+                ::protobuf::rt::write_message_field_with_cached_size(11, v, os)?;
+            };
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
         }
@@ -3103,6 +3120,7 @@ pub mod dashboard {
             self.current_user_can_edit = ::protobuf::EnumOrUnknown::new(super::super::common::Permission::UNKNOWN);
             self.dashboard_variables.clear();
             self.description = ::std::option::Option::None;
+            self.workflow_tags.clear();
             self.special_fields.clear();
         }
 
@@ -3118,6 +3136,7 @@ pub mod dashboard {
                 current_user_can_edit: ::protobuf::EnumOrUnknown::from_i32(0),
                 dashboard_variables: ::std::vec::Vec::new(),
                 description: ::std::option::Option::None,
+                workflow_tags: ::std::vec::Vec::new(),
                 special_fields: ::protobuf::SpecialFields::new(),
             };
             &instance
@@ -11875,16 +11894,16 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \n\x13GetDashboardRequest\x12H\n\x02id\x18\x03\x20\x01(\x0b28.bitdrift.p\
     ublic.unary.dashboards.v1.DashboardIdentifierR\x02id\"d\n\x14GetDashboar\
     dResponse\x12L\n\tdashboard\x18\x05\x20\x01(\x0b2..bitdrift.public.unary\
-    .dashboards.v1.DashboardR\tdashboard\"\xdc\r\n\tDashboard\x12k\n\x10heal\
-    th_dashboard\x18\x02\x20\x01(\x0b2>.bitdrift.public.unary.dashboards.v1.\
-    Dashboard.HealthDashboardH\0R\x0fhealthDashboard\x12k\n\x10custom_dashbo\
-    ard\x18\x03\x20\x01(\x0b2>.bitdrift.public.unary.dashboards.v1.Dashboard\
-    .CustomDashboardH\0R\x0fcustomDashboard\x1a\x95\x02\n\x0fHealthDashboard\
-    \x12X\n\x02id\x18\x01\x20\x01(\x0b2H.bitdrift.public.unary.dashboards.v1\
-    .DashboardIdentifier.HealthDashboardR\x02id\x12\\\n\x0fdashboard_group\
+    .dashboards.v1.DashboardR\tdashboard\"\xc5\x0e\n\tDashboard\x12k\n\x10he\
+    alth_dashboard\x18\x02\x20\x01(\x0b2>.bitdrift.public.unary.dashboards.v\
+    1.Dashboard.HealthDashboardH\0R\x0fhealthDashboard\x12k\n\x10custom_dash\
+    board\x18\x03\x20\x01(\x0b2>.bitdrift.public.unary.dashboards.v1.Dashboa\
+    rd.CustomDashboardH\0R\x0fcustomDashboard\x1a\x95\x02\n\x0fHealthDashboa\
+    rd\x12X\n\x02id\x18\x01\x20\x01(\x0b2H.bitdrift.public.unary.dashboards.\
+    v1.DashboardIdentifier.HealthDashboardR\x02id\x12\\\n\x0fdashboard_group\
     \x18\x02\x20\x03(\x0b23.bitdrift.public.unary.dashboards.v1.DashboardGro\
     upR\x0edashboardGroup\x12J\n\tplatforms\x18\x03\x20\x03(\x0b2,.bitdrift.\
-    public.shared.platform.v1.PlatformR\tplatforms\x1a\xcf\t\n\x0fCustomDash\
+    public.shared.platform.v1.PlatformR\tplatforms\x1a\xb8\n\n\x0fCustomDash\
     board\x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\
     \x18d\x12%\n\x05title\x18\x07\x20\x01(\tH\0R\x05titleB\n\xfaB\x07r\x05\
     \x10\x01\x18\xff\x01\x88\x01\x01\x12S\n\x18current_user_last_viewed\x18\
@@ -11900,18 +11919,20 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x03(\x0b21.bitdrift.public.unary.workflows.v1.GroupBy.ValueR\x12dashboa\
     rdVariablesB\x08\xfaB\x05\x92\x01\x02\x10\n\x121\n\x0bdescription\x18\n\
     \x20\x01(\tH\x01R\x0bdescriptionB\n\xfaB\x07r\x05\x10\x01\x18\xe8\x07\
-    \x88\x01\x01\x1a\xd1\x03\n\x0cDashboardTab\x12\x19\n\x02id\x18\x01\x20\
-    \x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12\x1e\n\x04name\x18\x02\
-    \x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12i\n\x06char\
-    ts\x18\x03\x20\x03(\x0b2Q.bitdrift.public.unary.dashboards.v1.Dashboard.\
-    CustomDashboard.DashboardTab.ChartR\x06charts\x12`\n\ncomponents\x18\x04\
-    \x20\x03(\x0b2@.bitdrift.public.unary.dashboards.v1.DashboardStylisticCo\
-    mponentR\ncomponents\x1a\xb8\x01\n\x05Chart\x12\x19\n\x02id\x18\x01\x20\
-    \x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12J\n\x05chart\x18\x02\x20\
-    \x01(\x0b22.bitdrift.public.unary.dashboards.v1.ResolvedChartH\0R\x05cha\
-    rt\x121\n\x0fchart_not_found\x18\x03\x20\x01(\x08H\0R\rchartNotFoundB\
-    \x07\xfaB\x04j\x02\x08\x01B\x15\n\x0eresolved_chart\x12\x03\xf8B\x01B\
-    \x08\n\x06_titleB\x0e\n\x0c_descriptionB\x0b\n\x04type\x12\x03\xf8B\x01\
+    \x88\x01\x01\x12g\n\rworkflow_tags\x18\x0b\x20\x03(\x0b28.bitdrift.publi\
+    c.unary.workflows.v1.Workflow.WorkflowTagR\x0cworkflowTagsB\x08\xfaB\x05\
+    \x92\x01\x02\x10d\x1a\xd1\x03\n\x0cDashboardTab\x12\x19\n\x02id\x18\x01\
+    \x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12\x1e\n\x04name\x18\
+    \x02\x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12i\n\x06\
+    charts\x18\x03\x20\x03(\x0b2Q.bitdrift.public.unary.dashboards.v1.Dashbo\
+    ard.CustomDashboard.DashboardTab.ChartR\x06charts\x12`\n\ncomponents\x18\
+    \x04\x20\x03(\x0b2@.bitdrift.public.unary.dashboards.v1.DashboardStylist\
+    icComponentR\ncomponents\x1a\xb8\x01\n\x05Chart\x12\x19\n\x02id\x18\x01\
+    \x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12J\n\x05chart\x18\x02\
+    \x20\x01(\x0b22.bitdrift.public.unary.dashboards.v1.ResolvedChartH\0R\
+    \x05chart\x121\n\x0fchart_not_found\x18\x03\x20\x01(\x08H\0R\rchartNotFo\
+    undB\x07\xfaB\x04j\x02\x08\x01B\x15\n\x0eresolved_chart\x12\x03\xf8B\x01\
+    B\x08\n\x06_titleB\x0e\n\x0c_descriptionB\x0b\n\x04type\x12\x03\xf8B\x01\
     \"\x8c\x06\n\x15ListDashboardsRequest\x12K\n\npagination\x18\x01\x20\x01\
     (\x0b2+.bitdrift.public.unary.common.v1.PaginationR\npagination\x12\\\n\
     \x07filters\x18\x03\x20\x01(\x0b2B.bitdrift.public.unary.dashboards.v1.L\
