@@ -15,6 +15,7 @@
 #[allow(clippy::wildcard_imports)]
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::*;
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, Vector, WIPOffset};
+use std::collections::HashMap;
 use std::ffi::{CStr, c_char, c_void};
 use std::ptr::null;
 use std::slice;
@@ -23,9 +24,14 @@ use std::slice;
 // general readability
 pub type BDProcessorHandle = *mut *const c_void;
 
+type FrameOffsetSequence = Vec<u32>;
+type FrameVectorOffset<'a> = WIPOffset<Vector<'a, ForwardsUOffset<Frame<'a>>>>;
+
 pub struct ReportProcessor<'a> {
   builder: FlatBufferBuilder<'a>,
   binary_images: Vec<WIPOffset<BinaryImage<'a>>>,
+  is_file_size_optimization_enabled: bool,
+  stack_trace_offsets: HashMap<FrameOffsetSequence, FrameVectorOffset<'a>>,
   system_thread_count: u16,
   threads: Vec<WIPOffset<Thread<'a>>>,
   errors: Vec<WIPOffset<Error<'a>>>,
@@ -155,6 +161,7 @@ extern "C-unwind" fn bdrw_create_buffer_handle(
   report_type: i8,
   sdk_id: *const c_char,
   sdk_version: *const c_char,
+  is_file_size_optimization_enabled: bool,
 ) {
   let mut builder = flatbuffers::FlatBufferBuilder::new();
   let id = append_string(&mut builder, sdk_id);
@@ -165,6 +172,8 @@ extern "C-unwind" fn bdrw_create_buffer_handle(
     sdk,
     report_type: ReportType(report_type),
     binary_images: vec![],
+    is_file_size_optimization_enabled,
+    stack_trace_offsets: HashMap::new(),
     system_thread_count: 0,
     threads: vec![],
     errors: vec![],
@@ -323,9 +332,18 @@ extern "C-unwind" fn bdrw_add_thread(
 
   if let Some(thread) = unsafe { thread_ptr.as_ref() } {
     let name = append_string(&mut processor.builder, thread.name);
-    let state = append_string(&mut processor.builder, thread.state);
-    let frames = append_frames(&mut processor.builder, stack_count, stack);
-    let stack_trace = processor.builder.create_vector(frames.as_slice());
+    let state = if processor.is_file_size_optimization_enabled {
+      append_shared_string(&mut processor.builder, thread.state)
+    } else {
+      append_string(&mut processor.builder, thread.state)
+    };
+    let frames = append_frames(
+      &mut processor.builder,
+      stack_count,
+      stack,
+      processor.is_file_size_optimization_enabled,
+    );
+    let stack_trace = create_or_reuse_stack_trace(processor, &frames);
     let thread = Thread::create(
       &mut processor.builder,
       &ThreadArgs {
@@ -359,8 +377,13 @@ extern "C-unwind" fn bdrw_add_error(
   let processor = try_into_processor!(handle, false);
   let name = append_string(&mut processor.builder, name);
   let reason = append_string(&mut processor.builder, reason);
-  let frames = append_frames(&mut processor.builder, stack_count, stack);
-  let stack_trace = Some(processor.builder.create_vector(frames.as_slice()));
+  let frames = append_frames(
+    &mut processor.builder,
+    stack_count,
+    stack,
+    processor.is_file_size_optimization_enabled,
+  );
+  let stack_trace = Some(create_or_reuse_stack_trace(processor, &frames));
   let error = Error::create(
     &mut processor.builder,
     &ErrorArgs {
@@ -512,12 +535,34 @@ fn append_string<'a>(
   builder: &mut FlatBufferBuilder<'a>,
   str_ptr: *const c_char,
 ) -> Option<WIPOffset<&'a str>> {
+  append_string_with(builder, str_ptr, |builder, contents| {
+    builder.create_string(contents)
+  })
+}
+
+fn append_shared_string<'a>(
+  builder: &mut FlatBufferBuilder<'a>,
+  str_ptr: *const c_char,
+) -> Option<WIPOffset<&'a str>> {
+  append_string_with(builder, str_ptr, |builder, contents| {
+    builder.create_shared_string(contents)
+  })
+}
+
+fn append_string_with<'a, F>(
+  builder: &mut FlatBufferBuilder<'a>,
+  str_ptr: *const c_char,
+  create: F,
+) -> Option<WIPOffset<&'a str>>
+where
+  F: FnOnce(&mut FlatBufferBuilder<'a>, &str) -> WIPOffset<&'a str>,
+{
   if str_ptr.is_null() {
     return None;
   }
   unsafe { CStr::from_ptr(str_ptr) }
     .to_str()
-    .map(|contents| builder.create_string(contents))
+    .map(|contents| create(builder, contents))
     .ok()
 }
 
@@ -526,13 +571,43 @@ fn append_string_slice<'a>(
   str_slice_ptr: *const *const c_char,
   str_slice_count: usize,
 ) -> Option<WIPOffset<Vector<'a, ForwardsUOffset<&'a str>>>> {
+  append_string_slice_with(
+    builder,
+    str_slice_ptr,
+    str_slice_count,
+    |builder, contents| builder.create_string(contents),
+  )
+}
+
+fn append_shared_string_slice<'a>(
+  builder: &mut FlatBufferBuilder<'a>,
+  str_slice_ptr: *const *const c_char,
+  str_slice_count: usize,
+) -> Option<WIPOffset<Vector<'a, ForwardsUOffset<&'a str>>>> {
+  append_string_slice_with(
+    builder,
+    str_slice_ptr,
+    str_slice_count,
+    |builder, contents| builder.create_shared_string(contents),
+  )
+}
+
+fn append_string_slice_with<'a, F>(
+  builder: &mut FlatBufferBuilder<'a>,
+  str_slice_ptr: *const *const c_char,
+  str_slice_count: usize,
+  create: F,
+) -> Option<WIPOffset<Vector<'a, ForwardsUOffset<&'a str>>>>
+where
+  F: Copy + Fn(&mut FlatBufferBuilder<'a>, &str) -> WIPOffset<&'a str>,
+{
   let strs = optional_slice_from_raw_parts(str_slice_ptr, str_slice_count)
     .unwrap_or_default()
     .iter()
     .filter(|maybe_str| !maybe_str.is_null())
     .map(|maybe_str| unsafe { CStr::from_ptr(*maybe_str) }.to_str())
     .filter_map(Result::ok)
-    .map(|contents| builder.create_string(contents))
+    .map(|contents| create(builder, contents))
     .collect::<Vec<_>>();
 
   if strs.is_empty() {
@@ -549,10 +624,33 @@ fn optional_slice_from_raw_parts<'a, T>(raw_parts: *const T, count: usize) -> Op
   Some(unsafe { slice::from_raw_parts(raw_parts, count) })
 }
 
+fn create_or_reuse_stack_trace<'a>(
+  processor: &mut ReportProcessor<'a>,
+  frames: &[WIPOffset<Frame<'a>>],
+) -> FrameVectorOffset<'a> {
+  if !processor.is_file_size_optimization_enabled {
+    return processor.builder.create_vector(frames);
+  }
+
+  let frame_offset_key = frames.iter().map(|frame| frame.value()).collect::<Vec<_>>();
+  processor
+    .stack_trace_offsets
+    .get(&frame_offset_key)
+    .copied()
+    .unwrap_or_else(|| {
+      let stack_trace = processor.builder.create_vector(frames);
+      processor
+        .stack_trace_offsets
+        .insert(frame_offset_key, stack_trace);
+      stack_trace
+    })
+}
+
 fn append_frames<'a>(
   builder: &mut FlatBufferBuilder<'a>,
   stack_count: u32,
   stack: *const BDStackFrame,
+  is_file_size_optimization_enabled: bool,
 ) -> Vec<WIPOffset<Frame<'a>>> {
   optional_slice_from_raw_parts(stack, stack_count as usize)
     .unwrap_or_default()
@@ -568,15 +666,36 @@ fn append_frames<'a>(
           },
         )
       });
-      let symbol_name = append_string(builder, frame.symbol_name);
-      let class_name = append_string(builder, frame.class_name);
-      let image_id = append_string(builder, frame.image_id);
-      let state = append_string_slice(builder, frame.state, frame.state_count);
+      let symbol_name = if is_file_size_optimization_enabled {
+        append_shared_string(builder, frame.symbol_name)
+      } else {
+        append_string(builder, frame.symbol_name)
+      };
+      let class_name = if is_file_size_optimization_enabled {
+        append_shared_string(builder, frame.class_name)
+      } else {
+        append_string(builder, frame.class_name)
+      };
+      let image_id = if is_file_size_optimization_enabled {
+        append_shared_string(builder, frame.image_id)
+      } else {
+        append_string(builder, frame.image_id)
+      };
+      let state = if is_file_size_optimization_enabled {
+        append_shared_string_slice(builder, frame.state, frame.state_count)
+      } else {
+        append_string_slice(builder, frame.state, frame.state_count)
+      };
       let reg_vec = optional_slice_from_raw_parts(frame.regs, frame.reg_count)
         .unwrap_or_default()
         .iter()
         .filter_map(|reg| {
-          append_string(builder, reg.name).map(|name| {
+          let name = if is_file_size_optimization_enabled {
+            append_shared_string(builder, reg.name)
+          } else {
+            append_string(builder, reg.name)
+          };
+          name.map(|name| {
             CPURegister::create(
               builder,
               &CPURegisterArgs {
