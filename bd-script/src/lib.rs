@@ -77,7 +77,6 @@ impl PartialEq for Script {
   }
 }
 
-
 impl From<Value> for ScriptValue {
   fn from(value: Value) -> Self {
     Self(value)

@@ -243,7 +243,7 @@ impl RingBufferProducer for ProducerImpl {
       common_ring_buffer.extra_locked_data.per_record_crc32_check,
       PerRecordCrc32Check::Yes
     ) {
-      debug_assert!(extra_record_header_space.len() == 4);
+      debug_assert_eq!(extra_record_header_space.len(), 4);
       let data_crc32 = per_record_crc32(
         &mut common_ring_buffer,
         reservation.as_ref().ok_or(InvariantError::Invariant)?,

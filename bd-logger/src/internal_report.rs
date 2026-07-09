@@ -155,8 +155,6 @@ impl LogInterceptor for Reporter {
   }
 }
 
-
-
 //
 // State
 //

@@ -439,7 +439,7 @@ impl Workflow {
           // this case by definition the initial state run should have a single traversal as it
           // has not progressed.
           if is_exclusive_execution && !is_initial_run {
-            debug_assert!(self.runs.first().map(|r| r.traversals.len()) == Some(1));
+            debug_assert_eq!(self.runs.first().map(|r| r.traversals.len()), Some(1));
             if let Some(f) = self.runs.first_mut().and_then(|r| r.traversals.get_mut(0)) {
               f.initialize_timeout(config, now);
             }

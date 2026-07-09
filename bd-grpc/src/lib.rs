@@ -1202,7 +1202,6 @@ fn bidi_streaming_handler<ResponseType: MessageFull, RequestType: MessageFull>(
   ))
 }
 
-
 // Create an axum router for a one directional streaming handler.
 pub fn make_server_streaming_router<ResponseType: MessageFull, RequestType: MessageFull>(
   service_method: &ServiceMethod<RequestType, ResponseType>,

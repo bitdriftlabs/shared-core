@@ -819,7 +819,6 @@ impl Uploader {
       let _ = tx.send(Ok(()));
     }
 
-
     #[cfg(test)]
     if let Some(hooks) = &self.test_hooks {
       hooks.entry_received_tx.send(uuid.clone()).await.unwrap();
@@ -833,7 +832,6 @@ impl Uploader {
       artifact: self.index.iter().cloned().collect(),
       ..Default::default()
     };
-
 
     if let Err(e) = async {
       let compressed = write_compressed_protobuf(&index)?;

@@ -56,7 +56,6 @@ const BACKPRESSURE_RETRY_INTERVAL: Duration = Duration::from_secs(30);
 static PENDING_UPLOAD_RANGE_KEY: bd_key_value::Key<StateSnapshotRange> =
   bd_key_value::Key::new("state_upload.pending_range.1");
 
-
 /// A reference to a state snapshot that should be uploaded.
 #[derive(Debug, Clone)]
 pub struct SnapshotRef {
@@ -203,8 +202,6 @@ impl StateUploadHandle {
   }
 }
 
-
-
 //
 // StateUploadWorker
 //
@@ -255,7 +252,6 @@ enum UploadPreflight {
   DeferredCooldown,
   Ready(Vec<SnapshotRef>),
 }
-
 
 impl StateUploadWorker {
   /// Returns the path to the state store directory, if configured.

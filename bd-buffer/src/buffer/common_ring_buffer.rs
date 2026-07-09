@@ -232,7 +232,6 @@ impl<ExtraLockedData> LockedData<ExtraLockedData> {
     unsafe { self.memory.0.as_ref() }
   }
 
-
   // Load the next read start value to use, depending on the value of use_cursor.
   fn next_read_start_to_use(&mut self, cursor: Cursor) -> &mut Option<u32> {
     match cursor {

@@ -132,7 +132,6 @@ impl Negotiator {
     log::debug!("processing pending action: {:?}", pending_action.id);
     pending_action.ensure_request_trigger_uuid();
 
-
     self.stats.intent_initiations_total.inc();
 
     // If there exists an action with the same ID that has been rejected (upload intent was

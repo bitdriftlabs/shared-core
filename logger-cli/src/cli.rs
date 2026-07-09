@@ -299,7 +299,6 @@ impl FromStr for FakeFeatureFlag {
   }
 }
 
-
 #[derive(Args, Debug)]
 pub struct RuntimeValueCommand {
   /// Expected value type
