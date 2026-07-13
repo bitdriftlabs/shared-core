@@ -6,9 +6,9 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::input::Scriptable;
-use vrl::compiler::{OwnedValueOrRef, SecretTarget, Target};
-use vrl::core::Value;
-use vrl::path::{OwnedTargetPath, PathPrefix};
+use ripsaw::compiler::{OwnedValueOrRef, SecretTarget, Target};
+use ripsaw::core::Value;
+use ripsaw::path::{OwnedTargetPath, PathPrefix};
 
 pub struct ScriptableTarget<'a, T: Scriptable> {
   object: &'a T,
@@ -43,8 +43,8 @@ impl<T: Scriptable> Target for ScriptableTarget<'_, T> {
 
   fn target_get(
     &mut self,
-    path: &vrl::path::OwnedTargetPath,
-  ) -> Result<Option<vrl::compiler::OwnedValueOrRef<'_>>, String> {
+    path: &ripsaw::path::OwnedTargetPath,
+  ) -> Result<Option<ripsaw::compiler::OwnedValueOrRef<'_>>, String> {
     if path.prefix != PathPrefix::Event {
       return Ok(None);
     }
@@ -56,9 +56,9 @@ impl<T: Scriptable> Target for ScriptableTarget<'_, T> {
 
   fn target_remove(
     &mut self,
-    _path: &vrl::path::OwnedTargetPath,
+    _path: &ripsaw::path::OwnedTargetPath,
     _compact: bool,
-  ) -> Result<Option<vrl::prelude::Value>, String> {
+  ) -> Result<Option<ripsaw::prelude::Value>, String> {
     Ok(None)
   }
 }

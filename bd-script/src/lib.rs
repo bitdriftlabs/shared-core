@@ -16,13 +16,13 @@ mod test;
 pub use crate::input::{PathError, Scriptable};
 use crate::target::ScriptableTarget;
 use anyhow::anyhow;
+use ripsaw::compiler::{CompileConfig, Program, compile_with_external};
+use ripsaw::diagnostic::Formatter;
+use ripsaw::parser::ast::{Program as AST, SyntaxEq};
+use ripsaw::prelude::state::{ExternalEnv, RuntimeState};
+use ripsaw::prelude::{Collection, Context, Function, TimeZone, Value};
+use ripsaw::value::Kind;
 use std::fmt::Debug;
-use vrl::compiler::{CompileConfig, Program, compile_with_external};
-use vrl::diagnostic::Formatter;
-use vrl::parser::ast::{Program as AST, SyntaxEq};
-use vrl::prelude::state::{ExternalEnv, RuntimeState};
-use vrl::prelude::{Collection, Context, Function, TimeZone, Value};
-use vrl::value::Kind;
 
 #[derive(Clone, Debug)]
 pub struct Script {
@@ -41,7 +41,7 @@ impl Script {
     program_source: &str,
     custom_functions: Vec<Box<dyn Function>>,
   ) -> anyhow::Result<Self> {
-    let mut functions = vrl::stdlib::all();
+    let mut functions = ripsaw::stdlib::all();
     functions.extend(custom_functions);
     let compile_config = CompileConfig::default();
 

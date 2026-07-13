@@ -34,7 +34,7 @@ fn type_hints_are_working() {
 
 #[test]
 fn scripts_with_differing_comments_or_whitespace_are_equal() {
-  use vrl::parser::ast::SyntaxEq;
+  use ripsaw::parser::ast::SyntaxEq;
   let script1 = Script::new::<Report<'_>>(r#"abs(int!("-62"))"#, vec![]).expect("is ok");
   let script2 = Script::new::<Report<'_>>(
     r#"# coercing an integer from a string

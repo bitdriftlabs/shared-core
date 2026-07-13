@@ -157,6 +157,7 @@ protobuf-json-mapping = { git = "https://github.com/bitdriftlabs/rust-protobuf.g
 rand         = "0.10.2"
 regex        = "1.13.0"
 reqwest      = { version = "0.13.4", features = ["deflate", "json"] }
+ripsaw       = { git = "https://github.com/bitdriftlabs/ripsaw.git" }
 rstest       = "0.26.1"
 rstest_reuse = "0.7.0"
 serde        = { version = "1", features = ["derive", "rc"] }
@@ -186,7 +187,6 @@ tracing-opentelemetry = "0.33.0"
 unwrap-infallible     = "1.0.0"
 urlencoding           = "2.1.3"
 uuid                  = { version = "1.23.4", features = ["v4"] }
-vrl = { git = "https://github.com/bitdriftlabs/bdrl.git" }
 zstd                  = "0.13.3"
 
 [profile.bench]

@@ -368,10 +368,10 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Timestamp as ReportTimestamp
 };
 use std::collections::BTreeMap;
-use vrl::core::Value;
-use vrl::path::{OwnedSegment, OwnedValuePath};
-use vrl::prelude::Collection;
-use vrl::value::{KeyString, Kind};
+use ripsaw::core::Value;
+use ripsaw::path::{OwnedSegment, OwnedValuePath};
+use ripsaw::prelude::Collection;
+use ripsaw::value::{KeyString, Kind};
 
 ";
 

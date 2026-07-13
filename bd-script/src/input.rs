@@ -7,11 +7,11 @@
 
 use crate::ScriptValue;
 use flatbuffers::{Follow, ForwardsUOffset};
+use ripsaw::core::Value;
+use ripsaw::path::{OwnedSegment, OwnedValuePath};
+use ripsaw::prelude::{Collection, NotNan};
+use ripsaw::value::Kind;
 use std::fmt::Display;
-use vrl::core::Value;
-use vrl::path::{OwnedSegment, OwnedValuePath};
-use vrl::prelude::{Collection, NotNan};
-use vrl::value::Kind;
 
 pub enum PathError {
   IndexOutOfRange(isize),

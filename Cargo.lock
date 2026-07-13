@@ -1231,9 +1231,9 @@ dependencies = [
  "bd-workspace-hack",
  "flatbuffers",
  "ordered-float 5.3.0",
+ "ripsaw",
  "serde_json",
  "time",
- "vrl",
 ]
 
 [[package]]
@@ -4328,6 +4328,51 @@ dependencies = [
 ]
 
 [[package]]
+name = "ripsaw"
+version = "1.0.0"
+source = "git+https://github.com/bitdriftlabs/ripsaw.git#6823a84d5db2763fb5a651ebe9f5ea68637ad1b9"
+dependencies = [
+ "bytes",
+ "cfg-if",
+ "chrono",
+ "chrono-tz",
+ "codespan-reporting",
+ "convert_case",
+ "dyn-clone",
+ "hex",
+ "indexmap",
+ "indoc",
+ "lalrpop",
+ "lalrpop-util",
+ "lz4_flex",
+ "nom 8.0.0",
+ "nom-language",
+ "ordered-float 4.6.0",
+ "prost 0.13.5",
+ "prost-reflect",
+ "publicsuffix",
+ "quoted_printable",
+ "regex",
+ "roxmltree",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "serde_yaml_ng",
+ "simdutf8",
+ "snafu",
+ "strum 0.26.3",
+ "strum_macros 0.26.4",
+ "termcolor",
+ "thiserror 2.0.18",
+ "tracing",
+ "ua-parser",
+ "unicode-segmentation",
+ "url",
+ "utf8-width",
+]
+
+[[package]]
 name = "rmcp"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5823,51 +5868,6 @@ name = "virtue"
 version = "0.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "051eb1abcf10076295e815102942cc58f9d5e3b4560e46e53c21e8ff6f3af7b1"
-
-[[package]]
-name = "vrl"
-version = "0.31.0"
-source = "git+https://github.com/bitdriftlabs/bdrl.git#821db28b7faa522dbe407ab81de223716843c2dd"
-dependencies = [
- "bytes",
- "cfg-if",
- "chrono",
- "chrono-tz",
- "codespan-reporting",
- "convert_case",
- "dyn-clone",
- "hex",
- "indexmap",
- "indoc",
- "lalrpop",
- "lalrpop-util",
- "lz4_flex",
- "nom 8.0.0",
- "nom-language",
- "ordered-float 4.6.0",
- "prost 0.13.5",
- "prost-reflect",
- "publicsuffix",
- "quoted_printable",
- "regex",
- "roxmltree",
- "rust_decimal",
- "serde",
- "serde_json",
- "serde_yaml",
- "serde_yaml_ng",
- "simdutf8",
- "snafu",
- "strum 0.26.3",
- "strum_macros 0.26.4",
- "termcolor",
- "thiserror 2.0.18",
- "tracing",
- "ua-parser",
- "unicode-segmentation",
- "url",
- "utf8-width",
-]
 
 [[package]]
 name = "walkdir"
