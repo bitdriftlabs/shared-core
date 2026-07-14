@@ -1233,7 +1233,7 @@ impl PrecedingEventCarryover {
 //
 
 #[cfg_attr(test, derive(Clone))]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct WorkflowsEngineConfig {
   pub(crate) workflows_configuration: WorkflowsConfiguration,
 
@@ -1258,7 +1258,7 @@ impl WorkflowsEngineConfig {
   #[must_use]
   pub fn new_with_workflow_configurations(workflow_configs: Vec<Config>) -> Self {
     Self::new(
-      WorkflowsConfiguration::new_with_workflow_configurations_for_test(workflow_configs),
+      WorkflowsConfiguration::new_with_workflow_configurations(workflow_configs),
       TinySet::default(),
       TinySet::default(),
     )

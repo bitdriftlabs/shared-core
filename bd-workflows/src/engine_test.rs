@@ -589,7 +589,7 @@ async fn engine_update_after_sdk_update() {
   let c = state("C").declare_transition(&d, rule!(message_equals("foo")));
 
   let cached_config_update = WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
+    WorkflowsConfiguration::new_with_workflow_configurations(vec![
       WorkflowBuilder::new("2", &[&c, &d]).make_config(),
       WorkflowBuilder::new("1", &[&a, &b]).make_config(),
     ]),
@@ -624,7 +624,7 @@ async fn engine_update_after_sdk_update() {
   // streaming configuration portion of the 'flush buffers' action. The engine should replace the
   // old workflow config with its new updated version.
   workflows_engine.update(WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
+    WorkflowsConfiguration::new_with_workflow_configurations(vec![
       WorkflowBuilder::new("1", &[&a, &b]).make_config(),
     ]),
     TinySet::from(["trigger_buffer_id".into()]),
@@ -1390,7 +1390,7 @@ async fn engine_processing_log() {
   let setup = Setup::new();
   let mut workflows_engine = setup
     .make_workflows_engine(WorkflowsEngineConfig::new(
-      WorkflowsConfiguration::new_with_workflow_configurations_for_test(workflows),
+      WorkflowsConfiguration::new_with_workflow_configurations(workflows),
       TinySet::from(["foo_buffer_id".into()]),
       TinySet::default(),
     ))
@@ -1644,7 +1644,7 @@ async fn log_without_destination() {
   );
 
   let workflows_engine_config = WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
+    WorkflowsConfiguration::new_with_workflow_configurations(vec![
       WorkflowBuilder::new("1", &[&a, &b]).make_config(),
     ]),
     TinySet::from(["trigger_buffer_id".into()]),
@@ -1752,7 +1752,7 @@ async fn logs_streaming() {
   );
 
   let workflows_engine_config = WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
+    WorkflowsConfiguration::new_with_workflow_configurations(vec![
       WorkflowBuilder::new("1", &[&a, &b, &c, &d, &e, &f, &g, &h]).make_config(),
     ]),
     TinySet::from(["trigger_buffer_id".into()]),
@@ -2094,7 +2094,7 @@ async fn restored_workflow_streaming_waits_for_durable_flush_completion() {
   );
 
   let workflows_engine_config = WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
+    WorkflowsConfiguration::new_with_workflow_configurations(vec![
       WorkflowBuilder::new("1", &[&a, &b]).make_config(),
     ]),
     TinySet::from(["trigger_buffer_id".into()]),
@@ -2154,7 +2154,7 @@ async fn restored_workflow_streaming_waits_for_durable_flush_completion() {
 #[tokio::test]
 async fn restored_remote_streaming_waits_for_durable_flush_completion() {
   let workflows_engine_config = WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![]),
+    WorkflowsConfiguration::new_with_workflow_configurations(vec![]),
     TinySet::from(["trigger_buffer_id".into()]),
     TinySet::from(["continuous_buffer_id".into()]),
   );
@@ -2219,7 +2219,7 @@ async fn engine_tracks_new_sessions() {
   let setup = Setup::new();
 
   let workflows_engine_config = WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![]),
+    WorkflowsConfiguration::new_with_workflow_configurations(vec![]),
     TinySet::from(["trigger_buffer_id".into()]),
     TinySet::from(["continuous_buffer_id".into()]),
   );
@@ -2260,7 +2260,7 @@ async fn engine_does_not_purge_pending_actions_on_session_id_change() {
   let setup = Setup::new();
 
   let workflows_engine_config = WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
+    WorkflowsConfiguration::new_with_workflow_configurations(vec![
       WorkflowBuilder::new("1", &[&a, &b, &c]).make_config(),
     ]),
     TinySet::from(["trigger_buffer_id".into()]),
@@ -2363,7 +2363,7 @@ async fn engine_continues_to_stream_upload_not_complete() {
   let setup = Setup::new();
 
   let workflows_engine_config = WorkflowsEngineConfig::new(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
+    WorkflowsConfiguration::new_with_workflow_configurations(vec![
       WorkflowBuilder::new("1", &[&a, &b, &c]).make_config(),
     ]),
     TinySet::from(["trigger_buffer_id".into()]),
@@ -3302,7 +3302,7 @@ async fn stats_flush_triggered_on_log_upload_approval() {
 
   let mut engine = setup
     .make_workflows_engine(WorkflowsEngineConfig::new(
-      WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![workflow]),
+      WorkflowsConfiguration::new_with_workflow_configurations(vec![workflow]),
       TinySet::from(["trigger_buffer_id".into()]),
       TinySet::default(),
     ))
@@ -3411,7 +3411,7 @@ async fn start_tracing_carries_into_streaming_until_streaming_ends() {
   let setup = Setup::new();
   let mut engine = setup
     .make_workflows_engine(WorkflowsEngineConfig::new(
-      WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![workflow]),
+      WorkflowsConfiguration::new_with_workflow_configurations(vec![workflow]),
       TinySet::from(["trigger_buffer_id".into()]),
       TinySet::from(["continuous_buffer_id".into()]),
     ))

@@ -72,7 +72,7 @@ impl Execution {
 //
 
 #[cfg_attr(test, derive(Clone))]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq)]
 pub struct WorkflowsConfiguration {
   pub(crate) workflows: Vec<Config>,
 }
@@ -118,10 +118,8 @@ impl WorkflowsConfiguration {
     Self { workflows }
   }
 
-  // This method should be used in tests only but cannot be attributed with cfg(test) as there are
-  // tests outside of the current crate that use it.
   #[must_use]
-  pub const fn new_with_workflow_configurations_for_test(workflows: Vec<Config>) -> Self {
+  pub const fn new_with_workflow_configurations(workflows: Vec<Config>) -> Self {
     Self { workflows }
   }
 }
@@ -147,7 +145,7 @@ pub enum WorkflowDebugMode {
 //
 
 #[cfg_attr(test, derive(Clone))]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Config {
   inner: InnerConfig,
   mode: WorkflowDebugMode,
