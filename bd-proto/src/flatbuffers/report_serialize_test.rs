@@ -415,6 +415,209 @@ fn serialize_report() {
 }
 
 #[test]
+fn serialize_crash_info() {
+  let mut builder = flatbuffers::FlatBufferBuilder::new();
+  let nsexception_name = builder.create_string("NSRangeException");
+  let nsexception_reason = builder.create_string("index 9 beyond bounds 8");
+  let nsexception = NSException::create(
+    &mut builder,
+    &NSExceptionArgs {
+      name: Some(nsexception_name),
+      reason: Some(nsexception_reason),
+      ..Default::default()
+    },
+  );
+  let mach_exception = MachException::create(
+    &mut builder,
+    &MachExceptionArgs {
+      type_: 10,
+      code: 1,
+      subcode: 2,
+    },
+  );
+  let posix_signal = PosixSignal::create(
+    &mut builder,
+    &PosixSignalArgs {
+      number: 11,
+      code: 3,
+      errno: 4,
+      has_fault_address: true,
+      fault_address: 0x1234,
+    },
+  );
+  let termination_domain = builder.create_string("10");
+  let termination_code = builder.create_string("0x8BADF00D");
+  let termination_explanation =
+    builder.create_string("Failed to terminate gracefully after 5.0s");
+  let termination_process_visibility = builder.create_string("Unknown");
+  let termination_process_state = builder.create_string("Running");
+  let termination_watchdog_event = builder.create_string("process-exit");
+  let termination_watchdog_visibility = builder.create_string("Foreground");
+  let termination = AppleTermination::create(
+    &mut builder,
+    &AppleTerminationArgs {
+      domain: Some(termination_domain),
+      code: Some(termination_code),
+      explanation: Some(termination_explanation),
+      process_visibility: Some(termination_process_visibility),
+      process_state: Some(termination_process_state),
+      watchdog_event: Some(termination_watchdog_event),
+      watchdog_visibility: Some(termination_watchdog_visibility),
+    },
+  );
+  let details = AppleCrashDetails::create(
+    &mut builder,
+    &AppleCrashDetailsArgs {
+      nsexception: Some(nsexception),
+      mach_exception: Some(mach_exception),
+      posix_signal: Some(posix_signal),
+      termination: Some(termination),
+    },
+  );
+  let thread_name = builder.create_string("main");
+  let thread = Thread::create(
+    &mut builder,
+    &ThreadArgs {
+      name: Some(thread_name),
+      index: 12,
+      active: true,
+      ..Default::default()
+    },
+  );
+  let threads = builder.create_vector(&[thread]);
+  let thread_details = ThreadDetails::create(
+    &mut builder,
+    &ThreadDetailsArgs {
+      count: 1,
+      threads: Some(threads),
+    },
+  );
+  let object = serialization_loop(&build_table!(
+    builder,
+    CrashInfo,
+    &CrashInfoArgs {
+      reporter_scope: CrashReporterScope::OutOfProcess,
+      reporter: CrashReporter::AppleMetricKit,
+      occurred_at: Some(&Timestamp::new(1_700_000_000, 55)),
+      details_type: CrashInfoDetails::AppleCrashDetails,
+      details: Some(details.as_union_value()),
+      thread_details: Some(thread_details),
+    }
+  ));
+  assert_eq!(
+    json!({
+      "reporter_scope": "OutOfProcess",
+      "reporter": "AppleMetricKit",
+      "occurred_at": {
+        "seconds": 1700000000,
+        "nanos": 55,
+      },
+      "details_type": "AppleCrashDetails",
+      "details": {
+        "nsexception": {
+          "name": "NSRangeException",
+          "reason": "index 9 beyond bounds 8",
+        },
+        "mach_exception": {
+          "type": 10,
+          "code": 1,
+          "subcode": 2,
+        },
+        "posix_signal": {
+          "number": 11,
+          "code": 3,
+          "errno": 4,
+          "has_fault_address": true,
+          "fault_address": 4660,
+        },
+        "termination": {
+          "domain": "10",
+          "code": "0x8BADF00D",
+          "explanation": "Failed to terminate gracefully after 5.0s",
+          "process_visibility": "Unknown",
+          "process_state": "Running",
+          "watchdog_event": "process-exit",
+          "watchdog_visibility": "Foreground",
+        },
+      },
+      "thread_details": {
+        "count": 1,
+        "threads": [{
+          "name": "main",
+          "index": 12,
+          "active": true,
+          "priority": 0.0,
+          "quality_of_service": -1,
+        }],
+      },
+    }),
+    object
+  );
+  assert_struct_size!(CrashInfoArgs, 32);
+}
+
+#[test]
+fn serialize_report_with_crash_info() {
+  let mut builder = flatbuffers::FlatBufferBuilder::new();
+  let nsexception_name = builder.create_string("NSInvalidArgumentException");
+  let nsexception_reason = builder.create_string("bad argument");
+  let nsexception = NSException::create(
+    &mut builder,
+    &NSExceptionArgs {
+      name: Some(nsexception_name),
+      reason: Some(nsexception_reason),
+      ..Default::default()
+    },
+  );
+  let details = AppleCrashDetails::create(
+    &mut builder,
+    &AppleCrashDetailsArgs {
+      nsexception: Some(nsexception),
+      ..Default::default()
+    },
+  );
+  let crash_info = CrashInfo::create(
+    &mut builder,
+    &CrashInfoArgs {
+      reporter_scope: CrashReporterScope::InProcess,
+      reporter: CrashReporter::AppleBitdriftCrashReporter,
+      occurred_at: Some(&Timestamp::new(1_700_000_001, 77)),
+      details_type: CrashInfoDetails::AppleCrashDetails,
+      details: Some(details.as_union_value()),
+      ..Default::default()
+    },
+  );
+  let crash_info_vector = builder.create_vector(&[crash_info]);
+  let object = serialization_loop(&build_table!(
+    builder,
+    Report,
+    &ReportArgs {
+      type_: ReportType::NativeCrash,
+      crash_info: Some(crash_info_vector),
+      ..Default::default()
+    }
+  ));
+  assert_eq!(
+    json!([{
+      "reporter_scope": "InProcess",
+      "reporter": "AppleBitdriftCrashReporter",
+      "occurred_at": {
+        "seconds": 1700000001,
+        "nanos": 77,
+      },
+      "details_type": "AppleCrashDetails",
+      "details": {
+        "nsexception": {
+          "name": "NSInvalidArgumentException",
+          "reason": "bad argument",
+        },
+      },
+    }]),
+    object["crash_info"]
+  );
+}
+
+#[test]
 fn serialize_thread() {
   let mut builder = flatbuffers::FlatBufferBuilder::new();
   let object = serialization_loop(&build_table!(

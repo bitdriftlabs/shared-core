@@ -63,6 +63,24 @@ struct ThreadDetailsBuilder;
 struct Error;
 struct ErrorBuilder;
 
+struct NSException;
+struct NSExceptionBuilder;
+
+struct MachException;
+struct MachExceptionBuilder;
+
+struct PosixSignal;
+struct PosixSignalBuilder;
+
+struct AppleTermination;
+struct AppleTerminationBuilder;
+
+struct AppleCrashDetails;
+struct AppleCrashDetailsBuilder;
+
+struct CrashInfo;
+struct CrashInfoBuilder;
+
 struct BinaryImage;
 struct BinaryImageBuilder;
 
@@ -107,6 +125,18 @@ inline const ::flatbuffers::TypeTable *ThreadTypeTable();
 inline const ::flatbuffers::TypeTable *ThreadDetailsTypeTable();
 
 inline const ::flatbuffers::TypeTable *ErrorTypeTable();
+
+inline const ::flatbuffers::TypeTable *NSExceptionTypeTable();
+
+inline const ::flatbuffers::TypeTable *MachExceptionTypeTable();
+
+inline const ::flatbuffers::TypeTable *PosixSignalTypeTable();
+
+inline const ::flatbuffers::TypeTable *AppleTerminationTypeTable();
+
+inline const ::flatbuffers::TypeTable *AppleCrashDetailsTypeTable();
+
+inline const ::flatbuffers::TypeTable *CrashInfoTypeTable();
 
 inline const ::flatbuffers::TypeTable *BinaryImageTypeTable();
 
@@ -308,6 +338,81 @@ inline const char *EnumNameErrorRelation(ErrorRelation e) {
   if (::flatbuffers::IsOutRange(e, ErrorRelation_CausedBy, ErrorRelation_CausedBy)) return "";
   const size_t index = static_cast<size_t>(e) - static_cast<size_t>(ErrorRelation_CausedBy);
   return EnumNamesErrorRelation()[index];
+}
+
+enum CrashReporterScope : int8_t {
+  CrashReporterScope_Unknown = 0,
+  CrashReporterScope_InProcess = 1,
+  CrashReporterScope_OutOfProcess = 2,
+  CrashReporterScope_MIN = CrashReporterScope_Unknown,
+  CrashReporterScope_MAX = CrashReporterScope_OutOfProcess
+};
+
+inline const CrashReporterScope (&EnumValuesCrashReporterScope())[3] {
+  static const CrashReporterScope values[] = {
+    CrashReporterScope_Unknown,
+    CrashReporterScope_InProcess,
+    CrashReporterScope_OutOfProcess
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesCrashReporterScope() {
+  static const char * const names[4] = {
+    "Unknown",
+    "InProcess",
+    "OutOfProcess",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameCrashReporterScope(CrashReporterScope e) {
+  if (::flatbuffers::IsOutRange(e, CrashReporterScope_Unknown, CrashReporterScope_OutOfProcess)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesCrashReporterScope()[index];
+}
+
+enum CrashReporter : int8_t {
+  CrashReporter_Unknown = 0,
+  CrashReporter_AppleMetricKit = 1,
+  CrashReporter_AppleKSCrash = 2,
+  CrashReporter_AppleBitdriftCrashReporter = 3,
+  CrashReporter_AndroidUncaughtExceptionHandler = 4,
+  CrashReporter_AndroidApplicationExitInfo = 5,
+  CrashReporter_MIN = CrashReporter_Unknown,
+  CrashReporter_MAX = CrashReporter_AndroidApplicationExitInfo
+};
+
+inline const CrashReporter (&EnumValuesCrashReporter())[6] {
+  static const CrashReporter values[] = {
+    CrashReporter_Unknown,
+    CrashReporter_AppleMetricKit,
+    CrashReporter_AppleKSCrash,
+    CrashReporter_AppleBitdriftCrashReporter,
+    CrashReporter_AndroidUncaughtExceptionHandler,
+    CrashReporter_AndroidApplicationExitInfo
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesCrashReporter() {
+  static const char * const names[7] = {
+    "Unknown",
+    "AppleMetricKit",
+    "AppleKSCrash",
+    "AppleBitdriftCrashReporter",
+    "AndroidUncaughtExceptionHandler",
+    "AndroidApplicationExitInfo",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameCrashReporter(CrashReporter e) {
+  if (::flatbuffers::IsOutRange(e, CrashReporter_Unknown, CrashReporter_AndroidApplicationExitInfo)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesCrashReporter()[index];
 }
 
 enum PowerState : int8_t {
@@ -531,6 +636,47 @@ inline const char *EnumNameFrameStatus(FrameStatus e) {
   const size_t index = static_cast<size_t>(e);
   return EnumNamesFrameStatus()[index];
 }
+
+enum CrashInfoDetails : uint8_t {
+  CrashInfoDetails_NONE = 0,
+  CrashInfoDetails_AppleCrashDetails = 1,
+  CrashInfoDetails_MIN = CrashInfoDetails_NONE,
+  CrashInfoDetails_MAX = CrashInfoDetails_AppleCrashDetails
+};
+
+inline const CrashInfoDetails (&EnumValuesCrashInfoDetails())[2] {
+  static const CrashInfoDetails values[] = {
+    CrashInfoDetails_NONE,
+    CrashInfoDetails_AppleCrashDetails
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesCrashInfoDetails() {
+  static const char * const names[3] = {
+    "NONE",
+    "AppleCrashDetails",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameCrashInfoDetails(CrashInfoDetails e) {
+  if (::flatbuffers::IsOutRange(e, CrashInfoDetails_NONE, CrashInfoDetails_AppleCrashDetails)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesCrashInfoDetails()[index];
+}
+
+template<typename T> struct CrashInfoDetailsTraits {
+  static const CrashInfoDetails enum_value = CrashInfoDetails_NONE;
+};
+
+template<> struct CrashInfoDetailsTraits<bitdrift_public::fbs::issue_reporting::v1::AppleCrashDetails> {
+  static const CrashInfoDetails enum_value = CrashInfoDetails_AppleCrashDetails;
+};
+
+bool VerifyCrashInfoDetails(::flatbuffers::Verifier &verifier, const void *obj, CrashInfoDetails type);
+bool VerifyCrashInfoDetailsVector(::flatbuffers::Verifier &verifier, const ::flatbuffers::Vector<::flatbuffers::Offset<void>> *values, const ::flatbuffers::Vector<uint8_t> *types);
 
 FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(8) Timestamp FLATBUFFERS_FINAL_CLASS {
  private:
@@ -2022,6 +2168,557 @@ inline ::flatbuffers::Offset<Error> CreateErrorDirect(
       relation_to_next);
 }
 
+struct NSException FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef NSExceptionBuilder Builder;
+  static const ::flatbuffers::TypeTable *MiniReflectTypeTable() {
+    return NSExceptionTypeTable();
+  }
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_NAME = 4,
+    VT_REASON = 6,
+    VT_USER_INFO = 8
+  };
+  const ::flatbuffers::String *name() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_NAME);
+  }
+  const ::flatbuffers::String *reason() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_REASON);
+  }
+  const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>> *user_info() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>> *>(VT_USER_INFO);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_NAME) &&
+           verifier.VerifyString(name()) &&
+           VerifyOffset(verifier, VT_REASON) &&
+           verifier.VerifyString(reason()) &&
+           VerifyOffset(verifier, VT_USER_INFO) &&
+           verifier.VerifyVector(user_info()) &&
+           verifier.VerifyVectorOfTables(user_info()) &&
+           verifier.EndTable();
+  }
+};
+
+struct NSExceptionBuilder {
+  typedef NSException Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_name(::flatbuffers::Offset<::flatbuffers::String> name) {
+    fbb_.AddOffset(NSException::VT_NAME, name);
+  }
+  void add_reason(::flatbuffers::Offset<::flatbuffers::String> reason) {
+    fbb_.AddOffset(NSException::VT_REASON, reason);
+  }
+  void add_user_info(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>> user_info) {
+    fbb_.AddOffset(NSException::VT_USER_INFO, user_info);
+  }
+  explicit NSExceptionBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<NSException> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<NSException>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<NSException> CreateNSException(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::String> name = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> reason = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>> user_info = 0) {
+  NSExceptionBuilder builder_(_fbb);
+  builder_.add_user_info(user_info);
+  builder_.add_reason(reason);
+  builder_.add_name(name);
+  return builder_.Finish();
+}
+
+inline ::flatbuffers::Offset<NSException> CreateNSExceptionDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    const char *name = nullptr,
+    const char *reason = nullptr,
+    const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>> *user_info = nullptr) {
+  auto name__ = name ? _fbb.CreateString(name) : 0;
+  auto reason__ = reason ? _fbb.CreateString(reason) : 0;
+  auto user_info__ = user_info ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>(*user_info) : 0;
+  return bitdrift_public::fbs::issue_reporting::v1::CreateNSException(
+      _fbb,
+      name__,
+      reason__,
+      user_info__);
+}
+
+struct MachException FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef MachExceptionBuilder Builder;
+  static const ::flatbuffers::TypeTable *MiniReflectTypeTable() {
+    return MachExceptionTypeTable();
+  }
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_TYPE = 4,
+    VT_CODE = 6,
+    VT_SUBCODE = 8
+  };
+  uint32_t type() const {
+    return GetField<uint32_t>(VT_TYPE, 0);
+  }
+  uint64_t code() const {
+    return GetField<uint64_t>(VT_CODE, 0);
+  }
+  uint64_t subcode() const {
+    return GetField<uint64_t>(VT_SUBCODE, 0);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<uint32_t>(verifier, VT_TYPE, 4) &&
+           VerifyField<uint64_t>(verifier, VT_CODE, 8) &&
+           VerifyField<uint64_t>(verifier, VT_SUBCODE, 8) &&
+           verifier.EndTable();
+  }
+};
+
+struct MachExceptionBuilder {
+  typedef MachException Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_type(uint32_t type) {
+    fbb_.AddElement<uint32_t>(MachException::VT_TYPE, type, 0);
+  }
+  void add_code(uint64_t code) {
+    fbb_.AddElement<uint64_t>(MachException::VT_CODE, code, 0);
+  }
+  void add_subcode(uint64_t subcode) {
+    fbb_.AddElement<uint64_t>(MachException::VT_SUBCODE, subcode, 0);
+  }
+  explicit MachExceptionBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<MachException> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<MachException>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<MachException> CreateMachException(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    uint32_t type = 0,
+    uint64_t code = 0,
+    uint64_t subcode = 0) {
+  MachExceptionBuilder builder_(_fbb);
+  builder_.add_subcode(subcode);
+  builder_.add_code(code);
+  builder_.add_type(type);
+  return builder_.Finish();
+}
+
+struct PosixSignal FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef PosixSignalBuilder Builder;
+  static const ::flatbuffers::TypeTable *MiniReflectTypeTable() {
+    return PosixSignalTypeTable();
+  }
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_NUMBER = 4,
+    VT_CODE = 6,
+    VT_ERRNO = 8,
+    VT_HAS_FAULT_ADDRESS = 10,
+    VT_FAULT_ADDRESS = 12
+  };
+  int32_t number() const {
+    return GetField<int32_t>(VT_NUMBER, 0);
+  }
+  int32_t code() const {
+    return GetField<int32_t>(VT_CODE, 0);
+  }
+  int32_t errno() const {
+    return GetField<int32_t>(VT_ERRNO, 0);
+  }
+  bool has_fault_address() const {
+    return GetField<uint8_t>(VT_HAS_FAULT_ADDRESS, 0) != 0;
+  }
+  uint64_t fault_address() const {
+    return GetField<uint64_t>(VT_FAULT_ADDRESS, 0);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_NUMBER, 4) &&
+           VerifyField<int32_t>(verifier, VT_CODE, 4) &&
+           VerifyField<int32_t>(verifier, VT_ERRNO, 4) &&
+           VerifyField<uint8_t>(verifier, VT_HAS_FAULT_ADDRESS, 1) &&
+           VerifyField<uint64_t>(verifier, VT_FAULT_ADDRESS, 8) &&
+           verifier.EndTable();
+  }
+};
+
+struct PosixSignalBuilder {
+  typedef PosixSignal Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_number(int32_t number) {
+    fbb_.AddElement<int32_t>(PosixSignal::VT_NUMBER, number, 0);
+  }
+  void add_code(int32_t code) {
+    fbb_.AddElement<int32_t>(PosixSignal::VT_CODE, code, 0);
+  }
+  void add_errno(int32_t errno) {
+    fbb_.AddElement<int32_t>(PosixSignal::VT_ERRNO, errno, 0);
+  }
+  void add_has_fault_address(bool has_fault_address) {
+    fbb_.AddElement<uint8_t>(PosixSignal::VT_HAS_FAULT_ADDRESS, static_cast<uint8_t>(has_fault_address), 0);
+  }
+  void add_fault_address(uint64_t fault_address) {
+    fbb_.AddElement<uint64_t>(PosixSignal::VT_FAULT_ADDRESS, fault_address, 0);
+  }
+  explicit PosixSignalBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<PosixSignal> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<PosixSignal>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<PosixSignal> CreatePosixSignal(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t number = 0,
+    int32_t code = 0,
+    int32_t errno = 0,
+    bool has_fault_address = false,
+    uint64_t fault_address = 0) {
+  PosixSignalBuilder builder_(_fbb);
+  builder_.add_fault_address(fault_address);
+  builder_.add_errno(errno);
+  builder_.add_code(code);
+  builder_.add_number(number);
+  builder_.add_has_fault_address(has_fault_address);
+  return builder_.Finish();
+}
+
+struct AppleTermination FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef AppleTerminationBuilder Builder;
+  static const ::flatbuffers::TypeTable *MiniReflectTypeTable() {
+    return AppleTerminationTypeTable();
+  }
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_DOMAIN = 4,
+    VT_CODE = 6,
+    VT_EXPLANATION = 8,
+    VT_PROCESS_VISIBILITY = 10,
+    VT_PROCESS_STATE = 12,
+    VT_WATCHDOG_EVENT = 14,
+    VT_WATCHDOG_VISIBILITY = 16
+  };
+  const ::flatbuffers::String *domain() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_DOMAIN);
+  }
+  const ::flatbuffers::String *code() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_CODE);
+  }
+  const ::flatbuffers::String *explanation() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_EXPLANATION);
+  }
+  const ::flatbuffers::String *process_visibility() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_PROCESS_VISIBILITY);
+  }
+  const ::flatbuffers::String *process_state() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_PROCESS_STATE);
+  }
+  const ::flatbuffers::String *watchdog_event() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_WATCHDOG_EVENT);
+  }
+  const ::flatbuffers::String *watchdog_visibility() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_WATCHDOG_VISIBILITY);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_DOMAIN) &&
+           verifier.VerifyString(domain()) &&
+           VerifyOffset(verifier, VT_CODE) &&
+           verifier.VerifyString(code()) &&
+           VerifyOffset(verifier, VT_EXPLANATION) &&
+           verifier.VerifyString(explanation()) &&
+           VerifyOffset(verifier, VT_PROCESS_VISIBILITY) &&
+           verifier.VerifyString(process_visibility()) &&
+           VerifyOffset(verifier, VT_PROCESS_STATE) &&
+           verifier.VerifyString(process_state()) &&
+           VerifyOffset(verifier, VT_WATCHDOG_EVENT) &&
+           verifier.VerifyString(watchdog_event()) &&
+           VerifyOffset(verifier, VT_WATCHDOG_VISIBILITY) &&
+           verifier.VerifyString(watchdog_visibility()) &&
+           verifier.EndTable();
+  }
+};
+
+struct AppleTerminationBuilder {
+  typedef AppleTermination Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_domain(::flatbuffers::Offset<::flatbuffers::String> domain) {
+    fbb_.AddOffset(AppleTermination::VT_DOMAIN, domain);
+  }
+  void add_code(::flatbuffers::Offset<::flatbuffers::String> code) {
+    fbb_.AddOffset(AppleTermination::VT_CODE, code);
+  }
+  void add_explanation(::flatbuffers::Offset<::flatbuffers::String> explanation) {
+    fbb_.AddOffset(AppleTermination::VT_EXPLANATION, explanation);
+  }
+  void add_process_visibility(::flatbuffers::Offset<::flatbuffers::String> process_visibility) {
+    fbb_.AddOffset(AppleTermination::VT_PROCESS_VISIBILITY, process_visibility);
+  }
+  void add_process_state(::flatbuffers::Offset<::flatbuffers::String> process_state) {
+    fbb_.AddOffset(AppleTermination::VT_PROCESS_STATE, process_state);
+  }
+  void add_watchdog_event(::flatbuffers::Offset<::flatbuffers::String> watchdog_event) {
+    fbb_.AddOffset(AppleTermination::VT_WATCHDOG_EVENT, watchdog_event);
+  }
+  void add_watchdog_visibility(::flatbuffers::Offset<::flatbuffers::String> watchdog_visibility) {
+    fbb_.AddOffset(AppleTermination::VT_WATCHDOG_VISIBILITY, watchdog_visibility);
+  }
+  explicit AppleTerminationBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<AppleTermination> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<AppleTermination>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<AppleTermination> CreateAppleTermination(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::String> domain = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> code = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> explanation = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> process_visibility = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> process_state = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> watchdog_event = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> watchdog_visibility = 0) {
+  AppleTerminationBuilder builder_(_fbb);
+  builder_.add_watchdog_visibility(watchdog_visibility);
+  builder_.add_watchdog_event(watchdog_event);
+  builder_.add_process_state(process_state);
+  builder_.add_process_visibility(process_visibility);
+  builder_.add_explanation(explanation);
+  builder_.add_code(code);
+  builder_.add_domain(domain);
+  return builder_.Finish();
+}
+
+inline ::flatbuffers::Offset<AppleTermination> CreateAppleTerminationDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    const char *domain = nullptr,
+    const char *code = nullptr,
+    const char *explanation = nullptr,
+    const char *process_visibility = nullptr,
+    const char *process_state = nullptr,
+    const char *watchdog_event = nullptr,
+    const char *watchdog_visibility = nullptr) {
+  auto domain__ = domain ? _fbb.CreateString(domain) : 0;
+  auto code__ = code ? _fbb.CreateString(code) : 0;
+  auto explanation__ = explanation ? _fbb.CreateString(explanation) : 0;
+  auto process_visibility__ = process_visibility ? _fbb.CreateString(process_visibility) : 0;
+  auto process_state__ = process_state ? _fbb.CreateString(process_state) : 0;
+  auto watchdog_event__ = watchdog_event ? _fbb.CreateString(watchdog_event) : 0;
+  auto watchdog_visibility__ = watchdog_visibility ? _fbb.CreateString(watchdog_visibility) : 0;
+  return bitdrift_public::fbs::issue_reporting::v1::CreateAppleTermination(
+      _fbb,
+      domain__,
+      code__,
+      explanation__,
+      process_visibility__,
+      process_state__,
+      watchdog_event__,
+      watchdog_visibility__);
+}
+
+struct AppleCrashDetails FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef AppleCrashDetailsBuilder Builder;
+  static const ::flatbuffers::TypeTable *MiniReflectTypeTable() {
+    return AppleCrashDetailsTypeTable();
+  }
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_NSEXCEPTION = 4,
+    VT_MACH_EXCEPTION = 6,
+    VT_POSIX_SIGNAL = 8,
+    VT_TERMINATION = 10
+  };
+  const bitdrift_public::fbs::issue_reporting::v1::NSException *nsexception() const {
+    return GetPointer<const bitdrift_public::fbs::issue_reporting::v1::NSException *>(VT_NSEXCEPTION);
+  }
+  const bitdrift_public::fbs::issue_reporting::v1::MachException *mach_exception() const {
+    return GetPointer<const bitdrift_public::fbs::issue_reporting::v1::MachException *>(VT_MACH_EXCEPTION);
+  }
+  const bitdrift_public::fbs::issue_reporting::v1::PosixSignal *posix_signal() const {
+    return GetPointer<const bitdrift_public::fbs::issue_reporting::v1::PosixSignal *>(VT_POSIX_SIGNAL);
+  }
+  const bitdrift_public::fbs::issue_reporting::v1::AppleTermination *termination() const {
+    return GetPointer<const bitdrift_public::fbs::issue_reporting::v1::AppleTermination *>(VT_TERMINATION);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_NSEXCEPTION) &&
+           verifier.VerifyTable(nsexception()) &&
+           VerifyOffset(verifier, VT_MACH_EXCEPTION) &&
+           verifier.VerifyTable(mach_exception()) &&
+           VerifyOffset(verifier, VT_POSIX_SIGNAL) &&
+           verifier.VerifyTable(posix_signal()) &&
+           VerifyOffset(verifier, VT_TERMINATION) &&
+           verifier.VerifyTable(termination()) &&
+           verifier.EndTable();
+  }
+};
+
+struct AppleCrashDetailsBuilder {
+  typedef AppleCrashDetails Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_nsexception(::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::NSException> nsexception) {
+    fbb_.AddOffset(AppleCrashDetails::VT_NSEXCEPTION, nsexception);
+  }
+  void add_mach_exception(::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::MachException> mach_exception) {
+    fbb_.AddOffset(AppleCrashDetails::VT_MACH_EXCEPTION, mach_exception);
+  }
+  void add_posix_signal(::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::PosixSignal> posix_signal) {
+    fbb_.AddOffset(AppleCrashDetails::VT_POSIX_SIGNAL, posix_signal);
+  }
+  void add_termination(::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::AppleTermination> termination) {
+    fbb_.AddOffset(AppleCrashDetails::VT_TERMINATION, termination);
+  }
+  explicit AppleCrashDetailsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<AppleCrashDetails> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<AppleCrashDetails>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<AppleCrashDetails> CreateAppleCrashDetails(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::NSException> nsexception = 0,
+    ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::MachException> mach_exception = 0,
+    ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::PosixSignal> posix_signal = 0,
+    ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::AppleTermination> termination = 0) {
+  AppleCrashDetailsBuilder builder_(_fbb);
+  builder_.add_termination(termination);
+  builder_.add_posix_signal(posix_signal);
+  builder_.add_mach_exception(mach_exception);
+  builder_.add_nsexception(nsexception);
+  return builder_.Finish();
+}
+
+struct CrashInfo FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef CrashInfoBuilder Builder;
+  static const ::flatbuffers::TypeTable *MiniReflectTypeTable() {
+    return CrashInfoTypeTable();
+  }
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_REPORTER_SCOPE = 4,
+    VT_REPORTER = 6,
+    VT_OCCURRED_AT = 8,
+    VT_DETAILS_TYPE = 10,
+    VT_DETAILS = 12,
+    VT_THREAD_DETAILS = 14
+  };
+  bitdrift_public::fbs::issue_reporting::v1::CrashReporterScope reporter_scope() const {
+    return static_cast<bitdrift_public::fbs::issue_reporting::v1::CrashReporterScope>(GetField<int8_t>(VT_REPORTER_SCOPE, 0));
+  }
+  bitdrift_public::fbs::issue_reporting::v1::CrashReporter reporter() const {
+    return static_cast<bitdrift_public::fbs::issue_reporting::v1::CrashReporter>(GetField<int8_t>(VT_REPORTER, 0));
+  }
+  const bitdrift_public::fbs::issue_reporting::v1::Timestamp *occurred_at() const {
+    return GetStruct<const bitdrift_public::fbs::issue_reporting::v1::Timestamp *>(VT_OCCURRED_AT);
+  }
+  bitdrift_public::fbs::issue_reporting::v1::CrashInfoDetails details_type() const {
+    return static_cast<bitdrift_public::fbs::issue_reporting::v1::CrashInfoDetails>(GetField<uint8_t>(VT_DETAILS_TYPE, 0));
+  }
+  const void *details() const {
+    return GetPointer<const void *>(VT_DETAILS);
+  }
+  template<typename T> const T *details_as() const;
+  const bitdrift_public::fbs::issue_reporting::v1::AppleCrashDetails *details_as_AppleCrashDetails() const {
+    return details_type() == bitdrift_public::fbs::issue_reporting::v1::CrashInfoDetails_AppleCrashDetails ? static_cast<const bitdrift_public::fbs::issue_reporting::v1::AppleCrashDetails *>(details()) : nullptr;
+  }
+  const bitdrift_public::fbs::issue_reporting::v1::ThreadDetails *thread_details() const {
+    return GetPointer<const bitdrift_public::fbs::issue_reporting::v1::ThreadDetails *>(VT_THREAD_DETAILS);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int8_t>(verifier, VT_REPORTER_SCOPE, 1) &&
+           VerifyField<int8_t>(verifier, VT_REPORTER, 1) &&
+           VerifyField<bitdrift_public::fbs::issue_reporting::v1::Timestamp>(verifier, VT_OCCURRED_AT, 8) &&
+           VerifyField<uint8_t>(verifier, VT_DETAILS_TYPE, 1) &&
+           VerifyOffset(verifier, VT_DETAILS) &&
+           VerifyCrashInfoDetails(verifier, details(), details_type()) &&
+           VerifyOffset(verifier, VT_THREAD_DETAILS) &&
+           verifier.VerifyTable(thread_details()) &&
+           verifier.EndTable();
+  }
+};
+
+template<> inline const bitdrift_public::fbs::issue_reporting::v1::AppleCrashDetails *CrashInfo::details_as<bitdrift_public::fbs::issue_reporting::v1::AppleCrashDetails>() const {
+  return details_as_AppleCrashDetails();
+}
+
+struct CrashInfoBuilder {
+  typedef CrashInfo Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_reporter_scope(bitdrift_public::fbs::issue_reporting::v1::CrashReporterScope reporter_scope) {
+    fbb_.AddElement<int8_t>(CrashInfo::VT_REPORTER_SCOPE, static_cast<int8_t>(reporter_scope), 0);
+  }
+  void add_reporter(bitdrift_public::fbs::issue_reporting::v1::CrashReporter reporter) {
+    fbb_.AddElement<int8_t>(CrashInfo::VT_REPORTER, static_cast<int8_t>(reporter), 0);
+  }
+  void add_occurred_at(const bitdrift_public::fbs::issue_reporting::v1::Timestamp *occurred_at) {
+    fbb_.AddStruct(CrashInfo::VT_OCCURRED_AT, occurred_at);
+  }
+  void add_details_type(bitdrift_public::fbs::issue_reporting::v1::CrashInfoDetails details_type) {
+    fbb_.AddElement<uint8_t>(CrashInfo::VT_DETAILS_TYPE, static_cast<uint8_t>(details_type), 0);
+  }
+  void add_details(::flatbuffers::Offset<void> details) {
+    fbb_.AddOffset(CrashInfo::VT_DETAILS, details);
+  }
+  void add_thread_details(::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ThreadDetails> thread_details) {
+    fbb_.AddOffset(CrashInfo::VT_THREAD_DETAILS, thread_details);
+  }
+  explicit CrashInfoBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<CrashInfo> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<CrashInfo>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<CrashInfo> CreateCrashInfo(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    bitdrift_public::fbs::issue_reporting::v1::CrashReporterScope reporter_scope = bitdrift_public::fbs::issue_reporting::v1::CrashReporterScope_Unknown,
+    bitdrift_public::fbs::issue_reporting::v1::CrashReporter reporter = bitdrift_public::fbs::issue_reporting::v1::CrashReporter_Unknown,
+    const bitdrift_public::fbs::issue_reporting::v1::Timestamp *occurred_at = nullptr,
+    bitdrift_public::fbs::issue_reporting::v1::CrashInfoDetails details_type = bitdrift_public::fbs::issue_reporting::v1::CrashInfoDetails_NONE,
+    ::flatbuffers::Offset<void> details = 0,
+    ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ThreadDetails> thread_details = 0) {
+  CrashInfoBuilder builder_(_fbb);
+  builder_.add_thread_details(thread_details);
+  builder_.add_details(details);
+  builder_.add_occurred_at(occurred_at);
+  builder_.add_details_type(details_type);
+  builder_.add_reporter(reporter);
+  builder_.add_reporter_scope(reporter_scope);
+  return builder_.Finish();
+}
+
 struct BinaryImage FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef BinaryImageBuilder Builder;
   static const ::flatbuffers::TypeTable *MiniReflectTypeTable() {
@@ -2310,7 +3007,8 @@ struct Report FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_BINARY_IMAGES = 16,
     VT_FIELDS = 18,
     VT_FEATURE_FLAGS = 20,
-    VT_PROCESSING_RESULT = 22
+    VT_PROCESSING_RESULT = 22,
+    VT_CRASH_INFO = 24
   };
   const bitdrift_public::fbs::issue_reporting::v1::SDKInfo *sdk() const {
     return GetPointer<const bitdrift_public::fbs::issue_reporting::v1::SDKInfo *>(VT_SDK);
@@ -2342,6 +3040,9 @@ struct Report FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   const bitdrift_public::fbs::issue_reporting::v1::ProcessingResult *processing_result() const {
     return GetPointer<const bitdrift_public::fbs::issue_reporting::v1::ProcessingResult *>(VT_PROCESSING_RESULT);
   }
+  const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::CrashInfo>> *crash_info() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::CrashInfo>> *>(VT_CRASH_INFO);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_SDK) &&
@@ -2367,6 +3068,9 @@ struct Report FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            verifier.VerifyVectorOfTables(feature_flags()) &&
            VerifyOffset(verifier, VT_PROCESSING_RESULT) &&
            verifier.VerifyTable(processing_result()) &&
+           VerifyOffset(verifier, VT_CRASH_INFO) &&
+           verifier.VerifyVector(crash_info()) &&
+           verifier.VerifyVectorOfTables(crash_info()) &&
            verifier.EndTable();
   }
 };
@@ -2405,6 +3109,9 @@ struct ReportBuilder {
   void add_processing_result(::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessingResult> processing_result) {
     fbb_.AddOffset(Report::VT_PROCESSING_RESULT, processing_result);
   }
+  void add_crash_info(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::CrashInfo>>> crash_info) {
+    fbb_.AddOffset(Report::VT_CRASH_INFO, crash_info);
+  }
   explicit ReportBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2427,8 +3134,10 @@ inline ::flatbuffers::Offset<Report> CreateReport(
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::BinaryImage>>> binary_images = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>> fields = 0,
     ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>>> feature_flags = 0,
-    ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessingResult> processing_result = 0) {
+    ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessingResult> processing_result = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::CrashInfo>>> crash_info = 0) {
   ReportBuilder builder_(_fbb);
+  builder_.add_crash_info(crash_info);
   builder_.add_processing_result(processing_result);
   builder_.add_feature_flags(feature_flags);
   builder_.add_fields(fields);
@@ -2453,11 +3162,13 @@ inline ::flatbuffers::Offset<Report> CreateReportDirect(
     const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::BinaryImage>> *binary_images = nullptr,
     const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>> *fields = nullptr,
     const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>> *feature_flags = nullptr,
-    ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessingResult> processing_result = 0) {
+    ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessingResult> processing_result = 0,
+    const std::vector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::CrashInfo>> *crash_info = nullptr) {
   auto errors__ = errors ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::Error>>(*errors) : 0;
   auto binary_images__ = binary_images ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::BinaryImage>>(*binary_images) : 0;
   auto fields__ = fields ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::common::v1::Field>>(*fields) : 0;
   auto feature_flags__ = feature_flags ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::FeatureFlag>>(*feature_flags) : 0;
+  auto crash_info__ = crash_info ? _fbb.CreateVector<::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::CrashInfo>>(*crash_info) : 0;
   return bitdrift_public::fbs::issue_reporting::v1::CreateReport(
       _fbb,
       sdk,
@@ -2469,7 +3180,33 @@ inline ::flatbuffers::Offset<Report> CreateReportDirect(
       binary_images__,
       fields__,
       feature_flags__,
-      processing_result);
+      processing_result,
+      crash_info__);
+}
+
+inline bool VerifyCrashInfoDetails(::flatbuffers::Verifier &verifier, const void *obj, CrashInfoDetails type) {
+  switch (type) {
+    case CrashInfoDetails_NONE: {
+      return true;
+    }
+    case CrashInfoDetails_AppleCrashDetails: {
+      auto ptr = reinterpret_cast<const bitdrift_public::fbs::issue_reporting::v1::AppleCrashDetails *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    default: return true;
+  }
+}
+
+inline bool VerifyCrashInfoDetailsVector(::flatbuffers::Verifier &verifier, const ::flatbuffers::Vector<::flatbuffers::Offset<void>> *values, const ::flatbuffers::Vector<uint8_t> *types) {
+  if (!values || !types) return !values && !types;
+  if (values->size() != types->size()) return false;
+  for (::flatbuffers::uoffset_t i = 0; i < values->size(); ++i) {
+    if (!VerifyCrashInfoDetails(
+        verifier,  values->Get(i), types->GetEnum<CrashInfoDetails>(i))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 inline const ::flatbuffers::TypeTable *ReportTypeTypeTable() {
@@ -2587,6 +3324,52 @@ inline const ::flatbuffers::TypeTable *ErrorRelationTypeTable() {
   };
   static const ::flatbuffers::TypeTable tt = {
     ::flatbuffers::ST_ENUM, 1, type_codes, type_refs, nullptr, values, names
+  };
+  return &tt;
+}
+
+inline const ::flatbuffers::TypeTable *CrashReporterScopeTypeTable() {
+  static const ::flatbuffers::TypeCode type_codes[] = {
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 }
+  };
+  static const ::flatbuffers::TypeFunction type_refs[] = {
+    bitdrift_public::fbs::issue_reporting::v1::CrashReporterScopeTypeTable
+  };
+  static const char * const names[] = {
+    "Unknown",
+    "InProcess",
+    "OutOfProcess"
+  };
+  static const ::flatbuffers::TypeTable tt = {
+    ::flatbuffers::ST_ENUM, 3, type_codes, type_refs, nullptr, nullptr, names
+  };
+  return &tt;
+}
+
+inline const ::flatbuffers::TypeTable *CrashReporterTypeTable() {
+  static const ::flatbuffers::TypeCode type_codes[] = {
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 }
+  };
+  static const ::flatbuffers::TypeFunction type_refs[] = {
+    bitdrift_public::fbs::issue_reporting::v1::CrashReporterTypeTable
+  };
+  static const char * const names[] = {
+    "Unknown",
+    "AppleMetricKit",
+    "AppleKSCrash",
+    "AppleBitdriftCrashReporter",
+    "AndroidUncaughtExceptionHandler",
+    "AndroidApplicationExitInfo"
+  };
+  static const ::flatbuffers::TypeTable tt = {
+    ::flatbuffers::ST_ENUM, 6, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }
@@ -2723,6 +3506,24 @@ inline const ::flatbuffers::TypeTable *FrameStatusTypeTable() {
   };
   static const ::flatbuffers::TypeTable tt = {
     ::flatbuffers::ST_ENUM, 5, type_codes, type_refs, nullptr, nullptr, names
+  };
+  return &tt;
+}
+
+inline const ::flatbuffers::TypeTable *CrashInfoDetailsTypeTable() {
+  static const ::flatbuffers::TypeCode type_codes[] = {
+    { ::flatbuffers::ET_SEQUENCE, 0, -1 },
+    { ::flatbuffers::ET_SEQUENCE, 0, 0 }
+  };
+  static const ::flatbuffers::TypeFunction type_refs[] = {
+    bitdrift_public::fbs::issue_reporting::v1::AppleCrashDetailsTypeTable
+  };
+  static const char * const names[] = {
+    "NONE",
+    "AppleCrashDetails"
+  };
+  static const ::flatbuffers::TypeTable tt = {
+    ::flatbuffers::ST_UNION, 2, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }
@@ -3085,6 +3886,144 @@ inline const ::flatbuffers::TypeTable *ErrorTypeTable() {
   return &tt;
 }
 
+inline const ::flatbuffers::TypeTable *NSExceptionTypeTable() {
+  static const ::flatbuffers::TypeCode type_codes[] = {
+    { ::flatbuffers::ET_STRING, 0, -1 },
+    { ::flatbuffers::ET_STRING, 0, -1 },
+    { ::flatbuffers::ET_SEQUENCE, 1, 0 }
+  };
+  static const ::flatbuffers::TypeFunction type_refs[] = {
+    bitdrift_public::fbs::common::v1::FieldTypeTable
+  };
+  static const char * const names[] = {
+    "name",
+    "reason",
+    "user_info"
+  };
+  static const ::flatbuffers::TypeTable tt = {
+    ::flatbuffers::ST_TABLE, 3, type_codes, type_refs, nullptr, nullptr, names
+  };
+  return &tt;
+}
+
+inline const ::flatbuffers::TypeTable *MachExceptionTypeTable() {
+  static const ::flatbuffers::TypeCode type_codes[] = {
+    { ::flatbuffers::ET_UINT, 0, -1 },
+    { ::flatbuffers::ET_ULONG, 0, -1 },
+    { ::flatbuffers::ET_ULONG, 0, -1 }
+  };
+  static const char * const names[] = {
+    "type",
+    "code",
+    "subcode"
+  };
+  static const ::flatbuffers::TypeTable tt = {
+    ::flatbuffers::ST_TABLE, 3, type_codes, nullptr, nullptr, nullptr, names
+  };
+  return &tt;
+}
+
+inline const ::flatbuffers::TypeTable *PosixSignalTypeTable() {
+  static const ::flatbuffers::TypeCode type_codes[] = {
+    { ::flatbuffers::ET_INT, 0, -1 },
+    { ::flatbuffers::ET_INT, 0, -1 },
+    { ::flatbuffers::ET_INT, 0, -1 },
+    { ::flatbuffers::ET_BOOL, 0, -1 },
+    { ::flatbuffers::ET_ULONG, 0, -1 }
+  };
+  static const char * const names[] = {
+    "number",
+    "code",
+    "errno",
+    "has_fault_address",
+    "fault_address"
+  };
+  static const ::flatbuffers::TypeTable tt = {
+    ::flatbuffers::ST_TABLE, 5, type_codes, nullptr, nullptr, nullptr, names
+  };
+  return &tt;
+}
+
+inline const ::flatbuffers::TypeTable *AppleTerminationTypeTable() {
+  static const ::flatbuffers::TypeCode type_codes[] = {
+    { ::flatbuffers::ET_STRING, 0, -1 },
+    { ::flatbuffers::ET_STRING, 0, -1 },
+    { ::flatbuffers::ET_STRING, 0, -1 },
+    { ::flatbuffers::ET_STRING, 0, -1 },
+    { ::flatbuffers::ET_STRING, 0, -1 },
+    { ::flatbuffers::ET_STRING, 0, -1 },
+    { ::flatbuffers::ET_STRING, 0, -1 }
+  };
+  static const char * const names[] = {
+    "domain",
+    "code",
+    "explanation",
+    "process_visibility",
+    "process_state",
+    "watchdog_event",
+    "watchdog_visibility"
+  };
+  static const ::flatbuffers::TypeTable tt = {
+    ::flatbuffers::ST_TABLE, 7, type_codes, nullptr, nullptr, nullptr, names
+  };
+  return &tt;
+}
+
+inline const ::flatbuffers::TypeTable *AppleCrashDetailsTypeTable() {
+  static const ::flatbuffers::TypeCode type_codes[] = {
+    { ::flatbuffers::ET_SEQUENCE, 0, 0 },
+    { ::flatbuffers::ET_SEQUENCE, 0, 1 },
+    { ::flatbuffers::ET_SEQUENCE, 0, 2 },
+    { ::flatbuffers::ET_SEQUENCE, 0, 3 }
+  };
+  static const ::flatbuffers::TypeFunction type_refs[] = {
+    bitdrift_public::fbs::issue_reporting::v1::NSExceptionTypeTable,
+    bitdrift_public::fbs::issue_reporting::v1::MachExceptionTypeTable,
+    bitdrift_public::fbs::issue_reporting::v1::PosixSignalTypeTable,
+    bitdrift_public::fbs::issue_reporting::v1::AppleTerminationTypeTable
+  };
+  static const char * const names[] = {
+    "nsexception",
+    "mach_exception",
+    "posix_signal",
+    "termination"
+  };
+  static const ::flatbuffers::TypeTable tt = {
+    ::flatbuffers::ST_TABLE, 4, type_codes, type_refs, nullptr, nullptr, names
+  };
+  return &tt;
+}
+
+inline const ::flatbuffers::TypeTable *CrashInfoTypeTable() {
+  static const ::flatbuffers::TypeCode type_codes[] = {
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 1 },
+    { ::flatbuffers::ET_SEQUENCE, 0, 2 },
+    { ::flatbuffers::ET_UTYPE, 0, 3 },
+    { ::flatbuffers::ET_SEQUENCE, 0, 3 },
+    { ::flatbuffers::ET_SEQUENCE, 0, 4 }
+  };
+  static const ::flatbuffers::TypeFunction type_refs[] = {
+    bitdrift_public::fbs::issue_reporting::v1::CrashReporterScopeTypeTable,
+    bitdrift_public::fbs::issue_reporting::v1::CrashReporterTypeTable,
+    bitdrift_public::fbs::issue_reporting::v1::TimestampTypeTable,
+    bitdrift_public::fbs::issue_reporting::v1::CrashInfoDetailsTypeTable,
+    bitdrift_public::fbs::issue_reporting::v1::ThreadDetailsTypeTable
+  };
+  static const char * const names[] = {
+    "reporter_scope",
+    "reporter",
+    "occurred_at",
+    "details_type",
+    "details",
+    "thread_details"
+  };
+  static const ::flatbuffers::TypeTable tt = {
+    ::flatbuffers::ST_TABLE, 6, type_codes, type_refs, nullptr, nullptr, names
+  };
+  return &tt;
+}
+
 inline const ::flatbuffers::TypeTable *BinaryImageTypeTable() {
   static const ::flatbuffers::TypeCode type_codes[] = {
     { ::flatbuffers::ET_STRING, 0, -1 },
@@ -3161,7 +4100,8 @@ inline const ::flatbuffers::TypeTable *ReportTypeTable() {
     { ::flatbuffers::ET_SEQUENCE, 1, 6 },
     { ::flatbuffers::ET_SEQUENCE, 1, 7 },
     { ::flatbuffers::ET_SEQUENCE, 1, 8 },
-    { ::flatbuffers::ET_SEQUENCE, 0, 9 }
+    { ::flatbuffers::ET_SEQUENCE, 0, 9 },
+    { ::flatbuffers::ET_SEQUENCE, 1, 10 }
   };
   static const ::flatbuffers::TypeFunction type_refs[] = {
     bitdrift_public::fbs::issue_reporting::v1::SDKInfoTypeTable,
@@ -3173,7 +4113,8 @@ inline const ::flatbuffers::TypeTable *ReportTypeTable() {
     bitdrift_public::fbs::issue_reporting::v1::BinaryImageTypeTable,
     bitdrift_public::fbs::common::v1::FieldTypeTable,
     bitdrift_public::fbs::issue_reporting::v1::FeatureFlagTypeTable,
-    bitdrift_public::fbs::issue_reporting::v1::ProcessingResultTypeTable
+    bitdrift_public::fbs::issue_reporting::v1::ProcessingResultTypeTable,
+    bitdrift_public::fbs::issue_reporting::v1::CrashInfoTypeTable
   };
   static const char * const names[] = {
     "sdk",
@@ -3185,10 +4126,11 @@ inline const ::flatbuffers::TypeTable *ReportTypeTable() {
     "binary_images",
     "fields",
     "feature_flags",
-    "processing_result"
+    "processing_result",
+    "crash_info"
   };
   static const ::flatbuffers::TypeTable tt = {
-    ::flatbuffers::ST_TABLE, 10, type_codes, type_refs, nullptr, nullptr, names
+    ::flatbuffers::ST_TABLE, 11, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }
