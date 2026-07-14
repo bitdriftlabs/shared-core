@@ -610,11 +610,10 @@ async fn updates_workflow_engine_in_response_to_config_update() {
   let b = state("B");
   a = a.declare_transition(&b, rule!(message_equals("foo")));
 
-  let config_update2 = setup.make_config_update(
-    WorkflowsConfiguration::new_with_workflow_configurations_for_test(vec![
-      WorkflowBuilder::new("1", &[&a, &b]).make_config(),
-    ]),
-  );
+  let config_update2 =
+    setup.make_config_update(WorkflowsConfiguration::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("1", &[&a, &b]).make_config()],
+    ));
   let task = std::thread::spawn(move || {
     // Simulate config update with no workflows.
     assert_ok!(config_update_tx_clone.blocking_send(config_update1));
