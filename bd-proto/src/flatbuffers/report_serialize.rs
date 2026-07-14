@@ -462,7 +462,7 @@ impl Serialize for PosixSignal<'_> {
     let mut s = serializer.serialize_struct("PosixSignal", 5)?;
     s.serialize_field("number", &self.number())?;
     s.serialize_field("code", &self.code())?;
-    s.serialize_field("errno", &self.errno())?;
+    s.serialize_field("errno_value", &self.errno_value())?;
     s.serialize_field("has_fault_address", &self.has_fault_address())?;
     s.serialize_field("fault_address", &self.fault_address())?;
     s.end()

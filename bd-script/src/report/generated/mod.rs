@@ -1465,7 +1465,7 @@ impl From<PosixSignal<'_>> for ScriptValue {
   fn from(value: PosixSignal<'_>) -> Self {
     let script_values: Vec<(&str, Self)> = vec![
       ("code", value.code().into()),
-      ("errno", value.errno().into()),
+      ("errno_value", value.errno_value().into()),
       ("fault_address", value.fault_address().into()),
       ("has_fault_address", value.has_fault_address().into()),
       ("number", value.number().into()),
@@ -1493,7 +1493,7 @@ impl Scriptable for PosixSignal<'_> {
 
     match base.as_str() {
       "code" => self.code().resolve(&path[1 ..]),
-      "errno" => self.errno().resolve(&path[1 ..]),
+      "errno_value" => self.errno_value().resolve(&path[1 ..]),
       "fault_address" => self.fault_address().resolve(&path[1 ..]),
       "has_fault_address" => self.has_fault_address().resolve(&path[1 ..]),
       "number" => self.number().resolve(&path[1 ..]),
@@ -1507,7 +1507,7 @@ impl Scriptable for PosixSignal<'_> {
     Kind::object(
       Collection::empty()
         .with_known("code", Kind::integer())
-        .with_known("errno", Kind::integer())
+        .with_known("errno_value", Kind::integer())
         .with_known("fault_address", Kind::integer())
         .with_known("has_fault_address", Kind::boolean())
         .with_known("number", Kind::integer()),

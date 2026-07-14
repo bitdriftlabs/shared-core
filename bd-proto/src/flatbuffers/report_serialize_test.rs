@@ -440,15 +440,14 @@ fn serialize_crash_info() {
     &PosixSignalArgs {
       number: 11,
       code: 3,
-      errno: 4,
+      errno_value: 4,
       has_fault_address: true,
       fault_address: 0x1234,
     },
   );
   let termination_domain = builder.create_string("10");
   let termination_code = builder.create_string("0x8BADF00D");
-  let termination_explanation =
-    builder.create_string("Failed to terminate gracefully after 5.0s");
+  let termination_explanation = builder.create_string("Failed to terminate gracefully after 5.0s");
   let termination_process_visibility = builder.create_string("Unknown");
   let termination_process_state = builder.create_string("Running");
   let termination_watchdog_event = builder.create_string("process-exit");
@@ -526,7 +525,7 @@ fn serialize_crash_info() {
         "posix_signal": {
           "number": 11,
           "code": 3,
-          "errno": 4,
+          "errno_value": 4,
           "has_fault_address": true,
           "fault_address": 4660,
         },

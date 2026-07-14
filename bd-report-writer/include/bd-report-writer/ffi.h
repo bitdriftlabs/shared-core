@@ -103,7 +103,7 @@ typedef struct BDMachException {
 typedef struct BDPosixSignal {
   int32_t number;
   int32_t code;
-  int32_t errno_;
+  int32_t errno_value;
   bool has_fault_address;
   uint64_t fault_address;
 } BDPosixSignal;

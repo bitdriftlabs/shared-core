@@ -5276,7 +5276,7 @@ impl<'a> flatbuffers::Follow<'a> for PosixSignal<'a> {
 impl<'a> PosixSignal<'a> {
   pub const VT_NUMBER: flatbuffers::VOffsetT = 4;
   pub const VT_CODE: flatbuffers::VOffsetT = 6;
-  pub const VT_ERRNO: flatbuffers::VOffsetT = 8;
+  pub const VT_ERRNO_VALUE: flatbuffers::VOffsetT = 8;
   pub const VT_HAS_FAULT_ADDRESS: flatbuffers::VOffsetT = 10;
   pub const VT_FAULT_ADDRESS: flatbuffers::VOffsetT = 12;
 
@@ -5291,7 +5291,7 @@ impl<'a> PosixSignal<'a> {
   ) -> flatbuffers::WIPOffset<PosixSignal<'bldr>> {
     let mut builder = PosixSignalBuilder::new(_fbb);
     builder.add_fault_address(args.fault_address);
-    builder.add_errno(args.errno);
+    builder.add_errno_value(args.errno_value);
     builder.add_code(args.code);
     builder.add_number(args.number);
     builder.add_has_fault_address(args.has_fault_address);
@@ -5301,13 +5301,13 @@ impl<'a> PosixSignal<'a> {
   pub fn unpack(&self) -> PosixSignalT {
     let number = self.number();
     let code = self.code();
-    let errno = self.errno();
+    let errno_value = self.errno_value();
     let has_fault_address = self.has_fault_address();
     let fault_address = self.fault_address();
     PosixSignalT {
       number,
       code,
-      errno,
+      errno_value,
       has_fault_address,
       fault_address,
     }
@@ -5328,11 +5328,11 @@ impl<'a> PosixSignal<'a> {
     unsafe { self._tab.get::<i32>(PosixSignal::VT_CODE, Some(0)).unwrap()}
   }
   #[inline]
-  pub fn errno(&self) -> i32 {
+  pub fn errno_value(&self) -> i32 {
     // Safety:
     // Created from valid Table for this object
     // which contains a valid value in this slot
-    unsafe { self._tab.get::<i32>(PosixSignal::VT_ERRNO, Some(0)).unwrap()}
+    unsafe { self._tab.get::<i32>(PosixSignal::VT_ERRNO_VALUE, Some(0)).unwrap()}
   }
   #[inline]
   pub fn has_fault_address(&self) -> bool {
@@ -5359,7 +5359,7 @@ impl flatbuffers::Verifiable for PosixSignal<'_> {
     v.visit_table(pos)?
      .visit_field::<i32>("number", Self::VT_NUMBER, false)?
      .visit_field::<i32>("code", Self::VT_CODE, false)?
-     .visit_field::<i32>("errno", Self::VT_ERRNO, false)?
+     .visit_field::<i32>("errno_value", Self::VT_ERRNO_VALUE, false)?
      .visit_field::<bool>("has_fault_address", Self::VT_HAS_FAULT_ADDRESS, false)?
      .visit_field::<u64>("fault_address", Self::VT_FAULT_ADDRESS, false)?
      .finish();
@@ -5369,7 +5369,7 @@ impl flatbuffers::Verifiable for PosixSignal<'_> {
 pub struct PosixSignalArgs {
     pub number: i32,
     pub code: i32,
-    pub errno: i32,
+    pub errno_value: i32,
     pub has_fault_address: bool,
     pub fault_address: u64,
 }
@@ -5379,7 +5379,7 @@ impl<'a> Default for PosixSignalArgs {
     PosixSignalArgs {
       number: 0,
       code: 0,
-      errno: 0,
+      errno_value: 0,
       has_fault_address: false,
       fault_address: 0,
     }
@@ -5400,8 +5400,8 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> PosixSignalBuilder<'a, 'b, A> {
     self.fbb_.push_slot::<i32>(PosixSignal::VT_CODE, code, 0);
   }
   #[inline]
-  pub fn add_errno(&mut self, errno: i32) {
-    self.fbb_.push_slot::<i32>(PosixSignal::VT_ERRNO, errno, 0);
+  pub fn add_errno_value(&mut self, errno_value: i32) {
+    self.fbb_.push_slot::<i32>(PosixSignal::VT_ERRNO_VALUE, errno_value, 0);
   }
   #[inline]
   pub fn add_has_fault_address(&mut self, has_fault_address: bool) {
@@ -5431,7 +5431,7 @@ impl core::fmt::Debug for PosixSignal<'_> {
     let mut ds = f.debug_struct("PosixSignal");
       ds.field("number", &self.number());
       ds.field("code", &self.code());
-      ds.field("errno", &self.errno());
+      ds.field("errno_value", &self.errno_value());
       ds.field("has_fault_address", &self.has_fault_address());
       ds.field("fault_address", &self.fault_address());
       ds.finish()
@@ -5442,7 +5442,7 @@ impl core::fmt::Debug for PosixSignal<'_> {
 pub struct PosixSignalT {
   pub number: i32,
   pub code: i32,
-  pub errno: i32,
+  pub errno_value: i32,
   pub has_fault_address: bool,
   pub fault_address: u64,
 }
@@ -5451,7 +5451,7 @@ impl Default for PosixSignalT {
     Self {
       number: 0,
       code: 0,
-      errno: 0,
+      errno_value: 0,
       has_fault_address: false,
       fault_address: 0,
     }
@@ -5464,13 +5464,13 @@ impl PosixSignalT {
   ) -> flatbuffers::WIPOffset<PosixSignal<'b>> {
     let number = self.number;
     let code = self.code;
-    let errno = self.errno;
+    let errno_value = self.errno_value;
     let has_fault_address = self.has_fault_address;
     let fault_address = self.fault_address;
     PosixSignal::create(_fbb, &PosixSignalArgs{
       number,
       code,
-      errno,
+      errno_value,
       has_fault_address,
       fault_address,
     })

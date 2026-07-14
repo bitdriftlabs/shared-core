@@ -2323,7 +2323,7 @@ struct PosixSignal FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_NUMBER = 4,
     VT_CODE = 6,
-    VT_ERRNO = 8,
+    VT_ERRNO_VALUE = 8,
     VT_HAS_FAULT_ADDRESS = 10,
     VT_FAULT_ADDRESS = 12
   };
@@ -2333,8 +2333,8 @@ struct PosixSignal FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   int32_t code() const {
     return GetField<int32_t>(VT_CODE, 0);
   }
-  int32_t errno() const {
-    return GetField<int32_t>(VT_ERRNO, 0);
+  int32_t errno_value() const {
+    return GetField<int32_t>(VT_ERRNO_VALUE, 0);
   }
   bool has_fault_address() const {
     return GetField<uint8_t>(VT_HAS_FAULT_ADDRESS, 0) != 0;
@@ -2346,7 +2346,7 @@ struct PosixSignal FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     return VerifyTableStart(verifier) &&
            VerifyField<int32_t>(verifier, VT_NUMBER, 4) &&
            VerifyField<int32_t>(verifier, VT_CODE, 4) &&
-           VerifyField<int32_t>(verifier, VT_ERRNO, 4) &&
+           VerifyField<int32_t>(verifier, VT_ERRNO_VALUE, 4) &&
            VerifyField<uint8_t>(verifier, VT_HAS_FAULT_ADDRESS, 1) &&
            VerifyField<uint64_t>(verifier, VT_FAULT_ADDRESS, 8) &&
            verifier.EndTable();
@@ -2363,8 +2363,8 @@ struct PosixSignalBuilder {
   void add_code(int32_t code) {
     fbb_.AddElement<int32_t>(PosixSignal::VT_CODE, code, 0);
   }
-  void add_errno(int32_t errno) {
-    fbb_.AddElement<int32_t>(PosixSignal::VT_ERRNO, errno, 0);
+  void add_errno_value(int32_t errno_value) {
+    fbb_.AddElement<int32_t>(PosixSignal::VT_ERRNO_VALUE, errno_value, 0);
   }
   void add_has_fault_address(bool has_fault_address) {
     fbb_.AddElement<uint8_t>(PosixSignal::VT_HAS_FAULT_ADDRESS, static_cast<uint8_t>(has_fault_address), 0);
@@ -2387,12 +2387,12 @@ inline ::flatbuffers::Offset<PosixSignal> CreatePosixSignal(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     int32_t number = 0,
     int32_t code = 0,
-    int32_t errno = 0,
+    int32_t errno_value = 0,
     bool has_fault_address = false,
     uint64_t fault_address = 0) {
   PosixSignalBuilder builder_(_fbb);
   builder_.add_fault_address(fault_address);
-  builder_.add_errno(errno);
+  builder_.add_errno_value(errno_value);
   builder_.add_code(code);
   builder_.add_number(number);
   builder_.add_has_fault_address(has_fault_address);
@@ -3934,7 +3934,7 @@ inline const ::flatbuffers::TypeTable *PosixSignalTypeTable() {
   static const char * const names[] = {
     "number",
     "code",
-    "errno",
+    "errno_value",
     "has_fault_address",
     "fault_address"
   };

@@ -248,7 +248,7 @@ fn current_threads_crash_info_test() {
   let posix_signal = details.posix_signal().unwrap();
   assert_eq!(11, posix_signal.number());
   assert_eq!(3, posix_signal.code());
-  assert_eq!(4, posix_signal.errno());
+  assert_eq!(4, posix_signal.errno_value());
   assert!(posix_signal.has_fault_address());
   assert_eq!(0x1234, posix_signal.fault_address());
 

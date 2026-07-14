@@ -472,7 +472,7 @@
         "code" : {
                 "type" : "integer", "minimum" : -2147483648, "maximum" : 2147483647
               },
-        "errno" : {
+        "errno_value" : {
                 "type" : "integer", "minimum" : -2147483648, "maximum" : 2147483647
               },
         "has_fault_address" : {

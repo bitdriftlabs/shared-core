@@ -98,7 +98,7 @@ pub struct BDMachException {
 pub struct BDPosixSignal {
   number: i32,
   code: i32,
-  errno_: i32,
+  errno_value: i32,
   has_fault_address: bool,
   fault_address: u64,
 }
@@ -282,7 +282,11 @@ extern "C-unwind" fn bdrw_get_completed_buffer(
   let crash_info = if processor.crash_info.is_empty() {
     None
   } else {
-    Some(processor.builder.create_vector(processor.crash_info.as_slice()))
+    Some(
+      processor
+        .builder
+        .create_vector(processor.crash_info.as_slice()),
+    )
   };
   let report = Report::create(
     &mut processor.builder,
@@ -717,7 +721,9 @@ fn build_current_thread_details<'a>(
     return None;
   }
 
-  let threads = processor.builder.create_vector(processor.threads.as_slice());
+  let threads = processor
+    .builder
+    .create_vector(processor.threads.as_slice());
   Some(ThreadDetails::create(
     &mut processor.builder,
     &ThreadDetailsArgs {
@@ -759,7 +765,7 @@ fn build_apple_crash_details<'a>(
       &PosixSignalArgs {
         number: payload.posix_signal.number,
         code: payload.posix_signal.code,
-        errno: payload.posix_signal.errno_,
+        errno_value: payload.posix_signal.errno_value,
         has_fault_address: payload.posix_signal.has_fault_address,
         fault_address: payload.posix_signal.fault_address,
       },
