@@ -549,7 +549,7 @@ impl Serialize for CrashInfo<'_> {
   where
     S: Serializer,
   {
-    let mut s = serializer.serialize_struct("CrashInfo", 5)?;
+    let mut s = serializer.serialize_struct("CrashInfo", 6)?;
     s.serialize_field("reporter_scope", &self.reporter_scope())?;
     s.serialize_field("reporter", &self.reporter())?;
     if let Some(f) = self.occurred_at() {

@@ -592,13 +592,11 @@ extern "C-unwind" fn bdrw_add_apple_crash_info_with_current_threads(
   payload_ptr: *const BDAppleCrashInfoPayload,
 ) -> bool {
   let processor = try_into_processor!(handle, false);
-  let payload = match unsafe { payload_ptr.as_ref() } {
-    Some(payload) => payload,
-    None => return false,
+  let Some(payload) = (unsafe { payload_ptr.as_ref() }) else {
+    return false;
   };
-  let details = match build_apple_crash_details(&mut processor.builder, payload) {
-    Some(details) => details,
-    None => return false,
+  let Some(details) = build_apple_crash_details(&mut processor.builder, payload) else {
+    return false;
   };
   let thread_details = build_current_thread_details(processor);
   let occurred_at = Timestamp::new(occurred_at_seconds, occurred_at_nanos);
