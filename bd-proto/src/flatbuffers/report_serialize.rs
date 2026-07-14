@@ -19,12 +19,15 @@ serialize_enum!(Platform);
 serialize_enum!(Architecture);
 serialize_enum!(FrameType);
 serialize_enum!(ErrorRelation);
+serialize_enum!(CrashReporterScope);
+serialize_enum!(CrashReporter);
 serialize_enum!(PowerState);
 serialize_enum!(NetworkState);
 serialize_enum!(JavaScriptEngine);
 serialize_enum!(MemoryPressureLevel);
 serialize_enum!(Rotation);
 serialize_enum!(FrameStatus);
+serialize_enum!(CrashInfoDetails);
 
 impl Serialize for Timestamp {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -413,6 +416,167 @@ impl Serialize for Error<'_> {
   }
 }
 
+impl Serialize for NSException<'_> {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let mut s = serializer.serialize_struct("NSException", 3)?;
+    if let Some(f) = self.name() {
+      s.serialize_field("name", &f)?;
+    } else {
+      s.skip_field("name")?;
+    }
+    if let Some(f) = self.reason() {
+      s.serialize_field("reason", &f)?;
+    } else {
+      s.skip_field("reason")?;
+    }
+    if let Some(f) = self.user_info() {
+      s.serialize_field("user_info", &f)?;
+    } else {
+      s.skip_field("user_info")?;
+    }
+    s.end()
+  }
+}
+
+impl Serialize for MachException<'_> {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let mut s = serializer.serialize_struct("MachException", 3)?;
+    s.serialize_field("type", &self.type_())?;
+    s.serialize_field("code", &self.code())?;
+    s.serialize_field("subcode", &self.subcode())?;
+    s.end()
+  }
+}
+
+impl Serialize for PosixSignal<'_> {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let mut s = serializer.serialize_struct("PosixSignal", 5)?;
+    s.serialize_field("number", &self.number())?;
+    s.serialize_field("code", &self.code())?;
+    s.serialize_field("errno", &self.errno())?;
+    s.serialize_field("has_fault_address", &self.has_fault_address())?;
+    s.serialize_field("fault_address", &self.fault_address())?;
+    s.end()
+  }
+}
+
+impl Serialize for AppleTermination<'_> {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let mut s = serializer.serialize_struct("AppleTermination", 7)?;
+    if let Some(f) = self.domain() {
+      s.serialize_field("domain", &f)?;
+    } else {
+      s.skip_field("domain")?;
+    }
+    if let Some(f) = self.code() {
+      s.serialize_field("code", &f)?;
+    } else {
+      s.skip_field("code")?;
+    }
+    if let Some(f) = self.explanation() {
+      s.serialize_field("explanation", &f)?;
+    } else {
+      s.skip_field("explanation")?;
+    }
+    if let Some(f) = self.process_visibility() {
+      s.serialize_field("process_visibility", &f)?;
+    } else {
+      s.skip_field("process_visibility")?;
+    }
+    if let Some(f) = self.process_state() {
+      s.serialize_field("process_state", &f)?;
+    } else {
+      s.skip_field("process_state")?;
+    }
+    if let Some(f) = self.watchdog_event() {
+      s.serialize_field("watchdog_event", &f)?;
+    } else {
+      s.skip_field("watchdog_event")?;
+    }
+    if let Some(f) = self.watchdog_visibility() {
+      s.serialize_field("watchdog_visibility", &f)?;
+    } else {
+      s.skip_field("watchdog_visibility")?;
+    }
+    s.end()
+  }
+}
+
+impl Serialize for AppleCrashDetails<'_> {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let mut s = serializer.serialize_struct("AppleCrashDetails", 4)?;
+    if let Some(f) = self.nsexception() {
+      s.serialize_field("nsexception", &f)?;
+    } else {
+      s.skip_field("nsexception")?;
+    }
+    if let Some(f) = self.mach_exception() {
+      s.serialize_field("mach_exception", &f)?;
+    } else {
+      s.skip_field("mach_exception")?;
+    }
+    if let Some(f) = self.posix_signal() {
+      s.serialize_field("posix_signal", &f)?;
+    } else {
+      s.skip_field("posix_signal")?;
+    }
+    if let Some(f) = self.termination() {
+      s.serialize_field("termination", &f)?;
+    } else {
+      s.skip_field("termination")?;
+    }
+    s.end()
+  }
+}
+
+impl Serialize for CrashInfo<'_> {
+  fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+  where
+    S: Serializer,
+  {
+    let mut s = serializer.serialize_struct("CrashInfo", 5)?;
+    s.serialize_field("reporter_scope", &self.reporter_scope())?;
+    s.serialize_field("reporter", &self.reporter())?;
+    if let Some(f) = self.occurred_at() {
+      s.serialize_field("occurred_at", &f)?;
+    } else {
+      s.skip_field("occurred_at")?;
+    }
+    s.serialize_field("details_type", &self.details_type())?;
+    match self.details_type() {
+      CrashInfoDetails::AppleCrashDetails => {
+        if let Some(f) = self.details_as_apple_crash_details() {
+          s.serialize_field("details", &f)?;
+        } else {
+          s.skip_field("details")?;
+        }
+      },
+      _ => s.skip_field("details")?,
+    }
+    if let Some(f) = self.thread_details() {
+      s.serialize_field("thread_details", &f)?;
+    } else {
+      s.skip_field("thread_details")?;
+    }
+    s.end()
+  }
+}
+
 impl Serialize for BinaryImage<'_> {
   fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
   where
@@ -495,7 +659,7 @@ impl Serialize for Report<'_> {
   where
     S: Serializer,
   {
-    let mut s = serializer.serialize_struct("Report", 10)?;
+    let mut s = serializer.serialize_struct("Report", 11)?;
     if let Some(f) = self.sdk() {
       s.serialize_field("sdk", &f)?;
     } else {
@@ -541,6 +705,11 @@ impl Serialize for Report<'_> {
       s.serialize_field("processing_result", &f)?;
     } else {
       s.skip_field("processing_result")?;
+    }
+    if let Some(f) = self.crash_info() {
+      s.serialize_field("crash_info", &f)?;
+    } else {
+      s.skip_field("crash_info")?;
     }
     s.end()
   }

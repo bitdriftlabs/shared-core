@@ -411,7 +411,7 @@ fn serialize_report() {
     }),
     object
   );
-  assert_struct_size!(ReportArgs, 76);
+  assert_struct_size!(ReportArgs, 84);
 }
 
 #[test]

@@ -529,6 +529,196 @@ impl<'a> flatbuffers::Verifiable for ErrorRelation {
 
 impl flatbuffers::SimpleToVerifyInSlice for ErrorRelation {}
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MIN_CRASH_REPORTER_SCOPE: i8 = 0;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MAX_CRASH_REPORTER_SCOPE: i8 = 2;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+#[allow(non_camel_case_types)]
+pub const ENUM_VALUES_CRASH_REPORTER_SCOPE: [CrashReporterScope; 3] = [
+  CrashReporterScope::Unknown,
+  CrashReporterScope::InProcess,
+  CrashReporterScope::OutOfProcess,
+];
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[repr(transparent)]
+pub struct CrashReporterScope(pub i8);
+#[allow(non_upper_case_globals)]
+impl CrashReporterScope {
+  pub const Unknown: Self = Self(0);
+  pub const InProcess: Self = Self(1);
+  pub const OutOfProcess: Self = Self(2);
+
+  pub const ENUM_MIN: i8 = 0;
+  pub const ENUM_MAX: i8 = 2;
+  pub const ENUM_VALUES: &'static [Self] = &[
+    Self::Unknown,
+    Self::InProcess,
+    Self::OutOfProcess,
+  ];
+  /// Returns the variant's name or "" if unknown.
+  pub fn variant_name(self) -> Option<&'static str> {
+    match self {
+      Self::Unknown => Some("Unknown"),
+      Self::InProcess => Some("InProcess"),
+      Self::OutOfProcess => Some("OutOfProcess"),
+      _ => None,
+    }
+  }
+}
+impl core::fmt::Debug for CrashReporterScope {
+  fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    if let Some(name) = self.variant_name() {
+      f.write_str(name)
+    } else {
+      f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+    }
+  }
+}
+impl<'a> flatbuffers::Follow<'a> for CrashReporterScope {
+  type Inner = Self;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    let b = unsafe { flatbuffers::read_scalar_at::<i8>(buf, loc) };
+    Self(b)
+  }
+}
+
+impl flatbuffers::Push for CrashReporterScope {
+    type Output = CrashReporterScope;
+    #[inline]
+    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+        unsafe { flatbuffers::emplace_scalar::<i8>(dst, self.0); }
+    }
+}
+
+impl flatbuffers::EndianScalar for CrashReporterScope {
+  type Scalar = i8;
+  #[inline]
+  fn to_little_endian(self) -> i8 {
+    self.0.to_le()
+  }
+  #[inline]
+  #[allow(clippy::wrong_self_convention)]
+  fn from_little_endian(v: i8) -> Self {
+    let b = i8::from_le(v);
+    Self(b)
+  }
+}
+
+impl<'a> flatbuffers::Verifiable for CrashReporterScope {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    i8::run_verifier(v, pos)
+  }
+}
+
+impl flatbuffers::SimpleToVerifyInSlice for CrashReporterScope {}
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MIN_CRASH_REPORTER: i8 = 0;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MAX_CRASH_REPORTER: i8 = 5;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+#[allow(non_camel_case_types)]
+pub const ENUM_VALUES_CRASH_REPORTER: [CrashReporter; 6] = [
+  CrashReporter::Unknown,
+  CrashReporter::AppleMetricKit,
+  CrashReporter::AppleKSCrash,
+  CrashReporter::AppleBitdriftCrashReporter,
+  CrashReporter::AndroidUncaughtExceptionHandler,
+  CrashReporter::AndroidApplicationExitInfo,
+];
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[repr(transparent)]
+pub struct CrashReporter(pub i8);
+#[allow(non_upper_case_globals)]
+impl CrashReporter {
+  pub const Unknown: Self = Self(0);
+  pub const AppleMetricKit: Self = Self(1);
+  pub const AppleKSCrash: Self = Self(2);
+  pub const AppleBitdriftCrashReporter: Self = Self(3);
+  pub const AndroidUncaughtExceptionHandler: Self = Self(4);
+  pub const AndroidApplicationExitInfo: Self = Self(5);
+
+  pub const ENUM_MIN: i8 = 0;
+  pub const ENUM_MAX: i8 = 5;
+  pub const ENUM_VALUES: &'static [Self] = &[
+    Self::Unknown,
+    Self::AppleMetricKit,
+    Self::AppleKSCrash,
+    Self::AppleBitdriftCrashReporter,
+    Self::AndroidUncaughtExceptionHandler,
+    Self::AndroidApplicationExitInfo,
+  ];
+  /// Returns the variant's name or "" if unknown.
+  pub fn variant_name(self) -> Option<&'static str> {
+    match self {
+      Self::Unknown => Some("Unknown"),
+      Self::AppleMetricKit => Some("AppleMetricKit"),
+      Self::AppleKSCrash => Some("AppleKSCrash"),
+      Self::AppleBitdriftCrashReporter => Some("AppleBitdriftCrashReporter"),
+      Self::AndroidUncaughtExceptionHandler => Some("AndroidUncaughtExceptionHandler"),
+      Self::AndroidApplicationExitInfo => Some("AndroidApplicationExitInfo"),
+      _ => None,
+    }
+  }
+}
+impl core::fmt::Debug for CrashReporter {
+  fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    if let Some(name) = self.variant_name() {
+      f.write_str(name)
+    } else {
+      f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+    }
+  }
+}
+impl<'a> flatbuffers::Follow<'a> for CrashReporter {
+  type Inner = Self;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    let b = unsafe { flatbuffers::read_scalar_at::<i8>(buf, loc) };
+    Self(b)
+  }
+}
+
+impl flatbuffers::Push for CrashReporter {
+    type Output = CrashReporter;
+    #[inline]
+    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+        unsafe { flatbuffers::emplace_scalar::<i8>(dst, self.0); }
+    }
+}
+
+impl flatbuffers::EndianScalar for CrashReporter {
+  type Scalar = i8;
+  #[inline]
+  fn to_little_endian(self) -> i8 {
+    self.0.to_le()
+  }
+  #[inline]
+  #[allow(clippy::wrong_self_convention)]
+  fn from_little_endian(v: i8) -> Self {
+    let b = i8::from_le(v);
+    Self(b)
+  }
+}
+
+impl<'a> flatbuffers::Verifiable for CrashReporter {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    i8::run_verifier(v, pos)
+  }
+}
+
+impl flatbuffers::SimpleToVerifyInSlice for CrashReporter {}
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 pub const ENUM_MIN_POWER_STATE: i8 = 0;
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 pub const ENUM_MAX_POWER_STATE: i8 = 4;
@@ -1094,6 +1284,140 @@ impl<'a> flatbuffers::Verifiable for FrameStatus {
 }
 
 impl flatbuffers::SimpleToVerifyInSlice for FrameStatus {}
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MIN_CRASH_INFO_DETAILS: u8 = 0;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MAX_CRASH_INFO_DETAILS: u8 = 1;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+#[allow(non_camel_case_types)]
+pub const ENUM_VALUES_CRASH_INFO_DETAILS: [CrashInfoDetails; 2] = [
+  CrashInfoDetails::NONE,
+  CrashInfoDetails::AppleCrashDetails,
+];
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[repr(transparent)]
+pub struct CrashInfoDetails(pub u8);
+#[allow(non_upper_case_globals)]
+impl CrashInfoDetails {
+  pub const NONE: Self = Self(0);
+  pub const AppleCrashDetails: Self = Self(1);
+
+  pub const ENUM_MIN: u8 = 0;
+  pub const ENUM_MAX: u8 = 1;
+  pub const ENUM_VALUES: &'static [Self] = &[
+    Self::NONE,
+    Self::AppleCrashDetails,
+  ];
+  /// Returns the variant's name or "" if unknown.
+  pub fn variant_name(self) -> Option<&'static str> {
+    match self {
+      Self::NONE => Some("NONE"),
+      Self::AppleCrashDetails => Some("AppleCrashDetails"),
+      _ => None,
+    }
+  }
+}
+impl core::fmt::Debug for CrashInfoDetails {
+  fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    if let Some(name) = self.variant_name() {
+      f.write_str(name)
+    } else {
+      f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+    }
+  }
+}
+impl<'a> flatbuffers::Follow<'a> for CrashInfoDetails {
+  type Inner = Self;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    let b = unsafe { flatbuffers::read_scalar_at::<u8>(buf, loc) };
+    Self(b)
+  }
+}
+
+impl flatbuffers::Push for CrashInfoDetails {
+    type Output = CrashInfoDetails;
+    #[inline]
+    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+        unsafe { flatbuffers::emplace_scalar::<u8>(dst, self.0); }
+    }
+}
+
+impl flatbuffers::EndianScalar for CrashInfoDetails {
+  type Scalar = u8;
+  #[inline]
+  fn to_little_endian(self) -> u8 {
+    self.0.to_le()
+  }
+  #[inline]
+  #[allow(clippy::wrong_self_convention)]
+  fn from_little_endian(v: u8) -> Self {
+    let b = u8::from_le(v);
+    Self(b)
+  }
+}
+
+impl<'a> flatbuffers::Verifiable for CrashInfoDetails {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    u8::run_verifier(v, pos)
+  }
+}
+
+impl flatbuffers::SimpleToVerifyInSlice for CrashInfoDetails {}
+pub struct CrashInfoDetailsUnionTableOffset {}
+
+#[allow(clippy::upper_case_acronyms)]
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub enum CrashInfoDetailsT {
+  NONE,
+  AppleCrashDetails(Box<AppleCrashDetailsT>),
+}
+impl Default for CrashInfoDetailsT {
+  fn default() -> Self {
+    Self::NONE
+  }
+}
+impl CrashInfoDetailsT {
+  pub fn crash_info_details_type(&self) -> CrashInfoDetails {
+    match self {
+      Self::NONE => CrashInfoDetails::NONE,
+      Self::AppleCrashDetails(_) => CrashInfoDetails::AppleCrashDetails,
+    }
+  }
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(&self, fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>) -> Option<flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>> {
+    match self {
+      Self::NONE => None,
+      Self::AppleCrashDetails(v) => Some(v.pack(fbb).as_union_value()),
+    }
+  }
+  /// If the union variant matches, return the owned AppleCrashDetailsT, setting the union to NONE.
+  pub fn take_apple_crash_details(&mut self) -> Option<Box<AppleCrashDetailsT>> {
+    if let Self::AppleCrashDetails(_) = self {
+      let v = core::mem::replace(self, Self::NONE);
+      if let Self::AppleCrashDetails(w) = v {
+        Some(w)
+      } else {
+        unreachable!()
+      }
+    } else {
+      None
+    }
+  }
+  /// If the union variant matches, return a reference to the AppleCrashDetailsT.
+  pub fn as_apple_crash_details(&self) -> Option<&AppleCrashDetailsT> {
+    if let Self::AppleCrashDetails(v) = self { Some(v.as_ref()) } else { None }
+  }
+  /// If the union variant matches, return a mutable reference to the AppleCrashDetailsT.
+  pub fn as_apple_crash_details_mut(&mut self) -> Option<&mut AppleCrashDetailsT> {
+    if let Self::AppleCrashDetails(v) = self { Some(v.as_mut()) } else { None }
+  }
+}
 // struct Timestamp, aligned to 8
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq)]
@@ -4578,6 +4902,1366 @@ impl ErrorT {
     })
   }
 }
+pub enum NSExceptionOffset {}
+#[derive(Copy, Clone, PartialEq)]
+
+pub struct NSException<'a> {
+  pub _tab: flatbuffers::Table<'a>,
+}
+
+impl<'a> flatbuffers::Follow<'a> for NSException<'a> {
+  type Inner = NSException<'a>;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    Self { _tab: unsafe { flatbuffers::Table::new(buf, loc) } }
+  }
+}
+
+impl<'a> NSException<'a> {
+  pub const VT_NAME: flatbuffers::VOffsetT = 4;
+  pub const VT_REASON: flatbuffers::VOffsetT = 6;
+  pub const VT_USER_INFO: flatbuffers::VOffsetT = 8;
+
+  #[inline]
+  pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
+    NSException { _tab: table }
+  }
+  #[allow(unused_mut)]
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
+    args: &'args NSExceptionArgs<'args>
+  ) -> flatbuffers::WIPOffset<NSException<'bldr>> {
+    let mut builder = NSExceptionBuilder::new(_fbb);
+    if let Some(x) = args.user_info { builder.add_user_info(x); }
+    if let Some(x) = args.reason { builder.add_reason(x); }
+    if let Some(x) = args.name { builder.add_name(x); }
+    builder.finish()
+  }
+
+  pub fn unpack(&self) -> NSExceptionT {
+    let name = self.name().map(|x| {
+      x.to_string()
+    });
+    let reason = self.reason().map(|x| {
+      x.to_string()
+    });
+    let user_info = self.user_info().map(|x| {
+      x.iter().map(|t| t.unpack()).collect()
+    });
+    NSExceptionT {
+      name,
+      reason,
+      user_info,
+    }
+  }
+
+  #[inline]
+  pub fn name(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(NSException::VT_NAME, None)}
+  }
+  #[inline]
+  pub fn reason(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(NSException::VT_REASON, None)}
+  }
+  #[inline]
+  pub fn user_info(&self) -> Option<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field<'a>>>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field>>>>(NSException::VT_USER_INFO, None)}
+  }
+}
+
+impl flatbuffers::Verifiable for NSException<'_> {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    v.visit_table(pos)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("reason", Self::VT_REASON, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field>>>>("user_info", Self::VT_USER_INFO, false)?
+     .finish();
+    Ok(())
+  }
+}
+pub struct NSExceptionArgs<'a> {
+    pub name: Option<flatbuffers::WIPOffset<&'a str>>,
+    pub reason: Option<flatbuffers::WIPOffset<&'a str>>,
+    pub user_info: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field<'a>>>>>,
+}
+impl<'a> Default for NSExceptionArgs<'a> {
+  #[inline]
+  fn default() -> Self {
+    NSExceptionArgs {
+      name: None,
+      reason: None,
+      user_info: None,
+    }
+  }
+}
+
+pub struct NSExceptionBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
+  start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
+}
+impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> NSExceptionBuilder<'a, 'b, A> {
+  #[inline]
+  pub fn add_name(&mut self, name: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(NSException::VT_NAME, name);
+  }
+  #[inline]
+  pub fn add_reason(&mut self, reason: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(NSException::VT_REASON, reason);
+  }
+  #[inline]
+  pub fn add_user_info(&mut self, user_info: flatbuffers::WIPOffset<flatbuffers::Vector<'b , flatbuffers::ForwardsUOffset<super::super::common::v_1::Field<'b >>>>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(NSException::VT_USER_INFO, user_info);
+  }
+  #[inline]
+  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> NSExceptionBuilder<'a, 'b, A> {
+    let start = _fbb.start_table();
+    NSExceptionBuilder {
+      fbb_: _fbb,
+      start_: start,
+    }
+  }
+  #[inline]
+  pub fn finish(self) -> flatbuffers::WIPOffset<NSException<'a>> {
+    let o = self.fbb_.end_table(self.start_);
+    flatbuffers::WIPOffset::new(o.value())
+  }
+}
+
+impl core::fmt::Debug for NSException<'_> {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    let mut ds = f.debug_struct("NSException");
+      ds.field("name", &self.name());
+      ds.field("reason", &self.reason());
+      ds.field("user_info", &self.user_info());
+      ds.finish()
+  }
+}
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct NSExceptionT {
+  pub name: Option<String>,
+  pub reason: Option<String>,
+  pub user_info: Option<Vec<super::super::common::v_1::FieldT>>,
+}
+impl Default for NSExceptionT {
+  fn default() -> Self {
+    Self {
+      name: None,
+      reason: None,
+      user_info: None,
+    }
+  }
+}
+impl NSExceptionT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<NSException<'b>> {
+    let name = self.name.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let reason = self.reason.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let user_info = self.user_info.as_ref().map(|x|{
+      let w: Vec<_> = x.iter().map(|t| t.pack(_fbb)).collect();_fbb.create_vector(&w)
+    });
+    NSException::create(_fbb, &NSExceptionArgs{
+      name,
+      reason,
+      user_info,
+    })
+  }
+}
+pub enum MachExceptionOffset {}
+#[derive(Copy, Clone, PartialEq)]
+
+pub struct MachException<'a> {
+  pub _tab: flatbuffers::Table<'a>,
+}
+
+impl<'a> flatbuffers::Follow<'a> for MachException<'a> {
+  type Inner = MachException<'a>;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    Self { _tab: unsafe { flatbuffers::Table::new(buf, loc) } }
+  }
+}
+
+impl<'a> MachException<'a> {
+  pub const VT_TYPE_: flatbuffers::VOffsetT = 4;
+  pub const VT_CODE: flatbuffers::VOffsetT = 6;
+  pub const VT_SUBCODE: flatbuffers::VOffsetT = 8;
+
+  #[inline]
+  pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
+    MachException { _tab: table }
+  }
+  #[allow(unused_mut)]
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
+    args: &'args MachExceptionArgs
+  ) -> flatbuffers::WIPOffset<MachException<'bldr>> {
+    let mut builder = MachExceptionBuilder::new(_fbb);
+    builder.add_subcode(args.subcode);
+    builder.add_code(args.code);
+    builder.add_type_(args.type_);
+    builder.finish()
+  }
+
+  pub fn unpack(&self) -> MachExceptionT {
+    let type_ = self.type_();
+    let code = self.code();
+    let subcode = self.subcode();
+    MachExceptionT {
+      type_,
+      code,
+      subcode,
+    }
+  }
+
+  #[inline]
+  pub fn type_(&self) -> u32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u32>(MachException::VT_TYPE_, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn code(&self) -> u64 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u64>(MachException::VT_CODE, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn subcode(&self) -> u64 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u64>(MachException::VT_SUBCODE, Some(0)).unwrap()}
+  }
+}
+
+impl flatbuffers::Verifiable for MachException<'_> {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    v.visit_table(pos)?
+     .visit_field::<u32>("type_", Self::VT_TYPE_, false)?
+     .visit_field::<u64>("code", Self::VT_CODE, false)?
+     .visit_field::<u64>("subcode", Self::VT_SUBCODE, false)?
+     .finish();
+    Ok(())
+  }
+}
+pub struct MachExceptionArgs {
+    pub type_: u32,
+    pub code: u64,
+    pub subcode: u64,
+}
+impl<'a> Default for MachExceptionArgs {
+  #[inline]
+  fn default() -> Self {
+    MachExceptionArgs {
+      type_: 0,
+      code: 0,
+      subcode: 0,
+    }
+  }
+}
+
+pub struct MachExceptionBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
+  start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
+}
+impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> MachExceptionBuilder<'a, 'b, A> {
+  #[inline]
+  pub fn add_type_(&mut self, type_: u32) {
+    self.fbb_.push_slot::<u32>(MachException::VT_TYPE_, type_, 0);
+  }
+  #[inline]
+  pub fn add_code(&mut self, code: u64) {
+    self.fbb_.push_slot::<u64>(MachException::VT_CODE, code, 0);
+  }
+  #[inline]
+  pub fn add_subcode(&mut self, subcode: u64) {
+    self.fbb_.push_slot::<u64>(MachException::VT_SUBCODE, subcode, 0);
+  }
+  #[inline]
+  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> MachExceptionBuilder<'a, 'b, A> {
+    let start = _fbb.start_table();
+    MachExceptionBuilder {
+      fbb_: _fbb,
+      start_: start,
+    }
+  }
+  #[inline]
+  pub fn finish(self) -> flatbuffers::WIPOffset<MachException<'a>> {
+    let o = self.fbb_.end_table(self.start_);
+    flatbuffers::WIPOffset::new(o.value())
+  }
+}
+
+impl core::fmt::Debug for MachException<'_> {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    let mut ds = f.debug_struct("MachException");
+      ds.field("type_", &self.type_());
+      ds.field("code", &self.code());
+      ds.field("subcode", &self.subcode());
+      ds.finish()
+  }
+}
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct MachExceptionT {
+  pub type_: u32,
+  pub code: u64,
+  pub subcode: u64,
+}
+impl Default for MachExceptionT {
+  fn default() -> Self {
+    Self {
+      type_: 0,
+      code: 0,
+      subcode: 0,
+    }
+  }
+}
+impl MachExceptionT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<MachException<'b>> {
+    let type_ = self.type_;
+    let code = self.code;
+    let subcode = self.subcode;
+    MachException::create(_fbb, &MachExceptionArgs{
+      type_,
+      code,
+      subcode,
+    })
+  }
+}
+pub enum PosixSignalOffset {}
+#[derive(Copy, Clone, PartialEq)]
+
+pub struct PosixSignal<'a> {
+  pub _tab: flatbuffers::Table<'a>,
+}
+
+impl<'a> flatbuffers::Follow<'a> for PosixSignal<'a> {
+  type Inner = PosixSignal<'a>;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    Self { _tab: unsafe { flatbuffers::Table::new(buf, loc) } }
+  }
+}
+
+impl<'a> PosixSignal<'a> {
+  pub const VT_NUMBER: flatbuffers::VOffsetT = 4;
+  pub const VT_CODE: flatbuffers::VOffsetT = 6;
+  pub const VT_ERRNO: flatbuffers::VOffsetT = 8;
+  pub const VT_HAS_FAULT_ADDRESS: flatbuffers::VOffsetT = 10;
+  pub const VT_FAULT_ADDRESS: flatbuffers::VOffsetT = 12;
+
+  #[inline]
+  pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
+    PosixSignal { _tab: table }
+  }
+  #[allow(unused_mut)]
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
+    args: &'args PosixSignalArgs
+  ) -> flatbuffers::WIPOffset<PosixSignal<'bldr>> {
+    let mut builder = PosixSignalBuilder::new(_fbb);
+    builder.add_fault_address(args.fault_address);
+    builder.add_errno(args.errno);
+    builder.add_code(args.code);
+    builder.add_number(args.number);
+    builder.add_has_fault_address(args.has_fault_address);
+    builder.finish()
+  }
+
+  pub fn unpack(&self) -> PosixSignalT {
+    let number = self.number();
+    let code = self.code();
+    let errno = self.errno();
+    let has_fault_address = self.has_fault_address();
+    let fault_address = self.fault_address();
+    PosixSignalT {
+      number,
+      code,
+      errno,
+      has_fault_address,
+      fault_address,
+    }
+  }
+
+  #[inline]
+  pub fn number(&self) -> i32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<i32>(PosixSignal::VT_NUMBER, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn code(&self) -> i32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<i32>(PosixSignal::VT_CODE, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn errno(&self) -> i32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<i32>(PosixSignal::VT_ERRNO, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn has_fault_address(&self) -> bool {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<bool>(PosixSignal::VT_HAS_FAULT_ADDRESS, Some(false)).unwrap()}
+  }
+  #[inline]
+  pub fn fault_address(&self) -> u64 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u64>(PosixSignal::VT_FAULT_ADDRESS, Some(0)).unwrap()}
+  }
+}
+
+impl flatbuffers::Verifiable for PosixSignal<'_> {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    v.visit_table(pos)?
+     .visit_field::<i32>("number", Self::VT_NUMBER, false)?
+     .visit_field::<i32>("code", Self::VT_CODE, false)?
+     .visit_field::<i32>("errno", Self::VT_ERRNO, false)?
+     .visit_field::<bool>("has_fault_address", Self::VT_HAS_FAULT_ADDRESS, false)?
+     .visit_field::<u64>("fault_address", Self::VT_FAULT_ADDRESS, false)?
+     .finish();
+    Ok(())
+  }
+}
+pub struct PosixSignalArgs {
+    pub number: i32,
+    pub code: i32,
+    pub errno: i32,
+    pub has_fault_address: bool,
+    pub fault_address: u64,
+}
+impl<'a> Default for PosixSignalArgs {
+  #[inline]
+  fn default() -> Self {
+    PosixSignalArgs {
+      number: 0,
+      code: 0,
+      errno: 0,
+      has_fault_address: false,
+      fault_address: 0,
+    }
+  }
+}
+
+pub struct PosixSignalBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
+  start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
+}
+impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> PosixSignalBuilder<'a, 'b, A> {
+  #[inline]
+  pub fn add_number(&mut self, number: i32) {
+    self.fbb_.push_slot::<i32>(PosixSignal::VT_NUMBER, number, 0);
+  }
+  #[inline]
+  pub fn add_code(&mut self, code: i32) {
+    self.fbb_.push_slot::<i32>(PosixSignal::VT_CODE, code, 0);
+  }
+  #[inline]
+  pub fn add_errno(&mut self, errno: i32) {
+    self.fbb_.push_slot::<i32>(PosixSignal::VT_ERRNO, errno, 0);
+  }
+  #[inline]
+  pub fn add_has_fault_address(&mut self, has_fault_address: bool) {
+    self.fbb_.push_slot::<bool>(PosixSignal::VT_HAS_FAULT_ADDRESS, has_fault_address, false);
+  }
+  #[inline]
+  pub fn add_fault_address(&mut self, fault_address: u64) {
+    self.fbb_.push_slot::<u64>(PosixSignal::VT_FAULT_ADDRESS, fault_address, 0);
+  }
+  #[inline]
+  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> PosixSignalBuilder<'a, 'b, A> {
+    let start = _fbb.start_table();
+    PosixSignalBuilder {
+      fbb_: _fbb,
+      start_: start,
+    }
+  }
+  #[inline]
+  pub fn finish(self) -> flatbuffers::WIPOffset<PosixSignal<'a>> {
+    let o = self.fbb_.end_table(self.start_);
+    flatbuffers::WIPOffset::new(o.value())
+  }
+}
+
+impl core::fmt::Debug for PosixSignal<'_> {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    let mut ds = f.debug_struct("PosixSignal");
+      ds.field("number", &self.number());
+      ds.field("code", &self.code());
+      ds.field("errno", &self.errno());
+      ds.field("has_fault_address", &self.has_fault_address());
+      ds.field("fault_address", &self.fault_address());
+      ds.finish()
+  }
+}
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct PosixSignalT {
+  pub number: i32,
+  pub code: i32,
+  pub errno: i32,
+  pub has_fault_address: bool,
+  pub fault_address: u64,
+}
+impl Default for PosixSignalT {
+  fn default() -> Self {
+    Self {
+      number: 0,
+      code: 0,
+      errno: 0,
+      has_fault_address: false,
+      fault_address: 0,
+    }
+  }
+}
+impl PosixSignalT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<PosixSignal<'b>> {
+    let number = self.number;
+    let code = self.code;
+    let errno = self.errno;
+    let has_fault_address = self.has_fault_address;
+    let fault_address = self.fault_address;
+    PosixSignal::create(_fbb, &PosixSignalArgs{
+      number,
+      code,
+      errno,
+      has_fault_address,
+      fault_address,
+    })
+  }
+}
+pub enum AppleTerminationOffset {}
+#[derive(Copy, Clone, PartialEq)]
+
+pub struct AppleTermination<'a> {
+  pub _tab: flatbuffers::Table<'a>,
+}
+
+impl<'a> flatbuffers::Follow<'a> for AppleTermination<'a> {
+  type Inner = AppleTermination<'a>;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    Self { _tab: unsafe { flatbuffers::Table::new(buf, loc) } }
+  }
+}
+
+impl<'a> AppleTermination<'a> {
+  pub const VT_DOMAIN: flatbuffers::VOffsetT = 4;
+  pub const VT_CODE: flatbuffers::VOffsetT = 6;
+  pub const VT_EXPLANATION: flatbuffers::VOffsetT = 8;
+  pub const VT_PROCESS_VISIBILITY: flatbuffers::VOffsetT = 10;
+  pub const VT_PROCESS_STATE: flatbuffers::VOffsetT = 12;
+  pub const VT_WATCHDOG_EVENT: flatbuffers::VOffsetT = 14;
+  pub const VT_WATCHDOG_VISIBILITY: flatbuffers::VOffsetT = 16;
+
+  #[inline]
+  pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
+    AppleTermination { _tab: table }
+  }
+  #[allow(unused_mut)]
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
+    args: &'args AppleTerminationArgs<'args>
+  ) -> flatbuffers::WIPOffset<AppleTermination<'bldr>> {
+    let mut builder = AppleTerminationBuilder::new(_fbb);
+    if let Some(x) = args.watchdog_visibility { builder.add_watchdog_visibility(x); }
+    if let Some(x) = args.watchdog_event { builder.add_watchdog_event(x); }
+    if let Some(x) = args.process_state { builder.add_process_state(x); }
+    if let Some(x) = args.process_visibility { builder.add_process_visibility(x); }
+    if let Some(x) = args.explanation { builder.add_explanation(x); }
+    if let Some(x) = args.code { builder.add_code(x); }
+    if let Some(x) = args.domain { builder.add_domain(x); }
+    builder.finish()
+  }
+
+  pub fn unpack(&self) -> AppleTerminationT {
+    let domain = self.domain().map(|x| {
+      x.to_string()
+    });
+    let code = self.code().map(|x| {
+      x.to_string()
+    });
+    let explanation = self.explanation().map(|x| {
+      x.to_string()
+    });
+    let process_visibility = self.process_visibility().map(|x| {
+      x.to_string()
+    });
+    let process_state = self.process_state().map(|x| {
+      x.to_string()
+    });
+    let watchdog_event = self.watchdog_event().map(|x| {
+      x.to_string()
+    });
+    let watchdog_visibility = self.watchdog_visibility().map(|x| {
+      x.to_string()
+    });
+    AppleTerminationT {
+      domain,
+      code,
+      explanation,
+      process_visibility,
+      process_state,
+      watchdog_event,
+      watchdog_visibility,
+    }
+  }
+
+  #[inline]
+  pub fn domain(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(AppleTermination::VT_DOMAIN, None)}
+  }
+  #[inline]
+  pub fn code(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(AppleTermination::VT_CODE, None)}
+  }
+  #[inline]
+  pub fn explanation(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(AppleTermination::VT_EXPLANATION, None)}
+  }
+  #[inline]
+  pub fn process_visibility(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(AppleTermination::VT_PROCESS_VISIBILITY, None)}
+  }
+  #[inline]
+  pub fn process_state(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(AppleTermination::VT_PROCESS_STATE, None)}
+  }
+  #[inline]
+  pub fn watchdog_event(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(AppleTermination::VT_WATCHDOG_EVENT, None)}
+  }
+  #[inline]
+  pub fn watchdog_visibility(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(AppleTermination::VT_WATCHDOG_VISIBILITY, None)}
+  }
+}
+
+impl flatbuffers::Verifiable for AppleTermination<'_> {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    v.visit_table(pos)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("domain", Self::VT_DOMAIN, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("code", Self::VT_CODE, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("explanation", Self::VT_EXPLANATION, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("process_visibility", Self::VT_PROCESS_VISIBILITY, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("process_state", Self::VT_PROCESS_STATE, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("watchdog_event", Self::VT_WATCHDOG_EVENT, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("watchdog_visibility", Self::VT_WATCHDOG_VISIBILITY, false)?
+     .finish();
+    Ok(())
+  }
+}
+pub struct AppleTerminationArgs<'a> {
+    pub domain: Option<flatbuffers::WIPOffset<&'a str>>,
+    pub code: Option<flatbuffers::WIPOffset<&'a str>>,
+    pub explanation: Option<flatbuffers::WIPOffset<&'a str>>,
+    pub process_visibility: Option<flatbuffers::WIPOffset<&'a str>>,
+    pub process_state: Option<flatbuffers::WIPOffset<&'a str>>,
+    pub watchdog_event: Option<flatbuffers::WIPOffset<&'a str>>,
+    pub watchdog_visibility: Option<flatbuffers::WIPOffset<&'a str>>,
+}
+impl<'a> Default for AppleTerminationArgs<'a> {
+  #[inline]
+  fn default() -> Self {
+    AppleTerminationArgs {
+      domain: None,
+      code: None,
+      explanation: None,
+      process_visibility: None,
+      process_state: None,
+      watchdog_event: None,
+      watchdog_visibility: None,
+    }
+  }
+}
+
+pub struct AppleTerminationBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
+  start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
+}
+impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> AppleTerminationBuilder<'a, 'b, A> {
+  #[inline]
+  pub fn add_domain(&mut self, domain: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(AppleTermination::VT_DOMAIN, domain);
+  }
+  #[inline]
+  pub fn add_code(&mut self, code: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(AppleTermination::VT_CODE, code);
+  }
+  #[inline]
+  pub fn add_explanation(&mut self, explanation: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(AppleTermination::VT_EXPLANATION, explanation);
+  }
+  #[inline]
+  pub fn add_process_visibility(&mut self, process_visibility: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(AppleTermination::VT_PROCESS_VISIBILITY, process_visibility);
+  }
+  #[inline]
+  pub fn add_process_state(&mut self, process_state: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(AppleTermination::VT_PROCESS_STATE, process_state);
+  }
+  #[inline]
+  pub fn add_watchdog_event(&mut self, watchdog_event: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(AppleTermination::VT_WATCHDOG_EVENT, watchdog_event);
+  }
+  #[inline]
+  pub fn add_watchdog_visibility(&mut self, watchdog_visibility: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(AppleTermination::VT_WATCHDOG_VISIBILITY, watchdog_visibility);
+  }
+  #[inline]
+  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> AppleTerminationBuilder<'a, 'b, A> {
+    let start = _fbb.start_table();
+    AppleTerminationBuilder {
+      fbb_: _fbb,
+      start_: start,
+    }
+  }
+  #[inline]
+  pub fn finish(self) -> flatbuffers::WIPOffset<AppleTermination<'a>> {
+    let o = self.fbb_.end_table(self.start_);
+    flatbuffers::WIPOffset::new(o.value())
+  }
+}
+
+impl core::fmt::Debug for AppleTermination<'_> {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    let mut ds = f.debug_struct("AppleTermination");
+      ds.field("domain", &self.domain());
+      ds.field("code", &self.code());
+      ds.field("explanation", &self.explanation());
+      ds.field("process_visibility", &self.process_visibility());
+      ds.field("process_state", &self.process_state());
+      ds.field("watchdog_event", &self.watchdog_event());
+      ds.field("watchdog_visibility", &self.watchdog_visibility());
+      ds.finish()
+  }
+}
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct AppleTerminationT {
+  pub domain: Option<String>,
+  pub code: Option<String>,
+  pub explanation: Option<String>,
+  pub process_visibility: Option<String>,
+  pub process_state: Option<String>,
+  pub watchdog_event: Option<String>,
+  pub watchdog_visibility: Option<String>,
+}
+impl Default for AppleTerminationT {
+  fn default() -> Self {
+    Self {
+      domain: None,
+      code: None,
+      explanation: None,
+      process_visibility: None,
+      process_state: None,
+      watchdog_event: None,
+      watchdog_visibility: None,
+    }
+  }
+}
+impl AppleTerminationT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<AppleTermination<'b>> {
+    let domain = self.domain.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let code = self.code.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let explanation = self.explanation.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let process_visibility = self.process_visibility.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let process_state = self.process_state.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let watchdog_event = self.watchdog_event.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let watchdog_visibility = self.watchdog_visibility.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    AppleTermination::create(_fbb, &AppleTerminationArgs{
+      domain,
+      code,
+      explanation,
+      process_visibility,
+      process_state,
+      watchdog_event,
+      watchdog_visibility,
+    })
+  }
+}
+pub enum AppleCrashDetailsOffset {}
+#[derive(Copy, Clone, PartialEq)]
+
+pub struct AppleCrashDetails<'a> {
+  pub _tab: flatbuffers::Table<'a>,
+}
+
+impl<'a> flatbuffers::Follow<'a> for AppleCrashDetails<'a> {
+  type Inner = AppleCrashDetails<'a>;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    Self { _tab: unsafe { flatbuffers::Table::new(buf, loc) } }
+  }
+}
+
+impl<'a> AppleCrashDetails<'a> {
+  pub const VT_NSEXCEPTION: flatbuffers::VOffsetT = 4;
+  pub const VT_MACH_EXCEPTION: flatbuffers::VOffsetT = 6;
+  pub const VT_POSIX_SIGNAL: flatbuffers::VOffsetT = 8;
+  pub const VT_TERMINATION: flatbuffers::VOffsetT = 10;
+
+  #[inline]
+  pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
+    AppleCrashDetails { _tab: table }
+  }
+  #[allow(unused_mut)]
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
+    args: &'args AppleCrashDetailsArgs<'args>
+  ) -> flatbuffers::WIPOffset<AppleCrashDetails<'bldr>> {
+    let mut builder = AppleCrashDetailsBuilder::new(_fbb);
+    if let Some(x) = args.termination { builder.add_termination(x); }
+    if let Some(x) = args.posix_signal { builder.add_posix_signal(x); }
+    if let Some(x) = args.mach_exception { builder.add_mach_exception(x); }
+    if let Some(x) = args.nsexception { builder.add_nsexception(x); }
+    builder.finish()
+  }
+
+  pub fn unpack(&self) -> AppleCrashDetailsT {
+    let nsexception = self.nsexception().map(|x| {
+      Box::new(x.unpack())
+    });
+    let mach_exception = self.mach_exception().map(|x| {
+      Box::new(x.unpack())
+    });
+    let posix_signal = self.posix_signal().map(|x| {
+      Box::new(x.unpack())
+    });
+    let termination = self.termination().map(|x| {
+      Box::new(x.unpack())
+    });
+    AppleCrashDetailsT {
+      nsexception,
+      mach_exception,
+      posix_signal,
+      termination,
+    }
+  }
+
+  #[inline]
+  pub fn nsexception(&self) -> Option<NSException<'a>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<NSException>>(AppleCrashDetails::VT_NSEXCEPTION, None)}
+  }
+  #[inline]
+  pub fn mach_exception(&self) -> Option<MachException<'a>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<MachException>>(AppleCrashDetails::VT_MACH_EXCEPTION, None)}
+  }
+  #[inline]
+  pub fn posix_signal(&self) -> Option<PosixSignal<'a>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<PosixSignal>>(AppleCrashDetails::VT_POSIX_SIGNAL, None)}
+  }
+  #[inline]
+  pub fn termination(&self) -> Option<AppleTermination<'a>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<AppleTermination>>(AppleCrashDetails::VT_TERMINATION, None)}
+  }
+}
+
+impl flatbuffers::Verifiable for AppleCrashDetails<'_> {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    v.visit_table(pos)?
+     .visit_field::<flatbuffers::ForwardsUOffset<NSException>>("nsexception", Self::VT_NSEXCEPTION, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<MachException>>("mach_exception", Self::VT_MACH_EXCEPTION, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<PosixSignal>>("posix_signal", Self::VT_POSIX_SIGNAL, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<AppleTermination>>("termination", Self::VT_TERMINATION, false)?
+     .finish();
+    Ok(())
+  }
+}
+pub struct AppleCrashDetailsArgs<'a> {
+    pub nsexception: Option<flatbuffers::WIPOffset<NSException<'a>>>,
+    pub mach_exception: Option<flatbuffers::WIPOffset<MachException<'a>>>,
+    pub posix_signal: Option<flatbuffers::WIPOffset<PosixSignal<'a>>>,
+    pub termination: Option<flatbuffers::WIPOffset<AppleTermination<'a>>>,
+}
+impl<'a> Default for AppleCrashDetailsArgs<'a> {
+  #[inline]
+  fn default() -> Self {
+    AppleCrashDetailsArgs {
+      nsexception: None,
+      mach_exception: None,
+      posix_signal: None,
+      termination: None,
+    }
+  }
+}
+
+pub struct AppleCrashDetailsBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
+  start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
+}
+impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> AppleCrashDetailsBuilder<'a, 'b, A> {
+  #[inline]
+  pub fn add_nsexception(&mut self, nsexception: flatbuffers::WIPOffset<NSException<'b >>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<NSException>>(AppleCrashDetails::VT_NSEXCEPTION, nsexception);
+  }
+  #[inline]
+  pub fn add_mach_exception(&mut self, mach_exception: flatbuffers::WIPOffset<MachException<'b >>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<MachException>>(AppleCrashDetails::VT_MACH_EXCEPTION, mach_exception);
+  }
+  #[inline]
+  pub fn add_posix_signal(&mut self, posix_signal: flatbuffers::WIPOffset<PosixSignal<'b >>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<PosixSignal>>(AppleCrashDetails::VT_POSIX_SIGNAL, posix_signal);
+  }
+  #[inline]
+  pub fn add_termination(&mut self, termination: flatbuffers::WIPOffset<AppleTermination<'b >>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<AppleTermination>>(AppleCrashDetails::VT_TERMINATION, termination);
+  }
+  #[inline]
+  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> AppleCrashDetailsBuilder<'a, 'b, A> {
+    let start = _fbb.start_table();
+    AppleCrashDetailsBuilder {
+      fbb_: _fbb,
+      start_: start,
+    }
+  }
+  #[inline]
+  pub fn finish(self) -> flatbuffers::WIPOffset<AppleCrashDetails<'a>> {
+    let o = self.fbb_.end_table(self.start_);
+    flatbuffers::WIPOffset::new(o.value())
+  }
+}
+
+impl core::fmt::Debug for AppleCrashDetails<'_> {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    let mut ds = f.debug_struct("AppleCrashDetails");
+      ds.field("nsexception", &self.nsexception());
+      ds.field("mach_exception", &self.mach_exception());
+      ds.field("posix_signal", &self.posix_signal());
+      ds.field("termination", &self.termination());
+      ds.finish()
+  }
+}
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct AppleCrashDetailsT {
+  pub nsexception: Option<Box<NSExceptionT>>,
+  pub mach_exception: Option<Box<MachExceptionT>>,
+  pub posix_signal: Option<Box<PosixSignalT>>,
+  pub termination: Option<Box<AppleTerminationT>>,
+}
+impl Default for AppleCrashDetailsT {
+  fn default() -> Self {
+    Self {
+      nsexception: None,
+      mach_exception: None,
+      posix_signal: None,
+      termination: None,
+    }
+  }
+}
+impl AppleCrashDetailsT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<AppleCrashDetails<'b>> {
+    let nsexception = self.nsexception.as_ref().map(|x|{
+      x.pack(_fbb)
+    });
+    let mach_exception = self.mach_exception.as_ref().map(|x|{
+      x.pack(_fbb)
+    });
+    let posix_signal = self.posix_signal.as_ref().map(|x|{
+      x.pack(_fbb)
+    });
+    let termination = self.termination.as_ref().map(|x|{
+      x.pack(_fbb)
+    });
+    AppleCrashDetails::create(_fbb, &AppleCrashDetailsArgs{
+      nsexception,
+      mach_exception,
+      posix_signal,
+      termination,
+    })
+  }
+}
+pub enum CrashInfoOffset {}
+#[derive(Copy, Clone, PartialEq)]
+
+pub struct CrashInfo<'a> {
+  pub _tab: flatbuffers::Table<'a>,
+}
+
+impl<'a> flatbuffers::Follow<'a> for CrashInfo<'a> {
+  type Inner = CrashInfo<'a>;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    Self { _tab: unsafe { flatbuffers::Table::new(buf, loc) } }
+  }
+}
+
+impl<'a> CrashInfo<'a> {
+  pub const VT_REPORTER_SCOPE: flatbuffers::VOffsetT = 4;
+  pub const VT_REPORTER: flatbuffers::VOffsetT = 6;
+  pub const VT_OCCURRED_AT: flatbuffers::VOffsetT = 8;
+  pub const VT_DETAILS_TYPE: flatbuffers::VOffsetT = 10;
+  pub const VT_DETAILS: flatbuffers::VOffsetT = 12;
+  pub const VT_THREAD_DETAILS: flatbuffers::VOffsetT = 14;
+
+  #[inline]
+  pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
+    CrashInfo { _tab: table }
+  }
+  #[allow(unused_mut)]
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
+    args: &'args CrashInfoArgs<'args>
+  ) -> flatbuffers::WIPOffset<CrashInfo<'bldr>> {
+    let mut builder = CrashInfoBuilder::new(_fbb);
+    if let Some(x) = args.thread_details { builder.add_thread_details(x); }
+    if let Some(x) = args.details { builder.add_details(x); }
+    if let Some(x) = args.occurred_at { builder.add_occurred_at(x); }
+    builder.add_details_type(args.details_type);
+    builder.add_reporter(args.reporter);
+    builder.add_reporter_scope(args.reporter_scope);
+    builder.finish()
+  }
+
+  pub fn unpack(&self) -> CrashInfoT {
+    let reporter_scope = self.reporter_scope();
+    let reporter = self.reporter();
+    let occurred_at = self.occurred_at().map(|x| {
+      x.unpack()
+    });
+    let details = match self.details_type() {
+      CrashInfoDetails::NONE => CrashInfoDetailsT::NONE,
+      CrashInfoDetails::AppleCrashDetails => CrashInfoDetailsT::AppleCrashDetails(Box::new(
+        self.details_as_apple_crash_details()
+            .expect("Invalid union table, expected `CrashInfoDetails::AppleCrashDetails`.")
+            .unpack()
+      )),
+      _ => CrashInfoDetailsT::NONE,
+    };
+    let thread_details = self.thread_details().map(|x| {
+      Box::new(x.unpack())
+    });
+    CrashInfoT {
+      reporter_scope,
+      reporter,
+      occurred_at,
+      details,
+      thread_details,
+    }
+  }
+
+  #[inline]
+  pub fn reporter_scope(&self) -> CrashReporterScope {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<CrashReporterScope>(CrashInfo::VT_REPORTER_SCOPE, Some(CrashReporterScope::Unknown)).unwrap()}
+  }
+  #[inline]
+  pub fn reporter(&self) -> CrashReporter {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<CrashReporter>(CrashInfo::VT_REPORTER, Some(CrashReporter::Unknown)).unwrap()}
+  }
+  #[inline]
+  pub fn occurred_at(&self) -> Option<&'a Timestamp> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<Timestamp>(CrashInfo::VT_OCCURRED_AT, None)}
+  }
+  #[inline]
+  pub fn details_type(&self) -> CrashInfoDetails {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<CrashInfoDetails>(CrashInfo::VT_DETAILS_TYPE, Some(CrashInfoDetails::NONE)).unwrap()}
+  }
+  #[inline]
+  pub fn details(&self) -> Option<flatbuffers::Table<'a>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Table<'a>>>(CrashInfo::VT_DETAILS, None)}
+  }
+  #[inline]
+  pub fn thread_details(&self) -> Option<ThreadDetails<'a>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<ThreadDetails>>(CrashInfo::VT_THREAD_DETAILS, None)}
+  }
+  #[inline]
+  #[allow(non_snake_case)]
+  pub fn details_as_apple_crash_details(&self) -> Option<AppleCrashDetails<'a>> {
+    if self.details_type() == CrashInfoDetails::AppleCrashDetails {
+      self.details().map(|t| {
+       // Safety:
+       // Created from a valid Table for this object
+       // Which contains a valid union in this slot
+       unsafe { AppleCrashDetails::init_from_table(t) }
+     })
+    } else {
+      None
+    }
+  }
+
+}
+
+impl flatbuffers::Verifiable for CrashInfo<'_> {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    v.visit_table(pos)?
+     .visit_field::<CrashReporterScope>("reporter_scope", Self::VT_REPORTER_SCOPE, false)?
+     .visit_field::<CrashReporter>("reporter", Self::VT_REPORTER, false)?
+     .visit_field::<Timestamp>("occurred_at", Self::VT_OCCURRED_AT, false)?
+     .visit_union::<CrashInfoDetails, _>("details_type", Self::VT_DETAILS_TYPE, "details", Self::VT_DETAILS, false, |key, v, pos| {
+        match key {
+          CrashInfoDetails::AppleCrashDetails => v.verify_union_variant::<flatbuffers::ForwardsUOffset<AppleCrashDetails>>("CrashInfoDetails::AppleCrashDetails", pos),
+          _ => Ok(()),
+        }
+     })?
+     .visit_field::<flatbuffers::ForwardsUOffset<ThreadDetails>>("thread_details", Self::VT_THREAD_DETAILS, false)?
+     .finish();
+    Ok(())
+  }
+}
+pub struct CrashInfoArgs<'a> {
+    pub reporter_scope: CrashReporterScope,
+    pub reporter: CrashReporter,
+    pub occurred_at: Option<&'a Timestamp>,
+    pub details_type: CrashInfoDetails,
+    pub details: Option<flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>>,
+    pub thread_details: Option<flatbuffers::WIPOffset<ThreadDetails<'a>>>,
+}
+impl<'a> Default for CrashInfoArgs<'a> {
+  #[inline]
+  fn default() -> Self {
+    CrashInfoArgs {
+      reporter_scope: CrashReporterScope::Unknown,
+      reporter: CrashReporter::Unknown,
+      occurred_at: None,
+      details_type: CrashInfoDetails::NONE,
+      details: None,
+      thread_details: None,
+    }
+  }
+}
+
+pub struct CrashInfoBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
+  start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
+}
+impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> CrashInfoBuilder<'a, 'b, A> {
+  #[inline]
+  pub fn add_reporter_scope(&mut self, reporter_scope: CrashReporterScope) {
+    self.fbb_.push_slot::<CrashReporterScope>(CrashInfo::VT_REPORTER_SCOPE, reporter_scope, CrashReporterScope::Unknown);
+  }
+  #[inline]
+  pub fn add_reporter(&mut self, reporter: CrashReporter) {
+    self.fbb_.push_slot::<CrashReporter>(CrashInfo::VT_REPORTER, reporter, CrashReporter::Unknown);
+  }
+  #[inline]
+  pub fn add_occurred_at(&mut self, occurred_at: &Timestamp) {
+    self.fbb_.push_slot_always::<&Timestamp>(CrashInfo::VT_OCCURRED_AT, occurred_at);
+  }
+  #[inline]
+  pub fn add_details_type(&mut self, details_type: CrashInfoDetails) {
+    self.fbb_.push_slot::<CrashInfoDetails>(CrashInfo::VT_DETAILS_TYPE, details_type, CrashInfoDetails::NONE);
+  }
+  #[inline]
+  pub fn add_details(&mut self, details: flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(CrashInfo::VT_DETAILS, details);
+  }
+  #[inline]
+  pub fn add_thread_details(&mut self, thread_details: flatbuffers::WIPOffset<ThreadDetails<'b >>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<ThreadDetails>>(CrashInfo::VT_THREAD_DETAILS, thread_details);
+  }
+  #[inline]
+  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> CrashInfoBuilder<'a, 'b, A> {
+    let start = _fbb.start_table();
+    CrashInfoBuilder {
+      fbb_: _fbb,
+      start_: start,
+    }
+  }
+  #[inline]
+  pub fn finish(self) -> flatbuffers::WIPOffset<CrashInfo<'a>> {
+    let o = self.fbb_.end_table(self.start_);
+    flatbuffers::WIPOffset::new(o.value())
+  }
+}
+
+impl core::fmt::Debug for CrashInfo<'_> {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    let mut ds = f.debug_struct("CrashInfo");
+      ds.field("reporter_scope", &self.reporter_scope());
+      ds.field("reporter", &self.reporter());
+      ds.field("occurred_at", &self.occurred_at());
+      ds.field("details_type", &self.details_type());
+      match self.details_type() {
+        CrashInfoDetails::AppleCrashDetails => {
+          if let Some(x) = self.details_as_apple_crash_details() {
+            ds.field("details", &x)
+          } else {
+            ds.field("details", &"InvalidFlatbuffer: Union discriminant does not match value.")
+          }
+        },
+        _ => {
+          let x: Option<()> = None;
+          ds.field("details", &x)
+        },
+      };
+      ds.field("thread_details", &self.thread_details());
+      ds.finish()
+  }
+}
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq)]
+pub struct CrashInfoT {
+  pub reporter_scope: CrashReporterScope,
+  pub reporter: CrashReporter,
+  pub occurred_at: Option<TimestampT>,
+  pub details: CrashInfoDetailsT,
+  pub thread_details: Option<Box<ThreadDetailsT>>,
+}
+impl Default for CrashInfoT {
+  fn default() -> Self {
+    Self {
+      reporter_scope: CrashReporterScope::Unknown,
+      reporter: CrashReporter::Unknown,
+      occurred_at: None,
+      details: CrashInfoDetailsT::NONE,
+      thread_details: None,
+    }
+  }
+}
+impl CrashInfoT {
+  pub fn pack<'b, A: flatbuffers::Allocator + 'b>(
+    &self,
+    _fbb: &mut flatbuffers::FlatBufferBuilder<'b, A>
+  ) -> flatbuffers::WIPOffset<CrashInfo<'b>> {
+    let reporter_scope = self.reporter_scope;
+    let reporter = self.reporter;
+    let occurred_at_tmp = self.occurred_at.as_ref().map(|x| x.pack());
+    let occurred_at = occurred_at_tmp.as_ref();
+    let details_type = self.details.crash_info_details_type();
+    let details = self.details.pack(_fbb);
+    let thread_details = self.thread_details.as_ref().map(|x|{
+      x.pack(_fbb)
+    });
+    CrashInfo::create(_fbb, &CrashInfoArgs{
+      reporter_scope,
+      reporter,
+      occurred_at,
+      details_type,
+      details,
+      thread_details,
+    })
+  }
+}
 pub enum BinaryImageOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -5251,6 +6935,7 @@ impl<'a> Report<'a> {
   pub const VT_FIELDS: flatbuffers::VOffsetT = 18;
   pub const VT_FEATURE_FLAGS: flatbuffers::VOffsetT = 20;
   pub const VT_PROCESSING_RESULT: flatbuffers::VOffsetT = 22;
+  pub const VT_CRASH_INFO: flatbuffers::VOffsetT = 24;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -5262,6 +6947,7 @@ impl<'a> Report<'a> {
     args: &'args ReportArgs<'args>
   ) -> flatbuffers::WIPOffset<Report<'bldr>> {
     let mut builder = ReportBuilder::new(_fbb);
+    if let Some(x) = args.crash_info { builder.add_crash_info(x); }
     if let Some(x) = args.processing_result { builder.add_processing_result(x); }
     if let Some(x) = args.feature_flags { builder.add_feature_flags(x); }
     if let Some(x) = args.fields { builder.add_fields(x); }
@@ -5304,6 +6990,9 @@ impl<'a> Report<'a> {
     let processing_result = self.processing_result().map(|x| {
       Box::new(x.unpack())
     });
+    let crash_info = self.crash_info().map(|x| {
+      x.iter().map(|t| t.unpack()).collect()
+    });
     ReportT {
       sdk,
       type_,
@@ -5315,6 +7004,7 @@ impl<'a> Report<'a> {
       fields,
       feature_flags,
       processing_result,
+      crash_info,
     }
   }
 
@@ -5388,6 +7078,13 @@ impl<'a> Report<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<ProcessingResult>>(Report::VT_PROCESSING_RESULT, None)}
   }
+  #[inline]
+  pub fn crash_info(&self) -> Option<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<CrashInfo<'a>>>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<CrashInfo>>>>(Report::VT_CRASH_INFO, None)}
+  }
 }
 
 impl flatbuffers::Verifiable for Report<'_> {
@@ -5407,6 +7104,7 @@ impl flatbuffers::Verifiable for Report<'_> {
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field>>>>("fields", Self::VT_FIELDS, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<FeatureFlag>>>>("feature_flags", Self::VT_FEATURE_FLAGS, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<ProcessingResult>>("processing_result", Self::VT_PROCESSING_RESULT, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<CrashInfo>>>>("crash_info", Self::VT_CRASH_INFO, false)?
      .finish();
     Ok(())
   }
@@ -5422,6 +7120,7 @@ pub struct ReportArgs<'a> {
     pub fields: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<super::super::common::v_1::Field<'a>>>>>,
     pub feature_flags: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<FeatureFlag<'a>>>>>,
     pub processing_result: Option<flatbuffers::WIPOffset<ProcessingResult<'a>>>,
+    pub crash_info: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<CrashInfo<'a>>>>>,
 }
 impl<'a> Default for ReportArgs<'a> {
   #[inline]
@@ -5437,6 +7136,7 @@ impl<'a> Default for ReportArgs<'a> {
       fields: None,
       feature_flags: None,
       processing_result: None,
+      crash_info: None,
     }
   }
 }
@@ -5487,6 +7187,10 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> ReportBuilder<'a, 'b, A> {
     self.fbb_.push_slot_always::<flatbuffers::WIPOffset<ProcessingResult>>(Report::VT_PROCESSING_RESULT, processing_result);
   }
   #[inline]
+  pub fn add_crash_info(&mut self, crash_info: flatbuffers::WIPOffset<flatbuffers::Vector<'b , flatbuffers::ForwardsUOffset<CrashInfo<'b >>>>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(Report::VT_CRASH_INFO, crash_info);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> ReportBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     ReportBuilder {
@@ -5514,6 +7218,7 @@ impl core::fmt::Debug for Report<'_> {
       ds.field("fields", &self.fields());
       ds.field("feature_flags", &self.feature_flags());
       ds.field("processing_result", &self.processing_result());
+      ds.field("crash_info", &self.crash_info());
       ds.finish()
   }
 }
@@ -5530,6 +7235,7 @@ pub struct ReportT {
   pub fields: Option<Vec<super::super::common::v_1::FieldT>>,
   pub feature_flags: Option<Vec<FeatureFlagT>>,
   pub processing_result: Option<Box<ProcessingResultT>>,
+  pub crash_info: Option<Vec<CrashInfoT>>,
 }
 impl Default for ReportT {
   fn default() -> Self {
@@ -5544,6 +7250,7 @@ impl Default for ReportT {
       fields: None,
       feature_flags: None,
       processing_result: None,
+      crash_info: None,
     }
   }
 }
@@ -5580,6 +7287,9 @@ impl ReportT {
     let processing_result = self.processing_result.as_ref().map(|x|{
       x.pack(_fbb)
     });
+    let crash_info = self.crash_info.as_ref().map(|x|{
+      let w: Vec<_> = x.iter().map(|t| t.pack(_fbb)).collect();_fbb.create_vector(&w)
+    });
     Report::create(_fbb, &ReportArgs{
       sdk,
       type_,
@@ -5591,6 +7301,7 @@ impl ReportT {
       fields,
       feature_flags,
       processing_result,
+      crash_info,
     })
   }
 }

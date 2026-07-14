@@ -18745,4 +18745,5 @@ Report {
     fields: None,
     feature_flags: None,
     processing_result: None,
+    crash_info: None,
 }

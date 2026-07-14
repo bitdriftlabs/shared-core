@@ -25,6 +25,14 @@
       "type" : "string",
       "enum": ["CausedBy"]
     },
+    "bitdrift_public_fbs_issue_reporting_v1_CrashReporterScope" : {
+      "type" : "string",
+      "enum": ["Unknown", "InProcess", "OutOfProcess"]
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_CrashReporter" : {
+      "type" : "string",
+      "enum": ["Unknown", "AppleMetricKit", "AppleKSCrash", "AppleBitdriftCrashReporter", "AndroidUncaughtExceptionHandler", "AndroidApplicationExitInfo"]
+    },
     "bitdrift_public_fbs_issue_reporting_v1_PowerState" : {
       "type" : "string",
       "enum": ["Unknown", "RunningOnBattery", "PluggedInNoBattery", "PluggedInCharging", "PluggedInCharged"]
@@ -48,6 +56,10 @@
     "bitdrift_public_fbs_issue_reporting_v1_FrameStatus" : {
       "type" : "string",
       "enum": ["Missing", "Symbolicated", "MissingSymbol", "UnknownImage", "Malformed"]
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_CrashInfoDetails" : {
+      "type" : "string",
+      "enum": ["NONE", "AppleCrashDetails"]
     },
     "bitdrift_public_fbs_common_v1_StringData" : {
       "type" : "object",
@@ -421,6 +433,126 @@
       },
       "additionalProperties" : false
     },
+    "bitdrift_public_fbs_issue_reporting_v1_NSException" : {
+      "type" : "object",
+      "properties" : {
+        "name" : {
+                "type" : "string"
+              },
+        "reason" : {
+                "type" : "string"
+              },
+        "user_info" : {
+                "type" : "array", "items" : {"$ref" : "#/definitions/bitdrift_public_fbs_common_v1_Field"}
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_MachException" : {
+      "type" : "object",
+      "properties" : {
+        "type" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 4294967295
+              },
+        "code" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 18446744073709551615
+              },
+        "subcode" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 18446744073709551615
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_PosixSignal" : {
+      "type" : "object",
+      "properties" : {
+        "number" : {
+                "type" : "integer", "minimum" : -2147483648, "maximum" : 2147483647
+              },
+        "code" : {
+                "type" : "integer", "minimum" : -2147483648, "maximum" : 2147483647
+              },
+        "errno" : {
+                "type" : "integer", "minimum" : -2147483648, "maximum" : 2147483647
+              },
+        "has_fault_address" : {
+                "type" : "boolean"
+              },
+        "fault_address" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 18446744073709551615
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_AppleTermination" : {
+      "type" : "object",
+      "properties" : {
+        "domain" : {
+                "type" : "string"
+              },
+        "code" : {
+                "type" : "string"
+              },
+        "explanation" : {
+                "type" : "string"
+              },
+        "process_visibility" : {
+                "type" : "string"
+              },
+        "process_state" : {
+                "type" : "string"
+              },
+        "watchdog_event" : {
+                "type" : "string"
+              },
+        "watchdog_visibility" : {
+                "type" : "string"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_AppleCrashDetails" : {
+      "type" : "object",
+      "properties" : {
+        "nsexception" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_NSException"
+              },
+        "mach_exception" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_MachException"
+              },
+        "posix_signal" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_PosixSignal"
+              },
+        "termination" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_AppleTermination"
+              }
+      },
+      "additionalProperties" : false
+    },
+    "bitdrift_public_fbs_issue_reporting_v1_CrashInfo" : {
+      "type" : "object",
+      "properties" : {
+        "reporter_scope" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_CrashReporterScope"
+              },
+        "reporter" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_CrashReporter"
+              },
+        "occurred_at" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_Timestamp"
+              },
+        "details_type" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_CrashInfoDetails"
+              },
+        "details" : {
+                "anyOf": [{ "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_AppleCrashDetails" }]
+              },
+        "thread_details" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_ThreadDetails"
+              }
+      },
+      "additionalProperties" : false
+    },
     "bitdrift_public_fbs_issue_reporting_v1_BinaryImage" : {
       "type" : "object",
       "properties" : {
@@ -504,6 +636,9 @@
               },
         "processing_result" : {
                 "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_ProcessingResult"
+              },
+        "crash_info" : {
+                "type" : "array", "items" : {"$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_CrashInfo"}
               }
       },
       "additionalProperties" : false

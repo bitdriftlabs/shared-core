@@ -353,6 +353,125 @@ impl Scriptable for AppMetrics<'_> {
   }
 }
 
+impl From<AppleCrashDetails<'_>> for ScriptValue {
+  fn from(value: AppleCrashDetails<'_>) -> Self {
+    let script_values: Vec<(&str, Self)> = vec![
+      ("mach_exception", value.mach_exception().into()),
+      ("nsexception", value.nsexception().into()),
+      ("posix_signal", value.posix_signal().into()),
+      ("termination", value.termination().into()),
+    ];
+    Value::Object(
+      script_values
+        .iter()
+        .map(|(key, value)| (key.to_string().into(), value.0.clone()))
+        .collect::<BTreeMap<KeyString, Value>>(),
+    )
+    .into()
+  }
+}
+
+impl Scriptable for AppleCrashDetails<'_> {
+  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
+    if path.is_empty() {
+      return Ok(Some((*self).into()));
+    }
+    let Some(OwnedSegment::Field(base)) = path.first() else {
+      return Err(PathError::NotAnArray(
+        OwnedValuePath::from(path.to_vec()).to_string(),
+      ));
+    };
+
+    match base.as_str() {
+      "mach_exception" => self.mach_exception().resolve(&path[1 ..]),
+      "nsexception" => self.nsexception().resolve(&path[1 ..]),
+      "posix_signal" => self.posix_signal().resolve(&path[1 ..]),
+      "termination" => self.termination().resolve(&path[1 ..]),
+      _ => Err(PathError::UnknownKey(
+        OwnedValuePath::from(path.to_vec()).into(),
+      )),
+    }
+  }
+
+  fn schema() -> Kind {
+    Kind::object(Collection::empty())
+  }
+}
+
+impl From<AppleTermination<'_>> for ScriptValue {
+  fn from(value: AppleTermination<'_>) -> Self {
+    let script_values: Vec<(&str, Self)> = vec![
+      ("code", value.code().into()),
+      ("domain", value.domain().into()),
+      ("explanation", value.explanation().into()),
+      ("process_state", value.process_state().into()),
+      ("process_visibility", value.process_visibility().into()),
+      ("watchdog_event", value.watchdog_event().into()),
+      ("watchdog_visibility", value.watchdog_visibility().into()),
+    ];
+    Value::Object(
+      script_values
+        .iter()
+        .map(|(key, value)| (key.to_string().into(), value.0.clone()))
+        .collect::<BTreeMap<KeyString, Value>>(),
+    )
+    .into()
+  }
+}
+
+impl Scriptable for AppleTermination<'_> {
+  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
+    if path.is_empty() {
+      return Ok(Some((*self).into()));
+    }
+    let Some(OwnedSegment::Field(base)) = path.first() else {
+      return Err(PathError::NotAnArray(
+        OwnedValuePath::from(path.to_vec()).to_string(),
+      ));
+    };
+
+    match base.as_str() {
+      "code" => self
+        .code()
+        .map_or(Ok(None), |value| value.resolve(&path[1 ..])),
+      "domain" => self
+        .domain()
+        .map_or(Ok(None), |value| value.resolve(&path[1 ..])),
+      "explanation" => self
+        .explanation()
+        .map_or(Ok(None), |value| value.resolve(&path[1 ..])),
+      "process_state" => self
+        .process_state()
+        .map_or(Ok(None), |value| value.resolve(&path[1 ..])),
+      "process_visibility" => self
+        .process_visibility()
+        .map_or(Ok(None), |value| value.resolve(&path[1 ..])),
+      "watchdog_event" => self
+        .watchdog_event()
+        .map_or(Ok(None), |value| value.resolve(&path[1 ..])),
+      "watchdog_visibility" => self
+        .watchdog_visibility()
+        .map_or(Ok(None), |value| value.resolve(&path[1 ..])),
+      _ => Err(PathError::UnknownKey(
+        OwnedValuePath::from(path.to_vec()).into(),
+      )),
+    }
+  }
+
+  fn schema() -> Kind {
+    Kind::object(
+      Collection::empty()
+        .with_known("code", Kind::bytes())
+        .with_known("domain", Kind::bytes())
+        .with_known("explanation", Kind::bytes())
+        .with_known("process_state", Kind::bytes())
+        .with_known("process_visibility", Kind::bytes())
+        .with_known("watchdog_event", Kind::bytes())
+        .with_known("watchdog_visibility", Kind::bytes()),
+    )
+  }
+}
+
 impl From<Architecture> for ScriptValue {
   fn from(value: Architecture) -> Self {
     value.variant_name().map_or(Value::Null.into(), Into::into)
@@ -471,6 +590,124 @@ impl Scriptable for CPURegister<'_> {
         .with_known("name", Kind::bytes())
         .with_known("value", Kind::integer()),
     )
+  }
+}
+
+impl From<CrashInfo<'_>> for ScriptValue {
+  fn from(value: CrashInfo<'_>) -> Self {
+    let script_values: Vec<(&str, Self)> = vec![
+      ("details_type", value.details_type().into()),
+      ("occurred_at", value.occurred_at().into()),
+      ("reporter", value.reporter().into()),
+      ("reporter_scope", value.reporter_scope().into()),
+      ("thread_details", value.thread_details().into()),
+    ];
+    Value::Object(
+      script_values
+        .iter()
+        .map(|(key, value)| (key.to_string().into(), value.0.clone()))
+        .collect::<BTreeMap<KeyString, Value>>(),
+    )
+    .into()
+  }
+}
+
+impl Scriptable for CrashInfo<'_> {
+  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
+    if path.is_empty() {
+      return Ok(Some((*self).into()));
+    }
+    let Some(OwnedSegment::Field(base)) = path.first() else {
+      return Err(PathError::NotAnArray(
+        OwnedValuePath::from(path.to_vec()).to_string(),
+      ));
+    };
+
+    match base.as_str() {
+      "details_type" => self.details_type().resolve(&path[1 ..]),
+      "occurred_at" => self.occurred_at().resolve(&path[1 ..]),
+      "reporter" => self.reporter().resolve(&path[1 ..]),
+      "reporter_scope" => self.reporter_scope().resolve(&path[1 ..]),
+      "thread_details" => self.thread_details().resolve(&path[1 ..]),
+      _ => Err(PathError::UnknownKey(
+        OwnedValuePath::from(path.to_vec()).into(),
+      )),
+    }
+  }
+
+  fn schema() -> Kind {
+    Kind::object(
+      Collection::empty()
+        .with_known("details_type", Kind::bytes())
+        .with_known("reporter", Kind::bytes())
+        .with_known("reporter_scope", Kind::bytes()),
+    )
+  }
+}
+
+impl From<CrashInfoDetails> for ScriptValue {
+  fn from(value: CrashInfoDetails) -> Self {
+    value.variant_name().map_or(Value::Null.into(), Into::into)
+  }
+}
+
+impl Scriptable for CrashInfoDetails {
+  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
+    if path.is_empty() {
+      Ok(Some((*self).into()))
+    } else {
+      Err(PathError::UnknownKey(
+        OwnedValuePath::from(path.to_vec()).to_string(),
+      ))
+    }
+  }
+
+  fn schema() -> Kind {
+    Kind::bytes()
+  }
+}
+
+impl From<CrashReporter> for ScriptValue {
+  fn from(value: CrashReporter) -> Self {
+    value.variant_name().map_or(Value::Null.into(), Into::into)
+  }
+}
+
+impl Scriptable for CrashReporter {
+  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
+    if path.is_empty() {
+      Ok(Some((*self).into()))
+    } else {
+      Err(PathError::UnknownKey(
+        OwnedValuePath::from(path.to_vec()).to_string(),
+      ))
+    }
+  }
+
+  fn schema() -> Kind {
+    Kind::bytes()
+  }
+}
+
+impl From<CrashReporterScope> for ScriptValue {
+  fn from(value: CrashReporterScope) -> Self {
+    value.variant_name().map_or(Value::Null.into(), Into::into)
+  }
+}
+
+impl Scriptable for CrashReporterScope {
+  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
+    if path.is_empty() {
+      Ok(Some((*self).into()))
+    } else {
+      Err(PathError::UnknownKey(
+        OwnedValuePath::from(path.to_vec()).to_string(),
+      ))
+    }
+  }
+
+  fn schema() -> Kind {
+    Kind::bytes()
   }
 }
 
@@ -926,6 +1163,54 @@ impl Scriptable for JavaScriptEngine {
   }
 }
 
+impl From<MachException<'_>> for ScriptValue {
+  fn from(value: MachException<'_>) -> Self {
+    let script_values: Vec<(&str, Self)> = vec![
+      ("code", value.code().into()),
+      ("subcode", value.subcode().into()),
+      ("type", value.type_().into()),
+    ];
+    Value::Object(
+      script_values
+        .iter()
+        .map(|(key, value)| (key.to_string().into(), value.0.clone()))
+        .collect::<BTreeMap<KeyString, Value>>(),
+    )
+    .into()
+  }
+}
+
+impl Scriptable for MachException<'_> {
+  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
+    if path.is_empty() {
+      return Ok(Some((*self).into()));
+    }
+    let Some(OwnedSegment::Field(base)) = path.first() else {
+      return Err(PathError::NotAnArray(
+        OwnedValuePath::from(path.to_vec()).to_string(),
+      ));
+    };
+
+    match base.as_str() {
+      "code" => self.code().resolve(&path[1 ..]),
+      "subcode" => self.subcode().resolve(&path[1 ..]),
+      "type" => self.type_().resolve(&path[1 ..]),
+      _ => Err(PathError::UnknownKey(
+        OwnedValuePath::from(path.to_vec()).into(),
+      )),
+    }
+  }
+
+  fn schema() -> Kind {
+    Kind::object(
+      Collection::empty()
+        .with_known("code", Kind::integer())
+        .with_known("subcode", Kind::integer())
+        .with_known("type", Kind::integer()),
+    )
+  }
+}
+
 impl From<Memory> for ScriptValue {
   fn from(value: Memory) -> Self {
     let script_values: Vec<(&str, Self)> = vec![
@@ -1010,6 +1295,66 @@ impl Scriptable for MemoryPressureLevel {
 
   fn schema() -> Kind {
     Kind::bytes()
+  }
+}
+
+impl From<NSException<'_>> for ScriptValue {
+  fn from(value: NSException<'_>) -> Self {
+    let script_values: Vec<(&str, Self)> = vec![
+      ("name", value.name().into()),
+      ("reason", value.reason().into()),
+      ("user_info", value.user_info().into()),
+    ];
+    Value::Object(
+      script_values
+        .iter()
+        .map(|(key, value)| (key.to_string().into(), value.0.clone()))
+        .collect::<BTreeMap<KeyString, Value>>(),
+    )
+    .into()
+  }
+}
+
+impl Scriptable for NSException<'_> {
+  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
+    if path.is_empty() {
+      return Ok(Some((*self).into()));
+    }
+    let Some(OwnedSegment::Field(base)) = path.first() else {
+      return Err(PathError::NotAnArray(
+        OwnedValuePath::from(path.to_vec()).to_string(),
+      ));
+    };
+
+    match base.as_str() {
+      "name" => self
+        .name()
+        .map_or(Ok(None), |value| value.resolve(&path[1 ..])),
+      "reason" => self
+        .reason()
+        .map_or(Ok(None), |value| value.resolve(&path[1 ..])),
+      "user_info" => {
+        let Some(values) = self.user_info() else {
+          return Ok(None);
+        };
+        values.resolve(&path[1 ..])
+      },
+      _ => Err(PathError::UnknownKey(
+        OwnedValuePath::from(path.to_vec()).into(),
+      )),
+    }
+  }
+
+  fn schema() -> Kind {
+    Kind::object(
+      Collection::empty()
+        .with_known("name", Kind::bytes())
+        .with_known("reason", Kind::bytes())
+        .with_known(
+          "user_info",
+          Kind::array(Collection::empty().with_unknown(Field::schema())),
+        ),
+    )
   }
 }
 
@@ -1113,6 +1458,60 @@ impl Scriptable for Platform {
 
   fn schema() -> Kind {
     Kind::bytes()
+  }
+}
+
+impl From<PosixSignal<'_>> for ScriptValue {
+  fn from(value: PosixSignal<'_>) -> Self {
+    let script_values: Vec<(&str, Self)> = vec![
+      ("code", value.code().into()),
+      ("errno", value.errno().into()),
+      ("fault_address", value.fault_address().into()),
+      ("has_fault_address", value.has_fault_address().into()),
+      ("number", value.number().into()),
+    ];
+    Value::Object(
+      script_values
+        .iter()
+        .map(|(key, value)| (key.to_string().into(), value.0.clone()))
+        .collect::<BTreeMap<KeyString, Value>>(),
+    )
+    .into()
+  }
+}
+
+impl Scriptable for PosixSignal<'_> {
+  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
+    if path.is_empty() {
+      return Ok(Some((*self).into()));
+    }
+    let Some(OwnedSegment::Field(base)) = path.first() else {
+      return Err(PathError::NotAnArray(
+        OwnedValuePath::from(path.to_vec()).to_string(),
+      ));
+    };
+
+    match base.as_str() {
+      "code" => self.code().resolve(&path[1 ..]),
+      "errno" => self.errno().resolve(&path[1 ..]),
+      "fault_address" => self.fault_address().resolve(&path[1 ..]),
+      "has_fault_address" => self.has_fault_address().resolve(&path[1 ..]),
+      "number" => self.number().resolve(&path[1 ..]),
+      _ => Err(PathError::UnknownKey(
+        OwnedValuePath::from(path.to_vec()).into(),
+      )),
+    }
+  }
+
+  fn schema() -> Kind {
+    Kind::object(
+      Collection::empty()
+        .with_known("code", Kind::integer())
+        .with_known("errno", Kind::integer())
+        .with_known("fault_address", Kind::integer())
+        .with_known("has_fault_address", Kind::boolean())
+        .with_known("number", Kind::integer()),
+    )
   }
 }
 
@@ -1270,6 +1669,7 @@ impl From<Report<'_>> for ScriptValue {
     let script_values: Vec<(&str, Self)> = vec![
       ("app_metrics", value.app_metrics().into()),
       ("binary_images", value.binary_images().into()),
+      ("crash_info", value.crash_info().into()),
       ("device_metrics", value.device_metrics().into()),
       ("errors", value.errors().into()),
       ("feature_flags", value.feature_flags().into()),
@@ -1304,6 +1704,12 @@ impl Scriptable for Report<'_> {
       "app_metrics" => self.app_metrics().resolve(&path[1 ..]),
       "binary_images" => {
         let Some(values) = self.binary_images() else {
+          return Ok(None);
+        };
+        values.resolve(&path[1 ..])
+      },
+      "crash_info" => {
+        let Some(values) = self.crash_info() else {
           return Ok(None);
         };
         values.resolve(&path[1 ..])
@@ -1343,6 +1749,10 @@ impl Scriptable for Report<'_> {
         .with_known(
           "binary_images",
           Kind::array(Collection::empty().with_unknown(BinaryImage::schema())),
+        )
+        .with_known(
+          "crash_info",
+          Kind::array(Collection::empty().with_unknown(CrashInfo::schema())),
         )
         .with_known(
           "errors",

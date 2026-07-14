@@ -20,6 +20,7 @@ static void add_threads(BDProcessorHandle handle);
 static void add_errors(BDProcessorHandle handle);
 static void add_device(BDProcessorHandle handle);
 static void add_app(BDProcessorHandle handle);
+static void add_current_threads_crash_info(BDProcessorHandle handle);
 
 /* Test function hooks */
 
@@ -44,6 +45,12 @@ const uint8_t *load_full_report(BDProcessorHandle handle, uint64_t *len) {
   add_errors(handle);
   add_binary_images(handle);
   add_threads(handle);
+  return bdrw_get_completed_buffer(handle, len);
+}
+
+const uint8_t *load_current_threads_crash_info_only(BDProcessorHandle handle, uint64_t *len) {
+  add_threads(handle);
+  add_current_threads_crash_info(handle);
   return bdrw_get_completed_buffer(handle, len);
 }
 
@@ -181,4 +188,39 @@ static void add_device(BDProcessorHandle handle) {
   };
   bdrw_add_device(handle, &device);
   free((void *)abis);
+}
+
+static void add_current_threads_crash_info(BDProcessorHandle handle) {
+  BDAppleCrashInfoPayload payload = {
+    .has_nsexception = true,
+    .nsexception = (BDNSException) {
+      .name = "NSRangeException",
+      .reason = "index 9 beyond bounds 8",
+    },
+    .has_mach_exception = true,
+    .mach_exception = (BDMachException) {
+      .type_ = 10,
+      .code = 1,
+      .subcode = 2,
+    },
+    .has_posix_signal = true,
+    .posix_signal = (BDPosixSignal) {
+      .number = 11,
+      .code = 3,
+      .errno_ = 4,
+      .has_fault_address = true,
+      .fault_address = 0x1234,
+    },
+    .has_termination = true,
+    .termination = (BDAppleTermination) {
+      .domain = "10",
+      .code = "0x8BADF00D",
+      .explanation = "Failed to terminate gracefully after 5.0s",
+      .process_visibility = "Unknown",
+      .process_state = "Running",
+      .watchdog_event = "process-exit",
+      .watchdog_visibility = "Foreground",
+    },
+  };
+  bdrw_add_apple_crash_info_with_current_threads(handle, 2, 1, 1700000000, 55, &payload);
 }

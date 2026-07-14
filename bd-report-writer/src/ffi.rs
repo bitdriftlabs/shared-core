@@ -30,6 +30,7 @@ type FrameVectorOffset<'a> = WIPOffset<Vector<'a, ForwardsUOffset<Frame<'a>>>>;
 pub struct ReportProcessor<'a> {
   builder: FlatBufferBuilder<'a>,
   binary_images: Vec<WIPOffset<BinaryImage<'a>>>,
+  crash_info: Vec<WIPOffset<CrashInfo<'a>>>,
   is_file_size_optimization_enabled: bool,
   stack_trace_offsets: HashMap<FrameOffsetSequence, FrameVectorOffset<'a>>,
   system_thread_count: u16,
@@ -78,6 +79,51 @@ pub struct BDAppMetrics {
   memory_total: u64,
   memory_pressure_level: i8,
   region_format: *const c_char,
+}
+
+#[repr(C)]
+pub struct BDNSException {
+  name: *const c_char,
+  reason: *const c_char,
+}
+
+#[repr(C)]
+pub struct BDMachException {
+  type_: u32,
+  code: u64,
+  subcode: u64,
+}
+
+#[repr(C)]
+pub struct BDPosixSignal {
+  number: i32,
+  code: i32,
+  errno_: i32,
+  has_fault_address: bool,
+  fault_address: u64,
+}
+
+#[repr(C)]
+pub struct BDAppleTermination {
+  domain: *const c_char,
+  code: *const c_char,
+  explanation: *const c_char,
+  process_visibility: *const c_char,
+  process_state: *const c_char,
+  watchdog_event: *const c_char,
+  watchdog_visibility: *const c_char,
+}
+
+#[repr(C)]
+pub struct BDAppleCrashInfoPayload {
+  has_nsexception: bool,
+  nsexception: BDNSException,
+  has_mach_exception: bool,
+  mach_exception: BDMachException,
+  has_posix_signal: bool,
+  posix_signal: BDPosixSignal,
+  has_termination: bool,
+  termination: BDAppleTermination,
 }
 
 #[repr(C)]
@@ -172,6 +218,7 @@ extern "C-unwind" fn bdrw_create_buffer_handle(
     sdk,
     report_type: ReportType(report_type),
     binary_images: vec![],
+    crash_info: vec![],
     is_file_size_optimization_enabled,
     stack_trace_offsets: HashMap::new(),
     system_thread_count: 0,
@@ -232,6 +279,11 @@ extern "C-unwind" fn bdrw_get_completed_buffer(
     None
   };
   let errors = processor.builder.create_vector(processor.errors.as_slice());
+  let crash_info = if processor.crash_info.is_empty() {
+    None
+  } else {
+    Some(processor.builder.create_vector(processor.crash_info.as_slice()))
+  };
   let report = Report::create(
     &mut processor.builder,
     &ReportArgs {
@@ -245,6 +297,7 @@ extern "C-unwind" fn bdrw_get_completed_buffer(
       feature_flags: None,
       fields: None,
       processing_result: None,
+      crash_info,
     },
   );
   processor.builder.finish(report, None);
@@ -529,6 +582,41 @@ extern "C-unwind" fn bdrw_add_app(handle: BDProcessorHandle, app_ptr: *const BDA
   true
 }
 
+#[unsafe(no_mangle)]
+extern "C-unwind" fn bdrw_add_apple_crash_info_with_current_threads(
+  handle: BDProcessorHandle,
+  reporter_scope: i8,
+  reporter: i8,
+  occurred_at_seconds: u64,
+  occurred_at_nanos: u32,
+  payload_ptr: *const BDAppleCrashInfoPayload,
+) -> bool {
+  let processor = try_into_processor!(handle, false);
+  let payload = match unsafe { payload_ptr.as_ref() } {
+    Some(payload) => payload,
+    None => return false,
+  };
+  let details = match build_apple_crash_details(&mut processor.builder, payload) {
+    Some(details) => details,
+    None => return false,
+  };
+  let thread_details = build_current_thread_details(processor);
+  let occurred_at = Timestamp::new(occurred_at_seconds, occurred_at_nanos);
+  let crash_info = CrashInfo::create(
+    &mut processor.builder,
+    &CrashInfoArgs {
+      reporter_scope: CrashReporterScope(reporter_scope),
+      reporter: CrashReporter(reporter),
+      occurred_at: Some(&occurred_at),
+      details_type: CrashInfoDetails::AppleCrashDetails,
+      details: Some(details.as_union_value()),
+      thread_details,
+    },
+  );
+  processor.crash_info.push(crash_info);
+  true
+}
+
 /// Validate whether the pointer is non-null, copying the string into the
 /// in-progress report buffer if so
 fn append_string<'a>(
@@ -622,6 +710,102 @@ fn optional_slice_from_raw_parts<'a, T>(raw_parts: *const T, count: usize) -> Op
     return None;
   }
   Some(unsafe { slice::from_raw_parts(raw_parts, count) })
+}
+
+fn build_current_thread_details<'a>(
+  processor: &mut ReportProcessor<'a>,
+) -> Option<WIPOffset<ThreadDetails<'a>>> {
+  if processor.system_thread_count == 0 && processor.threads.is_empty() {
+    return None;
+  }
+
+  let threads = processor.builder.create_vector(processor.threads.as_slice());
+  Some(ThreadDetails::create(
+    &mut processor.builder,
+    &ThreadDetailsArgs {
+      count: processor.system_thread_count,
+      threads: Some(threads),
+    },
+  ))
+}
+
+fn build_apple_crash_details<'a>(
+  builder: &mut FlatBufferBuilder<'a>,
+  payload: &BDAppleCrashInfoPayload,
+) -> Option<WIPOffset<AppleCrashDetails<'a>>> {
+  let nsexception = payload.has_nsexception.then(|| {
+    let name = append_string(builder, payload.nsexception.name);
+    let reason = append_string(builder, payload.nsexception.reason);
+    NSException::create(
+      builder,
+      &NSExceptionArgs {
+        name,
+        reason,
+        user_info: None,
+      },
+    )
+  });
+  let mach_exception = payload.has_mach_exception.then(|| {
+    MachException::create(
+      builder,
+      &MachExceptionArgs {
+        type_: payload.mach_exception.type_,
+        code: payload.mach_exception.code,
+        subcode: payload.mach_exception.subcode,
+      },
+    )
+  });
+  let posix_signal = payload.has_posix_signal.then(|| {
+    PosixSignal::create(
+      builder,
+      &PosixSignalArgs {
+        number: payload.posix_signal.number,
+        code: payload.posix_signal.code,
+        errno: payload.posix_signal.errno_,
+        has_fault_address: payload.posix_signal.has_fault_address,
+        fault_address: payload.posix_signal.fault_address,
+      },
+    )
+  });
+  let termination = payload.has_termination.then(|| {
+    let domain = append_string(builder, payload.termination.domain);
+    let code = append_string(builder, payload.termination.code);
+    let explanation = append_string(builder, payload.termination.explanation);
+    let process_visibility = append_string(builder, payload.termination.process_visibility);
+    let process_state = append_string(builder, payload.termination.process_state);
+    let watchdog_event = append_string(builder, payload.termination.watchdog_event);
+    let watchdog_visibility = append_string(builder, payload.termination.watchdog_visibility);
+    AppleTermination::create(
+      builder,
+      &AppleTerminationArgs {
+        domain,
+        code,
+        explanation,
+        process_visibility,
+        process_state,
+        watchdog_event,
+        watchdog_visibility,
+      },
+    )
+  });
+
+  if nsexception.is_none()
+    && mach_exception.is_none()
+    && posix_signal.is_none()
+    && termination.is_none()
+  {
+    return None;
+  }
+
+  Some(AppleCrashDetails::create(
+    builder,
+    &AppleCrashDetailsArgs {
+      nsexception,
+      mach_exception,
+      posix_signal,
+      termination,
+    },
+  ))
 }
 
 fn create_or_reuse_stack_trace<'a>(
