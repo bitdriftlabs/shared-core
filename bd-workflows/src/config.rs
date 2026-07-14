@@ -72,7 +72,7 @@ impl Execution {
 //
 
 #[cfg_attr(test, derive(Clone))]
-#[derive(Debug, Default)]
+#[derive(Debug, Default, PartialEq)]
 pub struct WorkflowsConfiguration {
   pub(crate) workflows: Vec<Config>,
 }
@@ -145,7 +145,7 @@ pub enum WorkflowDebugMode {
 //
 
 #[cfg_attr(test, derive(Clone))]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Config {
   inner: InnerConfig,
   mode: WorkflowDebugMode,

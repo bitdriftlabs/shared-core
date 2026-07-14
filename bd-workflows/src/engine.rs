@@ -1233,7 +1233,7 @@ impl PrecedingEventCarryover {
 //
 
 #[cfg_attr(test, derive(Clone))]
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct WorkflowsEngineConfig {
   pub(crate) workflows_configuration: WorkflowsConfiguration,
 
