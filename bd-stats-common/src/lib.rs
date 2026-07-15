@@ -140,6 +140,9 @@ pub trait Histogram {
 //
 
 pub trait StatsCollector: Send + Sync {
+  type Counter;
+  type Histogram;
+
   fn record_dynamic_counter(&self, tags: BTreeMap<String, String>, id: &str, value: u64);
 
   fn record_workflow_debug_state(&self, state: Vec<WorkflowDebugKey>);
@@ -148,11 +151,11 @@ pub trait StatsCollector: Send + Sync {
     &self,
     tags: BTreeMap<String, String>,
     id: &str,
-  ) -> Option<Box<dyn Counter>>;
+  ) -> Option<Self::Counter>;
 
   fn workflow_dynamic_histogram(
     &self,
     tags: BTreeMap<String, String>,
     id: &str,
-  ) -> Option<Box<dyn Histogram>>;
+  ) -> Option<Self::Histogram>;
 }

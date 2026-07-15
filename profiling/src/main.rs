@@ -10,7 +10,7 @@ mod paths;
 use crate::paths::PATHS;
 use bd_client_common::file::read_compressed_protobuf;
 use bd_client_stats::{FlushTrigger, Stats};
-use bd_client_stats_store::{Collector, Scope};
+use bd_client_stats_store::{Collector, Counter, Histogram, Scope};
 use bd_log_matcher::builder::{message_equals, message_regex_matches};
 use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{Log, LogLevel, LogMessage, log_level};
@@ -93,7 +93,7 @@ impl WorkflowConfigurationsInit {
 }
 
 struct AnnotatedWorkflowsEngine {
-  engine: WorkflowsEngine,
+  engine: WorkflowsEngine<Counter, Histogram>,
   state_reader: bd_state::InMemoryStateReader,
 }
 

@@ -56,7 +56,12 @@ use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_runtime::runtime::workflows::PersistenceWriteIntervalFlag;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, session_capture};
 use bd_stats_common::workflow::WorkflowDebugKey;
-use bd_stats_common::{Counter as _, StatsCollector, labels};
+use bd_stats_common::{
+  Counter as CounterTrait,
+  Histogram as HistogramTrait,
+  StatsCollector,
+  labels,
+};
 use parking_lot::RwLock;
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -112,7 +117,7 @@ impl ProcessLocalPendingFlushState {
 
 /// Orchestrates the execution and management of workflows. It is also responsible for
 /// persisting and restoring its state in disk when any workflow has changed.
-pub struct WorkflowsEngine {
+pub struct WorkflowsEngine<C, H> {
   // Number of elements in configs and
   // state.workflows should be always the same.
   // A config at index `i` corresponds to a workflow (state.workflows list)
@@ -136,7 +141,7 @@ pub struct WorkflowsEngine {
 
   sankey_processor_join_handle: JoinHandle<()>,
 
-  metrics_collector: MetricsCollector,
+  metrics_collector: MetricsCollector<C, H>,
   stats_flush_trigger: Option<FlushTrigger>,
 
   buffers_to_flush_tx: Sender<BuffersToFlush>,
@@ -145,13 +150,13 @@ pub struct WorkflowsEngine {
     Option<IntWatch<session_capture::StreamingLogCount>>,
 }
 
-impl WorkflowsEngine {
+impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
   pub fn new(
     scope: &Scope,
     sdk_directory: Option<&Path>,
     runtime: Option<&ConfigLoader>,
     data_upload_tx: Sender<DataUpload>,
-    stats: Arc<dyn StatsCollector>,
+    stats: Arc<dyn StatsCollector<Counter = C, Histogram = H>>,
     stats_flush_trigger: Option<FlushTrigger>,
   ) -> (Self, Receiver<BuffersToFlush>) {
     Self::new_with_flush_completion_tracker(
@@ -170,7 +175,7 @@ impl WorkflowsEngine {
     sdk_directory: Option<&Path>,
     runtime: Option<&ConfigLoader>,
     data_upload_tx: Sender<DataUpload>,
-    stats: Arc<dyn StatsCollector>,
+    stats: Arc<dyn StatsCollector<Counter = C, Histogram = H>>,
     stats_flush_trigger: Option<FlushTrigger>,
     process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
   ) -> (Self, Receiver<BuffersToFlush>) {
@@ -1022,7 +1027,7 @@ impl WorkflowsEngine {
   }
 }
 
-impl Drop for WorkflowsEngine {
+impl<C, H> Drop for WorkflowsEngine<C, H> {
   fn drop(&mut self) {
     self.flush_buffers_negotiator_join_handle.abort();
     self.sankey_processor_join_handle.abort();

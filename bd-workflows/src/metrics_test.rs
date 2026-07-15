@@ -12,8 +12,8 @@ use crate::config::{ActionEmitMetric, MetricMultiTag, TagValue};
 use crate::engine::EmitMetricActionCount;
 use crate::workflow::WorkflowEvent;
 use bd_client_stats::Stats;
-use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
+use bd_client_stats_store::{Collector, Counter, Histogram};
 use bd_log_primitives::{Log, LogFields, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow::MultiTag as MultiTagProto;
@@ -22,7 +22,7 @@ use bd_stats_common::{MetricType, NameType, labels};
 use std::collections::BTreeMap;
 use time::OffsetDateTime;
 
-fn make_metrics_collector() -> (MetricsCollector, Collector) {
+fn make_metrics_collector() -> (MetricsCollector<Counter, Histogram>, Collector) {
   let collector = Collector::default();
   let stats = Stats::new(collector.clone());
   (MetricsCollector::new(stats), collector)

@@ -27,7 +27,7 @@ use bd_client_stats_store::{Collector, Error as StatsError};
 use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::workflow::WorkflowDebugKey;
-use bd_stats_common::{Histogram, StatsCollector};
+use bd_stats_common::{Counter as _, StatsCollector};
 use bd_time::{SystemTimeProvider, TimeProvider};
 use file_manager::FileManager;
 use parking_lot::Mutex;
@@ -188,6 +188,9 @@ impl Stats {
 }
 
 impl StatsCollector for Stats {
+  type Counter = bd_client_stats_store::Counter;
+  type Histogram = bd_client_stats_store::Histogram;
+
   fn record_workflow_debug_state(&self, state: Vec<WorkflowDebugKey>) {
     log::debug!("recording workflow debug state: {state:?}");
     let mut workflow_debug_data = self.workflow_debug_data.lock();
@@ -210,9 +213,9 @@ impl StatsCollector for Stats {
     &self,
     tags: BTreeMap<String, String>,
     id: &str,
-  ) -> Option<Box<dyn bd_stats_common::Counter>> {
+  ) -> Option<Self::Counter> {
     match self.collector.dynamic_counter(tags, id) {
-      Ok(counter) => Some(Box::new(counter)),
+      Ok(counter) => Some(counter),
       Err(StatsError::Overflow) => {
         self.handle_overflow(id);
         None
@@ -224,9 +227,9 @@ impl StatsCollector for Stats {
     &self,
     tags: BTreeMap<String, String>,
     id: &str,
-  ) -> Option<Box<dyn Histogram>> {
+  ) -> Option<Self::Histogram> {
     match self.collector.dynamic_histogram(tags, id) {
-      Ok(histogram) => Some(Box::new(histogram)),
+      Ok(histogram) => Some(histogram),
       Err(StatsError::Overflow) => {
         self.handle_overflow(id);
         None

@@ -14,6 +14,7 @@ use crate::write_log_to_buffer;
 use bd_api::{DataUpload, TriggerUpload, TriggerUploadSource};
 use bd_buffer::BuffersWithAck;
 use bd_client_stats::{FlushTrigger, FlushTriggerRequest};
+use bd_client_stats_store::{Counter, Histogram};
 use bd_log_filter::FilterChain;
 use bd_log_metadata::LogFields;
 use bd_log_primitives::tiny_set::TinySet;
@@ -135,7 +136,7 @@ impl LogReplay for LoggerReplay {
 pub struct ProcessingPipeline {
   buffer_producers: BufferProducers,
   buffer_selector: BufferSelector,
-  pub(crate) workflows_engine: WorkflowsEngine,
+  pub(crate) workflows_engine: WorkflowsEngine<Counter, Histogram>,
   tail_configs: TailConfigurations,
   filter_chain: FilterChain,
   min_log_compression_size: IntWatch<MinLogCompressionSize>,
