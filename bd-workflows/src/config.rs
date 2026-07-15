@@ -71,7 +71,7 @@ impl Execution {
 // WorkflowsConfiguration
 //
 
-#[cfg_attr(test, derive(Clone))]
+#[cfg_attr(any(test, feature = "cloneable-config"), derive(Clone))]
 #[derive(Debug, Default, PartialEq)]
 pub struct WorkflowsConfiguration {
   pub(crate) workflows: Vec<Config>,
@@ -144,7 +144,7 @@ pub enum WorkflowDebugMode {
 // ConfigWithMode
 //
 
-#[cfg_attr(test, derive(Clone))]
+#[cfg_attr(any(test, feature = "cloneable-config"), derive(Clone))]
 #[derive(Debug, PartialEq)]
 pub struct Config {
   inner: InnerConfig,
@@ -223,7 +223,7 @@ impl Config {
 // InnerConfig is split out from mode because there are places where we compare the known config
 // to the new config and we do not want to include debug more in that comparison. This makes that
 // cleaner.
-#[cfg_attr(test, derive(Clone))]
+#[cfg_attr(any(test, feature = "cloneable-config"), derive(Clone))]
 #[derive(Debug, PartialEq)]
 pub struct InnerConfig {
   id: String,

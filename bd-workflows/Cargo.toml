@@ -45,6 +45,7 @@ uuid.workspace              = true
 
 [features]
 fuzzing = ["dep:arbitrary", "bd-stats-common/fuzzing"]
+cloneable-config = []
 
 [dev-dependencies]
 assert_matches.workspace    = true
