@@ -1232,7 +1232,7 @@ impl PrecedingEventCarryover {
 // WorkflowsEngineConfig
 //
 
-#[cfg_attr(test, derive(Clone))]
+#[cfg_attr(any(test, feature = "cloneable-config"), derive(Clone))]
 #[derive(Debug, PartialEq)]
 pub struct WorkflowsEngineConfig {
   pub(crate) workflows_configuration: WorkflowsConfiguration,
