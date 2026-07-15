@@ -12,7 +12,7 @@ mod metrics_test;
 use crate::config::{ActionEmitMetric, MetricMultiTag, TagValue};
 use crate::engine::EmitMetricActionCount;
 use crate::workflow::{TriggeredActionEmitSankey, WorkflowEvent};
-use bd_stats_common::{MetricType, StatsCollector};
+use bd_stats_common::{Counter, Histogram, MetricType, StatsCollector};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
@@ -22,12 +22,12 @@ use std::sync::Arc;
 //
 
 // Responsible for emitting statistics related to workflow action metrics.
-pub(crate) struct MetricsCollector {
-  pub(crate) stats: Arc<dyn StatsCollector>,
+pub(crate) struct MetricsCollector<C, H> {
+  pub(crate) stats: Arc<dyn StatsCollector<Counter = C, Histogram = H>>,
 }
 
-impl MetricsCollector {
-  pub(crate) const fn new(stats: Arc<dyn StatsCollector>) -> Self {
+impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
+  pub(crate) const fn new(stats: Arc<dyn StatsCollector<Counter = C, Histogram = H>>) -> Self {
     Self { stats }
   }
 

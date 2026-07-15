@@ -32,6 +32,7 @@ use bd_proto::protos::client::api::{
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
+use bd_stats_common::{Counter, Histogram};
 use bd_time::TimeDurationExt;
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -108,8 +109,8 @@ pub struct Hooks {
 // AnnotatedWorkflowsEngine
 //
 
-pub struct AnnotatedWorkflowsEngine {
-  pub engine: WorkflowsEngine,
+pub struct AnnotatedWorkflowsEngine<C: Counter, H: Histogram> {
+  pub engine: WorkflowsEngine<C, H>,
   process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
 
   pub session_id: String,
@@ -122,9 +123,9 @@ pub struct AnnotatedWorkflowsEngine {
   pub task_handle: JoinHandle<()>,
 }
 
-impl AnnotatedWorkflowsEngine {
+impl<C: Counter, H: Histogram> AnnotatedWorkflowsEngine<C, H> {
   pub fn new(
-    engine: WorkflowsEngine,
+    engine: WorkflowsEngine<C, H>,
     process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
     hooks: Arc<parking_lot::Mutex<Hooks>>,
     client_stats: Arc<Stats>,
@@ -330,21 +331,21 @@ impl AnnotatedWorkflowsEngine {
   }
 }
 
-impl std::ops::Deref for AnnotatedWorkflowsEngine {
-  type Target = WorkflowsEngine;
+impl<C: Counter, H: Histogram> std::ops::Deref for AnnotatedWorkflowsEngine<C, H> {
+  type Target = WorkflowsEngine<C, H>;
 
   fn deref(&self) -> &Self::Target {
     &self.engine
   }
 }
 
-impl std::ops::DerefMut for AnnotatedWorkflowsEngine {
+impl<C: Counter, H: Histogram> std::ops::DerefMut for AnnotatedWorkflowsEngine<C, H> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     &mut self.engine
   }
 }
 
-impl std::ops::Drop for AnnotatedWorkflowsEngine {
+impl<C: Counter, H: Histogram> std::ops::Drop for AnnotatedWorkflowsEngine<C, H> {
   fn drop(&mut self) {
     self.task_handle.abort();
   }
@@ -382,7 +383,8 @@ impl Setup {
   pub async fn make_workflows_engine(
     &self,
     workflows_engine_config: WorkflowsEngineConfig,
-  ) -> AnnotatedWorkflowsEngine {
+  ) -> AnnotatedWorkflowsEngine<bd_client_stats_store::Counter, bd_client_stats_store::Histogram>
+  {
     let process_local_pending_flush_state = Arc::new(ProcessLocalPendingFlushState::default());
     self
       .make_workflows_engine_with_flush_completion_tracker(
@@ -396,7 +398,8 @@ impl Setup {
     &self,
     workflows_engine_config: WorkflowsEngineConfig,
     process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
-  ) -> AnnotatedWorkflowsEngine {
+  ) -> AnnotatedWorkflowsEngine<bd_client_stats_store::Counter, bd_client_stats_store::Histogram>
+  {
     let (data_upload_tx, data_upload_rx) = tokio::sync::mpsc::channel(1);
 
     let hooks = Arc::new(parking_lot::Mutex::new(Hooks::default()));
@@ -417,7 +420,10 @@ impl Setup {
         workflows_pending_flush_state,
       );
 
-    let task_handle = AnnotatedWorkflowsEngine::run_for_test(
+    let task_handle = AnnotatedWorkflowsEngine::<
+      bd_client_stats_store::Counter,
+      bd_client_stats_store::Histogram,
+    >::run_for_test(
       buffers_to_flush_rx,
       data_upload_rx,
       stats_flush_rx,

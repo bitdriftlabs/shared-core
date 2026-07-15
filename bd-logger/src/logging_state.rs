@@ -16,7 +16,7 @@ use anyhow::anyhow;
 use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::BuffersWithAck;
 use bd_client_stats::{FlushTrigger, Stats};
-use bd_client_stats_store::{Counter, Scope};
+use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_crash_handler::global_state;
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_filter::FilterChain;
@@ -87,7 +87,9 @@ impl<T: MemorySized + Debug> LoggingState<T> {
     }
   }
 
-  pub(crate) const fn workflows_engine(&mut self) -> Option<&mut WorkflowsEngine> {
+  pub(crate) const fn workflows_engine(
+    &mut self,
+  ) -> Option<&mut WorkflowsEngine<Counter, Histogram>> {
     match self {
       Self::Uninitialized(_) => None,
       Self::Initialized(context) => Some(&mut context.processing_pipeline.workflows_engine),
