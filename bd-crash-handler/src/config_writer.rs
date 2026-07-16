@@ -25,6 +25,7 @@ pub struct ConfigWriter {
   report_directory: PathBuf,
   config_path: PathBuf,
   crash_reporting_enabled_flag: BoolWatch<crash_reporting::Enabled>,
+  use_bd_crash_reporter_flag: BoolWatch<crash_reporting::UseBdCrashReporter>,
   shutdown: bd_shutdown::ComponentShutdown,
 }
 
@@ -37,6 +38,7 @@ impl ConfigWriter {
     let report_directory = sdk_directory.join(crate::REPORTS_DIRECTORY);
     Self {
       crash_reporting_enabled_flag: runtime.register_bool_watch(),
+      use_bd_crash_reporter_flag: runtime.register_bool_watch(),
       config_path: report_directory.join(REPORT_CONFIG_NAME),
       report_directory,
       shutdown,
@@ -57,6 +59,7 @@ impl ConfigWriter {
     loop {
       tokio::select! {
         _ = self.crash_reporting_enabled_flag.changed() => {},
+        _ = self.use_bd_crash_reporter_flag.changed() => {},
         () = self.shutdown.cancelled() => return,
       };
 
@@ -64,20 +67,25 @@ impl ConfigWriter {
       // which case crash reporting would be disabled for that session
 
       let _ = self.crash_reporting_enabled_flag.read_mark_update();
+      let _ = self.use_bd_crash_reporter_flag.read_mark_update();
       self.write_config_file().await;
     }
   }
 
   async fn write_config_file(&self) {
     let crash_reporting_enabled = *self.crash_reporting_enabled_flag.read();
+    let use_bd_crash_reporter = *self.use_bd_crash_reporter_flag.read();
     log::debug!(
-      "Writing enabled:{crash_reporting_enabled} to report config file {}",
+      "Writing enabled:{crash_reporting_enabled} use_bd_crash_reporter:{use_bd_crash_reporter} \
+       to report config file {}",
       self.config_path.display()
     );
 
     self.try_ensure_directories_exist().await;
 
-    let contents = format!("crash_reporting.enabled,{crash_reporting_enabled}");
+    let contents = format!(
+      "crash_reporting.enabled,{crash_reporting_enabled}\nclient_feature.ios.use_bd_crash_reporter,{use_bd_crash_reporter}"
+    );
     if let Err(e) = tokio::fs::write(&self.config_path, contents).await {
       log::warn!(
         "Failed to write report directories config file: {} ({})",

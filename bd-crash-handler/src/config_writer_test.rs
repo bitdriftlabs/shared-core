@@ -48,6 +48,17 @@ impl Setup {
       .unwrap();
   }
 
+  async fn configure_use_bd_crash_reporter_flag(&self, value: bool) {
+    self
+      .runtime
+      .update_snapshot(make_simple_update(vec![(
+        "client_feature.ios.use_bd_crash_reporter",
+        ValueKind::Bool(value),
+      )]))
+      .await
+      .unwrap();
+  }
+
   fn read_config_file(&self) -> String {
     let config_file = self.directory.path().join("reports/config.csv");
     log::info!("Reading config file: {config_file:?}");
@@ -60,9 +71,27 @@ async fn test_config_file_written() {
   let setup = Setup::new().await;
 
   setup.writer.write_config_file().await;
-  assert_eq!("crash_reporting.enabled,true", setup.read_config_file());
+  assert_eq!(
+    "crash_reporting.enabled,true\nclient_feature.ios.use_bd_crash_reporter,true",
+    setup.read_config_file()
+  );
 
   setup.configure_runtime_flag(false).await;
   setup.writer.write_config_file().await;
-  assert_eq!("crash_reporting.enabled,false", setup.read_config_file());
+  assert_eq!(
+    "crash_reporting.enabled,false\nclient_feature.ios.use_bd_crash_reporter,true",
+    setup.read_config_file()
+  );
+}
+
+#[tokio::test]
+async fn test_config_file_written_use_bd_crash_reporter() {
+  let setup = Setup::new().await;
+
+  setup.configure_use_bd_crash_reporter_flag(false).await;
+  setup.writer.write_config_file().await;
+  assert_eq!(
+    "crash_reporting.enabled,true\nclient_feature.ios.use_bd_crash_reporter,false",
+    setup.read_config_file()
+  );
 }

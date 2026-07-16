@@ -662,6 +662,14 @@ pub mod crash_reporting {
   // other fatal events. This defaults to enabled so fresh installs still monitor
   // crashes until runtime explicitly turns it off.
   bool_feature_flag!(Enabled, "crash_reporting.enabled", true);
+
+  // Enables or disables the use of the bitdrift in-process crash reporter on iOS,
+  // as opposed to relying solely on KSCrash/MetricKit.
+  bool_feature_flag!(
+    UseBdCrashReporter,
+    "client_feature.ios.use_bd_crash_reporter",
+    true
+  );
 }
 
 pub mod log_upload {
