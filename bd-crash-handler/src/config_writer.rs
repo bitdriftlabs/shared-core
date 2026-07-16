@@ -20,7 +20,7 @@ const REPORT_CONFIG_NAME: &str = "config.csv";
 
 /// Checks whether config has changed, updating a persisted copy on disk if so
 /// This uses the following directory layout (within the SDK directory):
-/// - `reports/runtime.csv` - Cache of configuration flags for behavior
+/// - `reports/config.csv` - Cache of configuration flags for behavior
 pub struct ConfigWriter {
   report_directory: PathBuf,
   config_path: PathBuf,
@@ -63,8 +63,8 @@ impl ConfigWriter {
         () = self.shutdown.cancelled() => return,
       };
 
-      // There is chance here of the value changing during platform read, in
-      // which case crash reporting would be disabled for that session
+      // There is a chance here of either value changing during platform read, in which case a
+      // mixed snapshot (one flag updated, the other stale) would be written for that session
 
       let _ = self.crash_reporting_enabled_flag.read_mark_update();
       let _ = self.use_bd_crash_reporter_flag.read_mark_update();
