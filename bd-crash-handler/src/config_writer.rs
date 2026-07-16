@@ -76,15 +76,16 @@ impl ConfigWriter {
     let crash_reporting_enabled = *self.crash_reporting_enabled_flag.read();
     let use_bd_crash_reporter = *self.use_bd_crash_reporter_flag.read();
     log::debug!(
-      "Writing enabled:{crash_reporting_enabled} use_bd_crash_reporter:{use_bd_crash_reporter} \
-       to report config file {}",
+      "Writing enabled:{crash_reporting_enabled} use_bd_crash_reporter:{use_bd_crash_reporter} to \
+       report config file {}",
       self.config_path.display()
     );
 
     self.try_ensure_directories_exist().await;
 
     let contents = format!(
-      "crash_reporting.enabled,{crash_reporting_enabled}\nclient_feature.ios.use_bd_crash_reporter,{use_bd_crash_reporter}"
+      "crash_reporting.enabled,{crash_reporting_enabled}\nclient_feature.ios.\
+       use_bd_crash_reporter,{use_bd_crash_reporter}"
     );
     if let Err(e) = tokio::fs::write(&self.config_path, contents).await {
       log::warn!(
