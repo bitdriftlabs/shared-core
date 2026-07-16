@@ -30,6 +30,7 @@ type FrameVectorOffset<'a> = WIPOffset<Vector<'a, ForwardsUOffset<Frame<'a>>>>;
 pub struct ReportProcessor<'a> {
   builder: FlatBufferBuilder<'a>,
   binary_images: Vec<WIPOffset<BinaryImage<'a>>>,
+  crash_info: Vec<WIPOffset<CrashInfo<'a>>>,
   is_file_size_optimization_enabled: bool,
   stack_trace_offsets: HashMap<FrameOffsetSequence, FrameVectorOffset<'a>>,
   system_thread_count: u16,
@@ -78,6 +79,65 @@ pub struct BDAppMetrics {
   memory_total: u64,
   memory_pressure_level: i8,
   region_format: *const c_char,
+}
+
+#[repr(C)]
+pub struct BDNSException {
+  name: *const c_char,
+  reason: *const c_char,
+}
+
+#[repr(C)]
+pub struct BDMachException {
+  type_: u32,
+  code: u64,
+  subcode: u64,
+}
+
+#[repr(C)]
+pub struct BDPosixSignal {
+  number: i32,
+  code: i32,
+  errno_value: i32,
+  has_fault_address: bool,
+  fault_address: u64,
+}
+
+#[repr(C)]
+pub struct BDAppleTermination {
+  domain: *const c_char,
+  code: *const c_char,
+  explanation: *const c_char,
+  process_visibility: *const c_char,
+  process_state: *const c_char,
+  watchdog_event: *const c_char,
+  watchdog_visibility: *const c_char,
+}
+
+#[repr(C)]
+pub struct BDAppleCrashInfoPayload {
+  has_nsexception: bool,
+  nsexception: BDNSException,
+  has_mach_exception: bool,
+  mach_exception: BDMachException,
+  has_posix_signal: bool,
+  posix_signal: BDPosixSignal,
+  has_termination: bool,
+  termination: BDAppleTermination,
+}
+
+#[repr(C)]
+pub struct BDCrashInfoThread {
+  thread: BDThread,
+  stack_count: u32,
+  stack: *const BDStackFrame,
+}
+
+#[repr(C)]
+pub struct BDCrashInfoThreadDetails {
+  count: u16,
+  threads_count: usize,
+  threads: *const BDCrashInfoThread,
 }
 
 #[repr(C)]
@@ -172,6 +232,7 @@ extern "C-unwind" fn bdrw_create_buffer_handle(
     sdk,
     report_type: ReportType(report_type),
     binary_images: vec![],
+    crash_info: vec![],
     is_file_size_optimization_enabled,
     stack_trace_offsets: HashMap::new(),
     system_thread_count: 0,
@@ -217,10 +278,10 @@ extern "C-unwind" fn bdrw_get_completed_buffer(
   let binary_images = processor
     .builder
     .create_vector(processor.binary_images.as_slice());
-  let threads = processor
-    .builder
-    .create_vector(processor.threads.as_slice());
   let thread_details = if processor.system_thread_count > 0 || !processor.threads.is_empty() {
+    let threads = processor
+      .builder
+      .create_vector(processor.threads.as_slice());
     Some(ThreadDetails::create(
       &mut processor.builder,
       &ThreadDetailsArgs {
@@ -232,6 +293,15 @@ extern "C-unwind" fn bdrw_get_completed_buffer(
     None
   };
   let errors = processor.builder.create_vector(processor.errors.as_slice());
+  let crash_info = if processor.crash_info.is_empty() {
+    None
+  } else {
+    Some(
+      processor
+        .builder
+        .create_vector(processor.crash_info.as_slice()),
+    )
+  };
   let report = Report::create(
     &mut processor.builder,
     &ReportArgs {
@@ -245,6 +315,7 @@ extern "C-unwind" fn bdrw_get_completed_buffer(
       feature_flags: None,
       fields: None,
       processing_result: None,
+      crash_info,
     },
   );
   processor.builder.finish(report, None);
@@ -331,12 +402,6 @@ extern "C-unwind" fn bdrw_add_thread(
   processor.system_thread_count = system_thread_count;
 
   if let Some(thread) = unsafe { thread_ptr.as_ref() } {
-    let name = append_string(&mut processor.builder, thread.name);
-    let state = if processor.is_file_size_optimization_enabled {
-      append_shared_string(&mut processor.builder, thread.state)
-    } else {
-      append_string(&mut processor.builder, thread.state)
-    };
     let frames = append_frames(
       &mut processor.builder,
       stack_count,
@@ -344,18 +409,11 @@ extern "C-unwind" fn bdrw_add_thread(
       processor.is_file_size_optimization_enabled,
     );
     let stack_trace = create_or_reuse_stack_trace(processor, &frames);
-    let thread = Thread::create(
+    let thread = build_thread(
       &mut processor.builder,
-      &ThreadArgs {
-        name,
-        active: thread.active,
-        index: thread.index,
-        state,
-        priority: thread.priority,
-        quality_of_service: thread.quality_of_service,
-        stack_trace: Some(stack_trace),
-        summary: None,
-      },
+      thread,
+      stack_trace,
+      processor.is_file_size_optimization_enabled,
     );
     processor.threads.push(thread);
     true
@@ -529,6 +587,40 @@ extern "C-unwind" fn bdrw_add_app(handle: BDProcessorHandle, app_ptr: *const BDA
   true
 }
 
+#[unsafe(no_mangle)]
+extern "C-unwind" fn bdrw_add_apple_crash_info(
+  handle: BDProcessorHandle,
+  reporter_scope: i8,
+  reporter: i8,
+  occurred_at_seconds: u64,
+  occurred_at_nanos: u32,
+  payload_ptr: *const BDAppleCrashInfoPayload,
+  thread_details_ptr: *const BDCrashInfoThreadDetails,
+) -> bool {
+  let processor = try_into_processor!(handle, false);
+  let Some(payload) = (unsafe { payload_ptr.as_ref() }) else {
+    return false;
+  };
+  let Some(details) = build_apple_crash_details(&mut processor.builder, payload) else {
+    return false;
+  };
+  let thread_details = build_crash_info_thread_details(processor, thread_details_ptr);
+  let occurred_at = Timestamp::new(occurred_at_seconds, occurred_at_nanos);
+  let crash_info = CrashInfo::create(
+    &mut processor.builder,
+    &CrashInfoArgs {
+      reporter_scope: CrashReporterScope(reporter_scope),
+      reporter: CrashReporter(reporter),
+      occurred_at: Some(&occurred_at),
+      details_type: CrashInfoDetails::AppleCrashDetails,
+      details: Some(details.as_union_value()),
+      thread_details,
+    },
+  );
+  processor.crash_info.push(crash_info);
+  true
+}
+
 /// Validate whether the pointer is non-null, copying the string into the
 /// in-progress report buffer if so
 fn append_string<'a>(
@@ -622,6 +714,153 @@ fn optional_slice_from_raw_parts<'a, T>(raw_parts: *const T, count: usize) -> Op
     return None;
   }
   Some(unsafe { slice::from_raw_parts(raw_parts, count) })
+}
+
+fn build_thread<'a>(
+  builder: &mut FlatBufferBuilder<'a>,
+  thread: &BDThread,
+  stack_trace: WIPOffset<Vector<'a, ForwardsUOffset<Frame<'a>>>>,
+  is_file_size_optimization_enabled: bool,
+) -> WIPOffset<Thread<'a>> {
+  let name = append_string(builder, thread.name);
+  let state = if is_file_size_optimization_enabled {
+    append_shared_string(builder, thread.state)
+  } else {
+    append_string(builder, thread.state)
+  };
+
+  Thread::create(
+    builder,
+    &ThreadArgs {
+      name,
+      active: thread.active,
+      index: thread.index,
+      state,
+      priority: thread.priority,
+      quality_of_service: thread.quality_of_service,
+      stack_trace: Some(stack_trace),
+      summary: None,
+    },
+  )
+}
+
+fn build_crash_info_thread_details<'a>(
+  processor: &mut ReportProcessor<'a>,
+  thread_details_ptr: *const BDCrashInfoThreadDetails,
+) -> Option<WIPOffset<ThreadDetails<'a>>> {
+  let thread_details = (unsafe { thread_details_ptr.as_ref() })?;
+
+  let threads = optional_slice_from_raw_parts(thread_details.threads, thread_details.threads_count)
+    .unwrap_or_default()
+    .iter()
+    .map(|thread| {
+      let frames = append_frames(
+        &mut processor.builder,
+        thread.stack_count,
+        thread.stack,
+        processor.is_file_size_optimization_enabled,
+      );
+      let stack_trace = processor.builder.create_vector(frames.as_slice());
+      build_thread(
+        &mut processor.builder,
+        &thread.thread,
+        stack_trace,
+        processor.is_file_size_optimization_enabled,
+      )
+    })
+    .collect::<Vec<_>>();
+
+  if thread_details.count == 0 && threads.is_empty() {
+    return None;
+  }
+
+  let threads = (!threads.is_empty()).then(|| processor.builder.create_vector(threads.as_slice()));
+  Some(ThreadDetails::create(
+    &mut processor.builder,
+    &ThreadDetailsArgs {
+      count: thread_details.count,
+      threads,
+    },
+  ))
+}
+
+fn build_apple_crash_details<'a>(
+  builder: &mut FlatBufferBuilder<'a>,
+  payload: &BDAppleCrashInfoPayload,
+) -> Option<WIPOffset<AppleCrashDetails<'a>>> {
+  let nsexception = payload.has_nsexception.then(|| {
+    let name = append_string(builder, payload.nsexception.name);
+    let reason = append_string(builder, payload.nsexception.reason);
+    NSException::create(
+      builder,
+      &NSExceptionArgs {
+        name,
+        reason,
+        user_info: None,
+      },
+    )
+  });
+  let mach_exception = payload.has_mach_exception.then(|| {
+    MachException::create(
+      builder,
+      &MachExceptionArgs {
+        type_: payload.mach_exception.type_,
+        code: payload.mach_exception.code,
+        subcode: payload.mach_exception.subcode,
+      },
+    )
+  });
+  let posix_signal = payload.has_posix_signal.then(|| {
+    PosixSignal::create(
+      builder,
+      &PosixSignalArgs {
+        number: payload.posix_signal.number,
+        code: payload.posix_signal.code,
+        errno_value: payload.posix_signal.errno_value,
+        has_fault_address: payload.posix_signal.has_fault_address,
+        fault_address: payload.posix_signal.fault_address,
+      },
+    )
+  });
+  let termination = payload.has_termination.then(|| {
+    let domain = append_string(builder, payload.termination.domain);
+    let code = append_string(builder, payload.termination.code);
+    let explanation = append_string(builder, payload.termination.explanation);
+    let process_visibility = append_string(builder, payload.termination.process_visibility);
+    let process_state = append_string(builder, payload.termination.process_state);
+    let watchdog_event = append_string(builder, payload.termination.watchdog_event);
+    let watchdog_visibility = append_string(builder, payload.termination.watchdog_visibility);
+    AppleTermination::create(
+      builder,
+      &AppleTerminationArgs {
+        domain,
+        code,
+        explanation,
+        process_visibility,
+        process_state,
+        watchdog_event,
+        watchdog_visibility,
+      },
+    )
+  });
+
+  if nsexception.is_none()
+    && mach_exception.is_none()
+    && posix_signal.is_none()
+    && termination.is_none()
+  {
+    return None;
+  }
+
+  Some(AppleCrashDetails::create(
+    builder,
+    &AppleCrashDetailsArgs {
+      nsexception,
+      mach_exception,
+      posix_signal,
+      termination,
+    },
+  ))
 }
 
 fn create_or_reuse_stack_trace<'a>(

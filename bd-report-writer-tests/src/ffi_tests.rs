@@ -16,6 +16,8 @@ unsafe extern "C-unwind" {
   fn create_handle(handle: BDProcessorHandle);
   fn dispose_handle(handle: BDProcessorHandle);
   fn load_binary_data_only(handle: BDProcessorHandle, len: *mut u64) -> *const u8;
+  fn load_current_threads_crash_info_only(handle: BDProcessorHandle, len: *mut u64) -> *const u8;
+  fn load_threadless_crash_info_only(handle: BDProcessorHandle, len: *mut u64) -> *const u8;
   fn load_thread_data_only(handle: BDProcessorHandle, len: *mut u64) -> *const u8;
   fn load_error_data_only(handle: BDProcessorHandle, len: *mut u64) -> *const u8;
   fn load_full_report(handle: BDProcessorHandle, len: *mut u64) -> *const u8;
@@ -204,6 +206,102 @@ fn full_report_device_test() {
   assert_eq!(2, abis.len());
   assert_eq!("armv7", abis.get(0));
   assert_eq!("arm64", abis.get(1));
+
+  unsafe {
+    dispose_handle(&raw mut handle);
+  }
+}
+
+#[test]
+fn current_threads_crash_info_test() {
+  let mut handle = null();
+  let report = unsafe {
+    create_handle(&raw mut handle);
+    let mut len = 0;
+    let buf = load_current_threads_crash_info_only(&raw mut handle, &raw mut len);
+    assert!(!buf.is_null());
+    assert_ne!(0, len);
+
+    let data = slice::from_raw_parts(buf, usize::try_from(len).unwrap());
+    root_as_report_unchecked(data)
+  };
+
+  let crash_info = report.crash_info().unwrap();
+  assert_eq!(1, crash_info.len());
+
+  let entry = crash_info.get(0);
+  assert_eq!(CrashReporterScope::OutOfProcess, entry.reporter_scope());
+  assert_eq!(CrashReporter::AppleMetricKit, entry.reporter());
+  assert_eq!(CrashInfoDetails::AppleCrashDetails, entry.details_type());
+  assert_eq!(1_700_000_000, entry.occurred_at().unwrap().seconds());
+  assert_eq!(55, entry.occurred_at().unwrap().nanos());
+
+  let details = entry.details_as_apple_crash_details().unwrap();
+  let nsexception = details.nsexception().unwrap();
+  assert_eq!(Some("NSRangeException"), nsexception.name());
+  assert_eq!(Some("index 9 beyond bounds 8"), nsexception.reason());
+
+  let mach_exception = details.mach_exception().unwrap();
+  assert_eq!(10, mach_exception.type_());
+  assert_eq!(1, mach_exception.code());
+  assert_eq!(2, mach_exception.subcode());
+
+  let posix_signal = details.posix_signal().unwrap();
+  assert_eq!(11, posix_signal.number());
+  assert_eq!(3, posix_signal.code());
+  assert_eq!(4, posix_signal.errno_value());
+  assert!(posix_signal.has_fault_address());
+  assert_eq!(0x1234, posix_signal.fault_address());
+
+  let termination = details.termination().unwrap();
+  assert_eq!(Some("10"), termination.domain());
+  assert_eq!(Some("0x8BADF00D"), termination.code());
+  assert_eq!(
+    Some("Failed to terminate gracefully after 5.0s"),
+    termination.explanation()
+  );
+  assert_eq!(Some("Unknown"), termination.process_visibility());
+  assert_eq!(Some("Running"), termination.process_state());
+  assert_eq!(Some("process-exit"), termination.watchdog_event());
+  assert_eq!(Some("Foreground"), termination.watchdog_visibility());
+
+  let thread_details = entry.thread_details().unwrap();
+  assert_eq!(5, thread_details.count());
+  assert_eq!(1, thread_details.threads().unwrap().len());
+
+  unsafe {
+    dispose_handle(&raw mut handle);
+  }
+}
+
+#[test]
+fn threadless_crash_info_test() {
+  let mut handle = null();
+  let report = unsafe {
+    create_handle(&raw mut handle);
+    let mut len = 0;
+    let buf = load_threadless_crash_info_only(&raw mut handle, &raw mut len);
+    assert!(!buf.is_null());
+    assert_ne!(0, len);
+
+    let data = slice::from_raw_parts(buf, usize::try_from(len).unwrap());
+    root_as_report_unchecked(data)
+  };
+
+  let crash_info = report.crash_info().unwrap();
+  assert_eq!(1, crash_info.len());
+
+  let entry = crash_info.get(0);
+  assert_eq!(CrashReporterScope::InProcess, entry.reporter_scope());
+  assert_eq!(CrashReporter::AppleBitdriftCrashReporter, entry.reporter());
+  assert_eq!(1_700_000_123, entry.occurred_at().unwrap().seconds());
+  assert_eq!(77, entry.occurred_at().unwrap().nanos());
+  assert!(entry.thread_details().is_none());
+
+  let details = entry.details_as_apple_crash_details().unwrap();
+  let nsexception = details.nsexception().unwrap();
+  assert_eq!(Some("CapturedException"), nsexception.name());
+  assert_eq!(Some("captured reason"), nsexception.reason());
 
   unsafe {
     dispose_handle(&raw mut handle);
