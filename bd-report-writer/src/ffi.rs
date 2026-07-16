@@ -746,9 +746,7 @@ fn build_crash_info_thread_details<'a>(
   processor: &mut ReportProcessor<'a>,
   thread_details_ptr: *const BDCrashInfoThreadDetails,
 ) -> Option<WIPOffset<ThreadDetails<'a>>> {
-  let Some(thread_details) = (unsafe { thread_details_ptr.as_ref() }) else {
-    return None;
-  };
+  let thread_details = (unsafe { thread_details_ptr.as_ref() })?;
 
   let threads = optional_slice_from_raw_parts(thread_details.threads, thread_details.threads_count)
     .unwrap_or_default()
