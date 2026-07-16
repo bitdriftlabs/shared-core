@@ -279,7 +279,9 @@ extern "C-unwind" fn bdrw_get_completed_buffer(
     .builder
     .create_vector(processor.binary_images.as_slice());
   let thread_details = if processor.system_thread_count > 0 || !processor.threads.is_empty() {
-    let threads = processor.builder.create_vector(processor.threads.as_slice());
+    let threads = processor
+      .builder
+      .create_vector(processor.threads.as_slice());
     Some(ThreadDetails::create(
       &mut processor.builder,
       &ThreadDetailsArgs {
