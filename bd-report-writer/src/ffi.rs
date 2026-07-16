@@ -127,6 +127,20 @@ pub struct BDAppleCrashInfoPayload {
 }
 
 #[repr(C)]
+pub struct BDCrashInfoThread {
+  thread: BDThread,
+  stack_count: u32,
+  stack: *const BDStackFrame,
+}
+
+#[repr(C)]
+pub struct BDCrashInfoThreadDetails {
+  count: u16,
+  threads_count: usize,
+  threads: *const BDCrashInfoThread,
+}
+
+#[repr(C)]
 pub struct BDDeviceMetrics {
   time_seconds: u64,
   time_nanos: u32,
@@ -264,10 +278,8 @@ extern "C-unwind" fn bdrw_get_completed_buffer(
   let binary_images = processor
     .builder
     .create_vector(processor.binary_images.as_slice());
-  let threads = processor
-    .builder
-    .create_vector(processor.threads.as_slice());
   let thread_details = if processor.system_thread_count > 0 || !processor.threads.is_empty() {
+    let threads = processor.builder.create_vector(processor.threads.as_slice());
     Some(ThreadDetails::create(
       &mut processor.builder,
       &ThreadDetailsArgs {
@@ -388,12 +400,6 @@ extern "C-unwind" fn bdrw_add_thread(
   processor.system_thread_count = system_thread_count;
 
   if let Some(thread) = unsafe { thread_ptr.as_ref() } {
-    let name = append_string(&mut processor.builder, thread.name);
-    let state = if processor.is_file_size_optimization_enabled {
-      append_shared_string(&mut processor.builder, thread.state)
-    } else {
-      append_string(&mut processor.builder, thread.state)
-    };
     let frames = append_frames(
       &mut processor.builder,
       stack_count,
@@ -401,18 +407,11 @@ extern "C-unwind" fn bdrw_add_thread(
       processor.is_file_size_optimization_enabled,
     );
     let stack_trace = create_or_reuse_stack_trace(processor, &frames);
-    let thread = Thread::create(
+    let thread = build_thread(
       &mut processor.builder,
-      &ThreadArgs {
-        name,
-        active: thread.active,
-        index: thread.index,
-        state,
-        priority: thread.priority,
-        quality_of_service: thread.quality_of_service,
-        stack_trace: Some(stack_trace),
-        summary: None,
-      },
+      thread,
+      stack_trace,
+      processor.is_file_size_optimization_enabled,
     );
     processor.threads.push(thread);
     true
@@ -587,13 +586,14 @@ extern "C-unwind" fn bdrw_add_app(handle: BDProcessorHandle, app_ptr: *const BDA
 }
 
 #[unsafe(no_mangle)]
-extern "C-unwind" fn bdrw_add_apple_crash_info_with_current_threads(
+extern "C-unwind" fn bdrw_add_apple_crash_info(
   handle: BDProcessorHandle,
   reporter_scope: i8,
   reporter: i8,
   occurred_at_seconds: u64,
   occurred_at_nanos: u32,
   payload_ptr: *const BDAppleCrashInfoPayload,
+  thread_details_ptr: *const BDCrashInfoThreadDetails,
 ) -> bool {
   let processor = try_into_processor!(handle, false);
   let Some(payload) = (unsafe { payload_ptr.as_ref() }) else {
@@ -602,7 +602,7 @@ extern "C-unwind" fn bdrw_add_apple_crash_info_with_current_threads(
   let Some(details) = build_apple_crash_details(&mut processor.builder, payload) else {
     return false;
   };
-  let thread_details = build_current_thread_details(processor);
+  let thread_details = build_crash_info_thread_details(processor, thread_details_ptr);
   let occurred_at = Timestamp::new(occurred_at_seconds, occurred_at_nanos);
   let crash_info = CrashInfo::create(
     &mut processor.builder,
@@ -714,21 +714,72 @@ fn optional_slice_from_raw_parts<'a, T>(raw_parts: *const T, count: usize) -> Op
   Some(unsafe { slice::from_raw_parts(raw_parts, count) })
 }
 
-fn build_current_thread_details<'a>(
+fn build_thread<'a>(
+  builder: &mut FlatBufferBuilder<'a>,
+  thread: &BDThread,
+  stack_trace: WIPOffset<Vector<'a, ForwardsUOffset<Frame<'a>>>>,
+  is_file_size_optimization_enabled: bool,
+) -> WIPOffset<Thread<'a>> {
+  let name = append_string(builder, thread.name);
+  let state = if is_file_size_optimization_enabled {
+    append_shared_string(builder, thread.state)
+  } else {
+    append_string(builder, thread.state)
+  };
+
+  Thread::create(
+    builder,
+    &ThreadArgs {
+      name,
+      active: thread.active,
+      index: thread.index,
+      state,
+      priority: thread.priority,
+      quality_of_service: thread.quality_of_service,
+      stack_trace: Some(stack_trace),
+      summary: None,
+    },
+  )
+}
+
+fn build_crash_info_thread_details<'a>(
   processor: &mut ReportProcessor<'a>,
+  thread_details_ptr: *const BDCrashInfoThreadDetails,
 ) -> Option<WIPOffset<ThreadDetails<'a>>> {
-  if processor.system_thread_count == 0 && processor.threads.is_empty() {
+  let Some(thread_details) = (unsafe { thread_details_ptr.as_ref() }) else {
+    return None;
+  };
+
+  let threads = optional_slice_from_raw_parts(thread_details.threads, thread_details.threads_count)
+    .unwrap_or_default()
+    .iter()
+    .map(|thread| {
+      let frames = append_frames(
+        &mut processor.builder,
+        thread.stack_count,
+        thread.stack,
+        processor.is_file_size_optimization_enabled,
+      );
+      let stack_trace = processor.builder.create_vector(frames.as_slice());
+      build_thread(
+        &mut processor.builder,
+        &thread.thread,
+        stack_trace,
+        processor.is_file_size_optimization_enabled,
+      )
+    })
+    .collect::<Vec<_>>();
+
+  if thread_details.count == 0 && threads.is_empty() {
     return None;
   }
 
-  let threads = processor
-    .builder
-    .create_vector(processor.threads.as_slice());
+  let threads = (!threads.is_empty()).then(|| processor.builder.create_vector(threads.as_slice()));
   Some(ThreadDetails::create(
     &mut processor.builder,
     &ThreadDetailsArgs {
-      count: processor.system_thread_count,
-      threads: Some(threads),
+      count: thread_details.count,
+      threads,
     },
   ))
 }

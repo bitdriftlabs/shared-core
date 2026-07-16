@@ -17,6 +17,7 @@ unsafe extern "C-unwind" {
   fn dispose_handle(handle: BDProcessorHandle);
   fn load_binary_data_only(handle: BDProcessorHandle, len: *mut u64) -> *const u8;
   fn load_current_threads_crash_info_only(handle: BDProcessorHandle, len: *mut u64) -> *const u8;
+  fn load_threadless_crash_info_only(handle: BDProcessorHandle, len: *mut u64) -> *const u8;
   fn load_thread_data_only(handle: BDProcessorHandle, len: *mut u64) -> *const u8;
   fn load_error_data_only(handle: BDProcessorHandle, len: *mut u64) -> *const u8;
   fn load_full_report(handle: BDProcessorHandle, len: *mut u64) -> *const u8;
@@ -267,6 +268,40 @@ fn current_threads_crash_info_test() {
   let thread_details = entry.thread_details().unwrap();
   assert_eq!(5, thread_details.count());
   assert_eq!(1, thread_details.threads().unwrap().len());
+
+  unsafe {
+    dispose_handle(&raw mut handle);
+  }
+}
+
+#[test]
+fn threadless_crash_info_test() {
+  let mut handle = null();
+  let report = unsafe {
+    create_handle(&raw mut handle);
+    let mut len = 0;
+    let buf = load_threadless_crash_info_only(&raw mut handle, &raw mut len);
+    assert!(!buf.is_null());
+    assert_ne!(0, len);
+
+    let data = slice::from_raw_parts(buf, usize::try_from(len).unwrap());
+    root_as_report_unchecked(data)
+  };
+
+  let crash_info = report.crash_info().unwrap();
+  assert_eq!(1, crash_info.len());
+
+  let entry = crash_info.get(0);
+  assert_eq!(CrashReporterScope::InProcess, entry.reporter_scope());
+  assert_eq!(CrashReporter::AppleBitdriftCrashReporter, entry.reporter());
+  assert_eq!(1_700_000_123, entry.occurred_at().unwrap().seconds());
+  assert_eq!(77, entry.occurred_at().unwrap().nanos());
+  assert!(entry.thread_details().is_none());
+
+  let details = entry.details_as_apple_crash_details().unwrap();
+  let nsexception = details.nsexception().unwrap();
+  assert_eq!(Some("CapturedException"), nsexception.name());
+  assert_eq!(Some("captured reason"), nsexception.reason());
 
   unsafe {
     dispose_handle(&raw mut handle);

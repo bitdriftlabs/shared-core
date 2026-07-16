@@ -129,6 +129,18 @@ typedef struct BDAppleCrashInfoPayload {
   struct BDAppleTermination termination;
 } BDAppleCrashInfoPayload;
 
+typedef struct BDCrashInfoThread {
+  struct BDThread thread;
+  uint32_t stack_count;
+  const struct BDStackFrame *stack;
+} BDCrashInfoThread;
+
+typedef struct BDCrashInfoThreadDetails {
+  uint16_t count;
+  uintptr_t threads_count;
+  const struct BDCrashInfoThread *threads;
+} BDCrashInfoThreadDetails;
+
 /**
  * Entry point to creating a new Report
  *
@@ -226,9 +238,10 @@ bool bdrw_add_device(BDProcessorHandle handle, const struct BDDeviceMetrics *dev
  */
 bool bdrw_add_app(BDProcessorHandle handle, const struct BDAppMetrics *app_ptr);
 
-bool bdrw_add_apple_crash_info_with_current_threads(BDProcessorHandle handle,
-                                                    int8_t reporter_scope,
-                                                    int8_t reporter,
-                                                    uint64_t occurred_at_seconds,
-                                                    uint32_t occurred_at_nanos,
-                                                    const struct BDAppleCrashInfoPayload *payload_ptr);
+bool bdrw_add_apple_crash_info(BDProcessorHandle handle,
+                               int8_t reporter_scope,
+                               int8_t reporter,
+                               uint64_t occurred_at_seconds,
+                               uint32_t occurred_at_nanos,
+                               const struct BDAppleCrashInfoPayload *payload_ptr,
+                               const struct BDCrashInfoThreadDetails *thread_details_ptr);

@@ -21,6 +21,7 @@ static void add_errors(BDProcessorHandle handle);
 static void add_device(BDProcessorHandle handle);
 static void add_app(BDProcessorHandle handle);
 static void add_current_threads_crash_info(BDProcessorHandle handle);
+static void add_threadless_crash_info(BDProcessorHandle handle);
 
 /* Test function hooks */
 
@@ -52,6 +53,12 @@ const uint8_t *load_current_threads_crash_info_only(BDProcessorHandle handle,
                                                     uint64_t *len) {
   add_threads(handle);
   add_current_threads_crash_info(handle);
+  return bdrw_get_completed_buffer(handle, len);
+}
+
+const uint8_t *load_threadless_crash_info_only(BDProcessorHandle handle,
+                                               uint64_t *len) {
+  add_threadless_crash_info(handle);
   return bdrw_get_completed_buffer(handle, len);
 }
 
@@ -188,6 +195,27 @@ static void add_device(BDProcessorHandle handle) {
 }
 
 static void add_current_threads_crash_info(BDProcessorHandle handle) {
+  int count = 0;
+  BDStackFrame *stack = make_frame_data(&count);
+  BDCrashInfoThread threads[] = {
+      {
+          .thread =
+              (BDThread){
+                  .active = true,
+                  .index = 56,
+                  .name = "com.example.stuff.queue",
+                  .quality_of_service = 2,
+                  .priority = 0.8,
+              },
+          .stack_count = count,
+          .stack = stack,
+      },
+  };
+  BDCrashInfoThreadDetails thread_details = {
+      .count = 5,
+      .threads_count = 1,
+      .threads = threads,
+  };
   BDAppleCrashInfoPayload payload = {
       .has_nsexception = true,
       .nsexception =
@@ -223,6 +251,21 @@ static void add_current_threads_crash_info(BDProcessorHandle handle) {
               .watchdog_visibility = "Foreground",
           },
   };
-  bdrw_add_apple_crash_info_with_current_threads(handle, 2, 1, 1700000000, 55,
-                                                 &payload);
+  bdrw_add_apple_crash_info(handle, 2, 1, 1700000000, 55, &payload,
+                            &thread_details);
+  free((void *)stack[0].regs);
+  free((void *)stack[0].state);
+  free((void *)stack);
+}
+
+static void add_threadless_crash_info(BDProcessorHandle handle) {
+  BDAppleCrashInfoPayload payload = {
+      .has_nsexception = true,
+      .nsexception =
+          (BDNSException){
+              .name = "CapturedException",
+              .reason = "captured reason",
+          },
+  };
+  bdrw_add_apple_crash_info(handle, 1, 3, 1700000123, 77, &payload, NULL);
 }
