@@ -274,6 +274,7 @@ fn serialize_source_file() {
     SourceFile,
     &SourceFileArgs {
       path: Some(builder.create_string("src/tmp.cpp")),
+      abs_path: Some(builder.create_string("/workspace/src/tmp.cpp")),
       line: 189,
       column: 13,
     }
@@ -281,12 +282,13 @@ fn serialize_source_file() {
   assert_eq!(
     json!({
       "path": "src/tmp.cpp",
+      "abs_path": "/workspace/src/tmp.cpp",
       "line": 189,
       "column": 13,
     }),
     object
   );
-  assert_struct_size!(SourceFileArgs, 24);
+  assert_struct_size!(SourceFileArgs, 32);
 }
 
 #[test]

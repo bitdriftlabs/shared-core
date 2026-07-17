@@ -294,6 +294,7 @@ fn build_java_frame<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
         path: Some(builder.create_shared_string(&source.path)),
         line: source.lineno.unwrap_or_default(),
         column: 0,
+        abs_path: None,
       };
       let source_file = Some(v_1::SourceFile::create(builder, &source_file_args));
       let state = state

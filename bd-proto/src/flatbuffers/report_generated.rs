@@ -3472,6 +3472,7 @@ impl<'a> SourceFile<'a> {
   pub const VT_PATH: flatbuffers::VOffsetT = 4;
   pub const VT_LINE: flatbuffers::VOffsetT = 6;
   pub const VT_COLUMN: flatbuffers::VOffsetT = 8;
+  pub const VT_ABS_PATH: flatbuffers::VOffsetT = 10;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -3485,6 +3486,7 @@ impl<'a> SourceFile<'a> {
     let mut builder = SourceFileBuilder::new(_fbb);
     builder.add_column(args.column);
     builder.add_line(args.line);
+    if let Some(x) = args.abs_path { builder.add_abs_path(x); }
     if let Some(x) = args.path { builder.add_path(x); }
     builder.finish()
   }
@@ -3495,10 +3497,14 @@ impl<'a> SourceFile<'a> {
     });
     let line = self.line();
     let column = self.column();
+    let abs_path = self.abs_path().map(|x| {
+      x.to_string()
+    });
     SourceFileT {
       path,
       line,
       column,
+      abs_path,
     }
   }
 
@@ -3523,6 +3529,13 @@ impl<'a> SourceFile<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<i64>(SourceFile::VT_COLUMN, Some(0)).unwrap()}
   }
+  #[inline]
+  pub fn abs_path(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(SourceFile::VT_ABS_PATH, None)}
+  }
 }
 
 impl flatbuffers::Verifiable for SourceFile<'_> {
@@ -3535,6 +3548,7 @@ impl flatbuffers::Verifiable for SourceFile<'_> {
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
      .visit_field::<i64>("line", Self::VT_LINE, false)?
      .visit_field::<i64>("column", Self::VT_COLUMN, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("abs_path", Self::VT_ABS_PATH, false)?
      .finish();
     Ok(())
   }
@@ -3543,6 +3557,7 @@ pub struct SourceFileArgs<'a> {
     pub path: Option<flatbuffers::WIPOffset<&'a str>>,
     pub line: i64,
     pub column: i64,
+    pub abs_path: Option<flatbuffers::WIPOffset<&'a str>>,
 }
 impl<'a> Default for SourceFileArgs<'a> {
   #[inline]
@@ -3551,6 +3566,7 @@ impl<'a> Default for SourceFileArgs<'a> {
       path: None,
       line: 0,
       column: 0,
+      abs_path: None,
     }
   }
 }
@@ -3573,6 +3589,10 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> SourceFileBuilder<'a, 'b, A> {
     self.fbb_.push_slot::<i64>(SourceFile::VT_COLUMN, column, 0);
   }
   #[inline]
+  pub fn add_abs_path(&mut self, abs_path: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(SourceFile::VT_ABS_PATH, abs_path);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> SourceFileBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     SourceFileBuilder {
@@ -3593,6 +3613,7 @@ impl core::fmt::Debug for SourceFile<'_> {
       ds.field("path", &self.path());
       ds.field("line", &self.line());
       ds.field("column", &self.column());
+      ds.field("abs_path", &self.abs_path());
       ds.finish()
   }
 }
@@ -3602,6 +3623,7 @@ pub struct SourceFileT {
   pub path: Option<String>,
   pub line: i64,
   pub column: i64,
+  pub abs_path: Option<String>,
 }
 impl Default for SourceFileT {
   fn default() -> Self {
@@ -3609,6 +3631,7 @@ impl Default for SourceFileT {
       path: None,
       line: 0,
       column: 0,
+      abs_path: None,
     }
   }
 }
@@ -3622,10 +3645,14 @@ impl SourceFileT {
     });
     let line = self.line;
     let column = self.column;
+    let abs_path = self.abs_path.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
     SourceFile::create(_fbb, &SourceFileArgs{
       path,
       line,
       column,
+      abs_path,
     })
   }
 }

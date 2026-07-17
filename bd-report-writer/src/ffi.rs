@@ -902,6 +902,7 @@ fn append_frames<'a>(
             path: Some(path),
             line: frame.line,
             column: frame.column,
+            abs_path: None,
           },
         )
       });

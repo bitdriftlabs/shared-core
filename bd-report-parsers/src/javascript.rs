@@ -193,6 +193,7 @@ fn build_javascript_error_report(
           path: Some(file_path_offset),
           line: frame.line,
           column: frame.column,
+          abs_path: None,
         },
       );
 

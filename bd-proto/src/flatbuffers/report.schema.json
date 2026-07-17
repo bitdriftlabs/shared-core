@@ -309,6 +309,9 @@
               },
         "column" : {
                 "type" : "integer", "minimum" : -9223372036854775808, "maximum" : 9223372036854775807
+              },
+        "abs_path" : {
+                "type" : "string"
               }
       },
       "additionalProperties" : false

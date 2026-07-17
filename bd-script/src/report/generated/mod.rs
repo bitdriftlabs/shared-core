@@ -1867,6 +1867,7 @@ impl Scriptable for SDKInfo<'_> {
 impl From<SourceFile<'_>> for ScriptValue {
   fn from(value: SourceFile<'_>) -> Self {
     let script_values: Vec<(&str, Self)> = vec![
+      ("abs_path", value.abs_path().into()),
       ("column", value.column().into()),
       ("line", value.line().into()),
       ("path", value.path().into()),
@@ -1893,6 +1894,9 @@ impl Scriptable for SourceFile<'_> {
     };
 
     match base.as_str() {
+      "abs_path" => self
+        .abs_path()
+        .map_or(Ok(None), |value| value.resolve(&path[1 ..])),
       "column" => self.column().resolve(&path[1 ..]),
       "line" => self.line().resolve(&path[1 ..]),
       "path" => self
@@ -1907,6 +1911,7 @@ impl Scriptable for SourceFile<'_> {
   fn schema() -> Kind {
     Kind::object(
       Collection::empty()
+        .with_known("abs_path", Kind::bytes())
         .with_known("column", Kind::integer())
         .with_known("line", Kind::integer())
         .with_known("path", Kind::bytes()),
