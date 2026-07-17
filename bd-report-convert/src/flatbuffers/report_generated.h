@@ -1500,7 +1500,8 @@ struct SourceFile FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_PATH = 4,
     VT_LINE = 6,
-    VT_COLUMN = 8
+    VT_COLUMN = 8,
+    VT_ABS_PATH = 10
   };
   const ::flatbuffers::String *path() const {
     return GetPointer<const ::flatbuffers::String *>(VT_PATH);
@@ -1511,12 +1512,17 @@ struct SourceFile FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   int64_t column() const {
     return GetField<int64_t>(VT_COLUMN, 0);
   }
+  const ::flatbuffers::String *abs_path() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_ABS_PATH);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_PATH) &&
            verifier.VerifyString(path()) &&
            VerifyField<int64_t>(verifier, VT_LINE, 8) &&
            VerifyField<int64_t>(verifier, VT_COLUMN, 8) &&
+           VerifyOffset(verifier, VT_ABS_PATH) &&
+           verifier.VerifyString(abs_path()) &&
            verifier.EndTable();
   }
 };
@@ -1534,6 +1540,9 @@ struct SourceFileBuilder {
   void add_column(int64_t column) {
     fbb_.AddElement<int64_t>(SourceFile::VT_COLUMN, column, 0);
   }
+  void add_abs_path(::flatbuffers::Offset<::flatbuffers::String> abs_path) {
+    fbb_.AddOffset(SourceFile::VT_ABS_PATH, abs_path);
+  }
   explicit SourceFileBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1549,10 +1558,12 @@ inline ::flatbuffers::Offset<SourceFile> CreateSourceFile(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     ::flatbuffers::Offset<::flatbuffers::String> path = 0,
     int64_t line = 0,
-    int64_t column = 0) {
+    int64_t column = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> abs_path = 0) {
   SourceFileBuilder builder_(_fbb);
   builder_.add_column(column);
   builder_.add_line(line);
+  builder_.add_abs_path(abs_path);
   builder_.add_path(path);
   return builder_.Finish();
 }
@@ -1561,13 +1572,16 @@ inline ::flatbuffers::Offset<SourceFile> CreateSourceFileDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     const char *path = nullptr,
     int64_t line = 0,
-    int64_t column = 0) {
+    int64_t column = 0,
+    const char *abs_path = nullptr) {
   auto path__ = path ? _fbb.CreateString(path) : 0;
+  auto abs_path__ = abs_path ? _fbb.CreateString(abs_path) : 0;
   return bitdrift_public::fbs::issue_reporting::v1::CreateSourceFile(
       _fbb,
       path__,
       line,
-      column);
+      column,
+      abs_path__);
 }
 
 struct CPURegister FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -3742,15 +3756,17 @@ inline const ::flatbuffers::TypeTable *SourceFileTypeTable() {
   static const ::flatbuffers::TypeCode type_codes[] = {
     { ::flatbuffers::ET_STRING, 0, -1 },
     { ::flatbuffers::ET_LONG, 0, -1 },
-    { ::flatbuffers::ET_LONG, 0, -1 }
+    { ::flatbuffers::ET_LONG, 0, -1 },
+    { ::flatbuffers::ET_STRING, 0, -1 }
   };
   static const char * const names[] = {
     "path",
     "line",
-    "column"
+    "column",
+    "abs_path"
   };
   static const ::flatbuffers::TypeTable tt = {
-    ::flatbuffers::ST_TABLE, 3, type_codes, nullptr, nullptr, nullptr, names
+    ::flatbuffers::ST_TABLE, 4, type_codes, nullptr, nullptr, nullptr, names
   };
   return &tt;
 }

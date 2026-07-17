@@ -256,11 +256,16 @@ impl Serialize for SourceFile<'_> {
   where
     S: Serializer,
   {
-    let mut s = serializer.serialize_struct("SourceFile", 3)?;
+    let mut s = serializer.serialize_struct("SourceFile", 4)?;
     if let Some(f) = self.path() {
       s.serialize_field("path", &f)?;
     } else {
       s.skip_field("path")?;
+    }
+    if let Some(f) = self.abs_path() {
+      s.serialize_field("abs_path", &f)?;
+    } else {
+      s.skip_field("abs_path")?;
     }
     s.serialize_field("line", &self.line())?;
     s.serialize_field("column", &self.column())?;

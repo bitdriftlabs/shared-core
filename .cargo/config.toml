@@ -59,4 +59,7 @@ git-fetch-with-cli = true
 
 # Make sure we don't compile protoc
 [env]
+# The Rust upgrade builds aws-lc-sys and ring objects for macOS 26 on Xcode 26. Keep the Rust
+# linker target aligned to avoid ld64.lld rejecting those objects as newer than the target.
+MACOSX_DEPLOYMENT_TARGET = "26.0"
 PROTOC_NO_VENDOR = "true"
