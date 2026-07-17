@@ -5,7 +5,7 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_runtime::runtime::{BoolWatch, ConfigLoader, crash_reporting};
+use bd_runtime::runtime::{BoolWatch, ConfigLoader, FeatureFlag, crash_reporting};
 use std::path::{Path, PathBuf};
 
 #[cfg(test)]
@@ -46,13 +46,22 @@ impl ConfigWriter {
   }
 
   pub async fn run(&mut self) {
-    if let Ok(exists) = tokio::fs::try_exists(self.config_path.clone()).await
-      && !exists
-    {
+    if !self.config_file_up_to_date().await {
       self.write_config_file().await;
     }
 
     self.check_for_config_changes().await;
+  }
+
+  /// Returns whether the on-disk config file already contains an entry for every flag this
+  /// writer manages. A file written by an older SDK version may only have the legacy
+  /// `crash_reporting.enabled` entry, in which case it needs to be rewritten once to pick up
+  /// the newer flags.
+  async fn config_file_up_to_date(&self) -> bool {
+    let Ok(contents) = tokio::fs::read_to_string(&self.config_path).await else {
+      return false;
+    };
+    contents.contains(crash_reporting::UseBdCrashReporter::path())
   }
 
   async fn check_for_config_changes(&mut self) {

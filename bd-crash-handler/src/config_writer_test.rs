@@ -16,7 +16,7 @@ struct Setup {
   directory: TempDir,
   runtime: Arc<TestConfigLoader>,
   writer: ConfigWriter,
-  _shutdown: ComponentShutdownTrigger,
+  shutdown: ComponentShutdownTrigger,
 }
 
 impl Setup {
@@ -33,7 +33,7 @@ impl Setup {
       directory,
       runtime: Arc::new(runtime),
       writer,
-      _shutdown: shutdown,
+      shutdown,
     }
   }
 
@@ -62,6 +62,27 @@ impl Setup {
   fn read_config_file(&self) -> String {
     let config_file = self.directory.path().join("reports/config.csv");
     log::info!("Reading config file: {config_file:?}");
+    std::fs::read_to_string(&config_file).unwrap()
+  }
+
+  fn write_raw_config_file(&self, contents: &str) {
+    let reports_dir = self.directory.path().join("reports");
+    std::fs::create_dir_all(&reports_dir).unwrap();
+    std::fs::write(reports_dir.join("config.csv"), contents).unwrap();
+  }
+
+  // Runs the writer's `run()` loop to completion (triggering shutdown right away) and returns
+  // the resulting contents of the config file.
+  async fn run_until_shutdown(self) -> String {
+    let mut writer = self.writer;
+    let handle = tokio::spawn(async move {
+      writer.run().await;
+    });
+
+    self.shutdown.shutdown().await;
+    handle.await.unwrap();
+
+    let config_file = self.directory.path().join("reports/config.csv");
     std::fs::read_to_string(&config_file).unwrap()
   }
 }
@@ -93,5 +114,45 @@ async fn test_config_file_written_use_bd_crash_reporter() {
   assert_eq!(
     "crash_reporting.enabled,true\nclient_feature.ios.use_bd_crash_reporter,false",
     setup.read_config_file()
+  );
+}
+
+#[tokio::test]
+async fn test_run_writes_config_file_when_missing() {
+  let setup = Setup::new().await;
+
+  let contents = setup.run_until_shutdown().await;
+
+  assert_eq!(
+    "crash_reporting.enabled,true\nclient_feature.ios.use_bd_crash_reporter,true",
+    contents
+  );
+}
+
+#[tokio::test]
+async fn test_run_rewrites_legacy_only_config_file() {
+  let setup = Setup::new().await;
+  setup.write_raw_config_file("crash_reporting.enabled,true");
+
+  let contents = setup.run_until_shutdown().await;
+
+  assert_eq!(
+    "crash_reporting.enabled,true\nclient_feature.ios.use_bd_crash_reporter,true",
+    contents
+  );
+}
+
+#[tokio::test]
+async fn test_run_does_not_rewrite_up_to_date_config_file() {
+  let setup = Setup::new().await;
+  setup.write_raw_config_file(
+    "crash_reporting.enabled,false\nclient_feature.ios.use_bd_crash_reporter,false",
+  );
+
+  let contents = setup.run_until_shutdown().await;
+
+  assert_eq!(
+    "crash_reporting.enabled,false\nclient_feature.ios.use_bd_crash_reporter,false",
+    contents
   );
 }
