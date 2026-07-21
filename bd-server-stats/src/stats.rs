@@ -16,6 +16,8 @@ use parking_lot::Mutex;
 use prometheus::core::Collector as PromCollector;
 use prometheus::proto::MetricFamily;
 use prometheus::{
+  Counter,
+  CounterVec,
   Encoder,
   Histogram,
   HistogramOpts,
@@ -28,6 +30,8 @@ use prometheus::{
   Registry,
   TextEncoder,
   opts,
+  register_counter_vec_with_registry,
+  register_counter_with_registry,
   register_histogram_vec_with_registry,
   register_histogram_with_registry,
   register_int_counter_vec_with_registry,
@@ -139,6 +143,18 @@ impl LabeledMetricBuilder {
     })
   }
 
+  // Create a new labeled floating-point counter with a specific name.
+  #[must_use]
+  pub fn build_float_counter(&self, name: &str) -> LabeledMetric<CounterVec> {
+    self.build_generic(name, |name: &str| {
+      CounterVec::new(
+        Opts::new(self.scope.metric_name(name), "-"),
+        &self.label_names,
+      )
+      .unwrap()
+    })
+  }
+
   // Create a new labeled gauge with a specific name.
   #[must_use]
   pub fn build_gauge(&self, name: &str) -> LabeledMetric<IntGaugeVec> {
@@ -233,6 +249,7 @@ impl<MetricVecType: Clone> LabeledMetric<MetricVecType> {
 }
 
 pub type LabeledCounter = LabeledMetric<IntCounterVec>;
+pub type LabeledFloatCounter = LabeledMetric<CounterVec>;
 pub type LabeledGauge = LabeledMetric<IntGaugeVec>;
 pub type LabeledHistogram = LabeledMetric<HistogramVec>;
 
@@ -280,6 +297,12 @@ impl GetMetricWithLabels<IntCounter> for IntCounterVec {
   }
 }
 
+impl GetMetricWithLabels<Counter> for CounterVec {
+  fn with_label_values(&self, labels: &[&str]) -> Counter {
+    self.with_label_values(labels)
+  }
+}
+
 impl GetMetricWithLabels<IntGauge> for IntGaugeVec {
   fn with_label_values(&self, labels: &[&str]) -> IntGauge {
     self.with_label_values(labels)
@@ -322,6 +345,7 @@ impl<MetricVecType: Clone + GetMetricWithLabels<MetricType>, MetricType>
 }
 
 pub type LateInitializedCounter = LateInitializedMetric<IntCounterVec, IntCounter>;
+pub type LateInitializedFloatCounter = LateInitializedMetric<CounterVec, Counter>;
 pub type LateInitializedGauge = LateInitializedMetric<IntGaugeVec, IntGauge>;
 pub type LateInitializedHistogram = LateInitializedMetric<HistogramVec, Histogram>;
 
@@ -470,6 +494,78 @@ impl Scope {
     })
   }
 
+  // Create a new floating-point counter with scope labels.
+  #[must_use]
+  pub fn float_counter(&self, name: &str) -> Counter {
+    self.float_counter_with_labels(name, HashMap::new())
+  }
+
+  pub fn float_counter_checked(&self, name: &str) -> anyhow::Result<Counter> {
+    self.float_counter_with_labels_checked(name, HashMap::new())
+  }
+
+  // Create a new floating-point counter with scope and provided labels.
+  #[must_use]
+  pub fn float_counter_with_labels(&self, name: &str, labels: HashMap<String, String>) -> Counter {
+    self
+      .float_counter_with_labels_checked(name, labels)
+      .unwrap()
+  }
+
+  pub fn float_counter_with_labels_checked(
+    &self,
+    name: &str,
+    labels: HashMap<String, String>,
+  ) -> anyhow::Result<Counter> {
+    let name = self.metric_name(name);
+    let labels = self.final_labels(labels);
+    Ok(
+      match self
+        .collector
+        .inner
+        .float_counters
+        .entry(Id::new(name.clone(), labels.clone().into_iter().collect()))
+      {
+        Entry::Occupied(entry) => entry.get().clone(),
+        Entry::Vacant(entry) => {
+          let opts = opts!(name, "-").const_labels(labels);
+          let counter = register_counter_with_registry!(opts, self.collector.inner.registry)?;
+          entry.insert(counter).value().clone()
+        },
+      },
+    )
+  }
+
+  // Create a new floating-point counter vec that can be used to produce labeled counters. This
+  // does not use scope labels. Only the provided labels are used.
+  #[must_use]
+  pub fn float_counter_vec(&self, name: &str, labels: &[&str]) -> CounterVec {
+    self.float_counter_vec_checked(name, labels).unwrap()
+  }
+
+  pub fn float_counter_vec_checked(
+    &self,
+    name: &str,
+    labels: &[&str],
+  ) -> anyhow::Result<CounterVec> {
+    let id = VecId {
+      name: self.metric_name(name),
+      label_names: labels.iter().map(|&label| label.to_string()).collect(),
+    };
+    Ok(match self.collector.inner.float_counter_vecs.entry(id) {
+      Entry::Occupied(entry) => entry.get().clone(),
+      Entry::Vacant(entry) => {
+        let counter = register_counter_vec_with_registry!(
+          self.metric_name(name),
+          "-",
+          labels,
+          self.collector.inner.registry
+        )?;
+        entry.insert(counter).value().clone()
+      },
+    })
+  }
+
   // Create a new gauge with scope labels.
   #[must_use]
   pub fn gauge(&self, name: &str) -> IntGauge {
@@ -591,6 +687,8 @@ struct CollectorInner {
   on_gather_callbacks: Mutex<Vec<OnGatherCallback>>,
   counters: DashMap<Id, IntCounter>,
   counter_vecs: DashMap<VecId, IntCounterVec>,
+  float_counters: DashMap<Id, Counter>,
+  float_counter_vecs: DashMap<VecId, CounterVec>,
   gauges: DashMap<Id, IntGauge>,
   histograms: DashMap<Id, Histogram>,
 }
@@ -620,6 +718,8 @@ impl Collector {
         on_gather_callbacks: Mutex::default(),
         counters: DashMap::new(),
         counter_vecs: DashMap::new(),
+        float_counters: DashMap::new(),
+        float_counter_vecs: DashMap::new(),
         gauges: DashMap::new(),
         histograms: DashMap::new(),
       }),
