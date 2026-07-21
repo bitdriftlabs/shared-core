@@ -106,6 +106,7 @@ pub async fn grpc_method_extension_middleware(
 #[derive(Clone, Copy, Debug)]
 pub struct UnaryRequestConfig {
   pub max_request_bytes: usize,
+  pub max_decoded_request_bytes: usize,
   pub validation: Option<ValidationOptions>,
 }
 
@@ -113,6 +114,7 @@ impl Default for UnaryRequestConfig {
   fn default() -> Self {
     Self {
       max_request_bytes: DEFAULT_MAX_UNARY_REQUEST_BYTES,
+      max_decoded_request_bytes: DEFAULT_MAX_UNARY_REQUEST_BYTES,
       validation: None,
     }
   }
@@ -769,6 +771,22 @@ async fn decode_request<Message: MessageFull>(
     .get(CONTENT_ENCODING)
     .is_some_and(|v| v.as_bytes() == CONTENT_ENCODING_SNAPPY.as_bytes())
   {
+    // Snappy raw embeds its decoded length in the header. This preflight relies on trusted
+    // callers; it is not a general-purpose defense against untrusted compressed input.
+    let decoded_len = snap::raw::decompress_len(&body_bytes)?;
+    if decoded_len > request_config.max_decoded_request_bytes {
+      return Err(
+        Status::new(
+          Code::ResourceExhausted,
+          format!(
+            "Decoded request body exceeds {} byte limit",
+            request_config.max_decoded_request_bytes
+          ),
+          None,
+        )
+        .into(),
+      );
+    }
     let decompressed = snap::raw::Decoder::new().decompress_vec(&body_bytes)?;
     log::trace!(
       "snappy decompressed {} -> {}",
@@ -796,7 +814,7 @@ async fn decode_request<Message: MessageFull>(
   } else {
     let mut grpc_decoder = Decoder::<Message>::new(
       finalize_decompression(&parts.headers),
-      Some(request_config.max_request_bytes),
+      Some(request_config.max_decoded_request_bytes),
       OptimizeFor::Cpu,
     );
     let mut messages = grpc_decoder.decode_data(&body_bytes)?;
@@ -1039,6 +1057,7 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
     connect_protocol_type,
     UnaryRequestConfig {
       max_request_bytes,
+      max_decoded_request_bytes: max_request_bytes,
       validation,
     },
     None,
@@ -1268,6 +1287,7 @@ where
 {
   verify_request_support::<RequestType>(UnaryRequestConfig {
     max_request_bytes,
+    max_decoded_request_bytes: max_request_bytes,
     validation,
   })?;
   let warn_tracker = Arc::new(WarnTracker::default());
@@ -1335,6 +1355,7 @@ where
 {
   verify_request_support::<RequestType>(UnaryRequestConfig {
     max_request_bytes,
+    max_decoded_request_bytes: max_request_bytes,
     validation,
   })?;
   let warn_tracker = Arc::new(WarnTracker::default());

@@ -1768,6 +1768,78 @@ async fn unary_request_over_limit_returns_resource_exhausted() {
 }
 
 #[tokio::test]
+async fn unary_snappy_compressed_body_over_limit_returns_resource_exhausted() {
+  let request_config = UnaryRequestConfig {
+    max_request_bytes: 8,
+    max_decoded_request_bytes: 4_096,
+    ..validated_request_config()
+  };
+  let local_address = make_unary_server_with_request_config(
+    Arc::new(EchoHandler::default()),
+    |_| {},
+    None,
+    request_config,
+    None,
+  )
+  .await;
+  let client = Client::new_http(&local_address.to_string(), 10.seconds(), 1).unwrap();
+
+  assert_matches!(
+    client
+      .unary(
+        &service_method(),
+        None,
+        EchoRequest {
+          echo: "x".repeat(64),
+          ..Default::default()
+        },
+        10.seconds(),
+        Compression::Snappy,
+      )
+      .await,
+    Err(Error::Grpc(status))
+      if status.code() == Code::ResourceExhausted
+        && status.message() == Some("Request body exceeds 8 byte limit")
+  );
+}
+
+#[tokio::test]
+async fn unary_snappy_decoded_body_over_limit_returns_resource_exhausted() {
+  let request_config = UnaryRequestConfig {
+    max_request_bytes: 1_024,
+    max_decoded_request_bytes: 512,
+    ..validated_request_config()
+  };
+  let local_address = make_unary_server_with_request_config(
+    Arc::new(EchoHandler::default()),
+    |_| {},
+    None,
+    request_config,
+    None,
+  )
+  .await;
+  let client = Client::new_http(&local_address.to_string(), 10.seconds(), 1).unwrap();
+
+  assert_matches!(
+    client
+      .unary(
+        &service_method(),
+        None,
+        EchoRequest {
+          echo: "x".repeat(1_024),
+          ..Default::default()
+        },
+        10.seconds(),
+        Compression::Snappy,
+      )
+      .await,
+    Err(Error::Grpc(status))
+      if status.code() == Code::ResourceExhausted
+        && status.message() == Some("Decoded request body exceeds 512 byte limit")
+  );
+}
+
+#[tokio::test]
 async fn unary_request_under_limit_succeeds() {
   let service_method = service_method();
   let router = UnaryRouterBuilder::new(&service_method, Arc::new(EchoHandler::default()))

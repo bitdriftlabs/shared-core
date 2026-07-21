@@ -9,6 +9,45 @@ use super::*;
 use crate::test::util::stats::Helper;
 use prometheus::labels;
 
+#[test]
+fn float_counter_records_fractional_values() {
+  let helper = Helper::new();
+  let counter = helper.collector().scope("float").float_counter("counter");
+
+  counter.inc_by(0.5);
+  counter.inc_by(1.25);
+
+  let value = helper
+    .find_counter("float:counter", &labels!())
+    .expect("float counter is registered")
+    .value();
+  assert!(
+    (value - 1.75).abs() < f64::EPSILON,
+    "expected float counter value 1.75, got {value}",
+  );
+}
+
+#[test]
+fn labeled_float_counter_records_fractional_values() {
+  let helper = Helper::new();
+  let counter = helper
+    .collector()
+    .scope("float")
+    .float_counter_vec("counter_vec", &["kind"])
+    .with_label_values(&["read"]);
+
+  counter.inc_by(0.5);
+
+  let value = helper
+    .find_counter("float:counter_vec", &labels!("kind" => "read"))
+    .expect("labeled float counter is registered")
+    .value();
+  assert!(
+    (value - 0.5).abs() < f64::EPSILON,
+    "expected labeled float counter value 0.5, got {value}",
+  );
+}
+
 // Verify basic label tracking functionality.
 #[test]
 fn label_tracker() {
