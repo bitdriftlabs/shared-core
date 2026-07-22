@@ -542,6 +542,7 @@ dependencies = [
  "log",
  "parking_lot",
  "protobuf 4.0.0-alpha.0",
+ "sha2",
  "tempfile",
  "time",
  "tokio",
