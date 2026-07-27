@@ -562,6 +562,9 @@ impl LoggerBuilder {
         ),
         time_provider.clone(),
         sdk_status_tracker.clone(),
+        runtime_loader
+          .register_duration_watch::<bd_runtime::runtime::safe_file_cache::CrashLoopBypassTimeout>()
+          .into_inner(),
       ));
 
       let api = bd_api::api::Api::new(
