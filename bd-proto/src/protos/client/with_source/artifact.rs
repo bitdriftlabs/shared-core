@@ -189,6 +189,9 @@ pub mod artifact_upload_index {
         ///  The storage format of the artifact, which determines whether we apply checksum validation during processing.
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.storage_format)
         pub storage_format: ::protobuf::EnumOrUnknown<super::StorageFormat>,
+        ///  Client workflow continuations that should be evaluated when a crash report is processed. This is only set for crash artifacts.
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.workflow_crash_handoff)
+        pub workflow_crash_handoff: ::protobuf::MessageField<super::super::workflow::WorkflowCrashHandoff>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -206,7 +209,7 @@ pub mod artifact_upload_index {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(8);
+            let mut fields = ::std::vec::Vec::with_capacity(9);
             let mut oneofs = ::std::vec::Vec::with_capacity(0);
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "name",
@@ -247,6 +250,11 @@ pub mod artifact_upload_index {
                 "storage_format",
                 |m: &Artifact| { &m.storage_format },
                 |m: &mut Artifact| { &mut m.storage_format },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::workflow::WorkflowCrashHandoff>(
+                "workflow_crash_handoff",
+                |m: &Artifact| { &m.workflow_crash_handoff },
+                |m: &mut Artifact| { &mut m.workflow_crash_handoff },
             ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Artifact>(
                 "ArtifactUploadIndex.Artifact",
@@ -302,6 +310,9 @@ pub mod artifact_upload_index {
                     72 => {
                         self.storage_format = is.read_enum_or_unknown()?;
                     },
+                    82 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.workflow_crash_handoff)?;
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -344,6 +355,10 @@ pub mod artifact_upload_index {
             if self.storage_format != ::protobuf::EnumOrUnknown::new(super::StorageFormat::CHECKSUMMED) {
                 my_size += ::protobuf::rt::int32_size(9, self.storage_format.value());
             }
+            if let Some(v) = self.workflow_crash_handoff.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
             my_size
@@ -381,6 +396,9 @@ pub mod artifact_upload_index {
             if self.storage_format != ::protobuf::EnumOrUnknown::new(super::StorageFormat::CHECKSUMMED) {
                 os.write_enum(9, ::protobuf::EnumOrUnknown::value(&self.storage_format))?;
             }
+            if let Some(v) = self.workflow_crash_handoff.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(10, v, os)?;
+            }
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
         }
@@ -406,6 +424,7 @@ pub mod artifact_upload_index {
             self.feature_flags.clear();
             self.type_id = ::std::option::Option::None;
             self.storage_format = ::protobuf::EnumOrUnknown::new(super::StorageFormat::CHECKSUMMED);
+            self.workflow_crash_handoff.clear();
             self.special_fields.clear();
         }
 
@@ -498,104 +517,114 @@ impl StorageFormat {
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n1bitdrift_public/protobuf/client/v1/artifact.proto\x12\"bitdrift_publi\
     c.protobuf.client.v1\x1a5bitdrift_public/protobuf/client/v1/feature_flag\
-    .proto\x1a1bitdrift_public/protobuf/logging/v1/payload.proto\x1a\x1fgoog\
-    le/protobuf/timestamp.proto\"\xcf\x05\n\x13ArtifactUploadIndex\x12\\\n\
-    \x08artifact\x18\x01\x20\x03(\x0b2@.bitdrift_public.protobuf.client.v1.A\
-    rtifactUploadIndex.ArtifactR\x08artifact\x1a\xd9\x04\n\x08Artifact\x12\
-    \x12\n\x04name\x18\x01\x20\x01(\tR\x04name\x12.\n\x04time\x18\x02\x20\
-    \x01(\x0b2\x1a.google.protobuf.TimestampR\x04time\x12<\n\x1apending_inte\
-    nt_negotiation\x18\x03\x20\x01(\x08R\x18pendingIntentNegotiation\x12j\n\
-    \x08metadata\x18\x05\x20\x03(\x0b2N.bitdrift_public.protobuf.client.v1.A\
-    rtifactUploadIndex.Artifact.MetadataEntryR\x08metadata\x12\x1d\n\nsessio\
-    n_id\x18\x06\x20\x01(\tR\tsessionId\x12T\n\rfeature_flags\x18\x07\x20\
-    \x03(\x0b2/.bitdrift_public.protobuf.client.v1.FeatureFlagR\x0cfeatureFl\
-    ags\x12\x1c\n\x07type_id\x18\x08\x20\x01(\tH\0R\x06typeId\x88\x01\x01\
-    \x12X\n\x0estorage_format\x18\t\x20\x01(\x0e21.bitdrift_public.protobuf.\
-    client.v1.StorageFormatR\rstorageFormat\x1af\n\rMetadataEntry\x12\x10\n\
-    \x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2\
-    ).bitdrift_public.protobuf.logging.v1.DataR\x05value:\x028\x01B\n\n\x08_\
-    type_id*)\n\rStorageFormat\x12\x0f\n\x0bCHECKSUMMED\x10\0\x12\x07\n\x03R\
-    AW\x10\x01J\xa0\x16\n\x06\x12\x04\x07\06\x01\n\xb8\x02\n\x01\x0c\x12\x03\
-    \x07\0\x122\xad\x02\x20api\x20-\x20bitdrift's\x20client/server\x20API\
-    \x20definitions\n\x20Copyright\x20Bitdrift,\x20Inc.\x20All\x20rights\x20\
-    reserved.\n\n\x20Use\x20of\x20this\x20source\x20code\x20and\x20APIs\x20a\
-    re\x20governed\x20by\x20a\x20source\x20available\x20license\x20that\x20c\
-    an\x20be\x20found\x20in\n\x20the\x20LICENSE\x20file\x20or\x20at:\n\x20ht\
-    tps://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0\
-    .0.txt\n\n\x08\n\x01\x02\x12\x03\t\0+\n\t\n\x02\x03\0\x12\x03\x0b\0?\n\t\
-    \n\x02\x03\x01\x12\x03\x0c\0;\n\t\n\x02\x03\x02\x12\x03\r\0)\n\n\n\x02\
-    \x05\0\x12\x04\x0f\0\x15\x01\n\n\n\x03\x05\0\x01\x12\x03\x0f\x05\x12\n\
-    \x85\x01\n\x04\x05\0\x02\0\x12\x03\x11\x02\x12\x1ax\x20The\x20file\x20wa\
-    s\x20checksummed\x20when\x20it\x20was\x20copied\x20into\x20the\x20artifa\
-    ct\x20upload\x20queue,\x20so\x20we\x20can\x20validate\x20the\x20checksum\
-    \x20on\x20upload.\n\n\x0c\n\x05\x05\0\x02\0\x01\x12\x03\x11\x02\r\n\x0c\
-    \n\x05\x05\0\x02\0\x02\x12\x03\x11\x10\x11\n\x99\x01\n\x04\x05\0\x02\x01\
-    \x12\x03\x14\x02\n\x1a\x8b\x01\x20The\x20file\x20was\x20stored\x20on\x20\
-    disk\x20without\x20being\x20checksummed.\x20This\x20should\x20only\x20be\
-    \x20used\x20if\x20the\x20file\x20already\x20has\n\x20internal\x20checksu\
-    mming\x20like\x20zlib.\n\n\x0c\n\x05\x05\0\x02\x01\x01\x12\x03\x14\x02\
-    \x05\n\x0c\n\x05\x05\0\x02\x01\x02\x12\x03\x14\x08\t\nC\n\x02\x04\0\x12\
-    \x04\x18\06\x01\x1a7\x20the\x20upload\x20manager\x20to\x20coordinate\x20\
-    intents\x20and\x20uploads.\n\n\n\n\x03\x04\0\x01\x12\x03\x18\x08\x1b\n\
-    \x0c\n\x04\x04\0\x03\0\x12\x04\x19\x022\x03\n\x0c\n\x05\x04\0\x03\0\x01\
-    \x12\x03\x19\n\x12\n,\n\x06\x04\0\x03\0\x02\0\x12\x03\x1b\x04\x14\x1a\
-    \x1d\x20Name\x20of\x20the\x20file\x20to\x20upload.\n\n\x0e\n\x07\x04\0\
-    \x03\0\x02\0\x05\x12\x03\x1b\x04\n\n\x0e\n\x07\x04\0\x03\0\x02\0\x01\x12\
-    \x03\x1b\x0b\x0f\n\x0e\n\x07\x04\0\x03\0\x02\0\x03\x12\x03\x1b\x12\x13\n\
-    Y\n\x06\x04\0\x03\0\x02\x01\x12\x03\x1d\x04'\x1aJ\x20The\x20time\x20asso\
-    ciated\x20with\x20this\x20artifact,\x20e.g.\x20when\x20the\x20data\x20wa\
-    s\x20captured.\n\n\x0e\n\x07\x04\0\x03\0\x02\x01\x06\x12\x03\x1d\x04\x1d\
-    \n\x0e\n\x07\x04\0\x03\0\x02\x01\x01\x12\x03\x1d\x1e\"\n\x0e\n\x07\x04\0\
-    \x03\0\x02\x01\x03\x12\x03\x1d%&\n\xef\x01\n\x06\x04\0\x03\0\x02\x02\x12\
-    \x03!\x04(\x1a\xdf\x01\x20Whether\x20this\x20artifact\x20requires\x20int\
-    ent\x20negotiation.\x20If\x20intent\x20negotiation\x20resulted\n\x20in\
-    \x20us\x20rejecting\x20the\x20upload,\x20the\x20artifact\x20will\x20be\
-    \x20removed\x20from\x20the\x20local\x20cache,\x20so\n\x20this\x20being\
-    \x20true\x20means\x20that\x20the\x20file\x20should\x20be\x20uploaded.\n\
-    \n\x0e\n\x07\x04\0\x03\0\x02\x02\x05\x12\x03!\x04\x08\n\x0e\n\x07\x04\0\
-    \x03\0\x02\x02\x01\x12\x03!\t#\n\x0e\n\x07\x04\0\x03\0\x02\x02\x03\x12\
-    \x03!&'\n\xbf\x02\n\x06\x04\0\x03\0\x02\x03\x12\x03%\x04G\x1a\xaf\x02\
-    \x20Additional\x20metadata\x20about\x20the\x20artifact\x20beyond\x20what\
-    \x20is\x20available\x20in\x20the\x20file\x20itself.\x20This\x20is\x20sen\
-    t\x20as\x20part\x20of\x20the\x20intent\x20negotation\x20process\x20to\
-    \x20help\x20the\x20server\x20make\x20a\x20decision\x20about\x20whether\
-    \x20to\x20accept\x20the\x20upload\x20or\x20not.\n\x20For\x20issue\x20rep\
-    orts\x20this\x20corresponds\x20to\x20the\x20\"fields\"\x20associated\x20\
-    with\x20the\x20issue\x20report.\n\n\x0e\n\x07\x04\0\x03\0\x02\x03\x06\
-    \x12\x03%\x049\n\x0e\n\x07\x04\0\x03\0\x02\x03\x01\x12\x03%:B\n\x0e\n\
-    \x07\x04\0\x03\0\x02\x03\x03\x12\x03%EF\n\xc3\x01\n\x06\x04\0\x03\0\x02\
-    \x04\x12\x03(\x04\x1a\x1a\xb3\x01\x20The\x20session\x20ID\x20associated\
-    \x20with\x20this\x20artfact,\x20if\x20applicable.\x20This\x20will\x20be\
-    \x20empty\x20for\x20artifacts\x20that\x20are\x20not\x20associated\x20wit\
-    h\x20a\x20session,\x20like\x20state\x20snapshots\x20that\x20may\x20span\
-    \x20sessions.\n\n\x0e\n\x07\x04\0\x03\0\x02\x04\x05\x12\x03(\x04\n\n\x0e\
-    \n\x07\x04\0\x03\0\x02\x04\x01\x12\x03(\x0b\x15\n\x0e\n\x07\x04\0\x03\0\
-    \x02\x04\x03\x12\x03(\x18\x19\n\xba\x01\n\x06\x04\0\x03\0\x02\x05\x12\
-    \x03+\x04+\x1a\xaa\x01\x20The\x20feature\x20flags\x20that\x20were\x20act\
-    ive\x20when\x20this\x20artifact\x20was\x20captured.\x20This\x20is\x20use\
-    d\x20by\x20issue\x20reports\x20to\x20allow\x20the\x20feature\x20flags\
-    \x20to\x20be\x20captured\x20independently\x20of\x20the\x20report.\n\n\
-    \x0e\n\x07\x04\0\x03\0\x02\x05\x04\x12\x03+\x04\x0c\n\x0e\n\x07\x04\0\
-    \x03\0\x02\x05\x06\x12\x03+\r\x18\n\x0e\n\x07\x04\0\x03\0\x02\x05\x01\
-    \x12\x03+\x19&\n\x0e\n\x07\x04\0\x03\0\x02\x05\x03\x12\x03+)*\n\xed\x01\
-    \n\x06\x04\0\x03\0\x02\x06\x12\x03.\x04\x20\x1a\xdd\x01\x20The\x20type\
-    \x20of\x20the\x20artifact,\x20e.g.\x20\"client_report\",\x20\"state_snap\
-    shot\",\x20etc.\x20This\x20is\x20used\x20by\x20the\x20server\x20to\x20de\
-    termine\x20how\x20to\x20process\x20the\x20artifact.\x20For\x20backwards\
-    \x20compatibility,\x20if\x20this\x20is\x20absent\x20the\x20artifact\x20i\
-    s\x20an\x20issue\x20report.\n\n\x0e\n\x07\x04\0\x03\0\x02\x06\x04\x12\
-    \x03.\x04\x0c\n\x0e\n\x07\x04\0\x03\0\x02\x06\x05\x12\x03.\r\x13\n\x0e\n\
-    \x07\x04\0\x03\0\x02\x06\x01\x12\x03.\x14\x1b\n\x0e\n\x07\x04\0\x03\0\
-    \x02\x06\x03\x12\x03.\x1e\x1f\n}\n\x06\x04\0\x03\0\x02\x07\x12\x031\x04%\
-    \x1an\x20The\x20storage\x20format\x20of\x20the\x20artifact,\x20which\x20\
-    determines\x20whether\x20we\x20apply\x20checksum\x20validation\x20during\
-    \x20processing.\n\n\x0e\n\x07\x04\0\x03\0\x02\x07\x06\x12\x031\x04\x11\n\
-    \x0e\n\x07\x04\0\x03\0\x02\x07\x01\x12\x031\x12\x20\n\x0e\n\x07\x04\0\
-    \x03\0\x02\x07\x03\x12\x031#$\nH\n\x04\x04\0\x02\0\x12\x035\x02!\x1a;\
-    \x20List\x20of\x20files,\x20in\x20order\x20of\x20time,\x20that\x20are\
-    \x20pending\x20upload.\n\n\x0c\n\x05\x04\0\x02\0\x04\x12\x035\x02\n\n\
-    \x0c\n\x05\x04\0\x02\0\x06\x12\x035\x0b\x13\n\x0c\n\x05\x04\0\x02\0\x01\
-    \x12\x035\x14\x1c\n\x0c\n\x05\x04\0\x02\0\x03\x12\x035\x1f\x20b\x06proto\
+    .proto\x1a1bitdrift_public/protobuf/logging/v1/payload.proto\x1a3bitdrif\
+    t_public/protobuf/workflow/v1/workflow.proto\x1a\x1fgoogle/protobuf/time\
+    stamp.proto\"\xe1\x06\n\x13ArtifactUploadIndex\x12\\\n\x08artifact\x18\
+    \x01\x20\x03(\x0b2@.bitdrift_public.protobuf.client.v1.ArtifactUploadInd\
+    ex.ArtifactR\x08artifact\x1a\xeb\x05\n\x08Artifact\x12\x12\n\x04name\x18\
+    \x01\x20\x01(\tR\x04name\x12.\n\x04time\x18\x02\x20\x01(\x0b2\x1a.google\
+    .protobuf.TimestampR\x04time\x12<\n\x1apending_intent_negotiation\x18\
+    \x03\x20\x01(\x08R\x18pendingIntentNegotiation\x12j\n\x08metadata\x18\
+    \x05\x20\x03(\x0b2N.bitdrift_public.protobuf.client.v1.ArtifactUploadInd\
+    ex.Artifact.MetadataEntryR\x08metadata\x12\x1d\n\nsession_id\x18\x06\x20\
+    \x01(\tR\tsessionId\x12T\n\rfeature_flags\x18\x07\x20\x03(\x0b2/.bitdrif\
+    t_public.protobuf.client.v1.FeatureFlagR\x0cfeatureFlags\x12\x1c\n\x07ty\
+    pe_id\x18\x08\x20\x01(\tH\0R\x06typeId\x88\x01\x01\x12X\n\x0estorage_for\
+    mat\x18\t\x20\x01(\x0e21.bitdrift_public.protobuf.client.v1.StorageForma\
+    tR\rstorageFormat\x12u\n\x16workflow_crash_handoff\x18\n\x20\x01(\x0b2:.\
+    bitdrift_public.protobuf.workflow.v1.WorkflowCrashHandoffH\x01R\x14workf\
+    lowCrashHandoff\x88\x01\x01\x1af\n\rMetadataEntry\x12\x10\n\x03key\x18\
+    \x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdrift_\
+    public.protobuf.logging.v1.DataR\x05value:\x028\x01B\n\n\x08_type_idB\
+    \x19\n\x17_workflow_crash_handoff*)\n\rStorageFormat\x12\x0f\n\x0bCHECKS\
+    UMMED\x10\0\x12\x07\n\x03RAW\x10\x01J\xfe\x17\n\x06\x12\x04\x07\0:\x01\n\
+    \xb8\x02\n\x01\x0c\x12\x03\x07\0\x122\xad\x02\x20api\x20-\x20bitdrift's\
+    \x20client/server\x20API\x20definitions\n\x20Copyright\x20Bitdrift,\x20I\
+    nc.\x20All\x20rights\x20reserved.\n\n\x20Use\x20of\x20this\x20source\x20\
+    code\x20and\x20APIs\x20are\x20governed\x20by\x20a\x20source\x20available\
+    \x20license\x20that\x20can\x20be\x20found\x20in\n\x20the\x20LICENSE\x20f\
+    ile\x20or\x20at:\n\x20https://polyformproject.org/wp-content/uploads/202\
+    0/06/PolyForm-Shield-1.0.0.txt\n\n\x08\n\x01\x02\x12\x03\t\0+\n\t\n\x02\
+    \x03\0\x12\x03\x0b\0?\n\t\n\x02\x03\x01\x12\x03\x0c\0;\n\t\n\x02\x03\x02\
+    \x12\x03\r\0=\n\t\n\x02\x03\x03\x12\x03\x0e\0)\n\n\n\x02\x05\0\x12\x04\
+    \x10\0\x16\x01\n\n\n\x03\x05\0\x01\x12\x03\x10\x05\x12\n\x85\x01\n\x04\
+    \x05\0\x02\0\x12\x03\x12\x02\x12\x1ax\x20The\x20file\x20was\x20checksumm\
+    ed\x20when\x20it\x20was\x20copied\x20into\x20the\x20artifact\x20upload\
+    \x20queue,\x20so\x20we\x20can\x20validate\x20the\x20checksum\x20on\x20up\
+    load.\n\n\x0c\n\x05\x05\0\x02\0\x01\x12\x03\x12\x02\r\n\x0c\n\x05\x05\0\
+    \x02\0\x02\x12\x03\x12\x10\x11\n\x99\x01\n\x04\x05\0\x02\x01\x12\x03\x15\
+    \x02\n\x1a\x8b\x01\x20The\x20file\x20was\x20stored\x20on\x20disk\x20with\
+    out\x20being\x20checksummed.\x20This\x20should\x20only\x20be\x20used\x20\
+    if\x20the\x20file\x20already\x20has\n\x20internal\x20checksumming\x20lik\
+    e\x20zlib.\n\n\x0c\n\x05\x05\0\x02\x01\x01\x12\x03\x15\x02\x05\n\x0c\n\
+    \x05\x05\0\x02\x01\x02\x12\x03\x15\x08\t\nC\n\x02\x04\0\x12\x04\x19\0:\
+    \x01\x1a7\x20the\x20upload\x20manager\x20to\x20coordinate\x20intents\x20\
+    and\x20uploads.\n\n\n\n\x03\x04\0\x01\x12\x03\x19\x08\x1b\n\x0c\n\x04\
+    \x04\0\x03\0\x12\x04\x1a\x026\x03\n\x0c\n\x05\x04\0\x03\0\x01\x12\x03\
+    \x1a\n\x12\n,\n\x06\x04\0\x03\0\x02\0\x12\x03\x1c\x04\x14\x1a\x1d\x20Nam\
+    e\x20of\x20the\x20file\x20to\x20upload.\n\n\x0e\n\x07\x04\0\x03\0\x02\0\
+    \x05\x12\x03\x1c\x04\n\n\x0e\n\x07\x04\0\x03\0\x02\0\x01\x12\x03\x1c\x0b\
+    \x0f\n\x0e\n\x07\x04\0\x03\0\x02\0\x03\x12\x03\x1c\x12\x13\nY\n\x06\x04\
+    \0\x03\0\x02\x01\x12\x03\x1e\x04'\x1aJ\x20The\x20time\x20associated\x20w\
+    ith\x20this\x20artifact,\x20e.g.\x20when\x20the\x20data\x20was\x20captur\
+    ed.\n\n\x0e\n\x07\x04\0\x03\0\x02\x01\x06\x12\x03\x1e\x04\x1d\n\x0e\n\
+    \x07\x04\0\x03\0\x02\x01\x01\x12\x03\x1e\x1e\"\n\x0e\n\x07\x04\0\x03\0\
+    \x02\x01\x03\x12\x03\x1e%&\n\xef\x01\n\x06\x04\0\x03\0\x02\x02\x12\x03\"\
+    \x04(\x1a\xdf\x01\x20Whether\x20this\x20artifact\x20requires\x20intent\
+    \x20negotiation.\x20If\x20intent\x20negotiation\x20resulted\n\x20in\x20u\
+    s\x20rejecting\x20the\x20upload,\x20the\x20artifact\x20will\x20be\x20rem\
+    oved\x20from\x20the\x20local\x20cache,\x20so\n\x20this\x20being\x20true\
+    \x20means\x20that\x20the\x20file\x20should\x20be\x20uploaded.\n\n\x0e\n\
+    \x07\x04\0\x03\0\x02\x02\x05\x12\x03\"\x04\x08\n\x0e\n\x07\x04\0\x03\0\
+    \x02\x02\x01\x12\x03\"\t#\n\x0e\n\x07\x04\0\x03\0\x02\x02\x03\x12\x03\"&\
+    '\n\xbf\x02\n\x06\x04\0\x03\0\x02\x03\x12\x03&\x04G\x1a\xaf\x02\x20Addit\
+    ional\x20metadata\x20about\x20the\x20artifact\x20beyond\x20what\x20is\
+    \x20available\x20in\x20the\x20file\x20itself.\x20This\x20is\x20sent\x20a\
+    s\x20part\x20of\x20the\x20intent\x20negotation\x20process\x20to\x20help\
+    \x20the\x20server\x20make\x20a\x20decision\x20about\x20whether\x20to\x20\
+    accept\x20the\x20upload\x20or\x20not.\n\x20For\x20issue\x20reports\x20th\
+    is\x20corresponds\x20to\x20the\x20\"fields\"\x20associated\x20with\x20th\
+    e\x20issue\x20report.\n\n\x0e\n\x07\x04\0\x03\0\x02\x03\x06\x12\x03&\x04\
+    9\n\x0e\n\x07\x04\0\x03\0\x02\x03\x01\x12\x03&:B\n\x0e\n\x07\x04\0\x03\0\
+    \x02\x03\x03\x12\x03&EF\n\xc3\x01\n\x06\x04\0\x03\0\x02\x04\x12\x03)\x04\
+    \x1a\x1a\xb3\x01\x20The\x20session\x20ID\x20associated\x20with\x20this\
+    \x20artfact,\x20if\x20applicable.\x20This\x20will\x20be\x20empty\x20for\
+    \x20artifacts\x20that\x20are\x20not\x20associated\x20with\x20a\x20sessio\
+    n,\x20like\x20state\x20snapshots\x20that\x20may\x20span\x20sessions.\n\n\
+    \x0e\n\x07\x04\0\x03\0\x02\x04\x05\x12\x03)\x04\n\n\x0e\n\x07\x04\0\x03\
+    \0\x02\x04\x01\x12\x03)\x0b\x15\n\x0e\n\x07\x04\0\x03\0\x02\x04\x03\x12\
+    \x03)\x18\x19\n\xba\x01\n\x06\x04\0\x03\0\x02\x05\x12\x03,\x04+\x1a\xaa\
+    \x01\x20The\x20feature\x20flags\x20that\x20were\x20active\x20when\x20thi\
+    s\x20artifact\x20was\x20captured.\x20This\x20is\x20used\x20by\x20issue\
+    \x20reports\x20to\x20allow\x20the\x20feature\x20flags\x20to\x20be\x20cap\
+    tured\x20independently\x20of\x20the\x20report.\n\n\x0e\n\x07\x04\0\x03\0\
+    \x02\x05\x04\x12\x03,\x04\x0c\n\x0e\n\x07\x04\0\x03\0\x02\x05\x06\x12\
+    \x03,\r\x18\n\x0e\n\x07\x04\0\x03\0\x02\x05\x01\x12\x03,\x19&\n\x0e\n\
+    \x07\x04\0\x03\0\x02\x05\x03\x12\x03,)*\n\xed\x01\n\x06\x04\0\x03\0\x02\
+    \x06\x12\x03/\x04\x20\x1a\xdd\x01\x20The\x20type\x20of\x20the\x20artifac\
+    t,\x20e.g.\x20\"client_report\",\x20\"state_snapshot\",\x20etc.\x20This\
+    \x20is\x20used\x20by\x20the\x20server\x20to\x20determine\x20how\x20to\
+    \x20process\x20the\x20artifact.\x20For\x20backwards\x20compatibility,\
+    \x20if\x20this\x20is\x20absent\x20the\x20artifact\x20is\x20an\x20issue\
+    \x20report.\n\n\x0e\n\x07\x04\0\x03\0\x02\x06\x04\x12\x03/\x04\x0c\n\x0e\
+    \n\x07\x04\0\x03\0\x02\x06\x05\x12\x03/\r\x13\n\x0e\n\x07\x04\0\x03\0\
+    \x02\x06\x01\x12\x03/\x14\x1b\n\x0e\n\x07\x04\0\x03\0\x02\x06\x03\x12\
+    \x03/\x1e\x1f\n}\n\x06\x04\0\x03\0\x02\x07\x12\x032\x04%\x1an\x20The\x20\
+    storage\x20format\x20of\x20the\x20artifact,\x20which\x20determines\x20wh\
+    ether\x20we\x20apply\x20checksum\x20validation\x20during\x20processing.\
+    \n\n\x0e\n\x07\x04\0\x03\0\x02\x07\x06\x12\x032\x04\x11\n\x0e\n\x07\x04\
+    \0\x03\0\x02\x07\x01\x12\x032\x12\x20\n\x0e\n\x07\x04\0\x03\0\x02\x07\
+    \x03\x12\x032#$\n\x90\x01\n\x06\x04\0\x03\0\x02\x08\x12\x035\x04c\x1a\
+    \x80\x01\x20Client\x20workflow\x20continuations\x20that\x20should\x20be\
+    \x20evaluated\x20when\x20a\x20crash\x20report\x20is\x20processed.\x20Thi\
+    s\x20is\x20only\x20set\x20for\x20crash\x20artifacts.\n\n\x0e\n\x07\x04\0\
+    \x03\0\x02\x08\x04\x12\x035\x04\x0c\n\x0e\n\x07\x04\0\x03\0\x02\x08\x06\
+    \x12\x035\rF\n\x0e\n\x07\x04\0\x03\0\x02\x08\x01\x12\x035G]\n\x0e\n\x07\
+    \x04\0\x03\0\x02\x08\x03\x12\x035`b\nH\n\x04\x04\0\x02\0\x12\x039\x02!\
+    \x1a;\x20List\x20of\x20files,\x20in\x20order\x20of\x20time,\x20that\x20a\
+    re\x20pending\x20upload.\n\n\x0c\n\x05\x04\0\x02\0\x04\x12\x039\x02\n\n\
+    \x0c\n\x05\x04\0\x02\0\x06\x12\x039\x0b\x13\n\x0c\n\x05\x04\0\x02\0\x01\
+    \x12\x039\x14\x1c\n\x0c\n\x05\x04\0\x02\0\x03\x12\x039\x1f\x20b\x06proto\
     3\
 ";
 
@@ -613,9 +642,10 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(3);
+            let mut deps = ::std::vec::Vec::with_capacity(4);
             deps.push(super::feature_flag::file_descriptor().clone());
             deps.push(super::payload::file_descriptor().clone());
+            deps.push(super::workflow::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             let mut messages = ::std::vec::Vec::with_capacity(2);
             messages.push(ArtifactUploadIndex::generated_message_descriptor_data());
