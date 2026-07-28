@@ -609,6 +609,9 @@ impl Transition {
         extra_matcher: rule.log_matcher.as_ref().map(Tree::new).transpose()?,
       },
       Rule_type::OnNewSession(_) => Predicate::OnNewSession,
+      // Crash dispatch is introduced separately from config conversion. Until then, this remains
+      // parked during normal log and state processing.
+      Rule_type::OnCrash(_) => Predicate::OnCrash,
     };
 
     let actions = transition
@@ -684,6 +687,7 @@ pub(crate) enum Predicate {
     matcher: Tree,
     required_matches: u32,
   },
+  OnCrash,
   OnNewSession,
   StateChangeMatch {
     state_change_match: StateChangeMatch,
