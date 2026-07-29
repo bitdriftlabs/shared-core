@@ -39,7 +39,9 @@ use std::collections::HashMap;
 // Version 42: Added support for server driven state updates.
 // Version 43: Added support for sending trigger UUIDs in log uploads to allow the server to
 //             associate logs with the flush that generated them.
-const CONFIGURATION_VERSION: &str = "43";
+// Version 44 adds the terminal OnReport workflow transition used to hand a client traversal to
+// server-side IssueMatch evaluation when a report is enqueued.
+const CONFIGURATION_VERSION: &str = "44";
 
 /// The platform we're currently running as.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
