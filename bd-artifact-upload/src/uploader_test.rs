@@ -25,6 +25,11 @@ use bd_proto::protos::client::artifact::ArtifactUploadIndex;
 use bd_proto::protos::client::feature_flag::FeatureFlag;
 use bd_proto::protos::logging::payload::Data;
 use bd_proto::protos::logging::payload::data::Data_type;
+use bd_proto::protos::workflow::workflow::{
+  ReportTraversalContext,
+  WorkflowReportContinuation,
+  WorkflowReportHandoff,
+};
 use bd_runtime::runtime::{FeatureFlag as _, artifact_upload};
 use bd_runtime::test::TestConfigLoader;
 use bd_test_helpers::runtime::ValueKind;
@@ -218,6 +223,53 @@ async fn basic_flow() {
     .to_string()];
   let index_file: ArtifactUploadIndex = read_compressed_protobuf(index_file).unwrap();
   assert_eq!(index_file, ArtifactUploadIndex::default());
+}
+
+#[tokio::test]
+async fn issue_report_upload_persists_workflow_report_handoff() {
+  let mut setup = Setup::new(10).await;
+  let handoff = WorkflowReportHandoff {
+    continuations: vec![WorkflowReportContinuation {
+      issue_match_rule_hash: "issue-match-rule-hash".to_string(),
+      traversals: vec![ReportTraversalContext {
+        extracted_fields: [("saved-field".to_string(), "client-value".to_string())].into(),
+        ..Default::default()
+      }],
+      ..Default::default()
+    }],
+    ..Default::default()
+  };
+
+  let id = setup
+    .client
+    .enqueue_issue_report_upload(
+      UploadSource::File(setup.make_file(b"report")),
+      "client_report".to_string(),
+      [].into(),
+      None,
+      "session_id".to_string(),
+      vec![],
+      Some(handoff.clone()),
+      None,
+    )
+    .unwrap();
+
+  assert_eq!(
+    setup.entry_received_rx.recv().await.unwrap(),
+    id.to_string()
+  );
+
+  let index_file = &setup.filesystem.files()[&REPORT_DIRECTORY
+    .join(&*REPORT_INDEX_FILE)
+    .to_str()
+    .unwrap()
+    .to_string()];
+  let index: ArtifactUploadIndex = read_compressed_protobuf(index_file).unwrap();
+  assert_eq!(1, index.artifact.len());
+  assert_eq!(
+    Some(&handoff),
+    index.artifact[0].workflow_report_handoff.as_ref()
+  );
 }
 
 #[tokio::test]

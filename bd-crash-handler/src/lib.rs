@@ -22,7 +22,7 @@ pub mod config_writer;
 mod file_watcher;
 pub mod global_state;
 
-use bd_artifact_upload::{SnappedFeatureFlag, UploadSource};
+use bd_artifact_upload::{Client as ArtifactClient, SnappedFeatureFlag, UploadSource};
 use bd_client_common::debug_check_lifecycle_less_than;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_error_reporter::reporter::handle_unexpected;
@@ -41,6 +41,7 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Report,
   ReportType,
 };
+use bd_proto::protos::workflow::workflow::WorkflowReportHandoff;
 use bd_resilient_kv::TimestampedValue;
 use bd_state::{MEMORY_PRESSURE_LEVEL_KEY, StateReader};
 use bd_time::OffsetDateTimeExt as _;
@@ -74,6 +75,122 @@ pub struct CrashLog {
   pub fields: AnnotatedLogFields,
   pub timestamp: OffsetDateTime,
   pub message: LogMessageValue,
+}
+
+//
+// PreparedReport
+//
+
+/// A parsed issue-report artifact that is ready for either handoff-aware or fallback enqueue.
+/// Reports are deliberately not retained in the pre-config buffer: keeping the file handle here
+/// is only valid while the initialized report path is immediately processing it.
+pub struct PreparedReport {
+  file: File,
+  source_path: PathBuf,
+  artifact_client: Arc<dyn ArtifactClient>,
+  report_type: ReportType,
+  crash_reason: Option<String>,
+  crash_details: Option<String>,
+  state_fields: LogFields,
+  timestamp: OffsetDateTime,
+  session_id: String,
+  feature_flags: Vec<SnappedFeatureFlag>,
+}
+
+impl PreparedReport {
+  #[must_use]
+  pub const fn report_type(&self) -> ReportType {
+    self.report_type
+  }
+
+  #[must_use]
+  pub const fn timestamp(&self) -> OffsetDateTime {
+    self.timestamp
+  }
+
+  pub async fn enqueue(
+    self,
+    workflow_report_handoff: Option<WorkflowReportHandoff>,
+  ) -> Option<CrashLog> {
+    let Ok(artifact_id) = self.artifact_client.enqueue_issue_report_upload(
+      UploadSource::File(self.file),
+      "client_report".to_string(),
+      self.state_fields.clone(),
+      Some(self.timestamp),
+      self.session_id,
+      self.feature_flags,
+      workflow_report_handoff,
+      None,
+    ) else {
+      log::warn!(
+        "Failed to enqueue issue report for upload: {}",
+        self.source_path.display()
+      );
+      return None;
+    };
+
+    let fields = Self::build_crash_log_fields(
+      self.state_fields,
+      artifact_id,
+      self.report_type,
+      self.crash_reason,
+      self.crash_details,
+    );
+
+    if let Err(e) = tokio::fs::remove_file(&self.source_path).await {
+      log::warn!(
+        "Failed to remove issue report: {} ({e})",
+        self.source_path.display()
+      );
+    }
+
+    Some(CrashLog {
+      log_level: log_level::ERROR,
+      fields: fields
+        .into_iter()
+        .map(|(key, value)| {
+          (
+            key,
+            AnnotatedLogField {
+              value,
+              kind: LogFieldKind::Ootb,
+            },
+          )
+        })
+        .collect(),
+      timestamp: self.timestamp,
+      message: "AppExit".into(),
+    })
+  }
+
+  fn build_crash_log_fields(
+    state_fields: LogFields,
+    artifact_id: uuid::Uuid,
+    report_type: ReportType,
+    crash_reason: Option<String>,
+    crash_details: Option<String>,
+  ) -> LogFields {
+    let mut fields = state_fields;
+    fields.insert("_crash_artifact_id".into(), artifact_id.to_string().into());
+    fields.extend([
+      (
+        "_app_exit_reason".into(),
+        Monitor::report_type_to_reason(report_type).into(),
+      ),
+      (
+        "_app_exit_info".into(),
+        crash_reason.unwrap_or_else(|| "unknown".to_string()).into(),
+      ),
+      (
+        "_app_exit_details".into(),
+        crash_details
+          .unwrap_or_else(|| "unknown".to_string())
+          .into(),
+      ),
+      ("_fatal_issue_mechanism".into(), "BUILT_IN".into()),
+    ]);
+    fields
+  }
 }
 
 //
@@ -203,9 +320,10 @@ impl Monitor {
                 "Report file watcher detected new report: {}",
                 report.path.display()
               );
-              if let Some(crash_log) = monitor_clone
-                .process_file(&report.path, report.origin)
+              if let Some(prepared_report) = monitor_clone
+                .prepare_file(&report.path, report.origin)
                 .await
+                && let Some(crash_log) = prepared_report.enqueue(None).await
               {
                 // TODO(snowp): Once we migrate over all logs (including previous process logs),
                 // we'll need to ensure that we are setting the correct fields. For current
@@ -336,6 +454,19 @@ impl Monitor {
 
   /// Processes all pending reports found in the "new" reports directory.
   pub async fn process_all_pending_reports(&self) -> Vec<CrashLog> {
+    let prepared_reports = self.prepare_all_pending_reports().await;
+    let mut logs = Vec::with_capacity(prepared_reports.len());
+    for prepared_report in prepared_reports {
+      if let Some(crash_log) = prepared_report.enqueue(None).await {
+        logs.push(crash_log);
+      }
+    }
+    logs
+  }
+
+  /// Prepares pending reports for immediate initialized processing. Callers must either enqueue
+  /// each returned report or drop it; these reports are intentionally never held pre-config.
+  pub async fn prepare_all_pending_reports(&self) -> Vec<PreparedReport> {
     let mut dir = match tokio::fs::read_dir(&self.report_directory.join("new")).await {
       Ok(dir) => dir,
       Err(e) => {
@@ -361,7 +492,7 @@ impl Monitor {
     // TODO(snowp): Add smarter handling to avoid duplicate reporting.
     // TODO(snowp): Consider only reporting one of the pending reports if there are multiple.
 
-    let mut logs = vec![];
+    let mut prepared_reports = vec![];
 
     while let Ok(Some(entry)) = dir.next_entry().await {
       log::debug!("Considering report file: {}", entry.path().display());
@@ -369,42 +500,13 @@ impl Monitor {
       let ext = path.extension().and_then(OsStr::to_str);
       if path.is_file()
         && ext == Some("cap")
-        && let Some(crash_log) = self.process_file(&path, ReportOrigin::Previous).await
+        && let Some(prepared_report) = self.prepare_file(&path, ReportOrigin::Previous).await
       {
-        logs.push(crash_log);
+        prepared_reports.push(prepared_report);
       }
     }
 
-    logs
-  }
-
-  fn build_crash_log_fields(
-    state_fields: LogFields,
-    artifact_id: uuid::Uuid,
-    bin_report: &Report<'_>,
-    crash_reason: Option<String>,
-    crash_details: Option<String>,
-  ) -> LogFields {
-    let mut fields = state_fields;
-    fields.insert("_crash_artifact_id".into(), artifact_id.to_string().into());
-    fields.extend([
-      (
-        "_app_exit_reason".into(),
-        Self::report_type_to_reason(bin_report.type_()).into(),
-      ),
-      (
-        "_app_exit_info".into(),
-        crash_reason.unwrap_or_else(|| "unknown".to_string()).into(),
-      ),
-      (
-        "_app_exit_details".into(),
-        crash_details
-          .unwrap_or_else(|| "unknown".to_string())
-          .into(),
-      ),
-      ("_fatal_issue_mechanism".into(), "BUILT_IN".into()),
-    ]);
-    fields
+    prepared_reports
   }
 
   async fn get_feature_flags(&self, origin: ReportOrigin) -> Vec<SnappedFeatureFlag> {
@@ -545,7 +647,7 @@ impl Monitor {
     hook.on_crash_report(&info);
   }
 
-  async fn process_file(&self, file_path: &Path, origin: ReportOrigin) -> Option<CrashLog> {
+  async fn prepare_file(&self, file_path: &Path, origin: ReportOrigin) -> Option<PreparedReport> {
     if !file_path.exists() || file_path.extension().and_then(OsStr::to_str) != Some("cap") {
       log::debug!("Skipping invalid report file: {}", file_path.display());
       return None;
@@ -601,55 +703,17 @@ impl Monitor {
       &state_fields,
     );
 
-    log::debug!("uploading report out of band");
-
-    let Ok(artifact_id) = self.artifact_client.enqueue_upload(
-      UploadSource::File(file),
-      "client_report".to_string(),
-      state_fields.clone(),
-      timestamp,
-      session_id.clone(),
-      reporting_feature_flags.clone(),
-      None,
-    ) else {
-      log::warn!(
-        "Failed to enqueue issue report for upload: {}",
-        file_path.display()
-      );
-      return None;
-    };
-
-    let fields = Self::build_crash_log_fields(
-      state_fields,
-      artifact_id,
-      &bin_report,
+    Some(PreparedReport {
+      file,
+      source_path: file_path.to_path_buf(),
+      artifact_client: self.artifact_client.clone(),
+      report_type: bin_report.type_(),
       crash_reason,
       crash_details,
-    );
-
-    if let Err(e) = tokio::fs::remove_file(file_path).await {
-      log::warn!(
-        "Failed to remove issue report: {} ({e})",
-        file_path.display()
-      );
-    }
-
-    Some(CrashLog {
-      log_level: log_level::ERROR,
-      fields: fields
-        .into_iter()
-        .map(|(key, value)| {
-          (
-            key,
-            AnnotatedLogField {
-              value,
-              kind: LogFieldKind::Ootb,
-            },
-          )
-        })
-        .collect(),
+      state_fields,
       timestamp: timestamp.unwrap_or_else(OffsetDateTime::now_utc),
-      message: "AppExit".into(),
+      session_id,
+      feature_flags: reporting_feature_flags,
     })
   }
 }
