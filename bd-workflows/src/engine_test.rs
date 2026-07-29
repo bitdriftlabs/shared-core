@@ -27,9 +27,11 @@ use bd_error_reporter::reporter::{Reporter, UnexpectedErrorHandler};
 use bd_log_matcher::builder::{field_equals, message_equals, or};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{Log, LogFields, LogMessage, log_level};
+use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::ReportType;
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{SankeyPathUploadRequest, log_upload_intent_request};
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::workflow::workflow::ReportTraversalContext;
 use bd_stats_common::workflow::WorkflowDebugTransitionType;
 use bd_stats_common::{NameType, labels};
 use bd_test_helpers::sankey_value;
@@ -45,6 +47,7 @@ use bd_test_helpers::workflow::{
   make_flush_buffers_action,
   make_generate_log_action_proto,
   make_on_new_session_rule,
+  make_on_report_rule,
   make_save_field_extraction,
   make_save_timestamp_extraction,
   make_start_tracing_action,
@@ -65,6 +68,107 @@ use std::vec;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use time::macros::datetime;
+
+#[tokio::test]
+async fn report_handoff_snapshots_saved_context_and_completes_terminal_run() {
+  let terminal = state("terminal");
+  let on_report =
+    state("on_report").declare_transition(&terminal, make_on_report_rule("issue-match-rule-hash"));
+  let initial = state("initial").declare_transition_with_extractions(
+    &on_report,
+    rule!(message_equals("prefix")),
+    &[
+      make_save_field_extraction("saved-field", "field"),
+      make_save_timestamp_extraction("saved-timestamp"),
+    ],
+  );
+  let setup = Setup::new();
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("workflow", &[&initial, &on_report, &terminal]).make_config()],
+    ))
+    .await;
+  let occurred_at = datetime!(2024-01-02 03:04:05 UTC);
+  workflows_engine.process_log(
+    TestLog::new("prefix")
+      .with_occurred_at(occurred_at)
+      .with_now(occurred_at)
+      .with_tags(labels! { "field" => "value" }),
+  );
+
+  {
+    let (handoff, _result) = workflows_engine.engine.snapshot_and_advance_report(
+      ReportType::JVMCrash,
+      occurred_at + 1.seconds(),
+      &workflows_engine.log_destination_buffer_ids,
+      &bd_state::InMemoryStateReader::default(),
+    );
+
+    assert_eq!(1, handoff.continuations.len());
+    let continuation = &handoff.continuations[0];
+    assert_eq!("issue-match-rule-hash", continuation.issue_match_rule_hash);
+    assert_eq!(1, continuation.traversals.len());
+    let traversal = &continuation.traversals[0];
+    assert_eq!(
+      Some(&"value".to_string()),
+      traversal.extracted_fields.get("saved-field")
+    );
+    assert!(
+      traversal
+        .extracted_timestamps
+        .contains_key("saved-timestamp")
+    );
+  }
+
+  assert!(workflows_engine.engine.state.workflows[0].runs().is_empty());
+}
+
+#[tokio::test]
+async fn terminal_report_handoff_hydrates_saved_fields_before_actions() {
+  let terminal = state("terminal");
+  let initial = state("initial").declare_transition_with_actions(
+    &terminal,
+    rule!(message_equals("canonical report")),
+    &[make_emit_counter_action(
+      "terminal_metric",
+      metric_value(1),
+      vec![extract_metric_tag("saved-field", "saved")],
+    )],
+  );
+  let setup = Setup::new();
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("terminal", &[&initial, &terminal]).make_config()],
+    ))
+    .await;
+
+  workflows_engine
+    .engine
+    .seed_terminal_report_handoff(
+      &ReportTraversalContext {
+        extracted_fields: HashMap::from([("saved-field".to_string(), "client-value".to_string())]),
+        ..Default::default()
+      },
+      OffsetDateTime::UNIX_EPOCH,
+    )
+    .unwrap();
+  assert_eq!(
+    Some(&"client-value".to_string()),
+    workflows_engine.engine.state.workflows[0].runs()[0].traversals()[0]
+      .extractions
+      .fields
+      .get("saved-field")
+  );
+  workflows_engine.process_log(
+    TestLog::new("canonical report").with_tags(labels! { "saved-field" => "client-value" }),
+  );
+
+  setup.collector.assert_workflow_counter_eq(
+    1,
+    "terminal_metric",
+    labels! { "saved" => "client-value" },
+  );
+}
 
 #[tokio::test]
 async fn debug_mode() {

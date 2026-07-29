@@ -591,6 +591,17 @@ pub fn make_on_new_session_rule() -> Rule {
 }
 
 #[must_use]
+pub fn make_on_report_rule(issue_match_rule_hash: &str) -> Rule {
+  Rule {
+    rule_type: Some(Rule_type::OnReport(workflow::OnReport {
+      issue_match_rule_hash: issue_match_rule_hash.to_string(),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
+
+#[must_use]
 pub fn make_state_change_rule(
   scope: protos::state::scope::StateScope,
   key: &str,
