@@ -323,6 +323,7 @@ impl Setup {
       &InitLifecycleState::new(),
       (*state).clone(),
       previous_run_state,
+      |prepared_report, _origin| Err(prepared_report),
       emit_log,
       crash_report_hook,
     );

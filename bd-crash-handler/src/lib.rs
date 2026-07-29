@@ -92,7 +92,7 @@ pub struct PreparedReport {
   crash_reason: Option<String>,
   crash_details: Option<String>,
   state_fields: LogFields,
-  timestamp: OffsetDateTime,
+  timestamp: Option<OffsetDateTime>,
   session_id: String,
   feature_flags: Vec<SnappedFeatureFlag>,
 }
@@ -104,43 +104,69 @@ impl PreparedReport {
   }
 
   #[must_use]
-  pub const fn timestamp(&self) -> OffsetDateTime {
-    self.timestamp
+  pub fn timestamp(&self) -> OffsetDateTime {
+    self.timestamp.unwrap_or_else(OffsetDateTime::now_utc)
   }
 
   pub async fn enqueue(
     self,
     workflow_report_handoff: Option<WorkflowReportHandoff>,
   ) -> Option<CrashLog> {
-    let Ok(artifact_id) = self.artifact_client.enqueue_issue_report_upload(
-      UploadSource::File(self.file),
-      "client_report".to_string(),
-      self.state_fields.clone(),
-      Some(self.timestamp),
-      self.session_id,
-      self.feature_flags,
-      workflow_report_handoff,
-      None,
-    ) else {
+    let Self {
+      file,
+      source_path,
+      artifact_client,
+      report_type,
+      crash_reason,
+      crash_details,
+      state_fields,
+      timestamp,
+      session_id,
+      feature_flags,
+    } = self;
+
+    let enqueue_result = match workflow_report_handoff {
+      Some(handoff) => artifact_client.enqueue_issue_report_upload(
+        UploadSource::File(file),
+        "client_report".to_string(),
+        state_fields.clone(),
+        timestamp,
+        session_id,
+        feature_flags,
+        Some(handoff),
+        None,
+      ),
+      None => artifact_client.enqueue_upload(
+        UploadSource::File(file),
+        "client_report".to_string(),
+        state_fields.clone(),
+        timestamp,
+        session_id,
+        feature_flags,
+        None,
+      ),
+    };
+
+    let Ok(artifact_id) = enqueue_result else {
       log::warn!(
         "Failed to enqueue issue report for upload: {}",
-        self.source_path.display()
+        source_path.display()
       );
       return None;
     };
 
     let fields = Self::build_crash_log_fields(
-      self.state_fields,
+      state_fields,
       artifact_id,
-      self.report_type,
-      self.crash_reason,
-      self.crash_details,
+      report_type,
+      crash_reason,
+      crash_details,
     );
 
-    if let Err(e) = tokio::fs::remove_file(&self.source_path).await {
+    if let Err(e) = tokio::fs::remove_file(&source_path).await {
       log::warn!(
         "Failed to remove issue report: {} ({e})",
-        self.source_path.display()
+        source_path.display()
       );
     }
 
@@ -158,7 +184,7 @@ impl PreparedReport {
           )
         })
         .collect(),
-      timestamp: self.timestamp,
+      timestamp: timestamp.unwrap_or_else(OffsetDateTime::now_utc),
       message: "AppExit".into(),
     })
   }
@@ -275,7 +301,11 @@ impl Monitor {
     init_lifecycle: &InitLifecycleState,
     state: bd_state::Store,
     previous_run_state: bd_resilient_kv::ScopedMaps,
-    emit_log: impl Fn(CrashLog) -> anyhow::Result<()> + Send + Sync + 'static,
+    enqueue_prepared_report: impl Fn(PreparedReport, ReportOrigin) -> Result<(), PreparedReport>
+    + Send
+    + Sync
+    + 'static,
+    emit_fallback_log: impl Fn(CrashLog) -> anyhow::Result<()> + Send + Sync + 'static,
     crash_report_hook: Option<Arc<dyn CrashReportHook>>,
   ) -> Self {
     debug_check_lifecycle_less_than!(
@@ -323,14 +353,24 @@ impl Monitor {
               if let Some(prepared_report) = monitor_clone
                 .prepare_file(&report.path, report.origin)
                 .await
-                && let Some(crash_log) = prepared_report.enqueue(None).await
               {
+                // The normal watcher path is sequenced with logs and state updates by ALB. If its
+                // bounded channel cannot accept this report, preserve artifact delivery by using
+                // the no-handoff fallback immediately rather than retaining this open file.
+                let Err(prepared_report) = enqueue_prepared_report(prepared_report, report.origin)
+                else {
+                  continue;
+                };
+                let Some(crash_log) = prepared_report.enqueue(None).await else {
+                  continue;
+                };
+
                 // TODO(snowp): Once we migrate over all logs (including previous process logs),
                 // we'll need to ensure that we are setting the correct fields. For current
                 // session, it is correct to let freshly evaluated global state be snapped.
                 // TODO(snowp): Consider not setting timestamp at all for the current session logs
                 // as it is correct to use now().
-                if let Err(e) = emit_log(crash_log) {
+                if let Err(e) = emit_fallback_log(crash_log) {
                   log::warn!(
                     "Failed to emit crash log for report {}: {}",
                     report.path.display(),
@@ -711,7 +751,7 @@ impl Monitor {
       crash_reason,
       crash_details,
       state_fields,
-      timestamp: timestamp.unwrap_or_else(OffsetDateTime::now_utc),
+      timestamp,
       session_id,
       feature_flags: reporting_feature_flags,
     })

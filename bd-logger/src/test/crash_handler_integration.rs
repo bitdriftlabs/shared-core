@@ -6,16 +6,30 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::setup::Setup;
+use crate::log_level;
 use crate::logger::{Block, CaptureSession, ReportProcessingSession};
 use crate::test::setup::SetupOptions;
 use assert_matches::assert_matches;
+use bd_log_matcher::builder::message_equals;
+use bd_log_primitives::AnnotatedLogField;
 use bd_proto::protos::client::api::configuration_update::StateOfTheWorld;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::FeatureFlag as _;
-use bd_test_helpers::config_helper::configuration_update;
+use bd_test_helpers::config_helper::{
+  ConfigurationUpdateParts,
+  configuration_update,
+  configuration_update_from_parts,
+};
 use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::runtime::ValueKind;
 use bd_test_helpers::test_api_server::log_upload::LogUpload;
+use bd_test_helpers::workflow::macros::rule;
+use bd_test_helpers::workflow::{
+  WorkflowBuilder,
+  make_on_report_rule,
+  make_save_field_extraction,
+  state,
+};
 use itertools::Itertools as _;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -25,6 +39,87 @@ use time::macros::datetime;
 // empty fbs format report
 #[rustfmt::skip]
 const CRASH_CONTENTS: &str = "\x14\x00\x00\x00\x00\x00\x0e\x00\x08\x00\x00\x00\x00\x00\x00\x00\x00\x00\x04\x00\x0e\x00\x00\x00\x04\x00\x00\x00\x01\x00\x00\x00\x0c\x00\x00\x00\x00\x00\x06\x00\x08\x00\x04\x00\x06\x00\x00\x00\x04\x00\x00\x00\x06\x00\x00\x00crash1\x00\x00";
+
+#[test]
+fn pre_config_report_processing_enqueues_without_waiting_for_workflow_configuration() {
+  let mut setup = Setup::new_with_options(SetupOptions {
+    disk_storage: true,
+    ..Default::default()
+  });
+  std::fs::create_dir_all(setup.sdk_directory.path().join("reports/new")).unwrap();
+  std::fs::write(
+    setup.sdk_directory.path().join("reports/new/crash.cap"),
+    CRASH_CONTENTS,
+  )
+  .unwrap();
+
+  setup.upload_crash_reports(ReportProcessingSession::Current);
+
+  let intent = setup.server.blocking_next_artifact_intent().unwrap();
+  assert_eq!(intent.type_id, "client_report");
+  let upload = setup.server.blocking_next_artifact_upload().unwrap();
+  assert!(upload.workflow_report_handoff.is_none());
+}
+
+#[test]
+fn initialized_report_processing_enqueues_client_workflow_handoff() {
+  let mut setup = Setup::new_with_options(SetupOptions {
+    disk_storage: true,
+    ..Default::default()
+  });
+  let terminal = state("terminal");
+  let on_report =
+    state("on_report").declare_transition(&terminal, make_on_report_rule("issue-match-rule-hash"));
+  let initial = state("initial").declare_transition_with_extractions(
+    &on_report,
+    rule!(message_equals("prefix")),
+    &[make_save_field_extraction("saved-field", "field")],
+  );
+
+  let maybe_nack = setup.send_configuration_update(configuration_update_from_parts(
+    "",
+    ConfigurationUpdateParts {
+      workflows: vec![WorkflowBuilder::new("workflow", &[&initial, &on_report, &terminal]).build()],
+      ..Default::default()
+    },
+  ));
+  assert!(maybe_nack.is_none());
+  setup.blocking_log(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    "prefix".into(),
+    [(
+      "field".into(),
+      AnnotatedLogField::new_custom("client-value"),
+    )]
+    .into(),
+    [].into(),
+  );
+
+  std::fs::create_dir_all(setup.sdk_directory.path().join("reports/new")).unwrap();
+  std::fs::write(
+    setup.sdk_directory.path().join("reports/new/crash.cap"),
+    CRASH_CONTENTS,
+  )
+  .unwrap();
+  setup.upload_crash_reports(ReportProcessingSession::Current);
+
+  let intent = setup.server.blocking_next_artifact_intent().unwrap();
+  assert_eq!(intent.type_id, "client_report");
+  let upload = setup.server.blocking_next_artifact_upload().unwrap();
+  let handoff = upload.workflow_report_handoff.as_ref().unwrap();
+  assert_eq!(1, handoff.continuations.len());
+  assert_eq!(
+    "issue-match-rule-hash",
+    handoff.continuations[0].issue_match_rule_hash
+  );
+  assert_eq!(
+    Some(&"client-value".to_string()),
+    handoff.continuations[0].traversals[0]
+      .extracted_fields
+      .get("saved-field")
+  );
+}
 
 #[test]
 fn crash_report_upload() {

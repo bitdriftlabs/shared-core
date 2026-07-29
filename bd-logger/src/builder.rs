@@ -16,7 +16,7 @@ use crate::directory_lock::DirectoryLock;
 use crate::flush_registry::PendingTriggerUploadsStore;
 use crate::internal::InternalLogger;
 use crate::log_replay::LoggerReplay;
-use crate::logger::{Logger, PendingEntityIdUpdate};
+use crate::logger::{Logger, PendingEntityIdUpdate, ReportProcessingRequest};
 use crate::logging_state::UninitializedLoggingContext;
 use crate::state_upload::StateUploadHandle;
 use crate::{InitParams, LogAttributesOverrides};
@@ -376,6 +376,7 @@ impl LoggerBuilder {
     let pending_entity_id = Arc::new(Mutex::new(None));
 
     let previous_memory_pressure_level = Arc::new(AtomicI8::new(0));
+    let report_proc_tx_for_monitor = report_proc_tx.clone();
 
     let logger = Logger::new(
       maybe_shutdown_trigger,
@@ -514,6 +515,26 @@ impl LoggerBuilder {
         &init_lifecycle,
         state_store.clone(),
         previous_run_state,
+        move |prepared_report, origin| {
+          let session = match origin {
+            bd_crash_handler::ReportOrigin::Current => crate::ReportProcessingSession::Current,
+            bd_crash_handler::ReportOrigin::Previous => crate::ReportProcessingSession::PreviousRun,
+          };
+          match report_proc_tx_for_monitor.try_send(ReportProcessingRequest::Prepared {
+            prepared_report,
+            session,
+          }) {
+            Ok(()) => Ok(()),
+            Err(error) => match error.into_inner() {
+              ReportProcessingRequest::Prepared {
+                prepared_report, ..
+              } => Err(prepared_report),
+              ReportProcessingRequest::Pending { .. } => {
+                unreachable!("only prepared reports are sent by the file watcher")
+              },
+            },
+          }
+        },
         move |log: bd_crash_handler::CrashLog| {
           AsyncLogBuffer::<LoggerReplay>::enqueue_log(
             &async_log_buffer_communication_tx,
