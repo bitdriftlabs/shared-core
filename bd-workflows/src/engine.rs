@@ -53,6 +53,12 @@ use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::Log;
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
+use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::ReportType;
+use bd_proto::protos::workflow::workflow::{
+  ReportTraversalContext,
+  WorkflowReportContinuation,
+  WorkflowReportHandoff,
+};
 use bd_runtime::runtime::workflows::PersistenceWriteIntervalFlag;
 use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, session_capture};
 use bd_stats_common::workflow::WorkflowDebugKey;
@@ -755,6 +761,86 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       Some(session_start_result) => session_start_result.merge_into(result),
       None => result,
     }
+  }
+
+  /// Snapshots every traversal waiting for an `OnReport` transition and advances those traversals
+  /// as one operation. The caller must persist the resulting handoff with the report before any
+  /// upload retry can occur; local workflow completion is intentionally not rolled back when that
+  /// persistence later fails.
+  pub fn snapshot_and_advance_report<'a>(
+    &'a mut self,
+    report_type: ReportType,
+    occurred_at: OffsetDateTime,
+    log_destination_buffer_ids: &'a TinySet<Cow<'a, str>>,
+    state_reader: &dyn bd_state::StateReader,
+  ) -> (WorkflowReportHandoff, WorkflowsEngineResult<'a>) {
+    let mut continuations_by_rule_hash = BTreeMap::<String, Vec<_>>::new();
+    for (workflow, config) in self.state.workflows.iter().zip(&self.configs) {
+      for mut continuation in workflow.report_handoff_continuations(config) {
+        continuations_by_rule_hash
+          .entry(continuation.issue_match_rule_hash.clone())
+          .or_default()
+          .append(&mut continuation.traversals);
+      }
+    }
+
+    let handoff = WorkflowReportHandoff {
+      continuations: continuations_by_rule_hash
+        .into_iter()
+        .map(
+          |(issue_match_rule_hash, traversals)| WorkflowReportContinuation {
+            issue_match_rule_hash,
+            traversals,
+            ..Default::default()
+          },
+        )
+        .collect(),
+      ..Default::default()
+    };
+
+    // `process_event` observes the same report immediately after the snapshot. Mark the state as
+    // dirty before returning the result because OnReport itself intentionally triggers no client
+    // action and therefore does not contribute to the log-match progress counters.
+    if !handoff.continuations.is_empty() {
+      self.needs_state_persistence = true;
+    }
+
+    let result = self.process_event(
+      WorkflowEvent::Report {
+        report_type,
+        occurred_at,
+      },
+      log_destination_buffer_ids,
+      state_reader,
+      occurred_at,
+    );
+
+    (handoff, result)
+  }
+
+  /// Hydrates the sole workflow in this ephemeral engine with client-side report handoff state.
+  ///
+  /// This is intentionally narrow: loop-api creates a new non-persistent engine for each
+  /// terminal `IssueMatch` fragment, seeds exactly one saved traversal, and then processes the
+  /// canonical report log through the normal action machinery. Keeping the prefix out of this
+  /// API prevents the server from fresh-starting or replaying client workflow steps.
+  pub fn seed_terminal_report_handoff(
+    &mut self,
+    continuation: &ReportTraversalContext,
+    now: OffsetDateTime,
+  ) -> anyhow::Result<()> {
+    let [config] = self.configs.as_slice() else {
+      return Err(anyhow!(
+        "terminal report handoff execution requires exactly one workflow config"
+      ));
+    };
+    let [workflow] = self.state.workflows.as_mut_slice() else {
+      return Err(anyhow!(
+        "terminal report handoff execution requires exactly one workflow state"
+      ));
+    };
+
+    workflow.seed_terminal_report_handoff(config, continuation, now)
   }
 
   fn process_event_inner<'a>(

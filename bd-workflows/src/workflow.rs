@@ -23,11 +23,13 @@ use crate::config::{
 };
 use crate::generate_log::generate_log_action;
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
-use bd_log_primitives::{FieldsRef, Log, log_level};
+use bd_log_primitives::{FieldsRef, Log, LogFields, log_level};
+use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::ReportType;
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::workflow::workflow::{ReportTraversalContext, WorkflowReportContinuation};
 use bd_proto_util::serialization::TimestampMicros;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
-use bd_time::OffsetDateTimeExt;
+use bd_time::{OffsetDateTimeExt, TimestampExt};
 use itertools::Itertools;
 use sha2::Digest;
 use std::borrow::Cow;
@@ -227,13 +229,21 @@ pub enum WorkflowEvent<'a> {
   SessionStart(&'a Log),
   /// A state change occurred, with optional global metadata fields
   StateChange(&'a bd_state::StateChange, FieldsRef<'a>),
+  /// A report was constructed and classified. Reports only advance existing `OnReport` traversals;
+  /// they never create a fresh workflow run.
+  Report {
+    report_type: ReportType,
+    occurred_at: OffsetDateTime,
+  },
 }
 
 impl WorkflowEvent<'_> {
   pub(crate) fn capture_session(&self) -> Option<&'static str> {
     match self {
       WorkflowEvent::Log(log) => log.capture_session,
-      WorkflowEvent::SessionStart(_) | WorkflowEvent::StateChange(..) => None,
+      WorkflowEvent::SessionStart(_)
+      | WorkflowEvent::StateChange(..)
+      | WorkflowEvent::Report { .. } => None,
     }
   }
 
@@ -241,6 +251,7 @@ impl WorkflowEvent<'_> {
     match self {
       WorkflowEvent::Log(log) | WorkflowEvent::SessionStart(log) => log.occurred_at,
       WorkflowEvent::StateChange(state_change, _) => state_change.timestamp,
+      WorkflowEvent::Report { occurred_at, .. } => *occurred_at,
     }
   }
 }
@@ -320,6 +331,100 @@ impl Workflow {
     &self.id
   }
 
+  /// Returns the saved state for traversals that are waiting for a terminal `OnReport` transition.
+  /// This is called before the report event advances those traversals, so the handoff and local
+  /// state transition describe the same workflow run.
+  pub(crate) fn report_handoff_continuations(
+    &self,
+    config: &Config,
+  ) -> Vec<WorkflowReportContinuation> {
+    self
+      .runs
+      .iter()
+      .flat_map(|run| &run.traversals)
+      .flat_map(|traversal| {
+        config
+          .inner()
+          .transitions_for_traversal(traversal)
+          .unwrap_or_default()
+          .iter()
+          .filter_map(|transition| {
+            let Predicate::OnReport {
+              issue_match_rule_hash,
+            } = transition.rule()
+            else {
+              return None;
+            };
+
+            Some(WorkflowReportContinuation {
+              issue_match_rule_hash: issue_match_rule_hash.clone(),
+              traversals: vec![ReportTraversalContext {
+                extracted_fields: traversal
+                  .extractions
+                  .fields
+                  .iter()
+                  .map(|(id, value)| (id.clone(), value.clone()))
+                  .collect(),
+                extracted_timestamps: traversal
+                  .extractions
+                  .timestamps
+                  .iter()
+                  .map(|(id, timestamp)| {
+                    (
+                      id.clone(),
+                      timestamp.0.into_proto().into_option().unwrap_or_default(),
+                    )
+                  })
+                  .collect(),
+                ..Default::default()
+              }],
+              ..Default::default()
+            })
+          })
+      })
+      .collect()
+  }
+
+  /// Seeds this otherwise fresh, server-owned workflow with the state captured by a client before
+  /// it reached its terminal `OnReport` transition. The following event is then processed through
+  /// the ordinary transition/action path, so saved fields and timestamps are available to
+  /// terminal actions without reconstructing the client prefix on the server.
+  pub(crate) fn seed_terminal_report_handoff(
+    &mut self,
+    config: &Config,
+    continuation: &ReportTraversalContext,
+    now: OffsetDateTime,
+  ) -> anyhow::Result<()> {
+    let mut extractions = TraversalExtractions::default();
+    extractions.fields.extend(
+      continuation
+        .extracted_fields
+        .iter()
+        .map(|(id, value)| (id.clone(), value.clone())),
+    );
+    extractions.timestamps.extend(
+      continuation
+        .extracted_timestamps
+        .iter()
+        .map(|(id, timestamp)| (id.clone(), TimestampMicros(timestamp.to_offset_date_time()))),
+    );
+
+    let traversal = Traversal::new(config, 0, extractions, now, false).ok_or_else(|| {
+      anyhow::anyhow!(
+        "terminal report handoff workflow {} has no initial transition",
+        config.inner().id()
+      )
+    })?;
+
+    self.runs = vec![Run {
+      traversals: vec![traversal],
+      matched_logs_count: 0,
+      first_progress_occurred_at: None,
+      tracing_active: false,
+    }];
+    Ok(())
+  }
+
   pub(crate) fn workflow_debug_state(&self) -> &OptWorkflowDebugStateMap {
     &self.workflow_debug_state
   }
@@ -352,7 +457,9 @@ impl Workflow {
     let mut deferred_parallel_overflow_eviction = false;
     let mut initial_run_replaced_by_signature = false;
 
-    let should_create_new_run = if matches!(event, WorkflowEvent::SessionStart(_)) {
+    let should_create_new_run = if matches!(event, WorkflowEvent::Report { .. }) {
+      false
+    } else if matches!(event, WorkflowEvent::SessionStart(_)) {
       self.needs_new_run()
         && config.inner().states().first().is_some_and(|state| {
           state
@@ -1352,6 +1459,7 @@ impl Traversal {
       .unwrap_or_default();
 
     let mut result = TraversalResult::default();
+    let empty_fields = LogFields::default();
     // In majority of cases each traversal has 0 or 1 successor. A case when
     // more than 1 successor is created is possible if a state corresponding to
     // currently processed traversal has multiple outgoing transitions and a
@@ -1393,6 +1501,9 @@ impl Traversal {
         },
         (Predicate::OnNewSession, WorkflowEvent::SessionStart(log)) => {
           self.process_session_start(config, log, index, state_reader, now, &mut result);
+        },
+        (Predicate::OnReport { .. }, WorkflowEvent::Report { .. }) => {
+          self.process_report(config, index, now, &empty_fields, &mut result);
         },
         (
           Predicate::StateChangeMatch {
@@ -1440,6 +1551,7 @@ impl Traversal {
           FieldsRef::new(&log.fields, &log.matching_fields)
         },
         WorkflowEvent::StateChange(_, fields) => fields,
+        WorkflowEvent::Report { .. } => FieldsRef::new(&empty_fields, &empty_fields),
       };
 
       process_transition(
@@ -1695,6 +1807,40 @@ impl Traversal {
         config.inner().id(),
       );
     }
+  }
+
+  fn process_report<'a>(
+    &self,
+    config: &'a Config,
+    index: usize,
+    now: OffsetDateTime,
+    empty_fields: &LogFields,
+    result: &mut TraversalResult<'a>,
+  ) {
+    let Some(next_state_index) = config.inner().next_state_index_for_traversal(self, index) else {
+      return;
+    };
+
+    // OnReport is always a terminal client handoff. Server-owned IssueMatch actions must never
+    // run on the client, but transitioning to the final state still completes the local run and
+    // applies its ordinary reset semantics.
+    process_transition(
+      result,
+      self.extractions.clone(),
+      &[],
+      FieldsRef::new(empty_fields, empty_fields),
+      self.state_index,
+      next_state_index,
+      WorkflowDebugTransitionType::Normal(index as u64),
+      config,
+      now,
+    );
+
+    log::trace!(
+      "traversal's transition {} matched report and is advancing, workflow id={:?}",
+      index,
+      config.inner().id(),
+    );
   }
 
   /// Performs extractions for a log event.

@@ -141,6 +141,7 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
         key => log.field_value(key),
       },
       WorkflowEvent::StateChange(_state_change, fields) => fields.field_value(key),
+      WorkflowEvent::Report { .. } => None,
     }
   }
 
@@ -170,7 +171,7 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
           WorkflowEvent::Log(log) | WorkflowEvent::SessionStart(log) => {
             log.message.as_str().map(Cow::Borrowed)
           },
-          WorkflowEvent::StateChange(..) => None,
+          WorkflowEvent::StateChange(..) | WorkflowEvent::Report { .. } => None,
         },
       } {
         extracted_tags.insert(key.clone(), extracted_value.into_owned());
