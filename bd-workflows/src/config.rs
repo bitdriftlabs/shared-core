@@ -609,6 +609,7 @@ impl Transition {
         extra_matcher: rule.log_matcher.as_ref().map(Tree::new).transpose()?,
       },
       Rule_type::OnNewSession(_) => Predicate::OnNewSession,
+      Rule_type::OnReport(_) => Predicate::OnReport,
     };
 
     let actions = transition
@@ -685,6 +686,9 @@ pub(crate) enum Predicate {
     required_matches: u32,
   },
   OnNewSession,
+  /// TODO(snowp): Dispatch an event for report-triggered transitions once report handoff support
+  /// is implemented. Until then, the existing unmatched-transition path intentionally ignores it.
+  OnReport,
   StateChangeMatch {
     state_change_match: StateChangeMatch,
     extra_matcher: Option<Tree>,
