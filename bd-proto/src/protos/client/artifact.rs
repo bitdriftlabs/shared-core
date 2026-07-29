@@ -176,6 +176,8 @@ pub mod artifact_upload_index {
         pub type_id: ::std::option::Option<::std::string::String>,
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.storage_format)
         pub storage_format: ::protobuf::EnumOrUnknown<super::StorageFormat>,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.workflow_report_handoff)
+        pub workflow_report_handoff: ::protobuf::MessageField<super::super::workflow::WorkflowReportHandoff>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.ArtifactUploadIndex.Artifact.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -193,7 +195,7 @@ pub mod artifact_upload_index {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(8);
+            let mut fields = ::std::vec::Vec::with_capacity(9);
             let mut oneofs = ::std::vec::Vec::with_capacity(0);
             fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
                 "name",
@@ -234,6 +236,11 @@ pub mod artifact_upload_index {
                 "storage_format",
                 |m: &Artifact| { &m.storage_format },
                 |m: &mut Artifact| { &mut m.storage_format },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::workflow::WorkflowReportHandoff>(
+                "workflow_report_handoff",
+                |m: &Artifact| { &m.workflow_report_handoff },
+                |m: &mut Artifact| { &mut m.workflow_report_handoff },
             ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Artifact>(
                 "ArtifactUploadIndex.Artifact",
@@ -289,6 +296,9 @@ pub mod artifact_upload_index {
                     72 => {
                         self.storage_format = is.read_enum_or_unknown()?;
                     },
+                    82 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.workflow_report_handoff)?;
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -331,6 +341,10 @@ pub mod artifact_upload_index {
             if self.storage_format != ::protobuf::EnumOrUnknown::new(super::StorageFormat::CHECKSUMMED) {
                 my_size += ::protobuf::rt::int32_size(9, self.storage_format.value());
             }
+            if let Some(v) = self.workflow_report_handoff.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
             my_size
@@ -368,6 +382,9 @@ pub mod artifact_upload_index {
             if self.storage_format != ::protobuf::EnumOrUnknown::new(super::StorageFormat::CHECKSUMMED) {
                 os.write_enum(9, ::protobuf::EnumOrUnknown::value(&self.storage_format))?;
             }
+            if let Some(v) = self.workflow_report_handoff.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(10, v, os)?;
+            }
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
         }
@@ -393,6 +410,7 @@ pub mod artifact_upload_index {
             self.feature_flags.clear();
             self.type_id = ::std::option::Option::None;
             self.storage_format = ::protobuf::EnumOrUnknown::new(super::StorageFormat::CHECKSUMMED);
+            self.workflow_report_handoff.clear();
             self.special_fields.clear();
         }
 
@@ -485,24 +503,27 @@ impl StorageFormat {
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n1bitdrift_public/protobuf/client/v1/artifact.proto\x12\"bitdrift_publi\
     c.protobuf.client.v1\x1a5bitdrift_public/protobuf/client/v1/feature_flag\
-    .proto\x1a1bitdrift_public/protobuf/logging/v1/payload.proto\x1a\x1fgoog\
-    le/protobuf/timestamp.proto\"\xcf\x05\n\x13ArtifactUploadIndex\x12\\\n\
-    \x08artifact\x18\x01\x20\x03(\x0b2@.bitdrift_public.protobuf.client.v1.A\
-    rtifactUploadIndex.ArtifactR\x08artifact\x1a\xd9\x04\n\x08Artifact\x12\
-    \x12\n\x04name\x18\x01\x20\x01(\tR\x04name\x12.\n\x04time\x18\x02\x20\
-    \x01(\x0b2\x1a.google.protobuf.TimestampR\x04time\x12<\n\x1apending_inte\
-    nt_negotiation\x18\x03\x20\x01(\x08R\x18pendingIntentNegotiation\x12j\n\
-    \x08metadata\x18\x05\x20\x03(\x0b2N.bitdrift_public.protobuf.client.v1.A\
-    rtifactUploadIndex.Artifact.MetadataEntryR\x08metadata\x12\x1d\n\nsessio\
-    n_id\x18\x06\x20\x01(\tR\tsessionId\x12T\n\rfeature_flags\x18\x07\x20\
-    \x03(\x0b2/.bitdrift_public.protobuf.client.v1.FeatureFlagR\x0cfeatureFl\
-    ags\x12\x1c\n\x07type_id\x18\x08\x20\x01(\tH\0R\x06typeId\x88\x01\x01\
-    \x12X\n\x0estorage_format\x18\t\x20\x01(\x0e21.bitdrift_public.protobuf.\
-    client.v1.StorageFormatR\rstorageFormat\x1af\n\rMetadataEntry\x12\x10\n\
-    \x03key\x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2\
-    ).bitdrift_public.protobuf.logging.v1.DataR\x05value:\x028\x01B\n\n\x08_\
-    type_id*)\n\rStorageFormat\x12\x0f\n\x0bCHECKSUMMED\x10\0\x12\x07\n\x03R\
-    AW\x10\x01b\x06proto3\
+    .proto\x1a1bitdrift_public/protobuf/logging/v1/payload.proto\x1a3bitdrif\
+    t_public/protobuf/workflow/v1/workflow.proto\x1a\x1fgoogle/protobuf/time\
+    stamp.proto\"\xe5\x06\n\x13ArtifactUploadIndex\x12\\\n\x08artifact\x18\
+    \x01\x20\x03(\x0b2@.bitdrift_public.protobuf.client.v1.ArtifactUploadInd\
+    ex.ArtifactR\x08artifact\x1a\xef\x05\n\x08Artifact\x12\x12\n\x04name\x18\
+    \x01\x20\x01(\tR\x04name\x12.\n\x04time\x18\x02\x20\x01(\x0b2\x1a.google\
+    .protobuf.TimestampR\x04time\x12<\n\x1apending_intent_negotiation\x18\
+    \x03\x20\x01(\x08R\x18pendingIntentNegotiation\x12j\n\x08metadata\x18\
+    \x05\x20\x03(\x0b2N.bitdrift_public.protobuf.client.v1.ArtifactUploadInd\
+    ex.Artifact.MetadataEntryR\x08metadata\x12\x1d\n\nsession_id\x18\x06\x20\
+    \x01(\tR\tsessionId\x12T\n\rfeature_flags\x18\x07\x20\x03(\x0b2/.bitdrif\
+    t_public.protobuf.client.v1.FeatureFlagR\x0cfeatureFlags\x12\x1c\n\x07ty\
+    pe_id\x18\x08\x20\x01(\tH\0R\x06typeId\x88\x01\x01\x12X\n\x0estorage_for\
+    mat\x18\t\x20\x01(\x0e21.bitdrift_public.protobuf.client.v1.StorageForma\
+    tR\rstorageFormat\x12x\n\x17workflow_report_handoff\x18\n\x20\x01(\x0b2;\
+    .bitdrift_public.protobuf.workflow.v1.WorkflowReportHandoffH\x01R\x15wor\
+    kflowReportHandoff\x88\x01\x01\x1af\n\rMetadataEntry\x12\x10\n\x03key\
+    \x18\x01\x20\x01(\tR\x03key\x12?\n\x05value\x18\x02\x20\x01(\x0b2).bitdr\
+    ift_public.protobuf.logging.v1.DataR\x05value:\x028\x01B\n\n\x08_type_id\
+    B\x1a\n\x18_workflow_report_handoff*)\n\rStorageFormat\x12\x0f\n\x0bCHEC\
+    KSUMMED\x10\0\x12\x07\n\x03RAW\x10\x01b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -519,9 +540,10 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(3);
+            let mut deps = ::std::vec::Vec::with_capacity(4);
             deps.push(super::feature_flag::file_descriptor().clone());
             deps.push(super::payload::file_descriptor().clone());
+            deps.push(super::workflow::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             let mut messages = ::std::vec::Vec::with_capacity(2);
             messages.push(ArtifactUploadIndex::generated_message_descriptor_data());
