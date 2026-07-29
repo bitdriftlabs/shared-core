@@ -19,7 +19,9 @@ use bd_log_filter::FilterChain;
 use bd_log_metadata::LogFields;
 use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{EncodableLog, FieldsRef, Log, LogMessage, LossyIntToU32, log_level};
+use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::ReportType;
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::workflow::workflow::WorkflowReportHandoff;
 use bd_proto_util::serialization::ProtoMessageSerialize;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
 use bd_runtime::runtime::{ConfigLoader, IntWatch};
@@ -434,6 +436,60 @@ impl ProcessingPipeline {
     self.workflows_engine.maybe_persist(false).await;
 
     log_replay_result
+  }
+
+  /// Advances workflows waiting on OnReport and returns their saved context for durable artifact
+  /// storage. Reports are processed here only after logger initialization, which keeps their
+  /// transition ordered after preceding logs and state changes.
+  pub(crate) async fn snapshot_and_advance_report(
+    &mut self,
+    report_type: ReportType,
+    occurred_at: OffsetDateTime,
+    state: &bd_state::Store,
+  ) -> (WorkflowReportHandoff, LogReplayResult) {
+    let state_reader = state.read().await;
+    let empty_set = TinySet::default();
+    let (handoff, mut result) = self.workflows_engine.snapshot_and_advance_report(
+      report_type,
+      occurred_at,
+      &empty_set,
+      &state_reader,
+    );
+    self
+      .is_tracing_active
+      .store(result.is_tracing_active, Ordering::Relaxed);
+
+    let log_replay_result = LogReplayResult {
+      logs_to_inject: std::mem::take(&mut result.logs_to_inject)
+        .into_values()
+        .collect(),
+      workflow_debug_state: result.workflow_debug_state,
+      engine_has_debug_workflows: result.has_debug_workflows,
+    };
+
+    Self::handle_common_pre_buffer_write(
+      &self.capture_screenshot_handler,
+      &result.triggered_flush_buffers_action_ids,
+      result.capture_screenshot,
+    );
+
+    let empty_fields = LogFields::default();
+    Self::process_flush_buffers_actions(
+      &result.triggered_flush_buffers_action_ids,
+      &mut self.buffer_producers,
+      &result.triggered_flushes_buffer_ids,
+      &result.log_destination_buffer_ids,
+      &"Report".into(),
+      &empty_fields,
+      "",
+      occurred_at,
+    );
+
+    // A report is a terminal workflow event. Persist immediately when the state transition
+    // succeeds, but intentionally retain that transition if persistence fails.
+    self.workflows_engine.maybe_persist(true).await;
+
+    (handoff, log_replay_result)
   }
 
   async fn finish_blocking_log_processing(

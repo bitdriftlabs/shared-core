@@ -599,9 +599,19 @@ pub struct InitParams {
   pub start_in_sleep_mode: bool,
 }
 
-pub struct ReportProcessingRequest {
-  /// Session to use in reports
-  pub session: ReportProcessingSession,
+pub enum ReportProcessingRequest {
+  /// Discover and process all reports pending on disk.
+  Pending {
+    /// Session to use in reports.
+    session: ReportProcessingSession,
+  },
+  /// Process a watcher report that already owns its open artifact handle.
+  Prepared {
+    /// Prepared report to process through the ordered report path.
+    prepared_report: bd_crash_handler::PreparedReport,
+    /// Session to use in reports.
+    session: ReportProcessingSession,
+  },
 }
 
 /// A single logger instance. This manages the lifetime of the logger and can be used to access
@@ -714,7 +724,7 @@ impl Logger {
     Ok(
       self
         .report_processor_tx
-        .try_send(ReportProcessingRequest { session })?,
+        .try_send(ReportProcessingRequest::Pending { session })?,
     )
   }
 

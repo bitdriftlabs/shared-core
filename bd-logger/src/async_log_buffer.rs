@@ -84,17 +84,17 @@ pub const SESSION_BRIDGE_TIMEOUT: StdDuration = StdDuration::from_secs(1);
 
 /// Abstraction over crash report processing to allow for easier testing.
 pub trait ReportProcessor {
-  async fn process_all_pending_reports(&self) -> Vec<bd_crash_handler::CrashLog>;
+  async fn prepare_all_pending_reports(&self) -> Vec<bd_crash_handler::PreparedReport>;
 }
 
 impl ReportProcessor for bd_crash_handler::Monitor {
-  async fn process_all_pending_reports(&self) -> Vec<bd_crash_handler::CrashLog> {
-    self.process_all_pending_reports().await
+  async fn prepare_all_pending_reports(&self) -> Vec<bd_crash_handler::PreparedReport> {
+    self.prepare_all_pending_reports().await
   }
 }
 
 impl ReportProcessor for () {
-  async fn process_all_pending_reports(&self) -> Vec<bd_crash_handler::CrashLog> {
+  async fn prepare_all_pending_reports(&self) -> Vec<bd_crash_handler::PreparedReport> {
     vec![]
   }
 }
@@ -918,7 +918,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     let self_shutdown = self_shutdown.cancelled();
     tokio::pin!(self_shutdown);
     loop {
-      let initialized_logging_context =
+      let mut initialized_logging_context =
         if let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state {
           Some(initialized_logging_context)
         } else {
@@ -939,9 +939,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               .await;
           }
         },
-        Some(ReportProcessingRequest {
-           session
-        }) = self.report_processor_rx.recv() => {
+        Some(report_request) = self.report_processor_rx.recv() => {
           // TODO(snowp): Once we move over to using the file watcher we can more accurately pick
           // current vs previous for all reports, but as we need to handle restarts etc we may
           // also want to embed the full information into the report. This should ensure that we
@@ -950,7 +948,50 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           // emitting it as part of the upload process. This avoids having to mess with time
           // overrides at a later stage.
 
-          for crash_log in report_processor.process_all_pending_reports().await {
+          let (prepared_reports, session) = match report_request {
+            ReportProcessingRequest::Pending { session } => (
+              report_processor.prepare_all_pending_reports().await,
+              session,
+            ),
+            ReportProcessingRequest::Prepared {
+              prepared_report,
+              session,
+            } => (vec![prepared_report], session),
+          };
+
+          let mut crash_logs = Vec::new();
+          let mut workflow_debug_state = Vec::new();
+          for prepared_report in prepared_reports {
+            let handoff = if let Some(initialized_logging_context) =
+              initialized_logging_context.as_deref_mut()
+            {
+              let (handoff, workflow_result) = initialized_logging_context
+                .processing_pipeline
+                .snapshot_and_advance_report(
+                  prepared_report.report_type(),
+                  prepared_report.timestamp(),
+                  &state_store,
+                )
+                .await;
+              workflow_debug_state.extend(workflow_result.workflow_debug_state);
+              (!handoff.continuations.is_empty()).then_some(handoff)
+            } else {
+              // Reports are never stored in PreConfigBuffer: retaining their file descriptors
+              // would create a new report-loss path. Before initial configuration they enqueue
+              // directly without a handoff, and later replay must not consume a workflow run.
+              None
+            };
+
+            if let Some(crash_log) = prepared_report.enqueue(handoff).await {
+              crash_logs.push(crash_log);
+            }
+          }
+
+          // The select branch normally keeps a mutable borrow of the initialized pipeline for its
+          // `run()` arm. Release it before routing lifecycle logs through the standard path.
+          drop(initialized_logging_context);
+          self.pending_workflow_debug_state.extend(workflow_debug_state);
+          for crash_log in crash_logs {
             let attributes_overrides = match session {
                 crate::ReportProcessingSession::Current => LogAttributesOverrides::OccurredAt(
                   crash_log.timestamp,
@@ -1158,7 +1199,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           }
         },
         () = maybe_await_map(
-          initialized_logging_context,
+          initialized_logging_context.as_deref_mut(),
           |initialized_logging_context| async {
             initialized_logging_context.processing_pipeline.run().await;
         })
