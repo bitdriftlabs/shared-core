@@ -27,6 +27,7 @@ bd-workspace-hack.workspace = true
 flatbuffers.workspace       = true
 log.workspace               = true
 mockall.workspace           = true
+protobuf.workspace          = true
 thiserror.workspace         = true
 time.workspace              = true
 tokio.workspace             = true

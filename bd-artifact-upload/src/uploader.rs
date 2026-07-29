@@ -31,11 +31,13 @@ use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::artifact::{ArtifactUploadIndex, StorageFormat};
 use bd_proto::protos::client::feature_flag::FeatureFlag;
 use bd_proto::protos::logging::payload::Data;
+use bd_proto::protos::workflow::workflow::WorkflowReportHandoff;
 use bd_runtime::runtime::{ConfigLoader, IntWatch, artifact_upload};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::Counter as _;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, TimestampExt};
 use mockall::automock;
+use protobuf::{Message, MessageField};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
@@ -119,6 +121,7 @@ struct NewUpload {
   timestamp: Option<OffsetDateTime>,
   session_id: String,
   feature_flags: Vec<SnappedFeatureFlag>,
+  workflow_report_handoff: Option<WorkflowReportHandoff>,
   persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
 }
 
@@ -162,6 +165,9 @@ impl MemorySized for NewUpload {
       + std::mem::size_of::<Option<OffsetDateTime>>()
       + self.session_id.len()
       + self.feature_flags.size()
+      + self.workflow_report_handoff.as_ref().map_or(0, |handoff| {
+        usize::try_from(handoff.compute_size()).unwrap_or_default()
+      })
   }
 }
 
@@ -213,6 +219,32 @@ pub trait Client: Send + Sync {
     feature_flags: Vec<SnappedFeatureFlag>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
   ) -> std::result::Result<Uuid, EnqueueError>;
+
+  /// Enqueues an issue-report artifact with optional workflow state captured at report time.
+  /// Other artifact types intentionally use `enqueue_upload` and therefore cannot accidentally
+  /// populate this future-facing report-only field.
+  fn enqueue_issue_report_upload(
+    &self,
+    source: UploadSource,
+    type_id: String,
+    state: LogFields,
+    timestamp: Option<OffsetDateTime>,
+    session_id: String,
+    feature_flags: Vec<SnappedFeatureFlag>,
+    workflow_report_handoff: Option<WorkflowReportHandoff>,
+    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+  ) -> std::result::Result<Uuid, EnqueueError> {
+    let _ = workflow_report_handoff;
+    self.enqueue_upload(
+      source,
+      type_id,
+      state,
+      timestamp,
+      session_id,
+      feature_flags,
+      persisted_tx,
+    )
+  }
 }
 
 pub struct UploadClient {
@@ -232,6 +264,55 @@ impl Client for UploadClient {
     feature_flags: Vec<SnappedFeatureFlag>,
     persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
   ) -> std::result::Result<Uuid, EnqueueError> {
+    self.enqueue_upload_inner(
+      source,
+      type_id,
+      state,
+      timestamp,
+      session_id,
+      feature_flags,
+      None,
+      persisted_tx,
+    )
+  }
+
+  fn enqueue_issue_report_upload(
+    &self,
+    source: UploadSource,
+    type_id: String,
+    state: LogFields,
+    timestamp: Option<OffsetDateTime>,
+    session_id: String,
+    feature_flags: Vec<SnappedFeatureFlag>,
+    workflow_report_handoff: Option<WorkflowReportHandoff>,
+    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+  ) -> std::result::Result<Uuid, EnqueueError> {
+    self.enqueue_upload_inner(
+      source,
+      type_id,
+      state,
+      timestamp,
+      session_id,
+      feature_flags,
+      workflow_report_handoff,
+      persisted_tx,
+    )
+  }
+}
+
+impl UploadClient {
+  #[allow(clippy::too_many_arguments)]
+  fn enqueue_upload_inner(
+    &self,
+    source: UploadSource,
+    type_id: String,
+    state: LogFields,
+    timestamp: Option<OffsetDateTime>,
+    session_id: String,
+    feature_flags: Vec<SnappedFeatureFlag>,
+    workflow_report_handoff: Option<WorkflowReportHandoff>,
+    persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
+  ) -> std::result::Result<Uuid, EnqueueError> {
     let uuid = uuid::Uuid::new_v4();
 
     let result = self
@@ -244,6 +325,7 @@ impl Client for UploadClient {
         timestamp,
         session_id,
         feature_flags,
+        workflow_report_handoff,
         persisted_tx,
       })
       .inspect_err(|e| log::warn!("failed to enqueue artifact upload: {e:?}"));
@@ -439,6 +521,7 @@ impl Uploader {
           self.backoff_policy.backoff_mark_update(),
           next.metadata.clone(),
           next.feature_flags.clone(),
+          next.workflow_report_handoff.clone(),
         )));
       }
 
@@ -462,6 +545,7 @@ impl Uploader {
             timestamp,
             session_id,
             feature_flags,
+            workflow_report_handoff,
             persisted_tx,
         }) = self.upload_queued_rx.recv() => {
           log::debug!("tracking artifact: {uuid} for upload");
@@ -474,6 +558,7 @@ impl Uploader {
               session_id,
               timestamp,
               feature_flags,
+              workflow_report_handoff,
               persisted_tx,
             )
             .await;
@@ -654,6 +739,7 @@ impl Uploader {
     session_id: String,
     timestamp: Option<OffsetDateTime>,
     feature_flags: Vec<SnappedFeatureFlag>,
+    workflow_report_handoff: Option<WorkflowReportHandoff>,
     mut persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
   ) {
     // Previously we would always drop the oldest entry when we hit capacity, but for state
@@ -811,6 +897,7 @@ impl Uploader {
           },
         )
         .collect(),
+      workflow_report_handoff: workflow_report_handoff.into(),
       ..Default::default()
     });
 
@@ -857,6 +944,7 @@ impl Uploader {
     mut retry_policy: ExponentialBackoff,
     state_metadata: HashMap<String, Data>,
     feature_flags: Vec<FeatureFlag>,
+    workflow_report_handoff: MessageField<WorkflowReportHandoff>,
   ) -> Result<()> {
     let path = REPORT_DIRECTORY.join(&name);
     log::debug!("uploading artifact: {}", path.display());
@@ -878,6 +966,7 @@ impl Uploader {
           session_id: session_id.clone(),
           state_metadata: state_metadata.clone(),
           feature_flags: feature_flags.clone(),
+          workflow_report_handoff: workflow_report_handoff.clone(),
           ..Default::default()
         },
       );
