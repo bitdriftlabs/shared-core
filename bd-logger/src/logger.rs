@@ -209,6 +209,12 @@ pub struct LoggerHandle {
 }
 
 impl LoggerHandle {
+  /// Informs the logger that the platform expects a prior-run crash report. The logger keeps
+  /// initialization work buffered for its configured crash-pending extension.
+  pub fn hint_crash_report_pending(&self) -> anyhow::Result<()> {
+    Ok(self.tx.hint_crash_report_pending()?)
+  }
+
   /// Log a message with the given log level, log type, message, and fields. This will enqueue the
   /// log onto a bounded queue for further processing.
   pub fn log(
@@ -716,6 +722,12 @@ impl Logger {
         .report_processor_tx
         .try_send(ReportProcessingRequest { session })?,
     )
+  }
+
+  /// Informs the logger that the platform expects a prior-run crash report. The logger keeps
+  /// initialization work buffered for its configured crash-pending extension.
+  pub fn hint_crash_report_pending(&self) -> anyhow::Result<()> {
+    Ok(self.async_log_buffer_tx.hint_crash_report_pending()?)
   }
 
   pub fn shutdown(&self, blocking: bool) {

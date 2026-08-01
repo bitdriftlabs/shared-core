@@ -672,6 +672,23 @@ pub mod crash_reporting {
   );
 }
 
+pub mod init_buffer {
+  // Delays the first replay after logger configuration is available. This lets the platform add
+  // prior-run crash reports before current-session startup activity reaches workflows.
+  duration_feature_flag!(
+    ReplayDelay,
+    "logger.init_buffer.replay_delay_ms",
+    time::Duration::ZERO
+  );
+
+  // Extends the initial replay delay once when the platform expects a prior-run crash report.
+  duration_feature_flag!(
+    CrashPendingReplayDelay,
+    "logger.init_buffer.crash_pending_replay_delay_ms",
+    time::Duration::ZERO
+  );
+}
+
 pub mod log_upload {
   use time::ext::NumericalDuration as _;
 

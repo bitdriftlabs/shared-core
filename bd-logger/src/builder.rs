@@ -607,7 +607,7 @@ impl LoggerBuilder {
           Ok(())
         },
         async move {
-          async_log_buffer.run(state_store, crash_monitor).await;
+          Box::pin(async_log_buffer.run(state_store, crash_monitor)).await;
           Ok(())
         },
         async move {
