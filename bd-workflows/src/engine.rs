@@ -126,7 +126,7 @@ pub struct WorkflowsEngine<C, H> {
   state: WorkflowsState,
   // Tracks the immediately preceding session for detecting out-of-order logs that return to it.
   // This is process local as the most relevant case of this is during startup when sequencing
-  // crash logs that that occurred in a previous session.
+  // crash logs that occurred in a previous session.
   previous_session_id: String,
   state_store: Option<StateStore>,
   process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
