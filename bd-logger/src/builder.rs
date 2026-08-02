@@ -507,6 +507,9 @@ impl LoggerBuilder {
         (None, None)
       };
 
+      // The crash monitor must return the prepared report when the ordered report channel is full
+      // so the file watcher retains ownership and can retry it later.
+      #[allow(clippy::result_large_err)]
       let crash_monitor = Monitor::new(
         &self.params.sdk_directory,
         self.params.store.clone(),
@@ -520,20 +523,14 @@ impl LoggerBuilder {
             bd_crash_handler::ReportOrigin::Current => crate::ReportProcessingSession::Current,
             bd_crash_handler::ReportOrigin::Previous => crate::ReportProcessingSession::PreviousRun,
           };
-          match report_proc_tx_for_monitor.try_send(ReportProcessingRequest::Prepared {
-            prepared_report,
+          let Ok(permit) = report_proc_tx_for_monitor.try_reserve() else {
+            return Err(prepared_report);
+          };
+          permit.send(ReportProcessingRequest::Prepared {
+            prepared_report: Box::new(prepared_report),
             session,
-          }) {
-            Ok(()) => Ok(()),
-            Err(error) => match error.into_inner() {
-              ReportProcessingRequest::Prepared {
-                prepared_report, ..
-              } => Err(prepared_report),
-              ReportProcessingRequest::Pending { .. } => {
-                unreachable!("only prepared reports are sent by the file watcher")
-              },
-            },
-          }
+          });
+          Ok(())
         },
         move |log: bd_crash_handler::CrashLog| {
           AsyncLogBuffer::<LoggerReplay>::enqueue_log(

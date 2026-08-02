@@ -5,6 +5,8 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+#![allow(clippy::result_large_err)]
+
 use crate::{CrashReportHook, CrashReportInfo, Monitor, global_state};
 use bd_artifact_upload::UploadSource;
 use bd_client_common::init_lifecycle::InitLifecycleState;

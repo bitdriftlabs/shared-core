@@ -608,7 +608,7 @@ pub enum ReportProcessingRequest {
   /// Process a watcher report that already owns its open artifact handle.
   Prepared {
     /// Prepared report to process through the ordered report path.
-    prepared_report: bd_crash_handler::PreparedReport,
+    prepared_report: Box<bd_crash_handler::PreparedReport>,
     /// Session to use in reports.
     session: ReportProcessingSession,
   },

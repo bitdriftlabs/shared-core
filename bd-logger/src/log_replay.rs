@@ -438,7 +438,7 @@ impl ProcessingPipeline {
     log_replay_result
   }
 
-  /// Advances workflows waiting on OnReport and returns their saved context for durable artifact
+  /// Advances workflows waiting on `OnReport` and returns their saved context for durable artifact
   /// storage. Reports are processed here only after logger initialization, which keeps their
   /// transition ordered after preceding logs and state changes.
   pub(crate) async fn snapshot_and_advance_report(

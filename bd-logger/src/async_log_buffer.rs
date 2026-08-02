@@ -956,7 +956,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             ReportProcessingRequest::Prepared {
               prepared_report,
               session,
-            } => (vec![prepared_report], session),
+            } => (vec![*prepared_report], session),
           };
 
           let mut crash_logs = Vec::new();
@@ -987,9 +987,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             }
           }
 
-          // The select branch normally keeps a mutable borrow of the initialized pipeline for its
-          // `run()` arm. Release it before routing lifecycle logs through the standard path.
-          drop(initialized_logging_context);
           self.pending_workflow_debug_state.extend(workflow_debug_state);
           for crash_log in crash_logs {
             let attributes_overrides = match session {
