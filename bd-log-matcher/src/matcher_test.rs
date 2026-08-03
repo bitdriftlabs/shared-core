@@ -305,6 +305,58 @@ fn json_path_matcher_array_index() {
 }
 
 #[test]
+fn json_path_matcher_boolean_in_array_object() {
+  let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+    tag_key: "myField".to_string(),
+    value_match: Some(
+      log_matcher::base_log_matcher::tag_match::Value_match::JsonValueMatch(JsonPathValueMatch {
+        operator: Operator::OPERATOR_EQUALS.into(),
+        match_value: "true".to_string(),
+        key_or_index: vec![
+          KeyOrIndex {
+            key_or_index: Some(key_or_index::Key_or_index::Key("items".to_string())),
+            ..Default::default()
+          },
+          KeyOrIndex {
+            key_or_index: Some(key_or_index::Key_or_index::Index(0)),
+            ..Default::default()
+          },
+          KeyOrIndex {
+            key_or_index: Some(key_or_index::Key_or_index::Key("inStock".to_string())),
+            ..Default::default()
+          },
+        ],
+        ..Default::default()
+      }),
+    ),
+    ..Default::default()
+  }));
+
+  let input = map_log_tag(
+    "myField",
+    DataValue::from(AHashMap::from_iter([(
+      "items".to_string(),
+      DataValue::from(vec![DataValue::from(AHashMap::from_iter([(
+        "inStock".to_string(),
+        DataValue::Boolean(true),
+      )]))]),
+    )])),
+  );
+  let input_mismatch = map_log_tag(
+    "myField",
+    DataValue::from(AHashMap::from_iter([(
+      "items".to_string(),
+      DataValue::from(vec![DataValue::from(AHashMap::from_iter([(
+        "inStock".to_string(),
+        DataValue::Boolean(false),
+      )]))]),
+    )])),
+  );
+
+  match_test_runner(config, vec![(input, true), (input_mismatch, false)]);
+}
+
+#[test]
 fn json_path_matcher_non_map_field() {
   let config = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
     tag_key: "payload".to_string(),

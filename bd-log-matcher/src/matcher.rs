@@ -679,8 +679,8 @@ fn resolve_json_path<'a>(value: &'a DataValue, path: &[JsonPathToken]) -> Option
     DataValue::String(value) => Some(Cow::Borrowed(value.as_str())),
     DataValue::SharedString(value) => Some(Cow::Borrowed(value.as_ref())),
     DataValue::StaticString(value) => Some(Cow::Borrowed(value)),
+    DataValue::Boolean(value) => Some(Cow::Borrowed(if *value { "true" } else { "false" })),
     DataValue::Bytes(_)
-    | DataValue::Boolean(_)
     | DataValue::U64(_)
     | DataValue::I64(_)
     | DataValue::Double(_)
