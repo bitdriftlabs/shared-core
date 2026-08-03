@@ -124,6 +124,10 @@ pub struct WorkflowsEngine<C, H> {
   // at index `i`.
   configs: Vec<Config>,
   state: WorkflowsState,
+  // Tracks the immediately preceding session for detecting out-of-order logs that return to it.
+  // This is process local as the most relevant case of this is during startup when sequencing
+  // crash logs that occurred in a previous session.
+  previous_session_id: String,
   state_store: Option<StateStore>,
   process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
 
@@ -219,6 +223,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     let workflows_engine = Self {
       configs: vec![],
       state: WorkflowsState::default(),
+      previous_session_id: String::new(),
       stats: WorkflowsEngineStats::new(&scope),
       state_store,
       needs_state_persistence: false,
@@ -696,6 +701,14 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       self.stats.sessions_total.inc();
       return true;
     } else if self.state.session_id != incoming_session_id {
+      if self.previous_session_id == incoming_session_id {
+        self.stats.session_thrashes_total.inc();
+        log::debug!(
+          "workflows engine: session \"{incoming_session_id}\" returned after an intervening \
+           session"
+        );
+      }
+
       log::debug!(
         "workflows engine: moving from \"{}\" to new session \"{}\", cleaning workflows state",
         self.state.session_id,
@@ -709,6 +722,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       // state on session change, having empty session ID
       // ("") stored on disk is equal to storing a session ID (i.e., "foo") with
       // all workflows in their initial states.
+      self.previous_session_id.clone_from(&self.state.session_id);
       self.clean_state();
       self.state.session_id = incoming_session_id.to_string();
       self.stats.sessions_total.inc();
@@ -1540,6 +1554,9 @@ struct WorkflowsEngineStats {
   /// The number of new sessions observed. Note that thrashing between sessions will count the
   /// same session multiple times.
   sessions_total: Counter,
+  /// The number of immediate returns to the preceding session, indicating out-of-order logs
+  /// caused an additional workflow state reset.
+  session_thrashes_total: Counter,
 }
 
 impl WorkflowsEngineStats {
@@ -1563,6 +1580,7 @@ impl WorkflowsEngineStats {
       intent_negotiation_channel_send_failures: scope
         .counter("intent_negotiation_channel_send_failures_total"),
       sessions_total: scope.counter("sessions_total"),
+      session_thrashes_total: scope.counter("session_thrashes_total"),
     }
   }
 }
