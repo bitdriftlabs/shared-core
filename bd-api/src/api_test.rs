@@ -48,6 +48,7 @@ use bd_proto::protos::client::api::{
   RuntimeUpdate,
   StateUpdateResponse,
   StatsUploadRequest,
+  StatsUploadResponse,
   client_state_update,
 };
 use bd_proto::protos::logging::payload::LogType;
@@ -339,6 +340,7 @@ impl Setup {
       session_strategy.clone(),
       opaque_entity_updates_rx,
       bd_client_common::sdk_status::SdkStatusTracker::new(),
+      None,
     );
     api.data_idle_timeout_test_hook = idle_timeout_tx;
 
@@ -408,6 +410,7 @@ impl Setup {
       self.session_strategy.clone(),
       self.opaque_entity_updates.subscribe(),
       bd_client_common::sdk_status::SdkStatusTracker::new(),
+      None,
     );
 
     self.api_task = Some(tokio::task::spawn(api.start()));
@@ -731,6 +734,21 @@ async fn handshake_metadata_includes_os_version_and_android_manufacturer() {
   assert_eq!(
     handshake.static_device_metadata["_manufacturer"].data_type,
     Some(Data_type::StringData("Google".to_string()))
+  );
+}
+
+#[tokio::test(start_paused = true)]
+async fn handshake_connection_count_starts_at_one() {
+  let mut setup = Setup::new().await;
+
+  let handshake = setup.next_stream(1.seconds()).await.unwrap();
+  assert_eq!(
+    handshake
+      .analytics
+      .as_ref()
+      .unwrap()
+      .connection_count_since_process_start,
+    1
   );
 }
 
@@ -1729,6 +1747,47 @@ async fn set_stats_upload_request_sent_at_field() {
   let next_received_request = setup.next_request(1.seconds()).await.unwrap();
   assert_matches!(next_received_request.request_type, Some(Request_type::StatsUpload(payload))
     if { payload.sent_at == setup.time_provider.now().into_proto() });
+}
+
+#[tokio::test(start_paused = true)]
+async fn unknown_stats_upload_response_fails_stream() {
+  let mut setup = Setup::new_ex(
+    Setup::make_nice_mock_updater(),
+    Some(RuntimeUpdate {
+      version_nonce: "test".to_string(),
+      runtime: Some(bd_test_helpers::runtime::make_proto(vec![(
+        bd_runtime::runtime::retry_backoff::MaxBackoffInterval::path(),
+        bd_test_helpers::runtime::ValueKind::Int(1_000),
+      )]))
+      .into(),
+      ..Default::default()
+    }),
+    None,
+    None,
+    Arc::new(EmptyMetadata),
+  )
+  .await;
+
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+  setup
+    .handshake_response(
+      HANDSHAKE_FLAG_CONFIG_UP_TO_DATE | HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
+      None,
+      None,
+    )
+    .await;
+
+  setup
+    .send_response(ApiResponse {
+      response_type: Some(Response_type::StatsUpload(StatsUploadResponse {
+        upload_uuid: "unknown".to_string(),
+        ..Default::default()
+      })),
+      ..Default::default()
+    })
+    .await;
+
+  assert!(setup.next_stream(2.seconds()).await.is_some());
 }
 
 #[tokio::test(start_paused = true)]

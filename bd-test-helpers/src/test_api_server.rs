@@ -19,7 +19,7 @@ use bd_grpc_codec::{Compression, OptimizeFor};
 use bd_proto::protos::client::api::api_request::Request_type;
 use bd_proto::protos::client::api::api_response::Response_type;
 use bd_proto::protos::client::api::configuration_update::{StateOfTheWorld, Update_type};
-use bd_proto::protos::client::api::handshake_response::StreamSettings;
+use bd_proto::protos::client::api::handshake_response::{self, StreamSettings};
 use bd_proto::protos::client::api::log_upload_intent_response::{Decision, UploadImmediately};
 use bd_proto::protos::client::api::{
   ApiRequest,
@@ -28,6 +28,7 @@ use bd_proto::protos::client::api::{
   ConfigurationUpdateAck,
   DebugDataRequest,
   FlushBuffers,
+  HandshakeRequest,
   HandshakeResponse,
   LogUploadIntentRequest,
   LogUploadIntentResponse,
@@ -50,7 +51,7 @@ use http_body_util::StreamBody;
 use log_upload::LogUpload;
 use protobuf::MessageField;
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 use std::sync::{Arc, Mutex};
 use time::Duration;
 use time::ext::{NumericalDuration, NumericalStdDuration};
@@ -105,8 +106,11 @@ struct ServiceState {
   ping_interval: Option<Duration>,
   stream_id_generator: Arc<AtomicI32>,
   log_upload_response_control: LogUploadResponseControl,
+  handshake_response_control: HandshakeResponseControl,
+  stats_upload_response_control: StatsUploadResponseControl,
 
   event_tx: Sender<ObservedEvent>,
+  handshake_request_tx: Sender<(i32, HandshakeRequest)>,
   per_stream_action_txs: Arc<Mutex<HashMap<i32, Arc<Sender<StreamAction>>>>>,
   log_upload_tx: Sender<LogUploadRequest>,
   log_intent_tx: Sender<LogUploadIntentRequest>,
@@ -118,6 +122,87 @@ struct ServiceState {
   debug_data_tx: Sender<DebugDataRequest>,
 
   shutdown_tx: broadcast::Sender<()>,
+}
+
+//
+// HandshakeResponsePlan
+//
+
+#[derive(Clone, Debug, Default)]
+pub struct HandshakeResponsePlan {
+  pub startup_stats_upload_response: Option<StartupStatsUploadResponse>,
+  pub analytics_ack: Option<AnalyticsAck>,
+}
+
+#[derive(Clone, Debug)]
+pub enum StartupStatsUploadResponse {
+  Echo { error: String, metrics_dropped: u32 },
+  Fixed(StatsUploadResponse),
+  CloseStream,
+}
+
+#[derive(Clone, Debug)]
+pub enum AnalyticsAck {
+  Echo,
+  Fixed(String),
+}
+
+enum PendingHandshakeResponse {
+  Respond(HandshakeResponsePlan),
+  CloseStream,
+}
+
+#[derive(Clone, Default)]
+struct HandshakeResponseControl {
+  pending_responses: Arc<Mutex<VecDeque<PendingHandshakeResponse>>>,
+}
+
+impl HandshakeResponseControl {
+  fn respond_next(&self, response: HandshakeResponsePlan) {
+    self
+      .pending_responses
+      .lock()
+      .unwrap()
+      .push_back(PendingHandshakeResponse::Respond(response));
+  }
+
+  fn close_next(&self) {
+    self
+      .pending_responses
+      .lock()
+      .unwrap()
+      .push_back(PendingHandshakeResponse::CloseStream);
+  }
+
+  fn next(&self) -> Option<PendingHandshakeResponse> {
+    self.pending_responses.lock().unwrap().pop_front()
+  }
+}
+
+//
+// StatsUploadResponsePlan
+//
+
+#[derive(Clone, Debug)]
+pub enum StatsUploadResponsePlan {
+  Echo { error: String, metrics_dropped: u32 },
+  Fixed(StatsUploadResponse),
+  CloseStream,
+}
+
+#[derive(Clone, Default)]
+struct StatsUploadResponseControl {
+  pending_responses: Arc<Mutex<VecDeque<StatsUploadResponsePlan>>>,
+}
+
+impl StatsUploadResponseControl {
+  fn respond_next(&self, response: StatsUploadResponsePlan) {
+    self.pending_responses.lock().unwrap().push_back(response);
+  }
+
+  fn next(&self) -> Option<StatsUploadResponsePlan> {
+    self.pending_responses.lock().unwrap().pop_front()
+  }
 }
 
 //
@@ -184,11 +269,17 @@ impl BlockedLogUploadResponse {
 struct RequestProcessor {
   stream_id: i32,
   stream_state: Arc<ServiceState>,
+  close_after_request: AtomicBool,
+  post_handshake_response: Option<ApiResponse>,
 }
 
 impl RequestProcessor {
+  fn should_close_stream(&self) -> bool {
+    self.close_after_request.swap(false, Ordering::Relaxed)
+  }
+
   // Process a single request, possibly responding with a response.
-  async fn process_request(&self, request: &ApiRequest) -> Option<ApiResponse> {
+  async fn process_request(&mut self, request: &ApiRequest) -> Option<ApiResponse> {
     match &request.request_type {
       Some(Request_type::Handshake(h)) => {
         log::debug!("[S{}] received handshake", self.stream_id);
@@ -218,6 +309,22 @@ impl RequestProcessor {
           .await
           .expect("event channel should not fail");
 
+        self
+          .stream_state
+          .handshake_request_tx
+          .send((self.stream_id, h.clone()))
+          .await
+          .expect("handshake request channel should not fail");
+
+        let response_plan = match self.stream_state.handshake_response_control.next() {
+          Some(PendingHandshakeResponse::Respond(response_plan)) => response_plan,
+          Some(PendingHandshakeResponse::CloseStream) => {
+            self.close_after_request.store(true, Ordering::Relaxed);
+            return None;
+          },
+          None => HandshakeResponsePlan::default(),
+        };
+
         log::debug!(
           "[S{}] sending handshake response with {:?} ping interval",
           self.stream_id,
@@ -233,11 +340,51 @@ impl RequestProcessor {
           })
           .into();
 
+        self.post_handshake_response = match response_plan.startup_stats_upload_response {
+          Some(StartupStatsUploadResponse::Echo {
+            error,
+            metrics_dropped,
+          }) => h.startup_stats_upload.as_ref().map(|request| ApiResponse {
+            response_type: Some(Response_type::StatsUpload(StatsUploadResponse {
+              upload_uuid: request.upload_uuid.clone(),
+              error,
+              metrics_dropped,
+              ..Default::default()
+            })),
+            ..Default::default()
+          }),
+          Some(StartupStatsUploadResponse::Fixed(response)) => Some(ApiResponse {
+            response_type: Some(Response_type::StatsUpload(response)),
+            ..Default::default()
+          }),
+          Some(StartupStatsUploadResponse::CloseStream) => {
+            self.close_after_request.store(true, Ordering::Relaxed);
+            None
+          },
+          None => None,
+        };
+        let analytics_ack = match response_plan.analytics_ack {
+          Some(AnalyticsAck::Echo) => h
+            .analytics
+            .as_ref()
+            .and_then(|analytics| analytics.stats_pipeline.as_ref())
+            .map(|analytics| handshake_response::AnalyticsAck {
+              report_id: analytics.report_id.clone(),
+              ..Default::default()
+            }),
+          Some(AnalyticsAck::Fixed(report_id)) => Some(handshake_response::AnalyticsAck {
+            report_id,
+            ..Default::default()
+          }),
+          None => None,
+        };
+
         Some(ApiResponse {
           response_type: Some(
             bd_proto::protos::client::api::api_response::Response_type::Handshake(
               HandshakeResponse {
                 stream_settings,
+                analytics_ack: analytics_ack.into(),
                 ..Default::default()
               },
             ),
@@ -395,13 +542,30 @@ impl RequestProcessor {
           .stats_upload_tx
           .send(stat_upload.clone())
           .await;
-        Some(ApiResponse {
-          response_type: Some(Response_type::StatsUpload(StatsUploadResponse {
+        let response = match self.stream_state.stats_upload_response_control.next() {
+          Some(StatsUploadResponsePlan::Echo {
+            error,
+            metrics_dropped,
+          }) => StatsUploadResponse {
+            upload_uuid,
+            error,
+            metrics_dropped,
+            ..Default::default()
+          },
+          Some(StatsUploadResponsePlan::Fixed(response)) => response,
+          Some(StatsUploadResponsePlan::CloseStream) => {
+            self.close_after_request.store(true, Ordering::Relaxed);
+            return None;
+          },
+          None => StatsUploadResponse {
             upload_uuid,
             error: String::new(),
             metrics_dropped: 0,
             ..Default::default()
-          })),
+          },
+        };
+        Some(ApiResponse {
+          response_type: Some(Response_type::StatsUpload(response)),
           ..Default::default()
         })
       },
@@ -428,6 +592,10 @@ impl RequestProcessor {
       })),
       ..Default::default()
     }
+  }
+
+  fn take_post_handshake_response(&mut self) -> Option<ApiResponse> {
+    self.post_handshake_response.take()
   }
 }
 
@@ -490,11 +658,13 @@ async fn mux(
   }
 
   tokio::spawn(async move {
-    let request_processor = RequestProcessor {
+    let mut request_processor = RequestProcessor {
       stream_id,
       stream_state: stream_state.clone(),
+      close_after_request: AtomicBool::new(false),
+      post_handshake_response: None,
     };
-    loop {
+    'stream: loop {
       tokio::select! {
         Some(stream_action) = per_stream_action_rx.recv() => {
           log::debug!("[S{stream_id}] received request to perform stream action {stream_action:?}");
@@ -528,7 +698,7 @@ async fn mux(
                 ..Default::default()
               },
               StreamAction::CloseStream => {
-                return;
+                break 'stream;
               }
           };
           api.send(response).await.unwrap();
@@ -543,6 +713,12 @@ async fn mux(
               for request in rs.iter().flatten() {
                 if let Some(response) = request_processor.process_request(request).await {
                   api.send(response).await.unwrap();
+                }
+                if let Some(response) = request_processor.take_post_handshake_response() {
+                  api.send(response).await.unwrap();
+                }
+                if request_processor.should_close_stream() {
+                  break 'stream;
                 }
               }
             },
@@ -694,11 +870,16 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
   let (artifact_upload_tx, artifact_upload_rx) = channel(256);
   let (artifact_intent_tx, artifact_intent_rx) = channel(256);
   let (stats_upload_tx, stats_upload_rx) = channel(256);
+  let (handshake_request_tx, handshake_request_rx) = channel(256);
   let (configuration_ack_tx, configuration_ack_rx) = channel(1);
   let (runtime_ack_tx, runtime_ack_rx) = channel(256);
   let (debug_data_tx, debug_data_rx) = channel(256);
   let log_upload_response_control = LogUploadResponseControl::default();
   let server_log_upload_response_control = log_upload_response_control.clone();
+  let handshake_response_control = HandshakeResponseControl::default();
+  let server_handshake_response_control = handshake_response_control.clone();
+  let stats_upload_response_control = StatsUploadResponseControl::default();
+  let server_stats_upload_response_control = stats_upload_response_control.clone();
 
   let (stream_action_tx, stream_action_rx) = channel(1);
   let (ready_tx, ready_rx) = oneshot::channel::<()>();
@@ -721,7 +902,10 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
           ping_interval,
           stream_id_generator: Arc::new(AtomicI32::new(0)),
           log_upload_response_control: server_log_upload_response_control.clone(),
+          handshake_response_control: server_handshake_response_control.clone(),
+          stats_upload_response_control: server_stats_upload_response_control.clone(),
           event_tx,
+          handshake_request_tx,
           shutdown_tx,
           per_stream_action_txs: per_stream_action_txs.clone(),
           log_upload_tx,
@@ -762,10 +946,13 @@ pub fn start_server(tls: bool, ping_interval: Option<Duration>) -> Box<ServerHan
     server_thread: Some(server_thread),
     log_upload_rx,
     log_upload_response_control,
+    handshake_request_rx,
+    handshake_response_control,
     log_intent_rx,
     artifact_upload_rx,
     artifact_intent_rx,
     stats_upload_rx,
+    stats_upload_response_control,
     configuration_ack_rx,
     runtime_ack_rx,
     port: local_addr.port(),
@@ -924,10 +1111,13 @@ pub struct ServerHandle {
 
   log_upload_rx: Receiver<LogUploadRequest>,
   log_upload_response_control: LogUploadResponseControl,
+  handshake_request_rx: Receiver<(i32, HandshakeRequest)>,
+  handshake_response_control: HandshakeResponseControl,
   artifact_upload_rx: Receiver<UploadArtifactRequest>,
   artifact_intent_rx: Receiver<UploadArtifactIntentRequest>,
   log_intent_rx: Receiver<LogUploadIntentRequest>,
   stats_upload_rx: Receiver<StatsUploadRequest>,
+  stats_upload_response_control: StatsUploadResponseControl,
   debug_data_rx: Receiver<DebugDataRequest>,
 
   configuration_ack_rx: Receiver<(i32, ConfigurationUpdateAck)>,
@@ -1099,6 +1289,22 @@ impl ServerHandle {
 
   pub fn blocking_next_log_upload(&mut self) -> Option<LogUpload> {
     Self::blocking_next_request_with_timeout(&mut self.log_upload_rx).map(LogUpload)
+  }
+
+  pub fn respond_to_next_handshake(&self, response: HandshakeResponsePlan) {
+    self.handshake_response_control.respond_next(response);
+  }
+
+  pub fn close_next_handshake(&self) {
+    self.handshake_response_control.close_next();
+  }
+
+  pub fn blocking_next_handshake_request(&mut self) -> Option<(i32, HandshakeRequest)> {
+    Self::blocking_next_request_with_timeout(&mut self.handshake_request_rx)
+  }
+
+  pub fn respond_to_next_stats_upload(&self, response: StatsUploadResponsePlan) {
+    self.stats_upload_response_control.respond_next(response);
   }
 
   pub fn next_stat_upload(&mut self) -> Option<StatsUploadRequest> {

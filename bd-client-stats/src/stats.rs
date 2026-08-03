@@ -9,7 +9,7 @@
 #[path = "./stats_test.rs"]
 mod stats_test;
 
-use crate::file_manager::{FileManager, PendingUpload};
+use crate::file_manager::{FileManager, PendingUpload, StatsPipelineAnalyticsReport};
 #[cfg(feature = "logger-cli-observer")]
 use crate::observer::{
   ObservedMetric,
@@ -20,19 +20,22 @@ use crate::observer::{
   with_observer,
 };
 use crate::{FlushTriggerRequest, Stats};
+use analytics::StatsPipelineAnalyticsReport as HandshakeStatsPipelineAnalyticsReport;
 use async_trait::async_trait;
 use bd_api::DataUpload;
+use bd_api::api::StatsHandshakeExtension;
 use bd_api::upload::{TrackedStatsUploadRequest, UploadResponse};
 use bd_client_stats_store::{Collector, Histogram, MetricData, MetricsByNameCore};
 use bd_error_reporter::reporter::handle_unexpected;
 #[cfg(feature = "logger-cli-observer")]
 use bd_proto::protos::client::api::StatsUploadRequest;
-use bd_proto::protos::client::api::debug_data_request;
+use bd_proto::protos::client::api::handshake_request::analytics;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::Snapshot_type;
 use bd_proto::protos::client::api::stats_upload_request::{
   Snapshot as StatsSnapshot,
   UploadReason,
 };
+use bd_proto::protos::client::api::{HandshakeRequest, debug_data_request, handshake_response};
 #[cfg(feature = "logger-cli-observer")]
 use bd_proto::protos::client::metric::metric::Data as ProtoMetricData;
 use bd_proto::protos::client::metric::metric::Metric_name_type;
@@ -40,7 +43,7 @@ use bd_proto::protos::client::metric::{Metric as ProtoMetric, MetricsList};
 use bd_shutdown::ComponentShutdown;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{Counter, MetricType, NameType};
-use bd_time::{TimeDurationExt, TimeProvider};
+use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use debug_data_request::workflow_transition_debug_data::Transition_type;
 use debug_data_request::{WorkflowDebugData, WorkflowTransitionDebugData};
 use futures::StreamExt;
@@ -56,7 +59,7 @@ use time::{Duration, OffsetDateTime};
 use tokio::sync::{mpsc, oneshot, watch};
 
 type UploadFuture =
-  Pin<Box<dyn std::future::Future<Output = (UploadResponse, UploadContext)> + Send + Sync>>;
+  Pin<Box<dyn std::future::Future<Output = (Option<UploadResponse>, UploadContext)> + Send + Sync>>;
 
 const HEX_DIGITS: &[u8; 16] = b"0123456789abcdef";
 
@@ -69,17 +72,127 @@ pub enum PeriodicAction {
 enum UploadContext {
   Periodic(PendingUploadMetadata),
   Flush(FlushTriggerRequest, PendingUploadMetadata),
+  Startup(PendingUploadMetadata),
 }
 
 struct PendingUploadMetadata {
-  transport_uuid: String,
   source_file_ids: Vec<String>,
+}
+
+//
+// HandshakeStats
+//
+
+/// Stats handshake behavior that shares the flusher's persisted upload state.
+pub struct HandshakeStats {
+  file_manager: Arc<FileManager>,
+  time_provider: Arc<dyn TimeProvider>,
+  // The API task uses this to transfer API-originated upload response receivers to Flusher. A
+  // receiver cannot be created at initialization: it is paired with the sender registered in a
+  // particular stream's StateTracker and carries that request's claimed source files.
+  api_upload_completion_tx: mpsc::UnboundedSender<(oneshot::Receiver<UploadResponse>, Vec<String>)>,
+}
+
+impl HandshakeStats {
+  pub fn new(
+    file_manager: Arc<FileManager>,
+    time_provider: Arc<dyn TimeProvider>,
+    api_upload_completion_tx: mpsc::UnboundedSender<(
+      oneshot::Receiver<UploadResponse>,
+      Vec<String>,
+    )>,
+  ) -> Self {
+    Self {
+      file_manager,
+      time_provider,
+      api_upload_completion_tx,
+    }
+  }
+
+  fn handshake_stats_pipeline_analytics(
+    report: StatsPipelineAnalyticsReport,
+  ) -> HandshakeStatsPipelineAnalyticsReport {
+    let analytics = report.analytics;
+    HandshakeStatsPipelineAnalyticsReport {
+      report_id: report.report_id,
+      analytics: Some(analytics).into(),
+      ..Default::default()
+    }
+  }
+
+  async fn register_api_upload_completion(
+    &self,
+    source_file_ids: Vec<String>,
+    response_rx: oneshot::Receiver<UploadResponse>,
+  ) -> anyhow::Result<()> {
+    if let Err(error) = self
+      .api_upload_completion_tx
+      .send((response_rx, source_file_ids))
+    {
+      // Flusher is the sole owner of completion processing. If it has stopped, no task can
+      // observe the receiver closing when the stream StateTracker drops, so release this claim
+      // immediately instead of leaving the source files in flight.
+      self.file_manager.abandon_pending_upload(&error.0.1).await?;
+      anyhow::bail!("stats flusher shut down before API upload completion was registered");
+    }
+
+    Ok(())
+  }
+}
+
+#[async_trait]
+impl StatsHandshakeExtension for HandshakeStats {
+  async fn prepare_stats_handshake(
+    &self,
+    handshake: &mut HandshakeRequest,
+  ) -> anyhow::Result<Option<TrackedStatsUploadRequest>> {
+    if let Some(report) = self
+      .file_manager
+      .prepare_stats_pipeline_analytics_report()
+      .await?
+      && let Some(analytics) = handshake.analytics.as_mut()
+    {
+      analytics.stats_pipeline = Some(Self::handshake_stats_pipeline_analytics(report)).into();
+    }
+
+    let Some(PendingUpload {
+      mut request,
+      source_file_ids,
+    }) = self.file_manager.get_or_create_pending_upload(true).await?
+    else {
+      return Ok(None);
+    };
+
+    let upload_uuid = batch_transport_uuid(&source_file_ids);
+    request.upload_uuid.clone_from(&upload_uuid);
+    request.sent_at = self.time_provider.now().into_proto();
+    request.upload_reason = UploadReason::UPLOAD_REASON_PERIODIC.into();
+    let (startup_stats_upload, response_rx) = TrackedStatsUploadRequest::new(upload_uuid, request);
+    self
+      .register_api_upload_completion(source_file_ids, response_rx)
+      .await?;
+
+    Ok(Some(startup_stats_upload))
+  }
+
+  async fn process_stats_pipeline_analytics_ack(
+    &self,
+    analytics_ack: &handshake_response::AnalyticsAck,
+  ) {
+    if let Err(error) = self
+      .file_manager
+      .acknowledge_stats_pipeline_analytics_report(&analytics_ack.report_id)
+      .await
+    {
+      log::debug!("failed to acknowledge handshake stats analytics: {error}");
+    }
+  }
 }
 
 impl UploadContext {
   const fn metadata(&self) -> &PendingUploadMetadata {
     match self {
-      Self::Periodic(metadata) | Self::Flush(_, metadata) => metadata,
+      Self::Periodic(metadata) | Self::Flush(_, metadata) | Self::Startup(metadata) => metadata,
     }
   }
 }
@@ -423,6 +536,11 @@ pub struct Flusher {
   flush_rx: tokio::sync::mpsc::Receiver<FlushTriggerRequest>,
   flush_time_histogram: Histogram,
   data_flush_tx: mpsc::Sender<DataUpload>,
+  // API-originated response receivers originate in HandshakeStats, which is held by Api. Flusher
+  // owns the FuturesUnordered and is the single completion state machine for periodic, explicit,
+  // and API-originated uploads, so receivers are handed back here before they are polled.
+  api_upload_completion_rx:
+    mpsc::UnboundedReceiver<(oneshot::Receiver<UploadResponse>, Vec<String>)>,
   file_manager: Arc<FileManager>,
   uploads: FuturesUnordered<UploadFuture>,
   periodic_in_flight: bool,
@@ -450,6 +568,10 @@ impl Flusher {
     minimum_upload_interval: bd_runtime::runtime::DurationWatch<
       bd_runtime::runtime::stats::MinimumUploadIntervalFlag,
     >,
+    api_upload_completion_rx: mpsc::UnboundedReceiver<(
+      oneshot::Receiver<UploadResponse>,
+      Vec<String>,
+    )>,
   ) -> Self {
     Self {
       stats,
@@ -458,6 +580,7 @@ impl Flusher {
       flush_rx,
       flush_time_histogram,
       data_flush_tx,
+      api_upload_completion_rx,
       file_manager,
       uploads: FuturesUnordered::new(),
       periodic_in_flight: false,
@@ -486,8 +609,6 @@ impl Flusher {
   }
 
   pub async fn periodic_flush(mut self) {
-    self.startup_upload_if_old().await;
-
     loop {
       tokio::select! {
         Some(request) = self.flush_rx.recv() => {
@@ -503,21 +624,16 @@ impl Flusher {
         Some((upload_response, context)) = self.uploads.next() => {
           self.handle_upload_completion(upload_response, context).await;
         },
+        Some((response_rx, source_file_ids)) = self.api_upload_completion_rx.recv() => {
+          // Register the handshake upload in the same completion path as all other persisted
+          // uploads. A dropped StateTracker makes this receiver resolve to None, which follows
+          // the existing abandon-without-ACK branch in handle_upload_completion.
+          self.push_upload_future(
+            response_rx,
+            UploadContext::Startup(PendingUploadMetadata { source_file_ids }),
+          );
+        },
       };
-    }
-  }
-
-  async fn startup_upload_if_old(&mut self) {
-    if let Some((metadata, rx)) = self
-      .upload_from_disk(true, UploadReason::UPLOAD_REASON_PERIODIC)
-      .await
-    {
-      log::debug!(
-        "starting old-file stats upload during startup for {} pending files",
-        metadata.source_file_ids.len()
-      );
-      self.periodic_in_flight = true;
-      self.push_upload_future(rx, UploadContext::Periodic(metadata));
     }
   }
 
@@ -589,9 +705,36 @@ impl Flusher {
 
   async fn handle_upload_completion(
     &mut self,
-    upload_response: UploadResponse,
+    upload_response: Option<UploadResponse>,
     context: UploadContext,
   ) {
+    // A missing response means the upload's StateTracker sender was dropped before the server
+    // acknowledged it, normally because the mux stream closed or reconnected. The source files
+    // remain claimed while the tracker is active, so release the claim without recording an ACK
+    // outcome; otherwise this batch remains permanently in flight and cannot be retried.
+    let Some(upload_response) = upload_response else {
+      let source_file_ids = context.metadata().source_file_ids.clone();
+      if let Err(error) = self
+        .file_manager
+        .abandon_pending_upload(&source_file_ids)
+        .await
+      {
+        log::debug!("failed to abandon stats upload without an ACK: {error}");
+      }
+
+      match context {
+        UploadContext::Periodic(..) => self.periodic_in_flight = false,
+        UploadContext::Flush(request, ..) => {
+          self.flush_in_flight = false;
+          if let Some(tx) = request.completion_tx {
+            let () = tx.send(());
+          }
+        },
+        UploadContext::Startup(..) => {},
+      }
+      return;
+    };
+
     if matches!(context, UploadContext::Flush(..)) && !upload_response.success {
       // Clear the flush upload gate on failure so a later background or explicit flush can retry.
       self.last_flush_upload_time = None;
@@ -633,18 +776,14 @@ impl Flusher {
           let () = tx.send(());
         }
       },
+      UploadContext::Startup(..) => {},
     }
   }
 
   fn push_upload_future(&self, rx: oneshot::Receiver<UploadResponse>, context: UploadContext) {
-    let transport_uuid = context.metadata().transport_uuid.clone();
-    self.uploads.push(Box::pin(async move {
-      let res = rx.await.unwrap_or(UploadResponse {
-        success: false,
-        uuid: transport_uuid,
-      });
-      (res, context)
-    }));
+    self
+      .uploads
+      .push(Box::pin(async move { (rx.await.ok(), context) }));
   }
 
   // Merges a delta snapshot to disk. This contains the difference in metrics since the last time
@@ -738,9 +877,10 @@ impl Flusher {
       }
     }
 
-    // If there are no metrics or workflow debug state in the snapshot after merging in the latest
-    // delta, skip writing the aggregated snapshot to prevent empty stats uploads.
+    // If there are no metrics, overflow counts, or workflow debug state in the snapshot after
+    // merging in the latest delta, skip writing the aggregated snapshot to prevent empty uploads.
     if new_or_existing_snapshot.metrics.is_empty()
+      && new_or_existing_snapshot.overflows.is_empty()
       && new_or_existing_snapshot.workflow_debug_data.is_empty()
     {
       self.file_manager.remove_empty_snapshot().await?;
@@ -950,10 +1090,7 @@ impl Flusher {
     }
 
     Ok(Some((
-      PendingUploadMetadata {
-        transport_uuid,
-        source_file_ids,
-      },
+      PendingUploadMetadata { source_file_ids },
       response_rx,
     )))
   }

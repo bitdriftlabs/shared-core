@@ -20,7 +20,7 @@ pub mod observer;
 pub mod stats;
 pub mod test;
 
-use crate::stats::{Flusher, PeriodicSchedule};
+use crate::stats::{Flusher, HandshakeStats, PeriodicSchedule};
 use bd_api::DataUpload;
 use bd_client_common::file_system::RealFileSystem;
 use bd_client_stats_store::{Collector, Error as StatsError};
@@ -49,6 +49,7 @@ fn test_global_init() {
 pub struct FlushHandles {
   pub flusher: Flusher,
   pub flush_trigger: FlushTrigger,
+  pub handshake_stats: HandshakeStats,
 }
 
 //
@@ -124,15 +125,16 @@ impl Stats {
     time_provider: Arc<dyn TimeProvider>,
   ) -> FlushHandles {
     let minimum_upload_interval = runtime_loader.register_duration_watch();
+    let file_manager = Arc::new(FileManager::new(
+      Box::new(RealFileSystem::new(sdk_directory.to_path_buf())),
+      Arc::new(SystemTimeProvider),
+      runtime_loader,
+    ));
     self.flush_handle_helper(
       periodic_schedule,
       shutdown,
       data_flush_tx,
-      Arc::new(FileManager::new(
-        Box::new(RealFileSystem::new(sdk_directory.to_path_buf())),
-        Arc::new(SystemTimeProvider),
-        runtime_loader,
-      )),
+      file_manager,
       time_provider,
       minimum_upload_interval,
     )
@@ -151,6 +153,12 @@ impl Stats {
   ) -> FlushHandles {
     let flush_time_histogram = self.collector.scope("stats").histogram("flush_time");
     let (flush_trigger, flush_rx) = FlushTrigger::new();
+    // HandshakeStats is owned by the API task while Flusher runs in a sibling task. Each
+    // API-originated upload creates a fresh tracked request whose sender belongs to the stream
+    // StateTracker, but its receiver must be consumed by Flusher to complete or abandon claimed
+    // files. This handoff is dynamic because reconnects create new StateTrackers and batches.
+    let (api_upload_completion_tx, api_upload_completion_rx) =
+      tokio::sync::mpsc::unbounded_channel();
 
     FlushHandles {
       flusher: Flusher::new(
@@ -160,11 +168,13 @@ impl Stats {
         flush_rx,
         flush_time_histogram,
         data_flush_tx,
-        fs,
-        time_provider,
+        fs.clone(),
+        time_provider.clone(),
         minimum_upload_interval,
+        api_upload_completion_rx,
       ),
       flush_trigger,
+      handshake_stats: HandshakeStats::new(fs, time_provider, api_upload_completion_tx),
     }
   }
 
