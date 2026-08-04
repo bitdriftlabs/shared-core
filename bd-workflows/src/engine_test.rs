@@ -3169,6 +3169,37 @@ async fn sankey_action() {
 }
 
 #[tokio::test]
+async fn sankey_action_drops_paths_with_empty_nodes() {
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![sankey_workflow()],
+    ))
+    .await;
+
+  engine
+    .hooks
+    .lock()
+    .awaiting_sankey_upload_intent_decisions
+    .push(Some(IntentDecision::UploadImmediately));
+
+  engine.process_log(TestLog::new("foo"));
+  engine.process_log(TestLog::new("bar").with_tags(labels! { "field_to_extract_key" => "" }));
+  engine.process_log(TestLog::new("dar"));
+
+  1.milliseconds().sleep().await;
+
+  assert!(engine.hooks.lock().sankey_uploads.is_empty());
+  assert!(
+    engine
+      .hooks
+      .lock()
+      .received_sankey_upload_intents
+      .is_empty()
+  );
+}
+
+#[tokio::test]
 async fn sankey_action_persistence() {
   let setup = Setup::new();
 
