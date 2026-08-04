@@ -131,6 +131,15 @@ impl Processor {
   }
 
   pub(crate) async fn process_sankey(&mut self, sankey_path: SankeyPath) {
+    if sankey_path.nodes.iter().any(String::is_empty) {
+      // This internal completion signal clears the engine's persisted pending path; it does not
+      // upload the invalid path.
+      if let Err(e) = self.output_rx.send(sankey_path).await {
+        log::debug!("failed to send sankey path to output channel: {e}");
+      }
+      return;
+    }
+
     self.stats.intent_initiations.inc();
     log::debug!(
       "processing sankey: sankey id {:?}, path id {:?}",
