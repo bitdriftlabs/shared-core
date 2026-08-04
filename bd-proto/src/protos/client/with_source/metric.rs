@@ -31,6 +31,252 @@
 /// of protobuf runtime.
 const _PROTOBUF_VERSION_CHECK: () = ::protobuf::VERSION_4_0_0_ALPHA_0;
 
+///  Durable ACK-reset analytics accumulated while stats files are managed on disk. A client seals
+///  these counters into a report during the handshake and retains that report until the server
+///  acknowledges its stable ID.
+// @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.StatsPipelineAnalytics)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct StatsPipelineAnalytics {
+    // message fields
+    ///  Number of stats upload payloads acknowledged successfully since the prior accepted analytics
+    ///  report. This can be reconciled directly with received stats upload payloads.
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.StatsPipelineAnalytics.stats_uploads_acknowledged_successfully)
+    pub stats_uploads_acknowledged_successfully: u64,
+    ///  Number of stats upload payloads acknowledged unsuccessfully since the prior accepted
+    ///  analytics report.
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.StatsPipelineAnalytics.stats_uploads_acknowledged_unsuccessfully)
+    pub stats_uploads_acknowledged_unsuccessfully: u64,
+    ///  Number of persisted stats files dropped because standard rotation reached the configured
+    ///  maximum number of aggregated files.
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.StatsPipelineAnalytics.stats_files_dropped_due_to_rotation)
+    pub stats_files_dropped_due_to_rotation: u64,
+    ///  Number of active stats snapshot files dropped because their on-disk contents could not be
+    ///  read while preparing to merge a new snapshot.
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.StatsPipelineAnalytics.stats_files_dropped_due_to_active_snapshot_corruption)
+    pub stats_files_dropped_due_to_active_snapshot_corruption: u64,
+    ///  Number of pending stats snapshot files dropped because their on-disk contents could not be
+    ///  read while preparing an upload.
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.StatsPipelineAnalytics.stats_files_dropped_due_to_pending_snapshot_corruption)
+    pub stats_files_dropped_due_to_pending_snapshot_corruption: u64,
+    ///  Number of persisted stats snapshot files dropped when recovering from a corrupt or unreadable
+    ///  aggregation index.
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.StatsPipelineAnalytics.stats_files_dropped_due_to_index_recovery)
+    pub stats_files_dropped_due_to_index_recovery: u64,
+    ///  Number of aggregation-index recovery events that discarded an existing stats directory.
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.StatsPipelineAnalytics.stats_index_recovery_events)
+    pub stats_index_recovery_events: u64,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.StatsPipelineAnalytics.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a StatsPipelineAnalytics {
+    fn default() -> &'a StatsPipelineAnalytics {
+        <StatsPipelineAnalytics as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl StatsPipelineAnalytics {
+    pub fn new() -> StatsPipelineAnalytics {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(7);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "stats_uploads_acknowledged_successfully",
+            |m: &StatsPipelineAnalytics| { &m.stats_uploads_acknowledged_successfully },
+            |m: &mut StatsPipelineAnalytics| { &mut m.stats_uploads_acknowledged_successfully },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "stats_uploads_acknowledged_unsuccessfully",
+            |m: &StatsPipelineAnalytics| { &m.stats_uploads_acknowledged_unsuccessfully },
+            |m: &mut StatsPipelineAnalytics| { &mut m.stats_uploads_acknowledged_unsuccessfully },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "stats_files_dropped_due_to_rotation",
+            |m: &StatsPipelineAnalytics| { &m.stats_files_dropped_due_to_rotation },
+            |m: &mut StatsPipelineAnalytics| { &mut m.stats_files_dropped_due_to_rotation },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "stats_files_dropped_due_to_active_snapshot_corruption",
+            |m: &StatsPipelineAnalytics| { &m.stats_files_dropped_due_to_active_snapshot_corruption },
+            |m: &mut StatsPipelineAnalytics| { &mut m.stats_files_dropped_due_to_active_snapshot_corruption },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "stats_files_dropped_due_to_pending_snapshot_corruption",
+            |m: &StatsPipelineAnalytics| { &m.stats_files_dropped_due_to_pending_snapshot_corruption },
+            |m: &mut StatsPipelineAnalytics| { &mut m.stats_files_dropped_due_to_pending_snapshot_corruption },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "stats_files_dropped_due_to_index_recovery",
+            |m: &StatsPipelineAnalytics| { &m.stats_files_dropped_due_to_index_recovery },
+            |m: &mut StatsPipelineAnalytics| { &mut m.stats_files_dropped_due_to_index_recovery },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "stats_index_recovery_events",
+            |m: &StatsPipelineAnalytics| { &m.stats_index_recovery_events },
+            |m: &mut StatsPipelineAnalytics| { &mut m.stats_index_recovery_events },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<StatsPipelineAnalytics>(
+            "StatsPipelineAnalytics",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for StatsPipelineAnalytics {
+    const NAME: &'static str = "StatsPipelineAnalytics";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                8 => {
+                    self.stats_uploads_acknowledged_successfully = is.read_uint64()?;
+                },
+                16 => {
+                    self.stats_uploads_acknowledged_unsuccessfully = is.read_uint64()?;
+                },
+                24 => {
+                    self.stats_files_dropped_due_to_rotation = is.read_uint64()?;
+                },
+                32 => {
+                    self.stats_files_dropped_due_to_active_snapshot_corruption = is.read_uint64()?;
+                },
+                40 => {
+                    self.stats_files_dropped_due_to_pending_snapshot_corruption = is.read_uint64()?;
+                },
+                48 => {
+                    self.stats_files_dropped_due_to_index_recovery = is.read_uint64()?;
+                },
+                56 => {
+                    self.stats_index_recovery_events = is.read_uint64()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if self.stats_uploads_acknowledged_successfully != 0 {
+            my_size += ::protobuf::rt::uint64_size(1, self.stats_uploads_acknowledged_successfully);
+        }
+        if self.stats_uploads_acknowledged_unsuccessfully != 0 {
+            my_size += ::protobuf::rt::uint64_size(2, self.stats_uploads_acknowledged_unsuccessfully);
+        }
+        if self.stats_files_dropped_due_to_rotation != 0 {
+            my_size += ::protobuf::rt::uint64_size(3, self.stats_files_dropped_due_to_rotation);
+        }
+        if self.stats_files_dropped_due_to_active_snapshot_corruption != 0 {
+            my_size += ::protobuf::rt::uint64_size(4, self.stats_files_dropped_due_to_active_snapshot_corruption);
+        }
+        if self.stats_files_dropped_due_to_pending_snapshot_corruption != 0 {
+            my_size += ::protobuf::rt::uint64_size(5, self.stats_files_dropped_due_to_pending_snapshot_corruption);
+        }
+        if self.stats_files_dropped_due_to_index_recovery != 0 {
+            my_size += ::protobuf::rt::uint64_size(6, self.stats_files_dropped_due_to_index_recovery);
+        }
+        if self.stats_index_recovery_events != 0 {
+            my_size += ::protobuf::rt::uint64_size(7, self.stats_index_recovery_events);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if self.stats_uploads_acknowledged_successfully != 0 {
+            os.write_uint64(1, self.stats_uploads_acknowledged_successfully)?;
+        }
+        if self.stats_uploads_acknowledged_unsuccessfully != 0 {
+            os.write_uint64(2, self.stats_uploads_acknowledged_unsuccessfully)?;
+        }
+        if self.stats_files_dropped_due_to_rotation != 0 {
+            os.write_uint64(3, self.stats_files_dropped_due_to_rotation)?;
+        }
+        if self.stats_files_dropped_due_to_active_snapshot_corruption != 0 {
+            os.write_uint64(4, self.stats_files_dropped_due_to_active_snapshot_corruption)?;
+        }
+        if self.stats_files_dropped_due_to_pending_snapshot_corruption != 0 {
+            os.write_uint64(5, self.stats_files_dropped_due_to_pending_snapshot_corruption)?;
+        }
+        if self.stats_files_dropped_due_to_index_recovery != 0 {
+            os.write_uint64(6, self.stats_files_dropped_due_to_index_recovery)?;
+        }
+        if self.stats_index_recovery_events != 0 {
+            os.write_uint64(7, self.stats_index_recovery_events)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> StatsPipelineAnalytics {
+        StatsPipelineAnalytics::new()
+    }
+
+    fn clear(&mut self) {
+        self.stats_uploads_acknowledged_successfully = 0;
+        self.stats_uploads_acknowledged_unsuccessfully = 0;
+        self.stats_files_dropped_due_to_rotation = 0;
+        self.stats_files_dropped_due_to_active_snapshot_corruption = 0;
+        self.stats_files_dropped_due_to_pending_snapshot_corruption = 0;
+        self.stats_files_dropped_due_to_index_recovery = 0;
+        self.stats_index_recovery_events = 0;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static StatsPipelineAnalytics {
+        static instance: StatsPipelineAnalytics = StatsPipelineAnalytics {
+            stats_uploads_acknowledged_successfully: 0,
+            stats_uploads_acknowledged_unsuccessfully: 0,
+            stats_files_dropped_due_to_rotation: 0,
+            stats_files_dropped_due_to_active_snapshot_corruption: 0,
+            stats_files_dropped_due_to_pending_snapshot_corruption: 0,
+            stats_files_dropped_due_to_index_recovery: 0,
+            stats_index_recovery_events: 0,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for StatsPipelineAnalytics {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("StatsPipelineAnalytics").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for StatsPipelineAnalytics {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for StatsPipelineAnalytics {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
 ///  Used to track an index of pending aggregations that need to be uploaded. This is used by the
 ///  file manager to coordinate merging and uploads.
 // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.PendingAggregationIndex)
@@ -40,6 +286,12 @@ pub struct PendingAggregationIndex {
     ///  List of files, in order of period_start, that are pending upload.
     // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.PendingAggregationIndex.pending_files)
     pub pending_files: ::std::vec::Vec<pending_aggregation_index::PendingFile>,
+    ///  Analytics that have not yet been moved into a report for a handshake.
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.PendingAggregationIndex.unreported_stats_pipeline_analytics)
+    pub unreported_stats_pipeline_analytics: ::protobuf::MessageField<StatsPipelineAnalytics>,
+    ///  Analytics report currently awaiting a server acknowledgement.
+    // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.PendingAggregationIndex.pending_stats_pipeline_analytics_report)
+    pub pending_stats_pipeline_analytics_report: ::protobuf::MessageField<pending_aggregation_index::PendingStatsPipelineAnalyticsReport>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.PendingAggregationIndex.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -57,12 +309,22 @@ impl PendingAggregationIndex {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut fields = ::std::vec::Vec::with_capacity(3);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
             "pending_files",
             |m: &PendingAggregationIndex| { &m.pending_files },
             |m: &mut PendingAggregationIndex| { &mut m.pending_files },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, StatsPipelineAnalytics>(
+            "unreported_stats_pipeline_analytics",
+            |m: &PendingAggregationIndex| { &m.unreported_stats_pipeline_analytics },
+            |m: &mut PendingAggregationIndex| { &mut m.unreported_stats_pipeline_analytics },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, pending_aggregation_index::PendingStatsPipelineAnalyticsReport>(
+            "pending_stats_pipeline_analytics_report",
+            |m: &PendingAggregationIndex| { &m.pending_stats_pipeline_analytics_report },
+            |m: &mut PendingAggregationIndex| { &mut m.pending_stats_pipeline_analytics_report },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<PendingAggregationIndex>(
             "PendingAggregationIndex",
@@ -85,6 +347,12 @@ impl ::protobuf::Message for PendingAggregationIndex {
                 10 => {
                     self.pending_files.push(is.read_message()?);
                 },
+                18 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.unreported_stats_pipeline_analytics)?;
+                },
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.pending_stats_pipeline_analytics_report)?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -101,6 +369,14 @@ impl ::protobuf::Message for PendingAggregationIndex {
             let len = value.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         };
+        if let Some(v) = self.unreported_stats_pipeline_analytics.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let Some(v) = self.pending_stats_pipeline_analytics_report.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -110,6 +386,12 @@ impl ::protobuf::Message for PendingAggregationIndex {
         for v in &self.pending_files {
             ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
         };
+        if let Some(v) = self.unreported_stats_pipeline_analytics.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+        }
+        if let Some(v) = self.pending_stats_pipeline_analytics_report.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -128,12 +410,16 @@ impl ::protobuf::Message for PendingAggregationIndex {
 
     fn clear(&mut self) {
         self.pending_files.clear();
+        self.unreported_stats_pipeline_analytics.clear();
+        self.pending_stats_pipeline_analytics_report.clear();
         self.special_fields.clear();
     }
 
     fn default_instance() -> &'static PendingAggregationIndex {
         static instance: PendingAggregationIndex = PendingAggregationIndex {
             pending_files: ::std::vec::Vec::new(),
+            unreported_stats_pipeline_analytics: ::protobuf::MessageField::none(),
+            pending_stats_pipeline_analytics_report: ::protobuf::MessageField::none(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -321,6 +607,148 @@ pub mod pending_aggregation_index {
     }
 
     impl ::protobuf::reflect::ProtobufValue for PendingFile {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    ///  A sealed analytics report retained until the server acknowledges its stable identifier.
+    // @@protoc_insertion_point(message:bitdrift_public.protobuf.client.v1.PendingAggregationIndex.PendingStatsPipelineAnalyticsReport)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct PendingStatsPipelineAnalyticsReport {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.PendingAggregationIndex.PendingStatsPipelineAnalyticsReport.report_id)
+        pub report_id: ::std::string::String,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.PendingAggregationIndex.PendingStatsPipelineAnalyticsReport.analytics)
+        pub analytics: ::protobuf::MessageField<super::StatsPipelineAnalytics>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift_public.protobuf.client.v1.PendingAggregationIndex.PendingStatsPipelineAnalyticsReport.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a PendingStatsPipelineAnalyticsReport {
+        fn default() -> &'a PendingStatsPipelineAnalyticsReport {
+            <PendingStatsPipelineAnalyticsReport as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl PendingStatsPipelineAnalyticsReport {
+        pub fn new() -> PendingStatsPipelineAnalyticsReport {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "report_id",
+                |m: &PendingStatsPipelineAnalyticsReport| { &m.report_id },
+                |m: &mut PendingStatsPipelineAnalyticsReport| { &mut m.report_id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::StatsPipelineAnalytics>(
+                "analytics",
+                |m: &PendingStatsPipelineAnalyticsReport| { &m.analytics },
+                |m: &mut PendingStatsPipelineAnalyticsReport| { &mut m.analytics },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<PendingStatsPipelineAnalyticsReport>(
+                "PendingAggregationIndex.PendingStatsPipelineAnalyticsReport",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for PendingStatsPipelineAnalyticsReport {
+        const NAME: &'static str = "PendingStatsPipelineAnalyticsReport";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.report_id = is.read_string()?;
+                    },
+                    18 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.analytics)?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if !self.report_id.is_empty() {
+                my_size += ::protobuf::rt::string_size(1, &self.report_id);
+            }
+            if let Some(v) = self.analytics.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if !self.report_id.is_empty() {
+                os.write_string(1, &self.report_id)?;
+            }
+            if let Some(v) = self.analytics.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> PendingStatsPipelineAnalyticsReport {
+            PendingStatsPipelineAnalyticsReport::new()
+        }
+
+        fn clear(&mut self) {
+            self.report_id.clear();
+            self.analytics.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static PendingStatsPipelineAnalyticsReport {
+            static instance: PendingStatsPipelineAnalyticsReport = PendingStatsPipelineAnalyticsReport {
+                report_id: ::std::string::String::new(),
+                analytics: ::protobuf::MessageField::none(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for PendingStatsPipelineAnalyticsReport {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("PendingAggregationIndex.PendingStatsPipelineAnalyticsReport").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for PendingStatsPipelineAnalyticsReport {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for PendingStatsPipelineAnalyticsReport {
         type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
     }
 }
@@ -1377,130 +1805,208 @@ impl ::protobuf::reflect::ProtobufValue for MetricsList {
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n/bitdrift_public/protobuf/client/v1/metric.proto\x12\"bitdrift_public.\
     protobuf.client.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17validat\
-    e/validate.proto\"\xa5\x02\n\x17PendingAggregationIndex\x12l\n\rpending_\
-    files\x18\x01\x20\x03(\x0b2G.bitdrift_public.protobuf.client.v1.PendingA\
-    ggregationIndex.PendingFileR\x0cpendingFiles\x1a\x9b\x01\n\x0bPendingFil\
-    e\x12\x12\n\x04name\x18\x01\x20\x01(\tR\x04name\x12=\n\x0cperiod_start\
-    \x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x0bperiodStart\x12\
-    9\n\nperiod_end\x18\x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\tpe\
-    riodEnd\"%\n\x07Counter\x12\x14\n\x05value\x18\x02\x20\x01(\x04R\x05valu\
-    eJ\x04\x08\x01\x10\x02\"3\n\x11DDSketchHistogram\x12\x1e\n\nserialized\
-    \x18\x01\x20\x01(\x0cR\nserialized\"/\n\x15InlineHistogramValues\x12\x16\
-    \n\x06values\x18\x01\x20\x03(\x01R\x06values\"\x8d\x04\n\x06Metric\x12\
-    \x14\n\x04name\x18\x01\x20\x01(\tH\0R\x04name\x12\x1d\n\tmetric_id\x18\
-    \x07\x20\x01(\tH\0R\x08metricId\x12H\n\x04tags\x18\x02\x20\x03(\x0b24.bi\
-    tdrift_public.protobuf.client.v1.Metric.TagsEntryR\x04tags\x12G\n\x07cou\
-    nter\x18\x03\x20\x01(\x0b2+.bitdrift_public.protobuf.client.v1.CounterH\
-    \x01R\x07counter\x12f\n\x12ddsketch_histogram\x18\x05\x20\x01(\x0b25.bit\
-    drift_public.protobuf.client.v1.DDSketchHistogramH\x01R\x11ddsketchHisto\
-    gram\x12s\n\x17inline_histogram_values\x18\x06\x20\x01(\x0b29.bitdrift_p\
-    ublic.protobuf.client.v1.InlineHistogramValuesH\x01R\x15inlineHistogramV\
-    alues\x1a7\n\tTagsEntry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\
-    \x14\n\x05value\x18\x02\x20\x01(\tR\x05value:\x028\x01B\x12\n\x10metric_\
-    name_typeB\x0b\n\x04data\x12\x03\xf8B\x01J\x04\x08\x04\x10\x05\"Q\n\x0bM\
-    etricsList\x12B\n\x06metric\x18\x01\x20\x03(\x0b2*.bitdrift_public.proto\
-    buf.client.v1.MetricR\x06metricJ\xb9\x19\n\x06\x12\x04\x07\0T\x01\n\xb8\
-    \x02\n\x01\x0c\x12\x03\x07\0\x122\xad\x02\x20api\x20-\x20bitdrift's\x20c\
-    lient/server\x20API\x20definitions\n\x20Copyright\x20Bitdrift,\x20Inc.\
-    \x20All\x20rights\x20reserved.\n\n\x20Use\x20of\x20this\x20source\x20cod\
-    e\x20and\x20APIs\x20are\x20governed\x20by\x20a\x20source\x20available\
-    \x20license\x20that\x20can\x20be\x20found\x20in\n\x20the\x20LICENSE\x20f\
-    ile\x20or\x20at:\n\x20https://polyformproject.org/wp-content/uploads/202\
-    0/06/PolyForm-Shield-1.0.0.txt\n\n\x08\n\x01\x02\x12\x03\t\0+\n\t\n\x02\
-    \x03\0\x12\x03\x0b\0)\n\t\n\x02\x03\x01\x12\x03\x0c\0!\n\x9c\x01\n\x02\
-    \x04\0\x12\x04\x10\0\x1d\x01\x1a\x8f\x01\x20Used\x20to\x20track\x20an\
-    \x20index\x20of\x20pending\x20aggregations\x20that\x20need\x20to\x20be\
-    \x20uploaded.\x20This\x20is\x20used\x20by\x20the\n\x20file\x20manager\
-    \x20to\x20coordinate\x20merging\x20and\x20uploads.\n\n\n\n\x03\x04\0\x01\
-    \x12\x03\x10\x08\x1f\n\x0c\n\x04\x04\0\x03\0\x12\x04\x11\x02\x1a\x03\n\
-    \x0c\n\x05\x04\0\x03\0\x01\x12\x03\x11\n\x15\n,\n\x06\x04\0\x03\0\x02\0\
-    \x12\x03\x13\x04\x14\x1a\x1d\x20Name\x20of\x20the\x20file\x20to\x20uploa\
-    d.\n\n\x0e\n\x07\x04\0\x03\0\x02\0\x05\x12\x03\x13\x04\n\n\x0e\n\x07\x04\
-    \0\x03\0\x02\0\x01\x12\x03\x13\x0b\x0f\n\x0e\n\x07\x04\0\x03\0\x02\0\x03\
-    \x12\x03\x13\x12\x13\nl\n\x06\x04\0\x03\0\x02\x01\x12\x03\x15\x04/\x1a]\
-    \x20The\x20start\x20of\x20the\x20period\x20that\x20this\x20file\x20cover\
-    s.\x20All\x20metrics\x20are\x20aggregated\x20over\x20this\x20period.\n\n\
-    \x0e\n\x07\x04\0\x03\0\x02\x01\x06\x12\x03\x15\x04\x1d\n\x0e\n\x07\x04\0\
-    \x03\0\x02\x01\x01\x12\x03\x15\x1e*\n\x0e\n\x07\x04\0\x03\0\x02\x01\x03\
-    \x12\x03\x15-.\n\xf5\x01\n\x06\x04\0\x03\0\x02\x02\x12\x03\x19\x04-\x1a\
+    e/validate.proto\"\x8e\x05\n\x16StatsPipelineAnalytics\x12U\n'stats_uplo\
+    ads_acknowledged_successfully\x18\x01\x20\x01(\x04R$statsUploadsAcknowle\
+    dgedSuccessfully\x12Y\n)stats_uploads_acknowledged_unsuccessfully\x18\
+    \x02\x20\x01(\x04R&statsUploadsAcknowledgedUnsuccessfully\x12K\n#stats_f\
+    iles_dropped_due_to_rotation\x18\x03\x20\x01(\x04R\x1estatsFilesDroppedD\
+    ueToRotation\x12m\n5stats_files_dropped_due_to_active_snapshot_corruptio\
+    n\x18\x04\x20\x01(\x04R.statsFilesDroppedDueToActiveSnapshotCorruption\
+    \x12o\n6stats_files_dropped_due_to_pending_snapshot_corruption\x18\x05\
+    \x20\x01(\x04R/statsFilesDroppedDueToPendingSnapshotCorruption\x12V\n)st\
+    ats_files_dropped_due_to_index_recovery\x18\x06\x20\x01(\x04R#statsFiles\
+    DroppedDueToIndexRecovery\x12=\n\x1bstats_index_recovery_events\x18\x07\
+    \x20\x01(\x04R\x18statsIndexRecoveryEvents\"\x88\x06\n\x17PendingAggrega\
+    tionIndex\x12l\n\rpending_files\x18\x01\x20\x03(\x0b2G.bitdrift_public.p\
+    rotobuf.client.v1.PendingAggregationIndex.PendingFileR\x0cpendingFiles\
+    \x12\x89\x01\n#unreported_stats_pipeline_analytics\x18\x02\x20\x01(\x0b2\
+    :.bitdrift_public.protobuf.client.v1.StatsPipelineAnalyticsR\x20unreport\
+    edStatsPipelineAnalytics\x12\xb5\x01\n'pending_stats_pipeline_analytics_\
+    report\x18\x03\x20\x01(\x0b2_.bitdrift_public.protobuf.client.v1.Pending\
+    AggregationIndex.PendingStatsPipelineAnalyticsReportR#pendingStatsPipeli\
+    neAnalyticsReport\x1a\x9b\x01\n\x0bPendingFile\x12\x12\n\x04name\x18\x01\
+    \x20\x01(\tR\x04name\x12=\n\x0cperiod_start\x18\x02\x20\x01(\x0b2\x1a.go\
+    ogle.protobuf.TimestampR\x0bperiodStart\x129\n\nperiod_end\x18\x03\x20\
+    \x01(\x0b2\x1a.google.protobuf.TimestampR\tperiodEnd\x1a\x9c\x01\n#Pendi\
+    ngStatsPipelineAnalyticsReport\x12\x1b\n\treport_id\x18\x01\x20\x01(\tR\
+    \x08reportId\x12X\n\tanalytics\x18\x02\x20\x01(\x0b2:.bitdrift_public.pr\
+    otobuf.client.v1.StatsPipelineAnalyticsR\tanalytics\"%\n\x07Counter\x12\
+    \x14\n\x05value\x18\x02\x20\x01(\x04R\x05valueJ\x04\x08\x01\x10\x02\"3\n\
+    \x11DDSketchHistogram\x12\x1e\n\nserialized\x18\x01\x20\x01(\x0cR\nseria\
+    lized\"/\n\x15InlineHistogramValues\x12\x16\n\x06values\x18\x01\x20\x03(\
+    \x01R\x06values\"\x8d\x04\n\x06Metric\x12\x14\n\x04name\x18\x01\x20\x01(\
+    \tH\0R\x04name\x12\x1d\n\tmetric_id\x18\x07\x20\x01(\tH\0R\x08metricId\
+    \x12H\n\x04tags\x18\x02\x20\x03(\x0b24.bitdrift_public.protobuf.client.v\
+    1.Metric.TagsEntryR\x04tags\x12G\n\x07counter\x18\x03\x20\x01(\x0b2+.bit\
+    drift_public.protobuf.client.v1.CounterH\x01R\x07counter\x12f\n\x12ddske\
+    tch_histogram\x18\x05\x20\x01(\x0b25.bitdrift_public.protobuf.client.v1.\
+    DDSketchHistogramH\x01R\x11ddsketchHistogram\x12s\n\x17inline_histogram_\
+    values\x18\x06\x20\x01(\x0b29.bitdrift_public.protobuf.client.v1.InlineH\
+    istogramValuesH\x01R\x15inlineHistogramValues\x1a7\n\tTagsEntry\x12\x10\
+    \n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\
+    \tR\x05value:\x028\x01B\x12\n\x10metric_name_typeB\x0b\n\x04data\x12\x03\
+    \xf8B\x01J\x04\x08\x04\x10\x05\"Q\n\x0bMetricsList\x12B\n\x06metric\x18\
+    \x01\x20\x03(\x0b2*.bitdrift_public.protobuf.client.v1.MetricR\x06metric\
+    J\x9e)\n\x07\x12\x05\x07\0\x81\x01\x01\n\xb8\x02\n\x01\x0c\x12\x03\x07\0\
+    \x122\xad\x02\x20api\x20-\x20bitdrift's\x20client/server\x20API\x20defin\
+    itions\n\x20Copyright\x20Bitdrift,\x20Inc.\x20All\x20rights\x20reserved.\
+    \n\n\x20Use\x20of\x20this\x20source\x20code\x20and\x20APIs\x20are\x20gov\
+    erned\x20by\x20a\x20source\x20available\x20license\x20that\x20can\x20be\
+    \x20found\x20in\n\x20the\x20LICENSE\x20file\x20or\x20at:\n\x20https://po\
+    lyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt\n\
+    \n\x08\n\x01\x02\x12\x03\t\0+\n\t\n\x02\x03\0\x12\x03\x0b\0)\n\t\n\x02\
+    \x03\x01\x12\x03\x0c\0!\n\xe5\x01\n\x02\x04\0\x12\x04\x11\0,\x01\x1a\xd8\
+    \x01\x20Durable\x20ACK-reset\x20analytics\x20accumulated\x20while\x20sta\
+    ts\x20files\x20are\x20managed\x20on\x20disk.\x20A\x20client\x20seals\n\
+    \x20these\x20counters\x20into\x20a\x20report\x20during\x20the\x20handsha\
+    ke\x20and\x20retains\x20that\x20report\x20until\x20the\x20server\n\x20ac\
+    knowledges\x20its\x20stable\x20ID.\n\n\n\n\x03\x04\0\x01\x12\x03\x11\x08\
+    \x1e\n\xba\x01\n\x04\x04\0\x02\0\x12\x03\x14\x025\x1a\xac\x01\x20Number\
+    \x20of\x20stats\x20upload\x20payloads\x20acknowledged\x20successfully\
+    \x20since\x20the\x20prior\x20accepted\x20analytics\n\x20report.\x20This\
+    \x20can\x20be\x20reconciled\x20directly\x20with\x20received\x20stats\x20\
+    upload\x20payloads.\n\n\x0c\n\x05\x04\0\x02\0\x05\x12\x03\x14\x02\x08\n\
+    \x0c\n\x05\x04\0\x02\0\x01\x12\x03\x14\t0\n\x0c\n\x05\x04\0\x02\0\x03\
+    \x12\x03\x1434\nv\n\x04\x04\0\x02\x01\x12\x03\x18\x027\x1ai\x20Number\
+    \x20of\x20stats\x20upload\x20payloads\x20acknowledged\x20unsuccessfully\
+    \x20since\x20the\x20prior\x20accepted\n\x20analytics\x20report.\n\n\x0c\
+    \n\x05\x04\0\x02\x01\x05\x12\x03\x18\x02\x08\n\x0c\n\x05\x04\0\x02\x01\
+    \x01\x12\x03\x18\t2\n\x0c\n\x05\x04\0\x02\x01\x03\x12\x03\x1856\n\x8c\
+    \x01\n\x04\x04\0\x02\x02\x12\x03\x1c\x021\x1a\x7f\x20Number\x20of\x20per\
+    sisted\x20stats\x20files\x20dropped\x20because\x20standard\x20rotation\
+    \x20reached\x20the\x20configured\n\x20maximum\x20number\x20of\x20aggrega\
+    ted\x20files.\n\n\x0c\n\x05\x04\0\x02\x02\x05\x12\x03\x1c\x02\x08\n\x0c\
+    \n\x05\x04\0\x02\x02\x01\x12\x03\x1c\t,\n\x0c\n\x05\x04\0\x02\x02\x03\
+    \x12\x03\x1c/0\n\x98\x01\n\x04\x04\0\x02\x03\x12\x03\x20\x02C\x1a\x8a\
+    \x01\x20Number\x20of\x20active\x20stats\x20snapshot\x20files\x20dropped\
+    \x20because\x20their\x20on-disk\x20contents\x20could\x20not\x20be\n\x20r\
+    ead\x20while\x20preparing\x20to\x20merge\x20a\x20new\x20snapshot.\n\n\
+    \x0c\n\x05\x04\0\x02\x03\x05\x12\x03\x20\x02\x08\n\x0c\n\x05\x04\0\x02\
+    \x03\x01\x12\x03\x20\t>\n\x0c\n\x05\x04\0\x02\x03\x03\x12\x03\x20AB\n\
+    \x8a\x01\n\x04\x04\0\x02\x04\x12\x03$\x02D\x1a}\x20Number\x20of\x20pendi\
+    ng\x20stats\x20snapshot\x20files\x20dropped\x20because\x20their\x20on-di\
+    sk\x20contents\x20could\x20not\x20be\n\x20read\x20while\x20preparing\x20\
+    an\x20upload.\n\n\x0c\n\x05\x04\0\x02\x04\x05\x12\x03$\x02\x08\n\x0c\n\
+    \x05\x04\0\x02\x04\x01\x12\x03$\t?\n\x0c\n\x05\x04\0\x02\x04\x03\x12\x03\
+    $BC\n\x80\x01\n\x04\x04\0\x02\x05\x12\x03(\x027\x1as\x20Number\x20of\x20\
+    persisted\x20stats\x20snapshot\x20files\x20dropped\x20when\x20recovering\
+    \x20from\x20a\x20corrupt\x20or\x20unreadable\n\x20aggregation\x20index.\
+    \n\n\x0c\n\x05\x04\0\x02\x05\x05\x12\x03(\x02\x08\n\x0c\n\x05\x04\0\x02\
+    \x05\x01\x12\x03(\t2\n\x0c\n\x05\x04\0\x02\x05\x03\x12\x03(56\nf\n\x04\
+    \x04\0\x02\x06\x12\x03+\x02)\x1aY\x20Number\x20of\x20aggregation-index\
+    \x20recovery\x20events\x20that\x20discarded\x20an\x20existing\x20stats\
+    \x20directory.\n\n\x0c\n\x05\x04\0\x02\x06\x05\x12\x03+\x02\x08\n\x0c\n\
+    \x05\x04\0\x02\x06\x01\x12\x03+\t$\n\x0c\n\x05\x04\0\x02\x06\x03\x12\x03\
+    +'(\n\x9c\x01\n\x02\x04\x01\x12\x040\0J\x01\x1a\x8f\x01\x20Used\x20to\
+    \x20track\x20an\x20index\x20of\x20pending\x20aggregations\x20that\x20nee\
+    d\x20to\x20be\x20uploaded.\x20This\x20is\x20used\x20by\x20the\n\x20file\
+    \x20manager\x20to\x20coordinate\x20merging\x20and\x20uploads.\n\n\n\n\
+    \x03\x04\x01\x01\x12\x030\x08\x1f\n\x0c\n\x04\x04\x01\x03\0\x12\x041\x02\
+    :\x03\n\x0c\n\x05\x04\x01\x03\0\x01\x12\x031\n\x15\n,\n\x06\x04\x01\x03\
+    \0\x02\0\x12\x033\x04\x14\x1a\x1d\x20Name\x20of\x20the\x20file\x20to\x20\
+    upload.\n\n\x0e\n\x07\x04\x01\x03\0\x02\0\x05\x12\x033\x04\n\n\x0e\n\x07\
+    \x04\x01\x03\0\x02\0\x01\x12\x033\x0b\x0f\n\x0e\n\x07\x04\x01\x03\0\x02\
+    \0\x03\x12\x033\x12\x13\nl\n\x06\x04\x01\x03\0\x02\x01\x12\x035\x04/\x1a\
+    ]\x20The\x20start\x20of\x20the\x20period\x20that\x20this\x20file\x20cove\
+    rs.\x20All\x20metrics\x20are\x20aggregated\x20over\x20this\x20period.\n\
+    \n\x0e\n\x07\x04\x01\x03\0\x02\x01\x06\x12\x035\x04\x1d\n\x0e\n\x07\x04\
+    \x01\x03\0\x02\x01\x01\x12\x035\x1e*\n\x0e\n\x07\x04\x01\x03\0\x02\x01\
+    \x03\x12\x035-.\n\xf5\x01\n\x06\x04\x01\x03\0\x02\x02\x12\x039\x04-\x1a\
     \xe5\x01\x20When\x20the\x20aggregation\x20was\x20closed.\x20If\x20specif\
     ied,\x20the\x20server\x20can\x20decide\x20to\x20handle\x20variable\n\x20\
     size\x20aggregation\x20windows\x20by\x20averaging\x20the\x20data\x20over\
     \x20the\x20period\x20or\x20some\x20other\x20heuristic.\x20Also\n\x20indi\
     cates\x20that\x20the\x20file\x20is\x20ready\x20for\x20upload.\n\n\x0e\n\
-    \x07\x04\0\x03\0\x02\x02\x06\x12\x03\x19\x04\x1d\n\x0e\n\x07\x04\0\x03\0\
-    \x02\x02\x01\x12\x03\x19\x1e(\n\x0e\n\x07\x04\0\x03\0\x02\x02\x03\x12\
-    \x03\x19+,\nP\n\x04\x04\0\x02\0\x12\x03\x1c\x02)\x1aC\x20List\x20of\x20f\
-    iles,\x20in\x20order\x20of\x20period_start,\x20that\x20are\x20pending\
-    \x20upload.\n\n\x0c\n\x05\x04\0\x02\0\x04\x12\x03\x1c\x02\n\n\x0c\n\x05\
-    \x04\0\x02\0\x06\x12\x03\x1c\x0b\x16\n\x0c\n\x05\x04\0\x02\0\x01\x12\x03\
-    \x1c\x17$\n\x0c\n\x05\x04\0\x02\0\x03\x12\x03\x1c'(\n\n\n\x02\x04\x01\
-    \x12\x04\x1f\0&\x01\n\n\n\x03\x04\x01\x01\x12\x03\x1f\x08\x0f\n\n\n\x03\
-    \x04\x01\t\x12\x03\x20\x02\r\n\x0b\n\x04\x04\x01\t\0\x12\x03\x20\x0b\x0c\
-    \n\x0c\n\x05\x04\x01\t\0\x01\x12\x03\x20\x0b\x0c\n\x0c\n\x05\x04\x01\t\0\
-    \x02\x12\x03\x20\x0b\x0c\n\x92\x02\n\x04\x04\x01\x02\0\x12\x03%\x02\x13\
-    \x1a\x84\x02\x20The\x20value\x20to\x20report\x20for\x20this\x20counter.\
-    \x20For\x20now\x20this\x20will\x20be\x20the\x20aggregated\x20value\x20of\
-    \x20this\n\x20counter\x20since\x20the\x20last\x20time\x20the\x20client\
-    \x20successfully\x20uploaded\x20stats,\x20but\x20might\x20change\x20as\n\
-    \x20we\x20start\x20supporting\x20non-aggregated\x20snapshots\x20(see\x20\
-    StatsUploadRequest::Snapshot).\n\n\x0c\n\x05\x04\x01\x02\0\x05\x12\x03%\
-    \x02\x08\n\x0c\n\x05\x04\x01\x02\0\x01\x12\x03%\t\x0e\n\x0c\n\x05\x04\
-    \x01\x02\0\x03\x12\x03%\x11\x12\n-\n\x02\x04\x02\x12\x04)\0/\x01\x1a!\
-    \x20A\x20histogram\x20in\x20DDSketch\x20format.\n\n\n\n\x03\x04\x02\x01\
-    \x12\x03)\x08\x19\n\xec\x02\n\x04\x04\x02\x02\0\x12\x03.\x02\x17\x1a\xde\
-    \x02\x20The\x20sketch\x20as\x20serialized\x20by\x20https://github.com/lo\
-    yispa/sketches-rust.\x20For\x20now\x20the\x20index\n\x20parameters\x20ar\
-    e\x20opaque\x20and\x20are\x20assumed\x20to\x20be\x20processed\x20by\x20t\
-    he\x20server\x20as\x20needed.\x20If\x20in\x20the\x20future\n\x20we\x20ne\
-    ed\x20more\x20specific\x20client\x20side\x20indication\x20of\x20the\x20s\
-    ketch\x20parameters,\x20we\x20can\x20either\x20add\x20them\n\x20here\x20\
-    or\x20introduce\x20different\x20types\x20of\x20histograms\x20in\x20the\
-    \x20oneof\x20below.\n\n\x0c\n\x05\x04\x02\x02\0\x05\x12\x03.\x02\x07\n\
-    \x0c\n\x05\x04\x02\x02\0\x01\x12\x03.\x08\x12\n\x0c\n\x05\x04\x02\x02\0\
-    \x03\x12\x03.\x15\x16\n\x94\x02\n\x02\x04\x03\x12\x044\07\x01\x1a\x87\
-    \x02\x20Inline\x20histogram\x20values\x20sent\x20directly\x20without\x20\
-    sketching.\x20The\x20client\x20can\x20decide\x20dynamically\x20that\n\
-    \x20it\x20is\x20more\x20efficient\x20to\x20send\x20individual\x20values\
-    \x20than\x20to\x20maintain\x20a\x20sketch.\x20In\x20this\x20case\x20it\
-    \x20will\n\x20send\x20the\x20values\x20directly\x20where\x20they\x20can\
-    \x20be\x20aggregated\x20by\x20the\x20server.\n\n\n\n\x03\x04\x03\x01\x12\
-    \x034\x08\x1d\n#\n\x04\x04\x03\x02\0\x12\x036\x02\x1d\x1a\x16\x20Values\
-    \x20to\x20aggregate.\n\n\x0c\n\x05\x04\x03\x02\0\x04\x12\x036\x02\n\n\
-    \x0c\n\x05\x04\x03\x02\0\x05\x12\x036\x0b\x11\n\x0c\n\x05\x04\x03\x02\0\
-    \x01\x12\x036\x12\x18\n\x0c\n\x05\x04\x03\x02\0\x03\x12\x036\x1b\x1c\n\n\
-    \n\x02\x04\x04\x12\x049\0P\x01\n\n\n\x03\x04\x04\x01\x12\x039\x08\x0e\n\
-    \x0c\n\x04\x04\x04\x08\0\x12\x04:\x02@\x03\n\x0c\n\x05\x04\x04\x08\0\x01\
-    \x12\x03:\x08\x18\nK\n\x04\x04\x04\x02\0\x12\x03<\x04\x14\x1a>\x20Unique\
-    \x20name\x20of\x20this\x20metric.\x20This\x20is\x20used\x20for\x20global\
-    \x20metrics.\n\n\x0c\n\x05\x04\x04\x02\0\x05\x12\x03<\x04\n\n\x0c\n\x05\
-    \x04\x04\x02\0\x01\x12\x03<\x0b\x0f\n\x0c\n\x05\x04\x04\x02\0\x03\x12\
-    \x03<\x12\x13\n]\n\x04\x04\x04\x02\x01\x12\x03?\x04\x19\x1aP\x20The\x20I\
-    D\x20of\x20the\x20metric,\x20if\x20applicable.\x20This\x20is\x20used\x20\
-    for\x20workflow\x20scoped\x20metrics.\n\n\x0c\n\x05\x04\x04\x02\x01\x05\
-    \x12\x03?\x04\n\n\x0c\n\x05\x04\x04\x02\x01\x01\x12\x03?\x0b\x14\n\x0c\n\
-    \x05\x04\x04\x02\x01\x03\x12\x03?\x17\x18\n0\n\x04\x04\x04\x02\x02\x12\
-    \x03C\x02\x1f\x1a#\x20Tags\x20associated\x20with\x20this\x20metric.\n\n\
-    \x0c\n\x05\x04\x04\x02\x02\x06\x12\x03C\x02\x15\n\x0c\n\x05\x04\x04\x02\
-    \x02\x01\x12\x03C\x16\x1a\n\x0c\n\x05\x04\x04\x02\x02\x03\x12\x03C\x1d\
-    \x1e\n\n\n\x03\x04\x04\t\x12\x03E\x02\r\n\x0b\n\x04\x04\x04\t\0\x12\x03E\
-    \x0b\x0c\n\x0c\n\x05\x04\x04\t\0\x01\x12\x03E\x0b\x0c\n\x0c\n\x05\x04\
-    \x04\t\0\x02\x12\x03E\x0b\x0c\n\x0c\n\x04\x04\x04\x08\x01\x12\x04G\x02O\
-    \x03\n\x0c\n\x05\x04\x04\x08\x01\x01\x12\x03G\x08\x0c\n\x0c\n\x05\x04\
-    \x04\x08\x01\x02\x12\x03H\x04&\n\x0e\n\x07\x04\x04\x08\x01\x02\xaf\x08\
-    \x12\x03H\x04&\n\x0b\n\x04\x04\x04\x02\x03\x12\x03J\x04\x18\n\x0c\n\x05\
-    \x04\x04\x02\x03\x06\x12\x03J\x04\x0b\n\x0c\n\x05\x04\x04\x02\x03\x01\
-    \x12\x03J\x0c\x13\n\x0c\n\x05\x04\x04\x02\x03\x03\x12\x03J\x16\x17\n\x0b\
-    \n\x04\x04\x04\x02\x04\x12\x03L\x04-\n\x0c\n\x05\x04\x04\x02\x04\x06\x12\
-    \x03L\x04\x15\n\x0c\n\x05\x04\x04\x02\x04\x01\x12\x03L\x16(\n\x0c\n\x05\
-    \x04\x04\x02\x04\x03\x12\x03L+,\n\x0b\n\x04\x04\x04\x02\x05\x12\x03N\x04\
-    6\n\x0c\n\x05\x04\x04\x02\x05\x06\x12\x03N\x04\x19\n\x0c\n\x05\x04\x04\
-    \x02\x05\x01\x12\x03N\x1a1\n\x0c\n\x05\x04\x04\x02\x05\x03\x12\x03N45\n\
-    \n\n\x02\x04\x05\x12\x04R\0T\x01\n\n\n\x03\x04\x05\x01\x12\x03R\x08\x13\
-    \n\x0b\n\x04\x04\x05\x02\0\x12\x03S\x02\x1d\n\x0c\n\x05\x04\x05\x02\0\
-    \x04\x12\x03S\x02\n\n\x0c\n\x05\x04\x05\x02\0\x06\x12\x03S\x0b\x11\n\x0c\
-    \n\x05\x04\x05\x02\0\x01\x12\x03S\x12\x18\n\x0c\n\x05\x04\x05\x02\0\x03\
-    \x12\x03S\x1b\x1cb\x06proto3\
+    \x07\x04\x01\x03\0\x02\x02\x06\x12\x039\x04\x1d\n\x0e\n\x07\x04\x01\x03\
+    \0\x02\x02\x01\x12\x039\x1e(\n\x0e\n\x07\x04\x01\x03\0\x02\x02\x03\x12\
+    \x039+,\ng\n\x04\x04\x01\x03\x01\x12\x04=\x02@\x03\x1aY\x20A\x20sealed\
+    \x20analytics\x20report\x20retained\x20until\x20the\x20server\x20acknowl\
+    edges\x20its\x20stable\x20identifier.\n\n\x0c\n\x05\x04\x01\x03\x01\x01\
+    \x12\x03=\n-\n\r\n\x06\x04\x01\x03\x01\x02\0\x12\x03>\x04\x19\n\x0e\n\
+    \x07\x04\x01\x03\x01\x02\0\x05\x12\x03>\x04\n\n\x0e\n\x07\x04\x01\x03\
+    \x01\x02\0\x01\x12\x03>\x0b\x14\n\x0e\n\x07\x04\x01\x03\x01\x02\0\x03\
+    \x12\x03>\x17\x18\n\r\n\x06\x04\x01\x03\x01\x02\x01\x12\x03?\x04)\n\x0e\
+    \n\x07\x04\x01\x03\x01\x02\x01\x06\x12\x03?\x04\x1a\n\x0e\n\x07\x04\x01\
+    \x03\x01\x02\x01\x01\x12\x03?\x1b$\n\x0e\n\x07\x04\x01\x03\x01\x02\x01\
+    \x03\x12\x03?'(\nP\n\x04\x04\x01\x02\0\x12\x03C\x02)\x1aC\x20List\x20of\
+    \x20files,\x20in\x20order\x20of\x20period_start,\x20that\x20are\x20pendi\
+    ng\x20upload.\n\n\x0c\n\x05\x04\x01\x02\0\x04\x12\x03C\x02\n\n\x0c\n\x05\
+    \x04\x01\x02\0\x06\x12\x03C\x0b\x16\n\x0c\n\x05\x04\x01\x02\0\x01\x12\
+    \x03C\x17$\n\x0c\n\x05\x04\x01\x02\0\x03\x12\x03C'(\nT\n\x04\x04\x01\x02\
+    \x01\x12\x03F\x02A\x1aG\x20Analytics\x20that\x20have\x20not\x20yet\x20be\
+    en\x20moved\x20into\x20a\x20report\x20for\x20a\x20handshake.\n\n\x0c\n\
+    \x05\x04\x01\x02\x01\x06\x12\x03F\x02\x18\n\x0c\n\x05\x04\x01\x02\x01\
+    \x01\x12\x03F\x19<\n\x0c\n\x05\x04\x01\x02\x01\x03\x12\x03F?@\nL\n\x04\
+    \x04\x01\x02\x02\x12\x03I\x02R\x1a?\x20Analytics\x20report\x20currently\
+    \x20awaiting\x20a\x20server\x20acknowledgement.\n\n\x0c\n\x05\x04\x01\
+    \x02\x02\x06\x12\x03I\x02%\n\x0c\n\x05\x04\x01\x02\x02\x01\x12\x03I&M\n\
+    \x0c\n\x05\x04\x01\x02\x02\x03\x12\x03IPQ\n\n\n\x02\x04\x02\x12\x04L\0S\
+    \x01\n\n\n\x03\x04\x02\x01\x12\x03L\x08\x0f\n\n\n\x03\x04\x02\t\x12\x03M\
+    \x02\r\n\x0b\n\x04\x04\x02\t\0\x12\x03M\x0b\x0c\n\x0c\n\x05\x04\x02\t\0\
+    \x01\x12\x03M\x0b\x0c\n\x0c\n\x05\x04\x02\t\0\x02\x12\x03M\x0b\x0c\n\x92\
+    \x02\n\x04\x04\x02\x02\0\x12\x03R\x02\x13\x1a\x84\x02\x20The\x20value\
+    \x20to\x20report\x20for\x20this\x20counter.\x20For\x20now\x20this\x20wil\
+    l\x20be\x20the\x20aggregated\x20value\x20of\x20this\n\x20counter\x20sinc\
+    e\x20the\x20last\x20time\x20the\x20client\x20successfully\x20uploaded\
+    \x20stats,\x20but\x20might\x20change\x20as\n\x20we\x20start\x20supportin\
+    g\x20non-aggregated\x20snapshots\x20(see\x20StatsUploadRequest::Snapshot\
+    ).\n\n\x0c\n\x05\x04\x02\x02\0\x05\x12\x03R\x02\x08\n\x0c\n\x05\x04\x02\
+    \x02\0\x01\x12\x03R\t\x0e\n\x0c\n\x05\x04\x02\x02\0\x03\x12\x03R\x11\x12\
+    \n-\n\x02\x04\x03\x12\x04V\0\\\x01\x1a!\x20A\x20histogram\x20in\x20DDSke\
+    tch\x20format.\n\n\n\n\x03\x04\x03\x01\x12\x03V\x08\x19\n\xec\x02\n\x04\
+    \x04\x03\x02\0\x12\x03[\x02\x17\x1a\xde\x02\x20The\x20sketch\x20as\x20se\
+    rialized\x20by\x20https://github.com/loyispa/sketches-rust.\x20For\x20no\
+    w\x20the\x20index\n\x20parameters\x20are\x20opaque\x20and\x20are\x20assu\
+    med\x20to\x20be\x20processed\x20by\x20the\x20server\x20as\x20needed.\x20\
+    If\x20in\x20the\x20future\n\x20we\x20need\x20more\x20specific\x20client\
+    \x20side\x20indication\x20of\x20the\x20sketch\x20parameters,\x20we\x20ca\
+    n\x20either\x20add\x20them\n\x20here\x20or\x20introduce\x20different\x20\
+    types\x20of\x20histograms\x20in\x20the\x20oneof\x20below.\n\n\x0c\n\x05\
+    \x04\x03\x02\0\x05\x12\x03[\x02\x07\n\x0c\n\x05\x04\x03\x02\0\x01\x12\
+    \x03[\x08\x12\n\x0c\n\x05\x04\x03\x02\0\x03\x12\x03[\x15\x16\n\x94\x02\n\
+    \x02\x04\x04\x12\x04a\0d\x01\x1a\x87\x02\x20Inline\x20histogram\x20value\
+    s\x20sent\x20directly\x20without\x20sketching.\x20The\x20client\x20can\
+    \x20decide\x20dynamically\x20that\n\x20it\x20is\x20more\x20efficient\x20\
+    to\x20send\x20individual\x20values\x20than\x20to\x20maintain\x20a\x20ske\
+    tch.\x20In\x20this\x20case\x20it\x20will\n\x20send\x20the\x20values\x20d\
+    irectly\x20where\x20they\x20can\x20be\x20aggregated\x20by\x20the\x20serv\
+    er.\n\n\n\n\x03\x04\x04\x01\x12\x03a\x08\x1d\n#\n\x04\x04\x04\x02\0\x12\
+    \x03c\x02\x1d\x1a\x16\x20Values\x20to\x20aggregate.\n\n\x0c\n\x05\x04\
+    \x04\x02\0\x04\x12\x03c\x02\n\n\x0c\n\x05\x04\x04\x02\0\x05\x12\x03c\x0b\
+    \x11\n\x0c\n\x05\x04\x04\x02\0\x01\x12\x03c\x12\x18\n\x0c\n\x05\x04\x04\
+    \x02\0\x03\x12\x03c\x1b\x1c\n\n\n\x02\x04\x05\x12\x04f\0}\x01\n\n\n\x03\
+    \x04\x05\x01\x12\x03f\x08\x0e\n\x0c\n\x04\x04\x05\x08\0\x12\x04g\x02m\
+    \x03\n\x0c\n\x05\x04\x05\x08\0\x01\x12\x03g\x08\x18\nK\n\x04\x04\x05\x02\
+    \0\x12\x03i\x04\x14\x1a>\x20Unique\x20name\x20of\x20this\x20metric.\x20T\
+    his\x20is\x20used\x20for\x20global\x20metrics.\n\n\x0c\n\x05\x04\x05\x02\
+    \0\x05\x12\x03i\x04\n\n\x0c\n\x05\x04\x05\x02\0\x01\x12\x03i\x0b\x0f\n\
+    \x0c\n\x05\x04\x05\x02\0\x03\x12\x03i\x12\x13\n]\n\x04\x04\x05\x02\x01\
+    \x12\x03l\x04\x19\x1aP\x20The\x20ID\x20of\x20the\x20metric,\x20if\x20app\
+    licable.\x20This\x20is\x20used\x20for\x20workflow\x20scoped\x20metrics.\
+    \n\n\x0c\n\x05\x04\x05\x02\x01\x05\x12\x03l\x04\n\n\x0c\n\x05\x04\x05\
+    \x02\x01\x01\x12\x03l\x0b\x14\n\x0c\n\x05\x04\x05\x02\x01\x03\x12\x03l\
+    \x17\x18\n0\n\x04\x04\x05\x02\x02\x12\x03p\x02\x1f\x1a#\x20Tags\x20assoc\
+    iated\x20with\x20this\x20metric.\n\n\x0c\n\x05\x04\x05\x02\x02\x06\x12\
+    \x03p\x02\x15\n\x0c\n\x05\x04\x05\x02\x02\x01\x12\x03p\x16\x1a\n\x0c\n\
+    \x05\x04\x05\x02\x02\x03\x12\x03p\x1d\x1e\n\n\n\x03\x04\x05\t\x12\x03r\
+    \x02\r\n\x0b\n\x04\x04\x05\t\0\x12\x03r\x0b\x0c\n\x0c\n\x05\x04\x05\t\0\
+    \x01\x12\x03r\x0b\x0c\n\x0c\n\x05\x04\x05\t\0\x02\x12\x03r\x0b\x0c\n\x0c\
+    \n\x04\x04\x05\x08\x01\x12\x04t\x02|\x03\n\x0c\n\x05\x04\x05\x08\x01\x01\
+    \x12\x03t\x08\x0c\n\x0c\n\x05\x04\x05\x08\x01\x02\x12\x03u\x04&\n\x0e\n\
+    \x07\x04\x05\x08\x01\x02\xaf\x08\x12\x03u\x04&\n\x0b\n\x04\x04\x05\x02\
+    \x03\x12\x03w\x04\x18\n\x0c\n\x05\x04\x05\x02\x03\x06\x12\x03w\x04\x0b\n\
+    \x0c\n\x05\x04\x05\x02\x03\x01\x12\x03w\x0c\x13\n\x0c\n\x05\x04\x05\x02\
+    \x03\x03\x12\x03w\x16\x17\n\x0b\n\x04\x04\x05\x02\x04\x12\x03y\x04-\n\
+    \x0c\n\x05\x04\x05\x02\x04\x06\x12\x03y\x04\x15\n\x0c\n\x05\x04\x05\x02\
+    \x04\x01\x12\x03y\x16(\n\x0c\n\x05\x04\x05\x02\x04\x03\x12\x03y+,\n\x0b\
+    \n\x04\x04\x05\x02\x05\x12\x03{\x046\n\x0c\n\x05\x04\x05\x02\x05\x06\x12\
+    \x03{\x04\x19\n\x0c\n\x05\x04\x05\x02\x05\x01\x12\x03{\x1a1\n\x0c\n\x05\
+    \x04\x05\x02\x05\x03\x12\x03{45\n\x0b\n\x02\x04\x06\x12\x05\x7f\0\x81\
+    \x01\x01\n\n\n\x03\x04\x06\x01\x12\x03\x7f\x08\x13\n\x0c\n\x04\x04\x06\
+    \x02\0\x12\x04\x80\x01\x02\x1d\n\r\n\x05\x04\x06\x02\0\x04\x12\x04\x80\
+    \x01\x02\n\n\r\n\x05\x04\x06\x02\0\x06\x12\x04\x80\x01\x0b\x11\n\r\n\x05\
+    \x04\x06\x02\0\x01\x12\x04\x80\x01\x12\x18\n\r\n\x05\x04\x06\x02\0\x03\
+    \x12\x04\x80\x01\x1b\x1cb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1520,7 +2026,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             let mut deps = ::std::vec::Vec::with_capacity(2);
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(7);
+            let mut messages = ::std::vec::Vec::with_capacity(9);
+            messages.push(StatsPipelineAnalytics::generated_message_descriptor_data());
             messages.push(PendingAggregationIndex::generated_message_descriptor_data());
             messages.push(Counter::generated_message_descriptor_data());
             messages.push(DDSketchHistogram::generated_message_descriptor_data());
@@ -1528,6 +2035,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(Metric::generated_message_descriptor_data());
             messages.push(MetricsList::generated_message_descriptor_data());
             messages.push(pending_aggregation_index::PendingFile::generated_message_descriptor_data());
+            messages.push(pending_aggregation_index::PendingStatsPipelineAnalyticsReport::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(0);
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),
