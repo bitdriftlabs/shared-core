@@ -904,8 +904,7 @@ async fn handshake_upload_ack_deletes_source_files_and_reports_success() {
     time_provider.clone(),
     &runtime_loader,
   ));
-  let (api_upload_completion_tx, mut api_upload_completion_rx) =
-    tokio::sync::mpsc::unbounded_channel();
+  let (api_upload_completion_tx, mut api_upload_completion_rx) = tokio::sync::mpsc::channel(1);
   let handshake_stats = HandshakeStats::new(
     file_manager.clone(),
     time_provider,
@@ -925,12 +924,23 @@ async fn handshake_upload_ack_deletes_source_files_and_reports_success() {
     .await
     .unwrap()
     .unwrap();
+  let (_second_response_tx, second_response_rx) = tokio::sync::oneshot::channel();
+  let second_registration =
+    handshake_stats.register_api_upload_completion(Vec::new(), second_response_rx);
+  tokio::pin!(second_registration);
+  assert!(poll!(second_registration.as_mut()).is_pending());
+
   let (response_rx, source_file_ids) = api_upload_completion_rx.recv().await.unwrap();
+  second_registration.await.unwrap();
   let mut state_tracker = StateTracker::new();
   let startup_upload = state_tracker.track_upload(startup_stats_upload);
   let startup_upload_uuid = startup_upload.upload_uuid.clone();
   handshake.startup_stats_upload = Some(startup_upload.clone()).into();
   assert!(startup_upload.sent_at.is_some());
+  assert_eq!(
+    StatsRequestHelper::new(startup_upload.clone()).upload_reason(),
+    UploadReason::UPLOAD_REASON_HANDSHAKE
+  );
   assert_eq!(
     StatsRequestHelper::new(startup_upload.clone()).get_counter("test:handshake", labels! {}),
     Some(1)
@@ -1046,8 +1056,7 @@ async fn handshake_upload_error_keeps_source_files_and_reports_failure() {
     time_provider.clone(),
     &runtime_loader,
   ));
-  let (api_upload_completion_tx, mut api_upload_completion_rx) =
-    tokio::sync::mpsc::unbounded_channel();
+  let (api_upload_completion_tx, mut api_upload_completion_rx) = tokio::sync::mpsc::channel(1);
   let handshake_stats = HandshakeStats::new(
     file_manager.clone(),
     time_provider,

@@ -99,7 +99,7 @@ pub struct FileManager {
 
 impl InitializedInner {
   fn analytics_has_values(analytics: &StatsPipelineAnalytics) -> bool {
-    &analytics != &StatsPipelineAnalytics::default_instance()
+    analytics != StatsPipelineAnalytics::default_instance()
   }
 
   fn record_upload_ack(&mut self, success: bool) {
@@ -360,8 +360,8 @@ impl FileManager {
     if create_new_snapshot {
       if *self.max_aggregated_files.read() <= u32::try_from(initialized_inner.index.len())? {
         log::debug!("max files reached, popping oldest snapshot");
-        initialized_inner.record_rotation_drop();
         initialized_inner.delete_snapshot(0).await?;
+        initialized_inner.record_rotation_drop();
       }
 
       let pending_file = PendingFile {

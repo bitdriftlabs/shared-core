@@ -156,9 +156,10 @@ impl Stats {
     // HandshakeStats is owned by the API task while Flusher runs in a sibling task. Each
     // API-originated upload creates a fresh tracked request whose sender belongs to the stream
     // StateTracker, but its receiver must be consumed by Flusher to complete or abandon claimed
-    // files. This handoff is dynamic because reconnects create new StateTrackers and batches.
-    let (api_upload_completion_tx, api_upload_completion_rx) =
-      tokio::sync::mpsc::unbounded_channel();
+    // files. This handoff is dynamic because reconnects create new StateTrackers and batches. At
+    // most one receiver may wait to be registered; a full channel backpressures handshake
+    // preparation until Flusher can take ownership rather than retaining unbounded receivers.
+    let (api_upload_completion_tx, api_upload_completion_rx) = tokio::sync::mpsc::channel(1);
 
     FlushHandles {
       flusher: Flusher::new(

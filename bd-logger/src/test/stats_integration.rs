@@ -162,7 +162,7 @@ fn inline_startup_upload_success_is_acked_and_reported_on_next_connection() {
   assert!(startup_upload.sent_at.is_some());
   assert_eq!(
     startup_upload.upload_reason.enum_value_or_default(),
-    UploadReason::UPLOAD_REASON_PERIODIC
+    UploadReason::UPLOAD_REASON_HANDSHAKE
   );
   assert!(
     !setup

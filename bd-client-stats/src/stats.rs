@@ -27,15 +27,18 @@ use bd_api::api::StatsHandshakeExtension;
 use bd_api::upload::{TrackedStatsUploadRequest, UploadResponse};
 use bd_client_stats_store::{Collector, Histogram, MetricData, MetricsByNameCore};
 use bd_error_reporter::reporter::handle_unexpected;
-#[cfg(feature = "logger-cli-observer")]
-use bd_proto::protos::client::api::StatsUploadRequest;
 use bd_proto::protos::client::api::handshake_request::analytics;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::Snapshot_type;
 use bd_proto::protos::client::api::stats_upload_request::{
   Snapshot as StatsSnapshot,
   UploadReason,
 };
-use bd_proto::protos::client::api::{HandshakeRequest, debug_data_request, handshake_response};
+use bd_proto::protos::client::api::{
+  HandshakeRequest,
+  StatsUploadRequest,
+  debug_data_request,
+  handshake_response,
+};
 #[cfg(feature = "logger-cli-observer")]
 use bd_proto::protos::client::metric::metric::Data as ProtoMetricData;
 use bd_proto::protos::client::metric::metric::Metric_name_type;
@@ -90,17 +93,14 @@ pub struct HandshakeStats {
   // The API task uses this to transfer API-originated upload response receivers to Flusher. A
   // receiver cannot be created at initialization: it is paired with the sender registered in a
   // particular stream's StateTracker and carries that request's claimed source files.
-  api_upload_completion_tx: mpsc::UnboundedSender<(oneshot::Receiver<UploadResponse>, Vec<String>)>,
+  api_upload_completion_tx: mpsc::Sender<(oneshot::Receiver<UploadResponse>, Vec<String>)>,
 }
 
 impl HandshakeStats {
   pub fn new(
     file_manager: Arc<FileManager>,
     time_provider: Arc<dyn TimeProvider>,
-    api_upload_completion_tx: mpsc::UnboundedSender<(
-      oneshot::Receiver<UploadResponse>,
-      Vec<String>,
-    )>,
+    api_upload_completion_tx: mpsc::Sender<(oneshot::Receiver<UploadResponse>, Vec<String>)>,
   ) -> Self {
     Self {
       file_manager,
@@ -128,6 +128,7 @@ impl HandshakeStats {
     if let Err(error) = self
       .api_upload_completion_tx
       .send((response_rx, source_file_ids))
+      .await
     {
       // Flusher is the sole owner of completion processing. If it has stopped, no task can
       // observe the receiver closing when the stream StateTracker drops, so release this claim
@@ -166,7 +167,8 @@ impl StatsHandshakeExtension for HandshakeStats {
     let upload_uuid = batch_transport_uuid(&source_file_ids);
     request.upload_uuid.clone_from(&upload_uuid);
     request.sent_at = self.time_provider.now().into_proto();
-    request.upload_reason = UploadReason::UPLOAD_REASON_PERIODIC.into();
+    request.upload_reason = UploadReason::UPLOAD_REASON_HANDSHAKE.into();
+    observe_upload_attempt(&request, UploadReason::UPLOAD_REASON_HANDSHAKE);
     let (startup_stats_upload, response_rx) = TrackedStatsUploadRequest::new(upload_uuid, request);
     self
       .register_api_upload_completion(source_file_ids, response_rx)
@@ -539,8 +541,7 @@ pub struct Flusher {
   // API-originated response receivers originate in HandshakeStats, which is held by Api. Flusher
   // owns the FuturesUnordered and is the single completion state machine for periodic, explicit,
   // and API-originated uploads, so receivers are handed back here before they are polled.
-  api_upload_completion_rx:
-    mpsc::UnboundedReceiver<(oneshot::Receiver<UploadResponse>, Vec<String>)>,
+  api_upload_completion_rx: mpsc::Receiver<(oneshot::Receiver<UploadResponse>, Vec<String>)>,
   file_manager: Arc<FileManager>,
   uploads: FuturesUnordered<UploadFuture>,
   periodic_in_flight: bool,
@@ -568,10 +569,7 @@ impl Flusher {
     minimum_upload_interval: bd_runtime::runtime::DurationWatch<
       bd_runtime::runtime::stats::MinimumUploadIntervalFlag,
     >,
-    api_upload_completion_rx: mpsc::UnboundedReceiver<(
-      oneshot::Receiver<UploadResponse>,
-      Vec<String>,
-    )>,
+    api_upload_completion_rx: mpsc::Receiver<(oneshot::Receiver<UploadResponse>, Vec<String>)>,
   ) -> Self {
     Self {
       stats,
@@ -1047,8 +1045,6 @@ impl Flusher {
     pending_upload: PendingUpload,
     upload_reason: UploadReason,
   ) -> anyhow::Result<Option<(PendingUploadMetadata, oneshot::Receiver<UploadResponse>)>> {
-    #[cfg(feature = "logger-cli-observer")]
-    let upload_reason_name = format!("{upload_reason:?}");
     let PendingUpload {
       mut request,
       source_file_ids,
@@ -1069,17 +1065,7 @@ impl Flusher {
         .sum::<usize>(),
     );
 
-    #[cfg(feature = "logger-cli-observer")]
-    with_observer(|observer| {
-      let metrics = request_action_metrics(&stats.payload);
-      if !metrics.is_empty() {
-        observer.on_upload_attempt(UploadAttemptObservation {
-          upload_uuid: stats.payload.upload_uuid.clone(),
-          upload_reason: upload_reason_name.clone(),
-          metrics,
-        });
-      }
-    });
+    observe_upload_attempt(&stats.payload, upload_reason);
 
     let tracked_upload = DataUpload::StatsUpload(stats);
 
@@ -1342,3 +1328,20 @@ fn request_action_metrics(request: &StatsUploadRequest) -> Vec<ObservedMetric> {
   });
   observed_metrics
 }
+
+#[cfg(feature = "logger-cli-observer")]
+fn observe_upload_attempt(request: &StatsUploadRequest, upload_reason: UploadReason) {
+  with_observer(|observer| {
+    let metrics = request_action_metrics(request);
+    if !metrics.is_empty() {
+      observer.on_upload_attempt(UploadAttemptObservation {
+        upload_uuid: request.upload_uuid.clone(),
+        upload_reason: format!("{upload_reason:?}"),
+        metrics,
+      });
+    }
+  });
+}
+
+#[cfg(not(feature = "logger-cli-observer"))]
+fn observe_upload_attempt(_request: &StatsUploadRequest, _upload_reason: UploadReason) {}
