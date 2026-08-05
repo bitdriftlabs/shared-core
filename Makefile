@@ -17,6 +17,10 @@ clippy: setup
 .PHONY: test
 test: setup
 	for i in $(shell seq 1 1); do \
-  	echo "Running test iteration $$i..."; \
+   	echo "Running test iteration $$i..."; \
 		RUST_BACKTRACE=1 SKIP_PROTO_GEN=1 SKIP_FILE_GEN=1 RUST_LOG=error cargo nextest run || exit 1; \
 	done
+
+.PHONY: benchmark-json-matcher
+benchmark-json-matcher: setup
+	SKIP_PROTO_GEN=1 SKIP_FILE_GEN=1 cargo test -p bd-log-matcher --release benchmark_json_string_path_resolution -- --ignored --nocapture

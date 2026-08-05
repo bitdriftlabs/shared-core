@@ -13,6 +13,13 @@ mod matcher_test;
 #[path = "./legacy_matcher_test.rs"]
 mod legacy_matcher_test;
 
+#[cfg(test)]
+#[path = "./json_string_matcher_test.rs"]
+mod json_string_matcher_test;
+
+#[path = "./json_path.rs"]
+mod json_path;
+
 use crate::value_matcher::{DoubleMatch, IntMatch, StringMatch, ValueOrSavedFieldId};
 use crate::version;
 use anyhow::{Result, anyhow};
@@ -440,10 +447,15 @@ pub enum Leaf {
   Any,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum JsonPathToken {
   Key(String),
   Index(i32),
+}
+
+#[cfg(feature = "fuzzing")]
+pub fn fuzz_json_path(input: &str, path: &[JsonPathToken]) {
+  let _ = json_path::resolve(input, path);
 }
 
 impl Leaf {
@@ -653,6 +665,28 @@ fn parse_json_path(key_or_index: &KeyOrIndex) -> Result<JsonPathToken> {
 }
 
 fn resolve_json_path<'a>(value: &'a DataValue, path: &[JsonPathToken]) -> Option<Cow<'a, str>> {
+  // Existing SDK APIs send JSON as a string. Parsing is only reached from JsonPathValue matchers.
+  // TODO: Gate JSON string extraction with a remote workflow runtime flag.
+  if let Some(json) = value.as_str() {
+    return resolve_json_string_path(json, path);
+  }
+
+  match value {
+    // Future optimized SDK APIs can emit native structured values directly and avoid JSON parsing.
+    DataValue::Map(_) | DataValue::Array(_) => resolve_structured_json_path(value, path),
+
+    _ => None,
+  }
+}
+
+fn resolve_json_string_path<'a>(value: &'a str, path: &[JsonPathToken]) -> Option<Cow<'a, str>> {
+  json_path::resolve(value, path)
+}
+
+fn resolve_structured_json_path<'a>(
+  value: &'a DataValue,
+  path: &[JsonPathToken],
+) -> Option<Cow<'a, str>> {
   let mut current = value;
   for token in path {
     match token {

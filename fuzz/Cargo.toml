@@ -20,6 +20,7 @@ bd-bonjson.path             = "../bd-bonjson"
 bd-buffer.path              = "../bd-buffer"
 bd-client-common.path       = "../bd-client-common"
 bd-client-stats-store.path  = "../bd-client-stats-store"
+bd-log-matcher              = { path = "../bd-log-matcher", features = ["fuzzing"], default-features = false }
 bd-log-primitives.path      = "../bd-log-primitives"
 bd-proto.path               = "../bd-proto"
 bd-proto-util.path          = "../bd-proto-util"
@@ -73,4 +74,10 @@ test = false
 doc  = false
 name = "workflow_state"
 path = "fuzz_targets/workflow_state.rs"
+test = false
+
+[[bin]]
+doc  = false
+name = "json_path"
+path = "fuzz_targets/json_path.rs"
 test = false

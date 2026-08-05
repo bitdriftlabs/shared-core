@@ -32,6 +32,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use tempfile::TempDir;
 
 pub mod buffer_corruption_fuzz_test;
+pub mod json_path;
 pub mod mpsc_buffer_fuzz_test;
 pub mod spsc_buffer_fuzz_test;
 pub mod versioned_kv_journal;
