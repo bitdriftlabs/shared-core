@@ -1,0 +1,3 @@
+[workspace]
+members = ["mutex_lock_must_unwrap"]
+resolver = "2"

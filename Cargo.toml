@@ -60,6 +60,7 @@ members = [
   "fuzz",
   "logger-cli",
 ]
+exclude = ["tools/dylints"]
 resolver = "2"
 
 [workspace.dependencies]

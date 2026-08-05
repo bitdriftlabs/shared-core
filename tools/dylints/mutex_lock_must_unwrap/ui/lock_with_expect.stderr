@@ -1,0 +1,10 @@
+warning: call `std::sync::Mutex::lock()` as `.lock().unwrap()`
+  --> $DIR/lock_with_expect.rs:12:18
+   |
+LL |     let _guard = mutex.lock().expect("mutex poisoned");
+   |                  ^^^^^^^^^^^^
+   |
+   = note: `#[warn(mutex_lock_must_unwrap)]` on by default
+
+warning: 1 warning emitted
+

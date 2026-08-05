@@ -1,0 +1,10 @@
+warning: call `std::sync::Mutex::lock()` as `.lock().unwrap()`
+  --> $DIR/lock_without_unwrap.rs:12:24
+   |
+LL |     let _lock_result = mutex.lock();
+   |                        ^^^^^^^^^^^^
+   |
+   = note: `#[warn(mutex_lock_must_unwrap)]` on by default
+
+warning: 1 warning emitted
+

@@ -12,6 +12,13 @@ setup:
 clippy: setup
 	ci/check_license.sh
 	SKIP_PROTO_GEN=1 SKIP_FILE_GEN=1 cargo clippy --workspace --bins --examples --tests -- --no-deps
+	$(MAKE) dylint
+
+.PHONY: dylint
+dylint:
+	command -v cargo-dylint >/dev/null || cargo install cargo-dylint --version 6.0.3 --locked
+	command -v dylint-link >/dev/null || cargo install dylint-link --version 6.0.3 --locked
+	cargo dylint --all -- --workspace --all-targets
 
 # Leaving the below loop around to help with debugging flakes if needed.
 .PHONY: test
