@@ -314,8 +314,8 @@ impl RuntimePeriodicSchedule {
     let preserved_upload_at = (preserve_upload_deadline && !jitter_upload_deadline)
       .then(|| {
         self.state.as_ref().and_then(|state| {
-          (state.upload_interval == upload_interval
-            && state.first_upload_pending == first_upload_pending
+          (state.first_upload_pending == first_upload_pending
+            && (first_upload_pending || state.upload_interval == upload_interval)
             && state.next_upload_at > now)
             .then_some(state.next_upload_at)
         })

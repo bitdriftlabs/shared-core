@@ -570,6 +570,38 @@ async fn runtime_periodic_schedule_flush_only_change_keeps_upload_deadline() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn runtime_periodic_schedule_first_upload_deadline_survives_recurring_and_flush_updates() {
+  let time_provider = Arc::new(PausedScheduleTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let (mut schedule, flush_tx, live_tx, _sleep_tx, _first_upload_tx, _sleep_mode_tx) =
+    runtime_periodic_schedule(
+      60.seconds(),
+      60.seconds(),
+      15.minutes(),
+      10.seconds(),
+      false,
+      time_provider.clone(),
+    );
+
+  let mut next_action = Box::pin(schedule.next_action());
+  assert!(poll!(&mut next_action).is_pending());
+  time_provider.advance(2.seconds()).await;
+  assert!(poll!(&mut next_action).is_pending());
+
+  live_tx.send(30.seconds()).unwrap();
+  assert!(poll!(&mut next_action).is_pending());
+  flush_tx.send(20.seconds()).unwrap();
+  assert!(poll!(&mut next_action).is_pending());
+
+  time_provider.advance(7.seconds()).await;
+  assert!(poll!(&mut next_action).is_pending());
+  time_provider.advance(1.seconds()).await;
+  assert_eq!(
+    poll!(next_action),
+    std::task::Poll::Ready(PeriodicAction::Upload)
+  );
+}
+
+#[tokio::test(start_paused = true)]
 async fn runtime_periodic_schedule_uses_first_upload_interval_once() {
   let time_provider = Arc::new(PausedScheduleTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
   let (mut schedule, _flush_tx, _live_tx, _sleep_tx, _first_upload_tx, _sleep_mode_tx) =
