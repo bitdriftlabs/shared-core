@@ -38,7 +38,11 @@ use bd_internal_logging::NoopLogger;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::network_quality::NetworkCallOnlineIndicatorTimeout;
-use bd_runtime::runtime::stats::{DirectStatFlushIntervalFlag, UploadStatFlushIntervalFlag};
+use bd_runtime::runtime::stats::{
+  DirectStatFlushIntervalFlag,
+  FirstStatUploadFlushIntervalFlag,
+  UploadStatFlushIntervalFlag,
+};
 use bd_runtime::runtime::{self, ConfigLoader, Watch, sleep_mode};
 use bd_shutdown::{ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_state::{
@@ -72,11 +76,14 @@ pub fn default_stats_flush_triggers(
     runtime_loader.register_duration_watch();
   let sleep_mode_upload_interval_flag: Watch<Duration, sleep_mode::UploadStatFlushIntervalFlag> =
     runtime_loader.register_duration_watch();
+  let first_upload_interval_flag: Watch<Duration, FirstStatUploadFlushIntervalFlag> =
+    runtime_loader.register_duration_watch();
 
   Ok(Box::new(RuntimePeriodicSchedule::new(
     flush_interval_flag.into_inner(),
     live_mode_upload_interval_flag.into_inner(),
     sleep_mode_upload_interval_flag.into_inner(),
+    first_upload_interval_flag.into_inner(),
     sleep_mode_active,
     time_provider,
   )))

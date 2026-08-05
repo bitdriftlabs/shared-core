@@ -927,6 +927,15 @@ pub mod stats {
     60.seconds()
   );
 
+  // This controls when the first periodic stats upload is attempted after startup. Like every
+  // periodic upload tick, it flushes in-memory stats to disk before preparing the upload. Later
+  // periodic uploads use UploadStatFlushIntervalFlag instead.
+  duration_feature_flag!(
+    FirstStatUploadFlushIntervalFlag,
+    "stats.first_upload_flush_interval_ms",
+    5.seconds()
+  );
+
   // The maximum number of pending stat upload files to keep on disk.
   int_feature_flag!(MaxAggregatedFilesFlag, "stats.max_aggregated_files", 10);
 

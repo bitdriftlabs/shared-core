@@ -234,6 +234,7 @@ struct RuntimePeriodicScheduleState {
   effective_flush_interval: Duration,
   next_flush_at: Option<OffsetDateTime>,
   next_upload_at: OffsetDateTime,
+  first_upload_pending: bool,
 }
 
 // Couples the stats flush and upload timers into one schedule driven by the active upload
@@ -241,14 +242,14 @@ struct RuntimePeriodicScheduleState {
 // more intermediate flush deadlines before the next upload deadline when the configured flush
 // interval is a clean divisor of the active upload interval.
 //
-// Startup is deterministic: the first cycle is scheduled immediately from the current runtime
-// values, but without jitter. That means we do not wait for some extra startup-only delay; we
-// simply avoid randomizing the initial deadline. We only re-jitter upload deadlines when the
-// active upload interval changes at runtime, which keeps reconnect storms from synchronizing.
+// Startup is deterministic: the first cycle uses its dedicated interval without jitter. Later
+// cycles use the active recurring upload interval. We only re-jitter recurring upload deadlines
+// when that active interval changes at runtime, which keeps reconnect storms from synchronizing.
 pub struct RuntimePeriodicSchedule {
   flush_interval: watch::Receiver<Duration>,
   live_upload_interval: watch::Receiver<Duration>,
   sleep_upload_interval: watch::Receiver<Duration>,
+  first_upload_interval: watch::Receiver<Duration>,
   sleep_mode_active: watch::Receiver<bool>,
   time_provider: Arc<dyn TimeProvider>,
   state: Option<RuntimePeriodicScheduleState>,
@@ -260,6 +261,7 @@ impl RuntimePeriodicSchedule {
     flush_interval: watch::Receiver<Duration>,
     live_upload_interval: watch::Receiver<Duration>,
     sleep_upload_interval: watch::Receiver<Duration>,
+    first_upload_interval: watch::Receiver<Duration>,
     sleep_mode_active: watch::Receiver<bool>,
     time_provider: Arc<dyn TimeProvider>,
   ) -> Self {
@@ -267,6 +269,7 @@ impl RuntimePeriodicSchedule {
       flush_interval,
       live_upload_interval,
       sleep_upload_interval,
+      first_upload_interval,
       sleep_mode_active,
       time_provider,
       state: None,
@@ -275,21 +278,28 @@ impl RuntimePeriodicSchedule {
 
   // Snap the current runtime inputs into a fresh cycle. This is called at startup and whenever a
   // watched runtime value changes in a way that should re-plan future deadlines.
-  fn rebuild_schedule(&mut self, jitter_upload_deadline: bool) {
+  fn rebuild_schedule(&mut self, jitter_upload_deadline: bool, preserve_upload_deadline: bool) {
     let now = self.time_provider.now();
 
     // Flush cadence is always read directly from runtime, but upload cadence depends on whether
     // we are currently in live mode or sleep mode.
     let flush_interval = *self.flush_interval.borrow_and_update();
     let upload_interval = self.active_upload_interval();
-    let effective_flush_interval = effective_flush_interval(flush_interval, upload_interval);
+    let first_upload_pending = self.first_upload_pending();
+    let scheduled_upload_interval = if first_upload_pending {
+      *self.first_upload_interval.borrow_and_update()
+    } else {
+      upload_interval
+    };
+    let effective_flush_interval =
+      effective_flush_interval(flush_interval, scheduled_upload_interval);
 
     // An invalid flush cadence does not stop scheduling; it simply means we only flush at the
     // upload boundary for this cycle.
     if effective_flush_interval != flush_interval {
       log::debug!(
         "stats disk flush interval {flush_interval} does not cleanly divide active upload \
-         interval {upload_interval}; falling back to upload cadence"
+         interval {scheduled_upload_interval}; falling back to upload cadence"
       );
     }
 
@@ -301,10 +311,12 @@ impl RuntimePeriodicSchedule {
     // future, preserve that absolute boundary and only recompute how many flushes can fit before
     // it. Without this, a flush-interval tweak would effectively restart the upload timer from
     // "now", which is not the behavior we want.
-    let preserved_upload_at = (!jitter_upload_deadline)
+    let preserved_upload_at = (preserve_upload_deadline && !jitter_upload_deadline)
       .then(|| {
         self.state.as_ref().and_then(|state| {
-          (state.upload_interval == upload_interval && state.next_upload_at > now)
+          (state.first_upload_pending == first_upload_pending
+            && (first_upload_pending || state.upload_interval == upload_interval)
+            && state.next_upload_at > now)
             .then_some(state.next_upload_at)
         })
       })
@@ -316,12 +328,12 @@ impl RuntimePeriodicSchedule {
     let next_upload_delay = preserved_upload_at.map_or_else(
       || {
         if jitter_upload_deadline {
-          upload_interval
+          scheduled_upload_interval
             .jittered()
             .try_into()
-            .unwrap_or(upload_interval)
+            .unwrap_or(scheduled_upload_interval)
         } else {
-          upload_interval
+          scheduled_upload_interval
         }
       },
       |next_upload_at| next_upload_at - now,
@@ -341,6 +353,7 @@ impl RuntimePeriodicSchedule {
       effective_flush_interval,
       next_flush_at,
       next_upload_at,
+      first_upload_pending,
     });
   }
 
@@ -354,32 +367,74 @@ impl RuntimePeriodicSchedule {
     }
   }
 
-  // Advances the in-memory schedule after we decide which action to run. Flushes preserve the
-  // current upload boundary, while uploads roll the entire cycle forward.
+  fn current_active_upload_interval(&self) -> Duration {
+    if *self.sleep_mode_active.borrow() {
+      *self.sleep_upload_interval.borrow()
+    } else {
+      *self.live_upload_interval.borrow()
+    }
+  }
+
+  fn first_upload_pending(&self) -> bool {
+    self
+      .state
+      .as_ref()
+      .is_none_or(|state| state.first_upload_pending)
+  }
+
+  // Replans after a recurring upload cadence or sleep-mode update. The initial upload has its
+  // own deadline, so these updates only take effect once it has completed.
+  fn rebuild_for_recurring_upload_interval_change(&mut self) {
+    if self.first_upload_pending() {
+      return;
+    }
+
+    let active_upload_interval = self.current_active_upload_interval();
+    let upload_interval_changed = self
+      .state
+      .as_ref()
+      .is_some_and(|state| state.upload_interval != active_upload_interval);
+    self.rebuild_schedule(upload_interval_changed, true);
+  }
+
   fn update_after_action(&mut self, action: PeriodicAction) {
-    let now = self.time_provider.now();
+    match action {
+      PeriodicAction::Flush => self.update_after_flush(),
+      PeriodicAction::Upload => self.update_after_upload(),
+    }
+  }
+
+  fn update_after_flush(&mut self) {
     let Some(state) = self.state.as_mut() else {
       return;
     };
 
-    match action {
-      PeriodicAction::Flush => {
-        let Some(next_flush_at) = state.next_flush_at else {
-          return;
-        };
+    let Some(next_flush_at) = state.next_flush_at else {
+      return;
+    };
 
-        // Keep generating intermediate flushes until the next one would land on or after the
-        // upload deadline. At that point the upload tick owns the final flush for the cycle.
-        let candidate = next_flush_at + state.effective_flush_interval;
-        state.next_flush_at = (candidate < state.next_upload_at).then_some(candidate);
-      },
-      // Upload always performs a flush first, so the next cycle only needs intermediate flushes.
-      PeriodicAction::Upload => {
-        state.next_upload_at = now + state.upload_interval;
-        state.next_flush_at = (state.effective_flush_interval < state.upload_interval)
-          .then_some(now + state.effective_flush_interval);
-      },
-    }
+    // Keep generating intermediate flushes until the next one would land on or after the upload
+    // deadline. At that point the upload tick owns the final flush for the cycle.
+    let candidate = next_flush_at + state.effective_flush_interval;
+    state.next_flush_at = (candidate < state.next_upload_at).then_some(candidate);
+  }
+
+  // Upload always performs a flush first, so the next cycle only needs intermediate flushes.
+  fn update_after_upload(&mut self) {
+    let now = self.time_provider.now();
+    let upload_interval = self.active_upload_interval();
+    let flush_interval = *self.flush_interval.borrow_and_update();
+    let effective_flush_interval = effective_flush_interval(flush_interval, upload_interval);
+    let Some(state) = self.state.as_mut() else {
+      return;
+    };
+
+    state.first_upload_pending = false;
+    state.upload_interval = upload_interval;
+    state.effective_flush_interval = effective_flush_interval;
+    state.next_upload_at = now + state.upload_interval;
+    state.next_flush_at = (state.effective_flush_interval < state.upload_interval)
+      .then_some(now + state.effective_flush_interval);
   }
 }
 
@@ -390,7 +445,7 @@ impl PeriodicSchedule for RuntimePeriodicSchedule {
       // Lazily build the first cycle so construction stays cheap and so startup uses the latest
       // runtime values at the first point we actually need to schedule work.
       if self.state.is_none() {
-        self.rebuild_schedule(false);
+        self.rebuild_schedule(false, false);
       }
 
       let now = self.time_provider.now();
@@ -429,6 +484,7 @@ impl PeriodicSchedule for RuntimePeriodicSchedule {
       let mut flush_interval = self.flush_interval.clone();
       let mut live_upload_interval = self.live_upload_interval.clone();
       let mut sleep_upload_interval = self.sleep_upload_interval.clone();
+      let mut first_upload_interval = self.first_upload_interval.clone();
       let mut sleep_mode_active = self.sleep_mode_active.clone();
 
       tokio::select! {
@@ -442,64 +498,40 @@ impl PeriodicSchedule for RuntimePeriodicSchedule {
           // A flush-only cadence change should not add jitter to the upload deadline; it only
           // changes how many intermediate flushes fit before the same upload boundary.
           self.flush_interval = flush_interval;
-          self.rebuild_schedule(false);
+          self.rebuild_schedule(false, true);
         },
         changed = live_upload_interval.changed() => {
           if changed.is_err() {
             continue;
           }
           self.live_upload_interval = live_upload_interval;
-
-          // Only re-jitter if the active upload cadence actually changed. In sleep mode, a live
-          // mode update is just cached state for later.
-          let active_upload_interval = if *self.sleep_mode_active.borrow() {
-            *self.sleep_upload_interval.borrow()
-          } else {
-            *self.live_upload_interval.borrow()
-          };
-          let upload_interval_changed = self
-            .state
-            .as_ref()
-            .is_some_and(|state| state.upload_interval != active_upload_interval);
-          self.rebuild_schedule(upload_interval_changed);
+          self.rebuild_for_recurring_upload_interval_change();
         },
         changed = sleep_upload_interval.changed() => {
           if changed.is_err() {
             continue;
           }
           self.sleep_upload_interval = sleep_upload_interval;
+          self.rebuild_for_recurring_upload_interval_change();
+        },
+        changed = first_upload_interval.changed() => {
+          if changed.is_err() {
+            continue;
+          }
+          self.first_upload_interval = first_upload_interval;
 
-          // Symmetric to the live-mode branch: a sleep-mode update only matters immediately when
-          // sleep mode is active, otherwise it is just stored until we transition modes.
-          let active_upload_interval = if *self.sleep_mode_active.borrow() {
-            *self.sleep_upload_interval.borrow()
-          } else {
-            *self.live_upload_interval.borrow()
-          };
-          let upload_interval_changed = self
-            .state
-            .as_ref()
-            .is_some_and(|state| state.upload_interval != active_upload_interval);
-          self.rebuild_schedule(upload_interval_changed);
+          // The first-delay setting is relevant only while the initial upload is pending. A
+          // change then deliberately starts that one deadline over using the new duration.
+          if self.first_upload_pending() {
+            self.rebuild_schedule(false, false);
+          }
         },
         changed = sleep_mode_active.changed() => {
           if changed.is_err() {
             continue;
           }
           self.sleep_mode_active = sleep_mode_active;
-
-          // A mode transition can swap which upload watch is authoritative, so treat it like an
-          // upload cadence change when the newly active interval differs from the current cycle.
-          let active_upload_interval = if *self.sleep_mode_active.borrow() {
-            *self.sleep_upload_interval.borrow()
-          } else {
-            *self.live_upload_interval.borrow()
-          };
-          let upload_interval_changed = self
-            .state
-            .as_ref()
-            .is_some_and(|state| state.upload_interval != active_upload_interval);
-          self.rebuild_schedule(upload_interval_changed);
+          self.rebuild_for_recurring_upload_interval_change();
         },
       }
     }
