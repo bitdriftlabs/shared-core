@@ -420,7 +420,9 @@ impl Resolver {
     let mut created_actions = BTreeSet::default();
     let mut triggered_flush_buffers_action_ids = BTreeSet::default();
     let mut triggered_flushes_buffer_ids = TinySet::default();
-    let shared_request_trigger_uuid = TrackedLogUploadIntent::upload_uuid();
+    // Actions created for one event share an idempotency token. Avoid minting one when the event
+    // did not trigger a flush action, which is the common case.
+    let mut shared_request_trigger_uuid = None;
 
     for action in actions {
       triggered_flush_buffers_action_ids.insert(match action {
@@ -431,7 +433,11 @@ impl Resolver {
       let Some(action) = PendingFlushBuffersAction::new(
         (*action).clone(),
         session_id.to_string(),
-        Some(shared_request_trigger_uuid.clone()),
+        Some(
+          shared_request_trigger_uuid
+            .get_or_insert_with(TrackedLogUploadIntent::upload_uuid)
+            .clone(),
+        ),
         &self.trigger_buffer_ids,
         &self.continuous_buffer_ids,
       ) else {

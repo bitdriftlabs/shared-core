@@ -821,7 +821,9 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
         };
       }
 
-      inc_by!(matched_logs_total, matched_logs_count);
+      if result.stats().matched_logs_count > 0 {
+        inc_by!(matched_logs_total, matched_logs_count);
+      }
 
       self.state.active_run_tracing_count = self
         .state
@@ -942,21 +944,27 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
         &self.state.streaming_actions,
       );
 
-    self
-      .metrics_collector
-      .stats
-      .record_workflow_debug_state(all_incremental_workflow_debug_state);
+    if !all_incremental_workflow_debug_state.is_empty() {
+      self
+        .metrics_collector
+        .stats
+        .record_workflow_debug_state(all_incremental_workflow_debug_state);
+    }
 
     // Emit metrics and sankeys for all event types.
     // For state changes, field/message extraction will fail to extract a value as there are no
     // associated fields/message.
     // TODO(snowp): Implement generic state extractions in favor of the feature flag extraction.
-    self
-      .metrics_collector
-      .emit_metrics(&emit_metric_action_counts, event, state_reader);
-    self
-      .metrics_collector
-      .emit_sankeys(&emit_sankey_diagrams_actions, event, state_reader);
+    if !emit_metric_action_counts.is_empty() {
+      self
+        .metrics_collector
+        .emit_metrics(&emit_metric_action_counts, event, state_reader);
+    }
+    if !emit_sankey_diagrams_actions.is_empty() {
+      self
+        .metrics_collector
+        .emit_sankeys(&emit_sankey_diagrams_actions, event, state_reader);
+    }
 
     for action in emit_sankey_diagrams_actions {
       // There is no real limit on the number of sankey paths we might want to upload, so ensure
