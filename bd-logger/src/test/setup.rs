@@ -37,7 +37,13 @@ use bd_test_helpers::metadata_provider::LogMetadata;
 use bd_test_helpers::resource_utilization::EmptyTarget;
 use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::session::{DiskStorage, in_memory_store};
-use bd_test_helpers::test_api_server::{ExpectedStreamEvent, StreamAction, StreamHandle};
+use bd_test_helpers::test_api_server::{
+  ExpectedStreamEvent,
+  HandshakeResponsePlan,
+  StatsUploadResponsePlan,
+  StreamAction,
+  StreamHandle,
+};
 use bd_time::TimeProvider;
 use bd_time::test::TestTicker;
 use bd_workflows::engine::WORKFLOWS_STATE_FILE_NAME;
@@ -82,6 +88,15 @@ impl bd_session_replay::Target for MockSessionReplayTarget {
 }
 
 //
+// InitialStreamSetup
+//
+
+pub enum InitialStreamSetup {
+  Initialize,
+  CloseBeforeResponse,
+}
+
+//
 // SetupOptions
 //
 
@@ -93,6 +108,9 @@ pub struct SetupOptions {
   pub time_provider: Option<Arc<dyn TimeProvider>>,
   pub session_strategy: Option<Arc<Strategy>>,
   pub extra_runtime_values: Vec<(&'static str, ValueKind)>,
+  pub handshake_response_plans: Vec<HandshakeResponsePlan>,
+  pub stats_upload_response_plans: Vec<StatsUploadResponsePlan>,
+  pub initial_stream_setup: InitialStreamSetup,
 }
 
 impl Default for SetupOptions {
@@ -105,6 +123,9 @@ impl Default for SetupOptions {
       time_provider: None,
       session_strategy: None,
       extra_runtime_values: vec![],
+      handshake_response_plans: vec![],
+      stats_upload_response_plans: vec![],
+      initial_stream_setup: InitialStreamSetup::Initialize,
     }
   }
 }
@@ -162,6 +183,18 @@ impl Setup {
 
   pub fn new_with_options(options: SetupOptions) -> Self {
     let mut server = bd_test_helpers::test_api_server::start_server(false, None);
+    if matches!(
+      options.initial_stream_setup,
+      InitialStreamSetup::CloseBeforeResponse
+    ) {
+      server.close_next_handshake();
+    }
+    for response in options.handshake_response_plans.iter().cloned() {
+      server.respond_to_next_handshake(response);
+    }
+    for response in options.stats_upload_response_plans.iter().cloned() {
+      server.respond_to_next_stats_upload(response);
+    }
     let shutdown = ComponentShutdownTrigger::default();
 
     let store = if options.disk_storage {
@@ -207,17 +240,20 @@ impl Setup {
     .unwrap();
 
     let logger_handle = logger.new_logger_handle();
-    let current_api_stream = Self::do_stream_setup(
-      &mut server,
-      options.start_in_sleep_mode,
-      options.extra_runtime_values,
-    );
+    let current_api_stream = matches!(options.initial_stream_setup, InitialStreamSetup::Initialize)
+      .then(|| {
+        Self::do_stream_setup(
+          &mut server,
+          options.start_in_sleep_mode,
+          options.extra_runtime_values,
+        )
+      });
     Self {
       logger,
       logger_handle,
       sdk_directory: options.sdk_directory,
       server,
-      current_api_stream: Some(current_api_stream),
+      current_api_stream,
       capture_screen_count,
       capture_screenshot_count,
       _shutdown: shutdown,
@@ -239,6 +275,19 @@ impl Setup {
       &mut self.server,
       expect_sleep_mode,
       vec![],
+    ));
+  }
+
+  pub fn initialize_next_stream(
+    &mut self,
+    expect_sleep_mode: bool,
+    extra_runtime_values: Vec<(&'static str, ValueKind)>,
+  ) {
+    assert!(self.current_api_stream.is_none());
+    self.current_api_stream = Some(Self::do_stream_setup(
+      &mut self.server,
+      expect_sleep_mode,
+      extra_runtime_values,
     ));
   }
 
@@ -304,11 +353,19 @@ impl Setup {
   }
 
   pub fn flush_and_upload_stats(&self) {
+    self.flush_stats(true);
+  }
+
+  pub fn flush_stats_without_upload(&self) {
+    self.flush_stats(false);
+  }
+
+  fn flush_stats(&self, do_upload: bool) {
     let (sender, receiver) = bd_completion::Sender::new();
     self
       .stats_flush_trigger
       .blocking_flush_for_test(FlushTriggerRequest {
-        do_upload: true,
+        do_upload,
         completion_tx: Some(sender),
       })
       .unwrap();

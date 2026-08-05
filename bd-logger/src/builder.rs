@@ -293,7 +293,7 @@ impl LoggerBuilder {
       watch::channel(self.params.start_in_sleep_mode);
     let is_tracing_active = Arc::new(AtomicBool::new(false));
 
-    let (stats_flusher, flusher_trigger) = {
+    let (stats_flusher, flusher_trigger, handshake_stats) = {
       let periodic_schedule = if let Some(periodic_schedule) = self.client_stats_schedule {
         periodic_schedule
       } else {
@@ -312,7 +312,11 @@ impl LoggerBuilder {
         time_provider.clone(),
       );
 
-      (flush_handles.flusher, flush_handles.flush_trigger)
+      (
+        flush_handles.flusher,
+        flush_handles.flush_trigger,
+        flush_handles.handshake_stats,
+      )
     };
     let (trigger_upload_tx, trigger_upload_rx) = tokio::sync::mpsc::channel(1);
     let (remote_flush_streaming_tx, remote_flush_streaming_rx) = tokio::sync::mpsc::channel(1);
@@ -583,6 +587,7 @@ impl LoggerBuilder {
         self.params.session_strategy.clone(),
         opaque_entity_updates_rx,
         sdk_status_tracker,
+        Some(Arc::new(handshake_stats)),
       );
 
       let mut config_writer = bd_crash_handler::ConfigWriter::new(

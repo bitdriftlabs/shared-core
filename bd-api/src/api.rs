@@ -10,7 +10,7 @@
 mod api_test;
 
 use crate::network_quality::DISCONNECTED_OFFLINE_GRACE_PERIOD;
-use crate::upload::{self, StateTracker};
+use crate::upload::{self, StateTracker, TrackedStatsUploadRequest};
 use crate::{
   DataUpload,
   PlatformNetworkManager,
@@ -66,6 +66,7 @@ use bd_proto::protos::client::api::{
   HandshakeRequest,
   PingRequest,
   StateUpdateRequest,
+  handshake_request,
   handshake_response,
 };
 use bd_proto::protos::logging::payload::Data as ProtoData;
@@ -101,6 +102,27 @@ struct StreamClosureInfo {
 
 struct InFlightStateUpdate {
   session_update: Option<bd_session::PendingStateUpdate>,
+}
+
+//
+// StatsHandshakeExtension
+//
+
+/// Optional stats behavior contributed by a component outside of `bd-api`.
+#[async_trait::async_trait]
+pub trait StatsHandshakeExtension: Send + Sync {
+  /// Adds handshake stats analytics and optionally returns a startup upload to track and attach
+  /// to the handshake. Errors are logged and do not prevent a stream from connecting.
+  async fn prepare_stats_handshake(
+    &self,
+    handshake: &mut HandshakeRequest,
+  ) -> anyhow::Result<Option<TrackedStatsUploadRequest>>;
+
+  /// Processes an accepted stats-pipeline analytics report ID from the handshake response.
+  async fn process_stats_pipeline_analytics_ack(
+    &self,
+    analytics_ack: &handshake_response::AnalyticsAck,
+  );
 }
 
 //
@@ -405,6 +427,9 @@ pub struct Api {
 
   sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
 
+  stats_handshake_extension: Option<Arc<dyn StatsHandshakeExtension>>,
+  connection_count_since_process_start: u64,
+
   #[cfg(test)]
   pub data_idle_timeout_test_hook: Option<tokio::sync::mpsc::Sender<()>>,
 }
@@ -429,6 +454,7 @@ impl Api {
     session_strategy: Arc<bd_session::Strategy>,
     opaque_entity_updates: watch::Receiver<Option<String>>,
     sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
+    stats_handshake_extension: Option<Arc<dyn StatsHandshakeExtension>>,
   ) -> Self {
     let mut backoff_policy = RuntimeBackoffPolicy::new(runtime_loader.as_ref());
     let generic_kill_duration = runtime_loader.register_duration_watch();
@@ -474,6 +500,8 @@ impl Api {
       disconnected_at: None,
       last_disconnect_reason: None,
       sdk_status_tracker,
+      stats_handshake_extension,
+      connection_count_since_process_start: 0,
       #[cfg(test)]
       data_idle_timeout_test_hook: None,
     }
@@ -863,9 +891,17 @@ impl Api {
     log::debug!("sending handshake");
 
     let last_disconnect_reason = self.last_disconnect_reason.take();
-    let (handshake_request, handshake_state_update) = self
+    let (mut handshake_request, handshake_state_update, startup_stats_upload) = self
       .handshake_request(handshake_metadata, last_disconnect_reason)
       .await;
+    if let Some(startup_stats_upload) = startup_stats_upload {
+      handshake_request.startup_stats_upload = Some(
+        stream_state
+          .upload_state_tracker
+          .track_upload(startup_stats_upload),
+      )
+      .into();
+    }
     stream_state.send_request(handshake_request).await?;
 
     log::debug!("waiting for handshake");
@@ -1108,6 +1144,8 @@ impl Api {
     stream_state: &mut StreamState,
     in_flight_state_update: &mut Option<InFlightStateUpdate>,
   ) -> anyhow::Result<Option<StreamClosureInfo>> {
+    // TODO: Decide whether unknown upload response UUIDs should be recoverable and apply that
+    // behavior consistently to every tracked upload response type.
     for response in responses {
       match response.response_type {
         Some(Response_type::Handshake(_)) => {
@@ -1262,10 +1300,15 @@ impl Api {
 
   // Creates a handshake request containing the current version nonces and static metadata.
   async fn handshake_request(
-    &self,
+    &mut self,
     metadata: &HashMap<String, ProtoData>,
     previous_disconnect_reason: Option<String>,
-  ) -> (HandshakeRequest, bd_session::PendingStateUpdate) {
+  ) -> (
+    HandshakeRequest,
+    bd_session::PendingStateUpdate,
+    Option<TrackedStatsUploadRequest>,
+  ) {
+    self.connection_count_since_process_start += 1;
     let opaque_client_state = tokio::fs::read(&self.opaque_client_state_path()).await.ok();
     let session_update = self.session_strategy.handshake_state_update().await;
     let mut handshake = HandshakeRequest {
@@ -1276,13 +1319,29 @@ impl Api {
       state_update: self
         .state_update_request(Some(session_update.request()), true)
         .into(),
+      analytics: Some(handshake_request::Analytics {
+        connection_count_since_process_start: self.connection_count_since_process_start,
+        ..Default::default()
+      })
+      .into(),
       ..Default::default()
     };
 
     self.config_updater.fill_handshake(&mut handshake);
     self.runtime_loader.fill_handshake(&mut handshake);
+    let startup_stats_upload = if let Some(extension) = &self.stats_handshake_extension {
+      match extension.prepare_stats_handshake(&mut handshake).await {
+        Ok(startup_stats_upload) => startup_stats_upload,
+        Err(error) => {
+          log::debug!("failed to prepare startup stats handshake: {error}");
+          None
+        },
+      }
+    } else {
+      None
+    };
 
-    (handshake, session_update)
+    (handshake, session_update, startup_stats_upload)
   }
 
   async fn process_opaque_client_state(&self, state: Option<Vec<u8>>) {
@@ -1328,6 +1387,13 @@ impl Api {
           match first.response_type {
             Some(Response_type::Handshake(mut h)) => {
               log::debug!("received handshake");
+              if let Some(extension) = &self.stats_handshake_extension
+                && let Some(analytics_ack) = h.analytics_ack.as_ref()
+              {
+                extension
+                  .process_stats_pipeline_analytics_ack(analytics_ack)
+                  .await;
+              }
               self
                 .process_opaque_client_state(h.opaque_client_state_to_echo)
                 .await;

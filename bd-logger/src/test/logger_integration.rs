@@ -673,16 +673,17 @@ fn api_bandwidth_counters() {
   assert_matches!(setup.server.next_stat_upload(), Some(upload) => {
       let upload = StatsRequestHelper::new(upload);
 
-      // The handshake now carries a started-session state update with a real-time start
-      // timestamp. That protobuf timestamp can vary by 1 encoded byte across runs, so the
-      // uncompressed transmit counter legitimately flips between 177 and 178.
+      // The handshake carries a started-session state update with a real-time start timestamp and
+      // connection analytics. The protobuf timestamp can vary by one encoded byte across runs, so
+      // the uncompressed transmit counter legitimately flips between 182 and 183.
       let bandwidth_tx = upload.get_counter("api:bandwidth_tx", labels! {}).unwrap();
       let bandwidth_rx = upload.get_counter("api:bandwidth_rx", labels! {}).unwrap();
+      let bandwidth_tx_uncompressed = upload
+        .get_counter("api:bandwidth_tx_uncompressed", labels! {})
+        .unwrap();
       assert!(
-        matches!(
-          upload.get_counter("api:bandwidth_tx_uncompressed", labels! {}),
-          Some(177 | 178)
-        )
+        matches!(bandwidth_tx_uncompressed, 182 | 183),
+        "bandwidth_tx_uncompressed = {bandwidth_tx_uncompressed}"
       );
       assert!(bandwidth_tx > 100, "bandwidth_tx = {bandwidth_tx}");
       assert!(bandwidth_rx < 400, "bandwidth_rx = {bandwidth_rx}");

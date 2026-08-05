@@ -12,13 +12,17 @@ use bd_client_common::file_system::FileSystem;
 use bd_proto::protos::client::api::StatsUploadRequest;
 use bd_proto::protos::client::api::stats_upload_request::Snapshot;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::{Aggregated, Occurred_at};
-use bd_proto::protos::client::metric::PendingAggregationIndex;
-use bd_proto::protos::client::metric::pending_aggregation_index::PendingFile;
+use bd_proto::protos::client::metric::pending_aggregation_index::{
+  PendingFile,
+  PendingStatsPipelineAnalyticsReport,
+};
+use bd_proto::protos::client::metric::{PendingAggregationIndex, StatsPipelineAnalytics};
 use bd_runtime::runtime::stats::{MaxAggregatedFilesFlag, MaxAggregationWindowPerFileFlag};
 use bd_runtime::runtime::{ConfigLoader, Watch};
 use bd_time::{OffsetDateTimeExt, TimeProvider, TimestampExt};
+use protobuf::Message;
 use std::collections::{HashSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::result::Result::Ok;
 use std::sync::{Arc, LazyLock};
 use time::Duration;
@@ -48,6 +52,16 @@ pub struct PendingUpload {
   pub source_file_ids: Vec<String>,
 }
 
+//
+// StatsPipelineAnalyticsReport
+//
+
+#[derive(Clone, Debug)]
+pub struct StatsPipelineAnalyticsReport {
+  pub report_id: String,
+  pub analytics: StatsPipelineAnalytics,
+}
+
 impl StatsUploadRequestHandle {
   pub fn snapshot(&mut self) -> Option<Snapshot> {
     // Disk snapshots are still written as one-snapshot files. Pending upload batching may later
@@ -69,6 +83,8 @@ struct InitializedInner {
   file_system: Arc<dyn FileSystem>,
   index: VecDeque<PendingFile>,
   in_flight_uploads: HashSet<String>,
+  unreported_stats_pipeline_analytics: StatsPipelineAnalytics,
+  pending_stats_pipeline_analytics_report: Option<PendingStatsPipelineAnalyticsReport>,
 }
 enum Inner {
   NotInitialized(Option<Arc<dyn FileSystem>>),
@@ -82,6 +98,40 @@ pub struct FileManager {
 }
 
 impl InitializedInner {
+  fn analytics_has_values(analytics: &StatsPipelineAnalytics) -> bool {
+    analytics != StatsPipelineAnalytics::default_instance()
+  }
+
+  fn record_upload_ack(&mut self, success: bool) {
+    if success {
+      self
+        .unreported_stats_pipeline_analytics
+        .stats_uploads_acknowledged_successfully += 1;
+    } else {
+      self
+        .unreported_stats_pipeline_analytics
+        .stats_uploads_acknowledged_unsuccessfully += 1;
+    }
+  }
+
+  fn record_rotation_drop(&mut self) {
+    self
+      .unreported_stats_pipeline_analytics
+      .stats_files_dropped_due_to_rotation += 1;
+  }
+
+  fn record_active_snapshot_corruption_drop(&mut self) {
+    self
+      .unreported_stats_pipeline_analytics
+      .stats_files_dropped_due_to_active_snapshot_corruption += 1;
+  }
+
+  fn record_pending_snapshot_corruption_drop(&mut self) {
+    self
+      .unreported_stats_pipeline_analytics
+      .stats_files_dropped_due_to_pending_snapshot_corruption += 1;
+  }
+
   fn find_index(
     index: &VecDeque<PendingFile>,
     predicate: impl Fn(&PendingFile) -> bool,
@@ -93,6 +143,12 @@ impl InitializedInner {
   async fn write_index(&self) -> anyhow::Result<()> {
     let index = PendingAggregationIndex {
       pending_files: self.index.iter().cloned().collect(),
+      unreported_stats_pipeline_analytics: Some(self.unreported_stats_pipeline_analytics.clone())
+        .into(),
+      pending_stats_pipeline_analytics_report: self
+        .pending_stats_pipeline_analytics_report
+        .clone()
+        .into(),
       ..Default::default()
     };
 
@@ -173,6 +229,15 @@ impl InitializedInner {
 
     eligible
   }
+
+  fn file_is_stats_snapshot(file: &str) -> bool {
+    let Some(file_name) = Path::new(file).file_name().and_then(|name| name.to_str()) else {
+      return false;
+    };
+
+    file_name != PENDING_AGGREGATION_INDEX_FILE.as_os_str()
+      && !file_name.starts_with("pending_aggregation_index.")
+  }
 }
 
 impl Inner {
@@ -187,6 +252,8 @@ impl Inner {
         let file_system_ref = file_system.as_ref().ok_or(InvariantError::Invariant)?;
         let path = STATS_DIRECTORY.join(&*PENDING_AGGREGATION_INDEX_FILE);
         log::debug!("initializing pending aggregation index: {}", path.display());
+        let stats_directory_existed = file_system_ref.exists(&STATS_DIRECTORY).await?;
+        let mut recovered_from_existing_directory = false;
         let index = match file_system_ref
           .read_file(&path)
           .await
@@ -197,9 +264,35 @@ impl Inner {
             log::debug!("unable to open pending aggregation index: {e}");
             log::debug!("creating new aggregation index");
 
+            let dropped_snapshot_files = if stats_directory_existed {
+              recovered_from_existing_directory = true;
+              match file_system_ref.list_files(&STATS_DIRECTORY).await {
+                Ok(files) => files
+                  .iter()
+                  .filter(|file| InitializedInner::file_is_stats_snapshot(file))
+                  .count(),
+                Err(error) => {
+                  log::debug!("unable to list stats files during index recovery: {error}");
+                  0
+                },
+              }
+            } else {
+              0
+            };
+
             file_system_ref.remove_dir(&STATS_DIRECTORY).await?;
             file_system_ref.create_dir(&STATS_DIRECTORY).await?;
-            PendingAggregationIndex::default()
+
+            PendingAggregationIndex {
+              unreported_stats_pipeline_analytics: recovered_from_existing_directory
+                .then(|| StatsPipelineAnalytics {
+                  stats_files_dropped_due_to_index_recovery: dropped_snapshot_files as u64,
+                  stats_index_recovery_events: 1,
+                  ..Default::default()
+                })
+                .into(),
+              ..Default::default()
+            }
           },
         };
 
@@ -207,7 +300,18 @@ impl Inner {
           file_system: file_system.take().ok_or(InvariantError::Invariant)?,
           index: index.pending_files.into(),
           in_flight_uploads: HashSet::new(),
+          unreported_stats_pipeline_analytics: index
+            .unreported_stats_pipeline_analytics
+            .into_option()
+            .unwrap_or_default(),
+          pending_stats_pipeline_analytics_report: index
+            .pending_stats_pipeline_analytics_report
+            .into_option(),
         });
+
+        if recovered_from_existing_directory && let Self::Initialized(inner) = self {
+          inner.write_index().await?;
+        }
 
         Ok(match self {
           Self::Initialized(inner) => inner,
@@ -257,6 +361,7 @@ impl FileManager {
       if *self.max_aggregated_files.read() <= u32::try_from(initialized_inner.index.len())? {
         log::debug!("max files reached, popping oldest snapshot");
         initialized_inner.delete_snapshot(0).await?;
+        initialized_inner.record_rotation_drop();
       }
 
       let pending_file = PendingFile {
@@ -281,18 +386,23 @@ impl FileManager {
     let stats_upload_request = if create_new_snapshot {
       None
     } else {
-      initialized_inner
+      match initialized_inner
         .file_system
         .read_file(&path)
         .await
         .and_then(|contents| read_compressed_protobuf::<StatsUploadRequest>(&contents))
-        .inspect_err(|e| {
+      {
+        Ok(request) => Some(request),
+        Err(error) => {
           log::debug!(
-            "unable to read snapshot {}, creating default: {e}",
+            "unable to read snapshot {}, creating default: {error}",
             path.display()
           );
-        })
-        .ok()
+          initialized_inner.record_active_snapshot_corruption_drop();
+          initialized_inner.write_index().await?;
+          None
+        },
+      }
     }
     .map_or_else(
       || {
@@ -475,6 +585,7 @@ impl FileManager {
         let initialized_inner = inner.get_initialized().await?;
         for file_id in &bad_file_ids {
           initialized_inner.in_flight_uploads.remove(file_id);
+          initialized_inner.record_pending_snapshot_corruption_drop();
         }
         initialized_inner
           .delete_pending_uploads(&bad_file_ids)
@@ -509,8 +620,11 @@ impl FileManager {
       initialized_inner.in_flight_uploads.remove(uuid);
     }
 
+    initialized_inner.record_upload_ack(success);
+
     if !success {
       log::debug!("not completing pending upload batch {source_file_ids:?} due to failure");
+      initialized_inner.write_index().await?;
       return Ok(());
     }
 
@@ -525,5 +639,74 @@ impl FileManager {
     initialized_inner
       .delete_pending_uploads(source_file_ids)
       .await
+  }
+
+  // Releases a claimed upload after the transport closes before receiving a response. This is not
+  // an upload failure because the server may have processed the request without returning an ACK.
+  pub async fn abandon_pending_upload(&self, source_file_ids: &[String]) -> anyhow::Result<()> {
+    let mut inner = self.inner.lock().await;
+    let initialized_inner = inner.get_initialized().await?;
+
+    for uuid in source_file_ids {
+      initialized_inner.in_flight_uploads.remove(uuid);
+    }
+
+    Ok(())
+  }
+
+  pub async fn prepare_stats_pipeline_analytics_report(
+    &self,
+  ) -> anyhow::Result<Option<StatsPipelineAnalyticsReport>> {
+    let mut inner = self.inner.lock().await;
+    let initialized_inner = inner.get_initialized().await?;
+
+    if let Some(report) = &initialized_inner.pending_stats_pipeline_analytics_report {
+      return Ok(Some(StatsPipelineAnalyticsReport {
+        report_id: report.report_id.clone(),
+        analytics: report.analytics.clone().unwrap_or_default(),
+      }));
+    }
+
+    if !InitializedInner::analytics_has_values(
+      &initialized_inner.unreported_stats_pipeline_analytics,
+    ) {
+      return Ok(None);
+    }
+
+    let report = PendingStatsPipelineAnalyticsReport {
+      report_id: TrackedStatsUploadRequest::upload_uuid(),
+      analytics: Some(std::mem::take(
+        &mut initialized_inner.unreported_stats_pipeline_analytics,
+      ))
+      .into(),
+      ..Default::default()
+    };
+    let prepared_report = StatsPipelineAnalyticsReport {
+      report_id: report.report_id.clone(),
+      analytics: report.analytics.clone().unwrap_or_default(),
+    };
+    initialized_inner.pending_stats_pipeline_analytics_report = Some(report);
+    initialized_inner.write_index().await?;
+
+    Ok(Some(prepared_report))
+  }
+
+  pub async fn acknowledge_stats_pipeline_analytics_report(
+    &self,
+    report_id: &str,
+  ) -> anyhow::Result<()> {
+    let mut inner = self.inner.lock().await;
+    let initialized_inner = inner.get_initialized().await?;
+
+    if initialized_inner
+      .pending_stats_pipeline_analytics_report
+      .as_ref()
+      .is_some_and(|report| report.report_id == report_id)
+    {
+      initialized_inner.pending_stats_pipeline_analytics_report = None;
+      initialized_inner.write_index().await?;
+    }
+
+    Ok(())
   }
 }
