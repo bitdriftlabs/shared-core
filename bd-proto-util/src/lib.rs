@@ -19,6 +19,7 @@ use bd_proto::flatbuffers::buffer_log::bitdrift_public::fbs::logging::v_1::{
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
 use protobuf::MessageFull;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::fmt::Debug;
 
 #[cfg(feature = "buffer-log-validate")]
@@ -54,6 +55,20 @@ where
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_list()
       .entries(self.0.iter().map(|x| format!("{x}")))
+      .finish()
+  }
+}
+
+pub struct ProtoMapDebugWrapper<'a, K, V>(pub &'a HashMap<K, V>);
+
+impl<K, V> Debug for ProtoMapDebugWrapper<'_, K, V>
+where
+  K: Debug,
+  V: MessageFull,
+{
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_map()
+      .entries(self.0.iter().map(|(key, value)| (key, format!("{value}"))))
       .finish()
   }
 }
