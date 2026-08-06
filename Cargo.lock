@@ -1540,6 +1540,7 @@ dependencies = [
  "serde_json",
  "smallvec",
  "syn 2.0.119",
+ "syn 3.0.3",
  "sync_wrapper",
  "thiserror 2.0.19",
  "tokio",
@@ -1551,6 +1552,7 @@ dependencies = [
  "tracing-core",
  "typenum",
  "winnow 1.0.4",
+ "zerocopy",
 ]
 
 [[package]]
