@@ -1,0 +1,38 @@
+[package]
+edition      = "2024"
+license-file = "../LICENSE"
+name         = "bd-workflow-bench"
+publish      = false
+version      = "0.1.0"
+
+[dependencies]
+ahash.workspace                 = true
+anyhow.workspace                = true
+base64.workspace                = true
+bd-api.path                     = "../bd-api"
+bd-client-stats.path            = "../bd-client-stats"
+bd-client-stats-store.path      = "../bd-client-stats-store"
+bd-log-primitives.path          = "../bd-log-primitives"
+bd-proto.path                   = "../bd-proto"
+bd-state.path                   = "../bd-state"
+bd-workflows = { path = "../bd-workflows", features = ["cloneable-config"] }
+bd-workspace-hack.workspace     = true
+clap.workspace                  = true
+log.workspace                   = true
+ordered-float.workspace         = true
+protobuf-json-mapping.workspace = true
+serde.workspace                 = true
+serde_json.workspace            = true
+time.workspace                  = true
+tokio.workspace                 = true
+
+[dev-dependencies]
+criterion = "0.5.1"
+tempfile.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gungraun = { version = "0.19.3", features = ["client_requests"] }
+
+[[bench]]
+name = "workflow_replay"
+harness = false

@@ -10,17 +10,59 @@ To view profiling data it is recommended to use
 [KCacheGrind](https://kcachegrind.sourceforge.net/html/Home.html) which is a visual wrapper around
 the Callgrind profiles.
 
-In order to have proper source mappings when view the profiles, it is best to run KCacheGrind
-directly on Linux. So if using a VM on Mac, you will need to setup X forwarding to send the display
-info to the Mac. For an example of how to do this when using OrbStack see [this
-issue](https://github.com/orbstack/orbstack/issues/139#issuecomment-1595364746). You should be able
-to use any VM provider that supports X forwarding.
+## OrbStack Linux VM setup (macOS)
+
+Run KCachegrind in the Linux VM for proper source mappings. The following one-time setup is
+specific to an OrbStack VM on macOS: it installs the Linux profiling dependencies and configures
+the VM's native SSH endpoint for X11 forwarding. Other VM providers can use their equivalent X11
+forwarding setup.
+
+First, install and start XQuartz on the Mac. Set `DISPLAY` in the macOS terminal that will run SSH
+if it is not already set:
+
+```sh
+brew install --cask xquartz
+open -a XQuartz
+export DISPLAY=:0
+```
+
+OrbStack's `ssh orb` proxy does not support X11 forwarding. Copy a regular macOS SSH public key
+through the proxy, enter the VM, then run the setup command from the repository root:
+
+```sh
+cat "$HOME/.ssh/id_ed25519.pub" |
+  ssh orb 'umask 077; mkdir -p ~/.ssh; cat >> ~/.ssh/authorized_keys'
+ssh orb
+
+# In the OrbStack VM:
+./scripts/setup-orbstack-linux-vm.sh
+source "$HOME/.cargo/env"
+exit
+
+# Back on macOS:
+orbctl restart ubuntu
+```
+
+Open a new macOS terminal and use the VM's native SSH server on port 2222. `xclock` confirms that
+X11 forwarding works before opening a Callgrind profile:
+
+```sh
+ssh -Y -p 2222 127.0.0.1
+echo "$DISPLAY" # Expected: localhost:10.0 (or similar)
+xclock
+kcachegrind /path/to/callgrind.out
+```
 
 To run the benchmarks on linux use for example:
 
 ```
 cargo bench -p bd-workflows
 ```
+
+`bd-workflow-bench` provides the same two modes for end-to-end workflow replay. Its default
+checked-in fixture is appropriate for repeatable Criterion wall-time benchmarks and Callgrind
+instruction profiles; both wrappers also accept local config and log paths for a live corpus. See
+[`bd-workflow-bench/README.md`](bd-workflow-bench/README.md) for commands and measurement scope.
 
 The callgrind output which can be opened in KCacheGrind will show up in:
 

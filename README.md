@@ -29,6 +29,13 @@ cargo bench
 
 This should run all benchmarks (both criterion and iai) and output the results. Use the `--bench` command to run a specific benchmark or `-p` to run a specific package.
 
+### Workflow replay
+
+`bd-workflow-bench` provides an end-to-end workflow replay benchmark. Its default Criterion and
+Linux Callgrind commands use a checked-in synthetic corpus, and both also accept a local workflow
+config and log corpus. See [the workflow benchmarker guide](bd-workflow-bench/README.md) for the
+commands and measurement boundaries.
+
 ### Flamegraphs
 
 To generate flamegraphs for a criterion test, use the following command
