@@ -54,11 +54,35 @@ type FrameOffsetSequence = Vec<u32>;
 
 const MAIN_THREAD: &str = "main";
 
-pub fn build_anr<'a, 'fbb>(
+pub fn build_anr_from_app_exit<'fbb>(
   builder: &mut FlatBufferBuilder<'fbb>,
   app_info: &mut v_1::AppMetricsArgs<'fbb>,
   device_info: &mut v_1::DeviceMetricsArgs<'fbb>,
-  input: MemmapView<'a>,
+  anr_trace: Option<MemmapView<'_>>,
+  app_exit_description: Option<&str>,
+  is_file_size_optimization_enabled: bool,
+) -> WIPOffset<v_1::Report<'fbb>> {
+  if let Some(anr_trace) = anr_trace
+    && let Ok((_, report)) = build_anr_from_trace(
+      builder,
+      app_info,
+      device_info,
+      anr_trace,
+      app_exit_description,
+      is_file_size_optimization_enabled,
+    )
+  {
+    return report;
+  }
+
+  build_anr_without_trace(builder, app_info, device_info, app_exit_description)
+}
+
+fn build_anr_from_trace<'a, 'fbb>(
+  builder: &mut FlatBufferBuilder<'fbb>,
+  app_info: &mut v_1::AppMetricsArgs<'fbb>,
+  device_info: &mut v_1::DeviceMetricsArgs<'fbb>,
+  anr_trace: MemmapView<'a>,
   app_exit_description: Option<&str>,
   is_file_size_optimization_enabled: bool,
 ) -> IResult<MemmapView<'a>, WIPOffset<v_1::Report<'fbb>>, nom::error::Error<MemmapView<'a>>> {
@@ -69,7 +93,7 @@ pub fn build_anr<'a, 'fbb>(
     thread_counter,
     |text| build_threads(builder, text, is_file_size_optimization_enabled),
   )
-    .parse(input)?;
+    .parse(anr_trace)?;
 
   if let Ok(pid) = u32::try_from(pid) {
     app_info.process_id = pid;
@@ -80,6 +104,19 @@ pub fn build_anr<'a, 'fbb>(
     builder.create_vector(&[abi])
   });
   let description = app_exit_description.or(subject.as_deref());
+  Ok((
+    remainder,
+    create_anr_report(builder, app_info, device_info, description, &stacks),
+  ))
+}
+
+fn create_anr_report<'fbb>(
+  builder: &mut FlatBufferBuilder<'fbb>,
+  app_info: &v_1::AppMetricsArgs<'fbb>,
+  device_info: &v_1::DeviceMetricsArgs<'fbb>,
+  description: Option<&str>,
+  stacks: &Stacks<'fbb>,
+) -> WIPOffset<v_1::Report<'fbb>> {
   let error_args = v_1::ErrorArgs {
     name: Some(builder.create_string(anr_name(description))),
     reason: description.map(|d| builder.create_string(d)),
@@ -97,7 +134,30 @@ pub fn build_anr<'a, 'fbb>(
     binary_images: stacks.binary_images,
     ..Default::default()
   };
-  Ok((remainder, v_1::Report::create(builder, &args)))
+  v_1::Report::create(builder, &args)
+}
+
+fn build_anr_without_trace<'fbb>(
+  builder: &mut FlatBufferBuilder<'fbb>,
+  app_info: &v_1::AppMetricsArgs<'fbb>,
+  device_info: &mut v_1::DeviceMetricsArgs<'fbb>,
+  app_exit_description: Option<&str>,
+) -> WIPOffset<v_1::Report<'fbb>> {
+  device_info.platform = v_1::Platform::Android;
+  create_anr_report(
+    builder,
+    app_info,
+    device_info,
+    app_exit_description,
+    &Stacks {
+      args: v_1::ThreadDetailsArgs {
+        count: 0,
+        threads: None,
+      },
+      binary_images: None,
+      main_stack: None,
+    },
+  )
 }
 
 fn build_threads<'a, 'fbb, E: ParseError<MemmapView<'a>>>(

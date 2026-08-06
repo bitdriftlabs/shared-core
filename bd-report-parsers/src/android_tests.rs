@@ -309,7 +309,7 @@ macro_rules! assert_parsed_anr_eq {
     let mut builder = FlatBufferBuilder::new();
     let file = open_fixture($filename);
     let mmap = unsafe { memmap2::Mmap::map(&file).unwrap() };
-    let input = MemmapView::new(&mmap);
+    let anr_trace = MemmapView::new(&mmap);
     let mut app_info = AppMetricsArgs {
       app_id: Some(builder.create_string("com.example.MyApp")),
       ..Default::default()
@@ -319,25 +319,16 @@ macro_rules! assert_parsed_anr_eq {
       time: Some(&Timestamp::new(1_756_987_272, 357_156_958)),
       ..Default::default()
     };
-    match build_anr(
+    let offset = build_anr_from_app_exit(
       &mut builder,
       &mut app_info,
       &mut device_info,
-      input,
+      Some(anr_trace),
       None,
       true,
-    ) {
-      Ok((_, offset)) => {
-        let report = get_table!(Report, builder, offset);
-        insta::assert_debug_snapshot!(report);
-      },
-      Err(nom::Err::Error(e) | nom::Err::Failure(e)) => {
-        let mut contents = format!("{e:?}");
-        contents.truncate(300);
-        panic!("failed to parse: {contents:?}")
-      },
-      Err(e) => panic!("failed to parse: {e:#?}"),
-    }
+    );
+    let report = get_table!(Report, builder, offset);
+    insta::assert_debug_snapshot!(report);
   };
 }
 
@@ -430,7 +421,7 @@ fn build_anr_to_bytes(filename: &str, description: Option<&str>) -> Vec<u8> {
   let mut builder = FlatBufferBuilder::new();
   let file = open_fixture(filename);
   let mmap = unsafe { memmap2::Mmap::map(&file).unwrap() };
-  let input = MemmapView::new(&mmap);
+  let anr_trace = MemmapView::new(&mmap);
   let mut app_info = AppMetricsArgs {
     app_id: Some(builder.create_string("com.example.MyApp")),
     ..Default::default()
@@ -440,15 +431,14 @@ fn build_anr_to_bytes(filename: &str, description: Option<&str>) -> Vec<u8> {
     time: Some(&Timestamp::new(1_756_987_272, 357_156_958)),
     ..Default::default()
   };
-  let (_, offset) = build_anr(
+  let offset = build_anr_from_app_exit(
     &mut builder,
     &mut app_info,
     &mut device_info,
-    input,
+    Some(anr_trace),
     description,
     true,
-  )
-  .unwrap();
+  );
   builder.finish(offset, None);
   builder.finished_data().to_vec()
 }
@@ -486,4 +476,53 @@ fn build_anr_without_description_or_subject() {
   let error = report.errors().unwrap().get(0);
   assert_eq!(error.name(), Some("Undetermined ANR"));
   assert_eq!(error.reason(), None);
+}
+
+#[test]
+fn build_anr_without_trace_uses_app_exit_description() {
+  let mut builder = FlatBufferBuilder::new();
+  let mut app_info = AppMetricsArgs::default();
+  let mut device_info = DeviceMetricsArgs::default();
+  let description = "Input dispatching timed out";
+  let offset = build_anr_from_app_exit(
+    &mut builder,
+    &mut app_info,
+    &mut device_info,
+    None,
+    Some(description),
+    true,
+  );
+  builder.finish(offset, None);
+
+  let report = flatbuffers::root::<Report<'_>>(builder.finished_data()).unwrap();
+  let error = report.errors().unwrap().get(0);
+  assert_eq!(error.name(), Some("User Perceived ANR"));
+  assert_eq!(error.reason(), Some(description));
+  assert_eq!(report.thread_details().unwrap().count(), 0);
+}
+
+#[test]
+fn build_anr_with_unparsable_trace_uses_app_exit_description() -> anyhow::Result<()> {
+  let file = make_tempfile(b"not an ANR trace")?;
+  let mmap = unsafe { memmap2::Mmap::map(&file)? };
+  let mut builder = FlatBufferBuilder::new();
+  let mut app_info = AppMetricsArgs::default();
+  let mut device_info = DeviceMetricsArgs::default();
+  let description = "Broadcast of Intent { act=android.intent.action.MAIN }";
+  let offset = build_anr_from_app_exit(
+    &mut builder,
+    &mut app_info,
+    &mut device_info,
+    Some(MemmapView::new(&mmap)),
+    Some(description),
+    true,
+  );
+  builder.finish(offset, None);
+
+  let report = flatbuffers::root::<Report<'_>>(builder.finished_data()).unwrap();
+  let error = report.errors().unwrap().get(0);
+  assert_eq!(error.name(), Some("Broadcast Receiver ANR"));
+  assert_eq!(error.reason(), Some(description));
+  assert_eq!(report.thread_details().unwrap().count(), 0);
+  Ok(())
 }
