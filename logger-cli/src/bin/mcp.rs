@@ -90,6 +90,7 @@ struct SetFeatureFlagParameters {
 
 struct Tool {
   #[expect(
+    clippy::struct_field_names,
     dead_code,
     reason = "Stored for tool_router macro-generated registrations"
   )]

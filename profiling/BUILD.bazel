@@ -1,0 +1,14 @@
+load("@crates//:defs.bzl", "all_crate_deps")
+load("//tools/lint:linters.bzl", "rust_binary")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_binary(
+    name = "stats_collection_profiling-bin",
+    srcs = glob(["src/**/*.rs"]),
+    crate_features = ["default"],
+    crate_name = "stats_collection_profiling",
+    crate_root = "src/main.rs",
+    edition = "2024",
+    deps = all_crate_deps(normal = True),
+)

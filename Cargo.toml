@@ -161,6 +161,7 @@ protobuf-json-mapping = { git = "https://github.com/bitdriftlabs/rust-protobuf.g
 rand         = "0.10.2"
 regex        = "1.13.0"
 reqwest      = { version = "0.13.4", features = ["deflate", "json"] }
+rusqlite     = "0.32.1"
 ripsaw       = { git = "https://github.com/bitdriftlabs/ripsaw.git" }
 rstest       = "0.26.1"
 rstest_reuse = "0.7.0"

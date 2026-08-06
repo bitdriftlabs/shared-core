@@ -1,0 +1,37 @@
+load("@crates//:defs.bzl", "all_crate_deps")
+load("//tools/lint:linters.bzl", "rust_binary", "rust_library")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "logger-cli",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/bin/**/*.rs"],
+    ),
+    crate_features = ["default"],
+    crate_name = "logger_cli",
+    crate_root = "src/lib.rs",
+    edition = "2024",
+    deps = all_crate_deps(normal = True),
+)
+
+rust_binary(
+    name = "logger-cli-bin",
+    srcs = glob(["src/**/*.rs"]),
+    crate_features = ["default"],
+    crate_name = "logger_cli",
+    crate_root = "src/main.rs",
+    edition = "2024",
+    deps = all_crate_deps(normal = True) + [":logger-cli"],
+)
+
+rust_binary(
+    name = "logger-mcp",
+    srcs = glob(["src/**/*.rs"]),
+    crate_features = ["default"],
+    crate_name = "logger_mcp",
+    crate_root = "src/bin/mcp.rs",
+    edition = "2024",
+    deps = all_crate_deps(normal = True) + [":logger-cli"],
+)

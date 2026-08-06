@@ -1,0 +1,17 @@
+load("@crates//:defs.bzl", "aliases", "all_crate_deps")
+load("//tools/lint:linters.bzl", "rust_library")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "bd-rt",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/bin/**/*.rs"],
+    ),
+    crate_features = ["default"],
+    crate_name = "bd_rt",
+    crate_root = "src/lib.rs",
+    edition = "2024",
+    deps = all_crate_deps(normal = True),
+)

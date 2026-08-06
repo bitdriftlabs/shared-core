@@ -145,7 +145,7 @@ pub struct Monitor {
 
   global_state_reader: global_state::Reader,
   pub session: Arc<bd_session::Strategy>,
-  monitor: Option<file_watcher::FileWatcher>,
+  watcher: Option<file_watcher::FileWatcher>,
   crash_report_hook: Option<Arc<dyn CrashReportHook>>,
 }
 
@@ -176,7 +176,7 @@ impl Monitor {
       artifact_client,
       global_state_reader,
       session,
-      monitor: None,
+      watcher: None,
       crash_report_hook,
     };
 
@@ -222,7 +222,7 @@ impl Monitor {
               }
             }
           });
-          monitor.monitor = Some(watcher);
+          monitor.watcher = Some(watcher);
         },
       }
     }

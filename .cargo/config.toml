@@ -3,21 +3,27 @@
 ########################################
 
 [target.'cfg(target_vendor="apple")']
-rustflags = ["-Csplit-debuginfo=unpacked"]
+rustflags = [
+  "-Csplit-debuginfo=unpacked",
+]
 
 [target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+rustflags = [
+  "-C",
+  "link-arg=-fuse-ld=lld",
+]
 
 [target.aarch64-unknown-linux-gnu]
-rustflags = ["-C", "link-arg=-fuse-ld=lld"]
+rustflags = [
+  "-C",
+  "link-arg=-fuse-ld=lld",
+]
 
 #####################################
 # Warnings and Linter Configuration #
 #####################################
-# This is a hack to work around the fact that neither rustc, cargo, nor clippy
-# allows globally configuring lints. To avoid having to copy a massive block of
-# allow/warn/deny statements to the top of every file, we configure them as
-# all-profile compiler flags here.
+# Keep this identical to ../../.cargo/config.toml so standalone and monorepo
+# Cargo invocations enforce the same lint policy.
 [target.'cfg(all())']
 rustflags = [
   "-Dwarnings",
@@ -35,22 +41,23 @@ rustflags = [
   "-Dclippy::perf",
   "-Dclippy::pedantic",
   "-Dclippy::nursery",
-
   "-Aclippy::missing-errors-doc",
   "-Aclippy::missing-panics-doc",
   "-Aclippy::module-name-repetitions",
   "-Aclippy::similar-names",
-  "-Aclippy::struct-field-names",
   "-Aclippy::too-long-first-doc-paragraph",
   "-Aclippy::too-many-arguments",
   "-Aclippy::too-many-lines",
+  "-Aclippy::doc_overindented_list_items",
+  "-Aclippy::unnecessary-debug-formatting",
+  "-Aclippy::single-option-map",
   "-Aclippy::cognitive_complexity",
-
-  # Spurious as of 1.86
   "-Aclippy::future-not-send",
   "-Aclippy::missing_const_for_fn",
   "-Aclippy::significant_drop_tightening",
   "-Aclippy::significant_drop_in_scrutinee",
+  "-Aclippy::literal_string_with_formatting_args",
+  "-Aclippy::mutable-key-type",
 ]
 
 # Fetch internal repos via git
