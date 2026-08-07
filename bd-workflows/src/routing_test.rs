@@ -55,11 +55,8 @@ fn refreshes_only_the_workflows_selected_for_a_log() {
     &[0, 1],
     router.select_candidates_for_log_type(LogType::LIFECYCLE)
   );
-  router.refresh_selected_routes(|index| match index {
-    0 => WorkflowLogRoute::Types(resource),
-    1 => WorkflowLogRoute::None,
-    _ => unreachable!(),
-  });
+  let refreshed_routes = [WorkflowLogRoute::Types(resource), WorkflowLogRoute::None];
+  router.refresh_selected_routes(|index| refreshed_routes[index]);
 
   assert_eq!(
     &[] as &[usize],
