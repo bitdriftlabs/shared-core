@@ -173,7 +173,6 @@ sha2         = "0.11.0"
 sketches-rust = { git = "https://github.com/mattklein123/sketches-rust.git", branch = "patch-stack3" }
 
 snap                  = "1.1.1"
-sqlite                = "0.37.0"
 static_assertions     = "1.1.0"
 strum                 = { version = "0.28", features = ["derive"] }
 tarpc                 = { version = "0.37.0", features = ["full"] }
