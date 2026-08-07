@@ -10,13 +10,13 @@
 mod async_log_buffer_test;
 
 use crate::device_id::DeviceIdInterceptor;
+use crate::init_buffer::{InitItem, PendingInitBuffer, PendingStateOperation, ReplayReason};
 use crate::log_replay::{LogReplay, LogReplayResult};
 use crate::logger::{ReportProcessingRequest, with_thread_local_logger_guard};
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
 use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
 use crate::ordered_receiver::{OrderedMessage, OrderedReceiver, SequencedMessage};
-use crate::pre_config_buffer::{PendingStateOperation, PreConfigBuffer, PreConfigItem};
 use crate::{Block, battery, internal_report, network};
 use anyhow::anyhow;
 use bd_api::DataUpload;
@@ -48,7 +48,7 @@ use bd_proto::protos::client::api::debug_data_request::{
 };
 use bd_proto::protos::client::api::{DebugDataRequest, debug_data_request};
 use bd_proto::protos::logging::payload::LogType;
-use bd_runtime::runtime::ConfigLoader;
+use bd_runtime::runtime::{ConfigLoader, DurationWatch, init_buffer};
 use bd_session::{PreparedSessionCallback, PreparedSessionOperation};
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
@@ -67,7 +67,7 @@ use std::collections::{HashMap, VecDeque};
 use std::mem::size_of_val;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration as StdDuration;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
@@ -99,8 +99,19 @@ impl ReportProcessor for () {
   }
 }
 
+/// Test event used to help coordinate specific sequences of events in the async log buffer during
+/// testing.
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InitReplayTestEvent {
+  Configured,
+  CrashDelayApplied,
+  Replayed,
+}
+
 #[derive(Debug)]
 pub enum StateUpdateMessage {
+  CrashPending,
   AddLogField(String, DataValue),
   RemoveLogField(String),
   SetFeatureFlagExposure(String, Option<String>),
@@ -113,23 +124,27 @@ pub enum StateUpdateMessage {
     bd_completion::Sender<PreparedSessionCallback>,
   ),
   FlushState(Option<bd_completion::Sender<()>>),
+  #[cfg(test)]
+  TestBarrier(tokio::sync::oneshot::Sender<()>),
 }
 
 impl MemorySized for StateUpdateMessage {
   fn size(&self) -> usize {
     size_of_val(self)
       + match self {
+        Self::CrashPending | Self::SetMemoryPressureLevel { .. } => 0,
         Self::AddLogField(key, value) => key.size() + value.size(),
         Self::RemoveLogField(field_name) => field_name.len(),
         Self::SetFeatureFlagExposure(flag, variant) => {
           flag.len() + variant.as_ref().map_or(0, String::len)
         },
-        Self::SetMemoryPressureLevel { .. } => 0,
         Self::SetEntityId(entity_id) => entity_id.as_ref().map_or(0, String::len),
         Self::PersistPreparedSession(operation, response_tx) => {
           operation.estimated_size() + size_of_val(response_tx)
         },
         Self::FlushState(sender) => size_of_val(sender),
+        #[cfg(test)]
+        Self::TestBarrier(sender) => size_of_val(sender),
       }
   }
 }
@@ -244,6 +259,7 @@ pub struct Sender {
   log_buffer_tx: bd_bounded_buffer::Sender<SequencedLog>,
   state_buffer_tx: bd_bounded_buffer::Sender<SequencedStateUpdate>,
   sequence: Arc<AtomicU64>,
+  crash_pending: Arc<AtomicBool>,
 }
 
 impl Sender {
@@ -256,6 +272,7 @@ impl Sender {
       log_buffer_tx,
       state_buffer_tx,
       sequence: Arc::new(AtomicU64::new(0)),
+      crash_pending: Arc::new(AtomicBool::new(false)),
     }
   }
 
@@ -277,6 +294,26 @@ impl Sender {
       message: msg,
     };
     self.state_buffer_tx.try_send(sequenced)
+  }
+
+  pub fn hint_crash_report_pending(&self) -> Result<(), TrySendError> {
+    self.crash_pending.store(true, Ordering::Release);
+    self.try_send_state_update(StateUpdateMessage::CrashPending)
+  }
+
+  #[cfg(test)]
+  pub(crate) fn set_crash_pending_without_enqueuing(&self) {
+    self.crash_pending.store(true, Ordering::Release);
+  }
+
+  #[cfg(test)]
+  pub(crate) async fn wait_until_processed(&self) -> Result<(), TrySendError> {
+    let (completion_tx, completion_rx) = tokio::sync::oneshot::channel();
+    self.try_send_state_update(StateUpdateMessage::TestBarrier(completion_tx))?;
+    completion_rx
+      .await
+      .expect("async log buffer stopped before processing test barrier");
+    Ok(())
   }
 
   pub fn flush_state(&self, block: Block) -> Result<(), TrySendError> {
@@ -361,12 +398,19 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   replayer: R,
   interceptors: Vec<Arc<dyn LogInterceptor>>,
 
-  logging_state: LoggingState<PreConfigItem>,
+  logging_state: LoggingState<InitItem>,
+  pending_init_buffer: Option<PendingInitBuffer>,
+  init_replay_delay: DurationWatch<init_buffer::ReplayDelay>,
+  crash_pending_replay_delay: DurationWatch<init_buffer::CrashPendingReplayDelay>,
+  crash_pending: Arc<AtomicBool>,
   global_state_tracker: global_state::Tracker,
   global_state_reader: global_state::Reader,
   time_provider: Arc<dyn TimeProvider>,
   lifecycle_state: InitLifecycleState,
   sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
+
+  #[cfg(test)]
+  init_replay_test_events: Option<mpsc::UnboundedSender<InitReplayTestEvent>>,
 
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
@@ -375,7 +419,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   pub(crate) fn new(
-    uninitialized_logging_context: UninitializedLoggingContext<PreConfigItem>,
+    uninitialized_logging_context: UninitializedLoggingContext<InitItem>,
     replayer: R,
     session_strategy: Arc<bd_session::Strategy>,
     metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
@@ -395,11 +439,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
     data_upload_tx: mpsc::Sender<DataUpload>,
   ) -> (Self, Sender) {
-    let (log_tx, log_rx) = channel(
-      uninitialized_logging_context
-        .pre_config_log_buffer
-        .max_size(),
-    );
+    let (log_tx, log_rx) = channel(uninitialized_logging_context.init_buffer.max_size());
 
     // Larger channel for state updates as they are less frequent and we want
     // to avoid dropping any state updates if possible.
@@ -432,6 +472,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     let network_quality_interceptor =
       Arc::new(NetworkQualityInterceptor::new(network_quality_resolver));
     let device_id_interceptor = Arc::new(DeviceIdInterceptor::new(device_id));
+
+    let crash_pending = Arc::new(AtomicBool::new(false));
 
     (
       Self {
@@ -468,6 +510,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         // The size of the pre-config buffer matches the size of the enclosing
         // async log buffer.
         logging_state: LoggingState::Uninitialized(uninitialized_logging_context),
+        pending_init_buffer: None,
+        init_replay_delay: runtime_loader.register_duration_watch(),
+        crash_pending_replay_delay: runtime_loader.register_duration_watch(),
+        crash_pending: crash_pending.clone(),
         global_state_tracker: global_state::Tracker::new(
           store.clone(),
           runtime_loader.register_duration_watch(),
@@ -477,6 +523,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         lifecycle_state,
         sdk_status_tracker,
 
+        #[cfg(test)]
+        init_replay_test_events: None,
+
         pending_workflow_debug_state: HashMap::new(),
         send_workflow_debug_state_delay: None,
         last_session_id: None,
@@ -485,8 +534,25 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         log_buffer_tx: log_tx,
         state_buffer_tx: state_tx,
         sequence: Arc::new(AtomicU64::new(0)),
+        crash_pending,
       },
     )
+  }
+
+  #[cfg(test)]
+  pub(crate) fn with_init_replay_test_events(
+    mut self,
+    events: mpsc::UnboundedSender<InitReplayTestEvent>,
+  ) -> Self {
+    self.init_replay_test_events = Some(events);
+    self
+  }
+
+  #[cfg(test)]
+  fn send_init_replay_test_event(&self, event: InitReplayTestEvent) {
+    if let Some(events) = &self.init_replay_test_events {
+      let _ = events.send(event);
+    }
   }
 
   pub fn enqueue_log(
@@ -637,6 +703,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     block: bool,
     state_store: &bd_state::Store,
   ) -> anyhow::Result<LogReplayResult> {
+    let is_previous_run_log = matches!(
+      &log.attributes_overrides,
+      Some(LogAttributesOverrides::PreviousRunSessionID(_))
+    );
+
     // Prevent re-entrancy when we are evaluating the log metadata.
     let result = with_thread_local_logger_guard(|| {
       if let Some(LogAttributesOverrides::PreviousRunSessionID(_)) = &log.attributes_overrides {
@@ -724,7 +795,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           capture_session: log.capture_session,
         };
 
-        self.write_log(processed_log, block, state_store).await
+        self
+          .write_log(processed_log, block, state_store, is_previous_run_log)
+          .await
       },
       Err(e) => {
         // TODO(Augustyniak): Consider logging as error so that SDK customers can see these
@@ -740,17 +813,46 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     log: Log,
     block: bool,
     state_store: &bd_state::Store,
+    is_previous_run_log: bool,
   ) -> anyhow::Result<LogReplayResult> {
+    if self.pending_init_buffer.is_some() {
+      let must_replay_early = self
+        .pending_init_buffer
+        .as_ref()
+        .is_some_and(|pending_init_buffer| !pending_init_buffer.buffer().can_push_size(log.size()));
+      if must_replay_early {
+        log::info!("replaying init buffer early to avoid dropping a log due to buffer pressure");
+        self
+          .replay_init_buffer(state_store, ReplayReason::CapacityLog, true)
+          .await;
+      } else if let Some(pending_init_buffer) = &mut self.pending_init_buffer {
+        let item = if is_previous_run_log {
+          InitItem::PreviousRunLog(log)
+        } else {
+          InitItem::Log(log)
+        };
+        let result = pending_init_buffer.push(item);
+        if let Err(e) = result {
+          anyhow::bail!("failed to push log to an init buffer: {e}");
+        }
+
+        return Ok(LogReplayResult::default());
+      }
+    }
+
     let log_replay_result = match &mut self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
-        let result = uninitialized_logging_context
-          .pre_config_log_buffer
-          .push(PreConfigItem::Log(log));
+        let item = if is_previous_run_log {
+          InitItem::PreviousRunLog(log)
+        } else {
+          InitItem::Log(log)
+        };
+        let result = uninitialized_logging_context.init_buffer.push(item);
 
         uninitialized_logging_context
           .stats
-          .pre_config_log_buffer
-          .record(&result);
+          .init_buffer
+          .record_push(&result);
         if let Err(e) = result {
           anyhow::bail!("failed to push log to a pre-config buffer: {e}");
         }
@@ -792,19 +894,19 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
-  async fn update(
-    mut self,
-    config: ConfigUpdate,
-  ) -> (Self, Option<PreConfigBuffer<PreConfigItem>>) {
-    let (initialized_logging_context, maybe_pre_config_log_buffer) = match self.logging_state {
+  async fn update(mut self, config: ConfigUpdate) -> (Self, Option<PendingInitBuffer>) {
+    let (initialized_logging_context, pending_init_buffer) = match self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
-        let (initialized_logging_context, pre_config_log_buffer) = uninitialized_logging_context
+        let (initialized_logging_context, buffer, stats) = uninitialized_logging_context
           .updated(
             config,
             self.session_replay_capture_screenshot_handler.clone(),
           )
           .await;
-        (initialized_logging_context, Some(pre_config_log_buffer))
+        (
+          initialized_logging_context,
+          Some(PendingInitBuffer::new(buffer, stats)),
+        )
       },
       LoggingState::Initialized(mut initialized_logging_context) => {
         initialized_logging_context.update(config);
@@ -814,23 +916,46 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     self.logging_state = LoggingState::Initialized(initialized_logging_context);
 
-    (self, maybe_pre_config_log_buffer)
+    (self, pending_init_buffer)
   }
 
-  async fn maybe_replay_pre_config_buffer(
+  async fn maybe_replay_init_buffer(
     &mut self,
-    pre_config_buffer: PreConfigBuffer<PreConfigItem>,
     state_store: &bd_state::Store,
+    reason: ReplayReason,
   ) {
     if !matches!(self.logging_state, LoggingState::Initialized(_)) {
       return;
     }
 
+    let Some(pending_init_buffer) = self.pending_init_buffer.take() else {
+      return;
+    };
+
     let now = self.time_provider.now();
 
-    for item in pre_config_buffer.pop_all() {
+    for item in pending_init_buffer.drain(reason) {
       match item {
-        PreConfigItem::Log(log) => {
+        InitItem::PreviousRunLog(log) => {
+          let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state
+          else {
+            return;
+          };
+          if let Err(e) = self
+            .replayer
+            .replay_log(
+              log,
+              false,
+              &mut initialized_logging_context.processing_pipeline,
+              state_store,
+              now,
+            )
+            .await
+          {
+            log::debug!("failed to replay prior-run init log: {e}");
+          }
+        },
+        InitItem::Log(log) => {
           self
             .update_system_session_id(state_store, &log.session_id)
             .await;
@@ -852,7 +977,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             log::debug!("failed to replay pre-config log: {e}");
           }
         },
-        PreConfigItem::StateOperation(operation) => match operation {
+        InitItem::StateOperation(operation) => match operation {
           PendingStateOperation::SetFeatureFlagExposure {
             name,
             variant,
@@ -879,6 +1004,62 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         },
       }
     }
+  }
+
+  async fn replay_init_buffer(
+    &mut self,
+    state_store: &bd_state::Store,
+    reason: ReplayReason,
+    force_replay: bool,
+  ) {
+    if self.pending_init_buffer.is_none() {
+      return;
+    }
+
+    // A platform thread can set the atomic hint while the ordered control message is still
+    // waiting behind the replay timer. Honor it before draining so that race cannot bypass the
+    // configured crash-report extension.
+    if !force_replay
+      && self.crash_pending.load(Ordering::Acquire)
+      && self.apply_crash_pending_hint()
+    {
+      return;
+    }
+
+    self.maybe_replay_init_buffer(state_store, reason).await;
+    #[cfg(test)]
+    self.send_init_replay_test_event(InitReplayTestEvent::Replayed);
+    self
+      .lifecycle_state
+      .set(InitLifecycle::LogProcessingStarted);
+    self.sdk_status_tracker.record_running();
+  }
+
+  fn schedule_init_replay(&mut self) -> bool {
+    self
+      .pending_init_buffer
+      .as_mut()
+      .is_some_and(|pending_init_buffer| {
+        pending_init_buffer.schedule(
+          *self.init_replay_delay.read(),
+          self.crash_pending.load(Ordering::Acquire),
+          *self.crash_pending_replay_delay.read(),
+        )
+      })
+  }
+
+  fn apply_crash_pending_hint(&mut self) -> bool {
+    let applied = self
+      .pending_init_buffer
+      .as_mut()
+      .is_some_and(|pending_init_buffer| {
+        pending_init_buffer.apply_crash_pending_hint(*self.crash_pending_replay_delay.read())
+      });
+    #[cfg(test)]
+    if applied {
+      self.send_init_replay_test_event(InitReplayTestEvent::CrashDelayApplied);
+    }
+    applied
   }
 
   pub async fn run(
@@ -927,21 +1108,25 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
       tokio::select! {
         Some(config) = self.config_update_rx.recv() => {
-          let (updated_self, maybe_pre_config_buffer)
+          let (updated_self, pending_init_buffer)
             = self.update(config).await;
 
           self = updated_self;
-          if let Some(pre_config_buffer) = maybe_pre_config_buffer {
-            self.lifecycle_state.set(InitLifecycle::LogProcessingStarted);
-            self.sdk_status_tracker.record_running();
-            self
-              .maybe_replay_pre_config_buffer(pre_config_buffer, &state_store)
-              .await;
+          if let Some(pending_init_buffer) = pending_init_buffer {
+            self.pending_init_buffer = Some(pending_init_buffer);
+            let replay_immediately = self.schedule_init_replay();
+            #[cfg(test)]
+            self.send_init_replay_test_event(InitReplayTestEvent::Configured);
+            if replay_immediately {
+              self
+                .replay_init_buffer(&state_store, ReplayReason::Scheduled, false)
+                .await;
+            }
           }
         },
-        Some(ReportProcessingRequest {
-           session
-        }) = self.report_processor_rx.recv() => {
+          Some(ReportProcessingRequest {
+            session,
+          }) = self.report_processor_rx.recv() => {
           // TODO(snowp): Once we move over to using the file watcher we can more accurately pick
           // current vs previous for all reports, but as we need to handle restarts etc we may
           // also want to embed the full information into the report. This should ensure that we
@@ -1004,6 +1189,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             },
             OrderedMessage::State(async_log_buffer_message) => {
               match async_log_buffer_message {
+                StateUpdateMessage::CrashPending => {
+                  self.apply_crash_pending_hint();
+                },
                 StateUpdateMessage::AddLogField(key, value) => {
                   if let Err(e) = self
                     .metadata_collector
@@ -1026,7 +1214,41 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                       continue;
                     },
                   };
-                  if let LoggingState::Initialized(initialized_logging_context) =
+                  let state_operation_size =
+                    flag.len() + variant.as_ref().map_or(0, String::len) + session_id.len();
+                  let must_replay_early = self.pending_init_buffer.as_ref().is_some_and(
+                    |pending_init_buffer| {
+                      !pending_init_buffer.buffer().can_push_size(state_operation_size)
+                    },
+                  );
+                  if must_replay_early {
+                    log::info!(
+                      "replaying init buffer early to avoid dropping a state operation due to \
+                       buffer pressure"
+                    );
+                    self
+                      .replay_init_buffer(
+                        &state_store,
+                        ReplayReason::CapacityStateOperation,
+                        true,
+                      )
+                      .await;
+                  }
+
+                  if let Some(pending_init_buffer) = &mut self.pending_init_buffer {
+                    let result = pending_init_buffer.push(
+                      InitItem::StateOperation(
+                        PendingStateOperation::SetFeatureFlagExposure {
+                          name: flag,
+                          variant,
+                          session_id,
+                        },
+                      ),
+                    );
+                    if let Err(e) = result {
+                      log::debug!("failed to enqueue state operation to init buffer: {e}");
+                    }
+                  } else if let LoggingState::Initialized(initialized_logging_context) =
                     &mut self.logging_state
                   {
                     // Initialized: update state store and replay through workflows
@@ -1048,8 +1270,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                     if let LoggingState::Uninitialized(uninitialized_logging_context) =
                       &mut self.logging_state
                     {
-                      let result = uninitialized_logging_context.pre_config_log_buffer.push(
-                        PreConfigItem::StateOperation(
+                      let result = uninitialized_logging_context.init_buffer.push(
+                        InitItem::StateOperation(
                           PendingStateOperation::SetFeatureFlagExposure {
                             name: flag,
                             variant,
@@ -1059,8 +1281,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                       );
                       uninitialized_logging_context
                         .stats
-                        .pre_config_log_buffer
-                        .record(&result);
+                        .init_buffer
+                        .record_push(&result);
                       if let Err(e) = result {
                         log::debug!("failed to enqueue state operation to pre-config buffer: {e}");
                       }
@@ -1153,6 +1375,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                     completion_tx.send(());
                   }
                 },
+                #[cfg(test)]
+                StateUpdateMessage::TestBarrier(completion_tx) => {
+                  let _ = completion_tx.send(());
+                },
               }
             },
           }
@@ -1165,6 +1391,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           => {},
         () = maybe_await(&mut self.send_workflow_debug_state_delay) => {
           self.send_debug_data().await;
+        },
+        () = maybe_await_map(self.pending_init_buffer.as_mut(), |pending_init_buffer| async {
+          maybe_await(pending_init_buffer.replay_sleep()).await;
+        }) => {
+          self
+            .replay_init_buffer(&state_store, ReplayReason::Scheduled, false)
+            .await;
         },
         () = self.resource_utilization_reporter.run() => {},
         () = self.session_replay_recorder.run() => {},

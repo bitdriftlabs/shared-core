@@ -458,13 +458,23 @@ impl Setup {
   }
 
   pub fn upload_individual_logs(&mut self) {
+    self.upload_individual_logs_with_runtime_values(vec![]);
+  }
+
+  pub fn upload_individual_logs_with_runtime_values(
+    &mut self,
+    runtime_values: Vec<(&'static str, ValueKind)>,
+  ) {
     self
       .current_api_stream()
       .blocking_stream_action(StreamAction::SendRuntime(make_update(
         vec![(
           bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
           bd_test_helpers::runtime::ValueKind::Int(1),
-        )],
+        )]
+        .into_iter()
+        .chain(runtime_values)
+        .collect(),
         "base".to_string(),
       )));
 
