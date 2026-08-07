@@ -1,9 +1,9 @@
-load("@crates//:defs.bzl", "aliases", "all_crate_deps")
-load("//tools/lint:linters.bzl", "rust_library")
+load("@crates//:defs.bzl", "aliases")
+load("//tools/rust:feature_variants.bzl", "rust_library_with_feature_variants")
 
 package(default_visibility = ["//visibility:public"])
 
-rust_library(
+rust_library_with_feature_variants(
     name = "bd-client-stats-store",
     srcs = glob(
         ["src/**/*.rs"],
@@ -13,5 +13,11 @@ rust_library(
     crate_name = "bd_client_stats_store",
     crate_root = "src/lib.rs",
     edition = "2024",
-    deps = all_crate_deps(normal = True),
+    feature_variants = {
+        "fuzz": {
+            "dependency_overrides": {
+                "//shared-core/bd-stats-common": "//shared-core/bd-stats-common:bd-stats-common-fuzz",
+            },
+        },
+    },
 )
