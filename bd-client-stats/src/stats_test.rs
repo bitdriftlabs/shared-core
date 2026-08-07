@@ -53,6 +53,7 @@ use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap};
 use std::io::ErrorKind;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use tempfile::TempDir;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::{Duration, OffsetDateTime};
@@ -962,6 +963,8 @@ async fn earliest_aggregation_start_end_maintained() {
       assert_eq!(upload.aggregation_window_start(), t0);
       assert_eq!(upload.aggregation_window_end(), t1);
       assert_eq!(upload.number_of_metrics(), 1);
+      assert_eq!(upload.request.snapshot[0].retry_count, 0);
+      assert_eq!(upload.request.snapshot[0].client_stats_sequence, 1);
     })
     .await;
 
@@ -977,6 +980,8 @@ async fn earliest_aggregation_start_end_maintained() {
       assert_eq!(upload.aggregation_window_start(), t0);
       assert_eq!(upload.aggregation_window_end(), t1);
       assert_eq!(upload.number_of_metrics(), 1);
+      assert_eq!(upload.request.snapshot[0].retry_count, 1);
+      assert_eq!(upload.request.snapshot[0].client_stats_sequence, 1);
     })
     .await;
 
@@ -992,6 +997,8 @@ async fn earliest_aggregation_start_end_maintained() {
       assert_eq!(upload.aggregation_window_end(), t1);
       assert_eq!(upload.number_of_metrics(), 1);
       assert_eq!(upload.get_counter("test:test", labels! {}), Some(1));
+      assert_eq!(upload.request.snapshot[0].retry_count, 2);
+      assert_eq!(upload.request.snapshot[0].client_stats_sequence, 1);
     })
     .await;
 
@@ -1005,10 +1012,268 @@ async fn earliest_aggregation_start_end_maintained() {
       assert_eq!(upload.aggregation_window_end(), t4);
       assert_eq!(upload.number_of_metrics(), 2);
       assert_eq!(upload.get_counter("test:test", labels! {}), Some(2));
+      assert_eq!(upload.request.snapshot[0].retry_count, 0);
+      assert_eq!(upload.request.snapshot[0].client_stats_sequence, 2);
     })
     .await;
 
   setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn abandoned_upload_increments_retry_count() {
+  let mut setup = Setup::new().await;
+  setup.stats.record_dynamic_counter(labels! {}, "test", 1);
+
+  setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  let upload = setup.next_stat_upload().await;
+  assert_eq!(upload.payload.snapshot[0].retry_count, 0);
+  assert_eq!(upload.payload.snapshot[0].client_stats_sequence, 1);
+
+  drop(upload);
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  let retry = setup.next_stat_upload().await;
+  assert_eq!(retry.payload.snapshot[0].retry_count, 1);
+  assert_eq!(retry.payload.snapshot[0].client_stats_sequence, 1);
+  retry
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: retry.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn batched_retry_counts_and_sequences_persist_across_restart() {
+  let directory = TempDir::new().unwrap();
+  let fs = RealFileSystem::new(directory.path().to_path_buf());
+  write_test_index_entries(
+    &fs,
+    vec![
+      ("first", OffsetDateTime::UNIX_EPOCH, true),
+      ("second", OffsetDateTime::UNIX_EPOCH, true),
+    ],
+  )
+  .await;
+  write_named_test_upload_request(
+    &fs,
+    "first",
+    StatsUploadRequest {
+      snapshot: vec![counter_snapshot("first", 1)],
+      ..Default::default()
+    },
+  )
+  .await;
+  write_named_test_upload_request(
+    &fs,
+    "second",
+    StatsUploadRequest {
+      snapshot: vec![counter_snapshot("second", 1)],
+      ..Default::default()
+    },
+  )
+  .await;
+
+  let mut index = read_test_index(&fs).await;
+  index.pending_files[0].retry_count = 1;
+  index.pending_files[1].retry_count = u32::MAX;
+  index.pending_files[0].client_stats_sequence = 7;
+  index.pending_files[1].client_stats_sequence = 8;
+  index.next_client_stats_sequence = 9;
+  fs.write_file(
+    &STATS_DIRECTORY.join(&*PENDING_AGGREGATION_INDEX_FILE),
+    &write_compressed_protobuf(&index).unwrap(),
+  )
+  .await
+  .unwrap();
+
+  let runtime_loader = ConfigLoader::new(directory.path());
+  let time_provider = Arc::new(TestTimeProvider::new(
+    OffsetDateTime::UNIX_EPOCH + 5.minutes(),
+  ));
+  let file_manager = FileManager::new(
+    Box::new(RealFileSystem::new(directory.path().to_path_buf())),
+    time_provider.clone(),
+    &runtime_loader,
+  );
+
+  let pending_upload = file_manager
+    .get_or_create_pending_upload(true)
+    .await
+    .unwrap()
+    .unwrap();
+  assert_eq!(pending_upload.request.snapshot[0].retry_count, 1);
+  assert_eq!(pending_upload.request.snapshot[1].retry_count, u32::MAX);
+  assert_eq!(pending_upload.request.snapshot[0].client_stats_sequence, 7);
+  assert_eq!(pending_upload.request.snapshot[1].client_stats_sequence, 8);
+  file_manager
+    .release_pending_upload(&pending_upload.source_file_ids)
+    .await
+    .unwrap();
+  let pending_upload = file_manager
+    .get_or_create_pending_upload(true)
+    .await
+    .unwrap()
+    .unwrap();
+  assert_eq!(pending_upload.request.snapshot[0].retry_count, 1);
+  assert_eq!(pending_upload.request.snapshot[1].retry_count, u32::MAX);
+  file_manager
+    .record_pending_upload_attempt(&pending_upload.source_file_ids)
+    .await
+    .unwrap();
+  file_manager
+    .complete_pending_upload(&pending_upload.source_file_ids, false)
+    .await
+    .unwrap();
+  drop(file_manager);
+
+  let restarted_file_manager = FileManager::new(
+    Box::new(RealFileSystem::new(directory.path().to_path_buf())),
+    time_provider,
+    &runtime_loader,
+  );
+  let retried_upload = restarted_file_manager
+    .get_or_create_pending_upload(true)
+    .await
+    .unwrap()
+    .unwrap();
+  assert_eq!(retried_upload.request.snapshot[0].retry_count, 2);
+  assert_eq!(retried_upload.request.snapshot[1].retry_count, u32::MAX);
+  assert_eq!(retried_upload.request.snapshot[0].client_stats_sequence, 7);
+  assert_eq!(retried_upload.request.snapshot[1].client_stats_sequence, 8);
+}
+
+#[tokio::test]
+async fn index_write_failure_releases_pending_upload() {
+  let fs = Arc::new(TestFileSystem::new());
+  write_test_index(fs.as_ref(), true).await;
+  write_test_upload_request(
+    fs.as_ref(),
+    StatsUploadRequest {
+      snapshot: vec![counter_snapshot("test", 1)],
+      ..Default::default()
+    },
+  )
+  .await;
+
+  let runtime_loader = ConfigLoader::new(std::path::Path::new("."));
+  let file_manager = FileManager::new(
+    Box::new(fs.clone()),
+    Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH)),
+    &runtime_loader,
+  );
+  let pending_upload = file_manager
+    .get_or_create_pending_upload(false)
+    .await
+    .unwrap()
+    .unwrap();
+
+  fs.disk_full.store(true, Ordering::SeqCst);
+  assert!(
+    file_manager
+      .record_pending_upload_attempt(&pending_upload.source_file_ids)
+      .await
+      .is_err()
+  );
+  fs.disk_full.store(false, Ordering::SeqCst);
+
+  let retry = file_manager
+    .get_or_create_pending_upload(false)
+    .await
+    .unwrap()
+    .unwrap();
+  assert_eq!(retry.request.snapshot[0].retry_count, 1);
+}
+
+#[tokio::test]
+async fn client_stats_sequence_starts_at_one_and_persists_across_restart() {
+  let directory = TempDir::new().unwrap();
+  let fs = RealFileSystem::new(directory.path().to_path_buf());
+  write_test_index_entries(&fs, Vec::new()).await;
+
+  let runtime_loader = ConfigLoader::new(directory.path());
+  let time_provider = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let file_manager = FileManager::new(
+    Box::new(RealFileSystem::new(directory.path().to_path_buf())),
+    time_provider.clone(),
+    &runtime_loader,
+  );
+
+  let first_snapshot = file_manager.get_or_create_snapshot().await.unwrap();
+  let index = read_test_index(&fs).await;
+  assert_eq!(index.pending_files[0].client_stats_sequence, 1);
+  assert_eq!(index.next_client_stats_sequence, 2);
+  file_manager
+    .write_snapshot(first_snapshot, counter_snapshot("first", 1))
+    .await
+    .unwrap();
+  let first_upload = file_manager
+    .get_or_create_pending_upload(false)
+    .await
+    .unwrap()
+    .unwrap();
+  assert_eq!(first_upload.request.snapshot[0].client_stats_sequence, 1);
+  file_manager
+    .complete_pending_upload(&first_upload.source_file_ids, true)
+    .await
+    .unwrap();
+  drop(file_manager);
+
+  let restarted_file_manager = FileManager::new(
+    Box::new(RealFileSystem::new(directory.path().to_path_buf())),
+    time_provider,
+    &runtime_loader,
+  );
+  let second_snapshot = restarted_file_manager
+    .get_or_create_snapshot()
+    .await
+    .unwrap();
+  let index = read_test_index(&fs).await;
+  assert_eq!(index.pending_files[0].client_stats_sequence, 2);
+  assert_eq!(index.next_client_stats_sequence, 3);
+  restarted_file_manager
+    .write_snapshot(second_snapshot, counter_snapshot("second", 1))
+    .await
+    .unwrap();
+  let second_upload = restarted_file_manager
+    .get_or_create_pending_upload(false)
+    .await
+    .unwrap()
+    .unwrap();
+  assert_eq!(second_upload.request.snapshot[0].client_stats_sequence, 2);
+}
+
+#[tokio::test]
+async fn client_stats_sequence_resets_after_index_recovery() {
+  let directory = TempDir::new().unwrap();
+  let fs = RealFileSystem::new(directory.path().to_path_buf());
+  fs.create_dir(&STATS_DIRECTORY).await.unwrap();
+  fs.write_file(
+    &STATS_DIRECTORY.join(&*PENDING_AGGREGATION_INDEX_FILE),
+    b"not a proto",
+  )
+  .await
+  .unwrap();
+
+  let runtime_loader = ConfigLoader::new(directory.path());
+  let file_manager = FileManager::new(
+    Box::new(RealFileSystem::new(directory.path().to_path_buf())),
+    Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH)),
+    &runtime_loader,
+  );
+
+  let _ = file_manager.get_or_create_snapshot().await.unwrap();
+  let index = read_test_index(&fs).await;
+  assert_eq!(index.pending_files[0].client_stats_sequence, 1);
+  assert_eq!(index.next_client_stats_sequence, 2);
 }
 
 #[tokio::test(start_paused = true)]

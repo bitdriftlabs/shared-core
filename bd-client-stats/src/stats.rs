@@ -133,7 +133,7 @@ impl HandshakeStats {
       // Flusher is the sole owner of completion processing. If it has stopped, no task can
       // observe the receiver closing when the stream StateTracker drops, so release this claim
       // immediately instead of leaving the source files in flight.
-      self.file_manager.abandon_pending_upload(&error.0.1).await?;
+      self.file_manager.release_pending_upload(&error.0.1).await?;
       anyhow::bail!("stats flusher shut down before API upload completion was registered");
     }
 
@@ -171,8 +171,15 @@ impl StatsHandshakeExtension for HandshakeStats {
     observe_upload_attempt(&request, UploadReason::UPLOAD_REASON_HANDSHAKE);
     let (startup_stats_upload, response_rx) = TrackedStatsUploadRequest::new(upload_uuid, request);
     self
-      .register_api_upload_completion(source_file_ids, response_rx)
+      .register_api_upload_completion(source_file_ids.clone(), response_rx)
       .await?;
+    if let Err(error) = self
+      .file_manager
+      .record_pending_upload_attempt(&source_file_ids)
+      .await
+    {
+      log::debug!("failed to persist handshake stats upload attempt: {error}");
+    }
 
     Ok(Some(startup_stats_upload))
   }
@@ -746,7 +753,7 @@ impl Flusher {
       let source_file_ids = context.metadata().source_file_ids.clone();
       if let Err(error) = self
         .file_manager
-        .abandon_pending_upload(&source_file_ids)
+        .release_pending_upload(&source_file_ids)
         .await
       {
         log::debug!("failed to abandon stats upload without an ACK: {error}");
@@ -762,6 +769,14 @@ impl Flusher {
         },
         UploadContext::Startup(..) => {},
       }
+      #[cfg(test)]
+      self
+        .test_hooks
+        .sender
+        .upload_complete_tx
+        .send(())
+        .await
+        .unwrap();
       return;
     };
 
@@ -1104,7 +1119,19 @@ impl Flusher {
     // If this errors out the other end of the channel has closed, indicating that we are shutting
     // down.
     if self.data_flush_tx.send(tracked_upload).await.is_err() {
+      self
+        .file_manager
+        .release_pending_upload(&source_file_ids)
+        .await?;
       return Ok(None);
+    }
+
+    if let Err(error) = self
+      .file_manager
+      .record_pending_upload_attempt(&source_file_ids)
+      .await
+    {
+      log::debug!("failed to persist stats upload attempt: {error}");
     }
 
     Ok(Some((

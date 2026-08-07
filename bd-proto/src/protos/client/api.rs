@@ -7038,6 +7038,10 @@ pub mod stats_upload_request {
         pub metric_id_overflows: ::std::collections::HashMap<::std::string::String, u64>,
         // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.StatsUploadRequest.Snapshot.workflow_debug_data)
         pub workflow_debug_data: ::std::collections::HashMap<::std::string::String, super::debug_data_request::WorkflowDebugData>,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.StatsUploadRequest.Snapshot.retry_count)
+        pub retry_count: u32,
+        // @@protoc_insertion_point(field:bitdrift_public.protobuf.client.v1.StatsUploadRequest.Snapshot.client_stats_sequence)
+        pub client_stats_sequence: u64,
         // message oneof groups
         pub snapshot_type: ::std::option::Option<snapshot::Snapshot_type>,
         pub occurred_at: ::std::option::Option<snapshot::Occurred_at>,
@@ -7156,7 +7160,7 @@ pub mod stats_upload_request {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(4);
+            let mut fields = ::std::vec::Vec::with_capacity(6);
             let mut oneofs = ::std::vec::Vec::with_capacity(2);
             fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::super::metric::MetricsList>(
                 "metrics",
@@ -7181,6 +7185,16 @@ pub mod stats_upload_request {
                 "workflow_debug_data",
                 |m: &Snapshot| { &m.workflow_debug_data },
                 |m: &mut Snapshot| { &mut m.workflow_debug_data },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "retry_count",
+                |m: &Snapshot| { &m.retry_count },
+                |m: &mut Snapshot| { &mut m.retry_count },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "client_stats_sequence",
+                |m: &Snapshot| { &m.client_stats_sequence },
+                |m: &mut Snapshot| { &mut m.client_stats_sequence },
             ));
             oneofs.push(snapshot::Snapshot_type::generated_oneof_descriptor_data());
             oneofs.push(snapshot::Occurred_at::generated_oneof_descriptor_data());
@@ -7238,6 +7252,12 @@ pub mod stats_upload_request {
                         is.pop_limit(old_limit);
                         self.workflow_debug_data.insert(key, value);
                     },
+                    40 => {
+                        self.retry_count = is.read_uint32()?;
+                    },
+                    48 => {
+                        self.client_stats_sequence = is.read_uint64()?;
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -7263,6 +7283,12 @@ pub mod stats_upload_request {
                 entry_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(entry_size) + entry_size
             };
+            if self.retry_count != 0 {
+                my_size += ::protobuf::rt::uint32_size(5, self.retry_count);
+            }
+            if self.client_stats_sequence != 0 {
+                my_size += ::protobuf::rt::uint64_size(6, self.client_stats_sequence);
+            }
             if let ::std::option::Option::Some(ref v) = self.snapshot_type {
                 match v {
                     &snapshot::Snapshot_type::Metrics(ref v) => {
@@ -7304,6 +7330,12 @@ pub mod stats_upload_request {
                 os.write_string(1, &k)?;
                 ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
             };
+            if self.retry_count != 0 {
+                os.write_uint32(5, self.retry_count)?;
+            }
+            if self.client_stats_sequence != 0 {
+                os.write_uint64(6, self.client_stats_sequence)?;
+            }
             if let ::std::option::Option::Some(ref v) = self.snapshot_type {
                 match v {
                     &snapshot::Snapshot_type::Metrics(ref v) => {
@@ -7339,6 +7371,8 @@ pub mod stats_upload_request {
             self.occurred_at = ::std::option::Option::None;
             self.metric_id_overflows.clear();
             self.workflow_debug_data.clear();
+            self.retry_count = 0;
+            self.client_stats_sequence = 0;
             self.special_fields.clear();
         }
 
@@ -11495,22 +11529,24 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01\x12\x14\n\x05error\x18\x02\x20\x01(\tR\x05error\x12!\n\x0clogs_drop\
     ped\x18\x03\x20\x01(\rR\x0blogsDropped\x12R\n\x0crate_limited\x18\x04\
     \x20\x01(\x0b2/.bitdrift_public.protobuf.client.v1.RateLimitedR\x0brateL\
-    imited\"\xbc\n\n\x12StatsUploadRequest\x12(\n\x0bupload_uuid\x18\x01\x20\
-    \x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12e\n\x08snapshot\x18\
-    \x02\x20\x03(\x0b2?.bitdrift_public.protobuf.client.v1.StatsUploadReques\
-    t.SnapshotR\x08snapshotB\x08\xfaB\x05\x92\x01\x02\x08\x01\x123\n\x07sent\
-    _at\x18\x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x06sentAt\x12h\
-    \n\rupload_reason\x18\x04\x20\x01(\x0e2C.bitdrift_public.protobuf.client\
-    .v1.StatsUploadRequest.UploadReasonR\x0cuploadReason\x1a\xe9\x06\n\x08Sn\
-    apshot\x12K\n\x07metrics\x18\x01\x20\x01(\x0b2/.bitdrift_public.protobuf\
-    .client.v1.MetricsListH\0R\x07metrics\x12l\n\naggregated\x18\x02\x20\x01\
-    (\x0b2J.bitdrift_public.protobuf.client.v1.StatsUploadRequest.Snapshot.A\
-    ggregatedH\x01R\naggregated\x12\x86\x01\n\x13metric_id_overflows\x18\x03\
-    \x20\x03(\x0b2V.bitdrift_public.protobuf.client.v1.StatsUploadRequest.Sn\
-    apshot.MetricIdOverflowsEntryR\x11metricIdOverflows\x12\x86\x01\n\x13wor\
-    kflow_debug_data\x18\x04\x20\x03(\x0b2V.bitdrift_public.protobuf.client.\
-    v1.StatsUploadRequest.Snapshot.WorkflowDebugDataEntryR\x11workflowDebugD\
-    ata\x1a\x90\x01\n\nAggregated\x12G\n\x0cperiod_start\x18\x04\x20\x01(\
+    imited\"\x91\x0b\n\x12StatsUploadRequest\x12(\n\x0bupload_uuid\x18\x01\
+    \x20\x01(\tR\nuploadUuidB\x07\xfaB\x04r\x02\x10\x01\x12e\n\x08snapshot\
+    \x18\x02\x20\x03(\x0b2?.bitdrift_public.protobuf.client.v1.StatsUploadRe\
+    quest.SnapshotR\x08snapshotB\x08\xfaB\x05\x92\x01\x02\x08\x01\x123\n\x07\
+    sent_at\x18\x03\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x06sentAt\
+    \x12h\n\rupload_reason\x18\x04\x20\x01(\x0e2C.bitdrift_public.protobuf.c\
+    lient.v1.StatsUploadRequest.UploadReasonR\x0cuploadReason\x1a\xbe\x07\n\
+    \x08Snapshot\x12K\n\x07metrics\x18\x01\x20\x01(\x0b2/.bitdrift_public.pr\
+    otobuf.client.v1.MetricsListH\0R\x07metrics\x12l\n\naggregated\x18\x02\
+    \x20\x01(\x0b2J.bitdrift_public.protobuf.client.v1.StatsUploadRequest.Sn\
+    apshot.AggregatedH\x01R\naggregated\x12\x86\x01\n\x13metric_id_overflows\
+    \x18\x03\x20\x03(\x0b2V.bitdrift_public.protobuf.client.v1.StatsUploadRe\
+    quest.Snapshot.MetricIdOverflowsEntryR\x11metricIdOverflows\x12\x86\x01\
+    \n\x13workflow_debug_data\x18\x04\x20\x03(\x0b2V.bitdrift_public.protobu\
+    f.client.v1.StatsUploadRequest.Snapshot.WorkflowDebugDataEntryR\x11workf\
+    lowDebugData\x12\x1f\n\x0bretry_count\x18\x05\x20\x01(\rR\nretryCount\
+    \x122\n\x15client_stats_sequence\x18\x06\x20\x01(\x04R\x13clientStatsSeq\
+    uence\x1a\x90\x01\n\nAggregated\x12G\n\x0cperiod_start\x18\x04\x20\x01(\
     \x0b2\x1a.google.protobuf.TimestampR\x0bperiodStartB\x08\xfaB\x05\x8a\
     \x01\x02\x10\x01\x129\n\nperiod_end\x18\x05\x20\x01(\x0b2\x1a.google.pro\
     tobuf.TimestampR\tperiodEnd\x1aD\n\x16MetricIdOverflowsEntry\x12\x10\n\
