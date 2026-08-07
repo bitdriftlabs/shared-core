@@ -1,9 +1,9 @@
-load("@crates//:defs.bzl", "aliases", "all_crate_deps")
-load("//tools/lint:linters.bzl", "rust_library")
+load("@crates//:defs.bzl", "aliases")
+load("//tools/rust:feature_variants.bzl", "rust_library_with_feature_variants")
 
 package(default_visibility = ["//visibility:public"])
 
-rust_library(
+rust_library_with_feature_variants(
     name = "bd-stats-common",
     srcs = glob(
         ["src/**/*.rs"],
@@ -13,5 +13,7 @@ rust_library(
     crate_name = "bd_stats_common",
     crate_root = "src/lib.rs",
     edition = "2024",
-    deps = all_crate_deps(normal = True),
+    feature_variants = {
+        "fuzz": {"crate_features": ["fuzzing"]},
+    },
 )

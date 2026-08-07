@@ -1,9 +1,17 @@
-load("@crates//:defs.bzl", "all_crate_deps")
-load("//tools/lint:linters.bzl", "rust_binary", "rust_library")
+load("//tools/lint:linters.bzl", "rust_binary")
+load("//tools/rust:feature_variants.bzl", "all_crate_deps_with_overrides")
+load("//tools/rust:tests.bzl", "rust_library_with_test")
 
 package(default_visibility = ["//visibility:public"])
 
-rust_library(
+LOGGER_CLI_DEPS = all_crate_deps_with_overrides(
+    dependency_overrides = {
+        "//shared-core/bd-client-stats": "//shared-core/bd-client-stats:bd-client-stats-logger-cli",
+    },
+    normal = True,
+)
+
+rust_library_with_test(
     name = "logger-cli",
     srcs = glob(
         ["src/**/*.rs"],
@@ -13,7 +21,7 @@ rust_library(
     crate_name = "logger_cli",
     crate_root = "src/lib.rs",
     edition = "2024",
-    deps = all_crate_deps(normal = True),
+    deps = LOGGER_CLI_DEPS,
 )
 
 rust_binary(
@@ -23,7 +31,7 @@ rust_binary(
     crate_name = "logger_cli",
     crate_root = "src/main.rs",
     edition = "2024",
-    deps = all_crate_deps(normal = True) + [":logger-cli"],
+    deps = LOGGER_CLI_DEPS + [":logger-cli"],
 )
 
 rust_binary(
@@ -33,5 +41,5 @@ rust_binary(
     crate_name = "logger_mcp",
     crate_root = "src/bin/mcp.rs",
     edition = "2024",
-    deps = all_crate_deps(normal = True) + [":logger-cli"],
+    deps = LOGGER_CLI_DEPS + [":logger-cli"],
 )

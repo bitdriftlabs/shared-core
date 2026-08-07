@@ -1,7 +1,14 @@
 load("@crates//:defs.bzl", "all_crate_deps")
+load("@rules_cc//cc:defs.bzl", "cc_library")
 load("//tools/lint:linters.bzl", "rust_library")
 
 package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "headers",
+    hdrs = glob(["include/**/*.h"]),
+    includes = ["include"],
+)
 
 rust_library(
     name = "bd-bonjson-ffi",

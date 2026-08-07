@@ -1,6 +1,6 @@
 load("@crates//:defs.bzl", "aliases", "all_crate_deps")
 load("@rules_cc//cc:defs.bzl", "cc_library")
-load("//tools/lint:linters.bzl", "rust_library")
+load("//tools/rust:tests.bzl", "rust_library_with_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -29,7 +29,7 @@ cc_library(
     deps = ["@@+http_archive+shared_core_flatbuffers//:flatbuffers"],
 )
 
-rust_library(
+rust_library_with_test(
     name = "bd-proto-util",
     srcs = glob(
         ["src/**/*.rs"],

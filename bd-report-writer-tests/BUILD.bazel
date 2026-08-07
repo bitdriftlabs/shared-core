@@ -1,9 +1,17 @@
 load("@crates//:defs.bzl", "all_crate_deps")
-load("//tools/lint:linters.bzl", "rust_library")
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("//tools/rust:tests.bzl", "rust_library_with_test")
 
 package(default_visibility = ["//visibility:public"])
 
-rust_library(
+cc_library(
+    name = "ffi-test-helpers",
+    testonly = True,
+    srcs = ["src/ffi_tests.c"],
+    deps = ["//shared-core/bd-report-writer:headers"],
+)
+
+rust_library_with_test(
     name = "bd-report-writer-tests",
     srcs = glob(
         ["src/**/*.rs"],
@@ -13,5 +21,6 @@ rust_library(
     crate_name = "bd_report_writer_tests",
     crate_root = "src/lib.rs",
     edition = "2024",
+    test_deps = [":ffi-test-helpers"],
     deps = all_crate_deps(normal = True),
 )
