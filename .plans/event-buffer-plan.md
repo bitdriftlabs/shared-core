@@ -27,10 +27,12 @@ LoggerHandle / state APIs
 
 `EventBuffer` replaces the log and state ingress channels and `OrderedReceiver`. It is shared by
 synchronous producers and has one asynchronous consumer. The producer path uses
-`parking_lot::Mutex` only for short, non-awaiting buffer operations; the consumer releases the
-lock before awaiting work or invoking the pipeline. The existing logger continues to use its
-current channels and `PreConfigBuffer` until milestone 3; milestone 4 moves startup responsibility
-into EventBuffer.
+an internal, target-selected `EventBufferMutex` only for short, non-awaiting buffer operations.
+Its portable implementation is `parking_lot::Mutex`; a target with an RAII-compatible platform
+binding may use its native mutex instead (for example, `os_unfair_lock` on Apple platforms). Every
+implementation releases the lock before awaits, provider calls, callbacks, or pipeline invocation.
+The existing logger continues to use its current channels and `PreConfigBuffer` until milestone 3;
+milestone 4 moves startup responsibility into EventBuffer.
 
 The buffer lock is the ordering point. No producer-visible sequence number is needed: events are
 delivered in lock-admission order, and an internal monotonic insertion ID only breaks priority
@@ -105,11 +107,10 @@ mutex across arbitrary platform provider code.
 
 Provider calls now become part of normal `Logger.log` latency. Before the migration, add duration
 and failure telemetry to the current async calls; retain that telemetry after the move and measure
-edge lock wait/hold time. A slow-provider result is the decision point for retaining the older
-ingress-task design instead. This is also a provider-threading migration: today providers are
-called serially on the async task; after the move they may be called concurrently on arbitrary
-application threads. Certify the platform implementations' thread-affinity, synchronization, and
-reentrant-logging behavior before enabling inline capture.
+edge lock wait/hold time. This is also a provider-threading migration: today providers are called
+serially on the async task; after the move they may be called concurrently on arbitrary application
+threads. This contract is approved: platform implementations must preserve their required
+thread-affinity, synchronization, and reentrant-logging behavior under concurrent inline capture.
 
 ## Session transitions
 
@@ -131,11 +132,16 @@ generation-based coalescing flusher inside `bd_session`:
   `session_id`/`start_new_session`: a successfully applied mutation becomes current immediately;
   persistence is best effort and measured. This intentionally adopts the non-blocking session
   creation decision in this plan.
-- A callback is dispatched only after the flusher has attempted persistence through its generation,
-  outside the strategy mutex, through a platform-provided `SessionCallbackDispatcher`. This is an
-  intentional change from the current originating/consumer-thread delivery and must be approved as
-  part of Milestone 1. After Milestone 3, an implicit log/feature-flag callback additionally waits
-  for its source admission outcome before dispatching.
+- A deferred callback runs inline after the strategy mutex is released and without waiting for its
+  persistence generation. Direct `session_id` and `start_new_session` calls invoke it before
+  returning on their initiating thread. Before Milestone 3, automatic rotations continue to invoke
+  it on the consumer task that resolved the session. After Milestone 3, a log or feature-flag
+  rotation holds its callback until that source reaches its terminal admission outcome, then invokes
+  it on the admitting caller thread after the EventBuffer lock is released. Callback-generated work
+  therefore follows the source operation, including when the source is dropped before admission.
+  Benchmark whether the Rust or platform layer performs the final platform-callback invocation;
+  prefer the platform layer if it avoids an extra FFI crossing without regressing callback latency
+  or reentrancy behavior. This choice changes no callback timing, thread, or ordering contract.
 - `FlushState(Block::Yes)` captures the current session generation after draining earlier
   EventBuffer work and waits until persistence has attempted that generation before the existing
   session/store/workflow flush completes. Shutdown remains best effort and does not turn pending
@@ -146,9 +152,8 @@ logs and feature flags resolve their ID from the in-memory strategy before provi
 store that immutable ID in their EventBuffer payload. A later EventBuffer rejection never rolls
 back the already-current session.
 
-The workflow engine still receives no new session-control event. Its existing session transition
-behavior is driven by the captured session ID on the first log or session-bearing state operation
-it processes.
+The workflow engine still receives no new session-control event. Its existing session-transition
+behavior remains driven by the captured session ID on replayed logs.
 
 ## EventBuffer behavior
 
@@ -165,7 +170,8 @@ the oldest retained entry for an equal-priority admission.
 
 - Eviction physically removes selected entries with `VecDeque::remove`, in descending index order
   so earlier selected indexes remain valid. There are no tombstones, stale index records, or
-  compaction passes in this version.
+  compaction passes in this version. Contention benchmarks measure lock hold time for this linear
+  scan/removal strategy before any index or compaction design is considered.
 - `next_batch` drains with `pop_front`, so delivery remains ordinary FIFO over the retained
   entries.
 - Every entry is charged a conservative fixed bookkeeping overhead in addition to its payload.
@@ -248,7 +254,7 @@ log to the protected class.
 
 1. For a current-process log, `bd_session` resolves the current session ID and schedules any
    required persistence. A resolution failure is a terminal log drop; a successful implicit
-   rotation records a deferred callback for post-admission dispatch once persistence is attempted.
+   rotation records a deferred callback for post-admission dispatch without waiting for persistence.
    The caller then holds
    `with_thread_local_logger_guard` and captures provider timestamp and fields outside the
    EventBuffer lock. A provider failure is also a terminal drop; both outcomes record their
@@ -266,8 +272,8 @@ log to the protected class.
    fit the remaining `total_limit` after evictable entries have been displaced. Rejection or
    eviction resolves the entry's completion with a terminal drop outcome after releasing the lock.
    Successful admission schedules `Notify`; it does not wait for the background consumer. In
-   either admission outcome, dispatch any deferred implicit-session callback only after the lock is
-   released, so callback-originated logging follows this source operation.
+   either terminal source outcome, dispatch any deferred implicit-session callback only after the
+   lock is released, so callback-originated logging follows this source operation.
 5. The consumer removes the entry in FIFO order, runs the existing interceptors, then normalizes
    the original fields using the captured provider and logger-field snapshots. It uses the captured
    session ID rather than querying mutable session state. For `OccurredAt`, it emits the supplied
@@ -303,17 +309,21 @@ or flushes while holding the lock.
   a FIFO queue of prepared operations or per-operation responses.
 - Make `session_id` and `start_new_session` non-blocking with respect to persistence. They return
   after their in-memory mutation has succeeded and record failure/latency telemetry from the later
-  attempt. Deferred callbacks use `SessionCallbackDispatcher` after that attempt rather than the
-  current initiating/consumer thread. Preserve pure previous-process lookup behavior.
+  attempt. Deferred callbacks run inline after the strategy mutex is released rather than waiting
+  for that attempt; preserve the existing initiating-thread delivery for direct calls and
+  consumer-task delivery for automatic rotations while ALB remains in place. Preserve pure
+  previous-process lookup behavior. Benchmark Rust- versus platform-layer final callback
+  invocation, preferring the platform layer if it removes an FFI crossing without affecting the
+  callback contract.
 - Preserve current automatic-rotation *detection* while ALB remains in place. The consumer still
   resolves sessions at its current processing point; it merely wakes the coalescing flusher rather
   than awaiting a persisted snapshot. `FlushState(Block::Yes)` captures a generation and waits
   until it has been attempted.
 - Add generation, coalescing, attempt/failure, and callback-outcome telemetry. Test concurrent
-  `session_id`/`start_new_session` mutations, a write completing after newer mutations,
-  last-activity persistence, automatic rotation, flush-through-generation, shutdown, and callback
-  dispatch. No EventBuffer, provider, log-admission, or startup-replay semantics change in this
-  milestone.
+  `session_id`/`start_new_session` mutations, inline callback-after-unlock behavior, a write
+  completing after newer mutations, last-activity persistence, automatic rotation,
+  flush-through-generation, and shutdown. No EventBuffer, provider, log-admission, or startup-
+  replay semantics change in this milestone.
 
 ## Milestone 2: EventBuffer state machine
 
@@ -338,12 +348,12 @@ or flushes while holding the lock.
   `OrderedReceiver` with its synchronous handle and `next_batch` branch in the existing async
   `select!` consumer.
 - Move provider snapshot capture to `LoggerHandle`, move logger-managed fields into EventBuffer,
-  and split metadata normalization from provider capture. Enable this only after platform-provider
-  threading certification and its telemetry are in place.
+  and split metadata normalization from provider capture. Provider execution on concurrent caller
+  threads is an approved contract; retain its telemetry to detect production regressions.
 - Move current log and feature-flag session resolution from the consumer to the logger edge using
   the Milestone-1 in-memory `bd_session` API. Capture the returned session ID before provider capture and
-  EventBuffer admission. Implicit log/state rotations dispatch callbacks only after source
-  admission/drop as well as their persistence attempt.
+  EventBuffer admission. Invoke implicit log/state callbacks on the admitting caller thread only
+  after the source reaches a terminal admission/drop outcome; do not wait for persistence.
 - Migrate every ALB state and internal-ingress path in the audit table, including feature-flag
   metadata/session capture, opaque-entity startup recovery, crash-report batches, interceptor
   placement, generated-log context, and flush/blocking completion semantics.
@@ -354,9 +364,8 @@ or flushes while holding the lock.
   milestone 4.
 - Ship integration telemetry for EventBuffer admission, eviction, provider latency, lock latency,
   consumer service time, session-persistence generation/coalescing/attempt time, and `select!`
-  fairness. Use
-  production measurements to validate the synchronous provider and locking cost before changing
-  startup semantics.
+  fairness. Measure both callback-invocation layers and their FFI/callback latency before selecting
+  the final implementation, while preserving the agreed timing and ordering semantics.
 
 ## Milestone 4: soft startup replay gate
 
@@ -417,17 +426,10 @@ watermark opens it early with reason `high_watermark`. Low-priority traffic alon
 the startup window. If the consumer still cannot catch up, the normal hard-cap eviction policy
 applies; priority-event loss is measured rather than exceeding capacity.
 
-`CrashPending` may extend the deadline only while the gate is holding. A high-watermark release,
-a current-process session change after the gate has observed its first current-process session ID,
-a flush barrier, or normal timer release seals the ordering window; later hints and late
-previous-process logs cannot reopen it.
-
-The first current-process session-bearing entry establishes the gate's current-session baseline. A
-later current-process entry whose captured session ID differs from that baseline is a replay
-barrier: if admitted while holding, the buffer drains through that entry after partitioning
-eligible previous-process logs first. This prevents retained previous-session logs from being
-finalized under the newer session. `start_new_session` itself remains an in-memory session mutation; with no
-following EventBuffer entry it has no replay-ordering effect.
+`CrashPending` may extend the deadline only while the gate is holding. A high-watermark release, a
+flush barrier, or normal timer release seals the ordering window; later hints and late
+previous-process logs cannot reopen it. `start_new_session` remains an in-memory session mutation;
+without a following EventBuffer entry it has no replay-ordering effect.
 
 An admitted `FlushState(Block::Yes)` or blocking log is also a gate barrier: it seals the gate,
 partitions eligible previous-process logs first, then drains through its ordered position before
@@ -458,17 +460,21 @@ the soft startup delay has not elapsed.
   and callback-reentrancy coverage.
 - In milestone 3, add old-log / session-start / new-log attribution, automatic session rotation,
   concurrent session-start/log admission, edge-time in-memory session resolution, explicit- and
-  implicit-rotation callback dispatch/order, feature-flag state replay with captured metadata,
+  implicit-rotation callback dispatch/order (including callback-after-source admission and no
+  persistence wait), both Rust- and platform-layer callback invocation paths, feature-flag state
+  replay with captured metadata,
   opaque-entity pre-store coalescing/admission/recovery, memory-pressure persistence, flush
   ordering, both crash-report paths, provider reentrancy/threading, generated-log session
   inheritance, and bounded-batch fairness with a continuously non-empty EventBuffer.
 - In milestone 4, add prior-run metadata behavior, gate timer and crash extension,
   high-watermark early replay, barrier release, previous-process FIFO partitioning, late
-  previous-process no-reorder behavior, captured-session-change gate activation,
-  blocking-flush gate activation, nonblocking-flush gate retention, and
+  previous-process no-reorder behavior, blocking-flush gate activation, nonblocking-flush gate
+  retention, and
   PreConfigBuffer-to-EventBuffer migration coverage.
-- Add contention benchmarks covering concurrent logging, field updates, and deliberately slow
-  providers as part of milestone 3. Verify the crate with `cargo nextest run -p bd-logger`.
+- Add contention benchmarks covering concurrent logging, field updates, deliberately slow
+  providers, and linear eviction/removal lock hold time as part of milestone 3. Use those results
+  to decide whether a future eviction index or compaction strategy is needed. Verify the crate
+  with `cargo nextest run -p bd-logger`.
 
 ## Decision record
 
@@ -488,9 +494,9 @@ the soft startup delay has not elapsed.
   either is a later product decision informed by telemetry.
 - Milestones 1 through 3 preserve current `PreConfigBuffer` startup behavior; milestone 4 is the
   only milestone that changes initialization replay and workflow ordering.
-- The current 1 MiB log limit, 10 MiB state limit, and 80% high watermark are initial defaults.
-  Runtime configurability can be added after telemetry establishes safe bootstrap and live-resize
-  semantics.
+- Milestone 4 introduces runtime settings for the base replay delay and maximum crash-hint
+  extension. The 1 MiB log limit, 10 MiB state-derived total allowance, and 80% high watermark
+  remain initial fixed defaults until telemetry establishes safe live-resize semantics.
 - Provider-capture failures preserve today's best-effort public behavior: the affected log is
   dropped, its blocking completion becomes terminal, and diagnostics remain metrics/logging rather
   than a new caller-visible error. Reentrant logging during provider capture remains rejected by
@@ -504,6 +510,14 @@ the soft startup delay has not elapsed.
 - The initial COW implementation accepts old map snapshots as bounded auxiliary memory. It will be
   replaced with structural sharing only if the specified telemetry shows that retained versions are
   material; it is not a prerequisite for the EventBuffer migration.
+- EventBuffer uses a target-selected internal mutex adapter: `parking_lot::Mutex` is the portable
+  default, while a target with an RAII-compatible native binding may use its platform mutex. The
+  adapter is synchronous and never guards awaits, provider calls, callbacks, or pipeline work.
+- Session callbacks no longer wait for persistence. They run inline after the session mutex is
+  released; direct session APIs retain their initiating-thread delivery, while Milestone 3
+  log/feature-flag rotations invoke their callback after the source's terminal admission outcome.
+  Benchmark the final callback invocation layer, with the platform layer preferred when it avoids
+  an extra FFI crossing without changing callback semantics.
 
 ### Rejected alternative: fork the previous-process workflow engine
 
@@ -531,13 +545,9 @@ An isolated historical engine remains a possible future policy for *late* previo
 after the startup window has sealed, if product decides they must not affect current workflows. It
 does not remove the need for the bounded replay gate that establishes the initial ordering.
 
-## Open questions for team review
+## Remaining review gates
 
-| Topic | Assumption in this plan | Decision needed |
+| Topic | Locked direction | Remaining action |
 | --- | --- | --- |
-| Provider execution contract | Providers run inline on arbitrary application threads and may run concurrently. Provider time, fields, and failure are observed at `LoggerHandle` admission rather than later on the async task. | Are platform providers thread-safe, thread-affinity-free, and fast enough for this to be an SDK contract? If not, retain the ingress-task design or define a provider execution boundary. |
-| `setField` contract | Field changes take effect at synchronous EventBuffer admission. The aggregate logger-field map has a configured byte/count limit, and an over-limit mutation is rejected without changing current fields. | Is immediate same-thread `setField(); log()` behavior desired on every platform, and how should callers observe a rejected field mutation? |
-| Session callback contract | `bd_session` records an implicit log/state rotation against its persistence generation. Callbacks use `SessionCallbackDispatcher` after the generation has been attempted; after Milestone 3 implicit callbacks also wait for source admission/drop. | Is moving callbacks away from the current originating/consumer thread acceptable, which platform dispatcher provides the required affinity, and is source-admission-before-callback ordering acceptable for activity-session integrations? |
-| Startup reordering | Only previous-process logs admitted before gate sealing are reordered ahead of current-process entries. Late previous-process logs retain high eviction priority but are never reordered. | What base delay, maximum crash-hint extension, and high-watermark threshold provide the desired crash coverage without delaying normal startup too much? |
-| Startup capacity transition | In Milestone 3, EventBuffer has an 11 MiB hard total while the retained 1 MiB `PreConfigBuffer` may also hold work. Milestone 4 currently removes that second stage and keeps an 11 MiB EventBuffer. | Should Milestone 4 raise `total_limit` to 12 MiB to preserve the current worst-case startup retention budget, or is the intentional 1 MiB reduction acceptable once the duplicate staging buffer is gone? |
-| Priority policy | Previous-process, lifecycle, `Block::Yes`, and state/control entries are protected; other log types and levels follow the proposed eviction ranking. | Confirm the taxonomy with product/workflow owners, including whether any customer log classes need to be promoted or demoted. |
+| Startup reordering | Only previous-process logs admitted before gate sealing are reordered ahead of current-process entries. Late previous-process logs retain high eviction priority but are never reordered. | Select the base delay, maximum crash-hint extension, and high-watermark threshold. |
+| Priority policy | The plan's provisional taxonomy protects previous-process, lifecycle, `Block::Yes`, and state/control entries; it ranks the remaining log types and levels as specified above. | Confirm or replace the provisional taxonomy with product/workflow owners before Milestone 2 implementation. |
