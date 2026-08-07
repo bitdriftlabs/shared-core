@@ -394,6 +394,9 @@ impl Workflow {
     }
 
     for run in &self.runs {
+      // TODO: Decouple duration expiry from inbound log processing so a progressed workflow can
+      // remain on its type-specific route. This needs an expiry mechanism that preserves run
+      // termination and tracing updates without evaluating every log.
       if run.first_progress_occurred_at.is_some() && config.inner().duration_limit().is_some() {
         return WorkflowLogRoute::Fallback;
       }
