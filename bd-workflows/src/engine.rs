@@ -577,6 +577,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
 
     let was_in_initial_state = workflow.is_in_initial_state();
     let result = workflow.process_event(config, event, state_reader, now, sampled_roll);
+    output.has_debug_workflows |= config.mode() != WorkflowDebugMode::None;
 
     if result.stats().matched_logs_count > 0 {
       stats
@@ -907,10 +908,6 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     // Sampling decisions should be stable for a single event across every workflow/run that
     // evaluates it. Roll once here and thread the same value through matcher evaluation.
     let sampled_roll = bd_log_matcher::matcher::random_sample_roll();
-    let has_debug_workflows = self
-      .configs
-      .iter()
-      .any(|config| config.mode() != WorkflowDebugMode::None);
 
     let Self {
       state,
@@ -982,6 +979,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       all_cumulative_workflow_debug_state,
       all_incremental_workflow_debug_state,
       tracing_carryover_flush_action_ids,
+      has_debug_workflows,
     } = workflow_event_output;
     let PreparedActions {
       mut flush_buffers_actions,
@@ -1166,6 +1164,7 @@ struct WorkflowEventOutput<'a> {
   all_cumulative_workflow_debug_state: AllWorkflowsDebugState,
   all_incremental_workflow_debug_state: Vec<WorkflowDebugKey>,
   tracing_carryover_flush_action_ids: TinySet<FlushBufferId>,
+  has_debug_workflows: bool,
 }
 
 #[derive(Default)]
