@@ -150,6 +150,18 @@ impl InitializedInner {
     }
   }
 
+  fn release_pending_uploads(&mut self, source_file_ids: &[String]) {
+    for source_file_id in source_file_ids {
+      self.in_flight_uploads.remove(source_file_id);
+    }
+  }
+
+  fn claim_pending_uploads(&mut self, source_file_ids: &[String]) {
+    self
+      .in_flight_uploads
+      .extend(source_file_ids.iter().cloned());
+  }
+
   fn allocate_client_stats_sequence(&mut self) -> anyhow::Result<u64> {
     let client_stats_sequence = self.next_client_stats_sequence;
     self.next_client_stats_sequence = client_stats_sequence
@@ -642,17 +654,12 @@ impl FileManager {
 
     if !success {
       log::debug!("not completing pending upload batch {source_file_ids:?} due to failure");
-      initialized_inner.increment_retry_counts(source_file_ids);
+      initialized_inner.release_pending_uploads(source_file_ids);
       initialized_inner.write_index().await?;
-      for uuid in source_file_ids {
-        initialized_inner.in_flight_uploads.remove(uuid);
-      }
       return Ok(());
     }
 
-    for uuid in source_file_ids {
-      initialized_inner.in_flight_uploads.remove(uuid);
-    }
+    initialized_inner.release_pending_uploads(source_file_ids);
 
     for uuid in source_file_ids {
       if let Some(index) =
@@ -667,17 +674,31 @@ impl FileManager {
       .await
   }
 
-  // Releases a claimed upload after the transport closes before receiving a response. This is not
-  // an upload failure because the server may have processed the request without returning an ACK.
-  pub async fn abandon_pending_upload(&self, source_file_ids: &[String]) -> anyhow::Result<()> {
+  // Records an upload attempt after the transport has accepted it. The outbound snapshot carries
+  // the pre-increment retry count, so any retry after a process exit is counted correctly.
+  pub async fn record_pending_upload_attempt(
+    &self,
+    source_file_ids: &[String],
+  ) -> anyhow::Result<()> {
     let mut inner = self.inner.lock().await;
     let initialized_inner = inner.get_initialized().await?;
 
     initialized_inner.increment_retry_counts(source_file_ids);
-    initialized_inner.write_index().await?;
-    for uuid in source_file_ids {
-      initialized_inner.in_flight_uploads.remove(uuid);
+    initialized_inner.release_pending_uploads(source_file_ids);
+    let write_result = initialized_inner.write_index().await;
+    if write_result.is_ok() {
+      initialized_inner.claim_pending_uploads(source_file_ids);
     }
+
+    write_result
+  }
+
+  // Releases a claimed upload that was never handed off to the transport.
+  pub async fn release_pending_upload(&self, source_file_ids: &[String]) -> anyhow::Result<()> {
+    let mut inner = self.inner.lock().await;
+    let initialized_inner = inner.get_initialized().await?;
+
+    initialized_inner.release_pending_uploads(source_file_ids);
 
     Ok(())
   }

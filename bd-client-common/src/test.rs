@@ -12,6 +12,7 @@ use crate::file_system::FileSystem;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::io::AsyncWriteExt as _;
 
@@ -135,6 +136,45 @@ impl FileSystem for TestFileSystem {
     tokio::fs::File::create(&file_path)
       .await
       .map_err(|e| anyhow::anyhow!("failed to create file {}: {}", file_path.display(), e))
+  }
+}
+
+#[async_trait]
+impl FileSystem for Arc<TestFileSystem> {
+  async fn exists(&self, path: &Path) -> anyhow::Result<bool> {
+    self.as_ref().exists(path).await
+  }
+
+  async fn list_files(&self, directory: &Path) -> anyhow::Result<Vec<String>> {
+    self.as_ref().list_files(directory).await
+  }
+
+  async fn read_file(&self, path: &Path) -> anyhow::Result<Vec<u8>> {
+    self.as_ref().read_file(path).await
+  }
+
+  async fn write_file(&self, path: &Path, data: &[u8]) -> anyhow::Result<()> {
+    self.as_ref().write_file(path, data).await
+  }
+
+  async fn create_file(&self, path: &Path) -> anyhow::Result<tokio::fs::File> {
+    self.as_ref().create_file(path).await
+  }
+
+  async fn delete_file(&self, path: &Path) -> anyhow::Result<()> {
+    self.as_ref().delete_file(path).await
+  }
+
+  async fn rename_file(&self, from: &Path, to: &Path) -> anyhow::Result<()> {
+    self.as_ref().rename_file(from, to).await
+  }
+
+  async fn remove_dir(&self, path: &Path) -> anyhow::Result<()> {
+    self.as_ref().remove_dir(path).await
+  }
+
+  async fn create_dir(&self, path: &Path) -> anyhow::Result<()> {
+    self.as_ref().create_dir(path).await
   }
 }
 

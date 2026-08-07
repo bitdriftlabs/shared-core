@@ -53,6 +53,7 @@ use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap};
 use std::io::ErrorKind;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use tempfile::TempDir;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::{Duration, OffsetDateTime};
@@ -1031,7 +1032,7 @@ async fn abandoned_upload_increments_retry_count() {
   assert_eq!(upload.payload.snapshot[0].client_stats_sequence, 1);
 
   drop(upload);
-  tokio::task::yield_now().await;
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
 
   setup.upload_tick_tx.send(()).await.unwrap();
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
@@ -1114,6 +1115,21 @@ async fn batched_retry_counts_and_sequences_persist_across_restart() {
   assert_eq!(pending_upload.request.snapshot[0].client_stats_sequence, 7);
   assert_eq!(pending_upload.request.snapshot[1].client_stats_sequence, 8);
   file_manager
+    .release_pending_upload(&pending_upload.source_file_ids)
+    .await
+    .unwrap();
+  let pending_upload = file_manager
+    .get_or_create_pending_upload(true)
+    .await
+    .unwrap()
+    .unwrap();
+  assert_eq!(pending_upload.request.snapshot[0].retry_count, 1);
+  assert_eq!(pending_upload.request.snapshot[1].retry_count, u32::MAX);
+  file_manager
+    .record_pending_upload_attempt(&pending_upload.source_file_ids)
+    .await
+    .unwrap();
+  file_manager
     .complete_pending_upload(&pending_upload.source_file_ids, false)
     .await
     .unwrap();
@@ -1133,6 +1149,48 @@ async fn batched_retry_counts_and_sequences_persist_across_restart() {
   assert_eq!(retried_upload.request.snapshot[1].retry_count, u32::MAX);
   assert_eq!(retried_upload.request.snapshot[0].client_stats_sequence, 7);
   assert_eq!(retried_upload.request.snapshot[1].client_stats_sequence, 8);
+}
+
+#[tokio::test]
+async fn index_write_failure_releases_pending_upload() {
+  let fs = Arc::new(TestFileSystem::new());
+  write_test_index(fs.as_ref(), true).await;
+  write_test_upload_request(
+    fs.as_ref(),
+    StatsUploadRequest {
+      snapshot: vec![counter_snapshot("test", 1)],
+      ..Default::default()
+    },
+  )
+  .await;
+
+  let runtime_loader = ConfigLoader::new(std::path::Path::new("."));
+  let file_manager = FileManager::new(
+    Box::new(fs.clone()),
+    Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH)),
+    &runtime_loader,
+  );
+  let pending_upload = file_manager
+    .get_or_create_pending_upload(false)
+    .await
+    .unwrap()
+    .unwrap();
+
+  fs.disk_full.store(true, Ordering::SeqCst);
+  assert!(
+    file_manager
+      .record_pending_upload_attempt(&pending_upload.source_file_ids)
+      .await
+      .is_err()
+  );
+  fs.disk_full.store(false, Ordering::SeqCst);
+
+  let retry = file_manager
+    .get_or_create_pending_upload(false)
+    .await
+    .unwrap()
+    .unwrap();
+  assert_eq!(retry.request.snapshot[0].retry_count, 1);
 }
 
 #[tokio::test]
