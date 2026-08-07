@@ -2539,6 +2539,7 @@ dependencies = [
  "bd-buffer",
  "bd-client-common",
  "bd-client-stats-store",
+ "bd-log-matcher",
  "bd-log-primitives",
  "bd-proto",
  "bd-proto-util",
