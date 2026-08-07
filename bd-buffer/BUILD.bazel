@@ -1,4 +1,5 @@
 load("//tools/rust:feature_variants.bzl", "rust_library_with_feature_variants")
+load("//tools/rust:tests.bzl", "rust_library_test")
 
 package(default_visibility = ["//visibility:public"])
 
@@ -22,3 +23,5 @@ rust_library_with_feature_variants(
         },
     },
 )
+
+rust_library_test(crate = ":bd-buffer")

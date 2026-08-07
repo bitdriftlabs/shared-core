@@ -1,36 +1,42 @@
-load("//tools/lint:linters.bzl", "rust_binary", "rust_library")
+load("//tools/lint:linters.bzl", "rust_binary")
 load("//tools/rust:feature_variants.bzl", "all_crate_deps_with_overrides")
+load("//tools/rust:tests.bzl", "rust_library_with_test")
 
 package(default_visibility = ["//visibility:public"])
 
 FUZZ_DEPS = all_crate_deps_with_overrides(
-    normal = True,
     dependency_overrides = {
         "//shared-core/bd-buffer": "//shared-core/bd-buffer:bd-buffer-fuzz",
         "//shared-core/bd-client-stats-store": "//shared-core/bd-client-stats-store:bd-client-stats-store-fuzz",
         "//shared-core/bd-resilient-kv": "//shared-core/bd-resilient-kv:bd-resilient-kv-fuzz",
         "//shared-core/bd-workflows": "//shared-core/bd-workflows:bd-workflows-fuzz",
     },
+    normal = True,
 )
 
-rust_library(
+rust_library_with_test(
     name = "fuzz",
-    srcs = glob(["src/**/*.rs"], exclude = ["src/bin/**/*.rs"]),
-    crate_root = "src/lib.rs",
-    crate_name = "fuzz",
-    edition = "2024",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/bin/**/*.rs"],
+    ),
     crate_features = ["default"],
+    crate_name = "fuzz",
+    crate_root = "src/lib.rs",
+    edition = "2024",
     tags = ["manual"],
+    test_data = glob(["corpus/**"]),
+    test_tags = ["manual"],
     deps = FUZZ_DEPS,
 )
 
 rust_binary(
     name = "bonjson",
     srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/bonjson.rs"],
-    crate_root = "fuzz_targets/bonjson.rs",
-    crate_name = "bonjson",
-    edition = "2024",
     crate_features = ["default"],
+    crate_name = "bonjson",
+    crate_root = "fuzz_targets/bonjson.rs",
+    edition = "2024",
     tags = ["manual"],
     deps = FUZZ_DEPS + [":fuzz"],
 )
@@ -38,10 +44,10 @@ rust_binary(
 rust_binary(
     name = "buffer_corruption_fuzz_test",
     srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/buffer_corruption_fuzz_test.rs"],
-    crate_root = "fuzz_targets/buffer_corruption_fuzz_test.rs",
-    crate_name = "buffer_corruption_fuzz_test",
-    edition = "2024",
     crate_features = ["default"],
+    crate_name = "buffer_corruption_fuzz_test",
+    crate_root = "fuzz_targets/buffer_corruption_fuzz_test.rs",
+    edition = "2024",
     tags = ["manual"],
     deps = FUZZ_DEPS + [":fuzz"],
 )
@@ -49,10 +55,10 @@ rust_binary(
 rust_binary(
     name = "mpsc_buffer_fuzz_test",
     srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/mpsc_buffer_fuzz_test.rs"],
-    crate_root = "fuzz_targets/mpsc_buffer_fuzz_test.rs",
-    crate_name = "mpsc_buffer_fuzz_test",
-    edition = "2024",
     crate_features = ["default"],
+    crate_name = "mpsc_buffer_fuzz_test",
+    crate_root = "fuzz_targets/mpsc_buffer_fuzz_test.rs",
+    edition = "2024",
     tags = ["manual"],
     deps = FUZZ_DEPS + [":fuzz"],
 )
@@ -60,10 +66,10 @@ rust_binary(
 rust_binary(
     name = "spsc_buffer_fuzz_test",
     srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/spsc_buffer_fuzz_test.rs"],
-    crate_root = "fuzz_targets/spsc_buffer_fuzz_test.rs",
-    crate_name = "spsc_buffer_fuzz_test",
-    edition = "2024",
     crate_features = ["default"],
+    crate_name = "spsc_buffer_fuzz_test",
+    crate_root = "fuzz_targets/spsc_buffer_fuzz_test.rs",
+    edition = "2024",
     tags = ["manual"],
     deps = FUZZ_DEPS + [":fuzz"],
 )
@@ -71,10 +77,10 @@ rust_binary(
 rust_binary(
     name = "versioned_kv_journal",
     srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/versioned_kv_journal.rs"],
-    crate_root = "fuzz_targets/versioned_kv_journal.rs",
-    crate_name = "versioned_kv_journal",
-    edition = "2024",
     crate_features = ["default"],
+    crate_name = "versioned_kv_journal",
+    crate_root = "fuzz_targets/versioned_kv_journal.rs",
+    edition = "2024",
     tags = ["manual"],
     deps = FUZZ_DEPS + [":fuzz"],
 )
@@ -82,10 +88,10 @@ rust_binary(
 rust_binary(
     name = "workflow_state",
     srcs = glob(["src/**/*.rs"]) + ["fuzz_targets/workflow_state.rs"],
-    crate_root = "fuzz_targets/workflow_state.rs",
-    crate_name = "workflow_state",
-    edition = "2024",
     crate_features = ["default"],
+    crate_name = "workflow_state",
+    crate_root = "fuzz_targets/workflow_state.rs",
+    edition = "2024",
     tags = ["manual"],
     deps = FUZZ_DEPS + [":fuzz"],
 )

@@ -1,9 +1,9 @@
 load("@crates//:defs.bzl", "aliases", "all_crate_deps")
-load("//tools/lint:linters.bzl", "rust_library")
+load("//tools/rust:tests.bzl", "rust_library_with_test")
 
 package(default_visibility = ["//visibility:public"])
 
-rust_library(
+rust_library_with_test(
     name = "bd-grpc",
     srcs = glob(
         ["src/**/*.rs"],
