@@ -495,6 +495,7 @@ fn build_anr_without_trace_uses_app_exit_description() {
   builder.finish(offset, None);
 
   let report = flatbuffers::root::<Report<'_>>(builder.finished_data()).unwrap();
+  insta::assert_debug_snapshot!(report);
   let error = report.errors().unwrap().get(0);
   assert_eq!(error.name(), Some("User Perceived ANR"));
   assert_eq!(error.reason(), Some(description));
@@ -520,6 +521,7 @@ fn build_anr_with_unparsable_trace_uses_app_exit_description() -> anyhow::Result
   builder.finish(offset, None);
 
   let report = flatbuffers::root::<Report<'_>>(builder.finished_data()).unwrap();
+  insta::assert_debug_snapshot!(report);
   let error = report.errors().unwrap().get(0);
   assert_eq!(error.name(), Some("Broadcast Receiver ANR"));
   assert_eq!(error.reason(), Some(description));

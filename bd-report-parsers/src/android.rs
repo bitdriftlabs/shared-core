@@ -62,6 +62,7 @@ pub fn build_anr_from_app_exit<'fbb>(
   app_exit_description: Option<&str>,
   is_file_size_optimization_enabled: bool,
 ) -> WIPOffset<v_1::Report<'fbb>> {
+  device_info.platform = v_1::Platform::Android;
   if let Some(anr_trace) = anr_trace
     && let Ok((_, report)) = build_anr_from_trace(
       builder,
@@ -98,7 +99,6 @@ fn build_anr_from_trace<'a, 'fbb>(
   if let Ok(pid) = u32::try_from(pid) {
     app_info.process_id = pid;
   }
-  device_info.platform = v_1::Platform::Android;
   device_info.cpu_abis = metrics.get("ABI").map(|abi| {
     let abi = builder.create_string(abi);
     builder.create_vector(&[abi])
@@ -140,10 +140,9 @@ fn create_anr_report<'fbb>(
 fn build_anr_without_trace<'fbb>(
   builder: &mut FlatBufferBuilder<'fbb>,
   app_info: &v_1::AppMetricsArgs<'fbb>,
-  device_info: &mut v_1::DeviceMetricsArgs<'fbb>,
+  device_info: &v_1::DeviceMetricsArgs<'fbb>,
   app_exit_description: Option<&str>,
 ) -> WIPOffset<v_1::Report<'fbb>> {
-  device_info.platform = v_1::Platform::Android;
   create_anr_report(
     builder,
     app_info,
