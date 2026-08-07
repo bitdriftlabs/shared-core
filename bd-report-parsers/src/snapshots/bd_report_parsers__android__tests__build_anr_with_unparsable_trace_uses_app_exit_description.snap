@@ -1,0 +1,67 @@
+---
+source: bd-report-parsers/src/./android_tests.rs
+expression: report
+---
+Report {
+    sdk: None,
+    type_: AppNotResponding,
+    app_metrics: Some(
+        AppMetrics {
+            app_id: None,
+            memory: None,
+            version: None,
+            build_number: None,
+            running_state: None,
+            process_id: 0,
+            region_format: None,
+            cpu_usage: None,
+            lifecycle_event: None,
+            javascript_engine: UnknownJsEngine,
+            memory_pressure_level: Unknown,
+        },
+    ),
+    device_metrics: Some(
+        DeviceMetrics {
+            time: None,
+            timezone: None,
+            power_metrics: None,
+            network_state: Unknown,
+            rotation: Unknown,
+            arch: Unknown,
+            display: None,
+            manufacturer: None,
+            model: None,
+            os_build: None,
+            platform: Android,
+            cpu_abis: None,
+            low_power_mode_enabled: false,
+            cpu_usage: None,
+            thermal_state: 0,
+        },
+    ),
+    errors: Some(
+        [
+            Error {
+                name: Some(
+                    "Broadcast Receiver ANR",
+                ),
+                reason: Some(
+                    "Broadcast of Intent { act=android.intent.action.MAIN }",
+                ),
+                stack_trace: None,
+                relation_to_next: CausedBy,
+            },
+        ],
+    ),
+    thread_details: Some(
+        ThreadDetails {
+            count: 0,
+            threads: None,
+        },
+    ),
+    binary_images: None,
+    fields: None,
+    feature_flags: None,
+    processing_result: None,
+    crash_info: None,
+}
