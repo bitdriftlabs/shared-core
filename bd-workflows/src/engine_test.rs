@@ -3542,7 +3542,11 @@ async fn log_type_router_keeps_debug_workflows_on_the_fallback_route() {
 
   // The initial delivery fallback is consumed here. The subsequent fallback is specifically for
   // the active debug workflow.
-  engine.process_log(TestLog::new("normal").with_log_type(LogType::NORMAL));
+  assert!(
+    engine
+      .process_log(TestLog::new("normal").with_log_type(LogType::NORMAL))
+      .has_debug_workflows
+  );
 
   assert_eq!(
     &[0],
