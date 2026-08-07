@@ -1,0 +1,81 @@
+load("@crates//:defs.bzl", "all_crate_deps")
+load("//tools/lint:linters.bzl", "rust_binary", "rust_library")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "fuzz",
+    srcs = glob(["src/**/*.rs"], exclude = ["src/bin/**/*.rs"]),
+    crate_root = "src/lib.rs",
+    crate_name = "fuzz",
+    edition = "2024",
+    crate_features = ["default"],
+    tags = ["manual"],
+    deps = all_crate_deps(normal = True),
+)
+
+rust_binary(
+    name = "bonjson",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "fuzz_targets/bonjson.rs",
+    crate_name = "bonjson",
+    edition = "2024",
+    crate_features = ["default"],
+    tags = ["manual"],
+    deps = all_crate_deps(normal = True) + [":fuzz"],
+)
+
+rust_binary(
+    name = "buffer_corruption_fuzz_test",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "fuzz_targets/buffer_corruption_fuzz_test.rs",
+    crate_name = "buffer_corruption_fuzz_test",
+    edition = "2024",
+    crate_features = ["default"],
+    tags = ["manual"],
+    deps = all_crate_deps(normal = True) + [":fuzz"],
+)
+
+rust_binary(
+    name = "mpsc_buffer_fuzz_test",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "fuzz_targets/mpsc_buffer_fuzz_test.rs",
+    crate_name = "mpsc_buffer_fuzz_test",
+    edition = "2024",
+    crate_features = ["default"],
+    tags = ["manual"],
+    deps = all_crate_deps(normal = True) + [":fuzz"],
+)
+
+rust_binary(
+    name = "spsc_buffer_fuzz_test",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "fuzz_targets/spsc_buffer_fuzz_test.rs",
+    crate_name = "spsc_buffer_fuzz_test",
+    edition = "2024",
+    crate_features = ["default"],
+    tags = ["manual"],
+    deps = all_crate_deps(normal = True) + [":fuzz"],
+)
+
+rust_binary(
+    name = "versioned_kv_journal",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "fuzz_targets/versioned_kv_journal.rs",
+    crate_name = "versioned_kv_journal",
+    edition = "2024",
+    crate_features = ["default"],
+    tags = ["manual"],
+    deps = all_crate_deps(normal = True) + [":fuzz"],
+)
+
+rust_binary(
+    name = "workflow_state",
+    srcs = glob(["src/**/*.rs"]),
+    crate_root = "fuzz_targets/workflow_state.rs",
+    crate_name = "workflow_state",
+    edition = "2024",
+    crate_features = ["default"],
+    tags = ["manual"],
+    deps = all_crate_deps(normal = True) + [":fuzz"],
+)

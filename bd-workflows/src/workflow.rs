@@ -259,6 +259,7 @@ impl WorkflowEvent<'_> {
 #[cfg_attr(test, derive(Clone))]
 #[bd_macros::proto_serializable]
 #[derive(Debug)]
+#[allow(clippy::struct_field_names)]
 pub struct Workflow {
   #[field(id = 1)]
   id: String,

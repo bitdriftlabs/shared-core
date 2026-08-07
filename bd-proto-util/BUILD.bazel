@@ -1,0 +1,46 @@
+load("@crates//:defs.bzl", "aliases", "all_crate_deps")
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("//tools/lint:linters.bzl", "rust_library")
+
+package(default_visibility = ["//visibility:public"])
+
+genrule(
+    name = "buffer_log_generated_h",
+    srcs = ["//shared-core/bd-proto:src/flatbuffers/buffer_log_generated.h"],
+    outs = ["buffer_log_generated.h"],
+    cmd = "cp $(location //shared-core/bd-proto:src/flatbuffers/buffer_log_generated.h) $@",
+)
+
+genrule(
+    name = "common_generated_h",
+    srcs = ["//shared-core/bd-proto:src/flatbuffers/common_generated.h"],
+    outs = ["common_generated.h"],
+    cmd = "cp $(location //shared-core/bd-proto:src/flatbuffers/common_generated.h) $@",
+)
+
+cc_library(
+    name = "bd-proto-util-native",
+    srcs = ["src/cpp/verify.cc"],
+    hdrs = [
+        ":buffer_log_generated_h",
+        ":common_generated_h",
+    ],
+    include_prefix = ".",
+    deps = ["@@+http_archive+shared_core_flatbuffers//:flatbuffers"],
+)
+
+rust_library(
+    name = "bd-proto-util",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/bin/**/*.rs"],
+    ),
+    crate_features = [
+        "default",
+        "buffer-log-validate",
+    ],
+    crate_name = "bd_proto_util",
+    crate_root = "src/lib.rs",
+    edition = "2024",
+    deps = all_crate_deps(normal = True) + [":bd-proto-util-native"],
+)

@@ -19,6 +19,7 @@ doctest = false
 
 ### BEGIN HAKARI SECTION
 [dependencies]
+ahash = { version = "0.8", features = ["serde"] }
 aho-corasick = { version = "1" }
 bitflags = { version = "2", default-features = false, features = ["std"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "wasmbind"] }
@@ -32,6 +33,7 @@ futures-task = { version = "0.3", default-features = false, features = ["std"] }
 futures-util = { version = "0.3", features = ["channel", "io", "sink"] }
 getrandom-468e82937335b1c9 = { package = "getrandom", version = "0.3", default-features = false, features = ["std"] }
 getrandom-6f8ce4dd05d13bba = { package = "getrandom", version = "0.2", default-features = false, features = ["std"] }
+hashbrown = { version = "0.14", default-features = false, features = ["ahash", "inline-more", "raw"] }
 hyper = { version = "1", features = ["client", "http1", "http2", "server"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "http2", "server", "service"] }
 idna = { version = "1" }
@@ -62,6 +64,7 @@ tracing-core = { version = "0.1" }
 typenum = { version = "1", default-features = false, features = ["const-generics"] }
 
 [build-dependencies]
+ahash = { version = "0.8", features = ["serde"] }
 aho-corasick = { version = "1" }
 bitflags = { version = "2", default-features = false, features = ["std"] }
 cc = { version = "1", default-features = false, features = ["parallel"] }
@@ -76,6 +79,7 @@ futures-task = { version = "0.3", default-features = false, features = ["std"] }
 futures-util = { version = "0.3", features = ["channel", "io", "sink"] }
 getrandom-468e82937335b1c9 = { package = "getrandom", version = "0.3", default-features = false, features = ["std"] }
 getrandom-6f8ce4dd05d13bba = { package = "getrandom", version = "0.2", default-features = false, features = ["std"] }
+hashbrown = { version = "0.14", default-features = false, features = ["ahash", "inline-more", "raw"] }
 hyper = { version = "1", features = ["client", "http1", "http2", "server"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "http2", "server", "service"] }
 idna = { version = "1" }

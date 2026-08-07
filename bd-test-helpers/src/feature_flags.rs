@@ -67,6 +67,7 @@ mockall::mock! {
 // This is an implementation that just returns defaults to ease testing in places that don't care
 // about injecting flag values.
 #[derive(Debug, Default)]
+#[allow(clippy::struct_field_names)]
 pub struct DefaultFeatureFlags {
   bool_flags: HashMap<String, bool>,
   integer_flags: HashMap<String, u64>,

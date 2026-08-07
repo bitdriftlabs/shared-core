@@ -556,7 +556,7 @@ impl Manager {
 
 // Adapter for the new cursor impl. To be removed.
 pub struct CursorConsumer {
-  cursor_consumer: Box<dyn RingBufferCursorConsumer>,
+  consumer: Box<dyn RingBufferCursorConsumer>,
   retention_handle: RetentionHandle,
 
   buffer: Arc<RingBuffer>,
@@ -565,7 +565,7 @@ pub struct CursorConsumer {
 impl CursorConsumer {
   pub async fn read(&mut self) -> anyhow::Result<&[u8]> {
     self
-      .cursor_consumer
+      .consumer
       .read()
       .await
       .map_err(|e| anyhow!("cursor consumer buffer read error occurred: {e}"))
@@ -573,7 +573,7 @@ impl CursorConsumer {
 
   pub fn advance_read_cursor(&mut self) -> anyhow::Result<()> {
     self
-      .cursor_consumer
+      .consumer
       .advance_read_pointers(1)
       .map_err(|e| anyhow!("cursor consumer buffer read error occurred: {e}"))
   }
@@ -810,7 +810,7 @@ impl RingBuffer {
   // Creates a new continuous consumer that might be used to read logs from the buffer.
   pub fn create_continous_consumer(self: &Arc<Self>) -> anyhow::Result<CursorConsumer> {
     Ok(CursorConsumer {
-      cursor_consumer: self.buffer.clone().register_cursor_consumer()?,
+      consumer: self.buffer.clone().register_cursor_consumer()?,
       retention_handle: self.retention_handle.clone(),
       buffer: self.clone(),
     })

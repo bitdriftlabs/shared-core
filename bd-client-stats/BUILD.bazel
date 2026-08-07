@@ -1,0 +1,23 @@
+load("@crates//:defs.bzl", "aliases", "all_crate_deps")
+load("//tools/lint:linters.bzl", "rust_library")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library(
+    name = "bd-client-stats",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/bin/**/*.rs"],
+    ),
+    # logger-cli is a workspace consumer of the optional observation API. Bazel
+    # models each first-party crate as one shared target, so mirror Cargo's
+    # feature unification here rather than creating a feature-specific copy.
+    crate_features = [
+        "default",
+        "logger-cli-observer",
+    ],
+    crate_name = "bd_client_stats",
+    crate_root = "src/lib.rs",
+    edition = "2024",
+    deps = all_crate_deps(normal = True),
+)

@@ -1,0 +1,41 @@
+load("@crates//:defs.bzl", "aliases", "all_crate_deps")
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("//tools/lint:linters.bzl", "rust_binary", "rust_library")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "bd-report-convert-native",
+    srcs = ["src/glue.cpp"],
+    hdrs = [
+        "src/flatbuffers/common_generated.h",
+        "src/flatbuffers/report_generated.h",
+        "src/glue.h",
+    ],
+    includes = ["src"],
+    deps = ["@@+http_archive+shared_core_flatbuffers//:flatbuffers"],
+)
+
+rust_library(
+    name = "bd-report-convert",
+    srcs = glob(
+        ["src/**/*.rs"],
+        exclude = ["src/bin/**/*.rs"],
+    ),
+    compile_data = ["//shared-core/api:all_fbs"],
+    crate_features = ["default"],
+    crate_name = "bd_report_convert",
+    crate_root = "src/lib.rs",
+    edition = "2024",
+    deps = all_crate_deps(normal = True) + [":bd-report-convert-native"],
+)
+
+rust_binary(
+    name = "bd-report-convert-bin",
+    srcs = glob(["src/**/*.rs"]),
+    crate_features = ["default"],
+    crate_name = "bd_report_convert",
+    crate_root = "src/main.rs",
+    edition = "2024",
+    deps = all_crate_deps(normal = True) + [":bd-report-convert"],
+)

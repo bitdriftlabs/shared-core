@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use bd_key_value::Storage;
-use sqlite::{Connection, State};
+use rusqlite::{Connection, OptionalExtension};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
@@ -26,14 +26,15 @@ impl SQLiteStorage {
     }
   }
 
-  fn open(&self) -> Result<sqlite::Connection, sqlite::Error> {
-    sqlite::open(self.path.clone()).and_then(|conn| {
+  fn open(&self) -> rusqlite::Result<Connection> {
+    Connection::open(&self.path).and_then(|conn| {
       let query = "CREATE TABLE IF NOT EXISTS kvstore (key TEXT UNIQUE, value TEXT);";
-      conn.execute(query).map(|()| conn)
+      conn.execute(query, [])?;
+      Ok(conn)
     })
   }
 
-  fn with_connection<F, T>(&self, f: F) -> Result<T, sqlite::Error>
+  fn with_connection<F, T>(&self, f: F) -> rusqlite::Result<T>
   where
     F: FnOnce(&Connection) -> T,
   {
@@ -52,13 +53,7 @@ impl Storage for SQLiteStorage {
     let query =
       "INSERT INTO kvstore VALUES (:key, :value) ON CONFLICT DO UPDATE SET value=excluded.value";
     self
-      .with_connection(|conn| {
-        conn.prepare(query).and_then(|mut stmt| {
-          stmt.bind(&[(":key", key), (":value", value)][..])?;
-          stmt.next()?;
-          Ok(())
-        })
-      })
+      .with_connection(|conn| conn.execute(query, (key, value)).map(|_| ()))
       .flatten()
       .map_err(|e| anyhow::anyhow!("failed to insert: {e}"))
   }
@@ -67,15 +62,10 @@ impl Storage for SQLiteStorage {
     self
       .with_connection(|conn| {
         conn
-          .prepare("SELECT value FROM kvstore WHERE key = :key")
-          .and_then(|mut stmt| {
-            stmt.bind(&[(":key", key)][..])?;
-            if State::Row == stmt.next()? {
-              Ok(Some(stmt.read::<String, _>("value")?))
-            } else {
-              Ok(None)
-            }
+          .query_row("SELECT value FROM kvstore WHERE key = ?1", [key], |row| {
+            row.get(0)
           })
+          .optional()
       })
       .flatten()
       .map_err(|e| anyhow::anyhow!("failed to select: {e}"))
@@ -85,12 +75,8 @@ impl Storage for SQLiteStorage {
     self
       .with_connection(|conn| {
         conn
-          .prepare("DELETE FROM kvstore where key = :key")
-          .and_then(|mut stmt| {
-            stmt.bind(&[(":key", key)][..])?;
-            stmt.next()?;
-            Ok(())
-          })
+          .execute("DELETE FROM kvstore where key = ?1", [key])
+          .map(|_| ())
       })
       .flatten()
       .map_err(|e| anyhow::anyhow!("failed to delete: {e}"))
