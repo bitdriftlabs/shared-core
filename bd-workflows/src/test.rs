@@ -9,6 +9,7 @@
 #![allow(clippy::unwrap_used)]
 
 use crate::config::{Config, WorkflowDebugMode};
+use bd_proto::protos::logging::payload::LogType;
 use bd_test_helpers::workflow::WorkflowBuilder;
 use std::collections::BTreeMap;
 use time::OffsetDateTime;
@@ -30,6 +31,7 @@ impl MakeConfig for WorkflowBuilder {
 
 pub struct TestLog {
   pub message: String,
+  pub log_type: LogType,
   pub occurred_at: OffsetDateTime,
   pub now: OffsetDateTime,
   pub tags: BTreeMap<String, String>,
@@ -42,6 +44,7 @@ impl TestLog {
     let now = OffsetDateTime::now_utc();
     Self {
       message: message.to_string(),
+      log_type: LogType::NORMAL,
       occurred_at: now,
       now,
       tags: BTreeMap::new(),
@@ -52,6 +55,12 @@ impl TestLog {
   #[must_use]
   pub fn with_occurred_at(mut self, occurred_at: OffsetDateTime) -> Self {
     self.occurred_at = occurred_at;
+    self
+  }
+
+  #[must_use]
+  pub const fn with_log_type(mut self, log_type: LogType) -> Self {
+    self.log_type = log_type;
     self
   }
 

@@ -21,6 +21,7 @@ pub mod config;
 pub mod engine;
 mod generate_log;
 pub mod metrics;
+mod routing;
 mod sankey_diagram;
 // External users can opt into the test fixtures without making test helpers part of production
 // dependency closures. Unit tests receive the module through Cargo's `cfg(test)` automatically.
