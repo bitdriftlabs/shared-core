@@ -7,7 +7,7 @@
 
 use crate::builder;
 use crate::matcher::base_log_matcher::tag_match::Value_match::DoubleValueMatch;
-use crate::matcher::{RandomNumberGenerator, Tree};
+use crate::matcher::{LogTypeSet, RandomNumberGenerator, Tree};
 use crate::test::TestMatcher;
 use ahash::AHashMap;
 use bd_log_primitives::tiny_set::TinyMap;
@@ -1838,5 +1838,64 @@ fn double_matcher_with_u64_field() {
       (u64_log_tag("key", 100), true),
       (u64_log_tag("key", 99), false),
     ],
+  );
+}
+
+#[test]
+fn log_type_set_iterates_set_bits_and_supports_all_protobuf_types() {
+  let mut log_types = LogTypeSet::from_log_type(LogType::RESOURCE);
+  log_types.union(LogTypeSet::from_log_type(LogType::LIFECYCLE));
+
+  assert_eq!(
+    vec![LogType::LIFECYCLE, LogType::RESOURCE],
+    log_types.iter().collect::<Vec<_>>()
+  );
+  assert!(
+    LogType::VALUES
+      .iter()
+      .all(|log_type| { u32::try_from(log_type.value()).is_ok_and(|value| value < u16::BITS) })
+  );
+}
+
+#[test]
+fn possible_log_types_are_conservative() {
+  let lifecycle = builder::log_type_equals(LogType::LIFECYCLE);
+  let resource = builder::log_type_equals(LogType::RESOURCE);
+
+  assert_eq!(
+    Some(LogTypeSet::from_log_type(LogType::LIFECYCLE)),
+    Tree::new(&lifecycle).unwrap().possible_log_types()
+  );
+  assert_eq!(
+    Some(LogTypeSet::from_log_type(LogType::RESOURCE)),
+    Tree::new(&builder::and(vec![
+      resource.clone(),
+      builder::message_equals("resource")
+    ]))
+    .unwrap()
+    .possible_log_types()
+  );
+  let mut lifecycle_or_resource = LogTypeSet::from_log_type(LogType::LIFECYCLE);
+  lifecycle_or_resource.union(LogTypeSet::from_log_type(LogType::RESOURCE));
+  assert_eq!(
+    Some(lifecycle_or_resource),
+    Tree::new(&builder::or(vec![lifecycle.clone(), resource]))
+      .unwrap()
+      .possible_log_types()
+  );
+  assert_eq!(
+    None,
+    Tree::new(&builder::or(vec![
+      lifecycle.clone(),
+      builder::message_equals("fallback")
+    ]))
+    .unwrap()
+    .possible_log_types()
+  );
+  assert_eq!(
+    None,
+    Tree::new(&builder::not(lifecycle))
+      .unwrap()
+      .possible_log_types()
   );
 }

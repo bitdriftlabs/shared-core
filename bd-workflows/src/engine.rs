@@ -36,6 +36,7 @@ use crate::config::{
   WorkflowsConfiguration,
 };
 use crate::metrics::MetricsCollector;
+use crate::routing::WorkflowLogRouter;
 use crate::sankey_diagram::{self, PendingSankeyPathUpload};
 use crate::workflow::{
   SankeyPath,
@@ -124,6 +125,7 @@ pub struct WorkflowsEngine<C, H> {
   // at index `i`.
   configs: Vec<Config>,
   state: WorkflowsState,
+  log_router: WorkflowLogRouter,
   // Tracks the immediately preceding session for detecting out-of-order logs that return to it.
   // This is process local as the most relevant case of this is during startup when sequencing
   // crash logs that occurred in a previous session.
@@ -223,6 +225,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     let workflows_engine = Self {
       configs: vec![],
       state: WorkflowsState::default(),
+      log_router: WorkflowLogRouter::default(),
       previous_session_id: String::new(),
       stats: WorkflowsEngineStats::new(&scope),
       state_store,
@@ -343,6 +346,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     }
 
     self.state.refresh_tracing_counts_from_state();
+    Self::rebuild_log_routes(&mut self.log_router, &self.state.workflows, &self.configs);
 
     log::debug!(
       "started workflows engine with {} workflow(s); {} pending processing action(s); {} pending \
@@ -470,6 +474,8 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     self.state.streaming_actions = self
       .flush_buffers_actions_resolver
       .standardize_streaming_buffers(self.state.streaming_actions.clone());
+    // Regenerate routes whenever the workflow configuration is reloaded.
+    Self::rebuild_log_routes(&mut self.log_router, &self.state.workflows, &self.configs);
 
     log::debug!(
       "consumed received workflows config update; workflows engine contains {} workflow(s)",
@@ -549,6 +555,107 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       // Mark the state as dirty so that the state associated with
       // the workflow that was just removed can be removed from disk.
       self.needs_state_persistence = true;
+    }
+  }
+
+  #[allow(clippy::too_many_arguments)]
+  fn process_workflow_event<'config>(
+    configs: &'config [Config],
+    workflows: &mut [Workflow],
+    stats: &WorkflowsEngineStats,
+    needs_state_persistence: &mut bool,
+    active_run_tracing_count: &mut u32,
+    index: usize,
+    event: WorkflowEvent<'_>,
+    state_reader: &dyn bd_state::StateReader,
+    now: OffsetDateTime,
+    sampled_roll: u32,
+    output: &mut WorkflowEventOutput<'config>,
+  ) {
+    let Some(config) = configs.get(index) else {
+      return;
+    };
+    let Some(workflow) = workflows.get_mut(index) else {
+      return;
+    };
+
+    let was_in_initial_state = workflow.is_in_initial_state();
+    let result = workflow.process_event(config, event, state_reader, now, sampled_roll);
+
+    if result.stats().matched_logs_count > 0 {
+      stats
+        .matched_logs_total
+        .inc_by(u64::from(result.stats().matched_logs_count));
+    }
+
+    *active_run_tracing_count = active_run_tracing_count
+      .saturating_add(result.stats().tracing_starts)
+      .saturating_sub(result.stats().tracing_ends);
+
+    // Not every case of a workflow making a progress needs a state persistence.
+    // If the workflow was in an initial state prior to processing a log and is in
+    // an initial state after processing the log then the state of workflow did not change
+    // as the result of processing a log and does not have to be persisted. An example for when
+    // a workflow makes progress but does not needs persistence is the following workflow
+    // with 2 nodes/states - a start log matching node and a final emit metric node,
+    // such workflow may:
+    //   * be in an initial state
+    //   * match a single log
+    //   * execute emit metric action
+    //   * be an initial state
+    if result.stats().did_make_progress()
+      && !(was_in_initial_state && workflow.is_in_initial_state())
+    {
+      *needs_state_persistence = true;
+    }
+
+    // In debug only mode we do not trigger any actions, but we still inject logs so that
+    // workflows continue to advance if they depend on the injected logs.
+    let (
+      triggered_actions,
+      workflow_logs_to_inject,
+      cumulative_workflow_debug_state,
+      incremental_workflow_debug_state,
+      workflow_tracing_carryover_flush_action_ids,
+    ) = result.into_parts();
+    if !matches!(config.mode(), WorkflowDebugMode::DebugOnly) {
+      output
+        .prepared_actions
+        .incorporate_workflow_actions(index, triggered_actions);
+    }
+    output.logs_to_inject.extend(workflow_logs_to_inject);
+    if let Some(cumulative_workflow_debug_state) = cumulative_workflow_debug_state {
+      output
+        .all_cumulative_workflow_debug_state
+        .push((workflow.id().to_string(), cumulative_workflow_debug_state));
+    }
+    output.all_incremental_workflow_debug_state.extend(
+      incremental_workflow_debug_state
+        .into_iter()
+        .map(|state_key| WorkflowDebugKey {
+          workflow_id: workflow.id().to_string(),
+          state_key,
+        }),
+    );
+    output
+      .tracing_carryover_flush_action_ids
+      .extend(workflow_tracing_carryover_flush_action_ids);
+  }
+
+  /// Rebuilds routes after an event or configuration change that can affect every workflow.
+  fn rebuild_log_routes(
+    log_router: &mut WorkflowLogRouter,
+    workflows: &[Workflow],
+    configs: &[Config],
+  ) {
+    let mut known_log_types = bd_log_matcher::matcher::LogTypeSet::default();
+    for config in configs {
+      known_log_types.union(config.possible_log_types());
+    }
+    log_router.prepare(workflows.len(), known_log_types);
+
+    for (index, (workflow, config)) in workflows.iter().zip(configs).enumerate() {
+      log_router.insert(index, workflow.log_route(config));
     }
   }
 
@@ -798,88 +905,86 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       };
     }
 
-    let mut prepared_actions = PreparedActions::default();
-    let mut logs_to_inject: TinyMap<&'a str, Log> = TinyMap::default();
-    let mut all_cumulative_workflow_debug_state = vec![];
-    let mut all_incremental_workflow_debug_state = vec![];
-    let mut tracing_carryover_flush_action_ids: TinySet<FlushBufferId> = TinySet::default();
+    let mut workflow_event_output = WorkflowEventOutput::default();
     // Sampling decisions should be stable for a single event across every workflow/run that
     // evaluates it. Roll once here and thread the same value through matcher evaluation.
     let sampled_roll = bd_log_matcher::matcher::random_sample_roll();
-    let mut has_debug_workflows = false;
-    for (index, workflow) in &mut self.state.workflows.iter_mut().enumerate() {
-      let Some(config) = self.configs.get(index) else {
-        continue;
-      };
+    let has_debug_workflows = self
+      .configs
+      .iter()
+      .any(|config| config.mode() != WorkflowDebugMode::None);
 
-      let was_in_initial_state = workflow.is_in_initial_state();
-      let result = workflow.process_event(config, event, state_reader, now, sampled_roll);
+    let Self {
+      state,
+      configs,
+      stats,
+      needs_state_persistence,
+      log_router,
+      ..
+    } = self;
+    let workflows = &mut state.workflows;
+    let workflow_count = workflows.len();
+    let active_run_tracing_count = &mut state.active_run_tracing_count;
+    let routed_log = matches!(event, WorkflowEvent::Log(_));
 
-      macro_rules! inc_by {
-        ($field:ident, $value:ident) => {
-          self.stats.$field.inc_by(u64::from(result.stats().$value));
-        };
-      }
-
-      if result.stats().matched_logs_count > 0 {
-        inc_by!(matched_logs_total, matched_logs_count);
-      }
-
-      self.state.active_run_tracing_count = self
-        .state
-        .active_run_tracing_count
-        .saturating_add(result.stats().tracing_starts);
-      self.state.active_run_tracing_count = self
-        .state
-        .active_run_tracing_count
-        .saturating_sub(result.stats().tracing_ends);
-
-      // Not every case of a workflow making a progress needs a state persistence.
-      // If the workflow was in an initial state prior to processing a log and is in
-      // an initial state after processing the log then the state of workflow did not change
-      // as the result of processing a log and does not have to be persisted. An example for when
-      // a workflow makes progress but does not needs persistence is the following workflow
-      // with 2 nodes/states - a start log matching node and a final emit metric node,
-      // such workflow may:
-      //   * be in an initial state
-      //   * match a single log
-      //   * execute emit metric action
-      //   * be an initial state
-      if result.stats().did_make_progress()
-        && !(was_in_initial_state && workflow.is_in_initial_state())
-      {
-        self.needs_state_persistence = true;
-      }
-
-      // In debug only mode we do not trigger any actions, but we still inject logs so that
-      // workflows continue to advance if they depend on the injected logs.
-      has_debug_workflows |= config.mode() != WorkflowDebugMode::None;
-      let (
-        triggered_actions,
-        workflow_logs_to_inject,
-        cumulative_workflow_debug_state,
-        incremental_workflow_debug_state,
-        workflow_tracing_carryover_flush_action_ids,
-      ) = result.into_parts();
-      if !matches!(config.mode(), WorkflowDebugMode::DebugOnly) {
-        prepared_actions.incorporate_workflow_actions(index, triggered_actions);
-      }
-      logs_to_inject.extend(workflow_logs_to_inject);
-      if let Some(cumulative_workflow_debug_state) = cumulative_workflow_debug_state {
-        all_cumulative_workflow_debug_state
-          .push((workflow.id().to_string(), cumulative_workflow_debug_state));
-      }
-      all_incremental_workflow_debug_state.extend(
-        incremental_workflow_debug_state
-          .into_iter()
-          .map(|state_key| WorkflowDebugKey {
-            workflow_id: workflow.id().to_string(),
-            state_key,
-          }),
-      );
-      tracing_carryover_flush_action_ids.extend(workflow_tracing_carryover_flush_action_ids);
+    // A routed log only evaluates the indices selected by the router. Other event kinds are
+    // broadcast because they can advance any workflow or change every route.
+    match event {
+      WorkflowEvent::Log(log) => {
+        for &index in log_router.select_candidates_for_log_type(log.log_type) {
+          Self::process_workflow_event(
+            configs,
+            workflows,
+            stats,
+            needs_state_persistence,
+            active_run_tracing_count,
+            index,
+            event,
+            state_reader,
+            now,
+            sampled_roll,
+            &mut workflow_event_output,
+          );
+        }
+      },
+      WorkflowEvent::SessionStart(_) | WorkflowEvent::StateChange(..) => {
+        for index in 0 .. workflow_count {
+          Self::process_workflow_event(
+            configs,
+            workflows,
+            stats,
+            needs_state_persistence,
+            active_run_tracing_count,
+            index,
+            event,
+            state_reader,
+            now,
+            sampled_roll,
+            &mut workflow_event_output,
+          );
+        }
+      },
     }
 
+    if routed_log {
+      log_router.refresh_selected_routes(|index| {
+        workflows
+          .get(index)
+          .zip(configs.get(index))
+          .map(|(workflow, config)| workflow.log_route(config))
+          .unwrap_or_default()
+      });
+    } else {
+      Self::rebuild_log_routes(log_router, workflows, configs);
+    }
+
+    let WorkflowEventOutput {
+      prepared_actions,
+      logs_to_inject,
+      all_cumulative_workflow_debug_state,
+      all_incremental_workflow_debug_state,
+      tracing_carryover_flush_action_ids,
+    } = workflow_event_output;
     let PreparedActions {
       mut flush_buffers_actions,
       emit_metric_action_counts,
@@ -1054,6 +1159,15 @@ impl<C, H> Drop for WorkflowsEngine<C, H> {
     self.flush_buffers_negotiator_join_handle.abort();
     self.sankey_processor_join_handle.abort();
   }
+}
+
+#[derive(Default)]
+struct WorkflowEventOutput<'a> {
+  prepared_actions: PreparedActions<'a>,
+  logs_to_inject: TinyMap<&'a str, Log>,
+  all_cumulative_workflow_debug_state: AllWorkflowsDebugState,
+  all_incremental_workflow_debug_state: Vec<WorkflowDebugKey>,
+  tracing_carryover_flush_action_ids: TinySet<FlushBufferId>,
 }
 
 #[derive(Default)]

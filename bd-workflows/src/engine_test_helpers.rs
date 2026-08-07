@@ -29,7 +29,6 @@ use bd_proto::protos::client::api::{
   SankeyPathUploadRequest,
   log_upload_intent_request,
 };
-use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
 use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{Counter, Histogram};
@@ -149,7 +148,7 @@ impl<C: Counter, H: Histogram> AnnotatedWorkflowsEngine<C, H> {
   pub fn process_log(&mut self, log: TestLog) -> WorkflowsEngineResult<'_> {
     self.engine.process_event(
       WorkflowEvent::Log(&bd_log_primitives::Log {
-        log_type: LogType::NORMAL,
+        log_type: log.log_type,
         log_level: log_level::DEBUG,
         message: LogMessage::String(log.message),
         session_id: log.session.unwrap_or_else(|| self.session_id.clone()),
