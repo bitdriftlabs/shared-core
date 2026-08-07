@@ -79,6 +79,16 @@ pub struct WorkflowsConfiguration {
 
 impl WorkflowsConfiguration {
   #[must_use]
+  pub const fn len(&self) -> usize {
+    self.workflows.len()
+  }
+
+  #[must_use]
+  pub const fn is_empty(&self) -> bool {
+    self.workflows.is_empty()
+  }
+
+  #[must_use]
   pub fn new(
     workflows: Vec<WorkflowConfigProto>,
     debug_workflows: Vec<WorkflowConfigProto>,
