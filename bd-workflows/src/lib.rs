@@ -21,6 +21,7 @@ pub mod config;
 pub mod engine;
 mod generate_log;
 pub mod metrics;
+mod routing;
 mod sankey_diagram;
 pub mod test;
 pub mod workflow;
