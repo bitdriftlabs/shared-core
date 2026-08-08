@@ -78,7 +78,7 @@ axum              = { version = "0.8.9", features = ["http2", "macros"] }
 base64            = "0.22.1"
 base64-url        = "3.0.4"
 base64ct          = { version = "1.8.3", features = ["alloc", "std"] }
-bd-workspace-hack = "0.1.0"
+bd-workspace-hack = "0.1.1"
 num-traits        = "0.2.19"
 
 # This project is abandoned and needs to be replaced so is pinned for now. The maintainers just
