@@ -53,7 +53,9 @@ members = [
   "bd-runtime-config",
   "bd-server-stats",
   "bd-stats-common",
+  "bd-workflow-stats",
   "bd-test-helpers",
+  "bd-test-helpers-core",
   "bd-time",
   "bd-workflows",
   "bd-workflow-bench",
@@ -162,10 +164,10 @@ protobuf-json-mapping = { git = "https://github.com/bitdriftlabs/rust-protobuf.g
 rand         = "0.10.2"
 regex        = "1.13.0"
 reqwest      = { version = "0.13.4", features = ["deflate", "json"] }
-rusqlite     = "0.32.1"
 ripsaw       = { git = "https://github.com/bitdriftlabs/ripsaw.git" }
 rstest       = "0.26.1"
 rstest_reuse = "0.7.0"
+rusqlite     = "0.32.1"
 serde        = { version = "1", features = ["derive", "rc"] }
 serde_json   = "1.0.150"
 serde_yaml   = "0.9.34"

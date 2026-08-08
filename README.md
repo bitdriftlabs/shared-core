@@ -2,6 +2,11 @@
 
 This repo contains bitdrift code shared between the client and server.
 
+## Licensing
+
+Packages are individually licensed under either Apache License 2.0 or PolyForm Shield 1.0.0.
+See [LICENSES.md](LICENSES.md) for the package map and canonical license texts.
+
 ## Development
 
 Tests are run with `cargo test`. If you run into file descriptor exhaustion, consider increasing

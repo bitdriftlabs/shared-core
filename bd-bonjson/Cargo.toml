@@ -1,6 +1,6 @@
 [package]
 edition      = "2024"
-license-file = "../LICENSE"
+license-file = "../LICENSE.polyform"
 name         = "bd-bonjson"
 publish      = false
 version      = "1.0.0"
@@ -11,6 +11,7 @@ doctest = false
 [dev-dependencies]
 assert_no_alloc.workspace = true
 bd-test-helpers.path      = "../bd-test-helpers"
+bd-test-helpers-core.path = "../bd-test-helpers-core"
 ctor.workspace            = true
 tempfile.workspace        = true
 

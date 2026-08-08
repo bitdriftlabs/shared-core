@@ -1,0 +1,17 @@
+[package]
+edition = "2024"
+license = "Apache-2.0"
+name    = "bd-test-helpers-core"
+publish = false
+version = "1.0.0"
+
+[lib]
+doctest = false
+
+[dependencies]
+async-trait.workspace       = true
+bd-log.path                 = "../bd-log"
+bd-panic.path               = "../bd-panic"
+bd-runtime-config.path      = "../bd-runtime-config"
+bd-workspace-hack.workspace = true
+tokio.workspace             = true

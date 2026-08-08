@@ -1,6 +1,6 @@
 [package]
 edition      = "2024"
-license-file = "../LICENSE"
+license-file = "../LICENSE.polyform"
 name         = "bd-key-value"
 publish      = false
 version      = "1.0.0"
@@ -23,6 +23,7 @@ tokio.workspace             = true
 
 [dev-dependencies]
 bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
+bd-test-helpers-core.path   = "../bd-test-helpers-core"
 bincode.workspace           = true
 ctor.workspace              = true
 parking_lot.workspace       = true

@@ -1,4 +1,5 @@
 shared-core
 Copyright Bitdrift, Inc.
 
-Licensed under PolyForm Shield. See LICENSE for terms.
+Packages are individually licensed under Apache License 2.0 or PolyForm Shield 1.0.0.
+See LICENSES.md for package-specific terms.

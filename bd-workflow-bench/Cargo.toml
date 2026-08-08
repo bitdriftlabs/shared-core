@@ -1,6 +1,6 @@
 [package]
 edition      = "2024"
-license-file = "../LICENSE"
+license-file = "../LICENSE.polyform"
 name         = "bd-workflow-bench"
 publish      = false
 version      = "0.1.0"
@@ -15,7 +15,7 @@ bd-client-stats-store.path      = "../bd-client-stats-store"
 bd-log-primitives.path          = "../bd-log-primitives"
 bd-proto.path                   = "../bd-proto"
 bd-state.path                   = "../bd-state"
-bd-workflows = { path = "../bd-workflows", features = ["cloneable-config"] }
+bd-workflows                    = { path = "../bd-workflows", features = ["cloneable-config"] }
 bd-workspace-hack.workspace     = true
 clap.workspace                  = true
 log.workspace                   = true
@@ -27,12 +27,12 @@ time.workspace                  = true
 tokio.workspace                 = true
 
 [dev-dependencies]
-criterion = "0.5.1"
+criterion          = "0.5.1"
 tempfile.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gungraun = { version = "0.19.3", features = ["client_requests"] }
 
 [[bench]]
-name = "workflow_replay"
 harness = false
+name    = "workflow_replay"

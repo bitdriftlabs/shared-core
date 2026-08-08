@@ -1,20 +1,17 @@
 [package]
-edition      = "2024"
-license-file = "../LICENSE"
-name         = "bd-stats-common"
-publish      = false
-version      = "1.0.0"
+edition = "2024"
+license = "Apache-2.0"
+name    = "bd-stats-common"
+publish = false
+version = "1.0.0"
 
 [lib]
 doctest = false
 
 [dependencies]
-arbitrary                  = { workspace = true, optional = true }
 anyhow.workspace            = true
-bd-macros.path              = "../bd-macros"
-bd-proto-util.path          = "../bd-proto-util"
+arbitrary                   = { workspace = true, optional = true }
 bd-workspace-hack.workspace = true
-protobuf.workspace          = true
 sketches-rust.workspace     = true
 
 [features]

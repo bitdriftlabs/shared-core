@@ -1,6 +1,6 @@
 [package]
 edition      = "2024"
-license-file = "../LICENSE"
+license-file = "../LICENSE.polyform"
 name         = "logger-cli"
 publish      = false
 version      = "1.0.0"
@@ -30,9 +30,9 @@ log.workspace                = true
 parking_lot.workspace        = true
 reqwest.workspace            = true
 rmcp.workspace               = true
+rusqlite.workspace           = true
 serde.workspace              = true
 serde_json.workspace         = true
-rusqlite.workspace           = true
 tarpc.workspace              = true
 time.workspace               = true
 tokio.workspace              = true

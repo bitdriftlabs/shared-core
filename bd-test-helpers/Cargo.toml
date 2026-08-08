@@ -1,6 +1,6 @@
 [package]
 edition      = "2024"
-license-file = "../LICENSE"
+license-file = "../LICENSE.polyform"
 name         = "bd-test-helpers"
 publish      = false
 version      = "1.0.0"
@@ -24,7 +24,6 @@ bd-log-matcher.path         = "../bd-log-matcher"
 bd-log-metadata.path        = "../bd-log-metadata"
 bd-log-primitives.path      = "../bd-log-primitives"
 bd-metadata.path            = "../bd-metadata"
-bd-panic.path               = "../bd-panic"
 bd-proto.path               = "../bd-proto"
 bd-resource-utilization     = { path = "../bd-resource-utilization" }
 bd-runtime-config           = { path = "../bd-runtime-config", optional = true }

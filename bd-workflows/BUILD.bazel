@@ -21,6 +21,7 @@ rust_library_with_feature_variants(
                 "//shared-core/bd-client-stats": "//shared-core/bd-client-stats:bd-client-stats-fuzz",
                 "//shared-core/bd-client-stats-store": "//shared-core/bd-client-stats-store:bd-client-stats-store-fuzz",
                 "//shared-core/bd-stats-common": "//shared-core/bd-stats-common:bd-stats-common-fuzz",
+                "//shared-core/bd-workflow-stats": "//shared-core/bd-workflow-stats:bd-workflow-stats-fuzz",
             },
         },
     },

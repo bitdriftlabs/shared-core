@@ -1,6 +1,6 @@
 [package]
 edition      = "2024"
-license-file = "../LICENSE"
+license-file = "../LICENSE.polyform"
 name         = "stats_collection_profiling"
 publish      = false
 version      = "1.0.0"

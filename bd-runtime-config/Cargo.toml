@@ -1,9 +1,9 @@
 [package]
-edition      = "2024"
-license-file = "../LICENSE"
-name         = "bd-runtime-config"
-publish      = false
-version      = "1.0.0"
+edition = "2024"
+license = "Apache-2.0"
+name    = "bd-runtime-config"
+publish = false
+version = "1.0.0"
 
 [lib]
 doctest = false
@@ -25,6 +25,7 @@ time.workspace              = true
 tokio.workspace             = true
 
 [dev-dependencies]
-bd-test-helpers    = { path = "../bd-test-helpers", default-features = false, features = ["runtime"] }
-ctor.workspace     = true
-tempfile.workspace = true
+bd-test-helpers           = { path = "../bd-test-helpers", default-features = false, features = ["runtime"] }
+bd-test-helpers-core.path = "../bd-test-helpers-core"
+ctor.workspace            = true
+tempfile.workspace        = true
