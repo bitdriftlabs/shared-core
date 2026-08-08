@@ -1,0 +1,21 @@
+[package]
+name = "mutex_lock_must_unwrap"
+version = "0.1.0"
+authors = ["bitdrift"]
+description = "Require std::sync::Mutex::lock() results to be immediately unwrapped"
+edition = "2024"
+license-file = "../../../LICENSE"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+clippy_utils = { git = "https://github.com/rust-lang/rust-clippy", rev = "9fca3bc9fc2bc83c60bde26d18ed68f11564b228" }
+dylint_linting = "6.0"
+
+[dev-dependencies]
+dylint_testing = "6.0"
+
+[package.metadata.rust-analyzer]
+rustc_private = true

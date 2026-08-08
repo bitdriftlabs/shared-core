@@ -21,6 +21,7 @@ exclude_dirs = (
     './fuzz/corpus/',
     './proto/',
     './target/',
+    './tools/dylints/target/',
     './thirdparty/',
 )
 
@@ -50,7 +51,10 @@ def check_file(file_path: str):
 
         if (file_path.endswith('Cargo.toml') and
             not file_path == './Cargo.toml' and
-                not 'license-file = "../LICENSE"' in content):
+            '[package]' in content and
+            not ('license-file = "../LICENSE"' in content or
+                 (file_path.startswith('./tools/dylints/') and
+                  'license-file = "../../../LICENSE"' in content))):
             raise Exception(
                 f'license-file = "../LICENSE" not found in {file_path}')
 
