@@ -1,6 +1,6 @@
 [package]
 edition      = "2024"
-license-file = "../LICENSE"
+license-file = "../LICENSE.polyform"
 name         = "bd-api"
 publish      = false
 version      = "1.0.0"
@@ -40,9 +40,10 @@ tracing.workspace           = true
 uuid.workspace              = true
 
 [dev-dependencies]
-assert_matches.workspace = true
-bd-stats-common.path     = "../bd-stats-common"
-bd-test-helpers          = { path = "../bd-test-helpers", default-features = false }
-ctor.workspace           = true
-mockall.workspace        = true
-tempfile.workspace       = true
+assert_matches.workspace  = true
+bd-stats-common.path      = "../bd-stats-common"
+bd-test-helpers           = { path = "../bd-test-helpers", default-features = false }
+bd-test-helpers-core.path = "../bd-test-helpers-core"
+ctor.workspace            = true
+mockall.workspace         = true
+tempfile.workspace        = true

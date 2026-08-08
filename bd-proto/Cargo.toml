@@ -1,6 +1,6 @@
 [package]
 edition      = "2024"
-license-file = "../LICENSE"
+license-file = "../LICENSE.polyform"
 name         = "bd-proto"
 publish      = false
 version      = "1.0.0"
@@ -17,15 +17,15 @@ protobuf.workspace          = true
 serde.workspace             = true
 
 [dev-dependencies]
-matches.workspace           = true
-serde_json.workspace        = true
+matches.workspace    = true
+serde_json.workspace = true
 
 [build-dependencies]
 flatc-rust.workspace       = true
 protobuf-codegen.workspace = true
 
 [features]
-public-api = []
+public-api       = []
 with-source-info = ["public-api"]
 
 [lints.rust]

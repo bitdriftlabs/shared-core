@@ -2,7 +2,7 @@
 // Copyright Bitdrift, Inc. All rights reserved.
 //
 // Use of this source code is governed by a source available license that can be found in the
-// LICENSE file or at:
+// LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::config::{
@@ -28,7 +28,6 @@ use bd_log_primitives::{LogFields, LogMessage, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow as workflow_proto;
 use bd_proto_util::serialization::{ProtoMessageDeserialize, ProtoMessageSerialize};
-use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_stats_common::{MetricType, labels};
 use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
@@ -45,6 +44,7 @@ use bd_test_helpers::workflow::{
   metric_value,
   state,
 };
+use bd_workflow_stats::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use pretty_assertions::assert_eq;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Cursor;
@@ -54,7 +54,7 @@ use time::macros::datetime;
 
 #[ctor::ctor(unsafe)]
 fn test_global_init() {
-  bd_test_helpers::test_global_init();
+  bd_test_helpers_core::test_global_init();
 }
 
 #[test]

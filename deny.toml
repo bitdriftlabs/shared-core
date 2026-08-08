@@ -1,6 +1,5 @@
 [graph]
 all-features        = false
-exclude             = ["bd-workspace-hack"]
 no-default-features = false
 targets             = []
 
@@ -30,11 +29,6 @@ exceptions = []
 [[licenses.clarify]]
 crate         = "ring"
 expression    = "MIT AND ISC AND OpenSSL"
-license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
-
-[[licenses.clarify]]
-crate         = "bd-workspace-hack"
-expression    = "PolyForm-Noncommercial-1.0.0"
 license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
 
 [licenses.private]

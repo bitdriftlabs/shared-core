@@ -1,9 +1,9 @@
 [package]
-edition      = "2024"
-license-file = "../LICENSE"
-name         = "bd-grpc"
-publish      = false
-version      = "1.0.0"
+edition = "2024"
+license = "Apache-2.0"
+name    = "bd-grpc"
+publish = false
+version = "1.0.0"
 
 [lib]
 doctest = false
@@ -47,13 +47,14 @@ unwrap-infallible.workspace     = true
 urlencoding.workspace           = true
 
 [dev-dependencies]
-assert_matches.workspace = true
-bd-pgv.path              = "../bd-pgv"
-bd-test-helpers.path     = "../bd-test-helpers"
-bd-time.path             = "../bd-time"
-ctor.workspace           = true
-parking_lot.workspace    = true
-reqwest.workspace        = true
+assert_matches.workspace  = true
+bd-pgv.path               = "../bd-pgv"
+bd-test-helpers.path      = "../bd-test-helpers"
+bd-test-helpers-core.path = "../bd-test-helpers-core"
+bd-time.path              = "../bd-time"
+ctor.workspace            = true
+parking_lot.workspace     = true
+reqwest.workspace         = true
 
 [build-dependencies]
 protobuf-codegen.workspace = true

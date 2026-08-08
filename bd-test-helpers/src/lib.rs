@@ -2,11 +2,10 @@
 // Copyright Bitdrift, Inc. All rights reserved.
 //
 // Use of this source code is governed by a source available license that can be found in the
-// LICENSE file or at:
+// LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use bd_error_reporter::reporter::{Reporter, UnexpectedErrorHandler};
-use bd_panic::PanicType;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::future::Future;
@@ -36,16 +35,6 @@ pub mod workflow;
 pub fn make_mut<T>(mock: &mut Arc<T>) -> &mut T {
   let ptr = Arc::as_ptr(mock).cast_mut();
   unsafe { ptr.as_mut().unwrap() }
-}
-
-pub fn test_global_init() {
-  // Call this before we initialize the logger as there is an issue where a log emitted /w thread
-  // ids (always set by SwapLogger) emitted during ctor will panic.
-  // See https://github.com/tokio-rs/tracing/issues/2063#issuecomment-2024185427, ideally this will
-  // be resolved somehow.
-  bd_panic::default(PanicType::ForceAbort);
-
-  bd_log::SwapLogger::initialize();
 }
 
 //

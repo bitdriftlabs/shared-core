@@ -2,7 +2,7 @@
 // Copyright Bitdrift, Inc. All rights reserved.
 //
 // Use of this source code is governed by a source available license that can be found in the
-// LICENSE file or at:
+// LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
@@ -26,8 +26,8 @@ use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{FieldsRef, Log, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto_util::serialization::TimestampMicros;
-use bd_stats_common::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_time::OffsetDateTimeExt;
+use bd_workflow_stats::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use itertools::Itertools;
 use sha2::Digest;
 use std::borrow::Cow;
@@ -48,7 +48,7 @@ mod fuzzing {
   use arbitrary::{Arbitrary, Unstructured};
   use bd_log_primitives::tiny_set::TinyMap;
   use bd_proto_util::serialization::TimestampMicros;
-  use bd_stats_common::workflow::WorkflowDebugStateKey;
+  use bd_workflow_stats::workflow::WorkflowDebugStateKey;
   use std::collections::HashMap;
   use time::OffsetDateTime;
 

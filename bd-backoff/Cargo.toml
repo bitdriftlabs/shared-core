@@ -1,9 +1,9 @@
 [package]
-edition      = "2024"
-license-file = "../LICENSE"
-name         = "bd-backoff"
-publish      = false
-version      = "1.0.0"
+edition = "2024"
+license = "Apache-2.0"
+name    = "bd-backoff"
+publish = false
+version = "1.0.0"
 
 [lib]
 doctest = false

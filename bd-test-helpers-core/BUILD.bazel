@@ -1,0 +1,14 @@
+load("@crates//:defs.bzl", "aliases", "all_crate_deps")
+load("//tools/rust:tests.bzl", "rust_library_with_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library_with_test(
+    name = "bd-test-helpers-core",
+    srcs = glob(["src/**/*.rs"]),
+    crate_features = ["default"],
+    crate_name = "bd_test_helpers_core",
+    crate_root = "src/lib.rs",
+    edition = "2024",
+    deps = all_crate_deps(normal = True),
+)

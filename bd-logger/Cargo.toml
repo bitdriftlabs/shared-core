@@ -1,6 +1,6 @@
 [package]
 edition      = "2024"
-license-file = "../LICENSE"
+license-file = "../LICENSE.polyform"
 name         = "bd-logger"
 publish      = false
 version      = "1.0.0"
@@ -45,6 +45,7 @@ bd-shutdown.path             = "../bd-shutdown"
 bd-state.path                = "../bd-state"
 bd-stats-common.path         = "../bd-stats-common"
 bd-time.path                 = "../bd-time"
+bd-workflow-stats.path       = "../bd-workflow-stats"
 bd-workflows.path            = "../bd-workflows"
 bd-workspace-hack.workspace  = true
 flatbuffers.workspace        = true
@@ -68,6 +69,7 @@ assert_matches.workspace    = true
 bd-hyper-network            = { path = "../bd-hyper-network" }
 bd-noop-network             = { path = "../bd-noop-network" }
 bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
+bd-test-helpers-core.path   = "../bd-test-helpers-core"
 ctor.workspace              = true
 flate2.workspace            = true
 pretty_assertions.workspace = true

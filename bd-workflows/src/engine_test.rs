@@ -2,7 +2,7 @@
 // Copyright Bitdrift, Inc. All rights reserved.
 //
 // Use of this source code is governed by a source available license that can be found in the
-// LICENSE file or at:
+// LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::WorkflowsEngine;
@@ -30,7 +30,6 @@ use bd_log_primitives::{Log, LogFields, LogMessage, log_level};
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{SankeyPathUploadRequest, log_upload_intent_request};
 use bd_proto::protos::logging::payload::LogType;
-use bd_stats_common::workflow::WorkflowDebugTransitionType;
 use bd_stats_common::{NameType, labels};
 use bd_test_helpers::sankey_value;
 use bd_test_helpers::workflow::macros::rule;
@@ -54,6 +53,7 @@ use bd_test_helpers::workflow::{
   state,
 };
 use bd_time::TimeDurationExt;
+use bd_workflow_stats::workflow::WorkflowDebugTransitionType;
 use itertools::Itertools;
 use pretty_assertions::assert_eq;
 use std::borrow::Cow;

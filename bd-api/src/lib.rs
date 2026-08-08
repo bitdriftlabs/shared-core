@@ -2,7 +2,7 @@
 // Copyright Bitdrift, Inc. All rights reserved.
 //
 // Use of this source code is governed by a source available license that can be found in the
-// LICENSE file or at:
+// LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #![deny(
@@ -47,7 +47,7 @@ pub use bd_metadata::{Metadata, Platform};
 #[cfg(test)]
 #[ctor::ctor(unsafe)]
 fn global_init() {
-  bd_test_helpers::test_global_init();
+  bd_test_helpers_core::test_global_init();
 }
 
 /// Wrapper around an generic uploadable payload which can be converted into `RequestType`.

@@ -1,6 +1,6 @@
 [package]
 edition      = "2024"
-license-file = "../LICENSE"
+license-file = "../LICENSE.polyform"
 name         = "bd-resource-utilization"
 publish      = false
 version      = "1.0.0"
@@ -21,10 +21,11 @@ time.workspace              = true
 tokio.workspace             = true
 
 [dev-dependencies]
-bd-test-helpers.path  = "../bd-test-helpers"
-bd-time.path          = "../bd-time"
-ctor.workspace        = true
-parking_lot.workspace = true
-tempfile.workspace    = true
-time.workspace        = true
-tokio-test.workspace  = true
+bd-test-helpers.path      = "../bd-test-helpers"
+bd-test-helpers-core.path = "../bd-test-helpers-core"
+bd-time.path              = "../bd-time"
+ctor.workspace            = true
+parking_lot.workspace     = true
+tempfile.workspace        = true
+time.workspace            = true
+tokio-test.workspace      = true

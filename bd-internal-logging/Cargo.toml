@@ -1,6 +1,6 @@
 [package]
 edition      = "2024"
-license-file = "../LICENSE"
+license-file = "../LICENSE.polyform"
 name         = "bd-internal-logging"
 publish      = false
 version      = "1.0.0"

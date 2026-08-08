@@ -1,9 +1,9 @@
 [package]
-edition      = "2024"
-license-file = "../LICENSE"
-name         = "bd-grpc-codec"
-publish      = false
-version      = "1.0.0"
+edition = "2024"
+license = "Apache-2.0"
+name    = "bd-grpc-codec"
+publish = false
+version = "1.0.0"
 
 [lib]
 doctest = false
@@ -18,9 +18,10 @@ protobuf.workspace          = true
 thiserror.workspace         = true
 
 [dev-dependencies]
-bd-test-helpers  = { path = "../bd-test-helpers" } # revert
-ctor.workspace   = true
-rstest.workspace = true
+bd-test-helpers           = { path = "../bd-test-helpers" } # revert
+bd-test-helpers-core.path = "../bd-test-helpers-core"
+ctor.workspace            = true
+rstest.workspace          = true
 
 [features]
 # zlib feature allows us to link against system provided zlib implementation. Desirable on mobile platforms.

@@ -1,13 +1,12 @@
 // shared-core - bitdrift's common client/server libraries
 // Copyright Bitdrift, Inc. All rights reserved.
 //
-// Use of this source code is governed by a source available license that can be found in the
-// LICENSE file or at:
-// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
 
 use bd_runtime_config::loader::Loader;
 use bd_runtime_config::runtime_ticker::RuntimeFlagTicker;
-use bd_test_helpers::feature_flags::{DefaultFeatureFlags, FakeLoader};
+use bd_test_helpers_core::feature_flags::{DefaultFeatureFlags, FakeLoader};
 use bd_time::{TestTimeProvider, Ticker, TimeProvider};
 use std::sync::Arc;
 use time::macros::datetime;

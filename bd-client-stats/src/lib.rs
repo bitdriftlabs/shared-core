@@ -2,7 +2,7 @@
 // Copyright Bitdrift, Inc. All rights reserved.
 //
 // Use of this source code is governed by a source available license that can be found in the
-// LICENSE file or at:
+// LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #![deny(
@@ -26,9 +26,10 @@ use bd_client_common::file_system::RealFileSystem;
 use bd_client_stats_store::{Collector, Error as StatsError};
 use bd_runtime::runtime::ConfigLoader;
 use bd_shutdown::ComponentShutdown;
-use bd_stats_common::workflow::WorkflowDebugKey;
-use bd_stats_common::{Counter as _, StatsCollector};
+use bd_stats_common::Counter as _;
 use bd_time::{SystemTimeProvider, TimeProvider};
+use bd_workflow_stats::StatsCollector;
+use bd_workflow_stats::workflow::WorkflowDebugKey;
 use file_manager::FileManager;
 use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap};
@@ -39,7 +40,7 @@ use tokio::sync::mpsc::Sender;
 #[cfg(test)]
 #[ctor::ctor(unsafe)]
 fn test_global_init() {
-  bd_test_helpers::test_global_init();
+  bd_test_helpers_core::test_global_init();
 }
 
 //

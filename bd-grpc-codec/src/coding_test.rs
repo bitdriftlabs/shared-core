@@ -1,9 +1,8 @@
 // shared-core - bitdrift's common client/server libraries
 // Copyright Bitdrift, Inc. All rights reserved.
 //
-// Use of this source code is governed by a source available license that can be found in the
-// LICENSE file or at:
-// https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
 
 use crate::{Compression, DEFAULT_MAX_MESSAGE_BYTES, Decoder, Decompression, Encoder, OptimizeFor};
 use protobuf::Message;
@@ -13,7 +12,7 @@ use rstest::rstest;
 
 #[ctor::ctor(unsafe)]
 fn test_global_init() {
-  bd_test_helpers::test_global_init();
+  bd_test_helpers_core::test_global_init();
 }
 
 #[rstest]

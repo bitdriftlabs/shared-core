@@ -2,7 +2,7 @@
 // Copyright Bitdrift, Inc. All rights reserved.
 //
 // Use of this source code is governed by a source available license that can be found in the
-// LICENSE file or at:
+// LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 #[cfg(test)]
@@ -475,5 +475,5 @@ impl Reporter for ErrorReporterHandle {
 #[cfg(test)]
 #[ctor::ctor(unsafe)]
 fn init_logger() {
-  bd_test_helpers::test_global_init();
+  bd_test_helpers_core::test_global_init();
 }

@@ -184,9 +184,9 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "aws-lc-rs"
-version = "1.17.3"
+version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00bdb5da18dac48ca2cc7cd4a98e533e8635a58e2361d13a1a4ee3888e0d72f1"
+checksum = "ce2b2dcc879c3bae0d371e77c99f2238400ef24ec001394befa67b6e543add9e"
 dependencies = [
  "aws-lc-sys",
  "zeroize",
@@ -194,9 +194,9 @@ dependencies = [
 
 [[package]]
 name = "aws-lc-sys"
-version = "0.43.0"
+version = "0.44.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43103168cc76fe62678a375e722fc9cb3a0146159ac5828bc4f0dfd755c2224c"
+checksum = "f09fae7be8bb3174e05c6afdb34199e6dc0c7c04ba9fa237b1967adfbde27483"
 dependencies = [
  "cc",
  "cmake",
@@ -330,6 +330,7 @@ dependencies = [
  "bd-state",
  "bd-stats-common",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-time",
  "bd-workspace-hack",
  "ctor",
@@ -364,6 +365,7 @@ dependencies = [
  "bd-shutdown",
  "bd-stats-common",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-time",
  "bd-workspace-hack",
  "ctor",
@@ -394,6 +396,7 @@ dependencies = [
  "ahash",
  "assert_no_alloc",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-workspace-hack",
  "bytes",
  "cbindgen",
@@ -467,6 +470,7 @@ dependencies = [
  "bd-runtime",
  "bd-stats-common",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-time",
  "bd-workspace-hack",
  "crc32fast",
@@ -500,6 +504,7 @@ dependencies = [
  "bd-proto",
  "bd-proto-util",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-time",
  "bd-workspace-hack",
  "crc32fast",
@@ -538,7 +543,9 @@ dependencies = [
  "bd-shutdown",
  "bd-stats-common",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-time",
+ "bd-workflow-stats",
  "bd-workspace-hack",
  "ctor",
  "flate2",
@@ -564,6 +571,7 @@ dependencies = [
  "bd-proto",
  "bd-stats-common",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-workspace-hack",
  "ctor",
  "log",
@@ -607,6 +615,7 @@ dependencies = [
  "bd-shutdown",
  "bd-state",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-time",
  "bd-workspace-hack",
  "ctor",
@@ -665,6 +674,7 @@ dependencies = [
  "bd-runtime",
  "bd-shutdown",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-time",
  "bd-workspace-hack",
  "ctor",
@@ -692,6 +702,7 @@ dependencies = [
  "bd-shutdown",
  "bd-stats-common",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-time",
  "bd-workspace-hack",
  "bytes",
@@ -729,6 +740,7 @@ version = "1.0.0"
 dependencies = [
  "bd-stats-common",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-workspace-hack",
  "bytes",
  "ctor",
@@ -752,6 +764,7 @@ dependencies = [
  "bd-error-reporter",
  "bd-shutdown",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-workspace-hack",
  "bytes",
  "ctor",
@@ -788,6 +801,7 @@ dependencies = [
  "bd-log",
  "bd-resilient-kv",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-workspace-hack",
  "bincode 2.0.1",
  "ctor",
@@ -832,6 +846,7 @@ dependencies = [
  "bd-proto",
  "bd-state",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-time",
  "bd-workspace-hack",
  "ctor",
@@ -936,7 +951,9 @@ dependencies = [
  "bd-state",
  "bd-stats-common",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-time",
+ "bd-workflow-stats",
  "bd-workflows",
  "bd-workspace-hack",
  "ctor",
@@ -1164,6 +1181,7 @@ dependencies = [
  "bd-runtime",
  "bd-shutdown",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-time",
  "bd-workspace-hack",
  "ctor",
@@ -1195,6 +1213,7 @@ dependencies = [
  "bd-proto",
  "bd-proto-util",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-time",
  "bd-workspace-hack",
  "ctor",
@@ -1213,6 +1232,7 @@ dependencies = [
  "async-trait",
  "bd-server-stats",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-time",
  "bd-workspace-hack",
  "ctor",
@@ -1276,6 +1296,7 @@ dependencies = [
  "bd-proto",
  "bd-proto-util",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-time",
  "bd-workspace-hack",
  "ctor",
@@ -1304,6 +1325,7 @@ dependencies = [
  "bd-shutdown",
  "bd-stats-common",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-time",
  "bd-workspace-hack",
  "ctor",
@@ -1353,10 +1375,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "arbitrary",
- "bd-macros",
- "bd-proto-util",
  "bd-workspace-hack",
- "protobuf 4.0.0-alpha.0",
  "sketches-rust",
 ]
 
@@ -1379,7 +1398,6 @@ dependencies = [
  "bd-log-metadata",
  "bd-log-primitives",
  "bd-metadata",
- "bd-panic",
  "bd-proto",
  "bd-resource-utilization",
  "bd-runtime-config",
@@ -1406,6 +1424,18 @@ dependencies = [
  "tokio-stream",
  "tower",
  "tracing",
+]
+
+[[package]]
+name = "bd-test-helpers-core"
+version = "1.0.0"
+dependencies = [
+ "async-trait",
+ "bd-log",
+ "bd-panic",
+ "bd-runtime-config",
+ "bd-workspace-hack",
+ "tokio",
 ]
 
 [[package]]
@@ -1450,6 +1480,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-workflow-stats"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "arbitrary",
+ "bd-macros",
+ "bd-proto-util",
+ "bd-stats-common",
+ "bd-workspace-hack",
+ "protobuf 4.0.0-alpha.0",
+]
+
+[[package]]
 name = "bd-workflows"
 version = "0.1.0"
 dependencies = [
@@ -1474,7 +1517,9 @@ dependencies = [
  "bd-state",
  "bd-stats-common",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-time",
+ "bd-workflow-stats",
  "bd-workspace-hack",
  "bincode 2.0.1",
  "ctor",
@@ -1696,9 +1741,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.4.0"
+version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5add81bb678e6cb321aff7fa0dc7689ad82b112dbc032cea19f91d6b8e3582b9"
+checksum = "9066c49992464636f92905fa096ec58baaa4d57ec19a5c096c68d3e25ef3d136"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -2342,9 +2387,9 @@ checksum = "da7c62ceae207dd37ea5b845da6a0696c799f85e97da1ab5b7910be3c1c80223"
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.9"
+version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
+checksum = "26b73573e6edcd2af0cdf47bd6cb58f0b3839491263c314eaad1ccf24430e1de"
 
 [[package]]
 name = "fixedbitset"
@@ -2545,6 +2590,7 @@ dependencies = [
  "bd-resilient-kv",
  "bd-runtime",
  "bd-test-helpers",
+ "bd-test-helpers-core",
  "bd-time",
  "bd-workflows",
  "bd-workspace-hack",

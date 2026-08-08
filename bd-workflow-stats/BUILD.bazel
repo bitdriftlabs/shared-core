@@ -1,0 +1,19 @@
+load("@crates//:defs.bzl", "aliases")
+load("//tools/rust:feature_variants.bzl", "rust_library_with_feature_variants")
+load("//tools/rust:tests.bzl", "rust_library_test")
+
+package(default_visibility = ["//visibility:public"])
+
+rust_library_with_feature_variants(
+    name = "bd-workflow-stats",
+    srcs = glob(["src/**/*.rs"]),
+    crate_features = ["default"],
+    crate_name = "bd_workflow_stats",
+    crate_root = "src/lib.rs",
+    edition = "2024",
+    feature_variants = {
+        "fuzz": {"crate_features": ["fuzzing"]},
+    },
+)
+
+rust_library_test(crate = ":bd-workflow-stats")
