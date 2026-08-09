@@ -855,3 +855,101 @@ impl Drop for AutoGauge {
     self.gauge.sub(1);
   }
 }
+
+//
+// ContributionGauge
+//
+
+/// Tracks one owner's signed contribution to a shared gauge.
+///
+/// Clones share the same contribution, while separate instances can safely contribute to the
+/// same underlying gauge. The outstanding contribution is removed when the final handle drops.
+#[derive(Clone)]
+pub struct ContributionGauge {
+  inner: Arc<ContributionGaugeInner>,
+}
+
+struct ContributionGaugeInner {
+  gauge: IntGauge,
+  contribution: Mutex<i64>,
+}
+
+impl ContributionGauge {
+  /// Create a zero-valued contribution to `gauge`.
+  #[must_use]
+  pub fn new(gauge: IntGauge) -> Self {
+    Self {
+      inner: Arc::new(ContributionGaugeInner {
+        gauge,
+        contribution: Mutex::new(0),
+      }),
+    }
+  }
+
+  /// Increase this owner's contribution and the shared gauge.
+  pub fn inc_by(&self, value: u64) {
+    let mut contribution = self.inner.contribution.lock();
+    // A contribution is signed, but increments are not. An increment outside the signed range
+    // exhausts this owner's representable positive contribution.
+    let next = i64::try_from(value).map_or(i64::MAX, |value| contribution.saturating_add(value));
+    Self::update_gauge(&self.inner.gauge, *contribution, next);
+    *contribution = next;
+  }
+
+  /// Decrease this owner's contribution and the shared gauge.
+  pub fn dec_by(&self, value: u64) {
+    let mut contribution = self.inner.contribution.lock();
+    // Mirror `inc_by`: an unrepresentable decrement exhausts the negative signed range.
+    let next = i64::try_from(value).map_or(i64::MIN, |value| contribution.saturating_sub(value));
+    Self::update_gauge(&self.inner.gauge, *contribution, next);
+    *contribution = next;
+  }
+
+  /// Set this owner's contribution while preserving all other owners' values.
+  pub fn set(&self, value: i64) {
+    let mut contribution = self.inner.contribution.lock();
+    Self::update_gauge(&self.inner.gauge, *contribution, value);
+    *contribution = value;
+  }
+
+  /// Remove this owner's outstanding contribution from the shared gauge.
+  pub fn clear(&self) {
+    let mut contribution = self.inner.contribution.lock();
+    Self::update_gauge(&self.inner.gauge, *contribution, 0);
+    *contribution = 0;
+  }
+
+  /// Reconcile one owner's old and new contributions without changing other owners' values.
+  ///
+  /// For example, changing this owner from `-4` to `3` adds `7` to the shared gauge. It does not
+  /// set the shared gauge to `3`, because other owners may have outstanding contributions.
+  ///
+  /// The distance from `i64::MIN` to `i64::MAX` cannot fit in one signed `IntGauge` adjustment.
+  /// That rare transition is applied as `i64::MAX`, `i64::MAX`, and `1` sized chunks.
+  fn update_gauge(gauge: &IntGauge, current: i64, next: i64) {
+    // `abs_diff` preserves the full unsigned magnitude of the owner's required adjustment.
+    let mut remaining = next.abs_diff(current);
+    let maximum_adjustment = u64::try_from(i64::MAX).unwrap_or(u64::MAX);
+    while remaining > 0 {
+      // Limit every Prometheus call to the signed range accepted by `IntGauge::add` and `sub`.
+      let adjustment = remaining.min(maximum_adjustment);
+      let adjustment = i64::try_from(adjustment).unwrap_or(i64::MAX);
+      if next > current {
+        // The owner's value increased, so its delta increases the shared gauge.
+        gauge.add(adjustment);
+      } else {
+        // The owner's value decreased, so its delta decreases the shared gauge.
+        gauge.sub(adjustment);
+      }
+      // Ordinary transitions finish here. A range-spanning transition loops for its next chunk.
+      remaining = remaining.saturating_sub(u64::try_from(adjustment).unwrap_or(u64::MAX));
+    }
+  }
+}
+
+impl Drop for ContributionGaugeInner {
+  fn drop(&mut self) {
+    let contribution = *self.contribution.get_mut();
+    ContributionGauge::update_gauge(&self.gauge, contribution, 0);
+  }
+}

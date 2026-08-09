@@ -47,6 +47,64 @@ fn labeled_float_counter_records_fractional_values() {
   );
 }
 
+#[test]
+fn contribution_gauges_aggregate_and_remove_only_their_own_values() {
+  let helper = Helper::new();
+  let gauge = helper.collector().scope("contribution").gauge("value");
+  let first = ContributionGauge::new(gauge.clone());
+  let first_clone = first.clone();
+  let second = ContributionGauge::new(gauge);
+
+  first.inc_by(3);
+  second.inc_by(5);
+  helper.assert_gauge_eq(8, "contribution:value", &labels!());
+
+  first_clone.dec_by(2);
+  helper.assert_gauge_eq(6, "contribution:value", &labels!());
+
+  first.set(-4);
+  helper.assert_gauge_eq(1, "contribution:value", &labels!());
+
+  second.set(-2);
+  helper.assert_gauge_eq(-6, "contribution:value", &labels!());
+
+  first_clone.inc_by(5);
+  helper.assert_gauge_eq(-1, "contribution:value", &labels!());
+
+  second.dec_by(4);
+  helper.assert_gauge_eq(-5, "contribution:value", &labels!());
+
+  first.clear();
+  helper.assert_gauge_eq(-6, "contribution:value", &labels!());
+
+  first_clone.set(2);
+  helper.assert_gauge_eq(-4, "contribution:value", &labels!());
+
+  drop(first);
+  helper.assert_gauge_eq(-4, "contribution:value", &labels!());
+
+  drop(first_clone);
+  helper.assert_gauge_eq(-6, "contribution:value", &labels!());
+
+  drop(second);
+  helper.assert_gauge_eq(0, "contribution:value", &labels!());
+}
+
+#[test]
+fn contribution_gauge_saturates_large_signed_adjustments() {
+  let helper = Helper::new();
+  let gauge = ContributionGauge::new(helper.collector().scope("contribution").gauge("value"));
+
+  gauge.inc_by(u64::MAX);
+  helper.assert_gauge_eq(i64::MAX, "contribution:value", &labels!());
+
+  gauge.dec_by(u64::MAX);
+  helper.assert_gauge_eq(i64::MIN, "contribution:value", &labels!());
+
+  gauge.clear();
+  helper.assert_gauge_eq(0, "contribution:value", &labels!());
+}
+
 // Verify basic label tracking functionality.
 #[test]
 fn label_tracker() {
