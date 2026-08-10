@@ -753,6 +753,46 @@ async fn handshake_connection_count_starts_at_one() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn handshake_connection_count_only_increments_after_handshake_response() {
+  let mut setup = Setup::new().await;
+
+  let first_handshake = setup.next_stream(1.seconds()).await.unwrap();
+  assert_eq!(
+    first_handshake
+      .analytics
+      .as_ref()
+      .unwrap()
+      .connection_count_since_process_start,
+    1
+  );
+  setup
+    .error_shutdown(Code::Internal, "some message", None)
+    .await;
+
+  let retry_handshake = setup.next_stream(1.seconds()).await.unwrap();
+  assert_eq!(
+    retry_handshake
+      .analytics
+      .as_ref()
+      .unwrap()
+      .connection_count_since_process_start,
+    1
+  );
+  setup.handshake_response(0, None, None).await;
+  setup.close_stream().await;
+
+  let post_success_handshake = setup.next_stream(5.seconds()).await.unwrap();
+  assert_eq!(
+    post_success_handshake
+      .analytics
+      .as_ref()
+      .unwrap()
+      .connection_count_since_process_start,
+    2
+  );
+}
+
+#[tokio::test(start_paused = true)]
 async fn handshake_metadata_omits_manufacturer_for_non_android() {
   let mut setup = Setup::new_with_metadata(Arc::new(TestMetadata {
     platform: Platform::Apple,
