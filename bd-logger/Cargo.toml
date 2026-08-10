@@ -70,6 +70,7 @@ bd-hyper-network            = { path = "../bd-hyper-network" }
 bd-noop-network             = { path = "../bd-noop-network" }
 bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
 bd-test-helpers-core.path   = "../bd-test-helpers-core"
+bd-workflows                = { path = "../bd-workflows", features = ["test"] }
 ctor.workspace              = true
 flate2.workspace            = true
 pretty_assertions.workspace = true
