@@ -653,19 +653,8 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       flush_buffers
     );
 
-    if flush_buffers {
-      let buffer_flush = BuffersToFlush::new(action);
-
-      if let Err(e) = self.buffers_to_flush_tx.try_send(buffer_flush) {
-        self.stats.buffers_to_flush_channel_send_failures.inc();
-        log::debug!("failed to send information about buffers to flush: {e}");
-      } else {
-        self
-          .process_local_pending_flush_state
-          .mark_pending(action.id.clone());
-      }
-    }
-
+    // A remote command can arrive as soon as the trigger upload is published. Register local
+    // streaming first so its equivalent-reroute check cannot miss this workflow action.
     if let Some(streaming_action) = self
       .flush_buffers_actions_resolver
       .make_streaming_action(action.clone())
@@ -678,6 +667,19 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
           self.state.active_streaming_tracing_count.saturating_sub(1);
       }
       log::debug!("no streaming configuration defined for action: \"{action:?}\"");
+    }
+
+    if flush_buffers {
+      let buffer_flush = BuffersToFlush::new(action);
+
+      if let Err(e) = self.buffers_to_flush_tx.try_send(buffer_flush) {
+        self.stats.buffers_to_flush_channel_send_failures.inc();
+        log::debug!("failed to send information about buffers to flush: {e}");
+      } else {
+        self
+          .process_local_pending_flush_state
+          .mark_pending(action.id.clone());
+      }
     }
 
     self.needs_state_persistence = true;

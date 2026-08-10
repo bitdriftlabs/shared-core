@@ -502,7 +502,7 @@ impl Api {
       last_disconnect_reason: None,
       sdk_status_tracker,
       stats_handshake_extension,
-      connection_count_since_process_start: 0,
+      connection_count_since_process_start: 1,
       #[cfg(test)]
       data_idle_timeout_test_hook: None,
     }
@@ -916,6 +916,8 @@ impl Api {
         client_state_updates,
         remaining_responses,
       } => {
+        // Advance the logical connection number only after its handshake succeeded.
+        self.connection_count_since_process_start += 1;
         self
           .session_strategy
           .acknowledge_state_update(&handshake_state_update)
@@ -1301,7 +1303,7 @@ impl Api {
 
   // Creates a handshake request containing the current version nonces and static metadata.
   async fn handshake_request(
-    &mut self,
+    &self,
     metadata: &HashMap<String, ProtoData>,
     previous_disconnect_reason: Option<String>,
   ) -> (
@@ -1309,7 +1311,6 @@ impl Api {
     bd_session::PendingStateUpdate,
     Option<TrackedStatsUploadRequest>,
   ) {
-    self.connection_count_since_process_start += 1;
     let opaque_client_state = tokio::fs::read(&self.opaque_client_state_path()).await.ok();
     let session_update = self.session_strategy.handshake_state_update().await;
     let mut handshake = HandshakeRequest {
