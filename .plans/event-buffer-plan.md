@@ -1,10 +1,10 @@
 # Logger Reliability Improvements: EventBuffer Plan
 
 This plan introduces a single, mutex-backed `EventBuffer` at the logger edge. It is delivered in
-four milestones: first make session persistence generation-based and independently durable,
-then build EventBuffer itself, then wire EventBuffer into logger ingress while retaining the
-current `PreConfigBuffer`, and finally replace startup buffering with EventBuffer's delayed soft
-replay gate.
+five milestones: first introduce a shared platform-facing mutex and use it in `bd_session`, then
+make session persistence generation-based and independently durable, build EventBuffer itself,
+wire EventBuffer into logger ingress while retaining the current `PreConfigBuffer`, and finally
+replace startup buffering with EventBuffer's delayed soft replay gate.
 
 ## Goals
 
@@ -26,21 +26,22 @@ LoggerHandle / state APIs
 ```
 
 `EventBuffer` replaces the log and state ingress channels and `OrderedReceiver`. It is shared by
-synchronous producers and has one asynchronous consumer. The producer path uses
-an internal, target-selected `EventBufferMutex` only for short, non-awaiting buffer operations.
-Its portable implementation is `parking_lot::Mutex`; a target with an RAII-compatible platform
-binding may use its native mutex instead (for example, `os_unfair_lock` on Apple platforms). Every
-implementation releases the lock before awaits, provider calls, callbacks, or pipeline invocation.
-The existing logger continues to use its current channels and `PreConfigBuffer` until milestone 3;
-milestone 4 moves startup responsibility into EventBuffer.
+synchronous producers and has one asynchronous consumer. Milestone 1 introduces one shared
+target-selected `PlatformMutex` available to every platform-facing caller-thread lock: it uses
+`os_unfair_lock` on iOS and `parking_lot::Mutex` on Linux. `bd_session` adopts it first, and
+EventBuffer reuses it in Milestone 3. The producer path uses its `EventBufferMutex` only for short,
+non-awaiting buffer operations. Every implementation releases the lock before awaits, provider
+calls, callbacks, or pipeline invocation. The existing logger continues to use its current channels
+and `PreConfigBuffer` until milestone 4; milestone 5 moves startup responsibility into EventBuffer.
 
-The buffer lock is the ordering point. No producer-visible sequence number is needed: events are
-delivered in lock-admission order, and an internal monotonic insertion ID only breaks priority
-ties and preserves oldest-retained behavior.
+The buffer lock is the ordering point. No producer-visible sequence number is needed: an internal
+monotonic admission ID preserves FIFO delivery across retained entries and breaks equal-priority
+eviction ties. The ID is an implementation detail; evicted IDs simply leave gaps and do not need
+explicit drop-range records.
 
 EventBuffer lifecycle and replay gating are independent state machines. Its lifecycle is
 `Accepting` until shutdown changes it to `Closed`; closed handles reject new work. Separately,
-Milestone 4's drain gate is `Holding` or `Open`. A holding gate still accepts and accounts for
+Milestone 5's drain gate is `Holding` or `Open`. A holding gate still accepts and accounts for
 entries—it merely withholds consumer delivery. This avoids using "closed" to mean both normal
 startup buffering and terminal shutdown.
 
@@ -51,32 +52,36 @@ the following ownership boundaries.
 
 | Flow | Owner and transport | Why it does or does not enter EventBuffer |
 | --- | --- | --- |
-| Logs, feature-flag exposure, post-startup memory pressure/entity-ID persistence, and `FlushState` | EventBuffer entries | These are ordered workflow, state-store, or barrier inputs. `FlushState` and `Block::Yes` logs are protected entries. |
-| Logger `setField` / `removeField` | Synchronous EventBuffer-owned COW map | These mutate admission metadata rather than producing a replayable workflow input. |
-| Session creation/rotation, durable persistence, and session flush | `bd_session` generation-based coalescing flusher | Session mutation remains under the strategy's existing mutex. A single flusher persists only the latest generation and has no per-operation FIFO command queue. EventBuffer receives only the resolved immutable session ID. |
-| Config updates and configuration readiness | Existing config-update path directly to the consumer | Applying config can build/replace downstream pipeline state and has no producer admission order. In Milestone 4, readiness starts the runtime-configured replay-delay timer; it never consumes EventBuffer capacity. |
+| Logs, feature-flag exposure, post-startup memory pressure/entity-ID persistence, `FlushState`, and session-persistence fences | EventBuffer entries | These are ordered workflow, state-store, or barrier inputs. `FlushState`, `Block::Yes` logs, and session-persistence fences are protected entries. |
+| Logger `setField` / `removeField` | Synchronous EventBuffer-owned `Arc` field map with per-log snapshots | These mutate admission metadata rather than producing a replayable workflow input. |
+| Session creation/rotation, durable persistence, and session flush | `bd_session` generation-based coalescing flusher | Session mutation remains under the strategy's existing mutex. A single flusher persists only the latest generation and has no per-operation FIFO command queue. EventBuffer carries immutable session snapshots and protected conditional fence tokens; the consumer asks `bd_session` to wait, outside the EventBuffer lock. |
+| Config updates and configuration readiness | Existing config-update path directly to the consumer | Applying config can build/replace downstream pipeline state and has no producer admission order. In Milestone 5, readiness starts the runtime-configured replay-delay timer; it never consumes EventBuffer capacity. |
 | Crash-report processing request | Existing report-processing request path directly to the consumer, then one EventBuffer batch admission | The request triggers potentially expensive report discovery and parsing. Only the resulting replayable crash logs enter EventBuffer, preserving their batch source order and taking one well-defined admission boundary relative to concurrent producers. |
 | `CrashPending` | Direct drain-gate extension hint | It changes gate policy, not workflow state; it can extend a held window but cannot itself deliver, reorder, or consume buffer capacity. |
 | Shutdown, `Notify`, timers, SDK lifecycle/status, sleep-mode watch, and tracing flag | Direct lifecycle/scheduling primitives | These change consumer scheduling or local observable state; they are not retained replayable work. Shutdown closes EventBuffer rather than queuing a terminal entry. |
 | Downstream stats, upload, buffer-flush, and workflow side effects | Existing consumer-owned downstream channels | These are consequences of a processed ordered entry, not new logger ingress. Do not feed them back through EventBuffer. |
 
 The existing configuration and crash-request channels therefore remain purpose-specific control
-paths. Session persistence adds only a coalesced wakeup/flush mechanism inside `bd_session`, not a
-second general-purpose logger control queue: a flow belongs in EventBuffer when it needs ordering
-with replayable inputs, and otherwise stays with the owner above.
+paths. Session persistence remains a coalesced `bd_session` mechanism rather than a second
+general-purpose logger control queue. Its small, protected EventBuffer fence token is the one
+exception because it establishes the required ordering before session-bearing work reaches the
+consumer; the token never performs I/O while EventBuffer is locked.
 
 ## Metadata and state handling
 
 - `LoggerHandle::log` captures the provider timestamp and provider fields inline, outside the
   EventBuffer lock and while actually holding `with_thread_local_logger_guard`. The existing
   admission-only guard is not sufficient once provider code runs on the caller thread.
-- It then locks EventBuffer, snapshots its copy-on-write `setField` map, and admits a
+- It then locks EventBuffer, clones the current `Arc<LoggerFieldMap>` pointer, and admits a
   `CapturedLog` containing both snapshots. A same-thread `setField(); log()` is therefore
   reflected in the captured log; concurrent callers are ordered by buffer admission.
-- `setField` and `removeField` update EventBuffer's copy-on-write field map synchronously. They
-  are not downstream workflow events. EventBuffer enforces a separate configured aggregate
-  logger-field byte/count limit: a mutation that would exceed it is rejected and leaves the
-  current map unchanged. Log calls only clone an `Arc` snapshot.
+- EventBuffer owns a mutex-protected `Arc<LoggerFieldMap>`. Log admission clones that `Arc`, not
+  the map, so queued logging never pays a field-map copy. Each admitted log therefore retains the
+  exact field map visible at admission. `setField` and `removeField` are the less-frequent writers:
+  after validating the proposed byte/count change, they update the map without changing any
+  snapshot already held by a log. They may use `Arc::make_mut` when EventBuffer is the sole owner
+  to avoid that update's map clone; this is an update-path optimization, not the reason for the
+  design. These APIs are not downstream workflow events.
 - Refactor `MetadataCollector` into provider-snapshot capture and background normalization. The
   async consumer merges captured provider data, caller fields, and the captured logger field map,
   then performs global-state tracking, state-store updates, and replay. It must not resolve a
@@ -87,8 +92,9 @@ with replayable inputs, and otherwise stays with the owner above.
   provider only, while `occurred_at` comes from the crash report.
 - State/control operations that affect workflows or persistence remain protected EventBuffer
   entries. `Block::Yes` logs are also protected: blocking is an explicit reliability request, not
-  merely a consumer-completion mechanism. Dedicated session persistence belongs to `bd_session`;
-  crash-pending and shutdown remain direct control signals, not buffer entries.
+  merely a consumer-completion mechanism. A session-persistence fence is a protected ordering token
+  whose wait remains owned by `bd_session`; crash-pending and shutdown remain direct control
+  signals, not buffer entries.
 - `set_feature_flag_exposure` resolves its session ID through `bd_session`, then captures provider
   and logger-field snapshots plus an admission timestamp before EventBuffer admission; provider
   capture uses the same held thread-local guard as logs. The consumer uses those immutable inputs
@@ -105,8 +111,8 @@ mutex; persistence is coalesced separately.
 This is the linearization rule for concurrent callers, and is preferable to holding the EventBuffer
 mutex across arbitrary platform provider code.
 
-Provider calls now become part of normal `Logger.log` latency. Before the migration, add duration
-and failure telemetry to the current async calls; retain that telemetry after the move and measure
+Provider calls now become part of normal `Logger.log` latency. Before the migration, add temporary
+duration/failure instrumentation to the current async calls; retain it through the move and measure
 edge lock wait/hold time. This is also a provider-threading migration: today providers are called
 serially on the async task; after the move they may be called concurrently on arbitrary application
 threads. This contract is approved: platform implementations must preserve their required
@@ -114,28 +120,59 @@ thread-affinity, synchronization, and reentrant-logging behavior under concurren
 
 ## Session transitions
 
-Session durability remains outside EventBuffer. `bd_session` keeps ownership of its existing
-mutex-protected in-memory state; EventBuffer never holds a session strategy handle, persistence
-entry, callback, or session-persistence byte charge.
+`bd_session` retains ownership of session durability and its existing mutex-protected in-memory
+state. EventBuffer never owns a persistence handle or performs I/O under its lock. It does carry a
+small protected `SessionPersistenceFence` token so consumer delivery can wait for `bd_session` at
+the precise point where a session-bearing entry would otherwise be written downstream.
 
-Milestone 1 replaces snapshot-carrying `PreparedSessionOperation` persistence with a
+Milestone 2 replaces snapshot-carrying `PreparedSessionOperation` persistence with a
 generation-based coalescing flusher inside `bd_session`:
 
 - A session mutation applies under the existing strategy mutex, increments a monotonic dirty
-  generation, and returns the new/current session ID immediately. It records any deferred callback
-  against that generation, rather than handing a cloned `LoadedState` to a logger queue.
+  generation, and returns the new/current session ID immediately. Creating a new session also
+  increments a monotonic session epoch and stores it to
+  `pending_session_fence_epoch` with release ordering before releasing the strategy mutex. A
+  resolved current-session snapshot contains the immutable `(session_id, session_epoch)` needed by
+  EventBuffer; ordinary activity updates may advance the dirty generation without creating a new
+  epoch. Deferred callbacks are recorded against the mutation generation rather than handing a
+  cloned `LoadedState` to a logger queue.
 - A persistence request marks the strategy dirty and wakes one flusher. The flusher snapshots the
   latest in-memory state and generation, persists it, then checks whether a newer generation was
   created while the write was in flight. If so, it persists the newest snapshot again. Only one
-  flusher writes at a time, so an older asynchronous write cannot be the final durable state.
+  flusher writes at a time, so an older asynchronous write cannot be the final durable state. A
+  successful write clears `pending_session_fence_epoch` only with a compare-and-exchange for the
+  epoch it wrote, so it cannot erase a newer session's pending fence.
 - There is no FIFO command queue and no persistence-before-return requirement for
   `session_id`/`start_new_session`: a successfully applied mutation becomes current immediately;
   persistence is best effort and measured. This intentionally adopts the non-blocking session
   creation decision in this plan.
+- Beginning in Milestone 4, EventBuffer loads `pending_session_fence_epoch` with acquire ordering
+  while it is already holding its normal admission lock. If it equals the captured source epoch
+  and that epoch has no fence already enqueued, EventBuffer atomically places one protected
+  `SessionPersistenceFence { session_id, session_epoch }` immediately before the source. If the
+  atomic contains a later epoch, the captured source is already superseded and receives no stale
+  fence; if it is empty, its session is already durable. EventBuffer tracks only its highest
+  enqueued fence epoch for deduplication. The fence and source either both fit or the source is
+  terminally rejected; a full protected budget never permits a session-bearing entry to leap over
+  its required fence.
+- On delivery, the consumer invokes
+  `bd_session::wait_for_current_persistence(session_id, session_epoch)` outside the EventBuffer
+  lock. This is a coalescer waiter, not a second persistence path: it checks whether the target is
+  current and already durable, otherwise registers a waiter for the existing coalescer and may send
+  an idempotent wake. It does not perform a write itself. If C has superseded B before the
+  coalescer selects B, B's waiter completes as `superseded` without writing B. A write failure is
+  recorded and completes the fence as a best-effort failure so the consumer does not stall
+  indefinitely; subsequent B entries retain their captured session ID but may proceed without a
+  durable session state in that failure case.
+- A successful fence delays downstream work behind it, not the caller that rotated or logged. It
+  therefore preserves the normal logging tail while deliberately allowing persistence latency to
+  reduce consumer throughput and create ordinary bounded-buffer pressure. It strengthens the usual
+  case: while an epoch remains current, no work carrying that session reaches downstream durable
+  buffers before a state containing the session ID has been written.
 - A deferred callback runs inline after the strategy mutex is released and without waiting for its
   persistence generation. Direct `session_id` and `start_new_session` calls invoke it before
-  returning on their initiating thread. Before Milestone 3, automatic rotations continue to invoke
-  it on the consumer task that resolved the session. After Milestone 3, a log or feature-flag
+  returning on their initiating thread. Before Milestone 4, automatic rotations continue to invoke
+  it on the consumer task that resolved the session. After Milestone 4, a log or feature-flag
   rotation holds its callback until that source reaches its terminal admission outcome, then invokes
   it on the admitting caller thread after the EventBuffer lock is released. Callback-generated work
   therefore follows the source operation, including when the source is dropped before admission.
@@ -143,54 +180,151 @@ generation-based coalescing flusher inside `bd_session`:
   prefer the platform layer if it avoids an extra FFI crossing without regressing callback latency
   or reentrancy behavior. This choice changes no callback timing, thread, or ordering contract.
 - `FlushState(Block::Yes)` captures the current session generation after draining earlier
-  EventBuffer work and waits until persistence has attempted that generation before the existing
-  session/store/workflow flush completes. Shutdown remains best effort and does not turn pending
-  persistence into EventBuffer entries.
+  EventBuffer work and waits for the coalescer to *complete* a write covering that generation
+  before the existing session/store/workflow flush completes. A write of a newer generation also
+  covers an earlier one. This is the explicit durability hedge for callers that can afford to
+  block; normal log/session calls remain non-blocking. A failed write completes the flush wait with
+  a measured best-effort failure rather than falsely claiming durability or waiting forever.
+  Shutdown remains best effort and does not turn pending persistence into EventBuffer entries.
 
-Pure reads such as `previous_process_session_id` remain direct. In Milestone 3, current-process
-logs and feature flags resolve their ID from the in-memory strategy before provider capture and
-store that immutable ID in their EventBuffer payload. A later EventBuffer rejection never rolls
-back the already-current session.
+The accepted crash window is an in-memory transition from durable session A to session B followed
+by process death before B's fence has completed. Entries still retained by EventBuffer are lost
+with the process, so the recovered durable work will normally be only the crash artifact. On
+restart, it is intentionally attributed to A—the last durable previous-process session—rather
+than inventing an undurable B. Grouping that crash with A is preferable to adding disk I/O to the
+normal logging tail. The fence removes the usual case of a still-current B log reaching a
+downstream durable buffer first. The remaining best-effort gaps are a failed B write or a B fence
+that is superseded after transition to C; neither causes a stale B write. A blocking flush remains
+the opt-in hedge for callers that need to narrow those gaps further.
+
+Pure reads such as `previous_process_session_id` remain direct. In Milestone 4, current-process
+logs and feature flags resolve their immutable session snapshot from the in-memory strategy before
+provider capture and store it in their EventBuffer payload. A later EventBuffer rejection never
+rolls back the already-current session.
 
 The workflow engine still receives no new session-control event. Its existing session-transition
 behavior remains driven by the captured session ID on replayed logs.
 
 ## EventBuffer behavior
 
-EventBuffer owns a `VecDeque<Entry>` in admission order, byte accounting, the copy-on-write field
-map, and a `Notify` for its consumer. The deque is both the FIFO delivery order and the source
-scanned for priority eviction.
+EventBuffer owns priority-aware retained-entry storage, byte accounting, its `Arc` field map with
+per-entry snapshots, and a `Notify` for its consumer. Retention priority chooses *what may be evicted*; it must not
+change the delivery order. Whatever representation is selected, these invariants are fixed:
 
-### Queue representation and growth
-
-Each admission receives a monotonic insertion ID and is appended directly to `VecDeque<Entry>`.
-On pressure, EventBuffer scans the deque to select strictly lower-priority victims. It evicts
-lowest-priority candidates first and, within a victim priority, newer entries first; this preserves
-the oldest retained entry for an equal-priority admission.
-
-- Eviction physically removes selected entries with `VecDeque::remove`, in descending index order
-  so earlier selected indexes remain valid. There are no tombstones, stale index records, or
-  compaction passes in this version. Contention benchmarks measure lock hold time for this linear
-  scan/removal strategy before any index or compaction design is considered.
-- `next_batch` drains with `pop_front`, so delivery remains ordinary FIFO over the retained
-  entries.
+- Every entry receives an increasing admission ID while the EventBuffer mutex is held. The consumer
+  delivers the retained entry with the lowest applicable delivery key, so all retained entries are
+  replayed in global admission order rather than in priority order.
+- Retention tier and process source are independent fields. The tier controls admission and
+  eviction; `CurrentProcess` versus `PreviousProcess` controls only the startup-gate delivery
+  route.
+  An eligible previous-process log uses a startup-only delivery lane in the protected category;
+  it is charged to the shared total budget, is not another retention tier, and does not require
+  rearranging retained entries at drain time.
+- Pressure may evict only a strictly lower retention priority than the incoming entry. It always
+  takes the lowest eligible priority first and the newest entry within that priority, preserving
+  the oldest retained equal-priority entry. Protected entries are not eviction victims.
 - Every entry is charged a conservative fixed bookkeeping overhead in addition to its payload.
-  This gives even zero-payload control entries a nonzero cost and bounds both live entry count and
-  queue metadata for a full buffer.
-- The deque grows only on successful admission using fallible reservation before any existing
-  entry is evicted. Allocation failure rejects the incoming entry and leaves retained entries
-  untouched. Capacity is retained for amortized producer latency and is not synchronously shrunk
-  on the hot path.
-- Completion callbacks are collected while the lock is held and invoked only after it is released.
-  Admission, eviction, and callback code therefore cannot re-enter one another while holding
-  EventBuffer state.
+  This gives even zero-payload control entries a nonzero cost and bounds live entry count plus
+  metadata. Callbacks are collected while locked and invoked only after unlocking.
+- Admission reserves any required container capacity before evicting retained entries. Allocation
+  failure rejects the incoming entry and leaves retained entries untouched. Capacity remains
+  available for amortized producer latency and is never synchronously shrunk on the hot path.
 
-EventBuffer has two configured byte limits, neither of which preallocates memory:
+### Fixed priority queue design
 
-- `total_limit`: a hard limit over every retained EventBuffer entry. Its initial value is 11 MiB,
-  preserving the current 1 MiB log-channel plus 10 MiB state-channel allowance.
-- `log_limit`: a 1 MiB sub-limit over evictable log entries only. Protected state/control entries
-  and protected logs bypass this sub-limit but remain charged to `total_limit`.
+The priority taxonomy is intentionally fixed and small for the initial EventBuffer: six retention
+tiers—one protected tier plus five evictable tiers. The protected tier has a normal lane and a
+startup-only previous-process lane, so the implementation uses seven `VecDeque`s during startup.
+This is a delivery-layout detail, not a seventh retention priority. The taxonomy uses the full
+public `LogType` surface but does not multiply every type by every level. The logger's five levels
+are trace, debug, info, warn, and error; a future numeric level higher than error maps to the error
+tier.
+
+| Retention tier | Mapping | Rationale |
+| --- | --- | --- |
+| Protected | State/control entries, `Block::Yes` logs, all `LIFECYCLE` logs, and every previous-process log | These entries carry ordering, durability, barrier, or startup-recovery semantics. They are bounded only by `total_limit` and never priority-evicted. |
+| Error | Any non-protected log at `ERROR` or a higher forward-compatible level | Preserve failures regardless of whether the source is application, UX, device, or SDK instrumentation. |
+| Warning | Any remaining non-protected log at `WARN` | A warning is operationally meaningful, but an error may evict it under pressure. |
+| Primary signal | `NORMAL`, `VIEW`, `UX`, and `SPAN` at `INFO` | These are application, user-interaction, and network-request signals most likely to explain product behavior. |
+| Context | `DEVICE` at `INFO` | Device context helps interpret a session without outranking application, UX, or network-request signal. |
+| Diagnostic | `RESOURCE`, `REPLAY`, and `INTERNAL_SDK` at `INFO`; every non-protected `DEBUG` or `TRACE` log; unknown types or unrecognized levels that are neither warning nor error | This contains high-volume telemetry and debug detail while keeping the mapping safe when a new enum value arrives. |
+
+`LIFECYCLE` remains protected because it carries startup, app-update, and crash-report paths in the
+current logger. `VIEW` and `UX` are included even though the Rust logger currently does not emit
+them: they are public payload types and platform callers may use them. Severity is deliberately a
+stronger signal than type for unprotected `WARN`/`ERROR` logs, while type differentiates `INFO`.
+No producer selects a queue directly; one EventBuffer mapping function owns the table and records
+the fallback mapping for unknown type/level combinations.
+
+An admitted entry therefore carries three separate values: `(retention_tier, source,
+admission_id)`. Routing under the EventBuffer mutex is:
+
+```text
+PreviousProcess while the gate is Holding  -> startup_previous lane (protected; total-limit charged)
+everything else                            -> normal lane for retention_tier
+```
+
+While the startup gate is holding, no entry drains. Gate release only flips the gate state—there
+is no stable partition or queue walk. `next_batch` drains `startup_previous` in FIFO order until
+empty, then merges the fronts of the six normal retention lanes by admission ID. A previous-process
+log admitted after the seal routes to the normal protected lane, so it never reorders live
+current-process work. Because admission and gate sealing use the same mutex, a concurrent producer
+is unambiguously either before or after the ordering window.
+
+Store one normal `VecDeque<Entry>` per retention tier, plus the startup-only
+`startup_previous` deque. An eligible previous-process entry appends to that lane while the gate
+is holding; every other entry appends to its tier's normal lane. Insertion is O(1) amortized. On
+pressure, admission scans the bounded evictable-tier array from lowest eligible priority and
+removes entries from each normal queue's tail until enough bytes are released. This makes victim
+selection and physical removal O(1) per evicted entry, with no middle removal, tombstones, or
+compaction.
+
+To preserve EventBuffer's single ordering domain, `next_batch` first drains the non-empty
+`startup_previous` lane, then does *not* drain one tier at a time: it examines the front entry of
+every non-empty normal tier and removes the one with the lowest admission ID. Since each normal
+per-tier deque is FIFO, a minimum over their fronts is the globally oldest normal retained entry.
+With six fixed tiers this performs at most six front comparisons per normal delivered entry: fixed
+O(1) work, rather than a queue-dependent scheduler or a need to track dropped sequence ranges. The
+startup lane makes the one-time prior-process prefix O(1) to activate at gate release, without
+partitioning or rebuilding a global queue.
+
+Advantages: simple ownership and memory accounting; contiguous storage and good cache locality;
+constant-time eviction; and a direct expression of the product's small, fixed taxonomy. Costs:
+the number of tiers is part of the implementation contract; every dequeue compares a fixed set of
+fronts; and future arbitrary numeric priorities would either grow that set or need a different
+representation.
+
+EventBuffer has two runtime-configurable **in-memory** byte limits, neither of which preallocates
+memory or includes the ring buffer, disk buffer, or upload pipeline. It starts with bootstrap
+defaults because it can accept work before the first runtime configuration arrives:
+
+- `total_limit`: a hard limit over every retained EventBuffer entry. Its bootstrap default is
+  10 MiB, derived from today's 10 MiB state/control channel capacity.
+- `log_limit`: a 1 MiB sub-limit over ordinary evictable (non-control) log entries. Its bootstrap
+  default is today's 1 MiB log-channel capacity. Protected state/control entries and protected
+  logs bypass this sub-limit but remain charged to `total_limit`.
+
+These defaults are not added together: EventBuffer begins with a 10 MiB total cap, of which at
+most 1 MiB may be ordinary evictable logs. The corresponding runtime settings replace both values
+as one pending generation when configuration becomes available. The generation becomes effective
+atomically at the beginning of the next EventBuffer admission. Until then, bootstrap limits remain
+fully active; EventBuffer never has an unbounded pre-configuration period merely because
+configuration is expected later.
+
+The configuration-owning async consumer watches those runtime settings. On a change, it calls a
+short `EventBuffer::set_pending_limits(log_limit, total_limit)` operation under the same
+EventBuffer mutex used by admission. It records the pair without walking or evicting queued
+entries. The next admission, while holding that mutex, applies the latest pending pair and any
+required eviction *before* judging the incoming entry. Admission therefore sees one coherent
+configuration generation and needs no independent atomics; separate atomics for the two values
+could expose a torn configuration while capacity accounting is being updated.
+
+If no entry is admitted after a configuration change, the current retained bytes are left alone and
+may drain naturally under the preceding effective limit. On the next admission, a raised limit
+becomes usable; a lowered limit evicts eligible ordinary entries where possible before that entry
+is considered. EventBuffer never retroactively evicts protected entries: if retained protected
+bytes alone exceed a newly lowered `total_limit`, record that explicit over-limit state and reject
+new admissions until draining brings usage below the configured cap.
 
 On ordinary-log admission, EventBuffer first makes room within `log_limit` by evicting lower
 priority evictable logs. It drops the incoming log when it cannot displace a retained log; equal
@@ -200,13 +334,24 @@ evict any evictable log to fit `total_limit`; it is rejected only if the total l
 entirely by protected entries. A normal log larger than `log_limit`, or any entry larger than
 `total_limit`, is rejected and measured. There is no scheduler-dependent soft overflow.
 
-Priority policy:
+Priority policy is the fixed tier mapping above. The protected tier bypasses `log_limit`; the five
+evictable tiers share it. A protected admission may release bytes from any evictable tier, again
+starting with the lowest tier and newest equal-priority entry.
 
-1. Prior-run logs, lifecycle logs, `Block::Yes` logs, and state/control events are protected and
-   replay-capable.
-2. `NORMAL` and `DEVICE` logs form the higher evictable class.
-3. `SPAN`, `REPLAY`, `INTERNAL_SDK`, and `RESOURCE` form the lower evictable class.
-4. Within either log class, severity is error, warn, info, debug, then trace.
+### Protected and control capacity semantics
+
+Protected does **not** mean “cannot be dropped under any circumstance,” and control entries do
+not have a separate reserved byte limit. Protected entries—including state/control operations,
+`FlushState`, `Block::Yes` logs, session-persistence fences, lifecycle logs, and eligible
+previous-process logs—share the one `total_limit` with every other retained entry. They bypass the
+`log_limit` and can displace evictable logs, but they cannot exceed `total_limit`.
+
+An already admitted protected entry is never evicted to admit another entry. A new protected entry
+is instead terminally rejected if it is oversized, EventBuffer cannot reserve its required memory,
+the lifecycle is closed, or the retained buffer is full of protected entries. On shutdown, even
+admitted protected entries are removed as explicit shutdown drops. Thus the contract is
+**non-evictable after admission, not delivery-guaranteed**. Rejection and shutdown are measured;
+any associated blocking completion resolves exactly once.
 
 ### Shutdown and terminal outcomes
 
@@ -228,18 +373,18 @@ public API result.
 
 ## ALB migration audit
 
-The existing async log buffer is more than a log receiver. Milestone 3 must replace the following
+The existing async log buffer is more than a log receiver. Milestone 4 must replace the following
 behaviors deliberately rather than moving only `LoggerHandle::log`.
 
 | Current ALB input or behavior | EventBuffer migration requirement |
 | --- | --- |
 | Normal logs and helper-produced `RESOURCE`, `REPLAY`, `LIFECYCLE`, and `INTERNAL_SDK` logs | Route every path through the concrete admission/consumer flow below; helpers only construct their existing type-specific fields and never bypass EventBuffer. |
-| `AddLogField` / `RemoveLogField` | Update EventBuffer's copy-on-write map synchronously after the same custom-key validation the collector performs today. Do not emit a downstream workflow entry. |
-| Feature-flag exposure | Keep it a protected ordered state operation. Capture both its session ID and the provider/field snapshots needed by `handle_state_insert` at admission; otherwise it would still call providers later and observe a different session/global context. While Milestone 3 still uses `PreConfigBuffer`, extend its pending feature-flag item to carry these captured inputs and replay that immutable payload after config. |
+| `AddLogField` / `RemoveLogField` | Update EventBuffer's `Arc` field map synchronously after the same custom-key validation the collector performs today. Logs clone only the `Arc` at admission; updates preserve earlier snapshots and may use `Arc::make_mut` as a unique-owner optimization. Do not emit a downstream workflow entry. |
+| Feature-flag exposure | Keep it a protected ordered state operation. Capture its session snapshot and provider/field snapshots needed by `handle_state_insert` at admission; when the pending-epoch atomic matches, atomically place the session-persistence fence first, otherwise it would still call providers later and observe a different session/global context. While Milestone 4 still uses `PreConfigBuffer`, extend its pending feature-flag item to carry these captured inputs and replay that immutable payload after config. |
 | Memory-pressure and opaque-entity updates | Preserve their ordered durable state-store writes. Before the state store is initialized, coalesce opaque-entity updates in an EventBuffer-owned pending slot rather than enqueueing individual state entries. Builder atomically takes that latest value, persists it, updates the public watch only on successful persistence, and marks the store ready; no stale startup entries remain to overwrite it later. After readiness, each update is a protected entry and updates the watch only after admission. Memory-pressure remains an ordered protected persistence entry and retains its existing prior-run initialization path. |
-| `session_id` and `start_new_session` | In Milestone 1, remove ALB's `PersistPreparedSession` state entry and use `bd_session`'s generation-based coalesced persistence. A mutation becomes current immediately and wakes persistence without blocking the caller. In Milestone 3, EventBuffer receives only the immutable session ID already resolved from that in-memory state; it contains no session-persistence entry. |
-| `FlushState` and `Block::Yes` logs | Classify every `FlushState` as protected, and classify every `Block::Yes` log as a protected log. They bypass `log_limit`, are never evicted for priority, and remain bounded by `total_limit`; an all-protected full buffer explicitly rejects the incoming operation and resolves its completion. `FlushState(Block::Yes)` and blocking logs are ordered barriers. A blocking flush drains all earlier admitted EventBuffer work, captures and waits for the current session persistence generation, then runs the existing stats, buffer, session, and workflow flushes. `FlushState(Block::No)` remains protected but does not change startup timing. Every blocking completion must resolve exactly once on processing, protected-budget rejection, admission failure, or shutdown so callers never wait forever. |
-| Crash-report requests and the crash-monitor callback | Keep report scanning outside EventBuffer. Once a scan returns, take one EventBuffer lock and admit its reports as an ordered batch, applying normal priority eviction per report without producer interleaving. A batch is an atomic producer-order boundary, not all-or-nothing: every report gets its own admission result and metric, so a full protected budget can retain an ordered prefix and explicitly reject the remainder without soft overflow. Current-run reports capture current provider/field/session context at that admission. Previous-run reports are protected, use persisted prior global state and the prior-process session ID; if none exists, use the normal current-session preparation path and record the fallback. They do not capture current field-provider fields, but preserve the existing timestamp-provider use for `_logged_at`. The crash-monitor callback uses the same current-run admission helper. `CrashPending` remains an out-of-band gate-extension signal. |
+| `session_id` and `start_new_session` | In Milestone 2, remove ALB's `PersistPreparedSession` state entry and use `bd_session`'s generation-based coalesced persistence. A mutation becomes current immediately, publishes its pending epoch atomically, and wakes persistence without blocking the caller. In Milestone 4, a matching immutable `(session_id, session_epoch)` snapshot causes EventBuffer to place at most one protected conditional persistence fence ahead of downstream work; the fence waits on `bd_session`, not a queue-owned persistence entry. |
+| `FlushState` and `Block::Yes` logs | Classify every `FlushState` as protected, and classify every `Block::Yes` log as a protected log. They bypass `log_limit`, are never evicted for priority, and remain bounded by `total_limit`; an all-protected full buffer explicitly rejects the incoming operation and resolves its completion. `FlushState(Block::Yes)` and blocking logs are ordered barriers. A blocking flush drains all earlier admitted EventBuffer work, captures the current session generation, and waits for a completed persistence write covering that generation before running the existing stats, buffer, session, and workflow flushes. A write failure is a measured best-effort flush outcome, not a durability guarantee. `FlushState(Block::No)` remains protected but does not change startup timing. Every blocking completion must resolve exactly once on processing, protected-budget rejection, admission failure, persistence failure, or shutdown so callers never wait forever. |
+| Crash-report requests and the crash-monitor callback | Keep report scanning outside EventBuffer. Once a scan returns, take one EventBuffer lock and admit its reports as an ordered batch, applying normal priority eviction per report without producer interleaving. A batch is an atomic producer-order boundary, not all-or-nothing: every report gets its own admission result and metric, so a full protected budget can retain an ordered prefix and explicitly reject the remainder without soft overflow. Current-run reports capture current provider/field/session context at that admission and use the same session-fence helper. Previous-run reports are protected, use persisted prior global state and the prior-process session ID; if none exists, use the normal current-session preparation path and record the fallback. They do not capture current field-provider fields, but preserve the existing timestamp-provider use for `_logged_at`. The crash-monitor callback uses the same current-run admission helper. `CrashPending` remains an out-of-band gate-extension signal. |
 | Config updates | Keep these control-plane messages outside EventBuffer. They have no producer admission order today and may perform expensive pipeline setup; configuration readiness is the explicit gate-release condition. |
 | Workflow-injected logs | Keep them within the consumer's current processing transaction rather than re-admitting them at the edge. They must inherit immutable source context—at minimum the source session ID—so a later edge session transition cannot relabel generated logs. |
 | Interceptors | Keep all interceptors on the single consumer and outside the EventBuffer lock. This includes internal-report counters, HTTP/battery aggregation, network-quality decoration, device matching fields, and the screenshot-ready side effect; moving them would change their serialized state and side effects. |
@@ -252,10 +397,10 @@ existing message, fields, and `LogType`; priority follows from that type and lev
 EventBuffer rather than from a helper-specific queue path, except that `Block::Yes` promotes the
 log to the protected class.
 
-1. For a current-process log, `bd_session` resolves the current session ID and schedules any
-   required persistence. A resolution failure is a terminal log drop; a successful implicit
-   rotation records a deferred callback for post-admission dispatch without waiting for persistence.
-   The caller then holds
+1. For a current-process log, `bd_session` resolves an immutable `(session_id, session_epoch)`
+   snapshot and schedules any required persistence. A resolution failure is a terminal log drop; a
+   successful implicit rotation records a deferred callback for post-admission dispatch without
+   waiting for persistence. The caller then holds
    `with_thread_local_logger_guard` and captures provider timestamp and fields outside the
    EventBuffer lock. A provider failure is also a terminal drop; both outcomes record their
    respective metrics and resolve any `Block::Yes` completion without entering EventBuffer.
@@ -263,28 +408,37 @@ log to the protected class.
    They retain their raw fields and override for the existing previous-global-state consumer path.
    Normal logs and `OccurredAt` logs proceed with their captured provider data; the latter retains
    its supplied occurrence timestamp.
-3. EventBuffer acquires its lock and snapshots the COW logger-field map. The log entry retains the
-   original `LogLine` message, fields, matching fields, override, `CaptureSession`, provider
-   snapshot, field-map snapshot, session ID, and optional completion handle. A rejected log does
-   not roll back or otherwise alter an already-persisted session transition.
-4. Admission applies the total/log limits and priority eviction policy. A `Block::Yes` log is
-   protected, so it bypasses `log_limit` and cannot be evicted; it is rejected only if it cannot
-   fit the remaining `total_limit` after evictable entries have been displaced. Rejection or
-   eviction resolves the entry's completion with a terminal drop outcome after releasing the lock.
-   Successful admission schedules `Notify`; it does not wait for the background consumer. In
-   either terminal source outcome, dispatch any deferred implicit-session callback only after the
-   lock is released, so callback-originated logging follows this source operation.
-5. The consumer removes the entry in FIFO order, runs the existing interceptors, then normalizes
-   the original fields using the captured provider and logger-field snapshots. It uses the captured
-   session ID rather than querying mutable session state. For `OccurredAt`, it emits the supplied
-   timestamp and attaches captured provider time as `_logged_at`; the previous-run branch retains
-   its existing prior-global-state and `_logged_at` semantics. It then follows the existing replay,
-   buffer-writing, `CaptureSession`, and blocking-flush path. A successfully processed blocking log
-   resolves its completion exactly once after that path finishes.
+3. EventBuffer acquires its lock and clones the current `Arc<LoggerFieldMap>` pointer. The log entry
+   retains the original `LogLine` message, fields, matching fields, override, `CaptureSession`,
+   provider snapshot, field-map snapshot, immutable session snapshot, and optional completion
+   handle. It loads `bd_session`'s `pending_session_fence_epoch`; only a matching, not-yet-enqueued
+   epoch atomically inserts its protected `SessionPersistenceFence` immediately before the log. A
+   later atomic epoch means this source was superseded, and an empty value means its session is
+   already durable. A rejected log does not roll back or otherwise alter an already-current session
+   transition.
+4. Admission applies the total/log limits and priority eviction policy. When a fence is present,
+   it and the log are one source operation. A `Block::Yes` log is protected, so it bypasses
+   `log_limit` and cannot be evicted; it is rejected only if it cannot fit the remaining
+   `total_limit` after evictable entries have been displaced. Rejection or eviction resolves the
+   entry's completion with a terminal drop outcome after releasing the lock. Successful admission
+   schedules `Notify`; it does not wait for the background consumer. In either terminal source
+   outcome, dispatch any deferred implicit-session callback only after the lock is released, so
+   callback-originated logging follows this source operation.
+5. The consumer processes a `SessionPersistenceFence` before any following work for that epoch. It
+   waits outside the EventBuffer lock for `bd_session::wait_for_current_persistence`; this merely
+   observes the coalescer. Success requires a completed write containing the epoch's session ID, a
+   newer epoch is a no-op `superseded` result, and a failure is measured then allowed to make best-
+   effort progress. The consumer then removes a log in FIFO order, runs the existing interceptors,
+   and normalizes the original fields using the captured provider and logger-field snapshots. It
+   uses the captured session ID rather than querying mutable session state. For `OccurredAt`, it
+   emits the supplied timestamp and attaches captured provider time as `_logged_at`; the previous-
+   run branch retains its existing prior-global-state and `_logged_at` semantics. It then follows
+   the existing replay, buffer-writing, `CaptureSession`, and blocking-flush path. A successfully
+   processed blocking log resolves its completion exactly once after that path finishes.
 
-`CapturedLog` sizing includes provider snapshots, the session ID, and completion state. The
+`CapturedLog` sizing includes provider snapshots, the immutable session snapshot, and completion state. The
 logger-field `Arc` is deliberately not charged once per retained log: EventBuffer instead enforces
-the aggregate logger-field byte/count limit at `setField` time. Old COW snapshots retained by
+the aggregate logger-field byte/count limit at `setField` time. Older field-map snapshots retained by
 queued logs are accepted as auxiliary memory, not a reason to evict or reject otherwise valid
 events. Their worst case is bounded by the configured map limit times the bounded number of
 retained map versions. Record live bytes, distinct-snapshot count, and rejected field mutations;
@@ -300,90 +454,123 @@ crash-report processing, the pipeline, timers, resource utilization, replay reco
 and shutdown retain fair progress. No code awaits, runs callbacks, parses reports, updates config,
 or flushes while holding the lock.
 
-## Milestone 1: generation-based session persistence
+## Milestone 1: shared platform-facing mutex
+
+- Introduce a shared synchronous `PlatformMutex<T>` and RAII guard for platform-facing,
+  caller-thread state. Its iOS implementation wraps `os_unfair_lock`; its Linux implementation
+  wraps `parking_lot::Mutex`. The adapter never provides an async guard and documents that awaits,
+  provider calls, callbacks, and pipeline work must occur after the guard is released.
+- Migrate `bd_session`'s in-memory strategy state to `PlatformMutex` first, preserving its current
+  lock scope and callback-after-unlock contract. This establishes the target-specific behavior
+  before changing session persistence semantics.
+- Add target-appropriate unit and concurrency coverage for mutual exclusion, guard release, and
+  callback reentrancy. No EventBuffer, session-persistence, ALB, or startup-ordering semantics
+  change in this milestone.
+
+## Milestone 2: generation-based session persistence
 
 - Refactor `bd_session` so a mutation increments an in-memory persistence generation and no
   longer hands a cloned state snapshot to `PersistPreparedSession`. Remove that ALB state variant.
 - Add one coalescing persistence flusher: snapshot the latest state/generation, persist, and loop
   if a newer generation appeared. It has a single in-flight write, bounded state, and a wakeup—not
   a FIFO queue of prepared operations or per-operation responses.
+- Add `wait_for_current_persistence(session_id, session_epoch)`: it performs no I/O itself. It
+  returns immediately if that epoch is already durable or superseded, otherwise registers a waiter
+  with the existing coalescer and may send an idempotent wake. It returns `superseded` without a
+  stale B write when a newer C epoch exists, and reports a completed-write failure without waiting
+  forever. Keep this operation in `bd_session`; Milestone 2 does not yet enqueue it through ALB.
 - Make `session_id` and `start_new_session` non-blocking with respect to persistence. They return
-  after their in-memory mutation has succeeded and record failure/latency telemetry from the later
-  attempt. Deferred callbacks run inline after the strategy mutex is released rather than waiting
-  for that attempt; preserve the existing initiating-thread delivery for direct calls and
-  consumer-task delivery for automatic rotations while ALB remains in place. Preserve pure
+  after their in-memory mutation has succeeded, record durable write failures, and use temporary
+  attempt-latency instrumentation. Deferred callbacks run inline after the strategy mutex is
+  released rather than waiting for that attempt; preserve the existing initiating-thread delivery
+  for direct calls and consumer-task delivery for automatic rotations while ALB remains in place. Preserve pure
   previous-process lookup behavior. Benchmark Rust- versus platform-layer final callback
   invocation, preferring the platform layer if it removes an FFI crossing without affecting the
   callback contract.
 - Preserve current automatic-rotation *detection* while ALB remains in place. The consumer still
   resolves sessions at its current processing point; it merely wakes the coalescing flusher rather
-  than awaiting a persisted snapshot. `FlushState(Block::Yes)` captures a generation and waits
-  until it has been attempted.
-- Add generation, coalescing, attempt/failure, and callback-outcome telemetry. Test concurrent
+  than awaiting a persisted snapshot. `FlushState(Block::Yes)` captures a generation and waits for
+  its completed write outcome.
+- Add a durable session-write failure metric. Generation, coalescing, completed-write latency, and
+  callback-outcome instrumentation are temporary migration diagnostics. Test concurrent
   `session_id`/`start_new_session` mutations, inline callback-after-unlock behavior, a write
-  completing after newer mutations, last-activity persistence, automatic rotation,
-  flush-through-generation, and shutdown. No EventBuffer, provider, log-admission, or startup-
-  replay semantics change in this milestone.
+  completing after newer mutations, last-activity persistence, automatic rotation, blocking
+  flush-through-generation success/failure, and shutdown. No EventBuffer, provider, log-admission,
+  or startup-replay semantics change in this milestone.
 
-## Milestone 2: EventBuffer state machine
+## Milestone 3: EventBuffer state machine
 
 - Implement EventBuffer as an unused logger-internal component with the full entry model required
   by this plan: captured logs (including protected `Block::Yes` logs), protected state/control
-  entries, completion handles, and
-  closed/shutdown state.
-- Implement dual-limit admission, priority classification, FIFO delivery, bounded deque scans and
-  physical eviction, insertion-ID tie breaking, protected-entry handling, fallible container
-  growth, and terminal completion on rejection, eviction, or close.
-- Implement the copy-on-write logger-field map with its independent aggregate byte/count limit,
-  field validation, and snapshot telemetry.
+  entries including `SessionPersistenceFence`, completion handles, and closed/shutdown state.
+- Implement the six fixed priority queues, dual-limit admission, global FIFO delivery by admission
+  ID, tail eviction from lower tiers, protected-entry handling, fallible container growth, and
+  terminal completion on rejection, eviction, or close.
+- Implement atomic fence-plus-source admission using the acquire-loaded
+  `pending_session_fence_epoch` and a highest-enqueued-epoch deduplication watermark. A rejected
+  fence rejects its source; an admitted fence remains protected even if its source is later evicted.
+- Implement the mutex-protected `Arc<LoggerFieldMap>` snapshot model, with its independent
+  aggregate byte/count limit and field validation. Log admission clones only the `Arc`; field
+  updates may use `Arc::make_mut` as a unique-owner optimization. Snapshot telemetry is temporary
+  validation instrumentation.
 - Implement `next_batch(max_entries)` with the lost-wakeup-safe `Notify` protocol and bounded
   batches. Test it independently from the async logger's `select!` loop.
-- Add focused unit and concurrency tests for all capacity, priority, ordering, COW, completion,
-  close, and notification invariants. This remains an unused component milestone; logger ingress
-  behavior is unchanged.
+- Add focused unit and concurrency tests for all capacity, priority, ordering, field-map snapshots,
+  completion, close, and notification invariants. Verify that logging clones only the `Arc`, and
+  that a subsequent field update leaves an admitted log's snapshot unchanged. Exercise both
+  `Arc::make_mut` paths as an update-path optimization. This remains an unused component milestone;
+  logger ingress behavior is unchanged.
 
-## Milestone 3: logger ingress migration
+## Milestone 4: logger ingress migration
 
 - Construct EventBuffer with the logger and replace the ALB log/state channels and
   `OrderedReceiver` with its synchronous handle and `next_batch` branch in the existing async
   `select!` consumer.
 - Move provider snapshot capture to `LoggerHandle`, move logger-managed fields into EventBuffer,
   and split metadata normalization from provider capture. Provider execution on concurrent caller
-  threads is an approved contract; retain its telemetry to detect production regressions.
+  threads is an approved contract; retain temporary migration instrumentation to detect regressions
+  before broad rollout.
 - Move current log and feature-flag session resolution from the consumer to the logger edge using
-  the Milestone-1 in-memory `bd_session` API. Capture the returned session ID before provider capture and
-  EventBuffer admission. Invoke implicit log/state callbacks on the admitting caller thread only
-  after the source reaches a terminal admission/drop outcome; do not wait for persistence.
+  the Milestone-1 in-memory `bd_session` API. Capture the returned `(session_id, session_epoch)`
+  before provider capture and EventBuffer admission. Use the pending-epoch atomic to insert the
+  conditional persistence fence before the first downstream work for a matching epoch. Invoke
+  implicit log/state callbacks on the admitting caller thread only after the source reaches a
+  terminal admission/drop outcome; do not wait for persistence.
 - Migrate every ALB state and internal-ingress path in the audit table, including feature-flag
   metadata/session capture, opaque-entity startup recovery, crash-report batches, interceptor
   placement, generated-log context, and flush/blocking completion semantics.
 - Preserve the current `PreConfigBuffer` and its immediate replay on initial configuration.
-  Consequently, Milestone 3 has up to the 11 MiB EventBuffer allowance plus the existing 1 MiB
-  startup buffer allowance while configuration is unavailable. Overflow in that startup buffer
-  retains the current FIFO behavior and metrics; priority-aware startup retention arrives in
-  milestone 4.
-- Ship integration telemetry for EventBuffer admission, eviction, provider latency, lock latency,
-  consumer service time, session-persistence generation/coalescing/attempt time, and `select!`
-  fairness. Measure both callback-invocation layers and their FFI/callback latency before selecting
-  the final implementation, while preserving the agreed timing and ordering semantics.
+  Consequently, Milestone 4 has up to the 10 MiB bootstrap EventBuffer total allowance plus the
+  existing 1 MiB startup buffer allowance while configuration is unavailable. Bootstrap EventBuffer
+  limits remain active during that period even though the initial configuration will later make a
+  runtime pair pending for the next admission. Overflow in `PreConfigBuffer` retains the current
+  FIFO behavior and metrics; priority-aware startup retention arrives in milestone 5.
+- Ship the small production metric set below. During development, enable the temporary
+  instrumentation below to compare provider, lock, consumer, session, and callback behavior before
+  selecting the final implementation, while preserving the agreed timing and ordering semantics.
 
-## Milestone 4: soft startup replay gate
+## Milestone 5: soft startup replay gate
 
-After Milestone 3 is stable, replace `PreConfigBuffer` with EventBuffer startup buffering and add
+After Milestone 4 is stable, replace `PreConfigBuffer` with EventBuffer startup buffering and add
 the soft drain gate below. This delivers delayed replay and crash-log reordering without coupling
 those startup semantics to the ingress migration.
 
 EventBuffer starts with its drain gate `Holding`. Once configuration has created the processing
 pipeline, it reads the replay-delay runtime configuration and starts the base replay timer. The
-gate opens only after that configuration-relative deadline has passed. A platform crash-pending
-hint can extend the deadline while the gate is still holding, subject to the configured extension
-limit. Holding continues to capture and prioritize events but does not deliver them.
+strawman default is a 500 ms configuration-relative base delay. The gate opens only after that
+deadline has passed. A platform crash-pending hint while the gate is holding can add up to a
+further 1 s crash delay, for a 1.5 s maximum under the strawman. Both the base delay and maximum
+crash delay are runtime-configurable. Holding continues to capture and prioritize events but does
+not deliver them.
 
 Before configuration is ready, `CrashPending` is retained as a pending extension hint and a
 high-watermark crossing is retained as an early-release request; neither can deliver work without
-a pipeline. At configuration readiness, apply the pending hint to the runtime-configured deadline.
-If the buffer is already at the high watermark, release immediately with reason
-`high_watermark`; otherwise arm the configured timer.
+a pipeline. At configuration readiness, apply the pending hint to the runtime-configured deadline,
+record the current `(log_limit, total_limit)` pair through `EventBuffer::set_pending_limits`, and
+retain the same runtime watch for later limit changes. The pair becomes effective on the next
+EventBuffer admission. If the buffer is already at the high watermark calculated from the runtime
+`total_limit`, release immediately with reason `high_watermark`; otherwise arm the configured
+timer.
 
 Configuration construction, including restoration of already-persisted workflow actions, remains
 outside the EventBuffer ordering domain and keeps its current startup behavior while the gate is
@@ -402,24 +589,17 @@ configuration is ready.
 only when EventBuffer admits it while the startup gate is holding. The eligibility bit is captured
 on the entry; it is not inferred later from the source alone.
 
-When the gate releases, EventBuffer takes its deque under the lock, partitions the already-admitted
-entries into reorderable previous-process logs and everything else, then restores the deque as:
+An eligible previous-process entry enters the protected `startup_previous` FIFO lane at admission;
+every other entry enters its normal retention lane. Gate release only changes the gate to `Open`—it
+does not partition, move, clone, or scan queued entries. The consumer drains the startup lane first
+in its original FIFO order, then resumes normal admission-ID merge delivery across the six normal
+lanes.
 
-```text
-previous-process logs (their original FIFO order)
--> all other retained entries (their original FIFO order)
-```
-
-The same lock transition changes the gate to `Open`. Entries admitted afterwards always append to
-the back, including a late previous-process crash log. The gate never reopens, so a crash report
-that arrives later in the session keeps its higher retention priority but is not reordered ahead of
-current-session work. This avoids retroactively changing workflow order after current-session
-events have started flowing.
-
-Only prior-process logs move during this partition. Current state/control entries, fields,
-session-bearing entries, and flush barriers stay in their original FIFO relation. The one-time
-partition moves entries without cloning payloads; it is an intentional startup-only lock hold and
-is instrumented separately.
+Entries admitted after release always use normal retention lanes, including a late previous-process
+crash log, which uses the normal protected lane. The gate never reopens, so that log keeps its high
+retention priority but is not reordered ahead of current-session work. This avoids both a
+drain-time O(n) partition and retroactively changing workflow order after current-session events
+have started flowing.
 
 The gate is soft: admission of a protected event at or above an 80%-of-`total_limit` high
 watermark opens it early with reason `high_watermark`. Low-priority traffic alone does not shorten
@@ -432,8 +612,8 @@ previous-process logs cannot reopen it. `start_new_session` remains an in-memory
 without a following EventBuffer entry it has no replay-ordering effect.
 
 An admitted `FlushState(Block::Yes)` or blocking log is also a gate barrier: it seals the gate,
-partitions eligible previous-process logs first, then drains through its ordered position before
-its completion resolves. It does not bypass older work. An admission-rejected or
+drains the already-admitted startup-previous lane first, then drains through its ordered position
+before its completion resolves. It does not bypass older work. An admission-rejected or
 provider-capture-rejected blocking operation resolves immediately as a terminal drop and cannot
 act as a barrier. `FlushState(Block::No)` stays behind the gate, matching its existing
 fire-and-forget behavior. Neither admitted blocking operation may remain pending solely because
@@ -443,38 +623,51 @@ the soft startup delay has not elapsed.
 
 - Preserve the existing log enqueue success/full/closed metrics for continuity until the channel
   path is removed; add equivalent state metrics during the transition.
-- Record EventBuffer admission, eviction, incoming drop, protected rejection, oversized rejection,
-  queued bytes by total/log/protected category, high-watermark replay, scheduled replay, crash-hint replay,
-  and time spent behind the drain gate. Break these down by event kind, log type, level, and
-  completion outcome. Record aggregate logger-field bytes/count, COW snapshot bytes/version
-  count, and field-limit rejections separately from event-buffer eviction. Record startup-window
-  sealing reason, reordered previous-process count, late previous-process count, and partition
-  duration separately from ordinary dequeue latency.
-- Record provider duration/failure and EventBuffer lock wait/hold histograms before and after the
-  inline-provider migration, including state-operation snapshots. Record consumer batch length,
-  time between notification and dequeue, and service time for each external `select!` branch.
-- In milestone 2, test dual-limit admission, priority eviction, FIFO retention, equal-priority
-  oldest retention, protected-entry behavior, oversized input, COW field snapshots and limits,
-  lifecycle close, completion on rejection/eviction/close, and Notify wake/drain races. Add
-  repeated arbitrary eviction tests that verify descending-index removal, plus allocation-failure
-  and callback-reentrancy coverage.
-- In milestone 3, add old-log / session-start / new-log attribution, automatic session rotation,
+
+Production rollout metrics are intentionally small and use only bounded, coarse dimensions:
+
+- Count EventBuffer entry outcomes as admitted, evicted, rejected-full, rejected-oversized, or
+  closed. Do not break these down by event kind, log type, level, exact tier, or completion outcome.
+- Export queued bytes and entries split only into protected and evictable categories, plus the age
+  of the oldest retained entry to detect an unhealthy consumer.
+- Count drain-gate openings by timer, crash hint, high watermark, or barrier, and record gate-hold
+  duration.
+- Keep durable session-write failures as a `bd_session` metric rather than an EventBuffer metric.
+
+Development instrumentation is temporary: it must be feature-gated or sampled, have a stated
+removal point before broad rollout, and not become a permanent metric merely because it aided
+implementation. It includes per-lane depth/bytes/evictions; EventBuffer lock wait/hold time;
+provider and callback duration/failure; consumer batch length, notification-to-dequeue time, and
+`select!` branch service time; field-map snapshot bytes/version count and field-limit rejection;
+pending/effective limit generations and shrink results; startup-lane/reorder counts; and detailed
+session generation/coalescing/write timing. These measurements support benchmarks and migration
+validation, not steady-state dashboards.
+- In milestone 3, test the priority mapping exhaustively across every public `LogType` and level,
+  including unknown forward-compatible values; bootstrap dual-limit admission before configuration;
+  pending runtime-limit updates that raise and lower each cap; application of the pair before the
+  next admission; protected-over-limit behavior after a shrink; priority eviction; global FIFO
+  delivery across tiers; newest-first eviction within an equal-priority tier; protected-entry
+  behavior; release/acquire pending-epoch publication, atomic fence/source admission, and fence
+  deduplication; oversized input; field-map snapshots and limits; lifecycle close; completion on
+  rejection/eviction/close; and Notify wake/drain races. Exercise every tier boundary and
+  allocation failure plus callback-reentrancy coverage.
+- In milestone 4, add old-log / session-start / new-log attribution, automatic session rotation,
   concurrent session-start/log admission, edge-time in-memory session resolution, explicit- and
   implicit-rotation callback dispatch/order (including callback-after-source admission and no
-  persistence wait), both Rust- and platform-layer callback invocation paths, feature-flag state
-  replay with captured metadata,
+  persistence wait), fence-before-delivery for a current epoch, persistence failure best-effort
+  progress, B-to-C fence supersession with no stale B write, already-durable and coalescer-waiter
+  fence outcomes, both Rust- and platform-layer callback invocation paths, feature-flag state replay with captured metadata,
   opaque-entity pre-store coalescing/admission/recovery, memory-pressure persistence, flush
   ordering, both crash-report paths, provider reentrancy/threading, generated-log session
   inheritance, and bounded-batch fairness with a continuously non-empty EventBuffer.
-- In milestone 4, add prior-run metadata behavior, gate timer and crash extension,
-  high-watermark early replay, barrier release, previous-process FIFO partitioning, late
+- In milestone 5, add prior-run metadata behavior, gate timer and crash extension,
+  high-watermark early replay, barrier release, previous-process startup-lane FIFO delivery, late
   previous-process no-reorder behavior, blocking-flush gate activation, nonblocking-flush gate
   retention, and
   PreConfigBuffer-to-EventBuffer migration coverage.
 - Add contention benchmarks covering concurrent logging, field updates, deliberately slow
-  providers, and linear eviction/removal lock hold time as part of milestone 3. Use those results
-  to decide whether a future eviction index or compaction strategy is needed. Verify the crate
-  with `cargo nextest run -p bd-logger`.
+  providers, fixed-tier dequeue selection, tail eviction, and startup-lane drain as part of
+  milestone 4. Verify the crate with `cargo nextest run -p bd-logger`.
 
 ## Decision record
 
@@ -482,21 +675,25 @@ the soft startup delay has not elapsed.
   Tokio ingress channel.
 - It deliberately accepts that provider execution can add synchronous caller latency, subject to
   measured provider and lock-tail latency.
-- Session persistence is deliberately outside EventBuffer. `bd_session` applies a session mutation
-  immediately under its own mutex and coalesces durable writes by generation; logs and state
-  operations carry the resulting immutable session ID. EventBuffer admission never changes,
-  persists, or rolls back session state.
+- Session persistence remains owned by `bd_session`. It applies a session mutation immediately
+  under its own mutex and coalesces durable writes by generation; logs and state operations carry
+  immutable session snapshots. EventBuffer admission never changes or rolls back session state, but
+  its protected conditional fence delays downstream work until the current session epoch is written,
+  superseded, or has a measured best-effort failure.
 - EventBuffer is one ordering domain for producer data and state, not for configuration. Existing
   configuration control-plane timing remains out of band and is made explicit through the startup
   gate.
-- The initial limits are an 11 MiB total budget and a 1 MiB evictable-log budget, preserving the
-  current separate log and state allowances without requiring separate ingress queues. Reducing
-  either is a later product decision informed by telemetry.
-- Milestones 1 through 3 preserve current `PreConfigBuffer` startup behavior; milestone 4 is the
+- The bootstrap limits are a 10 MiB total budget and a 1 MiB evictable-log budget. They derive
+  from today's separate state/control and non-control channel capacities, but EventBuffer applies
+  them as one total cap with a log sublimit rather than adding them or reserving bytes per priority
+  queue. Both limits are runtime-configurable after configuration arrives.
+- Milestones 1 through 4 preserve current `PreConfigBuffer` startup behavior; milestone 5 is the
   only milestone that changes initialization replay and workflow ordering.
-- Milestone 4 introduces runtime settings for the base replay delay and maximum crash-hint
-  extension. The 1 MiB log limit, 10 MiB state-derived total allowance, and 80% high watermark
-  remain initial fixed defaults until telemetry establishes safe live-resize semantics.
+- Milestone 5 introduces runtime settings for the 500 ms strawman base replay delay, 1 s maximum
+  crash-hint extension, `log_limit`, and `total_limit`. The 1 MiB log sublimit, 10 MiB total limit,
+  and 80% high watermark are bootstrap defaults before the first configuration arrives; later
+  runtime updates become effective on the next EventBuffer admission using the limit-shrink
+  behavior specified above.
 - Provider-capture failures preserve today's best-effort public behavior: the affected log is
   dropped, its blocking completion becomes terminal, and diagnostics remain metrics/logging rather
   than a new caller-visible error. Reentrant logging during provider capture remains rejected by
@@ -507,14 +704,16 @@ the soft startup delay has not elapsed.
 - An all-protected full EventBuffer rejects the incoming protected entry. It never exceeds
   `total_limit`, parks a pending admission, or relies on Tokio scheduling for room; rejection is
   explicit and measured.
-- The initial COW implementation accepts old map snapshots as bounded auxiliary memory. It will be
-  replaced with structural sharing only if the specified telemetry shows that retained versions are
-  material; it is not a prerequisite for the EventBuffer migration.
-- EventBuffer uses a target-selected internal mutex adapter: `parking_lot::Mutex` is the portable
-  default, while a target with an RAII-compatible native binding may use its platform mutex. The
-  adapter is synchronous and never guards awaits, provider calls, callbacks, or pipeline work.
+- The initial `Arc<LoggerFieldMap>` design makes log admission clone only the `Arc` and accepts
+  older snapshots as bounded auxiliary memory. Field updates may use `Arc::make_mut` to avoid a
+  clone when uniquely owned. Structural sharing is needed only if telemetry shows that retained
+  snapshots are material; it is not a prerequisite for the EventBuffer migration.
+- Milestone 1 introduces the shared `PlatformMutex` available to every platform-facing caller-thread
+  lock: `os_unfair_lock` on iOS and `parking_lot::Mutex` on Linux. `bd_session` adopts it in that
+  milestone; EventBuffer adopts the same adapter in Milestone 3. These mutexes are synchronous and
+  never guard awaits, provider calls, callbacks, or pipeline work.
 - Session callbacks no longer wait for persistence. They run inline after the session mutex is
-  released; direct session APIs retain their initiating-thread delivery, while Milestone 3
+  released; direct session APIs retain their initiating-thread delivery, while Milestone 4
   log/feature-flag rotations invoke their callback after the source's terminal admission outcome.
   Benchmark the final callback invocation layer, with the platform layer preferred when it avoids
   an extra FFI crossing without changing callback semantics.
@@ -549,5 +748,29 @@ does not remove the need for the bounded replay gate that establishes the initia
 
 | Topic | Locked direction | Remaining action |
 | --- | --- | --- |
-| Startup reordering | Only previous-process logs admitted before gate sealing are reordered ahead of current-process entries. Late previous-process logs retain high eviction priority but are never reordered. | Select the base delay, maximum crash-hint extension, and high-watermark threshold. |
-| Priority policy | The plan's provisional taxonomy protects previous-process, lifecycle, `Block::Yes`, and state/control entries; it ranks the remaining log types and levels as specified above. | Confirm or replace the provisional taxonomy with product/workflow owners before Milestone 2 implementation. |
+| Startup reordering | Only previous-process logs admitted before gate sealing are reordered ahead of current-process entries. Late previous-process logs retain high eviction priority but are never reordered. The strawman defaults are a 500 ms base delay plus up to a 1 s crash delay; both are runtime-configurable. | Validate the strawman delay values and select the high-watermark threshold. |
+| Priority representation | Six fixed `VecDeque` tiers use admission-ID merge delivery. | Confirm the six-tier mapping with product/workflow owners and benchmark the fixed-tier design before Milestone 3 implementation. |
+
+## Possible user-exposed priority levels
+
+This is a possible future API, not part of the initial EventBuffer migration. If applications need
+to influence retention, expose a coarse `RetentionHint` rather than the six internal tiers or an
+arbitrary numeric priority:
+
+| Public hint | Effective retention tier | Limits of the hint |
+| --- | --- | --- |
+| `Background` | Diagnostic | It may lower ordinary `INFO` application/user logs, but it cannot demote an automatic `WARN` or `ERROR`. |
+| `Default` | The normal type-and-level mapping | This preserves the behavior specified in the six-tier table. |
+| `Elevated` | At least Primary signal | It may promote an ordinary log above Context or Diagnostic, but it cannot outrank Warning, Error, or Protected. |
+
+The effective tier is calculated at admission from the automatic type/level mapping plus this
+bounded hint. The hint changes only local EventBuffer eviction eligibility: it never changes log
+level, delivery order, workflow order, upload order, or downstream persistence. `Protected` is not
+publicly selectable, `Elevated` entries still count against both applicable byte limits and remain
+evictable, and an application that marks all logs elevated simply makes those logs compete with one
+another.
+
+Six internal tiers are sufficient for this coarse public API because every hint maps to an existing
+tier. If product instead requires an arbitrary numeric value with meaningful distinctions between
+values, fixed lanes would only provide undocumented bucketing. That would be a separate future
+design decision, not an extension of this EventBuffer plan.
