@@ -16,7 +16,6 @@ use crate::{MetadataProvider, app_version};
 use bd_api::Metadata;
 use bd_bounded_buffer::{self};
 use bd_client_stats_store::{Counter, Scope};
-use bd_log_util::warn_every;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
@@ -25,6 +24,7 @@ use bd_log_primitives::{
   LogMessage,
   log_level,
 };
+use bd_log_util::warn_every;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::client::key_value::app_version::Extra as AppVersionExtra;
 use bd_proto::protos::logging::payload::LogType;

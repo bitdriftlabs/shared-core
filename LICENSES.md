@@ -13,6 +13,7 @@
 | `bd-grpc` | Apache-2.0 |
 | `bd-grpc-codec` | Apache-2.0 |
 | `bd-log` | Apache-2.0 |
+| `bd-log-util` | Apache-2.0 |
 | `bd-panic` | Apache-2.0 |
 | `bd-pgv` | Apache-2.0 |
 | `bd-rt` | Apache-2.0 |
