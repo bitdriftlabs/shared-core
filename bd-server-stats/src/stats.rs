@@ -893,8 +893,9 @@ impl ContributionGauge {
     // can still be offset by an existing negative contribution before it saturates.
     let next = match i64::try_from(value) {
       Ok(value) => contribution.saturating_add(value),
-      Err(_) if contribution.is_negative() => i64::try_from(value - contribution.unsigned_abs())
-        .unwrap_or(i64::MAX),
+      Err(_) if contribution.is_negative() => {
+        i64::try_from(value - contribution.unsigned_abs()).unwrap_or(i64::MAX)
+      },
       Err(_) => i64::MAX,
     };
     Self::update_gauge(&self.inner.gauge, *contribution, next);
