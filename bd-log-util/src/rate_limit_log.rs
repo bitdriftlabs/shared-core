@@ -53,8 +53,6 @@ pub fn log_with_rate_limit(
     return;
   }
 
-  // The macro captures call-site metadata and hands it to this helper so the emitted record still
-  // points at the caller while the tracker logic stays shared.
   let mut record = log::Record::builder();
   record
     .args(args)

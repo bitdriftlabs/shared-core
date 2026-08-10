@@ -16,7 +16,7 @@ use crate::{MetadataProvider, app_version};
 use bd_api::Metadata;
 use bd_bounded_buffer::{self};
 use bd_client_stats_store::{Counter, Scope};
-use bd_log::warn_every;
+use bd_log_util::warn_every;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,

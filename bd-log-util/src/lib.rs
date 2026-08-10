@@ -4,10 +4,8 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-pub mod feature_flags;
+//! Lightweight, rate-limited logging helpers.
 
-use bd_panic::PanicType;
+pub mod rate_limit_log;
 
-pub fn test_global_init() {
-  bd_panic::default(PanicType::ForceAbort);
-}
+pub use rate_limit_log::WarnTracker;
