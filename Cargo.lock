@@ -1440,6 +1440,7 @@ name = "bd-test-helpers-core"
 version = "1.0.0"
 dependencies = [
  "async-trait",
+ "bd-log",
  "bd-panic",
  "bd-runtime-config",
  "bd-workspace-hack",

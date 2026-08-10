@@ -10,4 +10,5 @@ use bd_panic::PanicType;
 
 pub fn test_global_init() {
   bd_panic::default(PanicType::ForceAbort);
+  bd_log::SwapLogger::initialize();
 }
