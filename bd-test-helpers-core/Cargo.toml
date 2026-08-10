@@ -10,7 +10,7 @@ doctest = false
 
 [dependencies]
 async-trait.workspace       = true
-bd-log                      = { path = "../bd-log", default-features = false }
+bd-log.path                 = "../bd-log"
 bd-panic.path               = "../bd-panic"
 bd-runtime-config.path      = "../bd-runtime-config"
 bd-workspace-hack.workspace = true
