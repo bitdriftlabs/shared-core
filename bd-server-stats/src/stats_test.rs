@@ -95,6 +95,16 @@ fn contribution_gauge_saturates_large_signed_adjustments() {
   let helper = Helper::new();
   let gauge = ContributionGauge::new(helper.collector().scope("contribution").gauge("value"));
 
+  // Prometheus serializes gauges as f64, so use an offset representable near 2^63.
+  gauge.set(-4_096);
+  gauge.inc_by(i64::MAX as u64 + 1);
+  helper.assert_gauge_eq(i64::MAX - 4_095, "contribution:value", &labels!());
+
+  gauge.set(4_096);
+  gauge.dec_by(i64::MAX as u64 + 1);
+  helper.assert_gauge_eq(i64::MIN + 4_096, "contribution:value", &labels!());
+
+  gauge.clear();
   gauge.inc_by(u64::MAX);
   helper.assert_gauge_eq(i64::MAX, "contribution:value", &labels!());
 

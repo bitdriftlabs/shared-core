@@ -890,8 +890,13 @@ impl ContributionGauge {
   pub fn inc_by(&self, value: u64) {
     let mut contribution = self.inner.contribution.lock();
     // A contribution is signed, but increments are not. An increment outside the signed range
-    // exhausts this owner's representable positive contribution.
-    let next = i64::try_from(value).map_or(i64::MAX, |value| contribution.saturating_add(value));
+    // can still be offset by an existing negative contribution before it saturates.
+    let next = match i64::try_from(value) {
+      Ok(value) => contribution.saturating_add(value),
+      Err(_) if contribution.is_negative() => i64::try_from(value - contribution.unsigned_abs())
+        .unwrap_or(i64::MAX),
+      Err(_) => i64::MAX,
+    };
     Self::update_gauge(&self.inner.gauge, *contribution, next);
     *contribution = next;
   }
@@ -899,8 +904,16 @@ impl ContributionGauge {
   /// Decrease this owner's contribution and the shared gauge.
   pub fn dec_by(&self, value: u64) {
     let mut contribution = self.inner.contribution.lock();
-    // Mirror `inc_by`: an unrepresentable decrement exhausts the negative signed range.
-    let next = i64::try_from(value).map_or(i64::MIN, |value| contribution.saturating_sub(value));
+    // Mirror `inc_by`: an unrepresentable decrement can still be offset by an existing positive
+    // contribution before it saturates.
+    let next = match i64::try_from(value) {
+      Ok(value) => contribution.saturating_sub(value),
+      Err(_) if contribution.is_positive() => {
+        let magnitude = value - contribution.unsigned_abs();
+        i64::try_from(magnitude).map_or(i64::MIN, |magnitude| -magnitude)
+      },
+      Err(_) => i64::MIN,
+    };
     Self::update_gauge(&self.inner.gauge, *contribution, next);
     *contribution = next;
   }
