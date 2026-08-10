@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 //! Session management is split into three layers:
-//! 1. A backend-specific strategy decides when a session ID should change.
+//! 1. A configuration decides when a session ID should change.
 //! 2. This module persists the current session plus a durable queue of started sessions that still
 //!    need to be announced to the server.
 //! 3. The API layer consumes `PendingStateUpdate` values from that durable queue and acknowledges
@@ -25,8 +25,7 @@
   clippy::unwrap_used
 )]
 
-pub mod activity_based;
-pub mod fixed;
+pub mod configuration;
 mod persistence;
 pub mod test;
 
@@ -43,8 +42,8 @@ fn test_global_init() {
 use bd_client_common::PlatformMutex;
 use bd_proto::protos::client::api::StateUpdateRequest;
 use bd_proto::protos::client::api::state_update_request::StartedSession;
-use bd_time::{OffsetDateTimeExt as _, TimeProvider};
-use persistence::{BackendState, PersistedSessionState, StartedSessionRecord, Store};
+use bd_time::OffsetDateTimeExt as _;
+use persistence::{ActivityState, PersistedSessionState, StartedSessionRecord, Store};
 use std::cell::Cell;
 use std::future::Future;
 use std::path::Path;
@@ -94,7 +93,7 @@ pub(crate) struct Transition {
 
 #[derive(Clone, Debug)]
 pub(crate) enum DeferredCallback {
-  ActivitySessionChanged(String),
+  SessionIdChanged(String),
 }
 
 //
@@ -124,57 +123,12 @@ impl PendingStateUpdate {
 }
 
 //
-// Backend
-//
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum BackendKind {
-  Fixed,
-  ActivityBased,
-}
-
-impl BackendKind {
-  const fn type_name(self) -> &'static str {
-    match self {
-      Self::Fixed => "fixed",
-      Self::ActivityBased => "activity_based",
-    }
-  }
-}
-
-enum Backend {
-  Fixed(fixed::Strategy),
-  ActivityBased(activity_based::Strategy),
-}
-
-impl Backend {
-  const fn kind(&self) -> BackendKind {
-    match self {
-      Self::Fixed(_) => BackendKind::Fixed,
-      Self::ActivityBased(_) => BackendKind::ActivityBased,
-    }
-  }
-
-  fn matches_persisted_backend(&self, persisted_backend: &BackendState) -> bool {
-    self.kind() == persisted_backend.kind()
-  }
-}
-
-impl BackendState {
-  const fn kind(&self) -> BackendKind {
-    match self {
-      Self::Fixed => BackendKind::Fixed,
-      Self::ActivityBased { .. } => BackendKind::ActivityBased,
-    }
-  }
-}
-
-//
 // Strategy
 //
 
 pub struct Strategy {
-  backend: Backend,
+  configuration: configuration::Configuration,
+  callbacks: Arc<dyn configuration::Callbacks>,
   store: Store,
   state: PlatformMutex<Option<LoadedState>>,
   persistence_tx: mpsc::Sender<PersistenceRequest>,
@@ -217,37 +171,30 @@ impl StrategyWithWorker {
 }
 
 impl Strategy {
-  pub fn fixed(
+  pub fn configuration(
     sdk_directory: impl AsRef<Path>,
-    callbacks: Arc<dyn fixed::Callbacks>,
+    initial_session_id: Option<String>,
+    inactivity_timeout: Option<time::Duration>,
+    callbacks: Arc<dyn configuration::Callbacks>,
+    time_provider: Arc<dyn bd_time::TimeProvider>,
   ) -> StrategyWithWorker {
     Self::make_parts(
-      Backend::Fixed(fixed::Strategy::new(callbacks)),
+      configuration::Configuration::new(initial_session_id, inactivity_timeout, time_provider),
+      callbacks,
       sdk_directory,
     )
   }
 
-  pub fn activity_based(
+  fn make_parts(
+    configuration: configuration::Configuration,
+    callbacks: Arc<dyn configuration::Callbacks>,
     sdk_directory: impl AsRef<Path>,
-    inactivity_threshold: time::Duration,
-    callbacks: Arc<dyn activity_based::Callbacks>,
-    time_provider: Arc<dyn TimeProvider>,
   ) -> StrategyWithWorker {
-    Self::make_parts(
-      Backend::ActivityBased(activity_based::Strategy::new(
-        inactivity_threshold,
-        callbacks,
-        time_provider,
-      )),
-      sdk_directory,
-    )
-  }
-
-  fn make_parts(backend: Backend, sdk_directory: impl AsRef<Path>) -> StrategyWithWorker {
     let (update_tx, _) = watch::channel(0);
     let (persistence_tx, persistence_rx) = mpsc::channel(1);
     let strategy = Arc::new(Self {
-      backend,
+      configuration,
+      callbacks,
       store: Store::new(sdk_directory),
       state: PlatformMutex::new(None),
       persistence_tx,
@@ -289,24 +236,19 @@ impl Strategy {
     let (current_session_id, effects) = {
       let mut guard = self.state.lock();
       if let Some(state) = guard.as_mut() {
-        // Session reads and activity updates share the same transition path so activity-based
-        // sessions can rotate or persist last-activity state while fixed sessions stay unchanged.
-        let effects = match &self.backend {
-          Backend::Fixed(_) => fixed::Strategy::on_session_id(state),
-          Backend::ActivityBased(strategy) => strategy.on_session_id(state),
-        };
+        let effects = self.configuration.on_session_id(state);
 
         let current_session_id = Self::loaded_session_id(state)?;
         (current_session_id, effects)
       } else {
         // The first read initializes from durable state and may enqueue a deferred callback if the
-        // backend decides the current access should create or rotate a session.
+        // configuration decides whether the current access should create or rotate a session.
         let initialization = self.initialize_state();
         *guard = Some(initialization.state.clone());
 
         let current_session_id = Self::loaded_session_id(&initialization.state)?;
         log::debug!(
-          "initialized session state on first read: backend={}, current_session_id={}, \
+          "initialized session state on first read: configuration={}, current_session_id={}, \
            persist={}, notify_update={}, callback={}, pending_started_sessions={}",
           self.type_name(),
           current_session_id,
@@ -325,12 +267,12 @@ impl Strategy {
   }
 
   /// Creates a new session and schedules persistence without waiting for disk I/O.
-  pub fn start_new_session(&self) -> anyhow::Result<()> {
+  pub fn start_new_session(&self, session_id: Option<String>) -> anyhow::Result<()> {
     self.ensure_not_in_callback("start_new_session")?;
 
     let effects = {
       let mut guard = self.state.lock();
-      self.start_new_session_locked(&mut guard)
+      self.start_new_session_locked(&mut guard, session_id)
     };
 
     self.apply_effects(effects);
@@ -411,7 +353,7 @@ impl Strategy {
       .any(|started| started.session_id == state.persisted.current_session_id)
     {
       log::debug!(
-        "synthesizing current session into handshake: backend={}, current_session_id={}, \
+        "synthesizing current session into handshake: configuration={}, current_session_id={}, \
          pending_started_sessions={}",
         self.type_name(),
         state.persisted.current_session_id,
@@ -443,7 +385,7 @@ impl Strategy {
 
     if state.pending_started_sessions.is_empty() {
       log::debug!(
-        "no pending state update to emit: backend={}, current_session_id={}",
+        "no pending state update to emit: configuration={}, current_session_id={}",
         self.type_name(),
         state.persisted.current_session_id
       );
@@ -452,7 +394,7 @@ impl Strategy {
 
     let started_sessions = state.pending_started_sessions;
     log::debug!(
-      "emitting pending state update: backend={}, current_session_id={}, \
+      "emitting pending state update: configuration={}, current_session_id={}, \
        pending_started_sessions={}",
       self.type_name(),
       state.persisted.current_session_id,
@@ -495,7 +437,7 @@ impl Strategy {
       // set matches the prefix we most recently sent.
       if !starts_with_sessions(&state.pending_started_sessions, &update.started_sessions) {
         log::debug!(
-          "ignoring non-prefix state update acknowledgement: backend={}, current_pending={}, \
+          "ignoring non-prefix state update acknowledgement: configuration={}, current_pending={}, \
            acknowledged={}",
           self.type_name(),
           state.pending_started_sessions.len(),
@@ -512,7 +454,7 @@ impl Strategy {
     };
 
     log::debug!(
-      "acknowledged pending started sessions: backend={}, remaining_pending={}",
+      "acknowledged pending started sessions: configuration={}, remaining_pending={}",
       self.type_name(),
       pending_started_sessions.len()
     );
@@ -523,64 +465,56 @@ impl Strategy {
     });
   }
 
-  /// Pretty name of the strategy.
+  /// Pretty name of the active session configuration.
   pub const fn type_name(&self) -> &'static str {
-    self.backend.kind().type_name()
+    self.configuration.type_name()
   }
 
   fn initialize_state(&self) -> Transition {
     // The persisted current session and the persisted pending queue are loaded together so the
-    // backend makes decisions from a consistent snapshot of durable state.
+    // configuration makes decisions from a consistent snapshot of durable state.
     let persisted = self.store.load_state();
     let pending_started_sessions = self.store.load_pending_started_sessions();
 
     log::debug!(
-      "loading session state snapshot: active_backend={}, has_persisted_state={}, \
+      "loading session state snapshot: active_configuration={}, has_persisted_state={}, \
        pending_started_sessions={}",
       self.type_name(),
       persisted.is_some(),
       pending_started_sessions.len()
     );
 
-    if let Some(persisted) = persisted.as_ref()
-      && !self.backend.matches_persisted_backend(&persisted.backend)
+    if self.configuration.has_inactivity_timeout()
+      && let Some(persisted) = persisted.as_ref()
+      && !self
+        .configuration
+        .matches_persisted_activity_state(&persisted.activity_state)
     {
       log::debug!(
-        "resyncing session state after backend switch: persisted_backend={}, active_backend={}, \
+        "resyncing session state after inactivity configuration change: active_configuration={}, \
          previous_current_session_id={}, pending_started_sessions={}",
-        persisted.backend.kind().type_name(),
         self.type_name(),
         persisted.current_session_id,
         pending_started_sessions.len()
       );
 
-      return self.initialize_after_backend_switch(persisted.clone(), pending_started_sessions);
+      return self.initialize_after_inactivity_timeout_enabled(
+        persisted.clone(),
+        pending_started_sessions,
+      );
     }
 
-    match &self.backend {
-      Backend::Fixed(strategy) => {
-        self.with_callback_guard(|| strategy.initialize(persisted, pending_started_sessions))
-      },
-      Backend::ActivityBased(strategy) => strategy.initialize(persisted, pending_started_sessions),
-    }
+    self.configuration.initialize(persisted, pending_started_sessions)
   }
 
-  fn initialize_after_backend_switch(
+  fn initialize_after_inactivity_timeout_enabled(
     &self,
     persisted: PersistedSessionState,
     pending_started_sessions: Vec<StartedSessionRecord>,
   ) -> Transition {
-    // Backend-specific durable fields are not portable, so a strategy switch is treated as a
-    // fresh session boundary. We still preserve the old current session as previous-process state
-    // by routing through the existing explicit-rotation path.
-    match &self.backend {
-      Backend::Fixed(strategy) => self.with_callback_guard(|| {
-        strategy.start_new_session(None, Some(persisted), pending_started_sessions)
-      }),
-      Backend::ActivityBased(strategy) => {
-        strategy.start_new_session(None, Some(persisted), pending_started_sessions)
-      },
-    }
+    self
+      .configuration
+      .start_new_session(None, None, Some(persisted), pending_started_sessions)
   }
 
   fn load_state_for_update(&self) -> LoadedState {
@@ -588,7 +522,7 @@ impl Strategy {
       let mut guard = self.state.lock();
       if let Some(state) = guard.clone() {
         log::debug!(
-          "serving state update from cached session state: backend={}, current_session_id={}, \
+          "serving state update from cached session state: configuration={}, current_session_id={}, \
            pending_started_sessions={}",
           self.type_name(),
           state.persisted.current_session_id,
@@ -602,7 +536,7 @@ impl Strategy {
       let initialization = self.initialize_state();
       *guard = Some(initialization.state.clone());
       log::debug!(
-        "initialized session state for update flow: backend={}, current_session_id={}, \
+        "initialized session state for update flow: configuration={}, current_session_id={}, \
          persist={}, notify_update={}, callback={}, pending_started_sessions={}",
         self.type_name(),
         initialization.state.persisted.current_session_id,
@@ -618,7 +552,11 @@ impl Strategy {
     state
   }
 
-  fn start_new_session_locked(&self, state: &mut Option<LoadedState>) -> TransitionEffects {
+  fn start_new_session_locked(
+    &self,
+    state: &mut Option<LoadedState>,
+    session_id: Option<String>,
+  ) -> TransitionEffects {
     // Once a process has initialized session state, its in-memory snapshot is newer than disk
     // until the coalescing writer catches up. Re-reading disk here would drop rapid rotations.
     let (persisted, pending_started_sessions) = state.as_ref().map_or_else(
@@ -636,7 +574,7 @@ impl Strategy {
       },
     );
     log::debug!(
-      "starting explicit session rotation: backend={}, cached_state={}, has_persisted_state={}, \
+      "starting explicit session rotation: configuration={}, cached_state={}, has_persisted_state={}, \
        pending_started_sessions={}",
       self.type_name(),
       state.is_some(),
@@ -644,17 +582,15 @@ impl Strategy {
       pending_started_sessions.len()
     );
 
-    let initialization = match &self.backend {
-      Backend::Fixed(strategy) => self.with_callback_guard(|| {
-        strategy.start_new_session(state.as_ref(), persisted, pending_started_sessions)
-      }),
-      Backend::ActivityBased(strategy) => {
-        strategy.start_new_session(state.as_ref(), persisted, pending_started_sessions)
-      },
-    };
+    let initialization = self.configuration.start_new_session(
+      session_id,
+      state.as_ref(),
+      persisted,
+      pending_started_sessions,
+    );
 
     log::debug!(
-      "computed explicit session rotation: backend={}, current_session_id={}, persist={}, \
+      "computed explicit session rotation: configuration={}, current_session_id={}, persist={}, \
        notify_update={}, callback={}, pending_started_sessions={}",
       self.type_name(),
       initialization.state.persisted.current_session_id,
@@ -674,7 +610,7 @@ impl Strategy {
     }
 
     log::debug!(
-      "applying session transition effects: backend={}, persist={}, notify_update={}, \
+      "applying session transition effects: configuration={}, persist={}, notify_update={}, \
        callback={}, pending_started_sessions={}",
       self.type_name(),
       effects.persist,
@@ -708,7 +644,7 @@ impl Strategy {
     };
 
     log::debug!(
-      "persisting coalesced session snapshot: backend={}, current_session_id={}, \
+      "persisting coalesced session snapshot: configuration={}, current_session_id={}, \
        pending_started_sessions={}",
       self.type_name(),
       snapshot.persisted.current_session_id,
@@ -739,13 +675,11 @@ impl Strategy {
     // Callbacks run on the calling thread after the state lock is dropped. This keeps platform
     // integrations responsive and avoids coupling session rotation to best-effort disk I/O.
     match callback {
-      Some(DeferredCallback::ActivitySessionChanged(session_id)) => {
+      Some(DeferredCallback::SessionIdChanged(session_id)) => {
         log::debug!(
-          "dispatching deferred activity session callback: current_session_id={session_id}"
+          "dispatching configured session callback: current_session_id={session_id}"
         );
-        if let Backend::ActivityBased(strategy) = &self.backend {
-          self.with_callback_guard(|| strategy.run_callback(&session_id));
-        }
+        self.with_callback_guard(|| self.callbacks.session_id_changed(&session_id));
       },
       None => {},
     }
@@ -760,7 +694,7 @@ impl Strategy {
       new_version = *version;
     });
     log::debug!(
-      "advanced session update version: backend={}, old_version={}, new_version={}",
+      "advanced session update version: configuration={}, old_version={}, new_version={}",
       self.type_name(),
       old_version,
       new_version
