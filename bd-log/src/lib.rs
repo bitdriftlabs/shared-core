@@ -63,22 +63,16 @@
 //! [`SwapLogger::swap`] is narrower than reconfiguration: it only updates the active filter string.
 //! It does not change the output destination or attach or detach the OTEL exporter.
 
-#[cfg(all(test, feature = "otel"))]
+#[cfg(test)]
 #[path = "./lib_test.rs"]
 mod tests;
 
-#[cfg(feature = "otel")]
-pub mod otel;
-#[cfg(not(feature = "otel"))]
-#[path = "./otel_stub.rs"]
 pub mod otel;
 pub mod rate_limit_log;
-#[cfg(feature = "otel")]
 #[doc(hidden)]
 pub mod test;
 
 use anyhow::anyhow;
-#[cfg(feature = "otel")]
 use opentelemetry_sdk::trace::SdkTracerProvider;
 pub use otel::{
   LogConfig,
@@ -113,10 +107,6 @@ const DEFAULT_FILTER_RULES: &str = "info,aws_config=warn,aws_smithy_http_tower=w
 pub const DEBUG_DIRECT_OTEL_SPANS_ENV: &str = "BD_LOG_DEBUG_DIRECT_OTEL_SPANS";
 
 type RegistryLayer = Box<dyn Layer<Registry> + Send + Sync + 'static>;
-#[cfg(feature = "otel")]
-type OtelProvider = SdkTracerProvider;
-#[cfg(not(feature = "otel"))]
-type OtelProvider = ();
 type ReloadFilterFn = Box<dyn FnMut(EnvFilter) -> anyhow::Result<()> + Send>;
 type ReloadLayersFn = Box<dyn FnMut(Vec<RegistryLayer>) -> anyhow::Result<()> + Send>;
 type ConsoleFmtLayer = tracing_subscriber::fmt::Layer<
@@ -496,7 +486,7 @@ impl Layer<Registry> for ReloadableLayerStack {
 struct LoggerState {
   reload_filter: Option<ReloadFilterFn>,
   reload_layers: Option<ReloadLayersFn>,
-  otel_provider: Option<OtelProvider>,
+  otel_provider: Option<SdkTracerProvider>,
   direct_otel_enabled: bool,
 }
 
@@ -606,12 +596,9 @@ impl SwapLogger {
 
     Self::update_log_max_level(&config.log_filter);
 
-    #[cfg(feature = "otel")]
     if let Some(provider) = old_otel_provider {
       provider.shutdown()?;
     }
-    #[cfg(not(feature = "otel"))]
-    let _ = old_otel_provider;
 
     Ok(())
   }
@@ -635,13 +622,11 @@ impl SwapLogger {
 
   // Flush and stop the OTEL exporter if one was installed.
   pub fn shutdown() -> anyhow::Result<()> {
-    #[cfg(feature = "otel")]
     let provider = {
       let mut state = Self::get().state.lock().unwrap();
       state.otel_provider.take()
     };
 
-    #[cfg(feature = "otel")]
     if let Some(provider) = provider {
       provider.shutdown()?;
     }
@@ -662,21 +647,12 @@ pub fn direct_otel_span_debug_enabled() -> bool {
 }
 
 fn direct_otel_output_enabled(config: &LogConfig) -> bool {
-  #[cfg(feature = "otel")]
-  {
-    config.otel.is_some() || direct_otel_span_debug_enabled()
-  }
-
-  #[cfg(not(feature = "otel"))]
-  {
-    let _ = config;
-    direct_otel_span_debug_enabled()
-  }
+  config.otel.is_some() || direct_otel_span_debug_enabled()
 }
 
 fn build_registry_layers(
   config: &LogConfig,
-) -> anyhow::Result<(Vec<RegistryLayer>, Option<OtelProvider>)> {
+) -> anyhow::Result<(Vec<RegistryLayer>, Option<SdkTracerProvider>)> {
   // The layer order stays stable across startup and later reconfiguration. We always keep local
   // console logging first so early initialization has a usable human-readable sink, and later
   // reloads only add or adjust the OTEL-related routing around that local output.
@@ -684,7 +660,6 @@ fn build_registry_layers(
   if direct_otel_span_debug_enabled() {
     layers.push(build_direct_otel_debug_layer(config));
   }
-  #[cfg(feature = "otel")]
   let otel_provider = match config.otel.as_ref() {
     Some(otel_config) => {
       let (layer, provider) = otel::build_otel_layer(otel_config)?;
@@ -692,14 +667,6 @@ fn build_registry_layers(
       Some(provider)
     },
     None => None,
-  };
-
-  #[cfg(not(feature = "otel"))]
-  let otel_provider = {
-    if config.otel.is_some() {
-      return Err(anyhow!("bd-log was built without its `otel` feature"));
-    }
-    None
   };
 
   Ok((layers, otel_provider))
@@ -725,13 +692,10 @@ fn build_direct_otel_debug_layer(config: &LogConfig) -> RegistryLayer {
 }
 
 fn build_output_layer(config: &LogConfig) -> RegistryLayer {
-  #[cfg(feature = "otel")]
   let exclude_direct_otel = config
     .otel
     .as_ref()
     .is_some_and(|otel| !otel.mirror_to_output);
-  #[cfg(not(feature = "otel"))]
-  let exclude_direct_otel = false;
   let layer = build_console_fmt_layer(config);
 
   if exclude_direct_otel {

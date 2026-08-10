@@ -15,7 +15,7 @@ async-trait.workspace           = true
 axum.workspace                  = true
 base64ct.workspace              = true
 bd-grpc-codec.path              = "../bd-grpc-codec"
-bd-log                          = { path = "../bd-log", default-features = false }
+bd-log.path                     = "../bd-log"
 bd-pgv.path                     = "../bd-pgv"
 bd-server-stats.path            = "../bd-server-stats"
 bd-shutdown.path                = "../bd-shutdown"
