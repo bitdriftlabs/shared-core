@@ -13,7 +13,7 @@ and state ingress channels while retaining one async consumer.
 
 - The producer path only captures inputs and admits an entry. It never waits for disk I/O, provider
   calls while holding the buffer lock, or downstream workflow processing.
-- Six fixed retention tiers decide what is discarded under memory pressure; admission IDs preserve
+- Five fixed retention tiers decide what is discarded under memory pressure; admission IDs preserve
   global FIFO delivery across those tiers. Previous-process logs have a temporary startup lane so
   they can replay before current-process work without a drain-time queue partition.
 - `bd_session` remains responsible for session state and persistence. EventBuffer uses a small,
@@ -31,7 +31,7 @@ and state ingress channels while retaining one async consumer.
 1. **Shared platform mutex.** Introduce the caller-thread mutex adapter; use it for `bd_session`.
 2. **Session persistence.** Replace ALB-carried session writes with a coalescing `bd_session`
    flusher and the atomic fence handshake.
-3. **EventBuffer.** Build and test the bounded six-queue component without changing logger ingress.
+3. **EventBuffer.** Build and test the bounded five-queue component without changing logger ingress.
 4. **Ingress migration.** Route logger/state inputs through EventBuffer while preserving
    `PreConfigBuffer` startup behavior.
 5. **Startup replay.** Replace `PreConfigBuffer` with the delayed replay gate and prior-process
@@ -271,10 +271,10 @@ change the delivery order. Whatever representation is selected, these invariants
 
 #### Fixed priority queue design
 
-The priority taxonomy is intentionally fixed and small for the initial EventBuffer: six retention
-tiers—one protected tier plus five evictable tiers. The protected tier has a normal lane and a
-startup-only previous-process lane, so the implementation uses seven `VecDeque`s during startup.
-This is a delivery-layout detail, not a seventh retention priority. The taxonomy uses the full
+The priority taxonomy is intentionally fixed and small for the initial EventBuffer: five retention
+tiers—one protected tier plus four evictable tiers. The protected tier has a normal lane and a
+startup-only previous-process lane, so the implementation uses six `VecDeque`s during startup.
+This is a delivery-layout detail, not a sixth retention priority. The taxonomy uses the full
 public `LogType` surface but does not multiply every type by every level. The logger's five levels
 are trace, debug, info, warn, and error; a future numeric level higher than error maps to the error
 tier.
@@ -284,8 +284,7 @@ tier.
 | Protected | State/control entries, `Block::Yes` logs, all `LIFECYCLE` logs, and every previous-process log | These entries carry ordering, durability, barrier, or startup-recovery semantics. They are bounded only by `total_limit` and never priority-evicted. |
 | Error | Any non-protected log at `ERROR` or a higher forward-compatible level | Preserve failures regardless of whether the source is application, UX, device, or SDK instrumentation. |
 | Warning | Any remaining non-protected log at `WARN` | A warning is operationally meaningful, but an error may evict it under pressure. |
-| Primary signal | `NORMAL`, `VIEW`, `UX`, and `SPAN` at `INFO` | These are application, user-interaction, and network-request signals most likely to explain product behavior. |
-| Context | `DEVICE` at `INFO` | Device context helps interpret a session without outranking application, UX, or network-request signal. |
+| Primary signal | `NORMAL`, `VIEW`, `UX`, `SPAN`, and `DEVICE` at `INFO` | These are application, user-interaction, network-request, and device-state signals most likely to explain product behavior. |
 | Diagnostic | `RESOURCE`, `REPLAY`, and `INTERNAL_SDK` at `INFO`; every non-protected `DEBUG` or `TRACE` log; unknown types or unrecognized levels that are neither warning nor error | This contains high-volume telemetry and debug detail while keeping the mapping safe when a new enum value arrives. |
 
 `LIFECYCLE` remains protected because it carries startup, app-update, and crash-report paths in the
@@ -305,7 +304,7 @@ everything else                            -> normal lane for retention_tier
 
 While the startup gate is holding, no entry drains. Gate release only flips the gate state—there
 is no stable partition or queue walk. `next_batch` drains `startup_previous` in FIFO order until
-empty, then merges the fronts of the six normal retention lanes by admission ID. A previous-process
+empty, then merges the fronts of the five normal retention lanes by admission ID. A previous-process
 log admitted after the seal routes to the normal protected lane, so it never reorders live
 current-process work. Because admission and gate sealing use the same mutex, a concurrent producer
 is unambiguously either before or after the ordering window.
@@ -322,7 +321,7 @@ To preserve EventBuffer's single ordering domain, `next_batch` first drains the 
 `startup_previous` lane, then does *not* drain one tier at a time: it examines the front entry of
 every non-empty normal tier and removes the one with the lowest admission ID. Since each normal
 per-tier deque is FIFO, a minimum over their fronts is the globally oldest normal retained entry.
-With six fixed tiers this performs at most six front comparisons per normal delivered entry: fixed
+With five fixed tiers this performs at most five front comparisons per normal delivered entry: fixed
 O(1) work, rather than a queue-dependent scheduler or a need to track dropped sequence ranges. The
 startup lane makes the one-time prior-process prefix O(1) to activate at gate release, without
 partitioning or rebuilding a global queue.
@@ -373,7 +372,7 @@ evict any evictable log to fit `total_limit`; it is rejected only if the total l
 entirely by protected entries. A normal log larger than `log_limit`, or any entry larger than
 `total_limit`, is rejected and measured. There is no scheduler-dependent soft overflow.
 
-Priority policy is the fixed tier mapping above. The protected tier bypasses `log_limit`; the five
+Priority policy is the fixed tier mapping above. The protected tier bypasses `log_limit`; the four
 evictable tiers share it. A protected admission may release bytes from any evictable tier, again
 starting with the lowest tier and newest equal-priority entry.
 
@@ -574,7 +573,7 @@ or flushes while holding the lock.
 - Implement EventBuffer as an unused logger-internal component with the full entry model required
   by this plan: captured logs (including protected `Block::Yes` logs), protected state/control
   entries including `SessionPersistenceFence`, completion handles, and closed/shutdown state.
-- Implement the six fixed priority queues, dual-limit admission, global FIFO delivery by admission
+- Implement the five fixed priority queues, dual-limit admission, global FIFO delivery by admission
   ID, tail eviction from lower tiers, protected-entry handling, fallible container growth, and
   terminal completion on rejection, eviction, or close.
 - Implement the atomic fence-plus-source admission handshake from [Session transitions](#session-transitions),
@@ -662,7 +661,7 @@ on the entry; it is not inferred later from the source alone.
 An eligible previous-process entry enters the protected `startup_previous` FIFO lane at admission;
 every other entry enters its normal retention lane. Gate release only changes the gate to `Open`—it
 does not partition, move, clone, or scan queued entries. The consumer drains the startup lane first
-in its original FIFO order, then resumes normal admission-ID merge delivery across the six normal
+in its original FIFO order, then resumes normal admission-ID merge delivery across the five normal
 lanes.
 
 Entries admitted after release always use normal retention lanes, including a late previous-process
@@ -818,19 +817,19 @@ does not remove the need for the bounded replay gate that establishes the initia
 | Topic | Locked direction | Remaining action |
 | --- | --- | --- |
 | Startup reordering | Only previous-process logs admitted before gate sealing are reordered ahead of current-process entries. Late previous-process logs retain high eviction priority but are never reordered. | Validate the strawman delay values and select the high-watermark threshold. |
-| Priority representation | Six fixed `VecDeque` tiers use admission-ID merge delivery. | Confirm the six-tier mapping with product/workflow owners and benchmark the fixed-tier design before Milestone 3 implementation. |
+| Priority representation | Five fixed `VecDeque` tiers use admission-ID merge delivery. | Confirm the five-tier mapping with product/workflow owners and benchmark the fixed-tier design before Milestone 3 implementation. |
 
 ## Possible user-exposed priority levels
 
 This is a possible future API, not part of the initial EventBuffer migration. If applications need
-to influence retention, expose a coarse `RetentionHint` rather than the six internal tiers or an
+to influence retention, expose a coarse `RetentionHint` rather than the five internal tiers or an
 arbitrary numeric priority:
 
 | Public hint | Effective retention tier | Limits of the hint |
 | --- | --- | --- |
 | `Background` | Diagnostic | It may lower ordinary `INFO` application/user logs, but it cannot demote an automatic `WARN` or `ERROR`. |
-| `Default` | The normal type-and-level mapping | This preserves the behavior specified in the six-tier table. |
-| `Elevated` | At least Primary signal | It may promote an ordinary log above Context or Diagnostic, but it cannot outrank Warning, Error, or Protected. |
+| `Default` | The normal type-and-level mapping | This preserves the behavior specified in the five-tier table. |
+| `Elevated` | At least Primary signal | It may promote an ordinary log above Diagnostic, but it cannot outrank Warning, Error, or Protected. |
 
 The effective tier is calculated at admission from the automatic type/level mapping plus this
 bounded hint. The hint changes only local EventBuffer eviction eligibility: it never changes log
@@ -839,7 +838,7 @@ publicly selectable, `Elevated` entries still count against both applicable byte
 evictable, and an application that marks all logs elevated simply makes those logs compete with one
 another.
 
-Six internal tiers are sufficient for this coarse public API because every hint maps to an existing
+Five internal tiers are sufficient for this coarse public API because every hint maps to an existing
 tier. If product instead requires an arbitrary numeric value with meaningful distinctions between
 values, fixed lanes would only provide undocumented bucketing. That would be a separate future
 design decision, not an extension of this EventBuffer plan.
