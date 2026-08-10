@@ -1291,7 +1291,6 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "bd-client-common",
- "bd-log",
  "bd-macros",
  "bd-proto",
  "bd-proto-util",
@@ -1521,7 +1520,6 @@ dependencies = [
  "bd-time",
  "bd-workflow-stats",
  "bd-workspace-hack",
- "bincode 2.0.1",
  "ctor",
  "futures-util",
  "gungraun",
