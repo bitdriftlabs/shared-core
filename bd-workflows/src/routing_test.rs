@@ -9,6 +9,7 @@ use super::{WorkflowLogRoute, WorkflowLogRouter};
 use bd_log_matcher::matcher::LogTypeSet;
 use bd_proto::protos::logging::payload::LogType;
 use pretty_assertions::assert_eq;
+use protobuf::Enum;
 
 fn log_types(types: &[LogType]) -> LogTypeSet {
   let mut log_types = LogTypeSet::default();
@@ -16,6 +17,13 @@ fn log_types(types: &[LogType]) -> LogTypeSet {
     log_types.union(LogTypeSet::from_log_type(*log_type));
   }
   log_types
+}
+
+#[test]
+fn log_type_values_are_dense_bucket_indices() {
+  for (index, log_type) in LogType::VALUES.iter().enumerate() {
+    assert_eq!(index, *log_type as usize);
+  }
 }
 
 #[test]

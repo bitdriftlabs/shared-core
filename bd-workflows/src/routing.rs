@@ -13,10 +13,7 @@ use bd_log_matcher::matcher::LogTypeSet;
 use bd_proto::protos::logging::payload::LogType;
 use protobuf::Enum;
 
-// The routing table indexes directly by the generated enum discriminant. Keep this in lockstep
-// with the SDK enum so a sparse enum or a new value after SPAN cannot silently misroute logs.
 const LOG_TYPE_BUCKET_COUNT: usize = LogType::VALUES.len();
-const _: () = assert!(LOG_TYPE_BUCKET_COUNT == LogType::SPAN as usize + 1);
 
 //
 // WorkflowLogRoute
