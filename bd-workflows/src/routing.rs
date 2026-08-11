@@ -94,7 +94,10 @@ impl WorkflowLogRouter {
   /// The returned indices remain valid until the next selection or route refresh.
   pub(crate) fn select_candidates_for_log_type(&mut self, log_type: LogType) -> &[usize] {
     self.candidate_indices.clear();
-    let type_indices = &self.type_buckets[log_type as usize];
+    let type_indices = self
+      .type_buckets
+      .get(log_type as usize)
+      .map_or(&[] as &[usize], Vec::as_slice);
 
     self.candidate_indices.extend(
       self
@@ -134,12 +137,8 @@ impl WorkflowLogRouter {
     if let (WorkflowLogRoute::Types(previous_types), WorkflowLogRoute::Types(next_types)) =
       (previous_route, route)
     {
-      for log_type in previous_types.difference(next_types).iter() {
-        remove_sorted(&mut self.type_buckets[log_type as usize], workflow_index);
-      }
-      for log_type in next_types.difference(previous_types).iter() {
-        insert_sorted(&mut self.type_buckets[log_type as usize], workflow_index);
-      }
+      self.remove_types_from_buckets(workflow_index, previous_types.difference(next_types));
+      self.add_types_to_buckets(workflow_index, next_types.difference(previous_types));
     } else {
       self.remove_route_from_buckets(workflow_index, previous_route);
       self.add_route_to_buckets(workflow_index, route);
@@ -157,9 +156,7 @@ impl WorkflowLogRouter {
         insert_sorted(&mut self.fallback_workflow_indices, workflow_index);
       },
       WorkflowLogRoute::Types(log_types) => {
-        for log_type in log_types.iter() {
-          insert_sorted(&mut self.type_buckets[log_type as usize], workflow_index);
-        }
+        self.add_types_to_buckets(workflow_index, log_types);
       },
     }
   }
@@ -171,10 +168,24 @@ impl WorkflowLogRouter {
         remove_sorted(&mut self.fallback_workflow_indices, workflow_index);
       },
       WorkflowLogRoute::Types(log_types) => {
-        for log_type in log_types.iter() {
-          remove_sorted(&mut self.type_buckets[log_type as usize], workflow_index);
-        }
+        self.remove_types_from_buckets(workflow_index, log_types);
       },
+    }
+  }
+
+  fn add_types_to_buckets(&mut self, workflow_index: usize, log_types: LogTypeSet) {
+    for log_type in log_types.iter() {
+      if let Some(bucket) = self.type_buckets.get_mut(log_type as usize) {
+        insert_sorted(bucket, workflow_index);
+      }
+    }
+  }
+
+  fn remove_types_from_buckets(&mut self, workflow_index: usize, log_types: LogTypeSet) {
+    for log_type in log_types.iter() {
+      if let Some(bucket) = self.type_buckets.get_mut(log_type as usize) {
+        remove_sorted(bucket, workflow_index);
+      }
     }
   }
 }
