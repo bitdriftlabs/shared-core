@@ -379,7 +379,9 @@ impl Workflow {
   /// Returns the log types that can advance the workflow's current state.
   ///
   /// This deliberately keeps debug workflows, active timeouts, and initial delivery state on the
-  /// fallback route so their behavior remains unchanged while a debug session is active.
+  /// fallback route so their behavior remains unchanged while a debug session is active. A
+  /// consequence of this is that we effectively only apply this to workflows in the initial
+  /// condition, as in general all workflows have a total timeout.
   pub(crate) fn log_route(&self, config: &Config) -> WorkflowLogRoute {
     if self.needs_start_metric || config.mode() != WorkflowDebugMode::None {
       return WorkflowLogRoute::Fallback;
@@ -394,9 +396,9 @@ impl Workflow {
     }
 
     for run in &self.runs {
-      // TODO: Decouple duration expiry from inbound log processing so a progressed workflow can
-      // remain on its type-specific route. This needs an expiry mechanism that preserves run
-      // termination and tracing updates without evaluating every log.
+      // TODO(snowp): Decouple duration expiry from inbound log processing so a progressed workflow
+      // can remain on its type-specific route. This needs an expiry mechanism that preserves
+      // run termination and tracing updates without evaluating every log.
       if run.first_progress_occurred_at.is_some() && config.inner().duration_limit().is_some() {
         return WorkflowLogRoute::Fallback;
       }
