@@ -42,8 +42,10 @@ pub enum WorkflowLogRoute {
 
 /// Maintains sorted workflow indices for efficient, allocation-free log routing.
 ///
-/// Workflow indices remain stable between configuration updates. The router is rebuilt at those
-/// boundaries and otherwise only updates the workflows which processed the current log.
+/// This is a derived view over the engine's primary workflow vector: every stored index refers to
+/// the workflow at that same position. The caller must rebuild it after adding, removing, or
+/// reordering workflows; between those boundaries, the router updates only workflows which
+/// processed the current log.
 #[derive(Debug, Default)]
 pub struct WorkflowLogRouter {
   routes: Vec<WorkflowLogRoute>,
@@ -53,6 +55,7 @@ pub struct WorkflowLogRouter {
 }
 
 impl WorkflowLogRouter {
+  /// Clears the derived routes before repopulating them in primary workflow-vector order.
   pub(crate) fn prepare(&mut self, workflow_count: usize) {
     self.routes.clear();
     self.routes.reserve(workflow_count);

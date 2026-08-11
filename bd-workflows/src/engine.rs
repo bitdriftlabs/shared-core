@@ -115,10 +115,9 @@ impl ProcessLocalPendingFlushState {
 /// Orchestrates the execution and management of workflows. It is also responsible for
 /// persisting and restoring its state in disk when any workflow has changed.
 pub struct WorkflowsEngine<C, H> {
-  // Number of elements in configs and
-  // state.workflows should be always the same.
-  // A config at index `i` corresponds to a workflow (state.workflows list)
-  // at index `i`.
+  // `configs` and `state.workflows` must remain index-aligned. `log_router` layers an
+  // index-based routing view over `state.workflows`, so it must be rebuilt whenever either
+  // primary list is added to, removed from, or reordered.
   configs: Vec<Config>,
   state: WorkflowsState,
   log_router: WorkflowLogRouter,
