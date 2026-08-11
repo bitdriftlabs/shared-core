@@ -46,6 +46,10 @@ pub enum WorkflowLogRoute {
 /// the workflow at that same position. The caller must rebuild it after adding, removing, or
 /// reordering workflows; between those boundaries, the router updates only workflows which
 /// processed the current log.
+///
+/// Non-matching logs are expected to be common, so selection and evaluation do not allocate.
+/// Rebuilds may reserve storage after configuration or workflow-state changes; that infrequent
+/// cost keeps the log-processing hot path allocation-free.
 #[derive(Debug, Default)]
 pub struct WorkflowLogRouter {
   routes: Vec<WorkflowLogRoute>,
