@@ -645,11 +645,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     workflows: &[Workflow],
     configs: &[Config],
   ) {
-    let mut known_log_types = bd_log_matcher::matcher::LogTypeSet::default();
-    for config in configs {
-      known_log_types.union(config.possible_log_types());
-    }
-    log_router.prepare(workflows.len(), known_log_types);
+    log_router.prepare(workflows.len());
 
     for (index, (workflow, config)) in workflows.iter().zip(configs).enumerate() {
       log_router.insert(index, workflow.log_route(config));

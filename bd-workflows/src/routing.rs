@@ -11,6 +11,12 @@ mod routing_test;
 
 use bd_log_matcher::matcher::LogTypeSet;
 use bd_proto::protos::logging::payload::LogType;
+use protobuf::Enum;
+
+// The routing table indexes directly by the generated enum discriminant. Keep this in lockstep
+// with the SDK enum so a sparse enum or a new value after SPAN cannot silently misroute logs.
+const LOG_TYPE_BUCKET_COUNT: usize = LogType::VALUES.len();
+const _: () = assert!(LOG_TYPE_BUCKET_COUNT == LogType::SPAN as usize + 1);
 
 //
 // WorkflowLogRoute
@@ -34,16 +40,6 @@ pub enum WorkflowLogRoute {
 }
 
 //
-// LogTypeBucket
-//
-
-#[derive(Debug)]
-struct LogTypeBucket {
-  log_type: LogType,
-  workflow_indices: Vec<usize>,
-}
-
-//
 // WorkflowLogRouter
 //
 
@@ -55,12 +51,12 @@ struct LogTypeBucket {
 pub struct WorkflowLogRouter {
   routes: Vec<WorkflowLogRoute>,
   fallback_workflow_indices: Vec<usize>,
-  type_buckets: Vec<LogTypeBucket>,
+  type_buckets: [Vec<usize>; LOG_TYPE_BUCKET_COUNT],
   candidate_indices: Vec<usize>,
 }
 
 impl WorkflowLogRouter {
-  pub(crate) fn prepare(&mut self, workflow_count: usize, known_log_types: LogTypeSet) {
+  pub(crate) fn prepare(&mut self, workflow_count: usize) {
     self.routes.clear();
     self.routes.reserve(workflow_count);
     self.fallback_workflow_indices.clear();
@@ -68,22 +64,9 @@ impl WorkflowLogRouter {
     self.candidate_indices.clear();
     reserve_to(&mut self.candidate_indices, workflow_count);
 
-    for log_type in known_log_types.iter() {
-      if self
-        .type_buckets
-        .iter()
-        .all(|bucket| bucket.log_type != log_type)
-      {
-        self.type_buckets.push(LogTypeBucket {
-          log_type,
-          workflow_indices: Vec::with_capacity(workflow_count),
-        });
-      }
-    }
-
     for bucket in &mut self.type_buckets {
-      bucket.workflow_indices.clear();
-      reserve_to(&mut bucket.workflow_indices, workflow_count);
+      bucket.clear();
+      reserve_to(bucket, workflow_count);
     }
   }
 
@@ -98,11 +81,7 @@ impl WorkflowLogRouter {
   /// The returned indices remain valid until the next selection or route refresh.
   pub(crate) fn select_candidates_for_log_type(&mut self, log_type: LogType) -> &[usize] {
     self.candidate_indices.clear();
-    let type_indices = self
-      .type_buckets
-      .iter()
-      .find(|bucket| bucket.log_type == log_type)
-      .map_or(&[][..], |bucket| bucket.workflow_indices.as_slice());
+    let type_indices = &self.type_buckets[log_type as usize];
 
     merge_sorted_indices(
       &self.fallback_workflow_indices,
@@ -150,13 +129,7 @@ impl WorkflowLogRouter {
       },
       WorkflowLogRoute::Types(log_types) => {
         for log_type in log_types.iter() {
-          if let Some(bucket) = self
-            .type_buckets
-            .iter_mut()
-            .find(|bucket| bucket.log_type == log_type)
-          {
-            insert_sorted(&mut bucket.workflow_indices, workflow_index);
-          }
+          insert_sorted(&mut self.type_buckets[log_type as usize], workflow_index);
         }
       },
     }
@@ -170,13 +143,7 @@ impl WorkflowLogRouter {
       },
       WorkflowLogRoute::Types(log_types) => {
         for log_type in log_types.iter() {
-          if let Some(bucket) = self
-            .type_buckets
-            .iter_mut()
-            .find(|bucket| bucket.log_type == log_type)
-          {
-            remove_sorted(&mut bucket.workflow_indices, workflow_index);
-          }
+          remove_sorted(&mut self.type_buckets[log_type as usize], workflow_index);
         }
       },
     }

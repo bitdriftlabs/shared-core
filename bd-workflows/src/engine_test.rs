@@ -3527,6 +3527,47 @@ async fn log_type_router_updates_after_workflow_advances() {
 }
 
 #[tokio::test]
+async fn log_type_router_recreates_initial_run_after_completion() {
+  let b = state("B");
+  let a = state("A").declare_transition(&b, rule!(log_type_equals(LogType::LIFECYCLE)));
+  let workflow = WorkflowBuilder::new("workflow", &[&a, &b]).make_config();
+
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![workflow],
+    ))
+    .await;
+
+  // Consume the initial delivery fallback, leaving an initial run whose only matching type is
+  // LIFECYCLE.
+  engine.process_log(TestLog::new("normal").with_log_type(LogType::NORMAL));
+  engine_assert_active_runs!(engine; 0; "A");
+  assert_eq!(
+    &[] as &[usize],
+    engine
+      .engine
+      .log_router
+      .select_candidates_for_log_type(LogType::NORMAL)
+  );
+
+  // Completing the run leaves no initial run. The router must fall back so the next log can
+  // recreate one.
+  engine.process_log(TestLog::new("lifecycle").with_log_type(LogType::LIFECYCLE));
+  assert!(engine.engine.state.workflows[0].runs().is_empty());
+  assert_eq!(
+    &[0],
+    engine
+      .engine
+      .log_router
+      .select_candidates_for_log_type(LogType::NORMAL)
+  );
+
+  engine.process_log(TestLog::new("normal").with_log_type(LogType::NORMAL));
+  engine_assert_active_runs!(engine; 0; "A");
+}
+
+#[tokio::test]
 async fn log_type_router_keeps_debug_workflows_on_the_fallback_route() {
   let b = state("B");
   let a = state("A").declare_transition(&b, rule!(log_type_equals(LogType::LIFECYCLE)));

@@ -217,10 +217,6 @@ impl Config {
     &self.inner
   }
 
-  pub(crate) fn possible_log_types(&self) -> bd_log_matcher::matcher::LogTypeSet {
-    self.inner.possible_log_types()
-  }
-
   pub(crate) const fn mode(&self) -> WorkflowDebugMode {
     self.mode
   }
@@ -329,18 +325,6 @@ impl InnerConfig {
       .states
       .get(traversal.state_index)
       .map(|state| state.transitions.as_slice())
-  }
-
-  pub(crate) fn possible_log_types(&self) -> bd_log_matcher::matcher::LogTypeSet {
-    let mut log_types = bd_log_matcher::matcher::LogTypeSet::default();
-    for transition in self.states.iter().flat_map(State::transitions) {
-      if let Predicate::LogMatch { matcher, .. } = transition.rule()
-        && let Some(matcher_log_types) = matcher.possible_log_types()
-      {
-        log_types.union(matcher_log_types);
-      }
-    }
-    log_types
   }
 
   pub(crate) fn actions_for_traversal(
