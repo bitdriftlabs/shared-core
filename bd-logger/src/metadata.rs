@@ -10,9 +10,9 @@
 mod metadata_test;
 
 use bd_crash_handler::global_state;
-use bd_log::warn_every;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::{AnnotatedLogFields, LogFieldKey, LogFieldKind, LogFieldValue, LogFields};
+use bd_log_util::warn_every;
 use bd_proto::protos::logging::payload::LogType;
 use std::collections::BTreeSet;
 use std::sync::{Arc, LazyLock};

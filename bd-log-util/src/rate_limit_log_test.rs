@@ -5,8 +5,8 @@
 // you may not use this file except in compliance with the License.
 
 use super::warn_every;
-use bd_time::TimeDurationExt;
 use time::ext::NumericalDuration;
+use tokio::time::sleep;
 
 fn test_warn() {
   warn_every!(1.seconds(), "{}", "function");
@@ -35,10 +35,10 @@ async fn rate_limit_log() {
   test_warn_runtime_string();
 
   // Should output another debug.
-  500.milliseconds().sleep().await;
+  sleep(std::time::Duration::from_millis(500)).await;
   test_warn();
 
   // Should output another warn.
-  501.milliseconds().sleep().await;
+  sleep(std::time::Duration::from_millis(501)).await;
   test_warn();
 }

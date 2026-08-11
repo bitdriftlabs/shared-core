@@ -68,7 +68,6 @@
 mod tests;
 
 pub mod otel;
-pub mod rate_limit_log;
 #[doc(hidden)]
 pub mod test;
 

@@ -23,6 +23,7 @@ members = [
   "bd-hyper-network",
   "bd-metadata",
   "bd-log",
+  "bd-log-util",
   "bd-log-metadata",
   "bd-log-primitives",
   "bd-logger",

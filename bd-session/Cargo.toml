@@ -11,7 +11,6 @@ doctest = false
 [dependencies]
 anyhow.workspace            = true
 bd-client-common.path       = "../bd-client-common"
-bd-log.path                 = "../bd-log"
 bd-macros.path              = "../bd-macros"
 bd-proto.path               = "../bd-proto"
 bd-proto-util.path          = "../bd-proto-util"

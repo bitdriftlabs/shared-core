@@ -41,7 +41,7 @@ use bd_grpc_codec::{
   LEGACY_GRPC_ENCODING_HEADER,
   OptimizeFor,
 };
-use bd_log::rate_limit_log::WarnTracker;
+use bd_log_util::WarnTracker;
 pub use bd_pgv::proto_validate::{ProtoNameMode, ValidationOptions};
 use bd_stats_common::DynCounter;
 use bytes::{BufMut, Bytes, BytesMut};

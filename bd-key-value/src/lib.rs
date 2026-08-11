@@ -18,7 +18,7 @@
 #[path = "./store_test.rs"]
 mod store_test;
 use base64::Engine;
-use bd_log::warn_every;
+use bd_log_util::warn_every;
 use time::ext::NumericalDuration;
 
 #[cfg(test)]
