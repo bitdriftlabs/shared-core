@@ -74,10 +74,10 @@ impl WorkflowLogRouter {
     }
   }
 
-  pub(crate) fn insert(&mut self, workflow_index: usize, route: WorkflowLogRoute) {
+  pub(crate) fn append_workflow_route(&mut self, workflow_index: usize, route: WorkflowLogRoute) {
     debug_assert_eq!(workflow_index, self.routes.len());
     self.routes.push(route);
-    self.insert_route(workflow_index, route);
+    self.add_route_to_buckets(workflow_index, route);
   }
 
   /// Selects the workflows which need to evaluate a log with this type.
@@ -118,14 +118,14 @@ impl WorkflowLogRouter {
       return;
     }
 
-    self.remove_route(workflow_index, previous_route);
+    self.remove_route_from_buckets(workflow_index, previous_route);
     if let Some(previous_route) = self.routes.get_mut(workflow_index) {
       *previous_route = route;
     }
-    self.insert_route(workflow_index, route);
+    self.add_route_to_buckets(workflow_index, route);
   }
 
-  fn insert_route(&mut self, workflow_index: usize, route: WorkflowLogRoute) {
+  fn add_route_to_buckets(&mut self, workflow_index: usize, route: WorkflowLogRoute) {
     match route {
       WorkflowLogRoute::None => {},
       WorkflowLogRoute::Fallback => {
@@ -139,7 +139,7 @@ impl WorkflowLogRouter {
     }
   }
 
-  fn remove_route(&mut self, workflow_index: usize, route: WorkflowLogRoute) {
+  fn remove_route_from_buckets(&mut self, workflow_index: usize, route: WorkflowLogRoute) {
     match route {
       WorkflowLogRoute::None => {},
       WorkflowLogRoute::Fallback => {

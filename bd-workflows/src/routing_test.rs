@@ -32,10 +32,10 @@ fn selects_only_matching_and_fallback_workflows_in_index_order() {
   let lifecycle_or_resource = log_types(&[LogType::LIFECYCLE, LogType::RESOURCE]);
   let mut router = WorkflowLogRouter::default();
   router.prepare(4);
-  router.insert(0, WorkflowLogRoute::Types(lifecycle));
-  router.insert(1, WorkflowLogRoute::Fallback);
-  router.insert(2, WorkflowLogRoute::Types(lifecycle_or_resource));
-  router.insert(3, WorkflowLogRoute::None);
+  router.append_workflow_route(0, WorkflowLogRoute::Types(lifecycle));
+  router.append_workflow_route(1, WorkflowLogRoute::Fallback);
+  router.append_workflow_route(2, WorkflowLogRoute::Types(lifecycle_or_resource));
+  router.append_workflow_route(3, WorkflowLogRoute::None);
 
   assert_eq!(
     &[0, 1, 2],
@@ -54,9 +54,9 @@ fn refreshes_only_the_workflows_selected_for_a_log() {
   let resource = log_types(&[LogType::RESOURCE]);
   let mut router = WorkflowLogRouter::default();
   router.prepare(3);
-  router.insert(0, WorkflowLogRoute::Types(lifecycle));
-  router.insert(1, WorkflowLogRoute::Fallback);
-  router.insert(2, WorkflowLogRoute::Types(resource));
+  router.append_workflow_route(0, WorkflowLogRoute::Types(lifecycle));
+  router.append_workflow_route(1, WorkflowLogRoute::Fallback);
+  router.append_workflow_route(2, WorkflowLogRoute::Types(resource));
 
   assert_eq!(
     &[0, 1],

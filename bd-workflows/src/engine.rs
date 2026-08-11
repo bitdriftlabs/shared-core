@@ -647,7 +647,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     log_router.prepare(workflows.len());
 
     for (index, (workflow, config)) in workflows.iter().zip(configs).enumerate() {
-      log_router.insert(index, workflow.log_route(config));
+      log_router.append_workflow_route(index, workflow.log_route(config));
     }
   }
 
