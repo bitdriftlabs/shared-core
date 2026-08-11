@@ -59,11 +59,8 @@ pub const SAMPLE_RATE_DENOMINATOR: u32 = 1_000_000;
 // LogTypeSet
 //
 
-/// An allocation-free bitset of SDK log types.
-///
-/// Values outside the current `LogType` enum are represented by an empty set because the runtime
-/// cannot receive them. Keeping the bitmask behind this type makes the enum-to-bit conversion
-/// explicit without exposing numeric masks to routing code.
+/// An allocation-free bitset of SDK log types. This is used to track the set of log types that a
+/// workflow can match against.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LogTypeSet(u16);
 

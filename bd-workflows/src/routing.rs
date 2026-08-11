@@ -9,20 +9,25 @@
 #[path = "./routing_test.rs"]
 mod routing_test;
 
+use bd_log_matcher::matcher::LogTypeSet;
+use bd_proto::protos::logging::payload::LogType;
+
 //
 // WorkflowLogRoute
 //
 
-use bd_log_matcher::matcher::LogTypeSet;
-use bd_proto::protos::logging::payload::LogType;
+// TODO(snowp): We should be able to apply this routing logic to other event types to dramatically
+// reduce the number of workflows attempted for state events. For now state events are rare so we
+// limit this to logs.
 
 /// Describes which log types can require a workflow to process a log.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum WorkflowLogRoute {
-  /// No active traversal can react to a log.
+  /// No active traversal can react to a log. This can happen if the workflow is matching on a state
+  /// change.
   #[default]
   None,
-  /// The workflow must inspect every log to preserve its existing behavior.
+  /// The workflow must inspect every log.
   Fallback,
   /// The workflow only needs logs whose type is included in the set.
   Types(LogTypeSet),
