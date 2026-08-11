@@ -50,19 +50,19 @@ fn selects_only_matching_and_fallback_workflows_in_index_order() {
 
 #[test]
 fn refreshes_only_the_workflows_selected_for_a_log() {
-  let lifecycle = log_types(&[LogType::LIFECYCLE]);
-  let resource = log_types(&[LogType::RESOURCE]);
+  let lifecycle_or_resource = log_types(&[LogType::LIFECYCLE, LogType::RESOURCE]);
+  let resource_or_normal = log_types(&[LogType::RESOURCE, LogType::NORMAL]);
   let mut router = WorkflowLogRouter::default();
   router.prepare(3);
-  router.append_workflow_route(0, WorkflowLogRoute::Types(lifecycle));
+  router.append_workflow_route(0, WorkflowLogRoute::Types(lifecycle_or_resource));
   router.append_workflow_route(1, WorkflowLogRoute::Fallback);
-  router.append_workflow_route(2, WorkflowLogRoute::Types(resource));
+  router.append_workflow_route(2, WorkflowLogRoute::Types(resource_or_normal));
 
   assert_eq!(
     &[0, 1],
     router.select_candidates_for_log_type(LogType::LIFECYCLE)
   );
-  let refreshed_routes = [WorkflowLogRoute::Types(resource), WorkflowLogRoute::None];
+  let refreshed_routes = [WorkflowLogRoute::Types(resource_or_normal), WorkflowLogRoute::None];
   router.refresh_selected_routes(|index| refreshed_routes[index]);
 
   assert_eq!(
@@ -72,5 +72,9 @@ fn refreshes_only_the_workflows_selected_for_a_log() {
   assert_eq!(
     &[0, 2],
     router.select_candidates_for_log_type(LogType::RESOURCE)
+  );
+  assert_eq!(
+    &[0, 2],
+    router.select_candidates_for_log_type(LogType::NORMAL)
   );
 }

@@ -11,6 +11,7 @@ mod routing_test;
 
 use bd_log_matcher::matcher::LogTypeSet;
 use bd_proto::protos::logging::payload::LogType;
+use itertools::Itertools;
 use protobuf::Enum;
 
 const LOG_TYPE_BUCKET_COUNT: usize = LogType::VALUES.len();
@@ -83,15 +84,24 @@ impl WorkflowLogRouter {
 
   /// Selects the workflows which need to evaluate a log with this type.
   ///
+  /// The candidate set is the ordered union of type-specific workflows and fallback workflows,
+  /// which must inspect every log. Keeping the result in workflow-index order preserves the
+  /// original engine evaluation order.
+  ///
+  /// `prepare` reserves enough space for every workflow, so clearing and merging this scratch
+  /// vector reuses its capacity without allocating while processing a log.
+  ///
   /// The returned indices remain valid until the next selection or route refresh.
   pub(crate) fn select_candidates_for_log_type(&mut self, log_type: LogType) -> &[usize] {
     self.candidate_indices.clear();
     let type_indices = &self.type_buckets[log_type as usize];
 
-    merge_sorted_indices(
-      &self.fallback_workflow_indices,
-      type_indices,
-      &mut self.candidate_indices,
+    self.candidate_indices.extend(
+      self
+        .fallback_workflow_indices
+        .iter()
+        .copied()
+        .merge(type_indices.iter().copied()),
     );
     &self.candidate_indices
   }
@@ -119,11 +129,25 @@ impl WorkflowLogRouter {
       return;
     }
 
-    self.remove_route_from_buckets(workflow_index, previous_route);
+    // An active workflow frequently advances from one type-constrained state to another. Keep
+    // membership in the shared buckets and update only the types that changed.
+    if let (WorkflowLogRoute::Types(previous_types), WorkflowLogRoute::Types(next_types)) =
+      (previous_route, route)
+    {
+      for log_type in previous_types.difference(next_types).iter() {
+        remove_sorted(&mut self.type_buckets[log_type as usize], workflow_index);
+      }
+      for log_type in next_types.difference(previous_types).iter() {
+        insert_sorted(&mut self.type_buckets[log_type as usize], workflow_index);
+      }
+    } else {
+      self.remove_route_from_buckets(workflow_index, previous_route);
+      self.add_route_to_buckets(workflow_index, route);
+    }
+
     if let Some(previous_route) = self.routes.get_mut(workflow_index) {
       *previous_route = route;
     }
-    self.add_route_to_buckets(workflow_index, route);
   }
 
   fn add_route_to_buckets(&mut self, workflow_index: usize, route: WorkflowLogRoute) {
@@ -172,22 +196,4 @@ fn remove_sorted(values: &mut Vec<usize>, value: usize) {
   if let Ok(position) = values.binary_search(&value) {
     values.remove(position);
   }
-}
-
-fn merge_sorted_indices(first: &[usize], second: &[usize], output: &mut Vec<usize>) {
-  let mut first = first.iter().copied().peekable();
-  let mut second = second.iter().copied().peekable();
-
-  while let (Some(first_index), Some(second_index)) = (first.peek(), second.peek()) {
-    if first_index < second_index {
-      if let Some(index) = first.next() {
-        output.push(index);
-      }
-    } else if let Some(index) = second.next() {
-      output.push(index);
-    }
-  }
-
-  output.extend(first);
-  output.extend(second);
 }

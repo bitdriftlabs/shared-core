@@ -95,6 +95,11 @@ impl LogTypeSet {
     self.0 &= other.0;
   }
 
+  #[must_use]
+  pub fn difference(self, other: Self) -> Self {
+    Self(self.0 & !other.0)
+  }
+
   pub fn iter(self) -> impl Iterator<Item = LogType> {
     let mut bits = self.0;
     std::iter::from_fn(move || {
