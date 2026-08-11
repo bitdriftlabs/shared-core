@@ -3504,23 +3504,21 @@ async fn log_type_router_updates_after_workflow_advances() {
 
   engine.process_log(TestLog::new("lifecycle").with_log_type(LogType::LIFECYCLE));
   engine_assert_active_runs!(engine; 0; "B");
-  assert_eq!(
-    &[0],
-    engine
-      .engine
-      .log_router
-      .select_candidates_for_log_type(LogType::NORMAL)
-  );
+  let selected = engine
+    .engine
+    .log_router
+    .select_candidates_for_log_type(LogType::NORMAL);
+  assert_eq!(&[0], selected.indices());
+  selected.finish_without_route_refresh();
 
   engine.process_log(TestLog::new("resource").with_log_type(LogType::RESOURCE));
   engine_assert_active_runs!(engine; 0; "A");
-  assert_eq!(
-    &[] as &[usize],
-    engine
-      .engine
-      .log_router
-      .select_candidates_for_log_type(LogType::NORMAL)
-  );
+  let selected = engine
+    .engine
+    .log_router
+    .select_candidates_for_log_type(LogType::NORMAL);
+  assert_eq!(&[] as &[usize], selected.indices());
+  selected.finish_without_route_refresh();
   setup
     .collector
     .assert_counter_eq(2, "workflows:matched_logs_total", labels! {});
@@ -3543,25 +3541,23 @@ async fn log_type_router_recreates_initial_run_after_completion() {
   // LIFECYCLE.
   engine.process_log(TestLog::new("normal").with_log_type(LogType::NORMAL));
   engine_assert_active_runs!(engine; 0; "A");
-  assert_eq!(
-    &[] as &[usize],
-    engine
-      .engine
-      .log_router
-      .select_candidates_for_log_type(LogType::NORMAL)
-  );
+  let selected = engine
+    .engine
+    .log_router
+    .select_candidates_for_log_type(LogType::NORMAL);
+  assert_eq!(&[] as &[usize], selected.indices());
+  selected.finish_without_route_refresh();
 
   // Completing the run leaves no initial run. The router must fall back so the next log can
   // recreate one.
   engine.process_log(TestLog::new("lifecycle").with_log_type(LogType::LIFECYCLE));
   assert!(engine.engine.state.workflows[0].runs().is_empty());
-  assert_eq!(
-    &[0],
-    engine
-      .engine
-      .log_router
-      .select_candidates_for_log_type(LogType::NORMAL)
-  );
+  let selected = engine
+    .engine
+    .log_router
+    .select_candidates_for_log_type(LogType::NORMAL);
+  assert_eq!(&[0], selected.indices());
+  selected.finish_without_route_refresh();
 
   engine.process_log(TestLog::new("normal").with_log_type(LogType::NORMAL));
   engine_assert_active_runs!(engine; 0; "A");
@@ -3589,13 +3585,12 @@ async fn log_type_router_keeps_debug_workflows_on_the_fallback_route() {
       .has_debug_workflows
   );
 
-  assert_eq!(
-    &[0],
-    engine
-      .engine
-      .log_router
-      .select_candidates_for_log_type(LogType::NORMAL)
-  );
+  let selected = engine
+    .engine
+    .log_router
+    .select_candidates_for_log_type(LogType::NORMAL);
+  assert_eq!(&[0], selected.indices());
+  selected.finish_without_route_refresh();
 }
 
 #[tokio::test]
@@ -3614,11 +3609,10 @@ async fn log_type_router_keeps_active_timeouts_on_the_fallback_route() {
 
   engine.process_log(TestLog::new("lifecycle").with_log_type(LogType::LIFECYCLE));
 
-  assert_eq!(
-    &[0],
-    engine
-      .engine
-      .log_router
-      .select_candidates_for_log_type(LogType::NORMAL)
-  );
+  let selected = engine
+    .engine
+    .log_router
+    .select_candidates_for_log_type(LogType::NORMAL);
+  assert_eq!(&[0], selected.indices());
+  selected.finish_without_route_refresh();
 }

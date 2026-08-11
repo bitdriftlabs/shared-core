@@ -22,7 +22,7 @@ use crate::config::{
   WorkflowDebugMode,
 };
 use crate::generate_log::generate_log_action;
-use crate::routing::WorkflowLogRoute;
+use crate::routing::{WorkflowEventKind, WorkflowEventRoute, WorkflowLogRoute};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{FieldsRef, Log, log_level};
 use bd_proto::protos::logging::payload::LogType;
@@ -247,48 +247,62 @@ impl WorkflowEvent<'_> {
 }
 
 //
-// WorkflowLogRouteBuilder
+// WorkflowEventRouteBuilder
 //
 
 #[derive(Default)]
-struct WorkflowLogRouteBuilder {
+struct WorkflowEventRouteBuilder {
   log_types: bd_log_matcher::matcher::LogTypeSet,
   needs_fallback: bool,
+  event_route: WorkflowEventRoute,
 }
 
-impl WorkflowLogRouteBuilder {
+impl WorkflowEventRouteBuilder {
   fn add_state(&mut self, config: &Config, state_index: usize) {
     let Some(state) = config.inner().states().get(state_index) else {
       return;
     };
 
-    // A state timeout is checked when any event arrives, not only when a transition's matcher
-    // accepts that event. Keep such states on the fallback path.
+    // A timeout can expire while processing any supported event. Keep the log route on fallback
+    // and include both non-log event buckets.
     if state.timeout().is_some() {
       self.needs_fallback = true;
+      self.event_route.add_event(WorkflowEventKind::StateChange);
+      self.event_route.add_event(WorkflowEventKind::SessionStart);
     }
 
     for transition in state.transitions() {
-      let Predicate::LogMatch { matcher, .. } = transition.rule() else {
-        continue;
-      };
-
-      if let Some(log_types) = matcher.possible_log_types() {
-        self.log_types.union(log_types);
-      } else {
-        self.needs_fallback = true;
+      match transition.rule() {
+        Predicate::LogMatch { matcher, .. } => {
+          if let Some(log_types) = matcher.possible_log_types() {
+            self.log_types.union(log_types);
+          } else {
+            self.needs_fallback = true;
+          }
+        },
+        // State changes use a dedicated candidate bucket so log-only workflows are skipped.
+        Predicate::StateChangeMatch { .. } => {
+          self.event_route.add_event(WorkflowEventKind::StateChange);
+        },
+        Predicate::OnNewSession => {
+          self.event_route.add_event(WorkflowEventKind::SessionStart);
+        },
+        Predicate::OnReport => {},
       }
     }
   }
 
-  fn finish(self) -> WorkflowLogRoute {
+  fn finish(mut self) -> WorkflowEventRoute {
     if self.needs_fallback {
-      WorkflowLogRoute::Fallback
+      self.event_route.set_log_route(WorkflowLogRoute::Fallback);
     } else if self.log_types.is_empty() {
-      WorkflowLogRoute::None
+      self.event_route.set_log_route(WorkflowLogRoute::None);
     } else {
-      WorkflowLogRoute::Types(self.log_types)
+      self
+        .event_route
+        .set_log_route(WorkflowLogRoute::Types(self.log_types));
     }
+    self.event_route
   }
 }
 
@@ -376,23 +390,23 @@ impl Workflow {
     self.workflow_debug_state = None;
   }
 
-  /// Returns the log types that can advance the workflow's current state.
+  /// Returns the events that can advance the workflow's current state.
   ///
   /// This deliberately keeps debug workflows, active timeouts, and initial delivery state on the
   /// fallback route so their behavior remains unchanged while a debug session is active. A
   /// consequence of this is that we effectively only apply this to workflows in the initial
   /// condition, as in general all workflows have a total timeout.
-  pub(crate) fn log_route(&self, config: &Config) -> WorkflowLogRoute {
+  pub(crate) fn event_route(&self, config: &Config) -> WorkflowEventRoute {
     if self.needs_start_metric || config.mode() != WorkflowDebugMode::None {
-      return WorkflowLogRoute::Fallback;
+      return WorkflowEventRoute::fallback();
     }
 
-    let mut route = WorkflowLogRouteBuilder::default();
+    let mut route = WorkflowEventRouteBuilder::default();
 
     // Workflow execution lazily creates an initial run while processing every log. It must remain
     // on the fallback path until that run exists, even when the initial state has no log matcher.
     if self.needs_new_run() {
-      return WorkflowLogRoute::Fallback;
+      return WorkflowEventRoute::fallback();
     }
 
     for run in &self.runs {
@@ -400,12 +414,12 @@ impl Workflow {
       // can remain on its type-specific route. This needs an expiry mechanism that preserves
       // run termination and tracing updates without evaluating every log.
       if run.first_progress_occurred_at.is_some() && config.inner().duration_limit().is_some() {
-        return WorkflowLogRoute::Fallback;
+        return WorkflowEventRoute::fallback();
       }
 
       for traversal in &run.traversals {
         if traversal.timeout_unix_ms.is_some() {
-          return WorkflowLogRoute::Fallback;
+          return WorkflowEventRoute::fallback();
         }
         route.add_state(config, traversal.state_index);
       }
@@ -497,7 +511,6 @@ impl Workflow {
         }
 
         let run_did_make_progress = run_result.did_make_progress();
-
         (run_result, run_did_make_progress)
       };
 

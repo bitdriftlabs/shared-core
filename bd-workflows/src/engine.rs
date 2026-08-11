@@ -36,7 +36,7 @@ use crate::config::{
   WorkflowsConfiguration,
 };
 use crate::metrics::MetricsCollector;
-use crate::routing::WorkflowLogRouter;
+use crate::routing::{SelectedWorkflows, WorkflowEventKind, WorkflowLogRouter};
 use crate::sankey_diagram::{self, PendingSankeyPathUpload};
 use crate::workflow::{
   SankeyPath,
@@ -341,7 +341,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     }
 
     self.state.refresh_tracing_counts_from_state();
-    Self::rebuild_log_routes(&mut self.log_router, &self.state.workflows, &self.configs);
+    Self::rebuild_event_routes(&mut self.log_router, &self.state.workflows, &self.configs);
 
     log::debug!(
       "started workflows engine with {} workflow(s); {} pending processing action(s); {} pending \
@@ -470,7 +470,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       .flush_buffers_actions_resolver
       .standardize_streaming_buffers(self.state.streaming_actions.clone());
     // Regenerate routes whenever the workflow configuration is reloaded.
-    Self::rebuild_log_routes(&mut self.log_router, &self.state.workflows, &self.configs);
+    Self::rebuild_event_routes(&mut self.log_router, &self.state.workflows, &self.configs);
 
     log::debug!(
       "consumed received workflows config update; workflows engine contains {} workflow(s)",
@@ -638,8 +638,8 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       .extend(workflow_tracing_carryover_flush_action_ids);
   }
 
-  /// Rebuilds routes after an event or configuration change that can affect every workflow.
-  fn rebuild_log_routes(
+  /// Rebuilds routes after a configuration change that can affect every workflow.
+  fn rebuild_event_routes(
     log_router: &mut WorkflowLogRouter,
     workflows: &[Workflow],
     configs: &[Config],
@@ -647,8 +647,22 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     log_router.prepare(workflows.len());
 
     for (index, (workflow, config)) in workflows.iter().zip(configs).enumerate() {
-      log_router.append_workflow_route(index, workflow.log_route(config));
+      log_router.append_workflow_route(index, workflow.event_route(config));
     }
+  }
+
+  fn refresh_selected_event_routes(
+    selected_workflows: SelectedWorkflows<'_>,
+    workflows: &[Workflow],
+    configs: &[Config],
+  ) {
+    selected_workflows.refresh_routes(|index| {
+      workflows
+        .get(index)
+        .zip(configs.get(index))
+        .map(|(workflow, config)| workflow.event_route(config))
+        .unwrap_or_default()
+    });
   }
 
   /// Attempts to persist the client-side state of the workflows to disk while ignoring any errors.
@@ -913,60 +927,34 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       ..
     } = self;
     let workflows = &mut state.workflows;
-    let workflow_count = workflows.len();
     let active_run_tracing_count = &mut state.active_run_tracing_count;
-    let routed_log = matches!(event, WorkflowEvent::Log(_));
 
-    // A routed log only evaluates the indices selected by the router. Other event kinds are
-    // broadcast because they can advance any workflow or change every route.
-    match event {
-      WorkflowEvent::Log(log) => {
-        for &index in log_router.select_candidates_for_log_type(log.log_type) {
-          Self::process_workflow_event(
-            configs,
-            workflows,
-            stats,
-            needs_state_persistence,
-            active_run_tracing_count,
-            index,
-            event,
-            state_reader,
-            now,
-            sampled_roll,
-            &mut workflow_event_output,
-          );
-        }
+    let selected_workflows = match event {
+      WorkflowEvent::Log(log) => log_router.select_candidates_for_log_type(log.log_type),
+      WorkflowEvent::StateChange(..) => {
+        log_router.select_event_candidates(WorkflowEventKind::StateChange)
       },
-      WorkflowEvent::SessionStart(_) | WorkflowEvent::StateChange(..) => {
-        for index in 0 .. workflow_count {
-          Self::process_workflow_event(
-            configs,
-            workflows,
-            stats,
-            needs_state_persistence,
-            active_run_tracing_count,
-            index,
-            event,
-            state_reader,
-            now,
-            sampled_roll,
-            &mut workflow_event_output,
-          );
-        }
+      WorkflowEvent::SessionStart(_) => {
+        log_router.select_event_candidates(WorkflowEventKind::SessionStart)
       },
-    }
+    };
 
-    if routed_log {
-      log_router.refresh_selected_routes(|index| {
-        workflows
-          .get(index)
-          .zip(configs.get(index))
-          .map(|(workflow, config)| workflow.log_route(config))
-          .unwrap_or_default()
-      });
-    } else {
-      Self::rebuild_log_routes(log_router, workflows, configs);
+    for &index in selected_workflows.indices() {
+      Self::process_workflow_event(
+        configs,
+        workflows,
+        stats,
+        needs_state_persistence,
+        active_run_tracing_count,
+        index,
+        event,
+        state_reader,
+        now,
+        sampled_roll,
+        &mut workflow_event_output,
+      );
     }
+    Self::refresh_selected_event_routes(selected_workflows, workflows, configs);
 
     let WorkflowEventOutput {
       prepared_actions,
