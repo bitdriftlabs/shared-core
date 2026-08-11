@@ -44,6 +44,24 @@ exclude_patterns = (
 
 extensions_to_check = ('.rs', '.toml')
 
+LOCKED_APACHE_PACKAGES = {
+    'bd-backoff',
+    'bd-grpc',
+    'bd-grpc-codec',
+    'bd-log',
+    'bd-log-util',
+    'bd-panic',
+    'bd-pgv',
+    'bd-rt',
+    'bd-runtime-config',
+    'bd-server-stats',
+    'bd-shutdown',
+    'bd-stats-common',
+    'bd-test-helpers-core',
+    'bd-time',
+    'bd-workspace-hack',
+}
+
 
 def is_excluded(file_path: str) -> bool:
     normalized_path = file_path.lstrip('./')
@@ -75,7 +93,20 @@ def package_manifests() -> dict[Path, str]:
 
 def apache_packages() -> set[str]:
     contents = Path('LICENSES.md').read_text()
-    return set(re.findall(r'^\| `([^`]+)` \| Apache-2\.0 \|$', contents, re.MULTILINE))
+    documented = set(re.findall(r'^\| `([^`]+)` \| Apache-2\.0 \|$', contents, re.MULTILINE))
+    added = documented - LOCKED_APACHE_PACKAGES
+    if added:
+        raise RuntimeError(
+            'New Apache packages require an explicit license discussion before they can be '
+            f'allowlisted: {sorted(added)}. After that discussion, update '
+            'LOCKED_APACHE_PACKAGES in ci/license_header.py.'
+        )
+
+    missing = LOCKED_APACHE_PACKAGES - documented
+    if missing:
+        raise RuntimeError(f'LICENSES.md must document locked Apache packages: {sorted(missing)}')
+
+    return LOCKED_APACHE_PACKAGES
 
 
 def check_manifest(manifest_path: Path, package_name: str, apache: set[str]) -> None:
