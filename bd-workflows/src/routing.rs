@@ -49,7 +49,8 @@ pub enum WorkflowLogRoute {
 ///
 /// Non-matching logs are expected to be common, so selection and evaluation do not allocate.
 /// Rebuilds may reserve storage after configuration or workflow-state changes; that infrequent
-/// cost keeps the log-processing hot path allocation-free.
+/// cost keeps this additional routing layer allocation-free during the common case of log
+/// processing.
 #[derive(Debug, Default)]
 pub struct WorkflowLogRouter {
   routes: Vec<WorkflowLogRoute>,
