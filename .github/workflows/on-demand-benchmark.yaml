@@ -1,0 +1,173 @@
+name: on-demand benchmark
+
+on:
+  issue_comment:
+    types: [created]
+
+# The command runs pull-request code. Keep its token unprivileged, and only use the
+# issues permission after the benchmark to report the result on the pull request.
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: on-demand-benchmark-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    if: >-
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/benchmark ') &&
+      (github.event.comment.author_association == 'OWNER' ||
+      github.event.comment.author_association == 'MEMBER' ||
+      github.event.comment.author_association == 'COLLABORATOR')
+    runs-on: ubuntu-latest-arm-16-cores
+    steps:
+      - name: Resolve pull request
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+
+            core.setOutput('base_sha', pullRequest.base.sha);
+            core.setOutput('head_sha', pullRequest.head.sha);
+
+            const { data: comparison } = await github.rest.repos.compareCommits({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              base: pullRequest.base.sha,
+              head: pullRequest.head.sha,
+            });
+            core.setOutput('merge_base_sha', comparison.merge_base_commit.sha);
+
+      - name: Resolve benchmark
+        id: benchmark
+        env:
+          COMMAND: ${{ github.event.comment.body }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$COMMAND" =~ ^/benchmark[[:space:]]+([a-z0-9-]+)[[:space:]]*$ ]]; then
+            echo "Expected '/benchmark <name>'; received: $COMMAND" >&2
+            exit 2
+          fi
+
+          case "${BASH_REMATCH[1]}" in
+            workflows)
+              # Criterion can retain the merge-base result as a baseline and compare HEAD to it.
+              echo 'name=workflows' >> "$GITHUB_OUTPUT"
+              echo 'command=./bd-workflow-bench/criterion.sh' >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unknown benchmark '${BASH_REMATCH[1]}'. Available benchmarks: workflows" >&2
+              exit 2
+              ;;
+          esac
+
+      - name: Check out pull request head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ steps.pr.outputs.head_sha }}
+          submodules: recursive
+
+      - name: Verify revisions
+        id: revisions
+        env:
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          MERGE_BASE: ${{ steps.pr.outputs.merge_base_sha }}
+        run: |
+          set -euo pipefail
+
+          test "$(git rev-parse HEAD)" = "$HEAD_SHA"
+          git cat-file -e "$MERGE_BASE^{commit}"
+
+      - name: Install benchmark dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes lld
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          profile: minimal
+
+      - name: Benchmark merge base and head
+        env:
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          MERGE_BASE: ${{ steps.pr.outputs.merge_base_sha }}
+          BENCHMARK_COMMAND: ${{ steps.benchmark.outputs.command }}
+        run: |
+          set -euo pipefail
+
+          git checkout --detach "$MERGE_BASE"
+          git submodule update --init --recursive
+          "$BENCHMARK_COMMAND" -- --save-baseline merge-base
+
+          git checkout --detach "$HEAD_SHA"
+          git submodule update --init --recursive
+          "$BENCHMARK_COMMAND" -- --baseline merge-base
+
+      - name: Upload Criterion report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.benchmark.outputs.name }}-benchmark-pr-${{ github.event.issue.number }}
+          path: target/criterion
+          if-no-files-found: warn
+
+      - name: Report result
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          BENCHMARK: ${{ steps.benchmark.outputs.name }}
+          BASE_SHA: ${{ steps.pr.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
+          MERGE_BASE: ${{ steps.pr.outputs.merge_base_sha }}
+          RESULT: ${{ job.status }}
+        with:
+          script: |
+            const marker = '<!-- shared-core-on-demand-benchmark -->';
+            const result = process.env.RESULT === 'success' ? 'passed' : 'failed';
+            const body = `${marker}
+            ## Benchmark: \`${process.env.BENCHMARK || 'unknown'}\` ${result}
+
+            Compared \`${process.env.HEAD_SHA || 'unavailable'}\` with merge base \`${process.env.MERGE_BASE || 'unavailable'}\` (PR base \`${process.env.BASE_SHA || 'unavailable'}\`).
+            The Criterion HTML report is attached to this workflow run.`;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+            const previous = comments.find((comment) =>
+              comment.user.type === 'Bot' && comment.body.includes(marker),
+            );
+
+            if (previous) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: previous.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }
