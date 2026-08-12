@@ -79,7 +79,11 @@ impl WorkflowEventRoute {
     self.event_mask |= Self::event_mask(event);
   }
 
-  pub(crate) const fn set_log_route(&mut self, log: WorkflowLogRoute) {
+  pub(crate) fn set_log_route(&mut self, log: WorkflowLogRoute) {
+    debug_assert!(
+      matches!(self.log, WorkflowLogRoute::None),
+      "workflow event route log routing must be finalized exactly once"
+    );
     self.log = log;
   }
 
