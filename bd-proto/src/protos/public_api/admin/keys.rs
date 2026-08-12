@@ -1690,6 +1690,8 @@ pub mod create_key_request {
         // message fields
         // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.CreateKeyRequest.ApiKeyRequest.permissions)
         pub permissions: ::std::vec::Vec<::protobuf::EnumOrUnknown<super::super::permission::Permission>>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.CreateKeyRequest.ApiKeyRequest.expires_at)
+        pub expires_at: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
         // special fields
         // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.CreateKeyRequest.ApiKeyRequest.special_fields)
         pub special_fields: ::protobuf::SpecialFields,
@@ -1707,12 +1709,17 @@ pub mod create_key_request {
         }
 
         pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut fields = ::std::vec::Vec::with_capacity(2);
             let mut oneofs = ::std::vec::Vec::with_capacity(0);
             fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
                 "permissions",
                 |m: &ApiKeyRequest| { &m.permissions },
                 |m: &mut ApiKeyRequest| { &mut m.permissions },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ::protobuf::well_known_types::timestamp::Timestamp>(
+                "expires_at",
+                |m: &ApiKeyRequest| { &m.expires_at },
+                |m: &mut ApiKeyRequest| { &mut m.expires_at },
             ));
             ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ApiKeyRequest>(
                 "CreateKeyRequest.ApiKeyRequest",
@@ -1738,6 +1745,9 @@ pub mod create_key_request {
                     18 => {
                         ::protobuf::rt::read_repeated_packed_enum_or_unknown_into(is, &mut self.permissions)?
                     },
+                    26 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.expires_at)?;
+                    },
                     tag => {
                         ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                     },
@@ -1751,6 +1761,10 @@ pub mod create_key_request {
         fn compute_size(&self) -> u64 {
             let mut my_size = 0;
             my_size += ::protobuf::rt::vec_packed_enum_or_unknown_size(2, &self.permissions);
+            if let Some(v) = self.expires_at.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
             my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
             self.special_fields.cached_size().set(my_size as u32);
             my_size
@@ -1758,6 +1772,9 @@ pub mod create_key_request {
 
         fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
             os.write_repeated_packed_enum_or_unknown(2, &self.permissions)?;
+            if let Some(v) = self.expires_at.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+            }
             os.write_unknown_fields(self.special_fields.unknown_fields())?;
             ::std::result::Result::Ok(())
         }
@@ -1776,12 +1793,14 @@ pub mod create_key_request {
 
         fn clear(&mut self) {
             self.permissions.clear();
+            self.expires_at.clear();
             self.special_fields.clear();
         }
 
         fn default_instance() -> &'static ApiKeyRequest {
             static instance: ApiKeyRequest = ApiKeyRequest {
                 permissions: ::std::vec::Vec::new(),
+                expires_at: ::protobuf::MessageField::none(),
                 special_fields: ::protobuf::SpecialFields::new(),
             };
             &instance
@@ -2176,7 +2195,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     R\x06apiKey\x12\x12\n\x04name\x18\x07\x20\x01(\tR\x04nameB\n\n\x08key_ty\
     pe\"\x10\n\x0eGetKeysRequest\"R\n\x0fGetKeysResponse\x12?\n\x04keys\x18\
     \x01\x20\x03(\x0b2+.bitdrift.public.unary.admin.v1.KeyResponseR\x04keys\
-    \"\xb1\x04\n\x10CreateKeyRequest\x12Y\n\x07sdk_key\x18\x01\x20\x01(\x0b2\
+    \"\xf7\x04\n\x10CreateKeyRequest\x12Y\n\x07sdk_key\x18\x01\x20\x01(\x0b2\
     >.bitdrift.public.unary.admin.v1.CreateKeyRequest.SdkKeyRequestH\0R\x06s\
     dkKey\x12Y\n\x07api_key\x18\x02\x20\x01(\x0b2>.bitdrift.public.unary.adm\
     in.v1.CreateKeyRequest.ApiKeyRequestH\0R\x06apiKey\x12\x1e\n\x04name\x18\
@@ -2185,14 +2204,15 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     dleIdRegexB\n\xfaB\x07r\x05\x10\x01\x18\x80\x10\x120\n\x0eapp_id_postfix\
     \x18\x02\x20\x01(\tH\0R\x0cappIdPostfixB\x08\xfaB\x05r\x03\x18\xff\x01\
     \x128\n\x12app_id_replacement\x18\x03\x20\x01(\tH\0R\x10appIdReplacement\
-    B\x08\xfaB\x05r\x03\x18\xff\x01B\x12\n\x10app_id_transform\x1ap\n\rApiKe\
-    yRequest\x12_\n\x0bpermissions\x18\x02\x20\x03(\x0e2*.bitdrift.public.un\
-    ary.admin.v1.PermissionR\x0bpermissionsB\x11\xfaB\x0e\x92\x01\x0b\x08\
-    \x01\x10d\"\x05\x82\x01\x02\x10\x01B\x0f\n\x08key_type\x12\x03\xf8B\x01\
-    \"R\n\x11CreateKeyResponse\x12=\n\x03key\x18\x01\x20\x01(\x0b2+.bitdrift\
-    .public.unary.admin.v1.KeyResponseR\x03key\"\"\n\x10RevokeKeyRequest\x12\
-    \x0e\n\x02id\x18\x01\x20\x01(\x04R\x02id\"\x13\n\x11RevokeKeyResponseb\
-    \x06proto3\
+    B\x08\xfaB\x05r\x03\x18\xff\x01B\x12\n\x10app_id_transform\x1a\xb5\x01\n\
+    \rApiKeyRequest\x12_\n\x0bpermissions\x18\x02\x20\x03(\x0e2*.bitdrift.pu\
+    blic.unary.admin.v1.PermissionR\x0bpermissionsB\x11\xfaB\x0e\x92\x01\x0b\
+    \x08\x01\x10d\"\x05\x82\x01\x02\x10\x01\x12C\n\nexpires_at\x18\x03\x20\
+    \x01(\x0b2\x1a.google.protobuf.TimestampR\texpiresAtB\x08\xfaB\x05\xb2\
+    \x01\x02@\x01B\x0f\n\x08key_type\x12\x03\xf8B\x01\"R\n\x11CreateKeyRespo\
+    nse\x12=\n\x03key\x18\x01\x20\x01(\x0b2+.bitdrift.public.unary.admin.v1.\
+    KeyResponseR\x03key\"\"\n\x10RevokeKeyRequest\x12\x0e\n\x02id\x18\x01\
+    \x20\x01(\x04R\x02id\"\x13\n\x11RevokeKeyResponseb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

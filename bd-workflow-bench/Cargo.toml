@@ -28,11 +28,11 @@ tokio.workspace                 = true
 zstd.workspace                  = true
 
 [dev-dependencies]
-criterion          = "0.5.1"
+criterion          = "0.8.2"
 tempfile.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
-gungraun = { version = "0.19.3", features = ["client_requests"] }
+gungraun = { version = "0.19.4", features = ["client_requests"] }
 
 [[bench]]
 harness = false
