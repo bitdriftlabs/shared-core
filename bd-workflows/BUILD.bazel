@@ -15,6 +15,9 @@ rust_library_with_feature_variants(
     crate_root = "src/lib.rs",
     edition = "2024",
     feature_variants = {
+        "test": {
+            "crate_features": ["test"],
+        },
         "fuzz": {
             "crate_features": ["fuzzing"],
             "dependency_overrides": {

@@ -1,9 +1,14 @@
 load("@crates//:defs.bzl", "all_crate_deps")
-load("//tools/rust:tests.bzl", "rust_library_with_test")
+load("//tools/rust:feature_variants.bzl", "rust_library_with_feature_variants")
+load("//tools/rust:tests.bzl", "rust_library_test")
 
 package(default_visibility = ["//visibility:public"])
 
-rust_library_with_test(
+BD_WORKFLOWS_TEST_OVERRIDE = {
+    "//shared-core/bd-workflows": "//shared-core/bd-workflows:bd-workflows-test",
+}
+
+rust_library_with_feature_variants(
     name = "bd-logger",
     srcs = glob(
         ["src/**/*.rs"],
@@ -13,5 +18,14 @@ rust_library_with_test(
     crate_name = "bd_logger",
     crate_root = "src/lib.rs",
     edition = "2024",
-    deps = all_crate_deps(normal = True),
+    feature_variants = {
+        "test": {
+            "dependency_overrides": BD_WORKFLOWS_TEST_OVERRIDE,
+        },
+    },
+)
+
+rust_library_test(
+    crate = ":bd-logger-test",
+    test_dependency_overrides = BD_WORKFLOWS_TEST_OVERRIDE,
 )
