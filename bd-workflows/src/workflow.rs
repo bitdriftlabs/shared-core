@@ -304,7 +304,7 @@ impl WorkflowEventRouteBuilder {
         .set_log_route(WorkflowLogRoute::Types(self.log_types));
     }
     self.finished = true;
-    std::mem::take(&mut self.event_route)
+    self.event_route
   }
 }
 
