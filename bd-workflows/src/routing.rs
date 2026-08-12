@@ -82,7 +82,7 @@ impl WorkflowEventRoute {
   pub(crate) fn set_log_route(&mut self, log: WorkflowLogRoute) {
     debug_assert!(
       matches!(self.log, WorkflowLogRoute::None),
-      "workflow event route log routing must be finalized exactly once"
+      "workflow event route log routing must set at most once"
     );
     self.log = log;
   }
