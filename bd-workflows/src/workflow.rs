@@ -255,6 +255,7 @@ struct WorkflowEventRouteBuilder {
   log_types: bd_log_matcher::matcher::LogTypeSet,
   needs_fallback: bool,
   event_route: WorkflowEventRoute,
+  finished: bool,
 }
 
 impl WorkflowEventRouteBuilder {
@@ -302,7 +303,17 @@ impl WorkflowEventRouteBuilder {
         .event_route
         .set_log_route(WorkflowLogRoute::Types(self.log_types));
     }
-    self.event_route
+    self.finished = true;
+    std::mem::take(&mut self.event_route)
+  }
+}
+
+impl Drop for WorkflowEventRouteBuilder {
+  fn drop(&mut self) {
+    debug_assert!(
+      self.finished,
+      "workflow event route builder must be finalized before it is dropped"
+    );
   }
 }
 
@@ -401,14 +412,14 @@ impl Workflow {
       return WorkflowEventRoute::fallback();
     }
 
-    let mut route = WorkflowEventRouteBuilder::default();
-
     // Workflow execution lazily creates an initial run while processing every log. It must remain
     // on the fallback path until that run exists, even when the initial state has no log matcher.
     if self.needs_new_run() {
       return WorkflowEventRoute::fallback();
     }
 
+    // Check the fallback conditions before constructing the builder. Its Drop implementation
+    // asserts that any builder which is created is finalized exactly once.
     for run in &self.runs {
       // TODO(snowp): Decouple duration expiry from inbound log processing so a progressed workflow
       // can remain on its type-specific route. This needs an expiry mechanism that preserves
@@ -421,6 +432,12 @@ impl Workflow {
         if traversal.timeout_unix_ms.is_some() {
           return WorkflowEventRoute::fallback();
         }
+      }
+    }
+
+    let mut route = WorkflowEventRouteBuilder::default();
+    for run in &self.runs {
+      for traversal in &run.traversals {
         route.add_state(config, traversal.state_index);
       }
     }
