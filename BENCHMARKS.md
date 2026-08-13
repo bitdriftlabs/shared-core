@@ -69,3 +69,16 @@ The callgrind output which can be opened in KCacheGrind will show up in:
 ```
 ll target/gungraun/
 ```
+
+## On-demand pull request benchmarks
+
+Maintainers can run a benchmark comparison for a pull request by posting a command comment:
+
+```
+/benchmark workflows
+```
+
+`workflows` runs `bd-workflow-bench/criterion.sh` with the checked-in replay fixture. The workflow
+runs the merge base first and saves it as the Criterion baseline, then runs the pull request head
+and posts the result and HTML report artifact on the pull request. A newer benchmark command for
+the same pull request cancels the in-progress run.
