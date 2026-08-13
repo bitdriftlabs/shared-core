@@ -17,7 +17,6 @@ use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::WorkflowsEngineConfig;
 use std::borrow::Cow;
-use std::fs;
 use std::path::Path;
 
 //
@@ -31,7 +30,7 @@ pub struct Bootstrap {
 }
 
 pub fn load_workflows_config(path: &Path) -> anyhow::Result<Bootstrap> {
-  let contents = fs::read_to_string(path)?;
+  let contents = crate::fixtures::read_to_string(path)?;
   let response: ApiResponse = protobuf_json_mapping::parse_from_str(&contents)?;
   let Some(Response_type::ConfigurationUpdate(update)) = response.response_type else {
     return Err(anyhow!(

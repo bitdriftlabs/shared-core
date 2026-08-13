@@ -1486,6 +1486,7 @@ dependencies = [
  "tempfile",
  "time",
  "tokio",
+ "zstd",
 ]
 
 [[package]]

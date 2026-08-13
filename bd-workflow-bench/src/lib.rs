@@ -19,12 +19,14 @@
 mod bootstrap;
 mod corpus;
 mod data;
+mod fixtures;
 mod replay;
 mod report;
 
 use anyhow::anyhow;
 use clap::Parser;
-pub use replay::{BenchmarkCorpus, WorkflowReplay, fixture_paths};
+pub use fixtures::{FixturePaths, default_fixture_paths};
+pub use replay::{BenchmarkCorpus, WorkflowReplay};
 use report::{
   EngineOutcome,
   EngineOutcomeTotals,

@@ -16,8 +16,7 @@ use bd_log_primitives::{Log, LogFields, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use serde::Deserialize;
 use serde_json::Value;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::BufRead;
 use std::path::Path;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -27,7 +26,7 @@ use time::format_description::well_known::Rfc3339;
 //
 
 pub struct CorpusReader {
-  lines: std::io::Lines<BufReader<File>>,
+  lines: std::io::Lines<Box<dyn BufRead>>,
   source_line: usize,
 }
 
@@ -41,7 +40,7 @@ pub struct SourceLog {
 impl CorpusReader {
   pub fn open(path: &Path) -> anyhow::Result<Self> {
     Ok(Self {
-      lines: BufReader::new(File::open(path)?).lines(),
+      lines: crate::fixtures::open_reader(path)?.lines(),
       source_line: 0,
     })
   }

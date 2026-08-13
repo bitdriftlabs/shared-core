@@ -100,8 +100,8 @@ benchmark_binary="${repo_root}/target/release/bd-workflow-bench"
 if (($# == 0)); then
   report_output="$(mktemp -d /tmp/workflow-bench-callgrind-report.XXXXXX)"
   set -- \
-    --config "${script_dir}/fixtures/workflows.json" \
-    --logs "${script_dir}/fixtures/logs.ndjson" \
+    --config "${script_dir}/fixtures/small/config.json" \
+    --logs "${script_dir}/fixtures/small/logs.ndjson" \
     --output-dir "$report_output"
 fi
 

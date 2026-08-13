@@ -21,11 +21,8 @@ use bd_workflows::engine::{WorkflowsEngine, WorkflowsEngineConfig, WorkflowsEngi
 use bd_workflows::workflow::WorkflowEvent;
 use std::borrow::Cow;
 use std::hint::black_box;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tokio::task::JoinHandle;
-
-const FIXTURE_CONFIG: &str = "fixtures/workflows.json";
-const FIXTURE_LOGS: &str = "fixtures/logs.ndjson";
 
 //
 // BenchmarkCorpus
@@ -73,13 +70,6 @@ impl BenchmarkCorpus {
   pub fn replay_all(&self, replay: &mut WorkflowReplay) {
     replay.replay_all(&self.source_logs);
   }
-}
-
-/// Paths to the checked-in, synthetic corpus used by default benchmark commands.
-#[must_use]
-pub fn fixture_paths() -> (PathBuf, PathBuf) {
-  let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-  (root.join(FIXTURE_CONFIG), root.join(FIXTURE_LOGS))
 }
 
 //
