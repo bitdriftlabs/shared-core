@@ -5,7 +5,7 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::test::start_new_session;
+use super::test::{flush, start_new_session};
 use super::{PendingStateUpdate, Strategy};
 use crate::persistence::{BackendState, PersistedSessionState, Store};
 use crate::{activity_based, fixed};
@@ -114,6 +114,35 @@ async fn persistence_flusher_coalesces_to_latest_state_on_shutdown() {
 }
 
 #[tokio::test]
+async fn flush_request_waits_for_persistence_worker() {
+  let sdk_directory = TempDir::new().unwrap();
+  let strategy = Arc::new(fixed_strategy(&sdk_directory, &["session-1"]));
+  let session_id = strategy.session_id().await.unwrap();
+
+  let flush_strategy = strategy.clone();
+  let flush = tokio::spawn(async move { flush_strategy.flush().await });
+  tokio::task::yield_now().await;
+  assert!(!flush.is_finished());
+
+  let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+  let flusher = tokio::spawn(strategy.clone().run_persistence_flusher(
+    async move {
+      let _ignored = shutdown_rx.await;
+    },
+    || {},
+  ));
+
+  flush.await.unwrap();
+  let _ignored = shutdown_tx.send(());
+  flusher.await.unwrap();
+
+  assert_eq!(
+    session_id,
+    persisted_state(&sdk_directory).current_session_id
+  );
+}
+
+#[tokio::test]
 async fn handshake_synthesizes_current_session_after_pending_queue_is_acked() {
   let sdk_directory = TempDir::new().unwrap();
   let strategy = fixed_strategy(&sdk_directory, &["session-1"]);
@@ -182,9 +211,9 @@ async fn subscribe_updates_changes_on_initialization_and_acknowledgement() {
 async fn restart_rebuilds_pending_queue_from_persisted_state() {
   let sdk_directory = TempDir::new().unwrap();
 
-  let first_strategy = fixed_strategy(&sdk_directory, &["session-1"]);
+  let first_strategy = Arc::new(fixed_strategy(&sdk_directory, &["session-1"]));
   let first_session_id = first_strategy.session_id().await.unwrap();
-  first_strategy.flush().await;
+  flush(first_strategy.clone()).await;
   drop(first_strategy);
 
   let restarted_strategy = fixed_strategy(&sdk_directory, &["session-2"]);
@@ -219,15 +248,15 @@ async fn handshake_does_not_duplicate_current_session_when_queue_already_contain
 async fn switching_from_fixed_to_activity_resyncs_persisted_backend() {
   let sdk_directory = TempDir::new().unwrap();
 
-  let first_strategy = fixed_strategy(&sdk_directory, &["fixed-session"]);
+  let first_strategy = Arc::new(fixed_strategy(&sdk_directory, &["fixed-session"]));
   let first_session_id = first_strategy.session_id().await.unwrap();
-  first_strategy.flush().await;
+  flush(first_strategy.clone()).await;
   drop(first_strategy);
 
-  let restarted_strategy = activity_strategy(&sdk_directory, OffsetDateTime::now_utc());
+  let restarted_strategy = Arc::new(activity_strategy(&sdk_directory, OffsetDateTime::now_utc()));
   let pending = restarted_strategy.pending_state_update().await.unwrap();
   let restarted_session_id = restarted_strategy.try_current_session_id().unwrap();
-  restarted_strategy.flush().await;
+  flush(restarted_strategy.clone()).await;
 
   assert_ne!(first_session_id, restarted_session_id);
   assert_eq!(
@@ -248,15 +277,15 @@ async fn switching_from_fixed_to_activity_resyncs_persisted_backend() {
 async fn switching_from_activity_to_fixed_resyncs_persisted_backend() {
   let sdk_directory = TempDir::new().unwrap();
 
-  let first_strategy = activity_strategy(&sdk_directory, OffsetDateTime::now_utc());
+  let first_strategy = Arc::new(activity_strategy(&sdk_directory, OffsetDateTime::now_utc()));
   let first_session_id = first_strategy.session_id().await.unwrap();
-  first_strategy.flush().await;
+  flush(first_strategy.clone()).await;
   drop(first_strategy);
 
-  let restarted_strategy = fixed_strategy(&sdk_directory, &["fixed-session"]);
+  let restarted_strategy = Arc::new(fixed_strategy(&sdk_directory, &["fixed-session"]));
   let pending = restarted_strategy.pending_state_update().await.unwrap();
   let restarted_session_id = restarted_strategy.try_current_session_id().unwrap();
-  restarted_strategy.flush().await;
+  flush(restarted_strategy.clone()).await;
 
   assert_ne!(first_session_id, restarted_session_id);
   assert_eq!(

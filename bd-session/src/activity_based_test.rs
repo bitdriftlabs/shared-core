@@ -7,7 +7,7 @@
 
 use crate::Strategy;
 use crate::activity_based::Callbacks;
-use crate::test::start_new_session;
+use crate::test::{flush, start_new_session};
 use bd_time::TestTimeProvider;
 use pretty_assertions::assert_eq;
 use std::sync::Arc;
@@ -340,12 +340,12 @@ async fn flushes_state() {
   let time_provider = Arc::new(TestTimeProvider::new(now));
   let callbacks = Arc::new(MockCallbacks::default());
 
-  let strategy = Strategy::activity_based(
+  let strategy = Arc::new(Strategy::activity_based(
     sdk_directory.path(),
     Duration::seconds(30),
     callbacks,
     time_provider.clone(),
-  );
+  ));
 
   let session_id = strategy.session_id().await.unwrap();
 
@@ -354,7 +354,7 @@ async fn flushes_state() {
 
   let next_session_id = strategy.session_id().await.unwrap();
 
-  strategy.flush().await;
+  flush(strategy.clone()).await;
 
   assert_eq!(session_id, next_session_id);
 }

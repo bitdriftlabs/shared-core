@@ -1123,15 +1123,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                     }
                   };
 
-                  let session_strategy = self.session_strategy.clone();
-                  let session_persistence_failures = self.session_persistence_failures.clone();
-                  let flush_session = async {
-                    session_strategy
-                      .flush_with_persistence_failure_callback(move || {
-                        session_persistence_failures.inc();
-                      })
-                      .await;
-                  };
+                  let flush_session = self.session_strategy.flush();
 
                   let persist_workflows = async {
                     if let Some(workflows_engine) = self.logging_state.workflows_engine() {

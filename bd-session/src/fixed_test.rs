@@ -7,7 +7,7 @@
 
 use super::{Callbacks, UUIDCallbacks};
 use crate::Strategy;
-use crate::test::start_new_session;
+use crate::test::{flush, start_new_session};
 use pretty_assertions::assert_eq;
 use std::future::Future;
 use std::pin::pin;
@@ -98,13 +98,16 @@ async fn test_start_new_session() {
 #[tokio::test]
 async fn test_previous_process_session_id() {
   let sdk_directory = TempDir::new().unwrap();
-  let strategy = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
+  let strategy = Arc::new(Strategy::fixed(
+    sdk_directory.path(),
+    Arc::new(UUIDCallbacks),
+  ));
   strategy.session_id().await.unwrap();
   start_new_session(&strategy).await;
   let session_id = strategy.session_id().await.unwrap();
 
   assert!(strategy.previous_process_session_id().is_none());
-  strategy.flush().await;
+  flush(strategy.clone()).await;
 
   let strategy = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
   assert_eq!(Some(session_id), strategy.previous_process_session_id());
@@ -114,7 +117,7 @@ async fn test_previous_process_session_id() {
 async fn session_id_persists_only_after_flush() {
   let sdk_directory = TempDir::new().unwrap();
   let callbacks = Arc::new(MockCallbacks::default());
-  let strategy = Strategy::fixed(sdk_directory.path(), callbacks);
+  let strategy = Arc::new(Strategy::fixed(sdk_directory.path(), callbacks));
 
   let session_id = strategy.session_id().await.unwrap();
 
@@ -123,7 +126,7 @@ async fn session_id_persists_only_after_flush() {
   let restarted = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
   assert_eq!(None, restarted.previous_process_session_id());
 
-  strategy.flush().await;
+  flush(strategy.clone()).await;
 
   let restarted = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
   assert_eq!(Some(session_id), restarted.previous_process_session_id());

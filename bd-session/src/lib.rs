@@ -51,7 +51,7 @@ use std::path::Path;
 use std::sync::Arc;
 use thread_local::ThreadLocal;
 use time::OffsetDateTime;
-use tokio::sync::{Mutex as AsyncMutex, mpsc, watch};
+use tokio::sync::{mpsc, oneshot, watch};
 
 //
 // LoadedState
@@ -64,8 +64,7 @@ pub(crate) struct LoadedState {
   persisted: PersistedSessionState,
   pending_started_sessions: Vec<StartedSessionRecord>,
   last_activity_write: Option<OffsetDateTime>,
-  persistence_generation: u64,
-  completed_persistence_generation: u64,
+  persistence_pending: bool,
 }
 
 //
@@ -102,6 +101,15 @@ pub(crate) struct Initialization {
 #[derive(Clone, Debug)]
 pub(crate) enum DeferredCallback {
   ActivitySessionChanged(String),
+}
+
+//
+// PersistenceRequest
+//
+
+enum PersistenceRequest {
+  Persist,
+  Flush(oneshot::Sender<()>),
 }
 
 //
@@ -175,11 +183,10 @@ pub struct Strategy {
   backend: Backend,
   store: Store,
   state: PlatformMutex<Option<LoadedState>>,
-  persistence_tx: mpsc::Sender<()>,
-  persistence_rx: AsyncMutex<mpsc::Receiver<()>>,
-  // Both the dedicated flusher and an explicit flush can request persistence. This lock keeps
-  // those SDK-owned tasks to one in-flight disk write without ever being taken by a caller thread.
-  persistence_writer: AsyncMutex<()>,
+  persistence_tx: mpsc::Sender<PersistenceRequest>,
+  // The single persistence worker takes this receiver before awaiting any I/O. Session callers
+  // only hold the sender, so they never contend with disk writes or create a second writer.
+  persistence_rx: PlatformMutex<Option<mpsc::Receiver<PersistenceRequest>>>,
   update_tx: watch::Sender<u64>,
   callback_in_progress: Box<ThreadLocal<Cell<bool>>>,
 }
@@ -194,8 +201,7 @@ impl Strategy {
       store: Store::new(sdk_directory),
       state: PlatformMutex::new(None),
       persistence_tx,
-      persistence_rx: AsyncMutex::new(persistence_rx),
-      persistence_writer: AsyncMutex::new(()),
+      persistence_rx: PlatformMutex::new(Some(persistence_rx)),
       update_tx,
       callback_in_progress: Box::new(ThreadLocal::new()),
     }
@@ -219,8 +225,7 @@ impl Strategy {
       store: Store::new(sdk_directory),
       state: PlatformMutex::new(None),
       persistence_tx,
-      persistence_rx: AsyncMutex::new(persistence_rx),
-      persistence_writer: AsyncMutex::new(()),
+      persistence_rx: PlatformMutex::new(Some(persistence_rx)),
       update_tx,
       callback_in_progress: Box::new(ThreadLocal::new()),
     }
@@ -334,28 +339,30 @@ impl Strategy {
     result
   }
 
-  /// Drains the latest coalesced session snapshot. A failed write is a completed best-effort
-  /// attempt; callers never wait indefinitely for durable storage.
+  /// Requests that the persistence worker drain the latest coalesced session snapshot.
+  ///
+  /// The request remains queued until the worker runs, then completes after its best-effort write
+  /// attempt. Session APIs never await this path; only an explicit flush waits for completion.
   pub async fn flush(&self) {
     if self.state.lock().is_none() {
       log::debug!("no session state to flush");
       return;
     }
 
-    self.persist_pending(None).await;
-  }
-
-  /// Drains persistence while recording any durable-write failure through the supplied metric.
-  pub async fn flush_with_persistence_failure_callback(
-    &self,
-    on_persistence_failure: impl Fn() + Send + Sync,
-  ) {
-    if self.state.lock().is_none() {
-      log::debug!("no session state to flush");
+    let (completion_tx, completion_rx) = oneshot::channel();
+    if self
+      .persistence_tx
+      .send(PersistenceRequest::Flush(completion_tx))
+      .await
+      .is_err()
+    {
+      log::debug!("session persistence worker stopped before flush could be queued");
       return;
     }
 
-    self.persist_pending(Some(&on_persistence_failure)).await;
+    if completion_rx.await.is_err() {
+      log::debug!("session persistence worker stopped before completing flush");
+    }
   }
 
   /// Runs the dedicated coalescing writer until `shutdown` resolves.
@@ -366,13 +373,31 @@ impl Strategy {
   ) where
     F: Future<Output = ()> + Send,
   {
-    let mut receiver = self.persistence_rx.lock().await;
+    let Some(mut receiver) = self.persistence_rx.lock().take() else {
+      log::warn!("attempted to start a second session persistence worker");
+      return;
+    };
+
     tokio::pin!(shutdown);
     loop {
       tokio::select! {
-        Some(()) = receiver.recv() => self.persist_pending(Some(&on_persistence_failure)).await,
+        Some(request) = receiver.recv() => {
+          let completion_tx = match request {
+            PersistenceRequest::Persist => None,
+            PersistenceRequest::Flush(completion_tx) => Some(completion_tx),
+          };
+          self.persist_latest(&on_persistence_failure).await;
+          if let Some(completion_tx) = completion_tx {
+            let _ignored = completion_tx.send(());
+          }
+        },
         () = &mut shutdown => {
-          self.persist_pending(Some(&on_persistence_failure)).await;
+          self.persist_latest(&on_persistence_failure).await;
+          while let Ok(request) = receiver.try_recv() {
+            if let PersistenceRequest::Flush(completion_tx) = request {
+              let _ignored = completion_tx.send(());
+            }
+          }
           return;
         },
       }
@@ -478,8 +503,7 @@ impl Strategy {
           persisted: self.store.load_state().unwrap_or_default(),
           pending_started_sessions: self.store.load_pending_started_sessions(),
           last_activity_write: None,
-          persistence_generation: 0,
-          completed_persistence_generation: 0,
+          persistence_pending: false,
         });
       }
 
@@ -503,7 +527,7 @@ impl Strategy {
       state
         .pending_started_sessions
         .drain(.. update.started_sessions.len());
-      state.persistence_generation = state.persistence_generation.wrapping_add(1);
+      state.persistence_pending = true;
       state.pending_started_sessions.clone()
     };
 
@@ -513,7 +537,7 @@ impl Strategy {
       pending_started_sessions.len()
     );
     self.notify_update();
-    let _ignored = self.persistence_tx.try_send(());
+    let _ignored = self.persistence_tx.try_send(PersistenceRequest::Persist);
   }
 
   /// Pretty name of the strategy.
@@ -617,25 +641,20 @@ impl Strategy {
   ) -> Mutation {
     // Once a process has initialized session state, its in-memory snapshot is newer than disk
     // until the coalescing writer catches up. Re-reading disk here would drop rapid rotations.
-    let (persisted, pending_started_sessions, persistence_generation, completed_generation) =
-      guard.as_ref().map_or_else(
-        || {
-          (
-            self.store.load_state(),
-            self.store.load_pending_started_sessions(),
-            0,
-            0,
-          )
-        },
-        |state| {
-          (
-            Some(state.persisted.clone()),
-            state.pending_started_sessions.clone(),
-            state.persistence_generation,
-            state.completed_persistence_generation,
-          )
-        },
-      );
+    let (persisted, pending_started_sessions) = guard.as_ref().map_or_else(
+      || {
+        (
+          self.store.load_state(),
+          self.store.load_pending_started_sessions(),
+        )
+      },
+      |state| {
+        (
+          Some(state.persisted.clone()),
+          state.pending_started_sessions.clone(),
+        )
+      },
+    );
     log::debug!(
       "starting explicit session rotation: backend={}, cached_state={}, has_persisted_state={}, \
        pending_started_sessions={}",
@@ -665,10 +684,7 @@ impl Strategy {
       initialization.state.pending_started_sessions.len()
     );
 
-    let mut state = initialization.state;
-    state.persistence_generation = persistence_generation;
-    state.completed_persistence_generation = completed_generation;
-    **guard = Some(state);
+    **guard = Some(initialization.state);
     initialization.mutation
   }
 
@@ -693,9 +709,9 @@ impl Strategy {
 
     if mutation.persist_state || mutation.persist_pending {
       if let Some(state) = self.state.lock().as_mut() {
-        state.persistence_generation = state.persistence_generation.wrapping_add(1);
+        state.persistence_pending = true;
       }
-      let _ignored = self.persistence_tx.try_send(());
+      let _ignored = self.persistence_tx.try_send(PersistenceRequest::Persist);
     }
     if mutation.persist_pending {
       self.notify_update();
@@ -703,45 +719,36 @@ impl Strategy {
     self.run_callback(mutation.callback);
   }
 
-  async fn persist_pending(&self, on_persistence_failure: Option<&(dyn Fn() + Send + Sync)>) {
-    let _writer = self.persistence_writer.lock().await;
-    loop {
-      let Some((generation, snapshot)) = self.state.lock().as_ref().and_then(|state| {
-        (state.persistence_generation > state.completed_persistence_generation)
-          .then(|| (state.persistence_generation, state.clone()))
-      }) else {
-        return;
-      };
+  async fn persist_latest(&self, on_persistence_failure: &(dyn Fn() + Send + Sync)) {
+    let Some(snapshot) = self.state.lock().as_mut().and_then(|state| {
+      state.persistence_pending.then(|| {
+        state.persistence_pending = false;
+        state.clone()
+      })
+    }) else {
+      return;
+    };
 
-      log::debug!(
-        "persisting coalesced session snapshot: backend={}, generation={}, current_session_id={}, \
-         pending_started_sessions={}",
-        self.type_name(),
-        generation,
-        snapshot.persisted.current_session_id,
-        snapshot.pending_started_sessions.len()
-      );
+    log::debug!(
+      "persisting coalesced session snapshot: backend={}, current_session_id={}, \
+       pending_started_sessions={}",
+      self.type_name(),
+      snapshot.persisted.current_session_id,
+      snapshot.pending_started_sessions.len()
+    );
 
-      let result = async {
-        self.store.persist_state(&snapshot.persisted).await?;
-        self
-          .store
-          .persist_pending_started_sessions(&snapshot.pending_started_sessions)
-          .await
-      }
-      .await;
+    let result = async {
+      self.store.persist_state(&snapshot.persisted).await?;
+      self
+        .store
+        .persist_pending_started_sessions(&snapshot.pending_started_sessions)
+        .await
+    }
+    .await;
 
-      if let Err(e) = result {
-        if let Some(on_persistence_failure) = on_persistence_failure {
-          on_persistence_failure();
-        }
-        log::warn!("failed to persist coalesced session snapshot: {e}");
-      }
-
-      if let Some(state) = self.state.lock().as_mut() {
-        state.completed_persistence_generation =
-          state.completed_persistence_generation.max(generation);
-      }
+    if let Err(e) = result {
+      on_persistence_failure();
+      log::warn!("failed to persist coalesced session snapshot: {e}");
     }
   }
 

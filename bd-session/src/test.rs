@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::Strategy;
+use std::sync::Arc;
 
 // External integration tests still need the previous best-effort start-new-session behavior so
 // they can exercise queueing and re-entrancy flows without relying on a production-only wrapper.
@@ -20,4 +21,19 @@ pub async fn start_new_session(strategy: &Strategy) {
   }
 
   log::info!("bitdrift Capture started new session");
+}
+
+/// Runs a test-only worker around an explicit persistence barrier.
+pub async fn flush(strategy: Arc<Strategy>) {
+  let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+  let flusher = tokio::spawn(strategy.clone().run_persistence_flusher(
+    async move {
+      let _ignored = shutdown_rx.await;
+    },
+    || {},
+  ));
+
+  strategy.flush().await;
+  let _ignored = shutdown_tx.send(());
+  let _ignored = flusher.await;
 }
