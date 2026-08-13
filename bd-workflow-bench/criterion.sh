@@ -20,8 +20,9 @@ Run the workflow replay Criterion benchmark.
 Usage:
   bd-workflow-bench/criterion.sh [--config PATH --logs PATH] [-- Criterion options]
 
-With no corpus options, Criterion uses the checked-in synthetic fixture. Supplying both --config
-and --logs replays the provided local corpus. Everything after -- is passed to Criterion.
+With no corpus options, Criterion runs both checked-in corpora: the small raw fixture and the
+large compressed fixture. Supplying both --config and --logs replays only the provided local
+corpus. Everything after -- is passed to Criterion.
 
 Examples:
   bd-workflow-bench/criterion.sh

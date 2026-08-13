@@ -1,9 +1,9 @@
 # Workflow Benchmarker
 
 `bd-workflow-bench` replays an exported client log corpus through the real workflow engine and
-writes local timing reports. It never reads data from the network. Its Criterion and Callgrind
-wrappers default to a small, checked-in synthetic corpus; local customer config and log files can
-be supplied explicitly and are never checked in.
+writes local timing reports. It never reads data from the network. Criterion runs both checked-in
+corpora by default: a small raw synthetic corpus and a large zstd-compressed anonymized corpus.
+Local customer config and log files can be supplied explicitly and are never checked in.
 
 ```sh
 cargo run -p bd-workflow-bench --release -- \
@@ -16,8 +16,8 @@ cargo run -p bd-workflow-bench --release -- \
 
 `criterion.sh` measures full-corpus replay wall time and throughput. Corpus parsing and engine
 startup happen outside the timed operation, while each sample begins with a fresh workflow engine
-and in-memory state. The default is the checked-in synthetic corpus, making it suitable for
-regression tracking in CI or on a developer machine:
+and in-memory state. By default it records separate `small` and `large` results, making both
+checked-in corpora suitable for regression tracking in CI or on a developer machine:
 
 ```sh
 ./bd-workflow-bench/criterion.sh

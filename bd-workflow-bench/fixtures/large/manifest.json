@@ -1,0 +1,15 @@
+{
+  "format_version": 1,
+  "name": "large",
+  "config": {
+    "path": "config.json.zst",
+    "sha256": "6080e17fd8cffbc43abda7386025f73f7c5ee177d0a0c7fa99c1a306e57973cb"
+  },
+  "logs": {
+    "path": "logs.ndjson.zst",
+    "sha256": "de03cd253d24bc4d579621ae562192ae1e23ce6f1bb8235034e1059b0fd9f0e2"
+  },
+  "record_count": 7794,
+  "start_timestamp": "2000-01-01T00:00:00Z",
+  "end_timestamp": "2000-01-01T12:29:30.109Z"
+}
