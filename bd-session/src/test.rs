@@ -9,17 +9,15 @@ use crate::Strategy;
 
 // External integration tests still need the previous best-effort start-new-session behavior so
 // they can exercise queueing and re-entrancy flows without relying on a production-only wrapper.
+#[allow(clippy::unused_async)] // Preserve this helper's external asynchronous test API.
 pub async fn start_new_session(strategy: &Strategy) {
-  let prepared = match strategy.prepare_start_new_session() {
-    Ok(prepared) => prepared,
+  match strategy.start_new_session_sync() {
+    Ok(()) => {},
     Err(e) => {
       log::error!("bitdrift Capture failed to start new session: {e:?}");
       return;
     },
-  };
+  }
 
-  let session_id = prepared.current_session_id().to_string();
-  let callback = strategy.persist_prepared(prepared).await;
-  strategy.run_prepared_callback(callback);
-  log::info!("bitdrift Capture started new session: {session_id:?}");
+  log::info!("bitdrift Capture started new session");
 }

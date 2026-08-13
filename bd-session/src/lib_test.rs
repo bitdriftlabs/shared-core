@@ -83,6 +83,37 @@ fn started_session_ids(request: &StateUpdateRequest) -> Vec<String> {
 }
 
 #[tokio::test]
+async fn persistence_flusher_coalesces_to_latest_state_on_shutdown() {
+  let sdk_directory = TempDir::new().unwrap();
+  let strategy = Arc::new(fixed_strategy(&sdk_directory, &["session-1", "session-2"]));
+  let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+  let flusher = tokio::spawn(strategy.clone().run_persistence_flusher(
+    async move {
+      let _ignored = shutdown_rx.await;
+    },
+    || {},
+  ));
+
+  let first_session_id = strategy.session_id().await.unwrap();
+  start_new_session(&strategy).await;
+  let second_session_id = strategy.session_id().await.unwrap();
+
+  let _ignored = shutdown_tx.send(());
+  flusher.await.unwrap();
+
+  let persisted = persisted_state(&sdk_directory);
+  assert_eq!(second_session_id, persisted.current_session_id);
+  assert_eq!(
+    vec![first_session_id, second_session_id],
+    Store::new(sdk_directory.path())
+      .load_pending_started_sessions()
+      .into_iter()
+      .map(|started| started.session_id)
+      .collect::<Vec<_>>()
+  );
+}
+
+#[tokio::test]
 async fn handshake_synthesizes_current_session_after_pending_queue_is_acked() {
   let sdk_directory = TempDir::new().unwrap();
   let strategy = fixed_strategy(&sdk_directory, &["session-1"]);
@@ -153,6 +184,7 @@ async fn restart_rebuilds_pending_queue_from_persisted_state() {
 
   let first_strategy = fixed_strategy(&sdk_directory, &["session-1"]);
   let first_session_id = first_strategy.session_id().await.unwrap();
+  first_strategy.flush().await;
   drop(first_strategy);
 
   let restarted_strategy = fixed_strategy(&sdk_directory, &["session-2"]);
@@ -189,11 +221,13 @@ async fn switching_from_fixed_to_activity_resyncs_persisted_backend() {
 
   let first_strategy = fixed_strategy(&sdk_directory, &["fixed-session"]);
   let first_session_id = first_strategy.session_id().await.unwrap();
+  first_strategy.flush().await;
   drop(first_strategy);
 
   let restarted_strategy = activity_strategy(&sdk_directory, OffsetDateTime::now_utc());
   let pending = restarted_strategy.pending_state_update().await.unwrap();
   let restarted_session_id = restarted_strategy.try_current_session_id().unwrap();
+  restarted_strategy.flush().await;
 
   assert_ne!(first_session_id, restarted_session_id);
   assert_eq!(
@@ -216,11 +250,13 @@ async fn switching_from_activity_to_fixed_resyncs_persisted_backend() {
 
   let first_strategy = activity_strategy(&sdk_directory, OffsetDateTime::now_utc());
   let first_session_id = first_strategy.session_id().await.unwrap();
+  first_strategy.flush().await;
   drop(first_strategy);
 
   let restarted_strategy = fixed_strategy(&sdk_directory, &["fixed-session"]);
   let pending = restarted_strategy.pending_state_update().await.unwrap();
   let restarted_session_id = restarted_strategy.try_current_session_id().unwrap();
+  restarted_strategy.flush().await;
 
   assert_ne!(first_session_id, restarted_session_id);
   assert_eq!(

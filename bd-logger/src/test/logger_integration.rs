@@ -558,6 +558,7 @@ fn log_upload_attributes_override() {
     tokio_test::block_on(previous_session.session_id()).unwrap(),
     "foo_overridden"
   );
+  tokio_test::block_on(previous_session.flush());
 
   let mut setup = Setup::new_with_options(SetupOptions {
     sdk_directory,

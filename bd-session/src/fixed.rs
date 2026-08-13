@@ -78,6 +78,8 @@ impl Strategy {
         },
         pending_started_sessions,
         last_activity_write: None,
+        persistence_generation: 0,
+        completed_persistence_generation: 0,
       },
       mutation: Mutation {
         persist_state: true,
@@ -125,6 +127,8 @@ impl Strategy {
         },
         pending_started_sessions,
         last_activity_write: None,
+        persistence_generation: 0,
+        completed_persistence_generation: 0,
       },
       mutation: Mutation {
         persist_state: true,

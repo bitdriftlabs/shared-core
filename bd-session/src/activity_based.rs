@@ -83,6 +83,8 @@ impl Strategy {
         },
         pending_started_sessions,
         last_activity_write: None,
+        persistence_generation: 0,
+        completed_persistence_generation: 0,
       };
       let mut mutation = self.on_session_id(&mut state);
       // Handshake uploads must be able to announce the current session after a restart even if the
@@ -141,6 +143,8 @@ impl Strategy {
           },
           pending_started_sessions,
           last_activity_write: Some(now),
+          persistence_generation: 0,
+          completed_persistence_generation: 0,
         },
         mutation: Mutation {
           persist_state: true,
@@ -279,6 +283,8 @@ impl Strategy {
         },
         pending_started_sessions,
         last_activity_write: Some(now),
+        persistence_generation: 0,
+        completed_persistence_generation: 0,
       },
       mutation: Mutation {
         persist_state: true,
@@ -295,5 +301,7 @@ impl Strategy {
 }
 
 pub trait Callbacks: Send + Sync {
+  /// Invoked synchronously on the thread that created or rotated the session. Durable persistence
+  /// continues asynchronously and is intentionally not a precondition for this notification.
   fn session_id_changed(&self, session_id: &str);
 }

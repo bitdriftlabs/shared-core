@@ -59,7 +59,6 @@ use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration as StdDuration;
 use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use tokio::sync::mpsc;
@@ -226,25 +225,6 @@ impl Setup {
   fn make_runtime(tmp_dir: &Arc<tempfile::TempDir>) -> std::sync::Arc<ConfigLoader> {
     ConfigLoader::new(tmp_dir.path())
   }
-}
-
-#[test]
-fn persist_prepared_session_times_out_when_async_logger_is_stalled() {
-  let (log_tx, _log_rx) = bd_bounded_buffer::channel(1024 * 1024);
-  let (state_tx, _state_rx) = bd_bounded_buffer::channel(1024 * 1024);
-  let sender = Sender::from_parts(log_tx, state_tx);
-  let sdk_directory = tempfile::TempDir::new().unwrap();
-  let strategy = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
-  let prepared = strategy.prepare_session_id().unwrap();
-
-  let error = sender
-    .persist_prepared_session(prepared, StdDuration::from_millis(20))
-    .unwrap_err();
-
-  assert_eq!(
-    "failed to receive prepared session ack from async logger: timeout duration reached",
-    error.to_string()
-  );
 }
 
 struct TestReplay {
@@ -595,6 +575,34 @@ async fn creates_workflows_engine_in_response_to_config_update() {
   drop(test_store);
 
   assert!(buffer.logging_state.workflows_engine().is_some());
+}
+
+#[tokio::test]
+async fn self_shutdown_awaits_session_persistence_flusher() {
+  let mut setup = Setup::new();
+  let strategy = setup.session_strategy.clone();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, _sender) = setup.make_test_async_log_buffer(config_update_rx);
+  let state_store = TestStore::new().await;
+  let run_shutdown = ComponentShutdownTrigger::default();
+  let buffer_task = tokio::spawn(buffer.run_with_shutdown(
+    state_store.take_inner(),
+    (),
+    run_shutdown.make_shutdown(),
+  ));
+
+  // Let the run loop create its flusher before scheduling the session mutation.
+  tokio::task::yield_now().await;
+  strategy.session_id().await.unwrap();
+
+  // Keep `run_shutdown` alive: the buffer's own shutdown path must independently stop and await
+  // the flusher rather than leaving it attached to this unrelated shutdown receiver.
+  setup.shutdown.take().unwrap().shutdown().await;
+  drop(buffer_task.await.unwrap());
+
+  // `setup` and this local clone are the only remaining strategy owners. A detached flusher would
+  // retain a third reference after the buffer's run loop returned.
+  assert_eq!(2, Arc::strong_count(&strategy));
 }
 
 #[tokio::test]

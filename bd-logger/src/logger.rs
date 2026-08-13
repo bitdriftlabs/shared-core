@@ -530,18 +530,7 @@ impl LoggerHandle {
     let is_allowed = LOGGER_GUARD.with(|cell| cell.try_borrow().is_ok());
 
     if is_allowed {
-      let prepared = self.session_strategy.prepare_session_id()?;
-
-      if !prepared.has_follow_up_work() {
-        return Ok(prepared.into_current_session_id());
-      }
-
-      let session_id = prepared.current_session_id().to_string();
-      let callback = self
-        .tx
-        .persist_prepared_session(prepared, async_log_buffer::SESSION_BRIDGE_TIMEOUT)?;
-      self.session_strategy.run_prepared_callback(callback);
-      Ok(session_id)
+      self.session_strategy.session_id_sync()
     } else {
       Err(anyhow::anyhow!(
         "operation not allowed from within a field provider"
@@ -553,12 +542,7 @@ impl LoggerHandle {
     let is_allowed = LOGGER_GUARD.with(|cell| cell.try_borrow().is_ok());
 
     if is_allowed {
-      let prepared = self.session_strategy.prepare_start_new_session()?;
-      let callback = self
-        .tx
-        .persist_prepared_session(prepared, async_log_buffer::SESSION_BRIDGE_TIMEOUT)?;
-      self.session_strategy.run_prepared_callback(callback);
-      Ok(())
+      self.session_strategy.start_new_session_sync()
     } else {
       Err(anyhow::anyhow!(
         "operation not allowed from within a field provider"
