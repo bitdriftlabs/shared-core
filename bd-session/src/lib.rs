@@ -40,6 +40,7 @@ fn test_global_init() {
   bd_test_helpers_core::test_global_init();
 }
 
+use bd_client_common::{PlatformMutex, PlatformMutexGuard};
 use bd_proto::protos::client::api::StateUpdateRequest;
 use bd_proto::protos::client::api::state_update_request::StartedSession;
 use bd_time::{OffsetDateTimeExt as _, TimeProvider};
@@ -263,7 +264,7 @@ impl BackendState {
 pub struct Strategy {
   backend: Backend,
   store: Store,
-  state: parking_lot::Mutex<Option<LoadedState>>,
+  state: PlatformMutex<Option<LoadedState>>,
   update_tx: watch::Sender<u64>,
   callback_in_progress: Box<ThreadLocal<Cell<bool>>>,
 }
@@ -275,7 +276,7 @@ impl Strategy {
     Self {
       backend: Backend::Fixed(fixed::Strategy::new(callbacks)),
       store: Store::new(sdk_directory),
-      state: parking_lot::Mutex::new(None),
+      state: PlatformMutex::new(None),
       update_tx,
       callback_in_progress: Box::new(ThreadLocal::new()),
     }
@@ -296,7 +297,7 @@ impl Strategy {
         time_provider,
       )),
       store: Store::new(sdk_directory),
-      state: parking_lot::Mutex::new(None),
+      state: PlatformMutex::new(None),
       update_tx,
       callback_in_progress: Box::new(ThreadLocal::new()),
     }
@@ -672,7 +673,7 @@ impl Strategy {
 
   fn start_new_session_locked(
     &self,
-    guard: &mut parking_lot::MutexGuard<'_, Option<LoadedState>>,
+    guard: &mut PlatformMutexGuard<'_, Option<LoadedState>>,
   ) -> (LoadedState, Mutation) {
     // Explicit session rotation re-reads persisted state so the durable queue remains the source
     // of truth even if this process has not initialized the in-memory cache yet.

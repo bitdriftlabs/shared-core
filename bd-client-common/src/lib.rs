@@ -23,9 +23,12 @@ pub mod file;
 pub mod file_system;
 pub mod init_lifecycle;
 pub mod payload_conversion;
+pub mod platform_mutex;
 pub mod safe_file_cache;
 pub mod sdk_status;
 pub mod test;
+
+pub use platform_mutex::{PlatformMutex, PlatformMutexGuard};
 
 #[cfg(test)]
 #[ctor::ctor(unsafe)]
