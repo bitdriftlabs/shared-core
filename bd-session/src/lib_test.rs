@@ -149,6 +149,39 @@ async fn flush_request_waits_for_persistence_worker() {
 }
 
 #[tokio::test]
+async fn flush_retries_persistence_after_a_failed_write() {
+  let sdk_directory = TempDir::new().unwrap();
+  std::fs::write(sdk_directory.path().join("state"), "not a directory").unwrap();
+  let StrategyWithWorker {
+    strategy,
+    persistence_worker: worker,
+  } = fixed_strategy(&sdk_directory, &["session-1"]);
+  let session_id = strategy.session_id().unwrap();
+
+  let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+  let flusher = tokio::spawn(worker.run(
+    async move {
+      let _ignored = shutdown_rx.await;
+    },
+    || {},
+  ));
+
+  strategy.flush().await;
+  assert!(Store::new(sdk_directory.path()).load_state().is_none());
+
+  std::fs::remove_file(sdk_directory.path().join("state")).unwrap();
+  strategy.flush().await;
+
+  let _ignored = shutdown_tx.send(());
+  flusher.await.unwrap();
+
+  assert_eq!(
+    session_id,
+    persisted_state(&sdk_directory).current_session_id
+  );
+}
+
+#[tokio::test]
 async fn handshake_synthesizes_current_session_after_pending_queue_is_acked() {
   let sdk_directory = TempDir::new().unwrap();
   let StrategyWithWorker { strategy, .. } = fixed_strategy(&sdk_directory, &["session-1"]);

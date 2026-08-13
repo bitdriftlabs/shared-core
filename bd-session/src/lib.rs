@@ -725,6 +725,11 @@ impl Strategy {
     .await;
 
     if let Err(e) = result {
+      // Keep the latest in-memory state dirty so the next flush or mutation retries this
+      // best-effort write. Mutations that occurred during I/O are retained by the same flag.
+      if let Some(state) = self.state.lock().as_mut() {
+        state.persistence_pending = true;
+      }
       on_persistence_failure();
       log::warn!("failed to persist coalesced session snapshot: {e}");
     }
