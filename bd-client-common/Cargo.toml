@@ -33,8 +33,9 @@ tokio.workspace             = true
 walkdir.workspace           = true
 
 [dev-dependencies]
-bd-test-helpers.path      = "../bd-test-helpers"
-bd-test-helpers-core.path = "../bd-test-helpers-core"
-ctor.workspace            = true
-tempfile.workspace        = true
-uuid.workspace            = true
+bd-test-helpers.path        = "../bd-test-helpers"
+bd-test-helpers-core.path   = "../bd-test-helpers-core"
+ctor.workspace              = true
+static_assertions.workspace = true
+tempfile.workspace          = true
+uuid.workspace              = true

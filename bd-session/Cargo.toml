@@ -17,7 +17,6 @@ bd-proto-util.path          = "../bd-proto-util"
 bd-time.path                = "../bd-time"
 bd-workspace-hack.workspace = true
 log.workspace               = true
-parking_lot.workspace       = true
 protobuf.workspace          = true
 thread_local.workspace      = true
 time.workspace              = true
@@ -28,5 +27,6 @@ uuid.workspace              = true
 bd-test-helpers             = { path = "../bd-test-helpers", default-features = false }
 bd-test-helpers-core.path   = "../bd-test-helpers-core"
 ctor.workspace              = true
+parking_lot.workspace       = true
 pretty_assertions.workspace = true
 tempfile.workspace          = true

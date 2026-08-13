@@ -516,6 +516,7 @@ dependencies = [
  "mockall",
  "parking_lot",
  "protobuf 4.0.0-alpha.0",
+ "static_assertions",
  "tempfile",
  "thiserror 2.0.20",
  "time",
