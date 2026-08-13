@@ -117,7 +117,7 @@ impl Reporter {
     loop {
       tokio::select! {
         () = maybe_await_interval(self.reporting_interval.as_mut()), if self.is_enabled => {
-          log::trace!("resource utilization reporter tick");
+          log::debug!("resource utilization reporter tick");
           self.target.tick();
         },
         _ = self.reporting_interval_flag.changed() => {

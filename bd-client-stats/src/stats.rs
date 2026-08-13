@@ -1146,7 +1146,7 @@ impl Flusher {
     upload_response: &UploadResponse,
     metadata: &PendingUploadMetadata,
   ) {
-    log::debug!("stat upload attempt complete: {upload_response:?}");
+    log::debug!("stat flush upload attempt complete: {upload_response:?}");
 
     #[cfg(feature = "logger-cli-observer")]
     with_observer(|observer| {

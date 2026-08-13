@@ -1384,7 +1384,7 @@ impl StateStore {
     // Check if enough time has passed since the last save
     let now = Instant::now();
     if force {
-      log::trace!("forcing persisting workflows state to disk");
+      log::debug!("forcing persisting workflows state to disk");
     } else if let Some(last_save_time) = self.last_persisted {
       let persistence_write_interval_ms = *self.persistence_write_interval_flag.read();
       if now.duration_since(last_save_time) < persistence_write_interval_ms {
