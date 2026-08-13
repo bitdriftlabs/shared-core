@@ -25,7 +25,7 @@ use bd_proto::protos::config::v1::config::{BufferConfigList, buffer_config};
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::FeatureFlag as _;
 use bd_session::fixed::UUIDCallbacks;
-use bd_session::{Strategy, StrategyParts};
+use bd_session::{Strategy, StrategyWithWorker};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_test_helpers::config_helper::{
   configuration_update,
@@ -106,7 +106,7 @@ pub struct SetupOptions {
   pub disk_storage: bool,
   pub start_in_sleep_mode: bool,
   pub time_provider: Option<Arc<dyn TimeProvider>>,
-  pub session_strategy: Option<StrategyParts>,
+  pub session_strategy: Option<StrategyWithWorker>,
   pub extra_runtime_values: Vec<(&'static str, ValueKind)>,
   pub handshake_response_plans: Vec<HandshakeResponsePlan>,
   pub stats_upload_response_plans: Vec<StatsUploadResponsePlan>,

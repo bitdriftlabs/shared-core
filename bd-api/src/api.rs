@@ -920,8 +920,7 @@ impl Api {
         self.connection_count_since_process_start += 1;
         self
           .session_strategy
-          .acknowledge_state_update(&handshake_state_update)
-          .await;
+          .acknowledge_state_update(&handshake_state_update);
         self.apply_client_state_updates(&client_state_updates).await;
         stream_state.initialize_stream_settings(stream_settings);
 
@@ -1036,7 +1035,7 @@ impl Api {
         }
         _ = self.session_updates.changed(), if in_flight_state_update.is_none() => {
           let _ = self.session_updates.borrow_and_update();
-          let Some(session_update) = self.session_strategy.pending_state_update().await else {
+          let Some(session_update) = self.session_strategy.pending_state_update() else {
             continue;
           };
           stream_state.send_request(session_update.request().clone()).await?;
@@ -1201,7 +1200,6 @@ impl Api {
           let session_id = self
             .session_strategy
             .session_id()
-            .await
             .map_err(|_| anyhow!("remote trigger upload session id"))?;
 
           self
@@ -1288,8 +1286,7 @@ impl Api {
           {
             self
               .session_strategy
-              .acknowledge_state_update(&session_update)
-              .await;
+              .acknowledge_state_update(&session_update);
           }
         },
         None => {
@@ -1312,7 +1309,7 @@ impl Api {
     Option<TrackedStatsUploadRequest>,
   ) {
     let opaque_client_state = tokio::fs::read(&self.opaque_client_state_path()).await.ok();
-    let session_update = self.session_strategy.handshake_state_update().await;
+    let session_update = self.session_strategy.handshake_state_update();
     let mut handshake = HandshakeRequest {
       static_device_metadata: metadata.clone(),
       previous_disconnect_reason: previous_disconnect_reason.unwrap_or_default(),

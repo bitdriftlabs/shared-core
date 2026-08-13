@@ -15,7 +15,7 @@ use crate::types::{Platform, RuntimeValueType};
 use bd_log_primitives::LogFields;
 use bd_logger::{Block, CaptureSession, InitParams, Logger, MetadataProvider};
 use bd_proto::protos::logging::payload::LogType as ProtoLogType;
-use bd_session::{Strategy, StrategyParts, activity_based, fixed};
+use bd_session::{Strategy, StrategyWithWorker, activity_based, fixed};
 use bd_time::TimeProvider;
 use parking_lot::Mutex;
 use std::collections::HashMap;
@@ -285,7 +285,10 @@ async fn fetch_device_code(args: &LoggerArgs, device_id: &str) -> anyhow::Result
   Ok(device_code_response.code)
 }
 
-fn make_session_strategy(sdk_directory: &Path, config: &SessionStrategyConfig) -> StrategyParts {
+fn make_session_strategy(
+  sdk_directory: &Path,
+  config: &SessionStrategyConfig,
+) -> StrategyWithWorker {
   make_session_strategy_with_time_provider(
     sdk_directory,
     config,
@@ -297,7 +300,7 @@ fn make_session_strategy_with_time_provider(
   sdk_directory: &Path,
   config: &SessionStrategyConfig,
   time_provider: Arc<dyn TimeProvider>,
-) -> StrategyParts {
+) -> StrategyWithWorker {
   match config {
     SessionStrategyConfig::Fixed => Strategy::fixed(sdk_directory, Arc::new(fixed::UUIDCallbacks)),
     SessionStrategyConfig::ActivityBased {
@@ -325,7 +328,7 @@ pub struct LoggerArgs {
 
 pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Result<LoggerHolder> {
   let session = make_session_strategy(sdk_directory, &args.session_strategy);
-  let session_strategy = session.strategy.clone();
+  let session_strategy = session.strategy();
   let storage_db = sdk_directory.join("defaults.db");
   let storage = SQLiteStorage::new(&storage_db);
   let store = Arc::new(bd_key_value::Store::new(Box::new(storage)));

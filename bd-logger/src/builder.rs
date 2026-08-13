@@ -271,10 +271,7 @@ impl LoggerBuilder {
       "bitdrift Capture SDK: {:?}",
       self.params.static_metadata.sdk_version()
     );
-    let bd_session::StrategyParts {
-      strategy: session_strategy,
-      persistence_worker: session_persistence_worker,
-    } = self.params.session;
+    let (session_strategy, session_persistence_worker) = self.params.session.into_parts();
 
     let init_lifecycle = InitLifecycleState::new();
 

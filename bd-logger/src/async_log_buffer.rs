@@ -635,7 +635,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             // Use the previous session ID if available and the provided timestamp.
             let session_id = match self.session_strategy.previous_process_session_id() {
               Some(session_id) => session_id,
-              None => self.session_strategy.session_id().await?,
+              None => self.session_strategy.session_id()?,
             };
             (
               session_id,
@@ -649,7 +649,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           Some(LogAttributesOverrides::OccurredAt(overridden_timestamp)) => {
             // Occurred at override provided. Emit log with overrides applied.
             (
-              self.session_strategy.session_id().await?,
+              self.session_strategy.session_id()?,
               overridden_timestamp,
               Some(LogFields::from([(
                 "_logged_at".into(),
@@ -660,7 +660,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           None => {
             // No overrides provided. Emit log without any overrides.
             (
-              self.session_strategy.session_id().await?,
+              self.session_strategy.session_id()?,
               metadata.timestamp,
               None,
             )
@@ -983,7 +983,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                   self.metadata_collector.remove_field(&field_name);
                 },
                 StateUpdateMessage::SetFeatureFlagExposure(flag, variant) => {
-                  let session_id = match self.session_strategy.session_id().await {
+                  let session_id = match self.session_strategy.session_id() {
                     Ok(session_id) => session_id,
                     Err(e) => {
                       log::debug!(

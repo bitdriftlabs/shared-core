@@ -73,6 +73,7 @@ pub(crate) struct LoadedState {
 
 #[derive(Clone, Debug, Default)]
 pub(crate) struct TransitionEffects {
+  persist: bool,
   notify_update: bool,
   callback: Option<DeferredCallback>,
 }
@@ -191,20 +192,35 @@ pub struct PersistenceWorker {
   receiver: mpsc::Receiver<PersistenceRequest>,
 }
 
-/// The strategy and its single persistence worker.
+/// A session strategy paired with its single persistence worker.
 ///
-/// Keep both values together until the logger takes ownership of `persistence_worker`.
+/// Pass this to the logger builder, which splits and owns both components for the logger's
+/// lifetime. Call [`Self::strategy`] when a platform needs the strategy handle before then.
 #[must_use]
-pub struct StrategyParts {
-  pub strategy: Arc<Strategy>,
-  pub persistence_worker: PersistenceWorker,
+pub struct StrategyWithWorker {
+  strategy: Arc<Strategy>,
+  persistence_worker: PersistenceWorker,
+}
+
+impl StrategyWithWorker {
+  /// Returns the strategy handle without consuming the paired persistence worker.
+  #[must_use]
+  pub fn strategy(&self) -> Arc<Strategy> {
+    self.strategy.clone()
+  }
+
+  /// Separates the strategy from its worker for the logger's internal lifecycle management.
+  #[must_use]
+  pub fn into_parts(self) -> (Arc<Strategy>, PersistenceWorker) {
+    (self.strategy, self.persistence_worker)
+  }
 }
 
 impl Strategy {
   pub fn fixed(
     sdk_directory: impl AsRef<Path>,
     callbacks: Arc<dyn fixed::Callbacks>,
-  ) -> StrategyParts {
+  ) -> StrategyWithWorker {
     Self::make_parts(
       Backend::Fixed(fixed::Strategy::new(callbacks)),
       sdk_directory,
@@ -216,7 +232,7 @@ impl Strategy {
     inactivity_threshold: time::Duration,
     callbacks: Arc<dyn activity_based::Callbacks>,
     time_provider: Arc<dyn TimeProvider>,
-  ) -> StrategyParts {
+  ) -> StrategyWithWorker {
     Self::make_parts(
       Backend::ActivityBased(activity_based::Strategy::new(
         inactivity_threshold,
@@ -227,7 +243,7 @@ impl Strategy {
     )
   }
 
-  fn make_parts(backend: Backend, sdk_directory: impl AsRef<Path>) -> StrategyParts {
+  fn make_parts(backend: Backend, sdk_directory: impl AsRef<Path>) -> StrategyWithWorker {
     let (update_tx, _) = watch::channel(0);
     let (persistence_tx, persistence_rx) = mpsc::channel(1);
     let strategy = Arc::new(Self {
@@ -238,7 +254,7 @@ impl Strategy {
       update_tx,
       callback_in_progress: Box::new(ThreadLocal::new()),
     });
-    StrategyParts {
+    StrategyWithWorker {
       strategy: strategy.clone(),
       persistence_worker: PersistenceWorker {
         strategy,
@@ -267,26 +283,21 @@ impl Strategy {
   ///
   /// This is synchronous so caller-thread APIs do not depend on the logger task making progress.
   /// Persistence is coalesced by the background flusher after this method returns.
-  pub fn session_id_sync(&self) -> anyhow::Result<String> {
+  pub fn session_id(&self) -> anyhow::Result<String> {
     self.ensure_not_in_callback("session_id")?;
 
-    let (current_session_id, effects, wake_persistence) = {
+    let (current_session_id, effects) = {
       let mut guard = self.state.lock();
       if let Some(state) = guard.as_mut() {
         // Session reads and activity updates share the same transition path so activity-based
         // sessions can rotate or persist last-activity state while fixed sessions stay unchanged.
-        let was_persistence_pending = state.persistence_pending;
         let effects = match &self.backend {
           Backend::Fixed(_) => fixed::Strategy::on_session_id(state),
           Backend::ActivityBased(strategy) => strategy.on_session_id(state),
         };
 
         let current_session_id = Self::loaded_session_id(state)?;
-        (
-          current_session_id,
-          effects,
-          !was_persistence_pending && state.persistence_pending,
-        )
+        (current_session_id, effects)
       } else {
         // The first read initializes from durable state and may enqueue a deferred callback if the
         // backend decides the current access should create or rotate a session.
@@ -296,24 +307,20 @@ impl Strategy {
         let current_session_id = Self::loaded_session_id(&initialization.state)?;
         log::debug!(
           "initialized session state on first read: backend={}, current_session_id={}, \
-           persistence_pending={}, notify_update={}, callback={}, pending_started_sessions={}",
+           persist={}, notify_update={}, callback={}, pending_started_sessions={}",
           self.type_name(),
           current_session_id,
-          initialization.state.persistence_pending,
+          initialization.effects.persist,
           initialization.effects.notify_update,
           initialization.effects.callback.is_some(),
           initialization.state.pending_started_sessions.len()
         );
 
-        (
-          current_session_id,
-          initialization.effects,
-          initialization.state.persistence_pending,
-        )
+        (current_session_id, initialization.effects)
       }
     };
 
-    self.apply_effects(effects, wake_persistence);
+    self.apply_effects(effects);
     Ok(current_session_id)
   }
 
@@ -321,25 +328,13 @@ impl Strategy {
   pub fn start_new_session(&self) -> anyhow::Result<()> {
     self.ensure_not_in_callback("start_new_session")?;
 
-    let (effects, wake_persistence) = {
+    let effects = {
       let mut guard = self.state.lock();
-      let was_persistence_pending = guard
-        .as_ref()
-        .is_some_and(|state| state.persistence_pending);
-      let effects = self.start_new_session_locked(&mut guard);
-      let wake_persistence = guard
-        .as_ref()
-        .is_some_and(|state| !was_persistence_pending && state.persistence_pending);
-      (effects, wake_persistence)
+      self.start_new_session_locked(&mut guard)
     };
 
-    self.apply_effects(effects, wake_persistence);
+    self.apply_effects(effects);
     Ok(())
-  }
-
-  #[allow(clippy::unused_async)] // Preserve the established asynchronous session API.
-  pub async fn session_id(&self) -> anyhow::Result<String> {
-    self.session_id_sync()
   }
 
   fn ensure_not_in_callback(&self, operation: &str) -> anyhow::Result<()> {
@@ -405,8 +400,7 @@ impl Strategy {
     )
   }
 
-  #[allow(clippy::unused_async)] // Preserve the established asynchronous session API.
-  pub async fn handshake_state_update(&self) -> PendingStateUpdate {
+  pub fn handshake_state_update(&self) -> PendingStateUpdate {
     let state = self.load_state_for_update();
 
     let mut request_started_sessions = state.pending_started_sessions.clone();
@@ -442,8 +436,7 @@ impl Strategy {
     }
   }
 
-  #[allow(clippy::unused_async)] // Preserve the established asynchronous session API.
-  pub async fn pending_state_update(&self) -> Option<PendingStateUpdate> {
+  pub fn pending_state_update(&self) -> Option<PendingStateUpdate> {
     // Mid-stream state updates only send the durable queue. Unlike the handshake, they do not
     // synthesize the current session because the queue should already contain every unsent start.
     let state = self.load_state_for_update();
@@ -478,13 +471,12 @@ impl Strategy {
     })
   }
 
-  #[allow(clippy::unused_async)] // Preserve the established asynchronous session API.
-  pub async fn acknowledge_state_update(&self, update: &PendingStateUpdate) {
+  pub fn acknowledge_state_update(&self, update: &PendingStateUpdate) {
     if update.started_sessions.is_empty() {
       return;
     }
 
-    let (pending_started_sessions, wake_persistence) = {
+    let pending_started_sessions = {
       let mut guard = self.state.lock();
       if guard.is_none() {
         *guard = Some(LoadedState {
@@ -512,15 +504,11 @@ impl Strategy {
         return;
       }
 
-      let was_persistence_pending = state.persistence_pending;
       state
         .pending_started_sessions
         .drain(.. update.started_sessions.len());
       state.persistence_pending = true;
-      (
-        state.pending_started_sessions.clone(),
-        !was_persistence_pending,
-      )
+      state.pending_started_sessions.clone()
     };
 
     log::debug!(
@@ -528,13 +516,11 @@ impl Strategy {
       self.type_name(),
       pending_started_sessions.len()
     );
-    self.apply_effects(
-      TransitionEffects {
-        notify_update: true,
-        callback: None,
-      },
-      wake_persistence,
-    );
+    self.apply_effects(TransitionEffects {
+      persist: true,
+      notify_update: true,
+      callback: None,
+    });
   }
 
   /// Pretty name of the strategy.
@@ -598,7 +584,7 @@ impl Strategy {
   }
 
   fn load_state_for_update(&self) -> LoadedState {
-    let (state, effects, wake_persistence) = {
+    let (state, effects) = {
       let mut guard = self.state.lock();
       if let Some(state) = guard.clone() {
         log::debug!(
@@ -617,22 +603,18 @@ impl Strategy {
       *guard = Some(initialization.state.clone());
       log::debug!(
         "initialized session state for update flow: backend={}, current_session_id={}, \
-         persistence_pending={}, notify_update={}, callback={}, pending_started_sessions={}",
+         persist={}, notify_update={}, callback={}, pending_started_sessions={}",
         self.type_name(),
         initialization.state.persisted.current_session_id,
-        initialization.state.persistence_pending,
+        initialization.effects.persist,
         initialization.effects.notify_update,
         initialization.effects.callback.is_some(),
         initialization.state.pending_started_sessions.len()
       );
-      (
-        initialization.state.clone(),
-        initialization.effects,
-        initialization.state.persistence_pending,
-      )
+      (initialization.state.clone(), initialization.effects)
     };
 
-    self.apply_effects(effects, wake_persistence);
+    self.apply_effects(effects);
     state
   }
 
@@ -672,11 +654,11 @@ impl Strategy {
     };
 
     log::debug!(
-      "computed explicit session rotation: backend={}, current_session_id={}, \
-       persistence_pending={}, notify_update={}, callback={}, pending_started_sessions={}",
+      "computed explicit session rotation: backend={}, current_session_id={}, persist={}, \
+       notify_update={}, callback={}, pending_started_sessions={}",
       self.type_name(),
       initialization.state.persisted.current_session_id,
-      initialization.state.persistence_pending,
+      initialization.effects.persist,
       initialization.effects.notify_update,
       initialization.effects.callback.is_some(),
       initialization.state.pending_started_sessions.len()
@@ -686,16 +668,16 @@ impl Strategy {
     initialization.effects
   }
 
-  fn apply_effects(&self, effects: TransitionEffects, wake_persistence: bool) {
-    if !wake_persistence && !effects.notify_update && effects.callback.is_none() {
+  fn apply_effects(&self, effects: TransitionEffects) {
+    if !effects.persist && !effects.notify_update && effects.callback.is_none() {
       return;
     }
 
     log::debug!(
-      "applying session transition effects: backend={}, wake_persistence={}, notify_update={}, \
+      "applying session transition effects: backend={}, persist={}, notify_update={}, \
        callback={}, pending_started_sessions={}",
       self.type_name(),
-      wake_persistence,
+      effects.persist,
       effects.notify_update,
       effects.callback.is_some(),
       self
@@ -705,7 +687,8 @@ impl Strategy {
         .map_or(0, |state| state.pending_started_sessions.len())
     );
 
-    if wake_persistence {
+    if effects.persist {
+      // A full channel already holds a request that will persist the newest in-memory snapshot.
       let _ignored = self.persistence_tx.try_send(PersistenceRequest::Persist);
     }
     if effects.notify_update {
@@ -714,7 +697,7 @@ impl Strategy {
     self.run_callback(effects.callback);
   }
 
-  async fn persist_latest(&self, on_persistence_failure: &(dyn Fn() + Send + Sync)) {
+  async fn persist_current_state(&self, on_persistence_failure: &(dyn Fn() + Send + Sync)) {
     let Some(snapshot) = self.state.lock().as_mut().and_then(|state| {
       state.persistence_pending.then(|| {
         state.persistence_pending = false;
@@ -793,20 +776,25 @@ impl PersistenceWorker {
     loop {
       tokio::select! {
         Some(request) = self.receiver.recv() => {
-          let completion_tx = match request {
-            PersistenceRequest::Persist => None,
-            PersistenceRequest::Flush(completion_tx) => Some(completion_tx),
-          };
-          self.strategy.persist_latest(&on_persistence_failure).await;
-          if let Some(completion_tx) = completion_tx {
-            let _ignored = completion_tx.send(());
+          match request {
+            PersistenceRequest::Persist => {
+              self.strategy.persist_current_state(&on_persistence_failure).await;
+            },
+            PersistenceRequest::Flush(completion_tx) => {
+              // A mutation may have coalesced behind this barrier while it occupied the channel.
+              self.strategy.persist_current_state(&on_persistence_failure).await;
+              let _ignored = completion_tx.send(());
+            },
           }
         },
         () = &mut shutdown => {
-          self.strategy.persist_latest(&on_persistence_failure).await;
+          self.strategy.persist_current_state(&on_persistence_failure).await;
           while let Ok(request) = self.receiver.try_recv() {
-            if let PersistenceRequest::Flush(completion_tx) = request {
-              let _ignored = completion_tx.send(());
+            match request {
+              PersistenceRequest::Persist => {},
+              PersistenceRequest::Flush(completion_tx) => {
+                let _ignored = completion_tx.send(());
+              },
             }
           }
           return;

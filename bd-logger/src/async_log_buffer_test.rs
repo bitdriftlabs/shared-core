@@ -87,7 +87,7 @@ impl Setup {
     let collector = Collector::default();
     let stats = Stats::new(collector.clone());
     let (data_upload_tx, data_upload_rx) = mpsc::channel(1);
-    let session_strategy = Strategy::fixed(tmp_dir.path(), Arc::new(UUIDCallbacks)).strategy;
+    let session_strategy = Strategy::fixed(tmp_dir.path(), Arc::new(UUIDCallbacks)).strategy();
 
     Self {
       buffer_manager: bd_buffer::Manager::new(
@@ -743,7 +743,7 @@ async fn updates_system_session_id_for_new_sessions() {
   let handle =
     tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
 
-  let first_session_id = setup.session_strategy.session_id().await.unwrap();
+  let first_session_id = setup.session_strategy.session_id().unwrap();
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
     &sender,
     0,
@@ -757,7 +757,7 @@ async fn updates_system_session_id_for_new_sessions() {
   ));
 
   setup.session_strategy.start_new_session().unwrap();
-  let second_session_id = setup.session_strategy.session_id().await.unwrap();
+  let second_session_id = setup.session_strategy.session_id().unwrap();
   assert_ne!(first_session_id, second_session_id);
 
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
@@ -855,7 +855,7 @@ async fn previous_run_log_does_not_override_system_session_id() {
   let handle =
     tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
 
-  let current_session_id = setup.session_strategy.session_id().await.unwrap();
+  let current_session_id = setup.session_strategy.session_id().unwrap();
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
     &sender,
     0,
@@ -869,7 +869,7 @@ async fn previous_run_log_does_not_override_system_session_id() {
   ));
 
   setup.session_strategy.start_new_session().unwrap();
-  let next_session_id = setup.session_strategy.session_id().await.unwrap();
+  let next_session_id = setup.session_strategy.session_id().unwrap();
   assert_ne!(current_session_id, next_session_id);
 
   let log = LogLine {
@@ -914,7 +914,7 @@ async fn pre_config_logs_trigger_session_id_update() {
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
 
-  let first_session_id = setup.session_strategy.session_id().await.unwrap();
+  let first_session_id = setup.session_strategy.session_id().unwrap();
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
     &sender,
     0,
@@ -928,7 +928,7 @@ async fn pre_config_logs_trigger_session_id_update() {
   ));
 
   setup.session_strategy.start_new_session().unwrap();
-  let second_session_id = setup.session_strategy.session_id().await.unwrap();
+  let second_session_id = setup.session_strategy.session_id().unwrap();
   assert_ne!(first_session_id, second_session_id);
 
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(

@@ -501,7 +501,7 @@ impl Monitor {
 
   async fn get_session_id(&self, origin: ReportOrigin) -> anyhow::Result<String> {
     match origin {
-      ReportOrigin::Current => self.session.session_id().await,
+      ReportOrigin::Current => self.session.session_id(),
       ReportOrigin::Previous => Ok(
         self
           .session

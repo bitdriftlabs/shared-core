@@ -210,17 +210,17 @@ fn session_id_runs_fixed_strategy_callback_on_calling_thread() {
 fn logger_shutdown_flushes_session_persistence() {
   let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
   let session = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
-  let session_strategy = session.strategy.clone();
+  let session_strategy = session.strategy();
   let setup = Setup::new_with_options(SetupOptions {
     sdk_directory: sdk_directory.clone(),
     session_strategy: Some(session),
     ..Default::default()
   });
 
-  let session_id = session_strategy.session_id_sync().unwrap();
+  let session_id = session_strategy.session_id().unwrap();
   setup.logger.shutdown(true);
 
-  let restarted = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks)).strategy;
+  let restarted = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks)).strategy();
   assert_eq!(Some(session_id), restarted.previous_process_session_id());
 }
 
@@ -568,17 +568,12 @@ fn log_upload_attributes_override() {
 
   let time_first = datetime!(2024-06-01 12:00:00 UTC);
   let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
-  let bd_session::StrategyParts {
-    strategy: previous_session,
-    persistence_worker: previous_session_worker,
-  } = bd_session::Strategy::fixed(
+  let (previous_session, previous_session_worker) = bd_session::Strategy::fixed(
     sdk_directory.path(),
     Arc::new(StaticSessionId("foo_overridden".to_string())),
-  );
-  assert_eq!(
-    tokio_test::block_on(previous_session.session_id()).unwrap(),
-    "foo_overridden"
-  );
+  )
+  .into_parts();
+  assert_eq!(previous_session.session_id().unwrap(), "foo_overridden");
   tokio_test::block_on(bd_session::test::flush(
     previous_session,
     previous_session_worker,

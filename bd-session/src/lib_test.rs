@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::test::flush;
-use super::{PendingStateUpdate, Strategy, StrategyParts};
+use super::{PendingStateUpdate, Strategy, StrategyWithWorker};
 use crate::persistence::{BackendState, PersistedSessionState, Store};
 use crate::{activity_based, fixed};
 use bd_proto::protos::client::api::StateUpdateRequest;
@@ -54,14 +54,14 @@ impl activity_based::Callbacks for ActivityCallbacks {
   fn session_id_changed(&self, _session_id: &str) {}
 }
 
-fn fixed_strategy(sdk_directory: &TempDir, session_ids: &[&str]) -> StrategyParts {
+fn fixed_strategy(sdk_directory: &TempDir, session_ids: &[&str]) -> StrategyWithWorker {
   Strategy::fixed(
     sdk_directory.path(),
     Arc::new(FixedCallbacks::new(session_ids)),
   )
 }
 
-fn activity_strategy(sdk_directory: &TempDir, now: OffsetDateTime) -> StrategyParts {
+fn activity_strategy(sdk_directory: &TempDir, now: OffsetDateTime) -> StrategyWithWorker {
   Strategy::activity_based(
     sdk_directory.path(),
     Duration::minutes(30),
@@ -85,7 +85,7 @@ fn started_session_ids(request: &StateUpdateRequest) -> Vec<String> {
 #[tokio::test]
 async fn persistence_flusher_coalesces_to_latest_state_on_shutdown() {
   let sdk_directory = TempDir::new().unwrap();
-  let StrategyParts {
+  let StrategyWithWorker {
     strategy,
     persistence_worker: worker,
   } = fixed_strategy(&sdk_directory, &["session-1", "session-2"]);
@@ -97,9 +97,9 @@ async fn persistence_flusher_coalesces_to_latest_state_on_shutdown() {
     || {},
   ));
 
-  let first_session_id = strategy.session_id().await.unwrap();
+  let first_session_id = strategy.session_id().unwrap();
   strategy.start_new_session().unwrap();
-  let second_session_id = strategy.session_id().await.unwrap();
+  let second_session_id = strategy.session_id().unwrap();
 
   let _ignored = shutdown_tx.send(());
   flusher.await.unwrap();
@@ -119,11 +119,11 @@ async fn persistence_flusher_coalesces_to_latest_state_on_shutdown() {
 #[tokio::test]
 async fn flush_request_waits_for_persistence_worker() {
   let sdk_directory = TempDir::new().unwrap();
-  let StrategyParts {
+  let StrategyWithWorker {
     strategy,
     persistence_worker: worker,
   } = fixed_strategy(&sdk_directory, &["session-1"]);
-  let session_id = strategy.session_id().await.unwrap();
+  let session_id = strategy.session_id().unwrap();
 
   let flush_strategy = strategy.clone();
   let flush = tokio::spawn(async move { flush_strategy.flush().await });
@@ -151,21 +151,21 @@ async fn flush_request_waits_for_persistence_worker() {
 #[tokio::test]
 async fn handshake_synthesizes_current_session_after_pending_queue_is_acked() {
   let sdk_directory = TempDir::new().unwrap();
-  let StrategyParts { strategy, .. } = fixed_strategy(&sdk_directory, &["session-1"]);
+  let StrategyWithWorker { strategy, .. } = fixed_strategy(&sdk_directory, &["session-1"]);
 
-  let session_id = strategy.session_id().await.unwrap();
-  let pending = strategy.pending_state_update().await.unwrap();
+  let session_id = strategy.session_id().unwrap();
+  let pending = strategy.pending_state_update().unwrap();
 
   assert_eq!(
     vec![session_id.clone()],
     started_session_ids(pending.request())
   );
 
-  strategy.acknowledge_state_update(&pending).await;
+  strategy.acknowledge_state_update(&pending);
 
-  assert!(strategy.pending_state_update().await.is_none());
+  assert!(strategy.pending_state_update().is_none());
 
-  let handshake = strategy.handshake_state_update().await;
+  let handshake = strategy.handshake_state_update();
   assert_eq!(vec![session_id], started_session_ids(handshake.request()));
   assert!(handshake.started_sessions.is_empty());
 }
@@ -173,12 +173,13 @@ async fn handshake_synthesizes_current_session_after_pending_queue_is_acked() {
 #[tokio::test]
 async fn acknowledge_state_update_ignores_non_prefix_updates() {
   let sdk_directory = TempDir::new().unwrap();
-  let StrategyParts { strategy, .. } = fixed_strategy(&sdk_directory, &["session-1", "session-2"]);
+  let StrategyWithWorker { strategy, .. } =
+    fixed_strategy(&sdk_directory, &["session-1", "session-2"]);
 
-  strategy.session_id().await.unwrap();
+  strategy.session_id().unwrap();
   strategy.start_new_session().unwrap();
 
-  let pending = strategy.pending_state_update().await.unwrap();
+  let pending = strategy.pending_state_update().unwrap();
   assert_eq!(
     vec!["session-1".to_string(), "session-2".to_string()],
     started_session_ids(pending.request())
@@ -189,9 +190,9 @@ async fn acknowledge_state_update_ignores_non_prefix_updates() {
     started_sessions: vec![pending.started_sessions[1].clone()],
   };
 
-  strategy.acknowledge_state_update(&fake_update).await;
+  strategy.acknowledge_state_update(&fake_update);
 
-  let still_pending = strategy.pending_state_update().await.unwrap();
+  let still_pending = strategy.pending_state_update().unwrap();
   assert_eq!(
     vec!["session-1".to_string(), "session-2".to_string()],
     started_session_ids(still_pending.request())
@@ -201,15 +202,15 @@ async fn acknowledge_state_update_ignores_non_prefix_updates() {
 #[tokio::test]
 async fn subscribe_updates_changes_on_initialization_and_acknowledgement() {
   let sdk_directory = TempDir::new().unwrap();
-  let StrategyParts { strategy, .. } = fixed_strategy(&sdk_directory, &["session-1"]);
+  let StrategyWithWorker { strategy, .. } = fixed_strategy(&sdk_directory, &["session-1"]);
   let updates = strategy.subscribe_updates();
 
   assert_eq!(0, *updates.borrow());
 
-  let pending = strategy.pending_state_update().await.unwrap();
+  let pending = strategy.pending_state_update().unwrap();
   assert_eq!(1, *updates.borrow());
 
-  strategy.acknowledge_state_update(&pending).await;
+  strategy.acknowledge_state_update(&pending);
   assert_eq!(2, *updates.borrow());
 }
 
@@ -217,19 +218,19 @@ async fn subscribe_updates_changes_on_initialization_and_acknowledgement() {
 async fn restart_rebuilds_pending_queue_from_persisted_state() {
   let sdk_directory = TempDir::new().unwrap();
 
-  let StrategyParts {
+  let StrategyWithWorker {
     strategy: first_strategy,
     persistence_worker: first_worker,
   } = fixed_strategy(&sdk_directory, &["session-1"]);
-  let first_session_id = first_strategy.session_id().await.unwrap();
+  let first_session_id = first_strategy.session_id().unwrap();
   flush(first_strategy.clone(), first_worker).await;
   drop(first_strategy);
 
-  let StrategyParts {
+  let StrategyWithWorker {
     strategy: restarted_strategy,
     ..
   } = fixed_strategy(&sdk_directory, &["session-2"]);
-  let pending = restarted_strategy.pending_state_update().await.unwrap();
+  let pending = restarted_strategy.pending_state_update().unwrap();
 
   assert_eq!(
     vec![first_session_id, "session-2".to_string()],
@@ -244,11 +245,11 @@ async fn restart_rebuilds_pending_queue_from_persisted_state() {
 #[tokio::test]
 async fn handshake_does_not_duplicate_current_session_when_queue_already_contains_it() {
   let sdk_directory = TempDir::new().unwrap();
-  let StrategyParts { strategy, .. } = fixed_strategy(&sdk_directory, &["session-1"]);
+  let StrategyWithWorker { strategy, .. } = fixed_strategy(&sdk_directory, &["session-1"]);
 
-  strategy.session_id().await.unwrap();
+  strategy.session_id().unwrap();
 
-  let handshake = strategy.handshake_state_update().await;
+  let handshake = strategy.handshake_state_update();
   assert_eq!(
     vec!["session-1".to_string()],
     started_session_ids(handshake.request())
@@ -260,19 +261,19 @@ async fn handshake_does_not_duplicate_current_session_when_queue_already_contain
 async fn switching_from_fixed_to_activity_resyncs_persisted_backend() {
   let sdk_directory = TempDir::new().unwrap();
 
-  let StrategyParts {
+  let StrategyWithWorker {
     strategy: first_strategy,
     persistence_worker: first_worker,
   } = fixed_strategy(&sdk_directory, &["fixed-session"]);
-  let first_session_id = first_strategy.session_id().await.unwrap();
+  let first_session_id = first_strategy.session_id().unwrap();
   flush(first_strategy.clone(), first_worker).await;
   drop(first_strategy);
 
-  let StrategyParts {
+  let StrategyWithWorker {
     strategy: restarted_strategy,
     persistence_worker: restarted_worker,
   } = activity_strategy(&sdk_directory, OffsetDateTime::now_utc());
-  let pending = restarted_strategy.pending_state_update().await.unwrap();
+  let pending = restarted_strategy.pending_state_update().unwrap();
   let restarted_session_id = restarted_strategy.try_current_session_id().unwrap();
   flush(restarted_strategy.clone(), restarted_worker).await;
 
@@ -295,19 +296,19 @@ async fn switching_from_fixed_to_activity_resyncs_persisted_backend() {
 async fn switching_from_activity_to_fixed_resyncs_persisted_backend() {
   let sdk_directory = TempDir::new().unwrap();
 
-  let StrategyParts {
+  let StrategyWithWorker {
     strategy: first_strategy,
     persistence_worker: first_worker,
   } = activity_strategy(&sdk_directory, OffsetDateTime::now_utc());
-  let first_session_id = first_strategy.session_id().await.unwrap();
+  let first_session_id = first_strategy.session_id().unwrap();
   flush(first_strategy.clone(), first_worker).await;
   drop(first_strategy);
 
-  let StrategyParts {
+  let StrategyWithWorker {
     strategy: restarted_strategy,
     persistence_worker: restarted_worker,
   } = fixed_strategy(&sdk_directory, &["fixed-session"]);
-  let pending = restarted_strategy.pending_state_update().await.unwrap();
+  let pending = restarted_strategy.pending_state_update().unwrap();
   let restarted_session_id = restarted_strategy.try_current_session_id().unwrap();
   flush(restarted_strategy.clone(), restarted_worker).await;
 

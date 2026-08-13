@@ -105,16 +105,17 @@ impl Strategy {
             OffsetDateTime::from(state.persisted.current_session_start),
           ));
         state.persistence_pending = true;
+        effects.persist = true;
         effects.notify_update = true;
       }
 
       log::debug!(
         "initialized activity-based session from persisted state: current_session_id={}, \
-         previous_process_session_id={:?}, persistence_pending={}, notify_update={}, \
+         previous_process_session_id={:?}, persist={}, notify_update={}, \
          pending_started_sessions={}",
         state.persisted.current_session_id,
         state.persisted.previous_process_session_id,
-        state.persistence_pending,
+        effects.persist,
         effects.notify_update,
         state.pending_started_sessions.len()
       );
@@ -146,6 +147,7 @@ impl Strategy {
           persistence_pending: true,
         },
         effects: TransitionEffects {
+          persist: true,
           notify_update: true,
           callback: Some(DeferredCallback::ActivitySessionChanged(session_id)),
         },
@@ -218,6 +220,7 @@ impl Strategy {
       );
 
       TransitionEffects {
+        persist: true,
         notify_update: true,
         callback: Some(DeferredCallback::ActivitySessionChanged(session_id)),
       }
@@ -232,7 +235,10 @@ impl Strategy {
          current_session_id={previous_session_id}, last_activity={now:?}"
       );
 
-      TransitionEffects::default()
+      TransitionEffects {
+        persist: true,
+        ..Default::default()
+      }
     } else {
       log::debug!(
         "leaving activity-based session unchanged: current_session_id={previous_session_id}, no \
@@ -282,6 +288,7 @@ impl Strategy {
         persistence_pending: true,
       },
       effects: TransitionEffects {
+        persist: true,
         notify_update: true,
         callback: None,
       },

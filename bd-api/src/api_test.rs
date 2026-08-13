@@ -320,7 +320,7 @@ impl Setup {
       sdk_directory.path(),
       Arc::new(bd_session::fixed::UUIDCallbacks),
     );
-    let session_strategy = session_parts.strategy;
+    let session_strategy = session_parts.strategy();
     let mut api = Api::new(
       sdk_directory.path().to_path_buf(),
       api_key.clone(),
@@ -562,7 +562,7 @@ impl Setup {
     // Response injection only guarantees the frame is enqueued to the API task. Tests that depend
     // on session-state side effects need to wait until the strategy queue reflects the ack.
     for _ in 0 .. 100 {
-      if self.session_strategy.pending_state_update().await.is_none() {
+      if self.session_strategy.pending_state_update().is_none() {
         return;
       }
 
@@ -1945,7 +1945,7 @@ async fn handshake_includes_opaque_entity_and_current_session() {
   );
   assert_eq!(1, state_update.started_sessions.len());
   assert_eq!(
-    setup.session_strategy.session_id().await.unwrap(),
+    setup.session_strategy.session_id().unwrap(),
     state_update.started_sessions[0].session_id
   );
 }
@@ -2052,7 +2052,7 @@ async fn session_state_update_is_resent_until_acked() {
   setup.wait_for_cleared_pending_session_update().await;
 
   setup.session_strategy.start_new_session().unwrap();
-  let next_session_id = setup.session_strategy.session_id().await.unwrap();
+  let next_session_id = setup.session_strategy.session_id().unwrap();
 
   let request = setup.next_request(1.seconds()).await.unwrap();
   let Some(Request_type::StateUpdate(state_update)) = request.request_type else {

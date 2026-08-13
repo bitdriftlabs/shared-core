@@ -81,6 +81,7 @@ impl Strategy {
         persistence_pending: true,
       },
       effects: TransitionEffects {
+        persist: true,
         notify_update: true,
         callback: None,
       },
@@ -128,6 +129,7 @@ impl Strategy {
         persistence_pending: true,
       },
       effects: TransitionEffects {
+        persist: true,
         notify_update: true,
         callback: None,
       },
