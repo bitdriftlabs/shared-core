@@ -4,11 +4,10 @@ on:
   issue_comment:
     types: [created]
 
-# The command runs pull-request code. Keep its token unprivileged, and only use the
-# issues permission after the benchmark to report the result on the pull request.
+# The benchmark executes pull-request code, so keep its workflow-level token read-only. The
+# separate reporting job receives the write permissions needed to comment on the pull request.
 permissions:
   contents: read
-  issues: write
   pull-requests: read
 
 concurrency:
@@ -17,6 +16,11 @@ concurrency:
 
 jobs:
   benchmark:
+    outputs:
+      base_sha: ${{ steps.pr.outputs.base_sha }}
+      benchmark: ${{ steps.benchmark.outputs.name }}
+      head_sha: ${{ steps.pr.outputs.head_sha }}
+      merge_base_sha: ${{ steps.pr.outputs.merge_base_sha }}
     if: >-
       github.event.issue.pull_request &&
       startsWith(github.event.comment.body, '/benchmark ') &&
@@ -127,23 +131,96 @@ jobs:
           path: target/criterion
           if-no-files-found: warn
 
+  report:
+    needs: benchmark
+    if: always() && needs.benchmark.result != 'skipped'
+    permissions:
+      issues: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Criterion report
+        if: needs.benchmark.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.benchmark.outputs.benchmark }}-benchmark-pr-${{ github.event.issue.number }}
+          path: criterion
+
       - name: Report result
-        if: always()
         uses: actions/github-script@v7
         env:
-          BENCHMARK: ${{ steps.benchmark.outputs.name }}
-          BASE_SHA: ${{ steps.pr.outputs.base_sha }}
-          HEAD_SHA: ${{ steps.pr.outputs.head_sha }}
-          MERGE_BASE: ${{ steps.pr.outputs.merge_base_sha }}
-          RESULT: ${{ job.status }}
+          BENCHMARK: ${{ needs.benchmark.outputs.benchmark }}
+          BASE_SHA: ${{ needs.benchmark.outputs.base_sha }}
+          HEAD_SHA: ${{ needs.benchmark.outputs.head_sha }}
+          MERGE_BASE: ${{ needs.benchmark.outputs.merge_base_sha }}
+          RESULT: ${{ needs.benchmark.result }}
         with:
           script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+
             const marker = '<!-- shared-core-on-demand-benchmark -->';
             const result = process.env.RESULT === 'success' ? 'passed' : 'failed';
+            const criterionSummary = () => {
+              const estimates = [];
+              const visit = (directory) => {
+                for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+                  const entryPath = path.join(directory, entry.name);
+                  if (entry.isDirectory()) {
+                    visit(entryPath);
+                  } else if (entry.name === 'estimates.json' &&
+                             path.basename(path.dirname(entryPath)) === 'change') {
+                    estimates.push(entryPath);
+                  }
+                }
+              };
+
+              if (!fs.existsSync('criterion')) {
+                return 'Criterion comparison results were unavailable.';
+              }
+              visit('criterion');
+
+              const formatDuration = (nanoseconds) => {
+                const units = [
+                  [1e9, 's'],
+                  [1e6, 'ms'],
+                  [1e3, 'µs'],
+                  [1, 'ns'],
+                ];
+                const [scale, unit] = units.find(([scale]) => Math.abs(nanoseconds) >= scale) ||
+                  units[units.length - 1];
+                return `${nanoseconds < 0 ? '-' : '+'}${(Math.abs(nanoseconds) / scale).toFixed(2)} ${unit}`;
+              };
+
+              const rows = estimates.flatMap((changePath) => {
+                const benchmarkDirectory = path.dirname(path.dirname(changePath));
+                const readMean = (directory) => JSON.parse(
+                  fs.readFileSync(path.join(benchmarkDirectory, directory, 'estimates.json'), 'utf8'),
+                ).mean?.point_estimate;
+                const baselineMean = readMean('merge-base');
+                const headMean = readMean('new');
+                const relativeChange = readMean('change');
+                if (![baselineMean, headMean, relativeChange].every(Number.isFinite)) {
+                  return [];
+                }
+
+                const name = path.relative('criterion', benchmarkDirectory).replaceAll('|', '\\|');
+                return [[name, formatDuration(headMean - baselineMean), relativeChange * 100]];
+              }).sort(([left], [right]) => left.localeCompare(right));
+
+              if (rows.length === 0) {
+                return 'Criterion comparison results were unavailable.';
+              }
+              return `### Criterion mean change\n\n| Benchmark | Absolute | Percent |\n| --- | ---: | ---: |\n${rows.map(([name, absolute, percent]) =>
+                `| \`${name}\` | ${absolute} | ${percent >= 0 ? '+' : ''}${percent.toFixed(2)}% |`,
+              ).join('\n')}`;
+            };
             const body = `${marker}
             ## Benchmark: \`${process.env.BENCHMARK || 'unknown'}\` ${result}
 
             Compared \`${process.env.HEAD_SHA || 'unavailable'}\` with merge base \`${process.env.MERGE_BASE || 'unavailable'}\` (PR base \`${process.env.BASE_SHA || 'unavailable'}\`).
+            ${criterionSummary()}
+
             The Criterion HTML report is attached to this workflow run.`;
 
             const comments = await github.paginate(github.rest.issues.listComments, {
