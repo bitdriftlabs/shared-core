@@ -5,28 +5,13 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::Strategy;
+use crate::{PersistenceWorker, Strategy};
 use std::sync::Arc;
 
-// External integration tests still need the previous best-effort start-new-session behavior so
-// they can exercise queueing and re-entrancy flows without relying on a production-only wrapper.
-#[allow(clippy::unused_async)] // Preserve this helper's external asynchronous test API.
-pub async fn start_new_session(strategy: &Strategy) {
-  match strategy.start_new_session_sync() {
-    Ok(()) => {},
-    Err(e) => {
-      log::error!("bitdrift Capture failed to start new session: {e:?}");
-      return;
-    },
-  }
-
-  log::info!("bitdrift Capture started new session");
-}
-
 /// Runs a test-only worker around an explicit persistence barrier.
-pub async fn flush(strategy: Arc<Strategy>) {
+pub async fn flush(strategy: Arc<Strategy>, worker: PersistenceWorker) {
   let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
-  let flusher = tokio::spawn(strategy.clone().run_persistence_flusher(
+  let flusher = tokio::spawn(worker.run(
     async move {
       let _ignored = shutdown_rx.await;
     },

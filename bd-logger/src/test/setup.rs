@@ -24,8 +24,8 @@ use bd_proto::protos::client::api::configuration_update_ack::Nack;
 use bd_proto::protos::config::v1::config::{BufferConfigList, buffer_config};
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::FeatureFlag as _;
-use bd_session::Strategy;
 use bd_session::fixed::UUIDCallbacks;
+use bd_session::{Strategy, StrategyParts};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_test_helpers::config_helper::{
   configuration_update,
@@ -106,7 +106,7 @@ pub struct SetupOptions {
   pub disk_storage: bool,
   pub start_in_sleep_mode: bool,
   pub time_provider: Option<Arc<dyn TimeProvider>>,
-  pub session_strategy: Option<Arc<Strategy>>,
+  pub session_strategy: Option<StrategyParts>,
   pub extra_runtime_values: Vec<(&'static str, ValueKind)>,
   pub handshake_response_plans: Vec<HandshakeResponsePlan>,
   pub stats_upload_response_plans: Vec<StatsUploadResponsePlan>,
@@ -212,17 +212,14 @@ impl Setup {
 
     let (flush_tick_tx, flush_ticker) = TestTicker::new();
     let (upload_tick_tx, upload_ticker) = TestTicker::new();
-    let session_strategy = options.session_strategy.unwrap_or_else(|| {
-      Arc::new(Strategy::fixed(
-        options.sdk_directory.path(),
-        Arc::new(UUIDCallbacks),
-      ))
-    });
+    let session = options
+      .session_strategy
+      .unwrap_or_else(|| Strategy::fixed(options.sdk_directory.path(), Arc::new(UUIDCallbacks)));
 
     let (logger, _, flush_trigger) = crate::LoggerBuilder::new(InitParams {
       sdk_directory: options.sdk_directory.path().into(),
       api_key: "foo-api-key".to_string(),
-      session_strategy,
+      session,
       metadata_provider: options.metadata_provider,
       resource_utilization_target: Box::new(EmptyTarget),
       session_replay_target,
@@ -527,11 +524,12 @@ pub fn create_minimal_init_params(sdk_directory: &std::path::Path) -> InitParams
   let device_store = Arc::new(Store::new(Box::new(
     bd_test_helpers::session::InMemoryStorage::default(),
   )));
+  let session = Strategy::fixed(sdk_directory, Arc::new(UUIDCallbacks));
 
   InitParams {
     sdk_directory: sdk_directory.into(),
     api_key: "test-api-key".to_string(),
-    session_strategy: Arc::new(Strategy::fixed(sdk_directory, Arc::new(UUIDCallbacks))),
+    session,
     metadata_provider: Arc::new(LogMetadata::default()),
     resource_utilization_target: Box::new(EmptyTarget),
     session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),

@@ -55,7 +55,6 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
-use bd_session::test::start_new_session;
 use bd_state::StateReader;
 use bd_stats_common::labels;
 use bd_test_helpers::make_mut;
@@ -317,10 +316,11 @@ impl Setup {
       &runtime_loader,
       &collector.scope("state"),
     );
-    let session_strategy = Arc::new(bd_session::Strategy::fixed(
+    let session_parts = bd_session::Strategy::fixed(
       sdk_directory.path(),
       Arc::new(bd_session::fixed::UUIDCallbacks),
-    ));
+    );
+    let session_strategy = session_parts.strategy;
     let mut api = Api::new(
       sdk_directory.path().to_path_buf(),
       api_key.clone(),
@@ -2051,7 +2051,7 @@ async fn session_state_update_is_resent_until_acked() {
     .await;
   setup.wait_for_cleared_pending_session_update().await;
 
-  start_new_session(&setup.session_strategy).await;
+  setup.session_strategy.start_new_session().unwrap();
   let next_session_id = setup.session_strategy.session_id().await.unwrap();
 
   let request = setup.next_request(1.seconds()).await.unwrap();

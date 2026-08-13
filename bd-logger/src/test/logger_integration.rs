@@ -191,7 +191,7 @@ fn session_id_runs_fixed_strategy_callback_on_calling_thread() {
   let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
   let app_lock = Arc::new(ReentrantMutex::new(()));
   let callbacks = Arc::new(LockingFixedCallbacks::new(app_lock.clone()));
-  let session_strategy = Arc::new(Strategy::fixed(sdk_directory.path(), callbacks.clone()));
+  let session_strategy = Strategy::fixed(sdk_directory.path(), callbacks.clone());
 
   let setup = Setup::new_with_options(SetupOptions {
     sdk_directory,
@@ -207,14 +207,32 @@ fn session_id_runs_fixed_strategy_callback_on_calling_thread() {
 }
 
 #[test]
+fn logger_shutdown_flushes_session_persistence() {
+  let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
+  let session = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
+  let session_strategy = session.strategy.clone();
+  let setup = Setup::new_with_options(SetupOptions {
+    sdk_directory: sdk_directory.clone(),
+    session_strategy: Some(session),
+    ..Default::default()
+  });
+
+  let session_id = session_strategy.session_id_sync().unwrap();
+  setup.logger.shutdown(true);
+
+  let restarted = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks)).strategy;
+  assert_eq!(Some(session_id), restarted.previous_process_session_id());
+}
+
+#[test]
 fn start_new_session_runs_fixed_strategy_callback_on_calling_thread() {
   let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
   let app_lock = Arc::new(ReentrantMutex::new(()));
   let callbacks = Arc::new(LockingFixedCallbacks::new(app_lock.clone()));
-  let session_strategy = Arc::new(Strategy::fixed(sdk_directory.path(), callbacks.clone()));
+  let session = Strategy::fixed(sdk_directory.path(), callbacks.clone());
 
   let mut init_params = crate::test::setup::create_minimal_init_params(sdk_directory.path());
-  init_params.session_strategy = session_strategy;
+  init_params.session = session;
 
   let logger = crate::LoggerBuilder::new(init_params)
     .build_dedicated_thread()
@@ -244,12 +262,12 @@ fn session_id_runs_activity_callback_on_calling_thread() {
   let time_provider = Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc()));
   let app_lock = Arc::new(ReentrantMutex::new(()));
   let callbacks = Arc::new(LockingActivityCallbacks::new(app_lock.clone()));
-  let session_strategy = Arc::new(Strategy::activity_based(
+  let session_strategy = Strategy::activity_based(
     sdk_directory.path(),
     30.seconds(),
     callbacks.clone(),
     time_provider.clone(),
-  ));
+  );
 
   let setup = Setup::new_with_options(SetupOptions {
     sdk_directory,
@@ -550,15 +568,21 @@ fn log_upload_attributes_override() {
 
   let time_first = datetime!(2024-06-01 12:00:00 UTC);
   let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
-  let previous_session = Arc::new(bd_session::Strategy::fixed(
+  let bd_session::StrategyParts {
+    strategy: previous_session,
+    persistence_worker: previous_session_worker,
+  } = bd_session::Strategy::fixed(
     sdk_directory.path(),
     Arc::new(StaticSessionId("foo_overridden".to_string())),
-  ));
+  );
   assert_eq!(
     tokio_test::block_on(previous_session.session_id()).unwrap(),
     "foo_overridden"
   );
-  tokio_test::block_on(bd_session::test::flush(previous_session));
+  tokio_test::block_on(bd_session::test::flush(
+    previous_session,
+    previous_session_worker,
+  ));
 
   let mut setup = Setup::new_with_options(SetupOptions {
     sdk_directory,
@@ -3729,13 +3753,11 @@ fn runtime_caching() {
     let store = in_memory_store();
     let device = Arc::new(bd_device::Device::new(store.clone()));
 
+    let session = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
     let logger = crate::LoggerBuilder::new(InitParams {
       api_key: "foo-api-key".to_string(),
       network,
-      session_strategy: Arc::new(Strategy::fixed(
-        sdk_directory.path(),
-        Arc::new(UUIDCallbacks),
-      )),
+      session,
       static_metadata: Arc::new(EmptyMetadata),
       store,
       resource_utilization_target: Box::new(EmptyTarget),

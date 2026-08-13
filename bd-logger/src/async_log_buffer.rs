@@ -25,7 +25,6 @@ use bd_buffer::BuffersWithAck;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_common::{maybe_await, maybe_await_map};
 use bd_client_stats::FlushTriggerRequest;
-use bd_client_stats_store::Counter;
 use bd_crash_handler::global_state;
 use bd_device::Store;
 use bd_log_metadata::MetadataProvider;
@@ -59,7 +58,6 @@ use bd_state::{
   Scope,
   string_value,
 };
-use bd_stats_common::Counter as _;
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflow_stats::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_workflows::workflow::WorkflowDebugStateMap;
@@ -338,8 +336,6 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   time_provider: Arc<dyn TimeProvider>,
   lifecycle_state: InitLifecycleState,
   sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
-  session_persistence_failures: Counter,
-
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
   last_session_id: Option<String>,
@@ -367,10 +363,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
     data_upload_tx: mpsc::Sender<DataUpload>,
   ) -> (Self, Sender) {
-    let session_persistence_failures = uninitialized_logging_context
-      .stats
-      .scope
-      .counter("session_persistence_failures");
     let (log_tx, log_rx) = channel(
       uninitialized_logging_context
         .pre_config_log_buffer
@@ -452,8 +444,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         time_provider,
         lifecycle_state,
         sdk_status_tracker,
-        session_persistence_failures,
-
         pending_workflow_debug_state: HashMap::new(),
         send_workflow_debug_state_delay: None,
         last_session_id: None,
@@ -889,24 +879,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // stored in pre-config log buffer are guaranteed to be replayed before
     // the async log buffer goes back to processing incoming logs.
 
-    let session_strategy = self.session_strategy.clone();
-    let session_persistence_failures = self.session_persistence_failures.clone();
-    let mut session_flusher_local_shutdown = shutdown.clone();
-    let mut session_flusher_self_shutdown = self.shutdown_trigger_handle.make_shutdown();
-    let session_flusher = tokio::spawn(async move {
-      session_strategy
-        .run_persistence_flusher(
-          async move {
-            tokio::select! {
-              () = session_flusher_local_shutdown.cancelled() => {},
-              () = session_flusher_self_shutdown.cancelled() => {},
-            }
-          },
-          move || session_persistence_failures.inc(),
-        )
-        .await;
-    });
-
     let local_shutdown = shutdown.cancelled();
     tokio::pin!(local_shutdown);
     let mut self_shutdown = self.shutdown_trigger_handle.make_shutdown();
@@ -1156,12 +1128,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         () = &mut local_shutdown => break,
         () = &mut self_shutdown => break,
       }
-    }
-
-    // The session flusher observes both run-loop shutdown paths. Await it here so a blocking
-    // logger shutdown includes the final coalesced session write.
-    if let Err(e) = session_flusher.await {
-      log::warn!("session persistence flusher terminated unexpectedly: {e}");
     }
 
     self

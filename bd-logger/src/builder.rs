@@ -54,6 +54,7 @@ use bd_state::{
   Value_type,
   string_value,
 };
+use bd_stats_common::Counter as _;
 use bd_time::{SystemTimeProvider, Ticker, TimeProvider};
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use futures_util::{Future, try_join};
@@ -270,6 +271,10 @@ impl LoggerBuilder {
       "bitdrift Capture SDK: {:?}",
       self.params.static_metadata.sdk_version()
     );
+    let bd_session::StrategyParts {
+      strategy: session_strategy,
+      persistence_worker: session_persistence_worker,
+    } = self.params.session;
 
     let init_lifecycle = InitLifecycleState::new();
 
@@ -295,6 +300,7 @@ impl LoggerBuilder {
     let collector = Collector::new(Some(max_dynamic_stats));
 
     let scope = collector.scope("");
+    let session_persistence_failures = scope.counter("session_persistence_failures");
     let stats = bd_client_stats::Stats::new(collector.clone());
     let (sleep_mode_active_tx, sleep_mode_active_rx) =
       watch::channel(self.params.start_in_sleep_mode);
@@ -362,7 +368,7 @@ impl LoggerBuilder {
         process_local_pending_flush_state.clone(),
       ),
       LoggerReplay,
-      self.params.session_strategy.clone(),
+      session_strategy.clone(),
       self.params.metadata_provider.clone(),
       self.params.resource_utilization_target,
       self.params.session_replay_target,
@@ -394,7 +400,7 @@ impl LoggerBuilder {
       scope.clone(),
       async_log_buffer_communication_tx.clone(),
       report_proc_tx,
-      self.params.session_strategy.clone(),
+      session_strategy.clone(),
       self.params.device,
       self.params.static_metadata.sdk_version(),
       self.params.store.clone(),
@@ -416,6 +422,7 @@ impl LoggerBuilder {
 
     UnexpectedErrorHandler::register_stats(&scope);
 
+    let session_persistence_shutdown_handle = shutdown_handle.clone();
     let logger_future = async move {
       // Acquire exclusive lock on the SDK directory to prevent multiple processes from
       // accessing it simultaneously. The lock is acquired asynchronously using spawn_blocking
@@ -521,7 +528,7 @@ impl LoggerBuilder {
         &self.params.sdk_directory,
         self.params.store.clone(),
         artifact_client.clone(),
-        self.params.session_strategy.clone(),
+        session_strategy.clone(),
         &init_lifecycle,
         state_store.clone(),
         previous_run_state,
@@ -591,7 +598,7 @@ impl LoggerBuilder {
         sleep_mode_active_rx,
         self.params.store.clone(),
         state_store.clone(),
-        self.params.session_strategy.clone(),
+        session_strategy.clone(),
         opaque_entity_updates_rx,
         sdk_status_tracker,
         Some(Arc::new(handshake_stats)),
@@ -638,6 +645,15 @@ impl LoggerBuilder {
           if let Some(worker) = state_upload_worker {
             worker.run().await;
           }
+          Ok(())
+        },
+        async move {
+          let mut shutdown = session_persistence_shutdown_handle.make_shutdown();
+          session_persistence_worker
+            .run(shutdown.cancelled(), move || {
+              session_persistence_failures.inc();
+            })
+            .await;
           Ok(())
         }
       )

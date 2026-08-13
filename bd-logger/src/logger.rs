@@ -542,7 +542,7 @@ impl LoggerHandle {
     let is_allowed = LOGGER_GUARD.with(|cell| cell.try_borrow().is_ok());
 
     if is_allowed {
-      self.session_strategy.start_new_session_sync()
+      self.session_strategy.start_new_session()
     } else {
       Err(anyhow::anyhow!(
         "operation not allowed from within a field provider"
@@ -560,7 +560,8 @@ impl LoggerHandle {
 pub struct InitParams {
   pub sdk_directory: PathBuf,
   pub api_key: String,
-  pub session_strategy: Arc<bd_session::Strategy>,
+  /// The session state and its single persistence worker.
+  pub session: bd_session::StrategyParts,
 
   pub store: Arc<bd_key_value::Store>,
 

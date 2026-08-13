@@ -40,7 +40,7 @@ fn test_global_init() {
   bd_test_helpers_core::test_global_init();
 }
 
-use bd_client_common::{PlatformMutex, PlatformMutexGuard};
+use bd_client_common::PlatformMutex;
 use bd_proto::protos::client::api::StateUpdateRequest;
 use bd_proto::protos::client::api::state_update_request::StartedSession;
 use bd_time::{OffsetDateTimeExt as _, TimeProvider};
@@ -68,30 +68,23 @@ pub(crate) struct LoadedState {
 }
 
 //
-// Mutation
+// TransitionEffects
 //
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct Mutation {
-  persist_state: bool,
-  persist_pending: bool,
+pub(crate) struct TransitionEffects {
+  notify_update: bool,
   callback: Option<DeferredCallback>,
 }
 
-impl Mutation {
-  fn has_follow_up_work(&self) -> bool {
-    self.persist_state || self.persist_pending || self.callback.is_some()
-  }
-}
-
 //
-// Initialization
+// Transition
 //
 
 #[derive(Clone, Debug)]
-pub(crate) struct Initialization {
+pub(crate) struct Transition {
   state: LoadedState,
-  mutation: Mutation,
+  effects: TransitionEffects,
 }
 
 //
@@ -184,50 +177,73 @@ pub struct Strategy {
   store: Store,
   state: PlatformMutex<Option<LoadedState>>,
   persistence_tx: mpsc::Sender<PersistenceRequest>,
-  // The single persistence worker takes this receiver before awaiting any I/O. Session callers
-  // only hold the sender, so they never contend with disk writes or create a second writer.
-  persistence_rx: PlatformMutex<Option<mpsc::Receiver<PersistenceRequest>>>,
   update_tx: watch::Sender<u64>,
   callback_in_progress: Box<ThreadLocal<Cell<bool>>>,
 }
 
+/// Owns the single persistence receiver for a [`Strategy`].
+///
+/// Run this worker for the lifetime of the logger. It serializes persistence and retains queued
+/// flush requests until it starts, while callers of [`Strategy`] only synchronize access to the
+/// in-memory session state.
+pub struct PersistenceWorker {
+  strategy: Arc<Strategy>,
+  receiver: mpsc::Receiver<PersistenceRequest>,
+}
+
+/// The strategy and its single persistence worker.
+///
+/// Keep both values together until the logger takes ownership of `persistence_worker`.
+#[must_use]
+pub struct StrategyParts {
+  pub strategy: Arc<Strategy>,
+  pub persistence_worker: PersistenceWorker,
+}
+
 impl Strategy {
-  #[must_use]
-  pub fn fixed(sdk_directory: impl AsRef<Path>, callbacks: Arc<dyn fixed::Callbacks>) -> Self {
-    let (update_tx, _) = watch::channel(0);
-    let (persistence_tx, persistence_rx) = mpsc::channel(1);
-    Self {
-      backend: Backend::Fixed(fixed::Strategy::new(callbacks)),
-      store: Store::new(sdk_directory),
-      state: PlatformMutex::new(None),
-      persistence_tx,
-      persistence_rx: PlatformMutex::new(Some(persistence_rx)),
-      update_tx,
-      callback_in_progress: Box::new(ThreadLocal::new()),
-    }
+  pub fn fixed(
+    sdk_directory: impl AsRef<Path>,
+    callbacks: Arc<dyn fixed::Callbacks>,
+  ) -> StrategyParts {
+    Self::make_parts(
+      Backend::Fixed(fixed::Strategy::new(callbacks)),
+      sdk_directory,
+    )
   }
 
-  #[must_use]
   pub fn activity_based(
     sdk_directory: impl AsRef<Path>,
     inactivity_threshold: time::Duration,
     callbacks: Arc<dyn activity_based::Callbacks>,
     time_provider: Arc<dyn TimeProvider>,
-  ) -> Self {
-    let (update_tx, _) = watch::channel(0);
-    let (persistence_tx, persistence_rx) = mpsc::channel(1);
-    Self {
-      backend: Backend::ActivityBased(activity_based::Strategy::new(
+  ) -> StrategyParts {
+    Self::make_parts(
+      Backend::ActivityBased(activity_based::Strategy::new(
         inactivity_threshold,
         callbacks,
         time_provider,
       )),
+      sdk_directory,
+    )
+  }
+
+  fn make_parts(backend: Backend, sdk_directory: impl AsRef<Path>) -> StrategyParts {
+    let (update_tx, _) = watch::channel(0);
+    let (persistence_tx, persistence_rx) = mpsc::channel(1);
+    let strategy = Arc::new(Self {
+      backend,
       store: Store::new(sdk_directory),
       state: PlatformMutex::new(None),
       persistence_tx,
-      persistence_rx: PlatformMutex::new(Some(persistence_rx)),
       update_tx,
       callback_in_progress: Box::new(ThreadLocal::new()),
+    });
+    StrategyParts {
+      strategy: strategy.clone(),
+      persistence_worker: PersistenceWorker {
+        strategy,
+        receiver: persistence_rx,
+      },
     }
   }
 
@@ -247,25 +263,30 @@ impl Strategy {
     Self::loaded_session_id(state)
   }
 
-  /// Resolves the current session ID and schedules any resulting durable mutation.
+  /// Resolves the current session ID and schedules any resulting durable transition.
   ///
   /// This is synchronous so caller-thread APIs do not depend on the logger task making progress.
   /// Persistence is coalesced by the background flusher after this method returns.
   pub fn session_id_sync(&self) -> anyhow::Result<String> {
     self.ensure_not_in_callback("session_id")?;
 
-    let (current_session_id, mutation) = {
+    let (current_session_id, effects, wake_persistence) = {
       let mut guard = self.state.lock();
       if let Some(state) = guard.as_mut() {
-        // Session reads and activity updates share the same mutation path so activity-based
+        // Session reads and activity updates share the same transition path so activity-based
         // sessions can rotate or persist last-activity state while fixed sessions stay unchanged.
-        let mutation = match &self.backend {
+        let was_persistence_pending = state.persistence_pending;
+        let effects = match &self.backend {
           Backend::Fixed(_) => fixed::Strategy::on_session_id(state),
           Backend::ActivityBased(strategy) => strategy.on_session_id(state),
         };
 
         let current_session_id = Self::loaded_session_id(state)?;
-        (current_session_id, mutation)
+        (
+          current_session_id,
+          effects,
+          !was_persistence_pending && state.persistence_pending,
+        )
       } else {
         // The first read initializes from durable state and may enqueue a deferred callback if the
         // backend decides the current access should create or rotate a session.
@@ -275,44 +296,50 @@ impl Strategy {
         let current_session_id = Self::loaded_session_id(&initialization.state)?;
         log::debug!(
           "initialized session state on first read: backend={}, current_session_id={}, \
-           persist_state={}, persist_pending={}, callback={}, pending_started_sessions={}",
+           persistence_pending={}, notify_update={}, callback={}, pending_started_sessions={}",
           self.type_name(),
           current_session_id,
-          initialization.mutation.persist_state,
-          initialization.mutation.persist_pending,
-          initialization.mutation.callback.is_some(),
+          initialization.state.persistence_pending,
+          initialization.effects.notify_update,
+          initialization.effects.callback.is_some(),
           initialization.state.pending_started_sessions.len()
         );
 
-        (current_session_id, initialization.mutation)
+        (
+          current_session_id,
+          initialization.effects,
+          initialization.state.persistence_pending,
+        )
       }
     };
 
-    self.apply_mutation(mutation);
+    self.apply_effects(effects, wake_persistence);
     Ok(current_session_id)
   }
 
   /// Creates a new session and schedules persistence without waiting for disk I/O.
-  pub fn start_new_session_sync(&self) -> anyhow::Result<()> {
+  pub fn start_new_session(&self) -> anyhow::Result<()> {
     self.ensure_not_in_callback("start_new_session")?;
 
-    let mutation = {
+    let (effects, wake_persistence) = {
       let mut guard = self.state.lock();
-      self.start_new_session_locked(&mut guard)
+      let was_persistence_pending = guard
+        .as_ref()
+        .is_some_and(|state| state.persistence_pending);
+      let effects = self.start_new_session_locked(&mut guard);
+      let wake_persistence = guard
+        .as_ref()
+        .is_some_and(|state| !was_persistence_pending && state.persistence_pending);
+      (effects, wake_persistence)
     };
 
-    self.apply_mutation(mutation);
+    self.apply_effects(effects, wake_persistence);
     Ok(())
   }
 
   #[allow(clippy::unused_async)] // Preserve the established asynchronous session API.
   pub async fn session_id(&self) -> anyhow::Result<String> {
     self.session_id_sync()
-  }
-
-  #[allow(clippy::unused_async)] // Preserve the established asynchronous session API.
-  pub async fn start_new_session(&self) -> anyhow::Result<()> {
-    self.start_new_session_sync()
   }
 
   fn ensure_not_in_callback(&self, operation: &str) -> anyhow::Result<()> {
@@ -362,45 +389,6 @@ impl Strategy {
 
     if completion_rx.await.is_err() {
       log::debug!("session persistence worker stopped before completing flush");
-    }
-  }
-
-  /// Runs the dedicated coalescing writer until `shutdown` resolves.
-  pub async fn run_persistence_flusher<F>(
-    self: Arc<Self>,
-    shutdown: F,
-    on_persistence_failure: impl Fn() + Send + Sync + 'static,
-  ) where
-    F: Future<Output = ()> + Send,
-  {
-    let Some(mut receiver) = self.persistence_rx.lock().take() else {
-      log::warn!("attempted to start a second session persistence worker");
-      return;
-    };
-
-    tokio::pin!(shutdown);
-    loop {
-      tokio::select! {
-        Some(request) = receiver.recv() => {
-          let completion_tx = match request {
-            PersistenceRequest::Persist => None,
-            PersistenceRequest::Flush(completion_tx) => Some(completion_tx),
-          };
-          self.persist_latest(&on_persistence_failure).await;
-          if let Some(completion_tx) = completion_tx {
-            let _ignored = completion_tx.send(());
-          }
-        },
-        () = &mut shutdown => {
-          self.persist_latest(&on_persistence_failure).await;
-          while let Ok(request) = receiver.try_recv() {
-            if let PersistenceRequest::Flush(completion_tx) = request {
-              let _ignored = completion_tx.send(());
-            }
-          }
-          return;
-        },
-      }
     }
   }
 
@@ -496,7 +484,7 @@ impl Strategy {
       return;
     }
 
-    let pending_started_sessions = {
+    let (pending_started_sessions, wake_persistence) = {
       let mut guard = self.state.lock();
       if guard.is_none() {
         *guard = Some(LoadedState {
@@ -524,11 +512,15 @@ impl Strategy {
         return;
       }
 
+      let was_persistence_pending = state.persistence_pending;
       state
         .pending_started_sessions
         .drain(.. update.started_sessions.len());
       state.persistence_pending = true;
-      state.pending_started_sessions.clone()
+      (
+        state.pending_started_sessions.clone(),
+        !was_persistence_pending,
+      )
     };
 
     log::debug!(
@@ -536,8 +528,13 @@ impl Strategy {
       self.type_name(),
       pending_started_sessions.len()
     );
-    self.notify_update();
-    let _ignored = self.persistence_tx.try_send(PersistenceRequest::Persist);
+    self.apply_effects(
+      TransitionEffects {
+        notify_update: true,
+        callback: None,
+      },
+      wake_persistence,
+    );
   }
 
   /// Pretty name of the strategy.
@@ -545,7 +542,7 @@ impl Strategy {
     self.backend.kind().type_name()
   }
 
-  fn initialize_state(&self) -> Initialization {
+  fn initialize_state(&self) -> Transition {
     // The persisted current session and the persisted pending queue are loaded together so the
     // backend makes decisions from a consistent snapshot of durable state.
     let persisted = self.store.load_state();
@@ -586,7 +583,7 @@ impl Strategy {
     &self,
     persisted: PersistedSessionState,
     pending_started_sessions: Vec<StartedSessionRecord>,
-  ) -> Initialization {
+  ) -> Transition {
     // Backend-specific durable fields are not portable, so a strategy switch is treated as a
     // fresh session boundary. We still preserve the old current session as previous-process state
     // by routing through the existing explicit-rotation path.
@@ -601,7 +598,7 @@ impl Strategy {
   }
 
   fn load_state_for_update(&self) -> LoadedState {
-    let (state, mutation) = {
+    let (state, effects, wake_persistence) = {
       let mut guard = self.state.lock();
       if let Some(state) = guard.clone() {
         log::debug!(
@@ -620,28 +617,29 @@ impl Strategy {
       *guard = Some(initialization.state.clone());
       log::debug!(
         "initialized session state for update flow: backend={}, current_session_id={}, \
-         persist_state={}, persist_pending={}, callback={}, pending_started_sessions={}",
+         persistence_pending={}, notify_update={}, callback={}, pending_started_sessions={}",
         self.type_name(),
         initialization.state.persisted.current_session_id,
-        initialization.mutation.persist_state,
-        initialization.mutation.persist_pending,
-        initialization.mutation.callback.is_some(),
+        initialization.state.persistence_pending,
+        initialization.effects.notify_update,
+        initialization.effects.callback.is_some(),
         initialization.state.pending_started_sessions.len()
       );
-      (initialization.state, initialization.mutation)
+      (
+        initialization.state.clone(),
+        initialization.effects,
+        initialization.state.persistence_pending,
+      )
     };
 
-    self.apply_mutation(mutation);
+    self.apply_effects(effects, wake_persistence);
     state
   }
 
-  fn start_new_session_locked(
-    &self,
-    guard: &mut PlatformMutexGuard<'_, Option<LoadedState>>,
-  ) -> Mutation {
+  fn start_new_session_locked(&self, state: &mut Option<LoadedState>) -> TransitionEffects {
     // Once a process has initialized session state, its in-memory snapshot is newer than disk
     // until the coalescing writer catches up. Re-reading disk here would drop rapid rotations.
-    let (persisted, pending_started_sessions) = guard.as_ref().map_or_else(
+    let (persisted, pending_started_sessions) = state.as_ref().map_or_else(
       || {
         (
           self.store.load_state(),
@@ -659,47 +657,47 @@ impl Strategy {
       "starting explicit session rotation: backend={}, cached_state={}, has_persisted_state={}, \
        pending_started_sessions={}",
       self.type_name(),
-      guard.is_some(),
+      state.is_some(),
       persisted.is_some(),
       pending_started_sessions.len()
     );
 
     let initialization = match &self.backend {
       Backend::Fixed(strategy) => self.with_callback_guard(|| {
-        strategy.start_new_session(guard.as_ref(), persisted, pending_started_sessions)
+        strategy.start_new_session(state.as_ref(), persisted, pending_started_sessions)
       }),
       Backend::ActivityBased(strategy) => {
-        strategy.start_new_session(guard.as_ref(), persisted, pending_started_sessions)
+        strategy.start_new_session(state.as_ref(), persisted, pending_started_sessions)
       },
     };
 
     log::debug!(
-      "computed explicit session rotation: backend={}, current_session_id={}, persist_state={}, \
-       persist_pending={}, callback={}, pending_started_sessions={}",
+      "computed explicit session rotation: backend={}, current_session_id={}, \
+       persistence_pending={}, notify_update={}, callback={}, pending_started_sessions={}",
       self.type_name(),
       initialization.state.persisted.current_session_id,
-      initialization.mutation.persist_state,
-      initialization.mutation.persist_pending,
-      initialization.mutation.callback.is_some(),
+      initialization.state.persistence_pending,
+      initialization.effects.notify_update,
+      initialization.effects.callback.is_some(),
       initialization.state.pending_started_sessions.len()
     );
 
-    **guard = Some(initialization.state);
-    initialization.mutation
+    *state = Some(initialization.state);
+    initialization.effects
   }
 
-  fn apply_mutation(&self, mutation: Mutation) {
-    if !mutation.has_follow_up_work() {
+  fn apply_effects(&self, effects: TransitionEffects, wake_persistence: bool) {
+    if !wake_persistence && !effects.notify_update && effects.callback.is_none() {
       return;
     }
 
     log::debug!(
-      "scheduling session mutation: backend={}, persist_state={}, persist_pending={}, \
+      "applying session transition effects: backend={}, wake_persistence={}, notify_update={}, \
        callback={}, pending_started_sessions={}",
       self.type_name(),
-      mutation.persist_state,
-      mutation.persist_pending,
-      mutation.callback.is_some(),
+      wake_persistence,
+      effects.notify_update,
+      effects.callback.is_some(),
       self
         .state
         .lock()
@@ -707,16 +705,13 @@ impl Strategy {
         .map_or(0, |state| state.pending_started_sessions.len())
     );
 
-    if mutation.persist_state || mutation.persist_pending {
-      if let Some(state) = self.state.lock().as_mut() {
-        state.persistence_pending = true;
-      }
+    if wake_persistence {
       let _ignored = self.persistence_tx.try_send(PersistenceRequest::Persist);
     }
-    if mutation.persist_pending {
+    if effects.notify_update {
       self.notify_update();
     }
-    self.run_callback(mutation.callback);
+    self.run_callback(effects.callback);
   }
 
   async fn persist_latest(&self, on_persistence_failure: &(dyn Fn() + Send + Sync)) {
@@ -782,6 +777,42 @@ impl Strategy {
       old_version,
       new_version
     );
+  }
+}
+
+impl PersistenceWorker {
+  /// Runs the dedicated coalescing writer until `shutdown` resolves.
+  pub async fn run<F>(
+    mut self,
+    shutdown: F,
+    on_persistence_failure: impl Fn() + Send + Sync + 'static,
+  ) where
+    F: Future<Output = ()> + Send,
+  {
+    tokio::pin!(shutdown);
+    loop {
+      tokio::select! {
+        Some(request) = self.receiver.recv() => {
+          let completion_tx = match request {
+            PersistenceRequest::Persist => None,
+            PersistenceRequest::Flush(completion_tx) => Some(completion_tx),
+          };
+          self.strategy.persist_latest(&on_persistence_failure).await;
+          if let Some(completion_tx) = completion_tx {
+            let _ignored = completion_tx.send(());
+          }
+        },
+        () = &mut shutdown => {
+          self.strategy.persist_latest(&on_persistence_failure).await;
+          while let Ok(request) = self.receiver.try_recv() {
+            if let PersistenceRequest::Flush(completion_tx) = request {
+              let _ignored = completion_tx.send(());
+            }
+          }
+          return;
+        },
+      }
+    }
   }
 }
 

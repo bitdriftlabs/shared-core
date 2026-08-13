@@ -6,8 +6,8 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::{Callbacks, UUIDCallbacks};
-use crate::Strategy;
-use crate::test::{flush, start_new_session};
+use crate::test::flush;
+use crate::{Strategy, StrategyParts};
 use pretty_assertions::assert_eq;
 use std::future::Future;
 use std::pin::pin;
@@ -43,7 +43,7 @@ impl Callbacks for MockCallbacks {
 async fn test_session_id() {
   let sdk_directory = TempDir::new().unwrap();
   let callbacks = Arc::new(MockCallbacks::default());
-  let strategy = Strategy::fixed(sdk_directory.path(), callbacks.clone());
+  let StrategyParts { strategy, .. } = Strategy::fixed(sdk_directory.path(), callbacks.clone());
 
   let session_id = strategy.session_id().await.unwrap();
   let previous_session_id = strategy.previous_process_session_id();
@@ -57,7 +57,7 @@ async fn test_session_id() {
 async fn try_current_session_id_fails_before_initialization() {
   let sdk_directory = TempDir::new().unwrap();
   let callbacks = Arc::new(MockCallbacks::default());
-  let strategy = Strategy::fixed(sdk_directory.path(), callbacks.clone());
+  let StrategyParts { strategy, .. } = Strategy::fixed(sdk_directory.path(), callbacks.clone());
 
   let error = strategy.try_current_session_id().unwrap_err();
 
@@ -68,7 +68,8 @@ async fn try_current_session_id_fails_before_initialization() {
 #[tokio::test]
 async fn try_current_session_id_returns_loaded_session() {
   let sdk_directory = TempDir::new().unwrap();
-  let strategy = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
+  let StrategyParts { strategy, .. } =
+    Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
 
   let session_id = strategy.session_id().await.unwrap();
 
@@ -79,14 +80,14 @@ async fn try_current_session_id_returns_loaded_session() {
 async fn test_start_new_session() {
   let sdk_directory = TempDir::new().unwrap();
   let callbacks = Arc::new(MockCallbacks::default());
-  let strategy = Strategy::fixed(sdk_directory.path(), callbacks.clone());
+  let StrategyParts { strategy, .. } = Strategy::fixed(sdk_directory.path(), callbacks.clone());
 
   let session_id = strategy.session_id().await.unwrap();
 
   assert_eq!(1, callbacks.generated_session_ids.lock().len());
   assert_eq!(callbacks.generated_session_ids.lock()[0], session_id);
 
-  start_new_session(&strategy).await;
+  strategy.start_new_session().unwrap();
   let next_session_id = strategy.session_id().await.unwrap();
 
   assert_eq!(next_session_id, strategy.session_id().await.unwrap());
@@ -98,18 +99,19 @@ async fn test_start_new_session() {
 #[tokio::test]
 async fn test_previous_process_session_id() {
   let sdk_directory = TempDir::new().unwrap();
-  let strategy = Arc::new(Strategy::fixed(
-    sdk_directory.path(),
-    Arc::new(UUIDCallbacks),
-  ));
+  let StrategyParts {
+    strategy,
+    persistence_worker: worker,
+  } = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
   strategy.session_id().await.unwrap();
-  start_new_session(&strategy).await;
+  strategy.start_new_session().unwrap();
   let session_id = strategy.session_id().await.unwrap();
 
   assert!(strategy.previous_process_session_id().is_none());
-  flush(strategy.clone()).await;
+  flush(strategy.clone(), worker).await;
 
-  let strategy = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
+  let StrategyParts { strategy, .. } =
+    Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
   assert_eq!(Some(session_id), strategy.previous_process_session_id());
 }
 
@@ -117,18 +119,27 @@ async fn test_previous_process_session_id() {
 async fn session_id_persists_only_after_flush() {
   let sdk_directory = TempDir::new().unwrap();
   let callbacks = Arc::new(MockCallbacks::default());
-  let strategy = Arc::new(Strategy::fixed(sdk_directory.path(), callbacks));
+  let StrategyParts {
+    strategy,
+    persistence_worker: worker,
+  } = Strategy::fixed(sdk_directory.path(), callbacks);
 
   let session_id = strategy.session_id().await.unwrap();
 
   assert_eq!(session_id, strategy.try_current_session_id().unwrap());
 
-  let restarted = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
+  let StrategyParts {
+    strategy: restarted,
+    ..
+  } = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
   assert_eq!(None, restarted.previous_process_session_id());
 
-  flush(strategy.clone()).await;
+  flush(strategy.clone(), worker).await;
 
-  let restarted = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
+  let StrategyParts {
+    strategy: restarted,
+    ..
+  } = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
   assert_eq!(Some(session_id), restarted.previous_process_session_id());
 }
 
@@ -142,7 +153,7 @@ struct ReEntryCallbacks {
 impl Callbacks for ReEntryCallbacks {
   fn generate_session_id(&self) -> anyhow::Result<String> {
     if let Some(strategy) = &*self.session_strategy.lock() {
-      expect_ready(start_new_session(strategy));
+      let _ignored = strategy.start_new_session();
       let error = expect_ready(strategy.session_id()).unwrap_err();
       *self.inner_session_id_error.lock() = Some(error.to_string());
       let error = strategy.try_current_session_id().unwrap_err();
@@ -159,7 +170,7 @@ async fn handles_re_entry() {
   let sdk_directory = TempDir::new().unwrap();
 
   let callbacks = Arc::new(ReEntryCallbacks::default());
-  let strategy = Arc::new(Strategy::fixed(sdk_directory.path(), callbacks.clone()));
+  let StrategyParts { strategy, .. } = Strategy::fixed(sdk_directory.path(), callbacks.clone());
 
   callbacks.session_strategy.lock().replace(strategy.clone());
 
@@ -176,7 +187,7 @@ async fn handles_re_entry() {
   );
 
   // Confirm that it doesn't deadlock and returns a reasonable ID.
-  start_new_session(&strategy).await;
+  strategy.start_new_session().unwrap();
   let new_session_id = strategy.session_id().await.unwrap();
   assert_eq!(36, new_session_id.len());
 

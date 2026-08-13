@@ -67,13 +67,11 @@ impl Setup {
     let store = in_memory_store();
     let device = Arc::new(bd_device::Device::new(store.clone()));
 
+    let session = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
     let (logger, _, future, _) = crate::LoggerBuilder::new(InitParams {
       sdk_directory: sdk_directory.path().to_owned(),
       network: Box::new(handle),
-      session_strategy: Arc::new(Strategy::fixed(
-        sdk_directory.path(),
-        Arc::new(UUIDCallbacks),
-      )),
+      session,
       metadata_provider: Arc::new(TestMetadataProvider),
       store,
       resource_utilization_target: Box::new(EmptyTarget),

@@ -257,13 +257,17 @@ impl Setup {
 
     // Set up the session to return a fixed previous session ID, making it obvious that we are
     // using the previous session ID for uploads.
-    let mut session = bd_session::Strategy::fixed(
+    let bd_session::StrategyParts {
+      strategy: session,
+      persistence_worker: worker,
+    } = bd_session::Strategy::fixed(
       directory.path(),
       Arc::new(StaticSession("previous_session_id".into())),
     );
     assert_eq!(session.session_id().await.unwrap(), "previous_session_id");
+    bd_session::test::flush(session.clone(), worker).await;
 
-    session = bd_session::Strategy::fixed(directory.path(), Arc::new(UUIDCallbacks));
+    let session = bd_session::Strategy::fixed(directory.path(), Arc::new(UUIDCallbacks)).strategy;
 
     let (tx, rx) = tokio::sync::mpsc::channel(10);
     let emit_log =
@@ -319,7 +323,7 @@ impl Setup {
       directory.path(),
       store,
       upload_client.clone(),
-      Arc::new(session),
+      session,
       &InitLifecycleState::new(),
       (*state).clone(),
       previous_run_state,

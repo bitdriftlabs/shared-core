@@ -41,7 +41,6 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::Strategy;
 use bd_session::fixed::UUIDCallbacks;
-use bd_session::test::start_new_session;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::test::TestStore;
 use bd_state::{MEMORY_PRESSURE_LEVEL_KEY, SYSTEM_SESSION_ID_KEY, Scope, StateReader};
@@ -88,7 +87,7 @@ impl Setup {
     let collector = Collector::default();
     let stats = Stats::new(collector.clone());
     let (data_upload_tx, data_upload_rx) = mpsc::channel(1);
-    let session_strategy = Arc::new(Strategy::fixed(tmp_dir.path(), Arc::new(UUIDCallbacks)));
+    let session_strategy = Strategy::fixed(tmp_dir.path(), Arc::new(UUIDCallbacks)).strategy;
 
     Self {
       buffer_manager: bd_buffer::Manager::new(
@@ -578,34 +577,6 @@ async fn creates_workflows_engine_in_response_to_config_update() {
 }
 
 #[tokio::test]
-async fn self_shutdown_awaits_session_persistence_flusher() {
-  let mut setup = Setup::new();
-  let strategy = setup.session_strategy.clone();
-  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-  let (buffer, _sender) = setup.make_test_async_log_buffer(config_update_rx);
-  let state_store = TestStore::new().await;
-  let run_shutdown = ComponentShutdownTrigger::default();
-  let buffer_task = tokio::spawn(buffer.run_with_shutdown(
-    state_store.take_inner(),
-    (),
-    run_shutdown.make_shutdown(),
-  ));
-
-  // Let the run loop create its flusher before scheduling the session mutation.
-  tokio::task::yield_now().await;
-  strategy.session_id().await.unwrap();
-
-  // Keep `run_shutdown` alive: the buffer's own shutdown path must independently stop and await
-  // the flusher rather than leaving it attached to this unrelated shutdown receiver.
-  setup.shutdown.take().unwrap().shutdown().await;
-  drop(buffer_task.await.unwrap());
-
-  // `setup` and this local clone are the only remaining strategy owners. A detached flusher would
-  // retain a third reference after the buffer's run loop returned.
-  assert_eq!(2, Arc::strong_count(&strategy));
-}
-
-#[tokio::test]
 async fn updates_workflow_engine_in_response_to_config_update() {
   let setup = Setup::new();
 
@@ -785,7 +756,7 @@ async fn updates_system_session_id_for_new_sessions() {
     None,
   ));
 
-  start_new_session(&setup.session_strategy).await;
+  setup.session_strategy.start_new_session().unwrap();
   let second_session_id = setup.session_strategy.session_id().await.unwrap();
   assert_ne!(first_session_id, second_session_id);
 
@@ -897,7 +868,7 @@ async fn previous_run_log_does_not_override_system_session_id() {
     None,
   ));
 
-  start_new_session(&setup.session_strategy).await;
+  setup.session_strategy.start_new_session().unwrap();
   let next_session_id = setup.session_strategy.session_id().await.unwrap();
   assert_ne!(current_session_id, next_session_id);
 
@@ -956,7 +927,7 @@ async fn pre_config_logs_trigger_session_id_update() {
     None,
   ));
 
-  start_new_session(&setup.session_strategy).await;
+  setup.session_strategy.start_new_session().unwrap();
   let second_session_id = setup.session_strategy.session_id().await.unwrap();
   assert_ne!(first_session_id, second_session_id);
 

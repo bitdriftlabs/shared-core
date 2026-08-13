@@ -48,12 +48,15 @@ async fn fixed_sessions_do_not_persist_across_restarts() {
   let sdk_directory = TestSdkDirectory::new();
   let config = SessionStrategyConfig::Fixed;
 
-  let first_strategy = make_session_strategy(sdk_directory.path(), &config);
+  let bd_session::StrategyParts {
+    strategy: first_strategy,
+    persistence_worker: first_worker,
+  } = make_session_strategy(sdk_directory.path(), &config);
   let first_session_id = first_strategy.session_id().await.unwrap();
-  first_strategy.flush().await;
+  bd_session::test::flush(first_strategy.clone(), first_worker).await;
   drop(first_strategy);
 
-  let restarted_strategy = make_session_strategy(sdk_directory.path(), &config);
+  let restarted_strategy = make_session_strategy(sdk_directory.path(), &config).strategy;
   let restarted_session_id = restarted_strategy.session_id().await.unwrap();
 
   assert_ne!(first_session_id, restarted_session_id);
@@ -72,16 +75,19 @@ async fn activity_based_sessions_persist_across_restarts_within_threshold() {
     inactivity_threshold_mins: 30,
   };
 
-  let first_strategy =
+  let bd_session::StrategyParts {
+    strategy: first_strategy,
+    persistence_worker: first_worker,
+  } =
     make_session_strategy_with_time_provider(sdk_directory.path(), &config, time_provider.clone());
   let first_session_id = first_strategy.session_id().await.unwrap();
-  first_strategy.flush().await;
+  bd_session::test::flush(first_strategy.clone(), first_worker).await;
   drop(first_strategy);
 
   time_provider.advance(Duration::minutes(5));
 
   let restarted_strategy =
-    make_session_strategy_with_time_provider(sdk_directory.path(), &config, time_provider);
+    make_session_strategy_with_time_provider(sdk_directory.path(), &config, time_provider).strategy;
   let restarted_session_id = restarted_strategy.session_id().await.unwrap();
 
   assert_eq!(first_session_id, restarted_session_id);

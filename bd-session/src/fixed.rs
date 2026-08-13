@@ -10,7 +10,7 @@
 mod fixed_test;
 
 use crate::persistence::{BackendState, PersistedSessionState, StartedSessionRecord};
-use crate::{Initialization, LoadedState, Mutation};
+use crate::{LoadedState, Transition, TransitionEffects};
 use std::sync::Arc;
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -51,7 +51,7 @@ impl Strategy {
     &self,
     persisted: Option<PersistedSessionState>,
     mut pending_started_sessions: Vec<StartedSessionRecord>,
-  ) -> Initialization {
+  ) -> Transition {
     // Fixed sessions always create a fresh session on startup. The persisted current session is
     // only used to seed `previous_process_session_id` for crash/error attribution.
     let session_id = self.generate_session_id();
@@ -68,7 +68,7 @@ impl Strategy {
       pending_started_sessions.len()
     );
 
-    Initialization {
+    Transition {
       state: LoadedState {
         persisted: PersistedSessionState {
           current_session_id: session_id,
@@ -78,18 +78,17 @@ impl Strategy {
         },
         pending_started_sessions,
         last_activity_write: None,
-        persistence_pending: false,
+        persistence_pending: true,
       },
-      mutation: Mutation {
-        persist_state: true,
-        persist_pending: true,
+      effects: TransitionEffects {
+        notify_update: true,
         callback: None,
       },
     }
   }
 
-  pub(crate) fn on_session_id(_state: &mut LoadedState) -> Mutation {
-    Mutation::default()
+  pub(crate) fn on_session_id(_state: &mut LoadedState) -> TransitionEffects {
+    TransitionEffects::default()
   }
 
   pub(crate) fn start_new_session(
@@ -97,7 +96,7 @@ impl Strategy {
     state: Option<&LoadedState>,
     persisted: Option<PersistedSessionState>,
     mut pending_started_sessions: Vec<StartedSessionRecord>,
-  ) -> Initialization {
+  ) -> Transition {
     // Explicit session starts should preserve whatever we already consider the previous-process
     // session rather than replacing it with the session we are rotating away from in this run.
     let session_id = self.generate_session_id();
@@ -116,7 +115,7 @@ impl Strategy {
       pending_started_sessions.len()
     );
 
-    Initialization {
+    Transition {
       state: LoadedState {
         persisted: PersistedSessionState {
           current_session_id: session_id,
@@ -126,11 +125,10 @@ impl Strategy {
         },
         pending_started_sessions,
         last_activity_write: None,
-        persistence_pending: false,
+        persistence_pending: true,
       },
-      mutation: Mutation {
-        persist_state: true,
-        persist_pending: true,
+      effects: TransitionEffects {
+        notify_update: true,
         callback: None,
       },
     }
