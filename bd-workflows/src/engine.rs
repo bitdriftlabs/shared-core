@@ -1358,7 +1358,8 @@ impl StateStore {
     };
 
     if workflows_state.is_some() {
-      log::debug!("read workflows state from disk: {workflows_state:?}");
+      log::debug!("read workflows state from disk");
+      log::trace!("read workflows state from disk: {workflows_state:?}");
     } else {
       log::debug!("no workflows state available");
     }
@@ -1383,7 +1384,7 @@ impl StateStore {
     // Check if enough time has passed since the last save
     let now = Instant::now();
     if force {
-      log::debug!("forcing persisting workflows state to disk");
+      log::trace!("forcing persisting workflows state to disk");
     } else if let Some(last_save_time) = self.last_persisted {
       let persistence_write_interval_ms = *self.persistence_write_interval_flag.read();
       if now.duration_since(last_save_time) < persistence_write_interval_ms {
@@ -1391,7 +1392,7 @@ impl StateStore {
       }
     }
 
-    log::debug!("persisting workflows state to disk: {workflows_state:?}");
+    log::trace!("persisting workflows state to disk: {workflows_state:?}");
 
     let _timer = self.stats.state_persistence_duration.start_timer();
 

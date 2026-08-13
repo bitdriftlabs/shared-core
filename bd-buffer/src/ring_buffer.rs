@@ -205,7 +205,6 @@ impl Manager {
     )
   }
 
-  #[tracing::instrument(level = "debug", skip(self))]
   pub async fn process_flushes(&self, mut flush_buffer_rx: Receiver<BuffersWithAck>) {
     loop {
       let Some(buffers_with_ack) = flush_buffer_rx.recv().await else {

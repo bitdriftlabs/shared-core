@@ -52,7 +52,7 @@ struct SharedData {
 
 impl SharedData {
   fn flush_thread_func(&self) -> Result<()> {
-    log::debug!("starting flush thread func");
+    log::trace!("starting flush thread func");
     let mut consumer = self.volatile_buffer.clone().register_consumer()?;
     let mut producer = self.non_volatile_buffer.clone().register_producer()?;
 

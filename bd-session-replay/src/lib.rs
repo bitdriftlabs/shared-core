@@ -179,7 +179,7 @@ impl Recorder {
       tokio::select! {
         () = maybe_await_interval(self.reporting_interval.as_mut()),
         if self.is_periodic_reporting_enabled => {
-          log::debug!("session replay recorder capturing screen");
+          log::trace!("session replay recorder capturing screen");
           // We capture a screen once per 3s (by default) so backlogging shouldn't be a problem
           // here (since taking a screenshot takes not more than ~tens of ms).
           // TODO(Augustyniak): Consider changing the implementation so that we do not ask platform layer
