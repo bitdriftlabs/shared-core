@@ -68,15 +68,15 @@ resolver = "2"
 
 [workspace.dependencies]
 android_logger    = "0.15.1"
-anyhow            = "1.0.103"
+anyhow            = "1.0.104"
 arbitrary         = { version = "1.4.2", features = ["derive"] }
 arc-swap          = "1.9.2"
 assert_matches    = "1.5.0"
 assert_no_alloc   = "1.1.2"
-async-compression = { version = "0.4.42", features = ["tokio", "zlib"] }
-async-trait       = "0.1.89"
+async-compression = { version = "0.4.43", features = ["tokio", "zlib"] }
+async-trait       = "0.1.92"
 axum              = { version = "0.8.9", features = ["http2", "macros"] }
-base64            = "0.22.1"
+base64            = "0.23.1"
 base64-url        = "3.0.4"
 base64ct          = { version = "1.8.3", features = ["alloc", "std"] }
 bd-workspace-hack = "0.1.1"
@@ -89,13 +89,13 @@ bincode = { version = "=2.0.1", features = ["serde"] }
 bindgen         = "0.72.1"
 bytes           = "1.12.1"
 cbindgen        = "0.29.4"
-cc              = "1.2.66"
-clap            = { version = "4.6.1", features = ["derive", "env"] }
+cc              = "1.4.2"
+clap            = { version = "4.6.6", features = ["derive", "env"] }
 cmake           = "0.1.58"
-color-backtrace = "0.7.2"
+color-backtrace = "0.7.4"
 concat-string   = "1.0.1"
 crc32fast       = "1.5.0"
-ctor            = "1.0.8"
+ctor            = "1.0.13"
 dashmap         = "6.2.1"
 
 # Pinned due to https://github.com/google/flatbuffers/issues/8876
@@ -105,20 +105,20 @@ ahash                 = { version = "0.8.12", features = ["serde"] }
 flatc-rust            = "0.2.0"
 flate2                = { version = "1.1.9", default-features = false }
 fs2                   = "0.4.3"
-futures               = "0.3.32"
-futures-core          = "0.3.32"
-futures-util          = "0.3.32"
-http                  = "1.4.2"
-http-body             = "1.0.1"
-http-body-util        = "0.1.3"
-hyper                 = "1.10.1"
+futures               = "0.3.34"
+futures-core          = "0.3.34"
+futures-util          = "0.3.34"
+http                  = "1.5.0"
+http-body             = "1.1.0"
+http-body-util        = "0.1.5"
+hyper                 = "1.11.0"
 hyper-rustls          = { version = "0.27.9", default-features = false }
 hyper-util            = { version = "0.1.20", features = ["client", "client-legacy"] }
 insta                 = "1.48.0"
-intrusive-collections = "0.10.2"
+intrusive-collections = "0.10.3"
 itertools             = "0.15.0"
 jni                   = "0.22.4"
-libc                  = "0.2.186"
+libc                  = "0.2.189"
 libfuzzer-sys         = "0.4.13"
 log                   = "0.4.33"
 matches               = "0.1.10"
@@ -148,8 +148,8 @@ parameterized      = "2.1.0"
 parking_lot        = "0.12.5"
 pretty_assertions  = "1.4.1"
 prometheus         = "0.14.0"
-rmcp               = { version = "2.2.0", features = ["transport-io"] }
-thread_local       = "1.1"
+rmcp               = { version = "3.1.2", features = ["transport-io"] }
+thread_local       = "1.1.10"
 tracing            = "0.1.44"
 tracing-log        = "0.2.0"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
@@ -163,38 +163,38 @@ protobuf-codegen = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", 
 protobuf-json-mapping = { git = "https://github.com/bitdriftlabs/rust-protobuf.git", branch = "patch-stack" }
 
 rand         = "0.10.2"
-regex        = "1.13.0"
+regex        = "1.13.1"
 reqwest      = { version = "0.13.4", features = ["deflate", "json"] }
 ripsaw       = { git = "https://github.com/bitdriftlabs/ripsaw.git" }
 rstest       = "0.26.1"
 rstest_reuse = "0.7.0"
-rusqlite     = "0.32.1"
-serde        = { version = "1", features = ["derive", "rc"] }
-serde_json   = "1.0.150"
+serde        = { version = "1.0.229", features = ["derive", "rc"] }
+serde_json   = "1.0.151"
 serde_yaml   = "0.9.34"
 sha2         = "0.11.0"
 
 sketches-rust = { git = "https://github.com/mattklein123/sketches-rust.git", branch = "patch-stack3" }
 
-snap                  = "1.1.1"
+snap                  = "1.1.2"
+sqlx                  = { version = "0.9.0", features = ["runtime-tokio", "tls-rustls-aws-lc-rs", "time", "sqlite", "macros"] }
 static_assertions     = "1.1.0"
-strum                 = { version = "0.28", features = ["derive"] }
-tarpc                 = { version = "0.37.0", features = ["full"] }
+strum                 = { version = "0.28.0", features = ["derive"] }
+tarpc                 = { version = "0.38.0", features = ["full"] }
 tempfile              = "3.27.0"
 termcolor             = "1.4.1"
-thiserror             = "2.0.18"
+thiserror             = "2.0.20"
 tikv-jemalloc-ctl     = "0.7.0"
-time                  = { version = "0.3.53", features = ["serde-well-known", "macros", "parsing"] }
-tokio                 = { version = "1.52.3", features = ["full", "test-util"] }
+time                  = { version = "0.3.55", features = ["serde-well-known", "macros", "parsing"] }
+tokio                 = { version = "1.53.1", features = ["full", "test-util"] }
 tokio-rustls          = { version = "0.26.4", default-features = false }
-tokio-stream          = "0.1.18"
+tokio-stream          = "0.1.19"
 tokio-test            = "0.4.5"
 tower                 = { version = "0.5.3", features = ["retry", "util"] }
 tower-http            = { version = "0.7.0", features = ["compression-deflate"] }
 tracing-opentelemetry = "0.33.0"
 unwrap-infallible     = "1.0.0"
 urlencoding           = "2.1.3"
-uuid                  = { version = "1.23.4", features = ["v4"] }
+uuid                  = { version = "1.24.0", features = ["v4"] }
 zstd                  = "0.13.3"
 
 [profile.bench]

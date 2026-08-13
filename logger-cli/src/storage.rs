@@ -6,13 +6,12 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use bd_key_value::Storage;
-use rusqlite::{Connection, OptionalExtension};
-use std::cell::RefCell;
+use sqlx::sqlite::SqliteConnectOptions;
+use sqlx::{ConnectOptions, Connection, SqliteConnection};
+use std::future::Future;
 use std::path::{Path, PathBuf};
-
-thread_local! {
-    static CONNECTION: RefCell<Option<Connection>> = const { RefCell::new(None) };
-}
+use std::str::FromStr;
+use std::thread;
 
 pub struct SQLiteStorage {
   path: PathBuf,
@@ -26,60 +25,81 @@ impl SQLiteStorage {
     }
   }
 
-  fn open(&self) -> rusqlite::Result<Connection> {
-    Connection::open(&self.path).and_then(|conn| {
-      let query = "CREATE TABLE IF NOT EXISTS kvstore (key TEXT UNIQUE, value TEXT);";
-      conn.execute(query, [])?;
-      Ok(conn)
-    })
+  async fn open(path: PathBuf) -> anyhow::Result<SqliteConnection> {
+    let options = SqliteConnectOptions::from_str(&path.to_string_lossy())?
+      .create_if_missing(true)
+      .disable_statement_logging();
+    let mut connection = SqliteConnection::connect_with(&options).await?;
+    sqlx::query("CREATE TABLE IF NOT EXISTS kvstore (key TEXT UNIQUE, value TEXT);")
+      .execute(&mut connection)
+      .await?;
+    Ok(connection)
   }
 
-  fn with_connection<F, T>(&self, f: F) -> rusqlite::Result<T>
+  fn with_connection<T, F, FutureType>(&self, operation: F) -> anyhow::Result<T>
   where
-    F: FnOnce(&Connection) -> T,
+    T: Send,
+    F: FnOnce(SqliteConnection) -> FutureType + Send,
+    FutureType: Future<Output = anyhow::Result<T>> + Send,
   {
-    let conn = match CONNECTION.take() {
-      Some(conn) => conn,
-      None => self.open()?,
-    };
-    let result = f(&conn);
-    CONNECTION.set(Some(conn));
-    Ok(result)
+    let path = self.path.clone();
+
+    // Storage is synchronous but SQLx requires a Tokio runtime. Use an isolated thread so calls
+    // remain safe when the logger itself is already running on a current-thread runtime.
+    thread::scope(|scope| {
+      scope
+        .spawn(move || {
+          tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?
+            .block_on(async move {
+              let connection = Self::open(path).await?;
+              operation(connection).await
+            })
+        })
+        .join()
+        .map_err(|_| anyhow::anyhow!("SQLite worker thread panicked"))?
+    })
   }
 }
 
 impl Storage for SQLiteStorage {
   fn set_string(&self, key: &str, value: &str) -> anyhow::Result<()> {
-    let query =
-      "INSERT INTO kvstore VALUES (:key, :value) ON CONFLICT DO UPDATE SET value=excluded.value";
-    self
-      .with_connection(|conn| conn.execute(query, (key, value)).map(|_| ()))
-      .flatten()
-      .map_err(|e| anyhow::anyhow!("failed to insert: {e}"))
+    let key = key.to_owned();
+    let value = value.to_owned();
+    self.with_connection(move |mut connection| async move {
+      sqlx::query(
+        "INSERT INTO kvstore VALUES (?1, ?2) ON CONFLICT DO UPDATE SET value=excluded.value",
+      )
+      .bind(key)
+      .bind(value)
+      .execute(&mut connection)
+      .await?;
+      Ok(())
+    })
   }
 
   fn get_string(&self, key: &str) -> anyhow::Result<Option<String>> {
-    self
-      .with_connection(|conn| {
-        conn
-          .query_row("SELECT value FROM kvstore WHERE key = ?1", [key], |row| {
-            row.get(0)
-          })
-          .optional()
-      })
-      .flatten()
-      .map_err(|e| anyhow::anyhow!("failed to select: {e}"))
+    let key = key.to_owned();
+    self.with_connection(move |mut connection| async move {
+      Ok(
+        sqlx::query_scalar("SELECT value FROM kvstore WHERE key = ?1")
+          .bind(key)
+          .fetch_optional(&mut connection)
+          .await?,
+      )
+    })
   }
 
   fn delete(&self, key: &str) -> anyhow::Result<()> {
-    self
-      .with_connection(|conn| {
-        conn
-          .execute("DELETE FROM kvstore where key = ?1", [key])
-          .map(|_| ())
-      })
-      .flatten()
-      .map_err(|e| anyhow::anyhow!("failed to delete: {e}"))
+    let key = key.to_owned();
+    self.with_connection(move |mut connection| async move {
+      sqlx::query("DELETE FROM kvstore WHERE key = ?1")
+        .bind(key)
+        .execute(&mut connection)
+        .await?;
+      Ok(())
+    })
   }
 }
 

@@ -9,7 +9,7 @@ version      = "1.0.0"
 doctest = false
 
 [dev-dependencies]
-bd-log                      = { path = "../bd-log", default-features = false }
+bd-log             = { path = "../bd-log", default-features = false }
 ctor.workspace     = true
 rstest.workspace   = true
 tempfile.workspace = true
