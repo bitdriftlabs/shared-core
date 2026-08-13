@@ -204,7 +204,7 @@ impl StatsCollector for Stats {
   type Histogram = bd_client_stats_store::Histogram;
 
   fn record_workflow_debug_state(&self, state: Vec<WorkflowDebugKey>) {
-    log::debug!("recording workflow debug state: {state:?}");
+    log::trace!("recording workflow debug state: {state:?}");
     let mut workflow_debug_data = self.workflow_debug_data.lock();
     for key in state {
       workflow_debug_data

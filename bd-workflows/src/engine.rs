@@ -1358,7 +1358,8 @@ impl StateStore {
     };
 
     if workflows_state.is_some() {
-      log::debug!("read workflows state from disk: {workflows_state:?}");
+      log::debug!("read workflows state from disk");
+      log::trace!("read workflows state from disk: {workflows_state:?}");
     } else {
       log::debug!("no workflows state available");
     }
@@ -1391,7 +1392,7 @@ impl StateStore {
       }
     }
 
-    log::debug!("persisting workflows state to disk: {workflows_state:?}");
+    log::trace!("persisting workflows state to disk: {workflows_state:?}");
 
     let _timer = self.stats.state_persistence_duration.start_timer();
 

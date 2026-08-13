@@ -1,43 +1,62 @@
 # Logger CLI
 
 The logger CLI is a wrapper around the core logging framework that allows instantiating a logger
-that can be used to test parts of the logger that does not depend on platform specific code.
+that can be used to test parts of the logger that do not depend on platform-specific code.
 
 ## Usage
 
 The CLI operates in a client/server architecture to allow simulating persistent logging sessions.
 
-First install the `logger-cli` for ease of use:
+### Cargo
+
+From `shared-core`, install the CLI for use as `logger-cli`:
 
 ```bash
 cargo install --path logger-cli
-````
+```
 
-To start the CLI, run
-
-```bash
-logger-cli start
-````
-
-providing both API_URL and API_KEY, .e.g.
+Start the CLI, providing both `API_URL` and `API_KEY`:
 
 ```bash
 API_KEY=<key> API_URL=<url> logger-cli start
 logger-cli --api-key <key> --api-url <url> start
 ```
 
-See `logger-cli start --help` to see additional options that can be used when starting the logger.
-
-This will start the logger that will run until stopped via ^C.
-
-To interact with the running logger, execute other logging commands from another terminal:
+From another terminal, interact with the running logger:
 
 ```bash
 logger-cli log <message>
 logger-cli log <message> --field <key1> <value1> --field <key2> <value2>
 ```
 
-See `logger-cli --help` for a complete list of commands that be run.
+### Bazel
+
+From the monorepo root, build the CLI:
+
+```bash
+./bazelw build //shared-core/logger-cli:logger-cli-bin
+```
+
+Run it through Bazel, providing both `API_URL` and `API_KEY`:
+
+```bash
+API_KEY=<key> API_URL=<url> ./bazelw run //shared-core/logger-cli:logger-cli-bin -- start
+./bazelw run //shared-core/logger-cli:logger-cli-bin -- --api-key <key> --api-url <url> start
+```
+
+From another terminal, interact with the running logger:
+
+```bash
+./bazelw run //shared-core/logger-cli:logger-cli-bin -- log <message>
+./bazelw run //shared-core/logger-cli:logger-cli-bin -- log <message> --field <key1> <value1> --field <key2> <value2>
+```
+
+Pass CLI arguments after `--`. Run `logger-cli --help` or
+`./bazelw run //shared-core/logger-cli:logger-cli-bin -- --help` for the complete command list.
+Run `logger-cli start --help` or
+`./bazelw run //shared-core/logger-cli:logger-cli-bin -- start --help` for start options.
+
+The `start` command runs until stopped with `Ctrl-C`.
 
 ## MCP Server
 

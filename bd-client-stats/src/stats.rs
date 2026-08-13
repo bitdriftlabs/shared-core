@@ -805,8 +805,9 @@ impl Flusher {
             .upload_from_disk(true, UploadReason::UPLOAD_REASON_PERIODIC)
             .await
           {
-            // Old file uploads bypass the minimum interval check so we can drain backlog quickly
-            // after startup or once a periodic upload succeeds.
+            // Startup sends one capped batch per handshake. After a periodic upload succeeds,
+            // continue draining remaining old snapshots so a persisted backlog does not wait for
+            // another handshake or periodic interval. These uploads bypass the minimum interval.
             self.push_upload_future(rx, UploadContext::Periodic(metadata));
           } else {
             self.periodic_in_flight = false;
@@ -888,7 +889,7 @@ impl Flusher {
     }
 
     for (workflow_id, debug_data) in delta_snapshot.workflow_debug_data {
-      log::debug!("merging workflow debug data for {workflow_id}");
+      log::trace!("merging workflow debug data for {workflow_id}");
       let existing = new_or_existing_snapshot
         .workflow_debug_data
         .entry(workflow_id)
@@ -900,10 +901,10 @@ impl Flusher {
           .transition_count += start_reset.transition_count;
       }
       for (state_id, state_data) in debug_data.states {
-        log::debug!("merging workflow debug state for {state_id}");
+        log::trace!("merging workflow debug state for {state_id}");
         let existing_state = existing.states.entry(state_id).or_default();
         for transition in state_data.transitions {
-          log::debug!(
+          log::trace!(
             "merging workflow debug transition for {:?}",
             transition.transition_type
           );
@@ -1145,7 +1146,7 @@ impl Flusher {
     upload_response: &UploadResponse,
     metadata: &PendingUploadMetadata,
   ) {
-    log::debug!("stat upload attempt complete: {upload_response:?}");
+    log::debug!("stat flush upload attempt complete: {upload_response:?}");
 
     #[cfg(feature = "logger-cli-observer")]
     with_observer(|observer| {
