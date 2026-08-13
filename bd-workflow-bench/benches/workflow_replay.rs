@@ -8,6 +8,7 @@
 use bd_workflow_bench::{BenchmarkCorpus, FixturePaths, default_fixture_paths};
 use criterion::{BatchSize, Criterion, Throughput, criterion_group, criterion_main};
 use std::path::PathBuf;
+use std::time::Duration;
 use tokio::runtime::Builder;
 
 const CONFIG_ENV: &str = "BD_WORKFLOW_BENCH_CONFIG";
@@ -67,5 +68,9 @@ fn corpus_paths() -> Vec<FixturePaths> {
   }
 }
 
-criterion_group!(benches, workflow_replay);
+criterion_group! {
+  name = benches;
+  config = Criterion::default().measurement_time(Duration::from_secs(12));
+  targets = workflow_replay
+}
 criterion_main!(benches);
