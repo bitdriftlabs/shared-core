@@ -19,6 +19,7 @@ use protobuf::well_known_types::duration::Duration as ProtoDuration;
 use protobuf::well_known_types::timestamp::Timestamp as ProtoTimestamp;
 use protobuf::{Message as ProtoMessage, MessageFull};
 use std::collections::HashMap;
+use std::time::{Duration as StdDuration, SystemTime};
 use test_protos::test_validate::{
   Bool,
   Double,
@@ -35,6 +36,7 @@ use test_protos::test_validate::{
   Repeated,
   String,
   Timestamp,
+  TimestampGtNow,
   Uint32,
   message,
   one_of,
@@ -85,6 +87,28 @@ fn timestamp() {
 
   let message = Timestamp {
     field: Some(ProtoTimestamp::default()).into(),
+    ..Default::default()
+  };
+  assert!(validate(&message).is_ok());
+}
+
+#[test]
+fn timestamp_gt_now() {
+  assert!(validate(&TimestampGtNow::default()).is_ok());
+
+  let message = TimestampGtNow {
+    field: Some((SystemTime::now() - StdDuration::from_secs(1)).into()).into(),
+    ..Default::default()
+  };
+  matches::assert_matches!(
+    validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "timestamp 'proto_validate.test.TimestampGtNow.field' in message \
+    'proto_validate.test.TimestampGtNow' requires > now"
+  );
+
+  let message = TimestampGtNow {
+    field: Some((SystemTime::now() + StdDuration::from_secs(1)).into()).into(),
     ..Default::default()
   };
   assert!(validate(&message).is_ok());

@@ -34,7 +34,7 @@ use protos::validate::{
 };
 use std::collections::HashSet;
 use std::fmt::Display;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 //
 // ValidationOptions
@@ -317,7 +317,6 @@ fn verify_timestamp_rules_supported(rules: &FieldRules) -> error::Result<()> {
   not_implemented(rules.gt.is_some(), "timestamp gt")?;
   not_implemented(rules.gte.is_some(), "timestamp gte")?;
   not_implemented(rules.has_lt_now(), "timestamp lt_now")?;
-  not_implemented(rules.has_gt_now(), "timestamp gt_now")?;
   not_implemented(rules.within.is_some(), "timestamp within")?;
   Ok(())
 }
@@ -341,6 +340,19 @@ fn validate_timestamp(
   }
 
   verify_timestamp_rules_supported(rules)?;
+
+  if timestamp_rules.gt_now()
+    && let Some(value) = value
+  {
+    let timestamp: SystemTime = value.clone().into();
+    if timestamp <= SystemTime::now() {
+      return Err(error::Error::ProtoValidation(format!(
+        "timestamp '{}' in message '{}' requires > now",
+        formatter.field_name(field_descriptor, message_descriptor),
+        formatter.message_name(message_descriptor)
+      )));
+    }
+  }
 
   Ok(())
 }
