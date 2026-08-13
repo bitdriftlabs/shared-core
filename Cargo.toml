@@ -16,6 +16,7 @@ members = [
   "bd-crash-handler",
   "bd-device",
   "bd-error-reporter",
+  "bd-event-buffer",
   "bd-events",
   "bd-state",
   "bd-grpc",

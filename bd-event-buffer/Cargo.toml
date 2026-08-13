@@ -1,0 +1,15 @@
+[package]
+edition      = "2024"
+license-file = "../LICENSE.polyform"
+name         = "bd-event-buffer"
+publish      = false
+version      = "1.0.0"
+
+[dependencies]
+anyhow.workspace = true
+bd-completion.path = "../bd-completion"
+bd-client-common.path = "../bd-client-common"
+bd-log-primitives.path = "../bd-log-primitives"
+bd-proto.path = "../bd-proto"
+thiserror.workspace = true
+tokio.workspace = true

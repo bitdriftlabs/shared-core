@@ -26,11 +26,11 @@ use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_common::{maybe_await, maybe_await_map};
 use bd_crash_handler::global_state;
 use bd_device::Store;
+pub use bd_event_buffer::StateUpdateMessage;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
-  DataValue,
   Log,
   LogFieldValue,
   LogFields,
@@ -38,9 +38,9 @@ use bd_log_primitives::{
   LogLevel,
   LogMessage,
 };
+pub use bd_log_primitives::{LogAttributesOverrides, LogLine};
 use bd_macros::ApproximateSize;
 use bd_network_quality::{NetworkQualityMonitor, NetworkQualityResolver};
-use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::client::api::debug_data_request::{
   WorkflowDebugData,
   WorkflowTransitionDebugData,
@@ -92,20 +92,6 @@ impl ReportProcessor for () {
   }
 }
 
-#[derive(ApproximateSize, Debug)]
-pub enum StateUpdateMessage {
-  AddLogField(String, DataValue),
-  UpdateOotbLogField(String, DataValue),
-  RemoveLogField(String),
-  SetFeatureFlagExposure(String, Option<String>),
-  SetMemoryPressureLevel {
-    #[approximate_size(skip)]
-    level: MemoryPressureLevel,
-  },
-  SetEntityId(Option<String>),
-  FlushState(#[approximate_size(skip)] Option<bd_completion::Sender<()>>),
-}
-
 pub type SequencedStateUpdate = SequencedMessage<StateUpdateMessage>;
 
 #[derive(ApproximateSize, Debug)]
@@ -119,54 +105,6 @@ impl From<LogLine> for EmitLogMessage {
   fn from(log: LogLine) -> Self {
     Self { log }
   }
-}
-
-//
-// LogLine
-//
-
-/// A copy of an incoming log line, used to allow for offloading the
-/// processing of the incoming logs to an async run loop.
-///
-/// The log does not have a `group`, `timestamp` and all of the `fields` yet.
-/// These are populated only after the log is dequeued for processing on the
-/// run loop and the execution of the program calls into `metadata_provider`
-/// to retrieve the aforementioned properties and merge them into the final log
-/// before passing them for further processing.
-#[derive(ApproximateSize, Debug)]
-pub struct LogLine {
-  #[approximate_size(skip)]
-  pub log_level: LogLevel,
-  #[approximate_size(skip)]
-  pub log_type: LogType,
-  pub message: LogMessage,
-  #[approximate_size(with = bd_log_primitives::approximate_ahash_map_children_bytes)]
-  pub fields: AnnotatedLogFields,
-  #[approximate_size(with = bd_log_primitives::approximate_ahash_map_children_bytes)]
-  pub matching_fields: AnnotatedLogFields,
-  pub attributes_overrides: Option<LogAttributesOverrides>,
-
-  /// If set, indicates that the log should trigger a session capture. The provided value is an ID
-  /// that helps identify why the session should be captured.
-  #[approximate_size(skip)]
-  pub capture_session: Option<&'static str>,
-}
-
-//
-// LogAttributesOverrides
-//
-
-#[derive(ApproximateSize, Debug)]
-pub enum LogAttributesOverrides {
-  /// The hint that tells the SDK to use the previous session ID if available.
-  ///
-  /// Use of this override assumes that all relevant metadata has been attached to the log as no
-  /// current session metadata will be added.
-  PreviousRunSessionID(OffsetDateTime),
-
-  /// Overrides the time when the log occurred at, useful for cases like spans with a provided
-  /// time.
-  OccurredAt(OffsetDateTime),
 }
 
 #[derive(Clone)]

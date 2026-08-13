@@ -33,12 +33,82 @@ use flate2::write::ZlibEncoder;
 use ordered_float::NotNan;
 use protobuf::{CodedInputStream, CodedOutputStream};
 use std::borrow::Cow;
+use std::mem::size_of_val;
 use std::sync::{Arc, LazyLock};
 use time::OffsetDateTime;
 
 pub const LOG_FIELD_NAME_TYPE: &str = "log_type";
 pub const LOG_FIELD_NAME_LEVEL: &str = "log_level";
 pub const LOG_FIELD_NAME_MESSAGE: &str = "_message";
+
+const RESERVED_CUSTOM_FIELD_NAMES: &[&str] = &[
+  "_manufacturer",
+  "app_id",
+  "app_version",
+  "carrier",
+  "foreground",
+  "log_level",
+  "log_type",
+  "model",
+  "network_type",
+  "os",
+  "os_version",
+  "radio_type",
+];
+
+/// Rejects global field names reserved for SDK-owned log metadata.
+pub fn verify_custom_field_name(key: &str) -> anyhow::Result<()> {
+  if RESERVED_CUSTOM_FIELD_NAMES.contains(&key) {
+    anyhow::bail!(
+      "Custom global field with {key:?} name is not allowed as the name is reserved for SDK \
+       internal use"
+    );
+  }
+
+  if key.starts_with('_') {
+    anyhow::bail!(
+      "Custom global field with {key:?} key is not allowed, fields whose key starts with \"_\" \
+       are reserved for SDK internal use"
+    );
+  }
+
+  Ok(())
+}
+
+//
+// LogIngress
+//
+
+/// The pre-processing representation of a log emitted into the SDK ingress pipeline.
+#[derive(Debug)]
+pub struct LogLine {
+  pub log_level: LogLevel,
+  pub log_type: LogType,
+  pub message: LogMessage,
+  pub fields: AnnotatedLogFields,
+  pub matching_fields: AnnotatedLogFields,
+  pub attributes_overrides: Option<LogAttributesOverrides>,
+  pub capture_session: Option<&'static str>,
+}
+
+#[derive(Debug)]
+pub enum LogAttributesOverrides {
+  PreviousRunSessionID(OffsetDateTime),
+  OccurredAt(OffsetDateTime),
+}
+
+impl MemorySized for LogLine {
+  fn size(&self) -> usize {
+    size_of_val(&self.log_level)
+      + size_of_val(&self.log_type)
+      + self.message.size()
+      + self.fields.size()
+      + self.matching_fields.size()
+      + size_of_val(&self.attributes_overrides)
+      + 48
+      + 24
+  }
+}
 
 // Helpers for doing raw casts where we are sure the value fits and don't want to pay for
 // checks and avoid clippy lints.

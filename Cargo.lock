@@ -700,6 +700,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "bd-event-buffer"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "bd-client-common",
+ "bd-completion",
+ "bd-log-primitives",
+ "bd-proto",
+ "thiserror 2.0.20",
+ "tokio",
+]
+
+[[package]]
 name = "bd-events"
 version = "1.0.0"
 dependencies = [
@@ -972,6 +985,7 @@ dependencies = [
  "bd-crash-handler",
  "bd-device",
  "bd-error-reporter",
+ "bd-event-buffer",
  "bd-events",
  "bd-hyper-network",
  "bd-internal-logging",
@@ -1005,6 +1019,7 @@ dependencies = [
  "flate2",
  "fs2",
  "futures-util",
+ "gungraun",
  "itertools 0.15.0",
  "log",
  "notify",

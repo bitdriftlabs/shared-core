@@ -24,6 +24,7 @@ bd-completion.path           = "../bd-completion"
 bd-crash-handler.path        = "../bd-crash-handler"
 bd-device.path               = "../bd-device"
 bd-error-reporter.path       = "../bd-error-reporter"
+bd-event-buffer.path         = "../bd-event-buffer"
 bd-events.path               = "../bd-events"
 bd-internal-logging.path     = "../bd-internal-logging"
 bd-key-value.path            = "../bd-key-value"
@@ -63,6 +64,13 @@ tower.workspace              = true
 tracing.workspace            = true
 unwrap-infallible.workspace  = true
 uuid.workspace               = true
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+gungraun = { version = "0.19.4", features = ["client_requests"] }
+
+[[bench]]
+harness = false
+name    = "event_buffer"
 
 [dev-dependencies]
 assert_matches.workspace    = true

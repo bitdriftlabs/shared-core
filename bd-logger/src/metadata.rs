@@ -18,30 +18,13 @@ use bd_log_primitives::{
   LogFieldKind,
   LogFieldValue,
   LogFields,
+  verify_custom_field_name,
 };
 use bd_log_util::warn_every;
 use bd_proto::protos::logging::payload::LogType;
-use std::collections::BTreeSet;
 use std::collections::hash_map::Entry;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use time::ext::NumericalDuration;
-
-static RESERVED_FIELD_NAMES: LazyLock<BTreeSet<String>> = LazyLock::new(|| {
-  BTreeSet::from([
-    "_manufacturer".to_string(),
-    "app_id".to_string(),
-    "app_version".to_string(),
-    "carrier".to_string(),
-    "foreground".to_string(),
-    "log_level".to_string(),
-    "log_type".to_string(),
-    "model".to_string(),
-    "network_type".to_string(),
-    "os".to_string(),
-    "os_version".to_string(),
-    "radio_type".to_string(),
-  ])
-});
 
 //
 // LogMetadata
@@ -277,24 +260,6 @@ fn partition_fields(field: AnnotatedLogFields) -> PartitionedFields {
   }
 
   PartitionedFields { ootb, custom }
-}
-
-fn verify_custom_field_name(key: &str) -> anyhow::Result<()> {
-  if RESERVED_FIELD_NAMES.contains(key) {
-    anyhow::bail!(
-      "Custom global field with {key:?} name is not allowed as the name is reserved for SDK \
-       internal use"
-    );
-  }
-
-  if key.starts_with('_') {
-    anyhow::bail!(
-      "Custom global field with {key:?} key is not allowed, fields whose key starts with \"_\" \
-       are reserved for SDK internal use"
-    );
-  }
-
-  Ok(())
 }
 
 //

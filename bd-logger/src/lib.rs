@@ -29,7 +29,7 @@ mod internal_report;
 mod log_replay;
 mod logger;
 mod logging_state;
-mod metadata;
+pub(crate) mod metadata;
 mod network;
 mod ordered_receiver;
 mod pre_config_buffer;
@@ -44,11 +44,11 @@ mod test;
 
 pub use crate::app_version::AppVersionExtra;
 pub use crate::logger::{ChannelPair, InitParams};
-pub use async_log_buffer::LogAttributesOverrides;
 pub use bd_api::{PlatformNetworkManager, PlatformNetworkStream};
 use bd_buffer::AbslCode;
 pub use bd_client_common::sdk_status::{InitializationState, SdkStatus, SdkStatusTracker};
 pub use bd_device::Device;
+pub use bd_event_buffer as event_buffer;
 pub use bd_events::ListenerTarget as EventsListenerTarget;
 pub use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::LossyIntToU32;
@@ -57,6 +57,7 @@ pub use bd_log_primitives::{
   AnnotatedLogFields,
   DataValue,
   FieldsRef,
+  LogAttributesOverrides,
   LogFieldKind,
   LogFieldValue,
   LogFields,
