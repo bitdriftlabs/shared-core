@@ -69,7 +69,7 @@ pub use bd_proto_v1::MemoryPressureLevel;
 pub use bd_resource_utilization::Target as ResourceUtilizationTarget;
 pub use bd_session_replay::Target as SessionReplayTarget;
 pub use builder::LoggerBuilder;
-pub use logger::{Block, CaptureSession, Logger, LoggerHandle, ReportProcessingSession};
+pub use logger::{Block, CaptureSession, Logger, LoggerHandle, ReportProcessingSession, TestHooks};
 pub use metadata::LogMetadata;
 
 #[cfg(test)]

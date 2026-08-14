@@ -3044,6 +3044,8 @@ fn remote_buffer_upload_with_streaming_does_not_extend_active_workflow_streaming
       },
     });
 
+  setup.wait_for_remote_streaming_action_processing();
+
   for _ in 0 .. 5 {
     setup.log(
       log_level::DEBUG,

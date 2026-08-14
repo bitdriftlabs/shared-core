@@ -604,6 +604,14 @@ pub struct ReportProcessingRequest {
   pub session: ReportProcessingSession,
 }
 
+//
+// TestHooks
+//
+
+pub trait TestHooks: Send + Sync {
+  fn remote_streaming_action_processed(&self) {}
+}
+
 /// A single logger instance. This manages the lifetime of the logger and can be used to access
 /// other components of the logger. Logging itself happens via the thread local logger, see
 /// `write_log`.

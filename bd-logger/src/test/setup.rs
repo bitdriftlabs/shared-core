@@ -14,6 +14,7 @@ use crate::{
   LogMessage,
   Logger,
   ReportProcessingSession,
+  TestHooks,
 };
 use bd_client_stats::FlushTrigger;
 use bd_device::Store;
@@ -49,7 +50,7 @@ use bd_time::test::TestTicker;
 use bd_workflows::engine::WORKFLOWS_STATE_FILE_NAME;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
-use std::sync::mpsc::{Receiver as StdReceiver, Sender as StdSender};
+use std::sync::mpsc::{Receiver as StdReceiver, Sender as StdSender, channel as std_channel};
 use tempfile::TempDir;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use tokio::sync::mpsc;
@@ -73,6 +74,20 @@ struct MockSessionReplayTarget {
   capture_screenshot_count: Arc<AtomicUsize>,
   capture_screen_tx: StdSender<()>,
   capture_screenshot_tx: StdSender<()>,
+}
+
+//
+// SetupTestHooks
+//
+
+struct SetupTestHooks {
+  remote_streaming_action_processed_tx: StdSender<()>,
+}
+
+impl TestHooks for SetupTestHooks {
+  fn remote_streaming_action_processed(&self) {
+    let _ignored = self.remote_streaming_action_processed_tx.send(());
+  }
 }
 
 impl bd_session_replay::Target for MockSessionReplayTarget {
@@ -147,6 +162,7 @@ pub struct Setup {
 
   capture_screen_rx: StdReceiver<()>,
   capture_screenshot_rx: StdReceiver<()>,
+  remote_streaming_action_processed_rx: StdReceiver<()>,
 
   _shutdown: ComponentShutdownTrigger,
 
@@ -212,6 +228,8 @@ impl Setup {
 
     let (capture_screen_tx, capture_screen_rx) = std::sync::mpsc::channel();
     let (capture_screenshot_tx, capture_screenshot_rx) = std::sync::mpsc::channel();
+    let (remote_streaming_action_processed_tx, remote_streaming_action_processed_rx) =
+      std_channel();
     let session_replay_target = Box::new(MockSessionReplayTarget {
       capture_screen_count: Arc::default(),
       capture_screenshot_count: Arc::default(),
@@ -245,6 +263,9 @@ impl Setup {
     .with_client_stats_tickers_for_test(Box::new(flush_ticker), Box::new(upload_ticker))
     .with_internal_logger(true)
     .with_time_provider(options.time_provider)
+    .with_test_hooks(Some(Arc::new(SetupTestHooks {
+      remote_streaming_action_processed_tx,
+    })))
     .build_dedicated_thread()
     .unwrap();
 
@@ -265,6 +286,7 @@ impl Setup {
       current_api_stream,
       capture_screen_rx,
       capture_screenshot_rx,
+      remote_streaming_action_processed_rx,
       _shutdown: shutdown,
       _stats_flush_tx: flush_tick_tx,
       _stats_upload_tx: upload_tick_tx,
@@ -288,6 +310,13 @@ impl Setup {
       .capture_screenshot_rx
       .recv_timeout(std::time::Duration::from_secs(5))
       .expect("timed out waiting for capture-screenshot callback");
+  }
+
+  pub fn wait_for_remote_streaming_action_processing(&self) {
+    self
+      .remote_streaming_action_processed_rx
+      .recv_timeout(std::time::Duration::from_secs(5))
+      .expect("timed out waiting for remote streaming action processing");
   }
 
   pub fn assert_no_capture_screenshot(&self) {

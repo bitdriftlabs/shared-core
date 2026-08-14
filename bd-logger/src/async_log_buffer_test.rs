@@ -209,6 +209,7 @@ impl Setup {
       1_000_000,
       Arc::new(AtomicBool::new(false)),
       Arc::new(ProcessLocalPendingFlushState::default()),
+      None,
     )
   }
 

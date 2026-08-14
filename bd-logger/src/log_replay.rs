@@ -9,6 +9,7 @@ use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::consumer::RemoteFlushStreamingRequest;
 use crate::flush_registry::PendingTriggerUploadsStore;
+use crate::logger::TestHooks;
 use crate::logging_state::{BufferProducers, ConfigUpdate, InitializedLoggingContextStats};
 use crate::write_log_to_buffer;
 use bd_api::{DataUpload, TriggerUpload, TriggerUploadSource};
@@ -152,6 +153,7 @@ pub struct ProcessingPipeline {
   remote_flush_streaming_rx: Receiver<RemoteFlushStreamingRequest>,
   capture_screenshot_handler: CaptureScreenshotHandler,
   is_tracing_active: Arc<AtomicBool>,
+  test_hooks: Option<Arc<dyn TestHooks>>,
 
   stats: InitializedLoggingContextStats,
 }
@@ -172,6 +174,7 @@ impl ProcessingPipeline {
     stats: InitializedLoggingContextStats,
     is_tracing_active: Arc<AtomicBool>,
     process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
+    test_hooks: Option<Arc<dyn TestHooks>>,
   ) -> Self {
     // Startup rebuilds the workflow-side pending set by projecting the durable logger registry
     // down to flush IDs. The registry stays authoritative across restart; workflows only need the
@@ -229,6 +232,7 @@ impl ProcessingPipeline {
 
       capture_screenshot_handler,
       is_tracing_active,
+      test_hooks,
 
       stats,
     }
@@ -667,6 +671,9 @@ impl ProcessingPipeline {
           self
             .is_tracing_active
             .store(self.workflows_engine.is_tracing_active(), Ordering::Relaxed);
+        }
+        if let Some(test_hooks) = &self.test_hooks {
+          test_hooks.remote_streaming_action_processed();
         }
       },
     }
