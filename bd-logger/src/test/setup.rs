@@ -15,7 +15,7 @@ use crate::{
   Logger,
   ReportProcessingSession,
 };
-use bd_client_stats::{FlushTrigger, FlushTriggerRequest};
+use bd_client_stats::FlushTrigger;
 use bd_device::Store;
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::client::api::ConfigurationUpdate;
@@ -49,6 +49,7 @@ use bd_time::test::TestTicker;
 use bd_workflows::engine::WORKFLOWS_STATE_FILE_NAME;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
+use std::sync::mpsc::{Receiver as StdReceiver, Sender as StdSender};
 use tempfile::TempDir;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use tokio::sync::mpsc;
@@ -67,10 +68,11 @@ macro_rules! wait_for {
   };
 }
 
-#[derive(Default)]
 struct MockSessionReplayTarget {
   capture_screen_count: Arc<AtomicUsize>,
   capture_screenshot_count: Arc<AtomicUsize>,
+  capture_screen_tx: StdSender<()>,
+  capture_screenshot_tx: StdSender<()>,
 }
 
 impl bd_session_replay::Target for MockSessionReplayTarget {
@@ -78,12 +80,14 @@ impl bd_session_replay::Target for MockSessionReplayTarget {
     self
       .capture_screen_count
       .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let _ = self.capture_screen_tx.send(());
   }
 
   fn capture_screenshot(&self) {
     self
       .capture_screenshot_count
       .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let _ = self.capture_screenshot_tx.send(());
   }
 }
 
@@ -143,6 +147,8 @@ pub struct Setup {
 
   pub capture_screen_count: Arc<AtomicUsize>,
   pub capture_screenshot_count: Arc<AtomicUsize>,
+  capture_screen_rx: StdReceiver<()>,
+  capture_screenshot_rx: StdReceiver<()>,
 
   _shutdown: ComponentShutdownTrigger,
 
@@ -206,7 +212,14 @@ impl Setup {
     };
     let device = Arc::new(bd_device::Device::new(store.clone()));
 
-    let session_replay_target = Box::new(MockSessionReplayTarget::default());
+    let (capture_screen_tx, capture_screen_rx) = std::sync::mpsc::channel();
+    let (capture_screenshot_tx, capture_screenshot_rx) = std::sync::mpsc::channel();
+    let session_replay_target = Box::new(MockSessionReplayTarget {
+      capture_screen_count: Arc::default(),
+      capture_screenshot_count: Arc::default(),
+      capture_screen_tx,
+      capture_screenshot_tx,
+    });
     let capture_screen_count = session_replay_target.capture_screen_count.clone();
     let capture_screenshot_count = session_replay_target.capture_screenshot_count.clone();
 
@@ -256,6 +269,8 @@ impl Setup {
       current_api_stream,
       capture_screen_count,
       capture_screenshot_count,
+      capture_screen_rx,
+      capture_screenshot_rx,
       _shutdown: shutdown,
       _stats_flush_tx: flush_tick_tx,
       _stats_upload_tx: upload_tick_tx,
@@ -265,6 +280,24 @@ impl Setup {
 
   pub fn run_network(port: u16, shutdown: ComponentShutdown) -> bd_hyper_network::Handle {
     bd_hyper_network::HyperNetwork::run_on_thread(&format!("http://localhost:{port}"), shutdown)
+  }
+
+  pub fn wait_for_capture_screen(&self) {
+    self
+      .capture_screen_rx
+      .recv_timeout(std::time::Duration::from_secs(5))
+      .expect("timed out waiting for capture-screen callback");
+  }
+
+  pub fn wait_for_capture_screenshot(&self) {
+    self
+      .capture_screenshot_rx
+      .recv_timeout(std::time::Duration::from_secs(5))
+      .expect("timed out waiting for capture-screenshot callback");
+  }
+
+  pub fn assert_no_capture_screenshot(&self) {
+    assert!(self.capture_screenshot_rx.try_recv().is_err());
   }
 
   pub fn restart_stream(&mut self, expect_sleep_mode: bool) {
@@ -361,15 +394,11 @@ impl Setup {
   }
 
   fn flush_stats(&self, do_upload: bool) {
-    let (sender, receiver) = bd_completion::Sender::new();
-    self
+    let completion = self
       .stats_flush_trigger
-      .blocking_flush_for_test(FlushTriggerRequest {
-        do_upload,
-        completion_tx: Some(sender),
-      })
+      .blocking_flush_for_test(do_upload)
       .unwrap();
-    receiver.blocking_recv().unwrap();
+    completion.blocking_wait_for_test().unwrap();
   }
 
   pub fn log(

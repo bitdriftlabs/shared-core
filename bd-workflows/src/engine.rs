@@ -48,7 +48,7 @@ use crate::workflow::{
 use anyhow::anyhow;
 use bd_api::{DataUpload, TriggerUploadStreaming};
 use bd_client_common::file::{read_compressed_protobuf_file, write_compressed_protobuf_file};
-use bd_client_stats::{FlushTrigger, FlushTriggerRequest};
+use bd_client_stats::FlushTrigger;
 use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::Log;
@@ -587,7 +587,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
 
         match negotiator_output {
           NegotiatorOutput::UploadApproved(action) => {
-              self.on_log_upload_approved(&action).await;
+              self.on_log_upload_approved(&action);
           },
           NegotiatorOutput::UploadRejected(action) => {
             if action.has_tracing_lease() {
@@ -616,7 +616,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     !self.process_local_pending_flush_state.is_pending(action_id)
   }
 
-  async fn on_log_upload_approved(&mut self, action: &PendingFlushBuffersAction) {
+  fn on_log_upload_approved(&mut self, action: &PendingFlushBuffersAction) {
     self.state.pending_flush_actions.remove(action);
 
     // Signal an explicit stats flush if we are about to start uploading logs. This is not perfect
@@ -626,12 +626,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     // upload to complete before starting log uploads. In general we need to spend more time
     // hardening this entire path.
     if let Some(flush_trigger) = &self.stats_flush_trigger
-      && let Err(e) = flush_trigger
-        .flush(FlushTriggerRequest {
-          do_upload: true,
-          completion_tx: None,
-        })
-        .await
+      && let Err(e) = flush_trigger.flush(true)
     {
       log::debug!("failed to trigger stats flush on log upload approval: {e}");
     }

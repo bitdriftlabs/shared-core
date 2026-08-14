@@ -878,6 +878,7 @@ fn blocking_log() {
 fn session_replay_actions() {
   let mut setup = Setup::new();
   setup.send_runtime_update();
+  setup.wait_for_capture_screen();
 
   let b = state("B");
   let a = state("A").declare_transition_with_actions(
@@ -908,15 +909,7 @@ fn session_replay_actions() {
     [].into(),
     [].into(),
   );
-  // TODO(snowp): This is a bit of a brittle test as it relies on the timing of the screenshot
-  // handling.
-  std::thread::sleep(100.std_milliseconds());
-  assert_eq!(
-    0,
-    setup
-      .capture_screenshot_count
-      .load(std::sync::atomic::Ordering::Relaxed)
-  );
+  setup.assert_no_capture_screenshot();
 
   // Emit a log that should result in taking a screenshot.
   setup.blocking_log(
@@ -926,11 +919,7 @@ fn session_replay_actions() {
     [].into(),
     [].into(),
   );
-  wait_for!(
-    1 == setup
-      .capture_screenshot_count
-      .load(std::sync::atomic::Ordering::Relaxed)
-  );
+  setup.wait_for_capture_screenshot();
 
   // Simulate a capture of a screenshot.
   setup.blocking_log(
@@ -941,18 +930,6 @@ fn session_replay_actions() {
     [].into(),
   );
 
-  // Due to all the channels used to propagate the fact that we have taken a screenshot, we need
-  // to block on this metric to ensure that we have transitioned into being able to take another
-  // screenshot before proceeding.
-  wait_for!(
-    setup
-      .logger
-      .stats()
-      .counter("logger:screenshots:received_total")
-      .get()
-      == 1
-  );
-
   // Emit a log that should result in taking a screenshot.
   setup.blocking_log(
     log_level::DEBUG,
@@ -961,15 +938,7 @@ fn session_replay_actions() {
     [].into(),
     [].into(),
   );
-  wait_for!(
-    2 == setup
-      .capture_screenshot_count
-      .load(std::sync::atomic::Ordering::Relaxed)
-      && 1
-        == setup
-          .capture_screen_count
-          .load(std::sync::atomic::Ordering::Relaxed)
-  );
+  setup.wait_for_capture_screenshot();
 }
 
 #[test]

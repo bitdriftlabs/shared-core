@@ -8,7 +8,7 @@
 use crate::file_manager::{FileManager, PENDING_AGGREGATION_INDEX_FILE, STATS_DIRECTORY};
 use crate::stats::{HandshakeStats, PeriodicAction, PeriodicSchedule, RuntimePeriodicSchedule};
 use crate::test::TestTickerBackedSchedule;
-use crate::{FlushTrigger, FlushTriggerRequest, Stats};
+use crate::{FlushTrigger, Stats};
 use assert_matches::assert_matches;
 use async_trait::async_trait;
 use bd_api::DataUpload;
@@ -44,6 +44,7 @@ use bd_proto::protos::client::metric::{
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_stats_common::{Counter, Histogram, labels};
+use bd_test_helpers::RecordingErrorReporter;
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_test_helpers::stats::StatsRequestHelper;
 use bd_time::test::TestTicker;
@@ -305,6 +306,7 @@ impl Setup {
     let (periodic_flush_tick_tx, periodic_flush_ticker) = TestTicker::new();
     let (upload_tick_tx, upload_ticker) = TestTicker::new();
     let minimum_upload_interval = runtime_loader.register_duration_watch();
+    let disk_flush_debounce = runtime_loader.register_duration_watch();
     let mut flush_handles = stats.flush_handle_helper(
       Box::new(TestTickerBackedSchedule::new(
         Box::new(periodic_flush_ticker),
@@ -315,6 +317,7 @@ impl Setup {
       Arc::new(FileManager::new(fs, test_time.clone(), &runtime_loader)),
       test_time.clone(),
       minimum_upload_interval,
+      disk_flush_debounce,
     );
 
     let test_hooks = flush_handles.flusher.test_hooks();
@@ -344,14 +347,12 @@ impl Setup {
   }
 
   async fn do_explicit_flush(&self, completion: bd_completion::Sender<()>) {
-    self
-      .explicit_flush_trigger
-      .flush(FlushTriggerRequest {
-        do_upload: true,
-        completion_tx: Some(completion),
-      })
-      .await
-      .unwrap();
+    let flush_completion = self.explicit_flush_trigger.flush(true).unwrap();
+    tokio::spawn(async move {
+      if flush_completion.wait().await.is_ok() {
+        let () = completion.send(());
+      }
+    });
   }
 
   async fn next_stat_upload(&mut self) -> Tracked<StatsUploadRequest, UploadResponse> {
@@ -2195,6 +2196,630 @@ async fn periodic_tick_while_upload_is_in_flight_flushes_without_starting_second
 }
 
 #[tokio::test(start_paused = true)]
+async fn explicit_flush_persists_while_upload_channel_is_full() {
+  let mut setup = Setup::new().await;
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "periodic"), "id1", 1);
+  setup.do_periodic_flush().await;
+  setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "explicit"), "id2", 2);
+  let (tx, rx) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  rx.recv().await.unwrap();
+
+  let periodic_upload = setup.next_stat_upload().await;
+  assert_eq!(
+    StatsRequestHelper::new(periodic_upload.payload.clone())
+      .get_workflow_counter("id1", labels!("foo" => "periodic")),
+    Some(1)
+  );
+
+  let explicit_upload = setup.next_stat_upload().await;
+  assert_eq!(
+    StatsRequestHelper::new(explicit_upload.payload.clone())
+      .get_workflow_counter("id2", labels!("foo" => "explicit")),
+    Some(2)
+  );
+
+  periodic_upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: periodic_upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  explicit_upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: explicit_upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn disk_flushes_are_leading_and_fixed_trailing_debounced() {
+  let mut setup = Setup::new().await;
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
+  setup.do_periodic_flush().await;
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "first-trailing"), "id2", 2);
+  setup.periodic_flush_tick_tx.send(()).await.unwrap();
+  assert!(setup.test_hooks.flush_complete_rx.try_recv().is_err());
+
+  tokio::time::advance(std::time::Duration::from_millis(500)).await;
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "second-trailing"), "id3", 3);
+  setup.periodic_flush_tick_tx.send(()).await.unwrap();
+
+  tokio::time::advance(std::time::Duration::from_millis(499)).await;
+  assert!(setup.test_hooks.flush_complete_rx.try_recv().is_err());
+
+  tokio::time::advance(std::time::Duration::from_millis(1)).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  tokio::time::advance(std::time::Duration::from_secs(1)).await;
+  assert!(setup.test_hooks.flush_complete_rx.try_recv().is_err());
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn runtime_configured_disk_flush_debounce_uses_milliseconds() {
+  let mut setup = Setup::new().await;
+  setup
+    .runtime_loader
+    .update_snapshot(make_simple_update(vec![(
+      bd_runtime::runtime::stats::DiskFlushDebounceFlag::path(),
+      ValueKind::Int(100),
+    )]))
+    .await
+    .unwrap();
+
+  // The leading write opens the configured fixed window. A second flush inside that window must
+  // wait for the trailing write at 100ms, rather than using the one-second default.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
+  setup.do_periodic_flush().await;
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "trailing"), "id2", 2);
+  setup.periodic_flush_tick_tx.send(()).await.unwrap();
+
+  tokio::time::advance(std::time::Duration::from_millis(99)).await;
+  assert!(setup.test_hooks.flush_complete_rx.try_recv().is_err());
+  tokio::time::advance(std::time::Duration::from_millis(1)).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn debounced_persistence_only_flush_does_not_dispatch_upload() {
+  let mut setup = Setup::new().await;
+
+  // Open the fixed debounce window without creating an upload. The explicit request below asks
+  // only for local durability and must still wait for its coalesced trailing disk write.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
+  setup.do_periodic_flush().await;
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "persistence-only"), "id2", 2);
+  let completion = setup.explicit_flush_trigger.flush(false).unwrap();
+
+  assert!(poll!(Box::pin(setup.data_rx.recv())).is_pending());
+  tokio::time::advance(std::time::Duration::from_secs(1)).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  completion.wait().await.unwrap();
+  assert!(poll!(Box::pin(setup.data_rx.recv())).is_pending());
+
+  // After the debounce window closes, a later normal upload sees both values. This proves the
+  // persistence-only request did not simply skip the pending delta to avoid transport dispatch.
+  tokio::time::advance(std::time::Duration::from_secs(1)).await;
+  setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  let upload = setup.next_stat_upload().await;
+  let helper = StatsRequestHelper::new(upload.payload.clone());
+  assert_eq!(
+    helper.get_workflow_counter("id1", labels!("foo" => "leading")),
+    Some(1)
+  );
+  assert_eq!(
+    helper.get_workflow_counter("id2", labels!("foo" => "persistence-only")),
+    Some(2)
+  );
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn debounced_flush_epoch_completes_bursts_and_ors_upload_intent() {
+  let mut setup = Setup::new().await;
+
+  // Open the window without an upload. Every caller below joins one shared epoch, but only the
+  // first one asks for transport work; that intent must be retained for the eventual trailing
+  // write without retaining a per-caller request in Flusher.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
+  setup.do_periodic_flush().await;
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "burst"), "id2", 2);
+  let completions = (0 .. 128)
+    .map(|index| setup.explicit_flush_trigger.flush(index == 0).unwrap())
+    .collect::<Vec<_>>();
+
+  tokio::time::advance(std::time::Duration::from_secs(1)).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  for completion in completions {
+    completion.wait().await.unwrap();
+  }
+
+  let upload = setup.next_stat_upload().await;
+  let helper = StatsRequestHelper::new(upload.payload.clone());
+  assert_eq!(
+    helper.get_workflow_counter("id2", labels!("foo" => "burst")),
+    Some(2)
+  );
+  assert!(poll!(Box::pin(setup.data_rx.recv())).is_pending());
+
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn flush_registered_after_epoch_rotation_waits_for_next_disk_write() {
+  let mut setup = Setup::new().await;
+
+  // The first caller joins the epoch that will be completed by the current trailing write.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
+  setup.do_periodic_flush().await;
+  let first_completion = setup.explicit_flush_trigger.flush(false).unwrap();
+
+  tokio::time::advance(std::time::Duration::from_secs(1)).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  first_completion.wait().await.unwrap();
+
+  // The completed trailing write has atomically opened a new epoch. This caller must wait for
+  // the next write rather than observing durability from the already completed one.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "next"), "id2", 2);
+  let second_completion = setup.explicit_flush_trigger.flush(false).unwrap();
+  let mut second_wait = Box::pin(second_completion.wait());
+  assert!(poll!(&mut second_wait).is_pending());
+
+  tokio::time::advance(std::time::Duration::from_secs(1)).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  assert_matches!(poll!(second_wait), std::task::Poll::Ready(Ok(())));
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn shutdown_fails_open_flush_epoch() {
+  let mut setup = Setup::new().await;
+
+  // The leading periodic write opens a debounce window. This explicit request joins the open
+  // epoch and must be failed by shutdown rather than waiting forever for its trailing write.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
+  setup.do_periodic_flush().await;
+  let completion = setup.explicit_flush_trigger.flush(false).unwrap();
+  let trigger = setup.explicit_flush_trigger.clone();
+
+  setup.shutdown().await.unwrap();
+  assert!(completion.wait().await.is_err());
+  assert!(trigger.flush(false).is_err());
+}
+
+#[tokio::test(start_paused = true)]
+async fn periodic_upload_waits_for_debounced_disk_flush() {
+  let mut setup = Setup::new().await;
+
+  // The leading flush opens the debounce window and makes the first metric durable.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
+  setup.do_periodic_flush().await;
+
+  // A periodic upload inside that window must wait for the trailing flush so its request also
+  // contains this later metric rather than snapshotting stale on-disk state.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "trailing"), "id2", 2);
+  setup.upload_tick_tx.send(()).await.unwrap();
+  assert!(setup.test_hooks.flush_complete_rx.try_recv().is_err());
+  assert!(poll!(Box::pin(setup.data_rx.recv())).is_pending());
+
+  tokio::time::advance(std::time::Duration::from_secs(1)).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  let upload = setup.next_stat_upload().await;
+  let helper = StatsRequestHelper::new(upload.payload.clone());
+  assert_eq!(
+    helper.get_workflow_counter("id1", labels!("foo" => "leading")),
+    Some(1)
+  );
+  assert_eq!(
+    helper.get_workflow_counter("id2", labels!("foo" => "trailing")),
+    Some(2)
+  );
+
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn debounced_explicit_flushes_share_one_upload() {
+  let mut setup = Setup::new().await;
+
+  // Use a periodic flush to start the window without starting an upload. The two explicit callers
+  // below must both wait for their metrics to become durable at the shared trailing flush.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
+  setup.do_periodic_flush().await;
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "first"), "id2", 2);
+  let (first_tx, first_rx) = bd_completion::Sender::new();
+  setup.do_explicit_flush(first_tx).await;
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "second"), "id3", 3);
+  let (second_tx, second_rx) = bd_completion::Sender::new();
+  setup.do_explicit_flush(second_tx).await;
+
+  tokio::time::advance(std::time::Duration::from_secs(1)).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  // The two requests share one upload, but both completion signals are tied to the trailing disk
+  // write rather than the transport response.
+  let upload = setup.next_stat_upload().await;
+  let helper = StatsRequestHelper::new(upload.payload.clone());
+  assert_eq!(
+    helper.get_workflow_counter("id2", labels!("foo" => "first")),
+    Some(2)
+  );
+  assert_eq!(
+    helper.get_workflow_counter("id3", labels!("foo" => "second")),
+    Some(3)
+  );
+  first_rx.recv().await.unwrap();
+  second_rx.recv().await.unwrap();
+
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+
+  assert!(poll!(Box::pin(setup.data_rx.recv())).is_pending());
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn closed_upload_channel_completes_explicit_flush_after_persisting() {
+  let mut setup = Setup::new().await;
+
+  // Drop the only receiver for the flusher's shared data-upload channel. The flush request must
+  // still persist to disk, release its pending-file claim, and complete instead of leaving the
+  // flusher blocked on a channel that can never accept the request.
+  let disconnected_receiver = std::mem::replace(&mut setup.data_rx, mpsc::channel(1).1);
+  drop(disconnected_receiver);
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "disconnected"), "id1", 1);
+  let (tx, rx) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  rx.recv().await.unwrap();
+
+  // A subsequent periodic event still runs; channel closure cannot wedge the main select loop.
+  setup.do_periodic_flush().await;
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn shutdown_does_not_wait_for_deferred_upload_channel_capacity() {
+  let mut setup = Setup::new().await;
+
+  // Fill the one-slot shared channel with a periodic upload and intentionally leave it unread.
+  // This recreates API backpressure while a later explicit flush has a prepared request retained
+  // locally by the flusher.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "periodic"), "id1", 1);
+  setup.do_periodic_flush().await;
+  setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "deferred"), "id2", 2);
+  let (tx, rx) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  rx.recv().await.unwrap();
+
+  // Shutdown is a select-loop event, not work queued behind a channel send. It must finish while
+  // the receiver remains full; the old awaited-send implementation would remain stuck here.
+  setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn restart_recovers_deferred_upload_that_never_reached_transport() {
+  let fs = Arc::new(TestFileSystem::new());
+  let mut setup = Setup::new_with_filesystem(Box::new(fs.clone()), None, 500).await;
+
+  // Fill the shared upload channel, then prepare an explicit request that remains retained in
+  // Flusher because the channel has no capacity. Its caller can complete after persistence, but
+  // the FileManager claim must not make its source file disappear across process restart.
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "admitted"), "id1", 1);
+  setup.do_periodic_flush().await;
+  setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "deferred"), "id2", 2);
+  let (tx, rx) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  rx.recv().await.unwrap();
+  setup.shutdown().await.unwrap();
+
+  let mut restarted = Setup::new_with_filesystem(Box::new(fs), None, 500).await;
+  restarted.upload_tick_tx.send(()).await.unwrap();
+  restarted.test_hooks.flush_complete_rx.recv().await.unwrap();
+  let admitted_upload = restarted.next_stat_upload().await;
+  let deferred_upload_recovered = StatsRequestHelper::new(admitted_upload.payload.clone())
+    .get_workflow_counter("id2", labels!("foo" => "deferred"))
+    .is_some();
+  admitted_upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: admitted_upload.uuid,
+    })
+    .unwrap();
+  restarted
+    .test_hooks
+    .upload_complete_rx
+    .recv()
+    .await
+    .unwrap();
+
+  if !deferred_upload_recovered {
+    // The admitted file can be selected first after restart. Complete it, then explicitly select
+    // the retained source file and prove it was not lost when the first flusher shut down.
+    tokio::time::advance(std::time::Duration::from_secs(1)).await;
+    let (retry_tx, retry_rx) = bd_completion::Sender::new();
+    restarted.do_explicit_flush(retry_tx).await;
+    restarted.test_hooks.flush_complete_rx.recv().await.unwrap();
+    let deferred_upload = restarted.next_stat_upload().await;
+    assert_eq!(
+      StatsRequestHelper::new(deferred_upload.payload.clone())
+        .get_workflow_counter("id2", labels!("foo" => "deferred")),
+      Some(2)
+    );
+    deferred_upload
+      .response_tx
+      .send(UploadResponse {
+        success: true,
+        uuid: deferred_upload.uuid,
+      })
+      .unwrap();
+    restarted
+      .test_hooks
+      .upload_complete_rx
+      .recv()
+      .await
+      .unwrap();
+    retry_rx.recv().await.unwrap();
+  }
+
+  restarted.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn closed_channel_releases_deferred_upload_for_restart() {
+  let fs = Arc::new(TestFileSystem::new());
+  let mut setup = Setup::new_with_filesystem(Box::new(fs.clone()), None, 500).await;
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "admitted"), "id1", 1);
+  setup.do_periodic_flush().await;
+  setup.upload_tick_tx.send(()).await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+
+  setup
+    .stats
+    .record_dynamic_counter(labels!("foo" => "closed"), "id2", 2);
+  let (tx, rx) = bd_completion::Sender::new();
+  setup.do_explicit_flush(tx).await;
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+  rx.recv().await.unwrap();
+
+  // Closing the receiver after the second request is retained exercises the asynchronous
+  // `reserve_owned` error branch rather than the immediate `try_reserve_owned` closed branch.
+  let disconnected_receiver = std::mem::replace(&mut setup.data_rx, mpsc::channel(1).1);
+  drop(disconnected_receiver);
+  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+  setup.shutdown().await.unwrap();
+
+  let mut restarted = Setup::new_with_filesystem(Box::new(fs), None, 500).await;
+  restarted.upload_tick_tx.send(()).await.unwrap();
+  restarted.test_hooks.flush_complete_rx.recv().await.unwrap();
+  let upload = restarted.next_stat_upload().await;
+  let deferred_upload_recovered = StatsRequestHelper::new(upload.payload.clone())
+    .get_workflow_counter("id2", labels!("foo" => "closed"))
+    .is_some();
+  upload
+    .response_tx
+    .send(UploadResponse {
+      success: true,
+      uuid: upload.uuid,
+    })
+    .unwrap();
+  restarted
+    .test_hooks
+    .upload_complete_rx
+    .recv()
+    .await
+    .unwrap();
+
+  if !deferred_upload_recovered {
+    // A batched or first-in-index upload can select the admitted source before the released
+    // deferred source. Complete it, then explicitly select the remaining persisted file.
+    tokio::time::advance(std::time::Duration::from_secs(1)).await;
+    let (retry_tx, retry_rx) = bd_completion::Sender::new();
+    restarted.do_explicit_flush(retry_tx).await;
+    restarted.test_hooks.flush_complete_rx.recv().await.unwrap();
+    let retry = restarted.next_stat_upload().await;
+    assert_eq!(
+      StatsRequestHelper::new(retry.payload.clone())
+        .get_workflow_counter("id2", labels!("foo" => "closed")),
+      Some(2)
+    );
+    retry
+      .response_tx
+      .send(UploadResponse {
+        success: true,
+        uuid: retry.uuid,
+      })
+      .unwrap();
+    restarted
+      .test_hooks
+      .upload_complete_rx
+      .recv()
+      .await
+      .unwrap();
+    retry_rx.recv().await.unwrap();
+  }
+
+  restarted.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn trailing_disk_write_failure_keeps_prior_snapshot_retryable_after_restart() {
+  let ((), error) = RecordingErrorReporter::async_record_error(async {
+    let fs = Arc::new(TestFileSystem::new());
+    let mut setup = Setup::new_with_filesystem(Box::new(fs.clone()), None, 500).await;
+
+    // The leading write is durable before the failure. The later metric is snapped out of the
+    // collector while the trailing write fails, which is the documented loss boundary for disk
+    // I/O errors; completion still must not wedge the lifecycle caller.
+    setup
+      .stats
+      .record_dynamic_counter(labels!("foo" => "durable"), "id1", 1);
+    setup.do_periodic_flush().await;
+    setup
+      .stats
+      .record_dynamic_counter(labels!("foo" => "lost"), "id2", 2);
+    let completion = setup.explicit_flush_trigger.flush(false).unwrap();
+    fs.disk_full.store(true, Ordering::SeqCst);
+
+    tokio::time::advance(std::time::Duration::from_secs(1)).await;
+    setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+    assert!(completion.wait().await.is_err());
+    fs.disk_full.store(false, Ordering::SeqCst);
+    setup.shutdown().await.unwrap();
+
+    let mut restarted = Setup::new_with_filesystem(Box::new(fs), None, 500).await;
+    restarted.upload_tick_tx.send(()).await.unwrap();
+    restarted.test_hooks.flush_complete_rx.recv().await.unwrap();
+    let retry = restarted.next_stat_upload().await;
+    let helper = StatsRequestHelper::new(retry.payload.clone());
+    assert_eq!(
+      helper.get_workflow_counter("id1", labels!("foo" => "durable")),
+      Some(1)
+    );
+    assert_eq!(
+      helper.get_workflow_counter("id2", labels!("foo" => "lost")),
+      None
+    );
+    retry
+      .response_tx
+      .send(UploadResponse {
+        success: true,
+        uuid: retry.uuid,
+      })
+      .unwrap();
+    restarted
+      .test_hooks
+      .upload_complete_rx
+      .recv()
+      .await
+      .unwrap();
+
+    restarted.shutdown().await.unwrap();
+  })
+  .await;
+
+  assert_eq!(error, "writing stats to disk: disk full");
+}
+
+#[tokio::test(start_paused = true)]
 async fn explicit_flush_triggers_upload_immediately() {
   let mut setup = Setup::new().await;
 
@@ -2264,14 +2889,11 @@ async fn concurrent_flushes() {
   let (tx2, rx2) = bd_completion::Sender::new();
   setup.do_explicit_flush(tx2).await;
 
-  // 6. Verify behavior of Flush 2. With current code, flush 2 is ignored. The completion tx2 is
-  // dropped. So rx2.recv() should return Err.
-  let result = rx2.recv().await;
-  assert!(result.is_err(), "Expected flush 2 completion to be dropped");
+  // 6. Flush 2 is coalesced into the trailing disk flush and completes once Metric B is durable.
+  rx2.recv().await.unwrap();
+  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
 
-  // 7. Verify Metric B was NOT flushed to disk. If it was flushed, we would see a file or it would
-  // be in the next upload. But since flush_to_disk was skipped, it should still be in memory. If we
-  // finish upload 1, and then trigger another flush, we can check.
+  // 7. Finish Upload 1. Metric B remains persisted and is eligible for the next upload.
   upload1
     .response_tx
     .send(UploadResponse {
@@ -2291,7 +2913,7 @@ async fn concurrent_flushes() {
   let upload3 = setup.next_stat_upload().await;
   {
     let helper = StatsRequestHelper::new(upload3.payload.clone());
-    // It should contain Metric B (id2)
+    // It should contain Metric B (id2).
     assert_eq!(
       helper.get_workflow_counter("id2", labels!("foo" => "baz")),
       Some(2)

@@ -19,12 +19,13 @@ use crate::observer::{
   UploadAttemptObservation,
   with_observer,
 };
-use crate::{FlushTriggerRequest, Stats};
+use crate::{FlushEpoch, FlushTrigger, Stats};
 use analytics::StatsPipelineAnalyticsReport as HandshakeStatsPipelineAnalyticsReport;
 use async_trait::async_trait;
 use bd_api::DataUpload;
 use bd_api::api::StatsHandshakeExtension;
 use bd_api::upload::{TrackedStatsUploadRequest, UploadResponse};
+use bd_client_common::maybe_await;
 use bd_client_stats_store::{Collector, Histogram, MetricData, MetricsByNameCore};
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_proto::protos::client::api::handshake_request::analytics;
@@ -60,6 +61,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
 use tokio::sync::{mpsc, oneshot, watch};
+use tokio::time::Sleep;
 
 type UploadFuture =
   Pin<Box<dyn std::future::Future<Output = (Option<UploadResponse>, UploadContext)> + Send + Sync>>;
@@ -72,14 +74,65 @@ pub enum PeriodicAction {
   Upload,
 }
 
+// Completion ownership after a request has been accepted by the data-upload channel. The context
+// carries the per-request gate that must be released once its response receiver resolves.
 enum UploadContext {
   Periodic(PendingUploadMetadata),
-  Flush(FlushTriggerRequest, PendingUploadMetadata),
+  Flush(PendingUploadMetadata),
   Startup(PendingUploadMetadata),
 }
 
+// Completion ownership before a request is accepted by the data-upload channel. In this state the
+// source files are already claimed, but no StateTracker owns the response receiver yet.
+enum PendingUploadContext {
+  Periodic,
+  Flush,
+}
+
+// Identifies the files covered by a request. FileManager uses these IDs to retain the claim until
+// a transport response either completes the upload or abandons it for a later retry.
 struct PendingUploadMetadata {
   source_file_ids: Vec<String>,
+}
+
+// A fully constructed request that has not necessarily entered the shared upload channel. Keeping
+// the request and response receiver together prevents the claimed files from becoming detached
+// from their eventual completion path while the channel is backpressured.
+struct PreparedUpload {
+  data_upload: DataUpload,
+  response_rx: oneshot::Receiver<UploadResponse>,
+  metadata: PendingUploadMetadata,
+}
+
+// The single upload that Flusher may retain locally while the shared upload channel is full. One
+// retained request bounds memory and preserves the existing one-upload-at-a-time policy.
+struct PendingDataUpload {
+  prepared_upload: PreparedUpload,
+  context: PendingUploadContext,
+}
+
+// Result of attempting the synchronous channel handoff. Deferred work remains in
+// `pending_data_upload` and is dispatched by the main select loop once capacity becomes available.
+enum UploadDispatch {
+  Dispatched,
+  Deferred,
+  Closed,
+}
+
+#[derive(Clone, Copy)]
+enum DiskFlushOutcome {
+  Deferred,
+  Durable,
+  Failed,
+}
+
+// State for the leading/trailing disk-flush debounce window. A caller that arrives during an open
+// window records intent here; the deadline then makes one trailing disk write and resumes the
+// deferred request and periodic-upload work against that durable state.
+struct DiskFlushDebounce {
+  deadline: Option<Pin<Box<Sleep>>>,
+  flush_pending: bool,
+  periodic_upload_pending: bool,
 }
 
 //
@@ -156,6 +209,9 @@ impl StatsHandshakeExtension for HandshakeStats {
       analytics.stats_pipeline = Some(Self::handshake_stats_pipeline_analytics(report)).into();
     }
 
+    // Claim the current persisted batch before constructing the request. The claim is later
+    // transferred to Flusher through `register_api_upload_completion`, which owns ACK handling
+    // for both API and locally initiated uploads.
     let Some(PendingUpload {
       mut request,
       source_file_ids,
@@ -199,9 +255,37 @@ impl StatsHandshakeExtension for HandshakeStats {
 }
 
 impl UploadContext {
+  const fn name(&self) -> &'static str {
+    match self {
+      Self::Periodic(..) => "periodic",
+      Self::Flush(..) => "explicit flush",
+      Self::Startup(..) => "handshake",
+    }
+  }
+
+  // Exposes the file claim independently from the request type so the common completion path can
+  // finish or release files before it performs request-type-specific bookkeeping.
   const fn metadata(&self) -> &PendingUploadMetadata {
     match self {
-      Self::Periodic(metadata) | Self::Flush(_, metadata) | Self::Startup(metadata) => metadata,
+      Self::Periodic(metadata) | Self::Flush(metadata) | Self::Startup(metadata) => metadata,
+    }
+  }
+}
+
+impl PendingUploadContext {
+  const fn name(&self) -> &'static str {
+    match self {
+      Self::Periodic => "periodic",
+      Self::Flush => "explicit flush",
+    }
+  }
+
+  // Once a retained request gets a channel permit, move it into the response-driven completion
+  // state while preserving whether it was periodic work or an explicit caller request.
+  fn with_metadata(self, metadata: PendingUploadMetadata) -> UploadContext {
+    match self {
+      Self::Periodic => UploadContext::Periodic(metadata),
+      Self::Flush => UploadContext::Flush(metadata),
     }
   }
 }
@@ -574,15 +658,29 @@ pub struct Flusher {
   stats: Arc<Stats>,
   shutdown: ComponentShutdown,
   periodic_schedule: Box<dyn PeriodicSchedule>,
-  flush_rx: tokio::sync::mpsc::Receiver<FlushTriggerRequest>,
+  flush_rx: tokio::sync::mpsc::Receiver<()>,
+  flush_trigger: FlushTrigger,
   flush_time_histogram: Histogram,
   data_flush_tx: mpsc::Sender<DataUpload>,
   // API-originated response receivers originate in HandshakeStats, which is held by Api. Flusher
-  // owns the FuturesUnordered and is the single completion state machine for periodic, explicit,
-  // and API-originated uploads, so receivers are handed back here before they are polled.
+  // owns the completion state machine for periodic, explicit, and API-originated uploads, so
+  // receivers are handed back here before they are polled.
   api_upload_completion_rx: mpsc::Receiver<(oneshot::Receiver<UploadResponse>, Vec<String>)>,
   file_manager: Arc<FileManager>,
+  // Every request admitted to the transport has a response receiver here. This must be a set:
+  // periodic and explicit uploads have independent in-flight gates and may overlap, while an API
+  // handshake upload may be registered while either is awaiting an ACK. `uploads` is the only
+  // place that resolves claimed persisted files after transport handoff.
   uploads: FuturesUnordered<UploadFuture>,
+  // Unlike admitted uploads, only one request may wait for the shared channel. A full channel
+  // must not block this task from persisting stats, accepting flush requests, observing shutdown,
+  // or handling existing completions, so retain one request and wait for its permit as a select
+  // arm instead.
+  pending_data_upload: Option<PendingDataUpload>,
+  // Holds requests and periodic-upload intent coalesced by the fixed disk debounce window.
+  disk_flush: DiskFlushDebounce,
+  // These gates distinguish an admitted upload from a merely persisted snapshot. They prevent
+  // duplicate upload attempts without delaying local durability for later flush callers.
   periodic_in_flight: bool,
   flush_in_flight: bool,
   // This uses system time to allow integration tests to work. It should really use monotonic time.
@@ -590,6 +688,8 @@ pub struct Flusher {
   time_provider: Arc<dyn TimeProvider>,
   minimum_upload_interval:
     bd_runtime::runtime::DurationWatch<bd_runtime::runtime::stats::MinimumUploadIntervalFlag>,
+  disk_flush_debounce:
+    bd_runtime::runtime::DurationWatch<bd_runtime::runtime::stats::DiskFlushDebounceFlag>,
 
   #[cfg(test)]
   test_hooks: TestHooks,
@@ -600,7 +700,7 @@ impl Flusher {
     stats: Arc<Stats>,
     shutdown: ComponentShutdown,
     periodic_schedule: Box<dyn PeriodicSchedule>,
-    flush_rx: tokio::sync::mpsc::Receiver<FlushTriggerRequest>,
+    flush_rx: tokio::sync::mpsc::Receiver<()>,
     flush_time_histogram: Histogram,
     data_flush_tx: mpsc::Sender<DataUpload>,
     file_manager: Arc<FileManager>,
@@ -608,23 +708,35 @@ impl Flusher {
     minimum_upload_interval: bd_runtime::runtime::DurationWatch<
       bd_runtime::runtime::stats::MinimumUploadIntervalFlag,
     >,
+    disk_flush_debounce: bd_runtime::runtime::DurationWatch<
+      bd_runtime::runtime::stats::DiskFlushDebounceFlag,
+    >,
     api_upload_completion_rx: mpsc::Receiver<(oneshot::Receiver<UploadResponse>, Vec<String>)>,
+    flush_trigger: FlushTrigger,
   ) -> Self {
     Self {
       stats,
       shutdown,
       periodic_schedule,
       flush_rx,
+      flush_trigger,
       flush_time_histogram,
       data_flush_tx,
       api_upload_completion_rx,
       file_manager,
       uploads: FuturesUnordered::new(),
+      pending_data_upload: None,
+      disk_flush: DiskFlushDebounce {
+        deadline: None,
+        flush_pending: false,
+        periodic_upload_pending: false,
+      },
       periodic_in_flight: false,
       flush_in_flight: false,
       last_flush_upload_time: None,
       time_provider,
       minimum_upload_interval,
+      disk_flush_debounce,
 
       #[cfg(test)]
       test_hooks: TestHooks::default(),
@@ -637,6 +749,8 @@ impl Flusher {
   }
 
   fn should_skip_upload(&self) -> bool {
+    // Minimum interval is intentionally applied only to upload dispatch. Disk persistence always
+    // continues so a throttled caller still leaves its latest metrics durable for a later retry.
     self.last_flush_upload_time.is_some_and(|last_upload| {
       let now = self.time_provider.now();
       let elapsed = (now - last_upload).unsigned_abs();
@@ -646,15 +760,40 @@ impl Flusher {
   }
 
   pub async fn periodic_flush(mut self) {
+    // All asynchronous transitions of the flusher are driven from one select loop. In particular,
+    // do not await channel capacity inside an event handler: that would stop this receiver from
+    // processing explicit flushes while another data-upload producer occupies the shared channel.
     loop {
       tokio::select! {
-        Some(request) = self.flush_rx.recv() => {
-          self.handle_flush_request(request).await;
+        // A retained request owns a FileManager claim but no transport receiver. Wait for capacity
+        // alongside every other event, then atomically transfer that ownership to `uploads`.
+        permit = self.data_flush_tx.clone().reserve_owned(), if self
+          .pending_data_upload
+          .is_some() => {
+          match permit {
+            Ok(permit) => self.dispatch_pending_upload(permit).await,
+            Err(_) => {
+              let () = self.abandon_pending_upload().await;
+            },
+          }
         },
-        () = self.shutdown.cancelled() => return,
+        Some(()) = self.flush_rx.recv() => {
+          self.handle_flush_request().await;
+        },
+        // The deadline is present only during a debounce window. Its handler makes a trailing
+        // write before releasing request completions or starting a deferred periodic upload.
+        () = maybe_await(&mut self.disk_flush.deadline) => {
+          self.handle_disk_flush_deadline().await;
+        },
+        () = self.shutdown.cancelled() => {
+          self.flush_trigger.fail_open_epoch();
+          return;
+        },
         action = self.periodic_schedule.next_action() => {
           match action {
-            PeriodicAction::Flush => self.flush_to_disk().await,
+            PeriodicAction::Flush => {
+              let _ = self.flush_to_disk_with_debounce().await;
+            },
             PeriodicAction::Upload => self.handle_periodic_upload_tick().await,
           }
         },
@@ -665,6 +804,10 @@ impl Flusher {
           // Register the handshake upload in the same completion path as all other persisted
           // uploads. A dropped StateTracker makes this receiver resolve to None, which follows
           // the existing abandon-without-ACK branch in handle_upload_completion.
+          log::debug!(
+            "registered handshake stats upload completion for {} source files",
+            source_file_ids.len()
+          );
           self.push_upload_future(
             response_rx,
             UploadContext::Startup(PendingUploadMetadata { source_file_ids }),
@@ -675,68 +818,149 @@ impl Flusher {
   }
 
   async fn handle_periodic_upload_tick(&mut self) {
-    self.flush_to_disk().await;
-
-    self.handle_upload_tick().await;
+    // An upload must include everything collected before its tick. If a debounce window is open,
+    // wait for the trailing write rather than preparing a request from stale on-disk state.
+    match self.flush_to_disk_with_debounce().await {
+      DiskFlushOutcome::Durable => self.handle_upload_tick().await,
+      DiskFlushOutcome::Deferred => {
+        log::debug!("deferring periodic stats upload until debounced disk flush completes");
+        self.disk_flush.periodic_upload_pending = true;
+      },
+      DiskFlushOutcome::Failed => {
+        log::debug!("skipping periodic stats upload because its disk flush failed");
+      },
+    }
   }
 
   async fn handle_upload_tick(&mut self) {
-    if self.periodic_in_flight {
-      log::debug!("upload already in progress, skipping");
+    // A periodic upload cannot overtake either an already admitted periodic request or one waiting
+    // for channel capacity. Explicit flush uploads use their own gate and remain independent.
+    if self.periodic_in_flight || self.pending_data_upload.is_some() {
+      log::debug!("skipping periodic stats upload: another periodic or deferred upload is active");
       return;
     }
 
     if self.should_skip_upload() {
-      log::debug!("skipping periodic upload, minimum interval not elapsed");
+      log::debug!("skipping periodic stats upload: minimum upload interval has not elapsed");
       return;
     }
 
-    if let Some((metadata, rx)) = self
+    if let Some(prepared_upload) = self
       .upload_from_disk(false, UploadReason::UPLOAD_REASON_PERIODIC)
       .await
     {
       self.periodic_in_flight = true;
-      self.push_upload_future(rx, UploadContext::Periodic(metadata));
+      let _ = self
+        .dispatch_prepared_upload(prepared_upload, PendingUploadContext::Periodic)
+        .await;
     }
   }
 
-  async fn handle_flush_request(&mut self, request: FlushTriggerRequest) {
-    // TODO(mattklein123): Currently we just ignore flush requests if one is already in flight.
-    // We could consider queueing them up and processing them one after another, but given that
-    // flushes are relatively infrequent this seems ok for now.
-    if self.flush_in_flight {
-      log::debug!("flush already in progress, skipping");
-      return;
-    }
+  async fn handle_flush_request(&mut self) {
+    // All callers have already joined the trigger's open epoch. A write atomically rotates that
+    // epoch before I/O, so callers that arrive during the write wait for the next physical write.
+    let _ = self.flush_to_disk_with_debounce().await;
+  }
 
-    log::debug!("received a signal to flush stats to disk");
-    self.flush_to_disk().await;
-    log::debug!("stats flushed");
-
-    if !request.do_upload {
-      if let Some(tx) = request.completion_tx {
-        let () = tx.send(());
-      }
+  async fn handle_flush_upload(&mut self) {
+    // Coalesce upload requests onto the existing upload; the persisted snapshot remains eligible
+    // for a future attempt if transport handoff or ACK later fails.
+    if self.flush_in_flight || self.pending_data_upload.is_some() {
+      log::debug!(
+        "skipping explicit stats upload: another flush upload is active; stats are durable"
+      );
       return;
     }
 
     if self.should_skip_upload() {
-      log::debug!("skipping flush upload, minimum interval not elapsed");
-      if let Some(tx) = request.completion_tx {
-        let () = tx.send(());
-      }
+      log::debug!("skipping explicit stats upload: minimum upload interval has not elapsed");
       return;
     }
 
-    if let Some((metadata, rx)) = self
+    if let Some(prepared_upload) = self
       .upload_from_disk(false, UploadReason::UPLOAD_REASON_EVENT_TRIGGERED)
       .await
     {
       self.last_flush_upload_time = Some(self.time_provider.now());
       self.flush_in_flight = true;
-      self.push_upload_future(rx, UploadContext::Flush(request, metadata));
-    } else if let Some(tx) = request.completion_tx {
-      let () = tx.send(());
+      match self
+        .dispatch_prepared_upload(prepared_upload, PendingUploadContext::Flush)
+        .await
+      {
+        UploadDispatch::Dispatched | UploadDispatch::Deferred => {},
+        UploadDispatch::Closed => {
+          // `abandon_pending_upload` has released the file claim and completed the caller.
+          self.flush_in_flight = false;
+        },
+      }
+    }
+  }
+
+  async fn flush_to_disk_with_debounce(&mut self) -> DiskFlushOutcome {
+    if self.disk_flush.deadline.is_some() {
+      // Do not reset the deadline: this is a fixed window, not a quiet-period debounce.
+      log::debug!("coalescing stats disk flush into active debounce window");
+      self.disk_flush.flush_pending = true;
+      return DiskFlushOutcome::Deferred;
+    }
+
+    let epoch = self.flush_trigger.begin_disk_flush();
+    let disk_flush_succeeded = self.flush_to_disk().await;
+    self.complete_flush_epoch(epoch, disk_flush_succeeded).await;
+    self.start_disk_flush_debounce_window();
+    if disk_flush_succeeded {
+      DiskFlushOutcome::Durable
+    } else {
+      DiskFlushOutcome::Failed
+    }
+  }
+
+  async fn complete_flush_epoch(&mut self, epoch: FlushEpoch, disk_flush_succeeded: bool) {
+    if !disk_flush_succeeded {
+      epoch.fail();
+      return;
+    }
+
+    let do_upload = epoch.do_upload();
+    if do_upload {
+      // This only prepares a request and attempts a nonblocking handoff. It never waits for
+      // channel capacity or an ACK, so durable completion remains independent of transport.
+      self.handle_flush_upload().await;
+    }
+    epoch.complete_durable();
+  }
+
+  fn start_disk_flush_debounce_window(&mut self) {
+    // Each actual disk write starts a fresh window. A trailing write may therefore start one more
+    // window even when no caller is currently waiting, which bounds write frequency under load.
+    let debounce = self.disk_flush_debounce.read().unsigned_abs();
+    self.disk_flush.deadline = Some(Box::pin(tokio::time::sleep(debounce)));
+    log::debug!("started stats disk flush debounce window: duration={debounce:?}");
+  }
+
+  async fn handle_disk_flush_deadline(&mut self) {
+    // Clear the old deadline before awaiting I/O so any event that arrives during the trailing
+    // write is treated as the leading write of the next window rather than joining the old one.
+    self.disk_flush.deadline = None;
+    if !self.disk_flush.flush_pending {
+      log::debug!("stats disk flush debounce window closed without a trailing flush");
+      return;
+    }
+
+    log::debug!(
+      "running debounced trailing stats disk flush: periodic_upload_pending={}",
+      self.disk_flush.periodic_upload_pending
+    );
+    self.disk_flush.flush_pending = false;
+    let disk_flush_outcome = self.flush_to_disk_with_debounce().await;
+
+    if self.disk_flush.periodic_upload_pending {
+      // The periodic tick was deferred solely to wait for the trailing write. It can now prepare
+      // an upload from the latest persisted state and still obey normal in-flight/throttle gates.
+      self.disk_flush.periodic_upload_pending = false;
+      if matches!(disk_flush_outcome, DiskFlushOutcome::Durable) {
+        self.handle_upload_tick().await;
+      }
     }
   }
 
@@ -751,6 +975,11 @@ impl Flusher {
     // outcome; otherwise this batch remains permanently in flight and cannot be retried.
     let Some(upload_response) = upload_response else {
       let source_file_ids = context.metadata().source_file_ids.clone();
+      log::debug!(
+        "{} stats upload tracker closed before an ACK; releasing {} source files",
+        context.name(),
+        source_file_ids.len()
+      );
       if let Err(error) = self
         .file_manager
         .release_pending_upload(&source_file_ids)
@@ -761,11 +990,8 @@ impl Flusher {
 
       match context {
         UploadContext::Periodic(..) => self.periodic_in_flight = false,
-        UploadContext::Flush(request, ..) => {
+        UploadContext::Flush(..) => {
           self.flush_in_flight = false;
-          if let Some(tx) = request.completion_tx {
-            let () = tx.send(());
-          }
         },
         UploadContext::Startup(..) => {},
       }
@@ -779,6 +1005,14 @@ impl Flusher {
         .unwrap();
       return;
     };
+
+    log::debug!(
+      "{} stats upload completed: uuid={}, success={}, source_files={}",
+      context.name(),
+      upload_response.uuid,
+      upload_response.success,
+      context.metadata().source_file_ids.len()
+    );
 
     if matches!(context, UploadContext::Flush(..)) && !upload_response.success {
       // Clear the flush upload gate on failure so a later background or explicit flush can retry.
@@ -798,17 +1032,22 @@ impl Flusher {
       .await
       .unwrap();
 
+    // FileManager consumes the response before any request-specific bookkeeping. That ordering
+    // releases successful source files (or preserves failed ones for retry) even if later work
+    // such as periodic backlog draining begins another upload immediately.
     match context {
       UploadContext::Periodic(..) => {
         if upload_response.success {
-          if let Some((metadata, rx)) = self
+          if let Some(prepared_upload) = self
             .upload_from_disk(true, UploadReason::UPLOAD_REASON_PERIODIC)
             .await
           {
             // Startup sends one capped batch per handshake. After a periodic upload succeeds,
             // continue draining remaining old snapshots so a persisted backlog does not wait for
             // another handshake or periodic interval. These uploads bypass the minimum interval.
-            self.push_upload_future(rx, UploadContext::Periodic(metadata));
+            let _ = self
+              .dispatch_prepared_upload(prepared_upload, PendingUploadContext::Periodic)
+              .await;
           } else {
             self.periodic_in_flight = false;
           }
@@ -816,17 +1055,16 @@ impl Flusher {
           self.periodic_in_flight = false;
         }
       },
-      UploadContext::Flush(request, ..) => {
+      UploadContext::Flush(..) => {
         self.flush_in_flight = false;
-        if let Some(tx) = request.completion_tx {
-          let () = tx.send(());
-        }
       },
       UploadContext::Startup(..) => {},
     }
   }
 
   fn push_upload_future(&self, rx: oneshot::Receiver<UploadResponse>, context: UploadContext) {
+    // Normalizing the receiver into this future makes all request sources share the same `None`
+    // (transport dropped) and `Some(response)` completion handling in the main loop.
     self
       .uploads
       .push(Box::pin(async move { (rx.await.ok(), context) }));
@@ -952,8 +1190,8 @@ impl Flusher {
       .await
   }
 
-  async fn flush_to_disk(&self) {
-    log::debug!("processing flush to disk tick");
+  async fn flush_to_disk(&self) -> bool {
+    log::debug!("flushing collected stats to disk");
     let _timer = self.flush_time_histogram.start_timer();
     // To support flushing stats between multiple process lifetimes, we go through a few steps to
     // apply the diff to the disk-cached snapshot:
@@ -974,9 +1212,13 @@ impl Flusher {
     // lose the stats. Given that we will lose the stats anyway if the process terminates, this
     // seems not completely terrible. If we want to slightly improve this in the future we could
     // decide to re-merge the deltas back into the collectors if we fail to write to disk.
-    if let Err(e) = self.merge_delta_snapshot_to_disk(delta_snapshot).await {
-      handle_unexpected::<(), anyhow::Error>(Err(e), "writing stats to disk");
-    }
+    let succeeded = match self.merge_delta_snapshot_to_disk(delta_snapshot).await {
+      Ok(()) => true,
+      Err(error) => {
+        handle_unexpected::<(), anyhow::Error>(Err(error), "writing stats to disk");
+        false
+      },
+    };
 
     #[cfg(test)]
     self
@@ -986,6 +1228,8 @@ impl Flusher {
       .send(())
       .await
       .unwrap();
+
+    succeeded
   }
 
   fn create_delta_snapshot(&self) -> SnapshotHelper {
@@ -1053,20 +1297,23 @@ impl Flusher {
     &self,
     only_if_file_is_old: bool,
     upload_reason: UploadReason,
-  ) -> Option<(PendingUploadMetadata, oneshot::Receiver<UploadResponse>)> {
+  ) -> Option<PreparedUpload> {
     async fn inner(
       flusher: &Flusher,
       only_if_file_is_old: bool,
       upload_reason: UploadReason,
-    ) -> anyhow::Result<Option<(PendingUploadMetadata, oneshot::Receiver<UploadResponse>)>> {
+    ) -> anyhow::Result<Option<PreparedUpload>> {
+      // FileManager atomically chooses and claims a persisted batch. From here on, every exit path
+      // must either transfer the claim into an upload future or explicitly release it.
       if let Some(pending_upload) = flusher
         .file_manager
         .get_or_create_pending_upload(only_if_file_is_old)
         .await?
       {
-        return flusher
-          .process_pending_upload(pending_upload, upload_reason)
-          .await;
+        return Ok(Some(Flusher::prepare_pending_upload(
+          pending_upload,
+          upload_reason,
+        )));
       }
       Ok(None)
     }
@@ -1076,7 +1323,10 @@ impl Flusher {
     // aggregations, etc.), so we bail on failure. As we start seeing this out in the wild we may
     // get a better understanding of why things are failing at which point we can do more targeted
     // error handling.
-    log::debug!("processing upload from disk");
+    log::debug!(
+      "preparing stats upload from disk: only_if_file_is_old={only_if_file_is_old}, \
+       reason={upload_reason:?}"
+    );
     match inner(self, only_if_file_is_old, upload_reason).await {
       Ok(result) => result,
       Err(e) => {
@@ -1086,25 +1336,25 @@ impl Flusher {
     }
   }
 
-  // Attempts to upload the provided stats request. Upon success, the file containing the pending
-  // request will be deleted.
-  async fn process_pending_upload(
-    &self,
+  // Prepares a persisted stats request for dispatch. The pending-file claim remains held until
+  // the request is either handed to the transport or explicitly abandoned.
+  fn prepare_pending_upload(
     pending_upload: PendingUpload,
     upload_reason: UploadReason,
-  ) -> anyhow::Result<Option<(PendingUploadMetadata, oneshot::Receiver<UploadResponse>)>> {
+  ) -> PreparedUpload {
     let PendingUpload {
       mut request,
       source_file_ids,
     } = pending_upload;
     let transport_uuid = batch_transport_uuid(&source_file_ids);
-    request.upload_uuid = transport_uuid.clone();
+    request.upload_uuid = transport_uuid;
     request.upload_reason = upload_reason.into();
     let (stats, response_rx) = TrackedStatsUploadRequest::new(request.upload_uuid.clone(), request);
 
     log::debug!(
-      "sending pending flush upload: {} with {} metrics",
+      "prepared {upload_reason:?} stats upload: uuid={}, snapshots={}, metrics={}",
       stats.payload.upload_uuid,
+      stats.payload.snapshot.len(),
       stats
         .payload
         .snapshot
@@ -1115,30 +1365,107 @@ impl Flusher {
 
     observe_upload_attempt(&stats.payload, upload_reason);
 
-    let tracked_upload = DataUpload::StatsUpload(stats);
-
-    // If this errors out the other end of the channel has closed, indicating that we are shutting
-    // down.
-    if self.data_flush_tx.send(tracked_upload).await.is_err() {
-      self
-        .file_manager
-        .release_pending_upload(&source_file_ids)
-        .await?;
-      return Ok(None);
+    PreparedUpload {
+      data_upload: DataUpload::StatsUpload(stats),
+      response_rx,
+      metadata: PendingUploadMetadata { source_file_ids },
     }
+  }
 
+  async fn dispatch_prepared_upload(
+    &mut self,
+    prepared_upload: PreparedUpload,
+    context: PendingUploadContext,
+  ) -> UploadDispatch {
+    // Store first so a full channel leaves a recoverable, bounded unit of work. `try_reserve_owned`
+    // avoids awaiting capacity here; the select loop handles that wait without losing
+    // responsiveness.
+    debug_assert!(self.pending_data_upload.is_none());
+    let upload_kind = context.name();
+    let source_file_count = prepared_upload.metadata.source_file_ids.len();
+    self.pending_data_upload = Some(PendingDataUpload {
+      prepared_upload,
+      context,
+    });
+
+    match self.data_flush_tx.clone().try_reserve_owned() {
+      Ok(permit) => {
+        self.dispatch_pending_upload(permit).await;
+        UploadDispatch::Dispatched
+      },
+      Err(mpsc::error::TrySendError::Full(_)) => {
+        log::debug!(
+          "deferring {upload_kind} stats upload for {source_file_count} source files: shared \
+           data-upload channel is full"
+        );
+        UploadDispatch::Deferred
+      },
+      Err(mpsc::error::TrySendError::Closed(_)) => {
+        log::debug!(
+          "abandoning {upload_kind} stats upload for {source_file_count} source files: shared \
+           data-upload channel is closed"
+        );
+        self.abandon_pending_upload().await;
+        UploadDispatch::Closed
+      },
+    }
+  }
+
+  async fn dispatch_pending_upload(&mut self, permit: mpsc::OwnedPermit<DataUpload>) {
+    // Taking the retained state and sending through its permit is the ownership transition from
+    // local backpressure storage to the transport's StateTracker and response receiver.
+    let Some(PendingDataUpload {
+      prepared_upload,
+      context,
+    }) = self.pending_data_upload.take()
+    else {
+      log::debug!("acquired stats upload channel capacity without a deferred upload");
+      return;
+    };
+    let upload_kind = context.name();
+    let source_file_count = prepared_upload.metadata.source_file_ids.len();
+    permit.send(prepared_upload.data_upload);
+    log::debug!("dispatched {upload_kind} stats upload for {source_file_count} source files");
+
+    // The request is now visible to the transport, so record the attempt before waiting for its
+    // response. Failure to record is non-fatal because the claim still protects this batch.
     if let Err(error) = self
       .file_manager
-      .record_pending_upload_attempt(&source_file_ids)
+      .record_pending_upload_attempt(&prepared_upload.metadata.source_file_ids)
       .await
     {
       log::debug!("failed to persist stats upload attempt: {error}");
     }
 
-    Ok(Some((
-      PendingUploadMetadata { source_file_ids },
-      response_rx,
-    )))
+    self.push_upload_future(
+      prepared_upload.response_rx,
+      context.with_metadata(prepared_upload.metadata),
+    );
+  }
+
+  async fn abandon_pending_upload(&mut self) {
+    // A closed channel means no transport task will ever own the receiver. Release the retained
+    // claim here so the same persisted files can be selected by a future flusher after restart.
+    let Some(PendingDataUpload {
+      prepared_upload,
+      context,
+    }) = self.pending_data_upload.take()
+    else {
+      log::debug!("shared data-upload channel closed without a deferred stats upload");
+      return;
+    };
+    let upload_kind = context.name();
+    let source_file_count = prepared_upload.metadata.source_file_ids.len();
+    log::debug!(
+      "releasing deferred {upload_kind} stats upload for {source_file_count} source files"
+    );
+    if let Err(error) = self
+      .file_manager
+      .release_pending_upload(&prepared_upload.metadata.source_file_ids)
+      .await
+    {
+      log::debug!("failed to release pending stats upload: {error}");
+    }
   }
 
   async fn process_pending_upload_completion(
@@ -1146,8 +1473,6 @@ impl Flusher {
     upload_response: &UploadResponse,
     metadata: &PendingUploadMetadata,
   ) {
-    log::debug!("stat flush upload attempt complete: {upload_response:?}");
-
     #[cfg(feature = "logger-cli-observer")]
     with_observer(|observer| {
       observer.on_upload_ack(UploadAckObservation {
@@ -1173,6 +1498,8 @@ impl Flusher {
 //
 
 struct SnapshotHelper {
+  // `metrics` mirrors the persisted protobuf shape while retaining native metric values for merge
+  // operations. The helper is the boundary between in-memory collector deltas and disk snapshots.
   metrics: MetricsByNameCore<(MetricType, NameType), MetricData>,
   overflows: HashMap<String, u64>,
   limit: Option<u32>,
@@ -1198,6 +1525,8 @@ impl SnapshotHelper {
   }
 
   fn metrics_from_snapshot(snapshot: Option<StatsSnapshot>) -> Option<MetricsFromSnapshotResult> {
+    // Corrupt or structurally unexpected snapshots are treated as absent by this conversion. The
+    // caller then writes a fresh aggregation rather than merging against mismatched metric data.
     let snapshot = snapshot?;
     let Some(Snapshot_type::Metrics(metrics)) = snapshot.snapshot_type else {
       return None;
@@ -1248,6 +1577,8 @@ impl SnapshotHelper {
   }
 
   fn add_metric(&mut self, name: NameType, labels: BTreeMap<String, String>, metric: MetricData) {
+    // The per-name cardinality limit applies only to workflow/action metrics. Global metrics are
+    // not subject to this cap and are keyed separately by their `NameType`.
     let maybe_limit = if matches!(name, NameType::ActionId(..)) {
       self.limit
     } else {
@@ -1275,6 +1606,8 @@ impl SnapshotHelper {
   }
 
   fn into_proto(self) -> anyhow::Result<StatsSnapshot> {
+    // Convert the native merge representation only at the disk/transport boundary so callers do
+    // not lose histogram behavior or label ordering while aggregating snapshots.
     let proto_metrics: Vec<ProtoMetric> = self
       .metrics
       .into_iter()

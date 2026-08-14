@@ -36,6 +36,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::mpsc::Sender;
+use tokio::sync::watch;
 
 #[cfg(test)]
 #[ctor::ctor(unsafe)]
@@ -54,44 +55,170 @@ pub struct FlushHandles {
 }
 
 //
-// FlushTriggerRequest
+// FlushCompletion
 //
 
-pub struct FlushTriggerRequest {
-  pub do_upload: bool,
-  pub completion_tx: Option<bd_completion::Sender<()>>,
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FlushEpochOutcome {
+  Pending,
+  Durable,
+  Failed,
+  Shutdown,
+}
+
+pub struct FlushCompletion {
+  outcome_rx: watch::Receiver<FlushEpochOutcome>,
+}
+
+impl FlushCompletion {
+  pub async fn wait(mut self) -> anyhow::Result<()> {
+    loop {
+      let outcome = *self.outcome_rx.borrow_and_update();
+      match outcome {
+        FlushEpochOutcome::Pending => self
+          .outcome_rx
+          .changed()
+          .await
+          .map_err(|_| anyhow::anyhow!("stats flusher stopped before flush completed"))?,
+        FlushEpochOutcome::Durable => return Ok(()),
+        FlushEpochOutcome::Failed => {
+          anyhow::bail!("stats flush failed before metrics became durable")
+        },
+        FlushEpochOutcome::Shutdown => {
+          anyhow::bail!("stats flusher shut down before flush completed")
+        },
+      }
+    }
+  }
+
+  // Test harnesses use this from synchronous setup code; production callers must await `wait`.
+  pub fn blocking_wait_for_test(self) -> anyhow::Result<()> {
+    futures::executor::block_on(self.wait())
+  }
+}
+
+//
+// FlushEpoch
+//
+
+pub(crate) struct FlushEpoch {
+  outcome_tx: watch::Sender<FlushEpochOutcome>,
+  do_upload: bool,
+}
+
+impl FlushEpoch {
+  fn new() -> Self {
+    let (outcome_tx, _) = watch::channel(FlushEpochOutcome::Pending);
+    Self {
+      outcome_tx,
+      do_upload: false,
+    }
+  }
+
+  fn register(&mut self, do_upload: bool) -> FlushCompletion {
+    self.do_upload |= do_upload;
+    FlushCompletion {
+      outcome_rx: self.outcome_tx.subscribe(),
+    }
+  }
+
+  pub(crate) const fn do_upload(&self) -> bool {
+    self.do_upload
+  }
+
+  pub(crate) fn complete_durable(self) {
+    self.outcome_tx.send_replace(FlushEpochOutcome::Durable);
+  }
+
+  pub(crate) fn fail(self) {
+    self.outcome_tx.send_replace(FlushEpochOutcome::Failed);
+  }
+}
+
+//
+// FlushTriggerState
+//
+
+struct FlushTriggerState {
+  open_epoch: FlushEpoch,
+  wake_scheduled: bool,
 }
 
 //
 // FlushTrigger
 //
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct FlushTrigger {
-  flush_tx: Sender<FlushTriggerRequest>,
+  flush_tx: Sender<()>,
+  state: Arc<Mutex<FlushTriggerState>>,
+}
+
+impl std::fmt::Debug for FlushTrigger {
+  fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    formatter
+      .debug_struct("FlushTrigger")
+      .finish_non_exhaustive()
+  }
 }
 
 impl FlushTrigger {
   #[must_use]
-  pub fn new() -> (Self, tokio::sync::mpsc::Receiver<FlushTriggerRequest>) {
-    let (flush_tx, flush_rx) = tokio::sync::mpsc::channel::<FlushTriggerRequest>(1);
+  pub fn new() -> (Self, tokio::sync::mpsc::Receiver<()>) {
+    let (flush_tx, flush_rx) = tokio::sync::mpsc::channel(1);
 
-    (Self { flush_tx }, flush_rx)
+    (
+      Self {
+        flush_tx,
+        state: Arc::new(Mutex::new(FlushTriggerState {
+          open_epoch: FlushEpoch::new(),
+          wake_scheduled: false,
+        })),
+      },
+      flush_rx,
+    )
   }
 
-  // Signals the SDK to flush stats to disk and waits for the operation to complete before
-  // returning.
-  pub async fn flush(&self, completion_tx: FlushTriggerRequest) -> anyhow::Result<()> {
-    self
-      .flush_tx
-      .send(completion_tx)
-      .await
-      .map_err(|e| anyhow::anyhow!("failed to send flush stats trigger: {e}"))
+  // Joins the current disk-durability epoch before scheduling work, so callers cannot miss the
+  // completion that follows the physical write containing their metrics.
+  pub fn flush(&self, do_upload: bool) -> anyhow::Result<FlushCompletion> {
+    let mut state = self.state.lock();
+    if self.flush_tx.is_closed() {
+      anyhow::bail!("stats flusher shut down before flush was requested");
+    }
+
+    let completion = state.open_epoch.register(do_upload);
+    if state.wake_scheduled {
+      return Ok(completion);
+    }
+
+    match self.flush_tx.try_send(()) {
+      Ok(()) | Err(tokio::sync::mpsc::error::TrySendError::Full(())) => {
+        state.wake_scheduled = true;
+        Ok(completion)
+      },
+      Err(tokio::sync::mpsc::error::TrySendError::Closed(())) => {
+        anyhow::bail!("stats flusher shut down before flush was requested")
+      },
+    }
   }
 
-  pub fn blocking_flush_for_test(&self, completion_tx: FlushTriggerRequest) -> anyhow::Result<()> {
-    self.flush_tx.blocking_send(completion_tx)?;
-    Ok(())
+  pub fn blocking_flush_for_test(&self, do_upload: bool) -> anyhow::Result<FlushCompletion> {
+    self.flush(do_upload)
+  }
+
+  pub(crate) fn begin_disk_flush(&self) -> FlushEpoch {
+    let mut state = self.state.lock();
+    state.wake_scheduled = false;
+    std::mem::replace(&mut state.open_epoch, FlushEpoch::new())
+  }
+
+  pub(crate) fn fail_open_epoch(&self) {
+    let state = self.state.lock();
+    state
+      .open_epoch
+      .outcome_tx
+      .send_replace(FlushEpochOutcome::Shutdown);
   }
 }
 
@@ -126,6 +253,7 @@ impl Stats {
     time_provider: Arc<dyn TimeProvider>,
   ) -> FlushHandles {
     let minimum_upload_interval = runtime_loader.register_duration_watch();
+    let disk_flush_debounce = runtime_loader.register_duration_watch();
     let file_manager = Arc::new(FileManager::new(
       Box::new(RealFileSystem::new(sdk_directory.to_path_buf())),
       Arc::new(SystemTimeProvider),
@@ -138,6 +266,7 @@ impl Stats {
       file_manager,
       time_provider,
       minimum_upload_interval,
+      disk_flush_debounce,
     )
   }
 
@@ -150,6 +279,9 @@ impl Stats {
     time_provider: Arc<dyn TimeProvider>,
     minimum_upload_interval: bd_runtime::runtime::DurationWatch<
       bd_runtime::runtime::stats::MinimumUploadIntervalFlag,
+    >,
+    disk_flush_debounce: bd_runtime::runtime::DurationWatch<
+      bd_runtime::runtime::stats::DiskFlushDebounceFlag,
     >,
   ) -> FlushHandles {
     let flush_time_histogram = self.collector.scope("stats").histogram("flush_time");
@@ -173,7 +305,9 @@ impl Stats {
         fs.clone(),
         time_provider.clone(),
         minimum_upload_interval,
+        disk_flush_debounce,
         api_upload_completion_rx,
+        flush_trigger.clone(),
       ),
       flush_trigger,
       handshake_stats: HandshakeStats::new(fs, time_provider, api_upload_completion_tx),

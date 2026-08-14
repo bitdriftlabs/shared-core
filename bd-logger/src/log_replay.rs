@@ -13,7 +13,7 @@ use crate::logging_state::{BufferProducers, ConfigUpdate, InitializedLoggingCont
 use crate::write_log_to_buffer;
 use bd_api::{DataUpload, TriggerUpload, TriggerUploadSource};
 use bd_buffer::BuffersWithAck;
-use bd_client_stats::{FlushTrigger, FlushTriggerRequest};
+use bd_client_stats::FlushTrigger;
 use bd_client_stats_store::{Counter, Histogram};
 use bd_log_filter::FilterChain;
 use bd_log_metadata::LogFields;
@@ -472,21 +472,14 @@ impl ProcessingPipeline {
 
     let flush_stats_fut = async {
       log::debug!("blocking log: sending signal to flush stats to disk");
-      let (sender, receiver) = bd_completion::Sender::new();
-
       flush_stats_trigger
-        .flush(FlushTriggerRequest {
-          do_upload: false,
-          completion_tx: Some(sender),
-        })
+        .flush(false)
+        .map_err(|e| anyhow::anyhow!("blocking log: failed to send signal to flush stats: {e:?}"))?
+        .wait()
         .await
         .map_err(|e| {
-          anyhow::anyhow!("blocking log: failed to send signal to flush stats: {e:?}")
-        })?;
-
-      receiver.recv().await.map_err(|e| {
-        anyhow::anyhow!("failed to await receiving flush stats trigger completion: {e:?}")
-      })
+          anyhow::anyhow!("failed to await receiving flush stats trigger completion: {e:?}")
+        })
     };
 
     tokio::try_join!(flush_buffers_fut, flush_stats_fut)?;

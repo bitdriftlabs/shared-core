@@ -917,6 +917,14 @@ pub mod stats {
     60.seconds()
   );
 
+  // This controls the fixed debounce window after each physical stats disk flush. Requests that
+  // arrive during the window share one trailing write; runtime updates apply to later windows.
+  duration_feature_flag!(
+    DiskFlushDebounceFlag,
+    "stats.disk_flush_debounce_ms",
+    1.seconds()
+  );
+
   // This controls how often we attempt to prepare and send a periodic stats upload request. Each
   // periodic upload tick first flushes in-memory stats to disk before it reads the aggregated file
   // for upload. Runtime changes to this value re-schedule the next upload boundary, while startup

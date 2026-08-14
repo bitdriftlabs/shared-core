@@ -19,7 +19,7 @@ use crate::test::TestLog;
 use crate::workflow::{WorkflowDebugStateMap, WorkflowEvent, WorkflowTransitionDebugState};
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
-use bd_client_stats::{FlushTrigger, FlushTriggerRequest, Stats};
+use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::Collector;
 use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{LogFields, LogMessage, log_level};
@@ -200,7 +200,7 @@ impl<C: Counter, H: Histogram> AnnotatedWorkflowsEngine<C, H> {
   pub fn run_for_test(
     buffers_to_flush_rx: Receiver<BuffersToFlush>,
     data_upload_rx: Receiver<DataUpload>,
-    stats_flush_rx: Receiver<FlushTriggerRequest>,
+    stats_flush_rx: Receiver<()>,
     hooks: Arc<parking_lot::Mutex<Hooks>>,
   ) -> JoinHandle<()> {
     let mut buffers_to_flush_rx = buffers_to_flush_rx;

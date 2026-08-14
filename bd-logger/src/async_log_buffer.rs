@@ -24,7 +24,6 @@ use bd_bounded_buffer::{TrySendError, channel};
 use bd_buffer::BuffersWithAck;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_common::{maybe_await, maybe_await_map};
-use bd_client_stats::FlushTriggerRequest;
 use bd_crash_handler::global_state;
 use bd_device::Store;
 use bd_log_metadata::MetadataProvider;
@@ -1107,17 +1106,16 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 StateUpdateMessage::FlushState(completion_tx) => {
                   let flush_stats_trigger = self.logging_state.flush_stats_trigger().clone();
                   let flush_stats = async move {
-                    let (sender, receiver) = bd_completion::Sender::new();
-                    if let Err(e) =
-                      flush_stats_trigger.flush(
-                        FlushTriggerRequest { do_upload: true, completion_tx: Some(sender) }
-                      ).await
-                    {
-                      log::debug!("flushing state: failed to flush stats: {e}");
-                    }
+                    let completion = match flush_stats_trigger.flush(true) {
+                      Ok(completion) => completion,
+                      Err(e) => {
+                        log::debug!("flushing state: failed to flush stats: {e}");
+                        return;
+                      },
+                    };
 
-                    if let Err(e) = receiver.recv().await {
-                      log::debug!("flushing state: failed to wait for stats flush: {e}");
+                    if let Err(e) = completion.wait().await {
+                      log::debug!("flushing state: failed to flush stats: {e}");
                     }
                   };
 

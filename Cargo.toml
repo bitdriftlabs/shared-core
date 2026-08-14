@@ -89,7 +89,7 @@ bincode = { version = "=2.0.1", features = ["serde"] }
 bindgen         = "0.72.1"
 bytes           = "1.12.1"
 cbindgen        = "0.29.4"
-cc              = "1.4.2"
+cc              = "1.4.3"
 clap            = { version = "4.6.6", features = ["derive", "env"] }
 cmake           = "0.1.58"
 color-backtrace = "0.7.4"
