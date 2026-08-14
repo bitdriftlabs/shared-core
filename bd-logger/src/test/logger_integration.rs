@@ -1004,6 +1004,12 @@ fn blocking_flush_state() {
     poll_callback: None,
   });
 
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "default");
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!(log_upload.logs()[0].message(), "foo");
+  });
+
   assert!(setup.workflows_state_file_path().exists());
   assert!(setup.pending_aggregation_index_file_path().exists());
 }
