@@ -11,10 +11,18 @@ mod metadata_test;
 
 use bd_crash_handler::global_state;
 use bd_log_metadata::MetadataProvider;
-use bd_log_primitives::{AnnotatedLogFields, LogFieldKey, LogFieldKind, LogFieldValue, LogFields};
+use bd_log_primitives::{
+  AnnotatedLogField,
+  AnnotatedLogFields,
+  LogFieldKey,
+  LogFieldKind,
+  LogFieldValue,
+  LogFields,
+};
 use bd_log_util::warn_every;
 use bd_proto::protos::logging::payload::LogType;
 use std::collections::BTreeSet;
+use std::collections::hash_map::Entry;
 use std::sync::{Arc, LazyLock};
 use time::ext::NumericalDuration;
 
@@ -54,14 +62,23 @@ pub struct LogMetadata {
 
 pub struct MetadataCollector {
   metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
-  fields: LogFields,
+  // This single map holds immutable OOTB fields collected at startup as well as fields added
+  // through the mutable logger API. Retaining the field kind preserves their different
+  // precedence rules without requiring a second cache.
+  fields: AnnotatedLogFields,
 }
 
 impl MetadataCollector {
-  pub(crate) fn new(metadata_provider: Arc<dyn MetadataProvider + Send + Sync>) -> Self {
+  pub(crate) fn new(
+    metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
+    initial_ootb_fields: LogFields,
+  ) -> Self {
     Self {
       metadata_provider,
-      fields: [].into(),
+      fields: initial_ootb_fields
+        .into_iter()
+        .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
+        .collect(),
     }
   }
 
@@ -131,14 +148,16 @@ impl MetadataCollector {
         })
         .collect(),
     };
+    let persistent_fields = partition_fields(self.fields.clone());
 
     // For the purpose of tracking global fields we only consider fields from field providers as
     // well as ones set via setField. Use the same precedence rules as when constructing the final
     // fields for consistency and
     let global_state_fields = [
       provider_fields.ootb.clone(),
-      self.fields(),
+      persistent_fields.custom.clone(),
       provider_fields.custom.clone(),
+      persistent_fields.ootb.clone(),
     ]
     .into_iter()
     .flatten()
@@ -160,18 +179,16 @@ impl MetadataCollector {
 
     let log_fields = partition_fields(fields);
 
-    // Normalize fields. Process them in the order described below, where fields that are earlier in
-    // the list take precedence over fields farther away in the list and cannot be overridden by
-    // them.
+    // Normalize fields from lowest to highest precedence so later fields override earlier ones.
     let fields = [
-      provider_fields.ootb.clone(),
-      log_fields.ootb,
-      log_fields.custom,
-      self.fields(),
       provider_fields.custom,
+      persistent_fields.custom,
+      log_fields.custom,
+      log_fields.ootb,
+      provider_fields.ootb,
+      persistent_fields.ootb,
     ]
     .into_iter()
-    .rev()
     .flatten()
     .collect();
 
@@ -198,17 +215,25 @@ impl MetadataCollector {
   pub(crate) fn add_field(&mut self, key: LogFieldKey, value: LogFieldValue) -> anyhow::Result<()> {
     verify_custom_field_name(&key)?;
 
-    self.fields.insert(key, value);
+    match self.fields.entry(key) {
+      Entry::Occupied(mut entry) if entry.get().kind != LogFieldKind::Ootb => {
+        entry.insert(AnnotatedLogField::new_custom(value));
+      },
+      Entry::Vacant(entry) => {
+        entry.insert(AnnotatedLogField::new_custom(value));
+      },
+      Entry::Occupied(_) => {},
+    }
 
     Ok(())
   }
 
-  pub(crate) fn remove_field(&mut self, field_key: &str) {
-    self.fields.remove(field_key);
-  }
-
-  fn fields(&self) -> LogFields {
-    self.fields.clone()
+  pub(crate) fn remove_field(&mut self, field_key: LogFieldKey) {
+    if let Entry::Occupied(entry) = self.fields.entry(field_key)
+      && entry.get().kind != LogFieldKind::Ootb
+    {
+      entry.remove();
+    }
   }
 }
 
