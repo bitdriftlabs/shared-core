@@ -6,10 +6,13 @@ publish      = false
 version      = "1.0.0"
 
 [dependencies]
-anyhow.workspace = true
-bd-completion.path = "../bd-completion"
-bd-client-common.path = "../bd-client-common"
+anyhow.workspace       = true
+bd-client-common.path  = "../bd-client-common"
+bd-completion.path     = "../bd-completion"
 bd-log-primitives.path = "../bd-log-primitives"
-bd-proto.path = "../bd-proto"
-thiserror.workspace = true
-tokio.workspace = true
+bd-proto.path          = "../bd-proto"
+thiserror.workspace    = true
+tokio.workspace        = true
+
+[dev-dependencies]
+proptest.workspace = true

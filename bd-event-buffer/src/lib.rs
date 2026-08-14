@@ -16,6 +16,9 @@ use std::sync::Arc;
 use tokio::sync::{Notify, oneshot};
 
 #[cfg(test)]
+#[path = "./event_buffer_prop_test.rs"]
+mod prop_tests;
+#[cfg(test)]
 #[path = "./lib_test.rs"]
 mod tests;
 
