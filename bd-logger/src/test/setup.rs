@@ -145,8 +145,6 @@ pub struct Setup {
   pub server: Box<bd_test_helpers::test_api_server::ServerHandle>,
   pub current_api_stream: Option<StreamHandle>,
 
-  pub capture_screen_count: Arc<AtomicUsize>,
-  pub capture_screenshot_count: Arc<AtomicUsize>,
   capture_screen_rx: StdReceiver<()>,
   capture_screenshot_rx: StdReceiver<()>,
 
@@ -220,8 +218,6 @@ impl Setup {
       capture_screen_tx,
       capture_screenshot_tx,
     });
-    let capture_screen_count = session_replay_target.capture_screen_count.clone();
-    let capture_screenshot_count = session_replay_target.capture_screenshot_count.clone();
 
     let (flush_tick_tx, flush_ticker) = TestTicker::new();
     let (upload_tick_tx, upload_ticker) = TestTicker::new();
@@ -267,8 +263,6 @@ impl Setup {
       sdk_directory: options.sdk_directory,
       server,
       current_api_stream,
-      capture_screen_count,
-      capture_screenshot_count,
       capture_screen_rx,
       capture_screenshot_rx,
       _shutdown: shutdown,

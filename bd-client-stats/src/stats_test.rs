@@ -346,7 +346,7 @@ impl Setup {
     self.test_hooks.flush_complete_rx.recv().await.unwrap();
   }
 
-  async fn do_explicit_flush(&self, completion: bd_completion::Sender<()>) {
+  fn do_explicit_flush(&self, completion: bd_completion::Sender<()>) {
     let flush_completion = self.explicit_flush_trigger.flush(true).unwrap();
     tokio::spawn(async move {
       if flush_completion.wait().await.is_ok() {
@@ -2035,7 +2035,7 @@ async fn flush_during_periodic_upload() {
   // the minimum time between uploads has elapsed.
   setup.test_time.advance(Duration::seconds(31));
   let (tx, rx) = bd_completion::Sender::new();
-  setup.do_explicit_flush(tx).await;
+  setup.do_explicit_flush(tx);
 
   // 7. Receive Upload 2 (triggered by flush)
   let upload2 = setup.next_stat_upload().await;
@@ -2104,7 +2104,7 @@ async fn periodic_upload_does_not_block_immediate_explicit_flush_upload() {
     .record_dynamic_counter(labels!("foo" => "explicit"), "id1", 2);
 
   let (tx, rx) = bd_completion::Sender::new();
-  setup.do_explicit_flush(tx).await;
+  setup.do_explicit_flush(tx);
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
 
   let explicit_upload = setup.next_stat_upload().await;
@@ -2210,7 +2210,7 @@ async fn explicit_flush_persists_while_upload_channel_is_full() {
     .stats
     .record_dynamic_counter(labels!("foo" => "explicit"), "id2", 2);
   let (tx, rx) = bd_completion::Sender::new();
-  setup.do_explicit_flush(tx).await;
+  setup.do_explicit_flush(tx);
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
   rx.recv().await.unwrap();
 
@@ -2514,13 +2514,13 @@ async fn debounced_explicit_flushes_share_one_upload() {
     .stats
     .record_dynamic_counter(labels!("foo" => "first"), "id2", 2);
   let (first_tx, first_rx) = bd_completion::Sender::new();
-  setup.do_explicit_flush(first_tx).await;
+  setup.do_explicit_flush(first_tx);
 
   setup
     .stats
     .record_dynamic_counter(labels!("foo" => "second"), "id3", 3);
   let (second_tx, second_rx) = bd_completion::Sender::new();
-  setup.do_explicit_flush(second_tx).await;
+  setup.do_explicit_flush(second_tx);
 
   tokio::time::advance(std::time::Duration::from_secs(1)).await;
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
@@ -2567,7 +2567,7 @@ async fn closed_upload_channel_completes_explicit_flush_after_persisting() {
     .stats
     .record_dynamic_counter(labels!("foo" => "disconnected"), "id1", 1);
   let (tx, rx) = bd_completion::Sender::new();
-  setup.do_explicit_flush(tx).await;
+  setup.do_explicit_flush(tx);
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
   rx.recv().await.unwrap();
 
@@ -2594,7 +2594,7 @@ async fn shutdown_does_not_wait_for_deferred_upload_channel_capacity() {
     .stats
     .record_dynamic_counter(labels!("foo" => "deferred"), "id2", 2);
   let (tx, rx) = bd_completion::Sender::new();
-  setup.do_explicit_flush(tx).await;
+  setup.do_explicit_flush(tx);
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
   rx.recv().await.unwrap();
 
@@ -2622,7 +2622,7 @@ async fn restart_recovers_deferred_upload_that_never_reached_transport() {
     .stats
     .record_dynamic_counter(labels!("foo" => "deferred"), "id2", 2);
   let (tx, rx) = bd_completion::Sender::new();
-  setup.do_explicit_flush(tx).await;
+  setup.do_explicit_flush(tx);
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
   rx.recv().await.unwrap();
   setup.shutdown().await.unwrap();
@@ -2653,7 +2653,7 @@ async fn restart_recovers_deferred_upload_that_never_reached_transport() {
     // the retained source file and prove it was not lost when the first flusher shut down.
     tokio::time::advance(std::time::Duration::from_secs(1)).await;
     let (retry_tx, retry_rx) = bd_completion::Sender::new();
-    restarted.do_explicit_flush(retry_tx).await;
+    restarted.do_explicit_flush(retry_tx);
     restarted.test_hooks.flush_complete_rx.recv().await.unwrap();
     let deferred_upload = restarted.next_stat_upload().await;
     assert_eq!(
@@ -2696,7 +2696,7 @@ async fn closed_channel_releases_deferred_upload_for_restart() {
     .stats
     .record_dynamic_counter(labels!("foo" => "closed"), "id2", 2);
   let (tx, rx) = bd_completion::Sender::new();
-  setup.do_explicit_flush(tx).await;
+  setup.do_explicit_flush(tx);
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
   rx.recv().await.unwrap();
 
@@ -2733,7 +2733,7 @@ async fn closed_channel_releases_deferred_upload_for_restart() {
     // deferred source. Complete it, then explicitly select the remaining persisted file.
     tokio::time::advance(std::time::Duration::from_secs(1)).await;
     let (retry_tx, retry_rx) = bd_completion::Sender::new();
-    restarted.do_explicit_flush(retry_tx).await;
+    restarted.do_explicit_flush(retry_tx);
     restarted.test_hooks.flush_complete_rx.recv().await.unwrap();
     let retry = restarted.next_stat_upload().await;
     assert_eq!(
@@ -2831,7 +2831,7 @@ async fn explicit_flush_triggers_upload_immediately() {
   // 2. Trigger explicit flush. This should flush to disk AND trigger upload because there is no
   // upload in flight.
   let (tx, rx) = bd_completion::Sender::new();
-  setup.do_explicit_flush(tx).await;
+  setup.do_explicit_flush(tx);
 
   // 3. Receive Upload
   let upload = setup.next_stat_upload().await;
@@ -2873,7 +2873,7 @@ async fn concurrent_flushes() {
 
   // 2. Trigger explicit flush 1
   let (tx1, rx1) = bd_completion::Sender::new();
-  setup.do_explicit_flush(tx1).await;
+  setup.do_explicit_flush(tx1);
 
   // 3. Wait for Upload 1 to start. The flush triggers an upload. We need to grab it. Also drain the
   // flush complete hook.
@@ -2887,7 +2887,7 @@ async fn concurrent_flushes() {
 
   // 5. Trigger explicit flush 2 while Upload 1 is in flight
   let (tx2, rx2) = bd_completion::Sender::new();
-  setup.do_explicit_flush(tx2).await;
+  setup.do_explicit_flush(tx2);
 
   // 6. Flush 2 is coalesced into the trailing disk flush and completes once Metric B is durable.
   rx2.recv().await.unwrap();
@@ -2907,7 +2907,7 @@ async fn concurrent_flushes() {
   // Now trigger Flush 3.
   setup.test_time.advance(Duration::seconds(31));
   let (tx3, rx3) = bd_completion::Sender::new();
-  setup.do_explicit_flush(tx3).await;
+  setup.do_explicit_flush(tx3);
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
 
   let upload3 = setup.next_stat_upload().await;
@@ -2939,7 +2939,7 @@ async fn explicit_flush_no_data() {
 
   // Trigger explicit flush with no data
   let (tx, rx) = bd_completion::Sender::new();
-  setup.do_explicit_flush(tx).await;
+  setup.do_explicit_flush(tx);
 
   // Should complete immediately without upload. Note: flush_to_disk is still called, so we must
   // drain the hook.
@@ -2961,7 +2961,7 @@ async fn explicit_flush_upload_failure() {
     .record_dynamic_counter(labels!("foo" => "bar"), "id1", 1);
 
   let (tx, rx) = bd_completion::Sender::new();
-  setup.do_explicit_flush(tx).await;
+  setup.do_explicit_flush(tx);
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
 
   let upload = setup.next_stat_upload().await;
@@ -3003,7 +3003,7 @@ async fn minimum_upload_interval() {
 
   // First upload should succeed
   let (tx1, rx1) = bd_completion::Sender::new();
-  setup.do_explicit_flush(tx1).await;
+  setup.do_explicit_flush(tx1);
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
 
   let upload1 = setup.next_stat_upload().await;
@@ -3023,7 +3023,7 @@ async fn minimum_upload_interval() {
     .record_dynamic_counter(labels!("foo" => "baz"), "id1", 2);
 
   let (tx2, rx2) = bd_completion::Sender::new();
-  setup.do_explicit_flush(tx2).await;
+  setup.do_explicit_flush(tx2);
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
 
   // Should complete immediately without upload
@@ -3051,7 +3051,7 @@ async fn minimum_upload_interval() {
     .record_dynamic_counter(labels!("foo" => "qux"), "id1", 3);
 
   let (tx3, rx3) = bd_completion::Sender::new();
-  setup.do_explicit_flush(tx3).await;
+  setup.do_explicit_flush(tx3);
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
 
   let upload2 = setup.next_stat_upload().await;
@@ -3093,7 +3093,7 @@ async fn minimum_upload_interval() {
     .record_dynamic_counter(labels!("foo" => "fail"), "id1", 5);
 
   let (tx4, rx4) = bd_completion::Sender::new();
-  setup.do_explicit_flush(tx4).await;
+  setup.do_explicit_flush(tx4);
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
 
   let upload4 = setup.next_stat_upload().await;
@@ -3115,7 +3115,7 @@ async fn minimum_upload_interval() {
     .record_dynamic_counter(labels!("foo" => "retry"), "id1", 6);
 
   let (tx5, rx5) = bd_completion::Sender::new();
-  setup.do_explicit_flush(tx5).await;
+  setup.do_explicit_flush(tx5);
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
 
   let upload5 = setup.next_stat_upload().await;
