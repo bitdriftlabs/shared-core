@@ -679,6 +679,10 @@ pub struct Flusher {
   pending_data_upload: Option<PendingDataUpload>,
   // Holds requests and periodic-upload intent coalesced by the fixed disk debounce window.
   disk_flush: DiskFlushDebounce,
+  // A periodic completion may discover old snapshots while another request is retained for
+  // channel capacity. Resume backlog draining after that request is dispatched rather than
+  // replacing its retained ownership.
+  periodic_backlog_drain_pending: bool,
   // These gates distinguish an admitted upload from a merely persisted snapshot. They prevent
   // duplicate upload attempts without delaying local durability for later flush callers.
   periodic_in_flight: bool,
@@ -731,6 +735,7 @@ impl Flusher {
         flush_pending: false,
         periodic_upload_pending: false,
       },
+      periodic_backlog_drain_pending: false,
       periodic_in_flight: false,
       flush_in_flight: false,
       last_flush_upload_time: None,
@@ -765,6 +770,10 @@ impl Flusher {
     // processing explicit flushes while another data-upload producer occupies the shared channel.
     loop {
       tokio::select! {
+        () = std::future::ready(()), if self.periodic_backlog_drain_pending
+          && self.pending_data_upload.is_none() => {
+          self.resume_periodic_backlog_drain().await;
+        },
         // A retained request owns a FileManager claim but no transport receiver. Wait for capacity
         // alongside every other event, then atomically transfer that ownership to `uploads`.
         permit = self.data_flush_tx.clone().reserve_owned(), if self
@@ -901,6 +910,8 @@ impl Flusher {
       // Do not reset the deadline: this is a fixed window, not a quiet-period debounce.
       log::debug!("coalescing stats disk flush into active debounce window");
       self.disk_flush.flush_pending = true;
+      #[cfg(test)]
+      let _ignored = self.test_hooks.sender.flush_coalesced_tx.try_send(());
       return DiskFlushOutcome::Deferred;
     }
 
@@ -936,6 +947,8 @@ impl Flusher {
     let debounce = self.disk_flush_debounce.read().unsigned_abs();
     self.disk_flush.deadline = Some(Box::pin(tokio::time::sleep(debounce)));
     log::debug!("started stats disk flush debounce window: duration={debounce:?}");
+    #[cfg(test)]
+    let _ignored = self.test_hooks.sender.debounce_started_tx.try_send(());
   }
 
   async fn handle_disk_flush_deadline(&mut self) {
@@ -1038,6 +1051,13 @@ impl Flusher {
     match context {
       UploadContext::Periodic(..) => {
         if upload_response.success {
+          if self.pending_data_upload.is_some() {
+            log::debug!(
+              "deferring periodic stats backlog drain until retained upload is dispatched"
+            );
+            self.periodic_backlog_drain_pending = true;
+            return;
+          }
           if let Some(prepared_upload) = self
             .upload_from_disk(true, UploadReason::UPLOAD_REASON_PERIODIC)
             .await
@@ -1441,6 +1461,24 @@ impl Flusher {
       prepared_upload.response_rx,
       context.with_metadata(prepared_upload.metadata),
     );
+  }
+
+  async fn resume_periodic_backlog_drain(&mut self) {
+    if !self.periodic_backlog_drain_pending || self.pending_data_upload.is_some() {
+      return;
+    }
+
+    self.periodic_backlog_drain_pending = false;
+    if let Some(prepared_upload) = self
+      .upload_from_disk(true, UploadReason::UPLOAD_REASON_PERIODIC)
+      .await
+    {
+      let _ = self
+        .dispatch_prepared_upload(prepared_upload, PendingUploadContext::Periodic)
+        .await;
+    } else {
+      self.periodic_in_flight = false;
+    }
   }
 
   async fn abandon_pending_upload(&mut self) {

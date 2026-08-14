@@ -610,6 +610,8 @@ pub struct ReportProcessingRequest {
 
 pub trait TestHooks: Send + Sync {
   fn remote_streaming_action_processed(&self) {}
+
+  fn workflow_event_processed(&self) {}
 }
 
 /// A single logger instance. This manages the lifetime of the logger and can be used to access

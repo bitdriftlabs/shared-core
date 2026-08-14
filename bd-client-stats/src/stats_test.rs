@@ -225,10 +225,14 @@ fn runtime_periodic_schedule(
 pub struct TestHooksSender {
   pub upload_complete_tx: mpsc::Sender<()>,
   pub flush_complete_tx: mpsc::Sender<()>,
+  pub debounce_started_tx: mpsc::Sender<()>,
+  pub flush_coalesced_tx: mpsc::Sender<()>,
 }
 pub struct TestHooksReceiver {
   pub upload_complete_rx: mpsc::Receiver<()>,
   pub flush_complete_rx: mpsc::Receiver<()>,
+  pub debounce_started_rx: mpsc::Receiver<()>,
+  pub flush_coalesced_rx: mpsc::Receiver<()>,
 }
 pub struct TestHooks {
   pub sender: TestHooksSender,
@@ -239,14 +243,20 @@ impl Default for TestHooks {
   fn default() -> Self {
     let (upload_complete_tx, upload_complete_rx) = mpsc::channel(1);
     let (flush_complete_tx, flush_complete_rx) = mpsc::channel(1);
+    let (debounce_started_tx, debounce_started_rx) = mpsc::channel(1);
+    let (flush_coalesced_tx, flush_coalesced_rx) = mpsc::channel(1);
     Self {
       sender: TestHooksSender {
         upload_complete_tx,
         flush_complete_tx,
+        debounce_started_tx,
+        flush_coalesced_tx,
       },
       receiver: Some(TestHooksReceiver {
         upload_complete_rx,
         flush_complete_rx,
+        debounce_started_rx,
+        flush_coalesced_rx,
       }),
     }
   }
@@ -344,6 +354,14 @@ impl Setup {
   async fn do_periodic_flush(&mut self) {
     self.periodic_flush_tick_tx.send(()).await.unwrap();
     self.test_hooks.flush_complete_rx.recv().await.unwrap();
+  }
+
+  async fn wait_for_debounce_started(&mut self) {
+    self.test_hooks.debounce_started_rx.recv().await.unwrap();
+  }
+
+  async fn wait_for_flush_coalesced(&mut self) {
+    self.test_hooks.flush_coalesced_rx.recv().await.unwrap();
   }
 
   fn do_explicit_flush(&self, completion: bd_completion::Sender<()>) {
@@ -2257,11 +2275,13 @@ async fn disk_flushes_are_leading_and_fixed_trailing_debounced() {
     .stats
     .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
   setup.do_periodic_flush().await;
+  setup.wait_for_debounce_started().await;
 
   setup
     .stats
     .record_dynamic_counter(labels!("foo" => "first-trailing"), "id2", 2);
   setup.periodic_flush_tick_tx.send(()).await.unwrap();
+  setup.wait_for_flush_coalesced().await;
   assert!(setup.test_hooks.flush_complete_rx.try_recv().is_err());
 
   tokio::time::advance(std::time::Duration::from_millis(500)).await;
@@ -2269,6 +2289,7 @@ async fn disk_flushes_are_leading_and_fixed_trailing_debounced() {
     .stats
     .record_dynamic_counter(labels!("foo" => "second-trailing"), "id3", 3);
   setup.periodic_flush_tick_tx.send(()).await.unwrap();
+  setup.wait_for_flush_coalesced().await;
 
   tokio::time::advance(std::time::Duration::from_millis(499)).await;
   assert!(setup.test_hooks.flush_complete_rx.try_recv().is_err());
@@ -2300,10 +2321,12 @@ async fn runtime_configured_disk_flush_debounce_uses_milliseconds() {
     .stats
     .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
   setup.do_periodic_flush().await;
+  setup.wait_for_debounce_started().await;
   setup
     .stats
     .record_dynamic_counter(labels!("foo" => "trailing"), "id2", 2);
   setup.periodic_flush_tick_tx.send(()).await.unwrap();
+  setup.wait_for_flush_coalesced().await;
 
   tokio::time::advance(std::time::Duration::from_millis(99)).await;
   assert!(setup.test_hooks.flush_complete_rx.try_recv().is_err());
@@ -2323,11 +2346,13 @@ async fn debounced_persistence_only_flush_does_not_dispatch_upload() {
     .stats
     .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
   setup.do_periodic_flush().await;
+  setup.wait_for_debounce_started().await;
 
   setup
     .stats
     .record_dynamic_counter(labels!("foo" => "persistence-only"), "id2", 2);
   let completion = setup.explicit_flush_trigger.flush(false).unwrap();
+  setup.wait_for_flush_coalesced().await;
 
   assert!(poll!(Box::pin(setup.data_rx.recv())).is_pending());
   tokio::time::advance(std::time::Duration::from_secs(1)).await;
@@ -2373,6 +2398,7 @@ async fn debounced_flush_epoch_completes_bursts_and_ors_upload_intent() {
     .stats
     .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
   setup.do_periodic_flush().await;
+  setup.wait_for_debounce_started().await;
 
   setup
     .stats
@@ -2380,6 +2406,7 @@ async fn debounced_flush_epoch_completes_bursts_and_ors_upload_intent() {
   let completions = (0 .. 128)
     .map(|index| setup.explicit_flush_trigger.flush(index == 0).unwrap())
     .collect::<Vec<_>>();
+  setup.wait_for_flush_coalesced().await;
 
   tokio::time::advance(std::time::Duration::from_secs(1)).await;
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
@@ -2415,11 +2442,14 @@ async fn flush_registered_after_epoch_rotation_waits_for_next_disk_write() {
     .stats
     .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
   setup.do_periodic_flush().await;
+  setup.wait_for_debounce_started().await;
   let first_completion = setup.explicit_flush_trigger.flush(false).unwrap();
+  setup.wait_for_flush_coalesced().await;
 
   tokio::time::advance(std::time::Duration::from_secs(1)).await;
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();
   first_completion.wait().await.unwrap();
+  setup.wait_for_debounce_started().await;
 
   // The completed trailing write has atomically opened a new epoch. This caller must wait for
   // the next write rather than observing durability from the already completed one.
@@ -2427,6 +2457,7 @@ async fn flush_registered_after_epoch_rotation_waits_for_next_disk_write() {
     .stats
     .record_dynamic_counter(labels!("foo" => "next"), "id2", 2);
   let second_completion = setup.explicit_flush_trigger.flush(false).unwrap();
+  setup.wait_for_flush_coalesced().await;
   let mut second_wait = Box::pin(second_completion.wait());
   assert!(poll!(&mut second_wait).is_pending());
 
@@ -2446,7 +2477,9 @@ async fn shutdown_fails_open_flush_epoch() {
     .stats
     .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
   setup.do_periodic_flush().await;
+  setup.wait_for_debounce_started().await;
   let completion = setup.explicit_flush_trigger.flush(false).unwrap();
+  setup.wait_for_flush_coalesced().await;
   let trigger = setup.explicit_flush_trigger.clone();
 
   setup.shutdown().await.unwrap();
@@ -2463,6 +2496,7 @@ async fn periodic_upload_waits_for_debounced_disk_flush() {
     .stats
     .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
   setup.do_periodic_flush().await;
+  setup.wait_for_debounce_started().await;
 
   // A periodic upload inside that window must wait for the trailing flush so its request also
   // contains this later metric rather than snapshotting stale on-disk state.
@@ -2470,6 +2504,7 @@ async fn periodic_upload_waits_for_debounced_disk_flush() {
     .stats
     .record_dynamic_counter(labels!("foo" => "trailing"), "id2", 2);
   setup.upload_tick_tx.send(()).await.unwrap();
+  setup.wait_for_flush_coalesced().await;
   assert!(setup.test_hooks.flush_complete_rx.try_recv().is_err());
   assert!(poll!(Box::pin(setup.data_rx.recv())).is_pending());
 
@@ -2509,6 +2544,7 @@ async fn debounced_explicit_flushes_share_one_upload() {
     .stats
     .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
   setup.do_periodic_flush().await;
+  setup.wait_for_debounce_started().await;
 
   setup
     .stats
@@ -2521,6 +2557,7 @@ async fn debounced_explicit_flushes_share_one_upload() {
     .record_dynamic_counter(labels!("foo" => "second"), "id3", 3);
   let (second_tx, second_rx) = bd_completion::Sender::new();
   setup.do_explicit_flush(second_tx);
+  setup.wait_for_flush_coalesced().await;
 
   tokio::time::advance(std::time::Duration::from_secs(1)).await;
   setup.test_hooks.flush_complete_rx.recv().await.unwrap();

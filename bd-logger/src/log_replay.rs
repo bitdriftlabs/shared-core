@@ -317,6 +317,9 @@ impl ProcessingPipeline {
       &result.triggered_flush_buffers_action_ids,
       result.capture_screenshot,
     );
+    if let Some(test_hooks) = &self.test_hooks {
+      test_hooks.workflow_event_processed();
+    }
 
     Self::write_to_buffers(
       &mut self.buffer_producers,

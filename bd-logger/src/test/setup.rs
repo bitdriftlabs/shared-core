@@ -82,11 +82,16 @@ struct MockSessionReplayTarget {
 
 struct SetupTestHooks {
   remote_streaming_action_processed_tx: StdSender<()>,
+  screenshot_action_processed_tx: std::sync::mpsc::SyncSender<()>,
 }
 
 impl TestHooks for SetupTestHooks {
   fn remote_streaming_action_processed(&self) {
     let _ignored = self.remote_streaming_action_processed_tx.send(());
+  }
+
+  fn workflow_event_processed(&self) {
+    let _ignored = self.screenshot_action_processed_tx.try_send(());
   }
 }
 
@@ -163,6 +168,7 @@ pub struct Setup {
   capture_screen_rx: StdReceiver<()>,
   capture_screenshot_rx: StdReceiver<()>,
   remote_streaming_action_processed_rx: StdReceiver<()>,
+  screenshot_action_processed_rx: StdReceiver<()>,
 
   _shutdown: ComponentShutdownTrigger,
 
@@ -230,6 +236,8 @@ impl Setup {
     let (capture_screenshot_tx, capture_screenshot_rx) = std::sync::mpsc::channel();
     let (remote_streaming_action_processed_tx, remote_streaming_action_processed_rx) =
       std_channel();
+    let (screenshot_action_processed_tx, screenshot_action_processed_rx) =
+      std::sync::mpsc::sync_channel(1);
     let session_replay_target = Box::new(MockSessionReplayTarget {
       capture_screen_count: Arc::default(),
       capture_screenshot_count: Arc::default(),
@@ -265,6 +273,7 @@ impl Setup {
     .with_time_provider(options.time_provider)
     .with_test_hooks(Some(Arc::new(SetupTestHooks {
       remote_streaming_action_processed_tx,
+      screenshot_action_processed_tx,
     })))
     .build_dedicated_thread()
     .unwrap();
@@ -287,6 +296,7 @@ impl Setup {
       capture_screen_rx,
       capture_screenshot_rx,
       remote_streaming_action_processed_rx,
+      screenshot_action_processed_rx,
       _shutdown: shutdown,
       _stats_flush_tx: flush_tick_tx,
       _stats_upload_tx: upload_tick_tx,
@@ -317,6 +327,13 @@ impl Setup {
       .remote_streaming_action_processed_rx
       .recv_timeout(std::time::Duration::from_secs(5))
       .expect("timed out waiting for remote streaming action processing");
+  }
+
+  pub fn wait_for_screenshot_action_processing(&self) {
+    self
+      .screenshot_action_processed_rx
+      .recv_timeout(std::time::Duration::from_secs(5))
+      .expect("timed out waiting for screenshot action processing");
   }
 
   pub fn assert_no_capture_screenshot(&self) {

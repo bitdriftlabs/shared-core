@@ -909,6 +909,7 @@ fn session_replay_actions() {
     [].into(),
     [].into(),
   );
+  setup.wait_for_screenshot_action_processing();
   setup.assert_no_capture_screenshot();
 
   // Emit a log that should result in taking a screenshot.
