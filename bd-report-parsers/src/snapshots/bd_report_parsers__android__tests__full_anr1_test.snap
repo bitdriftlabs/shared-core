@@ -20,6 +20,10 @@ Report {
             lifecycle_event: None,
             javascript_engine: UnknownJsEngine,
             memory_pressure_level: Unknown,
+            launch_time: None,
+            environment: Unknown,
+            team_identifier: None,
+            bundle_path: None,
         },
     ),
     device_metrics: Some(
@@ -12339,6 +12343,7 @@ Report {
                     "/apex/com.android.art/javalib/core-oj.jar",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12346,6 +12351,7 @@ Report {
                     "/apex/com.android.art/lib64/libadbconnection.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12353,6 +12359,7 @@ Report {
                     "/apex/com.android.art/lib64/libart.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12360,6 +12367,7 @@ Report {
                     "/apex/com.android.art/lib64/libart.so (art::(anonymous namespace)::CheckJII::DetachCurrentThread(_JavaVM*)",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12367,6 +12375,7 @@ Report {
                     "/apex/com.android.art/lib64/libart.so (art::(anonymous namespace)::CheckJNI::CallVoidMethodV(_JNIEnv*, _jobject*, _jmethodID*, std::__va_list)",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12374,6 +12383,7 @@ Report {
                     "/apex/com.android.art/lib64/libperfetto_hprof.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12381,6 +12391,7 @@ Report {
                     "/apex/com.android.runtime/lib64/bionic/libc.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12388,6 +12399,7 @@ Report {
                     "/data/app/~~7kAFqsYARfL7cQJqAhmJrg==/io.bitdrift.gradletestapp-y3GGIAoi5dbQay1-wr2YQQ==/lib/arm64/libcapture.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12395,6 +12407,7 @@ Report {
                     "/data/data/io.bitdrift.gradletestapp/code_cache/.overlay/base.apk/classes13.dex",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12402,6 +12415,7 @@ Report {
                     "/memfd:jit-cache (deleted)",
                 ),
                 load_address: 33554432,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12409,6 +12423,7 @@ Report {
                     "/system/bin/app_process64",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12416,6 +12431,7 @@ Report {
                     "/system/lib64/libandroid_runtime.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12423,6 +12439,7 @@ Report {
                     "/system/lib64/libbinder.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12430,6 +12447,7 @@ Report {
                     "/system/lib64/libc++.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12437,6 +12455,7 @@ Report {
                     "/system/lib64/libgui.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12444,6 +12463,7 @@ Report {
                     "/system/lib64/libgui.so (void* std::__1::__thread_proxy<std::__1::tuple<std::__1::unique_ptr<std::__1::__thread_struct, std::__1::default_delete<std::__1::__thread_struct> >, void",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12451,6 +12471,7 @@ Report {
                     "/system/lib64/libhwui.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12458,6 +12479,7 @@ Report {
                     "/system/lib64/libutils.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12465,6 +12487,7 @@ Report {
                     "[anon:dalvik-/apex/com.android.art/javalib/core-oj.jar-transformed]",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -12472,6 +12495,7 @@ Report {
                     "[anon:dalvik-classes5.dex extracted in memory from /data/app/~~7kAFqsYARfL7cQJqAhmJrg==/io.bitdrift.gradletestapp-y3GGIAoi5dbQay1-wr2YQQ==/base.apk!classes5.dex]",
                 ),
                 load_address: 0,
+                length: 0,
             },
         ],
     ),

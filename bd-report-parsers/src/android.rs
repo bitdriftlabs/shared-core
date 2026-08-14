@@ -132,6 +132,7 @@ fn build_threads<'a, 'fbb, E: ParseError<MemmapView<'a>>>(
         id: id.clone().map(|id| builder.create_string(&id)),
         path: Some(builder.create_string(path)),
         load_address: offset.unwrap_or_default(),
+        length: 0,
       };
       v_1::BinaryImage::create(builder, &args)
     })

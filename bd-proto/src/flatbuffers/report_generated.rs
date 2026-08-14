@@ -1091,6 +1091,107 @@ impl<'a> flatbuffers::Verifiable for MemoryPressureLevel {
 
 impl flatbuffers::SimpleToVerifyInSlice for MemoryPressureLevel {}
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MIN_APP_ENVIRONMENT: i8 = 0;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MAX_APP_ENVIRONMENT: i8 = 5;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+#[allow(non_camel_case_types)]
+pub const ENUM_VALUES_APP_ENVIRONMENT: [AppEnvironment; 6] = [
+  AppEnvironment::Unknown,
+  AppEnvironment::Debug,
+  AppEnvironment::AdHoc,
+  AppEnvironment::Enterprise,
+  AppEnvironment::TestFlight,
+  AppEnvironment::Production,
+];
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[repr(transparent)]
+pub struct AppEnvironment(pub i8);
+#[allow(non_upper_case_globals)]
+impl AppEnvironment {
+  pub const Unknown: Self = Self(0);
+  pub const Debug: Self = Self(1);
+  pub const AdHoc: Self = Self(2);
+  pub const Enterprise: Self = Self(3);
+  pub const TestFlight: Self = Self(4);
+  pub const Production: Self = Self(5);
+
+  pub const ENUM_MIN: i8 = 0;
+  pub const ENUM_MAX: i8 = 5;
+  pub const ENUM_VALUES: &'static [Self] = &[
+    Self::Unknown,
+    Self::Debug,
+    Self::AdHoc,
+    Self::Enterprise,
+    Self::TestFlight,
+    Self::Production,
+  ];
+  /// Returns the variant's name or "" if unknown.
+  pub fn variant_name(self) -> Option<&'static str> {
+    match self {
+      Self::Unknown => Some("Unknown"),
+      Self::Debug => Some("Debug"),
+      Self::AdHoc => Some("AdHoc"),
+      Self::Enterprise => Some("Enterprise"),
+      Self::TestFlight => Some("TestFlight"),
+      Self::Production => Some("Production"),
+      _ => None,
+    }
+  }
+}
+impl core::fmt::Debug for AppEnvironment {
+  fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    if let Some(name) = self.variant_name() {
+      f.write_str(name)
+    } else {
+      f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+    }
+  }
+}
+impl<'a> flatbuffers::Follow<'a> for AppEnvironment {
+  type Inner = Self;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    let b = unsafe { flatbuffers::read_scalar_at::<i8>(buf, loc) };
+    Self(b)
+  }
+}
+
+impl flatbuffers::Push for AppEnvironment {
+    type Output = AppEnvironment;
+    #[inline]
+    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+        unsafe { flatbuffers::emplace_scalar::<i8>(dst, self.0); }
+    }
+}
+
+impl flatbuffers::EndianScalar for AppEnvironment {
+  type Scalar = i8;
+  #[inline]
+  fn to_little_endian(self) -> i8 {
+    self.0.to_le()
+  }
+  #[inline]
+  #[allow(clippy::wrong_self_convention)]
+  fn from_little_endian(v: i8) -> Self {
+    let b = i8::from_le(v);
+    Self(b)
+  }
+}
+
+impl<'a> flatbuffers::Verifiable for AppEnvironment {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    i8::run_verifier(v, pos)
+  }
+}
+
+impl flatbuffers::SimpleToVerifyInSlice for AppEnvironment {}
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 pub const ENUM_MIN_ROTATION: i8 = 0;
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 pub const ENUM_MAX_ROTATION: i8 = 4;
@@ -2078,6 +2179,10 @@ impl<'a> AppMetrics<'a> {
   pub const VT_LIFECYCLE_EVENT: flatbuffers::VOffsetT = 20;
   pub const VT_JAVASCRIPT_ENGINE: flatbuffers::VOffsetT = 22;
   pub const VT_MEMORY_PRESSURE_LEVEL: flatbuffers::VOffsetT = 24;
+  pub const VT_LAUNCH_TIME: flatbuffers::VOffsetT = 26;
+  pub const VT_ENVIRONMENT: flatbuffers::VOffsetT = 28;
+  pub const VT_TEAM_IDENTIFIER: flatbuffers::VOffsetT = 30;
+  pub const VT_BUNDLE_PATH: flatbuffers::VOffsetT = 32;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -2089,6 +2194,9 @@ impl<'a> AppMetrics<'a> {
     args: &'args AppMetricsArgs<'args>
   ) -> flatbuffers::WIPOffset<AppMetrics<'bldr>> {
     let mut builder = AppMetricsBuilder::new(_fbb);
+    if let Some(x) = args.bundle_path { builder.add_bundle_path(x); }
+    if let Some(x) = args.team_identifier { builder.add_team_identifier(x); }
+    if let Some(x) = args.launch_time { builder.add_launch_time(x); }
     if let Some(x) = args.lifecycle_event { builder.add_lifecycle_event(x); }
     if let Some(x) = args.cpu_usage { builder.add_cpu_usage(x); }
     if let Some(x) = args.region_format { builder.add_region_format(x); }
@@ -2098,6 +2206,7 @@ impl<'a> AppMetrics<'a> {
     if let Some(x) = args.version { builder.add_version(x); }
     if let Some(x) = args.memory { builder.add_memory(x); }
     if let Some(x) = args.app_id { builder.add_app_id(x); }
+    builder.add_environment(args.environment);
     builder.add_memory_pressure_level(args.memory_pressure_level);
     builder.add_javascript_engine(args.javascript_engine);
     builder.finish()
@@ -2131,6 +2240,16 @@ impl<'a> AppMetrics<'a> {
     });
     let javascript_engine = self.javascript_engine();
     let memory_pressure_level = self.memory_pressure_level();
+    let launch_time = self.launch_time().map(|x| {
+      x.unpack()
+    });
+    let environment = self.environment();
+    let team_identifier = self.team_identifier().map(|x| {
+      x.to_string()
+    });
+    let bundle_path = self.bundle_path().map(|x| {
+      x.to_string()
+    });
     AppMetricsT {
       app_id,
       memory,
@@ -2143,6 +2262,10 @@ impl<'a> AppMetrics<'a> {
       lifecycle_event,
       javascript_engine,
       memory_pressure_level,
+      launch_time,
+      environment,
+      team_identifier,
+      bundle_path,
     }
   }
 
@@ -2223,6 +2346,34 @@ impl<'a> AppMetrics<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<MemoryPressureLevel>(AppMetrics::VT_MEMORY_PRESSURE_LEVEL, Some(MemoryPressureLevel::Unknown)).unwrap()}
   }
+  #[inline]
+  pub fn launch_time(&self) -> Option<&'a Timestamp> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<Timestamp>(AppMetrics::VT_LAUNCH_TIME, None)}
+  }
+  #[inline]
+  pub fn environment(&self) -> AppEnvironment {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<AppEnvironment>(AppMetrics::VT_ENVIRONMENT, Some(AppEnvironment::Unknown)).unwrap()}
+  }
+  #[inline]
+  pub fn team_identifier(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(AppMetrics::VT_TEAM_IDENTIFIER, None)}
+  }
+  #[inline]
+  pub fn bundle_path(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<&str>>(AppMetrics::VT_BUNDLE_PATH, None)}
+  }
 }
 
 impl flatbuffers::Verifiable for AppMetrics<'_> {
@@ -2243,6 +2394,10 @@ impl flatbuffers::Verifiable for AppMetrics<'_> {
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("lifecycle_event", Self::VT_LIFECYCLE_EVENT, false)?
      .visit_field::<JavaScriptEngine>("javascript_engine", Self::VT_JAVASCRIPT_ENGINE, false)?
      .visit_field::<MemoryPressureLevel>("memory_pressure_level", Self::VT_MEMORY_PRESSURE_LEVEL, false)?
+     .visit_field::<Timestamp>("launch_time", Self::VT_LAUNCH_TIME, false)?
+     .visit_field::<AppEnvironment>("environment", Self::VT_ENVIRONMENT, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("team_identifier", Self::VT_TEAM_IDENTIFIER, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<&str>>("bundle_path", Self::VT_BUNDLE_PATH, false)?
      .finish();
     Ok(())
   }
@@ -2259,6 +2414,10 @@ pub struct AppMetricsArgs<'a> {
     pub lifecycle_event: Option<flatbuffers::WIPOffset<&'a str>>,
     pub javascript_engine: JavaScriptEngine,
     pub memory_pressure_level: MemoryPressureLevel,
+    pub launch_time: Option<&'a Timestamp>,
+    pub environment: AppEnvironment,
+    pub team_identifier: Option<flatbuffers::WIPOffset<&'a str>>,
+    pub bundle_path: Option<flatbuffers::WIPOffset<&'a str>>,
 }
 impl<'a> Default for AppMetricsArgs<'a> {
   #[inline]
@@ -2275,6 +2434,10 @@ impl<'a> Default for AppMetricsArgs<'a> {
       lifecycle_event: None,
       javascript_engine: JavaScriptEngine::UnknownJsEngine,
       memory_pressure_level: MemoryPressureLevel::Unknown,
+      launch_time: None,
+      environment: AppEnvironment::Unknown,
+      team_identifier: None,
+      bundle_path: None,
     }
   }
 }
@@ -2329,6 +2492,22 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> AppMetricsBuilder<'a, 'b, A> {
     self.fbb_.push_slot::<MemoryPressureLevel>(AppMetrics::VT_MEMORY_PRESSURE_LEVEL, memory_pressure_level, MemoryPressureLevel::Unknown);
   }
   #[inline]
+  pub fn add_launch_time(&mut self, launch_time: &Timestamp) {
+    self.fbb_.push_slot_always::<&Timestamp>(AppMetrics::VT_LAUNCH_TIME, launch_time);
+  }
+  #[inline]
+  pub fn add_environment(&mut self, environment: AppEnvironment) {
+    self.fbb_.push_slot::<AppEnvironment>(AppMetrics::VT_ENVIRONMENT, environment, AppEnvironment::Unknown);
+  }
+  #[inline]
+  pub fn add_team_identifier(&mut self, team_identifier: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(AppMetrics::VT_TEAM_IDENTIFIER, team_identifier);
+  }
+  #[inline]
+  pub fn add_bundle_path(&mut self, bundle_path: flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(AppMetrics::VT_BUNDLE_PATH, bundle_path);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> AppMetricsBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     AppMetricsBuilder {
@@ -2357,6 +2536,10 @@ impl core::fmt::Debug for AppMetrics<'_> {
       ds.field("lifecycle_event", &self.lifecycle_event());
       ds.field("javascript_engine", &self.javascript_engine());
       ds.field("memory_pressure_level", &self.memory_pressure_level());
+      ds.field("launch_time", &self.launch_time());
+      ds.field("environment", &self.environment());
+      ds.field("team_identifier", &self.team_identifier());
+      ds.field("bundle_path", &self.bundle_path());
       ds.finish()
   }
 }
@@ -2374,6 +2557,10 @@ pub struct AppMetricsT {
   pub lifecycle_event: Option<String>,
   pub javascript_engine: JavaScriptEngine,
   pub memory_pressure_level: MemoryPressureLevel,
+  pub launch_time: Option<TimestampT>,
+  pub environment: AppEnvironment,
+  pub team_identifier: Option<String>,
+  pub bundle_path: Option<String>,
 }
 impl Default for AppMetricsT {
   fn default() -> Self {
@@ -2389,6 +2576,10 @@ impl Default for AppMetricsT {
       lifecycle_event: None,
       javascript_engine: JavaScriptEngine::UnknownJsEngine,
       memory_pressure_level: MemoryPressureLevel::Unknown,
+      launch_time: None,
+      environment: AppEnvironment::Unknown,
+      team_identifier: None,
+      bundle_path: None,
     }
   }
 }
@@ -2423,6 +2614,15 @@ impl AppMetricsT {
     });
     let javascript_engine = self.javascript_engine;
     let memory_pressure_level = self.memory_pressure_level;
+    let launch_time_tmp = self.launch_time.as_ref().map(|x| x.pack());
+    let launch_time = launch_time_tmp.as_ref();
+    let environment = self.environment;
+    let team_identifier = self.team_identifier.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
+    let bundle_path = self.bundle_path.as_ref().map(|x|{
+      _fbb.create_string(x)
+    });
     AppMetrics::create(_fbb, &AppMetricsArgs{
       app_id,
       memory,
@@ -2435,6 +2635,10 @@ impl AppMetricsT {
       lifecycle_event,
       javascript_engine,
       memory_pressure_level,
+      launch_time,
+      environment,
+      team_identifier,
+      bundle_path,
     })
   }
 }
@@ -6308,6 +6512,7 @@ impl<'a> BinaryImage<'a> {
   pub const VT_ID: flatbuffers::VOffsetT = 4;
   pub const VT_PATH: flatbuffers::VOffsetT = 6;
   pub const VT_LOAD_ADDRESS: flatbuffers::VOffsetT = 8;
+  pub const VT_LENGTH: flatbuffers::VOffsetT = 10;
 
   #[inline]
   pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
@@ -6319,6 +6524,7 @@ impl<'a> BinaryImage<'a> {
     args: &'args BinaryImageArgs<'args>
   ) -> flatbuffers::WIPOffset<BinaryImage<'bldr>> {
     let mut builder = BinaryImageBuilder::new(_fbb);
+    builder.add_length(args.length);
     builder.add_load_address(args.load_address);
     if let Some(x) = args.path { builder.add_path(x); }
     if let Some(x) = args.id { builder.add_id(x); }
@@ -6333,10 +6539,12 @@ impl<'a> BinaryImage<'a> {
       x.to_string()
     });
     let load_address = self.load_address();
+    let length = self.length();
     BinaryImageT {
       id,
       path,
       load_address,
+      length,
     }
   }
 
@@ -6361,6 +6569,13 @@ impl<'a> BinaryImage<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<u64>(BinaryImage::VT_LOAD_ADDRESS, Some(0)).unwrap()}
   }
+  #[inline]
+  pub fn length(&self) -> u64 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u64>(BinaryImage::VT_LENGTH, Some(0)).unwrap()}
+  }
 }
 
 impl flatbuffers::Verifiable for BinaryImage<'_> {
@@ -6373,6 +6588,7 @@ impl flatbuffers::Verifiable for BinaryImage<'_> {
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("id", Self::VT_ID, false)?
      .visit_field::<flatbuffers::ForwardsUOffset<&str>>("path", Self::VT_PATH, false)?
      .visit_field::<u64>("load_address", Self::VT_LOAD_ADDRESS, false)?
+     .visit_field::<u64>("length", Self::VT_LENGTH, false)?
      .finish();
     Ok(())
   }
@@ -6381,6 +6597,7 @@ pub struct BinaryImageArgs<'a> {
     pub id: Option<flatbuffers::WIPOffset<&'a str>>,
     pub path: Option<flatbuffers::WIPOffset<&'a str>>,
     pub load_address: u64,
+    pub length: u64,
 }
 impl<'a> Default for BinaryImageArgs<'a> {
   #[inline]
@@ -6389,6 +6606,7 @@ impl<'a> Default for BinaryImageArgs<'a> {
       id: None,
       path: None,
       load_address: 0,
+      length: 0,
     }
   }
 }
@@ -6411,6 +6629,10 @@ impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> BinaryImageBuilder<'a, 'b, A> {
     self.fbb_.push_slot::<u64>(BinaryImage::VT_LOAD_ADDRESS, load_address, 0);
   }
   #[inline]
+  pub fn add_length(&mut self, length: u64) {
+    self.fbb_.push_slot::<u64>(BinaryImage::VT_LENGTH, length, 0);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> BinaryImageBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     BinaryImageBuilder {
@@ -6431,6 +6653,7 @@ impl core::fmt::Debug for BinaryImage<'_> {
       ds.field("id", &self.id());
       ds.field("path", &self.path());
       ds.field("load_address", &self.load_address());
+      ds.field("length", &self.length());
       ds.finish()
   }
 }
@@ -6440,6 +6663,7 @@ pub struct BinaryImageT {
   pub id: Option<String>,
   pub path: Option<String>,
   pub load_address: u64,
+  pub length: u64,
 }
 impl Default for BinaryImageT {
   fn default() -> Self {
@@ -6447,6 +6671,7 @@ impl Default for BinaryImageT {
       id: None,
       path: None,
       load_address: 0,
+      length: 0,
     }
   }
 }
@@ -6462,10 +6687,12 @@ impl BinaryImageT {
       _fbb.create_string(x)
     });
     let load_address = self.load_address;
+    let length = self.length;
     BinaryImage::create(_fbb, &BinaryImageArgs{
       id,
       path,
       load_address,
+      length,
     })
   }
 }

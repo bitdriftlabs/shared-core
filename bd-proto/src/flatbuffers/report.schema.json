@@ -49,6 +49,10 @@
       "type" : "string",
       "enum": ["Unknown", "Normal", "Warning", "Critical"]
     },
+    "bitdrift_public_fbs_issue_reporting_v1_AppEnvironment" : {
+      "type" : "string",
+      "enum": ["Unknown", "Debug", "AdHoc", "Enterprise", "TestFlight", "Production"]
+    },
     "bitdrift_public_fbs_issue_reporting_v1_Rotation" : {
       "type" : "string",
       "enum": ["Unknown", "Portrait", "LandscapeRight", "LandscapeLeft", "PortraitUpsideDown"]
@@ -198,6 +202,18 @@
               },
         "memory_pressure_level" : {
                 "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_MemoryPressureLevel"
+              },
+        "launch_time" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_Timestamp"
+              },
+        "environment" : {
+                "$ref" : "#/definitions/bitdrift_public_fbs_issue_reporting_v1_AppEnvironment"
+              },
+        "team_identifier" : {
+                "type" : "string"
+              },
+        "bundle_path" : {
+                "type" : "string"
               }
       },
       "additionalProperties" : false
@@ -566,6 +582,9 @@
                 "type" : "string"
               },
         "load_address" : {
+                "type" : "integer", "minimum" : 0, "maximum" : 18446744073709551615
+              },
+        "length" : {
                 "type" : "integer", "minimum" : 0, "maximum" : 18446744073709551615
               }
       },

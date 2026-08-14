@@ -271,13 +271,38 @@ impl Scriptable for AppBuildNumber<'_> {
   }
 }
 
+impl From<AppEnvironment> for ScriptValue {
+  fn from(value: AppEnvironment) -> Self {
+    value.variant_name().map_or(Value::Null.into(), Into::into)
+  }
+}
+
+impl Scriptable for AppEnvironment {
+  fn resolve(&self, path: &[OwnedSegment]) -> Result<Option<ScriptValue>, PathError> {
+    if path.is_empty() {
+      Ok(Some((*self).into()))
+    } else {
+      Err(PathError::UnknownKey(
+        OwnedValuePath::from(path.to_vec()).to_string(),
+      ))
+    }
+  }
+
+  fn schema() -> Kind {
+    Kind::bytes()
+  }
+}
+
 impl From<AppMetrics<'_>> for ScriptValue {
   fn from(value: AppMetrics<'_>) -> Self {
     let script_values: Vec<(&str, Self)> = vec![
       ("app_id", value.app_id().into()),
       ("build_number", value.build_number().into()),
+      ("bundle_path", value.bundle_path().into()),
       ("cpu_usage", value.cpu_usage().into()),
+      ("environment", value.environment().into()),
       ("javascript_engine", value.javascript_engine().into()),
+      ("launch_time", value.launch_time().into()),
       ("lifecycle_event", value.lifecycle_event().into()),
       ("memory", value.memory().into()),
       (
@@ -287,6 +312,7 @@ impl From<AppMetrics<'_>> for ScriptValue {
       ("process_id", value.process_id().into()),
       ("region_format", value.region_format().into()),
       ("running_state", value.running_state().into()),
+      ("team_identifier", value.team_identifier().into()),
       ("version", value.version().into()),
     ];
     Value::Object(
@@ -315,8 +341,13 @@ impl Scriptable for AppMetrics<'_> {
         .app_id()
         .map_or(Ok(None), |value| value.resolve(&path[1 ..])),
       "build_number" => self.build_number().resolve(&path[1 ..]),
+      "bundle_path" => self
+        .bundle_path()
+        .map_or(Ok(None), |value| value.resolve(&path[1 ..])),
       "cpu_usage" => self.cpu_usage().resolve(&path[1 ..]),
+      "environment" => self.environment().resolve(&path[1 ..]),
       "javascript_engine" => self.javascript_engine().resolve(&path[1 ..]),
+      "launch_time" => self.launch_time().resolve(&path[1 ..]),
       "lifecycle_event" => self
         .lifecycle_event()
         .map_or(Ok(None), |value| value.resolve(&path[1 ..])),
@@ -328,6 +359,9 @@ impl Scriptable for AppMetrics<'_> {
         .map_or(Ok(None), |value| value.resolve(&path[1 ..])),
       "running_state" => self
         .running_state()
+        .map_or(Ok(None), |value| value.resolve(&path[1 ..])),
+      "team_identifier" => self
+        .team_identifier()
         .map_or(Ok(None), |value| value.resolve(&path[1 ..])),
       "version" => self
         .version()
@@ -342,12 +376,15 @@ impl Scriptable for AppMetrics<'_> {
     Kind::object(
       Collection::empty()
         .with_known("app_id", Kind::bytes())
+        .with_known("bundle_path", Kind::bytes())
+        .with_known("environment", Kind::bytes())
         .with_known("javascript_engine", Kind::bytes())
         .with_known("lifecycle_event", Kind::bytes())
         .with_known("memory_pressure_level", Kind::bytes())
         .with_known("process_id", Kind::integer())
         .with_known("region_format", Kind::bytes())
         .with_known("running_state", Kind::bytes())
+        .with_known("team_identifier", Kind::bytes())
         .with_known("version", Kind::bytes()),
     )
   }
@@ -498,6 +535,7 @@ impl From<BinaryImage<'_>> for ScriptValue {
   fn from(value: BinaryImage<'_>) -> Self {
     let script_values: Vec<(&str, Self)> = vec![
       ("id", value.id().into()),
+      ("length", value.length().into()),
       ("load_address", value.load_address().into()),
       ("path", value.path().into()),
     ];
@@ -526,6 +564,7 @@ impl Scriptable for BinaryImage<'_> {
       "id" => self
         .id()
         .map_or(Ok(None), |value| value.resolve(&path[1 ..])),
+      "length" => self.length().resolve(&path[1 ..]),
       "load_address" => self.load_address().resolve(&path[1 ..]),
       "path" => self
         .path()
@@ -540,6 +579,7 @@ impl Scriptable for BinaryImage<'_> {
     Kind::object(
       Collection::empty()
         .with_known("id", Kind::bytes())
+        .with_known("length", Kind::integer())
         .with_known("load_address", Kind::integer())
         .with_known("path", Kind::bytes()),
     )

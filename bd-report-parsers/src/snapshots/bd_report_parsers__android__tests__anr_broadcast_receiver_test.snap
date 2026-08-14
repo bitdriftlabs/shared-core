@@ -20,6 +20,10 @@ Report {
             lifecycle_event: None,
             javascript_engine: UnknownJsEngine,
             memory_pressure_level: Unknown,
+            launch_time: None,
+            environment: Unknown,
+            team_identifier: None,
+            bundle_path: None,
         },
     ),
     device_metrics: Some(
@@ -18257,6 +18261,7 @@ Report {
                     "/apex/com.android.art/javalib/core-libart.jar",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -18264,6 +18269,7 @@ Report {
                     "/apex/com.android.art/javalib/core-oj.jar",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: Some(
@@ -18273,6 +18279,7 @@ Report {
                     "/apex/com.android.art/lib64/libadbconnection.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: Some(
@@ -18282,6 +18289,7 @@ Report {
                     "/apex/com.android.art/lib64/libart.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: Some(
@@ -18291,6 +18299,7 @@ Report {
                     "/apex/com.android.art/lib64/libopenjdk.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: Some(
@@ -18300,6 +18309,7 @@ Report {
                     "/apex/com.android.art/lib64/libperfetto_hprof.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -18307,6 +18317,7 @@ Report {
                     "/apex/com.android.conscrypt/javalib/conscrypt.jar",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: Some(
@@ -18316,6 +18327,7 @@ Report {
                     "/apex/com.android.runtime/lib64/bionic/libc.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -18323,6 +18335,7 @@ Report {
                     "/data/app/~~c_753KAr5Y2vSHk1dEoDzw==/io.bitdrift.gradletestapp-T-1sUGMjBkLrQJon0hy4Wg==/base.apk",
                 ),
                 load_address: 2506752,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -18330,6 +18343,7 @@ Report {
                     "/system/framework/framework.jar",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: Some(
@@ -18339,6 +18353,7 @@ Report {
                     "/system/lib64/libandroid.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: Some(
@@ -18348,6 +18363,7 @@ Report {
                     "/system/lib64/libandroid_runtime.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: Some(
@@ -18357,6 +18373,7 @@ Report {
                     "/system/lib64/libbinder.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: Some(
@@ -18366,6 +18383,7 @@ Report {
                     "/system/lib64/libc++.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: Some(
@@ -18375,6 +18393,7 @@ Report {
                     "/system/lib64/libgui.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: Some(
@@ -18384,6 +18403,7 @@ Report {
                     "/system/lib64/libhwui.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: Some(
@@ -18393,6 +18413,7 @@ Report {
                     "/system/lib64/libutils.so",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -18400,6 +18421,7 @@ Report {
                     "<anonymous:70792f9000>",
                 ),
                 load_address: 0,
+                length: 0,
             },
             BinaryImage {
                 id: None,
@@ -18407,6 +18429,7 @@ Report {
                     "[anon:dalvik-/apex/com.android.art/javalib/core-oj.jar-transformed]",
                 ),
                 load_address: 0,
+                length: 0,
             },
         ],
     ),

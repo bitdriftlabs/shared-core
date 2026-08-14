@@ -217,10 +217,11 @@ fn serialize_app_metrics() {
       "javascript_engine": "UnknownJsEngine",
       "memory_pressure_level": "Unknown",
       "process_id": 0,
+      "environment": "Unknown",
     }),
     object
   );
-  assert_struct_size!(AppMetricsArgs, 72);
+  assert_struct_size!(AppMetricsArgs, 96);
 }
 
 #[test]
@@ -387,6 +388,7 @@ fn serialize_report() {
         "javascript_engine": "UnknownJsEngine",
         "memory_pressure_level": "Unknown",
         "process_id": 0,
+        "environment": "Unknown",
       },
       "device_metrics": {
         "thermal_state": 5,

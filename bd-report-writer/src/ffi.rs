@@ -79,6 +79,11 @@ pub struct BDAppMetrics {
   memory_total: u64,
   memory_pressure_level: i8,
   region_format: *const c_char,
+  launch_time_seconds: u64,
+  launch_time_nanos: u32,
+  environment: i8,
+  team_identifier: *const c_char,
+  bundle_path: *const c_char,
 }
 
 #[repr(C)]
@@ -170,6 +175,7 @@ pub struct BDBinaryImage {
   id: *const c_char,
   path: *const c_char,
   load_address: u64,
+  length: u64,
 }
 
 #[repr(C)]
@@ -371,6 +377,7 @@ extern "C-unwind" fn bdrw_add_binary_image(
           id,
           path,
           load_address: image.load_address,
+          length: image.length,
         },
       ))
     } else {
@@ -555,6 +562,8 @@ extern "C-unwind" fn bdrw_add_app(handle: BDProcessorHandle, app_ptr: *const BDA
     let cf_bundle_version = append_string(&mut processor.builder, app.cf_bundle_version);
     let running_state = append_string(&mut processor.builder, app.running_state);
     let region_format = append_string(&mut processor.builder, app.region_format);
+    let team_identifier = append_string(&mut processor.builder, app.team_identifier);
+    let bundle_path = append_string(&mut processor.builder, app.bundle_path);
     let build_number = AppBuildNumber::create(
       &mut processor.builder,
       &AppBuildNumberArgs {
@@ -565,6 +574,8 @@ extern "C-unwind" fn bdrw_add_app(handle: BDProcessorHandle, app_ptr: *const BDA
     let mem_struct = Memory::new(app.memory_total, app.memory_free, app.memory_used);
     let memory =
       (app.memory_used > 0 || app.memory_free > 0 || app.memory_total > 0).then_some(&mem_struct);
+    let launch_time_struct = Timestamp::new(app.launch_time_seconds, app.launch_time_nanos);
+    let launch_time = (app.launch_time_seconds > 0).then_some(&launch_time_struct);
     let metrics = AppMetrics::create(
       &mut processor.builder,
       &AppMetricsArgs {
@@ -579,6 +590,10 @@ extern "C-unwind" fn bdrw_add_app(handle: BDProcessorHandle, app_ptr: *const BDA
         cpu_usage: None,
         javascript_engine: JavaScriptEngine::UnknownJsEngine,
         memory_pressure_level: MemoryPressureLevel(app.memory_pressure_level),
+        launch_time,
+        environment: AppEnvironment(app.environment),
+        team_identifier,
+        bundle_path,
       },
     );
     processor.app = Some(metrics);
