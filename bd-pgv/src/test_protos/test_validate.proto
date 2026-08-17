@@ -10,6 +10,11 @@ message Duration {
   google.protobuf.Duration field = 1 [(validate.rules).duration.gt = {}];
 }
 
+message DurationGte {
+  google.protobuf.Duration zero = 1 [(validate.rules).duration.gte = {}];
+  google.protobuf.Duration one_second = 2 [(validate.rules).duration.gte = {seconds: 1}];
+}
+
 message Timestamp {
   google.protobuf.Timestamp field = 1 [(validate.rules).timestamp.required = true];
 }
