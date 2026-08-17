@@ -195,7 +195,6 @@ impl ProcessingPipeline {
           Some(runtime),
           data_upload_tx,
           stats.stats.clone(),
-          Some(flush_stats_trigger.clone()),
           process_local_pending_flush_state.clone(),
         );
 
