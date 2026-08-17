@@ -59,10 +59,21 @@ pub fn default_fixture_paths() -> Result<Vec<FixturePaths>> {
     .collect()
 }
 
-fn fixture_paths(name: &str) -> Result<FixturePaths> {
-  let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+fn fixtures_root() -> PathBuf {
+  std::env::var_os("TEST_SRCDIR")
+    .map_or_else(
+      || PathBuf::from(env!("CARGO_MANIFEST_DIR")),
+      |runfiles_dir| {
+        PathBuf::from(runfiles_dir)
+          .join(std::env::var("TEST_WORKSPACE").unwrap_or_else(|_| "_main".to_owned()))
+          .join("shared-core/bd-workflow-bench")
+      },
+    )
     .join(FIXTURES_DIRECTORY)
-    .join(name);
+}
+
+fn fixture_paths(name: &str) -> Result<FixturePaths> {
+  let root = fixtures_root().join(name);
   let manifest: FixtureManifest = serde_json::from_reader(File::open(root.join("manifest.json"))?)?;
   if manifest.format_version != 1 {
     bail!(
