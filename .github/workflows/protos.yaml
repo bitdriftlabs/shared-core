@@ -1,0 +1,68 @@
+name: generated-protos
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  generated-protos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Rust Toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          profile: minimal
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2.9.1
+
+      - name: Cache protobuf generators
+        id: proto-tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/bd-proto-tools
+          key: proto-tools-v1-${{ runner.os }}-${{ runner.arch }}-protoc-35.1-flatc-25.9.23
+
+      - name: Install protobuf generators
+        if: steps.proto-tools.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tool_dir="$HOME/.cache/bd-proto-tools"
+          mkdir -p "$tool_dir/bin" "$tool_dir/protoc"
+
+          curl --fail --location --retry 3 --silent --show-error \
+            --output flatc.zip \
+            https://github.com/google/flatbuffers/releases/download/v25.9.23/Linux.flatc.binary.g%2B%2B-13.zip
+          echo 'de0c6ad114a5a686ecf64322528c602c7d4512446a93f290f54f00ee5abea487  flatc.zip' | \
+            sha256sum --check
+          unzip -p flatc.zip flatc > "$tool_dir/bin/flatc"
+          chmod +x "$tool_dir/bin/flatc"
+
+          curl --fail --location --retry 3 --silent --show-error \
+            --output protoc.zip \
+            https://github.com/protocolbuffers/protobuf/releases/download/v35.1/protoc-35.1-linux-x86_64.zip
+          echo '6930ebf62bd4ea607b98fff052596c6ee564b9835b4ce172c75a3f53ae9d91b7  protoc.zip' | \
+            sha256sum --check
+          unzip -q protoc.zip -d "$tool_dir/protoc"
+
+      - name: Check generated bindings
+        shell: bash
+        run: |
+          tool_dir="$HOME/.cache/bd-proto-tools"
+          export PATH="$tool_dir/bin:$tool_dir/protoc/bin:$PATH"
+          echo "$tool_dir/bin" >> "$GITHUB_PATH"
+          echo "$tool_dir/protoc/bin" >> "$GITHUB_PATH"
+          make check-protos

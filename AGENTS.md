@@ -11,6 +11,7 @@
   Cargo is limited to `cargo +nightly fmt` and local maintenance workflows documented by the
   monorepo root instructions.
 - Do not review files under `bd-proto/`; they are generated protobuf code.
+- After changing a protobuf or FlatBuffer schema, regenerate bindings with `make protos`.
 - Format Rust and TOML changes with `cargo +nightly fmt` followed by
 	`../scripts/format-toml.sh`. Use `../scripts/format-toml.sh --check` to verify TOML formatting
 	without modifying files.
