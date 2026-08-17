@@ -89,7 +89,7 @@ bincode = { version = "=2.0.1", features = ["serde"] }
 bindgen         = "0.72.1"
 bytes           = "1.12.1"
 cbindgen        = "0.29.4"
-cc              = "1.4.2"
+cc              = "1.4.3"
 clap            = { version = "4.6.6", features = ["derive", "env"] }
 cmake           = "0.1.58"
 color-backtrace = "0.7.4"
@@ -194,7 +194,7 @@ tower-http            = { version = "0.7.0", features = ["compression-deflate"] 
 tracing-opentelemetry = "0.33.0"
 unwrap-infallible     = "1.0.0"
 urlencoding           = "2.1.3"
-uuid                  = { version = "1.24.0", features = ["v4"] }
+uuid                  = { version = "1.24.1", features = ["v4"] }
 zstd                  = "0.13.3"
 
 [profile.bench]
