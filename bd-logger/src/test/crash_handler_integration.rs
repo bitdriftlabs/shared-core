@@ -82,7 +82,7 @@ fn crash_report_upload() {
       poll_callback: None,
     });
 
-    // Log one log to trigger a global state update, blocking to make sure it gets processed.
+    // Log one log to trigger a global state update, then wait for its state flush.
     setup.logger_handle.log(
       0,
       LogType::NORMAL,
@@ -90,12 +90,12 @@ fn crash_report_upload() {
       [].into(),
       [].into(),
       None,
-      Block::Yes {
-        timeout: 5.std_seconds(),
-        poll_callback: None,
-      },
       &CaptureSession::default(),
     );
+    setup.logger_handle.flush_state(Block::Yes {
+      timeout: 5.std_seconds(),
+      poll_callback: None,
+    });
 
     std::fs::create_dir_all(setup.sdk_directory.path().join("reports/new")).unwrap();
 

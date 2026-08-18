@@ -209,6 +209,7 @@ impl Setup {
       1_000_000,
       Arc::new(AtomicBool::new(false)),
       Arc::new(ProcessLocalPendingFlushState::default()),
+      None,
     )
   }
 
@@ -268,7 +269,6 @@ impl LogReplay for TestReplay {
   async fn replay_log(
     &mut self,
     log: Log,
-    _block: bool,
     _processing_pipeline: &mut ProcessingPipeline,
     _state: &bd_state::Store,
     _now: OffsetDateTime,
@@ -312,7 +312,7 @@ fn log_line_size_is_computed_correctly() {
     }
   }
 
-  let baseline_log_expected_size = 688;
+  let baseline_log_expected_size = 640;
   let baseline_log = create_baseline_log();
   assert_eq!(baseline_log_expected_size, baseline_log.size());
 
@@ -439,7 +439,6 @@ async fn logs_are_replayed_in_order() {
         [].into(),
         [].into(),
         None,
-        Block::No,
         None,
       );
 
@@ -511,58 +510,6 @@ fn enqueuing_log_does_not_block() {
     [].into(),
     [].into(),
     None,
-    Block::No,
-    None,
-  );
-
-  assert_ok!(result);
-}
-
-#[test]
-fn enqueuing_log_blocks() {
-  let setup = Setup::new();
-
-  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-
-  let (buffer, buffer_sender) = setup.make_real_async_log_buffer(config_update_rx);
-
-  let rt = tokio::runtime::Runtime::new().unwrap();
-  rt.spawn(async move {
-    assert_ok!(
-      config_update_tx
-        .send(ConfigUpdate {
-          buffer_producers: BufferProducers::new(&setup.buffer_manager).unwrap(),
-          buffer_selector: BufferSelector::new(&BufferConfigList::default()).unwrap(),
-          workflows_configuration: WorkflowsConfiguration::default(),
-          tail_configs: TailConfigurations::default(),
-          filter_chain: FilterChain::new(FiltersConfiguration::default()).0,
-          from_cache: false,
-        })
-        .await
-    );
-
-    let shutdown_trigger = ComponentShutdownTrigger::default();
-    let test_store = TestStore::new().await;
-    let state_store = (*test_store).clone();
-    buffer
-      .run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown())
-      .await;
-    shutdown_trigger.shutdown().await;
-    drop(test_store);
-  });
-
-  let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
-    &buffer_sender,
-    0,
-    LogType::NORMAL,
-    "test".into(),
-    [].into(),
-    [].into(),
-    None,
-    Block::Yes {
-      timeout: 15.std_seconds(),
-      poll_callback: None,
-    },
     None,
   );
 
@@ -773,7 +720,6 @@ async fn updates_system_session_id_for_new_sessions() {
     [].into(),
     [].into(),
     None,
-    Block::No,
     None,
   ));
 
@@ -789,7 +735,6 @@ async fn updates_system_session_id_for_new_sessions() {
     [].into(),
     [].into(),
     None,
-    Block::No,
     None,
   ));
 
@@ -885,7 +830,6 @@ async fn previous_run_log_does_not_override_system_session_id() {
     [].into(),
     [].into(),
     None,
-    Block::No,
     None,
   ));
 
@@ -944,7 +888,6 @@ async fn pre_config_logs_trigger_session_id_update() {
     [].into(),
     [].into(),
     None,
-    Block::No,
     None,
   ));
 
@@ -960,7 +903,6 @@ async fn pre_config_logs_trigger_session_id_update() {
     [].into(),
     [].into(),
     None,
-    Block::No,
     None,
   ));
 
@@ -1046,7 +988,6 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
     [].into(),
     [].into(),
     None,
-    Block::No,
     None,
   )
   .unwrap();

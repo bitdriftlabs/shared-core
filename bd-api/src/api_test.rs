@@ -5,7 +5,7 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{Api, PlatformNetworkManager, PlatformNetworkStream};
+use super::{Api, PlatformNetworkManager, PlatformNetworkStream, TestHooks};
 use crate::api::{DISCONNECTED_OFFLINE_GRACE_PERIOD, StreamEvent};
 use crate::reconnect::ReconnectState;
 use crate::upload::Tracked;
@@ -225,6 +225,27 @@ impl bd_internal_logging::Logger for TestLog {
 }
 
 //
+// ApiTestHooks
+//
+
+struct ApiTestHooks {
+  reconnect_backoff_started_tx: Sender<()>,
+  data_idle_timeout_reached_tx: Option<Sender<()>>,
+}
+
+impl TestHooks for ApiTestHooks {
+  fn reconnect_backoff_started(&self) {
+    let _ignored = self.reconnect_backoff_started_tx.try_send(());
+  }
+
+  fn data_idle_timeout_reached(&self) {
+    if let Some(tx) = &self.data_idle_timeout_reached_tx {
+      let _ignored = tx.try_send(());
+    }
+  }
+}
+
+//
 // Setup
 //
 
@@ -234,6 +255,7 @@ struct Setup {
   trigger_upload_rx: Receiver<crate::TriggerUpload>,
   send_data_rx: Receiver<Vec<u8>>,
   start_stream_rx: Receiver<()>,
+  reconnect_backoff_started_rx: Receiver<()>,
   collector: Collector,
   requests_decoder: bd_grpc_codec::Decoder<ApiRequest>,
   time_provider: Arc<bd_time::TestTimeProvider>,
@@ -284,6 +306,7 @@ impl Setup {
 
     let (start_stream_tx, start_stream_rx) = channel(1);
     let (send_data_tx, send_data_rx) = channel(1);
+    let (reconnect_backoff_started_tx, reconnect_backoff_started_rx) = channel(1);
     let current_stream_tx = Arc::new(Mutex::new(None));
     let manager = Box::new(PlatformNetwork::new(
       start_stream_tx,
@@ -342,7 +365,10 @@ impl Setup {
       bd_client_common::sdk_status::SdkStatusTracker::new(),
       None,
     );
-    api.data_idle_timeout_test_hook = idle_timeout_tx;
+    api.test_hooks = Some(Arc::new(ApiTestHooks {
+      reconnect_backoff_started_tx,
+      data_idle_timeout_reached_tx: idle_timeout_tx,
+    }));
 
     let api_task = tokio::task::spawn(async move {
       runtime_loader.try_load_persisted_config().await;
@@ -353,6 +379,7 @@ impl Setup {
       current_stream_tx,
       sdk_directory,
       start_stream_rx,
+      reconnect_backoff_started_rx,
       data_tx,
       trigger_upload_rx,
       send_data_rx,
@@ -539,6 +566,14 @@ impl Setup {
     tx.send(StreamEvent::StreamClosed("test".to_string()))
       .await
       .unwrap();
+  }
+
+  async fn wait_for_reconnect_backoff_started(&mut self) {
+    self
+      .reconnect_backoff_started_rx
+      .recv()
+      .await
+      .expect("expected reconnect backoff to start");
   }
 
   async fn wait_for_persisted_reconnect_delay(&self) {
@@ -1400,7 +1435,8 @@ async fn api_retry_stream_runtime_override() {
   // backoff never exceeds 1.5s, per the runtime override and default 50% randomization.
   for _ in 0 .. 10 {
     setup.close_stream().await;
-    assert!(setup.next_stream(1500.milliseconds()).await.is_some());
+    setup.wait_for_reconnect_backoff_started().await;
+    assert!(setup.next_stream(1501.milliseconds()).await.is_some());
   }
 }
 

@@ -701,7 +701,9 @@ async fn mux(
                 break 'stream;
               }
           };
-          api.send(response).await.unwrap();
+          if api.send(response).await.is_err() {
+            break 'stream;
+          }
         },
         requests = api.next() => {
           match requests {
@@ -711,11 +713,15 @@ async fn mux(
             }
             Ok(rs) => {
               for request in rs.iter().flatten() {
-                if let Some(response) = request_processor.process_request(request).await {
-                  api.send(response).await.unwrap();
+                if let Some(response) = request_processor.process_request(request).await
+                  && api.send(response).await.is_err()
+                {
+                  break 'stream;
                 }
-                if let Some(response) = request_processor.take_post_handshake_response() {
-                  api.send(response).await.unwrap();
+                if let Some(response) = request_processor.take_post_handshake_response()
+                  && api.send(response).await.is_err()
+                {
+                  break 'stream;
                 }
                 if request_processor.should_close_stream() {
                   break 'stream;

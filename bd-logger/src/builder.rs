@@ -16,7 +16,7 @@ use crate::directory_lock::DirectoryLock;
 use crate::flush_registry::PendingTriggerUploadsStore;
 use crate::internal::InternalLogger;
 use crate::log_replay::LoggerReplay;
-use crate::logger::{Logger, PendingEntityIdUpdate};
+use crate::logger::{Logger, PendingEntityIdUpdate, TestHooks};
 use crate::logging_state::UninitializedLoggingContext;
 use crate::state_upload::StateUploadHandle;
 use crate::{InitParams, LogAttributesOverrides};
@@ -185,6 +185,7 @@ pub struct LoggerBuilder {
   internal_logger: bool,
   time_provider: Option<Arc<dyn TimeProvider>>,
   crash_report_hook: Option<Arc<dyn bd_crash_handler::CrashReportHook>>,
+  test_hooks: Option<Arc<dyn TestHooks>>,
 }
 
 impl LoggerBuilder {
@@ -198,6 +199,7 @@ impl LoggerBuilder {
       internal_logger: false,
       time_provider: None,
       crash_report_hook: None,
+      test_hooks: None,
     }
   }
 
@@ -239,6 +241,13 @@ impl LoggerBuilder {
   #[must_use]
   pub fn with_time_provider(mut self, time_provider: Option<Arc<dyn TimeProvider>>) -> Self {
     self.time_provider = time_provider;
+    self
+  }
+
+  /// Installs optional test hooks for observing internal logger lifecycle events.
+  #[must_use]
+  pub fn with_test_hooks(mut self, test_hooks: Option<Arc<dyn TestHooks>>) -> Self {
+    self.test_hooks = test_hooks;
     self
   }
 
@@ -360,6 +369,7 @@ impl LoggerBuilder {
         1024 * 1024,
         is_tracing_active.clone(),
         process_local_pending_flush_state.clone(),
+        self.test_hooks.clone(),
       ),
       LoggerReplay,
       self.params.session_strategy.clone(),
@@ -534,7 +544,6 @@ impl LoggerBuilder {
             log.fields,
             [].into(),
             LogAttributesOverrides::OccurredAt(log.timestamp).into(),
-            crate::Block::No,
             None,
           )
           .map_err(Into::into)

@@ -93,7 +93,7 @@ impl WorkflowReplay {
     let data_upload_drain =
       tokio::spawn(async move { while data_upload_rx.recv().await.is_some() {} });
     let (mut engine, _buffers_to_flush_rx) =
-      WorkflowsEngine::new(&scope, None, None, data_upload_tx, stats, None);
+      WorkflowsEngine::new(&scope, None, None, data_upload_tx, stats);
     engine.start(config, false).await;
 
     Self {

@@ -215,16 +215,8 @@ impl LoggerHolder {
     } else {
       CaptureSession::default()
     };
-    let block = if block {
-      bd_logger::Block::Yes {
-        timeout: 1.std_seconds(),
-        poll_callback: None,
-      }
-    } else {
-      bd_logger::Block::No
-    };
-
-    self.logger.lock().new_logger_handle().log(
+    let handle = { self.logger.lock().new_logger_handle() };
+    handle.log(
       log_level,
       log_type,
       message.into(),
@@ -242,9 +234,14 @@ impl LoggerHolder {
         .collect(),
       [].into(),
       None,
-      block,
       &session_capture,
     );
+    if block {
+      handle.flush_state(Block::Yes {
+        timeout: 1.std_seconds(),
+        poll_callback: None,
+      });
+    }
   }
 }
 
