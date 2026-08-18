@@ -1872,7 +1872,6 @@ fn workflow_generate_log_to_histogram() {
     [].into(),
     [].into(),
   );
-  setup.wait_for_workflow_event_processing();
 
   setup.logger_handle.flush_state(Block::Yes {
     timeout: 15.std_seconds(),

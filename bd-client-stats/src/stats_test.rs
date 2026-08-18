@@ -48,14 +48,14 @@ use bd_test_helpers::RecordingErrorReporter;
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
 use bd_test_helpers::stats::StatsRequestHelper;
 use bd_time::test::TestTicker;
-use bd_time::{OffsetDateTimeExt, TestTimeProvider, TimeProvider};
+use bd_time::{OffsetDateTimeExt, TestTimeProvider, Ticker, TimeProvider};
 use bd_workflow_stats::StatsCollector;
 use futures_util::poll;
 use parking_lot::Mutex;
 use std::collections::{BTreeMap, HashMap};
 use std::io::ErrorKind;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tempfile::TempDir;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::{Duration, OffsetDateTime};
@@ -263,6 +263,30 @@ impl Default for TestHooks {
 }
 
 //
+// TrackingPeriodicSchedule
+//
+
+struct TrackingPeriodicSchedule {
+  flush_ticker: Box<dyn Ticker>,
+  upload_ticker: Box<dyn Ticker>,
+  explicit_flush_resets: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl PeriodicSchedule for TrackingPeriodicSchedule {
+  async fn next_action(&mut self) -> PeriodicAction {
+    tokio::select! {
+      () = self.flush_ticker.tick() => PeriodicAction::Flush,
+      () = self.upload_ticker.tick() => PeriodicAction::Upload,
+    }
+  }
+
+  fn reset_after_explicit_flush(&mut self) {
+    self.explicit_flush_resets.fetch_add(1, Ordering::SeqCst);
+  }
+}
+
+//
 // Setup
 //
 
@@ -299,6 +323,30 @@ impl Setup {
     directory: Option<TempDir>,
     limit: u32,
   ) -> Self {
+    let (periodic_flush_tick_tx, periodic_flush_ticker) = TestTicker::new();
+    let (upload_tick_tx, upload_ticker) = TestTicker::new();
+    Self::new_with_filesystem_and_schedule(
+      fs,
+      directory,
+      limit,
+      Box::new(TestTickerBackedSchedule::new(
+        Box::new(periodic_flush_ticker),
+        Box::new(upload_ticker),
+      )),
+      periodic_flush_tick_tx,
+      upload_tick_tx,
+    )
+    .await
+  }
+
+  async fn new_with_filesystem_and_schedule(
+    fs: Box<dyn FileSystem>,
+    directory: Option<TempDir>,
+    limit: u32,
+    periodic_schedule: Box<dyn PeriodicSchedule>,
+    periodic_flush_tick_tx: mpsc::Sender<()>,
+    upload_tick_tx: mpsc::Sender<()>,
+  ) -> Self {
     let directory = directory.unwrap_or_else(|| TempDir::new().unwrap());
     let test_time = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
     let shutdown_trigger = ComponentShutdownTrigger::default();
@@ -313,15 +361,10 @@ impl Setup {
 
     let stats = Stats::new(Collector::new(Some(watch::channel(limit).1)));
     let (data_tx, data_rx) = mpsc::channel(1);
-    let (periodic_flush_tick_tx, periodic_flush_ticker) = TestTicker::new();
-    let (upload_tick_tx, upload_ticker) = TestTicker::new();
     let minimum_upload_interval = runtime_loader.register_duration_watch();
     let disk_flush_debounce = runtime_loader.register_duration_watch();
     let mut flush_handles = stats.flush_handle_helper(
-      Box::new(TestTickerBackedSchedule::new(
-        Box::new(periodic_flush_ticker),
-        Box::new(upload_ticker),
-      )),
+      periodic_schedule,
       shutdown_trigger.make_shutdown(),
       data_tx,
       Arc::new(FileManager::new(fs, test_time.clone(), &runtime_loader)),
@@ -2454,6 +2497,82 @@ async fn debounced_explicit_flush_epoch_completes_bursts_and_uploads() {
     .unwrap();
   setup.test_hooks.upload_complete_rx.recv().await.unwrap();
   setup.shutdown().await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn flusher_resets_periodic_cadence_only_after_successful_explicit_epochs() {
+  let ((), error) = RecordingErrorReporter::async_record_error(async {
+    let fs = Arc::new(TestFileSystem::new());
+    let explicit_flush_resets = Arc::new(AtomicUsize::new(0));
+    let (periodic_flush_tick_tx, periodic_flush_ticker) = TestTicker::new();
+    let (upload_tick_tx, upload_ticker) = TestTicker::new();
+    let mut setup = Setup::new_with_filesystem_and_schedule(
+      Box::new(fs.clone()),
+      None,
+      500,
+      Box::new(TrackingPeriodicSchedule {
+        flush_ticker: Box::new(periodic_flush_ticker),
+        upload_ticker: Box::new(upload_ticker),
+        explicit_flush_resets: explicit_flush_resets.clone(),
+      }),
+      periodic_flush_tick_tx,
+      upload_tick_tx,
+    )
+    .await;
+
+    // A periodic-only disk write must not reset cadence.
+    setup
+      .stats
+      .record_dynamic_counter(labels!("foo" => "periodic"), "id1", 1);
+    setup.do_periodic_flush().await;
+    setup.wait_for_debounce_started().await;
+    assert_eq!(explicit_flush_resets.load(Ordering::SeqCst), 0);
+
+    // Every explicit caller joins one debounced epoch, so the trailing durable write resets the
+    // schedule exactly once.
+    setup
+      .stats
+      .record_dynamic_counter(labels!("foo" => "explicit"), "id2", 2);
+    let completions = (0 .. 2)
+      .map(|_| setup.explicit_flush_trigger.flush().unwrap())
+      .collect::<Vec<_>>();
+    setup.wait_for_flush_coalesced().await;
+    tokio::time::advance(std::time::Duration::from_secs(1)).await;
+    setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+    for completion in completions {
+      completion.wait().await.unwrap();
+    }
+    assert_eq!(explicit_flush_resets.load(Ordering::SeqCst), 1);
+
+    let upload = setup.next_stat_upload().await;
+    upload
+      .response_tx
+      .send(UploadResponse {
+        success: true,
+        uuid: upload.uuid,
+      })
+      .unwrap();
+    setup.test_hooks.upload_complete_rx.recv().await.unwrap();
+    setup.wait_for_debounce_started().await;
+
+    // A failed explicit disk write must fail its epoch without resetting cadence.
+    setup
+      .stats
+      .record_dynamic_counter(labels!("foo" => "failed"), "id3", 3);
+    let completion = setup.explicit_flush_trigger.flush().unwrap();
+    setup.wait_for_flush_coalesced().await;
+    fs.disk_full.store(true, Ordering::SeqCst);
+    tokio::time::advance(std::time::Duration::from_secs(1)).await;
+    setup.test_hooks.flush_complete_rx.recv().await.unwrap();
+    assert!(completion.wait().await.is_err());
+    assert_eq!(explicit_flush_resets.load(Ordering::SeqCst), 1);
+    fs.disk_full.store(false, Ordering::SeqCst);
+
+    setup.shutdown().await.unwrap();
+  })
+  .await;
+
+  assert_eq!(error, "writing stats to disk: disk full");
 }
 
 #[tokio::test(start_paused = true)]
