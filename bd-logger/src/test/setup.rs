@@ -64,7 +64,7 @@ macro_rules! wait_for {
       if start.elapsed() > 5.seconds() {
         panic!("Timeout waiting for condition");
       }
-      std::thread::sleep(10.std_milliseconds());
+      std::thread::sleep(std::time::Duration::from_millis(10));
     }
   };
 }
@@ -172,7 +172,7 @@ pub struct Setup {
 
   _shutdown: ComponentShutdownTrigger,
 
-  pub _stats_flush_tx: mpsc::Sender<()>,
+  pub stats_flush_tx: mpsc::Sender<()>,
   pub _stats_upload_tx: mpsc::Sender<()>,
   pub stats_flush_trigger: FlushTrigger,
 }
@@ -298,7 +298,7 @@ impl Setup {
       remote_streaming_action_processed_rx,
       workflow_event_processed_rx,
       _shutdown: shutdown,
-      _stats_flush_tx: flush_tick_tx,
+      stats_flush_tx: flush_tick_tx,
       _stats_upload_tx: upload_tick_tx,
       stats_flush_trigger: flush_trigger,
     }
@@ -426,19 +426,12 @@ impl Setup {
   }
 
   pub fn flush_and_upload_stats(&self) {
-    self.flush_stats(true);
-  }
-
-  pub fn flush_stats_without_upload(&self) {
-    self.flush_stats(false);
-  }
-
-  fn flush_stats(&self, do_upload: bool) {
-    let completion = self
-      .stats_flush_trigger
-      .blocking_flush_for_test(do_upload)
-      .unwrap();
+    let completion = self.stats_flush_trigger.blocking_flush_for_test().unwrap();
     completion.blocking_wait_for_test().unwrap();
+  }
+
+  pub fn trigger_periodic_stats_flush(&self) {
+    self.stats_flush_tx.blocking_send(()).unwrap();
   }
 
   pub fn log(

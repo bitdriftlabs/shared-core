@@ -365,7 +365,7 @@ impl Setup {
   }
 
   fn do_explicit_flush(&self, completion: bd_completion::Sender<()>) {
-    let flush_completion = self.explicit_flush_trigger.flush(true).unwrap();
+    let flush_completion = self.explicit_flush_trigger.flush().unwrap();
     tokio::spawn(async move {
       if flush_completion.wait().await.is_ok() {
         let () = completion.send(());
@@ -647,6 +647,81 @@ async fn runtime_periodic_schedule_uses_first_upload_interval_once() {
 
   let mut next_action = Box::pin(schedule.next_action());
   time_provider.advance(59.seconds()).await;
+  assert!(poll!(&mut next_action).is_pending());
+  time_provider.advance(1.seconds()).await;
+  assert_eq!(
+    poll!(next_action),
+    std::task::Poll::Ready(PeriodicAction::Upload)
+  );
+}
+
+#[tokio::test(start_paused = true)]
+async fn runtime_periodic_schedule_reset_after_explicit_flush_reanchors_deadlines() {
+  let time_provider = Arc::new(PausedScheduleTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let (mut schedule, _flush_tx, _live_tx, _sleep_tx, _first_upload_tx, _sleep_mode_tx) =
+    runtime_periodic_schedule(
+      30.seconds(),
+      90.seconds(),
+      15.minutes(),
+      90.seconds(),
+      false,
+      time_provider.clone(),
+    );
+
+  let mut next_action = Box::pin(schedule.next_action());
+  assert!(poll!(&mut next_action).is_pending());
+  time_provider.advance(20.seconds()).await;
+  assert!(poll!(&mut next_action).is_pending());
+  drop(next_action);
+
+  schedule.reset_after_explicit_flush();
+
+  let mut next_action = Box::pin(schedule.next_action());
+  time_provider.advance(29.seconds()).await;
+  assert!(poll!(&mut next_action).is_pending());
+  time_provider.advance(1.seconds()).await;
+  assert_eq!(
+    poll!(next_action),
+    std::task::Poll::Ready(PeriodicAction::Flush)
+  );
+
+  let mut next_action = Box::pin(schedule.next_action());
+  time_provider.advance(29.seconds()).await;
+  assert!(poll!(&mut next_action).is_pending());
+  time_provider.advance(1.seconds()).await;
+  assert_eq!(
+    poll!(next_action),
+    std::task::Poll::Ready(PeriodicAction::Flush)
+  );
+
+  let mut next_action = Box::pin(schedule.next_action());
+  time_provider.advance(29.seconds()).await;
+  assert!(poll!(&mut next_action).is_pending());
+  time_provider.advance(1.seconds()).await;
+  assert_eq!(
+    poll!(next_action),
+    std::task::Poll::Ready(PeriodicAction::Upload)
+  );
+}
+
+#[tokio::test(start_paused = true)]
+async fn runtime_periodic_schedule_reset_before_first_poll_uses_recurring_interval() {
+  let time_provider = Arc::new(PausedScheduleTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let (mut schedule, _flush_tx, _live_tx, _sleep_tx, _first_upload_tx, _sleep_mode_tx) =
+    runtime_periodic_schedule(
+      90.seconds(),
+      90.seconds(),
+      15.minutes(),
+      5.seconds(),
+      false,
+      time_provider.clone(),
+    );
+
+  schedule.reset_after_explicit_flush();
+
+  let mut next_action = Box::pin(schedule.next_action());
+  assert!(poll!(&mut next_action).is_pending());
+  time_provider.advance(89.seconds()).await;
   assert!(poll!(&mut next_action).is_pending());
   time_provider.advance(1.seconds()).await;
   assert_eq!(
@@ -2337,63 +2412,11 @@ async fn runtime_configured_disk_flush_debounce_uses_milliseconds() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn debounced_persistence_only_flush_does_not_dispatch_upload() {
+async fn debounced_explicit_flush_epoch_completes_bursts_and_uploads() {
   let mut setup = Setup::new().await;
 
-  // Open the fixed debounce window without creating an upload. The explicit request below asks
-  // only for local durability and must still wait for its coalesced trailing disk write.
-  setup
-    .stats
-    .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
-  setup.do_periodic_flush().await;
-  setup.wait_for_debounce_started().await;
-
-  setup
-    .stats
-    .record_dynamic_counter(labels!("foo" => "persistence-only"), "id2", 2);
-  let completion = setup.explicit_flush_trigger.flush(false).unwrap();
-  setup.wait_for_flush_coalesced().await;
-
-  assert!(poll!(Box::pin(setup.data_rx.recv())).is_pending());
-  tokio::time::advance(std::time::Duration::from_secs(1)).await;
-  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
-  completion.wait().await.unwrap();
-  assert!(poll!(Box::pin(setup.data_rx.recv())).is_pending());
-
-  // After the debounce window closes, a later normal upload sees both values. This proves the
-  // persistence-only request did not simply skip the pending delta to avoid transport dispatch.
-  tokio::time::advance(std::time::Duration::from_secs(1)).await;
-  setup.upload_tick_tx.send(()).await.unwrap();
-  setup.test_hooks.flush_complete_rx.recv().await.unwrap();
-  let upload = setup.next_stat_upload().await;
-  let helper = StatsRequestHelper::new(upload.payload.clone());
-  assert_eq!(
-    helper.get_workflow_counter("id1", labels!("foo" => "leading")),
-    Some(1)
-  );
-  assert_eq!(
-    helper.get_workflow_counter("id2", labels!("foo" => "persistence-only")),
-    Some(2)
-  );
-  upload
-    .response_tx
-    .send(UploadResponse {
-      success: true,
-      uuid: upload.uuid,
-    })
-    .unwrap();
-  setup.test_hooks.upload_complete_rx.recv().await.unwrap();
-
-  setup.shutdown().await.unwrap();
-}
-
-#[tokio::test(start_paused = true)]
-async fn debounced_flush_epoch_completes_bursts_and_ors_upload_intent() {
-  let mut setup = Setup::new().await;
-
-  // Open the window without an upload. Every caller below joins one shared epoch, but only the
-  // first one asks for transport work; that intent must be retained for the eventual trailing
-  // write without retaining a per-caller request in Flusher.
+  // Open the window without an upload. Every explicit caller below joins one shared epoch, which
+  // must produce one trailing write and one event-triggered upload.
   setup
     .stats
     .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
@@ -2404,7 +2427,7 @@ async fn debounced_flush_epoch_completes_bursts_and_ors_upload_intent() {
     .stats
     .record_dynamic_counter(labels!("foo" => "burst"), "id2", 2);
   let completions = (0 .. 128)
-    .map(|index| setup.explicit_flush_trigger.flush(index == 0).unwrap())
+    .map(|_| setup.explicit_flush_trigger.flush().unwrap())
     .collect::<Vec<_>>();
   setup.wait_for_flush_coalesced().await;
 
@@ -2443,7 +2466,7 @@ async fn flush_registered_after_epoch_rotation_waits_for_next_disk_write() {
     .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
   setup.do_periodic_flush().await;
   setup.wait_for_debounce_started().await;
-  let first_completion = setup.explicit_flush_trigger.flush(false).unwrap();
+  let first_completion = setup.explicit_flush_trigger.flush().unwrap();
   setup.wait_for_flush_coalesced().await;
 
   tokio::time::advance(std::time::Duration::from_secs(1)).await;
@@ -2456,7 +2479,7 @@ async fn flush_registered_after_epoch_rotation_waits_for_next_disk_write() {
   setup
     .stats
     .record_dynamic_counter(labels!("foo" => "next"), "id2", 2);
-  let second_completion = setup.explicit_flush_trigger.flush(false).unwrap();
+  let second_completion = setup.explicit_flush_trigger.flush().unwrap();
   setup.wait_for_flush_coalesced().await;
   let mut second_wait = Box::pin(second_completion.wait());
   assert!(poll!(&mut second_wait).is_pending());
@@ -2478,13 +2501,13 @@ async fn shutdown_fails_open_flush_epoch() {
     .record_dynamic_counter(labels!("foo" => "leading"), "id1", 1);
   setup.do_periodic_flush().await;
   setup.wait_for_debounce_started().await;
-  let completion = setup.explicit_flush_trigger.flush(false).unwrap();
+  let completion = setup.explicit_flush_trigger.flush().unwrap();
   setup.wait_for_flush_coalesced().await;
   let trigger = setup.explicit_flush_trigger.clone();
 
   setup.shutdown().await.unwrap();
   assert!(completion.wait().await.is_err());
-  assert!(trigger.flush(false).is_err());
+  assert!(trigger.flush().is_err());
 }
 
 #[tokio::test(start_paused = true)]
@@ -2813,7 +2836,7 @@ async fn trailing_disk_write_failure_keeps_prior_snapshot_retryable_after_restar
     setup
       .stats
       .record_dynamic_counter(labels!("foo" => "lost"), "id2", 2);
-    let completion = setup.explicit_flush_trigger.flush(false).unwrap();
+    let completion = setup.explicit_flush_trigger.flush().unwrap();
     fs.disk_full.store(true, Ordering::SeqCst);
 
     tokio::time::advance(std::time::Duration::from_secs(1)).await;

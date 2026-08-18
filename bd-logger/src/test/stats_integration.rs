@@ -6,6 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::setup::{InitialStreamSetup, Setup, SetupOptions};
+use crate::wait_for;
 use bd_client_common::file::{read_compressed_protobuf, write_compressed_protobuf};
 use bd_proto::protos::client::api::StatsUploadRequest;
 use bd_proto::protos::client::api::stats_upload_request::snapshot::{
@@ -512,8 +513,6 @@ fn handshake_close_before_response_retries_the_same_startup_upload() {
       .stats_pipeline
       .is_none()
   );
-
-  setup.flush_stats_without_upload();
 }
 
 #[test]
@@ -922,7 +921,7 @@ fn active_snapshot_corruption_is_reported_after_a_disk_flush() {
   });
   let _initial_handshake = setup.server.blocking_next_handshake_request().unwrap();
 
-  setup.flush_stats_without_upload();
+  setup.flush_and_upload_stats();
 
   setup.restart_stream(false);
   let (_, handshake) = setup.server.blocking_next_handshake_request().unwrap();
@@ -957,8 +956,16 @@ fn snapshot_rotation_drop_is_reported_on_the_next_handshake() {
   });
   let _initial_handshake = setup.server.blocking_next_handshake_request().unwrap();
 
-  setup.flush_stats_without_upload();
-  setup.flush_stats_without_upload();
+  setup.trigger_periodic_stats_flush();
+  wait_for!(setup.pending_aggregation_index_file_path().exists());
+  wait_for!(read_index(&setup).pending_files.len() == 1);
+  setup.trigger_periodic_stats_flush();
+  wait_for!(
+    read_index(&setup)
+      .unreported_stats_pipeline_analytics
+      .as_ref()
+      .is_some_and(|analytics| analytics.stats_files_dropped_due_to_rotation == 1)
+  );
 
   setup.restart_stream(false);
   let (_, handshake) = setup.server.blocking_next_handshake_request().unwrap();

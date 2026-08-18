@@ -103,7 +103,7 @@ impl FlushCompletion {
 
 pub(crate) struct FlushEpoch {
   outcome_tx: watch::Sender<FlushEpochOutcome>,
-  do_upload: bool,
+  has_explicit_flush_request: bool,
 }
 
 impl FlushEpoch {
@@ -111,19 +111,19 @@ impl FlushEpoch {
     let (outcome_tx, _) = watch::channel(FlushEpochOutcome::Pending);
     Self {
       outcome_tx,
-      do_upload: false,
+      has_explicit_flush_request: false,
     }
   }
 
-  fn register(&mut self, do_upload: bool) -> FlushCompletion {
-    self.do_upload |= do_upload;
+  fn register(&mut self) -> FlushCompletion {
+    self.has_explicit_flush_request = true;
     FlushCompletion {
       outcome_rx: self.outcome_tx.subscribe(),
     }
   }
 
-  pub(crate) const fn do_upload(&self) -> bool {
-    self.do_upload
+  pub(crate) const fn has_explicit_flush_request(&self) -> bool {
+    self.has_explicit_flush_request
   }
 
   pub(crate) fn complete_durable(self) {
@@ -181,13 +181,13 @@ impl FlushTrigger {
 
   // Joins the current disk-durability epoch before scheduling work, so callers cannot miss the
   // completion that follows the physical write containing their metrics.
-  pub fn flush(&self, do_upload: bool) -> anyhow::Result<FlushCompletion> {
+  pub fn flush(&self) -> anyhow::Result<FlushCompletion> {
     let mut state = self.state.lock();
     if self.flush_tx.is_closed() {
       anyhow::bail!("stats flusher shut down before flush was requested");
     }
 
-    let completion = state.open_epoch.register(do_upload);
+    let completion = state.open_epoch.register();
     if state.wake_scheduled {
       return Ok(completion);
     }
@@ -203,8 +203,8 @@ impl FlushTrigger {
     }
   }
 
-  pub fn blocking_flush_for_test(&self, do_upload: bool) -> anyhow::Result<FlushCompletion> {
-    self.flush(do_upload)
+  pub fn blocking_flush_for_test(&self) -> anyhow::Result<FlushCompletion> {
+    self.flush()
   }
 
   pub(crate) fn begin_disk_flush(&self) -> FlushEpoch {

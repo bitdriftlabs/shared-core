@@ -311,6 +311,8 @@ fn batch_transport_uuid(source_file_ids: &[String]) -> String {
 #[async_trait]
 pub trait PeriodicSchedule: Send + Sync {
   async fn next_action(&mut self) -> PeriodicAction;
+
+  fn reset_after_explicit_flush(&mut self) {}
 }
 
 //
@@ -512,20 +514,32 @@ impl RuntimePeriodicSchedule {
 
   // Upload always performs a flush first, so the next cycle only needs intermediate flushes.
   fn update_after_upload(&mut self) {
+    self.start_recurring_cycle();
+  }
+
+  fn start_recurring_cycle(&mut self) {
     let now = self.time_provider.now();
     let upload_interval = self.active_upload_interval();
     let flush_interval = *self.flush_interval.borrow_and_update();
     let effective_flush_interval = effective_flush_interval(flush_interval, upload_interval);
-    let Some(state) = self.state.as_mut() else {
-      return;
-    };
 
-    state.first_upload_pending = false;
-    state.upload_interval = upload_interval;
-    state.effective_flush_interval = effective_flush_interval;
-    state.next_upload_at = now + state.upload_interval;
-    state.next_flush_at = (state.effective_flush_interval < state.upload_interval)
-      .then_some(now + state.effective_flush_interval);
+    if let Some(state) = self.state.as_mut() {
+      state.first_upload_pending = false;
+      state.upload_interval = upload_interval;
+      state.effective_flush_interval = effective_flush_interval;
+      state.next_upload_at = now + state.upload_interval;
+      state.next_flush_at = (state.effective_flush_interval < state.upload_interval)
+        .then_some(now + state.effective_flush_interval);
+    } else {
+      self.state = Some(RuntimePeriodicScheduleState {
+        upload_interval,
+        effective_flush_interval,
+        next_flush_at: (effective_flush_interval < upload_interval)
+          .then_some(now + effective_flush_interval),
+        next_upload_at: now + upload_interval,
+        first_upload_pending: false,
+      });
+    }
   }
 }
 
@@ -626,6 +640,10 @@ impl PeriodicSchedule for RuntimePeriodicSchedule {
         },
       }
     }
+  }
+
+  fn reset_after_explicit_flush(&mut self) {
+    self.start_recurring_cycle();
   }
 }
 
@@ -932,11 +950,11 @@ impl Flusher {
       return;
     }
 
-    let do_upload = epoch.do_upload();
-    if do_upload {
+    if epoch.has_explicit_flush_request() {
       // This only prepares a request and attempts a nonblocking handoff. It never waits for
       // channel capacity or an ACK, so durable completion remains independent of transport.
       self.handle_flush_upload().await;
+      self.periodic_schedule.reset_after_explicit_flush();
     }
     epoch.complete_durable();
   }

@@ -1034,7 +1034,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 StateUpdateMessage::FlushState(completion_tx) => {
                   let flush_stats_trigger = self.logging_state.flush_stats_trigger().clone();
                   let flush_stats = async move {
-                    let completion = match flush_stats_trigger.flush(true) {
+                    let completion = match flush_stats_trigger.flush() {
                       Ok(completion) => completion,
                       Err(e) => {
                         log::debug!("flushing state: failed to flush stats: {e}");

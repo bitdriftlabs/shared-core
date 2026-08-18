@@ -2132,7 +2132,6 @@ fn workflow_emit_metric_action_emits_metric() {
     [].into(),
   );
 
-  setup.flush_stats_without_upload();
   setup.flush_and_upload_stats();
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
