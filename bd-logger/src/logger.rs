@@ -154,15 +154,6 @@ pub enum Block {
   No,
 }
 
-impl From<Block> for bool {
-  fn from(block: Block) -> Self {
-    match block {
-      Block::Yes { .. } => true,
-      Block::No => false,
-    }
-  }
-}
-
 //
 // CaptureSession
 //
@@ -219,7 +210,6 @@ impl LoggerHandle {
     fields: AnnotatedLogFields,
     matching_fields: AnnotatedLogFields,
     attributes_overrides: Option<LogAttributesOverrides>,
-    block: Block,
     capture_session: &CaptureSession,
   ) {
     with_reentrancy_guard!(
@@ -232,7 +222,6 @@ impl LoggerHandle {
           fields,
           matching_fields,
           attributes_overrides,
-          block,
           capture_session.0,
         );
 
@@ -260,7 +249,6 @@ impl LoggerHandle {
       fields,
       [].into(),
       None,
-      Block::No,
       &CaptureSession::default(),
     );
   }
@@ -342,7 +330,6 @@ impl LoggerHandle {
       fields,
       [].into(),
       None,
-      Block::No,
       &CaptureSession::default(),
     );
 
@@ -375,7 +362,6 @@ impl LoggerHandle {
       fields,
       [].into(),
       None,
-      Block::No,
       &CaptureSession::default(),
     );
   }
@@ -445,7 +431,6 @@ impl LoggerHandle {
       fields,
       [].into(),
       None,
-      Block::No,
       &CaptureSession::default(),
     );
   }

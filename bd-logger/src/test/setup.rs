@@ -82,7 +82,7 @@ struct MockSessionReplayTarget {
 
 struct SetupTestHooks {
   remote_streaming_action_processed_tx: StdSender<()>,
-  screenshot_action_processed_tx: std::sync::mpsc::SyncSender<()>,
+  workflow_event_processed_tx: std::sync::mpsc::SyncSender<()>,
 }
 
 impl TestHooks for SetupTestHooks {
@@ -91,7 +91,7 @@ impl TestHooks for SetupTestHooks {
   }
 
   fn workflow_event_processed(&self) {
-    let _ignored = self.screenshot_action_processed_tx.try_send(());
+    let _ignored = self.workflow_event_processed_tx.try_send(());
   }
 }
 
@@ -168,7 +168,7 @@ pub struct Setup {
   capture_screen_rx: StdReceiver<()>,
   capture_screenshot_rx: StdReceiver<()>,
   remote_streaming_action_processed_rx: StdReceiver<()>,
-  screenshot_action_processed_rx: StdReceiver<()>,
+  workflow_event_processed_rx: StdReceiver<()>,
 
   _shutdown: ComponentShutdownTrigger,
 
@@ -236,7 +236,7 @@ impl Setup {
     let (capture_screenshot_tx, capture_screenshot_rx) = std::sync::mpsc::channel();
     let (remote_streaming_action_processed_tx, remote_streaming_action_processed_rx) =
       std_channel();
-    let (screenshot_action_processed_tx, screenshot_action_processed_rx) =
+    let (workflow_event_processed_tx, workflow_event_processed_rx) =
       std::sync::mpsc::sync_channel(1);
     let session_replay_target = Box::new(MockSessionReplayTarget {
       capture_screen_count: Arc::default(),
@@ -273,7 +273,7 @@ impl Setup {
     .with_time_provider(options.time_provider)
     .with_test_hooks(Some(Arc::new(SetupTestHooks {
       remote_streaming_action_processed_tx,
-      screenshot_action_processed_tx,
+      workflow_event_processed_tx,
     })))
     .build_dedicated_thread()
     .unwrap();
@@ -296,7 +296,7 @@ impl Setup {
       capture_screen_rx,
       capture_screenshot_rx,
       remote_streaming_action_processed_rx,
-      screenshot_action_processed_rx,
+      workflow_event_processed_rx,
       _shutdown: shutdown,
       _stats_flush_tx: flush_tick_tx,
       _stats_upload_tx: upload_tick_tx,
@@ -329,11 +329,11 @@ impl Setup {
       .expect("timed out waiting for remote streaming action processing");
   }
 
-  pub fn wait_for_screenshot_action_processing(&self) {
+  pub fn wait_for_workflow_event_processing(&self) {
     self
-      .screenshot_action_processed_rx
+      .workflow_event_processed_rx
       .recv_timeout(std::time::Duration::from_secs(5))
-      .expect("timed out waiting for screenshot action processing");
+      .expect("timed out waiting for workflow event processing");
   }
 
   pub fn assert_no_capture_screenshot(&self) {
@@ -457,12 +457,11 @@ impl Setup {
       fields,
       matching_fields,
       attributes_overrides,
-      Block::No,
       &CaptureSession::default(),
     );
   }
 
-  pub fn blocking_log(
+  pub fn log_then_flush(
     &self,
     level: LogLevel,
     log_type: LogType,
@@ -477,12 +476,25 @@ impl Setup {
       fields,
       matching_fields,
       None,
-      Block::Yes {
-        timeout: 15.std_seconds(),
-        poll_callback: None,
-      },
       &CaptureSession::default(),
     );
+    self.logger_handle.flush_state(Block::Yes {
+      timeout: 15.std_seconds(),
+      poll_callback: None,
+    });
+  }
+
+  pub fn log_then_wait_for_workflow_event(
+    &self,
+    level: LogLevel,
+    log_type: LogType,
+    message: LogMessage,
+    fields: AnnotatedLogFields,
+    matching_fields: AnnotatedLogFields,
+  ) {
+    while self.workflow_event_processed_rx.try_recv().is_ok() {}
+    self.log(level, log_type, message, fields, matching_fields, None);
+    self.wait_for_workflow_event_processing();
   }
 
   pub fn log_with_session_capture(
@@ -500,7 +512,6 @@ impl Setup {
       fields,
       matching_fields,
       None,
-      Block::No,
       &CaptureSession::capture_with_id("test"),
     );
   }

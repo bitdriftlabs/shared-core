@@ -70,7 +70,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration as StdDuration;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio::time::Sleep;
 
 // Synchronous callers may invoke these bridges from latency-sensitive threads, so keep the
@@ -145,7 +145,6 @@ impl MemorySized for SequencedStateUpdate {
 #[derive(Debug)]
 pub struct EmitLogMessage {
   log: LogLine,
-  log_processing_completed_tx: Option<oneshot::Sender<()>>,
 }
 
 pub type SequencedLog = SequencedMessage<EmitLogMessage>;
@@ -159,10 +158,7 @@ impl MemorySized for SequencedLog {
 
 impl From<LogLine> for EmitLogMessage {
   fn from(log: LogLine) -> Self {
-    Self {
-      log,
-      log_processing_completed_tx: None,
-    }
+    Self { log }
   }
 }
 
@@ -220,11 +216,6 @@ pub enum LogAttributesOverrides {
 
 impl MemorySized for LogLine {
   fn size(&self) -> usize {
-    // Add a constant number of bytes (48) to account for the size of `log_processing_completed_tx`.
-    // We do not use `size_of_val` or `size_of` to do that as it reports different size of the
-    // the field when ran on a server and locally on a laptop. The number was captured by
-    // calling `size_of_val(log_processing_completed_tx)` on an M2 Macbook.
-    //
     // Add a constant number of bytes (24) to account for field alignments etc. that we do not
     // account for when not using `size_of_val(self)`.
     size_of_val(&self.log_level)
@@ -233,7 +224,6 @@ impl MemorySized for LogLine {
       + self.fields.size()
       + self.matching_fields.size()
       + size_of_val(&self.attributes_overrides)
-      + 48
       + 24
   }
 }
@@ -496,20 +486,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     fields: AnnotatedLogFields,
     matching_fields: AnnotatedLogFields,
     attributes_overrides: Option<LogAttributesOverrides>,
-    block: Block,
     capture_session: Option<&'static str>,
   ) -> Result<(), TrySendError> {
-    let (log_processing_completed_tx_option, log_processing_completed_rx_option) =
-      if matches!(block, Block::Yes { .. }) {
-        // Create a (sender, receiver) pair only if the caller wants to wait on
-        // on the log being pushed through the whole log processing pipeline.
-        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-        let bd_rx = bd_completion::Receiver::to_bd_completion_rx(rx);
-        (Some(tx), Some(bd_rx))
-      } else {
-        (None, None)
-      };
-
     let log = LogLine {
       log_level,
       log_type,
@@ -520,64 +498,27 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       capture_session,
     };
 
-    // There is no point in continuing the execution of the method and waiting for the log
-    // processing to complete if we failed to enqueue the log. In fact, waiting in such case would
-    // lead to infinite waiting.
-    //
     // There are two possible reasons for the call to fail:
     // 1. The channel is full due to us hitting the capacity limit.
     // 2. The receiver side has been closed. This should only happen in cases in which the event
     //    loop has shut down, which means that we either errored out and defensively shut down the
     //    loop or explicitly shut it down. In either case it is not helpful to report this as an
     //    unexpected error.
-    tx.try_send_log(EmitLogMessage {
-      log,
-      log_processing_completed_tx: log_processing_completed_tx_option,
-    })
-    .inspect_err(|e| log::debug!("enqueue_log: sending to channel failed: {e:?}"))?;
+    tx.try_send_log(log.into())
+      .inspect_err(|e| log::debug!("enqueue_log: sending to channel failed: {e:?}"))?;
 
-    // Wait for log processing to be completed only if passed `blocking`
-    // argument is equal to `true` and we created a relevant one shot Tokio channel.
-    let result = match (block, log_processing_completed_rx_option) {
-      (
-        Block::Yes {
-          timeout,
-          poll_callback,
-        },
-        Some(rx),
-      ) => Some(rx.blocking_recv_with_timeout_and_callback(
-        timeout,
-        poll_callback.as_ref().map(AsRef::as_ref),
-      )),
-      _ => None,
-    };
-    if let Some(result) = result {
-      match &result {
-        Ok(()) => {
-          log::debug!("enqueue_log: log processing completion received");
-        },
-        Err(e) => {
-          log::debug!(
-            "enqueue_log: received an error when waiting for log processing completion: {e}"
-          );
-        },
-      }
-    }
-    // Report success even if the `blocking == true` part of the
-    // implementation above failed.
     Ok(())
   }
 
   async fn process_all_logs(
     &mut self,
     log: LogLine,
-    block: bool,
     state_store: &bd_state::Store,
   ) -> anyhow::Result<()> {
     let mut logs = VecDeque::new();
     logs.push_back(log);
     while let Some(log) = logs.pop_front() {
-      let log_replay_result = self.process_log(log, block, state_store).await?;
+      let log_replay_result = self.process_log(log, state_store).await?;
       logs.extend(log_replay_result.logs_to_inject.into_iter().map(|log| {
         LogLine {
           log_level: log.log_level,
@@ -633,7 +574,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn process_log(
     &mut self,
     log: LogLine,
-    block: bool,
     state_store: &bd_state::Store,
   ) -> anyhow::Result<LogReplayResult> {
     // Prevent re-entrancy when we are evaluating the log metadata.
@@ -723,7 +663,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           capture_session: log.capture_session,
         };
 
-        self.write_log(processed_log, block, state_store).await
+        self.write_log(processed_log, state_store).await
       },
       Err(e) => {
         // TODO(Augustyniak): Consider logging as error so that SDK customers can see these
@@ -737,7 +677,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn write_log(
     &mut self,
     log: Log,
-    block: bool,
     state_store: &bd_state::Store,
   ) -> anyhow::Result<LogReplayResult> {
     let log_replay_result = match &mut self.logging_state {
@@ -760,7 +699,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         .replayer
         .replay_log(
           log,
-          block,
           &mut initialized_logging_context.processing_pipeline,
           state_store,
           self.time_provider.now(),
@@ -841,7 +779,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             .replayer
             .replay_log(
               log,
-              false,
               &mut initialized_logging_context.processing_pipeline,
               state_store,
               now,
@@ -970,14 +907,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               // grouping here to help make smarter decisions during intent negotiation.
               capture_session: Some("crash_handler"),
             };
-            if let Err(e) = self.process_all_logs(log, false, &state_store).await {
+            if let Err(e) = self.process_all_logs(log, &state_store).await {
               log::debug!("failed to process crash log: {e}");
             }
           }
         },
         Some(ordered_message) = self.ordered_rx.recv() => {
           match ordered_message {
-            OrderedMessage::Log(EmitLogMessage { mut log, log_processing_completed_tx }) => {
+            OrderedMessage::Log(EmitLogMessage { mut log }) => {
               for interceptor in &mut self.interceptors {
                 interceptor.process(
                   log.log_level,
@@ -988,17 +925,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 );
               }
 
-              if let Err(e) = self.process_all_logs(
-                log,
-                log_processing_completed_tx.is_some(),
-                &state_store,
-              ).await {
+              if let Err(e) = self.process_all_logs(log, &state_store).await {
                 log::debug!("failed to process all logs: {e}");
-              }
-
-              if let Some(tx) = log_processing_completed_tx && Err(()) == tx.send(()) {
-                debug_assert!(false, "failed to send log processing completion");
-                log::debug!("failed to send log processing completion");
               }
             },
             OrderedMessage::State(async_log_buffer_message) => {

@@ -219,7 +219,7 @@ pub struct LogCommand {
   #[clap(long, action = ArgAction::SetTrue)]
   pub capture_session: bool,
 
-  /// Block until the log has been processed or the timeout expires.
+  /// Flush logger state after enqueueing the log, blocking until completion or timeout.
   #[clap(long, action = ArgAction::SetTrue)]
   pub block: bool,
 

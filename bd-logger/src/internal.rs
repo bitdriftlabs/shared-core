@@ -5,7 +5,7 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::logger::{Block, CaptureSession, LoggerHandle};
+use crate::logger::{CaptureSession, LoggerHandle};
 use bd_log_primitives::{AnnotatedLogField, LogFields, LogLevel};
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
@@ -50,7 +50,6 @@ impl bd_internal_logging::Logger for InternalLogger {
         .collect(),
       [].into(),
       None,
-      Block::No,
       &CaptureSession::default(),
     );
   }

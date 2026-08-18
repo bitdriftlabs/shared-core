@@ -544,7 +544,6 @@ impl LoggerBuilder {
             log.fields,
             [].into(),
             LogAttributesOverrides::OccurredAt(log.timestamp).into(),
-            crate::Block::No,
             None,
           )
           .map_err(Into::into)

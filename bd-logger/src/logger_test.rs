@@ -7,7 +7,7 @@
 
 use super::{Stats, with_thread_local_logger_guard};
 use crate::app_version::Repository;
-use crate::logger::{Block, CaptureSession};
+use crate::logger::CaptureSession;
 use crate::{LoggerHandle, async_log_buffer};
 use bd_client_stats_store::Collector;
 use bd_log_primitives::log_level;
@@ -55,7 +55,6 @@ async fn thread_local_logger_guard() {
       [].into(),
       [].into(),
       None,
-      Block::No,
       &CaptureSession::default(),
     );
   });

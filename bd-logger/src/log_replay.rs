@@ -63,7 +63,6 @@ pub trait LogReplay {
   async fn replay_log(
     &mut self,
     log: Log,
-    block: bool,
     pipeline: &mut ProcessingPipeline,
     state: &bd_state::Store,
     now: OffsetDateTime,
@@ -93,12 +92,11 @@ impl LogReplay for LoggerReplay {
   async fn replay_log(
     &mut self,
     log: Log,
-    block: bool,
     pipeline: &mut ProcessingPipeline,
     state_store: &bd_state::Store,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
-    pipeline.process_log(log, state_store, block, now).await
+    pipeline.process_log(log, state_store, now).await
   }
 
   async fn replay_state_change(
@@ -256,7 +254,6 @@ impl ProcessingPipeline {
     &mut self,
     mut log: Log,
     state: &bd_state::Store,
-    block: bool,
     now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
     self.stats.logs_received.inc();
@@ -265,8 +262,6 @@ impl ProcessingPipeline {
     // TODO(Augustyniak): Add a histogram for the time it takes to process a log.
     self.filter_chain.process(&mut log, &state_reader);
     let mut log = EncodableLog::new(log, (*self.min_log_compression_size.read()).into());
-
-    let flush_stats_trigger = self.flush_stats_trigger.clone();
 
     match self.tail_configs.maybe_stream_log(&mut log, &state_reader) {
       Ok(streamed) => {
@@ -279,7 +274,7 @@ impl ProcessingPipeline {
       },
     }
 
-    let mut matching_buffers = self.buffer_selector.buffers(
+    let matching_buffers = self.buffer_selector.buffers(
       log.log.log_type,
       log.log.log_level,
       &log.log.message,
@@ -316,9 +311,6 @@ impl ProcessingPipeline {
       &result.triggered_flush_buffers_action_ids,
       result.capture_screenshot,
     );
-    if let Some(test_hooks) = &self.test_hooks {
-      test_hooks.workflow_event_processed();
-    }
 
     Self::write_to_buffers(
       &mut self.buffer_producers,
@@ -336,7 +328,7 @@ impl ProcessingPipeline {
         .collect_vec(),
     )?;
 
-    if let Some(extra_matching_buffer) = Self::process_flush_buffers_actions(
+    Self::process_flush_buffers_actions(
       &result.triggered_flush_buffers_action_ids,
       &mut self.buffer_producers,
       &result.triggered_flushes_buffer_ids,
@@ -345,22 +337,11 @@ impl ProcessingPipeline {
       &log.log.fields,
       &log.log.session_id,
       log.log.occurred_at,
-    ) {
-      // We emitted a synthetic log. Add the buffer it was written to to the list of matching
-      // buffers.
-      matching_buffers.insert(extra_matching_buffer.into());
-    }
+    );
 
-    // Force the persistence of workflows state to disk if log is blocking.
-    self.workflows_engine.maybe_persist(block).await;
-
-    if block {
-      Self::finish_blocking_log_processing(
-        &self.flush_buffers_tx,
-        flush_stats_trigger,
-        matching_buffers,
-      )
-      .await?;
+    self.workflows_engine.maybe_persist(false).await;
+    if let Some(test_hooks) = &self.test_hooks {
+      test_hooks.workflow_event_processed();
     }
 
     Ok(log_replay_result)
@@ -442,56 +423,6 @@ impl ProcessingPipeline {
     log_replay_result
   }
 
-  async fn finish_blocking_log_processing(
-    flush_buffers_tx: &tokio::sync::mpsc::Sender<BuffersWithAck>,
-    flush_stats_trigger: FlushTrigger,
-    matching_buffers: TinySet<Cow<'_, str>>,
-  ) -> anyhow::Result<()> {
-    // The processing of a blocking log is about to complete. Flush buffers and stats to disk in
-    // parallel.
-    // TODO(mattklein123): Figure out if we need blocking logs and explicit flushing. It would be
-    // better to remove this complexity if we could do it all as part of the explicit flush call
-    // which also uploads stats and does other things. For now in this case we just do what we did
-    // before which is write to disk only.
-    log::debug!("blocking log: flushing buffers and stats to disk in parallel");
-
-    let flush_buffers_fut = async {
-      if matching_buffers.is_empty() {
-        log::debug!("blocking log: log processed but no buffers matched, skipping buffers flush");
-        return Ok(());
-      }
-
-      let (tx, rx) = bd_completion::Sender::new();
-      let buffers_to_flush = BuffersWithAck::new(
-        matching_buffers.iter().map(ToString::to_string).collect(),
-        Some(tx),
-      );
-
-      flush_buffers_tx.send(buffers_to_flush).await.map_err(|e| {
-        anyhow::anyhow!("blocking log: failed to send signal to flush buffer(s): {e:?}")
-      })?;
-
-      rx.recv().await.map_err(|e| {
-        anyhow::anyhow!("blocking log: failed to receive buffer(s) flush completion signal: {e:?}")
-      })
-    };
-
-    let flush_stats_fut = async {
-      log::debug!("blocking log: sending signal to flush stats to disk");
-      flush_stats_trigger
-        .flush(false)
-        .map_err(|e| anyhow::anyhow!("blocking log: failed to send signal to flush stats: {e:?}"))?
-        .wait()
-        .await
-        .map_err(|e| {
-          anyhow::anyhow!("failed to await receiving flush stats trigger completion: {e:?}")
-        })
-    };
-
-    tokio::try_join!(flush_buffers_fut, flush_stats_fut)?;
-    Ok(())
-  }
-
   fn write_to_buffers(
     buffers: &mut BufferProducers,
     matching_buffers: &TinySet<Cow<'_, str>>,
@@ -517,7 +448,6 @@ impl ProcessingPipeline {
   /// If the log that triggered the flush was not written to any of the buffers that are
   /// about to be flushed, a synthetic log resembling the original log is created and added
   /// to one of the buffers scheduled for flushing.
-  /// Returns the ID of the buffer to which the synthetic log was added, if any.
   fn process_flush_buffers_actions(
     triggered_flush_buffers_action_ids: &BTreeSet<Cow<'_, FlushBufferId>>,
     buffers: &mut BufferProducers,
@@ -527,9 +457,9 @@ impl ProcessingPipeline {
     log_fields: &LogFields,
     session_id: &str,
     occurred_at: OffsetDateTime,
-  ) -> Option<String> {
+  ) {
     if triggered_flush_buffers_action_ids.is_empty() {
-      return None;
+      return;
     }
 
     // Indicates whether the log was written to any of the continuous buffers. Continuous buffers
@@ -599,11 +529,7 @@ impl ProcessingPipeline {
       {
         log::debug!("failed to write synthetic log to buffer: {e}");
       }
-
-      return Some(arbitrary_buffer_id_to_flush);
     }
-
-    None
   }
 
   pub(crate) async fn run(&mut self) {
