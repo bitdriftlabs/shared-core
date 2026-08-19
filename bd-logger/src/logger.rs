@@ -456,6 +456,34 @@ impl LoggerHandle {
     );
   }
 
+  /// Adds or replaces an SDK-owned OOTB field on all subsequently processed logs.
+  ///
+  /// Unlike custom global fields, OOTB fields may use reserved names and take precedence over
+  /// fields supplied by providers and individual log calls.
+  ///
+  /// This operation is non-blocking and best effort. It can be dropped when the bounded state
+  /// update buffer is full, so callers must tolerate missed transient updates.
+  pub fn update_ootb_log_field(&self, key: String, value: LogFieldValue) {
+    with_reentrancy_guard!(
+      {
+        let field_name = key.clone();
+        let result =
+          self
+            .tx
+            .try_send_state_update(async_log_buffer::StateUpdateMessage::UpdateOotbLogField(
+              key, value,
+            ));
+
+        if let Err(e) = result {
+          log::warn!("failed to update {field_name:?} OOTB log field: {e:?}");
+        }
+      },
+      "failed to update {:?} OOTB log field, updating log fields from within a field provider is \
+       not allowed",
+      key
+    );
+  }
+
   pub fn remove_log_field(&self, field_name: &str) {
     with_reentrancy_guard!(
       {
