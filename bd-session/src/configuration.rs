@@ -46,7 +46,10 @@ impl Configuration {
     }
   }
 
-  pub(crate) const fn matches_persisted_activity_state(&self, activity_state: &ActivityState) -> bool {
+  pub(crate) const fn matches_persisted_activity_state(
+    &self,
+    activity_state: &ActivityState,
+  ) -> bool {
     matches!(
       (self.inactivity_timeout, activity_state),
       (None, ActivityState::NoInactivityTimeout)
@@ -125,9 +128,14 @@ impl Configuration {
     )
   }
 
-  fn on_session_id_with_timeout(&self, state: &mut LoadedState, timeout: Duration) -> TransitionEffects {
+  fn on_session_id_with_timeout(
+    &self,
+    state: &mut LoadedState,
+    timeout: Duration,
+  ) -> TransitionEffects {
     let now = self.time_provider.now();
-    let ActivityState::InactivityTimeout { last_activity } = &mut state.persisted.activity_state else {
+    let ActivityState::InactivityTimeout { last_activity } = &mut state.persisted.activity_state
+    else {
       return TransitionEffects::default();
     };
     let previous_last_activity = OffsetDateTime::from(*last_activity);
@@ -207,4 +215,11 @@ impl Configuration {
 
 pub trait Callbacks: Send + Sync {
   fn session_id_changed(&self, session_id: &str);
+}
+
+#[derive(Default)]
+pub struct NoopCallbacks;
+
+impl Callbacks for NoopCallbacks {
+  fn session_id_changed(&self, _session_id: &str) {}
 }

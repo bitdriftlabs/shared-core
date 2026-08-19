@@ -45,8 +45,8 @@ use bd_proto::protos::logging::payload::log::CompressedContents;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
 use bd_runtime::runtime::FeatureFlag;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
-use bd_session::Strategy;
-use bd_session::fixed::UUIDCallbacks;
+use bd_session::test::no_timeout;
+use bd_session::{Strategy, configuration};
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
 use bd_stats_common::{Counter as _, labels};
 use bd_test_helpers::config_helper::{
@@ -110,12 +110,12 @@ use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::macros::datetime;
 
-struct LockingFixedCallbacks {
+struct LockingSessionCallbacks {
   app_lock: Arc<ReentrantMutex<()>>,
   call_count: AtomicUsize,
 }
 
-impl LockingFixedCallbacks {
+impl LockingSessionCallbacks {
   fn new(app_lock: Arc<ReentrantMutex<()>>) -> Self {
     Self {
       app_lock,
@@ -124,29 +124,7 @@ impl LockingFixedCallbacks {
   }
 }
 
-impl bd_session::fixed::Callbacks for LockingFixedCallbacks {
-  fn generate_session_id(&self) -> anyhow::Result<String> {
-    let _guard = self.app_lock.lock();
-    let call_count = self.call_count.fetch_add(1, Ordering::SeqCst) + 1;
-    Ok(format!("fixed-session-{call_count}"))
-  }
-}
-
-struct LockingActivityCallbacks {
-  app_lock: Arc<ReentrantMutex<()>>,
-  call_count: AtomicUsize,
-}
-
-impl LockingActivityCallbacks {
-  fn new(app_lock: Arc<ReentrantMutex<()>>) -> Self {
-    Self {
-      app_lock,
-      call_count: AtomicUsize::new(0),
-    }
-  }
-}
-
-impl bd_session::activity_based::Callbacks for LockingActivityCallbacks {
+impl configuration::Callbacks for LockingSessionCallbacks {
   fn session_id_changed(&self, _session_id: &str) {
     let _guard = self.app_lock.lock();
     self.call_count.fetch_add(1, Ordering::SeqCst);
@@ -187,11 +165,17 @@ fn attributes_accessors() {
 }
 
 #[test]
-fn session_id_runs_fixed_strategy_callback_on_calling_thread() {
+fn session_id_runs_configuration_callback_on_calling_thread() {
   let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
   let app_lock = Arc::new(ReentrantMutex::new(()));
-  let callbacks = Arc::new(LockingFixedCallbacks::new(app_lock.clone()));
-  let session_strategy = Strategy::fixed(sdk_directory.path(), callbacks.clone());
+  let callbacks = Arc::new(LockingSessionCallbacks::new(app_lock.clone()));
+  let session_strategy = Strategy::configuration(
+    sdk_directory.path(),
+    None,
+    None,
+    callbacks.clone(),
+    Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
+  );
 
   let setup = Setup::new_with_options(SetupOptions {
     sdk_directory,
@@ -202,14 +186,14 @@ fn session_id_runs_fixed_strategy_callback_on_calling_thread() {
   let _guard = app_lock.lock();
   let session_id = setup.logger_handle.session_id().unwrap();
 
-  assert_eq!("fixed-session-1", session_id);
+  assert_eq!(36, session_id.len());
   assert_eq!(1, callbacks.call_count.load(Ordering::SeqCst));
 }
 
 #[test]
 fn logger_shutdown_flushes_session_persistence() {
   let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
-  let session = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
+  let session = no_timeout(sdk_directory.path());
   let session_strategy = session.strategy();
   let setup = Setup::new_with_options(SetupOptions {
     sdk_directory: sdk_directory.clone(),
@@ -220,16 +204,22 @@ fn logger_shutdown_flushes_session_persistence() {
   let session_id = session_strategy.session_id().unwrap();
   setup.logger.shutdown(true);
 
-  let restarted = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks)).strategy();
+  let restarted = no_timeout(sdk_directory.path()).strategy();
   assert_eq!(Some(session_id), restarted.previous_process_session_id());
 }
 
 #[test]
-fn start_new_session_runs_fixed_strategy_callback_on_calling_thread() {
+fn start_new_session_runs_configuration_callback_on_calling_thread() {
   let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
   let app_lock = Arc::new(ReentrantMutex::new(()));
-  let callbacks = Arc::new(LockingFixedCallbacks::new(app_lock.clone()));
-  let session = Strategy::fixed(sdk_directory.path(), callbacks.clone());
+  let callbacks = Arc::new(LockingSessionCallbacks::new(app_lock.clone()));
+  let session = Strategy::configuration(
+    sdk_directory.path(),
+    None,
+    None,
+    callbacks.clone(),
+    Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
+  );
 
   let mut init_params = crate::test::setup::create_minimal_init_params(sdk_directory.path());
   init_params.session = session;
@@ -244,7 +234,7 @@ fn start_new_session_runs_fixed_strategy_callback_on_calling_thread() {
   let callback_count_before = callbacks.call_count.load(Ordering::SeqCst);
 
   let _guard = app_lock.lock();
-  logger_handle.start_new_session().unwrap();
+  logger_handle.start_new_session(None).unwrap();
 
   assert_eq!(
     callback_count_before + 1,
@@ -257,14 +247,15 @@ fn start_new_session_runs_fixed_strategy_callback_on_calling_thread() {
 }
 
 #[test]
-fn session_id_runs_activity_callback_on_calling_thread() {
+fn session_id_runs_inactivity_configuration_callback_on_calling_thread() {
   let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
   let time_provider = Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc()));
   let app_lock = Arc::new(ReentrantMutex::new(()));
-  let callbacks = Arc::new(LockingActivityCallbacks::new(app_lock.clone()));
-  let session_strategy = Strategy::activity_based(
+  let callbacks = Arc::new(LockingSessionCallbacks::new(app_lock.clone()));
+  let session_strategy = Strategy::configuration(
     sdk_directory.path(),
-    30.seconds(),
+    None,
+    Some(30.seconds()),
     callbacks.clone(),
     time_provider.clone(),
   );
@@ -558,19 +549,14 @@ fn explicit_session_capture_disabled_streaming() {
 
 #[test]
 fn log_upload_attributes_override() {
-  struct StaticSessionId(String);
-
-  impl bd_session::fixed::Callbacks for StaticSessionId {
-    fn generate_session_id(&self) -> anyhow::Result<String> {
-      Ok(self.0.clone())
-    }
-  }
-
   let time_first = datetime!(2024-06-01 12:00:00 UTC);
   let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
-  let (previous_session, previous_session_worker) = bd_session::Strategy::fixed(
+  let (previous_session, previous_session_worker) = bd_session::Strategy::configuration(
     sdk_directory.path(),
-    Arc::new(StaticSessionId("foo_overridden".to_string())),
+    Some("foo_overridden".to_string()),
+    None,
+    Arc::new(configuration::NoopCallbacks),
+    Arc::new(TestTimeProvider::new(time_first)),
   )
   .into_parts();
   assert_eq!(previous_session.session_id().unwrap(), "foo_overridden");
@@ -3740,7 +3726,7 @@ fn runtime_caching() {
     let store = in_memory_store();
     let device = Arc::new(bd_device::Device::new(store.clone()));
 
-    let session = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
+    let session = no_timeout(sdk_directory.path());
     let logger = crate::LoggerBuilder::new(InitParams {
       api_key: "foo-api-key".to_string(),
       network,

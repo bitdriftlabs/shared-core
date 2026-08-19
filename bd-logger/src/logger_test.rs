@@ -12,8 +12,7 @@ use crate::{LoggerHandle, async_log_buffer};
 use bd_client_stats_store::Collector;
 use bd_log_primitives::log_level;
 use bd_proto::protos::logging::payload::LogType;
-use bd_session::Strategy;
-use bd_session::fixed::UUIDCallbacks;
+use bd_session::test::no_timeout;
 use bd_test_helpers::session::in_memory_store;
 use futures_util::poll;
 use std::sync::Arc;
@@ -34,7 +33,7 @@ async fn thread_local_logger_guard() {
   let handle = LoggerHandle {
     tx: sender,
     stats: Stats::new(&Collector::default().scope("")),
-    session_strategy: Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks)).strategy(),
+    session_strategy: no_timeout(sdk_directory.path()).strategy(),
     device: Arc::new(bd_device::Device::new(store.clone())),
     sdk_version: "1.0.0".into(),
     app_version_repo: Repository::new(store.clone()),
@@ -72,7 +71,7 @@ async fn session_id_is_rejected_while_reentrancy_guard_is_held() {
   let handle = LoggerHandle {
     tx: sender,
     stats: Stats::new(&Collector::default().scope("")),
-    session_strategy: Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks)).strategy(),
+    session_strategy: no_timeout(sdk_directory.path()).strategy(),
     device: Arc::new(bd_device::Device::new(store.clone())),
     sdk_version: "1.0.0".into(),
     app_version_repo: Repository::new(store),
@@ -102,7 +101,7 @@ async fn register_opaque_entity_id_updates_queue_and_watch() {
   let handle = LoggerHandle {
     tx: sender,
     stats: Stats::new(&Collector::default().scope("")),
-    session_strategy: Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks)).strategy(),
+    session_strategy: no_timeout(sdk_directory.path()).strategy(),
     device: Arc::new(bd_device::Device::new(store.clone())),
     sdk_version: "1.0.0".into(),
     app_version_repo: Repository::new(store.clone()),
@@ -163,7 +162,7 @@ async fn register_opaque_entity_id_does_not_update_watch_when_queueing_fails() {
   let handle = LoggerHandle {
     tx: sender,
     stats: Stats::new(&Collector::default().scope("")),
-    session_strategy: Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks)).strategy(),
+    session_strategy: no_timeout(sdk_directory.path()).strategy(),
     device: Arc::new(bd_device::Device::new(store.clone())),
     sdk_version: "1.0.0".into(),
     app_version_repo: Repository::new(store.clone()),

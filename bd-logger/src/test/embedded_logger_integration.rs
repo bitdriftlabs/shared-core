@@ -16,8 +16,7 @@ use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::FeatureFlag;
-use bd_session::Strategy;
-use bd_session::fixed::UUIDCallbacks;
+use bd_session::test::no_timeout;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::config_helper::{
   configuration_update,
@@ -67,7 +66,7 @@ impl Setup {
     let store = in_memory_store();
     let device = Arc::new(bd_device::Device::new(store.clone()));
 
-    let session = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
+    let session = no_timeout(sdk_directory.path());
     let (logger, _, future, _) = crate::LoggerBuilder::new(InitParams {
       sdk_directory: sdk_directory.path().to_owned(),
       network: Box::new(handle),

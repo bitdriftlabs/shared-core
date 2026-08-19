@@ -437,8 +437,8 @@ impl Strategy {
       // set matches the prefix we most recently sent.
       if !starts_with_sessions(&state.pending_started_sessions, &update.started_sessions) {
         log::debug!(
-          "ignoring non-prefix state update acknowledgement: configuration={}, current_pending={}, \
-           acknowledged={}",
+          "ignoring non-prefix state update acknowledgement: configuration={}, \
+           current_pending={}, acknowledged={}",
           self.type_name(),
           state.pending_started_sessions.len(),
           update.started_sessions.len()
@@ -498,13 +498,13 @@ impl Strategy {
         pending_started_sessions.len()
       );
 
-      return self.initialize_after_inactivity_timeout_enabled(
-        persisted.clone(),
-        pending_started_sessions,
-      );
+      return self
+        .initialize_after_inactivity_timeout_enabled(persisted.clone(), pending_started_sessions);
     }
 
-    self.configuration.initialize(persisted, pending_started_sessions)
+    self
+      .configuration
+      .initialize(persisted, pending_started_sessions)
   }
 
   fn initialize_after_inactivity_timeout_enabled(
@@ -522,8 +522,8 @@ impl Strategy {
       let mut guard = self.state.lock();
       if let Some(state) = guard.clone() {
         log::debug!(
-          "serving state update from cached session state: configuration={}, current_session_id={}, \
-           pending_started_sessions={}",
+          "serving state update from cached session state: configuration={}, \
+           current_session_id={}, pending_started_sessions={}",
           self.type_name(),
           state.persisted.current_session_id,
           state.pending_started_sessions.len()
@@ -574,8 +574,8 @@ impl Strategy {
       },
     );
     log::debug!(
-      "starting explicit session rotation: configuration={}, cached_state={}, has_persisted_state={}, \
-       pending_started_sessions={}",
+      "starting explicit session rotation: configuration={}, cached_state={}, \
+       has_persisted_state={}, pending_started_sessions={}",
       self.type_name(),
       state.is_some(),
       persisted.is_some(),
@@ -676,9 +676,7 @@ impl Strategy {
     // integrations responsive and avoids coupling session rotation to best-effort disk I/O.
     match callback {
       Some(DeferredCallback::SessionIdChanged(session_id)) => {
-        log::debug!(
-          "dispatching configured session callback: current_session_id={session_id}"
-        );
+        log::debug!("dispatching configured session callback: current_session_id={session_id}");
         self.with_callback_guard(|| self.callbacks.session_id_changed(&session_id));
       },
       None => {},

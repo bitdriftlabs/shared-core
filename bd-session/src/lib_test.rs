@@ -7,8 +7,8 @@
 
 use super::test::flush;
 use super::{PendingStateUpdate, Strategy, StrategyWithWorker};
-use crate::persistence::{ActivityState, PersistedSessionState, Store};
 use crate::configuration;
+use crate::persistence::{ActivityState, PersistedSessionState, Store};
 use bd_proto::protos::client::api::StateUpdateRequest;
 use bd_time::TestTimeProvider;
 use pretty_assertions::assert_eq;
@@ -74,7 +74,9 @@ async fn persistence_flusher_coalesces_to_latest_state_on_shutdown() {
   ));
 
   let first_session_id = strategy.session_id().unwrap();
-  strategy.start_new_session(Some("session-2".to_string())).unwrap();
+  strategy
+    .start_new_session(Some("session-2".to_string()))
+    .unwrap();
   let second_session_id = strategy.session_id().unwrap();
 
   let _ignored = shutdown_tx.send(());
@@ -182,11 +184,12 @@ async fn handshake_synthesizes_current_session_after_pending_queue_is_acked() {
 #[tokio::test]
 async fn acknowledge_state_update_ignores_non_prefix_updates() {
   let sdk_directory = TempDir::new().unwrap();
-  let StrategyWithWorker { strategy, .. } =
-    no_timeout_strategy(&sdk_directory, "session-1");
+  let StrategyWithWorker { strategy, .. } = no_timeout_strategy(&sdk_directory, "session-1");
 
   strategy.session_id().unwrap();
-  strategy.start_new_session(Some("session-2".to_string())).unwrap();
+  strategy
+    .start_new_session(Some("session-2".to_string()))
+    .unwrap();
 
   let pending = strategy.pending_state_update().unwrap();
   assert_eq!(
