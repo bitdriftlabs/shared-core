@@ -40,7 +40,7 @@ use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::Strategy;
-use bd_session::fixed::UUIDCallbacks;
+use bd_session::test::no_timeout;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::test::TestStore;
 use bd_state::{MEMORY_PRESSURE_LEVEL_KEY, SYSTEM_SESSION_ID_KEY, Scope, StateReader};
@@ -87,7 +87,7 @@ impl Setup {
     let collector = Collector::default();
     let stats = Stats::new(collector.clone());
     let (data_upload_tx, data_upload_rx) = mpsc::channel(1);
-    let session_strategy = Strategy::fixed(tmp_dir.path(), Arc::new(UUIDCallbacks)).strategy();
+    let session_strategy = no_timeout(tmp_dir.path()).strategy();
 
     Self {
       buffer_manager: bd_buffer::Manager::new(
@@ -706,7 +706,7 @@ async fn updates_system_session_id_for_new_sessions() {
     None,
   ));
 
-  setup.session_strategy.start_new_session().unwrap();
+  setup.session_strategy.start_new_session(None).unwrap();
   let second_session_id = setup.session_strategy.session_id().unwrap();
   assert_ne!(first_session_id, second_session_id);
 
@@ -816,7 +816,7 @@ async fn previous_run_log_does_not_override_system_session_id() {
     None,
   ));
 
-  setup.session_strategy.start_new_session().unwrap();
+  setup.session_strategy.start_new_session(None).unwrap();
   let next_session_id = setup.session_strategy.session_id().unwrap();
   assert_ne!(current_session_id, next_session_id);
 
@@ -874,7 +874,7 @@ async fn pre_config_logs_trigger_session_id_update() {
     None,
   ));
 
-  setup.session_strategy.start_new_session().unwrap();
+  setup.session_strategy.start_new_session(None).unwrap();
   let second_session_id = setup.session_strategy.session_id().unwrap();
   assert_ne!(first_session_id, second_session_id);
 

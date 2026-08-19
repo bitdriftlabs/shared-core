@@ -339,9 +339,12 @@ impl Setup {
       &runtime_loader,
       &collector.scope("state"),
     );
-    let session_parts = bd_session::Strategy::fixed(
+    let session_parts = bd_session::Strategy::configuration(
       sdk_directory.path(),
-      Arc::new(bd_session::fixed::UUIDCallbacks),
+      None,
+      None,
+      Arc::new(bd_session::configuration::NoopCallbacks),
+      time_provider.clone(),
     );
     let session_strategy = session_parts.strategy();
     let mut api = Api::new(
@@ -2087,7 +2090,7 @@ async fn session_state_update_is_resent_until_acked() {
     .await;
   setup.wait_for_cleared_pending_session_update().await;
 
-  setup.session_strategy.start_new_session().unwrap();
+  setup.session_strategy.start_new_session(None).unwrap();
   let next_session_id = setup.session_strategy.session_id().unwrap();
 
   let request = setup.next_request(1.seconds()).await.unwrap();
