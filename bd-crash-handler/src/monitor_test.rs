@@ -257,13 +257,15 @@ impl Setup {
 
     // Set up the session to return a fixed previous session ID, making it obvious that we are
     // using the previous session ID for uploads.
-    let mut session = bd_session::Strategy::fixed(
+    let (session, worker) = bd_session::Strategy::fixed(
       directory.path(),
       Arc::new(StaticSession("previous_session_id".into())),
-    );
-    assert_eq!(session.session_id().await.unwrap(), "previous_session_id");
+    )
+    .into_parts();
+    assert_eq!(session.session_id().unwrap(), "previous_session_id");
+    bd_session::test::flush(session.clone(), worker).await;
 
-    session = bd_session::Strategy::fixed(directory.path(), Arc::new(UUIDCallbacks));
+    let session = bd_session::Strategy::fixed(directory.path(), Arc::new(UUIDCallbacks)).strategy();
 
     let (tx, rx) = tokio::sync::mpsc::channel(10);
     let emit_log =
@@ -319,7 +321,7 @@ impl Setup {
       directory.path(),
       store,
       upload_client.clone(),
-      Arc::new(session),
+      session,
       &InitLifecycleState::new(),
       (*state).clone(),
       previous_run_state,
@@ -696,7 +698,7 @@ async fn file_watcher_detects_current_session_report() {
     ]
     .into(),
     crash_timestamp.into(),
-    setup.monitor.session.session_id().await.unwrap().as_str(),
+    setup.monitor.session.session_id().unwrap().as_str(),
     Some(vec![
       ("initial_flag".to_string(), "true".to_string()),
       ("previous_only_flag".to_string(), "enabled".to_string()),
@@ -1095,7 +1097,7 @@ async fn current_session_crash_uses_current_feature_flags() {
     ]
     .into(),
     crash_timestamp.into(),
-    setup.monitor.session.session_id().await.unwrap().as_str(),
+    setup.monitor.session.session_id().unwrap().as_str(),
     Some(vec![
       ("initial_flag".to_string(), "updated".to_string()),
       ("current_only_flag".to_string(), "new".to_string()),

@@ -10,7 +10,7 @@
 mod activity_based_test;
 
 use crate::persistence::{BackendState, PersistedSessionState, StartedSessionRecord};
-use crate::{DeferredCallback, Initialization, LoadedState, Mutation};
+use crate::{DeferredCallback, LoadedState, Transition, TransitionEffects};
 use bd_time::TimeProvider;
 use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
@@ -62,7 +62,7 @@ impl Strategy {
     &self,
     persisted: Option<PersistedSessionState>,
     mut pending_started_sessions: Vec<StartedSessionRecord>,
-  ) -> Initialization {
+  ) -> Transition {
     let now = self.time_provider.now();
     if let Some(persisted) = persisted {
       log::debug!(
@@ -83,8 +83,9 @@ impl Strategy {
         },
         pending_started_sessions,
         last_activity_write: None,
+        persistence_pending: false,
       };
-      let mut mutation = self.on_session_id(&mut state);
+      let mut effects = self.on_session_id(&mut state);
       // Handshake uploads must be able to announce the current session after a restart even if the
       // process died before flushing a pending-started-sessions queue entry.
       if !state
@@ -103,21 +104,23 @@ impl Strategy {
             state.persisted.current_session_id.clone(),
             OffsetDateTime::from(state.persisted.current_session_start),
           ));
-        mutation.persist_pending = true;
+        state.persistence_pending = true;
+        effects.persist = true;
+        effects.notify_update = true;
       }
 
       log::debug!(
         "initialized activity-based session from persisted state: current_session_id={}, \
-         previous_process_session_id={:?}, persist_state={}, persist_pending={}, \
+         previous_process_session_id={:?}, persist={}, notify_update={}, \
          pending_started_sessions={}",
         state.persisted.current_session_id,
         state.persisted.previous_process_session_id,
-        mutation.persist_state,
-        mutation.persist_pending,
+        effects.persist,
+        effects.notify_update,
         state.pending_started_sessions.len()
       );
 
-      Initialization { state, mutation }
+      Transition { state, effects }
     } else {
       let session_id = Self::generate_session_id();
       let session_start = now;
@@ -129,7 +132,7 @@ impl Strategy {
         pending_started_sessions.len()
       );
 
-      Initialization {
+      Transition {
         state: LoadedState {
           persisted: PersistedSessionState {
             current_session_id: session_id.clone(),
@@ -141,17 +144,18 @@ impl Strategy {
           },
           pending_started_sessions,
           last_activity_write: Some(now),
+          persistence_pending: true,
         },
-        mutation: Mutation {
-          persist_state: true,
-          persist_pending: true,
+        effects: TransitionEffects {
+          persist: true,
+          notify_update: true,
           callback: Some(DeferredCallback::ActivitySessionChanged(session_id)),
         },
       }
     }
   }
 
-  pub(crate) fn on_session_id(&self, state: &mut LoadedState) -> Mutation {
+  pub(crate) fn on_session_id(&self, state: &mut LoadedState) -> TransitionEffects {
     let now = self.time_provider.now();
     let BackendState::ActivityBased { last_activity } = &mut state.persisted.backend else {
       // `initialize_state()` should already resync any persisted backend mismatch before an
@@ -165,7 +169,7 @@ impl Strategy {
         "activity-based session observed incompatible backend state after initialization; leaving \
          state unchanged"
       );
-      return Mutation::default();
+      return TransitionEffects::default();
     };
 
     let previous_session_id = state.persisted.current_session_id.clone();
@@ -200,6 +204,7 @@ impl Strategy {
         .pending_started_sessions
         .push(StartedSessionRecord::new(session_id.clone(), now));
       state.last_activity_write = Some(now);
+      state.persistence_pending = true;
 
       log::debug!(
         "rotating activity-based session: previous_session_id={}, new_session_id={}, reason={}, \
@@ -214,23 +219,24 @@ impl Strategy {
         state.pending_started_sessions.len()
       );
 
-      Mutation {
-        persist_state: true,
-        persist_pending: true,
+      TransitionEffects {
+        persist: true,
+        notify_update: true,
         callback: Some(DeferredCallback::ActivitySessionChanged(session_id)),
       }
     } else if last_activity_storage_needs_write {
       // The session itself is unchanged, but we periodically persist the last-activity timestamp so
       // a restart can continue the inactivity window from roughly the right point in time.
       state.last_activity_write = Some(now);
+      state.persistence_pending = true;
 
       log::debug!(
         "persisting activity-based last-activity without session rotation: \
          current_session_id={previous_session_id}, last_activity={now:?}"
       );
 
-      Mutation {
-        persist_state: true,
+      TransitionEffects {
+        persist: true,
         ..Default::default()
       }
     } else {
@@ -239,7 +245,7 @@ impl Strategy {
          durable write required"
       );
 
-      Mutation::default()
+      TransitionEffects::default()
     }
   }
 
@@ -248,7 +254,7 @@ impl Strategy {
     state: Option<&LoadedState>,
     persisted: Option<PersistedSessionState>,
     mut pending_started_sessions: Vec<StartedSessionRecord>,
-  ) -> Initialization {
+  ) -> Transition {
     // An explicit rotation behaves like a brand-new activity session, but it preserves the last
     // previous-process session marker for post-restart reporting.
     let session_id = Self::generate_session_id();
@@ -267,7 +273,7 @@ impl Strategy {
       pending_started_sessions.len()
     );
 
-    Initialization {
+    Transition {
       state: LoadedState {
         persisted: PersistedSessionState {
           current_session_id: session_id,
@@ -279,10 +285,11 @@ impl Strategy {
         },
         pending_started_sessions,
         last_activity_write: Some(now),
+        persistence_pending: true,
       },
-      mutation: Mutation {
-        persist_state: true,
-        persist_pending: true,
+      effects: TransitionEffects {
+        persist: true,
+        notify_update: true,
         callback: None,
       },
     }
@@ -295,5 +302,7 @@ impl Strategy {
 }
 
 pub trait Callbacks: Send + Sync {
+  /// Invoked synchronously on the thread that created or rotated the session. Durable persistence
+  /// continues asynchronously and is intentionally not a precondition for this notification.
   fn session_id_changed(&self, session_id: &str);
 }

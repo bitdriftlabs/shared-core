@@ -41,7 +41,6 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::Strategy;
 use bd_session::fixed::UUIDCallbacks;
-use bd_session::test::start_new_session;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::test::TestStore;
 use bd_state::{MEMORY_PRESSURE_LEVEL_KEY, SYSTEM_SESSION_ID_KEY, Scope, StateReader};
@@ -59,7 +58,6 @@ use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration as StdDuration;
 use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use tokio::sync::mpsc;
@@ -89,7 +87,7 @@ impl Setup {
     let collector = Collector::default();
     let stats = Stats::new(collector.clone());
     let (data_upload_tx, data_upload_rx) = mpsc::channel(1);
-    let session_strategy = Arc::new(Strategy::fixed(tmp_dir.path(), Arc::new(UUIDCallbacks)));
+    let session_strategy = Strategy::fixed(tmp_dir.path(), Arc::new(UUIDCallbacks)).strategy();
 
     Self {
       buffer_manager: bd_buffer::Manager::new(
@@ -229,25 +227,6 @@ impl Setup {
   fn make_runtime(tmp_dir: &Arc<tempfile::TempDir>) -> std::sync::Arc<ConfigLoader> {
     ConfigLoader::new(tmp_dir.path())
   }
-}
-
-#[test]
-fn persist_prepared_session_times_out_when_async_logger_is_stalled() {
-  let (log_tx, _log_rx) = bd_bounded_buffer::channel(1024 * 1024);
-  let (state_tx, _state_rx) = bd_bounded_buffer::channel(1024 * 1024);
-  let sender = Sender::from_parts(log_tx, state_tx);
-  let sdk_directory = tempfile::TempDir::new().unwrap();
-  let strategy = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
-  let prepared = strategy.prepare_session_id().unwrap();
-
-  let error = sender
-    .persist_prepared_session(prepared, StdDuration::from_millis(20))
-    .unwrap_err();
-
-  assert_eq!(
-    "failed to receive prepared session ack from async logger: timeout duration reached",
-    error.to_string()
-  );
 }
 
 struct TestReplay {
@@ -713,7 +692,7 @@ async fn updates_system_session_id_for_new_sessions() {
   let handle =
     tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
 
-  let first_session_id = setup.session_strategy.session_id().await.unwrap();
+  let first_session_id = setup.session_strategy.session_id().unwrap();
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
     &sender,
     0,
@@ -725,8 +704,8 @@ async fn updates_system_session_id_for_new_sessions() {
     None,
   ));
 
-  start_new_session(&setup.session_strategy).await;
-  let second_session_id = setup.session_strategy.session_id().await.unwrap();
+  setup.session_strategy.start_new_session().unwrap();
+  let second_session_id = setup.session_strategy.session_id().unwrap();
   assert_ne!(first_session_id, second_session_id);
 
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
@@ -823,7 +802,7 @@ async fn previous_run_log_does_not_override_system_session_id() {
   let handle =
     tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
 
-  let current_session_id = setup.session_strategy.session_id().await.unwrap();
+  let current_session_id = setup.session_strategy.session_id().unwrap();
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
     &sender,
     0,
@@ -835,8 +814,8 @@ async fn previous_run_log_does_not_override_system_session_id() {
     None,
   ));
 
-  start_new_session(&setup.session_strategy).await;
-  let next_session_id = setup.session_strategy.session_id().await.unwrap();
+  setup.session_strategy.start_new_session().unwrap();
+  let next_session_id = setup.session_strategy.session_id().unwrap();
   assert_ne!(current_session_id, next_session_id);
 
   let log = LogLine {
@@ -881,7 +860,7 @@ async fn pre_config_logs_trigger_session_id_update() {
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
 
-  let first_session_id = setup.session_strategy.session_id().await.unwrap();
+  let first_session_id = setup.session_strategy.session_id().unwrap();
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
     &sender,
     0,
@@ -893,8 +872,8 @@ async fn pre_config_logs_trigger_session_id_update() {
     None,
   ));
 
-  start_new_session(&setup.session_strategy).await;
-  let second_session_id = setup.session_strategy.session_id().await.unwrap();
+  setup.session_strategy.start_new_session().unwrap();
+  let second_session_id = setup.session_strategy.session_id().unwrap();
   assert_ne!(first_session_id, second_session_id);
 
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(

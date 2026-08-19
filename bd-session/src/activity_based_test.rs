@@ -5,9 +5,9 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::Strategy;
 use crate::activity_based::Callbacks;
-use crate::test::start_new_session;
+use crate::test::flush;
+use crate::{Strategy, StrategyWithWorker};
 use bd_time::TestTimeProvider;
 use pretty_assertions::assert_eq;
 use std::sync::Arc;
@@ -61,7 +61,7 @@ async fn generates_new_session_and_stores_it_if_none_exists() {
   let sdk_directory = TempDir::new().unwrap();
   let callbacks = Arc::new(MockCallbacks::default());
 
-  let strategy = Strategy::activity_based(
+  let StrategyWithWorker { strategy, .. } = Strategy::activity_based(
     sdk_directory.path(),
     Duration::seconds(30),
     callbacks.clone(),
@@ -70,7 +70,7 @@ async fn generates_new_session_and_stores_it_if_none_exists() {
 
   assert!(strategy.previous_process_session_id().is_none());
 
-  let session_id = strategy.session_id().await.unwrap();
+  let session_id = strategy.session_id().unwrap();
 
   assert_eq!(1, callbacks.session_id_changes.lock().len());
   assert_eq!(session_id, callbacks.session_id_changes.lock()[0]);
@@ -83,7 +83,7 @@ async fn try_current_session_id_fails_before_initialization() {
   let sdk_directory = TempDir::new().unwrap();
   let callbacks = Arc::new(MockCallbacks::default());
 
-  let strategy = Strategy::activity_based(
+  let StrategyWithWorker { strategy, .. } = Strategy::activity_based(
     sdk_directory.path(),
     Duration::seconds(30),
     callbacks.clone(),
@@ -100,14 +100,14 @@ async fn try_current_session_id_fails_before_initialization() {
 async fn try_current_session_id_returns_loaded_session() {
   let now = OffsetDateTime::now_utc();
   let sdk_directory = TempDir::new().unwrap();
-  let strategy = Strategy::activity_based(
+  let StrategyWithWorker { strategy, .. } = Strategy::activity_based(
     sdk_directory.path(),
     Duration::seconds(30),
     Arc::new(MockCallbacks::default()),
     Arc::new(TestTimeProvider::new(now)),
   );
 
-  let session_id = strategy.session_id().await.unwrap();
+  let session_id = strategy.session_id().unwrap();
 
   assert_eq!(session_id, strategy.try_current_session_id().unwrap());
 }
@@ -117,16 +117,16 @@ async fn try_current_session_id_rejects_callback_reentry() {
   let now = OffsetDateTime::now_utc();
   let sdk_directory = TempDir::new().unwrap();
   let callbacks = Arc::new(ReEntryCallbacks::default());
-  let strategy = Arc::new(Strategy::activity_based(
+  let StrategyWithWorker { strategy, .. } = Strategy::activity_based(
     sdk_directory.path(),
     Duration::seconds(30),
     callbacks.clone(),
     Arc::new(TestTimeProvider::new(now)),
-  ));
+  );
 
   callbacks.session_strategy.lock().replace(strategy.clone());
 
-  let session_id = strategy.session_id().await.unwrap();
+  let session_id = strategy.session_id().unwrap();
 
   assert_eq!(36, session_id.len());
   assert_eq!(
@@ -136,28 +136,21 @@ async fn try_current_session_id_rejects_callback_reentry() {
 }
 
 #[tokio::test]
-async fn prepared_session_id_runs_callback_only_after_apply() {
+async fn session_id_runs_callback_without_waiting_for_persistence() {
   let now = OffsetDateTime::now_utc();
   let sdk_directory = TempDir::new().unwrap();
   let callbacks = Arc::new(MockCallbacks::default());
 
-  let strategy = Strategy::activity_based(
+  let StrategyWithWorker { strategy, .. } = Strategy::activity_based(
     sdk_directory.path(),
     Duration::seconds(30),
     callbacks.clone(),
     Arc::new(TestTimeProvider::new(now)),
   );
 
-  let prepared = strategy.prepare_session_id().unwrap();
-  let session_id = prepared.current_session_id().to_string();
+  let session_id = strategy.session_id().unwrap();
 
   assert_eq!(session_id, strategy.try_current_session_id().unwrap());
-  assert!(callbacks.session_id_changes.lock().is_empty());
-
-  let callback = strategy.persist_prepared(prepared).await;
-  assert!(callbacks.session_id_changes.lock().is_empty());
-
-  strategy.run_prepared_callback(callback);
   assert_eq!(
     vec![session_id],
     callbacks.session_id_changes.lock().clone()
@@ -170,14 +163,14 @@ async fn generates_new_session_and_stores_it_if_old_exceeded_inactivity_threshol
   let sdk_directory = TempDir::new().unwrap();
   let callbacks = Arc::new(MockCallbacks::default());
 
-  let strategy = Strategy::activity_based(
+  let StrategyWithWorker { strategy, .. } = Strategy::activity_based(
     sdk_directory.path(),
     Duration::seconds(30),
     callbacks.clone(),
     Arc::new(TestTimeProvider::new(now)),
   );
 
-  let session_id = strategy.session_id().await.unwrap();
+  let session_id = strategy.session_id().unwrap();
 
   assert_eq!(1, callbacks.session_id_changes.lock().len());
   assert_eq!(session_id, callbacks.session_id_changes.lock()[0]);
@@ -191,20 +184,20 @@ async fn does_not_update_neither_session_nor_last_activity_if_within_max_write_i
   let time_provider = Arc::new(TestTimeProvider::new(now));
   let callbacks = Arc::new(MockCallbacks::default());
 
-  let strategy = Strategy::activity_based(
+  let StrategyWithWorker { strategy, .. } = Strategy::activity_based(
     sdk_directory.path(),
     Duration::seconds(30),
     callbacks.clone(),
     time_provider.clone(),
   );
 
-  let session_id = strategy.session_id().await.unwrap();
+  let session_id = strategy.session_id().unwrap();
 
   callbacks.clear();
 
   time_provider.advance(time::Duration::seconds(3));
 
-  let second_session_id = strategy.session_id().await.unwrap();
+  let second_session_id = strategy.session_id().unwrap();
 
   assert_eq!(session_id, second_session_id);
   assert!(callbacks.session_id_changes.lock().is_empty());
@@ -217,21 +210,21 @@ async fn updates_only_last_activity_date_if_after_max_write_interval() {
   let time_provider = Arc::new(TestTimeProvider::new(now));
   let callbacks = Arc::new(MockCallbacks::default());
 
-  let strategy = Strategy::activity_based(
+  let StrategyWithWorker { strategy, .. } = Strategy::activity_based(
     sdk_directory.path(),
     Duration::seconds(30),
     callbacks.clone(),
     time_provider.clone(),
   );
 
-  let session_id = strategy.session_id().await.unwrap();
+  let session_id = strategy.session_id().unwrap();
 
   callbacks.clear();
 
   let advanced_time = now + std::time::Duration::from_secs(20);
   time_provider.set_time(advanced_time);
 
-  let second_session_id = strategy.session_id().await.unwrap();
+  let second_session_id = strategy.session_id().unwrap();
 
   assert_eq!(session_id, second_session_id);
   assert!(callbacks.session_id_changes.lock().is_empty());
@@ -244,21 +237,21 @@ async fn updates_session_and_last_activity_after_inactivity_threshold_is_exceede
   let time_provider = Arc::new(TestTimeProvider::new(now));
   let callbacks = Arc::new(MockCallbacks::default());
 
-  let strategy = Strategy::activity_based(
+  let StrategyWithWorker { strategy, .. } = Strategy::activity_based(
     sdk_directory.path(),
     Duration::seconds(30),
     callbacks.clone(),
     time_provider.clone(),
   );
 
-  let session_id = strategy.session_id().await.unwrap();
+  let session_id = strategy.session_id().unwrap();
 
   callbacks.clear();
 
   let advanced_time = now + std::time::Duration::from_secs(31);
   time_provider.set_time(advanced_time);
 
-  let second_session_id = strategy.session_id().await.unwrap();
+  let second_session_id = strategy.session_id().unwrap();
 
   assert_eq!(1, callbacks.session_id_changes.lock().len());
   assert_ne!(session_id, second_session_id);
@@ -272,7 +265,7 @@ async fn refreshes_session_and_last_activity_after_reboot() {
   let time_provider = Arc::new(TestTimeProvider::new(now));
   let callbacks = Arc::new(MockCallbacks::default());
 
-  let strategy = Strategy::activity_based(
+  let StrategyWithWorker { strategy, .. } = Strategy::activity_based(
     sdk_directory.path(),
     Duration::seconds(30),
     callbacks.clone(),
@@ -282,7 +275,7 @@ async fn refreshes_session_and_last_activity_after_reboot() {
   let past_time = now - 5.seconds();
   time_provider.set_time(past_time);
 
-  let session_id = strategy.session_id().await.unwrap();
+  let session_id = strategy.session_id().unwrap();
 
   assert_eq!(1, callbacks.session_id_changes.lock().len());
   assert_eq!(session_id, callbacks.session_id_changes.lock()[0]);
@@ -295,22 +288,22 @@ async fn starts_new_session() {
   let time_provider = Arc::new(TestTimeProvider::new(now));
   let callbacks = Arc::new(MockCallbacks::default());
 
-  let strategy = Strategy::activity_based(
+  let StrategyWithWorker { strategy, .. } = Strategy::activity_based(
     sdk_directory.path(),
     Duration::seconds(30),
     callbacks.clone(),
     time_provider.clone(),
   );
 
-  let session_id = strategy.session_id().await.unwrap();
+  let session_id = strategy.session_id().unwrap();
   callbacks.clear();
 
   let advanced_time = now + 1.seconds();
   time_provider.set_time(advanced_time);
 
-  start_new_session(&strategy).await;
+  strategy.start_new_session().unwrap();
 
-  let next_session_id = strategy.session_id().await.unwrap();
+  let next_session_id = strategy.session_id().unwrap();
 
   assert_ne!(session_id, next_session_id);
   assert!(callbacks.session_id_changes.lock().is_empty());
@@ -324,18 +317,18 @@ async fn previous_session_id() {
   let time_provider = Arc::new(TestTimeProvider::new(now));
   let callbacks = Arc::new(MockCallbacks::default());
 
-  let strategy = Strategy::activity_based(
+  let StrategyWithWorker { strategy, .. } = Strategy::activity_based(
     sdk_directory.path(),
     Duration::seconds(30),
     callbacks,
     time_provider,
   );
 
-  start_new_session(&strategy).await;
+  strategy.start_new_session().unwrap();
 
   assert!(strategy.previous_process_session_id().is_none());
 
-  strategy.session_id().await.unwrap();
+  strategy.session_id().unwrap();
 
   assert!(strategy.previous_process_session_id().is_none());
 }
@@ -347,21 +340,24 @@ async fn flushes_state() {
   let time_provider = Arc::new(TestTimeProvider::new(now));
   let callbacks = Arc::new(MockCallbacks::default());
 
-  let strategy = Strategy::activity_based(
+  let StrategyWithWorker {
+    strategy,
+    persistence_worker: worker,
+  } = Strategy::activity_based(
     sdk_directory.path(),
     Duration::seconds(30),
     callbacks,
     time_provider.clone(),
   );
 
-  let session_id = strategy.session_id().await.unwrap();
+  let session_id = strategy.session_id().unwrap();
 
   let advanced_time = now + 1.seconds();
   time_provider.set_time(advanced_time);
 
-  let next_session_id = strategy.session_id().await.unwrap();
+  let next_session_id = strategy.session_id().unwrap();
 
-  strategy.flush().await;
+  flush(strategy.clone(), worker).await;
 
   assert_eq!(session_id, next_session_id);
 }

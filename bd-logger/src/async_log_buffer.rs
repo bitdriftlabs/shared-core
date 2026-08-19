@@ -48,7 +48,6 @@ use bd_proto::protos::client::api::debug_data_request::{
 use bd_proto::protos::client::api::{DebugDataRequest, debug_data_request};
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
-use bd_session::{PreparedSessionCallback, PreparedSessionOperation};
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_state::{
@@ -67,15 +66,10 @@ use std::mem::size_of_val;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration as StdDuration;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc;
 use tokio::time::Sleep;
-
-// Synchronous callers may invoke these bridges from latency-sensitive threads, so keep the
-// timeout well below ANR territory if the async logger task stalls.
-pub const SESSION_BRIDGE_TIMEOUT: StdDuration = StdDuration::from_secs(1);
 
 //
 // ReportProcessor
@@ -103,14 +97,8 @@ pub enum StateUpdateMessage {
   AddLogField(String, DataValue),
   RemoveLogField(String),
   SetFeatureFlagExposure(String, Option<String>),
-  SetMemoryPressureLevel {
-    level: MemoryPressureLevel,
-  },
+  SetMemoryPressureLevel { level: MemoryPressureLevel },
   SetEntityId(Option<String>),
-  PersistPreparedSession(
-    PreparedSessionOperation,
-    bd_completion::Sender<PreparedSessionCallback>,
-  ),
   FlushState(Option<bd_completion::Sender<()>>),
 }
 
@@ -125,9 +113,6 @@ impl MemorySized for StateUpdateMessage {
         },
         Self::SetMemoryPressureLevel { .. } => 0,
         Self::SetEntityId(entity_id) => entity_id.as_ref().map_or(0, String::len),
-        Self::PersistPreparedSession(operation, response_tx) => {
-          operation.estimated_size() + size_of_val(response_tx)
-        },
         Self::FlushState(sender) => size_of_val(sender),
       }
   }
@@ -305,22 +290,6 @@ impl Sender {
     }
     Ok(())
   }
-
-  pub fn persist_prepared_session(
-    &self,
-    prepared: PreparedSessionOperation,
-    timeout: StdDuration,
-  ) -> anyhow::Result<PreparedSessionCallback> {
-    let (response_tx, response_rx) = bd_completion::Sender::new();
-    self.try_send_state_update(StateUpdateMessage::PersistPreparedSession(
-      prepared,
-      response_tx,
-    ))?;
-
-    response_rx
-      .blocking_recv_with_timeout(timeout)
-      .map_err(|e| anyhow!("failed to receive prepared session ack from async logger: {e}"))
-  }
 }
 
 pub type AsyncLogBufferOrderedReceiver = OrderedReceiver<EmitLogMessage, StateUpdateMessage>;
@@ -356,7 +325,6 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   time_provider: Arc<dyn TimeProvider>,
   lifecycle_state: InitLifecycleState,
   sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
-
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
   last_session_id: Option<String>,
@@ -466,7 +434,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         time_provider,
         lifecycle_state,
         sdk_status_tracker,
-
         pending_workflow_debug_state: HashMap::new(),
         send_workflow_debug_state_delay: None,
         last_session_id: None,
@@ -608,7 +575,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             // Use the previous session ID if available and the provided timestamp.
             let session_id = match self.session_strategy.previous_process_session_id() {
               Some(session_id) => session_id,
-              None => self.session_strategy.session_id().await?,
+              None => self.session_strategy.session_id()?,
             };
             (
               session_id,
@@ -622,7 +589,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           Some(LogAttributesOverrides::OccurredAt(overridden_timestamp)) => {
             // Occurred at override provided. Emit log with overrides applied.
             (
-              self.session_strategy.session_id().await?,
+              self.session_strategy.session_id()?,
               overridden_timestamp,
               Some(LogFields::from([(
                 "_logged_at".into(),
@@ -633,7 +600,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           None => {
             // No overrides provided. Emit log without any overrides.
             (
-              self.session_strategy.session_id().await?,
+              self.session_strategy.session_id()?,
               metadata.timestamp,
               None,
             )
@@ -944,7 +911,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                   self.metadata_collector.remove_field(field_name.into());
                 },
                 StateUpdateMessage::SetFeatureFlagExposure(flag, variant) => {
-                  let session_id = match self.session_strategy.session_id().await {
+                  let session_id = match self.session_strategy.session_id() {
                     Ok(session_id) => session_id,
                     Err(e) => {
                       log::debug!(
@@ -1024,14 +991,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                     log::debug!("failed to persist entity ID state: {e}");
                   }
                 },
-                StateUpdateMessage::PersistPreparedSession(prepared, response_tx) => {
-                  let callback = self.session_strategy.persist_prepared(prepared).await;
-                  // TODO: If the synchronous caller has already timed out or dropped its receiver,
-                  // this callback token is lost. Fixing that requires a recoverable completion
-                  // path or a deliberate fallback that does not reintroduce cross-thread callback
-                  // execution and the deadlock risk this change set is avoiding.
-                  response_tx.send(callback);
-                },
                 StateUpdateMessage::FlushState(completion_tx) => {
                   let flush_stats_trigger = self.logging_state.flush_stats_trigger().clone();
                   let flush_stats = async move {
@@ -1063,10 +1022,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                     }
                   };
 
-                  let session_strategy = self.session_strategy.clone();
-                  let flush_session = async {
-                    session_strategy.flush().await;
-                  };
+                  let flush_session = self.session_strategy.flush();
 
                   let persist_workflows = async {
                     if let Some(workflows_engine) = self.logging_state.workflows_engine() {
@@ -1096,14 +1052,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         () = self.resource_utilization_reporter.run() => {},
         () = self.session_replay_recorder.run() => {},
         () = self.events_listener.run() => {},
-        () = &mut local_shutdown => {
-          return self;
-        },
-        () = &mut self_shutdown => {
-          return self;
-        },
+        () = &mut local_shutdown => break,
+        () = &mut self_shutdown => break,
       }
     }
+
+    self
   }
 
   async fn send_debug_data(&mut self) {
