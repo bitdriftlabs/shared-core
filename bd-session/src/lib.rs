@@ -43,7 +43,7 @@ use bd_client_common::PlatformMutex;
 use bd_proto::protos::client::api::StateUpdateRequest;
 use bd_proto::protos::client::api::state_update_request::StartedSession;
 use bd_time::OffsetDateTimeExt as _;
-use persistence::{ActivityState, PersistedSessionState, StartedSessionRecord, Store};
+use persistence::{PersistedSessionState, StartedSessionRecord, Store};
 use std::cell::Cell;
 use std::future::Future;
 use std::path::Path;
