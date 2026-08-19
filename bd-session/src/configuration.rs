@@ -28,7 +28,7 @@ impl Configuration {
     time_provider: Arc<dyn TimeProvider>,
   ) -> Self {
     Self {
-      initial_session_id,
+      initial_session_id: Self::non_empty_session_id(initial_session_id),
       inactivity_timeout,
       time_provider,
     }
@@ -122,7 +122,7 @@ impl Configuration {
       |state| state.persisted.previous_process_session_id.clone(),
     );
     self.new_session(
-      session_id.unwrap_or_else(Self::generate_session_id),
+      Self::non_empty_session_id(session_id).unwrap_or_else(Self::generate_session_id),
       previous_process_session_id,
       pending_started_sessions,
     )
@@ -210,6 +210,10 @@ impl Configuration {
 
   fn generate_session_id() -> String {
     Uuid::new_v4().to_string()
+  }
+
+  fn non_empty_session_id(session_id: Option<String>) -> Option<String> {
+    session_id.filter(|session_id| !session_id.is_empty())
   }
 }
 
