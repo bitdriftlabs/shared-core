@@ -34,6 +34,10 @@ pub mod test;
 mod lib_test;
 
 #[cfg(test)]
+#[path = "./persistence_test.rs"]
+mod persistence_test;
+
+#[cfg(test)]
 #[ctor::ctor(unsafe)]
 fn test_global_init() {
   bd_test_helpers_core::test_global_init();
@@ -171,6 +175,9 @@ impl StrategyWithWorker {
 }
 
 impl Strategy {
+  /// Creates a session strategy from the canonical mobile SDK configuration.
+  ///
+  /// Empty initial session IDs are treated as absent and replaced with generated UUIDs.
   pub fn configuration(
     sdk_directory: impl AsRef<Path>,
     initial_session_id: Option<String>,
@@ -267,6 +274,8 @@ impl Strategy {
   }
 
   /// Creates a new session and schedules persistence without waiting for disk I/O.
+  ///
+  /// An empty session ID is treated as absent and replaced with a generated UUID.
   pub fn start_new_session(&self, session_id: Option<String>) -> anyhow::Result<()> {
     self.ensure_not_in_callback("start_new_session")?;
 
