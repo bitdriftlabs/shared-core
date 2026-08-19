@@ -225,6 +225,12 @@ impl Configuration {
 }
 
 pub trait Callbacks: Send + Sync {
+  /// Receives the ID associated with a session transition after the in-memory state is updated.
+  ///
+  /// Callbacks from overlapping transitions can be delivered in a different order from those
+  /// transitions. Implementations should treat `session_id` as the ID for that individual
+  /// transition, not as an ordered view of the current session. Query
+  /// [`crate::Strategy::session_id`] when the current session ID is required.
   fn session_id_changed(&self, session_id: &str);
 }
 
