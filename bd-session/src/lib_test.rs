@@ -7,65 +7,41 @@
 
 use super::test::flush;
 use super::{PendingStateUpdate, Strategy, StrategyWithWorker};
-use crate::persistence::{BackendState, PersistedSessionState, Store};
-use crate::{activity_based, fixed};
+use crate::persistence::{ActivityState, PersistedSessionState, Store};
+use crate::configuration;
 use bd_proto::protos::client::api::StateUpdateRequest;
 use bd_time::TestTimeProvider;
 use pretty_assertions::assert_eq;
-use std::collections::VecDeque;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::{Duration, OffsetDateTime};
 
 //
-// FixedCallbacks
+// TestCallbacks
 //
 
-struct FixedCallbacks {
-  session_ids: parking_lot::Mutex<VecDeque<String>>,
-}
+struct TestCallbacks;
 
-impl FixedCallbacks {
-  fn new(session_ids: &[&str]) -> Self {
-    Self {
-      session_ids: parking_lot::Mutex::new(
-        session_ids
-          .iter()
-          .map(|session_id| (*session_id).to_string())
-          .collect(),
-      ),
-    }
-  }
-}
-
-impl fixed::Callbacks for FixedCallbacks {
-  fn generate_session_id(&self) -> anyhow::Result<String> {
-    self
-      .session_ids
-      .lock()
-      .pop_front()
-      .ok_or_else(|| anyhow::anyhow!("missing test session id"))
-  }
-}
-
-struct ActivityCallbacks;
-
-impl activity_based::Callbacks for ActivityCallbacks {
+impl configuration::Callbacks for TestCallbacks {
   fn session_id_changed(&self, _session_id: &str) {}
 }
 
-fn fixed_strategy(sdk_directory: &TempDir, session_ids: &[&str]) -> StrategyWithWorker {
-  Strategy::fixed(
+fn no_timeout_strategy(sdk_directory: &TempDir, initial_session_id: &str) -> StrategyWithWorker {
+  Strategy::configuration(
     sdk_directory.path(),
-    Arc::new(FixedCallbacks::new(session_ids)),
+    Some(initial_session_id.to_string()),
+    None,
+    Arc::new(TestCallbacks),
+    Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
   )
 }
 
-fn activity_strategy(sdk_directory: &TempDir, now: OffsetDateTime) -> StrategyWithWorker {
-  Strategy::activity_based(
+fn inactivity_timeout_strategy(sdk_directory: &TempDir, now: OffsetDateTime) -> StrategyWithWorker {
+  Strategy::configuration(
     sdk_directory.path(),
-    Duration::minutes(30),
-    Arc::new(ActivityCallbacks),
+    None,
+    Some(Duration::minutes(30)),
+    Arc::new(TestCallbacks),
     Arc::new(TestTimeProvider::new(now)),
   )
 }
@@ -88,7 +64,7 @@ async fn persistence_flusher_coalesces_to_latest_state_on_shutdown() {
   let StrategyWithWorker {
     strategy,
     persistence_worker: worker,
-  } = fixed_strategy(&sdk_directory, &["session-1", "session-2"]);
+  } = no_timeout_strategy(&sdk_directory, "session-1");
   let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
   let flusher = tokio::spawn(worker.run(
     async move {
@@ -98,7 +74,7 @@ async fn persistence_flusher_coalesces_to_latest_state_on_shutdown() {
   ));
 
   let first_session_id = strategy.session_id().unwrap();
-  strategy.start_new_session().unwrap();
+  strategy.start_new_session(Some("session-2".to_string())).unwrap();
   let second_session_id = strategy.session_id().unwrap();
 
   let _ignored = shutdown_tx.send(());
@@ -122,7 +98,7 @@ async fn flush_request_waits_for_persistence_worker() {
   let StrategyWithWorker {
     strategy,
     persistence_worker: worker,
-  } = fixed_strategy(&sdk_directory, &["session-1"]);
+  } = no_timeout_strategy(&sdk_directory, "session-1");
   let session_id = strategy.session_id().unwrap();
 
   let flush_strategy = strategy.clone();
@@ -155,7 +131,7 @@ async fn flush_retries_persistence_after_a_failed_write() {
   let StrategyWithWorker {
     strategy,
     persistence_worker: worker,
-  } = fixed_strategy(&sdk_directory, &["session-1"]);
+  } = no_timeout_strategy(&sdk_directory, "session-1");
   let session_id = strategy.session_id().unwrap();
 
   let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
@@ -184,7 +160,7 @@ async fn flush_retries_persistence_after_a_failed_write() {
 #[tokio::test]
 async fn handshake_synthesizes_current_session_after_pending_queue_is_acked() {
   let sdk_directory = TempDir::new().unwrap();
-  let StrategyWithWorker { strategy, .. } = fixed_strategy(&sdk_directory, &["session-1"]);
+  let StrategyWithWorker { strategy, .. } = no_timeout_strategy(&sdk_directory, "session-1");
 
   let session_id = strategy.session_id().unwrap();
   let pending = strategy.pending_state_update().unwrap();
@@ -207,10 +183,10 @@ async fn handshake_synthesizes_current_session_after_pending_queue_is_acked() {
 async fn acknowledge_state_update_ignores_non_prefix_updates() {
   let sdk_directory = TempDir::new().unwrap();
   let StrategyWithWorker { strategy, .. } =
-    fixed_strategy(&sdk_directory, &["session-1", "session-2"]);
+    no_timeout_strategy(&sdk_directory, "session-1");
 
   strategy.session_id().unwrap();
-  strategy.start_new_session().unwrap();
+  strategy.start_new_session(Some("session-2".to_string())).unwrap();
 
   let pending = strategy.pending_state_update().unwrap();
   assert_eq!(
@@ -235,7 +211,7 @@ async fn acknowledge_state_update_ignores_non_prefix_updates() {
 #[tokio::test]
 async fn subscribe_updates_changes_on_initialization_and_acknowledgement() {
   let sdk_directory = TempDir::new().unwrap();
-  let StrategyWithWorker { strategy, .. } = fixed_strategy(&sdk_directory, &["session-1"]);
+  let StrategyWithWorker { strategy, .. } = no_timeout_strategy(&sdk_directory, "session-1");
   let updates = strategy.subscribe_updates();
 
   assert_eq!(0, *updates.borrow());
@@ -254,7 +230,7 @@ async fn restart_rebuilds_pending_queue_from_persisted_state() {
   let StrategyWithWorker {
     strategy: first_strategy,
     persistence_worker: first_worker,
-  } = fixed_strategy(&sdk_directory, &["session-1"]);
+  } = no_timeout_strategy(&sdk_directory, "session-1");
   let first_session_id = first_strategy.session_id().unwrap();
   flush(first_strategy.clone(), first_worker).await;
   drop(first_strategy);
@@ -262,7 +238,7 @@ async fn restart_rebuilds_pending_queue_from_persisted_state() {
   let StrategyWithWorker {
     strategy: restarted_strategy,
     ..
-  } = fixed_strategy(&sdk_directory, &["session-2"]);
+  } = no_timeout_strategy(&sdk_directory, "session-2");
   let pending = restarted_strategy.pending_state_update().unwrap();
 
   assert_eq!(
@@ -278,7 +254,7 @@ async fn restart_rebuilds_pending_queue_from_persisted_state() {
 #[tokio::test]
 async fn handshake_does_not_duplicate_current_session_when_queue_already_contains_it() {
   let sdk_directory = TempDir::new().unwrap();
-  let StrategyWithWorker { strategy, .. } = fixed_strategy(&sdk_directory, &["session-1"]);
+  let StrategyWithWorker { strategy, .. } = no_timeout_strategy(&sdk_directory, "session-1");
 
   strategy.session_id().unwrap();
 
@@ -291,13 +267,13 @@ async fn handshake_does_not_duplicate_current_session_when_queue_already_contain
 }
 
 #[tokio::test]
-async fn switching_from_fixed_to_activity_resyncs_persisted_backend() {
+async fn enabling_inactivity_timeout_resyncs_persisted_state() {
   let sdk_directory = TempDir::new().unwrap();
 
   let StrategyWithWorker {
     strategy: first_strategy,
     persistence_worker: first_worker,
-  } = fixed_strategy(&sdk_directory, &["fixed-session"]);
+  } = no_timeout_strategy(&sdk_directory, "no-timeout-session");
   let first_session_id = first_strategy.session_id().unwrap();
   flush(first_strategy.clone(), first_worker).await;
   drop(first_strategy);
@@ -305,7 +281,7 @@ async fn switching_from_fixed_to_activity_resyncs_persisted_backend() {
   let StrategyWithWorker {
     strategy: restarted_strategy,
     persistence_worker: restarted_worker,
-  } = activity_strategy(&sdk_directory, OffsetDateTime::now_utc());
+  } = inactivity_timeout_strategy(&sdk_directory, OffsetDateTime::now_utc());
   let pending = restarted_strategy.pending_state_update().unwrap();
   let restarted_session_id = restarted_strategy.try_current_session_id().unwrap();
   flush(restarted_strategy.clone(), restarted_worker).await;
@@ -320,19 +296,19 @@ async fn switching_from_fixed_to_activity_resyncs_persisted_backend() {
     started_session_ids(pending.request())
   );
   assert!(matches!(
-    persisted_state(&sdk_directory).backend,
-    BackendState::ActivityBased { .. }
+    persisted_state(&sdk_directory).activity_state,
+    ActivityState::InactivityTimeout { .. }
   ));
 }
 
 #[tokio::test]
-async fn switching_from_activity_to_fixed_resyncs_persisted_backend() {
+async fn disabling_inactivity_timeout_resyncs_persisted_state() {
   let sdk_directory = TempDir::new().unwrap();
 
   let StrategyWithWorker {
     strategy: first_strategy,
     persistence_worker: first_worker,
-  } = activity_strategy(&sdk_directory, OffsetDateTime::now_utc());
+  } = inactivity_timeout_strategy(&sdk_directory, OffsetDateTime::now_utc());
   let first_session_id = first_strategy.session_id().unwrap();
   flush(first_strategy.clone(), first_worker).await;
   drop(first_strategy);
@@ -340,7 +316,7 @@ async fn switching_from_activity_to_fixed_resyncs_persisted_backend() {
   let StrategyWithWorker {
     strategy: restarted_strategy,
     persistence_worker: restarted_worker,
-  } = fixed_strategy(&sdk_directory, &["fixed-session"]);
+  } = no_timeout_strategy(&sdk_directory, "no-timeout-session");
   let pending = restarted_strategy.pending_state_update().unwrap();
   let restarted_session_id = restarted_strategy.try_current_session_id().unwrap();
   flush(restarted_strategy.clone(), restarted_worker).await;
@@ -355,7 +331,7 @@ async fn switching_from_activity_to_fixed_resyncs_persisted_backend() {
     started_session_ids(pending.request())
   );
   assert!(matches!(
-    persisted_state(&sdk_directory).backend,
-    BackendState::Fixed
+    persisted_state(&sdk_directory).activity_state,
+    ActivityState::NoInactivityTimeout
   ));
 }
