@@ -41,8 +41,6 @@ pub struct PersistedSessionState {
 //
 
 /// Durable state needed only when an inactivity timeout is configured.
-///
-/// Variant field IDs are intentionally preserved so existing session-state files remain readable.
 #[proto_serializable]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum ActivityState {
