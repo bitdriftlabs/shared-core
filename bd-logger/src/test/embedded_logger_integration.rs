@@ -75,6 +75,7 @@ impl Setup {
         Arc::new(UUIDCallbacks),
       )),
       metadata_provider: Arc::new(TestMetadataProvider),
+      initial_ootb_fields: [].into(),
       store,
       resource_utilization_target: Box::new(EmptyTarget),
       session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),

@@ -3728,6 +3728,7 @@ fn runtime_caching() {
         Arc::new(UUIDCallbacks),
       )),
       static_metadata: Arc::new(EmptyMetadata),
+      initial_ootb_fields: [].into(),
       store,
       resource_utilization_target: Box::new(EmptyTarget),
       session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
