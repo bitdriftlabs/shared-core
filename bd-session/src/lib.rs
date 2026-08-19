@@ -34,10 +34,6 @@ pub mod test;
 mod lib_test;
 
 #[cfg(test)]
-#[path = "./persistence_test.rs"]
-mod persistence_test;
-
-#[cfg(test)]
 #[ctor::ctor(unsafe)]
 fn test_global_init() {
   bd_test_helpers_core::test_global_init();
