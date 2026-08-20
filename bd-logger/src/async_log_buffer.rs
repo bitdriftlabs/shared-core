@@ -95,6 +95,7 @@ impl ReportProcessor for () {
 #[derive(Debug)]
 pub enum StateUpdateMessage {
   AddLogField(String, DataValue),
+  UpdateOotbLogField(String, DataValue),
   RemoveLogField(String),
   SetFeatureFlagExposure(String, Option<String>),
   SetMemoryPressureLevel { level: MemoryPressureLevel },
@@ -106,7 +107,9 @@ impl MemorySized for StateUpdateMessage {
   fn size(&self) -> usize {
     size_of_val(self)
       + match self {
-        Self::AddLogField(key, value) => key.size() + value.size(),
+        Self::AddLogField(key, value) | Self::UpdateOotbLogField(key, value) => {
+          key.size() + value.size()
+        },
         Self::RemoveLogField(field_name) => field_name.len(),
         Self::SetFeatureFlagExposure(flag, variant) => {
           flag.len() + variant.as_ref().map_or(0, String::len)
@@ -906,6 +909,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                   {
                     log::warn!("failed to add log field ({key:?}): {e}");
                   }
+                },
+                StateUpdateMessage::UpdateOotbLogField(key, value) => {
+                  self.metadata_collector.update_ootb_field(key.into(), value);
                 },
                 StateUpdateMessage::RemoveLogField(field_name) => {
                   self.metadata_collector.remove_field(field_name.into());

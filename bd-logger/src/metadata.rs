@@ -228,6 +228,10 @@ impl MetadataCollector {
     Ok(())
   }
 
+  pub(crate) fn update_ootb_field(&mut self, key: LogFieldKey, value: LogFieldValue) {
+    self.fields.insert(key, AnnotatedLogField::new_ootb(value));
+  }
+
   pub(crate) fn remove_field(&mut self, field_key: LogFieldKey) {
     if let Entry::Occupied(entry) = self.fields.entry(field_key)
       && entry.get().kind != LogFieldKind::Ootb

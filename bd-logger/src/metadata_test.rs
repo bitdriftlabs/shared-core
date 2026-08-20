@@ -263,6 +263,28 @@ fn collector_does_not_mutate_initial_ootb_fields() {
 }
 
 #[test]
+fn collector_updates_ootb_fields() {
+  let provider = Arc::new(LogMetadata {
+    timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
+    ..Default::default()
+  });
+  let mut collector =
+    MetadataCollector::new(provider, [("initial_key".into(), "initial".into())].into());
+
+  collector.update_ootb_field("initial_key".into(), "updated".into());
+  collector.update_ootb_field("_dynamic_key".into(), "dynamic".into());
+
+  assert_eq!(
+    &AnnotatedLogField::new_ootb("updated"),
+    &collector.fields["initial_key"]
+  );
+  assert_eq!(
+    &AnnotatedLogField::new_ootb("dynamic"),
+    &collector.fields["_dynamic_key"]
+  );
+}
+
+#[test]
 fn collector_initial_ootb_fields_override_provider_custom_fields() {
   let provider = Arc::new(LogMetadata {
     timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
