@@ -552,11 +552,11 @@ impl LoggerHandle {
     }
   }
 
-  pub fn start_new_session(&self) -> anyhow::Result<()> {
+  pub fn start_new_session(&self, session_id: Option<String>) -> anyhow::Result<()> {
     let is_allowed = LOGGER_GUARD.with(|cell| cell.try_borrow().is_ok());
 
     if is_allowed {
-      self.session_strategy.start_new_session()
+      self.session_strategy.start_new_session(session_id)
     } else {
       Err(anyhow::anyhow!(
         "operation not allowed from within a field provider"

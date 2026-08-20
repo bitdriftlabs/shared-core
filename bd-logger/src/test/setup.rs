@@ -25,8 +25,8 @@ use bd_proto::protos::client::api::configuration_update_ack::Nack;
 use bd_proto::protos::config::v1::config::{BufferConfigList, buffer_config};
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::FeatureFlag as _;
-use bd_session::fixed::UUIDCallbacks;
-use bd_session::{Strategy, StrategyWithWorker};
+use bd_session::StrategyWithWorker;
+use bd_session::test::no_timeout;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_test_helpers::config_helper::{
   configuration_update,
@@ -249,7 +249,7 @@ impl Setup {
     let (upload_tick_tx, upload_ticker) = TestTicker::new();
     let session = options
       .session_strategy
-      .unwrap_or_else(|| Strategy::fixed(options.sdk_directory.path(), Arc::new(UUIDCallbacks)));
+      .unwrap_or_else(|| no_timeout(options.sdk_directory.path()));
 
     let (logger, _, flush_trigger) = crate::LoggerBuilder::new(InitParams {
       sdk_directory: options.sdk_directory.path().into(),
@@ -598,7 +598,7 @@ pub fn create_minimal_init_params(sdk_directory: &std::path::Path) -> InitParams
   let device_store = Arc::new(Store::new(Box::new(
     bd_test_helpers::session::InMemoryStorage::default(),
   )));
-  let session = Strategy::fixed(sdk_directory, Arc::new(UUIDCallbacks));
+  let session = no_timeout(sdk_directory);
 
   InitParams {
     sdk_directory: sdk_directory.into(),
