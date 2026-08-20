@@ -160,13 +160,14 @@ pub async fn start(sdk_directory: &Path, args: &LoggerArgs, port: u16) -> anyhow
 }
 
 impl Remote for Server {
-  async fn breakpoint(self, _: tarpc::context::Context) {
+  fn breakpoint(self, _: tarpc::context::Context) -> impl Future<Output = ()> {
     #[allow(unused)]
     if current_logger().is_some() {
       unsafe {
         libc::raise(libc::SIGTRAP);
       }
     }
+    future::ready(())
   }
 
   async fn stop(self, _: tarpc::context::Context) {
@@ -174,13 +175,14 @@ impl Remote for Server {
     exit(0);
   }
 
-  async fn set_sleep_mode(self, _: tarpc::context::Context, enabled: bool) {
+  fn set_sleep_mode(self, _: tarpc::context::Context, enabled: bool) -> impl Future<Output = ()> {
     if let Some(logger) = current_logger() {
       logger.set_sleep_mode(enabled);
     }
+    future::ready(())
   }
 
-  async fn log(
+  fn log(
     self,
     _: ::tarpc::context::Context,
     log_level: LogLevel,
@@ -189,7 +191,7 @@ impl Remote for Server {
     fields: HashMap<String, String>,
     capture_session: bool,
     block: bool,
-  ) {
+  ) -> impl Future<Output = ()> {
     if let Some(logger) = current_logger() {
       logger.log(
         log_level.into(),
@@ -200,61 +202,75 @@ impl Remote for Server {
         block,
       );
     }
+    future::ready(())
   }
 
-  async fn process_crash_reports(self, _: ::tarpc::context::Context) {
+  fn process_crash_reports(self, _: ::tarpc::context::Context) -> impl Future<Output = ()> {
     if let Some(logger) = current_logger() {
       logger.process_crash_reports();
     }
+    future::ready(())
   }
 
-  async fn get_runtime_value(
+  fn get_runtime_value(
     self,
     _: ::tarpc::context::Context,
     name: String,
     value_type: RuntimeValueType,
-  ) -> String {
-    current_logger().as_ref().map_or_else(
+  ) -> impl Future<Output = String> {
+    future::ready(current_logger().as_ref().map_or_else(
       || "<unset>".to_owned(),
       |logger| logger.get_runtime_value(&name, value_type),
+    ))
+  }
+
+  fn get_api_url(self, _: ::tarpc::context::Context) -> impl Future<Output = String> {
+    future::ready(self.api_url)
+  }
+
+  fn get_current_session_id(
+    self,
+    _: ::tarpc::context::Context,
+  ) -> impl Future<Output = Option<String>> {
+    future::ready(
+      current_logger().and_then(|logger| match logger.current_session_id() {
+        Ok(session_id) => Some(session_id),
+        Err(e) => {
+          log::warn!("failed to get current session ID: {e}");
+          None
+        },
+      }),
     )
   }
 
-  async fn get_api_url(self, _: ::tarpc::context::Context) -> String {
-    self.api_url
-  }
-
-  async fn get_current_session_id(self, _: ::tarpc::context::Context) -> Option<String> {
-    current_logger().and_then(|logger| match logger.current_session_id() {
-      Ok(session_id) => Some(session_id),
-      Err(e) => {
-        log::warn!("failed to get current session ID: {e}");
-        None
-      },
-    })
-  }
-
-  async fn start_new_session(self, _: ::tarpc::context::Context) {
+  fn start_new_session(self, _: ::tarpc::context::Context) -> impl Future<Output = ()> {
     if let Some(logger) = current_logger() {
       logger.start_new_session();
     }
+    future::ready(())
   }
 
-  async fn set_feature_flag(
+  fn set_feature_flag(
     self,
     _: ::tarpc::context::Context,
     name: String,
     variant: Option<String>,
-  ) {
+  ) -> impl Future<Output = ()> {
     if let Some(logger) = current_logger() {
       logger.set_feature_flag(name, variant);
     }
+    future::ready(())
   }
 
-  async fn set_entity_id(self, _: ::tarpc::context::Context, entity_id: String) {
+  fn set_entity_id(
+    self,
+    _: ::tarpc::context::Context,
+    entity_id: String,
+  ) -> impl Future<Output = ()> {
     if let Some(logger) = current_logger() {
       logger.set_entity_id(&entity_id);
       log_current_entity(logger.as_ref());
     }
+    future::ready(())
   }
 }

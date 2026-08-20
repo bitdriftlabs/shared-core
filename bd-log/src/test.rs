@@ -24,9 +24,9 @@ impl TestExporter {
 }
 
 impl SpanExporter for TestExporter {
-  async fn export(&self, mut batch: Vec<SpanData>) -> OTelSdkResult {
+  fn export(&self, mut batch: Vec<SpanData>) -> impl Future<Output = OTelSdkResult> {
     self.0.lock().unwrap().append(&mut batch);
-    Ok(())
+    std::future::ready(Ok(()))
   }
 }
 
