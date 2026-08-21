@@ -146,7 +146,6 @@ pub fn get_public_api_proto_configs() -> Vec<ProtoConfig> {
         "../api/src/bitdrift/public/unary/issues/v1/issues.proto",
         "../api/src/bitdrift/public/unary/charts/v1/chart_id.proto",
         "../api/src/bitdrift/public/unary/charts/v1/chart_metadata.proto",
-        "../api/src/bitdrift/public/unary/admin/v1/access.proto",
         "../api/src/bitdrift/public/unary/common/v1/common.proto",
         "../api/src/bitdrift/public/unary/workflows/v1/workflow.proto",
         "../api/src/bitdrift/public/unary/workflows/v1/workflow_metadata.proto",
@@ -163,6 +162,7 @@ pub fn get_public_api_proto_configs() -> Vec<ProtoConfig> {
     ProtoConfig {
       output_dir: "src/protos/public_api/admin",
       inputs: &[
+        "../api/src/bitdrift/public/unary/admin/v1/access.proto",
         "../api/src/bitdrift/public/unary/admin/v1/api.proto",
         "../api/src/bitdrift/public/unary/admin/v1/connector.proto",
         "../api/src/bitdrift/public/unary/admin/v1/keys.proto",
