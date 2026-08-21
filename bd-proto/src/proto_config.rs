@@ -168,6 +168,7 @@ pub fn get_public_api_proto_configs() -> Vec<ProtoConfig> {
         "../api/src/bitdrift/public/unary/admin/v1/keys.proto",
         "../api/src/bitdrift/public/unary/admin/v1/notifications.proto",
         "../api/src/bitdrift/public/unary/admin/v1/permission.proto",
+        "../api/src/bitdrift/public/unary/admin/v1/teams.proto",
         "../api/src/bitdrift/public/unary/admin/v1/view.proto",
       ],
       includes: PROTO_INCLUDES,

@@ -1147,6 +1147,179 @@ pub mod time_range {
     }
 }
 
+// @@protoc_insertion_point(message:bitdrift.public.unary.common.v1.CanEditMetadata)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct CanEditMetadata {
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.common.v1.CanEditMetadata.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a CanEditMetadata {
+    fn default() -> &'a CanEditMetadata {
+        <CanEditMetadata as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl CanEditMetadata {
+    pub fn new() -> CanEditMetadata {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(0);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<CanEditMetadata>(
+            "CanEditMetadata",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for CanEditMetadata {
+    const NAME: &'static str = "CanEditMetadata";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> CanEditMetadata {
+        CanEditMetadata::new()
+    }
+
+    fn clear(&mut self) {
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static CanEditMetadata {
+        static instance: CanEditMetadata = CanEditMetadata {
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for CanEditMetadata {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("CanEditMetadata").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for CanEditMetadata {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for CanEditMetadata {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `CanEditMetadata`
+pub mod can_edit_metadata {
+    #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
+    // @@protoc_insertion_point(enum:bitdrift.public.unary.common.v1.CanEditMetadata.CanEditMetadata)
+    pub enum CanEditMetadata {
+        // @@protoc_insertion_point(enum_value:bitdrift.public.unary.common.v1.CanEditMetadata.CanEditMetadata.UNKNOWN)
+        UNKNOWN = 0,
+        // @@protoc_insertion_point(enum_value:bitdrift.public.unary.common.v1.CanEditMetadata.CanEditMetadata.YES)
+        YES = 1,
+        // @@protoc_insertion_point(enum_value:bitdrift.public.unary.common.v1.CanEditMetadata.CanEditMetadata.NO_PERMISSION_NOT_EDITOR)
+        NO_PERMISSION_NOT_EDITOR = 2,
+    }
+
+    impl ::protobuf::Enum for CanEditMetadata {
+        const NAME: &'static str = "CanEditMetadata";
+
+        fn value(&self) -> i32 {
+            *self as i32
+        }
+
+        fn from_i32(value: i32) -> ::std::option::Option<CanEditMetadata> {
+            match value {
+                0 => ::std::option::Option::Some(CanEditMetadata::UNKNOWN),
+                1 => ::std::option::Option::Some(CanEditMetadata::YES),
+                2 => ::std::option::Option::Some(CanEditMetadata::NO_PERMISSION_NOT_EDITOR),
+                _ => ::std::option::Option::None
+            }
+        }
+
+        fn from_str(str: &str) -> ::std::option::Option<CanEditMetadata> {
+            match str {
+                "UNKNOWN" => ::std::option::Option::Some(CanEditMetadata::UNKNOWN),
+                "YES" => ::std::option::Option::Some(CanEditMetadata::YES),
+                "NO_PERMISSION_NOT_EDITOR" => ::std::option::Option::Some(CanEditMetadata::NO_PERMISSION_NOT_EDITOR),
+                _ => ::std::option::Option::None
+            }
+        }
+
+        const VALUES: &'static [CanEditMetadata] = &[
+            CanEditMetadata::UNKNOWN,
+            CanEditMetadata::YES,
+            CanEditMetadata::NO_PERMISSION_NOT_EDITOR,
+        ];
+    }
+
+    impl ::protobuf::EnumFull for CanEditMetadata {
+        fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().enum_by_package_relative_name("CanEditMetadata.CanEditMetadata").unwrap()).clone()
+        }
+
+        fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
+            let index = *self as usize;
+            Self::enum_descriptor().value_by_index(index)
+        }
+    }
+
+    impl ::std::default::Default for CanEditMetadata {
+        fn default() -> Self {
+            CanEditMetadata::UNKNOWN
+        }
+    }
+
+    impl CanEditMetadata {
+        pub(in super) fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
+            ::protobuf::reflect::GeneratedEnumDescriptorData::new::<CanEditMetadata>("CanEditMetadata.CanEditMetadata")
+        }
+    }
+}
+
 // @@protoc_insertion_point(message:bitdrift.public.unary.common.v1.SessionStatusInfo)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct SessionStatusInfo {
@@ -1652,24 +1825,26 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x87\x01\n\x11RelativeTimeRange\x12?\n\x08duration\x18\x01\x20\x01(\x0b2\
     \x19.google.protobuf.DurationR\x08durationB\x08\xfaB\x05\x8a\x01\x02\x10\
     \x01\x121\n\x06offset\x18\x02\x20\x01(\x0b2\x19.google.protobuf.Duration\
-    R\x06offsetB\x16\n\x0ftime_range_type\x12\x03\xf8B\x01\"\xaf\x02\n\x11Se\
-    ssionStatusInfo\x120\n\x14session_soft_deleted\x18\x01\x20\x01(\x08R\x12\
-    sessionSoftDeleted\x123\n\x16session_seen_on_device\x18\x02\x20\x01(\x08\
-    R\x13sessionSeenOnDevice\x12C\n\x1esession_triggered_but_rejected\x18\
-    \x03\x20\x01(\x08R\x1bsessionTriggeredButRejected\x12C\n\x1esession_trig\
-    gered_and_accepted\x18\x04\x20\x01(\x08R\x1bsessionTriggeredAndAccepted\
-    \x12)\n\x10session_uploaded\x18\x05\x20\x01(\x08R\x0fsessionUploaded*.\n\
-    \rSortDirection\x12\r\n\tASCENDING\x10\0\x12\x0e\n\nDESCENDING\x10\x01*\
-    \xc8\x01\n\x08Operator\x12\t\n\x05EQUAL\x10\0\x12\r\n\tNOT_EQUAL\x10\x01\
-    \x12\x10\n\x0cGREATER_THAN\x10\x02\x12\x19\n\x15GREATER_THAN_OR_EQUAL\
-    \x10\x03\x12\r\n\tLESS_THAN\x10\x04\x12\x16\n\x12LESS_THAN_OR_EQUAL\x10\
-    \x05\x12\x0c\n\x08WILDCARD\x10\x06\x12\x10\n\x0cNOT_WILDCARD\x10\x07\x12\
-    \x06\n\x02IN\x10\t\x12\n\n\x06NOT_IN\x10\n\x12\n\n\x06SEARCH\x10\x0b\x12\
-    \x0e\n\nNOT_SEARCH\x10\x0c*\x93\x01\n\nPermission\x12\x0b\n\x07UNKNOWN\
-    \x10\0\x12\x10\n\x0cYES_IS_OWNER\x10\x01\x12\x19\n\x15YES_SHARED_EXPLICI\
-    TLY\x10\x02\x12\x18\n\x14YES_SHARED_WITH_TEAM\x10\x03\x12\x17\n\x13YES_S\
-    HARED_WITH_ORG\x10\x04\x12\x06\n\x02NO\x10\x05\x12\x10\n\x0cYES_IS_ADMIN\
-    \x10\x06J\xcd3\n\x07\x12\x05\x06\0\xa0\x01\x01\n\xb8\x02\n\x01\x0c\x12\
+    R\x06offsetB\x16\n\x0ftime_range_type\x12\x03\xf8B\x01\"X\n\x0fCanEditMe\
+    tadata\"E\n\x0fCanEditMetadata\x12\x0b\n\x07UNKNOWN\x10\0\x12\x07\n\x03Y\
+    ES\x10\x01\x12\x1c\n\x18NO_PERMISSION_NOT_EDITOR\x10\x02\"\xaf\x02\n\x11\
+    SessionStatusInfo\x120\n\x14session_soft_deleted\x18\x01\x20\x01(\x08R\
+    \x12sessionSoftDeleted\x123\n\x16session_seen_on_device\x18\x02\x20\x01(\
+    \x08R\x13sessionSeenOnDevice\x12C\n\x1esession_triggered_but_rejected\
+    \x18\x03\x20\x01(\x08R\x1bsessionTriggeredButRejected\x12C\n\x1esession_\
+    triggered_and_accepted\x18\x04\x20\x01(\x08R\x1bsessionTriggeredAndAccep\
+    ted\x12)\n\x10session_uploaded\x18\x05\x20\x01(\x08R\x0fsessionUploaded*\
+    .\n\rSortDirection\x12\r\n\tASCENDING\x10\0\x12\x0e\n\nDESCENDING\x10\
+    \x01*\xc8\x01\n\x08Operator\x12\t\n\x05EQUAL\x10\0\x12\r\n\tNOT_EQUAL\
+    \x10\x01\x12\x10\n\x0cGREATER_THAN\x10\x02\x12\x19\n\x15GREATER_THAN_OR_\
+    EQUAL\x10\x03\x12\r\n\tLESS_THAN\x10\x04\x12\x16\n\x12LESS_THAN_OR_EQUAL\
+    \x10\x05\x12\x0c\n\x08WILDCARD\x10\x06\x12\x10\n\x0cNOT_WILDCARD\x10\x07\
+    \x12\x06\n\x02IN\x10\t\x12\n\n\x06NOT_IN\x10\n\x12\n\n\x06SEARCH\x10\x0b\
+    \x12\x0e\n\nNOT_SEARCH\x10\x0c*\x93\x01\n\nPermission\x12\x0b\n\x07UNKNO\
+    WN\x10\0\x12\x10\n\x0cYES_IS_OWNER\x10\x01\x12\x19\n\x15YES_SHARED_EXPLI\
+    CITLY\x10\x02\x12\x18\n\x14YES_SHARED_WITH_TEAM\x10\x03\x12\x17\n\x13YES\
+    _SHARED_WITH_ORG\x10\x04\x12\x06\n\x02NO\x10\x05\x12\x10\n\x0cYES_IS_ADM\
+    IN\x10\x06J\xfb5\n\x07\x12\x05\x06\0\xa9\x01\x01\n\xb8\x02\n\x01\x0c\x12\
     \x03\x06\0\x12\x1a\xad\x02\x20api\x20-\x20bitdrift's\x20client/server\
     \x20API\x20definitions\n\x20Copyright\x20Bitdrift,\x20Inc.\x20All\x20rig\
     hts\x20reserved.\n\n\x20Use\x20of\x20this\x20source\x20code\x20and\x20AP\
@@ -1852,39 +2027,51 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x02\x12\x04\x88\x01\x07\x08\n\x0c\n\x04\x05\x02\x02\x06\x12\x04\x89\x01\
     \x02\x13\n\r\n\x05\x05\x02\x02\x06\x01\x12\x04\x89\x01\x02\x0e\n\r\n\x05\
     \x05\x02\x02\x06\x02\x12\x04\x89\x01\x11\x12\n\x0c\n\x02\x04\x05\x12\x06\
-    \x8c\x01\0\xa0\x01\x01\n\x0b\n\x03\x04\x05\x01\x12\x04\x8c\x01\x08\x19\n\
-    \xbb\x01\n\x04\x04\x05\x02\0\x12\x04\x8f\x01\x02\x20\x1a\xac\x01\x20If\
-    \x20this\x20is\x20true\x20the\x20session\x20is\x20known\x20but\x20has\
-    \x20been\x20soft\x20deleted\x20due\x20to\x20account\x20retention\n\x20po\
-    licies.\x20Contact\x20support\x20to\x20recover\x20the\x20session\x20if\
-    \x20you\x20believe\x20this\x20is\x20in\x20error.\n\n\r\n\x05\x04\x05\x02\
-    \0\x05\x12\x04\x8f\x01\x02\x06\n\r\n\x05\x04\x05\x02\0\x01\x12\x04\x8f\
-    \x01\x07\x1b\n\r\n\x05\x04\x05\x02\0\x03\x12\x04\x8f\x01\x1e\x1f\n}\n\
-    \x04\x04\x05\x02\x01\x12\x04\x93\x01\x02\"\x1ao\x20If\x20this\x20is\x20t\
-    rue,\x20a\x20device\x20has\x20reported\x20seeing\x20this\x20session,\x20\
-    but\x20it\x20was\x20never\x20triggered\n\x20for\x20attempted\x20upload.\
-    \n\n\r\n\x05\x04\x05\x02\x01\x05\x12\x04\x93\x01\x02\x06\n\r\n\x05\x04\
-    \x05\x02\x01\x01\x12\x04\x93\x01\x07\x1d\n\r\n\x05\x04\x05\x02\x01\x03\
-    \x12\x04\x93\x01\x20!\n]\n\x04\x04\x05\x02\x02\x12\x04\x96\x01\x02*\x1aO\
-    \x20If\x20this\x20is\x20true,\x20the\x20session\x20was\x20triggered\x20b\
-    ut\x20rejected,\x20due\x20to\x20daily\x20limits.\n\n\r\n\x05\x04\x05\x02\
-    \x02\x05\x12\x04\x96\x01\x02\x06\n\r\n\x05\x04\x05\x02\x02\x01\x12\x04\
-    \x96\x01\x07%\n\r\n\x05\x04\x05\x02\x02\x03\x12\x04\x96\x01()\n\xb5\x01\
-    \n\x04\x04\x05\x02\x03\x12\x04\x9a\x01\x02*\x1a\xa6\x01\x20If\x20this\
-    \x20is\x20true,\x20the\x20session\x20was\x20triggered\x20and\x20accepted\
-    \x20for\x20upload.\x20As\x20the\x20device\x20can\n\x20immediately\x20go\
-    \x20offline\x20this\x20does\x20not\x20guarantee\x20that\x20the\x20sessio\
-    n\x20was\x20uploaded.\n\n\r\n\x05\x04\x05\x02\x03\x05\x12\x04\x9a\x01\
-    \x02\x06\n\r\n\x05\x04\x05\x02\x03\x01\x12\x04\x9a\x01\x07%\n\r\n\x05\
-    \x04\x05\x02\x03\x03\x12\x04\x9a\x01()\n\xe1\x01\n\x04\x04\x05\x02\x04\
-    \x12\x04\x9f\x01\x02\x1c\x1a\xd2\x01\x20If\x20this\x20is\x20true,\x20at\
-    \x20least\x20some\x20logs\x20for\x20the\x20session\x20were\x20uploaded.\
-    \x20If\x20hydration\x20is\n\x20failing\x20this\x20is\x20likely\x20a\x20v\
-    ery\x20new\x20session\x20and\x20eventual\x20consistency\x20means\x20it\
-    \x20has\x20not\n\x20yet\x20been\x20fully\x20indexed.\x20Try\x20again\x20\
-    soon.\n\n\r\n\x05\x04\x05\x02\x04\x05\x12\x04\x9f\x01\x02\x06\n\r\n\x05\
-    \x04\x05\x02\x04\x01\x12\x04\x9f\x01\x07\x17\n\r\n\x05\x04\x05\x02\x04\
-    \x03\x12\x04\x9f\x01\x1a\x1bb\x06proto3\
+    \x8c\x01\0\x93\x01\x01\n\x0b\n\x03\x04\x05\x01\x12\x04\x8c\x01\x08\x17\n\
+    \x0e\n\x04\x04\x05\x04\0\x12\x06\x8d\x01\x02\x92\x01\x03\n\r\n\x05\x04\
+    \x05\x04\0\x01\x12\x04\x8d\x01\x07\x16\n\x0e\n\x06\x04\x05\x04\0\x02\0\
+    \x12\x04\x8e\x01\x04\x10\n\x0f\n\x07\x04\x05\x04\0\x02\0\x01\x12\x04\x8e\
+    \x01\x04\x0b\n\x0f\n\x07\x04\x05\x04\0\x02\0\x02\x12\x04\x8e\x01\x0e\x0f\
+    \n\x0e\n\x06\x04\x05\x04\0\x02\x01\x12\x04\x8f\x01\x04\x0c\n\x0f\n\x07\
+    \x04\x05\x04\0\x02\x01\x01\x12\x04\x8f\x01\x04\x07\n\x0f\n\x07\x04\x05\
+    \x04\0\x02\x01\x02\x12\x04\x8f\x01\n\x0b\nl\n\x06\x04\x05\x04\0\x02\x02\
+    \x12\x04\x91\x01\x04!\x1a\\\x20The\x20user\x20is\x20not\x20granted\x20ed\
+    it\x20permissions\x20for\x20metadata\x20either\x20via\x20ownership\x20or\
+    \x20other\x20grant.\n\n\x0f\n\x07\x04\x05\x04\0\x02\x02\x01\x12\x04\x91\
+    \x01\x04\x1c\n\x0f\n\x07\x04\x05\x04\0\x02\x02\x02\x12\x04\x91\x01\x1f\
+    \x20\n\x0c\n\x02\x04\x06\x12\x06\x95\x01\0\xa9\x01\x01\n\x0b\n\x03\x04\
+    \x06\x01\x12\x04\x95\x01\x08\x19\n\xbb\x01\n\x04\x04\x06\x02\0\x12\x04\
+    \x98\x01\x02\x20\x1a\xac\x01\x20If\x20this\x20is\x20true\x20the\x20sessi\
+    on\x20is\x20known\x20but\x20has\x20been\x20soft\x20deleted\x20due\x20to\
+    \x20account\x20retention\n\x20policies.\x20Contact\x20support\x20to\x20r\
+    ecover\x20the\x20session\x20if\x20you\x20believe\x20this\x20is\x20in\x20\
+    error.\n\n\r\n\x05\x04\x06\x02\0\x05\x12\x04\x98\x01\x02\x06\n\r\n\x05\
+    \x04\x06\x02\0\x01\x12\x04\x98\x01\x07\x1b\n\r\n\x05\x04\x06\x02\0\x03\
+    \x12\x04\x98\x01\x1e\x1f\n}\n\x04\x04\x06\x02\x01\x12\x04\x9c\x01\x02\"\
+    \x1ao\x20If\x20this\x20is\x20true,\x20a\x20device\x20has\x20reported\x20\
+    seeing\x20this\x20session,\x20but\x20it\x20was\x20never\x20triggered\n\
+    \x20for\x20attempted\x20upload.\n\n\r\n\x05\x04\x06\x02\x01\x05\x12\x04\
+    \x9c\x01\x02\x06\n\r\n\x05\x04\x06\x02\x01\x01\x12\x04\x9c\x01\x07\x1d\n\
+    \r\n\x05\x04\x06\x02\x01\x03\x12\x04\x9c\x01\x20!\n]\n\x04\x04\x06\x02\
+    \x02\x12\x04\x9f\x01\x02*\x1aO\x20If\x20this\x20is\x20true,\x20the\x20se\
+    ssion\x20was\x20triggered\x20but\x20rejected,\x20due\x20to\x20daily\x20l\
+    imits.\n\n\r\n\x05\x04\x06\x02\x02\x05\x12\x04\x9f\x01\x02\x06\n\r\n\x05\
+    \x04\x06\x02\x02\x01\x12\x04\x9f\x01\x07%\n\r\n\x05\x04\x06\x02\x02\x03\
+    \x12\x04\x9f\x01()\n\xb5\x01\n\x04\x04\x06\x02\x03\x12\x04\xa3\x01\x02*\
+    \x1a\xa6\x01\x20If\x20this\x20is\x20true,\x20the\x20session\x20was\x20tr\
+    iggered\x20and\x20accepted\x20for\x20upload.\x20As\x20the\x20device\x20c\
+    an\n\x20immediately\x20go\x20offline\x20this\x20does\x20not\x20guarantee\
+    \x20that\x20the\x20session\x20was\x20uploaded.\n\n\r\n\x05\x04\x06\x02\
+    \x03\x05\x12\x04\xa3\x01\x02\x06\n\r\n\x05\x04\x06\x02\x03\x01\x12\x04\
+    \xa3\x01\x07%\n\r\n\x05\x04\x06\x02\x03\x03\x12\x04\xa3\x01()\n\xe1\x01\
+    \n\x04\x04\x06\x02\x04\x12\x04\xa8\x01\x02\x1c\x1a\xd2\x01\x20If\x20this\
+    \x20is\x20true,\x20at\x20least\x20some\x20logs\x20for\x20the\x20session\
+    \x20were\x20uploaded.\x20If\x20hydration\x20is\n\x20failing\x20this\x20i\
+    s\x20likely\x20a\x20very\x20new\x20session\x20and\x20eventual\x20consist\
+    ency\x20means\x20it\x20has\x20not\n\x20yet\x20been\x20fully\x20indexed.\
+    \x20Try\x20again\x20soon.\n\n\r\n\x05\x04\x06\x02\x04\x05\x12\x04\xa8\
+    \x01\x02\x06\n\r\n\x05\x04\x06\x02\x04\x01\x12\x04\xa8\x01\x07\x17\n\r\n\
+    \x05\x04\x06\x02\x04\x03\x12\x04\xa8\x01\x1a\x1bb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -1905,19 +2092,21 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(::protobuf::well_known_types::duration::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(8);
+            let mut messages = ::std::vec::Vec::with_capacity(9);
             messages.push(Owner::generated_message_descriptor_data());
             messages.push(Sort::generated_message_descriptor_data());
             messages.push(Pagination::generated_message_descriptor_data());
             messages.push(TokenPagination::generated_message_descriptor_data());
             messages.push(TimeRange::generated_message_descriptor_data());
+            messages.push(CanEditMetadata::generated_message_descriptor_data());
             messages.push(SessionStatusInfo::generated_message_descriptor_data());
             messages.push(time_range::FixedTimeRange::generated_message_descriptor_data());
             messages.push(time_range::RelativeTimeRange::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(3);
+            let mut enums = ::std::vec::Vec::with_capacity(4);
             enums.push(SortDirection::generated_enum_descriptor_data());
             enums.push(Operator::generated_enum_descriptor_data());
             enums.push(Permission::generated_enum_descriptor_data());
+            enums.push(can_edit_metadata::CanEditMetadata::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),
                 deps,
