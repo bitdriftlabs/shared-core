@@ -901,6 +901,8 @@ pub struct Workflow {
     pub owner: ::protobuf::MessageField<super::common::Owner>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.Workflow.deployed_at)
     pub deployed_at: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.Workflow.current_user_can_edit)
+    pub current_user_can_edit: bool,
     // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.Workflow.platform_targets)
     pub platform_targets: ::std::vec::Vec<super::platform::Platform>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.workflows.v1.Workflow.group_by_fields)
@@ -926,7 +928,7 @@ impl Workflow {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(13);
+        let mut fields = ::std::vec::Vec::with_capacity(14);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "id",
@@ -972,6 +974,11 @@ impl Workflow {
             "deployed_at",
             |m: &Workflow| { &m.deployed_at },
             |m: &mut Workflow| { &mut m.deployed_at },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "current_user_can_edit",
+            |m: &Workflow| { &m.current_user_can_edit },
+            |m: &mut Workflow| { &mut m.current_user_can_edit },
         ));
         fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
             "platform_targets",
@@ -1038,6 +1045,9 @@ impl ::protobuf::Message for Workflow {
                 106 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.deployed_at)?;
                 },
+                112 => {
+                    self.current_user_can_edit = is.read_bool()?;
+                },
                 170 => {
                     self.platform_targets.push(is.read_message()?);
                 },
@@ -1095,6 +1105,9 @@ impl ::protobuf::Message for Workflow {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
+        if self.current_user_can_edit != false {
+            my_size += 1 + 1;
+        }
         for value in &self.platform_targets {
             let len = value.compute_size();
             my_size += 2 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
@@ -1143,6 +1156,9 @@ impl ::protobuf::Message for Workflow {
         if let Some(v) = self.deployed_at.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(13, v, os)?;
         }
+        if self.current_user_can_edit != false {
+            os.write_bool(14, self.current_user_can_edit)?;
+        }
         for v in &self.platform_targets {
             ::protobuf::rt::write_message_field_with_cached_size(21, v, os)?;
         };
@@ -1181,6 +1197,7 @@ impl ::protobuf::Message for Workflow {
         self.updated_at.clear();
         self.owner.clear();
         self.deployed_at.clear();
+        self.current_user_can_edit = false;
         self.platform_targets.clear();
         self.group_by_fields.clear();
         self.deployment_expiration_time.clear();
@@ -1199,6 +1216,7 @@ impl ::protobuf::Message for Workflow {
             updated_at: ::protobuf::MessageField::none(),
             owner: ::protobuf::MessageField::none(),
             deployed_at: ::protobuf::MessageField::none(),
+            current_user_can_edit: false,
             platform_targets: ::std::vec::Vec::new(),
             group_by_fields: ::std::vec::Vec::new(),
             deployment_expiration_time: ::protobuf::MessageField::none(),
@@ -12435,6 +12453,8 @@ pub mod list_workflows_request {
             OWNER_NAME = 4,
             // @@protoc_insertion_point(enum_value:bitdrift.public.unary.workflows.v1.ListWorkflowsRequest.Sort.SortKey.FAVORITED)
             FAVORITED = 5,
+            // @@protoc_insertion_point(enum_value:bitdrift.public.unary.workflows.v1.ListWorkflowsRequest.Sort.SortKey.LAST_VIEWED)
+            LAST_VIEWED = 6,
         }
 
         impl ::protobuf::Enum for SortKey {
@@ -12452,6 +12472,7 @@ pub mod list_workflows_request {
                     3 => ::std::option::Option::Some(SortKey::STATUS),
                     4 => ::std::option::Option::Some(SortKey::OWNER_NAME),
                     5 => ::std::option::Option::Some(SortKey::FAVORITED),
+                    6 => ::std::option::Option::Some(SortKey::LAST_VIEWED),
                     _ => ::std::option::Option::None
                 }
             }
@@ -12464,6 +12485,7 @@ pub mod list_workflows_request {
                     "STATUS" => ::std::option::Option::Some(SortKey::STATUS),
                     "OWNER_NAME" => ::std::option::Option::Some(SortKey::OWNER_NAME),
                     "FAVORITED" => ::std::option::Option::Some(SortKey::FAVORITED),
+                    "LAST_VIEWED" => ::std::option::Option::Some(SortKey::LAST_VIEWED),
                     _ => ::std::option::Option::None
                 }
             }
@@ -12475,6 +12497,7 @@ pub mod list_workflows_request {
                 SortKey::STATUS,
                 SortKey::OWNER_NAME,
                 SortKey::FAVORITED,
+                SortKey::LAST_VIEWED,
             ];
         }
 
@@ -16090,7 +16113,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x0bstate_value\x18\x03\x20\x01(\x0b26.bitdrift.public.unary.workflows.v\
     1.GroupBy.StateValueH\0R\nstateValue\x12S\n\tmulti_tag\x18\x04\x20\x01(\
     \x0b24.bitdrift.public.unary.workflows.v1.GroupBy.MultiTagH\0R\x08multiT\
-    agB\x14\n\rgroup_by_type\x12\x03\xf8B\x01\"\xab\x08\n\x08Workflow\x12\
+    agB\x14\n\rgroup_by_type\x12\x03\xf8B\x01\"\xde\x08\n\x08Workflow\x12\
     \x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x18d\x12\x1c\n\
     \x04name\x18\x03\x20\x01(\tR\x04nameB\x08\xfaB\x05r\x03\x18\xff\x01\x12H\
     \n\x05flows\x18\x1b\x20\x03(\x0b2(.bitdrift.public.unary.workflows.v1.Fl\
@@ -16103,255 +16126,256 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01(\x0b2\x1a.google.protobuf.TimestampR\tupdatedAt\x12<\n\x05owner\x18\
     \x0c\x20\x01(\x0b2&.bitdrift.public.unary.common.v1.OwnerR\x05owner\x12;\
     \n\x0bdeployed_at\x18\r\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\nde\
-    ployedAt\x12a\n\x10platform_targets\x18\x15\x20\x03(\x0b2,.bitdrift.publ\
-    ic.shared.platform.v1.PlatformR\x0fplatformTargetsB\x08\xfaB\x05\x92\x01\
-    \x02\x10d\x120\n\x0fgroup_by_fields\x18\x16\x20\x03(\tR\rgroupByFieldsB\
-    \x08\xfaB\x05\x92\x01\x02\x10d\x12X\n\x1adeployment_expiration_time\x18\
-    \x18\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x18deploymentExpiratio\
-    nTime\x12V\n\x04tags\x18\x20\x20\x03(\x0b28.bitdrift.public.unary.workfl\
-    ows.v1.Workflow.WorkflowTagR\x04tagsB\x08\xfaB\x05\x92\x01\x02\x10d\x1au\
-    \n\x0bWorkflowTag\x12\x1f\n\x05value\x18\x01\x20\x01(\tR\x05valueB\t\xfa\
-    B\x06r\x04\x10\x01\x18d\x12E\n\ncreated_by\x18\x02\x20\x01(\x0b2&.bitdri\
-    ft.public.unary.common.v1.OwnerR\tcreatedBy\"?\n\rWorkflowState\x12\x08\
-    \n\x04IDLE\x10\0\x12\x08\n\x04LIVE\x10\x01\x12\r\n\tDEPLOYING\x10\x02\
-    \x12\x0b\n\x07EXPIRED\x10\x03\"\xf8\x02\n\x04Flow\x12J\n\x05steps\x18\
-    \x01\x20\x03(\x0b2(.bitdrift.public.unary.workflows.v1.StepR\x05stepsB\n\
-    \xfaB\x07\x92\x01\x04\x08\x01\x10d\x12V\n\texclusive\x18\x02\x20\x01(\
-    \x0b26.bitdrift.public.unary.workflows.v1.Flow.ExclusiveFlowH\0R\texclus\
-    ive\x12S\n\x08parallel\x18\x03\x20\x01(\x0b25.bitdrift.public.unary.work\
-    flows.v1.Flow.ParallelFlowH\0R\x08parallel\x1a\x0f\n\rExclusiveFlow\x1aO\
-    \n\x0cParallelFlow\x12+\n\x0fmax_active_runs\x18\x01\x20\x01(\rH\0R\rmax\
-    ActiveRuns\x88\x01\x01B\x12\n\x10_max_active_runsB\x15\n\x13flow_executi\
-    on_type\"\xbc\x05\n\x04Step\x12L\n\nmatch_rule\x18\x01\x20\x01(\x0b2-.bi\
-    tdrift.public.unary.workflows.v1.MatchRuleR\tmatchRule\x12i\n\x0fexit_co\
-    nditions\x18\x02\x20\x03(\x0b26.bitdrift.public.unary.workflows.v1.Step.\
-    ExitConditionR\x0eexitConditionsB\x08\xfaB\x05\x92\x01\x02\x10d\x120\n\r\
-    loop_match_id\x18\x03\x20\x01(\tH\0R\x0bloopMatchIdB\x07\xfaB\x04r\x02\
-    \x18d\x88\x01\x01\x12Z\n\x0bsave_fields\x18\x04\x20\x03(\x0b2/.bitdrift_\
-    public.protobuf.workflow.v1.SaveFieldR\nsaveFieldsB\x08\xfaB\x05\x92\x01\
-    \x02\x10d\x1a\xda\x02\n\rExitCondition\x12N\n\nmatch_rule\x18\x01\x20\
-    \x01(\x0b2-.bitdrift.public.unary.workflows.v1.MatchRuleH\0R\tmatchRule\
-    \x12^\n\x07timeout\x18\x02\x20\x01(\x0b2B.bitdrift.public.unary.workflow\
-    s.v1.Step.ExitCondition.TimeoutExitH\0R\x07timeout\x1a\x81\x01\n\x0bTime\
-    outExit\x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\
-    \x01\x18d\x12W\n\x0ctimeout_rule\x18\x02\x20\x01(\x0b24.bitdrift.public.\
-    unary.workflows.v1.Rule.RuleTimeoutR\x0btimeoutRuleB\x15\n\x13exit_condi\
-    tion_typeB\x10\n\x0e_loop_match_id\"\xe1\x03\n\tMatchRule\x12$\n\x08matc\
-    h_id\x18\x01\x20\x01(\tR\x07matchIdB\t\xfaB\x06r\x04\x10\x01\x18d\x12W\n\
-    \rgeneric_match\x18\x02\x20\x01(\x0b20.bitdrift.public.unary.workflows.v\
-    1.GenericMatchH\0R\x0cgenericMatch\x12N\n\nootb_match\x18\x03\x20\x01(\
-    \x0b2-.bitdrift.public.unary.workflows.v1.OotbMatchH\0R\tootbMatch\x12d\
-    \n\x12state_change_match\x18\x04\x20\x01(\x0b24.bitdrift.public.unary.wo\
-    rkflows.v1.StateChangeMatchH\0R\x10stateChangeMatch\x12Q\n\x0bissue_matc\
-    h\x18\x06\x20\x01(\x0b2..bitdrift.public.unary.workflows.v1.IssueMatchH\
-    \0R\nissueMatch\x12$\n\x0bsample_rate\x18\x05\x20\x01(\rH\x01R\nsampleRa\
-    te\x88\x01\x01B\x16\n\x14match_condition_typeB\x0e\n\x0c_sample_rate\"A\
-    \n\nIssueMatch\x12$\n\x07program\x18\x02\x20\x01(\tH\0R\x07programB\x08\
-    \xfaB\x05r\x03\x18\x80\x20B\r\n\x0bscript_type\"\xe0\x02\n\x10StateChang\
-    eMatch\x12F\n\x04from\x18\x01\x20\x01(\x0b22.bitdrift.public.unary.workf\
-    lows.v1.StateConditionR\x04from\x12B\n\x02to\x18\x02\x20\x01(\x0b22.bitd\
-    rift.public.unary.workflows.v1.StateConditionR\x02to\x12N\n\x05scope\x18\
-    \x03\x20\x01(\x0e2..bitdrift.public.unary.workflows.v1.StateScopeR\x05sc\
-    opeB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12\x19\n\x03key\x18\x04\x20\x01(\
-    \tR\x03keyB\x07\xfaB\x04r\x02\x18d\x12U\n\rgeneric_match\x18\x05\x20\x01\
-    (\x0b20.bitdrift.public.unary.workflows.v1.GenericMatchR\x0cgenericMatch\
-    \"\x94_\n\tOotbMatch\x12\x98\x01\n\x11generic_condition\x18\x01\x20\x01(\
-    \x0e2_.bitdrift.public.unary.workflows.v1.OotbMatch.GenericOotbCondition\
-    Type.GenericOotbConditionTypeH\0R\x10genericConditionB\x08\xfaB\x05\x82\
-    \x01\x02\x10\x01\x12\x98\x01\n\x11android_condition\x18\x02\x20\x01(\x0e\
-    2_.bitdrift.public.unary.workflows.v1.OotbMatch.AndroidOotbConditionType\
-    .AndroidOotbConditionTypeH\0R\x10androidConditionB\x08\xfaB\x05\x82\x01\
-    \x02\x10\x01\x12\x90\x01\n\x0fapple_condition\x18\x03\x20\x01(\x0e2[.bit\
-    drift.public.unary.workflows.v1.OotbMatch.AppleOotbConditionType.AppleOo\
-    tbConditionTypeH\0R\x0eappleConditionB\x08\xfaB\x05\x82\x01\x02\x10\x01\
-    \x12U\n\rgeneric_match\x18\x04\x20\x01(\x0b20.bitdrift.public.unary.work\
-    flows.v1.GenericMatchR\x0cgenericMatch\x1a\xefG\n\x18GenericOotbConditio\
-    nType\"\xd2G\n\x18GenericOotbConditionType\x12\x0b\n\x07UNKNOWN\x10\0\
-    \x12\x12\n\x0eAPP_BACKGROUND\x10\x01\x12\x1f\n\x1bAPP_BUILT_IN_JS_FATAL_\
-    ERROR\x10\x02\x12#\n\x1fAPP_BUILT_IN_JS_NON_FATAL_ERROR\x10\x03\x12\r\n\
-    \tAPP_CLOSE\x10\x04\x12\x12\n\x0eAPP_FOREGROUND\x10\x05\x12\xb5\x04\n\nA\
-    PP_LAUNCH\x10\x06\x1a\xa4\x04\x92\xb5\x18\x9f\x04\n%\n\x0cstartup_type\
-    \x12\x13COLD,\x20WARM,\x20or\x20HOT.(\x01\n-\n\x0estartup_reason\x12\x19\
-    Why\x20the\x20app\x20was\x20launched.(\x01\n0\n\rstartup_state\x12\x1dSt\
-    artup\x20state\x20at\x20launch\x20time.(\x01\n.\n\x13startup_launch_mode\
-    \x12\x15Activity\x20launch\x20mode.(\x01\nM\n\x1astartup_was_forced_stop\
-    ped\x12-Whether\x20the\x20app\x20was\x20previously\x20force-stopped.(\
-    \x01\nc\n\"startup_time_to_initial_display_ms\x125Time\x20from\x20proces\
-    s\x20start\x20to\x20first\x20frame,\x20if\x20available.\x18\x01\"\x02ms(\
-    \x01\nO\n\x15startup_intent_action\x124Intent\x20action\x20that\x20trigg\
-    ered\x20the\x20launch,\x20if\x20present.(\x01\n:\n\x0c_launch_type\x12(L\
-    aunch\x20type\x20(e.g.,\x20remote\x20notification).(\x02\n$\n\x06_scene\
-    \x12\x18Scene\x20that\x20is\x20activated.(\x02\x12\x12\n\x0eAPP_LAUNCH_T\
-    TI\x10\x07\x12\x0c\n\x08APP_OPEN\x10\x08\x12{\n\x0fAPP_TERMINATION\x10\t\
-    \x1af\x92\xb5\x18b\n`\n\x10_app_exit_reason\x12LiOS:\x20\"app_will_termi\
-    nate_notification\".\x20Android:\x20ApplicationExitInfo\x20reason.\x12\
-    \x0e\n\nAPP_UPDATE\x10\n\x12\xcf\x01\n\x14BATTERY_STATE_CHANGE\x10\x0b\
-    \x1a\xb4\x01\x92\xb5\x18\xaf\x01\nN\n\x06_state\x12DAndroid:\x20\"chargi\
-    ng\"/\"unplugged\".\x20iOS:\x20UIDevice\x20battery\x20state\x20string.\n\
-    0\n\x0e_battery_level\x12\x13Battery\x20percentage.\x18\x01\"\x07percent\
-    \n+\n\x0c_battery_val\x12\x19Battery\x20level\x20as\x20a\x20float.\x18\
-    \x02\x12\xb5\x02\n\x0bGQL_REQUEST\x10\x0c\x1a\xa3\x02\x92\xb5\x18\x9e\
-    \x02\n\x17\n\x07_method\x12\x0cHTTP\x20method.\n\x16\n\x05_host\x12\rReq\
-    uest\x20host.\n/\n\x0e_path_template\x12\x1dFormat:\x20gql-{operation_na\
-    me}.\n*\n\x0f_operation_name\x12\x17GraphQL\x20operation\x20name.\nH\n\
-    \x0f_operation_type\x125GraphQL\x20operation\x20type\x20(query/mutation/\
-    subscription).\n&\n\r_operation_id\x12\x15GraphQL\x20operation\x20ID.\n\
-    \x1c\n\x08_span_id\x12\x10Span\x20identifier.\x12\xab\x03\n\x0cGQL_RESPO\
-    NSE\x10\r\x1a\x98\x03\x92\xb5\x18\x93\x03\n\x17\n\x07_method\x12\x0cHTTP\
-    \x20method.\n\x16\n\x05_host\x12\rRequest\x20host.\n/\n\x0e_path_templat\
-    e\x12\x1dFormat:\x20gql-{operation_name}.\n*\n\x0f_operation_name\x12\
-    \x17GraphQL\x20operation\x20name.\nH\n\x0f_operation_type\x125GraphQL\
-    \x20operation\x20type\x20(query/mutation/subscription).\n&\n\r_operation\
-    _id\x12\x15GraphQL\x20operation\x20ID.\n#\n\x0c_status_code\x12\x11HTTP\
-    \x20status\x20code.\x18\x01\n*\n\x0c_duration_ms\x12\x14Round-trip\x20du\
-    ration.\x18\x01\"\x02ms\n\"\n\x07_result\x12\x17\"success\"\x20or\x20\"f\
-    ailure\".\n\x1c\n\x08_span_id\x12\x10Span\x20identifier.\x12\x82\x02\n\
-    \x0eLOW_POWER_MODE\x10\x0e\x1a\xed\x01\x92\xb5\x18\xe8\x01\n0\n\x12_low_\
-    power_enabled\x12\x16Power\x20save\x20mode\x20state.\x18\x03(\x01\n,\n\
-    \x0f_low_power_mode\x12\x15Low\x20power\x20mode\x20state.\x18\x03(\x02\n\
-    -\n\x0c_battery_val\x12\x19Battery\x20level\x20as\x20a\x20float.\x18\x02\
-    (\x02\n#\n\x06_state\x12\x17Battery\x20charging\x20state.(\x02\n2\n\x0e_\
-    battery_level\x12\x13Battery\x20percentage.\x18\x01\"\x07percent(\x02\
-    \x12\xd9\x06\n\x0fMEMORY_PRESSURE\x10\x0f\x1a\xc3\x06\x92\xb5\x18\xbe\
-    \x06\n0\n\x0c_jvm_used_kb\x12\x18JVM\x20heap\x20currently\x20used.\x18\
-    \x01\"\x02KB(\x01\n@\n\r_jvm_total_kb\x12'JVM\x20heap\x20currently\x20al\
-    located/committed.\x18\x01\"\x02KB(\x01\n-\n\x0b_jvm_max_kb\x12\x16JVM\
-    \x20heap\x20maximum\x20size.\x18\x01\"\x02KB(\x01\n=\n\x11_jvm_used_perc\
-    ent\x12\x1bJVM\x20used\x20as\x20percent\x20of\x20max.\x18\x02\"\x07perce\
-    nt(\x01\n1\n\x0f_native_used_kb\x12\x16Native\x20heap\x20allocated.\x18\
-    \x01\"\x02KB(\x01\n3\n\x10_native_total_kb\x12\x17Native\x20heap\x20tota\
-    l\x20size.\x18\x01\"\x02KB(\x01\nB\n\r_memory_class\x12)Per-app\x20memor\
-    y\x20class\x20reported\x20by\x20Android.\x18\x01\"\x02MB(\x01\n`\n\x0e_i\
-    s_memory_low\x12LWhether\x20app\x20memory\x20usage\x20is\x20at\x20or\x20\
-    above\x20the\x20configured\x20low-memory\x20threshold.\x18\x03\n6\n\x0c_\
-    app_used_kb\x12\x1eApp\x20physical\x20memory\x20footprint.\x18\x01\"\x02\
-    KB(\x02\nG\n\r_app_limit_kb\x12.Estimated\x20app\x20memory\x20limit\x20b\
-    efore\x20termination.\x18\x01\"\x02KB(\x02\n'\n\n_device_kb\x12\x11Total\
-    \x20device\x20RAM.\x18\x01\"\x02KB(\x02\nV\n\x11_app_used_percent\x124Ap\
-    p\x20used\x20memory\x20as\x20a\x20percent\x20of\x20the\x20estimated\x20l\
-    imit.\x18\x02\"\x07percent(\x02\nJ\n\n_mem_level\x12:Apple\x20memory\x20\
-    pressure\x20level:\x20normal,\x20warning,\x20or\x20critical.(\x02\x12\
-    \xde\x02\n\x0fNETWORK_REQUEST\x10\x10\x1a\xc8\x02\x92\xb5\x18\xc3\x02\n\
-    \x17\n\x07_method\x12\x0cHTTP\x20method.\n\x16\n\x05_host\x12\rRequest\
-    \x20host.\n.\n\x05_path\x12%Full\x20request\x20path\x20(high\x20cardinal\
-    ity).\nA\n\x0e_path_template\x12/Normalized\x20path\x20template\x20(pref\
-    er\x20for\x20group_by).\n\x17\n\x06_query\x12\rQuery\x20string.\n\x1c\n\
-    \x08_span_id\x12\x10Span\x20identifier.\nf\n*_request_body_bytes_expecte\
-    d_to_send_count\x12/Expected\x20request\x20body\x20size\x20from\x20Conte\
-    nt-Length.\x18\x01\"\x05bytes\x12\xcf\t\n\x10NETWORK_RESPONSE\x10\x11\
-    \x1a\xb8\t\x92\xb5\x18\xb3\t\n\x17\n\x07_method\x12\x0cHTTP\x20method.\n\
-    \x16\n\x05_host\x12\rRequest\x20host.\n.\n\x05_path\x12%Full\x20request\
-    \x20path\x20(high\x20cardinality).\nA\n\x0e_path_template\x12/Normalized\
-    \x20path\x20template\x20(prefer\x20for\x20group_by).\n\x17\n\x06_query\
-    \x12\rQuery\x20string.\n#\n\x0c_status_code\x12\x11HTTP\x20status\x20cod\
-    e.\x18\x01\nJ\n\x07_result\x12?\"success\"\x20or\x20\"failure\".\x20Pref\
-    er\x20over\x20_status_code\x20for\x20filtering.\n*\n\x0c_duration_ms\x12\
-    \x14Round-trip\x20duration.\x18\x01\"\x02ms\nL\n\x0b_error_type\x12;Erro\
-    r\x20type\x20string\x20(Android).\x20iOS\x20emits\x20_error_code\x20inst\
-    ead.(\x01\nO\n\x0b_error_code\x12<Numeric\x20error\x20code\x20(iOS).\x20\
-    Android\x20emits\x20_error_type\x20instead.\x18\x01(\x02\n3\n\x0e_error_\
-    message\x12!Human-readable\x20error\x20description.\nC\n\x1e_request_bod\
-    y_bytes_sent_count\x12\x18Request\x20body\x20bytes\x20sent.\x18\x01\"\
-    \x05bytes\nM\n#_response_body_bytes_received_count\x12\x1dResponse\x20bo\
-    dy\x20bytes\x20received.\x18\x01\"\x05bytes\n>\n\x1c_request_headers_byt\
-    es_count\x12\x15Request\x20header\x20bytes.\x18\x01\"\x05bytes\n@\n\x1d_\
-    response_headers_bytes_count\x12\x16Response\x20header\x20bytes.\x18\x01\
-    \"\x05bytes\n9\n\x1b_dns_resolution_duration_ms\x12\x14DNS\x20lookup\x20\
-    duration.\x18\x01\"\x02ms\n1\n\x10_tls_duration_ms\x12\x17TLS\x20handsha\
-    ke\x20duration.\x18\x01\"\x02ms\n2\n\x10_tcp_duration_ms\x12\x18TCP\x20c\
-    onnection\x20duration.\x18\x01\"\x02ms\n?\n\x17_fetch_init_duration_ms\
-    \x12\x1eFetch\x20initialization\x20duration.\x18\x01\"\x02ms\n:\n\x14_re\
-    sponse_latency_ms\x12\x1cTime\x20to\x20first\x20response\x20byte.\x18\
-    \x01\"\x02ms\n0\n\t_protocol\x12#Protocol\x20used\x20(e.g.,\x20h2,\x20ht\
-    tp/1.1).\n\x1c\n\x08_span_id\x12\x10Span\x20identifier.\x12\xae\x01\n\
-    \x12ORIENTATION_CHANGE\x10\x12\x1a\x95\x01\x92\xb5\x18\x90\x01\n\x8d\x01\
-    \n\x0c_orientation\x12}Android:\x20\"portrait\"/\"landscape\".\x20iOS:\
-    \x20portrait,\x20portraitUpsideDown,\x20landscapeLeft,\x20landscapeRight\
-    ,\x20faceUp,\x20faceDown,\x20unknown.\x12\x91\x1e\n\x08RESOURCE\x10\x13\
-    \x1a\x82\x1e\x92\xb5\x18\xfd\x1d\n]\n\x0c_jvm_used_kb\x12EJVM\x20heap\
-    \x20currently\x20used.\x20Included\x20on\x20every\x20Android\x20RESOURCE\
-    \x20snapshot.\x18\x01\"\x02KB(\x01\nZ\n\x0b_jvm_max_kb\x12CJVM\x20heap\
-    \x20maximum\x20size.\x20Included\x20on\x20every\x20Android\x20RESOURCE\
-    \x20snapshot.\x18\x01\"\x02KB(\x01\np\n\r_jvm_total_kb\x12WJVM\x20heap\
-    \x20currently\x20allocated\x20or\x20committed.\x20Included\x20on\x20ever\
-    y\x20Android\x20RESOURCE\x20snapshot.\x18\x01\"\x02KB(\x01\nl\n\x11_jvm_\
-    used_percent\x12JJVM\x20used\x20as\x20a\x20percent\x20of\x20max.\x20Incl\
-    uded\x20on\x20every\x20Android\x20RESOURCE\x20snapshot.\x18\x02\"\x07per\
-    cent(\x01\n\x87\x01\n\x0e_is_memory_low\x12sWhether\x20the\x20configured\
-    \x20low-memory\x20threshold\x20is\x20currently\x20met.\x20Present\x20onl\
-    y\x20when\x20low-memory\x20detection\x20is\x20configured.\x18\x03\n^\n\
-    \x0f_native_used_kb\x12CNative\x20heap\x20allocated.\x20Included\x20on\
-    \x20every\x20Android\x20RESOURCE\x20snapshot.\x18\x01\"\x02KB(\x01\n`\n\
-    \x10_native_total_kb\x12DNative\x20heap\x20total\x20size.\x20Included\
+    ployedAt\x121\n\x15current_user_can_edit\x18\x0e\x20\x01(\x08R\x12curren\
+    tUserCanEdit\x12a\n\x10platform_targets\x18\x15\x20\x03(\x0b2,.bitdrift.\
+    public.shared.platform.v1.PlatformR\x0fplatformTargetsB\x08\xfaB\x05\x92\
+    \x01\x02\x10d\x120\n\x0fgroup_by_fields\x18\x16\x20\x03(\tR\rgroupByFiel\
+    dsB\x08\xfaB\x05\x92\x01\x02\x10d\x12X\n\x1adeployment_expiration_time\
+    \x18\x18\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x18deploymentExpir\
+    ationTime\x12V\n\x04tags\x18\x20\x20\x03(\x0b28.bitdrift.public.unary.wo\
+    rkflows.v1.Workflow.WorkflowTagR\x04tagsB\x08\xfaB\x05\x92\x01\x02\x10d\
+    \x1au\n\x0bWorkflowTag\x12\x1f\n\x05value\x18\x01\x20\x01(\tR\x05valueB\
+    \t\xfaB\x06r\x04\x10\x01\x18d\x12E\n\ncreated_by\x18\x02\x20\x01(\x0b2&.\
+    bitdrift.public.unary.common.v1.OwnerR\tcreatedBy\"?\n\rWorkflowState\
+    \x12\x08\n\x04IDLE\x10\0\x12\x08\n\x04LIVE\x10\x01\x12\r\n\tDEPLOYING\
+    \x10\x02\x12\x0b\n\x07EXPIRED\x10\x03\"\xf8\x02\n\x04Flow\x12J\n\x05step\
+    s\x18\x01\x20\x03(\x0b2(.bitdrift.public.unary.workflows.v1.StepR\x05ste\
+    psB\n\xfaB\x07\x92\x01\x04\x08\x01\x10d\x12V\n\texclusive\x18\x02\x20\
+    \x01(\x0b26.bitdrift.public.unary.workflows.v1.Flow.ExclusiveFlowH\0R\te\
+    xclusive\x12S\n\x08parallel\x18\x03\x20\x01(\x0b25.bitdrift.public.unary\
+    .workflows.v1.Flow.ParallelFlowH\0R\x08parallel\x1a\x0f\n\rExclusiveFlow\
+    \x1aO\n\x0cParallelFlow\x12+\n\x0fmax_active_runs\x18\x01\x20\x01(\rH\0R\
+    \rmaxActiveRuns\x88\x01\x01B\x12\n\x10_max_active_runsB\x15\n\x13flow_ex\
+    ecution_type\"\xbc\x05\n\x04Step\x12L\n\nmatch_rule\x18\x01\x20\x01(\x0b\
+    2-.bitdrift.public.unary.workflows.v1.MatchRuleR\tmatchRule\x12i\n\x0fex\
+    it_conditions\x18\x02\x20\x03(\x0b26.bitdrift.public.unary.workflows.v1.\
+    Step.ExitConditionR\x0eexitConditionsB\x08\xfaB\x05\x92\x01\x02\x10d\x12\
+    0\n\rloop_match_id\x18\x03\x20\x01(\tH\0R\x0bloopMatchIdB\x07\xfaB\x04r\
+    \x02\x18d\x88\x01\x01\x12Z\n\x0bsave_fields\x18\x04\x20\x03(\x0b2/.bitdr\
+    ift_public.protobuf.workflow.v1.SaveFieldR\nsaveFieldsB\x08\xfaB\x05\x92\
+    \x01\x02\x10d\x1a\xda\x02\n\rExitCondition\x12N\n\nmatch_rule\x18\x01\
+    \x20\x01(\x0b2-.bitdrift.public.unary.workflows.v1.MatchRuleH\0R\tmatchR\
+    ule\x12^\n\x07timeout\x18\x02\x20\x01(\x0b2B.bitdrift.public.unary.workf\
+    lows.v1.Step.ExitCondition.TimeoutExitH\0R\x07timeout\x1a\x81\x01\n\x0bT\
+    imeoutExit\x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\
+    \x10\x01\x18d\x12W\n\x0ctimeout_rule\x18\x02\x20\x01(\x0b24.bitdrift.pub\
+    lic.unary.workflows.v1.Rule.RuleTimeoutR\x0btimeoutRuleB\x15\n\x13exit_c\
+    ondition_typeB\x10\n\x0e_loop_match_id\"\xe1\x03\n\tMatchRule\x12$\n\x08\
+    match_id\x18\x01\x20\x01(\tR\x07matchIdB\t\xfaB\x06r\x04\x10\x01\x18d\
+    \x12W\n\rgeneric_match\x18\x02\x20\x01(\x0b20.bitdrift.public.unary.work\
+    flows.v1.GenericMatchH\0R\x0cgenericMatch\x12N\n\nootb_match\x18\x03\x20\
+    \x01(\x0b2-.bitdrift.public.unary.workflows.v1.OotbMatchH\0R\tootbMatch\
+    \x12d\n\x12state_change_match\x18\x04\x20\x01(\x0b24.bitdrift.public.una\
+    ry.workflows.v1.StateChangeMatchH\0R\x10stateChangeMatch\x12Q\n\x0bissue\
+    _match\x18\x06\x20\x01(\x0b2..bitdrift.public.unary.workflows.v1.IssueMa\
+    tchH\0R\nissueMatch\x12$\n\x0bsample_rate\x18\x05\x20\x01(\rH\x01R\nsamp\
+    leRate\x88\x01\x01B\x16\n\x14match_condition_typeB\x0e\n\x0c_sample_rate\
+    \"A\n\nIssueMatch\x12$\n\x07program\x18\x02\x20\x01(\tH\0R\x07programB\
+    \x08\xfaB\x05r\x03\x18\x80\x20B\r\n\x0bscript_type\"\xe0\x02\n\x10StateC\
+    hangeMatch\x12F\n\x04from\x18\x01\x20\x01(\x0b22.bitdrift.public.unary.w\
+    orkflows.v1.StateConditionR\x04from\x12B\n\x02to\x18\x02\x20\x01(\x0b22.\
+    bitdrift.public.unary.workflows.v1.StateConditionR\x02to\x12N\n\x05scope\
+    \x18\x03\x20\x01(\x0e2..bitdrift.public.unary.workflows.v1.StateScopeR\
+    \x05scopeB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12\x19\n\x03key\x18\x04\x20\
+    \x01(\tR\x03keyB\x07\xfaB\x04r\x02\x18d\x12U\n\rgeneric_match\x18\x05\
+    \x20\x01(\x0b20.bitdrift.public.unary.workflows.v1.GenericMatchR\x0cgene\
+    ricMatch\"\x94_\n\tOotbMatch\x12\x98\x01\n\x11generic_condition\x18\x01\
+    \x20\x01(\x0e2_.bitdrift.public.unary.workflows.v1.OotbMatch.GenericOotb\
+    ConditionType.GenericOotbConditionTypeH\0R\x10genericConditionB\x08\xfaB\
+    \x05\x82\x01\x02\x10\x01\x12\x98\x01\n\x11android_condition\x18\x02\x20\
+    \x01(\x0e2_.bitdrift.public.unary.workflows.v1.OotbMatch.AndroidOotbCond\
+    itionType.AndroidOotbConditionTypeH\0R\x10androidConditionB\x08\xfaB\x05\
+    \x82\x01\x02\x10\x01\x12\x90\x01\n\x0fapple_condition\x18\x03\x20\x01(\
+    \x0e2[.bitdrift.public.unary.workflows.v1.OotbMatch.AppleOotbConditionTy\
+    pe.AppleOotbConditionTypeH\0R\x0eappleConditionB\x08\xfaB\x05\x82\x01\
+    \x02\x10\x01\x12U\n\rgeneric_match\x18\x04\x20\x01(\x0b20.bitdrift.publi\
+    c.unary.workflows.v1.GenericMatchR\x0cgenericMatch\x1a\xefG\n\x18Generic\
+    OotbConditionType\"\xd2G\n\x18GenericOotbConditionType\x12\x0b\n\x07UNKN\
+    OWN\x10\0\x12\x12\n\x0eAPP_BACKGROUND\x10\x01\x12\x1f\n\x1bAPP_BUILT_IN_\
+    JS_FATAL_ERROR\x10\x02\x12#\n\x1fAPP_BUILT_IN_JS_NON_FATAL_ERROR\x10\x03\
+    \x12\r\n\tAPP_CLOSE\x10\x04\x12\x12\n\x0eAPP_FOREGROUND\x10\x05\x12\xb5\
+    \x04\n\nAPP_LAUNCH\x10\x06\x1a\xa4\x04\x92\xb5\x18\x9f\x04\n%\n\x0cstart\
+    up_type\x12\x13COLD,\x20WARM,\x20or\x20HOT.(\x01\n-\n\x0estartup_reason\
+    \x12\x19Why\x20the\x20app\x20was\x20launched.(\x01\n0\n\rstartup_state\
+    \x12\x1dStartup\x20state\x20at\x20launch\x20time.(\x01\n.\n\x13startup_l\
+    aunch_mode\x12\x15Activity\x20launch\x20mode.(\x01\nM\n\x1astartup_was_f\
+    orced_stopped\x12-Whether\x20the\x20app\x20was\x20previously\x20force-st\
+    opped.(\x01\nc\n\"startup_time_to_initial_display_ms\x125Time\x20from\
+    \x20process\x20start\x20to\x20first\x20frame,\x20if\x20available.\x18\
+    \x01\"\x02ms(\x01\nO\n\x15startup_intent_action\x124Intent\x20action\x20\
+    that\x20triggered\x20the\x20launch,\x20if\x20present.(\x01\n:\n\x0c_laun\
+    ch_type\x12(Launch\x20type\x20(e.g.,\x20remote\x20notification).(\x02\n$\
+    \n\x06_scene\x12\x18Scene\x20that\x20is\x20activated.(\x02\x12\x12\n\x0e\
+    APP_LAUNCH_TTI\x10\x07\x12\x0c\n\x08APP_OPEN\x10\x08\x12{\n\x0fAPP_TERMI\
+    NATION\x10\t\x1af\x92\xb5\x18b\n`\n\x10_app_exit_reason\x12LiOS:\x20\"ap\
+    p_will_terminate_notification\".\x20Android:\x20ApplicationExitInfo\x20r\
+    eason.\x12\x0e\n\nAPP_UPDATE\x10\n\x12\xcf\x01\n\x14BATTERY_STATE_CHANGE\
+    \x10\x0b\x1a\xb4\x01\x92\xb5\x18\xaf\x01\nN\n\x06_state\x12DAndroid:\x20\
+    \"charging\"/\"unplugged\".\x20iOS:\x20UIDevice\x20battery\x20state\x20s\
+    tring.\n0\n\x0e_battery_level\x12\x13Battery\x20percentage.\x18\x01\"\
+    \x07percent\n+\n\x0c_battery_val\x12\x19Battery\x20level\x20as\x20a\x20f\
+    loat.\x18\x02\x12\xb5\x02\n\x0bGQL_REQUEST\x10\x0c\x1a\xa3\x02\x92\xb5\
+    \x18\x9e\x02\n\x17\n\x07_method\x12\x0cHTTP\x20method.\n\x16\n\x05_host\
+    \x12\rRequest\x20host.\n/\n\x0e_path_template\x12\x1dFormat:\x20gql-{ope\
+    ration_name}.\n*\n\x0f_operation_name\x12\x17GraphQL\x20operation\x20nam\
+    e.\nH\n\x0f_operation_type\x125GraphQL\x20operation\x20type\x20(query/mu\
+    tation/subscription).\n&\n\r_operation_id\x12\x15GraphQL\x20operation\
+    \x20ID.\n\x1c\n\x08_span_id\x12\x10Span\x20identifier.\x12\xab\x03\n\x0c\
+    GQL_RESPONSE\x10\r\x1a\x98\x03\x92\xb5\x18\x93\x03\n\x17\n\x07_method\
+    \x12\x0cHTTP\x20method.\n\x16\n\x05_host\x12\rRequest\x20host.\n/\n\x0e_\
+    path_template\x12\x1dFormat:\x20gql-{operation_name}.\n*\n\x0f_operation\
+    _name\x12\x17GraphQL\x20operation\x20name.\nH\n\x0f_operation_type\x125G\
+    raphQL\x20operation\x20type\x20(query/mutation/subscription).\n&\n\r_ope\
+    ration_id\x12\x15GraphQL\x20operation\x20ID.\n#\n\x0c_status_code\x12\
+    \x11HTTP\x20status\x20code.\x18\x01\n*\n\x0c_duration_ms\x12\x14Round-tr\
+    ip\x20duration.\x18\x01\"\x02ms\n\"\n\x07_result\x12\x17\"success\"\x20o\
+    r\x20\"failure\".\n\x1c\n\x08_span_id\x12\x10Span\x20identifier.\x12\x82\
+    \x02\n\x0eLOW_POWER_MODE\x10\x0e\x1a\xed\x01\x92\xb5\x18\xe8\x01\n0\n\
+    \x12_low_power_enabled\x12\x16Power\x20save\x20mode\x20state.\x18\x03(\
+    \x01\n,\n\x0f_low_power_mode\x12\x15Low\x20power\x20mode\x20state.\x18\
+    \x03(\x02\n-\n\x0c_battery_val\x12\x19Battery\x20level\x20as\x20a\x20flo\
+    at.\x18\x02(\x02\n#\n\x06_state\x12\x17Battery\x20charging\x20state.(\
+    \x02\n2\n\x0e_battery_level\x12\x13Battery\x20percentage.\x18\x01\"\x07p\
+    ercent(\x02\x12\xd9\x06\n\x0fMEMORY_PRESSURE\x10\x0f\x1a\xc3\x06\x92\xb5\
+    \x18\xbe\x06\n0\n\x0c_jvm_used_kb\x12\x18JVM\x20heap\x20currently\x20use\
+    d.\x18\x01\"\x02KB(\x01\n@\n\r_jvm_total_kb\x12'JVM\x20heap\x20currently\
+    \x20allocated/committed.\x18\x01\"\x02KB(\x01\n-\n\x0b_jvm_max_kb\x12\
+    \x16JVM\x20heap\x20maximum\x20size.\x18\x01\"\x02KB(\x01\n=\n\x11_jvm_us\
+    ed_percent\x12\x1bJVM\x20used\x20as\x20percent\x20of\x20max.\x18\x02\"\
+    \x07percent(\x01\n1\n\x0f_native_used_kb\x12\x16Native\x20heap\x20alloca\
+    ted.\x18\x01\"\x02KB(\x01\n3\n\x10_native_total_kb\x12\x17Native\x20heap\
+    \x20total\x20size.\x18\x01\"\x02KB(\x01\nB\n\r_memory_class\x12)Per-app\
+    \x20memory\x20class\x20reported\x20by\x20Android.\x18\x01\"\x02MB(\x01\n\
+    `\n\x0e_is_memory_low\x12LWhether\x20app\x20memory\x20usage\x20is\x20at\
+    \x20or\x20above\x20the\x20configured\x20low-memory\x20threshold.\x18\x03\
+    \n6\n\x0c_app_used_kb\x12\x1eApp\x20physical\x20memory\x20footprint.\x18\
+    \x01\"\x02KB(\x02\nG\n\r_app_limit_kb\x12.Estimated\x20app\x20memory\x20\
+    limit\x20before\x20termination.\x18\x01\"\x02KB(\x02\n'\n\n_device_kb\
+    \x12\x11Total\x20device\x20RAM.\x18\x01\"\x02KB(\x02\nV\n\x11_app_used_p\
+    ercent\x124App\x20used\x20memory\x20as\x20a\x20percent\x20of\x20the\x20e\
+    stimated\x20limit.\x18\x02\"\x07percent(\x02\nJ\n\n_mem_level\x12:Apple\
+    \x20memory\x20pressure\x20level:\x20normal,\x20warning,\x20or\x20critica\
+    l.(\x02\x12\xde\x02\n\x0fNETWORK_REQUEST\x10\x10\x1a\xc8\x02\x92\xb5\x18\
+    \xc3\x02\n\x17\n\x07_method\x12\x0cHTTP\x20method.\n\x16\n\x05_host\x12\
+    \rRequest\x20host.\n.\n\x05_path\x12%Full\x20request\x20path\x20(high\
+    \x20cardinality).\nA\n\x0e_path_template\x12/Normalized\x20path\x20templ\
+    ate\x20(prefer\x20for\x20group_by).\n\x17\n\x06_query\x12\rQuery\x20stri\
+    ng.\n\x1c\n\x08_span_id\x12\x10Span\x20identifier.\nf\n*_request_body_by\
+    tes_expected_to_send_count\x12/Expected\x20request\x20body\x20size\x20fr\
+    om\x20Content-Length.\x18\x01\"\x05bytes\x12\xcf\t\n\x10NETWORK_RESPONSE\
+    \x10\x11\x1a\xb8\t\x92\xb5\x18\xb3\t\n\x17\n\x07_method\x12\x0cHTTP\x20m\
+    ethod.\n\x16\n\x05_host\x12\rRequest\x20host.\n.\n\x05_path\x12%Full\x20\
+    request\x20path\x20(high\x20cardinality).\nA\n\x0e_path_template\x12/Nor\
+    malized\x20path\x20template\x20(prefer\x20for\x20group_by).\n\x17\n\x06_\
+    query\x12\rQuery\x20string.\n#\n\x0c_status_code\x12\x11HTTP\x20status\
+    \x20code.\x18\x01\nJ\n\x07_result\x12?\"success\"\x20or\x20\"failure\".\
+    \x20Prefer\x20over\x20_status_code\x20for\x20filtering.\n*\n\x0c_duratio\
+    n_ms\x12\x14Round-trip\x20duration.\x18\x01\"\x02ms\nL\n\x0b_error_type\
+    \x12;Error\x20type\x20string\x20(Android).\x20iOS\x20emits\x20_error_cod\
+    e\x20instead.(\x01\nO\n\x0b_error_code\x12<Numeric\x20error\x20code\x20(\
+    iOS).\x20Android\x20emits\x20_error_type\x20instead.\x18\x01(\x02\n3\n\
+    \x0e_error_message\x12!Human-readable\x20error\x20description.\nC\n\x1e_\
+    request_body_bytes_sent_count\x12\x18Request\x20body\x20bytes\x20sent.\
+    \x18\x01\"\x05bytes\nM\n#_response_body_bytes_received_count\x12\x1dResp\
+    onse\x20body\x20bytes\x20received.\x18\x01\"\x05bytes\n>\n\x1c_request_h\
+    eaders_bytes_count\x12\x15Request\x20header\x20bytes.\x18\x01\"\x05bytes\
+    \n@\n\x1d_response_headers_bytes_count\x12\x16Response\x20header\x20byte\
+    s.\x18\x01\"\x05bytes\n9\n\x1b_dns_resolution_duration_ms\x12\x14DNS\x20\
+    lookup\x20duration.\x18\x01\"\x02ms\n1\n\x10_tls_duration_ms\x12\x17TLS\
+    \x20handshake\x20duration.\x18\x01\"\x02ms\n2\n\x10_tcp_duration_ms\x12\
+    \x18TCP\x20connection\x20duration.\x18\x01\"\x02ms\n?\n\x17_fetch_init_d\
+    uration_ms\x12\x1eFetch\x20initialization\x20duration.\x18\x01\"\x02ms\n\
+    :\n\x14_response_latency_ms\x12\x1cTime\x20to\x20first\x20response\x20by\
+    te.\x18\x01\"\x02ms\n0\n\t_protocol\x12#Protocol\x20used\x20(e.g.,\x20h2\
+    ,\x20http/1.1).\n\x1c\n\x08_span_id\x12\x10Span\x20identifier.\x12\xae\
+    \x01\n\x12ORIENTATION_CHANGE\x10\x12\x1a\x95\x01\x92\xb5\x18\x90\x01\n\
+    \x8d\x01\n\x0c_orientation\x12}Android:\x20\"portrait\"/\"landscape\".\
+    \x20iOS:\x20portrait,\x20portraitUpsideDown,\x20landscapeLeft,\x20landsc\
+    apeRight,\x20faceUp,\x20faceDown,\x20unknown.\x12\x91\x1e\n\x08RESOURCE\
+    \x10\x13\x1a\x82\x1e\x92\xb5\x18\xfd\x1d\n]\n\x0c_jvm_used_kb\x12EJVM\
+    \x20heap\x20currently\x20used.\x20Included\x20on\x20every\x20Android\x20\
+    RESOURCE\x20snapshot.\x18\x01\"\x02KB(\x01\nZ\n\x0b_jvm_max_kb\x12CJVM\
+    \x20heap\x20maximum\x20size.\x20Included\x20on\x20every\x20Android\x20RE\
+    SOURCE\x20snapshot.\x18\x01\"\x02KB(\x01\np\n\r_jvm_total_kb\x12WJVM\x20\
+    heap\x20currently\x20allocated\x20or\x20committed.\x20Included\x20on\x20\
+    every\x20Android\x20RESOURCE\x20snapshot.\x18\x01\"\x02KB(\x01\nl\n\x11_\
+    jvm_used_percent\x12JJVM\x20used\x20as\x20a\x20percent\x20of\x20max.\x20\
+    Included\x20on\x20every\x20Android\x20RESOURCE\x20snapshot.\x18\x02\"\
+    \x07percent(\x01\n\x87\x01\n\x0e_is_memory_low\x12sWhether\x20the\x20con\
+    figured\x20low-memory\x20threshold\x20is\x20currently\x20met.\x20Present\
+    \x20only\x20when\x20low-memory\x20detection\x20is\x20configured.\x18\x03\
+    \n^\n\x0f_native_used_kb\x12CNative\x20heap\x20allocated.\x20Included\
     \x20on\x20every\x20Android\x20RESOURCE\x20snapshot.\x18\x01\"\x02KB(\x01\
-    \no\n\r_memory_class\x12VPer-app\x20memory\x20class\x20reported\x20by\
-    \x20Android.\x20Included\x20on\x20every\x20Android\x20RESOURCE\x20snapsh\
-    ot.\x18\x01\"\x02MB(\x01\na\n\x0c_app_used_kb\x12IApp\x20physical\x20mem\
-    ory\x20footprint.\x20Included\x20on\x20every\x20Apple\x20RESOURCE\x20sna\
-    pshot.\x18\x01\"\x02KB(\x02\nr\n\r_app_limit_kb\x12YEstimated\x20app\x20\
-    memory\x20limit\x20before\x20termination.\x20Included\x20on\x20every\x20\
-    Apple\x20RESOURCE\x20snapshot.\x18\x01\"\x02KB(\x02\n\x9b\x01\n\x11_app_\
-    used_percent\x12yApp\x20used\x20memory\x20as\x20a\x20percent\x20of\x20th\
-    e\x20estimated\x20limit.\x20Included\x20on\x20Apple\x20snapshots\x20when\
-    \x20the\x20memory\x20limit\x20estimate\x20is\x20valid.\x18\x02\"\x07perc\
-    ent(\x02\nR\n\n_device_kb\x12<Total\x20device\x20RAM.\x20Included\x20on\
-    \x20every\x20Apple\x20RESOURCE\x20snapshot.\x18\x01\"\x02KB(\x02\np\n\
-    \x0c_battery_val\x12^Battery\x20level\x20as\x20a\x20float.\x20Included\
-    \x20on\x20every\x20RESOURCE\x20snapshot.\x20May\x20be\x20-1.0\x20on\x20A\
-    pple\x20simulator.\x18\x02\n_\n\x0e_battery_level\x12@Battery\x20percent\
-    age.\x20Included\x20on\x20every\x20Android\x20RESOURCE\x20snapshot.\x18\
-    \x01\"\x07percent(\x01\n\x8f\x01\n\x0e_battery_level\x12pBattery\x20perc\
-    entage\x20when\x20the\x20battery\x20level\x20is\x20known.\x20Omitted\x20\
-    on\x20Apple\x20simulator\x20and\x20other\x20unknown\x20battery\x20states\
-    .\x18\x01\"\x07percent(\x02\nF\n\x06_state\x12<Battery\x20charging\x20st\
-    ate.\x20Included\x20on\x20every\x20RESOURCE\x20snapshot.\n\xc6\x01\n\x1d\
-    _battery_level_change_per_min\x12\xa2\x01Battery\x20percentage-point\x20\
-    change\x20per\x20minute.\x20Positive\x20means\x20draining,\x20negative\
-    \x20means\x20charging.\x20Present\x20only\x20after\x20the\x20rolling\x20\
-    1-minute\x20battery\x20window\x20is\x20populated.\x18\x02\nR\n\x12_low_p\
-    ower_enabled\x12:Low-power\x20mode\x20state.\x20Included\x20on\x20every\
-    \x20RESOURCE\x20snapshot.\x18\x03\n\\\n\x15_cache_dir_size_bytes\x12:Cac\
-    he\x20directory\x20size.\x20Sampled\x20at\x20most\x20once\x20every\x2024\
-    \x20hours.\x18\x01\"\x05bytes\nb\n\x15_files_dir_size_bytes\x12>App\x20f\
-    iles\x20directory\x20size.\x20Sampled\x20at\x20most\x20once\x20every\x20\
-    24\x20hours.\x18\x01\"\x05bytes(\x01\n\x80\x01\n\x1e_external_cache_dir_\
-    size_bytes\x12SExternal\x20cache\x20directory\x20size,\x20when\x20availa\
-    ble.\x20Sampled\x20at\x20most\x20once\x20every\x2024\x20hours.\x18\x01\"\
-    \x05bytes(\x01\n\x80\x01\n\x1e_external_files_dir_size_bytes\x12SExterna\
-    l\x20files\x20directory\x20size,\x20when\x20available.\x20Sampled\x20at\
-    \x20most\x20once\x20every\x2024\x20hours.\x18\x01\"\x05bytes(\x01\nf\n\
-    \x19_documents_dir_size_bytes\x12>Documents\x20directory\x20size.\x20Sam\
-    pled\x20at\x20most\x20once\x20every\x2024\x20hours.\x18\x01\"\x05bytes(\
-    \x02\n`\n\x13_tmp_dir_size_bytes\x12>Temporary\x20directory\x20size.\x20\
-    Sampled\x20at\x20most\x20once\x20every\x2024\x20hours.\x18\x01\"\x05byte\
-    s(\x02\n\xb3\x01\n\x1c_request_bytes_per_min_count\x12\x85\x01Total\x20o\
-    utbound\x20bytes\x20over\x20the\x20preceding\x20minute\x20of\x20tracked\
-    \x20HTTP\x20traffic.\x20Present\x20once\x20the\x20rolling\x201-minute\
-    \x20tracker\x20has\x20enough\x20history.\x18\x01\"\tbytes/min\n\xbf\x01\
-    \n!_request_body_bytes_per_min_count\x12\x8c\x01Outbound\x20request-body\
+    \n`\n\x10_native_total_kb\x12DNative\x20heap\x20total\x20size.\x20Includ\
+    ed\x20on\x20every\x20Android\x20RESOURCE\x20snapshot.\x18\x01\"\x02KB(\
+    \x01\no\n\r_memory_class\x12VPer-app\x20memory\x20class\x20reported\x20b\
+    y\x20Android.\x20Included\x20on\x20every\x20Android\x20RESOURCE\x20snaps\
+    hot.\x18\x01\"\x02MB(\x01\na\n\x0c_app_used_kb\x12IApp\x20physical\x20me\
+    mory\x20footprint.\x20Included\x20on\x20every\x20Apple\x20RESOURCE\x20sn\
+    apshot.\x18\x01\"\x02KB(\x02\nr\n\r_app_limit_kb\x12YEstimated\x20app\
+    \x20memory\x20limit\x20before\x20termination.\x20Included\x20on\x20every\
+    \x20Apple\x20RESOURCE\x20snapshot.\x18\x01\"\x02KB(\x02\n\x9b\x01\n\x11_\
+    app_used_percent\x12yApp\x20used\x20memory\x20as\x20a\x20percent\x20of\
+    \x20the\x20estimated\x20limit.\x20Included\x20on\x20Apple\x20snapshots\
+    \x20when\x20the\x20memory\x20limit\x20estimate\x20is\x20valid.\x18\x02\"\
+    \x07percent(\x02\nR\n\n_device_kb\x12<Total\x20device\x20RAM.\x20Include\
+    d\x20on\x20every\x20Apple\x20RESOURCE\x20snapshot.\x18\x01\"\x02KB(\x02\
+    \np\n\x0c_battery_val\x12^Battery\x20level\x20as\x20a\x20float.\x20Inclu\
+    ded\x20on\x20every\x20RESOURCE\x20snapshot.\x20May\x20be\x20-1.0\x20on\
+    \x20Apple\x20simulator.\x18\x02\n_\n\x0e_battery_level\x12@Battery\x20pe\
+    rcentage.\x20Included\x20on\x20every\x20Android\x20RESOURCE\x20snapshot.\
+    \x18\x01\"\x07percent(\x01\n\x8f\x01\n\x0e_battery_level\x12pBattery\x20\
+    percentage\x20when\x20the\x20battery\x20level\x20is\x20known.\x20Omitted\
+    \x20on\x20Apple\x20simulator\x20and\x20other\x20unknown\x20battery\x20st\
+    ates.\x18\x01\"\x07percent(\x02\nF\n\x06_state\x12<Battery\x20charging\
+    \x20state.\x20Included\x20on\x20every\x20RESOURCE\x20snapshot.\n\xc6\x01\
+    \n\x1d_battery_level_change_per_min\x12\xa2\x01Battery\x20percentage-poi\
+    nt\x20change\x20per\x20minute.\x20Positive\x20means\x20draining,\x20nega\
+    tive\x20means\x20charging.\x20Present\x20only\x20after\x20the\x20rolling\
+    \x201-minute\x20battery\x20window\x20is\x20populated.\x18\x02\nR\n\x12_l\
+    ow_power_enabled\x12:Low-power\x20mode\x20state.\x20Included\x20on\x20ev\
+    ery\x20RESOURCE\x20snapshot.\x18\x03\n\\\n\x15_cache_dir_size_bytes\x12:\
+    Cache\x20directory\x20size.\x20Sampled\x20at\x20most\x20once\x20every\
+    \x2024\x20hours.\x18\x01\"\x05bytes\nb\n\x15_files_dir_size_bytes\x12>Ap\
+    p\x20files\x20directory\x20size.\x20Sampled\x20at\x20most\x20once\x20eve\
+    ry\x2024\x20hours.\x18\x01\"\x05bytes(\x01\n\x80\x01\n\x1e_external_cach\
+    e_dir_size_bytes\x12SExternal\x20cache\x20directory\x20size,\x20when\x20\
+    available.\x20Sampled\x20at\x20most\x20once\x20every\x2024\x20hours.\x18\
+    \x01\"\x05bytes(\x01\n\x80\x01\n\x1e_external_files_dir_size_bytes\x12SE\
+    xternal\x20files\x20directory\x20size,\x20when\x20available.\x20Sampled\
+    \x20at\x20most\x20once\x20every\x2024\x20hours.\x18\x01\"\x05bytes(\x01\
+    \nf\n\x19_documents_dir_size_bytes\x12>Documents\x20directory\x20size.\
+    \x20Sampled\x20at\x20most\x20once\x20every\x2024\x20hours.\x18\x01\"\x05\
+    bytes(\x02\n`\n\x13_tmp_dir_size_bytes\x12>Temporary\x20directory\x20siz\
+    e.\x20Sampled\x20at\x20most\x20once\x20every\x2024\x20hours.\x18\x01\"\
+    \x05bytes(\x02\n\xb3\x01\n\x1c_request_bytes_per_min_count\x12\x85\x01To\
+    tal\x20outbound\x20bytes\x20over\x20the\x20preceding\x20minute\x20of\x20\
+    tracked\x20HTTP\x20traffic.\x20Present\x20once\x20the\x20rolling\x201-mi\
+    nute\x20tracker\x20has\x20enough\x20history.\x18\x01\"\tbytes/min\n\xbf\
+    \x01\n!_request_body_bytes_per_min_count\x12\x8c\x01Outbound\x20request-\
+    body\x20bytes\x20over\x20the\x20preceding\x20minute\x20of\x20tracked\x20\
+    HTTP\x20traffic.\x20Present\x20once\x20the\x20rolling\x201-minute\x20tra\
+    cker\x20has\x20enough\x20history.\x18\x01\"\tbytes/min\n\xc4\x01\n$_requ\
+    est_headers_bytes_per_min_count\x12\x8e\x01Outbound\x20request-header\
     \x20bytes\x20over\x20the\x20preceding\x20minute\x20of\x20tracked\x20HTTP\
     \x20traffic.\x20Present\x20once\x20the\x20rolling\x201-minute\x20tracker\
-    \x20has\x20enough\x20history.\x18\x01\"\tbytes/min\n\xc4\x01\n$_request_\
-    headers_bytes_per_min_count\x12\x8e\x01Outbound\x20request-header\x20byt\
-    es\x20over\x20the\x20preceding\x20minute\x20of\x20tracked\x20HTTP\x20tra\
-    ffic.\x20Present\x20once\x20the\x20rolling\x201-minute\x20tracker\x20has\
-    \x20enough\x20history.\x18\x01\"\tbytes/min\n\xb3\x01\n\x1d_response_byt\
-    es_per_min_count\x12\x84\x01Total\x20inbound\x20bytes\x20over\x20the\x20\
-    preceding\x20minute\x20of\x20tracked\x20HTTP\x20traffic.\x20Present\x20o\
-    nce\x20the\x20rolling\x201-minute\x20tracker\x20has\x20enough\x20history\
-    .\x18\x01\"\tbytes/min\n\xc0\x01\n\"_response_body_bytes_per_min_count\
-    \x12\x8c\x01Inbound\x20response-body\x20bytes\x20over\x20the\x20precedin\
-    g\x20minute\x20of\x20tracked\x20HTTP\x20traffic.\x20Present\x20once\x20t\
-    he\x20rolling\x201-minute\x20tracker\x20has\x20enough\x20history.\x18\
-    \x01\"\tbytes/min\n\xc5\x01\n%_response_headers_bytes_per_min_count\x12\
-    \x8e\x01Inbound\x20response-header\x20bytes\x20over\x20the\x20preceding\
-    \x20minute\x20of\x20tracked\x20HTTP\x20traffic.\x20Present\x20once\x20th\
-    e\x20rolling\x201-minute\x20tracker\x20has\x20enough\x20history.\x18\x01\
-    \"\tbytes/min\x12B\n\x0bSCREEN_VIEW\x10\x14\x1a1\x92\xb5\x18-\n+\n\x0c_s\
-    creen_name\x12\x1bName\x20of\x20the\x20screen\x20or\x20view.\x12\x15\n\
-    \x11SDK_CONFIGURATION\x10\x15\x12\x12\n\x0eSESSION_REPLAY\x10\x16\x12\
-    \xb7\x01\n\x08SPAN_END\x10\x17\x1a\xa8\x01\x92\xb5\x18\xa3\x01\n\x1c\n\
-    \x08_span_id\x12\x10Span\x20identifier.\n\x18\n\n_span_name\x12\nSpan\
+    \x20has\x20enough\x20history.\x18\x01\"\tbytes/min\n\xb3\x01\n\x1d_respo\
+    nse_bytes_per_min_count\x12\x84\x01Total\x20inbound\x20bytes\x20over\x20\
+    the\x20preceding\x20minute\x20of\x20tracked\x20HTTP\x20traffic.\x20Prese\
+    nt\x20once\x20the\x20rolling\x201-minute\x20tracker\x20has\x20enough\x20\
+    history.\x18\x01\"\tbytes/min\n\xc0\x01\n\"_response_body_bytes_per_min_\
+    count\x12\x8c\x01Inbound\x20response-body\x20bytes\x20over\x20the\x20pre\
+    ceding\x20minute\x20of\x20tracked\x20HTTP\x20traffic.\x20Present\x20once\
+    \x20the\x20rolling\x201-minute\x20tracker\x20has\x20enough\x20history.\
+    \x18\x01\"\tbytes/min\n\xc5\x01\n%_response_headers_bytes_per_min_count\
+    \x12\x8e\x01Inbound\x20response-header\x20bytes\x20over\x20the\x20preced\
+    ing\x20minute\x20of\x20tracked\x20HTTP\x20traffic.\x20Present\x20once\
+    \x20the\x20rolling\x201-minute\x20tracker\x20has\x20enough\x20history.\
+    \x18\x01\"\tbytes/min\x12B\n\x0bSCREEN_VIEW\x10\x14\x1a1\x92\xb5\x18-\n+\
+    \n\x0c_screen_name\x12\x1bName\x20of\x20the\x20screen\x20or\x20view.\x12\
+    \x15\n\x11SDK_CONFIGURATION\x10\x15\x12\x12\n\x0eSESSION_REPLAY\x10\x16\
+    \x12\xb7\x01\n\x08SPAN_END\x10\x17\x1a\xa8\x01\x92\xb5\x18\xa3\x01\n\x1c\
+    \n\x08_span_id\x12\x10Span\x20identifier.\n\x18\n\n_span_name\x12\nSpan\
     \x20name.\n*\n\x0f_span_parent_id\x12\x17Parent\x20span\x20identifier.\n\
     $\n\x0c_duration_ms\x12\x0eSpan\x20duration.\x18\x01\"\x02ms\n\x17\n\x07\
     _result\x12\x0cSpan\x20result.\x12x\n\nSPAN_START\x10\x18\x1ah\x92\xb5\
@@ -16584,7 +16608,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x12\x18\n\x14UNSPECIFIED_OPERATOR\x10\0\x12\x0c\n\x08INCLUDES\x10\x01\
     \x12\x0c\n\x08EXCLUDES\x10\x02\"9\n\x08TagMatch\x12\x15\n\x11UNSPECIFIED\
     _MATCH\x10\0\x12\n\n\x06ANY_OF\x10\x01\x12\n\n\x06ALL_OF\x10\x02B\x11\n\
-    \x0f_workflow_stateB\x10\n\x0e_workflow_nameB\x0c\n\n_favorited\"\x84\
+    \x0f_workflow_stateB\x10\n\x0e_workflow_nameB\x0c\n\n_favorited\"\x96\
     \x06\n\x14ListWorkflowsRequest\x12\x1b\n\x06offset\x18\x01\x20\x01(\rH\0\
     R\x06offset\x88\x01\x01\x12$\n\x05limit\x18\x02\x20\x01(\rH\x01R\x05limi\
     tB\t\xfaB\x06*\x04\x18d(\x01\x88\x01\x01\x12N\n\x07filters\x18\x03\x20\
@@ -16594,96 +16618,97 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x08\xfaB\x05\x92\x01\x02\x10d\x12K\n\x05query\x18\x06\x20\x01(\x0b25.bi\
     tdrift.public.unary.workflows.v1.WorkflowListQueryR\x05query\x12[\n\x04s\
     ort\x18\x07\x20\x03(\x0b2=.bitdrift.public.unary.workflows.v1.ListWorkfl\
-    owsRequest.SortR\x04sortB\x08\xfaB\x05\x92\x01\x02\x10d\x1a\xb6\x02\n\
+    owsRequest.SortR\x04sortB\x08\xfaB\x05\x92\x01\x02\x10d\x1a\xc8\x02\n\
     \x04Sort\x12a\n\x03key\x18\x01\x20\x01(\x0e2E.bitdrift.public.unary.work\
     flows.v1.ListWorkflowsRequest.Sort.SortKeyR\x03keyB\x08\xfaB\x05\x82\x01\
     \x02\x10\x01\x12V\n\tdirection\x18\x02\x20\x01(\x0e2..bitdrift.public.un\
     ary.common.v1.SortDirectionR\tdirectionB\x08\xfaB\x05\x82\x01\x02\x10\
-    \x01\"s\n\x07SortKey\x12\x18\n\x14SORT_KEY_UNSPECIFIED\x10\0\x12\x10\n\
-    \x0cDISPLAY_NAME\x10\x01\x12\x11\n\rCREATION_TIME\x10\x02\x12\n\n\x06STA\
-    TUS\x10\x03\x12\x0e\n\nOWNER_NAME\x10\x04\x12\r\n\tFAVORITED\x10\x05B\t\
-    \n\x07_offsetB\x08\n\x06_limit\"\xab\x03\n\x15ListWorkflowsResponse\x12T\
-    \n\x05items\x18\x01\x20\x03(\x0b2>.bitdrift.public.unary.workflows.v1.Li\
-    stWorkflowsResponse.ItemR\x05items\x12'\n\x0ftotal_workflows\x18\x02\x20\
-    \x01(\rR\x0etotalWorkflows\x124\n\x16total_active_workflows\x18\x03\x20\
-    \x01(\rR\x14totalActiveWorkflows\x128\n\x18total_filtered_workflows\x18\
-    \x04\x20\x01(\rR\x16totalFilteredWorkflows\x1a\xa2\x01\n\x04Item\x12H\n\
-    \x08workflow\x18\x01\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.W\
-    orkflowR\x08workflow\x12P\n\x08metadata\x18\x05\x20\x01(\x0b24.bitdrift.\
-    public.unary.workflows.v1.WorkflowMetadataR\x08metadata\"\xae\x02\n\x15C\
-    reateWorkflowRequest\x12H\n\x08workflow\x18\x02\x20\x01(\x0b2,.bitdrift.\
-    public.unary.workflows.v1.WorkflowR\x08workflow\x12P\n\x08metadata\x18\
-    \x03\x20\x01(\x0b24.bitdrift.public.unary.workflows.v1.WorkflowMetadataR\
-    \x08metadata\x12y\n\x17per_rule_chart_metadata\x18\x05\x20\x03(\x0b28.bi\
-    tdrift.public.unary.workflows.v1.PerRuleChartMetadataR\x14perRuleChartMe\
-    tadataB\x08\xfaB\x05\x92\x01\x02\x10d\"(\n\x16CreateWorkflowResponse\x12\
-    \x0e\n\x02id\x18\x01\x20\x01(\tR\x02id\"\xd8\x02\n\x15UpdateWorkflowRequ\
-    est\x12(\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\
-    \x02\x18d\x12H\n\x08workflow\x18\x03\x20\x01(\x0b2,.bitdrift.public.unar\
-    y.workflows.v1.WorkflowR\x08workflow\x12P\n\x08metadata\x18\x04\x20\x01(\
-    \x0b24.bitdrift.public.unary.workflows.v1.WorkflowMetadataR\x08metadata\
-    \x12y\n\x17per_rule_chart_metadata\x18\x06\x20\x03(\x0b28.bitdrift.publi\
-    c.unary.workflows.v1.PerRuleChartMetadataR\x14perRuleChartMetadataB\x08\
-    \xfaB\x05\x92\x01\x02\x10d\"\xb2\x05\n\x16UpdateWorkflowResponse\x12H\n\
-    \x08workflow\x18\x01\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.W\
-    orkflowR\x08workflow\x12P\n\x08metadata\x18\x04\x20\x01(\x0b24.bitdrift.\
-    public.unary.workflows.v1.WorkflowMetadataR\x08metadata\x12o\n\x17per_ru\
-    le_chart_metadata\x18\x06\x20\x03(\x0b28.bitdrift.public.unary.workflows\
-    .v1.PerRuleChartMetadataR\x14perRuleChartMetadata\x12l\n\nviolations\x18\
-    \x03\x20\x03(\x0b2L.bitdrift.public.unary.workflows.v1.UpdateWorkflowRes\
-    ponse.BlockingViolationR\nviolations\x1a\x9c\x02\n\x11BlockingViolation\
-    \x12\x9d\x01\n\x18modified_chart_has_alert\x18\x01\x20\x01(\x0b2b.bitdri\
-    ft.public.unary.workflows.v1.UpdateWorkflowResponse.BlockingViolation.Mo\
-    difiedChartHasAlertH\0R\x15modifiedChartHasAlert\x1aU\n\x15ModifiedChart\
-    HasAlert\x12\x17\n\x07rule_id\x18\x01\x20\x01(\tR\x06ruleId\x12#\n\raggr\
-    egated_id\x18\x02\x20\x01(\tR\x0caggregatedIdB\x10\n\x0eviolation_type\"\
-    _\n\x15RenameWorkflowRequest\x12(\n\x0bworkflow_id\x18\x02\x20\x01(\tR\n\
-    workflowIdB\x07\xfaB\x04r\x02\x18d\x12\x1c\n\x04name\x18\x03\x20\x01(\tR\
-    \x04nameB\x08\xfaB\x05r\x03\x18\xff\x01\"\xa5\x02\n\x16RenameWorkflowRes\
-    ponse\x12H\n\x08workflow\x18\x01\x20\x01(\x0b2,.bitdrift.public.unary.wo\
-    rkflows.v1.WorkflowR\x08workflow\x12P\n\x08metadata\x18\x03\x20\x01(\x0b\
-    24.bitdrift.public.unary.workflows.v1.WorkflowMetadataR\x08metadata\x12o\
-    \n\x17per_rule_chart_metadata\x18\x04\x20\x03(\x0b28.bitdrift.public.una\
-    ry.workflows.v1.PerRuleChartMetadataR\x14perRuleChartMetadata\"k\n\x19Up\
-    sertWorkflowTagsRequest\x12(\n\x0bworkflow_id\x18\x01\x20\x01(\tR\nworkf\
-    lowIdB\x07\xfaB\x04r\x02\x18d\x12$\n\x04tags\x18\x02\x20\x03(\tR\x04tags\
-    B\x10\xfaB\r\x92\x01\n\x10d\"\x06r\x04\x10\x01\x18d\"j\n\x1aUpsertWorkfl\
-    owTagsResponse\x12L\n\x04tags\x18\x01\x20\x03(\x0b28.bitdrift.public.una\
-    ry.workflows.v1.Workflow.WorkflowTagR\x04tags\"\x11\n\x0fListTagsRequest\
-    \"`\n\x10ListTagsResponse\x12L\n\x04tags\x18\x01\x20\x03(\x0b28.bitdrift\
-    .public.unary.workflows.v1.Workflow.WorkflowTagR\x04tags\"A\n\x15DeleteW\
-    orkflowRequest\x12(\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\
-    \x07\xfaB\x04r\x02\x18d\"\xa5\x01\n\x16DeleteWorkflowResponse\x12d\n\nvi\
-    olations\x18\x01\x20\x03(\x0b2D.bitdrift.public.unary.workflows.v1.Delet\
-    eWorkflowResponse.ViolationR\nviolations\x1a%\n\tViolation\x12\x18\n\x07\
-    message\x18\x01\x20\x01(\tR\x07message\"A\n\x15DeployWorkflowRequest\x12\
-    (\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\
-    \x18d\"\xf4\x02\n\x16DeployWorkflowResponse\x12M\n\nviolations\x18\x01\
-    \x20\x03(\x0b2-.bitdrift.public.unary.workflows.v1.ViolationR\nviolation\
-    s\x12H\n\x08workflow\x18\x02\x20\x01(\x0b2,.bitdrift.public.unary.workfl\
-    ows.v1.WorkflowR\x08workflow\x12P\n\x08metadata\x18\x03\x20\x01(\x0b24.b\
-    itdrift.public.unary.workflows.v1.WorkflowMetadataR\x08metadata\x12o\n\
-    \x17per_rule_chart_metadata\x18\x04\x20\x03(\x0b28.bitdrift.public.unary\
-    .workflows.v1.PerRuleChartMetadataR\x14perRuleChartMetadata\"?\n\x13Stop\
-    WorkflowRequest\x12(\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\
-    \x07\xfaB\x04r\x02\x18d\"\xa3\x02\n\x14StopWorkflowResponse\x12H\n\x08wo\
-    rkflow\x18\x01\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.Workflo\
-    wR\x08workflow\x12P\n\x08metadata\x18\x02\x20\x01(\x0b24.bitdrift.public\
-    .unary.workflows.v1.WorkflowMetadataR\x08metadata\x12o\n\x17per_rule_cha\
-    rt_metadata\x18\x03\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.Pe\
-    rRuleChartMetadataR\x14perRuleChartMetadata\"_\n\x17FavoriteWorkflowRequ\
-    est\x12(\n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\
-    \x02\x18d\x12\x1a\n\x08favorite\x18\x03\x20\x01(\x08R\x08favorite\"\x1a\
-    \n\x18FavoriteWorkflowResponse*4\n\nStateScope\x12\x0b\n\x07UNKNOWN\x10\
-    \0\x12\x19\n\x15FEATURE_FLAG_EXPOSURE\x10\x01*8\n\tMatchType\x12\n\n\x06\
-    STRING\x10\0\x12\x07\n\x03INT\x10\x01\x12\n\n\x06SEMVER\x10\x02\x12\n\n\
-    \x06DOUBLE\x10\x03*\xdc\x01\n\x08Operator\x12\t\n\x05EQUAL\x10\0\x12\r\n\
-    \tNOT_EQUAL\x10\x01\x12\x10\n\x0cGREATER_THAN\x10\x02\x12\x19\n\x15GREAT\
-    ER_THAN_OR_EQUAL\x10\x03\x12\r\n\tLESS_THAN\x10\x04\x12\x16\n\x12LESS_TH\
-    AN_OR_EQUAL\x10\x05\x12\t\n\x05REGEX\x10\x06\x12\x06\n\x02IN\x10\x07\x12\
-    \n\n\x06NOT_IN\x10\x08\x12\r\n\tNOT_REGEX\x10\t\x12\x0c\n\x08WILDCARD\
-    \x10\n\x12\x10\n\x0cNOT_WILDCARD\x10\x0b\x12\x07\n\x03SET\x10\x0c\x12\
-    \x0b\n\x07NOT_SET\x10\rb\x06proto3\
+    \x01\"\x84\x01\n\x07SortKey\x12\x18\n\x14SORT_KEY_UNSPECIFIED\x10\0\x12\
+    \x10\n\x0cDISPLAY_NAME\x10\x01\x12\x11\n\rCREATION_TIME\x10\x02\x12\n\n\
+    \x06STATUS\x10\x03\x12\x0e\n\nOWNER_NAME\x10\x04\x12\r\n\tFAVORITED\x10\
+    \x05\x12\x0f\n\x0bLAST_VIEWED\x10\x06B\t\n\x07_offsetB\x08\n\x06_limit\"\
+    \xab\x03\n\x15ListWorkflowsResponse\x12T\n\x05items\x18\x01\x20\x03(\x0b\
+    2>.bitdrift.public.unary.workflows.v1.ListWorkflowsResponse.ItemR\x05ite\
+    ms\x12'\n\x0ftotal_workflows\x18\x02\x20\x01(\rR\x0etotalWorkflows\x124\
+    \n\x16total_active_workflows\x18\x03\x20\x01(\rR\x14totalActiveWorkflows\
+    \x128\n\x18total_filtered_workflows\x18\x04\x20\x01(\rR\x16totalFiltered\
+    Workflows\x1a\xa2\x01\n\x04Item\x12H\n\x08workflow\x18\x01\x20\x01(\x0b2\
+    ,.bitdrift.public.unary.workflows.v1.WorkflowR\x08workflow\x12P\n\x08met\
+    adata\x18\x05\x20\x01(\x0b24.bitdrift.public.unary.workflows.v1.Workflow\
+    MetadataR\x08metadata\"\xae\x02\n\x15CreateWorkflowRequest\x12H\n\x08wor\
+    kflow\x18\x02\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.Workflow\
+    R\x08workflow\x12P\n\x08metadata\x18\x03\x20\x01(\x0b24.bitdrift.public.\
+    unary.workflows.v1.WorkflowMetadataR\x08metadata\x12y\n\x17per_rule_char\
+    t_metadata\x18\x05\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.Per\
+    RuleChartMetadataR\x14perRuleChartMetadataB\x08\xfaB\x05\x92\x01\x02\x10\
+    d\"(\n\x16CreateWorkflowResponse\x12\x0e\n\x02id\x18\x01\x20\x01(\tR\x02\
+    id\"\xd8\x02\n\x15UpdateWorkflowRequest\x12(\n\x0bworkflow_id\x18\x02\
+    \x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\x18d\x12H\n\x08workflow\x18\
+    \x03\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.WorkflowR\x08work\
+    flow\x12P\n\x08metadata\x18\x04\x20\x01(\x0b24.bitdrift.public.unary.wor\
+    kflows.v1.WorkflowMetadataR\x08metadata\x12y\n\x17per_rule_chart_metadat\
+    a\x18\x06\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.PerRuleChart\
+    MetadataR\x14perRuleChartMetadataB\x08\xfaB\x05\x92\x01\x02\x10d\"\xb2\
+    \x05\n\x16UpdateWorkflowResponse\x12H\n\x08workflow\x18\x01\x20\x01(\x0b\
+    2,.bitdrift.public.unary.workflows.v1.WorkflowR\x08workflow\x12P\n\x08me\
+    tadata\x18\x04\x20\x01(\x0b24.bitdrift.public.unary.workflows.v1.Workflo\
+    wMetadataR\x08metadata\x12o\n\x17per_rule_chart_metadata\x18\x06\x20\x03\
+    (\x0b28.bitdrift.public.unary.workflows.v1.PerRuleChartMetadataR\x14perR\
+    uleChartMetadata\x12l\n\nviolations\x18\x03\x20\x03(\x0b2L.bitdrift.publ\
+    ic.unary.workflows.v1.UpdateWorkflowResponse.BlockingViolationR\nviolati\
+    ons\x1a\x9c\x02\n\x11BlockingViolation\x12\x9d\x01\n\x18modified_chart_h\
+    as_alert\x18\x01\x20\x01(\x0b2b.bitdrift.public.unary.workflows.v1.Updat\
+    eWorkflowResponse.BlockingViolation.ModifiedChartHasAlertH\0R\x15modifie\
+    dChartHasAlert\x1aU\n\x15ModifiedChartHasAlert\x12\x17\n\x07rule_id\x18\
+    \x01\x20\x01(\tR\x06ruleId\x12#\n\raggregated_id\x18\x02\x20\x01(\tR\x0c\
+    aggregatedIdB\x10\n\x0eviolation_type\"_\n\x15RenameWorkflowRequest\x12(\
+    \n\x0bworkflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\x18\
+    d\x12\x1c\n\x04name\x18\x03\x20\x01(\tR\x04nameB\x08\xfaB\x05r\x03\x18\
+    \xff\x01\"\xa5\x02\n\x16RenameWorkflowResponse\x12H\n\x08workflow\x18\
+    \x01\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.WorkflowR\x08work\
+    flow\x12P\n\x08metadata\x18\x03\x20\x01(\x0b24.bitdrift.public.unary.wor\
+    kflows.v1.WorkflowMetadataR\x08metadata\x12o\n\x17per_rule_chart_metadat\
+    a\x18\x04\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.PerRuleChart\
+    MetadataR\x14perRuleChartMetadata\"k\n\x19UpsertWorkflowTagsRequest\x12(\
+    \n\x0bworkflow_id\x18\x01\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\x18\
+    d\x12$\n\x04tags\x18\x02\x20\x03(\tR\x04tagsB\x10\xfaB\r\x92\x01\n\x10d\
+    \"\x06r\x04\x10\x01\x18d\"j\n\x1aUpsertWorkflowTagsResponse\x12L\n\x04ta\
+    gs\x18\x01\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.Workflow.Wo\
+    rkflowTagR\x04tags\"\x11\n\x0fListTagsRequest\"`\n\x10ListTagsResponse\
+    \x12L\n\x04tags\x18\x01\x20\x03(\x0b28.bitdrift.public.unary.workflows.v\
+    1.Workflow.WorkflowTagR\x04tags\"A\n\x15DeleteWorkflowRequest\x12(\n\x0b\
+    workflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\x18d\"\
+    \xa5\x01\n\x16DeleteWorkflowResponse\x12d\n\nviolations\x18\x01\x20\x03(\
+    \x0b2D.bitdrift.public.unary.workflows.v1.DeleteWorkflowResponse.Violati\
+    onR\nviolations\x1a%\n\tViolation\x12\x18\n\x07message\x18\x01\x20\x01(\
+    \tR\x07message\"A\n\x15DeployWorkflowRequest\x12(\n\x0bworkflow_id\x18\
+    \x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\x18d\"\xf4\x02\n\x16Depl\
+    oyWorkflowResponse\x12M\n\nviolations\x18\x01\x20\x03(\x0b2-.bitdrift.pu\
+    blic.unary.workflows.v1.ViolationR\nviolations\x12H\n\x08workflow\x18\
+    \x02\x20\x01(\x0b2,.bitdrift.public.unary.workflows.v1.WorkflowR\x08work\
+    flow\x12P\n\x08metadata\x18\x03\x20\x01(\x0b24.bitdrift.public.unary.wor\
+    kflows.v1.WorkflowMetadataR\x08metadata\x12o\n\x17per_rule_chart_metadat\
+    a\x18\x04\x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.PerRuleChart\
+    MetadataR\x14perRuleChartMetadata\"?\n\x13StopWorkflowRequest\x12(\n\x0b\
+    workflow_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\x18d\"\
+    \xa3\x02\n\x14StopWorkflowResponse\x12H\n\x08workflow\x18\x01\x20\x01(\
+    \x0b2,.bitdrift.public.unary.workflows.v1.WorkflowR\x08workflow\x12P\n\
+    \x08metadata\x18\x02\x20\x01(\x0b24.bitdrift.public.unary.workflows.v1.W\
+    orkflowMetadataR\x08metadata\x12o\n\x17per_rule_chart_metadata\x18\x03\
+    \x20\x03(\x0b28.bitdrift.public.unary.workflows.v1.PerRuleChartMetadataR\
+    \x14perRuleChartMetadata\"_\n\x17FavoriteWorkflowRequest\x12(\n\x0bworkf\
+    low_id\x18\x02\x20\x01(\tR\nworkflowIdB\x07\xfaB\x04r\x02\x18d\x12\x1a\n\
+    \x08favorite\x18\x03\x20\x01(\x08R\x08favorite\"\x1a\n\x18FavoriteWorkfl\
+    owResponse*4\n\nStateScope\x12\x0b\n\x07UNKNOWN\x10\0\x12\x19\n\x15FEATU\
+    RE_FLAG_EXPOSURE\x10\x01*8\n\tMatchType\x12\n\n\x06STRING\x10\0\x12\x07\
+    \n\x03INT\x10\x01\x12\n\n\x06SEMVER\x10\x02\x12\n\n\x06DOUBLE\x10\x03*\
+    \xdc\x01\n\x08Operator\x12\t\n\x05EQUAL\x10\0\x12\r\n\tNOT_EQUAL\x10\x01\
+    \x12\x10\n\x0cGREATER_THAN\x10\x02\x12\x19\n\x15GREATER_THAN_OR_EQUAL\
+    \x10\x03\x12\r\n\tLESS_THAN\x10\x04\x12\x16\n\x12LESS_THAN_OR_EQUAL\x10\
+    \x05\x12\t\n\x05REGEX\x10\x06\x12\x06\n\x02IN\x10\x07\x12\n\n\x06NOT_IN\
+    \x10\x08\x12\r\n\tNOT_REGEX\x10\t\x12\x0c\n\x08WILDCARD\x10\n\x12\x10\n\
+    \x0cNOT_WILDCARD\x10\x0b\x12\x07\n\x03SET\x10\x0c\x12\x0b\n\x07NOT_SET\
+    \x10\rb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file

@@ -1186,10 +1186,14 @@ pub struct View {
     pub modified_at: ::protobuf::MessageField<::protobuf::well_known_types::timestamp::Timestamp>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.View.view_filters)
     pub view_filters: ::protobuf::MessageField<ViewFilters>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.View.current_user_can_edit)
+    pub current_user_can_edit: ::protobuf::EnumOrUnknown<super::common::Permission>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.View.current_user_favorited)
     pub current_user_favorited: bool,
     // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.View.icon)
     pub icon: ::protobuf::MessageField<view::ViewIcon>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.View.current_access_permissions)
+    pub current_access_permissions: ::protobuf::MessageField<super::access::AccessPermission>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.View.default_sort)
     pub default_sort: ::protobuf::MessageField<ViewSortList>,
     // special fields
@@ -1209,7 +1213,7 @@ impl View {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(11);
+        let mut fields = ::std::vec::Vec::with_capacity(13);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "id",
@@ -1252,6 +1256,11 @@ impl View {
             |m: &mut View| { &mut m.view_filters },
         ));
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "current_user_can_edit",
+            |m: &View| { &m.current_user_can_edit },
+            |m: &mut View| { &mut m.current_user_can_edit },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "current_user_favorited",
             |m: &View| { &m.current_user_favorited },
             |m: &mut View| { &mut m.current_user_favorited },
@@ -1260,6 +1269,11 @@ impl View {
             "icon",
             |m: &View| { &m.icon },
             |m: &mut View| { &mut m.icon },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::access::AccessPermission>(
+            "current_access_permissions",
+            |m: &View| { &m.current_access_permissions },
+            |m: &mut View| { &mut m.current_access_permissions },
         ));
         fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, ViewSortList>(
             "default_sort",
@@ -1308,11 +1322,17 @@ impl ::protobuf::Message for View {
                 66 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.view_filters)?;
                 },
+                80 => {
+                    self.current_user_can_edit = is.read_enum_or_unknown()?;
+                },
                 88 => {
                     self.current_user_favorited = is.read_bool()?;
                 },
                 98 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.icon)?;
+                },
+                106 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.current_access_permissions)?;
                 },
                 114 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.default_sort)?;
@@ -1358,10 +1378,17 @@ impl ::protobuf::Message for View {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
+        if self.current_user_can_edit != ::protobuf::EnumOrUnknown::new(super::common::Permission::UNKNOWN) {
+            my_size += ::protobuf::rt::int32_size(10, self.current_user_can_edit.value());
+        }
         if self.current_user_favorited != false {
             my_size += 1 + 1;
         }
         if let Some(v) = self.icon.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let Some(v) = self.current_access_permissions.as_ref() {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
@@ -1399,11 +1426,17 @@ impl ::protobuf::Message for View {
         if let Some(v) = self.view_filters.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(8, v, os)?;
         }
+        if self.current_user_can_edit != ::protobuf::EnumOrUnknown::new(super::common::Permission::UNKNOWN) {
+            os.write_enum(10, ::protobuf::EnumOrUnknown::value(&self.current_user_can_edit))?;
+        }
         if self.current_user_favorited != false {
             os.write_bool(11, self.current_user_favorited)?;
         }
         if let Some(v) = self.icon.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(12, v, os)?;
+        }
+        if let Some(v) = self.current_access_permissions.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(13, v, os)?;
         }
         if let Some(v) = self.default_sort.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(14, v, os)?;
@@ -1433,8 +1466,10 @@ impl ::protobuf::Message for View {
         self.modified_by.clear();
         self.modified_at.clear();
         self.view_filters.clear();
+        self.current_user_can_edit = ::protobuf::EnumOrUnknown::new(super::common::Permission::UNKNOWN);
         self.current_user_favorited = false;
         self.icon.clear();
+        self.current_access_permissions.clear();
         self.default_sort.clear();
         self.special_fields.clear();
     }
@@ -1449,8 +1484,10 @@ impl ::protobuf::Message for View {
             modified_by: ::protobuf::MessageField::none(),
             modified_at: ::protobuf::MessageField::none(),
             view_filters: ::protobuf::MessageField::none(),
+            current_user_can_edit: ::protobuf::EnumOrUnknown::from_i32(0),
             current_user_favorited: false,
             icon: ::protobuf::MessageField::none(),
+            current_access_permissions: ::protobuf::MessageField::none(),
             default_sort: ::protobuf::MessageField::none(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
@@ -2896,6 +2933,8 @@ pub struct ListViewsRequest {
     pub sort: ::std::vec::Vec<list_views_request::Sort>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.ListViewsRequest.favorites_only)
     pub favorites_only: bool,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.ListViewsRequest.access)
+    pub access: ::protobuf::MessageField<super::access::AccessPermissionQuery>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.ListViewsRequest.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -2913,7 +2952,7 @@ impl ListViewsRequest {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(5);
+        let mut fields = ::std::vec::Vec::with_capacity(6);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
             "service_type",
@@ -2939,6 +2978,11 @@ impl ListViewsRequest {
             "favorites_only",
             |m: &ListViewsRequest| { &m.favorites_only },
             |m: &mut ListViewsRequest| { &mut m.favorites_only },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::access::AccessPermissionQuery>(
+            "access",
+            |m: &ListViewsRequest| { &m.access },
+            |m: &mut ListViewsRequest| { &mut m.access },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ListViewsRequest>(
             "ListViewsRequest",
@@ -2973,6 +3017,9 @@ impl ::protobuf::Message for ListViewsRequest {
                 64 => {
                     self.favorites_only = is.read_bool()?;
                 },
+                74 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.access)?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -3002,6 +3049,10 @@ impl ::protobuf::Message for ListViewsRequest {
         if self.favorites_only != false {
             my_size += 1 + 1;
         }
+        if let Some(v) = self.access.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -3022,6 +3073,9 @@ impl ::protobuf::Message for ListViewsRequest {
         };
         if self.favorites_only != false {
             os.write_bool(8, self.favorites_only)?;
+        }
+        if let Some(v) = self.access.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(9, v, os)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -3045,6 +3099,7 @@ impl ::protobuf::Message for ListViewsRequest {
         self.name = ::std::option::Option::None;
         self.sort.clear();
         self.favorites_only = false;
+        self.access.clear();
         self.special_fields.clear();
     }
 
@@ -3055,6 +3110,7 @@ impl ::protobuf::Message for ListViewsRequest {
             name: ::std::option::Option::None,
             sort: ::std::vec::Vec::new(),
             favorites_only: false,
+            access: ::protobuf::MessageField::none(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -3736,93 +3792,99 @@ impl ::protobuf::reflect::ProtobufValue for FavoriteViewResponse {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n)bitdrift/public/unary/admin/v1/view.proto\x12\x1ebitdrift.public.unar\
-    y.admin.v1\x1a,bitdrift/public/unary/common/v1/common.proto\x1a,bitdrift\
-    /public/unary/issues/v1/issues.proto\x1a1bitdrift/public/unary/workflows\
-    /v1/workflow.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x17validat\
-    e/validate.proto\"\xf8\x05\n\x0bViewFilters\x12f\n\x10issue_group_list\
-    \x18\x01\x20\x01(\x0b2:.bitdrift.public.unary.admin.v1.ViewFilters.Issue\
-    GroupListH\0R\x0eissueGroupList\x12r\n\x14issue_group_list_new\x18\x02\
-    \x20\x01(\x0b2?.bitdrift.public.unary.admin.v1.ViewFilters.IssueGroupLis\
-    tQueryH\0R\x11issueGroupListNew\x12_\n\rworkflow_list\x18\x03\x20\x01(\
-    \x0b28.bitdrift.public.unary.admin.v1.ViewFilters.WorkflowListH\0R\x0cwo\
-    rkflowList\x1am\n\x0eIssueGroupList\x12[\n\x07filters\x18\x01\x20\x03(\
-    \x0b27.bitdrift.public.unary.issues.v1.ListIssueGroupsFiltersR\x07filter\
-    sB\x08\xfaB\x05\x92\x01\x02\x10d\x1a\xc1\x01\n\x13IssueGroupListQuery\
-    \x12L\n\x0bissue_query\x18\x01\x20\x01(\x0b2+.bitdrift.public.unary.issu\
-    es.v1.IssueQueryR\nissueQuery\x12\\\n\x11issue_group_query\x18\x02\x20\
-    \x01(\x0b20.bitdrift.public.unary.issues.v1.IssueGroupQueryR\x0fissueGro\
-    upQuery\x1al\n\x0cWorkflowList\x12\\\n\x0eworkflow_query\x18\x01\x20\x01\
-    (\x0b25.bitdrift.public.unary.workflows.v1.WorkflowListQueryR\rworkflowQ\
-    ueryB\x0b\n\x04type\x12\x03\xf8B\x01\"\xd5\x01\n\x08ViewSort\x12_\n\x0bi\
-    ssue_group\x18\x01\x20\x01(\x0b2<.bitdrift.public.unary.issues.v1.ListIs\
-    sueGroupsRequest.SortH\0R\nissueGroup\x12[\n\x08workflow\x18\x02\x20\x01\
-    (\x0b2=.bitdrift.public.unary.workflows.v1.ListWorkflowsRequest.SortH\0R\
-    \x08workflowB\x0b\n\x04type\x12\x03\xf8B\x01\"V\n\x0cViewSortList\x12F\n\
-    \x04sort\x18\x01\x20\x03(\x0b2(.bitdrift.public.unary.admin.v1.ViewSortR\
-    \x04sortB\x08\xfaB\x05\x92\x01\x02\x10d\"\xb5\x05\n\x04View\x12\x0e\n\
-    \x02id\x18\x01\x20\x01(\tR\x02id\x12\x12\n\x04name\x18\x02\x20\x01(\tR\
-    \x04name\x12%\n\x0bdescription\x18\x03\x20\x01(\tH\0R\x0bdescription\x88\
-    \x01\x01\x12E\n\ncreated_by\x18\x04\x20\x01(\x0b2&.bitdrift.public.unary\
-    .common.v1.OwnerR\tcreatedBy\x129\n\ncreated_at\x18\x05\x20\x01(\x0b2\
-    \x1a.google.protobuf.TimestampR\tcreatedAt\x12G\n\x0bmodified_by\x18\x06\
-    \x20\x01(\x0b2&.bitdrift.public.unary.common.v1.OwnerR\nmodifiedBy\x12;\
-    \n\x0bmodified_at\x18\x07\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\n\
-    modifiedAt\x12N\n\x0cview_filters\x18\x08\x20\x01(\x0b2+.bitdrift.public\
-    .unary.admin.v1.ViewFiltersR\x0bviewFilters\x124\n\x16current_user_favor\
-    ited\x18\x0b\x20\x01(\x08R\x14currentUserFavorited\x12A\n\x04icon\x18\
-    \x0c\x20\x01(\x0b2-.bitdrift.public.unary.admin.v1.View.ViewIconR\x04ico\
-    n\x12O\n\x0cdefault_sort\x18\x0e\x20\x01(\x0b2,.bitdrift.public.unary.ad\
-    min.v1.ViewSortListR\x0bdefaultSort\x1a0\n\x08ViewIcon\x12$\n\ticon_name\
-    \x18\x01\x20\x01(\tR\x08iconNameB\x07\xfaB\x04r\x02\x18dB\x0e\n\x0c_desc\
-    ription\"\xb1\x07\n\x11UpsertViewRequest\x12R\n\x06insert\x18\x01\x20\
-    \x01(\x0b28.bitdrift.public.unary.admin.v1.UpsertViewRequest.InsertH\0R\
-    \x06insert\x12R\n\x06update\x18\x02\x20\x01(\x0b28.bitdrift.public.unary\
-    .admin.v1.UpsertViewRequest.UpdateH\0R\x06update\x1a\xd7\x02\n\x06Insert\
-    \x12\x1e\n\x04name\x18\x01\x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\
-    \x18\xff\x01\x12/\n\x0bdescription\x18\x02\x20\x01(\tH\0R\x0bdescription\
-    B\x08\xfaB\x05r\x03\x18\xe8\x07\x88\x01\x01\x12X\n\x0cview_filters\x18\
-    \x03\x20\x01(\x0b2+.bitdrift.public.unary.admin.v1.ViewFiltersR\x0bviewF\
-    iltersB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12O\n\x0cdefault_sort\x18\x05\
-    \x20\x01(\x0b2,.bitdrift.public.unary.admin.v1.ViewSortListR\x0bdefaultS\
-    ort\x12A\n\x04icon\x18\x06\x20\x01(\x0b2-.bitdrift.public.unary.admin.v1\
-    .View.ViewIconR\x04iconB\x0e\n\x0c_description\x1a\x8a\x03\n\x06Update\
-    \x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\
-    \x12!\n\x04name\x18\x02\x20\x01(\tH\0R\x04nameB\x08\xfaB\x05r\x03\x18\
-    \xff\x01\x88\x01\x01\x12/\n\x0bdescription\x18\x03\x20\x01(\tH\x01R\x0bd\
-    escriptionB\x08\xfaB\x05r\x03\x18\xe8\x07\x88\x01\x01\x12S\n\x0cview_fil\
-    ters\x18\x04\x20\x01(\x0b2+.bitdrift.public.unary.admin.v1.ViewFiltersH\
-    \x02R\x0bviewFilters\x88\x01\x01\x12O\n\x0cdefault_sort\x18\x06\x20\x01(\
-    \x0b2,.bitdrift.public.unary.admin.v1.ViewSortListR\x0bdefaultSort\x12A\
-    \n\x04icon\x18\x07\x20\x01(\x0b2-.bitdrift.public.unary.admin.v1.View.Vi\
-    ewIconR\x04iconB\x07\n\x05_nameB\x0e\n\x0c_descriptionB\x0f\n\r_view_fil\
-    tersB\r\n\x06action\x12\x03\xf8B\x01\"N\n\x12UpsertViewResponse\x128\n\
+    y.admin.v1\x1a+bitdrift/public/unary/admin/v1/access.proto\x1a,bitdrift/\
+    public/unary/common/v1/common.proto\x1a,bitdrift/public/unary/issues/v1/\
+    issues.proto\x1a1bitdrift/public/unary/workflows/v1/workflow.proto\x1a\
+    \x1fgoogle/protobuf/timestamp.proto\x1a\x17validate/validate.proto\"\xf8\
+    \x05\n\x0bViewFilters\x12f\n\x10issue_group_list\x18\x01\x20\x01(\x0b2:.\
+    bitdrift.public.unary.admin.v1.ViewFilters.IssueGroupListH\0R\x0eissueGr\
+    oupList\x12r\n\x14issue_group_list_new\x18\x02\x20\x01(\x0b2?.bitdrift.p\
+    ublic.unary.admin.v1.ViewFilters.IssueGroupListQueryH\0R\x11issueGroupLi\
+    stNew\x12_\n\rworkflow_list\x18\x03\x20\x01(\x0b28.bitdrift.public.unary\
+    .admin.v1.ViewFilters.WorkflowListH\0R\x0cworkflowList\x1am\n\x0eIssueGr\
+    oupList\x12[\n\x07filters\x18\x01\x20\x03(\x0b27.bitdrift.public.unary.i\
+    ssues.v1.ListIssueGroupsFiltersR\x07filtersB\x08\xfaB\x05\x92\x01\x02\
+    \x10d\x1a\xc1\x01\n\x13IssueGroupListQuery\x12L\n\x0bissue_query\x18\x01\
+    \x20\x01(\x0b2+.bitdrift.public.unary.issues.v1.IssueQueryR\nissueQuery\
+    \x12\\\n\x11issue_group_query\x18\x02\x20\x01(\x0b20.bitdrift.public.una\
+    ry.issues.v1.IssueGroupQueryR\x0fissueGroupQuery\x1al\n\x0cWorkflowList\
+    \x12\\\n\x0eworkflow_query\x18\x01\x20\x01(\x0b25.bitdrift.public.unary.\
+    workflows.v1.WorkflowListQueryR\rworkflowQueryB\x0b\n\x04type\x12\x03\
+    \xf8B\x01\"\xd5\x01\n\x08ViewSort\x12_\n\x0bissue_group\x18\x01\x20\x01(\
+    \x0b2<.bitdrift.public.unary.issues.v1.ListIssueGroupsRequest.SortH\0R\n\
+    issueGroup\x12[\n\x08workflow\x18\x02\x20\x01(\x0b2=.bitdrift.public.una\
+    ry.workflows.v1.ListWorkflowsRequest.SortH\0R\x08workflowB\x0b\n\x04type\
+    \x12\x03\xf8B\x01\"V\n\x0cViewSortList\x12F\n\x04sort\x18\x01\x20\x03(\
+    \x0b2(.bitdrift.public.unary.admin.v1.ViewSortR\x04sortB\x08\xfaB\x05\
+    \x92\x01\x02\x10d\"\x85\x07\n\x04View\x12\x0e\n\x02id\x18\x01\x20\x01(\t\
+    R\x02id\x12\x12\n\x04name\x18\x02\x20\x01(\tR\x04name\x12%\n\x0bdescript\
+    ion\x18\x03\x20\x01(\tH\0R\x0bdescription\x88\x01\x01\x12E\n\ncreated_by\
+    \x18\x04\x20\x01(\x0b2&.bitdrift.public.unary.common.v1.OwnerR\tcreatedB\
+    y\x129\n\ncreated_at\x18\x05\x20\x01(\x0b2\x1a.google.protobuf.Timestamp\
+    R\tcreatedAt\x12G\n\x0bmodified_by\x18\x06\x20\x01(\x0b2&.bitdrift.publi\
+    c.unary.common.v1.OwnerR\nmodifiedBy\x12;\n\x0bmodified_at\x18\x07\x20\
+    \x01(\x0b2\x1a.google.protobuf.TimestampR\nmodifiedAt\x12N\n\x0cview_fil\
+    ters\x18\x08\x20\x01(\x0b2+.bitdrift.public.unary.admin.v1.ViewFiltersR\
+    \x0bviewFilters\x12^\n\x15current_user_can_edit\x18\n\x20\x01(\x0e2+.bit\
+    drift.public.unary.common.v1.PermissionR\x12currentUserCanEdit\x124\n\
+    \x16current_user_favorited\x18\x0b\x20\x01(\x08R\x14currentUserFavorited\
+    \x12A\n\x04icon\x18\x0c\x20\x01(\x0b2-.bitdrift.public.unary.admin.v1.Vi\
+    ew.ViewIconR\x04icon\x12n\n\x1acurrent_access_permissions\x18\r\x20\x01(\
+    \x0b20.bitdrift.public.unary.admin.v1.AccessPermissionR\x18currentAccess\
+    Permissions\x12O\n\x0cdefault_sort\x18\x0e\x20\x01(\x0b2,.bitdrift.publi\
+    c.unary.admin.v1.ViewSortListR\x0bdefaultSort\x1a0\n\x08ViewIcon\x12$\n\
+    \ticon_name\x18\x01\x20\x01(\tR\x08iconNameB\x07\xfaB\x04r\x02\x18dB\x0e\
+    \n\x0c_description\"\xb1\x07\n\x11UpsertViewRequest\x12R\n\x06insert\x18\
+    \x01\x20\x01(\x0b28.bitdrift.public.unary.admin.v1.UpsertViewRequest.Ins\
+    ertH\0R\x06insert\x12R\n\x06update\x18\x02\x20\x01(\x0b28.bitdrift.publi\
+    c.unary.admin.v1.UpsertViewRequest.UpdateH\0R\x06update\x1a\xd7\x02\n\
+    \x06Insert\x12\x1e\n\x04name\x18\x01\x20\x01(\tR\x04nameB\n\xfaB\x07r\
+    \x05\x10\x01\x18\xff\x01\x12/\n\x0bdescription\x18\x02\x20\x01(\tH\0R\
+    \x0bdescriptionB\x08\xfaB\x05r\x03\x18\xe8\x07\x88\x01\x01\x12X\n\x0cvie\
+    w_filters\x18\x03\x20\x01(\x0b2+.bitdrift.public.unary.admin.v1.ViewFilt\
+    ersR\x0bviewFiltersB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12O\n\x0cdefault_\
+    sort\x18\x05\x20\x01(\x0b2,.bitdrift.public.unary.admin.v1.ViewSortListR\
+    \x0bdefaultSort\x12A\n\x04icon\x18\x06\x20\x01(\x0b2-.bitdrift.public.un\
+    ary.admin.v1.View.ViewIconR\x04iconB\x0e\n\x0c_description\x1a\x8a\x03\n\
+    \x06Update\x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\
+    \x10\x01\x18d\x12!\n\x04name\x18\x02\x20\x01(\tH\0R\x04nameB\x08\xfaB\
+    \x05r\x03\x18\xff\x01\x88\x01\x01\x12/\n\x0bdescription\x18\x03\x20\x01(\
+    \tH\x01R\x0bdescriptionB\x08\xfaB\x05r\x03\x18\xe8\x07\x88\x01\x01\x12S\
+    \n\x0cview_filters\x18\x04\x20\x01(\x0b2+.bitdrift.public.unary.admin.v1\
+    .ViewFiltersH\x02R\x0bviewFilters\x88\x01\x01\x12O\n\x0cdefault_sort\x18\
+    \x06\x20\x01(\x0b2,.bitdrift.public.unary.admin.v1.ViewSortListR\x0bdefa\
+    ultSort\x12A\n\x04icon\x18\x07\x20\x01(\x0b2-.bitdrift.public.unary.admi\
+    n.v1.View.ViewIconR\x04iconB\x07\n\x05_nameB\x0e\n\x0c_descriptionB\x0f\
+    \n\r_view_filtersB\r\n\x06action\x12\x03\xf8B\x01\"N\n\x12UpsertViewResp\
+    onse\x128\n\x04view\x18\x01\x20\x01(\x0b2$.bitdrift.public.unary.admin.v\
+    1.ViewR\x04view\"+\n\x0eGetViewRequest\x12\x19\n\x02id\x18\x01\x20\x01(\
+    \tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\"K\n\x0fGetViewResponse\x128\n\
     \x04view\x18\x01\x20\x01(\x0b2$.bitdrift.public.unary.admin.v1.ViewR\x04\
-    view\"+\n\x0eGetViewRequest\x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02idB\t\
-    \xfaB\x06r\x04\x10\x01\x18d\"K\n\x0fGetViewResponse\x128\n\x04view\x18\
-    \x01\x20\x01(\x0b2$.bitdrift.public.unary.admin.v1.ViewR\x04view\".\n\
-    \x11DeleteViewRequest\x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\
-    \x06r\x04\x10\x01\x18d\"\x14\n\x12DeleteViewResponse\"\xdb\x05\n\x10List\
-    ViewsRequest\x12i\n\x0cservice_type\x18\x01\x20\x01(\x0e2<.bitdrift.publ\
-    ic.unary.admin.v1.ListViewsRequest.ServiceTypeR\x0bserviceTypeB\x08\xfaB\
-    \x05\x82\x01\x02\x10\x01\x12K\n\npagination\x18\x05\x20\x01(\x0b2+.bitdr\
-    ift.public.unary.common.v1.PaginationR\npagination\x12!\n\x04name\x18\
-    \x06\x20\x01(\tH\0R\x04nameB\x08\xfaB\x05r\x03\x18\xff\x01\x88\x01\x01\
-    \x12S\n\x04sort\x18\x07\x20\x03(\x0b25.bitdrift.public.unary.admin.v1.Li\
-    stViewsRequest.SortR\x04sortB\x08\xfaB\x05\x92\x01\x02\x10d\x12%\n\x0efa\
-    vorites_only\x18\x08\x20\x01(\x08R\rfavoritesOnly\x1a\xa6\x02\n\x04Sort\
-    \x12[\n\x03key\x18\x01\x20\x01(\x0e2=.bitdrift.public.unary.admin.v1.Lis\
-    tViewsRequest.Sort.SortKeyR\x03keyB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\
-    \x12V\n\tdirection\x18\x02\x20\x01(\x0e2..bitdrift.public.unary.common.v\
-    1.SortDirectionR\tdirectionB\x08\xfaB\x05\x82\x01\x02\x10\x01\"i\n\x07So\
-    rtKey\x12\x18\n\x14SORT_KEY_UNSPECIFIED\x10\0\x12\x10\n\x0cDISPLAY_NAME\
-    \x10\x01\x12\x11\n\rCREATION_TIME\x10\x02\x12\x10\n\x0cUPDATED_TIME\x10\
-    \x03\x12\r\n\tFAVORITED\x10\x04\">\n\x0bServiceType\x12\x0f\n\x0bUNSPECI\
-    FIED\x10\0\x12\x0f\n\x0bISSUE_GROUP\x10\x01\x12\r\n\tWORKFLOWS\x10\x02B\
-    \x07\n\x05_name\"p\n\x11ListViewsResponse\x12:\n\x05views\x18\x01\x20\
-    \x03(\x0b2$.bitdrift.public.unary.admin.v1.ViewR\x05views\x12\x1f\n\x0bt\
-    otal_count\x18\x02\x20\x01(\rR\ntotalCount\"0\n\x13FavoriteViewRequest\
-    \x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\
-    \"\x16\n\x14FavoriteViewResponseb\x06proto3\
+    view\".\n\x11DeleteViewRequest\x12\x19\n\x02id\x18\x01\x20\x01(\tR\x02id\
+    B\t\xfaB\x06r\x04\x10\x01\x18d\"\x14\n\x12DeleteViewResponse\"\xaa\x06\n\
+    \x10ListViewsRequest\x12i\n\x0cservice_type\x18\x01\x20\x01(\x0e2<.bitdr\
+    ift.public.unary.admin.v1.ListViewsRequest.ServiceTypeR\x0bserviceTypeB\
+    \x08\xfaB\x05\x82\x01\x02\x10\x01\x12K\n\npagination\x18\x05\x20\x01(\
+    \x0b2+.bitdrift.public.unary.common.v1.PaginationR\npagination\x12!\n\
+    \x04name\x18\x06\x20\x01(\tH\0R\x04nameB\x08\xfaB\x05r\x03\x18\xff\x01\
+    \x88\x01\x01\x12S\n\x04sort\x18\x07\x20\x03(\x0b25.bitdrift.public.unary\
+    .admin.v1.ListViewsRequest.SortR\x04sortB\x08\xfaB\x05\x92\x01\x02\x10d\
+    \x12%\n\x0efavorites_only\x18\x08\x20\x01(\x08R\rfavoritesOnly\x12M\n\
+    \x06access\x18\t\x20\x01(\x0b25.bitdrift.public.unary.admin.v1.AccessPer\
+    missionQueryR\x06access\x1a\xa6\x02\n\x04Sort\x12[\n\x03key\x18\x01\x20\
+    \x01(\x0e2=.bitdrift.public.unary.admin.v1.ListViewsRequest.Sort.SortKey\
+    R\x03keyB\n\xfaB\x07\x82\x01\x04\x10\x01\x20\0\x12V\n\tdirection\x18\x02\
+    \x20\x01(\x0e2..bitdrift.public.unary.common.v1.SortDirectionR\tdirectio\
+    nB\x08\xfaB\x05\x82\x01\x02\x10\x01\"i\n\x07SortKey\x12\x18\n\x14SORT_KE\
+    Y_UNSPECIFIED\x10\0\x12\x10\n\x0cDISPLAY_NAME\x10\x01\x12\x11\n\rCREATIO\
+    N_TIME\x10\x02\x12\x10\n\x0cUPDATED_TIME\x10\x03\x12\r\n\tFAVORITED\x10\
+    \x04\">\n\x0bServiceType\x12\x0f\n\x0bUNSPECIFIED\x10\0\x12\x0f\n\x0bISS\
+    UE_GROUP\x10\x01\x12\r\n\tWORKFLOWS\x10\x02B\x07\n\x05_name\"p\n\x11List\
+    ViewsResponse\x12:\n\x05views\x18\x01\x20\x03(\x0b2$.bitdrift.public.una\
+    ry.admin.v1.ViewR\x05views\x12\x1f\n\x0btotal_count\x18\x02\x20\x01(\rR\
+    \ntotalCount\"0\n\x13FavoriteViewRequest\x12\x19\n\x02id\x18\x01\x20\x01\
+    (\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\"\x16\n\x14FavoriteViewResponse\
+    b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -3839,7 +3901,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(5);
+            let mut deps = ::std::vec::Vec::with_capacity(6);
+            deps.push(super::access::file_descriptor().clone());
             deps.push(super::common::file_descriptor().clone());
             deps.push(super::issues::file_descriptor().clone());
             deps.push(super::workflow::file_descriptor().clone());
