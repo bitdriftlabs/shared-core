@@ -62,9 +62,8 @@ pub struct LogMetadata {
 
 pub struct MetadataCollector {
   metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
-  // This single map holds immutable OOTB fields collected at startup as well as fields added
-  // through the mutable logger API. Retaining the field kind preserves their different
-  // precedence rules without requiring a second cache.
+  // This single map holds OOTB and custom fields provided at startup, plus later updates.
+  // Retaining the field kind preserves their different precedence rules without a second cache.
   fields: AnnotatedLogFields,
 }
 
@@ -72,12 +71,28 @@ impl MetadataCollector {
   pub(crate) fn new(
     metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
     initial_ootb_fields: LogFields,
+    initial_custom_fields: LogFields,
   ) -> Self {
     Self {
       metadata_provider,
-      fields: initial_ootb_fields
+      // OOTB fields are chained last so they retain their precedence when both sources use a key.
+      fields: initial_custom_fields
         .into_iter()
-        .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
+        .filter_map(|(key, value)| match verify_custom_field_name(&key) {
+          Ok(()) => Some((key, AnnotatedLogField::new_custom(value))),
+          Err(e) => {
+            warn_every!(
+              15.seconds(),
+              "failed to process initial custom field: {e:?}"
+            );
+            None
+          },
+        })
+        .chain(
+          initial_ootb_fields
+            .into_iter()
+            .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value))),
+        )
         .collect(),
     }
   }

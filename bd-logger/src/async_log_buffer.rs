@@ -341,6 +341,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     session_strategy: Arc<bd_session::Strategy>,
     metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
     initial_ootb_fields: LogFields,
+    initial_custom_fields: LogFields,
     resource_utilization_target: Box<dyn bd_resource_utilization::Target + Send + Sync>,
     session_replay_target: Box<dyn bd_session_replay::Target + Send + Sync>,
     events_listener_target: Box<dyn bd_events::ListenerTarget + Send + Sync>,
@@ -407,7 +408,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         replayer,
 
         session_strategy,
-        metadata_collector: MetadataCollector::new(metadata_provider, initial_ootb_fields),
+        metadata_collector: MetadataCollector::new(
+          metadata_provider,
+          initial_ootb_fields,
+          initial_custom_fields,
+        ),
         resource_utilization_reporter: bd_resource_utilization::Reporter::new(
           resource_utilization_target,
           runtime_loader,
