@@ -580,8 +580,11 @@ pub struct InitParams {
   pub store: Arc<bd_key_value::Store>,
 
   pub metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
-  /// Immutable OOTB log fields supplied by the platform at logger construction time.
+  /// Initial OOTB log fields supplied by the platform at logger construction time.
   pub initial_ootb_fields: LogFields,
+  /// Initial custom log fields supplied by the platform at logger construction time. These can be
+  /// updated or removed through the logger field APIs after startup.
+  pub initial_custom_fields: LogFields,
   pub resource_utilization_target: Box<dyn bd_resource_utilization::Target + Send + Sync>,
   pub session_replay_target: Box<dyn bd_session_replay::Target + Send + Sync>,
   pub events_listener_target: Box<dyn bd_events::ListenerTarget + Send + Sync>,
