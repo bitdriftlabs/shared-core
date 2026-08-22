@@ -62,6 +62,7 @@ use bd_workflow_stats::workflow::{WorkflowDebugStateKey, WorkflowDebugTransition
 use bd_workflows::workflow::WorkflowDebugStateMap;
 use debug_data_request::workflow_transition_debug_data::Transition_type;
 use std::collections::{HashMap, VecDeque};
+use std::future::{Future, ready};
 use std::mem::size_of_val;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -87,8 +88,8 @@ impl ReportProcessor for bd_crash_handler::Monitor {
 }
 
 impl ReportProcessor for () {
-  async fn process_all_pending_reports(&self) -> Vec<bd_crash_handler::CrashLog> {
-    vec![]
+  fn process_all_pending_reports(&self) -> impl Future<Output = Vec<bd_crash_handler::CrashLog>> {
+    ready(vec![])
   }
 }
 

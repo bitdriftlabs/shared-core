@@ -40,6 +40,7 @@ use bd_workflows::engine::ProcessLocalPendingFlushState;
 use futures_util::future::try_join_all;
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
+use std::mem::take;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -960,7 +961,7 @@ impl BatchBuilder {
     self.total_bytes = 0;
     self.oldest_micros = None;
     self.newest_micros = None;
-    self.logs.drain(..).collect()
+    take(&mut self.logs)
   }
 }
 
