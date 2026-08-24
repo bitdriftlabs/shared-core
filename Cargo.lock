@@ -687,7 +687,6 @@ dependencies = [
 name = "bd-error-reporter"
 version = "1.0.0"
 dependencies = [
- "anyhow",
  "bd-client-common",
  "bd-client-stats-store",
  "bd-metadata",
@@ -709,7 +708,6 @@ dependencies = [
  "bd-log-primitives",
  "bd-proto",
  "proptest",
- "thiserror 2.0.20",
  "tokio",
 ]
 

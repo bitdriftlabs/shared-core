@@ -5,11 +5,11 @@ use super::{
   EventBufferEntry,
   EventBufferLimits,
   EventBufferState,
-  LoggerFieldMapLimits,
   RetentionLane,
+  StateUpdateMessage,
   retention_lane,
 };
-use bd_log_primitives::{AnnotatedLogFields, LogFieldValue, LogLine, log_level};
+use bd_log_primitives::{AnnotatedLogFields, DataValue, LogLine, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use tokio::sync::oneshot;
 
@@ -53,7 +53,14 @@ fn limits(bytes: usize) -> EventBufferLimits {
 }
 
 fn buffer(bytes: usize) -> EventBuffer {
-  EventBuffer::new(limits(bytes), LoggerFieldMapLimits::default())
+  EventBuffer::new(limits(bytes))
+}
+
+fn add_field(key: &str) -> EventBufferEntry {
+  EventBufferEntry::State(StateUpdateMessage::AddLogField(
+    key.to_string(),
+    DataValue::String("value".into()),
+  ))
 }
 
 fn state_limits(log_limit_bytes: usize, total_limit_bytes: usize) -> EventBufferLimits {
@@ -84,31 +91,31 @@ fn priority_mapping_covers_protected_and_evictable_logs() {
 }
 
 #[tokio::test]
-async fn preserves_global_admission_order_across_lanes() {
+async fn preserves_log_and_field_update_admission_order() {
   let buffer = buffer(10_000);
   assert_eq!(
     AdmissionOutcome::Admitted,
     buffer.admit(log(log_level::INFO, LogType::NORMAL, 1))
   );
+  assert_eq!(AdmissionOutcome::Admitted, buffer.admit(add_field("field")));
   assert_eq!(
     AdmissionOutcome::Admitted,
     buffer.admit(log(log_level::DEBUG, LogType::NORMAL, 2))
   );
-  assert_eq!(
-    AdmissionOutcome::Admitted,
-    buffer.admit(log(log_level::TRACE, LogType::LIFECYCLE, 3))
-  );
 
-  let messages = buffer
+  let entries = buffer
     .next_batch(3)
     .await
     .into_iter()
     .map(|entry| match entry {
-      EventBufferEntry::Log(log) => log.log.message.to_string(),
-      EventBufferEntry::State(_) => String::new(),
+      EventBufferEntry::Log(log) => format!("log:{}", log.log.message),
+      EventBufferEntry::State(StateUpdateMessage::AddLogField(key, _)) => {
+        format!("add_field:{key}")
+      },
+      EventBufferEntry::State(_) => "other_state".to_string(),
     })
     .collect::<Vec<_>>();
-  assert_eq!(vec!["x", "xx", "xxx"], messages);
+  assert_eq!(vec!["log:x", "add_field:field", "log:xx"], entries);
 }
 
 #[tokio::test]
@@ -144,13 +151,10 @@ async fn rejected_admission_does_not_partially_evict() {
   let protected = blocking_log(1);
   let total = low.size() + protected.size();
   let incoming_base = log(log_level::INFO, LogType::NORMAL, 0).size();
-  let buffer = EventBuffer::new(
-    EventBufferLimits {
-      log_limit_bytes: usize::MAX,
-      total_limit_bytes: total,
-    },
-    LoggerFieldMapLimits::default(),
-  );
+  let buffer = EventBuffer::new(EventBufferLimits {
+    log_limit_bytes: usize::MAX,
+    total_limit_bytes: total,
+  });
   assert_eq!(AdmissionOutcome::Admitted, buffer.admit(low));
   assert_eq!(AdmissionOutcome::Admitted, buffer.admit(protected));
   assert_eq!(
@@ -163,36 +167,6 @@ async fn rejected_admission_does_not_partially_evict() {
   );
 
   assert_eq!(2, buffer.next_batch(2).await.len());
-}
-
-#[tokio::test]
-async fn field_snapshots_are_immutable_and_validate_reserved_names() {
-  let buffer = buffer(10_000);
-  buffer
-    .set_field("first".into(), LogFieldValue::String("one".into()))
-    .unwrap();
-  assert_eq!(
-    AdmissionOutcome::Admitted,
-    buffer.admit(log(log_level::INFO, LogType::NORMAL, 0))
-  );
-  buffer
-    .set_field("second".into(), LogFieldValue::String("two".into()))
-    .unwrap();
-  assert!(
-    buffer
-      .set_field("app_id".into(), LogFieldValue::String("bad".into()))
-      .is_err()
-  );
-
-  let batch = buffer.next_batch(1).await;
-  let captured = match &batch[0] {
-    EventBufferEntry::Log(captured) => Some(captured),
-    EventBufferEntry::State(_) => None,
-  };
-  assert!(captured.is_some());
-  let Some(captured) = captured else { return };
-  assert!(captured.logger_fields.contains_key("first"));
-  assert!(!captured.logger_fields.contains_key("second"));
 }
 
 #[tokio::test]

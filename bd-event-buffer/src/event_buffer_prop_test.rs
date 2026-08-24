@@ -6,8 +6,23 @@ use proptest::prelude::*;
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Entry {
   id: u64,
-  lane: RetentionLane,
+  kind: EntryKind,
   bytes: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EntryKind {
+  Log(RetentionLane),
+  State,
+}
+
+impl Entry {
+  const fn lane(&self) -> RetentionLane {
+    match self.kind {
+      EntryKind::Log(lane) => lane,
+      EntryKind::State => RetentionLane::Protected,
+    }
+  }
 }
 
 struct ReferenceState {
@@ -37,12 +52,12 @@ impl ReferenceState {
       return AdmissionOutcome::Closed;
     }
     if entry.bytes > self.limits.total_limit_bytes
-      || (entry.lane.is_evictable() && entry.bytes > self.limits.log_limit_bytes)
+      || (entry.lane().is_evictable() && entry.bytes > self.limits.log_limit_bytes)
     {
       return AdmissionOutcome::RejectedOversized;
     }
 
-    let candidates = candidates_for_admission(entry.lane);
+    let candidates = candidates_for_admission(entry.lane());
     let Some(retained) =
       best_retained_entries(&self.entries, self.limits, Some(&entry), &candidates, false)
     else {
@@ -101,11 +116,11 @@ fn best_retained_entries(
 ) -> Option<Vec<Entry>> {
   let low_count = entries
     .iter()
-    .filter(|entry| entry.lane == RetentionLane::Low)
+    .filter(|entry| entry.lane() == RetentionLane::Low)
     .count();
   let high_count = entries
     .iter()
-    .filter(|entry| entry.lane == RetentionLane::High)
+    .filter(|entry| entry.lane() == RetentionLane::High)
     .count();
 
   let mut best: Option<(usize, usize, Vec<Entry>)> = None;
@@ -147,7 +162,7 @@ fn retain_lane_prefixes(
   let mut seen_high = 0;
   entries
     .iter()
-    .filter(|entry| match entry.lane {
+    .filter(|entry| match entry.lane() {
       RetentionLane::Low => {
         seen_low += 1;
         seen_low <= retained_low
@@ -170,18 +185,18 @@ fn fits(
 ) -> bool {
   let evictable_bytes = entries
     .iter()
-    .filter(|entry| entry.lane.is_evictable())
+    .filter(|entry| entry.lane().is_evictable())
     .map(|entry| entry.bytes)
     .sum::<usize>();
   let retained_bytes = entries.iter().map(|entry| entry.bytes).sum::<usize>();
   let protected_bytes = entries
     .iter()
-    .filter(|entry| entry.lane == RetentionLane::Protected)
+    .filter(|entry| entry.lane() == RetentionLane::Protected)
     .map(|entry| entry.bytes)
     .sum::<usize>();
   let incoming_bytes = incoming.map_or(0, |entry| entry.bytes);
   let incoming_evictable_bytes = incoming
-    .filter(|entry| entry.lane.is_evictable())
+    .filter(|entry| entry.lane().is_evictable())
     .map_or(0, |entry| entry.bytes);
   let total_limit = if allow_protected_budget_debt {
     limits.total_limit_bytes.max(protected_bytes)
@@ -192,7 +207,7 @@ fn fits(
     && retained_bytes + incoming_bytes <= total_limit
 }
 
-fn lane(value: u8) -> RetentionLane {
+fn log_lane(value: u8) -> RetentionLane {
   match value % 3 {
     0 => RetentionLane::Low,
     1 => RetentionLane::High,
@@ -200,9 +215,17 @@ fn lane(value: u8) -> RetentionLane {
   }
 }
 
+fn entry_kind(value: u8) -> EntryKind {
+  if value % 4 == 3 {
+    EntryKind::State
+  } else {
+    EntryKind::Log(log_lane(value))
+  }
+}
+
 fn operations() -> impl Strategy<Value = Vec<(u8, u8, usize, usize)>> {
   prop::collection::vec(
-    (0_u8 .. 4, 0_u8 .. 3, 1_usize .. 65, 1_usize .. 65),
+    (0_u8 .. 4, 0_u8 .. 4, 1_usize .. 65, 1_usize .. 65),
     1 .. 128,
   )
 }
@@ -220,17 +243,17 @@ proptest! {
     let mut reference = ReferenceState::new(initial_limits);
     let mut next_id = 0;
 
-    for (kind, lane_value, bytes, secondary) in operations {
+    for (kind, entry_kind_value, bytes, secondary) in operations {
       match kind {
         0 => {
           let entry = Entry {
             id: next_id,
-            lane: lane(lane_value),
+            kind: entry_kind(entry_kind_value),
             bytes,
           };
           next_id += 1;
           let expected = reference.admit(entry.clone());
-          let observed = actual.admit(entry.lane, entry.bytes, entry);
+          let observed = actual.admit(entry.lane(), entry.bytes, entry);
           prop_assert_eq!(observed, expected);
         },
         1 => {

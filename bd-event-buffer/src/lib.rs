@@ -7,7 +7,7 @@
 
 use bd_client_common::PlatformMutex;
 use bd_log_primitives::size::MemorySized;
-use bd_log_primitives::{DataValue, LogFields, LogLevel, LogLine, log_level};
+use bd_log_primitives::{DataValue, LogLevel, LogLine, log_level};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::logging::payload::LogType;
 use std::collections::VecDeque;
@@ -55,15 +55,14 @@ impl MemorySized for StateUpdateMessage {
 #[derive(Debug)]
 pub struct CapturedLog {
   pub log: LogLine,
-  pub logger_fields: Arc<LogFields>,
   completion: Option<bd_completion::Sender<()>>,
   pub blocking: bool,
 }
 impl CapturedLog {
+  #[must_use]
   pub fn new(log: LogLine, blocking: bool, completion: Option<bd_completion::Sender<()>>) -> Self {
     Self {
       log,
-      logger_fields: Arc::default(),
       completion,
       blocking,
     }
@@ -116,30 +115,6 @@ pub fn retention_lane(log_type: LogType, log_level: LogLevel, blocking: bool) ->
   }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LoggerFieldMapLimits {
-  pub max_fields: usize,
-  pub max_bytes: usize,
-}
-impl Default for LoggerFieldMapLimits {
-  fn default() -> Self {
-    Self {
-      max_fields: 128,
-      max_bytes: 32 * 1024,
-    }
-  }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum FieldMapError {
-  #[error("logger field map has reached its field count limit")]
-  TooManyFields,
-  #[error("logger field map has reached its byte limit")]
-  TooManyBytes,
-  #[error(transparent)]
-  InvalidFieldName(#[from] anyhow::Error),
-}
-
 #[derive(Clone)]
 pub struct EventBuffer {
   inner: Arc<EventBufferInner>,
@@ -150,19 +125,15 @@ struct EventBufferInner {
 }
 struct LoggerEventBufferState {
   retention: EventBufferState<EventBufferEntry>,
-  field_limits: LoggerFieldMapLimits,
-  logger_fields: Arc<LogFields>,
 }
 
 impl EventBuffer {
   #[must_use]
-  pub fn new(limits: EventBufferLimits, field_limits: LoggerFieldMapLimits) -> Self {
+  pub fn new(limits: EventBufferLimits) -> Self {
     Self {
       inner: Arc::new(EventBufferInner {
         state: PlatformMutex::new(LoggerEventBufferState {
           retention: EventBufferState::new(limits),
-          field_limits,
-          logger_fields: Arc::default(),
         }),
         notify: Notify::new(),
       }),
@@ -171,40 +142,10 @@ impl EventBuffer {
   pub fn set_pending_limits(&self, limits: EventBufferLimits) {
     self.inner.state.lock().retention.set_pending_limits(limits);
   }
-  pub fn set_field(
-    &self,
-    key: bd_log_primitives::LogFieldKey,
-    value: bd_log_primitives::LogFieldValue,
-  ) -> Result<(), FieldMapError> {
-    bd_log_primitives::verify_custom_field_name(&key)?;
-    let mut state = self.inner.state.lock();
-    let existing_bytes = state
-      .logger_fields
-      .get(&key)
-      .map_or(0, |existing| field_size(&key, existing));
-    let new_bytes = field_size(&key, &value);
-    let field_count =
-      state.logger_fields.len() + usize::from(!state.logger_fields.contains_key(&key));
-    let byte_count = fields_size(&state.logger_fields) - existing_bytes + new_bytes;
-    if field_count > state.field_limits.max_fields {
-      return Err(FieldMapError::TooManyFields);
-    }
-    if byte_count > state.field_limits.max_bytes {
-      return Err(FieldMapError::TooManyBytes);
-    }
-    Arc::make_mut(&mut state.logger_fields).insert(key, value);
-    Ok(())
-  }
-  pub fn remove_field(&self, key: &str) {
-    Arc::make_mut(&mut self.inner.state.lock().logger_fields).remove(key);
-  }
   #[must_use]
-  pub fn admit(&self, mut entry: EventBufferEntry) -> AdmissionOutcome {
+  pub fn admit(&self, entry: EventBufferEntry) -> AdmissionOutcome {
     let outcome = {
       let mut state = self.inner.state.lock();
-      if let EventBufferEntry::Log(log) = &mut entry {
-        log.logger_fields = state.logger_fields.clone();
-      }
       state.retention.admit(entry.lane(), entry.size(), entry)
     };
     if outcome == AdmissionOutcome::Admitted {
@@ -236,18 +177,6 @@ impl EventBuffer {
   pub fn reserve_fixture_capacity(&self) {
     self.inner.state.lock().retention.reserve_fixture_capacity();
   }
-}
-fn field_size(
-  key: &bd_log_primitives::LogFieldKey,
-  value: &bd_log_primitives::LogFieldValue,
-) -> usize {
-  ENTRY_OVERHEAD_BYTES + key.len() + value.size()
-}
-fn fields_size(fields: &LogFields) -> usize {
-  fields
-    .iter()
-    .map(|(key, value)| field_size(key, value))
-    .sum()
 }
 
 //

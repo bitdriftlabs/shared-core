@@ -9,9 +9,8 @@ mod linux_only {
     EventBuffer,
     EventBufferEntry,
     EventBufferLimits,
-    LoggerFieldMapLimits,
   };
-  use bd_log_primitives::{AnnotatedLogFields, LogFieldValue, LogLine, log_level};
+  use bd_log_primitives::{AnnotatedLogFields, LogLine, log_level};
   use bd_proto::protos::logging::payload::LogType;
   use gungraun::{
     Callgrind,
@@ -94,55 +93,11 @@ mod linux_only {
       fixture.protected = Some(protected);
       fixture
     }
-    fn shared_fields(count: usize) -> Self {
-      let buffer = EventBuffer::new(
-        EventBufferLimits {
-          log_limit_bytes: 16 * 1024,
-          total_limit_bytes: 16 * 1024,
-        },
-        LoggerFieldMapLimits {
-          max_fields: count + 1,
-          max_bytes: 32 * 1024,
-        },
-      );
-      buffer.reserve_fixture_capacity();
-      let fixture = Self {
-        buffer,
-        low: None,
-        high: None,
-        protected: None,
-        runtime: tokio::runtime::Builder::new_current_thread()
-          .enable_all()
-          .build()
-          .expect("benchmark runtime construction must succeed"),
-      };
-      for index in 0 .. count {
-        assert!(
-          fixture
-            .buffer
-            .set_field(
-              format!("field_{index}").into(),
-              LogFieldValue::String("value".into())
-            )
-            .is_ok()
-        );
-      }
-      assert_eq!(
-        AdmissionOutcome::Admitted,
-        fixture
-          .buffer
-          .admit(log(log_level::INFO, LogType::NORMAL, 0))
-      );
-      fixture
-    }
     fn with_limit(limit: usize) -> Self {
-      let buffer = EventBuffer::new(
-        EventBufferLimits {
-          log_limit_bytes: limit,
-          total_limit_bytes: limit,
-        },
-        LoggerFieldMapLimits::default(),
-      );
+      let buffer = EventBuffer::new(EventBufferLimits {
+        log_limit_bytes: limit,
+        total_limit_bytes: limit,
+      });
       buffer.reserve_fixture_capacity();
       Self {
         buffer,
@@ -175,12 +130,6 @@ mod linux_only {
     }
     fn drain_one(&self) -> bool {
       !self.runtime.block_on(self.buffer.next_batch(1)).is_empty()
-    }
-    fn update_field(&self) -> bool {
-      self
-        .buffer
-        .set_field("benchmark".into(), LogFieldValue::String("value".into()))
-        .is_ok()
     }
   }
 
@@ -254,15 +203,6 @@ mod linux_only {
     let fixture = setup();
     measure(|| fixture.drain_one());
   }
-  #[library_benchmark(config = config())]
-  #[bench::unique(Fixture::empty)]
-  #[bench::shared_8(shared_8)]
-  #[bench::shared_64(shared_64)]
-  #[bench::shared_128(shared_128)]
-  fn update_field(setup: Setup) {
-    let fixture = setup();
-    measure(|| fixture.update_field());
-  }
   fn many_low_8() -> Fixture {
     Fixture::many_low(8)
   }
@@ -281,19 +221,9 @@ mod linux_only {
   fn many_low_then_log_limit_shrink_256() -> Fixture {
     Fixture::many_low_then_log_limit_shrink(256)
   }
-  fn shared_8() -> Fixture {
-    Fixture::shared_fields(8)
-  }
-  fn shared_64() -> Fixture {
-    Fixture::shared_fields(64)
-  }
-  fn shared_128() -> Fixture {
-    Fixture::shared_fields(128)
-  }
   library_benchmark_group!(
     name = benches;
     benchmarks = admit_low, admit_high, admit_protected, apply_log_limit_shrink, drain_one,
-      update_field
   );
 }
 #[cfg(target_os = "linux")]
