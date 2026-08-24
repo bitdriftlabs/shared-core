@@ -7,7 +7,7 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Data, DeriveInput, Fields, Generics, Type, parse_quote};
+use syn::{Data, DeriveInput, Field, Fields, Generics, Path, Type, parse_quote};
 
 /// Generates the allocation-only portion of `ApproximateSize` for a user type.
 ///
@@ -42,23 +42,36 @@ fn struct_children(fields: &Fields) -> (TokenStream, Vec<Type>) {
   match fields {
     Fields::Named(fields) => {
       // Named fields can be accessed directly from `self` in the generated implementation.
-      let field_types = fields.named.iter().map(|field| field.ty.clone()).collect();
-      let values = fields.named.iter().map(|field| {
+      let included_fields = fields.named.iter().filter(|field| is_counted(field));
+      let field_types = included_fields
+        .clone()
+        .filter(|field| uses_default_sizing(field))
+        .map(|field| field.ty.clone())
+        .collect();
+      let values = included_fields.map(|field| {
         let name = field.ident.as_ref().unwrap();
-        quote! { ::bd_macros::ApproximateSize::approximate_size_children_bytes(&self.#name) }
+        field_size(field, &quote! { &self.#name })
       });
       (sum_children(values), field_types)
     },
     Fields::Unnamed(fields) => {
       // Tuple structs use positional member access but otherwise follow the named-field rule.
-      let field_types = fields
+      let included_fields = fields
         .unnamed
         .iter()
-        .map(|field| field.ty.clone())
+        .enumerate()
+        .filter(|(_, field)| is_counted(field));
+      let field_types = included_fields
+        .clone()
+        .filter(|(_, field)| uses_default_sizing(field))
+        .map(|(_, field)| field.ty.clone())
         .collect();
-      let values = fields.unnamed.iter().enumerate().map(|(index, _)| {
+      let values = included_fields.map(|(index, _)| {
         let index = syn::Index::from(index);
-        quote! { ::bd_macros::ApproximateSize::approximate_size_children_bytes(&self.#index) }
+        field_size(
+          &fields.unnamed[index.index as usize],
+          &quote! { &self.#index },
+        )
       });
       (sum_children(values), field_types)
     },
@@ -74,30 +87,53 @@ fn enum_children(variants: &[syn::Variant]) -> (TokenStream, Vec<Type>) {
       Fields::Named(fields) => {
         // Destructure only the active variant so an enum charges allocations for its current
         // payload, not every payload type it could contain.
-        let bindings = fields
+        let bindings = fields.named.iter().map(|field| {
+          let name = field.ident.as_ref().unwrap();
+          if is_counted(field) {
+            quote! { #name }
+          } else {
+            quote! { #name: _ }
+          }
+        });
+        let values = fields
           .named
           .iter()
-          .map(|field| field.ident.as_ref().unwrap());
-        let values = fields.named.iter().map(|field| {
-          field_types.push(field.ty.clone());
-          let name = field.ident.as_ref().unwrap();
-          quote! { ::bd_macros::ApproximateSize::approximate_size_children_bytes(#name) }
-        });
+          .filter(|field| is_counted(field))
+          .map(|field| {
+            if uses_default_sizing(field) {
+              field_types.push(field.ty.clone());
+            }
+            let name = field.ident.as_ref().unwrap();
+            field_size(field, &quote! { #name })
+          });
         let children = sum_children(values);
         quote! { Self::#variant_name { #(#bindings),* } => #children }
       },
       Fields::Unnamed(fields) => {
         // Generate deterministic bindings for tuple-variant fields before summing their children.
-        let bindings = (0 .. fields.unnamed.len())
-          .map(|index| syn::Ident::new(&format!("field_{index}"), variant_name.span()))
+        let bindings = fields
+          .unnamed
+          .iter()
+          .enumerate()
+          .map(|(index, field)| {
+            let name = if is_counted(field) {
+              format!("field_{index}")
+            } else {
+              format!("_field_{index}")
+            };
+            syn::Ident::new(&name, variant_name.span())
+          })
           .collect::<Vec<_>>();
         let values = fields
           .unnamed
           .iter()
           .zip(&bindings)
+          .filter(|(field, _)| is_counted(field))
           .map(|(field, binding)| {
-            field_types.push(field.ty.clone());
-            quote! { ::bd_macros::ApproximateSize::approximate_size_children_bytes(#binding) }
+            if uses_default_sizing(field) {
+              field_types.push(field.ty.clone());
+            }
+            field_size(field, &quote! { #binding })
           });
         let children = sum_children(values);
         quote! { Self::#variant_name(#(#bindings),*) => #children }
@@ -107,6 +143,56 @@ fn enum_children(variants: &[syn::Variant]) -> (TokenStream, Vec<Type>) {
   });
 
   (quote! { match self { #(#arms),* } }, field_types)
+}
+
+enum FieldSize {
+  Default,
+  Skip,
+  With(Path),
+}
+
+fn is_counted(field: &Field) -> bool {
+  !matches!(field_size_strategy(field), FieldSize::Skip)
+}
+
+fn uses_default_sizing(field: &Field) -> bool {
+  matches!(field_size_strategy(field), FieldSize::Default)
+}
+
+fn field_size(field: &Field, value: &TokenStream) -> TokenStream {
+  match field_size_strategy(field) {
+    FieldSize::Default => {
+      quote! { ::bd_macros::ApproximateSize::approximate_size_children_bytes(#value) }
+    },
+    FieldSize::With(size_fn) => quote! { #size_fn(#value) },
+    FieldSize::Skip => unreachable!("skipped fields are excluded before size generation"),
+  }
+}
+
+fn field_size_strategy(field: &Field) -> FieldSize {
+  let Some(attribute) = field
+    .attrs
+    .iter()
+    .find(|attribute| attribute.path().is_ident("approximate_size"))
+  else {
+    return FieldSize::Default;
+  };
+
+  let mut strategy = FieldSize::Default;
+  attribute
+    .parse_nested_meta(|meta| {
+      if meta.path.is_ident("skip") {
+        strategy = FieldSize::Skip;
+        Ok(())
+      } else if meta.path.is_ident("with") {
+        strategy = FieldSize::With(meta.value()?.parse()?);
+        Ok(())
+      } else {
+        Err(meta.error("expected `skip` or `with = path`"))
+      }
+    })
+    .unwrap_or_else(|error| panic!("invalid approximate_size attribute: {error}"));
+  strategy
 }
 
 fn sum_children(values: impl Iterator<Item = TokenStream>) -> TokenStream {

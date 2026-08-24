@@ -9,6 +9,7 @@ version      = "1.0.0"
 doctest = false
 
 [dependencies]
+bd-macros.path               = "../bd-macros"
 ahash.workspace             = true
 bd-client-stats-store.path  = "../bd-client-stats-store"
 bd-log-primitives.path      = "../bd-log-primitives"

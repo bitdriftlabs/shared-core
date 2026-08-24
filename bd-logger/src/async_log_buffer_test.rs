@@ -25,7 +25,6 @@ use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
 use bd_log_filter::FilterChain;
 use bd_log_matcher::builder::message_equals;
-use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
@@ -34,6 +33,7 @@ use bd_log_primitives::{
   LogFields,
   log_level,
 };
+use bd_macros::ApproximateSize;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::filter::filter::FiltersConfiguration;
@@ -295,17 +295,21 @@ fn log_line_size_is_computed_correctly() {
     }
   }
 
-  let baseline_log_expected_size = 640;
+  let baseline_log_expected_size = 566;
   let baseline_log = create_baseline_log();
-  assert_eq!(baseline_log_expected_size, baseline_log.size());
+  assert_eq!(
+    baseline_log_expected_size,
+    baseline_log.approximate_size_bytes()
+  );
 
-  // Add one extra character to the `message` and verify that reported size increases by 1 byte
+  // The approximate accounting reserves string capacity. Appending to the three-byte message grows
+  // its allocation from three bytes to eight bytes.
   let mut baseline_log_with_longer_message = create_baseline_log();
   baseline_log_with_longer_message.message =
     DataValue::from(baseline_log.message.as_str().unwrap().to_owned() + "1");
   assert_eq!(
-    baseline_log_expected_size + 1,
-    baseline_log_with_longer_message.size()
+    baseline_log_expected_size + 5,
+    baseline_log_with_longer_message.approximate_size_bytes()
   );
 
   // Add one extra character to one of the fields' values and verify that reported size increases
@@ -316,7 +320,7 @@ fn log_line_size_is_computed_correctly() {
 
   assert_eq!(
     baseline_log_expected_size + 1,
-    baseline_log_with_longer_field_key.size()
+    baseline_log_with_longer_field_key.approximate_size_bytes()
   );
 
   // Add one extra character to one of the fields' values and verify that reported size increases
@@ -326,7 +330,7 @@ fn log_line_size_is_computed_correctly() {
     [("foo".into(), AnnotatedLogField::new_ootb("bar1"))].into();
   assert_eq!(
     baseline_log_expected_size + 1,
-    baseline_log_with_longer_field_value.size()
+    baseline_log_with_longer_field_value.approximate_size_bytes()
   );
 }
 
@@ -345,25 +349,29 @@ fn annotated_log_line_size_is_computed_correctly() {
     }
   }
 
-  let baseline_log_expected_size = 761;
+  let baseline_log_expected_size = 561;
   let baseline_log = create_baseline_log();
-  assert_eq!(baseline_log_expected_size, baseline_log.size());
+  assert_eq!(
+    baseline_log_expected_size,
+    baseline_log.approximate_size_bytes()
+  );
 
-  // Add one extra character to the `message` and verify that reported size increases by 1 bytes
+  // The approximate accounting reserves string capacity. Appending to the three-byte message grows
+  // its allocation from three bytes to eight bytes.
   let mut baseline_log_with_longer_message = create_baseline_log();
   baseline_log_with_longer_message.message =
     DataValue::from(baseline_log.message.as_str().unwrap().to_owned() + "1");
   assert_eq!(
-    baseline_log_expected_size + 1,
-    baseline_log_with_longer_message.size()
+    baseline_log_expected_size + 5,
+    baseline_log_with_longer_message.approximate_size_bytes()
   );
 
-  // Add one extra character to the `group` and verify that reported size increases by 1 bytes
+  // Appending to the three-byte session ID grows its retained allocation from three to eight bytes.
   let mut baseline_log_with_longer_group = create_baseline_log();
   baseline_log_with_longer_group.session_id += "1";
   assert_eq!(
-    baseline_log_expected_size + 1,
-    baseline_log_with_longer_group.size()
+    baseline_log_expected_size + 5,
+    baseline_log_with_longer_group.approximate_size_bytes()
   );
 
   // Add one extra character to one of the fields' keys and verify that reported size increases
@@ -373,7 +381,7 @@ fn annotated_log_line_size_is_computed_correctly() {
     [("foo".into(), DataValue::String("bar1".to_string()))].into();
   assert_eq!(
     baseline_log_expected_size + 1,
-    baseline_log_with_longer_field_key.size()
+    baseline_log_with_longer_field_key.approximate_size_bytes()
   );
 
   // Add one extra character to one of the fields' values and verify that reported size increases
@@ -383,7 +391,7 @@ fn annotated_log_line_size_is_computed_correctly() {
     [("foo".into(), DataValue::String("bar1".to_string()))].into();
   assert_eq!(
     baseline_log_expected_size + 1,
-    baseline_log_with_longer_field_value.size()
+    baseline_log_with_longer_field_value.approximate_size_bytes()
   );
 }
 

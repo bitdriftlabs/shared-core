@@ -184,7 +184,7 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 /// Implements `bd_macros::ApproximateSize` by summing owned field allocations.
-#[proc_macro_derive(ApproximateSize)]
+#[proc_macro_derive(ApproximateSize, attributes(approximate_size))]
 pub fn derive_approximate_size(item: TokenStream) -> TokenStream {
   approximate_size::derive(parse_macro_input!(item as DeriveInput)).into()
 }

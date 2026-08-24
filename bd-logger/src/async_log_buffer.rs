@@ -27,7 +27,6 @@ use bd_client_common::{maybe_await, maybe_await_map};
 use bd_crash_handler::global_state;
 use bd_device::Store;
 use bd_log_metadata::MetadataProvider;
-use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
@@ -39,6 +38,7 @@ use bd_log_primitives::{
   LogLevel,
   LogMessage,
 };
+use bd_macros::ApproximateSize;
 use bd_network_quality::{NetworkQualityMonitor, NetworkQualityResolver};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::client::api::debug_data_request::{
@@ -63,7 +63,6 @@ use bd_workflows::workflow::WorkflowDebugStateMap;
 use debug_data_request::workflow_transition_debug_data::Transition_type;
 use std::collections::{HashMap, VecDeque};
 use std::future::{Future, ready};
-use std::mem::size_of_val;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -93,67 +92,32 @@ impl ReportProcessor for () {
   }
 }
 
-#[derive(Debug)]
+#[derive(ApproximateSize, Debug)]
 pub enum StateUpdateMessage {
   AddLogField(String, DataValue),
   UpdateOotbLogField(String, DataValue),
   RemoveLogField(String),
   SetFeatureFlagExposure(String, Option<String>),
-  SetMemoryPressureLevel { level: MemoryPressureLevel },
+  SetMemoryPressureLevel {
+    #[approximate_size(skip)]
+    level: MemoryPressureLevel,
+  },
   SetEntityId(Option<String>),
-  FlushState(Option<bd_completion::Sender<()>>),
-}
-
-impl MemorySized for StateUpdateMessage {
-  fn size(&self) -> usize {
-    size_of_val(self)
-      + match self {
-        Self::AddLogField(key, value) | Self::UpdateOotbLogField(key, value) => {
-          key.size() + value.size()
-        },
-        Self::RemoveLogField(field_name) => field_name.len(),
-        Self::SetFeatureFlagExposure(flag, variant) => {
-          flag.len() + variant.as_ref().map_or(0, String::len)
-        },
-        Self::SetMemoryPressureLevel { .. } => 0,
-        Self::SetEntityId(entity_id) => entity_id.as_ref().map_or(0, String::len),
-        Self::FlushState(sender) => size_of_val(sender),
-      }
-  }
+  FlushState(#[approximate_size(skip)] Option<bd_completion::Sender<()>>),
 }
 
 pub type SequencedStateUpdate = SequencedMessage<StateUpdateMessage>;
 
-impl MemorySized for SequencedStateUpdate {
-  fn size(&self) -> usize {
-    // Don't count sequence overhead - size() is consistent source of truth for accounting
-    self.message.size()
-  }
-}
-
-#[derive(Debug)]
+#[derive(ApproximateSize, Debug)]
 pub struct EmitLogMessage {
   log: LogLine,
 }
 
 pub type SequencedLog = SequencedMessage<EmitLogMessage>;
 
-impl MemorySized for SequencedLog {
-  fn size(&self) -> usize {
-    // Don't count sequence overhead - size() is consistent source of truth for accounting
-    self.message.size()
-  }
-}
-
 impl From<LogLine> for EmitLogMessage {
   fn from(log: LogLine) -> Self {
     Self { log }
-  }
-}
-
-impl MemorySized for EmitLogMessage {
-  fn size(&self) -> usize {
-    size_of_val(self) + self.log.size()
   }
 }
 
@@ -169,20 +133,22 @@ impl MemorySized for EmitLogMessage {
 /// run loop and the execution of the program calls into `metadata_provider`
 /// to retrieve the aforementioned properties and merge them into the final log
 /// before passing them for further processing.
-#[derive(Debug)]
+#[derive(ApproximateSize, Debug)]
 pub struct LogLine {
-  // Remember to update the implementation
-  // of the `MemorySized` trait every
-  // time the struct is modified!!!
+  #[approximate_size(skip)]
   pub log_level: LogLevel,
+  #[approximate_size(skip)]
   pub log_type: LogType,
   pub message: LogMessage,
+  #[approximate_size(with = bd_log_primitives::approximate_ahash_map_children_bytes)]
   pub fields: AnnotatedLogFields,
+  #[approximate_size(with = bd_log_primitives::approximate_ahash_map_children_bytes)]
   pub matching_fields: AnnotatedLogFields,
   pub attributes_overrides: Option<LogAttributesOverrides>,
 
   /// If set, indicates that the log should trigger a session capture. The provided value is an ID
   /// that helps identify why the session should be captured.
+  #[approximate_size(skip)]
   pub capture_session: Option<&'static str>,
 }
 
@@ -190,7 +156,7 @@ pub struct LogLine {
 // LogAttributesOverrides
 //
 
-#[derive(Debug)]
+#[derive(ApproximateSize, Debug)]
 pub enum LogAttributesOverrides {
   /// The hint that tells the SDK to use the previous session ID if available.
   ///
@@ -201,20 +167,6 @@ pub enum LogAttributesOverrides {
   /// Overrides the time when the log occurred at, useful for cases like spans with a provided
   /// time.
   OccurredAt(OffsetDateTime),
-}
-
-impl MemorySized for LogLine {
-  fn size(&self) -> usize {
-    // Add a constant number of bytes (24) to account for field alignments etc. that we do not
-    // account for when not using `size_of_val(self)`.
-    size_of_val(&self.log_level)
-      + size_of_val(&self.log_type)
-      + self.message.size()
-      + self.fields.size()
-      + self.matching_fields.size()
-      + size_of_val(&self.attributes_overrides)
-      + 24
-  }
 }
 
 #[derive(Clone)]

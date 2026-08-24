@@ -6,16 +6,20 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use crate::pre_config_buffer::{self, PreConfigBuffer};
-use bd_log_primitives::size::MemorySized;
+use bd_macros::ApproximateSize;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct SimulatedSizeLog {
   size: usize,
 }
 
-impl MemorySized for SimulatedSizeLog {
-  fn size(&self) -> usize {
+impl ApproximateSize for SimulatedSizeLog {
+  fn approximate_size_bytes(&self) -> usize {
     self.size
+  }
+
+  fn approximate_size_children_bytes(&self) -> usize {
+    0
   }
 }
 
