@@ -31,7 +31,7 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
 use bd_proto_util::ToFlatBufferString;
 use bd_resilient_kv::StateValue;
 use bd_runtime::runtime::{self};
-use bd_session::fixed::{self, UUIDCallbacks};
+use bd_session::configuration;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::MEMORY_PRESSURE_LEVEL_KEY;
 use bd_state::test::TestStore;
@@ -48,14 +48,6 @@ use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::macros::datetime;
 use uuid::Uuid;
-
-struct StaticSession(String);
-
-impl fixed::Callbacks for StaticSession {
-  fn generate_session_id(&self) -> anyhow::Result<String> {
-    Ok(self.0.clone())
-  }
-}
 
 //
 // CrashReportBuilder
@@ -257,13 +249,18 @@ impl Setup {
 
     // Set up the session to return a fixed previous session ID, making it obvious that we are
     // using the previous session ID for uploads.
-    let mut session = bd_session::Strategy::fixed(
+    let (session, worker) = bd_session::Strategy::configuration(
       directory.path(),
-      Arc::new(StaticSession("previous_session_id".into())),
-    );
-    assert_eq!(session.session_id().await.unwrap(), "previous_session_id");
+      Some("previous_session_id".into()),
+      None,
+      Arc::new(configuration::NoopCallbacks),
+      Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH)),
+    )
+    .into_parts();
+    assert_eq!(session.session_id().unwrap(), "previous_session_id");
+    bd_session::test::flush(session.clone(), worker).await;
 
-    session = bd_session::Strategy::fixed(directory.path(), Arc::new(UUIDCallbacks));
+    let session = bd_session::test::no_timeout(directory.path()).strategy();
 
     let (tx, rx) = tokio::sync::mpsc::channel(10);
     let emit_log =
@@ -319,7 +316,7 @@ impl Setup {
       directory.path(),
       store,
       upload_client.clone(),
-      Arc::new(session),
+      session,
       &InitLifecycleState::new(),
       (*state).clone(),
       previous_run_state,
@@ -696,7 +693,7 @@ async fn file_watcher_detects_current_session_report() {
     ]
     .into(),
     crash_timestamp.into(),
-    setup.monitor.session.session_id().await.unwrap().as_str(),
+    setup.monitor.session.session_id().unwrap().as_str(),
     Some(vec![
       ("initial_flag".to_string(), "true".to_string()),
       ("previous_only_flag".to_string(), "enabled".to_string()),
@@ -1095,7 +1092,7 @@ async fn current_session_crash_uses_current_feature_flags() {
     ]
     .into(),
     crash_timestamp.into(),
-    setup.monitor.session.session_id().await.unwrap().as_str(),
+    setup.monitor.session.session_id().unwrap().as_str(),
     Some(vec![
       ("initial_flag".to_string(), "updated".to_string()),
       ("current_only_flag".to_string(), "new".to_string()),

@@ -20,6 +20,7 @@ use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
   LogFieldValue,
+  LogFields,
   LogLevel,
   LogMessage,
   log_level,
@@ -154,15 +155,6 @@ pub enum Block {
   No,
 }
 
-impl From<Block> for bool {
-  fn from(block: Block) -> Self {
-    match block {
-      Block::Yes { .. } => true,
-      Block::No => false,
-    }
-  }
-}
-
 //
 // CaptureSession
 //
@@ -219,7 +211,6 @@ impl LoggerHandle {
     fields: AnnotatedLogFields,
     matching_fields: AnnotatedLogFields,
     attributes_overrides: Option<LogAttributesOverrides>,
-    block: Block,
     capture_session: &CaptureSession,
   ) {
     with_reentrancy_guard!(
@@ -232,7 +223,6 @@ impl LoggerHandle {
           fields,
           matching_fields,
           attributes_overrides,
-          block,
           capture_session.0,
         );
 
@@ -260,7 +250,6 @@ impl LoggerHandle {
       fields,
       [].into(),
       None,
-      Block::No,
       &CaptureSession::default(),
     );
   }
@@ -342,7 +331,6 @@ impl LoggerHandle {
       fields,
       [].into(),
       None,
-      Block::No,
       &CaptureSession::default(),
     );
 
@@ -375,7 +363,6 @@ impl LoggerHandle {
       fields,
       [].into(),
       None,
-      Block::No,
       &CaptureSession::default(),
     );
   }
@@ -445,7 +432,6 @@ impl LoggerHandle {
       fields,
       [].into(),
       None,
-      Block::No,
       &CaptureSession::default(),
     );
   }
@@ -466,6 +452,34 @@ impl LoggerHandle {
         }
       },
       "failed to add {:?} log field, adding log fields from within a field provider is not allowed",
+      key
+    );
+  }
+
+  /// Adds or replaces an SDK-owned OOTB field on all subsequently processed logs.
+  ///
+  /// Unlike custom global fields, OOTB fields may use reserved names and take precedence over
+  /// fields supplied by providers and individual log calls.
+  ///
+  /// This operation is non-blocking and best effort. It can be dropped when the bounded state
+  /// update buffer is full, so callers must tolerate missed transient updates.
+  pub fn update_ootb_log_field(&self, key: String, value: LogFieldValue) {
+    with_reentrancy_guard!(
+      {
+        let field_name = key.clone();
+        let result =
+          self
+            .tx
+            .try_send_state_update(async_log_buffer::StateUpdateMessage::UpdateOotbLogField(
+              key, value,
+            ));
+
+        if let Err(e) = result {
+          log::warn!("failed to update {field_name:?} OOTB log field: {e:?}");
+        }
+      },
+      "failed to update {:?} OOTB log field, updating log fields from within a field provider is \
+       not allowed",
       key
     );
   }
@@ -530,18 +544,7 @@ impl LoggerHandle {
     let is_allowed = LOGGER_GUARD.with(|cell| cell.try_borrow().is_ok());
 
     if is_allowed {
-      let prepared = self.session_strategy.prepare_session_id()?;
-
-      if !prepared.has_follow_up_work() {
-        return Ok(prepared.into_current_session_id());
-      }
-
-      let session_id = prepared.current_session_id().to_string();
-      let callback = self
-        .tx
-        .persist_prepared_session(prepared, async_log_buffer::SESSION_BRIDGE_TIMEOUT)?;
-      self.session_strategy.run_prepared_callback(callback);
-      Ok(session_id)
+      self.session_strategy.session_id()
     } else {
       Err(anyhow::anyhow!(
         "operation not allowed from within a field provider"
@@ -549,16 +552,11 @@ impl LoggerHandle {
     }
   }
 
-  pub fn start_new_session(&self) -> anyhow::Result<()> {
+  pub fn start_new_session(&self, session_id: Option<String>) -> anyhow::Result<()> {
     let is_allowed = LOGGER_GUARD.with(|cell| cell.try_borrow().is_ok());
 
     if is_allowed {
-      let prepared = self.session_strategy.prepare_start_new_session()?;
-      let callback = self
-        .tx
-        .persist_prepared_session(prepared, async_log_buffer::SESSION_BRIDGE_TIMEOUT)?;
-      self.session_strategy.run_prepared_callback(callback);
-      Ok(())
+      self.session_strategy.start_new_session(session_id)
     } else {
       Err(anyhow::anyhow!(
         "operation not allowed from within a field provider"
@@ -576,11 +574,17 @@ impl LoggerHandle {
 pub struct InitParams {
   pub sdk_directory: PathBuf,
   pub api_key: String,
-  pub session_strategy: Arc<bd_session::Strategy>,
+  /// The session state and its single persistence worker.
+  pub session: bd_session::StrategyWithWorker,
 
   pub store: Arc<bd_key_value::Store>,
 
   pub metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
+  /// Initial OOTB log fields supplied by the platform at logger construction time.
+  pub initial_ootb_fields: LogFields,
+  /// Initial custom log fields supplied by the platform at logger construction time. These can be
+  /// updated or removed through the logger field APIs after startup.
+  pub initial_custom_fields: LogFields,
   pub resource_utilization_target: Box<dyn bd_resource_utilization::Target + Send + Sync>,
   pub session_replay_target: Box<dyn bd_session_replay::Target + Send + Sync>,
   pub events_listener_target: Box<dyn bd_events::ListenerTarget + Send + Sync>,
@@ -602,6 +606,16 @@ pub struct InitParams {
 pub struct ReportProcessingRequest {
   /// Session to use in reports
   pub session: ReportProcessingSession,
+}
+
+//
+// TestHooks
+//
+
+pub trait TestHooks: Send + Sync {
+  fn remote_streaming_action_processed(&self) {}
+
+  fn workflow_event_processed(&self) {}
 }
 
 /// A single logger instance. This manages the lifetime of the logger and can be used to access

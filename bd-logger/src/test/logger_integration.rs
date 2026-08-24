@@ -45,8 +45,8 @@ use bd_proto::protos::logging::payload::log::CompressedContents;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
 use bd_runtime::runtime::FeatureFlag;
 use bd_runtime::runtime::log_upload::MinLogCompressionSize;
-use bd_session::Strategy;
-use bd_session::fixed::UUIDCallbacks;
+use bd_session::test::no_timeout;
+use bd_session::{Strategy, configuration};
 use bd_session_replay::SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE;
 use bd_stats_common::{Counter as _, labels};
 use bd_test_helpers::config_helper::{
@@ -110,12 +110,12 @@ use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::macros::datetime;
 
-struct LockingFixedCallbacks {
+struct LockingSessionCallbacks {
   app_lock: Arc<ReentrantMutex<()>>,
   call_count: AtomicUsize,
 }
 
-impl LockingFixedCallbacks {
+impl LockingSessionCallbacks {
   fn new(app_lock: Arc<ReentrantMutex<()>>) -> Self {
     Self {
       app_lock,
@@ -124,29 +124,7 @@ impl LockingFixedCallbacks {
   }
 }
 
-impl bd_session::fixed::Callbacks for LockingFixedCallbacks {
-  fn generate_session_id(&self) -> anyhow::Result<String> {
-    let _guard = self.app_lock.lock();
-    let call_count = self.call_count.fetch_add(1, Ordering::SeqCst) + 1;
-    Ok(format!("fixed-session-{call_count}"))
-  }
-}
-
-struct LockingActivityCallbacks {
-  app_lock: Arc<ReentrantMutex<()>>,
-  call_count: AtomicUsize,
-}
-
-impl LockingActivityCallbacks {
-  fn new(app_lock: Arc<ReentrantMutex<()>>) -> Self {
-    Self {
-      app_lock,
-      call_count: AtomicUsize::new(0),
-    }
-  }
-}
-
-impl bd_session::activity_based::Callbacks for LockingActivityCallbacks {
+impl configuration::Callbacks for LockingSessionCallbacks {
   fn session_id_changed(&self, _session_id: &str) {
     let _guard = self.app_lock.lock();
     self.call_count.fetch_add(1, Ordering::SeqCst);
@@ -187,11 +165,17 @@ fn attributes_accessors() {
 }
 
 #[test]
-fn session_id_runs_fixed_strategy_callback_on_calling_thread() {
+fn session_id_runs_configuration_callback_on_calling_thread() {
   let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
   let app_lock = Arc::new(ReentrantMutex::new(()));
-  let callbacks = Arc::new(LockingFixedCallbacks::new(app_lock.clone()));
-  let session_strategy = Arc::new(Strategy::fixed(sdk_directory.path(), callbacks.clone()));
+  let callbacks = Arc::new(LockingSessionCallbacks::new(app_lock.clone()));
+  let session_strategy = Strategy::configuration(
+    sdk_directory.path(),
+    None,
+    None,
+    callbacks.clone(),
+    Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
+  );
 
   let setup = Setup::new_with_options(SetupOptions {
     sdk_directory,
@@ -202,19 +186,43 @@ fn session_id_runs_fixed_strategy_callback_on_calling_thread() {
   let _guard = app_lock.lock();
   let session_id = setup.logger_handle.session_id().unwrap();
 
-  assert_eq!("fixed-session-1", session_id);
+  assert_eq!(36, session_id.len());
   assert_eq!(1, callbacks.call_count.load(Ordering::SeqCst));
 }
 
 #[test]
-fn start_new_session_runs_fixed_strategy_callback_on_calling_thread() {
+fn logger_shutdown_flushes_session_persistence() {
+  let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
+  let session = no_timeout(sdk_directory.path());
+  let session_strategy = session.strategy();
+  let setup = Setup::new_with_options(SetupOptions {
+    sdk_directory: sdk_directory.clone(),
+    session_strategy: Some(session),
+    ..Default::default()
+  });
+
+  let session_id = session_strategy.session_id().unwrap();
+  setup.logger.shutdown(true);
+
+  let restarted = no_timeout(sdk_directory.path()).strategy();
+  assert_eq!(Some(session_id), restarted.previous_process_session_id());
+}
+
+#[test]
+fn start_new_session_runs_configuration_callback_on_calling_thread() {
   let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
   let app_lock = Arc::new(ReentrantMutex::new(()));
-  let callbacks = Arc::new(LockingFixedCallbacks::new(app_lock.clone()));
-  let session_strategy = Arc::new(Strategy::fixed(sdk_directory.path(), callbacks.clone()));
+  let callbacks = Arc::new(LockingSessionCallbacks::new(app_lock.clone()));
+  let session = Strategy::configuration(
+    sdk_directory.path(),
+    None,
+    None,
+    callbacks.clone(),
+    Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
+  );
 
   let mut init_params = crate::test::setup::create_minimal_init_params(sdk_directory.path());
-  init_params.session_strategy = session_strategy;
+  init_params.session = session;
 
   let logger = crate::LoggerBuilder::new(init_params)
     .build_dedicated_thread()
@@ -226,7 +234,7 @@ fn start_new_session_runs_fixed_strategy_callback_on_calling_thread() {
   let callback_count_before = callbacks.call_count.load(Ordering::SeqCst);
 
   let _guard = app_lock.lock();
-  logger_handle.start_new_session().unwrap();
+  logger_handle.start_new_session(None).unwrap();
 
   assert_eq!(
     callback_count_before + 1,
@@ -239,17 +247,18 @@ fn start_new_session_runs_fixed_strategy_callback_on_calling_thread() {
 }
 
 #[test]
-fn session_id_runs_activity_callback_on_calling_thread() {
+fn session_id_runs_inactivity_configuration_callback_on_calling_thread() {
   let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
   let time_provider = Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc()));
   let app_lock = Arc::new(ReentrantMutex::new(()));
-  let callbacks = Arc::new(LockingActivityCallbacks::new(app_lock.clone()));
-  let session_strategy = Arc::new(Strategy::activity_based(
+  let callbacks = Arc::new(LockingSessionCallbacks::new(app_lock.clone()));
+  let session_strategy = Strategy::configuration(
     sdk_directory.path(),
-    30.seconds(),
+    None,
+    Some(30.seconds()),
     callbacks.clone(),
     time_provider.clone(),
-  ));
+  );
 
   let setup = Setup::new_with_options(SetupOptions {
     sdk_directory,
@@ -540,24 +549,21 @@ fn explicit_session_capture_disabled_streaming() {
 
 #[test]
 fn log_upload_attributes_override() {
-  struct StaticSessionId(String);
-
-  impl bd_session::fixed::Callbacks for StaticSessionId {
-    fn generate_session_id(&self) -> anyhow::Result<String> {
-      Ok(self.0.clone())
-    }
-  }
-
   let time_first = datetime!(2024-06-01 12:00:00 UTC);
   let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
-  let previous_session = bd_session::Strategy::fixed(
+  let (previous_session, previous_session_worker) = bd_session::Strategy::configuration(
     sdk_directory.path(),
-    Arc::new(StaticSessionId("foo_overridden".to_string())),
-  );
-  assert_eq!(
-    tokio_test::block_on(previous_session.session_id()).unwrap(),
-    "foo_overridden"
-  );
+    Some("foo_overridden".to_string()),
+    None,
+    Arc::new(configuration::NoopCallbacks),
+    Arc::new(TestTimeProvider::new(time_first)),
+  )
+  .into_parts();
+  assert_eq!(previous_session.session_id().unwrap(), "foo_overridden");
+  tokio_test::block_on(bd_session::test::flush(
+    previous_session,
+    previous_session_worker,
+  ));
 
   let mut setup = Setup::new_with_options(SetupOptions {
     sdk_directory,
@@ -789,13 +795,12 @@ fn configuration_caching() {
 
   setup.upload_individual_logs();
 
-  setup.log(
+  setup.log_then_wait_for_workflow_event(
     log_level::DEBUG,
     LogType::NORMAL,
     "foo".into(),
     [].into(),
     [].into(),
-    None,
   );
 
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
@@ -839,7 +844,7 @@ fn trigger_buffers_not_uploaded() {
 }
 
 #[test]
-fn blocking_log() {
+fn blocking_state_flush_persists_workflow_state() {
   let mut setup = Setup::new();
 
   setup.send_runtime_update();
@@ -861,15 +866,21 @@ fn blocking_log() {
   ));
   assert!(maybe_nack.is_none());
 
-  setup.blocking_log(
+  setup.log(
     log_level::DEBUG,
     LogType::NORMAL,
     "foo".into(),
     [].into(),
     [].into(),
+    None,
   );
 
-  // Confim that workflows state is persisted to disk after the processing of log completes.
+  setup.logger_handle.flush_state(Block::Yes {
+    timeout: 15.std_seconds(),
+    poll_callback: None,
+  });
+
+  // Confirm that workflows state is persisted to disk after the state flush completes.
   assert!(setup.workflows_state_file_path().exists());
   assert!(setup.pending_aggregation_index_file_path().exists());
 }
@@ -878,6 +889,7 @@ fn blocking_log() {
 fn session_replay_actions() {
   let mut setup = Setup::new();
   setup.send_runtime_update();
+  setup.wait_for_capture_screen();
 
   let b = state("B");
   let a = state("A").declare_transition_with_actions(
@@ -901,39 +913,28 @@ fn session_replay_actions() {
   assert!(maybe_nack.is_none());
 
   // Emit a log that should not result in taking a screenshot.
-  setup.blocking_log(
+  setup.log_then_flush(
     log_level::DEBUG,
     LogType::NORMAL,
     "bar".into(),
     [].into(),
     [].into(),
   );
-  // TODO(snowp): This is a bit of a brittle test as it relies on the timing of the screenshot
-  // handling.
-  std::thread::sleep(100.std_milliseconds());
-  assert_eq!(
-    0,
-    setup
-      .capture_screenshot_count
-      .load(std::sync::atomic::Ordering::Relaxed)
-  );
+  setup.wait_for_workflow_event_processing();
+  setup.assert_no_capture_screenshot();
 
   // Emit a log that should result in taking a screenshot.
-  setup.blocking_log(
+  setup.log_then_flush(
     log_level::DEBUG,
     LogType::NORMAL,
     "take a screenshot".into(),
     [].into(),
     [].into(),
   );
-  wait_for!(
-    1 == setup
-      .capture_screenshot_count
-      .load(std::sync::atomic::Ordering::Relaxed)
-  );
+  setup.wait_for_capture_screenshot();
 
   // Simulate a capture of a screenshot.
-  setup.blocking_log(
+  setup.log_then_flush(
     log_level::DEBUG,
     LogType::REPLAY,
     SESSION_REPLAY_SCREENSHOT_LOG_MESSAGE.into(),
@@ -941,35 +942,15 @@ fn session_replay_actions() {
     [].into(),
   );
 
-  // Due to all the channels used to propagate the fact that we have taken a screenshot, we need
-  // to block on this metric to ensure that we have transitioned into being able to take another
-  // screenshot before proceeding.
-  wait_for!(
-    setup
-      .logger
-      .stats()
-      .counter("logger:screenshots:received_total")
-      .get()
-      == 1
-  );
-
   // Emit a log that should result in taking a screenshot.
-  setup.blocking_log(
+  setup.log_then_flush(
     log_level::DEBUG,
     LogType::NORMAL,
     "take a screenshot".into(),
     [].into(),
     [].into(),
   );
-  wait_for!(
-    2 == setup
-      .capture_screenshot_count
-      .load(std::sync::atomic::Ordering::Relaxed)
-      && 1
-        == setup
-          .capture_screen_count
-          .load(std::sync::atomic::Ordering::Relaxed)
-  );
+  setup.wait_for_capture_screenshot();
 }
 
 #[test]
@@ -1032,6 +1013,12 @@ fn blocking_flush_state() {
   setup.logger_handle.flush_state(Block::Yes {
     timeout: 15.std_seconds(),
     poll_callback: None,
+  });
+
+  assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
+    assert_eq!(log_upload.buffer_id(), "default");
+    assert_eq!(log_upload.logs().len(), 1);
+    assert_eq!(log_upload.logs()[0].message(), "foo");
   });
 
   assert!(setup.workflows_state_file_path().exists());
@@ -1614,7 +1601,7 @@ fn workflow_start_tracing_status_tracks_streaming_carryover() {
 
   assert!(!setup.logger_handle.is_tracing_active());
 
-  setup.blocking_log(
+  setup.log_then_flush(
     log_level::DEBUG,
     LogType::NORMAL,
     "start tracing with streaming".into(),
@@ -1632,7 +1619,7 @@ fn workflow_start_tracing_status_tracks_streaming_carryover() {
   });
 
   // While streaming is active, tracing remains enabled.
-  setup.blocking_log(
+  setup.log_then_flush(
     log_level::DEBUG,
     LogType::NORMAL,
     "streamed once".into(),
@@ -1642,7 +1629,7 @@ fn workflow_start_tracing_status_tracks_streaming_carryover() {
   wait_for!(setup.logger_handle.is_tracing_active());
 
   // Streaming max_logs_count=1 is enforced on the next event loop iteration.
-  setup.blocking_log(
+  setup.log_then_flush(
     log_level::DEBUG,
     LogType::NORMAL,
     "streaming should end".into(),
@@ -1651,7 +1638,7 @@ fn workflow_start_tracing_status_tracks_streaming_carryover() {
   );
 
   // Ensure one more engine pass after reaching max_logs_count so the action is removed.
-  setup.blocking_log(
+  setup.log_then_flush(
     log_level::DEBUG,
     LogType::NORMAL,
     "post termination tick".into(),
@@ -1728,7 +1715,7 @@ fn workflow_start_tracing_with_streaming_replays_before_new_session_after_restar
   assert!(!setup.logger_handle.is_tracing_active());
 
   setup.server.suppress_next_log_upload_response();
-  setup.blocking_log(
+  setup.log_then_flush(
     log_level::DEBUG,
     LogType::NORMAL,
     "start tracing with streaming".into(),
@@ -1758,7 +1745,7 @@ fn workflow_start_tracing_with_streaming_replays_before_new_session_after_restar
     assert_eq!(vec!["trace_stream_action"], *log_upload.logs()[0].workflow_action_ids());
   });
 
-  setup.blocking_log(
+  setup.log_then_flush(
     log_level::DEBUG,
     LogType::NORMAL,
     "message streamed after restart".into(),
@@ -1768,7 +1755,7 @@ fn workflow_start_tracing_with_streaming_replays_before_new_session_after_restar
 
   wait_for!(!setup.logger_handle.is_tracing_active());
 
-  setup.blocking_log(
+  setup.log_then_flush(
     log_level::DEBUG,
     LogType::NORMAL,
     "message after streaming termination".into(),
@@ -1874,7 +1861,7 @@ fn workflow_generate_log_to_histogram() {
   ));
   assert!(maybe_nack.is_none());
 
-  setup.blocking_log(
+  setup.log_then_wait_for_workflow_event(
     log_level::DEBUG,
     LogType::NORMAL,
     "foo".into(),
@@ -1884,7 +1871,7 @@ fn workflow_generate_log_to_histogram() {
 
   *metadata.timestamp.lock() = datetime!(2023-10-01 00:00:01.003 UTC);
 
-  setup.blocking_log(
+  setup.log_then_wait_for_workflow_event(
     log_level::DEBUG,
     LogType::NORMAL,
     "bar".into(),
@@ -1892,7 +1879,11 @@ fn workflow_generate_log_to_histogram() {
     [].into(),
   );
 
-  // The log flush will also upload stats.
+  setup.logger_handle.flush_state(Block::Yes {
+    timeout: 15.std_seconds(),
+    poll_callback: None,
+  });
+
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
     stat_upload.get_inline_histogram(
@@ -1946,12 +1937,13 @@ fn workflow_debugging() {
 
   // We should send a debug data upload even when there is no state change every 1s driven by
   // when logs are processed.
-  setup.blocking_log(
+  setup.log(
     log_level::DEBUG,
     LogType::NORMAL,
     "something else".into(),
     [].into(),
     [].into(),
+    None,
   );
   let debug_data = setup.server.next_debug_data_request().unwrap();
   assert_eq!(
@@ -1976,7 +1968,7 @@ fn workflow_debugging() {
 
   // Now send a log that will match.
   time_provider.advance(1.minutes());
-  setup.blocking_log(
+  setup.log_then_wait_for_workflow_event(
     log_level::DEBUG,
     LogType::NORMAL,
     "fire workflow action!".into(),
@@ -2040,7 +2032,7 @@ fn workflow_debugging() {
   assert!(maybe_nack.is_none());
 
   time_provider.advance(1.minutes());
-  setup.blocking_log(
+  setup.log_then_wait_for_workflow_event(
     log_level::DEBUG,
     LogType::NORMAL,
     "fire workflow action!".into(),
@@ -2048,7 +2040,10 @@ fn workflow_debugging() {
     [].into(),
   );
 
-  setup.flush_and_upload_stats();
+  setup.logger_handle.flush_state(Block::Yes {
+    timeout: 15.std_seconds(),
+    poll_callback: None,
+  });
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
     stat_upload.get_workflow_counter("foo_id", labels! {}),
@@ -2129,7 +2124,7 @@ fn workflow_emit_metric_action_emits_metric() {
   ));
   assert!(maybe_nack.is_none());
 
-  setup.blocking_log(
+  setup.log_then_flush(
     log_level::DEBUG,
     LogType::NORMAL,
     "fire workflow action!".into(),
@@ -2254,14 +2249,14 @@ fn workflow_emit_metric_action_does_not_dedupe_across_parallel_runs() {
   assert!(maybe_nack.is_none());
 
   // Build two active runs at state C.
-  setup.blocking_log(
+  setup.log_then_wait_for_workflow_event(
     log_level::DEBUG,
     LogType::NORMAL,
     "start parallel".into(),
     [].into(),
     [].into(),
   );
-  setup.blocking_log(
+  setup.log_then_wait_for_workflow_event(
     log_level::DEBUG,
     LogType::NORMAL,
     "start parallel".into(),
@@ -2270,7 +2265,7 @@ fn workflow_emit_metric_action_does_not_dedupe_across_parallel_runs() {
   );
 
   // One log matches both runs, so emit metric should execute twice.
-  setup.blocking_log(
+  setup.log_then_wait_for_workflow_event(
     log_level::DEBUG,
     LogType::NORMAL,
     "fire parallel metric".into(),
@@ -2283,7 +2278,10 @@ fn workflow_emit_metric_action_does_not_dedupe_across_parallel_runs() {
     [].into(),
   );
 
-  setup.flush_and_upload_stats();
+  setup.logger_handle.flush_state(Block::Yes {
+    timeout: 15.std_seconds(),
+    poll_callback: None,
+  });
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
     stat_upload.get_workflow_counter(
@@ -2352,7 +2350,7 @@ fn workflow_emit_metric_action_parallel_same_save_field_reset_persists_across_re
   assert!(maybe_nack.is_none());
 
   // Build a run and advance it so SaveField extraction state is persisted on a non-initial run.
-  setup.blocking_log(
+  setup.log_then_wait_for_workflow_event(
     log_level::DEBUG,
     LogType::NORMAL,
     "start parallel".into(),
@@ -2361,7 +2359,7 @@ fn workflow_emit_metric_action_parallel_same_save_field_reset_persists_across_re
       .collect(),
     [].into(),
   );
-  setup.blocking_log(
+  setup.log_then_flush(
     log_level::DEBUG,
     LogType::NORMAL,
     "promote parallel".into(),
@@ -2404,7 +2402,7 @@ fn workflow_emit_metric_action_parallel_same_save_field_reset_persists_across_re
 
   // Same SaveField values should reset the persisted matching run back to B instead of keeping
   // both B and C active in parallel.
-  setup.blocking_log(
+  setup.log_then_wait_for_workflow_event(
     log_level::DEBUG,
     LogType::NORMAL,
     "start parallel".into(),
@@ -2414,7 +2412,7 @@ fn workflow_emit_metric_action_parallel_same_save_field_reset_persists_across_re
     [].into(),
   );
 
-  setup.blocking_log(
+  setup.log_then_wait_for_workflow_event(
     log_level::DEBUG,
     LogType::NORMAL,
     "fire parallel reset metric".into(),
@@ -2474,7 +2472,7 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
   ));
   assert!(maybe_nack.is_none());
 
-  setup.blocking_log(
+  setup.log_then_wait_for_workflow_event(
     log_level::DEBUG,
     LogType::NORMAL,
     "first log".into(),
@@ -2483,7 +2481,7 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
   );
 
   // Blocked due to cardinality limits on the action ID.
-  setup.blocking_log(
+  setup.log_then_wait_for_workflow_event(
     log_level::DEBUG,
     LogType::NORMAL,
     "first log".into(),
@@ -2492,7 +2490,7 @@ fn workflow_emit_metric_action_triggers_runtime_limits() {
   );
 
   // Allowed as it is a different action ID.
-  setup.blocking_log(
+  setup.log_then_wait_for_workflow_event(
     log_level::DEBUG,
     LogType::NORMAL,
     "second log".into(),
@@ -3075,6 +3073,8 @@ fn remote_buffer_upload_with_streaming_does_not_extend_active_workflow_streaming
       },
     });
 
+  setup.wait_for_remote_streaming_action_processing();
+
   for _ in 0 .. 5 {
     setup.log(
       log_level::DEBUG,
@@ -3426,7 +3426,7 @@ fn continuous_buffer_resume_with_full_buffer() {
   assert!(maybe_nack.is_none());
 
   // Log a single log to the continuous buffer.
-  setup.blocking_log(
+  setup.log_then_flush(
     log_level::DEBUG,
     LogType::NORMAL,
     "test".into(),
@@ -3629,7 +3629,6 @@ fn logs_before_cache_load() {
       [].into(),
       [].into(),
       None,
-      Block::No,
       &CaptureSession::default(),
     );
   }
@@ -3642,7 +3641,6 @@ fn logs_before_cache_load() {
     [].into(),
     [].into(),
     None,
-    Block::No,
     &CaptureSession::default(),
   );
 
@@ -3728,14 +3726,14 @@ fn runtime_caching() {
     let store = in_memory_store();
     let device = Arc::new(bd_device::Device::new(store.clone()));
 
+    let session = no_timeout(sdk_directory.path());
     let logger = crate::LoggerBuilder::new(InitParams {
       api_key: "foo-api-key".to_string(),
       network,
-      session_strategy: Arc::new(Strategy::fixed(
-        sdk_directory.path(),
-        Arc::new(UUIDCallbacks),
-      )),
+      session,
       static_metadata: Arc::new(EmptyMetadata),
+      initial_ootb_fields: [].into(),
+      initial_custom_fields: [].into(),
       store,
       resource_utilization_target: Box::new(EmptyTarget),
       session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
@@ -3903,7 +3901,7 @@ fn workflow_log_match_uses_server_pushed_feature_flag_state() {
   let maybe_nack = setup.send_configuration_update(config);
   assert!(maybe_nack.is_none());
 
-  setup.blocking_log(
+  setup.log_then_flush(
     log_level::DEBUG,
     LogType::NORMAL,
     "server pushed state match".into(),
@@ -3968,7 +3966,7 @@ fn workflow_state_change_match_flush_buffers() {
   }
 
   // Use blocking log for the last one to ensure all logs are written before triggering the flush
-  setup.blocking_log(
+  setup.log_then_flush(
     log_level::DEBUG,
     LogType::NORMAL,
     "test log 4".into(),

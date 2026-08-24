@@ -5,7 +5,7 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{Api, PlatformNetworkManager, PlatformNetworkStream};
+use super::{Api, PlatformNetworkManager, PlatformNetworkStream, TestHooks};
 use crate::api::{DISCONNECTED_OFFLINE_GRACE_PERIOD, StreamEvent};
 use crate::reconnect::ReconnectState;
 use crate::upload::Tracked;
@@ -55,7 +55,6 @@ use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::workflow::workflow::workflow::action::action_flush_buffers;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
-use bd_session::test::start_new_session;
 use bd_state::StateReader;
 use bd_stats_common::labels;
 use bd_test_helpers::make_mut;
@@ -225,6 +224,27 @@ impl bd_internal_logging::Logger for TestLog {
 }
 
 //
+// ApiTestHooks
+//
+
+struct ApiTestHooks {
+  reconnect_backoff_started_tx: Sender<()>,
+  data_idle_timeout_reached_tx: Option<Sender<()>>,
+}
+
+impl TestHooks for ApiTestHooks {
+  fn reconnect_backoff_started(&self) {
+    let _ignored = self.reconnect_backoff_started_tx.try_send(());
+  }
+
+  fn data_idle_timeout_reached(&self) {
+    if let Some(tx) = &self.data_idle_timeout_reached_tx {
+      let _ignored = tx.try_send(());
+    }
+  }
+}
+
+//
 // Setup
 //
 
@@ -234,6 +254,7 @@ struct Setup {
   trigger_upload_rx: Receiver<crate::TriggerUpload>,
   send_data_rx: Receiver<Vec<u8>>,
   start_stream_rx: Receiver<()>,
+  reconnect_backoff_started_rx: Receiver<()>,
   collector: Collector,
   requests_decoder: bd_grpc_codec::Decoder<ApiRequest>,
   time_provider: Arc<bd_time::TestTimeProvider>,
@@ -284,6 +305,7 @@ impl Setup {
 
     let (start_stream_tx, start_stream_rx) = channel(1);
     let (send_data_tx, send_data_rx) = channel(1);
+    let (reconnect_backoff_started_tx, reconnect_backoff_started_rx) = channel(1);
     let current_stream_tx = Arc::new(Mutex::new(None));
     let manager = Box::new(PlatformNetwork::new(
       start_stream_tx,
@@ -317,10 +339,14 @@ impl Setup {
       &runtime_loader,
       &collector.scope("state"),
     );
-    let session_strategy = Arc::new(bd_session::Strategy::fixed(
+    let session_parts = bd_session::Strategy::configuration(
       sdk_directory.path(),
-      Arc::new(bd_session::fixed::UUIDCallbacks),
-    ));
+      None,
+      None,
+      Arc::new(bd_session::configuration::NoopCallbacks),
+      time_provider.clone(),
+    );
+    let session_strategy = session_parts.strategy();
     let mut api = Api::new(
       sdk_directory.path().to_path_buf(),
       api_key.clone(),
@@ -342,7 +368,10 @@ impl Setup {
       bd_client_common::sdk_status::SdkStatusTracker::new(),
       None,
     );
-    api.data_idle_timeout_test_hook = idle_timeout_tx;
+    api.test_hooks = Some(Arc::new(ApiTestHooks {
+      reconnect_backoff_started_tx,
+      data_idle_timeout_reached_tx: idle_timeout_tx,
+    }));
 
     let api_task = tokio::task::spawn(async move {
       runtime_loader.try_load_persisted_config().await;
@@ -353,6 +382,7 @@ impl Setup {
       current_stream_tx,
       sdk_directory,
       start_stream_rx,
+      reconnect_backoff_started_rx,
       data_tx,
       trigger_upload_rx,
       send_data_rx,
@@ -541,6 +571,14 @@ impl Setup {
       .unwrap();
   }
 
+  async fn wait_for_reconnect_backoff_started(&mut self) {
+    self
+      .reconnect_backoff_started_rx
+      .recv()
+      .await
+      .expect("expected reconnect backoff to start");
+  }
+
   async fn wait_for_persisted_reconnect_delay(&self) {
     // Restart-sensitive tests need to wait until the reconnect window is persisted, not merely
     // until the disconnect has been observed by the API task.
@@ -562,7 +600,7 @@ impl Setup {
     // Response injection only guarantees the frame is enqueued to the API task. Tests that depend
     // on session-state side effects need to wait until the strategy queue reflects the ack.
     for _ in 0 .. 100 {
-      if self.session_strategy.pending_state_update().await.is_none() {
+      if self.session_strategy.pending_state_update().is_none() {
         return;
       }
 
@@ -1400,7 +1438,8 @@ async fn api_retry_stream_runtime_override() {
   // backoff never exceeds 1.5s, per the runtime override and default 50% randomization.
   for _ in 0 .. 10 {
     setup.close_stream().await;
-    assert!(setup.next_stream(1500.milliseconds()).await.is_some());
+    setup.wait_for_reconnect_backoff_started().await;
+    assert!(setup.next_stream(1501.milliseconds()).await.is_some());
   }
 }
 
@@ -1945,7 +1984,7 @@ async fn handshake_includes_opaque_entity_and_current_session() {
   );
   assert_eq!(1, state_update.started_sessions.len());
   assert_eq!(
-    setup.session_strategy.session_id().await.unwrap(),
+    setup.session_strategy.session_id().unwrap(),
     state_update.started_sessions[0].session_id
   );
 }
@@ -2051,8 +2090,8 @@ async fn session_state_update_is_resent_until_acked() {
     .await;
   setup.wait_for_cleared_pending_session_update().await;
 
-  start_new_session(&setup.session_strategy).await;
-  let next_session_id = setup.session_strategy.session_id().await.unwrap();
+  setup.session_strategy.start_new_session(None).unwrap();
+  let next_session_id = setup.session_strategy.session_id().unwrap();
 
   let request = setup.next_request(1.seconds()).await.unwrap();
   let Some(Request_type::StateUpdate(state_update)) = request.request_type else {

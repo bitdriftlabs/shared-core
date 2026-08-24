@@ -499,9 +499,9 @@ impl Monitor {
     }
   }
 
-  async fn get_session_id(&self, origin: ReportOrigin) -> anyhow::Result<String> {
+  fn get_session_id(&self, origin: ReportOrigin) -> anyhow::Result<String> {
     match origin {
-      ReportOrigin::Current => self.session.session_id().await,
+      ReportOrigin::Current => self.session.session_id(),
       ReportOrigin::Previous => Ok(
         self
           .session
@@ -588,7 +588,6 @@ impl Monitor {
     let global_state_fields = self.get_global_state_fields(origin);
     let session_id = self
       .get_session_id(origin)
-      .await
       .unwrap_or_else(|_| "unknown".to_string());
     let (timestamp, mut state_fields) = Self::read_log_fields(bin_report, &global_state_fields);
     state_fields.extend(self.get_memory_pressure_fields(origin));

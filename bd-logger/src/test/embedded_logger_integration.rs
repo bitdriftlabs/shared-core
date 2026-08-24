@@ -5,7 +5,7 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::logger::{Block, CaptureSession};
+use crate::logger::CaptureSession;
 use crate::{InitParams, Logger, MetadataProvider, log_level};
 use assert_matches::assert_matches;
 use bd_log_metadata::LogFields;
@@ -16,8 +16,7 @@ use bd_proto::protos::config::v1::config::BufferConfigList;
 use bd_proto::protos::config::v1::config::buffer_config::Type;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::FeatureFlag;
-use bd_session::Strategy;
-use bd_session::fixed::UUIDCallbacks;
+use bd_session::test::no_timeout;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::config_helper::{
   configuration_update,
@@ -67,14 +66,14 @@ impl Setup {
     let store = in_memory_store();
     let device = Arc::new(bd_device::Device::new(store.clone()));
 
+    let session = no_timeout(sdk_directory.path());
     let (logger, _, future, _) = crate::LoggerBuilder::new(InitParams {
       sdk_directory: sdk_directory.path().to_owned(),
       network: Box::new(handle),
-      session_strategy: Arc::new(Strategy::fixed(
-        sdk_directory.path(),
-        Arc::new(UUIDCallbacks),
-      )),
+      session,
       metadata_provider: Arc::new(TestMetadataProvider),
+      initial_ootb_fields: [].into(),
+      initial_custom_fields: [].into(),
       store,
       resource_utilization_target: Box::new(EmptyTarget),
       session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
@@ -175,7 +174,6 @@ async fn configuration_update_with_log_uploads() {
     [].into(),
     [].into(),
     None,
-    Block::No,
     &CaptureSession::default(),
   );
 

@@ -33,23 +33,24 @@ pub struct PersistedSessionState {
   #[field(id = 3)]
   pub previous_process_session_id: Option<String>,
   #[field(id = 4)]
-  pub backend: BackendState,
+  pub activity_state: ActivityState,
 }
 
 //
-// BackendState
+// ActivityState
 //
 
+/// Durable state needed only when an inactivity timeout is configured.
 #[proto_serializable]
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub enum BackendState {
+pub enum ActivityState {
   #[field(id = 1)]
   #[field(deserialize)]
   #[default]
-  Fixed,
+  NoInactivityTimeout,
   #[field(id = 2)]
   #[field(deserialize)]
-  ActivityBased {
+  InactivityTimeout {
     #[field(id = 1)]
     last_activity: TimestampMicros,
   },

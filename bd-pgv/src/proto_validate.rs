@@ -273,7 +273,6 @@ fn verify_duration_rules_supported(rules: &DurationRules) -> error::Result<()> {
   not_implemented(rules.const_.is_some(), "duration const")?;
   not_implemented(rules.lt.is_some(), "duration lt")?;
   not_implemented(rules.lte.is_some(), "duration lte")?;
-  not_implemented(rules.gte.is_some(), "duration gte")?;
   not_implemented(!rules.in_.is_empty(), "duration in")?;
   not_implemented(!rules.not_in.is_empty(), "duration not_in")?;
   Ok(())
@@ -302,6 +301,19 @@ fn validate_duration(
         formatter.field_name(field_descriptor, message_descriptor),
         formatter.message_name(message_descriptor),
         gt
+      )));
+    }
+  }
+  if let Some(gte) = rules.gte.as_ref() {
+    let gte: Duration = gte.clone().try_into().map_err(|_| {
+      error::Error::ProtoValidation("negative proto duration not supported".to_string())
+    })?;
+    if duration < gte {
+      return Err(error::Error::ProtoValidation(format!(
+        "duration '{}' in message '{}' requires >= {:?}",
+        formatter.field_name(field_descriptor, message_descriptor),
+        formatter.message_name(message_descriptor),
+        gte
       )));
     }
   }

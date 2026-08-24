@@ -48,7 +48,6 @@ use crate::workflow::{
 use anyhow::anyhow;
 use bd_api::{DataUpload, TriggerUploadStreaming};
 use bd_client_common::file::{read_compressed_protobuf_file, write_compressed_protobuf_file};
-use bd_client_stats::{FlushTrigger, FlushTriggerRequest};
 use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::Log;
@@ -142,7 +141,6 @@ pub struct WorkflowsEngine<C, H> {
   sankey_processor_join_handle: JoinHandle<()>,
 
   metrics_collector: MetricsCollector<C, H>,
-  stats_flush_trigger: Option<FlushTrigger>,
 
   buffers_to_flush_tx: Sender<BuffersToFlush>,
 
@@ -157,7 +155,6 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     runtime: Option<&ConfigLoader>,
     data_upload_tx: Sender<DataUpload>,
     stats: Arc<dyn StatsCollector<Counter = C, Histogram = H>>,
-    stats_flush_trigger: Option<FlushTrigger>,
   ) -> (Self, Receiver<BuffersToFlush>) {
     Self::new_with_flush_completion_tracker(
       scope,
@@ -165,7 +162,6 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       runtime,
       data_upload_tx,
       stats,
-      stats_flush_trigger,
       Arc::new(ProcessLocalPendingFlushState::default()),
     )
   }
@@ -176,7 +172,6 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     runtime: Option<&ConfigLoader>,
     data_upload_tx: Sender<DataUpload>,
     stats: Arc<dyn StatsCollector<Counter = C, Histogram = H>>,
-    stats_flush_trigger: Option<FlushTrigger>,
     process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
   ) -> (Self, Receiver<BuffersToFlush>) {
     let scope = scope.scope("workflows");
@@ -231,7 +226,6 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       sankey_processor_output_rx: sankey_output_rx,
       sankey_processor_join_handle,
       metrics_collector: MetricsCollector::new(stats),
-      stats_flush_trigger,
       buffers_to_flush_tx,
       process_local_pending_flush_state,
       explicit_session_capture_streaming_log_count,
@@ -587,7 +581,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
 
         match negotiator_output {
           NegotiatorOutput::UploadApproved(action) => {
-              self.on_log_upload_approved(&action).await;
+              self.on_log_upload_approved(&action);
           },
           NegotiatorOutput::UploadRejected(action) => {
             if action.has_tracing_lease() {
@@ -616,25 +610,8 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     !self.process_local_pending_flush_state.is_pending(action_id)
   }
 
-  async fn on_log_upload_approved(&mut self, action: &PendingFlushBuffersAction) {
+  fn on_log_upload_approved(&mut self, action: &PendingFlushBuffersAction) {
     self.state.pending_flush_actions.remove(action);
-
-    // Signal an explicit stats flush if we are about to start uploading logs. This is not perfect
-    // but it should generally cover the case where we want to ensure stats are up to date on log
-    // uploads if a workflow emits metrics and triggers on the same event.
-    // TODO(mattklein123): This is a long standing issue but right now we don't block for any
-    // upload to complete before starting log uploads. In general we need to spend more time
-    // hardening this entire path.
-    if let Some(flush_trigger) = &self.stats_flush_trigger
-      && let Err(e) = flush_trigger
-        .flush(FlushTriggerRequest {
-          do_upload: true,
-          completion_tx: None,
-        })
-        .await
-    {
-      log::debug!("failed to trigger stats flush on log upload approval: {e}");
-    }
 
     // If there is already a pending buffer flush we don't want to signal another one, as
     // this would do nothing but mess up our tracking of the in-flight flush.

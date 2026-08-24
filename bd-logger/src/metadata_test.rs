@@ -26,7 +26,7 @@ fn collector_attaches_provider_fields_as_matching_fields() {
     ..Default::default()
   };
 
-  let collector = MetadataCollector::new(Arc::new(metadata));
+  let collector = MetadataCollector::new(Arc::new(metadata), [].into(), [].into());
 
   let types = vec![LogType::REPLAY, LogType::RESOURCE];
 
@@ -82,7 +82,7 @@ fn collector_fields_hierarchy() {
     .into(),
   };
 
-  let mut collector = MetadataCollector::new(Arc::new(metadata));
+  let mut collector = MetadataCollector::new(Arc::new(metadata), [].into(), [].into());
   collector
     .add_field(
       "collector_key".into(),
@@ -183,7 +183,7 @@ fn collector_does_not_accept_reserved_fields() {
     ootb_fields: [("_ootb_provider_key".into(), "ootb_provider_value".into())].into(),
   };
 
-  let mut collector = MetadataCollector::new(Arc::new(metadata));
+  let mut collector = MetadataCollector::new(Arc::new(metadata), [].into(), [].into());
   assert!(
     collector
       .add_field(
@@ -220,7 +220,7 @@ fn collector_fields_management() {
     ..Default::default()
   };
 
-  let mut collector = MetadataCollector::new(Arc::new(metadata));
+  let mut collector = MetadataCollector::new(Arc::new(metadata), [].into(), [].into());
 
   collector
     .add_field("key".into(), DataValue::String("collector_field_1".into()))
@@ -230,12 +230,206 @@ fn collector_fields_management() {
     .add_field("key".into(), DataValue::String("collector_field_2".into()))
     .unwrap();
 
-  assert_eq!(collector.fields().len(), 1);
-  assert_matches!(&collector.fields()["key"], DataValue::String(value) if value == "collector_field_2");
+  assert_eq!(collector.fields.len(), 1);
+  assert_matches!(&collector.fields["key"].value, DataValue::String(value) if value == "collector_field_2");
 
-  collector.remove_field("key");
+  collector.remove_field("key".into());
 
-  assert!(collector.fields().is_empty());
+  assert!(collector.fields.is_empty());
+}
+
+#[test]
+fn collector_does_not_mutate_ootb_fields() {
+  let provider = Arc::new(LogMetadata {
+    timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
+    ..Default::default()
+  });
+  let mut collector = MetadataCollector::new(
+    provider,
+    [("initial_key".into(), "initial".into())].into(),
+    [].into(),
+  );
+
+  collector
+    .add_field("initial_key".into(), DataValue::String("mutable".into()))
+    .unwrap();
+  assert_eq!(
+    &AnnotatedLogField::new_ootb("initial"),
+    &collector.fields["initial_key"]
+  );
+
+  collector.remove_field("initial_key".into());
+  assert_eq!(
+    &AnnotatedLogField::new_ootb("initial"),
+    &collector.fields["initial_key"]
+  );
+}
+
+#[test]
+fn collector_initial_custom_fields_can_be_updated() {
+  let provider = Arc::new(LogMetadata {
+    timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
+    ..Default::default()
+  });
+  let mut collector = MetadataCollector::new(
+    provider,
+    [].into(),
+    [("initial_key".into(), "initial".into())].into(),
+  );
+
+  assert_eq!(
+    &AnnotatedLogField::new_custom("initial"),
+    &collector.fields["initial_key"]
+  );
+
+  collector
+    .add_field("initial_key".into(), DataValue::String("updated".into()))
+    .unwrap();
+  assert_eq!(
+    &AnnotatedLogField::new_custom("updated"),
+    &collector.fields["initial_key"]
+  );
+}
+
+#[test]
+fn collector_ootb_fields_override_initial_custom_fields() {
+  let provider = Arc::new(LogMetadata {
+    timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
+    ..Default::default()
+  });
+  let collector = MetadataCollector::new(
+    provider,
+    [("shared_key".into(), "ootb".into())].into(),
+    [("shared_key".into(), "custom".into())].into(),
+  );
+
+  assert_eq!(
+    &AnnotatedLogField::new_ootb("ootb"),
+    &collector.fields["shared_key"]
+  );
+}
+
+#[test]
+fn collector_updates_ootb_fields() {
+  let provider = Arc::new(LogMetadata {
+    timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
+    ..Default::default()
+  });
+  let mut collector = MetadataCollector::new(
+    provider,
+    [("initial_key".into(), "initial".into())].into(),
+    [].into(),
+  );
+
+  collector.update_ootb_field("initial_key".into(), "updated".into());
+  collector.update_ootb_field("_dynamic_key".into(), "dynamic".into());
+
+  assert_eq!(
+    &AnnotatedLogField::new_ootb("updated"),
+    &collector.fields["initial_key"]
+  );
+  assert_eq!(
+    &AnnotatedLogField::new_ootb("dynamic"),
+    &collector.fields["_dynamic_key"]
+  );
+}
+
+#[test]
+fn collector_ootb_fields_override_provider_custom_fields() {
+  let provider = Arc::new(LogMetadata {
+    timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
+    custom_fields: [("initial_key".into(), "custom".into())].into(),
+    ..Default::default()
+  });
+  let collector = MetadataCollector::new(
+    provider,
+    [("initial_key".into(), "initial".into())].into(),
+    [].into(),
+  );
+
+  let mut tracker =
+    global_state::Tracker::new(in_memory_store(), Watch::new_for_testing(10.seconds()));
+  let metadata = collector
+    .normalized_metadata_with_extra_fields([].into(), [].into(), LogType::NORMAL, &mut tracker)
+    .unwrap();
+
+  assert_eq!(
+    "initial",
+    expected_field_value(&metadata.fields, "initial_key").unwrap()
+  );
+}
+
+#[test]
+fn collector_ootb_fields_override_provider_ootb_log_fields() {
+  let provider = Arc::new(LogMetadata {
+    timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
+    ..Default::default()
+  });
+  let collector = MetadataCollector::new(
+    provider,
+    [("initial_key".into(), "initial".into())].into(),
+    [].into(),
+  );
+  let mut tracker =
+    global_state::Tracker::new(in_memory_store(), Watch::new_for_testing(10.seconds()));
+
+  for log_type in [LogType::NORMAL, LogType::REPLAY] {
+    let metadata = collector
+      .normalized_metadata_with_extra_fields(
+        [("initial_key".into(), AnnotatedLogField::new_ootb("log"))].into(),
+        [].into(),
+        log_type,
+        &mut tracker,
+      )
+      .unwrap();
+
+    assert_eq!(
+      "initial",
+      expected_field_value(&metadata.fields, "initial_key").unwrap()
+    );
+  }
+}
+
+#[test]
+fn collector_removes_mutable_fields_without_removing_ootb_log_fields() {
+  let provider = Arc::new(LogMetadata {
+    timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
+    ..Default::default()
+  });
+  let mut collector = MetadataCollector::new(provider, [].into(), [].into());
+  collector
+    .add_field("key".into(), DataValue::String("mutable".into()))
+    .unwrap();
+
+  let mut tracker =
+    global_state::Tracker::new(in_memory_store(), Watch::new_for_testing(10.seconds()));
+  let ootb_log_fields = [("key".into(), AnnotatedLogField::new_ootb("log"))].into();
+  let metadata = collector
+    .normalized_metadata_with_extra_fields(
+      ootb_log_fields,
+      [].into(),
+      LogType::NORMAL,
+      &mut tracker,
+    )
+    .unwrap();
+  assert_eq!(
+    "log",
+    expected_field_value(&metadata.fields, "key").unwrap()
+  );
+
+  collector.remove_field("key".into());
+  let metadata = collector
+    .normalized_metadata_with_extra_fields(
+      [("key".into(), AnnotatedLogField::new_ootb("log"))].into(),
+      [].into(),
+      LogType::NORMAL,
+      &mut tracker,
+    )
+    .unwrap();
+  assert_eq!(
+    "log",
+    expected_field_value(&metadata.fields, "key").unwrap()
+  );
 }
 
 fn expected_field_value(fields: &LogFields, key: &str) -> Option<String> {
@@ -248,7 +442,7 @@ fn metadata_from_fields_with_previous_global_state_includes_global_fields() {
     timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
     ..Default::default()
   };
-  let collector = MetadataCollector::new(Arc::new(metadata));
+  let collector = MetadataCollector::new(Arc::new(metadata), [].into(), [].into());
 
   let store = in_memory_store();
   let mut tracker = global_state::Tracker::new(store.clone(), Watch::new_for_testing(10.seconds()));

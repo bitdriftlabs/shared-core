@@ -219,7 +219,7 @@ pub struct LogCommand {
   #[clap(long, action = ArgAction::SetTrue)]
   pub capture_session: bool,
 
-  /// Block until the log has been processed or the timeout expires.
+  /// Flush logger state after enqueueing the log, blocking until completion or timeout.
   #[clap(long, action = ArgAction::SetTrue)]
   pub block: bool,
 
@@ -327,10 +327,10 @@ pub struct SetEntityIdCommand {
 pub struct FieldPairs<T>(pub Vec<T>);
 impl<S: BuildHasher + Default> From<FieldPairs<String>> for HashMap<String, String, S> {
   fn from(value: FieldPairs<String>) -> Self {
-    value
-      .0
-      .chunks_exact(2)
-      .map(|pair| (pair[0].clone(), pair[1].clone()))
+    let (pairs, _) = value.0.as_chunks::<2>();
+    pairs
+      .iter()
+      .map(|[key, value]| (key.clone(), value.clone()))
       .collect()
   }
 }

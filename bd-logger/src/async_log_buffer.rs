@@ -24,7 +24,6 @@ use bd_bounded_buffer::{TrySendError, channel};
 use bd_buffer::BuffersWithAck;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_common::{maybe_await, maybe_await_map};
-use bd_client_stats::FlushTriggerRequest;
 use bd_crash_handler::global_state;
 use bd_device::Store;
 use bd_log_metadata::MetadataProvider;
@@ -49,7 +48,6 @@ use bd_proto::protos::client::api::debug_data_request::{
 use bd_proto::protos::client::api::{DebugDataRequest, debug_data_request};
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::ConfigLoader;
-use bd_session::{PreparedSessionCallback, PreparedSessionOperation};
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_state::{
@@ -64,19 +62,15 @@ use bd_workflow_stats::workflow::{WorkflowDebugStateKey, WorkflowDebugTransition
 use bd_workflows::workflow::WorkflowDebugStateMap;
 use debug_data_request::workflow_transition_debug_data::Transition_type;
 use std::collections::{HashMap, VecDeque};
+use std::future::{Future, ready};
 use std::mem::size_of_val;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::Duration as StdDuration;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tokio::time::Sleep;
-
-// Synchronous callers may invoke these bridges from latency-sensitive threads, so keep the
-// timeout well below ANR territory if the async logger task stalls.
-pub const SESSION_BRIDGE_TIMEOUT: StdDuration = StdDuration::from_secs(1);
 
 //
 // ReportProcessor
@@ -94,24 +88,19 @@ impl ReportProcessor for bd_crash_handler::Monitor {
 }
 
 impl ReportProcessor for () {
-  async fn process_all_pending_reports(&self) -> Vec<bd_crash_handler::CrashLog> {
-    vec![]
+  fn process_all_pending_reports(&self) -> impl Future<Output = Vec<bd_crash_handler::CrashLog>> {
+    ready(vec![])
   }
 }
 
 #[derive(Debug)]
 pub enum StateUpdateMessage {
   AddLogField(String, DataValue),
+  UpdateOotbLogField(String, DataValue),
   RemoveLogField(String),
   SetFeatureFlagExposure(String, Option<String>),
-  SetMemoryPressureLevel {
-    level: MemoryPressureLevel,
-  },
+  SetMemoryPressureLevel { level: MemoryPressureLevel },
   SetEntityId(Option<String>),
-  PersistPreparedSession(
-    PreparedSessionOperation,
-    bd_completion::Sender<PreparedSessionCallback>,
-  ),
   FlushState(Option<bd_completion::Sender<()>>),
 }
 
@@ -119,16 +108,15 @@ impl MemorySized for StateUpdateMessage {
   fn size(&self) -> usize {
     size_of_val(self)
       + match self {
-        Self::AddLogField(key, value) => key.size() + value.size(),
+        Self::AddLogField(key, value) | Self::UpdateOotbLogField(key, value) => {
+          key.size() + value.size()
+        },
         Self::RemoveLogField(field_name) => field_name.len(),
         Self::SetFeatureFlagExposure(flag, variant) => {
           flag.len() + variant.as_ref().map_or(0, String::len)
         },
         Self::SetMemoryPressureLevel { .. } => 0,
         Self::SetEntityId(entity_id) => entity_id.as_ref().map_or(0, String::len),
-        Self::PersistPreparedSession(operation, response_tx) => {
-          operation.estimated_size() + size_of_val(response_tx)
-        },
         Self::FlushState(sender) => size_of_val(sender),
       }
   }
@@ -146,7 +134,6 @@ impl MemorySized for SequencedStateUpdate {
 #[derive(Debug)]
 pub struct EmitLogMessage {
   log: LogLine,
-  log_processing_completed_tx: Option<oneshot::Sender<()>>,
 }
 
 pub type SequencedLog = SequencedMessage<EmitLogMessage>;
@@ -160,10 +147,7 @@ impl MemorySized for SequencedLog {
 
 impl From<LogLine> for EmitLogMessage {
   fn from(log: LogLine) -> Self {
-    Self {
-      log,
-      log_processing_completed_tx: None,
-    }
+    Self { log }
   }
 }
 
@@ -221,11 +205,6 @@ pub enum LogAttributesOverrides {
 
 impl MemorySized for LogLine {
   fn size(&self) -> usize {
-    // Add a constant number of bytes (48) to account for the size of `log_processing_completed_tx`.
-    // We do not use `size_of_val` or `size_of` to do that as it reports different size of the
-    // the field when ran on a server and locally on a laptop. The number was captured by
-    // calling `size_of_val(log_processing_completed_tx)` on an M2 Macbook.
-    //
     // Add a constant number of bytes (24) to account for field alignments etc. that we do not
     // account for when not using `size_of_val(self)`.
     size_of_val(&self.log_level)
@@ -234,7 +213,6 @@ impl MemorySized for LogLine {
       + self.fields.size()
       + self.matching_fields.size()
       + size_of_val(&self.attributes_overrides)
-      + 48
       + 24
   }
 }
@@ -316,22 +294,6 @@ impl Sender {
     }
     Ok(())
   }
-
-  pub fn persist_prepared_session(
-    &self,
-    prepared: PreparedSessionOperation,
-    timeout: StdDuration,
-  ) -> anyhow::Result<PreparedSessionCallback> {
-    let (response_tx, response_rx) = bd_completion::Sender::new();
-    self.try_send_state_update(StateUpdateMessage::PersistPreparedSession(
-      prepared,
-      response_tx,
-    ))?;
-
-    response_rx
-      .blocking_recv_with_timeout(timeout)
-      .map_err(|e| anyhow!("failed to receive prepared session ack from async logger: {e}"))
-  }
 }
 
 pub type AsyncLogBufferOrderedReceiver = OrderedReceiver<EmitLogMessage, StateUpdateMessage>;
@@ -367,7 +329,6 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   time_provider: Arc<dyn TimeProvider>,
   lifecycle_state: InitLifecycleState,
   sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
-
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
   last_session_id: Option<String>,
@@ -379,6 +340,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     replayer: R,
     session_strategy: Arc<bd_session::Strategy>,
     metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
+    initial_ootb_fields: LogFields,
+    initial_custom_fields: LogFields,
     resource_utilization_target: Box<dyn bd_resource_utilization::Target + Send + Sync>,
     session_replay_target: Box<dyn bd_session_replay::Target + Send + Sync>,
     events_listener_target: Box<dyn bd_events::ListenerTarget + Send + Sync>,
@@ -445,7 +408,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         replayer,
 
         session_strategy,
-        metadata_collector: MetadataCollector::new(metadata_provider),
+        metadata_collector: MetadataCollector::new(
+          metadata_provider,
+          initial_ootb_fields,
+          initial_custom_fields,
+        ),
         resource_utilization_reporter: bd_resource_utilization::Reporter::new(
           resource_utilization_target,
           runtime_loader,
@@ -476,7 +443,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         time_provider,
         lifecycle_state,
         sdk_status_tracker,
-
         pending_workflow_debug_state: HashMap::new(),
         send_workflow_debug_state_delay: None,
         last_session_id: None,
@@ -497,20 +463,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     fields: AnnotatedLogFields,
     matching_fields: AnnotatedLogFields,
     attributes_overrides: Option<LogAttributesOverrides>,
-    block: Block,
     capture_session: Option<&'static str>,
   ) -> Result<(), TrySendError> {
-    let (log_processing_completed_tx_option, log_processing_completed_rx_option) =
-      if matches!(block, Block::Yes { .. }) {
-        // Create a (sender, receiver) pair only if the caller wants to wait on
-        // on the log being pushed through the whole log processing pipeline.
-        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-        let bd_rx = bd_completion::Receiver::to_bd_completion_rx(rx);
-        (Some(tx), Some(bd_rx))
-      } else {
-        (None, None)
-      };
-
     let log = LogLine {
       log_level,
       log_type,
@@ -521,64 +475,27 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       capture_session,
     };
 
-    // There is no point in continuing the execution of the method and waiting for the log
-    // processing to complete if we failed to enqueue the log. In fact, waiting in such case would
-    // lead to infinite waiting.
-    //
     // There are two possible reasons for the call to fail:
     // 1. The channel is full due to us hitting the capacity limit.
     // 2. The receiver side has been closed. This should only happen in cases in which the event
     //    loop has shut down, which means that we either errored out and defensively shut down the
     //    loop or explicitly shut it down. In either case it is not helpful to report this as an
     //    unexpected error.
-    tx.try_send_log(EmitLogMessage {
-      log,
-      log_processing_completed_tx: log_processing_completed_tx_option,
-    })
-    .inspect_err(|e| log::debug!("enqueue_log: sending to channel failed: {e:?}"))?;
+    tx.try_send_log(log.into())
+      .inspect_err(|e| log::debug!("enqueue_log: sending to channel failed: {e:?}"))?;
 
-    // Wait for log processing to be completed only if passed `blocking`
-    // argument is equal to `true` and we created a relevant one shot Tokio channel.
-    let result = match (block, log_processing_completed_rx_option) {
-      (
-        Block::Yes {
-          timeout,
-          poll_callback,
-        },
-        Some(rx),
-      ) => Some(rx.blocking_recv_with_timeout_and_callback(
-        timeout,
-        poll_callback.as_ref().map(AsRef::as_ref),
-      )),
-      _ => None,
-    };
-    if let Some(result) = result {
-      match &result {
-        Ok(()) => {
-          log::debug!("enqueue_log: log processing completion received");
-        },
-        Err(e) => {
-          log::debug!(
-            "enqueue_log: received an error when waiting for log processing completion: {e}"
-          );
-        },
-      }
-    }
-    // Report success even if the `blocking == true` part of the
-    // implementation above failed.
     Ok(())
   }
 
   async fn process_all_logs(
     &mut self,
     log: LogLine,
-    block: bool,
     state_store: &bd_state::Store,
   ) -> anyhow::Result<()> {
     let mut logs = VecDeque::new();
     logs.push_back(log);
     while let Some(log) = logs.pop_front() {
-      let log_replay_result = self.process_log(log, block, state_store).await?;
+      let log_replay_result = self.process_log(log, state_store).await?;
       logs.extend(log_replay_result.logs_to_inject.into_iter().map(|log| {
         LogLine {
           log_level: log.log_level,
@@ -634,7 +551,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn process_log(
     &mut self,
     log: LogLine,
-    block: bool,
     state_store: &bd_state::Store,
   ) -> anyhow::Result<LogReplayResult> {
     // Prevent re-entrancy when we are evaluating the log metadata.
@@ -668,7 +584,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             // Use the previous session ID if available and the provided timestamp.
             let session_id = match self.session_strategy.previous_process_session_id() {
               Some(session_id) => session_id,
-              None => self.session_strategy.session_id().await?,
+              None => self.session_strategy.session_id()?,
             };
             (
               session_id,
@@ -682,7 +598,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           Some(LogAttributesOverrides::OccurredAt(overridden_timestamp)) => {
             // Occurred at override provided. Emit log with overrides applied.
             (
-              self.session_strategy.session_id().await?,
+              self.session_strategy.session_id()?,
               overridden_timestamp,
               Some(LogFields::from([(
                 "_logged_at".into(),
@@ -693,7 +609,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           None => {
             // No overrides provided. Emit log without any overrides.
             (
-              self.session_strategy.session_id().await?,
+              self.session_strategy.session_id()?,
               metadata.timestamp,
               None,
             )
@@ -724,7 +640,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           capture_session: log.capture_session,
         };
 
-        self.write_log(processed_log, block, state_store).await
+        self.write_log(processed_log, state_store).await
       },
       Err(e) => {
         // TODO(Augustyniak): Consider logging as error so that SDK customers can see these
@@ -738,7 +654,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   async fn write_log(
     &mut self,
     log: Log,
-    block: bool,
     state_store: &bd_state::Store,
   ) -> anyhow::Result<LogReplayResult> {
     let log_replay_result = match &mut self.logging_state {
@@ -761,7 +676,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         .replayer
         .replay_log(
           log,
-          block,
           &mut initialized_logging_context.processing_pipeline,
           state_store,
           self.time_provider.now(),
@@ -842,7 +756,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             .replayer
             .replay_log(
               log,
-              false,
               &mut initialized_logging_context.processing_pipeline,
               state_store,
               now,
@@ -971,14 +884,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               // grouping here to help make smarter decisions during intent negotiation.
               capture_session: Some("crash_handler"),
             };
-            if let Err(e) = self.process_all_logs(log, false, &state_store).await {
+            if let Err(e) = self.process_all_logs(log, &state_store).await {
               log::debug!("failed to process crash log: {e}");
             }
           }
         },
         Some(ordered_message) = self.ordered_rx.recv() => {
           match ordered_message {
-            OrderedMessage::Log(EmitLogMessage { mut log, log_processing_completed_tx }) => {
+            OrderedMessage::Log(EmitLogMessage { mut log }) => {
               for interceptor in &mut self.interceptors {
                 interceptor.process(
                   log.log_level,
@@ -989,17 +902,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 );
               }
 
-              if let Err(e) = self.process_all_logs(
-                log,
-                log_processing_completed_tx.is_some(),
-                &state_store,
-              ).await {
+              if let Err(e) = self.process_all_logs(log, &state_store).await {
                 log::debug!("failed to process all logs: {e}");
-              }
-
-              if let Some(tx) = log_processing_completed_tx && Err(()) == tx.send(()) {
-                debug_assert!(false, "failed to send log processing completion");
-                log::debug!("failed to send log processing completion");
               }
             },
             OrderedMessage::State(async_log_buffer_message) => {
@@ -1012,11 +916,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                     log::warn!("failed to add log field ({key:?}): {e}");
                   }
                 },
+                StateUpdateMessage::UpdateOotbLogField(key, value) => {
+                  self.metadata_collector.update_ootb_field(key.into(), value);
+                },
                 StateUpdateMessage::RemoveLogField(field_name) => {
-                  self.metadata_collector.remove_field(&field_name);
+                  self.metadata_collector.remove_field(field_name.into());
                 },
                 StateUpdateMessage::SetFeatureFlagExposure(flag, variant) => {
-                  let session_id = match self.session_strategy.session_id().await {
+                  let session_id = match self.session_strategy.session_id() {
                     Ok(session_id) => session_id,
                     Err(e) => {
                       log::debug!(
@@ -1096,28 +1003,19 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                     log::debug!("failed to persist entity ID state: {e}");
                   }
                 },
-                StateUpdateMessage::PersistPreparedSession(prepared, response_tx) => {
-                  let callback = self.session_strategy.persist_prepared(prepared).await;
-                  // TODO: If the synchronous caller has already timed out or dropped its receiver,
-                  // this callback token is lost. Fixing that requires a recoverable completion
-                  // path or a deliberate fallback that does not reintroduce cross-thread callback
-                  // execution and the deadlock risk this change set is avoiding.
-                  response_tx.send(callback);
-                },
                 StateUpdateMessage::FlushState(completion_tx) => {
                   let flush_stats_trigger = self.logging_state.flush_stats_trigger().clone();
                   let flush_stats = async move {
-                    let (sender, receiver) = bd_completion::Sender::new();
-                    if let Err(e) =
-                      flush_stats_trigger.flush(
-                        FlushTriggerRequest { do_upload: true, completion_tx: Some(sender) }
-                      ).await
-                    {
-                      log::debug!("flushing state: failed to flush stats: {e}");
-                    }
+                    let completion = match flush_stats_trigger.flush() {
+                      Ok(completion) => completion,
+                      Err(e) => {
+                        log::debug!("flushing state: failed to flush stats: {e}");
+                        return;
+                      },
+                    };
 
-                    if let Err(e) = receiver.recv().await {
-                      log::debug!("flushing state: failed to wait for stats flush: {e}");
+                    if let Err(e) = completion.wait().await {
+                      log::debug!("flushing state: failed to flush stats: {e}");
                     }
                   };
 
@@ -1136,10 +1034,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                     }
                   };
 
-                  let session_strategy = self.session_strategy.clone();
-                  let flush_session = async {
-                    session_strategy.flush().await;
-                  };
+                  let flush_session = self.session_strategy.flush();
 
                   let persist_workflows = async {
                     if let Some(workflows_engine) = self.logging_state.workflows_engine() {
@@ -1169,14 +1064,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         () = self.resource_utilization_reporter.run() => {},
         () = self.session_replay_recorder.run() => {},
         () = self.events_listener.run() => {},
-        () = &mut local_shutdown => {
-          return self;
-        },
-        () = &mut self_shutdown => {
-          return self;
-        },
+        () = &mut local_shutdown => break,
+        () = &mut self_shutdown => break,
       }
     }
+
+    self
   }
 
   async fn send_debug_data(&mut self) {

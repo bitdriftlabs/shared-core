@@ -15,7 +15,7 @@ use crate::types::{Platform, RuntimeValueType};
 use bd_log_primitives::LogFields;
 use bd_logger::{Block, CaptureSession, InitParams, Logger, MetadataProvider};
 use bd_proto::protos::logging::payload::LogType as ProtoLogType;
-use bd_session::{Strategy, activity_based, fixed};
+use bd_session::{Strategy, StrategyWithWorker, configuration};
 use bd_time::TimeProvider;
 use parking_lot::Mutex;
 use std::collections::HashMap;
@@ -45,15 +45,15 @@ impl MetadataProvider for LiveTimestampMetadata {
 }
 
 //
-// ActivitySessionCallbacks
+// SessionCallbacks
 //
 
 #[derive(Default)]
-struct ActivitySessionCallbacks;
+struct SessionCallbacks;
 
-impl activity_based::Callbacks for ActivitySessionCallbacks {
+impl configuration::Callbacks for SessionCallbacks {
   fn session_id_changed(&self, session_id: &str) {
-    log::info!("activity-based session rotated: {session_id}");
+    log::info!("session changed: {session_id}");
   }
 }
 
@@ -124,7 +124,7 @@ impl LoggerHolder {
 
   pub fn start_new_session(&self) {
     let handle = { self.logger.lock().new_logger_handle() };
-    handle.start_new_session().unwrap();
+    handle.start_new_session(None).unwrap();
   }
 
   pub fn current_session_id(&self) -> anyhow::Result<String> {
@@ -215,16 +215,8 @@ impl LoggerHolder {
     } else {
       CaptureSession::default()
     };
-    let block = if block {
-      bd_logger::Block::Yes {
-        timeout: 1.std_seconds(),
-        poll_callback: None,
-      }
-    } else {
-      bd_logger::Block::No
-    };
-
-    self.logger.lock().new_logger_handle().log(
+    let handle = { self.logger.lock().new_logger_handle() };
+    handle.log(
       log_level,
       log_type,
       message.into(),
@@ -242,9 +234,14 @@ impl LoggerHolder {
         .collect(),
       [].into(),
       None,
-      block,
       &session_capture,
     );
+    if block {
+      handle.flush_state(Block::Yes {
+        timeout: 1.std_seconds(),
+        poll_callback: None,
+      });
+    }
   }
 }
 
@@ -285,7 +282,10 @@ async fn fetch_device_code(args: &LoggerArgs, device_id: &str) -> anyhow::Result
   Ok(device_code_response.code)
 }
 
-fn make_session_strategy(sdk_directory: &Path, config: &SessionStrategyConfig) -> Arc<Strategy> {
+fn make_session_strategy(
+  sdk_directory: &Path,
+  config: &SessionStrategyConfig,
+) -> StrategyWithWorker {
   make_session_strategy_with_time_provider(
     sdk_directory,
     config,
@@ -297,18 +297,25 @@ fn make_session_strategy_with_time_provider(
   sdk_directory: &Path,
   config: &SessionStrategyConfig,
   time_provider: Arc<dyn TimeProvider>,
-) -> Arc<Strategy> {
-  Arc::new(match config {
-    SessionStrategyConfig::Fixed => Strategy::fixed(sdk_directory, Arc::new(fixed::UUIDCallbacks)),
-    SessionStrategyConfig::ActivityBased {
-      inactivity_threshold_mins,
-    } => Strategy::activity_based(
+) -> StrategyWithWorker {
+  match config {
+    SessionStrategyConfig::Fixed => Strategy::configuration(
       sdk_directory,
-      time::Duration::minutes(*inactivity_threshold_mins),
-      Arc::new(ActivitySessionCallbacks),
+      None,
+      None,
+      Arc::new(SessionCallbacks),
       time_provider,
     ),
-  })
+    SessionStrategyConfig::ActivityBased {
+      inactivity_threshold_mins,
+    } => Strategy::configuration(
+      sdk_directory,
+      None,
+      Some(time::Duration::minutes(*inactivity_threshold_mins)),
+      Arc::new(SessionCallbacks),
+      time_provider,
+    ),
+  }
 }
 
 pub struct LoggerArgs {
@@ -324,7 +331,8 @@ pub struct LoggerArgs {
 }
 
 pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Result<LoggerHolder> {
-  let session_strategy = make_session_strategy(sdk_directory, &args.session_strategy);
+  let session = make_session_strategy(sdk_directory, &args.session_strategy);
+  let session_strategy = session.strategy();
   let storage_db = sdk_directory.join("defaults.db");
   let storage = SQLiteStorage::new(&storage_db);
   let store = Arc::new(bd_key_value::Store::new(Box::new(storage)));
@@ -358,7 +366,7 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
   let (logger, _, future, _) = bd_logger::LoggerBuilder::new(InitParams {
     sdk_directory: sdk_directory.to_path_buf(),
     api_key: args.api_key.clone(),
-    session_strategy: session_strategy.clone(),
+    session,
     metadata_provider: Arc::new(LiveTimestampMetadata {
       ootb_fields: [(
         "_app_version_code".into(),
@@ -366,6 +374,8 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
       )]
       .into(),
     }),
+    initial_ootb_fields: [].into(),
+    initial_custom_fields: [].into(),
     resource_utilization_target: Box::new(bd_test_helpers::resource_utilization::EmptyTarget),
     session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
     events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),

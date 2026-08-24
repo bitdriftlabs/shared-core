@@ -13,20 +13,24 @@ bd-pgv.path                 = "../bd-pgv"
 bd-workspace-hack.workspace = true
 bytes.workspace             = true
 flatbuffers.workspace       = true
+flatc-rust                  = { workspace = true, optional = true }
 protobuf.workspace          = true
+protobuf-codegen            = { workspace = true, optional = true }
 serde.workspace             = true
 
 [dev-dependencies]
 matches.workspace    = true
 serde_json.workspace = true
 
-[build-dependencies]
-flatc-rust.workspace       = true
-protobuf-codegen.workspace = true
-
 [features]
+codegen          = ["dep:flatc-rust", "dep:protobuf-codegen"]
 public-api       = []
 with-source-info = ["public-api"]
+
+[[bin]]
+name              = "generate-protos"
+path              = "src/bin/generate_protos.rs"
+required-features = ["codegen"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ["cfg(tarpaulin_include)"] }

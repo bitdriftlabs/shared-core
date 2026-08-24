@@ -97,6 +97,16 @@ struct StreamClosureInfo {
 }
 
 //
+// TestHooks
+//
+
+pub trait TestHooks: Send + Sync {
+  fn reconnect_backoff_started(&self) {}
+
+  fn data_idle_timeout_reached(&self) {}
+}
+
+//
 // InFlightStateUpdate
 //
 
@@ -431,8 +441,7 @@ pub struct Api {
   stats_handshake_extension: Option<Arc<dyn StatsHandshakeExtension>>,
   connection_count_since_process_start: u64,
 
-  #[cfg(test)]
-  pub data_idle_timeout_test_hook: Option<tokio::sync::mpsc::Sender<()>>,
+  pub(crate) test_hooks: Option<Arc<dyn TestHooks>>,
 }
 
 impl Api {
@@ -503,8 +512,7 @@ impl Api {
       sdk_status_tracker,
       stats_handshake_extension,
       connection_count_since_process_start: 1,
-      #[cfg(test)]
-      data_idle_timeout_test_hook: None,
+      test_hooks: None,
     }
   }
 
@@ -716,6 +724,13 @@ impl Api {
   }
 
   async fn do_reconnect_backoff(&mut self, min_retry_after: Option<Duration>) {
+    // Runtime updates can arrive during an active stream. Refresh before calculating its retry so
+    // the first reconnect after that stream closes honors the latest policy.
+    if self.backoff_policy.has_changed() {
+      log::debug!("backoff policy changed while stream was active, recreating");
+      self.backoff = self.backoff_policy.backoff_mark_update();
+    }
+
     // We have no max timeout, hence this should always return a backoff value.
     // Before moving to the next iteration, sleep according to the backoff strategy.
     let reconnect_delay = self.backoff.next_backoff();
@@ -723,6 +738,9 @@ impl Api {
       min_retry_after.map_or(reconnect_delay, |f| max(f.abs(), reconnect_delay));
 
     self.reconnect_state.record_next_try_after(reconnect_delay);
+    if let Some(test_hooks) = &self.test_hooks {
+      test_hooks.reconnect_backoff_started();
+    }
 
     log::debug!(
       "reconnecting in {} ms",
@@ -920,8 +938,7 @@ impl Api {
         self.connection_count_since_process_start += 1;
         self
           .session_strategy
-          .acknowledge_state_update(&handshake_state_update)
-          .await;
+          .acknowledge_state_update(&handshake_state_update);
         self.apply_client_state_updates(&client_state_updates).await;
         stream_state.initialize_stream_settings(stream_settings);
 
@@ -1036,7 +1053,7 @@ impl Api {
         }
         _ = self.session_updates.changed(), if in_flight_state_update.is_none() => {
           let _ = self.session_updates.borrow_and_update();
-          let Some(session_update) = self.session_strategy.pending_state_update().await else {
+          let Some(session_update) = self.session_strategy.pending_state_update() else {
             continue;
           };
           stream_state.send_request(session_update.request().clone()).await?;
@@ -1072,9 +1089,8 @@ impl Api {
           let idle_reconnect_interval = self.get_min_reconnect_interval();
           log::debug!("no data received for {idle_timeout_interval}, disconnecting and reconnecting in {idle_reconnect_interval}");
 
-          #[cfg(test)]
-          if let Some(tx) = & self.data_idle_timeout_test_hook {
-            let _ = tx.try_send(());
+          if let Some(test_hooks) = &self.test_hooks {
+            test_hooks.data_idle_timeout_reached();
           }
 
           self.stats.data_idle_timeout.inc();
@@ -1201,7 +1217,6 @@ impl Api {
           let session_id = self
             .session_strategy
             .session_id()
-            .await
             .map_err(|_| anyhow!("remote trigger upload session id"))?;
 
           self
@@ -1288,8 +1303,7 @@ impl Api {
           {
             self
               .session_strategy
-              .acknowledge_state_update(&session_update)
-              .await;
+              .acknowledge_state_update(&session_update);
           }
         },
         None => {
@@ -1312,7 +1326,7 @@ impl Api {
     Option<TrackedStatsUploadRequest>,
   ) {
     let opaque_client_state = tokio::fs::read(&self.opaque_client_state_path()).await.ok();
-    let session_update = self.session_strategy.handshake_state_update().await;
+    let session_update = self.session_strategy.handshake_state_update();
     let mut handshake = HandshakeRequest {
       static_device_metadata: metadata.clone(),
       previous_disconnect_reason: previous_disconnect_reason.unwrap_or_default(),

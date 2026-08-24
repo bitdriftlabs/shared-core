@@ -40,8 +40,7 @@ use bd_proto::protos::filter::filter::FiltersConfiguration;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_session::Strategy;
-use bd_session::fixed::UUIDCallbacks;
-use bd_session::test::start_new_session;
+use bd_session::test::no_timeout;
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_state::test::TestStore;
 use bd_state::{MEMORY_PRESSURE_LEVEL_KEY, SYSTEM_SESSION_ID_KEY, Scope, StateReader};
@@ -59,7 +58,6 @@ use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Duration as StdDuration;
 use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use tokio::sync::mpsc;
@@ -89,7 +87,7 @@ impl Setup {
     let collector = Collector::default();
     let stats = Stats::new(collector.clone());
     let (data_upload_tx, data_upload_rx) = mpsc::channel(1);
-    let session_strategy = Arc::new(Strategy::fixed(tmp_dir.path(), Arc::new(UUIDCallbacks)));
+    let session_strategy = no_timeout(tmp_dir.path()).strategy();
 
     Self {
       buffer_manager: bd_buffer::Manager::new(
@@ -142,6 +140,8 @@ impl Setup {
       replayer,
       self.session_strategy.clone(),
       Arc::new(LogMetadata::default()),
+      [].into(),
+      [].into(),
       Box::new(EmptyTarget),
       Box::new(bd_test_helpers::session_replay::NoOpTarget),
       Box::new(NoOpListenerTarget),
@@ -171,6 +171,8 @@ impl Setup {
       LoggerReplay {},
       self.session_strategy.clone(),
       Arc::new(LogMetadata::default()),
+      [].into(),
+      [].into(),
       Box::new(EmptyTarget),
       Box::new(bd_test_helpers::session_replay::NoOpTarget),
       Box::new(NoOpListenerTarget),
@@ -209,6 +211,7 @@ impl Setup {
       1_000_000,
       Arc::new(AtomicBool::new(false)),
       Arc::new(ProcessLocalPendingFlushState::default()),
+      None,
     )
   }
 
@@ -226,25 +229,6 @@ impl Setup {
   fn make_runtime(tmp_dir: &Arc<tempfile::TempDir>) -> std::sync::Arc<ConfigLoader> {
     ConfigLoader::new(tmp_dir.path())
   }
-}
-
-#[test]
-fn persist_prepared_session_times_out_when_async_logger_is_stalled() {
-  let (log_tx, _log_rx) = bd_bounded_buffer::channel(1024 * 1024);
-  let (state_tx, _state_rx) = bd_bounded_buffer::channel(1024 * 1024);
-  let sender = Sender::from_parts(log_tx, state_tx);
-  let sdk_directory = tempfile::TempDir::new().unwrap();
-  let strategy = Strategy::fixed(sdk_directory.path(), Arc::new(UUIDCallbacks));
-  let prepared = strategy.prepare_session_id().unwrap();
-
-  let error = sender
-    .persist_prepared_session(prepared, StdDuration::from_millis(20))
-    .unwrap_err();
-
-  assert_eq!(
-    "failed to receive prepared session ack from async logger: timeout duration reached",
-    error.to_string()
-  );
 }
 
 struct TestReplay {
@@ -268,7 +252,6 @@ impl LogReplay for TestReplay {
   async fn replay_log(
     &mut self,
     log: Log,
-    _block: bool,
     _processing_pipeline: &mut ProcessingPipeline,
     _state: &bd_state::Store,
     _now: OffsetDateTime,
@@ -312,7 +295,7 @@ fn log_line_size_is_computed_correctly() {
     }
   }
 
-  let baseline_log_expected_size = 688;
+  let baseline_log_expected_size = 640;
   let baseline_log = create_baseline_log();
   assert_eq!(baseline_log_expected_size, baseline_log.size());
 
@@ -439,7 +422,6 @@ async fn logs_are_replayed_in_order() {
         [].into(),
         [].into(),
         None,
-        Block::No,
         None,
       );
 
@@ -511,58 +493,6 @@ fn enqueuing_log_does_not_block() {
     [].into(),
     [].into(),
     None,
-    Block::No,
-    None,
-  );
-
-  assert_ok!(result);
-}
-
-#[test]
-fn enqueuing_log_blocks() {
-  let setup = Setup::new();
-
-  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-
-  let (buffer, buffer_sender) = setup.make_real_async_log_buffer(config_update_rx);
-
-  let rt = tokio::runtime::Runtime::new().unwrap();
-  rt.spawn(async move {
-    assert_ok!(
-      config_update_tx
-        .send(ConfigUpdate {
-          buffer_producers: BufferProducers::new(&setup.buffer_manager).unwrap(),
-          buffer_selector: BufferSelector::new(&BufferConfigList::default()).unwrap(),
-          workflows_configuration: WorkflowsConfiguration::default(),
-          tail_configs: TailConfigurations::default(),
-          filter_chain: FilterChain::new(FiltersConfiguration::default()).0,
-          from_cache: false,
-        })
-        .await
-    );
-
-    let shutdown_trigger = ComponentShutdownTrigger::default();
-    let test_store = TestStore::new().await;
-    let state_store = (*test_store).clone();
-    buffer
-      .run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown())
-      .await;
-    shutdown_trigger.shutdown().await;
-    drop(test_store);
-  });
-
-  let result = AsyncLogBuffer::<TestReplay>::enqueue_log(
-    &buffer_sender,
-    0,
-    LogType::NORMAL,
-    "test".into(),
-    [].into(),
-    [].into(),
-    None,
-    Block::Yes {
-      timeout: 15.std_seconds(),
-      poll_callback: None,
-    },
     None,
   );
 
@@ -764,7 +694,7 @@ async fn updates_system_session_id_for_new_sessions() {
   let handle =
     tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
 
-  let first_session_id = setup.session_strategy.session_id().await.unwrap();
+  let first_session_id = setup.session_strategy.session_id().unwrap();
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
     &sender,
     0,
@@ -773,12 +703,11 @@ async fn updates_system_session_id_for_new_sessions() {
     [].into(),
     [].into(),
     None,
-    Block::No,
     None,
   ));
 
-  start_new_session(&setup.session_strategy).await;
-  let second_session_id = setup.session_strategy.session_id().await.unwrap();
+  setup.session_strategy.start_new_session(None).unwrap();
+  let second_session_id = setup.session_strategy.session_id().unwrap();
   assert_ne!(first_session_id, second_session_id);
 
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
@@ -789,7 +718,6 @@ async fn updates_system_session_id_for_new_sessions() {
     [].into(),
     [].into(),
     None,
-    Block::No,
     None,
   ));
 
@@ -876,7 +804,7 @@ async fn previous_run_log_does_not_override_system_session_id() {
   let handle =
     tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
 
-  let current_session_id = setup.session_strategy.session_id().await.unwrap();
+  let current_session_id = setup.session_strategy.session_id().unwrap();
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
     &sender,
     0,
@@ -885,12 +813,11 @@ async fn previous_run_log_does_not_override_system_session_id() {
     [].into(),
     [].into(),
     None,
-    Block::No,
     None,
   ));
 
-  start_new_session(&setup.session_strategy).await;
-  let next_session_id = setup.session_strategy.session_id().await.unwrap();
+  setup.session_strategy.start_new_session(None).unwrap();
+  let next_session_id = setup.session_strategy.session_id().unwrap();
   assert_ne!(current_session_id, next_session_id);
 
   let log = LogLine {
@@ -935,7 +862,7 @@ async fn pre_config_logs_trigger_session_id_update() {
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
 
-  let first_session_id = setup.session_strategy.session_id().await.unwrap();
+  let first_session_id = setup.session_strategy.session_id().unwrap();
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
     &sender,
     0,
@@ -944,12 +871,11 @@ async fn pre_config_logs_trigger_session_id_update() {
     [].into(),
     [].into(),
     None,
-    Block::No,
     None,
   ));
 
-  start_new_session(&setup.session_strategy).await;
-  let second_session_id = setup.session_strategy.session_id().await.unwrap();
+  setup.session_strategy.start_new_session(None).unwrap();
+  let second_session_id = setup.session_strategy.session_id().unwrap();
   assert_ne!(first_session_id, second_session_id);
 
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
@@ -960,7 +886,6 @@ async fn pre_config_logs_trigger_session_id_update() {
     [].into(),
     [].into(),
     None,
-    Block::No,
     None,
   ));
 
@@ -1046,7 +971,6 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
     [].into(),
     [].into(),
     None,
-    Block::No,
     None,
   )
   .unwrap();

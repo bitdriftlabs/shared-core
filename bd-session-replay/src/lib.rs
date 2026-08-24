@@ -20,13 +20,13 @@ mod recorder_test;
 
 use bd_client_common::maybe_await_interval;
 use bd_client_stats_store::{Counter, Scope};
-use bd_error_reporter::reporter::handle_unexpected;
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::{BoolWatch, ConfigLoader, DurationWatch, session_replay};
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_stats_common::{Counter as _, labels};
 use bd_time::TimeDurationExt;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::mpsc::{Receiver, Sender, channel};
 use tokio::time::{Interval, MissedTickBehavior};
 
@@ -84,8 +84,7 @@ pub struct Recorder {
   // processing a previously requested screenshot.
   // Each time a screenshot is requested, the flag is set to `false`, and it is set back to `true`
   // when the screenshot log is intercepted.
-  is_ready_to_capture_screenshot: bool,
-  next_screenshot_rx: Receiver<()>,
+  is_ready_to_capture_screenshot: Arc<AtomicBool>,
 
   stats: Stats,
 }
@@ -101,7 +100,7 @@ impl Recorder {
     // passing them to the platform layer, which performs the actual screenshotting on the main
     // thread.
     let (capture_screenshot_tx, capture_screenshot_rx) = channel(1);
-    let (next_screenshot_tx, next_screenshot_rx) = channel(1);
+    let is_ready_to_capture_screenshot = Arc::new(AtomicBool::new(true));
 
     let mut is_periodic_reporting_enabled_flag =
       session_replay::PeriodicScreensEnabledFlag::register(runtime_loader);
@@ -121,7 +120,10 @@ impl Recorder {
       channel_full: stats.channel_full.clone(),
     };
 
-    let screenshot_log_interceptor = ScreenshotLogInterceptor { next_screenshot_tx };
+    let screenshot_log_interceptor = ScreenshotLogInterceptor {
+      is_ready_to_capture_screenshot: is_ready_to_capture_screenshot.clone(),
+      received: stats.received.clone(),
+    };
 
     (
       Self {
@@ -136,8 +138,7 @@ impl Recorder {
         is_capture_screenshots_enabled_flag,
         is_capture_screenshots_enabled,
         capture_screenshot_rx,
-        is_ready_to_capture_screenshot: true,
-        next_screenshot_rx,
+        is_ready_to_capture_screenshot,
         stats,
       },
       capture_screenshot_handler,
@@ -201,7 +202,10 @@ impl Recorder {
             continue;
           }
 
-          if !self.is_ready_to_capture_screenshot {
+          if !self
+            .is_ready_to_capture_screenshot
+            .swap(false, Ordering::Relaxed)
+          {
             self.stats.not_ready.inc();
             log::debug!("session replay recorder ignored screenshot: not ready to capture screenshot");
             continue;
@@ -211,16 +215,6 @@ impl Recorder {
 
           self.stats.success.inc();
           self.target.capture_screenshot();
-
-          // Reset the flag to indicate that the recorder is not ready to take a screenshot until
-          // `ScreenshotLogInterceptor` intercepts a log containing a screenshot that was just requested.
-          self.is_ready_to_capture_screenshot = false;
-        },
-        Some(()) = async { self.next_screenshot_rx.recv().await } => {
-          log::debug!("session replay recorder received screenshot");
-
-          self.stats.received.inc();
-          self.is_ready_to_capture_screenshot = true;
         },
         _ = self.is_periodic_reporting_enabled_flag.changed() => {
           self.is_periodic_reporting_enabled
@@ -293,7 +287,8 @@ impl CaptureScreenshotHandler {
 //
 
 pub struct ScreenshotLogInterceptor {
-  next_screenshot_tx: Sender<()>,
+  is_ready_to_capture_screenshot: Arc<AtomicBool>,
+  received: Counter,
 }
 
 impl bd_log_primitives::LogInterceptor for ScreenshotLogInterceptor {
@@ -310,9 +305,10 @@ impl bd_log_primitives::LogInterceptor for ScreenshotLogInterceptor {
       return;
     }
 
-    handle_unexpected(
-      self.next_screenshot_tx.try_send(()),
-      "failed to send ready for next screenshot signal",
-    );
+    log::debug!("session replay recorder received screenshot");
+    self
+      .is_ready_to_capture_screenshot
+      .store(true, Ordering::Relaxed);
+    self.received.inc();
   }
 }

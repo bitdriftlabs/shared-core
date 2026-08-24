@@ -9,7 +9,7 @@ use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::consumer::RemoteFlushStreamingRequest;
 use crate::log_replay::{LogReplay, ProcessingPipeline};
-use crate::logger::with_thread_local_logger_guard;
+use crate::logger::{TestHooks, with_thread_local_logger_guard};
 use crate::metadata::MetadataCollector;
 use crate::pre_config_buffer::{self, PreConfigBuffer};
 use anyhow::anyhow;
@@ -115,6 +115,7 @@ pub struct UninitializedLoggingContext<T: MemorySized + Debug> {
   runtime: Arc<ConfigLoader>,
   is_tracing_active: Arc<AtomicBool>,
   process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
+  test_hooks: Option<Arc<dyn TestHooks>>,
 }
 
 // Skip `stats` and `runtime` fields that does not implement `std::fmt::Debug`.
@@ -144,6 +145,7 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
     max_size: usize,
     is_tracing_active: Arc<AtomicBool>,
     process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
+    test_hooks: Option<Arc<dyn TestHooks>>,
   ) -> Self {
     Self {
       pre_config_log_buffer: PreConfigBuffer::new(max_size),
@@ -157,6 +159,7 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
       runtime: runtime.clone(),
       is_tracing_active,
       process_local_pending_flush_state,
+      test_hooks,
     }
   }
 
@@ -178,6 +181,7 @@ impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
       InitializedLoggingContextStats::new(&self.stats),
       self.is_tracing_active,
       self.process_local_pending_flush_state,
+      self.test_hooks,
     )
     .await;
 

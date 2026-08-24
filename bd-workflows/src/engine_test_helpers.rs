@@ -19,7 +19,7 @@ use crate::test::TestLog;
 use crate::workflow::{WorkflowDebugStateMap, WorkflowEvent, WorkflowTransitionDebugState};
 use bd_api::DataUpload;
 use bd_api::upload::{IntentDecision, IntentResponse, UploadResponse};
-use bd_client_stats::{FlushTrigger, FlushTriggerRequest, Stats};
+use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::Collector;
 use bd_log_primitives::tiny_set::TinySet;
 use bd_log_primitives::{LogFields, LogMessage, log_level};
@@ -200,7 +200,7 @@ impl<C: Counter, H: Histogram> AnnotatedWorkflowsEngine<C, H> {
   pub fn run_for_test(
     buffers_to_flush_rx: Receiver<BuffersToFlush>,
     data_upload_rx: Receiver<DataUpload>,
-    stats_flush_rx: Receiver<FlushTriggerRequest>,
+    stats_flush_rx: Receiver<()>,
     hooks: Arc<parking_lot::Mutex<Hooks>>,
   ) -> JoinHandle<()> {
     let mut buffers_to_flush_rx = buffers_to_flush_rx;
@@ -325,10 +325,6 @@ impl<C: Counter, H: Histogram> AnnotatedWorkflowsEngine<C, H> {
         .push(decision);
     }
   }
-
-  pub fn stats_flush_requests_count(&self) -> u32 {
-    self.hooks.lock().stats_flush_requests_received
-  }
 }
 
 impl<C: Counter, H: Histogram> std::ops::Deref for AnnotatedWorkflowsEngine<C, H> {
@@ -406,7 +402,7 @@ impl Setup {
 
     let stats = bd_client_stats::Stats::new(self.collector.clone());
 
-    let (flush_trigger, stats_flush_rx) = FlushTrigger::new();
+    let (_flush_trigger, stats_flush_rx) = FlushTrigger::new();
     let workflows_pending_flush_state = Arc::clone(&process_local_pending_flush_state);
 
     let (mut workflows_engine, buffers_to_flush_rx) =
@@ -416,7 +412,6 @@ impl Setup {
         Some(&self.runtime),
         data_upload_tx,
         stats.clone(),
-        Some(flush_trigger),
         workflows_pending_flush_state,
       );
 

@@ -14,8 +14,9 @@ use crate::{
   LogMessage,
   Logger,
   ReportProcessingSession,
+  TestHooks,
 };
-use bd_client_stats::{FlushTrigger, FlushTriggerRequest};
+use bd_client_stats::FlushTrigger;
 use bd_device::Store;
 use bd_noop_network::NoopNetwork;
 use bd_proto::protos::client::api::ConfigurationUpdate;
@@ -24,8 +25,8 @@ use bd_proto::protos::client::api::configuration_update_ack::Nack;
 use bd_proto::protos::config::v1::config::{BufferConfigList, buffer_config};
 use bd_proto::protos::logging::payload::LogType;
 use bd_runtime::runtime::FeatureFlag as _;
-use bd_session::Strategy;
-use bd_session::fixed::UUIDCallbacks;
+use bd_session::StrategyWithWorker;
+use bd_session::test::no_timeout;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger};
 use bd_test_helpers::config_helper::{
   configuration_update,
@@ -49,6 +50,7 @@ use bd_time::test::TestTicker;
 use bd_workflows::engine::WORKFLOWS_STATE_FILE_NAME;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
+use std::sync::mpsc::{Receiver as StdReceiver, Sender as StdSender, channel as std_channel};
 use tempfile::TempDir;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use tokio::sync::mpsc;
@@ -62,15 +64,35 @@ macro_rules! wait_for {
       if start.elapsed() > 5.seconds() {
         panic!("Timeout waiting for condition");
       }
-      std::thread::sleep(10.std_milliseconds());
+      std::thread::sleep(std::time::Duration::from_millis(10));
     }
   };
 }
 
-#[derive(Default)]
 struct MockSessionReplayTarget {
   capture_screen_count: Arc<AtomicUsize>,
   capture_screenshot_count: Arc<AtomicUsize>,
+  capture_screen_tx: StdSender<()>,
+  capture_screenshot_tx: StdSender<()>,
+}
+
+//
+// SetupTestHooks
+//
+
+struct SetupTestHooks {
+  remote_streaming_action_processed_tx: StdSender<()>,
+  workflow_event_processed_tx: std::sync::mpsc::SyncSender<()>,
+}
+
+impl TestHooks for SetupTestHooks {
+  fn remote_streaming_action_processed(&self) {
+    let _ignored = self.remote_streaming_action_processed_tx.send(());
+  }
+
+  fn workflow_event_processed(&self) {
+    let _ignored = self.workflow_event_processed_tx.try_send(());
+  }
 }
 
 impl bd_session_replay::Target for MockSessionReplayTarget {
@@ -78,12 +100,14 @@ impl bd_session_replay::Target for MockSessionReplayTarget {
     self
       .capture_screen_count
       .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let _ = self.capture_screen_tx.send(());
   }
 
   fn capture_screenshot(&self) {
     self
       .capture_screenshot_count
       .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let _ = self.capture_screenshot_tx.send(());
   }
 }
 
@@ -106,7 +130,7 @@ pub struct SetupOptions {
   pub disk_storage: bool,
   pub start_in_sleep_mode: bool,
   pub time_provider: Option<Arc<dyn TimeProvider>>,
-  pub session_strategy: Option<Arc<Strategy>>,
+  pub session_strategy: Option<StrategyWithWorker>,
   pub extra_runtime_values: Vec<(&'static str, ValueKind)>,
   pub handshake_response_plans: Vec<HandshakeResponsePlan>,
   pub stats_upload_response_plans: Vec<StatsUploadResponsePlan>,
@@ -141,12 +165,14 @@ pub struct Setup {
   pub server: Box<bd_test_helpers::test_api_server::ServerHandle>,
   pub current_api_stream: Option<StreamHandle>,
 
-  pub capture_screen_count: Arc<AtomicUsize>,
-  pub capture_screenshot_count: Arc<AtomicUsize>,
+  capture_screen_rx: StdReceiver<()>,
+  capture_screenshot_rx: StdReceiver<()>,
+  remote_streaming_action_processed_rx: StdReceiver<()>,
+  workflow_event_processed_rx: StdReceiver<()>,
 
   _shutdown: ComponentShutdownTrigger,
 
-  pub _stats_flush_tx: mpsc::Sender<()>,
+  pub stats_flush_tx: mpsc::Sender<()>,
   pub _stats_upload_tx: mpsc::Sender<()>,
   pub stats_flush_trigger: FlushTrigger,
 }
@@ -206,24 +232,32 @@ impl Setup {
     };
     let device = Arc::new(bd_device::Device::new(store.clone()));
 
-    let session_replay_target = Box::new(MockSessionReplayTarget::default());
-    let capture_screen_count = session_replay_target.capture_screen_count.clone();
-    let capture_screenshot_count = session_replay_target.capture_screenshot_count.clone();
+    let (capture_screen_tx, capture_screen_rx) = std::sync::mpsc::channel();
+    let (capture_screenshot_tx, capture_screenshot_rx) = std::sync::mpsc::channel();
+    let (remote_streaming_action_processed_tx, remote_streaming_action_processed_rx) =
+      std_channel();
+    let (workflow_event_processed_tx, workflow_event_processed_rx) =
+      std::sync::mpsc::sync_channel(1);
+    let session_replay_target = Box::new(MockSessionReplayTarget {
+      capture_screen_count: Arc::default(),
+      capture_screenshot_count: Arc::default(),
+      capture_screen_tx,
+      capture_screenshot_tx,
+    });
 
     let (flush_tick_tx, flush_ticker) = TestTicker::new();
     let (upload_tick_tx, upload_ticker) = TestTicker::new();
-    let session_strategy = options.session_strategy.unwrap_or_else(|| {
-      Arc::new(Strategy::fixed(
-        options.sdk_directory.path(),
-        Arc::new(UUIDCallbacks),
-      ))
-    });
+    let session = options
+      .session_strategy
+      .unwrap_or_else(|| no_timeout(options.sdk_directory.path()));
 
     let (logger, _, flush_trigger) = crate::LoggerBuilder::new(InitParams {
       sdk_directory: options.sdk_directory.path().into(),
       api_key: "foo-api-key".to_string(),
-      session_strategy,
+      session,
       metadata_provider: options.metadata_provider,
+      initial_ootb_fields: [].into(),
+      initial_custom_fields: [].into(),
       resource_utilization_target: Box::new(EmptyTarget),
       session_replay_target,
       events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
@@ -236,6 +270,10 @@ impl Setup {
     .with_client_stats_tickers_for_test(Box::new(flush_ticker), Box::new(upload_ticker))
     .with_internal_logger(true)
     .with_time_provider(options.time_provider)
+    .with_test_hooks(Some(Arc::new(SetupTestHooks {
+      remote_streaming_action_processed_tx,
+      workflow_event_processed_tx,
+    })))
     .build_dedicated_thread()
     .unwrap();
 
@@ -254,10 +292,12 @@ impl Setup {
       sdk_directory: options.sdk_directory,
       server,
       current_api_stream,
-      capture_screen_count,
-      capture_screenshot_count,
+      capture_screen_rx,
+      capture_screenshot_rx,
+      remote_streaming_action_processed_rx,
+      workflow_event_processed_rx,
       _shutdown: shutdown,
-      _stats_flush_tx: flush_tick_tx,
+      stats_flush_tx: flush_tick_tx,
       _stats_upload_tx: upload_tick_tx,
       stats_flush_trigger: flush_trigger,
     }
@@ -265,6 +305,38 @@ impl Setup {
 
   pub fn run_network(port: u16, shutdown: ComponentShutdown) -> bd_hyper_network::Handle {
     bd_hyper_network::HyperNetwork::run_on_thread(&format!("http://localhost:{port}"), shutdown)
+  }
+
+  pub fn wait_for_capture_screen(&self) {
+    self
+      .capture_screen_rx
+      .recv_timeout(std::time::Duration::from_secs(5))
+      .expect("timed out waiting for capture-screen callback");
+  }
+
+  pub fn wait_for_capture_screenshot(&self) {
+    self
+      .capture_screenshot_rx
+      .recv_timeout(std::time::Duration::from_secs(5))
+      .expect("timed out waiting for capture-screenshot callback");
+  }
+
+  pub fn wait_for_remote_streaming_action_processing(&self) {
+    self
+      .remote_streaming_action_processed_rx
+      .recv_timeout(std::time::Duration::from_secs(5))
+      .expect("timed out waiting for remote streaming action processing");
+  }
+
+  pub fn wait_for_workflow_event_processing(&self) {
+    self
+      .workflow_event_processed_rx
+      .recv_timeout(std::time::Duration::from_secs(5))
+      .expect("timed out waiting for workflow event processing");
+  }
+
+  pub fn assert_no_capture_screenshot(&self) {
+    assert!(self.capture_screenshot_rx.try_recv().is_err());
   }
 
   pub fn restart_stream(&mut self, expect_sleep_mode: bool) {
@@ -353,23 +425,12 @@ impl Setup {
   }
 
   pub fn flush_and_upload_stats(&self) {
-    self.flush_stats(true);
+    let completion = self.stats_flush_trigger.blocking_flush_for_test().unwrap();
+    completion.blocking_wait_for_test().unwrap();
   }
 
-  pub fn flush_stats_without_upload(&self) {
-    self.flush_stats(false);
-  }
-
-  fn flush_stats(&self, do_upload: bool) {
-    let (sender, receiver) = bd_completion::Sender::new();
-    self
-      .stats_flush_trigger
-      .blocking_flush_for_test(FlushTriggerRequest {
-        do_upload,
-        completion_tx: Some(sender),
-      })
-      .unwrap();
-    receiver.blocking_recv().unwrap();
+  pub fn trigger_periodic_stats_flush(&self) {
+    self.stats_flush_tx.blocking_send(()).unwrap();
   }
 
   pub fn log(
@@ -388,12 +449,11 @@ impl Setup {
       fields,
       matching_fields,
       attributes_overrides,
-      Block::No,
       &CaptureSession::default(),
     );
   }
 
-  pub fn blocking_log(
+  pub fn log_then_flush(
     &self,
     level: LogLevel,
     log_type: LogType,
@@ -408,12 +468,25 @@ impl Setup {
       fields,
       matching_fields,
       None,
-      Block::Yes {
-        timeout: 15.std_seconds(),
-        poll_callback: None,
-      },
       &CaptureSession::default(),
     );
+    self.logger_handle.flush_state(Block::Yes {
+      timeout: 15.std_seconds(),
+      poll_callback: None,
+    });
+  }
+
+  pub fn log_then_wait_for_workflow_event(
+    &self,
+    level: LogLevel,
+    log_type: LogType,
+    message: LogMessage,
+    fields: AnnotatedLogFields,
+    matching_fields: AnnotatedLogFields,
+  ) {
+    while self.workflow_event_processed_rx.try_recv().is_ok() {}
+    self.log(level, log_type, message, fields, matching_fields, None);
+    self.wait_for_workflow_event_processing();
   }
 
   pub fn log_with_session_capture(
@@ -431,7 +504,6 @@ impl Setup {
       fields,
       matching_fields,
       None,
-      Block::No,
       &CaptureSession::capture_with_id("test"),
     );
   }
@@ -527,12 +599,15 @@ pub fn create_minimal_init_params(sdk_directory: &std::path::Path) -> InitParams
   let device_store = Arc::new(Store::new(Box::new(
     bd_test_helpers::session::InMemoryStorage::default(),
   )));
+  let session = no_timeout(sdk_directory);
 
   InitParams {
     sdk_directory: sdk_directory.into(),
     api_key: "test-api-key".to_string(),
-    session_strategy: Arc::new(Strategy::fixed(sdk_directory, Arc::new(UUIDCallbacks))),
+    session,
     metadata_provider: Arc::new(LogMetadata::default()),
+    initial_ootb_fields: [].into(),
+    initial_custom_fields: [].into(),
     resource_utilization_target: Box::new(EmptyTarget),
     session_replay_target: Box::new(bd_test_helpers::session_replay::NoOpTarget),
     events_listener_target: Box::new(bd_test_helpers::events::NoOpListenerTarget),
