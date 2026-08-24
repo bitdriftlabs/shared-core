@@ -65,13 +65,6 @@ tracing.workspace            = true
 unwrap-infallible.workspace  = true
 uuid.workspace               = true
 
-[target.'cfg(target_os = "linux")'.dev-dependencies]
-gungraun = { version = "0.19.4", features = ["client_requests"] }
-
-[[bench]]
-harness = false
-name    = "event_buffer"
-
 [dev-dependencies]
 assert_matches.workspace    = true
 bd-hyper-network            = { path = "../bd-hyper-network" }

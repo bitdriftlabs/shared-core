@@ -687,6 +687,7 @@ dependencies = [
 name = "bd-error-reporter"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
  "bd-client-common",
  "bd-client-stats-store",
  "bd-metadata",
@@ -702,7 +703,6 @@ dependencies = [
 name = "bd-event-buffer"
 version = "1.0.0"
 dependencies = [
- "anyhow",
  "bd-client-common",
  "bd-completion",
  "bd-log-primitives",
@@ -1018,7 +1018,6 @@ dependencies = [
  "flate2",
  "fs2",
  "futures-util",
- "gungraun",
  "itertools 0.15.0",
  "log",
  "notify",

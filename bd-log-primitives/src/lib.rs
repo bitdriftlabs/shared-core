@@ -41,40 +41,6 @@ pub const LOG_FIELD_NAME_TYPE: &str = "log_type";
 pub const LOG_FIELD_NAME_LEVEL: &str = "log_level";
 pub const LOG_FIELD_NAME_MESSAGE: &str = "_message";
 
-const RESERVED_CUSTOM_FIELD_NAMES: &[&str] = &[
-  "_manufacturer",
-  "app_id",
-  "app_version",
-  "carrier",
-  "foreground",
-  "log_level",
-  "log_type",
-  "model",
-  "network_type",
-  "os",
-  "os_version",
-  "radio_type",
-];
-
-/// Rejects global field names reserved for SDK-owned log metadata.
-pub fn verify_custom_field_name(key: &str) -> anyhow::Result<()> {
-  if RESERVED_CUSTOM_FIELD_NAMES.contains(&key) {
-    anyhow::bail!(
-      "Custom global field with {key:?} name is not allowed as the name is reserved for SDK \
-       internal use"
-    );
-  }
-
-  if key.starts_with('_') {
-    anyhow::bail!(
-      "Custom global field with {key:?} key is not allowed, fields whose key starts with \"_\" \
-       are reserved for SDK internal use"
-    );
-  }
-
-  Ok(())
-}
-
 //
 // LogIngress
 //
@@ -105,7 +71,6 @@ impl MemorySized for LogLine {
       + self.fields.size()
       + self.matching_fields.size()
       + size_of_val(&self.attributes_overrides)
-      + 48
       + 24
   }
 }
