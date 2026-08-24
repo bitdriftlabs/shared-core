@@ -167,6 +167,7 @@ impl AnnotatedWorkflow {
       &bd_state::InMemoryStateReader::default(),
       log.now,
       0,
+      bd_log_matcher::matcher::MatchContext::default(),
     )
   }
 
@@ -186,6 +187,7 @@ impl AnnotatedWorkflow {
       &bd_state::InMemoryStateReader::default(),
       log.now,
       0,
+      bd_log_matcher::matcher::MatchContext::default(),
     )
   }
 }

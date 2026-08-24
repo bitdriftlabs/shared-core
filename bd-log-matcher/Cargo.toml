@@ -9,7 +9,8 @@ version      = "1.0.0"
 doctest = false
 
 [features]
-fuzzing = []
+benchmark = []
+fuzzing   = []
 
 [dependencies]
 ahash.workspace             = true

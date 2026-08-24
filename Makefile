@@ -40,4 +40,4 @@ test: setup
 
 .PHONY: benchmark-json-matcher
 benchmark-json-matcher: setup
-	SKIP_PROTO_GEN=1 SKIP_FILE_GEN=1 cargo test -p bd-log-matcher --release benchmark_json_string_path_resolution -- --ignored --nocapture
+	bd-workflow-bench/json_path.sh

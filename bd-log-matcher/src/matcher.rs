@@ -17,6 +17,10 @@ mod legacy_matcher_test;
 #[path = "./json_string_matcher_test.rs"]
 mod json_string_matcher_test;
 
+#[cfg(test)]
+#[path = "./json_path_test.rs"]
+mod json_path_test;
+
 #[path = "./json_path.rs"]
 mod json_path;
 
@@ -56,6 +60,30 @@ use log_matcher::LogMatcher;
 use log_matcher::log_matcher::{BaseLogMatcher, Matcher, base_log_matcher};
 use rand::RngExt;
 use std::borrow::Cow;
+
+#[derive(Clone, Copy, Debug)]
+pub struct MatchContext {
+  pub json_path_string_matching_enabled: bool,
+}
+
+impl Default for MatchContext {
+  fn default() -> Self {
+    Self {
+      json_path_string_matching_enabled: true,
+    }
+  }
+}
+
+//
+// MatchResult
+//
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MatchResult {
+  Matched,
+  NotMatched,
+  Disabled,
+}
 
 const LOG_LEVEL_KEY: &str = "log_level";
 const LOG_TYPE_KEY: &str = "log_type";
@@ -171,6 +199,30 @@ impl Tree {
     extracted_fields: &TinyMap<String, String>,
     sampled_roll: u32,
   ) -> bool {
+    self.do_match_with_context(
+      log_level,
+      log_type,
+      message,
+      fields,
+      state,
+      extracted_fields,
+      sampled_roll,
+      MatchContext::default(),
+    )
+  }
+
+  #[must_use]
+  pub fn do_match_with_context(
+    &self,
+    log_level: LogLevel,
+    log_type: LogType,
+    message: &LogMessage,
+    fields: FieldsRef<'_>,
+    state: &dyn bd_state::StateReader,
+    extracted_fields: &TinyMap<String, String>,
+    sampled_roll: u32,
+    context: MatchContext,
+  ) -> bool {
     self.do_match_with_sampled_roll(
       log_level,
       log_type,
@@ -179,6 +231,7 @@ impl Tree {
       state,
       extracted_fields,
       sampled_roll,
+      context,
     )
   }
 
@@ -202,6 +255,7 @@ impl Tree {
       state,
       extracted_fields,
       sampled_roll,
+      MatchContext::default(),
     )
   }
 
@@ -214,9 +268,33 @@ impl Tree {
     state: &dyn bd_state::StateReader,
     extracted_fields: &TinyMap<String, String>,
     sampled_roll: u32,
+    context: MatchContext,
   ) -> bool {
+    self.do_match_result_with_sampled_roll(
+      log_level,
+      log_type,
+      message,
+      fields,
+      state,
+      extracted_fields,
+      sampled_roll,
+      context,
+    ) == MatchResult::Matched
+  }
+
+  fn do_match_result_with_sampled_roll(
+    &self,
+    log_level: LogLevel,
+    log_type: LogType,
+    message: &LogMessage,
+    fields: FieldsRef<'_>,
+    state: &dyn bd_state::StateReader,
+    extracted_fields: &TinyMap<String, String>,
+    sampled_roll: u32,
+    context: MatchContext,
+  ) -> MatchResult {
     match self {
-      Self::Base(base_matcher) => match base_matcher {
+      Self::Base(base_matcher) => MatchResult::from(match base_matcher {
         Leaf::LogLevel(log_level_matcher) => log_level
           .try_into()
           .is_ok_and(|log_level| log_level_matcher.evaluate(log_level, extracted_fields)),
@@ -238,36 +316,60 @@ impl Tree {
           field_key,
           path,
           matcher,
-        } => fields
-          .field(field_key)
-          .and_then(|value| resolve_json_path(value, path))
-          .is_some_and(|input| matcher.evaluate(input.as_ref(), extracted_fields)),
+        } => {
+          let Some(value) = fields.field(field_key) else {
+            return MatchResult::NotMatched;
+          };
+          if !context.json_path_string_matching_enabled && value.as_str().is_some() {
+            return MatchResult::Disabled;
+          }
+          resolve_json_path(value, path, context.json_path_string_matching_enabled)
+            .is_some_and(|input| matcher.evaluate(input.as_ref(), extracted_fields))
+        },
         Leaf::Sampled(sample_rate) => sample_matches_with_roll(*sample_rate, sampled_roll),
         Leaf::Any => true,
+      }),
+      Self::Or(or_matchers) => {
+        let mut result = MatchResult::NotMatched;
+        for matcher in or_matchers {
+          match matcher.do_match_result_with_sampled_roll(
+            log_level,
+            log_type,
+            message,
+            fields,
+            state,
+            extracted_fields,
+            sampled_roll,
+            context,
+          ) {
+            MatchResult::Matched => return MatchResult::Matched,
+            MatchResult::Disabled => result = MatchResult::Disabled,
+            MatchResult::NotMatched => {},
+          }
+        }
+        result
       },
-      Self::Or(or_matchers) => or_matchers.iter().any(|matcher| {
-        matcher.do_match_with_sampled_roll(
-          log_level,
-          log_type,
-          message,
-          fields,
-          state,
-          extracted_fields,
-          sampled_roll,
-        )
-      }),
-      Self::And(and_matchers) => and_matchers.iter().all(|matcher| {
-        matcher.do_match_with_sampled_roll(
-          log_level,
-          log_type,
-          message,
-          fields,
-          state,
-          extracted_fields,
-          sampled_roll,
-        )
-      }),
-      Self::Not(matcher) => !matcher.do_match_with_sampled_roll(
+      Self::And(and_matchers) => {
+        let mut result = MatchResult::Matched;
+        for matcher in and_matchers {
+          match matcher.do_match_result_with_sampled_roll(
+            log_level,
+            log_type,
+            message,
+            fields,
+            state,
+            extracted_fields,
+            sampled_roll,
+            context,
+          ) {
+            MatchResult::NotMatched => return MatchResult::NotMatched,
+            MatchResult::Disabled => result = MatchResult::Disabled,
+            MatchResult::Matched => {},
+          }
+        }
+        result
+      },
+      Self::Not(matcher) => match matcher.do_match_result_with_sampled_roll(
         log_level,
         log_type,
         message,
@@ -275,7 +377,22 @@ impl Tree {
         state,
         extracted_fields,
         sampled_roll,
-      ),
+        context,
+      ) {
+        MatchResult::Matched => MatchResult::NotMatched,
+        MatchResult::NotMatched => MatchResult::Matched,
+        MatchResult::Disabled => MatchResult::Disabled,
+      },
+    }
+  }
+}
+
+impl From<bool> for MatchResult {
+  fn from(value: bool) -> Self {
+    if value {
+      Self::Matched
+    } else {
+      Self::NotMatched
     }
   }
 }
@@ -453,9 +570,13 @@ pub enum JsonPathToken {
   Index(i32),
 }
 
-#[cfg(feature = "fuzzing")]
-pub fn fuzz_json_path(input: &str, path: &[JsonPathToken]) {
-  let _ = json_path::resolve(input, path);
+#[cfg(any(feature = "fuzzing", feature = "benchmark"))]
+#[must_use]
+pub fn resolve_json_path_for_testing<'a>(
+  input: &'a str,
+  path: &[JsonPathToken],
+) -> Option<Cow<'a, str>> {
+  json_path::resolve(input, path)
 }
 
 impl Leaf {
@@ -664,10 +785,13 @@ fn parse_json_path(key_or_index: &KeyOrIndex) -> Result<JsonPathToken> {
   }
 }
 
-fn resolve_json_path<'a>(value: &'a DataValue, path: &[JsonPathToken]) -> Option<Cow<'a, str>> {
+fn resolve_json_path<'a>(
+  value: &'a DataValue,
+  path: &[JsonPathToken],
+  json_string_matching_enabled: bool,
+) -> Option<Cow<'a, str>> {
   // Existing SDK APIs send JSON as a string. Parsing is only reached from JsonPathValue matchers.
-  // TODO: Gate JSON string extraction with a remote workflow runtime flag.
-  if let Some(json) = value.as_str() {
+  if json_string_matching_enabled && let Some(json) = value.as_str() {
     return resolve_json_string_path(json, path);
   }
 

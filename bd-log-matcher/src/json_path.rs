@@ -2,20 +2,22 @@
 // Copyright Bitdrift, Inc. All rights reserved.
 //
 // Use of this source code is governed by a source available license that can be found in the
-// LICENSE file or at:
+// LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::JsonPathToken;
 use std::borrow::Cow;
 
+const MAX_JSON_DEPTH: usize = 128;
+
 pub(super) fn resolve<'a>(input: &'a str, path: &[JsonPathToken]) -> Option<Cow<'a, str>> {
   let mut parser = Parser::new(input);
-  match parser.walk_value(path)? {
-    PathResult::Found(value) => Some(value),
-    PathResult::Missing => None,
-  }
+  parser.walk_value(path, 0)
 }
 
+/// A streaming JSON path parser that scans only the requested path rather than constructing a DOM.
+/// Unescaped strings borrow from the input; decoding escaped keys or values allocates. Parsing is
+/// limited to `MAX_JSON_DEPTH` nested containers.
 struct Parser<'a> {
   input: &'a str,
   pos: usize,
@@ -28,72 +30,69 @@ struct StringToken {
   escaped: bool,
 }
 
-enum PathResult<'a> {
-  Found(Cow<'a, str>),
-  Missing,
-}
-
 impl<'a> Parser<'a> {
   const fn new(input: &'a str) -> Self {
     Self { input, pos: 0 }
   }
 
-  fn walk_value(&mut self, path: &[JsonPathToken]) -> Option<PathResult<'a>> {
+  fn walk_value(&mut self, path: &[JsonPathToken], depth: usize) -> Option<Cow<'a, str>> {
     self.skip_whitespace();
     let Some((token, remaining_path)) = path.split_first() else {
       return self.extract_scalar();
     };
 
     match token {
-      JsonPathToken::Key(key) if self.peek()? == b'{' => self.walk_object(key, remaining_path),
+      JsonPathToken::Key(key) if self.peek()? == b'{' => {
+        self.walk_object(key, remaining_path, depth)
+      },
       JsonPathToken::Index(index) if self.peek()? == b'[' => {
-        self.walk_array(*index, remaining_path)
+        self.walk_array(*index, remaining_path, depth)
       },
       JsonPathToken::Key(_) | JsonPathToken::Index(_) => {
-        self.parse_value()?;
-        Some(PathResult::Missing)
+        self.parse_value(depth)?;
+        None
       },
     }
   }
 
-  fn extract_scalar(&mut self) -> Option<PathResult<'a>> {
+  fn extract_scalar(&mut self) -> Option<Cow<'a, str>> {
     let start = self.pos;
     match self.peek()? {
       b'"' => {
         let value = self.parse_string()?;
-        Some(PathResult::Found(self.string_value(value)?))
+        self.string_value(value)
       },
       b't' => {
         self.consume_literal(b"true")?;
-        Some(PathResult::Found(Cow::Borrowed(
-          &self.input[start .. self.pos],
-        )))
+        Some(Cow::Borrowed(&self.input[start .. self.pos]))
       },
       b'f' => {
         self.consume_literal(b"false")?;
-        Some(PathResult::Found(Cow::Borrowed(
-          &self.input[start .. self.pos],
-        )))
+        Some(Cow::Borrowed(&self.input[start .. self.pos]))
       },
       b'-' | b'0' ..= b'9' => {
         self.parse_number()?;
-        Some(PathResult::Found(Cow::Borrowed(
-          &self.input[start .. self.pos],
-        )))
+        Some(Cow::Borrowed(&self.input[start .. self.pos]))
       },
       b'n' => {
         self.consume_literal(b"null")?;
-        Some(PathResult::Missing)
+        None
       },
       _ => None,
     }
   }
 
-  fn walk_object(&mut self, wanted_key: &str, path: &[JsonPathToken]) -> Option<PathResult<'a>> {
+  fn walk_object(
+    &mut self,
+    wanted_key: &str,
+    path: &[JsonPathToken],
+    depth: usize,
+  ) -> Option<Cow<'a, str>> {
+    (depth < MAX_JSON_DEPTH).then_some(())?;
     self.consume(b'{')?;
     self.skip_whitespace();
     if self.consume_if(b'}') {
-      return Some(PathResult::Missing);
+      return None;
     }
 
     loop {
@@ -102,44 +101,51 @@ impl<'a> Parser<'a> {
       self.consume(b':')?;
       if self.string_equals(key, wanted_key)? {
         // The extractor uses the first matching key and does not inspect later members.
-        let result = self.walk_value(path)?;
+        let result = self.walk_value(path, depth + 1)?;
         return self.finish_container(b'}', result);
       }
-      self.parse_value()?;
+      self.parse_value(depth + 1)?;
       self.skip_whitespace();
       if self.consume_if(b'}') {
-        return Some(PathResult::Missing);
+        return None;
       }
       self.consume(b',')?;
       self.skip_whitespace();
     }
   }
 
-  fn walk_array(&mut self, requested_index: i32, path: &[JsonPathToken]) -> Option<PathResult<'a>> {
-    self.walk_positive_array_index(usize::try_from(requested_index).ok()?, path)
+  fn walk_array(
+    &mut self,
+    requested_index: i32,
+    path: &[JsonPathToken],
+    depth: usize,
+  ) -> Option<Cow<'a, str>> {
+    self.walk_positive_array_index(usize::try_from(requested_index).ok()?, path, depth)
   }
 
   fn walk_positive_array_index(
     &mut self,
     requested_index: usize,
     path: &[JsonPathToken],
-  ) -> Option<PathResult<'a>> {
+    depth: usize,
+  ) -> Option<Cow<'a, str>> {
+    (depth < MAX_JSON_DEPTH).then_some(())?;
     self.consume(b'[')?;
     self.skip_whitespace();
     if self.consume_if(b']') {
-      return Some(PathResult::Missing);
+      return None;
     }
 
     let mut index = 0;
     loop {
       if index == requested_index {
-        let result = self.walk_value(path)?;
+        let result = self.walk_value(path, depth + 1)?;
         return self.finish_container(b']', result);
       }
-      self.parse_value()?;
+      self.parse_value(depth + 1)?;
       self.skip_whitespace();
       if self.consume_if(b']') {
-        return Some(PathResult::Missing);
+        return None;
       }
       self.consume(b',')?;
       self.skip_whitespace();
@@ -148,20 +154,16 @@ impl<'a> Parser<'a> {
   }
 
   // Validate delimiters on the selected path, but deliberately do not parse trailing siblings.
-  fn finish_container(&mut self, closing: u8, result: PathResult<'a>) -> Option<PathResult<'a>> {
-    let PathResult::Found(value) = result else {
-      return Some(PathResult::Missing);
-    };
-
+  fn finish_container(&mut self, closing: u8, value: Cow<'a, str>) -> Option<Cow<'a, str>> {
     self.skip_whitespace();
-    (self.consume_if(closing) || self.peek() == Some(b',')).then_some(PathResult::Found(value))
+    (self.consume_if(closing) || self.peek() == Some(b',')).then_some(value)
   }
 
-  fn parse_value(&mut self) -> Option<()> {
+  fn parse_value(&mut self, depth: usize) -> Option<()> {
     self.skip_whitespace();
     match self.peek()? {
-      b'{' => self.parse_object(),
-      b'[' => self.parse_array(),
+      b'{' => self.parse_object(depth),
+      b'[' => self.parse_array(depth),
       b'"' => self.parse_string().map(|_| ()),
       b'-' | b'0' ..= b'9' => self.parse_number(),
       b't' => self.consume_literal(b"true"),
@@ -171,7 +173,8 @@ impl<'a> Parser<'a> {
     }
   }
 
-  fn parse_object(&mut self) -> Option<()> {
+  fn parse_object(&mut self, depth: usize) -> Option<()> {
+    (depth < MAX_JSON_DEPTH).then_some(())?;
     self.consume(b'{')?;
     self.skip_whitespace();
     if self.consume_if(b'}') {
@@ -181,7 +184,7 @@ impl<'a> Parser<'a> {
       self.parse_string()?;
       self.skip_whitespace();
       self.consume(b':')?;
-      self.parse_value()?;
+      self.parse_value(depth + 1)?;
       self.skip_whitespace();
       if self.consume_if(b'}') {
         return Some(());
@@ -191,14 +194,15 @@ impl<'a> Parser<'a> {
     }
   }
 
-  fn parse_array(&mut self) -> Option<()> {
+  fn parse_array(&mut self, depth: usize) -> Option<()> {
+    (depth < MAX_JSON_DEPTH).then_some(())?;
     self.consume(b'[')?;
     self.skip_whitespace();
     if self.consume_if(b']') {
       return Some(());
     }
     loop {
-      self.parse_value()?;
+      self.parse_value(depth + 1)?;
       self.skip_whitespace();
       if self.consume_if(b']') {
         return Some(());
@@ -403,78 +407,5 @@ const fn hex_digit(byte: u8) -> Option<u8> {
     b'a' ..= b'f' => Some(byte - b'a' + 10),
     b'A' ..= b'F' => Some(byte - b'A' + 10),
     _ => None,
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-
-  fn key(key: &str) -> JsonPathToken {
-    JsonPathToken::Key(key.to_owned())
-  }
-
-  #[test]
-  fn resolves_escaped_unicode_keys_and_values() {
-    let path = [key("snowman ☃"), key("value")];
-    assert_eq!(
-      resolve(
-        r#"{"snowman \u2603":{"emoji":"\uD83D\uDE80","value":"line\ntext"}}"#,
-        &path
-      )
-      .as_deref(),
-      Some("line\ntext"),
-    );
-    assert_eq!(
-      resolve(
-        r#"{"snowman \u2603":{"emoji":"\uD83D\uDE80","value":"\uD83D\uDE80"}}"#,
-        &path
-      )
-      .as_deref(),
-      Some("🚀"),
-    );
-  }
-
-  #[test]
-  fn skips_nested_containers_and_resolves_positive_indexes() {
-    let json =
-      r#"{"ignored":{"deep":[{"value":false},[1,2,3]]},"items":["zero",{"name":"one"},"two"]}"#;
-    assert_eq!(
-      resolve(json, &[key("items"), JsonPathToken::Index(1), key("name")]).as_deref(),
-      Some("one"),
-    );
-  }
-
-  #[test]
-  fn validates_json_before_the_target() {
-    let path = [key("value")];
-    for json in [
-      r#"{"broken":[1,],"value":"ok"}"#,
-      r#"{"broken":{"nested":"#,
-      r#"{"broken":"\uD800","value":"ok"}"#,
-    ] {
-      assert_eq!(resolve(json, &path), None, "{json}");
-    }
-  }
-
-  #[test]
-  fn returns_a_found_scalar_without_validating_trailing_json() {
-    let path = [key("value")];
-    for json in [
-      r#"{"value":"ok"} trailing"#,
-      r#"{"value":"ok","broken":[1,]}"#,
-      r#"{"value":"ok","broken":"\uD800"}"#,
-    ] {
-      assert_eq!(resolve(json, &path).as_deref(), Some("ok"), "{json}");
-    }
-  }
-
-  #[test]
-  fn uses_the_first_duplicate_key() {
-    let path = [key("value")];
-    assert_eq!(
-      resolve(r#"{"value":"first","value":"second"}"#, &path).as_deref(),
-      Some("first")
-    );
   }
 }

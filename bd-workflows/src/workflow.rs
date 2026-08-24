@@ -22,6 +22,7 @@ use crate::config::{
   WorkflowDebugMode,
 };
 use crate::generate_log::generate_log_action;
+use bd_log_matcher::matcher::MatchContext;
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{FieldsRef, Log, log_level};
 use bd_proto::protos::logging::payload::LogType;
@@ -336,6 +337,7 @@ impl Workflow {
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
     sampled_roll: u32,
+    match_context: MatchContext,
   ) -> WorkflowResult<'a> {
     let mut result = WorkflowResult::default();
 
@@ -402,7 +404,14 @@ impl Workflow {
         let Some(run) = self.runs.get_mut(index) else {
           continue;
         };
-        let mut run_result = run.process_event(config, event, state_reader, now, sampled_roll);
+        let mut run_result = run.process_event(
+          config,
+          event,
+          state_reader,
+          now,
+          sampled_roll,
+          match_context,
+        );
 
         // Parallel workflows may have multiple active runs that match the same event. We annotate
         // emit-metric actions with run provenance so engine-level preparation can avoid collapsing
@@ -923,6 +932,7 @@ impl Run {
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
     sampled_roll: u32,
+    match_context: MatchContext,
   ) -> RunResult<'a> {
     // Optimize for the case when no traversal is advanced as it's
     // the most common situation.
@@ -944,8 +954,14 @@ impl Run {
       let Some(traversal) = self.traversals.get_mut(index) else {
         continue;
       };
-      let mut traversal_result =
-        traversal.process_event(config, event, state_reader, now, sampled_roll);
+      let mut traversal_result = traversal.process_event(
+        config,
+        event,
+        state_reader,
+        now,
+        sampled_roll,
+        match_context,
+      );
 
       run_triggered_actions.append(&mut traversal_result.triggered_actions);
       run_logs_to_inject.append(&mut traversal_result.log_to_inject);
@@ -1346,6 +1362,7 @@ impl Traversal {
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
     sampled_roll: u32,
+    match_context: MatchContext,
   ) -> TraversalResult<'a> {
     let transitions = config
       .inner()
@@ -1389,6 +1406,7 @@ impl Traversal {
             state_reader,
             now,
             sampled_roll,
+            match_context,
             &mut result,
           );
         },
@@ -1412,6 +1430,7 @@ impl Traversal {
             state_reader,
             now,
             sampled_roll,
+            match_context,
             &mut result,
           );
         },
@@ -1477,9 +1496,10 @@ impl Traversal {
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
     sampled_roll: u32,
+    match_context: MatchContext,
     result: &mut TraversalResult<'a>,
   ) {
-    if !log_match.do_match(
+    if !log_match.do_match_with_context(
       log.log_level,
       log.log_type,
       &log.message,
@@ -1487,6 +1507,7 @@ impl Traversal {
       state_reader,
       &self.extractions.fields,
       sampled_roll,
+      match_context,
     ) {
       return;
     }
@@ -1550,6 +1571,7 @@ impl Traversal {
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
     sampled_roll: u32,
+    match_context: MatchContext,
     result: &mut TraversalResult<'a>,
   ) {
     use bd_state::Value_type;
@@ -1629,7 +1651,7 @@ impl Traversal {
     // Check extra matcher. Now we can match against global metadata fields that were collected
     // for this state change event.
     if let Some(extra_matcher) = extra_matcher.as_ref()
-      && !extra_matcher.do_match(
+      && !extra_matcher.do_match_with_context(
         log_level::DEBUG,
         LogType::INTERNAL_SDK,
         &"".into(),
@@ -1637,6 +1659,7 @@ impl Traversal {
         state_reader,
         &self.extractions.fields,
         sampled_roll,
+        match_context,
       )
     {
       return;

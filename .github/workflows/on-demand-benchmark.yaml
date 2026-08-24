@@ -69,8 +69,12 @@ jobs:
               echo 'name=workflows' >> "$GITHUB_OUTPUT"
               echo 'command=./bd-workflow-bench/criterion.sh' >> "$GITHUB_OUTPUT"
               ;;
+            json-path)
+              echo 'name=json-path' >> "$GITHUB_OUTPUT"
+              echo 'command=./bd-workflow-bench/json_path.sh' >> "$GITHUB_OUTPUT"
+              ;;
             *)
-              echo "Unknown benchmark '${BASH_REMATCH[1]}'. Available benchmarks: workflows" >&2
+              echo "Unknown benchmark '${BASH_REMATCH[1]}'. Available benchmarks: workflows, json-path" >&2
               exit 2
               ;;
           esac

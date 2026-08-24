@@ -52,8 +52,8 @@ use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::Log;
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
-use bd_runtime::runtime::workflows::PersistenceWriteIntervalFlag;
-use bd_runtime::runtime::{ConfigLoader, DurationWatch, IntWatch, session_capture};
+use bd_runtime::runtime::workflows::{JsonPathStringMatchingEnabled, PersistenceWriteIntervalFlag};
+use bd_runtime::runtime::{BoolWatch, ConfigLoader, DurationWatch, IntWatch, session_capture};
 use bd_stats_common::{Counter as CounterTrait, Histogram as HistogramTrait, labels};
 use bd_workflow_stats::StatsCollector;
 use bd_workflow_stats::workflow::WorkflowDebugKey;
@@ -146,6 +146,7 @@ pub struct WorkflowsEngine<C, H> {
 
   explicit_session_capture_streaming_log_count:
     Option<IntWatch<session_capture::StreamingLogCount>>,
+  json_path_string_matching_enabled: Option<BoolWatch<JsonPathStringMatchingEnabled>>,
 }
 
 impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
@@ -210,6 +211,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     } else {
       (None, None)
     };
+    let json_path_string_matching_enabled = runtime.map(ConfigLoader::register_bool_watch);
 
     let workflows_engine = Self {
       configs: vec![],
@@ -229,6 +231,7 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       buffers_to_flush_tx,
       process_local_pending_flush_state,
       explicit_session_capture_streaming_log_count,
+      json_path_string_matching_enabled,
     };
 
     (workflows_engine, buffers_to_flush_rx)
@@ -753,6 +756,12 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
     state_reader: &dyn bd_state::StateReader,
     now: OffsetDateTime,
   ) -> WorkflowsEngineResult<'a> {
+    let match_context = bd_log_matcher::matcher::MatchContext {
+      json_path_string_matching_enabled: self
+        .json_path_string_matching_enabled
+        .as_ref()
+        .is_none_or(|flag| *flag.read()),
+    };
     // Return early if there's no work to avoid unnecessary copies.
     // In order to support explicit session capture even when there are no workflows we need to
     // proceed with the processing if either this is a log requesting a session capture or if there
@@ -788,7 +797,14 @@ impl<C: CounterTrait, H: HistogramTrait> WorkflowsEngine<C, H> {
       };
 
       let was_in_initial_state = workflow.is_in_initial_state();
-      let result = workflow.process_event(config, event, state_reader, now, sampled_roll);
+      let result = workflow.process_event(
+        config,
+        event,
+        state_reader,
+        now,
+        sampled_roll,
+        match_context,
+      );
 
       macro_rules! inc_by {
         ($field:ident, $value:ident) => {

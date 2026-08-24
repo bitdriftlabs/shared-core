@@ -2,7 +2,7 @@
 // Copyright Bitdrift, Inc. All rights reserved.
 //
 // Use of this source code is governed by a source available license that can be found in the
-// LICENSE file or at:
+// LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::*;
@@ -15,11 +15,6 @@ use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{
   key_or_index,
 };
 use bd_proto::protos::value_matcher::value_matcher::{JsonPathValueMatch, Operator};
-use std::hint::black_box;
-use std::time::Instant;
-
-const JSON_PATH_BENCHMARK_ITERATIONS: usize = 100_000;
-
 fn json_string_matcher(path: Vec<KeyOrIndex>, value: &str) -> Tree {
   Tree::new(&LogMatcher {
     matcher: Some(log_matcher::Matcher::BaseMatcher(
@@ -96,24 +91,54 @@ fn matches_json_string_boolean_and_number_values() {
 }
 
 #[test]
-#[ignore = "run manually with --release -- --ignored --nocapture"]
-fn benchmark_json_string_path_resolution() {
-  let value = DataValue::String(
-    r#"{"metadata":{"request_id":"r_456"},"users":[{"id":"user_123"},{"id":"user_456"}]}"#
-      .to_string(),
-  );
-  let path = [
-    JsonPathToken::Key("users".to_string()),
-    JsonPathToken::Index(1),
-    JsonPathToken::Key("id".to_string()),
-  ];
+fn disabled_context_does_not_match_json_strings() {
+  let tree = json_string_matcher(vec![key("user"), key("plan")], "pro");
+  let fields: LogFields = [(
+    "payload".into(),
+    DataValue::String(r#"{"user":{"plan":"pro"}}"#.to_string()),
+  )]
+  .into();
 
-  let started_at = Instant::now();
-  for _ in 0 .. JSON_PATH_BENCHMARK_ITERATIONS {
-    black_box(resolve_json_path(&value, &path));
-  }
-  eprintln!(
-    "json string path ({JSON_PATH_BENCHMARK_ITERATIONS} iterations): {:?}",
-    started_at.elapsed()
-  );
+  assert!(matches(&tree, r#"{"user":{"plan":"pro"}}"#));
+  assert!(!tree.do_match_with_context(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    &LogMessage::String("message".to_string()),
+    FieldsRef::new(&fields, &EMPTY_FIELDS),
+    &bd_state::InMemoryStateReader::new(),
+    &TinyMap::default(),
+    0,
+    MatchContext {
+      json_path_string_matching_enabled: false,
+    },
+  ));
+}
+
+#[test]
+fn disabled_context_does_not_invert_json_string_matches() {
+  let tree = Tree::Not(Box::new(json_string_matcher(
+    vec![key("user"), key("plan")],
+    "pro",
+  )));
+  let fields: LogFields = [(
+    "payload".into(),
+    DataValue::String(r#"{"user":{"plan":"pro"}}"#.to_string()),
+  )]
+  .into();
+  let context = MatchContext {
+    json_path_string_matching_enabled: false,
+  };
+
+  assert!(!matches(&tree, r#"{"user":{"plan":"pro"}}"#));
+  assert!(matches(&tree, r#"{"user":{"plan":"basic"}}"#));
+  assert!(!tree.do_match_with_context(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    &LogMessage::String("message".to_string()),
+    FieldsRef::new(&fields, &EMPTY_FIELDS),
+    &bd_state::InMemoryStateReader::new(),
+    &TinyMap::default(),
+    0,
+    context,
+  ));
 }

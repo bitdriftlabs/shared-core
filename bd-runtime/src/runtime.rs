@@ -1015,6 +1015,13 @@ pub mod workflows {
     "workflows.persistence_write_interval_ms",
     1.seconds()
   );
+
+  // Allows remotely disabling JSON string extraction for Nested Field workflow matchers.
+  bool_feature_flag!(
+    JsonPathStringMatchingEnabled,
+    "workflows.json_path_string_matching_enabled",
+    true
+  );
 }
 
 pub mod platform_events {
