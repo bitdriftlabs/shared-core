@@ -6,11 +6,10 @@ publish      = false
 version      = "1.0.0"
 
 [lib]
-doctest    = false
-proc-macro = true
+doctest = false
 
 [dependencies]
+bd-macros-impl.path         = "../bd-macros-impl"
 bd-workspace-hack.workspace = true
-proc-macro2                 = "1.0.107"
-quote                       = "1.0.47"
-syn                         = { version = "3.0.3", features = ["extra-traits", "full"] }
+time.workspace              = true
+uuid.workspace              = true
