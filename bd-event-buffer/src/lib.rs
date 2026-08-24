@@ -10,9 +10,10 @@ use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::{DataValue, LogLevel, LogLine, log_level};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::logging::payload::LogType;
-use std::collections::VecDeque;
 use std::sync::Arc;
 use tokio::sync::Notify;
+
+mod retention;
 
 #[cfg(test)]
 #[path = "./event_buffer_prop_test.rs"]
@@ -20,6 +21,8 @@ mod prop_tests;
 #[cfg(test)]
 #[path = "./lib_test.rs"]
 mod tests;
+
+pub use retention::EventBufferState;
 
 pub const ENTRY_OVERHEAD_BYTES: usize = 64;
 
@@ -174,9 +177,6 @@ impl EventBuffer {
     self.inner.state.lock().retention.close();
     self.inner.notify.notify_waiters();
   }
-  pub fn reserve_fixture_capacity(&self) {
-    self.inner.state.lock().retention.reserve_fixture_capacity();
-  }
 }
 
 //
@@ -185,8 +185,11 @@ impl EventBuffer {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RetentionLane {
+  /// Verbose, non-blocking logs that yield to every other lane.
   Low,
+  /// Normal logs that yield only to protected entries.
   High,
+  /// State updates and logs that must not be evicted.
   Protected,
 }
 
@@ -203,7 +206,9 @@ impl RetentionLane {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EventBufferLimits {
+  /// Maximum bytes used by evictable log entries across the low and high lanes.
   pub log_limit_bytes: usize,
+  /// Maximum bytes used by every entry, including protected state updates.
   pub total_limit_bytes: usize,
 }
 
@@ -217,289 +222,4 @@ pub enum AdmissionOutcome {
   RejectedFull,
   RejectedOversized,
   Closed,
-}
-
-//
-// EventBufferState
-//
-
-/// A synchronous, priority-aware retention state machine. The owner supplies synchronization and
-/// associates its own entry payload with the provided lane and accounting size.
-pub struct EventBufferState<T> {
-  limits: EventBufferLimits,
-  pending_limits: Option<EventBufferLimits>,
-  next_admission_id: u64,
-  closed: bool,
-  protected: VecDeque<QueuedEntry<T>>,
-  high: VecDeque<QueuedEntry<T>>,
-  low: VecDeque<QueuedEntry<T>>,
-  protected_bytes: usize,
-  evictable_bytes: usize,
-  high_bytes: usize,
-  low_bytes: usize,
-}
-
-struct QueuedEntry<T> {
-  admission_id: u64,
-  bytes: usize,
-  entry: T,
-}
-
-impl<T> EventBufferState<T> {
-  #[must_use]
-  pub fn new(limits: EventBufferLimits) -> Self {
-    Self {
-      limits,
-      pending_limits: None,
-      next_admission_id: 0,
-      closed: false,
-      protected: VecDeque::new(),
-      high: VecDeque::new(),
-      low: VecDeque::new(),
-      protected_bytes: 0,
-      evictable_bytes: 0,
-      high_bytes: 0,
-      low_bytes: 0,
-    }
-  }
-
-  pub fn set_pending_limits(&mut self, limits: EventBufferLimits) {
-    self.pending_limits = Some(limits);
-  }
-
-  /// Applies a prevalidated admission. Rejected entries are dropped by this call.
-  pub fn admit(&mut self, lane: RetentionLane, bytes: usize, entry: T) -> AdmissionOutcome {
-    self.apply_pending_limits();
-    if self.closed {
-      return AdmissionOutcome::Closed;
-    }
-    if bytes > self.limits.total_limit_bytes
-      || (lane.is_evictable() && bytes > self.limits.log_limit_bytes)
-    {
-      return AdmissionOutcome::RejectedOversized;
-    }
-    if !self.reserve(lane) || !self.make_room(lane, bytes) {
-      return AdmissionOutcome::RejectedFull;
-    }
-
-    let admission_id = self.next_admission_id;
-    self.next_admission_id = self.next_admission_id.wrapping_add(1);
-    self.push(
-      QueuedEntry {
-        admission_id,
-        bytes,
-        entry,
-      },
-      lane,
-    );
-    AdmissionOutcome::Admitted
-  }
-
-  #[must_use]
-  pub fn take_batch(&mut self, max_entries: usize) -> Vec<T> {
-    let mut result = Vec::with_capacity(max_entries);
-    while result.len() < max_entries {
-      let lane = [
-        RetentionLane::Protected,
-        RetentionLane::High,
-        RetentionLane::Low,
-      ]
-      .into_iter()
-      .filter_map(|lane| {
-        self
-          .queue(lane)
-          .front()
-          .map(|entry| (lane, entry.admission_id))
-      })
-      .min_by_key(|(_, admission_id)| *admission_id)
-      .map(|(lane, _)| lane);
-      let Some(lane) = lane else { break };
-      let Some(entry) = self.queue_mut(lane).pop_front() else {
-        break;
-      };
-      self.remove_bytes(lane, entry.bytes);
-      result.push(entry.entry);
-    }
-    result
-  }
-
-  pub fn close(&mut self) {
-    if !self.closed {
-      self.closed = true;
-      self.discard_all();
-    }
-  }
-
-  #[must_use]
-  pub const fn is_closed(&self) -> bool {
-    self.closed
-  }
-
-  /// Reserves fixture capacity before a benchmark's instrumented region.
-  pub fn reserve_fixture_capacity(&mut self) {
-    for lane in [
-      RetentionLane::Low,
-      RetentionLane::High,
-      RetentionLane::Protected,
-    ] {
-      let _ = self.queue_mut(lane).try_reserve(1);
-    }
-  }
-
-  fn reserve(&mut self, lane: RetentionLane) -> bool {
-    self.queue_mut(lane).try_reserve(1).is_ok()
-  }
-
-  fn apply_pending_limits(&mut self) {
-    let Some(limits) = self.pending_limits.take() else {
-      return;
-    };
-    self.limits = limits;
-    self.evict_for_budget_shrink(self.log_bytes_over_limit());
-    self.evict_for_budget_shrink(self.total_bytes_over_limit());
-  }
-
-  fn make_room(&mut self, lane: RetentionLane, incoming_bytes: usize) -> bool {
-    let log_needed = if lane.is_evictable() {
-      self
-        .evictable_bytes
-        .saturating_add(incoming_bytes)
-        .saturating_sub(self.limits.log_limit_bytes)
-    } else {
-      0
-    };
-    let total_needed = self
-      .total_bytes()
-      .saturating_add(incoming_bytes)
-      .saturating_sub(self.limits.total_limit_bytes);
-    let bytes_needed = log_needed.max(total_needed);
-    if self.evictable_bytes_available_to(lane) < bytes_needed {
-      return false;
-    }
-    self.evict_for_limit(lane, bytes_needed)
-  }
-
-  fn evict_for_limit(&mut self, incoming_lane: RetentionLane, mut bytes_needed: usize) -> bool {
-    match incoming_lane {
-      RetentionLane::Low => bytes_needed == 0,
-      RetentionLane::High => {
-        bytes_needed = self.evict_from_lane(RetentionLane::Low, bytes_needed);
-        bytes_needed == 0
-      },
-      RetentionLane::Protected => {
-        bytes_needed = self.evict_from_lane(RetentionLane::Low, bytes_needed);
-        bytes_needed = self.evict_from_lane(RetentionLane::High, bytes_needed);
-        bytes_needed == 0
-      },
-    }
-  }
-
-  fn evict_for_budget_shrink(&mut self, mut bytes_needed: usize) {
-    for lane in [RetentionLane::Low, RetentionLane::High] {
-      bytes_needed = self.evict_from_lane(lane, bytes_needed);
-    }
-  }
-
-  fn evict_from_lane(&mut self, lane: RetentionLane, bytes_needed: usize) -> usize {
-    if bytes_needed == 0 {
-      return 0;
-    }
-    let removed_bytes = {
-      let queue = self.queue_mut(lane);
-      let mut start = queue.len();
-      let mut freed_bytes = 0;
-      while start > 0 && freed_bytes < bytes_needed {
-        start -= 1;
-        freed_bytes += queue[start].bytes;
-      }
-      queue.truncate(start);
-      freed_bytes
-    };
-    self.remove_bytes(lane, removed_bytes);
-    bytes_needed.saturating_sub(removed_bytes)
-  }
-
-  fn push(&mut self, entry: QueuedEntry<T>, lane: RetentionLane) {
-    self.add_bytes(lane, entry.bytes);
-    self.queue_mut(lane).push_back(entry);
-  }
-
-  fn discard_all(&mut self) {
-    for lane in [
-      RetentionLane::Protected,
-      RetentionLane::High,
-      RetentionLane::Low,
-    ] {
-      self.queue_mut(lane).clear();
-    }
-    self.protected_bytes = 0;
-    self.evictable_bytes = 0;
-    self.high_bytes = 0;
-    self.low_bytes = 0;
-  }
-
-  fn add_bytes(&mut self, lane: RetentionLane, bytes: usize) {
-    match lane {
-      RetentionLane::Low => {
-        self.evictable_bytes += bytes;
-        self.low_bytes += bytes;
-      },
-      RetentionLane::High => {
-        self.evictable_bytes += bytes;
-        self.high_bytes += bytes;
-      },
-      RetentionLane::Protected => self.protected_bytes += bytes,
-    }
-  }
-
-  fn remove_bytes(&mut self, lane: RetentionLane, bytes: usize) {
-    match lane {
-      RetentionLane::Low => {
-        self.evictable_bytes -= bytes;
-        self.low_bytes -= bytes;
-      },
-      RetentionLane::High => {
-        self.evictable_bytes -= bytes;
-        self.high_bytes -= bytes;
-      },
-      RetentionLane::Protected => self.protected_bytes -= bytes,
-    }
-  }
-
-  fn queue(&self, lane: RetentionLane) -> &VecDeque<QueuedEntry<T>> {
-    match lane {
-      RetentionLane::Low => &self.low,
-      RetentionLane::High => &self.high,
-      RetentionLane::Protected => &self.protected,
-    }
-  }
-
-  fn queue_mut(&mut self, lane: RetentionLane) -> &mut VecDeque<QueuedEntry<T>> {
-    match lane {
-      RetentionLane::Low => &mut self.low,
-      RetentionLane::High => &mut self.high,
-      RetentionLane::Protected => &mut self.protected,
-    }
-  }
-
-  fn total_bytes(&self) -> usize {
-    self.protected_bytes + self.evictable_bytes
-  }
-  fn log_bytes_over_limit(&self) -> usize {
-    self
-      .evictable_bytes
-      .saturating_sub(self.limits.log_limit_bytes)
-  }
-  fn total_bytes_over_limit(&self) -> usize {
-    self
-      .total_bytes()
-      .saturating_sub(self.limits.total_limit_bytes)
-  }
-  fn evictable_bytes_available_to(&self, lane: RetentionLane) -> usize {
-    match lane {
-      RetentionLane::Low => 0,
-      RetentionLane::High => self.low_bytes,
-      RetentionLane::Protected => self.low_bytes + self.high_bytes,
-    }
-  }
 }
