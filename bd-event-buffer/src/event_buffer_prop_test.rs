@@ -27,35 +27,13 @@ fn proptest_config() -> ProptestConfig {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Entry {
   id: u64,
-  kind: EntryKind,
+  lane: RetentionLane,
   bytes: usize,
 }
 
 impl Entry {
-  const fn new(id: u64, kind: EntryKind, bytes: usize) -> Self {
-    Self { id, kind, bytes }
-  }
-
-  const fn lane(&self) -> RetentionLane {
-    self.kind.lane()
-  }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum EntryKind {
-  LowLog,
-  HighLog,
-  ProtectedLog,
-  StateUpdate,
-}
-
-impl EntryKind {
-  const fn lane(self) -> RetentionLane {
-    match self {
-      Self::LowLog => RetentionLane::Low,
-      Self::HighLog => RetentionLane::High,
-      Self::ProtectedLog | Self::StateUpdate => RetentionLane::Protected,
-    }
+  const fn new(id: u64, lane: RetentionLane, bytes: usize) -> Self {
+    Self { id, lane, bytes }
   }
 }
 
@@ -65,7 +43,7 @@ impl EntryKind {
 
 #[derive(Clone, Debug)]
 enum Operation {
-  Admit { kind: EntryKind, bytes: usize },
+  Admit { lane: RetentionLane, bytes: usize },
   UpdateLimits(EventBufferLimits),
   TakeBatch { max_entries: usize },
   Close,
@@ -73,8 +51,8 @@ enum Operation {
 
 fn operation_strategy() -> impl Strategy<Value = Operation> {
   prop_oneof![
-    4 => (entry_kind_strategy(), 1_usize .. 65)
-      .prop_map(|(kind, bytes)| Operation::Admit { kind, bytes }),
+    4 => (retention_lane_strategy(), 1_usize .. 65)
+      .prop_map(|(lane, bytes)| Operation::Admit { lane, bytes }),
     1 => (1_usize .. 65, 1_usize .. 65)
       .prop_map(|(log_limit_bytes, total_limit_bytes)| {
         Operation::UpdateLimits(EventBufferLimits {
@@ -87,14 +65,11 @@ fn operation_strategy() -> impl Strategy<Value = Operation> {
   ]
 }
 
-fn entry_kind_strategy() -> impl Strategy<Value = EntryKind> {
+fn retention_lane_strategy() -> impl Strategy<Value = RetentionLane> {
   prop_oneof![
-    Just(EntryKind::LowLog),
-    Just(EntryKind::HighLog),
-    Just(EntryKind::ProtectedLog),
-    // State updates share the protected lane, but retain a distinct kind so the generated
-    // scenarios explicitly exercise their place in the admission ordering.
-    Just(EntryKind::StateUpdate),
+    Just(RetentionLane::Low),
+    Just(RetentionLane::High),
+    Just(RetentionLane::Protected),
   ]
 }
 
@@ -123,11 +98,11 @@ impl TestSubject {
 
   fn apply(&mut self, operation: &Operation) {
     match operation {
-      Operation::Admit { kind, bytes } => {
-        let entry = Entry::new(self.next_id, *kind, *bytes);
+      Operation::Admit { lane, bytes } => {
+        let entry = Entry::new(self.next_id, *lane, *bytes);
         self.next_id += 1;
         assert_eq!(
-          self.actual.admit(entry.lane(), entry.bytes, entry.clone()),
+          self.actual.admit(entry.lane, entry.bytes, entry.clone()),
           self.reference.admit(entry),
         );
       },
@@ -182,7 +157,7 @@ impl ReferenceState {
       return AdmissionOutcome::Closed;
     }
     if entry.bytes > self.limits.total_limit_bytes
-      || (entry.lane().is_evictable() && entry.bytes > self.limits.log_limit_bytes)
+      || (entry.lane.is_evictable() && entry.bytes > self.limits.log_limit_bytes)
     {
       return AdmissionOutcome::RejectedOversized;
     }
@@ -191,7 +166,7 @@ impl ReferenceState {
       &self.entries,
       self.limits,
       Some(&entry),
-      evictable_lanes(entry.lane()),
+      evictable_lanes(entry.lane),
       TotalBudget::Strict,
     ) else {
       return AdmissionOutcome::RejectedFull;
@@ -255,11 +230,11 @@ fn best_retained_entries(
 ) -> Option<Vec<Entry>> {
   let low_count = entries
     .iter()
-    .filter(|entry| entry.lane() == RetentionLane::Low)
+    .filter(|entry| entry.lane == RetentionLane::Low)
     .count();
   let high_count = entries
     .iter()
-    .filter(|entry| entry.lane() == RetentionLane::High)
+    .filter(|entry| entry.lane == RetentionLane::High)
     .count();
 
   let mut best: Option<(usize, usize, Vec<Entry>)> = None;
@@ -319,7 +294,7 @@ fn retain_lane_prefixes(
   let mut seen_high = 0;
   entries
     .iter()
-    .filter(|entry| match entry.lane() {
+    .filter(|entry| match entry.lane {
       RetentionLane::Low => {
         seen_low += 1;
         seen_low <= retained_low
@@ -342,18 +317,18 @@ fn fits(
 ) -> bool {
   let evictable_bytes = entries
     .iter()
-    .filter(|entry| entry.lane().is_evictable())
+    .filter(|entry| entry.lane.is_evictable())
     .map(|entry| entry.bytes)
     .sum::<usize>();
   let retained_bytes = entries.iter().map(|entry| entry.bytes).sum::<usize>();
   let protected_bytes = entries
     .iter()
-    .filter(|entry| entry.lane() == RetentionLane::Protected)
+    .filter(|entry| entry.lane == RetentionLane::Protected)
     .map(|entry| entry.bytes)
     .sum::<usize>();
   let incoming_bytes = incoming.map_or(0, |entry| entry.bytes);
   let incoming_evictable_bytes = incoming
-    .filter(|entry| entry.lane().is_evictable())
+    .filter(|entry| entry.lane.is_evictable())
     .map_or(0, |entry| entry.bytes);
   let total_limit = match total_budget {
     TotalBudget::Strict => limits.total_limit_bytes,
