@@ -27,20 +27,25 @@ use validation::ValidationConfig;
 
 /// Configuration parsed from the `proto_serializable` macro attributes.
 struct MacroConfig {
+  /// Only generate serialization code (no deserialization).
   serialize_only: bool,
+  /// Validation configuration when `validate_against` is specified.
   validation: ValidationConfig,
 }
 
+/// Parses the macro attribute arguments into a configuration struct.
 fn parse_macro_config(attr: TokenStream) -> MacroConfig {
   let mut config = MacroConfig {
     serialize_only: false,
     validation: ValidationConfig::default(),
   };
 
+  // Handle empty attributes.
   if attr.is_empty() {
     return config;
   }
 
+  // Parse as a list of meta items.
   let parser = syn::punctuated::Punctuated::<Meta, syn::Token![,]>::parse_terminated;
   let Ok(metas) = parser.parse(attr) else {
     return config;
@@ -67,6 +72,7 @@ fn parse_macro_config(attr: TokenStream) -> MacroConfig {
             Some(syn::parse_str(&path_str).expect("Invalid path in validate_against"));
         }
       },
+      // Ignore nested lists for now.
       Meta::List(_) => {},
     }
   }
@@ -74,7 +80,12 @@ fn parse_macro_config(attr: TokenStream) -> MacroConfig {
   config
 }
 
-/// Generates protobuf serialization and deserialization implementations.
+/// Main procedural macro that generates protobuf serialization code for structs and enums.
+///
+/// This is the entry point for the `#[proto_serializable]` attribute macro. It analyzes the input
+/// type and delegates to the appropriate processing module. The generated expansion preserves the
+/// original type after removing its `#[field(...)]` helper attributes, adds the relevant protobuf
+/// trait implementations, and adds validation tests when requested.
 #[proc_macro_attribute]
 pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
   let config = parse_macro_config(attr);
@@ -82,8 +93,11 @@ pub fn proto_serializable(attr: TokenStream, item: TokenStream) -> TokenStream {
 
   let input = parse_macro_input!(item as DeriveInput);
   let name = &input.ident;
+  // Create a copy of the input with `#[field(...)]` attributes stripped so the generated item
+  // does not retain helper attributes the compiler does not recognize.
   let mut stripped_input = input.clone();
 
+  // Remove `#[field(...)]` attributes from enum variants and their named fields too.
   if let Data::Struct(data_struct) = &mut stripped_input.data {
     if let Fields::Named(fields) = &mut data_struct.fields {
       for field in &mut fields.named {
