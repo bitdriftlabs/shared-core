@@ -11,9 +11,8 @@ use bd_log_primitives::{DataValue, LogFields, LogLevel, LogLine, log_level};
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::logging::payload::LogType;
 use std::collections::VecDeque;
-use std::fmt;
 use std::sync::Arc;
-use tokio::sync::{Notify, oneshot};
+use tokio::sync::Notify;
 
 #[cfg(test)]
 #[path = "./event_buffer_prop_test.rs"]
@@ -53,39 +52,19 @@ impl MemorySized for StateUpdateMessage {
   }
 }
 
-enum CompletionHandle {
-  Log(oneshot::Sender<()>),
-  State(bd_completion::Sender<()>),
-}
-impl fmt::Debug for CompletionHandle {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.write_str("CompletionHandle")
-  }
-}
-impl CompletionHandle {
-  fn complete(self) {
-    match self {
-      Self::Log(sender) => {
-        let _ = sender.send(());
-      },
-      Self::State(sender) => sender.send(()),
-    }
-  }
-}
-
 #[derive(Debug)]
 pub struct CapturedLog {
   pub log: LogLine,
   pub logger_fields: Arc<LogFields>,
-  completion: Option<CompletionHandle>,
+  completion: Option<bd_completion::Sender<()>>,
   pub blocking: bool,
 }
 impl CapturedLog {
-  pub fn new(log: LogLine, blocking: bool, completion: Option<oneshot::Sender<()>>) -> Self {
+  pub fn new(log: LogLine, blocking: bool, completion: Option<bd_completion::Sender<()>>) -> Self {
     Self {
       log,
       logger_fields: Arc::default(),
-      completion: completion.map(CompletionHandle::Log),
+      completion,
       blocking,
     }
   }
@@ -114,15 +93,13 @@ impl EventBufferEntry {
   }
   pub fn complete(mut self) {
     if let Some(completion) = self.take_completion() {
-      completion.complete();
+      completion.send(());
     }
   }
-  fn take_completion(&mut self) -> Option<CompletionHandle> {
+  fn take_completion(&mut self) -> Option<bd_completion::Sender<()>> {
     match self {
       Self::Log(log) => log.completion.take(),
-      Self::State(StateUpdateMessage::FlushState(completion)) => {
-        completion.take().map(CompletionHandle::State)
-      },
+      Self::State(StateUpdateMessage::FlushState(completion)) => completion.take(),
       Self::State(_) => None,
     }
   }

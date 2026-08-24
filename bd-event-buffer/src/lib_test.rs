@@ -198,7 +198,7 @@ async fn field_snapshots_are_immutable_and_validate_reserved_names() {
 #[tokio::test]
 async fn completion_is_sent_only_after_consumer_processing() {
   let buffer = buffer(10_000);
-  let (sender, mut receiver) = oneshot::channel();
+  let (sender, receiver) = bd_completion::Sender::new();
   let entry = EventBufferEntry::Log(CapturedLog::new(
     LogLine {
       log_level: log_level::INFO,
@@ -216,15 +216,22 @@ async fn completion_is_sent_only_after_consumer_processing() {
   let mut batch = buffer.next_batch(1).await;
   assert_eq!(1, batch.len());
   let entry = batch.remove(0);
-  assert!(receiver.try_recv().is_err());
+  let (receiver_started_tx, receiver_started_rx) = oneshot::channel();
+  let completion = tokio::spawn(async move {
+    let _ignored = receiver_started_tx.send(());
+    receiver.recv().await
+  });
+  assert!(receiver_started_rx.await.is_ok());
+  assert!(!completion.is_finished());
+
   entry.complete();
-  assert!(receiver.await.is_ok());
+  assert!(completion.await.is_ok_and(|result| result.is_ok()));
 }
 
 #[tokio::test]
 async fn close_drops_unprocessed_completion_senders() {
   let buffer = buffer(10_000);
-  let (sender, receiver) = oneshot::channel();
+  let (sender, receiver) = bd_completion::Sender::new();
   let entry = EventBufferEntry::Log(CapturedLog::new(
     LogLine {
       log_level: log_level::INFO,
@@ -240,7 +247,7 @@ async fn close_drops_unprocessed_completion_senders() {
   ));
   assert_eq!(AdmissionOutcome::Admitted, buffer.admit(entry));
   buffer.close();
-  assert!(receiver.await.is_err());
+  assert!(receiver.recv().await.is_err());
   assert!(buffer.next_batch(1).await.is_empty());
 }
 
