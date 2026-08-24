@@ -24,7 +24,7 @@ pub fn derive(input: DeriveInput) -> TokenStream {
     Data::Enum(data) => enum_children(&data.variants.into_iter().collect::<Vec<_>>()),
     Data::Union(_) => panic!("ApproximateSize cannot be derived for unions"),
   };
-  let generics = add_bounds(input.generics, &field_types);
+  let generics = add_bounds(input.generics, &field_types, &name);
   let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
   // Use an absolute facade path so callers only need the `bd-macros` dependency; unlike the old
@@ -114,15 +114,85 @@ fn sum_children(values: impl Iterator<Item = TokenStream>) -> TokenStream {
   quote! { 0usize #(.saturating_add(#values))* }
 }
 
-fn add_bounds(mut generics: Generics, field_types: &[Type]) -> Generics {
+fn add_bounds(mut generics: Generics, field_types: &[Type], derived_type: &syn::Ident) -> Generics {
   // A derived implementation calls the trait method for every field, so the implementation must
-  // state the same requirement in its where clause. Preserve user-supplied bounds while adding
-  // these derived ones.
+  // state the same requirement in its where clause. A self-referential field resolves through the
+  // implementation being defined, though, so adding its predicate would make trait resolution
+  // recurse forever. Preserve user-supplied bounds while adding only non-recursive ones.
   let where_clause = generics.make_where_clause();
-  for field_type in field_types {
+  for field_type in field_types
+    .iter()
+    .filter(|field_type| !contains_derived_type(field_type, derived_type))
+  {
     where_clause
       .predicates
       .push(parse_quote!(#field_type: ::bd_macros::ApproximateSize));
   }
   generics
+}
+
+fn contains_derived_type(field_type: &Type, derived_type: &syn::Ident) -> bool {
+  match field_type {
+    Type::Array(array) => contains_derived_type(&array.elem, derived_type),
+    Type::Group(group) => contains_derived_type(&group.elem, derived_type),
+    Type::Paren(parenthesized) => contains_derived_type(&parenthesized.elem, derived_type),
+    Type::Path(type_path) => {
+      type_path
+        .qself
+        .as_ref()
+        .is_some_and(|qself| contains_derived_type(&qself.ty, derived_type))
+        || path_contains_derived_type(&type_path.path, derived_type)
+    },
+    Type::Ptr(pointer) => contains_derived_type(&pointer.elem, derived_type),
+    Type::Reference(reference) => contains_derived_type(&reference.elem, derived_type),
+    Type::Slice(slice) => contains_derived_type(&slice.elem, derived_type),
+    Type::Tuple(tuple) => tuple
+      .elems
+      .iter()
+      .any(|element| contains_derived_type(element, derived_type)),
+    _ => false,
+  }
+}
+
+fn path_contains_derived_type(path: &syn::Path, derived_type: &syn::Ident) -> bool {
+  path.segments.iter().any(|segment| {
+    segment.ident == "Self"
+      || segment.ident.eq(derived_type)
+      || path_arguments_contain_derived_type(&segment.arguments, derived_type)
+  })
+}
+
+fn path_arguments_contain_derived_type(
+  arguments: &syn::PathArguments,
+  derived_type: &syn::Ident,
+) -> bool {
+  match arguments {
+    syn::PathArguments::None => false,
+    syn::PathArguments::AngleBracketed(arguments) => {
+      arguments.args.iter().any(|argument| match argument {
+        syn::GenericArgument::Type(field_type) => contains_derived_type(field_type, derived_type),
+        syn::GenericArgument::AssocType(associated_type) => {
+          contains_derived_type(&associated_type.ty, derived_type)
+        },
+        _ => false,
+      })
+    },
+    syn::PathArguments::Parenthesized(arguments) => {
+      arguments
+        .inputs
+        .iter()
+        .any(|input| contains_derived_type(&input.ty, derived_type))
+        || return_type_contains_derived_type(&arguments.output, derived_type)
+    },
+  }
+}
+
+fn return_type_contains_derived_type(
+  return_type: &syn::ReturnType,
+  derived_type: &syn::Ident,
+) -> bool {
+  match return_type {
+    syn::ReturnType::Default => false,
+    syn::ReturnType::Type(_, field_type) => contains_derived_type(field_type, derived_type),
+  }
 }

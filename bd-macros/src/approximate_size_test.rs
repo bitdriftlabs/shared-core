@@ -27,6 +27,19 @@ enum DerivedEvent {
   Message(String),
 }
 
+#[derive(crate::ApproximateSize)]
+#[allow(clippy::use_self)]
+struct RecursiveNode {
+  label: String,
+  next: Option<Box<RecursiveNode>>,
+}
+
+#[derive(crate::ApproximateSize)]
+struct RecursiveGenericNode<T> {
+  value: T,
+  next: Option<Box<Self>>,
+}
+
 #[test]
 fn counts_string_capacity() {
   let mut value = String::with_capacity(32);
@@ -106,5 +119,39 @@ fn derives_enum_variant_storage() {
   assert_eq!(
     DerivedEvent::Empty.approximate_size_bytes(),
     size_of_val(&DerivedEvent::Empty)
+  );
+}
+
+#[test]
+fn derives_recursive_boxed_storage() {
+  let mut child_label = String::with_capacity(24);
+  child_label.push_str("child");
+  let mut label = String::with_capacity(16);
+  label.push_str("root");
+  let node = RecursiveNode {
+    label,
+    next: Some(Box::new(RecursiveNode {
+      label: child_label,
+      next: None,
+    })),
+  };
+
+  let child = node.next.as_deref().unwrap();
+  let expected = size_of_val(&node)
+    .saturating_add(node.label.capacity())
+    .saturating_add(size_of_val(child))
+    .saturating_add(child.label.capacity());
+  assert_eq!(node.approximate_size_bytes(), expected);
+}
+
+#[test]
+fn retains_generic_bounds_for_recursive_types() {
+  let mut value = String::with_capacity(32);
+  value.push_str("root");
+  let node = RecursiveGenericNode { value, next: None };
+
+  assert_eq!(
+    node.approximate_size_bytes(),
+    size_of_val(&node).saturating_add(node.value.capacity())
   );
 }
