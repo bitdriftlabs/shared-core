@@ -1,0 +1,16 @@
+[package]
+edition      = "2024"
+license-file = "../LICENSE.polyform"
+name         = "bd-macros-impl"
+publish      = false
+version      = "1.0.0"
+
+[lib]
+doctest    = false
+proc-macro = true
+
+[dependencies]
+bd-workspace-hack.workspace = true
+proc-macro2                 = "1.0.107"
+quote                       = "1.0.47"
+syn                         = { version = "3.0.3", features = ["extra-traits", "full"] }

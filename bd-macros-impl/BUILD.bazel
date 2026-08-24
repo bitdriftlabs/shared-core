@@ -1,16 +1,16 @@
 load("@crates//:defs.bzl", "aliases", "all_crate_deps")
-load("//tools/rust:tests.bzl", "rust_library_with_test")
+load("//tools/rust:tests.bzl", "rust_proc_macro_with_test")
 
 package(default_visibility = ["//visibility:public"])
 
-rust_library_with_test(
-    name = "bd-macros",
+rust_proc_macro_with_test(
+    name = "bd-macros-impl",
     srcs = glob(
         ["src/**/*.rs"],
         exclude = ["src/bin/**/*.rs"],
     ),
     crate_features = ["default"],
-    crate_name = "bd_macros",
+    crate_name = "bd_macros_impl",
     crate_root = "src/lib.rs",
     edition = "2024",
     deps = all_crate_deps(normal = True),
