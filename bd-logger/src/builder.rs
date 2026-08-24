@@ -378,6 +378,7 @@ impl LoggerBuilder {
       session_strategy.clone(),
       self.params.metadata_provider.clone(),
       self.params.initial_ootb_fields,
+      self.params.initial_custom_fields,
       self.params.resource_utilization_target,
       self.params.session_replay_target,
       self.params.events_listener_target,
