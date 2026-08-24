@@ -15,7 +15,7 @@ use crate::types::{Platform, RuntimeValueType};
 use bd_log_primitives::LogFields;
 use bd_logger::{Block, CaptureSession, InitParams, Logger, MetadataProvider};
 use bd_proto::protos::logging::payload::LogType as ProtoLogType;
-use bd_session::{Strategy, StrategyWithWorker, activity_based, fixed};
+use bd_session::{Strategy, StrategyWithWorker, configuration};
 use bd_time::TimeProvider;
 use parking_lot::Mutex;
 use std::collections::HashMap;
@@ -45,15 +45,15 @@ impl MetadataProvider for LiveTimestampMetadata {
 }
 
 //
-// ActivitySessionCallbacks
+// SessionCallbacks
 //
 
 #[derive(Default)]
-struct ActivitySessionCallbacks;
+struct SessionCallbacks;
 
-impl activity_based::Callbacks for ActivitySessionCallbacks {
+impl configuration::Callbacks for SessionCallbacks {
   fn session_id_changed(&self, session_id: &str) {
-    log::info!("activity-based session rotated: {session_id}");
+    log::info!("session changed: {session_id}");
   }
 }
 
@@ -124,7 +124,7 @@ impl LoggerHolder {
 
   pub fn start_new_session(&self) {
     let handle = { self.logger.lock().new_logger_handle() };
-    handle.start_new_session().unwrap();
+    handle.start_new_session(None).unwrap();
   }
 
   pub fn current_session_id(&self) -> anyhow::Result<String> {
@@ -299,13 +299,20 @@ fn make_session_strategy_with_time_provider(
   time_provider: Arc<dyn TimeProvider>,
 ) -> StrategyWithWorker {
   match config {
-    SessionStrategyConfig::Fixed => Strategy::fixed(sdk_directory, Arc::new(fixed::UUIDCallbacks)),
+    SessionStrategyConfig::Fixed => Strategy::configuration(
+      sdk_directory,
+      None,
+      None,
+      Arc::new(SessionCallbacks),
+      time_provider,
+    ),
     SessionStrategyConfig::ActivityBased {
       inactivity_threshold_mins,
-    } => Strategy::activity_based(
+    } => Strategy::configuration(
       sdk_directory,
-      time::Duration::minutes(*inactivity_threshold_mins),
-      Arc::new(ActivitySessionCallbacks),
+      None,
+      Some(time::Duration::minutes(*inactivity_threshold_mins)),
+      Arc::new(SessionCallbacks),
       time_provider,
     ),
   }
