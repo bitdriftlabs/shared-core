@@ -190,10 +190,10 @@ it never changes delivery order. Whatever representation is selected, these inva
 - Every entry is charged a conservative fixed bookkeeping overhead in addition to its payload.
   This gives even zero-payload control entries a nonzero cost and bounds live entry count plus
   metadata. Callbacks are collected while locked and invoked only after unlocking.
-- Admission fallibly reserves both required container capacity and terminal-entry handoff storage
-  before evicting retained entries. Allocation failure rejects the incoming entry and leaves
-  retained entries untouched. Capacity remains available for amortized producer latency and is
-  never synchronously shrunk on the hot path.
+- Admission fallibly reserves required incoming-lane container capacity before evicting retained
+  entries. Allocation failure rejects the incoming entry and leaves retained entries untouched.
+  Capacity remains available for amortized producer latency and is never synchronously shrunk on
+  the hot path.
 
 #### Fixed priority queue design
 
