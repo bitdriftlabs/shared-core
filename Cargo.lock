@@ -708,6 +708,7 @@ dependencies = [
  "bd-log-primitives",
  "bd-macros",
  "bd-proto",
+ "bd-workspace-hack",
  "proptest",
  "time",
  "tokio",
