@@ -168,6 +168,9 @@ impl EventBufferEntry {
   #[must_use]
   pub fn lane(&self) -> RetentionLane {
     match self {
+      Self::Ingress(event) if matches!(&event.context, EventContext::PreviousProcess { .. }) => {
+        RetentionLane::Protected
+      },
       Self::Ingress(event) => match &event.payload {
         LoggerIngressPayload::Log(log) => retention_lane(log.log_type, log.log_level),
         LoggerIngressPayload::FeatureFlagExposure { .. } => RetentionLane::Protected,

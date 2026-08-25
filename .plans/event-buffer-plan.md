@@ -179,21 +179,21 @@ it never changes delivery order. Whatever representation is selected, these inva
 - Every entry receives an increasing admission ID while the EventBuffer mutex is held. The consumer
   delivers the retained entry with the lowest applicable delivery key, so all retained entries are
   replayed in global admission order rather than in priority order.
-- Retention lane and process source are independent fields. The lane controls admission and
-  eviction; `CurrentProcess` versus `PreviousProcess` controls only the startup-gate delivery
-  route.
-  An eligible previous-process log uses a startup-only delivery lane in the protected category;
-  it is charged to the shared overall budget, is not another retention lane, and does not require
-  rearranging retained entries at drain time.
+- Retention lane controls admission and eviction. `PreviousProcess` logs are always Protected;
+  process source then controls their startup-gate delivery route. An eligible previous-process log
+  uses a startup-only delivery lane in the protected category; it is charged to the shared overall
+  budget, is not another retention lane, and does not require rearranging retained entries at drain
+  time.
 - Pressure may evict only a strictly lower retention priority than the incoming entry. It always
   takes the lowest eligible priority first and the newest entry within that priority, preserving
   the oldest retained equal-priority entry. Protected entries are not eviction victims.
 - Every entry is charged a conservative fixed bookkeeping overhead in addition to its payload.
   This gives even zero-payload control entries a nonzero cost and bounds live entry count plus
   metadata. Callbacks are collected while locked and invoked only after unlocking.
-- Admission reserves any required container capacity before evicting retained entries. Allocation
-  failure rejects the incoming entry and leaves retained entries untouched. Capacity remains
-  available for amortized producer latency and is never synchronously shrunk on the hot path.
+- Admission fallibly reserves both required container capacity and terminal-entry handoff storage
+  before evicting retained entries. Allocation failure rejects the incoming entry and leaves
+  retained entries untouched. Capacity remains available for amortized producer latency and is
+  never synchronously shrunk on the hot path.
 
 #### Fixed priority queue design
 

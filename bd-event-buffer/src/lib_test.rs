@@ -132,17 +132,21 @@ fn feature_flag_exposure_carries_current_process_context_in_the_protected_lane()
 }
 
 #[test]
-fn previous_process_context_pins_logged_at() {
+fn previous_process_context_pins_logged_at_and_is_protected() {
   let logged_at = OffsetDateTime::UNIX_EPOCH;
-  let EventBufferEntry::Ingress(mut event) = log(log_level::INFO, LogType::NORMAL, 1) else {
+  let EventBufferEntry::Ingress(mut event) = log(log_level::DEBUG, LogType::NORMAL, 1) else {
     unreachable!("log helper creates an ingress event")
   };
   event.context = EventContext::PreviousProcess { logged_at };
 
   assert!(matches!(
-    event.context,
-    EventContext::PreviousProcess { logged_at: timestamp } if timestamp == logged_at
+    &event.context,
+    EventContext::PreviousProcess { logged_at: timestamp } if *timestamp == logged_at
   ));
+  assert_eq!(
+    RetentionLane::Protected,
+    EventBufferEntry::Ingress(event).lane()
+  );
 }
 
 #[tokio::test]
