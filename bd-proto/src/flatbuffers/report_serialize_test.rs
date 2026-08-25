@@ -221,6 +221,7 @@ fn serialize_app_metrics() {
       "javascript_engine": "UnknownJsEngine",
       "memory_pressure_level": "Unknown",
       "process_id": 0,
+      "environment": "Unknown",
       "launch_time": {"seconds": 1830254100, "nanos": 27186761},
       "environment": "Production",
       "team_identifier": "ABCDE12345",
@@ -396,6 +397,7 @@ fn serialize_report() {
         "memory_pressure_level": "Unknown",
         "environment": "Unknown",
         "process_id": 0,
+        "environment": "Unknown",
       },
       "device_metrics": {
         "thermal_state": 5,

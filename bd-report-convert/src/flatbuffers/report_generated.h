@@ -559,6 +559,48 @@ inline const char *EnumNameMemoryPressureLevel(MemoryPressureLevel e) {
   return EnumNamesMemoryPressureLevel()[index];
 }
 
+enum AppEnvironment : int8_t {
+  AppEnvironment_Unknown = 0,
+  AppEnvironment_Debug = 1,
+  AppEnvironment_AdHoc = 2,
+  AppEnvironment_Enterprise = 3,
+  AppEnvironment_TestFlight = 4,
+  AppEnvironment_Production = 5,
+  AppEnvironment_MIN = AppEnvironment_Unknown,
+  AppEnvironment_MAX = AppEnvironment_Production
+};
+
+inline const AppEnvironment (&EnumValuesAppEnvironment())[6] {
+  static const AppEnvironment values[] = {
+    AppEnvironment_Unknown,
+    AppEnvironment_Debug,
+    AppEnvironment_AdHoc,
+    AppEnvironment_Enterprise,
+    AppEnvironment_TestFlight,
+    AppEnvironment_Production
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesAppEnvironment() {
+  static const char * const names[7] = {
+    "Unknown",
+    "Debug",
+    "AdHoc",
+    "Enterprise",
+    "TestFlight",
+    "Production",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameAppEnvironment(AppEnvironment e) {
+  if (::flatbuffers::IsOutRange(e, AppEnvironment_Unknown, AppEnvironment_Production)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesAppEnvironment()[index];
+}
+
 enum Rotation : int8_t {
   Rotation_Unknown = 0,
   Rotation_Portrait = 1,
@@ -877,7 +919,11 @@ struct AppMetrics FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_CPU_USAGE = 18,
     VT_LIFECYCLE_EVENT = 20,
     VT_JAVASCRIPT_ENGINE = 22,
-    VT_MEMORY_PRESSURE_LEVEL = 24
+    VT_MEMORY_PRESSURE_LEVEL = 24,
+    VT_LAUNCH_TIME = 26,
+    VT_ENVIRONMENT = 28,
+    VT_TEAM_IDENTIFIER = 30,
+    VT_BUNDLE_PATH = 32
   };
   const ::flatbuffers::String *app_id() const {
     return GetPointer<const ::flatbuffers::String *>(VT_APP_ID);
@@ -912,6 +958,18 @@ struct AppMetrics FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   bitdrift_public::fbs::issue_reporting::v1::MemoryPressureLevel memory_pressure_level() const {
     return static_cast<bitdrift_public::fbs::issue_reporting::v1::MemoryPressureLevel>(GetField<int8_t>(VT_MEMORY_PRESSURE_LEVEL, 0));
   }
+  const bitdrift_public::fbs::issue_reporting::v1::Timestamp *launch_time() const {
+    return GetStruct<const bitdrift_public::fbs::issue_reporting::v1::Timestamp *>(VT_LAUNCH_TIME);
+  }
+  bitdrift_public::fbs::issue_reporting::v1::AppEnvironment environment() const {
+    return static_cast<bitdrift_public::fbs::issue_reporting::v1::AppEnvironment>(GetField<int8_t>(VT_ENVIRONMENT, 0));
+  }
+  const ::flatbuffers::String *team_identifier() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_TEAM_IDENTIFIER);
+  }
+  const ::flatbuffers::String *bundle_path() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_BUNDLE_PATH);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_APP_ID) &&
@@ -932,6 +990,12 @@ struct AppMetrics FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            verifier.VerifyString(lifecycle_event()) &&
            VerifyField<int8_t>(verifier, VT_JAVASCRIPT_ENGINE, 1) &&
            VerifyField<int8_t>(verifier, VT_MEMORY_PRESSURE_LEVEL, 1) &&
+           VerifyField<bitdrift_public::fbs::issue_reporting::v1::Timestamp>(verifier, VT_LAUNCH_TIME, 8) &&
+           VerifyField<int8_t>(verifier, VT_ENVIRONMENT, 1) &&
+           VerifyOffset(verifier, VT_TEAM_IDENTIFIER) &&
+           verifier.VerifyString(team_identifier()) &&
+           VerifyOffset(verifier, VT_BUNDLE_PATH) &&
+           verifier.VerifyString(bundle_path()) &&
            verifier.EndTable();
   }
 };
@@ -973,6 +1037,18 @@ struct AppMetricsBuilder {
   void add_memory_pressure_level(bitdrift_public::fbs::issue_reporting::v1::MemoryPressureLevel memory_pressure_level) {
     fbb_.AddElement<int8_t>(AppMetrics::VT_MEMORY_PRESSURE_LEVEL, static_cast<int8_t>(memory_pressure_level), 0);
   }
+  void add_launch_time(const bitdrift_public::fbs::issue_reporting::v1::Timestamp *launch_time) {
+    fbb_.AddStruct(AppMetrics::VT_LAUNCH_TIME, launch_time);
+  }
+  void add_environment(bitdrift_public::fbs::issue_reporting::v1::AppEnvironment environment) {
+    fbb_.AddElement<int8_t>(AppMetrics::VT_ENVIRONMENT, static_cast<int8_t>(environment), 0);
+  }
+  void add_team_identifier(::flatbuffers::Offset<::flatbuffers::String> team_identifier) {
+    fbb_.AddOffset(AppMetrics::VT_TEAM_IDENTIFIER, team_identifier);
+  }
+  void add_bundle_path(::flatbuffers::Offset<::flatbuffers::String> bundle_path) {
+    fbb_.AddOffset(AppMetrics::VT_BUNDLE_PATH, bundle_path);
+  }
   explicit AppMetricsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -996,8 +1072,15 @@ inline ::flatbuffers::Offset<AppMetrics> CreateAppMetrics(
     ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessorUsage> cpu_usage = 0,
     ::flatbuffers::Offset<::flatbuffers::String> lifecycle_event = 0,
     bitdrift_public::fbs::issue_reporting::v1::JavaScriptEngine javascript_engine = bitdrift_public::fbs::issue_reporting::v1::JavaScriptEngine_UnknownJsEngine,
-    bitdrift_public::fbs::issue_reporting::v1::MemoryPressureLevel memory_pressure_level = bitdrift_public::fbs::issue_reporting::v1::MemoryPressureLevel_Unknown) {
+    bitdrift_public::fbs::issue_reporting::v1::MemoryPressureLevel memory_pressure_level = bitdrift_public::fbs::issue_reporting::v1::MemoryPressureLevel_Unknown,
+    const bitdrift_public::fbs::issue_reporting::v1::Timestamp *launch_time = nullptr,
+    bitdrift_public::fbs::issue_reporting::v1::AppEnvironment environment = bitdrift_public::fbs::issue_reporting::v1::AppEnvironment_Unknown,
+    ::flatbuffers::Offset<::flatbuffers::String> team_identifier = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> bundle_path = 0) {
   AppMetricsBuilder builder_(_fbb);
+  builder_.add_bundle_path(bundle_path);
+  builder_.add_team_identifier(team_identifier);
+  builder_.add_launch_time(launch_time);
   builder_.add_lifecycle_event(lifecycle_event);
   builder_.add_cpu_usage(cpu_usage);
   builder_.add_region_format(region_format);
@@ -1007,6 +1090,7 @@ inline ::flatbuffers::Offset<AppMetrics> CreateAppMetrics(
   builder_.add_version(version);
   builder_.add_memory(memory);
   builder_.add_app_id(app_id);
+  builder_.add_environment(environment);
   builder_.add_memory_pressure_level(memory_pressure_level);
   builder_.add_javascript_engine(javascript_engine);
   return builder_.Finish();
@@ -1024,12 +1108,18 @@ inline ::flatbuffers::Offset<AppMetrics> CreateAppMetricsDirect(
     ::flatbuffers::Offset<bitdrift_public::fbs::issue_reporting::v1::ProcessorUsage> cpu_usage = 0,
     const char *lifecycle_event = nullptr,
     bitdrift_public::fbs::issue_reporting::v1::JavaScriptEngine javascript_engine = bitdrift_public::fbs::issue_reporting::v1::JavaScriptEngine_UnknownJsEngine,
-    bitdrift_public::fbs::issue_reporting::v1::MemoryPressureLevel memory_pressure_level = bitdrift_public::fbs::issue_reporting::v1::MemoryPressureLevel_Unknown) {
+    bitdrift_public::fbs::issue_reporting::v1::MemoryPressureLevel memory_pressure_level = bitdrift_public::fbs::issue_reporting::v1::MemoryPressureLevel_Unknown,
+    const bitdrift_public::fbs::issue_reporting::v1::Timestamp *launch_time = nullptr,
+    bitdrift_public::fbs::issue_reporting::v1::AppEnvironment environment = bitdrift_public::fbs::issue_reporting::v1::AppEnvironment_Unknown,
+    const char *team_identifier = nullptr,
+    const char *bundle_path = nullptr) {
   auto app_id__ = app_id ? _fbb.CreateString(app_id) : 0;
   auto version__ = version ? _fbb.CreateString(version) : 0;
   auto running_state__ = running_state ? _fbb.CreateString(running_state) : 0;
   auto region_format__ = region_format ? _fbb.CreateString(region_format) : 0;
   auto lifecycle_event__ = lifecycle_event ? _fbb.CreateString(lifecycle_event) : 0;
+  auto team_identifier__ = team_identifier ? _fbb.CreateString(team_identifier) : 0;
+  auto bundle_path__ = bundle_path ? _fbb.CreateString(bundle_path) : 0;
   return bitdrift_public::fbs::issue_reporting::v1::CreateAppMetrics(
       _fbb,
       app_id__,
@@ -1042,7 +1132,11 @@ inline ::flatbuffers::Offset<AppMetrics> CreateAppMetricsDirect(
       cpu_usage,
       lifecycle_event__,
       javascript_engine,
-      memory_pressure_level);
+      memory_pressure_level,
+      launch_time,
+      environment,
+      team_identifier__,
+      bundle_path__);
 }
 
 struct OSBuild FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -2741,7 +2835,8 @@ struct BinaryImage FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_ID = 4,
     VT_PATH = 6,
-    VT_LOAD_ADDRESS = 8
+    VT_LOAD_ADDRESS = 8,
+    VT_LENGTH = 10
   };
   const ::flatbuffers::String *id() const {
     return GetPointer<const ::flatbuffers::String *>(VT_ID);
@@ -2752,6 +2847,9 @@ struct BinaryImage FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   uint64_t load_address() const {
     return GetField<uint64_t>(VT_LOAD_ADDRESS, 0);
   }
+  uint64_t length() const {
+    return GetField<uint64_t>(VT_LENGTH, 0);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_ID) &&
@@ -2759,6 +2857,7 @@ struct BinaryImage FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyOffset(verifier, VT_PATH) &&
            verifier.VerifyString(path()) &&
            VerifyField<uint64_t>(verifier, VT_LOAD_ADDRESS, 8) &&
+           VerifyField<uint64_t>(verifier, VT_LENGTH, 8) &&
            verifier.EndTable();
   }
 };
@@ -2776,6 +2875,9 @@ struct BinaryImageBuilder {
   void add_load_address(uint64_t load_address) {
     fbb_.AddElement<uint64_t>(BinaryImage::VT_LOAD_ADDRESS, load_address, 0);
   }
+  void add_length(uint64_t length) {
+    fbb_.AddElement<uint64_t>(BinaryImage::VT_LENGTH, length, 0);
+  }
   explicit BinaryImageBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2791,8 +2893,10 @@ inline ::flatbuffers::Offset<BinaryImage> CreateBinaryImage(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     ::flatbuffers::Offset<::flatbuffers::String> id = 0,
     ::flatbuffers::Offset<::flatbuffers::String> path = 0,
-    uint64_t load_address = 0) {
+    uint64_t load_address = 0,
+    uint64_t length = 0) {
   BinaryImageBuilder builder_(_fbb);
+  builder_.add_length(length);
   builder_.add_load_address(load_address);
   builder_.add_path(path);
   builder_.add_id(id);
@@ -2803,14 +2907,16 @@ inline ::flatbuffers::Offset<BinaryImage> CreateBinaryImageDirect(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     const char *id = nullptr,
     const char *path = nullptr,
-    uint64_t load_address = 0) {
+    uint64_t load_address = 0,
+    uint64_t length = 0) {
   auto id__ = id ? _fbb.CreateString(id) : 0;
   auto path__ = path ? _fbb.CreateString(path) : 0;
   return bitdrift_public::fbs::issue_reporting::v1::CreateBinaryImage(
       _fbb,
       id__,
       path__,
-      load_address);
+      load_address,
+      length);
 }
 
 struct SDKInfo FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
@@ -3476,6 +3582,32 @@ inline const ::flatbuffers::TypeTable *MemoryPressureLevelTypeTable() {
   return &tt;
 }
 
+inline const ::flatbuffers::TypeTable *AppEnvironmentTypeTable() {
+  static const ::flatbuffers::TypeCode type_codes[] = {
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 },
+    { ::flatbuffers::ET_CHAR, 0, 0 }
+  };
+  static const ::flatbuffers::TypeFunction type_refs[] = {
+    bitdrift_public::fbs::issue_reporting::v1::AppEnvironmentTypeTable
+  };
+  static const char * const names[] = {
+    "Unknown",
+    "Debug",
+    "AdHoc",
+    "Enterprise",
+    "TestFlight",
+    "Production"
+  };
+  static const ::flatbuffers::TypeTable tt = {
+    ::flatbuffers::ST_ENUM, 6, type_codes, type_refs, nullptr, nullptr, names
+  };
+  return &tt;
+}
+
 inline const ::flatbuffers::TypeTable *RotationTypeTable() {
   static const ::flatbuffers::TypeCode type_codes[] = {
     { ::flatbuffers::ET_CHAR, 0, 0 },
@@ -3618,14 +3750,20 @@ inline const ::flatbuffers::TypeTable *AppMetricsTypeTable() {
     { ::flatbuffers::ET_SEQUENCE, 0, 2 },
     { ::flatbuffers::ET_STRING, 0, -1 },
     { ::flatbuffers::ET_CHAR, 0, 3 },
-    { ::flatbuffers::ET_CHAR, 0, 4 }
+    { ::flatbuffers::ET_CHAR, 0, 4 },
+    { ::flatbuffers::ET_SEQUENCE, 0, 5 },
+    { ::flatbuffers::ET_CHAR, 0, 6 },
+    { ::flatbuffers::ET_STRING, 0, -1 },
+    { ::flatbuffers::ET_STRING, 0, -1 }
   };
   static const ::flatbuffers::TypeFunction type_refs[] = {
     bitdrift_public::fbs::issue_reporting::v1::MemoryTypeTable,
     bitdrift_public::fbs::issue_reporting::v1::AppBuildNumberTypeTable,
     bitdrift_public::fbs::issue_reporting::v1::ProcessorUsageTypeTable,
     bitdrift_public::fbs::issue_reporting::v1::JavaScriptEngineTypeTable,
-    bitdrift_public::fbs::issue_reporting::v1::MemoryPressureLevelTypeTable
+    bitdrift_public::fbs::issue_reporting::v1::MemoryPressureLevelTypeTable,
+    bitdrift_public::fbs::issue_reporting::v1::TimestampTypeTable,
+    bitdrift_public::fbs::issue_reporting::v1::AppEnvironmentTypeTable
   };
   static const char * const names[] = {
     "app_id",
@@ -3638,10 +3776,14 @@ inline const ::flatbuffers::TypeTable *AppMetricsTypeTable() {
     "cpu_usage",
     "lifecycle_event",
     "javascript_engine",
-    "memory_pressure_level"
+    "memory_pressure_level",
+    "launch_time",
+    "environment",
+    "team_identifier",
+    "bundle_path"
   };
   static const ::flatbuffers::TypeTable tt = {
-    ::flatbuffers::ST_TABLE, 11, type_codes, type_refs, nullptr, nullptr, names
+    ::flatbuffers::ST_TABLE, 15, type_codes, type_refs, nullptr, nullptr, names
   };
   return &tt;
 }
@@ -4044,15 +4186,17 @@ inline const ::flatbuffers::TypeTable *BinaryImageTypeTable() {
   static const ::flatbuffers::TypeCode type_codes[] = {
     { ::flatbuffers::ET_STRING, 0, -1 },
     { ::flatbuffers::ET_STRING, 0, -1 },
+    { ::flatbuffers::ET_ULONG, 0, -1 },
     { ::flatbuffers::ET_ULONG, 0, -1 }
   };
   static const char * const names[] = {
     "id",
     "path",
-    "load_address"
+    "load_address",
+    "length"
   };
   static const ::flatbuffers::TypeTable tt = {
-    ::flatbuffers::ST_TABLE, 3, type_codes, nullptr, nullptr, nullptr, names
+    ::flatbuffers::ST_TABLE, 4, type_codes, nullptr, nullptr, nullptr, names
   };
   return &tt;
 }
