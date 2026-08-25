@@ -26,7 +26,7 @@ use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_common::{maybe_await, maybe_await_map};
 use bd_crash_handler::global_state;
 use bd_device::Store;
-pub use bd_event_buffer::StateUpdateMessage;
+pub use bd_event_buffer::LoggerControl;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::{
   AnnotatedLogField,
@@ -92,7 +92,7 @@ impl ReportProcessor for () {
   }
 }
 
-pub type SequencedStateUpdate = SequencedMessage<StateUpdateMessage>;
+pub type SequencedControl = SequencedMessage<LoggerControl>;
 
 #[derive(ApproximateSize, Debug)]
 pub struct EmitLogMessage {
@@ -110,7 +110,7 @@ impl From<LogLine> for EmitLogMessage {
 #[derive(Clone)]
 pub struct Sender {
   log_buffer_tx: bd_bounded_buffer::Sender<SequencedLog>,
-  state_buffer_tx: bd_bounded_buffer::Sender<SequencedStateUpdate>,
+  control_buffer_tx: bd_bounded_buffer::Sender<SequencedControl>,
   sequence: Arc<AtomicU64>,
 }
 
@@ -118,11 +118,11 @@ impl Sender {
   #[cfg(test)]
   pub(crate) fn from_parts(
     log_buffer_tx: bd_bounded_buffer::Sender<SequencedLog>,
-    state_buffer_tx: bd_bounded_buffer::Sender<SequencedStateUpdate>,
+    control_buffer_tx: bd_bounded_buffer::Sender<SequencedControl>,
   ) -> Self {
     Self {
       log_buffer_tx,
-      state_buffer_tx,
+      control_buffer_tx,
       sequence: Arc::new(AtomicU64::new(0)),
     }
   }
@@ -139,12 +139,12 @@ impl Sender {
     self.log_buffer_tx.try_send(sequenced)
   }
 
-  pub fn try_send_state_update(&self, msg: StateUpdateMessage) -> Result<(), TrySendError> {
+  pub fn try_send_control(&self, msg: LoggerControl) -> Result<(), TrySendError> {
     let sequenced = SequencedMessage {
       sequence: self.next_sequence(),
       message: msg,
     };
-    self.state_buffer_tx.try_send(sequenced)
+    self.control_buffer_tx.try_send(sequenced)
   }
 
   pub fn flush_state(&self, block: Block) -> Result<(), TrySendError> {
@@ -155,7 +155,7 @@ impl Sender {
       (None, None)
     };
 
-    self.try_send_state_update(StateUpdateMessage::FlushState(completion_tx))?;
+    self.try_send_control(LoggerControl::FlushState(completion_tx))?;
 
     // Wait for the processing to be completed only if passed `blocking` argument is equal to
     // `true`.
@@ -186,7 +186,7 @@ impl Sender {
   }
 }
 
-pub type AsyncLogBufferOrderedReceiver = OrderedReceiver<EmitLogMessage, StateUpdateMessage>;
+pub type AsyncLogBufferOrderedReceiver = OrderedReceiver<EmitLogMessage, LoggerControl>;
 
 //
 // AsyncLogBuffer
@@ -254,11 +254,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         .max_size(),
     );
 
-    // Larger channel for state updates as they are less frequent and we want
-    // to avoid dropping any state updates if possible.
+    // Larger channel for control messages as they are less frequent and we want
+    // to avoid dropping any control messages if possible.
     // Note that the 10 MB is not pre-allocated memory, just the upper limit of data stored within
     // the buffer before backpressure is applied.
-    let (state_tx, state_rx) = channel(
+    let (control_tx, control_rx) = channel(
       10 * 1024 * 1024, // 10 MB
     );
 
@@ -288,7 +288,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     (
       Self {
-        ordered_rx: OrderedReceiver::new(log_rx, state_rx),
+        ordered_rx: OrderedReceiver::new(log_rx, control_rx),
 
         config_update_rx,
         report_processor_rx,
@@ -339,7 +339,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       },
       Sender {
         log_buffer_tx: log_tx,
-        state_buffer_tx: state_tx,
+        control_buffer_tx: control_tx,
         sequence: Arc::new(AtomicU64::new(0)),
       },
     )
@@ -798,7 +798,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             },
             OrderedMessage::State(async_log_buffer_message) => {
               match async_log_buffer_message {
-                StateUpdateMessage::AddLogField(key, value) => {
+                LoggerControl::AddLogField(key, value) => {
                   if let Err(e) = self
                     .metadata_collector
                     .add_field(key.clone().into(), value.clone())
@@ -806,13 +806,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                     log::warn!("failed to add log field ({key:?}): {e}");
                   }
                 },
-                StateUpdateMessage::UpdateOotbLogField(key, value) => {
+                LoggerControl::UpdateOotbLogField(key, value) => {
                   self.metadata_collector.update_ootb_field(key.into(), value);
                 },
-                StateUpdateMessage::RemoveLogField(field_name) => {
+                LoggerControl::RemoveLogField(field_name) => {
                   self.metadata_collector.remove_field(field_name.into());
                 },
-                StateUpdateMessage::SetFeatureFlagExposure(flag, variant) => {
+                LoggerControl::SetFeatureFlagExposure(flag, variant) => {
                   let session_id = match self.session_strategy.session_id() {
                     Ok(session_id) => session_id,
                     Err(e) => {
@@ -864,7 +864,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                     }
                   }
                 },
-                StateUpdateMessage::SetMemoryPressureLevel { level } => {
+                LoggerControl::SetMemoryPressureLevel { level } => {
                   if let Err(e) = state_store
                     .insert(
                       Scope::System,
@@ -878,7 +878,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                     log::debug!("failed to persist memory pressure level: {e}");
                   }
                 },
-                StateUpdateMessage::SetEntityId(entity_id) => {
+                LoggerControl::SetEntityId(entity_id) => {
                   let result = match entity_id {
                     Some(entity_id) => {
                       state_store
@@ -893,7 +893,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                     log::debug!("failed to persist entity ID state: {e}");
                   }
                 },
-                StateUpdateMessage::FlushState(completion_tx) => {
+                LoggerControl::FlushState(completion_tx) => {
                   let flush_stats_trigger = self.logging_state.flush_stats_trigger().clone();
                   let flush_stats = async move {
                     let completion = match flush_stats_trigger.flush() {

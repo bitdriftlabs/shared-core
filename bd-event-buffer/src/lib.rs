@@ -25,11 +25,19 @@ mod retention;
 
 pub use retention::EventBufferState;
 
+//
+// LoggerControl
+//
+
+/// A state mutation or flush request processed in FIFO order with logger ingress events.
 #[derive(ApproximateSize, Debug)]
-pub enum StateUpdateMessage {
+pub enum LoggerControl {
   AddLogField(String, DataValue),
   UpdateOotbLogField(String, DataValue),
   RemoveLogField(String),
+  // Feature flags will move to `LoggerIngressPayload` when producer-side capture is wired into
+  // ALB. Retain the control form until then so the existing logger path remains ordered.
+  SetFeatureFlagExposure(String, Option<String>),
   SetMemoryPressureLevel {
     #[approximate_size(skip)]
     level: MemoryPressureLevel,
@@ -54,12 +62,12 @@ pub struct ProviderSnapshot {
 }
 
 //
-// CurrentProcessContext
+// AdmissionContext
 //
 
-/// Immutable current-process context used by logs and workflow-replayed state operations.
+/// Immutable current-process context captured when an event is admitted.
 #[derive(ApproximateSize, Debug)]
-pub struct CurrentProcessContext {
+pub struct AdmissionContext {
   pub session_id: String,
   pub provider: ProviderSnapshot,
   /// This snapshot is shared with logger field-map accounting and is not charged per entry.
@@ -68,23 +76,23 @@ pub struct CurrentProcessContext {
 }
 
 //
-// CapturedContext
+// EventContext
 //
 
 /// Context captured for an `EventBuffer` entry before ALB processes it.
 #[derive(ApproximateSize, Debug)]
-pub enum CapturedContext {
-  CurrentProcess(CurrentProcessContext),
+pub enum EventContext {
+  CurrentProcess(AdmissionContext),
   /// Previous-process logs are finalized against prior global state on the consumer.
   PreviousProcess,
 }
 
 //
-// CapturedEventPayload
+// LoggerIngressPayload
 //
 
 #[derive(ApproximateSize, Debug)]
-pub enum CapturedEventPayload {
+pub enum LoggerIngressPayload {
   Log(LogLine),
   FeatureFlagExposure {
     flag: String,
@@ -93,28 +101,28 @@ pub enum CapturedEventPayload {
 }
 
 //
-// CapturedEvent
+// LoggerIngressEvent
 //
 
 /// A producer-side snapshot retained until ALB finishes processing the event.
 #[derive(ApproximateSize, Debug)]
-pub struct CapturedEvent {
-  pub context: CapturedContext,
-  pub payload: CapturedEventPayload,
+pub struct LoggerIngressEvent {
+  pub context: EventContext,
+  pub payload: LoggerIngressPayload,
   #[approximate_size(skip)]
   completion: Option<bd_completion::Sender<()>>,
 }
 
-impl CapturedEvent {
+impl LoggerIngressEvent {
   #[must_use]
   pub fn log(
     log: LogLine,
-    context: CapturedContext,
+    context: EventContext,
     completion: Option<bd_completion::Sender<()>>,
   ) -> Self {
     Self {
       context,
-      payload: CapturedEventPayload::Log(log),
+      payload: LoggerIngressPayload::Log(log),
       completion,
     }
   }
@@ -123,36 +131,44 @@ impl CapturedEvent {
   pub fn feature_flag_exposure(
     flag: String,
     variant: Option<String>,
-    context: CurrentProcessContext,
+    context: AdmissionContext,
   ) -> Self {
     Self {
-      context: CapturedContext::CurrentProcess(context),
-      payload: CapturedEventPayload::FeatureFlagExposure { flag, variant },
+      context: EventContext::CurrentProcess(context),
+      payload: LoggerIngressPayload::FeatureFlagExposure { flag, variant },
       completion: None,
     }
   }
 }
 
+//
+// EventBufferEntry
+//
+
+/// A FIFO event-buffer entry.
+///
+/// Ingress events are boxed so control entries do not inherit the larger ingress-event layout in
+/// the backing `VecDeque`.
 #[derive(ApproximateSize, Debug)]
 pub enum EventBufferEntry {
-  Captured(Box<CapturedEvent>),
-  State(StateUpdateMessage),
+  Ingress(Box<LoggerIngressEvent>),
+  Control(LoggerControl),
 }
 
 impl EventBufferEntry {
   #[must_use]
-  pub fn captured(event: CapturedEvent) -> Self {
-    Self::Captured(Box::new(event))
+  pub fn ingress(event: LoggerIngressEvent) -> Self {
+    Self::Ingress(Box::new(event))
   }
 
   #[must_use]
   pub fn lane(&self) -> RetentionLane {
     match self {
-      Self::Captured(event) => match &event.payload {
-        CapturedEventPayload::Log(log) => retention_lane(log.log_type, log.log_level),
-        CapturedEventPayload::FeatureFlagExposure { .. } => RetentionLane::Protected,
+      Self::Ingress(event) => match &event.payload {
+        LoggerIngressPayload::Log(log) => retention_lane(log.log_type, log.log_level),
+        LoggerIngressPayload::FeatureFlagExposure { .. } => RetentionLane::Protected,
       },
-      Self::State(_) => RetentionLane::Protected,
+      Self::Control(_) => RetentionLane::Protected,
     }
   }
 
@@ -164,9 +180,9 @@ impl EventBufferEntry {
 
   fn take_completion(&mut self) -> Option<bd_completion::Sender<()>> {
     match self {
-      Self::Captured(event) => event.completion.take(),
-      Self::State(StateUpdateMessage::FlushState(completion)) => completion.take(),
-      Self::State(_) => None,
+      Self::Ingress(event) => event.completion.take(),
+      Self::Control(LoggerControl::FlushState(completion)) => completion.take(),
+      Self::Control(_) => None,
     }
   }
 }

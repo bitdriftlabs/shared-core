@@ -10,9 +10,9 @@ use crate::async_log_buffer::{
   AsyncLogBuffer,
   LogLine,
   LogReplay,
+  LoggerControl,
   PreConfigItem,
   Sender,
-  StateUpdateMessage,
 };
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
@@ -765,7 +765,7 @@ async fn set_memory_pressure_level_writes_to_system_scope() {
   ));
 
   sender
-    .try_send_state_update(StateUpdateMessage::SetMemoryPressureLevel {
+    .try_send_control(LoggerControl::SetMemoryPressureLevel {
       level: MemoryPressureLevel::Warning,
     })
     .unwrap();
@@ -962,7 +962,7 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
 
   // 1. Add global state field via state update
   sender
-    .try_send_state_update(crate::async_log_buffer::StateUpdateMessage::AddLogField(
+    .try_send_control(LoggerControl::AddLogField(
       "global_key".to_string(),
       DataValue::String("global_value".to_string()),
     ))

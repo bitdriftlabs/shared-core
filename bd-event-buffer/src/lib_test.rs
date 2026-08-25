@@ -6,18 +6,18 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use super::{
+  AdmissionContext,
   AdmissionOutcome,
-  CapturedContext,
-  CapturedEvent,
-  CapturedEventPayload,
-  CurrentProcessContext,
   EventBuffer,
   EventBufferEntry,
   EventBufferLimits,
   EventBufferState,
+  EventContext,
+  LoggerControl,
+  LoggerIngressEvent,
+  LoggerIngressPayload,
   ProviderSnapshot,
   RetentionLane,
-  StateUpdateMessage,
   retention_lane,
 };
 use bd_log_primitives::{AnnotatedLogFields, DataValue, LogFields, LogLine, log_level};
@@ -27,8 +27,8 @@ use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::oneshot;
 
-fn current_process_context() -> CapturedContext {
-  CapturedContext::CurrentProcess(CurrentProcessContext {
+fn current_process_context() -> EventContext {
+  EventContext::CurrentProcess(AdmissionContext {
     session_id: "session".to_string(),
     provider: ProviderSnapshot {
       timestamp: OffsetDateTime::UNIX_EPOCH,
@@ -41,7 +41,7 @@ fn current_process_context() -> CapturedContext {
 }
 
 fn log(level: bd_log_primitives::LogLevel, log_type: LogType, bytes: usize) -> EventBufferEntry {
-  EventBufferEntry::captured(CapturedEvent::log(
+  EventBufferEntry::ingress(LoggerIngressEvent::log(
     LogLine {
       log_level: level,
       log_type,
@@ -68,7 +68,7 @@ fn buffer(bytes: usize) -> EventBuffer {
 }
 
 fn add_field(key: &str) -> EventBufferEntry {
-  EventBufferEntry::State(StateUpdateMessage::AddLogField(
+  EventBufferEntry::Control(LoggerControl::AddLogField(
     key.to_string(),
     DataValue::String("value".into()),
   ))
@@ -99,12 +99,12 @@ fn priority_mapping_covers_protected_and_evictable_logs() {
 
 #[test]
 fn feature_flag_exposure_carries_current_process_context_in_the_protected_lane() {
-  let entry = EventBufferEntry::captured(CapturedEvent::feature_flag_exposure(
+  let entry = EventBufferEntry::ingress(LoggerIngressEvent::feature_flag_exposure(
     "flag".to_string(),
     Some("variant".to_string()),
     match current_process_context() {
-      CapturedContext::CurrentProcess(context) => context,
-      CapturedContext::PreviousProcess => {
+      EventContext::CurrentProcess(context) => context,
+      EventContext::PreviousProcess => {
         unreachable!("test helper returns current-process context")
       },
     },
@@ -113,11 +113,11 @@ fn feature_flag_exposure_carries_current_process_context_in_the_protected_lane()
   assert_eq!(RetentionLane::Protected, entry.lane());
   assert!(matches!(
     entry,
-    EventBufferEntry::Captured(event) if matches!(
+    EventBufferEntry::Ingress(event) if matches!(
       event.as_ref(),
-      CapturedEvent {
-        context: CapturedContext::CurrentProcess(CurrentProcessContext { session_id, .. }),
-        payload: CapturedEventPayload::FeatureFlagExposure { flag, variant },
+      LoggerIngressEvent {
+        context: EventContext::CurrentProcess(AdmissionContext { session_id, .. }),
+        payload: LoggerIngressPayload::FeatureFlagExposure { flag, variant },
         ..
       } if session_id == "session" && flag == "flag" && variant.as_deref() == Some("variant")
     )
@@ -142,14 +142,16 @@ async fn preserves_log_and_field_update_admission_order() {
     .await
     .into_iter()
     .map(|entry| match entry {
-      EventBufferEntry::Captured(event) => match event.payload {
-        CapturedEventPayload::Log(log) => format!("log:{}", log.message),
-        CapturedEventPayload::FeatureFlagExposure { flag, .. } => format!("feature_flag:{flag}"),
+      EventBufferEntry::Ingress(event) => match event.payload {
+        LoggerIngressPayload::Log(log) => format!("log:{}", log.message),
+        LoggerIngressPayload::FeatureFlagExposure { flag, .. } => {
+          format!("feature_flag:{flag}")
+        },
       },
-      EventBufferEntry::State(StateUpdateMessage::AddLogField(key, _)) => {
+      EventBufferEntry::Control(LoggerControl::AddLogField(key, _)) => {
         format!("add_field:{key}")
       },
-      EventBufferEntry::State(_) => "other_state".to_string(),
+      EventBufferEntry::Control(_) => "other_control".to_string(),
     })
     .collect::<Vec<_>>();
   assert_eq!(vec!["log:x", "add_field:field", "log:xx"], entries);
@@ -178,12 +180,12 @@ async fn batch_eviction_removes_tiny_lower_priority_logs() {
 
   let batch = buffer.next_batch(COUNT + 1).await;
   assert_eq!(1, batch.len());
-  let EventBufferEntry::Captured(event) = &batch[0] else {
+  let EventBufferEntry::Ingress(event) = &batch[0] else {
     panic!("expected an admitted log");
   };
   assert!(matches!(
     &event.payload,
-    CapturedEventPayload::Log(log) if log.log_level == log_level::INFO
+    LoggerIngressPayload::Log(log) if log.log_level == log_level::INFO
   ));
 }
 
@@ -216,7 +218,7 @@ async fn rejected_admission_does_not_partially_evict() {
 async fn completion_is_sent_only_after_consumer_processing() {
   let buffer = buffer(10_000);
   let (sender, receiver) = bd_completion::Sender::new();
-  let entry = EventBufferEntry::captured(CapturedEvent::log(
+  let entry = EventBufferEntry::ingress(LoggerIngressEvent::log(
     LogLine {
       log_level: log_level::INFO,
       log_type: LogType::NORMAL,
@@ -249,7 +251,7 @@ async fn completion_is_sent_only_after_consumer_processing() {
 async fn close_drops_unprocessed_completion_senders() {
   let buffer = buffer(10_000);
   let (sender, receiver) = bd_completion::Sender::new();
-  let entry = EventBufferEntry::captured(CapturedEvent::log(
+  let entry = EventBufferEntry::ingress(LoggerIngressEvent::log(
     LogLine {
       log_level: log_level::INFO,
       log_type: LogType::NORMAL,
