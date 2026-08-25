@@ -209,6 +209,7 @@ impl Tool {
   }
 }
 
+#[allow(clippy::unused_async_trait_impl)]
 #[tool_handler]
 impl ServerHandler for Tool {
   fn get_info(&self) -> ServerInfo {
