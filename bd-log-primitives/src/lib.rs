@@ -63,7 +63,12 @@ pub struct LogLine {
 
 #[derive(ApproximateSize, Debug)]
 pub enum LogAttributesOverrides {
+  /// Uses the previous session ID if available.
+  ///
+  /// All relevant metadata must already be attached because current-session metadata is not added
+  /// to previous-process logs.
   PreviousRunSessionID(OffsetDateTime),
+  /// Overrides when the log occurred, for example for spans with a provided timestamp.
   OccurredAt(OffsetDateTime),
 }
 
