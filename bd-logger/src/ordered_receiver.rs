@@ -10,7 +10,7 @@
 mod tests;
 
 use bd_bounded_buffer::Receiver;
-use bd_log_primitives::size::MemorySized;
+use bd_macros::ApproximateSize;
 
 /// Merges two channels (logs and state updates) into a single ordered stream based on sequence
 /// numbers. This ensures that single-threaded callers doing `log(); setField(); log();` observe
@@ -23,8 +23,8 @@ pub enum OrderedMessage<L, S> {
 
 pub struct OrderedReceiver<L, S>
 where
-  SequencedMessage<L>: MemorySized,
-  SequencedMessage<S>: MemorySized,
+  SequencedMessage<L>: ApproximateSize,
+  SequencedMessage<S>: ApproximateSize,
 {
   log_rx: Receiver<SequencedMessage<L>>,
   state_rx: Receiver<SequencedMessage<S>>,
@@ -32,7 +32,7 @@ where
   buffered_state: Option<SequencedMessage<S>>,
 }
 
-#[derive(Debug)]
+#[derive(ApproximateSize, Debug)]
 pub struct SequencedMessage<T> {
   pub sequence: u64,
   pub message: T,
@@ -40,8 +40,8 @@ pub struct SequencedMessage<T> {
 
 impl<L, S> OrderedReceiver<L, S>
 where
-  SequencedMessage<L>: MemorySized,
-  SequencedMessage<S>: MemorySized,
+  SequencedMessage<L>: ApproximateSize,
+  SequencedMessage<S>: ApproximateSize,
 {
   pub fn new(
     log_rx: Receiver<SequencedMessage<L>>,

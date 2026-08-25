@@ -5,9 +5,6 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-// `tool_handler` expands to required async trait methods that do not always await.
-#![allow(clippy::unused_async_trait_impl)]
-
 use logger_cli::service::RemoteClient;
 use logger_cli::types::{LogLevel, LogType};
 use rmcp::handler::server::tool::ToolRouter;
@@ -212,6 +209,7 @@ impl Tool {
   }
 }
 
+#[allow(clippy::unused_async_trait_impl)]
 #[tool_handler]
 impl ServerHandler for Tool {
   fn get_info(&self) -> ServerInfo {

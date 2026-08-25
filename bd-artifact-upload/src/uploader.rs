@@ -25,7 +25,7 @@ use bd_client_common::maybe_await;
 use bd_client_stats_store::{Collector, Counter, Scope};
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_primitives::LogFields;
-use bd_log_primitives::size::MemorySized;
+use bd_macros::ApproximateSize;
 use bd_proto::protos::client::api::{UploadArtifactIntentRequest, UploadArtifactRequest};
 use bd_proto::protos::client::artifact::artifact_upload_index::Artifact;
 use bd_proto::protos::client::artifact::{ArtifactUploadIndex, StorageFormat};
@@ -71,7 +71,7 @@ impl ArtifactType {
 // FeatureFlag
 //
 
-#[derive(Debug, Clone)]
+#[derive(ApproximateSize, Debug, Clone)]
 pub struct SnappedFeatureFlag {
   name: String,
   variant: Option<String>,
@@ -110,15 +110,17 @@ impl SnappedFeatureFlag {
 
 // TODO(snowp): Consider allowing passing an open file handle instead of having to hold the data in
 // memory while entry is pending within the channel.
-#[derive(Debug)]
+#[derive(ApproximateSize, Debug)]
 struct NewUpload {
   uuid: Uuid,
   source: UploadSource,
   type_id: String,
+  #[approximate_size(with = bd_log_primitives::approximate_ahash_map_children_bytes)]
   state: LogFields,
   timestamp: Option<OffsetDateTime>,
   session_id: String,
   feature_flags: Vec<SnappedFeatureFlag>,
+  #[approximate_size(skip)]
   persisted_tx: Option<oneshot::Sender<std::result::Result<(), EnqueueError>>>,
 }
 
@@ -145,23 +147,14 @@ impl std::fmt::Display for NewUpload {
   }
 }
 
-impl MemorySized for SnappedFeatureFlag {
-  fn size(&self) -> usize {
-    std::mem::size_of::<OffsetDateTime>()
-      + std::mem::size_of::<Option<String>>()
-      + self.name.len()
-      + self.variant.as_ref().map_or(0, std::string::String::len)
-  }
-}
-
-impl MemorySized for NewUpload {
-  fn size(&self) -> usize {
-    std::mem::size_of::<Uuid>()
-      + self.type_id.len()
-      + self.state.size()
-      + std::mem::size_of::<Option<OffsetDateTime>>()
-      + self.session_id.len()
-      + self.feature_flags.size()
+impl ApproximateSize for UploadSource {
+  fn approximate_size_children_bytes(&self) -> usize {
+    match self {
+      // File descriptors own no heap storage attributable to this queue entry. PathBuf exposes
+      // the capacity of its owned path buffer, so account for its retained allocation directly.
+      Self::File(_) => 0,
+      Self::Path(path) => path.capacity(),
+    }
   }
 }
 

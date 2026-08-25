@@ -28,6 +28,28 @@ enum DerivedEvent {
 }
 
 #[derive(crate::ApproximateSize)]
+struct DerivedRecordWithSkippedField {
+  message: String,
+  #[approximate_size(skip)]
+  unowned_handle: String,
+}
+
+#[derive(crate::ApproximateSize)]
+struct DerivedRecordWithCustomFieldSize {
+  #[approximate_size(with = string_reserved_bytes)]
+  message: String,
+}
+
+fn string_reserved_bytes(value: &String) -> usize {
+  value.capacity()
+}
+
+#[derive(crate::ApproximateSize)]
+enum DerivedEventWithSkippedField {
+  Message(#[approximate_size(skip)] String),
+}
+
+#[derive(crate::ApproximateSize)]
 #[allow(clippy::use_self)]
 struct RecursiveNode {
   label: String,
@@ -119,6 +141,34 @@ fn derives_enum_variant_storage() {
   assert_eq!(
     DerivedEvent::Empty.approximate_size_bytes(),
     size_of_val(&DerivedEvent::Empty)
+  );
+}
+
+#[test]
+fn skips_fields_that_do_not_own_queue_memory() {
+  let record = DerivedRecordWithSkippedField {
+    message: String::with_capacity(16),
+    unowned_handle: String::with_capacity(32),
+  };
+  assert_eq!(32, record.unowned_handle.capacity());
+  assert_eq!(
+    record.approximate_size_bytes(),
+    size_of_val(&record).saturating_add(record.message.capacity()),
+  );
+
+  let event = DerivedEventWithSkippedField::Message(String::with_capacity(48));
+  assert_eq!(event.approximate_size_bytes(), size_of_val(&event));
+}
+
+#[test]
+fn uses_custom_field_size_function() {
+  let record = DerivedRecordWithCustomFieldSize {
+    message: String::with_capacity(48),
+  };
+
+  assert_eq!(
+    record.approximate_size_bytes(),
+    size_of_val(&record).saturating_add(record.message.capacity()),
   );
 }
 

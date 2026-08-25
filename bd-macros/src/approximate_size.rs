@@ -5,6 +5,7 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+use std::borrow::Cow;
 use std::sync::Arc;
 
 /// Estimates storage retained by a value while it is held in a bounded queue.
@@ -72,6 +73,17 @@ impl_fixed_approximate_size!(
 impl ApproximateSize for String {
   fn approximate_size_children_bytes(&self) -> usize {
     self.capacity()
+  }
+}
+
+// Borrowed strings do not retain an allocation. Owned strings use their retained capacity rather
+// than their current length, matching the queue's reservation model.
+impl ApproximateSize for Cow<'_, str> {
+  fn approximate_size_children_bytes(&self) -> usize {
+    match self {
+      Self::Borrowed(_) => 0,
+      Self::Owned(value) => value.capacity(),
+    }
   }
 }
 

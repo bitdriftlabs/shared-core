@@ -1,5 +1,5 @@
 ---
-source: bd-report-parsers/src/./android_tests.rs
+source: shared-core/bd-report-parsers/src/./android_tests.rs
 expression: report
 ---
 Report {

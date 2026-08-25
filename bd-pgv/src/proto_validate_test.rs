@@ -38,6 +38,7 @@ use test_protos::test_validate::{
   Timestamp,
   TimestampGtNow,
   Uint32,
+  Uuid,
   message,
   one_of,
   repeated,
@@ -387,6 +388,31 @@ fn not_implemented() {
     validate(&message),
     Err(error::Error::ProtoValidation(message)) if message ==
     "not implemented: string rules max_bytes");
+}
+
+#[test]
+fn uuid() {
+  let message = Uuid {
+    field: "8B208305-00E8-4460-A440-5E0DCD83BB0A".to_string(),
+    ..Default::default()
+  };
+  assert!(validate(&message).is_ok());
+
+  let message = Uuid {
+    field: "8b20830500e84460a4405e0dcd83bb0a".to_string(),
+    ..Default::default()
+  };
+  assert!(validate(&message).is_ok());
+
+  let message = Uuid {
+    field: "not-a-uuid".to_string(),
+    ..Default::default()
+  };
+  matches::assert_matches!(
+    validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'proto_validate.test.Uuid.field' in message 'proto_validate.test.Uuid' must be a valid UUID"
+  );
 }
 
 #[test]

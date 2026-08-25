@@ -20,8 +20,8 @@ use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_crash_handler::global_state;
 use bd_error_reporter::reporter::handle_unexpected;
 use bd_log_filter::FilterChain;
-use bd_log_primitives::size::MemorySized;
 use bd_log_primitives::tiny_set::TinySet;
+use bd_macros::ApproximateSize;
 use bd_proto::protos::logging::payload::LogType;
 use bd_resilient_kv::Scope as StateScope;
 use bd_runtime::runtime::ConfigLoader;
@@ -47,7 +47,7 @@ use tokio::sync::mpsc::{Receiver, Sender};
 /// that are needed to process incoming logs.
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
-pub enum LoggingState<T: MemorySized + Debug> {
+pub enum LoggingState<T: ApproximateSize + Debug> {
   /// The initial state that each `AsyncLogBuffer` starts in. While in this state
   /// the buffer takes incoming logs, populates them with extra information using
   /// its metadata provider and puts them on hold for further processing inside of
@@ -72,7 +72,7 @@ pub enum LoggingState<T: MemorySized + Debug> {
   Initialized(InitializedLoggingContext),
 }
 
-impl<T: MemorySized + Debug> LoggingState<T> {
+impl<T: ApproximateSize + Debug> LoggingState<T> {
   pub(crate) const fn flush_buffers_trigger(&self) -> &Sender<BuffersWithAck> {
     match self {
       Self::Uninitialized(context) => &context.flush_buffers_tx,
@@ -101,7 +101,7 @@ impl<T: MemorySized + Debug> LoggingState<T> {
 // UninitializedLoggingContext
 //
 
-pub struct UninitializedLoggingContext<T: MemorySized + Debug> {
+pub struct UninitializedLoggingContext<T: ApproximateSize + Debug> {
   pub(crate) pre_config_log_buffer: PreConfigBuffer<T>,
 
   data_upload_tx: Sender<DataUpload>,
@@ -119,7 +119,7 @@ pub struct UninitializedLoggingContext<T: MemorySized + Debug> {
 }
 
 // Skip `stats` and `runtime` fields that does not implement `std::fmt::Debug`.
-impl<T: MemorySized + Debug> Debug for UninitializedLoggingContext<T> {
+impl<T: ApproximateSize + Debug> Debug for UninitializedLoggingContext<T> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("UninitializedLoggingContext")
       .field("pre_config_log_buffer", &self.pre_config_log_buffer)
@@ -131,7 +131,7 @@ impl<T: MemorySized + Debug> Debug for UninitializedLoggingContext<T> {
   }
 }
 
-impl<T: MemorySized + Debug> UninitializedLoggingContext<T> {
+impl<T: ApproximateSize + Debug> UninitializedLoggingContext<T> {
   pub(crate) fn new(
     sdk_directory: &Path,
     runtime: &Arc<ConfigLoader>,

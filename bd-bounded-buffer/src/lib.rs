@@ -19,7 +19,7 @@
 mod tests;
 
 use bd_client_stats_store::{Counter, Scope};
-use bd_log_primitives::size::MemorySized;
+use bd_macros::ApproximateSize;
 use bd_stats_common::{Counter as _, labels};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -33,7 +33,7 @@ use tokio::sync::mpsc::{UnboundedReceiver as TokioReceiver, UnboundedSender as T
 // by mpsc::unbounded_channel. For improved ergonomics, we keep the interface of our channel to
 // be as closed to underlying mpsc::unbounded_channel interface as possible.
 #[must_use]
-pub fn channel<L: MemorySized>(memory_capacity: usize) -> (Sender<L>, Receiver<L>) {
+pub fn channel<L: ApproximateSize>(memory_capacity: usize) -> (Sender<L>, Receiver<L>) {
   let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
   let memory_capacity_usage: Arc<AtomicU64> = Arc::new(AtomicU64::new(0));
 
@@ -75,16 +75,16 @@ pub enum TryRecvError {
   Disconnected,
 }
 
-pub struct Sender<T: MemorySized> {
+pub struct Sender<T: ApproximateSize> {
   tx: TokioSender<T>,
   memory_capacity_usage: Arc<AtomicU64>,
   memory_capacity: u64,
 }
 
-impl<T: MemorySized> Sender<T> {
+impl<T: ApproximateSize> Sender<T> {
   // Try to send a given message to the channel. Fails when the channel is closed or full.
   pub fn try_send(&self, message: T) -> Result<(), TrySendError> {
-    let message_size = message.size() as u64;
+    let message_size = message.approximate_size_bytes() as u64;
     let result = self.try_reserve_memory(message_size);
 
     let Ok(()) = result else {
@@ -145,7 +145,7 @@ impl<T: MemorySized> Sender<T> {
   }
 }
 
-impl<T: MemorySized> Clone for Sender<T> {
+impl<T: ApproximateSize> Clone for Sender<T> {
   fn clone(&self) -> Self {
     Self {
       tx: self.tx.clone(),
@@ -159,17 +159,17 @@ impl<T: MemorySized> Clone for Sender<T> {
 // Receiver
 //
 
-pub struct Receiver<L: MemorySized> {
+pub struct Receiver<L: ApproximateSize> {
   rx: TokioReceiver<L>,
   memory_capacity_usage: Arc<AtomicU64>,
 }
 
-impl<T: MemorySized> Receiver<T> {
+impl<T: ApproximateSize> Receiver<T> {
   pub async fn recv(&mut self) -> Option<T> {
     let item = self.rx.recv().await;
 
     if let Some(unwrapped_item) = &item {
-      let size: u64 = unwrapped_item.size() as u64;
+      let size: u64 = unwrapped_item.approximate_size_bytes() as u64;
       let previous_size = self.memory_capacity_usage.fetch_sub(size, Ordering::SeqCst);
 
       log::trace!(
@@ -187,7 +187,7 @@ impl<T: MemorySized> Receiver<T> {
       TokioTryRecvError::Disconnected => TryRecvError::Disconnected,
     })?;
 
-    let size: u64 = item.size() as u64;
+    let size: u64 = item.approximate_size_bytes() as u64;
     let previous_size = self.memory_capacity_usage.fetch_sub(size, Ordering::SeqCst);
 
     log::trace!(

@@ -56,10 +56,11 @@ pub use approximate_size::ApproximateSize;
 /// Derives [`ApproximateSize`] by recursively summing a struct or enum variant's field
 /// allocations.
 ///
-/// The derive adds an [`ApproximateSize`] bound for every field type. It does not offer field
-/// overrides: a queue's admission estimate should use the same ownership rules everywhere.
-/// `String`, `Vec`, `Box`, `Arc`, `Option`, arrays, and pairs/three-tuples have built-in
-/// behavior; application types can derive the trait in turn.
+/// The derive adds an [`ApproximateSize`] bound for every non-skipped field type. Use
+/// `#[approximate_size(skip)]` for a field whose child allocation is not owned by the queued
+/// value, such as an opaque completion handle. The containing value's inline storage is always
+/// included. `String`, `Vec`, `Box`, `Arc`, `Option`, arrays, and pairs/three-tuples have
+/// built-in behavior; application types can derive the trait in turn.
 pub use bd_macros_impl::ApproximateSize;
 /// Generates protobuf serialization and deserialization implementations for structs and enums.
 ///

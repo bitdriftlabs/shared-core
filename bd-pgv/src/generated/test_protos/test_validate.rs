@@ -877,6 +877,128 @@ impl ::protobuf::reflect::ProtobufValue for String {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
+// @@protoc_insertion_point(message:proto_validate.test.Uuid)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct Uuid {
+    // message fields
+    // @@protoc_insertion_point(field:proto_validate.test.Uuid.field)
+    pub field: ::std::string::String,
+    // special fields
+    // @@protoc_insertion_point(special_field:proto_validate.test.Uuid.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a Uuid {
+    fn default() -> &'a Uuid {
+        <Uuid as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl Uuid {
+    pub fn new() -> Uuid {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "field",
+            |m: &Uuid| { &m.field },
+            |m: &mut Uuid| { &mut m.field },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Uuid>(
+            "Uuid",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for Uuid {
+    const NAME: &'static str = "Uuid";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.field = is.read_string()?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if !self.field.is_empty() {
+            my_size += ::protobuf::rt::string_size(1, &self.field);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if !self.field.is_empty() {
+            os.write_string(1, &self.field)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> Uuid {
+        Uuid::new()
+    }
+
+    fn clear(&mut self) {
+        self.field.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static Uuid {
+        static instance: Uuid = Uuid {
+            field: ::std::string::String::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for Uuid {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("Uuid").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for Uuid {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for Uuid {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
 // @@protoc_insertion_point(message:proto_validate.test.Repeated)
 #[derive(PartialEq,Clone,Default,Debug)]
 pub struct Repeated {
@@ -3502,47 +3624,49 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x06field2B\x07\xfaB\x04j\x02\x08\x01B\x06\n\x04test\"H\n\x06String\x12\
     \x1d\n\x05field\x18\x01\x20\x01(\tR\x05fieldB\x07\xfaB\x04r\x02\x10\x01\
     \x12\x1f\n\x06field2\x18\x02\x20\x01(\tR\x06field2B\x07\xfaB\x04r\x02\
-    \x18\x02\"\xd5\x02\n\x08Repeated\x12\"\n\x07strings\x18\x01\x20\x03(\tR\
-    \x07stringsB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12I\n\x08messages\x18\x02\
-    \x20\x03(\x0b2#.proto_validate.test.Repeated.InnerR\x08messagesB\x08\xfa\
-    B\x05\x92\x01\x02\x08\x01\x12\"\n\x07limited\x18\x03\x20\x03(\rR\x07limi\
-    tedB\x08\xfaB\x05\x92\x01\x02\x10\x02\x128\n\x11non_empty_strings\x18\
-    \x04\x20\x03(\tR\x0fnonEmptyStringsB\x0c\xfaB\t\x92\x01\x06\"\x04r\x02\
-    \x10\x01\x127\n\x10positive_numbers\x18\x05\x20\x03(\rR\x0fpositiveNumbe\
-    rsB\x0c\xfaB\t\x92\x01\x06\"\x04*\x02\x20\0\x12:\n\rprobabilities\x18\
-    \x06\x20\x03(\x02R\rprobabilitiesB\x14\xfaB\x11\x92\x01\x0e\"\x0c\n\n\
-    \x1d\0\0\x80?-\0\0\0\0\x1a\x07\n\x05Inner\"\x8c\x01\n\x03Map\x12I\n\x07l\
-    imited\x18\x01\x20\x03(\x0b2%.proto_validate.test.Map.LimitedEntryR\x07l\
-    imitedB\x08\xfaB\x05\x9a\x01\x02\x10\x02\x1a:\n\x0cLimitedEntry\x12\x10\
-    \n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\
-    \rR\x05value:\x028\x01\"\xa0\x01\n\x11MapNotImplemented\x12Q\n\x05field\
-    \x18\x01\x20\x03(\x0b21.proto_validate.test.MapNotImplemented.FieldEntry\
-    R\x05fieldB\x08\xfaB\x05\x9a\x01\x02\x18\x01\x1a8\n\nFieldEntry\x12\x10\
-    \n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\x20\x01(\
-    \rR\x05value:\x028\x01\"V\n\x07Message\x12B\n\x05inner\x18\x01\x20\x01(\
-    \x0b2\".proto_validate.test.Message.InnerR\x05innerB\x08\xfaB\x05\x8a\
-    \x01\x02\x10\x01\x1a\x07\n\x05Inner\"Z\n\x05OneOf\x12!\n\x06field1\x18\
-    \x01\x20\x01(\x08H\0R\x06field1B\x07\xfaB\x04j\x02\x08\x01\x12!\n\x06fie\
-    ld2\x18\x02\x20\x01(\tH\0R\x06field2B\x07\xfaB\x04r\x02\x10\x01B\x0b\n\
-    \x04test\x12\x03\xf8B\x01\"/\n\x0eNotImplemented\x12\x1d\n\x05field\x18\
-    \x01\x20\x01(\tR\x05fieldB\x07\xfaB\x04r\x02(\n\"Q\n\x14NestedNotImpleme\
-    nted\x129\n\x05field\x18\x01\x20\x01(\x0b2#.proto_validate.test.NotImple\
-    mentedR\x05field\"]\n\x07EnumOld\x12A\n\x05field\x18\x01\x20\x01(\x0e2!.\
-    proto_validate.test.EnumOld.EnumR\x05fieldB\x08\xfaB\x05\x82\x01\x02\x10\
-    \x01\"\x0f\n\x04Enum\x12\x07\n\x03FOO\x10\0\"\\\n\x07EnumNew\x127\n\x05f\
-    ield\x18\x01\x20\x01(\x0e2!.proto_validate.test.EnumNew.EnumR\x05field\"\
-    \x18\n\x04Enum\x12\x07\n\x03FOO\x10\0\x12\x07\n\x03BAR\x10\x01\"j\n\tEnu\
-    mNotIn\x12C\n\x05field\x18\x01\x20\x01(\x0e2#.proto_validate.test.EnumNo\
-    tIn.EnumR\x05fieldB\x08\xfaB\x05\x82\x01\x02\x20\x01\"\x18\n\x04Enum\x12\
-    \x07\n\x03FOO\x10\0\x12\x07\n\x03BAR\x10\x01\"'\n\x06Uint32\x12\x1d\n\
-    \x05field\x18\x01\x20\x01(\rR\x05fieldB\x07\xfaB\x04*\x02\x20\0\"'\n\x06\
-    Uint64\x12\x1d\n\x05field\x18\x01\x20\x01(\x04R\x05fieldB\x07\xfaB\x042\
-    \x02\x20\0\"&\n\x05Int32\x12\x1d\n\x05field\x18\x01\x20\x01(\x05R\x05fie\
-    ldB\x07\xfaB\x04\x1a\x02\x20\0\"&\n\x05Int64\x12\x1d\n\x05field\x18\x01\
-    \x20\x01(\x03R\x05fieldB\x07\xfaB\x04\"\x02\x20\0\".\n\x05Float\x12%\n\
-    \x05field\x18\x01\x20\x01(\x02R\x05fieldB\x0f\xfaB\x0c\n\n\x1d\0\0\x80?-\
-    \0\0\0\0\"7\n\x06Double\x12-\n\x05field\x18\x01\x20\x01(\x01R\x05fieldB\
-    \x17\xfaB\x14\x12\x12\x11\0\0\0\0\0\0\xf0?!\0\0\0\0\0\0\0\0b\x06proto3\
+    \x18\x02\"&\n\x04Uuid\x12\x1e\n\x05field\x18\x01\x20\x01(\tR\x05fieldB\
+    \x08\xfaB\x05r\x03\xb0\x01\x01\"\xd5\x02\n\x08Repeated\x12\"\n\x07string\
+    s\x18\x01\x20\x03(\tR\x07stringsB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12I\
+    \n\x08messages\x18\x02\x20\x03(\x0b2#.proto_validate.test.Repeated.Inner\
+    R\x08messagesB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12\"\n\x07limited\x18\
+    \x03\x20\x03(\rR\x07limitedB\x08\xfaB\x05\x92\x01\x02\x10\x02\x128\n\x11\
+    non_empty_strings\x18\x04\x20\x03(\tR\x0fnonEmptyStringsB\x0c\xfaB\t\x92\
+    \x01\x06\"\x04r\x02\x10\x01\x127\n\x10positive_numbers\x18\x05\x20\x03(\
+    \rR\x0fpositiveNumbersB\x0c\xfaB\t\x92\x01\x06\"\x04*\x02\x20\0\x12:\n\r\
+    probabilities\x18\x06\x20\x03(\x02R\rprobabilitiesB\x14\xfaB\x11\x92\x01\
+    \x0e\"\x0c\n\n\x1d\0\0\x80?-\0\0\0\0\x1a\x07\n\x05Inner\"\x8c\x01\n\x03M\
+    ap\x12I\n\x07limited\x18\x01\x20\x03(\x0b2%.proto_validate.test.Map.Limi\
+    tedEntryR\x07limitedB\x08\xfaB\x05\x9a\x01\x02\x10\x02\x1a:\n\x0cLimited\
+    Entry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\
+    \x02\x20\x01(\rR\x05value:\x028\x01\"\xa0\x01\n\x11MapNotImplemented\x12\
+    Q\n\x05field\x18\x01\x20\x03(\x0b21.proto_validate.test.MapNotImplemente\
+    d.FieldEntryR\x05fieldB\x08\xfaB\x05\x9a\x01\x02\x18\x01\x1a8\n\nFieldEn\
+    try\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\
+    \x02\x20\x01(\rR\x05value:\x028\x01\"V\n\x07Message\x12B\n\x05inner\x18\
+    \x01\x20\x01(\x0b2\".proto_validate.test.Message.InnerR\x05innerB\x08\
+    \xfaB\x05\x8a\x01\x02\x10\x01\x1a\x07\n\x05Inner\"Z\n\x05OneOf\x12!\n\
+    \x06field1\x18\x01\x20\x01(\x08H\0R\x06field1B\x07\xfaB\x04j\x02\x08\x01\
+    \x12!\n\x06field2\x18\x02\x20\x01(\tH\0R\x06field2B\x07\xfaB\x04r\x02\
+    \x10\x01B\x0b\n\x04test\x12\x03\xf8B\x01\"/\n\x0eNotImplemented\x12\x1d\
+    \n\x05field\x18\x01\x20\x01(\tR\x05fieldB\x07\xfaB\x04r\x02(\n\"Q\n\x14N\
+    estedNotImplemented\x129\n\x05field\x18\x01\x20\x01(\x0b2#.proto_validat\
+    e.test.NotImplementedR\x05field\"]\n\x07EnumOld\x12A\n\x05field\x18\x01\
+    \x20\x01(\x0e2!.proto_validate.test.EnumOld.EnumR\x05fieldB\x08\xfaB\x05\
+    \x82\x01\x02\x10\x01\"\x0f\n\x04Enum\x12\x07\n\x03FOO\x10\0\"\\\n\x07Enu\
+    mNew\x127\n\x05field\x18\x01\x20\x01(\x0e2!.proto_validate.test.EnumNew.\
+    EnumR\x05field\"\x18\n\x04Enum\x12\x07\n\x03FOO\x10\0\x12\x07\n\x03BAR\
+    \x10\x01\"j\n\tEnumNotIn\x12C\n\x05field\x18\x01\x20\x01(\x0e2#.proto_va\
+    lidate.test.EnumNotIn.EnumR\x05fieldB\x08\xfaB\x05\x82\x01\x02\x20\x01\"\
+    \x18\n\x04Enum\x12\x07\n\x03FOO\x10\0\x12\x07\n\x03BAR\x10\x01\"'\n\x06U\
+    int32\x12\x1d\n\x05field\x18\x01\x20\x01(\rR\x05fieldB\x07\xfaB\x04*\x02\
+    \x20\0\"'\n\x06Uint64\x12\x1d\n\x05field\x18\x01\x20\x01(\x04R\x05fieldB\
+    \x07\xfaB\x042\x02\x20\0\"&\n\x05Int32\x12\x1d\n\x05field\x18\x01\x20\
+    \x01(\x05R\x05fieldB\x07\xfaB\x04\x1a\x02\x20\0\"&\n\x05Int64\x12\x1d\n\
+    \x05field\x18\x01\x20\x01(\x03R\x05fieldB\x07\xfaB\x04\"\x02\x20\0\".\n\
+    \x05Float\x12%\n\x05field\x18\x01\x20\x01(\x02R\x05fieldB\x0f\xfaB\x0c\n\
+    \n\x1d\0\0\x80?-\0\0\0\0\"7\n\x06Double\x12-\n\x05field\x18\x01\x20\x01(\
+    \x01R\x05fieldB\x17\xfaB\x14\x12\x12\x11\0\0\0\0\0\0\xf0?!\0\0\0\0\0\0\0\
+    \0b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -3563,13 +3687,14 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(::protobuf::well_known_types::duration::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(24);
+            let mut messages = ::std::vec::Vec::with_capacity(25);
             messages.push(Duration::generated_message_descriptor_data());
             messages.push(DurationGte::generated_message_descriptor_data());
             messages.push(Timestamp::generated_message_descriptor_data());
             messages.push(TimestampGtNow::generated_message_descriptor_data());
             messages.push(Bool::generated_message_descriptor_data());
             messages.push(String::generated_message_descriptor_data());
+            messages.push(Uuid::generated_message_descriptor_data());
             messages.push(Repeated::generated_message_descriptor_data());
             messages.push(Map::generated_message_descriptor_data());
             messages.push(MapNotImplemented::generated_message_descriptor_data());
