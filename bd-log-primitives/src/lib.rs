@@ -33,7 +33,6 @@ use flate2::write::ZlibEncoder;
 use ordered_float::NotNan;
 use protobuf::{CodedInputStream, CodedOutputStream};
 use std::borrow::Cow;
-use std::mem::size_of_val;
 use std::sync::{Arc, LazyLock};
 use time::OffsetDateTime;
 
@@ -46,33 +45,26 @@ pub const LOG_FIELD_NAME_MESSAGE: &str = "_message";
 //
 
 /// The pre-processing representation of a log emitted into the SDK ingress pipeline.
-#[derive(Debug)]
+#[derive(ApproximateSize, Debug)]
 pub struct LogLine {
+  #[approximate_size(skip)]
   pub log_level: LogLevel,
+  #[approximate_size(skip)]
   pub log_type: LogType,
   pub message: LogMessage,
+  #[approximate_size(with = approximate_ahash_map_children_bytes)]
   pub fields: AnnotatedLogFields,
+  #[approximate_size(with = approximate_ahash_map_children_bytes)]
   pub matching_fields: AnnotatedLogFields,
   pub attributes_overrides: Option<LogAttributesOverrides>,
+  #[approximate_size(skip)]
   pub capture_session: Option<&'static str>,
 }
 
-#[derive(Debug)]
+#[derive(ApproximateSize, Debug)]
 pub enum LogAttributesOverrides {
   PreviousRunSessionID(OffsetDateTime),
   OccurredAt(OffsetDateTime),
-}
-
-impl MemorySized for LogLine {
-  fn size(&self) -> usize {
-    size_of_val(&self.log_level)
-      + size_of_val(&self.log_type)
-      + self.message.size()
-      + self.fields.size()
-      + self.matching_fields.size()
-      + size_of_val(&self.attributes_overrides)
-      + 24
-  }
 }
 
 // Helpers for doing raw casts where we are sure the value fits and don't want to pay for

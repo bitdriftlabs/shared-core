@@ -9,7 +9,9 @@ version      = "1.0.0"
 bd-client-common.path  = "../bd-client-common"
 bd-completion.path     = "../bd-completion"
 bd-log-primitives.path = "../bd-log-primitives"
+bd-macros.path         = "../bd-macros"
 bd-proto.path          = "../bd-proto"
+time.workspace         = true
 tokio.workspace        = true
 
 [dev-dependencies]

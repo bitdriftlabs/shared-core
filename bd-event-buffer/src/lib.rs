@@ -6,14 +6,13 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use bd_client_common::PlatformMutex;
-use bd_log_primitives::size::MemorySized;
-use bd_log_primitives::{DataValue, LogLevel, LogLine, log_level};
+use bd_log_primitives::{AnnotatedLogFields, DataValue, LogFields, LogLevel, LogLine, log_level};
+use bd_macros::ApproximateSize;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::logging::payload::LogType;
 use std::sync::Arc;
+use time::OffsetDateTime;
 use tokio::sync::Notify;
-
-mod retention;
 
 #[cfg(test)]
 #[path = "./event_buffer_prop_test.rs"]
@@ -22,85 +21,150 @@ mod prop_tests;
 #[path = "./lib_test.rs"]
 mod tests;
 
+mod retention;
+
 pub use retention::EventBufferState;
 
-pub const ENTRY_OVERHEAD_BYTES: usize = 64;
-
-#[derive(Debug)]
+#[derive(ApproximateSize, Debug)]
 pub enum StateUpdateMessage {
   AddLogField(String, DataValue),
   UpdateOotbLogField(String, DataValue),
   RemoveLogField(String),
-  SetFeatureFlagExposure(String, Option<String>),
-  SetMemoryPressureLevel { level: MemoryPressureLevel },
+  SetMemoryPressureLevel {
+    #[approximate_size(skip)]
+    level: MemoryPressureLevel,
+  },
   SetEntityId(Option<String>),
-  FlushState(Option<bd_completion::Sender<()>>),
+  FlushState(#[approximate_size(skip)] Option<bd_completion::Sender<()>>),
 }
 
-impl MemorySized for StateUpdateMessage {
-  fn size(&self) -> usize {
-    std::mem::size_of_val(self)
-      + match self {
-        Self::AddLogField(key, value) | Self::UpdateOotbLogField(key, value) => {
-          key.size() + value.size()
-        },
-        Self::RemoveLogField(key) => key.len(),
-        Self::SetFeatureFlagExposure(flag, variant) => {
-          flag.len() + variant.as_ref().map_or(0, String::len)
-        },
-        Self::SetMemoryPressureLevel { .. } => 0,
-        Self::SetEntityId(id) => id.as_ref().map_or(0, String::len),
-        Self::FlushState(sender) => std::mem::size_of_val(sender),
-      }
-  }
+//
+// ProviderSnapshot
+//
+
+/// Results returned by field providers at the producer-side capture point.
+#[derive(ApproximateSize, Debug)]
+pub struct ProviderSnapshot {
+  #[approximate_size(skip)]
+  pub timestamp: OffsetDateTime,
+  #[approximate_size(with = bd_log_primitives::approximate_ahash_map_children_bytes)]
+  pub ootb_fields: LogFields,
+  #[approximate_size(with = bd_log_primitives::approximate_ahash_map_children_bytes)]
+  pub custom_fields: LogFields,
 }
 
-#[derive(Debug)]
-pub struct CapturedLog {
-  pub log: LogLine,
+//
+// CurrentProcessContext
+//
+
+/// Immutable current-process context used by logs and workflow-replayed state operations.
+#[derive(ApproximateSize, Debug)]
+pub struct CurrentProcessContext {
+  pub session_id: String,
+  pub provider: ProviderSnapshot,
+  /// This snapshot is shared with logger field-map accounting and is not charged per entry.
+  pub logger_fields: Arc<AnnotatedLogFields>,
+  pub admitted_at: OffsetDateTime,
+}
+
+//
+// CapturedContext
+//
+
+/// Context captured for an `EventBuffer` entry before ALB processes it.
+#[derive(ApproximateSize, Debug)]
+pub enum CapturedContext {
+  CurrentProcess(CurrentProcessContext),
+  /// Previous-process logs are finalized against prior global state on the consumer.
+  PreviousProcess,
+}
+
+//
+// CapturedEventPayload
+//
+
+#[derive(ApproximateSize, Debug)]
+pub enum CapturedEventPayload {
+  Log(LogLine),
+  FeatureFlagExposure {
+    flag: String,
+    variant: Option<String>,
+  },
+}
+
+//
+// CapturedEvent
+//
+
+/// A producer-side snapshot retained until ALB finishes processing the event.
+#[derive(ApproximateSize, Debug)]
+pub struct CapturedEvent {
+  pub context: CapturedContext,
+  pub payload: CapturedEventPayload,
+  #[approximate_size(skip)]
   completion: Option<bd_completion::Sender<()>>,
-  pub blocking: bool,
 }
-impl CapturedLog {
+
+impl CapturedEvent {
   #[must_use]
-  pub fn new(log: LogLine, blocking: bool, completion: Option<bd_completion::Sender<()>>) -> Self {
+  pub fn log(
+    log: LogLine,
+    context: CapturedContext,
+    completion: Option<bd_completion::Sender<()>>,
+  ) -> Self {
     Self {
-      log,
+      context,
+      payload: CapturedEventPayload::Log(log),
       completion,
-      blocking,
+    }
+  }
+
+  #[must_use]
+  pub fn feature_flag_exposure(
+    flag: String,
+    variant: Option<String>,
+    context: CurrentProcessContext,
+  ) -> Self {
+    Self {
+      context: CapturedContext::CurrentProcess(context),
+      payload: CapturedEventPayload::FeatureFlagExposure { flag, variant },
+      completion: None,
     }
   }
 }
 
-#[derive(Debug)]
+#[derive(ApproximateSize, Debug)]
 pub enum EventBufferEntry {
-  Log(CapturedLog),
+  Captured(Box<CapturedEvent>),
   State(StateUpdateMessage),
 }
+
 impl EventBufferEntry {
+  #[must_use]
+  pub fn captured(event: CapturedEvent) -> Self {
+    Self::Captured(Box::new(event))
+  }
+
   #[must_use]
   pub fn lane(&self) -> RetentionLane {
     match self {
-      Self::Log(log) => retention_lane(log.log.log_type, log.log.log_level, log.blocking),
+      Self::Captured(event) => match &event.payload {
+        CapturedEventPayload::Log(log) => retention_lane(log.log_type, log.log_level),
+        CapturedEventPayload::FeatureFlagExposure { .. } => RetentionLane::Protected,
+      },
       Self::State(_) => RetentionLane::Protected,
     }
   }
-  #[must_use]
-  pub fn size(&self) -> usize {
-    ENTRY_OVERHEAD_BYTES
-      + match self {
-        Self::Log(log) => log.log.size(),
-        Self::State(state) => state.size(),
-      }
-  }
+
   pub fn complete(mut self) {
     if let Some(completion) = self.take_completion() {
       completion.send(());
     }
   }
+
   fn take_completion(&mut self) -> Option<bd_completion::Sender<()>> {
     match self {
-      Self::Log(log) => log.completion.take(),
+      Self::Captured(event) => event.completion.take(),
       Self::State(StateUpdateMessage::FlushState(completion)) => completion.take(),
       Self::State(_) => None,
     }
@@ -108,8 +172,8 @@ impl EventBufferEntry {
 }
 
 #[must_use]
-pub fn retention_lane(log_type: LogType, log_level: LogLevel, blocking: bool) -> RetentionLane {
-  if blocking || matches!(log_type, LogType::LIFECYCLE | LogType::DEVICE) {
+pub fn retention_lane(log_type: LogType, log_level: LogLevel) -> RetentionLane {
+  if matches!(log_type, LogType::LIFECYCLE | LogType::DEVICE) {
     RetentionLane::Protected
   } else if log_level <= log_level::DEBUG {
     RetentionLane::Low
@@ -118,14 +182,20 @@ pub fn retention_lane(log_type: LogType, log_level: LogLevel, blocking: bool) ->
   }
 }
 
+//
+// EventBuffer
+//
+
 #[derive(Clone)]
 pub struct EventBuffer {
   inner: Arc<EventBufferInner>,
 }
+
 struct EventBufferInner {
   state: PlatformMutex<LoggerEventBufferState>,
   notify: Notify,
 }
+
 struct LoggerEventBufferState {
   retention: EventBufferState<EventBufferEntry>,
 }
@@ -142,14 +212,18 @@ impl EventBuffer {
       }),
     }
   }
+
   pub fn set_pending_limits(&self, limits: EventBufferLimits) {
     self.inner.state.lock().retention.set_pending_limits(limits);
   }
+
   #[must_use]
   pub fn admit(&self, entry: EventBufferEntry) -> AdmissionOutcome {
     let outcome = {
       let mut state = self.inner.state.lock();
-      state.retention.admit(entry.lane(), entry.size(), entry)
+      state
+        .retention
+        .admit(entry.lane(), entry.approximate_size_bytes(), entry)
     };
     if outcome == AdmissionOutcome::Admitted {
       self.inner.notify.notify_one();

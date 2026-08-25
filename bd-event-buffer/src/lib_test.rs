@@ -7,21 +7,41 @@
 
 use super::{
   AdmissionOutcome,
-  CapturedLog,
+  CapturedContext,
+  CapturedEvent,
+  CapturedEventPayload,
+  CurrentProcessContext,
   EventBuffer,
   EventBufferEntry,
   EventBufferLimits,
   EventBufferState,
+  ProviderSnapshot,
   RetentionLane,
   StateUpdateMessage,
   retention_lane,
 };
-use bd_log_primitives::{AnnotatedLogFields, DataValue, LogLine, log_level};
+use bd_log_primitives::{AnnotatedLogFields, DataValue, LogFields, LogLine, log_level};
+use bd_macros::ApproximateSize;
 use bd_proto::protos::logging::payload::LogType;
+use std::sync::Arc;
+use time::OffsetDateTime;
 use tokio::sync::oneshot;
 
+fn current_process_context() -> CapturedContext {
+  CapturedContext::CurrentProcess(CurrentProcessContext {
+    session_id: "session".to_string(),
+    provider: ProviderSnapshot {
+      timestamp: OffsetDateTime::UNIX_EPOCH,
+      ootb_fields: LogFields::default(),
+      custom_fields: LogFields::default(),
+    },
+    logger_fields: Arc::new(AnnotatedLogFields::default()),
+    admitted_at: OffsetDateTime::UNIX_EPOCH,
+  })
+}
+
 fn log(level: bd_log_primitives::LogLevel, log_type: LogType, bytes: usize) -> EventBufferEntry {
-  EventBufferEntry::Log(CapturedLog::new(
+  EventBufferEntry::captured(CapturedEvent::log(
     LogLine {
       log_level: level,
       log_type,
@@ -31,23 +51,7 @@ fn log(level: bd_log_primitives::LogLevel, log_type: LogType, bytes: usize) -> E
       attributes_overrides: None,
       capture_session: None,
     },
-    false,
-    None,
-  ))
-}
-
-fn blocking_log(bytes: usize) -> EventBufferEntry {
-  EventBufferEntry::Log(CapturedLog::new(
-    LogLine {
-      log_level: log_level::TRACE,
-      log_type: LogType::NORMAL,
-      message: "x".repeat(bytes).into(),
-      fields: AnnotatedLogFields::default(),
-      matching_fields: AnnotatedLogFields::default(),
-      attributes_overrides: None,
-      capture_session: None,
-    },
-    true,
+    current_process_context(),
     None,
   ))
 }
@@ -81,20 +85,43 @@ fn state_limits(log_limit_bytes: usize, total_limit_bytes: usize) -> EventBuffer
 fn priority_mapping_covers_protected_and_evictable_logs() {
   assert_eq!(
     RetentionLane::Low,
-    retention_lane(LogType::NORMAL, log_level::DEBUG, false)
+    retention_lane(LogType::NORMAL, log_level::DEBUG)
   );
   assert_eq!(
     RetentionLane::High,
-    retention_lane(LogType::NORMAL, log_level::INFO, false)
+    retention_lane(LogType::NORMAL, log_level::INFO)
   );
   assert_eq!(
     RetentionLane::Protected,
-    retention_lane(LogType::LIFECYCLE, log_level::TRACE, false)
+    retention_lane(LogType::LIFECYCLE, log_level::TRACE)
   );
-  assert_eq!(
-    RetentionLane::Protected,
-    retention_lane(LogType::NORMAL, log_level::TRACE, true)
-  );
+}
+
+#[test]
+fn feature_flag_exposure_carries_current_process_context_in_the_protected_lane() {
+  let entry = EventBufferEntry::captured(CapturedEvent::feature_flag_exposure(
+    "flag".to_string(),
+    Some("variant".to_string()),
+    match current_process_context() {
+      CapturedContext::CurrentProcess(context) => context,
+      CapturedContext::PreviousProcess => {
+        unreachable!("test helper returns current-process context")
+      },
+    },
+  ));
+
+  assert_eq!(RetentionLane::Protected, entry.lane());
+  assert!(matches!(
+    entry,
+    EventBufferEntry::Captured(event) if matches!(
+      event.as_ref(),
+      CapturedEvent {
+        context: CapturedContext::CurrentProcess(CurrentProcessContext { session_id, .. }),
+        payload: CapturedEventPayload::FeatureFlagExposure { flag, variant },
+        ..
+      } if session_id == "session" && flag == "flag" && variant.as_deref() == Some("variant")
+    )
+  ));
 }
 
 #[tokio::test]
@@ -115,7 +142,10 @@ async fn preserves_log_and_field_update_admission_order() {
     .await
     .into_iter()
     .map(|entry| match entry {
-      EventBufferEntry::Log(log) => format!("log:{}", log.log.message),
+      EventBufferEntry::Captured(event) => match event.payload {
+        CapturedEventPayload::Log(log) => format!("log:{}", log.message),
+        CapturedEventPayload::FeatureFlagExposure { flag, .. } => format!("feature_flag:{flag}"),
+      },
       EventBufferEntry::State(StateUpdateMessage::AddLogField(key, _)) => {
         format!("add_field:{key}")
       },
@@ -128,8 +158,8 @@ async fn preserves_log_and_field_update_admission_order() {
 #[tokio::test]
 async fn batch_eviction_removes_tiny_lower_priority_logs() {
   const COUNT: usize = 64;
-  let low_size = log(log_level::DEBUG, LogType::NORMAL, 0).size();
-  let incoming_base = log(log_level::INFO, LogType::NORMAL, 0).size();
+  let low_size = log(log_level::DEBUG, LogType::NORMAL, 0).approximate_size_bytes();
+  let incoming_base = log(log_level::INFO, LogType::NORMAL, 0).approximate_size_bytes();
   let buffer = buffer(COUNT * low_size);
   for _ in 0 .. COUNT {
     assert_eq!(
@@ -148,16 +178,22 @@ async fn batch_eviction_removes_tiny_lower_priority_logs() {
 
   let batch = buffer.next_batch(COUNT + 1).await;
   assert_eq!(1, batch.len());
-  assert!(matches!(&batch[0], EventBufferEntry::Log(log) if log.log.log_level == log_level::INFO));
+  let EventBufferEntry::Captured(event) = &batch[0] else {
+    panic!("expected an admitted log");
+  };
+  assert!(matches!(
+    &event.payload,
+    CapturedEventPayload::Log(log) if log.log_level == log_level::INFO
+  ));
 }
 
 #[tokio::test]
 async fn rejected_admission_does_not_partially_evict() {
   let low = log(log_level::DEBUG, LogType::NORMAL, 1);
-  let low_size = low.size();
-  let protected = blocking_log(1);
-  let total = low.size() + protected.size();
-  let incoming_base = log(log_level::INFO, LogType::NORMAL, 0).size();
+  let low_size = low.approximate_size_bytes();
+  let protected = log(log_level::WARNING, LogType::LIFECYCLE, 1);
+  let total = low.approximate_size_bytes() + protected.approximate_size_bytes();
+  let incoming_base = log(log_level::INFO, LogType::NORMAL, 0).approximate_size_bytes();
   let buffer = EventBuffer::new(EventBufferLimits {
     log_limit_bytes: usize::MAX,
     total_limit_bytes: total,
@@ -180,7 +216,7 @@ async fn rejected_admission_does_not_partially_evict() {
 async fn completion_is_sent_only_after_consumer_processing() {
   let buffer = buffer(10_000);
   let (sender, receiver) = bd_completion::Sender::new();
-  let entry = EventBufferEntry::Log(CapturedLog::new(
+  let entry = EventBufferEntry::captured(CapturedEvent::log(
     LogLine {
       log_level: log_level::INFO,
       log_type: LogType::NORMAL,
@@ -190,7 +226,7 @@ async fn completion_is_sent_only_after_consumer_processing() {
       attributes_overrides: None,
       capture_session: None,
     },
-    false,
+    current_process_context(),
     Some(sender),
   ));
   assert_eq!(AdmissionOutcome::Admitted, buffer.admit(entry));
@@ -213,7 +249,7 @@ async fn completion_is_sent_only_after_consumer_processing() {
 async fn close_drops_unprocessed_completion_senders() {
   let buffer = buffer(10_000);
   let (sender, receiver) = bd_completion::Sender::new();
-  let entry = EventBufferEntry::Log(CapturedLog::new(
+  let entry = EventBufferEntry::captured(CapturedEvent::log(
     LogLine {
       log_level: log_level::INFO,
       log_type: LogType::NORMAL,
@@ -223,7 +259,7 @@ async fn close_drops_unprocessed_completion_senders() {
       attributes_overrides: None,
       capture_session: None,
     },
-    false,
+    current_process_context(),
     Some(sender),
   ));
   assert_eq!(AdmissionOutcome::Admitted, buffer.admit(entry));
