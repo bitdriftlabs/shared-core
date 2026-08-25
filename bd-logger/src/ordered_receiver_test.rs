@@ -7,37 +7,13 @@
 
 use super::{OrderedMessage, OrderedReceiver, SequencedMessage};
 use bd_bounded_buffer::channel;
-use bd_log_primitives::size::MemorySized;
+use bd_macros::ApproximateSize;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(ApproximateSize, Debug, PartialEq, Eq)]
 struct TestLog(String);
 
-impl MemorySized for TestLog {
-  fn size(&self) -> usize {
-    self.0.len()
-  }
-}
-
-#[derive(Debug, PartialEq, Eq)]
+#[derive(ApproximateSize, Debug, PartialEq, Eq)]
 struct TestState(String);
-
-impl MemorySized for TestState {
-  fn size(&self) -> usize {
-    self.0.len()
-  }
-}
-
-impl MemorySized for SequencedMessage<TestLog> {
-  fn size(&self) -> usize {
-    self.message.size()
-  }
-}
-
-impl MemorySized for SequencedMessage<TestState> {
-  fn size(&self) -> usize {
-    self.message.size()
-  }
-}
 
 #[tokio::test]
 async fn orders_interleaved_messages_by_sequence() {

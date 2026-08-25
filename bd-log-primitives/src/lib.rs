@@ -18,14 +18,12 @@
 #[path = "./lib_test.rs"]
 mod lib_test;
 
-pub mod size;
 pub mod tiny_set;
 pub mod zlib;
 
-use crate::size::MemorySized;
 use crate::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use ahash::AHashMap;
-use bd_macros::proto_serializable;
+use bd_macros::{ApproximateSize, proto_serializable};
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::{ArrayData, BinaryData, Data, LogType, MapData};
 use bd_proto_util::serialization::ProtoMessageSerialize;
@@ -96,7 +94,7 @@ impl LossyIntToUsize for u64 {
   validate_against = "bd_proto::protos::logging::payload::BinaryData",
   validate_partial
 )]
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(ApproximateSize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct LogBinaryData {
   #[field(id = 2)]
   payload: Vec<u8>,
@@ -163,9 +161,10 @@ impl std::ops::Deref for LogBinaryData {
 }
 
 #[proto_serializable(validate_against = "bd_proto::protos::logging::payload::MapData")]
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(ApproximateSize, Debug, Clone, PartialEq, Eq, Default)]
 pub struct LogMapData {
   #[field(id = 1)]
+  #[approximate_size(with = approximate_ahash_map_children_bytes)]
   entries: AHashMap<String, DataValue>,
 }
 
@@ -248,16 +247,28 @@ impl LogArrayData {
   }
 }
 
+impl ApproximateSize for LogArrayData {
+  fn approximate_size_children_bytes(&self) -> usize {
+    self.items.iter().fold(
+      self
+        .items
+        .capacity()
+        .saturating_mul(std::mem::size_of::<DataValue>()),
+      |size, value| size.saturating_add(value.approximate_size_children_bytes()),
+    )
+  }
+}
+
 /// A union type that allows representing either a UTF-8 string, binary data, or primitive values.
 #[proto_serializable(validate_against = "bd_proto::protos::logging::payload::Data")]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(ApproximateSize, Debug, Clone, PartialEq, Eq)]
 pub enum DataValue {
   #[field(id = 1, deserialize)]
   String(String),
   #[field(id = 1)]
   SharedString(Arc<str>),
   #[field(id = 1)]
-  StaticString(&'static str),
+  StaticString(#[approximate_size(skip)] &'static str),
   #[field(id = 2)]
   Bytes(LogBinaryData),
   #[field(id = 6)]
@@ -267,7 +278,7 @@ pub enum DataValue {
   #[field(id = 5)]
   I64(i64),
   #[field(id = 4)]
-  Double(NotNan<f64>),
+  Double(#[approximate_size(skip)] NotNan<f64>),
   #[field(id = 7)]
   Map(LogMapData),
   #[field(id = 8)]
@@ -503,6 +514,27 @@ pub type AnnotatedLogFields = AHashMap<LogFieldKey, AnnotatedLogField>;
 /// The list of owned log fields.
 pub type LogFields = AHashMap<LogFieldKey, LogFieldValue>;
 
+/// Returns the allocations owned by an `AHashMap` outside its inline metadata.
+///
+/// `AHashMap` cannot implement `ApproximateSize` directly because neither the trait nor the map
+/// type is local to this crate. Queue-owned logging types call this helper from their local trait
+/// implementations instead.
+#[must_use]
+pub fn approximate_ahash_map_children_bytes<K: ApproximateSize, V: ApproximateSize>(
+  values: &AHashMap<K, V>,
+) -> usize {
+  values.iter().fold(
+    values
+      .capacity()
+      .saturating_mul(std::mem::size_of::<(K, V)>()),
+    |size, (key, value)| {
+      size
+        .saturating_add(key.approximate_size_children_bytes())
+        .saturating_add(value.approximate_size_children_bytes())
+    },
+  )
+}
+
 /// An empty `LogFields`, useful to referencing an empty set of fields without dealing with
 /// lifetime issues.
 pub static EMPTY_FIELDS: LazyLock<LogFields> = LazyLock::new(AHashMap::new);
@@ -511,7 +543,7 @@ pub static EMPTY_FIELDS: LazyLock<LogFields> = LazyLock::new(AHashMap::new);
 // AnnotatedLogField
 //
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(ApproximateSize, Debug, Clone, PartialEq, Eq)]
 pub struct AnnotatedLogField {
   pub value: LogFieldValue,
   pub kind: LogFieldKind,
@@ -539,7 +571,7 @@ impl AnnotatedLogField {
 // LogFieldKind
 //
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(ApproximateSize, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LogFieldKind {
   Ootb,
   Custom,
@@ -654,17 +686,20 @@ pub struct CompressedLogRef<'a> {
 ///
 /// Serialization is handled via proc-macro-generated `RawLogRef` and `CompressedLogRef` structs,
 /// which avoid the overhead of normal protobuf generated code by eliminating copying.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(ApproximateSize, Debug, PartialEq, Eq)]
 pub struct Log {
-  // Remember to update the implementation of the `MemorySized` trait every time the struct is
-  // modified!!!
+  #[approximate_size(skip)]
   pub log_level: LogLevel,
+  #[approximate_size(skip)]
   pub log_type: LogType,
   pub message: DataValue,
+  #[approximate_size(with = approximate_ahash_map_children_bytes)]
   pub fields: LogFields,
+  #[approximate_size(with = approximate_ahash_map_children_bytes)]
   pub matching_fields: LogFields,
   pub session_id: String,
   pub occurred_at: time::OffsetDateTime,
+  #[approximate_size(skip)]
   pub capture_session: Option<&'static str>,
 }
 
@@ -957,42 +992,4 @@ pub trait LogInterceptor: Send + Sync {
     fields: &mut AnnotatedLogFields,
     matching_fields: &mut AnnotatedLogFields,
   );
-}
-
-impl MemorySized for AnnotatedLogField {
-  fn size(&self) -> usize {
-    size_of_val(self) + self.value.size() + size_of_val(&self.kind)
-  }
-}
-
-impl MemorySized for LogFieldValue {
-  fn size(&self) -> usize {
-    size_of_val(self)
-      + match self {
-        Self::String(s) => s.len(),
-        // For these variants the string is stored on the heap so we assume that it takes up no
-        // space within the enum itself.
-        Self::SharedString(_)
-        | Self::StaticString(_)
-        | Self::Boolean(_)
-        | Self::U64(_)
-        | Self::I64(_)
-        | Self::Double(_) => 0,
-        Self::Bytes(b) => b.capacity(),
-        Self::Map(map_data) => map_data.entries().size(),
-        Self::Array(array_data) => array_data.items().size(),
-      }
-  }
-}
-
-impl MemorySized for Log {
-  fn size(&self) -> usize {
-    // The size cannot be computed by just calling a `size_of_val(self)` in here
-    // as that does not account for various heap allocations.
-    size_of_val(self)
-      + self.message.size()
-      + self.fields.size()
-      + self.matching_fields.size()
-      + self.session_id.len()
-  }
 }

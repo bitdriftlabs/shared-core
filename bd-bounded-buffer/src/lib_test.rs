@@ -5,7 +5,8 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{MemorySized, channel};
+use super::channel;
+use bd_macros::ApproximateSize;
 use tokio_test::{assert_err, assert_ok};
 
 #[derive(Debug)]
@@ -13,9 +14,13 @@ struct Item {
   reported_size: usize,
 }
 
-impl MemorySized for Item {
-  fn size(&self) -> usize {
+impl ApproximateSize for Item {
+  fn approximate_size_bytes(&self) -> usize {
     self.reported_size
+  }
+
+  fn approximate_size_children_bytes(&self) -> usize {
+    0
   }
 }
 
