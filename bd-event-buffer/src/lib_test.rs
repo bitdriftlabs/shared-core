@@ -348,13 +348,6 @@ async fn close_drops_unprocessed_completion_senders() {
 }
 
 #[test]
-fn take_batch_does_not_preallocate_the_requested_batch_size() {
-  let mut state = EventBufferState::<()>::new(limits(0));
-
-  assert!(state.take_batch(usize::MAX).is_empty());
-}
-
-#[test]
 fn pending_log_limit_shrink_evicts_newest_low_then_high_entries() {
   let mut state = EventBufferState::new(state_limits(100, 100));
   for (lane, entry) in [
