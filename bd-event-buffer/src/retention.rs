@@ -9,27 +9,6 @@ use crate::{AdmissionOutcome, EventBufferLimits, RetentionLane};
 use std::collections::VecDeque;
 
 //
-// EventBufferState
-//
-
-/// A synchronous, priority-aware retention state machine.
-///
-/// The owner supplies synchronization and associates each payload with a lane and accounting
-/// size. Each lane is FIFO, while `admission_id` lets `take_batch` merge their fronts back into
-/// global admission order. Low entries never displace existing entries; high entries can displace
-/// low entries; protected entries can displace low, then high, entries. Protected entries are
-/// never evicted.
-pub struct EventBufferState<T> {
-  limits: EventBufferLimits,
-  pending_limits: Option<EventBufferLimits>,
-  next_admission_id: u64,
-  closed: bool,
-  protected: LaneState<T>,
-  high: LaneState<T>,
-  low: LaneState<T>,
-}
-
-//
 // AdmissionResult
 //
 
@@ -81,7 +60,7 @@ impl<T> TerminalEntries<T> {
   }
 
   fn reject(&mut self, entry: T) {
-    assert!(
+    debug_assert!(
       self.rejected.is_none(),
       "an admission has only one rejected entry"
     );
@@ -95,6 +74,27 @@ impl<T> TerminalEntries<T> {
       RetentionLane::Protected => self.protected.extend(entries),
     }
   }
+}
+
+//
+// EventBufferState
+//
+
+/// A synchronous, priority-aware retention state machine.
+///
+/// The owner supplies synchronization and associates each payload with a lane and accounting
+/// size. Each lane is FIFO, while `admission_id` lets `take_batch` merge their fronts back into
+/// global admission order. Low entries never displace existing entries; high entries can displace
+/// low entries; protected entries can displace low, then high, entries. Protected entries are
+/// never evicted.
+pub struct EventBufferState<T> {
+  limits: EventBufferLimits,
+  pending_limits: Option<EventBufferLimits>,
+  next_admission_id: u64,
+  closed: bool,
+  protected: LaneState<T>,
+  high: LaneState<T>,
+  low: LaneState<T>,
 }
 
 impl<T> EventBufferState<T> {
