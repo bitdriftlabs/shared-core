@@ -64,6 +64,8 @@ pub enum Permission {
     CONNECTOR_READ = 17,
     // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.DEBUG_FILE_READ)
     DEBUG_FILE_READ = 15,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.DEBUG_FILE_UPLOAD)
+    DEBUG_FILE_UPLOAD = 35,
     // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.SYSTEM_STATUS_READ)
     SYSTEM_STATUS_READ = 18,
     // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.Permission.ISSUE_WORKFLOW_WRITE)
@@ -124,6 +126,7 @@ impl ::protobuf::Enum for Permission {
             14 => ::std::option::Option::Some(Permission::CONNECTOR_ADMIN),
             17 => ::std::option::Option::Some(Permission::CONNECTOR_READ),
             15 => ::std::option::Option::Some(Permission::DEBUG_FILE_READ),
+            35 => ::std::option::Option::Some(Permission::DEBUG_FILE_UPLOAD),
             18 => ::std::option::Option::Some(Permission::SYSTEM_STATUS_READ),
             19 => ::std::option::Option::Some(Permission::ISSUE_WORKFLOW_WRITE),
             20 => ::std::option::Option::Some(Permission::ALERT_ADMIN),
@@ -162,6 +165,7 @@ impl ::protobuf::Enum for Permission {
             "CONNECTOR_ADMIN" => ::std::option::Option::Some(Permission::CONNECTOR_ADMIN),
             "CONNECTOR_READ" => ::std::option::Option::Some(Permission::CONNECTOR_READ),
             "DEBUG_FILE_READ" => ::std::option::Option::Some(Permission::DEBUG_FILE_READ),
+            "DEBUG_FILE_UPLOAD" => ::std::option::Option::Some(Permission::DEBUG_FILE_UPLOAD),
             "SYSTEM_STATUS_READ" => ::std::option::Option::Some(Permission::SYSTEM_STATUS_READ),
             "ISSUE_WORKFLOW_WRITE" => ::std::option::Option::Some(Permission::ISSUE_WORKFLOW_WRITE),
             "ALERT_ADMIN" => ::std::option::Option::Some(Permission::ALERT_ADMIN),
@@ -199,6 +203,7 @@ impl ::protobuf::Enum for Permission {
         Permission::CONNECTOR_ADMIN,
         Permission::CONNECTOR_READ,
         Permission::DEBUG_FILE_READ,
+        Permission::DEBUG_FILE_UPLOAD,
         Permission::SYSTEM_STATUS_READ,
         Permission::ISSUE_WORKFLOW_WRITE,
         Permission::ALERT_ADMIN,
@@ -242,23 +247,24 @@ impl ::protobuf::EnumFull for Permission {
             Permission::CONNECTOR_ADMIN => 12,
             Permission::CONNECTOR_READ => 13,
             Permission::DEBUG_FILE_READ => 14,
-            Permission::SYSTEM_STATUS_READ => 15,
-            Permission::ISSUE_WORKFLOW_WRITE => 16,
-            Permission::ALERT_ADMIN => 17,
-            Permission::ALERT_READ => 18,
-            Permission::ALERT_WRITE => 19,
-            Permission::NOTIFICATION_GROUP_READ => 20,
-            Permission::NOTIFICATION_GROUP_ADMIN => 21,
-            Permission::VIEW_READ => 22,
-            Permission::VIEW_WRITE => 23,
-            Permission::TEAMS_ADMIN => 24,
-            Permission::TEAMS_WRITE => 25,
-            Permission::TEAMS_READ => 26,
-            Permission::ENTITY_READ => 27,
-            Permission::ENTITY_WRITE => 28,
-            Permission::DASHBOARDS_ADMIN => 29,
-            Permission::DASHBOARDS_WRITE => 30,
-            Permission::DASHBOARDS_READ => 31,
+            Permission::DEBUG_FILE_UPLOAD => 15,
+            Permission::SYSTEM_STATUS_READ => 16,
+            Permission::ISSUE_WORKFLOW_WRITE => 17,
+            Permission::ALERT_ADMIN => 18,
+            Permission::ALERT_READ => 19,
+            Permission::ALERT_WRITE => 20,
+            Permission::NOTIFICATION_GROUP_READ => 21,
+            Permission::NOTIFICATION_GROUP_ADMIN => 22,
+            Permission::VIEW_READ => 23,
+            Permission::VIEW_WRITE => 24,
+            Permission::TEAMS_ADMIN => 25,
+            Permission::TEAMS_WRITE => 26,
+            Permission::TEAMS_READ => 27,
+            Permission::ENTITY_READ => 28,
+            Permission::ENTITY_WRITE => 29,
+            Permission::DASHBOARDS_ADMIN => 30,
+            Permission::DASHBOARDS_WRITE => 31,
+            Permission::DASHBOARDS_READ => 32,
         };
         Self::enum_descriptor().value_by_index(index)
     }
@@ -278,7 +284,7 @@ impl Permission {
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n/bitdrift/public/unary/admin/v1/permission.proto\x12\x1ebitdrift.publi\
-    c.unary.admin.v1*\x88\x05\n\nPermission\x12\x1a\n\x16PERMISSION_UNSPECIF\
+    c.unary.admin.v1*\x9f\x05\n\nPermission\x12\x1a\n\x16PERMISSION_UNSPECIF\
     IED\x10\0\x12\x11\n\rSDK_KEY_ADMIN\x10\x01\x12\x13\n\x0fAPI_KEY_CREATOR\
     \x10\x10\x12\x12\n\x0eWORKFLOW_ADMIN\x10\x02\x12\x11\n\rWORKFLOW_READ\
     \x10\x03\x12\x12\n\x0eWORKFLOW_WRITE\x10\x04\x12\x13\n\x0fWORKFLOW_DEPLO\
@@ -286,15 +292,16 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \t\x12\x0f\n\x0bISSUE_ADMIN\x10\x0b\x12\x10\n\x0cISSUE_ASSIGN\x10\x0c\
     \x12\x0e\n\nISSUE_READ\x10\x08\x12\x13\n\x0fCONNECTOR_ADMIN\x10\x0e\x12\
     \x12\n\x0eCONNECTOR_READ\x10\x11\x12\x13\n\x0fDEBUG_FILE_READ\x10\x0f\
-    \x12\x16\n\x12SYSTEM_STATUS_READ\x10\x12\x12\x18\n\x14ISSUE_WORKFLOW_WRI\
-    TE\x10\x13\x12\x0f\n\x0bALERT_ADMIN\x10\x14\x12\x0e\n\nALERT_READ\x10\
-    \x15\x12\x0f\n\x0bALERT_WRITE\x10\x16\x12\x1b\n\x17NOTIFICATION_GROUP_RE\
-    AD\x10\x17\x12\x1c\n\x18NOTIFICATION_GROUP_ADMIN\x10\x18\x12\r\n\tVIEW_R\
-    EAD\x10\x19\x12\x0e\n\nVIEW_WRITE\x10\x1a\x12\x0f\n\x0bTEAMS_ADMIN\x10\
-    \x1b\x12\x0f\n\x0bTEAMS_WRITE\x10\x1c\x12\x0e\n\nTEAMS_READ\x10\x1d\x12\
-    \x0f\n\x0bENTITY_READ\x10\x1e\x12\x10\n\x0cENTITY_WRITE\x10\x1f\x12\x14\
-    \n\x10DASHBOARDS_ADMIN\x10\x20\x12\x14\n\x10DASHBOARDS_WRITE\x10!\x12\
-    \x13\n\x0fDASHBOARDS_READ\x10\"b\x06proto3\
+    \x12\x15\n\x11DEBUG_FILE_UPLOAD\x10#\x12\x16\n\x12SYSTEM_STATUS_READ\x10\
+    \x12\x12\x18\n\x14ISSUE_WORKFLOW_WRITE\x10\x13\x12\x0f\n\x0bALERT_ADMIN\
+    \x10\x14\x12\x0e\n\nALERT_READ\x10\x15\x12\x0f\n\x0bALERT_WRITE\x10\x16\
+    \x12\x1b\n\x17NOTIFICATION_GROUP_READ\x10\x17\x12\x1c\n\x18NOTIFICATION_\
+    GROUP_ADMIN\x10\x18\x12\r\n\tVIEW_READ\x10\x19\x12\x0e\n\nVIEW_WRITE\x10\
+    \x1a\x12\x0f\n\x0bTEAMS_ADMIN\x10\x1b\x12\x0f\n\x0bTEAMS_WRITE\x10\x1c\
+    \x12\x0e\n\nTEAMS_READ\x10\x1d\x12\x0f\n\x0bENTITY_READ\x10\x1e\x12\x10\
+    \n\x0cENTITY_WRITE\x10\x1f\x12\x14\n\x10DASHBOARDS_ADMIN\x10\x20\x12\x14\
+    \n\x10DASHBOARDS_WRITE\x10!\x12\x13\n\x0fDASHBOARDS_READ\x10\"b\x06proto\
+    3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
