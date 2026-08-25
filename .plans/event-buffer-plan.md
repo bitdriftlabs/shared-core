@@ -90,9 +90,9 @@ the following ownership boundaries.
 
 **EventBuffer entries.** Logs, feature-flag exposure, post-startup memory-pressure and entity-ID
 persistence, and `FlushState` are ordered workflow, state-store, or barrier inputs. `FlushState`
-and `Block::Yes` logs are protected. Crash reports are discovered and parsed on the existing direct
-request path, then admitted as one EventBuffer batch so their result has one ordered boundary with
-concurrent producers.
+is protected. Crash reports are discovered and parsed on the existing direct request path, then
+admitted as one EventBuffer batch so their result has one ordered boundary with concurrent
+producers.
 
 **ALB-owned local state.** `setField` and `removeField` become ordered `LoggerControl` entries,
 which ALB applies to its one mutable field map before it processes later ingress events. They do not
@@ -130,9 +130,7 @@ on their existing downstream channels. They are consequences of an entry, never 
   `PreviousRunSessionID` `_logged_at` behavior explicitly: it currently uses the timestamp
   provider only, while `occurred_at` comes from the crash report.
 - State/control operations that affect workflows or persistence remain protected EventBuffer
-  entries. `Block::Yes` logs are also protected: blocking is an explicit reliability request, not
-  merely a consumer-completion mechanism. Crash-pending and shutdown remain direct control signals,
-  not buffer entries.
+  entries. Crash-pending and shutdown remain direct control signals, not buffer entries.
 - `set_feature_flag_exposure` resolves its session ID through `bd_session`, then captures provider
   data plus an admission timestamp before EventBuffer admission; provider capture uses the same
   held thread-local guard as logs. The consumer combines those immutable inputs with the current
@@ -207,7 +205,7 @@ High unless it is `LIFECYCLE` or `DEVICE`.
 
 | Retention lane | Mapping | Rationale |
 | --- | --- | --- |
-| Protected | State/control entries, `Block::Yes` logs, every previous-process log, and all `LIFECYCLE` and `DEVICE` logs | These entries carry ordering, barrier, startup-recovery, lifecycle, or device-state semantics. They are bounded only by the overall budget and never priority-evicted. |
+| Protected | State/control entries, every previous-process log, and all `LIFECYCLE` and `DEVICE` logs | These entries carry ordering, barrier, startup-recovery, lifecycle, or device-state semantics. They are bounded only by the overall budget and never priority-evicted. |
 | High | Any non-protected `INFO`, `WARN`, `ERROR`, or higher forward-compatible level | Retain ordinary operational and application logs. |
 | Low (diagnostic) | Any non-protected `TRACE` or `DEBUG` log | This is the diagnostic lane. It contains only lower-severity diagnostic detail. |
 
@@ -304,7 +302,7 @@ starting with the lowest lane and newest equal-priority entry.
 
 Protected does **not** mean “cannot be dropped under any circumstance,” and control entries do
 not have a separate reserved byte limit. Protected entries—including state/control operations,
-`FlushState`, `Block::Yes` logs, lifecycle logs, and eligible previous-process logs—share the one
+`FlushState`, lifecycle logs, and eligible previous-process logs—share the one
 overall budget with every other retained entry. They bypass the log budget and can displace
 evictable logs, but they cannot exceed the overall budget.
 
@@ -313,7 +311,7 @@ is instead terminally rejected if it is oversized, EventBuffer cannot reserve it
 the lifecycle is closed, or the retained buffer is full of protected entries. On shutdown, even
 admitted protected entries are removed as explicit shutdown drops. Thus the contract is
 **non-evictable after admission, not delivery-guaranteed**. Rejection and shutdown are measured;
-any associated blocking completion resolves exactly once.
+any associated completion resolves exactly once.
 
 #### Shutdown and terminal outcomes
 
@@ -324,14 +322,11 @@ drops, and have any completion resolved after the lock is released. This preserv
 best-effort shutdown behavior while preventing waiters from timing out solely because their sender
 was stranded in the buffer.
 
-`Block::Yes` and blocking `FlushState` preserve their current public meaning: the caller waits for
-a terminal outcome, not a guarantee that the log was delivered or that every downstream operation
-succeeded. A blocking log bypasses `log_limit` and is never a priority-eviction victim, while it
-still counts against the overall budget; it can be explicitly rejected if the protected portion
-has filled that hard limit. The completion payload remains unit; protected-budget rejection,
-provider-capture failure, processing completion, and shutdown all resolve it exactly once. The
-distinguishing information is emitted through outcome metrics and internal diagnostics, not a new
-public API result.
+`FlushState(Block::Yes)` preserves its current public meaning: the caller waits for a terminal
+outcome, not a guarantee that every downstream operation succeeded. The completion payload remains
+unit; protected-budget rejection, processing completion, and shutdown all resolve it exactly once.
+The distinguishing information is emitted through outcome metrics and internal diagnostics, not a
+new public API result.
 
 ### ALB migration audit
 
@@ -358,13 +353,12 @@ behaviors deliberately rather than moving only `LoggerHandle::log`.
 
 #### Blocking operations
 
-- **`FlushState` and `Block::Yes`:** Both are protected, bypass the log budget, and remain bounded
-  by the overall budget; an all-protected full buffer explicitly rejects them. A blocking flush
-  drains earlier admitted work and waits for persistence pending at its barrier before the existing
-  stats, buffer, session, and workflow flushes. Blocking flushes and logs are ordered barriers;
-  `FlushState(Block::No)` stays protected but does not change startup timing. Failures are measured
-  best-effort outcomes. Every blocking completion resolves exactly once on processing, rejection,
-  persistence failure, or shutdown.
+- **`FlushState`:** Flush controls are protected, bypass the log budget, and remain bounded by the
+  overall budget; an all-protected full buffer explicitly rejects them. A blocking flush drains
+  earlier admitted work and waits for persistence pending at its barrier before the existing stats,
+  buffer, session, and workflow flushes. `FlushState(Block::No)` stays protected but does not
+  change startup timing. Failures are measured best-effort outcomes. Every blocking flush
+  completion resolves exactly once on processing, rejection, persistence failure, or shutdown.
 
 #### Startup and consumer-owned work
 
@@ -385,8 +379,7 @@ behaviors deliberately rather than moving only `LoggerHandle::log`.
 Every `LoggerHandle::log` path—including resource utilization, session replay, SDK start, app
 update, and internal SDK helpers—calls one `EventBuffer::admit_log` API. Helpers construct their
 existing message, fields, and `LogType`; priority follows from that type and level inside
-EventBuffer rather than from a helper-specific queue path, except that `Block::Yes` promotes the
-log to the protected class.
+EventBuffer rather than from a helper-specific queue path.
 
 1. For a current-process log, `bd_session` resolves an immutable session ID. Any required
   persistence remains background work. A resolution failure is a terminal log drop. A successful
@@ -394,7 +387,7 @@ log to the protected class.
   persistence. The caller then holds
    `with_thread_local_logger_guard` and captures provider timestamp and fields outside the
    EventBuffer lock. A provider failure is also a terminal drop; both outcomes record their
-   respective metrics and resolve any `Block::Yes` completion without entering EventBuffer.
+   respective metrics before returning to the caller.
 2. `PreviousRunSessionID` logs skip current-process session and provider capture.
    They retain their raw fields and override for the existing previous-global-state consumer path.
    Normal logs and `OccurredAt` logs proceed with their captured provider data; the latter retains
@@ -403,12 +396,9 @@ log to the protected class.
    fields, matching fields, override, `CaptureSession`, provider snapshot, immutable session ID,
    and optional completion handle. Earlier `LoggerControl` field updates precede it in the same
    FIFO stream.
-4. Admission applies the log and overall budgets plus the priority eviction policy. A `Block::Yes`
-   log is protected, so it bypasses `log_limit` and cannot be evicted; it is rejected only if it
-   cannot fit the remaining overall budget after evictable entries have been displaced. Rejection
-   or eviction resolves the entry's completion with a terminal drop outcome after releasing the
-   lock. Successful admission schedules `Notify`; it does not wait for the background consumer. In
-   either terminal source
+4. Admission applies the log and overall budgets plus the priority eviction policy. Rejection or
+   eviction terminates any associated completion after releasing the lock. Successful admission
+   schedules `Notify`; it does not wait for the background consumer. In either terminal source
    outcome, dispatch any deferred implicit-session callback only after the lock is released, so
    callback-originated logging follows this source operation.
 5. The consumer removes a log in FIFO order, runs the existing interceptors, and normalizes the
@@ -416,9 +406,8 @@ log to the protected class.
    captured session ID. For `OccurredAt`, it emits the supplied timestamp and attaches captured
    provider time as
    `_logged_at`; the previous-run branch retains its existing prior-global-state and `_logged_at`
-   semantics. It then follows the existing replay, buffer-writing, `CaptureSession`, and blocking-
-   flush path. A successfully processed blocking log resolves its completion exactly once after
-   that path finishes.
+   semantics. It then follows the existing replay, buffer-writing, `CaptureSession`, and flush
+   path.
 
 `LoggerIngressEvent` sizing includes provider snapshots, the immutable session ID, and completion
 state. It excludes logger-managed fields, which ALB retains once in its current field map. Field-map
@@ -493,7 +482,7 @@ or flushes while holding the lock.
   terminal admission/drop outcome; do not wait for persistence.
 - Migrate every ALB state and internal-ingress path in the audit above, including feature-flag
   metadata/session capture, opaque-entity startup recovery, crash-report batches, interceptor
-  placement, generated-log context, and flush/blocking completion semantics.
+  placement, generated-log context, and flush completion semantics.
 - Preserve the current `PreConfigBuffer` and its immediate replay on initial configuration.
   Consequently, Milestone 4 retains the bootstrap EventBuffer budgets plus the existing startup
   buffer allowance while configuration is unavailable. Bootstrap EventBuffer budgets remain active
@@ -565,13 +554,12 @@ applies; priority-event loss is measured rather than exceeding capacity.
 flush barrier, or normal timer release seals the ordering window; later hints and late
 previous-process logs cannot reopen it.
 
-An admitted `FlushState(Block::Yes)` or blocking log is also a gate barrier: it seals the gate,
-drains the already-admitted startup-previous lane first, then drains through its ordered position
-before its completion resolves. It does not bypass older work. An admission-rejected or
-provider-capture-rejected blocking operation resolves immediately as a terminal drop and cannot
-act as a barrier. `FlushState(Block::No)` stays behind the gate, matching its existing
-fire-and-forget behavior. Neither admitted blocking operation may remain pending solely because
-the soft startup delay has not elapsed.
+An admitted `FlushState(Block::Yes)` is also a gate barrier: it seals the gate, drains the
+already-admitted startup-previous lane first, then drains through its ordered position before its
+completion resolves. It does not bypass older work. An admission-rejected blocking flush resolves
+immediately as a terminal drop and cannot act as a barrier. `FlushState(Block::No)` stays behind
+the gate, matching its existing fire-and-forget behavior. An admitted blocking flush may not remain
+pending solely because the soft startup delay has not elapsed.
 
 ## Observability and validation
 
@@ -638,9 +626,8 @@ benchmarks and migration validation, not steady-state dashboards.
   watermark remain active before the first configuration arrives; later runtime updates become
   effective on the next EventBuffer admission using the budget-shrink behavior specified above.
 - Provider-capture failures preserve today's best-effort public behavior: the affected log is
-  dropped, its blocking completion becomes terminal, and diagnostics remain metrics/logging rather
-  than a new caller-visible error. Reentrant logging during provider capture remains rejected by
-  the thread-local guard.
+  dropped, diagnostics remain metrics/logging rather than a new caller-visible error, and reentrant
+  logging during provider capture remains rejected by the thread-local guard.
 - Current-process crash reports use admission-time provider and session snapshots; ALB supplies the
   current logger fields in FIFO order. Prior-process reports use prior global state and the
   prior-process session ID when available. This is the attribution rule rather than an unresolved
