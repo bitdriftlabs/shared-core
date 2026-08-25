@@ -206,6 +206,10 @@ fn serialize_app_metrics() {
       app_id: Some(builder.create_string("co.example.someapp")),
       memory: Some(&Memory::new(256, 19, 237)),
       region_format: Some(builder.create_string("MQ")),
+      launch_time: Some(&Timestamp::new(1830254100, 27186761)),
+      environment: AppEnvironment::Production,
+      team_identifier: Some(builder.create_string("ABCDE12345")),
+      bundle_path: Some(builder.create_string("/Applications/Example.app")),
       ..Default::default()
     }
   ));
@@ -217,10 +221,14 @@ fn serialize_app_metrics() {
       "javascript_engine": "UnknownJsEngine",
       "memory_pressure_level": "Unknown",
       "process_id": 0,
+      "launch_time": {"seconds": 1830254100, "nanos": 27186761},
+      "environment": "Production",
+      "team_identifier": "ABCDE12345",
+      "bundle_path": "/Applications/Example.app",
     }),
     object
   );
-  assert_struct_size!(AppMetricsArgs, 72);
+  assert_struct_size!(AppMetricsArgs, 96);
 }
 
 #[test]
@@ -386,6 +394,7 @@ fn serialize_report() {
         "app_id": "co.example.someapp",
         "javascript_engine": "UnknownJsEngine",
         "memory_pressure_level": "Unknown",
+        "environment": "Unknown",
         "process_id": 0,
       },
       "device_metrics": {
