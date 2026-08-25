@@ -23,7 +23,7 @@ mod tests;
 
 mod retention;
 
-pub use retention::EventBufferState;
+pub use retention::{AdmissionResult, EventBufferState, TerminalEntries};
 
 //
 // LoggerControl
@@ -210,6 +210,8 @@ pub struct EventBuffer {
 struct EventBufferInner {
   state: PlatformMutex<LoggerEventBufferState>,
   notify: Notify,
+  #[cfg(test)]
+  waiting_consumers: tokio::sync::watch::Sender<usize>,
 }
 
 struct LoggerEventBufferState {
@@ -225,6 +227,8 @@ impl EventBuffer {
           retention: EventBufferState::new(limits),
         }),
         notify: Notify::new(),
+        #[cfg(test)]
+        waiting_consumers: tokio::sync::watch::channel(0).0,
       }),
     }
   }
@@ -235,12 +239,14 @@ impl EventBuffer {
 
   #[must_use]
   pub fn admit(&self, entry: EventBufferEntry) -> AdmissionOutcome {
-    let outcome = {
+    let admission = {
       let mut state = self.inner.state.lock();
       state
         .retention
         .admit(entry.lane(), entry.approximate_size_bytes(), entry)
     };
+    let outcome = admission.outcome();
+    drop(admission.into_terminal_entries());
     if outcome == AdmissionOutcome::Admitted {
       self.inner.notify.notify_one();
     }
@@ -250,6 +256,8 @@ impl EventBuffer {
     assert!(max_entries > 0, "next_batch requires a non-zero batch size");
     loop {
       let notified = self.inner.notify.notified();
+      tokio::pin!(notified);
+      notified.as_mut().enable();
       let (batch, closed) = {
         let mut state = self.inner.state.lock();
         (
@@ -260,11 +268,37 @@ impl EventBuffer {
       if !batch.is_empty() || closed {
         return batch;
       }
+      #[cfg(test)]
+      self
+        .inner
+        .waiting_consumers
+        .send_modify(|waiting| *waiting += 1);
       notified.await;
+      #[cfg(test)]
+      self
+        .inner
+        .waiting_consumers
+        .send_modify(|waiting| *waiting -= 1);
     }
   }
+
+  #[cfg(test)]
+  async fn wait_for_waiting_consumers(&self, expected: usize) {
+    let mut waiting_consumers = self.inner.waiting_consumers.subscribe();
+    while *waiting_consumers.borrow_and_update() < expected {
+      waiting_consumers
+        .changed()
+        .await
+        .expect("the event buffer always owns the waiting-consumer sender");
+    }
+  }
+
   pub fn close(&self) {
-    self.inner.state.lock().retention.close();
+    let terminal_entries = {
+      let mut state = self.inner.state.lock();
+      state.retention.close()
+    };
+    drop(terminal_entries);
     self.inner.notify.notify_waiters();
   }
 }

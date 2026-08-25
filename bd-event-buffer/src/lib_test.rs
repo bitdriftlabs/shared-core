@@ -39,6 +39,15 @@ fn current_process_context() -> EventContext {
 }
 
 fn log(level: bd_log_primitives::LogLevel, log_type: LogType, bytes: usize) -> EventBufferEntry {
+  log_with_completion(level, log_type, bytes, None)
+}
+
+fn log_with_completion(
+  level: bd_log_primitives::LogLevel,
+  log_type: LogType,
+  bytes: usize,
+  completion: Option<bd_completion::Sender<()>>,
+) -> EventBufferEntry {
   EventBufferEntry::ingress(LoggerIngressEvent::log(
     LogLine {
       log_level: level,
@@ -50,7 +59,7 @@ fn log(level: bd_log_primitives::LogLevel, log_type: LogType, bytes: usize) -> E
       capture_session: None,
     },
     current_process_context(),
-    None,
+    completion,
   ))
 }
 
@@ -156,6 +165,49 @@ async fn preserves_log_and_field_update_admission_order() {
 }
 
 #[tokio::test]
+async fn admission_wakes_a_waiting_consumer() {
+  let buffer = buffer(10_000);
+  let consumer_buffer = buffer.clone();
+  let consumer = tokio::spawn(async move { consumer_buffer.next_batch(1).await });
+
+  buffer.wait_for_waiting_consumers(1).await;
+  assert_eq!(
+    AdmissionOutcome::Admitted,
+    buffer.admit(log(log_level::INFO, LogType::NORMAL, 1))
+  );
+
+  assert_eq!(
+    1,
+    consumer.await.expect("consumer task must complete").len()
+  );
+}
+
+#[tokio::test]
+async fn close_wakes_all_waiting_consumers() {
+  let buffer = buffer(10_000);
+  let first_buffer = buffer.clone();
+  let second_buffer = buffer.clone();
+  let first = tokio::spawn(async move { first_buffer.next_batch(1).await });
+  let second = tokio::spawn(async move { second_buffer.next_batch(1).await });
+
+  buffer.wait_for_waiting_consumers(2).await;
+  buffer.close();
+
+  assert!(
+    first
+      .await
+      .expect("first consumer task must complete")
+      .is_empty()
+  );
+  assert!(
+    second
+      .await
+      .expect("second consumer task must complete")
+      .is_empty()
+  );
+}
+
+#[tokio::test]
 async fn batch_eviction_removes_tiny_lower_priority_logs() {
   const COUNT: usize = 64;
   let low_size = log(log_level::DEBUG, LogType::NORMAL, 0).approximate_size_bytes();
@@ -210,6 +262,33 @@ async fn rejected_admission_does_not_partially_evict() {
   );
 
   assert_eq!(2, buffer.next_batch(2).await.len());
+}
+
+#[tokio::test]
+async fn rejected_and_evicted_entries_drop_completion_senders() {
+  let (rejected_sender, rejected_receiver) = bd_completion::Sender::new();
+  assert_eq!(
+    AdmissionOutcome::RejectedOversized,
+    buffer(0).admit(log_with_completion(
+      log_level::INFO,
+      LogType::NORMAL,
+      0,
+      Some(rejected_sender),
+    ))
+  );
+  assert!(rejected_receiver.recv().await.is_err());
+
+  let (evicted_sender, evicted_receiver) = bd_completion::Sender::new();
+  let low = log_with_completion(log_level::DEBUG, LogType::NORMAL, 0, Some(evicted_sender));
+  let high = log(log_level::INFO, LogType::NORMAL, 0);
+  let buffer = buffer(
+    low
+      .approximate_size_bytes()
+      .max(high.approximate_size_bytes()),
+  );
+  assert_eq!(AdmissionOutcome::Admitted, buffer.admit(low));
+  assert_eq!(AdmissionOutcome::Admitted, buffer.admit(high));
+  assert!(evicted_receiver.recv().await.is_err());
 }
 
 #[tokio::test]
@@ -269,6 +348,13 @@ async fn close_drops_unprocessed_completion_senders() {
 }
 
 #[test]
+fn take_batch_does_not_preallocate_the_requested_batch_size() {
+  let mut state = EventBufferState::<()>::new(limits(0));
+
+  assert!(state.take_batch(usize::MAX).is_empty());
+}
+
+#[test]
 fn pending_log_limit_shrink_evicts_newest_low_then_high_entries() {
   let mut state = EventBufferState::new(state_limits(100, 100));
   for (lane, entry) in [
@@ -277,7 +363,10 @@ fn pending_log_limit_shrink_evicts_newest_low_then_high_entries() {
     (RetentionLane::High, "high_old"),
     (RetentionLane::High, "high_new"),
   ] {
-    assert_eq!(AdmissionOutcome::Admitted, state.admit(lane, 10, entry));
+    assert_eq!(
+      AdmissionOutcome::Admitted,
+      state.admit(lane, 10, entry).outcome()
+    );
   }
 
   // Limit updates are deferred until admission so configuration changes do not contend with the
@@ -285,7 +374,9 @@ fn pending_log_limit_shrink_evicts_newest_low_then_high_entries() {
   state.set_pending_limits(state_limits(15, 100));
   assert_eq!(
     AdmissionOutcome::Admitted,
-    state.admit(RetentionLane::Protected, 0, "trigger")
+    state
+      .admit(RetentionLane::Protected, 0, "trigger")
+      .outcome()
   );
 
   assert_eq!(vec!["high_old", "trigger"], state.take_batch(4));
@@ -296,17 +387,21 @@ fn pending_total_limit_shrink_preserves_protected_entries() {
   let mut state = EventBufferState::new(state_limits(200, 200));
   assert_eq!(
     AdmissionOutcome::Admitted,
-    state.admit(RetentionLane::Protected, 100, "protected")
+    state
+      .admit(RetentionLane::Protected, 100, "protected")
+      .outcome()
   );
   assert_eq!(
     AdmissionOutcome::Admitted,
-    state.admit(RetentionLane::Low, 10, "low")
+    state.admit(RetentionLane::Low, 10, "low").outcome()
   );
 
   state.set_pending_limits(state_limits(200, 50));
   assert_eq!(
     AdmissionOutcome::RejectedFull,
-    state.admit(RetentionLane::Protected, 0, "trigger")
+    state
+      .admit(RetentionLane::Protected, 0, "trigger")
+      .outcome()
   );
 
   // Protected entries are never evicted, even if they alone exceed a newly reduced total limit.
@@ -319,7 +414,7 @@ fn latest_pending_limit_update_wins() {
   for entry in ["old", "middle", "new"] {
     assert_eq!(
       AdmissionOutcome::Admitted,
-      state.admit(RetentionLane::Low, 10, entry)
+      state.admit(RetentionLane::Low, 10, entry).outcome()
     );
   }
 
@@ -327,7 +422,9 @@ fn latest_pending_limit_update_wins() {
   state.set_pending_limits(state_limits(15, 100));
   assert_eq!(
     AdmissionOutcome::Admitted,
-    state.admit(RetentionLane::Protected, 0, "trigger")
+    state
+      .admit(RetentionLane::Protected, 0, "trigger")
+      .outcome()
   );
 
   assert_eq!(vec!["old", "trigger"], state.take_batch(4));
