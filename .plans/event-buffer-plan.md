@@ -27,13 +27,13 @@ and state ingress channels while retaining one async consumer.
 
 ## Milestone roadmap
 
-1. **Shared platform mutex.** Introduce the caller-thread mutex adapter; use it for `bd_session`.
-2. **Session persistence.** Replace ALB-carried session writes with a coalescing `bd_session`
+1. [x] **Shared platform mutex.** Introduce the caller-thread mutex adapter; use it for `bd_session`.
+2. [x] **Session persistence.** Replace ALB-carried session writes with a coalescing `bd_session`
    flusher.
-3. **EventBuffer.** Build and test the bounded three-queue component without changing logger ingress.
-4. **Ingress migration.** Route logger/state inputs through EventBuffer while preserving
+3. [x] **EventBuffer.** Build and test the bounded three-queue component without changing logger ingress.
+4. [ ] **Ingress migration.** Route logger/state inputs through EventBuffer while preserving
    `PreConfigBuffer` startup behavior.
-5. **Startup replay.** Replace `PreConfigBuffer` with the delayed replay gate and prior-process
+5. [ ] **Startup replay.** Replace `PreConfigBuffer` with the delayed replay gate and prior-process
    ordering lane.
 
 The milestone checklists appear after the detailed design reference. Each milestone is independently
@@ -94,11 +94,13 @@ and `Block::Yes` logs are protected. Crash reports are discovered and parsed on 
 request path, then admitted as one EventBuffer batch so their result has one ordered boundary with
 concurrent producers.
 
-**Synchronous local state.** `setField` and `removeField` update EventBuffer's `Arc` field map;
-they change future admission metadata rather than producing replayable workflow input. Session
-creation, rotation, and persistence remain in `bd_session`: its coalescing flusher writes only the
-newest state, and EventBuffer carries only immutable session IDs. A blocking flush is the sole
-operation that waits for that flusher.
+**ALB-owned local state.** `setField` and `removeField` become ordered `LoggerControl` entries,
+which ALB applies to its one mutable field map before it processes later ingress events. They do not
+capture field-map snapshots or produce replayable workflow input. Keeping this accumulation in ALB
+means frequent updates retain one current map rather than creating queued copies. Session creation,
+rotation, and persistence remain in `bd_session`: its coalescing flusher writes only the newest
+state, and EventBuffer carries only immutable session IDs. A blocking flush is the sole operation
+that waits for that flusher.
 
 **Direct control paths.** Configuration stays on its existing path because applying it can build or
 replace pipeline state and has no producer-admission order. `CrashPending` is only a drain-gate
@@ -113,20 +115,16 @@ on their existing downstream channels. They are consequences of an entry, never 
 - `LoggerHandle::log` captures the provider timestamp and provider fields inline, outside the
   EventBuffer lock and while actually holding `with_thread_local_logger_guard`. The existing
   admission-only guard is not sufficient once provider code runs on the caller thread.
-- It then locks EventBuffer, clones the current `Arc<LoggerFieldMap>` pointer, and admits a
-  `CapturedLog` containing both snapshots. A same-thread `setField(); log()` is therefore
-  reflected in the captured log; concurrent callers are ordered by buffer admission.
-- EventBuffer owns a mutex-protected `Arc<LoggerFieldMap>`. Log admission clones that `Arc`, not
-  the map, so queued logging never pays a field-map copy. Each admitted log therefore retains the
-  exact field map visible at admission. `setField` and `removeField` are the less-frequent writers:
-  after validating the proposed byte/count change, they update the map without changing any
-  snapshot already held by a log. They may use `Arc::make_mut` when EventBuffer is the sole owner
-  to avoid that update's map clone; this is an update-path optimization, not the reason for the
-  design. These APIs are not downstream workflow events.
+- It then locks EventBuffer and admits a `LoggerIngressEvent` containing the immutable provider
+  and session snapshots. `setField` and `removeField` are separate FIFO `LoggerControl` entries;
+  ALB applies every earlier field update before it normalizes a later ingress event.
+- ALB owns one mutable `LoggerFieldMap` and applies field controls on its serialized consumer path.
+  No ingress event retains a logger-field snapshot, so frequent field updates do not create queued
+  map versions. These APIs are ordered local-state operations, not downstream workflow events.
 - Refactor `MetadataCollector` into provider-snapshot capture and background normalization. The
-  async consumer merges captured provider data, caller fields, and the captured logger field map,
-  then performs global-state tracking, state-store updates, and replay. It must not resolve a
-  mutable current session for an already-admitted log.
+  async consumer merges captured provider data, caller fields, and its current ALB-owned logger
+  field map, then performs global-state tracking, state-store updates, and replay. It must not
+  resolve a mutable current session for an already-admitted log.
 - Prior-run logs keep their existing special path: do not capture current-process provider data;
   finalize them against prior global state on the background task. Preserve the existing
   `PreviousRunSessionID` `_logged_at` behavior explicitly: it currently uses the timestamp
@@ -136,19 +134,17 @@ on their existing downstream channels. They are consequences of an entry, never 
   merely a consumer-completion mechanism. Crash-pending and shutdown remain direct control signals,
   not buffer entries.
 - `set_feature_flag_exposure` resolves its session ID through `bd_session`, then captures provider
-  and logger-field snapshots plus an admission timestamp before EventBuffer admission; provider
-  capture uses the same held thread-local guard as logs. The consumer uses those immutable inputs
-  for state-store insertion, global-state tracking, and workflow replay rather than querying the
-  provider or session strategy later. Any implicit-session callback is dispatched after this state
-  operation is admitted or terminally dropped, using the same rule as logs.
+  data plus an admission timestamp before EventBuffer admission; provider capture uses the same
+  held thread-local guard as logs. The consumer combines those immutable inputs with the current
+  ALB field map for state-store insertion, global-state tracking, and workflow replay rather than
+  querying the provider or session strategy later. Any implicit-session callback is dispatched
+  after this state operation is admitted or terminally dropped, using the same rule as logs.
 
-Provider capture is intentionally outside the EventBuffer lock, so each operation has two defined
-cut points: provider time/fields and session ID are captured at the original API call, while the
-logger-field map and FIFO position are captured at EventBuffer lock admission. A concurrent
-`setField` that wins the EventBuffer lock before a log is admitted is therefore reflected in that
-log; one that loses is not.
-This is the linearization rule for concurrent callers, and is preferable to holding the EventBuffer
-mutex across arbitrary platform provider code.
+Provider capture is intentionally outside the EventBuffer lock. Provider time/fields and session ID
+are captured at the original API call; FIFO admission orders a log against field-control entries.
+ALB applies every earlier control before normalizing that log, while a later control affects only
+later ingress events. This is the linearization rule for concurrent callers, and is preferable to
+holding the EventBuffer mutex across arbitrary platform provider code.
 
 Provider calls now become part of normal `Logger.log` latency. Before the migration, add temporary
 duration/failure instrumentation to the current async calls; retain it through the move and measure
@@ -176,10 +172,9 @@ Normal logs, session APIs, callbacks, and shutdown never wait for session persis
 
 ### EventBuffer behavior
 
-EventBuffer owns priority-aware retained-entry storage, byte accounting, its `Arc` field map with
-per-entry snapshots, and a `Notify` for its consumer. Retention priority chooses *what may be
-evicted*; it never changes delivery order. Whatever representation is selected, these invariants
-are fixed:
+EventBuffer owns priority-aware retained-entry storage, byte accounting, and a `Notify` for its
+consumer. ALB owns the mutable logger-field map. Retention priority chooses *what may be evicted*;
+it never changes delivery order. Whatever representation is selected, these invariants are fixed:
 
 - Every entry receives an increasing admission ID while the EventBuffer mutex is held. The consumer
   delivers the retained entry with the lowest applicable delivery key, so all retained entries are
@@ -348,11 +343,11 @@ behaviors deliberately rather than moving only `LoggerHandle::log`.
 - **Normal and helper logs:** Route every path—including `RESOURCE`, `REPLAY`, `LIFECYCLE`, and
   `INTERNAL_SDK` helpers—through the common admission flow below. Helpers only construct their
   existing type-specific fields; they never bypass EventBuffer.
-- **Field changes:** `AddLogField` and `RemoveLogField` synchronously update EventBuffer's `Arc`
-  field map using the collector's existing custom-key validation. Logs clone the `Arc` at admission;
-  updates may use `Arc::make_mut` when uniquely owned. They do not create workflow entries.
-- **Feature flags:** Keep them as protected ordered state operations. Capture their session,
-  provider, and field snapshots at admission. While
+- **Field changes:** `AddLogField` and `RemoveLogField` are protected `LoggerControl` entries.
+  ALB validates and applies them to its single mutable field map in FIFO order with ingress events.
+  They do not create workflow entries or per-log snapshots.
+- **Feature flags:** Keep them as protected ordered state operations. Capture their session and
+  provider data at admission; ALB supplies the current logger fields in FIFO order. While
   `PreConfigBuffer` remains in Milestone 4, its pending feature-flag item carries the same immutable
   inputs so replay never rereads mutable provider or session state.
 - **Memory pressure and opaque entities:** Preserve ordered durable writes. Before state-store
@@ -400,13 +395,14 @@ log to the protected class.
    `with_thread_local_logger_guard` and captures provider timestamp and fields outside the
    EventBuffer lock. A provider failure is also a terminal drop; both outcomes record their
    respective metrics and resolve any `Block::Yes` completion without entering EventBuffer.
-2. `PreviousRunSessionID` logs skip current-process session, provider, and logger-field capture.
+2. `PreviousRunSessionID` logs skip current-process session and provider capture.
    They retain their raw fields and override for the existing previous-global-state consumer path.
    Normal logs and `OccurredAt` logs proceed with their captured provider data; the latter retains
    its supplied occurrence timestamp.
-3. EventBuffer acquires its lock and clones the current `Arc<LoggerFieldMap>` pointer. The log entry
-   retains the original `LogLine` message, fields, matching fields, override, `CaptureSession`,
-   provider snapshot, field-map snapshot, immutable session ID, and optional completion handle.
+3. EventBuffer acquires its lock and admits the log entry with its original `LogLine` message,
+   fields, matching fields, override, `CaptureSession`, provider snapshot, immutable session ID,
+   and optional completion handle. Earlier `LoggerControl` field updates precede it in the same
+   FIFO stream.
 4. Admission applies the log and overall budgets plus the priority eviction policy. A `Block::Yes`
    log is protected, so it bypasses `log_limit` and cannot be evicted; it is rejected only if it
    cannot fit the remaining overall budget after evictable entries have been displaced. Rejection
@@ -416,22 +412,18 @@ log to the protected class.
    outcome, dispatch any deferred implicit-session callback only after the lock is released, so
    callback-originated logging follows this source operation.
 5. The consumer removes a log in FIFO order, runs the existing interceptors, and normalizes the
-   original fields using the captured provider and logger-field snapshots. It uses the captured
-   session ID. For `OccurredAt`, it emits the supplied timestamp and attaches captured provider time
-   as
+   original fields using the captured provider data and ALB's current logger field map. It uses the
+   captured session ID. For `OccurredAt`, it emits the supplied timestamp and attaches captured
+   provider time as
    `_logged_at`; the previous-run branch retains its existing prior-global-state and `_logged_at`
    semantics. It then follows the existing replay, buffer-writing, `CaptureSession`, and blocking-
    flush path. A successfully processed blocking log resolves its completion exactly once after
    that path finishes.
 
-`CapturedLog` sizing includes provider snapshots, the immutable session ID, and completion state. The
-logger-field `Arc` is deliberately not charged once per retained log: EventBuffer instead enforces
-the aggregate logger-field byte/count limit at `setField` time. Older field-map snapshots retained by
-queued logs are accepted as auxiliary memory, not a reason to evict or reject otherwise valid
-events. Their worst case is bounded by the configured map limit times the bounded number of
-retained map versions. Record live bytes, distinct-snapshot count, and rejected field mutations;
-if that overhead proves material, replace the map representation with structural sharing rather
-than coupling it to log-priority eviction.
+`LoggerIngressEvent` sizing includes provider snapshots, the immutable session ID, and completion
+state. It excludes logger-managed fields, which ALB retains once in its current field map. Field-map
+limits and rejected mutations remain ALB concerns; they do not affect EventBuffer admission or
+retention accounting.
 
 The consumer exposes `EventBuffer::next_batch(max_entries)` as one branch of the existing async
 `select!`. That future first registers `Notify::notified()`, then checks and takes a bounded FIFO
@@ -444,7 +436,7 @@ or flushes while holding the lock.
 
 ## Milestone implementation details
 
-### Milestone 1: shared platform-facing mutex
+### Milestone 1: shared platform-facing mutex — complete
 
 - Introduce a shared synchronous `PlatformMutex<T>` and RAII guard for platform-facing,
   caller-thread state. Its iOS implementation wraps `os_unfair_lock`; its Linux implementation
@@ -457,7 +449,7 @@ or flushes while holding the lock.
   callback reentrancy. No EventBuffer, session-persistence, ALB, or startup-ordering semantics
   change in this milestone.
 
-### Milestone 2: generation-based session persistence
+### Milestone 2: generation-based session persistence — complete
 
 - Refactor `bd_session` so a mutation increments an in-memory persistence generation and no
   longer hands a cloned state snapshot to `PersistPreparedSession`. Remove that ALB state variant.
@@ -470,35 +462,30 @@ or flushes while holding the lock.
   shutdown coverage. No EventBuffer, provider, log-admission, or startup-replay semantics change
   in this milestone.
 
-### Milestone 3: EventBuffer state machine
+### Milestone 3: EventBuffer state machine — complete
 
 - Implement EventBuffer as an unused logger-internal component with the full entry model required
-  by this plan: captured logs (including protected `Block::Yes` logs), protected state/control
-  entries, completion handles, and closed/shutdown state.
+  by this plan: `LoggerIngressEvent`, protected `LoggerControl` entries, completion handles, and
+  closed/shutdown state.
 - Implement the three fixed priority lanes, dual-budget admission, global FIFO delivery by admission
   ID, tail eviction from lower lanes, protected-entry handling, fallible container growth, and
   terminal completion on rejection, eviction, or close.
-- Implement the mutex-protected `Arc<LoggerFieldMap>` snapshot model, with its independent
-  aggregate byte/count limit and field validation. Log admission clones only the `Arc`; field
-  updates may use `Arc::make_mut` as a unique-owner optimization. Snapshot telemetry is temporary
-  validation instrumentation.
 - Implement `next_batch(max_entries)` with the lost-wakeup-safe `Notify` protocol and bounded
   batches. Test it independently from the async logger's `select!` loop.
-- Add focused unit and concurrency tests for all capacity, priority, ordering, field-map snapshots,
-  completion, close, and notification invariants. Verify that logging clones only the `Arc`, and
-  that a subsequent field update leaves an admitted log's snapshot unchanged. Exercise both
-  `Arc::make_mut` paths as an update-path optimization. This remains an unused component milestone;
-  logger ingress behavior is unchanged.
+- Add focused unit and concurrency tests for all capacity, priority, ordering, completion, close,
+  and notification invariants. This remains an unused component milestone; logger ingress behavior
+  is unchanged.
 
 ### Milestone 4: logger ingress migration
 
 - Construct EventBuffer with the logger and replace the ALB log/state channels and
   `OrderedReceiver` with its synchronous handle and `next_batch` branch in the existing async
   `select!` consumer.
-- Move provider snapshot capture to `LoggerHandle`, move logger-managed fields into EventBuffer,
-  and split metadata normalization from provider capture. Provider execution on concurrent caller
-  threads is an approved contract; retain temporary migration instrumentation to detect regressions
-  before broad rollout.
+- Move provider snapshot capture to `LoggerHandle`, retain logger-managed field accumulation in ALB,
+  and split metadata normalization from provider capture. Field mutations become ordered ALB
+  controls and logs use the field map ALB has applied at their FIFO position. Provider execution on
+  concurrent caller threads is an approved contract; retain temporary migration instrumentation to
+  detect regressions before broad rollout.
 - Move current log and feature-flag session resolution from the consumer to the logger edge using
   the Milestone-2 in-memory `bd_session` API. Capture the returned session ID before provider
   capture and EventBuffer admission. Invoke implicit log/state callbacks on the admitting caller
@@ -552,7 +539,7 @@ configuration is ready.
 
 #### Previous-process replay ordering
 
-`CapturedLog` carries two independent classifications: its retention priority and its source
+`LoggerIngressEvent` carries two independent classifications: its retention priority and its source
 (`CurrentProcess` or `PreviousProcess`). A previous-process log is eligible for special ordering
 only when EventBuffer admits it while the startup gate is holding. The eligibility bit is captured
 on the entry; it is not inferred later from the source alone.
@@ -605,17 +592,17 @@ Development instrumentation is temporary: it must be feature-gated or sampled, h
 removal point before broad rollout, and not become a permanent metric merely because it aided
 implementation. It includes per-lane depth/bytes/evictions; EventBuffer lock wait/hold time;
 provider and callback duration/failure; consumer batch length, notification-to-dequeue time, and
-`select!` branch service time; field-map snapshot bytes/version count and field-limit rejection;
-pending/effective budget generations and shrink results; and startup-lane/reorder counts. These
-measurements support benchmarks and migration validation, not steady-state dashboards.
+`select!` branch service time; ALB field-map bytes and field-limit rejection; pending/effective
+budget generations and shrink results; and startup-lane/reorder counts. These measurements support
+benchmarks and migration validation, not steady-state dashboards.
 - In milestone 3, test the priority mapping exhaustively across every public `LogType` and level,
   including unknown forward-compatible values; bootstrap dual-budget admission before configuration;
   pending runtime-budget updates that raise and lower each cap; application of the pair before the
   next admission; protected-over-budget behavior after a shrink; priority eviction; global FIFO
   delivery across lanes; newest-first eviction within an equal-priority lane; protected-entry
-  behavior; oversized input; field-map snapshots and limits; lifecycle close; completion on
-  rejection/eviction/close; and Notify wake/drain races. Exercise every lane boundary and
-  allocation failure plus callback-reentrancy coverage.
+  behavior; oversized input; lifecycle close; completion on rejection/eviction/close; and Notify
+  wake/drain races. Exercise every lane boundary and allocation failure plus callback-reentrancy
+  coverage.
 - In milestone 4, add admission-time identity attribution, callback dispatch/order, best-effort
   persistence failure progress, blocking-flush persistence success and failure, feature-flag state
   replay with captured metadata,
@@ -654,16 +641,16 @@ measurements support benchmarks and migration validation, not steady-state dashb
   dropped, its blocking completion becomes terminal, and diagnostics remain metrics/logging rather
   than a new caller-visible error. Reentrant logging during provider capture remains rejected by
   the thread-local guard.
-- Current-process crash reports use admission-time provider, logger-field, and session snapshots;
-  prior-process reports use prior global state and the prior-process session ID when available.
-  This is the attribution rule rather than an unresolved choice.
+- Current-process crash reports use admission-time provider and session snapshots; ALB supplies the
+  current logger fields in FIFO order. Prior-process reports use prior global state and the
+  prior-process session ID when available. This is the attribution rule rather than an unresolved
+  choice.
 - An all-protected full EventBuffer rejects the incoming protected entry. It never exceeds the
   overall budget, parks a pending admission, or relies on Tokio scheduling for room; rejection is
   explicit and measured.
-- The initial `Arc<LoggerFieldMap>` design makes log admission clone only the `Arc` and accepts
-  older snapshots as bounded auxiliary memory. Field updates may use `Arc::make_mut` to avoid a
-  clone when uniquely owned. Structural sharing is needed only if telemetry shows that retained
-  snapshots are material; it is not a prerequisite for the EventBuffer migration.
+- ALB owns one mutable `LoggerFieldMap`; ordered `LoggerControl` entries apply field changes before
+  later ingress events are normalized. This avoids retaining field-map snapshots in queued entries
+  and keeps field-map limits separate from EventBuffer retention.
 - Use the shared `PlatformMutex` for platform-facing caller-thread locks: `bd_session` adopts it in
   Milestone 1 and EventBuffer reuses it in Milestone 3. Its target bindings and lock contract are
   defined in Milestone 1.

@@ -23,7 +23,6 @@ use super::{
 use bd_log_primitives::{AnnotatedLogFields, DataValue, LogFields, LogLine, log_level};
 use bd_macros::ApproximateSize;
 use bd_proto::protos::logging::payload::LogType;
-use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::oneshot;
 
@@ -35,7 +34,6 @@ fn current_process_context() -> EventContext {
       ootb_fields: LogFields::default(),
       custom_fields: LogFields::default(),
     },
-    logger_fields: Arc::new(AnnotatedLogFields::default()),
     admitted_at: OffsetDateTime::UNIX_EPOCH,
   })
 }

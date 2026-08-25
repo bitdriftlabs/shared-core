@@ -6,7 +6,7 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use bd_client_common::PlatformMutex;
-use bd_log_primitives::{AnnotatedLogFields, DataValue, LogFields, LogLevel, LogLine, log_level};
+use bd_log_primitives::{DataValue, LogFields, LogLevel, LogLine, log_level};
 use bd_macros::ApproximateSize;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::logging::payload::LogType;
@@ -51,6 +51,8 @@ pub enum LoggerControl {
 //
 
 /// Results returned by field providers at the producer-side capture point.
+///
+/// As we deprecate `FieldProviders` this will eventually just hold the timestamp.
 #[derive(ApproximateSize, Debug)]
 pub struct ProviderSnapshot {
   #[approximate_size(skip)]
@@ -70,8 +72,6 @@ pub struct ProviderSnapshot {
 pub struct AdmissionContext {
   pub session_id: String,
   pub provider: ProviderSnapshot,
-  /// This snapshot is shared with logger field-map accounting and is not charged per entry.
-  pub logger_fields: Arc<AnnotatedLogFields>,
   pub admitted_at: OffsetDateTime,
 }
 
