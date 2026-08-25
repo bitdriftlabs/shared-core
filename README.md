@@ -18,6 +18,15 @@ cargo install cargo-nextest --locked
 cargo nextest run # Accepts cargo test arguments
 ```
 
+Update CI protobuf generator versions and checksums with:
+
+```bash
+scripts/update-proto-tools.sh --protoc-version <version> --flatc-version <version>
+```
+
+Specify only the generator that changed. The workflow cache key is derived from the updated
+`scripts/proto-tools.env` manifest.
+
 ### Requirements
 
 ```bash

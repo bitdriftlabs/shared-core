@@ -36,6 +36,10 @@ message String {
   string field2 = 2 [(validate.rules).string.max_len = 2];
 }
 
+message Uuid {
+  string field = 1 [(validate.rules).string.uuid = true];
+}
+
 message Repeated {
   message Inner {}
 

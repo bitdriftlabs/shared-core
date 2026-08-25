@@ -35,6 +35,7 @@ use protos::validate::{
 use std::collections::HashSet;
 use std::fmt::Display;
 use std::time::{Duration, SystemTime};
+use uuid::Uuid;
 
 //
 // ValidationOptions
@@ -393,7 +394,6 @@ fn verify_string_rules_supported(rules: &FieldRules) -> error::Result<()> {
   not_implemented(rules.string().has_uri(), "string rules uri")?;
   not_implemented(rules.string().has_uri_ref(), "string rules uri_ref")?;
   not_implemented(rules.string().has_address(), "string rules address")?;
-  not_implemented(rules.string().has_uuid(), "string rules uuid")?;
   not_implemented(
     rules.string().has_well_known_regex(),
     "string rules well_known_regex",
@@ -573,6 +573,14 @@ fn validate_value(
             formatter.field_name(field_descriptor, message_descriptor),
             formatter.message_name(message_descriptor),
             rules.string().max_len()
+          )));
+        }
+
+        if rules.string().uuid() && Uuid::parse_str(value).is_err() {
+          return Err(error::Error::ProtoValidation(format!(
+            "field '{}' in message '{}' must be a valid UUID",
+            formatter.field_name(field_descriptor, message_descriptor),
+            formatter.message_name(message_descriptor),
           )));
         }
 

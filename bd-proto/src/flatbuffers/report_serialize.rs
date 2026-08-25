@@ -25,6 +25,7 @@ serialize_enum!(PowerState);
 serialize_enum!(NetworkState);
 serialize_enum!(JavaScriptEngine);
 serialize_enum!(MemoryPressureLevel);
+serialize_enum!(AppEnvironment);
 serialize_enum!(Rotation);
 serialize_enum!(FrameStatus);
 serialize_enum!(CrashInfoDetails);
@@ -87,7 +88,7 @@ impl Serialize for AppMetrics<'_> {
   where
     S: Serializer,
   {
-    let mut s = serializer.serialize_struct("AppMetrics", 11)?;
+    let mut s = serializer.serialize_struct("AppMetrics", 15)?;
     if let Some(f) = self.app_id() {
       s.serialize_field("app_id", &f)?;
     } else {
@@ -131,6 +132,22 @@ impl Serialize for AppMetrics<'_> {
     }
     s.serialize_field("javascript_engine", &self.javascript_engine())?;
     s.serialize_field("memory_pressure_level", &self.memory_pressure_level())?;
+    if let Some(f) = self.launch_time() {
+      s.serialize_field("launch_time", &f)?;
+    } else {
+      s.skip_field("launch_time")?;
+    }
+    s.serialize_field("environment", &self.environment())?;
+    if let Some(f) = self.team_identifier() {
+      s.serialize_field("team_identifier", &f)?;
+    } else {
+      s.skip_field("team_identifier")?;
+    }
+    if let Some(f) = self.bundle_path() {
+      s.serialize_field("bundle_path", &f)?;
+    } else {
+      s.skip_field("bundle_path")?;
+    }
     s.end()
   }
 }
@@ -587,7 +604,7 @@ impl Serialize for BinaryImage<'_> {
   where
     S: Serializer,
   {
-    let mut s = serializer.serialize_struct("BinaryImage", 3)?;
+    let mut s = serializer.serialize_struct("BinaryImage", 4)?;
     if let Some(f) = self.id() {
       s.serialize_field("id", &f)?;
     } else {
@@ -599,6 +616,7 @@ impl Serialize for BinaryImage<'_> {
       s.skip_field("path")?;
     }
     s.serialize_field("load_address", &self.load_address())?;
+    s.serialize_field("length", &self.length())?;
     s.end()
   }
 }

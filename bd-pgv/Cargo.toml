@@ -13,6 +13,7 @@ bd-workspace-hack.workspace = true
 log.workspace               = true
 protobuf.workspace          = true
 thiserror.workspace         = true
+uuid.workspace              = true
 
 [dev-dependencies]
 bd-time           = { path = "../bd-time" }

@@ -371,6 +371,7 @@ extern "C-unwind" fn bdrw_add_binary_image(
           id,
           path,
           load_address: image.load_address,
+          length: 0,
         },
       ))
     } else {
@@ -579,6 +580,10 @@ extern "C-unwind" fn bdrw_add_app(handle: BDProcessorHandle, app_ptr: *const BDA
         cpu_usage: None,
         javascript_engine: JavaScriptEngine::UnknownJsEngine,
         memory_pressure_level: MemoryPressureLevel(app.memory_pressure_level),
+        launch_time: None,
+        environment: AppEnvironment::Unknown,
+        team_identifier: None,
+        bundle_path: None,
       },
     );
     processor.app = Some(metrics);

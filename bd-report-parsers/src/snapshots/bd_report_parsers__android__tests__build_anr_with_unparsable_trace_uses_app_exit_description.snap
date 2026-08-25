@@ -1,5 +1,5 @@
 ---
-source: bd-report-parsers/src/./android_tests.rs
+source: shared-core/bd-report-parsers/src/./android_tests.rs
 expression: report
 ---
 Report {
@@ -18,6 +18,10 @@ Report {
             lifecycle_event: None,
             javascript_engine: UnknownJsEngine,
             memory_pressure_level: Unknown,
+            launch_time: None,
+            environment: Unknown,
+            team_identifier: None,
+            bundle_path: None,
         },
     ),
     device_metrics: Some(
