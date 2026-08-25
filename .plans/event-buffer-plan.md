@@ -126,9 +126,11 @@ on their existing downstream channels. They are consequences of an entry, never 
   field map, then performs global-state tracking, state-store updates, and replay. It must not
   resolve a mutable current session for an already-admitted log.
 - Prior-run logs keep their existing special path: do not capture current-process provider data;
-  finalize them against prior global state on the background task. Preserve the existing
-  `PreviousRunSessionID` `_logged_at` behavior explicitly: it currently uses the timestamp
-  provider only, while `occurred_at` comes from the crash report.
+  capture only the timestamp-provider result in the `logged_at` field of
+  `EventContext::PreviousProcess` when they enter EventBuffer, then finalize them against prior
+  global state on the background task.
+  `PreviousRunSessionID` continues to take `occurred_at` from the crash report, while `_logged_at`
+  is the pinned timestamp-provider value.
 - State/control operations that affect workflows or persistence remain protected EventBuffer
   entries. Crash-pending and shutdown remain direct control signals, not buffer entries.
 - `set_feature_flag_exposure` resolves its session ID through `bd_session`, then captures provider
@@ -364,9 +366,9 @@ behaviors deliberately rather than moving only `LoggerHandle::log`.
 
 - **Crash reports:** Keep report scanning outside EventBuffer. Admit parsed reports as one ordered
   batch, with per-report admission outcomes rather than all-or-nothing success. Current-run reports
-  use captured provider, field, and session context. Previous-run reports remain protected,
-  use persisted prior state and session when available, and preserve the timestamp-provider
-  `_logged_at` behavior. `CrashPending` remains an out-of-band gate-extension signal.
+  use captured provider, field, and session context. Previous-run reports remain protected, use
+  persisted prior state and session when available, and pin their timestamp-provider `_logged_at`
+  value at EventBuffer admission. `CrashPending` remains an out-of-band gate-extension signal.
 - **Configuration:** Keep updates outside EventBuffer: they have no producer admission order and
   may perform pipeline construction. Readiness is the explicit startup-gate release condition.
 - **Workflow-injected logs and interceptors:** Keep both on the single consumer. Generated logs
@@ -388,8 +390,9 @@ EventBuffer rather than from a helper-specific queue path.
    `with_thread_local_logger_guard` and captures provider timestamp and fields outside the
    EventBuffer lock. A provider failure is also a terminal drop; both outcomes record their
    respective metrics before returning to the caller.
-2. `PreviousRunSessionID` logs skip current-process session and provider capture.
-   They retain their raw fields and override for the existing previous-global-state consumer path.
+2. `PreviousRunSessionID` logs skip current-process session and provider-field capture. They retain
+   their raw fields and override, and capture only the timestamp-provider output as `logged_at`,
+   for the existing previous-global-state consumer path.
    Normal logs and `OccurredAt` logs proceed with their captured provider data; the latter retains
    its supplied occurrence timestamp.
 3. EventBuffer acquires its lock and admits the log entry with its original `LogLine` message,
@@ -404,10 +407,9 @@ EventBuffer rather than from a helper-specific queue path.
 5. The consumer removes a log in FIFO order, runs the existing interceptors, and normalizes the
    original fields using the captured provider data and ALB's current logger field map. It uses the
    captured session ID. For `OccurredAt`, it emits the supplied timestamp and attaches captured
-   provider time as
-   `_logged_at`; the previous-run branch retains its existing prior-global-state and `_logged_at`
-   semantics. It then follows the existing replay, buffer-writing, `CaptureSession`, and flush
-   path.
+   provider time as `_logged_at`; the previous-run branch uses its pinned `logged_at` value with
+   prior global state. It then follows the existing replay, buffer-writing, `CaptureSession`, and
+   flush path.
 
 `LoggerIngressEvent` sizing includes provider snapshots, the immutable session ID, and completion
 state. It excludes logger-managed fields, which ALB retains once in its current field map. Field-map

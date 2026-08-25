@@ -83,8 +83,12 @@ pub struct AdmissionContext {
 #[derive(ApproximateSize, Debug)]
 pub enum EventContext {
   CurrentProcess(AdmissionContext),
-  /// Previous-process logs are finalized against prior global state on the consumer.
-  PreviousProcess,
+  /// Previous-process logs retain their admission-time `_logged_at` value, but are finalized
+  /// against prior global state on the consumer.
+  PreviousProcess {
+    /// Timestamp-provider result captured when this previous-process log enters `EventBuffer`.
+    logged_at: OffsetDateTime,
+  },
 }
 
 //

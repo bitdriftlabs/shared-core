@@ -111,7 +111,7 @@ fn feature_flag_exposure_carries_current_process_context_in_the_protected_lane()
     Some("variant".to_string()),
     match current_process_context() {
       EventContext::CurrentProcess(context) => context,
-      EventContext::PreviousProcess => {
+      EventContext::PreviousProcess { .. } => {
         unreachable!("test helper returns current-process context")
       },
     },
@@ -128,6 +128,20 @@ fn feature_flag_exposure_carries_current_process_context_in_the_protected_lane()
         ..
       } if session_id == "session" && flag == "flag" && variant.as_deref() == Some("variant")
     )
+  ));
+}
+
+#[test]
+fn previous_process_context_pins_logged_at() {
+  let logged_at = OffsetDateTime::UNIX_EPOCH;
+  let EventBufferEntry::Ingress(mut event) = log(log_level::INFO, LogType::NORMAL, 1) else {
+    unreachable!("log helper creates an ingress event")
+  };
+  event.context = EventContext::PreviousProcess { logged_at };
+
+  assert!(matches!(
+    event.context,
+    EventContext::PreviousProcess { logged_at: timestamp } if timestamp == logged_at
   ));
 }
 
