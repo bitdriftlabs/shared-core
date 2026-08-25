@@ -273,11 +273,11 @@ impl<T> EventBufferState<T> {
     // ensures an incoming entry only displaces work of lower priority.
     match incoming_lane {
       RetentionLane::Low => {
-        assert_eq!(0, bytes_needed, "low entries cannot displace entries");
+        debug_assert_eq!(0, bytes_needed, "low entries cannot displace entries");
       },
       RetentionLane::High => {
         bytes_needed = self.evict_from_lane(RetentionLane::Low, bytes_needed, terminal_entries);
-        assert_eq!(
+        debug_assert_eq!(
           0, bytes_needed,
           "admission preflight guarantees enough lower-priority bytes"
         );
@@ -285,7 +285,7 @@ impl<T> EventBufferState<T> {
       RetentionLane::Protected => {
         bytes_needed = self.evict_from_lane(RetentionLane::Low, bytes_needed, terminal_entries);
         bytes_needed = self.evict_from_lane(RetentionLane::High, bytes_needed, terminal_entries);
-        assert_eq!(
+        debug_assert_eq!(
           0, bytes_needed,
           "admission preflight guarantees enough lower-priority bytes"
         );

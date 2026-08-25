@@ -257,7 +257,10 @@ impl EventBuffer {
     outcome
   }
   pub async fn next_batch(&self, max_entries: usize) -> Vec<EventBufferEntry> {
-    assert!(max_entries > 0, "next_batch requires a non-zero batch size");
+    debug_assert!(max_entries > 0, "next_batch requires a non-zero batch size");
+    if max_entries == 0 {
+      return vec![];
+    }
     loop {
       let notified = self.inner.notify.notified();
       tokio::pin!(notified);
