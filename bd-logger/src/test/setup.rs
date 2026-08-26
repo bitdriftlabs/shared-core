@@ -394,10 +394,6 @@ impl Setup {
   pub fn get_default_runtime_values() -> Vec<(&'static str, ValueKind)> {
     vec![
       (
-        bd_runtime::runtime::platform_events::ListenerEnabledFlag::path(),
-        ValueKind::Bool(true),
-      ),
-      (
         bd_runtime::runtime::log_upload::BatchSizeFlag::path(),
         bd_test_helpers::runtime::ValueKind::Int(10),
       ),

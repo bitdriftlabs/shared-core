@@ -624,10 +624,6 @@ async fn logs_resource_utilization_log() {
         ValueKind::Bool(true),
       ),
       (
-        bd_runtime::runtime::platform_events::ListenerEnabledFlag::path(),
-        ValueKind::Bool(true),
-      ),
-      (
         bd_runtime::runtime::resource_utilization::ResourceUtilizationEnabledFlag::path(),
         ValueKind::Bool(true),
       ),

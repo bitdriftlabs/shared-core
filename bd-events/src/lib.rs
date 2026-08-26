@@ -47,9 +47,9 @@ pub trait ListenerTarget {
 pub struct Listener {
   target: Box<dyn ListenerTarget + Send + Sync>,
 
-  // Whether the events listener has seen at least one update to the value of the `is_enabled`
-  // flag.
-  has_seen_is_enabled_flag_update: bool,
+  // Tracks whether the target is currently running so runtime updates only transition it when
+  // needed.
+  target_is_active: bool,
 
   is_enabled_flag: BoolWatch<ListenerEnabledFlag>,
 }
@@ -63,7 +63,7 @@ impl Listener {
 
     Self {
       target,
-      has_seen_is_enabled_flag_update: false,
+      target_is_active: false,
       is_enabled_flag,
     }
   }
@@ -76,6 +76,13 @@ impl Listener {
   }
 
   pub async fn run_with_shutdown(&mut self, mut shutdown: ComponentShutdown) {
+    // The listener's default is enabled, so start it even when no runtime update has arrived.
+    if *self.is_enabled_flag.read_mark_update() && !self.target_is_active {
+      log::debug!("events listener start");
+      self.target.start();
+      self.target_is_active = true;
+    }
+
     let local_shutdown = shutdown.cancelled();
     tokio::pin!(local_shutdown);
 
@@ -83,16 +90,15 @@ impl Listener {
       tokio::select! {
         _ = self.is_enabled_flag.changed() => {
           let new_is_enabled = *self.is_enabled_flag.read();
-          if new_is_enabled {
+          if new_is_enabled && !self.target_is_active {
             log::debug!("events listener start");
             self.target.start();
-          } else if self.has_seen_is_enabled_flag_update {
-            // Stop only if event listener was previously started.
+            self.target_is_active = true;
+          } else if !new_is_enabled && self.target_is_active {
             log::debug!("events listener stop");
             self.target.stop();
+            self.target_is_active = false;
           }
-
-          self.has_seen_is_enabled_flag_update = true;
         }
         () = &mut local_shutdown => {
           break;
