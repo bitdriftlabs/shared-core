@@ -374,10 +374,7 @@ fn pending_log_limit_shrink_evicts_newest_low_then_high_entries() {
     (RetentionLane::High, "high_old"),
     (RetentionLane::High, "high_new"),
   ] {
-    assert_eq!(
-      AdmissionOutcome::Admitted,
-      state.admit(lane, 10, entry).outcome()
-    );
+    assert_eq!(AdmissionOutcome::Admitted, state.admit(lane, 10, entry));
   }
 
   // Limit updates are deferred until admission so configuration changes do not contend with the
@@ -385,9 +382,7 @@ fn pending_log_limit_shrink_evicts_newest_low_then_high_entries() {
   state.set_pending_limits(state_limits(15, 100));
   assert_eq!(
     AdmissionOutcome::Admitted,
-    state
-      .admit(RetentionLane::Protected, 0, "trigger")
-      .outcome()
+    state.admit(RetentionLane::Protected, 0, "trigger")
   );
 
   assert_eq!(vec!["high_old", "trigger"], state.take_batch(4));
@@ -398,21 +393,17 @@ fn pending_total_limit_shrink_preserves_protected_entries() {
   let mut state = EventBufferState::new(state_limits(200, 200));
   assert_eq!(
     AdmissionOutcome::Admitted,
-    state
-      .admit(RetentionLane::Protected, 100, "protected")
-      .outcome()
+    state.admit(RetentionLane::Protected, 100, "protected")
   );
   assert_eq!(
     AdmissionOutcome::Admitted,
-    state.admit(RetentionLane::Low, 10, "low").outcome()
+    state.admit(RetentionLane::Low, 10, "low")
   );
 
   state.set_pending_limits(state_limits(200, 50));
   assert_eq!(
     AdmissionOutcome::RejectedFull,
-    state
-      .admit(RetentionLane::Protected, 0, "trigger")
-      .outcome()
+    state.admit(RetentionLane::Protected, 0, "trigger")
   );
 
   // Protected entries are never evicted, even if they alone exceed a newly reduced total limit.
@@ -425,7 +416,7 @@ fn latest_pending_limit_update_wins() {
   for entry in ["old", "middle", "new"] {
     assert_eq!(
       AdmissionOutcome::Admitted,
-      state.admit(RetentionLane::Low, 10, entry).outcome()
+      state.admit(RetentionLane::Low, 10, entry)
     );
   }
 
@@ -433,9 +424,7 @@ fn latest_pending_limit_update_wins() {
   state.set_pending_limits(state_limits(15, 100));
   assert_eq!(
     AdmissionOutcome::Admitted,
-    state
-      .admit(RetentionLane::Protected, 0, "trigger")
-      .outcome()
+    state.admit(RetentionLane::Protected, 0, "trigger")
   );
 
   assert_eq!(vec!["old", "trigger"], state.take_batch(4));

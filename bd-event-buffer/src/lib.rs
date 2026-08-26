@@ -23,7 +23,7 @@ mod tests;
 
 mod retention;
 
-pub use retention::{AdmissionResult, EventBufferState, TerminalEntries};
+use retention::EventBufferState;
 
 //
 // LoggerControl
@@ -246,14 +246,12 @@ impl EventBuffer {
 
   #[must_use]
   pub fn admit(&self, entry: EventBufferEntry) -> AdmissionOutcome {
-    let admission = {
+    let outcome = {
       let mut state = self.inner.state.lock();
       state
         .retention
         .admit(entry.lane(), entry.approximate_size_bytes(), entry)
     };
-    let outcome = admission.outcome();
-    drop(admission.into_terminal_entries());
     if outcome == AdmissionOutcome::Admitted {
       self.inner.notify.notify_one();
     }
@@ -304,11 +302,10 @@ impl EventBuffer {
   }
 
   pub fn close(&self) {
-    let terminal_entries = {
+    {
       let mut state = self.inner.state.lock();
-      state.retention.close()
-    };
-    drop(terminal_entries);
+      state.retention.close();
+    }
     self.inner.notify.notify_waiters();
   }
 }

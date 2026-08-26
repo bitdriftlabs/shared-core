@@ -109,10 +109,7 @@ impl TestSubject {
         let entry = Entry::new(self.next_id, *lane, *bytes);
         self.next_id += 1;
         assert_eq!(
-          self
-            .actual
-            .admit(entry.lane, entry.bytes, entry.clone())
-            .outcome(),
+          self.actual.admit(entry.lane, entry.bytes, entry.clone()),
           self.reference.admit(entry),
         );
       },
@@ -127,7 +124,7 @@ impl TestSubject {
         );
       },
       Operation::Close => {
-        drop(self.actual.close());
+        self.actual.close();
         self.reference.close();
       },
     }

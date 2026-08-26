@@ -189,7 +189,12 @@ it never changes delivery order. Whatever representation is selected, these inva
   the oldest retained equal-priority entry. Protected entries are not eviction victims.
 - Every entry is charged a conservative fixed bookkeeping overhead in addition to its payload.
   This gives even zero-payload control entries a nonzero cost and bounds live entry count plus
-  metadata. Callbacks are collected while locked and invoked only after unlocking.
+  metadata. Rejection, eviction, and shutdown drop entries while holding the EventBuffer mutex.
+  Today's terminal completion is a Tokio oneshot sender: closing it wakes the receiver but does
+  not directly poll that receiver's continuation. A resumed task may contend for the mutex, but it
+  cannot reenter through the receiver continuation while the drop is in progress. Do not add
+  direct callbacks or user-defined destruction to entries without first introducing an explicit
+  post-unlock handoff.
 - Admission fallibly reserves required incoming-lane container capacity before evicting retained
   entries. Allocation failure rejects the incoming entry and leaves retained entries untouched.
   Capacity remains available for amortized producer latency and is never synchronously shrunk on

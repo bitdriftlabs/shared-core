@@ -9,74 +9,6 @@ use crate::{AdmissionOutcome, EventBufferLimits, RetentionLane};
 use std::collections::VecDeque;
 
 //
-// AdmissionResult
-//
-
-/// The outcome of an admission attempt and entries no longer retained by the buffer.
-///
-/// Retention only detaches terminal entries. Its owner drops this result after releasing any
-/// synchronization guard, so completion senders never wake a consumer while that guard is held.
-#[must_use]
-pub struct AdmissionResult<T> {
-  outcome: AdmissionOutcome,
-  terminal_entries: TerminalEntries<T>,
-}
-
-impl<T> AdmissionResult<T> {
-  #[must_use]
-  pub const fn outcome(&self) -> AdmissionOutcome {
-    self.outcome
-  }
-
-  #[must_use]
-  pub fn into_terminal_entries(self) -> TerminalEntries<T> {
-    self.terminal_entries
-  }
-}
-
-//
-// TerminalEntries
-//
-
-/// Entries removed from retention and awaiting destruction by the owner.
-///
-/// Each lane keeps its backing allocation when it is detached during close. Evicted suffixes are
-/// appended here until the owner releases the mutex and drops the result.
-pub struct TerminalEntries<T> {
-  protected: VecDeque<QueuedEntry<T>>,
-  high: VecDeque<QueuedEntry<T>>,
-  low: VecDeque<QueuedEntry<T>>,
-  rejected: Option<T>,
-}
-
-impl<T> TerminalEntries<T> {
-  fn empty() -> Self {
-    Self {
-      protected: VecDeque::new(),
-      high: VecDeque::new(),
-      low: VecDeque::new(),
-      rejected: None,
-    }
-  }
-
-  fn reject(&mut self, entry: T) {
-    debug_assert!(
-      self.rejected.is_none(),
-      "an admission has only one rejected entry"
-    );
-    self.rejected = Some(entry);
-  }
-
-  fn append(&mut self, lane: RetentionLane, entries: VecDeque<QueuedEntry<T>>) {
-    match lane {
-      RetentionLane::Low => self.low.extend(entries),
-      RetentionLane::High => self.high.extend(entries),
-      RetentionLane::Protected => self.protected.extend(entries),
-    }
-  }
-}
-
-//
 // EventBufferState
 //
 
@@ -116,37 +48,24 @@ impl<T> EventBufferState<T> {
     self.pending_limits = Some(limits);
   }
 
-  /// Applies staged limits, then admits an entry or detaches it without changing retained entries.
-  pub fn admit(&mut self, lane: RetentionLane, bytes: usize, entry: T) -> AdmissionResult<T> {
-    let mut terminal_entries = TerminalEntries::empty();
-    self.apply_pending_limits(&mut terminal_entries);
+  /// Applies staged limits, then admits or drops an entry while the owner holds its mutex.
+  pub(crate) fn admit(&mut self, lane: RetentionLane, bytes: usize, entry: T) -> AdmissionOutcome {
+    self.apply_pending_limits();
     if self.closed {
-      terminal_entries.reject(entry);
-      return AdmissionResult {
-        outcome: AdmissionOutcome::Closed,
-        terminal_entries,
-      };
+      return AdmissionOutcome::Closed;
     }
     if bytes > self.limits.total_limit_bytes
       || (lane.is_evictable() && bytes > self.limits.log_limit_bytes)
     {
-      terminal_entries.reject(entry);
-      return AdmissionResult {
-        outcome: AdmissionOutcome::RejectedOversized,
-        terminal_entries,
-      };
+      return AdmissionOutcome::RejectedOversized;
     }
 
     // Check admission without changing queue capacity first. A rejected entry must not transiently
     // grow a full lane's backing allocation beyond the configured retained-byte budget.
     if !self.can_make_room(lane, bytes) || !self.reserve(lane) {
-      terminal_entries.reject(entry);
-      return AdmissionResult {
-        outcome: AdmissionOutcome::RejectedFull,
-        terminal_entries,
-      };
+      return AdmissionOutcome::RejectedFull;
     }
-    self.make_room(lane, bytes, &mut terminal_entries);
+    self.make_room(lane, bytes);
 
     let admission_id = self.next_admission_id;
     self.next_admission_id = self.next_admission_id.wrapping_add(1);
@@ -155,10 +74,7 @@ impl<T> EventBufferState<T> {
       bytes,
       entry,
     });
-    AdmissionResult {
-      outcome: AdmissionOutcome::Admitted,
-      terminal_entries,
-    }
+    AdmissionOutcome::Admitted
   }
 
   #[must_use]
@@ -177,18 +93,14 @@ impl<T> EventBufferState<T> {
     result
   }
 
-  /// Closes the buffer and detaches all retained entries for destruction by the owner.
-  pub fn close(&mut self) -> TerminalEntries<T> {
+  /// Closes the buffer and drops all retained entries while the owner holds its mutex.
+  pub(crate) fn close(&mut self) {
     if !self.closed {
       self.closed = true;
-      return TerminalEntries {
-        protected: self.protected.take_entries(),
-        high: self.high.take_entries(),
-        low: self.low.take_entries(),
-        rejected: None,
-      };
+      self.protected.clear();
+      self.high.clear();
+      self.low.clear();
     }
-    TerminalEntries::empty()
   }
 
   #[must_use]
@@ -214,7 +126,7 @@ impl<T> EventBufferState<T> {
     .map(|(lane, _)| lane)
   }
 
-  fn apply_pending_limits(&mut self, terminal_entries: &mut TerminalEntries<T>) {
+  fn apply_pending_limits(&mut self) {
     let Some(limits) = self.pending_limits.take() else {
       return;
     };
@@ -223,8 +135,8 @@ impl<T> EventBufferState<T> {
     // entries, while the total limit also includes protected entries. Enforce them separately,
     // recalculating the total overage after the first eviction pass. Both passes evict low before
     // high and never evict protected entries.
-    self.evict_for_budget_shrink(self.log_bytes_over_limit(), terminal_entries);
-    self.evict_for_budget_shrink(self.total_bytes_over_limit(), terminal_entries);
+    self.evict_for_budget_shrink(self.log_bytes_over_limit());
+    self.evict_for_budget_shrink(self.total_bytes_over_limit());
   }
 
   fn can_make_room(&self, lane: RetentionLane, incoming_bytes: usize) -> bool {
@@ -235,14 +147,9 @@ impl<T> EventBufferState<T> {
     self.evictable_bytes_available_to(lane) >= bytes_needed
   }
 
-  fn make_room(
-    &mut self,
-    lane: RetentionLane,
-    incoming_bytes: usize,
-    terminal_entries: &mut TerminalEntries<T>,
-  ) {
+  fn make_room(&mut self, lane: RetentionLane, incoming_bytes: usize) {
     let bytes_needed = self.required_eviction_bytes(lane, incoming_bytes);
-    self.evict_for_limit(lane, bytes_needed, terminal_entries);
+    self.evict_for_limit(lane, bytes_needed);
   }
 
   fn required_eviction_bytes(&self, lane: RetentionLane, incoming_bytes: usize) -> usize {
@@ -263,12 +170,7 @@ impl<T> EventBufferState<T> {
     log_needed.max(total_needed)
   }
 
-  fn evict_for_limit(
-    &mut self,
-    incoming_lane: RetentionLane,
-    mut bytes_needed: usize,
-    terminal_entries: &mut TerminalEntries<T>,
-  ) {
+  fn evict_for_limit(&mut self, incoming_lane: RetentionLane, mut bytes_needed: usize) {
     // Evict the newest eligible entries first. This retains the oldest entries in each lane and
     // ensures an incoming entry only displaces work of lower priority.
     match incoming_lane {
@@ -276,15 +178,15 @@ impl<T> EventBufferState<T> {
         debug_assert_eq!(0, bytes_needed, "low entries cannot displace entries");
       },
       RetentionLane::High => {
-        bytes_needed = self.evict_from_lane(RetentionLane::Low, bytes_needed, terminal_entries);
+        bytes_needed = self.evict_from_lane(RetentionLane::Low, bytes_needed);
         debug_assert_eq!(
           0, bytes_needed,
           "admission preflight guarantees enough lower-priority bytes"
         );
       },
       RetentionLane::Protected => {
-        bytes_needed = self.evict_from_lane(RetentionLane::Low, bytes_needed, terminal_entries);
-        bytes_needed = self.evict_from_lane(RetentionLane::High, bytes_needed, terminal_entries);
+        bytes_needed = self.evict_from_lane(RetentionLane::Low, bytes_needed);
+        bytes_needed = self.evict_from_lane(RetentionLane::High, bytes_needed);
         debug_assert_eq!(
           0, bytes_needed,
           "admission preflight guarantees enough lower-priority bytes"
@@ -293,27 +195,17 @@ impl<T> EventBufferState<T> {
     }
   }
 
-  fn evict_for_budget_shrink(
-    &mut self,
-    mut bytes_needed: usize,
-    terminal_entries: &mut TerminalEntries<T>,
-  ) {
+  fn evict_for_budget_shrink(&mut self, mut bytes_needed: usize) {
     // A limit change has no incoming priority, so it uses the least-destructive policy: discard
     // low entries first, then high entries, and leave protected entries intact even when they
     // alone exceed the new total limit.
     for lane in [RetentionLane::Low, RetentionLane::High] {
-      bytes_needed = self.evict_from_lane(lane, bytes_needed, terminal_entries);
+      bytes_needed = self.evict_from_lane(lane, bytes_needed);
     }
   }
 
-  fn evict_from_lane(
-    &mut self,
-    lane: RetentionLane,
-    bytes_needed: usize,
-    terminal_entries: &mut TerminalEntries<T>,
-  ) -> usize {
-    let (freed_bytes, entries) = self.lane_mut(lane).evict_newest(bytes_needed);
-    terminal_entries.append(lane, entries);
+  fn evict_from_lane(&mut self, lane: RetentionLane, bytes_needed: usize) -> usize {
+    let freed_bytes = self.lane_mut(lane).evict_newest(bytes_needed);
     bytes_needed.saturating_sub(freed_bytes)
   }
 
@@ -399,26 +291,22 @@ impl<T> LaneState<T> {
     Some(entry)
   }
 
-  fn evict_newest(&mut self, bytes_needed: usize) -> (usize, VecDeque<QueuedEntry<T>>) {
-    if bytes_needed == 0 {
-      return (0, VecDeque::new());
-    }
-
-    // Remove a newest-first suffix. The remaining prefix retains its FIFO ordering.
-    let mut start = self.entries.len();
+  fn evict_newest(&mut self, bytes_needed: usize) -> usize {
+    // Remove and drop a newest-first suffix. The remaining prefix retains its FIFO ordering.
     let mut freed_bytes = 0;
-    while start > 0 && freed_bytes < bytes_needed {
-      start -= 1;
-      freed_bytes += self.entries[start].bytes;
+    while freed_bytes < bytes_needed {
+      let Some(entry) = self.entries.pop_back() else {
+        break;
+      };
+      freed_bytes += entry.bytes;
+      self.bytes -= entry.bytes;
     }
-    let evicted = self.entries.split_off(start);
-    self.bytes -= freed_bytes;
-    (freed_bytes, evicted)
+    freed_bytes
   }
 
-  fn take_entries(&mut self) -> VecDeque<QueuedEntry<T>> {
+  fn clear(&mut self) {
     self.bytes = 0;
-    std::mem::take(&mut self.entries)
+    self.entries.clear();
   }
 }
 
