@@ -9,10 +9,8 @@ use crate::{Listener, ListenerTarget};
 use bd_runtime::runtime::{ConfigLoader, FeatureFlag};
 use bd_shutdown::ComponentShutdownTrigger;
 use bd_test_helpers::runtime::{ValueKind, make_simple_update};
-use bd_time::TimeDurationExt;
 use std::sync::Arc;
 use tempfile::TempDir;
-use time::ext::NumericalDuration;
 use tokio_test::assert_ok;
 
 //
@@ -38,7 +36,6 @@ impl Setup {
     Listener::new(target, &self.runtime)
   }
 
-  #[allow(dead_code)]
   async fn make_runtime_update(&self, events_listener_enabled: bool) {
     self
       .runtime
@@ -69,6 +66,8 @@ struct State {
 #[derive(Default)]
 struct MockListenerTarget {
   state: Arc<parking_lot::Mutex<State>>,
+  started: Arc<tokio::sync::Notify>,
+  stopped: Arc<tokio::sync::Notify>,
 }
 
 impl super::ListenerTarget for MockListenerTarget {
@@ -78,7 +77,8 @@ impl super::ListenerTarget for MockListenerTarget {
       start_calls_count: state.start_calls_count + 1,
       stop_calls_count: state.stop_calls_count,
       is_active: Some(true),
-    }
+    };
+    self.started.notify_one();
   }
 
   fn stop(&self) {
@@ -87,16 +87,18 @@ impl super::ListenerTarget for MockListenerTarget {
       start_calls_count: state.start_calls_count,
       stop_calls_count: state.stop_calls_count + 1,
       is_active: Some(false),
-    }
+    };
+    self.stopped.notify_one();
   }
 }
 
 #[tokio::test]
-async fn does_not_interact_with_target_if_listener_is_disabled() {
+async fn starts_target_by_default() {
   let setup = Setup::new();
 
   let target = Box::new(MockListenerTarget::default());
   let state = target.state.clone();
+  let started = target.started.clone();
 
   let mut listener = setup.create_listener(target);
 
@@ -107,37 +109,7 @@ async fn does_not_interact_with_target_if_listener_is_disabled() {
     () = listener.run_with_shutdown(shutdown).await;
   });
 
-  setup.make_runtime_update(false).await;
-
-  200.milliseconds().sleep().await;
-
-  shutdown_trigger.shutdown().await;
-  assert_ok!(listener_task.await);
-
-  assert_eq!(0, state.lock().start_calls_count);
-  assert_eq!(0, state.lock().stop_calls_count);
-  assert!(state.lock().is_active.is_none());
-}
-
-#[tokio::test]
-async fn starts_target() {
-  let setup = Setup::new();
-
-  let target = Box::new(MockListenerTarget::default());
-  let state = target.state.clone();
-
-  let mut listener = setup.create_listener(target);
-
-  let shutdown_trigger = ComponentShutdownTrigger::default();
-  let shutdown = shutdown_trigger.make_shutdown();
-
-  let listener_task = tokio::task::spawn(async move {
-    () = listener.run_with_shutdown(shutdown).await;
-  });
-
-  setup.make_runtime_update(true).await;
-
-  200.milliseconds().sleep().await;
+  started.notified().await;
 
   shutdown_trigger.shutdown().await;
   assert_ok!(listener_task.await);
@@ -148,11 +120,13 @@ async fn starts_target() {
 }
 
 #[tokio::test]
-async fn starts_and_stops_target() {
+async fn switches_target_off_and_back_on() {
   let setup = Setup::new();
 
   let target = Box::new(MockListenerTarget::default());
   let state = target.state.clone();
+  let started = target.started.clone();
+  let stopped = target.stopped.clone();
 
   let mut listener = setup.create_listener(target);
 
@@ -163,16 +137,18 @@ async fn starts_and_stops_target() {
     () = listener.run_with_shutdown(shutdown).await;
   });
 
-  setup.make_runtime_update(true).await;
-  200.milliseconds().sleep().await;
+  started.notified().await;
 
   setup.make_runtime_update(false).await;
-  200.milliseconds().sleep().await;
+  stopped.notified().await;
+
+  setup.make_runtime_update(true).await;
+  started.notified().await;
 
   shutdown_trigger.shutdown().await;
   assert_ok!(listener_task.await);
 
-  assert_eq!(1, state.lock().start_calls_count);
+  assert_eq!(2, state.lock().start_calls_count);
   assert_eq!(1, state.lock().stop_calls_count);
-  assert!(!state.lock().is_active.unwrap());
+  assert!(state.lock().is_active.unwrap());
 }

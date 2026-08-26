@@ -1021,7 +1021,7 @@ pub mod platform_events {
   // Controls whether the platform events listener is enabled or not. In practice, it determines
   // whether the platform layer emits events in response to various host platform-provided events
   // such as memory warnings or application lifecycle changes.
-  bool_feature_flag!(ListenerEnabledFlag, "platform_events.enabled", false);
+  bool_feature_flag!(ListenerEnabledFlag, "platform_events.enabled", true);
 }
 
 pub mod artifact_upload {
