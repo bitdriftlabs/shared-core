@@ -464,7 +464,7 @@ async fn logs_are_replayed_in_order() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let run_buffer_task = tokio::task::spawn(async move {
-    _ = buffer.run(state_store, ()).await;
+    _ = Box::pin(buffer.run(state_store, ())).await;
   });
 
   shutdown.store(true, Ordering::SeqCst);

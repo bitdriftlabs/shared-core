@@ -47,12 +47,76 @@ use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{
 use bd_state::Scope;
 use log_matcher::LogMatcher;
 use log_matcher::log_matcher::{BaseLogMatcher, Matcher, base_log_matcher};
+use protobuf::Enum;
 use rand::RngExt;
 use std::borrow::Cow;
 
 const LOG_LEVEL_KEY: &str = "log_level";
 const LOG_TYPE_KEY: &str = "log_type";
 pub const SAMPLE_RATE_DENOMINATOR: u32 = 1_000_000;
+
+//
+// LogTypeSet
+//
+
+/// An allocation-free bitset of SDK log types. This is used to track the set of log types that a
+/// workflow can match against.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LogTypeSet(u16);
+
+impl LogTypeSet {
+  #[must_use]
+  pub fn from_log_type(log_type: LogType) -> Self {
+    Self(
+      u32::try_from(log_type.value())
+        .ok()
+        .and_then(|value| u16::checked_shl(1, value))
+        .unwrap_or_default(),
+    )
+  }
+
+  fn from_log_type_value(log_type: u32) -> Self {
+    i32::try_from(log_type)
+      .ok()
+      .and_then(LogType::from_i32)
+      .map_or_else(Self::default, Self::from_log_type)
+  }
+
+  #[must_use]
+  pub fn is_empty(self) -> bool {
+    self.0 == 0
+  }
+
+  pub fn union(&mut self, other: Self) {
+    self.0 |= other.0;
+  }
+
+  pub fn intersect(&mut self, other: Self) {
+    self.0 &= other.0;
+  }
+
+  #[must_use]
+  pub fn difference(self, other: Self) -> Self {
+    Self(self.0 & !other.0)
+  }
+
+  pub fn iter(self) -> impl Iterator<Item = LogType> {
+    let mut bits = self.0;
+    std::iter::from_fn(move || {
+      loop {
+        let value = bits.trailing_zeros();
+        if value >= u16::BITS {
+          return None;
+        }
+
+        bits &= bits - 1;
+        if let Some(log_type) = i32::try_from(value).ok().and_then(LogType::from_i32) {
+          return Some(log_type);
+        }
+      }
+    })
+  }
+}
 
 pub trait RandomNumberGenerator {
   fn random_u32(&mut self, upper_bound_exclusive: u32) -> u32;
@@ -173,6 +237,50 @@ impl Tree {
       extracted_fields,
       sampled_roll,
     )
+  }
+
+  /// Returns a safe upper bound on the log types this tree can match without evaluating a log.
+  ///
+  /// `Some(types)` means no log outside `types` can match, but a log in `types` still needs normal
+  /// matcher evaluation. `None` means the tree's log-type restriction cannot be proven, so a
+  /// router must use its fallback path and evaluate every log.
+  ///
+  /// This is deliberately conservative: returning a narrower set than the matcher can accept
+  /// would incorrectly skip a workflow.
+  #[must_use]
+  pub fn possible_log_types(&self) -> Option<LogTypeSet> {
+    match self {
+      Self::Base(Leaf::LogType(log_type)) => Some(LogTypeSet::from_log_type_value(*log_type)),
+      // Base leaves without an exact type predicate may match any type. A negated expression can
+      // exclude a type, but its other conditions can still make that type match. Keep both on the
+      // fallback path rather than attempting to infer exclusions.
+      Self::Base(_) | Self::Not(_) => None,
+      Self::Or(matchers) => {
+        let mut log_types = LogTypeSet::default();
+        for matcher in matchers {
+          // Every OR branch needs a known upper bound. One unrestricted branch makes the whole
+          // expression unrestricted.
+          log_types.union(matcher.possible_log_types()?);
+        }
+        Some(log_types)
+      },
+      Self::And(matchers) => {
+        let mut log_types = None;
+        for matcher in matchers {
+          if let Some(matcher_log_types) = matcher.possible_log_types() {
+            // An unrestricted AND branch adds no type information; intersect only the known
+            // restrictions.
+            log_types = Some(
+              log_types.map_or(matcher_log_types, |mut log_types: LogTypeSet| {
+                log_types.intersect(matcher_log_types);
+                log_types
+              }),
+            );
+          }
+        }
+        log_types
+      },
+    }
   }
 
   #[must_use]
