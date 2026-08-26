@@ -77,7 +77,7 @@ impl Listener {
 
   pub async fn run_with_shutdown(&mut self, mut shutdown: ComponentShutdown) {
     // The listener's default is enabled, so start it even when no runtime update has arrived.
-    if *self.is_enabled_flag.read_mark_update() {
+    if *self.is_enabled_flag.read_mark_update() && !self.target_is_active {
       log::debug!("events listener start");
       self.target.start();
       self.target_is_active = true;

@@ -693,7 +693,9 @@ fn api_bandwidth_counters() {
       );
       assert!(bandwidth_tx > 100, "bandwidth_tx = {bandwidth_tx}");
       assert!(bandwidth_rx < 400, "bandwidth_rx = {bandwidth_rx}");
-      assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(279));
+      // Platform events are now enabled by default, so this runtime update only carries the
+      // resource-utilization override.
+      assert_eq!(upload.get_counter("api:bandwidth_rx_decompressed", labels! {}), Some(248));
       assert_eq!(upload.get_counter("api:stream_total", labels! {}), Some(1));
   });
 }

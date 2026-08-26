@@ -120,6 +120,33 @@ async fn starts_target_by_default() {
 }
 
 #[tokio::test]
+async fn does_not_restart_an_active_target() {
+  let setup = Setup::new();
+
+  let target = Box::new(MockListenerTarget::default());
+  let state = target.state.clone();
+
+  let mut listener = setup.create_listener(target);
+
+  // A cancelled shutdown makes each call complete after the initial startup check. This models
+  // the log buffer recreating the listener future while retaining the listener itself.
+  for _ in 0 .. 2 {
+    let shutdown_trigger = ComponentShutdownTrigger::default();
+    let shutdown = shutdown_trigger.make_shutdown();
+
+    let shutdown_task = tokio::task::spawn(async move {
+      shutdown_trigger.shutdown().await;
+    });
+    listener.run_with_shutdown(shutdown).await;
+    assert_ok!(shutdown_task.await);
+  }
+
+  assert_eq!(1, state.lock().start_calls_count);
+  assert_eq!(0, state.lock().stop_calls_count);
+  assert!(state.lock().is_active.unwrap());
+}
+
+#[tokio::test]
 async fn switches_target_off_and_back_on() {
   let setup = Setup::new();
 
