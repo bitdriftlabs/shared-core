@@ -40,6 +40,38 @@ pub const LOG_FIELD_NAME_TYPE: &str = "log_type";
 pub const LOG_FIELD_NAME_LEVEL: &str = "log_level";
 pub const LOG_FIELD_NAME_MESSAGE: &str = "_message";
 
+//
+// LogIngress
+//
+
+/// The pre-processing representation of a log emitted into the SDK ingress pipeline.
+#[derive(ApproximateSize, Debug)]
+pub struct LogLine {
+  #[approximate_size(skip)]
+  pub log_level: LogLevel,
+  #[approximate_size(skip)]
+  pub log_type: LogType,
+  pub message: LogMessage,
+  #[approximate_size(with = approximate_ahash_map_children_bytes)]
+  pub fields: AnnotatedLogFields,
+  #[approximate_size(with = approximate_ahash_map_children_bytes)]
+  pub matching_fields: AnnotatedLogFields,
+  pub attributes_overrides: Option<LogAttributesOverrides>,
+  #[approximate_size(skip)]
+  pub capture_session: Option<&'static str>,
+}
+
+#[derive(ApproximateSize, Debug)]
+pub enum LogAttributesOverrides {
+  /// Uses the previous session ID if available.
+  ///
+  /// All relevant metadata must already be attached because current-session metadata is not added
+  /// to previous-process logs.
+  PreviousRunSessionID(OffsetDateTime),
+  /// Overrides when the log occurred, for example for spans with a provided timestamp.
+  OccurredAt(OffsetDateTime),
+}
+
 // Helpers for doing raw casts where we are sure the value fits and don't want to pay for
 // checks and avoid clippy lints.
 pub trait LossyIntToU32 {

@@ -25,8 +25,8 @@ use tokio_test::assert_pending;
 #[tokio::test]
 async fn thread_local_logger_guard() {
   let (log_tx, mut log_rx) = bd_bounded_buffer::channel(100);
-  let (state_tx, _state_rx) = bd_bounded_buffer::channel(100);
-  let sender = async_log_buffer::Sender::from_parts(log_tx, state_tx);
+  let (control_tx, _control_rx) = bd_bounded_buffer::channel(100);
+  let sender = async_log_buffer::Sender::from_parts(log_tx, control_tx);
 
   let sdk_directory = TempDir::new().unwrap();
   let store = in_memory_store();
@@ -63,8 +63,8 @@ async fn thread_local_logger_guard() {
 #[tokio::test]
 async fn session_id_is_rejected_while_reentrancy_guard_is_held() {
   let (log_tx, _log_rx) = bd_bounded_buffer::channel(100);
-  let (state_tx, _state_rx) = bd_bounded_buffer::channel(100);
-  let sender = async_log_buffer::Sender::from_parts(log_tx, state_tx);
+  let (control_tx, _control_rx) = bd_bounded_buffer::channel(100);
+  let sender = async_log_buffer::Sender::from_parts(log_tx, control_tx);
 
   let sdk_directory = TempDir::new().unwrap();
   let store = in_memory_store();
@@ -92,8 +92,8 @@ async fn session_id_is_rejected_while_reentrancy_guard_is_held() {
 #[tokio::test]
 async fn register_opaque_entity_id_updates_queue_and_watch() {
   let (log_tx, _log_rx) = bd_bounded_buffer::channel(1024 * 1024);
-  let (state_tx, mut state_rx) = bd_bounded_buffer::channel(1024 * 1024);
-  let sender = async_log_buffer::Sender::from_parts(log_tx, state_tx);
+  let (control_tx, mut control_rx) = bd_bounded_buffer::channel(1024 * 1024);
+  let sender = async_log_buffer::Sender::from_parts(log_tx, control_tx);
 
   let sdk_directory = TempDir::new().unwrap();
   let store = in_memory_store();
@@ -113,12 +113,12 @@ async fn register_opaque_entity_id_updates_queue_and_watch() {
 
   handle.register_opaque_entity_id(Some("hashed-entity-id"));
   assert!(matches!(
-    tokio::time::timeout(std::time::Duration::from_secs(1), state_rx.recv())
+    tokio::time::timeout(std::time::Duration::from_secs(1), control_rx.recv())
       .await
       .unwrap()
       .unwrap()
       .message,
-    async_log_buffer::StateUpdateMessage::SetEntityId(Some(entity_id)) if entity_id == "hashed-entity-id"
+    async_log_buffer::LoggerControl::SetEntityId(Some(entity_id)) if entity_id == "hashed-entity-id"
   ));
   assert!(matches!(
     handle.pending_entity_id.lock().clone(),
@@ -135,12 +135,12 @@ async fn register_opaque_entity_id_updates_queue_and_watch() {
 
   handle.register_opaque_entity_id(None);
   assert!(matches!(
-    tokio::time::timeout(std::time::Duration::from_secs(1), state_rx.recv())
+    tokio::time::timeout(std::time::Duration::from_secs(1), control_rx.recv())
       .await
       .unwrap()
       .unwrap()
       .message,
-    async_log_buffer::StateUpdateMessage::SetEntityId(None)
+    async_log_buffer::LoggerControl::SetEntityId(None)
   ));
   assert_eq!(
     Some(super::PendingEntityIdUpdate::Clear),
@@ -153,8 +153,8 @@ async fn register_opaque_entity_id_updates_queue_and_watch() {
 #[tokio::test]
 async fn register_opaque_entity_id_does_not_update_watch_when_queueing_fails() {
   let (log_tx, _log_rx) = bd_bounded_buffer::channel(1024 * 1024);
-  let (state_tx, mut state_rx) = bd_bounded_buffer::channel(1);
-  let sender = async_log_buffer::Sender::from_parts(log_tx, state_tx);
+  let (control_tx, mut control_rx) = bd_bounded_buffer::channel(1);
+  let sender = async_log_buffer::Sender::from_parts(log_tx, control_tx);
 
   let sdk_directory = TempDir::new().unwrap();
   let store = in_memory_store();
@@ -175,7 +175,7 @@ async fn register_opaque_entity_id_does_not_update_watch_when_queueing_fails() {
   handle.register_opaque_entity_id(Some("hashed-entity-id"));
 
   assert!(
-    tokio::time::timeout(std::time::Duration::from_millis(50), state_rx.recv())
+    tokio::time::timeout(std::time::Duration::from_millis(50), control_rx.recv())
       .await
       .is_err()
   );

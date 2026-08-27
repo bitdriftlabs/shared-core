@@ -44,7 +44,6 @@ mod test;
 
 pub use crate::app_version::AppVersionExtra;
 pub use crate::logger::{ChannelPair, InitParams};
-pub use async_log_buffer::LogAttributesOverrides;
 pub use bd_api::{PlatformNetworkManager, PlatformNetworkStream};
 use bd_buffer::AbslCode;
 pub use bd_client_common::sdk_status::{InitializationState, SdkStatus, SdkStatusTracker};
@@ -57,6 +56,7 @@ pub use bd_log_primitives::{
   AnnotatedLogFields,
   DataValue,
   FieldsRef,
+  LogAttributesOverrides,
   LogFieldKind,
   LogFieldValue,
   LogFields,

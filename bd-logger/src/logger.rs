@@ -277,12 +277,11 @@ impl LoggerHandle {
       opaque_entity_id.clone(),
     ));
 
-    if let Err(e) =
-      self
-        .tx
-        .try_send_state_update(async_log_buffer::StateUpdateMessage::SetEntityId(
-          opaque_entity_id.clone(),
-        ))
+    if let Err(e) = self
+      .tx
+      .try_send_control(async_log_buffer::LoggerControl::SetEntityId(
+        opaque_entity_id.clone(),
+      ))
     {
       log::debug!("failed to queue entity ID state update: {e:?}");
       return;
@@ -440,12 +439,9 @@ impl LoggerHandle {
     with_reentrancy_guard!(
       {
         let field_name = key.clone();
-        let result =
-          self
-            .tx
-            .try_send_state_update(async_log_buffer::StateUpdateMessage::AddLogField(
-              key, value,
-            ));
+        let result = self
+          .tx
+          .try_send_control(async_log_buffer::LoggerControl::AddLogField(key, value));
 
         if let Err(e) = result {
           log::warn!("failed to add {field_name:?} log field: {e:?}");
@@ -467,12 +463,11 @@ impl LoggerHandle {
     with_reentrancy_guard!(
       {
         let field_name = key.clone();
-        let result =
-          self
-            .tx
-            .try_send_state_update(async_log_buffer::StateUpdateMessage::UpdateOotbLogField(
-              key, value,
-            ));
+        let result = self
+          .tx
+          .try_send_control(async_log_buffer::LoggerControl::UpdateOotbLogField(
+            key, value,
+          ));
 
         if let Err(e) = result {
           log::warn!("failed to update {field_name:?} OOTB log field: {e:?}");
@@ -487,12 +482,11 @@ impl LoggerHandle {
   pub fn remove_log_field(&self, field_name: &str) {
     with_reentrancy_guard!(
       {
-        let result =
-          self
-            .tx
-            .try_send_state_update(async_log_buffer::StateUpdateMessage::RemoveLogField(
-              field_name.to_string(),
-            ));
+        let result = self
+          .tx
+          .try_send_control(async_log_buffer::LoggerControl::RemoveLogField(
+            field_name.to_string(),
+          ));
 
         if let Err(e) = result {
           log::warn!("failed to remove {field_name:?} log field: {e:?}");
@@ -506,9 +500,12 @@ impl LoggerHandle {
   pub fn set_feature_flag_exposure(&self, flag: String, variant: Option<String>) {
     with_reentrancy_guard!(
       {
-        let result = self.tx.try_send_state_update(
-          async_log_buffer::StateUpdateMessage::SetFeatureFlagExposure(flag, variant),
-        );
+        let result =
+          self
+            .tx
+            .try_send_control(async_log_buffer::LoggerControl::SetFeatureFlagExposure(
+              flag, variant,
+            ));
         if let Err(e) = result {
           log::warn!("failed to set feature flag: {e:?}");
         }
@@ -521,9 +518,9 @@ impl LoggerHandle {
   pub fn notify_memory_pressure(&self, level: MemoryPressureLevel) {
     with_reentrancy_guard!(
       {
-        let result = self.tx.try_send_state_update(
-          async_log_buffer::StateUpdateMessage::SetMemoryPressureLevel { level },
-        );
+        let result = self
+          .tx
+          .try_send_control(async_log_buffer::LoggerControl::SetMemoryPressureLevel { level });
         if let Err(e) = result {
           log::warn!("failed to notify memory pressure level: {e:?}");
         }
