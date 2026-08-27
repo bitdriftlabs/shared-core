@@ -149,6 +149,9 @@ impl LoggerIngressEvent {
 // EventBufferEntry
 //
 
+// Keep ingress events inline until the layout benchmark establishes whether the saved control-entry
+// slot space outweighs the allocation and indirection cost of boxing them.
+#[allow(clippy::large_enum_variant)]
 #[derive(ApproximateSize, Debug)]
 pub enum EventBufferEntry {
   Ingress(LoggerIngressEvent),
