@@ -163,7 +163,7 @@ fn feature_flag_exposure_carries_current_process_context_in_the_protected_lane()
   assert!(matches!(
     entry,
     EventBufferEntry::Ingress(event) if matches!(
-      event,
+      &event,
       LoggerIngressEvent {
         context: EventContext::CurrentProcess(AdmissionContext { session_id, .. }),
         payload: LoggerIngressPayload::FeatureFlagExposure { flag, variant },
