@@ -52,10 +52,10 @@ fn bench_admission(setup: AdmissionSetup) {
         .entry_point(EntryPoint::None)
     )
 )]
-#[bench::log_1_kib(ingress_and_insertion_setup())]
+#[bench::log_1_kib(ingress_and_insertion_setup(1024))]
 fn bench_ingress_and_admission(buffer: EventBuffer) {
   gungraun::client_requests::callgrind::start_instrumentation();
-  let outcome = ingress_and_admit(&buffer);
+  let outcome = ingress_and_admit(&buffer, 1024);
   gungraun::client_requests::callgrind::stop_instrumentation();
   black_box(outcome);
 }

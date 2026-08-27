@@ -42,13 +42,15 @@ fn admission(criterion: &mut Criterion) {
 
 fn ingress_and_admission(criterion: &mut Criterion) {
   let mut group = criterion.benchmark_group("event_buffer_ingress_and_admission");
-  group.bench_function("log_1_kib", |bench| {
-    bench.iter_batched_ref(
-      ingress_and_insertion_setup,
-      |buffer| black_box(ingress_and_admit(buffer)),
-      BatchSize::SmallInput,
-    );
-  });
+  for (name, bytes) in [("empty", 0), ("log_1_kib", 1024)] {
+    group.bench_function(name, |bench| {
+      bench.iter_batched_ref(
+        || ingress_and_insertion_setup(bytes),
+        |buffer| black_box(ingress_and_admit(buffer, bytes)),
+        BatchSize::SmallInput,
+      );
+    });
+  }
   group.finish();
 }
 

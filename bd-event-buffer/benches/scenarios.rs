@@ -124,8 +124,8 @@ pub fn insertion_with_capacity_setup() -> AdmissionSetup {
   }
 }
 
-pub fn ingress_and_insertion_setup() -> EventBuffer {
-  let size = high_log(1024).approximate_size_bytes();
+pub fn ingress_and_insertion_setup(bytes: usize) -> EventBuffer {
+  let size = high_log(bytes).approximate_size_bytes();
   EventBuffer::new(limits(size, size))
 }
 
@@ -189,6 +189,6 @@ pub fn multi_lane_eviction_setup() -> AdmissionSetup {
   }
 }
 
-pub fn ingress_and_admit(buffer: &EventBuffer) -> AdmissionOutcome {
-  buffer.admit(high_log(1024))
+pub fn ingress_and_admit(buffer: &EventBuffer, bytes: usize) -> AdmissionOutcome {
+  buffer.admit(high_log(bytes))
 }
