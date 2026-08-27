@@ -12,6 +12,7 @@ base64.workspace                = true
 bd-api.path                     = "../bd-api"
 bd-client-stats.path            = "../bd-client-stats"
 bd-client-stats-store.path      = "../bd-client-stats-store"
+bd-log-matcher                  = { path = "../bd-log-matcher", features = ["benchmark"], default-features = false }
 bd-log-primitives.path          = "../bd-log-primitives"
 bd-proto.path                   = "../bd-proto"
 bd-state.path                   = "../bd-state"
@@ -37,3 +38,7 @@ gungraun = { version = "0.19.4", features = ["client_requests"] }
 [[bench]]
 harness = false
 name    = "workflow_replay"
+
+[[bench]]
+harness = false
+name    = "json_path"

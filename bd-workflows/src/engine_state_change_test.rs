@@ -17,11 +17,20 @@ use crate::engine::WorkflowsEngineConfig;
 use crate::engine_assert_active_runs;
 use crate::test::{MakeConfig, TestLog};
 use bd_client_stats_store::test::StatsHelper;
-use bd_log_matcher::builder::{feature_flag_equals, message_equals, state_equals_saved_field};
+use bd_log_matcher::builder::{feature_flag_equals, message_equals, not, state_equals_saved_field};
+use bd_proto::protos::log_matcher::log_matcher::{LogMatcher, log_matcher};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::state::scope::StateScope;
+use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{
+  KeyOrIndex,
+  key_or_index,
+};
+use bd_proto::protos::value_matcher::value_matcher::{JsonPathValueMatch, Operator};
+use bd_runtime::runtime::FeatureFlag as _;
+use bd_runtime::runtime::workflows::JsonPathStringMatchingEnabled;
 use bd_state::StateChange;
 use bd_stats_common::labels;
+use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
   TestFieldRef,
@@ -39,6 +48,42 @@ use bd_test_helpers::workflow::{
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use time::macros::datetime;
+
+fn nested_json_string_matcher() -> LogMatcher {
+  LogMatcher {
+    matcher: Some(log_matcher::Matcher::BaseMatcher(
+      log_matcher::BaseLogMatcher {
+        match_type: Some(log_matcher::base_log_matcher::Match_type::TagMatch(
+          log_matcher::base_log_matcher::TagMatch {
+            tag_key: "payload".to_string(),
+            value_match: Some(
+              log_matcher::base_log_matcher::tag_match::Value_match::JsonValueMatch(
+                JsonPathValueMatch {
+                  operator: Operator::OPERATOR_EQUALS.into(),
+                  match_value: "pro".to_string(),
+                  key_or_index: vec![
+                    KeyOrIndex {
+                      key_or_index: Some(key_or_index::Key_or_index::Key("user".to_string())),
+                      ..Default::default()
+                    },
+                    KeyOrIndex {
+                      key_or_index: Some(key_or_index::Key_or_index::Key("plan".to_string())),
+                      ..Default::default()
+                    },
+                  ],
+                  ..Default::default()
+                },
+              ),
+            ),
+            ..Default::default()
+          },
+        )),
+        ..Default::default()
+      },
+    )),
+    ..Default::default()
+  }
+}
 
 // Tests that state changes can trigger workflow transitions using string value matching.
 #[tokio::test]
@@ -613,6 +658,88 @@ async fn state_change_with_extra_state_matcher_no_match() {
       )
       .is_none()
   );
+}
+
+#[tokio::test]
+async fn state_change_extra_json_matcher_respects_runtime_flag() {
+  let b = state("B");
+  let json_matcher = nested_json_string_matcher();
+  let rule = make_state_change_rule_with_extra_matcher(
+    StateScope::FEATURE_FLAG,
+    "trigger_flag",
+    None,
+    Some(not(json_matcher)),
+  );
+  let a = state("A").declare_transition_with_actions(
+    &b,
+    rule,
+    &[make_emit_counter_action(
+      "state_change_json_extra_match",
+      metric_value(1),
+      vec![],
+    )],
+  );
+  let setup = Setup::new();
+  let mut engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("json_extra_match", &[&a, &b]).make_config()],
+    ))
+    .await;
+  let state_change = StateChange::inserted(
+    bd_state::Scope::FeatureFlagExposure,
+    "trigger_flag",
+    bd_state::string_value("enabled"),
+    OffsetDateTime::now_utc(),
+  );
+  let fields = bd_test_helpers::workflow::make_tags(labels! {
+    "payload" => r#"{"user":{"plan":"pro"}}"#,
+  });
+  let matching_fields = bd_log_primitives::LogFields::default();
+  let fields = bd_log_primitives::FieldsRef::new(&fields, &matching_fields);
+
+  // Enabled: the nested matcher succeeds, so its negation prevents the transition.
+  engine.engine.process_event(
+    crate::workflow::WorkflowEvent::StateChange(&state_change, fields),
+    &super::engine_test_helpers::EMPTY_BUFFER_IDS,
+    &bd_state::InMemoryStateReader::default(),
+    state_change.timestamp,
+  );
+  engine_assert_active_runs!(engine; 0; "A");
+
+  setup
+    .runtime
+    .update_snapshot(make_update(
+      vec![(
+        JsonPathStringMatchingEnabled::path(),
+        ValueKind::Bool(false),
+      )],
+      "disabled".to_string(),
+    ))
+    .await
+    .unwrap();
+  engine.engine.process_event(
+    crate::workflow::WorkflowEvent::StateChange(&state_change, fields),
+    &super::engine_test_helpers::EMPTY_BUFFER_IDS,
+    &bd_state::InMemoryStateReader::default(),
+    state_change.timestamp,
+  );
+  engine_assert_active_runs!(engine; 0; "A");
+
+  setup
+    .runtime
+    .update_snapshot(make_update(
+      vec![(JsonPathStringMatchingEnabled::path(), ValueKind::Bool(true))],
+      "enabled".to_string(),
+    ))
+    .await
+    .unwrap();
+  engine.engine.process_event(
+    crate::workflow::WorkflowEvent::StateChange(&state_change, fields),
+    &super::engine_test_helpers::EMPTY_BUFFER_IDS,
+    &bd_state::InMemoryStateReader::default(),
+    state_change.timestamp,
+  );
+  engine_assert_active_runs!(engine; 0; "A");
 }
 
 // Tests that state change transitions can check multiple state values simultaneously.

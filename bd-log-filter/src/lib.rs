@@ -19,6 +19,7 @@
 mod filter_chain_test;
 
 use anyhow::{Context, Result, anyhow};
+use bd_log_matcher::matcher::MatchContext;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{
   FieldsRef,
@@ -98,6 +99,7 @@ impl FilterChain {
         state,
         &TinyMap::default(),
         0,
+        MatchContext::default(),
       ) {
         continue;
       }

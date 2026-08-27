@@ -28,8 +28,22 @@ use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{Log, LogFields, LogMessage, log_level};
 use bd_proto::protos::client::api::sankey_path_upload_request::Node;
 use bd_proto::protos::client::api::{SankeyPathUploadRequest, log_upload_intent_request};
+use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
+use bd_proto::protos::log_matcher::log_matcher::log_matcher::{
+  BaseLogMatcher,
+  Matcher,
+  base_log_matcher,
+};
 use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{
+  KeyOrIndex,
+  key_or_index,
+};
+use bd_proto::protos::value_matcher::value_matcher::{JsonPathValueMatch, Operator};
+use bd_runtime::runtime::FeatureFlag;
+use bd_runtime::runtime::workflows::JsonPathStringMatchingEnabled;
 use bd_stats_common::{NameType, labels};
+use bd_test_helpers::runtime::{ValueKind, make_update};
 use bd_test_helpers::sankey_value;
 use bd_test_helpers::workflow::macros::rule;
 use bd_test_helpers::workflow::{
@@ -64,6 +78,38 @@ use std::vec;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use time::macros::datetime;
+
+fn nested_json_string_matcher() -> LogMatcher {
+  LogMatcher {
+    matcher: Some(Matcher::BaseMatcher(BaseLogMatcher {
+      match_type: Some(base_log_matcher::Match_type::TagMatch(
+        base_log_matcher::TagMatch {
+          tag_key: "payload".to_string(),
+          value_match: Some(base_log_matcher::tag_match::Value_match::JsonValueMatch(
+            JsonPathValueMatch {
+              operator: Operator::OPERATOR_EQUALS.into(),
+              match_value: "pro".to_string(),
+              key_or_index: vec![
+                KeyOrIndex {
+                  key_or_index: Some(key_or_index::Key_or_index::Key("user".to_string())),
+                  ..Default::default()
+                },
+                KeyOrIndex {
+                  key_or_index: Some(key_or_index::Key_or_index::Key("plan".to_string())),
+                  ..Default::default()
+                },
+              ],
+              ..Default::default()
+            },
+          )),
+          ..Default::default()
+        },
+      )),
+      ..Default::default()
+    })),
+    ..Default::default()
+  }
+}
 
 #[tokio::test]
 async fn debug_mode() {
@@ -452,6 +498,51 @@ async fn debug_mode() {
   setup
     .collector
     .assert_workflow_counter_eq(123, "baz_metric", labels! {});
+}
+
+#[tokio::test]
+async fn json_string_matching_runtime_flag_updates_existing_workflows() {
+  let a = state("A");
+  let b = state("B");
+  let matcher = nested_json_string_matcher();
+  let a = a.declare_transition(&b, rule!(matcher.clone()));
+  let b = b.declare_transition(&a, rule!(matcher));
+  let setup = Setup::new();
+  let mut workflows_engine = setup
+    .make_workflows_engine(WorkflowsEngineConfig::new_with_workflow_configurations(
+      vec![WorkflowBuilder::new("1", &[&a, &b]).make_config()],
+    ))
+    .await;
+  let log =
+    || TestLog::new("message").with_tags(labels!("payload" => r#"{"user":{"plan":"pro"}}"#));
+
+  workflows_engine.process_log(log());
+  engine_assert_active_runs!(workflows_engine; 0; "B");
+
+  setup
+    .runtime
+    .update_snapshot(make_update(
+      vec![(
+        JsonPathStringMatchingEnabled::path(),
+        ValueKind::Bool(false),
+      )],
+      "disabled".to_string(),
+    ))
+    .await
+    .unwrap();
+  workflows_engine.process_log(log());
+  engine_assert_active_runs!(workflows_engine; 0; "A", "B");
+
+  setup
+    .runtime
+    .update_snapshot(make_update(
+      vec![(JsonPathStringMatchingEnabled::path(), ValueKind::Bool(true))],
+      "enabled".to_string(),
+    ))
+    .await
+    .unwrap();
+  workflows_engine.process_log(log());
+  engine_assert_active_runs!(workflows_engine; 0; "A", "A");
 }
 
 #[tokio::test]

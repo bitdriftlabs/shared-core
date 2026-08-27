@@ -34,6 +34,10 @@ clippy: setup
 .PHONY: test
 test: setup
 	for i in $(shell seq 1 1); do \
-  	echo "Running test iteration $$i..."; \
+   	echo "Running test iteration $$i..."; \
 		RUST_BACKTRACE=1 SKIP_PROTO_GEN=1 SKIP_FILE_GEN=1 RUST_LOG=error cargo nextest run || exit 1; \
 	done
+
+.PHONY: benchmark-json-matcher
+benchmark-json-matcher: setup
+	bd-workflow-bench/json_path.sh

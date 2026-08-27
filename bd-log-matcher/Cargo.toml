@@ -8,6 +8,10 @@ version      = "1.0.0"
 [lib]
 doctest = false
 
+[features]
+benchmark = []
+fuzzing   = []
+
 [dependencies]
 ahash.workspace             = true
 anyhow.workspace            = true
