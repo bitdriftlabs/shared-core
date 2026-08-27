@@ -709,6 +709,7 @@ dependencies = [
  "bd-macros",
  "bd-proto",
  "bd-workspace-hack",
+ "criterion",
  "gungraun",
  "proptest",
  "time",

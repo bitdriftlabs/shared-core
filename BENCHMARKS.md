@@ -66,6 +66,12 @@ single-entry, multi-entry, and multi-lane eviction:
 cargo bench -p bd-event-buffer --bench main
 ```
 
+For wall-clock measurements of the same cases, run:
+
+```sh
+cargo bench -p bd-event-buffer --bench criterion
+```
+
 `bd-workflow-bench` provides the same two modes for end-to-end workflow replay. Its default
 checked-in fixture is appropriate for repeatable Criterion wall-time benchmarks and Callgrind
 instruction profiles; both wrappers also accept local config and log paths for a live corpus. See

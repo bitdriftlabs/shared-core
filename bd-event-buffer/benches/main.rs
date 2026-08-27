@@ -7,6 +7,8 @@
 
 #[cfg(target_os = "linux")]
 mod linux_only;
+#[cfg(target_os = "linux")]
+mod scenarios;
 
 #[cfg(target_os = "linux")]
 fn main() {

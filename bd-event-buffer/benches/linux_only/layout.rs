@@ -5,19 +5,17 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_event_buffer::{
-  AdmissionContext,
-  AdmissionOutcome,
-  EventBuffer,
-  EventBufferEntry,
-  EventBufferLimits,
-  EventContext,
-  LoggerIngressEvent,
-  ProviderSnapshot,
+use crate::scenarios::{
+  AdmissionSetup,
+  ingress_and_admit,
+  ingress_and_insertion_setup,
+  insertion_setup,
+  insertion_with_capacity_setup,
+  multi_lane_eviction_setup,
+  multiple_victims_setup,
+  single_victim_setup,
 };
-use bd_log_primitives::{AnnotatedLogFields, LogFields, LogLine, log_level};
-use bd_macros::ApproximateSize;
-use bd_proto::protos::logging::payload::LogType;
+use bd_event_buffer::EventBuffer;
 use gungraun::{
   Callgrind,
   EntryPoint,
@@ -26,167 +24,6 @@ use gungraun::{
   library_benchmark_group,
 };
 use std::hint::black_box;
-use time::OffsetDateTime;
-
-//
-// AdmissionSetup
-//
-
-/// Setup work is passed through Gungraun's `bench` argument, so Callgrind measures just one
-/// admission. Eviction scenarios fill the buffer before admission, including the destination
-/// lane when measuring its `VecDeque` reservation before lower-priority entries are evicted.
-struct AdmissionSetup {
-  buffer: EventBuffer,
-  incoming: EventBufferEntry,
-}
-
-fn current_process_context() -> EventContext {
-  EventContext::CurrentProcess(AdmissionContext {
-    session_id: String::new(),
-    provider: ProviderSnapshot {
-      timestamp: OffsetDateTime::UNIX_EPOCH,
-      ootb_fields: LogFields::default(),
-      custom_fields: LogFields::default(),
-    },
-    admitted_at: OffsetDateTime::UNIX_EPOCH,
-  })
-}
-
-fn log(
-  level: bd_log_primitives::LogLevel,
-  bytes: usize,
-  context: EventContext,
-) -> EventBufferEntry {
-  EventBufferEntry::ingress(LoggerIngressEvent::log(
-    LogLine {
-      log_level: level,
-      log_type: LogType::NORMAL,
-      message: "x".repeat(bytes).into(),
-      fields: AnnotatedLogFields::default(),
-      matching_fields: AnnotatedLogFields::default(),
-      attributes_overrides: None,
-      capture_session: None,
-    },
-    context,
-    None,
-  ))
-}
-
-fn low_log(bytes: usize) -> EventBufferEntry {
-  log(log_level::DEBUG, bytes, current_process_context())
-}
-
-fn high_log(bytes: usize) -> EventBufferEntry {
-  log(log_level::INFO, bytes, current_process_context())
-}
-
-fn protected_log(bytes: usize) -> EventBufferEntry {
-  // Previous-process logs use the protected lane even when their payload is an ordinary log.
-  log(
-    log_level::INFO,
-    bytes,
-    EventContext::PreviousProcess {
-      logged_at: OffsetDateTime::UNIX_EPOCH,
-    },
-  )
-}
-
-fn limits(log_limit_bytes: usize, total_limit_bytes: usize) -> EventBufferLimits {
-  EventBufferLimits {
-    log_limit_bytes,
-    total_limit_bytes,
-  }
-}
-
-fn admit(buffer: &EventBuffer, entry: EventBufferEntry) {
-  assert_eq!(AdmissionOutcome::Admitted, buffer.admit(entry));
-}
-
-fn insertion_setup() -> AdmissionSetup {
-  let incoming = high_log(0);
-  let size = incoming.approximate_size_bytes();
-
-  AdmissionSetup {
-    buffer: EventBuffer::new(limits(size, size)),
-    incoming,
-  }
-}
-
-fn insertion_with_capacity_setup() -> AdmissionSetup {
-  let entry_size = high_log(0).approximate_size_bytes();
-  let buffer = EventBuffer::new(limits(8 * entry_size, 8 * entry_size));
-  admit(&buffer, high_log(0));
-
-  AdmissionSetup {
-    buffer,
-    incoming: high_log(0),
-  }
-}
-
-fn ingress_and_insertion_setup() -> EventBuffer {
-  let size = high_log(1024).approximate_size_bytes();
-  EventBuffer::new(limits(size, size))
-}
-
-fn single_victim_setup() -> AdmissionSetup {
-  let low_size = low_log(0).approximate_size_bytes();
-  let high_base_size = high_log(0).approximate_size_bytes();
-  let buffer = EventBuffer::new(limits(low_size, low_size));
-  admit(&buffer, low_log(0));
-
-  AdmissionSetup {
-    buffer,
-    incoming: high_log(low_size.saturating_sub(high_base_size)),
-  }
-}
-
-fn multiple_victims_setup() -> AdmissionSetup {
-  const VICTIM_COUNT: usize = 8;
-
-  let low_size = low_log(0).approximate_size_bytes();
-  let high_base_size = high_log(0).approximate_size_bytes();
-  let limit = VICTIM_COUNT * low_size;
-  let buffer = EventBuffer::new(limits(limit, limit));
-  for _ in 0 .. VICTIM_COUNT {
-    admit(&buffer, low_log(0));
-  }
-
-  AdmissionSetup {
-    buffer,
-    incoming: high_log(limit.saturating_sub(high_base_size)),
-  }
-}
-
-fn multi_lane_eviction_setup() -> AdmissionSetup {
-  const PROTECTED_RETAINED_COUNT: usize = 4;
-  const LOW_VICTIM_COUNT: usize = 4;
-  const HIGH_VICTIM_COUNT: usize = 8;
-  const HIGH_EVICTION_COUNT: usize = 2;
-
-  let low_size = low_log(0).approximate_size_bytes();
-  let high_size = high_log(0).approximate_size_bytes();
-  let protected_size = protected_log(0).approximate_size_bytes();
-  let evictable_bytes = LOW_VICTIM_COUNT * low_size + HIGH_VICTIM_COUNT * high_size;
-  let total_retained_bytes = PROTECTED_RETAINED_COUNT * protected_size + evictable_bytes;
-  let incoming_bytes = LOW_VICTIM_COUNT * low_size + HIGH_EVICTION_COUNT * high_size;
-  let buffer = EventBuffer::new(limits(evictable_bytes, total_retained_bytes));
-  // Fill the incoming lane's initial allocation before it evicts lower-priority work. This
-  // measures the `VecDeque` growth that boxing would make cheaper.
-  for _ in 0 .. PROTECTED_RETAINED_COUNT {
-    admit(&buffer, protected_log(0));
-  }
-  for _ in 0 .. LOW_VICTIM_COUNT {
-    admit(&buffer, low_log(0));
-  }
-  for _ in 0 .. HIGH_VICTIM_COUNT {
-    admit(&buffer, high_log(0));
-  }
-
-  AdmissionSetup {
-    buffer,
-    incoming: protected_log(incoming_bytes.saturating_sub(protected_size)),
-  }
-}
 
 #[library_benchmark(
   config = LibraryBenchmarkConfig::default()
@@ -202,7 +39,7 @@ fn multi_lane_eviction_setup() -> AdmissionSetup {
 #[bench::multi_lane_eviction(multi_lane_eviction_setup())]
 fn bench_admission(setup: AdmissionSetup) {
   gungraun::client_requests::callgrind::start_instrumentation();
-  let outcome = setup.buffer.admit(setup.incoming);
+  let outcome = setup.admit();
   gungraun::client_requests::callgrind::stop_instrumentation();
   black_box(outcome);
 }
@@ -218,7 +55,7 @@ fn bench_admission(setup: AdmissionSetup) {
 #[bench::log_1_kib(ingress_and_insertion_setup())]
 fn bench_ingress_and_admission(buffer: EventBuffer) {
   gungraun::client_requests::callgrind::start_instrumentation();
-  let outcome = buffer.admit(high_log(1024));
+  let outcome = ingress_and_admit(&buffer);
   gungraun::client_requests::callgrind::stop_instrumentation();
   black_box(outcome);
 }
