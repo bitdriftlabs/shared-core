@@ -5,11 +5,13 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
+pub use super::access;
 pub mod api;
 pub mod connector;
 pub mod keys;
 pub mod notifications;
 pub mod permission;
+pub mod teams;
 pub mod view;
 
 // Re-export proto dependencies referenced by generated code in this subdirectory.

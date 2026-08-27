@@ -101,8 +101,57 @@ impl AccessPermissionQuery {
         }
     }
 
+    // .bitdrift.public.unary.admin.v1.AccessPermissionQuery.Team team = 2;
+
+    pub fn team(&self) -> &access_permission_query::Team {
+        match self.type_ {
+            ::std::option::Option::Some(access_permission_query::Type::Team(ref v)) => v,
+            _ => <access_permission_query::Team as ::protobuf::Message>::default_instance(),
+        }
+    }
+
+    pub fn clear_team(&mut self) {
+        self.type_ = ::std::option::Option::None;
+    }
+
+    pub fn has_team(&self) -> bool {
+        match self.type_ {
+            ::std::option::Option::Some(access_permission_query::Type::Team(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_team(&mut self, v: access_permission_query::Team) {
+        self.type_ = ::std::option::Option::Some(access_permission_query::Type::Team(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_team(&mut self) -> &mut access_permission_query::Team {
+        if let ::std::option::Option::Some(access_permission_query::Type::Team(_)) = self.type_ {
+        } else {
+            self.type_ = ::std::option::Option::Some(access_permission_query::Type::Team(access_permission_query::Team::new()));
+        }
+        match self.type_ {
+            ::std::option::Option::Some(access_permission_query::Type::Team(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_team(&mut self) -> access_permission_query::Team {
+        if self.has_team() {
+            match self.type_.take() {
+                ::std::option::Option::Some(access_permission_query::Type::Team(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            access_permission_query::Team::new()
+        }
+    }
+
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut fields = ::std::vec::Vec::with_capacity(2);
         let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, access_permission_query::Individual>(
             "individual",
@@ -110,6 +159,13 @@ impl AccessPermissionQuery {
             AccessPermissionQuery::individual,
             AccessPermissionQuery::mut_individual,
             AccessPermissionQuery::set_individual,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, access_permission_query::Team>(
+            "team",
+            AccessPermissionQuery::has_team,
+            AccessPermissionQuery::team,
+            AccessPermissionQuery::mut_team,
+            AccessPermissionQuery::set_team,
         ));
         oneofs.push(access_permission_query::Type::generated_oneof_descriptor_data());
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<AccessPermissionQuery>(
@@ -133,6 +189,9 @@ impl ::protobuf::Message for AccessPermissionQuery {
                 10 => {
                     self.type_ = ::std::option::Option::Some(access_permission_query::Type::Individual(is.read_message()?));
                 },
+                18 => {
+                    self.type_ = ::std::option::Option::Some(access_permission_query::Type::Team(is.read_message()?));
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -151,6 +210,10 @@ impl ::protobuf::Message for AccessPermissionQuery {
                     let len = v.compute_size();
                     my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
                 },
+                &access_permission_query::Type::Team(ref v) => {
+                    let len = v.compute_size();
+                    my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                },
             };
         }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
@@ -163,6 +226,9 @@ impl ::protobuf::Message for AccessPermissionQuery {
             match v {
                 &access_permission_query::Type::Individual(ref v) => {
                     ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+                },
+                &access_permission_query::Type::Team(ref v) => {
+                    ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
                 },
             };
         }
@@ -183,6 +249,7 @@ impl ::protobuf::Message for AccessPermissionQuery {
     }
 
     fn clear(&mut self) {
+        self.type_ = ::std::option::Option::None;
         self.type_ = ::std::option::Option::None;
         self.special_fields.clear();
     }
@@ -221,6 +288,8 @@ pub mod access_permission_query {
     pub enum Type {
         // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.admin.v1.AccessPermissionQuery.individual)
         Individual(Individual),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.admin.v1.AccessPermissionQuery.team)
+        Team(Team),
     }
 
     impl ::protobuf::Oneof for Type {
@@ -765,6 +834,147 @@ pub mod access_permission_query {
         type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
     }
 
+    // @@protoc_insertion_point(message:bitdrift.public.unary.admin.v1.AccessPermissionQuery.Team)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Team {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.AccessPermissionQuery.Team.team_id)
+        pub team_id: ::std::string::String,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.AccessPermissionQuery.Team.filter)
+        pub filter: ::protobuf::MessageField<AccessFilter>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.AccessPermissionQuery.Team.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Team {
+        fn default() -> &'a Team {
+            <Team as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Team {
+        pub fn new() -> Team {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "team_id",
+                |m: &Team| { &m.team_id },
+                |m: &mut Team| { &mut m.team_id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, AccessFilter>(
+                "filter",
+                |m: &Team| { &m.filter },
+                |m: &mut Team| { &mut m.filter },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Team>(
+                "AccessPermissionQuery.Team",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Team {
+        const NAME: &'static str = "Team";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.team_id = is.read_string()?;
+                    },
+                    18 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.filter)?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if !self.team_id.is_empty() {
+                my_size += ::protobuf::rt::string_size(1, &self.team_id);
+            }
+            if let Some(v) = self.filter.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if !self.team_id.is_empty() {
+                os.write_string(1, &self.team_id)?;
+            }
+            if let Some(v) = self.filter.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Team {
+            Team::new()
+        }
+
+        fn clear(&mut self) {
+            self.team_id.clear();
+            self.filter.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Team {
+            static instance: Team = Team {
+                team_id: ::std::string::String::new(),
+                filter: ::protobuf::MessageField::none(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Team {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("AccessPermissionQuery.Team").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Team {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Team {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
     #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
     // @@protoc_insertion_point(enum:bitdrift.public.unary.admin.v1.AccessPermissionQuery.AccessLevel)
     pub enum AccessLevel {
@@ -895,27 +1105,2355 @@ pub mod access_permission_query {
     }
 }
 
+// @@protoc_insertion_point(message:bitdrift.public.unary.admin.v1.AccessPermission)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct AccessPermission {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.AccessPermission.individuals)
+    pub individuals: ::std::vec::Vec<access_permission::Individual>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.AccessPermission.teams)
+    pub teams: ::std::vec::Vec<access_permission::Team>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.AccessPermission.org)
+    pub org: ::protobuf::MessageField<access_permission::Org>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.AccessPermission.owner)
+    pub owner: ::protobuf::MessageField<access_permission::Owner>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.AccessPermission.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a AccessPermission {
+    fn default() -> &'a AccessPermission {
+        <AccessPermission as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl AccessPermission {
+    pub fn new() -> AccessPermission {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "individuals",
+            |m: &AccessPermission| { &m.individuals },
+            |m: &mut AccessPermission| { &mut m.individuals },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "teams",
+            |m: &AccessPermission| { &m.teams },
+            |m: &mut AccessPermission| { &mut m.teams },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, access_permission::Org>(
+            "org",
+            |m: &AccessPermission| { &m.org },
+            |m: &mut AccessPermission| { &mut m.org },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, access_permission::Owner>(
+            "owner",
+            |m: &AccessPermission| { &m.owner },
+            |m: &mut AccessPermission| { &mut m.owner },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<AccessPermission>(
+            "AccessPermission",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for AccessPermission {
+    const NAME: &'static str = "AccessPermission";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.individuals.push(is.read_message()?);
+                },
+                18 => {
+                    self.teams.push(is.read_message()?);
+                },
+                26 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.org)?;
+                },
+                34 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.owner)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        for value in &self.individuals {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        for value in &self.teams {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        if let Some(v) = self.org.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let Some(v) = self.owner.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        for v in &self.individuals {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        };
+        for v in &self.teams {
+            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+        };
+        if let Some(v) = self.org.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        }
+        if let Some(v) = self.owner.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> AccessPermission {
+        AccessPermission::new()
+    }
+
+    fn clear(&mut self) {
+        self.individuals.clear();
+        self.teams.clear();
+        self.org.clear();
+        self.owner.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static AccessPermission {
+        static instance: AccessPermission = AccessPermission {
+            individuals: ::std::vec::Vec::new(),
+            teams: ::std::vec::Vec::new(),
+            org: ::protobuf::MessageField::none(),
+            owner: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for AccessPermission {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("AccessPermission").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for AccessPermission {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for AccessPermission {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `AccessPermission`
+pub mod access_permission {
+    // @@protoc_insertion_point(message:bitdrift.public.unary.admin.v1.AccessPermission.Individual)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Individual {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.AccessPermission.Individual.details)
+        pub details: ::protobuf::MessageField<super::super::common::Owner>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.AccessPermission.Individual.access)
+        pub access: ::protobuf::EnumOrUnknown<super::AccessLevel>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.AccessPermission.Individual.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Individual {
+        fn default() -> &'a Individual {
+            <Individual as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Individual {
+        pub fn new() -> Individual {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::common::Owner>(
+                "details",
+                |m: &Individual| { &m.details },
+                |m: &mut Individual| { &mut m.details },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "access",
+                |m: &Individual| { &m.access },
+                |m: &mut Individual| { &mut m.access },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Individual>(
+                "AccessPermission.Individual",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Individual {
+        const NAME: &'static str = "Individual";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.details)?;
+                    },
+                    16 => {
+                        self.access = is.read_enum_or_unknown()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.details.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            if self.access != ::protobuf::EnumOrUnknown::new(super::AccessLevel::VIEW) {
+                my_size += ::protobuf::rt::int32_size(2, self.access.value());
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.details.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            }
+            if self.access != ::protobuf::EnumOrUnknown::new(super::AccessLevel::VIEW) {
+                os.write_enum(2, ::protobuf::EnumOrUnknown::value(&self.access))?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Individual {
+            Individual::new()
+        }
+
+        fn clear(&mut self) {
+            self.details.clear();
+            self.access = ::protobuf::EnumOrUnknown::new(super::AccessLevel::VIEW);
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Individual {
+            static instance: Individual = Individual {
+                details: ::protobuf::MessageField::none(),
+                access: ::protobuf::EnumOrUnknown::from_i32(0),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Individual {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("AccessPermission.Individual").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Individual {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Individual {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.admin.v1.AccessPermission.Team)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Team {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.AccessPermission.Team.details)
+        pub details: ::protobuf::MessageField<super::super::teams::Team>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.AccessPermission.Team.access)
+        pub access: ::protobuf::EnumOrUnknown<super::AccessLevel>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.AccessPermission.Team.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Team {
+        fn default() -> &'a Team {
+            <Team as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Team {
+        pub fn new() -> Team {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::super::teams::Team>(
+                "details",
+                |m: &Team| { &m.details },
+                |m: &mut Team| { &mut m.details },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "access",
+                |m: &Team| { &m.access },
+                |m: &mut Team| { &mut m.access },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Team>(
+                "AccessPermission.Team",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Team {
+        const NAME: &'static str = "Team";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.details)?;
+                    },
+                    16 => {
+                        self.access = is.read_enum_or_unknown()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.details.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            if self.access != ::protobuf::EnumOrUnknown::new(super::AccessLevel::VIEW) {
+                my_size += ::protobuf::rt::int32_size(2, self.access.value());
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.details.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            }
+            if self.access != ::protobuf::EnumOrUnknown::new(super::AccessLevel::VIEW) {
+                os.write_enum(2, ::protobuf::EnumOrUnknown::value(&self.access))?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Team {
+            Team::new()
+        }
+
+        fn clear(&mut self) {
+            self.details.clear();
+            self.access = ::protobuf::EnumOrUnknown::new(super::AccessLevel::VIEW);
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Team {
+            static instance: Team = Team {
+                details: ::protobuf::MessageField::none(),
+                access: ::protobuf::EnumOrUnknown::from_i32(0),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Team {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("AccessPermission.Team").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Team {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Team {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.admin.v1.AccessPermission.Org)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Org {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.AccessPermission.Org.access)
+        pub access: ::protobuf::EnumOrUnknown<super::AccessLevel>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.AccessPermission.Org.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Org {
+        fn default() -> &'a Org {
+            <Org as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Org {
+        pub fn new() -> Org {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(1);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "access",
+                |m: &Org| { &m.access },
+                |m: &mut Org| { &mut m.access },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Org>(
+                "AccessPermission.Org",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Org {
+        const NAME: &'static str = "Org";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    8 => {
+                        self.access = is.read_enum_or_unknown()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if self.access != ::protobuf::EnumOrUnknown::new(super::AccessLevel::VIEW) {
+                my_size += ::protobuf::rt::int32_size(1, self.access.value());
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if self.access != ::protobuf::EnumOrUnknown::new(super::AccessLevel::VIEW) {
+                os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.access))?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Org {
+            Org::new()
+        }
+
+        fn clear(&mut self) {
+            self.access = ::protobuf::EnumOrUnknown::new(super::AccessLevel::VIEW);
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Org {
+            static instance: Org = Org {
+                access: ::protobuf::EnumOrUnknown::from_i32(0),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Org {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("AccessPermission.Org").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Org {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Org {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.admin.v1.AccessPermission.Owner)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct Owner {
+        // message oneof groups
+        pub id: ::std::option::Option<owner::Id>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.AccessPermission.Owner.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a Owner {
+        fn default() -> &'a Owner {
+            <Owner as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl Owner {
+        pub fn new() -> Owner {
+            ::std::default::Default::default()
+        }
+
+        // .bitdrift.public.unary.common.v1.Owner user = 1;
+
+        pub fn user(&self) -> &super::super::common::Owner {
+            match self.id {
+                ::std::option::Option::Some(owner::Id::User(ref v)) => v,
+                _ => <super::super::common::Owner as ::protobuf::Message>::default_instance(),
+            }
+        }
+
+        pub fn clear_user(&mut self) {
+            self.id = ::std::option::Option::None;
+        }
+
+        pub fn has_user(&self) -> bool {
+            match self.id {
+                ::std::option::Option::Some(owner::Id::User(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_user(&mut self, v: super::super::common::Owner) {
+            self.id = ::std::option::Option::Some(owner::Id::User(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_user(&mut self) -> &mut super::super::common::Owner {
+            if let ::std::option::Option::Some(owner::Id::User(_)) = self.id {
+            } else {
+                self.id = ::std::option::Option::Some(owner::Id::User(super::super::common::Owner::new()));
+            }
+            match self.id {
+                ::std::option::Option::Some(owner::Id::User(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_user(&mut self) -> super::super::common::Owner {
+            if self.has_user() {
+                match self.id.take() {
+                    ::std::option::Option::Some(owner::Id::User(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                super::super::common::Owner::new()
+            }
+        }
+
+        // .bitdrift.public.unary.admin.v1.Team team = 2;
+
+        pub fn team(&self) -> &super::super::teams::Team {
+            match self.id {
+                ::std::option::Option::Some(owner::Id::Team(ref v)) => v,
+                _ => <super::super::teams::Team as ::protobuf::Message>::default_instance(),
+            }
+        }
+
+        pub fn clear_team(&mut self) {
+            self.id = ::std::option::Option::None;
+        }
+
+        pub fn has_team(&self) -> bool {
+            match self.id {
+                ::std::option::Option::Some(owner::Id::Team(..)) => true,
+                _ => false,
+            }
+        }
+
+        // Param is passed by value, moved
+        pub fn set_team(&mut self, v: super::super::teams::Team) {
+            self.id = ::std::option::Option::Some(owner::Id::Team(v))
+        }
+
+        // Mutable pointer to the field.
+        pub fn mut_team(&mut self) -> &mut super::super::teams::Team {
+            if let ::std::option::Option::Some(owner::Id::Team(_)) = self.id {
+            } else {
+                self.id = ::std::option::Option::Some(owner::Id::Team(super::super::teams::Team::new()));
+            }
+            match self.id {
+                ::std::option::Option::Some(owner::Id::Team(ref mut v)) => v,
+                _ => panic!(),
+            }
+        }
+
+        // Take field
+        pub fn take_team(&mut self) -> super::super::teams::Team {
+            if self.has_team() {
+                match self.id.take() {
+                    ::std::option::Option::Some(owner::Id::Team(v)) => v,
+                    _ => panic!(),
+                }
+            } else {
+                super::super::teams::Team::new()
+            }
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut oneofs = ::std::vec::Vec::with_capacity(1);
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::super::common::Owner>(
+                "user",
+                Owner::has_user,
+                Owner::user,
+                Owner::mut_user,
+                Owner::set_user,
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, super::super::teams::Team>(
+                "team",
+                Owner::has_team,
+                Owner::team,
+                Owner::mut_team,
+                Owner::set_team,
+            ));
+            oneofs.push(owner::Id::generated_oneof_descriptor_data());
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Owner>(
+                "AccessPermission.Owner",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for Owner {
+        const NAME: &'static str = "Owner";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.id = ::std::option::Option::Some(owner::Id::User(is.read_message()?));
+                    },
+                    18 => {
+                        self.id = ::std::option::Option::Some(owner::Id::Team(is.read_message()?));
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let ::std::option::Option::Some(ref v) = self.id {
+                match v {
+                    &owner::Id::User(ref v) => {
+                        let len = v.compute_size();
+                        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                    },
+                    &owner::Id::Team(ref v) => {
+                        let len = v.compute_size();
+                        my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+                    },
+                };
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let ::std::option::Option::Some(ref v) = self.id {
+                match v {
+                    &owner::Id::User(ref v) => {
+                        ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+                    },
+                    &owner::Id::Team(ref v) => {
+                        ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+                    },
+                };
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> Owner {
+            Owner::new()
+        }
+
+        fn clear(&mut self) {
+            self.id = ::std::option::Option::None;
+            self.id = ::std::option::Option::None;
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static Owner {
+            static instance: Owner = Owner {
+                id: ::std::option::Option::None,
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for Owner {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("AccessPermission.Owner").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for Owner {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for Owner {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `Owner`
+    pub mod owner {
+
+        #[derive(Clone,PartialEq,Debug)]
+        // @@protoc_insertion_point(oneof:bitdrift.public.unary.admin.v1.AccessPermission.Owner.id)
+        pub enum Id {
+            // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.admin.v1.AccessPermission.Owner.user)
+            User(super::super::super::common::Owner),
+            // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.admin.v1.AccessPermission.Owner.team)
+            Team(super::super::super::teams::Team),
+        }
+
+        impl ::protobuf::Oneof for Id {
+        }
+
+        impl ::protobuf::OneofFull for Id {
+            fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| <super::Owner as ::protobuf::MessageFull>::descriptor().oneof_by_name("id").unwrap()).clone()
+            }
+        }
+
+        impl Id {
+            pub(in super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+                ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Id>("id")
+            }
+        }
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.admin.v1.SetAccessRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct SetAccessRequest {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.SetAccessRequest.access_permission)
+    pub access_permission: ::protobuf::MessageField<set_access_request::SetAccessPermission>,
+    // message oneof groups
+    pub target: ::std::option::Option<set_access_request::Target>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.SetAccessRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a SetAccessRequest {
+    fn default() -> &'a SetAccessRequest {
+        <SetAccessRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl SetAccessRequest {
+    pub fn new() -> SetAccessRequest {
+        ::std::default::Default::default()
+    }
+
+    // string dashboard_id = 2;
+
+    pub fn dashboard_id(&self) -> &str {
+        match self.target {
+            ::std::option::Option::Some(set_access_request::Target::DashboardId(ref v)) => v,
+            _ => "",
+        }
+    }
+
+    pub fn clear_dashboard_id(&mut self) {
+        self.target = ::std::option::Option::None;
+    }
+
+    pub fn has_dashboard_id(&self) -> bool {
+        match self.target {
+            ::std::option::Option::Some(set_access_request::Target::DashboardId(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_dashboard_id(&mut self, v: ::std::string::String) {
+        self.target = ::std::option::Option::Some(set_access_request::Target::DashboardId(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_dashboard_id(&mut self) -> &mut ::std::string::String {
+        if let ::std::option::Option::Some(set_access_request::Target::DashboardId(_)) = self.target {
+        } else {
+            self.target = ::std::option::Option::Some(set_access_request::Target::DashboardId(::std::string::String::new()));
+        }
+        match self.target {
+            ::std::option::Option::Some(set_access_request::Target::DashboardId(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_dashboard_id(&mut self) -> ::std::string::String {
+        if self.has_dashboard_id() {
+            match self.target.take() {
+                ::std::option::Option::Some(set_access_request::Target::DashboardId(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            ::std::string::String::new()
+        }
+    }
+
+    // string view_id = 3;
+
+    pub fn view_id(&self) -> &str {
+        match self.target {
+            ::std::option::Option::Some(set_access_request::Target::ViewId(ref v)) => v,
+            _ => "",
+        }
+    }
+
+    pub fn clear_view_id(&mut self) {
+        self.target = ::std::option::Option::None;
+    }
+
+    pub fn has_view_id(&self) -> bool {
+        match self.target {
+            ::std::option::Option::Some(set_access_request::Target::ViewId(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_view_id(&mut self, v: ::std::string::String) {
+        self.target = ::std::option::Option::Some(set_access_request::Target::ViewId(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_view_id(&mut self) -> &mut ::std::string::String {
+        if let ::std::option::Option::Some(set_access_request::Target::ViewId(_)) = self.target {
+        } else {
+            self.target = ::std::option::Option::Some(set_access_request::Target::ViewId(::std::string::String::new()));
+        }
+        match self.target {
+            ::std::option::Option::Some(set_access_request::Target::ViewId(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_view_id(&mut self) -> ::std::string::String {
+        if self.has_view_id() {
+            match self.target.take() {
+                ::std::option::Option::Some(set_access_request::Target::ViewId(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            ::std::string::String::new()
+        }
+    }
+
+    // string workflow_id = 4;
+
+    pub fn workflow_id(&self) -> &str {
+        match self.target {
+            ::std::option::Option::Some(set_access_request::Target::WorkflowId(ref v)) => v,
+            _ => "",
+        }
+    }
+
+    pub fn clear_workflow_id(&mut self) {
+        self.target = ::std::option::Option::None;
+    }
+
+    pub fn has_workflow_id(&self) -> bool {
+        match self.target {
+            ::std::option::Option::Some(set_access_request::Target::WorkflowId(..)) => true,
+            _ => false,
+        }
+    }
+
+    // Param is passed by value, moved
+    pub fn set_workflow_id(&mut self, v: ::std::string::String) {
+        self.target = ::std::option::Option::Some(set_access_request::Target::WorkflowId(v))
+    }
+
+    // Mutable pointer to the field.
+    pub fn mut_workflow_id(&mut self) -> &mut ::std::string::String {
+        if let ::std::option::Option::Some(set_access_request::Target::WorkflowId(_)) = self.target {
+        } else {
+            self.target = ::std::option::Option::Some(set_access_request::Target::WorkflowId(::std::string::String::new()));
+        }
+        match self.target {
+            ::std::option::Option::Some(set_access_request::Target::WorkflowId(ref mut v)) => v,
+            _ => panic!(),
+        }
+    }
+
+    // Take field
+    pub fn take_workflow_id(&mut self) -> ::std::string::String {
+        if self.has_workflow_id() {
+            match self.target.take() {
+                ::std::option::Option::Some(set_access_request::Target::WorkflowId(v)) => v,
+                _ => panic!(),
+            }
+        } else {
+            ::std::string::String::new()
+        }
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut oneofs = ::std::vec::Vec::with_capacity(1);
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, set_access_request::SetAccessPermission>(
+            "access_permission",
+            |m: &SetAccessRequest| { &m.access_permission },
+            |m: &mut SetAccessRequest| { &mut m.access_permission },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+            "dashboard_id",
+            SetAccessRequest::has_dashboard_id,
+            SetAccessRequest::dashboard_id,
+            SetAccessRequest::set_dashboard_id,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+            "view_id",
+            SetAccessRequest::has_view_id,
+            SetAccessRequest::view_id,
+            SetAccessRequest::set_view_id,
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+            "workflow_id",
+            SetAccessRequest::has_workflow_id,
+            SetAccessRequest::workflow_id,
+            SetAccessRequest::set_workflow_id,
+        ));
+        oneofs.push(set_access_request::Target::generated_oneof_descriptor_data());
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SetAccessRequest>(
+            "SetAccessRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for SetAccessRequest {
+    const NAME: &'static str = "SetAccessRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.access_permission)?;
+                },
+                18 => {
+                    self.target = ::std::option::Option::Some(set_access_request::Target::DashboardId(is.read_string()?));
+                },
+                26 => {
+                    self.target = ::std::option::Option::Some(set_access_request::Target::ViewId(is.read_string()?));
+                },
+                34 => {
+                    self.target = ::std::option::Option::Some(set_access_request::Target::WorkflowId(is.read_string()?));
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.access_permission.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        if let ::std::option::Option::Some(ref v) = self.target {
+            match v {
+                &set_access_request::Target::DashboardId(ref v) => {
+                    my_size += ::protobuf::rt::string_size(2, &v);
+                },
+                &set_access_request::Target::ViewId(ref v) => {
+                    my_size += ::protobuf::rt::string_size(3, &v);
+                },
+                &set_access_request::Target::WorkflowId(ref v) => {
+                    my_size += ::protobuf::rt::string_size(4, &v);
+                },
+            };
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.access_permission.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        }
+        if let ::std::option::Option::Some(ref v) = self.target {
+            match v {
+                &set_access_request::Target::DashboardId(ref v) => {
+                    os.write_string(2, v)?;
+                },
+                &set_access_request::Target::ViewId(ref v) => {
+                    os.write_string(3, v)?;
+                },
+                &set_access_request::Target::WorkflowId(ref v) => {
+                    os.write_string(4, v)?;
+                },
+            };
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> SetAccessRequest {
+        SetAccessRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.access_permission.clear();
+        self.target = ::std::option::Option::None;
+        self.target = ::std::option::Option::None;
+        self.target = ::std::option::Option::None;
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static SetAccessRequest {
+        static instance: SetAccessRequest = SetAccessRequest {
+            access_permission: ::protobuf::MessageField::none(),
+            target: ::std::option::Option::None,
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for SetAccessRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("SetAccessRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for SetAccessRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for SetAccessRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `SetAccessRequest`
+pub mod set_access_request {
+
+    #[derive(Clone,PartialEq,Debug)]
+    // @@protoc_insertion_point(oneof:bitdrift.public.unary.admin.v1.SetAccessRequest.target)
+    pub enum Target {
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.admin.v1.SetAccessRequest.dashboard_id)
+        DashboardId(::std::string::String),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.admin.v1.SetAccessRequest.view_id)
+        ViewId(::std::string::String),
+        // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.admin.v1.SetAccessRequest.workflow_id)
+        WorkflowId(::std::string::String),
+    }
+
+    impl ::protobuf::Oneof for Target {
+    }
+
+    impl ::protobuf::OneofFull for Target {
+        fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| <super::SetAccessRequest as ::protobuf::MessageFull>::descriptor().oneof_by_name("target").unwrap()).clone()
+        }
+    }
+
+    impl Target {
+        pub(in super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+            ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Target>("target")
+        }
+    }
+    // @@protoc_insertion_point(message:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct SetAccessPermission {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.individuals)
+        pub individuals: ::std::vec::Vec<set_access_permission::Individual>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.teams)
+        pub teams: ::std::vec::Vec<set_access_permission::Team>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.org)
+        pub org: ::protobuf::MessageField<set_access_permission::Org>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.owner)
+        pub owner: ::protobuf::MessageField<set_access_permission::Owner>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a SetAccessPermission {
+        fn default() -> &'a SetAccessPermission {
+            <SetAccessPermission as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl SetAccessPermission {
+        pub fn new() -> SetAccessPermission {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(4);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "individuals",
+                |m: &SetAccessPermission| { &m.individuals },
+                |m: &mut SetAccessPermission| { &mut m.individuals },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "teams",
+                |m: &SetAccessPermission| { &m.teams },
+                |m: &mut SetAccessPermission| { &mut m.teams },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, set_access_permission::Org>(
+                "org",
+                |m: &SetAccessPermission| { &m.org },
+                |m: &mut SetAccessPermission| { &mut m.org },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, set_access_permission::Owner>(
+                "owner",
+                |m: &SetAccessPermission| { &m.owner },
+                |m: &mut SetAccessPermission| { &mut m.owner },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SetAccessPermission>(
+                "SetAccessRequest.SetAccessPermission",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for SetAccessPermission {
+        const NAME: &'static str = "SetAccessPermission";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.individuals.push(is.read_message()?);
+                    },
+                    18 => {
+                        self.teams.push(is.read_message()?);
+                    },
+                    26 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.org)?;
+                    },
+                    34 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.owner)?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            for value in &self.individuals {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            for value in &self.teams {
+                let len = value.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            };
+            if let Some(v) = self.org.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            if let Some(v) = self.owner.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            for v in &self.individuals {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            };
+            for v in &self.teams {
+                ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+            };
+            if let Some(v) = self.org.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+            }
+            if let Some(v) = self.owner.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> SetAccessPermission {
+            SetAccessPermission::new()
+        }
+
+        fn clear(&mut self) {
+            self.individuals.clear();
+            self.teams.clear();
+            self.org.clear();
+            self.owner.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static SetAccessPermission {
+            static instance: SetAccessPermission = SetAccessPermission {
+                individuals: ::std::vec::Vec::new(),
+                teams: ::std::vec::Vec::new(),
+                org: ::protobuf::MessageField::none(),
+                owner: ::protobuf::MessageField::none(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for SetAccessPermission {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("SetAccessRequest.SetAccessPermission").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for SetAccessPermission {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for SetAccessPermission {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    /// Nested message and enums of message `SetAccessPermission`
+    pub mod set_access_permission {
+        // @@protoc_insertion_point(message:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.Individual)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct Individual {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.Individual.id)
+            pub id: ::std::string::String,
+            // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.Individual.access)
+            pub access: ::protobuf::EnumOrUnknown<super::super::AccessLevel>,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.Individual.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a Individual {
+            fn default() -> &'a Individual {
+                <Individual as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl Individual {
+            pub fn new() -> Individual {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(2);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "id",
+                    |m: &Individual| { &m.id },
+                    |m: &mut Individual| { &mut m.id },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "access",
+                    |m: &Individual| { &m.access },
+                    |m: &mut Individual| { &mut m.access },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Individual>(
+                    "SetAccessRequest.SetAccessPermission.Individual",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for Individual {
+            const NAME: &'static str = "Individual";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.id = is.read_string()?;
+                        },
+                        16 => {
+                            self.access = is.read_enum_or_unknown()?;
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if !self.id.is_empty() {
+                    my_size += ::protobuf::rt::string_size(1, &self.id);
+                }
+                if self.access != ::protobuf::EnumOrUnknown::new(super::super::AccessLevel::VIEW) {
+                    my_size += ::protobuf::rt::int32_size(2, self.access.value());
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if !self.id.is_empty() {
+                    os.write_string(1, &self.id)?;
+                }
+                if self.access != ::protobuf::EnumOrUnknown::new(super::super::AccessLevel::VIEW) {
+                    os.write_enum(2, ::protobuf::EnumOrUnknown::value(&self.access))?;
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> Individual {
+                Individual::new()
+            }
+
+            fn clear(&mut self) {
+                self.id.clear();
+                self.access = ::protobuf::EnumOrUnknown::new(super::super::AccessLevel::VIEW);
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static Individual {
+                static instance: Individual = Individual {
+                    id: ::std::string::String::new(),
+                    access: ::protobuf::EnumOrUnknown::from_i32(0),
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for Individual {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("SetAccessRequest.SetAccessPermission.Individual").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for Individual {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for Individual {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+
+        // @@protoc_insertion_point(message:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.Team)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct Team {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.Team.id)
+            pub id: ::std::string::String,
+            // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.Team.access)
+            pub access: ::protobuf::EnumOrUnknown<super::super::AccessLevel>,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.Team.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a Team {
+            fn default() -> &'a Team {
+                <Team as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl Team {
+            pub fn new() -> Team {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(2);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "id",
+                    |m: &Team| { &m.id },
+                    |m: &mut Team| { &mut m.id },
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "access",
+                    |m: &Team| { &m.access },
+                    |m: &mut Team| { &mut m.access },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Team>(
+                    "SetAccessRequest.SetAccessPermission.Team",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for Team {
+            const NAME: &'static str = "Team";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.id = is.read_string()?;
+                        },
+                        16 => {
+                            self.access = is.read_enum_or_unknown()?;
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if !self.id.is_empty() {
+                    my_size += ::protobuf::rt::string_size(1, &self.id);
+                }
+                if self.access != ::protobuf::EnumOrUnknown::new(super::super::AccessLevel::VIEW) {
+                    my_size += ::protobuf::rt::int32_size(2, self.access.value());
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if !self.id.is_empty() {
+                    os.write_string(1, &self.id)?;
+                }
+                if self.access != ::protobuf::EnumOrUnknown::new(super::super::AccessLevel::VIEW) {
+                    os.write_enum(2, ::protobuf::EnumOrUnknown::value(&self.access))?;
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> Team {
+                Team::new()
+            }
+
+            fn clear(&mut self) {
+                self.id.clear();
+                self.access = ::protobuf::EnumOrUnknown::new(super::super::AccessLevel::VIEW);
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static Team {
+                static instance: Team = Team {
+                    id: ::std::string::String::new(),
+                    access: ::protobuf::EnumOrUnknown::from_i32(0),
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for Team {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("SetAccessRequest.SetAccessPermission.Team").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for Team {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for Team {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+
+        // @@protoc_insertion_point(message:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.Org)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct Org {
+            // message fields
+            // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.Org.access)
+            pub access: ::protobuf::EnumOrUnknown<super::super::AccessLevel>,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.Org.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a Org {
+            fn default() -> &'a Org {
+                <Org as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl Org {
+            pub fn new() -> Org {
+                ::std::default::Default::default()
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(1);
+                let mut oneofs = ::std::vec::Vec::with_capacity(0);
+                fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                    "access",
+                    |m: &Org| { &m.access },
+                    |m: &mut Org| { &mut m.access },
+                ));
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Org>(
+                    "SetAccessRequest.SetAccessPermission.Org",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for Org {
+            const NAME: &'static str = "Org";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        8 => {
+                            self.access = is.read_enum_or_unknown()?;
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if self.access != ::protobuf::EnumOrUnknown::new(super::super::AccessLevel::VIEW) {
+                    my_size += ::protobuf::rt::int32_size(1, self.access.value());
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if self.access != ::protobuf::EnumOrUnknown::new(super::super::AccessLevel::VIEW) {
+                    os.write_enum(1, ::protobuf::EnumOrUnknown::value(&self.access))?;
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> Org {
+                Org::new()
+            }
+
+            fn clear(&mut self) {
+                self.access = ::protobuf::EnumOrUnknown::new(super::super::AccessLevel::VIEW);
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static Org {
+                static instance: Org = Org {
+                    access: ::protobuf::EnumOrUnknown::from_i32(0),
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for Org {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("SetAccessRequest.SetAccessPermission.Org").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for Org {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for Org {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+
+        // @@protoc_insertion_point(message:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.Owner)
+        #[derive(PartialEq,Clone,Default,Debug)]
+        pub struct Owner {
+            // message oneof groups
+            pub id: ::std::option::Option<owner::Id>,
+            // special fields
+            // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.Owner.special_fields)
+            pub special_fields: ::protobuf::SpecialFields,
+        }
+
+        impl<'a> ::std::default::Default for &'a Owner {
+            fn default() -> &'a Owner {
+                <Owner as ::protobuf::Message>::default_instance()
+            }
+        }
+
+        impl Owner {
+            pub fn new() -> Owner {
+                ::std::default::Default::default()
+            }
+
+            // string user_id = 1;
+
+            pub fn user_id(&self) -> &str {
+                match self.id {
+                    ::std::option::Option::Some(owner::Id::UserId(ref v)) => v,
+                    _ => "",
+                }
+            }
+
+            pub fn clear_user_id(&mut self) {
+                self.id = ::std::option::Option::None;
+            }
+
+            pub fn has_user_id(&self) -> bool {
+                match self.id {
+                    ::std::option::Option::Some(owner::Id::UserId(..)) => true,
+                    _ => false,
+                }
+            }
+
+            // Param is passed by value, moved
+            pub fn set_user_id(&mut self, v: ::std::string::String) {
+                self.id = ::std::option::Option::Some(owner::Id::UserId(v))
+            }
+
+            // Mutable pointer to the field.
+            pub fn mut_user_id(&mut self) -> &mut ::std::string::String {
+                if let ::std::option::Option::Some(owner::Id::UserId(_)) = self.id {
+                } else {
+                    self.id = ::std::option::Option::Some(owner::Id::UserId(::std::string::String::new()));
+                }
+                match self.id {
+                    ::std::option::Option::Some(owner::Id::UserId(ref mut v)) => v,
+                    _ => panic!(),
+                }
+            }
+
+            // Take field
+            pub fn take_user_id(&mut self) -> ::std::string::String {
+                if self.has_user_id() {
+                    match self.id.take() {
+                        ::std::option::Option::Some(owner::Id::UserId(v)) => v,
+                        _ => panic!(),
+                    }
+                } else {
+                    ::std::string::String::new()
+                }
+            }
+
+            // string team_id = 2;
+
+            pub fn team_id(&self) -> &str {
+                match self.id {
+                    ::std::option::Option::Some(owner::Id::TeamId(ref v)) => v,
+                    _ => "",
+                }
+            }
+
+            pub fn clear_team_id(&mut self) {
+                self.id = ::std::option::Option::None;
+            }
+
+            pub fn has_team_id(&self) -> bool {
+                match self.id {
+                    ::std::option::Option::Some(owner::Id::TeamId(..)) => true,
+                    _ => false,
+                }
+            }
+
+            // Param is passed by value, moved
+            pub fn set_team_id(&mut self, v: ::std::string::String) {
+                self.id = ::std::option::Option::Some(owner::Id::TeamId(v))
+            }
+
+            // Mutable pointer to the field.
+            pub fn mut_team_id(&mut self) -> &mut ::std::string::String {
+                if let ::std::option::Option::Some(owner::Id::TeamId(_)) = self.id {
+                } else {
+                    self.id = ::std::option::Option::Some(owner::Id::TeamId(::std::string::String::new()));
+                }
+                match self.id {
+                    ::std::option::Option::Some(owner::Id::TeamId(ref mut v)) => v,
+                    _ => panic!(),
+                }
+            }
+
+            // Take field
+            pub fn take_team_id(&mut self) -> ::std::string::String {
+                if self.has_team_id() {
+                    match self.id.take() {
+                        ::std::option::Option::Some(owner::Id::TeamId(v)) => v,
+                        _ => panic!(),
+                    }
+                } else {
+                    ::std::string::String::new()
+                }
+            }
+
+            pub(in super::super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+                let mut fields = ::std::vec::Vec::with_capacity(2);
+                let mut oneofs = ::std::vec::Vec::with_capacity(1);
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+                    "user_id",
+                    Owner::has_user_id,
+                    Owner::user_id,
+                    Owner::set_user_id,
+                ));
+                fields.push(::protobuf::reflect::rt::v2::make_oneof_deref_has_get_set_simpler_accessor::<_, _>(
+                    "team_id",
+                    Owner::has_team_id,
+                    Owner::team_id,
+                    Owner::set_team_id,
+                ));
+                oneofs.push(owner::Id::generated_oneof_descriptor_data());
+                ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Owner>(
+                    "SetAccessRequest.SetAccessPermission.Owner",
+                    fields,
+                    oneofs,
+                )
+            }
+        }
+
+        impl ::protobuf::Message for Owner {
+            const NAME: &'static str = "Owner";
+
+            fn is_initialized(&self) -> bool {
+                true
+            }
+
+            fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+                while let Some(tag) = is.read_raw_tag_or_eof()? {
+                    match tag {
+                        10 => {
+                            self.id = ::std::option::Option::Some(owner::Id::UserId(is.read_string()?));
+                        },
+                        18 => {
+                            self.id = ::std::option::Option::Some(owner::Id::TeamId(is.read_string()?));
+                        },
+                        tag => {
+                            ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                        },
+                    };
+                }
+                ::std::result::Result::Ok(())
+            }
+
+            // Compute sizes of nested messages
+            #[allow(unused_variables)]
+            fn compute_size(&self) -> u64 {
+                let mut my_size = 0;
+                if let ::std::option::Option::Some(ref v) = self.id {
+                    match v {
+                        &owner::Id::UserId(ref v) => {
+                            my_size += ::protobuf::rt::string_size(1, &v);
+                        },
+                        &owner::Id::TeamId(ref v) => {
+                            my_size += ::protobuf::rt::string_size(2, &v);
+                        },
+                    };
+                }
+                my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+                self.special_fields.cached_size().set(my_size as u32);
+                my_size
+            }
+
+            fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+                if let ::std::option::Option::Some(ref v) = self.id {
+                    match v {
+                        &owner::Id::UserId(ref v) => {
+                            os.write_string(1, v)?;
+                        },
+                        &owner::Id::TeamId(ref v) => {
+                            os.write_string(2, v)?;
+                        },
+                    };
+                }
+                os.write_unknown_fields(self.special_fields.unknown_fields())?;
+                ::std::result::Result::Ok(())
+            }
+
+            fn special_fields(&self) -> &::protobuf::SpecialFields {
+                &self.special_fields
+            }
+
+            fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+                &mut self.special_fields
+            }
+
+            fn new() -> Owner {
+                Owner::new()
+            }
+
+            fn clear(&mut self) {
+                self.id = ::std::option::Option::None;
+                self.id = ::std::option::Option::None;
+                self.special_fields.clear();
+            }
+
+            fn default_instance() -> &'static Owner {
+                static instance: Owner = Owner {
+                    id: ::std::option::Option::None,
+                    special_fields: ::protobuf::SpecialFields::new(),
+                };
+                &instance
+            }
+        }
+
+        impl ::protobuf::MessageFull for Owner {
+            fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+                static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+                descriptor.get(|| super::super::file_descriptor().message_by_package_relative_name("SetAccessRequest.SetAccessPermission.Owner").unwrap()).clone()
+            }
+        }
+
+        impl ::std::fmt::Display for Owner {
+            fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+                ::protobuf::text_format::fmt(self, f)
+            }
+        }
+
+        impl ::protobuf::reflect::ProtobufValue for Owner {
+            type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+        }
+
+        /// Nested message and enums of message `Owner`
+        pub mod owner {
+
+            #[derive(Clone,PartialEq,Debug)]
+            // @@protoc_insertion_point(oneof:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.Owner.id)
+            pub enum Id {
+                // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.Owner.user_id)
+                UserId(::std::string::String),
+                // @@protoc_insertion_point(oneof_field:bitdrift.public.unary.admin.v1.SetAccessRequest.SetAccessPermission.Owner.team_id)
+                TeamId(::std::string::String),
+            }
+
+            impl ::protobuf::Oneof for Id {
+            }
+
+            impl ::protobuf::OneofFull for Id {
+                fn descriptor() -> ::protobuf::reflect::OneofDescriptor {
+                    static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::OneofDescriptor> = ::protobuf::rt::Lazy::new();
+                    descriptor.get(|| <super::Owner as ::protobuf::MessageFull>::descriptor().oneof_by_name("id").unwrap()).clone()
+                }
+            }
+
+            impl Id {
+                pub(in super::super::super) fn generated_oneof_descriptor_data() -> ::protobuf::reflect::GeneratedOneofDescriptorData {
+                    ::protobuf::reflect::GeneratedOneofDescriptorData::new::<Id>("id")
+                }
+            }
+        }
+    }
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.admin.v1.SetAccessResponse)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct SetAccessResponse {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.admin.v1.SetAccessResponse.result)
+    pub result: ::protobuf::MessageField<AccessPermission>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.admin.v1.SetAccessResponse.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a SetAccessResponse {
+    fn default() -> &'a SetAccessResponse {
+        <SetAccessResponse as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl SetAccessResponse {
+    pub fn new() -> SetAccessResponse {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, AccessPermission>(
+            "result",
+            |m: &SetAccessResponse| { &m.result },
+            |m: &mut SetAccessResponse| { &mut m.result },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<SetAccessResponse>(
+            "SetAccessResponse",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for SetAccessResponse {
+    const NAME: &'static str = "SetAccessResponse";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.result)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.result.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.result.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> SetAccessResponse {
+        SetAccessResponse::new()
+    }
+
+    fn clear(&mut self) {
+        self.result.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static SetAccessResponse {
+        static instance: SetAccessResponse = SetAccessResponse {
+            result: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for SetAccessResponse {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("SetAccessResponse").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for SetAccessResponse {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for SetAccessResponse {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+#[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
+// @@protoc_insertion_point(enum:bitdrift.public.unary.admin.v1.AccessLevel)
+pub enum AccessLevel {
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.AccessLevel.VIEW)
+    VIEW = 0,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.AccessLevel.EDIT)
+    EDIT = 1,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.admin.v1.AccessLevel.NONE)
+    NONE = 2,
+}
+
+impl ::protobuf::Enum for AccessLevel {
+    const NAME: &'static str = "AccessLevel";
+
+    fn value(&self) -> i32 {
+        *self as i32
+    }
+
+    fn from_i32(value: i32) -> ::std::option::Option<AccessLevel> {
+        match value {
+            0 => ::std::option::Option::Some(AccessLevel::VIEW),
+            1 => ::std::option::Option::Some(AccessLevel::EDIT),
+            2 => ::std::option::Option::Some(AccessLevel::NONE),
+            _ => ::std::option::Option::None
+        }
+    }
+
+    fn from_str(str: &str) -> ::std::option::Option<AccessLevel> {
+        match str {
+            "VIEW" => ::std::option::Option::Some(AccessLevel::VIEW),
+            "EDIT" => ::std::option::Option::Some(AccessLevel::EDIT),
+            "NONE" => ::std::option::Option::Some(AccessLevel::NONE),
+            _ => ::std::option::Option::None
+        }
+    }
+
+    const VALUES: &'static [AccessLevel] = &[
+        AccessLevel::VIEW,
+        AccessLevel::EDIT,
+        AccessLevel::NONE,
+    ];
+}
+
+impl ::protobuf::EnumFull for AccessLevel {
+    fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().enum_by_package_relative_name("AccessLevel").unwrap()).clone()
+    }
+
+    fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
+        let index = *self as usize;
+        Self::enum_descriptor().value_by_index(index)
+    }
+}
+
+impl ::std::default::Default for AccessLevel {
+    fn default() -> Self {
+        AccessLevel::VIEW
+    }
+}
+
+impl AccessLevel {
+    fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
+        ::protobuf::reflect::GeneratedEnumDescriptorData::new::<AccessLevel>("AccessLevel")
+    }
+}
+
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n+bitdrift/public/unary/admin/v1/access.proto\x12\x1ebitdrift.public.un\
-    ary.admin.v1\x1a\x17validate/validate.proto\"\xa2\x06\n\x15AccessPermiss\
-    ionQuery\x12b\n\nindividual\x18\x01\x20\x01(\x0b2@.bitdrift.public.unary\
-    .admin.v1.AccessPermissionQuery.IndividualH\0R\nindividual\x1a\xd4\x01\n\
-    \tCondition\x12d\n\x08operator\x18\x01\x20\x01(\x0e2>.bitdrift.public.un\
-    ary.admin.v1.AccessPermissionQuery.OperatorR\x08operatorB\x08\xfaB\x05\
-    \x82\x01\x02\x10\x01\x12a\n\x05level\x18\x02\x20\x01(\x0e2A.bitdrift.pub\
-    lic.unary.admin.v1.AccessPermissionQuery.AccessLevelR\x05levelB\x08\xfaB\
-    \x05\x82\x01\x02\x10\x01\x1at\n\x05AllOf\x12k\n\nconditions\x18\x01\x20\
-    \x03(\x0b2?.bitdrift.public.unary.admin.v1.AccessPermissionQuery.Conditi\
-    onR\nconditionsB\n\xfaB\x07\x92\x01\x04\x08\x01\x10\x14\x1an\n\x0cAccess\
-    Filter\x12^\n\x06any_of\x18\x01\x20\x03(\x0b2;.bitdrift.public.unary.adm\
-    in.v1.AccessPermissionQuery.AllOfR\x05anyOfB\n\xfaB\x07\x92\x01\x04\x08\
-    \x01\x10\x14\x1a\x8c\x01\n\nIndividual\x12\"\n\x07user_id\x18\x01\x20\
-    \x01(\tR\x06userIdB\t\xfaB\x06r\x04\x10\x01\x18d\x12Z\n\x06filter\x18\
+    ary.admin.v1\x1a*bitdrift/public/unary/admin/v1/teams.proto\x1a,bitdrift\
+    /public/unary/common/v1/common.proto\x1a\x17validate/validate.proto\"\
+    \xfd\x07\n\x15AccessPermissionQuery\x12b\n\nindividual\x18\x01\x20\x01(\
+    \x0b2@.bitdrift.public.unary.admin.v1.AccessPermissionQuery.IndividualH\
+    \0R\nindividual\x12P\n\x04team\x18\x02\x20\x01(\x0b2:.bitdrift.public.un\
+    ary.admin.v1.AccessPermissionQuery.TeamH\0R\x04team\x1a\xd4\x01\n\tCondi\
+    tion\x12d\n\x08operator\x18\x01\x20\x01(\x0e2>.bitdrift.public.unary.adm\
+    in.v1.AccessPermissionQuery.OperatorR\x08operatorB\x08\xfaB\x05\x82\x01\
+    \x02\x10\x01\x12a\n\x05level\x18\x02\x20\x01(\x0e2A.bitdrift.public.unar\
+    y.admin.v1.AccessPermissionQuery.AccessLevelR\x05levelB\x08\xfaB\x05\x82\
+    \x01\x02\x10\x01\x1at\n\x05AllOf\x12k\n\nconditions\x18\x01\x20\x03(\x0b\
+    2?.bitdrift.public.unary.admin.v1.AccessPermissionQuery.ConditionR\ncond\
+    itionsB\n\xfaB\x07\x92\x01\x04\x08\x01\x10\x14\x1an\n\x0cAccessFilter\
+    \x12^\n\x06any_of\x18\x01\x20\x03(\x0b2;.bitdrift.public.unary.admin.v1.\
+    AccessPermissionQuery.AllOfR\x05anyOfB\n\xfaB\x07\x92\x01\x04\x08\x01\
+    \x10\x14\x1a\x8c\x01\n\nIndividual\x12\"\n\x07user_id\x18\x01\x20\x01(\t\
+    R\x06userIdB\t\xfaB\x06r\x04\x10\x01\x18d\x12Z\n\x06filter\x18\x02\x20\
+    \x01(\x0b2B.bitdrift.public.unary.admin.v1.AccessPermissionQuery.AccessF\
+    ilterR\x06filter\x1a\x86\x01\n\x04Team\x12\"\n\x07team_id\x18\x01\x20\
+    \x01(\tR\x06teamIdB\t\xfaB\x06r\x04\x10\x01\x18d\x12Z\n\x06filter\x18\
     \x02\x20\x01(\x0b2B.bitdrift.public.unary.admin.v1.AccessPermissionQuery\
     .AccessFilterR\x06filter\",\n\x0bAccessLevel\x12\x08\n\x04VIEW\x10\0\x12\
     \x08\n\x04EDIT\x10\x01\x12\t\n\x05OWNER\x10\x02\"\x1e\n\x08Operator\x12\
     \x06\n\x02IS\x10\0\x12\n\n\x06IS_NOT\x10\x01B\x0b\n\x04type\x12\x03\xf8B\
-    \x01b\x06proto3\
+    \x01\"\x80\x07\n\x10AccessPermission\x12g\n\x0bindividuals\x18\x01\x20\
+    \x03(\x0b2;.bitdrift.public.unary.admin.v1.AccessPermission.IndividualR\
+    \x0bindividualsB\x08\xfaB\x05\x92\x01\x02\x10d\x12U\n\x05teams\x18\x02\
+    \x20\x03(\x0b25.bitdrift.public.unary.admin.v1.AccessPermission.TeamR\
+    \x05teamsB\x08\xfaB\x05\x92\x01\x02\x10d\x12F\n\x03org\x18\x03\x20\x01(\
+    \x0b24.bitdrift.public.unary.admin.v1.AccessPermission.OrgR\x03org\x12L\
+    \n\x05owner\x18\x04\x20\x01(\x0b26.bitdrift.public.unary.admin.v1.Access\
+    Permission.OwnerR\x05owner\x1a\x9d\x01\n\nIndividual\x12@\n\x07details\
+    \x18\x01\x20\x01(\x0b2&.bitdrift.public.unary.common.v1.OwnerR\x07detail\
+    s\x12M\n\x06access\x18\x02\x20\x01(\x0e2+.bitdrift.public.unary.admin.v1\
+    .AccessLevelR\x06accessB\x08\xfaB\x05\x82\x01\x02\x10\x01\x1a\x95\x01\n\
+    \x04Team\x12>\n\x07details\x18\x01\x20\x01(\x0b2$.bitdrift.public.unary.\
+    admin.v1.TeamR\x07details\x12M\n\x06access\x18\x02\x20\x01(\x0e2+.bitdri\
+    ft.public.unary.admin.v1.AccessLevelR\x06accessB\x08\xfaB\x05\x82\x01\
+    \x02\x10\x01\x1aT\n\x03Org\x12M\n\x06access\x18\x01\x20\x01(\x0e2+.bitdr\
+    ift.public.unary.admin.v1.AccessLevelR\x06accessB\x08\xfaB\x05\x82\x01\
+    \x02\x10\x01\x1a\x87\x01\n\x05Owner\x12<\n\x04user\x18\x01\x20\x01(\x0b2\
+    &.bitdrift.public.unary.common.v1.OwnerH\0R\x04user\x12:\n\x04team\x18\
+    \x02\x20\x01(\x0b2$.bitdrift.public.unary.admin.v1.TeamH\0R\x04teamB\x04\
+    \n\x02id\"\xf6\x08\n\x10SetAccessRequest\x12q\n\x11access_permission\x18\
+    \x01\x20\x01(\x0b2D.bitdrift.public.unary.admin.v1.SetAccessRequest.SetA\
+    ccessPermissionR\x10accessPermission\x12.\n\x0cdashboard_id\x18\x02\x20\
+    \x01(\tH\0R\x0bdashboardIdB\t\xfaB\x06r\x04\x10\x01\x18d\x12$\n\x07view_\
+    id\x18\x03\x20\x01(\tH\0R\x06viewIdB\t\xfaB\x06r\x04\x10\x01\x18d\x12,\n\
+    \x0bworkflow_id\x18\x04\x20\x01(\tH\0R\nworkflowIdB\t\xfaB\x06r\x04\x10\
+    \x01\x18d\x1a\xdb\x06\n\x13SetAccessPermission\x12{\n\x0bindividuals\x18\
+    \x01\x20\x03(\x0b2O.bitdrift.public.unary.admin.v1.SetAccessRequest.SetA\
+    ccessPermission.IndividualR\x0bindividualsB\x08\xfaB\x05\x92\x01\x02\x10\
+    d\x12i\n\x05teams\x18\x02\x20\x03(\x0b2I.bitdrift.public.unary.admin.v1.\
+    SetAccessRequest.SetAccessPermission.TeamR\x05teamsB\x08\xfaB\x05\x92\
+    \x01\x02\x10d\x12Z\n\x03org\x18\x03\x20\x01(\x0b2H.bitdrift.public.unary\
+    .admin.v1.SetAccessRequest.SetAccessPermission.OrgR\x03org\x12`\n\x05own\
+    er\x18\x04\x20\x01(\x0b2J.bitdrift.public.unary.admin.v1.SetAccessReques\
+    t.SetAccessPermission.OwnerR\x05owner\x1av\n\nIndividual\x12\x19\n\x02id\
+    \x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12M\n\x06acces\
+    s\x18\x02\x20\x01(\x0e2+.bitdrift.public.unary.admin.v1.AccessLevelR\x06\
+    accessB\x08\xfaB\x05\x82\x01\x02\x10\x01\x1ap\n\x04Team\x12\x19\n\x02id\
+    \x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12M\n\x06acces\
+    s\x18\x02\x20\x01(\x0e2+.bitdrift.public.unary.admin.v1.AccessLevelR\x06\
+    accessB\x08\xfaB\x05\x82\x01\x02\x10\x01\x1aT\n\x03Org\x12M\n\x06access\
+    \x18\x01\x20\x01(\x0e2+.bitdrift.public.unary.admin.v1.AccessLevelR\x06a\
+    ccessB\x08\xfaB\x05\x82\x01\x02\x10\x01\x1a^\n\x05Owner\x12$\n\x07user_i\
+    d\x18\x01\x20\x01(\tH\0R\x06userIdB\t\xfaB\x06r\x04\x10\x01\x18d\x12$\n\
+    \x07team_id\x18\x02\x20\x01(\tH\0R\x06teamIdB\t\xfaB\x06r\x04\x10\x01\
+    \x18dB\t\n\x02id\x12\x03\xf8B\x01B\r\n\x06target\x12\x03\xf8B\x01\"]\n\
+    \x11SetAccessResponse\x12H\n\x06result\x18\x01\x20\x01(\x0b20.bitdrift.p\
+    ublic.unary.admin.v1.AccessPermissionR\x06result*+\n\x0bAccessLevel\x12\
+    \x08\n\x04VIEW\x10\0\x12\x08\n\x04EDIT\x10\x01\x12\x08\n\x04NONE\x10\x02\
+    b\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -932,15 +3470,31 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(1);
+            let mut deps = ::std::vec::Vec::with_capacity(3);
+            deps.push(super::teams::file_descriptor().clone());
+            deps.push(super::common::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(5);
+            let mut messages = ::std::vec::Vec::with_capacity(18);
             messages.push(AccessPermissionQuery::generated_message_descriptor_data());
+            messages.push(AccessPermission::generated_message_descriptor_data());
+            messages.push(SetAccessRequest::generated_message_descriptor_data());
+            messages.push(SetAccessResponse::generated_message_descriptor_data());
             messages.push(access_permission_query::Condition::generated_message_descriptor_data());
             messages.push(access_permission_query::AllOf::generated_message_descriptor_data());
             messages.push(access_permission_query::AccessFilter::generated_message_descriptor_data());
             messages.push(access_permission_query::Individual::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(2);
+            messages.push(access_permission_query::Team::generated_message_descriptor_data());
+            messages.push(access_permission::Individual::generated_message_descriptor_data());
+            messages.push(access_permission::Team::generated_message_descriptor_data());
+            messages.push(access_permission::Org::generated_message_descriptor_data());
+            messages.push(access_permission::Owner::generated_message_descriptor_data());
+            messages.push(set_access_request::SetAccessPermission::generated_message_descriptor_data());
+            messages.push(set_access_request::set_access_permission::Individual::generated_message_descriptor_data());
+            messages.push(set_access_request::set_access_permission::Team::generated_message_descriptor_data());
+            messages.push(set_access_request::set_access_permission::Org::generated_message_descriptor_data());
+            messages.push(set_access_request::set_access_permission::Owner::generated_message_descriptor_data());
+            let mut enums = ::std::vec::Vec::with_capacity(3);
+            enums.push(AccessLevel::generated_enum_descriptor_data());
             enums.push(access_permission_query::AccessLevel::generated_enum_descriptor_data());
             enums.push(access_permission_query::Operator::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(

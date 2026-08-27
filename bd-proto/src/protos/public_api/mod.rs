@@ -28,6 +28,9 @@ pub mod search;
 pub mod spans;
 pub mod time_series;
 pub mod timeline;
+pub mod teams {
+  pub use super::admin::teams::*;
+}
 pub mod workflow;
 pub mod workflow_metadata;
 

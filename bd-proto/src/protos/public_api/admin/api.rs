@@ -33,42 +33,56 @@ const _PROTOBUF_VERSION_CHECK: () = ::protobuf::VERSION_4_0_0_ALPHA_0;
 
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n(bitdrift/public/unary/admin/v1/api.proto\x12\x1ebitdrift.public.unary\
-    .admin.v1\x1a.bitdrift/public/unary/admin/v1/connector.proto\x1a)bitdrif\
-    t/public/unary/admin/v1/keys.proto\x1a2bitdrift/public/unary/admin/v1/no\
-    tifications.proto\x1a)bitdrift/public/unary/admin/v1/view.proto2\xa8\x10\
-    \n\x0cAdminService\x12\x94\x01\n\x15GetNotificationGroups\x12<.bitdrift.\
-    public.unary.admin.v1.GetNotificationGroupsRequest\x1a=.bitdrift.public.\
-    unary.admin.v1.GetNotificationGroupsResponse\x12\x9a\x01\n\x17UpsertNoti\
-    ficationGroup\x12>.bitdrift.public.unary.admin.v1.UpsertNotificationGrou\
-    pRequest\x1a?.bitdrift.public.unary.admin.v1.UpsertNotificationGroupResp\
-    onse\x12\x9a\x01\n\x17DeleteNotificationGroup\x12>.bitdrift.public.unary\
-    .admin.v1.DeleteNotificationGroupRequest\x1a?.bitdrift.public.unary.admi\
-    n.v1.DeleteNotificationGroupResponse\x12\x94\x01\n\x15TestNotificationGr\
-    oup\x12<.bitdrift.public.unary.admin.v1.TestNotificationGroupRequest\x1a\
-    =.bitdrift.public.unary.admin.v1.TestNotificationGroupResponse\x12\x94\
-    \x01\n\x15TestAlertNotification\x12<.bitdrift.public.unary.admin.v1.Test\
-    AlertNotificationRequest\x1a=.bitdrift.public.unary.admin.v1.TestAlertNo\
-    tificationResponse\x12s\n\nUpsertView\x121.bitdrift.public.unary.admin.v\
-    1.UpsertViewRequest\x1a2.bitdrift.public.unary.admin.v1.UpsertViewRespon\
-    se\x12j\n\x07GetView\x12..bitdrift.public.unary.admin.v1.GetViewRequest\
-    \x1a/.bitdrift.public.unary.admin.v1.GetViewResponse\x12s\n\nDeleteView\
-    \x121.bitdrift.public.unary.admin.v1.DeleteViewRequest\x1a2.bitdrift.pub\
-    lic.unary.admin.v1.DeleteViewResponse\x12p\n\tListViews\x120.bitdrift.pu\
-    blic.unary.admin.v1.ListViewsRequest\x1a1.bitdrift.public.unary.admin.v1\
-    .ListViewsResponse\x12j\n\x07GetKeys\x12..bitdrift.public.unary.admin.v1\
-    .GetKeysRequest\x1a/.bitdrift.public.unary.admin.v1.GetKeysResponse\x12p\
-    \n\tCreateKey\x120.bitdrift.public.unary.admin.v1.CreateKeyRequest\x1a1.\
-    bitdrift.public.unary.admin.v1.CreateKeyResponse\x12p\n\tRevokeKey\x120.\
-    bitdrift.public.unary.admin.v1.RevokeKeyRequest\x1a1.bitdrift.public.una\
-    ry.admin.v1.RevokeKeyResponse\x12y\n\x0cFavoriteView\x123.bitdrift.publi\
-    c.unary.admin.v1.FavoriteViewRequest\x1a4.bitdrift.public.unary.admin.v1\
-    .FavoriteViewResponse\x12|\n\rGetConnectors\x124.bitdrift.public.unary.a\
-    dmin.v1.GetConnectorsRequest\x1a5.bitdrift.public.unary.admin.v1.GetConn\
-    ectorsResponse\x12\x82\x01\n\x0fUpsertConnector\x126.bitdrift.public.una\
-    ry.admin.v1.UpsertConnectorRequest\x1a7.bitdrift.public.unary.admin.v1.U\
-    psertConnectorResponse\x12\x82\x01\n\x0fDeleteConnector\x126.bitdrift.pu\
-    blic.unary.admin.v1.DeleteConnectorRequest\x1a7.bitdrift.public.unary.ad\
-    min.v1.DeleteConnectorResponseb\x06proto3\
+    .admin.v1\x1a+bitdrift/public/unary/admin/v1/access.proto\x1a.bitdrift/p\
+    ublic/unary/admin/v1/connector.proto\x1a)bitdrift/public/unary/admin/v1/\
+    keys.proto\x1a2bitdrift/public/unary/admin/v1/notifications.proto\x1a*bi\
+    tdrift/public/unary/admin/v1/teams.proto\x1a)bitdrift/public/unary/admin\
+    /v1/view.proto2\xee\x16\n\x0cAdminService\x12\x94\x01\n\x15GetNotificati\
+    onGroups\x12<.bitdrift.public.unary.admin.v1.GetNotificationGroupsReques\
+    t\x1a=.bitdrift.public.unary.admin.v1.GetNotificationGroupsResponse\x12\
+    \x9a\x01\n\x17UpsertNotificationGroup\x12>.bitdrift.public.unary.admin.v\
+    1.UpsertNotificationGroupRequest\x1a?.bitdrift.public.unary.admin.v1.Ups\
+    ertNotificationGroupResponse\x12\x9a\x01\n\x17DeleteNotificationGroup\
+    \x12>.bitdrift.public.unary.admin.v1.DeleteNotificationGroupRequest\x1a?\
+    .bitdrift.public.unary.admin.v1.DeleteNotificationGroupResponse\x12\x94\
+    \x01\n\x15TestNotificationGroup\x12<.bitdrift.public.unary.admin.v1.Test\
+    NotificationGroupRequest\x1a=.bitdrift.public.unary.admin.v1.TestNotific\
+    ationGroupResponse\x12\x94\x01\n\x15TestAlertNotification\x12<.bitdrift.\
+    public.unary.admin.v1.TestAlertNotificationRequest\x1a=.bitdrift.public.\
+    unary.admin.v1.TestAlertNotificationResponse\x12s\n\nUpsertView\x121.bit\
+    drift.public.unary.admin.v1.UpsertViewRequest\x1a2.bitdrift.public.unary\
+    .admin.v1.UpsertViewResponse\x12j\n\x07GetView\x12..bitdrift.public.unar\
+    y.admin.v1.GetViewRequest\x1a/.bitdrift.public.unary.admin.v1.GetViewRes\
+    ponse\x12s\n\nDeleteView\x121.bitdrift.public.unary.admin.v1.DeleteViewR\
+    equest\x1a2.bitdrift.public.unary.admin.v1.DeleteViewResponse\x12p\n\tLi\
+    stViews\x120.bitdrift.public.unary.admin.v1.ListViewsRequest\x1a1.bitdri\
+    ft.public.unary.admin.v1.ListViewsResponse\x12j\n\x07GetKeys\x12..bitdri\
+    ft.public.unary.admin.v1.GetKeysRequest\x1a/.bitdrift.public.unary.admin\
+    .v1.GetKeysResponse\x12p\n\tCreateKey\x120.bitdrift.public.unary.admin.v\
+    1.CreateKeyRequest\x1a1.bitdrift.public.unary.admin.v1.CreateKeyResponse\
+    \x12p\n\tRevokeKey\x120.bitdrift.public.unary.admin.v1.RevokeKeyRequest\
+    \x1a1.bitdrift.public.unary.admin.v1.RevokeKeyResponse\x12s\n\nUpsertTea\
+    m\x121.bitdrift.public.unary.admin.v1.UpsertTeamRequest\x1a2.bitdrift.pu\
+    blic.unary.admin.v1.UpsertTeamResponse\x12s\n\nDeleteTeam\x121.bitdrift.\
+    public.unary.admin.v1.DeleteTeamRequest\x1a2.bitdrift.public.unary.admin\
+    .v1.DeleteTeamResponse\x12j\n\x07GetTeam\x12..bitdrift.public.unary.admi\
+    n.v1.GetTeamRequest\x1a/.bitdrift.public.unary.admin.v1.GetTeamResponse\
+    \x12p\n\tListTeams\x120.bitdrift.public.unary.admin.v1.ListTeamsRequest\
+    \x1a1.bitdrift.public.unary.admin.v1.ListTeamsResponse\x12\x7f\n\x0eAddT\
+    eamMembers\x125.bitdrift.public.unary.admin.v1.AddTeamMembersRequest\x1a\
+    6.bitdrift.public.unary.admin.v1.AddTeamMembersResponse\x12\x88\x01\n\
+    \x11RemoveTeamMembers\x128.bitdrift.public.unary.admin.v1.RemoveTeamMemb\
+    ersRequest\x1a9.bitdrift.public.unary.admin.v1.RemoveTeamMembersResponse\
+    \x12y\n\x0cFavoriteView\x123.bitdrift.public.unary.admin.v1.FavoriteView\
+    Request\x1a4.bitdrift.public.unary.admin.v1.FavoriteViewResponse\x12p\n\
+    \tSetAccess\x120.bitdrift.public.unary.admin.v1.SetAccessRequest\x1a1.bi\
+    tdrift.public.unary.admin.v1.SetAccessResponse\x12|\n\rGetConnectors\x12\
+    4.bitdrift.public.unary.admin.v1.GetConnectorsRequest\x1a5.bitdrift.publ\
+    ic.unary.admin.v1.GetConnectorsResponse\x12\x82\x01\n\x0fUpsertConnector\
+    \x126.bitdrift.public.unary.admin.v1.UpsertConnectorRequest\x1a7.bitdrif\
+    t.public.unary.admin.v1.UpsertConnectorResponse\x12\x82\x01\n\x0fDeleteC\
+    onnector\x126.bitdrift.public.unary.admin.v1.DeleteConnectorRequest\x1a7\
+    .bitdrift.public.unary.admin.v1.DeleteConnectorResponseb\x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -85,10 +99,12 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
     static file_descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::FileDescriptor> = ::protobuf::rt::Lazy::new();
     file_descriptor.get(|| {
         let generated_file_descriptor = generated_file_descriptor_lazy.get(|| {
-            let mut deps = ::std::vec::Vec::with_capacity(4);
+            let mut deps = ::std::vec::Vec::with_capacity(6);
+            deps.push(super::access::file_descriptor().clone());
             deps.push(super::connector::file_descriptor().clone());
             deps.push(super::keys::file_descriptor().clone());
             deps.push(super::notifications::file_descriptor().clone());
+            deps.push(super::teams::file_descriptor().clone());
             deps.push(super::view::file_descriptor().clone());
             let mut messages = ::std::vec::Vec::with_capacity(0);
             let mut enums = ::std::vec::Vec::with_capacity(0);
