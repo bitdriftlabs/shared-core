@@ -10,6 +10,7 @@
 mod metadata_test;
 
 use bd_crash_handler::global_state;
+use bd_event_buffer::ProviderSnapshot;
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::{
   AnnotatedLogField,
@@ -97,6 +98,10 @@ impl MetadataCollector {
     }
   }
 
+  pub(crate) fn timestamp(&self) -> anyhow::Result<time::OffsetDateTime> {
+    self.metadata_provider.timestamp()
+  }
+
   /// Returns log metadata using the last active global state at the end of the last process run.
   /// Log fields take precedence over persisted global state fields to allow the caller to
   /// override values in global state, e.g. when the crash handler knows that the event happened
@@ -108,9 +113,8 @@ impl MetadataCollector {
     fields: AnnotatedLogFields,
     matching_fields: AnnotatedLogFields,
     global_state_reader: &global_state::Reader,
+    timestamp: time::OffsetDateTime,
   ) -> anyhow::Result<LogMetadata> {
-    let timestamp = self.metadata_provider.timestamp()?;
-
     let fields = if let Some(previous_global_state_fields) =
       global_state_reader.previous_global_state_fields()
     {
@@ -147,8 +151,35 @@ impl MetadataCollector {
     global_state_tracker: &mut global_state::Tracker,
   ) -> anyhow::Result<LogMetadata> {
     let timestamp = self.metadata_provider.timestamp()?;
-
     let (custom_fields, ootb_fields) = self.metadata_provider.fields()?;
+
+    self.normalized_metadata_from_provider_snapshot(
+      fields,
+      matching_fields,
+      log_type,
+      global_state_tracker,
+      ProviderSnapshot {
+        timestamp,
+        ootb_fields,
+        custom_fields,
+      },
+    )
+  }
+
+  /// Normalizes a log with provider data captured at EventBuffer admission.
+  pub(crate) fn normalized_metadata_from_provider_snapshot(
+    &self,
+    fields: AnnotatedLogFields,
+    matching_fields: AnnotatedLogFields,
+    log_type: LogType,
+    global_state_tracker: &mut global_state::Tracker,
+    provider_snapshot: ProviderSnapshot,
+  ) -> anyhow::Result<LogMetadata> {
+    let ProviderSnapshot {
+      timestamp,
+      custom_fields,
+      ootb_fields,
+    } = provider_snapshot;
 
     let provider_fields = PartitionedFields {
       ootb: ootb_fields,

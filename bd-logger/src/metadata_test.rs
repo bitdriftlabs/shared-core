@@ -471,7 +471,12 @@ fn metadata_from_fields_with_previous_global_state_includes_global_fields() {
   let reader = Reader::new(store);
 
   let metadata = collector
-    .metadata_from_fields_with_previous_global_state(input_fields, [].into(), &reader)
+    .metadata_from_fields_with_previous_global_state(
+      input_fields,
+      [].into(),
+      &reader,
+      time::OffsetDateTime::UNIX_EPOCH,
+    )
     .unwrap();
 
   // Verify fields

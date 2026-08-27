@@ -8,23 +8,37 @@
 use crate::Block;
 use crate::async_log_buffer::{
   AsyncLogBuffer,
+  EventBufferLimitWatches,
+  LogAttributesOverrides,
   LogLine,
   LogReplay,
   LoggerControl,
   PreConfigItem,
+  ReportProcessor,
   Sender,
+  current_process_admission_context,
+  workflow_generated_log,
 };
 use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
 use bd_api::{DataUpload, SimpleNetworkQualityProvider};
+use bd_bounded_buffer::TrySendError;
 use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::Collector;
 use bd_client_stats_store::test::StatsHelper;
+use bd_event_buffer::{
+  EventBuffer,
+  EventBufferEntry,
+  EventBufferLimits,
+  EventContext,
+  LoggerIngressPayload,
+};
 use bd_log_filter::FilterChain;
 use bd_log_matcher::builder::message_equals;
+use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
@@ -231,10 +245,118 @@ impl Setup {
   }
 }
 
+#[tokio::test]
+async fn event_buffer_limit_watches_register_runtime_budget_updates() {
+  let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
+  let runtime = ConfigLoader::new(sdk_directory.path());
+  let mut watches = EventBufferLimitWatches::new(&runtime);
+
+  let limits = watches.read_mark_update();
+  assert_eq!(
+    bd_runtime::runtime::event_buffer::LogLimitBytesFlag::default() as usize,
+    limits.log_limit_bytes
+  );
+  assert_eq!(
+    bd_runtime::runtime::event_buffer::TotalLimitBytesFlag::default() as usize,
+    limits.total_limit_bytes
+  );
+
+  runtime
+    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![
+      (
+        bd_runtime::runtime::event_buffer::LogLimitBytesFlag::path(),
+        ValueKind::Int(123),
+      ),
+      (
+        bd_runtime::runtime::event_buffer::TotalLimitBytesFlag::path(),
+        ValueKind::Int(456),
+      ),
+    ]))
+    .await
+    .unwrap();
+
+  let limits = watches.read_mark_update();
+  assert_eq!(123, limits.log_limit_bytes);
+  assert_eq!(456, limits.total_limit_bytes);
+}
+
+#[tokio::test]
+async fn runtime_budget_updates_apply_on_the_next_event_buffer_admission() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (mut buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+
+  setup
+    .runtime
+    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![
+      (
+        bd_runtime::runtime::event_buffer::LogLimitBytesFlag::path(),
+        ValueKind::Int(0),
+      ),
+      (
+        bd_runtime::runtime::event_buffer::TotalLimitBytesFlag::path(),
+        ValueKind::Int(0),
+      ),
+    ]))
+    .await
+    .unwrap();
+
+  buffer.refresh_event_buffer_limits();
+
+  assert!(sender.try_send_log(normal_log("rejected")).is_err());
+}
+
 struct TestReplay {
   logs_count: Arc<AtomicUsize>,
   logs: Arc<parking_lot::Mutex<Vec<std::string::String>>>,
   fields: Arc<parking_lot::Mutex<Vec<LogFields>>>,
+}
+
+struct StaticReportProcessor(parking_lot::Mutex<Vec<bd_crash_handler::CrashLog>>);
+
+struct FailingMetadataProvider;
+
+impl MetadataProvider for FailingMetadataProvider {
+  fn timestamp(&self) -> anyhow::Result<OffsetDateTime> {
+    Err(anyhow::anyhow!("metadata provider failed"))
+  }
+
+  fn fields(&self) -> anyhow::Result<(LogFields, LogFields)> {
+    Err(anyhow::anyhow!("metadata provider failed"))
+  }
+}
+
+impl StaticReportProcessor {
+  fn new(reports: Vec<bd_crash_handler::CrashLog>) -> Self {
+    Self(parking_lot::Mutex::new(reports))
+  }
+}
+
+impl ReportProcessor for StaticReportProcessor {
+  async fn process_all_pending_reports(&self) -> Vec<bd_crash_handler::CrashLog> {
+    std::mem::take(&mut *self.0.lock())
+  }
+}
+
+fn crash_log(message: &str, timestamp: OffsetDateTime) -> bd_crash_handler::CrashLog {
+  bd_crash_handler::CrashLog {
+    log_level: log_level::ERROR,
+    fields: [].into(),
+    timestamp,
+    message: message.into(),
+  }
+}
+
+fn normal_log(message: &str) -> LogLine {
+  LogLine {
+    log_level: log_level::INFO,
+    log_type: LogType::NORMAL,
+    message: message.into(),
+    fields: [].into(),
+    matching_fields: [].into(),
+    attributes_overrides: None,
+    capture_session: None,
+  }
 }
 
 impl TestReplay {
@@ -279,6 +401,232 @@ impl LogReplay for TestReplay {
     // Test implementation does nothing with state changes
     LogReplayResult::default()
   }
+}
+
+#[tokio::test]
+async fn current_crash_reports_are_admitted_in_report_order() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let session_id = setup.session_strategy.session_id().unwrap();
+  let first_timestamp = OffsetDateTime::UNIX_EPOCH + 1.seconds();
+  let second_timestamp = OffsetDateTime::UNIX_EPOCH + 2.seconds();
+  let report_processor = StaticReportProcessor::new(vec![
+    crash_log("first", first_timestamp),
+    crash_log("second", second_timestamp),
+  ]);
+
+  buffer.admit_crash_reports(
+    report_processor.process_all_pending_reports().await,
+    crate::ReportProcessingSession::Current,
+  );
+
+  let entries = buffer.event_buffer.next_batch(2).await;
+  assert_eq!(2, entries.len());
+  for (entry, (expected_message, expected_timestamp)) in entries
+    .into_iter()
+    .zip([("first", first_timestamp), ("second", second_timestamp)])
+  {
+    let EventBufferEntry::Ingress(event) = entry else {
+      panic!("crash report must be EventBuffer ingress");
+    };
+    assert!(matches!(
+      event.context,
+      EventContext::CurrentProcess(context) if context.session_id == session_id
+    ));
+    let LoggerIngressPayload::Log(log) = event.payload else {
+      panic!("crash report ingress must carry a log");
+    };
+    assert_eq!(Some(expected_message), log.message.as_str());
+    assert!(matches!(
+      log.attributes_overrides,
+      Some(LogAttributesOverrides::OccurredAt(timestamp)) if timestamp == expected_timestamp
+    ));
+    assert_eq!(Some("crash_handler"), log.capture_session);
+  }
+}
+
+#[tokio::test]
+async fn crash_report_batch_stays_at_its_event_buffer_admission_boundary() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+  let report_processor = StaticReportProcessor::new(vec![
+    crash_log("first", OffsetDateTime::UNIX_EPOCH),
+    crash_log("second", OffsetDateTime::UNIX_EPOCH),
+  ]);
+
+  sender.try_send_log(normal_log("before")).unwrap();
+  buffer.admit_crash_reports(
+    report_processor.process_all_pending_reports().await,
+    crate::ReportProcessingSession::Current,
+  );
+  sender.try_send_log(normal_log("after")).unwrap();
+
+  let messages = buffer
+    .event_buffer
+    .next_batch(4)
+    .await
+    .into_iter()
+    .map(|entry| {
+      let EventBufferEntry::Ingress(event) = entry else {
+        panic!("expected log ingress");
+      };
+      let LoggerIngressPayload::Log(log) = event.payload else {
+        panic!("expected log payload");
+      };
+      log.message.as_str().unwrap().to_string()
+    })
+    .collect::<Vec<_>>();
+
+  assert_eq!(vec!["before", "first", "second", "after"], messages);
+}
+
+#[tokio::test]
+async fn previous_run_crash_reports_use_previous_process_context() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let first_timestamp = OffsetDateTime::UNIX_EPOCH + 1.seconds();
+  let second_timestamp = OffsetDateTime::UNIX_EPOCH + 2.seconds();
+  let report_processor = StaticReportProcessor::new(vec![
+    crash_log("first", first_timestamp),
+    crash_log("second", second_timestamp),
+  ]);
+
+  buffer.admit_crash_reports(
+    report_processor.process_all_pending_reports().await,
+    crate::ReportProcessingSession::PreviousRun,
+  );
+
+  let entries = buffer.event_buffer.next_batch(2).await;
+  assert_eq!(2, entries.len());
+  for (entry, (expected_message, expected_timestamp)) in entries
+    .into_iter()
+    .zip([("first", first_timestamp), ("second", second_timestamp)])
+  {
+    let EventBufferEntry::Ingress(event) = entry else {
+      panic!("crash report must be EventBuffer ingress");
+    };
+    assert!(matches!(
+      event.context,
+      EventContext::PreviousProcess { logged_at } if logged_at != OffsetDateTime::UNIX_EPOCH
+    ));
+    let LoggerIngressPayload::Log(log) = event.payload else {
+      panic!("crash report ingress must carry a log");
+    };
+    assert_eq!(Some(expected_message), log.message.as_str());
+    assert!(matches!(
+      log.attributes_overrides,
+      Some(LogAttributesOverrides::PreviousRunSessionID(timestamp))
+        if timestamp == expected_timestamp
+    ));
+    assert_eq!(Some("crash_handler"), log.capture_session);
+  }
+}
+
+#[test]
+fn workflow_generated_logs_keep_the_parent_context_and_overrides() {
+  let report_timestamp = OffsetDateTime::UNIX_EPOCH + 1.seconds();
+  let admitted_at = OffsetDateTime::UNIX_EPOCH + 2.seconds();
+  let (log, context) = workflow_generated_log(
+    Log {
+      log_level: log_level::INFO,
+      log_type: LogType::NORMAL,
+      message: "generated".into(),
+      fields: [].into(),
+      matching_fields: [].into(),
+      session_id: "ignored-by-generated-log".to_string(),
+      occurred_at: OffsetDateTime::UNIX_EPOCH,
+      capture_session: Some("generated"),
+    },
+    Some(EventContext::PreviousProcess {
+      logged_at: admitted_at,
+    }),
+    Some(LogAttributesOverrides::PreviousRunSessionID(
+      report_timestamp,
+    )),
+  );
+
+  assert_eq!(Some("generated"), log.message.as_str());
+  assert!(matches!(
+    log.attributes_overrides,
+    Some(LogAttributesOverrides::PreviousRunSessionID(timestamp)) if timestamp == report_timestamp
+  ));
+  assert_eq!(Some("generated"), log.capture_session);
+  assert!(matches!(
+    context,
+    Some(EventContext::PreviousProcess { logged_at }) if logged_at == admitted_at
+  ));
+}
+
+#[tokio::test]
+async fn feature_flag_exposure_captures_its_admission_session() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+  let admitted_session_id = setup.session_strategy.session_id().unwrap();
+
+  sender
+    .try_send_feature_flag_exposure("flag".to_string(), Some("variant".to_string()))
+    .unwrap();
+  setup.session_strategy.start_new_session(None).unwrap();
+
+  let entry = buffer.event_buffer.next_batch(1).await.pop().unwrap();
+  let EventBufferEntry::Ingress(event) = entry else {
+    panic!("feature flag exposure must be EventBuffer ingress");
+  };
+  assert!(matches!(
+    event.context,
+    EventContext::CurrentProcess(context) if context.session_id == admitted_session_id
+  ));
+  assert!(matches!(
+    event.payload,
+    LoggerIngressPayload::FeatureFlagExposure { flag, variant }
+      if flag == "flag" && variant.as_deref() == Some("variant")
+  ));
+}
+
+#[test]
+fn sender_reports_context_capture_failures_separately_from_capacity() {
+  let setup = Setup::new();
+  let sender = Sender::new(
+    EventBuffer::new(EventBufferLimits {
+      log_limit_bytes: 1_000_000,
+      total_limit_bytes: 10_000_000,
+    }),
+    Arc::new(FailingMetadataProvider),
+    setup.session_strategy,
+  );
+
+  assert!(matches!(
+    sender.try_send_log(normal_log("unadmitted")),
+    Err(TrySendError::ContextCaptureFailed)
+  ));
+}
+
+#[test]
+fn current_process_admission_context_captures_provider_snapshot() {
+  let setup = Setup::new();
+  let timestamp = OffsetDateTime::UNIX_EPOCH + 3.seconds();
+  let metadata_provider: Arc<dyn bd_log_metadata::MetadataProvider + Send + Sync> =
+    Arc::new(LogMetadata {
+      timestamp: Mutex::new(timestamp),
+      custom_fields: [("custom".into(), "custom-value".into())].into(),
+      ootb_fields: [("ootb".into(), "ootb-value".into())].into(),
+    });
+
+  let context =
+    current_process_admission_context(&metadata_provider, &setup.session_strategy).unwrap();
+
+  assert_eq!(timestamp, context.admitted_at);
+  assert_eq!(timestamp, context.provider.timestamp);
+  assert_eq!(1, context.provider.custom_fields.len());
+  assert_eq!(1, context.provider.ootb_fields.len());
+  assert_eq!(
+    setup.session_strategy.session_id().unwrap(),
+    context.session_id
+  );
 }
 
 #[test]

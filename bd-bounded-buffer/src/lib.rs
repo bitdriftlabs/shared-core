@@ -65,6 +65,8 @@ pub enum TrySendError {
   FullSizeOverflow,
   #[error("buffer closed")]
   Closed,
+  #[error("event context capture failed")]
+  ContextCaptureFailed,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -214,6 +216,7 @@ pub struct SendCounters {
   ok: Counter,
   err_full_size_overflow: Counter,
   err_closed: Counter,
+  err_context_capture_failed: Counter,
 }
 
 impl SendCounters {
@@ -224,6 +227,10 @@ impl SendCounters {
       err_full_size_overflow: scope
         .counter_with_labels(operation_name, labels!("result" => "failure_size_overflow")),
       err_closed: scope.counter_with_labels(operation_name, labels!("result" => "failure_closed")),
+      err_context_capture_failed: scope.counter_with_labels(
+        operation_name,
+        labels!("result" => "failure_context_capture"),
+      ),
     }
   }
 
@@ -234,6 +241,7 @@ impl SendCounters {
         self.err_full_size_overflow.inc();
       },
       Err(TrySendError::Closed) => self.err_closed.inc(),
+      Err(TrySendError::ContextCaptureFailed) => self.err_context_capture_failed.inc(),
     }
   }
 }

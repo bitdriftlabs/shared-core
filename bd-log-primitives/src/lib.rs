@@ -61,7 +61,7 @@ pub struct LogLine {
   pub capture_session: Option<&'static str>,
 }
 
-#[derive(ApproximateSize, Debug)]
+#[derive(ApproximateSize, Debug, Clone)]
 pub enum LogAttributesOverrides {
   /// Uses the previous session ID if available.
   ///

@@ -26,12 +26,12 @@ use bd_log_primitives::{AnnotatedLogFields, DataValue, LogFields, LogLine, log_l
 use bd_macros::ApproximateSize;
 use bd_proto::protos::logging::payload::LogType;
 use bd_stats_common::labels;
-use std::sync::Arc;
+use std::sync::{Arc, mpsc as std_mpsc};
 use time::OffsetDateTime;
 use tokio::sync::{oneshot, watch};
 
-fn current_process_context() -> EventContext {
-  EventContext::CurrentProcess(AdmissionContext {
+fn current_process_admission_context() -> AdmissionContext {
+  AdmissionContext {
     session_id: "session".into(),
     provider: ProviderSnapshot {
       timestamp: OffsetDateTime::UNIX_EPOCH,
@@ -39,7 +39,11 @@ fn current_process_context() -> EventContext {
       custom_fields: LogFields::default(),
     },
     admitted_at: OffsetDateTime::UNIX_EPOCH,
-  })
+  }
+}
+
+fn current_process_context() -> EventContext {
+  EventContext::CurrentProcess(current_process_admission_context())
 }
 
 fn log(level: bd_log_primitives::LogLevel, log_type: LogType, bytes: usize) -> EventBufferEntry {
@@ -141,6 +145,44 @@ struct WaitingConsumersTestHook {
   waiting_consumers: watch::Sender<usize>,
 }
 
+//
+// BatchAdmissionTestHook
+//
+
+struct BatchAdmissionTestHook {
+  batch_started: std_mpsc::Sender<()>,
+  resume_batch: parking_lot::Mutex<std_mpsc::Receiver<()>>,
+}
+
+impl BatchAdmissionTestHook {
+  fn new() -> (Arc<Self>, std_mpsc::Receiver<()>, std_mpsc::Sender<()>) {
+    let (batch_started_tx, batch_started_rx) = std_mpsc::channel();
+    let (resume_batch_tx, resume_batch_rx) = std_mpsc::channel();
+    (
+      Arc::new(Self {
+        batch_started: batch_started_tx,
+        resume_batch: parking_lot::Mutex::new(resume_batch_rx),
+      }),
+      batch_started_rx,
+      resume_batch_tx,
+    )
+  }
+}
+
+impl super::TestHooks for BatchAdmissionTestHook {
+  fn batch_admission_started(&self) {
+    self
+      .batch_started
+      .send(())
+      .expect("test waits for batch admission to begin");
+    self
+      .resume_batch
+      .lock()
+      .recv()
+      .expect("test resumes batch admission");
+  }
+}
+
 impl WaitingConsumersTestHook {
   fn new() -> Self {
     Self {
@@ -209,12 +251,7 @@ fn feature_flag_exposure_carries_current_process_context_in_the_protected_lane()
   let entry = EventBufferEntry::ingress(LoggerIngressEvent::feature_flag_exposure(
     "flag".to_string(),
     Some("variant".to_string()),
-    match current_process_context() {
-      EventContext::CurrentProcess(context) => context,
-      EventContext::PreviousProcess { .. } => {
-        unreachable!("test helper returns current-process context")
-      },
-    },
+    current_process_admission_context(),
   ));
 
   assert_eq!(RetentionLane::Protected, entry.lane());
@@ -234,10 +271,19 @@ fn feature_flag_exposure_carries_current_process_context_in_the_protected_lane()
 #[test]
 fn previous_process_context_pins_logged_at_and_is_protected() {
   let logged_at = OffsetDateTime::UNIX_EPOCH;
-  let EventBufferEntry::Ingress(mut event) = log(log_level::DEBUG, LogType::NORMAL, 1) else {
-    unreachable!("log helper creates an ingress event")
-  };
-  event.context = EventContext::PreviousProcess { logged_at };
+  let event = LoggerIngressEvent::log(
+    LogLine {
+      log_level: log_level::DEBUG,
+      log_type: LogType::NORMAL,
+      message: "x".into(),
+      fields: AnnotatedLogFields::default(),
+      matching_fields: AnnotatedLogFields::default(),
+      attributes_overrides: None,
+      capture_session: None,
+    },
+    EventContext::PreviousProcess { logged_at },
+    None,
+  );
 
   assert!(matches!(
     &event.context,
@@ -245,7 +291,7 @@ fn previous_process_context_pins_logged_at_and_is_protected() {
   ));
   assert_eq!(
     RetentionLane::Protected,
-    EventBufferEntry::Ingress(event).lane()
+    EventBufferEntry::ingress(event).lane()
   );
 }
 
@@ -280,6 +326,107 @@ async fn preserves_log_and_field_update_admission_order() {
     })
     .collect::<Vec<_>>();
   assert_eq!(vec!["log:x", "add_field:field", "log:xx"], entries);
+}
+
+#[tokio::test]
+async fn admit_batch_keeps_entries_contiguous_in_admission_order() {
+  let buffer = buffer(10_000);
+  assert_eq!(
+    AdmissionOutcome::Admitted,
+    buffer.admit(add_field("before"))
+  );
+
+  assert_eq!(
+    vec![AdmissionOutcome::Admitted, AdmissionOutcome::Admitted],
+    buffer.admit_batch([
+      log(log_level::ERROR, LogType::LIFECYCLE, 1),
+      log(log_level::ERROR, LogType::LIFECYCLE, 2),
+    ])
+  );
+  assert_eq!(AdmissionOutcome::Admitted, buffer.admit(add_field("after")));
+
+  let entries = buffer
+    .next_batch(4)
+    .await
+    .into_iter()
+    .map(|entry| match entry {
+      EventBufferEntry::Ingress(event) => match event.payload {
+        LoggerIngressPayload::Log(log) => format!("log:{}", log.message),
+        LoggerIngressPayload::FeatureFlagExposure { .. } => "feature_flag".to_string(),
+      },
+      EventBufferEntry::Control(LoggerControl::AddLogField(key, _)) => {
+        format!("add_field:{key}")
+      },
+      EventBufferEntry::Control(_) => "other_control".to_string(),
+    })
+    .collect::<Vec<_>>();
+
+  assert_eq!(
+    vec!["add_field:before", "log:x", "log:xx", "add_field:after"],
+    entries
+  );
+}
+
+#[tokio::test]
+async fn admit_batch_reports_per_entry_outcomes_under_protected_capacity_pressure() {
+  let first = log(log_level::ERROR, LogType::LIFECYCLE, 1);
+  let buffer = buffer(first.approximate_size_bytes());
+
+  assert_eq!(
+    vec![AdmissionOutcome::Admitted, AdmissionOutcome::RejectedFull],
+    buffer.admit_batch([first, log(log_level::ERROR, LogType::LIFECYCLE, 1)])
+  );
+  assert_eq!(1, buffer.next_batch(2).await.len());
+}
+
+#[tokio::test]
+async fn admit_batch_does_not_interleave_a_concurrent_producer() {
+  let (hooks, batch_started, resume_batch) = BatchAdmissionTestHook::new();
+  let buffer = buffer_with_test_hooks(10_000, Some(hooks));
+
+  let batch_buffer = buffer.clone();
+  let batch = tokio::task::spawn_blocking(move || {
+    batch_buffer.admit_batch([
+      log(log_level::ERROR, LogType::LIFECYCLE, 1),
+      log(log_level::ERROR, LogType::LIFECYCLE, 2),
+    ])
+  });
+  batch_started
+    .recv()
+    .expect("batch admission must hold the buffer lock");
+
+  let interloper_buffer = buffer.clone();
+  let interloper =
+    tokio::task::spawn_blocking(move || interloper_buffer.admit(add_field("interloper")));
+  resume_batch
+    .send(())
+    .expect("batch admission must still be waiting");
+
+  assert_eq!(
+    vec![AdmissionOutcome::Admitted, AdmissionOutcome::Admitted],
+    batch.await.expect("batch task must complete")
+  );
+  assert_eq!(
+    AdmissionOutcome::Admitted,
+    interloper.await.expect("producer task must complete")
+  );
+
+  let entries = buffer
+    .next_batch(3)
+    .await
+    .into_iter()
+    .map(|entry| match entry {
+      EventBufferEntry::Ingress(event) => match event.payload {
+        LoggerIngressPayload::Log(log) => format!("log:{}", log.message),
+        LoggerIngressPayload::FeatureFlagExposure { .. } => "feature_flag".to_string(),
+      },
+      EventBufferEntry::Control(LoggerControl::AddLogField(key, _)) => {
+        format!("add_field:{key}")
+      },
+      EventBufferEntry::Control(_) => "other_control".to_string(),
+    })
+    .collect::<Vec<_>>();
+  assert_eq!(vec!["log:x", "log:xx", "add_field:interloper"], entries);
 }
 
 #[tokio::test]

@@ -1004,6 +1004,23 @@ pub mod buffers {
   );
 }
 
+pub mod event_buffer {
+  // Bounds the total retained size of ordinary, evictable logs in the EventBuffer. Protected
+  // state and control entries bypass this limit, but remain subject to TotalLimitBytesFlag.
+  int_feature_flag!(
+    LogLimitBytesFlag,
+    "event_buffer.log_limit_bytes",
+    1024 * 1024 // 1 MiB
+  );
+
+  // Bounds the total retained EventBuffer size, including protected state and control entries.
+  int_feature_flag!(
+    TotalLimitBytesFlag,
+    "event_buffer.total_limit_bytes",
+    10 * 1024 * 1024 // 10 MiB
+  );
+}
+
 pub mod workflows {
   use time::ext::NumericalDuration as _;
 

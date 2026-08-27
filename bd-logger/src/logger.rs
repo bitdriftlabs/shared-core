@@ -16,6 +16,7 @@ use crate::{MetadataProvider, app_version};
 use bd_api::Metadata;
 use bd_bounded_buffer::{self};
 use bd_client_stats_store::{Counter, Scope};
+use bd_event_buffer::ProviderSnapshot;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
@@ -233,6 +234,42 @@ impl LoggerHandle {
         }
       },
       "failed to log {:?}, emitting logs from within a field provider is not allowed",
+      message
+    );
+  }
+
+  pub fn log_with_provider_snapshot(
+    &self,
+    log_level: LogLevel,
+    log_type: LogType,
+    message: LogMessage,
+    fields: AnnotatedLogFields,
+    matching_fields: AnnotatedLogFields,
+    attributes_overrides: Option<LogAttributesOverrides>,
+    capture_session: &CaptureSession,
+    provider: ProviderSnapshot,
+  ) {
+    with_reentrancy_guard!(
+      {
+        let result = AsyncLogBuffer::<LoggerReplay>::enqueue_log_with_provider_snapshot(
+          &self.tx,
+          log_level,
+          log_type,
+          message,
+          fields,
+          matching_fields,
+          attributes_overrides,
+          capture_session.0,
+          provider,
+        );
+
+        self.stats.log_emission_counters.record(&result);
+
+        if let Err(e) = result {
+          warn_every!(15.seconds(), "dropping log with provider snapshot: {e:?}");
+        }
+      },
+      "failed to log {:?} with a provider snapshot due to re-entrancy",
       message
     );
   }
@@ -500,12 +537,7 @@ impl LoggerHandle {
   pub fn set_feature_flag_exposure(&self, flag: String, variant: Option<String>) {
     with_reentrancy_guard!(
       {
-        let result =
-          self
-            .tx
-            .try_send_control(async_log_buffer::LoggerControl::SetFeatureFlagExposure(
-              flag, variant,
-            ));
+        let result = self.tx.try_send_feature_flag_exposure(flag, variant);
         if let Err(e) = result {
           log::warn!("failed to set feature flag: {e:?}");
         }

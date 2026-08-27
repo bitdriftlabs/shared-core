@@ -15,18 +15,28 @@ use crate::logger::{ReportProcessingRequest, with_thread_local_logger_guard};
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
 use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
-use crate::ordered_receiver::{OrderedMessage, OrderedReceiver, SequencedMessage};
 use crate::pre_config_buffer::{PendingStateOperation, PreConfigBuffer, PreConfigItem};
 use crate::{Block, battery, internal_report, network};
 use anyhow::anyhow;
 use bd_api::DataUpload;
-use bd_bounded_buffer::{TrySendError, channel};
+use bd_bounded_buffer::TrySendError;
 use bd_buffer::BuffersWithAck;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_common::{maybe_await, maybe_await_map};
 use bd_crash_handler::global_state;
 use bd_device::Store;
 pub use bd_event_buffer::LoggerControl;
+use bd_event_buffer::{
+  AdmissionContext,
+  AdmissionOutcome,
+  EventBuffer,
+  EventBufferEntry,
+  EventBufferLimits,
+  EventContext,
+  LoggerIngressEvent,
+  LoggerIngressPayload,
+  ProviderSnapshot,
+};
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::{
   AnnotatedLogField,
@@ -39,7 +49,6 @@ use bd_log_primitives::{
   LogMessage,
 };
 pub use bd_log_primitives::{LogAttributesOverrides, LogLine};
-use bd_macros::ApproximateSize;
 use bd_network_quality::{NetworkQualityMonitor, NetworkQualityResolver};
 use bd_proto::protos::client::api::debug_data_request::{
   WorkflowDebugData,
@@ -47,7 +56,7 @@ use bd_proto::protos::client::api::debug_data_request::{
 };
 use bd_proto::protos::client::api::{DebugDataRequest, debug_data_request};
 use bd_proto::protos::logging::payload::LogType;
-use bd_runtime::runtime::ConfigLoader;
+use bd_runtime::runtime::{self, ConfigLoader, IntWatch};
 use bd_session_replay::CaptureScreenshotHandler;
 use bd_shutdown::{ComponentShutdown, ComponentShutdownTrigger, ComponentShutdownTriggerHandle};
 use bd_state::{
@@ -65,7 +74,6 @@ use std::collections::{HashMap, VecDeque};
 use std::future::{Future, ready};
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc;
@@ -92,59 +100,168 @@ impl ReportProcessor for () {
   }
 }
 
-pub type SequencedControl = SequencedMessage<LoggerControl>;
-
-#[derive(ApproximateSize, Debug)]
-pub struct EmitLogMessage {
-  log: LogLine,
-}
-
-pub type SequencedLog = SequencedMessage<EmitLogMessage>;
-
-impl From<LogLine> for EmitLogMessage {
-  fn from(log: LogLine) -> Self {
-    Self { log }
-  }
+#[derive(Clone)]
+pub struct Sender {
+  inner: SenderInner,
 }
 
 #[derive(Clone)]
-pub struct Sender {
-  log_buffer_tx: bd_bounded_buffer::Sender<SequencedLog>,
-  control_buffer_tx: bd_bounded_buffer::Sender<SequencedControl>,
-  sequence: Arc<AtomicU64>,
+enum SenderInner {
+  EventBuffer {
+    event_buffer: EventBuffer,
+    metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
+    session_strategy: Arc<bd_session::Strategy>,
+  },
+  #[cfg(test)]
+  TestEventBuffer { event_buffer: EventBuffer },
 }
 
 impl Sender {
-  #[cfg(test)]
-  pub(crate) fn from_parts(
-    log_buffer_tx: bd_bounded_buffer::Sender<SequencedLog>,
-    control_buffer_tx: bd_bounded_buffer::Sender<SequencedControl>,
+  fn new(
+    event_buffer: EventBuffer,
+    metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
+    session_strategy: Arc<bd_session::Strategy>,
   ) -> Self {
     Self {
-      log_buffer_tx,
-      control_buffer_tx,
-      sequence: Arc::new(AtomicU64::new(0)),
+      inner: SenderInner::EventBuffer {
+        event_buffer,
+        metadata_provider,
+        session_strategy,
+      },
     }
   }
 
-  fn next_sequence(&self) -> u64 {
-    self.sequence.fetch_add(1, Ordering::Relaxed)
+  #[cfg(test)]
+  pub(crate) fn from_event_buffer(event_buffer: EventBuffer) -> Self {
+    Self {
+      inner: SenderInner::TestEventBuffer { event_buffer },
+    }
   }
 
-  pub fn try_send_log(&self, msg: EmitLogMessage) -> Result<(), TrySendError> {
-    let sequenced = SequencedMessage {
-      sequence: self.next_sequence(),
-      message: msg,
-    };
-    self.log_buffer_tx.try_send(sequenced)
+  pub fn try_send_log(&self, log: LogLine) -> Result<(), TrySendError> {
+    match &self.inner {
+      SenderInner::EventBuffer {
+        event_buffer,
+        metadata_provider,
+        session_strategy,
+      } => {
+        let context = admission_context(
+          log.attributes_overrides.as_ref(),
+          metadata_provider,
+          session_strategy,
+        )
+        .map_err(|error| {
+          log::debug!("failed to capture log admission context: {error}");
+          TrySendError::ContextCaptureFailed
+        })?;
+        admit(
+          event_buffer,
+          EventBufferEntry::ingress(LoggerIngressEvent::log(log, context, None)),
+        )
+      },
+      #[cfg(test)]
+      SenderInner::TestEventBuffer { event_buffer } => admit(
+        event_buffer,
+        EventBufferEntry::ingress(LoggerIngressEvent::log(
+          log,
+          EventContext::CurrentProcess(AdmissionContext {
+            session_id: "test".to_string(),
+            provider: ProviderSnapshot {
+              timestamp: OffsetDateTime::UNIX_EPOCH,
+              ootb_fields: LogFields::default(),
+              custom_fields: LogFields::default(),
+            },
+            admitted_at: OffsetDateTime::UNIX_EPOCH,
+          }),
+          None,
+        )),
+      ),
+    }
+  }
+
+  pub fn try_send_log_with_provider_snapshot(
+    &self,
+    log: LogLine,
+    provider: ProviderSnapshot,
+  ) -> Result<(), TrySendError> {
+    match &self.inner {
+      SenderInner::EventBuffer {
+        event_buffer,
+        session_strategy,
+        ..
+      } => {
+        let context = admission_context_from_provider(
+          log.attributes_overrides.as_ref(),
+          provider,
+          session_strategy,
+        )
+        .map_err(|error| {
+          log::debug!("failed to capture log admission context: {error}");
+          TrySendError::ContextCaptureFailed
+        })?;
+        admit(
+          event_buffer,
+          EventBufferEntry::ingress(LoggerIngressEvent::log(log, context, None)),
+        )
+      },
+      #[cfg(test)]
+      SenderInner::TestEventBuffer { .. } => self.try_send_log(log),
+    }
   }
 
   pub fn try_send_control(&self, msg: LoggerControl) -> Result<(), TrySendError> {
-    let sequenced = SequencedMessage {
-      sequence: self.next_sequence(),
-      message: msg,
-    };
-    self.control_buffer_tx.try_send(sequenced)
+    match &self.inner {
+      SenderInner::EventBuffer { event_buffer, .. } => {
+        admit(event_buffer, EventBufferEntry::Control(msg))
+      },
+      #[cfg(test)]
+      SenderInner::TestEventBuffer { event_buffer } => {
+        admit(event_buffer, EventBufferEntry::Control(msg))
+      },
+    }
+  }
+
+  pub fn try_send_feature_flag_exposure(
+    &self,
+    flag: String,
+    variant: Option<String>,
+  ) -> Result<(), TrySendError> {
+    match &self.inner {
+      SenderInner::EventBuffer {
+        event_buffer,
+        metadata_provider,
+        session_strategy,
+      } => {
+        let context = current_process_admission_context(metadata_provider, session_strategy)
+          .map_err(|error| {
+            log::debug!("failed to capture feature flag admission context: {error}");
+            TrySendError::ContextCaptureFailed
+          })?;
+        admit(
+          event_buffer,
+          EventBufferEntry::ingress(LoggerIngressEvent::feature_flag_exposure(
+            flag, variant, context,
+          )),
+        )
+      },
+      #[cfg(test)]
+      SenderInner::TestEventBuffer { event_buffer } => admit(
+        event_buffer,
+        EventBufferEntry::ingress(LoggerIngressEvent::feature_flag_exposure(
+          flag,
+          variant,
+          AdmissionContext {
+            session_id: "test".to_string(),
+            provider: ProviderSnapshot {
+              timestamp: OffsetDateTime::UNIX_EPOCH,
+              ootb_fields: LogFields::default(),
+              custom_fields: LogFields::default(),
+            },
+            admitted_at: OffsetDateTime::UNIX_EPOCH,
+          },
+        )),
+      ),
+    }
   }
 
   pub fn flush_state(&self, block: Block) -> Result<(), TrySendError> {
@@ -186,7 +303,115 @@ impl Sender {
   }
 }
 
-pub type AsyncLogBufferOrderedReceiver = OrderedReceiver<EmitLogMessage, LoggerControl>;
+fn admission_context(
+  attributes_overrides: Option<&LogAttributesOverrides>,
+  metadata_provider: &Arc<dyn MetadataProvider + Send + Sync>,
+  session_strategy: &Arc<bd_session::Strategy>,
+) -> anyhow::Result<EventContext> {
+  let provider = provider_snapshot(metadata_provider)?;
+  admission_context_from_provider(attributes_overrides, provider, session_strategy)
+}
+
+fn current_process_admission_context(
+  metadata_provider: &Arc<dyn MetadataProvider + Send + Sync>,
+  session_strategy: &Arc<bd_session::Strategy>,
+) -> anyhow::Result<AdmissionContext> {
+  let provider = provider_snapshot(metadata_provider)?;
+  current_process_admission_context_from_provider(provider, session_strategy)
+}
+
+fn provider_snapshot(
+  metadata_provider: &Arc<dyn MetadataProvider + Send + Sync>,
+) -> anyhow::Result<ProviderSnapshot> {
+  with_thread_local_logger_guard(|| -> anyhow::Result<ProviderSnapshot> {
+    let timestamp = metadata_provider.timestamp()?;
+    let (custom_fields, ootb_fields) = metadata_provider.fields()?;
+    Ok(ProviderSnapshot {
+      timestamp,
+      ootb_fields,
+      custom_fields,
+    })
+  })
+}
+
+fn admission_context_from_provider(
+  attributes_overrides: Option<&LogAttributesOverrides>,
+  provider: ProviderSnapshot,
+  session_strategy: &Arc<bd_session::Strategy>,
+) -> anyhow::Result<EventContext> {
+  if matches!(
+    attributes_overrides,
+    Some(LogAttributesOverrides::PreviousRunSessionID(_))
+  ) {
+    return Ok(EventContext::PreviousProcess {
+      logged_at: provider.timestamp,
+    });
+  }
+
+  current_process_admission_context_from_provider(provider, session_strategy)
+    .map(EventContext::CurrentProcess)
+}
+
+fn current_process_admission_context_from_provider(
+  provider: ProviderSnapshot,
+  session_strategy: &Arc<bd_session::Strategy>,
+) -> anyhow::Result<AdmissionContext> {
+  let session_id = session_strategy.session_id()?;
+  Ok(AdmissionContext {
+    session_id,
+    admitted_at: provider.timestamp,
+    provider,
+  })
+}
+
+fn admit(event_buffer: &EventBuffer, entry: EventBufferEntry) -> Result<(), TrySendError> {
+  match event_buffer.admit(entry) {
+    AdmissionOutcome::Admitted => Ok(()),
+    AdmissionOutcome::RejectedFull | AdmissionOutcome::RejectedOversized => {
+      Err(TrySendError::FullSizeOverflow)
+    },
+    AdmissionOutcome::Closed => Err(TrySendError::Closed),
+  }
+}
+
+/// Converts a workflow-generated log into a line for immediate replay after its source log.
+///
+/// Generated logs do not re-enter EventBuffer, but must retain their source's immutable admission
+/// context and metadata overrides so they cannot be attributed to a later session or process.
+fn workflow_generated_log(
+  log: Log,
+  context: Option<EventContext>,
+  attributes_overrides: Option<LogAttributesOverrides>,
+) -> (LogLine, Option<EventContext>) {
+  let log = LogLine {
+    log_level: log.log_level,
+    log_type: log.log_type,
+    message: log.message,
+    // TODO(mattklein123): Right now we set all fields as OOTB so they can have reserved
+    // naming if desired. This may have to change in the future.
+    fields: log
+      .fields
+      .into_iter()
+      .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
+      .collect(),
+    matching_fields: log
+      .matching_fields
+      .into_iter()
+      .map(|(key, value)| {
+        (
+          key,
+          // TODO(mattklein123): Right now the only matching field set on injected logs is
+          // the _generate_log_id field used for subsequent matching. If this ever changes we
+          // will need to correctly propagate this through.
+          AnnotatedLogField::new_ootb(value),
+        )
+      })
+      .collect(),
+    attributes_overrides,
+    capture_session: log.capture_session,
+  };
+  (log, context)
+}
 
 //
 // AsyncLogBuffer
@@ -195,13 +420,15 @@ pub type AsyncLogBufferOrderedReceiver = OrderedReceiver<EmitLogMessage, LoggerC
 // Orchestrates buffering of incoming logs and offloading their processing to
 // a run loop in an async way.
 pub struct AsyncLogBuffer<R: LogReplay> {
-  ordered_rx: AsyncLogBufferOrderedReceiver,
+  event_buffer: EventBuffer,
+  event_buffer_limit_watches: EventBufferLimitWatches,
   config_update_rx: mpsc::Receiver<ConfigUpdate>,
   report_processor_rx: mpsc::Receiver<ReportProcessingRequest>,
   data_upload_tx: mpsc::Sender<DataUpload>,
   shutdown_trigger_handle: ComponentShutdownTriggerHandle,
 
   session_strategy: Arc<bd_session::Strategy>,
+  metadata_provider: Arc<dyn MetadataProvider + Send + Sync>,
   metadata_collector: MetadataCollector,
   resource_utilization_reporter: bd_resource_utilization::Reporter,
 
@@ -222,6 +449,27 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
   last_session_id: Option<Arc<str>>,
+}
+
+struct EventBufferLimitWatches {
+  log_limit_bytes: IntWatch<runtime::event_buffer::LogLimitBytesFlag>,
+  total_limit_bytes: IntWatch<runtime::event_buffer::TotalLimitBytesFlag>,
+}
+
+impl EventBufferLimitWatches {
+  fn new(runtime_loader: &ConfigLoader) -> Self {
+    Self {
+      log_limit_bytes: runtime_loader.register_int_watch(),
+      total_limit_bytes: runtime_loader.register_int_watch(),
+    }
+  }
+
+  fn read_mark_update(&mut self) -> EventBufferLimits {
+    EventBufferLimits {
+      log_limit_bytes: *self.log_limit_bytes.read_mark_update() as usize,
+      total_limit_bytes: *self.total_limit_bytes.read_mark_update() as usize,
+    }
+  }
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
@@ -248,19 +496,19 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
     data_upload_tx: mpsc::Sender<DataUpload>,
   ) -> (Self, Sender) {
-    let (log_tx, log_rx) = channel(
-      uninitialized_logging_context
+    // The old log and control channels had 1 MiB and 10 MiB byte budgets respectively. Keep
+    // those bootstrap limits while moving both flows into one ordered ingress.
+    let mut event_buffer_limit_watches = EventBufferLimitWatches::new(runtime_loader);
+    let event_buffer = EventBuffer::new(EventBufferLimits {
+      log_limit_bytes: uninitialized_logging_context
         .pre_config_log_buffer
         .max_size(),
-    );
-
-    // Larger channel for control messages as they are less frequent and we want
-    // to avoid dropping any control messages if possible.
-    // Note that the 10 MB is not pre-allocated memory, just the upper limit of data stored within
-    // the buffer before backpressure is applied.
-    let (control_tx, control_rx) = channel(
-      10 * 1024 * 1024, // 10 MB
-    );
+      total_limit_bytes: 10 * 1024 * 1024,
+    });
+    // The bootstrap limits cover admission before runtime configuration is available. Stage the
+    // current runtime pair as well: this covers a persisted configuration that loaded before ALB
+    // was built, while EventBuffer still applies it only at its next admission.
+    event_buffer.set_pending_limits(event_buffer_limit_watches.read_mark_update());
 
     let (
       session_replay_recorder,
@@ -288,7 +536,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     (
       Self {
-        ordered_rx: OrderedReceiver::new(log_rx, control_rx),
+        event_buffer: event_buffer.clone(),
+        event_buffer_limit_watches,
 
         config_update_rx,
         report_processor_rx,
@@ -297,9 +546,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
         replayer,
 
-        session_strategy,
+        session_strategy: session_strategy.clone(),
+        metadata_provider: metadata_provider.clone(),
         metadata_collector: MetadataCollector::new(
-          metadata_provider,
+          metadata_provider.clone(),
           initial_ootb_fields,
           initial_custom_fields,
         ),
@@ -337,11 +587,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         send_workflow_debug_state_delay: None,
         last_session_id: None,
       },
-      Sender {
-        log_buffer_tx: log_tx,
-        control_buffer_tx: control_tx,
-        sequence: Arc::new(AtomicU64::new(0)),
-      },
+      Sender::new(event_buffer, metadata_provider, session_strategy),
     )
   }
 
@@ -371,8 +617,35 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     //    loop has shut down, which means that we either errored out and defensively shut down the
     //    loop or explicitly shut it down. In either case it is not helpful to report this as an
     //    unexpected error.
-    tx.try_send_log(log.into())
-      .inspect_err(|e| log::debug!("enqueue_log: sending to channel failed: {e:?}"))?;
+    tx.try_send_log(log)
+      .inspect_err(|e| log::debug!("enqueue_log: event admission failed: {e:?}"))?;
+
+    Ok(())
+  }
+
+  pub fn enqueue_log_with_provider_snapshot(
+    tx: &Sender,
+    log_level: LogLevel,
+    log_type: LogType,
+    message: LogMessage,
+    fields: AnnotatedLogFields,
+    matching_fields: AnnotatedLogFields,
+    attributes_overrides: Option<LogAttributesOverrides>,
+    capture_session: Option<&'static str>,
+    provider: ProviderSnapshot,
+  ) -> Result<(), TrySendError> {
+    let log = LogLine {
+      log_level,
+      log_type,
+      message,
+      fields,
+      matching_fields,
+      attributes_overrides,
+      capture_session,
+    };
+
+    tx.try_send_log_with_provider_snapshot(log, provider)
+      .inspect_err(|e| log::debug!("enqueue_log: event admission failed: {e:?}"))?;
 
     Ok(())
   }
@@ -381,43 +654,20 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     &mut self,
     log: LogLine,
     state_store: &bd_state::Store,
+    context: Option<EventContext>,
   ) -> anyhow::Result<()> {
     let mut logs = VecDeque::new();
-    logs.push_back(log);
-    while let Some(log) = logs.pop_front() {
-      let log_replay_result = self.process_log(log, state_store).await?;
+    logs.push_back((log, context));
+    while let Some((log, context)) = logs.pop_front() {
+      let source_context = context.clone();
+      let source_attributes_overrides = log.attributes_overrides.clone();
+      let log_replay_result = self.process_log(log, state_store, context).await?;
       logs.extend(log_replay_result.logs_to_inject.into_iter().map(|log| {
-        LogLine {
-          log_level: log.log_level,
-          log_type: log.log_type,
-          message: log.message,
-          // TODO(mattklein123): Right now we set all fields as OOTB so they can have reserved
-          // naming if desired. This may have to change in the future.
-          fields: log
-            .fields
-            .into_iter()
-            .map(|(key, value)| (key, AnnotatedLogField::new_ootb(value)))
-            .collect(),
-          matching_fields: log
-            .matching_fields
-            .into_iter()
-            .map(|(key, value)| {
-              (
-                key,
-                // TODO(mattklein123): Right now the only matching field set on injected logs is
-                // the _generate_log_id field used for subsequent matching. If
-                // this ever changes we will need to correctly propagate this
-                // through.
-                AnnotatedLogField::new_ootb(value),
-              )
-            })
-            .collect(),
-          // TODO(mattklein123): Technically we should probably propagate overrides to injected
-          // logs as well as cover completion under any generated logs, but this gets complicated
-          // and is an extreme edge case so we ignore for now until proven it's an issue.
-          attributes_overrides: None,
-          capture_session: log.capture_session,
-        }
+        workflow_generated_log(
+          log,
+          source_context.clone(),
+          source_attributes_overrides.clone(),
+        )
       }));
 
       self
@@ -442,21 +692,49 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     &mut self,
     log: LogLine,
     state_store: &bd_state::Store,
+    context: Option<EventContext>,
   ) -> anyhow::Result<LogReplayResult> {
     // Prevent re-entrancy when we are evaluating the log metadata.
     let result = with_thread_local_logger_guard(|| {
-      if let Some(LogAttributesOverrides::PreviousRunSessionID(_)) = &log.attributes_overrides {
-        // Since we're mimicing a log from the previous app start we want to use the previous
-        // global state instead of calling into the providers at this point.
-        self
+      match context {
+        Some(EventContext::CurrentProcess(context)) => self
+          .metadata_collector
+          .normalized_metadata_from_provider_snapshot(
+            log.fields,
+            log.matching_fields,
+            log.log_type,
+            &mut self.global_state_tracker,
+            context.provider,
+          )
+          .map(|metadata| (metadata, Some(context.session_id))),
+        Some(EventContext::PreviousProcess { logged_at }) => self
           .metadata_collector
           .metadata_from_fields_with_previous_global_state(
             log.fields,
             log.matching_fields,
             &self.global_state_reader,
+            logged_at,
           )
-      } else {
-        self
+          .map(|metadata| (metadata, None)),
+        None
+          if matches!(
+            &log.attributes_overrides,
+            Some(LogAttributesOverrides::PreviousRunSessionID(_))
+          ) =>
+        {
+          // Since we're mimicing a log from the previous app start we want to use the previous
+          // global state instead of calling into the providers at this point.
+          self
+            .metadata_collector
+            .metadata_from_fields_with_previous_global_state(
+              log.fields,
+              log.matching_fields,
+              &self.global_state_reader,
+              self.metadata_collector.timestamp()?,
+            )
+            .map(|metadata| (metadata, None))
+        },
+        None => self
           .metadata_collector
           .normalized_metadata_with_extra_fields(
             log.fields,
@@ -464,11 +742,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             log.log_type,
             &mut self.global_state_tracker,
           )
+          .map(|metadata| (metadata, None)),
       }
     });
 
     match result {
-      Ok(metadata) => {
+      Ok((metadata, session_id)) => {
         let (session_id, timestamp, extra_fields) = match log.attributes_overrides {
           Some(LogAttributesOverrides::PreviousRunSessionID(occurred_at)) => {
             // Use the previous session ID if available and the provided timestamp.
@@ -488,7 +767,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           Some(LogAttributesOverrides::OccurredAt(overridden_timestamp)) => {
             // Occurred at override provided. Emit log with overrides applied.
             (
-              self.session_strategy.session_id()?,
+              session_id.map_or_else(|| self.session_strategy.session_id(), Ok)?,
               overridden_timestamp,
               Some(LogFields::from([(
                 "_logged_at".into(),
@@ -499,7 +778,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           None => {
             // No overrides provided. Emit log without any overrides.
             (
-              self.session_strategy.session_id()?,
+              session_id.map_or_else(|| self.session_strategy.session_id(), Ok)?,
               metadata.timestamp,
               None,
             )
@@ -663,8 +942,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           PendingStateOperation::SetFeatureFlagExposure {
             name,
             variant,
-            session_id,
+            context,
           } => {
+            let AdmissionContext {
+              session_id,
+              provider,
+              admitted_at,
+            } = context;
             let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state
             else {
               return;
@@ -678,8 +962,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                 Scope::FeatureFlagExposure,
                 name,
                 variant.unwrap_or_default(),
-                now,
+                admitted_at,
                 &session_id,
+                provider,
               )
               .await;
           },
@@ -733,6 +1018,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         };
 
       tokio::select! {
+        _ = self.event_buffer_limit_watches.log_limit_bytes.changed() => {
+          self.refresh_event_buffer_limits();
+        },
+        _ = self.event_buffer_limit_watches.total_limit_bytes.changed() => {
+          self.refresh_event_buffer_limits();
+        },
         Some(config) = self.config_update_rx.recv() => {
           let (updated_self, maybe_pre_config_buffer)
             = self.update(config).await;
@@ -749,201 +1040,50 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         Some(ReportProcessingRequest {
            session
         }) = self.report_processor_rx.recv() => {
-          // TODO(snowp): Once we move over to using the file watcher we can more accurately pick
-          // current vs previous for all reports, but as we need to handle restarts etc we may
-          // also want to embed the full information into the report. This should ensure that we
-          // can upload files after the fact and intelligently drop them.
-          // TODO(snowp): Consider emitting the crash log as part of writing the log instead of
-          // emitting it as part of the upload process. This avoids having to mess with time
-          // overrides at a later stage.
-
-          for crash_log in report_processor.process_all_pending_reports().await {
-            let attributes_overrides = match session {
-                crate::ReportProcessingSession::Current => LogAttributesOverrides::OccurredAt(
-                  crash_log.timestamp,
-                ),
-                crate::ReportProcessingSession::PreviousRun =>
-                    LogAttributesOverrides::PreviousRunSessionID(
-                  crash_log.timestamp)
-            }.into();
-            let log = LogLine {
-              log_type: LogType::LIFECYCLE,
-              log_level: crash_log.log_level,
-              message: crash_log.message.clone(),
-              fields: crash_log.fields,
-              matching_fields: [].into(),
-              attributes_overrides,
-              // Always capture the session when we process a crash log.
-              // TODO(snowp): Ideally we should include information like the report and client side
-              // grouping here to help make smarter decisions during intent negotiation.
-              capture_session: Some("crash_handler"),
-            };
-            if let Err(e) = self.process_all_logs(log, &state_store).await {
-              log::debug!("failed to process crash log: {e}");
-            }
-          }
+          let reports = report_processor.process_all_pending_reports().await;
+          self.admit_crash_reports(reports, session);
         },
-        Some(ordered_message) = self.ordered_rx.recv() => {
-          match ordered_message {
-            OrderedMessage::Log(EmitLogMessage { mut log }) => {
-              for interceptor in &mut self.interceptors {
-                interceptor.process(
-                  log.log_level,
-                  log.log_type,
-                  &log.message,
-                  &mut log.fields,
-                  &mut log.matching_fields,
-                );
-              }
-
-              if let Err(e) = self.process_all_logs(log, &state_store).await {
-                log::debug!("failed to process all logs: {e}");
-              }
-            },
-            OrderedMessage::State(async_log_buffer_message) => {
-              match async_log_buffer_message {
-                LoggerControl::AddLogField(key, value) => {
-                  if let Err(e) = self
-                    .metadata_collector
-                    .add_field(key.clone().into(), value.clone())
-                  {
-                    log::warn!("failed to add log field ({key:?}): {e}");
-                  }
-                },
-                LoggerControl::UpdateOotbLogField(key, value) => {
-                  self.metadata_collector.update_ootb_field(key.into(), value);
-                },
-                LoggerControl::RemoveLogField(field_name) => {
-                  self.metadata_collector.remove_field(field_name.into());
-                },
-                LoggerControl::SetFeatureFlagExposure(flag, variant) => {
-                  let session_id = match self.session_strategy.session_id() {
-                    Ok(session_id) => session_id,
-                    Err(e) => {
-                      log::debug!(
-                        "failed to record feature flag exposure because session ID resolution \
-                         failed: {e}"
+        // TODO(snowp): Benchmark batched reads. A batched implementation must cooperatively yield
+        // between entries and return to this select! so Tokio and ALB's other branches progress.
+        event_buffer_entries = self.event_buffer.next_batch(1) => {
+          for entry in event_buffer_entries {
+            match entry {
+              EventBufferEntry::Ingress(event) => {
+                let (context, payload, completion) = event.into_parts();
+                match payload {
+                  LoggerIngressPayload::Log(mut log) => {
+                    for interceptor in &mut self.interceptors {
+                      interceptor.process(
+                        log.log_level,
+                        log.log_type,
+                        &log.message,
+                        &mut log.fields,
+                        &mut log.matching_fields,
                       );
-                      continue;
-                    },
-                  };
-                  if let LoggingState::Initialized(initialized_logging_context) =
-                    &mut self.logging_state
-                  {
-                    // Initialized: update state store and replay through workflows
-                    initialized_logging_context
-                      .handle_state_insert(
-                        &state_store,
-                        &self.metadata_collector,
-                        &mut self.global_state_tracker,
-                        &mut self.replayer,
-                        Scope::FeatureFlagExposure,
-                        flag,
-                        variant.unwrap_or_default(),
-                        self.time_provider.now(),
-                        &session_id,
-                      )
-                      .await;
-                  } else {
-                    // Not initialized: queue the operation for later replay
-                    if let LoggingState::Uninitialized(uninitialized_logging_context) =
-                      &mut self.logging_state
-                    {
-                      let result = uninitialized_logging_context.pre_config_log_buffer.push(
-                        PreConfigItem::StateOperation(
-                          PendingStateOperation::SetFeatureFlagExposure {
-                            name: flag,
-                            variant,
-                            session_id,
-                          }
-                        ),
-                      );
-                      uninitialized_logging_context
-                        .stats
-                        .pre_config_log_buffer
-                        .record(&result);
-                      if let Err(e) = result {
-                        log::debug!("failed to enqueue state operation to pre-config buffer: {e}");
-                      }
-                    }
-                  }
-                },
-                LoggerControl::SetMemoryPressureLevel { level } => {
-                  if let Err(e) = state_store
-                    .insert(
-                      Scope::System,
-                      MEMORY_PRESSURE_LEVEL_KEY.to_string(),
-                      string_value(
-                        level.variant_name().unwrap_or("Unknown").to_string(),
-                      ),
-                    )
-                    .await
-                  {
-                    log::debug!("failed to persist memory pressure level: {e}");
-                  }
-                },
-                LoggerControl::SetEntityId(entity_id) => {
-                  let result = match entity_id {
-                    Some(entity_id) => {
-                      state_store
-                        .insert(Scope::System, ENTITY_ID_KEY.to_string(), string_value(entity_id))
-                        .await
-                        .map(|_| ())
-                    },
-                    None => state_store.remove(Scope::System, ENTITY_ID_KEY).await.map(|_| ()),
-                  };
-
-                  if let Err(e) = result {
-                    log::debug!("failed to persist entity ID state: {e}");
-                  }
-                },
-                LoggerControl::FlushState(completion_tx) => {
-                  let flush_stats_trigger = self.logging_state.flush_stats_trigger().clone();
-                  let flush_stats = async move {
-                    let completion = match flush_stats_trigger.flush() {
-                      Ok(completion) => completion,
-                      Err(e) => {
-                        log::debug!("flushing state: failed to flush stats: {e}");
-                        return;
-                      },
-                    };
-
-                    if let Err(e) = completion.wait().await {
-                      log::debug!("flushing state: failed to flush stats: {e}");
-                    }
-                  };
-
-                  let flush_buffers_trigger = self.logging_state.flush_buffers_trigger().clone();
-                  let flush_buffers = async move {
-                    let (sender, receiver) = bd_completion::Sender::new();
-                    let buffers_with_ack = BuffersWithAck::new_all_buffers(Some(sender));
-                    if let Err(e) = flush_buffers_trigger
-                      .send(buffers_with_ack).await
-                    {
-                      log::debug!("flushing state: failed to flush buffers: {e}");
                     }
 
-                    if let Err(e) = receiver.recv().await {
-                      log::debug!("flushing state: failed to wait for buffers flush: {e}");
+                    if let Err(e) = self.process_all_logs(log, &state_store, Some(context)).await {
+                      log::debug!("failed to process all logs: {e}");
                     }
-                  };
-
-                  let flush_session = self.session_strategy.flush();
-
-                  let persist_workflows = async {
-                    if let Some(workflows_engine) = self.logging_state.workflows_engine() {
-                      workflows_engine.maybe_persist(true).await;
+                  },
+                  LoggerIngressPayload::FeatureFlagExposure { flag, variant } => {
+                    if let EventContext::CurrentProcess(context) = context {
+                      self
+                        .process_feature_flag_exposure(flag, variant, context, &state_store)
+                        .await;
+                    } else {
+                      log::debug!("dropping feature flag exposure with previous-process context");
                     }
-                  };
-
-                  tokio::join!(flush_stats, flush_buffers, flush_session, persist_workflows);
-
-                  if let Some(completion_tx) = completion_tx {
-                    completion_tx.send(());
-                  }
-                },
-              }
-            },
+                  },
+                }
+                if let Some(completion) = completion {
+                  completion.send(());
+                }
+              },
+              EventBufferEntry::Control(async_log_buffer_message) => {
+                self.process_control(async_log_buffer_message, &state_store).await;
+              },
+            }
           }
         },
         () = maybe_await_map(
@@ -963,7 +1103,231 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       }
     }
 
+    self.event_buffer.close();
     self
+  }
+
+  fn refresh_event_buffer_limits(&mut self) {
+    // EventBuffer records the full pair under its admission mutex. The next producer admission
+    // applies both values atomically and performs any required shrink eviction.
+    self
+      .event_buffer
+      .set_pending_limits(self.event_buffer_limit_watches.read_mark_update());
+  }
+
+  fn admit_crash_reports(
+    &self,
+    reports: Vec<bd_crash_handler::CrashLog>,
+    session: crate::ReportProcessingSession,
+  ) {
+    // Report discovery can perform I/O, so it stays outside EventBuffer. Once reports have been
+    // parsed, place the complete group in one admission order without interleaving other ingress.
+    let entries = reports
+      .into_iter()
+      .filter_map(
+        |crash_log| match self.crash_report_entry(crash_log, &session) {
+          Ok(entry) => Some(entry),
+          Err(error) => {
+            log::debug!("failed to capture crash report admission context: {error}");
+            None
+          },
+        },
+      )
+      .collect::<Vec<_>>();
+
+    for outcome in self.event_buffer.admit_batch(entries) {
+      if outcome != AdmissionOutcome::Admitted {
+        log::debug!("failed to admit crash report: {outcome:?}");
+      }
+    }
+  }
+
+  fn crash_report_entry(
+    &self,
+    crash_log: bd_crash_handler::CrashLog,
+    session: &crate::ReportProcessingSession,
+  ) -> anyhow::Result<EventBufferEntry> {
+    let attributes_overrides = match session {
+      crate::ReportProcessingSession::Current => {
+        LogAttributesOverrides::OccurredAt(crash_log.timestamp)
+      },
+      crate::ReportProcessingSession::PreviousRun => {
+        LogAttributesOverrides::PreviousRunSessionID(crash_log.timestamp)
+      },
+    }
+    .into();
+    let log = LogLine {
+      log_type: LogType::LIFECYCLE,
+      log_level: crash_log.log_level,
+      message: crash_log.message,
+      fields: crash_log.fields,
+      matching_fields: [].into(),
+      attributes_overrides,
+      capture_session: Some("crash_handler"),
+    };
+    let context = admission_context(
+      log.attributes_overrides.as_ref(),
+      &self.metadata_provider,
+      &self.session_strategy,
+    )?;
+
+    Ok(EventBufferEntry::ingress(LoggerIngressEvent::log(
+      log, context, None,
+    )))
+  }
+
+  async fn process_control(
+    &mut self,
+    async_log_buffer_message: LoggerControl,
+    state_store: &bd_state::Store,
+  ) {
+    match async_log_buffer_message {
+      LoggerControl::AddLogField(key, value) => {
+        if let Err(e) = self
+          .metadata_collector
+          .add_field(key.clone().into(), value.clone())
+        {
+          log::warn!("failed to add log field ({key:?}): {e}");
+        }
+      },
+      LoggerControl::UpdateOotbLogField(key, value) => {
+        self.metadata_collector.update_ootb_field(key.into(), value);
+      },
+      LoggerControl::RemoveLogField(field_name) => {
+        self.metadata_collector.remove_field(field_name.into());
+      },
+      LoggerControl::SetMemoryPressureLevel { level } => {
+        if let Err(e) = state_store
+          .insert(
+            Scope::System,
+            MEMORY_PRESSURE_LEVEL_KEY.to_string(),
+            string_value(level.variant_name().unwrap_or("Unknown").to_string()),
+          )
+          .await
+        {
+          log::debug!("failed to persist memory pressure level: {e}");
+        }
+      },
+      LoggerControl::SetEntityId(entity_id) => {
+        let result = match entity_id {
+          Some(entity_id) => state_store
+            .insert(
+              Scope::System,
+              ENTITY_ID_KEY.to_string(),
+              string_value(entity_id),
+            )
+            .await
+            .map(|_| ()),
+          None => state_store
+            .remove(Scope::System, ENTITY_ID_KEY)
+            .await
+            .map(|_| ()),
+        };
+
+        if let Err(e) = result {
+          log::debug!("failed to persist entity ID state: {e}");
+        }
+      },
+      LoggerControl::FlushState(completion_tx) => {
+        let flush_stats_trigger = self.logging_state.flush_stats_trigger().clone();
+        let flush_stats = async move {
+          let completion = match flush_stats_trigger.flush() {
+            Ok(completion) => completion,
+            Err(e) => {
+              log::debug!("flushing state: failed to flush stats: {e}");
+              return;
+            },
+          };
+
+          if let Err(e) = completion.wait().await {
+            log::debug!("flushing state: failed to flush stats: {e}");
+          }
+        };
+
+        let flush_buffers_trigger = self.logging_state.flush_buffers_trigger().clone();
+        let flush_buffers = async move {
+          let (sender, receiver) = bd_completion::Sender::new();
+          let buffers_with_ack = BuffersWithAck::new_all_buffers(Some(sender));
+          if let Err(e) = flush_buffers_trigger.send(buffers_with_ack).await {
+            log::debug!("flushing state: failed to flush buffers: {e}");
+          }
+
+          if let Err(e) = receiver.recv().await {
+            log::debug!("flushing state: failed to wait for buffers flush: {e}");
+          }
+        };
+
+        let flush_session = self.session_strategy.flush();
+
+        let persist_workflows = async {
+          if let Some(workflows_engine) = self.logging_state.workflows_engine() {
+            workflows_engine.maybe_persist(true).await;
+          }
+        };
+
+        tokio::join!(flush_stats, flush_buffers, flush_session, persist_workflows);
+
+        if let Some(completion_tx) = completion_tx {
+          completion_tx.send(());
+        }
+      },
+    }
+  }
+
+  async fn process_feature_flag_exposure(
+    &mut self,
+    flag: String,
+    variant: Option<String>,
+    context: AdmissionContext,
+    state_store: &bd_state::Store,
+  ) {
+    let AdmissionContext {
+      session_id,
+      provider,
+      admitted_at,
+    } = context;
+    if let LoggingState::Initialized(initialized_logging_context) = &mut self.logging_state {
+      // Initialized: update state store and replay through workflows.
+      initialized_logging_context
+        .handle_state_insert(
+          state_store,
+          &self.metadata_collector,
+          &mut self.global_state_tracker,
+          &mut self.replayer,
+          Scope::FeatureFlagExposure,
+          flag,
+          variant.unwrap_or_default(),
+          admitted_at,
+          &session_id,
+          provider,
+        )
+        .await;
+    } else if let LoggingState::Uninitialized(uninitialized_logging_context) =
+      &mut self.logging_state
+    {
+      // Not initialized: queue the operation for later replay.
+      let result =
+        uninitialized_logging_context
+          .pre_config_log_buffer
+          .push(PreConfigItem::StateOperation(
+            PendingStateOperation::SetFeatureFlagExposure {
+              name: flag,
+              variant,
+              context: AdmissionContext {
+                session_id,
+                provider,
+                admitted_at,
+              },
+            },
+          ));
+      uninitialized_logging_context
+        .stats
+        .pre_config_log_buffer
+        .record(&result);
+      if let Err(e) = result {
+        log::debug!("failed to enqueue state operation to pre-config buffer: {e}");
+      }
+    }
   }
 
   async fn send_debug_data(&mut self) {

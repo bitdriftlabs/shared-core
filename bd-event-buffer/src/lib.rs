@@ -37,9 +37,6 @@ pub enum LoggerControl {
   AddLogField(String, DataValue),
   UpdateOotbLogField(String, DataValue),
   RemoveLogField(String),
-  // Feature flags will move to `LoggerIngressPayload` when producer-side capture is wired into
-  // ALB. Retain the control form until then so the existing logger path remains ordered.
-  SetFeatureFlagExposure(String, Option<String>),
   SetMemoryPressureLevel {
     #[approximate_size(skip)]
     level: MemoryPressureLevel,
@@ -55,7 +52,7 @@ pub enum LoggerControl {
 /// Results returned by field providers at the producer-side capture point.
 ///
 /// As we deprecate `FieldProviders` this will eventually just hold the timestamp.
-#[derive(ApproximateSize, Debug)]
+#[derive(ApproximateSize, Debug, Clone)]
 pub struct ProviderSnapshot {
   #[approximate_size(skip)]
   pub timestamp: OffsetDateTime,
@@ -70,7 +67,7 @@ pub struct ProviderSnapshot {
 //
 
 /// Immutable current-process context captured when an event is admitted.
-#[derive(ApproximateSize, Debug)]
+#[derive(ApproximateSize, Debug, Clone)]
 pub struct AdmissionContext {
   pub session_id: Arc<str>,
   pub provider: ProviderSnapshot,
@@ -82,7 +79,7 @@ pub struct AdmissionContext {
 //
 
 /// Context captured for an `EventBuffer` entry before ALB processes it.
-#[derive(ApproximateSize, Debug)]
+#[derive(ApproximateSize, Debug, Clone)]
 pub enum EventContext {
   CurrentProcess(AdmissionContext),
   /// Previous-process logs retain their admission-time `_logged_at` value, but are finalized
@@ -144,6 +141,17 @@ impl LoggerIngressEvent {
       payload: LoggerIngressPayload::FeatureFlagExposure { flag, variant },
       completion: None,
     }
+  }
+
+  /// Splits an admitted event so ALB can process its payload before resolving a blocking caller.
+  pub fn into_parts(
+    self,
+  ) -> (
+    EventContext,
+    LoggerIngressPayload,
+    Option<bd_completion::Sender<()>>,
+  ) {
+    (self.context, self.payload, self.completion)
   }
 }
 
@@ -301,6 +309,36 @@ impl EventBuffer {
     }
     outcome
   }
+
+  /// Admits a group of already-prepared entries without allowing another producer to interleave.
+  ///
+  /// Each entry retains its own admission outcome, so a full buffer can reject part of a batch.
+  #[must_use]
+  pub fn admit_batch(
+    &self,
+    entries: impl IntoIterator<Item = EventBufferEntry>,
+  ) -> Vec<AdmissionOutcome> {
+    let outcomes = {
+      let mut state = self.inner.state.lock();
+      #[cfg(test)]
+      if let Some(test_hooks) = &self.inner.test_hooks {
+        test_hooks.batch_admission_started();
+      }
+      entries
+        .into_iter()
+        .map(|entry| {
+          state
+            .retention
+            .admit(entry.lane(), entry.approximate_size_bytes(), entry)
+        })
+        .collect::<Vec<_>>()
+    };
+    if outcomes.contains(&AdmissionOutcome::Admitted) {
+      self.inner.notify.notify_one();
+    }
+    outcomes
+  }
+
   pub async fn next_batch(&self, max_entries: usize) -> Vec<EventBufferEntry> {
     debug_assert!(max_entries > 0, "next_batch requires a non-zero batch size");
     if max_entries == 0 {
@@ -431,6 +469,8 @@ impl LaneCounters {
 #[cfg(test)]
 trait TestHooks: Send + Sync {
   fn consumer_waiting(&self) {}
+
+  fn batch_admission_started(&self) {}
 }
 
 //

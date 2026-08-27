@@ -245,6 +245,9 @@ impl Client for UploadClient {
     result.map_err(|e| match e {
       bd_bounded_buffer::TrySendError::FullSizeOverflow => EnqueueError::QueueFull,
       bd_bounded_buffer::TrySendError::Closed => EnqueueError::Closed,
+      bd_bounded_buffer::TrySendError::ContextCaptureFailed => EnqueueError::Other(
+        anyhow::anyhow!("artifact upload sender cannot capture event context"),
+      ),
     })?;
 
     Ok(uuid)
