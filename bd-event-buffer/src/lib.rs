@@ -149,20 +149,16 @@ impl LoggerIngressEvent {
 // EventBufferEntry
 //
 
-/// A FIFO event-buffer entry.
-///
-/// Ingress events are boxed so control entries do not inherit the larger ingress-event layout in
-/// the backing `VecDeque`.
 #[derive(ApproximateSize, Debug)]
 pub enum EventBufferEntry {
-  Ingress(Box<LoggerIngressEvent>),
+  Ingress(LoggerIngressEvent),
   Control(LoggerControl),
 }
 
 impl EventBufferEntry {
   #[must_use]
   pub fn ingress(event: LoggerIngressEvent) -> Self {
-    Self::Ingress(Box::new(event))
+    Self::Ingress(event)
   }
 
   #[must_use]
@@ -218,7 +214,7 @@ struct EventBufferInner {
   state: PlatformMutex<LoggerEventBufferState>,
   notify: Notify,
   #[cfg(test)]
-  waiting_consumers: tokio::sync::watch::Sender<usize>,
+  test_hooks: Option<Arc<dyn TestHooks>>,
 }
 
 struct LoggerEventBufferState {
@@ -228,6 +224,28 @@ struct LoggerEventBufferState {
 impl EventBuffer {
   #[must_use]
   pub fn new(limits: EventBufferLimits) -> Self {
+    #[cfg(test)]
+    {
+      Self::new_with_test_hooks(limits, None)
+    }
+    #[cfg(not(test))]
+    {
+      Self::new_inner(limits)
+    }
+  }
+
+  #[cfg(test)]
+  fn new_with_test_hooks(
+    limits: EventBufferLimits,
+    test_hooks: Option<Arc<dyn TestHooks>>,
+  ) -> Self {
+    Self::new_inner(limits, test_hooks)
+  }
+
+  fn new_inner(
+    limits: EventBufferLimits,
+    #[cfg(test)] test_hooks: Option<Arc<dyn TestHooks>>,
+  ) -> Self {
     Self {
       inner: Arc::new(EventBufferInner {
         state: PlatformMutex::new(LoggerEventBufferState {
@@ -235,7 +253,7 @@ impl EventBuffer {
         }),
         notify: Notify::new(),
         #[cfg(test)]
-        waiting_consumers: tokio::sync::watch::channel(0).0,
+        test_hooks,
       }),
     }
   }
@@ -277,27 +295,10 @@ impl EventBuffer {
         return batch;
       }
       #[cfg(test)]
-      self
-        .inner
-        .waiting_consumers
-        .send_modify(|waiting| *waiting += 1);
+      if let Some(test_hooks) = &self.inner.test_hooks {
+        test_hooks.consumer_waiting();
+      }
       notified.await;
-      #[cfg(test)]
-      self
-        .inner
-        .waiting_consumers
-        .send_modify(|waiting| *waiting -= 1);
-    }
-  }
-
-  #[cfg(test)]
-  async fn wait_for_waiting_consumers(&self, expected: usize) {
-    let mut waiting_consumers = self.inner.waiting_consumers.subscribe();
-    while *waiting_consumers.borrow_and_update() < expected {
-      waiting_consumers
-        .changed()
-        .await
-        .expect("the event buffer always owns the waiting-consumer sender");
     }
   }
 
@@ -308,6 +309,15 @@ impl EventBuffer {
     }
     self.inner.notify.notify_waiters();
   }
+}
+
+//
+// TestHooks
+//
+
+#[cfg(test)]
+trait TestHooks: Send + Sync {
+  fn consumer_waiting(&self) {}
 }
 
 //

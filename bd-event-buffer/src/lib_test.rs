@@ -23,8 +23,9 @@ use super::{
 use bd_log_primitives::{AnnotatedLogFields, DataValue, LogFields, LogLine, log_level};
 use bd_macros::ApproximateSize;
 use bd_proto::protos::logging::payload::LogType;
+use std::sync::Arc;
 use time::OffsetDateTime;
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 
 fn current_process_context() -> EventContext {
   EventContext::CurrentProcess(AdmissionContext {
@@ -74,6 +75,47 @@ fn buffer(bytes: usize) -> EventBuffer {
   EventBuffer::new(limits(bytes))
 }
 
+//
+// WaitingConsumersTestHook
+//
+
+struct WaitingConsumersTestHook {
+  waiting_consumers: watch::Sender<usize>,
+}
+
+impl WaitingConsumersTestHook {
+  fn new() -> Self {
+    Self {
+      waiting_consumers: watch::channel(0).0,
+    }
+  }
+
+  async fn wait_for_consumers(&self, expected: usize) {
+    let mut waiting_consumers = self.waiting_consumers.subscribe();
+    while *waiting_consumers.borrow_and_update() < expected {
+      waiting_consumers
+        .changed()
+        .await
+        .expect("the test hook always owns the waiting-consumer sender");
+    }
+  }
+}
+
+impl super::TestHooks for WaitingConsumersTestHook {
+  fn consumer_waiting(&self) {
+    self
+      .waiting_consumers
+      .send_modify(|waiting_consumers| *waiting_consumers += 1);
+  }
+}
+
+fn buffer_with_test_hooks(
+  bytes: usize,
+  test_hooks: Option<Arc<dyn super::TestHooks>>,
+) -> EventBuffer {
+  EventBuffer::new_with_test_hooks(limits(bytes), test_hooks)
+}
+
 fn add_field(key: &str) -> EventBufferEntry {
   EventBufferEntry::Control(LoggerControl::AddLogField(
     key.to_string(),
@@ -121,7 +163,7 @@ fn feature_flag_exposure_carries_current_process_context_in_the_protected_lane()
   assert!(matches!(
     entry,
     EventBufferEntry::Ingress(event) if matches!(
-      event.as_ref(),
+      event,
       LoggerIngressEvent {
         context: EventContext::CurrentProcess(AdmissionContext { session_id, .. }),
         payload: LoggerIngressPayload::FeatureFlagExposure { flag, variant },
@@ -184,11 +226,12 @@ async fn preserves_log_and_field_update_admission_order() {
 
 #[tokio::test]
 async fn admission_wakes_a_waiting_consumer() {
-  let buffer = buffer(10_000);
+  let waiting_consumers = Arc::new(WaitingConsumersTestHook::new());
+  let buffer = buffer_with_test_hooks(10_000, Some(waiting_consumers.clone()));
   let consumer_buffer = buffer.clone();
   let consumer = tokio::spawn(async move { consumer_buffer.next_batch(1).await });
 
-  buffer.wait_for_waiting_consumers(1).await;
+  waiting_consumers.wait_for_consumers(1).await;
   assert_eq!(
     AdmissionOutcome::Admitted,
     buffer.admit(log(log_level::INFO, LogType::NORMAL, 1))
@@ -202,13 +245,14 @@ async fn admission_wakes_a_waiting_consumer() {
 
 #[tokio::test]
 async fn close_wakes_all_waiting_consumers() {
-  let buffer = buffer(10_000);
+  let waiting_consumers = Arc::new(WaitingConsumersTestHook::new());
+  let buffer = buffer_with_test_hooks(10_000, Some(waiting_consumers.clone()));
   let first_buffer = buffer.clone();
   let second_buffer = buffer.clone();
   let first = tokio::spawn(async move { first_buffer.next_batch(1).await });
   let second = tokio::spawn(async move { second_buffer.next_batch(1).await });
 
-  buffer.wait_for_waiting_consumers(2).await;
+  waiting_consumers.wait_for_consumers(2).await;
   buffer.close();
 
   assert!(
