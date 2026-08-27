@@ -49,6 +49,42 @@ use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use time::macros::datetime;
 
+fn nested_json_string_matcher() -> LogMatcher {
+  LogMatcher {
+    matcher: Some(log_matcher::Matcher::BaseMatcher(
+      log_matcher::BaseLogMatcher {
+        match_type: Some(log_matcher::base_log_matcher::Match_type::TagMatch(
+          log_matcher::base_log_matcher::TagMatch {
+            tag_key: "payload".to_string(),
+            value_match: Some(
+              log_matcher::base_log_matcher::tag_match::Value_match::JsonValueMatch(
+                JsonPathValueMatch {
+                  operator: Operator::OPERATOR_EQUALS.into(),
+                  match_value: "pro".to_string(),
+                  key_or_index: vec![
+                    KeyOrIndex {
+                      key_or_index: Some(key_or_index::Key_or_index::Key("user".to_string())),
+                      ..Default::default()
+                    },
+                    KeyOrIndex {
+                      key_or_index: Some(key_or_index::Key_or_index::Key("plan".to_string())),
+                      ..Default::default()
+                    },
+                  ],
+                  ..Default::default()
+                },
+              ),
+            ),
+            ..Default::default()
+          },
+        )),
+        ..Default::default()
+      },
+    )),
+    ..Default::default()
+  }
+}
+
 // Tests that state changes can trigger workflow transitions using string value matching.
 #[tokio::test]
 async fn state_change_string_match_triggers_transition() {
@@ -627,39 +663,7 @@ async fn state_change_with_extra_state_matcher_no_match() {
 #[tokio::test]
 async fn state_change_extra_json_matcher_respects_runtime_flag() {
   let b = state("B");
-  let json_matcher = LogMatcher {
-    matcher: Some(log_matcher::Matcher::BaseMatcher(
-      log_matcher::BaseLogMatcher {
-        match_type: Some(log_matcher::base_log_matcher::Match_type::TagMatch(
-          log_matcher::base_log_matcher::TagMatch {
-            tag_key: "payload".to_string(),
-            value_match: Some(
-              log_matcher::base_log_matcher::tag_match::Value_match::JsonValueMatch(
-                JsonPathValueMatch {
-                  operator: Operator::OPERATOR_EQUALS.into(),
-                  match_value: "pro".to_string(),
-                  key_or_index: vec![
-                    KeyOrIndex {
-                      key_or_index: Some(key_or_index::Key_or_index::Key("user".to_string())),
-                      ..Default::default()
-                    },
-                    KeyOrIndex {
-                      key_or_index: Some(key_or_index::Key_or_index::Key("plan".to_string())),
-                      ..Default::default()
-                    },
-                  ],
-                  ..Default::default()
-                },
-              ),
-            ),
-            ..Default::default()
-          },
-        )),
-        ..Default::default()
-      },
-    )),
-    ..Default::default()
-  };
+  let json_matcher = nested_json_string_matcher();
   let rule = make_state_change_rule_with_extra_matcher(
     StateScope::FEATURE_FLAG,
     "trigger_flag",

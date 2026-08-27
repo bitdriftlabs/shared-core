@@ -5,7 +5,7 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::matcher::Tree;
+use crate::matcher::{MatchContext, Tree};
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{DataValue, FieldsRef, LogMessage, TypedLogLevel};
 use bd_proto::protos::log_matcher::log_matcher::LogMatcher;
@@ -47,6 +47,7 @@ impl TestMatcher {
       state,
       &TinyMap::default(),
       0,
+      MatchContext::default(),
     )
   }
 

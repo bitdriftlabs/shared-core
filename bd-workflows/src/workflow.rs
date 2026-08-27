@@ -1499,7 +1499,7 @@ impl Traversal {
     match_context: MatchContext,
     result: &mut TraversalResult<'a>,
   ) {
-    if !log_match.do_match_with_context(
+    if !log_match.do_match(
       log.log_level,
       log.log_type,
       &log.message,
@@ -1651,7 +1651,7 @@ impl Traversal {
     // Check extra matcher. Now we can match against global metadata fields that were collected
     // for this state change event.
     if let Some(extra_matcher) = extra_matcher.as_ref()
-      && !extra_matcher.do_match_with_context(
+      && !extra_matcher.do_match(
         log_level::DEBUG,
         LogType::INTERNAL_SDK,
         &"".into(),

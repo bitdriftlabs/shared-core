@@ -20,6 +20,7 @@ use bd_client_common::payload_conversion::{ClientConfigurationUpdateAck, IntoReq
 use bd_client_common::safe_file_cache::SafeFileCache;
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_filter::FilterChain;
+use bd_log_matcher::matcher::MatchContext;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{EncodableLog, FieldsRef};
 use bd_proto::protos::bdtail::bdtail_config::BdTailConfigurations;
@@ -422,6 +423,7 @@ impl TailConfigurations {
               state,
               &TinyMap::default(),
               0,
+              MatchContext::default(),
             )
           })
           .then_some(id.as_str())

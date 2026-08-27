@@ -15,6 +15,7 @@ use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{
   key_or_index,
 };
 use bd_proto::protos::value_matcher::value_matcher::{JsonPathValueMatch, Operator};
+
 fn json_string_matcher(path: Vec<KeyOrIndex>, value: &str) -> Tree {
   Tree::new(&LogMatcher {
     matcher: Some(log_matcher::Matcher::BaseMatcher(
@@ -67,6 +68,7 @@ fn matches(tree: &Tree, json: &str) -> bool {
     &bd_state::InMemoryStateReader::new(),
     &TinyMap::default(),
     0,
+    MatchContext::default(),
   )
 }
 
@@ -100,7 +102,7 @@ fn disabled_context_does_not_match_json_strings() {
   .into();
 
   assert!(matches(&tree, r#"{"user":{"plan":"pro"}}"#));
-  assert!(!tree.do_match_with_context(
+  assert!(!tree.do_match(
     log_level::DEBUG,
     LogType::NORMAL,
     &LogMessage::String("message".to_string()),
@@ -131,7 +133,7 @@ fn disabled_context_does_not_invert_json_string_matches() {
 
   assert!(!matches(&tree, r#"{"user":{"plan":"pro"}}"#));
   assert!(matches(&tree, r#"{"user":{"plan":"basic"}}"#));
-  assert!(!tree.do_match_with_context(
+  assert!(!tree.do_match(
     log_level::DEBUG,
     LogType::NORMAL,
     &LogMessage::String("message".to_string()),

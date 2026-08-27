@@ -7,7 +7,7 @@
 
 //! Tests for bd-log-matcher legacy matcher (bd-matcher compatibility)
 
-use crate::matcher::Tree;
+use crate::matcher::{MatchContext, Tree};
 use assert_matches::assert_matches;
 use bd_log_primitives::tiny_set::TinyMap;
 use bd_log_primitives::{EMPTY_FIELDS, FieldsRef, LogFields, LogLevel, LogMessage, log_level};
@@ -82,6 +82,7 @@ fn match_test_runner(config: LegacyLogMatcher, cases: Vec<(Input<'_>, bool)>) {
         &reader,
         &TinyMap::default(),
         0,
+        MatchContext::default(),
       ),
       "{input:?} should result in {should_match} but did not",
     );

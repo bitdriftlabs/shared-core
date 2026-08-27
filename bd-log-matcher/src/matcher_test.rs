@@ -7,7 +7,7 @@
 
 use crate::builder;
 use crate::matcher::base_log_matcher::tag_match::Value_match::DoubleValueMatch;
-use crate::matcher::{RandomNumberGenerator, Tree};
+use crate::matcher::{MatchContext, RandomNumberGenerator, Tree};
 use crate::test::TestMatcher;
 use ahash::AHashMap;
 use bd_log_primitives::tiny_set::TinyMap;
@@ -1680,6 +1680,7 @@ fn match_test_runner_with_extractions_and_rng(
         state,
         extracted_fields,
         rng,
+        MatchContext::default(),
       ),
       "{input:?} should result in {should_match} but did not",
     );

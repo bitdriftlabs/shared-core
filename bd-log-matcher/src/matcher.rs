@@ -198,29 +198,6 @@ impl Tree {
     state: &dyn bd_state::StateReader,
     extracted_fields: &TinyMap<String, String>,
     sampled_roll: u32,
-  ) -> bool {
-    self.do_match_with_context(
-      log_level,
-      log_type,
-      message,
-      fields,
-      state,
-      extracted_fields,
-      sampled_roll,
-      MatchContext::default(),
-    )
-  }
-
-  #[must_use]
-  pub fn do_match_with_context(
-    &self,
-    log_level: LogLevel,
-    log_type: LogType,
-    message: &LogMessage,
-    fields: FieldsRef<'_>,
-    state: &dyn bd_state::StateReader,
-    extracted_fields: &TinyMap<String, String>,
-    sampled_roll: u32,
     context: MatchContext,
   ) -> bool {
     self.do_match_with_sampled_roll(
@@ -245,6 +222,7 @@ impl Tree {
     state: &dyn bd_state::StateReader,
     extracted_fields: &TinyMap<String, String>,
     rng: &mut dyn RandomNumberGenerator,
+    context: MatchContext,
   ) -> bool {
     let sampled_roll = rng.random_u32(SAMPLE_RATE_DENOMINATOR);
     self.do_match_with_sampled_roll(
@@ -255,7 +233,7 @@ impl Tree {
       state,
       extracted_fields,
       sampled_roll,
-      MatchContext::default(),
+      context,
     )
   }
 
@@ -320,10 +298,11 @@ impl Tree {
           let Some(value) = fields.field(field_key) else {
             return MatchResult::NotMatched;
           };
+          // TODO: Fold Disabled into the planned general matcher evaluation context/cache work.
           if !context.json_path_string_matching_enabled && value.as_str().is_some() {
             return MatchResult::Disabled;
           }
-          resolve_json_path(value, path, context.json_path_string_matching_enabled)
+          resolve_json_path(value, path)
             .is_some_and(|input| matcher.evaluate(input.as_ref(), extracted_fields))
         },
         Leaf::Sampled(sample_rate) => sample_matches_with_roll(*sample_rate, sampled_roll),
@@ -785,14 +764,10 @@ fn parse_json_path(key_or_index: &KeyOrIndex) -> Result<JsonPathToken> {
   }
 }
 
-fn resolve_json_path<'a>(
-  value: &'a DataValue,
-  path: &[JsonPathToken],
-  json_string_matching_enabled: bool,
-) -> Option<Cow<'a, str>> {
+fn resolve_json_path<'a>(value: &'a DataValue, path: &[JsonPathToken]) -> Option<Cow<'a, str>> {
   // Existing SDK APIs send JSON as a string. Parsing is only reached from JsonPathValue matchers.
-  if json_string_matching_enabled && let Some(json) = value.as_str() {
-    return resolve_json_string_path(json, path);
+  if let Some(maybe_json) = value.as_str() {
+    return resolve_json_string_path(maybe_json, path);
   }
 
   match value {

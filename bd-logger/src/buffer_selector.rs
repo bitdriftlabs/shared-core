@@ -5,7 +5,7 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use bd_log_matcher::matcher::Tree;
+use bd_log_matcher::matcher::{MatchContext, Tree};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{FieldsRef, LogLevel, LogMessage};
 use bd_proto::protos::config::v1::config::BufferConfigList;
@@ -74,6 +74,7 @@ impl BufferSelector {
           state,
           &TinyMap::default(),
           0,
+          MatchContext::default(),
         ) {
           buffers.insert(Cow::Borrowed(buffer.buffer_id.as_str()));
 
