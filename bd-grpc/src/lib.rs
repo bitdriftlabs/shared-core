@@ -1044,6 +1044,16 @@ async fn server_streaming_handler<ResponseType: MessageFull, RequestType: Messag
 ) -> Result<Response> {
   let request_transport = RequestTransport::from_extensions(request.extensions());
   let connect_protocol_type = request_transport.connect_protocol();
+  if matches!(request_transport, RequestTransport::JsonTranscoding) {
+    return Err(
+      Status::new(
+        Code::FailedPrecondition,
+        "server streaming only supports gRPC and Connect streaming",
+        None,
+      )
+      .into(),
+    );
+  }
   if let Some(stream_stats) = &stream_stats {
     stream_stats.stream_initiations_total.inc();
   }
@@ -1352,6 +1362,43 @@ where
   <L::Service as Service<Request>>::Error: Into<Infallible> + 'static,
   <L::Service as Service<Request>>::Future: Send + 'static,
 {
+  make_server_streaming_router_at_path_with_route_layer(
+    service_method,
+    &service_method.full_path(),
+    handler,
+    error_handler,
+    stream_stats,
+    max_request_bytes,
+    validation,
+    compression,
+    route_layer,
+  )
+}
+
+/// Creates a server-streaming router at an explicit path while preserving the service method
+/// descriptor for validation, authorization middleware, and endpoint metrics.
+pub fn make_server_streaming_router_at_path_with_route_layer<
+  ResponseType: MessageFull,
+  RequestType: MessageFull,
+  L,
+>(
+  service_method: &ServiceMethod<RequestType, ResponseType>,
+  path: &str,
+  handler: Arc<dyn ServerStreamingHandler<ResponseType, RequestType>>,
+  error_handler: impl Fn(&crate::Error) + Clone + Send + Sync + 'static,
+  stream_stats: Option<&EndpointStats>,
+  max_request_bytes: usize,
+  validation: Option<ValidationOptions>,
+  compression: Option<bd_grpc_codec::Compression>,
+  route_layer: L,
+) -> Result<Router>
+where
+  L: Layer<Route> + Clone + Send + Sync + 'static,
+  L::Service: Service<Request> + Clone + Send + Sync + 'static,
+  <L::Service as Service<Request>>::Response: IntoResponse + 'static,
+  <L::Service as Service<Request>>::Error: Into<Infallible> + 'static,
+  <L::Service as Service<Request>>::Future: Send + 'static,
+{
   verify_request_support::<RequestType>(UnaryRequestConfig {
     max_request_bytes,
     max_decoded_request_bytes: max_request_bytes,
@@ -1363,7 +1410,7 @@ where
   Ok(
     Router::new()
       .route(
-        &service_method.full_path(),
+        path,
         post(move |request: Request| async move {
           let request_transport = RequestTransport::from_extensions(request.extensions());
           server_streaming_handler(

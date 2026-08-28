@@ -21,6 +21,7 @@ macro_rules! source_info_gated_mod {
 }
 
 pub mod bdtail;
+pub mod bdtail_public;
 pub mod client;
 pub mod config;
 pub mod filter;
