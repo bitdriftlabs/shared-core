@@ -254,6 +254,7 @@ impl Setup {
     let (logger, _, flush_trigger) = crate::LoggerBuilder::new(InitParams {
       sdk_directory: options.sdk_directory.path().into(),
       api_key: "foo-api-key".to_string(),
+      target_domain: format!("http://localhost:{}", server.port),
       session,
       metadata_provider: options.metadata_provider,
       initial_ootb_fields: [].into(),
@@ -600,6 +601,7 @@ pub fn create_minimal_init_params(sdk_directory: &std::path::Path) -> InitParams
   InitParams {
     sdk_directory: sdk_directory.into(),
     api_key: "test-api-key".to_string(),
+    target_domain: "https://api.bitdrift.io:443".to_string(),
     session,
     metadata_provider: Arc::new(LogMetadata::default()),
     initial_ootb_fields: [].into(),

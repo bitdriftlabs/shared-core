@@ -27,6 +27,7 @@ bitflags = { version = "2", default-features = false, features = ["std"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "wasmbind"] }
 clap = { version = "4", features = ["derive", "env"] }
 clap_builder = { version = "4", default-features = false, features = ["color", "env", "help", "std", "suggestions", "usage"] }
+crc32fast = { version = "1" }
 crossbeam-utils = { version = "0.8" }
 crypto-common = { version = "0.1", default-features = false, features = ["std"] }
 deranged = { version = "0.5", features = ["serde"] }
@@ -95,6 +96,7 @@ cc = { version = "1", default-features = false, features = ["parallel"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "wasmbind"] }
 clap = { version = "4", features = ["derive", "env"] }
 clap_builder = { version = "4", default-features = false, features = ["color", "env", "help", "std", "suggestions", "usage"] }
+crc32fast = { version = "1" }
 crossbeam-utils = { version = "0.8" }
 crypto-common = { version = "0.1", default-features = false, features = ["std"] }
 deranged = { version = "0.5", features = ["serde"] }
@@ -162,7 +164,6 @@ errno = { version = "0.3" }
 getrandom-9fbad63c4bcf4a8f = { package = "getrandom", version = "0.4", default-features = false, features = ["std", "sys_rng"] }
 hyper-util = { version = "0.1", default-features = false, features = ["client-proxy", "client-proxy-system"] }
 libc = { version = "0.2", default-features = false, features = ["extra_traits"] }
-miniz_oxide = { version = "0.8", default-features = false, features = ["simd", "with-alloc"] }
 security-framework-sys = { version = "2" }
 tower = { version = "0.5", default-features = false, features = ["timeout"] }
 tower-http = { version = "0.6", default-features = false, features = ["decompression-deflate", "follow-redirect"] }
@@ -172,7 +173,6 @@ errno = { version = "0.3" }
 getrandom-9fbad63c4bcf4a8f = { package = "getrandom", version = "0.4", default-features = false, features = ["std", "sys_rng"] }
 hyper-util = { version = "0.1", default-features = false, features = ["client-proxy", "client-proxy-system"] }
 libc = { version = "0.2", default-features = false, features = ["extra_traits"] }
-miniz_oxide = { version = "0.8", default-features = false, features = ["simd", "with-alloc"] }
 security-framework-sys = { version = "2" }
 tower = { version = "0.5", default-features = false, features = ["timeout"] }
 tower-http = { version = "0.6", default-features = false, features = ["decompression-deflate", "follow-redirect"] }

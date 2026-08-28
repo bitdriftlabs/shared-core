@@ -3731,6 +3731,7 @@ fn runtime_caching() {
     let session = no_timeout(sdk_directory.path());
     let logger = crate::LoggerBuilder::new(InitParams {
       api_key: "foo-api-key".to_string(),
+      target_domain: "https://api.bitdrift.io:443".to_string(),
       network,
       session,
       static_metadata: Arc::new(EmptyMetadata),

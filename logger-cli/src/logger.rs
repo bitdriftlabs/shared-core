@@ -366,6 +366,7 @@ pub async fn make_logger(sdk_directory: &Path, args: &LoggerArgs) -> anyhow::Res
   let (logger, _, future, _) = bd_logger::LoggerBuilder::new(InitParams {
     sdk_directory: sdk_directory.to_path_buf(),
     api_key: args.api_key.clone(),
+    target_domain: args.api_url.clone(),
     session,
     metadata_provider: Arc::new(LiveTimestampMetadata {
       ootb_fields: [(

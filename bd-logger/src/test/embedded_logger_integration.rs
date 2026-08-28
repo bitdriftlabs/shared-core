@@ -71,6 +71,7 @@ impl Setup {
       sdk_directory: sdk_directory.path().to_owned(),
       network: Box::new(handle),
       session,
+      target_domain: format!("http://localhost:{}", server.port),
       metadata_provider: Arc::new(TestMetadataProvider),
       initial_ootb_fields: [].into(),
       initial_custom_fields: [].into(),

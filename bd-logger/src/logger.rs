@@ -571,6 +571,8 @@ impl LoggerHandle {
 pub struct InitParams {
   pub sdk_directory: PathBuf,
   pub api_key: String,
+  /// Canonical API endpoint authority in `scheme://host:port` form.
+  pub target_domain: String,
   /// The session state and its single persistence worker.
   pub session: bd_session::StrategyWithWorker,
 
