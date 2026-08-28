@@ -16,4 +16,16 @@ time.workspace              = true
 tokio.workspace             = true
 
 [dev-dependencies]
+criterion          = "0.8.2"
 proptest.workspace = true
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+gungraun = { version = "0.19.4", features = ["client_requests"] }
+
+[[bench]]
+harness = false
+name    = "main"
+
+[[bench]]
+harness = false
+name    = "criterion"

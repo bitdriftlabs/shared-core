@@ -59,6 +59,19 @@ To run the benchmarks on linux use for example:
 cargo bench -p bd-workflows
 ```
 
+The event-buffer admission benchmark exercises insertion and eviction paths, including
+single-entry, multi-entry, and multi-lane eviction:
+
+```sh
+cargo bench -p bd-event-buffer --bench main
+```
+
+For wall-clock measurements of the same cases, run:
+
+```sh
+cargo bench -p bd-event-buffer --bench criterion
+```
+
 `bd-workflow-bench` provides the same two modes for end-to-end workflow replay. Its default
 checked-in fixture is appropriate for repeatable Criterion wall-time benchmarks and Callgrind
 instruction profiles; both wrappers also accept local config and log paths for a live corpus. See
