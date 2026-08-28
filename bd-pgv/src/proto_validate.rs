@@ -732,7 +732,10 @@ fn verify_repeated_support(
     true
   };
 
-  not_implemented(rules.has_unique(), "repeated unique")?;
+  not_implemented(
+    rules.has_unique() && rules.unique() && !matches!(repeated_type, RuntimeType::Enum(_)),
+    "repeated unique for non-enums",
+  )?;
   Ok(recurse)
 }
 
@@ -771,6 +774,23 @@ fn validate_repeated(
   }
 
   let mut recurse = verify_repeated_support(rules, repeated_type, formatter)?;
+  if rules.has_unique() && rules.unique() {
+    let mut values = HashSet::with_capacity(repeated_len);
+    for value in &repeated {
+      // Only enum fields pass support verification, so their numeric value is sufficient here.
+      let ReflectValueRef::Enum(_, value) = value else {
+        unreachable!("validated unique repeated field must contain enum values")
+      };
+      if !values.insert(value) {
+        return Err(error::Error::ProtoValidation(format!(
+          "field '{}' in message '{}' must contain unique items",
+          formatter.field_name(field_descriptor, message_descriptor),
+          formatter.message_name(message_descriptor),
+        )));
+      }
+    }
+  }
+
   if let Some(item_rules) = rules.items.as_ref() {
     for value in repeated {
       recurse &= validate_value(

@@ -326,6 +326,27 @@ fn repeated() {
 }
 
 #[test]
+fn repeated_unique() {
+  let mut message = Repeated {
+    strings: vec!["hello".to_string()],
+    messages: vec![repeated::Inner::default()],
+    unique_enums: vec![repeated::UniqueEnum::UNIQUE_ENUM_FIRST.into()],
+    ..Default::default()
+  };
+  assert!(validate(&message).is_ok());
+
+  message
+    .unique_enums
+    .push(repeated::UniqueEnum::UNIQUE_ENUM_FIRST.into());
+  matches::assert_matches!(
+    validate(&message),
+    Err(error::Error::ProtoValidation(message)) if message ==
+    "field 'proto_validate.test.Repeated.unique_enums' in message \
+    'proto_validate.test.Repeated' must contain unique items"
+  );
+}
+
+#[test]
 fn map() {
   let message = Map {
     limited: HashMap::from([
