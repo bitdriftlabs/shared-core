@@ -387,6 +387,7 @@ enum ApiError {
 pub struct Api {
   sdk_directory: PathBuf,
   api_key: String,
+  target_domain: String,
   manager: Box<dyn PlatformNetworkManager<bd_runtime::runtime::ConfigLoader>>,
   data_upload_rx: Receiver<DataUpload>,
   trigger_upload_tx: Sender<TriggerUpload>,
@@ -448,6 +449,7 @@ impl Api {
   pub fn new(
     sdk_directory: PathBuf,
     api_key: String,
+    target_domain: String,
     manager: Box<dyn PlatformNetworkManager<bd_runtime::runtime::ConfigLoader>>,
     data_upload_rx: Receiver<DataUpload>,
     trigger_upload_tx: Sender<TriggerUpload>,
@@ -481,6 +483,7 @@ impl Api {
     Self {
       sdk_directory,
       api_key,
+      target_domain,
       manager,
       static_metadata,
       data_upload_rx,
@@ -641,6 +644,12 @@ impl Api {
     hasher.finish().to_be_bytes().to_vec()
   }
 
+  fn hash_target_domain(&self) -> Vec<u8> {
+    let mut hasher = DefaultHasher::new();
+    self.target_domain.hash(&mut hasher);
+    hasher.finish().to_be_bytes().to_vec()
+  }
+
   async fn set_client_killed(&mut self) {
     self.client_killed = true;
     self.sdk_status_tracker.record_disabled();
@@ -666,6 +675,8 @@ impl Api {
       let kill_until_time = kill_until.kill_until.to_offset_date_time();
       if kill_until_time > self.time_provider.now()
         && self.hash_api_key() == kill_until.api_key_hash
+        && (kill_until.target_domain_hash.is_empty()
+          || self.hash_target_domain() == kill_until.target_domain_hash)
       {
         log::debug!(
           "kill file exists and is still active ({} remaining), killing client",
@@ -678,10 +689,14 @@ impl Api {
         );
         self.set_client_killed().await;
       } else {
-        // Delete the kill file if the kill duration has passed or the API key has changed. This
-        // will allow the client to come up and contact the server again to see if anything
-        // has changed. It will likely get killed again on the next startup.
-        log::debug!("kill file has expired or the API key has changed, removing");
+        // Delete the kill file if the kill duration has passed, the API key has changed, or the
+        // target domain has changed. This will allow the client to come up and contact the server
+        // again to see if anything has changed. It will likely get killed again on the next
+        // startup.
+        log::debug!(
+          "kill file has expired, the API key has changed, or the target domain has changed, \
+           removing"
+        );
         if let Err(e) = tokio::fs::remove_file(self.kill_file_path()).await {
           log::warn!("failed to remove kill file: {e}");
         }
@@ -715,6 +730,7 @@ impl Api {
     let kill_file = ClientKillFile {
       api_key_hash: self.hash_api_key(),
       kill_until: kill_until.into_proto(),
+      target_domain_hash: self.hash_target_domain(),
       ..Default::default()
     };
     let compressed = write_compressed_protobuf(&kill_file)?;

@@ -19,6 +19,7 @@ use action_flush_buffers::Streaming as FlushStreaming;
 use action_flush_buffers::streaming::{TerminationCriterion, termination_criterion};
 use anyhow::anyhow;
 use assert_matches::assert_matches;
+use bd_client_common::file::write_compressed_protobuf;
 use bd_client_common::{
   HANDSHAKE_FLAG_CONFIG_UP_TO_DATE,
   HANDSHAKE_FLAG_RUNTIME_UP_TO_DATE,
@@ -38,6 +39,7 @@ use bd_proto::protos::client::api::handshake_response::StreamSettings;
 use bd_proto::protos::client::api::{
   ApiRequest,
   ApiResponse,
+  ClientKillFile,
   ClientStateUpdate,
   ConfigurationUpdate,
   ErrorShutdown,
@@ -63,6 +65,7 @@ use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider, ToProtoDuration}
 use mockall::predicate::eq;
 use protobuf::MessageField;
 use std::collections::{BTreeMap, HashMap};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::{Arc, Mutex};
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use time::{Duration, OffsetDateTime};
@@ -261,6 +264,7 @@ struct Setup {
   current_stream_tx: Arc<Mutex<Option<Sender<StreamEvent>>>>,
   api_task: Option<JoinHandle<()>>,
   api_key: String,
+  target_domain: String,
   network_quality_provider: Arc<SimpleNetworkQualityProvider>,
   sleep_mode_active: watch::Sender<bool>,
   opaque_entity_updates: watch::Sender<Option<String>>,
@@ -330,6 +334,7 @@ impl Setup {
     }
 
     let api_key = "api-key-test".to_string();
+    let target_domain = "https://api.bitdrift.io:443".to_string();
     let network_quality_provider = Arc::new(network_quality_provider.unwrap_or_default());
 
     let store = in_memory_store();
@@ -350,6 +355,7 @@ impl Setup {
     let mut api = Api::new(
       sdk_directory.path().to_path_buf(),
       api_key.clone(),
+      target_domain.clone(),
       manager,
       data_rx,
       trigger_upload_tx,
@@ -395,6 +401,7 @@ impl Setup {
       ),
       api_task: Some(api_task),
       api_key,
+      target_domain,
       network_quality_provider,
       sleep_mode_active: sleep_mode_active_tx,
       opaque_entity_updates: opaque_entity_updates_tx,
@@ -424,6 +431,7 @@ impl Setup {
     let api = Api::new(
       self.sdk_directory.path().to_path_buf(),
       self.api_key.clone(),
+      self.target_domain.clone(),
       manager,
       data_rx,
       trigger_upload_tx,
@@ -1044,6 +1052,24 @@ async fn client_kill() {
   setup
     .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
     .await;
+  setup.send_response(runtime_response.clone()).await;
+  setup.next_request(1.seconds()).await.unwrap();
+  make_mut(&mut setup.config_updater)
+    .expect_clear_cached_config()
+    .times(1)
+    .return_once(|| ());
+  setup.restart().await;
+  assert!(setup.next_stream(1.seconds()).await.is_none());
+
+  // Change the target domain which without advancing time should allow the client to come up.
+  setup.target_domain = "https://api-staging.bitdrift.io:443".to_string();
+  setup.restart().await;
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+
+  // The client should be killed again after sending down the same config.
+  setup
+    .handshake_response(HANDSHAKE_FLAG_CONFIG_UP_TO_DATE, None, None)
+    .await;
   setup.send_response(runtime_response).await;
   setup.next_request(1.seconds()).await.unwrap();
   make_mut(&mut setup.config_updater)
@@ -1057,6 +1083,34 @@ async fn client_kill() {
   setup.api_key = "other".to_string();
   setup.restart().await;
   assert!(setup.next_stream(1.seconds()).await.is_some());
+}
+
+#[tokio::test(start_paused = true)]
+async fn legacy_client_kill_file_is_honored() {
+  let mut setup = Setup::new().await;
+  assert!(setup.next_stream(1.seconds()).await.is_some());
+
+  let mut hasher = DefaultHasher::new();
+  setup.api_key.hash(&mut hasher);
+  let kill_file = ClientKillFile {
+    api_key_hash: hasher.finish().to_be_bytes().to_vec(),
+    kill_until: (setup.time_provider.now() + 1.days()).into_proto(),
+    ..Default::default()
+  };
+  let compressed = write_compressed_protobuf(&kill_file).unwrap();
+  tokio::fs::write(
+    setup.sdk_directory.path().join("client_kill_until"),
+    compressed,
+  )
+  .await
+  .unwrap();
+
+  make_mut(&mut setup.config_updater)
+    .expect_clear_cached_config()
+    .times(1)
+    .return_once(|| ());
+  setup.restart().await;
+  assert!(setup.next_stream(1.seconds()).await.is_none());
 }
 
 #[tokio::test(start_paused = true)]

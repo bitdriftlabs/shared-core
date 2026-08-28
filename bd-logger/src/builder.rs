@@ -593,6 +593,7 @@ impl LoggerBuilder {
       let api = bd_api::api::Api::new(
         self.params.sdk_directory.clone(),
         self.params.api_key,
+        self.params.target_domain,
         self.params.network,
         data_upload_rx,
         trigger_upload_tx,
