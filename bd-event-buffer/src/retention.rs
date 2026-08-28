@@ -49,8 +49,20 @@ impl<T> EventBufferState<T> {
   }
 
   /// Applies staged limits, then admits or drops an entry while the owner holds its mutex.
+  #[cfg(test)]
   pub(crate) fn admit(&mut self, lane: RetentionLane, bytes: usize, entry: T) -> AdmissionOutcome {
-    self.apply_pending_limits();
+    self.admit_with_evictions(lane, bytes, entry, |_| {})
+  }
+
+  /// Admits an entry and reports every retained entry displaced by pressure or a budget shrink.
+  pub(crate) fn admit_with_evictions(
+    &mut self,
+    lane: RetentionLane,
+    bytes: usize,
+    entry: T,
+    mut on_eviction: impl FnMut(RetentionLane),
+  ) -> AdmissionOutcome {
+    self.apply_pending_limits(&mut on_eviction);
     if self.closed {
       return AdmissionOutcome::Closed;
     }
@@ -65,7 +77,7 @@ impl<T> EventBufferState<T> {
     if !self.can_make_room(lane, bytes) || !self.reserve(lane) {
       return AdmissionOutcome::RejectedFull;
     }
-    self.make_room(lane, bytes);
+    self.make_room(lane, bytes, &mut on_eviction);
 
     let admission_id = self.next_admission_id;
     self.next_admission_id = self.next_admission_id.wrapping_add(1);
@@ -126,7 +138,7 @@ impl<T> EventBufferState<T> {
     .map(|(lane, _)| lane)
   }
 
-  fn apply_pending_limits(&mut self) {
+  fn apply_pending_limits(&mut self, on_eviction: &mut impl FnMut(RetentionLane)) {
     let Some(limits) = self.pending_limits.take() else {
       return;
     };
@@ -135,8 +147,8 @@ impl<T> EventBufferState<T> {
     // entries, while the total limit also includes protected entries. Enforce them separately,
     // recalculating the total overage after the first eviction pass. Both passes evict low before
     // high and never evict protected entries.
-    self.evict_for_budget_shrink(self.log_bytes_over_limit());
-    self.evict_for_budget_shrink(self.total_bytes_over_limit());
+    self.evict_for_budget_shrink(self.log_bytes_over_limit(), on_eviction);
+    self.evict_for_budget_shrink(self.total_bytes_over_limit(), on_eviction);
   }
 
   fn can_make_room(&self, lane: RetentionLane, incoming_bytes: usize) -> bool {
@@ -147,9 +159,14 @@ impl<T> EventBufferState<T> {
     self.evictable_bytes_available_to(lane) >= bytes_needed
   }
 
-  fn make_room(&mut self, lane: RetentionLane, incoming_bytes: usize) {
+  fn make_room(
+    &mut self,
+    lane: RetentionLane,
+    incoming_bytes: usize,
+    on_eviction: &mut impl FnMut(RetentionLane),
+  ) {
     let bytes_needed = self.required_eviction_bytes(lane, incoming_bytes);
-    self.evict_for_limit(lane, bytes_needed);
+    self.evict_for_limit(lane, bytes_needed, on_eviction);
   }
 
   fn required_eviction_bytes(&self, lane: RetentionLane, incoming_bytes: usize) -> usize {
@@ -170,7 +187,12 @@ impl<T> EventBufferState<T> {
     log_needed.max(total_needed)
   }
 
-  fn evict_for_limit(&mut self, incoming_lane: RetentionLane, mut bytes_needed: usize) {
+  fn evict_for_limit(
+    &mut self,
+    incoming_lane: RetentionLane,
+    mut bytes_needed: usize,
+    on_eviction: &mut impl FnMut(RetentionLane),
+  ) {
     // Evict the newest eligible entries first. This retains the oldest entries in each lane and
     // ensures an incoming entry only displaces work of lower priority.
     match incoming_lane {
@@ -178,15 +200,15 @@ impl<T> EventBufferState<T> {
         debug_assert_eq!(0, bytes_needed, "low entries cannot displace entries");
       },
       RetentionLane::High => {
-        bytes_needed = self.evict_from_lane(RetentionLane::Low, bytes_needed);
+        bytes_needed = self.evict_from_lane(RetentionLane::Low, bytes_needed, on_eviction);
         debug_assert_eq!(
           0, bytes_needed,
           "admission preflight guarantees enough lower-priority bytes"
         );
       },
       RetentionLane::Protected => {
-        bytes_needed = self.evict_from_lane(RetentionLane::Low, bytes_needed);
-        bytes_needed = self.evict_from_lane(RetentionLane::High, bytes_needed);
+        bytes_needed = self.evict_from_lane(RetentionLane::Low, bytes_needed, on_eviction);
+        bytes_needed = self.evict_from_lane(RetentionLane::High, bytes_needed, on_eviction);
         debug_assert_eq!(
           0, bytes_needed,
           "admission preflight guarantees enough lower-priority bytes"
@@ -195,17 +217,28 @@ impl<T> EventBufferState<T> {
     }
   }
 
-  fn evict_for_budget_shrink(&mut self, mut bytes_needed: usize) {
+  fn evict_for_budget_shrink(
+    &mut self,
+    mut bytes_needed: usize,
+    on_eviction: &mut impl FnMut(RetentionLane),
+  ) {
     // A limit change has no incoming priority, so it uses the least-destructive policy: discard
     // low entries first, then high entries, and leave protected entries intact even when they
     // alone exceed the new total limit.
     for lane in [RetentionLane::Low, RetentionLane::High] {
-      bytes_needed = self.evict_from_lane(lane, bytes_needed);
+      bytes_needed = self.evict_from_lane(lane, bytes_needed, on_eviction);
     }
   }
 
-  fn evict_from_lane(&mut self, lane: RetentionLane, bytes_needed: usize) -> usize {
-    let freed_bytes = self.lane_mut(lane).evict_newest(bytes_needed);
+  fn evict_from_lane(
+    &mut self,
+    lane: RetentionLane,
+    bytes_needed: usize,
+    on_eviction: &mut impl FnMut(RetentionLane),
+  ) -> usize {
+    let freed_bytes = self
+      .lane_mut(lane)
+      .evict_newest(bytes_needed, || on_eviction(lane));
     bytes_needed.saturating_sub(freed_bytes)
   }
 
@@ -291,7 +324,7 @@ impl<T> LaneState<T> {
     Some(entry)
   }
 
-  fn evict_newest(&mut self, bytes_needed: usize) -> usize {
+  fn evict_newest(&mut self, bytes_needed: usize, mut on_eviction: impl FnMut()) -> usize {
     // Remove and drop a newest-first suffix. The remaining prefix retains its FIFO ordering.
     let mut freed_bytes = 0;
     while freed_bytes < bytes_needed {
@@ -300,6 +333,7 @@ impl<T> LaneState<T> {
       };
       freed_bytes += entry.bytes;
       self.bytes -= entry.bytes;
+      on_eviction();
     }
     freed_bytes
   }

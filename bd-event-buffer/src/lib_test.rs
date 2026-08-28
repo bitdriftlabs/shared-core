@@ -20,9 +20,12 @@ use super::{
   RetentionLane,
   retention_lane,
 };
+use bd_client_stats_store::Collector;
+use bd_client_stats_store::test::StatsHelper;
 use bd_log_primitives::{AnnotatedLogFields, DataValue, LogFields, LogLine, log_level};
 use bd_macros::ApproximateSize;
 use bd_proto::protos::logging::payload::LogType;
+use bd_stats_common::labels;
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::{oneshot, watch};
@@ -73,6 +76,61 @@ fn limits(bytes: usize) -> EventBufferLimits {
 
 fn buffer(bytes: usize) -> EventBuffer {
   EventBuffer::new(limits(bytes))
+}
+
+#[test]
+fn records_admission_outcomes_per_retention_lane() {
+  let collector = Collector::default();
+  let low = log(log_level::DEBUG, LogType::NORMAL, 4096);
+  let high = log(log_level::INFO, LogType::NORMAL, 4096);
+  let protected = log(log_level::INFO, LogType::LIFECYCLE, 4096);
+  let limit = low
+    .approximate_size_bytes()
+    .max(high.approximate_size_bytes())
+    .max(protected.approximate_size_bytes());
+  let buffer = EventBuffer::new_with_stats(limits(limit), &collector.scope("event_buffer"));
+
+  assert_eq!(AdmissionOutcome::Admitted, buffer.admit(low));
+  assert_eq!(AdmissionOutcome::Admitted, buffer.admit(high));
+  assert_eq!(
+    AdmissionOutcome::RejectedFull,
+    buffer.admit(log(log_level::INFO, LogType::NORMAL, 4096))
+  );
+  assert_eq!(AdmissionOutcome::Admitted, buffer.admit(protected));
+  assert_eq!(
+    AdmissionOutcome::RejectedFull,
+    buffer.admit(log(log_level::INFO, LogType::LIFECYCLE, 4096))
+  );
+  assert_eq!(
+    AdmissionOutcome::RejectedOversized,
+    buffer.admit(log(log_level::DEBUG, LogType::NORMAL, limit))
+  );
+
+  collector.assert_counter_eq(
+    1,
+    "event_buffer:entry_outcomes",
+    labels!("lane" => "low", "outcome" => "evicted"),
+  );
+  collector.assert_counter_eq(
+    1,
+    "event_buffer:entry_outcomes",
+    labels!("lane" => "high", "outcome" => "evicted"),
+  );
+  collector.assert_counter_eq(
+    1,
+    "event_buffer:entry_outcomes",
+    labels!("lane" => "high", "outcome" => "rejected_full"),
+  );
+  collector.assert_counter_eq(
+    1,
+    "event_buffer:entry_outcomes",
+    labels!("lane" => "protected", "outcome" => "rejected_full"),
+  );
+  collector.assert_counter_eq(
+    1,
+    "event_buffer:entry_outcomes",
+    labels!("lane" => "low", "outcome" => "rejected_oversized"),
+  );
 }
 
 //
