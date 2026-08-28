@@ -2076,7 +2076,7 @@ async fn grpc_unary_request_preview_truncates_at_utf8_boundary() {
 }
 
 #[tokio::test]
-async fn server_streaming_json_request() {
+async fn server_streaming_json_request_is_rejected() {
   let local_address = make_server_streaming_server(Arc::new(EchoHandler::default()), |_| {})
     .await
     .0;
@@ -2089,7 +2089,13 @@ async fn server_streaming_json_request() {
     .send()
     .await
     .unwrap();
-  assert_eq!(response.status(), 200);
+  assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+  let body: serde_json::Value = serde_json::from_slice(&response.bytes().await.unwrap()).unwrap();
+  assert_eq!(body["code"], "failed_precondition");
+  assert_eq!(
+    body["message"],
+    "server streaming only supports gRPC and Connect streaming"
+  );
 }
 
 #[tokio::test]

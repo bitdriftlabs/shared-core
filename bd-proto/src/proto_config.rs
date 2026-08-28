@@ -27,6 +27,13 @@ const THIRDPARTY_INCLUDES: &[&str] = &["../api/thirdparty"];
 pub fn get_proto_configs() -> Vec<ProtoConfig> {
   vec![
     ProtoConfig {
+      output_dir: "src/protos/bdtail_public",
+      inputs: &["../api/src/bitdrift/public/stream/bdtail/v1/bdtail_api.proto"],
+      includes: PROTO_INCLUDES,
+      use_tokio_bytes: false,
+      file_header: true,
+    },
+    ProtoConfig {
       output_dir: "src/protos/bdtail",
       inputs: &[
         "../api/src/bitdrift_public/protobuf/bdtail/v1/bdtail_config.proto",
