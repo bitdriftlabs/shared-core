@@ -43,6 +43,12 @@ message Uuid {
 message Repeated {
   message Inner {}
 
+  enum UniqueEnum {
+    UNIQUE_ENUM_UNSPECIFIED = 0;
+    UNIQUE_ENUM_FIRST = 1;
+    UNIQUE_ENUM_SECOND = 2;
+  }
+
   repeated string strings = 1 [(validate.rules).repeated.min_items = 1];
   repeated Inner messages = 2 [(validate.rules).repeated.min_items = 1];
   repeated uint32 limited = 3 [(validate.rules).repeated.max_items = 2];
@@ -52,6 +58,7 @@ message Repeated {
     gte: 0
     lte: 1
   }];
+  repeated UniqueEnum unique_enums = 7 [(validate.rules).repeated.unique = true];
 }
 
 message Map {

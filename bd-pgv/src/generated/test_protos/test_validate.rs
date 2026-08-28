@@ -1015,6 +1015,8 @@ pub struct Repeated {
     pub positive_numbers: ::std::vec::Vec<u32>,
     // @@protoc_insertion_point(field:proto_validate.test.Repeated.probabilities)
     pub probabilities: ::std::vec::Vec<f32>,
+    // @@protoc_insertion_point(field:proto_validate.test.Repeated.unique_enums)
+    pub unique_enums: ::std::vec::Vec<::protobuf::EnumOrUnknown<repeated::UniqueEnum>>,
     // special fields
     // @@protoc_insertion_point(special_field:proto_validate.test.Repeated.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -1032,7 +1034,7 @@ impl Repeated {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(6);
+        let mut fields = ::std::vec::Vec::with_capacity(7);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
             "strings",
@@ -1063,6 +1065,11 @@ impl Repeated {
             "probabilities",
             |m: &Repeated| { &m.probabilities },
             |m: &mut Repeated| { &mut m.probabilities },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "unique_enums",
+            |m: &Repeated| { &m.unique_enums },
+            |m: &mut Repeated| { &mut m.unique_enums },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Repeated>(
             "Repeated",
@@ -1109,6 +1116,12 @@ impl ::protobuf::Message for Repeated {
                 53 => {
                     self.probabilities.push(is.read_float()?);
                 },
+                56 => {
+                    self.unique_enums.push(is.read_enum_or_unknown()?);
+                },
+                58 => {
+                    ::protobuf::rt::read_repeated_packed_enum_or_unknown_into(is, &mut self.unique_enums)?
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -1134,6 +1147,7 @@ impl ::protobuf::Message for Repeated {
         };
         my_size += ::protobuf::rt::vec_packed_uint32_size(5, &self.positive_numbers);
         my_size += ::protobuf::rt::vec_packed_float_size(6, &self.probabilities);
+        my_size += ::protobuf::rt::vec_packed_enum_or_unknown_size(7, &self.unique_enums);
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -1152,6 +1166,7 @@ impl ::protobuf::Message for Repeated {
         };
         os.write_repeated_packed_uint32(5, &self.positive_numbers)?;
         os.write_repeated_packed_float(6, &self.probabilities)?;
+        os.write_repeated_packed_enum_or_unknown(7, &self.unique_enums)?;
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
     }
@@ -1175,6 +1190,7 @@ impl ::protobuf::Message for Repeated {
         self.non_empty_strings.clear();
         self.positive_numbers.clear();
         self.probabilities.clear();
+        self.unique_enums.clear();
         self.special_fields.clear();
     }
 
@@ -1186,6 +1202,7 @@ impl ::protobuf::Message for Repeated {
             non_empty_strings: ::std::vec::Vec::new(),
             positive_numbers: ::std::vec::Vec::new(),
             probabilities: ::std::vec::Vec::new(),
+            unique_enums: ::std::vec::Vec::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -1312,6 +1329,73 @@ pub mod repeated {
 
     impl ::protobuf::reflect::ProtobufValue for Inner {
         type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
+
+    #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
+    // @@protoc_insertion_point(enum:proto_validate.test.Repeated.UniqueEnum)
+    pub enum UniqueEnum {
+        // @@protoc_insertion_point(enum_value:proto_validate.test.Repeated.UniqueEnum.UNIQUE_ENUM_UNSPECIFIED)
+        UNIQUE_ENUM_UNSPECIFIED = 0,
+        // @@protoc_insertion_point(enum_value:proto_validate.test.Repeated.UniqueEnum.UNIQUE_ENUM_FIRST)
+        UNIQUE_ENUM_FIRST = 1,
+        // @@protoc_insertion_point(enum_value:proto_validate.test.Repeated.UniqueEnum.UNIQUE_ENUM_SECOND)
+        UNIQUE_ENUM_SECOND = 2,
+    }
+
+    impl ::protobuf::Enum for UniqueEnum {
+        const NAME: &'static str = "UniqueEnum";
+
+        fn value(&self) -> i32 {
+            *self as i32
+        }
+
+        fn from_i32(value: i32) -> ::std::option::Option<UniqueEnum> {
+            match value {
+                0 => ::std::option::Option::Some(UniqueEnum::UNIQUE_ENUM_UNSPECIFIED),
+                1 => ::std::option::Option::Some(UniqueEnum::UNIQUE_ENUM_FIRST),
+                2 => ::std::option::Option::Some(UniqueEnum::UNIQUE_ENUM_SECOND),
+                _ => ::std::option::Option::None
+            }
+        }
+
+        fn from_str(str: &str) -> ::std::option::Option<UniqueEnum> {
+            match str {
+                "UNIQUE_ENUM_UNSPECIFIED" => ::std::option::Option::Some(UniqueEnum::UNIQUE_ENUM_UNSPECIFIED),
+                "UNIQUE_ENUM_FIRST" => ::std::option::Option::Some(UniqueEnum::UNIQUE_ENUM_FIRST),
+                "UNIQUE_ENUM_SECOND" => ::std::option::Option::Some(UniqueEnum::UNIQUE_ENUM_SECOND),
+                _ => ::std::option::Option::None
+            }
+        }
+
+        const VALUES: &'static [UniqueEnum] = &[
+            UniqueEnum::UNIQUE_ENUM_UNSPECIFIED,
+            UniqueEnum::UNIQUE_ENUM_FIRST,
+            UniqueEnum::UNIQUE_ENUM_SECOND,
+        ];
+    }
+
+    impl ::protobuf::EnumFull for UniqueEnum {
+        fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().enum_by_package_relative_name("Repeated.UniqueEnum").unwrap()).clone()
+        }
+
+        fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
+            let index = *self as usize;
+            Self::enum_descriptor().value_by_index(index)
+        }
+    }
+
+    impl ::std::default::Default for UniqueEnum {
+        fn default() -> Self {
+            UniqueEnum::UNIQUE_ENUM_UNSPECIFIED
+        }
+    }
+
+    impl UniqueEnum {
+        pub(in super) fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
+            ::protobuf::reflect::GeneratedEnumDescriptorData::new::<UniqueEnum>("Repeated.UniqueEnum")
+        }
     }
 }
 
@@ -3625,7 +3709,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x1d\n\x05field\x18\x01\x20\x01(\tR\x05fieldB\x07\xfaB\x04r\x02\x10\x01\
     \x12\x1f\n\x06field2\x18\x02\x20\x01(\tR\x06field2B\x07\xfaB\x04r\x02\
     \x18\x02\"&\n\x04Uuid\x12\x1e\n\x05field\x18\x01\x20\x01(\tR\x05fieldB\
-    \x08\xfaB\x05r\x03\xb0\x01\x01\"\xd5\x02\n\x08Repeated\x12\"\n\x07string\
+    \x08\xfaB\x05r\x03\xb0\x01\x01\"\x86\x04\n\x08Repeated\x12\"\n\x07string\
     s\x18\x01\x20\x03(\tR\x07stringsB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12I\
     \n\x08messages\x18\x02\x20\x03(\x0b2#.proto_validate.test.Repeated.Inner\
     R\x08messagesB\x08\xfaB\x05\x92\x01\x02\x08\x01\x12\"\n\x07limited\x18\
@@ -3634,39 +3718,43 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x01\x06\"\x04r\x02\x10\x01\x127\n\x10positive_numbers\x18\x05\x20\x03(\
     \rR\x0fpositiveNumbersB\x0c\xfaB\t\x92\x01\x06\"\x04*\x02\x20\0\x12:\n\r\
     probabilities\x18\x06\x20\x03(\x02R\rprobabilitiesB\x14\xfaB\x11\x92\x01\
-    \x0e\"\x0c\n\n\x1d\0\0\x80?-\0\0\0\0\x1a\x07\n\x05Inner\"\x8c\x01\n\x03M\
-    ap\x12I\n\x07limited\x18\x01\x20\x03(\x0b2%.proto_validate.test.Map.Limi\
-    tedEntryR\x07limitedB\x08\xfaB\x05\x9a\x01\x02\x10\x02\x1a:\n\x0cLimited\
-    Entry\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\
-    \x02\x20\x01(\rR\x05value:\x028\x01\"\xa0\x01\n\x11MapNotImplemented\x12\
-    Q\n\x05field\x18\x01\x20\x03(\x0b21.proto_validate.test.MapNotImplemente\
-    d.FieldEntryR\x05fieldB\x08\xfaB\x05\x9a\x01\x02\x18\x01\x1a8\n\nFieldEn\
-    try\x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\
-    \x02\x20\x01(\rR\x05value:\x028\x01\"V\n\x07Message\x12B\n\x05inner\x18\
-    \x01\x20\x01(\x0b2\".proto_validate.test.Message.InnerR\x05innerB\x08\
-    \xfaB\x05\x8a\x01\x02\x10\x01\x1a\x07\n\x05Inner\"Z\n\x05OneOf\x12!\n\
-    \x06field1\x18\x01\x20\x01(\x08H\0R\x06field1B\x07\xfaB\x04j\x02\x08\x01\
-    \x12!\n\x06field2\x18\x02\x20\x01(\tH\0R\x06field2B\x07\xfaB\x04r\x02\
-    \x10\x01B\x0b\n\x04test\x12\x03\xf8B\x01\"/\n\x0eNotImplemented\x12\x1d\
-    \n\x05field\x18\x01\x20\x01(\tR\x05fieldB\x07\xfaB\x04r\x02(\n\"Q\n\x14N\
-    estedNotImplemented\x129\n\x05field\x18\x01\x20\x01(\x0b2#.proto_validat\
-    e.test.NotImplementedR\x05field\"]\n\x07EnumOld\x12A\n\x05field\x18\x01\
-    \x20\x01(\x0e2!.proto_validate.test.EnumOld.EnumR\x05fieldB\x08\xfaB\x05\
-    \x82\x01\x02\x10\x01\"\x0f\n\x04Enum\x12\x07\n\x03FOO\x10\0\"\\\n\x07Enu\
-    mNew\x127\n\x05field\x18\x01\x20\x01(\x0e2!.proto_validate.test.EnumNew.\
-    EnumR\x05field\"\x18\n\x04Enum\x12\x07\n\x03FOO\x10\0\x12\x07\n\x03BAR\
-    \x10\x01\"j\n\tEnumNotIn\x12C\n\x05field\x18\x01\x20\x01(\x0e2#.proto_va\
-    lidate.test.EnumNotIn.EnumR\x05fieldB\x08\xfaB\x05\x82\x01\x02\x20\x01\"\
-    \x18\n\x04Enum\x12\x07\n\x03FOO\x10\0\x12\x07\n\x03BAR\x10\x01\"'\n\x06U\
-    int32\x12\x1d\n\x05field\x18\x01\x20\x01(\rR\x05fieldB\x07\xfaB\x04*\x02\
-    \x20\0\"'\n\x06Uint64\x12\x1d\n\x05field\x18\x01\x20\x01(\x04R\x05fieldB\
-    \x07\xfaB\x042\x02\x20\0\"&\n\x05Int32\x12\x1d\n\x05field\x18\x01\x20\
-    \x01(\x05R\x05fieldB\x07\xfaB\x04\x1a\x02\x20\0\"&\n\x05Int64\x12\x1d\n\
-    \x05field\x18\x01\x20\x01(\x03R\x05fieldB\x07\xfaB\x04\"\x02\x20\0\".\n\
-    \x05Float\x12%\n\x05field\x18\x01\x20\x01(\x02R\x05fieldB\x0f\xfaB\x0c\n\
-    \n\x1d\0\0\x80?-\0\0\0\0\"7\n\x06Double\x12-\n\x05field\x18\x01\x20\x01(\
-    \x01R\x05fieldB\x17\xfaB\x14\x12\x12\x11\0\0\0\0\0\0\xf0?!\0\0\0\0\0\0\0\
-    \0b\x06proto3\
+    \x0e\"\x0c\n\n\x1d\0\0\x80?-\0\0\0\0\x12U\n\x0cunique_enums\x18\x07\x20\
+    \x03(\x0e2(.proto_validate.test.Repeated.UniqueEnumR\x0buniqueEnumsB\x08\
+    \xfaB\x05\x92\x01\x02\x18\x01\x1a\x07\n\x05Inner\"X\n\nUniqueEnum\x12\
+    \x1b\n\x17UNIQUE_ENUM_UNSPECIFIED\x10\0\x12\x15\n\x11UNIQUE_ENUM_FIRST\
+    \x10\x01\x12\x16\n\x12UNIQUE_ENUM_SECOND\x10\x02\"\x8c\x01\n\x03Map\x12I\
+    \n\x07limited\x18\x01\x20\x03(\x0b2%.proto_validate.test.Map.LimitedEntr\
+    yR\x07limitedB\x08\xfaB\x05\x9a\x01\x02\x10\x02\x1a:\n\x0cLimitedEntry\
+    \x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\
+    \x20\x01(\rR\x05value:\x028\x01\"\xa0\x01\n\x11MapNotImplemented\x12Q\n\
+    \x05field\x18\x01\x20\x03(\x0b21.proto_validate.test.MapNotImplemented.F\
+    ieldEntryR\x05fieldB\x08\xfaB\x05\x9a\x01\x02\x18\x01\x1a8\n\nFieldEntry\
+    \x12\x10\n\x03key\x18\x01\x20\x01(\tR\x03key\x12\x14\n\x05value\x18\x02\
+    \x20\x01(\rR\x05value:\x028\x01\"V\n\x07Message\x12B\n\x05inner\x18\x01\
+    \x20\x01(\x0b2\".proto_validate.test.Message.InnerR\x05innerB\x08\xfaB\
+    \x05\x8a\x01\x02\x10\x01\x1a\x07\n\x05Inner\"Z\n\x05OneOf\x12!\n\x06fiel\
+    d1\x18\x01\x20\x01(\x08H\0R\x06field1B\x07\xfaB\x04j\x02\x08\x01\x12!\n\
+    \x06field2\x18\x02\x20\x01(\tH\0R\x06field2B\x07\xfaB\x04r\x02\x10\x01B\
+    \x0b\n\x04test\x12\x03\xf8B\x01\"/\n\x0eNotImplemented\x12\x1d\n\x05fiel\
+    d\x18\x01\x20\x01(\tR\x05fieldB\x07\xfaB\x04r\x02(\n\"Q\n\x14NestedNotIm\
+    plemented\x129\n\x05field\x18\x01\x20\x01(\x0b2#.proto_validate.test.Not\
+    ImplementedR\x05field\"]\n\x07EnumOld\x12A\n\x05field\x18\x01\x20\x01(\
+    \x0e2!.proto_validate.test.EnumOld.EnumR\x05fieldB\x08\xfaB\x05\x82\x01\
+    \x02\x10\x01\"\x0f\n\x04Enum\x12\x07\n\x03FOO\x10\0\"\\\n\x07EnumNew\x12\
+    7\n\x05field\x18\x01\x20\x01(\x0e2!.proto_validate.test.EnumNew.EnumR\
+    \x05field\"\x18\n\x04Enum\x12\x07\n\x03FOO\x10\0\x12\x07\n\x03BAR\x10\
+    \x01\"j\n\tEnumNotIn\x12C\n\x05field\x18\x01\x20\x01(\x0e2#.proto_valida\
+    te.test.EnumNotIn.EnumR\x05fieldB\x08\xfaB\x05\x82\x01\x02\x20\x01\"\x18\
+    \n\x04Enum\x12\x07\n\x03FOO\x10\0\x12\x07\n\x03BAR\x10\x01\"'\n\x06Uint3\
+    2\x12\x1d\n\x05field\x18\x01\x20\x01(\rR\x05fieldB\x07\xfaB\x04*\x02\x20\
+    \0\"'\n\x06Uint64\x12\x1d\n\x05field\x18\x01\x20\x01(\x04R\x05fieldB\x07\
+    \xfaB\x042\x02\x20\0\"&\n\x05Int32\x12\x1d\n\x05field\x18\x01\x20\x01(\
+    \x05R\x05fieldB\x07\xfaB\x04\x1a\x02\x20\0\"&\n\x05Int64\x12\x1d\n\x05fi\
+    eld\x18\x01\x20\x01(\x03R\x05fieldB\x07\xfaB\x04\"\x02\x20\0\".\n\x05Flo\
+    at\x12%\n\x05field\x18\x01\x20\x01(\x02R\x05fieldB\x0f\xfaB\x0c\n\n\x1d\
+    \0\0\x80?-\0\0\0\0\"7\n\x06Double\x12-\n\x05field\x18\x01\x20\x01(\x01R\
+    \x05fieldB\x17\xfaB\x14\x12\x12\x11\0\0\0\0\0\0\xf0?!\0\0\0\0\0\0\0\0b\
+    \x06proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -3713,7 +3801,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(Double::generated_message_descriptor_data());
             messages.push(repeated::Inner::generated_message_descriptor_data());
             messages.push(message::Inner::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(3);
+            let mut enums = ::std::vec::Vec::with_capacity(4);
+            enums.push(repeated::UniqueEnum::generated_enum_descriptor_data());
             enums.push(enum_old::Enum::generated_enum_descriptor_data());
             enums.push(enum_new::Enum::generated_enum_descriptor_data());
             enums.push(enum_not_in::Enum::generated_enum_descriptor_data());
