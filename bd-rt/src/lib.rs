@@ -73,6 +73,20 @@ pub static NUM_CPUS: LazyLock<usize> = LazyLock::new(num_cpus);
 /// * Use single-threaded runtime if appropriate
 /// * Name threads recognizably
 pub fn new_runtime() -> Result<Runtime, std::io::Error> {
+  #[cfg(target_arch = "aarch64")]
+  log::info!(
+    "AArch64 binary compiled with CPU features: neon={} crc={} lse={} dotprod={} i8mm={} bf16={} \
+     sve={} sve2={}",
+    cfg!(target_feature = "neon"),
+    cfg!(target_feature = "crc"),
+    cfg!(target_feature = "lse"),
+    cfg!(target_feature = "dotprod"),
+    cfg!(target_feature = "i8mm"),
+    cfg!(target_feature = "bf16"),
+    cfg!(target_feature = "sve"),
+    cfg!(target_feature = "sve2"),
+  );
+
   let num_cpus = *NUM_CPUS;
   let mut tokio_rt_builder = if num_cpus == 1 {
     log::info!("NUM_CPUS is 1, using a single-threaded tokio runtime");
