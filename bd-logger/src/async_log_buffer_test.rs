@@ -349,7 +349,7 @@ fn annotated_log_line_size_is_computed_correctly() {
     }
   }
 
-  let baseline_log_expected_size = 561;
+  let baseline_log_expected_size = 550;
   let baseline_log = create_baseline_log();
   assert_eq!(
     baseline_log_expected_size,
@@ -366,11 +366,12 @@ fn annotated_log_line_size_is_computed_correctly() {
     baseline_log_with_longer_message.approximate_size_bytes()
   );
 
-  // Appending to the three-byte session ID grows its retained allocation from three to eight bytes.
+  // Session IDs are shared, so their allocation is not charged to each log.
   let mut baseline_log_with_longer_group = create_baseline_log();
-  baseline_log_with_longer_group.session_id += "1";
+  baseline_log_with_longer_group.session_id =
+    format!("{}1", baseline_log_with_longer_group.session_id).into();
   assert_eq!(
-    baseline_log_expected_size + 5,
+    baseline_log_expected_size,
     baseline_log_with_longer_group.approximate_size_bytes()
   );
 
@@ -733,7 +734,7 @@ async fn updates_system_session_id_for_new_sessions() {
     let reader = test_store.read().await;
     let value = reader.get(Scope::System, SYSTEM_SESSION_ID_KEY);
     assert!(value.is_some_and(|stored| {
-      stored.has_string_value() && stored.string_value() == second_session_id
+      stored.has_string_value() && stored.string_value() == second_session_id.as_ref()
     }));
   }
 
@@ -847,7 +848,7 @@ async fn previous_run_log_does_not_override_system_session_id() {
     let reader = test_store.read().await;
     let value = reader.get(Scope::System, SYSTEM_SESSION_ID_KEY);
     assert!(value.is_some_and(|stored| {
-      stored.has_string_value() && stored.string_value() == next_session_id
+      stored.has_string_value() && stored.string_value() == next_session_id.as_ref()
     }));
   }
 
@@ -909,7 +910,7 @@ async fn pre_config_logs_trigger_session_id_update() {
     let reader = test_store.read().await;
     let value = reader.get(Scope::System, SYSTEM_SESSION_ID_KEY);
     assert!(value.is_some_and(|stored| {
-      stored.has_string_value() && stored.string_value() == second_session_id
+      stored.has_string_value() && stored.string_value() == second_session_id.as_ref()
     }));
   }
 

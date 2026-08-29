@@ -146,7 +146,7 @@ fn data_encoding() {
       message: input.clone(),
       fields: AHashMap::new(),
       matching_fields: AHashMap::new(),
-      session_id: "test_session".to_string(),
+      session_id: "test_session".into(),
       occurred_at: OffsetDateTime::now_utc(),
       capture_session: None,
     };
@@ -183,7 +183,7 @@ fn encodable_log_produces_valid_proto() {
       (Cow::Borrowed("key2"), LogFieldValue::U64(42)),
     ]),
     matching_fields: AHashMap::new(),
-    session_id: "test_session_123".to_string(),
+    session_id: "test_session_123".into(),
     occurred_at: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
     capture_session: None,
   };
@@ -252,7 +252,7 @@ fn encodable_log_compression_works() {
       LogFieldValue::String("value".to_string()),
     )]),
     matching_fields: AHashMap::new(),
-    session_id: "sess".to_string(),
+    session_id: "sess".into(),
     occurred_at: OffsetDateTime::from_unix_timestamp(1_500_000_000).unwrap(),
     capture_session: None,
   };
@@ -298,7 +298,7 @@ fn extract_timestamp_works() {
     message: DataValue::String("test".to_string()),
     fields: AHashMap::new(),
     matching_fields: AHashMap::new(),
-    session_id: "test".to_string(),
+    session_id: "test".into(),
     occurred_at: OffsetDateTime::from_unix_timestamp(1_700_000_000).unwrap(),
     capture_session: None,
   };

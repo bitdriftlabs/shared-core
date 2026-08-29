@@ -38,7 +38,7 @@ fn metric_increment_value_extraction() {
 
   let log = Log {
     message: "message".into(),
-    session_id: "session_id".to_string(),
+    session_id: "session_id".into(),
     occurred_at: time::OffsetDateTime::now_utc(),
     log_level: log_level::DEBUG,
     log_type: LogType::NORMAL,
@@ -135,7 +135,7 @@ fn session_start_metrics_use_triggering_log_payload() {
 
   let log = Log {
     message: "message".into(),
-    session_id: "session_id".to_string(),
+    session_id: "session_id".into(),
     occurred_at: OffsetDateTime::now_utc(),
     log_level: log_level::DEBUG,
     log_type: LogType::NORMAL,
@@ -213,7 +213,7 @@ fn counter_label_extraction() {
 
   let log = Log {
     message: "message".into(),
-    session_id: "session_id".to_string(),
+    session_id: "session_id".into(),
     occurred_at: time::OffsetDateTime::now_utc(),
     log_level: log_level::DEBUG,
     log_type: LogType::NORMAL,
@@ -307,7 +307,7 @@ fn metric_multi_tag_fans_out_over_matching_state_entries() {
 
   let log = Log {
     message: "message".into(),
-    session_id: "session_id".to_string(),
+    session_id: "session_id".into(),
     occurred_at: time::OffsetDateTime::now_utc(),
     log_level: log_level::DEBUG,
     log_type: LogType::NORMAL,
@@ -387,7 +387,7 @@ fn metric_multi_tag_with_no_matches_emits_nothing() {
 
   let log = Log {
     message: "message".into(),
-    session_id: "session_id".to_string(),
+    session_id: "session_id".into(),
     occurred_at: time::OffsetDateTime::now_utc(),
     log_level: log_level::DEBUG,
     log_type: LogType::NORMAL,

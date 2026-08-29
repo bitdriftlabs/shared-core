@@ -257,7 +257,10 @@ impl Setup {
       Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH)),
     )
     .into_parts();
-    assert_eq!(session.session_id().unwrap(), "previous_session_id");
+    assert_eq!(
+      "previous_session_id",
+      session.session_id().unwrap().as_ref()
+    );
     bd_session::test::flush(session.clone(), worker).await;
 
     let session = bd_session::test::no_timeout(directory.path()).strategy();
@@ -693,7 +696,7 @@ async fn file_watcher_detects_current_session_report() {
     ]
     .into(),
     crash_timestamp.into(),
-    setup.monitor.session.session_id().unwrap().as_str(),
+    setup.monitor.session.session_id().unwrap().as_ref(),
     Some(vec![
       ("initial_flag".to_string(), "true".to_string()),
       ("previous_only_flag".to_string(), "enabled".to_string()),
@@ -1092,7 +1095,7 @@ async fn current_session_crash_uses_current_feature_flags() {
     ]
     .into(),
     crash_timestamp.into(),
-    setup.monitor.session.session_id().unwrap().as_str(),
+    setup.monitor.session.session_id().unwrap().as_ref(),
     Some(vec![
       ("initial_flag".to_string(), "updated".to_string()),
       ("current_only_flag".to_string(), "new".to_string()),

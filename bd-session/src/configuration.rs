@@ -23,14 +23,14 @@ const MAX_ACTIVITY_WRITE_INTERVAL: Duration = Duration::seconds(15);
 
 /// The canonical session configuration used by the mobile SDKs.
 pub struct Configuration {
-  initial_session_id: Option<String>,
+  initial_session_id: Option<Arc<str>>,
   inactivity_timeout: Option<Duration>,
   time_provider: Arc<dyn TimeProvider>,
 }
 
 impl Configuration {
   pub fn new(
-    initial_session_id: Option<String>,
+    initial_session_id: Option<Arc<str>>,
     inactivity_timeout: Option<Duration>,
     time_provider: Arc<dyn TimeProvider>,
   ) -> Self {
@@ -119,7 +119,7 @@ impl Configuration {
 
   pub(crate) fn start_new_session(
     &self,
-    session_id: Option<String>,
+    session_id: Option<Arc<str>>,
     state: Option<&LoadedState>,
     persisted: Option<PersistedSessionState>,
     pending_started_sessions: Vec<StartedSessionRecord>,
@@ -181,8 +181,8 @@ impl Configuration {
 
   fn new_session(
     &self,
-    session_id: String,
-    previous_process_session_id: Option<String>,
+    session_id: Arc<str>,
+    previous_process_session_id: Option<Arc<str>>,
     mut pending_started_sessions: Vec<StartedSessionRecord>,
   ) -> Transition {
     let now = self.time_provider.now();
@@ -215,11 +215,11 @@ impl Configuration {
     }
   }
 
-  fn generate_session_id() -> String {
-    Uuid::new_v4().to_string()
+  fn generate_session_id() -> Arc<str> {
+    Uuid::new_v4().to_string().into()
   }
 
-  fn non_empty_session_id(session_id: Option<String>) -> Option<String> {
+  fn non_empty_session_id(session_id: Option<Arc<str>>) -> Option<Arc<str>> {
     session_id.filter(|session_id| !session_id.is_empty())
   }
 }

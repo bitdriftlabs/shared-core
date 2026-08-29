@@ -143,7 +143,7 @@ pub fn generate_log_action(
       DataValue::String(action.id.clone()),
     )]),
     // These will be filled in later via the log processor.
-    session_id: String::new(),
+    session_id: String::new().into(),
     occurred_at: OffsetDateTime::UNIX_EPOCH,
     capture_session: None,
   })

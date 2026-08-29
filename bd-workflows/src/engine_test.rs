@@ -1399,7 +1399,7 @@ async fn ignore_persisted_state_if_invalid_dir() {
       message: LogMessage::String("foo".to_string()),
       fields: bd_test_helpers::workflow::make_tags(labels! {}),
       matching_fields: LogFields::new(),
-      session_id: "foo_session".to_string(),
+      session_id: "foo_session".into(),
       occurred_at: OffsetDateTime::now_utc(),
       capture_session: None,
     }),
@@ -3012,7 +3012,7 @@ async fn generate_log_multiple() {
         message: "message1".into(),
         fields: [("duration".into(), "1000".into(),),].into(),
         matching_fields: [("_generate_log_id".into(), "id1".into(),)].into(),
-        session_id: String::new(),
+        session_id: String::new().into(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
         capture_session: None,
       },
@@ -3022,7 +3022,7 @@ async fn generate_log_multiple() {
         message: "message2".into(),
         fields: [("duration".into(), "2000".into(),),].into(),
         matching_fields: [("_generate_log_id".into(), "id2".into(),)].into(),
-        session_id: String::new(),
+        session_id: String::new().into(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
         capture_session: None,
       }
@@ -3115,7 +3115,7 @@ async fn generate_log_action() {
       ]
       .into(),
       matching_fields: [("_generate_log_id".into(), "id".into(),)].into(),
-      session_id: String::new(),
+      session_id: String::new().into(),
       occurred_at: OffsetDateTime::UNIX_EPOCH,
       capture_session: None,
     }]

@@ -499,7 +499,7 @@ impl Monitor {
     }
   }
 
-  fn get_session_id(&self, origin: ReportOrigin) -> anyhow::Result<String> {
+  fn get_session_id(&self, origin: ReportOrigin) -> anyhow::Result<Arc<str>> {
     match origin {
       ReportOrigin::Current => self.session.session_id(),
       ReportOrigin::Previous => Ok(
@@ -588,7 +588,7 @@ impl Monitor {
     let global_state_fields = self.get_global_state_fields(origin);
     let session_id = self
       .get_session_id(origin)
-      .unwrap_or_else(|_| "unknown".to_string());
+      .unwrap_or_else(|_| "unknown".into());
     let (timestamp, mut state_fields) = Self::read_log_fields(bin_report, &global_state_fields);
     state_fields.extend(self.get_memory_pressure_fields(origin));
 
@@ -607,7 +607,7 @@ impl Monitor {
       "client_report".to_string(),
       state_fields.clone(),
       timestamp,
-      session_id.clone(),
+      session_id.to_string(),
       reporting_feature_flags.clone(),
       None,
     ) else {

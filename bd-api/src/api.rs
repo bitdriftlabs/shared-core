@@ -1249,7 +1249,7 @@ impl Api {
               // single command stay deduped under that ID, but separate commands remain distinct
               // pending uploads even if they target the same buffers.
               TriggerUploadSource::RemoteCommand(uuid::Uuid::new_v4().to_string()),
-              session_id,
+              session_id.to_string(),
             ))
             .await
             .map_err(|_| anyhow!("remote trigger upload tx"))?;

@@ -11,6 +11,7 @@ mod pre_config_buffer_test;
 use bd_client_stats_store::{Counter, Scope};
 use bd_macros::ApproximateSize;
 use bd_stats_common::{Counter as _, labels};
+use std::sync::Arc;
 
 #[derive(thiserror::Error, Debug, PartialEq, Eq)]
 pub enum Error {
@@ -30,7 +31,7 @@ pub enum PendingStateOperation {
   SetFeatureFlagExposure {
     name: String,
     variant: Option<String>,
-    session_id: String,
+    session_id: Arc<str>,
   },
 }
 

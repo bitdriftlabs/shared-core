@@ -127,7 +127,7 @@ impl LoggerHolder {
     handle.start_new_session(None).unwrap();
   }
 
-  pub fn current_session_id(&self) -> anyhow::Result<String> {
+  pub fn current_session_id(&self) -> anyhow::Result<Arc<str>> {
     let handle = { self.logger.lock().new_logger_handle() };
     handle.session_id()
   }
@@ -137,12 +137,12 @@ impl LoggerHolder {
     handle.log_sdk_start([].into(), duration);
   }
 
-  pub fn try_current_session_id(&self) -> anyhow::Result<String> {
+  pub fn try_current_session_id(&self) -> anyhow::Result<Arc<str>> {
     self.session_strategy.try_current_session_id()
   }
 
   #[must_use]
-  pub fn previous_process_session_id(&self) -> Option<String> {
+  pub fn previous_process_session_id(&self) -> Option<Arc<str>> {
     self.session_strategy.previous_process_session_id()
   }
 

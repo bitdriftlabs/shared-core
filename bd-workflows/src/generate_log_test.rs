@@ -56,7 +56,7 @@ impl Helper {
           .map(|(k, v)| ((*k).to_string().into(), (*v).into(),))
           .collect(),
         matching_fields: [("_generate_log_id".into(), "id".into(),),].into(),
-        session_id: String::new(),
+        session_id: String::new().into(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
         capture_session: None,
       }),

@@ -43,7 +43,7 @@ impl AdmissionSetup {
 
 fn current_process_context() -> EventContext {
   EventContext::CurrentProcess(AdmissionContext {
-    session_id: String::new(),
+    session_id: String::new().into(),
     provider: ProviderSnapshot {
       timestamp: OffsetDateTime::UNIX_EPOCH,
       ootb_fields: LogFields::default(),

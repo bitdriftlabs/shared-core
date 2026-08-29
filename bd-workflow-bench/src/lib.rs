@@ -115,7 +115,7 @@ pub async fn run(options: Options) -> anyhow::Result<()> {
 
     for source_log in corpus.logs() {
       let started_new_session =
-        previous_session_id.as_deref() != Some(source_log.log.session_id.as_str());
+        previous_session_id.as_deref() != Some(source_log.log.session_id.as_ref());
       let started = Instant::now();
       // Bound Callgrind to the engine operation itself. The surrounding aggregation and report
       // bookkeeping, including this benchmarker's timing, are not workflow evaluation work.

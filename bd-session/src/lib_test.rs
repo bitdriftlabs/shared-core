@@ -29,7 +29,7 @@ impl configuration::Callbacks for TestCallbacks {
 fn no_timeout_strategy(sdk_directory: &TempDir, initial_session_id: &str) -> StrategyWithWorker {
   Strategy::configuration(
     sdk_directory.path(),
-    Some(initial_session_id.to_string()),
+    Some(initial_session_id.into()),
     None,
     Arc::new(TestCallbacks),
     Arc::new(TestTimeProvider::new(OffsetDateTime::now_utc())),
@@ -50,11 +50,11 @@ fn persisted_state(sdk_directory: &TempDir) -> PersistedSessionState {
   Store::new(sdk_directory.path()).load_state().unwrap()
 }
 
-fn started_session_ids(request: &StateUpdateRequest) -> Vec<String> {
+fn started_session_ids(request: &StateUpdateRequest) -> Vec<&str> {
   request
     .started_sessions
     .iter()
-    .map(|session| session.session_id.clone())
+    .map(|session| session.session_id.as_str())
     .collect()
 }
 
@@ -75,7 +75,7 @@ async fn persistence_flusher_coalesces_to_latest_state_on_shutdown() {
 
   let first_session_id = strategy.session_id().unwrap();
   strategy
-    .start_new_session(Some("session-2".to_string()))
+    .start_new_session(Some("session-2".into()))
     .unwrap();
   let second_session_id = strategy.session_id().unwrap();
 
@@ -168,7 +168,7 @@ async fn handshake_synthesizes_current_session_after_pending_queue_is_acked() {
   let pending = strategy.pending_state_update().unwrap();
 
   assert_eq!(
-    vec![session_id.clone()],
+    vec![session_id.as_ref()],
     started_session_ids(pending.request())
   );
 
@@ -177,7 +177,10 @@ async fn handshake_synthesizes_current_session_after_pending_queue_is_acked() {
   assert!(strategy.pending_state_update().is_none());
 
   let handshake = strategy.handshake_state_update();
-  assert_eq!(vec![session_id], started_session_ids(handshake.request()));
+  assert_eq!(
+    vec![session_id.as_ref()],
+    started_session_ids(handshake.request())
+  );
   assert!(handshake.started_sessions.is_empty());
 }
 
@@ -188,12 +191,12 @@ async fn acknowledge_state_update_ignores_non_prefix_updates() {
 
   strategy.session_id().unwrap();
   strategy
-    .start_new_session(Some("session-2".to_string()))
+    .start_new_session(Some("session-2".into()))
     .unwrap();
 
   let pending = strategy.pending_state_update().unwrap();
   assert_eq!(
-    vec!["session-1".to_string(), "session-2".to_string()],
+    vec!["session-1", "session-2"],
     started_session_ids(pending.request())
   );
 
@@ -206,7 +209,7 @@ async fn acknowledge_state_update_ignores_non_prefix_updates() {
 
   let still_pending = strategy.pending_state_update().unwrap();
   assert_eq!(
-    vec!["session-1".to_string(), "session-2".to_string()],
+    vec!["session-1", "session-2"],
     started_session_ids(still_pending.request())
   );
 }
@@ -245,11 +248,11 @@ async fn restart_rebuilds_pending_queue_from_persisted_state() {
   let pending = restarted_strategy.pending_state_update().unwrap();
 
   assert_eq!(
-    vec![first_session_id, "session-2".to_string()],
+    vec![first_session_id.as_ref(), "session-2"],
     started_session_ids(pending.request())
   );
   assert_eq!(
-    Some("session-1".to_string()),
+    Some("session-1".into()),
     restarted_strategy.previous_process_session_id()
   );
 }
@@ -262,10 +265,7 @@ async fn handshake_does_not_duplicate_current_session_when_queue_already_contain
   strategy.session_id().unwrap();
 
   let handshake = strategy.handshake_state_update();
-  assert_eq!(
-    vec!["session-1".to_string()],
-    started_session_ids(handshake.request())
-  );
+  assert_eq!(vec!["session-1"], started_session_ids(handshake.request()));
   assert_eq!(1, handshake.started_sessions.len());
 }
 
@@ -295,7 +295,7 @@ async fn enabling_inactivity_timeout_resyncs_persisted_state() {
     restarted_strategy.previous_process_session_id()
   );
   assert_eq!(
-    vec![first_session_id.clone(), restarted_session_id],
+    vec![first_session_id.as_ref(), restarted_session_id.as_ref()],
     started_session_ids(pending.request())
   );
   assert!(matches!(
@@ -330,7 +330,7 @@ async fn disabling_inactivity_timeout_resyncs_persisted_state() {
     restarted_strategy.previous_process_session_id()
   );
   assert_eq!(
-    vec![first_session_id.clone(), restarted_session_id],
+    vec![first_session_id.as_ref(), restarted_session_id.as_ref()],
     started_session_ids(pending.request())
   );
   assert!(matches!(

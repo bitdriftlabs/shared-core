@@ -68,19 +68,19 @@ impl super::Reporter for TestReporter {
 }
 
 struct MockSessionProvider {
-  session_id: String,
+  session_id: Arc<str>,
 }
 
 impl MockSessionProvider {
   fn new() -> Self {
     Self {
-      session_id: Uuid::new_v4().to_string(),
+      session_id: Uuid::new_v4().to_string().into(),
     }
   }
 }
 
 impl SessionProvider for MockSessionProvider {
-  fn session_id(&self) -> anyhow::Result<String> {
+  fn session_id(&self) -> anyhow::Result<Arc<str>> {
     Ok(self.session_id.clone())
   }
 }
@@ -112,11 +112,12 @@ fn attach_error_handler() {
   assert!(fields.remove("x-config-version").is_some());
 
   assert_eq!(
+    Some(session_strategy.session_id().unwrap().as_ref()),
+    fields.get("x-session-id").map(String::as_str)
+  );
+  fields.remove("x-session-id");
+  assert_eq!(
     HashMap::from([
-      (
-        "x-session-id".to_string(),
-        session_strategy.session_id().unwrap(),
-      ),
       ("x-sdk-version".to_string(), "1.2.3".to_string()),
       ("x-platform".to_string(), "apple".to_string()),
       ("x-os".to_string(), "ios".to_string()),

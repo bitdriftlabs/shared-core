@@ -553,13 +553,16 @@ fn log_upload_attributes_override() {
   let sdk_directory = Arc::new(tempfile::TempDir::with_prefix("sdk").unwrap());
   let (previous_session, previous_session_worker) = bd_session::Strategy::configuration(
     sdk_directory.path(),
-    Some("foo_overridden".to_string()),
+    Some("foo_overridden".into()),
     None,
     Arc::new(configuration::NoopCallbacks),
     Arc::new(TestTimeProvider::new(time_first)),
   )
   .into_parts();
-  assert_eq!(previous_session.session_id().unwrap(), "foo_overridden");
+  assert_eq!(
+    "foo_overridden",
+    previous_session.session_id().unwrap().as_ref()
+  );
   tokio_test::block_on(bd_session::test::flush(
     previous_session,
     previous_session_worker,
@@ -1182,7 +1185,7 @@ fn workflow_flush_buffers_action_uploads_buffer() {
 
   let intent_uuid = match setup.server.next_log_intent() {
     Some(intent) => {
-      assert_eq!(intent.session_id, session_id);
+      assert_eq!(intent.session_id, session_id.as_ref());
       intent.intent_uuid
     },
     None => panic!("expected log upload intent"),
@@ -1281,7 +1284,7 @@ fn one_log_matching_multiple_flush_actions_shares_one_intent_uuid_and_one_upload
 
   let first_intent_uuid = match setup.server.next_log_intent() {
     Some(intent) => {
-      assert_eq!(intent.session_id, session_id);
+      assert_eq!(intent.session_id, session_id.as_ref());
       let workflow_action_ids = match intent.intent_type.as_ref() {
         Some(Intent_type::WorkflowActionUpload(upload)) => upload.workflow_action_ids.clone(),
         other => panic!("expected workflow action upload intent, got {other:?}"),
@@ -1294,7 +1297,7 @@ fn one_log_matching_multiple_flush_actions_shares_one_intent_uuid_and_one_upload
 
   let second_intent_uuid = match setup.server.next_log_intent() {
     Some(intent) => {
-      assert_eq!(intent.session_id, session_id);
+      assert_eq!(intent.session_id, session_id.as_ref());
       let workflow_action_ids = match intent.intent_type.as_ref() {
         Some(Intent_type::WorkflowActionUpload(upload)) => upload.workflow_action_ids.clone(),
         other => panic!("expected workflow action upload intent, got {other:?}"),
