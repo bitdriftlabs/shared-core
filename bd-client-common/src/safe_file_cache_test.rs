@@ -7,8 +7,8 @@
 
 use crate::file::{read_checksummed_data, write_compressed_protobuf};
 use crate::safe_file_cache::{
-  CRASH_LOOP_BYPASS_TIMEOUT_SECONDS,
   CacheState,
+  DEFAULT_CRASH_LOOP_BYPASS_TIMEOUT_SECONDS,
   MAX_RETRY_COUNT,
   SafeFileCache,
 };
@@ -19,6 +19,7 @@ use protobuf::Message;
 use std::sync::Arc;
 use tempfile::tempdir;
 use time::{Duration, OffsetDateTime};
+use tokio::sync::watch;
 
 #[tokio::test]
 async fn basic_flow() {
@@ -124,7 +125,9 @@ async fn same_nonce_allowed_after_bypass_timeout() {
   assert!(cache.handle_cached_config().await.is_none());
 
   // Simulate enough wall-clock time passing since the last successful cache write.
-  time_provider.advance(Duration::seconds(CRASH_LOOP_BYPASS_TIMEOUT_SECONDS + 1));
+  time_provider.advance(Duration::seconds(
+    DEFAULT_CRASH_LOOP_BYPASS_TIMEOUT_SECONDS + 1,
+  ));
 
   let cache = SafeFileCache::<ClientKillFile>::new_with_time_provider(
     "test",
@@ -196,6 +199,73 @@ async fn same_nonce_allowed_after_bypass_timeout() {
       .to_string(),
     "refusing to cache config during suspected crash loop with no nonce change"
   );
+}
+
+#[tokio::test]
+async fn same_nonce_allowed_after_configured_bypass_timeout() {
+  let tempdir = tempdir().unwrap();
+  let time_provider = Arc::new(TestTimeProvider::new(OffsetDateTime::UNIX_EPOCH));
+  let (timeout_tx, timeout_rx) = watch::channel(Duration::minutes(10));
+  let cache = SafeFileCache::<ClientKillFile>::new_with_time_provider_and_crash_loop_bypass_timeout(
+    "test",
+    tempdir.path(),
+    time_provider.clone(),
+    timeout_rx.clone(),
+  );
+  cache
+    .cache_update(
+      write_compressed_protobuf(ClientKillFile::default_instance()).unwrap(),
+      "123",
+      async { Ok(()) },
+    )
+    .await
+    .unwrap();
+
+  for _i in 0 .. MAX_RETRY_COUNT {
+    let cache =
+      SafeFileCache::<ClientKillFile>::new_with_time_provider_and_crash_loop_bypass_timeout(
+        "test",
+        tempdir.path(),
+        time_provider.clone(),
+        timeout_rx.clone(),
+      );
+    assert_eq!(
+      ClientKillFile::default(),
+      cache.handle_cached_config().await.unwrap()
+    );
+  }
+
+  let cache = SafeFileCache::<ClientKillFile>::new_with_time_provider_and_crash_loop_bypass_timeout(
+    "test",
+    tempdir.path(),
+    time_provider.clone(),
+    timeout_rx,
+  );
+  assert!(cache.handle_cached_config().await.is_none());
+
+  time_provider.advance(Duration::minutes(9));
+  assert_eq!(
+    cache
+      .cache_update(
+        write_compressed_protobuf(ClientKillFile::default_instance()).unwrap(),
+        "123",
+        async { panic!() },
+      )
+      .await
+      .unwrap_err()
+      .to_string(),
+    "refusing to cache config during suspected crash loop with no nonce change"
+  );
+
+  timeout_tx.send_replace(Duration::minutes(5));
+  cache
+    .cache_update(
+      write_compressed_protobuf(ClientKillFile::default_instance()).unwrap(),
+      "123",
+      async { Ok(()) },
+    )
+    .await
+    .unwrap();
 }
 
 async fn load_cache_state(cache: &SafeFileCache<ClientKillFile>) -> CacheState {
