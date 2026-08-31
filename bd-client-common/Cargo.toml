@@ -21,6 +21,7 @@ bd-workspace-hack.workspace = true
 crc32fast.workspace         = true
 flatbuffers.workspace       = true
 flate2                      = { workspace = true, default-features = false, features = ["zlib"] }
+fs2.workspace               = true
 itertools.workspace         = true
 log.workspace               = true
 mockall.workspace           = true

@@ -6,6 +6,8 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use bd_macros::proto_serializable;
+use fs2::FileExt;
+use std::fs::File;
 use tempfile::TempDir;
 
 #[proto_serializable]
@@ -13,6 +15,19 @@ use tempfile::TempDir;
 struct TestState {
   #[field(id = 1)]
   value: String,
+}
+
+#[test]
+fn prepare_file_for_mmap_resizes_and_preallocates() -> anyhow::Result<()> {
+  let temp_directory = TempDir::with_prefix("file-test")?;
+  let path = temp_directory.path().join("mmap");
+  let file = File::create(&path)?;
+  let size = fs2::allocation_granularity(temp_directory.path())? * 2;
+
+  assert!(super::prepare_file_for_mmap(&file, &path, Some(size))?);
+  assert_eq!(file.metadata()?.len(), size);
+  assert!(file.allocated_size()? >= size);
+  Ok(())
 }
 
 #[test]

@@ -32,6 +32,7 @@ use super::{
 };
 use crate::{AbslCode, Error, Result};
 use bd_client_common::error::InvariantError;
+use bd_client_common::file::prepare_file_for_mmap;
 use bd_log_primitives::LossyIntToU32;
 use bd_stats_common::Counter;
 use crc32fast::Hasher;
@@ -783,59 +784,18 @@ impl RingBufferImpl {
       Error::AbslStatus(AbslCode::InvalidArgument, format!("cannot lock file: {e}"))
     })?;
 
-    let current_file_size = file
-      .metadata()
+    let created_file = prepare_file_for_mmap(&file, filename.as_ref(), Some(u64::from(size)))
       .map_err(|e| {
         Error::AbslStatus(
-          AbslCode::InvalidArgument,
-          format!("cannot get file size: {e}"),
-        )
-      })?
-      .len();
-    let required_file_size = u64::from(size);
-    let allocated_file_size = file.allocated_size().map_err(|e| {
-      Error::AbslStatus(
-        AbslCode::InvalidArgument,
-        format!("cannot get allocated file size: {e}"),
-      )
-    })?;
-    let required_disk_space = required_file_size.saturating_sub(allocated_file_size);
-    let available_disk_space = fs2::available_space(filename.as_ref()).map_err(|e| {
-      Error::AbslStatus(
-        AbslCode::InvalidArgument,
-        format!("cannot get available disk space: {e}"),
-      )
-    })?;
-    if available_disk_space < required_disk_space {
-      log::error!(
-        "({name}) insufficient disk space to preallocate ring buffer file: required \
-         {required_disk_space}, available {available_disk_space}"
-      );
-      return Err(Error::AbslStatus(
-        AbslCode::ResourceExhausted,
-        "insufficient disk space to preallocate ring buffer file".to_string(),
-      ));
-    }
-
-    // Allocate the whole mapped range so writes cannot SIGBUS due to disk exhaustion.
-    let created_file = current_file_size != required_file_size;
-    if created_file {
-      log::info!("({name}) resizing new or wrong sized ring buffer file to size: {size}");
-      file.set_len(size.into()).map_err(|e| {
-        Error::AbslStatus(
-          AbslCode::InvalidArgument,
-          format!("cannot resize file: {e}"),
+          AbslCode::ResourceExhausted,
+          format!("cannot preallocate ring buffer file: {e}"),
         )
       })?;
+    if created_file {
+      log::info!("({name}) resized ring buffer file to size: {size}");
     } else {
       log::info!("({name}) ring buffer file exists with size: {size}");
     }
-    file.allocate(required_file_size).map_err(|e| {
-      Error::AbslStatus(
-        AbslCode::ResourceExhausted,
-        format!("cannot preallocate ring buffer file: {e}"),
-      )
-    })?;
 
     // Now we can memory map the file.
     let mut memory = unsafe {

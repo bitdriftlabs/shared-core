@@ -8,6 +8,7 @@
 use super::journal::VersionedJournal;
 use crate::Scope;
 use crate::versioned_kv_journal::journal::PartialDataLoss;
+use bd_client_common::file::prepare_file_for_mmap;
 use bd_time::TimeProvider;
 use memmap2::{MmapMut, MmapOptions};
 use std::fs::OpenOptions;
@@ -85,17 +86,14 @@ impl<M: protobuf::Message> MemMappedVersionedJournal<M> {
     time_provider: Arc<dyn TimeProvider>,
     entries: impl IntoIterator<Item = (Scope, String, M, u64)>,
   ) -> anyhow::Result<Self> {
+    let file_path = file_path.as_ref();
     let file = OpenOptions::new()
       .read(true)
       .write(true)
       .create(true)
       .truncate(false)
       .open(file_path)?;
-
-    let file_len = file.metadata()?.len();
-    if file_len != size as u64 {
-      file.set_len(size as u64)?;
-    }
+    prepare_file_for_mmap(&file, file_path, Some(size as u64))?;
 
     let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 
@@ -126,7 +124,9 @@ impl<M: protobuf::Message> MemMappedVersionedJournal<M> {
     time_provider: Arc<dyn TimeProvider>,
     f: impl FnMut(Scope, &str, &M, u64),
   ) -> anyhow::Result<(Self, PartialDataLoss)> {
+    let file_path = file_path.as_ref();
     let file = OpenOptions::new().read(true).write(true).open(file_path)?;
+    prepare_file_for_mmap(&file, file_path, None)?;
 
     let (mmap, buffer) = unsafe { Self::create_mmap_buffer(file)? };
 
