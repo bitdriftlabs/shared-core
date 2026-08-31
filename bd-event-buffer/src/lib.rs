@@ -70,7 +70,7 @@ pub struct ProviderSnapshot {
 /// Immutable current-process context captured when an event is admitted.
 #[derive(ApproximateSize, Debug)]
 pub struct AdmissionContext {
-  pub session_id: String,
+  pub session_id: Arc<str>,
   pub provider: ProviderSnapshot,
   pub admitted_at: OffsetDateTime,
 }

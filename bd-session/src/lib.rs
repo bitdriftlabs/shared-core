@@ -93,7 +93,7 @@ pub(crate) struct Transition {
 
 #[derive(Clone, Debug)]
 pub(crate) enum DeferredCallback {
-  SessionIdChanged(String),
+  SessionIdChanged(Arc<str>),
 }
 
 //
@@ -176,7 +176,7 @@ impl Strategy {
   /// Empty initial session IDs are treated as absent and replaced with generated UUIDs.
   pub fn configuration(
     sdk_directory: impl AsRef<Path>,
-    initial_session_id: Option<String>,
+    initial_session_id: Option<Arc<str>>,
     inactivity_timeout: Option<time::Duration>,
     callbacks: Arc<dyn configuration::Callbacks>,
     time_provider: Arc<dyn bd_time::TimeProvider>,
@@ -218,7 +218,7 @@ impl Strategy {
     self.update_tx.subscribe()
   }
 
-  pub fn try_current_session_id(&self) -> anyhow::Result<String> {
+  pub fn try_current_session_id(&self) -> anyhow::Result<Arc<str>> {
     self.ensure_not_in_callback("try_current_session_id")?;
 
     let guard = self.state.lock();
@@ -233,7 +233,7 @@ impl Strategy {
   ///
   /// This is synchronous so caller-thread APIs do not depend on the logger task making progress.
   /// Persistence is coalesced by the background flusher after this method returns.
-  pub fn session_id(&self) -> anyhow::Result<String> {
+  pub fn session_id(&self) -> anyhow::Result<Arc<str>> {
     self.ensure_not_in_callback("session_id")?;
 
     let (current_session_id, effects) = {
@@ -272,7 +272,7 @@ impl Strategy {
   /// Creates a new session and schedules persistence without waiting for disk I/O.
   ///
   /// An empty session ID is treated as absent and replaced with a generated UUID.
-  pub fn start_new_session(&self, session_id: Option<String>) -> anyhow::Result<()> {
+  pub fn start_new_session(&self, session_id: Option<Arc<str>>) -> anyhow::Result<()> {
     self.ensure_not_in_callback("start_new_session")?;
 
     let effects = {
@@ -292,7 +292,7 @@ impl Strategy {
     Ok(())
   }
 
-  fn loaded_session_id(state: &LoadedState) -> anyhow::Result<String> {
+  fn loaded_session_id(state: &LoadedState) -> anyhow::Result<Arc<str>> {
     if state.persisted.current_session_id.is_empty() {
       anyhow::bail!("current session ID is unavailable");
     }
@@ -335,7 +335,7 @@ impl Strategy {
   }
 
   /// The last active session ID from the previous SDK run.
-  pub fn previous_process_session_id(&self) -> Option<String> {
+  pub fn previous_process_session_id(&self) -> Option<Arc<str>> {
     self.state.lock().as_ref().map_or_else(
       || {
         self
@@ -560,7 +560,7 @@ impl Strategy {
   fn start_new_session_locked(
     &self,
     state: &mut Option<LoadedState>,
-    session_id: Option<String>,
+    session_id: Option<Arc<str>>,
   ) -> TransitionEffects {
     // Once a process has initialized session state, its in-memory snapshot is newer than disk
     // until the coalescing writer catches up. Re-reading disk here would drop rapid rotations.
@@ -758,7 +758,7 @@ fn starts_with_sessions(
 impl StartedSessionRecord {
   fn to_proto(&self) -> StartedSession {
     StartedSession {
-      session_id: self.session_id.clone(),
+      session_id: self.session_id.to_string(),
       start_time: OffsetDateTime::from(self.start_time).into_proto(),
       ..Default::default()
     }

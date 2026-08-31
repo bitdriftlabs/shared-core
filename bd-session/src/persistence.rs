@@ -14,6 +14,7 @@ use bd_proto_util::serialization::{
   TimestampMicros,
 };
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use time::OffsetDateTime;
 
 const STATE_FILE_NAME: &str = "current_session.pb";
@@ -27,11 +28,11 @@ const PENDING_STARTED_SESSIONS_FILE_NAME: &str = "pending_started_sessions.pb";
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PersistedSessionState {
   #[field(id = 1)]
-  pub current_session_id: String,
+  pub current_session_id: Arc<str>,
   #[field(id = 2)]
   pub current_session_start: TimestampMicros,
   #[field(id = 3)]
-  pub previous_process_session_id: Option<String>,
+  pub previous_process_session_id: Option<Arc<str>>,
   #[field(id = 4)]
   pub activity_state: ActivityState,
 }
@@ -75,13 +76,13 @@ pub struct PendingStartedSessions {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct StartedSessionRecord {
   #[field(id = 1)]
-  pub session_id: String,
+  pub session_id: Arc<str>,
   #[field(id = 2)]
   pub start_time: TimestampMicros,
 }
 
 impl StartedSessionRecord {
-  pub fn new(session_id: String, start_time: OffsetDateTime) -> Self {
+  pub fn new(session_id: Arc<str>, start_time: OffsetDateTime) -> Self {
     Self {
       session_id,
       start_time: start_time.into(),

@@ -106,7 +106,7 @@ impl ExportLog {
         message: self.message.into(),
         fields,
         matching_fields: LogFields::default(),
-        session_id: self.session_id,
+        session_id: self.session_id.into(),
         occurred_at,
         capture_session: None,
       },

@@ -147,7 +147,7 @@ fn crash_report_upload() {
     .find(|log| log.has_field("_app_exit_info") && log.field("_app_exit_info") == "crash1")
     .unwrap();
   assert_eq!(crash.message(), "AppExit");
-  assert_eq!(crash.session_id(), initial_session_id);
+  assert_eq!(crash.session_id(), initial_session_id.as_ref());
   assert_ne!(crash.timestamp(), timestamp);
   assert_eq!(crash.field("_ootb_field"), "ootb");
   assert!(!crash.has_field("_crash_artifact"));

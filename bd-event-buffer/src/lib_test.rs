@@ -29,7 +29,7 @@ use tokio::sync::{oneshot, watch};
 
 fn current_process_context() -> EventContext {
   EventContext::CurrentProcess(AdmissionContext {
-    session_id: "session".to_string(),
+    session_id: "session".into(),
     provider: ProviderSnapshot {
       timestamp: OffsetDateTime::UNIX_EPOCH,
       ootb_fields: LogFields::default(),
@@ -168,7 +168,7 @@ fn feature_flag_exposure_carries_current_process_context_in_the_protected_lane()
         context: EventContext::CurrentProcess(AdmissionContext { session_id, .. }),
         payload: LoggerIngressPayload::FeatureFlagExposure { flag, variant },
         ..
-      } if session_id == "session" && flag == "flag" && variant.as_deref() == Some("variant")
+      } if session_id.as_ref() == "session" && flag == "flag" && variant.as_deref() == Some("variant")
     )
   ));
 }

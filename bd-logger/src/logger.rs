@@ -537,7 +537,7 @@ impl LoggerHandle {
     self.stats.state_flushing_counters.record(&result);
   }
 
-  pub fn session_id(&self) -> anyhow::Result<String> {
+  pub fn session_id(&self) -> anyhow::Result<Arc<str>> {
     let is_allowed = LOGGER_GUARD.with(|cell| cell.try_borrow().is_ok());
 
     if is_allowed {
@@ -549,7 +549,7 @@ impl LoggerHandle {
     }
   }
 
-  pub fn start_new_session(&self, session_id: Option<String>) -> anyhow::Result<()> {
+  pub fn start_new_session(&self, session_id: Option<Arc<str>>) -> anyhow::Result<()> {
     let is_allowed = LOGGER_GUARD.with(|cell| cell.try_borrow().is_ok());
 
     if is_allowed {

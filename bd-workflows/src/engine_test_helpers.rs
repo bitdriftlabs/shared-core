@@ -152,7 +152,10 @@ impl<C: Counter, H: Histogram> AnnotatedWorkflowsEngine<C, H> {
         log_type: LogType::NORMAL,
         log_level: log_level::DEBUG,
         message: LogMessage::String(log.message),
-        session_id: log.session.unwrap_or_else(|| self.session_id.clone()),
+        session_id: log
+          .session
+          .unwrap_or_else(|| self.session_id.clone())
+          .into(),
         occurred_at: log.occurred_at,
         fields: bd_test_helpers::workflow::make_tags(log.tags),
         matching_fields: LogFields::new(),

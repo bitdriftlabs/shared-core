@@ -221,7 +221,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
-  last_session_id: Option<String>,
+  last_session_id: Option<Arc<str>>,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
@@ -577,18 +577,22 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     Ok(log_replay_result)
   }
 
-  async fn update_system_session_id(&mut self, state_store: &bd_state::Store, session_id: &str) {
-    if self.last_session_id.as_deref() == Some(session_id) {
+  async fn update_system_session_id(
+    &mut self,
+    state_store: &bd_state::Store,
+    session_id: &Arc<str>,
+  ) {
+    if self.last_session_id.as_ref() == Some(session_id) {
       return;
     }
 
-    self.last_session_id = Some(session_id.to_string());
+    self.last_session_id = Some(session_id.clone());
 
     if let Err(e) = state_store
       .insert(
         Scope::System,
         SYSTEM_SESSION_ID_KEY.to_string(),
-        string_value(session_id),
+        string_value(session_id.to_string()),
       )
       .await
     {

@@ -234,7 +234,7 @@ impl Remote for Server {
   ) -> impl Future<Output = Option<String>> {
     future::ready(
       current_logger().and_then(|logger| match logger.current_session_id() {
-        Ok(session_id) => Some(session_id),
+        Ok(session_id) => Some(session_id.to_string()),
         Err(e) => {
           log::warn!("failed to get current session ID: {e}");
           None

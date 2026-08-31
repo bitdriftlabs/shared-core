@@ -657,7 +657,7 @@ fn make_test_log(t: time::OffsetDateTime) -> Vec<u8> {
       message: "".into(),
       fields: [].into(),
       matching_fields: [].into(),
-      session_id: String::new(),
+      session_id: String::new().into(),
       occurred_at: t,
       capture_session: None,
     },

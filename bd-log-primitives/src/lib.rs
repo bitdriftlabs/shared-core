@@ -729,7 +729,7 @@ pub struct Log {
   pub fields: LogFields,
   #[approximate_size(with = approximate_ahash_map_children_bytes)]
   pub matching_fields: LogFields,
-  pub session_id: String,
+  pub session_id: Arc<str>,
   pub occurred_at: time::OffsetDateTime,
   #[approximate_size(skip)]
   pub capture_session: Option<&'static str>,

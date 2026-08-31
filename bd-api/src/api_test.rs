@@ -2038,8 +2038,8 @@ async fn handshake_includes_opaque_entity_and_current_session() {
   );
   assert_eq!(1, state_update.started_sessions.len());
   assert_eq!(
-    setup.session_strategy.session_id().unwrap(),
-    state_update.started_sessions[0].session_id
+    setup.session_strategy.session_id().unwrap().as_ref(),
+    state_update.started_sessions[0].session_id.as_str()
   );
 }
 
@@ -2153,7 +2153,10 @@ async fn session_state_update_is_resent_until_acked() {
   };
 
   assert_eq!(1, state_update.started_sessions.len());
-  assert_eq!(next_session_id, state_update.started_sessions[0].session_id);
+  assert_eq!(
+    next_session_id.as_ref(),
+    state_update.started_sessions[0].session_id.as_str()
+  );
 
   setup.close_stream().await;
   let reconnect_handshake = setup.next_stream(2.seconds()).await.unwrap();
@@ -2163,7 +2166,10 @@ async fn session_state_update_is_resent_until_acked() {
     .unwrap()
     .started_sessions;
   assert_eq!(1, reconnect_started_sessions.len());
-  assert_eq!(next_session_id, reconnect_started_sessions[0].session_id);
+  assert_eq!(
+    next_session_id.as_ref(),
+    reconnect_started_sessions[0].session_id.as_str()
+  );
   assert_ne!(initial_session_id, reconnect_started_sessions[0].session_id);
 
   setup
