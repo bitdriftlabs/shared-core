@@ -6,10 +6,12 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use bd_client_common::PlatformMutex;
+use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::{DataValue, LogFields, LogLevel, LogLine, log_level};
 use bd_macros::ApproximateSize;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::logging::payload::LogType;
+use bd_stats_common::{Counter as _, labels};
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::Notify;
@@ -216,6 +218,7 @@ pub struct EventBuffer {
 struct EventBufferInner {
   state: PlatformMutex<LoggerEventBufferState>,
   notify: Notify,
+  stats: Option<EventBufferStats>,
   #[cfg(test)]
   test_hooks: Option<Arc<dyn TestHooks>>,
 }
@@ -233,7 +236,20 @@ impl EventBuffer {
     }
     #[cfg(not(test))]
     {
-      Self::new_inner(limits)
+      Self::new_inner(limits, None)
+    }
+  }
+
+  /// Creates an `EventBuffer` that emits bounded per-lane admission outcome metrics.
+  #[must_use]
+  pub fn new_with_stats(limits: EventBufferLimits, scope: &Scope) -> Self {
+    #[cfg(test)]
+    {
+      Self::new_inner(limits, Some(EventBufferStats::new(scope)), None)
+    }
+    #[cfg(not(test))]
+    {
+      Self::new_inner(limits, Some(EventBufferStats::new(scope)))
     }
   }
 
@@ -242,11 +258,12 @@ impl EventBuffer {
     limits: EventBufferLimits,
     test_hooks: Option<Arc<dyn TestHooks>>,
   ) -> Self {
-    Self::new_inner(limits, test_hooks)
+    Self::new_inner(limits, None, test_hooks)
   }
 
   fn new_inner(
     limits: EventBufferLimits,
+    stats: Option<EventBufferStats>,
     #[cfg(test)] test_hooks: Option<Arc<dyn TestHooks>>,
   ) -> Self {
     Self {
@@ -255,6 +272,7 @@ impl EventBuffer {
           retention: EventBufferState::new(limits),
         }),
         notify: Notify::new(),
+        stats,
         #[cfg(test)]
         test_hooks,
       }),
@@ -267,12 +285,17 @@ impl EventBuffer {
 
   #[must_use]
   pub fn admit(&self, entry: EventBufferEntry) -> AdmissionOutcome {
+    let lane = entry.lane();
     let outcome = {
       let mut state = self.inner.state.lock();
-      state
-        .retention
-        .admit(entry.lane(), entry.approximate_size_bytes(), entry)
+      state.retention.admit_with_evictions(
+        lane,
+        entry.approximate_size_bytes(),
+        entry,
+        |evicted_lane| self.record_eviction(evicted_lane),
+      )
     };
+    self.record_outcome(lane, outcome);
     if outcome == AdmissionOutcome::Admitted {
       self.inner.notify.notify_one();
     }
@@ -311,6 +334,93 @@ impl EventBuffer {
       state.retention.close();
     }
     self.inner.notify.notify_waiters();
+  }
+
+  fn record_outcome(&self, lane: RetentionLane, outcome: AdmissionOutcome) {
+    if let Some(stats) = &self.inner.stats {
+      stats.record_outcome(lane, outcome);
+    }
+  }
+
+  fn record_eviction(&self, lane: RetentionLane) {
+    if let Some(stats) = &self.inner.stats {
+      stats.record_eviction(lane);
+    }
+  }
+}
+
+//
+// EventBufferStats
+//
+
+/// Bounded `EventBuffer` outcome metrics, labeled only by the fixed retention lane and outcome.
+struct EventBufferStats {
+  admitted: LaneCounters,
+  evicted: LaneCounters,
+  rejected_full: LaneCounters,
+  rejected_oversized: LaneCounters,
+  closed: LaneCounters,
+}
+
+impl EventBufferStats {
+  fn new(scope: &Scope) -> Self {
+    Self {
+      admitted: LaneCounters::new(scope, "admitted"),
+      evicted: LaneCounters::new(scope, "evicted"),
+      rejected_full: LaneCounters::new(scope, "rejected_full"),
+      rejected_oversized: LaneCounters::new(scope, "rejected_oversized"),
+      closed: LaneCounters::new(scope, "closed"),
+    }
+  }
+
+  fn record_outcome(&self, lane: RetentionLane, outcome: AdmissionOutcome) {
+    match outcome {
+      AdmissionOutcome::Admitted => self.admitted.inc(lane),
+      AdmissionOutcome::RejectedFull => self.rejected_full.inc(lane),
+      AdmissionOutcome::RejectedOversized => self.rejected_oversized.inc(lane),
+      AdmissionOutcome::Closed => self.closed.inc(lane),
+    }
+  }
+
+  fn record_eviction(&self, lane: RetentionLane) {
+    self.evicted.inc(lane);
+  }
+}
+
+//
+// LaneCounters
+//
+
+struct LaneCounters {
+  low: Counter,
+  high: Counter,
+  protected: Counter,
+}
+
+impl LaneCounters {
+  fn new(scope: &Scope, outcome: &'static str) -> Self {
+    Self {
+      low: scope.counter_with_labels(
+        "entry_outcomes",
+        labels!("lane" => "low", "outcome" => outcome),
+      ),
+      high: scope.counter_with_labels(
+        "entry_outcomes",
+        labels!("lane" => "high", "outcome" => outcome),
+      ),
+      protected: scope.counter_with_labels(
+        "entry_outcomes",
+        labels!("lane" => "protected", "outcome" => outcome),
+      ),
+    }
+  }
+
+  fn inc(&self, lane: RetentionLane) {
+    match lane {
+      RetentionLane::Low => self.low.inc(),
+      RetentionLane::High => self.high.inc(),
+      RetentionLane::Protected => self.protected.inc(),
+    }
   }
 }
 
