@@ -70,6 +70,7 @@ use bd_time::{SystemTimeProvider, TimeDurationExt};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
+use std::future;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
@@ -333,8 +334,10 @@ impl StaticReportProcessor {
 }
 
 impl ReportProcessor for StaticReportProcessor {
-  async fn process_all_pending_reports(&self) -> Vec<bd_crash_handler::CrashLog> {
-    std::mem::take(&mut *self.0.lock())
+  fn process_all_pending_reports(
+    &self,
+  ) -> impl future::Future<Output = Vec<bd_crash_handler::CrashLog>> {
+    future::ready(std::mem::take(&mut *self.0.lock()))
   }
 }
 
@@ -418,7 +421,7 @@ async fn current_crash_reports_are_admitted_in_report_order() {
 
   buffer.admit_crash_reports(
     report_processor.process_all_pending_reports().await,
-    crate::ReportProcessingSession::Current,
+    &crate::ReportProcessingSession::Current,
   );
 
   let entries = buffer.event_buffer.next_batch(2).await;
@@ -459,7 +462,7 @@ async fn crash_report_batch_stays_at_its_event_buffer_admission_boundary() {
   sender.try_send_log(normal_log("before")).unwrap();
   buffer.admit_crash_reports(
     report_processor.process_all_pending_reports().await,
-    crate::ReportProcessingSession::Current,
+    &crate::ReportProcessingSession::Current,
   );
   sender.try_send_log(normal_log("after")).unwrap();
 
@@ -496,7 +499,7 @@ async fn previous_run_crash_reports_use_previous_process_context() {
 
   buffer.admit_crash_reports(
     report_processor.process_all_pending_reports().await,
-    crate::ReportProcessingSession::PreviousRun,
+    &crate::ReportProcessingSession::PreviousRun,
   );
 
   let entries = buffer.event_buffer.next_batch(2).await;
@@ -536,7 +539,7 @@ fn workflow_generated_logs_keep_the_parent_context_and_overrides() {
       message: "generated".into(),
       fields: [].into(),
       matching_fields: [].into(),
-      session_id: "ignored-by-generated-log".to_string(),
+      session_id: "ignored-by-generated-log".into(),
       occurred_at: OffsetDateTime::UNIX_EPOCH,
       capture_session: Some("generated"),
     },
@@ -611,7 +614,7 @@ fn current_process_admission_context_captures_provider_snapshot() {
   let timestamp = OffsetDateTime::UNIX_EPOCH + 3.seconds();
   let metadata_provider: Arc<dyn bd_log_metadata::MetadataProvider + Send + Sync> =
     Arc::new(LogMetadata {
-      timestamp: Mutex::new(timestamp),
+      timestamp: parking_lot::Mutex::new(timestamp),
       custom_fields: [("custom".into(), "custom-value".into())].into(),
       ootb_fields: [("ootb".into(), "ootb-value".into())].into(),
     });
@@ -1000,7 +1003,7 @@ async fn logs_resource_utilization_log() {
     capture_session: None,
   };
 
-  sender.try_send_log(log.into()).unwrap();
+  sender.try_send_log(log).unwrap();
 
   let state_store = TestStore::new().await;
 
@@ -1186,7 +1189,7 @@ async fn previous_run_log_does_not_override_system_session_id() {
     ),
     capture_session: None,
   };
-  sender.try_send_log(log.into()).unwrap();
+  sender.try_send_log(log).unwrap();
 
   200.milliseconds().sleep().await;
   shutdown_trigger.shutdown().await;
@@ -1421,7 +1424,7 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
   ));
 
   // Now send the log to the new buffer
-  sender_2.try_send_log(log.into()).unwrap();
+  sender_2.try_send_log(log).unwrap();
 
   // Wait for processing
   500.milliseconds().sleep().await;

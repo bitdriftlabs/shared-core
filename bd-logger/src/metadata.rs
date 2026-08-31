@@ -109,12 +109,11 @@ impl MetadataCollector {
   /// Does *not* invoke the field providers as these would incorrectly reflect the state of the
   /// current process.
   pub(crate) fn metadata_from_fields_with_previous_global_state(
-    &self,
     fields: AnnotatedLogFields,
     matching_fields: AnnotatedLogFields,
     global_state_reader: &global_state::Reader,
     timestamp: time::OffsetDateTime,
-  ) -> anyhow::Result<LogMetadata> {
+  ) -> LogMetadata {
     let fields = if let Some(previous_global_state_fields) =
       global_state_reader.previous_global_state_fields()
     {
@@ -127,14 +126,14 @@ impl MetadataCollector {
       fields.into_iter().map(|(k, v)| (k, v.value)).collect()
     };
 
-    Ok(LogMetadata {
+    LogMetadata {
       timestamp,
       fields,
       matching_fields: matching_fields
         .into_iter()
         .map(|(k, v)| (k.clone(), v.value))
         .collect(),
-    })
+    }
   }
 
   /// Returns metadata created by combining values acquired by combining the receiver's fields and
@@ -153,7 +152,7 @@ impl MetadataCollector {
     let timestamp = self.metadata_provider.timestamp()?;
     let (custom_fields, ootb_fields) = self.metadata_provider.fields()?;
 
-    self.normalized_metadata_from_provider_snapshot(
+    Ok(self.normalized_metadata_from_provider_snapshot(
       fields,
       matching_fields,
       log_type,
@@ -163,10 +162,10 @@ impl MetadataCollector {
         ootb_fields,
         custom_fields,
       },
-    )
+    ))
   }
 
-  /// Normalizes a log with provider data captured at EventBuffer admission.
+  /// Normalizes a log with provider data captured at `EventBuffer` admission.
   pub(crate) fn normalized_metadata_from_provider_snapshot(
     &self,
     fields: AnnotatedLogFields,
@@ -174,7 +173,7 @@ impl MetadataCollector {
     log_type: LogType,
     global_state_tracker: &mut global_state::Tracker,
     provider_snapshot: ProviderSnapshot,
-  ) -> anyhow::Result<LogMetadata> {
+  ) -> LogMetadata {
     let ProviderSnapshot {
       timestamp,
       custom_fields,
@@ -251,11 +250,11 @@ impl MetadataCollector {
     .flatten()
     .collect();
 
-    Ok(LogMetadata {
+    LogMetadata {
       timestamp,
       fields,
       matching_fields,
-    })
+    }
   }
 
   pub(crate) fn add_field(&mut self, key: LogFieldKey, value: LogFieldValue) -> anyhow::Result<()> {

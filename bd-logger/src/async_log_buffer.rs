@@ -165,7 +165,7 @@ impl Sender {
         EventBufferEntry::ingress(LoggerIngressEvent::log(
           log,
           EventContext::CurrentProcess(AdmissionContext {
-            session_id: "test".to_string(),
+            session_id: "test".into(),
             provider: ProviderSnapshot {
               timestamp: OffsetDateTime::UNIX_EPOCH,
               ootb_fields: LogFields::default(),
@@ -251,7 +251,7 @@ impl Sender {
           flag,
           variant,
           AdmissionContext {
-            session_id: "test".to_string(),
+            session_id: "test".into(),
             provider: ProviderSnapshot {
               timestamp: OffsetDateTime::UNIX_EPOCH,
               ootb_fields: LogFields::default(),
@@ -376,7 +376,7 @@ fn admit(event_buffer: &EventBuffer, entry: EventBufferEntry) -> Result<(), TryS
 
 /// Converts a workflow-generated log into a line for immediate replay after its source log.
 ///
-/// Generated logs do not re-enter EventBuffer, but must retain their source's immutable admission
+/// Generated logs do not re-enter `EventBuffer`, but must retain their source's immutable admission
 /// context and metadata overrides so they cannot be attributed to a later session or process.
 fn workflow_generated_log(
   log: Log,
@@ -697,25 +697,27 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // Prevent re-entrancy when we are evaluating the log metadata.
     let result = with_thread_local_logger_guard(|| {
       match context {
-        Some(EventContext::CurrentProcess(context)) => self
-          .metadata_collector
-          .normalized_metadata_from_provider_snapshot(
-            log.fields,
-            log.matching_fields,
-            log.log_type,
-            &mut self.global_state_tracker,
-            context.provider,
-          )
-          .map(|metadata| (metadata, Some(context.session_id))),
-        Some(EventContext::PreviousProcess { logged_at }) => self
-          .metadata_collector
-          .metadata_from_fields_with_previous_global_state(
+        Some(EventContext::CurrentProcess(context)) => Ok((
+          self
+            .metadata_collector
+            .normalized_metadata_from_provider_snapshot(
+              log.fields,
+              log.matching_fields,
+              log.log_type,
+              &mut self.global_state_tracker,
+              context.provider,
+            ),
+          Some(context.session_id),
+        )),
+        Some(EventContext::PreviousProcess { logged_at }) => Ok((
+          MetadataCollector::metadata_from_fields_with_previous_global_state(
             log.fields,
             log.matching_fields,
             &self.global_state_reader,
             logged_at,
-          )
-          .map(|metadata| (metadata, None)),
+          ),
+          None,
+        )),
         None
           if matches!(
             &log.attributes_overrides,
@@ -724,15 +726,15 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         {
           // Since we're mimicing a log from the previous app start we want to use the previous
           // global state instead of calling into the providers at this point.
-          self
-            .metadata_collector
-            .metadata_from_fields_with_previous_global_state(
+          Ok((
+            MetadataCollector::metadata_from_fields_with_previous_global_state(
               log.fields,
               log.matching_fields,
               &self.global_state_reader,
               self.metadata_collector.timestamp()?,
-            )
-            .map(|metadata| (metadata, None))
+            ),
+            None,
+          ))
         },
         None => self
           .metadata_collector
@@ -1041,7 +1043,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
            session
         }) = self.report_processor_rx.recv() => {
           let reports = report_processor.process_all_pending_reports().await;
-          self.admit_crash_reports(reports, session);
+          self.admit_crash_reports(reports, &session);
         },
         // TODO(snowp): Benchmark batched reads. A batched implementation must cooperatively yield
         // between entries and return to this select! so Tokio and ALB's other branches progress.
@@ -1118,14 +1120,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   fn admit_crash_reports(
     &self,
     reports: Vec<bd_crash_handler::CrashLog>,
-    session: crate::ReportProcessingSession,
+    session: &crate::ReportProcessingSession,
   ) {
     // Report discovery can perform I/O, so it stays outside EventBuffer. Once reports have been
     // parsed, place the complete group in one admission order without interleaving other ingress.
     let entries = reports
       .into_iter()
       .filter_map(
-        |crash_log| match self.crash_report_entry(crash_log, &session) {
+        |crash_log| match self.crash_report_entry(crash_log, session) {
           Ok(entry) => Some(entry),
           Err(error) => {
             log::debug!("failed to capture crash report admission context: {error}");
@@ -1183,10 +1185,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   ) {
     match async_log_buffer_message {
       LoggerControl::AddLogField(key, value) => {
-        if let Err(e) = self
-          .metadata_collector
-          .add_field(key.clone().into(), value.clone())
-        {
+        if let Err(e) = self.metadata_collector.add_field(key.clone().into(), value) {
           log::warn!("failed to add log field ({key:?}): {e}");
         }
       },

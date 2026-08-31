@@ -244,7 +244,7 @@ impl InitializedLoggingContext {
         // Collect global metadata fields for state changes, similar to logs.
         // We pass empty annotated fields since state changes don't have log-specific fields,
         // but we want to capture global metadata (like device info, app version, etc.)
-        let metadata_result = with_thread_local_logger_guard(|| {
+        let metadata = with_thread_local_logger_guard(|| {
           metadata_collector.normalized_metadata_from_provider_snapshot(
             [].into(), // empty log fields
             [].into(), // empty matching fields
@@ -254,36 +254,17 @@ impl InitializedLoggingContext {
           )
         });
 
-        match metadata_result {
-          Ok(metadata) => {
-            replayer
-              .replay_state_change(
-                state_change,
-                &mut self.processing_pipeline,
-                state_store,
-                now,
-                session_id,
-                &metadata.fields,
-                &metadata.matching_fields,
-              )
-              .await;
-          },
-          Err(e) => {
-            log::debug!("failed to collect metadata for state change, using empty fields: {e}");
-            // Fall back to empty fields if metadata collection fails
-            replayer
-              .replay_state_change(
-                state_change,
-                &mut self.processing_pipeline,
-                state_store,
-                now,
-                session_id,
-                &[].into(),
-                &[].into(),
-              )
-              .await;
-          },
-        }
+        replayer
+          .replay_state_change(
+            state_change,
+            &mut self.processing_pipeline,
+            state_store,
+            now,
+            session_id,
+            &metadata.fields,
+            &metadata.matching_fields,
+          )
+          .await;
       },
       Ok(None) => {},
       Err(e) => {
