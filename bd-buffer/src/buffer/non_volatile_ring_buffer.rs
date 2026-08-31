@@ -32,6 +32,7 @@ use super::{
 };
 use crate::{AbslCode, Error, Result};
 use bd_client_common::error::InvariantError;
+use bd_client_common::file::prepare_file_for_mmap;
 use bd_log_primitives::LossyIntToU32;
 use bd_stats_common::Counter;
 use crc32fast::Hasher;
@@ -772,7 +773,7 @@ impl RingBufferImpl {
       .write(true)
       .create(true)
       .truncate(false)
-      .open(filename)
+      .open(&filename)
       .map_err(|e| {
         Error::AbslStatus(AbslCode::InvalidArgument, format!("cannot open file: {e}"))
       })?;
@@ -783,30 +784,18 @@ impl RingBufferImpl {
       Error::AbslStatus(AbslCode::InvalidArgument, format!("cannot lock file: {e}"))
     })?;
 
-    // See if the file is already the right size, otherwise truncate it.
-    let created_file = if u64::from(size)
-      == file
-        .metadata()
-        .map_err(|e| {
-          Error::AbslStatus(
-            AbslCode::InvalidArgument,
-            format!("cannot get file size: {e}"),
-          )
-        })?
-        .len()
-    {
-      log::info!("({name}) ring buffer file exists with size: {size}");
-      false
-    } else {
-      log::info!("({name}) resizing new or wrong sized ring buffer file to size: {size}");
-      file.set_len(size.into()).map_err(|e| {
+    let created_file = prepare_file_for_mmap(&file, filename.as_ref(), Some(u64::from(size)))
+      .map_err(|e| {
         Error::AbslStatus(
-          AbslCode::InvalidArgument,
-          format!("cannot resize file: {e}"),
+          AbslCode::ResourceExhausted,
+          format!("cannot preallocate ring buffer file: {e}"),
         )
       })?;
-      true
-    };
+    if created_file {
+      log::info!("({name}) resized ring buffer file to size: {size}");
+    } else {
+      log::info!("({name}) ring buffer file exists with size: {size}");
+    }
 
     // Now we can memory map the file.
     let mut memory = unsafe {

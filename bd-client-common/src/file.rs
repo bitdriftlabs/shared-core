@@ -14,9 +14,50 @@ use bd_log_primitives::zlib::DEFAULT_MOBILE_ZLIB_COMPRESSION_LEVEL;
 use bd_proto_util::serialization::{ProtoMessageDeserialize, ProtoMessageSerialize};
 use flate2::Compression;
 use flate2::read::{ZlibDecoder, ZlibEncoder};
+use fs2::FileExt;
+use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+/// Ensures a file is sized and physically allocated before it is writable memory-mapped.
+pub fn prepare_file_for_mmap(
+  file: &File,
+  file_path: &Path,
+  requested_file_size: Option<u64>,
+) -> anyhow::Result<bool> {
+  let current_file_size = file.metadata()?.len();
+  let required_file_size = requested_file_size.unwrap_or(current_file_size);
+  let allocated_file_size = file.allocated_size()?;
+  let required_disk_space = required_file_size.saturating_sub(allocated_file_size);
+  let available_disk_space = fs2::available_space(file_path)?;
+  if available_disk_space < required_disk_space {
+    log::error!(
+      "Insufficient disk space to preallocate memory-mapped file {}: required \
+       {required_disk_space}, available {available_disk_space}",
+      file_path.display()
+    );
+    anyhow::bail!("insufficient disk space to preallocate memory-mapped file");
+  }
+
+  let resized = requested_file_size.is_some() && current_file_size != required_file_size;
+  if resized {
+    file.set_len(required_file_size)?;
+  }
+
+  // Allocate the whole mapped range so writes cannot SIGBUS due to disk exhaustion.
+  if required_file_size > 0
+    && let Err(error) = file.allocate(required_file_size)
+  {
+    log::error!(
+      "Failed to preallocate memory-mapped file {}: {error}",
+      file_path.display()
+    );
+    return Err(error.into());
+  }
+
+  Ok(resized)
+}
 
 pub fn write_compressed_protobuf<T: protobuf::Message>(message: &T) -> anyhow::Result<Vec<u8>> {
   let bytes = message.write_to_bytes()?;
