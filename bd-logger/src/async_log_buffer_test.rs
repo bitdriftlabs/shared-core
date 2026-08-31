@@ -1176,6 +1176,17 @@ async fn previous_run_log_does_not_override_system_session_id() {
   let next_session_id = setup.session_strategy.session_id().unwrap();
   assert_ne!(current_session_id, next_session_id);
 
+  assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
+    &sender,
+    0,
+    LogType::NORMAL,
+    "next".into(),
+    [].into(),
+    [].into(),
+    None,
+    None,
+  ));
+
   let log = LogLine {
     log_level: log_level::DEBUG,
     log_type: LogType::NORMAL,
@@ -1191,7 +1202,18 @@ async fn previous_run_log_does_not_override_system_session_id() {
   };
   sender.try_send_log(log).unwrap();
 
-  200.milliseconds().sleep().await;
+  // The flush control follows both current-process logs and the previous-process log in the
+  // EventBuffer's admission order, so completion proves all three were processed.
+  let flush_sender = sender.clone();
+  tokio::task::spawn_blocking(move || {
+    assert_ok!(flush_sender.flush_state(Block::Yes {
+      timeout: 5.std_seconds(),
+      poll_callback: None,
+    }));
+  })
+  .await
+  .unwrap();
+
   shutdown_trigger.shutdown().await;
   handle.await.unwrap();
 
