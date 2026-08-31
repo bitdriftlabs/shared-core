@@ -308,6 +308,16 @@ fn admission_context(
   metadata_provider: &Arc<dyn MetadataProvider + Send + Sync>,
   session_strategy: &Arc<bd_session::Strategy>,
 ) -> anyhow::Result<EventContext> {
+  if matches!(
+    attributes_overrides,
+    Some(LogAttributesOverrides::PreviousRunSessionID(_))
+  ) {
+    // Prior-process logs only retain their admission timestamp. Capturing current-process fields
+    // would waste work and could drop a crash report if an irrelevant field provider fails.
+    let logged_at = with_thread_local_logger_guard(|| metadata_provider.timestamp())?;
+    return Ok(EventContext::PreviousProcess { logged_at });
+  }
+
   let provider = provider_snapshot(metadata_provider)?;
   admission_context_from_provider(attributes_overrides, provider, session_strategy)
 }

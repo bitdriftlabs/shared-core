@@ -16,6 +16,7 @@ use crate::async_log_buffer::{
   PreConfigItem,
   ReportProcessor,
   Sender,
+  admission_context,
   current_process_admission_context,
   workflow_generated_log,
 };
@@ -327,6 +328,20 @@ impl MetadataProvider for FailingMetadataProvider {
   }
 }
 
+struct FieldsFailingMetadataProvider {
+  timestamp: OffsetDateTime,
+}
+
+impl MetadataProvider for FieldsFailingMetadataProvider {
+  fn timestamp(&self) -> anyhow::Result<OffsetDateTime> {
+    Ok(self.timestamp)
+  }
+
+  fn fields(&self) -> anyhow::Result<(LogFields, LogFields)> {
+    Err(anyhow::anyhow!("metadata provider fields failed"))
+  }
+}
+
 impl StaticReportProcessor {
   fn new(reports: Vec<bd_crash_handler::CrashLog>) -> Self {
     Self(parking_lot::Mutex::new(reports))
@@ -630,6 +645,30 @@ fn current_process_admission_context_captures_provider_snapshot() {
     setup.session_strategy.session_id().unwrap(),
     context.session_id
   );
+}
+
+#[test]
+fn previous_process_admission_does_not_capture_provider_fields() {
+  let setup = Setup::new();
+  let logged_at = OffsetDateTime::UNIX_EPOCH + 3.seconds();
+  let metadata_provider: Arc<dyn MetadataProvider + Send + Sync> =
+    Arc::new(FieldsFailingMetadataProvider {
+      timestamp: logged_at,
+    });
+
+  let context = admission_context(
+    Some(&LogAttributesOverrides::PreviousRunSessionID(
+      OffsetDateTime::UNIX_EPOCH,
+    )),
+    &metadata_provider,
+    &setup.session_strategy,
+  )
+  .unwrap();
+
+  assert!(matches!(
+    context,
+    EventContext::PreviousProcess { logged_at: actual } if actual == logged_at
+  ));
 }
 
 #[test]
