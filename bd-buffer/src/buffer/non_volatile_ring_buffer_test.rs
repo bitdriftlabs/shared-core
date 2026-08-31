@@ -13,6 +13,7 @@ use crate::{AbslCode, Error, Result};
 use assert_matches::assert_matches;
 use bd_client_stats_store::Collector;
 use bd_log_primitives::LossyIntToU32;
+use fs2::FileExt;
 use intrusive_collections::offset_of;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -118,6 +119,36 @@ fn reopen_file() {
   helper.helper().reserve_and_commit("aaaaaa");
   helper.reopen();
   helper.helper().read_and_verify("aaaaaa");
+}
+
+// Verify that a correct-length existing file is physically allocated before it is memory mapped.
+#[test]
+fn preallocates_existing_file() {
+  let temp_dir = TempDir::with_prefix("buffer_test").unwrap();
+  let filename = temp_dir.path().join("buffer");
+  let size = 4096_u32;
+  let file = File::create(&filename).unwrap();
+  file.set_len(size.into()).unwrap();
+  drop(file);
+
+  let stats = StatsTestHelper::new(&Collector::default().scope(""));
+  let result = RingBufferImpl::new(
+    "test".to_string(),
+    &filename,
+    size,
+    AllowOverwrite::Yes,
+    super::BlockWhenReservingIntoConcurrentRead::No,
+    super::PerRecordCrc32Check::Yes,
+    stats.stats,
+    |_| {},
+  );
+  let Err(Error::AbslStatus(code, message)) = result else {
+    panic!("expected invalid header to be rejected");
+  };
+  assert_eq!(code, AbslCode::DataLoss);
+  assert_eq!(message, "wrong version or size");
+
+  assert!(File::open(filename).unwrap().allocated_size().unwrap() >= u64::from(size));
 }
 
 // Make sure writing into a concurrent reader fails.
