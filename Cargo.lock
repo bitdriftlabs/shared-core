@@ -711,6 +711,7 @@ dependencies = [
  "bd-workspace-hack",
  "criterion",
  "gungraun",
+ "parking_lot",
  "proptest",
  "time",
  "tokio",

@@ -144,6 +144,7 @@ impl LoggerIngressEvent {
   }
 
   /// Splits an admitted event so ALB can process its payload before resolving a blocking caller.
+  #[must_use]
   pub fn into_parts(
     self,
   ) -> (
