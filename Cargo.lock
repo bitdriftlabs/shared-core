@@ -704,10 +704,12 @@ name = "bd-event-buffer"
 version = "1.0.0"
 dependencies = [
  "bd-client-common",
+ "bd-client-stats-store",
  "bd-completion",
  "bd-log-primitives",
  "bd-macros",
  "bd-proto",
+ "bd-stats-common",
  "bd-workspace-hack",
  "criterion",
  "gungraun",

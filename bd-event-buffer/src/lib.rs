@@ -328,9 +328,15 @@ impl EventBuffer {
       entries
         .into_iter()
         .map(|entry| {
-          state
-            .retention
-            .admit(entry.lane(), entry.approximate_size_bytes(), entry)
+          let lane = entry.lane();
+          let outcome = state.retention.admit_with_evictions(
+            lane,
+            entry.approximate_size_bytes(),
+            entry,
+            |evicted_lane| self.record_eviction(evicted_lane),
+          );
+          self.record_outcome(lane, outcome);
+          outcome
         })
         .collect::<Vec<_>>()
     };
