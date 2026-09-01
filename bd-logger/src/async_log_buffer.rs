@@ -19,10 +19,10 @@ use crate::pre_config_buffer::{PendingStateOperation, PreConfigBuffer, PreConfig
 use crate::{Block, battery, internal_report, network};
 use anyhow::anyhow;
 use bd_api::DataUpload;
-use bd_bounded_buffer::TrySendError;
 use bd_buffer::BuffersWithAck;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_client_common::{maybe_await, maybe_await_map};
+use bd_client_stats_store::{Counter, Scope as StatsScope};
 use bd_crash_handler::global_state;
 use bd_device::Store;
 pub use bd_event_buffer::LoggerControl;
@@ -66,6 +66,7 @@ use bd_state::{
   Scope,
   string_value,
 };
+use bd_stats_common::{Counter as _, labels};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflow_stats::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_workflows::workflow::WorkflowDebugStateMap;
@@ -97,6 +98,58 @@ impl ReportProcessor for bd_crash_handler::Monitor {
 impl ReportProcessor for () {
   fn process_all_pending_reports(&self) -> impl Future<Output = Vec<bd_crash_handler::CrashLog>> {
     ready(vec![])
+  }
+}
+
+//
+// AdmissionError
+//
+
+/// A logger event could not be admitted to the asynchronous processing pipeline.
+#[derive(Debug, thiserror::Error)]
+pub enum AdmissionError {
+  #[error("event buffer size overflow")]
+  FullSizeOverflow,
+  #[error("event buffer closed")]
+  Closed,
+  #[error("event context capture failed")]
+  ContextCaptureFailed,
+}
+
+//
+// AdmissionCounters
+//
+
+/// Outcome counters for logger ingress operations.
+#[derive(Clone)]
+pub struct AdmissionCounters {
+  ok: Counter,
+  err_full_size_overflow: Counter,
+  err_closed: Counter,
+  err_context_capture_failed: Counter,
+}
+
+impl AdmissionCounters {
+  pub(crate) fn new(scope: &StatsScope, operation_name: &str) -> Self {
+    Self {
+      ok: scope.counter_with_labels(operation_name, labels!("result" => "success")),
+      err_full_size_overflow: scope
+        .counter_with_labels(operation_name, labels!("result" => "failure_size_overflow")),
+      err_closed: scope.counter_with_labels(operation_name, labels!("result" => "failure_closed")),
+      err_context_capture_failed: scope.counter_with_labels(
+        operation_name,
+        labels!("result" => "failure_context_capture"),
+      ),
+    }
+  }
+
+  pub(crate) fn record(&self, result: &Result<(), AdmissionError>) {
+    match result {
+      Ok(()) => self.ok.inc(),
+      Err(AdmissionError::FullSizeOverflow) => self.err_full_size_overflow.inc(),
+      Err(AdmissionError::Closed) => self.err_closed.inc(),
+      Err(AdmissionError::ContextCaptureFailed) => self.err_context_capture_failed.inc(),
+    }
   }
 }
 
@@ -138,7 +191,7 @@ impl Sender {
     }
   }
 
-  pub fn try_send_log(&self, log: LogLine) -> Result<(), TrySendError> {
+  pub fn try_send_log(&self, log: LogLine) -> Result<(), AdmissionError> {
     match &self.inner {
       SenderInner::EventBuffer {
         event_buffer,
@@ -152,7 +205,7 @@ impl Sender {
         )
         .map_err(|error| {
           log::debug!("failed to capture log admission context: {error}");
-          TrySendError::ContextCaptureFailed
+          AdmissionError::ContextCaptureFailed
         })?;
         admit(
           event_buffer,
@@ -183,7 +236,7 @@ impl Sender {
     &self,
     log: LogLine,
     provider: ProviderSnapshot,
-  ) -> Result<(), TrySendError> {
+  ) -> Result<(), AdmissionError> {
     match &self.inner {
       SenderInner::EventBuffer {
         event_buffer,
@@ -197,7 +250,7 @@ impl Sender {
         )
         .map_err(|error| {
           log::debug!("failed to capture log admission context: {error}");
-          TrySendError::ContextCaptureFailed
+          AdmissionError::ContextCaptureFailed
         })?;
         admit(
           event_buffer,
@@ -209,7 +262,7 @@ impl Sender {
     }
   }
 
-  pub fn try_send_control(&self, msg: LoggerControl) -> Result<(), TrySendError> {
+  pub fn try_send_control(&self, msg: LoggerControl) -> Result<(), AdmissionError> {
     match &self.inner {
       SenderInner::EventBuffer { event_buffer, .. } => {
         admit(event_buffer, EventBufferEntry::Control(msg))
@@ -225,7 +278,7 @@ impl Sender {
     &self,
     flag: String,
     variant: Option<String>,
-  ) -> Result<(), TrySendError> {
+  ) -> Result<(), AdmissionError> {
     match &self.inner {
       SenderInner::EventBuffer {
         event_buffer,
@@ -235,7 +288,7 @@ impl Sender {
         let context = current_process_admission_context(metadata_provider, session_strategy)
           .map_err(|error| {
             log::debug!("failed to capture feature flag admission context: {error}");
-            TrySendError::ContextCaptureFailed
+            AdmissionError::ContextCaptureFailed
           })?;
         admit(
           event_buffer,
@@ -264,7 +317,7 @@ impl Sender {
     }
   }
 
-  pub fn flush_state(&self, block: Block) -> Result<(), TrySendError> {
+  pub fn flush_state(&self, block: Block) -> Result<(), AdmissionError> {
     let (completion_tx, completion_rx) = if matches!(block, Block::Yes { .. }) {
       let (tx, rx) = bd_completion::Sender::new();
       (Some(tx), Some(rx))
@@ -374,13 +427,13 @@ fn current_process_admission_context_from_provider(
   })
 }
 
-fn admit(event_buffer: &EventBuffer, entry: EventBufferEntry) -> Result<(), TrySendError> {
+fn admit(event_buffer: &EventBuffer, entry: EventBufferEntry) -> Result<(), AdmissionError> {
   match event_buffer.admit(entry) {
     AdmissionOutcome::Admitted => Ok(()),
     AdmissionOutcome::RejectedFull | AdmissionOutcome::RejectedOversized => {
-      Err(TrySendError::FullSizeOverflow)
+      Err(AdmissionError::FullSizeOverflow)
     },
-    AdmissionOutcome::Closed => Err(TrySendError::Closed),
+    AdmissionOutcome::Closed => Err(AdmissionError::Closed),
   }
 }
 
@@ -509,12 +562,19 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // The old log and control channels had 1 MiB and 10 MiB byte budgets respectively. Keep
     // those bootstrap limits while moving both flows into one ordered ingress.
     let mut event_buffer_limit_watches = EventBufferLimitWatches::new(runtime_loader);
-    let event_buffer = EventBuffer::new(EventBufferLimits {
-      log_limit_bytes: uninitialized_logging_context
-        .pre_config_log_buffer
-        .max_size(),
-      total_limit_bytes: 10 * 1024 * 1024,
-    });
+    let event_buffer_scope = uninitialized_logging_context
+      .stats
+      .scope
+      .scope("event_buffer");
+    let event_buffer = EventBuffer::new_with_stats(
+      EventBufferLimits {
+        log_limit_bytes: uninitialized_logging_context
+          .pre_config_log_buffer
+          .max_size(),
+        total_limit_bytes: 10 * 1024 * 1024,
+      },
+      &event_buffer_scope,
+    );
     // The bootstrap limits cover admission before runtime configuration is available. Stage the
     // current runtime pair as well: this covers a persisted configuration that loaded before ALB
     // was built, while EventBuffer still applies it only at its next admission.
@@ -610,7 +670,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     matching_fields: AnnotatedLogFields,
     attributes_overrides: Option<LogAttributesOverrides>,
     capture_session: Option<&'static str>,
-  ) -> Result<(), TrySendError> {
+  ) -> Result<(), AdmissionError> {
     let log = LogLine {
       log_level,
       log_type,
@@ -621,12 +681,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       capture_session,
     };
 
-    // There are two possible reasons for the call to fail:
-    // 1. The channel is full due to us hitting the capacity limit.
+    // There are three possible reasons for the call to fail:
+    // 1. EventBuffer is full due to us hitting the capacity limit.
     // 2. The receiver side has been closed. This should only happen in cases in which the event
     //    loop has shut down, which means that we either errored out and defensively shut down the
     //    loop or explicitly shut it down. In either case it is not helpful to report this as an
     //    unexpected error.
+    // 3. Admission-time session or metadata capture failed, so the event was never enqueued.
     tx.try_send_log(log)
       .inspect_err(|e| log::debug!("enqueue_log: event admission failed: {e:?}"))?;
 
@@ -643,7 +704,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     attributes_overrides: Option<LogAttributesOverrides>,
     capture_session: Option<&'static str>,
     provider: ProviderSnapshot,
-  ) -> Result<(), TrySendError> {
+  ) -> Result<(), AdmissionError> {
     let log = LogLine {
       log_level,
       log_type,

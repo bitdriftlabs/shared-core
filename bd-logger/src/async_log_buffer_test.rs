@@ -7,6 +7,7 @@
 
 use crate::Block;
 use crate::async_log_buffer::{
+  AdmissionError,
   AsyncLogBuffer,
   EventBufferLimitWatches,
   LogAttributesOverrides,
@@ -25,7 +26,6 @@ use crate::client_config::TailConfigurations;
 use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
 use bd_api::{DataUpload, SimpleNetworkQualityProvider};
-use bd_bounded_buffer::TrySendError;
 use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::Collector;
@@ -306,6 +306,21 @@ async fn runtime_budget_updates_apply_on_the_next_event_buffer_admission() {
   buffer.refresh_event_buffer_limits();
 
   assert!(sender.try_send_log(normal_log("rejected")).is_err());
+}
+
+#[test]
+fn event_buffer_admission_outcomes_are_recorded() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (_buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+
+  sender.try_send_log(normal_log("admitted")).unwrap();
+
+  setup.collector.assert_counter_eq(
+    1,
+    "logger:event_buffer:entry_outcomes",
+    labels! { "lane" => "high", "outcome" => "admitted" },
+  );
 }
 
 struct TestReplay {
@@ -619,7 +634,7 @@ fn sender_reports_context_capture_failures_separately_from_capacity() {
 
   assert!(matches!(
     sender.try_send_log(normal_log("unadmitted")),
-    Err(TrySendError::ContextCaptureFailed)
+    Err(AdmissionError::ContextCaptureFailed)
   ));
 }
 

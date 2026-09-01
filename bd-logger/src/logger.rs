@@ -10,11 +10,10 @@
 mod logger_test;
 
 use crate::app_version::{AppVersion, Repository};
-use crate::async_log_buffer::{self, AsyncLogBuffer, LogAttributesOverrides};
+use crate::async_log_buffer::{self, AdmissionCounters, AsyncLogBuffer, LogAttributesOverrides};
 use crate::log_replay::LoggerReplay;
 use crate::{MetadataProvider, app_version};
 use bd_api::Metadata;
-use bd_bounded_buffer::{self};
 use bd_client_stats_store::{Counter, Scope};
 use bd_event_buffer::ProviderSnapshot;
 use bd_log_primitives::{
@@ -47,8 +46,8 @@ use tokio::sync::watch;
 #[derive(Clone)]
 #[allow(clippy::struct_field_names)]
 pub struct Stats {
-  pub(crate) log_emission_counters: bd_bounded_buffer::SendCounters,
-  pub(crate) state_flushing_counters: bd_bounded_buffer::SendCounters,
+  pub(crate) log_emission_counters: AdmissionCounters,
+  pub(crate) state_flushing_counters: AdmissionCounters,
   pub(crate) session_replay_duration_histogram: bd_client_stats_store::Histogram,
   sleep_enabled: Counter,
   sleep_disabled: Counter,
@@ -70,14 +69,8 @@ impl Stats {
     let sleep_scope = stats.scope("sleep");
 
     Self {
-      log_emission_counters: bd_bounded_buffer::SendCounters::new(
-        &async_log_buffer_scope,
-        "log_enqueueing",
-      ),
-      state_flushing_counters: bd_bounded_buffer::SendCounters::new(
-        &async_log_buffer_scope,
-        "state_flushing",
-      ),
+      log_emission_counters: AdmissionCounters::new(&async_log_buffer_scope, "log_enqueueing"),
+      state_flushing_counters: AdmissionCounters::new(&async_log_buffer_scope, "state_flushing"),
       session_replay_duration_histogram: replay_scope.histogram("capture_time_s"),
       sleep_enabled: sleep_scope.counter_with_labels(
         "transitions",
