@@ -33,6 +33,95 @@ mod varint;
 
 const CRC_LEN: usize = 4;
 
+/// A validated journal frame whose payload remains unparsed.
+///
+/// This supports readers that need only routing metadata from a journal and should not allocate
+/// or protobuf-decode every state value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawFrame<'a> {
+  /// Scope identifier for namespacing.
+  pub scope: Scope,
+  /// Key for this entry.
+  pub key: &'a str,
+  /// Timestamp in microseconds since UNIX epoch.
+  pub timestamp_micros: u64,
+  /// Opaque encoded payload bytes.
+  pub payload: &'a [u8],
+}
+
+/// Decode and validate a single journal frame without decoding its payload.
+pub fn decode_raw_frame(buf: &[u8]) -> anyhow::Result<(RawFrame<'_>, usize)> {
+  // Decode frame length varint.
+  let (frame_len_u64, length_len) =
+    varint::decode(buf).ok_or_else(|| anyhow::anyhow!("Invalid length varint"))?;
+  let frame_len = usize::try_from(frame_len_u64)
+    .map_err(|_| anyhow::anyhow!("Frame length too large: {frame_len_u64}"))?;
+  let total_len = length_len
+    .checked_add(frame_len)
+    .ok_or_else(|| anyhow::anyhow!("Frame length overflow"))?;
+  if buf.len() < total_len {
+    anyhow::bail!(
+      "Incomplete frame: need {} bytes, have {} bytes",
+      total_len,
+      buf.len()
+    );
+  }
+
+  let frame_data = &buf[length_len .. total_len];
+  if frame_data.is_empty() {
+    anyhow::bail!("Frame too small for scope");
+  }
+  let scope = Scope::from_repr(frame_data[0])
+    .ok_or_else(|| anyhow::anyhow!("Invalid scope value: {}", frame_data[0]))?;
+  let mut offset = 1;
+
+  let (key_len_u64, key_len_varint_len) = varint::decode(&frame_data[offset ..])
+    .ok_or_else(|| anyhow::anyhow!("Invalid key length varint"))?;
+  let key_len = usize::try_from(key_len_u64)
+    .map_err(|_| anyhow::anyhow!("Key length too large: {key_len_u64}"))?;
+  offset = offset
+    .checked_add(key_len_varint_len)
+    .ok_or_else(|| anyhow::anyhow!("Key length overflow"))?;
+  let key_end = offset
+    .checked_add(key_len)
+    .ok_or_else(|| anyhow::anyhow!("Key length overflow"))?;
+  if frame_data.len() < key_end {
+    anyhow::bail!("Frame too small for key");
+  }
+  let key = str::from_utf8(&frame_data[offset .. key_end])
+    .map_err(|error| anyhow::anyhow!("Invalid UTF-8 in key: {error}"))?;
+  offset = key_end;
+
+  let (timestamp_micros, timestamp_len) = varint::decode(&frame_data[offset ..])
+    .ok_or_else(|| anyhow::anyhow!("Invalid timestamp varint"))?;
+  offset = offset
+    .checked_add(timestamp_len)
+    .ok_or_else(|| anyhow::anyhow!("Timestamp length overflow"))?;
+  if frame_data.len() < offset + CRC_LEN {
+    anyhow::bail!("Frame too small for CRC");
+  }
+
+  let payload_end = frame_data.len() - CRC_LEN;
+  let payload = &frame_data[offset .. payload_end];
+  let stored_crc = u32::from_le_bytes(frame_data[payload_end ..].try_into()?);
+  let mut hasher = Hasher::new();
+  hasher.update(&frame_data[.. payload_end]);
+  let computed_crc = hasher.finalize();
+  if stored_crc != computed_crc {
+    anyhow::bail!("CRC mismatch: expected 0x{stored_crc:08x}, got 0x{computed_crc:08x}");
+  }
+
+  Ok((
+    RawFrame {
+      scope,
+      key,
+      timestamp_micros,
+      payload,
+    },
+    total_len,
+  ))
+}
+
 /// Frame structure for a journal entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Frame<'a, M> {
@@ -174,74 +263,12 @@ impl<'a, M: protobuf::Message> Frame<'a, M> {
   ///
   /// Returns (Frame, `bytes_consumed`) or error if invalid/incomplete.
   pub fn decode(buf: &'a [u8]) -> anyhow::Result<(Self, usize)> {
-    // Decode frame length varint
-    let (frame_len_u64, length_len) =
-      varint::decode(buf).ok_or_else(|| anyhow::anyhow!("Invalid length varint"))?;
-
-    let frame_len = usize::try_from(frame_len_u64)
-      .map_err(|_| anyhow::anyhow!("Frame length too large: {frame_len_u64}"))?;
-
-    // Check if we have the complete frame
-    let total_len = length_len + frame_len; // length varint + frame content
-    if buf.len() < total_len {
-      anyhow::bail!(
-        "Incomplete frame: need {} bytes, have {} bytes",
-        total_len,
-        buf.len()
-      );
-    }
-
-    let frame_data = &buf[length_len .. total_len];
-
-    // Decode scope (u8)
-    if frame_data.is_empty() {
-      anyhow::bail!("Frame too small for scope");
-    }
-    let scope = Scope::from_repr(frame_data[0])
-      .ok_or_else(|| anyhow::anyhow!("Invalid scope value: {}", frame_data[0]))?;
-    let mut offset = 1;
-
-    // Decode key length varint
-    let (key_len_u64, key_len_varint_len) = varint::decode(&frame_data[offset ..])
-      .ok_or_else(|| anyhow::anyhow!("Invalid key length varint"))?;
-    let key_len = usize::try_from(key_len_u64)
-      .map_err(|_| anyhow::anyhow!("Key length too large: {key_len_u64}"))?;
-    offset += key_len_varint_len;
-
-    // Decode key
-    if frame_data.len() < offset + key_len {
-      anyhow::bail!("Frame too small for key");
-    }
-    let key = str::from_utf8(&frame_data[offset .. offset + key_len])
-      .map_err(|e| anyhow::anyhow!("Invalid UTF-8 in key: {e}"))?;
-    offset += key_len;
-
-    // Decode timestamp varint
-    let (timestamp_micros, timestamp_len) = varint::decode(&frame_data[offset ..])
-      .ok_or_else(|| anyhow::anyhow!("Invalid timestamp varint"))?;
-    offset += timestamp_len;
-
-    // Extract payload and CRC
-    if frame_data.len() < offset + CRC_LEN {
-      anyhow::bail!("Frame too small for CRC");
-    }
-
-    let payload_end = frame_data.len() - CRC_LEN;
-    let payload = frame_data[offset .. payload_end].to_vec();
-    let stored_crc = u32::from_le_bytes(frame_data[payload_end ..].try_into()?);
-
-    // Verify CRC
-    let mut hasher = Hasher::new();
-    hasher.update(&frame_data[.. payload_end]); // Everything except CRC
-    let computed_crc = hasher.finalize();
-
-    if stored_crc != computed_crc {
-      anyhow::bail!("CRC mismatch: expected 0x{stored_crc:08x}, got 0x{computed_crc:08x}");
-    }
-
-    let payload =
-      M::parse_from_bytes(&payload).map_err(|e| anyhow::anyhow!("Failed to parse payload: {e}"))?;
-
-    Ok((Self::new(scope, key, timestamp_micros, payload), total_len))
+    let (frame, bytes_consumed) = decode_raw_frame(buf)?;
+    let payload = M::parse_from_bytes(frame.payload)
+      .map_err(|error| anyhow::anyhow!("Failed to parse payload: {error}"))?;
+    Ok((
+      Self::new(frame.scope, frame.key, frame.timestamp_micros, payload),
+      bytes_consumed,
+    ))
   }
 }
