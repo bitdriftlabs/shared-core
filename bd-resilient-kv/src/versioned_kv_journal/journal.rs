@@ -65,7 +65,7 @@ pub struct VersionedJournal<'a, M> {
 // purposes we can abstract out the enum we want to use for frame types.
 
 // The journal format version.
-const VERSION: u8 = 1;
+pub const VERSION: u8 = 1;
 
 // Size of the journal header in bytes. The header consists of:
 // - 1 byte for the version (u8)

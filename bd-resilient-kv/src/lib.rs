@@ -28,11 +28,26 @@ mod tests;
 mod scope;
 pub mod versioned_kv_journal;
 
+/// Maximum decompressed state journal accepted by server-side readers.
+pub const MAX_DECOMPRESSED_STATE_SNAPSHOT_BYTES: usize = 10 * 1024 * 1024;
+
+/// Maximum compressed state journal accepted by server-side readers.
+///
+/// This limits request memory and decompressor input work independently of the expanded journal
+/// limit above.
+pub const MAX_COMPRESSED_STATE_SNAPSHOT_BYTES: usize = 10 * 1024 * 1024;
+
 pub use bd_proto::protos::state::payload::StateValue;
 pub use bd_proto::protos::state::payload::state_value::Value_type;
 pub use scope::Scope;
 pub use versioned_kv_journal::filename::SnapshotFilename;
-pub use versioned_kv_journal::recovery::VersionedRecovery;
+pub use versioned_kv_journal::recovery::{
+  DecodedStateChange,
+  VersionedRecovery,
+  decode_compressed_journal,
+  decode_journal,
+  extract_non_empty_string_values_from_compressed_journal,
+};
 pub use versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry};
 pub use versioned_kv_journal::store::{DataLoss, ScopedMaps, VersionedKVStore};
 pub use versioned_kv_journal::{

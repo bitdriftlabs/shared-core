@@ -36,10 +36,21 @@ pub fn encode(value: u64, mut buf: &mut [u8]) -> usize {
 /// Returns (value, `bytes_read`) or None if buffer is incomplete/invalid.
 #[must_use]
 pub fn decode(buf: &[u8]) -> Option<(u64, usize)> {
-  let value = protobuf::CodedInputStream::from_bytes(buf)
-    .read_raw_varint64()
-    .ok()?;
+  let mut value = 0_u64;
+  for (index, byte) in buf.iter().copied().take(MAX_SIZE).enumerate() {
+    let bits = u64::from(byte & 0x7f);
+    // A u64's tenth varint byte can contain only its most significant bit.
+    if index == MAX_SIZE - 1 && (byte & 0x80 != 0 || bits > 1) {
+      return None;
+    }
+    value |= bits << (index * 7);
 
-  let bytes_read = compute_size(value);
-  Some((value, bytes_read))
+    if byte & 0x80 == 0 {
+      let bytes_read = index + 1;
+      // Journal frames always use the canonical encoding emitted by encode(). Rejecting
+      // overlong values prevents a following field from being interpreted at the wrong offset.
+      return (compute_size(value) == bytes_read).then_some((value, bytes_read));
+    }
+  }
+  None
 }
