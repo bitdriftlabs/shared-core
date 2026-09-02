@@ -88,6 +88,11 @@ fn varint_too_long() {
 }
 
 #[test]
+fn varint_overlong_encoding_is_rejected() {
+  assert!(varint::decode(&[0x81, 0x00]).is_none());
+}
+
+#[test]
 fn frame_encode_decode() {
   let frame = Frame::new(
     Scope::FeatureFlagExposure,

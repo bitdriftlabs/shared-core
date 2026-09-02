@@ -29,6 +29,7 @@ use bd_time::TestTimeProvider;
 use crc32fast::Hasher;
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
+use protobuf::Message;
 use std::io::Write;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -58,10 +59,24 @@ fn append_varint(mut value: u64, output: &mut Vec<u8>) {
 }
 
 fn encode_raw_frame(scope: Scope, key: &str, timestamp_micros: u64, payload: &[u8]) -> Vec<u8> {
+  let mut key_len = Vec::new();
+  append_varint(key.len().try_into().unwrap(), &mut key_len);
+  let mut timestamp = Vec::new();
+  append_varint(timestamp_micros, &mut timestamp);
+  encode_raw_frame_with_inner_varints(scope, key, &key_len, &timestamp, payload)
+}
+
+fn encode_raw_frame_with_inner_varints(
+  scope: Scope,
+  key: &str,
+  key_len: &[u8],
+  timestamp: &[u8],
+  payload: &[u8],
+) -> Vec<u8> {
   let mut frame_data = vec![scope.to_u8()];
-  append_varint(key.len().try_into().unwrap(), &mut frame_data);
+  frame_data.extend_from_slice(key_len);
   frame_data.extend_from_slice(key.as_bytes());
-  append_varint(timestamp_micros, &mut frame_data);
+  frame_data.extend_from_slice(timestamp);
   frame_data.extend_from_slice(payload);
 
   let mut hasher = Hasher::new();
@@ -499,6 +514,48 @@ fn streaming_scanner_rejects_invalid_frame_lengths() {
       &frame_past_journal_end,
       MAX_DECOMPRESSED_STATE_SNAPSHOT_BYTES,
       1,
+    )
+    .is_err()
+  );
+}
+
+#[test]
+fn streaming_scanner_rejects_overlong_inner_varints() {
+  let payload = make_string_value("session-a").write_to_bytes().unwrap();
+  let overlong_key_length = compressed_journal(
+    vec![encode_raw_frame_with_inner_varints(
+      Scope::System,
+      "sid",
+      &[0x82, 0x00],
+      &[0x01],
+      &payload,
+    )],
+    0,
+  );
+  let overlong_timestamp = compressed_journal(
+    vec![encode_raw_frame_with_inner_varints(
+      Scope::System,
+      "sid",
+      &[0x03],
+      &[0x81, 0x00],
+      &payload,
+    )],
+    0,
+  );
+
+  assert!(
+    scan_session_ids(
+      &overlong_key_length,
+      MAX_DECOMPRESSED_STATE_SNAPSHOT_BYTES,
+      1
+    )
+    .is_err()
+  );
+  assert!(
+    scan_session_ids(
+      &overlong_timestamp,
+      MAX_DECOMPRESSED_STATE_SNAPSHOT_BYTES,
+      1
     )
     .is_err()
   );
