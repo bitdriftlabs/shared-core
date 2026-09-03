@@ -24,6 +24,9 @@ pub struct EventBufferState<T> {
   pending_limits: Option<EventBufferLimits>,
   next_admission_id: u64,
   closed: bool,
+  gate: DrainGate,
+  gate_release_requested: bool,
+  startup_previous: LaneState<T>,
   protected: LaneState<T>,
   high: LaneState<T>,
   low: LaneState<T>,
@@ -37,6 +40,9 @@ impl<T> EventBufferState<T> {
       pending_limits: None,
       next_admission_id: 0,
       closed: false,
+      gate: DrainGate::Holding,
+      gate_release_requested: false,
+      startup_previous: LaneState::new(),
       protected: LaneState::new(),
       high: LaneState::new(),
       low: LaneState::new(),
@@ -51,13 +57,14 @@ impl<T> EventBufferState<T> {
   /// Applies staged limits, then admits or drops an entry while the owner holds its mutex.
   #[cfg(test)]
   pub(crate) fn admit(&mut self, lane: RetentionLane, bytes: usize, entry: T) -> AdmissionOutcome {
-    self.admit_with_evictions(lane, bytes, entry, |_| {})
+    self.admit_with_evictions(lane, false, bytes, entry, |_| {})
   }
 
   /// Admits an entry and reports every retained entry displaced by pressure or a budget shrink.
   pub(crate) fn admit_with_evictions(
     &mut self,
     lane: RetentionLane,
+    previous_process: bool,
     bytes: usize,
     entry: T,
     mut on_eviction: impl FnMut(RetentionLane),
@@ -74,25 +81,36 @@ impl<T> EventBufferState<T> {
 
     // Check admission without changing queue capacity first. A rejected entry must not transiently
     // grow a full lane's backing allocation beyond the configured retained-byte budget.
-    if !self.can_make_room(lane, bytes) || !self.reserve(lane) {
+    let startup_previous = previous_process && self.gate.is_holding();
+    if !self.can_make_room(lane, bytes) || !self.reserve(lane, startup_previous) {
       return AdmissionOutcome::RejectedFull;
     }
     self.make_room(lane, bytes, &mut on_eviction);
 
     let admission_id = self.next_admission_id;
     self.next_admission_id = self.next_admission_id.wrapping_add(1);
-    self.lane_mut(lane).push(QueuedEntry {
-      admission_id,
-      bytes,
-      entry,
-    });
+    self
+      .lane_mut_for_admission(lane, startup_previous)
+      .push(QueuedEntry {
+        admission_id,
+        bytes,
+        entry,
+      });
     AdmissionOutcome::Admitted
   }
 
   #[must_use]
   pub fn take_batch(&mut self, max_entries: usize) -> Vec<T> {
+    if self.gate.is_holding() {
+      return vec![];
+    }
+
     let mut result = Vec::new();
     while result.len() < max_entries {
+      if let Some(entry) = self.startup_previous.pop_oldest() {
+        result.push(entry.entry);
+        continue;
+      }
       let Some(lane) = self.oldest_retained_lane() else {
         break;
       };
@@ -109,6 +127,7 @@ impl<T> EventBufferState<T> {
   pub(crate) fn close(&mut self) {
     if !self.closed {
       self.closed = true;
+      self.startup_previous.clear();
       self.protected.clear();
       self.high.clear();
       self.low.clear();
@@ -120,8 +139,45 @@ impl<T> EventBufferState<T> {
     self.closed
   }
 
-  fn reserve(&mut self, lane: RetentionLane) -> bool {
-    self.lane_mut(lane).reserve()
+  /// Opens the startup drain gate. The transition is permanent and does not move retained entries.
+  pub(crate) fn open_gate(&mut self) -> bool {
+    if self.gate.is_holding() {
+      self.gate = DrainGate::Open;
+      true
+    } else {
+      false
+    }
+  }
+
+  #[must_use]
+  pub const fn is_gate_open(&self) -> bool {
+    !self.gate.is_holding()
+  }
+
+  pub(crate) fn request_gate_release(&mut self) -> bool {
+    if self.gate.is_holding() && !self.gate_release_requested {
+      self.gate_release_requested = true;
+      true
+    } else {
+      false
+    }
+  }
+
+  pub(crate) fn take_gate_release_request(&mut self) -> bool {
+    std::mem::take(&mut self.gate_release_requested)
+  }
+
+  #[must_use]
+  pub(crate) fn reaches_protected_high_watermark(&self) -> bool {
+    self.gate.is_holding()
+      && self.limits.total_limit_bytes > 0
+      && self.protected_bytes().saturating_mul(5) >= self.limits.total_limit_bytes.saturating_mul(4)
+  }
+
+  fn reserve(&mut self, lane: RetentionLane, startup_previous: bool) -> bool {
+    self
+      .lane_mut_for_admission(lane, startup_previous)
+      .reserve()
   }
 
   fn oldest_retained_lane(&self) -> Option<RetentionLane> {
@@ -258,12 +314,29 @@ impl<T> EventBufferState<T> {
     }
   }
 
+  fn lane_mut_for_admission(
+    &mut self,
+    lane: RetentionLane,
+    startup_previous: bool,
+  ) -> &mut LaneState<T> {
+    if startup_previous {
+      debug_assert_eq!(RetentionLane::Protected, lane);
+      &mut self.startup_previous
+    } else {
+      self.lane_mut(lane)
+    }
+  }
+
   fn evictable_bytes(&self) -> usize {
     self.low.bytes + self.high.bytes
   }
 
   fn total_bytes(&self) -> usize {
-    self.protected.bytes + self.evictable_bytes()
+    self.protected_bytes() + self.evictable_bytes()
+  }
+
+  fn protected_bytes(&self) -> usize {
+    self.protected.bytes + self.startup_previous.bytes
   }
 
   fn log_bytes_over_limit(&self) -> usize {
@@ -352,4 +425,21 @@ struct QueuedEntry<T> {
   admission_id: u64,
   bytes: usize,
   entry: T,
+}
+
+//
+// DrainGate
+//
+
+/// Holds normal delivery during startup without affecting admission or retention.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DrainGate {
+  Holding,
+  Open,
+}
+
+impl DrainGate {
+  const fn is_holding(self) -> bool {
+    matches!(self, Self::Holding)
+  }
 }

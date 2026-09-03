@@ -14,7 +14,6 @@ use crate::async_log_buffer::{
   LogLine,
   LogReplay,
   LoggerControl,
-  PreConfigItem,
   ReportProcessor,
   Sender,
   admission_context,
@@ -35,6 +34,7 @@ use bd_event_buffer::{
   EventBufferEntry,
   EventBufferLimits,
   EventContext,
+  LoggerIngressEvent,
   LoggerIngressPayload,
 };
 use bd_log_filter::FilterChain;
@@ -207,7 +207,7 @@ impl Setup {
     )
   }
 
-  fn make_logging_context(&self) -> UninitializedLoggingContext<PreConfigItem> {
+  fn make_logging_context(&self) -> UninitializedLoggingContext {
     let (trigger_upload_tx, _) = tokio::sync::mpsc::channel(1);
     let (_remote_flush_streaming_tx, remote_flush_streaming_rx) = tokio::sync::mpsc::channel(1);
     let (data_upload_tx, _) = tokio::sync::mpsc::channel(1);
@@ -323,6 +323,195 @@ fn event_buffer_admission_outcomes_are_recorded() {
   );
 }
 
+#[tokio::test]
+async fn startup_gate_holds_preconfiguration_logs_until_the_replay_timer() {
+  let mut setup = Setup::new();
+  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+  sender.try_send_log(normal_log("held")).unwrap();
+
+  config_update_tx
+    .send(setup.make_config_update(WorkflowsConfiguration::default()))
+    .await
+    .unwrap();
+
+  let state_store = TestStore::new().await;
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+    state_store.take_inner(),
+    (),
+    shutdown_trigger.make_shutdown(),
+  ));
+
+  100.milliseconds().sleep().await;
+  assert_eq!(0, setup.replayer_log_count.load(Ordering::SeqCst));
+
+  tokio::time::timeout(2.std_seconds(), async {
+    while setup.replayer_log_count.load(Ordering::SeqCst) == 0 {
+      tokio::task::yield_now().await;
+    }
+  })
+  .await
+  .expect("the configured replay timer must release retained ingress");
+
+  shutdown_trigger.shutdown().await;
+  handle.await.unwrap();
+  assert_eq!(vec!["held"], *setup.replayer_logs.lock());
+}
+
+#[tokio::test]
+async fn startup_gate_releases_preconfiguration_pressure_as_soon_as_config_is_ready() {
+  let mut setup = Setup::new();
+  setup
+    .runtime
+    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![
+      (
+        bd_runtime::runtime::event_buffer::LogLimitBytesFlag::path(),
+        ValueKind::Int(2_048),
+      ),
+      (
+        bd_runtime::runtime::event_buffer::TotalLimitBytesFlag::path(),
+        ValueKind::Int(2_048),
+      ),
+      (
+        bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
+        ValueKind::Int(5_000),
+      ),
+    ]))
+    .await
+    .unwrap();
+
+  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+  let mut retained_log = normal_log("pressure release");
+  retained_log.log_type = LogType::LIFECYCLE;
+  sender.try_send_log(retained_log).unwrap();
+  for _ in 0 .. 500 {
+    let _ = sender.try_send_control(LoggerControl::SetMemoryPressureLevel {
+      level: MemoryPressureLevel::Warning,
+    });
+  }
+  assert!(buffer.event_buffer.reaches_protected_high_watermark());
+
+  config_update_tx
+    .send(setup.make_config_update(WorkflowsConfiguration::default()))
+    .await
+    .unwrap();
+
+  let state_store = TestStore::new().await;
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+    state_store.take_inner(),
+    (),
+    shutdown_trigger.make_shutdown(),
+  ));
+
+  tokio::time::timeout(500.std_milliseconds(), async {
+    while setup.replayer_log_count.load(Ordering::SeqCst) == 0 {
+      tokio::task::yield_now().await;
+    }
+  })
+  .await
+  .expect("preconfiguration pressure must release without waiting for the five-second timer");
+
+  shutdown_trigger.shutdown().await;
+  handle.await.unwrap();
+  assert_eq!(vec!["pressure release"], *setup.replayer_logs.lock());
+}
+
+#[tokio::test]
+async fn startup_replay_crash_hint_uses_a_single_bounded_extension() {
+  let mut setup = Setup::new();
+  setup
+    .runtime
+    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![
+      (
+        bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
+        ValueKind::Int(250),
+      ),
+      (
+        bd_runtime::runtime::event_buffer::StartupReplayCrashDelayFlag::path(),
+        ValueKind::Int(1_000),
+      ),
+    ]))
+    .await
+    .unwrap();
+
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let mut buffer = buffer
+    .update(setup.make_config_update(WorkflowsConfiguration::default()))
+    .await;
+  buffer.start_startup_replay_delay();
+  let base_deadline = buffer.startup_base_deadline.unwrap();
+
+  buffer.extend_startup_replay_for_crash();
+  assert_eq!(
+    Some(base_deadline + 1.std_seconds()),
+    buffer.startup_gate_deadline
+  );
+
+  buffer.extend_startup_replay_for_crash();
+  assert_eq!(
+    Some(base_deadline + 1.std_seconds()),
+    buffer.startup_gate_deadline
+  );
+}
+
+#[tokio::test]
+async fn startup_gate_replays_previous_process_entries_before_current_entries() {
+  let mut setup = Setup::new();
+  setup
+    .runtime
+    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
+      bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
+      ValueKind::Int(0),
+    )]))
+    .await
+    .unwrap();
+
+  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+  sender.try_send_log(normal_log("current")).unwrap();
+  assert_eq!(
+    bd_event_buffer::AdmissionOutcome::Admitted,
+    buffer
+      .event_buffer
+      .admit(EventBufferEntry::ingress(LoggerIngressEvent::log(
+        normal_log("previous"),
+        EventContext::PreviousProcess {
+          logged_at: OffsetDateTime::UNIX_EPOCH,
+        },
+        None,
+      )))
+  );
+
+  config_update_tx
+    .send(setup.make_config_update(WorkflowsConfiguration::default()))
+    .await
+    .unwrap();
+
+  let state_store = TestStore::new().await;
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+    state_store.take_inner(),
+    (),
+    shutdown_trigger.make_shutdown(),
+  ));
+
+  tokio::time::timeout(2.std_seconds(), async {
+    while setup.replayer_log_count.load(Ordering::SeqCst) < 2 {
+      tokio::task::yield_now().await;
+    }
+  })
+  .await
+  .expect("both startup entries must replay");
+
+  shutdown_trigger.shutdown().await;
+  handle.await.unwrap();
+  assert_eq!(vec!["previous", "current"], *setup.replayer_logs.lock());
+}
+
 struct TestReplay {
   logs_count: Arc<AtomicUsize>,
   logs: Arc<parking_lot::Mutex<Vec<std::string::String>>>,
@@ -392,6 +581,16 @@ fn normal_log(message: &str) -> LogLine {
   }
 }
 
+async fn wait_for_pipeline_ready(event_buffer: &EventBuffer) {
+  tokio::time::timeout(5.std_seconds(), async {
+    while !event_buffer.is_pipeline_ready() {
+      tokio::task::yield_now().await;
+    }
+  })
+  .await
+  .expect("ALB must construct its processing pipeline after configuration");
+}
+
 impl TestReplay {
   fn new() -> Self {
     Self {
@@ -453,6 +652,7 @@ async fn current_crash_reports_are_admitted_in_report_order() {
     report_processor.process_all_pending_reports().await,
     &crate::ReportProcessingSession::Current,
   );
+  assert!(buffer.event_buffer.open_gate());
 
   let entries = buffer.event_buffer.next_batch(2).await;
   assert_eq!(2, entries.len());
@@ -495,6 +695,7 @@ async fn crash_report_batch_stays_at_its_event_buffer_admission_boundary() {
     &crate::ReportProcessingSession::Current,
   );
   sender.try_send_log(normal_log("after")).unwrap();
+  assert!(buffer.event_buffer.open_gate());
 
   let messages = buffer
     .event_buffer
@@ -531,6 +732,7 @@ async fn previous_run_crash_reports_use_previous_process_context() {
     report_processor.process_all_pending_reports().await,
     &crate::ReportProcessingSession::PreviousRun,
   );
+  assert!(buffer.event_buffer.open_gate());
 
   let entries = buffer.event_buffer.next_batch(2).await;
   assert_eq!(2, entries.len());
@@ -604,6 +806,7 @@ async fn feature_flag_exposure_captures_its_admission_session() {
     .try_send_feature_flag_exposure("flag".to_string(), Some("variant".to_string()))
     .unwrap();
   setup.session_strategy.start_new_session(None).unwrap();
+  assert!(buffer.event_buffer.open_gate());
 
   let entry = buffer.event_buffer.next_batch(1).await.pop().unwrap();
   let EventBufferEntry::Ingress(event) = entry else {
@@ -1069,7 +1272,7 @@ async fn logs_resource_utilization_log() {
     (),
     shutdown_trigger.make_shutdown(),
   ));
-  500.milliseconds().sleep().await;
+  750.milliseconds().sleep().await;
 
   shutdown_trigger.shutdown().await;
   let _buffer = handle.await.unwrap();
@@ -1131,7 +1334,7 @@ async fn updates_system_session_id_for_new_sessions() {
     None,
   ));
 
-  200.milliseconds().sleep().await;
+  750.milliseconds().sleep().await;
   shutdown_trigger.shutdown().await;
   handle.await.unwrap();
 
@@ -1160,11 +1363,13 @@ async fn set_memory_pressure_level_writes_to_system_scope() {
 
   let test_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
+  let event_buffer = buffer.event_buffer.clone();
   let handle = tokio::task::spawn(buffer.run_with_shutdown(
     (*test_store).clone(),
     (),
     shutdown_trigger.make_shutdown(),
   ));
+  wait_for_pipeline_ready(&event_buffer).await;
 
   sender
     .try_send_control(LoggerControl::SetMemoryPressureLevel {
@@ -1180,7 +1385,7 @@ async fn set_memory_pressure_level_writes_to_system_scope() {
     .unwrap();
 
   // Wait a bit for file I/O to be sure
-  500.milliseconds().sleep().await;
+  750.milliseconds().sleep().await;
 
   {
     let reader = test_store.read().await;
@@ -1211,8 +1416,10 @@ async fn previous_run_log_does_not_override_system_session_id() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
+  let event_buffer = buffer.event_buffer.clone();
   let handle =
     tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
+  wait_for_pipeline_ready(&event_buffer).await;
 
   let current_session_id = setup.session_strategy.session_id().unwrap();
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
@@ -1284,70 +1491,17 @@ async fn previous_run_log_does_not_override_system_session_id() {
 }
 
 #[tokio::test]
-async fn pre_config_logs_trigger_session_id_update() {
-  let mut setup = Setup::new();
-
-  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
-
-  let test_store = TestStore::new().await;
-  let state_store = (*test_store).clone();
-  let shutdown_trigger = ComponentShutdownTrigger::default();
-
-  let first_session_id = setup.session_strategy.session_id().unwrap();
-  assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
-    &sender,
-    0,
-    LogType::NORMAL,
-    "first_pre_config".into(),
-    [].into(),
-    [].into(),
-    None,
-    None,
-  ));
-
-  setup.session_strategy.start_new_session(None).unwrap();
-  let second_session_id = setup.session_strategy.session_id().unwrap();
-  assert_ne!(first_session_id, second_session_id);
-
-  assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
-    &sender,
-    0,
-    LogType::NORMAL,
-    "second_pre_config".into(),
-    [].into(),
-    [].into(),
-    None,
-    None,
-  ));
-
-  let handle =
-    tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
-
-  let config_update = setup.make_config_update(WorkflowsConfiguration::default());
-  let task = std::thread::spawn(move || {
-    assert_ok!(config_update_tx.blocking_send(config_update));
-  });
-
-  200.milliseconds().sleep().await;
-  shutdown_trigger.shutdown().await;
-  handle.await.unwrap();
-
-  {
-    let reader = test_store.read().await;
-    let value = reader.get(Scope::System, SYSTEM_SESSION_ID_KEY);
-    assert!(value.is_some_and(|stored| {
-      stored.has_string_value() && stored.string_value() == second_session_id.as_ref()
-    }));
-  }
-
-  drop(test_store);
-  task.join().unwrap();
-}
-
-#[tokio::test]
 async fn processes_log_with_global_state_in_attributes_overrides() {
   let mut setup = Setup::new();
+
+  setup
+    .runtime
+    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
+      bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
+      ValueKind::Int(0),
+    )]))
+    .await
+    .unwrap();
 
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
 
@@ -1416,7 +1570,7 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
     .unwrap();
 
   // Wait a bit for file I/O to be sure
-  500.milliseconds().sleep().await;
+  750.milliseconds().sleep().await;
 
   // 4. Send log with PreviousRunSessionID. This triggers
   //    metadata_from_fields_with_previous_global_state(...) which reads from global_state_reader.

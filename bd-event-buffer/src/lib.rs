@@ -195,6 +195,20 @@ impl EventBufferEntry {
     }
   }
 
+  fn is_previous_process(&self) -> bool {
+    matches!(
+      self,
+      Self::Ingress(LoggerIngressEvent {
+        context: EventContext::PreviousProcess { .. },
+        ..
+      })
+    )
+  }
+
+  fn is_blocking_flush(&self) -> bool {
+    matches!(self, Self::Control(LoggerControl::FlushState(Some(_))))
+  }
+
   fn take_completion(&mut self) -> Option<bd_completion::Sender<()>> {
     match self {
       Self::Ingress(event) => event.completion.take(),
@@ -227,6 +241,7 @@ pub struct EventBuffer {
 struct EventBufferInner {
   state: PlatformMutex<LoggerEventBufferState>,
   notify: Notify,
+  gate_notify: Notify,
   stats: Option<EventBufferStats>,
   #[cfg(test)]
   test_hooks: Option<Arc<dyn TestHooks>>,
@@ -234,6 +249,7 @@ struct EventBufferInner {
 
 struct LoggerEventBufferState {
   retention: EventBufferState<EventBufferEntry>,
+  pipeline_ready: bool,
 }
 
 impl EventBuffer {
@@ -279,8 +295,10 @@ impl EventBuffer {
       inner: Arc::new(EventBufferInner {
         state: PlatformMutex::new(LoggerEventBufferState {
           retention: EventBufferState::new(limits),
+          pipeline_ready: false,
         }),
         notify: Notify::new(),
+        gate_notify: Notify::new(),
         stats,
         #[cfg(test)]
         test_hooks,
@@ -292,21 +310,56 @@ impl EventBuffer {
     self.inner.state.lock().retention.set_pending_limits(limits);
   }
 
+  /// Marks that ALB has finished constructing a processing pipeline. This linearizes the
+  /// transition between startup's hard gate—where flushes are intentionally no-ops—and the soft
+  /// replay gate, where a blocking flush is an ordered barrier.
+  pub fn mark_pipeline_ready(&self) {
+    self.inner.state.lock().pipeline_ready = true;
+  }
+
+  /// Returns whether ALB has completed the hard startup gate by constructing its processing
+  /// pipeline.
+  #[must_use]
+  pub fn is_pipeline_ready(&self) -> bool {
+    self.inner.state.lock().pipeline_ready
+  }
+
+  /// Returns whether a flush should complete without queueing because no processing pipeline
+  /// exists yet. The check shares the `EventBuffer` mutex with `mark_pipeline_ready`, so a flush
+  /// is deterministically either an early no-op or a normal ordered entry.
+  #[must_use]
+  pub fn skips_flush_before_pipeline_ready(&self) -> bool {
+    let state = self.inner.state.lock();
+    !state.pipeline_ready && !state.retention.is_closed()
+  }
+
   #[must_use]
   pub fn admit(&self, entry: EventBufferEntry) -> AdmissionOutcome {
     let lane = entry.lane();
-    let outcome = {
+    let previous_process = entry.is_previous_process();
+    let blocking_flush = entry.is_blocking_flush();
+    let (outcome, gate_requested) = {
       let mut state = self.inner.state.lock();
-      state.retention.admit_with_evictions(
+      let outcome = state.retention.admit_with_evictions(
         lane,
+        previous_process,
         entry.approximate_size_bytes(),
         entry,
         |evicted_lane| self.record_eviction(evicted_lane),
-      )
+      );
+      let gate_requested = outcome == AdmissionOutcome::Admitted
+        && (blocking_flush
+          || (lane == RetentionLane::Protected
+            && state.retention.reaches_protected_high_watermark()))
+        && state.retention.request_gate_release();
+      (outcome, gate_requested)
     };
     self.record_outcome(lane, outcome);
     if outcome == AdmissionOutcome::Admitted {
       self.inner.notify.notify_one();
+    }
+    if gate_requested {
+      self.inner.gate_notify.notify_one();
     }
     outcome
   }
@@ -319,29 +372,42 @@ impl EventBuffer {
     &self,
     entries: impl IntoIterator<Item = EventBufferEntry>,
   ) -> Vec<AdmissionOutcome> {
-    let outcomes = {
+    let (outcomes, gate_requested) = {
       let mut state = self.inner.state.lock();
       #[cfg(test)]
       if let Some(test_hooks) = &self.inner.test_hooks {
         test_hooks.batch_admission_started();
       }
-      entries
+      let mut gate_requested = false;
+      let outcomes = entries
         .into_iter()
         .map(|entry| {
           let lane = entry.lane();
+          let previous_process = entry.is_previous_process();
+          let blocking_flush = entry.is_blocking_flush();
           let outcome = state.retention.admit_with_evictions(
             lane,
+            previous_process,
             entry.approximate_size_bytes(),
             entry,
             |evicted_lane| self.record_eviction(evicted_lane),
           );
+          gate_requested |= outcome == AdmissionOutcome::Admitted
+            && (blocking_flush
+              || (lane == RetentionLane::Protected
+                && state.retention.reaches_protected_high_watermark()))
+            && state.retention.request_gate_release();
           self.record_outcome(lane, outcome);
           outcome
         })
-        .collect::<Vec<_>>()
+        .collect::<Vec<_>>();
+      (outcomes, gate_requested)
     };
     if outcomes.contains(&AdmissionOutcome::Admitted) {
       self.inner.notify.notify_one();
+    }
+    if gate_requested {
+      self.inner.gate_notify.notify_one();
     }
     outcomes
   }
@@ -379,6 +445,54 @@ impl EventBuffer {
       state.retention.close();
     }
     self.inner.notify.notify_waiters();
+  }
+
+  /// Opens the startup drain gate. Once open, it cannot be closed again.
+  #[must_use]
+  pub fn open_gate(&self) -> bool {
+    let opened = self.inner.state.lock().retention.open_gate();
+    if opened {
+      self.inner.notify.notify_waiters();
+    }
+    opened
+  }
+
+  #[must_use]
+  pub fn is_gate_open(&self) -> bool {
+    self.inner.state.lock().retention.is_gate_open()
+  }
+
+  /// Reports whether protected work retained behind the startup gate has reached its high
+  /// watermark. The consumer uses this after configuration becomes ready so work that arrived
+  /// before configuration can release immediately instead of waiting for the replay timer.
+  #[must_use]
+  pub fn reaches_protected_high_watermark(&self) -> bool {
+    self
+      .inner
+      .state
+      .lock()
+      .retention
+      .reaches_protected_high_watermark()
+  }
+
+  /// Waits for a pressure or blocking-flush request that the configured consumer may use to
+  /// release the startup gate.
+  pub async fn wait_for_gate_release_request(&self) {
+    loop {
+      let notified = self.inner.gate_notify.notified();
+      tokio::pin!(notified);
+      notified.as_mut().enable();
+      if self
+        .inner
+        .state
+        .lock()
+        .retention
+        .take_gate_release_request()
+      {
+        return;
+      }
+      notified.await;
+    }
   }
 
   fn record_outcome(&self, lane: RetentionLane, outcome: AdmissionOutcome) {

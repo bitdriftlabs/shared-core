@@ -31,7 +31,6 @@ mod logger;
 mod logging_state;
 mod metadata;
 mod network;
-mod pre_config_buffer;
 mod service;
 mod state_upload;
 mod trigger_upload_artifact;

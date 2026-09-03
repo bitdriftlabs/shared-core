@@ -11,7 +11,6 @@ use crate::consumer::RemoteFlushStreamingRequest;
 use crate::log_replay::{LogReplay, ProcessingPipeline};
 use crate::logger::{TestHooks, with_thread_local_logger_guard};
 use crate::metadata::MetadataCollector;
-use crate::pre_config_buffer::{self, PreConfigBuffer};
 use anyhow::anyhow;
 use bd_api::{DataUpload, TriggerUpload};
 use bd_buffer::BuffersWithAck;
@@ -22,7 +21,6 @@ use bd_error_reporter::reporter::handle_unexpected;
 use bd_event_buffer::ProviderSnapshot;
 use bd_log_filter::FilterChain;
 use bd_log_primitives::tiny_set::TinySet;
-use bd_macros::ApproximateSize;
 use bd_proto::protos::logging::payload::LogType;
 use bd_resilient_kv::Scope as StateScope;
 use bd_runtime::runtime::ConfigLoader;
@@ -48,12 +46,10 @@ use tokio::sync::mpsc::{Receiver, Sender};
 /// that are needed to process incoming logs.
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
-pub enum LoggingState<T: ApproximateSize + Debug> {
-  /// The initial state that each `AsyncLogBuffer` starts in. While in this state
-  /// the buffer takes incoming logs, populates them with extra information using
-  /// its metadata provider and puts them on hold for further processing inside of
-  /// a `PreConfigBuffer`. The final processing of logs is postponed until after the
-  /// buffer moves to `Initialized` state.
+pub enum LoggingState {
+  /// The initial state that each `AsyncLogBuffer` starts in. `EventBuffer` retains ingress while
+  /// this state constructs the processing pipeline; its startup gate prevents delivery until the
+  /// buffer becomes initialized.
   ///
   /// The buffer stays in `Uninitialized` state until it gets a configuration update.
   /// Configuration updates come from either a local cache (disk) or a Bitdrift control plane.
@@ -61,19 +57,15 @@ pub enum LoggingState<T: ApproximateSize + Debug> {
   /// the cached version of the configuration is not always available and in these
   /// cases the `AsyncLogBuffer` waits for the configuration to be fetched
   /// from the Bitdrift control plane (can potentially take seconds or even minutes).
-  Uninitialized(UninitializedLoggingContext<T>),
+  Uninitialized(UninitializedLoggingContext),
   /// The state that `AsyncLogBuffer` moves to as soon as it receives any configuration
   /// update.
   /// While in this state the `AsyncLogBuffer` takes incoming logs, populates them with
   /// extra information its metadata provider and sends them for their final processing.
-  /// The first thing that the buffer does when it moves to this state is a replay of all
-  /// logs stored inside of its `PreConfigBuffer`. All replayed logs are sent for their final
-  /// processing to now initialized parts of the logs processing pipeline such as workflows engine
-  /// or various ring buffers.
   Initialized(InitializedLoggingContext),
 }
 
-impl<T: ApproximateSize + Debug> LoggingState<T> {
+impl LoggingState {
   pub(crate) const fn flush_buffers_trigger(&self) -> &Sender<BuffersWithAck> {
     match self {
       Self::Uninitialized(context) => &context.flush_buffers_tx,
@@ -102,8 +94,8 @@ impl<T: ApproximateSize + Debug> LoggingState<T> {
 // UninitializedLoggingContext
 //
 
-pub struct UninitializedLoggingContext<T: ApproximateSize + Debug> {
-  pub(crate) pre_config_log_buffer: PreConfigBuffer<T>,
+pub struct UninitializedLoggingContext {
+  pub(crate) event_buffer_log_limit_bytes: usize,
 
   data_upload_tx: Sender<DataUpload>,
   trigger_upload_tx: Sender<TriggerUpload>,
@@ -120,10 +112,13 @@ pub struct UninitializedLoggingContext<T: ApproximateSize + Debug> {
 }
 
 // Skip `stats` and `runtime` fields that does not implement `std::fmt::Debug`.
-impl<T: ApproximateSize + Debug> Debug for UninitializedLoggingContext<T> {
+impl Debug for UninitializedLoggingContext {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("UninitializedLoggingContext")
-      .field("pre_config_log_buffer", &self.pre_config_log_buffer)
+      .field(
+        "event_buffer_log_limit_bytes",
+        &self.event_buffer_log_limit_bytes,
+      )
       .field("trigger_upload_tx", &self.trigger_upload_tx)
       .field("flush_buffers_tx", &self.flush_buffers_tx)
       .field("flush_stats_trigger", &self.flush_stats_trigger)
@@ -132,7 +127,7 @@ impl<T: ApproximateSize + Debug> Debug for UninitializedLoggingContext<T> {
   }
 }
 
-impl<T: ApproximateSize + Debug> UninitializedLoggingContext<T> {
+impl UninitializedLoggingContext {
   pub(crate) fn new(
     sdk_directory: &Path,
     runtime: &Arc<ConfigLoader>,
@@ -143,13 +138,13 @@ impl<T: ApproximateSize + Debug> UninitializedLoggingContext<T> {
     data_upload_tx: Sender<DataUpload>,
     flush_buffers_tx: Sender<BuffersWithAck>,
     flush_stats_trigger: FlushTrigger,
-    max_size: usize,
+    event_buffer_log_limit_bytes: usize,
     is_tracing_active: Arc<AtomicBool>,
     process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
     test_hooks: Option<Arc<dyn TestHooks>>,
   ) -> Self {
     Self {
-      pre_config_log_buffer: PreConfigBuffer::new(max_size),
+      event_buffer_log_limit_bytes,
       data_upload_tx,
       trigger_upload_tx,
       remote_flush_streaming_rx,
@@ -168,7 +163,7 @@ impl<T: ApproximateSize + Debug> UninitializedLoggingContext<T> {
     self,
     config: ConfigUpdate,
     capture_screenshot_handler: CaptureScreenshotHandler,
-  ) -> (InitializedLoggingContext, PreConfigBuffer<T>) {
+  ) -> InitializedLoggingContext {
     let processing_pipeline = ProcessingPipeline::new(
       self.data_upload_tx,
       self.flush_buffers_tx,
@@ -186,9 +181,7 @@ impl<T: ApproximateSize + Debug> UninitializedLoggingContext<T> {
     )
     .await;
 
-    let context = InitializedLoggingContext::new(processing_pipeline);
-
-    (context, self.pre_config_log_buffer)
+    InitializedLoggingContext::new(processing_pipeline)
   }
 }
 
@@ -279,7 +272,6 @@ impl InitializedLoggingContext {
 //
 
 pub struct UninitializedLoggingContextStats {
-  pub(crate) pre_config_log_buffer: pre_config_buffer::PushCounters,
   pub(crate) scope: Scope,
   root_scope: Scope,
   stats: Arc<Stats>,
@@ -288,10 +280,7 @@ pub struct UninitializedLoggingContextStats {
 impl UninitializedLoggingContextStats {
   fn new(root_scope: Scope, stats: Arc<Stats>) -> Self {
     let stats_scope = root_scope.scope("logger");
-    let pre_config_buffer_scope = stats_scope.scope("pre_config_log_buffer");
-
     Self {
-      pre_config_log_buffer: pre_config_buffer::PushCounters::new(&pre_config_buffer_scope),
       scope: stats_scope,
       root_scope,
       stats,

@@ -1005,6 +1005,8 @@ pub mod buffers {
 }
 
 pub mod event_buffer {
+  use time::ext::NumericalDuration as _;
+
   // Bounds the total retained size of ordinary, evictable logs in the EventBuffer. Protected
   // state and control entries bypass this limit, but remain subject to TotalLimitBytesFlag.
   int_feature_flag!(
@@ -1018,6 +1020,20 @@ pub mod event_buffer {
     TotalLimitBytesFlag,
     "event_buffer.total_limit_bytes",
     10 * 1024 * 1024 // 10 MiB
+  );
+
+  // Delays startup delivery so prior-process crash logs can be admitted and replayed first.
+  duration_feature_flag!(
+    StartupReplayDelayFlag,
+    "event_buffer.startup_replay_delay_ms",
+    500.milliseconds()
+  );
+
+  // Bounds the one-time extension requested by a platform crash-pending hint during startup.
+  duration_feature_flag!(
+    StartupReplayCrashDelayFlag,
+    "event_buffer.startup_replay_crash_delay_ms",
+    1.seconds()
   );
 }
 

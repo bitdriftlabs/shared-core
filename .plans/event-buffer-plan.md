@@ -31,9 +31,9 @@ and state ingress channels while retaining one async consumer.
 2. [x] **Session persistence.** Replace ALB-carried session writes with a coalescing `bd_session`
    flusher.
 3. [x] **EventBuffer.** Build and test the bounded three-queue component without changing logger ingress.
-4. [ ] **Ingress migration.** Route logger/state inputs through EventBuffer while preserving
+4. [x] **Ingress migration.** Route logger/state inputs through EventBuffer while preserving
    `PreConfigBuffer` startup behavior.
-5. [ ] **Startup replay.** Replace `PreConfigBuffer` with the delayed replay gate and prior-process
+5. [x] **Startup replay.** Replace `PreConfigBuffer` with the delayed replay gate and prior-process
    ordering lane.
 
 The milestone checklists appear after the detailed design reference. Each milestone is independently
@@ -522,6 +522,10 @@ retain the same runtime watch for later budget changes. The pair becomes effecti
 EventBuffer admission. If the buffer is already at the high watermark calculated from the runtime
 overall budget, release immediately with reason `high_watermark`; otherwise arm the configured
 timer.
+`FlushState` during this hard pre-configuration gate completes immediately as a no-op and is not
+queued: with no pipeline, there is no retained downstream work for it to flush. EventBuffer
+linearizes that decision against ALB marking the pipeline ready, so later flushes use normal
+ordered-barrier behavior.
 
 Configuration construction, including restoration of already-persisted workflow actions, remains
 outside the EventBuffer ordering domain and keeps its current startup behavior while the gate is
@@ -561,7 +565,8 @@ applies; priority-event loss is measured rather than exceeding capacity.
 flush barrier, or normal timer release seals the ordering window; later hints and late
 previous-process logs cannot reopen it.
 
-An admitted `FlushState(Block::Yes)` is also a gate barrier: it seals the gate, drains the
+An admitted `FlushState(Block::Yes)` after the hard pre-configuration gate is also a gate barrier:
+it seals the gate, drains the
 already-admitted startup-previous lane first, then drains through its ordered position before its
 completion resolves. It does not bypass older work. An admission-rejected blocking flush resolves
 immediately as a terminal drop and cannot act as a barrier. `FlushState(Block::No)` stays behind

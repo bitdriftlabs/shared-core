@@ -96,8 +96,10 @@ struct TestSubject {
 
 impl TestSubject {
   fn new(limits: EventBufferLimits) -> Self {
+    let mut actual = EventBufferState::new(limits);
+    assert!(actual.open_gate());
     Self {
-      actual: EventBufferState::new(limits),
+      actual,
       reference: ReferenceState::new(limits),
       next_id: 0,
     }
