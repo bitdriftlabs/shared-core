@@ -543,6 +543,7 @@ dependencies = [
  "ctor",
  "flatbuffers",
  "flate2",
+ "fs2",
  "itertools 0.15.0",
  "log",
  "mockall",

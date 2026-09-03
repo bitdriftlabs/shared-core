@@ -18,6 +18,7 @@ use bd_proto::protos::client::api::{self, ApiRequest, HandshakeRequest};
 use std::future::{Future, pending};
 use tokio::time::Interval;
 
+pub mod artifact;
 pub mod error;
 pub mod file;
 pub mod file_system;

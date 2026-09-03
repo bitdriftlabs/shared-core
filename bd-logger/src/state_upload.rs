@@ -38,6 +38,7 @@
 mod tests;
 
 use bd_artifact_upload::{Client as ArtifactClient, EnqueueError, UploadSource};
+use bd_client_common::artifact::STATE_SNAPSHOT_ARTIFACT_TYPE_ID;
 use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::LogFields;
 use bd_proto::protos::client::key_value::StateSnapshotRange;
@@ -374,10 +375,10 @@ impl StateUploadWorker {
       let (persisted_tx, persisted_rx) = tokio::sync::oneshot::channel();
       match self.artifact_client.enqueue_upload(
         UploadSource::Path(snapshot_ref.path.clone()),
-        "state_snapshot".to_string(),
+        STATE_SNAPSHOT_ARTIFACT_TYPE_ID.to_string(),
         LogFields::new(),
         timestamp,
-        "state_snapshot".to_string(),
+        String::new(),
         vec![],
         Some(persisted_tx),
       ) {
