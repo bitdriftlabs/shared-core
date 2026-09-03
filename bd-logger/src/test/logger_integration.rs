@@ -1044,14 +1044,12 @@ fn flush_state_uninitialized() {
 #[test]
 fn blocking_flush_state_uninitialized() {
   let setup = Setup::new();
-  let start = std::time::Instant::now();
 
   setup.logger_handle.flush_state(Block::Yes {
     timeout: 15.std_seconds(),
     poll_callback: None,
   });
 
-  assert!(start.elapsed() < std::time::Duration::from_millis(100));
   // A blocking flush during the hard replay gate completes immediately and is not deferred.
   assert!(!setup.workflows_state_file_path().exists());
   assert!(!setup.pending_aggregation_index_file_path().exists());

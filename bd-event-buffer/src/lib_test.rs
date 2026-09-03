@@ -220,6 +220,10 @@ impl WaitingConsumersTestHook {
         .expect("the test hook always owns the waiting-consumer sender");
     }
   }
+
+  fn consumer_count(&self) -> usize {
+    *self.waiting_consumers.borrow()
+  }
 }
 
 impl super::TestHooks for WaitingConsumersTestHook {
@@ -559,6 +563,28 @@ async fn close_wakes_all_waiting_consumers() {
       .await
       .expect("second consumer task must complete")
       .is_empty()
+  );
+}
+
+#[tokio::test]
+async fn held_gate_admission_does_not_wake_the_consumer_until_release() {
+  let waiting_consumers = Arc::new(WaitingConsumersTestHook::new());
+  let buffer = EventBuffer::new_with_test_hooks(limits(10_000), Some(waiting_consumers.clone()));
+  let consumer_buffer = buffer.clone();
+  let consumer = tokio::spawn(async move { consumer_buffer.next_batch(1).await });
+
+  waiting_consumers.wait_for_consumers(1).await;
+  assert_eq!(
+    AdmissionOutcome::Admitted,
+    buffer.admit(log(log_level::INFO, LogType::NORMAL, 1))
+  );
+  tokio::task::yield_now().await;
+  assert_eq!(1, waiting_consumers.consumer_count());
+
+  assert!(buffer.open_gate());
+  assert_eq!(
+    1,
+    consumer.await.expect("consumer task must complete").len()
   );
 }
 

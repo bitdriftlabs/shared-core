@@ -76,7 +76,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
-use tokio::sync::mpsc;
+use tokio::sync::{Notify, mpsc};
 use tokio_test::assert_ok;
 
 struct Setup {
@@ -89,6 +89,7 @@ struct Setup {
   data_upload_tx: mpsc::Sender<DataUpload>,
 
   replayer_log_count: Arc<AtomicUsize>,
+  replayer_log_notify: Arc<Notify>,
   replayer_logs: Arc<parking_lot::Mutex<Vec<String>>>,
   replayer_fields: Arc<parking_lot::Mutex<Vec<LogFields>>>,
   shutdown: Option<ComponentShutdownTrigger>,
@@ -120,6 +121,7 @@ impl Setup {
       stats,
       tmp_dir,
       replayer_log_count: Arc::default(),
+      replayer_log_notify: Arc::new(Notify::new()),
       replayer_logs: Arc::default(),
       replayer_fields: Arc::default(),
       shutdown: Some(ComponentShutdownTrigger::default()),
@@ -144,6 +146,7 @@ impl Setup {
   ) -> (AsyncLogBuffer<TestReplay>, Sender) {
     let replayer = TestReplay::new();
     self.replayer_log_count = replayer.logs_count.clone();
+    self.replayer_log_notify = replayer.logs_notify.clone();
     self.replayer_logs = replayer.logs.clone();
     self.replayer_fields = replayer.fields.clone();
 
@@ -434,16 +437,79 @@ async fn pre_pipeline_blocking_flush_completes_without_event_buffer_admission() 
   ));
 }
 
-#[tokio::test]
-async fn startup_gate_releases_preconfiguration_pressure_as_soon_as_config_is_ready() {
+#[tokio::test(start_paused = true)]
+async fn post_pipeline_blocking_flush_releases_the_gate_after_older_work() {
   let mut setup = Setup::new();
   setup
     .runtime
+    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
+      bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
+      ValueKind::Int(5_000),
+    )]))
+    .await
+    .unwrap();
+  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+  config_update_tx
+    .send(setup.make_config_update(WorkflowsConfiguration::default()))
+    .await
+    .unwrap();
+
+  let event_buffer = buffer.event_buffer.clone();
+  let state_store = TestStore::new().await;
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+    state_store.take_inner(),
+    (),
+    shutdown_trigger.make_shutdown(),
+  ));
+  wait_for_pipeline_ready(&event_buffer).await;
+
+  assert_ok!(sender.try_send_log(normal_log("before barrier")));
+  let blocking_sender = sender.clone();
+  assert_ok!(
+    tokio::task::spawn_blocking(move || {
+      blocking_sender.flush_state(Block::Yes {
+        timeout: 1.std_seconds(),
+        poll_callback: None,
+      })
+    })
+    .await
+    .expect("blocking flush task must complete")
+  );
+  assert_eq!(vec!["before barrier"], *setup.replayer_logs.lock());
+
+  shutdown_trigger.shutdown().await;
+  handle.await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
+async fn startup_gate_releases_when_loaded_runtime_limits_expose_existing_pressure() {
+  let mut setup = Setup::new();
+  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+  let mut retained_log = normal_log("pressure release");
+  retained_log.log_type = LogType::LIFECYCLE;
+  sender.try_send_log(retained_log).unwrap();
+  for _ in 0 .. 500 {
+    let _ = sender.try_send_control(LoggerControl::SetMemoryPressureLevel {
+      level: MemoryPressureLevel::Warning,
+    });
+  }
+  let event_buffer = buffer.event_buffer.clone();
+  let state_store = TestStore::new().await;
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+    state_store.take_inner(),
+    (),
+    shutdown_trigger.make_shutdown(),
+  ));
+
+  // The entries were admitted under the bootstrap budget. Loading a lower runtime budget must
+  // still recognize their protected-pressure high watermark without waiting for another admission.
+  setup
+    .runtime
     .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![
-      (
-        bd_runtime::runtime::event_buffer::LogLimitBytesFlag::path(),
-        ValueKind::Int(2_048),
-      ),
       (
         bd_runtime::runtime::event_buffer::TotalLimitBytesFlag::path(),
         ValueKind::Int(2_048),
@@ -455,39 +521,14 @@ async fn startup_gate_releases_preconfiguration_pressure_as_soon_as_config_is_re
     ]))
     .await
     .unwrap();
-
-  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
-  let mut retained_log = normal_log("pressure release");
-  retained_log.log_type = LogType::LIFECYCLE;
-  sender.try_send_log(retained_log).unwrap();
-  for _ in 0 .. 500 {
-    let _ = sender.try_send_control(LoggerControl::SetMemoryPressureLevel {
-      level: MemoryPressureLevel::Warning,
-    });
-  }
-  assert!(buffer.event_buffer.reaches_protected_high_watermark());
-
   config_update_tx
     .send(setup.make_config_update(WorkflowsConfiguration::default()))
     .await
     .unwrap();
 
-  let state_store = TestStore::new().await;
-  let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
-    state_store.take_inner(),
-    (),
-    shutdown_trigger.make_shutdown(),
-  ));
-
-  tokio::time::timeout(500.std_milliseconds(), async {
-    while setup.replayer_log_count.load(Ordering::SeqCst) == 0 {
-      tokio::task::yield_now().await;
-    }
-  })
-  .await
-  .expect("preconfiguration pressure must release without waiting for the five-second timer");
+  wait_for_pipeline_ready(&event_buffer).await;
+  tokio::task::yield_now().await;
+  assert_eq!(1, setup.replayer_log_count.load(Ordering::SeqCst));
 
   shutdown_trigger.shutdown().await;
   handle.await.unwrap();
@@ -568,6 +609,37 @@ async fn startup_replay_runtime_delay_extends_the_bootstrap_deadline() {
 }
 
 #[tokio::test]
+async fn startup_replay_runtime_crash_delay_extends_a_pending_crash_gate() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+
+  buffer.start_startup_replay_delay();
+  let startup_started_at = buffer.startup_started_at.unwrap();
+  let base_deadline = startup_started_at + 50.std_milliseconds();
+  buffer.extend_startup_replay_for_crash();
+  assert_eq!(
+    Some(base_deadline + 1.std_seconds()),
+    buffer.startup_gate_deadline
+  );
+
+  setup
+    .runtime
+    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
+      bd_runtime::runtime::event_buffer::StartupReplayCrashDelayFlag::path(),
+      ValueKind::Int(2_000),
+    )]))
+    .await
+    .unwrap();
+  buffer.refresh_startup_replay_delay();
+
+  assert_eq!(
+    Some(base_deadline + 2.std_seconds()),
+    buffer.startup_gate_deadline
+  );
+}
+
+#[tokio::test(start_paused = true)]
 async fn startup_gate_replays_previous_process_entries_before_current_entries() {
   let mut setup = Setup::new();
   setup
@@ -608,13 +680,7 @@ async fn startup_gate_replays_previous_process_entries_before_current_entries() 
     shutdown_trigger.make_shutdown(),
   ));
 
-  tokio::time::timeout(2.std_seconds(), async {
-    while setup.replayer_log_count.load(Ordering::SeqCst) < 2 {
-      tokio::task::yield_now().await;
-    }
-  })
-  .await
-  .expect("both startup entries must replay");
+  wait_for_replayed_logs(&setup, 2).await;
 
   shutdown_trigger.shutdown().await;
   handle.await.unwrap();
@@ -623,6 +689,7 @@ async fn startup_gate_replays_previous_process_entries_before_current_entries() 
 
 struct TestReplay {
   logs_count: Arc<AtomicUsize>,
+  logs_notify: Arc<Notify>,
   logs: Arc<parking_lot::Mutex<Vec<std::string::String>>>,
   fields: Arc<parking_lot::Mutex<Vec<LogFields>>>,
 }
@@ -691,19 +758,26 @@ fn normal_log(message: &str) -> LogLine {
 }
 
 async fn wait_for_pipeline_ready(event_buffer: &EventBuffer) {
-  tokio::time::timeout(5.std_seconds(), async {
-    while !event_buffer.is_pipeline_ready() {
-      tokio::task::yield_now().await;
+  event_buffer.wait_for_pipeline_ready().await;
+}
+
+async fn wait_for_replayed_logs(setup: &Setup, expected_count: usize) {
+  loop {
+    let notified = setup.replayer_log_notify.notified();
+    tokio::pin!(notified);
+    notified.as_mut().enable();
+    if setup.replayer_log_count.load(Ordering::SeqCst) >= expected_count {
+      return;
     }
-  })
-  .await
-  .expect("ALB must construct its processing pipeline after configuration");
+    notified.await;
+  }
 }
 
 impl TestReplay {
   fn new() -> Self {
     Self {
       logs_count: Arc::new(AtomicUsize::new(0)),
+      logs_notify: Arc::new(Notify::new()),
       logs: Arc::new(parking_lot::Mutex::new(vec![])),
       fields: Arc::new(parking_lot::Mutex::new(vec![])),
     }
@@ -720,6 +794,7 @@ impl LogReplay for TestReplay {
     _now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
     self.logs_count.fetch_add(1, Ordering::SeqCst);
+    self.logs_notify.notify_waiters();
     if let Some(message) = log.message.as_str() {
       self.logs.lock().push(message.to_string());
     }

@@ -169,9 +169,15 @@ impl<T> EventBufferState<T> {
 
   #[must_use]
   pub(crate) fn reaches_protected_high_watermark(&self) -> bool {
+    let total_limit_bytes = self
+      .pending_limits
+      .as_ref()
+      .map_or(self.limits.total_limit_bytes, |limits| {
+        limits.total_limit_bytes
+      });
     self.gate.is_holding()
-      && self.limits.total_limit_bytes > 0
-      && self.protected_bytes().saturating_mul(5) >= self.limits.total_limit_bytes.saturating_mul(4)
+      && total_limit_bytes > 0
+      && self.protected_bytes().saturating_mul(5) >= total_limit_bytes.saturating_mul(4)
   }
 
   fn reserve(&mut self, lane: RetentionLane, startup_previous: bool) -> bool {

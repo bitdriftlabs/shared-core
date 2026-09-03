@@ -242,6 +242,7 @@ struct EventBufferInner {
   state: PlatformMutex<LoggerEventBufferState>,
   notify: Notify,
   gate_notify: Notify,
+  pipeline_notify: Notify,
   stats: Option<EventBufferStats>,
   #[cfg(test)]
   test_hooks: Option<Arc<dyn TestHooks>>,
@@ -299,6 +300,7 @@ impl EventBuffer {
         }),
         notify: Notify::new(),
         gate_notify: Notify::new(),
+        pipeline_notify: Notify::new(),
         stats,
         #[cfg(test)]
         test_hooks,
@@ -315,6 +317,7 @@ impl EventBuffer {
   /// replay gate, where a blocking flush is an ordered barrier.
   pub fn mark_pipeline_ready(&self) {
     self.inner.state.lock().pipeline_ready = true;
+    self.inner.pipeline_notify.notify_waiters();
   }
 
   /// Returns whether ALB has completed the hard startup gate by constructing its processing
@@ -322,6 +325,19 @@ impl EventBuffer {
   #[must_use]
   pub fn is_pipeline_ready(&self) -> bool {
     self.inner.state.lock().pipeline_ready
+  }
+
+  /// Waits until ALB has constructed its processing pipeline.
+  pub async fn wait_for_pipeline_ready(&self) {
+    loop {
+      let notified = self.inner.pipeline_notify.notified();
+      tokio::pin!(notified);
+      notified.as_mut().enable();
+      if self.is_pipeline_ready() {
+        return;
+      }
+      notified.await;
+    }
   }
 
   /// Returns whether a flush should complete without queueing because no processing pipeline
@@ -338,7 +354,7 @@ impl EventBuffer {
     let lane = entry.lane();
     let previous_process = entry.is_previous_process();
     let blocking_flush = entry.is_blocking_flush();
-    let (outcome, gate_requested) = {
+    let (outcome, gate_requested, notify_consumer) = {
       let mut state = self.inner.state.lock();
       let outcome = state.retention.admit_with_evictions(
         lane,
@@ -352,10 +368,10 @@ impl EventBuffer {
           || (lane == RetentionLane::Protected
             && state.retention.reaches_protected_high_watermark()))
         && state.retention.request_gate_release();
-      (outcome, gate_requested)
+      (outcome, gate_requested, state.retention.is_gate_open())
     };
     self.record_outcome(lane, outcome);
-    if outcome == AdmissionOutcome::Admitted {
+    if outcome == AdmissionOutcome::Admitted && notify_consumer {
       self.inner.notify.notify_one();
     }
     if gate_requested {
@@ -372,7 +388,7 @@ impl EventBuffer {
     &self,
     entries: impl IntoIterator<Item = EventBufferEntry>,
   ) -> Vec<AdmissionOutcome> {
-    let (outcomes, gate_requested) = {
+    let (outcomes, gate_requested, notify_consumer) = {
       let mut state = self.inner.state.lock();
       #[cfg(test)]
       if let Some(test_hooks) = &self.inner.test_hooks {
@@ -401,9 +417,9 @@ impl EventBuffer {
           outcome
         })
         .collect::<Vec<_>>();
-      (outcomes, gate_requested)
+      (outcomes, gate_requested, state.retention.is_gate_open())
     };
-    if outcomes.contains(&AdmissionOutcome::Admitted) {
+    if outcomes.contains(&AdmissionOutcome::Admitted) && notify_consumer {
       self.inner.notify.notify_one();
     }
     if gate_requested {

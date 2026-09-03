@@ -1078,6 +1078,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         Some(config) = self.config_update_rx.recv() => {
           self = self.update(config).await;
           self.event_buffer.mark_pipeline_ready();
+          self.refresh_event_buffer_limits();
           self.refresh_startup_replay_delay();
           self.maybe_release_startup_gate();
         },
@@ -1180,6 +1181,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     self
       .event_buffer
       .set_pending_limits(self.event_buffer_limit_watches.read_mark_update());
+    if self.event_buffer.reaches_protected_high_watermark() {
+      self.startup_gate.release_requested = true;
+      self.maybe_release_startup_gate();
+    }
   }
 
   fn start_startup_replay_delay(&mut self) {
@@ -1214,21 +1219,22 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // Startup starts with the built-in delay. A runtime configuration can extend that deadline,
     // but must never shorten it and accidentally release ingress before the configured window.
     let base_deadline = startup_started_at + base_delay.unsigned_abs();
-    if self
+    let base_delay_extended = self
       .startup_base_deadline
-      .is_none_or(|current| base_deadline > current)
-    {
+      .is_none_or(|current| base_deadline > current);
+    if base_delay_extended {
       self.startup_base_deadline = Some(base_deadline);
-      if self.startup_gate.crash_pending {
-        self.extend_startup_replay_deadline(crash_delay);
-      } else if self
+    }
+    if self.startup_gate.crash_pending {
+      self.extend_startup_replay_deadline(crash_delay);
+    } else if base_delay_extended
+      && self
         .startup_gate_deadline
         .is_none_or(|current| base_deadline > current)
-      {
-        self.startup_gate_deadline = Some(base_deadline);
-        self.startup_replay_delay = Some(Box::pin(tokio::time::sleep_until(base_deadline)));
-        self.startup_gate.timer_elapsed = false;
-      }
+    {
+      self.startup_gate_deadline = Some(base_deadline);
+      self.startup_replay_delay = Some(Box::pin(tokio::time::sleep_until(base_deadline)));
+      self.startup_gate.timer_elapsed = false;
     }
   }
 
