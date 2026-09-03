@@ -9,7 +9,8 @@ use ahash::AHashMap;
 use arbitrary::{Arbitrary, Unstructured};
 use bd_proto::protos::state::payload::StateValue;
 use bd_proto::protos::state::payload::state_value::Value_type;
-use bd_resilient_kv::{
+use bd_time::{TestTimeProvider, TimeProvider as _};
+use bd_versioned_kv::{
   DataLoss,
   PersistentStoreConfig,
   RetentionRegistry,
@@ -19,7 +20,6 @@ use bd_resilient_kv::{
   VERSIONED_JOURNAL_HEADER_SIZE,
   VersionedKVStore,
 };
-use bd_time::{TestTimeProvider, TimeProvider as _};
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::macros::datetime;
@@ -384,7 +384,7 @@ impl VersionedKVJournalFuzzTest {
   /// This computes the actual size that would be required to store this key-value pair
   /// in the journal using the Frame encoding.
   fn estimate_entry_size(key: &str, value: &StateValue, timestamp: u64) -> usize {
-    use bd_resilient_kv::versioned_kv_journal::framing::Frame;
+    use bd_versioned_kv::versioned_kv_journal::framing::Frame;
     // Use a dummy scope and timestamp for size calculation
     // The actual scope doesn't affect size calculation (it's always 1 byte)
     Frame::compute_encoded_size(key, timestamp, value)
@@ -917,7 +917,7 @@ impl VersionedKVJournalFuzzTest {
 }
 
 fn compare_maps(
-  actual_maps: &bd_resilient_kv::ScopedMaps,
+  actual_maps: &bd_versioned_kv::ScopedMaps,
   expected: &AHashMap<(Scope, String), TimestampedValue>,
 ) -> bool {
   if actual_maps.len() != expected.len() {

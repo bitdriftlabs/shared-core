@@ -1,7 +1,7 @@
 # bd-state
 
 `bd-state` is the runtime state layer used by the logger pipeline. It wraps
-`bd-resilient-kv::VersionedKVStore` and adds:
+`bd-versioned-kv::VersionedKVStore` and adds:
 
 - process-lifecycle semantics (capture previous process state, then clear selected scopes),
 - change tracking (`last_change_micros`) for upload decisions,
@@ -12,7 +12,7 @@ This document focuses on how state is recorded, persisted, and uploaded with log
 
 ## Related references
 
-- Journal/file format: `bd-resilient-kv/VERSIONED_FORMAT.md`
+- Journal/file format: `bd-versioned-kv/VERSIONED_FORMAT.md`
 - Logger upload invariants: `bd-logger/AGENTS.md`
 - Upload coordinator implementation: `bd-logger/src/state_upload.rs`
 

@@ -4,7 +4,7 @@ This document provides guidance for AI agents working with the `bd-state` crate,
 
 ## Purpose and Design
 
-`bd-state` provides a high-level, synchronized wrapper around `bd-resilient-kv` for managing application state with:
+`bd-state` provides a high-level, synchronized wrapper around `bd-versioned-kv` for managing application state with:
 - **Ephemeral scope lifecycle** - scopes are cleared on each process restart
 - **Previous state snapshots** for crash reporting and debugging
 - **Thread-safe async access** via RwLock for concurrent reads/writes
@@ -12,7 +12,7 @@ This document provides guidance for AI agents working with the `bd-state` crate,
 ## Core Concepts
 
 ### Scopes
-State is organized into scopes defined in `bd-resilient-kv::Scope`:
+State is organized into scopes defined in `bd-versioned-kv::Scope`:
 - `FeatureFlag`: Runtime feature flags and configuration
 - `GlobalState`: Application-wide state that should persist
 
@@ -48,7 +48,7 @@ The `read()` method returns a guard implementing `StateReader`, allowing for fle
 ### Storage Efficiency
 - **Compression**: Archived journals are compressed with zlib
 - **Rotation**: Automatic journal rotation when size threshold exceeded
-- **Format**: Protobuf serialization via `bd-resilient-kv`
+- **Format**: Protobuf serialization via `bd-versioned-kv`
 
 ## Summary
 

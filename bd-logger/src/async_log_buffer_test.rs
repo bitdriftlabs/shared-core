@@ -110,7 +110,7 @@ impl Setup {
         tmp_dir.path().join("buffer"),
         &collector.scope(""),
         runtime,
-        Arc::new(bd_resilient_kv::RetentionRegistry::new(
+        Arc::new(bd_versioned_kv::RetentionRegistry::new(
           bd_runtime::runtime::IntWatch::new_for_testing(0),
         )),
       )

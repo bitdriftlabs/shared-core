@@ -7,8 +7,8 @@
 
 use crate::{InitStrategy, SYSTEM_SESSION_ID_KEY, Scope, StateReader, Store};
 use bd_client_stats_store::Collector;
-use bd_resilient_kv::PersistentStoreConfig;
 use bd_time::TimeProvider as _;
+use bd_versioned_kv::PersistentStoreConfig;
 use std::sync::Arc;
 use tempfile::TempDir;
 use time::macros::datetime;

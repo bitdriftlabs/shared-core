@@ -17,7 +17,7 @@ rust_library_with_feature_variants(
         "fuzz": {
             "dependency_overrides": {
                 "//shared-core/bd-client-stats-store": "//shared-core/bd-client-stats-store:bd-client-stats-store-fuzz",
-                "//shared-core/bd-resilient-kv": "//shared-core/bd-resilient-kv:bd-resilient-kv-fuzz",
+                "//shared-core/bd-versioned-kv": "//shared-core/bd-versioned-kv:bd-versioned-kv-fuzz",
                 "//shared-core/bd-stats-common": "//shared-core/bd-stats-common:bd-stats-common-fuzz",
             },
         },

@@ -9,7 +9,6 @@ use super::{initialize_memory_pressure, initialize_opaque_entity_updates};
 use crate::logger::PendingEntityIdUpdate;
 use bd_client_stats_store::Collector;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
-use bd_resilient_kv::{Scope as KvScope, StateValue, VersionedKVStore};
 use bd_state::test::TestStore;
 use bd_state::{
   ENTITY_ID_KEY,
@@ -20,6 +19,7 @@ use bd_state::{
   string_value,
 };
 use bd_time::TestTimeProvider;
+use bd_versioned_kv::{Scope as KvScope, StateValue, VersionedKVStore};
 use pretty_assertions::assert_eq;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI8, Ordering};
@@ -103,7 +103,7 @@ async fn pending_entity_id_clear_removes_persisted_value_and_clears_watch() {
 
 async fn make_previous_run_state_with_memory_pressure(
   level: MemoryPressureLevel,
-) -> bd_resilient_kv::ScopedMaps {
+) -> bd_versioned_kv::ScopedMaps {
   let mut store = VersionedKVStore::new_in_memory(
     Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00 UTC))),
     None,
@@ -115,7 +115,7 @@ async fn make_previous_run_state_with_memory_pressure(
       KvScope::System,
       MEMORY_PRESSURE_LEVEL_KEY.to_string(),
       StateValue {
-        value_type: Some(bd_resilient_kv::Value_type::StringValue(
+        value_type: Some(bd_versioned_kv::Value_type::StringValue(
           level.variant_name().unwrap_or("Unknown").to_string(),
         )),
         ..Default::default()
@@ -175,7 +175,7 @@ async fn initialize_memory_pressure_does_not_persist_to_next_session() {
   initialize_memory_pressure(&previous_run_state, &state_store, &atomic).await;
 
   // Session 2: no memory pressure in previous run state (store was cleared)
-  let empty_previous_run_state = bd_resilient_kv::ScopedMaps::default();
+  let empty_previous_run_state = bd_versioned_kv::ScopedMaps::default();
   let atomic2 = AtomicI8::new(0);
   initialize_memory_pressure(&empty_previous_run_state, &state_store, &atomic2).await;
 

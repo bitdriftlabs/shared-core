@@ -45,7 +45,7 @@ members = [
   "bd-report-parsers",
   "bd-report-writer",
   "bd-report-writer-tests",
-  "bd-resilient-kv",
+  "bd-versioned-kv",
   "bd-session",
   "bd-key-value",
   "bd-session-replay",

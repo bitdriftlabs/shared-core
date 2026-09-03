@@ -22,9 +22,9 @@ use bd_log_primitives::{EncodableLog, Log, log_level};
 use bd_proto::protos::config::v1::config::buffer_config::BufferSizes;
 use bd_proto::protos::config::v1::config::{BufferConfig, BufferConfigList, buffer_config};
 use bd_proto::protos::logging::payload::LogType;
-use bd_resilient_kv::RetentionHandle;
 use bd_stats_common::{NameType, labels};
 use bd_time::OffsetDateTimeExt as _;
+use bd_versioned_kv::RetentionHandle;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -38,7 +38,7 @@ fn tmp_dir() -> tempfile::TempDir {
 }
 
 async fn test_retention_handle() -> RetentionHandle {
-  bd_resilient_kv::RetentionRegistry::new(bd_runtime::runtime::IntWatch::new_for_testing(0))
+  bd_versioned_kv::RetentionRegistry::new(bd_runtime::runtime::IntWatch::new_for_testing(0))
     .create_handle()
     .await
 }
@@ -218,7 +218,7 @@ async fn test_ring_buffer_manager() {
     dir.path().to_path_buf(),
     &Collector::default().scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
-    Arc::new(bd_resilient_kv::RetentionRegistry::new(
+    Arc::new(bd_versioned_kv::RetentionRegistry::new(
       bd_runtime::runtime::IntWatch::new_for_testing(0),
     )),
   );
@@ -268,7 +268,7 @@ async fn ring_buffer_stats() {
     diretory.path().to_owned(),
     &collector.scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
-    Arc::new(bd_resilient_kv::RetentionRegistry::new(
+    Arc::new(bd_versioned_kv::RetentionRegistry::new(
       bd_runtime::runtime::IntWatch::new_for_testing(0),
     )),
   );
@@ -364,7 +364,7 @@ async fn ring_buffer_stats() {
 #[tokio::test]
 async fn trigger_buffer_eviction_updates_retention_handle() {
   let directory = tmp_dir();
-  let retention_registry = Arc::new(bd_resilient_kv::RetentionRegistry::new(
+  let retention_registry = Arc::new(bd_versioned_kv::RetentionRegistry::new(
     bd_runtime::runtime::IntWatch::new_for_testing(0),
   ));
   let retention_handle = retention_registry.create_handle().await;
@@ -418,7 +418,7 @@ async fn trigger_buffer_eviction_updates_retention_handle() {
 #[tokio::test]
 async fn retention_handle_is_released_on_buffer_removal() {
   let directory = tmp_dir();
-  let retention_registry = Arc::new(bd_resilient_kv::RetentionRegistry::new(
+  let retention_registry = Arc::new(bd_versioned_kv::RetentionRegistry::new(
     bd_runtime::runtime::IntWatch::new_for_testing(0),
   ));
   let ring_buffer_manager = setup_manager(directory.path(), retention_registry.clone());
@@ -441,7 +441,7 @@ async fn retention_handle_is_released_on_buffer_removal() {
 #[tokio::test]
 async fn empty_continuous_buffer_uses_retention_none() {
   let directory = tmp_dir();
-  let retention_registry = Arc::new(bd_resilient_kv::RetentionRegistry::new(
+  let retention_registry = Arc::new(bd_versioned_kv::RetentionRegistry::new(
     bd_runtime::runtime::IntWatch::new_for_testing(0),
   ));
   let ring_buffer_manager = setup_manager(directory.path(), retention_registry.clone());
@@ -460,7 +460,7 @@ async fn trigger_buffer_retention_initialized_from_oldest_record() {
   let directory = tmp_dir();
   let config = single_buffer_with_size("trigger", 10_000, 1_000, buffer_config::Type::TRIGGER);
 
-  let retention_registry = Arc::new(bd_resilient_kv::RetentionRegistry::new(
+  let retention_registry = Arc::new(bd_versioned_kv::RetentionRegistry::new(
     bd_runtime::runtime::IntWatch::new_for_testing(0),
   ));
   let ring_buffer_manager = setup_manager(directory.path(), retention_registry);
@@ -485,7 +485,7 @@ async fn trigger_buffer_retention_initialized_from_oldest_record() {
   std::mem::drop(buffer_handle);
   std::mem::drop(ring_buffer_manager);
 
-  let retention_registry = Arc::new(bd_resilient_kv::RetentionRegistry::new(
+  let retention_registry = Arc::new(bd_versioned_kv::RetentionRegistry::new(
     bd_runtime::runtime::IntWatch::new_for_testing(0),
   ));
   let (ring_buffer_manager, mut buffer_update_rx) = Manager::new(
@@ -516,7 +516,7 @@ async fn write_failure_stats() {
     diretory.path().to_owned(),
     &collector.scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from(".")),
-    Arc::new(bd_resilient_kv::RetentionRegistry::new(
+    Arc::new(bd_versioned_kv::RetentionRegistry::new(
       bd_runtime::runtime::IntWatch::new_for_testing(0),
     )),
   );
@@ -563,7 +563,7 @@ async fn buffer_never_resizes() {
     buffer_directory.path().to_path_buf(),
     &Collector::default().scope(""),
     &bd_runtime::runtime::ConfigLoader::new(&PathBuf::from("")),
-    Arc::new(bd_resilient_kv::RetentionRegistry::new(
+    Arc::new(bd_versioned_kv::RetentionRegistry::new(
       bd_runtime::runtime::IntWatch::new_for_testing(0),
     )),
   );
@@ -646,7 +646,7 @@ fn simple_buffer_config(buffers: &[&str]) -> BufferConfigList {
 
 fn setup_manager(
   directory: &Path,
-  retention_registry: Arc<bd_resilient_kv::RetentionRegistry>,
+  retention_registry: Arc<bd_versioned_kv::RetentionRegistry>,
 ) -> Arc<Manager> {
   let (ring_buffer_manager, mut buffer_update_rx) = Manager::new(
     directory.to_path_buf(),

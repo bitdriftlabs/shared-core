@@ -29,7 +29,6 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Timestamp,
 };
 use bd_proto_util::ToFlatBufferString;
-use bd_resilient_kv::StateValue;
 use bd_runtime::runtime::{self};
 use bd_session::configuration;
 use bd_shutdown::ComponentShutdownTrigger;
@@ -38,6 +37,7 @@ use bd_state::test::TestStore;
 use bd_test_helpers::make_mut;
 use bd_test_helpers::session::in_memory_store;
 use bd_time::TestTimeProvider;
+use bd_versioned_kv::StateValue;
 use flatbuffers::{FlatBufferBuilder, ForwardsUOffset, WIPOffset};
 use itertools::Itertools;
 use std::io::Read;
@@ -185,8 +185,8 @@ impl Setup {
   async fn make_previous_run_state(
     flags: Vec<(&str, &str)>,
     memory_pressure_level: Option<i8>,
-  ) -> bd_resilient_kv::ScopedMaps {
-    let mut store = bd_resilient_kv::VersionedKVStore::new_in_memory(
+  ) -> bd_versioned_kv::ScopedMaps {
+    let mut store = bd_versioned_kv::VersionedKVStore::new_in_memory(
       Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00 UTC))),
       None,
       &bd_client_stats_store::Collector::default().scope("test"),
@@ -196,10 +196,10 @@ impl Setup {
     for (name, value) in flags {
       store
         .insert(
-          bd_resilient_kv::Scope::FeatureFlagExposure,
+          bd_versioned_kv::Scope::FeatureFlagExposure,
           name.to_string(),
           StateValue {
-            value_type: Some(bd_resilient_kv::Value_type::StringValue(value.to_string())),
+            value_type: Some(bd_versioned_kv::Value_type::StringValue(value.to_string())),
             ..Default::default()
           },
         )
@@ -210,10 +210,10 @@ impl Setup {
     if let Some(level) = memory_pressure_level {
       store
         .insert(
-          bd_resilient_kv::Scope::System,
+          bd_versioned_kv::Scope::System,
           MEMORY_PRESSURE_LEVEL_KEY.to_string(),
           StateValue {
-            value_type: Some(bd_resilient_kv::Value_type::StringValue(
+            value_type: Some(bd_versioned_kv::Value_type::StringValue(
               MemoryPressureLevel(level)
                 .variant_name()
                 .unwrap_or("Unknown")
@@ -353,10 +353,10 @@ impl Setup {
     self
       .state
       .insert(
-        bd_resilient_kv::Scope::System,
+        bd_versioned_kv::Scope::System,
         MEMORY_PRESSURE_LEVEL_KEY.to_string(),
         StateValue {
-          value_type: Some(bd_resilient_kv::Value_type::StringValue(
+          value_type: Some(bd_versioned_kv::Value_type::StringValue(
             MemoryPressureLevel(level)
               .variant_name()
               .unwrap_or("Unknown")

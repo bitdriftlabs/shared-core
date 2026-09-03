@@ -22,8 +22,10 @@ pub mod test;
 
 pub use self::InitStrategy::{InMemoryOnly, PersistentWithFallback};
 use ahash::AHashMap;
-use bd_resilient_kv::{DataLoss, ScopedMaps, StateValue};
-pub use bd_resilient_kv::{
+use bd_runtime::runtime::ConfigLoader;
+use bd_time::{OffsetDateTimeExt, TimeProvider};
+use bd_versioned_kv::{DataLoss, ScopedMaps, StateValue};
+pub use bd_versioned_kv::{
   PersistentStoreConfig,
   RetentionHandle,
   RetentionRegistry,
@@ -31,8 +33,6 @@ pub use bd_resilient_kv::{
   StateValue as Value,
   Value_type,
 };
-use bd_runtime::runtime::ConfigLoader;
-use bd_time::{OffsetDateTimeExt, TimeProvider};
 use itertools::Itertools as _;
 use std::path::Path;
 use std::sync::Arc;
@@ -279,7 +279,7 @@ pub trait StateReader {
 /// management of ephemeral scopes, and snapshot capabilities.
 #[derive(Clone)]
 pub struct Store {
-  inner: Arc<RwLock<bd_resilient_kv::VersionedKVStore>>,
+  inner: Arc<RwLock<bd_versioned_kv::VersionedKVStore>>,
   /// Timestamp of the most recent state change (microseconds since epoch). Zero if no changes
   /// have occurred.
   last_change_micros: Arc<std::sync::atomic::AtomicU64>,
@@ -316,7 +316,7 @@ impl Store {
     let retention_registry = Arc::new(RetentionRegistry::new(
       bd_runtime::runtime::state::MaxSnapshotCount::register(runtime_loader),
     ));
-    let (inner, data_loss) = bd_resilient_kv::VersionedKVStore::new(
+    let (inner, data_loss) = bd_versioned_kv::VersionedKVStore::new(
       directory,
       "state",
       config,
@@ -522,7 +522,7 @@ impl Store {
   ) -> Self {
     Self {
       inner: Arc::new(RwLock::new(
-        bd_resilient_kv::VersionedKVStore::new_in_memory(
+        bd_versioned_kv::VersionedKVStore::new_in_memory(
           time_provider,
           capacity,
           stats,
@@ -721,7 +721,7 @@ impl Store {
   }
 }
 
-impl StateReader for tokio::sync::RwLockReadGuard<'_, bd_resilient_kv::VersionedKVStore> {
+impl StateReader for tokio::sync::RwLockReadGuard<'_, bd_versioned_kv::VersionedKVStore> {
   fn get(&self, scope: Scope, key: &str) -> Option<&StateValue> {
     (**self).get(scope, key)
   }
@@ -777,7 +777,7 @@ impl StateReader for tokio::sync::RwLockReadGuard<'_, bd_resilient_kv::Versioned
 /// ```
 #[derive(Default)]
 pub struct InMemoryStateReader {
-  data: bd_resilient_kv::ScopedMaps,
+  data: bd_versioned_kv::ScopedMaps,
 }
 
 impl InMemoryStateReader {
@@ -792,12 +792,12 @@ impl InMemoryStateReader {
     &mut self,
     scope: crate::Scope,
     key: impl Into<String>,
-    value: bd_resilient_kv::StateValue,
+    value: bd_versioned_kv::StateValue,
   ) {
     self.data.insert(
       scope,
       key.into(),
-      bd_resilient_kv::TimestampedValue {
+      bd_versioned_kv::TimestampedValue {
         timestamp: 0,
         value,
       },
@@ -806,7 +806,7 @@ impl InMemoryStateReader {
 }
 
 impl crate::StateReader for InMemoryStateReader {
-  fn get(&self, scope: crate::Scope, key: &str) -> Option<&bd_resilient_kv::StateValue> {
+  fn get(&self, scope: crate::Scope, key: &str) -> Option<&bd_versioned_kv::StateValue> {
     self.data.get(scope, key).map(|value| &value.value)
   }
 
@@ -824,7 +824,7 @@ impl crate::StateReader for InMemoryStateReader {
     )
   }
 
-  fn as_scoped_maps(&self) -> &bd_resilient_kv::ScopedMaps {
+  fn as_scoped_maps(&self) -> &bd_versioned_kv::ScopedMaps {
     &self.data
   }
 }

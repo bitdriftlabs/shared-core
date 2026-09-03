@@ -5,7 +5,7 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-//! Test modules for bd-resilient-kv
+//! Test modules for bd-versioned-kv
 
 #![allow(
   clippy::unwrap_used,
