@@ -487,6 +487,7 @@ pub type LogLevel = u32;
 pub mod log_level {
   use crate::LogLevel;
 
+  pub const CRITICAL: LogLevel = 5;
   pub const ERROR: LogLevel = 4;
   pub const WARNING: LogLevel = 3;
   pub const INFO: LogLevel = 2;
@@ -495,20 +496,25 @@ pub mod log_level {
 }
 
 /// A convenience enum that can be used to represent log levels in a more type-safe manner.
+///
+/// The discriminants match the wire values in `log_level`, so `as u32` and
+/// `as_u32` agree.
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypedLogLevel {
-  Error,
-  Warning,
-  Info,
-  Debug,
-  Trace,
+  Critical = log_level::CRITICAL,
+  Error    = log_level::ERROR,
+  Warning  = log_level::WARNING,
+  Info     = log_level::INFO,
+  Debug    = log_level::DEBUG,
+  Trace    = log_level::TRACE,
 }
 
 impl TypedLogLevel {
   #[must_use]
   pub fn as_u32(&self) -> LogLevel {
     match self {
+      Self::Critical => log_level::CRITICAL,
       Self::Error => log_level::ERROR,
       Self::Warning => log_level::WARNING,
       Self::Info => log_level::INFO,
