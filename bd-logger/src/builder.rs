@@ -91,12 +91,12 @@ pub fn default_stats_flush_triggers(
 }
 
 async fn initialize_memory_pressure(
-  previous_run_state: &bd_resilient_kv::ScopedMaps,
+  previous_run_state: &bd_versioned_kv::ScopedMaps,
   state_store: &StateStore,
   previous_memory_pressure_level: &std::sync::atomic::AtomicI8,
 ) {
   let level = previous_run_state
-    .get(bd_resilient_kv::Scope::System, MEMORY_PRESSURE_LEVEL_KEY)
+    .get(bd_versioned_kv::Scope::System, MEMORY_PRESSURE_LEVEL_KEY)
     .filter(|tv| tv.value.has_string_value())
     .and_then(|tv| match tv.value.string_value() {
       "Normal" => Some(MemoryPressureLevel::Normal.0),

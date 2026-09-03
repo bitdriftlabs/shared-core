@@ -41,9 +41,9 @@ use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::{
   Report,
   ReportType,
 };
-use bd_resilient_kv::TimestampedValue;
 use bd_state::{MEMORY_PRESSURE_LEVEL_KEY, StateReader};
 use bd_time::OffsetDateTimeExt as _;
+use bd_versioned_kv::TimestampedValue;
 use fbs::issue_reporting::v_1::root_as_report;
 use itertools::Itertools as _;
 use memmap2::Mmap;
@@ -139,7 +139,7 @@ pub trait CrashReportHook: Send + Sync {
 #[derive(Clone)]
 pub struct Monitor {
   report_directory: PathBuf,
-  previous_run_state: bd_resilient_kv::ScopedMaps,
+  previous_run_state: bd_versioned_kv::ScopedMaps,
   state: bd_state::Store,
   artifact_client: Arc<dyn bd_artifact_upload::Client>,
 
@@ -157,7 +157,7 @@ impl Monitor {
     session: Arc<bd_session::Strategy>,
     init_lifecycle: &InitLifecycleState,
     state: bd_state::Store,
-    previous_run_state: bd_resilient_kv::ScopedMaps,
+    previous_run_state: bd_versioned_kv::ScopedMaps,
     emit_log: impl Fn(CrashLog) -> anyhow::Result<()> + Send + Sync + 'static,
     crash_report_hook: Option<Arc<dyn CrashReportHook>>,
   ) -> Self {
@@ -412,7 +412,7 @@ impl Monitor {
       ReportOrigin::Previous => self
         .previous_run_state
         .iter()
-        .filter(|(scope, ..)| *scope == bd_resilient_kv::Scope::FeatureFlagExposure)
+        .filter(|(scope, ..)| *scope == bd_versioned_kv::Scope::FeatureFlagExposure)
         .filter_map(|(_, name, TimestampedValue { value, timestamp })| {
           value
             .has_string_value()
@@ -433,7 +433,7 @@ impl Monitor {
         .await
         .as_scoped_maps()
         .iter()
-        .filter(|(scope, ..)| *scope == bd_resilient_kv::Scope::FeatureFlagExposure)
+        .filter(|(scope, ..)| *scope == bd_versioned_kv::Scope::FeatureFlagExposure)
         .filter_map(|(_, key, value)| {
           value
             .value
@@ -465,7 +465,7 @@ impl Monitor {
 
     let Some(level_tv) = self
       .previous_run_state
-      .get(bd_resilient_kv::Scope::System, MEMORY_PRESSURE_LEVEL_KEY)
+      .get(bd_versioned_kv::Scope::System, MEMORY_PRESSURE_LEVEL_KEY)
       .filter(|tv| tv.value.has_string_value())
     else {
       return LogFields::default();

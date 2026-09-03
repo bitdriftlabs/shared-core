@@ -156,7 +156,7 @@ impl Setup {
   async fn create_rotated_snapshot(&self) -> u64 {
     let path = self.state_store.rotate_journal().await.unwrap();
     let filename = path.file_name().unwrap().to_str().unwrap();
-    bd_resilient_kv::SnapshotFilename::parse(filename)
+    bd_versioned_kv::SnapshotFilename::parse(filename)
       .unwrap()
       .timestamp_micros
   }

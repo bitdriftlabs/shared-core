@@ -5,13 +5,13 @@ load("//tools/rust:tests.bzl", "rust_library_test")
 package(default_visibility = ["//visibility:public"])
 
 rust_library_with_feature_variants(
-    name = "bd-resilient-kv",
+    name = "bd-versioned-kv",
     srcs = glob(
         ["src/**/*.rs"],
         exclude = ["src/bin/**/*.rs"],
     ),
     crate_features = ["default"],
-    crate_name = "bd_resilient_kv",
+    crate_name = "bd_versioned_kv",
     crate_root = "src/lib.rs",
     edition = "2024",
     feature_variants = {
@@ -24,4 +24,4 @@ rust_library_with_feature_variants(
     },
 )
 
-rust_library_test(crate = ":bd-resilient-kv")
+rust_library_test(crate = ":bd-versioned-kv")

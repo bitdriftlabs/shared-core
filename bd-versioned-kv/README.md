@@ -1,10 +1,10 @@
-# bd-resilient-kv
+# bd-versioned-kv
 
 A versioned, crash-resilient key-value store library for Rust with automatic persistence, compression, and point-in-time recovery.
 
 ## Overview
 
-`bd-resilient-kv` provides a versioned persistent key-value store that automatically saves data to disk while maintaining excellent performance through in-memory caching and smart buffering strategies. The library is designed to be crash-resilient with version tracking, ensuring data integrity and enabling point-in-time recovery even in the event of unexpected shutdowns.
+`bd-versioned-kv` provides a versioned persistent key-value store that automatically saves data to disk while maintaining excellent performance through in-memory caching and smart buffering strategies. The library is designed to be crash-resilient with version tracking, ensuring data integrity and enabling point-in-time recovery even in the event of unexpected shutdowns.
 
 ## Key Features
 
@@ -24,14 +24,14 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-bd-resilient-kv = { path = "path/to/bd-resilient-kv" }
+bd-versioned-kv = { path = "path/to/bd-versioned-kv" }
 bd-proto = { path = "path/to/bd-proto" }
 ```
 
 ### Basic Usage
 
 ```rust
-use bd_resilient_kv::{VersionedKVStore, PersistentStoreConfig, Scope};
+use bd_versioned_kv::{VersionedKVStore, PersistentStoreConfig, Scope};
 use bd_proto::protos::state::payload::StateValue;
 use bd_proto::protos::state::payload::state_value::Value_type;
 
@@ -84,7 +84,7 @@ async fn main() -> anyhow::Result<()> {
 The versioned store supports multiple scopes for different data lifecycles:
 
 ```rust
-use bd_resilient_kv::{VersionedKVStore, Scope};
+use bd_versioned_kv::{VersionedKVStore, Scope};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -111,7 +111,7 @@ async fn main() -> anyhow::Result<()> {
 The store automatically rotates journals and archives old versions:
 
 ```rust
-use bd_resilient_kv::{VersionedKVStore, VersionedRecovery};
+use bd_versioned_kv::{VersionedKVStore, VersionedRecovery};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -230,7 +230,7 @@ The store uses a single journal with automatic rotation and archival:
 All write operations return `anyhow::Result<T>` for comprehensive error handling, while read operations return values directly from the cache:
 
 ```rust
-use bd_resilient_kv::KVStore;
+use bd_versioned_kv::KVStore;
 use bd_bonjson::Value;
 
 fn main() -> anyhow::Result<()> {
@@ -257,7 +257,7 @@ The library automatically manages journal files:
 - **Decompression**: Archived journals are transparently decompressed during recovery
 
 For retention handle semantics and snapshot cleanup behavior, see
-`bd-resilient-kv/VERSIONED_FORMAT.md`.
+`bd-versioned-kv/VERSIONED_FORMAT.md`.
 
 Example file structure:
 ```
@@ -273,7 +273,7 @@ my_store.journal.t1234567890.zz  # Archived journal (compressed)
 ```rust
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use bd_resilient_kv::VersionedKVStore;
+use bd_versioned_kv::VersionedKVStore;
 
 let store = Arc::new(RwLock::new(
     VersionedKVStore::new("shared_store", config, None).await?
@@ -289,7 +289,7 @@ let store = Arc::new(RwLock::new(
 Choose buffer sizes based on your use case:
 
 ```rust
-use bd_resilient_kv::PersistentStoreConfig;
+use bd_versioned_kv::PersistentStoreConfig;
 
 // Small applications
 let config = PersistentStoreConfig {
@@ -313,7 +313,7 @@ let config = PersistentStoreConfig {
 ### Monitoring and Debugging
 
 ```rust
-use bd_resilient_kv::{VersionedKVStore, Scope};
+use bd_versioned_kv::{VersionedKVStore, Scope};
 
 let store = VersionedKVStore::new("debug_store", config, None).await?;
 

@@ -1,10 +1,10 @@
 # KV Journal System - Understanding and Insights
 
-This document provides insights and understanding about the `bd-resilient-kv` journal system to help AI agents work effectively with this codebase.
+This document provides insights and understanding about the `bd-versioned-kv` journal system to help AI agents work effectively with this codebase.
 
 ## Core Architecture
 
-The `bd-resilient-kv` library provides a versioned storage model:
+The `bd-versioned-kv` library provides a versioned storage model:
 
 **VersionedKVStore**: Version-tracked store with point-in-time recovery and automatic rotation
 - Best for: Audit logs, state history, remote backup
@@ -282,7 +282,7 @@ The current versioned store provides a robust foundation for persistent state ma
 
 ## Summary
 
-The bd-resilient-kv system provides versioned persistent key-value storage with point-in-time recovery capabilities. The key insight is that every write operation returns a timestamp, enabling precise state tracking and historical queries. The async architecture enables efficient background compression of archived journals without blocking application threads.
+The bd-versioned-kv system provides versioned persistent key-value storage with point-in-time recovery capabilities. The key insight is that every write operation returns a timestamp, enabling precise state tracking and historical queries. The async architecture enables efficient background compression of archived journals without blocking application threads.
 
 **Current State**: The system focuses on VersionedKVStore as the primary storage implementation. Key features include:
 

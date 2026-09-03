@@ -8,7 +8,7 @@ FUZZ_DEPS = all_crate_deps_with_overrides(
     dependency_overrides = {
         "//shared-core/bd-buffer": "//shared-core/bd-buffer:bd-buffer-fuzz",
         "//shared-core/bd-client-stats-store": "//shared-core/bd-client-stats-store:bd-client-stats-store-fuzz",
-        "//shared-core/bd-resilient-kv": "//shared-core/bd-resilient-kv:bd-resilient-kv-fuzz",
+        "//shared-core/bd-versioned-kv": "//shared-core/bd-versioned-kv:bd-versioned-kv-fuzz",
         "//shared-core/bd-workflows": "//shared-core/bd-workflows:bd-workflows-fuzz",
     },
     normal = True,
