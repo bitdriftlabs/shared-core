@@ -1026,7 +1026,7 @@ pub mod event_buffer {
   duration_feature_flag!(
     StartupReplayDelayFlag,
     "event_buffer.startup_replay_delay_ms",
-    500.milliseconds()
+    50.milliseconds()
   );
 
   // Bounds the one-time extension requested by a platform crash-pending hint during startup.

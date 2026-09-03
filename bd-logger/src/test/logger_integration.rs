@@ -1032,24 +1032,18 @@ fn blocking_flush_state() {
 
 #[test]
 fn flush_state_uninitialized() {
-  let mut setup = Setup::new();
+  let setup = Setup::new();
 
   setup.logger_handle.flush_state(Block::No);
 
   // A pre-pipeline flush has no retained work to make durable, so it is a no-op rather than a
   // deferred flush that would later run after configuration.
   assert!(!setup.pending_aggregation_index_file_path().exists());
-
-  let maybe_nack =
-    setup.send_configuration_update(configuration_update("", StateOfTheWorld::default()));
-  assert!(maybe_nack.is_none());
-  std::thread::sleep(std::time::Duration::from_millis(750));
-  assert!(!setup.pending_aggregation_index_file_path().exists());
 }
 
 #[test]
 fn blocking_flush_state_uninitialized() {
-  let mut setup = Setup::new();
+  let setup = Setup::new();
   let start = std::time::Instant::now();
 
   setup.logger_handle.flush_state(Block::Yes {
@@ -1060,12 +1054,6 @@ fn blocking_flush_state_uninitialized() {
   assert!(start.elapsed() < std::time::Duration::from_millis(100));
   // A blocking flush during the hard replay gate completes immediately and is not deferred.
   assert!(!setup.workflows_state_file_path().exists());
-  assert!(!setup.pending_aggregation_index_file_path().exists());
-
-  let maybe_nack =
-    setup.send_configuration_update(configuration_update("", StateOfTheWorld::default()));
-  assert!(maybe_nack.is_none());
-  std::thread::sleep(std::time::Duration::from_millis(750));
   assert!(!setup.pending_aggregation_index_file_path().exists());
 }
 

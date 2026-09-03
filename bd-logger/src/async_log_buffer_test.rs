@@ -323,8 +323,51 @@ fn event_buffer_admission_outcomes_are_recorded() {
   );
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn startup_gate_holds_preconfiguration_logs_until_the_replay_timer() {
+  let mut setup = Setup::new();
+  setup
+    .runtime
+    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
+      bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
+      ValueKind::Int(250),
+    )]))
+    .await
+    .unwrap();
+  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+  sender.try_send_log(normal_log("held")).unwrap();
+
+  config_update_tx
+    .send(setup.make_config_update(WorkflowsConfiguration::default()))
+    .await
+    .unwrap();
+
+  let event_buffer = buffer.event_buffer.clone();
+  let state_store = TestStore::new().await;
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+    state_store.take_inner(),
+    (),
+    shutdown_trigger.make_shutdown(),
+  ));
+
+  wait_for_pipeline_ready(&event_buffer).await;
+  tokio::task::yield_now().await;
+  tokio::time::advance(100.std_milliseconds()).await;
+  assert_eq!(0, setup.replayer_log_count.load(Ordering::SeqCst));
+
+  tokio::time::advance(150.std_milliseconds()).await;
+  tokio::task::yield_now().await;
+  assert_eq!(1, setup.replayer_log_count.load(Ordering::SeqCst));
+
+  shutdown_trigger.shutdown().await;
+  handle.await.unwrap();
+  assert_eq!(vec!["held"], *setup.replayer_logs.lock());
+}
+
+#[tokio::test(start_paused = true)]
+async fn runtime_startup_replay_delay_extension_rearms_the_running_gate() {
   let mut setup = Setup::new();
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
   let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
@@ -335,6 +378,7 @@ async fn startup_gate_holds_preconfiguration_logs_until_the_replay_timer() {
     .await
     .unwrap();
 
+  let event_buffer = buffer.event_buffer.clone();
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
   let handle = tokio::task::spawn(buffer.run_with_shutdown(
@@ -343,20 +387,51 @@ async fn startup_gate_holds_preconfiguration_logs_until_the_replay_timer() {
     shutdown_trigger.make_shutdown(),
   ));
 
-  100.milliseconds().sleep().await;
+  wait_for_pipeline_ready(&event_buffer).await;
+  setup
+    .runtime
+    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
+      bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
+      ValueKind::Int(500),
+    )]))
+    .await
+    .unwrap();
+  tokio::task::yield_now().await;
+
+  tokio::time::advance(50.std_milliseconds()).await;
+  tokio::task::yield_now().await;
   assert_eq!(0, setup.replayer_log_count.load(Ordering::SeqCst));
 
-  tokio::time::timeout(2.std_seconds(), async {
-    while setup.replayer_log_count.load(Ordering::SeqCst) == 0 {
-      tokio::task::yield_now().await;
-    }
-  })
-  .await
-  .expect("the configured replay timer must release retained ingress");
+  tokio::time::advance(450.std_milliseconds()).await;
+  tokio::task::yield_now().await;
+  assert_eq!(1, setup.replayer_log_count.load(Ordering::SeqCst));
 
   shutdown_trigger.shutdown().await;
   handle.await.unwrap();
-  assert_eq!(vec!["held"], *setup.replayer_logs.lock());
+}
+
+#[tokio::test]
+async fn pre_pipeline_blocking_flush_completes_without_event_buffer_admission() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+
+  assert!(buffer.event_buffer.skips_flush_before_pipeline_ready());
+  assert_ok!(sender.flush_state(Block::Yes {
+    timeout: 1.std_seconds(),
+    poll_callback: None,
+  }));
+
+  assert!(buffer.event_buffer.open_gate());
+  assert_ok!(sender.try_send_log(normal_log("after early flush")));
+  let entries = buffer.event_buffer.next_batch(2).await;
+  assert!(matches!(
+    entries.as_slice(),
+    [EventBufferEntry::Ingress(LoggerIngressEvent {
+      payload: LoggerIngressPayload::Log(log),
+      ..
+    })] if log.message.as_str() == Some("after early flush")
+  ));
 }
 
 #[tokio::test]
@@ -456,6 +531,40 @@ async fn startup_replay_crash_hint_uses_a_single_bounded_extension() {
     Some(base_deadline + 1.std_seconds()),
     buffer.startup_gate_deadline
   );
+}
+
+#[tokio::test]
+async fn startup_replay_runtime_delay_extends_the_bootstrap_deadline() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+
+  buffer.start_startup_replay_delay();
+  let startup_started_at = buffer.startup_started_at.unwrap();
+  assert_eq!(
+    Some(startup_started_at + time::Duration::milliseconds(50).unsigned_abs()),
+    buffer.startup_gate_deadline
+  );
+
+  setup
+    .runtime
+    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
+      bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
+      ValueKind::Int(500),
+    )]))
+    .await
+    .unwrap();
+  assert_eq!(
+    time::Duration::milliseconds(500),
+    *buffer.startup_replay_watches.base_delay.read()
+  );
+  buffer.refresh_startup_replay_delay();
+
+  assert_eq!(
+    Some(startup_started_at + time::Duration::milliseconds(500).unsigned_abs()),
+    buffer.startup_gate_deadline
+  );
+  assert!(!buffer.event_buffer.is_gate_open());
 }
 
 #[tokio::test]

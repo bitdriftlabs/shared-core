@@ -529,10 +529,10 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   pending_workflow_debug_state: HashMap<String, WorkflowDebugStateMap>,
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
   startup_replay_delay: Option<Pin<Box<Sleep>>>,
+  startup_started_at: Option<Instant>,
   startup_base_deadline: Option<Instant>,
   startup_gate_deadline: Option<Instant>,
-  startup_crash_pending: bool,
-  startup_gate_release_requested: bool,
+  startup_gate: StartupGateState,
   log_processing_started: bool,
   last_session_id: Option<Arc<str>>,
 }
@@ -581,6 +581,13 @@ impl StartupReplayWatches {
       *self.max_crash_delay.read_mark_update(),
     )
   }
+}
+
+#[derive(Default)]
+struct StartupGateState {
+  crash_pending: bool,
+  timer_elapsed: bool,
+  release_requested: bool,
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
@@ -704,10 +711,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         pending_workflow_debug_state: HashMap::new(),
         send_workflow_debug_state_delay: None,
         startup_replay_delay: None,
+        startup_started_at: None,
         startup_base_deadline: None,
         startup_gate_deadline: None,
-        startup_crash_pending: false,
-        startup_gate_release_requested: false,
+        startup_gate: StartupGateState::default(),
         log_processing_started: false,
         last_session_id: None,
       },
@@ -1040,6 +1047,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // EventBuffer retains ingress while configuration constructs the processing pipeline. Its
     // startup gate opens only after the configured replay delay, a crash extension, a pressure
     // release, or a blocking flush barrier.
+    self.start_startup_replay_delay();
 
     let local_shutdown = shutdown.cancelled();
     tokio::pin!(local_shutdown);
@@ -1061,10 +1069,17 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         _ = self.event_buffer_limit_watches.total_limit_bytes.changed() => {
           self.refresh_event_buffer_limits();
         },
+        _ = self.startup_replay_watches.base_delay.changed() => {
+          self.refresh_startup_replay_delay();
+        },
+        _ = self.startup_replay_watches.max_crash_delay.changed() => {
+          self.refresh_startup_replay_delay();
+        },
         Some(config) = self.config_update_rx.recv() => {
           self = self.update(config).await;
           self.event_buffer.mark_pipeline_ready();
-          self.start_startup_replay_delay();
+          self.refresh_startup_replay_delay();
+          self.maybe_release_startup_gate();
         },
         Some(ReportProcessingRequest {
            session
@@ -1131,11 +1146,20 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
           self.send_debug_data().await;
         },
         () = maybe_await(&mut self.startup_replay_delay) => {
-          self.startup_gate_release_requested = true;
-          self.maybe_release_startup_gate();
+          // Runtime configuration may have arrived concurrently with the bootstrap deadline.
+          // Observe it before releasing so a larger configured window extends this gate instead
+          // of leaking startup ingress through at the 50 ms default.
+          self.refresh_startup_replay_delay();
+          if self
+            .startup_gate_deadline
+            .is_none_or(|deadline| deadline <= Instant::now())
+          {
+            self.startup_gate.timer_elapsed = true;
+            self.maybe_release_startup_gate();
+          }
         },
         () = self.event_buffer.wait_for_gate_release_request() => {
-          self.startup_gate_release_requested = true;
+          self.startup_gate.release_requested = true;
           self.maybe_release_startup_gate();
         },
         () = self.resource_utilization_reporter.run() => {},
@@ -1163,35 +1187,53 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       return;
     }
 
-    if self.startup_gate_release_requested {
-      self.maybe_release_startup_gate();
-      return;
-    }
-
-    // Protected ingress may have filled the buffer before this configuration update made the
-    // processing pipeline available. Do not wait for another producer admission to notice that
-    // pressure; the gate can now release immediately.
-    if self.event_buffer.reaches_protected_high_watermark() {
-      self.startup_gate_release_requested = true;
-      self.maybe_release_startup_gate();
-      return;
-    }
-
     let (base_delay, crash_delay) = self.startup_replay_watches.read_mark_update();
-    let base_deadline = Instant::now() + base_delay.unsigned_abs();
+    let startup_started_at = Instant::now();
+    let base_deadline = startup_started_at + base_delay.unsigned_abs();
+    self.startup_started_at = Some(startup_started_at);
     self.startup_base_deadline = Some(base_deadline);
     self.startup_gate_deadline = Some(base_deadline);
     self.startup_replay_delay = Some(Box::pin(tokio::time::sleep_until(base_deadline)));
 
     // A crash request received before configuration was ready contributes its complete bounded
     // extension once the processing pipeline exists.
-    if self.startup_crash_pending {
+    if self.startup_gate.crash_pending {
       self.extend_startup_replay_deadline(crash_delay);
     }
   }
 
+  fn refresh_startup_replay_delay(&mut self) {
+    let (base_delay, crash_delay) = self.startup_replay_watches.read_mark_update();
+    if self.event_buffer.is_gate_open() {
+      return;
+    }
+    let Some(startup_started_at) = self.startup_started_at else {
+      return;
+    };
+
+    // Startup starts with the built-in delay. A runtime configuration can extend that deadline,
+    // but must never shorten it and accidentally release ingress before the configured window.
+    let base_deadline = startup_started_at + base_delay.unsigned_abs();
+    if self
+      .startup_base_deadline
+      .is_none_or(|current| base_deadline > current)
+    {
+      self.startup_base_deadline = Some(base_deadline);
+      if self.startup_gate.crash_pending {
+        self.extend_startup_replay_deadline(crash_delay);
+      } else if self
+        .startup_gate_deadline
+        .is_none_or(|current| base_deadline > current)
+      {
+        self.startup_gate_deadline = Some(base_deadline);
+        self.startup_replay_delay = Some(Box::pin(tokio::time::sleep_until(base_deadline)));
+        self.startup_gate.timer_elapsed = false;
+      }
+    }
+  }
+
   fn extend_startup_replay_for_crash(&mut self) {
-    self.startup_crash_pending = true;
+    self.startup_gate.crash_pending = true;
     let crash_delay = *self
       .startup_replay_watches
       .max_crash_delay
@@ -1214,11 +1256,12 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     {
       self.startup_gate_deadline = Some(deadline);
       self.startup_replay_delay = Some(Box::pin(tokio::time::sleep_until(deadline)));
+      self.startup_gate.timer_elapsed = false;
     }
   }
 
   fn maybe_release_startup_gate(&mut self) {
-    if self.startup_gate_release_requested
+    if (self.startup_gate.timer_elapsed || self.startup_gate.release_requested)
       && matches!(self.logging_state, LoggingState::Initialized(_))
     {
       self.startup_replay_delay = None;
