@@ -10,12 +10,12 @@
 mod logger_test;
 
 use crate::app_version::{AppVersion, Repository};
-use crate::async_log_buffer::{self, AsyncLogBuffer, LogAttributesOverrides};
+use crate::async_log_buffer::{self, AdmissionCounters, AsyncLogBuffer, LogAttributesOverrides};
 use crate::log_replay::LoggerReplay;
 use crate::{MetadataProvider, app_version};
 use bd_api::Metadata;
-use bd_bounded_buffer::{self};
 use bd_client_stats_store::{Counter, Scope};
+use bd_event_buffer::ProviderSnapshot;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
@@ -46,8 +46,8 @@ use tokio::sync::watch;
 #[derive(Clone)]
 #[allow(clippy::struct_field_names)]
 pub struct Stats {
-  pub(crate) log_emission_counters: bd_bounded_buffer::SendCounters,
-  pub(crate) state_flushing_counters: bd_bounded_buffer::SendCounters,
+  pub(crate) log_emission_counters: AdmissionCounters,
+  pub(crate) state_flushing_counters: AdmissionCounters,
   pub(crate) session_replay_duration_histogram: bd_client_stats_store::Histogram,
   sleep_enabled: Counter,
   sleep_disabled: Counter,
@@ -69,14 +69,8 @@ impl Stats {
     let sleep_scope = stats.scope("sleep");
 
     Self {
-      log_emission_counters: bd_bounded_buffer::SendCounters::new(
-        &async_log_buffer_scope,
-        "log_enqueueing",
-      ),
-      state_flushing_counters: bd_bounded_buffer::SendCounters::new(
-        &async_log_buffer_scope,
-        "state_flushing",
-      ),
+      log_emission_counters: AdmissionCounters::new(&async_log_buffer_scope, "log_enqueueing"),
+      state_flushing_counters: AdmissionCounters::new(&async_log_buffer_scope, "state_flushing"),
       session_replay_duration_histogram: replay_scope.histogram("capture_time_s"),
       sleep_enabled: sleep_scope.counter_with_labels(
         "transitions",
@@ -233,6 +227,42 @@ impl LoggerHandle {
         }
       },
       "failed to log {:?}, emitting logs from within a field provider is not allowed",
+      message
+    );
+  }
+
+  pub fn log_with_provider_snapshot(
+    &self,
+    log_level: LogLevel,
+    log_type: LogType,
+    message: LogMessage,
+    fields: AnnotatedLogFields,
+    matching_fields: AnnotatedLogFields,
+    attributes_overrides: Option<LogAttributesOverrides>,
+    capture_session: &CaptureSession,
+    provider: ProviderSnapshot,
+  ) {
+    with_reentrancy_guard!(
+      {
+        let result = AsyncLogBuffer::<LoggerReplay>::enqueue_log_with_provider_snapshot(
+          &self.tx,
+          log_level,
+          log_type,
+          message,
+          fields,
+          matching_fields,
+          attributes_overrides,
+          capture_session.0,
+          provider,
+        );
+
+        self.stats.log_emission_counters.record(&result);
+
+        if let Err(e) = result {
+          warn_every!(15.seconds(), "dropping log with provider snapshot: {e:?}");
+        }
+      },
+      "failed to log {:?} with a provider snapshot due to re-entrancy",
       message
     );
   }
@@ -500,12 +530,7 @@ impl LoggerHandle {
   pub fn set_feature_flag_exposure(&self, flag: String, variant: Option<String>) {
     with_reentrancy_guard!(
       {
-        let result =
-          self
-            .tx
-            .try_send_control(async_log_buffer::LoggerControl::SetFeatureFlagExposure(
-              flag, variant,
-            ));
+        let result = self.tx.try_send_feature_flag_exposure(flag, variant);
         if let Err(e) = result {
           log::warn!("failed to set feature flag: {e:?}");
         }

@@ -19,6 +19,7 @@ use bd_client_stats::{FlushTrigger, Stats};
 use bd_client_stats_store::{Counter, Histogram, Scope};
 use bd_crash_handler::global_state;
 use bd_error_reporter::reporter::handle_unexpected;
+use bd_event_buffer::ProviderSnapshot;
 use bd_log_filter::FilterChain;
 use bd_log_primitives::tiny_set::TinySet;
 use bd_macros::ApproximateSize;
@@ -233,6 +234,7 @@ impl InitializedLoggingContext {
     value: String,
     now: OffsetDateTime,
     session_id: &str,
+    provider_snapshot: ProviderSnapshot,
   ) {
     match state_store
       .insert(scope, key, bd_state::string_value(value))
@@ -242,45 +244,27 @@ impl InitializedLoggingContext {
         // Collect global metadata fields for state changes, similar to logs.
         // We pass empty annotated fields since state changes don't have log-specific fields,
         // but we want to capture global metadata (like device info, app version, etc.)
-        let metadata_result = with_thread_local_logger_guard(|| {
-          metadata_collector.normalized_metadata_with_extra_fields(
+        let metadata = with_thread_local_logger_guard(|| {
+          metadata_collector.normalized_metadata_from_provider_snapshot(
             [].into(), // empty log fields
             [].into(), // empty matching fields
             LogType::INTERNAL_SDK,
             global_state_tracker,
+            provider_snapshot,
           )
         });
 
-        match metadata_result {
-          Ok(metadata) => {
-            replayer
-              .replay_state_change(
-                state_change,
-                &mut self.processing_pipeline,
-                state_store,
-                now,
-                session_id,
-                &metadata.fields,
-                &metadata.matching_fields,
-              )
-              .await;
-          },
-          Err(e) => {
-            log::debug!("failed to collect metadata for state change, using empty fields: {e}");
-            // Fall back to empty fields if metadata collection fails
-            replayer
-              .replay_state_change(
-                state_change,
-                &mut self.processing_pipeline,
-                state_store,
-                now,
-                session_id,
-                &[].into(),
-                &[].into(),
-              )
-              .await;
-          },
-        }
+        replayer
+          .replay_state_change(
+            state_change,
+            &mut self.processing_pipeline,
+            state_store,
+            now,
+            session_id,
+            &metadata.fields,
+            &metadata.matching_fields,
+          )
+          .await;
       },
       Ok(None) => {},
       Err(e) => {

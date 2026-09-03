@@ -438,12 +438,6 @@ fn expected_field_value(fields: &LogFields, key: &str) -> Option<String> {
 
 #[test]
 fn metadata_from_fields_with_previous_global_state_includes_global_fields() {
-  let metadata = LogMetadata {
-    timestamp: Mutex::new(time::OffsetDateTime::now_utc()),
-    ..Default::default()
-  };
-  let collector = MetadataCollector::new(Arc::new(metadata), [].into(), [].into());
-
   let store = in_memory_store();
   let mut tracker = global_state::Tracker::new(store.clone(), Watch::new_for_testing(10.seconds()));
 
@@ -470,9 +464,12 @@ fn metadata_from_fields_with_previous_global_state_includes_global_fields() {
 
   let reader = Reader::new(store);
 
-  let metadata = collector
-    .metadata_from_fields_with_previous_global_state(input_fields, [].into(), &reader)
-    .unwrap();
+  let metadata = MetadataCollector::metadata_from_fields_with_previous_global_state(
+    input_fields,
+    [].into(),
+    &reader,
+    time::OffsetDateTime::UNIX_EPOCH,
+  );
 
   // Verify fields
 
