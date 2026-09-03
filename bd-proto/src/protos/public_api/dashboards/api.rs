@@ -6118,6 +6118,8 @@ pub struct GetChartsDataRequest {
     pub platform_filter: ::std::vec::Vec<super::platform::Platform>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.GetChartsDataRequest.and_filter)
     pub and_filter: ::protobuf::MessageField<super::time_series::AndFilter>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.GetChartsDataRequest.include_unique_device_counts)
+    pub include_unique_device_counts: bool,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.GetChartsDataRequest.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -6135,7 +6137,7 @@ impl GetChartsDataRequest {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(4);
+        let mut fields = ::std::vec::Vec::with_capacity(5);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
             "charts",
@@ -6156,6 +6158,11 @@ impl GetChartsDataRequest {
             "and_filter",
             |m: &GetChartsDataRequest| { &m.and_filter },
             |m: &mut GetChartsDataRequest| { &mut m.and_filter },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+            "include_unique_device_counts",
+            |m: &GetChartsDataRequest| { &m.include_unique_device_counts },
+            |m: &mut GetChartsDataRequest| { &mut m.include_unique_device_counts },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<GetChartsDataRequest>(
             "GetChartsDataRequest",
@@ -6187,6 +6194,9 @@ impl ::protobuf::Message for GetChartsDataRequest {
                 58 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.and_filter)?;
                 },
+                72 => {
+                    self.include_unique_device_counts = is.read_bool()?;
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -6215,6 +6225,9 @@ impl ::protobuf::Message for GetChartsDataRequest {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
+        if self.include_unique_device_counts != false {
+            my_size += 1 + 1;
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -6232,6 +6245,9 @@ impl ::protobuf::Message for GetChartsDataRequest {
         };
         if let Some(v) = self.and_filter.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(7, v, os)?;
+        }
+        if self.include_unique_device_counts != false {
+            os.write_bool(9, self.include_unique_device_counts)?;
         }
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -6254,6 +6270,7 @@ impl ::protobuf::Message for GetChartsDataRequest {
         self.time_range.clear();
         self.platform_filter.clear();
         self.and_filter.clear();
+        self.include_unique_device_counts = false;
         self.special_fields.clear();
     }
 
@@ -6263,6 +6280,7 @@ impl ::protobuf::Message for GetChartsDataRequest {
             time_range: ::protobuf::MessageField::none(),
             platform_filter: ::std::vec::Vec::new(),
             and_filter: ::protobuf::MessageField::none(),
+            include_unique_device_counts: false,
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -6283,6 +6301,203 @@ impl ::std::fmt::Display for GetChartsDataRequest {
 }
 
 impl ::protobuf::reflect::ProtobufValue for GetChartsDataRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.DeferredChartsDataContext)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct DeferredChartsDataContext {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DeferredChartsDataContext.charts)
+    pub charts: ::std::vec::Vec<ChartRequest>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DeferredChartsDataContext.time_range)
+    pub time_range: ::protobuf::MessageField<super::common::TimeRange>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DeferredChartsDataContext.platform_filter)
+    pub platform_filter: ::std::vec::Vec<super::platform::Platform>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DeferredChartsDataContext.and_filter)
+    pub and_filter: ::protobuf::MessageField<super::time_series::AndFilter>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.DeferredChartsDataContext.deferred_dimensions)
+    pub deferred_dimensions: ::std::vec::Vec<::protobuf::EnumOrUnknown<DeferredChartsDataDimension>>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.DeferredChartsDataContext.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a DeferredChartsDataContext {
+    fn default() -> &'a DeferredChartsDataContext {
+        <DeferredChartsDataContext as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl DeferredChartsDataContext {
+    pub fn new() -> DeferredChartsDataContext {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(5);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "charts",
+            |m: &DeferredChartsDataContext| { &m.charts },
+            |m: &mut DeferredChartsDataContext| { &mut m.charts },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::common::TimeRange>(
+            "time_range",
+            |m: &DeferredChartsDataContext| { &m.time_range },
+            |m: &mut DeferredChartsDataContext| { &mut m.time_range },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "platform_filter",
+            |m: &DeferredChartsDataContext| { &m.platform_filter },
+            |m: &mut DeferredChartsDataContext| { &mut m.platform_filter },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::time_series::AndFilter>(
+            "and_filter",
+            |m: &DeferredChartsDataContext| { &m.and_filter },
+            |m: &mut DeferredChartsDataContext| { &mut m.and_filter },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "deferred_dimensions",
+            |m: &DeferredChartsDataContext| { &m.deferred_dimensions },
+            |m: &mut DeferredChartsDataContext| { &mut m.deferred_dimensions },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<DeferredChartsDataContext>(
+            "DeferredChartsDataContext",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for DeferredChartsDataContext {
+    const NAME: &'static str = "DeferredChartsDataContext";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.charts.push(is.read_message()?);
+                },
+                18 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.time_range)?;
+                },
+                26 => {
+                    self.platform_filter.push(is.read_message()?);
+                },
+                34 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.and_filter)?;
+                },
+                40 => {
+                    self.deferred_dimensions.push(is.read_enum_or_unknown()?);
+                },
+                42 => {
+                    ::protobuf::rt::read_repeated_packed_enum_or_unknown_into(is, &mut self.deferred_dimensions)?
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        for value in &self.charts {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        if let Some(v) = self.time_range.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        for value in &self.platform_filter {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        if let Some(v) = self.and_filter.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::vec_packed_enum_or_unknown_size(5, &self.deferred_dimensions);
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        for v in &self.charts {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        };
+        if let Some(v) = self.time_range.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+        }
+        for v in &self.platform_filter {
+            ::protobuf::rt::write_message_field_with_cached_size(3, v, os)?;
+        };
+        if let Some(v) = self.and_filter.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(4, v, os)?;
+        }
+        os.write_repeated_packed_enum_or_unknown(5, &self.deferred_dimensions)?;
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> DeferredChartsDataContext {
+        DeferredChartsDataContext::new()
+    }
+
+    fn clear(&mut self) {
+        self.charts.clear();
+        self.time_range.clear();
+        self.platform_filter.clear();
+        self.and_filter.clear();
+        self.deferred_dimensions.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static DeferredChartsDataContext {
+        static instance: DeferredChartsDataContext = DeferredChartsDataContext {
+            charts: ::std::vec::Vec::new(),
+            time_range: ::protobuf::MessageField::none(),
+            platform_filter: ::std::vec::Vec::new(),
+            and_filter: ::protobuf::MessageField::none(),
+            deferred_dimensions: ::std::vec::Vec::new(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for DeferredChartsDataContext {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("DeferredChartsDataContext").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for DeferredChartsDataContext {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for DeferredChartsDataContext {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
@@ -8398,6 +8613,8 @@ pub struct ChartData {
     // message fields
     // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ChartData.chart_id)
     pub chart_id: ::protobuf::MessageField<super::chart_id::ChartIdentifier>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.ChartData.deferred_dimensions)
+    pub deferred_dimensions: ::std::vec::Vec<::protobuf::EnumOrUnknown<DeferredChartsDataDimension>>,
     // message oneof groups
     pub chart_response: ::std::option::Option<chart_data::Chart_response>,
     // special fields
@@ -8785,12 +9002,17 @@ impl ChartData {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(9);
+        let mut fields = ::std::vec::Vec::with_capacity(10);
         let mut oneofs = ::std::vec::Vec::with_capacity(1);
         fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::chart_id::ChartIdentifier>(
             "chart_id",
             |m: &ChartData| { &m.chart_id },
             |m: &mut ChartData| { &mut m.chart_id },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "deferred_dimensions",
+            |m: &ChartData| { &m.deferred_dimensions },
+            |m: &mut ChartData| { &mut m.deferred_dimensions },
         ));
         fields.push(::protobuf::reflect::rt::v2::make_oneof_message_has_get_mut_set_accessor::<_, LineChartResponse>(
             "line_data",
@@ -8868,6 +9090,12 @@ impl ::protobuf::Message for ChartData {
                 10 => {
                     ::protobuf::rt::read_singular_message_into_field(is, &mut self.chart_id)?;
                 },
+                104 => {
+                    self.deferred_dimensions.push(is.read_enum_or_unknown()?);
+                },
+                106 => {
+                    ::protobuf::rt::read_repeated_packed_enum_or_unknown_into(is, &mut self.deferred_dimensions)?
+                },
                 26 => {
                     self.chart_response = ::std::option::Option::Some(chart_data::Chart_response::LineData(is.read_message()?));
                 },
@@ -8908,6 +9136,7 @@ impl ::protobuf::Message for ChartData {
             let len = v.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         }
+        my_size += ::protobuf::rt::vec_packed_enum_or_unknown_size(13, &self.deferred_dimensions);
         if let ::std::option::Option::Some(ref v) = self.chart_response {
             match v {
                 &chart_data::Chart_response::LineData(ref v) => {
@@ -8951,6 +9180,7 @@ impl ::protobuf::Message for ChartData {
         if let Some(v) = self.chart_id.as_ref() {
             ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
         }
+        os.write_repeated_packed_enum_or_unknown(13, &self.deferred_dimensions)?;
         if let ::std::option::Option::Some(ref v) = self.chart_response {
             match v {
                 &chart_data::Chart_response::LineData(ref v) => {
@@ -8997,6 +9227,7 @@ impl ::protobuf::Message for ChartData {
 
     fn clear(&mut self) {
         self.chart_id.clear();
+        self.deferred_dimensions.clear();
         self.chart_response = ::std::option::Option::None;
         self.chart_response = ::std::option::Option::None;
         self.chart_response = ::std::option::Option::None;
@@ -9011,6 +9242,7 @@ impl ::protobuf::Message for ChartData {
     fn default_instance() -> &'static ChartData {
         static instance: ChartData = ChartData {
             chart_id: ::protobuf::MessageField::none(),
+            deferred_dimensions: ::std::vec::Vec::new(),
             chart_response: ::std::option::Option::None,
             special_fields: ::protobuf::SpecialFields::new(),
         };
@@ -9082,6 +9314,8 @@ pub struct GetChartsDataResponse {
     // message fields
     // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.GetChartsDataResponse.data)
     pub data: ::std::vec::Vec<ChartData>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.GetChartsDataResponse.deferred_data_context)
+    pub deferred_data_context: ::protobuf::MessageField<DeferredChartsDataContext>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.GetChartsDataResponse.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -9099,12 +9333,17 @@ impl GetChartsDataResponse {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut fields = ::std::vec::Vec::with_capacity(2);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
             "data",
             |m: &GetChartsDataResponse| { &m.data },
             |m: &mut GetChartsDataResponse| { &mut m.data },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, DeferredChartsDataContext>(
+            "deferred_data_context",
+            |m: &GetChartsDataResponse| { &m.deferred_data_context },
+            |m: &mut GetChartsDataResponse| { &mut m.deferred_data_context },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<GetChartsDataResponse>(
             "GetChartsDataResponse",
@@ -9116,6 +9355,264 @@ impl GetChartsDataResponse {
 
 impl ::protobuf::Message for GetChartsDataResponse {
     const NAME: &'static str = "GetChartsDataResponse";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    self.data.push(is.read_message()?);
+                },
+                18 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.deferred_data_context)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        for value in &self.data {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
+        if let Some(v) = self.deferred_data_context.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        for v in &self.data {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        };
+        if let Some(v) = self.deferred_data_context.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(2, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> GetChartsDataResponse {
+        GetChartsDataResponse::new()
+    }
+
+    fn clear(&mut self) {
+        self.data.clear();
+        self.deferred_data_context.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static GetChartsDataResponse {
+        static instance: GetChartsDataResponse = GetChartsDataResponse {
+            data: ::std::vec::Vec::new(),
+            deferred_data_context: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for GetChartsDataResponse {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("GetChartsDataResponse").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for GetChartsDataResponse {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for GetChartsDataResponse {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.HydrateChartsDataRequest)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct HydrateChartsDataRequest {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.HydrateChartsDataRequest.deferred_data_context)
+    pub deferred_data_context: ::protobuf::MessageField<DeferredChartsDataContext>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.HydrateChartsDataRequest.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a HydrateChartsDataRequest {
+    fn default() -> &'a HydrateChartsDataRequest {
+        <HydrateChartsDataRequest as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl HydrateChartsDataRequest {
+    pub fn new() -> HydrateChartsDataRequest {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, DeferredChartsDataContext>(
+            "deferred_data_context",
+            |m: &HydrateChartsDataRequest| { &m.deferred_data_context },
+            |m: &mut HydrateChartsDataRequest| { &mut m.deferred_data_context },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<HydrateChartsDataRequest>(
+            "HydrateChartsDataRequest",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for HydrateChartsDataRequest {
+    const NAME: &'static str = "HydrateChartsDataRequest";
+
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+        while let Some(tag) = is.read_raw_tag_or_eof()? {
+            match tag {
+                10 => {
+                    ::protobuf::rt::read_singular_message_into_field(is, &mut self.deferred_data_context)?;
+                },
+                tag => {
+                    ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u64 {
+        let mut my_size = 0;
+        if let Some(v) = self.deferred_data_context.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+        self.special_fields.cached_size().set(my_size as u32);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+        if let Some(v) = self.deferred_data_context.as_ref() {
+            ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+        }
+        os.write_unknown_fields(self.special_fields.unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn special_fields(&self) -> &::protobuf::SpecialFields {
+        &self.special_fields
+    }
+
+    fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+        &mut self.special_fields
+    }
+
+    fn new() -> HydrateChartsDataRequest {
+        HydrateChartsDataRequest::new()
+    }
+
+    fn clear(&mut self) {
+        self.deferred_data_context.clear();
+        self.special_fields.clear();
+    }
+
+    fn default_instance() -> &'static HydrateChartsDataRequest {
+        static instance: HydrateChartsDataRequest = HydrateChartsDataRequest {
+            deferred_data_context: ::protobuf::MessageField::none(),
+            special_fields: ::protobuf::SpecialFields::new(),
+        };
+        &instance
+    }
+}
+
+impl ::protobuf::MessageFull for HydrateChartsDataRequest {
+    fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("HydrateChartsDataRequest").unwrap()).clone()
+    }
+}
+
+impl ::std::fmt::Display for HydrateChartsDataRequest {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for HydrateChartsDataRequest {
+    type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+// @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.HydrateChartsDataResponse)
+#[derive(PartialEq,Clone,Default,Debug)]
+pub struct HydrateChartsDataResponse {
+    // message fields
+    // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.HydrateChartsDataResponse.data)
+    pub data: ::std::vec::Vec<hydrate_charts_data_response::ChartDataHydration>,
+    // special fields
+    // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.HydrateChartsDataResponse.special_fields)
+    pub special_fields: ::protobuf::SpecialFields,
+}
+
+impl<'a> ::std::default::Default for &'a HydrateChartsDataResponse {
+    fn default() -> &'a HydrateChartsDataResponse {
+        <HydrateChartsDataResponse as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl HydrateChartsDataResponse {
+    pub fn new() -> HydrateChartsDataResponse {
+        ::std::default::Default::default()
+    }
+
+    fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+        let mut fields = ::std::vec::Vec::with_capacity(1);
+        let mut oneofs = ::std::vec::Vec::with_capacity(0);
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "data",
+            |m: &HydrateChartsDataResponse| { &m.data },
+            |m: &mut HydrateChartsDataResponse| { &mut m.data },
+        ));
+        ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<HydrateChartsDataResponse>(
+            "HydrateChartsDataResponse",
+            fields,
+            oneofs,
+        )
+    }
+}
+
+impl ::protobuf::Message for HydrateChartsDataResponse {
+    const NAME: &'static str = "HydrateChartsDataResponse";
 
     fn is_initialized(&self) -> bool {
         true
@@ -9164,8 +9661,8 @@ impl ::protobuf::Message for GetChartsDataResponse {
         &mut self.special_fields
     }
 
-    fn new() -> GetChartsDataResponse {
-        GetChartsDataResponse::new()
+    fn new() -> HydrateChartsDataResponse {
+        HydrateChartsDataResponse::new()
     }
 
     fn clear(&mut self) {
@@ -9173,8 +9670,8 @@ impl ::protobuf::Message for GetChartsDataResponse {
         self.special_fields.clear();
     }
 
-    fn default_instance() -> &'static GetChartsDataResponse {
-        static instance: GetChartsDataResponse = GetChartsDataResponse {
+    fn default_instance() -> &'static HydrateChartsDataResponse {
+        static instance: HydrateChartsDataResponse = HydrateChartsDataResponse {
             data: ::std::vec::Vec::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
@@ -9182,21 +9679,164 @@ impl ::protobuf::Message for GetChartsDataResponse {
     }
 }
 
-impl ::protobuf::MessageFull for GetChartsDataResponse {
+impl ::protobuf::MessageFull for HydrateChartsDataResponse {
     fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
         static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
-        descriptor.get(|| file_descriptor().message_by_package_relative_name("GetChartsDataResponse").unwrap()).clone()
+        descriptor.get(|| file_descriptor().message_by_package_relative_name("HydrateChartsDataResponse").unwrap()).clone()
     }
 }
 
-impl ::std::fmt::Display for GetChartsDataResponse {
+impl ::std::fmt::Display for HydrateChartsDataResponse {
     fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
         ::protobuf::text_format::fmt(self, f)
     }
 }
 
-impl ::protobuf::reflect::ProtobufValue for GetChartsDataResponse {
+impl ::protobuf::reflect::ProtobufValue for HydrateChartsDataResponse {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+}
+
+/// Nested message and enums of message `HydrateChartsDataResponse`
+pub mod hydrate_charts_data_response {
+    // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.HydrateChartsDataResponse.ChartDataHydration)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct ChartDataHydration {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.HydrateChartsDataResponse.ChartDataHydration.chart_data)
+        pub chart_data: ::protobuf::MessageField<super::ChartData>,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.dashboards.v1.HydrateChartsDataResponse.ChartDataHydration.hydrated_dimensions)
+        pub hydrated_dimensions: ::std::vec::Vec<::protobuf::EnumOrUnknown<super::DeferredChartsDataDimension>>,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.dashboards.v1.HydrateChartsDataResponse.ChartDataHydration.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a ChartDataHydration {
+        fn default() -> &'a ChartDataHydration {
+            <ChartDataHydration as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl ChartDataHydration {
+        pub fn new() -> ChartDataHydration {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(2);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_message_field_accessor::<_, super::ChartData>(
+                "chart_data",
+                |m: &ChartDataHydration| { &m.chart_data },
+                |m: &mut ChartDataHydration| { &mut m.chart_data },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+                "hydrated_dimensions",
+                |m: &ChartDataHydration| { &m.hydrated_dimensions },
+                |m: &mut ChartDataHydration| { &mut m.hydrated_dimensions },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<ChartDataHydration>(
+                "HydrateChartsDataResponse.ChartDataHydration",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for ChartDataHydration {
+        const NAME: &'static str = "ChartDataHydration";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        ::protobuf::rt::read_singular_message_into_field(is, &mut self.chart_data)?;
+                    },
+                    16 => {
+                        self.hydrated_dimensions.push(is.read_enum_or_unknown()?);
+                    },
+                    18 => {
+                        ::protobuf::rt::read_repeated_packed_enum_or_unknown_into(is, &mut self.hydrated_dimensions)?
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if let Some(v) = self.chart_data.as_ref() {
+                let len = v.compute_size();
+                my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+            }
+            my_size += ::protobuf::rt::vec_packed_enum_or_unknown_size(2, &self.hydrated_dimensions);
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if let Some(v) = self.chart_data.as_ref() {
+                ::protobuf::rt::write_message_field_with_cached_size(1, v, os)?;
+            }
+            os.write_repeated_packed_enum_or_unknown(2, &self.hydrated_dimensions)?;
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> ChartDataHydration {
+            ChartDataHydration::new()
+        }
+
+        fn clear(&mut self) {
+            self.chart_data.clear();
+            self.hydrated_dimensions.clear();
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static ChartDataHydration {
+            static instance: ChartDataHydration = ChartDataHydration {
+                chart_data: ::protobuf::MessageField::none(),
+                hydrated_dimensions: ::std::vec::Vec::new(),
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for ChartDataHydration {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("HydrateChartsDataResponse.ChartDataHydration").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for ChartDataHydration {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for ChartDataHydration {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
 }
 
 // @@protoc_insertion_point(message:bitdrift.public.unary.dashboards.v1.GetActiveDevicesRequest)
@@ -12235,6 +12875,68 @@ impl ::protobuf::reflect::ProtobufValue for ListChartsResponse {
     type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
 }
 
+#[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
+// @@protoc_insertion_point(enum:bitdrift.public.unary.dashboards.v1.DeferredChartsDataDimension)
+pub enum DeferredChartsDataDimension {
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.dashboards.v1.DeferredChartsDataDimension.DEFERRED_CHARTS_DATA_DIMENSION_UNSPECIFIED)
+    DEFERRED_CHARTS_DATA_DIMENSION_UNSPECIFIED = 0,
+    // @@protoc_insertion_point(enum_value:bitdrift.public.unary.dashboards.v1.DeferredChartsDataDimension.DEFERRED_CHARTS_DATA_DIMENSION_UNIQUE_DEVICES)
+    DEFERRED_CHARTS_DATA_DIMENSION_UNIQUE_DEVICES = 1,
+}
+
+impl ::protobuf::Enum for DeferredChartsDataDimension {
+    const NAME: &'static str = "DeferredChartsDataDimension";
+
+    fn value(&self) -> i32 {
+        *self as i32
+    }
+
+    fn from_i32(value: i32) -> ::std::option::Option<DeferredChartsDataDimension> {
+        match value {
+            0 => ::std::option::Option::Some(DeferredChartsDataDimension::DEFERRED_CHARTS_DATA_DIMENSION_UNSPECIFIED),
+            1 => ::std::option::Option::Some(DeferredChartsDataDimension::DEFERRED_CHARTS_DATA_DIMENSION_UNIQUE_DEVICES),
+            _ => ::std::option::Option::None
+        }
+    }
+
+    fn from_str(str: &str) -> ::std::option::Option<DeferredChartsDataDimension> {
+        match str {
+            "DEFERRED_CHARTS_DATA_DIMENSION_UNSPECIFIED" => ::std::option::Option::Some(DeferredChartsDataDimension::DEFERRED_CHARTS_DATA_DIMENSION_UNSPECIFIED),
+            "DEFERRED_CHARTS_DATA_DIMENSION_UNIQUE_DEVICES" => ::std::option::Option::Some(DeferredChartsDataDimension::DEFERRED_CHARTS_DATA_DIMENSION_UNIQUE_DEVICES),
+            _ => ::std::option::Option::None
+        }
+    }
+
+    const VALUES: &'static [DeferredChartsDataDimension] = &[
+        DeferredChartsDataDimension::DEFERRED_CHARTS_DATA_DIMENSION_UNSPECIFIED,
+        DeferredChartsDataDimension::DEFERRED_CHARTS_DATA_DIMENSION_UNIQUE_DEVICES,
+    ];
+}
+
+impl ::protobuf::EnumFull for DeferredChartsDataDimension {
+    fn enum_descriptor() -> ::protobuf::reflect::EnumDescriptor {
+        static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::EnumDescriptor> = ::protobuf::rt::Lazy::new();
+        descriptor.get(|| file_descriptor().enum_by_package_relative_name("DeferredChartsDataDimension").unwrap()).clone()
+    }
+
+    fn descriptor(&self) -> ::protobuf::reflect::EnumValueDescriptor {
+        let index = *self as usize;
+        Self::enum_descriptor().value_by_index(index)
+    }
+}
+
+impl ::std::default::Default for DeferredChartsDataDimension {
+    fn default() -> Self {
+        DeferredChartsDataDimension::DEFERRED_CHARTS_DATA_DIMENSION_UNSPECIFIED
+    }
+}
+
+impl DeferredChartsDataDimension {
+    fn generated_enum_descriptor_data() -> ::protobuf::reflect::GeneratedEnumDescriptorData {
+        ::protobuf::reflect::GeneratedEnumDescriptorData::new::<DeferredChartsDataDimension>("DeferredChartsDataDimension")
+    }
+}
+
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n-bitdrift/public/unary/dashboards/v1/api.proto\x12#bitdrift.public.una\
     ry.dashboards.v1\x1a1bitdrift/public/shared/platform/v1/platform.proto\
@@ -12403,64 +13105,79 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \n\x20histogram_bar_chart_display_mode\x18\x0c\x20\x01(\x0b2_.bitdrift.p\
     ublic.unary.charts.v1.ChartMetadata.MetricChartMetadata.HistogramBarChar\
     tDisplayModeH\0R\x1chistogramBarChartDisplayModeB\x0e\n\x0cdisplay_mode\
-    \"\xe8\x02\n\x14GetChartsDataRequest\x12U\n\x06charts\x18\x01\x20\x03(\
+    \"\xa9\x03\n\x14GetChartsDataRequest\x12U\n\x06charts\x18\x01\x20\x03(\
     \x0b21.bitdrift.public.unary.dashboards.v1.ChartRequestR\x06chartsB\n\
     \xfaB\x07\x92\x01\x04\x08\x01\x10d\x12I\n\ntime_range\x18\x08\x20\x01(\
     \x0b2*.bitdrift.public.unary.common.v1.TimeRangeR\ttimeRange\x12_\n\x0fp\
     latform_filter\x18\x06\x20\x03(\x0b2,.bitdrift.public.shared.platform.v1\
     .PlatformR\x0eplatformFilterB\x08\xfaB\x05\x92\x01\x02\x10\x19\x12M\n\na\
     nd_filter\x18\x07\x20\x01(\x0b2..bitdrift.public.shared.workflows.v1.And\
-    FilterR\tandFilter\"e\n\x11LineChartResponse\x12P\n\x0btime_series\x18\
-    \x01\x20\x03(\x0b2/.bitdrift.public.shared.workflows.v1.TimeSeriesR\ntim\
-    eSeries\"\xf0\x02\n\x13SankeyChartResponse\x12S\n\x05nodes\x18\x01\x20\
-    \x03(\x0b2=.bitdrift.public.unary.dashboards.v1.SankeyChartResponse.Node\
-    R\x05nodes\x12S\n\x05links\x18\x02\x20\x03(\x0b2=.bitdrift.public.unary.\
-    dashboards.v1.SankeyChartResponse.LinkR\x05links\x1a3\n\x04Node\x12\x17\
-    \n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\x12\x12\n\
-    \x04name\x18\x02\x20\x01(\tR\x04name\x1az\n\x04Link\x12-\n\x0esource_nod\
-    e_id\x18\x01\x20\x01(\tR\x0csourceNodeIdB\x07\xfaB\x04r\x02\x10\x01\x12-\
-    \n\x0etarget_node_id\x18\x02\x20\x01(\tR\x0ctargetNodeIdB\x07\xfaB\x04r\
-    \x02\x10\x01\x12\x14\n\x05value\x18\x03\x20\x01(\x04R\x05value\"X\n\x12T\
-    ableChartResponse\x12B\n\x06tables\x18\x01\x20\x03(\x0b2*.bitdrift.publi\
-    c.unary.dashboards.v1.TableR\x06tables\"\xf9\x02\n\x05Table\x123\n\x16gr\
-    oup_column_key_names\x18\x01\x20\x03(\tR\x13groupColumnKeyNames\x123\n\
-    \x16value_column_key_names\x18\x02\x20\x03(\tR\x13valueColumnKeyNames\
-    \x12A\n\x04rows\x18\x03\x20\x03(\x0b2-.bitdrift.public.unary.dashboards.\
-    v1.TableRowR\x04rows\x12*\n\x0eunique_devices\x18\x04\x20\x01(\x04H\0R\r\
-    uniqueDevices\x88\x01\x01\x12\x14\n\x05title\x18\x05\x20\x01(\tR\x05titl\
-    e\x12n\n\x15cardinality_overflows\x18\x06\x20\x01(\x0b29.bitdrift.public\
-    .shared.workflows.v1.CardinalityOverflowsR\x14cardinalityOverflowsB\x11\
-    \n\x0f_unique_devices\"w\n\nTableValue\x12\x14\n\x05value\x18\x01\x20\
-    \x01(\x01R\x05value\x12S\n\x0crate_details\x18\x02\x20\x01(\x0b20.bitdri\
-    ft.public.shared.workflows.v1.RateDetailsR\x0brateDetails\"\xd7\x01\n\
-    \x08TableRow\x12.\n\x13group_column_values\x18\x01\x20\x03(\tR\x11groupC\
-    olumnValues\x12\\\n\x11aggregated_values\x18\x02\x20\x03(\x0b2/.bitdrift\
-    .public.unary.dashboards.v1.TableValueR\x10aggregatedValues\x12*\n\x0eun\
-    ique_devices\x18\x03\x20\x01(\x04H\0R\runiqueDevices\x88\x01\x01B\x11\n\
-    \x0f_unique_devices\"X\n\x13FunnelChartResponse\x12A\n\x05steps\x18\x01\
-    \x20\x03(\x0b2+.bitdrift.public.unary.charts.v1.FunnelStepR\x05steps\"\
-    \xd6\x05\n\x19HistogramBarChartResponse\x12t\n\x0fper_time_series\x18\
-    \x01\x20\x03(\x0b2L.bitdrift.public.unary.dashboards.v1.HistogramBarChar\
-    tResponse.PerTimeSeriesR\rperTimeSeries\x1aF\n\x06Bucket\x12\x14\n\x05be\
-    gin\x18\x01\x20\x01(\x01R\x05begin\x12\x10\n\x03end\x18\x02\x20\x01(\x01\
-    R\x03end\x12\x14\n\x05count\x18\x03\x20\x01(\x04R\x05count\x1a\xcc\x01\n\
-    \nPerGroupBy\x12\x1e\n\ndimensions\x18\x01\x20\x03(\tR\ndimensions\x12_\
-    \n\x07buckets\x18\x02\x20\x03(\x0b2E.bitdrift.public.unary.dashboards.v1\
-    .HistogramBarChartResponse.BucketR\x07buckets\x12*\n\x0eunique_devices\
-    \x18\x03\x20\x01(\x04H\0R\runiqueDevices\x88\x01\x01B\x11\n\x0f_unique_d\
-    evices\x1a\xab\x02\n\rPerTimeSeries\x12'\n\x0fdimension_names\x18\x01\
-    \x20\x03(\tR\x0edimensionNames\x12\x14\n\x05title\x18\x02\x20\x01(\tR\
-    \x05title\x12n\n\x15cardinality_overflows\x18\x03\x20\x01(\x0b29.bitdrif\
-    t.public.shared.workflows.v1.CardinalityOverflowsR\x14cardinalityOverflo\
-    ws\x12k\n\x0cper_group_by\x18\x04\x20\x03(\x0b2I.bitdrift.public.unary.d\
-    ashboards.v1.HistogramBarChartResponse.PerGroupByR\nperGroupBy\"\xf4\x01\
-    \n\x1bSessionCaptureChartResponse\x12`\n\x11captured_sessions\x18\x01\
-    \x20\x03(\x0b23.bitdrift.public.unary.workflows.v1.CapturedSessionR\x10c\
-    apturedSessions\x12+\n\x0fnext_page_token\x18\x02\x20\x01(\tH\0R\rnextPa\
-    geToken\x88\x01\x01\x122\n\x15daily_limit_remaining\x18\x03\x20\x01(\rR\
-    \x13dailyLimitRemainingB\x12\n\x10_next_page_token\"\xa9\x06\n\tChartDat\
-    a\x12U\n\x08chart_id\x18\x01\x20\x01(\x0b20.bitdrift.public.unary.charts\
-    .v1.ChartIdentifierR\x07chartIdB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12U\n\
+    FilterR\tandFilter\x12?\n\x1cinclude_unique_device_counts\x18\t\x20\x01(\
+    \x08R\x19includeUniqueDeviceCounts\"\x83\x04\n\x19DeferredChartsDataCont\
+    ext\x12Z\n\x06charts\x18\x01\x20\x03(\x0b21.bitdrift.public.unary.dashbo\
+    ards.v1.ChartRequestR\x06chartsB\x0f\xfaB\x0c\x92\x01\t\x10d\"\x05\x8a\
+    \x01\x02\x10\x01\x12S\n\ntime_range\x18\x02\x20\x01(\x0b2*.bitdrift.publ\
+    ic.unary.common.v1.TimeRangeR\ttimeRangeB\x08\xfaB\x05\x8a\x01\x02\x10\
+    \x01\x12_\n\x0fplatform_filter\x18\x03\x20\x03(\x0b2,.bitdrift.public.sh\
+    ared.platform.v1.PlatformR\x0eplatformFilterB\x08\xfaB\x05\x92\x01\x02\
+    \x10\x19\x12M\n\nand_filter\x18\x04\x20\x01(\x0b2..bitdrift.public.share\
+    d.workflows.v1.AndFilterR\tandFilter\x12\x84\x01\n\x13deferred_dimension\
+    s\x18\x05\x20\x03(\x0e2@.bitdrift.public.unary.dashboards.v1.DeferredCha\
+    rtsDataDimensionR\x12deferredDimensionsB\x11\xfaB\x0e\x92\x01\x0b\x10d\"\
+    \x07\x82\x01\x04\x10\x01\x20\0\"e\n\x11LineChartResponse\x12P\n\x0btime_\
+    series\x18\x01\x20\x03(\x0b2/.bitdrift.public.shared.workflows.v1.TimeSe\
+    riesR\ntimeSeries\"\xf0\x02\n\x13SankeyChartResponse\x12S\n\x05nodes\x18\
+    \x01\x20\x03(\x0b2=.bitdrift.public.unary.dashboards.v1.SankeyChartRespo\
+    nse.NodeR\x05nodes\x12S\n\x05links\x18\x02\x20\x03(\x0b2=.bitdrift.publi\
+    c.unary.dashboards.v1.SankeyChartResponse.LinkR\x05links\x1a3\n\x04Node\
+    \x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\x10\x01\
+    \x12\x12\n\x04name\x18\x02\x20\x01(\tR\x04name\x1az\n\x04Link\x12-\n\x0e\
+    source_node_id\x18\x01\x20\x01(\tR\x0csourceNodeIdB\x07\xfaB\x04r\x02\
+    \x10\x01\x12-\n\x0etarget_node_id\x18\x02\x20\x01(\tR\x0ctargetNodeIdB\
+    \x07\xfaB\x04r\x02\x10\x01\x12\x14\n\x05value\x18\x03\x20\x01(\x04R\x05v\
+    alue\"X\n\x12TableChartResponse\x12B\n\x06tables\x18\x01\x20\x03(\x0b2*.\
+    bitdrift.public.unary.dashboards.v1.TableR\x06tables\"\xf9\x02\n\x05Tabl\
+    e\x123\n\x16group_column_key_names\x18\x01\x20\x03(\tR\x13groupColumnKey\
+    Names\x123\n\x16value_column_key_names\x18\x02\x20\x03(\tR\x13valueColum\
+    nKeyNames\x12A\n\x04rows\x18\x03\x20\x03(\x0b2-.bitdrift.public.unary.da\
+    shboards.v1.TableRowR\x04rows\x12*\n\x0eunique_devices\x18\x04\x20\x01(\
+    \x04H\0R\runiqueDevices\x88\x01\x01\x12\x14\n\x05title\x18\x05\x20\x01(\
+    \tR\x05title\x12n\n\x15cardinality_overflows\x18\x06\x20\x01(\x0b29.bitd\
+    rift.public.shared.workflows.v1.CardinalityOverflowsR\x14cardinalityOver\
+    flowsB\x11\n\x0f_unique_devices\"w\n\nTableValue\x12\x14\n\x05value\x18\
+    \x01\x20\x01(\x01R\x05value\x12S\n\x0crate_details\x18\x02\x20\x01(\x0b2\
+    0.bitdrift.public.shared.workflows.v1.RateDetailsR\x0brateDetails\"\xd7\
+    \x01\n\x08TableRow\x12.\n\x13group_column_values\x18\x01\x20\x03(\tR\x11\
+    groupColumnValues\x12\\\n\x11aggregated_values\x18\x02\x20\x03(\x0b2/.bi\
+    tdrift.public.unary.dashboards.v1.TableValueR\x10aggregatedValues\x12*\n\
+    \x0eunique_devices\x18\x03\x20\x01(\x04H\0R\runiqueDevices\x88\x01\x01B\
+    \x11\n\x0f_unique_devices\"X\n\x13FunnelChartResponse\x12A\n\x05steps\
+    \x18\x01\x20\x03(\x0b2+.bitdrift.public.unary.charts.v1.FunnelStepR\x05s\
+    teps\"\xd6\x05\n\x19HistogramBarChartResponse\x12t\n\x0fper_time_series\
+    \x18\x01\x20\x03(\x0b2L.bitdrift.public.unary.dashboards.v1.HistogramBar\
+    ChartResponse.PerTimeSeriesR\rperTimeSeries\x1aF\n\x06Bucket\x12\x14\n\
+    \x05begin\x18\x01\x20\x01(\x01R\x05begin\x12\x10\n\x03end\x18\x02\x20\
+    \x01(\x01R\x03end\x12\x14\n\x05count\x18\x03\x20\x01(\x04R\x05count\x1a\
+    \xcc\x01\n\nPerGroupBy\x12\x1e\n\ndimensions\x18\x01\x20\x03(\tR\ndimens\
+    ions\x12_\n\x07buckets\x18\x02\x20\x03(\x0b2E.bitdrift.public.unary.dash\
+    boards.v1.HistogramBarChartResponse.BucketR\x07buckets\x12*\n\x0eunique_\
+    devices\x18\x03\x20\x01(\x04H\0R\runiqueDevices\x88\x01\x01B\x11\n\x0f_u\
+    nique_devices\x1a\xab\x02\n\rPerTimeSeries\x12'\n\x0fdimension_names\x18\
+    \x01\x20\x03(\tR\x0edimensionNames\x12\x14\n\x05title\x18\x02\x20\x01(\t\
+    R\x05title\x12n\n\x15cardinality_overflows\x18\x03\x20\x01(\x0b29.bitdri\
+    ft.public.shared.workflows.v1.CardinalityOverflowsR\x14cardinalityOverfl\
+    ows\x12k\n\x0cper_group_by\x18\x04\x20\x03(\x0b2I.bitdrift.public.unary.\
+    dashboards.v1.HistogramBarChartResponse.PerGroupByR\nperGroupBy\"\xf4\
+    \x01\n\x1bSessionCaptureChartResponse\x12`\n\x11captured_sessions\x18\
+    \x01\x20\x03(\x0b23.bitdrift.public.unary.workflows.v1.CapturedSessionR\
+    \x10capturedSessions\x12+\n\x0fnext_page_token\x18\x02\x20\x01(\tH\0R\rn\
+    extPageToken\x88\x01\x01\x122\n\x15daily_limit_remaining\x18\x03\x20\x01\
+    (\rR\x13dailyLimitRemainingB\x12\n\x10_next_page_token\"\xb0\x07\n\tChar\
+    tData\x12U\n\x08chart_id\x18\x01\x20\x01(\x0b20.bitdrift.public.unary.ch\
+    arts.v1.ChartIdentifierR\x07chartIdB\x08\xfaB\x05\x8a\x01\x02\x10\x01\
+    \x12\x84\x01\n\x13deferred_dimensions\x18\r\x20\x03(\x0e2@.bitdrift.publ\
+    ic.unary.dashboards.v1.DeferredChartsDataDimensionR\x12deferredDimension\
+    sB\x11\xfaB\x0e\x92\x01\x0b\x10d\"\x07\x82\x01\x04\x10\x01\x20\0\x12U\n\
     \tline_data\x18\x03\x20\x01(\x0b26.bitdrift.public.unary.dashboards.v1.L\
     ineChartResponseH\0R\x08lineData\x12[\n\x0bsankey_data\x18\x07\x20\x01(\
     \x0b28.bitdrift.public.unary.dashboards.v1.SankeyChartResponseH\0R\nsank\
@@ -12474,103 +13191,122 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     reChartResponseH\0R\x12sessionCaptureData\x12\x16\n\x05error\x18\x06\x20\
     \x01(\tH\0R\x05error\x121\n\x0fchart_not_found\x18\x0c\x20\x01(\x08H\0R\
     \rchartNotFoundB\x07\xfaB\x04j\x02\x08\x01B\x15\n\x0echart_response\x12\
-    \x03\xf8B\x01\"[\n\x15GetChartsDataResponse\x12B\n\x04data\x18\x01\x20\
-    \x03(\x0b2..bitdrift.public.unary.dashboards.v1.ChartDataR\x04data\"\xc5\
-    \x01\n\x17GetActiveDevicesRequest\x12I\n\ntime_range\x18\x07\x20\x01(\
-    \x0b2*.bitdrift.public.unary.common.v1.TimeRangeR\ttimeRange\x12_\n\x0fp\
-    latform_filter\x18\x06\x20\x03(\x0b2,.bitdrift.public.shared.platform.v1\
-    .PlatformR\x0eplatformFilterB\x08\xfaB\x05\x92\x01\x02\x10\n\"4\n\x18Get\
-    ActiveDevicesResponse\x12\x18\n\x07devices\x18\x01\x20\x01(\x04R\x07devi\
-    ces\"\xeb\x01\n\x16GetUniqueAppIdsRequest\x129\n\nstart_time\x18\x01\x20\
-    \x01(\x0b2\x1a.google.protobuf.TimestampR\tstartTime\x125\n\x08end_time\
-    \x18\x02\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x07endTime\x12_\n\
-    \x0fplatform_filter\x18\x04\x20\x03(\x0b2,.bitdrift.public.shared.platfo\
-    rm.v1.PlatformR\x0eplatformFilterB\x08\xfaB\x05\x92\x01\x02\x10\n\"e\n\
-    \x17GetUniqueAppIdsResponse\x12J\n\tplatforms\x18\x06\x20\x03(\x0b2,.bit\
-    drift.public.shared.platform.v1.PlatformR\tplatforms\"\xff\x03\n\x1bDash\
-    boardStylisticComponent\x12w\n\x0etext_component\x18\x01\x20\x01(\x0b2N.\
-    bitdrift.public.unary.dashboards.v1.DashboardStylisticComponent.TextComp\
-    onentH\0R\rtextComponent\x12d\n\x07divider\x18\x02\x20\x01(\x0b2H.bitdri\
-    ft.public.unary.dashboards.v1.DashboardStylisticComponent.DividerH\0R\
-    \x07divider\x12\x19\n\x02id\x18\x03\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\
-    \x10\x01\x18d\x12x\n\x19dashboard_layout_settings\x18\x04\x20\x01(\x0b2<\
-    .bitdrift.public.unary.dashboards.v1.DashboardLayoutSettingsR\x17dashboa\
-    rdLayoutSettings\x1a\t\n\x07Divider\x1aT\n\rTextComponent\x12\x1e\n\x04t\
-    ext\x18\x01\x20\x01(\tR\x04textB\n\xfaB\x07r\x05\x10\x01\x18\x88'\x12#\n\
-    \x07variant\x18\x02\x20\x01(\tR\x07variantB\t\xfaB\x06r\x04\x10\x01\x182\
-    B\x0b\n\x04type\x12\x03\xf8B\x01\"\xdb\x01\n\x11DashboardVariable\x12I\n\
-    \x05value\x18\x03\x20\x01(\x0b21.bitdrift.public.unary.workflows.v1.Grou\
-    pBy.ValueH\0R\x05value\x12e\n!earliest_contiguous_deployed_time\x18\x02\
-    \x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x1eearliestContiguousDeplo\
-    yedTimeB\x14\n\rvariable_type\x12\x03\xf8B\x01\"\xa1\x02\n\x14ChartCompo\
-    nentLayout\x12K\n\x08chart_id\x18\x01\x20\x01(\x0b20.bitdrift.public.una\
-    ry.charts.v1.ChartIdentifierR\x07chartId\x12e\n\x0flayout_settings\x18\
-    \x02\x20\x01(\x0b2<.bitdrift.public.unary.dashboards.v1.DashboardLayoutS\
-    ettingsR\x0elayoutSettings\x12U\n\x0echart_metadata\x18\x03\x20\x01(\x0b\
-    2..bitdrift.public.unary.charts.v1.ChartMetadataR\rchartMetadata\"z\n\
-    \x1eFavoriteCustomDashboardRequest\x12X\n\nidentifier\x18\x01\x20\x01(\
-    \x0b28.bitdrift.public.unary.dashboards.v1.DashboardIdentifierR\nidentif\
-    ier\"!\n\x1fFavoriteCustomDashboardResponse\"\xc2\x06\n\x1cUpsertCustomD\
-    ashboardRequest\x12\x1e\n\x02id\x18\x01\x20\x01(\tH\0R\x02idB\t\xfaB\x06\
-    r\x04\x10\x01\x18d\x88\x01\x01\x12\x1e\n\x04name\x18\x02\x20\x01(\tR\x04\
-    nameB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x12l\n\x04tabs\x18\x03\x20\x03\
-    (\x0b2N.bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardRequest\
-    .DashboardTabR\x04tabsB\x08\xfaB\x05\x92\x01\x02\x10d\x12l\n\x13dashboar\
-    d_variables\x18\x05\x20\x03(\x0b21.bitdrift.public.unary.workflows.v1.Gr\
-    oupBy.ValueR\x12dashboardVariablesB\x08\xfaB\x05\x92\x01\x02\x10\n\x1a\
-    \xfe\x03\n\x0cDashboardTab\x12\x1e\n\x02id\x18\x01\x20\x01(\tH\0R\x02idB\
-    \t\xfaB\x06r\x04\x10\x01\x18d\x88\x01\x01\x12w\n\x06charts\x18\x02\x20\
-    \x03(\x0b2T.bitdrift.public.unary.dashboards.v1.UpsertCustomDashboardReq\
-    uest.DashboardTab.ChartR\x06chartsB\t\xfaB\x06\x92\x01\x03\x10\xf4\x03\
-    \x12~\n\x14stylistic_components\x18\x03\x20\x03(\x0b2@.bitdrift.public.u\
-    nary.dashboards.v1.DashboardStylisticComponentR\x13stylisticComponentsB\
-    \t\xfaB\x06\x92\x01\x03\x10\xf4\x03\x12#\n\x04name\x18\x04\x20\x01(\tH\
-    \x01R\x04nameB\n\xfaB\x07r\x05\x10\x01\x18\xff\x01\x88\x01\x01\x1a\x9f\
-    \x01\n\x05Chart\x12\x1e\n\x02id\x18\x01\x20\x01(\tH\0R\x02idB\t\xfaB\x06\
-    r\x04\x10\x01\x18d\x88\x01\x01\x12o\n\x16chart_component_layout\x18\x02\
-    \x20\x01(\x0b29.bitdrift.public.unary.dashboards.v1.ChartComponentLayout\
-    R\x14chartComponentLayoutB\x05\n\x03_idB\x05\n\x03_idB\x07\n\x05_nameB\
-    \x05\n\x03_id\"}\n\x1dUpsertCustomDashboardResponse\x12\\\n\tdashboard\
-    \x18\x01\x20\x01(\x0b2>.bitdrift.public.unary.dashboards.v1.Dashboard.Cu\
-    stomDashboardR\tdashboard\"9\n\x1cDeleteCustomDashboardRequest\x12\x19\n\
-    \x02id\x18\x01\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\"\x1f\n\
-    \x1dDeleteCustomDashboardResponse\"\xc9\x03\n\x11ListChartsRequest\x12K\
-    \n\npagination\x18\x01\x20\x01(\x0b2+.bitdrift.public.unary.common.v1.Pa\
-    ginationR\npagination\x12X\n\x07filters\x18\x03\x20\x01(\x0b2>.bitdrift.\
-    public.unary.dashboards.v1.ListChartsRequest.FiltersR\x07filters\x1a\x8c\
-    \x02\n\x07Filters\x12M\n\x06access\x18\x01\x20\x01(\x0b25.bitdrift.publi\
-    c.unary.admin.v1.AccessPermissionQueryR\x06access\x12'\n\x07view_id\x18\
-    \x02\x20\x01(\tH\0R\x06viewIdB\t\xfaB\x06r\x04\x10\x01\x18d\x88\x01\x01\
-    \x120\n\x0bworkflow_id\x18\x03\x20\x01(\tH\x01R\nworkflowIdB\n\xfaB\x07r\
-    \x05\x10\x01\x18\x80\x20\x88\x01\x01\x12,\n\nchart_name\x18\x04\x20\x01(\
-    \tH\x02R\tchartNameB\x08\xfaB\x05r\x03\x18\xff\x01\x88\x01\x01B\n\n\x08_\
-    view_idB\x0e\n\x0c_workflow_idB\r\n\x0b_chart_name\"\x81\x01\n\x12ListCh\
-    artsResponse\x12J\n\x06charts\x18\x01\x20\x03(\x0b22.bitdrift.public.una\
-    ry.dashboards.v1.ResolvedChartR\x06charts\x12\x1f\n\x0btotal_count\x18\
-    \x02\x20\x01(\rR\ntotalCount2\xcb\x0b\n\x10DashboardService\x12\x83\x01\
-    \n\x0cGetDashboard\x128.bitdrift.public.unary.dashboards.v1.GetDashboard\
-    Request\x1a9.bitdrift.public.unary.dashboards.v1.GetDashboardResponse\
-    \x12\x89\x01\n\x0eListDashboards\x12:.bitdrift.public.unary.dashboards.v\
-    1.ListDashboardsRequest\x1a;.bitdrift.public.unary.dashboards.v1.ListDas\
-    hboardsResponse\x12\x92\x01\n\x11GetWorkflowCharts\x12=.bitdrift.public.\
-    unary.dashboards.v1.GetWorkflowChartsRequest\x1a>.bitdrift.public.unary.\
-    dashboards.v1.GetWorkflowChartsResponse\x12\x86\x01\n\rGetChartsData\x12\
-    9.bitdrift.public.unary.dashboards.v1.GetChartsDataRequest\x1a:.bitdrift\
-    .public.unary.dashboards.v1.GetChartsDataResponse\x12\x8f\x01\n\x10GetAc\
-    tiveDevices\x12<.bitdrift.public.unary.dashboards.v1.GetActiveDevicesReq\
-    uest\x1a=.bitdrift.public.unary.dashboards.v1.GetActiveDevicesResponse\
-    \x12\x8c\x01\n\x0fGetUniqueAppIds\x12;.bitdrift.public.unary.dashboards.\
-    v1.GetUniqueAppIdsRequest\x1a<.bitdrift.public.unary.dashboards.v1.GetUn\
-    iqueAppIdsResponse\x12\xa4\x01\n\x17FavoriteCustomDashboard\x12C.bitdrif\
-    t.public.unary.dashboards.v1.FavoriteCustomDashboardRequest\x1aD.bitdrif\
-    t.public.unary.dashboards.v1.FavoriteCustomDashboardResponse\x12\x9e\x01\
-    \n\x15UpsertCustomDashboard\x12A.bitdrift.public.unary.dashboards.v1.Ups\
-    ertCustomDashboardRequest\x1aB.bitdrift.public.unary.dashboards.v1.Upser\
-    tCustomDashboardResponse\x12\x9e\x01\n\x15DeleteCustomDashboard\x12A.bit\
-    drift.public.unary.dashboards.v1.DeleteCustomDashboardRequest\x1aB.bitdr\
-    ift.public.unary.dashboards.v1.DeleteCustomDashboardResponse\x12}\n\nLis\
-    tCharts\x126.bitdrift.public.unary.dashboards.v1.ListChartsRequest\x1a7.\
-    bitdrift.public.unary.dashboards.v1.ListChartsResponseb\x06proto3\
+    \x03\xf8B\x01\"\xcf\x01\n\x15GetChartsDataResponse\x12B\n\x04data\x18\
+    \x01\x20\x03(\x0b2..bitdrift.public.unary.dashboards.v1.ChartDataR\x04da\
+    ta\x12r\n\x15deferred_data_context\x18\x02\x20\x01(\x0b2>.bitdrift.publi\
+    c.unary.dashboards.v1.DeferredChartsDataContextR\x13deferredDataContext\
+    \"\x98\x01\n\x18HydrateChartsDataRequest\x12|\n\x15deferred_data_context\
+    \x18\x01\x20\x01(\x0b2>.bitdrift.public.unary.dashboards.v1.DeferredChar\
+    tsDataContextR\x13deferredDataContextB\x08\xfaB\x05\x8a\x01\x02\x10\x01\
+    \"\x8a\x03\n\x19HydrateChartsDataResponse\x12v\n\x04data\x18\x01\x20\x03\
+    (\x0b2Q.bitdrift.public.unary.dashboards.v1.HydrateChartsDataResponse.Ch\
+    artDataHydrationR\x04dataB\x0f\xfaB\x0c\x92\x01\t\x10d\"\x05\x8a\x01\x02\
+    \x10\x01\x1a\xf4\x01\n\x12ChartDataHydration\x12W\n\nchart_data\x18\x01\
+    \x20\x01(\x0b2..bitdrift.public.unary.dashboards.v1.ChartDataR\tchartDat\
+    aB\x08\xfaB\x05\x8a\x01\x02\x10\x01\x12\x84\x01\n\x13hydrated_dimensions\
+    \x18\x02\x20\x03(\x0e2@.bitdrift.public.unary.dashboards.v1.DeferredChar\
+    tsDataDimensionR\x12hydratedDimensionsB\x11\xfaB\x0e\x92\x01\x0b\x10d\"\
+    \x07\x82\x01\x04\x10\x01\x20\0\"\xc5\x01\n\x17GetActiveDevicesRequest\
+    \x12I\n\ntime_range\x18\x07\x20\x01(\x0b2*.bitdrift.public.unary.common.\
+    v1.TimeRangeR\ttimeRange\x12_\n\x0fplatform_filter\x18\x06\x20\x03(\x0b2\
+    ,.bitdrift.public.shared.platform.v1.PlatformR\x0eplatformFilterB\x08\
+    \xfaB\x05\x92\x01\x02\x10\n\"4\n\x18GetActiveDevicesResponse\x12\x18\n\
+    \x07devices\x18\x01\x20\x01(\x04R\x07devices\"\xeb\x01\n\x16GetUniqueApp\
+    IdsRequest\x129\n\nstart_time\x18\x01\x20\x01(\x0b2\x1a.google.protobuf.\
+    TimestampR\tstartTime\x125\n\x08end_time\x18\x02\x20\x01(\x0b2\x1a.googl\
+    e.protobuf.TimestampR\x07endTime\x12_\n\x0fplatform_filter\x18\x04\x20\
+    \x03(\x0b2,.bitdrift.public.shared.platform.v1.PlatformR\x0eplatformFilt\
+    erB\x08\xfaB\x05\x92\x01\x02\x10\n\"e\n\x17GetUniqueAppIdsResponse\x12J\
+    \n\tplatforms\x18\x06\x20\x03(\x0b2,.bitdrift.public.shared.platform.v1.\
+    PlatformR\tplatforms\"\xff\x03\n\x1bDashboardStylisticComponent\x12w\n\
+    \x0etext_component\x18\x01\x20\x01(\x0b2N.bitdrift.public.unary.dashboar\
+    ds.v1.DashboardStylisticComponent.TextComponentH\0R\rtextComponent\x12d\
+    \n\x07divider\x18\x02\x20\x01(\x0b2H.bitdrift.public.unary.dashboards.v1\
+    .DashboardStylisticComponent.DividerH\0R\x07divider\x12\x19\n\x02id\x18\
+    \x03\x20\x01(\tR\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x12x\n\x19dashboard\
+    _layout_settings\x18\x04\x20\x01(\x0b2<.bitdrift.public.unary.dashboards\
+    .v1.DashboardLayoutSettingsR\x17dashboardLayoutSettings\x1a\t\n\x07Divid\
+    er\x1aT\n\rTextComponent\x12\x1e\n\x04text\x18\x01\x20\x01(\tR\x04textB\
+    \n\xfaB\x07r\x05\x10\x01\x18\x88'\x12#\n\x07variant\x18\x02\x20\x01(\tR\
+    \x07variantB\t\xfaB\x06r\x04\x10\x01\x182B\x0b\n\x04type\x12\x03\xf8B\
+    \x01\"\xdb\x01\n\x11DashboardVariable\x12I\n\x05value\x18\x03\x20\x01(\
+    \x0b21.bitdrift.public.unary.workflows.v1.GroupBy.ValueH\0R\x05value\x12\
+    e\n!earliest_contiguous_deployed_time\x18\x02\x20\x01(\x0b2\x1a.google.p\
+    rotobuf.TimestampR\x1eearliestContiguousDeployedTimeB\x14\n\rvariable_ty\
+    pe\x12\x03\xf8B\x01\"\xa1\x02\n\x14ChartComponentLayout\x12K\n\x08chart_\
+    id\x18\x01\x20\x01(\x0b20.bitdrift.public.unary.charts.v1.ChartIdentifie\
+    rR\x07chartId\x12e\n\x0flayout_settings\x18\x02\x20\x01(\x0b2<.bitdrift.\
+    public.unary.dashboards.v1.DashboardLayoutSettingsR\x0elayoutSettings\
+    \x12U\n\x0echart_metadata\x18\x03\x20\x01(\x0b2..bitdrift.public.unary.c\
+    harts.v1.ChartMetadataR\rchartMetadata\"z\n\x1eFavoriteCustomDashboardRe\
+    quest\x12X\n\nidentifier\x18\x01\x20\x01(\x0b28.bitdrift.public.unary.da\
+    shboards.v1.DashboardIdentifierR\nidentifier\"!\n\x1fFavoriteCustomDashb\
+    oardResponse\"\xc2\x06\n\x1cUpsertCustomDashboardRequest\x12\x1e\n\x02id\
+    \x18\x01\x20\x01(\tH\0R\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x88\x01\x01\
+    \x12\x1e\n\x04name\x18\x02\x20\x01(\tR\x04nameB\n\xfaB\x07r\x05\x10\x01\
+    \x18\xff\x01\x12l\n\x04tabs\x18\x03\x20\x03(\x0b2N.bitdrift.public.unary\
+    .dashboards.v1.UpsertCustomDashboardRequest.DashboardTabR\x04tabsB\x08\
+    \xfaB\x05\x92\x01\x02\x10d\x12l\n\x13dashboard_variables\x18\x05\x20\x03\
+    (\x0b21.bitdrift.public.unary.workflows.v1.GroupBy.ValueR\x12dashboardVa\
+    riablesB\x08\xfaB\x05\x92\x01\x02\x10\n\x1a\xfe\x03\n\x0cDashboardTab\
+    \x12\x1e\n\x02id\x18\x01\x20\x01(\tH\0R\x02idB\t\xfaB\x06r\x04\x10\x01\
+    \x18d\x88\x01\x01\x12w\n\x06charts\x18\x02\x20\x03(\x0b2T.bitdrift.publi\
+    c.unary.dashboards.v1.UpsertCustomDashboardRequest.DashboardTab.ChartR\
+    \x06chartsB\t\xfaB\x06\x92\x01\x03\x10\xf4\x03\x12~\n\x14stylistic_compo\
+    nents\x18\x03\x20\x03(\x0b2@.bitdrift.public.unary.dashboards.v1.Dashboa\
+    rdStylisticComponentR\x13stylisticComponentsB\t\xfaB\x06\x92\x01\x03\x10\
+    \xf4\x03\x12#\n\x04name\x18\x04\x20\x01(\tH\x01R\x04nameB\n\xfaB\x07r\
+    \x05\x10\x01\x18\xff\x01\x88\x01\x01\x1a\x9f\x01\n\x05Chart\x12\x1e\n\
+    \x02id\x18\x01\x20\x01(\tH\0R\x02idB\t\xfaB\x06r\x04\x10\x01\x18d\x88\
+    \x01\x01\x12o\n\x16chart_component_layout\x18\x02\x20\x01(\x0b29.bitdrif\
+    t.public.unary.dashboards.v1.ChartComponentLayoutR\x14chartComponentLayo\
+    utB\x05\n\x03_idB\x05\n\x03_idB\x07\n\x05_nameB\x05\n\x03_id\"}\n\x1dUps\
+    ertCustomDashboardResponse\x12\\\n\tdashboard\x18\x01\x20\x01(\x0b2>.bit\
+    drift.public.unary.dashboards.v1.Dashboard.CustomDashboardR\tdashboard\"\
+    9\n\x1cDeleteCustomDashboardRequest\x12\x19\n\x02id\x18\x01\x20\x01(\tR\
+    \x02idB\t\xfaB\x06r\x04\x10\x01\x18d\"\x1f\n\x1dDeleteCustomDashboardRes\
+    ponse\"\xc9\x03\n\x11ListChartsRequest\x12K\n\npagination\x18\x01\x20\
+    \x01(\x0b2+.bitdrift.public.unary.common.v1.PaginationR\npagination\x12X\
+    \n\x07filters\x18\x03\x20\x01(\x0b2>.bitdrift.public.unary.dashboards.v1\
+    .ListChartsRequest.FiltersR\x07filters\x1a\x8c\x02\n\x07Filters\x12M\n\
+    \x06access\x18\x01\x20\x01(\x0b25.bitdrift.public.unary.admin.v1.AccessP\
+    ermissionQueryR\x06access\x12'\n\x07view_id\x18\x02\x20\x01(\tH\0R\x06vi\
+    ewIdB\t\xfaB\x06r\x04\x10\x01\x18d\x88\x01\x01\x120\n\x0bworkflow_id\x18\
+    \x03\x20\x01(\tH\x01R\nworkflowIdB\n\xfaB\x07r\x05\x10\x01\x18\x80\x20\
+    \x88\x01\x01\x12,\n\nchart_name\x18\x04\x20\x01(\tH\x02R\tchartNameB\x08\
+    \xfaB\x05r\x03\x18\xff\x01\x88\x01\x01B\n\n\x08_view_idB\x0e\n\x0c_workf\
+    low_idB\r\n\x0b_chart_name\"\x81\x01\n\x12ListChartsResponse\x12J\n\x06c\
+    harts\x18\x01\x20\x03(\x0b22.bitdrift.public.unary.dashboards.v1.Resolve\
+    dChartR\x06charts\x12\x1f\n\x0btotal_count\x18\x02\x20\x01(\rR\ntotalCou\
+    nt*\x80\x01\n\x1bDeferredChartsDataDimension\x12.\n*DEFERRED_CHARTS_DATA\
+    _DIMENSION_UNSPECIFIED\x10\0\x121\n-DEFERRED_CHARTS_DATA_DIMENSION_UNIQU\
+    E_DEVICES\x10\x012\xe0\x0c\n\x10DashboardService\x12\x83\x01\n\x0cGetDas\
+    hboard\x128.bitdrift.public.unary.dashboards.v1.GetDashboardRequest\x1a9\
+    .bitdrift.public.unary.dashboards.v1.GetDashboardResponse\x12\x89\x01\n\
+    \x0eListDashboards\x12:.bitdrift.public.unary.dashboards.v1.ListDashboar\
+    dsRequest\x1a;.bitdrift.public.unary.dashboards.v1.ListDashboardsRespons\
+    e\x12\x92\x01\n\x11GetWorkflowCharts\x12=.bitdrift.public.unary.dashboar\
+    ds.v1.GetWorkflowChartsRequest\x1a>.bitdrift.public.unary.dashboards.v1.\
+    GetWorkflowChartsResponse\x12\x86\x01\n\rGetChartsData\x129.bitdrift.pub\
+    lic.unary.dashboards.v1.GetChartsDataRequest\x1a:.bitdrift.public.unary.\
+    dashboards.v1.GetChartsDataResponse\x12\x92\x01\n\x11HydrateChartsData\
+    \x12=.bitdrift.public.unary.dashboards.v1.HydrateChartsDataRequest\x1a>.\
+    bitdrift.public.unary.dashboards.v1.HydrateChartsDataResponse\x12\x8f\
+    \x01\n\x10GetActiveDevices\x12<.bitdrift.public.unary.dashboards.v1.GetA\
+    ctiveDevicesRequest\x1a=.bitdrift.public.unary.dashboards.v1.GetActiveDe\
+    vicesResponse\x12\x8c\x01\n\x0fGetUniqueAppIds\x12;.bitdrift.public.unar\
+    y.dashboards.v1.GetUniqueAppIdsRequest\x1a<.bitdrift.public.unary.dashbo\
+    ards.v1.GetUniqueAppIdsResponse\x12\xa4\x01\n\x17FavoriteCustomDashboard\
+    \x12C.bitdrift.public.unary.dashboards.v1.FavoriteCustomDashboardRequest\
+    \x1aD.bitdrift.public.unary.dashboards.v1.FavoriteCustomDashboardRespons\
+    e\x12\x9e\x01\n\x15UpsertCustomDashboard\x12A.bitdrift.public.unary.dash\
+    boards.v1.UpsertCustomDashboardRequest\x1aB.bitdrift.public.unary.dashbo\
+    ards.v1.UpsertCustomDashboardResponse\x12\x9e\x01\n\x15DeleteCustomDashb\
+    oard\x12A.bitdrift.public.unary.dashboards.v1.DeleteCustomDashboardReque\
+    st\x1aB.bitdrift.public.unary.dashboards.v1.DeleteCustomDashboardRespons\
+    e\x12}\n\nListCharts\x126.bitdrift.public.unary.dashboards.v1.ListCharts\
+    Request\x1a7.bitdrift.public.unary.dashboards.v1.ListChartsResponseb\x06\
+    proto3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -12599,7 +13335,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             deps.push(::protobuf::well_known_types::duration::file_descriptor().clone());
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(70);
+            let mut messages = ::std::vec::Vec::with_capacity(74);
             messages.push(ResolvedChart::generated_message_descriptor_data());
             messages.push(DashboardLayoutSettings::generated_message_descriptor_data());
             messages.push(DashboardGroup::generated_message_descriptor_data());
@@ -12618,6 +13354,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(SessionCaptureConfiguration::generated_message_descriptor_data());
             messages.push(ChartRequest::generated_message_descriptor_data());
             messages.push(GetChartsDataRequest::generated_message_descriptor_data());
+            messages.push(DeferredChartsDataContext::generated_message_descriptor_data());
             messages.push(LineChartResponse::generated_message_descriptor_data());
             messages.push(SankeyChartResponse::generated_message_descriptor_data());
             messages.push(TableChartResponse::generated_message_descriptor_data());
@@ -12629,6 +13366,8 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(SessionCaptureChartResponse::generated_message_descriptor_data());
             messages.push(ChartData::generated_message_descriptor_data());
             messages.push(GetChartsDataResponse::generated_message_descriptor_data());
+            messages.push(HydrateChartsDataRequest::generated_message_descriptor_data());
+            messages.push(HydrateChartsDataResponse::generated_message_descriptor_data());
             messages.push(GetActiveDevicesRequest::generated_message_descriptor_data());
             messages.push(GetActiveDevicesResponse::generated_message_descriptor_data());
             messages.push(GetUniqueAppIdsRequest::generated_message_descriptor_data());
@@ -12665,12 +13404,14 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(histogram_bar_chart_response::Bucket::generated_message_descriptor_data());
             messages.push(histogram_bar_chart_response::PerGroupBy::generated_message_descriptor_data());
             messages.push(histogram_bar_chart_response::PerTimeSeries::generated_message_descriptor_data());
+            messages.push(hydrate_charts_data_response::ChartDataHydration::generated_message_descriptor_data());
             messages.push(dashboard_stylistic_component::Divider::generated_message_descriptor_data());
             messages.push(dashboard_stylistic_component::TextComponent::generated_message_descriptor_data());
             messages.push(upsert_custom_dashboard_request::DashboardTab::generated_message_descriptor_data());
             messages.push(upsert_custom_dashboard_request::dashboard_tab::Chart::generated_message_descriptor_data());
             messages.push(list_charts_request::Filters::generated_message_descriptor_data());
-            let mut enums = ::std::vec::Vec::with_capacity(1);
+            let mut enums = ::std::vec::Vec::with_capacity(2);
+            enums.push(DeferredChartsDataDimension::generated_enum_descriptor_data());
             enums.push(list_dashboards_request::sort::SortKey::generated_enum_descriptor_data());
             ::protobuf::reflect::GeneratedFileDescriptor::new_generated(
                 file_descriptor_proto(),
