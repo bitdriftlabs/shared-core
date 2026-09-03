@@ -37,6 +37,15 @@ pub const MAX_DECOMPRESSED_STATE_SNAPSHOT_BYTES: usize = 10 * 1024 * 1024;
 /// limit above.
 pub const MAX_COMPRESSED_STATE_SNAPSHOT_BYTES: usize = 10 * 1024 * 1024;
 
+/// Artifact type ID used for uploaded versioned state snapshots.
+pub const STATE_SNAPSHOT_ARTIFACT_TYPE_ID: &str = "state_snapshot";
+
+/// Legacy outer artifact `session_id` for state snapshots.
+///
+/// State snapshots can span sessions, so consumers must derive their session IDs from the journal
+/// rather than treating this sentinel as a session ID.
+pub const LEGACY_STATE_SNAPSHOT_ARTIFACT_SESSION_ID: &str = "state_snapshot";
+
 pub use bd_proto::protos::state::payload::StateValue;
 pub use bd_proto::protos::state::payload::state_value::Value_type;
 pub use scope::Scope;
