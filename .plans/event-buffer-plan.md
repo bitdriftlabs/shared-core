@@ -582,23 +582,17 @@ pending solely because the soft startup delay has not elapsed.
 
 ## Observability and validation
 
-Production metrics must stay off the successful producer fast path. The rollout set is deliberately
-small:
+Production metrics must stay off the producer fast path. The rollout set records only gate release:
 
-- Count EventBuffer loss only: evictions, full rejections, and oversized rejections. Use a single
-  bounded `reason` dimension; do not count successful admissions, split by lane, or label by event
-  kind, log type, level, or completion outcome. Closed-buffer rejections are ordinary shutdown and
-  are not a rollout health signal.
-- Once per ALB start, count the selected replay eligibility. Once per gate release, count the
+- Once per gate release, count the
   release reason (`no_prior_crash`, timer, high watermark, or barrier) and record gate-hold
-  duration. This exposes classification rollout, early releases, and unexpectedly long successful
-  gates without a per-entry cost.
-- Keep durable-write failures with the persistence owner rather than as an EventBuffer metric.
+  duration. This exposes early releases and unexpectedly long successful gates without a
+  per-entry cost or a high-cardinality dimension.
 
 We intentionally do not export queue depth, queued bytes, oldest-entry age, lock timing, or
-successful-admission counters. Those are high-frequency gauges or require additional state and can
-be enabled temporarily during a targeted investigation rather than becoming permanent client
-telemetry.
+per-entry outcome counters. Those are high-frequency gauges or counters, or require additional
+state, and can be enabled temporarily during a targeted investigation rather than becoming
+permanent client telemetry.
 
 Development instrumentation is temporary: it must be feature-gated or sampled, have a stated
 removal point before broad rollout, and not become a permanent metric merely because it aided

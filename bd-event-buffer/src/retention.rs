@@ -5,7 +5,7 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::{AdmissionOutcome, EventBufferLimits, RetentionLane};
+use crate::{AdmissionOutcome, EventBufferLimits, RetentionLane, StartupGateReleaseRequest};
 use std::collections::VecDeque;
 
 //
@@ -25,7 +25,7 @@ pub struct EventBufferState<T> {
   next_admission_id: u64,
   closed: bool,
   gate: DrainGate,
-  gate_release_requested: bool,
+  gate_release_request: Option<StartupGateReleaseRequest>,
   startup_previous: LaneState<T>,
   protected: LaneState<T>,
   high: LaneState<T>,
@@ -41,7 +41,7 @@ impl<T> EventBufferState<T> {
       next_admission_id: 0,
       closed: false,
       gate: DrainGate::Holding,
-      gate_release_requested: false,
+      gate_release_request: None,
       startup_previous: LaneState::new(),
       protected: LaneState::new(),
       high: LaneState::new(),
@@ -154,17 +154,17 @@ impl<T> EventBufferState<T> {
     !self.gate.is_holding()
   }
 
-  pub(crate) fn request_gate_release(&mut self) -> bool {
-    if self.gate.is_holding() && !self.gate_release_requested {
-      self.gate_release_requested = true;
+  pub(crate) fn request_gate_release(&mut self, request: StartupGateReleaseRequest) -> bool {
+    if self.gate.is_holding() && self.gate_release_request.is_none() {
+      self.gate_release_request = Some(request);
       true
     } else {
       false
     }
   }
 
-  pub(crate) fn take_gate_release_request(&mut self) -> bool {
-    std::mem::take(&mut self.gate_release_requested)
+  pub(crate) fn take_gate_release_request(&mut self) -> Option<StartupGateReleaseRequest> {
+    self.gate_release_request.take()
   }
 
   #[must_use]

@@ -39,6 +39,7 @@ use bd_event_buffer::{
   LoggerIngressEvent,
   LoggerIngressPayload,
   ProviderSnapshot,
+  StartupGateReleaseRequest,
 };
 use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::{
@@ -69,7 +70,7 @@ use bd_state::{
   Scope,
   string_value,
 };
-use bd_stats_common::{Counter as _, labels};
+use bd_stats_common::{Counter as _, Histogram as _, labels};
 use bd_time::{OffsetDateTimeExt, TimeDurationExt, TimeProvider};
 use bd_workflow_stats::workflow::{WorkflowDebugStateKey, WorkflowDebugTransitionType};
 use bd_workflows::workflow::WorkflowDebugStateMap;
@@ -78,6 +79,7 @@ use std::collections::{HashMap, VecDeque};
 use std::future::{Future, ready};
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration as StdDuration;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
 use tokio::sync::mpsc;
@@ -536,6 +538,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   startup_started_at: Option<Instant>,
   startup_gate_deadline: Option<Instant>,
   startup_gate: StartupGateState,
+  startup_replay_gate_stats: StartupReplayGateStats,
   startup_replay_eligibility: StartupReplayEligibility,
   log_processing_started: bool,
   last_session_id: Option<Arc<str>>,
@@ -594,7 +597,59 @@ impl StartupReplayWatches {
 #[derive(Default)]
 struct StartupGateState {
   timer_elapsed: bool,
-  release_requested: bool,
+  release_requested: Option<StartupReplayGateReleaseReason>,
+}
+
+#[derive(Clone, Copy)]
+enum StartupReplayGateReleaseReason {
+  NoPriorCrash,
+  Timer,
+  HighWatermark,
+  Barrier,
+}
+
+impl StartupReplayGateReleaseReason {
+  const fn label(self) -> &'static str {
+    match self {
+      Self::NoPriorCrash => "no_prior_crash",
+      Self::Timer => "timer",
+      Self::HighWatermark => "high_watermark",
+      Self::Barrier => "barrier",
+    }
+  }
+}
+
+impl From<StartupGateReleaseRequest> for StartupReplayGateReleaseReason {
+  fn from(request: StartupGateReleaseRequest) -> Self {
+    match request {
+      StartupGateReleaseRequest::ProtectedHighWatermark => Self::HighWatermark,
+      StartupGateReleaseRequest::BlockingFlush => Self::Barrier,
+    }
+  }
+}
+
+struct StartupReplayGateStats {
+  scope: StatsScope,
+}
+
+impl StartupReplayGateStats {
+  fn new(scope: &StatsScope) -> Self {
+    Self {
+      scope: scope.clone(),
+    }
+  }
+
+  fn record_opening(&self, reason: StartupReplayGateReleaseReason, hold_duration: StdDuration) {
+    let labels = labels!("reason" => reason.label());
+    self
+      .scope
+      .counter_with_labels("startup_replay_gate_opened", labels.clone())
+      .inc();
+    self
+      .scope
+      .histogram_with_labels("startup_replay_gate_hold_duration_s", labels)
+      .observe(hold_duration.as_secs_f64());
+  }
 }
 
 impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
@@ -633,13 +688,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       .stats
       .scope
       .scope("event_buffer");
-    let event_buffer = EventBuffer::new_with_stats(
-      EventBufferLimits {
-        log_limit_bytes: uninitialized_logging_context.event_buffer_log_limit_bytes,
-        total_limit_bytes: 10 * 1024 * 1024,
-      },
-      &event_buffer_scope,
-    );
+    let event_buffer = EventBuffer::new(EventBufferLimits {
+      log_limit_bytes: uninitialized_logging_context.event_buffer_log_limit_bytes,
+      total_limit_bytes: 10 * 1024 * 1024,
+    });
+    let startup_replay_gate_stats = StartupReplayGateStats::new(&event_buffer_scope);
     // The bootstrap limits cover admission before runtime configuration is available. Stage the
     // current runtime pair as well: this covers a persisted configuration that loaded before ALB
     // was built, while EventBuffer still applies it only at its next admission.
@@ -725,6 +778,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         startup_started_at: None,
         startup_gate_deadline: None,
         startup_gate: StartupGateState::default(),
+        startup_replay_gate_stats,
         startup_replay_eligibility,
         log_processing_started: false,
         last_session_id: None,
@@ -1169,8 +1223,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             self.maybe_release_startup_gate();
           }
         },
-        () = self.event_buffer.wait_for_gate_release_request() => {
-          self.startup_gate.release_requested = true;
+        request = self.event_buffer.wait_for_gate_release_request() => {
+          self.request_startup_gate_release(request.into());
           self.maybe_release_startup_gate();
         },
         () = self.resource_utilization_reporter.run() => {},
@@ -1192,7 +1246,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       .event_buffer
       .set_pending_limits(self.event_buffer_limit_watches.read_mark_update());
     if self.event_buffer.reaches_protected_high_watermark() {
-      self.startup_gate.release_requested = true;
+      self.request_startup_gate_release(StartupReplayGateReleaseReason::HighWatermark);
       self.maybe_release_startup_gate();
     }
   }
@@ -1202,6 +1256,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       return;
     }
 
+    let startup_started_at = Instant::now();
+    self.startup_started_at = Some(startup_started_at);
     if self.startup_replay_eligibility == StartupReplayEligibility::NoPriorCrash {
       log::debug!("skipping startup replay delay: platform confirmed no prior crash");
       self.startup_gate.timer_elapsed = true;
@@ -1211,9 +1267,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     let delay = self
       .startup_replay_watches
       .read_mark_update(self.startup_replay_eligibility);
-    let startup_started_at = Instant::now();
     let deadline = startup_started_at + delay.unsigned_abs();
-    self.startup_started_at = Some(startup_started_at);
     self.startup_gate_deadline = Some(deadline);
     self.startup_replay_delay = Some(Box::pin(tokio::time::sleep_until(deadline)));
     log::debug!(
@@ -1254,12 +1308,31 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   }
 
   fn maybe_release_startup_gate(&mut self) {
-    if (self.startup_gate.timer_elapsed || self.startup_gate.release_requested)
+    let reason = if self.startup_gate.timer_elapsed {
+      if self.startup_replay_eligibility == StartupReplayEligibility::NoPriorCrash {
+        Some(StartupReplayGateReleaseReason::NoPriorCrash)
+      } else {
+        Some(StartupReplayGateReleaseReason::Timer)
+      }
+    } else {
+      self.startup_gate.release_requested
+    };
+    if let Some(reason) = reason
       && matches!(self.logging_state, LoggingState::Initialized(_))
+      && self.event_buffer.open_gate()
     {
       self.startup_replay_delay = None;
-      let _ = self.event_buffer.open_gate();
+      let hold_duration = self
+        .startup_started_at
+        .map_or(StdDuration::ZERO, |started_at| Instant::now() - started_at);
+      self
+        .startup_replay_gate_stats
+        .record_opening(reason, hold_duration);
     }
+  }
+
+  fn request_startup_gate_release(&mut self, reason: StartupReplayGateReleaseReason) {
+    self.startup_gate.release_requested.get_or_insert(reason);
   }
 
   fn admit_crash_reports(

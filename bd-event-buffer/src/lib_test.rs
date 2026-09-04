@@ -18,14 +18,12 @@ use super::{
   LoggerIngressPayload,
   ProviderSnapshot,
   RetentionLane,
+  StartupGateReleaseRequest,
   retention_lane,
 };
-use bd_client_stats_store::Collector;
-use bd_client_stats_store::test::StatsHelper;
 use bd_log_primitives::{AnnotatedLogFields, DataValue, LogFields, LogLine, log_level};
 use bd_macros::ApproximateSize;
 use bd_proto::protos::logging::payload::LogType;
-use bd_stats_common::labels;
 use std::sync::{Arc, Mutex, mpsc as std_mpsc};
 use time::OffsetDateTime;
 use tokio::sync::{oneshot, watch};
@@ -100,61 +98,6 @@ fn buffer(bytes: usize) -> EventBuffer {
   let buffer = EventBuffer::new(limits(bytes));
   assert!(buffer.open_gate());
   buffer
-}
-
-#[test]
-fn records_admission_outcomes_per_retention_lane() {
-  let collector = Collector::default();
-  let low = log(log_level::DEBUG, LogType::NORMAL, 4096);
-  let high = log(log_level::INFO, LogType::NORMAL, 4096);
-  let protected = log(log_level::INFO, LogType::LIFECYCLE, 4096);
-  let limit = low
-    .approximate_size_bytes()
-    .max(high.approximate_size_bytes())
-    .max(protected.approximate_size_bytes());
-  let buffer = EventBuffer::new_with_stats(limits(limit), &collector.scope("event_buffer"));
-
-  assert_eq!(AdmissionOutcome::Admitted, buffer.admit(low));
-  assert_eq!(AdmissionOutcome::Admitted, buffer.admit(high));
-  assert_eq!(
-    AdmissionOutcome::RejectedFull,
-    buffer.admit(log(log_level::INFO, LogType::NORMAL, 4096))
-  );
-  assert_eq!(AdmissionOutcome::Admitted, buffer.admit(protected));
-  assert_eq!(
-    AdmissionOutcome::RejectedFull,
-    buffer.admit(log(log_level::INFO, LogType::LIFECYCLE, 4096))
-  );
-  assert_eq!(
-    AdmissionOutcome::RejectedOversized,
-    buffer.admit(log(log_level::DEBUG, LogType::NORMAL, limit))
-  );
-
-  collector.assert_counter_eq(
-    1,
-    "event_buffer:entry_outcomes",
-    labels!("lane" => "low", "outcome" => "evicted"),
-  );
-  collector.assert_counter_eq(
-    1,
-    "event_buffer:entry_outcomes",
-    labels!("lane" => "high", "outcome" => "evicted"),
-  );
-  collector.assert_counter_eq(
-    1,
-    "event_buffer:entry_outcomes",
-    labels!("lane" => "high", "outcome" => "rejected_full"),
-  );
-  collector.assert_counter_eq(
-    1,
-    "event_buffer:entry_outcomes",
-    labels!("lane" => "protected", "outcome" => "rejected_full"),
-  );
-  collector.assert_counter_eq(
-    1,
-    "event_buffer:entry_outcomes",
-    labels!("lane" => "low", "outcome" => "rejected_oversized"),
-  );
 }
 
 //
@@ -364,7 +307,10 @@ async fn protected_high_watermark_and_blocking_flush_request_startup_gate_releas
     AdmissionOutcome::Admitted,
     high_watermark_buffer.admit(high_watermark_entry)
   );
-  high_watermark_buffer.wait_for_gate_release_request().await;
+  assert_eq!(
+    StartupGateReleaseRequest::ProtectedHighWatermark,
+    high_watermark_buffer.wait_for_gate_release_request().await
+  );
   assert!(!high_watermark_buffer.is_gate_open());
   assert!(high_watermark_buffer.open_gate());
 
@@ -376,7 +322,10 @@ async fn protected_high_watermark_and_blocking_flush_request_startup_gate_releas
       completion,
     ))))
   );
-  barrier_buffer.wait_for_gate_release_request().await;
+  assert_eq!(
+    StartupGateReleaseRequest::BlockingFlush,
+    barrier_buffer.wait_for_gate_release_request().await
+  );
   assert!(!barrier_buffer.is_gate_open());
   assert!(barrier_buffer.open_gate());
   assert!(matches!(

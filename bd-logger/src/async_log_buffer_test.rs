@@ -325,21 +325,6 @@ async fn runtime_budget_updates_apply_on_the_next_event_buffer_admission() {
   assert!(sender.try_send_log(normal_log("rejected")).is_err());
 }
 
-#[test]
-fn event_buffer_admission_outcomes_are_recorded() {
-  let mut setup = Setup::new();
-  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-  let (_buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
-
-  sender.try_send_log(normal_log("admitted")).unwrap();
-
-  setup.collector.assert_counter_eq(
-    1,
-    "logger:event_buffer:entry_outcomes",
-    labels! { "lane" => "high", "outcome" => "admitted" },
-  );
-}
-
 #[tokio::test(start_paused = true)]
 async fn startup_gate_holds_preconfiguration_logs_until_the_replay_timer() {
   let mut setup = Setup::new();
@@ -377,6 +362,11 @@ async fn startup_gate_holds_preconfiguration_logs_until_the_replay_timer() {
   tokio::time::advance(150.std_milliseconds()).await;
   tokio::task::yield_now().await;
   assert_eq!(1, setup.replayer_log_count.load(Ordering::SeqCst));
+  setup.collector.assert_counter_eq(
+    1,
+    "logger:event_buffer:startup_replay_gate_opened",
+    labels!("reason" => "timer"),
+  );
 
   shutdown_trigger.shutdown().await;
   handle.await.unwrap();
@@ -567,6 +557,11 @@ async fn post_pipeline_blocking_flush_releases_the_gate_after_older_work() {
     .expect("blocking flush task must complete")
   );
   assert_eq!(vec!["before barrier"], *setup.replayer_logs.lock());
+  setup.collector.assert_counter_eq(
+    1,
+    "logger:event_buffer:startup_replay_gate_opened",
+    labels!("reason" => "barrier"),
+  );
 
   shutdown_trigger.shutdown().await;
   handle.await.unwrap();
@@ -608,6 +603,16 @@ async fn post_pipeline_nonblocking_flush_does_not_release_the_gate() {
 
   tokio::time::advance(5.std_seconds()).await;
   wait_for_replayed_logs(&setup, 1).await;
+  setup.collector.assert_counter_eq(
+    1,
+    "logger:event_buffer:startup_replay_gate_opened",
+    labels!("reason" => "timer"),
+  );
+  setup.collector.assert_histogram_observed(
+    5.0,
+    "logger:event_buffer:startup_replay_gate_hold_duration_s",
+    labels!("reason" => "timer"),
+  );
 
   shutdown_trigger.shutdown().await;
   handle.await.unwrap();
@@ -659,6 +664,11 @@ async fn startup_gate_releases_when_loaded_runtime_limits_expose_existing_pressu
   wait_for_pipeline_ready(&event_buffer).await;
   tokio::task::yield_now().await;
   assert_eq!(1, setup.replayer_log_count.load(Ordering::SeqCst));
+  setup.collector.assert_counter_eq(
+    1,
+    "logger:event_buffer:startup_replay_gate_opened",
+    labels!("reason" => "high_watermark"),
+  );
 
   shutdown_trigger.shutdown().await;
   handle.await.unwrap();
@@ -819,6 +829,11 @@ async fn confirmed_no_prior_crash_releases_when_pipeline_is_ready_without_delay(
     .await;
   buffer.maybe_release_startup_gate();
   assert!(buffer.event_buffer.is_gate_open());
+  setup.collector.assert_counter_eq(
+    1,
+    "logger:event_buffer:startup_replay_gate_opened",
+    labels!("reason" => "no_prior_crash"),
+  );
 }
 
 #[tokio::test(start_paused = true)]
