@@ -1022,14 +1022,15 @@ pub mod event_buffer {
     10 * 1024 * 1024 // 10 MiB
   );
 
-  // Delays startup delivery so prior-process crash logs can be admitted and replayed first.
+  // Total startup replay delay when the platform cannot determine how the previous run ended.
   duration_feature_flag!(
     StartupReplayDelayFlag,
     "event_buffer.startup_replay_delay_ms",
     50.milliseconds()
   );
 
-  // Bounds the one-time extension requested by a platform crash-pending hint during startup.
+  // Total startup replay delay when the platform identified a prior crash or fatal termination.
+  // This replaces, rather than extends, the uncertain-run delay above.
   duration_feature_flag!(
     StartupReplayCrashDelayFlag,
     "event_buffer.startup_replay_crash_delay_ms",

@@ -11,7 +11,11 @@ mod async_log_buffer_test;
 
 use crate::device_id::DeviceIdInterceptor;
 use crate::log_replay::{LogReplay, LogReplayResult};
-use crate::logger::{ReportProcessingRequest, with_thread_local_logger_guard};
+use crate::logger::{
+  ReportProcessingRequest,
+  StartupReplayEligibility,
+  with_thread_local_logger_guard,
+};
 use crate::logging_state::{ConfigUpdate, LoggingState, UninitializedLoggingContext};
 use crate::metadata::MetadataCollector;
 use crate::network::{NetworkQualityInterceptor, SystemTimeProvider};
@@ -530,9 +534,9 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   send_workflow_debug_state_delay: Option<Pin<Box<Sleep>>>,
   startup_replay_delay: Option<Pin<Box<Sleep>>>,
   startup_started_at: Option<Instant>,
-  startup_base_deadline: Option<Instant>,
   startup_gate_deadline: Option<Instant>,
   startup_gate: StartupGateState,
+  startup_replay_eligibility: StartupReplayEligibility,
   log_processing_started: bool,
   last_session_id: Option<Arc<str>>,
 }
@@ -563,29 +567,32 @@ impl EventBufferLimitWatches {
 //
 
 struct StartupReplayWatches {
-  base_delay: DurationWatch<runtime::event_buffer::StartupReplayDelayFlag>,
-  max_crash_delay: DurationWatch<runtime::event_buffer::StartupReplayCrashDelayFlag>,
+  uncertain_delay: DurationWatch<runtime::event_buffer::StartupReplayDelayFlag>,
+  crash_delay: DurationWatch<runtime::event_buffer::StartupReplayCrashDelayFlag>,
 }
 
 impl StartupReplayWatches {
   fn new(runtime_loader: &ConfigLoader) -> Self {
     Self {
-      base_delay: runtime_loader.register_duration_watch(),
-      max_crash_delay: runtime_loader.register_duration_watch(),
+      uncertain_delay: runtime_loader.register_duration_watch(),
+      crash_delay: runtime_loader.register_duration_watch(),
     }
   }
 
-  fn read_mark_update(&mut self) -> (time::Duration, time::Duration) {
-    (
-      *self.base_delay.read_mark_update(),
-      *self.max_crash_delay.read_mark_update(),
-    )
+  fn read_mark_update(&mut self, eligibility: StartupReplayEligibility) -> time::Duration {
+    // Consume both watches even when a flag does not apply to this launch.
+    let uncertain_delay = *self.uncertain_delay.read_mark_update();
+    let crash_delay = *self.crash_delay.read_mark_update();
+    match eligibility {
+      StartupReplayEligibility::NoPriorCrash => time::Duration::ZERO,
+      StartupReplayEligibility::MayHavePriorCrash => crash_delay,
+      StartupReplayEligibility::Unknown => uncertain_delay,
+    }
   }
 }
 
 #[derive(Default)]
 struct StartupGateState {
-  crash_pending: bool,
   timer_elapsed: bool,
   release_requested: bool,
 }
@@ -613,6 +620,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     lifecycle_state: InitLifecycleState,
     sdk_status_tracker: bd_client_common::sdk_status::SdkStatusTracker,
     data_upload_tx: mpsc::Sender<DataUpload>,
+    startup_replay_eligibility: StartupReplayEligibility,
   ) -> (Self, Sender) {
     // The old log and control channels had 1 MiB and 10 MiB byte budgets respectively. Keep
     // those bootstrap limits while moving both flows into one ordered ingress.
@@ -712,9 +720,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         send_workflow_debug_state_delay: None,
         startup_replay_delay: None,
         startup_started_at: None,
-        startup_base_deadline: None,
         startup_gate_deadline: None,
         startup_gate: StartupGateState::default(),
+        startup_replay_eligibility,
         log_processing_started: false,
         last_session_id: None,
       },
@@ -1045,8 +1053,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     mut shutdown: ComponentShutdown,
   ) -> Self {
     // EventBuffer retains ingress while configuration constructs the processing pipeline. Its
-    // startup gate opens only after the configured replay delay, a crash extension, a pressure
-    // release, or a blocking flush barrier.
+    // startup gate opens once the pipeline is ready and the platform-selected delay has elapsed,
+    // or pressure or a blocking flush barrier requests an early release.
     self.start_startup_replay_delay();
 
     let local_shutdown = shutdown.cancelled();
@@ -1069,10 +1077,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         _ = self.event_buffer_limit_watches.total_limit_bytes.changed() => {
           self.refresh_event_buffer_limits();
         },
-        _ = self.startup_replay_watches.base_delay.changed() => {
+        _ = self.startup_replay_watches.uncertain_delay.changed() => {
           self.refresh_startup_replay_delay();
         },
-        _ = self.startup_replay_watches.max_crash_delay.changed() => {
+        _ = self.startup_replay_watches.crash_delay.changed() => {
           self.refresh_startup_replay_delay();
         },
         Some(config) = self.config_update_rx.recv() => {
@@ -1085,7 +1093,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         Some(ReportProcessingRequest {
            session
         }) = self.report_processor_rx.recv() => {
-          self.extend_startup_replay_for_crash();
           let reports = report_processor.process_all_pending_reports().await;
           self.admit_crash_reports(reports, &session);
         },
@@ -1149,7 +1156,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         () = maybe_await(&mut self.startup_replay_delay) => {
           // Runtime configuration may have arrived concurrently with the bootstrap deadline.
           // Observe it before releasing so a larger configured window extends this gate instead
-          // of leaking startup ingress through at the 50 ms default.
+          // of leaking startup ingress through at the selected default.
           self.refresh_startup_replay_delay();
           if self
             .startup_gate_deadline
@@ -1192,24 +1199,34 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       return;
     }
 
-    let (base_delay, crash_delay) = self.startup_replay_watches.read_mark_update();
-    let startup_started_at = Instant::now();
-    let base_deadline = startup_started_at + base_delay.unsigned_abs();
-    self.startup_started_at = Some(startup_started_at);
-    self.startup_base_deadline = Some(base_deadline);
-    self.startup_gate_deadline = Some(base_deadline);
-    self.startup_replay_delay = Some(Box::pin(tokio::time::sleep_until(base_deadline)));
-
-    // A crash request received before configuration was ready contributes its complete bounded
-    // extension once the processing pipeline exists.
-    if self.startup_gate.crash_pending {
-      self.extend_startup_replay_deadline(crash_delay);
+    if self.startup_replay_eligibility == StartupReplayEligibility::NoPriorCrash {
+      log::debug!("skipping startup replay delay: platform confirmed no prior crash");
+      self.startup_gate.timer_elapsed = true;
+      return;
     }
+
+    let delay = self
+      .startup_replay_watches
+      .read_mark_update(self.startup_replay_eligibility);
+    let startup_started_at = Instant::now();
+    let deadline = startup_started_at + delay.unsigned_abs();
+    self.startup_started_at = Some(startup_started_at);
+    self.startup_gate_deadline = Some(deadline);
+    self.startup_replay_delay = Some(Box::pin(tokio::time::sleep_until(deadline)));
+    log::debug!(
+      "startup replay delay: {:?}, {delay}",
+      self.startup_replay_eligibility
+    );
   }
 
   fn refresh_startup_replay_delay(&mut self) {
-    let (base_delay, crash_delay) = self.startup_replay_watches.read_mark_update();
+    let delay = self
+      .startup_replay_watches
+      .read_mark_update(self.startup_replay_eligibility);
     if self.event_buffer.is_gate_open() {
+      return;
+    }
+    if self.startup_replay_eligibility == StartupReplayEligibility::NoPriorCrash {
       return;
     }
     let Some(startup_started_at) = self.startup_started_at else {
@@ -1218,48 +1235,15 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
 
     // Startup starts with the built-in delay. A runtime configuration can extend that deadline,
     // but must never shorten it and accidentally release ingress before the configured window.
-    let base_deadline = startup_started_at + base_delay.unsigned_abs();
-    let base_delay_extended = self
-      .startup_base_deadline
-      .is_none_or(|current| base_deadline > current);
-    if base_delay_extended {
-      self.startup_base_deadline = Some(base_deadline);
-    }
-    if self.startup_gate.crash_pending {
-      self.extend_startup_replay_deadline(crash_delay);
-    } else if base_delay_extended
-      && self
-        .startup_gate_deadline
-        .is_none_or(|current| base_deadline > current)
-    {
-      self.startup_gate_deadline = Some(base_deadline);
-      self.startup_replay_delay = Some(Box::pin(tokio::time::sleep_until(base_deadline)));
-      self.startup_gate.timer_elapsed = false;
-    }
-  }
-
-  fn extend_startup_replay_for_crash(&mut self) {
-    self.startup_gate.crash_pending = true;
-    let crash_delay = *self
-      .startup_replay_watches
-      .max_crash_delay
-      .read_mark_update();
-    self.extend_startup_replay_deadline(crash_delay);
-  }
-
-  fn extend_startup_replay_deadline(&mut self, crash_delay: time::Duration) {
-    if self.event_buffer.is_gate_open() {
-      return;
-    }
-    let Some(base_deadline) = self.startup_base_deadline else {
-      return;
-    };
-
-    let deadline = base_deadline + crash_delay.unsigned_abs();
+    let deadline = startup_started_at + delay.unsigned_abs();
     if self
       .startup_gate_deadline
       .is_none_or(|current| deadline > current)
     {
+      log::debug!(
+        "extending startup replay delay: {:?}, {delay}",
+        self.startup_replay_eligibility
+      );
       self.startup_gate_deadline = Some(deadline);
       self.startup_replay_delay = Some(Box::pin(tokio::time::sleep_until(deadline)));
       self.startup_gate.timer_elapsed = false;

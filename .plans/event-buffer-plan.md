@@ -22,8 +22,9 @@ and state ingress channels while retaining one async consumer.
 - The buffer begins with separate bootstrap log and overall in-memory budgets. Both become
   runtime-configurable after configuration arrives; configuration changes apply on the next
   admission rather than walking the queue immediately.
-- Startup replay remains unchanged until the final milestone. The final gate uses a 500 ms
-  strawman base delay plus up to 1 s for a crash hint, both runtime-configurable.
+- Startup replay remains unchanged until the final milestone. The final gate uses a construction-time
+  enum: no delay for `NoPriorCrash`, 1 s for `MayHavePriorCrash`, and 50 ms for `Unknown`.
+  The latter two total delays are independently runtime-configurable.
 
 ## Milestone roadmap
 
@@ -103,8 +104,8 @@ state, and EventBuffer carries only immutable session IDs. A blocking flush is t
 that waits for that flusher.
 
 **Direct control paths.** Configuration stays on its existing path because applying it can build or
-replace pipeline state and has no producer-admission order. `CrashPending` is only a drain-gate
-extension hint. Shutdown, `Notify`, timers, lifecycle/status, the sleep-mode watch, and the tracing
+replace pipeline state and has no producer-admission order. Report-processing requests do not change
+the construction-time replay classification or deadline. Shutdown, `Notify`, timers, lifecycle/status, the sleep-mode watch, and the tracing
 flag are scheduling or local-state signals, not retained work.
 
 **Consumer-owned downstream work.** Stats, upload, buffer flushes, and workflow side effects stay
@@ -132,7 +133,7 @@ on their existing downstream channels. They are consequences of an entry, never 
   `PreviousRunSessionID` continues to take `occurred_at` from the crash report, while `_logged_at`
   is the pinned timestamp-provider value.
 - State/control operations that affect workflows or persistence remain protected EventBuffer
-  entries. Crash-pending and shutdown remain direct control signals, not buffer entries.
+  entries. Report processing and shutdown remain direct control signals, not buffer entries.
 - `set_feature_flag_exposure` resolves its session ID through `bd_session`, then captures provider
   data plus an admission timestamp before EventBuffer admission; provider capture uses the same
   held thread-local guard as logs. The consumer combines those immutable inputs with the current
@@ -373,7 +374,7 @@ behaviors deliberately rather than moving only `LoggerHandle::log`.
   batch, with per-report admission outcomes rather than all-or-nothing success. Current-run reports
   use captured provider, field, and session context. Previous-run reports remain protected, use
   persisted prior state and session when available, and pin their timestamp-provider `_logged_at`
-  value at EventBuffer admission. `CrashPending` remains an out-of-band gate-extension signal.
+  value at EventBuffer admission. Report processing does not extend the replay delay.
 - **Configuration:** Keep updates outside EventBuffer: they have no producer admission order and
   may perform pipeline construction. Readiness is the explicit startup-gate release condition.
 - **Workflow-injected logs and interceptors:** Keep both on the single consumer. Generated logs
@@ -506,22 +507,27 @@ After Milestone 4 is stable, replace `PreConfigBuffer` with EventBuffer startup 
 the soft drain gate below. This delivers delayed replay and crash-log reordering without coupling
 those startup semantics to the ingress migration.
 
-EventBuffer starts with its drain gate `Holding`. Once configuration has created the processing
-pipeline, it reads the replay-delay runtime configuration and starts the base replay timer. The
-strawman default is a 500 ms configuration-relative base delay. The gate opens only after that
-deadline has passed. A platform crash-pending hint while the gate is holding can add up to a
-further 1 s crash delay, for a 1.5 s maximum under the strawman. Both the base delay and maximum
-crash delay are runtime-configurable. Holding continues to capture and prioritize events but does
-not deliver them.
+EventBuffer starts with its drain gate `Holding`. The platform supplies an immutable
+`StartupReplayEligibility` when constructing the logger: `NoPriorCrash` skips the replay timer,
+`MayHavePriorCrash` selects a 1 s total delay, and `Unknown` selects a 50 ms total delay. Existing
+callers default to `Unknown`. Both nonzero categories have independent runtime flags; their delays
+are alternatives, never additive. The timer starts when ALB starts, before configuration readiness.
+Holding continues to capture and prioritize events but does not deliver them.
 
-Before configuration is ready, `CrashPending` is retained as a pending extension hint and a
-high-watermark crossing is retained as an early-release request; neither can deliver work without
-a pipeline. At configuration readiness, apply the pending hint to the runtime-configured deadline,
+The pipeline must be ready before any release, even when there is no replay delay. While the gate
+is holding, runtime updates can extend the selected deadline relative to ALB startup, including
+after the original timer elapsed while waiting for configuration. They cannot shorten the deadline,
+and updates to the other category have no effect. ALB rereads runtime values before timer-driven
+release so a concurrent increase cannot release ingress at the old deadline. Report-processing
+requests never alter the classification or extend the deadline.
+
+Before configuration is ready, a high-watermark crossing is retained as an early-release request;
+it cannot deliver work without a pipeline. At configuration readiness, refresh the selected delay,
 record the current `(log_limit, total_limit)` pair through `EventBuffer::set_pending_limits`, and
 retain the same runtime watch for later budget changes. The pair becomes effective on the next
 EventBuffer admission. If the buffer is already at the high watermark calculated from the runtime
-overall budget, release immediately with reason `high_watermark`; otherwise arm the configured
-timer.
+overall budget, release immediately with reason `high_watermark`; otherwise wait for any remaining
+selected delay.
 `FlushState` during this hard pre-configuration gate completes immediately as a no-op and is not
 queued: with no pipeline, there is no retained downstream work for it to flush. EventBuffer
 linearizes that decision against ALB marking the pipeline ready, so later flushes use normal
@@ -561,9 +567,10 @@ opens it early with reason `high_watermark`. Low-priority traffic alone does not
 the startup window. If the consumer still cannot catch up, the normal hard-cap eviction policy
 applies; priority-event loss is measured rather than exceeding capacity.
 
-`CrashPending` may extend the deadline only while the gate is holding. A high-watermark release, a
-flush barrier, or normal timer release seals the ordering window; later hints and late
-previous-process logs cannot reopen it.
+A high-watermark release, a flush barrier, or normal timer release seals the ordering window;
+later runtime updates and late previous-process logs cannot reopen it. Arbitrarily stale crash
+reports have no reliable prior-session association; their presence cannot override the platform's
+construction-time classification.
 
 An admitted `FlushState(Block::Yes)` after the hard pre-configuration gate is also a gate barrier:
 it seals the gate, drains the
@@ -584,7 +591,7 @@ Production rollout metrics are intentionally small and use only bounded, coarse 
   closed. Do not break these down by event kind, log type, level, exact lane, or completion outcome.
 - Export queued bytes and entries split only into protected and evictable categories, plus the age
   of the oldest retained entry to detect an unhealthy consumer.
-- Count drain-gate openings by timer, crash hint, high watermark, or barrier, and record gate-hold
+- Count drain-gate openings by timer, no-prior-crash classification, high watermark, or barrier, and record gate-hold
   duration.
 - Keep durable-write failures with the persistence owner rather than as an EventBuffer metric.
 
@@ -609,7 +616,8 @@ benchmarks and migration validation, not steady-state dashboards.
   opaque-entity pre-store coalescing/admission/recovery, memory-pressure persistence, flush
   ordering, both crash-report paths, provider reentrancy/threading, generated-log session
   inheritance, and bounded-batch fairness with a continuously non-empty EventBuffer.
-- In milestone 5, add prior-run metadata behavior, gate timer and crash extension,
+- In milestone 5, add prior-run metadata behavior, classification-selected timers, independent runtime
+  updates, report requests that leave the selected delay unchanged,
   high-watermark early replay, barrier release, previous-process startup-lane FIFO delivery, late
   previous-process no-reorder behavior, blocking-flush gate activation, nonblocking-flush gate
   retention, and
@@ -633,8 +641,9 @@ benchmarks and migration validation, not steady-state dashboards.
   configuration arrives.
 - Milestones 1 through 4 preserve current `PreConfigBuffer` startup behavior; milestone 5 is the
   only milestone that changes initialization replay and workflow ordering.
-- Milestone 5 introduces runtime settings for the 500 ms strawman base replay delay, 1 s maximum
-  crash-hint extension, `log_limit`, and `total_limit`. The bootstrap budgets and 80% high
+- Milestone 5 introduces runtime settings for the 50 ms uncertain-run replay delay, 1 s known-fatal
+  replay delay, `log_limit`, and `total_limit`. A positive no-prior-crash classification skips the
+  replay delay. The bootstrap budgets and 80% high
   watermark remain active before the first configuration arrives; later runtime updates become
   effective on the next EventBuffer admission using the budget-shrink behavior specified above.
 - Provider-capture failures preserve today's best-effort public behavior: the affected log is

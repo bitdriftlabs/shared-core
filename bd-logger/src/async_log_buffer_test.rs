@@ -5,7 +5,6 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use crate::Block;
 use crate::async_log_buffer::{
   AdmissionError,
   AsyncLogBuffer,
@@ -24,6 +23,7 @@ use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::log_replay::{LogReplayResult, LoggerReplay, ProcessingPipeline};
 use crate::logging_state::{BufferProducers, ConfigUpdate, UninitializedLoggingContext};
+use crate::{Block, StartupReplayEligibility};
 use bd_api::{DataUpload, SimpleNetworkQualityProvider};
 use bd_client_common::init_lifecycle::InitLifecycleState;
 use bd_client_stats::{FlushTrigger, Stats};
@@ -77,6 +77,7 @@ use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use tokio::sync::{Notify, mpsc};
+use tokio::time::Instant;
 use tokio_test::assert_ok;
 
 struct Setup {
@@ -176,6 +177,7 @@ impl Setup {
       InitLifecycleState::new(),
       bd_client_common::sdk_status::SdkStatusTracker::new(),
       self.data_upload_tx.clone(),
+      StartupReplayEligibility::Unknown,
     )
   }
 
@@ -207,6 +209,7 @@ impl Setup {
       InitLifecycleState::new(),
       bd_client_common::sdk_status::SdkStatusTracker::new(),
       self.data_upload_tx.clone(),
+      StartupReplayEligibility::Unknown,
     )
   }
 
@@ -371,46 +374,121 @@ async fn startup_gate_holds_preconfiguration_logs_until_the_replay_timer() {
 
 #[tokio::test(start_paused = true)]
 async fn runtime_startup_replay_delay_extension_rearms_the_running_gate() {
-  let mut setup = Setup::new();
-  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
-  sender.try_send_log(normal_log("held")).unwrap();
-
-  config_update_tx
-    .send(setup.make_config_update(WorkflowsConfiguration::default()))
-    .await
-    .unwrap();
-
-  let event_buffer = buffer.event_buffer.clone();
-  let state_store = TestStore::new().await;
-  let shutdown_trigger = ComponentShutdownTrigger::default();
-  let handle = tokio::task::spawn(buffer.run_with_shutdown(
-    state_store.take_inner(),
-    (),
-    shutdown_trigger.make_shutdown(),
-  ));
-
-  wait_for_pipeline_ready(&event_buffer).await;
-  setup
-    .runtime
-    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
+  for (eligibility, default_ms, flag) in [
+    (
+      StartupReplayEligibility::Unknown,
+      50,
       bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
-      ValueKind::Int(500),
-    )]))
-    .await
-    .unwrap();
-  tokio::task::yield_now().await;
+    ),
+    (
+      StartupReplayEligibility::MayHavePriorCrash,
+      1_000,
+      bd_runtime::runtime::event_buffer::StartupReplayCrashDelayFlag::path(),
+    ),
+  ] {
+    let mut setup = Setup::new();
+    let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+    let (mut buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+    buffer.startup_replay_eligibility = eligibility;
+    sender.try_send_log(normal_log("held")).unwrap();
 
-  tokio::time::advance(50.std_milliseconds()).await;
-  tokio::task::yield_now().await;
-  assert_eq!(0, setup.replayer_log_count.load(Ordering::SeqCst));
+    config_update_tx
+      .send(setup.make_config_update(WorkflowsConfiguration::default()))
+      .await
+      .unwrap();
 
-  tokio::time::advance(450.std_milliseconds()).await;
-  tokio::task::yield_now().await;
-  assert_eq!(1, setup.replayer_log_count.load(Ordering::SeqCst));
+    let event_buffer = buffer.event_buffer.clone();
+    let state_store = TestStore::new().await;
+    let shutdown_trigger = ComponentShutdownTrigger::default();
+    let handle = tokio::task::spawn(buffer.run_with_shutdown(
+      state_store.take_inner(),
+      (),
+      shutdown_trigger.make_shutdown(),
+    ));
 
-  shutdown_trigger.shutdown().await;
-  handle.await.unwrap();
+    wait_for_pipeline_ready(&event_buffer).await;
+    setup
+      .runtime
+      .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
+        flag,
+        ValueKind::Int(2_000),
+      )]))
+      .await
+      .unwrap();
+    tokio::task::yield_now().await;
+
+    tokio::time::advance(default_ms.std_milliseconds()).await;
+    tokio::task::yield_now().await;
+    assert_eq!(0, setup.replayer_log_count.load(Ordering::SeqCst));
+
+    tokio::time::advance((2_000 - default_ms).std_milliseconds()).await;
+    tokio::task::yield_now().await;
+    assert_eq!(1, setup.replayer_log_count.load(Ordering::SeqCst));
+
+    shutdown_trigger.shutdown().await;
+    handle.await.unwrap();
+  }
+}
+
+#[tokio::test(start_paused = true)]
+async fn report_processing_does_not_change_the_selected_startup_delay() {
+  for (eligibility, delay_ms) in [
+    (StartupReplayEligibility::NoPriorCrash, 0),
+    (StartupReplayEligibility::Unknown, 50),
+    (StartupReplayEligibility::MayHavePriorCrash, 1_000),
+  ] {
+    let mut setup = Setup::new();
+    let (config_tx, config_rx) = mpsc::channel(1);
+    let (mut buffer, sender) = setup.make_test_async_log_buffer(config_rx);
+    buffer.startup_replay_eligibility = eligibility;
+    let (report_tx, report_rx) = mpsc::channel(1);
+    buffer.report_processor_rx = report_rx;
+    report_tx
+      .send(crate::logger::ReportProcessingRequest {
+        session: crate::ReportProcessingSession::PreviousRun,
+      })
+      .await
+      .unwrap();
+    sender.try_send_log(normal_log("held")).unwrap();
+    config_tx
+      .send(setup.make_config_update(WorkflowsConfiguration::default()))
+      .await
+      .unwrap();
+    let event_buffer = buffer.event_buffer.clone();
+    let processed = Arc::new(Notify::new());
+    let state_store = TestStore::new().await;
+    let shutdown_trigger = ComponentShutdownTrigger::default();
+    let handle = tokio::spawn(buffer.run_with_shutdown(
+      state_store.take_inner(),
+      ReportProcessingSignal(processed.clone()),
+      shutdown_trigger.make_shutdown(),
+    ));
+    processed.notified().await;
+    wait_for_pipeline_ready(&event_buffer).await;
+    if delay_ms > 0 {
+      tokio::time::advance((delay_ms - 1).std_milliseconds()).await;
+      tokio::task::yield_now().await;
+      assert!(!event_buffer.is_gate_open());
+      tokio::time::advance(1.std_milliseconds()).await;
+    }
+    tokio::task::yield_now().await;
+    assert!(event_buffer.is_gate_open());
+    shutdown_trigger.shutdown().await;
+    let buffer = handle.await.unwrap();
+    assert_eq!(eligibility, buffer.startup_replay_eligibility);
+    assert_eq!(vec!["held"], *setup.replayer_logs.lock());
+  }
+}
+
+struct ReportProcessingSignal(Arc<Notify>);
+
+impl ReportProcessor for ReportProcessingSignal {
+  fn process_all_pending_reports(
+    &self,
+  ) -> impl future::Future<Output = Vec<bd_crash_handler::CrashLog>> {
+    self.0.notify_one();
+    future::ready(Vec::new())
+  }
 }
 
 #[tokio::test]
@@ -535,108 +613,160 @@ async fn startup_gate_releases_when_loaded_runtime_limits_expose_existing_pressu
   assert_eq!(vec!["pressure release"], *setup.replayer_logs.lock());
 }
 
+#[tokio::test(start_paused = true)]
+async fn startup_replay_classification_selects_independent_configured_delays() {
+  for (eligibility, expected_ms) in [
+    (StartupReplayEligibility::NoPriorCrash, 0),
+    (StartupReplayEligibility::MayHavePriorCrash, 1_000),
+    (StartupReplayEligibility::Unknown, 250),
+  ] {
+    let mut setup = Setup::new();
+    setup
+      .runtime
+      .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![
+        (
+          bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
+          ValueKind::Int(250),
+        ),
+        (
+          bd_runtime::runtime::event_buffer::StartupReplayCrashDelayFlag::path(),
+          ValueKind::Int(1_000),
+        ),
+      ]))
+      .await
+      .unwrap();
+    let (_tx, rx) = tokio::sync::mpsc::channel(1);
+    let (mut buffer, _) = setup.make_test_async_log_buffer(rx);
+    buffer.startup_replay_eligibility = eligibility;
+    buffer.start_startup_replay_delay();
+    if expected_ms == 0 {
+      assert!(buffer.startup_gate.timer_elapsed);
+      assert!(buffer.startup_gate_deadline.is_none());
+    } else {
+      assert_eq!(
+        Some(Instant::now() + expected_ms.std_milliseconds()),
+        buffer.startup_gate_deadline
+      );
+      assert!(!buffer.startup_gate.timer_elapsed);
+    }
+    buffer.maybe_release_startup_gate();
+    assert!(
+      !buffer.event_buffer.is_gate_open(),
+      "configuration is still required"
+    );
+  }
+}
+
+#[tokio::test(start_paused = true)]
+async fn startup_replay_runtime_updates_extend_only_the_selected_delay() {
+  for (eligibility, initial_ms, selected, other) in [
+    (
+      StartupReplayEligibility::Unknown,
+      50,
+      bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
+      bd_runtime::runtime::event_buffer::StartupReplayCrashDelayFlag::path(),
+    ),
+    (
+      StartupReplayEligibility::MayHavePriorCrash,
+      1_000,
+      bd_runtime::runtime::event_buffer::StartupReplayCrashDelayFlag::path(),
+      bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
+    ),
+  ] {
+    let mut setup = Setup::new();
+    let (_tx, rx) = tokio::sync::mpsc::channel(1);
+    let (mut buffer, _) = setup.make_test_async_log_buffer(rx);
+    buffer.startup_replay_eligibility = eligibility;
+    buffer.start_startup_replay_delay();
+    let started = buffer.startup_started_at.unwrap();
+    assert_eq!(
+      Some(started + initial_ms.std_milliseconds()),
+      buffer.startup_gate_deadline
+    );
+
+    setup
+      .runtime
+      .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
+        other,
+        ValueKind::Int(5_000),
+      )]))
+      .await
+      .unwrap();
+    buffer.refresh_startup_replay_delay();
+    assert_eq!(
+      Some(started + initial_ms.std_milliseconds()),
+      buffer.startup_gate_deadline
+    );
+
+    // The original timer elapsed without configuration. A longer delay must re-arm the hard gate.
+    tokio::time::advance(initial_ms.std_milliseconds()).await;
+    buffer.startup_gate.timer_elapsed = true;
+    setup
+      .runtime
+      .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
+        selected,
+        ValueKind::Int(2_000),
+      )]))
+      .await
+      .unwrap();
+    buffer.refresh_startup_replay_delay();
+    assert_eq!(
+      Some(started + 2.std_seconds()),
+      buffer.startup_gate_deadline
+    );
+    assert!(!buffer.startup_gate.timer_elapsed);
+    buffer.maybe_release_startup_gate();
+    assert!(!buffer.event_buffer.is_gate_open());
+
+    setup
+      .runtime
+      .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
+        selected,
+        ValueKind::Int(0),
+      )]))
+      .await
+      .unwrap();
+    buffer.refresh_startup_replay_delay();
+    assert_eq!(
+      Some(started + 2.std_seconds()),
+      buffer.startup_gate_deadline
+    );
+  }
+}
+
 #[tokio::test]
-async fn startup_replay_crash_hint_uses_a_single_bounded_extension() {
+async fn confirmed_no_prior_crash_releases_when_pipeline_is_ready_without_delay() {
   let mut setup = Setup::new();
+  let (_tx, rx) = tokio::sync::mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(rx);
+  buffer.startup_replay_eligibility = StartupReplayEligibility::NoPriorCrash;
+  buffer.start_startup_replay_delay();
+  buffer.maybe_release_startup_gate();
+  assert!(!buffer.event_buffer.is_gate_open());
+
   setup
     .runtime
     .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![
       (
         bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
-        ValueKind::Int(250),
+        ValueKind::Int(5_000),
       ),
       (
         bd_runtime::runtime::event_buffer::StartupReplayCrashDelayFlag::path(),
-        ValueKind::Int(1_000),
+        ValueKind::Int(5_000),
       ),
     ]))
     .await
     .unwrap();
+  buffer.refresh_startup_replay_delay();
+  assert!(buffer.startup_gate.timer_elapsed);
+  assert!(buffer.startup_gate_deadline.is_none());
 
-  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-  let (buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
   let mut buffer = buffer
     .update(setup.make_config_update(WorkflowsConfiguration::default()))
     .await;
-  buffer.start_startup_replay_delay();
-  let base_deadline = buffer.startup_base_deadline.unwrap();
-
-  buffer.extend_startup_replay_for_crash();
-  assert_eq!(
-    Some(base_deadline + 1.std_seconds()),
-    buffer.startup_gate_deadline
-  );
-
-  buffer.extend_startup_replay_for_crash();
-  assert_eq!(
-    Some(base_deadline + 1.std_seconds()),
-    buffer.startup_gate_deadline
-  );
-}
-
-#[tokio::test]
-async fn startup_replay_runtime_delay_extends_the_bootstrap_deadline() {
-  let mut setup = Setup::new();
-  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
-
-  buffer.start_startup_replay_delay();
-  let startup_started_at = buffer.startup_started_at.unwrap();
-  assert_eq!(
-    Some(startup_started_at + time::Duration::milliseconds(50).unsigned_abs()),
-    buffer.startup_gate_deadline
-  );
-
-  setup
-    .runtime
-    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
-      bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
-      ValueKind::Int(500),
-    )]))
-    .await
-    .unwrap();
-  assert_eq!(
-    time::Duration::milliseconds(500),
-    *buffer.startup_replay_watches.base_delay.read()
-  );
-  buffer.refresh_startup_replay_delay();
-
-  assert_eq!(
-    Some(startup_started_at + time::Duration::milliseconds(500).unsigned_abs()),
-    buffer.startup_gate_deadline
-  );
-  assert!(!buffer.event_buffer.is_gate_open());
-}
-
-#[tokio::test]
-async fn startup_replay_runtime_crash_delay_extends_a_pending_crash_gate() {
-  let mut setup = Setup::new();
-  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
-
-  buffer.start_startup_replay_delay();
-  let startup_started_at = buffer.startup_started_at.unwrap();
-  let base_deadline = startup_started_at + 50.std_milliseconds();
-  buffer.extend_startup_replay_for_crash();
-  assert_eq!(
-    Some(base_deadline + 1.std_seconds()),
-    buffer.startup_gate_deadline
-  );
-
-  setup
-    .runtime
-    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
-      bd_runtime::runtime::event_buffer::StartupReplayCrashDelayFlag::path(),
-      ValueKind::Int(2_000),
-    )]))
-    .await
-    .unwrap();
-  buffer.refresh_startup_replay_delay();
-
-  assert_eq!(
-    Some(base_deadline + 2.std_seconds()),
-    buffer.startup_gate_deadline
-  );
+  buffer.maybe_release_startup_gate();
+  assert!(buffer.event_buffer.is_gate_open());
 }
 
 #[tokio::test(start_paused = true)]
