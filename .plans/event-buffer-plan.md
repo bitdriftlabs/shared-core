@@ -582,18 +582,23 @@ pending solely because the soft startup delay has not elapsed.
 
 ## Observability and validation
 
-- Preserve the existing log enqueue success/full/closed metrics for continuity until the channel
-  path is removed; add equivalent state metrics during the transition.
+Production metrics must stay off the successful producer fast path. The rollout set is deliberately
+small:
 
-Production rollout metrics are intentionally small and use only bounded, coarse dimensions:
-
-- Count EventBuffer entry outcomes as admitted, evicted, rejected-full, rejected-oversized, or
-  closed. Do not break these down by event kind, log type, level, exact lane, or completion outcome.
-- Export queued bytes and entries split only into protected and evictable categories, plus the age
-  of the oldest retained entry to detect an unhealthy consumer.
-- Count drain-gate openings by timer, no-prior-crash classification, high watermark, or barrier, and record gate-hold
-  duration.
+- Count EventBuffer loss only: evictions, full rejections, and oversized rejections. Use a single
+  bounded `reason` dimension; do not count successful admissions, split by lane, or label by event
+  kind, log type, level, or completion outcome. Closed-buffer rejections are ordinary shutdown and
+  are not a rollout health signal.
+- Once per ALB start, count the selected replay eligibility. Once per gate release, count the
+  release reason (`no_prior_crash`, timer, high watermark, or barrier) and record gate-hold
+  duration. This exposes classification rollout, early releases, and unexpectedly long successful
+  gates without a per-entry cost.
 - Keep durable-write failures with the persistence owner rather than as an EventBuffer metric.
+
+We intentionally do not export queue depth, queued bytes, oldest-entry age, lock timing, or
+successful-admission counters. Those are high-frequency gauges or require additional state and can
+be enabled temporarily during a targeted investigation rather than becoming permanent client
+telemetry.
 
 Development instrumentation is temporary: it must be feature-gated or sampled, have a stated
 removal point before broad rollout, and not become a permanent metric merely because it aided

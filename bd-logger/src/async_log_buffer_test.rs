@@ -145,6 +145,17 @@ impl Setup {
     &mut self,
     config_update_rx: tokio::sync::mpsc::Receiver<ConfigUpdate>,
   ) -> (AsyncLogBuffer<TestReplay>, Sender) {
+    self.make_test_async_log_buffer_with_startup_replay_eligibility(
+      config_update_rx,
+      StartupReplayEligibility::Unknown,
+    )
+  }
+
+  fn make_test_async_log_buffer_with_startup_replay_eligibility(
+    &mut self,
+    config_update_rx: tokio::sync::mpsc::Receiver<ConfigUpdate>,
+    startup_replay_eligibility: StartupReplayEligibility,
+  ) -> (AsyncLogBuffer<TestReplay>, Sender) {
     let replayer = TestReplay::new();
     self.replayer_log_count = replayer.logs_count.clone();
     self.replayer_log_notify = replayer.logs_notify.clone();
@@ -177,7 +188,7 @@ impl Setup {
       InitLifecycleState::new(),
       bd_client_common::sdk_status::SdkStatusTracker::new(),
       self.data_upload_tx.clone(),
-      StartupReplayEligibility::Unknown,
+      startup_replay_eligibility,
     )
   }
 
@@ -388,8 +399,8 @@ async fn runtime_startup_replay_delay_extension_rearms_the_running_gate() {
   ] {
     let mut setup = Setup::new();
     let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-    let (mut buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
-    buffer.startup_replay_eligibility = eligibility;
+    let (buffer, sender) = setup
+      .make_test_async_log_buffer_with_startup_replay_eligibility(config_update_rx, eligibility);
     sender.try_send_log(normal_log("held")).unwrap();
 
     config_update_tx
@@ -439,8 +450,8 @@ async fn report_processing_does_not_change_the_selected_startup_delay() {
   ] {
     let mut setup = Setup::new();
     let (config_tx, config_rx) = mpsc::channel(1);
-    let (mut buffer, sender) = setup.make_test_async_log_buffer(config_rx);
-    buffer.startup_replay_eligibility = eligibility;
+    let (mut buffer, sender) =
+      setup.make_test_async_log_buffer_with_startup_replay_eligibility(config_rx, eligibility);
     let (report_tx, report_rx) = mpsc::channel(1);
     buffer.report_processor_rx = report_rx;
     report_tx
@@ -562,6 +573,47 @@ async fn post_pipeline_blocking_flush_releases_the_gate_after_older_work() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn post_pipeline_nonblocking_flush_does_not_release_the_gate() {
+  let mut setup = Setup::new();
+  setup
+    .runtime
+    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
+      bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
+      ValueKind::Int(5_000),
+    )]))
+    .await
+    .unwrap();
+  let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+  config_update_tx
+    .send(setup.make_config_update(WorkflowsConfiguration::default()))
+    .await
+    .unwrap();
+
+  let event_buffer = buffer.event_buffer.clone();
+  let state_store = TestStore::new().await;
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let handle = tokio::task::spawn(buffer.run_with_shutdown(
+    state_store.take_inner(),
+    (),
+    shutdown_trigger.make_shutdown(),
+  ));
+  wait_for_pipeline_ready(&event_buffer).await;
+
+  assert_ok!(sender.try_send_log(normal_log("behind nonblocking flush")));
+  assert_ok!(sender.flush_state(Block::No));
+  tokio::task::yield_now().await;
+  assert!(!event_buffer.is_gate_open());
+  assert_eq!(0, setup.replayer_log_count.load(Ordering::SeqCst));
+
+  tokio::time::advance(5.std_seconds()).await;
+  wait_for_replayed_logs(&setup, 1).await;
+
+  shutdown_trigger.shutdown().await;
+  handle.await.unwrap();
+}
+
+#[tokio::test(start_paused = true)]
 async fn startup_gate_releases_when_loaded_runtime_limits_expose_existing_pressure() {
   let mut setup = Setup::new();
   let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
@@ -636,8 +688,8 @@ async fn startup_replay_classification_selects_independent_configured_delays() {
       .await
       .unwrap();
     let (_tx, rx) = tokio::sync::mpsc::channel(1);
-    let (mut buffer, _) = setup.make_test_async_log_buffer(rx);
-    buffer.startup_replay_eligibility = eligibility;
+    let (mut buffer, _) =
+      setup.make_test_async_log_buffer_with_startup_replay_eligibility(rx, eligibility);
     buffer.start_startup_replay_delay();
     if expected_ms == 0 {
       assert!(buffer.startup_gate.timer_elapsed);
@@ -675,8 +727,8 @@ async fn startup_replay_runtime_updates_extend_only_the_selected_delay() {
   ] {
     let mut setup = Setup::new();
     let (_tx, rx) = tokio::sync::mpsc::channel(1);
-    let (mut buffer, _) = setup.make_test_async_log_buffer(rx);
-    buffer.startup_replay_eligibility = eligibility;
+    let (mut buffer, _) =
+      setup.make_test_async_log_buffer_with_startup_replay_eligibility(rx, eligibility);
     buffer.start_startup_replay_delay();
     let started = buffer.startup_started_at.unwrap();
     assert_eq!(

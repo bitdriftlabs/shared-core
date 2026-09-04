@@ -5,8 +5,10 @@
 // LICENSE.polyform file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-use super::{initialize_memory_pressure, initialize_opaque_entity_updates};
+use super::{LoggerBuilder, initialize_memory_pressure, initialize_opaque_entity_updates};
 use crate::logger::PendingEntityIdUpdate;
+use crate::test::setup::create_minimal_init_params;
+use crate::{StartupReplayEligibility, TestHooks};
 use bd_client_stats_store::Collector;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_resilient_kv::{Scope as KvScope, StateValue, VersionedKVStore};
@@ -22,9 +24,34 @@ use bd_state::{
 use bd_time::TestTimeProvider;
 use pretty_assertions::assert_eq;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicI8, Ordering};
+use std::sync::atomic::{AtomicI8, AtomicI32, Ordering};
 use time::macros::datetime;
 use tokio::sync::watch;
+
+struct StartupReplayEligibilityTestHook(AtomicI32);
+
+impl TestHooks for StartupReplayEligibilityTestHook {
+  fn startup_replay_eligibility_initialized(&self, eligibility: StartupReplayEligibility) {
+    self.0.store(eligibility as i32, Ordering::SeqCst);
+  }
+}
+
+#[test]
+fn startup_replay_eligibility_is_forwarded_from_builder_to_async_log_buffer() {
+  let sdk_directory = tempfile::TempDir::with_prefix("sdk").unwrap();
+  let hook = Arc::new(StartupReplayEligibilityTestHook(AtomicI32::new(-1)));
+
+  let (_logger, _data_upload_tx, _future, _flush_trigger) =
+    LoggerBuilder::new(create_minimal_init_params(sdk_directory.path()))
+      .with_startup_replay_eligibility(StartupReplayEligibility::MayHavePriorCrash)
+      .with_test_hooks(Some(hook.clone()))
+      .build()
+      .unwrap();
+  assert_eq!(
+    StartupReplayEligibility::MayHavePriorCrash,
+    StartupReplayEligibility::from_i32(hook.0.load(Ordering::SeqCst))
+  );
+}
 
 #[tokio::test]
 async fn pending_entity_id_is_replayed_into_state_store() {

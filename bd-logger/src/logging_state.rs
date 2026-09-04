@@ -9,7 +9,7 @@ use crate::buffer_selector::BufferSelector;
 use crate::client_config::TailConfigurations;
 use crate::consumer::RemoteFlushStreamingRequest;
 use crate::log_replay::{LogReplay, ProcessingPipeline};
-use crate::logger::{TestHooks, with_thread_local_logger_guard};
+use crate::logger::{StartupReplayEligibility, TestHooks, with_thread_local_logger_guard};
 use crate::metadata::MetadataCollector;
 use anyhow::anyhow;
 use bd_api::{DataUpload, TriggerUpload};
@@ -182,6 +182,15 @@ impl UninitializedLoggingContext {
     .await;
 
     InitializedLoggingContext::new(processing_pipeline)
+  }
+
+  pub(crate) fn startup_replay_eligibility_initialized(
+    &self,
+    eligibility: StartupReplayEligibility,
+  ) {
+    if let Some(test_hooks) = &self.test_hooks {
+      test_hooks.startup_replay_eligibility_initialized(eligibility);
+    }
   }
 }
 

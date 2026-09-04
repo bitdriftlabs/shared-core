@@ -622,6 +622,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     data_upload_tx: mpsc::Sender<DataUpload>,
     startup_replay_eligibility: StartupReplayEligibility,
   ) -> (Self, Sender) {
+    uninitialized_logging_context
+      .startup_replay_eligibility_initialized(startup_replay_eligibility);
+
     // The old log and control channels had 1 MiB and 10 MiB byte budgets respectively. Keep
     // those bootstrap limits while moving both flows into one ordered ingress.
     let mut event_buffer_limit_watches = EventBufferLimitWatches::new(runtime_loader);

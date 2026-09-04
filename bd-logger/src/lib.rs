@@ -38,7 +38,7 @@ mod trigger_upload_artifact;
 pub use state_upload::{SnapshotRef, StateUploadHandle};
 
 #[cfg(test)]
-mod test;
+pub(crate) mod test;
 
 pub use crate::app_version::AppVersionExtra;
 pub use crate::logger::{ChannelPair, InitParams};
