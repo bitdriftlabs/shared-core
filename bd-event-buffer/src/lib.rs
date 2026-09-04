@@ -6,12 +6,10 @@
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
 use bd_client_common::PlatformMutex;
-use bd_client_stats_store::{Counter, Scope};
 use bd_log_primitives::{DataValue, LogFields, LogLevel, LogLine, log_level};
 use bd_macros::ApproximateSize;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::logging::payload::LogType;
-use bd_stats_common::{Counter as _, labels};
 use std::sync::Arc;
 use time::OffsetDateTime;
 use tokio::sync::Notify;
@@ -42,6 +40,8 @@ pub enum LoggerControl {
     level: MemoryPressureLevel,
   },
   SetEntityId(Option<String>),
+  /// Processes current-process crash reports after earlier state ingress has been applied.
+  ProcessCurrentCrashReports,
   FlushState(#[approximate_size(skip)] Option<bd_completion::Sender<()>>),
 }
 
@@ -195,6 +195,20 @@ impl EventBufferEntry {
     }
   }
 
+  fn is_previous_process(&self) -> bool {
+    matches!(
+      self,
+      Self::Ingress(LoggerIngressEvent {
+        context: EventContext::PreviousProcess { .. },
+        ..
+      })
+    )
+  }
+
+  fn is_blocking_flush(&self) -> bool {
+    matches!(self, Self::Control(LoggerControl::FlushState(Some(_))))
+  }
+
   fn take_completion(&mut self) -> Option<bd_completion::Sender<()>> {
     match self {
       Self::Ingress(event) => event.completion.take(),
@@ -227,13 +241,15 @@ pub struct EventBuffer {
 struct EventBufferInner {
   state: PlatformMutex<LoggerEventBufferState>,
   notify: Notify,
-  stats: Option<EventBufferStats>,
+  gate_notify: Notify,
+  pipeline_notify: Notify,
   #[cfg(test)]
   test_hooks: Option<Arc<dyn TestHooks>>,
 }
 
 struct LoggerEventBufferState {
   retention: EventBufferState<EventBufferEntry>,
+  pipeline_ready: bool,
 }
 
 impl EventBuffer {
@@ -245,20 +261,7 @@ impl EventBuffer {
     }
     #[cfg(not(test))]
     {
-      Self::new_inner(limits, None)
-    }
-  }
-
-  /// Creates an `EventBuffer` that emits bounded per-lane admission outcome metrics.
-  #[must_use]
-  pub fn new_with_stats(limits: EventBufferLimits, scope: &Scope) -> Self {
-    #[cfg(test)]
-    {
-      Self::new_inner(limits, Some(EventBufferStats::new(scope)), None)
-    }
-    #[cfg(not(test))]
-    {
-      Self::new_inner(limits, Some(EventBufferStats::new(scope)))
+      Self::new_inner(limits)
     }
   }
 
@@ -267,21 +270,22 @@ impl EventBuffer {
     limits: EventBufferLimits,
     test_hooks: Option<Arc<dyn TestHooks>>,
   ) -> Self {
-    Self::new_inner(limits, None, test_hooks)
+    Self::new_inner(limits, test_hooks)
   }
 
   fn new_inner(
     limits: EventBufferLimits,
-    stats: Option<EventBufferStats>,
     #[cfg(test)] test_hooks: Option<Arc<dyn TestHooks>>,
   ) -> Self {
     Self {
       inner: Arc::new(EventBufferInner {
         state: PlatformMutex::new(LoggerEventBufferState {
           retention: EventBufferState::new(limits),
+          pipeline_ready: false,
         }),
         notify: Notify::new(),
-        stats,
+        gate_notify: Notify::new(),
+        pipeline_notify: Notify::new(),
         #[cfg(test)]
         test_hooks,
       }),
@@ -292,21 +296,66 @@ impl EventBuffer {
     self.inner.state.lock().retention.set_pending_limits(limits);
   }
 
+  /// Marks that ALB has finished constructing a processing pipeline. This linearizes the
+  /// transition between startup's hard gate—where flushes are intentionally no-ops—and the soft
+  /// replay gate, where a blocking flush is an ordered barrier.
+  pub fn mark_pipeline_ready(&self) {
+    self.inner.state.lock().pipeline_ready = true;
+    self.inner.pipeline_notify.notify_waiters();
+  }
+
+  /// Returns whether ALB has completed the hard startup gate by constructing its processing
+  /// pipeline.
+  #[must_use]
+  pub fn is_pipeline_ready(&self) -> bool {
+    self.inner.state.lock().pipeline_ready
+  }
+
+  /// Waits until ALB has constructed its processing pipeline.
+  pub async fn wait_for_pipeline_ready(&self) {
+    loop {
+      let notified = self.inner.pipeline_notify.notified();
+      tokio::pin!(notified);
+      notified.as_mut().enable();
+      if self.is_pipeline_ready() {
+        return;
+      }
+      notified.await;
+    }
+  }
+
+  /// Returns whether a flush should complete without queueing because no processing pipeline
+  /// exists yet. The check shares the `EventBuffer` mutex with `mark_pipeline_ready`, so a flush
+  /// is deterministically either an early no-op or a normal ordered entry.
+  #[must_use]
+  pub fn skips_flush_before_pipeline_ready(&self) -> bool {
+    let state = self.inner.state.lock();
+    !state.pipeline_ready && !state.retention.is_closed()
+  }
+
   #[must_use]
   pub fn admit(&self, entry: EventBufferEntry) -> AdmissionOutcome {
     let lane = entry.lane();
-    let outcome = {
+    let previous_process = entry.is_previous_process();
+    let blocking_flush = entry.is_blocking_flush();
+    let (outcome, gate_requested, notify_consumer) = {
       let mut state = self.inner.state.lock();
-      state.retention.admit_with_evictions(
+      let outcome = state.retention.admit_with_evictions(
         lane,
+        previous_process,
         entry.approximate_size_bytes(),
         entry,
-        |evicted_lane| self.record_eviction(evicted_lane),
-      )
+        |_| {},
+      );
+      let gate_requested =
+        Self::request_startup_gate_release(&mut state.retention, outcome, lane, blocking_flush);
+      (outcome, gate_requested, state.retention.is_gate_open())
     };
-    self.record_outcome(lane, outcome);
-    if outcome == AdmissionOutcome::Admitted {
+    if outcome == AdmissionOutcome::Admitted && notify_consumer {
       self.inner.notify.notify_one();
+    }
+    if gate_requested {
+      self.inner.gate_notify.notify_one();
     }
     outcome
   }
@@ -319,29 +368,38 @@ impl EventBuffer {
     &self,
     entries: impl IntoIterator<Item = EventBufferEntry>,
   ) -> Vec<AdmissionOutcome> {
-    let outcomes = {
+    let (outcomes, gate_requested, notify_consumer) = {
       let mut state = self.inner.state.lock();
       #[cfg(test)]
       if let Some(test_hooks) = &self.inner.test_hooks {
         test_hooks.batch_admission_started();
       }
-      entries
+      let mut gate_requested = false;
+      let outcomes = entries
         .into_iter()
         .map(|entry| {
           let lane = entry.lane();
+          let previous_process = entry.is_previous_process();
+          let blocking_flush = entry.is_blocking_flush();
           let outcome = state.retention.admit_with_evictions(
             lane,
+            previous_process,
             entry.approximate_size_bytes(),
             entry,
-            |evicted_lane| self.record_eviction(evicted_lane),
+            |_| {},
           );
-          self.record_outcome(lane, outcome);
+          gate_requested |=
+            Self::request_startup_gate_release(&mut state.retention, outcome, lane, blocking_flush);
           outcome
         })
-        .collect::<Vec<_>>()
+        .collect::<Vec<_>>();
+      (outcomes, gate_requested, state.retention.is_gate_open())
     };
-    if outcomes.contains(&AdmissionOutcome::Admitted) {
+    if outcomes.contains(&AdmissionOutcome::Admitted) && notify_consumer {
       self.inner.notify.notify_one();
+    }
+    if gate_requested {
+      self.inner.gate_notify.notify_one();
     }
     outcomes
   }
@@ -381,91 +439,72 @@ impl EventBuffer {
     self.inner.notify.notify_waiters();
   }
 
-  fn record_outcome(&self, lane: RetentionLane, outcome: AdmissionOutcome) {
-    if let Some(stats) = &self.inner.stats {
-      stats.record_outcome(lane, outcome);
+  /// Opens the startup drain gate. Once open, it cannot be closed again.
+  #[must_use]
+  pub fn open_gate(&self) -> bool {
+    let opened = self.inner.state.lock().retention.open_gate();
+    if opened {
+      self.inner.notify.notify_waiters();
+    }
+    opened
+  }
+
+  #[must_use]
+  pub fn is_gate_open(&self) -> bool {
+    self.inner.state.lock().retention.is_gate_open()
+  }
+
+  /// Reports whether protected work retained behind the startup gate has reached its high
+  /// watermark. The consumer uses this after configuration becomes ready so work that arrived
+  /// before configuration can release immediately instead of waiting for the replay timer.
+  #[must_use]
+  pub fn reaches_protected_high_watermark(&self) -> bool {
+    self
+      .inner
+      .state
+      .lock()
+      .retention
+      .reaches_protected_high_watermark()
+  }
+
+  /// Waits for a pressure or blocking-flush request that the configured consumer may use to
+  /// release the startup gate.
+  pub async fn wait_for_gate_release_request(&self) -> StartupGateReleaseRequest {
+    loop {
+      let notified = self.inner.gate_notify.notified();
+      tokio::pin!(notified);
+      notified.as_mut().enable();
+      if let Some(request) = self
+        .inner
+        .state
+        .lock()
+        .retention
+        .take_gate_release_request()
+      {
+        return request;
+      }
+      notified.await;
     }
   }
 
-  fn record_eviction(&self, lane: RetentionLane) {
-    if let Some(stats) = &self.inner.stats {
-      stats.record_eviction(lane);
+  fn request_startup_gate_release(
+    retention: &mut EventBufferState<EventBufferEntry>,
+    outcome: AdmissionOutcome,
+    lane: RetentionLane,
+    blocking_flush: bool,
+  ) -> bool {
+    if outcome != AdmissionOutcome::Admitted {
+      return false;
     }
-  }
-}
 
-//
-// EventBufferStats
-//
-
-/// Bounded `EventBuffer` outcome metrics, labeled only by the fixed retention lane and outcome.
-struct EventBufferStats {
-  admitted: LaneCounters,
-  evicted: LaneCounters,
-  rejected_full: LaneCounters,
-  rejected_oversized: LaneCounters,
-  closed: LaneCounters,
-}
-
-impl EventBufferStats {
-  fn new(scope: &Scope) -> Self {
-    Self {
-      admitted: LaneCounters::new(scope, "admitted"),
-      evicted: LaneCounters::new(scope, "evicted"),
-      rejected_full: LaneCounters::new(scope, "rejected_full"),
-      rejected_oversized: LaneCounters::new(scope, "rejected_oversized"),
-      closed: LaneCounters::new(scope, "closed"),
-    }
-  }
-
-  fn record_outcome(&self, lane: RetentionLane, outcome: AdmissionOutcome) {
-    match outcome {
-      AdmissionOutcome::Admitted => self.admitted.inc(lane),
-      AdmissionOutcome::RejectedFull => self.rejected_full.inc(lane),
-      AdmissionOutcome::RejectedOversized => self.rejected_oversized.inc(lane),
-      AdmissionOutcome::Closed => self.closed.inc(lane),
-    }
-  }
-
-  fn record_eviction(&self, lane: RetentionLane) {
-    self.evicted.inc(lane);
-  }
-}
-
-//
-// LaneCounters
-//
-
-struct LaneCounters {
-  low: Counter,
-  high: Counter,
-  protected: Counter,
-}
-
-impl LaneCounters {
-  fn new(scope: &Scope, outcome: &'static str) -> Self {
-    Self {
-      low: scope.counter_with_labels(
-        "entry_outcomes",
-        labels!("lane" => "low", "outcome" => outcome),
-      ),
-      high: scope.counter_with_labels(
-        "entry_outcomes",
-        labels!("lane" => "high", "outcome" => outcome),
-      ),
-      protected: scope.counter_with_labels(
-        "entry_outcomes",
-        labels!("lane" => "protected", "outcome" => outcome),
-      ),
-    }
-  }
-
-  fn inc(&self, lane: RetentionLane) {
-    match lane {
-      RetentionLane::Low => self.low.inc(),
-      RetentionLane::High => self.high.inc(),
-      RetentionLane::Protected => self.protected.inc(),
-    }
+    let request = if blocking_flush {
+      Some(StartupGateReleaseRequest::BlockingFlush)
+    } else if lane == RetentionLane::Protected && retention.reaches_protected_high_watermark() {
+      Some(StartupGateReleaseRequest::ProtectedHighWatermark)
+    } else {
+      None
+    };
+    request.is_some_and(|request| retention.request_gate_release(request))
   }
 }
 
@@ -523,4 +562,11 @@ pub enum AdmissionOutcome {
   RejectedFull,
   RejectedOversized,
   Closed,
+}
+
+/// A protected admission that can release `EventBuffer`'s startup drain gate early.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StartupGateReleaseRequest {
+  ProtectedHighWatermark,
+  BlockingFlush,
 }

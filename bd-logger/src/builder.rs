@@ -19,7 +19,7 @@ use crate::log_replay::LoggerReplay;
 use crate::logger::{Logger, PendingEntityIdUpdate, TestHooks};
 use crate::logging_state::UninitializedLoggingContext;
 use crate::state_upload::StateUploadHandle;
-use crate::{InitParams, LogAttributesOverrides};
+use crate::{InitParams, LogAttributesOverrides, StartupReplayEligibility};
 use bd_api::{
   AggregatedNetworkQualityProvider,
   DataUpload,
@@ -187,6 +187,7 @@ pub struct LoggerBuilder {
   time_provider: Option<Arc<dyn TimeProvider>>,
   crash_report_hook: Option<Arc<dyn bd_crash_handler::CrashReportHook>>,
   test_hooks: Option<Arc<dyn TestHooks>>,
+  startup_replay_eligibility: StartupReplayEligibility,
 }
 
 impl LoggerBuilder {
@@ -201,6 +202,7 @@ impl LoggerBuilder {
       time_provider: None,
       crash_report_hook: None,
       test_hooks: None,
+      startup_replay_eligibility: StartupReplayEligibility::Unknown,
     }
   }
 
@@ -260,6 +262,19 @@ impl LoggerBuilder {
     hook: Option<Arc<dyn bd_crash_handler::CrashReportHook>>,
   ) -> Self {
     self.crash_report_hook = hook;
+    self
+  }
+
+  /// Sets the platform's confidence about whether startup needs to wait for prior crash replay.
+  ///
+  /// The default is conservative: the normal startup replay delay remains enabled until a
+  /// platform can positively identify a prior run with no crash work.
+  #[must_use]
+  pub const fn with_startup_replay_eligibility(
+    mut self,
+    eligibility: StartupReplayEligibility,
+  ) -> Self {
+    self.startup_replay_eligibility = eligibility;
     self
   }
 
@@ -394,6 +409,7 @@ impl LoggerBuilder {
       init_lifecycle.clone(),
       sdk_status_tracker.clone(),
       data_upload_tx.clone(),
+      self.startup_replay_eligibility,
     );
 
     let data_upload_tx_clone = data_upload_tx.clone();

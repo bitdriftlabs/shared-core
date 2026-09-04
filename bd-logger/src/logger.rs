@@ -627,6 +627,39 @@ pub struct InitParams {
   pub start_in_sleep_mode: bool,
 }
 
+//
+// StartupReplayEligibility
+//
+
+/// Platform-provided confidence about whether the previous run can have crash work that must be
+/// replayed before current-process ingress.
+///
+/// `NoPriorCrash` is deliberately a positive assertion. Callers must use `Unknown` rather than
+/// inferring it from the absence of a crash signal.
+#[repr(i32)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum StartupReplayEligibility {
+  /// The platform positively identified that the previous run had no crash to replay.
+  NoPriorCrash      = 0,
+  /// The platform identified a prior crash or other fatal termination.
+  MayHavePriorCrash = 1,
+  /// The platform could not determine how the previous run ended.
+  #[default]
+  Unknown           = 2,
+}
+
+impl StartupReplayEligibility {
+  /// Decodes the stable platform bridge representation, treating unknown values conservatively.
+  #[must_use]
+  pub const fn from_i32(value: i32) -> Self {
+    match value {
+      0 => Self::NoPriorCrash,
+      1 => Self::MayHavePriorCrash,
+      _ => Self::Unknown,
+    }
+  }
+}
+
 pub struct ReportProcessingRequest {
   /// Session to use in reports
   pub session: ReportProcessingSession,
@@ -640,6 +673,16 @@ pub trait TestHooks: Send + Sync {
   fn remote_streaming_action_processed(&self) {}
 
   fn workflow_event_processed(&self) {}
+
+  fn pipeline_ready(&self) {}
+
+  fn startup_replay_gate_opened(&self) {}
+
+  fn feature_flag_exposure_processed(&self) {}
+
+  fn current_crash_report_processing_queued(&self) {}
+
+  fn startup_replay_eligibility_initialized(&self, _eligibility: StartupReplayEligibility) {}
 }
 
 /// A single logger instance. This manages the lifetime of the logger and can be used to access

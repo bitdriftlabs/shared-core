@@ -1036,11 +1036,9 @@ fn flush_state_uninitialized() {
 
   setup.logger_handle.flush_state(Block::No);
 
-  // File should not exist immediately after flush_state call.
+  // A pre-pipeline flush has no retained work to make durable, so it is a no-op rather than a
+  // deferred flush that would later run after configuration.
   assert!(!setup.pending_aggregation_index_file_path().exists());
-
-  // We should eventually see the stats aggregation file exist on disk.
-  wait_for!(setup.pending_aggregation_index_file_path().exists());
 }
 
 #[test]
@@ -1052,8 +1050,9 @@ fn blocking_flush_state_uninitialized() {
     poll_callback: None,
   });
 
+  // A blocking flush during the hard replay gate completes immediately and is not deferred.
   assert!(!setup.workflows_state_file_path().exists());
-  assert!(setup.pending_aggregation_index_file_path().exists());
+  assert!(!setup.pending_aggregation_index_file_path().exists());
 }
 
 #[test]
@@ -1486,6 +1485,10 @@ fn workflow_flush_buffers_action_emits_synthetic_log_and_uploads_buffer_and_star
     None,
   );
 
+  setup.logger_handle.flush_state(Block::Yes {
+    timeout: 15.std_seconds(),
+    poll_callback: None,
+  });
   setup.flush_and_upload_stats();
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
@@ -2693,6 +2696,8 @@ fn remote_buffer_upload_with_streaming_matches_workflow_streaming_behavior() {
     },
   ));
   assert!(maybe_nack.is_none());
+  setup.wait_for_pipeline_ready();
+  setup.wait_for_startup_replay_gate_opening();
 
   setup.log(
     log_level::DEBUG,
@@ -3557,6 +3562,10 @@ fn stats_upload() {
   stats.scope("test").counter("used").inc();
 
   setup.send_runtime_update();
+  setup.logger_handle.flush_state(Block::Yes {
+    timeout: 15.std_seconds(),
+    poll_callback: None,
+  });
   setup.flush_and_upload_stats();
   let stat_upload = StatsRequestHelper::new(setup.server.next_stat_upload().unwrap());
   assert_eq!(
@@ -3845,6 +3854,14 @@ fn workflow_state_change_match_advances_workflow() {
   setup
     .logger_handle
     .set_feature_flag_exposure("test_flag".to_string(), Some("disabled".to_string()));
+
+  // The startup gate intentionally holds ordinary ingress briefly after configuration. A
+  // blocking flush is also the compatibility barrier for callers that need those exposures
+  // applied before reading workflow output.
+  setup.logger_handle.flush_state(Block::Yes {
+    timeout: 15.std_seconds(),
+    poll_callback: None,
+  });
 
   // Flush stats and verify the metric was emitted
   setup.flush_and_upload_stats();

@@ -24,10 +24,12 @@ use tokio::sync::watch;
 use tokio_test::assert_pending;
 
 fn event_buffer(total_limit_bytes: usize) -> EventBuffer {
-  EventBuffer::new(EventBufferLimits {
+  let event_buffer = EventBuffer::new(EventBufferLimits {
     log_limit_bytes: 1024 * 1024,
     total_limit_bytes,
-  })
+  });
+  assert!(event_buffer.open_gate());
+  event_buffer
 }
 
 #[tokio::test]

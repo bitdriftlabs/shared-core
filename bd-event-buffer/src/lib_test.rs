@@ -18,15 +18,13 @@ use super::{
   LoggerIngressPayload,
   ProviderSnapshot,
   RetentionLane,
+  StartupGateReleaseRequest,
   retention_lane,
 };
-use bd_client_stats_store::Collector;
-use bd_client_stats_store::test::StatsHelper;
 use bd_log_primitives::{AnnotatedLogFields, DataValue, LogFields, LogLine, log_level};
 use bd_macros::ApproximateSize;
 use bd_proto::protos::logging::payload::LogType;
-use bd_stats_common::labels;
-use std::sync::{Arc, mpsc as std_mpsc};
+use std::sync::{Arc, Mutex, mpsc as std_mpsc};
 use time::OffsetDateTime;
 use tokio::sync::{oneshot, watch};
 
@@ -71,6 +69,24 @@ fn log_with_completion(
   ))
 }
 
+fn previous_process_log(message: &str) -> EventBufferEntry {
+  EventBufferEntry::ingress(LoggerIngressEvent::log(
+    LogLine {
+      log_level: log_level::INFO,
+      log_type: LogType::LIFECYCLE,
+      message: message.into(),
+      fields: AnnotatedLogFields::default(),
+      matching_fields: AnnotatedLogFields::default(),
+      attributes_overrides: None,
+      capture_session: None,
+    },
+    EventContext::PreviousProcess {
+      logged_at: OffsetDateTime::UNIX_EPOCH,
+    },
+    None,
+  ))
+}
+
 fn limits(bytes: usize) -> EventBufferLimits {
   EventBufferLimits {
     log_limit_bytes: bytes,
@@ -79,62 +95,9 @@ fn limits(bytes: usize) -> EventBufferLimits {
 }
 
 fn buffer(bytes: usize) -> EventBuffer {
-  EventBuffer::new(limits(bytes))
-}
-
-#[test]
-fn records_admission_outcomes_per_retention_lane() {
-  let collector = Collector::default();
-  let low = log(log_level::DEBUG, LogType::NORMAL, 4096);
-  let high = log(log_level::INFO, LogType::NORMAL, 4096);
-  let protected = log(log_level::INFO, LogType::LIFECYCLE, 4096);
-  let limit = low
-    .approximate_size_bytes()
-    .max(high.approximate_size_bytes())
-    .max(protected.approximate_size_bytes());
-  let buffer = EventBuffer::new_with_stats(limits(limit), &collector.scope("event_buffer"));
-
-  assert_eq!(AdmissionOutcome::Admitted, buffer.admit(low));
-  assert_eq!(AdmissionOutcome::Admitted, buffer.admit(high));
-  assert_eq!(
-    AdmissionOutcome::RejectedFull,
-    buffer.admit(log(log_level::INFO, LogType::NORMAL, 4096))
-  );
-  assert_eq!(AdmissionOutcome::Admitted, buffer.admit(protected));
-  assert_eq!(
-    AdmissionOutcome::RejectedFull,
-    buffer.admit(log(log_level::INFO, LogType::LIFECYCLE, 4096))
-  );
-  assert_eq!(
-    AdmissionOutcome::RejectedOversized,
-    buffer.admit(log(log_level::DEBUG, LogType::NORMAL, limit))
-  );
-
-  collector.assert_counter_eq(
-    1,
-    "event_buffer:entry_outcomes",
-    labels!("lane" => "low", "outcome" => "evicted"),
-  );
-  collector.assert_counter_eq(
-    1,
-    "event_buffer:entry_outcomes",
-    labels!("lane" => "high", "outcome" => "evicted"),
-  );
-  collector.assert_counter_eq(
-    1,
-    "event_buffer:entry_outcomes",
-    labels!("lane" => "high", "outcome" => "rejected_full"),
-  );
-  collector.assert_counter_eq(
-    1,
-    "event_buffer:entry_outcomes",
-    labels!("lane" => "protected", "outcome" => "rejected_full"),
-  );
-  collector.assert_counter_eq(
-    1,
-    "event_buffer:entry_outcomes",
-    labels!("lane" => "low", "outcome" => "rejected_oversized"),
-  );
+  let buffer = EventBuffer::new(limits(bytes));
+  assert!(buffer.open_gate());
+  buffer
 }
 
 //
@@ -151,7 +114,7 @@ struct WaitingConsumersTestHook {
 
 struct BatchAdmissionTestHook {
   batch_started: std_mpsc::Sender<()>,
-  resume_batch: parking_lot::Mutex<std_mpsc::Receiver<()>>,
+  resume_batch: Mutex<std_mpsc::Receiver<()>>,
 }
 
 impl BatchAdmissionTestHook {
@@ -161,7 +124,7 @@ impl BatchAdmissionTestHook {
     (
       Arc::new(Self {
         batch_started: batch_started_tx,
-        resume_batch: parking_lot::Mutex::new(resume_batch_rx),
+        resume_batch: Mutex::new(resume_batch_rx),
       }),
       batch_started_rx,
       resume_batch_tx,
@@ -178,6 +141,7 @@ impl super::TestHooks for BatchAdmissionTestHook {
     self
       .resume_batch
       .lock()
+      .expect("the test hook mutex is never poisoned")
       .recv()
       .expect("test resumes batch admission");
   }
@@ -199,6 +163,10 @@ impl WaitingConsumersTestHook {
         .expect("the test hook always owns the waiting-consumer sender");
     }
   }
+
+  fn consumer_count(&self) -> usize {
+    *self.waiting_consumers.borrow()
+  }
 }
 
 impl super::TestHooks for WaitingConsumersTestHook {
@@ -213,7 +181,9 @@ fn buffer_with_test_hooks(
   bytes: usize,
   test_hooks: Option<Arc<dyn super::TestHooks>>,
 ) -> EventBuffer {
-  EventBuffer::new_with_test_hooks(limits(bytes), test_hooks)
+  let buffer = EventBuffer::new_with_test_hooks(limits(bytes), test_hooks);
+  assert!(buffer.open_gate());
+  buffer
 }
 
 fn add_field(key: &str) -> EventBufferEntry {
@@ -293,6 +263,77 @@ fn previous_process_context_pins_logged_at_and_is_protected() {
     RetentionLane::Protected,
     EventBufferEntry::ingress(event).lane()
   );
+}
+
+#[test]
+fn startup_gate_replays_eligible_previous_process_entries_before_current_entries() {
+  let mut state = EventBufferState::new(state_limits(100, 100));
+  assert_eq!(
+    AdmissionOutcome::Admitted,
+    state.admit_with_evictions(RetentionLane::High, false, 10, "current", |_| {})
+  );
+  assert_eq!(
+    AdmissionOutcome::Admitted,
+    state.admit_with_evictions(RetentionLane::Protected, true, 10, "previous", |_| {})
+  );
+
+  assert!(state.take_batch(2).is_empty());
+  assert!(state.open_gate());
+  assert_eq!(vec!["previous", "current"], state.take_batch(2));
+}
+
+#[test]
+fn previous_process_entries_admitted_after_gate_release_keep_normal_fifo_order() {
+  let mut state = EventBufferState::new(state_limits(100, 100));
+  assert!(state.open_gate());
+  assert_eq!(
+    AdmissionOutcome::Admitted,
+    state.admit_with_evictions(RetentionLane::High, false, 10, "current", |_| {})
+  );
+  assert_eq!(
+    AdmissionOutcome::Admitted,
+    state.admit_with_evictions(RetentionLane::Protected, true, 10, "late_previous", |_| {})
+  );
+
+  assert_eq!(vec!["current", "late_previous"], state.take_batch(2));
+}
+
+#[tokio::test]
+async fn protected_high_watermark_and_blocking_flush_request_startup_gate_release() {
+  let high_watermark_entry = previous_process_log("previous");
+  let high_watermark_buffer =
+    EventBuffer::new(limits(high_watermark_entry.approximate_size_bytes()));
+  assert_eq!(
+    AdmissionOutcome::Admitted,
+    high_watermark_buffer.admit(high_watermark_entry)
+  );
+  assert_eq!(
+    StartupGateReleaseRequest::ProtectedHighWatermark,
+    high_watermark_buffer.wait_for_gate_release_request().await
+  );
+  assert!(!high_watermark_buffer.is_gate_open());
+  assert!(high_watermark_buffer.open_gate());
+
+  let barrier_buffer = EventBuffer::new(limits(10_000));
+  let (completion, _receiver) = bd_completion::Sender::new();
+  assert_eq!(
+    AdmissionOutcome::Admitted,
+    barrier_buffer.admit(EventBufferEntry::Control(LoggerControl::FlushState(Some(
+      completion,
+    ))))
+  );
+  assert_eq!(
+    StartupGateReleaseRequest::BlockingFlush,
+    barrier_buffer.wait_for_gate_release_request().await
+  );
+  assert!(!barrier_buffer.is_gate_open());
+  assert!(barrier_buffer.open_gate());
+  assert!(matches!(
+    barrier_buffer.next_batch(1).await.as_slice(),
+    [EventBufferEntry::Control(LoggerControl::FlushState(Some(
+      _
+    )))]
+  ));
 }
 
 #[tokio::test]
@@ -475,6 +516,28 @@ async fn close_wakes_all_waiting_consumers() {
 }
 
 #[tokio::test]
+async fn held_gate_admission_does_not_wake_the_consumer_until_release() {
+  let waiting_consumers = Arc::new(WaitingConsumersTestHook::new());
+  let buffer = EventBuffer::new_with_test_hooks(limits(10_000), Some(waiting_consumers.clone()));
+  let consumer_buffer = buffer.clone();
+  let consumer = tokio::spawn(async move { consumer_buffer.next_batch(1).await });
+
+  waiting_consumers.wait_for_consumers(1).await;
+  assert_eq!(
+    AdmissionOutcome::Admitted,
+    buffer.admit(log(log_level::INFO, LogType::NORMAL, 1))
+  );
+  tokio::task::yield_now().await;
+  assert_eq!(1, waiting_consumers.consumer_count());
+
+  assert!(buffer.open_gate());
+  assert_eq!(
+    1,
+    consumer.await.expect("consumer task must complete").len()
+  );
+}
+
+#[tokio::test]
 async fn batch_eviction_removes_tiny_lower_priority_logs() {
   const COUNT: usize = 64;
   let low_size = log(log_level::DEBUG, LogType::NORMAL, 0).approximate_size_bytes();
@@ -517,6 +580,7 @@ async fn rejected_admission_does_not_partially_evict() {
     log_limit_bytes: usize::MAX,
     total_limit_bytes: total,
   });
+  assert!(buffer.open_gate());
   assert_eq!(AdmissionOutcome::Admitted, buffer.admit(low));
   assert_eq!(AdmissionOutcome::Admitted, buffer.admit(protected));
   assert_eq!(
@@ -634,6 +698,7 @@ fn pending_log_limit_shrink_evicts_newest_low_then_high_entries() {
     state.admit(RetentionLane::Protected, 0, "trigger")
   );
 
+  assert!(state.open_gate());
   assert_eq!(vec!["high_old", "trigger"], state.take_batch(4));
 }
 
@@ -656,6 +721,7 @@ fn pending_total_limit_shrink_preserves_protected_entries() {
   );
 
   // Protected entries are never evicted, even if they alone exceed a newly reduced total limit.
+  assert!(state.open_gate());
   assert_eq!(vec!["protected"], state.take_batch(3));
 }
 
@@ -676,5 +742,6 @@ fn latest_pending_limit_update_wins() {
     state.admit(RetentionLane::Protected, 0, "trigger")
   );
 
+  assert!(state.open_gate());
   assert_eq!(vec!["old", "trigger"], state.take_batch(4));
 }

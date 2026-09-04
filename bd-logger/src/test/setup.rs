@@ -81,13 +81,23 @@ struct MockSessionReplayTarget {
 //
 
 struct SetupTestHooks {
+  pipeline_ready_tx: StdSender<()>,
   remote_streaming_action_processed_tx: StdSender<()>,
+  startup_replay_gate_opened_tx: StdSender<()>,
   workflow_event_processed_tx: std::sync::mpsc::SyncSender<()>,
 }
 
 impl TestHooks for SetupTestHooks {
+  fn pipeline_ready(&self) {
+    let _ignored = self.pipeline_ready_tx.send(());
+  }
+
   fn remote_streaming_action_processed(&self) {
     let _ignored = self.remote_streaming_action_processed_tx.send(());
+  }
+
+  fn startup_replay_gate_opened(&self) {
+    let _ignored = self.startup_replay_gate_opened_tx.send(());
   }
 
   fn workflow_event_processed(&self) {
@@ -167,7 +177,9 @@ pub struct Setup {
 
   capture_screen_rx: StdReceiver<()>,
   capture_screenshot_rx: StdReceiver<()>,
+  pipeline_ready_rx: StdReceiver<()>,
   remote_streaming_action_processed_rx: StdReceiver<()>,
+  startup_replay_gate_opened_rx: StdReceiver<()>,
   workflow_event_processed_rx: StdReceiver<()>,
 
   _shutdown: ComponentShutdownTrigger,
@@ -234,8 +246,10 @@ impl Setup {
 
     let (capture_screen_tx, capture_screen_rx) = std::sync::mpsc::channel();
     let (capture_screenshot_tx, capture_screenshot_rx) = std::sync::mpsc::channel();
+    let (pipeline_ready_tx, pipeline_ready_rx) = std_channel();
     let (remote_streaming_action_processed_tx, remote_streaming_action_processed_rx) =
       std_channel();
+    let (startup_replay_gate_opened_tx, startup_replay_gate_opened_rx) = std_channel();
     let (workflow_event_processed_tx, workflow_event_processed_rx) =
       std::sync::mpsc::sync_channel(1);
     let session_replay_target = Box::new(MockSessionReplayTarget {
@@ -272,7 +286,9 @@ impl Setup {
     .with_internal_logger(true)
     .with_time_provider(options.time_provider)
     .with_test_hooks(Some(Arc::new(SetupTestHooks {
+      pipeline_ready_tx,
       remote_streaming_action_processed_tx,
+      startup_replay_gate_opened_tx,
       workflow_event_processed_tx,
     })))
     .build_dedicated_thread()
@@ -295,7 +311,9 @@ impl Setup {
       current_api_stream,
       capture_screen_rx,
       capture_screenshot_rx,
+      pipeline_ready_rx,
       remote_streaming_action_processed_rx,
+      startup_replay_gate_opened_rx,
       workflow_event_processed_rx,
       _shutdown: shutdown,
       stats_flush_tx: flush_tick_tx,
@@ -322,11 +340,25 @@ impl Setup {
       .expect("timed out waiting for capture-screenshot callback");
   }
 
+  pub fn wait_for_pipeline_ready(&self) {
+    self
+      .pipeline_ready_rx
+      .recv_timeout(std::time::Duration::from_secs(5))
+      .expect("timed out waiting for logging pipeline readiness");
+  }
+
   pub fn wait_for_remote_streaming_action_processing(&self) {
     self
       .remote_streaming_action_processed_rx
       .recv_timeout(std::time::Duration::from_secs(5))
       .expect("timed out waiting for remote streaming action processing");
+  }
+
+  pub fn wait_for_startup_replay_gate_opening(&self) {
+    self
+      .startup_replay_gate_opened_rx
+      .recv_timeout(std::time::Duration::from_secs(5))
+      .expect("timed out waiting for startup replay gate opening");
   }
 
   pub fn wait_for_workflow_event_processing(&self) {
