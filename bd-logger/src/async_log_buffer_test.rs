@@ -96,6 +96,7 @@ struct Setup {
   shutdown: Option<ComponentShutdownTrigger>,
   store: Arc<bd_device::Store>,
   session_strategy: Arc<Strategy>,
+  test_hooks: Option<Arc<dyn crate::TestHooks>>,
 }
 
 impl Setup {
@@ -130,6 +131,7 @@ impl Setup {
       data_upload_tx,
       store: in_memory_store(),
       session_strategy,
+      test_hooks: None,
     }
   }
 
@@ -244,7 +246,7 @@ impl Setup {
       1_000_000,
       Arc::new(AtomicBool::new(false)),
       Arc::new(ProcessLocalPendingFlushState::default()),
-      None,
+      self.test_hooks.clone(),
     )
   }
 
@@ -490,6 +492,111 @@ impl ReportProcessor for ReportProcessingSignal {
     self.0.notify_one();
     future::ready(Vec::new())
   }
+}
+
+struct FeatureFlagOrderingHook {
+  feature_flag_exposure_processed: Arc<AtomicBool>,
+  current_crash_report_processing_queued: Arc<Notify>,
+}
+
+impl crate::TestHooks for FeatureFlagOrderingHook {
+  fn feature_flag_exposure_processed(&self) {
+    self
+      .feature_flag_exposure_processed
+      .store(true, Ordering::SeqCst);
+  }
+
+  fn current_crash_report_processing_queued(&self) {
+    self.current_crash_report_processing_queued.notify_one();
+  }
+}
+
+struct FeatureFlagOrderingReportProcessor {
+  feature_flag_exposure_processed: Arc<AtomicBool>,
+  processed: Arc<Notify>,
+  processed_before_feature_flag: Arc<AtomicBool>,
+}
+
+impl ReportProcessor for FeatureFlagOrderingReportProcessor {
+  fn process_all_pending_reports(
+    &self,
+  ) -> impl future::Future<Output = Vec<bd_crash_handler::CrashLog>> {
+    self.processed_before_feature_flag.store(
+      !self.feature_flag_exposure_processed.load(Ordering::SeqCst),
+      Ordering::SeqCst,
+    );
+    self.processed.notify_one();
+    future::ready(Vec::new())
+  }
+}
+
+#[tokio::test]
+async fn current_crash_report_processing_waits_for_prior_feature_flag_exposure() {
+  let mut setup = Setup::new();
+  setup
+    .runtime
+    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
+      bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
+      ValueKind::Int(10_000),
+    )]))
+    .await
+    .unwrap();
+  let feature_flag_exposure_processed = Arc::new(AtomicBool::new(false));
+  let current_crash_report_processing_queued = Arc::new(Notify::new());
+  setup.test_hooks = Some(Arc::new(FeatureFlagOrderingHook {
+    feature_flag_exposure_processed: feature_flag_exposure_processed.clone(),
+    current_crash_report_processing_queued: current_crash_report_processing_queued.clone(),
+  }));
+
+  let (config_tx, config_rx) = mpsc::channel(1);
+  let (mut buffer, sender) = setup.make_test_async_log_buffer(config_rx);
+  let (report_tx, report_rx) = mpsc::channel(1);
+  buffer.report_processor_rx = report_rx;
+  let event_buffer = buffer.event_buffer.clone();
+
+  sender
+    .try_send_feature_flag_exposure("test_flag".to_string(), None)
+    .unwrap();
+  report_tx
+    .send(crate::logger::ReportProcessingRequest {
+      session: crate::ReportProcessingSession::Current,
+    })
+    .await
+    .unwrap();
+  let state_store = TestStore::new().await;
+  let shutdown_trigger = ComponentShutdownTrigger::default();
+  let report_processed = Arc::new(Notify::new());
+  let processed_before_feature_flag = Arc::new(AtomicBool::new(false));
+  let handle = tokio::spawn(buffer.run_with_shutdown(
+    state_store.take_inner(),
+    FeatureFlagOrderingReportProcessor {
+      feature_flag_exposure_processed,
+      processed: report_processed.clone(),
+      processed_before_feature_flag: processed_before_feature_flag.clone(),
+    },
+    shutdown_trigger.make_shutdown(),
+  ));
+
+  current_crash_report_processing_queued.notified().await;
+  config_tx
+    .send(setup.make_config_update(WorkflowsConfiguration::default()))
+    .await
+    .unwrap();
+  wait_for_pipeline_ready(&event_buffer).await;
+  let flush_sender = sender.clone();
+  tokio::task::spawn_blocking(move || {
+    assert_ok!(flush_sender.flush_state(Block::Yes {
+      timeout: 5.std_seconds(),
+      poll_callback: None,
+    }));
+  })
+  .await
+  .unwrap();
+  report_processed.notified().await;
+  assert!(!processed_before_feature_flag.load(Ordering::SeqCst));
+
+  shutdown_trigger.shutdown().await;
+  handle.await.unwrap();
 }
 
 #[tokio::test]
@@ -1653,7 +1760,7 @@ async fn logs_resource_utilization_log() {
     (),
     shutdown_trigger.make_shutdown(),
   ));
-  750.milliseconds().sleep().await;
+  wait_for_replayed_logs(&setup, 1).await;
 
   shutdown_trigger.shutdown().await;
   let _buffer = handle.await.unwrap();
@@ -1685,8 +1792,10 @@ async fn updates_system_session_id_for_new_sessions() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
+  let event_buffer = buffer.event_buffer.clone();
   let handle =
     tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
+  wait_for_pipeline_ready(&event_buffer).await;
 
   let first_session_id = setup.session_strategy.session_id().unwrap();
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
@@ -1715,7 +1824,7 @@ async fn updates_system_session_id_for_new_sessions() {
     None,
   ));
 
-  750.milliseconds().sleep().await;
+  wait_for_replayed_logs(&setup, 2).await;
   shutdown_trigger.shutdown().await;
   handle.await.unwrap();
 
@@ -1758,15 +1867,15 @@ async fn set_memory_pressure_level_writes_to_system_scope() {
     })
     .unwrap();
 
-  sender
-    .flush_state(Block::Yes {
+  let flush_sender = sender.clone();
+  tokio::task::spawn_blocking(move || {
+    assert_ok!(flush_sender.flush_state(Block::Yes {
       timeout: 5.std_seconds(),
       poll_callback: None,
-    })
-    .unwrap();
-
-  // Wait a bit for file I/O to be sure
-  750.milliseconds().sleep().await;
+    }));
+  })
+  .await
+  .unwrap();
 
   {
     let reader = test_store.read().await;
@@ -1894,32 +2003,17 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
     assert_ok!(config_update_tx.blocking_send(config_update));
   });
 
-  // Use the SAME store that Setup created, so buffer and test share it!
-  // In previous attempts we created a NEW store here, but the buffer was using its own
-  // store created inside make_test_async_log_buffer (which was also creating a new
-  // in_memory_store). Now we've patched Setup to hold the store, so we can access it if needed,
-  // but importantly make_test_async_log_buffer uses that same store.
-
-  // We need to pass a store to run_with_shutdown for state_store (session state),
-  // but the global state store is passed in AsyncLogBuffer::new inside make_test_async_log_buffer.
-
-  // The store passed to run_with_shutdown is for session state (workflows etc).
-  // The global state tracker uses the store passed to AsyncLogBuffer::new.
-
-  // Since we updated Setup to use a shared store, global state should persist correctly in that
-  // store.
-
   let state_store = TestStore::new().await;
 
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  // Spawn buffer first
+  let event_buffer = buffer.event_buffer.clone();
   let handle = tokio::task::spawn(buffer.run_with_shutdown(
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
   ));
+  wait_for_pipeline_ready(&event_buffer).await;
 
-  // 1. Add global state field via state update
   sender
     .try_send_control(LoggerControl::AddLogField(
       "global_key".to_string(),
@@ -1927,9 +2021,7 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
     ))
     .unwrap();
 
-  // 2. Send a NORMAL log. This will cause the buffer to call:
-  //    normalized_metadata_with_extra_fields(...) which in turn calls
-  //    global_state_tracker.maybe_update_global_state(...) updating the global state in memory.
+  // A normal log persists the current global state before the following ordered flush completes.
   AsyncLogBuffer::<TestReplay>::enqueue_log(
     &sender,
     log_level::DEBUG,
@@ -1942,19 +2034,17 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
   )
   .unwrap();
 
-  // 3. Flush state.
-  sender
-    .flush_state(Block::Yes {
+  // The flush follows the state update and log in EventBuffer admission order.
+  let flush_sender = sender.clone();
+  tokio::task::spawn_blocking(move || {
+    assert_ok!(flush_sender.flush_state(Block::Yes {
       timeout: 5.std_seconds(),
       poll_callback: None,
-    })
-    .unwrap();
+    }));
+  })
+  .await
+  .unwrap();
 
-  // Wait a bit for file I/O to be sure
-  750.milliseconds().sleep().await;
-
-  // 4. Send log with PreviousRunSessionID. This triggers
-  //    metadata_from_fields_with_previous_global_state(...) which reads from global_state_reader.
   let log = LogLine {
     log_level: log_level::DEBUG,
     log_type: LogType::NORMAL,
@@ -1969,55 +2059,12 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
     capture_session: None,
   };
 
-  // The reader is initialized in make_test_async_log_buffer with Reader::new(store).
-  // Reader::new reads the initial state from the store and CACHES it in self.prevous_global_state.
-  // This cached value is used by previous_global_state_fields().
-
-  // So, if we want the reader to see the updated state as "previous" state, we need to
-  // re-initialize the reader or ensure it reads fresh data?
-
-  // Looking at Reader code:
-  // pub fn new(store: Arc<Store>) -> Self {
-  //   let prevous_global_state = Arc::new(store.get(&KEY).map(|s| s.0));
-  //   ...
-  // }
-  // pub fn previous_global_state_fields(&self) -> Option<&LogFields> {
-  //   (*self.prevous_global_state).as_ref()
-  // }
-
-  // The Reader captures the state at the time of its creation!
-  // It is intended to read the state from the *previous process run*.
-  // In this test, we are simulating a single process run where we update state and then try to use
-  // it as "previous" state? No, we want to simulate:
-  // 1. App starts (empty state)
-  // 2. App runs, updates state (persisted to disk)
-  // 3. App crashes/restarts (simulated here by reading the now-persisted state as "previous")
-
-  // BUT the AsyncLogBuffer is long-lived in this test. It holds a Reader created at start.
-  // That Reader has the empty initial state cached.
-  // When we process the log with PreviousRunSessionID, it uses that Reader with stale (empty)
-  // state.
-
-  // To test this properly, we should:
-  // 1. Run buffer, write state, stop buffer.
-  // 2. Start NEW buffer with same store. This new buffer will create a new Reader, which will read
-  //    the persisted state from the store.
-  // 3. Send the PreviousRunSessionID log to the NEW buffer.
-
-  // Let's restructure the test to do this restart simulation.
-
-  // Stop the first buffer
+  // A new buffer snapshots the persisted values as previous-process state.
   shutdown_trigger.shutdown().await;
   let _buffer = handle.await.unwrap();
   assert_ok!(task.join());
 
-  // Wait for shutdown
-
-  // Start NEW buffer with SAME store
   let (config_update_tx_2, config_update_rx_2) = tokio::sync::mpsc::channel(1);
-  // We need to use make_test_async_log_buffer again but ensure it uses the SAME store.
-  // We modified Setup to hold the store, so calling make_test_async_log_buffer uses self.store.
-
   let (buffer_2, sender_2) = setup.make_test_async_log_buffer(config_update_rx_2);
 
   let config_update_2 = setup.make_config_update(WorkflowsConfiguration::default());
@@ -2026,45 +2073,30 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
   });
 
   let shutdown_trigger_2 = ComponentShutdownTrigger::default();
-  // Create a new TestStore for the second buffer run.
   let state_store_2 = TestStore::new().await;
+  let event_buffer_2 = buffer_2.event_buffer.clone();
   let handle_2 = tokio::task::spawn(buffer_2.run_with_shutdown(
     state_store_2.take_inner(),
     (),
     shutdown_trigger_2.make_shutdown(),
   ));
+  wait_for_pipeline_ready(&event_buffer_2).await;
 
-  // Now send the log to the new buffer
   sender_2.try_send_log(log).unwrap();
-
-  // Wait for processing
-  500.milliseconds().sleep().await;
+  wait_for_replayed_logs(&setup, 1).await;
 
   shutdown_trigger_2.shutdown().await;
   let _buffer_2 = handle_2.await.unwrap();
   assert_ok!(task_2.join());
 
-  // Verify
-  // make_test_async_log_buffer resets setup.replayer_* refs to the NEW replayer.
-  // The first buffer's logs are in the OLD replayer, which we lost access to via setup.
-  // The second buffer's logs are in the NEW replayer, accessible via setup.
-  // So setup.replayer_log_count should be 1 (for the "test" log).
   assert_eq!(1, setup.replayer_log_count.load(Ordering::SeqCst));
 
   let logs = setup.replayer_logs.lock();
   let fields = setup.replayer_fields.lock();
 
-  // Find the "test" log
-  // With only 1 log, it should be at index 0.
   assert_eq!("test", logs[0]);
 
-  // Debug print keys if assertion fails
-  if !fields[0].contains_key("global_key") {
-    println!("Available keys in 'test' log: {:?}", fields[0].keys());
-  }
-
   assert!(fields[0].contains_key("global_key"));
-  // Verify value matches
   let val = &fields[0]["global_key"];
   match val {
     bd_log_primitives::LogFieldValue::String(s) => assert_eq!("global_value", s),

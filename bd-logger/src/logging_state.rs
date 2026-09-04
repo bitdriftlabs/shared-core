@@ -192,6 +192,10 @@ impl UninitializedLoggingContext {
       test_hooks.startup_replay_eligibility_initialized(eligibility);
     }
   }
+
+  pub(crate) fn test_hooks(&self) -> Option<Arc<dyn TestHooks>> {
+    self.test_hooks.clone()
+  }
 }
 
 //

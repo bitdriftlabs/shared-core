@@ -2696,6 +2696,8 @@ fn remote_buffer_upload_with_streaming_matches_workflow_streaming_behavior() {
     },
   ));
   assert!(maybe_nack.is_none());
+  setup.wait_for_pipeline_ready();
+  setup.wait_for_startup_replay_gate_opening();
 
   setup.log(
     log_level::DEBUG,
