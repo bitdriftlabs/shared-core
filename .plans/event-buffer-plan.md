@@ -133,10 +133,9 @@ on their existing downstream channels. They are consequences of an entry, never 
   `PreviousRunSessionID` continues to take `occurred_at` from the crash report, while `_logged_at`
   is the pinned timestamp-provider value.
 - State/control operations that affect workflows or persistence remain protected EventBuffer
-  entries. Previous-run report discovery and shutdown remain direct control signals: prior reports
-  must be discovered before startup-gate release so they can join the protected replay lane.
-  Current-session report discovery is a protected `LoggerControl` entry so it runs after earlier
-  feature-flag and state ingress has updated the current-process state store.
+  entries. Report discovery and shutdown remain direct control signals: prior reports must be
+  discovered before startup-gate release so they can join the protected replay lane. Current-session
+  reports use the crash monitor's watcher path rather than the callback scan path.
 - `set_feature_flag_exposure` resolves its session ID through `bd_session`, then captures provider
   data plus an admission timestamp before EventBuffer admission; provider capture uses the same
   held thread-local guard as logs. The consumer combines those immutable inputs with the current

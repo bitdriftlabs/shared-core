@@ -13,7 +13,6 @@ use crate::device_id::DeviceIdInterceptor;
 use crate::log_replay::{LogReplay, LogReplayResult};
 use crate::logger::{
   ReportProcessingRequest,
-  ReportProcessingSession,
   StartupReplayEligibility,
   TestHooks,
   with_thread_local_logger_guard,
@@ -1156,26 +1155,10 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         Some(ReportProcessingRequest {
            session
         }) = self.report_processor_rx.recv() => {
-          match session {
-            // Current-session crash reports read feature flags from state. Queue their discovery
-            // behind earlier ingress so a preceding feature-flag exposure is visible first.
-            ReportProcessingSession::Current => {
-              let outcome = self.event_buffer.admit(EventBufferEntry::Control(
-                LoggerControl::ProcessCurrentCrashReports,
-              ));
-              if outcome != AdmissionOutcome::Admitted {
-                log::debug!("failed to admit current-session crash report processing");
-              } else if let Some(test_hooks) = &self.test_hooks {
-                test_hooks.current_crash_report_processing_queued();
-              }
-            },
-            // Previous-run reports must be discovered before the startup gate opens so their
-            // entries can join the protected replay lane.
-            ReportProcessingSession::PreviousRun => {
-              let reports = report_processor.process_all_pending_reports().await;
-              self.admit_crash_reports(reports, &session);
-            },
-          }
+          // Report discovery stays outside EventBuffer. Previous-run reports are discovered before
+          // startup-gate release so their entries can join the protected replay lane.
+          let reports = report_processor.process_all_pending_reports().await;
+          self.admit_crash_reports(reports, &session);
         },
         // TODO(snowp): Benchmark batched reads. A batched implementation must cooperatively yield
         // between entries and return to this select! so Tokio and ALB's other branches progress.
@@ -1205,9 +1188,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
                       self
                         .process_feature_flag_exposure(flag, variant, context, &state_store)
                         .await;
-                      if let Some(test_hooks) = &self.test_hooks {
-                        test_hooks.feature_flag_exposure_processed();
-                      }
                     } else {
                       log::debug!("dropping feature flag exposure with previous-process context");
                     }
@@ -1219,7 +1199,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
               },
               EventBufferEntry::Control(async_log_buffer_message) => {
                 self
-                  .process_control(async_log_buffer_message, &state_store, &report_processor)
+                  .process_control(async_log_buffer_message, &state_store)
                   .await;
               },
             }
@@ -1434,7 +1414,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     &mut self,
     async_log_buffer_message: LoggerControl,
     state_store: &bd_state::Store,
-    report_processor: &impl ReportProcessor,
   ) {
     match async_log_buffer_message {
       LoggerControl::AddLogField(key, value) => {
@@ -1479,10 +1458,6 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         if let Err(e) = result {
           log::debug!("failed to persist entity ID state: {e}");
         }
-      },
-      LoggerControl::ProcessCurrentCrashReports => {
-        let reports = report_processor.process_all_pending_reports().await;
-        self.admit_crash_reports(reports, &ReportProcessingSession::Current);
       },
       LoggerControl::FlushState(completion_tx) => {
         let flush_stats_trigger = self.logging_state.flush_stats_trigger().clone();

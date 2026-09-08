@@ -40,8 +40,6 @@ pub enum LoggerControl {
     level: MemoryPressureLevel,
   },
   SetEntityId(Option<String>),
-  /// Processes current-process crash reports after earlier state ingress has been applied.
-  ProcessCurrentCrashReports,
   FlushState(#[approximate_size(skip)] Option<bd_completion::Sender<()>>),
 }
 
