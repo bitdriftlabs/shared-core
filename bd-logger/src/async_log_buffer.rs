@@ -1328,6 +1328,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       self.startup_gate_deadline = Some(deadline);
       self.startup_replay_delay = Some(Box::pin(tokio::time::sleep_until(deadline)));
       self.startup_gate.timer_elapsed = false;
+      if let Some(test_hooks) = &self.test_hooks {
+        test_hooks.startup_replay_delay_extended();
+      }
     }
   }
 

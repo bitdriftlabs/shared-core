@@ -390,6 +390,10 @@ async fn runtime_startup_replay_delay_extension_rearms_the_running_gate() {
     ),
   ] {
     let mut setup = Setup::new();
+    let delay_extended = Arc::new(Notify::new());
+    setup.test_hooks = Some(Arc::new(StartupReplayDelayExtendedHook(
+      delay_extended.clone(),
+    )));
     let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
     let (buffer, sender) = setup
       .make_test_async_log_buffer_with_startup_replay_eligibility(config_update_rx, eligibility);
@@ -418,7 +422,7 @@ async fn runtime_startup_replay_delay_extension_rearms_the_running_gate() {
       )]))
       .await
       .unwrap();
-    tokio::task::yield_now().await;
+    delay_extended.notified().await;
 
     tokio::time::advance(default_ms.std_milliseconds()).await;
     tokio::task::yield_now().await;
@@ -430,6 +434,14 @@ async fn runtime_startup_replay_delay_extension_rearms_the_running_gate() {
 
     shutdown_trigger.shutdown().await;
     handle.await.unwrap();
+  }
+}
+
+struct StartupReplayDelayExtendedHook(Arc<Notify>);
+
+impl crate::TestHooks for StartupReplayDelayExtendedHook {
+  fn startup_replay_delay_extended(&self) {
+    self.0.notify_one();
   }
 }
 
@@ -1097,13 +1109,13 @@ impl LogReplay for TestReplay {
     _state: &bd_state::Store,
     _now: OffsetDateTime,
   ) -> anyhow::Result<LogReplayResult> {
-    self.logs_count.fetch_add(1, Ordering::SeqCst);
-    self.logs_notify.notify_waiters();
     if let Some(message) = log.message.as_str() {
       self.logs.lock().push(message.to_string());
     }
 
     self.fields.lock().push(log.fields);
+    self.logs_count.fetch_add(1, Ordering::SeqCst);
+    self.logs_notify.notify_waiters();
 
     Ok(LogReplayResult::default())
   }

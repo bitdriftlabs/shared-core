@@ -682,6 +682,8 @@ pub trait TestHooks: Send + Sync {
 
   fn current_crash_report_processing_queued(&self) {}
 
+  fn startup_replay_delay_extended(&self) {}
+
   fn startup_replay_eligibility_initialized(&self, _eligibility: StartupReplayEligibility) {}
 }
 
