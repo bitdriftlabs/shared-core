@@ -17,6 +17,7 @@ use crate::flush_registry::{
   PersistedTriggerUploadSource,
   flush_buffer_id_from_trigger_upload_source,
 };
+use crate::logger::TestHooks;
 use crate::service::{self, UploadRequest, UploadResult};
 use crate::state_upload::StateUploadHandle;
 use crate::trigger_upload_artifact::{
@@ -190,6 +191,8 @@ pub struct BufferUploadManager {
   // durable source of truth across restart.
   process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
 
+  test_hooks: Option<Arc<dyn TestHooks>>,
+
   logger_state_directory: Arc<PathBuf>,
 }
 
@@ -207,6 +210,7 @@ impl BufferUploadManager {
     state_upload_handle: Option<Arc<StateUploadHandle>>,
     pending_trigger_uploads: PendingTriggerUploadsStore,
     process_local_pending_flush_state: Arc<ProcessLocalPendingFlushState>,
+    test_hooks: Option<Arc<dyn TestHooks>>,
   ) -> Self {
     let logger_state_directory = Arc::new(sdk_directory.join("state").join("logger"));
 
@@ -232,6 +236,7 @@ impl BufferUploadManager {
       state_upload_handle,
       pending_trigger_uploads,
       process_local_pending_flush_state,
+      test_hooks,
       logger_state_directory,
     }
   }
@@ -476,6 +481,7 @@ impl BufferUploadManager {
     let process_local_pending_flush_state = self.process_local_pending_flush_state.clone();
     let remote_flush_streaming_tx = self.remote_flush_streaming_tx.clone();
     let tracked_flush_id = flush_buffer_id_from_trigger_upload_source(&source);
+    let test_hooks = self.test_hooks.clone();
     tokio::spawn(async move {
       let completed_uploads = match try_join_all(buffer_upload_completions).await {
         Ok(completed_uploads) => completed_uploads,
@@ -514,6 +520,9 @@ impl BufferUploadManager {
         .remove(&trigger_upload_identity.durable_upload_id)
         .await;
       process_local_pending_flush_state.mark_completed(&tracked_flush_id);
+      if let Some(test_hooks) = &test_hooks {
+        test_hooks.remote_streaming_trigger_upload_completed();
+      }
 
       log::debug!("signaling all trigger uploads complete");
     });

@@ -593,6 +593,7 @@ impl LoggerBuilder {
         state_upload_handle,
         pending_trigger_uploads,
         process_local_pending_flush_state,
+        self.test_hooks.clone(),
       );
 
       let updater = Arc::new(client_config::Config::new_with_time_provider(

@@ -732,6 +732,7 @@ impl SetupMultiConsumer {
         None,
         PendingTriggerUploadsStore::new(&sdk_directory_clone),
         process_local_pending_flush_state_clone,
+        None,
       )
       .run()
       .await

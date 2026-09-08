@@ -83,6 +83,7 @@ struct MockSessionReplayTarget {
 struct SetupTestHooks {
   pipeline_ready_tx: StdSender<()>,
   remote_streaming_action_processed_tx: StdSender<()>,
+  remote_streaming_trigger_upload_completed_tx: StdSender<()>,
   startup_replay_gate_opened_tx: StdSender<()>,
   workflow_event_processed_tx: std::sync::mpsc::SyncSender<()>,
 }
@@ -94,6 +95,10 @@ impl TestHooks for SetupTestHooks {
 
   fn remote_streaming_action_processed(&self) {
     let _ignored = self.remote_streaming_action_processed_tx.send(());
+  }
+
+  fn remote_streaming_trigger_upload_completed(&self) {
+    let _ignored = self.remote_streaming_trigger_upload_completed_tx.send(());
   }
 
   fn startup_replay_gate_opened(&self) {
@@ -179,6 +184,7 @@ pub struct Setup {
   capture_screenshot_rx: StdReceiver<()>,
   pipeline_ready_rx: StdReceiver<()>,
   remote_streaming_action_processed_rx: StdReceiver<()>,
+  remote_streaming_trigger_upload_completed_rx: StdReceiver<()>,
   startup_replay_gate_opened_rx: StdReceiver<()>,
   workflow_event_processed_rx: StdReceiver<()>,
 
@@ -249,6 +255,10 @@ impl Setup {
     let (pipeline_ready_tx, pipeline_ready_rx) = std_channel();
     let (remote_streaming_action_processed_tx, remote_streaming_action_processed_rx) =
       std_channel();
+    let (
+      remote_streaming_trigger_upload_completed_tx,
+      remote_streaming_trigger_upload_completed_rx,
+    ) = std_channel();
     let (startup_replay_gate_opened_tx, startup_replay_gate_opened_rx) = std_channel();
     let (workflow_event_processed_tx, workflow_event_processed_rx) =
       std::sync::mpsc::sync_channel(1);
@@ -288,6 +298,7 @@ impl Setup {
     .with_test_hooks(Some(Arc::new(SetupTestHooks {
       pipeline_ready_tx,
       remote_streaming_action_processed_tx,
+      remote_streaming_trigger_upload_completed_tx,
       startup_replay_gate_opened_tx,
       workflow_event_processed_tx,
     })))
@@ -313,6 +324,7 @@ impl Setup {
       capture_screenshot_rx,
       pipeline_ready_rx,
       remote_streaming_action_processed_rx,
+      remote_streaming_trigger_upload_completed_rx,
       startup_replay_gate_opened_rx,
       workflow_event_processed_rx,
       _shutdown: shutdown,
@@ -352,6 +364,13 @@ impl Setup {
       .remote_streaming_action_processed_rx
       .recv_timeout(std::time::Duration::from_secs(5))
       .expect("timed out waiting for remote streaming action processing");
+  }
+
+  pub fn wait_for_remote_streaming_trigger_upload_completion(&self) {
+    self
+      .remote_streaming_trigger_upload_completed_rx
+      .recv_timeout(std::time::Duration::from_secs(5))
+      .expect("timed out waiting for remote streaming trigger upload completion");
   }
 
   pub fn wait_for_startup_replay_gate_opening(&self) {

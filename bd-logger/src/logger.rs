@@ -672,6 +672,8 @@ pub struct ReportProcessingRequest {
 pub trait TestHooks: Send + Sync {
   fn remote_streaming_action_processed(&self) {}
 
+  fn remote_streaming_trigger_upload_completed(&self) {}
+
   fn workflow_event_processed(&self) {}
 
   fn pipeline_ready(&self) {}

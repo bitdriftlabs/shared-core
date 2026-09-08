@@ -2729,6 +2729,12 @@ fn remote_buffer_upload_with_streaming_matches_workflow_streaming_behavior() {
       },
     });
 
+  // Streaming becomes active only after the originating trigger upload completes. Its log-count
+  // termination is also intentionally held until that completion is visible to the workflow
+  // engine, so synchronize both sides before exercising the steady-state behavior.
+  setup.wait_for_remote_streaming_action_processing();
+  setup.wait_for_remote_streaming_trigger_upload_completion();
+
   assert_matches!(setup.server.blocking_next_log_upload(), Some(log_upload) => {
     assert_eq!(log_upload.buffer_id(), "trigger_buffer_id");
     assert_eq!(log_upload.logs().len(), 1);
