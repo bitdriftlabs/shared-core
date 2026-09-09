@@ -16,7 +16,7 @@ use tokio::time::Instant;
 //
 
 #[derive(Default)]
-pub(crate) struct StartupGate {
+pub struct StartupGate {
   pub ready: bool,
   started_at: Option<Instant>,
   deadline: Option<Instant>,
