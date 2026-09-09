@@ -56,7 +56,7 @@ use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{
   KeyOrIndex,
   key_or_index,
 };
-use bd_state::Scope;
+use bd_state::{Scope, Value_type};
 use log_matcher::LogMatcher;
 use log_matcher::log_matcher::{BaseLogMatcher, Matcher, base_log_matcher};
 use rand::RngExt;
@@ -439,7 +439,14 @@ impl<'a> ResolvedFieldValue<'a> {
   }
 
   fn is_json_string(self) -> bool {
-    matches!(self, Self::Log(value) if value.as_str().is_some())
+    match self {
+      Self::Log(value) => value.as_str().is_some(),
+      Self::State(value) => matches!(
+        value.value_type.as_ref(),
+        Some(Value_type::Data(data))
+          if matches!(data.data_type.as_ref(), Some(Data_type::StringData(_)))
+      ),
+    }
   }
 }
 
@@ -970,11 +977,14 @@ fn resolve_json_path_from_state<'a>(
   value: &'a bd_state::Value,
   path: &[JsonPathToken],
 ) -> Option<Cow<'a, str>> {
-  use bd_state::Value_type;
-
   let Value_type::Data(value) = value.value_type.as_ref()? else {
     return None;
   };
+
+  // JSON-string fields retain their existing parsing behavior after moving into state.
+  if let Some(Data_type::StringData(value)) = value.data_type.as_ref() {
+    return resolve_json_string_path(value, path);
+  }
 
   let mut current = value;
   for token in path {

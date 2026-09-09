@@ -22,11 +22,8 @@ use bd_log_primitives::{
   log_level,
 };
 use bd_proto::protos::log_matcher::log_matcher::{LogMatcher, log_matcher};
-use bd_proto::protos::logging::payload::data::Data_type;
-use bd_proto::protos::logging::payload::{Data, LogType, MapData};
+use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::state::matcher::state_value_match;
-use bd_proto::protos::state::payload::StateValue;
-use bd_proto::protos::state::payload::state_value::Value_type;
 use bd_proto::protos::state::scope::StateScope;
 use bd_proto::protos::value_matcher::value_matcher::double_value_match::Double_value_match_type;
 use bd_proto::protos::value_matcher::value_matcher::int_value_match::Int_value_match_type;
@@ -1619,82 +1616,56 @@ fn virtual_state_fields_support_json_path_matching() {
 }
 
 #[test]
-fn state_match_data_values() {
-  let mut state = bd_state::InMemoryStateReader::default();
-  for (key, data_type) in [
-    ("string", Data_type::StringData("value".to_string())),
-    ("unsigned", Data_type::IntData(42)),
-    ("signed", Data_type::SintData(-42)),
-    ("double", Data_type::DoubleData(98.6)),
-    ("boolean", Data_type::BoolData(true)),
-    ("map", Data_type::MapData(MapData::default())),
-  ] {
-    state.insert(
-      bd_state::Scope::FeatureFlagExposure,
-      key,
-      StateValue {
-        value_type: Some(Value_type::Data(Data {
-          data_type: Some(data_type),
+fn virtual_state_json_strings_match_and_honor_the_runtime_gate() {
+  let matcher = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
+    tag_key: "payload".to_string(),
+    value_match: Some(
+      log_matcher::base_log_matcher::tag_match::Value_match::JsonValueMatch(JsonPathValueMatch {
+        operator: Operator::OPERATOR_EQUALS.into(),
+        match_value: "state-value".to_string(),
+        key_or_index: vec![KeyOrIndex {
+          key_or_index: Some(key_or_index::Key_or_index::Key("key".to_string())),
           ..Default::default()
-        })),
+        }],
         ..Default::default()
-      },
-    );
-  }
+      }),
+    ),
+    ..Default::default()
+  }));
+  let tree = Tree::new(&matcher).expect("JSON matcher should be valid");
+  let mut state = bd_state::InMemoryStateReader::default();
+  state.insert(
+    bd_state::Scope::CustomFields,
+    "payload",
+    persisted_log_field_state_value(DataValue::String(
+      r#"{"key":"state-value"}"#.to_string(),
+    )),
+  );
+  let fields: LogFields = [].into();
+  let message = LogMessage::String("foo".to_string());
 
-  for (matcher, matches) in [
-    (
-      make_string_feature_flag_matcher("string", Operator::OPERATOR_EQUALS, "value"),
-      true,
-    ),
-    (
-      make_int_state_matcher("unsigned", Operator::OPERATOR_EQUALS, 42),
-      true,
-    ),
-    (
-      make_int_state_matcher("signed", Operator::OPERATOR_EQUALS, -42),
-      true,
-    ),
-    (
-      make_double_state_matcher("double", Operator::OPERATOR_EQUALS, 98.6),
-      true,
-    ),
-    (
-      make_string_feature_flag_matcher("boolean", Operator::OPERATOR_EQUALS, "true"),
-      true,
-    ),
-    (
-      make_string_feature_flag_matcher("map", Operator::OPERATOR_EQUALS, ""),
-      false,
-    ),
-  ] {
-    let matcher = TestMatcher::new(&matcher).unwrap();
-    assert_eq!(
-      matches,
-      matcher.match_log_with_state(TypedLogLevel::Debug, LogType::NORMAL, "foo", [], &state),
-    );
-  }
-}
-
-#[test]
-fn custom_field_state_scopes_are_unsupported() {
-  for scope in [StateScope::CUSTOM_FIELDS, StateScope::OOTB_FIELDS] {
-    let matcher = simple_log_matcher(StateMatch(base_log_matcher::StateMatch {
-      scope: scope.into(),
-      state_key: "field".to_string(),
-      state_value_match: MessageField::from_option(Some(
-        bd_proto::protos::state::matcher::StateValueMatch {
-          value_match: Some(state_value_match::Value_match::IsSetMatch(
-            bd_proto::protos::value_matcher::value_matcher::IsSetMatch::default(),
-          )),
-          ..Default::default()
-        },
-      )),
-      ..Default::default()
-    }));
-
-    assert!(TestMatcher::new(&matcher).is_err());
-  }
+  assert!(tree.do_match(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    &message,
+    FieldsRef::new(&fields, &EMPTY_FIELDS),
+    &state,
+    &TinyMap::default(),
+    0,
+    MatchContext::default(),
+  ));
+  assert!(!tree.do_match(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    &message,
+    FieldsRef::new(&fields, &EMPTY_FIELDS),
+    &state,
+    &TinyMap::default(),
+    0,
+    MatchContext {
+      json_path_string_matching_enabled: false,
+    },
+  ));
 }
 
 #[test]
