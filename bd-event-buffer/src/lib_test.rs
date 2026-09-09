@@ -371,6 +371,9 @@ async fn early_flushes_do_not_consume_capacity_or_release_the_gate() {
     FlushAdmissionOutcome::Admission(AdmissionOutcome::RejectedOversized),
     buffer.admit_flush(None)
   );
+  // A rejected blocking flush is a terminal drop, not an early-release barrier.
+  assert!(!buffer.is_startup_gate_open());
+  assert_consumer_pending(&buffer);
   buffer.close();
   let (completion, receiver) = bd_completion::Sender::new();
   assert_eq!(
@@ -378,6 +381,21 @@ async fn early_flushes_do_not_consume_capacity_or_release_the_gate() {
     buffer.admit_flush(Some(completion))
   );
   assert!(receiver.recv().await.is_err());
+}
+
+#[tokio::test]
+async fn low_priority_pressure_does_not_release_the_startup_gate() {
+  let low_priority = log(log_level::DEBUG, LogType::NORMAL, 1024);
+  let buffer = EventBuffer::new(limits(low_priority.approximate_size_bytes()));
+  let (_delay_tx, delay) = watch::channel(time::Duration::seconds(60));
+  buffer.start_startup_gate(Some(delay));
+  buffer.mark_startup_gate_ready();
+
+  // The overall budget is full, but only protected work can request early replay. Allowing a
+  // low-priority flood to release here would defeat the selected startup replay window.
+  assert_eq!(AdmissionOutcome::Admitted, buffer.admit(low_priority));
+  assert!(!buffer.is_startup_gate_open());
+  assert_consumer_pending(&buffer);
 }
 
 #[test]
@@ -731,14 +749,15 @@ async fn held_gate_admission_does_not_wake_the_consumer_until_release() {
     AdmissionOutcome::Admitted,
     buffer.admit(log(log_level::INFO, LogType::NORMAL, 1))
   );
-  tokio::task::yield_now().await;
-  assert_eq!(1, waiting_consumers.consumer_count());
 
   assert!(buffer.open_startup_gate());
   assert_eq!(
     1,
     consumer.await.expect("consumer task must complete").len()
   );
+  // If held-gate admission had woken the consumer, it would have registered a second wait before
+  // the explicit release above let it return its entry.
+  assert_eq!(1, waiting_consumers.consumer_count());
 }
 
 #[tokio::test]
