@@ -953,11 +953,11 @@ impl InMemoryStore {
             .saturating_add(new_entry_size);
 
           // Check capacity before replacing
-          if let Some(max_bytes) = self.max_bytes {
-            if new_size > max_bytes {
-              self.stats.capacity_exceeded_unrecoverable.inc();
-              return Err(UpdateError::CapacityExceeded);
-            }
+          if let Some(max_bytes) = self.max_bytes
+            && new_size > max_bytes
+          {
+            self.stats.capacity_exceeded_unrecoverable.inc();
+            return Err(UpdateError::CapacityExceeded);
           }
 
           // Replace the value
@@ -1101,6 +1101,15 @@ impl InMemoryStore {
 enum StoreBackend {
   Persistent(PersistentStore),
   InMemory(InMemoryStore),
+}
+
+/// Indicates whether successful mutations are retained across process restarts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PersistenceMode {
+  /// Mutations are written to the journal and available after restart.
+  Persistent,
+  /// Mutations are retained only for the lifetime of the current process.
+  InMemory,
 }
 
 /// A key-value store with timestamp tracking and optional persistence.
@@ -1470,6 +1479,15 @@ impl VersionedKVStore {
     match &self.backend {
       StoreBackend::Persistent(store) => Some(store.journal_path()),
       StoreBackend::InMemory(_) => None,
+    }
+  }
+
+  /// Returns whether future successful mutations are persistent or memory-only.
+  #[must_use]
+  pub fn persistence_mode(&self) -> PersistenceMode {
+    match &self.backend {
+      StoreBackend::Persistent(_) => PersistenceMode::Persistent,
+      StoreBackend::InMemory(_) => PersistenceMode::InMemory,
     }
   }
 

@@ -11,7 +11,7 @@ use crate::tests::decompress_zlib;
 use crate::versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry};
 use crate::versioned_kv_journal::store::PersistentStoreConfig;
 use crate::versioned_kv_journal::{TimestampedValue, make_string_value};
-use crate::{DataLoss, Scope, UpdateError, VersionedKVStore};
+use crate::{DataLoss, PersistenceMode, Scope, UpdateError, VersionedKVStore};
 use bd_proto::protos::state::payload::StateValue;
 use bd_time::TestTimeProvider;
 use rstest::rstest;
@@ -569,6 +569,8 @@ async fn test_in_memory_no_size_limit() -> anyhow::Result<()> {
     &stats,
     bd_runtime::runtime::IntWatch::new_for_testing(2),
   );
+
+  assert_eq!(store.persistence_mode(), PersistenceMode::InMemory);
 
   // Should be able to insert many large values without limit
   for i in 0 .. 100 {
@@ -1444,7 +1446,7 @@ async fn extend_triggers_rotation_and_succeeds() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn extend_falls_back_to_memory_when_journal_capacity_is_exceeded() -> anyhow::Result<()> {
+async fn extend_capacity_rejection_keeps_persistent_store() -> anyhow::Result<()> {
   let collector = bd_client_stats_store::Collector::default();
   let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
@@ -1478,12 +1480,14 @@ async fn extend_falls_back_to_memory_when_journal_capacity_is_exceeded() -> anyh
     ));
   }
 
-  store.extend(entries).await?;
+  let Err(error) = store.extend(entries).await else {
+    anyhow::bail!("a batch that cannot fit after compaction must be rejected");
+  };
 
-  // The batch is visible to current-process readers after persistence degrades.
-  assert!(store.journal_path().is_none());
+  assert!(matches!(error, UpdateError::CapacityExceeded));
+  assert!(store.journal_path().is_some());
   for i in 0 .. 50 {
-    assert!(store.contains_key(Scope::FeatureFlagExposure, &format!("key_{i}")));
+    assert!(!store.contains_key(Scope::FeatureFlagExposure, &format!("key_{i}")));
   }
 
   Ok(())

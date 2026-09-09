@@ -26,6 +26,7 @@ use bd_runtime::runtime::ConfigLoader;
 use bd_time::{OffsetDateTimeExt, TimeProvider};
 use bd_versioned_kv::{DataLoss, ScopedMaps, StateValue};
 pub use bd_versioned_kv::{
+  PersistenceMode,
   PersistentStoreConfig,
   RetentionHandle,
   RetentionRegistry,
@@ -540,6 +541,11 @@ impl Store {
     self
       .last_change_micros
       .load(std::sync::atomic::Ordering::Relaxed)
+  }
+
+  /// Returns whether state mutations are retained across process restarts.
+  pub async fn persistence_mode(&self) -> PersistenceMode {
+    self.inner.read().await.persistence_mode()
   }
 
   fn record_change(&self, timestamp: OffsetDateTime) {

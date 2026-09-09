@@ -9,7 +9,7 @@
 
 use crate::versioned_kv_journal::retention::RetentionRegistry;
 use crate::versioned_kv_journal::{PersistentStoreConfig, make_string_value};
-use crate::{Scope, UpdateError, VersionedKVStore};
+use crate::{PersistenceMode, Scope, UpdateError, VersionedKVStore};
 use bd_time::TestTimeProvider;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -376,17 +376,21 @@ async fn oversized_value_keeps_persistent_store() -> anyhow::Result<()> {
 
   let mut store = setup.open_store(config).await?;
 
+  assert_eq!(store.persistence_mode(), PersistenceMode::Persistent);
+
   // Try to insert a value that's larger than max capacity
   let huge_value = "x".repeat(10 * 1024); // 10KB value, exceeds 8KB max
 
-  let error = store
+  let Err(error) = store
     .insert(
       Scope::GlobalState,
       "huge_key".to_string(),
       make_string_value(&huge_value),
     )
     .await
-    .expect_err("an oversized value must be rejected");
+  else {
+    anyhow::bail!("an oversized value must be rejected");
+  };
 
   assert!(matches!(error, UpdateError::CapacityExceeded));
   assert!(store.is_empty());
@@ -496,14 +500,16 @@ async fn compaction_capacity_rejection_keeps_persistent_store() -> anyhow::Resul
   // Try to insert a large entry that wouldn't fit even after compaction
   let large_value = "y".repeat(4 * 1024); // 4KB value
 
-  let error = store
+  let Err(error) = store
     .insert(
       Scope::GlobalState,
       "large_key".to_string(),
       make_string_value(&large_value),
     )
     .await
-    .expect_err("an entry that cannot fit after compaction must be rejected");
+  else {
+    anyhow::bail!("an entry that cannot fit after compaction must be rejected");
+  };
 
   assert!(matches!(error, UpdateError::CapacityExceeded));
   assert!(!store.contains_key(Scope::GlobalState, "large_key"));
