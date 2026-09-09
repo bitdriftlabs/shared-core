@@ -1637,9 +1637,7 @@ fn virtual_state_json_strings_match_and_honor_the_runtime_gate() {
   state.insert(
     bd_state::Scope::CustomFields,
     "payload",
-    persisted_log_field_state_value(DataValue::String(
-      r#"{"key":"state-value"}"#.to_string(),
-    )),
+    persisted_log_field_state_value(DataValue::String(r#"{"key":"state-value"}"#.to_string())),
   );
   let fields: LogFields = [].into();
   let message = LogMessage::String("foo".to_string());
