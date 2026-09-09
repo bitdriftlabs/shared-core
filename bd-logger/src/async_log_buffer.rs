@@ -541,6 +541,7 @@ pub struct AsyncLogBuffer<R: LogReplay> {
   startup_gate: StartupGateState,
   startup_replay_gate_stats: StartupReplayGateStats,
   startup_replay_eligibility: StartupReplayEligibility,
+  late_previous_process_work_observed: bool,
   test_hooks: Option<Arc<dyn TestHooks>>,
   last_session_id: Option<Arc<str>>,
 }
@@ -640,8 +641,16 @@ impl StartupReplayGateStats {
     }
   }
 
-  fn record_opening(&self, reason: StartupReplayGateReleaseReason, hold_duration: StdDuration) {
-    let labels = labels!("reason" => reason.label());
+  fn record_opening(
+    &self,
+    eligibility: StartupReplayEligibility,
+    reason: StartupReplayGateReleaseReason,
+    hold_duration: StdDuration,
+  ) {
+    let labels = labels!(
+      "reason" => reason.label(),
+      "eligibility" => eligibility.label(),
+    );
     self
       .scope
       .counter_with_labels("startup_replay_gate_opened", labels.clone())
@@ -650,6 +659,16 @@ impl StartupReplayGateStats {
       .scope
       .histogram_with_labels("startup_replay_gate_hold_duration_s", labels)
       .observe(hold_duration.as_secs_f64());
+  }
+
+  fn record_late_previous_process_work(&self, eligibility: StartupReplayEligibility) {
+    self
+      .scope
+      .counter_with_labels(
+        "startup_replay_late_previous_process_work",
+        labels!("eligibility" => eligibility.label()),
+      )
+      .inc();
   }
 }
 
@@ -782,6 +801,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         startup_gate: StartupGateState::default(),
         startup_replay_gate_stats,
         startup_replay_eligibility,
+        late_previous_process_work_observed: false,
         test_hooks,
         last_session_id: None,
       },
@@ -1336,9 +1356,11 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       let hold_duration = self
         .startup_started_at
         .map_or(StdDuration::ZERO, |started_at| Instant::now() - started_at);
-      self
-        .startup_replay_gate_stats
-        .record_opening(reason, hold_duration);
+      self.startup_replay_gate_stats.record_opening(
+        self.startup_replay_eligibility,
+        reason,
+        hold_duration,
+      );
       if let Some(test_hooks) = &self.test_hooks {
         test_hooks.startup_replay_gate_opened();
       }
@@ -1350,7 +1372,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   }
 
   fn admit_crash_reports(
-    &self,
+    &mut self,
     reports: Vec<bd_crash_handler::CrashLog>,
     session: &crate::ReportProcessingSession,
   ) {
@@ -1369,10 +1391,26 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       )
       .collect::<Vec<_>>();
 
+    // AsyncLogBuffer is the sole production caller of `open_gate`, so its single event loop can
+    // observe whether this previous-process batch missed the gate without a separate lock.
+    let late_previous_process_work = matches!(session, crate::ReportProcessingSession::PreviousRun)
+      && self.event_buffer.is_gate_open();
+    let mut admitted = false;
     for outcome in self.event_buffer.admit_batch(entries) {
-      if outcome != AdmissionOutcome::Admitted {
+      if outcome == AdmissionOutcome::Admitted {
+        admitted = true;
+      } else {
         log::debug!("failed to admit crash report: {outcome:?}");
       }
+    }
+    if late_previous_process_work && admitted && !self.late_previous_process_work_observed {
+      // A report can produce many logs. Count only the first late batch so the metric is a
+      // per-startup rate rather than a function of report expansion.
+      self.late_previous_process_work_observed = true;
+      log::debug!("observed previous-process crash work after the startup replay gate opened");
+      self
+        .startup_replay_gate_stats
+        .record_late_previous_process_work(self.startup_replay_eligibility);
     }
   }
 

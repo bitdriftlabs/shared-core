@@ -584,15 +584,21 @@ pending solely because the soft startup delay has not elapsed.
 
 ## Observability and validation
 
-Production metrics must stay off the producer fast path. The rollout set records only gate release:
+Production metrics must stay off the producer fast path. The rollout set records gate release and
+the bounded outcome needed to calibrate its delay:
 
 - Once per gate release, count the
-  release reason (`no_prior_crash`, timer, high watermark, or barrier) and record gate-hold
-  duration. This exposes early releases and unexpectedly long successful gates without a
-  per-entry cost or a high-cardinality dimension.
+  release reason (`no_prior_crash`, timer, high watermark, or barrier), label it by startup
+  eligibility (`no_prior_crash`, `unknown`, or `may_have_prior_crash`), and record gate-hold
+  duration. This distinguishes the zero-delay, default-delay, and crash-recovery-delay cohorts
+  without a high-cardinality dimension.
+- Once per startup at most, record a previous-process crash-report batch admitted after the gate
+  opened, labeled by the same eligibility. This gives a bounded rate for work that missed the
+  replay window without making the metric proportional to a report's log expansion.
 
 We intentionally do not export queue depth, queued bytes, oldest-entry age, lock timing, or
-per-entry outcome counters. Those are high-frequency gauges or counters, or require additional
+per-entry outcome counters. The late-work metric is a startup-level latch, not a per-entry
+counter. The omitted measurements are high-frequency gauges or counters, or require additional
 state, and can be enabled temporarily during a targeted investigation rather than becoming
 permanent client telemetry.
 

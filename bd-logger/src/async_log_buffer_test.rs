@@ -367,7 +367,7 @@ async fn startup_gate_holds_preconfiguration_logs_until_the_replay_timer() {
   setup.collector.assert_counter_eq(
     1,
     "logger:event_buffer:startup_replay_gate_opened",
-    labels!("reason" => "timer"),
+    labels!("reason" => "timer", "eligibility" => "unknown"),
   );
 
   shutdown_trigger.shutdown().await;
@@ -574,7 +574,7 @@ async fn post_pipeline_blocking_flush_releases_the_gate_after_older_work() {
   setup.collector.assert_counter_eq(
     1,
     "logger:event_buffer:startup_replay_gate_opened",
-    labels!("reason" => "barrier"),
+    labels!("reason" => "barrier", "eligibility" => "unknown"),
   );
 
   shutdown_trigger.shutdown().await;
@@ -620,12 +620,12 @@ async fn post_pipeline_nonblocking_flush_does_not_release_the_gate() {
   setup.collector.assert_counter_eq(
     1,
     "logger:event_buffer:startup_replay_gate_opened",
-    labels!("reason" => "timer"),
+    labels!("reason" => "timer", "eligibility" => "unknown"),
   );
   setup.collector.assert_histogram_observed(
     5.0,
     "logger:event_buffer:startup_replay_gate_hold_duration_s",
-    labels!("reason" => "timer"),
+    labels!("reason" => "timer", "eligibility" => "unknown"),
   );
 
   shutdown_trigger.shutdown().await;
@@ -681,7 +681,7 @@ async fn startup_gate_releases_when_loaded_runtime_limits_expose_existing_pressu
   setup.collector.assert_counter_eq(
     1,
     "logger:event_buffer:startup_replay_gate_opened",
-    labels!("reason" => "high_watermark"),
+    labels!("reason" => "high_watermark", "eligibility" => "unknown"),
   );
 
   shutdown_trigger.shutdown().await;
@@ -846,7 +846,7 @@ async fn confirmed_no_prior_crash_releases_when_pipeline_is_ready_without_delay(
   setup.collector.assert_counter_eq(
     1,
     "logger:event_buffer:startup_replay_gate_opened",
-    labels!("reason" => "no_prior_crash"),
+    labels!("reason" => "no_prior_crash", "eligibility" => "no_prior_crash"),
   );
 }
 
@@ -1034,7 +1034,7 @@ impl LogReplay for TestReplay {
 async fn current_crash_reports_are_admitted_in_report_order() {
   let mut setup = Setup::new();
   let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-  let (buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
   let session_id = setup.session_strategy.session_id().unwrap();
   let first_timestamp = OffsetDateTime::UNIX_EPOCH + 1.seconds();
   let second_timestamp = OffsetDateTime::UNIX_EPOCH + 2.seconds();
@@ -1075,10 +1075,39 @@ async fn current_crash_reports_are_admitted_in_report_order() {
 }
 
 #[tokio::test]
+async fn late_previous_process_crash_work_is_recorded_once_per_startup() {
+  let mut setup = Setup::new();
+  let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
+  let (mut buffer, _) = setup.make_test_async_log_buffer_with_startup_replay_eligibility(
+    config_update_rx,
+    StartupReplayEligibility::MayHavePriorCrash,
+  );
+  assert!(buffer.event_buffer.open_gate());
+
+  buffer.admit_crash_reports(
+    vec![
+      crash_log("first", OffsetDateTime::UNIX_EPOCH),
+      crash_log("second", OffsetDateTime::UNIX_EPOCH),
+    ],
+    &crate::ReportProcessingSession::PreviousRun,
+  );
+  buffer.admit_crash_reports(
+    vec![crash_log("third", OffsetDateTime::UNIX_EPOCH)],
+    &crate::ReportProcessingSession::PreviousRun,
+  );
+
+  setup.collector.assert_counter_eq(
+    1,
+    "logger:event_buffer:startup_replay_late_previous_process_work",
+    labels!("eligibility" => "may_have_prior_crash"),
+  );
+}
+
+#[tokio::test]
 async fn crash_report_batch_stays_at_its_event_buffer_admission_boundary() {
   let mut setup = Setup::new();
   let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-  let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
+  let (mut buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
   let report_processor = StaticReportProcessor::new(vec![
     crash_log("first", OffsetDateTime::UNIX_EPOCH),
     crash_log("second", OffsetDateTime::UNIX_EPOCH),
@@ -1115,7 +1144,7 @@ async fn crash_report_batch_stays_at_its_event_buffer_admission_boundary() {
 async fn previous_run_crash_reports_use_previous_process_context() {
   let mut setup = Setup::new();
   let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
-  let (buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
+  let (mut buffer, _) = setup.make_test_async_log_buffer(config_update_rx);
   let first_timestamp = OffsetDateTime::UNIX_EPOCH + 1.seconds();
   let second_timestamp = OffsetDateTime::UNIX_EPOCH + 2.seconds();
   let report_processor = StaticReportProcessor::new(vec![

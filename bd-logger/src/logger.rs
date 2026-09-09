@@ -658,6 +658,14 @@ impl StartupReplayEligibility {
       _ => Self::Unknown,
     }
   }
+
+  pub(crate) const fn label(self) -> &'static str {
+    match self {
+      Self::NoPriorCrash => "no_prior_crash",
+      Self::MayHavePriorCrash => "may_have_prior_crash",
+      Self::Unknown => "unknown",
+    }
+  }
 }
 
 pub struct ReportProcessingRequest {
