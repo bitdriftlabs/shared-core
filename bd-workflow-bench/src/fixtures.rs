@@ -9,7 +9,7 @@
 #[path = "./fixtures_test.rs"]
 mod tests;
 
-use anyhow::{Result, bail};
+use anyhow::{Result, anyhow, bail};
 use serde::Deserialize;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
@@ -59,21 +59,26 @@ pub fn default_fixture_paths() -> Result<Vec<FixturePaths>> {
     .collect()
 }
 
-fn fixtures_root() -> PathBuf {
-  std::env::var_os("TEST_SRCDIR")
-    .map_or_else(
-      || PathBuf::from(env!("CARGO_MANIFEST_DIR")),
-      |runfiles_dir| {
+fn fixtures_root() -> Result<PathBuf> {
+  let root = std::env::var_os("TEST_SRCDIR").map_or_else(
+    || {
+      std::env::var_os("CARGO_MANIFEST_DIR")
+        .map(PathBuf::from)
+        .ok_or_else(|| anyhow!("CARGO_MANIFEST_DIR is not set"))
+    },
+    |runfiles_dir| {
+      Ok(
         PathBuf::from(runfiles_dir)
           .join(std::env::var("TEST_WORKSPACE").unwrap_or_else(|_| "_main".to_owned()))
-          .join("shared-core/bd-workflow-bench")
-      },
-    )
-    .join(FIXTURES_DIRECTORY)
+          .join("shared-core/bd-workflow-bench"),
+      )
+    },
+  )?;
+  Ok(root.join(FIXTURES_DIRECTORY))
 }
 
 fn fixture_paths(name: &str) -> Result<FixturePaths> {
-  let root = fixtures_root().join(name);
+  let root = fixtures_root()?.join(name);
   let manifest: FixtureManifest = serde_json::from_reader(File::open(root.join("manifest.json"))?)?;
   if manifest.format_version != 1 {
     bail!(

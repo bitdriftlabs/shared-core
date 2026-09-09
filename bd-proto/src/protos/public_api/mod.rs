@@ -10,6 +10,7 @@ pub mod admin;
 pub mod alerts;
 pub mod api;
 pub mod api_ootb_fields;
+pub mod bdtail;
 pub mod chart_id;
 pub mod chart_metadata;
 pub mod common;

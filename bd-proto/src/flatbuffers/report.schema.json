@@ -11,7 +11,7 @@
     },
     "bitdrift_public_fbs_issue_reporting_v1_Platform" : {
       "type" : "string",
-      "enum": ["Unknown", "Android", "iOS", "macOS"]
+      "enum": ["Unknown", "Android", "iOS", "macOS", "tvOS", "visionOS", "watchOS"]
     },
     "bitdrift_public_fbs_issue_reporting_v1_Architecture" : {
       "type" : "string",

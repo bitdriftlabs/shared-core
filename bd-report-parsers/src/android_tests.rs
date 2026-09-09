@@ -64,7 +64,9 @@ macro_rules! get_table {
 fn open_fixture(path: &str) -> std::fs::File {
   use std::path::PathBuf;
 
-  let mut full_path = PathBuf::from("./fixtures/");
+  let mut full_path = std::env::var_os("CARGO_MANIFEST_DIR")
+    .map_or_else(|| PathBuf::from("."), PathBuf::from)
+    .join("fixtures");
   full_path.push(path);
   assert!(
     full_path.exists(),
