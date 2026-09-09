@@ -296,15 +296,14 @@ impl Tree {
           path,
           matcher,
         } => {
-          let Some(input) = resolve_json_path_with_state(fields, state, field_key, path) else {
+          let Some(value) = resolved_field_value_with_state(fields, state, field_key) else {
+            return MatchResult::NotMatched;
+          };
+          let Some(input) = value.resolve_json_path(path) else {
             return MatchResult::NotMatched;
           };
           // TODO: Fold Disabled into the planned general matcher evaluation context/cache work.
-          if !context.json_path_string_matching_enabled
-            && fields
-              .field(field_key)
-              .is_some_and(|value| value.as_str().is_some())
-          {
+          if !context.json_path_string_matching_enabled && value.is_json_string() {
             return MatchResult::Disabled;
           }
           matcher.evaluate(input.as_ref(), extracted_fields)
@@ -400,6 +399,50 @@ pub enum InputType {
   State(Scope, String),
 }
 
+/// A log-field value resolved from either the current log or its persistent state overlay.
+///
+/// The state representation is deliberately borrowed as protobuf `Data`; converting it to a
+/// `DataValue` here would recursively allocate for maps and arrays on every matcher evaluation.
+#[derive(Clone, Copy)]
+enum ResolvedFieldValue<'a> {
+  Log(&'a DataValue),
+  State(&'a bd_state::Value),
+}
+
+impl<'a> ResolvedFieldValue<'a> {
+  fn as_cow(self) -> Option<Cow<'a, str>> {
+    match self {
+      Self::Log(value) => value.to_string_value(),
+      Self::State(value) => state_value_as_cow(value),
+    }
+  }
+
+  fn as_i32(self) -> Option<i32> {
+    match self {
+      Self::Log(value) => log_field_as_i32(value),
+      Self::State(value) => state_value_as_i32(value),
+    }
+  }
+
+  fn as_f64(self) -> Option<f64> {
+    match self {
+      Self::Log(value) => log_field_as_f64(value),
+      Self::State(value) => state_value_as_f64(value),
+    }
+  }
+
+  fn resolve_json_path(self, path: &[JsonPathToken]) -> Option<Cow<'a, str>> {
+    match self {
+      Self::Log(value) => resolve_json_path(value, path),
+      Self::State(value) => resolve_json_path_from_state(value, path),
+    }
+  }
+
+  fn is_json_string(self) -> bool {
+    matches!(self, Self::Log(value) if value.as_str().is_some())
+  }
+}
+
 /// Converts a state value into the string representation used by field matchers and extractors.
 ///
 /// State-backed custom and OOTB fields retain their logging `Data` representation, so this reads
@@ -429,23 +472,35 @@ pub fn state_value_as_cow(value: &bd_state::Value) -> Option<Cow<'_, str>> {
 /// provider and per-log precedence and take priority over custom SDK state fields, which are the
 /// lowest virtual layer. This lets callers read state-backed fields exactly like regular fields
 /// without materializing them in the log's captured field map.
+fn resolved_field_value_with_state<'a>(
+  fields: FieldsRef<'a>,
+  state: &'a dyn bd_state::StateReader,
+  field_key: &str,
+) -> Option<ResolvedFieldValue<'a>> {
+  state
+    .get(Scope::OotbFields, field_key)
+    .map(ResolvedFieldValue::State)
+    .or_else(|| fields.field(field_key).map(ResolvedFieldValue::Log))
+    .or_else(|| {
+      state
+        .get(Scope::CustomFields, field_key)
+        .map(ResolvedFieldValue::State)
+    })
+}
+
+/// Resolves a field using the metadata collector's persistent-field precedence.
+///
+/// OOTB SDK state fields have the highest priority. Concrete log fields retain their existing
+/// provider and per-log precedence and take priority over custom SDK state fields, which are the
+/// lowest virtual layer. This lets callers read state-backed fields exactly like regular fields
+/// without materializing them in the log's captured field map.
 #[must_use]
 pub fn field_value_with_state<'a>(
   fields: FieldsRef<'a>,
   state: &'a dyn bd_state::StateReader,
   field_key: &str,
 ) -> Option<Cow<'a, str>> {
-  if let Some(value) = state.get(Scope::OotbFields, field_key) {
-    return state_value_as_cow(value);
-  }
-
-  if fields.field(field_key).is_some() {
-    return fields.field_value(field_key);
-  }
-
-  state
-    .get(Scope::CustomFields, field_key)
-    .and_then(state_value_as_cow)
+  resolved_field_value_with_state(fields, state, field_key).and_then(ResolvedFieldValue::as_cow)
 }
 
 /// Views an integer-compatible log-field value persisted in state without cloning its protobuf.
@@ -534,42 +589,6 @@ fn log_field_as_f64(field: &DataValue) -> Option<f64> {
   }
 }
 
-fn field_as_i32_with_state(
-  fields: FieldsRef<'_>,
-  state: &dyn bd_state::StateReader,
-  field_key: &str,
-) -> Option<i32> {
-  if let Some(value) = state.get(Scope::OotbFields, field_key) {
-    return state_value_as_i32(value);
-  }
-
-  if let Some(value) = fields.field(field_key) {
-    return log_field_as_i32(value);
-  }
-
-  state
-    .get(Scope::CustomFields, field_key)
-    .and_then(state_value_as_i32)
-}
-
-fn field_as_f64_with_state(
-  fields: FieldsRef<'_>,
-  state: &dyn bd_state::StateReader,
-  field_key: &str,
-) -> Option<f64> {
-  if let Some(value) = state.get(Scope::OotbFields, field_key) {
-    return state_value_as_f64(value);
-  }
-
-  if let Some(value) = fields.field(field_key) {
-    return log_field_as_f64(value);
-  }
-
-  state
-    .get(Scope::CustomFields, field_key)
-    .and_then(state_value_as_f64)
-}
-
 impl InputType {
   fn get<'a>(
     &self,
@@ -579,14 +598,11 @@ impl InputType {
   ) -> Option<Cow<'a, str>> {
     match self {
       Self::Message => message.as_str().map(Cow::Borrowed),
-      Self::Field(field_key) => field_value_with_state(fields, state, field_key),
-      Self::State(scope, flag_key) => state.get(*scope, flag_key).and_then(|value| {
-        if value.value_type.is_none() {
-          Some(Cow::Borrowed(""))
-        } else {
-          state_value_as_cow(value)
-        }
-      }),
+      Self::Field(field_key) => resolved_field_value_with_state(fields, state, field_key)
+        .and_then(ResolvedFieldValue::as_cow),
+      Self::State(scope, flag_key) => state
+        .get(*scope, flag_key)
+        .and_then(|value| ResolvedFieldValue::State(value).as_cow()),
     }
   }
 
@@ -601,8 +617,11 @@ impl InputType {
   ) -> Option<i32> {
     match self {
       Self::Message => message.as_str().and_then(|s| s.parse().ok()),
-      Self::Field(field_key) => field_as_i32_with_state(fields, state, field_key),
-      Self::State(scope, flag_key) => state.get(*scope, flag_key).and_then(state_value_as_i32),
+      Self::Field(field_key) => resolved_field_value_with_state(fields, state, field_key)
+        .and_then(ResolvedFieldValue::as_i32),
+      Self::State(scope, flag_key) => state
+        .get(*scope, flag_key)
+        .and_then(|value| ResolvedFieldValue::State(value).as_i32()),
     }
   }
 
@@ -617,8 +636,11 @@ impl InputType {
   ) -> Option<f64> {
     match self {
       Self::Message => message.as_str().and_then(|s| s.parse().ok()),
-      Self::Field(field_key) => field_as_f64_with_state(fields, state, field_key),
-      Self::State(scope, flag_key) => state.get(*scope, flag_key).and_then(state_value_as_f64),
+      Self::Field(field_key) => resolved_field_value_with_state(fields, state, field_key)
+        .and_then(ResolvedFieldValue::as_f64),
+      Self::State(scope, flag_key) => state
+        .get(*scope, flag_key)
+        .and_then(|value| ResolvedFieldValue::State(value).as_f64()),
     }
   }
 }
@@ -985,23 +1007,4 @@ fn resolve_json_path_from_state<'a>(
     | Data_type::MapData(_)
     | Data_type::ArrayData(_) => None,
   }
-}
-
-fn resolve_json_path_with_state<'a>(
-  fields: FieldsRef<'a>,
-  state: &'a dyn bd_state::StateReader,
-  field_key: &str,
-  path: &[JsonPathToken],
-) -> Option<Cow<'a, str>> {
-  if let Some(value) = state.get(Scope::OotbFields, field_key) {
-    return resolve_json_path_from_state(value, path);
-  }
-
-  if let Some(value) = fields.field(field_key) {
-    return resolve_json_path(value, path);
-  }
-
-  state
-    .get(Scope::CustomFields, field_key)
-    .and_then(|value| resolve_json_path_from_state(value, path))
 }
