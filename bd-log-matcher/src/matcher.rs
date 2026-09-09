@@ -299,13 +299,13 @@ impl Tree {
           let Some(value) = resolved_field_value_with_state(fields, state, field_key) else {
             return MatchResult::NotMatched;
           };
-          let Some(input) = value.resolve_json_path(path) else {
-            return MatchResult::NotMatched;
-          };
           // TODO: Fold Disabled into the planned general matcher evaluation context/cache work.
           if !context.json_path_string_matching_enabled && value.is_json_string() {
             return MatchResult::Disabled;
           }
+          let Some(input) = value.resolve_json_path(path) else {
+            return MatchResult::NotMatched;
+          };
           matcher.evaluate(input.as_ref(), extracted_fields)
         },
         Leaf::Sampled(sample_rate) => sample_matches_with_roll(*sample_rate, sampled_roll),
@@ -507,7 +507,18 @@ pub fn field_value_with_state<'a>(
   state: &'a dyn bd_state::StateReader,
   field_key: &str,
 ) -> Option<Cow<'a, str>> {
-  resolved_field_value_with_state(fields, state, field_key).and_then(ResolvedFieldValue::as_cow)
+  // An OOTB state entry is authoritative even when it cannot be represented as a string. After
+  // that, retain FieldsRef::field_value's captured-to-matching-only fallback before considering
+  // the lowest-priority custom state layer.
+  if let Some(value) = state.get(Scope::OotbFields, field_key) {
+    return state_value_as_cow(value);
+  }
+
+  fields.field_value(field_key).or_else(|| {
+    state
+      .get(Scope::CustomFields, field_key)
+      .and_then(state_value_as_cow)
+  })
 }
 
 /// Views an integer-compatible log-field value persisted in state without cloning its protobuf.
@@ -605,8 +616,7 @@ impl InputType {
   ) -> Option<Cow<'a, str>> {
     match self {
       Self::Message => message.as_str().map(Cow::Borrowed),
-      Self::Field(field_key) => resolved_field_value_with_state(fields, state, field_key)
-        .and_then(ResolvedFieldValue::as_cow),
+      Self::Field(field_key) => field_value_with_state(fields, state, field_key),
       Self::State(scope, flag_key) => state
         .get(*scope, flag_key)
         .and_then(|value| ResolvedFieldValue::State(value).as_cow()),

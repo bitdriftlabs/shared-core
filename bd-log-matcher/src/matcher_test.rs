@@ -7,7 +7,7 @@
 
 use crate::builder;
 use crate::matcher::base_log_matcher::tag_match::Value_match::DoubleValueMatch;
-use crate::matcher::{MatchContext, RandomNumberGenerator, Tree};
+use crate::matcher::{MatchContext, RandomNumberGenerator, Tree, field_value_with_state};
 use crate::test::TestMatcher;
 use ahash::AHashMap;
 use bd_log_primitives::tiny_set::TinyMap;
@@ -1581,6 +1581,42 @@ fn virtual_state_fields_follow_log_field_precedence() {
 }
 
 #[test]
+fn virtual_state_fields_preserve_matching_field_fallback() {
+  let captured_fields: LogFields = [("shared".into(), DataValue::Bytes(vec![0]))].into();
+  let matching_fields: LogFields = [(
+    "shared".into(),
+    DataValue::String("matching-only".to_string()),
+  )]
+  .into();
+  let mut state = bd_state::InMemoryStateReader::default();
+
+  assert_eq!(
+    field_value_with_state(
+      FieldsRef::new(&captured_fields, &matching_fields),
+      &state,
+      "shared",
+    )
+    .as_deref(),
+    Some("matching-only")
+  );
+
+  state.insert(
+    bd_state::Scope::OotbFields,
+    "shared",
+    persisted_log_field_state_value(DataValue::Bytes(vec![1])),
+  );
+  assert_eq!(
+    field_value_with_state(
+      FieldsRef::new(&captured_fields, &matching_fields),
+      &state,
+      "shared",
+    )
+    .as_deref(),
+    None
+  );
+}
+
+#[test]
 fn virtual_state_fields_support_json_path_matching() {
   let matcher = simple_log_matcher(TagMatch(base_log_matcher::TagMatch {
     tag_key: "payload".to_string(),
@@ -1653,6 +1689,25 @@ fn virtual_state_json_strings_match_and_honor_the_runtime_gate() {
     MatchContext::default(),
   ));
   assert!(!tree.do_match(
+    log_level::DEBUG,
+    LogType::NORMAL,
+    &message,
+    FieldsRef::new(&fields, &EMPTY_FIELDS),
+    &state,
+    &TinyMap::default(),
+    0,
+    MatchContext {
+      json_path_string_matching_enabled: false,
+    },
+  ));
+
+  let negated_tree = Tree::new(&builder::not(matcher)).expect("JSON matcher should be valid");
+  state.insert(
+    bd_state::Scope::CustomFields,
+    "payload",
+    persisted_log_field_state_value(DataValue::String(r#"{"other":"value"}"#.to_string())),
+  );
+  assert!(!negated_tree.do_match(
     log_level::DEBUG,
     LogType::NORMAL,
     &message,

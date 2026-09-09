@@ -1065,11 +1065,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             "initial {scope:?} log field {key:?} exceeds state capacity; using metadata value: {e}"
           );
 
-          // Do not let a stale OOTB virtual value shadow the initial metadata field.
-          if scope == Scope::OotbFields
-            && let Err(e) = state_store.remove(Scope::OotbFields, &key).await
-          {
-            log::warn!("failed to clear stale OOTB log field {key:?}: {e}");
+          // Do not let a stale virtual value disagree with the initial metadata field.
+          if let Err(e) = state_store.remove(scope, &key).await {
+            log::warn!("failed to clear stale {scope:?} log field {key:?}: {e}");
           }
         },
       }
