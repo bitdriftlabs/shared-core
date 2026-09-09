@@ -309,7 +309,9 @@ async fn protected_high_watermark_and_blocking_flush_request_soft_gate_release()
   );
   assert_eq!(
     StartupGateReleaseRequest::ProtectedHighWatermark,
-    high_watermark_buffer.wait_for_soft_gate_release_request().await
+    high_watermark_buffer
+      .wait_for_soft_gate_release_request()
+      .await
   );
   assert!(!high_watermark_buffer.is_gate_open());
   assert!(high_watermark_buffer.open_gate());
