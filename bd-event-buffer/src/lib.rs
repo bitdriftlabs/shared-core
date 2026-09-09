@@ -684,7 +684,7 @@ pub enum FlushAdmissionOutcome {
   /// Configuration has not finished initializing the startup gate, so the flush completed as an
   /// immediate no-op.
   SkippedBeforeStartupGateReady,
-  /// The flush entered normal EventBuffer admission and has the recorded retention outcome.
+  /// The flush entered normal `EventBuffer` admission and has the recorded retention outcome.
   Admission(AdmissionOutcome),
 }
 
