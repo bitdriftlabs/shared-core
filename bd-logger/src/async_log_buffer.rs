@@ -1059,7 +1059,18 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         },
         Ok(_) => {},
         Err(e) => {
-          log::warn!("failed to persist initial {scope:?} log field {key:?}: {e}");
+          // The state store retains live values after journal failures, so this is a capacity
+          // rejection. The initial field remains available from metadata.
+          log::warn!(
+            "initial {scope:?} log field {key:?} exceeds state capacity; using metadata value: {e}"
+          );
+
+          // Do not let a stale OOTB virtual value shadow the initial metadata field.
+          if scope == Scope::OotbFields
+            && let Err(e) = state_store.remove(Scope::OotbFields, &key).await
+          {
+            log::warn!("failed to clear stale OOTB log field {key:?}: {e}");
+          }
         },
       }
     }
