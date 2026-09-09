@@ -4,6 +4,10 @@ source_info_gated_mod! {
   scope => "with_source/scope.rs",
 }
 
-pub use self::state_payload as payload;
+pub mod payload {
+  pub use super::state_payload::*;
+  pub use crate::protos::logging::payload::Data;
+}
+
 use super::value_matcher::value_matcher;
 use bd_pgv::generated::protos::validate;
