@@ -592,9 +592,10 @@ the bounded outcome needed to calibrate its delay:
   eligibility (`no_prior_crash`, `unknown`, or `may_have_prior_crash`), and record gate-hold
   duration. This distinguishes the zero-delay, default-delay, and crash-recovery-delay cohorts
   without a high-cardinality dimension.
-- Once per startup at most, record a previous-process crash-report batch admitted after the gate
+- Once per startup at most, record a previous-process crash-report batch observed after the gate
   opened, labeled by the same eligibility. This gives a bounded rate for work that missed the
-  replay window without making the metric proportional to a report's log expansion.
+  replay window even when normal post-gate capacity rejects it, without making the metric
+  proportional to a report's log expansion.
 
 We intentionally do not export queue depth, queued bytes, oldest-entry age, lock timing, or
 per-entry outcome counters. The late-work metric is a startup-level latch, not a per-entry

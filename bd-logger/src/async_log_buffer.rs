@@ -1394,16 +1394,14 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // AsyncLogBuffer is the sole production caller of `open_gate`, so its single event loop can
     // observe whether this previous-process batch missed the gate without a separate lock.
     let late_previous_process_work = matches!(session, crate::ReportProcessingSession::PreviousRun)
-      && self.event_buffer.is_gate_open();
-    let mut admitted = false;
+      && self.event_buffer.is_gate_open()
+      && !entries.is_empty();
     for outcome in self.event_buffer.admit_batch(entries) {
-      if outcome == AdmissionOutcome::Admitted {
-        admitted = true;
-      } else {
+      if outcome != AdmissionOutcome::Admitted {
         log::debug!("failed to admit crash report: {outcome:?}");
       }
     }
-    if late_previous_process_work && admitted && !self.late_previous_process_work_observed {
+    if late_previous_process_work && !self.late_previous_process_work_observed {
       // A report can produce many logs. Count only the first late batch so the metric is a
       // per-startup rate rather than a function of report expansion.
       self.late_previous_process_work_observed = true;
