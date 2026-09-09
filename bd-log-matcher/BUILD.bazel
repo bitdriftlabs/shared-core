@@ -1,9 +1,9 @@
-load("@crates//:defs.bzl", "aliases", "all_crate_deps")
-load("//tools/rust:tests.bzl", "rust_library_with_test")
+load("//tools/rust:feature_variants.bzl", "rust_library_with_feature_variants")
+load("//tools/rust:tests.bzl", "rust_library_test")
 
 package(default_visibility = ["//visibility:public"])
 
-rust_library_with_test(
+rust_library_with_feature_variants(
     name = "bd-log-matcher",
     srcs = glob(
         ["src/**/*.rs"],
@@ -13,5 +13,9 @@ rust_library_with_test(
     crate_name = "bd_log_matcher",
     crate_root = "src/lib.rs",
     edition = "2024",
-    deps = all_crate_deps(normal = True),
+    feature_variants = {
+        "fuzz": {"crate_features": ["fuzzing"]},
+    },
 )
+
+rust_library_test(crate = ":bd-log-matcher")

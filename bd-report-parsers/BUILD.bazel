@@ -13,9 +13,14 @@ rust_library_with_test(
     crate_name = "bd_report_parsers",
     crate_root = "src/lib.rs",
     edition = "2024",
+    rustc_env = {"INSTA_WORKSPACE_ROOT": "."},
     test_data = glob([
         "fixtures/**",
         "src/snapshots/**",
     ]),
+    test_env = {
+        "CARGO_MANIFEST_DIR": "shared-core/bd-report-parsers",
+        "INSTA_WORKSPACE_ROOT": ".",
+    },
     deps = all_crate_deps(normal = True),
 )

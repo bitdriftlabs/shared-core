@@ -27,18 +27,8 @@ const THIRDPARTY_INCLUDES: &[&str] = &["../api/thirdparty"];
 pub fn get_proto_configs() -> Vec<ProtoConfig> {
   vec![
     ProtoConfig {
-      output_dir: "src/protos/bdtail_public",
-      inputs: &["../api/src/bitdrift/public/stream/bdtail/v1/bdtail_api.proto"],
-      includes: PROTO_INCLUDES,
-      use_tokio_bytes: false,
-      file_header: true,
-    },
-    ProtoConfig {
       output_dir: "src/protos/bdtail",
-      inputs: &[
-        "../api/src/bitdrift_public/protobuf/bdtail/v1/bdtail_config.proto",
-        "../api/src/bitdrift_public/protobuf/bdtail/v1/bdtail_api.proto",
-      ],
+      inputs: &["../api/src/bitdrift_public/protobuf/bdtail/v1/bdtail_config.proto"],
       includes: PROTO_INCLUDES,
       use_tokio_bytes: true,
       file_header: true,
@@ -230,6 +220,13 @@ pub fn get_public_api_proto_configs() -> Vec<ProtoConfig> {
     ProtoConfig {
       output_dir: "src/protos/public_api/timeline",
       inputs: &["../api/src/bitdrift/public/unary/timeline/v1/api.proto"],
+      includes: PROTO_INCLUDES,
+      use_tokio_bytes: false,
+      file_header: true,
+    },
+    ProtoConfig {
+      output_dir: "src/protos/public_api/bdtail",
+      inputs: &["../api/src/bitdrift/public/stream/bdtail/v1/bdtail_api.proto"],
       includes: PROTO_INCLUDES,
       use_tokio_bytes: false,
       file_header: true,

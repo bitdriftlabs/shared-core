@@ -163,14 +163,17 @@ impl flatbuffers::SimpleToVerifyInSlice for ReportType {}
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 pub const ENUM_MIN_PLATFORM: i8 = 0;
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-pub const ENUM_MAX_PLATFORM: i8 = 3;
+pub const ENUM_MAX_PLATFORM: i8 = 6;
 #[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
 #[allow(non_camel_case_types)]
-pub const ENUM_VALUES_PLATFORM: [Platform; 4] = [
+pub const ENUM_VALUES_PLATFORM: [Platform; 7] = [
   Platform::Unknown,
   Platform::Android,
   Platform::iOS,
   Platform::macOS,
+  Platform::tvOS,
+  Platform::visionOS,
+  Platform::watchOS,
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -182,14 +185,20 @@ impl Platform {
   pub const Android: Self = Self(1);
   pub const iOS: Self = Self(2);
   pub const macOS: Self = Self(3);
+  pub const tvOS: Self = Self(4);
+  pub const visionOS: Self = Self(5);
+  pub const watchOS: Self = Self(6);
 
   pub const ENUM_MIN: i8 = 0;
-  pub const ENUM_MAX: i8 = 3;
+  pub const ENUM_MAX: i8 = 6;
   pub const ENUM_VALUES: &'static [Self] = &[
     Self::Unknown,
     Self::Android,
     Self::iOS,
     Self::macOS,
+    Self::tvOS,
+    Self::visionOS,
+    Self::watchOS,
   ];
   /// Returns the variant's name or "" if unknown.
   pub fn variant_name(self) -> Option<&'static str> {
@@ -198,6 +207,9 @@ impl Platform {
       Self::Android => Some("Android"),
       Self::iOS => Some("iOS"),
       Self::macOS => Some("macOS"),
+      Self::tvOS => Some("tvOS"),
+      Self::visionOS => Some("visionOS"),
+      Self::watchOS => Some("watchOS"),
       _ => None,
     }
   }

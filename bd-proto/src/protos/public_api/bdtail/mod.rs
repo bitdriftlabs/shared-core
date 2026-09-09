@@ -5,9 +5,9 @@
 // LICENSE file or at:
 // https://polyformproject.org/wp-content/uploads/2020/06/PolyForm-Shield-1.0.0.txt
 
-source_info_gated_mod! {
-  bdtail_config => "with_source/bdtail_config.rs",
-}
-
-use super::log_matcher::log_matcher;
+use crate::protos::client::matcher;
+use crate::protos::log_matcher::log_matcher;
+use crate::protos::logging::payload;
 use bd_pgv::generated::protos::validate;
+
+pub mod bdtail_api;
