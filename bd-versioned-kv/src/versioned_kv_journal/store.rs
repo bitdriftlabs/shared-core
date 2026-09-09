@@ -276,6 +276,15 @@ struct PersistentStore {
   max_capacity_bytes: usize,
   // Stats
   stats: CommonStats,
+  // Keeps post-mutation rotation failures deterministic without relying on filesystem faults.
+  #[cfg(test)]
+  fail_next_post_update_rotation: bool,
+}
+
+/// The result of a persistent mutation, including a failure that occurred after it committed.
+enum PersistentOperation<T> {
+  Persisted(T),
+  CommittedWithRotationFailure { result: T, error: anyhow::Error },
 }
 
 impl PersistentStore {
@@ -356,6 +365,8 @@ impl PersistentStore {
         initial_buffer_size: config.initial_buffer_size,
         max_capacity_bytes: config.max_capacity_bytes,
         stats,
+        #[cfg(test)]
+        fail_next_post_update_rotation: false,
       },
       data_loss,
     ))
@@ -442,11 +453,14 @@ impl PersistentStore {
     scope: Scope,
     key: &str,
     value: StateValue,
-  ) -> Result<(u64, Option<StateValue>), UpdateError> {
+  ) -> Result<PersistentOperation<(u64, Option<StateValue>)>, UpdateError> {
     let (timestamp, old_value) = if value.value_type.is_none() {
       // Deletion
       if !self.cached_map.contains_key(scope, key) {
-        return Ok((self.current_timestamp(), None));
+        return Ok(PersistentOperation::Persisted((
+          self.current_timestamp(),
+          None,
+        )));
       }
       let timestamp = self
         .try_insert_with_rotation(scope, key, &StateValue::default())
@@ -457,7 +471,10 @@ impl PersistentStore {
       if let Some(existing) = self.cached_map.get(scope, key)
         && existing.value == value
       {
-        return Ok((existing.timestamp, Some(existing.value.clone())));
+        return Ok(PersistentOperation::Persisted((
+          existing.timestamp,
+          Some(existing.value.clone()),
+        )));
       }
       // Insert/update
       let timestamp = self.try_insert_with_rotation(scope, key, &value).await?;
@@ -475,25 +492,25 @@ impl PersistentStore {
       (timestamp, old_value)
     };
 
-    if self.journal.is_high_water_mark_triggered() {
-      self.rotate_journal().await?;
+    let result = (timestamp, old_value);
+    match self.rotate_after_update().await {
+      Ok(()) => Ok(PersistentOperation::Persisted(result)),
+      Err(error) => Ok(PersistentOperation::CommittedWithRotationFailure { result, error }),
     }
-
-    Ok((timestamp, old_value))
   }
 
   async fn extend_entries(
     &mut self,
     entries: Vec<(Scope, String, StateValue)>,
-  ) -> Result<u64, UpdateError> {
+  ) -> Result<PersistentOperation<u64>, UpdateError> {
     if entries.is_empty() {
       // Return zero timestamp for empty batch (no-op)
-      return Ok(self.current_timestamp());
+      return Ok(PersistentOperation::Persisted(self.current_timestamp()));
     }
 
     let entries = self.filter_noop_entries(entries);
     if entries.is_empty() {
-      return Ok(self.current_timestamp());
+      return Ok(PersistentOperation::Persisted(self.current_timestamp()));
     }
 
     // Try to insert all entries with rotation handling, preserving order
@@ -515,20 +532,22 @@ impl PersistentStore {
     }
 
     // Check if rotation is needed after extend
-    if self.journal.is_high_water_mark_triggered() {
-      self.rotate_journal().await?;
+    match self.rotate_after_update().await {
+      Ok(()) => Ok(PersistentOperation::Persisted(timestamp)),
+      Err(error) => Ok(PersistentOperation::CommittedWithRotationFailure {
+        result: timestamp,
+        error,
+      }),
     }
-
-    Ok(timestamp)
   }
 
   async fn remove(
     &mut self,
     scope: Scope,
     key: &str,
-  ) -> Result<Option<(u64, StateValue)>, UpdateError> {
+  ) -> Result<PersistentOperation<Option<(u64, StateValue)>>, UpdateError> {
     if !self.cached_map.contains_key(scope, key) {
-      return Ok(None);
+      return Ok(PersistentOperation::Persisted(None));
     }
 
     let timestamp = self
@@ -536,11 +555,25 @@ impl PersistentStore {
       .await?;
     let old_value = self.cached_map.remove(scope, key);
 
+    let result = old_value.map(|v| (timestamp, v.value));
+    match self.rotate_after_update().await {
+      Ok(()) => Ok(PersistentOperation::Persisted(result)),
+      Err(error) => Ok(PersistentOperation::CommittedWithRotationFailure { result, error }),
+    }
+  }
+
+  /// Rotates after a committed mutation has advanced the journal high-water mark.
+  async fn rotate_after_update(&mut self) -> anyhow::Result<()> {
+    #[cfg(test)]
+    if std::mem::take(&mut self.fail_next_post_update_rotation) {
+      anyhow::bail!("test-injected post-update rotation failure");
+    }
+
     if self.journal.is_high_water_mark_triggered() {
       self.rotate_journal().await?;
     }
 
-    Ok(old_value.map(|v| (timestamp, v.value)))
+    Ok(())
   }
 
   fn sync(&self) -> anyhow::Result<()> {
@@ -1240,6 +1273,13 @@ impl VersionedKVStore {
     }
   }
 
+  #[cfg(test)]
+  pub(crate) fn fail_next_post_update_rotation_for_testing(&mut self) {
+    if let StoreBackend::Persistent(store) = &mut self.backend {
+      store.fail_next_post_update_rotation = true;
+    }
+  }
+
   /// Get a value by key.
   ///
   /// This operation is O(1) as it reads from the in-memory cache.
@@ -1292,7 +1332,11 @@ impl VersionedKVStore {
   ) -> Result<(u64, Option<StateValue>), UpdateError> {
     if let StoreBackend::Persistent(store) = &mut self.backend {
       match store.insert(scope, &key, value.clone()).await {
-        Ok(result) => return Ok(result),
+        Ok(PersistentOperation::Persisted(result)) => return Ok(result),
+        Ok(PersistentOperation::CommittedWithRotationFailure { result, error }) => {
+          self.fallback_to_in_memory(&error);
+          return Ok(result);
+        },
         Err(UpdateError::System(error)) => self.fallback_to_in_memory(&error),
         Err(error) => return Err(error),
       }
@@ -1327,7 +1371,14 @@ impl VersionedKVStore {
   ) -> Result<u64, UpdateError> {
     if let StoreBackend::Persistent(store) = &mut self.backend {
       match store.extend_entries(entries.clone()).await {
-        Ok(timestamp) => return Ok(timestamp),
+        Ok(PersistentOperation::Persisted(timestamp)) => return Ok(timestamp),
+        Ok(PersistentOperation::CommittedWithRotationFailure {
+          result: timestamp,
+          error,
+        }) => {
+          self.fallback_to_in_memory(&error);
+          return Ok(timestamp);
+        },
         Err(UpdateError::System(error)) => self.fallback_to_in_memory(&error),
         Err(error) => return Err(error),
       }
@@ -1356,7 +1407,11 @@ impl VersionedKVStore {
   ) -> Result<Option<(u64, StateValue)>, UpdateError> {
     if let StoreBackend::Persistent(store) = &mut self.backend {
       match store.remove(scope, key).await {
-        Ok(result) => return Ok(result),
+        Ok(PersistentOperation::Persisted(result)) => return Ok(result),
+        Ok(PersistentOperation::CommittedWithRotationFailure { result, error }) => {
+          self.fallback_to_in_memory(&error);
+          return Ok(result);
+        },
         Err(UpdateError::System(error)) => self.fallback_to_in_memory(&error),
         Err(error) => return Err(error),
       }
