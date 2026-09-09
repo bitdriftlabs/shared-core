@@ -688,8 +688,6 @@ pub trait TestHooks: Send + Sync {
 
   fn startup_replay_gate_opened(&self) {}
 
-  fn startup_replay_delay_extended(&self) {}
-
   fn startup_replay_eligibility_initialized(&self, _eligibility: StartupReplayEligibility) {}
 }
 

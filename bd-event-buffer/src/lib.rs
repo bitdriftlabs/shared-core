@@ -12,9 +12,10 @@ use bd_macros::ApproximateSize;
 use bd_proto::flatbuffers::report::bitdrift_public::fbs::issue_reporting::v_1::MemoryPressureLevel;
 use bd_proto::protos::logging::payload::LogType;
 use bd_stats_common::{Counter as _, labels};
+use std::future::pending;
 use std::sync::Arc;
 use time::OffsetDateTime;
-use tokio::sync::Notify;
+use tokio::sync::{Notify, watch};
 
 #[cfg(test)]
 #[path = "./event_buffer_prop_test.rs"]
@@ -24,8 +25,10 @@ mod prop_tests;
 mod tests;
 
 mod retention;
-
+mod startup_gate;
 use retention::EventBufferState;
+use startup_gate::StartupGate;
+pub use startup_gate::{StartupGateOpening, StartupGateReleaseReason};
 
 //
 // LoggerControl
@@ -242,8 +245,6 @@ struct EventBufferInner {
   state: PlatformMutex<LoggerEventBufferState>,
   // Wakes the consumer when an entry becomes eligible to drain.
   consumer_notify: Notify,
-  // Wakes the consumer when admission requests early startup-gate release.
-  startup_gate_release_request_notify: Notify,
   stats: Option<EventBufferStats>,
   #[cfg(test)]
   test_hooks: Option<Arc<dyn TestHooks>>,
@@ -251,7 +252,7 @@ struct EventBufferInner {
 
 struct LoggerEventBufferState {
   retention: EventBufferState<EventBufferEntry>,
-  startup_gate_ready: bool,
+  startup_gate: StartupGate,
 }
 
 impl EventBuffer {
@@ -297,10 +298,9 @@ impl EventBuffer {
       inner: Arc::new(EventBufferInner {
         state: PlatformMutex::new(LoggerEventBufferState {
           retention: EventBufferState::new(limits),
-          startup_gate_ready: false,
+          startup_gate: StartupGate::default(),
         }),
         consumer_notify: Notify::new(),
-        startup_gate_release_request_notify: Notify::new(),
         stats,
         #[cfg(test)]
         test_hooks,
@@ -310,13 +310,15 @@ impl EventBuffer {
 
   pub fn set_pending_limits(&self, limits: EventBufferLimits) {
     self.inner.state.lock().retention.set_pending_limits(limits);
+    self.inner.consumer_notify.notify_one();
   }
 
   /// Marks the startup gate ready to release. Before this transition, blocking flushes
   /// intentionally complete as no-ops. Marking the gate ready does not begin replay: a blocking
   /// flush becomes an ordered barrier that may request early release.
   pub fn mark_startup_gate_ready(&self) {
-    self.inner.state.lock().startup_gate_ready = true;
+    self.inner.state.lock().startup_gate.ready = true;
+    self.inner.consumer_notify.notify_one();
   }
 
   /// Admits a flush as an ordered control entry once the startup gate is ready. Before then there
@@ -334,7 +336,7 @@ impl EventBuffer {
     let blocking_flush = entry.is_blocking_flush();
     let (outcome, gate_requested, notify_consumer) = {
       let mut state = self.inner.state.lock();
-      if !state.startup_gate_ready && !state.retention.is_closed() {
+      if !state.startup_gate.ready && !state.retention.is_closed() {
         entry.complete();
         return FlushAdmissionOutcome::SkippedBeforeStartupGateReady;
       }
@@ -354,7 +356,7 @@ impl EventBuffer {
       self.inner.consumer_notify.notify_one();
     }
     if gate_requested {
-      self.inner.startup_gate_release_request_notify.notify_one();
+      self.inner.consumer_notify.notify_one();
     }
     FlushAdmissionOutcome::Admission(outcome)
   }
@@ -382,7 +384,7 @@ impl EventBuffer {
       self.inner.consumer_notify.notify_one();
     }
     if gate_requested {
-      self.inner.startup_gate_release_request_notify.notify_one();
+      self.inner.consumer_notify.notify_one();
     }
     outcome
   }
@@ -427,35 +429,74 @@ impl EventBuffer {
       self.inner.consumer_notify.notify_one();
     }
     if gate_requested {
-      self.inner.startup_gate_release_request_notify.notify_one();
+      self.inner.consumer_notify.notify_one();
     }
     outcomes
   }
 
-  pub async fn next_batch(&self, max_entries: usize) -> Vec<EventBufferEntry> {
-    debug_assert!(max_entries > 0, "next_batch requires a non-zero batch size");
-    if max_entries == 0 {
-      return vec![];
-    }
+  /// Starts the startup window when the consumer begins running. A missing delay means the
+  /// platform confirmed there is no prior crash. Configuration readiness is required either way.
+  pub fn start_startup_gate(&self, delay: Option<watch::Receiver<time::Duration>>) {
+    self.inner.state.lock().startup_gate.start(delay);
+  }
+
+  /// Returns eligible entries and, once per startup, the gate opening. An opening can accompany
+  /// an empty batch so consumers can report readiness without waiting for the first entry.
+  pub async fn next_batch(&self, max_entries: usize) -> EventBufferBatch {
+    assert!(max_entries > 0, "next_batch requires a non-zero batch size");
     loop {
       let notified = self.inner.consumer_notify.notified();
       tokio::pin!(notified);
       notified.as_mut().enable();
-      let (batch, closed) = {
+      let (batch, closed, deadline, mut delay) = {
         let mut state = self.inner.state.lock();
+        let LoggerEventBufferState {
+          retention,
+          startup_gate,
+        } = &mut *state;
+        let startup_gate_opened = startup_gate.poll(retention);
+        let entries = retention.take_batch(max_entries);
+        let (deadline, delay) = if retention.is_gate_open() || retention.is_closed() {
+          (None, None)
+        } else {
+          startup_gate.wait_state()
+        };
         (
-          state.retention.take_batch(max_entries),
-          state.retention.is_closed(),
+          EventBufferBatch {
+            entries,
+            startup_gate_opened,
+          },
+          retention.is_closed(),
+          deadline,
+          delay,
         )
       };
-      if !batch.is_empty() || closed {
+      if !batch.entries.is_empty() || batch.startup_gate_opened.is_some() || closed {
         return batch;
       }
       #[cfg(test)]
       if let Some(test_hooks) = &self.inner.test_hooks {
         test_hooks.consumer_waiting();
       }
-      notified.await;
+      tokio::select! {
+        () = notified => {},
+        () = async {
+          if let Some(deadline) = deadline {
+            tokio::time::sleep_until(deadline).await;
+          } else {
+            pending::<()>().await;
+          }
+        } => {},
+        () = async {
+          if let Some(delay) = &mut delay {
+            if delay.changed().await.is_err() {
+              pending::<()>().await;
+            }
+          } else {
+            pending::<()>().await;
+          }
+        } => {},
+      }
     }
   }
 
@@ -481,7 +522,8 @@ impl EventBuffer {
 
   /// Opens the startup gate and starts replay. Once open, it cannot be closed again.
   #[must_use]
-  pub fn open_startup_gate(&self) -> bool {
+  #[cfg(test)]
+  fn open_startup_gate(&self) -> bool {
     let opened = self.inner.state.lock().retention.open_gate();
     if opened {
       self.inner.consumer_notify.notify_waiters();
@@ -492,38 +534,6 @@ impl EventBuffer {
   #[must_use]
   pub fn is_startup_gate_open(&self) -> bool {
     self.inner.state.lock().retention.is_gate_open()
-  }
-
-  /// Reports whether protected work retained behind the startup gate has reached its high
-  /// watermark. The consumer uses this after configuration becomes ready so work that arrived
-  /// before configuration can release immediately instead of waiting for the replay timer.
-  #[must_use]
-  pub fn reaches_protected_high_watermark(&self) -> bool {
-    self
-      .inner
-      .state
-      .lock()
-      .retention
-      .reaches_protected_high_watermark()
-  }
-
-  /// Waits for a pressure or blocking-flush request that may release the startup gate.
-  pub async fn wait_for_startup_gate_release_request(&self) -> StartupGateReleaseRequest {
-    loop {
-      let notified = self.inner.startup_gate_release_request_notify.notified();
-      tokio::pin!(notified);
-      notified.as_mut().enable();
-      if let Some(request) = self
-        .inner
-        .state
-        .lock()
-        .retention
-        .take_gate_release_request()
-      {
-        return request;
-      }
-      notified.await;
-    }
   }
 
   fn request_startup_gate_release(
@@ -690,7 +700,16 @@ pub enum FlushAdmissionOutcome {
 
 /// A protected admission that can release `EventBuffer`'s startup drain gate early.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum StartupGateReleaseRequest {
+pub(crate) enum StartupGateReleaseRequest {
   ProtectedHighWatermark,
   BlockingFlush,
+}
+
+//
+// EventBufferBatch
+//
+
+pub struct EventBufferBatch {
+  pub entries: Vec<EventBufferEntry>,
+  pub startup_gate_opened: Option<StartupGateOpening>,
 }

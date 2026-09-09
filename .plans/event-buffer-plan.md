@@ -519,13 +519,15 @@ Holding continues to capture and prioritize events but does not deliver them.
 The pipeline must be ready before any release, even when there is no replay delay. While the gate
 is holding, runtime updates can extend the selected deadline relative to ALB startup, including
 after the original timer elapsed while waiting for configuration. They cannot shorten the deadline,
-and updates to the other category have no effect. ALB rereads runtime values before timer-driven
-release so a concurrent increase cannot release ingress at the old deadline. Report-processing
+and updates to the other category have no effect. EventBuffer owns the selected runtime watch and
+rereads it before timer-driven release so an available increase cannot release ingress at the old
+deadline. Report-processing
 requests never alter the classification or extend the deadline.
 
 Before configuration is ready, a high-watermark crossing is retained as an early-release request;
-it cannot deliver work without a pipeline. At configuration readiness, refresh the selected delay,
-record the current `(log_limit, total_limit)` pair through `EventBuffer::set_pending_limits`, and
+it cannot deliver work without a pipeline. After configuration application completes, first
+record the current `(log_limit, total_limit)` pair through `EventBuffer::set_pending_limits`, then
+mark the startup gate ready, and
 retain the same runtime watch for later budget changes. The pair becomes effective on the next
 EventBuffer admission. If the buffer is already at the high watermark calculated from the runtime
 overall budget, release immediately with reason `high_watermark`; otherwise wait for any remaining
@@ -537,8 +539,17 @@ configuration making the startup gate ready, so later flushes use normal ordered
 Configuration construction, including restoration of already-persisted workflow actions, remains
 outside the EventBuffer ordering domain and keeps its current startup behavior while the gate is
 holding. `InitLifecycle::LogProcessingStarted` and the SDK "running" status move to the first
-gate release, immediately before the first EventBuffer batch is delivered; creating the pipeline
-alone is not reported as log processing.
+gate release, before processing the accompanying EventBuffer batch; creating the pipeline alone
+is not reported as log processing. `next_batch` returns the opening reason and hold duration exactly
+once, including when there are no queued entries, so lifecycle reporting never waits for ingress.
+
+EventBuffer owns readiness, the deadline, monotonic extensions, and release causes. Only its
+`next_batch` consumer transitions the gate to open. Producers retain flush barriers or watermark
+requests and wake the ordinary consumer; there is no separate release-request waiter. The consumer
+waits on its notification, selected delay watch, or deadline without a background task. Because ALB
+does not poll `next_batch` while awaiting report discovery, those reports retain startup priority
+even if a producer requests release during discovery. Cancellation of `next_batch` preserves the
+deadline and release request, and shutdown drops retained work without opening the gate.
 
 Removing `PreConfigBuffer` at this point means startup events are retained in their original
 EventBuffer representation, so the same priority/eviction policy applies before and after
@@ -563,8 +574,8 @@ protected retention but is not reordered ahead of current-process work. This avo
 drain-time O(n) partition and retroactively changing workflow order after current-process events
 have started flowing.
 
-A protected event that brings the buffer to at least 80% of the overall budget opens the startup
-gate early with reason `high_watermark`. Low-priority traffic alone does not shorten the startup
+A protected event that brings the buffer to at least 80% of the overall budget requests early
+opening on the next consumption with reason `high_watermark`. Low-priority traffic alone does not shorten the startup
 window. If the consumer still cannot catch up, the normal hard-cap eviction policy applies;
 priority-event loss is measured rather than exceeding capacity.
 
@@ -574,7 +585,7 @@ reports have no reliable prior-session association; their presence cannot overri
 construction-time classification.
 
 An admitted `FlushState(Block::Yes)` after the startup gate is ready is also a gate barrier: it
-seals the gate, drains the
+requests sealing on the next consumption, which drains the
 already-admitted startup-previous lane first, then drains through its ordered position before its
 completion resolves. It does not bypass older work. An admission-rejected blocking flush resolves
 immediately as a terminal drop and cannot act as a barrier. `FlushState(Block::No)` stays behind

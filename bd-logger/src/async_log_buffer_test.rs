@@ -71,13 +71,13 @@ use bd_time::{SystemTimeProvider, TimeDurationExt};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
+use futures::poll;
 use std::future;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use time::OffsetDateTime;
 use time::ext::{NumericalDuration, NumericalStdDuration};
 use tokio::sync::{Notify, mpsc};
-use tokio::time::Instant;
 use tokio_test::assert_ok;
 
 //
@@ -151,12 +151,6 @@ impl crate::TestHooks for AsyncLogBufferTestHooks {
   fn startup_replay_gate_opened(&self) {
     if let Some(delegate) = &self.delegate {
       delegate.startup_replay_gate_opened();
-    }
-  }
-
-  fn startup_replay_delay_extended(&self) {
-    if let Some(delegate) = &self.delegate {
-      delegate.startup_replay_delay_extended();
     }
   }
 
@@ -482,10 +476,6 @@ async fn runtime_startup_replay_delay_extension_rearms_the_running_gate() {
     ),
   ] {
     let mut setup = Setup::new();
-    let delay_extended = Arc::new(Notify::new());
-    setup.test_hooks = Some(Arc::new(StartupReplayDelayExtendedHook(
-      delay_extended.clone(),
-    )));
     let (config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
     let (buffer, sender) = setup
       .make_test_async_log_buffer_with_startup_replay_eligibility(config_update_rx, eligibility);
@@ -513,7 +503,7 @@ async fn runtime_startup_replay_delay_extension_rearms_the_running_gate() {
       )]))
       .await
       .unwrap();
-    delay_extended.notified().await;
+    // EventBuffer reads the updated runtime watch before considering the old deadline.
 
     tokio::time::advance(default_ms.std_milliseconds()).await;
     tokio::task::yield_now().await;
@@ -525,14 +515,6 @@ async fn runtime_startup_replay_delay_extension_rearms_the_running_gate() {
 
     shutdown_trigger.shutdown().await;
     handle.await.unwrap();
-  }
-}
-
-struct StartupReplayDelayExtendedHook(Arc<Notify>);
-
-impl crate::TestHooks for StartupReplayDelayExtendedHook {
-  fn startup_replay_delay_extended(&self) {
-    self.0.notify_one();
   }
 }
 
@@ -588,6 +570,78 @@ async fn report_processing_does_not_change_the_selected_startup_delay() {
 
 struct ReportProcessingSignal(Arc<Notify>);
 
+struct PausedReportProcessor {
+  entered: Arc<Notify>,
+  resume: Arc<Notify>,
+}
+
+impl ReportProcessor for PausedReportProcessor {
+  async fn process_all_pending_reports(&self) -> Vec<bd_crash_handler::CrashLog> {
+    self.entered.notify_one();
+    self.resume.notified().await;
+    vec![crash_log("previous", OffsetDateTime::UNIX_EPOCH)]
+  }
+}
+
+#[tokio::test]
+async fn flush_during_report_discovery_preserves_previous_process_replay_priority() {
+  let mut setup = Setup::new();
+  setup
+    .runtime
+    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
+      bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
+      ValueKind::Int(60_000),
+    )]))
+    .await
+    .unwrap();
+  let (config_tx, config_rx) = mpsc::channel(1);
+  let (mut buffer, sender) = setup.make_test_async_log_buffer(config_rx);
+  let (report_tx, report_rx) = mpsc::channel(1);
+  buffer.report_processor_rx = report_rx;
+  let event_buffer = buffer.event_buffer.clone();
+  let entered = Arc::new(Notify::new());
+  let resume = Arc::new(Notify::new());
+  let state_store = TestStore::new().await;
+  let shutdown = ComponentShutdownTrigger::default();
+  let handle = tokio::spawn(buffer.run_with_shutdown(
+    state_store.take_inner(),
+    PausedReportProcessor {
+      entered: entered.clone(),
+      resume: resume.clone(),
+    },
+    shutdown.make_shutdown(),
+  ));
+  config_tx
+    .send(setup.make_config_update(WorkflowsConfiguration::default()))
+    .await
+    .unwrap();
+  wait_for_startup_gate_ready(&setup).await;
+  sender.try_send_log(normal_log("current")).unwrap();
+  report_tx
+    .send(crate::logger::ReportProcessingRequest {
+      session: crate::ReportProcessingSession::PreviousRun,
+    })
+    .await
+    .unwrap();
+  entered.notified().await;
+  let (completion, receiver) = bd_completion::Sender::new();
+  assert_eq!(
+    bd_event_buffer::FlushAdmissionOutcome::Admission(bd_event_buffer::AdmissionOutcome::Admitted),
+    event_buffer.admit_flush(Some(completion))
+  );
+  assert!(!event_buffer.is_startup_gate_open());
+  resume.notify_one();
+  receiver.recv().await.unwrap();
+  assert_eq!(vec!["previous", "current"], *setup.replayer_logs.lock());
+  setup.collector.assert_counter_eq(
+    1,
+    "logger:event_buffer:startup_replay_gate_opened",
+    labels!("reason" => "barrier", "eligibility" => "unknown"),
+  );
+  shutdown.shutdown().await;
+  handle.await.unwrap();
+}
+
 impl ReportProcessor for ReportProcessingSignal {
   fn process_all_pending_reports(
     &self,
@@ -608,9 +662,9 @@ async fn before_startup_gate_ready_blocking_flush_completes_without_event_buffer
     poll_callback: None,
   }));
 
-  assert!(buffer.event_buffer.open_startup_gate());
+  buffer.event_buffer.mark_startup_gate_ready();
   assert_ok!(sender.try_send_log(normal_log("after early flush")));
-  let entries = buffer.event_buffer.next_batch(2).await;
+  let entries = buffer.event_buffer.next_batch(2).await.entries;
   assert!(matches!(
     entries.as_slice(),
     [EventBufferEntry::Ingress(LoggerIngressEvent {
@@ -799,55 +853,57 @@ async fn startup_replay_classification_selects_independent_configured_delays() {
       ]))
       .await
       .unwrap();
-    let (_tx, rx) = tokio::sync::mpsc::channel(1);
+    let (_tx, rx) = mpsc::channel(1);
     let (mut buffer, _) =
       setup.make_test_async_log_buffer_with_startup_replay_eligibility(rx, eligibility);
-    buffer.start_startup_replay_delay();
-    if expected_ms == 0 {
-      assert!(buffer.startup_gate.timer_elapsed);
-      assert!(buffer.startup_gate_deadline.is_none());
-    } else {
-      assert_eq!(
-        Some(Instant::now() + expected_ms.std_milliseconds()),
-        buffer.startup_gate_deadline
-      );
-      assert!(!buffer.startup_gate.timer_elapsed);
+    buffer
+      .event_buffer
+      .start_startup_gate(buffer.startup_replay_delay.take());
+    assert!(poll!(std::pin::pin!(buffer.event_buffer.next_batch(1))).is_pending());
+    buffer.event_buffer.mark_startup_gate_ready();
+    if expected_ms > 0 {
+      assert!(poll!(std::pin::pin!(buffer.event_buffer.next_batch(1))).is_pending());
+      tokio::time::advance((expected_ms - 1).std_milliseconds()).await;
+      assert!(poll!(std::pin::pin!(buffer.event_buffer.next_batch(1))).is_pending());
+      tokio::time::advance(1.std_milliseconds()).await;
     }
-    buffer.maybe_release_startup_gate();
-    assert!(
-      !buffer.event_buffer.is_startup_gate_open(),
-      "configuration is still required"
-    );
+    let batch = buffer.event_buffer.next_batch(1).await;
+    assert!(batch.entries.is_empty());
+    let opening = batch.startup_gate_opened.unwrap();
+    assert_eq!(expected_ms.std_milliseconds(), opening.hold_duration);
+    buffer.record_startup_gate_opening(opening);
+    setup.collector.assert_counter_eq(1, "logger:event_buffer:startup_replay_gate_opened",
+      labels!("reason" => if expected_ms == 0 { "no_prior_crash" } else { "timer" }, "eligibility" => eligibility.label()));
   }
 }
 
 #[tokio::test(start_paused = true)]
-async fn startup_replay_runtime_updates_extend_only_the_selected_delay() {
-  for (eligibility, initial_ms, selected, other) in [
+async fn startup_replay_ignores_updates_to_the_unselected_delay() {
+  for (eligibility, expected_ms, other) in [
     (
       StartupReplayEligibility::Unknown,
       50,
-      bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
       bd_runtime::runtime::event_buffer::StartupReplayCrashDelayFlag::path(),
     ),
     (
       StartupReplayEligibility::MayHavePriorCrash,
       1_000,
-      bd_runtime::runtime::event_buffer::StartupReplayCrashDelayFlag::path(),
+      bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
+    ),
+    (
+      StartupReplayEligibility::NoPriorCrash,
+      0,
       bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
     ),
   ] {
     let mut setup = Setup::new();
-    let (_tx, rx) = tokio::sync::mpsc::channel(1);
+    let (_tx, rx) = mpsc::channel(1);
     let (mut buffer, _) =
       setup.make_test_async_log_buffer_with_startup_replay_eligibility(rx, eligibility);
-    buffer.start_startup_replay_delay();
-    let started = buffer.startup_started_at.unwrap();
-    assert_eq!(
-      Some(started + initial_ms.std_milliseconds()),
-      buffer.startup_gate_deadline
-    );
-
+    buffer
+      .event_buffer
+      .start_startup_gate(buffer.startup_replay_delay.take());
+    assert!(poll!(std::pin::pin!(buffer.event_buffer.next_batch(1))).is_pending());
     setup
       .runtime
       .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
@@ -856,86 +912,22 @@ async fn startup_replay_runtime_updates_extend_only_the_selected_delay() {
       )]))
       .await
       .unwrap();
-    buffer.refresh_startup_replay_delay();
+    buffer.event_buffer.mark_startup_gate_ready();
+    if expected_ms > 0 {
+      assert!(poll!(std::pin::pin!(buffer.event_buffer.next_batch(1))).is_pending());
+      tokio::time::advance(expected_ms.std_milliseconds()).await;
+    }
     assert_eq!(
-      Some(started + initial_ms.std_milliseconds()),
-      buffer.startup_gate_deadline
-    );
-
-    // The original timer elapsed before configuration. A longer delay must re-arm the startup gate.
-    tokio::time::advance(initial_ms.std_milliseconds()).await;
-    buffer.startup_gate.timer_elapsed = true;
-    setup
-      .runtime
-      .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
-        selected,
-        ValueKind::Int(2_000),
-      )]))
-      .await
-      .unwrap();
-    buffer.refresh_startup_replay_delay();
-    assert_eq!(
-      Some(started + 2.std_seconds()),
-      buffer.startup_gate_deadline
-    );
-    assert!(!buffer.startup_gate.timer_elapsed);
-    buffer.maybe_release_startup_gate();
-    assert!(!buffer.event_buffer.is_startup_gate_open());
-
-    setup
-      .runtime
-      .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
-        selected,
-        ValueKind::Int(0),
-      )]))
-      .await
-      .unwrap();
-    buffer.refresh_startup_replay_delay();
-    assert_eq!(
-      Some(started + 2.std_seconds()),
-      buffer.startup_gate_deadline
+      expected_ms.std_milliseconds(),
+      buffer
+        .event_buffer
+        .next_batch(1)
+        .await
+        .startup_gate_opened
+        .unwrap()
+        .hold_duration
     );
   }
-}
-
-#[tokio::test]
-async fn confirmed_no_prior_crash_releases_when_pipeline_is_ready_without_delay() {
-  let mut setup = Setup::new();
-  let (_tx, rx) = tokio::sync::mpsc::channel(1);
-  let (mut buffer, _) = setup.make_test_async_log_buffer(rx);
-  buffer.startup_replay_eligibility = StartupReplayEligibility::NoPriorCrash;
-  buffer.start_startup_replay_delay();
-  buffer.maybe_release_startup_gate();
-  assert!(!buffer.event_buffer.is_startup_gate_open());
-
-  setup
-    .runtime
-    .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![
-      (
-        bd_runtime::runtime::event_buffer::StartupReplayDelayFlag::path(),
-        ValueKind::Int(5_000),
-      ),
-      (
-        bd_runtime::runtime::event_buffer::StartupReplayCrashDelayFlag::path(),
-        ValueKind::Int(5_000),
-      ),
-    ]))
-    .await
-    .unwrap();
-  buffer.refresh_startup_replay_delay();
-  assert!(buffer.startup_gate.timer_elapsed);
-  assert!(buffer.startup_gate_deadline.is_none());
-
-  let mut buffer = buffer
-    .update(setup.make_config_update(WorkflowsConfiguration::default()))
-    .await;
-  buffer.maybe_release_startup_gate();
-  assert!(buffer.event_buffer.is_startup_gate_open());
-  setup.collector.assert_counter_eq(
-    1,
-    "logger:event_buffer:startup_replay_gate_opened",
-    labels!("reason" => "no_prior_crash", "eligibility" => "no_prior_crash"),
-  );
 }
 
 #[tokio::test(start_paused = true)]
@@ -1135,9 +1127,9 @@ async fn current_crash_reports_are_admitted_in_report_order() {
     report_processor.process_all_pending_reports().await,
     &crate::ReportProcessingSession::Current,
   );
-  assert!(buffer.event_buffer.open_startup_gate());
+  buffer.event_buffer.mark_startup_gate_ready();
 
-  let entries = buffer.event_buffer.next_batch(2).await;
+  let entries = buffer.event_buffer.next_batch(2).await.entries;
   assert_eq!(2, entries.len());
   for (entry, (expected_message, expected_timestamp)) in entries
     .into_iter()
@@ -1170,7 +1162,15 @@ async fn late_previous_process_crash_work_is_recorded_once_per_startup() {
     config_update_rx,
     StartupReplayEligibility::MayHavePriorCrash,
   );
-  assert!(buffer.event_buffer.open_startup_gate());
+  buffer.event_buffer.mark_startup_gate_ready();
+  assert!(
+    buffer
+      .event_buffer
+      .next_batch(1)
+      .await
+      .startup_gate_opened
+      .is_some()
+  );
 
   buffer.admit_crash_reports(
     vec![
@@ -1207,12 +1207,13 @@ async fn crash_report_batch_stays_at_its_event_buffer_admission_boundary() {
     &crate::ReportProcessingSession::Current,
   );
   sender.try_send_log(normal_log("after")).unwrap();
-  assert!(buffer.event_buffer.open_startup_gate());
+  buffer.event_buffer.mark_startup_gate_ready();
 
   let messages = buffer
     .event_buffer
     .next_batch(4)
     .await
+    .entries
     .into_iter()
     .map(|entry| {
       let EventBufferEntry::Ingress(event) = entry else {
@@ -1244,9 +1245,9 @@ async fn previous_run_crash_reports_use_previous_process_context() {
     report_processor.process_all_pending_reports().await,
     &crate::ReportProcessingSession::PreviousRun,
   );
-  assert!(buffer.event_buffer.open_startup_gate());
+  buffer.event_buffer.mark_startup_gate_ready();
 
-  let entries = buffer.event_buffer.next_batch(2).await;
+  let entries = buffer.event_buffer.next_batch(2).await.entries;
   assert_eq!(2, entries.len());
   for (entry, (expected_message, expected_timestamp)) in entries
     .into_iter()
@@ -1318,9 +1319,15 @@ async fn feature_flag_exposure_captures_its_admission_session() {
     .try_send_feature_flag_exposure("flag".to_string(), Some("variant".to_string()))
     .unwrap();
   setup.session_strategy.start_new_session(None).unwrap();
-  assert!(buffer.event_buffer.open_startup_gate());
+  buffer.event_buffer.mark_startup_gate_ready();
 
-  let entry = buffer.event_buffer.next_batch(1).await.pop().unwrap();
+  let entry = buffer
+    .event_buffer
+    .next_batch(1)
+    .await
+    .entries
+    .pop()
+    .unwrap();
   let EventBufferEntry::Ingress(event) = entry else {
     panic!("feature flag exposure must be EventBuffer ingress");
   };

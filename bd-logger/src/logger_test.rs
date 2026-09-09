@@ -28,7 +28,7 @@ fn event_buffer(total_limit_bytes: usize) -> EventBuffer {
     log_limit_bytes: 1024 * 1024,
     total_limit_bytes,
   });
-  assert!(event_buffer.open_startup_gate());
+  event_buffer.mark_startup_gate_ready();
   event_buffer
 }
 
@@ -64,6 +64,13 @@ async fn thread_local_logger_guard() {
     );
   });
 
+  assert!(
+    event_buffer
+      .next_batch(1)
+      .await
+      .startup_gate_opened
+      .is_some()
+  );
   let recv = event_buffer.next_batch(1);
   pin!(recv);
   assert_pending!(poll!(recv));
@@ -119,7 +126,7 @@ async fn register_opaque_entity_id_updates_queue_and_watch() {
 
   handle.register_opaque_entity_id(Some("hashed-entity-id"));
   assert!(matches!(
-    event_buffer.next_batch(1).await.as_slice(),
+    event_buffer.next_batch(1).await.entries.as_slice(),
     [EventBufferEntry::Control(LoggerControl::SetEntityId(Some(entity_id)))] if entity_id == "hashed-entity-id"
   ));
   assert!(matches!(
@@ -137,7 +144,7 @@ async fn register_opaque_entity_id_updates_queue_and_watch() {
 
   handle.register_opaque_entity_id(None);
   assert!(matches!(
-    event_buffer.next_batch(1).await.as_slice(),
+    event_buffer.next_batch(1).await.entries.as_slice(),
     [EventBufferEntry::Control(LoggerControl::SetEntityId(None))]
   ));
   assert_eq!(

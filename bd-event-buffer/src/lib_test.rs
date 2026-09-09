@@ -19,7 +19,7 @@ use super::{
   LoggerIngressPayload,
   ProviderSnapshot,
   RetentionLane,
-  StartupGateReleaseRequest,
+  StartupGateReleaseReason,
   retention_lane,
 };
 use bd_client_stats_store::Collector;
@@ -28,7 +28,10 @@ use bd_log_primitives::{AnnotatedLogFields, DataValue, LogFields, LogLine, log_l
 use bd_macros::ApproximateSize;
 use bd_proto::protos::logging::payload::LogType;
 use bd_stats_common::labels;
+use std::future::Future;
+use std::pin::pin;
 use std::sync::{Arc, Mutex, mpsc as std_mpsc};
+use std::task::{Context, Waker};
 use time::OffsetDateTime;
 use tokio::sync::{oneshot, watch};
 
@@ -176,7 +179,7 @@ async fn flush_before_startup_gate_ready_completes_without_admission() {
     buffer.admit(log(log_level::INFO, LogType::NORMAL, 1))
   );
   assert!(matches!(
-    buffer.next_batch(2).await.as_slice(),
+    buffer.next_batch(2).await.entries.as_slice(),
     [EventBufferEntry::Ingress(LoggerIngressEvent { .. })]
   ));
 }
@@ -281,6 +284,102 @@ fn state_limits(log_limit_bytes: usize, total_limit_bytes: usize) -> EventBuffer
   }
 }
 
+fn assert_consumer_pending(buffer: &EventBuffer) {
+  // Polling registers the timer/watch before the test advances time. Dropping this future also
+  // exercises cancellation by the enclosing consumer select loop.
+  assert!(
+    pin!(buffer.next_batch(1))
+      .poll(&mut Context::from_waker(Waker::noop()))
+      .is_pending()
+  );
+}
+
+#[tokio::test(start_paused = true)]
+async fn startup_timer_extension_survives_cancellation_and_expiry_before_readiness() {
+  for initially_ready in [false, true] {
+    let buffer = EventBuffer::new(limits(10_000));
+    let (delay_tx, delay) = watch::channel(time::Duration::milliseconds(50));
+    buffer.start_startup_gate(Some(delay));
+    if initially_ready {
+      buffer.mark_startup_gate_ready();
+    }
+    assert_consumer_pending(&buffer);
+    tokio::time::advance(std::time::Duration::from_millis(50)).await;
+    // Both the old deadline and the watch are now ready. Consumption must read the extension
+    // before releasing, even if configuration was still being applied when the timer elapsed.
+    delay_tx.send(time::Duration::milliseconds(200)).unwrap();
+    buffer.mark_startup_gate_ready();
+    assert_consumer_pending(&buffer);
+    delay_tx.send(time::Duration::ZERO).unwrap();
+    assert_consumer_pending(&buffer);
+    tokio::time::advance(std::time::Duration::from_millis(149)).await;
+    assert_consumer_pending(&buffer);
+    tokio::time::advance(std::time::Duration::from_millis(1)).await;
+    let batch = buffer.next_batch(1).await;
+    let opening = batch.startup_gate_opened.unwrap();
+    assert_eq!(StartupGateReleaseReason::Timer, opening.reason);
+    assert_eq!(std::time::Duration::from_millis(200), opening.hold_duration);
+    assert!(batch.entries.is_empty());
+    assert_consumer_pending(&buffer);
+    assert_eq!(AdmissionOutcome::Admitted, buffer.admit(add_field("later")));
+    assert!(buffer.next_batch(1).await.startup_gate_opened.is_none());
+  }
+}
+
+#[tokio::test(start_paused = true)]
+async fn elapsed_startup_timer_waits_for_configuration_and_close_does_not_open() {
+  for close in [false, true] {
+    let buffer = EventBuffer::new(limits(10_000));
+    let (delay_tx, delay) = watch::channel(time::Duration::milliseconds(50));
+    buffer.start_startup_gate(Some(delay));
+    assert_consumer_pending(&buffer);
+    tokio::time::advance(std::time::Duration::from_millis(100)).await;
+    assert_consumer_pending(&buffer);
+    // Closing a runtime watch must not spin or discard its last configured deadline.
+    drop(delay_tx);
+    assert_consumer_pending(&buffer);
+    if close {
+      buffer.close();
+    } else {
+      buffer.mark_startup_gate_ready();
+    }
+    let batch = buffer.next_batch(1).await;
+    assert_eq!(!close, batch.startup_gate_opened.is_some());
+    assert!(batch.entries.is_empty());
+    assert_eq!(!close, buffer.is_startup_gate_open());
+  }
+}
+
+#[tokio::test]
+async fn early_flushes_do_not_consume_capacity_or_release_the_gate() {
+  let buffer = EventBuffer::new(limits(0));
+  let (_delay_tx, delay) = watch::channel(time::Duration::seconds(60));
+  buffer.start_startup_gate(Some(delay));
+  let (completion, receiver) = bd_completion::Sender::new();
+  assert_eq!(
+    FlushAdmissionOutcome::SkippedBeforeStartupGateReady,
+    buffer.admit_flush(Some(completion))
+  );
+  receiver.recv().await.unwrap();
+  assert_eq!(
+    FlushAdmissionOutcome::SkippedBeforeStartupGateReady,
+    buffer.admit_flush(None)
+  );
+  buffer.mark_startup_gate_ready();
+  assert_consumer_pending(&buffer);
+  assert_eq!(
+    FlushAdmissionOutcome::Admission(AdmissionOutcome::RejectedOversized),
+    buffer.admit_flush(None)
+  );
+  buffer.close();
+  let (completion, receiver) = bd_completion::Sender::new();
+  assert_eq!(
+    FlushAdmissionOutcome::Admission(AdmissionOutcome::Closed),
+    buffer.admit_flush(Some(completion))
+  );
+  assert!(receiver.recv().await.is_err());
+}
+
 #[test]
 fn priority_mapping_covers_protected_and_evictable_logs() {
   assert_eq!(
@@ -380,43 +479,62 @@ fn previous_process_entries_admitted_after_gate_release_keep_normal_fifo_order()
 }
 
 #[tokio::test]
-async fn protected_high_watermark_and_blocking_flush_request_startup_gate_release() {
-  let high_watermark_entry = previous_process_log("previous");
-  let high_watermark_buffer =
-    EventBuffer::new(limits(high_watermark_entry.approximate_size_bytes()));
-  assert_eq!(
-    AdmissionOutcome::Admitted,
-    high_watermark_buffer.admit(high_watermark_entry)
-  );
-  assert_eq!(
-    StartupGateReleaseRequest::ProtectedHighWatermark,
-    high_watermark_buffer
-      .wait_for_startup_gate_release_request()
-      .await
-  );
-  assert!(!high_watermark_buffer.is_startup_gate_open());
-  assert!(high_watermark_buffer.open_startup_gate());
-
-  let barrier_buffer = EventBuffer::new(limits(10_000));
-  let (completion, _receiver) = bd_completion::Sender::new();
-  assert_eq!(
-    AdmissionOutcome::Admitted,
-    barrier_buffer.admit(EventBufferEntry::Control(LoggerControl::FlushState(Some(
-      completion,
-    ))))
-  );
-  assert_eq!(
-    StartupGateReleaseRequest::BlockingFlush,
-    barrier_buffer.wait_for_startup_gate_release_request().await
-  );
-  assert!(!barrier_buffer.is_startup_gate_open());
-  assert!(barrier_buffer.open_startup_gate());
-  assert!(matches!(
-    barrier_buffer.next_batch(1).await.as_slice(),
-    [EventBufferEntry::Control(LoggerControl::FlushState(Some(
-      _
-    )))]
-  ));
+async fn protected_high_watermark_and_blocking_flush_open_only_on_consumption() {
+  for barrier in [false, true] {
+    let entry = previous_process_log("previous");
+    let buffer = EventBuffer::new(limits(
+      if barrier {
+        10_000
+      } else {
+        entry.approximate_size_bytes()
+      },
+    ));
+    let (_delay_tx, delay) = watch::channel(time::Duration::seconds(60));
+    buffer.start_startup_gate(Some(delay));
+    assert_eq!(AdmissionOutcome::Admitted, buffer.admit(entry));
+    buffer.mark_startup_gate_ready();
+    let (completion, receiver) = bd_completion::Sender::new();
+    if barrier {
+      assert_eq!(
+        FlushAdmissionOutcome::Admission(AdmissionOutcome::Admitted),
+        buffer.admit_flush(Some(completion))
+      );
+    }
+    assert!(!buffer.is_startup_gate_open());
+    // Work discovered by the consumer before its next dequeue keeps startup priority, even
+    // when a producer has requested release in the meantime.
+    if barrier {
+      assert_eq!(
+        AdmissionOutcome::Admitted,
+        buffer.admit(previous_process_log("discovered"))
+      );
+    }
+    let batch = buffer.next_batch(4).await;
+    assert_eq!(
+      if barrier {
+        StartupGateReleaseReason::Barrier
+      } else {
+        StartupGateReleaseReason::HighWatermark
+      },
+      batch.startup_gate_opened.unwrap().reason
+    );
+    if barrier {
+      assert!(matches!(
+        batch.entries.as_slice(),
+        [
+          EventBufferEntry::Ingress(_),
+          EventBufferEntry::Ingress(_),
+          EventBufferEntry::Control(LoggerControl::FlushState(_))
+        ]
+      ));
+      for entry in batch.entries {
+        entry.complete();
+      }
+      receiver.recv().await.unwrap();
+    } else {
+      assert_eq!(1, batch.entries.len());
+    }
+  }
 }
 
 #[tokio::test]
@@ -435,6 +553,7 @@ async fn preserves_log_and_field_update_admission_order() {
   let entries = buffer
     .next_batch(3)
     .await
+    .entries
     .into_iter()
     .map(|entry| match entry {
       EventBufferEntry::Ingress(event) => match event.payload {
@@ -472,6 +591,7 @@ async fn admit_batch_keeps_entries_contiguous_in_admission_order() {
   let entries = buffer
     .next_batch(4)
     .await
+    .entries
     .into_iter()
     .map(|entry| match entry {
       EventBufferEntry::Ingress(event) => match event.payload {
@@ -500,7 +620,7 @@ async fn admit_batch_reports_per_entry_outcomes_under_protected_capacity_pressur
     vec![AdmissionOutcome::Admitted, AdmissionOutcome::RejectedFull],
     buffer.admit_batch([first, log(log_level::ERROR, LogType::LIFECYCLE, 1)])
   );
-  assert_eq!(1, buffer.next_batch(2).await.len());
+  assert_eq!(1, buffer.next_batch(2).await.entries.len());
 }
 
 #[tokio::test]
@@ -538,6 +658,7 @@ async fn admit_batch_does_not_interleave_a_concurrent_producer() {
   let entries = buffer
     .next_batch(3)
     .await
+    .entries
     .into_iter()
     .map(|entry| match entry {
       EventBufferEntry::Ingress(event) => match event.payload {
@@ -558,7 +679,7 @@ async fn admission_wakes_a_waiting_consumer() {
   let waiting_consumers = Arc::new(WaitingConsumersTestHook::new());
   let buffer = buffer_with_test_hooks(10_000, Some(waiting_consumers.clone()));
   let consumer_buffer = buffer.clone();
-  let consumer = tokio::spawn(async move { consumer_buffer.next_batch(1).await });
+  let consumer = tokio::spawn(async move { consumer_buffer.next_batch(1).await.entries });
 
   waiting_consumers.wait_for_consumers(1).await;
   assert_eq!(
@@ -578,8 +699,8 @@ async fn close_wakes_all_waiting_consumers() {
   let buffer = buffer_with_test_hooks(10_000, Some(waiting_consumers.clone()));
   let first_buffer = buffer.clone();
   let second_buffer = buffer.clone();
-  let first = tokio::spawn(async move { first_buffer.next_batch(1).await });
-  let second = tokio::spawn(async move { second_buffer.next_batch(1).await });
+  let first = tokio::spawn(async move { first_buffer.next_batch(1).await.entries });
+  let second = tokio::spawn(async move { second_buffer.next_batch(1).await.entries });
 
   waiting_consumers.wait_for_consumers(2).await;
   buffer.close();
@@ -603,7 +724,7 @@ async fn held_gate_admission_does_not_wake_the_consumer_until_release() {
   let waiting_consumers = Arc::new(WaitingConsumersTestHook::new());
   let buffer = EventBuffer::new_with_test_hooks(limits(10_000), Some(waiting_consumers.clone()));
   let consumer_buffer = buffer.clone();
-  let consumer = tokio::spawn(async move { consumer_buffer.next_batch(1).await });
+  let consumer = tokio::spawn(async move { consumer_buffer.next_batch(1).await.entries });
 
   waiting_consumers.wait_for_consumers(1).await;
   assert_eq!(
@@ -641,7 +762,7 @@ async fn batch_eviction_removes_tiny_lower_priority_logs() {
     ))
   );
 
-  let batch = buffer.next_batch(COUNT + 1).await;
+  let batch = buffer.next_batch(COUNT + 1).await.entries;
   assert_eq!(1, batch.len());
   let EventBufferEntry::Ingress(event) = &batch[0] else {
     panic!("expected an admitted log");
@@ -675,7 +796,7 @@ async fn rejected_admission_does_not_partially_evict() {
     ))
   );
 
-  assert_eq!(2, buffer.next_batch(2).await.len());
+  assert_eq!(2, buffer.next_batch(2).await.entries.len());
 }
 
 #[tokio::test]
@@ -723,7 +844,7 @@ async fn completion_is_sent_only_after_consumer_processing() {
     Some(sender),
   ));
   assert_eq!(AdmissionOutcome::Admitted, buffer.admit(entry));
-  let mut batch = buffer.next_batch(1).await;
+  let mut batch = buffer.next_batch(1).await.entries;
   assert_eq!(1, batch.len());
   let entry = batch.remove(0);
   let (receiver_started_tx, receiver_started_rx) = oneshot::channel();
@@ -758,7 +879,7 @@ async fn close_drops_unprocessed_completion_senders() {
   assert_eq!(AdmissionOutcome::Admitted, buffer.admit(entry));
   buffer.close();
   assert!(receiver.recv().await.is_err());
-  assert!(buffer.next_batch(1).await.is_empty());
+  assert!(buffer.next_batch(1).await.entries.is_empty());
 }
 
 #[test]
