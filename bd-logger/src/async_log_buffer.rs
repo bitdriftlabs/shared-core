@@ -331,12 +331,12 @@ impl Sender {
       (None, None)
     };
 
-    // There is no useful work to flush behind the closed hard startup gate, so do not turn an
-    // early flush into a potentially unbounded wait. The EventBuffer mutex linearizes this no-op
-    // against opening that gate after configuration has been applied.
+    // There is no useful work to flush before the startup gate is ready to release, so do not turn
+    // an early flush into a potentially unbounded wait. The EventBuffer mutex linearizes this
+    // no-op against configuration making the gate ready.
     let skips_flush = match &self.inner {
       SenderInner::EventBuffer { event_buffer, .. } => {
-        event_buffer.skips_flush_before_hard_gate_open()
+        event_buffer.skips_flush_before_startup_gate_ready()
       },
       #[cfg(test)]
       SenderInner::TestEventBuffer { .. } => false,
@@ -1131,9 +1131,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     report_processor: impl ReportProcessor,
     mut shutdown: ComponentShutdown,
   ) -> Self {
-    // EventBuffer's hard startup gate protects ingress while configuration is applied. Once it
-    // opens, the soft replay gate releases after the platform-selected delay, or earlier on
-    // pressure or a blocking-flush barrier.
+    // EventBuffer protects ingress behind its startup gate while configuration is applied. Once
+    // ready, the gate releases after the platform-selected delay, or earlier on pressure or a
+    // blocking-flush barrier.
     self.start_startup_replay_delay();
 
     let local_shutdown = shutdown.cancelled();
@@ -1164,9 +1164,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         },
         Some(config) = self.config_update_rx.recv() => {
           self = self.update(config).await;
-          self.event_buffer.open_hard_gate();
+          self.event_buffer.mark_startup_gate_ready();
           if let Some(test_hooks) = &self.test_hooks {
-            test_hooks.hard_gate_opened();
+            test_hooks.startup_gate_ready();
           }
           self.refresh_event_buffer_limits();
           self.refresh_startup_replay_delay();
@@ -1247,7 +1247,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             self.maybe_release_startup_gate();
           }
         },
-        request = self.event_buffer.wait_for_soft_gate_release_request() => {
+        request = self.event_buffer.wait_for_startup_gate_release_request() => {
           self.request_startup_gate_release(request.into());
           self.maybe_release_startup_gate();
         },
@@ -1276,7 +1276,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
   }
 
   fn start_startup_replay_delay(&mut self) {
-    if self.startup_gate_deadline.is_some() || self.event_buffer.is_gate_open() {
+    if self.startup_gate_deadline.is_some() || self.event_buffer.is_startup_gate_open() {
       return;
     }
 
@@ -1304,7 +1304,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     let delay = self
       .startup_replay_watches
       .read_mark_update(self.startup_replay_eligibility);
-    if self.event_buffer.is_gate_open() {
+    if self.event_buffer.is_startup_gate_open() {
       return;
     }
     if self.startup_replay_eligibility == StartupReplayEligibility::NoPriorCrash {
@@ -1346,7 +1346,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     };
     if let Some(reason) = reason
       && matches!(self.logging_state, LoggingState::Initialized(_))
-      && self.event_buffer.open_gate()
+      && self.event_buffer.open_startup_gate()
     {
       self.startup_replay_delay = None;
       self
@@ -1394,7 +1394,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     // AsyncLogBuffer is the sole production caller of `open_gate`, so its single event loop can
     // observe whether this previous-process batch missed the gate without a separate lock.
     let late_previous_process_work = matches!(session, crate::ReportProcessingSession::PreviousRun)
-      && self.event_buffer.is_gate_open()
+      && self.event_buffer.is_startup_gate_open()
       && !entries.is_empty();
     for outcome in self.event_buffer.admit_batch(entries) {
       if outcome != AdmissionOutcome::Admitted {

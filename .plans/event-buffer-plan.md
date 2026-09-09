@@ -530,10 +530,9 @@ retain the same runtime watch for later budget changes. The pair becomes effecti
 EventBuffer admission. If the buffer is already at the high watermark calculated from the runtime
 overall budget, release immediately with reason `high_watermark`; otherwise wait for any remaining
 selected delay.
-`FlushState` during this hard pre-configuration gate completes immediately as a no-op and is not
-queued: with no pipeline, there is no retained downstream work for it to flush. EventBuffer
-linearizes that decision against ALB marking the pipeline ready, so later flushes use normal
-ordered-barrier behavior.
+`FlushState` before the startup gate is ready completes immediately as a no-op and is not queued:
+there is no retained downstream work for it to flush. EventBuffer linearizes that decision against
+configuration making the startup gate ready, so later flushes use normal ordered-barrier behavior.
 
 Configuration construction, including restoration of already-persisted workflow actions, remains
 outside the EventBuffer ordering domain and keeps its current startup behavior while the gate is
@@ -564,23 +563,23 @@ protected retention but is not reordered ahead of current-process work. This avo
 drain-time O(n) partition and retroactively changing workflow order after current-process events
 have started flowing.
 
-The gate is soft: a protected event that brings the buffer to at least 80% of the overall budget
-opens it early with reason `high_watermark`. Low-priority traffic alone does not shorten
-the startup window. If the consumer still cannot catch up, the normal hard-cap eviction policy
-applies; priority-event loss is measured rather than exceeding capacity.
+A protected event that brings the buffer to at least 80% of the overall budget opens the startup
+gate early with reason `high_watermark`. Low-priority traffic alone does not shorten the startup
+window. If the consumer still cannot catch up, the normal hard-cap eviction policy applies;
+priority-event loss is measured rather than exceeding capacity.
 
 A high-watermark release, a flush barrier, or normal timer release seals the ordering window;
 later runtime updates and late previous-process logs cannot reopen it. Arbitrarily stale crash
 reports have no reliable prior-session association; their presence cannot override the platform's
 construction-time classification.
 
-An admitted `FlushState(Block::Yes)` after the hard pre-configuration gate is also a gate barrier:
-it seals the gate, drains the
+An admitted `FlushState(Block::Yes)` after the startup gate is ready is also a gate barrier: it
+seals the gate, drains the
 already-admitted startup-previous lane first, then drains through its ordered position before its
 completion resolves. It does not bypass older work. An admission-rejected blocking flush resolves
 immediately as a terminal drop and cannot act as a barrier. `FlushState(Block::No)` stays behind
 the gate, matching its existing fire-and-forget behavior. An admitted blocking flush may not remain
-pending solely because the soft startup delay has not elapsed.
+pending solely because the startup delay has not elapsed.
 
 ## Observability and validation
 
@@ -678,7 +677,7 @@ previous-process logs against an isolated, in-memory historical engine while cur
 continued immediately through the live engine. This would prevent a late previous-process log
 from directly resetting or advancing the live engine's state.
 
-We are not selecting this as a replacement for the soft replay gate. A process boundary is not
+We are not selecting this as a replacement for the startup replay gate. A process boundary is not
 necessarily a session boundary: a prior-process log and a current-process log may belong to the
 same session. In that case the historical and live engines would advance independently, and there
 is no general correct merge for workflow runs, extraction state, tracing, generated logs, or

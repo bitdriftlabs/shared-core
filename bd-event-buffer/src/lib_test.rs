@@ -96,7 +96,7 @@ fn limits(bytes: usize) -> EventBufferLimits {
 
 fn buffer(bytes: usize) -> EventBuffer {
   let buffer = EventBuffer::new(limits(bytes));
-  assert!(buffer.open_gate());
+  assert!(buffer.open_startup_gate());
   buffer
 }
 
@@ -182,7 +182,7 @@ fn buffer_with_test_hooks(
   test_hooks: Option<Arc<dyn super::TestHooks>>,
 ) -> EventBuffer {
   let buffer = EventBuffer::new_with_test_hooks(limits(bytes), test_hooks);
-  assert!(buffer.open_gate());
+  assert!(buffer.open_startup_gate());
   buffer
 }
 
@@ -299,7 +299,7 @@ fn previous_process_entries_admitted_after_gate_release_keep_normal_fifo_order()
 }
 
 #[tokio::test]
-async fn protected_high_watermark_and_blocking_flush_request_soft_gate_release() {
+async fn protected_high_watermark_and_blocking_flush_request_startup_gate_release() {
   let high_watermark_entry = previous_process_log("previous");
   let high_watermark_buffer =
     EventBuffer::new(limits(high_watermark_entry.approximate_size_bytes()));
@@ -310,11 +310,11 @@ async fn protected_high_watermark_and_blocking_flush_request_soft_gate_release()
   assert_eq!(
     StartupGateReleaseRequest::ProtectedHighWatermark,
     high_watermark_buffer
-      .wait_for_soft_gate_release_request()
+      .wait_for_startup_gate_release_request()
       .await
   );
-  assert!(!high_watermark_buffer.is_gate_open());
-  assert!(high_watermark_buffer.open_gate());
+  assert!(!high_watermark_buffer.is_startup_gate_open());
+  assert!(high_watermark_buffer.open_startup_gate());
 
   let barrier_buffer = EventBuffer::new(limits(10_000));
   let (completion, _receiver) = bd_completion::Sender::new();
@@ -326,10 +326,10 @@ async fn protected_high_watermark_and_blocking_flush_request_soft_gate_release()
   );
   assert_eq!(
     StartupGateReleaseRequest::BlockingFlush,
-    barrier_buffer.wait_for_soft_gate_release_request().await
+    barrier_buffer.wait_for_startup_gate_release_request().await
   );
-  assert!(!barrier_buffer.is_gate_open());
-  assert!(barrier_buffer.open_gate());
+  assert!(!barrier_buffer.is_startup_gate_open());
+  assert!(barrier_buffer.open_startup_gate());
   assert!(matches!(
     barrier_buffer.next_batch(1).await.as_slice(),
     [EventBufferEntry::Control(LoggerControl::FlushState(Some(
@@ -532,7 +532,7 @@ async fn held_gate_admission_does_not_wake_the_consumer_until_release() {
   tokio::task::yield_now().await;
   assert_eq!(1, waiting_consumers.consumer_count());
 
-  assert!(buffer.open_gate());
+  assert!(buffer.open_startup_gate());
   assert_eq!(
     1,
     consumer.await.expect("consumer task must complete").len()
@@ -582,7 +582,7 @@ async fn rejected_admission_does_not_partially_evict() {
     log_limit_bytes: usize::MAX,
     total_limit_bytes: total,
   });
-  assert!(buffer.open_gate());
+  assert!(buffer.open_startup_gate());
   assert_eq!(AdmissionOutcome::Admitted, buffer.admit(low));
   assert_eq!(AdmissionOutcome::Admitted, buffer.admit(protected));
   assert_eq!(

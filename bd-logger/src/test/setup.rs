@@ -81,7 +81,7 @@ struct MockSessionReplayTarget {
 //
 
 struct SetupTestHooks {
-  hard_gate_opened_tx: StdSender<()>,
+  startup_gate_ready_tx: StdSender<()>,
   remote_streaming_action_processed_tx: StdSender<()>,
   remote_streaming_trigger_upload_completed_tx: StdSender<()>,
   startup_replay_gate_opened_tx: StdSender<()>,
@@ -89,8 +89,8 @@ struct SetupTestHooks {
 }
 
 impl TestHooks for SetupTestHooks {
-  fn hard_gate_opened(&self) {
-    let _ignored = self.hard_gate_opened_tx.send(());
+  fn startup_gate_ready(&self) {
+    let _ignored = self.startup_gate_ready_tx.send(());
   }
 
   fn remote_streaming_action_processed(&self) {
@@ -182,7 +182,7 @@ pub struct Setup {
 
   capture_screen_rx: StdReceiver<()>,
   capture_screenshot_rx: StdReceiver<()>,
-  hard_gate_opened_rx: StdReceiver<()>,
+  startup_gate_ready_rx: StdReceiver<()>,
   remote_streaming_action_processed_rx: StdReceiver<()>,
   remote_streaming_trigger_upload_completed_rx: StdReceiver<()>,
   startup_replay_gate_opened_rx: StdReceiver<()>,
@@ -252,7 +252,7 @@ impl Setup {
 
     let (capture_screen_tx, capture_screen_rx) = std::sync::mpsc::channel();
     let (capture_screenshot_tx, capture_screenshot_rx) = std::sync::mpsc::channel();
-    let (hard_gate_opened_tx, hard_gate_opened_rx) = std_channel();
+    let (startup_gate_ready_tx, startup_gate_ready_rx) = std_channel();
     let (remote_streaming_action_processed_tx, remote_streaming_action_processed_rx) =
       std_channel();
     let (
@@ -296,7 +296,7 @@ impl Setup {
     .with_internal_logger(true)
     .with_time_provider(options.time_provider)
     .with_test_hooks(Some(Arc::new(SetupTestHooks {
-      hard_gate_opened_tx,
+      startup_gate_ready_tx,
       remote_streaming_action_processed_tx,
       remote_streaming_trigger_upload_completed_tx,
       startup_replay_gate_opened_tx,
@@ -322,7 +322,7 @@ impl Setup {
       current_api_stream,
       capture_screen_rx,
       capture_screenshot_rx,
-      hard_gate_opened_rx,
+      startup_gate_ready_rx,
       remote_streaming_action_processed_rx,
       remote_streaming_trigger_upload_completed_rx,
       startup_replay_gate_opened_rx,
@@ -352,11 +352,11 @@ impl Setup {
       .expect("timed out waiting for capture-screenshot callback");
   }
 
-  pub fn wait_for_hard_gate_opening(&self) {
+  pub fn wait_for_startup_gate_ready(&self) {
     self
-      .hard_gate_opened_rx
+      .startup_gate_ready_rx
       .recv_timeout(std::time::Duration::from_secs(5))
-      .expect("timed out waiting for hard startup gate opening");
+      .expect("timed out waiting for startup gate readiness");
   }
 
   pub fn wait_for_remote_streaming_action_processing(&self) {

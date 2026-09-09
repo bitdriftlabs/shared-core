@@ -28,7 +28,7 @@ fn event_buffer(total_limit_bytes: usize) -> EventBuffer {
     log_limit_bytes: 1024 * 1024,
     total_limit_bytes,
   });
-  assert!(event_buffer.open_gate());
+  assert!(event_buffer.open_startup_gate());
   event_buffer
 }
 

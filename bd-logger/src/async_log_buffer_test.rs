@@ -80,6 +80,93 @@ use tokio::sync::{Notify, mpsc};
 use tokio::time::Instant;
 use tokio_test::assert_ok;
 
+//
+// StartupGateReady
+//
+
+#[derive(Default)]
+struct StartupGateReady {
+  ready: AtomicBool,
+  notify: Notify,
+}
+
+impl StartupGateReady {
+  fn reset(&self) {
+    self.ready.store(false, Ordering::SeqCst);
+  }
+
+  fn mark_ready(&self) {
+    self.ready.store(true, Ordering::SeqCst);
+    self.notify.notify_waiters();
+  }
+
+  async fn wait(&self) {
+    loop {
+      let notified = self.notify.notified();
+      tokio::pin!(notified);
+      notified.as_mut().enable();
+      if self.ready.load(Ordering::SeqCst) {
+        return;
+      }
+      notified.await;
+    }
+  }
+}
+
+//
+// AsyncLogBufferTestHooks
+//
+
+struct AsyncLogBufferTestHooks {
+  startup_gate_ready: Arc<StartupGateReady>,
+  delegate: Option<Arc<dyn crate::TestHooks>>,
+}
+
+impl crate::TestHooks for AsyncLogBufferTestHooks {
+  fn remote_streaming_action_processed(&self) {
+    if let Some(delegate) = &self.delegate {
+      delegate.remote_streaming_action_processed();
+    }
+  }
+
+  fn remote_streaming_trigger_upload_completed(&self) {
+    if let Some(delegate) = &self.delegate {
+      delegate.remote_streaming_trigger_upload_completed();
+    }
+  }
+
+  fn workflow_event_processed(&self) {
+    if let Some(delegate) = &self.delegate {
+      delegate.workflow_event_processed();
+    }
+  }
+
+  fn startup_gate_ready(&self) {
+    self.startup_gate_ready.mark_ready();
+    if let Some(delegate) = &self.delegate {
+      delegate.startup_gate_ready();
+    }
+  }
+
+  fn startup_replay_gate_opened(&self) {
+    if let Some(delegate) = &self.delegate {
+      delegate.startup_replay_gate_opened();
+    }
+  }
+
+  fn startup_replay_delay_extended(&self) {
+    if let Some(delegate) = &self.delegate {
+      delegate.startup_replay_delay_extended();
+    }
+  }
+
+  fn startup_replay_eligibility_initialized(&self, eligibility: StartupReplayEligibility) {
+    if let Some(delegate) = &self.delegate {
+      delegate.startup_replay_eligibility_initialized(eligibility);
+    }
+  }
+}
+
 struct Setup {
   buffer_manager: Arc<bd_buffer::Manager>,
   runtime: Arc<ConfigLoader>,
@@ -96,6 +183,7 @@ struct Setup {
   shutdown: Option<ComponentShutdownTrigger>,
   store: Arc<bd_device::Store>,
   session_strategy: Arc<Strategy>,
+  startup_gate_ready: Arc<StartupGateReady>,
   test_hooks: Option<Arc<dyn crate::TestHooks>>,
 }
 
@@ -131,6 +219,7 @@ impl Setup {
       data_upload_tx,
       store: in_memory_store(),
       session_strategy,
+      startup_gate_ready: Arc::default(),
       test_hooks: None,
     }
   }
@@ -227,6 +316,7 @@ impl Setup {
   }
 
   fn make_logging_context(&self) -> UninitializedLoggingContext {
+    self.startup_gate_ready.reset();
     let (trigger_upload_tx, _) = tokio::sync::mpsc::channel(1);
     let (_remote_flush_streaming_tx, remote_flush_streaming_rx) = tokio::sync::mpsc::channel(1);
     let (data_upload_tx, _) = tokio::sync::mpsc::channel(1);
@@ -246,7 +336,10 @@ impl Setup {
       1_000_000,
       Arc::new(AtomicBool::new(false)),
       Arc::new(ProcessLocalPendingFlushState::default()),
-      self.test_hooks.clone(),
+      Some(Arc::new(AsyncLogBufferTestHooks {
+        startup_gate_ready: self.startup_gate_ready.clone(),
+        delegate: self.test_hooks.clone(),
+      })),
     )
   }
 
@@ -347,7 +440,6 @@ async fn startup_gate_holds_preconfiguration_logs_until_the_replay_timer() {
     .await
     .unwrap();
 
-  let event_buffer = buffer.event_buffer.clone();
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
   let handle = tokio::task::spawn(buffer.run_with_shutdown(
@@ -356,7 +448,7 @@ async fn startup_gate_holds_preconfiguration_logs_until_the_replay_timer() {
     shutdown_trigger.make_shutdown(),
   ));
 
-  wait_for_hard_gate_open(&event_buffer).await;
+  wait_for_startup_gate_ready(&setup).await;
   tokio::task::yield_now().await;
   tokio::time::advance(100.std_milliseconds()).await;
   assert_eq!(0, setup.replayer_log_count.load(Ordering::SeqCst));
@@ -404,7 +496,6 @@ async fn runtime_startup_replay_delay_extension_rearms_the_running_gate() {
       .await
       .unwrap();
 
-    let event_buffer = buffer.event_buffer.clone();
     let state_store = TestStore::new().await;
     let shutdown_trigger = ComponentShutdownTrigger::default();
     let handle = tokio::task::spawn(buffer.run_with_shutdown(
@@ -413,7 +504,7 @@ async fn runtime_startup_replay_delay_extension_rearms_the_running_gate() {
       shutdown_trigger.make_shutdown(),
     ));
 
-    wait_for_hard_gate_open(&event_buffer).await;
+    wait_for_startup_gate_ready(&setup).await;
     setup
       .runtime
       .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
@@ -479,15 +570,15 @@ async fn report_processing_does_not_change_the_selected_startup_delay() {
       shutdown_trigger.make_shutdown(),
     ));
     processed.notified().await;
-    wait_for_hard_gate_open(&event_buffer).await;
+    wait_for_startup_gate_ready(&setup).await;
     if delay_ms > 0 {
       tokio::time::advance((delay_ms - 1).std_milliseconds()).await;
       tokio::task::yield_now().await;
-      assert!(!event_buffer.is_gate_open());
+      assert!(!event_buffer.is_startup_gate_open());
       tokio::time::advance(1.std_milliseconds()).await;
     }
     tokio::task::yield_now().await;
-    assert!(event_buffer.is_gate_open());
+    assert!(event_buffer.is_startup_gate_open());
     shutdown_trigger.shutdown().await;
     let buffer = handle.await.unwrap();
     assert_eq!(eligibility, buffer.startup_replay_eligibility);
@@ -507,18 +598,18 @@ impl ReportProcessor for ReportProcessingSignal {
 }
 
 #[tokio::test]
-async fn pre_hard_gate_blocking_flush_completes_without_event_buffer_admission() {
+async fn before_startup_gate_ready_blocking_flush_completes_without_event_buffer_admission() {
   let mut setup = Setup::new();
   let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
   let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
 
-  assert!(buffer.event_buffer.skips_flush_before_hard_gate_open());
+  assert!(buffer.event_buffer.skips_flush_before_startup_gate_ready());
   assert_ok!(sender.flush_state(Block::Yes {
     timeout: 1.std_seconds(),
     poll_callback: None,
   }));
 
-  assert!(buffer.event_buffer.open_gate());
+  assert!(buffer.event_buffer.open_startup_gate());
   assert_ok!(sender.try_send_log(normal_log("after early flush")));
   let entries = buffer.event_buffer.next_batch(2).await;
   assert!(matches!(
@@ -531,7 +622,7 @@ async fn pre_hard_gate_blocking_flush_completes_without_event_buffer_admission()
 }
 
 #[tokio::test(start_paused = true)]
-async fn post_hard_gate_blocking_flush_releases_the_soft_gate_after_older_work() {
+async fn startup_gate_ready_blocking_flush_releases_after_older_work() {
   let mut setup = Setup::new();
   setup
     .runtime
@@ -548,7 +639,6 @@ async fn post_hard_gate_blocking_flush_releases_the_soft_gate_after_older_work()
     .await
     .unwrap();
 
-  let event_buffer = buffer.event_buffer.clone();
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
   let handle = tokio::task::spawn(buffer.run_with_shutdown(
@@ -556,7 +646,7 @@ async fn post_hard_gate_blocking_flush_releases_the_soft_gate_after_older_work()
     (),
     shutdown_trigger.make_shutdown(),
   ));
-  wait_for_hard_gate_open(&event_buffer).await;
+  wait_for_startup_gate_ready(&setup).await;
 
   assert_ok!(sender.try_send_log(normal_log("before barrier")));
   let blocking_sender = sender.clone();
@@ -582,7 +672,7 @@ async fn post_hard_gate_blocking_flush_releases_the_soft_gate_after_older_work()
 }
 
 #[tokio::test(start_paused = true)]
-async fn post_hard_gate_nonblocking_flush_does_not_release_the_soft_gate() {
+async fn startup_gate_ready_nonblocking_flush_does_not_release() {
   let mut setup = Setup::new();
   setup
     .runtime
@@ -607,12 +697,12 @@ async fn post_hard_gate_nonblocking_flush_does_not_release_the_soft_gate() {
     (),
     shutdown_trigger.make_shutdown(),
   ));
-  wait_for_hard_gate_open(&event_buffer).await;
+  wait_for_startup_gate_ready(&setup).await;
 
   assert_ok!(sender.try_send_log(normal_log("behind nonblocking flush")));
   assert_ok!(sender.flush_state(Block::No));
   tokio::task::yield_now().await;
-  assert!(!event_buffer.is_gate_open());
+  assert!(!event_buffer.is_startup_gate_open());
   assert_eq!(0, setup.replayer_log_count.load(Ordering::SeqCst));
 
   tokio::time::advance(5.std_seconds()).await;
@@ -675,7 +765,7 @@ async fn startup_gate_releases_when_loaded_runtime_limits_expose_existing_pressu
     .await
     .unwrap();
 
-  wait_for_hard_gate_open(&event_buffer).await;
+  wait_for_startup_gate_ready(&setup).await;
   tokio::task::yield_now().await;
   assert_eq!(1, setup.replayer_log_count.load(Ordering::SeqCst));
   setup.collector.assert_counter_eq(
@@ -727,7 +817,7 @@ async fn startup_replay_classification_selects_independent_configured_delays() {
     }
     buffer.maybe_release_startup_gate();
     assert!(
-      !buffer.event_buffer.is_gate_open(),
+      !buffer.event_buffer.is_startup_gate_open(),
       "configuration is still required"
     );
   }
@@ -774,7 +864,7 @@ async fn startup_replay_runtime_updates_extend_only_the_selected_delay() {
       buffer.startup_gate_deadline
     );
 
-    // The original timer elapsed without configuration. A longer delay must re-arm the hard gate.
+    // The original timer elapsed before configuration. A longer delay must re-arm the startup gate.
     tokio::time::advance(initial_ms.std_milliseconds()).await;
     buffer.startup_gate.timer_elapsed = true;
     setup
@@ -792,7 +882,7 @@ async fn startup_replay_runtime_updates_extend_only_the_selected_delay() {
     );
     assert!(!buffer.startup_gate.timer_elapsed);
     buffer.maybe_release_startup_gate();
-    assert!(!buffer.event_buffer.is_gate_open());
+    assert!(!buffer.event_buffer.is_startup_gate_open());
 
     setup
       .runtime
@@ -818,7 +908,7 @@ async fn confirmed_no_prior_crash_releases_when_pipeline_is_ready_without_delay(
   buffer.startup_replay_eligibility = StartupReplayEligibility::NoPriorCrash;
   buffer.start_startup_replay_delay();
   buffer.maybe_release_startup_gate();
-  assert!(!buffer.event_buffer.is_gate_open());
+  assert!(!buffer.event_buffer.is_startup_gate_open());
 
   setup
     .runtime
@@ -842,7 +932,7 @@ async fn confirmed_no_prior_crash_releases_when_pipeline_is_ready_without_delay(
     .update(setup.make_config_update(WorkflowsConfiguration::default()))
     .await;
   buffer.maybe_release_startup_gate();
-  assert!(buffer.event_buffer.is_gate_open());
+  assert!(buffer.event_buffer.is_startup_gate_open());
   setup.collector.assert_counter_eq(
     1,
     "logger:event_buffer:startup_replay_gate_opened",
@@ -968,8 +1058,8 @@ fn normal_log(message: &str) -> LogLine {
   }
 }
 
-async fn wait_for_hard_gate_open(event_buffer: &EventBuffer) {
-  event_buffer.wait_for_hard_gate_open().await;
+async fn wait_for_startup_gate_ready(setup: &Setup) {
+  setup.startup_gate_ready.wait().await;
 }
 
 async fn wait_for_replayed_logs(setup: &Setup, expected_count: usize) {
@@ -1047,7 +1137,7 @@ async fn current_crash_reports_are_admitted_in_report_order() {
     report_processor.process_all_pending_reports().await,
     &crate::ReportProcessingSession::Current,
   );
-  assert!(buffer.event_buffer.open_gate());
+  assert!(buffer.event_buffer.open_startup_gate());
 
   let entries = buffer.event_buffer.next_batch(2).await;
   assert_eq!(2, entries.len());
@@ -1082,7 +1172,7 @@ async fn late_previous_process_crash_work_is_recorded_once_per_startup() {
     config_update_rx,
     StartupReplayEligibility::MayHavePriorCrash,
   );
-  assert!(buffer.event_buffer.open_gate());
+  assert!(buffer.event_buffer.open_startup_gate());
 
   buffer.admit_crash_reports(
     vec![
@@ -1119,7 +1209,7 @@ async fn crash_report_batch_stays_at_its_event_buffer_admission_boundary() {
     &crate::ReportProcessingSession::Current,
   );
   sender.try_send_log(normal_log("after")).unwrap();
-  assert!(buffer.event_buffer.open_gate());
+  assert!(buffer.event_buffer.open_startup_gate());
 
   let messages = buffer
     .event_buffer
@@ -1156,7 +1246,7 @@ async fn previous_run_crash_reports_use_previous_process_context() {
     report_processor.process_all_pending_reports().await,
     &crate::ReportProcessingSession::PreviousRun,
   );
-  assert!(buffer.event_buffer.open_gate());
+  assert!(buffer.event_buffer.open_startup_gate());
 
   let entries = buffer.event_buffer.next_batch(2).await;
   assert_eq!(2, entries.len());
@@ -1230,7 +1320,7 @@ async fn feature_flag_exposure_captures_its_admission_session() {
     .try_send_feature_flag_exposure("flag".to_string(), Some("variant".to_string()))
     .unwrap();
   setup.session_strategy.start_new_session(None).unwrap();
-  assert!(buffer.event_buffer.open_gate());
+  assert!(buffer.event_buffer.open_startup_gate());
 
   let entry = buffer.event_buffer.next_batch(1).await.pop().unwrap();
   let EventBufferEntry::Ingress(event) = entry else {
@@ -1728,10 +1818,9 @@ async fn updates_system_session_id_for_new_sessions() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let event_buffer = buffer.event_buffer.clone();
   let handle =
     tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
-  wait_for_hard_gate_open(&event_buffer).await;
+  wait_for_startup_gate_ready(&setup).await;
 
   let first_session_id = setup.session_strategy.session_id().unwrap();
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
@@ -1789,13 +1878,12 @@ async fn set_memory_pressure_level_writes_to_system_scope() {
 
   let test_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let event_buffer = buffer.event_buffer.clone();
   let handle = tokio::task::spawn(buffer.run_with_shutdown(
     (*test_store).clone(),
     (),
     shutdown_trigger.make_shutdown(),
   ));
-  wait_for_hard_gate_open(&event_buffer).await;
+  wait_for_startup_gate_ready(&setup).await;
 
   sender
     .try_send_control(LoggerControl::SetMemoryPressureLevel {
@@ -1842,10 +1930,9 @@ async fn previous_run_log_does_not_override_system_session_id() {
   let test_store = TestStore::new().await;
   let state_store = (*test_store).clone();
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let event_buffer = buffer.event_buffer.clone();
   let handle =
     tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
-  wait_for_hard_gate_open(&event_buffer).await;
+  wait_for_startup_gate_ready(&setup).await;
 
   let current_session_id = setup.session_strategy.session_id().unwrap();
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
@@ -1942,13 +2029,12 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
   let state_store = TestStore::new().await;
 
   let shutdown_trigger = ComponentShutdownTrigger::default();
-  let event_buffer = buffer.event_buffer.clone();
   let handle = tokio::task::spawn(buffer.run_with_shutdown(
     state_store.take_inner(),
     (),
     shutdown_trigger.make_shutdown(),
   ));
-  wait_for_hard_gate_open(&event_buffer).await;
+  wait_for_startup_gate_ready(&setup).await;
 
   sender
     .try_send_control(LoggerControl::AddLogField(
@@ -2010,13 +2096,12 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
 
   let shutdown_trigger_2 = ComponentShutdownTrigger::default();
   let state_store_2 = TestStore::new().await;
-  let event_buffer_2 = buffer_2.event_buffer.clone();
   let handle_2 = tokio::task::spawn(buffer_2.run_with_shutdown(
     state_store_2.take_inner(),
     (),
     shutdown_trigger_2.make_shutdown(),
   ));
-  wait_for_hard_gate_open(&event_buffer_2).await;
+  wait_for_startup_gate_ready(&setup).await;
 
   sender_2.try_send_log(log).unwrap();
   wait_for_replayed_logs(&setup, 1).await;

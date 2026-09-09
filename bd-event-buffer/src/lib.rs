@@ -240,17 +240,15 @@ struct EventBufferInner {
   state: PlatformMutex<LoggerEventBufferState>,
   // Wakes the consumer when an entry becomes eligible to drain.
   consumer_notify: Notify,
-  // Wakes the consumer when admission requests early soft-gate release.
-  soft_gate_release_request_notify: Notify,
-  // Wakes waiters when the hard startup gate opens.
-  hard_gate_open_notify: Notify,
+  // Wakes the consumer when admission requests early startup-gate release.
+  startup_gate_release_request_notify: Notify,
   #[cfg(test)]
   test_hooks: Option<Arc<dyn TestHooks>>,
 }
 
 struct LoggerEventBufferState {
   retention: EventBufferState<EventBufferEntry>,
-  hard_gate_open: bool,
+  startup_gate_ready: bool,
 }
 
 impl EventBuffer {
@@ -282,11 +280,10 @@ impl EventBuffer {
       inner: Arc::new(EventBufferInner {
         state: PlatformMutex::new(LoggerEventBufferState {
           retention: EventBufferState::new(limits),
-          hard_gate_open: false,
+          startup_gate_ready: false,
         }),
         consumer_notify: Notify::new(),
-        soft_gate_release_request_notify: Notify::new(),
-        hard_gate_open_notify: Notify::new(),
+        startup_gate_release_request_notify: Notify::new(),
         #[cfg(test)]
         test_hooks,
       }),
@@ -297,40 +294,20 @@ impl EventBuffer {
     self.inner.state.lock().retention.set_pending_limits(limits);
   }
 
-  /// Opens the hard startup gate. Before this transition, blocking flushes intentionally complete
-  /// as no-ops. Opening the hard gate does not begin replay: entries remain behind the soft replay
-  /// gate, where a blocking flush is an ordered barrier that may request early release.
-  pub fn open_hard_gate(&self) {
-    self.inner.state.lock().hard_gate_open = true;
-    self.inner.hard_gate_open_notify.notify_waiters();
+  /// Marks the startup gate ready to release. Before this transition, blocking flushes
+  /// intentionally complete as no-ops. Marking the gate ready does not begin replay: a blocking
+  /// flush becomes an ordered barrier that may request early release.
+  pub fn mark_startup_gate_ready(&self) {
+    self.inner.state.lock().startup_gate_ready = true;
   }
 
-  /// Returns whether the hard startup gate is open.
+  /// Returns whether a flush should complete without queueing because the startup gate is not
+  /// ready to release. The check shares the `EventBuffer` mutex with `mark_startup_gate_ready`,
+  /// so a flush is deterministically either an early no-op or a normal ordered entry.
   #[must_use]
-  pub fn is_hard_gate_open(&self) -> bool {
-    self.inner.state.lock().hard_gate_open
-  }
-
-  /// Waits until the hard startup gate opens.
-  pub async fn wait_for_hard_gate_open(&self) {
-    loop {
-      let notified = self.inner.hard_gate_open_notify.notified();
-      tokio::pin!(notified);
-      notified.as_mut().enable();
-      if self.is_hard_gate_open() {
-        return;
-      }
-      notified.await;
-    }
-  }
-
-  /// Returns whether a flush should complete without queueing because the hard startup gate is
-  /// closed. The check shares the `EventBuffer` mutex with `open_hard_gate`, so a flush is
-  /// deterministically either an early no-op or a normal ordered entry.
-  #[must_use]
-  pub fn skips_flush_before_hard_gate_open(&self) -> bool {
+  pub fn skips_flush_before_startup_gate_ready(&self) -> bool {
     let state = self.inner.state.lock();
-    !state.hard_gate_open && !state.retention.is_closed()
+    !state.startup_gate_ready && !state.retention.is_closed()
   }
 
   #[must_use]
@@ -348,14 +325,14 @@ impl EventBuffer {
         |_| {},
       );
       let gate_requested =
-        Self::request_soft_gate_release(&mut state.retention, outcome, lane, blocking_flush);
+        Self::request_startup_gate_release(&mut state.retention, outcome, lane, blocking_flush);
       (outcome, gate_requested, state.retention.is_gate_open())
     };
     if outcome == AdmissionOutcome::Admitted && notify_consumer {
       self.inner.consumer_notify.notify_one();
     }
     if gate_requested {
-      self.inner.soft_gate_release_request_notify.notify_one();
+      self.inner.startup_gate_release_request_notify.notify_one();
     }
     outcome
   }
@@ -389,7 +366,7 @@ impl EventBuffer {
             |_| {},
           );
           gate_requested |=
-            Self::request_soft_gate_release(&mut state.retention, outcome, lane, blocking_flush);
+            Self::request_startup_gate_release(&mut state.retention, outcome, lane, blocking_flush);
           outcome
         })
         .collect::<Vec<_>>();
@@ -399,7 +376,7 @@ impl EventBuffer {
       self.inner.consumer_notify.notify_one();
     }
     if gate_requested {
-      self.inner.soft_gate_release_request_notify.notify_one();
+      self.inner.startup_gate_release_request_notify.notify_one();
     }
     outcomes
   }
@@ -439,9 +416,9 @@ impl EventBuffer {
     self.inner.consumer_notify.notify_waiters();
   }
 
-  /// Opens the startup drain gate. Once open, it cannot be closed again.
+  /// Opens the startup gate and starts replay. Once open, it cannot be closed again.
   #[must_use]
-  pub fn open_gate(&self) -> bool {
+  pub fn open_startup_gate(&self) -> bool {
     let opened = self.inner.state.lock().retention.open_gate();
     if opened {
       self.inner.consumer_notify.notify_waiters();
@@ -450,7 +427,7 @@ impl EventBuffer {
   }
 
   #[must_use]
-  pub fn is_gate_open(&self) -> bool {
+  pub fn is_startup_gate_open(&self) -> bool {
     self.inner.state.lock().retention.is_gate_open()
   }
 
@@ -467,10 +444,10 @@ impl EventBuffer {
       .reaches_protected_high_watermark()
   }
 
-  /// Waits for a pressure or blocking-flush request that may release the soft replay gate.
-  pub async fn wait_for_soft_gate_release_request(&self) -> StartupGateReleaseRequest {
+  /// Waits for a pressure or blocking-flush request that may release the startup gate.
+  pub async fn wait_for_startup_gate_release_request(&self) -> StartupGateReleaseRequest {
     loop {
-      let notified = self.inner.soft_gate_release_request_notify.notified();
+      let notified = self.inner.startup_gate_release_request_notify.notified();
       tokio::pin!(notified);
       notified.as_mut().enable();
       if let Some(request) = self
@@ -486,7 +463,7 @@ impl EventBuffer {
     }
   }
 
-  fn request_soft_gate_release(
+  fn request_startup_gate_release(
     retention: &mut EventBufferState<EventBufferEntry>,
     outcome: AdmissionOutcome,
     lane: RetentionLane,

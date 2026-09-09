@@ -684,7 +684,7 @@ pub trait TestHooks: Send + Sync {
 
   fn workflow_event_processed(&self) {}
 
-  fn hard_gate_opened(&self) {}
+  fn startup_gate_ready(&self) {}
 
   fn startup_replay_gate_opened(&self) {}
 
