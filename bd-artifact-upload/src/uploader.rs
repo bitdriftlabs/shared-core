@@ -13,6 +13,7 @@ use bd_api::upload::{IntentDecision, TrackedArtifactIntent, TrackedArtifactUploa
 use bd_api::{DataUpload, RuntimeBackoffPolicy};
 use bd_backoff::{ExponentialBackoff, InfiniteBackoff};
 use bd_bounded_buffer::SendCounters;
+use bd_client_common::artifact::{CLIENT_REPORT_ARTIFACT_TYPE_ID, STATE_SNAPSHOT_ARTIFACT_TYPE_ID};
 use bd_client_common::error::InvariantError;
 use bd_client_common::file::{
   async_write_checksummed_data,
@@ -61,8 +62,8 @@ pub enum ArtifactType {
 impl ArtifactType {
   fn to_type_id(self) -> &'static str {
     match self {
-      Self::Report => "client_report",
-      Self::StateSnapshot => "state_snapshot",
+      Self::Report => CLIENT_REPORT_ARTIFACT_TYPE_ID,
+      Self::StateSnapshot => STATE_SNAPSHOT_ARTIFACT_TYPE_ID,
     }
   }
 }
@@ -911,7 +912,7 @@ impl Uploader {
           type_id: type_id.clone(),
           artifact_id: id.clone(),
           intent_uuid: upload_uuid.clone(),
-          session_id: Some(session_id.clone()),
+          session_id: (!session_id.is_empty()).then(|| session_id.clone()),
           time: timestamp.into_proto(),
           metadata: state_metadata.clone(),
           ..Default::default()

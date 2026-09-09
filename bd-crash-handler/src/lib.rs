@@ -23,6 +23,7 @@ mod file_watcher;
 pub mod global_state;
 
 use bd_artifact_upload::{SnappedFeatureFlag, UploadSource};
+use bd_client_common::artifact::CLIENT_REPORT_ARTIFACT_TYPE_ID;
 use bd_client_common::debug_check_lifecycle_less_than;
 use bd_client_common::init_lifecycle::{InitLifecycle, InitLifecycleState};
 use bd_error_reporter::reporter::handle_unexpected;
@@ -604,7 +605,7 @@ impl Monitor {
 
     let Ok(artifact_id) = self.artifact_client.enqueue_upload(
       UploadSource::File(file),
-      "client_report".to_string(),
+      CLIENT_REPORT_ARTIFACT_TYPE_ID.to_string(),
       state_fields.clone(),
       timestamp,
       session_id.to_string(),
