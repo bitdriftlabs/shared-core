@@ -299,7 +299,7 @@ fn previous_process_entries_admitted_after_gate_release_keep_normal_fifo_order()
 }
 
 #[tokio::test]
-async fn protected_high_watermark_and_blocking_flush_request_startup_gate_release() {
+async fn protected_high_watermark_and_blocking_flush_request_soft_gate_release() {
   let high_watermark_entry = previous_process_log("previous");
   let high_watermark_buffer =
     EventBuffer::new(limits(high_watermark_entry.approximate_size_bytes()));
@@ -309,7 +309,7 @@ async fn protected_high_watermark_and_blocking_flush_request_startup_gate_releas
   );
   assert_eq!(
     StartupGateReleaseRequest::ProtectedHighWatermark,
-    high_watermark_buffer.wait_for_gate_release_request().await
+    high_watermark_buffer.wait_for_soft_gate_release_request().await
   );
   assert!(!high_watermark_buffer.is_gate_open());
   assert!(high_watermark_buffer.open_gate());
@@ -324,7 +324,7 @@ async fn protected_high_watermark_and_blocking_flush_request_startup_gate_releas
   );
   assert_eq!(
     StartupGateReleaseRequest::BlockingFlush,
-    barrier_buffer.wait_for_gate_release_request().await
+    barrier_buffer.wait_for_soft_gate_release_request().await
   );
   assert!(!barrier_buffer.is_gate_open());
   assert!(barrier_buffer.open_gate());

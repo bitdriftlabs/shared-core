@@ -331,12 +331,12 @@ impl Sender {
       (None, None)
     };
 
-    // There is no useful work to flush before ALB applies its first configuration: ingress is
-    // retained behind the hard startup gate, so do not turn an early flush into a potentially
-    // unbounded wait. The EventBuffer mutex linearizes this no-op against that transition.
+    // There is no useful work to flush behind the closed hard startup gate, so do not turn an
+    // early flush into a potentially unbounded wait. The EventBuffer mutex linearizes this no-op
+    // against opening that gate after configuration has been applied.
     let skips_flush = match &self.inner {
       SenderInner::EventBuffer { event_buffer, .. } => {
-        event_buffer.skips_flush_before_configuration_ready()
+        event_buffer.skips_flush_before_hard_gate_open()
       },
       #[cfg(test)]
       SenderInner::TestEventBuffer { .. } => false,
@@ -1131,9 +1131,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     report_processor: impl ReportProcessor,
     mut shutdown: ComponentShutdown,
   ) -> Self {
-    // EventBuffer retains ingress until configuration is ready. Its startup gate opens once the
-    // configuration has been applied and the platform-selected delay has elapsed,
-    // or pressure or a blocking flush barrier requests an early release.
+    // EventBuffer's hard startup gate protects ingress while configuration is applied. Once it
+    // opens, the soft replay gate releases after the platform-selected delay, or earlier on
+    // pressure or a blocking-flush barrier.
     self.start_startup_replay_delay();
 
     let local_shutdown = shutdown.cancelled();
@@ -1164,9 +1164,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         },
         Some(config) = self.config_update_rx.recv() => {
           self = self.update(config).await;
-          self.event_buffer.mark_configuration_ready();
+          self.event_buffer.open_hard_gate();
           if let Some(test_hooks) = &self.test_hooks {
-            test_hooks.configuration_ready();
+            test_hooks.hard_gate_opened();
           }
           self.refresh_event_buffer_limits();
           self.refresh_startup_replay_delay();
@@ -1247,7 +1247,7 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
             self.maybe_release_startup_gate();
           }
         },
-        request = self.event_buffer.wait_for_gate_release_request() => {
+        request = self.event_buffer.wait_for_soft_gate_release_request() => {
           self.request_startup_gate_release(request.into());
           self.maybe_release_startup_gate();
         },

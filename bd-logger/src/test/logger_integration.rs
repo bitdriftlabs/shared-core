@@ -1050,7 +1050,7 @@ fn blocking_flush_state_uninitialized() {
     poll_callback: None,
   });
 
-  // A blocking flush during the hard replay gate completes immediately and is not deferred.
+  // A blocking flush during the hard startup gate completes immediately and is not deferred.
   assert!(!setup.workflows_state_file_path().exists());
   assert!(!setup.pending_aggregation_index_file_path().exists());
 }
@@ -2696,7 +2696,7 @@ fn remote_buffer_upload_with_streaming_matches_workflow_streaming_behavior() {
     },
   ));
   assert!(maybe_nack.is_none());
-  setup.wait_for_configuration_ready();
+  setup.wait_for_hard_gate_opening();
   setup.wait_for_startup_replay_gate_opening();
 
   setup.log(
