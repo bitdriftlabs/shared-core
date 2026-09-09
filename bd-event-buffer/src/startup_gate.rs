@@ -25,7 +25,10 @@ pub struct StartupGate {
 
 impl StartupGate {
   pub fn start(&mut self, delay: Option<watch::Receiver<time::Duration>>) {
-    assert!(self.started_at.is_none(), "startup gate already started");
+    // Resuming the consumer must preserve both the original window and its selected watch.
+    if self.started_at.is_some() {
+      return;
+    }
     self.started_at = Some(Instant::now());
     self.delay = delay;
     self.refresh_delay();

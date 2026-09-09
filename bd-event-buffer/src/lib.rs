@@ -243,7 +243,7 @@ pub struct EventBuffer {
 
 struct EventBufferInner {
   state: PlatformMutex<LoggerEventBufferState>,
-  // Wakes the consumer when an entry becomes eligible to drain.
+  // Wakes the consumer to recheck queued entries and startup release conditions.
   consumer_notify: Notify,
   stats: Option<EventBufferStats>,
   #[cfg(test)]
@@ -443,7 +443,13 @@ impl EventBuffer {
   /// Returns eligible entries and, once per startup, the gate opening. An opening can accompany
   /// an empty batch so consumers can report readiness without waiting for the first entry.
   pub async fn next_batch(&self, max_entries: usize) -> EventBufferBatch {
-    assert!(max_entries > 0, "next_batch requires a non-zero batch size");
+    debug_assert!(max_entries > 0, "next_batch requires a non-zero batch size");
+    if max_entries == 0 {
+      return EventBufferBatch {
+        entries: vec![],
+        startup_gate_opened: None,
+      };
+    }
     loop {
       let notified = self.inner.consumer_notify.notified();
       tokio::pin!(notified);
