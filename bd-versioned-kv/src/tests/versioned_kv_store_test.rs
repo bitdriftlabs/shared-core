@@ -1391,7 +1391,7 @@ async fn extend_triggers_rotation_and_succeeds() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn extend_triggers_rotation_but_fails_capacity() -> anyhow::Result<()> {
+async fn extend_falls_back_to_memory_when_journal_capacity_is_exceeded() -> anyhow::Result<()> {
   let collector = bd_client_stats_store::Collector::default();
   let stats = collector.scope("test");
   let temp_dir = TempDir::new()?;
@@ -1415,8 +1415,6 @@ async fn extend_triggers_rotation_but_fails_capacity() -> anyhow::Result<()> {
   )
   .await?;
 
-  let initial_len = store.len();
-
   // Try to insert a batch that's too large for max capacity
   let mut entries = Vec::new();
   for i in 0 .. 50 {
@@ -1427,14 +1425,12 @@ async fn extend_triggers_rotation_but_fails_capacity() -> anyhow::Result<()> {
     ));
   }
 
-  // This should fail with CapacityExceeded even after rotation
-  let result = store.extend(entries).await;
-  assert!(matches!(result, Err(UpdateError::CapacityExceeded)));
+  store.extend(entries).await?;
 
-  // Verify atomicity - no partial writes
-  assert_eq!(store.len(), initial_len);
+  // The batch is visible to current-process readers after persistence degrades.
+  assert!(store.journal_path().is_none());
   for i in 0 .. 50 {
-    assert!(!store.contains_key(Scope::FeatureFlagExposure, &format!("key_{i}")));
+    assert!(store.contains_key(Scope::FeatureFlagExposure, &format!("key_{i}")));
   }
 
   Ok(())

@@ -550,6 +550,12 @@ impl Store {
       .fetch_max(micros, std::sync::atomic::Ordering::Relaxed);
   }
 
+  /// Inserts a value into state.
+  ///
+  /// If the persistent journal becomes unavailable, the state store retains the live value and
+  /// continues in in-memory mode. The update will not survive a restart, but all state readers
+  /// observe it during this process. A successful persistent-journal admission does not itself
+  /// perform an explicit disk sync.
   pub async fn insert(
     &self,
     scope: Scope,
