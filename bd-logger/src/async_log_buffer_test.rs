@@ -689,6 +689,7 @@ async fn startup_gate_ready_nonblocking_flush_does_not_release() {
     .await
     .unwrap();
 
+  let event_buffer = buffer.event_buffer.clone();
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
   let handle = tokio::task::spawn(buffer.run_with_shutdown(
@@ -734,7 +735,6 @@ async fn startup_gate_releases_when_loaded_runtime_limits_expose_existing_pressu
       level: MemoryPressureLevel::Warning,
     });
   }
-  let event_buffer = buffer.event_buffer.clone();
   let state_store = TestStore::new().await;
   let shutdown_trigger = ComponentShutdownTrigger::default();
   let handle = tokio::task::spawn(buffer.run_with_shutdown(
