@@ -589,8 +589,7 @@ impl Api {
       StateScope::SYSTEM => Some(bd_state::Scope::System),
       // Log-field scopes are owned by the SDK metadata collector. Server-pushed state updates
       // must not overwrite their virtual matcher/extractor view independently of live metadata.
-      StateScope::CUSTOM_FIELDS | StateScope::OOTB_FIELDS => None,
-      StateScope::UNSPECIFIED => None,
+      StateScope::CUSTOM_FIELDS | StateScope::OOTB_FIELDS | StateScope::UNSPECIFIED => None,
     }
   }
 
