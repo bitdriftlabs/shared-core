@@ -28,9 +28,7 @@ pub fn get_proto_configs() -> Vec<ProtoConfig> {
   vec![
     ProtoConfig {
       output_dir: "src/protos/bdtail",
-      inputs: &[
-        "../api/src/bitdrift_public/protobuf/bdtail/v1/bdtail_config.proto",
-      ],
+      inputs: &["../api/src/bitdrift_public/protobuf/bdtail/v1/bdtail_config.proto"],
       includes: PROTO_INCLUDES,
       use_tokio_bytes: true,
       file_header: true,
