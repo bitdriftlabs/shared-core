@@ -85,7 +85,7 @@ use std::sync::Arc;
 use std::time::Duration as StdDuration;
 use time::OffsetDateTime;
 use time::ext::NumericalDuration;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio::time::Sleep;
 
 //
@@ -505,7 +505,7 @@ fn workflow_generated_log(
 pub struct AsyncLogBuffer<R: LogReplay> {
   event_buffer: EventBuffer,
   event_buffer_limit_watches: EventBufferLimitWatches,
-  startup_replay_delay: Option<tokio::sync::watch::Receiver<time::Duration>>,
+  startup_replay_delay: Option<watch::Receiver<time::Duration>>,
   config_update_rx: mpsc::Receiver<ConfigUpdate>,
   report_processor_rx: mpsc::Receiver<ReportProcessingRequest>,
   data_upload_tx: mpsc::Sender<DataUpload>,
