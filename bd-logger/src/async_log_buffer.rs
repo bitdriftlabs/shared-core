@@ -37,6 +37,7 @@ use bd_event_buffer::{
   EventBufferEntry,
   EventBufferLimits,
   EventContext,
+  FlushAdmissionOutcome,
   LoggerIngressEvent,
   LoggerIngressPayload,
   ProviderSnapshot,
@@ -331,24 +332,15 @@ impl Sender {
       (None, None)
     };
 
-    // There is no useful work to flush before the startup gate is ready to release, so do not turn
-    // an early flush into a potentially unbounded wait. The EventBuffer mutex linearizes this
-    // no-op against configuration making the gate ready.
-    let skips_flush = match &self.inner {
-      SenderInner::EventBuffer { event_buffer, .. } => {
-        event_buffer.skips_flush_before_startup_gate_ready()
-      },
+    let event_buffer = match &self.inner {
+      SenderInner::EventBuffer { event_buffer, .. } => event_buffer,
       #[cfg(test)]
-      SenderInner::TestEventBuffer { .. } => false,
+      SenderInner::TestEventBuffer { event_buffer } => event_buffer,
     };
-    if skips_flush {
-      if let Some(completion_tx) = completion_tx {
-        completion_tx.send(());
-      }
-      return Ok(());
+    match event_buffer.admit_flush(completion_tx) {
+      FlushAdmissionOutcome::SkippedBeforeStartupGateReady => {},
+      FlushAdmissionOutcome::Admission(outcome) => admission_outcome(outcome)?,
     }
-
-    self.try_send_control(LoggerControl::FlushState(completion_tx))?;
 
     // Wait for the processing to be completed only if passed `blocking` argument is equal to
     // `true`.
@@ -451,7 +443,11 @@ fn current_process_admission_context_from_provider(
 }
 
 fn admit(event_buffer: &EventBuffer, entry: EventBufferEntry) -> Result<(), AdmissionError> {
-  match event_buffer.admit(entry) {
+  admission_outcome(event_buffer.admit(entry))
+}
+
+fn admission_outcome(outcome: AdmissionOutcome) -> Result<(), AdmissionError> {
+  match outcome {
     AdmissionOutcome::Admitted => Ok(()),
     AdmissionOutcome::RejectedFull | AdmissionOutcome::RejectedOversized => {
       Err(AdmissionError::FullSizeOverflow)
@@ -709,10 +705,13 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
       .stats
       .scope
       .scope("event_buffer");
-    let event_buffer = EventBuffer::new(EventBufferLimits {
-      log_limit_bytes: uninitialized_logging_context.event_buffer_log_limit_bytes,
-      total_limit_bytes: 10 * 1024 * 1024,
-    });
+    let event_buffer = EventBuffer::new_with_stats(
+      EventBufferLimits {
+        log_limit_bytes: uninitialized_logging_context.event_buffer_log_limit_bytes,
+        total_limit_bytes: 10 * 1024 * 1024,
+      },
+      &event_buffer_scope,
+    );
     let startup_replay_gate_stats = StartupReplayGateStats::new(&event_buffer_scope);
     // The bootstrap limits cover admission before runtime configuration is available. Stage the
     // current runtime pair as well: this covers a persisted configuration that loaded before ALB

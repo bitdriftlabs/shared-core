@@ -13,6 +13,7 @@ use super::{
   EventBufferLimits,
   EventBufferState,
   EventContext,
+  FlushAdmissionOutcome,
   LoggerControl,
   LoggerIngressEvent,
   LoggerIngressPayload,
@@ -21,9 +22,12 @@ use super::{
   StartupGateReleaseRequest,
   retention_lane,
 };
+use bd_client_stats_store::Collector;
+use bd_client_stats_store::test::StatsHelper;
 use bd_log_primitives::{AnnotatedLogFields, DataValue, LogFields, LogLine, log_level};
 use bd_macros::ApproximateSize;
 use bd_proto::protos::logging::payload::LogType;
+use bd_stats_common::labels;
 use std::sync::{Arc, Mutex, mpsc as std_mpsc};
 use time::OffsetDateTime;
 use tokio::sync::{oneshot, watch};
@@ -98,6 +102,83 @@ fn buffer(bytes: usize) -> EventBuffer {
   let buffer = EventBuffer::new(limits(bytes));
   assert!(buffer.open_startup_gate());
   buffer
+}
+
+#[test]
+fn records_admission_outcomes_per_retention_lane() {
+  let collector = Collector::default();
+  let low = log(log_level::DEBUG, LogType::NORMAL, 4096);
+  let high = log(log_level::INFO, LogType::NORMAL, 4096);
+  let protected = log(log_level::INFO, LogType::LIFECYCLE, 4096);
+  let limit = low
+    .approximate_size_bytes()
+    .max(high.approximate_size_bytes())
+    .max(protected.approximate_size_bytes());
+  let buffer = EventBuffer::new_with_stats(limits(limit), &collector.scope("event_buffer"));
+
+  assert_eq!(AdmissionOutcome::Admitted, buffer.admit(low));
+  assert_eq!(AdmissionOutcome::Admitted, buffer.admit(high));
+  assert_eq!(
+    AdmissionOutcome::RejectedFull,
+    buffer.admit(log(log_level::INFO, LogType::NORMAL, 4096))
+  );
+  assert_eq!(AdmissionOutcome::Admitted, buffer.admit(protected));
+  assert_eq!(
+    AdmissionOutcome::RejectedFull,
+    buffer.admit(log(log_level::INFO, LogType::LIFECYCLE, 4096))
+  );
+  assert_eq!(
+    AdmissionOutcome::RejectedOversized,
+    buffer.admit(log(log_level::DEBUG, LogType::NORMAL, limit))
+  );
+
+  collector.assert_counter_eq(
+    1,
+    "event_buffer:entry_outcomes",
+    labels!("lane" => "low", "outcome" => "evicted"),
+  );
+  collector.assert_counter_eq(
+    1,
+    "event_buffer:entry_outcomes",
+    labels!("lane" => "high", "outcome" => "evicted"),
+  );
+  collector.assert_counter_eq(
+    1,
+    "event_buffer:entry_outcomes",
+    labels!("lane" => "high", "outcome" => "rejected_full"),
+  );
+  collector.assert_counter_eq(
+    1,
+    "event_buffer:entry_outcomes",
+    labels!("lane" => "protected", "outcome" => "rejected_full"),
+  );
+  collector.assert_counter_eq(
+    1,
+    "event_buffer:entry_outcomes",
+    labels!("lane" => "low", "outcome" => "rejected_oversized"),
+  );
+}
+
+#[tokio::test]
+async fn flush_before_startup_gate_ready_completes_without_admission() {
+  let buffer = EventBuffer::new(limits(4096));
+  let (completion, receiver) = bd_completion::Sender::new();
+
+  assert_eq!(
+    FlushAdmissionOutcome::SkippedBeforeStartupGateReady,
+    buffer.admit_flush(Some(completion))
+  );
+  receiver.recv().await.unwrap();
+
+  assert!(buffer.open_startup_gate());
+  assert_eq!(
+    AdmissionOutcome::Admitted,
+    buffer.admit(log(log_level::INFO, LogType::NORMAL, 1))
+  );
+  assert!(matches!(
+    buffer.next_batch(2).await.as_slice(),
+    [EventBufferEntry::Ingress(LoggerIngressEvent { .. })]
+  ));
 }
 
 //

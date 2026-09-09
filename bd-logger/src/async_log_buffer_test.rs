@@ -603,7 +603,6 @@ async fn before_startup_gate_ready_blocking_flush_completes_without_event_buffer
   let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
   let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
 
-  assert!(buffer.event_buffer.skips_flush_before_startup_gate_ready());
   assert_ok!(sender.flush_state(Block::Yes {
     timeout: 1.std_seconds(),
     poll_callback: None,
