@@ -55,7 +55,7 @@ use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{
   KeyOrIndex,
   key_or_index,
 };
-use bd_state::Scope;
+use bd_state::{Scope, state_value_as_cow};
 use log_matcher::LogMatcher;
 use log_matcher::log_matcher::{BaseLogMatcher, Matcher, base_log_matcher};
 use rand::RngExt;
@@ -406,19 +406,11 @@ impl InputType {
     match self {
       Self::Message => message.as_str().map(Cow::Borrowed),
       Self::Field(field_key) => fields.field_value(field_key),
-      Self::State(scope, flag_key) => state.get(*scope, flag_key).map(|v| {
-        use bd_state::Value_type;
-        match v.value_type {
-          Some(Value_type::StringValue(ref s)) => Cow::Borrowed(s.as_str()),
-          // TODO(snowp): Ideally we would avoid allocating here, but since state values are
-          // stored as Value_type enum, we need to convert them to strings. Int/Double state values
-          // are not really used right now, but if we ever do consider either caching this or
-          // making the comparison machinery work against the different types directly.
-          Some(Value_type::IntValue(i)) => Cow::Owned(i.to_string()),
-          Some(Value_type::DoubleValue(d)) => Cow::Owned(d.to_string()),
-          Some(Value_type::BoolValue(true)) => Cow::Borrowed("true"),
-          Some(Value_type::BoolValue(false)) => Cow::Borrowed("false"),
-          None => Cow::Borrowed(""),
+      Self::State(scope, flag_key) => state.get(*scope, flag_key).and_then(|value| {
+        if value.value_type.is_none() {
+          Some(Cow::Borrowed(""))
+        } else {
+          state_value_as_cow(value)
         }
       }),
     }
@@ -458,6 +450,9 @@ impl InputType {
           Some(Value_type::IntValue(i)) => i32::try_from(i).ok(),
           Some(Value_type::DoubleValue(d)) => Some(d as i32),
           Some(Value_type::StringValue(ref s)) => s.parse().ok(),
+          Some(Value_type::Data(_)) => {
+            state_value_as_cow(v).and_then(|value| value.parse::<f64>().ok().map(|v| v as i32))
+          },
           Some(Value_type::BoolValue(_)) | None => None,
         }
       },
@@ -496,6 +491,7 @@ impl InputType {
           Some(Value_type::DoubleValue(d)) => Some(d),
           Some(Value_type::IntValue(i)) => Some(i as f64),
           Some(Value_type::StringValue(ref s)) => s.parse().ok(),
+          Some(Value_type::Data(_)) => state_value_as_cow(v).and_then(|value| value.parse().ok()),
           Some(Value_type::BoolValue(_)) | None => None,
         }
       },
@@ -650,10 +646,8 @@ impl Leaf {
             StateScope::FEATURE_FLAG => Scope::FeatureFlagExposure,
             StateScope::GLOBAL_STATE => Scope::GlobalState,
             StateScope::SYSTEM => Scope::System,
-            StateScope::UNSPECIFIED => {
-              // For now, we only support feature flags. Other scopes would need additional
-              // handling.
-              // We'll need to config version guard any new scopes.
+            StateScope::CUSTOM_FIELDS | StateScope::OOTB_FIELDS | StateScope::UNSPECIFIED => {
+              // Custom and SDK-owned fields are not stored in the bd_state namespaces.
               return Err(anyhow!("Unsupported state scope"));
             },
           };

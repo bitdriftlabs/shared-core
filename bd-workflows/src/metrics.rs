@@ -12,6 +12,7 @@ mod metrics_test;
 use crate::config::{ActionEmitMetric, MetricMultiTag, TagValue};
 use crate::engine::EmitMetricActionCount;
 use crate::workflow::{TriggeredActionEmitSankey, WorkflowEvent};
+use bd_state::state_value_as_cow;
 use bd_stats_common::{Counter, Histogram, MetricType};
 use bd_workflow_stats::StatsCollector;
 use std::borrow::Cow;
@@ -150,7 +151,9 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
     key: &str,
     state_reader: &'a dyn bd_state::StateReader,
   ) -> Option<Cow<'a, str>> {
-    state_reader.get(scope, key).map(Self::state_value_as_cow)
+    state_reader
+      .get(scope, key)
+      .map(|value| state_value_as_cow(value).unwrap_or(Cow::Borrowed("")))
   }
 
   fn extract_tags(
@@ -231,7 +234,7 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
         continue;
       }
 
-      let state_value = Self::state_value_as_cow(state_value(entry));
+      let state_value = state_value_as_cow(state_value(entry)).unwrap_or(Cow::Borrowed(""));
       if !multi_tag.matches_value(state_value.as_ref()) {
         continue;
       }
@@ -246,17 +249,5 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
     }
 
     matched_any
-  }
-
-  fn state_value_as_cow(value: &bd_state::Value) -> Cow<'_, str> {
-    use bd_state::Value_type;
-    match value.value_type {
-      Some(Value_type::StringValue(ref s)) => Cow::Borrowed(s.as_str()),
-      Some(Value_type::IntValue(i)) => Cow::Owned(i.to_string()),
-      Some(Value_type::DoubleValue(d)) => Cow::Owned(d.to_string()),
-      Some(Value_type::BoolValue(true)) => Cow::Borrowed("true"),
-      Some(Value_type::BoolValue(false)) => Cow::Borrowed("false"),
-      None => Cow::Borrowed(""),
-    }
   }
 }

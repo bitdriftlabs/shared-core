@@ -20,7 +20,7 @@ use bd_proto::protos::workflow::workflow::workflow::{
   LimitDuration as LimitDurationProto,
   LimitMatchedLogsCount,
 };
-use bd_state::Scope;
+use bd_state::{Scope, state_value_as_cow};
 use bd_stats_common::MetricType;
 use protobuf::MessageField;
 use regex::Regex;
@@ -726,7 +726,9 @@ impl StateChangeMatch {
       },
       bd_proto::protos::state::scope::StateScope::FEATURE_FLAG => Scope::FeatureFlagExposure,
       bd_proto::protos::state::scope::StateScope::GLOBAL_STATE => Scope::GlobalState,
-      bd_proto::protos::state::scope::StateScope::SYSTEM => {
+      bd_proto::protos::state::scope::StateScope::CUSTOM_FIELDS
+      | bd_proto::protos::state::scope::StateScope::OOTB_FIELDS
+      | bd_proto::protos::state::scope::StateScope::SYSTEM => {
         anyhow::bail!("invalid state scope: system");
       },
     };
@@ -1160,15 +1162,11 @@ impl TagValue {
   ) -> Option<Cow<'a, str>> {
     match self {
       Self::FieldExtract(field_key) => fields.field_value(field_key),
-      Self::StateExtract(scope, key) => state_reader.get(*scope, key).map(|v| {
-        use bd_state::Value_type;
-        match v.value_type {
-          Some(Value_type::StringValue(ref s)) => Cow::Borrowed(s.as_str()),
-          Some(Value_type::IntValue(i)) => Cow::Owned(i.to_string()),
-          Some(Value_type::DoubleValue(d)) => Cow::Owned(d.to_string()),
-          Some(Value_type::BoolValue(true)) => Cow::Borrowed("true"),
-          Some(Value_type::BoolValue(false)) => Cow::Borrowed("false"),
-          None => Cow::Borrowed(""),
+      Self::StateExtract(scope, key) => state_reader.get(*scope, key).and_then(|value| {
+        if value.value_type.is_none() {
+          Some(Cow::Borrowed(""))
+        } else {
+          state_value_as_cow(value)
         }
       }),
       Self::Fixed(value) => Some(Cow::Owned(value.clone())),
@@ -1184,7 +1182,9 @@ fn parse_state_scope(scope: bd_proto::protos::state::scope::StateScope) -> anyho
     },
     bd_proto::protos::state::scope::StateScope::FEATURE_FLAG => Ok(Scope::FeatureFlagExposure),
     bd_proto::protos::state::scope::StateScope::GLOBAL_STATE => Ok(Scope::GlobalState),
-    bd_proto::protos::state::scope::StateScope::SYSTEM => {
+    bd_proto::protos::state::scope::StateScope::CUSTOM_FIELDS
+    | bd_proto::protos::state::scope::StateScope::OOTB_FIELDS
+    | bd_proto::protos::state::scope::StateScope::SYSTEM => {
       anyhow::bail!("invalid state scope: system");
     },
   }

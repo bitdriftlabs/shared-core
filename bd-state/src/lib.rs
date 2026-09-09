@@ -22,6 +22,7 @@ pub mod test;
 
 pub use self::InitStrategy::{InMemoryOnly, PersistentWithFallback};
 use ahash::AHashMap;
+use bd_proto::protos::logging::payload::data::Data_type;
 use bd_runtime::runtime::ConfigLoader;
 use bd_time::{OffsetDateTimeExt, TimeProvider};
 use bd_versioned_kv::{DataLoss, ScopedMaps, StateValue};
@@ -34,6 +35,7 @@ pub use bd_versioned_kv::{
   Value_type,
 };
 use itertools::Itertools as _;
+use std::borrow::Cow;
 use std::path::Path;
 use std::sync::Arc;
 use time::OffsetDateTime;
@@ -81,6 +83,28 @@ pub fn bool_value(b: bool) -> Value {
   Value {
     value_type: Value_type::BoolValue(b).into(),
     ..Default::default()
+  }
+}
+
+/// Returns a scalar state value as a string, omitting binary and structured data.
+#[must_use]
+pub fn state_value_as_cow(value: &Value) -> Option<Cow<'_, str>> {
+  match value.value_type {
+    Some(Value_type::StringValue(ref value)) => Some(Cow::Borrowed(value.as_str())),
+    Some(Value_type::IntValue(value)) => Some(Cow::Owned(value.to_string())),
+    Some(Value_type::DoubleValue(value)) => Some(Cow::Owned(value.to_string())),
+    Some(Value_type::BoolValue(true)) => Some(Cow::Borrowed("true")),
+    Some(Value_type::BoolValue(false)) => Some(Cow::Borrowed("false")),
+    Some(Value_type::Data(ref data)) => match data.data_type.as_ref()? {
+      Data_type::StringData(value) => Some(Cow::Borrowed(value.as_str())),
+      Data_type::IntData(value) => Some(Cow::Owned(value.to_string())),
+      Data_type::SintData(value) => Some(Cow::Owned(value.to_string())),
+      Data_type::DoubleData(value) => Some(Cow::Owned(value.to_string())),
+      Data_type::BoolData(true) => Some(Cow::Borrowed("true")),
+      Data_type::BoolData(false) => Some(Cow::Borrowed("false")),
+      Data_type::BinaryData(_) | Data_type::MapData(_) | Data_type::ArrayData(_) => None,
+    },
+    None => None,
   }
 }
 
