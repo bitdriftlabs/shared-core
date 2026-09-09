@@ -2176,8 +2176,6 @@ async fn remote_streaming_activation_channel_closure_preserves_flush_completion(
     .await
     .unwrap();
 
-  // The upload is emitted after its pending state is persisted and registered. Await that
-  // event rather than assuming a fixed number of scheduler yields covers filesystem I/O.
   let upload = setup.next_upload().await;
   assert!(setup.flush_is_pending(&flush_id));
 
@@ -2289,8 +2287,6 @@ async fn remote_streaming_activation_waits_for_channel_capacity_before_completin
     .await
     .unwrap();
 
-  // The upload is emitted after its pending state is persisted and registered. Await that
-  // event rather than assuming a fixed number of scheduler yields covers filesystem I/O.
   let upload = setup.next_upload().await;
   assert!(setup.flush_is_pending(&flush_id));
   upload
