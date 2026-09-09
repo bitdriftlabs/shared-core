@@ -709,6 +709,7 @@ pub(crate) enum StartupGateReleaseRequest {
 // EventBufferBatch
 //
 
+#[derive(Debug)]
 pub struct EventBufferBatch {
   pub entries: Vec<EventBufferEntry>,
   pub startup_gate_opened: Option<StartupGateOpening>,

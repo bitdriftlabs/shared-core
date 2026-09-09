@@ -71,7 +71,7 @@ use bd_time::{SystemTimeProvider, TimeDurationExt};
 use bd_workflows::config::WorkflowsConfiguration;
 use bd_workflows::engine::ProcessLocalPendingFlushState;
 use bd_workflows::test::MakeConfig;
-use futures::poll;
+use futures_util::poll;
 use std::future;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
