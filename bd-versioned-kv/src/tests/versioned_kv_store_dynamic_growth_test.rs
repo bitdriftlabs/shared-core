@@ -9,7 +9,7 @@
 
 use crate::versioned_kv_journal::retention::RetentionRegistry;
 use crate::versioned_kv_journal::{PersistentStoreConfig, make_string_value};
-use crate::{Scope, VersionedKVStore};
+use crate::{Scope, UpdateError, VersionedKVStore};
 use bd_time::TestTimeProvider;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -359,9 +359,9 @@ async fn insert_triggers_rotation_on_capacity_exceeded() -> anyhow::Result<()> {
   Ok(())
 }
 
-/// Test that journal capacity failure preserves live state by falling back to memory.
+/// Journal capacity rejections retain the persistent backend and do not apply the new value.
 #[tokio::test]
-async fn insert_falls_back_to_memory_when_exceeding_max_capacity() -> anyhow::Result<()> {
+async fn oversized_value_keeps_persistent_store() -> anyhow::Result<()> {
   use bd_client_stats_store::test::StatsHelper;
   use std::collections::BTreeMap;
 
@@ -379,18 +379,18 @@ async fn insert_falls_back_to_memory_when_exceeding_max_capacity() -> anyhow::Re
   // Try to insert a value that's larger than max capacity
   let huge_value = "x".repeat(10 * 1024); // 10KB value, exceeds 8KB max
 
-  store
+  let error = store
     .insert(
       Scope::GlobalState,
       "huge_key".to_string(),
       make_string_value(&huge_value),
     )
-    .await?;
+    .await
+    .expect_err("an oversized value must be rejected");
 
-  // The value is available immediately, although it cannot survive a restart.
-  assert_eq!(store.len(), 1);
-  assert!(store.contains_key(Scope::GlobalState, "huge_key"));
-  assert!(store.journal_path().is_none());
+  assert!(matches!(error, UpdateError::CapacityExceeded));
+  assert!(store.is_empty());
+  assert!(store.journal_path().is_some());
 
   // Verify the metric was incremented
   setup.collector.assert_counter_eq(
@@ -398,11 +398,9 @@ async fn insert_falls_back_to_memory_when_exceeding_max_capacity() -> anyhow::Re
     "test:kv:capacity_exceeded_unrecoverable",
     BTreeMap::new(),
   );
-  setup.collector.assert_counter_eq(
-    1,
-    "test:kv:persistence_fallbacks",
-    BTreeMap::new(),
-  );
+  setup
+    .collector
+    .assert_counter_eq(0, "test:kv:persistence_fallbacks", BTreeMap::new());
 
   Ok(())
 }
@@ -467,11 +465,11 @@ async fn compaction_helps_at_max_capacity() -> anyhow::Result<()> {
   Ok(())
 }
 
-/// Test that a failed compaction keeps the new value available in memory.
+/// Test that a failed compaction retains persistent mode and rejects the new value.
 /// When buffer is at max capacity and compacted state plus new entry
 /// still wouldn't fit, we should fail immediately without attempting rotation.
 #[tokio::test]
-async fn falls_back_to_memory_when_compaction_wont_help() -> anyhow::Result<()> {
+async fn compaction_capacity_rejection_keeps_persistent_store() -> anyhow::Result<()> {
   let setup = Setup::new();
 
   let config = PersistentStoreConfig {
@@ -498,16 +496,18 @@ async fn falls_back_to_memory_when_compaction_wont_help() -> anyhow::Result<()> 
   // Try to insert a large entry that wouldn't fit even after compaction
   let large_value = "y".repeat(4 * 1024); // 4KB value
 
-  store
+  let error = store
     .insert(
       Scope::GlobalState,
       "large_key".to_string(),
       make_string_value(&large_value),
     )
-    .await?;
+    .await
+    .expect_err("an entry that cannot fit after compaction must be rejected");
 
-  assert!(store.contains_key(Scope::GlobalState, "large_key"));
-  assert!(store.journal_path().is_none());
+  assert!(matches!(error, UpdateError::CapacityExceeded));
+  assert!(!store.contains_key(Scope::GlobalState, "large_key"));
+  assert!(store.journal_path().is_some());
 
   Ok(())
 }

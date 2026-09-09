@@ -875,15 +875,21 @@ impl InMemoryStore {
 
   /// Preserves the live state when persistence is no longer available.
   ///
-  /// The fallback deliberately has no memory cap: state is correctness-critical for the
-  /// remainder of this process, while the persistent journal's capacity has already proved
-  /// unavailable. The state will be lost on the next process restart.
+  /// The fallback keeps the persistent store's configured capacity. A journal I/O failure must
+  /// not remove state from the running process, but it must not turn a bounded store into an
+  /// unbounded memory consumer either. The state will be lost on the next process restart.
   fn from_persistent(store: PersistentStore) -> Self {
+    let current_size_bytes = store
+      .cached_map
+      .iter()
+      .map(|(_, key, value)| Self::estimate_entry_size(key, &value.value))
+      .sum();
+
     Self {
       time_provider: store.journal.time_provider.clone(),
       cached_map: store.cached_map,
-      max_bytes: None,
-      current_size_bytes: 0,
+      max_bytes: Some(store.max_capacity_bytes),
+      current_size_bytes,
       stats: store.stats,
     }
   }
@@ -941,11 +947,13 @@ impl InMemoryStore {
           // Replacing existing entry - calculate size delta
           let old_value = entry.get().value.clone();
           let old_size = Self::estimate_entry_size(key, &old_value);
-          let size_delta = new_entry_size.saturating_sub(old_size);
+          let new_size = self
+            .current_size_bytes
+            .saturating_sub(old_size)
+            .saturating_add(new_entry_size);
 
           // Check capacity before replacing
           if let Some(max_bytes) = self.max_bytes {
-            let new_size = self.current_size_bytes.saturating_add(size_delta);
             if new_size > max_bytes {
               self.stats.capacity_exceeded_unrecoverable.inc();
               return Err(UpdateError::CapacityExceeded);
@@ -957,7 +965,7 @@ impl InMemoryStore {
             value: value.clone(),
             timestamp,
           });
-          self.current_size_bytes = self.current_size_bytes.saturating_add(size_delta);
+          self.current_size_bytes = new_size;
           Ok((timestamp, Some(old_value)))
         },
         Entry::Vacant(entry) => {
@@ -1080,7 +1088,12 @@ impl InMemoryStore {
     let timestamp = self.current_timestamp();
     let old_value = self.cached_map.remove(scope, key);
 
-    old_value.map(|v| (timestamp, v.value))
+    old_value.map(|value| {
+      self.current_size_bytes = self
+        .current_size_bytes
+        .saturating_sub(Self::estimate_entry_size(key, &value.value));
+      (timestamp, value.value)
+    })
   }
 }
 
@@ -1191,20 +1204,21 @@ impl VersionedKVStore {
     }
   }
 
-  /// Switches a failed persistent store to in-memory operation without losing its live state.
+  /// Switches a persistently failed store to bounded in-memory operation without losing live state.
   ///
   /// A journal failure must not make runtime state disappear: callers such as workflow matching
   /// and state consumers need the update even when it cannot survive a restart.
-  fn fallback_to_in_memory(&mut self, error: &UpdateError) {
+  fn fallback_to_in_memory(&mut self, error: &anyhow::Error) {
     let fallback = match &self.backend {
       StoreBackend::Persistent(store) => {
         store.stats.persistence_fallbacks.inc();
         log::warn!(
-          "disabling state persistence after journal write failure; retaining state in memory: {error}"
+          "disabling state persistence after journal write failure; retaining state in memory: \
+           {error}"
         );
         InMemoryStore::new(
           store.journal.time_provider.clone(),
-          None,
+          Some(store.max_capacity_bytes),
           store.stats.clone(),
         )
       },
@@ -1248,15 +1262,19 @@ impl VersionedKVStore {
   ///
   /// Note: Inserting `Value::Null` is equivalent to removing the key.
   ///
-  /// If persistent journal admission fails, the store transitions to unbounded in-memory mode and
-  /// still applies the update. The state remains available to the current process, but will not
-  /// survive a restart. This degradation is logged and counted in `kv:persistence_fallbacks`.
+  /// If the persistent journal encounters a system error, the store transitions to bounded
+  /// in-memory mode and still applies the update when it fits. The state remains available to the
+  /// current process, but will not survive a restart. This degradation is logged and counted in
+  /// `kv:persistence_fallbacks`.
+  ///
+  /// Journal capacity rejections do not change storage mode or apply the update.
   ///
   /// While the persistent journal is healthy, a successful return means it accepted the update;
   /// callers that require an explicit disk sync must call [`Self::sync`].
   ///
   /// # Errors
-  /// Returns `UpdateError::CapacityExceeded` only for an explicitly bounded in-memory store.
+  /// Returns `UpdateError::CapacityExceeded` when either persistent or in-memory admission rejects
+  /// the update.
   pub async fn insert(
     &mut self,
     scope: Scope,
@@ -1266,7 +1284,8 @@ impl VersionedKVStore {
     if let StoreBackend::Persistent(store) = &mut self.backend {
       match store.insert(scope, &key, value.clone()).await {
         Ok(result) => return Ok(result),
-        Err(error) => self.fallback_to_in_memory(&error),
+        Err(UpdateError::System(error)) => self.fallback_to_in_memory(&error),
+        Err(error) => return Err(error),
       }
     }
 
@@ -1281,8 +1300,9 @@ impl VersionedKVStore {
 
   /// Insert multiple key-value pairs with a shared timestamp.
   ///
-  /// All entries are written with the same timestamp. If a persistent journal write fails, the
-  /// store transitions to in-memory mode and applies the entire batch there.
+  /// All entries are written with the same timestamp. If a persistent journal encounters a system
+  /// error, the store transitions to bounded in-memory mode and applies the entire batch there
+  /// when it fits. Capacity rejections leave the persistent store unchanged.
   ///
   /// For persistent stores, this operation handles rotation and retries automatically if needed.
   /// If empty, this is a no-op that returns the current timestamp.
@@ -1290,7 +1310,8 @@ impl VersionedKVStore {
   /// Note: Entries with `Value::Null` are treated as deletions.
   ///
   /// # Errors
-  /// Returns `UpdateError::CapacityExceeded` only for an explicitly bounded in-memory store.
+  /// Returns `UpdateError::CapacityExceeded` when either persistent or in-memory admission rejects
+  /// the batch.
   pub async fn extend(
     &mut self,
     entries: Vec<(Scope, String, StateValue)>,
@@ -1298,7 +1319,8 @@ impl VersionedKVStore {
     if let StoreBackend::Persistent(store) = &mut self.backend {
       match store.extend_entries(entries.clone()).await {
         Ok(timestamp) => return Ok(timestamp),
-        Err(error) => self.fallback_to_in_memory(&error),
+        Err(UpdateError::System(error)) => self.fallback_to_in_memory(&error),
+        Err(error) => return Err(error),
       }
     }
 
@@ -1316,8 +1338,8 @@ impl VersionedKVStore {
   /// Returns `None` if the key didn't exist, otherwise returns the timestamp and old value.
   ///
   /// # Errors
-  /// If persistent journal admission fails, the store transitions to in-memory mode and removes
-  /// the value from the live state.
+  /// If the persistent journal encounters a system error, the store transitions to bounded
+  /// in-memory mode and removes the value from the live state.
   pub async fn remove(
     &mut self,
     scope: Scope,
@@ -1326,7 +1348,8 @@ impl VersionedKVStore {
     if let StoreBackend::Persistent(store) = &mut self.backend {
       match store.remove(scope, key).await {
         Ok(result) => return Ok(result),
-        Err(error) => self.fallback_to_in_memory(&error),
+        Err(UpdateError::System(error)) => self.fallback_to_in_memory(&error),
+        Err(error) => return Err(error),
       }
     }
 

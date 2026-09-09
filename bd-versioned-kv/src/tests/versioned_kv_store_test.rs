@@ -640,6 +640,59 @@ async fn test_in_memory_size_limit_replacement() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn test_in_memory_size_limit_reclaims_replaced_and_removed_values() -> anyhow::Result<()> {
+  let collector = bd_client_stats_store::Collector::default();
+  let stats = collector.scope("test");
+  let time_provider = Arc::new(TestTimeProvider::new(datetime!(2024-01-01 00:00:00 UTC)));
+  let mut store = VersionedKVStore::new_in_memory(
+    time_provider,
+    Some(2_000),
+    &stats,
+    bd_runtime::runtime::IntWatch::new_for_testing(2),
+  );
+
+  let large_value = "x".repeat(1_200);
+  store
+    .insert(
+      Scope::FeatureFlagExposure,
+      "key1".to_string(),
+      make_string_value(&large_value),
+    )
+    .await?;
+
+  // Replacing a large value with a small one must reclaim the previous value's capacity.
+  store
+    .insert(
+      Scope::FeatureFlagExposure,
+      "key1".to_string(),
+      make_string_value("small"),
+    )
+    .await?;
+  store
+    .insert(
+      Scope::FeatureFlagExposure,
+      "key2".to_string(),
+      make_string_value(&large_value),
+    )
+    .await?;
+
+  // Removing the remaining large value must also make its capacity available to future writes.
+  store.remove(Scope::FeatureFlagExposure, "key2").await?;
+  store
+    .insert(
+      Scope::FeatureFlagExposure,
+      "key3".to_string(),
+      make_string_value(&large_value),
+    )
+    .await?;
+
+  assert!(store.contains_key(Scope::FeatureFlagExposure, "key1"));
+  assert!(store.contains_key(Scope::FeatureFlagExposure, "key3"));
+
+  Ok(())
+}
+
+#[tokio::test]
 async fn test_persistence_and_reload() -> anyhow::Result<()> {
   let collector = bd_client_stats_store::Collector::default();
   let stats = collector.scope("test");

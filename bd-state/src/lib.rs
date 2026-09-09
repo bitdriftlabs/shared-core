@@ -552,10 +552,12 @@ impl Store {
 
   /// Inserts a value into state.
   ///
-  /// If the persistent journal becomes unavailable, the state store retains the live value and
-  /// continues in in-memory mode. The update will not survive a restart, but all state readers
-  /// observe it during this process. A successful persistent-journal admission does not itself
-  /// perform an explicit disk sync.
+  /// If the persistent journal becomes unavailable, the state store retains live state and
+  /// continues in bounded in-memory mode. An update that fits is visible to all state readers for
+  /// the current process, but will not survive a restart. A successful persistent-journal
+  /// admission does not itself perform an explicit disk sync.
+  ///
+  /// Journal capacity rejections return an error without changing the live value or storage mode.
   pub async fn insert(
     &self,
     scope: Scope,
