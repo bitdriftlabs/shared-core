@@ -14,7 +14,7 @@ use crate::workflow::WorkflowEvent;
 use bd_client_stats::Stats;
 use bd_client_stats_store::test::StatsHelper;
 use bd_client_stats_store::{Collector, Counter, Histogram};
-use bd_log_primitives::{Log, LogFields, log_level};
+use bd_log_primitives::{DataValue, FieldsRef, Log, LogFields, LogMessage, log_level};
 use bd_proto::protos::logging::payload::LogType;
 use bd_proto::protos::workflow::workflow::MultiTag as MultiTagProto;
 use bd_state::Scope;
@@ -26,6 +26,77 @@ fn make_metrics_collector() -> (MetricsCollector<Counter, Histogram>, Collector)
   let collector = Collector::default();
   let stats = Stats::new(collector.clone());
   (MetricsCollector::new(stats), collector)
+}
+
+#[test]
+fn state_tag_value_skips_unsupported_typed_values() {
+  let mut state_reader = bd_state::InMemoryStateReader::default();
+  state_reader.insert(
+    Scope::CustomFields,
+    "binary",
+    bd_state::Value {
+      value_type: bd_state::Value_type::Data(DataValue::Bytes(vec![1, 2, 3].into()).into_proto())
+        .into(),
+      ..Default::default()
+    },
+  );
+
+  let fields = LogFields::default();
+  let message = LogMessage::String("message".to_string());
+  let tag = TagValue::StateExtract(Scope::CustomFields, "binary".to_string());
+
+  assert!(
+    tag
+      .extract_value(FieldsRef::new(&fields, &fields), &message, &state_reader)
+      .is_none()
+  );
+}
+
+#[test]
+fn field_tag_value_reads_virtual_state_fields_with_log_precedence() {
+  let mut state_reader = bd_state::InMemoryStateReader::default();
+  for (scope, key, value) in [
+    (Scope::CustomFields, "custom_only", "custom"),
+    (Scope::CustomFields, "log_overrides_custom", "custom"),
+    (Scope::OotbFields, "ootb_overrides_log", "ootb"),
+  ] {
+    state_reader.insert(
+      scope,
+      key,
+      bd_state::Value {
+        value_type: bd_state::Value_type::Data(DataValue::String(value.to_string()).into_proto())
+          .into(),
+        ..Default::default()
+      },
+    );
+  }
+
+  let fields = [
+    (
+      "log_overrides_custom".into(),
+      DataValue::String("log".to_string()),
+    ),
+    (
+      "ootb_overrides_log".into(),
+      DataValue::String("log".to_string()),
+    ),
+  ]
+  .into();
+  let message = LogMessage::String("message".to_string());
+
+  for (field_key, expected) in [
+    ("custom_only", "custom"),
+    ("log_overrides_custom", "log"),
+    ("ootb_overrides_log", "ootb"),
+  ] {
+    let tag = TagValue::FieldExtract(field_key.to_string());
+    assert_eq!(
+      Some(expected),
+      tag
+        .extract_value(FieldsRef::new(&fields, &fields), &message, &state_reader)
+        .as_deref()
+    );
+  }
 }
 
 #[test]
@@ -90,6 +161,13 @@ fn metric_increment_value_extraction() {
       increment: crate::config::ValueIncrement::Extract("m1".to_string()),
       metric_type: MetricType::Histogram,
     },
+    ActionEmitMetric {
+      id: "action_id_7".to_string(),
+      tags: BTreeMap::new(),
+      multi_tag: None,
+      increment: crate::config::ValueIncrement::Extract("state_increment".to_string()),
+      metric_type: MetricType::Counter,
+    },
   ];
   let action_counts: BTreeMap<&ActionEmitMetric, EmitMetricActionCount> = actions
     .iter()
@@ -105,11 +183,18 @@ fn metric_increment_value_extraction() {
     })
     .collect();
 
-  metrics_collector.emit_metrics(
-    &action_counts,
-    WorkflowEvent::Log(&log),
-    &bd_state::InMemoryStateReader::default(),
+  let mut state_reader = bd_state::InMemoryStateReader::default();
+  state_reader.insert(
+    Scope::CustomFields,
+    "state_increment",
+    bd_state::Value {
+      value_type: bd_state::Value_type::Data(DataValue::String("8".to_string()).into_proto())
+        .into(),
+      ..Default::default()
+    },
   );
+
+  metrics_collector.emit_metrics(&action_counts, WorkflowEvent::Log(&log), &state_reader);
 
   collector.assert_workflow_counter_eq(1, "action_id_1", labels! {});
   collector.assert_workflow_counter_eq(10, "action_id_2", labels! {});
@@ -127,6 +212,8 @@ fn metric_increment_value_extraction() {
   collector.assert_workflow_counter_eq(5, "action_id_5", labels! {});
   // Values can be extracted from the matching_only_fields.
   collector.assert_workflow_histogram_observed(5.0, "action_id_6", labels! {});
+  // Persistent custom fields can be referenced as ordinary fields.
+  collector.assert_workflow_counter_eq(8, "action_id_7", labels! {});
 }
 
 #[test]
@@ -332,6 +419,15 @@ fn metric_multi_tag_fans_out_over_matching_state_entries() {
     "not_an_experiment",
     bd_state::string_value("ignored"),
   );
+  state_reader.insert(
+    bd_state::Scope::FeatureFlagExposure,
+    "experiment_binary",
+    bd_state::Value {
+      value_type: bd_state::Value_type::Data(DataValue::Bytes(vec![1, 2, 3].into()).into_proto())
+        .into(),
+      ..Default::default()
+    },
+  );
 
   let action = ActionEmitMetric {
     id: "action_id_multi".to_string(),
@@ -378,6 +474,18 @@ fn metric_multi_tag_fans_out_over_matching_state_entries() {
       "experiment" => "experiment_search",
       "variant" => "control",
     },
+  );
+  assert!(
+    collector
+      .find_counter(
+        &NameType::ActionId("action_id_multi".to_string()),
+        &labels! {
+          "static" => "tag",
+          "experiment" => "experiment_binary",
+          "variant" => "",
+        },
+      )
+      .is_none()
   );
 }
 

@@ -477,6 +477,8 @@ pub fn make_state_change_rule(
         bd_state::Scope::FeatureFlagExposure => StateScope::FEATURE_FLAG.into(),
         bd_state::Scope::GlobalState => StateScope::GLOBAL_STATE.into(),
         bd_state::Scope::System => StateScope::SYSTEM.into(),
+        bd_state::Scope::CustomFields => StateScope::CUSTOM_FIELDS.into(),
+        bd_state::Scope::OotbFields => StateScope::OOTB_FIELDS.into(),
       },
       key: key.to_string(),
       previous_value: protobuf::MessageField::none(),

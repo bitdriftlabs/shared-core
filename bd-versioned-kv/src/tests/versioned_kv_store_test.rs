@@ -12,7 +12,7 @@ use crate::versioned_kv_journal::retention::{RetentionHandle, RetentionRegistry}
 use crate::versioned_kv_journal::store::PersistentStoreConfig;
 use crate::versioned_kv_journal::{TimestampedValue, make_string_value};
 use crate::{DataLoss, PersistenceMode, Scope, UpdateError, VersionedKVStore};
-use bd_proto::protos::state::payload::StateValue;
+use bd_proto::protos::state::state_payload::StateValue;
 use bd_time::TestTimeProvider;
 use rstest::rstest;
 use std::sync::Arc;

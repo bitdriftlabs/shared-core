@@ -12,7 +12,8 @@ mod metrics_test;
 use crate::config::{ActionEmitMetric, MetricMultiTag, TagValue};
 use crate::engine::EmitMetricActionCount;
 use crate::workflow::{TriggeredActionEmitSankey, WorkflowEvent};
-use bd_state::state_value_as_cow;
+use bd_log_matcher::matcher::{field_value_with_state, state_value_as_cow};
+use bd_log_primitives::FieldsRef;
 use bd_stats_common::{Counter, Histogram, MetricType};
 use bd_workflow_stats::StatsCollector;
 use std::borrow::Cow;
@@ -53,9 +54,11 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
       #[allow(clippy::cast_precision_loss)]
       let maybe_value: anyhow::Result<f64> = match &action.increment {
         crate::config::ValueIncrement::Fixed(value) => Ok(*value as f64),
-        crate::config::ValueIncrement::Extract(extract) => Self::resolve_field_name(extract, event)
-          .ok_or_else(|| anyhow::anyhow!("field {extract:?} not found"))
-          .and_then(|value| value.parse::<f64>().map_err(Into::into)),
+        crate::config::ValueIncrement::Extract(extract) => {
+          Self::resolve_field_name(extract, event, state_reader)
+            .ok_or_else(|| anyhow::anyhow!("field {extract:?} not found"))
+            .and_then(|value| value.parse::<f64>().map_err(Into::into))
+        },
       };
 
       let value = match maybe_value {
@@ -102,6 +105,24 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
             value,
             |timestamped| &timestamped.value,
           ),
+          bd_state::Scope::CustomFields => self.emit_multi_tag_matches(
+            action,
+            count,
+            &base_tags,
+            multi_tag,
+            scoped_maps.custom_fields.iter(),
+            value,
+            |timestamped| &timestamped.value,
+          ),
+          bd_state::Scope::OotbFields => self.emit_multi_tag_matches(
+            action,
+            count,
+            &base_tags,
+            multi_tag,
+            scoped_maps.ootb_fields.iter(),
+            value,
+            |timestamped| &timestamped.value,
+          ),
         };
 
         if matched_any {
@@ -135,14 +156,24 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
     }
   }
 
-  fn resolve_field_name<'a>(key: &str, event: WorkflowEvent<'a>) -> Option<Cow<'a, str>> {
+  fn resolve_field_name<'a>(
+    key: &str,
+    event: WorkflowEvent<'a>,
+    state_reader: &'a dyn bd_state::StateReader,
+  ) -> Option<Cow<'a, str>> {
     match event {
       WorkflowEvent::Log(log) | WorkflowEvent::SessionStart(log) => match key {
         "log_level" => Some(log.log_level.to_string().into()),
         "log_type" => Some((log.log_type as u32).to_string().into()),
-        key => log.field_value(key),
+        key => field_value_with_state(
+          FieldsRef::new(&log.fields, &log.matching_fields),
+          state_reader,
+          key,
+        ),
       },
-      WorkflowEvent::StateChange(_state_change, fields) => fields.field_value(key),
+      WorkflowEvent::StateChange(_state_change, fields) => {
+        field_value_with_state(fields, state_reader, key)
+      },
     }
   }
 
@@ -165,7 +196,9 @@ impl<C: Counter, H: Histogram> MetricsCollector<C, H> {
 
     for (key, value) in tags {
       if let Some(extracted_value) = match value {
-        crate::config::TagValue::FieldExtract(extract) => Self::resolve_field_name(extract, event),
+        crate::config::TagValue::FieldExtract(extract) => {
+          Self::resolve_field_name(extract, event, state_reader)
+        },
         crate::config::TagValue::StateExtract(scope, extract) => {
           Self::resolve_state_value(*scope, extract, state_reader)
         },

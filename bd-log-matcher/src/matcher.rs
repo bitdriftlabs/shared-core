@@ -37,7 +37,7 @@ use base_log_matcher::tag_match::Value_match::{
   StringValueMatch,
 };
 use bd_log_primitives::tiny_set::TinyMap;
-use bd_log_primitives::{DataValue, FieldsRef, LogLevel, LogMessage};
+use bd_log_primitives::{DataValue, FieldsRef, LogLevel, LogMessage, data_to_string_value};
 use bd_proto::protos::config::v1::config::log_matcher::base_log_matcher::StringMatchType;
 use bd_proto::protos::config::v1::config::log_matcher::{
   BaseLogMatcher as LegacyBaseLogMatcher,
@@ -48,14 +48,15 @@ use bd_proto::protos::config::v1::config::{
   log_matcher as legacy_log_matcher,
 };
 use bd_proto::protos::log_matcher::log_matcher;
-use bd_proto::protos::logging::payload::LogType;
+use bd_proto::protos::logging::payload::data::Data_type;
+use bd_proto::protos::logging::payload::{Data, LogType};
 use bd_proto::protos::state::scope::StateScope;
 use bd_proto::protos::value_matcher::value_matcher::Operator;
 use bd_proto::protos::value_matcher::value_matcher::json_path_value_match::{
   KeyOrIndex,
   key_or_index,
 };
-use bd_state::{Scope, state_value_as_cow};
+use bd_state::Scope;
 use log_matcher::LogMatcher;
 use log_matcher::log_matcher::{BaseLogMatcher, Matcher, base_log_matcher};
 use rand::RngExt;
@@ -295,15 +296,18 @@ impl Tree {
           path,
           matcher,
         } => {
-          let Some(value) = fields.field(field_key) else {
+          let Some(input) = resolve_json_path_with_state(fields, state, field_key, path) else {
             return MatchResult::NotMatched;
           };
           // TODO: Fold Disabled into the planned general matcher evaluation context/cache work.
-          if !context.json_path_string_matching_enabled && value.as_str().is_some() {
+          if !context.json_path_string_matching_enabled
+            && fields
+              .field(field_key)
+              .is_some_and(|value| value.as_str().is_some())
+          {
             return MatchResult::Disabled;
           }
-          resolve_json_path(value, path)
-            .is_some_and(|input| matcher.evaluate(input.as_ref(), extracted_fields))
+          matcher.evaluate(input.as_ref(), extracted_fields)
         },
         Leaf::Sampled(sample_rate) => sample_matches_with_roll(*sample_rate, sampled_roll),
         Leaf::Any => true,
@@ -396,6 +400,176 @@ pub enum InputType {
   State(Scope, String),
 }
 
+/// Converts a state value into the string representation used by field matchers and extractors.
+///
+/// State-backed custom and OOTB fields retain their logging `Data` representation, so this reads
+/// directly from the protobuf instead of allocating an intermediate `DataValue`.
+#[must_use]
+pub fn state_value_as_cow(value: &bd_state::Value) -> Option<Cow<'_, str>> {
+  use bd_state::Value_type;
+
+  match value.value_type.as_ref() {
+    Some(Value_type::StringValue(value)) => Some(Cow::Borrowed(value.as_str())),
+    Some(Value_type::IntValue(value)) => Some(Cow::Owned(value.to_string())),
+    Some(Value_type::DoubleValue(value)) => Some(Cow::Owned(value.to_string())),
+    Some(Value_type::BoolValue(true)) => Some(Cow::Borrowed("true")),
+    Some(Value_type::BoolValue(false)) => Some(Cow::Borrowed("false")),
+    Some(Value_type::Data(value)) => match value.data_type.as_ref() {
+      Some(Data_type::BoolData(true)) => Some(Cow::Borrowed("true")),
+      Some(Data_type::BoolData(false)) => Some(Cow::Borrowed("false")),
+      _ => data_to_string_value(value),
+    },
+    None => None,
+  }
+}
+
+/// Resolves a field using the metadata collector's persistent-field precedence.
+///
+/// OOTB SDK state fields have the highest priority. Concrete log fields retain their existing
+/// provider and per-log precedence and take priority over custom SDK state fields, which are the
+/// lowest virtual layer. This lets callers read state-backed fields exactly like regular fields
+/// without materializing them in the log's captured field map.
+#[must_use]
+pub fn field_value_with_state<'a>(
+  fields: FieldsRef<'a>,
+  state: &'a dyn bd_state::StateReader,
+  field_key: &str,
+) -> Option<Cow<'a, str>> {
+  if let Some(value) = state.get(Scope::OotbFields, field_key) {
+    return state_value_as_cow(value);
+  }
+
+  if fields.field(field_key).is_some() {
+    return fields.field_value(field_key);
+  }
+
+  state
+    .get(Scope::CustomFields, field_key)
+    .and_then(state_value_as_cow)
+}
+
+/// Views an integer-compatible log-field value persisted in state without cloning its protobuf.
+#[allow(clippy::cast_possible_truncation)]
+fn persisted_log_field_as_i32(data: &Data) -> Option<i32> {
+  match data.data_type.as_ref()? {
+    Data_type::IntData(value) => i32::try_from(*value).ok(),
+    Data_type::SintData(value) => i32::try_from(*value).ok(),
+    Data_type::DoubleData(value) if !value.is_nan() => Some(*value as i32),
+    Data_type::StringData(value) => value.parse::<f64>().ok().map(|value| value as i32),
+    Data_type::BinaryData(_)
+    | Data_type::BoolData(_)
+    | Data_type::MapData(_)
+    | Data_type::ArrayData(_)
+    | Data_type::DoubleData(_) => None,
+  }
+}
+
+/// Views a double-compatible log-field value persisted in state without cloning its protobuf.
+#[allow(clippy::cast_precision_loss)]
+fn persisted_log_field_as_f64(data: &Data) -> Option<f64> {
+  match data.data_type.as_ref()? {
+    Data_type::DoubleData(value) if !value.is_nan() => Some(*value),
+    Data_type::SintData(value) => Some(*value as f64),
+    Data_type::IntData(value) => Some(*value as f64),
+    Data_type::StringData(value) => value.parse().ok(),
+    Data_type::BinaryData(_)
+    | Data_type::BoolData(_)
+    | Data_type::MapData(_)
+    | Data_type::ArrayData(_)
+    | Data_type::DoubleData(_) => None,
+  }
+}
+
+fn state_value_as_i32(value: &bd_state::Value) -> Option<i32> {
+  use bd_state::Value_type;
+
+  match value.value_type.as_ref() {
+    Some(Value_type::IntValue(value)) => i32::try_from(*value).ok(),
+    #[allow(clippy::cast_possible_truncation)]
+    Some(Value_type::DoubleValue(value)) => Some(*value as i32),
+    Some(Value_type::StringValue(value)) => value.parse().ok(),
+    Some(Value_type::Data(value)) => persisted_log_field_as_i32(value),
+    Some(Value_type::BoolValue(_)) | None => None,
+  }
+}
+
+fn state_value_as_f64(value: &bd_state::Value) -> Option<f64> {
+  use bd_state::Value_type;
+
+  match value.value_type.as_ref() {
+    Some(Value_type::DoubleValue(value)) => Some(*value),
+    #[allow(clippy::cast_precision_loss)]
+    Some(Value_type::IntValue(value)) => Some(*value as f64),
+    Some(Value_type::StringValue(value)) => value.parse().ok(),
+    Some(Value_type::Data(value)) => persisted_log_field_as_f64(value),
+    Some(Value_type::BoolValue(_)) | None => None,
+  }
+}
+
+#[allow(clippy::cast_possible_truncation)]
+fn log_field_as_i32(field: &DataValue) -> Option<i32> {
+  match field {
+    DataValue::I64(value) => i32::try_from(*value).ok(),
+    DataValue::U64(value) => i32::try_from(*value).ok(),
+    DataValue::Double(value) => Some(**value as i32),
+    DataValue::String(_) | DataValue::SharedString(_) | DataValue::StaticString(_) => {
+      // Parse as f64 first then truncate to preserve backward compatibility with strings like
+      // "13.0" that were previously accepted.
+      Some(field.as_str()?.parse::<f64>().ok()? as i32)
+    },
+    DataValue::Bytes(_) | DataValue::Boolean(_) | DataValue::Map(_) | DataValue::Array(_) => None,
+  }
+}
+
+#[allow(clippy::cast_precision_loss)]
+fn log_field_as_f64(field: &DataValue) -> Option<f64> {
+  match field {
+    DataValue::Double(value) => Some(**value),
+    DataValue::I64(value) => Some(*value as f64),
+    DataValue::U64(value) => Some(*value as f64),
+    DataValue::String(_) | DataValue::SharedString(_) | DataValue::StaticString(_) => {
+      field.as_str()?.parse().ok()
+    },
+    DataValue::Bytes(_) | DataValue::Boolean(_) | DataValue::Map(_) | DataValue::Array(_) => None,
+  }
+}
+
+fn field_as_i32_with_state(
+  fields: FieldsRef<'_>,
+  state: &dyn bd_state::StateReader,
+  field_key: &str,
+) -> Option<i32> {
+  if let Some(value) = state.get(Scope::OotbFields, field_key) {
+    return state_value_as_i32(value);
+  }
+
+  if let Some(value) = fields.field(field_key) {
+    return log_field_as_i32(value);
+  }
+
+  state
+    .get(Scope::CustomFields, field_key)
+    .and_then(state_value_as_i32)
+}
+
+fn field_as_f64_with_state(
+  fields: FieldsRef<'_>,
+  state: &dyn bd_state::StateReader,
+  field_key: &str,
+) -> Option<f64> {
+  if let Some(value) = state.get(Scope::OotbFields, field_key) {
+    return state_value_as_f64(value);
+  }
+
+  if let Some(value) = fields.field(field_key) {
+    return log_field_as_f64(value);
+  }
+
+  state
+    .get(Scope::CustomFields, field_key)
+    .and_then(state_value_as_f64)
+}
+
 impl InputType {
   fn get<'a>(
     &self,
@@ -405,7 +579,7 @@ impl InputType {
   ) -> Option<Cow<'a, str>> {
     match self {
       Self::Message => message.as_str().map(Cow::Borrowed),
-      Self::Field(field_key) => fields.field_value(field_key),
+      Self::Field(field_key) => field_value_with_state(fields, state, field_key),
       Self::State(scope, flag_key) => state.get(*scope, flag_key).and_then(|value| {
         if value.value_type.is_none() {
           Some(Cow::Borrowed(""))
@@ -427,35 +601,8 @@ impl InputType {
   ) -> Option<i32> {
     match self {
       Self::Message => message.as_str().and_then(|s| s.parse().ok()),
-      Self::Field(field_key) => {
-        let field = fields.field(field_key)?;
-        match field {
-          DataValue::I64(v) => i32::try_from(*v).ok(),
-          DataValue::U64(v) => i32::try_from(*v).ok(),
-          DataValue::Double(v) => Some(**v as i32),
-          DataValue::String(_) | DataValue::SharedString(_) | DataValue::StaticString(_) => {
-            // Parse as f64 first then truncate to preserve backward compatibility with strings
-            // like "13.0" that were previously accepted.
-            Some(field.as_str()?.parse::<f64>().ok()? as i32)
-          },
-          DataValue::Bytes(_) | DataValue::Boolean(_) | DataValue::Map(_) | DataValue::Array(_) => {
-            None
-          },
-        }
-      },
-      Self::State(scope, flag_key) => {
-        use bd_state::Value_type;
-        let v = state.get(*scope, flag_key)?;
-        match v.value_type {
-          Some(Value_type::IntValue(i)) => i32::try_from(i).ok(),
-          Some(Value_type::DoubleValue(d)) => Some(d as i32),
-          Some(Value_type::StringValue(ref s)) => s.parse().ok(),
-          Some(Value_type::Data(_)) => {
-            state_value_as_cow(v).and_then(|value| value.parse::<f64>().ok().map(|v| v as i32))
-          },
-          Some(Value_type::BoolValue(_)) | None => None,
-        }
-      },
+      Self::Field(field_key) => field_as_i32_with_state(fields, state, field_key),
+      Self::State(scope, flag_key) => state.get(*scope, flag_key).and_then(state_value_as_i32),
     }
   }
 
@@ -470,31 +617,8 @@ impl InputType {
   ) -> Option<f64> {
     match self {
       Self::Message => message.as_str().and_then(|s| s.parse().ok()),
-      Self::Field(field_key) => {
-        let field = fields.field(field_key)?;
-        match field {
-          DataValue::Double(v) => Some(**v),
-          DataValue::I64(v) => Some(*v as f64),
-          DataValue::U64(v) => Some(*v as f64),
-          DataValue::String(_) | DataValue::SharedString(_) | DataValue::StaticString(_) => {
-            field.as_str()?.parse().ok()
-          },
-          DataValue::Bytes(_) | DataValue::Boolean(_) | DataValue::Map(_) | DataValue::Array(_) => {
-            None
-          },
-        }
-      },
-      Self::State(scope, flag_key) => {
-        use bd_state::Value_type;
-        let v = state.get(*scope, flag_key)?;
-        match v.value_type {
-          Some(Value_type::DoubleValue(d)) => Some(d),
-          Some(Value_type::IntValue(i)) => Some(i as f64),
-          Some(Value_type::StringValue(ref s)) => s.parse().ok(),
-          Some(Value_type::Data(_)) => state_value_as_cow(v).and_then(|value| value.parse().ok()),
-          Some(Value_type::BoolValue(_)) | None => None,
-        }
-      },
+      Self::Field(field_key) => field_as_f64_with_state(fields, state, field_key),
+      Self::State(scope, flag_key) => state.get(*scope, flag_key).and_then(state_value_as_f64),
     }
   }
 }
@@ -646,8 +770,12 @@ impl Leaf {
             StateScope::FEATURE_FLAG => Scope::FeatureFlagExposure,
             StateScope::GLOBAL_STATE => Scope::GlobalState,
             StateScope::SYSTEM => Scope::System,
-            StateScope::CUSTOM_FIELDS | StateScope::OOTB_FIELDS | StateScope::UNSPECIFIED => {
-              // Custom and SDK-owned fields are not stored in the bd_state namespaces.
+            StateScope::CUSTOM_FIELDS => Scope::CustomFields,
+            StateScope::OOTB_FIELDS => Scope::OotbFields,
+            StateScope::UNSPECIFIED => {
+              // For now, we only support feature flags. Other scopes would need additional
+              // handling.
+              // We'll need to config version guard any new scopes.
               return Err(anyhow!("Unsupported state scope"));
             },
           };
@@ -814,4 +942,66 @@ fn resolve_structured_json_path<'a>(
     | DataValue::Map(_)
     | DataValue::Array(_) => None,
   }
+}
+
+fn resolve_json_path_from_state<'a>(
+  value: &'a bd_state::Value,
+  path: &[JsonPathToken],
+) -> Option<Cow<'a, str>> {
+  use bd_state::Value_type;
+
+  let Value_type::Data(value) = value.value_type.as_ref()? else {
+    return None;
+  };
+
+  let mut current = value;
+  for token in path {
+    match token {
+      JsonPathToken::Key(key) => {
+        let Data_type::MapData(map_data) = current.data_type.as_ref()? else {
+          return None;
+        };
+        current = map_data.entries.get(key)?;
+      },
+      JsonPathToken::Index(index) => {
+        let Data_type::ArrayData(array_data) = current.data_type.as_ref()? else {
+          return None;
+        };
+        let len = i32::try_from(array_data.items.len()).ok()?;
+        let index = if *index < 0 { len + *index } else { *index };
+        let index: usize = index.try_into().ok()?;
+        current = array_data.items.get(index)?;
+      },
+    }
+  }
+
+  match current.data_type.as_ref()? {
+    Data_type::StringData(value) => Some(Cow::Borrowed(value)),
+    Data_type::BinaryData(_)
+    | Data_type::BoolData(_)
+    | Data_type::IntData(_)
+    | Data_type::SintData(_)
+    | Data_type::DoubleData(_)
+    | Data_type::MapData(_)
+    | Data_type::ArrayData(_) => None,
+  }
+}
+
+fn resolve_json_path_with_state<'a>(
+  fields: FieldsRef<'a>,
+  state: &'a dyn bd_state::StateReader,
+  field_key: &str,
+  path: &[JsonPathToken],
+) -> Option<Cow<'a, str>> {
+  if let Some(value) = state.get(Scope::OotbFields, field_key) {
+    return resolve_json_path_from_state(value, path);
+  }
+
+  if let Some(value) = fields.field(field_key) {
+    return resolve_json_path(value, path);
+  }
+
+  state
+    .get(Scope::CustomFields, field_key)
+    .and_then(|value| resolve_json_path_from_state(value, path))
 }

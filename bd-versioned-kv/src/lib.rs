@@ -37,8 +37,8 @@ pub const MAX_DECOMPRESSED_STATE_SNAPSHOT_BYTES: usize = 10 * 1024 * 1024;
 /// limit above.
 pub const MAX_COMPRESSED_STATE_SNAPSHOT_BYTES: usize = 10 * 1024 * 1024;
 
-pub use bd_proto::protos::state::payload::StateValue;
-pub use bd_proto::protos::state::payload::state_value::Value_type;
+pub use bd_proto::protos::state::state_payload::StateValue;
+pub use bd_proto::protos::state::state_payload::state_value::Value_type;
 pub use scope::Scope;
 pub use versioned_kv_journal::filename::SnapshotFilename;
 pub use versioned_kv_journal::recovery::{

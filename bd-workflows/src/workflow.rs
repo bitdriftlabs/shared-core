@@ -22,7 +22,7 @@ use crate::config::{
   WorkflowDebugMode,
 };
 use crate::generate_log::generate_log_action;
-use bd_log_matcher::matcher::MatchContext;
+use bd_log_matcher::matcher::{MatchContext, field_value_with_state, state_value_as_cow};
 use bd_log_primitives::tiny_set::{TinyMap, TinySet};
 use bd_log_primitives::{FieldsRef, Log, log_level};
 use bd_proto::protos::logging::payload::LogType;
@@ -1728,9 +1728,12 @@ impl Traversal {
 
     for extraction in &extractions.field_extractions {
       let extracted_value = match &extraction.source {
-        FieldExtractionSource::FieldName(field_name) => log
-          .field_value(field_name)
-          .and_then(|value| extraction.extract_value(value.as_ref())),
+        FieldExtractionSource::FieldName(field_name) => field_value_with_state(
+          FieldsRef::new(&log.fields, &log.matching_fields),
+          state_reader,
+          field_name,
+        )
+        .and_then(|value| extraction.extract_value(value.as_ref())),
         FieldExtractionSource::Message => log
           .message
           .as_str()
@@ -1805,9 +1808,10 @@ impl Traversal {
     // app_version, etc.)
     for extraction in &extractions.field_extractions {
       let extracted_value = match &extraction.source {
-        FieldExtractionSource::FieldName(field_name) => fields
-          .field_value(field_name)
-          .and_then(|value| extraction.extract_value(value.as_ref())),
+        FieldExtractionSource::FieldName(field_name) => {
+          field_value_with_state(fields, state_reader, field_name)
+            .and_then(|value| extraction.extract_value(value.as_ref()))
+        },
         // State changes don't include log messages.
         FieldExtractionSource::Message => None,
       };

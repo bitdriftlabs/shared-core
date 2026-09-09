@@ -284,6 +284,11 @@ impl MetadataCollector {
       entry.remove();
     }
   }
+
+  /// Returns the persistent fields supplied during logger construction for state-store seeding.
+  pub(crate) fn initial_fields(&self) -> AnnotatedLogFields {
+    self.fields.clone()
+  }
 }
 
 fn partition_fields(field: AnnotatedLogFields) -> PartitionedFields {
@@ -309,7 +314,7 @@ fn partition_fields(field: AnnotatedLogFields) -> PartitionedFields {
   PartitionedFields { ootb, custom }
 }
 
-fn verify_custom_field_name(key: &str) -> anyhow::Result<()> {
+pub fn verify_custom_field_name(key: &str) -> anyhow::Result<()> {
   if RESERVED_FIELD_NAMES.contains(key) {
     anyhow::bail!(
       "Custom global field with {key:?} name is not allowed as the name is reserved for SDK \

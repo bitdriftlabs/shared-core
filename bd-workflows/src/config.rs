@@ -8,7 +8,7 @@
 use crate::workflow::Traversal;
 use anyhow::{anyhow, bail};
 use bd_api::TriggerUploadStreaming;
-use bd_log_matcher::matcher::Tree;
+use bd_log_matcher::matcher::{Tree, field_value_with_state, state_value_as_cow};
 use bd_log_primitives::{FieldsRef, LogMessage};
 use bd_proto::protos::workflow::save_field::SaveField;
 use bd_proto::protos::workflow::save_field::save_field::Save_field_type;
@@ -20,7 +20,7 @@ use bd_proto::protos::workflow::workflow::workflow::{
   LimitDuration as LimitDurationProto,
   LimitMatchedLogsCount,
 };
-use bd_state::{Scope, state_value_as_cow};
+use bd_state::Scope;
 use bd_stats_common::MetricType;
 use protobuf::MessageField;
 use regex::Regex;
@@ -726,9 +726,9 @@ impl StateChangeMatch {
       },
       bd_proto::protos::state::scope::StateScope::FEATURE_FLAG => Scope::FeatureFlagExposure,
       bd_proto::protos::state::scope::StateScope::GLOBAL_STATE => Scope::GlobalState,
-      bd_proto::protos::state::scope::StateScope::CUSTOM_FIELDS
-      | bd_proto::protos::state::scope::StateScope::OOTB_FIELDS
-      | bd_proto::protos::state::scope::StateScope::SYSTEM => {
+      bd_proto::protos::state::scope::StateScope::CUSTOM_FIELDS => Scope::CustomFields,
+      bd_proto::protos::state::scope::StateScope::OOTB_FIELDS => Scope::OotbFields,
+      bd_proto::protos::state::scope::StateScope::SYSTEM => {
         anyhow::bail!("invalid state scope: system");
       },
     };
@@ -1161,7 +1161,7 @@ impl TagValue {
     state_reader: &'a dyn bd_state::StateReader,
   ) -> Option<Cow<'a, str>> {
     match self {
-      Self::FieldExtract(field_key) => fields.field_value(field_key),
+      Self::FieldExtract(field_key) => field_value_with_state(fields, state_reader, field_key),
       Self::StateExtract(scope, key) => state_reader.get(*scope, key).and_then(|value| {
         if value.value_type.is_none() {
           Some(Cow::Borrowed(""))
@@ -1182,9 +1182,9 @@ fn parse_state_scope(scope: bd_proto::protos::state::scope::StateScope) -> anyho
     },
     bd_proto::protos::state::scope::StateScope::FEATURE_FLAG => Ok(Scope::FeatureFlagExposure),
     bd_proto::protos::state::scope::StateScope::GLOBAL_STATE => Ok(Scope::GlobalState),
-    bd_proto::protos::state::scope::StateScope::CUSTOM_FIELDS
-    | bd_proto::protos::state::scope::StateScope::OOTB_FIELDS
-    | bd_proto::protos::state::scope::StateScope::SYSTEM => {
+    bd_proto::protos::state::scope::StateScope::CUSTOM_FIELDS => Ok(Scope::CustomFields),
+    bd_proto::protos::state::scope::StateScope::OOTB_FIELDS => Ok(Scope::OotbFields),
+    bd_proto::protos::state::scope::StateScope::SYSTEM => {
       anyhow::bail!("invalid state scope: system");
     },
   }

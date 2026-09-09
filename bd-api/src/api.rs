@@ -587,7 +587,9 @@ impl Api {
       StateScope::FEATURE_FLAG => Some(bd_state::Scope::FeatureFlagExposure),
       StateScope::GLOBAL_STATE => Some(bd_state::Scope::GlobalState),
       StateScope::SYSTEM => Some(bd_state::Scope::System),
-      StateScope::CUSTOM_FIELDS | StateScope::OOTB_FIELDS | StateScope::UNSPECIFIED => None,
+      StateScope::CUSTOM_FIELDS => Some(bd_state::Scope::CustomFields),
+      StateScope::OOTB_FIELDS => Some(bd_state::Scope::OotbFields),
+      StateScope::UNSPECIFIED => None,
     }
   }
 

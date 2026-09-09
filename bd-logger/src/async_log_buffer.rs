@@ -48,6 +48,7 @@ use bd_log_metadata::MetadataProvider;
 use bd_log_primitives::{
   AnnotatedLogField,
   AnnotatedLogFields,
+  DataValue,
   Log,
   LogFieldValue,
   LogFields,
@@ -71,6 +72,8 @@ use bd_state::{
   MEMORY_PRESSURE_LEVEL_KEY,
   SYSTEM_SESSION_ID_KEY,
   Scope,
+  Value,
+  Value_type,
   string_value,
 };
 use bd_stats_common::{Counter as _, Histogram as _, labels};
@@ -122,6 +125,14 @@ pub enum AdmissionError {
   Closed,
   #[error("event context capture failed")]
   ContextCaptureFailed,
+}
+
+/// Stores a log field without changing its type in the persistent state journal.
+fn persistent_field_value(value: DataValue) -> Value {
+  Value {
+    value_type: Value_type::Data(value.into_proto()).into(),
+    ..Default::default()
+  }
 }
 
 //
@@ -1029,6 +1040,31 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     }
   }
 
+  async fn persist_initial_log_fields(
+    initial_fields: AnnotatedLogFields,
+    state_store: &bd_state::Store,
+  ) {
+    for (key, field) in initial_fields {
+      let scope = match field.kind {
+        bd_log_primitives::LogFieldKind::Custom => Scope::CustomFields,
+        bd_log_primitives::LogFieldKind::Ootb => Scope::OotbFields,
+      };
+      let value = persistent_field_value(field.value);
+
+      match state_store.insert(scope, key.to_string(), value).await {
+        Ok(_) if scope == Scope::OotbFields => {
+          if let Err(e) = state_store.remove(Scope::CustomFields, &key).await {
+            log::warn!("failed to remove shadowed custom log field {key:?}: {e}");
+          }
+        },
+        Ok(_) => {},
+        Err(e) => {
+          log::warn!("failed to persist initial {scope:?} log field {key:?}: {e}");
+        },
+      }
+    }
+  }
+
   async fn update(mut self, config: ConfigUpdate) -> Self {
     let initialized_logging_context = match self.logging_state {
       LoggingState::Uninitialized(uninitialized_logging_context) => {
@@ -1078,6 +1114,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     self
       .event_buffer
       .start_startup_gate(self.startup_replay_delay.take());
+
+    let initial_fields = self.metadata_collector.initial_fields();
+    Self::persist_initial_log_fields(initial_fields, &state_store).await;
 
     let local_shutdown = shutdown.cancelled();
     tokio::pin!(local_shutdown);

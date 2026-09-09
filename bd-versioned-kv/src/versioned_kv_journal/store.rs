@@ -13,7 +13,7 @@ use crate::versioned_kv_journal::retention::RetentionRegistry;
 use crate::{Scope, UpdateError};
 use ahash::AHashMap;
 use bd_error_reporter::reporter::handle_unexpected;
-use bd_proto::protos::state::payload::StateValue;
+use bd_proto::protos::state::state_payload::StateValue;
 use bd_runtime::runtime::IntWatch;
 use bd_stats_common::Counter;
 use bd_time::TimeProvider;
@@ -141,6 +141,8 @@ pub struct ScopedMaps {
   pub feature_flags: AHashMap<String, TimestampedValue>,
   pub global_state: AHashMap<String, TimestampedValue>,
   pub system: AHashMap<String, TimestampedValue>,
+  pub custom_fields: AHashMap<String, TimestampedValue>,
+  pub ootb_fields: AHashMap<String, TimestampedValue>,
 }
 
 impl ScopedMaps {
@@ -150,6 +152,8 @@ impl ScopedMaps {
       Scope::FeatureFlagExposure => self.feature_flags.get(key),
       Scope::GlobalState => self.global_state.get(key),
       Scope::System => self.system.get(key),
+      Scope::CustomFields => self.custom_fields.get(key),
+      Scope::OotbFields => self.ootb_fields.get(key),
     }
   }
 
@@ -164,6 +168,8 @@ impl ScopedMaps {
       Scope::FeatureFlagExposure => self.feature_flags.insert(key, value),
       Scope::GlobalState => self.global_state.insert(key, value),
       Scope::System => self.system.insert(key, value),
+      Scope::CustomFields => self.custom_fields.insert(key, value),
+      Scope::OotbFields => self.ootb_fields.insert(key, value),
     }
   }
 
@@ -172,6 +178,8 @@ impl ScopedMaps {
       Scope::FeatureFlagExposure => self.feature_flags.remove(key),
       Scope::GlobalState => self.global_state.remove(key),
       Scope::System => self.system.remove(key),
+      Scope::CustomFields => self.custom_fields.remove(key),
+      Scope::OotbFields => self.ootb_fields.remove(key),
     }
   }
 
@@ -181,17 +189,27 @@ impl ScopedMaps {
       Scope::FeatureFlagExposure => self.feature_flags.contains_key(key),
       Scope::GlobalState => self.global_state.contains_key(key),
       Scope::System => self.system.contains_key(key),
+      Scope::CustomFields => self.custom_fields.contains_key(key),
+      Scope::OotbFields => self.ootb_fields.contains_key(key),
     }
   }
 
   #[must_use]
   pub fn len(&self) -> usize {
-    self.feature_flags.len() + self.global_state.len() + self.system.len()
+    self.feature_flags.len()
+      + self.global_state.len()
+      + self.system.len()
+      + self.custom_fields.len()
+      + self.ootb_fields.len()
   }
 
   #[must_use]
   pub fn is_empty(&self) -> bool {
-    self.feature_flags.is_empty() && self.global_state.is_empty() && self.system.is_empty()
+    self.feature_flags.is_empty()
+      && self.global_state.is_empty()
+      && self.system.is_empty()
+      && self.custom_fields.is_empty()
+      && self.ootb_fields.is_empty()
   }
 
   pub fn iter(&self) -> impl Iterator<Item = (Scope, &String, &TimestampedValue)> {
@@ -206,6 +224,18 @@ impl ScopedMaps {
           .map(|(k, v)| (Scope::GlobalState, k, v)),
       )
       .chain(self.system.iter().map(|(k, v)| (Scope::System, k, v)))
+      .chain(
+        self
+          .custom_fields
+          .iter()
+          .map(|(k, v)| (Scope::CustomFields, k, v)),
+      )
+      .chain(
+        self
+          .ootb_fields
+          .iter()
+          .map(|(k, v)| (Scope::OotbFields, k, v)),
+      )
   }
 
   fn values(&self) -> impl Iterator<Item = &TimestampedValue> {
@@ -214,6 +244,8 @@ impl ScopedMaps {
       .values()
       .chain(self.global_state.values())
       .chain(self.system.values())
+      .chain(self.custom_fields.values())
+      .chain(self.ootb_fields.values())
   }
 
   /// Get a mutable entry for the given scope and key, allowing efficient insert/update operations.
@@ -226,6 +258,8 @@ impl ScopedMaps {
       Scope::FeatureFlagExposure => self.feature_flags.entry(key),
       Scope::GlobalState => self.global_state.entry(key),
       Scope::System => self.system.entry(key),
+      Scope::CustomFields => self.custom_fields.entry(key),
+      Scope::OotbFields => self.ootb_fields.entry(key),
     }
   }
 }
@@ -235,6 +269,8 @@ struct PendingScopedValues {
   feature_flags: AHashMap<String, Option<StateValue>>,
   global_state: AHashMap<String, Option<StateValue>>,
   system: AHashMap<String, Option<StateValue>>,
+  custom_fields: AHashMap<String, Option<StateValue>>,
+  ootb_fields: AHashMap<String, Option<StateValue>>,
 }
 
 impl PendingScopedValues {
@@ -243,6 +279,8 @@ impl PendingScopedValues {
       Scope::FeatureFlagExposure => self.feature_flags.get(key),
       Scope::GlobalState => self.global_state.get(key),
       Scope::System => self.system.get(key),
+      Scope::CustomFields => self.custom_fields.get(key),
+      Scope::OotbFields => self.ootb_fields.get(key),
     }
   }
 
@@ -256,6 +294,12 @@ impl PendingScopedValues {
       },
       Scope::System => {
         self.system.insert(key, value);
+      },
+      Scope::CustomFields => {
+        self.custom_fields.insert(key, value);
+      },
+      Scope::OotbFields => {
+        self.ootb_fields.insert(key, value);
       },
     }
   }
