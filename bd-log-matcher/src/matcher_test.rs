@@ -1582,7 +1582,7 @@ fn virtual_state_fields_follow_log_field_precedence() {
 
 #[test]
 fn virtual_state_fields_preserve_matching_field_fallback() {
-  let captured_fields: LogFields = [("shared".into(), DataValue::Bytes(vec![0]))].into();
+  let captured_fields: LogFields = [("shared".into(), DataValue::Bytes(vec![0].into()))].into();
   let matching_fields: LogFields = [(
     "shared".into(),
     DataValue::String("matching-only".to_string()),
@@ -1603,7 +1603,7 @@ fn virtual_state_fields_preserve_matching_field_fallback() {
   state.insert(
     bd_state::Scope::OotbFields,
     "shared",
-    persisted_log_field_state_value(DataValue::Bytes(vec![1])),
+    persisted_log_field_state_value(DataValue::Bytes(vec![1].into())),
   );
   assert_eq!(
     field_value_with_state(
