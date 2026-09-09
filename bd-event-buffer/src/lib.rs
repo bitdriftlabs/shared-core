@@ -238,16 +238,19 @@ pub struct EventBuffer {
 
 struct EventBufferInner {
   state: PlatformMutex<LoggerEventBufferState>,
-  notify: Notify,
-  gate_notify: Notify,
-  pipeline_notify: Notify,
+  // Wakes the consumer when an entry becomes eligible to drain.
+  consumer_notify: Notify,
+  // Wakes ALB when admission requests early startup-gate release.
+  startup_gate_release_request_notify: Notify,
+  // Wakes waiters after ALB has applied its first runtime configuration.
+  configuration_ready_notify: Notify,
   #[cfg(test)]
   test_hooks: Option<Arc<dyn TestHooks>>,
 }
 
 struct LoggerEventBufferState {
   retention: EventBufferState<EventBufferEntry>,
-  pipeline_ready: bool,
+  configuration_ready: bool,
 }
 
 impl EventBuffer {
@@ -279,11 +282,11 @@ impl EventBuffer {
       inner: Arc::new(EventBufferInner {
         state: PlatformMutex::new(LoggerEventBufferState {
           retention: EventBufferState::new(limits),
-          pipeline_ready: false,
+          configuration_ready: false,
         }),
-        notify: Notify::new(),
-        gate_notify: Notify::new(),
-        pipeline_notify: Notify::new(),
+        consumer_notify: Notify::new(),
+        startup_gate_release_request_notify: Notify::new(),
+        configuration_ready_notify: Notify::new(),
         #[cfg(test)]
         test_hooks,
       }),
@@ -294,41 +297,42 @@ impl EventBuffer {
     self.inner.state.lock().retention.set_pending_limits(limits);
   }
 
-  /// Marks that ALB has finished constructing a processing pipeline. This linearizes the
-  /// transition between startup's hard gate—where flushes are intentionally no-ops—and the soft
-  /// replay gate, where a blocking flush is an ordered barrier.
-  pub fn mark_pipeline_ready(&self) {
-    self.inner.state.lock().pipeline_ready = true;
-    self.inner.pipeline_notify.notify_waiters();
+  /// Marks that ALB has applied its first runtime configuration. This ends startup's hard gate,
+  /// where flushes intentionally complete as no-ops. It does not open the soft replay gate: after
+  /// this point, a blocking flush is an ordered barrier that may request that gate's release.
+  pub fn mark_configuration_ready(&self) {
+    self.inner.state.lock().configuration_ready = true;
+    self.inner.configuration_ready_notify.notify_waiters();
   }
 
-  /// Returns whether ALB has completed the hard startup gate by constructing its processing
-  /// pipeline.
+  /// Returns whether ALB has applied its first runtime configuration and completed the hard
+  /// startup gate.
   #[must_use]
-  pub fn is_pipeline_ready(&self) -> bool {
-    self.inner.state.lock().pipeline_ready
+  pub fn is_configuration_ready(&self) -> bool {
+    self.inner.state.lock().configuration_ready
   }
 
-  /// Waits until ALB has constructed its processing pipeline.
-  pub async fn wait_for_pipeline_ready(&self) {
+  /// Waits until ALB has applied its first runtime configuration.
+  pub async fn wait_for_configuration_ready(&self) {
     loop {
-      let notified = self.inner.pipeline_notify.notified();
+      let notified = self.inner.configuration_ready_notify.notified();
       tokio::pin!(notified);
       notified.as_mut().enable();
-      if self.is_pipeline_ready() {
+      if self.is_configuration_ready() {
         return;
       }
       notified.await;
     }
   }
 
-  /// Returns whether a flush should complete without queueing because no processing pipeline
-  /// exists yet. The check shares the `EventBuffer` mutex with `mark_pipeline_ready`, so a flush
-  /// is deterministically either an early no-op or a normal ordered entry.
+  /// Returns whether a flush should complete without queueing because ALB has not applied its
+  /// first runtime configuration. The check shares the `EventBuffer` mutex with
+  /// `mark_configuration_ready`, so a flush is deterministically either an early no-op or a
+  /// normal ordered entry.
   #[must_use]
-  pub fn skips_flush_before_pipeline_ready(&self) -> bool {
+  pub fn skips_flush_before_configuration_ready(&self) -> bool {
     let state = self.inner.state.lock();
-    !state.pipeline_ready && !state.retention.is_closed()
+    !state.configuration_ready && !state.retention.is_closed()
   }
 
   #[must_use]
@@ -350,10 +354,10 @@ impl EventBuffer {
       (outcome, gate_requested, state.retention.is_gate_open())
     };
     if outcome == AdmissionOutcome::Admitted && notify_consumer {
-      self.inner.notify.notify_one();
+      self.inner.consumer_notify.notify_one();
     }
     if gate_requested {
-      self.inner.gate_notify.notify_one();
+      self.inner.startup_gate_release_request_notify.notify_one();
     }
     outcome
   }
@@ -394,10 +398,10 @@ impl EventBuffer {
       (outcomes, gate_requested, state.retention.is_gate_open())
     };
     if outcomes.contains(&AdmissionOutcome::Admitted) && notify_consumer {
-      self.inner.notify.notify_one();
+      self.inner.consumer_notify.notify_one();
     }
     if gate_requested {
-      self.inner.gate_notify.notify_one();
+      self.inner.startup_gate_release_request_notify.notify_one();
     }
     outcomes
   }
@@ -408,7 +412,7 @@ impl EventBuffer {
       return vec![];
     }
     loop {
-      let notified = self.inner.notify.notified();
+      let notified = self.inner.consumer_notify.notified();
       tokio::pin!(notified);
       notified.as_mut().enable();
       let (batch, closed) = {
@@ -434,7 +438,7 @@ impl EventBuffer {
       let mut state = self.inner.state.lock();
       state.retention.close();
     }
-    self.inner.notify.notify_waiters();
+    self.inner.consumer_notify.notify_waiters();
   }
 
   /// Opens the startup drain gate. Once open, it cannot be closed again.
@@ -442,7 +446,7 @@ impl EventBuffer {
   pub fn open_gate(&self) -> bool {
     let opened = self.inner.state.lock().retention.open_gate();
     if opened {
-      self.inner.notify.notify_waiters();
+      self.inner.consumer_notify.notify_waiters();
     }
     opened
   }
@@ -469,7 +473,7 @@ impl EventBuffer {
   /// release the startup gate.
   pub async fn wait_for_gate_release_request(&self) -> StartupGateReleaseRequest {
     loop {
-      let notified = self.inner.gate_notify.notified();
+      let notified = self.inner.startup_gate_release_request_notify.notified();
       tokio::pin!(notified);
       notified.as_mut().enable();
       if let Some(request) = self

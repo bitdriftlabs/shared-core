@@ -356,7 +356,7 @@ async fn startup_gate_holds_preconfiguration_logs_until_the_replay_timer() {
     shutdown_trigger.make_shutdown(),
   ));
 
-  wait_for_pipeline_ready(&event_buffer).await;
+  wait_for_configuration_ready(&event_buffer).await;
   tokio::task::yield_now().await;
   tokio::time::advance(100.std_milliseconds()).await;
   assert_eq!(0, setup.replayer_log_count.load(Ordering::SeqCst));
@@ -413,7 +413,7 @@ async fn runtime_startup_replay_delay_extension_rearms_the_running_gate() {
       shutdown_trigger.make_shutdown(),
     ));
 
-    wait_for_pipeline_ready(&event_buffer).await;
+    wait_for_configuration_ready(&event_buffer).await;
     setup
       .runtime
       .update_snapshot(bd_test_helpers::runtime::make_simple_update(vec![(
@@ -479,7 +479,7 @@ async fn report_processing_does_not_change_the_selected_startup_delay() {
       shutdown_trigger.make_shutdown(),
     ));
     processed.notified().await;
-    wait_for_pipeline_ready(&event_buffer).await;
+    wait_for_configuration_ready(&event_buffer).await;
     if delay_ms > 0 {
       tokio::time::advance((delay_ms - 1).std_milliseconds()).await;
       tokio::task::yield_now().await;
@@ -512,7 +512,7 @@ async fn pre_pipeline_blocking_flush_completes_without_event_buffer_admission() 
   let (_config_update_tx, config_update_rx) = tokio::sync::mpsc::channel(1);
   let (buffer, sender) = setup.make_test_async_log_buffer(config_update_rx);
 
-  assert!(buffer.event_buffer.skips_flush_before_pipeline_ready());
+  assert!(buffer.event_buffer.skips_flush_before_configuration_ready());
   assert_ok!(sender.flush_state(Block::Yes {
     timeout: 1.std_seconds(),
     poll_callback: None,
@@ -556,7 +556,7 @@ async fn post_pipeline_blocking_flush_releases_the_gate_after_older_work() {
     (),
     shutdown_trigger.make_shutdown(),
   ));
-  wait_for_pipeline_ready(&event_buffer).await;
+  wait_for_configuration_ready(&event_buffer).await;
 
   assert_ok!(sender.try_send_log(normal_log("before barrier")));
   let blocking_sender = sender.clone();
@@ -607,7 +607,7 @@ async fn post_pipeline_nonblocking_flush_does_not_release_the_gate() {
     (),
     shutdown_trigger.make_shutdown(),
   ));
-  wait_for_pipeline_ready(&event_buffer).await;
+  wait_for_configuration_ready(&event_buffer).await;
 
   assert_ok!(sender.try_send_log(normal_log("behind nonblocking flush")));
   assert_ok!(sender.flush_state(Block::No));
@@ -675,7 +675,7 @@ async fn startup_gate_releases_when_loaded_runtime_limits_expose_existing_pressu
     .await
     .unwrap();
 
-  wait_for_pipeline_ready(&event_buffer).await;
+  wait_for_configuration_ready(&event_buffer).await;
   tokio::task::yield_now().await;
   assert_eq!(1, setup.replayer_log_count.load(Ordering::SeqCst));
   setup.collector.assert_counter_eq(
@@ -968,8 +968,8 @@ fn normal_log(message: &str) -> LogLine {
   }
 }
 
-async fn wait_for_pipeline_ready(event_buffer: &EventBuffer) {
-  event_buffer.wait_for_pipeline_ready().await;
+async fn wait_for_configuration_ready(event_buffer: &EventBuffer) {
+  event_buffer.wait_for_configuration_ready().await;
 }
 
 async fn wait_for_replayed_logs(setup: &Setup, expected_count: usize) {
@@ -1731,7 +1731,7 @@ async fn updates_system_session_id_for_new_sessions() {
   let event_buffer = buffer.event_buffer.clone();
   let handle =
     tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
-  wait_for_pipeline_ready(&event_buffer).await;
+  wait_for_configuration_ready(&event_buffer).await;
 
   let first_session_id = setup.session_strategy.session_id().unwrap();
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
@@ -1795,7 +1795,7 @@ async fn set_memory_pressure_level_writes_to_system_scope() {
     (),
     shutdown_trigger.make_shutdown(),
   ));
-  wait_for_pipeline_ready(&event_buffer).await;
+  wait_for_configuration_ready(&event_buffer).await;
 
   sender
     .try_send_control(LoggerControl::SetMemoryPressureLevel {
@@ -1845,7 +1845,7 @@ async fn previous_run_log_does_not_override_system_session_id() {
   let event_buffer = buffer.event_buffer.clone();
   let handle =
     tokio::task::spawn(buffer.run_with_shutdown(state_store, (), shutdown_trigger.make_shutdown()));
-  wait_for_pipeline_ready(&event_buffer).await;
+  wait_for_configuration_ready(&event_buffer).await;
 
   let current_session_id = setup.session_strategy.session_id().unwrap();
   assert_ok!(AsyncLogBuffer::<TestReplay>::enqueue_log(
@@ -1948,7 +1948,7 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
     (),
     shutdown_trigger.make_shutdown(),
   ));
-  wait_for_pipeline_ready(&event_buffer).await;
+  wait_for_configuration_ready(&event_buffer).await;
 
   sender
     .try_send_control(LoggerControl::AddLogField(
@@ -2016,7 +2016,7 @@ async fn processes_log_with_global_state_in_attributes_overrides() {
     (),
     shutdown_trigger_2.make_shutdown(),
   ));
-  wait_for_pipeline_ready(&event_buffer_2).await;
+  wait_for_configuration_ready(&event_buffer_2).await;
 
   sender_2.try_send_log(log).unwrap();
   wait_for_replayed_logs(&setup, 1).await;

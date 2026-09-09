@@ -331,12 +331,12 @@ impl Sender {
       (None, None)
     };
 
-    // There is no useful work to flush before ALB has a pipeline: ingress is retained behind the
-    // hard startup gate, so do not turn an early flush into a potentially unbounded wait. The
-    // EventBuffer mutex linearizes this no-op against ALB marking the pipeline ready.
+    // There is no useful work to flush before ALB applies its first configuration: ingress is
+    // retained behind the hard startup gate, so do not turn an early flush into a potentially
+    // unbounded wait. The EventBuffer mutex linearizes this no-op against that transition.
     let skips_flush = match &self.inner {
       SenderInner::EventBuffer { event_buffer, .. } => {
-        event_buffer.skips_flush_before_pipeline_ready()
+        event_buffer.skips_flush_before_configuration_ready()
       },
       #[cfg(test)]
       SenderInner::TestEventBuffer { .. } => false,
@@ -1131,8 +1131,8 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
     report_processor: impl ReportProcessor,
     mut shutdown: ComponentShutdown,
   ) -> Self {
-    // EventBuffer retains ingress while configuration constructs the processing pipeline. Its
-    // startup gate opens once the pipeline is ready and the platform-selected delay has elapsed,
+    // EventBuffer retains ingress until configuration is ready. Its startup gate opens once the
+    // configuration has been applied and the platform-selected delay has elapsed,
     // or pressure or a blocking flush barrier requests an early release.
     self.start_startup_replay_delay();
 
@@ -1164,9 +1164,9 @@ impl<R: LogReplay + Send + 'static> AsyncLogBuffer<R> {
         },
         Some(config) = self.config_update_rx.recv() => {
           self = self.update(config).await;
-          self.event_buffer.mark_pipeline_ready();
+          self.event_buffer.mark_configuration_ready();
           if let Some(test_hooks) = &self.test_hooks {
-            test_hooks.pipeline_ready();
+            test_hooks.configuration_ready();
           }
           self.refresh_event_buffer_limits();
           self.refresh_startup_replay_delay();

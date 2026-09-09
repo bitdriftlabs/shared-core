@@ -81,7 +81,7 @@ struct MockSessionReplayTarget {
 //
 
 struct SetupTestHooks {
-  pipeline_ready_tx: StdSender<()>,
+  configuration_ready_tx: StdSender<()>,
   remote_streaming_action_processed_tx: StdSender<()>,
   remote_streaming_trigger_upload_completed_tx: StdSender<()>,
   startup_replay_gate_opened_tx: StdSender<()>,
@@ -89,8 +89,8 @@ struct SetupTestHooks {
 }
 
 impl TestHooks for SetupTestHooks {
-  fn pipeline_ready(&self) {
-    let _ignored = self.pipeline_ready_tx.send(());
+  fn configuration_ready(&self) {
+    let _ignored = self.configuration_ready_tx.send(());
   }
 
   fn remote_streaming_action_processed(&self) {
@@ -182,7 +182,7 @@ pub struct Setup {
 
   capture_screen_rx: StdReceiver<()>,
   capture_screenshot_rx: StdReceiver<()>,
-  pipeline_ready_rx: StdReceiver<()>,
+  configuration_ready_rx: StdReceiver<()>,
   remote_streaming_action_processed_rx: StdReceiver<()>,
   remote_streaming_trigger_upload_completed_rx: StdReceiver<()>,
   startup_replay_gate_opened_rx: StdReceiver<()>,
@@ -252,7 +252,7 @@ impl Setup {
 
     let (capture_screen_tx, capture_screen_rx) = std::sync::mpsc::channel();
     let (capture_screenshot_tx, capture_screenshot_rx) = std::sync::mpsc::channel();
-    let (pipeline_ready_tx, pipeline_ready_rx) = std_channel();
+    let (configuration_ready_tx, configuration_ready_rx) = std_channel();
     let (remote_streaming_action_processed_tx, remote_streaming_action_processed_rx) =
       std_channel();
     let (
@@ -296,7 +296,7 @@ impl Setup {
     .with_internal_logger(true)
     .with_time_provider(options.time_provider)
     .with_test_hooks(Some(Arc::new(SetupTestHooks {
-      pipeline_ready_tx,
+      configuration_ready_tx,
       remote_streaming_action_processed_tx,
       remote_streaming_trigger_upload_completed_tx,
       startup_replay_gate_opened_tx,
@@ -322,7 +322,7 @@ impl Setup {
       current_api_stream,
       capture_screen_rx,
       capture_screenshot_rx,
-      pipeline_ready_rx,
+      configuration_ready_rx,
       remote_streaming_action_processed_rx,
       remote_streaming_trigger_upload_completed_rx,
       startup_replay_gate_opened_rx,
@@ -352,11 +352,11 @@ impl Setup {
       .expect("timed out waiting for capture-screenshot callback");
   }
 
-  pub fn wait_for_pipeline_ready(&self) {
+  pub fn wait_for_configuration_ready(&self) {
     self
-      .pipeline_ready_rx
+      .configuration_ready_rx
       .recv_timeout(std::time::Duration::from_secs(5))
-      .expect("timed out waiting for logging pipeline readiness");
+      .expect("timed out waiting for logging configuration readiness");
   }
 
   pub fn wait_for_remote_streaming_action_processing(&self) {
