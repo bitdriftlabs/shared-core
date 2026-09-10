@@ -7,7 +7,7 @@
 
 #![allow(clippy::cast_possible_truncation, clippy::unwrap_used)]
 
-use crate::{DataValue, EncodableLog, Log, LogFieldValue, LogType};
+use crate::{DataValue, EncodableLog, Log, LogFieldValue, LogType, TypedLogLevel, log_level};
 use ahash::AHashMap;
 use bd_proto::protos::logging::payload::data::Data_type;
 use bd_proto::protos::logging::payload::log::Field;
@@ -381,4 +381,19 @@ fn field_value_returns_numeric_types_as_strings() {
   );
   assert!(fields_ref.field_value("bool_field").is_none());
   assert!(fields_ref.field_value("nonexistent").is_none());
+}
+
+#[test]
+fn typed_log_level_discriminants_match_wire_values() {
+  for (typed, wire) in [
+    (TypedLogLevel::Critical, log_level::CRITICAL),
+    (TypedLogLevel::Error, log_level::ERROR),
+    (TypedLogLevel::Warning, log_level::WARNING),
+    (TypedLogLevel::Info, log_level::INFO),
+    (TypedLogLevel::Debug, log_level::DEBUG),
+    (TypedLogLevel::Trace, log_level::TRACE),
+  ] {
+    assert_eq!(typed.as_u32(), wire);
+    assert_eq!(typed as u32, wire);
+  }
 }
