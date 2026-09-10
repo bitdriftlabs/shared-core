@@ -627,6 +627,8 @@ pub struct Report {
     pub app_metrics: ::protobuf::MessageField<report::AppMetrics>,
     // @@protoc_insertion_point(field:bitdrift.public.unary.issues.v1.Report.fields)
     pub fields: ::std::vec::Vec<report::Field>,
+    // @@protoc_insertion_point(field:bitdrift.public.unary.issues.v1.Report.binary_images)
+    pub binary_images: ::std::vec::Vec<report::BinaryImage>,
     // special fields
     // @@protoc_insertion_point(special_field:bitdrift.public.unary.issues.v1.Report.special_fields)
     pub special_fields: ::protobuf::SpecialFields,
@@ -644,7 +646,7 @@ impl Report {
     }
 
     fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
-        let mut fields = ::std::vec::Vec::with_capacity(5);
+        let mut fields = ::std::vec::Vec::with_capacity(6);
         let mut oneofs = ::std::vec::Vec::with_capacity(0);
         fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
             "errors",
@@ -670,6 +672,11 @@ impl Report {
             "fields",
             |m: &Report| { &m.fields },
             |m: &mut Report| { &mut m.fields },
+        ));
+        fields.push(::protobuf::reflect::rt::v2::make_vec_simpler_accessor::<_, _>(
+            "binary_images",
+            |m: &Report| { &m.binary_images },
+            |m: &mut Report| { &mut m.binary_images },
         ));
         ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<Report>(
             "Report",
@@ -704,6 +711,9 @@ impl ::protobuf::Message for Report {
                 42 => {
                     self.fields.push(is.read_message()?);
                 },
+                50 => {
+                    self.binary_images.push(is.read_message()?);
+                },
                 tag => {
                     ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
                 },
@@ -736,6 +746,10 @@ impl ::protobuf::Message for Report {
             let len = value.compute_size();
             my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
         };
+        for value in &self.binary_images {
+            let len = value.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint64_size(len) + len;
+        };
         my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
         self.special_fields.cached_size().set(my_size as u32);
         my_size
@@ -756,6 +770,9 @@ impl ::protobuf::Message for Report {
         }
         for v in &self.fields {
             ::protobuf::rt::write_message_field_with_cached_size(5, v, os)?;
+        };
+        for v in &self.binary_images {
+            ::protobuf::rt::write_message_field_with_cached_size(6, v, os)?;
         };
         os.write_unknown_fields(self.special_fields.unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -779,6 +796,7 @@ impl ::protobuf::Message for Report {
         self.thread_details.clear();
         self.app_metrics.clear();
         self.fields.clear();
+        self.binary_images.clear();
         self.special_fields.clear();
     }
 
@@ -789,6 +807,7 @@ impl ::protobuf::Message for Report {
             thread_details: ::protobuf::MessageField::none(),
             app_metrics: ::protobuf::MessageField::none(),
             fields: ::std::vec::Vec::new(),
+            binary_images: ::std::vec::Vec::new(),
             special_fields: ::protobuf::SpecialFields::new(),
         };
         &instance
@@ -2287,6 +2306,182 @@ pub mod report {
             type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
         }
     }
+
+    // @@protoc_insertion_point(message:bitdrift.public.unary.issues.v1.Report.BinaryImage)
+    #[derive(PartialEq,Clone,Default,Debug)]
+    pub struct BinaryImage {
+        // message fields
+        // @@protoc_insertion_point(field:bitdrift.public.unary.issues.v1.Report.BinaryImage.id)
+        pub id: ::std::string::String,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.issues.v1.Report.BinaryImage.path)
+        pub path: ::std::string::String,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.issues.v1.Report.BinaryImage.load_address)
+        pub load_address: u64,
+        // @@protoc_insertion_point(field:bitdrift.public.unary.issues.v1.Report.BinaryImage.length)
+        pub length: u64,
+        // special fields
+        // @@protoc_insertion_point(special_field:bitdrift.public.unary.issues.v1.Report.BinaryImage.special_fields)
+        pub special_fields: ::protobuf::SpecialFields,
+    }
+
+    impl<'a> ::std::default::Default for &'a BinaryImage {
+        fn default() -> &'a BinaryImage {
+            <BinaryImage as ::protobuf::Message>::default_instance()
+        }
+    }
+
+    impl BinaryImage {
+        pub fn new() -> BinaryImage {
+            ::std::default::Default::default()
+        }
+
+        pub(in super) fn generated_message_descriptor_data() -> ::protobuf::reflect::GeneratedMessageDescriptorData {
+            let mut fields = ::std::vec::Vec::with_capacity(4);
+            let mut oneofs = ::std::vec::Vec::with_capacity(0);
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "id",
+                |m: &BinaryImage| { &m.id },
+                |m: &mut BinaryImage| { &mut m.id },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "path",
+                |m: &BinaryImage| { &m.path },
+                |m: &mut BinaryImage| { &mut m.path },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "load_address",
+                |m: &BinaryImage| { &m.load_address },
+                |m: &mut BinaryImage| { &mut m.load_address },
+            ));
+            fields.push(::protobuf::reflect::rt::v2::make_simpler_field_accessor::<_, _>(
+                "length",
+                |m: &BinaryImage| { &m.length },
+                |m: &mut BinaryImage| { &mut m.length },
+            ));
+            ::protobuf::reflect::GeneratedMessageDescriptorData::new_2::<BinaryImage>(
+                "Report.BinaryImage",
+                fields,
+                oneofs,
+            )
+        }
+    }
+
+    impl ::protobuf::Message for BinaryImage {
+        const NAME: &'static str = "BinaryImage";
+
+        fn is_initialized(&self) -> bool {
+            true
+        }
+
+        fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::Result<()> {
+            while let Some(tag) = is.read_raw_tag_or_eof()? {
+                match tag {
+                    10 => {
+                        self.id = is.read_string()?;
+                    },
+                    18 => {
+                        self.path = is.read_string()?;
+                    },
+                    24 => {
+                        self.load_address = is.read_uint64()?;
+                    },
+                    32 => {
+                        self.length = is.read_uint64()?;
+                    },
+                    tag => {
+                        ::protobuf::rt::read_unknown_or_skip_group(tag, is, self.special_fields.mut_unknown_fields())?;
+                    },
+                };
+            }
+            ::std::result::Result::Ok(())
+        }
+
+        // Compute sizes of nested messages
+        #[allow(unused_variables)]
+        fn compute_size(&self) -> u64 {
+            let mut my_size = 0;
+            if !self.id.is_empty() {
+                my_size += ::protobuf::rt::string_size(1, &self.id);
+            }
+            if !self.path.is_empty() {
+                my_size += ::protobuf::rt::string_size(2, &self.path);
+            }
+            if self.load_address != 0 {
+                my_size += ::protobuf::rt::uint64_size(3, self.load_address);
+            }
+            if self.length != 0 {
+                my_size += ::protobuf::rt::uint64_size(4, self.length);
+            }
+            my_size += ::protobuf::rt::unknown_fields_size(self.special_fields.unknown_fields());
+            self.special_fields.cached_size().set(my_size as u32);
+            my_size
+        }
+
+        fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::Result<()> {
+            if !self.id.is_empty() {
+                os.write_string(1, &self.id)?;
+            }
+            if !self.path.is_empty() {
+                os.write_string(2, &self.path)?;
+            }
+            if self.load_address != 0 {
+                os.write_uint64(3, self.load_address)?;
+            }
+            if self.length != 0 {
+                os.write_uint64(4, self.length)?;
+            }
+            os.write_unknown_fields(self.special_fields.unknown_fields())?;
+            ::std::result::Result::Ok(())
+        }
+
+        fn special_fields(&self) -> &::protobuf::SpecialFields {
+            &self.special_fields
+        }
+
+        fn mut_special_fields(&mut self) -> &mut ::protobuf::SpecialFields {
+            &mut self.special_fields
+        }
+
+        fn new() -> BinaryImage {
+            BinaryImage::new()
+        }
+
+        fn clear(&mut self) {
+            self.id.clear();
+            self.path.clear();
+            self.load_address = 0;
+            self.length = 0;
+            self.special_fields.clear();
+        }
+
+        fn default_instance() -> &'static BinaryImage {
+            static instance: BinaryImage = BinaryImage {
+                id: ::std::string::String::new(),
+                path: ::std::string::String::new(),
+                load_address: 0,
+                length: 0,
+                special_fields: ::protobuf::SpecialFields::new(),
+            };
+            &instance
+        }
+    }
+
+    impl ::protobuf::MessageFull for BinaryImage {
+        fn descriptor() -> ::protobuf::reflect::MessageDescriptor {
+            static descriptor: ::protobuf::rt::Lazy<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::Lazy::new();
+            descriptor.get(|| super::file_descriptor().message_by_package_relative_name("Report.BinaryImage").unwrap()).clone()
+        }
+    }
+
+    impl ::std::fmt::Display for BinaryImage {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            ::protobuf::text_format::fmt(self, f)
+        }
+    }
+
+    impl ::protobuf::reflect::ProtobufValue for BinaryImage {
+        type RuntimeType = ::protobuf::reflect::rt::RuntimeTypeMessage<Self>;
+    }
 }
 
 #[derive(Clone,Copy,PartialEq,Eq,Debug,Hash)]
@@ -2392,7 +2587,7 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     \x12\x11\n\rUNKNOWN_IMAGE\x10\x04\x12\r\n\tMALFORMED\x10\x05B\x0e\n\x0c_\
     symbol_nameB\r\n\x0b_image_pathB\x10\n\x0e_frame_addressB\x11\n\x0f_symb\
     ol_addressB\x14\n\x12_symbolicated_nameB\x15\n\x13_image_load_addressB\
-    \x0b\n\t_image_id\"\xf7\x11\n\x06Report\x12E\n\x06errors\x18\x01\x20\x03\
+    \x0b\n\t_image_id\"\xd1\x13\n\x06Report\x12E\n\x06errors\x18\x01\x20\x03\
     (\x0b2-.bitdrift.public.unary.issues.v1.Report.ErrorR\x06errors\x12\\\n\
     \x0edevice_metrics\x18\x02\x20\x01(\x0b25.bitdrift.public.unary.issues.v\
     1.Report.DeviceMetricsR\rdeviceMetrics\x12\\\n\x0ethread_details\x18\x03\
@@ -2400,55 +2595,61 @@ static file_descriptor_proto_data: &'static [u8] = b"\
     hreadDetails\x12S\n\x0bapp_metrics\x18\x04\x20\x01(\x0b22.bitdrift.publi\
     c.unary.issues.v1.Report.AppMetricsR\nappMetrics\x12E\n\x06fields\x18\
     \x05\x20\x03(\x0b2-.bitdrift.public.unary.issues.v1.Report.FieldR\x06fie\
-    lds\x1aA\n\x05Field\x12\x19\n\x03key\x18\x01\x20\x01(\tR\x03keyB\x07\xfa\
-    B\x04r\x02\x10\x01\x12\x1d\n\x05value\x18\x02\x20\x01(\tR\x05valueB\x07\
-    \xfaB\x04r\x02\x10\x01\x1a\x95\x01\n\x05Error\x12\x1f\n\x06reason\x18\
-    \x01\x20\x01(\tR\x06reasonB\x07\xfaB\x04r\x02\x10\x01\x12!\n\x07details\
-    \x18\x02\x20\x01(\tR\x07detailsB\x07\xfaB\x04r\x02\x10\x01\x12H\n\x06fra\
-    mes\x18\x03\x20\x03(\x0b2&.bitdrift.public.unary.issues.v1.FrameR\x06fra\
-    mesB\x08\xfaB\x05\x92\x01\x02\x08\x01\x1a\xdf\x03\n\nAppMetrics\x12\x1e\
-    \n\x06app_id\x18\x01\x20\x01(\tR\x05appIdB\x07\xfaB\x04r\x02\x10\x01\x12\
-    !\n\x07version\x18\x02\x20\x01(\tR\x07versionB\x07\xfaB\x04r\x02\x10\x01\
-    \x12'\n\x0ebundle_version\x18\x03\x20\x01(\tH\0R\rbundleVersion\x12#\n\
-    \x0cversion_code\x18\x04\x20\x01(\x03H\0R\x0bversionCode\x12\x89\x01\n\
-    \x15memory_pressure_level\x18\x05\x20\x01(\x0e2F.bitdrift.public.unary.i\
-    ssues.v1.Report.AppMetrics.MemoryPressureLevelH\x01R\x13memoryPressureLe\
-    velB\x08\xfaB\x05\x82\x01\x02\x10\x01\x88\x01\x01\"\x89\x01\n\x13MemoryP\
-    ressureLevel\x12\x1b\n\x17MEMORY_PRESSURE_UNKNOWN\x10\0\x12\x1a\n\x16MEM\
-    ORY_PRESSURE_NORMAL\x10\x01\x12\x1b\n\x17MEMORY_PRESSURE_WARNING\x10\x02\
-    \x12\x1c\n\x18MEMORY_PRESSURE_CRITICAL\x10\x03B\x0e\n\x0cbuild_numberB\
-    \x18\n\x16_memory_pressure_level\x1a\xdf\x05\n\rDeviceMetrics\x127\n\x04\
-    time\x18\x01\x20\x01(\x0b2\x1a.google.protobuf.TimestampR\x04timeB\x07\
-    \xfaB\x04r\x02\x10\x01\x12+\n\x0cmanufacturer\x18\x02\x20\x01(\tR\x0cman\
-    ufacturerB\x07\xfaB\x04r\x02\x10\x01\x12\x1d\n\x05model\x18\x03\x20\x01(\
-    \tR\x05modelB\x07\xfaB\x04r\x02\x10\x01\x12p\n\x0carchitecture\x18\x04\
-    \x20\x01(\x0e2B.bitdrift.public.unary.issues.v1.Report.DeviceMetrics.Arc\
-    hitectureR\x0carchitectureB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12\x17\n\
-    \x02os\x18\x05\x20\x01(\tR\x02osB\x07\xfaB\x04r\x02\x10\x01\x12&\n\nos_v\
-    ersion\x18\x06\x20\x01(\tR\tosVersionB\x07\xfaB\x04r\x02\x10\x01\x12k\n\
-    \x0bpower_state\x18\x07\x20\x01(\x0e2@.bitdrift.public.unary.issues.v1.R\
-    eport.DeviceMetrics.PowerStateR\npowerStateB\x08\xfaB\x05\x82\x01\x02\
-    \x10\x01\x12.\n\rbattery_level\x18\x08\x20\x01(\rR\x0cbatteryLevelB\t\
-    \xfaB\x06*\x04\x18d(\0\x12\x20\n\x07user_id\x18\t\x20\x01(\tR\x06userIdB\
-    \x07\xfaB\x04r\x02\x10\x01\"K\n\x0cArchitecture\x12\x10\n\x0cUNKNOWN_ARC\
-    H\x10\0\x12\t\n\x05ARM32\x10\x01\x12\t\n\x05ARM64\x10\x02\x12\x07\n\x03X\
-    86\x10\x03\x12\n\n\x06X86_64\x10\x04\"\x89\x01\n\nPowerState\x12\x17\n\
-    \x13UNKNOWN_POWER_STATE\x10\0\x12\x16\n\x12RUNNING_ON_BATTERY\x10\x01\
-    \x12\x19\n\x15PLUGGED_IN_NO_BATTERY\x10\x02\x12\x17\n\x13PLUGGED_IN_CHAR\
-    GING\x10\x03\x12\x16\n\x12PLUGGED_IN_CHARGED\x10\x04\x1a\xae\x03\n\rThre\
-    adDetails\x12#\n\rtotal_threads\x18\x01\x20\x01(\rR\x0ctotalThreads\x12V\
-    \n\x07threads\x18\x02\x20\x03(\x0b2<.bitdrift.public.unary.issues.v1.Rep\
-    ort.ThreadDetails.ThreadR\x07threads\x1a\x9f\x02\n\x06Thread\x12\x16\n\
-    \x06active\x18\x01\x20\x01(\x08R\x06active\x12\x12\n\x04name\x18\x02\x20\
-    \x01(\tR\x04name\x12\x19\n\x05index\x18\x03\x20\x01(\rH\0R\x05index\x88\
-    \x01\x01\x12\x14\n\x05state\x18\x04\x20\x01(\tR\x05state\x12\x1a\n\x08pr\
-    iority\x18\x05\x20\x01(\x02R\x08priority\x121\n\x12quality_of_service\
-    \x18\x06\x20\x01(\x05H\x01R\x10qualityOfService\x88\x01\x01\x12H\n\x06fr\
-    ames\x18\x07\x20\x03(\x0b2&.bitdrift.public.unary.issues.v1.FrameR\x06fr\
-    amesB\x08\xfaB\x05\x8a\x01\x02\x10\x01B\x08\n\x06_indexB\x15\n\x13_quali\
-    ty_of_service*M\n\tFrameType\x12\x0b\n\x07UNKNOWN\x10\0\x12\t\n\x05DWARF\
-    \x10\x01\x12\x0f\n\x0bANDROID_NDK\x10\x02\x12\x07\n\x03JVM\x10\x03\x12\
-    \x0e\n\nJAVASCRIPT\x10\x04b\x06proto3\
+    lds\x12X\n\rbinary_images\x18\x06\x20\x03(\x0b23.bitdrift.public.unary.i\
+    ssues.v1.Report.BinaryImageR\x0cbinaryImages\x1aA\n\x05Field\x12\x19\n\
+    \x03key\x18\x01\x20\x01(\tR\x03keyB\x07\xfaB\x04r\x02\x10\x01\x12\x1d\n\
+    \x05value\x18\x02\x20\x01(\tR\x05valueB\x07\xfaB\x04r\x02\x10\x01\x1a\
+    \x95\x01\n\x05Error\x12\x1f\n\x06reason\x18\x01\x20\x01(\tR\x06reasonB\
+    \x07\xfaB\x04r\x02\x10\x01\x12!\n\x07details\x18\x02\x20\x01(\tR\x07deta\
+    ilsB\x07\xfaB\x04r\x02\x10\x01\x12H\n\x06frames\x18\x03\x20\x03(\x0b2&.b\
+    itdrift.public.unary.issues.v1.FrameR\x06framesB\x08\xfaB\x05\x92\x01\
+    \x02\x08\x01\x1a\xdf\x03\n\nAppMetrics\x12\x1e\n\x06app_id\x18\x01\x20\
+    \x01(\tR\x05appIdB\x07\xfaB\x04r\x02\x10\x01\x12!\n\x07version\x18\x02\
+    \x20\x01(\tR\x07versionB\x07\xfaB\x04r\x02\x10\x01\x12'\n\x0ebundle_vers\
+    ion\x18\x03\x20\x01(\tH\0R\rbundleVersion\x12#\n\x0cversion_code\x18\x04\
+    \x20\x01(\x03H\0R\x0bversionCode\x12\x89\x01\n\x15memory_pressure_level\
+    \x18\x05\x20\x01(\x0e2F.bitdrift.public.unary.issues.v1.Report.AppMetric\
+    s.MemoryPressureLevelH\x01R\x13memoryPressureLevelB\x08\xfaB\x05\x82\x01\
+    \x02\x10\x01\x88\x01\x01\"\x89\x01\n\x13MemoryPressureLevel\x12\x1b\n\
+    \x17MEMORY_PRESSURE_UNKNOWN\x10\0\x12\x1a\n\x16MEMORY_PRESSURE_NORMAL\
+    \x10\x01\x12\x1b\n\x17MEMORY_PRESSURE_WARNING\x10\x02\x12\x1c\n\x18MEMOR\
+    Y_PRESSURE_CRITICAL\x10\x03B\x0e\n\x0cbuild_numberB\x18\n\x16_memory_pre\
+    ssure_level\x1a\xdf\x05\n\rDeviceMetrics\x127\n\x04time\x18\x01\x20\x01(\
+    \x0b2\x1a.google.protobuf.TimestampR\x04timeB\x07\xfaB\x04r\x02\x10\x01\
+    \x12+\n\x0cmanufacturer\x18\x02\x20\x01(\tR\x0cmanufacturerB\x07\xfaB\
+    \x04r\x02\x10\x01\x12\x1d\n\x05model\x18\x03\x20\x01(\tR\x05modelB\x07\
+    \xfaB\x04r\x02\x10\x01\x12p\n\x0carchitecture\x18\x04\x20\x01(\x0e2B.bit\
+    drift.public.unary.issues.v1.Report.DeviceMetrics.ArchitectureR\x0carchi\
+    tectureB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12\x17\n\x02os\x18\x05\x20\
+    \x01(\tR\x02osB\x07\xfaB\x04r\x02\x10\x01\x12&\n\nos_version\x18\x06\x20\
+    \x01(\tR\tosVersionB\x07\xfaB\x04r\x02\x10\x01\x12k\n\x0bpower_state\x18\
+    \x07\x20\x01(\x0e2@.bitdrift.public.unary.issues.v1.Report.DeviceMetrics\
+    .PowerStateR\npowerStateB\x08\xfaB\x05\x82\x01\x02\x10\x01\x12.\n\rbatte\
+    ry_level\x18\x08\x20\x01(\rR\x0cbatteryLevelB\t\xfaB\x06*\x04\x18d(\0\
+    \x12\x20\n\x07user_id\x18\t\x20\x01(\tR\x06userIdB\x07\xfaB\x04r\x02\x10\
+    \x01\"K\n\x0cArchitecture\x12\x10\n\x0cUNKNOWN_ARCH\x10\0\x12\t\n\x05ARM\
+    32\x10\x01\x12\t\n\x05ARM64\x10\x02\x12\x07\n\x03X86\x10\x03\x12\n\n\x06\
+    X86_64\x10\x04\"\x89\x01\n\nPowerState\x12\x17\n\x13UNKNOWN_POWER_STATE\
+    \x10\0\x12\x16\n\x12RUNNING_ON_BATTERY\x10\x01\x12\x19\n\x15PLUGGED_IN_N\
+    O_BATTERY\x10\x02\x12\x17\n\x13PLUGGED_IN_CHARGING\x10\x03\x12\x16\n\x12\
+    PLUGGED_IN_CHARGED\x10\x04\x1a\xae\x03\n\rThreadDetails\x12#\n\rtotal_th\
+    reads\x18\x01\x20\x01(\rR\x0ctotalThreads\x12V\n\x07threads\x18\x02\x20\
+    \x03(\x0b2<.bitdrift.public.unary.issues.v1.Report.ThreadDetails.ThreadR\
+    \x07threads\x1a\x9f\x02\n\x06Thread\x12\x16\n\x06active\x18\x01\x20\x01(\
+    \x08R\x06active\x12\x12\n\x04name\x18\x02\x20\x01(\tR\x04name\x12\x19\n\
+    \x05index\x18\x03\x20\x01(\rH\0R\x05index\x88\x01\x01\x12\x14\n\x05state\
+    \x18\x04\x20\x01(\tR\x05state\x12\x1a\n\x08priority\x18\x05\x20\x01(\x02\
+    R\x08priority\x121\n\x12quality_of_service\x18\x06\x20\x01(\x05H\x01R\
+    \x10qualityOfService\x88\x01\x01\x12H\n\x06frames\x18\x07\x20\x03(\x0b2&\
+    .bitdrift.public.unary.issues.v1.FrameR\x06framesB\x08\xfaB\x05\x8a\x01\
+    \x02\x10\x01B\x08\n\x06_indexB\x15\n\x13_quality_of_service\x1a~\n\x0bBi\
+    naryImage\x12\x17\n\x02id\x18\x01\x20\x01(\tR\x02idB\x07\xfaB\x04r\x02\
+    \x10\x01\x12\x1b\n\x04path\x18\x02\x20\x01(\tR\x04pathB\x07\xfaB\x04r\
+    \x02\x10\x01\x12!\n\x0cload_address\x18\x03\x20\x01(\x04R\x0bloadAddress\
+    \x12\x16\n\x06length\x18\x04\x20\x01(\x04R\x06length*M\n\tFrameType\x12\
+    \x0b\n\x07UNKNOWN\x10\0\x12\t\n\x05DWARF\x10\x01\x12\x0f\n\x0bANDROID_ND\
+    K\x10\x02\x12\x07\n\x03JVM\x10\x03\x12\x0e\n\nJAVASCRIPT\x10\x04b\x06pro\
+    to3\
 ";
 
 /// `FileDescriptorProto` object which was a source for this generated file
@@ -2468,7 +2669,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             let mut deps = ::std::vec::Vec::with_capacity(2);
             deps.push(::protobuf::well_known_types::timestamp::file_descriptor().clone());
             deps.push(super::validate::file_descriptor().clone());
-            let mut messages = ::std::vec::Vec::with_capacity(9);
+            let mut messages = ::std::vec::Vec::with_capacity(10);
             messages.push(SourceFile::generated_message_descriptor_data());
             messages.push(Frame::generated_message_descriptor_data());
             messages.push(Report::generated_message_descriptor_data());
@@ -2477,6 +2678,7 @@ pub fn file_descriptor() -> &'static ::protobuf::reflect::FileDescriptor {
             messages.push(report::AppMetrics::generated_message_descriptor_data());
             messages.push(report::DeviceMetrics::generated_message_descriptor_data());
             messages.push(report::ThreadDetails::generated_message_descriptor_data());
+            messages.push(report::BinaryImage::generated_message_descriptor_data());
             messages.push(report::thread_details::Thread::generated_message_descriptor_data());
             let mut enums = ::std::vec::Vec::with_capacity(5);
             enums.push(FrameType::generated_enum_descriptor_data());
